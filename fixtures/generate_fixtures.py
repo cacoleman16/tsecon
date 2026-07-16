@@ -388,6 +388,206 @@ def gen_hac():
     )
 
 
+# ---------------------------------------------------------------- ARIMA
+def gen_arima():
+    import warnings
+
+    rng = np.random.default_rng(101)
+    n = 300
+    e = rng.standard_normal(n + 100) * np.sqrt(1.2)
+    z = np.empty(n + 100)
+    z[0] = 0.0
+    for t in range(1, n + 100):
+        z[t] = 0.7 * z[t - 1] + e[t] + 0.4 * e[t - 1]
+    arma = z[100:] + 2.0  # ARMA(1,1) around a nonzero mean
+
+    y = nile_series()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        # Fixed-parameter log-likelihoods (deterministic golden values).
+        m1 = sm.tsa.SARIMAX(arma - 2.0, order=(1, 0, 1), trend="n")
+        ll_arma_fixed = float(m1.loglike(np.array([0.7, 0.4, 1.2])))
+
+        m2 = sm.tsa.SARIMAX(y, order=(1, 1, 1), trend="n", simple_differencing=True)
+        ll_arima_fixed = float(m2.loglike(np.array([0.3, -0.6, 20000.0])))
+
+        # A full MLE fit as an optimizer target (match loglik, not the path).
+        m3 = sm.tsa.SARIMAX(y, order=(1, 0, 1), trend="c")
+        r3 = m3.fit(disp=False)
+
+        # Fixed-parameter forecasting golden.
+        fc = m3.smooth(r3.params).get_forecast(12)
+
+    out = {
+        "arma11": {
+            "y": arma.tolist(),
+            "note": "ARMA(1,1), phi=0.7, theta=0.4, sigma2=1.2, mean 2.0 added after simulation",
+            "loglike_fixed_demeaned": ll_arma_fixed,
+            "fixed_params_phi_theta_sigma2": [0.7, 0.4, 1.2],
+        },
+        "nile_arima111_simple_diff": {
+            "fixed_params_phi_theta_sigma2": [0.3, -0.6, 20000.0],
+            "loglike_fixed": ll_arima_fixed,
+        },
+        "nile_arma11c_fit": {
+            "params_const_phi_theta_sigma2": r3.params.tolist(),
+            "loglike": float(r3.llf),
+            "aic": float(r3.aic),
+            "bic": float(r3.bic),
+            "forecast_mean_12": fc.predicted_mean.tolist(),
+            "forecast_se_12": fc.se_mean.tolist(),
+        },
+    }
+    dump("arima.json", out)
+
+
+# ------------------------------------------------------------------ VAR
+def gen_var():
+    import warnings
+
+    from statsmodels.tsa.api import VAR
+
+    mac = sm.datasets.macrodata.load_pandas().data
+    data = 100.0 * np.diff(np.log(mac[["realgdp", "realcons", "realinv"]].to_numpy()), axis=0)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = VAR(data)
+        res = model.fit(2, trend="c")
+        sel = model.select_order(8)
+        irf = res.irf(10)
+        fevd = res.fevd(10)
+        gc = res.test_causality(0, [1], kind="f")  # does realcons Granger-cause realgdp
+        point = res.forecast(data[-2:], 8)
+        _, lower, upper = res.forecast_interval(data[-2:], 8, alpha=0.05)
+
+    out = {
+        "data_100dlog_gdp_cons_inv": data.tolist(),
+        "var2c": {
+            "params": res.params.tolist(),
+            "param_names": list(res.params.index) if hasattr(res.params, "index") else None,
+            "sigma_u": np.asarray(res.sigma_u).tolist(),
+            "llf": float(res.llf),
+            "aic": float(res.aic),
+            "bic": float(res.bic),
+            "hqic": float(res.hqic),
+            "fpe": float(res.fpe),
+            "stable_max_root": float(max(abs(res.roots))),
+        },
+        "lag_selection_maxlags_8": {
+            "aic": int(sel.aic),
+            "bic": int(sel.bic),
+            "hqic": int(sel.hqic),
+            "fpe": int(sel.fpe),
+        },
+        "granger_cons_causes_gdp": {
+            "stat": float(gc.test_statistic),
+            "pvalue": float(gc.pvalue),
+            "df": list(gc.df) if hasattr(gc, "df") and not np.isscalar(gc.df) else gc.df,
+        },
+        "irf_orth_h10": np.asarray(irf.orth_irfs).tolist(),
+        "irf_nonorth_h10": np.asarray(irf.irfs).tolist(),
+        "fevd_h10": np.asarray(fevd.decomp).tolist(),
+        "forecast_8": {
+            "point": np.asarray(point).tolist(),
+            "lower95": np.asarray(lower).tolist(),
+            "upper95": np.asarray(upper).tolist(),
+        },
+    }
+    dump("var.json", out)
+
+
+# -------------------------------------------------------------- filters
+def gen_filters():
+    mac = sm.datasets.macrodata.load_pandas().data
+    y = 100.0 * np.log(mac["realgdp"].to_numpy())
+
+    cycle_hp, trend_hp = sm.tsa.filters.hpfilter(y, lamb=1600.0)
+    bk = sm.tsa.filters.bkfilter(y, low=6, high=32, K=12)
+    cf_cycle, cf_trend = sm.tsa.filters.cffilter(y, low=6, high=32, drift=True)
+
+    # Hamilton (2018) regression filter, h=8, p=4: regress y_{t} on
+    # [1, y_{t-8}, y_{t-9}, y_{t-10}, y_{t-11}]; cycle = residual.
+    h, p = 8, 4
+    n = len(y)
+    rows = range(h + p - 1, n)
+    X = np.column_stack(
+        [np.ones(len(rows))] + [y[[t - h - j for t in rows]] for j in range(p)]
+    )
+    yy = y[list(rows)]
+    beta = np.linalg.lstsq(X, yy, rcond=None)[0]
+    hamilton_cycle = yy - X @ beta
+
+    dump(
+        "filters.json",
+        {
+            "y_100_log_realgdp": y.tolist(),
+            "hp_1600": {"cycle": cycle_hp.tolist(), "trend": trend_hp.tolist()},
+            "bk_6_32_K12": np.asarray(bk).ravel().tolist(),
+            "cf_6_32_drift": {"cycle": np.asarray(cf_cycle).tolist(), "trend": np.asarray(cf_trend).tolist()},
+            "hamilton_h8_p4": {
+                "beta": beta.tolist(),
+                "cycle": hamilton_cycle.tolist(),
+                "first_cycle_index": h + p - 1,
+            },
+        },
+    )
+
+
+# ---------------------------------------------------------- forecasting
+def gen_forecast():
+    import warnings
+
+    from statsmodels.tsa.forecasting.theta import ThetaModel
+
+    mac = sm.datasets.macrodata.load_pandas().data
+    y = mac["realgdp"].to_numpy()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        tm = ThetaModel(y, period=4, deseasonalize=True, use_test=False)
+        tr = tm.fit()
+        theta_fc = tr.forecast(8).to_numpy()
+
+    # Diebold-Mariano with the Harvey-Leybourne-Newbold (1997) correction —
+    # self-authored reference implementation, formulas documented here.
+    rng = np.random.default_rng(55)
+    n, hstep = 120, 3
+    e1 = rng.standard_normal(n)
+    e2 = 0.8 * e1 + 0.6 * rng.standard_normal(n) + 0.15
+    d = e1**2 - e2**2  # squared-error loss differential
+    dbar = d.mean()
+    # HAC variance of dbar with rectangular (uniform) weights to h-1 lags
+    gam = [np.mean((d[: n - k] - dbar) * (d[k:] - dbar)) for k in range(hstep)]
+    var_dbar = (gam[0] + 2 * sum(gam[1:])) / n
+    dm = dbar / np.sqrt(var_dbar)
+    hln = dm * np.sqrt((n + 1 - 2 * hstep + hstep * (hstep - 1) / n) / n)
+    from scipy import stats as sps
+
+    dump(
+        "forecast.json",
+        {
+            "theta_realgdp_p4": {"forecast_8": theta_fc.tolist(), "note": "statsmodels ThetaModel, deseasonalize=True, use_test=False"},
+            "dm_test": {
+                "e1": e1.tolist(),
+                "e2": e2.tolist(),
+                "h": hstep,
+                "loss": "squared",
+                "dm_stat": float(dm),
+                "hln_stat": float(hln),
+                "hln_pvalue_t_nminus1": float(2 * sps.t.sf(abs(hln), df=n - 1)),
+            },
+            "accuracy_small": {
+                "actual": [10.0, 12.0, 9.0, 14.0, 11.0, 13.0],
+                "forecast": [11.0, 11.5, 10.0, 12.5, 11.0, 14.0],
+                "insample_for_mase": [8.0, 9.5, 9.0, 10.5, 10.0, 11.5, 11.0, 12.0],
+                "mase_denominator": "mean absolute first difference of insample",
+            },
+        },
+    )
+
+
 if __name__ == "__main__":
     gen_philox()
     gen_distributions()
@@ -396,3 +596,7 @@ if __name__ == "__main__":
     gen_ssm()
     gen_unitroot()
     gen_hac()
+    gen_arima()
+    gen_var()
+    gen_filters()
+    gen_forecast()

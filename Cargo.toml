@@ -7,6 +7,12 @@ members = [
     "crates/tsecon-bootstrap",
     "crates/tsecon-diag",
     "crates/tsecon-hac",
+    "crates/tsecon-optim",
+    "crates/tsecon-arima",
+    "crates/tsecon-garch",
+    "crates/tsecon-var",
+    "crates/tsecon-filters",
+    "crates/tsecon-forecast",
     "crates/tsecon-ssm",
     "bindings/python",
 ]
