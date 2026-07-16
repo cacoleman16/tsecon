@@ -13,6 +13,7 @@ members = [
     "crates/tsecon-var",
     "crates/tsecon-filters",
     "crates/tsecon-forecast",
+    "crates/tsecon-bayes",
     "crates/tsecon-ssm",
     "bindings/python",
 ]
