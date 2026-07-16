@@ -115,3 +115,58 @@ def test_ar_loglik_matches_sarimax():
     c, a1, a2, s2 = fx["params_const_ar1_ar2_sigma2"]
     ll = tsecon.ar_loglik(np.array(fx["y"]), [a1, a2], s2, intercept=c)
     assert ll == pytest.approx(fx["loglike"], rel=1e-9)
+
+
+UR = json.loads((FIXTURES / "unitroot.json").read_text())
+HAC = json.loads((FIXTURES / "hac.json").read_text())
+
+
+def test_adf_matches_statsmodels():
+    for case in UR["adf"]:
+        y = np.array(UR[case["series"]])
+        r = tsecon.adf(y, regression=case["regression"],
+                       autolag=case["autolag"].lower() if case["autolag"] not in (None, "t-stat") else case["autolag"],
+                       maxlag=case["maxlag"])
+        assert r["statistic"] == pytest.approx(case["stat"], rel=1e-8), case
+        assert r["p_value"] == pytest.approx(case["pvalue"], rel=1e-6), case
+        assert r["used_lag"] == case["usedlag"], case
+
+
+def test_kpss_matches_statsmodels():
+    for case in UR["kpss"]:
+        y = np.array(UR[case["series"]])
+        r = tsecon.kpss(y, regression=case["regression"], nlags=case["nlags"])
+        assert r["statistic"] == pytest.approx(case["stat"], rel=1e-8), case
+        assert r["lags"] == case["lags"], case
+
+
+def test_check_stationarity_quadrants():
+    rw = np.array(UR["rw"])
+    rep = tsecon.check_stationarity(rw)
+    assert rep["quadrant"] == "UnitRoot"
+    assert rep["recommendation"] == "Difference"
+    assert "unit root" in rep["interpretation"].lower()
+    wn = np.random.default_rng(0).standard_normal(300)
+    rep2 = tsecon.check_stationarity(wn)
+    assert rep2["quadrant"] == "Stationary"
+    assert rep2["recommendation"] == "Proceed"
+
+
+def test_ols_hac_matches_statsmodels():
+    reg = HAC["regression"]
+    y = np.array(reg["y"])
+    X = np.column_stack([np.ones(len(y)), reg["x1"], reg["x2"]])
+    for case in reg["hac_cases"]:
+        r = tsecon.ols(y, X, se_type="hac", maxlags=case["maxlags"],
+                       use_correction=case["use_correction"])
+        np.testing.assert_allclose(r["params"], reg["ols_params"], rtol=1e-10)
+        np.testing.assert_allclose(r["bse"], case["bse"], rtol=1e-10)
+        np.testing.assert_allclose(r["tvalues"], case["tvalues"], rtol=1e-10)
+    rn = tsecon.ols(y, X, se_type="nonrobust")
+    np.testing.assert_allclose(rn["bse"], reg["ols_bse_nonrobust"], rtol=1e-10)
+
+
+def test_long_run_variance_matches_fixture():
+    lrv_fx = HAC["lrv_nile_demeaned"]["bartlett"]
+    for bw, val in lrv_fx.items():
+        assert tsecon.long_run_variance(NILE, kernel="bartlett", bandwidth=float(bw)) == pytest.approx(val, rel=1e-10)

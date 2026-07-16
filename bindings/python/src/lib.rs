@@ -217,6 +217,208 @@ fn ar_loglik(
     model.loglike(obs.as_ref()).map_err(to_py)
 }
 
+fn adf_regression(s: &str) -> PyResult<tsecon_diag::AdfRegression> {
+    use tsecon_diag::AdfRegression::*;
+    match s {
+        "n" => Ok(NoConstant),
+        "c" => Ok(Constant),
+        "ct" => Ok(ConstantTrend),
+        other => Err(PyValueError::new_err(format!(
+            "unknown regression {other:?}; expected \"n\", \"c\", or \"ct\""
+        ))),
+    }
+}
+
+/// Augmented Dickey-Fuller unit-root test with MacKinnon p-values.
+///
+/// `regression`: "n", "c" (default), "ct". `autolag`: "aic" (default),
+/// "bic", "t-stat", or None to use `maxlag` as a fixed lag.
+/// Matches statsmodels `adfuller` (validated at 1e-8).
+#[pyfunction]
+#[pyo3(signature = (y, regression = "c", autolag = Some("aic"), maxlag = None))]
+fn adf<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    regression: &str,
+    autolag: Option<&str>,
+    maxlag: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::AdfLagSelection as L;
+    let sel = match autolag {
+        Some("aic") | Some("AIC") => L::Aic(maxlag),
+        Some("bic") | Some("BIC") => L::Bic(maxlag),
+        Some("t-stat") => L::TStat(maxlag),
+        None => L::Fixed(maxlag.ok_or_else(|| {
+            PyValueError::new_err("autolag=None requires an explicit maxlag (used as fixed lag)")
+        })?),
+        Some(other) => {
+            return Err(PyValueError::new_err(format!(
+                "unknown autolag {other:?}; expected \"aic\", \"bic\", \"t-stat\", or None"
+            )))
+        }
+    };
+    let r = tsecon_diag::adf(y.as_slice()?, adf_regression(regression)?, sel).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("statistic", r.statistic)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("used_lag", r.used_lag)?;
+    d.set_item("nobs", r.nobs)?;
+    let crit = PyDict::new(py);
+    crit.set_item("1%", r.crit.pct1)?;
+    crit.set_item("5%", r.crit.pct5)?;
+    crit.set_item("10%", r.crit.pct10)?;
+    d.set_item("crit", crit)?;
+    Ok(d)
+}
+
+/// KPSS stationarity test (null: stationary).
+///
+/// `regression`: "c" (level-stationary, default) or "ct" (trend-stationary).
+/// `nlags`: "auto" (Hobijn-Franses-Ooms, default), "legacy", or an integer.
+/// P-value is interpolated and bounded to [0.01, 0.10], statsmodels-style.
+#[pyfunction]
+#[pyo3(signature = (y, regression = "c", nlags = None))]
+fn kpss<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    regression: &str,
+    nlags: Option<Bound<'py, pyo3::PyAny>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::{KpssLags, KpssRegression};
+    let reg = match regression {
+        "c" => KpssRegression::Constant,
+        "ct" => KpssRegression::ConstantTrend,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown regression {other:?}; expected \"c\" or \"ct\""
+            )))
+        }
+    };
+    let lags = match &nlags {
+        None => KpssLags::Auto,
+        Some(v) => {
+            if let Ok(s) = v.extract::<String>() {
+                match s.as_str() {
+                    "auto" => KpssLags::Auto,
+                    "legacy" => KpssLags::Legacy,
+                    other => {
+                        return Err(PyValueError::new_err(format!(
+                            "unknown nlags {other:?}; expected \"auto\", \"legacy\", or an integer"
+                        )))
+                    }
+                }
+            } else {
+                KpssLags::Fixed(v.extract::<usize>()?)
+            }
+        }
+    };
+    let r = tsecon_diag::kpss(y.as_slice()?, reg, lags).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("statistic", r.statistic)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("lags", r.lags)?;
+    Ok(d)
+}
+
+/// The stationarity decision workflow: ADF and KPSS run together and
+/// classified into the confirmatory quadrant, with a teaching
+/// interpretation and a concrete recommendation.
+#[pyfunction]
+#[pyo3(signature = (y, alpha = 0.05))]
+fn check_stationarity<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    alpha: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_diag::check_stationarity_at(y.as_slice()?, alpha).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("quadrant", format!("{:?}", r.quadrant))?;
+    d.set_item("recommendation", format!("{:?}", r.recommendation))?;
+    d.set_item("interpretation", &r.interpretation)?;
+    d.set_item("adf_statistic", r.adf.statistic)?;
+    d.set_item("adf_p_value", r.adf.p_value)?;
+    d.set_item("kpss_statistic", r.kpss.statistic)?;
+    d.set_item("kpss_p_value", r.kpss.p_value)?;
+    d.set_item("alpha", r.alpha)?;
+    Ok(d)
+}
+
+fn hac_kernel(s: &str) -> PyResult<tsecon_hac::Kernel> {
+    use tsecon_hac::Kernel::*;
+    match s {
+        "bartlett" | "newey-west" => Ok(Bartlett),
+        "parzen" => Ok(Parzen),
+        "qs" | "quadratic-spectral" => Ok(QuadraticSpectral),
+        "truncated" => Ok(Truncated),
+        other => Err(PyValueError::new_err(format!(
+            "unknown kernel {other:?}; expected bartlett/parzen/qs/truncated"
+        ))),
+    }
+}
+
+/// Kernel long-run variance of a series (demeaned internally).
+///
+/// `bandwidth=None` uses the Newey-West rule-of-thumb maxlags
+/// floor(4*(n/100)^(2/9)) for Bartlett/Parzen, matching common practice.
+#[pyfunction]
+#[pyo3(signature = (x, kernel = "bartlett", bandwidth = None))]
+fn long_run_variance(
+    x: PyReadonlyArray1<'_, f64>,
+    kernel: &str,
+    bandwidth: Option<f64>,
+) -> PyResult<f64> {
+    let xs = x.as_slice()?;
+    let mean = xs.iter().sum::<f64>() / xs.len().max(1) as f64;
+    let z: Vec<f64> = xs.iter().map(|v| v - mean).collect();
+    let k = hac_kernel(kernel)?;
+    let bw = bandwidth.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(z.len()) as f64);
+    tsecon_hac::lrv(&z, k, bw).map_err(to_py)
+}
+
+/// OLS with robust standard-error options.
+///
+/// `x` is a 2-D design matrix used as-is (add your own constant column).
+/// `se_type`: "nonrobust", "hc0", "hc1", or "hac" (Bartlett kernel;
+/// `maxlags=None` uses the Newey-West rule of thumb). HAC results match
+/// statsmodels `cov_type="HAC"` at 1e-10.
+#[pyfunction]
+#[pyo3(signature = (y, x, se_type = "hac", maxlags = None, use_correction = true))]
+fn ols<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    se_type: &str,
+    maxlags: Option<usize>,
+    use_correction: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let ys = y.as_slice()?;
+    let xa = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..xa.ncols()).map(|j| xa.column(j).to_vec()).collect();
+    let fit = tsecon_hac::ols(ys, &cols).map_err(to_py)?;
+    let se = match se_type {
+        "nonrobust" => tsecon_hac::SeType::NonRobust,
+        "hc0" => tsecon_hac::SeType::Hc0,
+        "hc1" => tsecon_hac::SeType::Hc1,
+        "hac" => tsecon_hac::SeType::Hac {
+            kernel: tsecon_hac::Kernel::Bartlett,
+            bandwidth: maxlags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(ys.len())) as f64,
+            use_correction,
+        },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown se_type {other:?}; expected nonrobust/hc0/hc1/hac"
+            )))
+        }
+    };
+    let inf = fit.inference(se).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("params", fit.params.clone().into_pyarray(py))?;
+    d.set_item("bse", inf.bse.into_pyarray(py))?;
+    d.set_item("tvalues", inf.tvalues.into_pyarray(py))?;
+    d.set_item("se_type", se_type)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -230,5 +432,10 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(optimal_block_length, m)?)?;
     m.add_function(wrap_pyfunction!(local_level_smooth, m)?)?;
     m.add_function(wrap_pyfunction!(ar_loglik, m)?)?;
+    m.add_function(wrap_pyfunction!(adf, m)?)?;
+    m.add_function(wrap_pyfunction!(kpss, m)?)?;
+    m.add_function(wrap_pyfunction!(check_stationarity, m)?)?;
+    m.add_function(wrap_pyfunction!(long_run_variance, m)?)?;
+    m.add_function(wrap_pyfunction!(ols, m)?)?;
     Ok(())
 }
