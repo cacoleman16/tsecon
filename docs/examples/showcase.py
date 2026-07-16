@@ -254,7 +254,175 @@ def section_kalman():
         save(fig, "05-kalman.png")
 
 
-ALL = [section_acf, section_stationarity, section_hac, section_bootstrap, section_kalman]
+# ------------------------------------------------------------------
+# 6. VAR: impulse responses and variance decomposition
+# ------------------------------------------------------------------
+def section_var():
+    # A small synthetic macro system with a clear causal story:
+    # "demand" moves first, "output" responds with a lag, "rate" leans against both.
+    n = 400
+    e = rng.standard_normal((n + 100, 3))
+    y = np.zeros((n + 100, 3))
+    A1 = np.array([[0.5, 0.0, 0.0], [0.35, 0.45, -0.15], [0.15, 0.25, 0.6]])
+    A2 = np.array([[0.1, 0.0, 0.0], [0.1, 0.1, -0.05], [0.0, 0.1, 0.1]])
+    for t in range(2, n + 100):
+        y[t] = A1 @ y[t - 1] + A2 @ y[t - 2] + e[t]
+    data = y[100:]
+    names = ["Demand", "Output", "Policy rate"]
+
+    irf = np.array(tsecon.var_irf(data, lags=2, horizon=16, orth=True))
+    fevd = np.array(tsecon.var_fevd(data, lags=2, horizon=16))
+
+    with ts.theme():
+        fig, axes = plt.subplots(3, 3, figsize=(ts.WIDTH_DOUBLE, 5.2), sharex=True)
+        for i in range(3):        # responding variable
+            for j in range(3):    # shock
+                ax = axes[i, j]
+                ts.zero_line(ax)
+                ax.plot(irf[:, i, j], color=ts.SERIES["blue"], lw=1.7)
+                if i == 0:
+                    ax.set_title(f"{names[j]} shock", fontsize=9, loc="center",
+                                 color=ts.INK_2, fontweight="normal")
+                if j == 0:
+                    ax.set_ylabel(names[i], fontsize=8.5, color=ts.INK)
+                ax.tick_params(labelsize=7.5)
+        for ax in axes[2]:
+            ax.set_xlabel("Horizon", fontsize=8)
+        fig.suptitle("The full IRF grid of a three-variable VAR(2), Cholesky-identified",
+                     x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
+        fig.tight_layout(rect=(0, 0.012, 1, 0.955))
+        ts.stamp(fig, "Synthetic VAR(2), n = 400 · tsecon.var_irf(orth=True) · matches statsmodels at 1e-8 · "
+                      "bootstrap bands land with the structural module")
+        save(fig, "06-var-irf.png")
+
+        # FEVD as stacked areas for the output variable.
+        fig, ax = plt.subplots(figsize=(ts.WIDTH_DOUBLE, 2.5))
+        h = np.arange(1, 17)
+        shares = fevd[1]  # output's forecast-error variance: (horizon, shock)
+        ax.stackplot(h, shares.T * 100, colors=[ts.SEQ_BLUE[1], ts.SEQ_BLUE[3], ts.SEQ_BLUE[5]], lw=0)
+        ax.set_xlim(1, 17.8)
+        ax.set_ylim(0, 100)
+        ax.set_ylabel("Share of forecast-error variance (%)")
+        ax.set_xlabel("Horizon", fontsize=8)
+        cum = np.concatenate([[0.0], np.cumsum(shares[-1]) * 100])
+        for kk, nm in enumerate(names):
+            mid = (cum[kk] + cum[kk + 1]) / 2
+            ax.annotate(f"{nm} shock", xy=(16.15, mid), fontsize=8,
+                        color=ts.INK_2 if kk < 2 else ts.SURFACE, va="center",
+                        ha="left" if kk < 2 else "right",
+                        xytext=(16.15, mid) if kk < 2 else (15.8, mid))
+        ax.set_title("What drives output? Variance decomposition across horizons")
+        fig.tight_layout()
+        ts.stamp(fig, "tsecon.var_fevd · rows sum to 100% by construction (property-tested)")
+        save(fig, "07-var-fevd.png")
+
+
+# ------------------------------------------------------------------
+# 7. Trend-cycle filters on real US GDP
+# ------------------------------------------------------------------
+def section_filters():
+    import json as _json
+    gdp = np.array(_json.loads((REPO / "fixtures" / "filters.json").read_text())["y_100_log_realgdp"])
+    q = np.arange(len(gdp)) / 4 + 1959.25  # quarterly index, macrodata sample
+
+    hp = tsecon.hp_filter(gdp, lamb=1600.0)
+    ham = tsecon.hamilton_filter(gdp, h=8, p=4)
+    bk = tsecon.bk_filter(gdp, low=6, high=32, k=12)
+
+    with ts.theme():
+        fig, axes = plt.subplots(2, 1, figsize=(ts.WIDTH_DOUBLE, 4.4), sharex=True)
+        ax = axes[0]
+        ax.plot(q, gdp, color=ts.MUTED, lw=1.0, label="100 x log real GDP")
+        ax.plot(q, hp["trend"], color=ts.SEQ_BLUE[5], lw=1.7, label="HP trend (λ = 1600)")
+        ax.legend(loc="upper left", fontsize=7.5)
+        ax.set_title("Trend extraction", fontsize=9.5, loc="left")
+
+        ax = axes[1]
+        ts.zero_line(ax)
+        ax.plot(q, hp["cycle"], color=ts.SERIES["blue"], lw=1.4, label="HP cycle")
+        hi = ham["first_index"]
+        ax.plot(q[hi:], ham["cycle"], color=ts.SERIES["red"], lw=1.4,
+                label="Hamilton (2018) cycle")
+        bi = bk["first_index"]
+        ax.plot(q[bi:bi + len(bk["cycle"])], bk["cycle"], color=ts.SERIES["yellow"], lw=1.2,
+                label="Baxter-King 6-32q")
+        ax.legend(loc="lower left", fontsize=7.5, ncol=3)
+        ax.set_title("Three views of the business cycle — they disagree, and that is the point",
+                     fontsize=9.5, loc="left")
+        ax.set_xlabel("Year", fontsize=8)
+        fig.suptitle("Trend-cycle decomposition: HP, Hamilton, and band-pass filters",
+                     x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
+        fig.tight_layout(rect=(0, 0.015, 1, 0.95))
+        ts.stamp(fig, "US real GDP (statsmodels macrodata) · tsecon.hp_filter / hamilton_filter / bk_filter · "
+                      "filters that lose observations report their alignment explicitly")
+        save(fig, "08-filters.png")
+
+
+# ------------------------------------------------------------------
+# 8. Forecast evaluation: benchmarks, accuracy, and the DM test
+# ------------------------------------------------------------------
+def section_forecast_eval():
+    # Synthetic quarterly series: trend + seasonality + AR noise.
+    n, h = 140, 20
+    t = np.arange(n + h)
+    season = 4.0 * np.array([1.0, -0.4, 0.6, -1.2])[t % 4]
+    noise = np.empty(n + h)
+    noise[0] = 0.0
+    e = rng.standard_normal(n + h)
+    for i in range(1, n + h):
+        noise[i] = 0.6 * noise[i - 1] + e[i] * 1.5
+    y = 50 + 0.3 * t + season + noise
+    train, test = y[:n], y[n:]
+
+    fc_theta = tsecon.theta_forecast(train, steps=h, period=4)
+    fc_naive = np.full(h, train[-1])
+    fc_snaive = np.tile(train[-4:], h // 4 + 1)[:h]
+
+    e_theta = test - fc_theta
+    e_snaive = test - fc_snaive
+    dm = tsecon.dm_test(e_snaive, e_theta, h=1, loss="squared")
+
+    acc = {name: tsecon.accuracy(test, f, insample=train, period=4)
+           for name, f in [("Theta", fc_theta), ("Seasonal naive", fc_snaive), ("Naive", fc_naive)]}
+
+    with ts.theme():
+        fig, axes = plt.subplots(1, 2, figsize=(ts.WIDTH_DOUBLE, 2.7),
+                                 gridspec_kw={"width_ratios": [1.7, 1]})
+        ax = axes[0]
+        ax.plot(np.arange(n - 40, n), train[-40:], color=ts.INK, lw=1.4)
+        ax.plot(np.arange(n, n + h), test, color=ts.MUTED, lw=1.2, ls=(0, (2, 2)), label="actual")
+        ax.plot(np.arange(n, n + h), fc_theta, color=ts.SERIES["blue"], lw=1.6, label="Theta")
+        ax.plot(np.arange(n, n + h), fc_snaive, color=ts.SERIES["yellow"], lw=1.4, label="seasonal naive")
+        ax.plot(np.arange(n, n + h), fc_naive, color=ts.SERIES["red"], lw=1.2, label="naive")
+        ax.axvline(n - 0.5, color=ts.REF, lw=0.9)
+        ax.legend(loc="upper left", fontsize=7, ncol=2)
+        ax.set_title("Three benchmarks against held-out data", fontsize=9.5, loc="left")
+
+        ax = axes[1]
+        ts.despine_x_only(ax)
+        names = list(acc.keys())[::-1]
+        vals = [acc[k]["mase"] for k in names]
+        best = min(vals)
+        colors = [ts.SERIES["blue"] if v == best else ts.SEQ_BLUE[1] for v in vals]
+        bars = ax.barh(names, vals, color=colors, height=0.55)
+        ax.axvline(1.0, color=ts.REF, lw=0.9)
+        ax.annotate("MASE = 1\n(in-sample naive)", xy=(1.0, -0.45), fontsize=6.5,
+                    color=ts.MUTED, ha="center", va="top")
+        for bar, v in zip(bars, vals):
+            ax.annotate(f"{v:.2f}", xy=(v + 0.03, bar.get_y() + bar.get_height() / 2),
+                        fontsize=8, color=ts.INK_2, ha="left", va="center")
+        ax.set_xlim(0, max(vals) * 1.25)
+        ax.set_title("MASE (lower is better)", fontsize=9.5, loc="left")
+        fig.suptitle("Forecast evaluation: accuracy measures plus a formal test of the difference",
+                     x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
+        fig.tight_layout(rect=(0, 0.015, 1, 0.90))
+        ts.stamp(fig, f"tsecon.theta_forecast / accuracy / dm_test · DM (HLN) seasonal-naive vs Theta: "
+                      f"stat = {dm['hln_stat']:.2f}, p = {dm['p_value']:.3f}")
+        save(fig, "09-forecast-eval.png")
+
+
+ALL = [section_acf, section_stationarity, section_hac, section_bootstrap, section_kalman,
+       section_var, section_filters, section_forecast_eval]
 
 if __name__ == "__main__":
     only = sys.argv[1:] if len(sys.argv) > 1 else None

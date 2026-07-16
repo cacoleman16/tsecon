@@ -141,6 +141,81 @@ stays within the band. Matches statsmodels' exact-diffuse results at ~1e-11.
 
 ---
 
-*Sections for ARIMA estimation & forecasting, GARCH volatility, VAR/impulse
-responses, trend-cycle filters, and forecast evaluation land as those crates
-complete — same format: use case, code, synthetic data, figure.*
+## 6 · VAR: impulse responses and variance decomposition
+
+**Use case:** the workhorse of empirical macro — how does a system of
+variables respond dynamically to a shock in one of them? Fit a VAR, identify
+shocks (Cholesky here; the full identification suite is Module 06), and read
+off impulse responses and variance decompositions.
+
+```python
+r    = tsecon.var_fit(data, lags=2)                 # params, sigma_u, ICs, stability
+irf  = tsecon.var_irf(data, lags=2, horizon=16)     # [h][response][shock]
+fevd = tsecon.var_fevd(data, lags=2, horizon=16)
+g    = tsecon.var_granger(data, caused=[0], causing=[1], lags=2)
+fc   = tsecon.var_forecast(data, lags=2, steps=8)   # point + intervals
+```
+
+![VAR IRFs](img/06-var-irf.png)
+
+The synthetic system has a built-in causal story (demand moves first, output
+responds with a lag, the policy rate leans against both), and the estimated
+IRF grid recovers it — including the near-zero response of demand to output
+shocks that the recursive ordering implies. Every array matches statsmodels
+at 1e-8.
+
+![FEVD](img/07-var-fevd.png)
+
+---
+
+## 7 · Trend-cycle filters
+
+**Use case:** separating the business cycle from the trend. This is a
+methodological minefield — Hamilton (2018) famously argued "why you should
+never use the HP filter" — so the library ships the alternatives side by
+side and makes their disagreement visible rather than hiding it.
+
+```python
+hp  = tsecon.hp_filter(gdp, lamb=1600.0)       # + one_sided=True real-time variant
+ham = tsecon.hamilton_filter(gdp, h=8, p=4)    # the modern alternative
+bk  = tsecon.bk_filter(gdp, low=6, high=32, k=12)
+cf  = tsecon.cf_filter(gdp, low=6, high=32)
+```
+
+![Filters](img/08-filters.png)
+
+Real US GDP: the HP and Baxter-King cycles broadly agree; the Hamilton
+filter reads recessions deeper and turns later — a genuine methodological
+difference, not a bug. Filters that lose observations return explicit
+alignment metadata (`first_index`) so nothing silently misaligns. HP runs
+through an O(n) pentadiagonal solver, never a dense matrix.
+
+---
+
+## 8 · Forecast evaluation
+
+**Use case:** the discipline layer. Never report a forecast without a
+benchmark and never claim superiority without a test. MASE scales errors by
+an in-sample naive forecast (1.0 = "no better than naive"); the
+Diebold-Mariano test asks whether an accuracy difference is statistically
+real, with the Harvey-Leybourne-Newbold small-sample correction.
+
+```python
+fc  = tsecon.theta_forecast(y, steps=20, period=4)   # the M3-winning benchmark
+acc = tsecon.accuracy(actual, fc, insample=train, period=4)  # rmse/mae/mase/...
+dm  = tsecon.dm_test(e_benchmark, e_model, h=1, loss="squared")
+```
+
+![Forecast evaluation](img/09-forecast-eval.png)
+
+Theta beats the seasonal naive decisively here (MASE 1.23 vs 2.15, DM p =
+0.001) — and the plot shows *why*: it captures both the trend and the
+seasonal shape. The DM statistic matches the documented reference case at
+1e-10.
+
+---
+
+*Coming as the remaining crates land: ARIMA estimation & fan-chart
+forecasting, GARCH conditional volatility with robust standard errors, and
+Bayesian VAR posteriors — same format: use case, code, synthetic data,
+figure.*
