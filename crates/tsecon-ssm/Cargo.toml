@@ -5,3 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# faer is consumed through the tsecon-linalg re-export so the whole
+# workspace shares one pinned version (0.24, default-features = false,
+# features = ["std"]).
+tsecon-linalg = { path = "../tsecon-linalg" }
+
+[dev-dependencies]
+# float_roundtrip: without it serde_json's fast float parser can be 1 ulp
+# off the shortest-roundtrip value, which matters for tight golden checks.
+serde_json = { version = "1", features = ["float_roundtrip"] }
