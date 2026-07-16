@@ -61,6 +61,7 @@ Crate layout: a cargo workspace with domain crates (`core-ssm`, `core-rng`, `cor
 | 10 | **Machine learning** | Penalized regression, regularized VAR solvers, trees/boosting, TS cross-validation, DML, GP-SSM, interpretation | [10-machine-learning.md](docs/roadmap/10-machine-learning.md) |
 | 11 | **Docs, UX & adoption** | Competitive audits, Diátaxis docs, model cards, replication gallery, datasets, migration guides, naming, governance | [11-docs-ux-adoption.md](docs/roadmap/11-docs-ux-adoption.md) |
 | 12 | **Extensions (beyond the brief)** | Panel TS, term structure, predictive regressions, GMM/SMM, DSGE-lite, survey expectations, and more | [12-extensions.md](docs/roadmap/12-extensions.md) |
+| 13 | **Visualization** | Publication-ready-by-default figures: style system, IRF panel grids, fan charts, diagnostic dashboards, visual regression CI | [13-visualization.md](docs/roadmap/13-visualization.md) |
 
 Headline differentiators — the modules nothing else offers as a maintained, unified stack: **06 (identification), 07 (local projections), 05 (Bayesian), 08 (nowcasting)**. They are also the modules with the deepest cross-dependencies, which is why the shared infrastructure comes first.
 
@@ -91,7 +92,7 @@ The completeness review found ~80–100 items claimed by two or more domains —
 | Structural-VAR restrictions layer (frequentist + Bayesian backends) | 06 | 05 (supplies samplers/priors), 04 (supplies reduced form) |
 | Likelihood & information-criterion conventions (one written contract) | foundations (00) | every module — otherwise AIC is incomparable across classes |
 | Missing-data policy (one document; NaN-facing, SSM-filtering internally, per-estimator declared behavior) | foundations (00) | every module |
-| Plotting policy (tidy-data returns + `.plot()`; matplotlib optional) | foundations (00) | every results object |
+| Plotting: tidy-data contract (foundations) + the style system and chart catalog (Module 13 — publication-ready defaults, themes, export presets, visual regression CI) | foundations (00) + 13 | every results object's `.plot_*()` methods |
 
 ## 6. Scale and tiering policy
 
@@ -118,9 +119,11 @@ Workspace scaffolding; faer-backed linalg + Sylvester/Lyapunov/Toeplitz solvers;
 - **Volatility track (03):** ARCH/GARCH/EGARCH/GJR/TGARCH + distributions, QMLE with robust SEs, forecasting, ARCH-LM/sign-bias diagnostics, VaR/ES + Kupiec/Christoffersen backtests, HAR-RV.
 - **Multivariate track (04):** VAR estimation/lag selection/stability, Granger causality, Cholesky IRF/FEVD with delta-method + bootstrap bands (incl. Kilian bootstrap-after-bootstrap), VARX, Johansen VECM, forecasting.
 - **Forecasting track (09):** forecast objects, fixed/rolling/expanding backtesting engine, core accuracy measures, DM test, benchmark zoo (naive/seasonal-naive/drift/Theta).
+- **Visualization track (13):** the style system and themes, time series line plot with recession shading, ACF/PACF panels, fan charts, the residual diagnostic dashboard, export presets, and the visual regression harness — so every Phase 1 model ships with publication-ready figures from day one.
 **Gate:** the parity battery — airline-model ARIMA matches R `arima()` to 6+ digits; GARCH(1,1) matches the `arch` package on S&P data; Johansen matches `urca`; unit-root p-values match published response surfaces; Lütkepohl (2005) textbook VAR examples reproduce exactly; benchmark suite shows the Monte Carlo speed story publicly.
 
 ### Phase 2 — Structural macro (the differentiators) · ~6–9 months
+- **Visualization depth (13):** the IRF panel grid (shared with LP dual reporting), FEVD/historical-decomposition charts, regime plots — the structural figures land with the structural models.
 - **Identification (06):** the unified restrictions layer — recursive, non-recursive A/B, Blanchard-Quah long-run, max-share, sign (Uhlig/RWZ), zero+sign (ARW 2018), narrative (AR 2018), proxy-SVAR with weak-IV-robust inference (MSW), internal instruments, heteroskedasticity (Rigobon, Markov-switching, GARCH-based), non-Gaussianity/ICA; identification diagnostics; the "which scheme when" guide.
 - **Local projections (07):** LP/LP-IV with lag-augmented default inference, HAC/EWC options, sup-t bands, smooth LP, state-dependent LP, panel LP, cumulative multipliers, LP-DiD, LP-vs-VAR dual reporting.
 - **Bayesian (05):** Minnesota/NIW/dummy-observation priors, GLP hierarchical hyperpriors, large BVARs, common SV and TVP-BVAR-SV (with the Del Negro-Primiceri correction), steady-state BVAR, conditional forecasts, marginal likelihoods, convergence diagnostics, Geweke getting-it-right CI tests.
@@ -229,3 +232,4 @@ Full DSGE tooling beyond the E5 minimal layer (higher-order perturbation, OccBin
 | [10-machine-learning.md](docs/roadmap/10-machine-learning.md) | Penalized solvers, TS cross-validation, trees/boosting, DML, GP-SSM, interpretation, scope rulings |
 | [11-docs-ux-adoption.md](docs/roadmap/11-docs-ux-adoption.md) | Competitive audits, docs architecture, model cards, bundled datasets, migration guides, naming, governance |
 | [12-extensions.md](docs/roadmap/12-extensions.md) | The beyond-the-brief additions E1–E12 |
+| [13-visualization.md](docs/roadmap/13-visualization.md) | The style system, chart catalog (IRF grids, fan charts, dashboards), export presets, visual regression CI |
