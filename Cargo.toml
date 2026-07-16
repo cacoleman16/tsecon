@@ -6,6 +6,7 @@ members = [
     "crates/tsecon-linalg",
     "crates/tsecon-bootstrap",
     "crates/tsecon-diag",
+    "crates/tsecon-hac",
     "crates/tsecon-ssm",
     "bindings/python",
 ]

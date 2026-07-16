@@ -244,9 +244,155 @@ def gen_ssm():
     dump("ssm.json", out)
 
 
+# ------------------------------------------------------------ unit roots
+def gen_unitroot():
+    import warnings
+
+    from statsmodels.tsa.adfvalues import mackinnoncrit, mackinnonp
+    from statsmodels.tsa.stattools import adfuller, kpss
+
+    y = nile_series()
+    rw = np.cumsum(np.random.default_rng(11).standard_normal(250)) + 5.0
+
+    def adf_case(series, name, regression, autolag=None, maxlag=None):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = adfuller(series, maxlag=maxlag, regression=regression, autolag=autolag)
+        stat, pval, usedlag, nobs, crit = res[0], res[1], res[2], res[3], res[4]
+        return {
+            "series": name,
+            "regression": regression,
+            "autolag": autolag,
+            "maxlag": maxlag,
+            "stat": float(stat),
+            "pvalue": float(pval),
+            "usedlag": int(usedlag),
+            "nobs": int(nobs),
+            "crit": {k: float(v) for k, v in crit.items()},
+        }
+
+    adf_cases = [
+        adf_case(y, "nile", "c", autolag="AIC"),
+        adf_case(y, "nile", "ct", autolag="AIC"),
+        adf_case(y, "nile", "n", autolag="AIC"),
+        adf_case(y, "nile", "c", autolag="BIC"),
+        adf_case(y, "nile", "c", autolag="t-stat"),
+        adf_case(y, "nile", "c", autolag=None, maxlag=4),
+        adf_case(rw, "rw", "c", autolag="AIC"),
+        adf_case(rw, "rw", "ct", autolag="AIC"),
+    ]
+
+    kpss_cases = []
+    for series, name in [(y, "nile"), (rw, "rw")]:
+        for regression in ["c", "ct"]:
+            for nlags in ["auto", "legacy"]:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    stat, pval, lags, crit = kpss(series, regression=regression, nlags=nlags)
+                kpss_cases.append(
+                    {
+                        "series": name,
+                        "regression": regression,
+                        "nlags": nlags,
+                        "stat": float(stat),
+                        "pvalue_interpolated_bounded": float(pval),
+                        "lags": int(lags),
+                        "crit": {k: float(v) for k, v in crit.items()},
+                    }
+                )
+
+    # MacKinnon p-value surface: pin a grid so the Rust port is verifiable.
+    grid = np.arange(-6.0, 3.01, 0.25)
+    mackinnon = {
+        reg: {
+            "stat_grid": grid.tolist(),
+            "pvalues": [float(mackinnonp(s, regression=reg, N=1)) for s in grid],
+            "crit_1_5_10": [float(c) for c in mackinnoncrit(N=1, regression=reg, nobs=np.inf)],
+        }
+        for reg in ["n", "c", "ct"]
+    }
+
+    dump(
+        "unitroot.json",
+        {"nile": y.tolist(), "rw": rw.tolist(), "adf": adf_cases, "kpss": kpss_cases,
+         "mackinnon_p_N1": mackinnon},
+    )
+
+
+# ------------------------------------------------------------------ HAC
+def gen_hac():
+    rng = np.random.default_rng(3)
+    n = 200
+    x1 = np.empty(n)
+    x2 = np.empty(n)
+    u = np.empty(n)
+    x1[0], x2[0], u[0] = 0.0, 0.0, 0.0
+    e = rng.standard_normal((3, n))
+    for t in range(1, n):
+        x1[t] = 0.7 * x1[t - 1] + e[0, t]
+        x2[t] = 0.5 * x2[t - 1] + e[1, t]
+        u[t] = 0.6 * u[t - 1] + e[2, t]
+    yy = 1.0 + 0.5 * x1 - 0.3 * x2 + u
+    X = sm.add_constant(np.column_stack([x1, x2]))
+    ols = sm.OLS(yy, X).fit()
+
+    cases = []
+    for nlags in [4, 8, 12]:
+        for correction in [True, False]:
+            r = sm.OLS(yy, X).fit(
+                cov_type="HAC", cov_kwds={"maxlags": nlags, "use_correction": correction}
+            )
+            cases.append(
+                {
+                    "maxlags": nlags,
+                    "use_correction": correction,
+                    "bse": r.bse.tolist(),
+                    "tvalues": r.tvalues.tolist(),
+                }
+            )
+
+    # Long-run variance fixtures on the demeaned Nile (self-generated formulas,
+    # documented: Bartlett LRV and the LLSW-2018 equal-weighted cosine (EWC) LRV).
+    y = nile_series()
+    z = y - y.mean()
+    nn = len(z)
+
+    def gamma(k):
+        return float(z[: nn - k] @ z[k:] / nn)
+
+    def bartlett_lrv(bw):
+        return gamma(0) + 2 * sum((1 - j / (bw + 1)) * gamma(j) for j in range(1, bw + 1))
+
+    tgrid = (np.arange(1, nn + 1) - 0.5) / nn
+    def ewc_lrv(B):
+        lam = [np.sqrt(2.0 / nn) * float(np.cos(np.pi * j * tgrid) @ z) for j in range(1, B + 1)]
+        return float(np.mean(np.square(lam)))
+
+    dump(
+        "hac.json",
+        {
+            "regression": {
+                "y": yy.tolist(),
+                "x1": x1.tolist(),
+                "x2": x2.tolist(),
+                "ols_params": ols.params.tolist(),
+                "ols_bse_nonrobust": ols.bse.tolist(),
+                "hac_cases": cases,
+            },
+            "lrv_nile_demeaned": {
+                "bartlett": {str(bw): bartlett_lrv(bw) for bw in [5, 10, 20]},
+                "ewc": {str(B): ewc_lrv(B) for B in [4, 8, 16]},
+                "newey_west_auto_maxlags_floor_4_n100_2_9": int(np.floor(4 * (nn / 100) ** (2 / 9))),
+            },
+        },
+    )
+
+
 if __name__ == "__main__":
     gen_philox()
     gen_distributions()
     gen_diagnostics()
     gen_linalg()
     gen_ssm()
+    gen_unitroot()
+    gen_hac()
