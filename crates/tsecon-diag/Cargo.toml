@@ -3,7 +3,7 @@ name = "tsecon-diag"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "First diagnostics slice for the tsecon time-series econometrics library: ACF/PACF with Bartlett bands, Ljung-Box/Box-Pierce portmanteau tests, Jarque-Bera normality, and Engle's ARCH-LM, with teaching diagnostic reports"
+description = "Diagnostics for the tsecon time-series econometrics library: ACF/PACF with Bartlett bands, Ljung-Box/Box-Pierce portmanteau tests, Jarque-Bera normality, Engle's ARCH-LM, ADF and KPSS unit-root/stationarity tests with MacKinnon response surfaces, and the joint confirmatory workflow, with teaching diagnostic reports"
 
 [dependencies]
 tsecon-stats = { path = "../tsecon-stats" }
