@@ -85,3 +85,33 @@ def test_optimal_block_length_on_nile():
 def test_error_messages_teach():
     with pytest.raises(ValueError, match="yw"):
         tsecon.pacf(NILE, method="nope")
+
+
+SSM = json.loads((FIXTURES / "ssm.json").read_text())
+
+
+def test_local_level_matches_statsmodels_exact_diffuse():
+    p = SSM["local_level_params"]
+    fx = SSM["local_level_exact_diffuse"]
+    r = tsecon.local_level_smooth(np.array(SSM["nile"]), p["sigma2_eps"], p["sigma2_eta"])
+    assert r["loglik"] == pytest.approx(fx["loglike"], rel=1e-9)
+    np.testing.assert_allclose(r["filtered_state"], fx["filtered_state"], rtol=1e-8)
+    np.testing.assert_allclose(r["smoothed_state"], fx["smoothed_state"], rtol=1e-8)
+    np.testing.assert_allclose(r["smoothed_state_var"], fx["smoothed_state_cov"], rtol=1e-8)
+
+
+def test_local_level_with_missing_data():
+    p = SSM["local_level_params"]
+    fx = SSM["local_level_missing_20_40_exact_diffuse"]
+    y = np.array(SSM["nile"])
+    y[20:40] = np.nan
+    r = tsecon.local_level_smooth(y, p["sigma2_eps"], p["sigma2_eta"])
+    assert r["loglik"] == pytest.approx(fx["loglike"], rel=1e-9)
+    np.testing.assert_allclose(r["smoothed_state"], fx["smoothed_state"], rtol=1e-8)
+
+
+def test_ar_loglik_matches_sarimax():
+    fx = SSM["ar2_sarimax"]
+    c, a1, a2, s2 = fx["params_const_ar1_ar2_sigma2"]
+    ll = tsecon.ar_loglik(np.array(fx["y"]), [a1, a2], s2, intercept=c)
+    assert ll == pytest.approx(fx["loglike"], rel=1e-9)

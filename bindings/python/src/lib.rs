@@ -166,6 +166,57 @@ fn optimal_block_length<'py>(
     Ok(d)
 }
 
+/// Fit-free local-level pass: exact-diffuse Kalman filter + smoother at
+/// fixed variances. NaN entries in `y` are treated as missing.
+///
+/// Returns loglik plus filtered/smoothed level and variances; matches
+/// statsmodels `UnobservedComponents(..., use_exact_diffuse=True)` at
+/// fixed params (validated ~1e-11).
+#[pyfunction]
+fn local_level_smooth<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    sigma2_eps: f64,
+    sigma2_eta: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ssm::tsecon_linalg::faer::Mat;
+    let ys = y.as_slice()?;
+    let obs = Mat::from_fn(ys.len(), 1, |i, _| ys[i]);
+    let model = tsecon_ssm::LinearGaussianSSM::local_level(sigma2_eps, sigma2_eta).map_err(to_py)?;
+    let out = model.smooth(obs.as_ref()).map_err(to_py)?;
+    let n = ys.len();
+    let d = PyDict::new(py);
+    d.set_item("loglik", out.filter.loglik)?;
+    d.set_item("d_diffuse", out.filter.d_diffuse)?;
+    let filt: Vec<f64> = out.filter.filtered_state.iter().take(n).map(|s| s[0]).collect();
+    let filt_var: Vec<f64> = out.filter.filtered_state_cov.iter().take(n).map(|p| p[(0, 0)]).collect();
+    let smo: Vec<f64> = out.smoothed_state.iter().take(n).map(|s| s[0]).collect();
+    let smo_var: Vec<f64> = out.smoothed_state_cov.iter().take(n).map(|p| p[(0, 0)]).collect();
+    d.set_item("filtered_state", filt.into_pyarray(py))?;
+    d.set_item("filtered_state_var", filt_var.into_pyarray(py))?;
+    d.set_item("smoothed_state", smo.into_pyarray(py))?;
+    d.set_item("smoothed_state_var", smo_var.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Gaussian log-likelihood of an AR(p) model with intercept at fixed
+/// parameters, evaluated exactly via the state-space form with stationary
+/// initialization (matches statsmodels SARIMAX `trend='c'` conventions).
+#[pyfunction]
+#[pyo3(signature = (y, coeffs, sigma2, intercept = 0.0))]
+fn ar_loglik(
+    y: PyReadonlyArray1<'_, f64>,
+    coeffs: Vec<f64>,
+    sigma2: f64,
+    intercept: f64,
+) -> PyResult<f64> {
+    use tsecon_ssm::tsecon_linalg::faer::Mat;
+    let ys = y.as_slice()?;
+    let obs = Mat::from_fn(ys.len(), 1, |i, _| ys[i]);
+    let model = tsecon_ssm::LinearGaussianSSM::ar(&coeffs, sigma2, intercept).map_err(to_py)?;
+    model.loglike(obs.as_ref()).map_err(to_py)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -177,5 +228,7 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(philox_uniforms, m)?)?;
     m.add_function(wrap_pyfunction!(bootstrap_indices, m)?)?;
     m.add_function(wrap_pyfunction!(optimal_block_length, m)?)?;
+    m.add_function(wrap_pyfunction!(local_level_smooth, m)?)?;
+    m.add_function(wrap_pyfunction!(ar_loglik, m)?)?;
     Ok(())
 }
