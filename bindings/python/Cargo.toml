@@ -15,5 +15,8 @@ tsecon-diag = { path = "../../crates/tsecon-diag" }
 tsecon-bootstrap = { path = "../../crates/tsecon-bootstrap" }
 tsecon-ssm = { path = "../../crates/tsecon-ssm" }
 tsecon-hac = { path = "../../crates/tsecon-hac" }
+tsecon-var = { path = "../../crates/tsecon-var" }
+tsecon-filters = { path = "../../crates/tsecon-filters" }
+tsecon-forecast = { path = "../../crates/tsecon-forecast" }
 pyo3 = { version = "0.29.0", features = ["abi3-py39"] }
 numpy = "0.29.0"

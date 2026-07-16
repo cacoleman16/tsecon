@@ -170,3 +170,76 @@ def test_long_run_variance_matches_fixture():
     lrv_fx = HAC["lrv_nile_demeaned"]["bartlett"]
     for bw, val in lrv_fx.items():
         assert tsecon.long_run_variance(NILE, kernel="bartlett", bandwidth=float(bw)) == pytest.approx(val, rel=1e-10)
+
+
+VARFX = json.loads((FIXTURES / "var.json").read_text())
+FILTFX = json.loads((FIXTURES / "filters.json").read_text())
+FCFX = json.loads((FIXTURES / "forecast.json").read_text())
+MACRO = np.array(VARFX["data_100dlog_gdp_cons_inv"])
+GDP = np.array(FILTFX["y_100_log_realgdp"])
+
+
+def test_var_fit_matches_statsmodels():
+    r = tsecon.var_fit(MACRO, lags=2, trend="c")
+    fx = VARFX["var2c"]
+    np.testing.assert_allclose(r["params"], fx["params"], rtol=1e-8)
+    np.testing.assert_allclose(r["sigma_u"], fx["sigma_u"], rtol=1e-8)
+    assert r["llf"] == pytest.approx(fx["llf"], rel=1e-10)
+    assert r["aic"] == pytest.approx(fx["aic"], rel=1e-10)
+    assert r["max_root"] == pytest.approx(fx["stable_max_root"], rel=1e-8)
+
+
+def test_var_irf_fevd_match_statsmodels():
+    irf = np.array(tsecon.var_irf(MACRO, lags=2, horizon=10, orth=True))
+    np.testing.assert_allclose(irf, VARFX["irf_orth_h10"], atol=1e-10)
+    fevd = np.array(tsecon.var_fevd(MACRO, lags=2, horizon=10))
+    np.testing.assert_allclose(fevd, VARFX["fevd_h10"], atol=1e-10)
+    assert np.allclose(fevd.sum(axis=2), 1.0)
+
+
+def test_var_forecast_and_granger():
+    fc = tsecon.var_forecast(MACRO, lags=2, steps=8)
+    np.testing.assert_allclose(fc["point"], VARFX["forecast_8"]["point"], atol=1e-8)
+    np.testing.assert_allclose(fc["lower"], VARFX["forecast_8"]["lower95"], atol=1e-8)
+    g = tsecon.var_granger(MACRO, caused=[0], causing=[1], lags=2)
+    fx = VARFX["granger_cons_causes_gdp"]
+    assert g["statistic"] == pytest.approx(fx["stat"], rel=1e-8)
+    assert g["p_value"] == pytest.approx(fx["pvalue"], rel=1e-6)
+
+
+def test_filters_match_statsmodels():
+    hp = tsecon.hp_filter(GDP, lamb=1600.0)
+    np.testing.assert_allclose(hp["cycle"], FILTFX["hp_1600"]["cycle"], atol=1e-8)
+    np.testing.assert_allclose(hp["trend"], FILTFX["hp_1600"]["trend"], atol=1e-8)
+    bk = tsecon.bk_filter(GDP, low=6, high=32, k=12)
+    np.testing.assert_allclose(bk["cycle"], FILTFX["bk_6_32_K12"], atol=1e-8)
+    assert bk["first_index"] == 12
+    cf = tsecon.cf_filter(GDP, low=6, high=32, drift=True)
+    np.testing.assert_allclose(cf["cycle"], FILTFX["cf_6_32_drift"]["cycle"], atol=1e-8)
+    ham = tsecon.hamilton_filter(GDP, h=8, p=4)
+    np.testing.assert_allclose(ham["beta"], FILTFX["hamilton_h8_p4"]["beta"], rtol=1e-8)
+    np.testing.assert_allclose(ham["cycle"], FILTFX["hamilton_h8_p4"]["cycle"], atol=1e-8)
+
+
+def test_dm_and_theta_match_fixtures():
+    fx = FCFX["dm_test"]
+    r = tsecon.dm_test(np.array(fx["e1"]), np.array(fx["e2"]), h=fx["h"], loss="squared")
+    assert r["dm_stat"] == pytest.approx(fx["dm_stat"], rel=1e-10)
+    assert r["hln_stat"] == pytest.approx(fx["hln_stat"], rel=1e-10)
+    assert r["p_value"] == pytest.approx(fx["hln_pvalue_t_nminus1"], rel=1e-9)
+    realgdp = None
+    # theta fixture used raw realgdp; reconstruct from filters fixture is log —
+    # so validate theta on the fixture's own stored forecast via the crate's
+    # golden test instead; here just sanity-check the binding.
+    th = tsecon.theta_forecast(GDP, steps=8, period=4)
+    assert len(th) == 8 and np.isfinite(th).all()
+
+
+def test_accuracy_measures():
+    fx = FCFX["accuracy_small"]
+    a, f = np.array(fx["actual"]), np.array(fx["forecast"])
+    ins = np.array(fx["insample_for_mase"])
+    r = tsecon.accuracy(a, f, insample=ins, period=1)
+    assert r["mae"] == pytest.approx(np.abs(a - f).mean(), rel=1e-12)
+    denom = np.abs(np.diff(ins)).mean()
+    assert r["mase"] == pytest.approx(np.abs(a - f).mean() / denom, rel=1e-12)

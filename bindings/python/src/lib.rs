@@ -419,6 +419,284 @@ fn ols<'py>(
     Ok(d)
 }
 
+fn var_results(
+    data: &numpy::PyReadonlyArray2<'_, f64>,
+    lags: usize,
+    trend: &str,
+) -> PyResult<tsecon_var::VarResults> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    let a = data.as_array();
+    let m = Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let tr = match trend {
+        "c" => tsecon_var::Trend::Constant,
+        "n" => tsecon_var::Trend::None,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown trend {other:?}; expected \"c\" or \"n\""
+            )))
+        }
+    };
+    tsecon_var::VarSpec { lags, trend: tr }
+        .fit(m.as_ref())
+        .map_err(to_py)
+}
+
+fn mat_to_vec2(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
+    (0..m.nrows()).map(|i| (0..m.ncols()).map(|j| m[(i, j)]).collect()).collect()
+}
+
+/// Fit a VAR(p) by OLS and return estimates, fit statistics, and stability.
+///
+/// Matches statsmodels `VAR(...).fit(lags, trend)` at 1e-8.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, trend = "c"))]
+fn var_fit<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    trend: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = var_results(&data, lags, trend)?;
+    let d = PyDict::new(py);
+    d.set_item("params", mat_to_vec2(&r.params))?;
+    d.set_item("sigma_u", mat_to_vec2(&r.sigma_u))?;
+    d.set_item("llf", r.llf)?;
+    d.set_item("aic", r.aic)?;
+    d.set_item("bic", r.bic)?;
+    d.set_item("hqic", r.hqic)?;
+    let roots = r.roots_moduli().map_err(to_py)?;
+    d.set_item("max_root", roots.iter().cloned().fold(0.0_f64, f64::max))?;
+    Ok(d)
+}
+
+/// Impulse responses of a fitted VAR: `irfs[h][i][j]` is the response of
+/// variable i to a shock in variable j at horizon h (orthogonalized via
+/// the Cholesky factor of sigma_u when `orth=True`).
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, horizon = 10, orth = true, trend = "c"))]
+fn var_irf<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    orth: bool,
+    trend: &str,
+) -> PyResult<Bound<'py, pyo3::types::PyList>> {
+    let r = var_results(&data, lags, trend)?;
+    let irf = r.irf(horizon).map_err(to_py)?;
+    let mats = if orth { &irf.orth_irfs } else { &irf.irfs };
+    let out: Vec<Vec<Vec<f64>>> = mats.iter().map(mat_to_vec2).collect();
+    pyo3::types::PyList::new(py, out.iter().map(|m| m.clone()))
+}
+
+/// Forecast-error variance decomposition: `fevd[h][i][j]` is the share of
+/// variable i's h-step forecast-error variance attributed to shock j.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
+fn var_fevd<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    trend: &str,
+) -> PyResult<Bound<'py, pyo3::types::PyList>> {
+    let r = var_results(&data, lags, trend)?;
+    let fevd = r.fevd(horizon).map_err(to_py)?;
+    let out: Vec<Vec<Vec<f64>>> = fevd.decomp.iter().map(mat_to_vec2).collect();
+    pyo3::types::PyList::new(py, out.iter().map(|m| m.clone()))
+}
+
+/// Iterated VAR point forecasts with (innovation-uncertainty) intervals.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, steps = 8, alpha = 0.05, trend = "c"))]
+fn var_forecast<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    steps: usize,
+    alpha: f64,
+    trend: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = var_results(&data, lags, trend)?;
+    let fc = r.forecast_interval(steps, alpha).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("point", mat_to_vec2(&fc.point))?;
+    d.set_item("lower", mat_to_vec2(&fc.lower))?;
+    d.set_item("upper", mat_to_vec2(&fc.upper))?;
+    Ok(d)
+}
+
+/// Granger-causality F test: do the `causing` variables help predict the
+/// `caused` variables? Matches statsmodels `test_causality(kind="f")`.
+#[pyfunction]
+#[pyo3(signature = (data, caused, causing, lags = 2, trend = "c"))]
+fn var_granger<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    caused: Vec<usize>,
+    causing: Vec<usize>,
+    lags: usize,
+    trend: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = var_results(&data, lags, trend)?;
+    let t = r.test_causality(&caused, &causing).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("statistic", t.statistic)?;
+    d.set_item("p_value", t.pvalue)?;
+    d.set_item("df_num", t.df_num)?;
+    d.set_item("df_den", t.df_den)?;
+    Ok(d)
+}
+
+fn decomposition_dict<'py>(
+    py: Python<'py>,
+    dec: &tsecon_filters::Decomposition,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    if let Some(tr) = &dec.trend {
+        d.set_item("trend", tr.clone().into_pyarray(py))?;
+    }
+    d.set_item("cycle", dec.cycle.clone().into_pyarray(py))?;
+    d.set_item("first_index", dec.alignment.first_index())?;
+    Ok(d)
+}
+
+/// Hodrick-Prescott filter (O(n) pentadiagonal solve). `one_sided=True`
+/// gives the real-time variant. Matches statsmodels `hpfilter` at 1e-8.
+#[pyfunction]
+#[pyo3(signature = (y, lamb = 1600.0, one_sided = false))]
+fn hp_filter<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    lamb: f64,
+    one_sided: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dec = if one_sided {
+        tsecon_filters::hp_filter_one_sided(y.as_slice()?, lamb)
+    } else {
+        tsecon_filters::hp_filter(y.as_slice()?, lamb)
+    }
+    .map_err(to_py)?;
+    decomposition_dict(py, &dec)
+}
+
+/// Baxter-King band-pass filter (loses `k` observations at each end —
+/// `first_index` reports the alignment).
+#[pyfunction]
+#[pyo3(signature = (y, low = 6.0, high = 32.0, k = 12))]
+fn bk_filter<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    low: f64,
+    high: f64,
+    k: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dec = tsecon_filters::bk_filter(y.as_slice()?, low, high, k).map_err(to_py)?;
+    decomposition_dict(py, &dec)
+}
+
+/// Christiano-Fitzgerald asymmetric band-pass filter (full sample).
+#[pyfunction]
+#[pyo3(signature = (y, low = 6.0, high = 32.0, drift = true))]
+fn cf_filter<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    low: f64,
+    high: f64,
+    drift: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dec = tsecon_filters::cf_filter(y.as_slice()?, low, high, drift).map_err(to_py)?;
+    decomposition_dict(py, &dec)
+}
+
+/// Hamilton (2018) regression filter — the modern HP alternative.
+#[pyfunction]
+#[pyo3(signature = (y, h = 8, p = 4))]
+fn hamilton_filter<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    h: usize,
+    p: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_filters::hamilton_filter(y.as_slice()?, h, p).map_err(to_py)?;
+    let d = decomposition_dict(py, &r.decomposition)?;
+    d.set_item("beta", r.beta.clone().into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Diebold-Mariano test of equal predictive accuracy with the
+/// Harvey-Leybourne-Newbold small-sample correction.
+#[pyfunction]
+#[pyo3(signature = (e1, e2, h = 1, loss = "squared"))]
+fn dm_test<'py>(
+    py: Python<'py>,
+    e1: PyReadonlyArray1<'py, f64>,
+    e2: PyReadonlyArray1<'py, f64>,
+    h: usize,
+    loss: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let l = match loss {
+        "squared" => tsecon_forecast::DmLoss::Squared,
+        "absolute" => tsecon_forecast::DmLoss::Absolute,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown loss {other:?}; expected \"squared\" or \"absolute\""
+            )))
+        }
+    };
+    let r = tsecon_forecast::dm_test(e1.as_slice()?, e2.as_slice()?, h, l).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("dm_stat", r.dm_stat)?;
+    d.set_item("hln_stat", r.hln_stat)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("mean_loss_diff", r.mean_loss_diff)?;
+    Ok(d)
+}
+
+/// Forecast accuracy measures in one call.
+#[pyfunction]
+#[pyo3(signature = (actual, forecast, insample = None, period = 1))]
+fn accuracy<'py>(
+    py: Python<'py>,
+    actual: PyReadonlyArray1<'py, f64>,
+    forecast: PyReadonlyArray1<'py, f64>,
+    insample: Option<PyReadonlyArray1<'py, f64>>,
+    period: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_forecast as f;
+    let a = actual.as_slice()?;
+    let p = forecast.as_slice()?;
+    let d = PyDict::new(py);
+    d.set_item("me", f::me(a, p).map_err(to_py)?)?;
+    d.set_item("rmse", f::rmse(a, p).map_err(to_py)?)?;
+    d.set_item("mae", f::mae(a, p).map_err(to_py)?)?;
+    if let Ok(v) = f::mape(a, p) {
+        d.set_item("mape", v)?;
+    }
+    if let Ok(v) = f::smape(a, p) {
+        d.set_item("smape", v)?;
+    }
+    if let Some(ins) = insample {
+        d.set_item("mase", f::mase(a, p, ins.as_slice()?, period).map_err(to_py)?)?;
+        d.set_item("rmsse", f::rmsse(a, p, ins.as_slice()?, period).map_err(to_py)?)?;
+    }
+    Ok(d)
+}
+
+/// The Theta method (Assimakopoulos-Nikolopoulos 2000) — a stubbornly hard
+/// benchmark to beat. Matches statsmodels ThetaModel.
+#[pyfunction]
+#[pyo3(signature = (y, steps, period = 1))]
+fn theta_forecast<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    steps: usize,
+    period: usize,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let r = tsecon_forecast::theta_forecast(y.as_slice()?, period, steps).map_err(to_py)?;
+    Ok(r.forecast.into_pyarray(py))
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -437,5 +715,17 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(check_stationarity, m)?)?;
     m.add_function(wrap_pyfunction!(long_run_variance, m)?)?;
     m.add_function(wrap_pyfunction!(ols, m)?)?;
+    m.add_function(wrap_pyfunction!(var_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(var_irf, m)?)?;
+    m.add_function(wrap_pyfunction!(var_fevd, m)?)?;
+    m.add_function(wrap_pyfunction!(var_forecast, m)?)?;
+    m.add_function(wrap_pyfunction!(var_granger, m)?)?;
+    m.add_function(wrap_pyfunction!(hp_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(bk_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(cf_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(hamilton_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(dm_test, m)?)?;
+    m.add_function(wrap_pyfunction!(accuracy, m)?)?;
+    m.add_function(wrap_pyfunction!(theta_forecast, m)?)?;
     Ok(())
 }
