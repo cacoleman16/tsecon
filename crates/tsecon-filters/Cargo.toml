@@ -3,5 +3,11 @@ name = "tsecon-filters"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Trend-cycle decomposition filters (Hodrick-Prescott, Baxter-King, Christiano-Fitzgerald, Hamilton) for the tsecon time-series econometrics library"
 
 [dependencies]
+
+[dev-dependencies]
+# float_roundtrip: without it serde_json's fast float parser can be 1 ulp
+# off the shortest-roundtrip value the fixture generator printed.
+serde_json = { version = "1", features = ["float_roundtrip"] }

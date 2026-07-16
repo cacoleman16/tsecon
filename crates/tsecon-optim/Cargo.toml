@@ -3,5 +3,6 @@ name = "tsecon-optim"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Numerical optimization suite (Nelder-Mead, BFGS, L-BFGS, strong-Wolfe line search) and the constrained-domain reparameterization toolkit for the tsecon time-series econometrics library"
 
 [dependencies]
