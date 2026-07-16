@@ -5,3 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }

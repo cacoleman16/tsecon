@@ -3,5 +3,12 @@ name = "tsecon-diag"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "First diagnostics slice for the tsecon time-series econometrics library: ACF/PACF with Bartlett bands, Ljung-Box/Box-Pierce portmanteau tests, Jarque-Bera normality, and Engle's ARCH-LM, with teaching diagnostic reports"
 
 [dependencies]
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }

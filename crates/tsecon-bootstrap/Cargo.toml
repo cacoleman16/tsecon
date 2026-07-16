@@ -3,5 +3,13 @@ name = "tsecon-bootstrap"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Resampling engine for the tsecon time-series econometrics library: iid/block/stationary bootstrap index schemes, wild-bootstrap weights, Politis-White block-length selection, and the reproducible parallel replication driver"
 
 [dependencies]
+rayon = "1"
+tsecon-rng = { path = "../tsecon-rng" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }

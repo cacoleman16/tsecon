@@ -5,3 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+faer = { version = "0.24", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+serde_json = "1"
