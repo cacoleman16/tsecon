@@ -129,17 +129,107 @@ arima = {
     "loglik": round(fit["loglik"], 2),
 }
 
+# 8 · GAS score-driven volatility: Gaussian vs robust Student-t
+rg = np.random.default_rng(77)
+ng = 360
+h, retg = 1.0, np.empty(ng)
+retg[0] = rg.standard_normal()
+for t in range(1, ng):
+    h = 0.05 + 0.08 * retg[t - 1] ** 2 + 0.90 * h
+    retg[t] = np.sqrt(h) * rg.standard_normal()
+gas_jumps = [90, 190, 300]
+for j in gas_jumps:
+    retg[j] += np.sign(rg.standard_normal() + 0.1) * 8.0
+gg = tsecon.gas_volatility(retg, density="gaussian")
+gt = tsecon.gas_volatility(retg, density="student_t")
+gas = {"returns": r4(retg), "jumps": gas_jumps, "nu": round(gt["nu"], 1),
+       "vol_g": r4(np.sqrt(gg["variance"])), "vol_t": r4(np.sqrt(gt["variance"]))}
+
+# 9 · Local projections: IRF with honest bands, lag-augmented vs HAC
+rl = np.random.default_rng(31)
+nl = 480
+shock = rl.standard_normal(nl)
+yl = np.zeros(nl)
+phi = (1.1, -0.3)
+for t in range(2, nl):
+    yl[t] = phi[0] * yl[t - 1] + phi[1] * yl[t - 2] + shock[t] + 0.4 * rl.standard_normal()
+la = tsecon.lp(yl, shock, horizons=16, n_lag_controls=4, se="lag_augmented")
+hc = tsecon.lp(yl, shock, horizons=16, n_lag_controls=4, se="hac")
+psi = [1.0, phi[0]]
+for k in range(2, len(la["irf"])):
+    psi.append(phi[0] * psi[k - 1] + phi[1] * psi[k - 2])
+lp_block = {"irf_la": r4(la["irf"]), "se_la": r4(la["se"]),
+            "irf_hac": r4(hc["irf"]), "se_hac": r4(hc["se"]), "true": r4(psi[:len(la["irf"])])}
+
+# 10 · Recession probability from the term spread (probit)
+rr = np.random.default_rng(88)
+nr = 240
+spread = np.zeros(nr)
+for t in range(1, nr):
+    spread[t] = 0.92 * spread[t - 1] + 0.5 * rr.standard_normal()
+from scipy.stats import norm as _norm  # fixture-generation only, not a runtime dep
+p_true = _norm.cdf(-0.4 - 1.3 * spread)
+recn = (rr.random(nr) < p_true).astype(float)
+Xr = np.column_stack([np.ones(nr), spread])
+fitr = tsecon.recession_probit(recn, Xr, link="probit")
+recession = {"prob": r4(fitr["probabilities"]), "spread": r4(spread),
+             "recession": [int(v) for v in recn], "pseudo_r2": round(fitr["pseudo_r2"], 3)}
+
+# 11 · Realized volatility: the continuous part and the jumps
+rv_rng = np.random.default_rng(41)
+nd, m = 200, 79
+iv = np.empty(nd)
+iv[0] = 1.0
+for d in range(1, nd):
+    iv[d] = 0.03 + 0.94 * iv[d - 1] + 0.10 * rv_rng.standard_normal() ** 2
+intraday = np.sqrt(iv[:, None] / m) * rv_rng.standard_normal((nd, m))
+jmask = rv_rng.random(nd) < 0.06
+intraday[jmask, 0] += rv_rng.standard_normal(int(jmask.sum())) * 1.4
+rvs, bvs, jflag = [], [], []
+for d in range(nd):
+    mm = tsecon.realized_measures(intraday[d])
+    rvs.append(mm["rv"])
+    bvs.append(mm["bipower"])
+    jflag.append(tsecon.bns_jump_test(intraday[d])["ratio"] > 1.96)
+realized = {"rv": r4(rvs), "bipower": r4(bvs), "jumpdays": [i for i, f in enumerate(jflag) if f]}
+
+# 12 · Lasso path: sparsity delivering correct selection
+rz = np.random.default_rng(9)
+nz, pz = 220, 20
+Xz = rz.standard_normal((nz, pz))
+beta = np.zeros(pz)
+beta[:3] = [3.0, -2.0, 1.5]
+yz = Xz @ beta + 0.1 * rz.standard_normal(nz)
+path = tsecon.lasso_path(Xz, yz, n_lambdas=40)
+coefs = np.array(path["coefs"])  # (n_lambdas, p)
+lasso = {"lambdas": r4(path["lambdas"]),
+         "coefs": [r4(coefs[:, j]) for j in range(pz)],
+         "signal": [1, 1, 1] + [0] * (pz - 3),
+         "bic_best": int(path["bic_best"])}
+
 # Philox parity statement (verified live at generation time)
 ours = tsecon.philox_uniforms(42, 5)
 theirs = np.random.Generator(np.random.Philox(42)).random(5)
 assert ours.tobytes() == theirs.tobytes()
 
 data = {
-    "meta": {"generated_by": "tsecon 0.0.1 (Rust core)", "date": "2026-07-16",
+    "meta": {"generated_by": "tsecon 0.0.1 (Rust core)", "date": "2026-07-17",
              "note": "every number precomputed by the real library; the page only renders",
              "philox_first5": [f"{x:.17f}" for x in ours]},
     "identify": identify, "stationarity": stationarity, "kalman": kalman,
     "var": var_block, "bayes": bayes, "garch": garch, "arima": arima,
+    "gas": gas, "lp": lp_block, "recession": recession, "realized": realized, "lasso": lasso,
 }
 OUT.write_text(json.dumps(data, separators=(",", ":")))
-print(f"wrote {OUT} ({OUT.stat().st_size/1024:.0f} KB)")
+print(f"wrote {OUT} ({OUT.stat().st_size / 1024:.0f} KB)")
+
+# Build the self-contained index.html from the template (data + philox inlined),
+# so the interactive page is reproducible from the real library output.
+TPL = Path(__file__).parent / "demo_template.html"
+IDX = Path(__file__).parent / "index.html"
+philox_line = " ".join(f"{x:.6f}" for x in ours)
+html = (TPL.read_text()
+        .replace("__DATA__", json.dumps(data, separators=(",", ":")))
+        .replace("__PHILOX__", philox_line))
+IDX.write_text(html)
+print(f"wrote {IDX} ({IDX.stat().st_size / 1024:.0f} KB)")
