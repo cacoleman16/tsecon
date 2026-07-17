@@ -215,3 +215,48 @@ def accuracy(
 
 def theta_forecast(y: _ArrayLike, steps: int, period: int = ...) -> _F64:
     """The Theta method (Assimakopoulos-Nikolopoulos 2000)."""
+
+# ------------------------------------------------------- local projections
+def lp(
+    y: _ArrayLike,
+    shock: _ArrayLike,
+    horizons: int = ...,
+    n_lag_controls: int = ...,
+    se: str = ...,
+    maxlags: int | None = ...,
+    cumulative: bool = ...,
+) -> dict[str, Any]:
+    """Local projection IRFs; `se` is "lag_augmented" (default) or "hac"."""
+
+def lp_iv(
+    y: _ArrayLike,
+    impulse: _ArrayLike,
+    instrument: _ArrayLike,
+    horizons: int = ...,
+    n_lag_controls: int = ...,
+    cumulative: bool = ...,
+) -> dict[str, Any]:
+    """LP-IV: instrumented local projections with a first-stage F diagnostic."""
+
+# -------------------------------------------------- penalized regression
+def ridge(x: _ArrayLike, y: _ArrayLike, alpha: float) -> _F64:
+    """Ridge regression (closed form); scikit-learn `Ridge` objective."""
+
+def elastic_net(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    alpha: float,
+    l1_ratio: float = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Elastic-net via coordinate descent; scikit-learn objective."""
+
+def lasso(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    alpha: float,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Lasso (elastic net with l1_ratio = 1.0)."""

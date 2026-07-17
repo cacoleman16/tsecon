@@ -1033,6 +1033,148 @@ fn arima_fit<'py>(
     Ok(dct)
 }
 
+/// Local projection impulse responses (Jordà 2005).
+///
+/// `se`: "lag_augmented" (Montiel Olea-Plagborg-Møller 2021, the default) or
+/// "hac" (Newey-West; `maxlags=None` grows with the horizon). `cumulative`
+/// regresses the cumulated outcome (Ramey-Zubairy). Returns per-horizon irf
+/// and standard errors.
+#[pyfunction]
+#[pyo3(signature = (y, shock, horizons = 12, n_lag_controls = 4, se = "lag_augmented", maxlags = None, cumulative = false))]
+#[allow(clippy::too_many_arguments)]
+fn lp<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    shock: PyReadonlyArray1<'py, f64>,
+    horizons: usize,
+    n_lag_controls: usize,
+    se: &str,
+    maxlags: Option<usize>,
+    cumulative: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).cumulative(cumulative);
+    spec = match se {
+        "lag_augmented" => spec,
+        "hac" => spec.with_hac(maxlags),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown se {other:?}; expected \"lag_augmented\" or \"hac\""
+            )))
+        }
+    };
+    let r = tsecon_lp::lp(y.as_slice()?, shock.as_slice()?, spec).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item(
+        "horizons",
+        r.horizons
+            .iter()
+            .map(|&h| h as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("irf", r.irf.into_pyarray(py))?;
+    d.set_item("se", r.se.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// LP-IV: instrumental-variable local projections (Stock-Watson 2018,
+/// Ramey-Zubairy 2018). The `impulse` is instrumented by `instrument`;
+/// kernel-HAC standard errors match linearmodels IV2SLS. Returns per-horizon
+/// irf, se, and the first-stage effective F diagnostic.
+#[pyfunction]
+#[pyo3(signature = (y, impulse, instrument, horizons = 8, n_lag_controls = 4, cumulative = false))]
+fn lp_iv<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    impulse: PyReadonlyArray1<'py, f64>,
+    instrument: PyReadonlyArray1<'py, f64>,
+    horizons: usize,
+    n_lag_controls: usize,
+    cumulative: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).cumulative(cumulative);
+    let r = tsecon_lp::lp_iv(
+        y.as_slice()?,
+        impulse.as_slice()?,
+        instrument.as_slice()?,
+        spec,
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item(
+        "horizons",
+        r.horizons
+            .iter()
+            .map(|&h| h as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("irf", r.irf.into_pyarray(py))?;
+    d.set_item("se", r.se.into_pyarray(py))?;
+    d.set_item("first_stage_f", r.first_stage_f.into_pyarray(py))?;
+    Ok(d)
+}
+
+fn to_faer(x: &numpy::PyReadonlyArray2<'_, f64>) -> tsecon_var::tsecon_linalg::faer::Mat<f64> {
+    let a = x.as_array();
+    tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)])
+}
+
+/// Ridge regression (closed form). Minimizes ||y - Xb||^2 + alpha*||b||^2,
+/// matching scikit-learn's `Ridge` objective. Add your own intercept column
+/// to X if you want one.
+#[pyfunction]
+fn ridge<'py>(
+    py: Python<'py>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    y: PyReadonlyArray1<'py, f64>,
+    alpha: f64,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let m = to_faer(&x);
+    let coef = tsecon_ml::ridge(m.as_ref(), y.as_slice()?, alpha).map_err(to_py)?;
+    Ok(coef.into_pyarray(py))
+}
+
+/// Elastic-net regression via coordinate descent. Minimizes
+/// (1/2n)||y-Xb||^2 + alpha*l1_ratio*||b||_1 + (alpha/2)(1-l1_ratio)||b||^2,
+/// matching scikit-learn. `l1_ratio=1.0` is the lasso. Returns coefficients,
+/// iterations, and the final max coefficient change.
+#[pyfunction]
+#[pyo3(signature = (x, y, alpha, l1_ratio = 0.5, tol = 1e-8, max_iter = 100000))]
+fn elastic_net<'py>(
+    py: Python<'py>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    y: PyReadonlyArray1<'py, f64>,
+    alpha: f64,
+    l1_ratio: f64,
+    tol: f64,
+    max_iter: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = to_faer(&x);
+    let opts = tsecon_ml::CoordDescentOptions { tol, max_iter };
+    let fit =
+        tsecon_ml::elastic_net(m.as_ref(), y.as_slice()?, alpha, l1_ratio, opts).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("coef", fit.coef.into_pyarray(py))?;
+    d.set_item("n_iter", fit.n_iter)?;
+    d.set_item("max_change", fit.max_change)?;
+    Ok(d)
+}
+
+/// Lasso regression (elastic net with l1_ratio = 1.0).
+#[pyfunction]
+#[pyo3(signature = (x, y, alpha, tol = 1e-8, max_iter = 100000))]
+fn lasso<'py>(
+    py: Python<'py>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    y: PyReadonlyArray1<'py, f64>,
+    alpha: f64,
+    tol: f64,
+    max_iter: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    elastic_net(py, x, y, alpha, 1.0, tol, max_iter)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -1068,5 +1210,10 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bvar_irf_draws, m)?)?;
     m.add_function(wrap_pyfunction!(mcmc_diagnostics, m)?)?;
     m.add_function(wrap_pyfunction!(arima_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(lp, m)?)?;
+    m.add_function(wrap_pyfunction!(lp_iv, m)?)?;
+    m.add_function(wrap_pyfunction!(ridge, m)?)?;
+    m.add_function(wrap_pyfunction!(elastic_net, m)?)?;
+    m.add_function(wrap_pyfunction!(lasso, m)?)?;
     Ok(())
 }
