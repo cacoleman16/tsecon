@@ -32,6 +32,7 @@ members = [
     "crates/tsecon-gas",
     "crates/tsecon-nowcast",
     "crates/tsecon-panelts",
+    "crates/tsecon-predreg",
     "bindings/python",
 ]
 

@@ -1,0 +1,22 @@
+[package]
+name = "tsecon-predreg"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Predictive regressions with persistent regressors for the tsecon time-series econometrics library: the Stambaugh (1999) bias correction, and the IVX estimator and its Wald predictability test (Kostakis-Magdalinos-Stamatogiannis 2015) — inference that is valid uniformly over the unknown persistence of the predictor, from stationary through near-unit-root"
+
+[dependencies]
+# faer via the shared tsecon-linalg re-export.
+tsecon-linalg = { path = "../tsecon-linalg" }
+# OLS and HAC/robust covariance — the library's single owner; the
+# predictive-regression estimators never reimplement least squares.
+tsecon-hac = { path = "../tsecon-hac" }
+# Chi-squared survival for the IVX Wald test p-value.
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# Seeded Philox streams drive the Monte-Carlo size/power property tests.
+tsecon-rng = { path = "../tsecon-rng" }
