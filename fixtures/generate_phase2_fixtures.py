@@ -157,9 +157,14 @@ def gen_forecast_eval2():
     gw_stat = n * d.mean() ** 2 / bartlett_lrv(d, L)
     gw_p = float(sps.chi2.sf(gw_stat, 1))
 
+    # Store the input arrays at FULL f64 precision (not rounded) so a
+    # from-scratch recomputation of the CW/GW statistics reproduces the stored
+    # goldens to machine precision — the stats below are computed from these
+    # same full-precision arrays.
+    full = lambda a: [float(x) for x in np.asarray(a).ravel()]  # noqa: E731
     out = {
         "_meta": {"authored": "documented CW/GW formulas above", "numpy": np.__version__},
-        "ytrue": r6(ytrue), "yhat1": r6(yhat1), "yhat2": r6(yhat2),
+        "ytrue": full(ytrue), "yhat1": full(yhat1), "yhat2": full(yhat2),
         "lrv_lags": L,
         "clark_west": {"stat": float(cw_stat), "pvalue_one_sided": cw_p},
         "giacomini_white_uncond": {"stat": float(gw_stat), "pvalue_chi2_1": gw_p},

@@ -3,5 +3,20 @@ name = "tsecon-lp"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Local projections (Jordà 2005) for the tsecon time-series econometrics library: horizon-by-horizon impulse responses with lag-augmented (Montiel Olea & Plagborg-Møller 2021) heteroskedasticity-robust inference as the default, Newey-West HAC as the statsmodels-compatibility option, just-identified LP-IV with a linearmodels-convention kernel covariance and a first-stage effective-F diagnostic, Ramey-Zubairy cumulative responses, and state-dependent (interacted) local projections"
 
 [dependencies]
+# HAC / OLS machinery (kernels, Newey-West sandwich, HC0/HC1) — the library's
+# single HAC owner. LP never reimplements robust standard errors.
+tsecon-hac = { path = "../tsecon-hac" }
+# faer is consumed through the tsecon-linalg re-export so the whole workspace
+# shares one pinned version; used for the LP-IV 2SLS projection solves.
+tsecon-linalg = { path = "../tsecon-linalg" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# Seeded Philox streams + the normal quantile drive the coverage Monte Carlo.
+tsecon-rng = { path = "../tsecon-rng" }
+tsecon-stats = { path = "../tsecon-stats" }

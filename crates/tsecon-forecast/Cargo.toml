@@ -7,6 +7,10 @@ description = "Forecast evaluation for the tsecon time-series econometrics libra
 
 [dependencies]
 tsecon-stats = { path = "../tsecon-stats" }
+# The single HAC / long-run-variance engine (ROADMAP §5): the Clark-West and
+# Giacomini-White tests take their Bartlett long-run variances from here so
+# identical settings never produce different p-values across modules.
+tsecon-hac = { path = "../tsecon-hac" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy

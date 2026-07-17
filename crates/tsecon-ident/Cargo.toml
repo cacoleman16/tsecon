@@ -3,5 +3,17 @@ name = "tsecon-ident"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Structural identification for the tsecon time-series econometrics library: the Haar-uniform rotation kernel (QR of a Gaussian matrix with the Stewart/Mezzadri R-diagonal sign fix) and Bayesian sign-restricted SVARs (Uhlig 2005 rejection sampling, Rubio-Ramirez-Waggoner-Zha 2010) with mandatory identification diagnostics, per-shock sign normalization, and identified-set min/max bounds alongside pointwise quantiles"
 
 [dependencies]
+# faer is consumed through the tsecon-linalg re-export so the whole
+# workspace shares one pinned version.
+tsecon-linalg = { path = "../tsecon-linalg" }
+tsecon-rng = { path = "../tsecon-rng" }
+tsecon-stats = { path = "../tsecon-stats" }
+tsecon-bayes = { path = "../tsecon-bayes" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }

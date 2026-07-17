@@ -3,5 +3,16 @@ name = "tsecon-ml"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Penalized regression (ridge via SVD; LASSO / elastic net / adaptive LASSO via cyclical coordinate descent matching scikit-learn objectives) with information-criterion path tuning and leakage-safe time-series cross-validation (rolling / expanding origin, purged + embargoed blocked K-fold, Lopez de Prado conventions) for the tsecon time-series econometrics library"
 
 [dependencies]
+# faer is consumed through the tsecon-linalg re-export so the whole
+# workspace shares one pinned version (0.24, default-features = false,
+# features = ["std"]); this crate uses its thin SVD for the ridge
+# closed form and the ordinary-least-squares adaptive-LASSO weights.
+tsecon-linalg = { path = "../tsecon-linalg" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern
+# scikit-learn / NumPy printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }

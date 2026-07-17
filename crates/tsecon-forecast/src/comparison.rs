@@ -6,6 +6,7 @@
 use core::fmt;
 
 use crate::accuracy::{mae, mape, mase, mdae, me, mse, rmse, rmsse, smape};
+use crate::cw::{cw_test, CwResult};
 use crate::dm::{dm_test, DmLoss, DmResult};
 use crate::error::ForecastError;
 
@@ -51,6 +52,17 @@ pub struct DmPair {
     pub dm: DmResult,
 }
 
+/// One nested-model Clark-West comparison: a declared (small, large) pair.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CwPair {
+    /// Label of the restricted (small) model.
+    pub name_small: String,
+    /// Label of the unrestricted (large) model that nests the small one.
+    pub name_large: String,
+    /// The full Clark-West test result.
+    pub cw: CwResult,
+}
+
 /// A forecast-comparison report: accuracy table + pairwise DM tests +
 /// a plain-language interpretation.
 ///
@@ -65,6 +77,9 @@ pub struct ForecastComparison {
     /// Pairwise Diebold-Mariano tests (squared loss) for every unordered
     /// pair, in input order.
     pub dm_pairs: Vec<DmPair>,
+    /// Clark-West tests for the declared nested `(small, large)` pairs; empty
+    /// unless the comparison was built with [`ForecastComparison::new_nested`].
+    pub cw_pairs: Vec<CwPair>,
     /// The forecast horizon used for the DM long-run variance.
     pub h: usize,
     /// The significance level the DM decisions were taken at.
@@ -101,6 +116,52 @@ impl ForecastComparison {
         insample: Option<(&[f64], usize)>,
         h: usize,
         alpha: f64,
+    ) -> Result<Self, ForecastError> {
+        Self::build(actual, forecasts, insample, h, alpha, &[], 0)
+    }
+
+    /// Compare named forecasts and additionally run the Clark-West (2007)
+    /// nested-model test for each declared `(small, large)` pair.
+    ///
+    /// Same as [`ForecastComparison::new`], plus:
+    ///
+    /// * `nested` — `(small_model_name, large_model_name)` label pairs, each
+    ///   declaring that the large model **nests** the small one. The plain
+    ///   Diebold-Mariano test is degenerate for nested models under recursive
+    ///   schemes (Diebold 2015); Clark & West (2007) is the right tool, and
+    ///   [`ForecastComparison::cw_pairs`] carries its one-sided results.
+    /// * `lrv_lags` — the Bartlett long-run-variance lag truncation for the
+    ///   Clark-West variance (use `h - 1` as the usual floor for `h`-step
+    ///   forecasts).
+    ///
+    /// Both names in each pair must appear in `forecasts`.
+    ///
+    /// # Errors
+    ///
+    /// Everything [`ForecastComparison::new`] can return, plus
+    /// [`ForecastError::DuplicateName`] used here to flag a nested pair whose
+    /// name is not among the supplied forecasts, and the Clark-West errors.
+    pub fn new_nested(
+        actual: &[f64],
+        forecasts: &[(&str, &[f64])],
+        insample: Option<(&[f64], usize)>,
+        h: usize,
+        alpha: f64,
+        nested: &[(&str, &str)],
+        lrv_lags: usize,
+    ) -> Result<Self, ForecastError> {
+        Self::build(actual, forecasts, insample, h, alpha, nested, lrv_lags)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        actual: &[f64],
+        forecasts: &[(&str, &[f64])],
+        insample: Option<(&[f64], usize)>,
+        h: usize,
+        alpha: f64,
+        nested: &[(&str, &str)],
+        lrv_lags: usize,
     ) -> Result<Self, ForecastError> {
         if forecasts.is_empty() {
             return Err(ForecastError::EmptyComparison);
@@ -165,6 +226,34 @@ impl ForecastComparison {
             }
         }
 
+        // Clark-West for declared nested (small, large) pairs. The DM test is
+        // degenerate for nested models under recursive schemes (Diebold 2015),
+        // so this is the scheme-appropriate substitute.
+        let find = |name: &str| -> Result<usize, ForecastError> {
+            forecasts
+                .iter()
+                .position(|(n, _)| *n == name)
+                .ok_or_else(|| ForecastError::UnknownForecastName {
+                    name: name.to_string(),
+                })
+        };
+        let mut cw_pairs = Vec::with_capacity(nested.len());
+        for (small, large) in nested {
+            let si = find(small)?;
+            let li = find(large)?;
+            cw_pairs.push(CwPair {
+                name_small: (*small).to_string(),
+                name_large: (*large).to_string(),
+                cw: cw_test(
+                    &errors[si],
+                    &errors[li],
+                    forecasts[si].1,
+                    forecasts[li].1,
+                    lrv_lags,
+                )?,
+            });
+        }
+
         // Best by RMSE (ties broken by input order).
         let best = measures
             .iter()
@@ -172,11 +261,12 @@ impl ForecastComparison {
             .map(|r| r.name.clone())
             .unwrap_or_default();
 
-        let interpretation = build_interpretation(&measures, &dm_pairs, &best, alpha);
+        let interpretation = build_interpretation(&measures, &dm_pairs, &cw_pairs, &best, alpha);
 
         Ok(ForecastComparison {
             measures,
             dm_pairs,
+            cw_pairs,
             h,
             alpha,
             best_rmse: best,
@@ -188,6 +278,7 @@ impl ForecastComparison {
 fn build_interpretation(
     measures: &[AccuracyRow],
     dm_pairs: &[DmPair],
+    cw_pairs: &[CwPair],
     best: &str,
     alpha: f64,
 ) -> String {
@@ -252,11 +343,36 @@ fn build_interpretation(
              module) before declaring a winner.",
         );
     }
+    if cw_pairs.is_empty() {
+        s.push_str(
+            " Remember the DM test compares forecasts, not models (Diebold \
+             2015): for nested models under recursive schemes its distribution \
+             is degenerate — use a Clark-West adjustment there.",
+        );
+        return s;
+    }
     s.push_str(
-        " Remember the DM test compares forecasts, not models (Diebold \
-         2015): for nested models under recursive schemes its distribution \
-         is degenerate — use a Clark-West adjustment there.",
+        " The DM test is degenerate for nested models under recursive schemes \
+         (Diebold 2015), so the declared nested pairs were tested with \
+         Clark-West (2007) instead:",
     );
+    for pair in cw_pairs {
+        if pair.cw.p_value < alpha {
+            s.push_str(&format!(
+                " CW small='{}' vs large='{}': reject equal accuracy \
+                 (z = {:.3}, one-sided p = {:.4} < {alpha}); the larger model \
+                 adds genuine predictive content.",
+                pair.name_small, pair.name_large, pair.cw.cw_stat, pair.cw.p_value
+            ));
+        } else {
+            s.push_str(&format!(
+                " CW small='{}' vs large='{}': fail to reject (z = {:.3}, \
+                 one-sided p = {:.4} >= {alpha}) — the extra regressors in the \
+                 larger model do not improve out-of-sample accuracy.",
+                pair.name_small, pair.name_large, pair.cw.cw_stat, pair.cw.p_value
+            ));
+        }
+    }
     s
 }
 
@@ -296,6 +412,21 @@ impl fmt::Display for ForecastComparison {
                 pv = p.dm.p_value,
                 decision = if p.dm.p_value < self.alpha {
                     "reject equal accuracy"
+                } else {
+                    "fail to reject"
+                }
+            )?;
+        }
+        for p in &self.cw_pairs {
+            writeln!(
+                f,
+                "CW small={s} vs large={l}: z = {z:.4}, one-sided p = {pv:.4} [{decision}]",
+                s = p.name_small,
+                l = p.name_large,
+                z = p.cw.cw_stat,
+                pv = p.cw.p_value,
+                decision = if p.cw.p_value < self.alpha {
+                    "large model adds content"
                 } else {
                     "fail to reject"
                 }
