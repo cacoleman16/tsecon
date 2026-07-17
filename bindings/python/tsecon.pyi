@@ -427,6 +427,22 @@ def svensson(
 ) -> dict[str, Any]:
     """Svensson (1994) four-factor yield-curve fit; nests Nelson-Siegel."""
 
+# ------------------------------------------------ leakage-safe time-series CV
+def cv_splits(
+    n: int,
+    scheme: str = ...,
+    train: int = ...,
+    horizon: int = ...,
+    step: int = ...,
+    k: int = ...,
+    purge: int = ...,
+    embargo: int = ...,
+) -> list[dict[str, list[int]]]:
+    """Leakage-safe CV split indices for sequential data.
+
+    scheme is "expanding", "rolling", or "purged_kfold". Returns a list of
+    {"train": [...], "test": [...]} index dicts."""
+
 # ------------------------------------------------------ penalized ML (paths)
 def adaptive_lasso(
     x: _ArrayLike,

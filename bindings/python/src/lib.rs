@@ -1889,6 +1889,56 @@ fn factor_model<'py>(
     Ok(d)
 }
 
+/// Leakage-safe cross-validation splits for time-series / sequential data.
+///
+/// Returns a list of `{train, test}` index dicts. `scheme`:
+/// - `"expanding"`: expanding-origin (recursive) CV; `train` is the first
+///   training size, each fold forecasts the next `horizon` steps, advancing
+///   by `step`.
+/// - `"rolling"`: fixed-width rolling-origin CV; `train` is the window
+///   width.
+/// - `"purged_kfold"`: López de Prado purged K-fold with a `purge` gap and
+///   an `embargo` after each test fold, to prevent train/test leakage from
+///   serial correlation (`k` folds; `train` is ignored).
+#[pyfunction]
+#[pyo3(signature = (n, scheme = "expanding", train = 0, horizon = 1, step = 1,
+                    k = 5, purge = 0, embargo = 0))]
+#[allow(clippy::too_many_arguments)]
+fn cv_splits<'py>(
+    py: Python<'py>,
+    n: usize,
+    scheme: &str,
+    train: usize,
+    horizon: usize,
+    step: usize,
+    k: usize,
+    purge: usize,
+    embargo: usize,
+) -> PyResult<Vec<Bound<'py, PyDict>>> {
+    let splits = match scheme {
+        "expanding" => {
+            tsecon_ml::expanding_origin_splits(n, train, horizon, step).map_err(to_py)?
+        }
+        "rolling" => tsecon_ml::rolling_origin_splits(n, train, horizon, step).map_err(to_py)?,
+        "purged_kfold" => tsecon_ml::purged_kfold_splits(n, k, purge, embargo).map_err(to_py)?,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown scheme {other:?}; expected \"expanding\", \"rolling\", or \
+                 \"purged_kfold\""
+            )))
+        }
+    };
+    splits
+        .into_iter()
+        .map(|s| {
+            let d = PyDict::new(py);
+            d.set_item("train", s.train)?;
+            d.set_item("test", s.test)?;
+            Ok(d)
+        })
+        .collect()
+}
+
 /// Adaptive LASSO of Zou (2006): a weighted-L1 penalty with data-driven
 /// weights `w_j = 1 / |b_j^ols|^gamma`, which restores the oracle property
 /// the plain lasso lacks. `alpha` is the overall penalty, `l1_ratio` mixes
@@ -2186,5 +2236,6 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(backtest, m)?)?;
     m.add_function(wrap_pyfunction!(adaptive_lasso, m)?)?;
     m.add_function(wrap_pyfunction!(lasso_path, m)?)?;
+    m.add_function(wrap_pyfunction!(cv_splits, m)?)?;
     Ok(())
 }
