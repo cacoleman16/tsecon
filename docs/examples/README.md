@@ -408,3 +408,103 @@ The log marginal likelihood arbitrates: −873.5, **−861.6**, −876.9 — the
 evidence decisively prefers the middle setting, drawn in house blue. Same
 seed, same 500 draws per panel, so the differences you see are the prior,
 not Monte Carlo noise.
+
+---
+
+## Structural & shrinkage
+
+Three capabilities from the identification-and-regularization frontier —
+set-identified structural inference, honest local-projection bands, and
+penalized selection. Each figure is a real computation through the Rust core,
+and they regenerate with one command:
+
+```sh
+.venv/bin/python docs/examples/showcase_structural.py
+```
+
+### Sign-restricted SVAR: the identified set
+
+**Use case:** recursive (Cholesky) identification forces a variable ordering
+you may not believe. Sign restrictions ask for less — only the *signs* of a
+few impact responses, the kind of thing theory actually delivers ("a demand
+shock raises output, consumption, and investment on impact") — and return
+*every* impulse response consistent with them. The answer is not a point: it
+is an interval at each horizon, the identified set.
+
+```python
+restr = [(0, 0, 0, "+"), (1, 0, 0, "+"), (2, 0, 0, "+")]  # (var, shock, horizon, sign)
+r = tsecon.sign_restricted_svar(data, restrictions=restr, horizon=12, n_draws=800)
+r["set_min"], r["set_max"]     # identified-set envelope       [h][var][shock]
+r["quantiles"]                 # posterior 5/16/50/84/95 within the set
+r["diagnostics"]               # rotations tried, acceptance rate
+```
+
+![Sign-restricted SVAR](img/struct-sign-svar.png)
+
+A demand shock lifts GDP growth, consumption, and investment on impact by
+construction, then each decays. The figure keeps two very different kinds of
+uncertainty visually separate: the lightest band is the **identified set** —
+the range of responses the restrictions alone cannot rule out (model
+ambiguity), and it is wide; the nested 68/90% bands inside it are **posterior**
+(sampling) uncertainty *given* a rotation, and they are much narrower. The
+Baumeister-Hamilton (2015) caveat is why the outer envelope, not the median,
+is the honest object: the uniform (Haar) prior over rotations is not flat over
+impulse responses, so it shapes the *interior* of the set even where the data
+are silent. About 54% of candidate rotations satisfy the restrictions here,
+reported in `diagnostics`.
+
+### Local projections with honest bands
+
+**Use case:** the modern default for impulse responses (Jordà 2005) — one
+regression of `y[t+h]` on the shock per horizon, with no VAR dynamics to
+commit to. The subtlety is inference: the h-step error is serially correlated,
+and the naive HAC band is known to under-cover at longer horizons. Montiel
+Olea and Plagborg-Møller (2021) show that a **lag-augmented** projection
+restores valid, uniform coverage with a one-line fix — and it is `tsecon.lp`'s
+default.
+
+```python
+la = tsecon.lp(y, shock, horizons=16)                 # se="lag_augmented" (the default)
+hc = tsecon.lp(y, shock, horizons=16, se="hac")       # the older HAC alternative
+lo, hi = la["irf"] - 1.6449 * la["se"], la["irf"] + 1.6449 * la["se"]   # 90% band
+```
+
+![Local projection vs truth](img/struct-lp-vs-truth.png)
+
+The test bed is an AR(2) driven by an *observed* shock, whose true impulse
+response is the analytic ψ-weights (dashed red) — so the recovery is checkable
+directly. Both the lag-augmented default and the HAC projection track the
+truth at every horizon, and their point estimates all but coincide. What
+differs is the **bands**: drawn with distinct fills, the two schemes disagree
+about width, and lag augmentation is the one carrying the coverage guarantee.
+Use it by default; reach for `se="hac"` only to reproduce older results.
+`tsecon.lp_iv` extends the same machinery to instrumented shocks with a
+first-stage F diagnostic.
+
+### The lasso path: shrinkage as selection
+
+**Use case:** many candidate predictors, most of them noise — the setting
+where OLS overfits and you want the model itself to choose. The lasso's L1
+penalty does double duty: it shrinks coefficients *and* sets most of them
+exactly to zero, so fitting and variable selection happen in one step.
+Sweeping the penalty α traces the classic coefficient path.
+
+```python
+alphas = np.logspace(-2, 0.5, 60)                     # weak (small) → strong (large)
+paths = np.array([tsecon.lasso(Xs, y, alpha=a)["coef"] for a in alphas])
+# same core, other objectives:
+tsecon.ridge(Xs, y, alpha)                            # shrink, never select
+tsecon.elastic_net(Xs, y, alpha, l1_ratio=0.5)        # the in-between
+```
+
+![Lasso path](img/struct-lasso-path.png)
+
+A synthetic design hides five true nonzero coefficients among 55 pure-noise
+features. Read right to left as the penalty weakens: the five signal
+coefficients (house blue) emerge in order of strength, while the noise
+features (muted) stay pinned near zero until α is very small. The dashed
+marker is the penalty that prunes the model to exactly five features — and
+here those five are *exactly the true support*: sparsity delivering correct
+selection, not merely a smaller model. Ridge (`tsecon.ridge`) and the elastic
+net (`tsecon.elastic_net`) share the same coordinate-descent core for the
+shrink-don't-select and in-between cases.
