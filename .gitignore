@@ -12,3 +12,6 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 .claude/
+
+# mkdocs build output
+/site/

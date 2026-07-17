@@ -1,0 +1,52 @@
+name: Docs
+
+# Build the mkdocs-material site and publish it to GitHub Pages on every push
+# to main. The docs are pure Markdown (the API reference is generated from the
+# type stub), so this needs no Rust toolchain or built wheel.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "bindings/python/tsecon.pyi"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; skip runs superseded by a newer push.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Regenerate the API reference from the type stub
+        run: python docs/gen_api_reference.py
+      - name: Install docs dependencies
+        run: pip install -r docs/requirements.txt
+      - name: Build the site (strict — fails on a broken link or nav entry)
+        run: mkdocs build --strict
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

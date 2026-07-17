@@ -1,0 +1,110 @@
+site_name: tsecon
+site_description: A high-performance, Rust-core time series econometrics library for Python.
+docs_dir: docs
+repo_url: https://github.com/cacoleman16/tsecon
+repo_name: tsecon
+edit_uri: ""
+
+# Internal planning specs, the standalone interactive demo, and build helpers
+# live under docs/ for the repo but are not part of the published site.
+exclude_docs: |
+  roadmap/
+  demo/
+  _hooks/
+  gen_api_reference.py
+  requirements.txt
+
+# Rewrite repo-relative links that escape docs/ to absolute GitHub URLs.
+hooks:
+  - docs/_hooks/repo_links.py
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Which model when?: which-model-when.md
+  - Guide:
+      - Overview: guide/README.md
+      - 1. Thinking in Time Series: guide/01-foundations.md
+      - 2. Exploring and Diagnosing: guide/02-exploration-and-diagnostics.md
+      - 3. Honest Inference: guide/03-inference-toolkit.md
+      - 4. Univariate Models: guide/04-univariate-models.md
+      - 5. Forecasting: guide/05-forecasting.md
+      - 6. Volatility: guide/06-volatility.md
+      - 7. Systems (VAR, Factors): guide/07-multivariate.md
+      - 8. Structural Identification: guide/08-causal-identification.md
+      - 9. Local Projections: guide/09-local-projections.md
+      - 10. Bayesian Time Series: guide/10-bayesian.md
+      - 11. Nowcasting: guide/11-nowcasting.md
+      - 12. Machine Learning: guide/12-machine-learning.md
+      - 13. Nonlinear Dynamics: guide/13-nonlinear-dynamics.md
+      - 14. Panel Time Series: guide/14-panel-time-series.md
+      - 15. Term Structure: guide/15-term-structure.md
+  - Reference:
+      - Overview: reference/README.md
+      - API reference: reference/api.md
+      - Model cards:
+          - Diagnostics: reference/model-cards/diagnostics.md
+          - Volatility: reference/model-cards/volatility.md
+          - VAR / SVAR: reference/model-cards/var-svar.md
+          - Local projections: reference/model-cards/local-projections.md
+          - Bayesian: reference/model-cards/bayesian.md
+          - GMM: reference/model-cards/gmm.md
+          - Cointegration & regimes: reference/model-cards/cointegration-regime.md
+          - Forecasting: reference/model-cards/forecasting.md
+          - Machine learning: reference/model-cards/machine-learning.md
+          - Panel: reference/model-cards/panel.md
+          - Nowcasting & MIDAS: reference/model-cards/nowcasting-midas.md
+          - Term structure: reference/model-cards/term-structure.md
+          - Realized volatility: reference/model-cards/realized-vol.md
+  - Migration:
+      - From statsmodels: migration/from-statsmodels.md
+      - From R: migration/from-r.md
+      - From Stata: migration/from-stata.md
+      - Rosetta glossary: migration/rosetta.md
+  - Gallery: examples/README.md

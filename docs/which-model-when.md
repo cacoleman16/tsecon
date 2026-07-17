@@ -1,0 +1,725 @@
+# Which model when?
+
+**Start from your problem, not from a method.** This is the flagship entry
+point to **tsecon**: you arrive with a symptom — "my series won't hold still",
+"I have quarterly GDP and monthly indicators", "my regressor is nearly a unit
+root" — and each section routes you to the function that answers it, tells you
+in one line when it applies, shows the exact call, and links to the guide
+chapter and gallery figure that go deeper.
+
+Every path ends at a real, shipped function. Where the honest answer is "not
+yet — that's on the roadmap", the section says so and names the closest thing
+that ships today rather than pretending. Every code block below was run against
+the library before publication; the tricky ones read their inputs from the
+repository's [golden fixtures](../fixtures/) so you can reproduce them from the
+repository root.
+
+A word on shapes, because it is the most common stumbling block. tsecon is
+consistent but opinionated about array layout:
+
+- a **single series** is a 1-D array of length `T`;
+- a **system** (VAR, connectedness, cointegration, factors, yield-curve panel)
+  is `T × k` — time down the rows, variables across the columns;
+- a **panel** for the fixed-effects/mean-group family is `N × T` for the
+  outcome and `k × N × T` for regressors; the *heterogeneous*-panel estimators
+  (`panel_mean_group`, `panel_pmg`) instead take Python **lists** of per-unit
+  arrays, because unit `i` may have its own length `T_i`.
+
+When a call complains about dimensions, it is almost always this.
+
+---
+
+## The decision table
+
+A compact index. Find your row, jump to the section.
+
+| Your situation | Reach for | Section |
+|---|---|---|
+| Series may be nonstationary; need to decide whether to difference | `check_stationarity` (`adf` + `kpss`) | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
+| Impulse response, and you trust a recursive ordering | `var_irf` (`var_fit`, `var_fevd`) | [2](#2-i-want-an-impulse-response) |
+| Impulse response, but you only trust the *signs* of a few responses | `sign_restricted_svar` | [2](#2-i-want-an-impulse-response) |
+| Impulse response from one equation, no full VAR to commit to | `lp`; instrumented `lp_iv`; state-dependent `lp_state` | [2](#2-i-want-an-impulse-response) |
+| Quarterly target, monthly indicators, a ragged data edge | `dfm_nowcast` | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
+| A handful of high-frequency lags to compress into a target | `weighted_midas` (large ratio) / `umidas` (small ratio) | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
+| Volatility with fat tails or occasional jumps | `gas_volatility(density="student_t")` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
+| Intraday returns / a realized-variance series | `realized_measures`, `har_rv` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
+| Panel whose units have genuinely different slopes | `panel_mean_group` (`mg`/`cce`), `panel_pmg` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| Panel IRF to a common shock; per-entity dynamics | `panel_lp`, `mean_group_var` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| Regressor is highly persistent (predictive regression) | IVX — *roadmap*; use `ols`/`iv_gmm` + HAC with care | [6](#6-my-regressor-is-highly-persistent) |
+| Many candidate predictors, most of them noise | `adaptive_lasso`, `lasso_path`, `cv_splits` | [7](#7-i-have-many-candidate-predictors) |
+| Spillovers / who-shocks-whom across many markets | `connectedness` | [8](#8-i-need-spillovers-across-markets) |
+| Fit or forecast a yield curve | `nelson_siegel`, `svensson`, `dynamic_ns` | [9](#9-i-want-to-fit-a-yield-curve) |
+| Endogenous regressor with instruments | `iv_gmm`; nonlinear moments `gmm_nonlinear` | [10](#10-endogenous-regressor-instruments) |
+
+Two cross-cutting escape hatches used throughout: robust standard errors
+(`se_type="hac"` on any regression estimator; see
+[chapter 3](guide/03-inference-toolkit.md)) and honest out-of-sample
+evaluation (`backtest`, `dm_test`; see [chapter 5](guide/05-forecasting.md)).
+Never report an estimate without the first or a forecast without the second.
+
+---
+
+## 1 · Is my series stationary? Do I need to difference?
+
+**The question in plain words:** before you fit anything, does the series
+revert to a stable mean, or does it wander like a random walk? Get this wrong
+and every downstream standard error is a fiction.
+
+**The decision path.** Do not run one test. The ADF null is a unit root; the
+KPSS null is stationarity — they answer *complementary* questions, and only
+together do they give a confident verdict. `check_stationarity` runs both and
+reports the confirmatory quadrant plus a recommendation.
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+y = np.cumsum(rng.standard_normal(300))          # a random walk
+
+rep = tsecon.check_stationarity(y)
+rep["recommendation"]   # -> "Difference"
+rep["quadrant"]         # -> "UnitRoot"  (both tests agree)
+```
+
+- **Both tests agree it's a unit root** (`quadrant="UnitRoot"`, recommendation
+  `"Difference"`) — difference the series and re-test the difference.
+- **Both agree it's stationary** (`"Stationary"`, `"Proceed"`) — proceed to
+  modeling on the level.
+- **They conflict** (`"Conflict"` / `"Inconclusive"`) — the series may be
+  trend-stationary or have a break; detrend, or reach for the individual tests
+  and inspect the regression option.
+
+Run the components directly when you need the statistic and p-value:
+
+```python
+tsecon.adf(y, regression="c")["p_value"]         # ADF, constant only
+tsecon.kpss(y, regression="ct")["p_value"]       # KPSS around a linear trend
+```
+
+**Escape hatch.** A conflict that survives detrending often means a *structural
+break* (the mean moved once, not every period) — see the breaks discussion in
+[chapter 2](guide/02-exploration-and-diagnostics.md#unit-roots-done-right-the-adf-test).
+If two series are each I(1) but move together, you do not want to difference
+away their shared trend — that is cointegration, [section 8](#8-i-need-spillovers-across-markets).
+
+**Go deeper:** [chapter 2 — KPSS and the confirmatory quadrant](guide/02-exploration-and-diagnostics.md#kpss-and-the-confirmatory-quadrant) ·
+[gallery figure](examples/img/02-stationarity.png)
+
+---
+
+## 2 · I want an impulse response
+
+**The question in plain words:** the system gets hit by a shock — how do the
+variables respond over the following quarters? This is the workhorse question
+of empirical macro, and *the right tool depends entirely on what identifying
+assumption you are willing to defend.* That is the fork below.
+
+### 2a · …and I trust a recursive (Cholesky) ordering
+
+**When it applies:** you can order the variables so that each one responds to
+the shocks above it only with a lag — the classic "slow" real block, then a
+"fast" financial block. The ordering is your identifying assumption; own it.
+
+```python
+import json, numpy as np, tsecon
+
+data = np.array(json.load(open("fixtures/var.json"))["data_100dlog_gdp_cons_inv"])  # T x 3
+
+fit  = tsecon.var_fit(data, lags=2)                       # coefficients, ICs, stability
+fit["max_root"]                                            # < 1 ⇒ stable
+
+irf  = tsecon.var_irf(data, lags=2, horizon=16, orth=True)   # [h][response][shock]
+fevd = tsecon.var_fevd(data, lags=2, horizon=16)             # variance decomposition
+```
+
+Check `fit["max_root"] < 1` before you trust any IRF — an explosive VAR has no
+meaningful impulse response. `orth=True` applies the Cholesky factorization in
+column order; reorder the columns to change the ordering assumption.
+
+**Escape hatch — short sample, noisy IRFs.** Macro samples are short and VARs
+are parameter-hungry, so the frequentist IRF can be jagged. Shrink it with a
+Minnesota-prior Bayesian VAR and read credible bands off posterior draws:
+
+```python
+draws = tsecon.bvar_irf_draws(data, lags=2, horizon=12, n_draws=200, seed=42)
+bands = np.quantile(draws, [0.05, 0.5, 0.95], axis=0)     # [draw][h][var][shock]
+```
+
+See [chapter 10 — the conjugate NIW-BVAR](guide/10-bayesian.md#the-conjugate-niw-bvar-a-posterior-without-mcmc)
+and [its gallery figure](examples/img/11-bvar-irf.png).
+
+**Go deeper:** [chapter 7 — IRFs and FEVD](guide/07-multivariate.md#irfs-and-fevd-the-vars-native-language) ·
+[chapter 8 — recursive identification](guide/08-causal-identification.md#recursive-identification-what-an-ordering-buys-you) ·
+[gallery figure](examples/img/06-var-irf.png)
+
+### 2b · …but I only trust sign restrictions
+
+**When it applies:** you cannot defend an ordering, but theory *does* tell you
+the sign of a few impact responses ("a demand shock raises output, consumption,
+and investment on impact"). Sign restrictions ask for exactly that and return
+the whole *identified set* — every response consistent with the signs — not a
+single line.
+
+```python
+restr = [(0, 0, 0, "+"), (1, 0, 0, "+"), (2, 0, 0, "+")]   # (variable, shock, horizon, sign)
+sr = tsecon.sign_restricted_svar(data, restrictions=restr, horizon=12, n_draws=500, seed=1)
+
+sr["set_min"], sr["set_max"]          # the identified-set envelope   [h][var][shock]
+sr["quantiles"]                       # 5/16/50/84/95 posterior within the set
+sr["diagnostics"]["acceptance_rate"]  # fraction of rotations that satisfied the signs
+```
+
+Read the **outer envelope** (`set_min`/`set_max`), not the median, as the
+honest object: the set is the range the restrictions alone cannot rule out.
+Watch `acceptance_rate` — a very low value means the restrictions are nearly
+incompatible and the reported set rests on few rotations.
+
+**Go deeper:** [chapter 8 — sign restrictions](guide/08-causal-identification.md#sign-restrictions-honest-bands-not-points) ·
+[gallery figure](examples/img/struct-sign-svar.png)
+
+### 2c · …I want a single-equation IRF, no full VAR
+
+**When it applies:** you have a shock (or an instrument for one) and want its
+dynamic effect on *one* outcome, without committing to the cross-equation
+dynamics a VAR imposes. Local projections run one regression per horizon and
+read the IRF straight off the shock coefficient — robust to misspecified
+dynamics, and the modern default since Jordà (2005).
+
+```python
+d = json.load(open("fixtures/lp.json"))
+y, shock, instrument = np.array(d["y"]), np.array(d["x"]), np.array(d["z"])
+
+r = tsecon.lp(y, shock, horizons=16)              # se="lag_augmented" default (Montiel Olea–Plagborg-Møller)
+r["irf"], r["se"]                                 # 90% band: irf ± 1.6449·se
+```
+
+Then branch by what you have:
+
+- **The shock is endogenous but you have an instrument** — use per-horizon
+  2SLS, which also returns a first-stage effective F so you can spot a weak
+  instrument:
+
+  ```python
+  iv = tsecon.lp_iv(y, shock, instrument, horizons=16, n_lag_controls=4)
+  iv["first_stage_f"]                             # first-stage strength
+  mult = tsecon.lp_iv(y, shock, instrument, horizons=16, cumulative=True)   # Ramey–Zubairy multiplier
+  ```
+
+- **The response differs by regime** (recession vs expansion) — interact with a
+  *predetermined* state indicator for one IRF per regime:
+
+  ```python
+  state = (np.arange(len(y)) % 2 == 0).astype(float)     # your 0/1 regime, known at t-1
+  st = tsecon.lp_state(y, shock, state, horizons=16, n_lag_controls=4)
+  st["irf_state1"], st["irf_state0"]              # per-regime responses
+  ```
+
+- **You have a panel of units all hit by the same shock** — pool them; see
+  [section 5](#5-i-have-a-panel-with-heterogeneous-units) (`panel_lp`).
+
+**Escape hatch — the response itself is nonlinear** (thresholds, regime
+switching in the *system*, not just a known indicator): the generalized impulse
+response averages over histories and shock signs. See
+[chapter 13 — the generalized impulse response](guide/13-nonlinear-dynamics.md#the-generalized-impulse-response-one-definition-that-survives).
+
+**Go deeper:** [chapter 9 — one regression per horizon](guide/09-local-projections.md#one-regression-per-horizon),
+[inference done right](guide/09-local-projections.md#inference-done-right),
+[LP-IV and multipliers](guide/09-local-projections.md#lp-iv-and-fiscal-multipliers) ·
+[gallery figure](examples/img/struct-lp-vs-truth.png)
+
+---
+
+## 3 · I have quarterly GDP and monthly indicators
+
+**The question in plain words:** your target arrives late and infrequently
+(quarterly GDP), but related indicators arrive often and early (monthly
+surveys, weekly claims, daily financial conditions). You want a current-quarter
+estimate that updates as data land — a *nowcast* — despite the frequency
+mismatch and the ragged edge where the newest series run ahead of the oldest.
+
+**The decision path** turns on *how many* high-frequency series and *how ragged*
+the edge:
+
+- **Many indicators, genuine ragged edge** → a dynamic factor model. It
+  extracts a few common factors by a Kalman filter that handles missing values
+  at the edge natively, then maps the edge factor to the target. This is the
+  central-bank workhorse.
+
+  ```python
+  import json, numpy as np, tsecon
+
+  panel = np.array(json.load(open("fixtures/tsecon-nowcast.json"))["panel"])   # T x N
+  panel[-1, 4:] = np.nan                                     # the ragged edge: newest month partial
+
+  nc = tsecon.dfm_nowcast(panel, n_factors=1)
+  nc["nowcast"]                                              # current-period estimate
+  nc["edge_factor"]                                          # the factor at the ragged edge
+  ```
+
+- **One (or few) indicators, and you want an explicit lag polynomial** → a MIDAS
+  regression. Whether to *restrict* the lag weights depends on the frequency
+  ratio:
+
+  ```python
+  m = json.load(open("fixtures/midas.json"))
+  y = np.array(m["y"])                        # low-frequency target
+  X = np.array(m["X_stacked"]).T              # nobs × K, columns = HF lags, most-recent first
+
+  u = tsecon.umidas(y, X, se_type="hac")                    # unrestricted: one OLS coef per lag
+  w = tsecon.weighted_midas(y, X, scheme="beta")            # restricted: a smooth weight curve
+  w["weights"], w["converged"]                              # weights sum to 1; always check convergence
+  ```
+
+  Use **`umidas`** when the ratio is small (monthly→quarterly, `K≈3`): with few
+  lags, plain OLS beats the restriction. Switch to **`weighted_midas`**
+  (`scheme="exp_almon"` or `"beta"`) when the ratio is large (daily→quarterly),
+  where an unrestricted regression would have dozens of coefficients and no hope
+  of estimating them — the smooth curve is what makes it feasible.
+
+**Escape hatch — "why did my nowcast move this morning?"** After a new data
+vintage lands, decompose the revision into per-datapoint news contributions
+(here two vintages differ only at the ragged edge, so the revision is *news*):
+
+```python
+old_vintage = panel.copy(); old_vintage[-1, :] = np.nan; old_vintage[-2, 3:] = np.nan
+new_vintage = panel.copy(); new_vintage[-1, :4] = np.nan       # newer data have arrived
+
+nw = tsecon.dfm_news(old_vintage, new_vintage, target_series=0, n_factors=1)
+nw["total_revision"], nw["contributions"]      # which release moved the number
+```
+
+See [chapter 11 — news decomposition](guide/11-nowcasting.md#news-decomposition-why-did-the-nowcast-move-this-morning).
+
+**Go deeper:** [chapter 11 — the two-step DFM nowcast](guide/11-nowcasting.md#the-two-step-dfm-nowcast-in-practice-dfm_nowcast),
+[MIDAS](guide/11-nowcasting.md#midas-regression-across-frequencies),
+[weighted_midas vs umidas](guide/11-nowcasting.md#restricted-midas-in-practice-weighted_midas-versus-umidas) ·
+[gallery figure (the shared Kalman engine)](examples/img/05-kalman.png)
+
+---
+
+## 4 · My volatility has fat tails or jumps
+
+**The question in plain words:** the *size* of movements is what you care about
+(risk, options, margins), and your returns are not tidy Gaussian noise — they
+have heavy tails and the occasional isolated jump that a naive filter would
+mistake for a lasting change in volatility.
+
+**The decision path** turns on what data you hold:
+
+- **A daily return series with fat tails / jumps** → a score-driven (GAS)
+  volatility model with a Student-t density. Its update is driven by the *score*
+  of the observation density, which automatically down-weights a jump as a tail
+  draw instead of over-reacting to it:
+
+  ```python
+  import json, numpy as np, tsecon
+
+  returns = np.array(json.load(open("fixtures/realized.json"))["measures_small"]["returns"])
+
+  st = tsecon.gas_volatility(returns, density="student_t")   # estimates the dof nu
+  st["nu"], np.sqrt(st["variance"])                          # low nu ⇒ heavy tails; the filtered vol path
+  ```
+
+  Compare `density="gaussian"` to *see* the robustness: the Gaussian filter
+  spikes at each jump, the Student-t barely moves.
+
+- **Intraday (high-frequency) returns within a day** → realized measures split
+  the day's variation into a continuous part and a jump part, model-free:
+
+  ```python
+  rm = tsecon.realized_measures(returns)         # {'rv', 'bipower', 'jump'}
+  jt = tsecon.bns_jump_test(returns)             # Barndorff-Nielsen–Shephard jump test
+  ```
+
+- **A series of daily realized variances** and you want to forecast it → the
+  HAR-RV regression (daily/weekly/monthly components) is the standard, cheap,
+  hard-to-beat benchmark:
+
+  ```python
+  rv = np.array(json.load(open("fixtures/realized.json"))["rv_series"])
+  hr = tsecon.har_rv(rv, variant="log")          # "level", "log", or "sqrt"; HAC SEs
+  hr["params"], hr["rsquared"]
+  ```
+
+**Escape hatch — plain volatility clustering, no jumps.** If the tails are mild
+and you just want the classic conditional-variance model on a *daily* return
+series — with robust standard errors and a multi-step forecast fan — use
+`garch_fit` (and `vol="gjr"` for the leverage/asymmetry effect, `dist="t"` for
+fat tails):
+
+```python
+daily = np.array(json.load(open("fixtures/garch.json"))["returns"])   # a daily return series
+g = tsecon.garch_fit(daily, vol="garch", dist="t", forecast_horizon=60)
+g["conditional_volatility"], g["variance_forecast"]                   # fitted path + forecast fan
+```
+
+See [chapter 6 — GARCH(1,1)](guide/06-volatility.md#garch11-the-workhorse) and
+[its gallery figure](examples/img/10-garch.png). For a portfolio of assets,
+`ccc_garch` / `dcc_garch` give the correlation dynamics.
+
+**Go deeper:** [chapter 6 — score-driven volatility](guide/06-volatility.md#score-driven-volatility-gas-and-the-robust-t-score),
+[realized measures](guide/06-volatility.md#realized-measures-without-the-plumbing-rv-bipower-and-jumps),
+[HAR](guide/06-volatility.md#measuring-volatility-realized-variance-and-har) ·
+[gallery figure](examples/img/depth-gas-volatility.png)
+
+---
+
+## 5 · I have a panel with heterogeneous units
+
+**The question in plain words:** you have many units (countries, firms, banks)
+observed over time, and you suspect they do not all share the same slope or the
+same dynamics. Pooling them into one regression is not merely inefficient here —
+if the coefficients truly differ, it is *inconsistent*. The right estimator
+depends on what kind of heterogeneity you allow and whether a common factor
+contaminates the regressors.
+
+**The decision path:**
+
+| Your situation | Reach for |
+|---|---|
+| One common slope; confounders are unit-fixed; want robust SEs | `panel_fe` (`se_type="cluster"` or `"driscoll_kraay"`) |
+| Slopes differ across units; no common factor | `panel_mean_group(method="mg")` |
+| Slopes differ *and* an unobserved common factor drives `y` and `x` | `panel_mean_group(method="cce")` |
+| A long-run relationship you want to *pool*, with unit-specific short-run dynamics | `panel_pmg` |
+| Each unit has its own multivariate *dynamics* (its own VAR) | `mean_group_var` |
+| A single shock felt by all units; want its pooled IRF | `panel_lp` |
+
+The heterogeneous estimators take **lists** of per-unit arrays (response
+vectors `ys`, regressor matrices `xs`, each `T_i × k`):
+
+```python
+import json, numpy as np, tsecon
+
+d = json.load(open("fixtures/tsecon-panelts.json"))
+yP, xP = np.array(d["y"]), np.array(d["x"])                 # yP: N×T,  xP: k×N×T
+N = yP.shape[0]
+ys = [yP[i] for i in range(N)]
+xs = [xP[:, i, :].T for i in range(N)]                      # each T×k
+
+mg  = tsecon.panel_mean_group(ys, xs, method="mg")          # average of per-unit OLS slopes
+cce = tsecon.panel_mean_group(ys, xs, method="cce")         # + cross-section averages purge the factor
+pmg = tsecon.panel_pmg(ys, xs)                              # pooled long-run θ, unit-specific EC speed
+mg["coef"], mg["se"], cce["coef"], pmg["theta"], pmg["phi_bar"]
+```
+
+For a **common-shock impulse response** (the panel analogue of local
+projections) and **per-entity VARs**, the layouts differ — `panel_lp` takes the
+`N × T` outcome and a length-`T` shock; `mean_group_var` takes a *list* of
+per-entity `T_i × k` matrices:
+
+```python
+p = json.load(open("fixtures/panel.json"))["panel"]
+outcome, shk = np.array(p["y"]), np.array(p["shock"])       # N×T outcome, length-T common shock
+plp = tsecon.panel_lp(outcome, shk, horizon=6, n_lag_controls=2, se_type="driscoll_kraay")
+plp["irf"], plp["se"], plp["nobs"]                          # watch nobs fall across horizons
+
+sys = np.array(json.load(open("fixtures/var.json"))["data_100dlog_gdp_cons_inv"])   # a T×k system
+entities = [sys[:120, :], sys[80:, :]]                      # list of per-entity T_i×k systems
+mgv = tsecon.mean_group_var(entities, lags=1, trend="c", horizon=6, response=0, impulse=0)
+mgv["irf_path"]                                             # averaged orthogonalized IRF
+```
+
+**Escape hatch — few units (< ~30).** Clustered asymptotics are unreliable with
+few clusters; the point estimate from `panel_fe` still stands, but treat its
+standard errors with caution and prefer a wild cluster bootstrap. For a *long*
+panel LP in a *short* panel, `panel_lp(..., jackknife=True)` applies the
+split-panel correction for Nickell bias that grows like O(h/T).
+
+**Go deeper:** [chapter 14 — fixed effects](guide/14-panel-time-series.md#fixed-effects-with-dependence-robust-standard-errors),
+[mean-group VAR](guide/14-panel-time-series.md#mean-group-panel-var-when-the-dynamics-themselves-differ),
+[the CCE cure](guide/14-panel-time-series.md#the-common-factor-problem-and-the-cce-cure),
+[panel LP](guide/14-panel-time-series.md#panel-local-projections)
+
+---
+
+## 6 · My regressor is highly persistent
+
+**The question in plain words:** you are running a predictive regression — next
+period's return on a valuation ratio, say — and the predictor is *nearly a unit
+root* (dividend yield, interest-rate spreads). Standard t-statistics
+over-reject wildly here: the Stambaugh bias and the near-integrated regressor
+break the textbook asymptotics, and you will "find" predictability that is not
+there.
+
+**The honest routing.** The dedicated fix — **IVX** inference (Kostakis,
+Magdalinos & Stamatogiannis 2015) and the Campbell-Yogo / Stambaugh-corrected
+predictive-regression toolkit — is **on the roadmap, not yet shipped** (Phase-5
+extension E3, gated on a validated IVX reference; see
+[ROADMAP.md](../ROADMAP.md) §10 and the extensions spec
+[docs/roadmap/12-extensions.md](roadmap/12-extensions.md)). Do not reach for a
+naive OLS t-statistic in the meantime.
+
+**What ships today, used carefully.** If your persistent predictor is
+instrumentable, cast the regression as IV and use HAC-robust GMM — this
+side-steps part of the endogeneity that drives the Stambaugh bias, though it is
+*not* a substitute for IVX's near-unit-root correction. It is
+[section 10](#10-endogenous-regressor-instruments)'s estimator (`X` holds the
+endogenous predictor, `Z` its instruments) with a HAC weight for the serially
+correlated moments:
+
+```python
+import json, numpy as np, tsecon
+
+g = json.load(open("fixtures/gmm.json"))
+y = np.array(g["y"]); const = np.ones(len(y))
+X = np.column_stack([const, g["w"], g["x"]])          # x: the persistent/endogenous regressor
+Z = np.column_stack([const, g["w"], g["z1"], g["z2"]])   # instruments include the exogenous columns
+
+fit = tsecon.iv_gmm(X, Z, y, method="2step", weight="hac")   # HAC weight for serial correlation
+```
+
+At minimum, always pair the estimate with an honest out-of-sample test
+(`backtest` + `dm_test`, [chapter 5](guide/05-forecasting.md)) against the
+historical-mean benchmark, and report unit-root diagnostics on the predictor
+([section 1](#1-is-my-series-stationary-do-i-need-to-difference)) so the reader
+can judge how near-integrated it is. In-sample predictive significance on a
+persistent regressor should be treated as a hypothesis, not a finding, until
+IVX lands.
+
+**Go deeper:** [ROADMAP.md §10 (extension E3)](../ROADMAP.md) ·
+[chapter 10 — endogenous IV via GMM](guide/08-causal-identification.md#linear-iv-gmm-with-iv_gmm)
+
+---
+
+## 7 · I have many candidate predictors
+
+**The question in plain words:** you have far more plausible predictors than
+you can estimate reliably — dozens of indicators, most of them noise — and OLS
+will overfit. You want the procedure itself to select, and you want to tune it
+*without* letting the future leak into the past.
+
+**The decision path** turns on whether you want *selection* (a sparse model) or
+just *shrinkage* (a dense, stabilized one):
+
+- **Sparse selection** — the LASSO zeros out most coefficients. For better
+  selection consistency use the adaptive LASSO (re-weighted penalty, the oracle
+  property); to pick the penalty by information criterion, sweep the whole path:
+
+  ```python
+  import json, numpy as np, tsecon
+
+  m = json.load(open("fixtures/ml.json"))
+  X, y = np.array(m["X_standardized"]), np.array(m["y_centered"])
+
+  al   = tsecon.adaptive_lasso(X, y, alpha=0.05)      # oracle-weighted L1
+  path = tsecon.lasso_path(X, y)                      # full path + AIC/BIC selection
+  path["bic_best"], path["lambdas"], path["coefs"]    # coefs at the BIC-optimal lambda
+  ```
+
+- **Tune honestly** — never use plain k-fold on time series; it trains on the
+  future. Use leakage-safe splits with an embargo/purge, then loop your CV over
+  them:
+
+  ```python
+  splits = tsecon.cv_splits(200, scheme="expanding", train=100, horizon=1, step=20)
+  for s in splits:                                    # each s = {"train": [...], "test": [...]}
+      X[s["train"]], X[s["test"]]                     # fit on train, score on test — no overlap
+  ```
+
+**Escape hatch — shrink, don't select.** If the predictors are correlated and
+you believe *all* of them matter a little, sparsity is the wrong prior: use
+`ridge` (shrinks, never zeros) or `elastic_net` (the in-between). If a handful
+of *latent* factors drive the whole cross-section, extract them first with
+`factor_model` (Bai-Ng picks the number) and predict on the factors — the
+diffusion-index approach.
+
+**Go deeper:** [chapter 12 — shrinkage with a frequentist face](guide/12-machine-learning.md#shrinkage-with-a-frequentist-face),
+[leakage comes first](guide/12-machine-learning.md#leakage-comes-first),
+[the landed functions](guide/12-machine-learning.md#three-functions-that-just-landed) ·
+[gallery figure](examples/img/struct-lasso-path.png)
+
+---
+
+## 8 · I need spillovers across markets
+
+**The question in plain words:** you have many markets or institutions and you
+want to know who transmits shocks to whom, and how connected the system is as a
+whole — a directed, time-varying map of spillovers, not just a correlation
+matrix.
+
+**The decision path.** The Diebold-Yilmaz framework reads spillovers off a
+VAR's *generalized* forecast-error variance decomposition (order-invariant, so
+you avoid the Cholesky-ordering argument). One call returns the total index and
+the directional pieces:
+
+```python
+import json, numpy as np, tsecon
+
+c = json.load(open("fixtures/connect.json"))
+data = np.array(c["data"])
+if data.shape[0] < data.shape[1]:                   # ensure T × k (time down the rows)
+    data = data.T
+
+cn = tsecon.connectedness(data, lags=2, horizon=10)
+cn["total"]                                         # system-wide connectedness (percent)
+cn["to_others"], cn["from_others"], cn["net"]       # directional spillovers per market
+cn["pairwise_net"]                                  # who-shocks-whom matrix
+```
+
+Read `net` to find net transmitters (positive) versus receivers (negative), and
+roll the window to watch connectedness spike in crises — the headline use of
+the measure.
+
+**Escape hatch — the markets share a common stochastic trend.** If the series
+are cointegrated (I(1) but tied together in the long run), model the shared
+trend explicitly rather than the spillovers of their differences: test with
+`johansen` and estimate the error-correction system with `vecm`. See
+[chapter 7 — cointegration](guide/07-multivariate.md#the-drunk-and-her-dog-cointegration).
+If instead one *policy* variable and hundreds of indicators are in play,
+`favar` compresses the indicators to factors and traces one policy shock across
+all of them ([chapter 7 — FAVAR](guide/07-multivariate.md#favar-one-policy-shock-hundreds-of-responses)).
+
+**Go deeper:** [chapter 7 — connectedness (Diebold-Yilmaz)](guide/07-multivariate.md#connectedness-who-spills-over-to-whom-diebold-yilmaz)
+
+---
+
+## 9 · I want to fit a yield curve
+
+**The question in plain words:** you have a dozen bond yields at different
+maturities that move almost in lockstep, and you want to compress them to a few
+interpretable numbers — level, slope, curvature — to store, interpolate, or
+forecast the curve.
+
+**The decision path** turns on whether you have *one* curve or a *panel*, and
+whether the curve has a second bend:
+
+- **One curve, summarize or interpolate** → Nelson-Siegel: three factors, a
+  single OLS at a fixed decay, no optimizer. The field standard.
+
+  ```python
+  import json, numpy as np, tsecon
+
+  t = json.load(open("fixtures/termstructure.json"))
+  maturities, yields = np.array(t["maturities"]), np.array(t["yields_date100"])
+
+  ns = tsecon.nelson_siegel(maturities, yields, decay=0.0609)   # or optimal_lambda=True to fit the decay
+  ns["level"], ns["slope"], ns["curvature"], ns["rsquared"]
+  ```
+
+- **The curve has a genuine second hump** (long maturities, unusual regimes) →
+  Svensson adds a fourth factor. Use it only when you *see* systematic
+  Nelson-Siegel residuals at the far end; otherwise the two decays fight over
+  the same feature and the fit blows up.
+
+  ```python
+  sv = tsecon.svensson(maturities, yields, lambda1=0.0609, lambda2=0.03)
+  sv["rsquared"]        # compare to ns["rsquared"]: a rounding-error gain ⇒ don't bother
+  ```
+
+- **A panel of curves you want to forecast** → dynamic Nelson-Siegel fits the
+  three factors every period and models the factor *series* as AR(1)s,
+  collapsing a many-maturity forecast to three:
+
+  ```python
+  panel = np.array(t["yields_panel"])                  # T × n_maturities
+  dns = tsecon.dynamic_ns(panel, maturities, decay=0.0609)
+  dns["forecast"]["yields"]                            # next-period curve, all maturities
+  dns["forecast"]["ar1_phi"]                           # factor persistences — the forecast engine
+  ```
+
+**Escape hatch — pricing, or the zero lower bound.** Nelson-Siegel is a
+*statistical* fit; it does not forbid arbitrage. For derivative pricing you want
+an arbitrage-free model (AFNS/affine), and when yields sit near zero you want a
+shadow-rate model — both are on the roadmap ([chapter 15 — the frontier](guide/15-term-structure.md)).
+Always settle whether a DNS forecast *beats a random walk* with a proper
+backtest ([chapter 5](guide/05-forecasting.md)) before trusting it.
+
+**Go deeper:** [chapter 15 — Nelson-Siegel](guide/15-term-structure.md#nelson-siegel-three-numbers-for-the-whole-curve),
+[Svensson](guide/15-term-structure.md#svensson-room-for-a-second-hump),
+[dynamic Nelson-Siegel](guide/15-term-structure.md#dynamic-nelson-siegel-a-curve-that-moves-and-a-forecast)
+
+---
+
+## 10 · Endogenous regressor + instruments
+
+**The question in plain words:** a regressor is correlated with the error —
+simultaneity, measurement error, an omitted driver — so OLS is biased, but you
+have instruments that move the regressor without touching the error directly.
+You want a consistent estimate *and* a test of whether your instruments are
+credible.
+
+**The decision path** turns on whether the moment conditions are *linear* in
+the parameters:
+
+- **Linear IV** (the common case) → `iv_gmm`. Stack the exogenous regressors
+  into *both* `X` and the instrument matrix `Z`; put the endogenous regressor in
+  `X` and its excluded instruments in `Z`. When over-identified, it returns
+  Hansen's J test of the over-identifying restrictions for free.
+
+  ```python
+  import json, numpy as np, tsecon
+
+  g = json.load(open("fixtures/gmm.json"))
+  y, x, w = np.array(g["y"]), np.array(g["x"]), np.array(g["w"])
+  z1, z2  = np.array(g["z1"]), np.array(g["z2"])
+  const = np.ones(len(y))
+
+  X = np.column_stack([const, w, x])          # x is endogenous; const, w exogenous
+  Z = np.column_stack([const, w, z1, z2])     # instruments INCLUDE the exogenous columns
+
+  fit = tsecon.iv_gmm(X, Z, y, method="2step", weight="robust")
+  fit["params"], fit["bse"]                   # robust sandwich SEs
+  fit["j_stat"], fit["j_pval"]                # Hansen J: is any instrument invalid?
+  ```
+
+  Choose `method`: `"2sls"` when just-identified or errors are homoskedastic;
+  `"2step"`/`"iterated"` when over-identified *and* errors are
+  heteroskedastic/serially correlated (there GMM beats 2SLS and only GMM gives
+  the J test). Pass `weight="hac"` for serially correlated moments — the rule,
+  not the exception, in macro time series.
+
+- **Nonlinear moments** (Euler equations, structural systems, nonlinear-in-
+  parameters IV) → `gmm_nonlinear`. Supply a Python callback returning the
+  `n × m` matrix of per-observation moment contributions; the library minimizes
+  the GMM objective by Nelder-Mead.
+
+  ```python
+  rng = np.random.default_rng(0)
+  data = rng.exponential(scale=0.5, size=2000)          # true rate lambda = 2
+
+  def moments(theta):                                   # returns (n, 2): over-identified
+      lam = theta[0]
+      return np.column_stack([data - 1.0/lam, data**2 - 2.0/lam**2])
+
+  res = tsecon.gmm_nonlinear(moments, initial=[1.0])
+  res["params"], res["converged"], res["gbar"]          # always check converged and gbar ≈ 0
+  ```
+
+  For the *efficient* estimator, do the standard two step: estimate once with
+  the identity weight, build `S` from the first-step moments, and re-optimize
+  with `weight=np.linalg.inv(S).flatten()`.
+
+**Escape hatch.** For linear IV always prefer `iv_gmm` over `gmm_nonlinear`: it
+is a closed-form solve, and it returns sandwich SEs and the J test that the
+simplex search does not. The LP-IV multipliers of
+[section 2c](#2c-i-want-a-single-equation-irf-no-full-var) are exactly
+`iv_gmm(..., method="2sls")` applied per horizon.
+
+**Go deeper:** [chapter 8 — linear IV-GMM](guide/08-causal-identification.md#linear-iv-gmm-with-iv_gmm),
+[nonlinear GMM](guide/08-causal-identification.md#nonlinear-gmm-with-gmm_nonlinear)
+
+---
+
+## When none of these fit
+
+Three more entry points that do not have their own symptom above but come up
+often:
+
+- **"My series switches between regimes on its own"** (recession/expansion,
+  high/low volatility, not a known indicator) → `markov_switching_ar` fits the
+  regimes and their transition probabilities by EM;
+  [chapter 4 — regimes and thresholds](guide/04-univariate-models.md#when-one-line-is-not-enough-regimes-and-thresholds)
+  and [chapter 13](guide/13-nonlinear-dynamics.md).
+
+- **"I just need a solid univariate forecast"** → `arima_fit` for the classical
+  route, `theta_forecast` for the competition-grade benchmark, wrapped in
+  `backtest` for honest evaluation; [chapter 5](guide/05-forecasting.md).
+
+- **"Is my model's forecast actually better than the benchmark?"** → never claim
+  it without a test: `dm_test` (Diebold-Mariano), `cw_test` (nested models),
+  `gw_test` (conditional); [chapter 5 — the Diebold-Mariano test](guide/05-forecasting.md#is-the-difference-real-the-diebold-mariano-test).
+
+For the full method-by-method treatment with the math and the classic mistakes,
+every section above links into the [15-chapter guide](guide/README.md); for
+worked, figure-rich examples on synthetic data, see the
+[gallery](examples/README.md).
