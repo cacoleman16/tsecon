@@ -75,7 +75,7 @@ The completeness review found ~80–100 items claimed by two or more domains —
 | Resampling/bootstrap engine (iid, wild, block, stationary, sieve, subsampling, grid bootstrap; block-length selection; RNG substream contract) | foundations (00) | every module |
 | HAC / long-run variance / fixed-b / EWC inference — one library-wide default policy | foundations (00) | 01, 04, 07, 09, E4 |
 | Linear-Gaussian state-space engine + simulation smoothers + EM | foundations (00) | 02, 04, 05, 08, E2, E5 |
-| Typed IRF object + generalized-IRF (KPP) engine | foundations (00), GIRF contributed by 04 | 04, 05, 06, 07 |
+| Typed IRF object + generalized-IRF (KPP) engine — incl. the cumulative view with correctly cumulated uncertainty (draw-wise cumulation for Bayesian/bootstrap; joint-covariance delta method for asymptotic; direct cumulative-outcome regression for LP) | foundations (00), GIRF contributed by 04 | 04, 05, 06, 07 |
 | Factor-model estimation core (PCA/EM/QML, factor-number criteria) | foundations (00) | 04 (owner of DFM), 08, 10 |
 | Quantile-regression solver (interior-point/ADMM, dependent-data inference, rearrangement) | foundations (00) | 03 (CAViaR), 04 (QVAR), 07 (quantile LP), 08 (MIDAS-QR), 09 |
 | Critical-value engine (response surfaces + on-demand simulation, cached & versioned) | foundations (00) | 01, 02, 04 |
