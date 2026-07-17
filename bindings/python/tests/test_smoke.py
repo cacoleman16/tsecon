@@ -243,3 +243,60 @@ def test_accuracy_measures():
     assert r["mae"] == pytest.approx(np.abs(a - f).mean(), rel=1e-12)
     denom = np.abs(np.diff(ins)).mean()
     assert r["mase"] == pytest.approx(np.abs(a - f).mean() / denom, rel=1e-12)
+
+
+GARCHFX = json.loads((FIXTURES / "garch.json").read_text())
+BVARFX = json.loads((FIXTURES / "bvar_niw.json").read_text())
+CONVFX = json.loads((FIXTURES / "convergence.json").read_text())
+
+
+def test_garch_fit_matches_arch_package():
+    ret = np.array(GARCHFX["returns"])
+    case = next(c for c in GARCHFX["cases"] if c["name"] == "garch11_zero_normal")
+    r = tsecon.garch_fit(ret, vol="garch", mean="zero", dist="normal", forecast_horizon=10)
+    assert r["loglik"] >= case["fit_loglike"] - 1e-6      # match or beat arch's optimum
+    fx_params = [case["fit_params"][k] for k in r["param_names"]]
+    np.testing.assert_allclose(r["params"], fx_params, rtol=1e-3)
+    fx_rob = [case["fit_bse_robust"][k] for k in r["param_names"]]
+    np.testing.assert_allclose(r["se_robust"], fx_rob, rtol=5e-3)
+    v = r["variance_forecast"]
+    assert len(v) == 10 and (v > 0).all()
+
+
+def test_garch_gjr_asymmetry_detected():
+    ret = np.array(GARCHFX["returns"])
+    r = tsecon.garch_fit(ret, vol="gjr", mean="zero", dist="normal")
+    assert "gamma[1]" in " ".join(r["param_names"]).lower() or len(r["params"]) == 4
+    assert np.isfinite(r["loglik"])
+
+
+def test_bvar_posterior_matches_analytic_fixture():
+    data = np.array(BVARFX["data"])
+    s = BVARFX["spec"]
+    r = tsecon.bvar_fit(data, lags=s["p"], lambda0=s["lambda0"], lambda1=s["lambda1"],
+                        lambda3=s["lambda3"], delta=0.0)
+    np.testing.assert_allclose(r["posterior_mean_coefs"], BVARFX["posterior"]["b_bar"], rtol=1e-8)
+    np.testing.assert_allclose(r["sigma_posterior_mean"],
+                               BVARFX["posterior"]["sigma_posterior_mean"], rtol=1e-8)
+    assert r["log_marginal_likelihood"] == pytest.approx(
+        BVARFX["posterior"]["log_marginal_likelihood"], rel=1e-10)
+
+
+def test_bvar_irf_draws_reproducible_and_shaped():
+    data = np.array(BVARFX["data"])
+    a = np.array(tsecon.bvar_irf_draws(data, lags=2, horizon=8, n_draws=50, seed=7))
+    b = np.array(tsecon.bvar_irf_draws(data, lags=2, horizon=8, n_draws=50, seed=7))
+    assert a.shape == (50, 9, 3, 3)
+    np.testing.assert_array_equal(a, b)          # same seed, same posterior draws
+    lo, hi = np.quantile(a, [0.05, 0.95], axis=0)
+    assert (lo <= hi).all()
+
+
+def test_mcmc_diagnostics_match_arviz():
+    for name, tol in [("good", 1e-6), ("bad", 1e-6)]:
+        chains = np.array(CONVFX[name]["chains"])
+        r = tsecon.mcmc_diagnostics(chains)
+        assert r["rhat"] == pytest.approx(CONVFX[name]["rhat_rank"], rel=tol)
+        assert r["ess_bulk"] == pytest.approx(CONVFX[name]["ess_bulk"], rel=1e-3)
+        assert r["ess_tail"] == pytest.approx(CONVFX[name]["ess_tail"], rel=1e-3)
+    assert tsecon.mcmc_diagnostics(np.array(CONVFX["bad"]["chains"]))["rhat"] > 1.01

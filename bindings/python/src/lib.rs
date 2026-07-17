@@ -697,6 +697,148 @@ fn theta_forecast<'py>(
     Ok(r.forecast.into_pyarray(py))
 }
 
+/// Fit a univariate volatility model by QMLE.
+///
+/// `vol`: "garch", "gjr", or "egarch"; `mean`: "zero" or "constant";
+/// `dist`: "normal" or "t". Conventions and results match the `arch`
+/// package (fixed-parameter logliks at machine precision). Returns both
+/// MLE and Bollerslev-Wooldridge robust standard errors.
+#[pyfunction]
+#[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = 1, q = 1, forecast_horizon = 0))]
+#[allow(clippy::too_many_arguments)]
+fn garch_fit<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    vol: &str,
+    mean: &str,
+    dist: &str,
+    p: usize,
+    o: usize,
+    q: usize,
+    forecast_horizon: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_garch::{DistSpec, GarchModel, GarchSpec, MeanSpec, VolSpec};
+    let spec = GarchSpec {
+        mean: match mean {
+            "zero" => MeanSpec::Zero,
+            "constant" => MeanSpec::Constant,
+            other => return Err(PyValueError::new_err(format!("unknown mean {other:?}; expected zero/constant"))),
+        },
+        vol: match vol {
+            "garch" => VolSpec::Garch { p, q },
+            "gjr" => VolSpec::Gjr { p, o, q },
+            "egarch" => VolSpec::Egarch { p, o, q },
+            other => return Err(PyValueError::new_err(format!("unknown vol {other:?}; expected garch/gjr/egarch"))),
+        },
+        dist: match dist {
+            "normal" => DistSpec::Normal,
+            "t" => DistSpec::StudentT,
+            other => return Err(PyValueError::new_err(format!("unknown dist {other:?}; expected normal/t"))),
+        },
+    };
+    let model = GarchModel::new(y.as_slice()?, spec).map_err(to_py)?;
+    let r = model.fit().map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("params", r.params.clone().into_pyarray(py))?;
+    d.set_item("param_names", r.param_names.clone())?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("aic", r.aic)?;
+    d.set_item("bic", r.bic)?;
+    d.set_item("se_mle", r.se_mle.clone().into_pyarray(py))?;
+    d.set_item("se_robust", r.se_robust.clone().into_pyarray(py))?;
+    d.set_item("conditional_volatility", r.conditional_volatility.clone().into_pyarray(py))?;
+    d.set_item("std_residuals", r.std_residuals.clone().into_pyarray(py))?;
+    if forecast_horizon > 0 {
+        d.set_item("variance_forecast", r.forecast_variance(forecast_horizon).map_err(to_py)?.into_pyarray(py))?;
+    }
+    Ok(d)
+}
+
+/// Fit a Bayesian VAR with the Minnesota / Normal-inverse-Wishart
+/// conjugate prior (closed-form posterior — no MCMC needed).
+///
+/// `delta` is the own-first-lag prior mean (0 for growth rates, 1 for
+/// levels/random-walk shrinkage). Returns the posterior coefficient
+/// mean, posterior mean of Sigma, and the log marginal likelihood (the
+/// evidence — compare across lambda settings to tune tightness).
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0))]
+fn bvar_fit<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    lambda0: f64,
+    lambda1: f64,
+    lambda3: f64,
+    delta: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = data.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let prior = tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
+        .map_err(to_py)?;
+    let post = prior.posterior(m.as_ref()).map_err(to_py)?;
+    let d = PyDict::new(py);
+    let bb = post.b_bar();
+    d.set_item("posterior_mean_coefs", (0..bb.nrows()).map(|i| (0..bb.ncols()).map(|j| bb[(i, j)]).collect::<Vec<_>>()).collect::<Vec<_>>())?;
+    let sm = post.sigma_posterior_mean().map_err(to_py)?;
+    d.set_item("sigma_posterior_mean", (0..sm.nrows()).map(|i| (0..sm.ncols()).map(|j| sm[(i, j)]).collect::<Vec<_>>()).collect::<Vec<_>>())?;
+    d.set_item("log_marginal_likelihood", post.log_marginal_likelihood())?;
+    Ok(d)
+}
+
+/// Posterior draws of Cholesky-orthogonalized impulse responses from the
+/// Minnesota-NIW BVAR: returns a list [draw][horizon][variable][shock] —
+/// take numpy quantiles across draws for credible bands.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, horizon = 16, n_draws = 500, seed = 0, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0))]
+#[allow(clippy::too_many_arguments)]
+fn bvar_irf_draws<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    n_draws: usize,
+    seed: u64,
+    lambda0: f64,
+    lambda1: f64,
+    lambda3: f64,
+    delta: f64,
+) -> PyResult<Bound<'py, pyo3::types::PyList>> {
+    let a = data.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let prior = tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
+        .map_err(to_py)?;
+    let post = prior.posterior(m.as_ref()).map_err(to_py)?;
+    let mut stream = tsecon_rng::Stream::new(seed);
+    let draws = post.irf_draws(n_draws, horizon, &mut stream).map_err(to_py)?;
+    let out: Vec<Vec<Vec<Vec<f64>>>> = draws
+        .iter()
+        .map(|dr| dr.iter().map(mat_to_vec2_bayes).collect())
+        .collect();
+    pyo3::types::PyList::new(py, out.iter().map(|d| d.clone()))
+}
+
+fn mat_to_vec2_bayes(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
+    (0..m.nrows()).map(|i| (0..m.ncols()).map(|j| m[(i, j)]).collect()).collect()
+}
+
+/// MCMC convergence diagnostics (Vehtari et al. 2021, ArviZ-exact):
+/// rank-normalized split R-hat and bulk/tail effective sample sizes.
+/// `chains` is (n_chains, n_draws).
+#[pyfunction]
+fn mcmc_diagnostics<'py>(
+    py: Python<'py>,
+    chains: numpy::PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = chains.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let d = PyDict::new(py);
+    d.set_item("rhat", tsecon_bayes::convergence::rhat_rank(m.as_ref()).map_err(to_py)?)?;
+    d.set_item("ess_bulk", tsecon_bayes::convergence::ess_bulk(m.as_ref()).map_err(to_py)?)?;
+    d.set_item("ess_tail", tsecon_bayes::convergence::ess_tail(m.as_ref()).map_err(to_py)?)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -727,5 +869,9 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dm_test, m)?)?;
     m.add_function(wrap_pyfunction!(accuracy, m)?)?;
     m.add_function(wrap_pyfunction!(theta_forecast, m)?)?;
+    m.add_function(wrap_pyfunction!(garch_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(bvar_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(bvar_irf_draws, m)?)?;
+    m.add_function(wrap_pyfunction!(mcmc_diagnostics, m)?)?;
     Ok(())
 }
