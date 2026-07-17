@@ -44,6 +44,11 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Best-effort: the build above is the required check (it validates the
+    # whole site). Deployment only works once GitHub Pages is enabled for the
+    # repo (Settings -> Pages -> Source: GitHub Actions); until then this step
+    # no-ops without failing the workflow.
+    continue-on-error: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
