@@ -239,10 +239,7 @@ impl SignRestrictionSet {
     pub fn accept_orientations(&self, irf: &[Mat<f64>]) -> Option<Vec<f64>> {
         let mut orient = vec![1.0f64; self.n_vars];
         for &shock in &self.restricted_shocks {
-            match self.orientation_for_shock(irf, shock) {
-                Some(s) => orient[shock] = s,
-                None => return None,
-            }
+            orient[shock] = self.orientation_for_shock(irf, shock)?;
         }
         Some(orient)
     }

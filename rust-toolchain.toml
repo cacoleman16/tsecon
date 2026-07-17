@@ -1,0 +1,8 @@
+# Pin the Rust toolchain so local development and CI use the SAME compiler and
+# clippy. Without this, CI's floating `stable` can add clippy lints that local
+# builds don't see (and `-D warnings` then fails CI on a green local branch).
+# Bump this deliberately, run `cargo clippy --workspace --all-targets` locally,
+# and fix any new lints in the same change.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
