@@ -2728,7 +2728,10 @@ fn gas_volatility<'py>(
     d.set_item("converged", res.converged)?;
     d.set_item("iterations", res.iterations)?;
     if horizon > 0 {
-        d.set_item("forecast", res.forecast(horizon).map_err(to_py)?.into_pyarray(py))?;
+        d.set_item(
+            "forecast",
+            res.forecast(horizon).map_err(to_py)?.into_pyarray(py),
+        )?;
     }
     Ok(d)
 }
@@ -2763,7 +2766,10 @@ fn panel_mean_group<'py>(
     for (yi, xi) in ys.iter().zip(xs.iter()) {
         let a = xi.as_array();
         let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
-        units.push(tsecon_panelts::PanelUnit::new(yi.as_slice()?.to_vec(), cols));
+        units.push(tsecon_panelts::PanelUnit::new(
+            yi.as_slice()?.to_vec(),
+            cols,
+        ));
     }
     let mg = match method {
         "mg" => tsecon_panelts::mean_group(&units).map_err(to_py)?,
