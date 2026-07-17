@@ -13,6 +13,18 @@ fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
 }
 
+/// A 1-D `f64` array as an owned `Vec`. Unlike `as_slice()`, this accepts
+/// non-contiguous input — a column view (`data[:, 0]`), a transposed slice, a
+/// strided view (`x[::2]`), or a pandas column — copying only when the array
+/// is not already a contiguous buffer. Every 1-D input goes through this so
+/// users never hit "the given array is not contiguous or is misaligned".
+fn vec1(a: &PyReadonlyArray1<'_, f64>) -> Vec<f64> {
+    match a.as_slice() {
+        Ok(s) => s.to_vec(),
+        Err(_) => a.as_array().to_vec(),
+    }
+}
+
 /// Autocorrelation function with Bartlett standard errors.
 ///
 /// Matches statsmodels `acf` conventions exactly (validated at 1e-12).
@@ -24,7 +36,7 @@ fn acf<'py>(
     nlags: usize,
     adjusted: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_diag::acf(y.as_slice()?, nlags, adjusted).map_err(to_py)?;
+    let r = tsecon_diag::acf(&vec1(&y), nlags, adjusted).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("acf", r.acf.into_pyarray(py))?;
     d.set_item("bartlett_se", r.bartlett_se.into_pyarray(py))?;
@@ -42,7 +54,8 @@ fn pacf<'py>(
     nlags: usize,
     method: &str,
 ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-    let y = y.as_slice()?;
+    let y = vec1(&y);
+    let y = y.as_slice();
     let v = match method {
         "yw" => tsecon_diag::pacf_yw(y, nlags).map_err(to_py)?,
         "ols" => tsecon_diag::pacf_ols(y, nlags).map_err(to_py)?,
@@ -63,7 +76,7 @@ fn ljung_box<'py>(
     y: PyReadonlyArray1<'py, f64>,
     nlags: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_diag::ljung_box(y.as_slice()?, nlags).map_err(to_py)?;
+    let r = tsecon_diag::ljung_box(&vec1(&y), nlags).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item(
         "lags",
@@ -86,7 +99,7 @@ fn jarque_bera<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_diag::jarque_bera(x.as_slice()?).map_err(to_py)?;
+    let r = tsecon_diag::jarque_bera(&vec1(&x)).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("statistic", r.statistic)?;
     d.set_item("p_value", r.p_value)?;
@@ -104,7 +117,7 @@ fn arch_lm<'py>(
     resid: PyReadonlyArray1<'py, f64>,
     nlags: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_diag::arch_lm(resid.as_slice()?, nlags).map_err(to_py)?;
+    let r = tsecon_diag::arch_lm(&vec1(&resid), nlags).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("statistic", r.statistic)?;
     d.set_item("p_value", r.p_value)?;
@@ -177,7 +190,7 @@ fn optimal_block_length<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_bootstrap::optimal_block_length(y.as_slice()?).map_err(to_py)?;
+    let r = tsecon_bootstrap::optimal_block_length(&vec1(&y)).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("stationary", r.stationary)?;
     d.set_item("circular", r.circular)?;
@@ -198,7 +211,8 @@ fn local_level_smooth<'py>(
     sigma2_eta: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_ssm::tsecon_linalg::faer::Mat;
-    let ys = y.as_slice()?;
+    let ys = vec1(&y);
+    let ys = ys.as_slice();
     let obs = Mat::from_fn(ys.len(), 1, |i, _| ys[i]);
     let model =
         tsecon_ssm::LinearGaussianSSM::local_level(sigma2_eps, sigma2_eta).map_err(to_py)?;
@@ -247,7 +261,8 @@ fn ar_loglik(
     intercept: f64,
 ) -> PyResult<f64> {
     use tsecon_ssm::tsecon_linalg::faer::Mat;
-    let ys = y.as_slice()?;
+    let ys = vec1(&y);
+    let ys = ys.as_slice();
     let obs = Mat::from_fn(ys.len(), 1, |i, _| ys[i]);
     let model = tsecon_ssm::LinearGaussianSSM::ar(&coeffs, sigma2, intercept).map_err(to_py)?;
     model.loglike(obs.as_ref()).map_err(to_py)
@@ -293,7 +308,7 @@ fn adf<'py>(
             )))
         }
     };
-    let r = tsecon_diag::adf(y.as_slice()?, adf_regression(regression)?, sel).map_err(to_py)?;
+    let r = tsecon_diag::adf(&vec1(&y), adf_regression(regression)?, sel).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("statistic", r.statistic)?;
     d.set_item("p_value", r.p_value)?;
@@ -348,7 +363,7 @@ fn kpss<'py>(
             }
         }
     };
-    let r = tsecon_diag::kpss(y.as_slice()?, reg, lags).map_err(to_py)?;
+    let r = tsecon_diag::kpss(&vec1(&y), reg, lags).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("statistic", r.statistic)?;
     d.set_item("p_value", r.p_value)?;
@@ -366,7 +381,7 @@ fn check_stationarity<'py>(
     y: PyReadonlyArray1<'py, f64>,
     alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_diag::check_stationarity_at(y.as_slice()?, alpha).map_err(to_py)?;
+    let r = tsecon_diag::check_stationarity_at(&vec1(&y), alpha).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("quadrant", format!("{:?}", r.quadrant))?;
     d.set_item("recommendation", format!("{:?}", r.recommendation))?;
@@ -403,7 +418,8 @@ fn long_run_variance(
     kernel: &str,
     bandwidth: Option<f64>,
 ) -> PyResult<f64> {
-    let xs = x.as_slice()?;
+    let xs = vec1(&x);
+    let xs = xs.as_slice();
     let mean = xs.iter().sum::<f64>() / xs.len().max(1) as f64;
     let z: Vec<f64> = xs.iter().map(|v| v - mean).collect();
     let k = hac_kernel(kernel)?;
@@ -427,7 +443,8 @@ fn ols<'py>(
     maxlags: Option<usize>,
     use_correction: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let ys = y.as_slice()?;
+    let ys = vec1(&y);
+    let ys = ys.as_slice();
     let xa = x.as_array();
     let cols: Vec<Vec<f64>> = (0..xa.ncols()).map(|j| xa.column(j).to_vec()).collect();
     let fit = tsecon_hac::ols(ys, &cols).map_err(to_py)?;
@@ -631,9 +648,9 @@ fn hp_filter<'py>(
     one_sided: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let dec = if one_sided {
-        tsecon_filters::hp_filter_one_sided(y.as_slice()?, lamb)
+        tsecon_filters::hp_filter_one_sided(&vec1(&y), lamb)
     } else {
-        tsecon_filters::hp_filter(y.as_slice()?, lamb)
+        tsecon_filters::hp_filter(&vec1(&y), lamb)
     }
     .map_err(to_py)?;
     decomposition_dict(py, &dec)
@@ -650,7 +667,7 @@ fn bk_filter<'py>(
     high: f64,
     k: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let dec = tsecon_filters::bk_filter(y.as_slice()?, low, high, k).map_err(to_py)?;
+    let dec = tsecon_filters::bk_filter(&vec1(&y), low, high, k).map_err(to_py)?;
     decomposition_dict(py, &dec)
 }
 
@@ -664,7 +681,7 @@ fn cf_filter<'py>(
     high: f64,
     drift: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let dec = tsecon_filters::cf_filter(y.as_slice()?, low, high, drift).map_err(to_py)?;
+    let dec = tsecon_filters::cf_filter(&vec1(&y), low, high, drift).map_err(to_py)?;
     decomposition_dict(py, &dec)
 }
 
@@ -677,7 +694,7 @@ fn hamilton_filter<'py>(
     h: usize,
     p: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_filters::hamilton_filter(y.as_slice()?, h, p).map_err(to_py)?;
+    let r = tsecon_filters::hamilton_filter(&vec1(&y), h, p).map_err(to_py)?;
     let d = decomposition_dict(py, &r.decomposition)?;
     d.set_item("beta", r.beta.clone().into_pyarray(py))?;
     Ok(d)
@@ -703,7 +720,7 @@ fn dm_test<'py>(
             )))
         }
     };
-    let r = tsecon_forecast::dm_test(e1.as_slice()?, e2.as_slice()?, h, l).map_err(to_py)?;
+    let r = tsecon_forecast::dm_test(&vec1(&e1), &vec1(&e2), h, l).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("dm_stat", r.dm_stat)?;
     d.set_item("hln_stat", r.hln_stat)?;
@@ -723,8 +740,10 @@ fn accuracy<'py>(
     period: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast as f;
-    let a = actual.as_slice()?;
-    let p = forecast.as_slice()?;
+    let a = vec1(&actual);
+    let a = a.as_slice();
+    let p = vec1(&forecast);
+    let p = p.as_slice();
     let d = PyDict::new(py);
     d.set_item("me", f::me(a, p).map_err(to_py)?)?;
     d.set_item("rmse", f::rmse(a, p).map_err(to_py)?)?;
@@ -736,14 +755,8 @@ fn accuracy<'py>(
         d.set_item("smape", v)?;
     }
     if let Some(ins) = insample {
-        d.set_item(
-            "mase",
-            f::mase(a, p, ins.as_slice()?, period).map_err(to_py)?,
-        )?;
-        d.set_item(
-            "rmsse",
-            f::rmsse(a, p, ins.as_slice()?, period).map_err(to_py)?,
-        )?;
+        d.set_item("mase", f::mase(a, p, &vec1(&ins), period).map_err(to_py)?)?;
+        d.set_item("rmsse", f::rmsse(a, p, &vec1(&ins), period).map_err(to_py)?)?;
     }
     Ok(d)
 }
@@ -758,7 +771,7 @@ fn theta_forecast<'py>(
     steps: usize,
     period: usize,
 ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-    let r = tsecon_forecast::theta_forecast(y.as_slice()?, period, steps).map_err(to_py)?;
+    let r = tsecon_forecast::theta_forecast(&vec1(&y), period, steps).map_err(to_py)?;
     Ok(r.forecast.into_pyarray(py))
 }
 
@@ -819,7 +832,7 @@ fn garch_fit<'py>(
             }
         },
     };
-    let model = GarchModel::new(y.as_slice()?, spec).map_err(to_py)?;
+    let model = GarchModel::new(&vec1(&y), spec).map_err(to_py)?;
     let r = model.fit().map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("params", r.params.clone().into_pyarray(py))?;
@@ -1010,7 +1023,7 @@ fn arima_fit<'py>(
     let spec = tsecon_arima::ArimaSpec::new(p, d, q)
         .map_err(to_py)?
         .with_constant(constant);
-    let r = spec.fit(y.as_slice()?).map_err(to_py)?;
+    let r = spec.fit(&vec1(&y)).map_err(to_py)?;
     let dct = PyDict::new(py);
     dct.set_item("params", r.params().to_vec().into_pyarray(py))?;
     dct.set_item("param_names", r.param_names().to_vec())?;
@@ -1062,7 +1075,7 @@ fn lp<'py>(
             )))
         }
     };
-    let r = tsecon_lp::lp(y.as_slice()?, shock.as_slice()?, spec).map_err(to_py)?;
+    let r = tsecon_lp::lp(&vec1(&y), &vec1(&shock), spec).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item(
         "horizons",
@@ -1093,13 +1106,8 @@ fn lp_iv<'py>(
     cumulative: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).cumulative(cumulative);
-    let r = tsecon_lp::lp_iv(
-        y.as_slice()?,
-        impulse.as_slice()?,
-        instrument.as_slice()?,
-        spec,
-    )
-    .map_err(to_py)?;
+    let r =
+        tsecon_lp::lp_iv(&vec1(&y), &vec1(&impulse), &vec1(&instrument), spec).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item(
         "horizons",
@@ -1131,7 +1139,7 @@ fn ridge<'py>(
     alpha: f64,
 ) -> PyResult<Bound<'py, PyArray1<f64>>> {
     let m = to_faer(&x);
-    let coef = tsecon_ml::ridge(m.as_ref(), y.as_slice()?, alpha).map_err(to_py)?;
+    let coef = tsecon_ml::ridge(m.as_ref(), &vec1(&y), alpha).map_err(to_py)?;
     Ok(coef.into_pyarray(py))
 }
 
@@ -1153,7 +1161,7 @@ fn elastic_net<'py>(
     let m = to_faer(&x);
     let opts = tsecon_ml::CoordDescentOptions { tol, max_iter };
     let fit =
-        tsecon_ml::elastic_net(m.as_ref(), y.as_slice()?, alpha, l1_ratio, opts).map_err(to_py)?;
+        tsecon_ml::elastic_net(m.as_ref(), &vec1(&y), alpha, l1_ratio, opts).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("coef", fit.coef.into_pyarray(py))?;
     d.set_item("n_iter", fit.n_iter)?;
@@ -1329,7 +1337,7 @@ fn panel_lp<'py>(
         tsecon_panel::PanelLpConfig::new(horizon, n_lag_controls, panel_se(se_type, bandwidth)?);
     cfg.cumulative = cumulative;
     cfg.jackknife = jackknife;
-    let r = tsecon_panel::panel_lp(&data, shock.as_slice()?, &cfg).map_err(to_py)?;
+    let r = tsecon_panel::panel_lp(&data, &vec1(&shock), &cfg).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("irf", r.irf.into_pyarray(py))?;
     d.set_item("se", r.se.into_pyarray(py))?;
@@ -1357,10 +1365,10 @@ fn cw_test<'py>(
     lrv_lags: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_forecast::cw_test(
-        e_small.as_slice()?,
-        e_large.as_slice()?,
-        yhat_small.as_slice()?,
-        yhat_large.as_slice()?,
+        &vec1(&e_small),
+        &vec1(&e_large),
+        &vec1(&yhat_small),
+        &vec1(&yhat_large),
         lrv_lags,
     )
     .map_err(to_py)?;
@@ -1381,8 +1389,7 @@ fn gw_test<'py>(
     loss2: PyReadonlyArray1<'py, f64>,
     lrv_lags: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r =
-        tsecon_forecast::gw_test(loss1.as_slice()?, loss2.as_slice()?, lrv_lags).map_err(to_py)?;
+    let r = tsecon_forecast::gw_test(&vec1(&loss1), &vec1(&loss2), lrv_lags).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("gw_stat", r.gw_stat)?;
     d.set_item("p_value", r.p_value)?;
@@ -1423,7 +1430,7 @@ fn periodogram<'py>(
     detrend: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_spectral::periodogram(
-        x.as_slice()?,
+        &vec1(&x),
         fs,
         spectral_window(window)?,
         tsecon_spectral::Scaling::Density,
@@ -1450,7 +1457,7 @@ fn welch<'py>(
     detrend: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_spectral::welch(
-        x.as_slice()?,
+        &vec1(&x),
         fs,
         nperseg,
         noverlap,
@@ -1481,8 +1488,8 @@ fn coherence<'py>(
     detrend: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_spectral::coherence(
-        x.as_slice()?,
-        y.as_slice()?,
+        &vec1(&x),
+        &vec1(&y),
         fs,
         nperseg,
         noverlap,
@@ -1577,7 +1584,8 @@ fn markov_switching_ar<'py>(
     tol: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_regime::{MarkovSwitchingAr, MsarParams, MsarSpec};
-    let ys = y.as_slice()?;
+    let ys = vec1(&y);
+    let ys = ys.as_slice();
     let spec = MsarSpec {
         k_regimes,
         order,
@@ -1691,7 +1699,7 @@ fn umidas<'py>(
             )))
         }
     };
-    let r = tsecon_midas::umidas(y.as_slice()?, &cols, se).map_err(to_py)?;
+    let r = tsecon_midas::umidas(&vec1(&y), &cols, se).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("params", r.params.into_pyarray(py))?;
     d.set_item("bse", r.bse.into_pyarray(py))?;
@@ -1766,7 +1774,8 @@ fn realized_measures<'py>(
     py: Python<'py>,
     returns: PyReadonlyArray1<'py, f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = returns.as_slice()?;
+    let r = vec1(&returns);
+    let r = r.as_slice();
     let rv = tsecon_realized::realized_variance(r).map_err(to_py)?;
     let bv = tsecon_realized::bipower_variation(r).map_err(to_py)?;
     let jump = tsecon_realized::jump_component(r).map_err(to_py)?;
@@ -1811,7 +1820,7 @@ fn har_rv<'py>(
         hac_maxlags,
         use_correction,
     };
-    let fit = tsecon_realized::har_rv(rv.as_slice()?, &cfg).map_err(to_py)?;
+    let fit = tsecon_realized::har_rv(&vec1(&rv), &cfg).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("params", fit.params.into_pyarray(py))?;
     d.set_item("bse", fit.bse.into_pyarray(py))?;
@@ -1925,7 +1934,8 @@ fn iv_gmm<'py>(
             .collect()
     };
     let (x_cols, z_cols) = (cols(&x), cols(&z));
-    let yv = y.as_slice()?;
+    let yv = vec1(&y);
+    let yv = yv.as_slice();
     let cov_weight = match weight {
         "robust" => GmmWeight::Robust,
         "hac" => GmmWeight::Hac {
@@ -2036,7 +2046,7 @@ fn adaptive_lasso<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let m = to_faer(&x);
     let opts = tsecon_ml::CoordDescentOptions { tol, max_iter };
-    let fit = tsecon_ml::adaptive_lasso(m.as_ref(), y.as_slice()?, alpha, l1_ratio, gamma, opts)
+    let fit = tsecon_ml::adaptive_lasso(m.as_ref(), &vec1(&y), alpha, l1_ratio, gamma, opts)
         .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("coef", fit.coef.into_pyarray(py))?;
@@ -2074,7 +2084,7 @@ fn lasso_path<'py>(
         cd: tsecon_ml::CoordDescentOptions { tol, max_iter },
     };
     let path =
-        tsecon_ml::regularization_path(m.as_ref(), y.as_slice()?, l1_ratio, opts).map_err(to_py)?;
+        tsecon_ml::regularization_path(m.as_ref(), &vec1(&y), l1_ratio, opts).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("lambdas", path.lambdas.clone().into_pyarray(py))?;
     d.set_item("coefs", path.coefs.clone())?;
@@ -2153,7 +2163,7 @@ fn backtest<'py>(
              seasonal_naive, theta"
         )));
     }
-    let res = bt.run(y.as_slice()?, point).map_err(to_py)?;
+    let res = bt.run(&vec1(&y), point).map_err(to_py)?;
 
     let mut forecasts = Vec::with_capacity(horizon);
     let mut targets = Vec::with_capacity(horizon);
@@ -2207,7 +2217,9 @@ fn nelson_siegel<'py>(
     decay: f64,
     optimal_lambda: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let (mat, yld) = (maturities.as_slice()?, yields.as_slice()?);
+    let (mat, yld) = (vec1(&maturities), vec1(&yields));
+    let mat = mat.as_slice();
+    let yld = yld.as_slice();
     let fit = if optimal_lambda {
         tsecon_termstructure::fit_nelson_siegel_optimal_lambda(mat, yld, decay).map_err(to_py)?
     } else {
@@ -2237,7 +2249,9 @@ fn svensson<'py>(
     lambda1: f64,
     lambda2: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let (mat, yld) = (maturities.as_slice()?, yields.as_slice()?);
+    let (mat, yld) = (vec1(&maturities), vec1(&yields));
+    let mat = mat.as_slice();
+    let yld = yld.as_slice();
     let fit = tsecon_termstructure::fit_svensson(mat, yld, lambda1, lambda2).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("factors", fit.factors.to_vec().into_pyarray(py))?;
@@ -2349,7 +2363,7 @@ fn weighted_midas<'py>(
         }
     };
     let start = weight_start.map(|(p1, p2)| [p1, p2]);
-    let fit = tsecon_midas::weighted_midas(y.as_slice()?, &cols, sch, start).map_err(to_py)?;
+    let fit = tsecon_midas::weighted_midas(&vec1(&y), &cols, sch, start).map_err(to_py)?;
     let scheme_name = match fit.scheme {
         tsecon_midas::WeightScheme::ExpAlmon => "exp_almon",
         tsecon_midas::WeightScheme::Beta => "beta",
@@ -2403,13 +2417,8 @@ fn lp_state<'py>(
             )))
         }
     };
-    let r = tsecon_lp::lp_state(
-        y.as_slice()?,
-        shock.as_slice()?,
-        state_indicator.as_slice()?,
-        spec,
-    )
-    .map_err(to_py)?;
+    let r = tsecon_lp::lp_state(&vec1(&y), &vec1(&shock), &vec1(&state_indicator), spec)
+        .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item(
         "horizons",
@@ -2515,7 +2524,8 @@ fn dynamic_ns<'py>(
     decay: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
     let rows = mat_to_vec2(&to_faer(&panel));
-    let mat = maturities.as_slice()?;
+    let mat = vec1(&maturities);
+    let mat = mat.as_slice();
     let fit = tsecon_termstructure::fit_dynamic_ns(&rows, mat, decay).map_err(to_py)?;
 
     let factors: Vec<Vec<f64>> = fit.factors.iter().map(|f| f.to_vec()).collect();
@@ -2574,7 +2584,8 @@ fn favar<'py>(
     orth: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let m = to_faer(&panel);
-    let pol = policy.as_slice()?;
+    let pol = vec1(&policy);
+    let pol = pol.as_slice();
     let tr = match trend {
         "c" => tsecon_favar::Trend::Constant,
         "n" => tsecon_favar::Trend::None,
@@ -2618,7 +2629,8 @@ fn favar<'py>(
 /// For a jump-robust version use `tripower_quarticity`.
 #[pyfunction]
 fn realized_quarticity(returns: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
-    let r = returns.as_slice()?;
+    let r = vec1(&returns);
+    let r = r.as_slice();
     tsecon_realized::realized_quarticity(r).map_err(to_py)
 }
 
@@ -2629,7 +2641,8 @@ fn realized_quarticity(returns: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
 /// jump test.
 #[pyfunction]
 fn tripower_quarticity(returns: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
-    let r = returns.as_slice()?;
+    let r = vec1(&returns);
+    let r = r.as_slice();
     tsecon_realized::tripower_quarticity(r).map_err(to_py)
 }
 
@@ -2642,7 +2655,8 @@ fn bns_jump_test<'py>(
     py: Python<'py>,
     returns: PyReadonlyArray1<'py, f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = returns.as_slice()?;
+    let r = vec1(&returns);
+    let r = r.as_slice();
     let ratio = tsecon_realized::bns_jump_ratio(r).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("ratio", ratio)?;
@@ -2662,8 +2676,10 @@ fn realized_range(
     open: Option<PyReadonlyArray1<'_, f64>>,
     close: Option<PyReadonlyArray1<'_, f64>>,
 ) -> PyResult<f64> {
-    let h = high.as_slice()?;
-    let l = low.as_slice()?;
+    let h = vec1(&high);
+    let h = h.as_slice();
+    let l = vec1(&low);
+    let l = l.as_slice();
     match method {
         "parkinson" => tsecon_realized::parkinson(h, l).map_err(to_py),
         "garman_klass" => {
@@ -2673,8 +2689,10 @@ fn realized_range(
             let close = close.ok_or_else(|| {
                 PyValueError::new_err("garman_klass requires the open and close series")
             })?;
-            let o = open.as_slice()?;
-            let c = close.as_slice()?;
+            let o = vec1(&open);
+            let o = o.as_slice();
+            let c = vec1(&close);
+            let c = c.as_slice();
             tsecon_realized::garman_klass(o, h, l, c).map_err(to_py)
         }
         other => Err(PyValueError::new_err(format!(
@@ -2710,7 +2728,8 @@ fn gas_volatility<'py>(
             )))
         }
     };
-    let model = tsecon_gas::GasModel::new(y.as_slice()?, dens).map_err(to_py)?;
+    let yv = vec1(&y);
+    let model = tsecon_gas::GasModel::new(&yv, dens).map_err(to_py)?;
     let res = model.fit().map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("omega", res.params.omega)?;
@@ -2766,10 +2785,7 @@ fn panel_mean_group<'py>(
     for (yi, xi) in ys.iter().zip(xs.iter()) {
         let a = xi.as_array();
         let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
-        units.push(tsecon_panelts::PanelUnit::new(
-            yi.as_slice()?.to_vec(),
-            cols,
-        ));
+        units.push(tsecon_panelts::PanelUnit::new(vec1(yi), cols));
     }
     let mg = match method {
         "mg" => tsecon_panelts::mean_group(&units).map_err(to_py)?,
@@ -2886,10 +2902,7 @@ fn panel_pmg<'py>(
     for (yi, xi) in ys.iter().zip(xs.iter()) {
         let a = xi.as_array();
         let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
-        units.push(tsecon_panelts::PanelUnit::new(
-            yi.as_slice()?.to_vec(),
-            cols,
-        ));
+        units.push(tsecon_panelts::PanelUnit::new(vec1(yi), cols));
     }
     let r = tsecon_panelts::pmg(&units).map_err(to_py)?;
     let d = PyDict::new(py);
@@ -2996,7 +3009,9 @@ fn predictive_regression<'py>(
     cz: f64,
     alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let (rs, xs) = (r.as_slice()?, x.as_slice()?);
+    let (rs, xs) = (vec1(&r), vec1(&x));
+    let rs = rs.as_slice();
+    let xs = xs.as_slice();
     let ols = tsecon_predreg::ols_predictive(rs, xs).map_err(to_py)?;
     let stb = tsecon_predreg::stambaugh(rs, xs).map_err(to_py)?;
     let cfg = tsecon_predreg::IvxConfig { cz, alpha };
@@ -3049,7 +3064,7 @@ fn ivx_test<'py>(
     let a = xs.as_array();
     let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
     let cfg = tsecon_predreg::IvxConfig { cz, alpha };
-    let iv = tsecon_predreg::ivx_multi(r.as_slice()?, &cols, cfg).map_err(to_py)?;
+    let iv = tsecon_predreg::ivx_multi(&vec1(&r), &cols, cfg).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("beta_ivx", iv.beta_ivx.clone().into_pyarray(py))?;
     d.set_item("wald", iv.wald)?;
@@ -3081,7 +3096,8 @@ fn recession_probit<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let a = x.as_array();
     let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
-    let ys = y.as_slice()?;
+    let ys = vec1(&y);
+    let ys = ys.as_slice();
     let d = PyDict::new(py);
     if dynamic {
         let f = tsecon_recession::fit_dynamic_probit(ys, &cols).map_err(to_py)?;
@@ -3139,13 +3155,8 @@ fn cg_regression<'py>(
         Some(l) => tsecon_survey::HacBandwidth::Lags(l),
         None => tsecon_survey::HacBandwidth::Auto,
     };
-    let r = tsecon_survey::cg_regression(
-        errors.as_slice()?,
-        revisions.as_slice()?,
-        bw,
-        use_correction,
-    )
-    .map_err(to_py)?;
+    let r = tsecon_survey::cg_regression(&vec1(&errors), &vec1(&revisions), bw, use_correction)
+        .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("intercept", r.intercept)?;
     d.set_item("slope", r.slope)?;
@@ -3182,8 +3193,8 @@ fn forecast_efficiency<'py>(
         Some(l) => tsecon_survey::HacBandwidth::Lags(l),
         None => tsecon_survey::HacBandwidth::Auto,
     };
-    let r = tsecon_survey::efficiency_test(errors.as_slice()?, &cols, bw, use_correction)
-        .map_err(to_py)?;
+    let r =
+        tsecon_survey::efficiency_test(&vec1(&errors), &cols, bw, use_correction).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("params", r.params.clone().into_pyarray(py))?;
     d.set_item("bse", r.bse.clone().into_pyarray(py))?;
@@ -3206,7 +3217,7 @@ fn frac_diff<'py>(
     x: PyReadonlyArray1<'py, f64>,
     d: f64,
 ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-    let out = tsecon_longmemory::frac_diff(x.as_slice()?, d).map_err(to_py)?;
+    let out = tsecon_longmemory::frac_diff(&vec1(&x), d).map_err(to_py)?;
     Ok(out.into_pyarray(py))
 }
 
@@ -3225,7 +3236,8 @@ fn long_memory_d<'py>(
     m: Option<usize>,
     method: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let xs = x.as_slice()?;
+    let xs = vec1(&x);
+    let xs = xs.as_slice();
     let bw = m.unwrap_or_else(|| tsecon_longmemory::default_bandwidth(xs.len()));
     let d = PyDict::new(py);
     match method {

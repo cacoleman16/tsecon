@@ -318,3 +318,18 @@ def test_arima_d1_random_walk_law():
     sig = np.sqrt(np.exp(0) * np.var(np.diff(rw)))
     np.testing.assert_allclose(r["forecast_se"], r["forecast_se"][0] * np.sqrt(np.arange(1, 10)),
                                rtol=1e-8)  # se_h = sigma * sqrt(h)
+
+
+def test_noncontiguous_1d_input_accepted():
+    """Column slices / strided views (non-contiguous) must work, not raise
+    'the given array is not contiguous'."""
+    import numpy as np
+    import tsecon
+    data = np.cumsum(np.random.default_rng(0).standard_normal((300, 3)), axis=0)
+    col = data[:, 1]                       # a non-contiguous column view
+    assert not col.flags["C_CONTIGUOUS"]
+    r = tsecon.check_stationarity(col)     # would previously raise
+    assert "quadrant" in r
+    strided = data[::2, 0]                 # strided view
+    tsecon.acf(strided, nlags=5)
+    tsecon.adf(col)
