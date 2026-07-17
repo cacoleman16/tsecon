@@ -56,7 +56,7 @@ def section_sign_svar():
     C_SET, C_90, C_68, C_MED = ts.SEQ_BLUE[0], ts.SEQ_BLUE[2], ts.SEQ_BLUE[4], ts.SEQ_BLUE[6]
 
     with ts.theme():
-        fig, axes = plt.subplots(1, 3, figsize=(ts.WIDTH_DOUBLE, 2.6))  # not sharey: scales differ
+        fig, axes = plt.subplots(1, 3, figsize=(ts.WIDTH_DOUBLE, 2.9))  # not sharey: scales differ
         for i, ax in enumerate(axes):
             ts.zero_line(ax)
             ax.fill_between(t, set_min[:, i, 0], set_max[:, i, 0], color=C_SET, lw=0, zorder=2)
@@ -79,13 +79,15 @@ def section_sign_svar():
             Patch(facecolor=C_68, label="68% posterior band"),
             Line2D([0], [0], color=C_MED, lw=1.8, label="posterior median"),
         ]
-        # After the impact spike the Investment panel's upper-right is empty room.
-        axes[2].legend(handles=handles, loc="upper right", fontsize=7, handlelength=1.4,
-                       borderaxespad=0.4, labelspacing=0.35)
+        # One shared horizontal legend below the panels — never over the data.
+        fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False,
+                   fontsize=7.5, handlelength=1.4, columnspacing=1.6,
+                   handletextpad=0.5, bbox_to_anchor=(0.5, 0.015))
         fig.suptitle("A demand shock lifts all three — but the identified set dwarfs "
                      "posterior uncertainty",
-                     x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
-        fig.tight_layout(rect=(0, 0.02, 1, 0.90))
+                     x=0.005, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
+        # Reserve the top strip for the title and the bottom strip for the legend.
+        fig.tight_layout(rect=(0, 0.10, 1, 0.90))
         ts.stamp(fig, "Sign-restricted Bayesian SVAR(2) on US GDP/consumption/investment growth · "
                       "tsecon.sign_restricted_svar (800 draws, seed 20260716, "
                       f"{acc:.0%} rotation acceptance) · outer band = identified set (Haar prior over "

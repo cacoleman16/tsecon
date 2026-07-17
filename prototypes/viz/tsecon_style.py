@@ -7,6 +7,7 @@ palette, banded uncertainty, recessive chrome, publication sizing.
 This is a prototype: the production version lives in the future tsecon.plots
 package with themes (paper/presentation/dark/draft) and export presets.
 """
+import textwrap
 from contextlib import contextmanager
 
 import matplotlib as mpl
@@ -128,9 +129,21 @@ def band_label(ax, x, y, text):
     ax.annotate(text, xy=(x, y), fontsize=7.5, color=INK_2, ha="left", va="center")
 
 
-def stamp(fig, text):
-    """Metadata stamp (identification method, band type) — self-documenting figures."""
-    fig.text(0.005, -0.02, text, fontsize=7.0, color=MUTED, ha="left", va="top")
+def stamp(fig, text, fontsize=7.0):
+    """Metadata stamp (identification method, band type) — self-documenting figures.
+
+    The caption is wrapped to the figure width. This matters because the house
+    ``savefig.bbox = "tight"`` expands the saved canvas to fit the widest
+    artist: an unwrapped one-line caption would balloon the image far past the
+    plot and leave a large blank margin beside it. Wrapping keeps the panels the
+    widest element, so the trimmed bbox hugs them.
+    """
+    fig_w_in = fig.get_size_inches()[0]
+    # Approx. characters that fit on one line at this size (mean glyph advance
+    # is ~0.48*fontsize pt for this face); 0.95 leaves a hair of right margin.
+    max_chars = max(40, int(0.95 * fig_w_in * 72.0 / (0.48 * fontsize)))
+    wrapped = textwrap.fill(text, width=max_chars)
+    fig.text(0.005, -0.02, wrapped, fontsize=fontsize, color=MUTED, ha="left", va="top")
 
 
 def despine_x_only(ax):
