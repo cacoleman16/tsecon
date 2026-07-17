@@ -109,6 +109,9 @@ nav:
           - Recession probability: reference/model-cards/recession.md
           - Survey expectations: reference/model-cards/expectations.md
           - Long memory: reference/model-cards/long-memory.md
+          - Specification & diagnostic tests: reference/model-cards/specification-tests.md
+          - Arbitrage-free Nelson-Siegel: reference/model-cards/afns.md
+          - DSGE (linear RE solver): reference/model-cards/dsge.md
   - Migration:
       - From statsmodels: migration/from-statsmodels.md
       - From R: migration/from-r.md

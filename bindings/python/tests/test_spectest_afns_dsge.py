@@ -158,7 +158,7 @@ def test_dsge_cagan_saddle_path():
     # Policy loading on m to x:  m_t = x_t / (1 - a*rho) = 1.4286 x_t.
     g = np.asarray(sol["g"], float)
     assert g[0, 0] == pytest.approx(1.0 / (1.0 - a * rho), rel=1e-9)
-    # Eigenvalue moduli: the stable root rho = 0.6 and the unstable root 1/a = 2.0.
+    # Eigenvalue moduli: stable root rho = 0.6 and unstable root 1/a = 1/0.7 = 1.4286.
     moduli = np.sort(np.asarray(sol["eigenvalue_moduli"], float))
     np.testing.assert_allclose(moduli, [rho, 1.0 / a], rtol=1e-9)
 
