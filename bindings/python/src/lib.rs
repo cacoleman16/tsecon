@@ -3060,6 +3060,196 @@ fn ivx_test<'py>(
     Ok(d)
 }
 
+/// Recession-probability model: probit or logit of a binary recession
+/// indicator on leading variables (e.g. the term spread).
+///
+/// `y` is the 0/1 recession indicator; `x` is a `T x k` design (include a
+/// constant column). `link` is `"probit"` or `"logit"`. With
+/// `dynamic=True` the Kauppi-Saikkonen (2008) dynamic probit is fit instead
+/// (an autoregressive index; probit only, and `x` must NOT contain a
+/// constant — the model supplies its own). Returns `params`, `bse`,
+/// `zstats`, the fitted `probabilities`, `loglik`, McFadden `pseudo_r2`,
+/// and `converged` (plus `rho` for the dynamic model).
+#[pyfunction]
+#[pyo3(signature = (y, x, link = "probit", dynamic = false))]
+fn recession_probit<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    link: &str,
+    dynamic: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let ys = y.as_slice()?;
+    let d = PyDict::new(py);
+    if dynamic {
+        let f = tsecon_recession::fit_dynamic_probit(ys, &cols).map_err(to_py)?;
+        d.set_item("params", f.params.clone().into_pyarray(py))?;
+        d.set_item("bse", f.bse.clone().into_pyarray(py))?;
+        d.set_item("zstats", f.zstats.clone().into_pyarray(py))?;
+        d.set_item("w", f.w)?;
+        d.set_item("beta", f.beta.clone().into_pyarray(py))?;
+        d.set_item("rho", f.rho)?;
+        d.set_item("probabilities", f.fitted.clone().into_pyarray(py))?;
+        d.set_item("loglik", f.loglik)?;
+        d.set_item("pseudo_r2", f.pseudo_r2)?;
+        d.set_item("converged", f.converged)?;
+    } else {
+        let lk = match link {
+            "probit" => tsecon_recession::Link::Probit,
+            "logit" => tsecon_recession::Link::Logit,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown link {other:?}; expected \"probit\" or \"logit\""
+                )))
+            }
+        };
+        let f = tsecon_recession::fit_static(ys, &cols, lk).map_err(to_py)?;
+        d.set_item("params", f.params.clone().into_pyarray(py))?;
+        d.set_item("bse", f.bse.clone().into_pyarray(py))?;
+        d.set_item("zstats", f.zstats.clone().into_pyarray(py))?;
+        d.set_item("probabilities", f.fitted.clone().into_pyarray(py))?;
+        d.set_item("loglik", f.loglik)?;
+        d.set_item("pseudo_r2", f.pseudo_r2)?;
+        d.set_item("converged", f.converged)?;
+    }
+    Ok(d)
+}
+
+/// Coibion-Gorodnichenko (2015) information-rigidity regression.
+///
+/// Regresses the mean forecast `errors` on the mean forecast `revisions` by
+/// OLS with Newey-West HAC standard errors (`maxlags=None` uses the
+/// automatic rule). The `slope` measures information rigidity — 0 under
+/// full-information rational expectations, positive under sticky/noisy
+/// information — and maps to `implied_rigidity = slope/(1+slope)`. Returns
+/// `intercept`/`slope` with HAC `se`/`t`/`p`, `r_squared`, `implied_rigidity`,
+/// and `maxlags`/`nobs`.
+#[pyfunction]
+#[pyo3(signature = (errors, revisions, maxlags = None, use_correction = true))]
+fn cg_regression<'py>(
+    py: Python<'py>,
+    errors: PyReadonlyArray1<'py, f64>,
+    revisions: PyReadonlyArray1<'py, f64>,
+    maxlags: Option<usize>,
+    use_correction: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let bw = match maxlags {
+        Some(l) => tsecon_survey::HacBandwidth::Lags(l),
+        None => tsecon_survey::HacBandwidth::Auto,
+    };
+    let r = tsecon_survey::cg_regression(
+        errors.as_slice()?,
+        revisions.as_slice()?,
+        bw,
+        use_correction,
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("intercept", r.intercept)?;
+    d.set_item("slope", r.slope)?;
+    d.set_item("se_intercept", r.se_intercept)?;
+    d.set_item("se_slope", r.se_slope)?;
+    d.set_item("t_slope", r.t_slope)?;
+    d.set_item("p_slope", r.p_slope)?;
+    d.set_item("r_squared", r.r_squared)?;
+    d.set_item("implied_rigidity", r.implied_rigidity)?;
+    d.set_item("maxlags", r.maxlags)?;
+    d.set_item("nobs", r.nobs)?;
+    Ok(d)
+}
+
+/// Mincer-Zarnowitz forecast-efficiency (rationality) test.
+///
+/// Regresses the forecast `errors` on a constant and `regressors` (a
+/// `T x k` matrix, e.g. the forecast itself or lagged information) with HAC
+/// SEs, and jointly Wald-tests that all coefficients are zero — the null of
+/// forecast efficiency. Returns `params`/`bse`/`tvalues`/`pvalues`,
+/// `r_squared`, and the `wald`/`wald_df`/`wald_pvalue`.
+#[pyfunction]
+#[pyo3(signature = (errors, regressors, maxlags = None, use_correction = true))]
+fn forecast_efficiency<'py>(
+    py: Python<'py>,
+    errors: PyReadonlyArray1<'py, f64>,
+    regressors: numpy::PyReadonlyArray2<'py, f64>,
+    maxlags: Option<usize>,
+    use_correction: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = regressors.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let bw = match maxlags {
+        Some(l) => tsecon_survey::HacBandwidth::Lags(l),
+        None => tsecon_survey::HacBandwidth::Auto,
+    };
+    let r = tsecon_survey::efficiency_test(errors.as_slice()?, &cols, bw, use_correction)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("params", r.params.clone().into_pyarray(py))?;
+    d.set_item("bse", r.bse.clone().into_pyarray(py))?;
+    d.set_item("tvalues", r.tvalues.clone().into_pyarray(py))?;
+    d.set_item("pvalues", r.pvalues.clone().into_pyarray(py))?;
+    d.set_item("r_squared", r.r_squared)?;
+    d.set_item("wald", r.wald)?;
+    d.set_item("wald_df", r.wald_df)?;
+    d.set_item("wald_pvalue", r.wald_pvalue)?;
+    Ok(d)
+}
+
+/// Fractional differencing `(1 - L)^d x` via the binomial expansion.
+///
+/// The long-memory generalization of integer differencing: `d = 1` is the
+/// ordinary first difference, `0 < d < 0.5` a stationary long-memory filter.
+#[pyfunction]
+fn frac_diff<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    d: f64,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let out = tsecon_longmemory::frac_diff(x.as_slice()?, d).map_err(to_py)?;
+    Ok(out.into_pyarray(py))
+}
+
+/// Estimate the fractional-integration (long-memory) parameter `d`.
+///
+/// `method="gph"` is the Geweke-Porter-Hudak (1983) log-periodogram
+/// regression; `method="local_whittle"` is the Robinson (1995) local Whittle
+/// estimator. `m` is the number of low Fourier frequencies used (bandwidth);
+/// `None` uses the standard `n^0.5` default. Returns the estimate `d` and its
+/// asymptotic `se`.
+#[pyfunction]
+#[pyo3(signature = (x, m = None, method = "gph"))]
+fn long_memory_d<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    m: Option<usize>,
+    method: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let xs = x.as_slice()?;
+    let bw = m.unwrap_or_else(|| tsecon_longmemory::default_bandwidth(xs.len()));
+    let d = PyDict::new(py);
+    match method {
+        "gph" => {
+            let r = tsecon_longmemory::gph(xs, bw).map_err(to_py)?;
+            d.set_item("d", r.d)?;
+            d.set_item("se", r.se)?;
+            d.set_item("m", r.m)?;
+        }
+        "local_whittle" | "whittle" => {
+            let r = tsecon_longmemory::local_whittle(xs, bw).map_err(to_py)?;
+            d.set_item("d", r.d)?;
+            d.set_item("se", r.se)?;
+            d.set_item("m", r.m)?;
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"gph\" or \"local_whittle\""
+            )))
+        }
+    }
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -3143,5 +3333,10 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dfm_news, m)?)?;
     m.add_function(wrap_pyfunction!(predictive_regression, m)?)?;
     m.add_function(wrap_pyfunction!(ivx_test, m)?)?;
+    m.add_function(wrap_pyfunction!(recession_probit, m)?)?;
+    m.add_function(wrap_pyfunction!(cg_regression, m)?)?;
+    m.add_function(wrap_pyfunction!(forecast_efficiency, m)?)?;
+    m.add_function(wrap_pyfunction!(frac_diff, m)?)?;
+    m.add_function(wrap_pyfunction!(long_memory_d, m)?)?;
     Ok(())
 }
