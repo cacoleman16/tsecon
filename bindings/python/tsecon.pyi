@@ -594,3 +594,31 @@ def realized_range(
     close: _ArrayLike | None = ...,
 ) -> float:
     """Range variance from OHLC bars; method is "parkinson" or "garman_klass"."""
+
+# --------------------------------------------------- score-driven volatility
+def gas_volatility(
+    y: _ArrayLike, density: str = ..., horizon: int = ...
+) -> dict[str, Any]:
+    """GAS(1,1) score-driven volatility (Creal-Koopman-Lucas 2013).
+
+    density is "gaussian" or "student_t". Returns omega/a/b (+ nu),
+    variance, std_resid, loglik, aic, bic, next_variance, and (horizon>0) a
+    forecast."""
+
+# ------------------------------------------------- heterogeneous panel (MG)
+def panel_mean_group(
+    ys: Sequence[_ArrayLike], xs: Sequence[_ArrayLike], method: str = ...
+) -> dict[str, Any]:
+    """Mean-group (Pesaran-Smith 1995) / CCE-MG (Pesaran 2006) panel estimator.
+
+    method is "mg" or "cce". ys/xs are per-unit response vectors and T_i x k
+    regressor matrices. Returns coef, se, tstat, coef_per_unit, n_units, k."""
+
+# -------------------------------------------------------- DFM nowcasting
+def dfm_nowcast(
+    data: _ArrayLike, n_factors: int = ..., factor_order: int = ...
+) -> dict[str, Any]:
+    """Two-step dynamic-factor-model nowcast (Doz-Giannone-Reichlin 2011).
+
+    data is T x N and may carry NaN at the ragged edge. Returns nowcast,
+    edge_factor, loglik, smoothed_factors, n_factors, factor_order."""

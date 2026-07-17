@@ -2683,6 +2683,153 @@ fn realized_range(
     }
 }
 
+/// GAS(1,1) score-driven volatility (Creal-Koopman-Lucas 2013).
+///
+/// Fits a time-varying-variance model by maximum likelihood, driving the
+/// variance by the scaled score of the observation density with the
+/// inverse-information scaling. `density`: `"gaussian"` or `"student_t"`
+/// (heavy-tailed, robust to outliers; estimates the degrees of freedom
+/// `nu`). Returns the fitted `omega`/`a`/`b` (and `nu` for Student-t), the
+/// filtered conditional `variance` path, `std_resid`, `loglik`, `aic`,
+/// `bic`, the one-step-ahead `next_variance`, convergence info, and — if
+/// `horizon > 0` — an `h`-step variance `forecast`.
+#[pyfunction]
+#[pyo3(signature = (y, density = "gaussian", horizon = 0))]
+fn gas_volatility<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    density: &str,
+    horizon: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dens = match density {
+        "gaussian" => tsecon_gas::Density::Gaussian,
+        "student_t" | "t" => tsecon_gas::Density::StudentT,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown density {other:?}; expected \"gaussian\" or \"student_t\""
+            )))
+        }
+    };
+    let model = tsecon_gas::GasModel::new(y.as_slice()?, dens).map_err(to_py)?;
+    let res = model.fit().map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("omega", res.params.omega)?;
+    d.set_item("a", res.params.a)?;
+    d.set_item("b", res.params.b)?;
+    if matches!(dens, tsecon_gas::Density::StudentT) {
+        d.set_item("nu", res.params.nu)?;
+    }
+    d.set_item("variance", res.variance.clone().into_pyarray(py))?;
+    d.set_item("std_resid", res.std_resid.clone().into_pyarray(py))?;
+    d.set_item("loglik", res.loglik)?;
+    d.set_item("aic", res.aic())?;
+    d.set_item("bic", res.bic())?;
+    d.set_item("next_variance", res.next_variance)?;
+    d.set_item("converged", res.converged)?;
+    d.set_item("iterations", res.iterations)?;
+    if horizon > 0 {
+        d.set_item("forecast", res.forecast(horizon).map_err(to_py)?.into_pyarray(py))?;
+    }
+    Ok(d)
+}
+
+/// Heterogeneous-panel mean-group estimator (Pesaran-Smith 1995) and its
+/// common-correlated-effects variant (Pesaran 2006, CCE-MG).
+///
+/// `ys` is a list of per-unit response vectors and `xs` the matching list
+/// of per-unit `T_i x k` regressor matrices (one entry per cross-sectional
+/// unit; the time lengths may differ for `"mg"`). `method`: `"mg"` averages
+/// the per-unit OLS slopes with dispersion-based cross-unit SEs; `"cce"`
+/// augments each unit with the cross-section averages of `y` and `X` to
+/// purge unobserved common factors before averaging (requires a balanced
+/// panel). Returns the mean-group `coef`, `se`, `tstat`, the per-unit
+/// `coef_per_unit`, `n_units`, and `k`.
+#[pyfunction]
+#[pyo3(signature = (ys, xs, method = "mg"))]
+fn panel_mean_group<'py>(
+    py: Python<'py>,
+    ys: Vec<PyReadonlyArray1<'py, f64>>,
+    xs: Vec<numpy::PyReadonlyArray2<'py, f64>>,
+    method: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    if ys.len() != xs.len() {
+        return Err(PyValueError::new_err(format!(
+            "ys and xs must have the same number of units; got {} and {}",
+            ys.len(),
+            xs.len()
+        )));
+    }
+    let mut units = Vec::with_capacity(ys.len());
+    for (yi, xi) in ys.iter().zip(xs.iter()) {
+        let a = xi.as_array();
+        let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+        units.push(tsecon_panelts::PanelUnit::new(yi.as_slice()?.to_vec(), cols));
+    }
+    let mg = match method {
+        "mg" => tsecon_panelts::mean_group(&units).map_err(to_py)?,
+        "cce" => tsecon_panelts::cce_mean_group(&units).map_err(to_py)?,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"mg\" or \"cce\""
+            )))
+        }
+    };
+    let d = PyDict::new(py);
+    d.set_item("coef", mg.coef.clone().into_pyarray(py))?;
+    d.set_item("se", mg.se.clone().into_pyarray(py))?;
+    d.set_item("tstat", mg.tstat.clone().into_pyarray(py))?;
+    d.set_item("coef_per_unit", mg.coef_per_unit.clone())?;
+    d.set_item("n_units", mg.n_units)?;
+    d.set_item("k", mg.k)?;
+    Ok(d)
+}
+
+/// Dynamic-factor-model nowcast (Doz-Giannone-Reichlin 2011 two-step).
+///
+/// Fits `n_factors` common factors with an order-`factor_order` factor VAR
+/// to the `T x N` panel `data`, then Kalman-smooths and reads the nowcast
+/// off the sample edge. `data` may carry `NaN` in the last rows of the
+/// faster-arriving series (the ragged edge): the two-step model is
+/// estimated on the leading balanced block (rows before the first row with
+/// any missing value) and the Kalman filter then runs over the full panel,
+/// using exactly the observations that are present at the edge. Returns the
+/// edge `nowcast` (one level per series), the `edge_factor`, the Gaussian
+/// `loglik`, the `smoothed_factors` (`T x r`), and `n_factors`/`factor_order`.
+#[pyfunction]
+#[pyo3(signature = (data, n_factors = 1, factor_order = 2))]
+fn dfm_nowcast<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    n_factors: usize,
+    factor_order: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    let arr = data.as_array();
+    let (t, n) = (arr.nrows(), arr.ncols());
+    // Training block: the leading rows before the ragged edge (all finite).
+    let mut first_ragged = t;
+    for i in 0..t {
+        if (0..n).any(|j| !arr[(i, j)].is_finite()) {
+            first_ragged = i;
+            break;
+        }
+    }
+    let train = Mat::from_fn(first_ragged, n, |r, j| arr[(r, j)]);
+    let full = to_faer(&data);
+    let nc = tsecon_nowcast::Nowcaster::fit_two_step(train.as_ref(), n_factors, factor_order)
+        .map_err(to_py)?;
+    let res = nc.nowcast_panel(full.as_ref()).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("nowcast", res.values.clone().into_pyarray(py))?;
+    d.set_item("edge_factor", res.edge_factor.clone().into_pyarray(py))?;
+    d.set_item("loglik", res.smoothing.loglik)?;
+    let factors: Vec<Vec<f64>> = nc.smoothed_factors().to_vec();
+    d.set_item("smoothed_factors", factors)?;
+    d.set_item("n_factors", nc.n_factors())?;
+    d.set_item("factor_order", nc.factor_order())?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -2759,5 +2906,8 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tripower_quarticity, m)?)?;
     m.add_function(wrap_pyfunction!(bns_jump_test, m)?)?;
     m.add_function(wrap_pyfunction!(realized_range, m)?)?;
+    m.add_function(wrap_pyfunction!(gas_volatility, m)?)?;
+    m.add_function(wrap_pyfunction!(panel_mean_group, m)?)?;
+    m.add_function(wrap_pyfunction!(dfm_nowcast, m)?)?;
     Ok(())
 }
