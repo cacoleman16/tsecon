@@ -427,6 +427,33 @@ def svensson(
 ) -> dict[str, Any]:
     """Svensson (1994) four-factor yield-curve fit; nests Nelson-Siegel."""
 
+# ------------------------------------------------------ penalized ML (paths)
+def adaptive_lasso(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    alpha: float,
+    l1_ratio: float = ...,
+    gamma: float = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Adaptive LASSO (Zou 2006): oracle-property weighted-L1 penalty.
+
+    coef, n_iter, max_change."""
+
+def lasso_path(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    l1_ratio: float = ...,
+    n_lambdas: int = ...,
+    eps: float = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Elastic-net regularization path with AIC/BIC selection.
+
+    lambdas, coefs, rss, df, aic, bic, aic_best, bic_best."""
+
 # ------------------------------------------------------- forecast backtest
 def backtest(
     y: _ArrayLike,

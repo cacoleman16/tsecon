@@ -1889,6 +1889,78 @@ fn factor_model<'py>(
     Ok(d)
 }
 
+/// Adaptive LASSO of Zou (2006): a weighted-L1 penalty with data-driven
+/// weights `w_j = 1 / |b_j^ols|^gamma`, which restores the oracle property
+/// the plain lasso lacks. `alpha` is the overall penalty, `l1_ratio` mixes
+/// L1/L2 (elastic-net weighting of the penalty), `gamma > 0` controls how
+/// hard small OLS coefficients are penalized. Returns the coefficients and
+/// convergence info.
+#[pyfunction]
+#[pyo3(signature = (x, y, alpha, l1_ratio = 1.0, gamma = 1.0, tol = 1e-7, max_iter = 100000))]
+#[allow(clippy::too_many_arguments)]
+fn adaptive_lasso<'py>(
+    py: Python<'py>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    y: PyReadonlyArray1<'py, f64>,
+    alpha: f64,
+    l1_ratio: f64,
+    gamma: f64,
+    tol: f64,
+    max_iter: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = to_faer(&x);
+    let opts = tsecon_ml::CoordDescentOptions { tol, max_iter };
+    let fit = tsecon_ml::adaptive_lasso(m.as_ref(), y.as_slice()?, alpha, l1_ratio, gamma, opts)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("coef", fit.coef.into_pyarray(py))?;
+    d.set_item("n_iter", fit.n_iter)?;
+    d.set_item("max_change", fit.max_change)?;
+    Ok(d)
+}
+
+/// Elastic-net regularization path over an automatic lambda grid.
+///
+/// Fits the penalized regression at `n_lambdas` values descending from the
+/// smallest lambda that zeros all coefficients down to `eps` times it (the
+/// glmnet convention), at fixed `l1_ratio` in (0, 1]. Returns the `lambdas`
+/// grid, the `coefs` at each (one row per lambda), residual sums of squares
+/// `rss`, degrees of freedom `df` (nonzero count), the `aic`/`bic` along the
+/// path, and the `aic_best`/`bic_best` indices selecting the minimizing
+/// lambda.
+#[pyfunction]
+#[pyo3(signature = (x, y, l1_ratio = 1.0, n_lambdas = 100, eps = 1e-3, tol = 1e-7, max_iter = 100000))]
+#[allow(clippy::too_many_arguments)]
+fn lasso_path<'py>(
+    py: Python<'py>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    y: PyReadonlyArray1<'py, f64>,
+    l1_ratio: f64,
+    n_lambdas: usize,
+    eps: f64,
+    tol: f64,
+    max_iter: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = to_faer(&x);
+    let opts = tsecon_ml::PathOptions {
+        n_lambdas,
+        eps,
+        cd: tsecon_ml::CoordDescentOptions { tol, max_iter },
+    };
+    let path =
+        tsecon_ml::regularization_path(m.as_ref(), y.as_slice()?, l1_ratio, opts).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("lambdas", path.lambdas.clone().into_pyarray(py))?;
+    d.set_item("coefs", path.coefs.clone())?;
+    d.set_item("rss", path.rss.clone().into_pyarray(py))?;
+    d.set_item("df", path.df.clone())?;
+    d.set_item("aic", path.aic.clone().into_pyarray(py))?;
+    d.set_item("bic", path.bic.clone().into_pyarray(py))?;
+    d.set_item("aic_best", path.aic_best())?;
+    d.set_item("bic_best", path.bic_best())?;
+    Ok(d)
+}
+
 /// Pseudo-out-of-sample backtest over a rolling or expanding window.
 ///
 /// Re-estimates `forecaster` along the series and evaluates horizons
@@ -2112,5 +2184,7 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(nelson_siegel, m)?)?;
     m.add_function(wrap_pyfunction!(svensson, m)?)?;
     m.add_function(wrap_pyfunction!(backtest, m)?)?;
+    m.add_function(wrap_pyfunction!(adaptive_lasso, m)?)?;
+    m.add_function(wrap_pyfunction!(lasso_path, m)?)?;
     Ok(())
 }
