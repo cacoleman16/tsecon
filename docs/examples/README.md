@@ -215,7 +215,58 @@ seasonal shape. The DM statistic matches the documented reference case at
 
 ---
 
-*Coming as the remaining crates land: ARIMA estimation & fan-chart
-forecasting, GARCH conditional volatility with robust standard errors, and
-Bayesian VAR posteriors — same format: use case, code, synthetic data,
-figure.*
+## 9 · GARCH: volatility and risk
+
+**Use case:** any application where the *size* of movements matters —
+risk management, option pricing, portfolio construction. Volatility
+clusters (calm and stormy periods alternate), which makes it forecastable
+even when returns themselves are not.
+
+```python
+r = tsecon.garch_fit(returns, vol="garch", dist="normal", forecast_horizon=60)
+r["params"], r["se_robust"]         # QMLE + Bollerslev-Wooldridge robust SEs
+r["conditional_volatility"]         # the fitted sigma_t path
+r["variance_forecast"]              # analytic multi-step, mean-reverting
+# also: vol="gjr" (asymmetry), vol="egarch", dist="t" (fat tails)
+```
+
+![GARCH](img/10-garch.png)
+
+The fitted persistence (α + β ≈ 0.98) says volatility shocks take months to
+die out — the long-run anchor and mean-reverting forecast fan follow
+directly. Fixed-parameter likelihoods match Kevin Sheppard's `arch` package
+at machine precision, and our optimizer's fits match or beat arch's optimum
+on every golden case.
+
+---
+
+## 10 · Bayesian VAR: posterior impulse responses
+
+**Use case:** VARs have many parameters and macro samples are short — the
+frequentist answer is noisy IRFs. The Bayesian answer is *shrinkage*: the
+Minnesota prior pulls coefficients toward a random-walk baseline, and the
+conjugate Normal-inverse-Wishart structure gives the entire posterior in
+closed form — no MCMC, no convergence worries, with the log marginal
+likelihood available to tune prior tightness on the evidence.
+
+```python
+post = tsecon.bvar_fit(data, lags=2, lambda1=0.2)      # closed-form posterior
+post["log_marginal_likelihood"]                         # evidence, for tuning
+draws = tsecon.bvar_irf_draws(data, lags=2, horizon=12,
+                              n_draws=800, seed=42)     # [draw][h][var][shock]
+bands = np.quantile(draws, [0.05, 0.16, 0.5, 0.84, 0.95], axis=0)
+```
+
+![BVAR IRFs](img/11-bvar-irf.png)
+
+Real US data (GDP, consumption, investment growth): posterior medians with
+nested 68/90% credible bands from 800 seed-reproducible posterior draws.
+The analytic posterior is validated against the documented conjugate
+updating equations at 1e-13; MCMC diagnostics (`tsecon.mcmc_diagnostics`:
+ArviZ-exact R-hat and ESS) stand ready for the sampler-based models that
+follow.
+
+---
+
+*Coming when the last crate lands: ARIMA estimation with fan-chart
+forecasting — same format: use case, code, synthetic data, figure.*

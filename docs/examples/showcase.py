@@ -421,8 +421,86 @@ def section_forecast_eval():
         save(fig, "09-forecast-eval.png")
 
 
+# ------------------------------------------------------------------
+# 9. GARCH: conditional volatility and risk
+# ------------------------------------------------------------------
+def section_garch():
+    import json as _json
+    ret = np.array(_json.loads((REPO / "fixtures" / "garch.json").read_text())["returns"])
+    r = tsecon.garch_fit(ret, vol="garch", mean="zero", dist="normal", forecast_horizon=60)
+    vol = np.asarray(r["conditional_volatility"])
+    names, params, se = r["param_names"], np.asarray(r["params"]), np.asarray(r["se_robust"])
+
+    with ts.theme():
+        fig, axes = plt.subplots(2, 1, figsize=(ts.WIDTH_DOUBLE, 4.2), sharex=False,
+                                 gridspec_kw={"height_ratios": [1, 1.15]})
+        ax = axes[0]
+        ax.plot(ret, color=ts.MUTED, lw=0.5)
+        ax.set_title("Returns: volatility clusters — calm and stormy regimes alternate",
+                     fontsize=9.5, loc="left")
+        ax = axes[1]
+        ax.plot(vol, color=ts.SERIES["blue"], lw=1.2, label="conditional volatility (fitted)")
+        n = len(ret)
+        fc = np.sqrt(np.asarray(r["variance_forecast"]))
+        ax.plot(np.arange(n, n + len(fc)), fc, color=ts.SEQ_BLUE[6], lw=1.6, ls=(0, (4, 2)),
+                label="60-day volatility forecast")
+        lr = np.sqrt(params[0] / (1 - params[1] - params[2]))
+        ax.axhline(lr, color=ts.REF, lw=0.9)
+        ax.annotate("long-run level", xy=(n * 0.35, lr - 0.06), fontsize=7.5,
+                    color=ts.MUTED, va="top")
+        ax.legend(loc="upper right", fontsize=7.5)
+        ax.set_title("GARCH(1,1): spikes decay geometrically toward the long-run level; "
+                     "forecasts mean-revert", fontsize=9.5, loc="left")
+        param_str = "  ".join(f"{nm} = {p:.3f} ({s:.3f})" for nm, p, s in zip(names, params, se))
+        fig.suptitle("Volatility is forecastable: the GARCH workhorse",
+                     x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
+        fig.tight_layout(rect=(0, 0.015, 1, 0.95))
+        ts.stamp(fig, f"tsecon.garch_fit · QMLE estimates (Bollerslev-Wooldridge robust SEs): {param_str} · "
+                      "matches the arch package at machine precision")
+        save(fig, "10-garch.png")
+
+
+# ------------------------------------------------------------------
+# 10. Bayesian VAR: posterior impulse responses with credible bands
+# ------------------------------------------------------------------
+def section_bvar():
+    import json as _json
+    data = np.array(_json.loads((REPO / "fixtures" / "bvar_niw.json").read_text())["data"])
+    names = ["GDP growth", "Consumption", "Investment"]
+    H = 12
+    draws = np.array(tsecon.bvar_irf_draws(data, lags=2, horizon=H, n_draws=800, seed=42,
+                                           lambda1=0.2))
+    q05, q16, q50, q84, q95 = np.quantile(draws, [0.05, 0.16, 0.5, 0.84, 0.95], axis=0)
+
+    with ts.theme():
+        fig, axes = plt.subplots(3, 3, figsize=(ts.WIDTH_DOUBLE, 5.2), sharex=True)
+        t = np.arange(H + 1)
+        for i in range(3):
+            for j in range(3):
+                ax = axes[i, j]
+                ts.zero_line(ax)
+                ax.fill_between(t, q05[:, i, j], q95[:, i, j], color=ts.SEQ_BLUE[0], lw=0)
+                ax.fill_between(t, q16[:, i, j], q84[:, i, j], color=ts.SEQ_BLUE[1], lw=0)
+                ax.plot(t, q50[:, i, j], color=ts.SEQ_BLUE[5], lw=1.7)
+                if i == 0:
+                    ax.set_title(f"{names[j]} shock", fontsize=9, loc="center",
+                                 color=ts.INK_2, fontweight="normal")
+                if j == 0:
+                    ax.set_ylabel(names[i], fontsize=8.5, color=ts.INK)
+                ax.tick_params(labelsize=7.5)
+        for ax in axes[2]:
+            ax.set_xlabel("Horizon (quarters)", fontsize=8)
+        fig.suptitle("Bayesian VAR: posterior impulse responses with 68 / 90% credible bands",
+                     x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
+        fig.tight_layout(rect=(0, 0.012, 1, 0.955))
+        ts.stamp(fig, "Minnesota-NIW conjugate BVAR(2) on US GDP/consumption/investment growth · "
+                      "tsecon.bvar_irf_draws (800 posterior draws, seed-reproducible) · "
+                      "closed-form posterior validated at 1e-13")
+        save(fig, "11-bvar-irf.png")
+
+
 ALL = [section_acf, section_stationarity, section_hac, section_bootstrap, section_kalman,
-       section_var, section_filters, section_forecast_eval]
+       section_var, section_filters, section_forecast_eval, section_garch, section_bvar]
 
 if __name__ == "__main__":
     only = sys.argv[1:] if len(sys.argv) > 1 else None
