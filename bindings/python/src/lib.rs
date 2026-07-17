@@ -3299,6 +3299,173 @@ fn frac_integrate<'py>(
     Ok(out.into_pyarray(py))
 }
 
+/// Heteroskedasticity test on an OLS regression of `y` on `x` (a `T x k`
+/// design; include a constant column). `test`: `"white"` (White 1980, the
+/// squares-and-cross-products auxiliary) or `"breusch_pagan"` (Koenker
+/// studentized). Returns the LM `statistic`/`df`/`pvalue` and the F-form.
+#[pyfunction]
+#[pyo3(signature = (y, x, test = "white"))]
+fn heteroskedasticity_test<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    test: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let ys = vec1(&y);
+    let r = match test {
+        "white" => tsecon_spectest::white_test(&ys, &cols).map_err(to_py)?,
+        "breusch_pagan" | "bp" => tsecon_spectest::breusch_pagan_test(&ys, &cols).map_err(to_py)?,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown test {other:?}; expected \"white\" or \"breusch_pagan\""
+            )))
+        }
+    };
+    let d = PyDict::new(py);
+    d.set_item("statistic", r.statistic)?;
+    d.set_item("df", r.df)?;
+    d.set_item("pvalue", r.pvalue)?;
+    d.set_item("fstat", r.fstat)?;
+    d.set_item("f_pvalue", r.f_pvalue)?;
+    Ok(d)
+}
+
+/// Ramsey RESET functional-form test: F-test of powers of the fitted values
+/// (`yhat^2 .. yhat^max_power`) added to the OLS of `y` on `x` (`T x k`).
+#[pyfunction]
+#[pyo3(signature = (y, x, max_power = 3))]
+fn reset_test<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    max_power: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let r = tsecon_spectest::reset_test(&vec1(&y), &cols, max_power).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("fstat", r.fstat)?;
+    d.set_item("df_num", r.df_num)?;
+    d.set_item("df_den", r.df_den)?;
+    d.set_item("pvalue", r.pvalue)?;
+    Ok(d)
+}
+
+/// Chow structural-break test at a known 0-indexed `split`: F-test that the
+/// regression of `y` on `x` (`T x k`) has the same coefficients before and
+/// after `split`. Returns the F stat, dfs, p-value, and the sub-sample SSRs.
+#[pyfunction]
+fn chow_test<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    split: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let r = tsecon_spectest::chow_test(&vec1(&y), &cols, split).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("fstat", r.fstat)?;
+    d.set_item("df_num", r.df_num)?;
+    d.set_item("df_den", r.df_den)?;
+    d.set_item("pvalue", r.pvalue)?;
+    d.set_item("ssr_pooled", r.ssr_pooled)?;
+    d.set_item("ssr1", r.ssr1)?;
+    d.set_item("ssr2", r.ssr2)?;
+    Ok(d)
+}
+
+/// CUSUM parameter-stability test (Brown-Durbin-Evans 1975) on the recursive
+/// residuals of the OLS of `y` on `x` (`T x k`). Returns the standardized
+/// `path` and the 5% significance `bound_upper`/`bound_lower` lines: the
+/// coefficients are unstable if the path crosses a bound.
+#[pyfunction]
+fn cusum_test<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let r = tsecon_spectest::cusum_test(&vec1(&y), &cols).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("path", r.path.clone().into_pyarray(py))?;
+    d.set_item("bound_upper", r.bound_upper.clone().into_pyarray(py))?;
+    d.set_item("bound_lower", r.bound_lower.clone().into_pyarray(py))?;
+    d.set_item("sigma", r.sigma)?;
+    Ok(d)
+}
+
+/// Arbitrage-free Nelson-Siegel yield adjustment (Christensen-Diebold-
+/// Rudebusch 2011): the deterministic term `-C(τ)/τ` that makes the
+/// three-factor curve arbitrage-free, given the factor-volatility diagonal
+/// `sigma` (three values) and the decay. Add it to a Nelson-Siegel fit.
+#[pyfunction]
+#[pyo3(signature = (maturities, sigma, decay = 0.0609))]
+fn afns_adjustment<'py>(
+    py: Python<'py>,
+    maturities: PyReadonlyArray1<'py, f64>,
+    sigma: PyReadonlyArray1<'py, f64>,
+    decay: f64,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let sv = vec1(&sigma);
+    if sv.len() != 3 {
+        return Err(PyValueError::new_err(format!(
+            "sigma must have 3 elements (the factor-volatility diagonal); got {}",
+            sv.len()
+        )));
+    }
+    let sig = [sv[0], sv[1], sv[2]];
+    let out = tsecon_termstructure::afns_yield_adjustment(&vec1(&maturities), decay, sig)
+        .map_err(to_py)?;
+    Ok(out.into_pyarray(py))
+}
+
+/// Solve a linear rational-expectations (DSGE-lite) model by Blanchard-Kahn
+/// (1980): `A E_t[y_{t+1}] = B y_t + C z_{t+1}`, where `y` stacks the
+/// `n_predetermined` backward-looking variables then the forward-looking
+/// ones. Returns the decision rule `g` (jump = g·predetermined), the law of
+/// motion `p`/`q` (predetermined_{t+1} = p·predetermined + q·z), the
+/// `eigenvalue_moduli`, and the Blanchard-Kahn `verdict` (unique /
+/// indeterminate / no stable solution).
+#[pyfunction]
+fn dsge_solve<'py>(
+    py: Python<'py>,
+    a: numpy::PyReadonlyArray2<'py, f64>,
+    b: numpy::PyReadonlyArray2<'py, f64>,
+    c: numpy::PyReadonlyArray2<'py, f64>,
+    n_predetermined: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let rows = |m: &numpy::PyReadonlyArray2<'_, f64>| -> Vec<Vec<f64>> {
+        let arr = m.as_array();
+        (0..arr.nrows())
+            .map(|i| (0..arr.ncols()).map(|j| arr[(i, j)]).collect())
+            .collect()
+    };
+    let model = tsecon_dsge::LinearReModel::new(&rows(&a), &rows(&b), &rows(&c), n_predetermined)
+        .map_err(to_py)?;
+    let sol = tsecon_dsge::solve(&model).map_err(to_py)?;
+    let mat = |m: &tsecon_var::tsecon_linalg::faer::Mat<f64>| -> Vec<Vec<f64>> {
+        (0..m.nrows())
+            .map(|i| (0..m.ncols()).map(|j| m[(i, j)]).collect())
+            .collect()
+    };
+    let d = PyDict::new(py);
+    d.set_item("g", mat(sol.g()))?;
+    d.set_item("p", mat(sol.p()))?;
+    d.set_item("q", mat(sol.q()))?;
+    let moduli: Vec<f64> = sol
+        .eigenvalues()
+        .iter()
+        .map(|z| (z.re * z.re + z.im * z.im).sqrt())
+        .collect();
+    d.set_item("eigenvalue_moduli", moduli.into_pyarray(py))?;
+    d.set_item("verdict", format!("{}", sol.verdict()))?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -3389,5 +3556,11 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(long_memory_d, m)?)?;
     m.add_function(wrap_pyfunction!(forecast_disagreement, m)?)?;
     m.add_function(wrap_pyfunction!(frac_integrate, m)?)?;
+    m.add_function(wrap_pyfunction!(heteroskedasticity_test, m)?)?;
+    m.add_function(wrap_pyfunction!(reset_test, m)?)?;
+    m.add_function(wrap_pyfunction!(chow_test, m)?)?;
+    m.add_function(wrap_pyfunction!(cusum_test, m)?)?;
+    m.add_function(wrap_pyfunction!(afns_adjustment, m)?)?;
+    m.add_function(wrap_pyfunction!(dsge_solve, m)?)?;
     Ok(())
 }

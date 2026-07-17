@@ -710,3 +710,32 @@ def long_memory_d(
     x: _ArrayLike, m: int | None = ..., method: str = ...
 ) -> dict[str, float]:
     """Estimate the memory parameter d; method is "gph" or "local_whittle". Returns d, se, m."""
+
+# ---------------------------------------------------- specification tests
+def heteroskedasticity_test(
+    y: _ArrayLike, x: _ArrayLike, test: str = ...
+) -> dict[str, Any]:
+    """Heteroskedasticity test (test="white" or "breusch_pagan"); x is T x k with a constant."""
+
+def reset_test(y: _ArrayLike, x: _ArrayLike, max_power: int = ...) -> dict[str, Any]:
+    """Ramsey RESET functional-form F-test; x is T x k."""
+
+def chow_test(y: _ArrayLike, x: _ArrayLike, split: int) -> dict[str, Any]:
+    """Chow structural-break F-test at a known 0-indexed split; x is T x k."""
+
+def cusum_test(y: _ArrayLike, x: _ArrayLike) -> dict[str, Any]:
+    """CUSUM parameter-stability test (Brown-Durbin-Evans); returns the path and 5% bounds."""
+
+# ---------------------------------------------------- arbitrage-free NS
+def afns_adjustment(
+    maturities: _ArrayLike, sigma: _ArrayLike, decay: float = ...
+) -> _F64:
+    """Arbitrage-free Nelson-Siegel yield adjustment (Christensen-Diebold-Rudebusch 2011); sigma has 3 elements."""
+
+# ------------------------------------------------------------ DSGE-lite
+def dsge_solve(
+    a: _ArrayLike, b: _ArrayLike, c: _ArrayLike, n_predetermined: int
+) -> dict[str, Any]:
+    """Blanchard-Kahn solution of a linear RE model A E[y_{t+1}] = B y_t + C z.
+
+    Returns the decision rule g, the law of motion p/q, eigenvalue_moduli, and verdict."""

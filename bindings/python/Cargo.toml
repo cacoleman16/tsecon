@@ -43,5 +43,7 @@ tsecon-predreg = { path = "../../crates/tsecon-predreg" }
 tsecon-recession = { path = "../../crates/tsecon-recession" }
 tsecon-survey = { path = "../../crates/tsecon-survey" }
 tsecon-longmemory = { path = "../../crates/tsecon-longmemory" }
+tsecon-spectest = { path = "../../crates/tsecon-spectest" }
+tsecon-dsge = { path = "../../crates/tsecon-dsge" }
 pyo3 = { version = "0.29.0", features = ["abi3-py39"] }
 numpy = "0.29.0"
