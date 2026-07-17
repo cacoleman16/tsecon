@@ -343,3 +343,21 @@ def coherence(
     detrend: str = ...,
 ) -> dict[str, _F64]:
     """Magnitude-squared coherence in [0,1]; matches scipy.signal.coherence."""
+
+# ---------------------------------------------------------- cointegration
+def johansen(data: _ArrayLike, k_ar_diff: int = ...) -> dict[str, Any]:
+    """Johansen cointegration test (data is T x k); trace + max-eig + rank."""
+
+def vecm(data: _ArrayLike, k_ar_diff: int = ..., coint_rank: int = ...) -> dict[str, Any]:
+    """VECM ML estimation: alpha, beta, gamma, sigma_u, llf (statsmodels-exact)."""
+
+# ------------------------------------------------------- regime switching
+def markov_switching_ar(
+    y: _ArrayLike,
+    k_regimes: int = ...,
+    order: int = ...,
+    switching_variance: bool = ...,
+    max_iter: int = ...,
+    tol: float = ...,
+) -> dict[str, Any]:
+    """Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations."""

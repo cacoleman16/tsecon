@@ -26,5 +26,7 @@ tsecon-ml = { path = "../../crates/tsecon-ml" }
 tsecon-ident = { path = "../../crates/tsecon-ident" }
 tsecon-panel = { path = "../../crates/tsecon-panel" }
 tsecon-spectral = { path = "../../crates/tsecon-spectral" }
+tsecon-coint = { path = "../../crates/tsecon-coint" }
+tsecon-regime = { path = "../../crates/tsecon-regime" }
 pyo3 = { version = "0.29.0", features = ["abi3-py39"] }
 numpy = "0.29.0"

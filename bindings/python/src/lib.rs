@@ -1496,6 +1496,149 @@ fn coherence<'py>(
     Ok(d)
 }
 
+fn data_to_faer(
+    data: &numpy::PyReadonlyArray2<'_, f64>,
+) -> tsecon_var::tsecon_linalg::faer::Mat<f64> {
+    let a = data.as_array();
+    tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)])
+}
+
+/// Johansen cointegration test (Johansen 1991). `data` is T x k (rows are
+/// observations, oldest first). Returns eigenvalues, trace and
+/// max-eigenvalue statistics with their 90/95/99% critical values, and the
+/// selected rank at 5%. Matches statsmodels `coint_johansen` (det_order=0).
+#[pyfunction]
+#[pyo3(signature = (data, k_ar_diff = 1))]
+fn johansen<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    k_ar_diff: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = data_to_faer(&data);
+    let r = tsecon_coint::johansen(m.as_ref(), k_ar_diff).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("eig", r.eig.clone().into_pyarray(py))?;
+    d.set_item("trace_stat", r.trace_stat.clone().into_pyarray(py))?;
+    d.set_item("max_eig_stat", r.max_eig_stat.clone().into_pyarray(py))?;
+    let tc: Vec<Vec<f64>> = r.trace_crit.iter().map(|c| c.to_vec()).collect();
+    let mc: Vec<Vec<f64>> = r.max_eig_crit.iter().map(|c| c.to_vec()).collect();
+    d.set_item("trace_crit_90_95_99", tc)?;
+    d.set_item("max_eig_crit_90_95_99", mc)?;
+    d.set_item(
+        "rank_trace_5pct",
+        r.rank_trace(tsecon_coint::SignificanceLevel::Five),
+    )?;
+    d.set_item(
+        "rank_max_eig_5pct",
+        r.rank_max_eig(tsecon_coint::SignificanceLevel::Five),
+    )?;
+    Ok(d)
+}
+
+/// VECM maximum-likelihood estimation at a given cointegrating rank
+/// (Johansen). Returns the loadings alpha, cointegrating vectors beta
+/// (normalized beta[:r,:r] = I), short-run Gamma, and the log-likelihood.
+/// Matches statsmodels VECM.
+#[pyfunction]
+#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1))]
+fn vecm<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    k_ar_diff: usize,
+    coint_rank: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = data_to_faer(&data);
+    let r = tsecon_coint::fit_vecm(m.as_ref(), k_ar_diff, coint_rank).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("alpha", mat_to_vec2_bayes(&r.alpha))?;
+    d.set_item("beta", mat_to_vec2_bayes(&r.beta))?;
+    d.set_item("gamma", mat_to_vec2_bayes(&r.gamma))?;
+    d.set_item("sigma_u", mat_to_vec2_bayes(&r.sigma_u))?;
+    d.set_item("llf", r.llf)?;
+    Ok(d)
+}
+
+/// Markov-switching autoregression (Hamilton 1989), fitted by EM.
+///
+/// Estimates a `k_regimes`-state MS-AR(`order`) with a common AR and
+/// (optionally) switching variances, starting from an internal
+/// quantile-based initialization. Returns the estimated transition matrix,
+/// per-regime means and variances, log-likelihood, smoothed regime
+/// probabilities, the MAP regime path, and expected regime durations.
+#[pyfunction]
+#[pyo3(signature = (y, k_regimes = 2, order = 1, switching_variance = true, max_iter = 500, tol = 1e-6))]
+fn markov_switching_ar<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    k_regimes: usize,
+    order: usize,
+    switching_variance: bool,
+    max_iter: usize,
+    tol: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_regime::{MarkovSwitchingAr, MsarParams, MsarSpec};
+    let ys = y.as_slice()?;
+    let spec = MsarSpec {
+        k_regimes,
+        order,
+        switching_ar: false,
+        switching_variance,
+    };
+    let model = MarkovSwitchingAr::new(ys, spec).map_err(to_py)?;
+
+    // A quantile-based default start: regime means at evenly spaced quantiles,
+    // a diagonal-heavy transition, a shared small AR, and the sample variance.
+    let mut sorted: Vec<f64> = ys.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = sorted.len();
+    let means: Vec<f64> = (0..k_regimes)
+        .map(|r| sorted[((r as f64 + 0.5) / k_regimes as f64 * n as f64) as usize % n])
+        .collect();
+    let mean_y = ys.iter().sum::<f64>() / n as f64;
+    let var_y = ys.iter().map(|v| (v - mean_y).powi(2)).sum::<f64>() / n as f64;
+    let transition: Vec<Vec<f64>> = (0..k_regimes)
+        .map(|i| {
+            (0..k_regimes)
+                .map(|j| {
+                    if i == j {
+                        0.9
+                    } else {
+                        0.1 / (k_regimes as f64 - 1.0)
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    let ar = vec![vec![0.1; order]];
+    let variances = if switching_variance {
+        vec![var_y; k_regimes]
+    } else {
+        vec![var_y]
+    };
+    let start = MsarParams::new(transition, means, ar, variances).map_err(to_py)?;
+
+    let fit = model.fit(&start, max_iter, tol).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("transition", fit.params.transition_matrix())?;
+    d.set_item("means", fit.params.means().to_vec())?;
+    d.set_item("variances", fit.params.variances().to_vec())?;
+    d.set_item("loglik", fit.loglik)?;
+    d.set_item("iterations", fit.iterations)?;
+    d.set_item("converged", fit.converged)?;
+    d.set_item("expected_durations", fit.params.expected_durations())?;
+    let prob1: Vec<f64> = fit.smoothed_prob.iter().map(|p| p[k_regimes - 1]).collect();
+    d.set_item("smoothed_prob_last_regime", prob1.into_pyarray(py))?;
+    d.set_item(
+        "regimes",
+        fit.classified()
+            .iter()
+            .map(|&r| r as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -1544,5 +1687,8 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(periodogram, m)?)?;
     m.add_function(wrap_pyfunction!(welch, m)?)?;
     m.add_function(wrap_pyfunction!(coherence, m)?)?;
+    m.add_function(wrap_pyfunction!(johansen, m)?)?;
+    m.add_function(wrap_pyfunction!(vecm, m)?)?;
+    m.add_function(wrap_pyfunction!(markov_switching_ar, m)?)?;
     Ok(())
 }
