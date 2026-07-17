@@ -1,0 +1,94 @@
+name: CI
+
+# Test the Rust core and the built Python wheel on every push and PR.
+# The wheel is tested in a clean environment (installed, not `maturin develop`)
+# so packaging bugs — missing stub, wrong module name, un-included data — are
+# caught here, not by users. See docs/roadmap/14-packaging-distribution.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust workspace (test + clippy + fmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  python:
+    name: Python wheel (${{ matrix.os }})
+    needs: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Build the abi3 wheel, then install and test it in isolation — no repo
+      # source on the path, so this exercises the packaged artifact only.
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/python
+          command: build
+          args: --release --out dist
+      - name: Install wheel and run tests
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip pytest numpy
+          python -m pip install --no-index --find-links bindings/python/dist tsecon
+          # Run the suite from a scratch dir so the installed package is used,
+          # not the source tree.
+          cp -r bindings/python/tests _wheeltests
+          cd _wheeltests && python -m pytest -q
+
+  typecheck:
+    name: Type-stub check (mypy accepts the stubs)
+    needs: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build + install wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/python
+          command: build
+          args: --release --out dist
+      - run: |
+          python -m pip install --upgrade pip mypy numpy
+          python -m pip install --no-index --find-links bindings/python/dist tsecon
+          # A tiny script that exercises typed signatures; mypy must accept it.
+          cat > _typecheck.py <<'PY'
+          import numpy as np
+          import tsecon
+          y: np.ndarray = np.arange(100.0)
+          rep = tsecon.check_stationarity(y)
+          rec: str = str(rep["recommendation"])
+          r = tsecon.arima_fit(y, p=1, d=1, q=1, forecast_steps=8, conf_alpha=0.1)
+          PY
+          mypy --strict --ignore-missing-imports _typecheck.py

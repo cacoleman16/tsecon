@@ -4,12 +4,62 @@ build-backend = "maturin"
 
 [project]
 name = "tsecon"
+# NOTE: `tsecon` is a working codename. The real name is resolved (and its
+# PyPI availability confirmed) before the first public upload — see
+# docs/roadmap/14-packaging-distribution.md and docs/roadmap/11-docs-ux-adoption.md.
 version = "0.0.1"
-description = "High-performance time series econometrics (Rust core) — working codename"
+description = "High-performance time series econometrics: a Rust core with a Python-first API — validation-gated against statsmodels, SciPy, NumPy, and arch"
+readme = "README.md"
 requires-python = ">=3.9"
+license = "MIT OR Apache-2.0"
+authors = [{ name = "Chase Coleman", email = "chasecoleman93@gmail.com" }]
+keywords = [
+    "time series", "econometrics", "forecasting", "VAR", "SVAR", "BVAR",
+    "local projections", "GARCH", "ARIMA", "Kalman filter", "impulse response",
+    "Bayesian", "nowcasting", "macroeconomics", "statistics",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Typing :: Typed",
+]
 dependencies = ["numpy>=1.22"]
+
+[project.optional-dependencies]
+# The core wheel depends only on numpy; everything else is opt-in. The
+# plotting layer lazy-imports matplotlib and raises a teaching ImportError
+# naming this extra when it is absent.
+plots = ["matplotlib>=3.6"]
+polars = ["polars>=0.20"]
+all = ["matplotlib>=3.6", "polars>=0.20"]
+
+[project.urls]
+Homepage = "https://github.com/cacoleman16/tsecon"
+Documentation = "https://github.com/cacoleman16/tsecon/tree/main/docs"
+Repository = "https://github.com/cacoleman16/tsecon"
+Issues = "https://github.com/cacoleman16/tsecon/issues"
+Changelog = "https://github.com/cacoleman16/tsecon/blob/main/CHANGELOG.md"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
 module-name = "tsecon"
 manifest-path = "Cargo.toml"
+# Ship the hand-written type stub and the py.typed marker inside the wheel so
+# the compiled extension is a first-class typed Python citizen.
+include = ["tsecon.pyi", "py.typed"]

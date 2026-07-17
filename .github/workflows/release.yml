@@ -1,0 +1,98 @@
+name: Release
+
+# Tag-triggered release: build the full cross-platform abi3 wheel matrix and
+# an sdist, test every wheel in a clean environment, then publish to PyPI via
+# trusted publishing (OIDC — no API token). One abi3 wheel per platform serves
+# all Python >= 3.9. Plan: docs/roadmap/14-packaging-distribution.md.
+#
+# Dry-run the whole thing against Test PyPI first (set the environment/repo
+# below to test.pypi.org) before the irreversible production upload.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    name: Wheels (${{ matrix.platform.os }} / ${{ matrix.platform.target }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { os: ubuntu-latest,  target: x86_64,  manylinux: auto }
+          - { os: ubuntu-latest,  target: aarch64, manylinux: auto }
+          - { os: macos-13,       target: x86_64,  manylinux: "" }
+          - { os: macos-latest,   target: aarch64, manylinux: "" }
+          - { os: windows-latest, target: x64,     manylinux: "" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build abi3 wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/python
+          target: ${{ matrix.platform.target }}
+          manylinux: ${{ matrix.platform.manylinux }}
+          command: build
+          # abi3-py39 (set in Cargo.toml) => one wheel covers all Python >= 3.9.
+          args: --release --out dist
+      - name: Smoke-test the built wheel (native targets only)
+        if: matrix.platform.target == 'x86_64' || matrix.platform.target == 'x64'
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip pytest numpy
+          python -m pip install --no-index --find-links bindings/python/dist tsecon
+          cp -r bindings/python/tests _wheeltests
+          cd _wheeltests && python -m pytest -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform.os }}-${{ matrix.platform.target }}
+          path: bindings/python/dist/*.whl
+
+  sdist:
+    name: Source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/python
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: bindings/python/dist/*.tar.gz
+
+  publish:
+    name: Publish to PyPI (trusted publishing)
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    # Only publish on an actual tag, never on manual dispatch.
+    if: startsWith(github.ref, 'refs/tags/')
+    environment:
+      name: pypi
+      url: https://pypi.org/project/tsecon/
+    permissions:
+      # OIDC identity for trusted publishing — this is the ONLY credential used;
+      # there is no API token to leak. Also enables PEP 740 build attestations.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          # For the Test PyPI dry-run, uncomment:
+          # repository-url: https://test.pypi.org/legacy/
