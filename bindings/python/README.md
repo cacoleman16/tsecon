@@ -19,9 +19,13 @@ down to tight numerical tolerances before it ships.
 
 ## Install
 
+Not yet on PyPI — the public package name is being finalized, and the wheel
+is published under it at first release. For now, build from source with
+[maturin](https://www.maturin.rs/) (needs a Rust toolchain and Python ≥ 3.9):
+
 ```sh
-pip install tsecon            # core (numpy only)
-pip install tsecon[plots]     # + matplotlib for the plotting helpers
+pip install maturin
+maturin develop -m bindings/python/Cargo.toml   # builds + installs into the active venv
 ```
 
 ## A taste
