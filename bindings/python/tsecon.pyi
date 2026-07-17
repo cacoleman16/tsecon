@@ -645,3 +645,19 @@ def dfm_news(
     Splits the target-series nowcast revision between two data vintages into
     per-datapoint contributions (weight*news). Returns old_nowcast,
     new_nowcast, total_revision, and contributions (a list of dicts)."""
+
+# ----------------------------------------------- predictive regressions / IVX
+def predictive_regression(
+    r: _ArrayLike, x: _ArrayLike, cz: float = ..., alpha: float = ...
+) -> dict[str, Any]:
+    """Predictive regression with a persistent regressor.
+
+    Returns ols, stambaugh (bias-corrected), and ivx (Kostakis-Magdalinos-
+    Stamatogiannis 2015, Wald test valid uniformly over persistence)."""
+
+def ivx_test(
+    r: _ArrayLike, xs: _ArrayLike, cz: float = ..., alpha: float = ...
+) -> dict[str, Any]:
+    """Joint IVX predictability test for several persistent predictors (xs is T x k).
+
+    Returns beta_ivx, the joint wald/pvalue, rz, nregressors, nobs."""

@@ -2954,6 +2954,91 @@ fn dfm_news<'py>(
     Ok(d)
 }
 
+/// Predictive regression of `r_{t+1}` on a persistent predictor `x_t`, with
+/// inference robust to the predictor's persistence.
+///
+/// Returns three views of `r_{t+1} = alpha + beta*x_t + u_{t+1}` where `x` is
+/// near-integrated and its innovation correlates with `u` (the Stambaugh
+/// setting, which biases OLS and makes the naive t-test over-reject):
+/// `ols` (plain OLS `beta`/`se`/`tstat`), `stambaugh` (the Stambaugh 1999
+/// bias-corrected `beta_corrected` with the `bias_term` and estimated
+/// `rho`), and `ivx` (the Kostakis-Magdalinos-Stamatogiannis 2015 estimator
+/// `beta_ivx` and its Wald test `wald`/`pvalue`, asymptotically chi-square
+/// uniformly over the persistence of `x`). `cz`/`alpha` tune the IVX
+/// instrument (defaults -1, 0.95).
+#[pyfunction]
+#[pyo3(signature = (r, x, cz = -1.0, alpha = 0.95))]
+fn predictive_regression<'py>(
+    py: Python<'py>,
+    r: PyReadonlyArray1<'py, f64>,
+    x: PyReadonlyArray1<'py, f64>,
+    cz: f64,
+    alpha: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let (rs, xs) = (r.as_slice()?, x.as_slice()?);
+    let ols = tsecon_predreg::ols_predictive(rs, xs).map_err(to_py)?;
+    let stb = tsecon_predreg::stambaugh(rs, xs).map_err(to_py)?;
+    let cfg = tsecon_predreg::IvxConfig { cz, alpha };
+    let iv = tsecon_predreg::ivx(rs, xs, cfg).map_err(to_py)?;
+
+    let ols_d = PyDict::new(py);
+    ols_d.set_item("alpha", ols.alpha)?;
+    ols_d.set_item("beta", ols.beta)?;
+    ols_d.set_item("se", ols.se)?;
+    ols_d.set_item("tstat", ols.tstat)?;
+
+    let stb_d = PyDict::new(py);
+    stb_d.set_item("beta_ols", stb.beta_ols)?;
+    stb_d.set_item("beta_corrected", stb.beta_corrected)?;
+    stb_d.set_item("bias_term", stb.bias_term)?;
+    stb_d.set_item("rho_ols", stb.rho_ols)?;
+    stb_d.set_item("se", stb.se)?;
+
+    let iv_d = PyDict::new(py);
+    iv_d.set_item("beta_ivx", iv.beta_ivx)?;
+    iv_d.set_item("wald", iv.wald)?;
+    iv_d.set_item("pvalue", iv.pvalue)?;
+    iv_d.set_item("rz", iv.rz)?;
+
+    let d = PyDict::new(py);
+    d.set_item("ols", ols_d)?;
+    d.set_item("stambaugh", stb_d)?;
+    d.set_item("ivx", iv_d)?;
+    d.set_item("nobs", iv.nobs)?;
+    Ok(d)
+}
+
+/// Joint IVX predictability test for several persistent predictors at once
+/// (Kostakis-Magdalinos-Stamatogiannis 2015).
+///
+/// `xs` is a `T x k` matrix of persistent predictors; tests `H0: beta = 0`
+/// jointly with a chi-square(`k`) Wald statistic whose validity is uniform
+/// over the predictors' persistence. Returns the IVX slope vector
+/// `beta_ivx`, the joint `wald`/`pvalue`, the instrument decay `rz`, and
+/// shape info.
+#[pyfunction]
+#[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95))]
+fn ivx_test<'py>(
+    py: Python<'py>,
+    r: PyReadonlyArray1<'py, f64>,
+    xs: numpy::PyReadonlyArray2<'py, f64>,
+    cz: f64,
+    alpha: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = xs.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let cfg = tsecon_predreg::IvxConfig { cz, alpha };
+    let iv = tsecon_predreg::ivx_multi(r.as_slice()?, &cols, cfg).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("beta_ivx", iv.beta_ivx.clone().into_pyarray(py))?;
+    d.set_item("wald", iv.wald)?;
+    d.set_item("pvalue", iv.pvalue)?;
+    d.set_item("rz", iv.rz)?;
+    d.set_item("nregressors", iv.nregressors)?;
+    d.set_item("nobs", iv.nobs)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -3035,5 +3120,7 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dfm_nowcast, m)?)?;
     m.add_function(wrap_pyfunction!(panel_pmg, m)?)?;
     m.add_function(wrap_pyfunction!(dfm_news, m)?)?;
+    m.add_function(wrap_pyfunction!(predictive_regression, m)?)?;
+    m.add_function(wrap_pyfunction!(ivx_test, m)?)?;
     Ok(())
 }
