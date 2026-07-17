@@ -1256,6 +1256,140 @@ fn sign_restricted_svar<'py>(
     Ok(d)
 }
 
+fn panel_se(se_type: &str, bandwidth: f64) -> PyResult<tsecon_panel::PanelSeType> {
+    use tsecon_panel::PanelSeType::*;
+    match se_type {
+        "nonrobust" => Ok(NonRobust),
+        "cluster" | "cluster_entity" => Ok(ClusterEntity),
+        "driscoll_kraay" | "dk" => Ok(DriscollKraay { bandwidth }),
+        other => Err(PyValueError::new_err(format!(
+            "unknown se_type {other:?}; expected nonrobust/cluster/driscoll_kraay"
+        ))),
+    }
+}
+
+/// Fixed-effects (within) panel OLS with panel-robust standard errors.
+///
+/// `outcome` is `N x T`; `regressors` is `k x N x T`. `se_type`:
+/// "nonrobust", "cluster" (by entity), or "driscoll_kraay" (uses
+/// `bandwidth`). Matches linearmodels PanelOLS conventions.
+#[pyfunction]
+#[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = 4.0))]
+fn panel_fe<'py>(
+    py: Python<'py>,
+    outcome: numpy::PyReadonlyArray2<'py, f64>,
+    regressors: numpy::PyReadonlyArray3<'py, f64>,
+    se_type: &str,
+    bandwidth: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    let o = outcome.as_array();
+    let outcome_m = Mat::from_fn(o.nrows(), o.ncols(), |i, j| o[(i, j)]);
+    let r = regressors.as_array();
+    let (k, n, t) = (r.shape()[0], r.shape()[1], r.shape()[2]);
+    let regs: Vec<(String, Mat<f64>)> = (0..k)
+        .map(|c| (format!("x{c}"), Mat::from_fn(n, t, |i, j| r[[c, i, j]])))
+        .collect();
+    let data = tsecon_panel::PanelData::balanced(outcome_m, regs).map_err(to_py)?;
+    let fit = tsecon_panel::panel_ols_fe(&data).map_err(to_py)?;
+    let inf = fit
+        .inference(panel_se(se_type, bandwidth)?)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("params", fit.params.clone().into_pyarray(py))?;
+    d.set_item("bse", inf.bse.into_pyarray(py))?;
+    d.set_item("tvalues", inf.tvalues.into_pyarray(py))?;
+    d.set_item("se_type", se_type)?;
+    Ok(d)
+}
+
+/// Panel local projection of a common shock (Jordà 2005 for panels), with
+/// fixed effects and panel-robust standard errors, the Ramey-Zubairy
+/// `cumulative` option, and the Dhaene-Jochmans half-panel `jackknife`
+/// Nickell-bias correction.
+#[pyfunction]
+#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false))]
+#[allow(clippy::too_many_arguments)]
+fn panel_lp<'py>(
+    py: Python<'py>,
+    outcome: numpy::PyReadonlyArray2<'py, f64>,
+    shock: PyReadonlyArray1<'py, f64>,
+    horizon: usize,
+    n_lag_controls: usize,
+    se_type: &str,
+    bandwidth: f64,
+    cumulative: bool,
+    jackknife: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    let o = outcome.as_array();
+    let outcome_m = Mat::from_fn(o.nrows(), o.ncols(), |i, j| o[(i, j)]);
+    let data = tsecon_panel::PanelData::balanced(outcome_m, vec![]).map_err(to_py)?;
+    let mut cfg =
+        tsecon_panel::PanelLpConfig::new(horizon, n_lag_controls, panel_se(se_type, bandwidth)?);
+    cfg.cumulative = cumulative;
+    cfg.jackknife = jackknife;
+    let r = tsecon_panel::panel_lp(&data, shock.as_slice()?, &cfg).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("irf", r.irf.into_pyarray(py))?;
+    d.set_item("se", r.se.into_pyarray(py))?;
+    d.set_item(
+        "nobs",
+        r.nobs
+            .iter()
+            .map(|&x| x as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    Ok(d)
+}
+
+/// Clark-West test for nested-model equal predictive accuracy (Clark-West
+/// 2007). One-sided; the null is that the small (nested) model is as good.
+#[pyfunction]
+#[pyo3(signature = (e_small, e_large, yhat_small, yhat_large, lrv_lags = 0))]
+fn cw_test<'py>(
+    py: Python<'py>,
+    e_small: PyReadonlyArray1<'py, f64>,
+    e_large: PyReadonlyArray1<'py, f64>,
+    yhat_small: PyReadonlyArray1<'py, f64>,
+    yhat_large: PyReadonlyArray1<'py, f64>,
+    lrv_lags: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_forecast::cw_test(
+        e_small.as_slice()?,
+        e_large.as_slice()?,
+        yhat_small.as_slice()?,
+        yhat_large.as_slice()?,
+        lrv_lags,
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("cw_stat", r.cw_stat)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("mean_adj_diff", r.mean_adj_diff)?;
+    Ok(d)
+}
+
+/// Giacomini-White unconditional test of equal predictive ability
+/// (Giacomini-White 2006), chi-squared(1) on a loss differential.
+#[pyfunction]
+#[pyo3(signature = (loss1, loss2, lrv_lags = 0))]
+fn gw_test<'py>(
+    py: Python<'py>,
+    loss1: PyReadonlyArray1<'py, f64>,
+    loss2: PyReadonlyArray1<'py, f64>,
+    lrv_lags: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r =
+        tsecon_forecast::gw_test(loss1.as_slice()?, loss2.as_slice()?, lrv_lags).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("gw_stat", r.gw_stat)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("df", r.df)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -1297,5 +1431,9 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(elastic_net, m)?)?;
     m.add_function(wrap_pyfunction!(lasso, m)?)?;
     m.add_function(wrap_pyfunction!(sign_restricted_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(panel_fe, m)?)?;
+    m.add_function(wrap_pyfunction!(panel_lp, m)?)?;
+    m.add_function(wrap_pyfunction!(cw_test, m)?)?;
+    m.add_function(wrap_pyfunction!(gw_test, m)?)?;
     Ok(())
 }

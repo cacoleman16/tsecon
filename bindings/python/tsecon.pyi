@@ -279,3 +279,40 @@ def sign_restricted_svar(
     `probs=[0.05,0.16,0.50,0.84,0.95]`, the identified-set envelope
     (`set_min`/`set_max`), and `diagnostics`.
     """
+
+# ------------------------------------------------------------------ panel
+def panel_fe(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    se_type: str = ...,
+    bandwidth: float = ...,
+) -> dict[str, Any]:
+    """Fixed-effects panel OLS; `outcome` is N x T, `regressors` is k x N x T.
+
+    `se_type`: "nonrobust", "cluster" (by entity), or "driscoll_kraay".
+    """
+
+def panel_lp(
+    outcome: _ArrayLike,
+    shock: _ArrayLike,
+    horizon: int = ...,
+    n_lag_controls: int = ...,
+    se_type: str = ...,
+    bandwidth: float = ...,
+    cumulative: bool = ...,
+    jackknife: bool = ...,
+) -> dict[str, Any]:
+    """Panel local projection of a common shock with fixed effects."""
+
+# --------------------------------------------------- forecast comparison
+def cw_test(
+    e_small: _ArrayLike,
+    e_large: _ArrayLike,
+    yhat_small: _ArrayLike,
+    yhat_large: _ArrayLike,
+    lrv_lags: int = ...,
+) -> dict[str, float]:
+    """Clark-West test for nested-model equal predictive accuracy."""
+
+def gw_test(loss1: _ArrayLike, loss2: _ArrayLike, lrv_lags: int = ...) -> dict[str, Any]:
+    """Giacomini-White unconditional test of equal predictive ability."""
