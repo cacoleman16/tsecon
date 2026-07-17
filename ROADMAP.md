@@ -26,6 +26,7 @@ Time series econometrics has no centralized home. The situation today:
 4. **Documentation teaches judgment, not just syntax.** The flagship deliverable is the "which model when" guide and per-estimator model cards (assumptions, failure modes, alternatives). Error messages teach.
 5. **Scope discipline is survival.** ~830 candidate methods were inventoried; abandoned-library post-mortems (Kats, PyFlux) show exactly how feature sprawl kills. Tiering is public, v1 surface area is capped, and frontier items are gated on validation targets.
 6. **Sensible loud defaults.** The statistically-recommended choice is the default (e.g., lag-augmented inference for local projections per Montiel Olea & Plagborg-Møller 2021), and deviations from older conventions are flagged in output, with references.
+7. **Robust inference is a first-class option everywhere.** Every regression-based estimator exposes a uniform `se_type=` argument — nonrobust, HC0–HC3, HAC (Newey-West/Andrews/QS with automatic bandwidth), EWC fixed-b (the LLSW 2018 recommendation), cluster/Driscoll-Kraay where panels apply, and bootstrap (wild/block via the shared resampling engine) — with the method always stamped on the reported intervals. One HAC implementation serves the whole library, so identical settings can never produce different p-values in different modules.
 
 ## 3. Architecture at a glance
 
