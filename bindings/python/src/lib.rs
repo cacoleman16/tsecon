@@ -2802,12 +2802,13 @@ fn panel_mean_group<'py>(
 /// edge `nowcast` (one level per series), the `edge_factor`, the Gaussian
 /// `loglik`, the `smoothed_factors` (`T x r`), and `n_factors`/`factor_order`.
 #[pyfunction]
-#[pyo3(signature = (data, n_factors = 1, factor_order = 2))]
+#[pyo3(signature = (data, n_factors = 1, factor_order = 2, method = "two_step"))]
 fn dfm_nowcast<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
     n_factors: usize,
     factor_order: usize,
+    method: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_var::tsecon_linalg::faer::Mat;
     let arr = data.as_array();
@@ -2822,13 +2823,33 @@ fn dfm_nowcast<'py>(
     }
     let train = Mat::from_fn(first_ragged, n, |r, j| arr[(r, j)]);
     let full = to_faer(&data);
-    let nc = tsecon_nowcast::Nowcaster::fit_two_step(train.as_ref(), n_factors, factor_order)
-        .map_err(to_py)?;
+    // "two_step" is the Doz-Giannone-Reichlin estimator; "mle" is the exact
+    // one-step Gaussian MLE (single factor only, r = 1).
+    let nc = match method {
+        "two_step" => {
+            tsecon_nowcast::Nowcaster::fit_two_step(train.as_ref(), n_factors, factor_order)
+                .map_err(to_py)?
+        }
+        "mle" => {
+            if n_factors != 1 {
+                return Err(PyValueError::new_err(
+                    "method=\"mle\" supports a single factor only (n_factors=1)",
+                ));
+            }
+            tsecon_nowcast::Nowcaster::fit_mle(train.as_ref(), factor_order).map_err(to_py)?
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"two_step\" or \"mle\""
+            )))
+        }
+    };
     let res = nc.nowcast_panel(full.as_ref()).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("nowcast", res.values.clone().into_pyarray(py))?;
     d.set_item("edge_factor", res.edge_factor.clone().into_pyarray(py))?;
     d.set_item("loglik", res.smoothing.loglik)?;
+    d.set_item("fit_loglik", nc.loglik())?;
     let factors: Vec<Vec<f64>> = nc.smoothed_factors().to_vec();
     d.set_item("smoothed_factors", factors)?;
     d.set_item("n_factors", nc.n_factors())?;

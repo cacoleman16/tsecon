@@ -116,3 +116,25 @@ def test_dfm_nowcast_handles_ragged_edge():
     res = tsecon.dfm_nowcast(ragged, n_factors=1, factor_order=2)
     assert np.all(np.isfinite(res["nowcast"]))  # nowcast still complete
     assert len(res["nowcast"]) == x.shape[1]
+
+
+def test_dfm_nowcast_mle_fits():
+    # The one-step MLE path produces a valid nowcast whose smoothed factor
+    # tracks the truth. (The tight loglik-maximization check lives in the
+    # crate's Rust tests, which compare on a common data scaling; two_step and
+    # mle standardize/centre differently, so their loglik values are not
+    # directly comparable here.) Small panel + factor_order=1 keeps the
+    # debug-build MLE fit quick.
+    x, f = _factor_panel(n=90, big_n=5, seed=6)
+    mle = tsecon.dfm_nowcast(x, n_factors=1, factor_order=1, method="mle")
+    assert np.isfinite(mle["fit_loglik"])
+    assert np.all(np.isfinite(mle["nowcast"]))
+    fac = np.array(mle["smoothed_factors"])
+    assert fac.shape == (x.shape[0], 1)
+    assert abs(np.corrcoef(fac[:, 0], f)[0, 1]) > 0.85
+
+
+def test_dfm_mle_rejects_multiple_factors():
+    x, _ = _factor_panel(n=100, big_n=6, seed=7)
+    with pytest.raises(ValueError):
+        tsecon.dfm_nowcast(x, n_factors=2, factor_order=2, method="mle")
