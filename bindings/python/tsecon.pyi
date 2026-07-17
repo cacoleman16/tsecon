@@ -377,3 +377,34 @@ def ccc_garch(returns: _ArrayLike) -> dict[str, Any]:
 
 def dcc_garch(returns: _ArrayLike) -> dict[str, Any]:
     """DCC-GARCH (Engle 2002); a, b, qbar, loglik, last correlation matrix."""
+
+# ------------------------------------------------ realized volatility / HAR
+def realized_measures(returns: _ArrayLike) -> dict[str, float]:
+    """Realized variance, bipower variation, and jump component (BNS 2004)."""
+
+def har_rv(
+    rv: _ArrayLike,
+    start: int = ...,
+    variant: str = ...,
+    hac_maxlags: int = ...,
+    use_correction: bool = ...,
+) -> dict[str, Any]:
+    """HAR-RV (Corsi 2009): RV_t on [const, daily, weekly, monthly], HAC SEs.
+
+    variant is "level", "log", or "sqrt"."""
+
+# ------------------------------------------------------------ connectedness
+def connectedness(
+    data: _ArrayLike, lags: int = ..., horizon: int = ..., trend: str = ...
+) -> dict[str, Any]:
+    """Diebold-Yilmaz connectedness (percent) from a VAR's GFEVD.
+
+    total, to_others, from_others, net, gfevd, pairwise_net (data is T x k)."""
+
+# ----------------------------------------------------------- factor model
+def factor_model(
+    data: _ArrayLike, n_factors: int = ..., kmax: int = ...
+) -> dict[str, Any]:
+    """PCA factor model (T x N) + Bai-Ng (2002) factor selection.
+
+    factors, loadings, eigenvalues, and icp1/icp2/pcp1/pcp2 counts."""

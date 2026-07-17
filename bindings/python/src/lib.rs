@@ -1755,6 +1755,140 @@ fn dcc_garch<'py>(
     Ok(d)
 }
 
+/// Realized volatility measures on a vector of high-frequency returns.
+///
+/// Returns realized variance (`rv`), bipower variation (`bipower`, the
+/// jump-robust integrated-variance estimator of Barndorff-Nielsen &
+/// Shephard 2004), and the truncated jump component (`jump = max(rv -
+/// bipower, 0)`). Validated against the documented BNS formulas at 1e-12.
+#[pyfunction]
+fn realized_measures<'py>(
+    py: Python<'py>,
+    returns: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = returns.as_slice()?;
+    let rv = tsecon_realized::realized_variance(r).map_err(to_py)?;
+    let bv = tsecon_realized::bipower_variation(r).map_err(to_py)?;
+    let jump = tsecon_realized::jump_component(r).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("rv", rv)?;
+    d.set_item("bipower", bv)?;
+    d.set_item("jump", jump)?;
+    Ok(d)
+}
+
+/// HAR-RV heterogeneous autoregression of realized variance (Corsi 2009).
+///
+/// Regresses `RV_t` on `[const, RV_{t-1}, RV_week, RV_month]`, where the
+/// weekly/monthly regressors are trailing averages known at `t-1`. The
+/// `variant` transforms the series first: `"level"`, `"log"`, or `"sqrt"`.
+/// Standard errors are Newey-West HAC with `hac_maxlags` lags. Matches
+/// statsmodels OLS-HAC at 1e-8.
+#[pyfunction]
+#[pyo3(signature = (rv, start = 22, variant = "level", hac_maxlags = 5, use_correction = false))]
+fn har_rv<'py>(
+    py: Python<'py>,
+    rv: PyReadonlyArray1<'py, f64>,
+    start: usize,
+    variant: &str,
+    hac_maxlags: usize,
+    use_correction: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_realized::{HarConfig, HarVariant};
+    let v = match variant {
+        "level" => HarVariant::Level,
+        "log" => HarVariant::Log,
+        "sqrt" => HarVariant::Sqrt,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown variant {other:?}; expected \"level\", \"log\", or \"sqrt\""
+            )))
+        }
+    };
+    let cfg = HarConfig {
+        start,
+        variant: v,
+        hac_maxlags,
+        use_correction,
+    };
+    let fit = tsecon_realized::har_rv(rv.as_slice()?, &cfg).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("params", fit.params.into_pyarray(py))?;
+    d.set_item("bse", fit.bse.into_pyarray(py))?;
+    d.set_item("tvalues", fit.tvalues.into_pyarray(py))?;
+    d.set_item("rsquared", fit.rsquared)?;
+    d.set_item("nobs", fit.nobs)?;
+    Ok(d)
+}
+
+/// Diebold-Yilmaz connectedness from a VAR's generalized FEVD.
+///
+/// Fits a VAR(`lags`, trend) then builds the spillover table from the
+/// row-normalized Pesaran-Shin GFEVD at the given `horizon`: total
+/// (system-wide spillover index), directional `to_others`/`from_others`,
+/// `net`, and the antisymmetric `pairwise_net` matrix — all in percent.
+/// Matches the documented GFEVD golden to ~1e-13.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
+fn connectedness<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    trend: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let res = var_results(&data, lags, trend)?;
+    let table = tsecon_connect::ConnectednessTable::from_var(&res, horizon).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("total", table.total)?;
+    d.set_item("to_others", table.to_others.clone().into_pyarray(py))?;
+    d.set_item("from_others", table.from_others.clone().into_pyarray(py))?;
+    d.set_item("net", table.net.clone().into_pyarray(py))?;
+    d.set_item("gfevd", mat_to_vec2(&table.gfevd))?;
+    d.set_item("pairwise_net", mat_to_vec2(&table.pairwise_net))?;
+    Ok(d)
+}
+
+/// Static approximate factor model (PCA) with Bai-Ng factor selection.
+///
+/// Extracts `n_factors` principal components from `data` (T x N; the
+/// caller standardizes if desired) via SVD: `factors` (T x r), `loadings`
+/// (N x r), and the full `eigenvalues` vector. Also runs the Bai-Ng (2002)
+/// information criteria up to `kmax` and returns the selected factor counts
+/// (`icp1`/`icp2`/`pcp1`/`pcp2`). Matches numpy PCA to 1e-6 (up to sign).
+#[pyfunction]
+#[pyo3(signature = (data, n_factors = 2, kmax = 8))]
+fn factor_model<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    n_factors: usize,
+    kmax: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    let a = data.as_array();
+    let (n, big_n) = (a.nrows(), a.ncols());
+    let m = Mat::from_fn(n, big_n, |i, j| a[(i, j)]);
+    let model = tsecon_favar::FactorModel::fit(m.as_ref()).map_err(to_py)?;
+    let factors = model.factors(n_factors).map_err(to_py)?;
+    let loadings = model.loadings(n_factors).map_err(to_py)?;
+    let eigenvalues = model.eigenvalues().to_vec();
+    let bn = tsecon_favar::bai_ng(&eigenvalues, n, big_n, kmax).map_err(to_py)?;
+    let (er, er_ratios) = tsecon_favar::eigenvalue_ratio(&eigenvalues, kmax).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("factors", mat_to_vec2(&factors))?;
+    d.set_item("loadings", mat_to_vec2(&loadings))?;
+    d.set_item("eigenvalues", eigenvalues.into_pyarray(py))?;
+    d.set_item("icp1", bn.icp1_hat)?;
+    d.set_item("icp2", bn.icp2_hat)?;
+    d.set_item("pcp1", bn.pcp1_hat)?;
+    d.set_item("pcp2", bn.pcp2_hat)?;
+    // Ahn-Horenstein (2013) eigenvalue ratio: robust in small cross-sections
+    // where the Bai-Ng criteria over-select.
+    d.set_item("er", er)?;
+    d.set_item("er_ratios", er_ratios.into_pyarray(py))?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -1810,5 +1944,9 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(umidas, m)?)?;
     m.add_function(wrap_pyfunction!(ccc_garch, m)?)?;
     m.add_function(wrap_pyfunction!(dcc_garch, m)?)?;
+    m.add_function(wrap_pyfunction!(realized_measures, m)?)?;
+    m.add_function(wrap_pyfunction!(har_rv, m)?)?;
+    m.add_function(wrap_pyfunction!(connectedness, m)?)?;
+    m.add_function(wrap_pyfunction!(factor_model, m)?)?;
     Ok(())
 }
