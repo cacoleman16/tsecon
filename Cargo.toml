@@ -26,6 +26,8 @@ members = [
     "crates/tsecon-realized",
     "crates/tsecon-connect",
     "crates/tsecon-favar",
+    "crates/tsecon-gmm",
+    "crates/tsecon-termstructure",
     "crates/tsecon-ssm",
     "bindings/python",
 ]
