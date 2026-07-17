@@ -22,6 +22,7 @@ members = [
     "crates/tsecon-regime",
     "crates/tsecon-midas",
     "crates/tsecon-mgarch",
+    "crates/tsecon-spectral",
     "crates/tsecon-ssm",
     "bindings/python",
 ]
