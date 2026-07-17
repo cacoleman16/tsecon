@@ -22,6 +22,20 @@
 //! The nowcast of a target series is its loadings dotted with the smoothed
 //! factor at the edge, de-standardized to the series' level.
 //!
+//! ## The one-step (full-information) MLE
+//!
+//! [`Nowcaster::fit_mle`] instead maximises the *exact* Gaussian Kalman
+//! log-likelihood ([`smooth_fixed`]) jointly over the loadings, factor-AR
+//! coefficients, and idiosyncratic variances, with the factor-innovation
+//! variance fixed to 1 for identification — for a single factor (`r = 1`) this
+//! is *exactly* statsmodels' `DynamicFactor(k_factors=1, factor_order=p,
+//! error_order=0)`. The panel is centred (statsmodels does not model the mean),
+//! the search (tsecon-optim Nelder-Mead, then a BFGS polish) is warm-started
+//! from the two-step estimate, and the same [`Nowcaster::nowcast_panel`] path
+//! then produces edge nowcasts. Unlike the two-step estimator, the one-step MLE
+//! *is* the estimator statsmodels computes, so its maximised log-likelihood is
+//! tolerance-matched to statsmodels' (see [`mle`] and `tests/mle.rs`).
+//!
 //! ## Ragged edge
 //!
 //! Real-time panels are *jagged*: faster indicators are observed through the
@@ -74,6 +88,7 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod error;
+pub mod mle;
 pub mod news;
 pub mod statespace;
 pub mod twostep;

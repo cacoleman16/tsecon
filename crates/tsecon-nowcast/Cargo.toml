@@ -17,6 +17,9 @@ tsecon-ssm = { path = "../tsecon-ssm" }
 tsecon-var = { path = "../tsecon-var" }
 # Standardization / densities used in the likelihood.
 tsecon-stats = { path = "../tsecon-stats" }
+# Nelder-Mead simplex search and the stationarity/positivity reparameterization
+# toolkit for the one-step Gaussian MLE.
+tsecon-optim = { path = "../tsecon-optim" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy

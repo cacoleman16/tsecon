@@ -4,6 +4,7 @@ use core::fmt;
 
 use tsecon_favar::FavarError;
 use tsecon_linalg::LinalgError;
+use tsecon_optim::OptimError;
 use tsecon_ssm::SsmError;
 use tsecon_var::VarError;
 
@@ -53,6 +54,9 @@ pub enum NowcastError {
     Ssm(SsmError),
     /// An error propagated from the structured linear-algebra layer.
     Linalg(LinalgError),
+    /// An error propagated from the numerical optimizer (`tsecon-optim`),
+    /// used by the one-step MLE ([`crate::mle`]).
+    Optim(OptimError),
 }
 
 impl fmt::Display for NowcastError {
@@ -82,6 +86,7 @@ impl fmt::Display for NowcastError {
             Self::Var(e) => write!(f, "factor VAR error: {e}"),
             Self::Ssm(e) => write!(f, "state-space error: {e}"),
             Self::Linalg(e) => write!(f, "linear-algebra error: {e}"),
+            Self::Optim(e) => write!(f, "optimizer error: {e}"),
         }
     }
 }
@@ -109,5 +114,11 @@ impl From<SsmError> for NowcastError {
 impl From<LinalgError> for NowcastError {
     fn from(e: LinalgError) -> Self {
         Self::Linalg(e)
+    }
+}
+
+impl From<OptimError> for NowcastError {
+    fn from(e: OptimError) -> Self {
+        Self::Optim(e)
     }
 }

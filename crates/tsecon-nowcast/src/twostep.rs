@@ -30,11 +30,17 @@ use tsecon_var::{Trend, VarSpec};
 use crate::error::NowcastError;
 use crate::statespace::{smooth_fixed, DfmParams, DfmSmoothing};
 
-/// A fitted two-step dynamic-factor nowcasting model.
+/// A fitted dynamic-factor nowcasting model.
 ///
-/// Holds the estimated parameters on the standardized scale together with the
-/// standardization moments needed to map factor movements back onto the level
-/// of each observed series.
+/// Two estimators build this type. [`Nowcaster::fit_two_step`] fits the
+/// Doz-Giannone-Reichlin two-step estimator on the **standardized** scale
+/// (`center` and `scale` are the training column means and standard
+/// deviations). [`Nowcaster::fit_mle`] fits the one-step Gaussian MLE (see
+/// [`crate::mle`]) on the **centred, raw** scale: `center` holds the column
+/// means, `scale` is all ones, and the loadings carry the factor scale. In
+/// both cases `center`/`scale` are exactly the moments needed to map factor
+/// movements back onto the level of each observed series, so nowcasting is
+/// identical for the two.
 #[derive(Debug, Clone)]
 pub struct Nowcaster {
     n_series: usize,
@@ -42,12 +48,19 @@ pub struct Nowcaster {
     factor_order: usize,
     /// Column means of the training panel (length `N`).
     center: Vec<f64>,
-    /// Column standard deviations (`ddof = 0`) of the training panel (`N`).
+    /// Per-series scale used to map factor movements onto series levels
+    /// (length `N`): the training column standard deviations for the two-step
+    /// estimator, all ones for the raw-scale MLE.
     scale: Vec<f64>,
-    /// Estimated parameters on the *standardized* scale.
+    /// Estimated parameters (standardized scale for the two-step estimator,
+    /// raw/centred scale for the MLE).
     params: DfmParams,
     /// Smoothed states/factors/loglik from the balanced training pass.
     smoothing: DfmSmoothing,
+    /// For an MLE fit, the two-step warm start's log-likelihood on the same
+    /// centred panel — the optimiser's initial objective, which the MLE
+    /// log-likelihood cannot fall below. `None` for a two-step fit.
+    two_step_reference_loglik: Option<f64>,
 }
 
 impl Nowcaster {
@@ -153,7 +166,60 @@ impl Nowcaster {
             scale,
             params,
             smoothing,
+            two_step_reference_loglik: None,
         })
+    }
+
+    /// Fits the **one-step Gaussian MLE** of the single-factor dynamic factor
+    /// model to a **balanced** panel `data` (`T x N`, observations in rows,
+    /// oldest first) with an AR(`factor_order`) factor and diagonal
+    /// white-noise idiosyncratic errors.
+    ///
+    /// This maximises the exact Kalman log-likelihood
+    /// ([`crate::statespace::smooth_fixed`]) jointly over the loadings, the
+    /// factor-AR coefficients, and the idiosyncratic variances, with the
+    /// factor-innovation variance fixed to 1 for identification — *exactly*
+    /// statsmodels' `DynamicFactor(k_factors=1, factor_order=p,
+    /// error_order=0)`. The panel is centred (statsmodels does not model the
+    /// mean) and the search (Nelder-Mead then a BFGS polish, from
+    /// `tsecon-optim`) is warm-started from the two-step estimate, so the MLE
+    /// log-likelihood cannot fall below the two-step value on the same centred
+    /// panel; see [`Self::two_step_reference_loglik`].
+    ///
+    /// Only a single factor (`r = 1`) is supported.
+    ///
+    /// # Errors
+    ///
+    /// * [`NowcastError::EmptyInput`] / [`NowcastError::InvalidArgument`] for a
+    ///   degenerate panel or `factor_order == 0`;
+    /// * [`NowcastError::NonFinite`] if the training panel contains NaN or
+    ///   infinity (training requires a balanced, fully-observed panel);
+    /// * errors propagated from the two-step warm start, the optimiser, or the
+    ///   state-space smoother.
+    pub fn fit_mle(data: MatRef<'_, f64>, factor_order: usize) -> Result<Self, NowcastError> {
+        let fit = crate::mle::fit_mle_single_factor(data, factor_order)?;
+        let n = fit.params.n_series();
+        Ok(Self {
+            n_series: n,
+            n_factors: 1,
+            factor_order,
+            center: fit.center,
+            // Raw scale: the loadings carry the factor scale, so no per-series
+            // rescaling is applied when mapping the factor onto levels.
+            scale: vec![1.0; n],
+            params: fit.params,
+            smoothing: fit.smoothing,
+            two_step_reference_loglik: Some(fit.two_step_loglik),
+        })
+    }
+
+    /// For an MLE fit ([`Self::fit_mle`]), the log-likelihood of the two-step
+    /// warm start evaluated on the same centred panel — the optimiser's
+    /// initial objective. [`Self::loglik`] (the achieved MLE log-likelihood)
+    /// is guaranteed to be at least this value. `None` for a two-step fit.
+    #[inline]
+    pub fn two_step_reference_loglik(&self) -> Option<f64> {
+        self.two_step_reference_loglik
     }
 
     /// Number of series `N`.
