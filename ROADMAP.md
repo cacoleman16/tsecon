@@ -63,6 +63,7 @@ Crate layout: a cargo workspace with domain crates (`core-ssm`, `core-rng`, `cor
 | 11 | **Docs, UX & adoption** | Competitive audits, Diátaxis docs, model cards, replication gallery, datasets, migration guides, naming, governance | [11-docs-ux-adoption.md](docs/roadmap/11-docs-ux-adoption.md) |
 | 12 | **Extensions (beyond the brief)** | Panel TS, term structure, predictive regressions, GMM/SMM, DSGE-lite, survey expectations, and more | [12-extensions.md](docs/roadmap/12-extensions.md) |
 | 13 | **Visualization** | Publication-ready-by-default figures: style system, IRF panel grids, fan charts, diagnostic dashboards, visual regression CI | [13-visualization.md](docs/roadmap/13-visualization.md) |
+| 14 | **Packaging & distribution** | The PyPI release pipeline: cross-platform abi3 wheels, sdist, type stubs, trusted publishing, conda-forge, provenance | [14-packaging-distribution.md](docs/roadmap/14-packaging-distribution.md) |
 
 Headline differentiators — the modules nothing else offers as a maintained, unified stack: **06 (identification), 07 (local projections), 05 (Bayesian), 08 (nowcasting)**. They are also the modules with the deepest cross-dependencies, which is why the shared infrastructure comes first.
 
@@ -141,6 +142,9 @@ Workspace scaffolding; faer-backed linalg + Sylvester/Lyapunov/Toeplitz solvers;
 - **ML (10):** penalized solvers (+ regularized VARs in 04), native random forest/boosting with TS-aware resampling, factor/diffusion-index forecasting, DML with dependent data, GP-SSM, interpretation tooling, contamination-aware benchmark harness.
 - **Univariate depth (02):** Markov-switching, SETAR/STAR with test batteries, ARFIMA/long memory, structural-break workflows.
 **v1.0 gate:** API freeze + deprecation policy in force; model cards for every core estimator; the "which model when" guide complete; replication gallery ≥ 15 papers; public benchmark dashboard; tiering published; conda-forge feedstock live.
+
+### Packaging workstream (Module 14) — cross-cutting, first release after Phase 1
+Packaging is not a phase but a workstream that ships an installable artifact as early as there is a usable core, then matures to a mature release process by v1.0. Milestones: **`0.0.x` first public release** right after Phase 1 (complete `pyproject.toml` metadata, cross-platform abi3 wheel matrix + sdist via `maturin-action`/`cibuildwheel`, hand-written type stubs + `py.typed`, tag-triggered GitHub Actions release with PyPI **trusted publishing**, dry-run on Test PyPI first) so anyone can `pip install <name>` the alpha; **`0.x` maturation** (conda-forge feedstock, `show_versions()` provenance, optional-dependency extras, wheel-level clean-environment CI smoke tests, changelog + semver policy, docs site) through Phases 2–4; **v1.0** carries the API-stability guarantees and build attestations. Full plan: [14-packaging-distribution.md](docs/roadmap/14-packaging-distribution.md). Prerequisite: resolve the real library name (Module 11) before the first upload — the first PyPI publish claims the name permanently.
 
 ### Phase 5 — Extensions (post-1.0, demand-ordered)
 E1 panel time series → E2 term structure → E3 predictive regressions → E4 GMM/SMM/indirect inference (see [12-extensions.md](docs/roadmap/12-extensions.md)); the DSGE-lite decision (E5) executes here; E6–E8 follow; companion packages (deep-learning adapters, causal-panel suite) spin up under separate versioning.
