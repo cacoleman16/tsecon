@@ -6,6 +6,24 @@ This is the master plan. Each module has a detailed specification in [docs/roadm
 
 ---
 
+## 0. Current build status
+
+*Snapshot as of the latest commit. The plan below is the destination; this is where the code actually is.*
+
+**Phases 0–1 complete and most of Phase 2 landed.** 18 Rust crates implemented (~26,000 source lines), **301 Rust tests + 45 Python tests, all green and golden-fixture-gated** against statsmodels, SciPy, NumPy, `arch`, and `linearmodels`. Everything installs and runs from Python today. The repository builds from a clean clone (CI-verified), with `cargo fmt`/`clippy`/`test` and a build-and-test-the-wheel matrix (Linux/macOS/Windows) on every push, plus a tag-triggered PyPI release pipeline with trusted publishing.
+
+**Built and callable from Python now** (32 functions): the diagnostic battery (ACF/PACF, Ljung-Box, Jarque-Bera, ARCH-LM) and the full unit-root workflow (ADF, KPSS, `check_stationarity`); robust standard errors (HAC/Newey-West with a uniform `se_type=`); the bootstrap family; the exact-diffuse Kalman filter/smoother; **ARIMA** (exact MLE + forecasting), **GARCH/GJR/EGARCH** (QMLE + robust SEs), **VAR** (IRF/FEVD/Granger/forecast, with cumulative IRF views); trend-cycle filters; forecast evaluation (Diebold-Mariano, Theta, accuracy measures); and a **Minnesota-NIW Bayesian VAR** with posterior IRF draws and convergence diagnostics.
+
+**Built in Rust, awaiting Python bindings** (validated, committed): the **forecast backtesting engine** + Clark-West + Giacomini-White (Module 09); **penalized regression** (ridge/lasso/elastic-net/adaptive) + leakage-safe time-series CV (Module 10); the dedicated **local projections** module — lag-augmented, LP-IV, cumulative, state-dependent (Module 07); **sign-restricted Bayesian SVARs** + the Haar rotation kernel (Module 06); and the first **panel** slice — fixed effects with clustered/Driscoll-Kraay SEs, panel LP, mean-group VAR (extension E1).
+
+**Documentation shipped**: a 13-chapter [teaching guide](docs/guide/README.md) (beginner to research-grade, including nonlinear dynamics), an 11-section worked [gallery](docs/examples/README.md) with figures, this roadmap's 15 module specs, and an interactive demo.
+
+**Next up**: wire the five Rust-complete modules above into the Python bindings and gallery; then the largest remaining gaps — VECM/Johansen *estimation* (tests exist, estimator doesn't), MIDAS/nowcasting (Module 08), and the multivariate-GARCH volatility depth (Module 03). The library name is still the working codename `tsecon` and must be resolved before the first PyPI upload (Module 11/14).
+
+**Validation-first paid off repeatedly**: the discipline surfaced three genuine defects in *reference* implementations (a duplicated-SE column and an early optimizer stop in `arch`, a non-converged `statsmodels` fit) and two fixture-precision ceilings (panel, forecast-eval) that were fixed at the source — plus a repo-breaking `.gitignore` that had silently excluded a whole module, caught only because CI tests a fresh checkout.
+
+---
+
 ## 1. Vision and the wedge
 
 Time series econometrics has no centralized home. The situation today:
