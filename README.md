@@ -4,9 +4,14 @@ A high-performance time series econometrics library: Rust core, Python-first API
 The name `tsecon` is a placeholder — the real name is decided before first public
 release (see [ROADMAP.md §9](ROADMAP.md)).
 
-**Status: Phase 0 (foundations) under construction.** See [ROADMAP.md](ROADMAP.md)
-for the master plan and [docs/roadmap/](docs/roadmap/) for the 13 module
-specifications.
+**Status: foundations and the first model classes built and fixture-validated.**
+See [ROADMAP.md](ROADMAP.md) for the master plan and [docs/roadmap/](docs/roadmap/)
+for the module specifications.
+
+**Learn:** [The tsecon Guide to Time Series Econometrics](docs/guide/README.md) —
+a free 12-chapter course, beginner to research-grade, mirroring the library.
+**See it work:** [the gallery](docs/examples/README.md) — every method with
+use cases, code, and figures.
 
 ## Layout
 
