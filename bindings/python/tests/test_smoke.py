@@ -300,3 +300,21 @@ def test_mcmc_diagnostics_match_arviz():
         assert r["ess_bulk"] == pytest.approx(CONVFX[name]["ess_bulk"], rel=1e-3)
         assert r["ess_tail"] == pytest.approx(CONVFX[name]["ess_tail"], rel=1e-3)
     assert tsecon.mcmc_diagnostics(np.array(CONVFX["bad"]["chains"]))["rhat"] > 1.01
+
+
+def test_arima_fit_beats_statsmodels_on_nile():
+    fx = json.loads((FIXTURES / "arima.json").read_text())["nile_arma11c_fit"]
+    r = tsecon.arima_fit(NILE, p=1, d=0, q=1, constant=True, forecast_steps=12)
+    assert r["loglik"] >= fx["loglike"] - 1e-6      # match or beat (fixture was non-converged)
+    assert len(r["forecast_mean"]) == 12
+    assert (np.diff(r["forecast_se"]) >= -1e-10).all()   # widening uncertainty
+    lb = tsecon.ljung_box(r["residuals"], nlags=10)
+    assert lb["lb_pvalue"][-1] > 0.01                    # residuals ~ white noise
+
+
+def test_arima_d1_random_walk_law():
+    rw = np.cumsum(np.random.default_rng(3).standard_normal(400)) * 1.7
+    r = tsecon.arima_fit(rw, p=0, d=1, q=0, constant=False, forecast_steps=9)
+    sig = np.sqrt(np.exp(0) * np.var(np.diff(rw)))
+    np.testing.assert_allclose(r["forecast_se"], r["forecast_se"][0] * np.sqrt(np.arange(1, 10)),
+                               rtol=1e-8)  # se_h = sigma * sqrt(h)

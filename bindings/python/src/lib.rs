@@ -839,6 +839,39 @@ fn mcmc_diagnostics<'py>(
     Ok(d)
 }
 
+/// Fit an ARIMA(p,d,q) by exact Gaussian maximum likelihood on the
+/// state-space engine (Monahan-transformed L-BFGS with Nelder-Mead
+/// polish; Hannan-Rissanen starting values). `d > 0` uses simple
+/// differencing (the statsmodels simple_differencing=True convention),
+/// and forecasts are undifferenced with exact cumulative variance.
+#[pyfunction]
+#[pyo3(signature = (y, p = 1, d = 0, q = 0, constant = true, forecast_steps = 0))]
+fn arima_fit<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    d: usize,
+    q: usize,
+    constant: bool,
+    forecast_steps: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let spec = tsecon_arima::ArimaSpec::new(p, d, q).map_err(to_py)?.with_constant(constant);
+    let r = spec.fit(y.as_slice()?).map_err(to_py)?;
+    let dct = PyDict::new(py);
+    dct.set_item("params", r.params().to_vec().into_pyarray(py))?;
+    dct.set_item("param_names", r.param_names().to_vec())?;
+    dct.set_item("loglik", r.loglik)?;
+    dct.set_item("aic", r.aic)?;
+    dct.set_item("bic", r.bic)?;
+    if forecast_steps > 0 {
+        let fc = r.forecast(forecast_steps).map_err(to_py)?;
+        dct.set_item("forecast_mean", fc.mean.into_pyarray(py))?;
+        dct.set_item("forecast_se", fc.se.into_pyarray(py))?;
+    }
+    dct.set_item("residuals", r.residuals().map_err(to_py)?.into_pyarray(py))?;
+    Ok(dct)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -873,5 +906,6 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bvar_fit, m)?)?;
     m.add_function(wrap_pyfunction!(bvar_irf_draws, m)?)?;
     m.add_function(wrap_pyfunction!(mcmc_diagnostics, m)?)?;
+    m.add_function(wrap_pyfunction!(arima_fit, m)?)?;
     Ok(())
 }
