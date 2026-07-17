@@ -427,6 +427,23 @@ def svensson(
 ) -> dict[str, Any]:
     """Svensson (1994) four-factor yield-curve fit; nests Nelson-Siegel."""
 
+# ------------------------------------------------------------- GMM / IV-GMM
+def iv_gmm(
+    x: _ArrayLike,
+    z: _ArrayLike,
+    y: _ArrayLike,
+    method: str = ...,
+    weight: str = ...,
+    bandwidth: float = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Linear IV-GMM (Hansen 1982) with robust or HAC weighting.
+
+    method is "2sls", "2step", or "iterated"; weight is "robust" or "hac".
+    Z must include the exogenous regressor columns. Returns params, bse,
+    residuals, and (over-identified) the Hansen j_stat/j_dof/j_pval."""
+
 # ------------------------------------------------ leakage-safe time-series CV
 def cv_splits(
     n: int,

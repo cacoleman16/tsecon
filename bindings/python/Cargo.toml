@@ -34,5 +34,6 @@ tsecon-realized = { path = "../../crates/tsecon-realized" }
 tsecon-connect = { path = "../../crates/tsecon-connect" }
 tsecon-favar = { path = "../../crates/tsecon-favar" }
 tsecon-termstructure = { path = "../../crates/tsecon-termstructure" }
+tsecon-gmm = { path = "../../crates/tsecon-gmm" }
 pyo3 = { version = "0.29.0", features = ["abi3-py39"] }
 numpy = "0.29.0"

@@ -1889,6 +1889,82 @@ fn factor_model<'py>(
     Ok(d)
 }
 
+/// Linear IV-GMM (Hansen 1982) with a robust or HAC weighting matrix.
+///
+/// Estimates `y = X beta + u` where the columns of `X` may be endogenous,
+/// using instrument matrix `Z` (which must include the exogenous regressor
+/// columns — exogenous regressors instrument themselves). `method`:
+/// `"2sls"` (one-step with the 2SLS weight), `"2step"` (two-step efficient),
+/// or `"iterated"`. `weight`: `"robust"` (heteroskedasticity-robust White)
+/// or `"hac"` (Newey-West at `bandwidth`). Returns `params`, robust-sandwich
+/// `bse`, the parameter covariance `cov`, `residuals`, and — when the model
+/// is over-identified — the Hansen `j_stat`/`j_pval`/`j_dof` test of the
+/// over-identifying restrictions. Matches linearmodels IVGMM to machine
+/// precision.
+#[pyfunction]
+#[pyo3(signature = (x, z, y, method = "2step", weight = "robust", bandwidth = 0.0,
+                    tol = 1e-8, max_iter = 100))]
+#[allow(clippy::too_many_arguments)]
+fn iv_gmm<'py>(
+    py: Python<'py>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    z: numpy::PyReadonlyArray2<'py, f64>,
+    y: PyReadonlyArray1<'py, f64>,
+    method: &str,
+    weight: &str,
+    bandwidth: f64,
+    tol: f64,
+    max_iter: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_gmm::GmmWeight;
+    // faer/ndarray are column-major-agnostic; the crate takes column vectors.
+    let cols = |a: &numpy::PyReadonlyArray2<'_, f64>| -> Vec<Vec<f64>> {
+        let arr = a.as_array();
+        (0..arr.ncols())
+            .map(|j| (0..arr.nrows()).map(|i| arr[(i, j)]).collect())
+            .collect()
+    };
+    let (x_cols, z_cols) = (cols(&x), cols(&z));
+    let yv = y.as_slice()?;
+    let cov_weight = match weight {
+        "robust" => GmmWeight::Robust,
+        "hac" => GmmWeight::Hac {
+            kernel: tsecon_hac::Kernel::Bartlett,
+            bandwidth,
+        },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown weight {other:?}; expected \"robust\" or \"hac\""
+            )))
+        }
+    };
+    let fit = match method {
+        "2sls" => tsecon_gmm::two_stage_least_squares(&x_cols, &z_cols, yv).map_err(to_py)?,
+        "2step" => tsecon_gmm::two_step_gmm(&x_cols, &z_cols, yv, cov_weight).map_err(to_py)?,
+        "iterated" => tsecon_gmm::iterated_gmm(&x_cols, &z_cols, yv, cov_weight, tol, max_iter)
+            .map_err(to_py)?,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"2sls\", \"2step\", or \"iterated\""
+            )))
+        }
+    };
+    let d = PyDict::new(py);
+    d.set_item("params", fit.params.clone().into_pyarray(py))?;
+    d.set_item("bse", fit.bse.clone().into_pyarray(py))?;
+    d.set_item("residuals", fit.residuals.clone().into_pyarray(py))?;
+    d.set_item("nobs", fit.nobs)?;
+    d.set_item("nmoments", fit.nmoments)?;
+    d.set_item("nparams", fit.nparams)?;
+    d.set_item("steps", fit.steps)?;
+    if let Some(j) = fit.jtest {
+        d.set_item("j_stat", j.stat)?;
+        d.set_item("j_dof", j.dof)?;
+        d.set_item("j_pval", j.pval)?;
+    }
+    Ok(d)
+}
+
 /// Leakage-safe cross-validation splits for time-series / sequential data.
 ///
 /// Returns a list of `{train, test}` index dicts. `scheme`:
@@ -2237,5 +2313,6 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(adaptive_lasso, m)?)?;
     m.add_function(wrap_pyfunction!(lasso_path, m)?)?;
     m.add_function(wrap_pyfunction!(cv_splits, m)?)?;
+    m.add_function(wrap_pyfunction!(iv_gmm, m)?)?;
     Ok(())
 }
