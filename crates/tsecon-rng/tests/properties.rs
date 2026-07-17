@@ -10,14 +10,20 @@ use tsecon_rng::{RngError, SeedSequence, Stream};
 /// deltas that exercise every buffer alignment and multi-block skips.
 #[test]
 fn advance_k_equals_k_draws_from_fresh_stream() {
-    for k in [0u128, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 100, 1001, 4096, 12345] {
+    for k in [
+        0u128, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 100, 1001, 4096, 12345,
+    ] {
         let mut drawn = Stream::new(20260716);
         for _ in 0..k {
             let _ = drawn.next_u64();
         }
         let mut jumped = Stream::new(20260716);
         jumped.advance(k);
-        assert_eq!(jumped.counter(), drawn.counter(), "counter mismatch at k={k}");
+        assert_eq!(
+            jumped.counter(),
+            drawn.counter(),
+            "counter mismatch at k={k}"
+        );
         for i in 0..8 {
             assert_eq!(
                 jumped.next_u64(),
@@ -121,7 +127,11 @@ fn fill_matches_repeated_draws() {
     let mut buff = [0f64; 13];
     a.fill_uniform_f64(&mut buff);
     for (i, v) in buff.iter().enumerate() {
-        assert_eq!(v.to_bits(), b.uniform_f64().to_bits(), "f64 fill diverged at {i}");
+        assert_eq!(
+            v.to_bits(),
+            b.uniform_f64().to_bits(),
+            "f64 fill diverged at {i}"
+        );
     }
 }
 
@@ -235,7 +245,11 @@ fn substreams_are_pairwise_independent_smoke() {
     // Distinct keys by construction.
     for i in 0..streams.len() {
         for j in (i + 1)..streams.len() {
-            assert_ne!(streams[i].key(), streams[j].key(), "streams {i},{j} share a key");
+            assert_ne!(
+                streams[i].key(),
+                streams[j].key(),
+                "streams {i},{j} share a key"
+            );
         }
     }
 
@@ -265,10 +279,7 @@ fn substreams_are_pairwise_independent_smoke() {
             }
             let corr = cov / (va.sqrt() * vb.sqrt());
             // 5 standard errors ~ 0.05 at N = 10_000.
-            assert!(
-                corr.abs() < 0.05,
-                "streams {i},{j} correlated: r = {corr}"
-            );
+            assert!(corr.abs() < 0.05, "streams {i},{j} correlated: r = {corr}");
         }
     }
 }

@@ -6,8 +6,8 @@ mod common;
 
 use common::{rosenbrock, rosenbrock_grad};
 use tsecon_optim::{
-    bfgs, lbfgs, BfgsOptions, FnObjective, FnObjectiveGrad, LbfgsOptions, ObjectiveFn,
-    OptimError, Termination,
+    bfgs, lbfgs, BfgsOptions, FnObjective, FnObjectiveGrad, LbfgsOptions, ObjectiveFn, OptimError,
+    Termination,
 };
 
 fn rosen_obj() -> impl ObjectiveFn {

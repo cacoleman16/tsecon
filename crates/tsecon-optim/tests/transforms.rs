@@ -336,6 +336,9 @@ fn transformed_objective_stationary_ar() {
     let mut obj = TransformedObjective::new(inner, StationaryAr);
     let res = minimize(&mut obj, &[2.0, -2.0], &Method::bfgs()).unwrap();
     let phi = obj.constrained(&res.x).unwrap();
-    assert!((phi[0] - 0.5).abs() <= 1e-6 && (phi[1] + 0.3).abs() <= 1e-6, "phi = {phi:?}");
+    assert!(
+        (phi[0] - 0.5).abs() <= 1e-6 && (phi[1] + 0.3).abs() <= 1e-6,
+        "phi = {phi:?}"
+    );
     assert!(max_ar_root_modulus(&phi) < 1.0);
 }

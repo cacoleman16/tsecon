@@ -206,7 +206,10 @@ fn inadmissible_params_rejected() {
     // persistence = 1.05 >= 1.
     assert!(matches!(
         garch.loglike(&[0.05, 0.3, 0.75]),
-        Err(GarchError::InvalidParameter { name: "persistence", .. })
+        Err(GarchError::InvalidParameter {
+            name: "persistence",
+            ..
+        })
     ));
     // persistence exactly 1 (IGARCH) is also rejected in this release.
     assert!(garch.loglike(&[0.05, 0.2, 0.8]).is_err());
@@ -249,7 +252,10 @@ fn inadmissible_params_rejected() {
     .unwrap();
     assert!(matches!(
         egarch.loglike(&[0.01, 0.1, -0.05, 1.0]),
-        Err(GarchError::InvalidParameter { name: "sum(beta)", .. })
+        Err(GarchError::InvalidParameter {
+            name: "sum(beta)",
+            ..
+        })
     ));
 
     let t = GarchModel::new(
@@ -330,12 +336,7 @@ fn forecasts_converge_to_unconditional_variance() {
     };
     let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
     let f1 = res.forecast_variance(1).unwrap();
-    let (omega, alpha, gamma, beta) = (
-        res.params[0],
-        res.params[1],
-        res.params[2],
-        res.params[3],
-    );
+    let (omega, alpha, gamma, beta) = (res.params[0], res.params[1], res.params[2], res.params[3]);
     let z = res.std_residuals[n - 1];
     let expected = (omega
         + alpha * (z.abs() - (2.0 / std::f64::consts::PI).sqrt())
@@ -406,10 +407,7 @@ fn construction_and_display() {
         requirement: "omega > 0",
     };
     assert!(!e.to_string().is_empty());
-    assert_eq!(
-        spec.param_names(),
-        vec!["omega", "alpha[1]", "beta[1]"]
-    );
+    assert_eq!(spec.param_names(), vec!["omega", "alpha[1]", "beta[1]"]);
     let full = GarchSpec {
         mean: MeanSpec::Constant,
         vol: VolSpec::Gjr { p: 1, o: 1, q: 1 },

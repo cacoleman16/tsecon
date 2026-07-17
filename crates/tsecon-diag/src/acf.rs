@@ -155,8 +155,7 @@ fn check_pacf_lags(nlags: usize, n: usize, what: &'static str) -> Result<(), Dia
             what,
             nlags,
             n,
-            requirement:
-                "1 <= nlags < n/2 (partial correlations beyond half the sample \
+            requirement: "1 <= nlags < n/2 (partial correlations beyond half the sample \
                  are not meaningfully estimable)",
         });
     }

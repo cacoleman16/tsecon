@@ -128,7 +128,10 @@ fn golden_nile_arma11c_fit() {
     // --- Started at the fixture's stall point, the optimizer continues
     //     to the same maximizer (it is not a local optimum to stay at). ---
     let res_sm = spec.fit_with_start(&y, &sm_stall).unwrap();
-    assert!(res_sm.converged, "refit from fixture params did not converge");
+    assert!(
+        res_sm.converged,
+        "refit from fixture params did not converge"
+    );
     assert_rel_close(
         res_sm.loglik,
         ll_optimum,
@@ -156,7 +159,12 @@ fn golden_nile_arma11c_forecast_at_fixture_params() {
     assert_eq!(fc.mean.len(), 12);
     assert_eq!(fc.se.len(), 12);
     for h in 0..12 {
-        assert_rel_close(fc.mean[h], mean_exp[h], 1e-6, &format!("forecast mean[{h}]"));
+        assert_rel_close(
+            fc.mean[h],
+            mean_exp[h],
+            1e-6,
+            &format!("forecast mean[{h}]"),
+        );
         assert_rel_close(fc.se[h], se_exp[h], 1e-6, &format!("forecast se[{h}]"));
     }
 

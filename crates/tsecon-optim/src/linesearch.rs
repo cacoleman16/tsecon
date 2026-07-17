@@ -147,7 +147,13 @@ impl<F: ObjectiveFn + ?Sized> Ctx<'_, F> {
             // only become a bracket endpoint through its f value).
             (vec![f64::NAN; x.len()], f64::NAN)
         };
-        let t = Trial { a, f: fv, x, g, dphi };
+        let t = Trial {
+            a,
+            f: fv,
+            x,
+            g,
+            dphi,
+        };
         if fv.is_finite() && self.best.as_ref().is_none_or(|b| fv < b.f) {
             self.best = Some(Trial {
                 a: t.a,

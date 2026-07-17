@@ -236,7 +236,12 @@ impl OlsFit {
             }
             bse.push(v.sqrt());
         }
-        let tvalues = self.params.iter().zip(bse.iter()).map(|(p, s)| p / s).collect();
+        let tvalues = self
+            .params
+            .iter()
+            .zip(bse.iter())
+            .map(|(p, s)| p / s)
+            .collect();
         Ok(OlsInference { cov, bse, tvalues })
     }
 

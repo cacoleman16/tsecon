@@ -85,7 +85,10 @@ impl fmt::Display for LinalgError {
                 what,
                 expected,
                 got,
-            } => write!(f, "dimension mismatch: {what} (expected {expected}, got {got})"),
+            } => write!(
+                f,
+                "dimension mismatch: {what} (expected {expected}, got {got})"
+            ),
             Self::NotSquare { what, rows, cols } => {
                 write!(f, "matrix must be square: {what} is {rows}x{cols}")
             }

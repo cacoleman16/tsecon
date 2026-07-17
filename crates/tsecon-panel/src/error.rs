@@ -123,10 +123,9 @@ impl fmt::Display for PanelError {
                  within transformation — drop it or use a random-effects / \
                  between estimator instead"
             ),
-            PanelError::EntityVar { entity, source } => write!(
-                f,
-                "per-entity VAR fit failed for entity {entity}: {source}"
-            ),
+            PanelError::EntityVar { entity, source } => {
+                write!(f, "per-entity VAR fit failed for entity {entity}: {source}")
+            }
         }
     }
 }

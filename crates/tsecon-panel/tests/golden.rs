@@ -28,7 +28,11 @@ fn load() -> Value {
 }
 
 fn f64s(v: &Value) -> Vec<f64> {
-    v.as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect()
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_f64().unwrap())
+        .collect()
 }
 
 fn matrix(v: &Value) -> Vec<Vec<f64>> {
@@ -74,23 +78,38 @@ fn fe_within_matches_linearmodels() {
     // Slopes are shared across covariance estimators.
     let want_params = &block["nonrobust"]["params"];
     for (j, name) in ["s0", "s1"].iter().enumerate() {
-        assert_close(fit.params[j], want_params[name].as_f64().unwrap(), 1e-6,
-            &format!("param {name}"));
+        assert_close(
+            fit.params[j],
+            want_params[name].as_f64().unwrap(),
+            1e-6,
+            &format!("param {name}"),
+        );
     }
 
     let cases = [
         ("nonrobust", PanelSeType::NonRobust),
         ("cluster_entity", PanelSeType::ClusterEntity),
-        ("driscoll_kraay", PanelSeType::DriscollKraay { bandwidth: 4.0 }),
+        (
+            "driscoll_kraay",
+            PanelSeType::DriscollKraay { bandwidth: 4.0 },
+        ),
     ];
     for (key, se) in cases {
         let inf = fit.inference(se).expect("inference");
         let wb = &fx["panel_ols_fe_s0_s1_drop_t0"][key];
         for (j, name) in ["s0", "s1"].iter().enumerate() {
-            assert_close(inf.bse[j], wb["bse"][name].as_f64().unwrap(), 1e-6,
-                &format!("{key} bse {name}"));
-            assert_close(inf.tvalues[j], wb["tstats"][name].as_f64().unwrap(), 1e-6,
-                &format!("{key} tstat {name}"));
+            assert_close(
+                inf.bse[j],
+                wb["bse"][name].as_f64().unwrap(),
+                1e-6,
+                &format!("{key} bse {name}"),
+            );
+            assert_close(
+                inf.tvalues[j],
+                wb["tstats"][name].as_f64().unwrap(),
+                1e-6,
+                &format!("{key} tstat {name}"),
+            );
         }
     }
 }
@@ -126,9 +145,11 @@ fn panel_lp_recovers_known_irf() {
         );
     }
     // Impact estimate is tight.
-    assert!((res.irf[0] - true_irf[0]).abs() < 0.1, "impact estimate off");
+    assert!(
+        (res.irf[0] - true_irf[0]).abs() < 0.1,
+        "impact estimate off"
+    );
 }
-
 
 #[test]
 #[allow(clippy::needless_range_loop)]
@@ -146,7 +167,9 @@ fn mean_group_var_recovers_common_dynamics() {
     let mut normal = || {
         // Two uniforms via an LCG -> Box-Muller.
         let mut u = || {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((state >> 11) as f64) * (1.0 / (1u64 << 53) as f64)
         };
         let (u1, u2) = (u().max(1e-12), u());
@@ -172,7 +195,8 @@ fn mean_group_var_recovers_common_dynamics() {
             assert!(
                 (mg.coefs[0][(i, j)] - a[i][j]).abs() < 0.05,
                 "A1[{i},{j}] = {} not near {}",
-                mg.coefs[0][(i, j)], a[i][j]
+                mg.coefs[0][(i, j)],
+                a[i][j]
             );
             // Dispersion SE is positive and small on a homogeneous panel.
             assert!(mg.coefs_se[0][(i, j)] > 0.0 && mg.coefs_se[0][(i, j)] < 0.05);

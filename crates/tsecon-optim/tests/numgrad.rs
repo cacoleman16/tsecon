@@ -9,8 +9,7 @@ use tsecon_optim::{central_difference_gradient, eval_gradient, FnObjective, FnOb
 /// Test polynomial with interactions:
 /// `f = 2 x0^3 - 3 x0^2 x1 + 4 x1^2 + x2^4 - 5 x2 + x0 x1 x2`.
 fn poly(x: &[f64]) -> f64 {
-    2.0 * x[0].powi(3) - 3.0 * x[0] * x[0] * x[1] + 4.0 * x[1] * x[1] + x[2].powi(4)
-        - 5.0 * x[2]
+    2.0 * x[0].powi(3) - 3.0 * x[0] * x[0] * x[1] + 4.0 * x[1] * x[1] + x[2].powi(4) - 5.0 * x[2]
         + x[0] * x[1] * x[2]
 }
 

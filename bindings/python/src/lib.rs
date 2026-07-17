@@ -65,7 +65,14 @@ fn ljung_box<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_diag::ljung_box(y.as_slice()?, nlags).map_err(to_py)?;
     let d = PyDict::new(py);
-    d.set_item("lags", r.lags.into_iter().map(|x| x as u64).collect::<Vec<_>>().into_pyarray(py))?;
+    d.set_item(
+        "lags",
+        r.lags
+            .into_iter()
+            .map(|x| x as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
     d.set_item("lb_stat", r.lb_stat.into_pyarray(py))?;
     d.set_item("lb_pvalue", r.lb_pvalue.into_pyarray(py))?;
     d.set_item("bp_stat", r.bp_stat.into_pyarray(py))?;
@@ -75,7 +82,10 @@ fn ljung_box<'py>(
 
 /// Jarque-Bera normality test.
 #[pyfunction]
-fn jarque_bera<'py>(py: Python<'py>, x: PyReadonlyArray1<'py, f64>) -> PyResult<Bound<'py, PyDict>> {
+fn jarque_bera<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_diag::jarque_bera(x.as_slice()?).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("statistic", r.statistic)?;
@@ -135,8 +145,12 @@ fn bootstrap_indices<'py>(
     };
     let s = match scheme {
         "iid" => BlockScheme::Iid,
-        "moving" => BlockScheme::MovingBlock { block_length: need(block_length, "block_length")? },
-        "circular" => BlockScheme::CircularBlock { block_length: need(block_length, "block_length")? },
+        "moving" => BlockScheme::MovingBlock {
+            block_length: need(block_length, "block_length")?,
+        },
+        "circular" => BlockScheme::CircularBlock {
+            block_length: need(block_length, "block_length")?,
+        },
         "stationary" => BlockScheme::Stationary {
             p: p.ok_or_else(|| PyValueError::new_err("scheme \"stationary\" requires p"))?,
         },
@@ -148,7 +162,11 @@ fn bootstrap_indices<'py>(
     };
     let mut stream = tsecon_rng::Stream::new(seed);
     let idx = tsecon_bootstrap::indices(s, n, &mut stream).map_err(to_py)?;
-    Ok(idx.into_iter().map(|i| i as u64).collect::<Vec<_>>().into_pyarray(py))
+    Ok(idx
+        .into_iter()
+        .map(|i| i as u64)
+        .collect::<Vec<_>>()
+        .into_pyarray(py))
 }
 
 /// Politis-White (2004) automatic block length with the Patton-Politis-White
@@ -182,16 +200,34 @@ fn local_level_smooth<'py>(
     use tsecon_ssm::tsecon_linalg::faer::Mat;
     let ys = y.as_slice()?;
     let obs = Mat::from_fn(ys.len(), 1, |i, _| ys[i]);
-    let model = tsecon_ssm::LinearGaussianSSM::local_level(sigma2_eps, sigma2_eta).map_err(to_py)?;
+    let model =
+        tsecon_ssm::LinearGaussianSSM::local_level(sigma2_eps, sigma2_eta).map_err(to_py)?;
     let out = model.smooth(obs.as_ref()).map_err(to_py)?;
     let n = ys.len();
     let d = PyDict::new(py);
     d.set_item("loglik", out.filter.loglik)?;
     d.set_item("d_diffuse", out.filter.d_diffuse)?;
-    let filt: Vec<f64> = out.filter.filtered_state.iter().take(n).map(|s| s[0]).collect();
-    let filt_var: Vec<f64> = out.filter.filtered_state_cov.iter().take(n).map(|p| p[(0, 0)]).collect();
+    let filt: Vec<f64> = out
+        .filter
+        .filtered_state
+        .iter()
+        .take(n)
+        .map(|s| s[0])
+        .collect();
+    let filt_var: Vec<f64> = out
+        .filter
+        .filtered_state_cov
+        .iter()
+        .take(n)
+        .map(|p| p[(0, 0)])
+        .collect();
     let smo: Vec<f64> = out.smoothed_state.iter().take(n).map(|s| s[0]).collect();
-    let smo_var: Vec<f64> = out.smoothed_state_cov.iter().take(n).map(|p| p[(0, 0)]).collect();
+    let smo_var: Vec<f64> = out
+        .smoothed_state_cov
+        .iter()
+        .take(n)
+        .map(|p| p[(0, 0)])
+        .collect();
     d.set_item("filtered_state", filt.into_pyarray(py))?;
     d.set_item("filtered_state_var", filt_var.into_pyarray(py))?;
     d.set_item("smoothed_state", smo.into_pyarray(py))?;
@@ -442,7 +478,9 @@ fn var_results(
 }
 
 fn mat_to_vec2(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
-    (0..m.nrows()).map(|i| (0..m.ncols()).map(|j| m[(i, j)]).collect()).collect()
+    (0..m.nrows())
+        .map(|i| (0..m.ncols()).map(|j| m[(i, j)]).collect())
+        .collect()
 }
 
 /// Fit a VAR(p) by OLS and return estimates, fit statistics, and stability.
@@ -500,7 +538,7 @@ fn var_irf<'py>(
             }
         }
     }
-    pyo3::types::PyList::new(py, out.iter().map(|m| m.clone()))
+    pyo3::types::PyList::new(py, out.iter().cloned())
 }
 
 /// Forecast-error variance decomposition: `fevd[h][i][j]` is the share of
@@ -517,7 +555,7 @@ fn var_fevd<'py>(
     let r = var_results(&data, lags, trend)?;
     let fevd = r.fevd(horizon).map_err(to_py)?;
     let out: Vec<Vec<Vec<f64>>> = fevd.decomp.iter().map(mat_to_vec2).collect();
-    pyo3::types::PyList::new(py, out.iter().map(|m| m.clone()))
+    pyo3::types::PyList::new(py, out.iter().cloned())
 }
 
 /// Iterated VAR point forecasts with (innovation-uncertainty) intervals.
@@ -698,8 +736,14 @@ fn accuracy<'py>(
         d.set_item("smape", v)?;
     }
     if let Some(ins) = insample {
-        d.set_item("mase", f::mase(a, p, ins.as_slice()?, period).map_err(to_py)?)?;
-        d.set_item("rmsse", f::rmsse(a, p, ins.as_slice()?, period).map_err(to_py)?)?;
+        d.set_item(
+            "mase",
+            f::mase(a, p, ins.as_slice()?, period).map_err(to_py)?,
+        )?;
+        d.set_item(
+            "rmsse",
+            f::rmsse(a, p, ins.as_slice()?, period).map_err(to_py)?,
+        )?;
     }
     Ok(d)
 }
@@ -749,18 +793,30 @@ fn garch_fit<'py>(
         mean: match mean {
             "zero" => MeanSpec::Zero,
             "constant" => MeanSpec::Constant,
-            other => return Err(PyValueError::new_err(format!("unknown mean {other:?}; expected zero/constant"))),
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown mean {other:?}; expected zero/constant"
+                )))
+            }
         },
         vol: match vol {
             "garch" => VolSpec::Garch { p, q },
             "gjr" => VolSpec::Gjr { p, o, q },
             "egarch" => VolSpec::Egarch { p, o, q },
-            other => return Err(PyValueError::new_err(format!("unknown vol {other:?}; expected garch/gjr/egarch"))),
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown vol {other:?}; expected garch/gjr/egarch"
+                )))
+            }
         },
         dist: match dist {
             "normal" => DistSpec::Normal,
             "t" => DistSpec::StudentT,
-            other => return Err(PyValueError::new_err(format!("unknown dist {other:?}; expected normal/t"))),
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown dist {other:?}; expected normal/t"
+                )))
+            }
         },
     };
     let model = GarchModel::new(y.as_slice()?, spec).map_err(to_py)?;
@@ -773,10 +829,18 @@ fn garch_fit<'py>(
     d.set_item("bic", r.bic)?;
     d.set_item("se_mle", r.se_mle.clone().into_pyarray(py))?;
     d.set_item("se_robust", r.se_robust.clone().into_pyarray(py))?;
-    d.set_item("conditional_volatility", r.conditional_volatility.clone().into_pyarray(py))?;
+    d.set_item(
+        "conditional_volatility",
+        r.conditional_volatility.clone().into_pyarray(py),
+    )?;
     d.set_item("std_residuals", r.std_residuals.clone().into_pyarray(py))?;
     if forecast_horizon > 0 {
-        d.set_item("variance_forecast", r.forecast_variance(forecast_horizon).map_err(to_py)?.into_pyarray(py))?;
+        d.set_item(
+            "variance_forecast",
+            r.forecast_variance(forecast_horizon)
+                .map_err(to_py)?
+                .into_pyarray(py),
+        )?;
     }
     Ok(d)
 }
@@ -801,14 +865,25 @@ fn bvar_fit<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let a = data.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
-    let prior = tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
-        .map_err(to_py)?;
+    let prior =
+        tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
+            .map_err(to_py)?;
     let post = prior.posterior(m.as_ref()).map_err(to_py)?;
     let d = PyDict::new(py);
     let bb = post.b_bar();
-    d.set_item("posterior_mean_coefs", (0..bb.nrows()).map(|i| (0..bb.ncols()).map(|j| bb[(i, j)]).collect::<Vec<_>>()).collect::<Vec<_>>())?;
+    d.set_item(
+        "posterior_mean_coefs",
+        (0..bb.nrows())
+            .map(|i| (0..bb.ncols()).map(|j| bb[(i, j)]).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+    )?;
     let sm = post.sigma_posterior_mean().map_err(to_py)?;
-    d.set_item("sigma_posterior_mean", (0..sm.nrows()).map(|i| (0..sm.ncols()).map(|j| sm[(i, j)]).collect::<Vec<_>>()).collect::<Vec<_>>())?;
+    d.set_item(
+        "sigma_posterior_mean",
+        (0..sm.nrows())
+            .map(|i| (0..sm.ncols()).map(|j| sm[(i, j)]).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+    )?;
     d.set_item("log_marginal_likelihood", post.log_marginal_likelihood())?;
     Ok(d)
 }
@@ -840,11 +915,14 @@ fn bvar_irf_draws<'py>(
 ) -> PyResult<Bound<'py, pyo3::types::PyList>> {
     let a = data.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
-    let prior = tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
-        .map_err(to_py)?;
+    let prior =
+        tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
+            .map_err(to_py)?;
     let post = prior.posterior(m.as_ref()).map_err(to_py)?;
     let mut stream = tsecon_rng::Stream::new(seed);
-    let draws = post.irf_draws(n_draws, horizon, &mut stream).map_err(to_py)?;
+    let draws = post
+        .irf_draws(n_draws, horizon, &mut stream)
+        .map_err(to_py)?;
     let mut out: Vec<Vec<Vec<Vec<f64>>>> = draws
         .iter()
         .map(|dr| dr.iter().map(mat_to_vec2_bayes).collect())
@@ -863,11 +941,13 @@ fn bvar_irf_draws<'py>(
             }
         }
     }
-    pyo3::types::PyList::new(py, out.iter().map(|d| d.clone()))
+    pyo3::types::PyList::new(py, out.iter().cloned())
 }
 
 fn mat_to_vec2_bayes(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
-    (0..m.nrows()).map(|i| (0..m.ncols()).map(|j| m[(i, j)]).collect()).collect()
+    (0..m.nrows())
+        .map(|i| (0..m.ncols()).map(|j| m[(i, j)]).collect())
+        .collect()
 }
 
 /// MCMC convergence diagnostics (Vehtari et al. 2021, ArviZ-exact):
@@ -881,9 +961,18 @@ fn mcmc_diagnostics<'py>(
     let a = chains.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
     let d = PyDict::new(py);
-    d.set_item("rhat", tsecon_bayes::convergence::rhat_rank(m.as_ref()).map_err(to_py)?)?;
-    d.set_item("ess_bulk", tsecon_bayes::convergence::ess_bulk(m.as_ref()).map_err(to_py)?)?;
-    d.set_item("ess_tail", tsecon_bayes::convergence::ess_tail(m.as_ref()).map_err(to_py)?)?;
+    d.set_item(
+        "rhat",
+        tsecon_bayes::convergence::rhat_rank(m.as_ref()).map_err(to_py)?,
+    )?;
+    d.set_item(
+        "ess_bulk",
+        tsecon_bayes::convergence::ess_bulk(m.as_ref()).map_err(to_py)?,
+    )?;
+    d.set_item(
+        "ess_tail",
+        tsecon_bayes::convergence::ess_tail(m.as_ref()).map_err(to_py)?,
+    )?;
     Ok(d)
 }
 
@@ -918,7 +1007,9 @@ fn arima_fit<'py>(
             "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
         ));
     }
-    let spec = tsecon_arima::ArimaSpec::new(p, d, q).map_err(to_py)?.with_constant(constant);
+    let spec = tsecon_arima::ArimaSpec::new(p, d, q)
+        .map_err(to_py)?
+        .with_constant(constant);
     let r = spec.fit(y.as_slice()?).map_err(to_py)?;
     let dct = PyDict::new(py);
     dct.set_item("params", r.params().to_vec().into_pyarray(py))?;

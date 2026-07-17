@@ -219,10 +219,7 @@ mod tests {
         assert_eq!(expected.len(), 21);
         for (k, &e) in expected.iter().enumerate() {
             let got = acov[k] / acov[0];
-            assert!(
-                (got - e).abs() <= 1e-12,
-                "lag {k}: got {got}, expected {e}"
-            );
+            assert!((got - e).abs() <= 1e-12, "lag {k}: got {got}, expected {e}");
         }
     }
 
@@ -238,10 +235,7 @@ mod tests {
 
     #[test]
     fn degenerate_and_short_samples_error() {
-        assert_eq!(
-            optimal_block_length(&[]),
-            Err(BootstrapError::EmptySample)
-        );
+        assert_eq!(optimal_block_length(&[]), Err(BootstrapError::EmptySample));
         assert!(matches!(
             optimal_block_length(&[1.0; 8]),
             Err(BootstrapError::SampleTooShort { n: 8, .. })
@@ -252,10 +246,7 @@ mod tests {
         );
         let mut x = vec![0.0; 100];
         x[3] = f64::NAN;
-        assert_eq!(
-            optimal_block_length(&x),
-            Err(BootstrapError::NonFiniteData)
-        );
+        assert_eq!(optimal_block_length(&x), Err(BootstrapError::NonFiniteData));
     }
 
     #[test]

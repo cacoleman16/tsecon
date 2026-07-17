@@ -198,10 +198,7 @@ pub fn autocovariances_biased(y: &[f64], nlags: usize) -> Result<Vec<f64>, Linal
 /// Propagates the errors of [`autocovariances_biased`] and
 /// [`levinson_durbin`]; a constant series fails with
 /// [`LinalgError::NotPositiveDefinite`] since `gamma(0) = 0`.
-pub fn levinson_durbin_from_series(
-    y: &[f64],
-    order: usize,
-) -> Result<LevinsonDurbin, LinalgError> {
+pub fn levinson_durbin_from_series(y: &[f64], order: usize) -> Result<LevinsonDurbin, LinalgError> {
     let acov = autocovariances_biased(y, order)?;
     levinson_durbin(&acov, order)
 }

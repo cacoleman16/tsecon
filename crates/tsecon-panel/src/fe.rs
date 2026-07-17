@@ -224,11 +224,7 @@ pub(crate) fn fit_within(
     debug_assert_eq!(y.len(), n);
     debug_assert!(x_cols.iter().all(|c| c.len() == n));
     if n <= k + n_entities {
-        return Err(PanelError::DegreesOfFreedom {
-            n,
-            k,
-            n_entities,
-        });
+        return Err(PanelError::DegreesOfFreedom { n, k, n_entities });
     }
 
     // Entity demeaning.

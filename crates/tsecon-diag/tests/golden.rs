@@ -169,14 +169,24 @@ fn jarque_bera_matches_statsmodels() {
     let diff: Vec<f64> = y.windows(2).map(|w| w[1] - w[0]).collect();
     let block = &fx["jarque_bera_on_diff"];
     let res = jarque_bera(&diff).unwrap();
-    assert_close(res.statistic, block["stat"].as_f64().unwrap(), TOL, "jb stat");
+    assert_close(
+        res.statistic,
+        block["stat"].as_f64().unwrap(),
+        TOL,
+        "jb stat",
+    );
     assert_close(
         res.p_value,
         block["pvalue"].as_f64().unwrap(),
         TOL,
         "jb pvalue",
     );
-    assert_close(res.skewness, block["skew"].as_f64().unwrap(), TOL, "jb skew");
+    assert_close(
+        res.skewness,
+        block["skew"].as_f64().unwrap(),
+        TOL,
+        "jb skew",
+    );
     assert_close(
         res.kurtosis,
         block["kurtosis"].as_f64().unwrap(),

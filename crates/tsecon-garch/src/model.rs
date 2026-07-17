@@ -128,7 +128,15 @@ impl GarchModel {
         let mut sigma2 = vec![0.0; resids.len()];
         match self.spec.vol {
             VolSpec::Garch { .. } | VolSpec::Gjr { .. } => {
-                garch_recursion(omega, alphas, gammas, betas, &resids, self.backcast, &mut sigma2);
+                garch_recursion(
+                    omega,
+                    alphas,
+                    gammas,
+                    betas,
+                    &resids,
+                    self.backcast,
+                    &mut sigma2,
+                );
             }
             VolSpec::Egarch { .. } => {
                 egarch_recursion(
@@ -197,8 +205,7 @@ impl GarchModel {
                     .iter()
                     .zip(&sigma2)
                     .map(|(&e, &s2)| {
-                        c - 0.5 * s2.ln()
-                            - 0.5 * (nu + 1.0) * (e * e / (s2 * (nu - 2.0))).ln_1p()
+                        c - 0.5 * s2.ln() - 0.5 * (nu + 1.0) * (e * e / (s2 * (nu - 2.0))).ln_1p()
                     })
                     .collect()
             }
@@ -322,10 +329,9 @@ impl GarchModel {
                 }
             }
         }
-        best.map(|(_, cand)| cand)
-            .ok_or(GarchError::InvalidSpec {
-                what: "no admissible starting value found (degenerate series?)",
-            })
+        best.map(|(_, cand)| cand).ok_or(GarchError::InvalidSpec {
+            what: "no admissible starting value found (degenerate series?)",
+        })
     }
 
     /// Fits the model by quasi-maximum likelihood and returns the results

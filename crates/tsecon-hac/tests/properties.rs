@@ -2,8 +2,8 @@
 //! error-path coverage.
 
 use tsecon_hac::{
-    andrews_bandwidth_ar1, ewc_default_b, ewc_lrv, lrv, lrv_prewhitened_ar1,
-    newey_west_bandwidth, newey_west_maxlags, ols, HacError, Kernel, SeType,
+    andrews_bandwidth_ar1, ewc_default_b, ewc_lrv, lrv, lrv_prewhitened_ar1, newey_west_bandwidth,
+    newey_west_maxlags, ols, HacError, Kernel, SeType,
 };
 
 const KERNELS: [Kernel; 4] = [
@@ -169,7 +169,10 @@ fn ewc_with_full_dof_recovers_the_naive_sample_variance() {
 
 #[test]
 fn ewc_default_b_follows_the_llsw_rule() {
-    assert_eq!(ewc_default_b(100), (0.4_f64 * 100.0_f64.powf(2.0 / 3.0)).round() as usize);
+    assert_eq!(
+        ewc_default_b(100),
+        (0.4_f64 * 100.0_f64.powf(2.0 / 3.0)).round() as usize
+    );
     assert_eq!(ewc_default_b(1000), 40); // 0.4 * 1000^(2/3) = 40
     assert!(ewc_default_b(2) >= 1);
     // Clamped into the valid range for tiny n.

@@ -186,12 +186,7 @@ fn fixed_lag_and_fixed_bandwidth_paths_agree_with_their_rules() {
     // KPSS with an explicit bandwidth equal to the legacy rule matches the
     // legacy result exactly.
     let legacy = kpss(&y, KpssRegression::Constant, KpssLags::Legacy).unwrap();
-    let fixed = kpss(
-        &y,
-        KpssRegression::Constant,
-        KpssLags::Fixed(legacy.lags),
-    )
-    .unwrap();
+    let fixed = kpss(&y, KpssRegression::Constant, KpssLags::Fixed(legacy.lags)).unwrap();
     assert_eq!(legacy.statistic, fixed.statistic);
     assert_eq!(legacy.p_value, fixed.p_value);
 }

@@ -11,10 +11,7 @@ use serde_json::Value;
 use tsecon_hac::{ewc_lrv, lrv, newey_west_maxlags, ols, Kernel, SeType};
 
 fn load(name: &str) -> Value {
-    let path = format!(
-        "{}/../../fixtures/{name}",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let path = format!("{}/../../fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
     let text = std::fs::read_to_string(path).expect("fixture file readable");
     serde_json::from_str(&text).expect("fixture is valid JSON")
 }

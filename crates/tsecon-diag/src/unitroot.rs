@@ -99,12 +99,7 @@ const ADF_TSTAT_STOP: f64 = 1.6448536269514722;
 /// sample: response `dy_t` for `t = nlags+1 .. n-1` (0-indexed levels) and
 /// columns `[level y_{t-1}, dy_{t-1}, .., dy_{t-nlags}]` with the
 /// deterministics (constant, then trend `1..rows`) prepended or appended.
-fn adf_design(
-    y: &[f64],
-    nlags: usize,
-    ntrend: usize,
-    prepend: bool,
-) -> (Vec<Vec<f64>>, Vec<f64>) {
+fn adf_design(y: &[f64], nlags: usize, ntrend: usize, prepend: bool) -> (Vec<Vec<f64>>, Vec<f64>) {
     let n = y.len();
     let rows = n - 1 - nlags;
     let t0 = n - rows;

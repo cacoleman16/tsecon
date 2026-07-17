@@ -108,13 +108,7 @@ fn nm_budget_terminations() {
 /// f(x) = x^2 with f = NaN for x < -0.5, starting right of the hole.
 #[test]
 fn nm_infeasible_region() {
-    let mut obj = FnObjective::new(|x: &[f64]| {
-        if x[0] < -0.5 {
-            f64::NAN
-        } else {
-            x[0] * x[0]
-        }
-    });
+    let mut obj = FnObjective::new(|x: &[f64]| if x[0] < -0.5 { f64::NAN } else { x[0] * x[0] });
     let res = nelder_mead(&mut obj, &[1.0], &NelderMeadOptions::default()).unwrap();
     assert!(res.converged);
     assert!(res.x[0].abs() <= 1e-6);

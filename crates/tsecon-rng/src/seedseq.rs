@@ -298,7 +298,10 @@ mod tests {
         let w32 = ss.generate_state_u32(8);
         let w64 = ss.generate_state_u64(4);
         for i in 0..4 {
-            assert_eq!(w64[i], u64::from(w32[2 * i]) | (u64::from(w32[2 * i + 1]) << 32));
+            assert_eq!(
+                w64[i],
+                u64::from(w32[2 * i]) | (u64::from(w32[2 * i + 1]) << 32)
+            );
         }
     }
 

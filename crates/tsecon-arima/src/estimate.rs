@@ -610,12 +610,7 @@ impl ArimaSpec {
     ///   a finite likelihood.
     pub fn fit(&self, y: &[f64]) -> Result<ArimaResults, ArimaError> {
         let diffed = difference(y, self.d())?;
-        let start = starting_values(
-            &diffed.series,
-            self.p(),
-            self.q(),
-            self.include_constant(),
-        );
+        let start = starting_values(&diffed.series, self.p(), self.q(), self.include_constant());
         self.fit_mle_core(diffed.series, diffed.anchors, &start, false)
     }
 
@@ -641,7 +636,11 @@ impl ArimaSpec {
     /// [`OptimError::Domain`](tsecon_optim::OptimError) when the starting
     /// point is outside the stationary/invertible/positive-variance
     /// domain (including exactly on its boundary).
-    pub fn fit_with_start(&self, y: &[f64], start_params: &[f64]) -> Result<ArimaResults, ArimaError> {
+    pub fn fit_with_start(
+        &self,
+        y: &[f64],
+        start_params: &[f64],
+    ) -> Result<ArimaResults, ArimaError> {
         let diffed = difference(y, self.d())?;
         // Validates layout, finiteness, and sigma2 > 0.
         self.unpack(start_params)?;
@@ -769,18 +768,16 @@ impl ArimaSpec {
         };
         let ar = &mean_params[c..c + self.p()];
         let ma = &mean_params[c + self.p()..k_mean];
-        let (ssr, n_c) =
-            css_ssr(&x, constant, ar, ma).ok_or(ArimaError::EstimationFailed {
-                what: "CSS residual recursion overflowed at the optimum",
-            })?;
+        let (ssr, n_c) = css_ssr(&x, constant, ar, ma).ok_or(ArimaError::EstimationFailed {
+            what: "CSS residual recursion overflowed at the optimum",
+        })?;
         let sigma2 = ssr / n_c as f64;
         if !(sigma2.is_finite() && sigma2 > 0.0) {
             return Err(ArimaError::EstimationFailed {
                 what: "CSS residual variance is not strictly positive",
             });
         }
-        let loglik =
-            -0.5 * n_c as f64 * ((2.0 * std::f64::consts::PI).ln() + 1.0 + sigma2.ln());
+        let loglik = -0.5 * n_c as f64 * ((2.0 * std::f64::consts::PI).ln() + 1.0 + sigma2.ln());
 
         let mut params = mean_params;
         params.push(sigma2);

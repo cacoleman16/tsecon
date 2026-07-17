@@ -117,10 +117,8 @@ pub fn mean_group_var(
         }
     }
 
-    let spec = VarSpec::new(lags, trend).map_err(|source| PanelError::EntityVar {
-        entity: 0,
-        source,
-    })?;
+    let spec =
+        VarSpec::new(lags, trend).map_err(|source| PanelError::EntityVar { entity: 0, source })?;
     let mut results = Vec::with_capacity(n_ent);
     let mut irfs = Vec::with_capacity(n_ent);
     for (entity, e) in entities.iter().enumerate() {
@@ -185,7 +183,11 @@ fn mg_vec(n_ent: usize, k: usize, get: impl Fn(usize, usize) -> f64) -> (Vec<f64
 }
 
 /// Mean and dispersion SE of a per-entity `k x k` matrix family.
-fn mg_mat(n_ent: usize, k: usize, get: impl Fn(usize, usize, usize) -> f64) -> (Mat<f64>, Mat<f64>) {
+fn mg_mat(
+    n_ent: usize,
+    k: usize,
+    get: impl Fn(usize, usize, usize) -> f64,
+) -> (Mat<f64>, Mat<f64>) {
     let nf = n_ent as f64;
     let mean = Mat::from_fn(k, k, |r, c| {
         (0..n_ent).map(|i| get(i, r, c)).sum::<f64>() / nf

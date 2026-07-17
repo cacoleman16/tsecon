@@ -1,9 +1,7 @@
 //! Property and invariant tests beyond the statsmodels goldens, plus
 //! error-path and report coverage.
 
-use tsecon_diag::{
-    acf, arch_lm, jarque_bera, ljung_box, pacf_ols, pacf_yw, DiagError,
-};
+use tsecon_diag::{acf, arch_lm, jarque_bera, ljung_box, pacf_ols, pacf_yw, DiagError};
 
 /// Deterministic pseudo-random uniforms in (-0.5, 0.5) via a 64-bit LCG
 /// (Knuth MMIX constants) — no RNG dependency needed at this quality.
@@ -240,10 +238,7 @@ fn non_finite_input_errors_with_position() {
     y[13] = f64::INFINITY;
     assert!(matches!(ljung_box(&y, 5), Err(DiagError::NonFinite { .. })));
     assert!(matches!(arch_lm(&y, 2), Err(DiagError::NonFinite { .. })));
-    assert!(matches!(
-        jarque_bera(&y),
-        Err(DiagError::NonFinite { .. })
-    ));
+    assert!(matches!(jarque_bera(&y), Err(DiagError::NonFinite { .. })));
 }
 
 #[test]
@@ -258,7 +253,10 @@ fn lag_bounds_are_enforced() {
         Err(DiagError::InvalidLags { .. })
     ));
     // statsmodels convention: pacf lags must stay below n/2.
-    assert!(matches!(pacf_yw(&y, 15), Err(DiagError::InvalidLags { .. })));
+    assert!(matches!(
+        pacf_yw(&y, 15),
+        Err(DiagError::InvalidLags { .. })
+    ));
     assert!(pacf_yw(&y, 14).is_ok());
     assert!(matches!(
         pacf_ols(&y, 15),
@@ -295,7 +293,10 @@ fn reports_carry_decision_and_interpretation() {
     assert_eq!(rep.reject, rep.p_value < 0.05);
     // A strong AR(1) must be flagged as non-white.
     assert!(rep.reject, "Ljung-Box must reject on an AR(1) series");
-    assert!(rep.interpretation.contains("ACF"), "should point at the next diagnostic");
+    assert!(
+        rep.interpretation.contains("ACF"),
+        "should point at the next diagnostic"
+    );
     assert!(!rep.test.is_empty());
     let shown = format!("{rep}");
     assert!(shown.contains("reject"));

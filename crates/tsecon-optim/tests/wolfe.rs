@@ -146,7 +146,15 @@ fn wolfe_input_errors() {
 
     // Length mismatch.
     assert!(matches!(
-        strong_wolfe(&mut obj, &x, &d[..1], f0, &g0, 1.0, &WolfeOptions::default()),
+        strong_wolfe(
+            &mut obj,
+            &x,
+            &d[..1],
+            f0,
+            &g0,
+            1.0,
+            &WolfeOptions::default()
+        ),
         Err(OptimError::DimensionMismatch { .. })
     ));
 }

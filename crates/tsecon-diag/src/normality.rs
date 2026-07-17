@@ -64,7 +64,9 @@ pub fn jarque_bera(x: &[f64]) -> Result<JarqueBeraResult, DiagError> {
     m3 /= nf;
     m4 /= nf;
     if m2 <= 0.0 {
-        return Err(DiagError::ConstantSeries { what: "jarque_bera" });
+        return Err(DiagError::ConstantSeries {
+            what: "jarque_bera",
+        });
     }
     let skewness = m3 / (m2 * m2.sqrt());
     let kurtosis = m4 / (m2 * m2);

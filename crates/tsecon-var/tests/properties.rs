@@ -59,7 +59,10 @@ fn ma_rep_of_diagonal_var1_is_diagonal_powers() {
         let e11 = (-0.3f64).powi(h as i32);
         assert!((m[(0, 0)] - e00).abs() < 1e-14, "Psi_{h}[0,0]");
         assert!((m[(1, 1)] - e11).abs() < 1e-14, "Psi_{h}[1,1]");
-        assert!(m[(0, 1)].abs() < 1e-14 && m[(1, 0)].abs() < 1e-14, "Psi_{h} off-diagonal");
+        assert!(
+            m[(0, 1)].abs() < 1e-14 && m[(1, 0)].abs() < 1e-14,
+            "Psi_{h} off-diagonal"
+        );
     }
 }
 
@@ -172,10 +175,7 @@ fn error_paths() {
         res.forecast_interval(4, 0.0),
         Err(VarError::InvalidArgument { .. })
     ));
-    assert!(matches!(
-        res.fevd(0),
-        Err(VarError::InvalidArgument { .. })
-    ));
+    assert!(matches!(res.fevd(0), Err(VarError::InvalidArgument { .. })));
     assert!(matches!(
         res.test_causality(&[0], &[]),
         Err(VarError::InvalidArgument { .. })

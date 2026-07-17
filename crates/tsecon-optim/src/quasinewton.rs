@@ -215,8 +215,7 @@ impl InvHessian for DenseInvHessian {
         let coef = rho * rho * yhy + rho;
         for i in 0..n {
             for j in 0..n {
-                self.h[i * n + j] +=
-                    -rho * (s[i] * hy[j] + hy[i] * s[j]) + coef * s[i] * s[j];
+                self.h[i * n + j] += -rho * (s[i] * hy[j] + hy[i] * s[j]) + coef * s[i] * s[j];
             }
         }
     }
@@ -310,7 +309,9 @@ fn quasi_newton_drive<F: ObjectiveFn + ?Sized, H: InvHessian>(
     }
     let mut g = c.grad(&x)?;
     if g.iter().any(|v| !v.is_finite()) {
-        return Err(OptimError::NonFinite { what: "gradient at x0" });
+        return Err(OptimError::NonFinite {
+            what: "gradient at x0",
+        });
     }
 
     let mut iterations = 0usize;

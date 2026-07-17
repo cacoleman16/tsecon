@@ -6,7 +6,9 @@ pub struct Lcg(u64);
 
 impl Lcg {
     pub fn new(seed: u64) -> Self {
-        Lcg(seed.wrapping_mul(2862933555777941757).wrapping_add(3037000493))
+        Lcg(seed
+            .wrapping_mul(2862933555777941757)
+            .wrapping_add(3037000493))
     }
 
     /// Uniform in [0, 1).

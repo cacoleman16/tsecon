@@ -45,10 +45,7 @@ fn mle_recovers_simulated_arma11c() {
     // function of the constant; compare on that scale.
     let mean_hat = res.constant().unwrap() / (1.0 - res.ar()[0]);
     let mean0 = c0 / (1.0 - phi0);
-    assert!(
-        (mean_hat - mean0).abs() < 0.5,
-        "mean {mean_hat} vs {mean0}"
-    );
+    assert!((mean_hat - mean0).abs() < 0.5, "mean {mean_hat} vs {mean0}");
 }
 
 /// Exact MLE on one seeded integrated sample: ARIMA(1,1,1) fit on the
@@ -66,7 +63,11 @@ fn mle_recovers_simulated_arima111() {
     assert_eq!(res.nobs, 499);
     assert!((res.ar()[0] - 0.5).abs() < 0.15, "phi {}", res.ar()[0]);
     assert!((res.ma()[0] + 0.3).abs() < 0.15, "theta {}", res.ma()[0]);
-    assert!((res.sigma2() / 2.0 - 1.0).abs() < 0.15, "sigma2 {}", res.sigma2());
+    assert!(
+        (res.sigma2() / 2.0 - 1.0).abs() < 0.15,
+        "sigma2 {}",
+        res.sigma2()
+    );
 }
 
 /// CSS and exact MLE agree to ~1e-2 on a long simulated series (they are
@@ -111,8 +112,7 @@ fn css_and_mle_agree_on_long_series() {
 
     // The reported CSS loglik obeys its documented concentrated form.
     let n_c = css.nobs as f64;
-    let expected_ll =
-        -0.5 * n_c * ((2.0 * std::f64::consts::PI).ln() + 1.0 + css.sigma2().ln());
+    let expected_ll = -0.5 * n_c * ((2.0 * std::f64::consts::PI).ln() + 1.0 + css.sigma2().ln());
     assert_rel_close(css.loglik, expected_ll, 1e-10, "css loglik identity");
 }
 
@@ -263,10 +263,7 @@ fn error_paths() {
     // NaN data are rejected on the simple-differencing path.
     let mut y = nile();
     y[3] = f64::NAN;
-    assert!(matches!(
-        spec.fit(&y),
-        Err(ArimaError::NonFinite { .. })
-    ));
+    assert!(matches!(spec.fit(&y), Err(ArimaError::NonFinite { .. })));
     let y = nile();
 
     // Wrong parameter-vector length.
@@ -288,7 +285,9 @@ fn error_paths() {
     ));
 
     // Zero-step forecasts.
-    let res = spec.at_params(&y, &[314.84, 0.6588, -0.248, 20480.5]).unwrap();
+    let res = spec
+        .at_params(&y, &[314.84, 0.6588, -0.248, 20480.5])
+        .unwrap();
     assert!(matches!(
         res.forecast(0),
         Err(ArimaError::InvalidArgument { .. })

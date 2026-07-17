@@ -6,9 +6,7 @@
 //! 3-standard-error tolerances describe how the thresholds were chosen,
 //! not a flake probability.
 
-use tsecon_bootstrap::{
-    indices, optimal_block_length, replicate, BlockScheme, WildWeights,
-};
+use tsecon_bootstrap::{indices, optimal_block_length, replicate, BlockScheme, WildWeights};
 use tsecon_rng::Stream;
 
 // ------------------------------------------------------------- ranges
@@ -28,8 +26,12 @@ fn all_indices_in_range_and_full_length() {
             BlockScheme::Stationary { p: 1.0 },
         ];
         if n >= 3 {
-            schemes.push(BlockScheme::MovingBlock { block_length: n / 2 });
-            schemes.push(BlockScheme::CircularBlock { block_length: n / 2 });
+            schemes.push(BlockScheme::MovingBlock {
+                block_length: n / 2,
+            });
+            schemes.push(BlockScheme::CircularBlock {
+                block_length: n / 2,
+            });
         }
         for scheme in schemes {
             for rep in 0..5 {
@@ -70,8 +72,12 @@ fn circular_blocks_are_consecutive_modulo_n_and_do_wrap() {
     let mut stream = Stream::new(13);
     let mut saw_wrap = false;
     for _ in 0..200 {
-        let out =
-            indices(BlockScheme::CircularBlock { block_length: l }, n, &mut stream).unwrap();
+        let out = indices(
+            BlockScheme::CircularBlock { block_length: l },
+            n,
+            &mut stream,
+        )
+        .unwrap();
         for chunk in out.chunks(l) {
             let start = chunk[0];
             for (j, &idx) in chunk.iter().enumerate() {
@@ -103,10 +109,7 @@ fn stationary_mean_block_length_matches_one_over_p() {
 
     let mean_lengths: Vec<f64> = replicate(20260716, n_reps, |_, stream| {
         let out = indices(BlockScheme::Stationary { p }, n, stream).unwrap();
-        let breaks = out
-            .windows(2)
-            .filter(|w| w[1] != (w[0] + 1) % n)
-            .count();
+        let breaks = out.windows(2).filter(|w| w[1] != (w[0] + 1) % n).count();
         n as f64 / (breaks + 1) as f64
     })
     .unwrap();

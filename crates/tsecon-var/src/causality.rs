@@ -151,7 +151,9 @@ pub(crate) fn f_sf(x: f64, d1: f64, d2: f64) -> Result<f64, VarError> {
         });
     }
     if x.is_nan() {
-        return Err(VarError::NonFinite { what: "F statistic" });
+        return Err(VarError::NonFinite {
+            what: "F statistic",
+        });
     }
     if x <= 0.0 {
         return Ok(1.0);

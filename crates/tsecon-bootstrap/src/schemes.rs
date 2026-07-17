@@ -200,11 +200,17 @@ mod tests {
         );
         assert_eq!(
             indices(BlockScheme::MovingBlock { block_length: 0 }, 5, &mut s),
-            Err(BootstrapError::InvalidBlockLength { block_length: 0, n: 5 })
+            Err(BootstrapError::InvalidBlockLength {
+                block_length: 0,
+                n: 5
+            })
         );
         assert_eq!(
             indices(BlockScheme::CircularBlock { block_length: 6 }, 5, &mut s),
-            Err(BootstrapError::InvalidBlockLength { block_length: 6, n: 5 })
+            Err(BootstrapError::InvalidBlockLength {
+                block_length: 6,
+                n: 5
+            })
         );
         assert_eq!(
             indices(BlockScheme::Stationary { p: 0.0 }, 5, &mut s),

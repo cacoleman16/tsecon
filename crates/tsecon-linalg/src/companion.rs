@@ -141,15 +141,10 @@ pub fn spectral_radius(a: MatRef<'_, f64>) -> Result<f64, LinalgError> {
             }
         }
     }
-    let eigs = a
-        .eigenvalues()
-        .map_err(|_| LinalgError::EigenFailed {
-            what: "spectral_radius",
-        })?;
-    Ok(eigs
-        .iter()
-        .map(|c| c.re.hypot(c.im))
-        .fold(0.0f64, f64::max))
+    let eigs = a.eigenvalues().map_err(|_| LinalgError::EigenFailed {
+        what: "spectral_radius",
+    })?;
+    Ok(eigs.iter().map(|c| c.re.hypot(c.im)).fold(0.0f64, f64::max))
 }
 
 /// Stability check for a companion (or any transition) matrix:

@@ -259,13 +259,17 @@ impl ArimaResults {
                 }
             })
             .collect();
-        let mut p = Mat::from_fn(mm, mm, |i, j| {
-            if i < m && j < m {
-                p_last[(i, j)]
-            } else {
-                0.0
-            }
-        });
+        let mut p = Mat::from_fn(
+            mm,
+            mm,
+            |i, j| {
+                if i < m && j < m {
+                    p_last[(i, j)]
+                } else {
+                    0.0
+                }
+            },
+        );
 
         let obs_idx = if d == 0 { 0 } else { mm - 1 };
         let mut mean = Vec::with_capacity(steps);
