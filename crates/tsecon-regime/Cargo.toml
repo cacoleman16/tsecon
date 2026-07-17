@@ -3,6 +3,7 @@ name = "tsecon-regime"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Markov-switching time-series models for the tsecon econometrics library: the Hamilton (1989) filter and Kim (1994) smoother for k-regime Markov-switching autoregressions with switching means, common or switching AR coefficients, and switching variances, plus EM (Baum-Welch) maximum-likelihood estimation, regime classification, and expected-duration summaries"
 
 [dependencies]

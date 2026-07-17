@@ -3,6 +3,7 @@ name = "tsecon-predreg"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Predictive regressions with persistent regressors for the tsecon time-series econometrics library: the Stambaugh (1999) bias correction, and the IVX estimator and its Wald predictability test (Kostakis-Magdalinos-Stamatogiannis 2015) — inference that is valid uniformly over the unknown persistence of the predictor, from stationary through near-unit-root"
 
 [dependencies]

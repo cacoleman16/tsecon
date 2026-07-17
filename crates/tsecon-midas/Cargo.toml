@@ -3,6 +3,7 @@ name = "tsecon-midas"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "MIDAS mixed-frequency regressions for the tsecon time-series econometrics library: exponential-Almon / Beta / Almon-PDL weight functions, unrestricted U-MIDAS and ADL-MIDAS via the shared HAC/OLS engine, weighted (nonlinear-least-squares) MIDAS through the shared optimizer, and the ragged-edge stacked high-frequency-lag design builder"
 
 [dependencies]

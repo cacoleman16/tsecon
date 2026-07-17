@@ -3,6 +3,7 @@ name = "tsecon-hac"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "HAC / long-run variance / robust standard errors for the tsecon time-series econometrics library: Bartlett/Parzen/quadratic-spectral/truncated kernels, Newey-West (1994) and Andrews (1991) automatic bandwidths, Andrews-Monahan (1992) prewhitening, EWC (Lazarus-Lewis-Stock-Watson 2018) inference, and OLS with nonrobust/HC/HAC sandwich standard errors"
 
 [dependencies]

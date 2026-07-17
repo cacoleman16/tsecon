@@ -3,6 +3,7 @@ name = "tsecon-filters"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Trend-cycle decomposition filters (Hodrick-Prescott, Baxter-King, Christiano-Fitzgerald, Hamilton) for the tsecon time-series econometrics library"
 
 [dependencies]

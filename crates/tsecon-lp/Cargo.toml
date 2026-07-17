@@ -3,6 +3,7 @@ name = "tsecon-lp"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Local projections (Jordà 2005) for the tsecon time-series econometrics library: horizon-by-horizon impulse responses with lag-augmented (Montiel Olea & Plagborg-Møller 2021) heteroskedasticity-robust inference as the default, Newey-West HAC as the statsmodels-compatibility option, just-identified LP-IV with a linearmodels-convention kernel covariance and a first-stage effective-F diagnostic, Ramey-Zubairy cumulative responses, and state-dependent (interacted) local projections"
 
 [dependencies]

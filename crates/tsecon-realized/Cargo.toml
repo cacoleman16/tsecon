@@ -3,6 +3,7 @@ name = "tsecon-realized"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Realized-volatility measures and the HAR-RV model for the tsecon time-series econometrics library: realized variance/quarticity, bipower and tripower variation, the Barndorff-Nielsen-Shephard jump component and ratio jump test, Parkinson/Garman-Klass range estimators, and Corsi (2009) HAR-RV (level/log/sqrt) with HAC standard errors"
 
 [dependencies]

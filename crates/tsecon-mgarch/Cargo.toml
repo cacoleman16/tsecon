@@ -3,6 +3,7 @@ name = "tsecon-mgarch"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Multivariate (conditional-correlation) GARCH for the tsecon time-series econometrics library: constant conditional correlation (Bollerslev 1990) and dynamic conditional correlation (Engle 2002), two-step estimation delegating the per-series volatilities to tsecon-garch, correlation-targeted Qbar, positive-definiteness hygiene via tsecon-linalg, and analytic multi-step covariance forecasting for CCC"
 
 [dependencies]

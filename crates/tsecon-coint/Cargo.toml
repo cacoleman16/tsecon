@@ -3,6 +3,7 @@ name = "tsecon-coint"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Cointegration and vector error-correction models for the tsecon time-series econometrics library: the Johansen (1991) reduced-rank / canonical-correlation test with trace and maximum-eigenvalue statistics and MacKinnon-Haug-Michelis critical values, Johansen maximum-likelihood VECM estimation (cointegrating vectors, loadings, short-run dynamics, and log-likelihood in statsmodels normalization), the VECM-to-level-VAR companion mapping for downstream impulse responses, and the Engle-Granger two-step residual-based procedure"
 
 [dependencies]

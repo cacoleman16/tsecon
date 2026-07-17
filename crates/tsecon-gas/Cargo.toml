@@ -3,6 +3,7 @@ name = "tsecon-gas"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Generalized autoregressive score (GAS) / dynamic conditional score (DCS) models (Creal-Koopman-Lucas 2013; Harvey 2013) for the tsecon time-series econometrics library: score-driven time-varying parameters with Gaussian and Student-t observation densities, the scaled-score recursion, maximum-likelihood estimation, filtering, and multi-step forecasting"
 
 [dependencies]

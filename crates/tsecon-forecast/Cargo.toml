@@ -3,6 +3,7 @@ name = "tsecon-forecast"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Forecast evaluation for the tsecon time-series econometrics library: point accuracy measures (ME/MSE/RMSE/MAE/MdAE/MAPE/sMAPE/MASE/RMSSE), the Diebold-Mariano test with the Harvey-Leybourne-Newbold small-sample correction, the benchmark zoo (naive, seasonal naive, drift, historical mean, Theta) with analytic prediction intervals, and a teaching forecast-comparison report"
 
 [dependencies]

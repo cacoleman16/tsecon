@@ -3,6 +3,7 @@ name = "tsecon-ssm"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 
 [dependencies]
 # faer is consumed through the tsecon-linalg re-export so the whole

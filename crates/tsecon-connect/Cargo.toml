@@ -3,6 +3,7 @@ name = "tsecon-connect"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Diebold-Yilmaz variance-decomposition connectedness for the tsecon time-series econometrics library: Pesaran-Shin (1998) generalized forecast-error variance decompositions, row-normalized to the Diebold-Yilmaz (2012) spillover convention; total, directional (to/from others), net, and pairwise-net connectedness; a printable spillover table; and rolling-window total connectedness"
 
 [dependencies]

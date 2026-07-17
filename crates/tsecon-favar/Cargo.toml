@@ -3,6 +3,7 @@ name = "tsecon-favar"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Approximate factor models and the two-step FAVAR (Bernanke-Boivin-Eliasz 2005) for the tsecon time-series econometrics library: PCA factor extraction via SVD, Bai-Ng (2002) and Ahn-Horenstein (2013) factor-number criteria, the slow/fast factor rotation, and impulse responses of the estimated factor VAR mapped back onto every observed series through the loadings"
 
 [dependencies]

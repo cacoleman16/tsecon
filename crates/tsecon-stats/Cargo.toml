@@ -3,6 +3,7 @@ name = "tsecon-stats"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Special functions and the innovation-distribution zoo for the tsecon time-series econometrics library"
 
 [dependencies]

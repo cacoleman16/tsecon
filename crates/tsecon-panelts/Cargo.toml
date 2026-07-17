@@ -3,6 +3,7 @@ name = "tsecon-panelts"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Heterogeneous-panel time-series estimators for the tsecon time-series econometrics library: the Pesaran-Smith (1995) mean-group estimator with cross-unit standard errors, the Pesaran (2006) common-correlated-effects mean-group (CCE-MG) estimator that augments each unit with cross-section averages to purge unobserved common factors, and the pooled mean-group (Pesaran-Shin-Smith 1999) ARDL long-run estimator"
 
 [dependencies]

@@ -3,6 +3,7 @@ name = "tsecon-nowcast"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Dynamic-factor-model nowcasting (Doz-Giannone-Reichlin 2011 two-step; Banbura-Modugno 2014) for the tsecon time-series econometrics library: PCA initial factors on a standardized panel, a factor VAR/AR transition, and the Kalman filter/smoother over a ragged-edge state space to produce the current-quarter nowcast, with the news/update decomposition"
 
 [dependencies]

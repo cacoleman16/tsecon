@@ -3,6 +3,7 @@ name = "tsecon-var"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Reduced-form VAR estimation and analysis for the tsecon time-series econometrics library: equation-by-equation OLS with statsmodels-convention information criteria, lag-order selection on a common sample, companion-form stability roots, Granger-causality F tests, orthogonalized and non-orthogonalized impulse responses, forecast-error variance decompositions, and iterated forecasts with asymptotic intervals"
 
 [dependencies]
