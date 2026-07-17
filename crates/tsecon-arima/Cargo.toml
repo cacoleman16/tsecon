@@ -3,5 +3,18 @@ name = "tsecon-arima"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "ARMA/ARIMA estimation for the tsecon time-series econometrics library: Harvey canonical state-space form on the shared linear-Gaussian engine, exact Gaussian MLE with the Monahan stationarity/invertibility reparameterization and Hannan-Rissanen starting values, conditional-sum-of-squares estimation as the fast alternative, statsmodels-convention information criteria, forecasting with correct cumulative variance under differencing, and standardized one-step prediction-error residuals"
 
 [dependencies]
+# faer is consumed through the tsecon-linalg re-export so the whole
+# workspace shares one pinned version (0.24, default-features = false,
+# features = ["std"]).
+tsecon-linalg = { path = "../tsecon-linalg" }
+tsecon-optim = { path = "../tsecon-optim" }
+tsecon-ssm = { path = "../tsecon-ssm" }
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
