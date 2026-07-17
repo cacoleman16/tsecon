@@ -36,6 +36,8 @@ members = [
     "crates/tsecon-recession",
     "crates/tsecon-survey",
     "crates/tsecon-longmemory",
+    "crates/tsecon-spectest",
+    "crates/tsecon-dsge",
     "bindings/python",
 ]
 

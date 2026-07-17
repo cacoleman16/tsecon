@@ -1,0 +1,212 @@
+{
+  "_doc": "Closed-form Blanchard-Kahn golden; see generator docstring.",
+  "cagan": {
+    "name": "cagan_asset_price",
+    "description": "p_t = a E_t p_{t+1} + u_t, u AR(1); G = 1/(1 - a rho).",
+    "n_predetermined": 1,
+    "A": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0
+      ]
+    ],
+    "B": [
+      [
+        0.6,
+        0.0
+      ],
+      [
+        -2.0,
+        2.0
+      ]
+    ],
+    "C": [
+      [
+        1.0
+      ],
+      [
+        0.0
+      ]
+    ],
+    "G": [
+      [
+        1.4285714285714286
+      ]
+    ],
+    "P": [
+      [
+        0.6
+      ]
+    ],
+    "Q": [
+      [
+        1.0
+      ]
+    ],
+    "eigenvalues_sorted_abs": [
+      0.6,
+      2.0
+    ],
+    "eigenvalues_real_sorted": [
+      0.6,
+      2.0
+    ]
+  },
+  "two_shock": {
+    "name": "two_shock_jump",
+    "description": "p driven by two AR(1) fundamentals; diagonal P and Q.",
+    "n_predetermined": 2,
+    "A": [
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "B": [
+      [
+        0.5,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.8,
+        0.0
+      ],
+      [
+        -2.5,
+        -2.5,
+        2.5
+      ]
+    ],
+    "C": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.7
+      ],
+      [
+        0.0,
+        0.0
+      ]
+    ],
+    "G": [
+      [
+        1.25,
+        1.4705882352941178
+      ]
+    ],
+    "P": [
+      [
+        0.5,
+        0.0
+      ],
+      [
+        0.0,
+        0.8
+      ]
+    ],
+    "Q": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.7
+      ]
+    ],
+    "eigenvalues_sorted_abs": [
+      0.5,
+      0.8,
+      2.5
+    ],
+    "eigenvalues_real_sorted": [
+      0.5,
+      0.8,
+      2.5
+    ]
+  },
+  "misspec_too_few_jumps": {
+    "description": "Cagan matrices with n_predetermined = 2 (n_jump = 0 < n_unstable = 1): NO stable solution.",
+    "n_predetermined": 2,
+    "A": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0
+      ]
+    ],
+    "B": [
+      [
+        0.6,
+        0.0
+      ],
+      [
+        -2.0,
+        2.0
+      ]
+    ],
+    "C": [
+      [
+        1.0
+      ],
+      [
+        0.0
+      ]
+    ]
+  },
+  "misspec_too_many_jumps": {
+    "description": "Cagan matrices with n_predetermined = 0 (n_jump = 2 > n_unstable = 1): INDETERMINATE.",
+    "n_predetermined": 0,
+    "A": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0
+      ]
+    ],
+    "B": [
+      [
+        0.6,
+        0.0
+      ],
+      [
+        -2.0,
+        2.0
+      ]
+    ],
+    "C": [
+      [
+        1.0
+      ],
+      [
+        0.0
+      ]
+    ]
+  }
+}

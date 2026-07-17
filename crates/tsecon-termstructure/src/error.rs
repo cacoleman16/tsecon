@@ -89,6 +89,17 @@ pub enum TermStructureError {
         /// A short description of the failure reason.
         reason: &'static str,
     },
+    /// An AFNS diagonal factor volatility was negative or non-finite. The
+    /// arbitrage-free yield-adjustment term (Christensen-Diebold-Rudebusch
+    /// 2011) is a sum of squared volatilities, so each `sigma_ii` must be a
+    /// finite, non-negative real (`0` is allowed and nests plain
+    /// Nelson-Siegel).
+    InvalidSigma {
+        /// Zero-based index into `[sigma_11, sigma_22, sigma_33]`.
+        index: usize,
+        /// The offending value.
+        value: f64,
+    },
 }
 
 impl fmt::Display for TermStructureError {
@@ -154,6 +165,13 @@ impl fmt::Display for TermStructureError {
                 "lambda estimation failed ({reason}); try a different starting \
                  value (the Diebold-Li 0.0609 is a robust default for monthly \
                  data)"
+            ),
+            TermStructureError::InvalidSigma { index, value } => write!(
+                f,
+                "sigma_diag[{index}] = {value} is invalid: the AFNS \
+                 yield-adjustment term (Christensen-Diebold-Rudebusch 2011) sums \
+                 squared factor volatilities, so each must be finite and \
+                 non-negative (use 0 to recover plain Nelson-Siegel)"
             ),
         }
     }

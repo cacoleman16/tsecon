@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Yield-curve / term-structure econometrics for the tsecon time-series library (extension E2): Nelson-Siegel (1987) loadings and cross-sectional factor fit at fixed lambda, optimal-lambda NLS Nelson-Siegel, the Svensson (1994) four-factor extension, the Diebold-Li (2006) dynamic Nelson-Siegel with AR(1) factor dynamics and one-step curve forecasts, plus fitted-yield and implied-forward curve utilities"
+description = "Yield-curve / term-structure econometrics for the tsecon time-series library (extension E2): Nelson-Siegel (1987) loadings and cross-sectional factor fit at fixed lambda, optimal-lambda NLS Nelson-Siegel, the Svensson (1994) four-factor extension, the Diebold-Li (2006) dynamic Nelson-Siegel with AR(1) factor dynamics and one-step curve forecasts, the arbitrage-free Nelson-Siegel (Christensen-Diebold-Rudebusch 2011) closed-form yield-adjustment term and AFNS fit, plus fitted-yield and implied-forward curve utilities"
 
 [dependencies]
 # OLS / normal-equations solve — the library's single HAC/OLS owner. The

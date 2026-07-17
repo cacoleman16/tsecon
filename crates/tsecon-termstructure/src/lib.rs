@@ -45,6 +45,13 @@
 //! - [`fit_dynamic_ns`] — the dynamic Nelson-Siegel (Diebold-Li 2006): the
 //!   three factors for every date in a panel, with [`DynamicNsFit::forecast`]
 //!   giving an AR(1)-based one-step factor-and-curve forecast.
+//! - [`afns_yield_adjustment`] / [`fit_afns`] — the **arbitrage-free**
+//!   Nelson-Siegel (Christensen-Diebold-Rudebusch 2011): the same three factor
+//!   loadings plus a deterministic, maturity-dependent yield-adjustment term
+//!   `-A(tau)/tau` (a documented closed form in the diagonal factor
+//!   volatilities) that makes the curve arbitrage-free. The adjustment is
+//!   negative, grows with maturity, and vanishes as the volatilities go to
+//!   zero (nesting plain Nelson-Siegel).
 //!
 //! ```
 //! use tsecon_termstructure::{fit_nelson_siegel, nelson_siegel_loadings};
@@ -81,10 +88,14 @@
 //! - Diebold, F. X., Rudebusch, G. D., & Aruoba, S. B. (2006). "The
 //!   Macroeconomy and the Yield Curve: A Dynamic Latent Factor Approach."
 //!   *Journal of Econometrics*, 131(1-2), 309-338.
+//! - Christensen, J. H. E., Diebold, F. X., & Rudebusch, G. D. (2011). "The
+//!   affine arbitrage-free class of Nelson-Siegel term structure models."
+//!   *Journal of Econometrics*, 164(1), 4-20.
 
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+mod afns;
 mod dynamic;
 mod error;
 mod fit;
@@ -92,6 +103,7 @@ mod loadings;
 mod optlambda;
 mod svensson;
 
+pub use afns::{afns_yield_adjustment, fit_afns, AfnsFit};
 pub use dynamic::{ar1_fit, fit_dynamic_ns, Ar1, DynamicNsFit, DynamicNsForecast};
 pub use error::TermStructureError;
 pub use fit::{fit_nelson_siegel, NsFit};

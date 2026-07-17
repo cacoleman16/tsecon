@@ -1,0 +1,16 @@
+[package]
+name = "tsecon-dsge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A minimal linear rational-expectations (DSGE-lite) solver for the tsecon time-series econometrics library: the Blanchard-Kahn (1980) solution of a linearized model to its state-space policy function, with the Blanchard-Kahn existence/uniqueness conditions, and simulation / impulse responses of the solved system"
+
+[dependencies]
+# Eigendecomposition / Schur and dense solves for the RE solution.
+tsecon-linalg = { path = "../tsecon-linalg" }
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
+tsecon-rng = { path = "../tsecon-rng" }

@@ -1,0 +1,18 @@
+[package]
+name = "tsecon-spectest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Specification and diagnostic tests for the tsecon time-series econometrics library: White and Breusch-Pagan heteroskedasticity tests, the Ramsey RESET functional-form test, the Chow structural-break test, and the CUSUM parameter-stability test"
+
+[dependencies]
+tsecon-linalg = { path = "../tsecon-linalg" }
+# OLS is the library's single owner; every test is built on regressions.
+tsecon-hac = { path = "../tsecon-hac" }
+# Chi-square / F / normal tails for the test p-values.
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
+tsecon-rng = { path = "../tsecon-rng" }
