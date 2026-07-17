@@ -21,6 +21,30 @@ IMG = Path(__file__).parent / "img"
 IMG.mkdir(exist_ok=True)
 rng = np.random.default_rng(20260716)
 
+# ----------------------------------------------------------------- coverage
+# Single source of truth for every uncertainty band in this gallery: each
+# band's WIDTH and its LABEL both derive from these levels, so changing the
+# percents here changes every figure and its annotations consistently.
+COVERAGE = {
+    "ci": 0.95,                  # frequentist intervals: white-noise band, OLS CIs, Kalman band
+    "bvar": [0.68, 0.90],        # BVAR credible bands (posterior quantile pairs), inner -> outer
+    "fan": [0.40, 0.68, 0.90],   # ARIMA fan chart, inner -> outer
+}
+
+
+def z_two_sided(level):
+    """Exact two-sided normal multiplier: z = Phi^-1((1 + level) / 2).
+
+    E.g. 0.95 -> 1.9600, 0.90 -> 1.6449, 0.68 -> 0.9945, 0.40 -> 0.5244.
+    """
+    from scipy.stats import norm
+    return float(norm.ppf((1.0 + level) / 2.0))
+
+
+def pct(level):
+    """Format a coverage level as a percent label: 0.90 -> '90%'."""
+    return f"{100 * level:g}%"
+
 
 def save(fig, name):
     fig.savefig(IMG / name)
@@ -42,7 +66,7 @@ def section_acf():
 
     r = tsecon.acf(y, nlags=24)
     p = tsecon.pacf(y, nlags=24)
-    band = 1.96 / np.sqrt(n)
+    band = z_two_sided(COVERAGE["ci"]) / np.sqrt(n)
 
     with ts.theme():
         fig, axes = plt.subplots(1, 2, figsize=(ts.WIDTH_DOUBLE, 2.4), sharey=True)
@@ -59,7 +83,8 @@ def section_acf():
         fig.suptitle("An AR(2): geometric ACF decay, PACF cuts off after lag 2",
                      x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
         fig.tight_layout(rect=(0, 0.02, 1, 0.90))
-        ts.stamp(fig, "Synthetic AR(2), phi = (1.3, -0.4), n = 400 · tsecon.acf / tsecon.pacf")
+        ts.stamp(fig, "Synthetic AR(2), phi = (1.3, -0.4), n = 400 · tsecon.acf / tsecon.pacf · "
+                      f"shaded: {pct(COVERAGE['ci'])} white-noise band")
         save(fig, "01-acf-pacf.png")
 
 
@@ -84,13 +109,18 @@ def section_stationarity():
             rep = tsecon.check_stationarity(y)
             ax.plot(y, color=ts.SERIES["blue"], lw=1.0)
             ax.set_title(name, fontsize=9.5, loc="left")
+            # Reserve head- and foot-room so the annotations never sit on the data.
+            lo_y, hi_y = float(np.min(y)), float(np.max(y))
+            span = hi_y - lo_y
+            ax.set_ylim(lo_y - 0.24 * span, hi_y + 0.42 * span)
             verdict = rep["quadrant"]
             rec = rep["recommendation"]
             color = ts.SERIES["green"] if rec == "Proceed" else ts.SERIES["red"]
-            ax.annotate(f"{verdict}: {rec}", xy=(0.02, 0.03), xycoords="axes fraction",
+            ax.annotate(f"{verdict}: {rec}", xy=(0.02, 0.04), xycoords="axes fraction",
                         fontsize=8, color=color, fontweight="semibold")
             ax.annotate(f"ADF p = {rep['adf_p_value']:.3f}\nKPSS p = {rep['kpss_p_value']:.3f}",
-                        xy=(0.02, 0.83), xycoords="axes fraction", fontsize=7, color=ts.MUTED)
+                        xy=(0.02, 0.97), xycoords="axes fraction", fontsize=7,
+                        color=ts.MUTED, va="top")
         fig.suptitle("check_stationarity(): the ADF + KPSS confirmatory quadrant, decided for you",
                      x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
         fig.tight_layout(rect=(0, 0.02, 1, 0.90))
@@ -105,6 +135,8 @@ def section_hac():
     n = 200
     n_mc = 3000
     beta_true = 0.5
+    ci = COVERAGE["ci"]
+    z = z_two_sided(ci)
 
     def draw(local_rng):
         x = np.empty(n); u = np.empty(n)
@@ -126,12 +158,12 @@ def section_hac():
                 for se in ["nonrobust", "hc1", "hac"]}
         b, s_naive = cand["nonrobust"]
         _, s_hac = cand["hac"]
-        if abs(b - beta_true) > 1.96 * s_naive and abs(b - beta_true) < 1.96 * s_hac:
+        if abs(b - beta_true) > z * s_naive and abs(b - beta_true) < z * s_hac:
             results = cand
             break
     assert results is not None
 
-    # Monte Carlo coverage of the 95% CI under each SE type.
+    # Monte Carlo coverage of the CI (level set by COVERAGE["ci"]) per SE type.
     cover = {k: 0 for k in results}
     for rep in range(n_mc):
         ym, xm = draw(np.random.default_rng(10_000 + rep))
@@ -139,7 +171,7 @@ def section_hac():
         for se in cover:
             r = tsecon.ols(ym, Xm, se_type=se)
             b, s = r["params"][1], r["bse"][1]
-            cover[se] += (b - 1.96 * s <= beta_true <= b + 1.96 * s)
+            cover[se] += (b - z * s <= beta_true <= b + z * s)
     coverage = {k: v / n_mc for k, v in cover.items()}
 
     labels = {"nonrobust": "OLS (iid)", "hc1": "White HC1", "hac": "Newey-West HAC"}
@@ -148,15 +180,15 @@ def section_hac():
         ax = axes[0]
         for i, se in enumerate(["nonrobust", "hc1", "hac"]):
             b, s = results[se]
-            ax.errorbar(b, i, xerr=1.96 * s, fmt="o", color=ts.SERIES["blue"],
+            ax.errorbar(b, i, xerr=z * s, fmt="o", color=ts.SERIES["blue"],
                         ecolor=ts.SERIES["blue"], elinewidth=2.2, capsize=3, ms=5)
             ax.annotate(labels[se], xy=(b, i + 0.22), fontsize=8, color=ts.INK_2, ha="center")
         ax.axvline(beta_true, color=ts.REF, lw=0.9)
         ax.annotate("true β", xy=(beta_true, 2.45), fontsize=7.5, color=ts.MUTED,
                     ha="left", xytext=(beta_true + 0.005, 2.45))
         b, s = results["hac"]
-        lo = min(beta_true, b - 1.96 * s) - 0.04
-        hi = max(b + 1.96 * s for b, s in results.values()) + 0.04
+        lo = min(beta_true, b - z * s) - 0.04
+        hi = max(b + z * s for b, s in results.values()) + 0.04
         ax.set_xlim(lo, hi)
         ax.set_ylim(-0.6, 2.9); ax.set_yticks([])
         ax.set_title("Same estimate, honest vs dishonest intervals", fontsize=9.5, loc="left")
@@ -167,13 +199,15 @@ def section_hac():
         vals = [coverage[k] for k in ["nonrobust", "hc1", "hac"]]
         colors = [ts.SERIES["red"], ts.SERIES["yellow"], ts.SERIES["blue"]]
         bars = ax.barh(names, vals, color=colors, height=0.55)
-        ax.axvline(0.95, color=ts.REF, lw=0.9)
-        ax.annotate("nominal 95%", xy=(0.95, 2.55), fontsize=7.5, color=ts.MUTED, ha="center")
+        ax.axvline(ci, color=ts.REF, lw=0.9)
+        # Extra headroom keeps the label inside the axes (annotate clips it otherwise).
+        ax.set_ylim(-0.55, 3.05)
+        ax.annotate(f"nominal {pct(ci)}", xy=(ci, 2.55), fontsize=7.5, color=ts.MUTED, ha="center")
         for bar, v in zip(bars, vals):
             ax.annotate(f"{v:.0%}", xy=(v + 0.015, bar.get_y() + bar.get_height() / 2),
                         fontsize=8, color=ts.INK_2, ha="left", va="center", fontweight="semibold")
         ax.set_xlim(0, 1.12)
-        ax.set_title(f"CI coverage over {n_mc:,} simulations", fontsize=9.5, loc="left")
+        ax.set_title(f"{pct(ci)} CI coverage over {n_mc:,} simulations", fontsize=9.5, loc="left")
         fig.suptitle("With autocorrelated errors, iid standard errors lie — HAC restores coverage",
                      x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
         fig.tight_layout(rect=(0, 0.02, 1, 0.90))
@@ -240,17 +274,19 @@ def section_kalman():
     with ts.theme():
         fig, ax = plt.subplots(figsize=(ts.WIDTH_DOUBLE, 2.8))
         ts.shade_period(ax, 95, 119, "missing data")
-        band = 1.96 * np.sqrt(var)
+        band = z_two_sided(COVERAGE["ci"]) * np.sqrt(var)
         ax.fill_between(np.arange(n), smo - band, smo + band, color=ts.SEQ_BLUE[0], lw=0, zorder=2)
         ax.plot(np.arange(n), y_obs, "o", ms=2.1, mew=0, color=ts.MUTED, zorder=3, label="observed")
         ax.plot(np.arange(n), smo, color=ts.SEQ_BLUE[5], lw=1.8, zorder=4, label="smoothed level")
         ax.plot(np.arange(n), level, color=ts.SERIES["red"], lw=1.0, ls=(0, (3, 2)), zorder=4,
                 label="true latent level")
         ax.legend(loc="upper left", fontsize=7.5, ncol=3)
+        lo_y, hi_y = ax.get_ylim()
+        ax.set_ylim(lo_y, hi_y + 0.16 * (hi_y - lo_y))  # headroom: legend clear of the dots
         ax.set_title("The state-space engine bridges a 25-period gap, widening its bands honestly")
         fig.tight_layout()
         ts.stamp(fig, "Local level model, exact diffuse initialization · tsecon.local_level_smooth · "
-                      "bands: 95% smoothed-state intervals")
+                      f"bands: {pct(COVERAGE['ci'])} smoothed-state intervals")
         save(fig, "05-kalman.png")
 
 
@@ -347,6 +383,8 @@ def section_filters():
         ax.plot(q[bi:bi + len(bk["cycle"])], bk["cycle"], color=ts.SERIES["yellow"], lw=1.2,
                 label="Baxter-King 6-32q")
         ax.legend(loc="lower left", fontsize=7.5, ncol=3)
+        lo_y, hi_y = ax.get_ylim()
+        ax.set_ylim(lo_y - 0.22 * (hi_y - lo_y), hi_y)  # footroom: legend clear of the 1975 dip
         ax.set_title("Three views of the business cycle — they disagree, and that is the point",
                      fontsize=9.5, loc="left")
         ax.set_xlabel("Year", fontsize=8)
@@ -406,8 +444,10 @@ def section_forecast_eval():
         colors = [ts.SERIES["blue"] if v == best else ts.SEQ_BLUE[1] for v in vals]
         bars = ax.barh(names, vals, color=colors, height=0.55)
         ax.axvline(1.0, color=ts.REF, lw=0.9)
-        ax.annotate("MASE = 1\n(in-sample naive)", xy=(1.0, -0.45), fontsize=6.5,
-                    color=ts.MUTED, ha="center", va="top")
+        # Footroom keeps the two-line label inside the axes (annotate clips it otherwise).
+        ax.set_ylim(-1.15, 2.6)
+        ax.annotate("MASE = 1\n(in-sample naive)", xy=(1.12, -0.45), fontsize=6.5,
+                    color=ts.MUTED, ha="left", va="top")
         for bar, v in zip(bars, vals):
             ax.annotate(f"{v:.2f}", xy=(v + 0.03, bar.get_y() + bar.get_height() / 2),
                         fontsize=8, color=ts.INK_2, ha="left", va="center")
@@ -446,9 +486,13 @@ def section_garch():
                 label="60-day volatility forecast")
         lr = np.sqrt(params[0] / (1 - params[1] - params[2]))
         ax.axhline(lr, color=ts.REF, lw=0.9)
-        ax.annotate("long-run level", xy=(n * 0.35, lr - 0.06), fontsize=7.5,
-                    color=ts.MUTED, va="top")
+        # Label the reference line in clear space to the right of the forecast.
+        ax.annotate("long-run level", xy=(n + len(fc) + 25, lr + 0.025), fontsize=7.5,
+                    color=ts.MUTED, va="bottom", ha="left")
+        ax.set_xlim(-40, n + len(fc) + 340)
         ax.legend(loc="upper right", fontsize=7.5)
+        lo_y, hi_y = ax.get_ylim()
+        ax.set_ylim(lo_y, hi_y + 0.30 * (hi_y - lo_y))  # headroom: legend clear of vol spikes
         ax.set_title("GARCH(1,1): spikes decay geometrically toward the long-run level; "
                      "forecasts mean-revert", fontsize=9.5, loc="left")
         param_str = "  ".join(f"{nm} = {p:.3f} ({s:.3f})" for nm, p, s in zip(names, params, se))
@@ -470,7 +514,11 @@ def section_bvar():
     H = 12
     draws = np.array(tsecon.bvar_irf_draws(data, lags=2, horizon=H, n_draws=800, seed=42,
                                            lambda1=0.2))
-    q05, q16, q50, q84, q95 = np.quantile(draws, [0.05, 0.16, 0.5, 0.84, 0.95], axis=0)
+    # Credible bands: quantile pairs derive from COVERAGE["bvar"] so that a
+    # level L band is exactly [(1-L)/2, (1+L)/2] of the posterior draws.
+    levels = sorted(COVERAGE["bvar"], reverse=True)  # outer (widest) first
+    bands = {lv: np.quantile(draws, [(1 - lv) / 2, (1 + lv) / 2], axis=0) for lv in levels}
+    q50 = np.quantile(draws, 0.5, axis=0)
 
     with ts.theme():
         fig, axes = plt.subplots(3, 3, figsize=(ts.WIDTH_DOUBLE, 5.2), sharex=True)
@@ -479,8 +527,9 @@ def section_bvar():
             for j in range(3):
                 ax = axes[i, j]
                 ts.zero_line(ax)
-                ax.fill_between(t, q05[:, i, j], q95[:, i, j], color=ts.SEQ_BLUE[0], lw=0)
-                ax.fill_between(t, q16[:, i, j], q84[:, i, j], color=ts.SEQ_BLUE[1], lw=0)
+                for k, lv in enumerate(levels):
+                    qlo, qhi = bands[lv]
+                    ax.fill_between(t, qlo[:, i, j], qhi[:, i, j], color=ts.SEQ_BLUE[k], lw=0)
                 ax.plot(t, q50[:, i, j], color=ts.SEQ_BLUE[5], lw=1.7)
                 if i == 0:
                     ax.set_title(f"{names[j]} shock", fontsize=9, loc="center",
@@ -490,7 +539,8 @@ def section_bvar():
                 ax.tick_params(labelsize=7.5)
         for ax in axes[2]:
             ax.set_xlabel("Horizon (quarters)", fontsize=8)
-        fig.suptitle("Bayesian VAR: posterior impulse responses with 68 / 90% credible bands",
+        band_label = " / ".join(f"{100 * lv:g}" for lv in sorted(COVERAGE["bvar"])) + "%"
+        fig.suptitle(f"Bayesian VAR: posterior impulse responses with {band_label} credible bands",
                      x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
         fig.tight_layout(rect=(0, 0.012, 1, 0.955))
         ts.stamp(fig, "Minnesota-NIW conjugate BVAR(2) on US GDP/consumption/investment growth · "
@@ -519,13 +569,16 @@ def section_arima():
         x_h, x_f = np.arange(n), np.arange(n - 1, n + h)
         m = np.concatenate([[level[-1]], mean])
         s = np.concatenate([[0.0], se])
-        for cov, step in zip([0.90, 0.68, 0.40], ts.SEQ_BLUE[:3]):
-            z = {0.40: 0.524, 0.68: 0.994, 0.90: 1.645}[cov]
+        fan_levels = sorted(COVERAGE["fan"], reverse=True)  # widest first, lightest step
+        for cov, step in zip(fan_levels, ts.SEQ_BLUE):
+            z = z_two_sided(cov)
             ax.fill_between(x_f, m - z * s, m + z * s, color=step, lw=0, zorder=2)
         ax.plot(x_h[-90:], level[-90:], color=ts.INK, lw=1.5, zorder=3)
         ax.plot(x_f, m, color=ts.SEQ_BLUE[6], lw=1.6, ls=(0, (4, 2)), zorder=3)
         ax.axvline(n - 1, color=ts.REF, lw=0.9, zorder=1.5)
-        ax.annotate("90% band", xy=(x_f[-1] + 0.4, m[-1] + 1.645 * s[-1] * 0.9),
+        z_outer = z_two_sided(fan_levels[0])
+        ax.annotate(f"{pct(fan_levels[0])} band",
+                    xy=(x_f[-1] + 0.4, m[-1] + z_outer * s[-1] * 0.9),
                     fontsize=7.5, color=ts.INK_2, va="center")
         ax.annotate("point forecast", xy=(x_f[-1] + 0.4, m[-1]), fontsize=7.5,
                     color=ts.SEQ_BLUE[6], va="center")

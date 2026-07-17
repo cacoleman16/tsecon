@@ -291,3 +291,120 @@ telling: on the Nile benchmark our optimizer found a *better* optimum than
 the one statsmodels' default fit had stored in our golden fixture — the
 fixture had pinned a non-converged artifact, which independent
 cross-checking confirmed. Validation-first development cuts both ways.
+
+---
+
+## Advanced
+
+The numbered sections showed the methods one at a time. This wing *composes*
+them: four figures from the sophisticated end of applied practice, each built
+entirely from the primitives above. All regenerate with one command:
+
+```sh
+.venv/bin/python docs/examples/showcase_advanced.py
+```
+
+### Local projections (Jordà 2005), from primitives
+
+**Use case:** the modern default for estimating impulse responses without
+committing to a full VAR's dynamics — run one regression *per horizon* of
+`y[t+h]` on the shock (plus lag controls) and read the IRF straight off the
+shock coefficients. The h-step regression error is MA(h) by construction, so
+HAC standard errors are not optional — which is exactly what `tsecon.ols`
+provides.
+
+```python
+for h in range(13):
+    t = np.arange(4, n - h)
+    X = np.column_stack([np.ones(len(t)), shock[t]]
+                        + [y[t - lag] for lag in range(1, 5)])
+    r = tsecon.ols(y[t + h], X, se_type="hac", maxlags=h + 1)
+    irf[h], se[h] = r["params"][1], r["bse"][1]   # band: irf ± 1.645·se
+```
+
+![Local projection](img/adv-local-projection.png)
+
+The test bed is an AR(2) whose true impulse response is computable
+analytically (the ψ-weights, dashed red), and the local projection tracks it
+inside its 90% HAC bands at every horizon — including the hump at h = 1 and
+the long geometric tail. This is Jordà (2005) built from tsecon primitives
+today; the dedicated module ([Module 07](../roadmap/07-local-projections.md))
+hardens the inference with lag augmentation and joint sup-t bands.
+
+### News impact curves: is volatility asymmetric?
+
+**Use case:** in equity markets, bad news famously raises tomorrow's
+volatility more than good news of the same size. The news impact curve
+(Engle-Ng 1993) makes the question visual: plot the fitted σ²(ε) against the
+shock ε, holding the lagged variance at its unconditional level. GARCH is a
+symmetric parabola by construction; GJR adds a `gamma` term that kinks the
+curve at zero.
+
+```python
+gj = tsecon.garch_fit(ret, vol="gjr", mean="zero")     # and vol="garch"
+om, al, ga, be = gj["params"]
+s2 = om / (1 - al - ga / 2 - be)                       # unconditional variance
+nic = om + (al + ga * (eps < 0)) * eps**2 + be * s2    # the curve
+```
+
+![News impact curves](img/adv-news-impact.png)
+
+An honest negative result, on purpose: the fixture returns are simulated from
+a *symmetric* GARCH, and the fitted GJR says so — γ̂ = −0.017 with a robust
+standard error of 0.015, statistically zero, so the two curves nearly
+coincide. That is the diagnostic working as designed: fit GJR, draw the
+curve, and let the kink (or its absence) tell you whether the leverage effect
+is in your data. On real equity returns γ̂ > 0 tilts the curve up steeply on
+the bad-news side.
+
+### The volatility term structure
+
+**Use case:** risk over *horizons* — option pricing, margin setting, VaR at
+one day versus six months. A GARCH fit implies a whole term structure of
+expected volatility: from any starting state, forecasts decay toward the
+long-run anchor at rate α + β per period, and the fitted persistence tells
+you how slowly.
+
+```python
+r = tsecon.garch_fit(ret, vol="garch", mean="zero", forecast_horizon=120)
+term = np.sqrt(r["variance_forecast"])        # from the end-of-sample state
+om, al, be = r["params"]
+lr = om / (1 - al - be)                       # the long-run anchor
+what_if = lr + (al + be) ** (h - 1) * (3 * lr - lr)   # closed-form, any state
+```
+
+![Volatility term structure](img/adv-vol-term-structure.png)
+
+The solid blue curve is the library's own `variance_forecast`, launched from
+the actual end-of-sample state. The API forecasts only from that state, so
+the dashed what-if curves (starting at 0.5×, 1×, and 3× the long-run
+variance) are the same closed-form recursion evaluated in numpy from the
+fitted (ω, α, β) — labelled as such. With persistence α + β = 0.9838 the
+half-life of a volatility shock is about 42 trading days: spikes are not
+noise, they are two-month weather systems.
+
+### BVAR prior tightness in one picture
+
+**Use case:** the Minnesota prior's λ₁ is the shrinkage knob — how hard the
+data must argue against the random-walk baseline. Set it by eye and you're
+guessing; the conjugate NIW posterior gives the log marginal likelihood in
+closed form, so the *evidence* can pick it. This figure shows what the choice
+does where it matters: the impulse response and its uncertainty.
+
+```python
+for lam in [0.05, 0.2, 1.0]:
+    draws = np.array(tsecon.bvar_irf_draws(data, lags=2, horizon=12,
+                                           n_draws=500, seed=42, lambda1=lam))
+    gg = draws[:, :, 0, 0]                    # GDP response to a GDP shock
+    lo, med, hi = np.quantile(gg, [0.05, 0.5, 0.95], axis=0)   # 90% band
+    lml = tsecon.bvar_fit(data, lags=2, lambda1=lam)["log_marginal_likelihood"]
+```
+
+![BVAR shrinkage](img/adv-bvar-shrinkage.png)
+
+Too tight (λ₁ = 0.05) squeezes the response toward the prior and understates
+uncertainty; too loose (λ₁ = 1.0) is essentially OLS with wide, wobbly bands.
+The log marginal likelihood arbitrates: −873.5, **−861.6**, −876.9 — the
+evidence decisively prefers the middle setting, drawn in house blue. Same
+seed, same 500 draws per panel, so the differences you see are the prior,
+not Monte Carlo noise.

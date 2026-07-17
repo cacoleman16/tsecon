@@ -18,6 +18,35 @@ OUT.mkdir(parents=True, exist_ok=True)
 FIXTURES = Path(__file__).parents[2] / "fixtures"
 rng = np.random.default_rng(20260716)
 
+# ----------------------------------------------------------------- coverage
+# Single source of truth for every uncertainty band in these previews: each
+# band's WIDTH and its LABEL both derive from these levels, so changing the
+# percents here changes every figure and its annotations consistently.
+COVERAGE = {
+    "ci": 0.95,                        # white-noise / residual-ACF bands
+    "irf": [0.68, 0.90],               # nested IRF bands, inner -> outer
+    "fan": [0.30, 0.50, 0.70, 0.90],   # fan chart, inner -> outer
+}
+
+
+def z_two_sided(level):
+    """Exact two-sided normal multiplier: z = Phi^-1((1 + level) / 2).
+
+    E.g. 0.95 -> 1.9600, 0.90 -> 1.6449, 0.68 -> 0.9945, 0.30 -> 0.3853.
+    """
+    from scipy.stats import norm
+    return float(norm.ppf((1.0 + level) / 2.0))
+
+
+def pct(level):
+    """Format a coverage level as a percent label: 0.90 -> '90%'."""
+    return f"{100 * level:g}%"
+
+
+def pct_list(levels):
+    """Format levels as a joint label: [0.68, 0.90] -> '68 / 90%'."""
+    return " / ".join(f"{100 * lv:g}" for lv in sorted(levels)) + "%"
+
 
 def irf(h, peak, decay, delay=0.0, osc=0.0):
     t = np.arange(h + 1, dtype=float)
@@ -52,8 +81,9 @@ def fig_irf_grid():
                 point = responses[(i, j)]
                 se = 0.10 * (1 + 0.08 * t) * np.max(np.abs(point) + 0.1)
                 ts.zero_line(ax)
-                ts.nested_bands(ax, t, point, [1.0 * se, 1.645 * se], [0.68, 0.90],
-                                color_steps=["#cde2fb", "#9ec5f4"])
+                irf_levels = sorted(COVERAGE["irf"])  # inner -> outer
+                ts.nested_bands(ax, t, point, [z_two_sided(lv) * se for lv in irf_levels],
+                                irf_levels, color_steps=["#cde2fb", "#9ec5f4"])
                 ax.plot(t, point, color=ts.SERIES["blue"], lw=1.8, zorder=3)
                 if i == 0:
                     ax.set_title(var, fontsize=9, loc="center", color=ts.INK_2, fontweight="normal")
@@ -68,7 +98,7 @@ def fig_irf_grid():
             x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK,
         )
         fig.tight_layout(rect=(0, 0.015, 1, 0.94))
-        ts.stamp(fig, "Bands: 68 / 90% (asymptotic) · Identification: external instrument · Synthetic preview data · tsecon 0.0.1")
+        ts.stamp(fig, f"Bands: {pct_list(COVERAGE['irf'])} (asymptotic) · Identification: external instrument · Synthetic preview data · tsecon 0.0.1")
         fig.savefig(OUT / "irf-panel-grid.png")
         plt.close(fig)
 
@@ -87,8 +117,9 @@ def fig_fan_chart():
         fig, ax = plt.subplots(figsize=(ts.WIDTH_DOUBLE, 2.9))
         ts.shade_period(ax, 21.5, 27.5, "recession")
         # Darkest at the center (most likely), fading outward — BoE convention.
-        for cov, step in zip([0.90, 0.70, 0.50, 0.30], ts.SEQ_BLUE[:4]):
-            z = {0.30: 0.385, 0.50: 0.674, 0.70: 1.036, 0.90: 1.645}[cov]
+        fan_levels = sorted(COVERAGE["fan"], reverse=True)  # widest first, lightest step
+        for cov, step in zip(fan_levels, ts.SEQ_BLUE):
+            z = z_two_sided(cov)
             ax.fill_between(x_fc, point - z * se, point + z * se, color=step, lw=0, zorder=2)
         ax.plot(x_hist, level, color=ts.INK, lw=1.6, zorder=3)
         ax.plot(x_fc, point, color=ts.SURFACE, lw=1.6, ls=(0, (4, 2)), zorder=3)
@@ -99,14 +130,16 @@ def fig_fan_chart():
         ax.annotate("forecast origin\n2026Q2", xy=(n_hist - 1, ax.get_ylim()[0]),
                     xytext=(n_hist - 0.4, 0.02), textcoords=("data", "axes fraction"),
                     fontsize=7.5, color=ts.MUTED, va="bottom")
-        ax.annotate("90% band", xy=(x_fc[-1] + 0.25, point[-1] + 1.645 * se[-1] * 0.82),
+        z_outer = z_two_sided(fan_levels[0])
+        ax.annotate(f"{pct(fan_levels[0])} band",
+                    xy=(x_fc[-1] + 0.25, point[-1] + z_outer * se[-1] * 0.82),
                     fontsize=7.5, color=ts.INK_2, va="center")
         ax.annotate("median path", xy=(x_fc[-1] + 0.25, point[-1]), fontsize=7.5,
                     color=ts.SEQ_BLUE[5], va="center")
         ax.set_xlim(0, n_hist + n_fc + 5.5)
         ax.set_ylabel("Four-quarter GDP growth (%)")
         ax.set_title("Growth recovers toward 2% over the forecast horizon")
-        ts.stamp(fig, "Coverage: 30 / 50 / 70 / 90% · Bands: simulated predictive density · Synthetic preview data · tsecon 0.0.1")
+        ts.stamp(fig, f"Coverage: {pct_list(COVERAGE['fan'])} · Bands: simulated predictive density · Synthetic preview data · tsecon 0.0.1")
         fig.savefig(OUT / "fan-chart.png")
         plt.close(fig)
 
@@ -117,7 +150,8 @@ def fig_acf_pacf():
     acf = np.array(diag["acf_20_unadjusted"])
     pacf = np.array(diag["pacf_20_ywm"])
     n = len(diag["nile"])
-    band = 1.96 / np.sqrt(n)
+    z_ci = z_two_sided(COVERAGE["ci"])
+    band = z_ci / np.sqrt(n)
     lags = np.arange(len(acf))
 
     with ts.theme():
@@ -133,13 +167,16 @@ def fig_acf_pacf():
             ax.set_xlim(-0.5, 20.5)
             ax.set_xticks([0, 5, 10, 15, 20])
             ax.set_xlabel("Lag (years)", fontsize=8)
-        axes[0].set_ylim(-0.35, 1.02)
-        axes[0].annotate("95% white-noise band", xy=(20.3, -band - 0.075), fontsize=7.5,
-                         color=ts.MUTED, ha="right", va="top")
+        y_lo = -0.47
+        axes[0].set_ylim(y_lo, 1.02)
+        # Center the label in the space between the band and the bottom spine.
+        axes[0].annotate(f"{pct(COVERAGE['ci'])} white-noise band",
+                         xy=(20.3, (y_lo - band) / 2), fontsize=7.5,
+                         color=ts.MUTED, ha="right", va="center")
         fig.suptitle("Nile flow is persistent: slow ACF decay, single dominant PACF spike",
                      x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
         fig.tight_layout(rect=(0, 0.02, 1, 0.90))
-        ts.stamp(fig, "Nile annual flow 1871–1970 · Bands: ±1.96/√n (Bartlett at lag 1) · tsecon 0.0.1")
+        ts.stamp(fig, f"Nile annual flow 1871–1970 · Bands: ±{z_ci:.2f}/√n (Bartlett at lag 1) · tsecon 0.0.1")
         fig.savefig(OUT / "acf-pacf.png")
         plt.close(fig)
 
@@ -163,7 +200,7 @@ def fig_diagnostics_dashboard():
 
         ax = axes[0, 1]
         r = np.array([np.corrcoef(e[:-k], e[k:])[0, 1] for k in range(1, 21)])
-        band = 1.96 / np.sqrt(n)
+        band = z_two_sided(COVERAGE["ci"]) / np.sqrt(n)
         ax.fill_between([0.5, 20.5], -band, band, color="#e8eef7", lw=0, zorder=1)
         ts.zero_line(ax)
         markerline, stemlines, _ = ax.stem(np.arange(1, 21), r, basefmt=" ")

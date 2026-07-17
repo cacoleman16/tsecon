@@ -231,6 +231,17 @@
 const D = JSON.parse(document.getElementById('demo-data').textContent);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
+// ---------- coverage configuration ----------
+// Single source of truth for every band drawn client-side: each band's WIDTH
+// (via Z) and its chip/annotation LABEL both derive from these levels, so
+// changing the percents here changes the chart and its labels consistently.
+// Z holds exact two-sided normal multipliers: z = Phi^-1((1 + level) / 2).
+const Z = { 0.30: 0.3853, 0.40: 0.5244, 0.50: 0.6745, 0.68: 0.9945, 0.70: 1.0364,
+            0.80: 1.2816, 0.90: 1.6449, 0.95: 1.9600, 0.99: 2.5758 };
+const pct = l => Math.round(l * 100) + '%';
+const pctList = ls => ls.slice().sort((a, b) => a - b).map(l => Math.round(l * 100)).join(' / ') + '%';
+const ARIMA_LEVELS = [0.90, 0.68, 0.40];  // fan chart, outer -> inner (lightest -> darkest)
+
 // ---------- tiny SVG chart kit (house style) ----------
 function mkSvg(box, W, H) {
   box.innerHTML = '';
@@ -490,7 +501,9 @@ chips('garch-controls', ['Normal', 'Student-t'], drawGarch, 0);
 // ---------- 7 · arima ----------
 function drawArima(mode) {
   const a = D.arima, nh = a.history.length, nf = a.mean.length;
-  const zs = [[1.645, '90%'], [0.994, '68%'], [0.524, '40%']];
+  // Widths and labels both derive from ARIMA_LEVELS (widest first).
+  const lvls = ARIMA_LEVELS.slice().sort((x, y) => y - x);
+  const zs = lvls.map(l => [Z[l], pct(l)]);
   const use = mode === 0 ? zs : [zs[0]];
   const hist = a.history.concat(Array(nf).fill(null));
   const mean = Array(nh - 1).fill(null).concat([a.history[nh - 1]], a.mean);
@@ -510,5 +523,5 @@ function drawArima(mode) {
   document.getElementById('arima-stamp').innerHTML =
     `tsecon.arima_fit(p=1, d=1, q=1, constant=True) · ${ps} · the fan widens like √h — exact cumulative variance through the undifferencing`;
 }
-chips('arima-controls', ['40 / 68 / 90%', '90% only'], drawArima, 0);
+chips('arima-controls', [pctList(ARIMA_LEVELS), pct(Math.max(...ARIMA_LEVELS)) + ' only'], drawArima, 0);
 </script>
