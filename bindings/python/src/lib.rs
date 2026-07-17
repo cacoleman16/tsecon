@@ -1889,6 +1889,64 @@ fn factor_model<'py>(
     Ok(d)
 }
 
+/// Nelson-Siegel yield-curve fit (Diebold-Li 2006).
+///
+/// Cross-sectional OLS of `yields` on the three Nelson-Siegel loadings at
+/// the given `decay` (lambda), recovering `[level, slope, curvature]`
+/// factors. If `optimal_lambda` is true, `decay` is treated as a starting
+/// value and the decay is estimated by NLS (profiling the linear factors
+/// out). Returns `factors`, the fitted `lambda`, `residuals`, and centered
+/// `rsquared` (matches statsmodels' constant-included R^2 to 1e-8).
+#[pyfunction]
+#[pyo3(signature = (maturities, yields, decay = 0.0609, optimal_lambda = false))]
+fn nelson_siegel<'py>(
+    py: Python<'py>,
+    maturities: PyReadonlyArray1<'py, f64>,
+    yields: PyReadonlyArray1<'py, f64>,
+    decay: f64,
+    optimal_lambda: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let (mat, yld) = (maturities.as_slice()?, yields.as_slice()?);
+    let fit = if optimal_lambda {
+        tsecon_termstructure::fit_nelson_siegel_optimal_lambda(mat, yld, decay).map_err(to_py)?
+    } else {
+        tsecon_termstructure::fit_nelson_siegel(mat, yld, decay).map_err(to_py)?
+    };
+    let d = PyDict::new(py);
+    d.set_item("level", fit.factors[0])?;
+    d.set_item("slope", fit.factors[1])?;
+    d.set_item("curvature", fit.factors[2])?;
+    d.set_item("factors", fit.factors.to_vec().into_pyarray(py))?;
+    d.set_item("lambda", fit.lambda)?;
+    d.set_item("residuals", fit.residuals.into_pyarray(py))?;
+    d.set_item("rsquared", fit.rsquared)?;
+    Ok(d)
+}
+
+/// Svensson (1994) four-factor yield-curve fit.
+///
+/// The Nelson-Siegel extension with a second curvature term at decay
+/// `lambda2`; cross-sectional OLS at fixed `lambda1`, `lambda2` returns
+/// the four `factors` and centered `rsquared`. Nests Nelson-Siegel.
+#[pyfunction]
+fn svensson<'py>(
+    py: Python<'py>,
+    maturities: PyReadonlyArray1<'py, f64>,
+    yields: PyReadonlyArray1<'py, f64>,
+    lambda1: f64,
+    lambda2: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let (mat, yld) = (maturities.as_slice()?, yields.as_slice()?);
+    let fit = tsecon_termstructure::fit_svensson(mat, yld, lambda1, lambda2).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("factors", fit.factors.to_vec().into_pyarray(py))?;
+    d.set_item("lambda1", lambda1)?;
+    d.set_item("lambda2", lambda2)?;
+    d.set_item("residuals", fit.residuals.into_pyarray(py))?;
+    d.set_item("rsquared", fit.rsquared)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -1948,5 +2006,7 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(har_rv, m)?)?;
     m.add_function(wrap_pyfunction!(connectedness, m)?)?;
     m.add_function(wrap_pyfunction!(factor_model, m)?)?;
+    m.add_function(wrap_pyfunction!(nelson_siegel, m)?)?;
+    m.add_function(wrap_pyfunction!(svensson, m)?)?;
     Ok(())
 }

@@ -407,4 +407,22 @@ def factor_model(
 ) -> dict[str, Any]:
     """PCA factor model (T x N) + Bai-Ng (2002) factor selection.
 
-    factors, loadings, eigenvalues, and icp1/icp2/pcp1/pcp2 counts."""
+    factors, loadings, eigenvalues, icp1/icp2/pcp1/pcp2 and Ahn-Horenstein
+    eigenvalue-ratio (er) factor counts."""
+
+# ------------------------------------------------------------ term structure
+def nelson_siegel(
+    maturities: _ArrayLike,
+    yields: _ArrayLike,
+    decay: float = ...,
+    optimal_lambda: bool = ...,
+) -> dict[str, Any]:
+    """Nelson-Siegel yield-curve fit (Diebold-Li 2006).
+
+    level/slope/curvature factors, lambda, residuals, rsquared.
+    optimal_lambda=True estimates the decay by NLS."""
+
+def svensson(
+    maturities: _ArrayLike, yields: _ArrayLike, lambda1: float, lambda2: float
+) -> dict[str, Any]:
+    """Svensson (1994) four-factor yield-curve fit; nests Nelson-Siegel."""
