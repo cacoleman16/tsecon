@@ -36,6 +36,8 @@ method when** (a decision table) → further reading (the founding papers).
 | 11 | [Nowcasting and Mixed Frequencies](11-nowcasting.md) | Reading the economy in real time: ragged edges, MIDAS, factor-model nowcasts, and news decomposition |
 | 12 | [Machine Learning for Time Series](12-machine-learning.md) | Leakage-safe validation, shrinkage vs sparsity, trees and boosting, and an honest look at foundation models |
 | 13 | [Nonlinear Dynamics: Regimes, Thresholds, and State-Dependent Responses](13-nonlinear-dynamics.md) | When linearity fails: threshold and Markov-switching systems, generalized impulse responses, and state-dependent local projections |
+| 14 | [Panel Time Series](14-panel-time-series.md) | Heterogeneous panels: fixed effects, the mean-group and common-correlated-effects estimators, and panel local projections and VARs |
+| 15 | [The Term Structure of Interest Rates](15-term-structure.md) | Fitting and forecasting the yield curve: Nelson-Siegel, Svensson, and the dynamic Nelson-Siegel |
 
 Worked, figure-rich examples for many of these methods live in the
 [gallery](../examples/README.md); the library's full technical plans live in

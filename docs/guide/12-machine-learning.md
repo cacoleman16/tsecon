@@ -312,6 +312,206 @@ These defaults — block permutation, lag-grouped attribution, ALE first — are
 
 > **⚠ Common mistake.** Reading a per-lag importance bar chart ("lag 3 of the spread is the fifth most important feature") as structure. Under collinearity between lags, importance smears arbitrarily across them; only the grouped, block-respecting quantity is stable enough to interpret.
 
+## Three functions that just landed
+
+The roadmap previews above have started to become real. Three of this module's Tier-1 estimators now ship in the Python API and run against the Rust core — no hand-rolled numpy required:
+
+- `tsecon.cv_splits` — the leakage-safe splitter, the shipped version of the `rolling_origin_splits` / `purged_kfold_splits` helpers from the leakage section;
+- `tsecon.lasso_path` — the glmnet-convention elastic-net path with AIC/BIC selection;
+- `tsecon.adaptive_lasso` — Zou's (2006) oracle-property estimator.
+
+The remaining previews (`enet`, `group_lasso`, `diffusion_index`, `factor_forecast`) are still on the roadmap. This section teaches the three that are here, on real data, with the outputs you actually get back. Everything below runs today.
+
+### Leakage-safe splits: `cv_splits`
+
+**The idea.** Every honest backtest in this chapter needs the same thing: a list of (train, test) index pairs where the test set is genuinely in the *future* of the training set. The disaster demo made those splits by hand. `cv_splits` makes them for you, with the purge-and-embargo bookkeeping already correct, so a leaky split becomes something you have to opt *into* rather than something you commit by accident.
+
+**What it does.** You pass the number of rows `n` and a `scheme`; you get back a `list` of `{"train": [...], "test": [...]}` dictionaries — plain Python `int` indices you slice your design matrix with. Three schemes, in increasing caution:
+
+- `"expanding"` — rolling-origin evaluation (POOS). The training window grows; the origin marches forward. This is the gold standard from the leakage section, because it simulates real forecasting exactly.
+- `"rolling"` — the same marching origin, but with a *fixed-length* training window (the distant past is dropped). Right when you believe old data is stale — a structural break, a regime change.
+- `"purged_kfold"` — contiguous blocked folds with a purge zone (delete training rows within `purge` of the test block, because their target windows overlap it) and an `embargo` buffer after it. Use it only when K-fold's *K-times-cheaper* budget matters for tuning; never shuffle.
+
+```python
+import tsecon
+
+n = 20
+for scheme, kw in [("expanding",    dict(train=8, horizon=1, step=4)),
+                   ("rolling",      dict(train=8, horizon=1, step=4)),
+                   ("purged_kfold", dict(k=4, horizon=1, purge=1, embargo=1))]:
+    folds = tsecon.cv_splits(n, scheme=scheme, **kw)
+    print(f"{scheme}  ({len(folds)} folds)")
+    for f in folds:
+        print(f"   train {f['train']}   test {f['test']}")
+```
+
+```text
+expanding  (3 folds)
+   train [0, 1, 2, 3, 4, 5, 6, 7]   test [8]
+   train [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]   test [12]
+   train [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]   test [16]
+rolling  (3 folds)
+   train [0, 1, 2, 3, 4, 5, 6, 7]   test [8]
+   train [4, 5, 6, 7, 8, 9, 10, 11]   test [12]
+   train [8, 9, 10, 11, 12, 13, 14, 15]   test [16]
+purged_kfold  (4 folds)
+   train [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]   test [0, 1, 2, 3, 4]
+   train [0, 1, 2, 3, 11, 12, 13, 14, 15, 16, 17, 18, 19]   test [5, 6, 7, 8, 9]
+   train [0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19]   test [10, 11, 12, 13, 14]
+   train [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]   test [15, 16, 17, 18, 19]
+```
+
+**Reading the output.** In `expanding`, every training set is a prefix — nothing after the test point is ever visible. In `rolling`, the window is exactly 8 rows and slides. In `purged_kfold`, look at the second fold: the test block is `[5..9]`, and the training set jumps from `3` to `11` — indices `4` and `10` have been *deleted*. That gap is the purge (rows whose one-step target lands inside the test block) plus the embargo (a buffer after it). Widen either with `horizon`, `purge`, and `embargo`; they should scale with how far ahead you forecast and how persistent your features are (López de Prado 2018).
+
+**Why ordinary k-fold leaks — measured.** The whole point of the purge is visible if you count how many test points have an immediate temporal neighbor sitting in the training set. Shuffled k-fold leaks on every single one:
+
+```python
+import numpy as np, tsecon
+
+n, k = 20, 4
+rng = np.random.default_rng(0)
+folds = np.array_split(rng.permutation(n), k)          # ordinary shuffled k-fold
+leaks = 0
+for te in folds:
+    tr = set(range(n)) - set(te.tolist())
+    for i in te:
+        if (i - 1 in tr) or (i + 1 in tr):             # an adjacent step in train
+            leaks += 1
+print(f"shuffled k-fold: {leaks}/{n} test points sit next to a training neighbor")
+
+pf = tsecon.cv_splits(n, scheme="purged_kfold", k=k, horizon=1, purge=1, embargo=1)
+leaks = sum((i - 1 in set(f['train'])) or (i + 1 in set(f['train']))
+            for f in pf for i in f['test'])
+print(f"purged_kfold  : {leaks}/{n} test points sit next to a training neighbor")
+```
+
+```text
+shuffled k-fold: 20/20 test points sit next to a training neighbor
+purged_kfold  : 0/20 test points sit next to a training neighbor
+```
+
+Twenty out of twenty versus zero. Every test point in the shuffled scheme is flanked by a training observation it is nearly a copy of — the neighbor leakage of the opening section, made countable. `cv_splits` removes it by construction.
+
+**Arguments and defaults.** `cv_splits(n, scheme="expanding", train=0, horizon=1, step=1, k=5, purge=0, embargo=0)`. For `expanding`/`rolling`, set `train` (the initial/fixed window) and `step` (how far the origin jumps between folds); `horizon` sets the test block length (use your true forecast horizon `h`). For `purged_kfold`, set `k`, and set `purge`/`embargo` to at least `horizon - 1` so overlapping target windows are removed. `step=1` gives one fold per observation — the exhaustive rolling origin — which is the most faithful but the most expensive.
+
+> **⚠ Common mistake.** Leaving `purge=0` on `purged_kfold` when forecasting more than one step ahead. With `horizon=h`, a test row's target overlaps the target of every training row within `h-1` of it (the MA(h−1) overlap from the leakage section); you must set `purge >= h-1` or those shared shocks leak straight back in. `expanding` and `rolling` handle this automatically — their training prefix already ends `horizon` steps before the test point.
+
+### The elastic-net path: `lasso_path`
+
+**The idea.** A single penalty strength λ is a guess. The *path* refuses to guess: it solves the elastic net for a whole geometric grid of λ, from so large that every coefficient is zero down to so small the fit is essentially OLS, and hands you the entire sequence of solutions plus a principled way to pick one. You see the model *grow*, one variable at a time, and read off where an information criterion says to stop.
+
+**The estimator.** `lasso_path(x, y, l1_ratio=1.0, n_lambdas=100, eps=0.001, ...)` traces the elastic-net objective of the shrinkage section along `n_lambdas` values of λ, spaced geometrically from λ_max (the smallest penalty that zeroes everything) down to `eps * λ_max`. It returns the `lambdas`, the `coefs` matrix (one row per λ), the `rss`, the degrees of freedom `df` (for the LASSO, exactly the number of nonzero coefficients — Zou, Hastie & Tibshirani 2007), and the `aic`/`bic` at each step with the selected indices `aic_best`, `bic_best`. `l1_ratio=1.0` is the pure LASSO; drop it below 1 to blend in the ridge penalty that stabilizes collinear lags.
+
+We use the module's fixture — a sparse design where only the first four coefficients are nonzero (`true_beta = [1.5, -0.9, 0.6, 0.3, 0, ..., 0]`):
+
+```python
+import json, numpy as np, tsecon
+
+d = json.load(open("fixtures/ml.json"))
+X = np.array(d["X_standardized"]); y = np.array(d["y_centered"])
+true_beta = np.array(d["true_beta"])
+
+path  = tsecon.lasso_path(X, y)                 # glmnet-convention elastic-net path
+lam   = np.array(path["lambdas"])
+coefs = np.array(path["coefs"])
+df    = np.array(path["df"])
+ib, ia = path["bic_best"], path["aic_best"]
+
+print(f"path length          : {len(lam)} lambdas, "
+      f"from {lam[0]:.3f} (all-zero) down to {lam[-1]:.4f}")
+print(f"BIC picks step {ib:>2}: lambda={lam[ib]:.3f}, df={df[ib]}, "
+      f"coef={np.round(coefs[ib], 2)}")
+print(f"AIC picks step {ia:>2}: lambda={lam[ia]:.3f}, df={df[ia]}, "
+      f"coef={np.round(coefs[ia], 2)}")
+print(f"true beta            : {true_beta}")
+```
+
+```text
+path length          : 100 lambdas, from 1.776 (all-zero) down to 0.0018
+BIC picks step 40: lambda=0.109, df=5, coef=[ 1.52 -0.79  0.63  0.23  0.    0.    0.    0.    0.    0.07  0.    0.  ]
+AIC picks step 52: lambda=0.047, df=8, coef=[ 1.57 -0.85  0.7   0.31 -0.05  0.05  0.    0.    0.    0.13  0.   -0.03]
+true beta            : [ 1.5 -0.9  0.6  0.3  0.   0.   0.   0.   0.   0.   0.   0. ]
+```
+
+**Reading the output.** The path recovers the four real coefficients accurately at both criteria. But notice the classic split: **BIC is stingier than AIC**. BIC stops at λ=0.109 with `df=5` — the four true signals plus one spurious variable (`0.07` in slot 9); AIC keeps going to λ=0.047 and `df=8`, dragging in four junk coefficients. This is the general pattern, and it is not a bug: BIC's heavier complexity penalty targets the *true model* under sparsity, while AIC targets *predictive risk* and deliberately over-fits a little to hedge. On time-series designs where you want a defensible support, prefer `bic_best`; when raw forecast accuracy is the only goal, `aic_best` (or CV) is a reasonable alternative. Information criteria are attractive here precisely because they need no data splitting — for the LASSO the degrees of freedom are known exactly, so the BIC is well-defined without a single refit.
+
+The `l1_ratio` knob shows the ridge blend at work. Re-run with `l1_ratio=0.5` and the BIC-selected model grows from 5 to 7 nonzeros: the ridge component refuses to arbitrarily drop one of two collinear predictors, so the elastic net keeps both — denser, but more stable across resamples than the pure L1 tiebreak.
+
+> **⚠ Common mistake.** Trusting the BIC when the predictor count approaches or exceeds the sample. The ordinary BIC over-selects catastrophically in `p ≈ n` regimes; switch to the extended BIC (Chen & Chen 2008) there. And — the standing warning of the sparsity-illusion section — do *not* attach OLS standard errors to the selected coefficients: the selection event invalidates the usual distribution theory, and the path gives you point estimates, not honest inference.
+
+### Oracle selection: `adaptive_lasso`
+
+**The idea.** The plain LASSO has a known flaw: the same penalty that zeroes the junk also biases the *real* coefficients toward zero, and it cannot, asymptotically, get the support exactly right while estimating the survivors consistently. Zou's (2006) fix is disarmingly simple — penalize each coefficient *less* the larger its first-stage estimate. Big coefficients (real signal) are barely touched; small ones (noise) are hit hard and driven to exactly zero. This buys the **oracle property**: asymptotically the estimator selects the true support *and* estimates the nonzero coefficients as efficiently as if an oracle had told you the support in advance.
+
+**The estimator.** `adaptive_lasso(x, y, alpha, l1_ratio=1.0, gamma=1.0, ...)` runs a first-stage fit, forms weights `w_j = 1 / |β̂_j|^gamma`, and solves a weighted-L1 penalized regression with overall strength `alpha`. It returns `coef`, the iteration count `n_iter`, and `max_change` (the final coordinate-descent step size — your convergence check). On the same sparse fixture:
+
+```python
+import json, numpy as np, tsecon
+
+d = json.load(open("fixtures/ml.json"))
+X = np.array(d["X_standardized"]); y = np.array(d["y_centered"])
+true_beta = np.array(d["true_beta"])
+
+fit = tsecon.adaptive_lasso(X, y, alpha=0.05)
+b = np.array(fit["coef"])
+print(f"adaptive coef : {np.round(b, 2)}")
+print(f"true beta     : {true_beta}")
+print(f"support       : {sorted(np.where(b != 0)[0].tolist())}  (truth: [0, 1, 2, 3])")
+print(f"converged in {fit['n_iter']} iterations, max_change={fit['max_change']:.1e}")
+```
+
+```text
+adaptive coef : [ 1.59 -0.84  0.66  0.21  0.    0.    0.    0.    0.    0.    0.    0.  ]
+true beta     : [ 1.5 -0.9  0.6  0.3  0.   0.   0.   0.   0.   0.   0.   0.  ]
+support       : [0, 1, 2, 3]  (truth: [0, 1, 2, 3])
+converged in 7 iterations, max_change=8.3e-10
+```
+
+**Reading the output.** The support is recovered *exactly* — the four true signals, and every one of the eight true zeros is exactly zero. Compare that to the plain-LASSO path from the previous section, whose BIC-selected model kept a spurious fifth variable (slot 9). That is the oracle property made visible: the adaptive reweighting kills the noise coordinate the uniform penalty could not distinguish from signal. The `max_change` of `8e-10` confirms coordinate descent converged well inside the `tol=1e-7` default; `n_iter=7` says it did so cheaply.
+
+**When to reach for it.** Prefer the adaptive LASSO over the plain LASSO whenever *selection consistency* matters and you have enough data for a sensible first stage (Medeiros & Mendes 2016 show it is the theoretically preferred sparse estimator under the serial dependence typical of macro data). Its Achilles' heel is that first stage: when `p > n`, ordinary OLS weights are undefined, so the library falls back to a ridge or univariate first stage — but the leaner the first stage, the weaker the oracle guarantee. In the genuinely wide, dense regime the sparsity-illusion section described, a ridge or factor model will still forecast better; the adaptive LASSO is the tool for problems you have real reason to believe are sparse.
+
+**Tuning honestly — the three functions together.** `alpha` is a hyperparameter, so it must be chosen the way this chapter insists everything is: on out-of-sample folds, never in-sample. This is where `cv_splits` and `adaptive_lasso` compose. Here the truth is an AR(2); the design offers 12 lags, and we let expanding-window CV pick the penalty:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(11)
+n, P = 400, 12
+e = rng.standard_normal(n); y = np.zeros(n)
+for t in range(2, n):                         # truth: AR(2), lags 1 and 2 only
+    y[t] = 0.6 * y[t-1] - 0.3 * y[t-2] + e[t]
+
+rows = np.arange(P, n - 1)                     # column k holds lag k+1
+X = np.column_stack([y[rows - j] for j in range(P)])
+z = y[rows + 1]                                # one-step-ahead target
+m = len(rows)
+
+folds = tsecon.cv_splits(m, scheme="expanding", train=200, horizon=1, step=15)
+grid  = np.geomspace(0.005, 0.3, 12)
+def cv_rmse(alpha):
+    err = []
+    for f in folds:                            # each fit sees only its own past
+        b = np.array(tsecon.adaptive_lasso(X[f["train"]], z[f["train"]], alpha=alpha)["coef"])
+        err += (z[f["test"]] - X[f["test"]] @ b).tolist()
+    return np.sqrt(np.mean(np.square(err)))
+
+scores = [cv_rmse(a) for a in grid]
+astar  = grid[int(np.argmin(scores))]
+b = np.array(tsecon.adaptive_lasso(X, z, alpha=astar)["coef"])
+print(f"{len(folds)} expanding folds; alpha* = {astar:.4f} (CV-RMSE {min(scores):.3f})")
+print(f"selected lags : {sorted((np.where(b != 0)[0] + 1).tolist())}")
+print(f"lag-1, lag-2 coefficients : {b[0]:.3f}, {b[1]:.3f}  (truth 0.6, -0.3)")
+```
+
+```text
+13 expanding folds; alpha* = 0.0073 (CV-RMSE 1.321)
+selected lags : [1, 2, 10]
+lag-1, lag-2 coefficients : 0.581, -0.318  (truth 0.6, -0.3)
+```
+
+The coefficients on the two real lags are nearly bang-on. But note the honest wrinkle: CV kept a spurious lag 10. That is not a failure of the code — it is the sparsity-illusion warning arriving on schedule. **Cross-validation tunes for prediction, not for selection**; it happily under-penalizes and tolerates a harmless extra variable if doing so trims out-of-sample RMSE by a hair. If your goal is the *support* rather than the *forecast*, select the penalty by BIC (`lasso_path`'s `bic_best`) instead, and still treat the resulting variable list as a modeling convenience, never a causal finding.
+
 ## The frontier
 
 Where the research edge sits in 2026, and how the library's roadmap tracks it:

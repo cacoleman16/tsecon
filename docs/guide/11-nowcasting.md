@@ -171,6 +171,69 @@ u = tsecon.umidas(y_q, x_m, K=9, ic="bic")     # unrestricted: fine for m = 3
 
 > **⚠ Common mistake** — Off-by-one lag alignment. The single most frequent MIDAS bug in applied work is an indexing error in mapping high-frequency observations to low-frequency periods, especially with leads: "lead = 2" written as index arithmetic quietly hands the regression a month it could not have seen, and the backtest improves for exactly the wrong reason. Leads must be derived from the release calendar. If your MIDAS results look surprisingly good, audit the alignment before you celebrate.
 
+## Restricted MIDAS in practice: `weighted_midas` versus `umidas`
+
+The section above built an Almon-MIDAS by hand and previewed the family's real API. Two of those members now ship as calls you can run today: the unrestricted `umidas` (one OLS coefficient per lag) and the restricted-weight `weighted_midas` (the two-parameter exp-Almon and beta schemes fit by nonlinear least squares). This section is the hands-on companion to the theory above — it shows exactly where each one wins.
+
+The distinction is entirely about how the $K$ high-frequency lag coefficients are spent. `umidas` spends one free coefficient per lag; with $K$ large that is a lot of parameters to estimate from a short quarterly sample. `weighted_midas` forces those $K$ coefficients onto a smooth low-dimensional curve and estimates only its shape — the classical MIDAS remedy of Ghysels, Santa-Clara, and Valkanov (2004, 2005). The fitted model is
+
+$$
+y_t = \alpha + \beta \sum_{k=1}^{K} w_k(\psi)\, x_{t,k} + \varepsilon_t,
+\qquad
+\sum_{k=1}^{K} w_k(\psi) = 1,
+$$
+
+so only four numbers are free — the intercept $\alpha$, the aggregate slope $\beta$, and the two weight-shape hyperparameters $\psi = (\psi_1, \psi_2)$ — no matter how many lags $K$ you feed in. Because the weights are normalized to sum to one, the slope $\beta$ is the sensitivity to a *proper weighted average* of the lags, and it is directly comparable to the sum of the `umidas` coefficients. Two weight families are available:
+
+- `scheme="exp_almon"` — exponential Almon, $w_k \propto \exp(\psi_1 k + \psi_2 k^2)$; hyperparameters unconstrained, profiles that decay (or grow) smoothly.
+- `scheme="beta"` — the normalized beta density over lag fractions; hyperparameters strictly positive (the optimizer works in log-space), and it buys hump shapes as well as monotone decay. Needs $K \ge 2$.
+
+The API mirrors `umidas`: `hf_lags` is an `nobs × K` matrix whose columns are the high-frequency lags **most-recent-first**, aligned row-for-row to the low-frequency target `y`. The MIDAS NLS objective is mildly multimodal, so the library warm-starts $(\alpha, \beta)$ from a linear fit and runs a restarted Nelder-Mead search — the robust default that R's `midasr` famously lacks. You can override the starting hyperparameters with `weight_start=(psi1, psi2)` if you have a prior on the shape.
+
+Here both estimators run on the golden MIDAS fixture ([`fixtures/midas.json`](../../fixtures/midas.json), $K = 6$ monthly lags of one indicator):
+
+```python
+import json
+import numpy as np
+import tsecon
+
+d = json.load(open("fixtures/midas.json"))
+y = np.array(d["y"])                       # low-frequency target, 158 quarters
+X = np.array(d["X_stacked"]).T             # 158 x K, columns = HF lags (most-recent first)
+K = d["K"]                                 # K = 6
+
+# Unrestricted: one free OLS coefficient per lag (the umidas of the previous section)
+u = tsecon.umidas(y, X, se_type="hac")
+print("U-MIDAS   R^2:", round(u["rsquared"], 4),
+      " free coeffs:", u["params"].size,
+      " sum of lag coeffs:", round(u["params"][1:].sum(), 3))
+
+# Restricted: the K lag coefficients forced onto a 2-parameter exp-Almon curve
+w = tsecon.weighted_midas(y, X, scheme="exp_almon")
+print("exp-Almon R^2:", round(w["rsquared"], 4), " free coeffs: 4",
+      " converged:", w["converged"])
+print("  slope:", round(w["slope"], 2),
+      "  weights (sum=%.2f):" % w["weights"].sum(), np.round(w["weights"], 3))
+
+# The beta scheme buys hump shapes as well as decay (needs K >= 2)
+b = tsecon.weighted_midas(y, X, scheme="beta")
+print("beta      R^2:", round(b["rsquared"], 4),
+      " weights:", np.round(b["weights"], 3))
+```
+
+```
+U-MIDAS   R^2: 0.9606  free coeffs: 7  sum of lag coeffs: 4.61
+exp-Almon R^2: 0.9577  free coeffs: 4  converged: True
+  slope: 4.59   weights (sum=1.00): [0.218 0.195 0.174 0.155 0.137 0.121]
+beta      R^2: 0.9455  weights: [0.219 0.169 0.166 0.164 0.161 0.12 ]
+```
+
+How to read this. The `converged` flag and `weights` are the first things to check: the weights sum to one (that is the whole point of the normalization) and, here, decay gently — the most recent month carries $0.218$, about $1.8\times$ the weight of the oldest at $0.121$. The `slope` of $4.59$ is the payoff of the summing-to-one restriction: it is nearly identical to the sum of the `umidas` lag coefficients ($4.61$), so the two estimators agree on *how much* the indicator matters and differ only on *how they distribute* that sensitivity across lags. The `weight_params` array holds the fitted $(\psi_1, \psi_2)$; other keys (`intercept`, `fitted`, `residuals`, `ssr`, `iterations`) round out the fit.
+
+The more important lesson is in the $R^2$ ranking. At $K = 6$ — a small frequency ratio, essentially two quarters of monthly lags — the *unrestricted* `umidas` wins ($0.9606$ vs $0.9577$ vs $0.9455$). This is Foroni, Marcellino, and Schumacher (2015) live: with only a handful of lags, the smooth-weight restriction costs more in bias than it saves in variance, and plain OLS dominates. **The restriction earns its keep only when $K$ is large** — daily financial conditions for quarterly GDP, where an unrestricted regression would have dozens or hundreds of coefficients and no hope of estimating them from ~80 quarters. That is precisely when you reach for `weighted_midas`: use `umidas` for monthly-to-quarterly ($m = 3$), and switch to the exp-Almon or beta weights as the frequency ratio grows.
+
+> **⚠ Common mistake** — Reading too much into a single NLS fit without checking `converged`, or comparing `weighted_midas` and `umidas` on *in-sample* $R^2$ and declaring the higher one better. The restriction's whole justification is out-of-sample: a lower in-sample fit that generalizes better is the *expected* outcome of trading coefficients for a smooth curve. Judge the choice in a pseudo real-time loop (the evaluation section below), not on the training fit — and remember the weights are only interpretable if the columns of `hf_lags` are genuinely most-recent-first, the same alignment discipline the MIDAS section flagged.
+
 ## The dynamic factor nowcast: a Kalman filter over the whole panel
 
 Bridges and MIDAS handle one indicator (or a handful) at a time. The institutional flagship — the architecture behind the New York Fed's published Nowcast (Bok, Caratelli, Giannone, Sbordone, and Tambalotti 2018) and its ancestors at the ECB — swallows the *entire panel* at once: twenty to a hundred monthly and quarterly series, each arriving on its own schedule. The tool is a **dynamic factor model** (DFM) estimated in state-space form, and the reason it fits the nowcasting problem so naturally is one specific property of the Kalman filter: **missing observations are not a problem to be fixed; they are handled exactly, natively, by skipping the corresponding update.**
@@ -216,6 +279,67 @@ band = 1.96 * np.sqrt(r["smoothed_state_var"])     # wider exactly where data ar
 Read the figure as a miniature nowcast: inside the gap the smoother's estimate is the model's best guess given everything before and after, and the 95% band balloons to say so honestly. In a nowcasting DFM the same machinery runs over dozens of series at once, and "the gap" is the ragged edge at the bottom of the panel — the smoothed factor at the final month, projected through the triangle weights, *is* the GDP nowcast.
 
 > **⚠ Common mistake** — Zero-filling missing observations, or filling them with "a large measurement variance" as a hack. Both distort the likelihood; the second also destroys numerical precision (the related big-number trick for initializing the filter loses about seven digits exactly in mixed-frequency setups). The correct treatments are row selection or univariate filtering, and exact diffuse initialization — which is what the library's state-space core implements, and why it matches reference results at ~1e-11.
+
+## The two-step DFM nowcast in practice: `dfm_nowcast`
+
+The section above demonstrated the load-bearing mechanism — a Kalman smoother bridging missing data — on a one-series local-level toy, and called the full panel DFM "roadmap material". The first real member of that facade now ships: `dfm_nowcast` runs the classic **two-step** dynamic-factor nowcaster of Doz, Giannone, and Reichlin (2011) over a whole ragged-edge panel, the estimator behind Giannone, Reichlin, and Small (2008).
+
+"Two-step" names the estimation shortcut. Rather than the full EM iteration of Banbura and Modugno (2014), the two-step estimator does the cheap thing and it works: (1) extract the common factors and loadings by principal components on a balanced block of the panel; (2) fit a factor VAR of order $p$ to those factors; then (3) plug the resulting state-space system into a *single* Kalman filter/smoother pass over the entire panel. Doz, Giannone, and Reichlin proved this two-step estimator is consistent as both dimensions grow, and it is an order of magnitude faster than EM — the reason it remains the workhorse for large-panel nowcasts where speed at each vintage matters.
+
+The ragged edge is handled exactly as the conceptual section promised, and `dfm_nowcast` makes the division of labor explicit:
+
+- **Estimation runs on the balanced block.** The two-step fit needs a complete rectangle to run PCA on, so the function takes the *leading* rows that are fully observed — every row before the first row containing any `NaN` — as its training block. Publication lags live at the *bottom* of the panel, so this leading block is exactly the mature, fully-revised history.
+- **Filtering runs on the full NaN-edge panel.** With parameters in hand, the Kalman filter then sweeps the whole `T × N` array, and at each row uses *exactly the cells that are present*. The ragged staircase at the bottom — some series reporting the last month, others one or two months behind — is consumed as-is, no imputation.
+
+The measurement equation for series $i$ at the edge is just $x_{i,t} = \lambda_i' f_t + e_{i,t}$, so once the filter has read the current-period factor $f_t$ off whatever data *did* arrive, the missing cells are filled by projecting that factor back through the loadings. That projection *is* the nowcast. Here it is on a synthetic one-factor panel with the ragged edge punched into the last rows of two series:
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(11)
+
+# --- one latent factor with AR(2) dynamics drives a panel of N = 6 indicators ---
+T, N = 150, 6
+f = np.zeros(T)
+for t in range(2, T):
+    f[t] = 1.1 * f[t - 1] - 0.3 * f[t - 2] + rng.normal(scale=1.0)
+load = np.array([1.0, 0.9, 0.8, 1.1, 0.7, 1.2])          # one loading per series
+panel = f[:, None] * load[None, :] + rng.normal(scale=0.5, size=(T, N))
+
+# --- the ragged edge: faster series are published further down the panel ---
+panel[-1, 2] = np.nan          # series 2 has not released its last month
+panel[-2:, 4] = np.nan         # series 4 is two months behind
+print("last 3 rows (NaN = not yet released):")
+print(np.round(panel[-3:], 2))
+
+r = tsecon.dfm_nowcast(panel, n_factors=1, factor_order=2)
+print("\nnowcast (filled edge, one level per series):", np.round(r["nowcast"], 2))
+print("edge_factor:", np.round(r["edge_factor"], 3),
+      " loglik:", round(r["loglik"], 1))
+
+sf = np.asarray(r["smoothed_factors"])                    # over the balanced block
+print("smoothed_factors shape:", sf.shape,
+      " |corr| with true factor:",
+      round(abs(np.corrcoef(sf[:, 0], f[:sf.shape[0]])[0, 1]), 3))
+```
+
+```
+last 3 rows (NaN = not yet released):
+[[-2.94 -1.42 -1.1  -1.82 -1.86 -3.4 ]
+ [-2.13 -1.5  -0.94 -1.44   nan -1.75]
+ [-1.32 -1.15   nan -1.56   nan -1.53]]
+
+nowcast (filled edge, one level per series): [-1.36 -1.16 -1.01 -1.39 -0.91 -1.58]
+edge_factor: [-1.985]  loglik: -438.5
+smoothed_factors shape: (148, 1)  |corr| with true factor: 0.993
+```
+
+How to read the output. `nowcast` is the model's reconstruction of *every* series at the final period — one level per column. Two of those columns (`nowcast[2] = -1.01` and `nowcast[4] = -0.91`) are genuine holes filled by the model, because series 2 and 4 had not reported their last months; the rest are the model-implied edge values for series that *did* report. Every entry is the corresponding loading times the shared `edge_factor` of $-1.985$ (up to standardization and idiosyncratic noise), which is exactly the "smoothed factor at the final month, projected through the loadings, *is* the nowcast" statement from the section above, now concrete. The `smoothed_factors` array holds the full factor path over the *balanced estimation block* (148 rows here — the panel's 150 rows minus the two-row ragged tail); its near-perfect correlation with the simulated factor ($0.993$) confirms the two-step extraction recovered the latent driver. `loglik` is the Gaussian log-likelihood of the filtered panel, and `n_factors` / `factor_order` echo back the model dimensions for logging.
+
+When to reach for it. `dfm_nowcast` is the right first tool for a genuine mixed-*panel* nowcast: a dozen-plus indicators, ragged edge, one shared cycle to read off. It supersedes running a separate bridge or MIDAS per indicator once the panel is wide, because it pools all the comovement into the factor and fills every hole from one estimated system. Prefer the full EM/block-DFM facade (roadmap — with the Mariano-Murasawa quarterly-to-monthly aggregation and Banbura-Modugno news decomposition) when missingness is heavy and interior — not just a tail edge — or when you need the "why did the nowcast move?" attribution; the two-step estimator is the fast, robust default that the more elaborate machinery is measured against.
+
+> **⚠ Common mistake** — Interspersing `NaN` in the *interior* of the panel and expecting the two-step estimator to shrug it off. The training block is defined as the leading rows before the *first* row with any missing value, so a hole in the middle of an otherwise-complete series truncates the estimation sample to everything above it — silently throwing away data and, if the hole is early, leaving too few rows to fit the factor VAR. The two-step design assumes missingness lives at the ragged bottom edge (publication lags), which is the real-world case; genuinely interior gaps are the EM estimator's job. Also remember the factor's *sign* is not identified — a nowcast with the factor and all loadings flipped is the same model, which is why the diagnostic above takes the absolute correlation.
 
 ## News decomposition: why did the nowcast move this morning?
 

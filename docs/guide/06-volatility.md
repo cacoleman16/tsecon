@@ -268,6 +268,162 @@ Typical empirical estimates put meaningful weight on all three horizons — rece
 
 > **⚠ Common mistake.** Comparing volatility forecasts with MAE, or with $R^2$ on standard deviations, against a noisy proxy like RV or daily squared returns. Patton (2011) showed that only certain loss functions — MSE and QLIKE among them — rank forecasts consistently when the evaluation target is a noisy proxy for the truth. With other losses, a *worse* forecast can systematically win. Use QLIKE or MSE, and pair the Diebold-Mariano comparison (Chapter on forecast evaluation; `tsecon.dm_test`) with HAC variance, since QLIKE differentials are heavy-tailed.
 
+## Realized measures without the plumbing: RV, bipower, and jumps
+
+The section above built the HAR design matrix by hand to expose its wiring. In production you want the measures themselves as primitives — and you usually want *more* than realized variance. On a day when the price gaps on an earnings surprise or a rate decision, that gap is a **jump**: a discrete move that is not the smooth diffusion the term "volatility" evokes. Jumps and diffusive volatility forecast differently (tomorrow's variance inherits the diffusion but mostly *forgets* the jump), so a good pipeline separates them. `tsecon` ships the Barndorff-Nielsen and Shephard (2004) decomposition in one call.
+
+Fix a trading day cut into $M$ intraday returns $r_{t,1}, \dots, r_{t,M}$. Under a jump-diffusion the day's **quadratic variation** splits as $QV = IV + \sum J^2$: a continuous *integrated variance* $IV = \int_t \sigma^2(s)\,ds$ plus the squared jumps. Three estimators target the pieces:
+
+- **Realized variance** $RV_t = \sum_i r_{t,i}^2$ estimates the whole $QV$, jumps included — the Andersen-Bollerslev-Diebold-Labys (2001) workhorse from the previous section.
+- **Bipower variation** $BV_t = \frac{\pi}{2} \sum_{i=2}^{M} |r_{t,i}|\,|r_{t,i-1}|$ estimates the *continuous* part $IV$ alone. Multiplying **adjacent** absolute returns is the whole trick: an isolated jump lands in exactly one return, and the neighbour it gets multiplied by is $O_p(M^{-1/2})$, so in the fine-grid limit the jump contributes nothing. The constant $\pi/2 = (E|Z|)^{-2}$ rescales the products back to a consistent estimate of $IV$.
+- **The jump component** $J_t = \max(RV_t - BV_t,\ 0)$ is what is left over — floored at zero because sampling noise alone can make the raw difference slightly negative on a genuinely continuous day.
+
+The decomposition is a single call; the fixture's tiny 7-return day is there to pin the arithmetic, so you can check the $RV = BV + J$ identity by eye:
+
+```python
+import json, numpy as np, tsecon
+
+d = json.load(open("fixtures/realized.json"))
+r = np.array(d["measures_small"]["returns"])   # 7 intraday returns
+
+m = tsecon.realized_measures(r)                 # BNS 2004 decomposition
+m["rv"], m["bipower"], m["jump"]                # 2.95, 2.749, 0.201  (RV = BV + jump)
+
+tsecon.realized_quarticity(r)                   # 6.32  — non-robust RQ
+tsecon.tripower_quarticity(r)                   # 3.88  — jump-robust TQ
+tsecon.bns_jump_test(r)["ratio"]                # 0.231 z-score: no jump on this day
+```
+
+The last three lines answer a sharper question: is the day's jump component *real* or just sampling noise in $RV - BV$? Answering it needs the sampling variability of that difference, which is governed by the **integrated quarticity** $\int \sigma^4(s)\,ds$. Two estimators of it, differing exactly as $RV$ and $BV$ differ on the variance:
+
+- **Realized quarticity** $RQ_t = \frac{M}{3} \sum_i r_{t,i}^4$ (Barndorff-Nielsen and Shephard 2002) — consistent for $\int \sigma^4$, but *not* jump-robust: a single jump enters at the fourth power and detonates it.
+- **Tripower quarticity** $TQ_t = M\,\mu_{4/3}^{-3} \sum_{i=3}^{M} |r_{t,i}|^{4/3}|r_{t,i-1}|^{4/3}|r_{t,i-2}|^{4/3}$ — the jump-robust version (the product-of-*three* analogue of bipower, with $\mu_{4/3} = E|Z|^{4/3}$). This is what you must studentize a jump test with, because the test's own null hypothesis is "no jump."
+
+The **BNS ratio jump test** (Barndorff-Nielsen and Shephard 2004, in the ratio form Huang and Tauchen 2005 found best-sized) assembles these into a z-statistic:
+
+$$z_t = \frac{\sqrt{M}\,(RV_t - BV_t)/RV_t}{\sqrt{\theta \cdot \max\!\left(1,\ TQ_t / BV_t^2\right)}}, \qquad \theta = \frac{\pi^2}{4} + \pi - 5.$$
+
+Under the null of no jumps the relative jump $(RV-BV)/RV$ is centred at zero and $z_t$ is asymptotically standard normal; a jump inflates $RV$ relative to the jump-robust $BV$ and pushes $z_t$ large and positive. Compare against a one-sided normal critical value — $1.645$ at 5%. `bns_jump_test` returns it under the `"ratio"` key. Watch the two measures respond to a planted jump:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(11)
+M = 78                                   # 5-minute bars in a 6.5-hour session
+sig = 0.5 / np.sqrt(M)                    # per-bar sd -> daily RV around 0.25
+day = sig * rng.standard_normal(M)        # a purely continuous day
+
+tsecon.bns_jump_test(day)["ratio"]        # -1.49  — below 1.645, no jump
+tsecon.realized_quarticity(day)           # 0.029  \  RQ ~ TQ when there
+tsecon.tripower_quarticity(day)           # 0.040  /  is no jump
+
+day[40] += 2.0                            # drop one 2.0 jump into a single bar
+tsecon.bns_jump_test(day)["ratio"]        # 10.25  — fires decisively
+m = tsecon.realized_measures(day)
+m["rv"], m["bipower"]                      # 4.27 vs 0.40: RV explodes, BV robust
+m["jump"]                                 # 3.87  — the jump contribution
+tsecon.realized_quarticity(day)           # 432.6  \  RQ detonated by the jump,
+tsecon.tripower_quarticity(day)           # 0.10   /  TQ barely moves
+```
+
+The contrast is the whole lesson. One 2.0 jump takes $RV$ from 0.25-ish to 4.27 while $BV$ stays at 0.40; $RQ$ blows up by four orders of magnitude while the jump-robust $TQ$ is essentially unchanged. That robustness is exactly why the test studentizes with $TQ$ and not $RQ$.
+
+> **⚠ Common mistake.** Studentizing the jump test with realized quarticity instead of tripower quarticity. $RQ$ is inflated by the very jump you are testing for, which shrinks $z_t$ toward zero — you would systematically *miss* the largest jumps, the ones that matter. The `max(1, TQ/BV²)` flooring in the formula (Huang-Tauchen 2005) is a second small-sample guard; do not remove it. And `"ratio"` is a **z-score**, not a p-value — convert with a normal tail (`1 - Phi(z)`) if you want one.
+
+### Range-based variance from OHLC bars
+
+When all you have is each day's open/high/low/close — not the intraday grid — you can still do far better than a squared close-to-close return, because the day's **range** already encodes its volatility. `realized_range` implements two classics. **Parkinson** (1980) uses only the high-low range,
+
+$$P = \frac{1}{4 \ln 2} \sum_i \left( \ln \frac{H_i}{L_i} \right)^2,$$
+
+roughly five times as efficient as close-to-close for a driftless geometric Brownian motion; **Garman-Klass** (1980) folds in the open-close move for another factor of efficiency. Note the *summed* convention: the returned number is the variance accumulated across the bars you pass, so divide by the number of bars for a per-bar average.
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+n = 250
+close = 100 * np.exp(np.cumsum(0.01 * rng.standard_normal(n)))
+open_ = np.empty(n); open_[0] = 100.0; open_[1:] = close[:-1]
+hi = np.maximum(open_, close) * (1 + 0.005 * np.abs(rng.standard_normal(n)))
+lo = np.minimum(open_, close) * (1 - 0.005 * np.abs(rng.standard_normal(n)))
+
+tsecon.realized_range(hi, lo, method="parkinson")                              # 0.0282
+tsecon.realized_range(hi, lo, method="garman_klass", open=open_, close=close)  # 0.0291
+```
+
+> **⚠ Common mistake.** Treating a range estimator as jump- and gap-proof. Both assume a *driftless, continuous* price sampled without gaps. Discrete sampling means the observed high and low understate the true continuous extremes, so both estimators are biased **down**; and neither sees an overnight gap (Parkinson ignores the open and close entirely), so the jump that `realized_measures`/`bns_jump_test` are built to isolate is invisible here. Range measures are a cheap, high-efficiency variance proxy when you lack intraday data — not a substitute for the RV/BV/jump decomposition when you have it.
+
+### HAR-RV as a one-liner
+
+The manual OLS in the previous section is what `har_rv` runs for you, with the one correction beginners forget baked in — HAC standard errors, mandatory because the weekly and monthly regressors are *overlapping* moving averages that induce serial correlation in the residuals. Given a series of daily realized variances $RV_t$, it forms the daily/weekly/monthly aggregates known at the end of day $t-1$,
+
+$$RV^d_{t-1} = RV_{t-1}, \quad RV^w_{t-1} = \tfrac{1}{5}\!\sum_{j=2}^{6} RV_{t-j}, \quad RV^m_{t-1} = \tfrac{1}{22}\!\sum_{j=2}^{23} RV_{t-j},$$
+
+and regresses $RV_t$ on $[\,1,\ RV^d_{t-1},\ RV^w_{t-1},\ RV^m_{t-1}\,]$ by OLS with Newey-West HAC standard errors (`hac_maxlags=5` by default). The `start` argument (default 22) is the burn-in that guarantees the monthly window is defined.
+
+```python
+import json, numpy as np, tsecon
+
+d = json.load(open("fixtures/realized.json"))
+rv = np.array(d["rv_series"])            # 600 daily realized variances
+
+fit = tsecon.har_rv(rv)                   # OLS on [const, RV_d, RV_w, RV_m], HAC SEs
+fit["params"]                            # [0.635, 0.169, 0.179, 0.398]  const, d, w, m
+fit["tvalues"]                           # [3.18, 4.53, 2.13, 3.64] — all three horizons load
+fit["rsquared"], fit["nobs"]             # 0.144, 577
+
+tsecon.har_rv(rv, variant="log")["rsquared"]   # 0.289 — logs fit RV's skew far better
+```
+
+All three horizon coefficients are individually significant — the signature HAR result that recent, medium, and long memory each carry information. The `variant` argument (`"level"`, `"log"`, or `"sqrt"`) transforms the RV series *before* forming the regressors; because $RV$ is strongly right-skewed, `"log"` and `"sqrt"` usually fit better (here $R^2$ nearly doubles, 0.14 → 0.29) and are what Corsi (2009) actually recommends.
+
+> **⚠ Common mistake.** Fitting `variant="log"` and then reporting $\exp(\hat{RV})$ as the variance forecast. The exponential of a forecast of $\ln RV$ is *not* a forecast of $RV$ — by Jensen's inequality it is biased low by roughly $\exp(\tfrac12 \hat\sigma^2_u)$, the log-normal correction. (The `use_correction` flag toggles the analogous statsmodels small-sample HAC adjustment on the standard errors — a separate knob, defaulting to `False` to match statsmodels; don't confuse the two corrections.) Choose the variant on out-of-sample QLIKE, and back-transform its point forecast explicitly.
+
+## Score-driven volatility: GAS and the robust t-score
+
+Plain GARCH has one reflex: it squares yesterday's return and feeds it straight into today's variance. On a normal day that is exactly right. But on the day of a flash crash or a fat-finger print, that one enormous $\varepsilon_{t-1}^2$ whipsaws the forecast — the recursion cannot tell "the market's temperature genuinely jumped" from "we just drew once from the fat tail we already knew was there." A GARCH-*t* fit does not fix this: switching the innovation to a Student-*t* changes the *likelihood's* tail, but the variance recursion is still driven by the raw $\varepsilon^2$. The density enters the standard errors, not the dynamics.
+
+**Generalized autoregressive score** models (Creal, Koopman, and Lucas 2013 — "GAS", also "DCS" for dynamic conditional score in Harvey's parallel development) close that gap. Instead of hardcoding $\varepsilon^2$ as the forcing variable, they ask: given the assumed density, in which direction and how strongly does the data say the variance should move? That direction is the **score** of the conditional log-likelihood, and the update is
+
+$$f_{t+1} = \omega + a\, s_t + b\, f_t, \qquad s_t = S_t \cdot \nabla_t, \quad \nabla_t = \frac{\partial \log p(y_t \mid f_t)}{\partial f_t},$$
+
+where $f_t$ is the conditional variance, $\nabla_t$ the score, and $S_t = \mathcal{I}_t^{-1}$ the inverse-Fisher-information scaling that makes the step scale-free (the CKL 2013 default). The magic is what the score *is* for each density:
+
+- **Gaussian.** The scaled score collapses to $s_t = y_t^2 - f_t$, so the recursion becomes $f_{t+1} = \omega + a(y_t^2 - f_t) + b f_t$ — algebraically a **reparametrized GARCH(1,1)** (score loading $a$ plays the ARCH role, $b$ is the persistence, the stationary variance is $\omega/(1-b)$). Under normality, GAS *is* GARCH; there is nothing new to gain.
+- **Student-*t*.** Writing $\varepsilon_t^2 = y_t^2/f_t$, the scaled score is $s_t = \frac{\nu+3}{\nu}\, f_t \, \frac{\nu y_t^2 - (\nu-2) f_t}{(\nu-2) f_t + y_t^2}$. As $|y_t| \to \infty$ this **saturates** — the numerator and denominator both grow like $y_t^2$, so a monstrous return produces only a *bounded* push on tomorrow's variance. The model reads a huge move as "probably a tail draw" and down-weights it, rather than fully believing it the way $\varepsilon^2$ does. As $\nu \to \infty$ the score tends back to $y_t^2 - f_t$ and the Gaussian case reappears. This bounded, robust update is the variance-form cousin of Harvey's (2013) Beta-*t*-EGARCH.
+
+That single change is worth seeing on data with genuine outliers. Simulate a GARCH-*t*(5) series and fit both densities:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(3)
+n, (omega, alpha, beta), nu = 2000, (0.05, 0.08, 0.90), 5.0
+sig2 = np.empty(n); eps = np.empty(n)
+sig2[0] = omega / (1 - alpha - beta)
+z = rng.standard_t(nu, n) * np.sqrt((nu - 2) / nu)     # unit-variance t(5) shocks
+for i in range(n):
+    if i: sig2[i] = omega + alpha * eps[i-1]**2 + beta * sig2[i-1]
+    eps[i] = np.sqrt(sig2[i]) * z[i]
+r = eps
+
+g = tsecon.gas_volatility(r, density="gaussian")
+t = tsecon.gas_volatility(r, density="student_t", horizon=10)
+g["a"], g["b"]                    # 0.094, 0.977  — score loading and persistence
+t["nu"], t["aic"] - g["aic"]      # 5.42, -169.8  — recovers the true tail, big AIC gain
+
+j = int(np.abs(r).argmax())                     # the single largest shock in the sample
+g["variance"][j+1], t["variance"][j+1]          # 67.2 vs 22.4: the Gaussian model overreacts
+t["forecast"][:3]                               # [2.365, 2.379, 2.392] — the h-step term structure
+```
+
+The Student-*t* fit recovers $\hat\nu \approx 5.4$ (true 5.0) and improves AIC by ~170, but the vivid number is the last pair: on the day *after* the sample's biggest shock, the Gaussian recursion has fed the outlier in full and projects a variance of 67, while the *t*-score has discounted it and projects 22. When the outlier was a tail draw rather than a regime change — as it was here by construction — the *t* is right and the Gaussian has manufactured a spike that never should have existed.
+
+Reading the output: `omega`, `a`, `b` (and `nu` for the *t*) are the parameters; `variance` and `std_resid` are the filtered paths; `loglik`/`aic`/`bic` support density choice; `next_variance` is the one-step forecast and, with `horizon > 0`, `forecast` is the multi-step variance term structure (which mean-reverts to $\omega/(1-b)$ exactly like GARCH's). `converged` and `iterations` report the optimizer.
+
+> **⚠ Common mistake.** Reaching for GAS-*gaussian* expecting it to beat GARCH. It cannot — it *is* GARCH(1,1) rewritten. The payoff lives entirely in the non-Gaussian score: use `density="student_t"` (or a future skew density) precisely when standardized residuals are still fat-tailed after a GARCH fit *and* you suspect the extremes are outliers you would rather not let dominate the variance forecast. Two further cautions: on genuinely Gaussian data $\hat\nu$ drifts to a huge value (the *t* nesting the normal) and the `converged` flag can read `False` even at a good optimum, because a persistence $b$ near one flattens the likelihood surface — read the parameters and log-likelihood, not the flag alone. And this GAS(1,1) is symmetric: it has no leverage term, so for equity indices pair it with, or prefer, the asymmetric models above (skew and leverage extensions such as Beta-Skew-*t*-EGARCH are on the roadmap's score-driven track).
+
 ## The frontier
 
 **Multivariate volatility.** Portfolios need conditional *covariance* matrices, and the workhorse is DCC — dynamic conditional correlation (Engle 2002): fit univariate GARCH to each asset, standardize, then drive a correlation matrix with a scalar GARCH-like recursion on the standardized residuals. It is the most-used multivariate volatility model in existence, and also a minefield the state of the art keeps repairing: the correlation-targeting estimator in original DCC is inconsistent (Aielli 2013 — his cDCC is the recommended fix), and the ubiquitous two-step standard errors that ignore first-stage estimation error are wrong (Engle and Sheppard 2001 give the correct stacked inference, essentially unavailable in shipped software). At the research edge, composite pairwise likelihoods (Pakel, Shephard, Sheppard, and Engle 2021) and nonlinear-shrinkage targeting (Engle, Ledoit, and Wolf 2019) push DCC to thousands of assets — the state of practice at quantitative funds, currently living only in author MATLAB code. All of this is the multivariate track of tsecon's Module 03.

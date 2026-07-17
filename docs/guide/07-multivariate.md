@@ -356,6 +356,116 @@ Where research-grade practice currently stands, and where the [module roadmap](.
 
 **Roadmap** ([Module 04 — Multivariate Models](../roadmap/04-multivariate.md)): Engle-Granger and Phillips-Ouliaris tests with MacKinnon response-surface p-values; Johansen rank tests (MacKinnon-Haug-Michelis p-values, Bartlett correction) and VECM estimation with restriction testing; Toda-Yamamoto causality; bootstrap IRF bands (residual, Kilian double, Gonçalves-Kilian wild, moving-block) and sup-t simultaneous bands; historical decompositions; generalized IRF/FEVD and Diebold-Yilmaz connectedness; dynamic factor models and FAVAR; VARX/VARMA; threshold, Markov-switching, and smooth-transition VARs; panel and global VARs.
 
+## Three that have landed: connectedness, factors, and FAVAR
+
+The dynamic-factor and FAVAR paragraphs above were written when those methods were still "conceptual for now," and the frontier section still files Diebold-Yilmaz connectedness under the roadmap. They have since graduated: `tsecon.connectedness`, `tsecon.factor_model`, and `tsecon.favar` ship with Python bindings today, each pinned to a golden fixture. The three sections that follow are the working chapter for them — the intuition, the estimator, the call, and the traps.
+
+## Connectedness: who spills over to whom (Diebold-Yilmaz)
+
+You already have the FEVD. It answers, variable by variable, *what share of this series' forecast uncertainty comes from that series' shocks?* Francis Diebold and Kamil Yilmaz's move (2012, 2014) was to stop reading the FEVD one row at a time and read the **whole matrix as a weighted directed network**: variable $j \to$ variable $i$ with weight equal to the FEVD share. Collapse that network to a single number — the fraction of total forecast-error variance that crosses variable boundaries — and you have a **connectedness index** you can compute on a rolling window and watch spike when a crisis hits. That one plot, spillovers climbing into 2008 and again into 2020, is now a fixture of empirical finance and systemic-risk monitoring.
+
+The estimator starts from a VAR(p) but deliberately does *not* use the Cholesky FEVD, because Diebold-Yilmaz want a table that does not flip when you reorder the variables. They use the **generalized FEVD** (Pesaran and Shin 1998; Koop, Pesaran, and Potter 1996), which measures the effect of a shock to variable $j$ without orthogonalizing — each variable gets its "own" shock, correlated with the others, integrated over the system's response:
+
+$$
+\theta_{ij}(H) \;=\; \frac{\sigma_{jj}^{-1} \sum_{h=0}^{H-1} \big(e_i' \Phi_h \Sigma_u e_j\big)^2}{\sum_{h=0}^{H-1} e_i' \Phi_h \Sigma_u \Phi_h' e_i},
+$$
+
+where $e_i$ selects variable $i$ and $\Phi_h$ are the MA coefficients from the IRF section. Order-invariance is the payoff; the price is the trap the frontier section flagged — **the rows of $\theta$ do not sum to one**, because generalized shocks are not orthogonal. So Diebold-Yilmaz *normalize each row*, $\tilde\theta_{ij} = \theta_{ij} / \sum_{k} \theta_{ik}$, and read the resulting table:
+
+- **Total connectedness** $C = 100 \times \frac{1}{K}\sum_{i \neq j} \tilde\theta_{ij}$ — the average share of a variable's forecast-error variance that comes from *other* variables.
+- **Directional TO others** (column off-diagonal sums): how much each variable transmits.
+- **Directional FROM others** (row off-diagonal sums): how much each variable receives.
+- **Net** = TO − FROM: positive marks a net transmitter, negative a net receiver.
+- **Pairwise net** $\tilde\theta_{ji} - \tilde\theta_{ij}$: the net flow along each edge.
+
+Reach for connectedness when you have several — or many — series and want a *scalar* (or a rolling series) summarizing how linked the system is, plus a directional ranking of who drives whom. It is the readable summary the full $K \times K$ IRF grid cannot be past a handful of variables, and unlike a Cholesky FEVD it does not depend on an ordering you would have to defend.
+
+```python
+import json, numpy as np, tsecon
+
+var = json.load(open("fixtures/var.json"))
+data = np.array(var["data_100dlog_gdp_cons_inv"])   # 202 x 3: growth of GDP, consumption, investment
+
+c = tsecon.connectedness(data, lags=2, horizon=10, trend="c")
+round(c["total"], 1)             # 44.8 — ~45% of the system's forecast-error variance is cross-series
+np.round(c["net"], 1)            # [ 1.4, 6.8, -8.2 ]: consumption a net transmitter, investment a net receiver
+np.round(np.array(c["gfevd"]), 2)
+# [[0.46, 0.30, 0.24],          <- GDP: 46% own shocks, the rest from cons & inv
+#  [0.27, 0.71, 0.03],          <- consumption is mostly self-driven (smooth series)
+#  [0.32, 0.20, 0.49]]          <- investment absorbs a lot from GDP and consumption
+np.round(np.array(c["pairwise_net"]), 1)[1, 2]   # 5.7 — the dominant edge: consumption -> investment
+```
+
+Read the table like a balance sheet. The normalized `gfevd` rows each sum to one; the diagonal is the own-shock share and the off-diagonal is what leaks in. Consumption's row is 71% own — smooth series forecast themselves — while investment's row shows only 49% own, the rest imported. That asymmetry is exactly what `net` reports: consumption's `+6.8` makes it the system's largest net transmitter of forecast-error variance and investment's `-8.2` the largest net receiver, with the single strongest edge (`pairwise_net[1,2] = 5.7`) running consumption $\to$ investment. The headline `total = 44.8` says nearly half of the three-variable system's forecast uncertainty is cross-series rather than own — a moderately connected system. These numbers reproduce the `fixtures/connect.json` golden to the digit.
+
+> **⚠ Common mistake.** Reporting one full-sample connectedness number as if it were the finding. Diebold-Yilmaz connectedness earns its keep *rolling* — estimated on a moving window so you can see total and net connectedness climb in stress episodes; a single static number averages that dynamics away. Two more traps: the row-normalization is a *choice* (competing normalizations of the generalized FEVD change the numbers, so state which you used — `tsecon` uses the standard Diebold-Yilmaz 2012 row-normalization), and connectedness is a *reduced-form* object. It inherits the VAR's specification (lags, horizon, variable set) and the generalized FEVD's non-orthogonality; it describes forecast-error-variance linkage, not causation. And valid error bands are genuinely hard here — because every entry depends on $\Sigma_u$, the Brüggemann-Jentsch-Trenkler (2016) warning from the frontier applies in full.
+
+## How many factors? Bai-Ng and Ahn-Horenstein
+
+The dynamic-factor section promised that a handful of common forces drive a big panel. Before you can estimate them you have to answer the question a scree plot only gestures at: **how many factors?** Pick too few and the omitted comovement leaks into the idiosyncratic errors; pick too many and you are modeling noise. `factor_model` extracts the factors by principal components *and* returns two families of formal answers to the count.
+
+Principal components on a standardized $T \times N$ panel recover the factor space consistently as $N$ and $T$ both grow (Stock and Watson 2002): the leading eigenvectors are the loadings, the scaled leading components are the factors. The count comes from two ideas. **Bai and Ng (2002)** treat it as model selection — the residual variance $V(k)$ falls as you add factors, so trade it against a penalty $g(k)$ that must vanish slower than $1/\min(N,T)$:
+
+$$
+\mathrm{IC}_{p2}(k) \;=\; \ln V(k) \;+\; k\,\frac{N+T}{NT}\,\ln\!\big(\min(N,T)\big),
+$$
+
+and choose the minimizing $k$ (the function returns `icp1`/`icp2`/`pcp1`/`pcp2`, the four penalty variants). **Ahn and Horenstein (2013)** exploit a sharper fact: a genuine factor's eigenvalue grows like $N$, an idiosyncratic one stays $O(1)$, so the ratio of adjacent ordered eigenvalues $ER(k) = \mu_k/\mu_{k+1}$ *spikes* at the true number. Take the argmax (`er`). The eigenvalue ratio needs no penalty tuning, which is why it holds up when $N$ is only moderate — exactly the regime where the Bai-Ng penalties, built for large $N$, wobble.
+
+```python
+fav = json.load(open("fixtures/favar.json"))
+panel = np.array(fav["X_standardized"]).T           # 300 x 24, standardized (T x N); true r = 2
+
+fm = tsecon.factor_model(panel, n_factors=2, kmax=8)
+np.round(np.array(fm["eigenvalues"])[:5], 2)   # [11.09, 9.01, 0.79, 0.56, 0.36] — a clean two-factor cliff
+fm["er"]                                         # 2  — Ahn-Horenstein eigenvalue ratio nails the true rank
+np.round(np.array(fm["er_ratios"])[:3], 1)       # [1.2, 11.4, 1.4] — the ratio spikes at k = 2
+fm["icp2"], fm["pcp2"]                            # (7, 8) — Bai-Ng OVERSELECTS here: N = 24 is small
+```
+
+The scree tells the story at a glance: two eigenvalues of order 10, then a fall off a cliff to 0.79 — a textbook two-factor panel, which is what the fixture's DGP built. The Ahn-Horenstein ratio makes the cliff a number: `er_ratios` peaks at $k=2$ with value 11.4 (that is $9.01/0.79$), and `er` returns 2. The Bai-Ng criteria, by contrast, report 7 and 8 — they *overselect badly*, and if you sweep `kmax` you will watch `icp2` track it upward. That is not a bug; it is Bai-Ng's large-$N$ asymptotics failing at $N=24$, precisely the small-panel pathology Ahn and Horenstein designed the ratio to survive. When the two families disagree, trust the eigenvalue cliff and the ratio in small $N$, the penalized criteria when both dimensions are large.
+
+> **⚠ Common mistake.** Reading a single PCA factor as if it were a structural object — "factor 1 is the business cycle." Factors are identified only up to rotation (PCA pins them to orthonormal, up to a sign), so an individual factor and its loadings have no intrinsic meaning; only the *space* they span, and quantities invariant to rotation (fitted values, the panel IRFs of the next section), are estimable. Two neighboring traps: forgetting to *standardize* the panel, which lets a few high-variance series masquerade as factors, and treating Bai-Ng's number as gospel at modest $N$ — as the code just showed, it can be off by a factor of three. Static PCA also ignores the factors' own serial correlation; the state-space refinement in Chapter 4 recovers it and handles missing data and ragged edges (Chapter 11).
+
+## FAVAR: one policy shock, hundreds of responses
+
+Here is the complaint that motivates the whole method. A three-variable VAR asks "what does a monetary-policy shock do?" inside an information set of three series — while the central bank, and everyone trading against it, watches hundreds. That mismatch has a name and a symptom: the small VAR is plausibly *non-fundamental* (its shocks are not the economy's shocks), and it produces the notorious **price puzzle**, prices rising after a contractionary shock, an artifact of omitted information about future inflation. Bernanke, Boivin, and Eliasz (2005) close the gap without estimating a 200-variable VAR: summarize the big panel with a few factors, run the VAR on **(factors, policy rate)**, identify the policy shock there, and then **map the response back through the loadings to every series in the panel**. One shock, hundreds of impulse responses.
+
+It is a **two-step** estimator. *Step one* extracts $r$ factors $\hat F_t$ from the informational panel by principal components — the `factor_model` machinery above. Because those factors are contaminated by the contemporaneous policy rate, a recursive identification needs them cleaned: BBE regress the factors on the "slow-moving" variables (output, prices — things that do not respond to policy within the period) and the policy rate, and keep the part spanned by the slow variables (`slow_indices`). *Step two* fits a VAR(p) on $Y_t = (\hat F_t', R_t)'$ with the policy rate **ordered last**, so a Cholesky shock to the final equation (`orth=True`) is the recursive monetary-policy shock — the rate reacts to the factors within the quarter, but the factors do not react to the rate until the next. The observation equation $X_t = \Lambda \hat F_t + \dots$ then turns the factor IRF into a panel IRF, $\text{IRF}^X_h = \Lambda\,\text{IRF}^F_h$: `irf_panel` is $N \times (H+1)$, one row per observed series, and `irf_policy` is the rate's own response.
+
+Reach for a FAVAR when the structural question genuinely needs a large information set — to kill the price puzzle, to read responses for many disaggregated series off one identified shock, or to condition on a rich dataset without the parameter count of a full BVAR. The alternatives sit on either side: a small SVAR (Chapter 8) when a handful of variables suffice, a Minnesota-shrinkage BVAR (Chapter 10) when you want to keep every series but discipline the coefficients, local projections (Chapter 9) when you want a single response with fewer functional-form commitments. FAVAR is the specific combination *factor compression + recursive identification*.
+
+```python
+# A FAVAR DGP with a real transmission channel: a contractionary rate cools the
+# common factors with a lag; the rate reacts to the factors (a Taylor-rule feedback);
+# a 40-series panel loads on the factors.
+rng = np.random.default_rng(11)
+T, burn, N = 400, 100, 40
+Phi = np.array([[0.6, 0.05], [0.0, 0.5]])           # factor own-dynamics
+Psi = np.array([-0.5, -0.3])                        # lagged rate -> factors (cooling)
+rho, theta = 0.7, np.array([0.15, 0.10])            # policy AR + reaction to lagged factors
+F = np.zeros((T + burn, 2)); R = np.zeros(T + burn)
+for t in range(1, T + burn):
+    F[t] = Phi @ F[t - 1] + Psi * R[t - 1] + rng.normal(size=2) * [1.0, 0.8]
+    R[t] = rho * R[t - 1] + theta @ F[t - 1] + rng.normal() * 0.5
+F, R = F[burn:], R[burn:]
+L = rng.normal(size=(N, 2))                          # panel loadings
+X = F @ L.T + rng.normal(size=(T, N)) * 0.5          # T x N informational panel
+Xs = (X - X.mean(0)) / X.std(0)                      # standardize (PCA convention)
+
+res = tsecon.favar(Xs, R, n_factors=2, lags=2, trend="c", horizon=16, orth=True)
+res["n_endog"], res["policy_index"]     # (3, 2): the VAR is [F1, F2, R] with the rate ordered last
+np.round(np.array(res["irf_policy"])[[0, 1, 2, 4, 8]], 3)   # [0.517, 0.359, 0.207, -0.004, -0.048]
+# Two panel series with opposite-signed loadings on factor 1:
+irf_panel = np.array(res["irf_panel"])
+np.round(irf_panel[int(np.argmax(L[:, 0]))][[0, 2, 4, 8]], 3)   # [0.0, -0.228, -0.187, -0.004]
+np.round(irf_panel[int(np.argmin(L[:, 0]))][[0, 2, 4, 8]], 3)   # [0.0,  0.200,  0.175,  0.010]
+```
+
+Read the responses through the identification. `irf_policy` starts at 0.517 — the Cholesky impact of the shock on the rate's own equation, positive by construction — and decays with a mild overshoot, the rate's own dynamics. The panel IRFs all start at **exactly zero on impact**: the panel moves only through the factors, and under the recursive ordering the factors do not respond to the policy shock within the period. From $h=1$ they build up, and *the sign follows the loading* — the series that loads most positively on factor 1 falls ($-0.23$ at $h=2$) as the contractionary shock cools the common factor, while the series that loads most negatively rises ($+0.20$). That is the entire FAVAR payoff in one panel: a single identified shock, disaggregated onto every series with the right sign and shape. The factor-extraction step is not taken on faith — `fixtures/favar.json` pins it against numpy's PCA, and the FAVAR's step-one factors reproduce those principal components up to a sign flip.
+
+> **⚠ Common mistake.** Forgetting that the recursive ordering *is* the identifying assumption. Ordering the rate last says the factors (and the slow variables behind them) do not react to policy within the period, while policy reacts to everything — defensible for a monthly or quarterly policy rate, but an assumption to argue, not a computation, exactly as in Chapter 8; change the ordering or the slow/fast split and the shock changes. Two more: do not interpret an individual factor's IRF (the factors are identified only up to rotation — but the *panel* IRFs $\Lambda \hat F$ are rotation-invariant, which is the whole reason BBE map back to observables), and do not trust asymptotic error bands. The factors are *generated regressors*, so honest inference must bootstrap the two-step procedure — factor extraction and VAR together — and account for the estimation of $\hat F$ (Bai and Ng 2006); bands that condition on $\hat F$ as if it were data are too narrow.
+
 ## Further reading
 
 - **Sims (1980), "Macroeconomics and Reality," *Econometrica*** — the manifesto: why "incredible" identifying restrictions should give way to VARs; still the best statement of the research program this chapter serves.

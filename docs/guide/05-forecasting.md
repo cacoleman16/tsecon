@@ -292,6 +292,121 @@ pits = bt.pit_histogram(bins=10)          # calibration diagnostics with binomia
 
 > ⚠ **Common mistake.** Judging intervals by average coverage alone. A model can hit 95% coverage on average while its violations all cluster in recessions — precisely when the interval mattered. Conditional coverage (are violations independent over time?) is a separate, harsher question, and the clustered failures of Value-at-Risk models in 2008 are the canonical cautionary tale.
 
+## Backtesting in one call: the `backtest` engine
+
+The hand-rolled POOS loop earlier in this chapter is the thing you should never have to write twice — get the slicing off by one and the whole track record is quietly wrong. The first slice of Module 09's engine has now landed as `tsecon.backtest`, and it turns that loop into a single call. It is deliberately function-shaped for now — an array in, a dict out — while the typed `bt` object with `.compare()` and `.pit_histogram()` shown in the roadmap preview above is still being built. What has landed is the part that is easy to get wrong by hand: the rolling-origin bookkeeping, the expanding/rolling schemes, the refit cadence, and the per-horizon accuracy table.
+
+The signature mirrors the POOS design one-for-one:
+
+```python
+tsecon.backtest(
+    y,                       # the series (1-D)
+    window="expanding",      # "expanding" (recursive) or "rolling" (fixed width)
+    train=20,                # first training window (min_train if expanding, width if rolling)
+    horizon=1,              # evaluate horizons 1..=horizon at every origin
+    refit_every=1,           # re-estimate the forecaster every k origins (1 = every origin)
+    forecaster="naive",     # naive | drift | mean | seasonal_naive | theta
+    period=1,                # seasonal period for the seasonal forecasters
+    insample_period=1,       # seasonal period for the MASE/RMSSE scaling denominator
+)
+```
+
+The return dict carries `origins` (the origin indices $t$ actually evaluated), `n_origins`, `horizon`, `forecasts` and `targets` (each a list of `horizon` arrays, one row per horizon $h$, aligned so that `targets[h-1][i] - forecasts[h-1][i]` is the error at origin `origins[i]` for step $h$), and `accuracy` — one row per horizon with `me`, `mse`, `rmse`, `mae`, `mdae`, and `mape`/`smape`/`mase`/`rmsse` wherever a denominator makes them well-defined.
+
+The engine evaluates a *rectangular* origins-by-horizons grid: it keeps only origins that have all `horizon` targets in sample (the first full training window through index $n-1-\text{horizon}$), so every horizon's error stream has the same length and the same origins. That is not tidiness for its own sake — it is precisely what lets the Diebold-Mariano machinery downstream consume equal-length, index-aligned streams.
+
+### A per-horizon accuracy table
+
+Reusing the quarterly trend-plus-season-plus-AR series from the backtesting section above:
+
+```python
+bt = tsecon.backtest(y, window="expanding", train=80, horizon=4,
+                     forecaster="theta", period=4, insample_period=4)
+
+print(f"origins {bt['origins'][0]}..{bt['origins'][-1]}  ({bt['n_origins']} of them)")
+for row in bt["accuracy"]:
+    print(f"{row['name']:5s}  RMSE {row['rmse']:5.2f}  MAE {row['mae']:5.2f}  MASE {row['mase']:5.2f}")
+#   h=1   RMSE  2.01  MAE  1.62  MASE  0.85
+#   h=2   RMSE  1.85  MAE  1.43  MASE  0.75
+#   h=3   RMSE  2.39  MAE  1.93  MASE  1.01
+#   h=4   RMSE  2.21  MAE  1.75  MASE  0.92
+```
+
+Read the table down the horizon column, not across the loss columns. Theta's one-step MASE of 0.85 says it beats the in-sample seasonal-naive scale by about 15 percent; the numbers stay near or below 1 out to a year, which is the honest signal that the method has captured the trend and the seasonal shape rather than memorizing them. A table that started below 1 and blew past it by $h=4$ would be telling you the method forecasts the next quarter but not the next year — a distinction the single-number RMSE from a one-step loop hides entirely.
+
+### Expanding versus rolling: the scheme is a modeling choice
+
+`window` picks the origin scheme, and `train` means different things under each: the *minimum* (first) training size when expanding, the *fixed* width when rolling.
+
+```python
+exp = tsecon.backtest(y, window="expanding", train=80, horizon=4, forecaster="theta", period=4, insample_period=4)
+rol = tsecon.backtest(y, window="rolling",   train=60, horizon=4, forecaster="theta", period=4, insample_period=4)
+exp["n_origins"], rol["n_origins"]      # (77, 97) — rolling starts earlier here (width 60 < min_train 80)
+```
+
+Expanding uses every observation and lets estimation error die away as the sample grows — the right default when you believe the parameters are stable. Rolling deliberately forgets, holding the window at a fixed width so old regimes cannot contaminate the fit — the right choice when you suspect the world changes. The choice is not only about robustness: as the frontier section notes, the Giacomini and White (2006) test of *forecasting-method* accuracy requires a fixed-width rolling window, because its asymptotics depend on estimation error *not* vanishing. If a Giacomini-White comparison is where you are headed, back-test rolling from the start.
+
+### Refit cadence: `refit_every`
+
+Refitting a model at every one of hundreds of origins is often the expensive part of a backtest. `refit_every=k` re-estimates the forecaster once every $k$ origins and rolls that fit's direct multi-step path forward in between — the horizon-$h$ forecast for the $s$-th origin after a refit is read off step $s+h$ of the fit made at the refit origin.
+
+```python
+fresh = tsecon.backtest(y, train=80, horizon=4, refit_every=1, forecaster="theta", period=4, insample_period=4)
+stale = tsecon.backtest(y, train=80, horizon=4, refit_every=4, forecaster="theta", period=4, insample_period=4)
+fresh["accuracy"][0]["rmse"], stale["accuracy"][0]["rmse"]   # (2.01, 2.17) — staleness costs a little accuracy
+```
+
+The default `refit_every=1` is the leakage-free ideal: every origin sees a model fit on exactly its own training window. Larger $k$ trades a little accuracy (the fit is up to $k-1$ origins stale) for a large speed-up, and is how you make a full-competition backtest tractable; report the cadence you used, because it is part of the experiment.
+
+### The benchmark zoo, now callable
+
+The five forecasters that populate the benchmark floor — `naive`, `drift`, `mean`, `seasonal_naive`, `theta` — are all reachable through the same call, so the mandatory "did I beat the dumb methods?" table is one loop:
+
+```python
+print(f"{'forecaster':15s}  RMSE(h=1)  MASE(h=1)")
+for fc in ["naive", "drift", "mean", "seasonal_naive", "theta"]:
+    bt = tsecon.backtest(y, window="expanding", train=80, horizon=4,
+                         forecaster=fc, period=4, insample_period=4)
+    h1 = bt["accuracy"][0]
+    print(f"{fc:15s}   {h1['rmse']:6.2f}    {h1['mase']:6.2f}")
+# naive             6.74      3.36
+# drift             6.76      3.37
+# mean             18.57      9.42
+# seasonal_naive    2.45      1.01
+# theta             2.01      0.85
+```
+
+The ranking is a compressed lesson in why the benchmark you pick matters. On a trending, seasonal series the historical `mean` is a disaster (MASE 9.42 — it forecasts a flat line through data that is climbing), `naive` and `drift` are mediocre because they ignore the season, `seasonal_naive` is respectable (MASE ≈ 1, by construction near the scaling benchmark), and only `theta` clears the bar with room to spare. Swap in a random walk with no drift and the ranking inverts — which is the whole point of always reporting against a *panel* of benchmarks rather than a single favorite.
+
+### From the backtest straight into Diebold-Mariano
+
+Because the grid is rectangular and index-aligned, wiring the backtest's error streams into the `dm_test` from earlier in the chapter is mechanical: run the benchmark and the challenger with the same scheme, subtract to get the per-horizon error streams, and hand them to `dm_test` with the matching `h` so the HLN correction uses the right MA($h-1$) overlap.
+
+```python
+H = 4
+challenger = tsecon.backtest(y, train=80, horizon=H, forecaster="theta",          period=4, insample_period=4)
+benchmark  = tsecon.backtest(y, train=80, horizon=H, forecaster="seasonal_naive", period=4, insample_period=4)
+assert challenger["origins"] == benchmark["origins"]      # same scheme => same, aligned origins
+
+print("h   DM(HLN)   p")
+for h in range(1, H + 1):
+    e_bench = np.array(benchmark["targets"][h - 1])  - np.array(benchmark["forecasts"][h - 1])
+    e_chall = np.array(challenger["targets"][h - 1]) - np.array(challenger["forecasts"][h - 1])
+    dm = tsecon.dm_test(e_bench, e_chall, h=h, loss="squared")   # positive stat favors the 2nd stream (theta)
+    print(f"{h}   {dm['hln_stat']:6.3f}   {dm['p_value']:.4f}")
+# h   DM(HLN)   p
+# 1    2.111   0.0381
+# 2    3.246   0.0017
+# 3    0.407   0.6850
+# 4    2.246   0.0276
+```
+
+This is the rigorous version of the pooled DM snippet from the Diebold-Mariano section: one test per horizon, each on a clean, equal-length error stream, rather than one comparison stapling all horizons together. Theta significantly beats the seasonal naive at $h=1,2,4$ but not at $h=3$ — the kind of horizon-specific verdict a single pooled statistic averages away. (Running $H$ separate tests reopens the multiple-comparison problem the DM section flagged; Quaedvlieg's (2021) joint multi-horizon test, a roadmap item, is the honest way to control family-wise error across the horizon block.)
+
+> ⚠ **Common mistake.** Comparing two backtests run under *different* schemes or training windows and then subtracting their error streams. Change `window` or `train` and the surviving origins change, the two `origins` lists no longer match, and the differenced series is nonsense even though the arithmetic runs. Assert equal `origins` before differencing — as above — every single time.
+
+A few caveats to carry. The built-in forecasters are point forecasters, so `backtest` scores point accuracy only; interval and density evaluation (PITs, CRPS, the interval score) arrive with the typed forecast objects still on the roadmap. The MASE and RMSSE denominators are computed once, from the first training window at `insample_period`, never from the test sample — the correct, leakage-free convention, but it means the scaling reflects the earliest window's seasonality. The engine refuses degenerate designs loudly rather than returning a short or empty track record: ask for a horizon so long that no origin has all its targets in sample and it raises a `ValueError` that names the exact index arithmetic and tells you to lengthen the series, shrink the window, or shorten the horizon. And the leakage guarantee here is structural only because the forecaster is a trusted built-in that sees a single training slice; when the roadmap opens the engine to user-supplied models, every transformation, scaling, and hyperparameter choice must live *inside* that closure — the same discipline the manual-loop warning demanded, now the engine's contract (Tashman 2000).
+
 ## The frontier
 
 Three threads define the research edge of forecast evaluation.

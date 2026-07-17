@@ -305,6 +305,111 @@ Only the first column of the IRF array — the responses *to* the instrument's s
 
 > ⚠ **Common mistake:** treating LP-versus-VAR disagreement at long horizons as evidence about identification. Same instrument, same identification — the divergence is the estimators' different bias-variance behavior at horizons the sample barely informs. The frontier fix is lag-augmented or bias-aware inference, not switching identification schemes.
 
+## Identification by moment conditions: the GMM view of instruments
+
+Every instrument-based scheme in the last three sections rested on one sentence, repeated in different clothing: *a valid instrument is uncorrelated with the structural shock you are not after.* Written as an equation that is a **moment condition** — a population average that equals zero at the true parameter. The proxy SVAR's exogeneity requirement $\mathbb{E}[z_t \varepsilon_{jt}] = 0$ for $j \neq 1$ is a moment condition; the LP-IV first stage of Chapter 9 is a moment condition; the humble textbook instrument $\mathbb{E}[z_t \varepsilon_t] = 0$ is the same thing. **Generalized Method of Moments (GMM)**, introduced by Hansen (1982) in one of the most-cited papers in all of econometrics, is the estimation theory that turns any list of such conditions into estimates, standard errors, and — when you have more conditions than parameters — a *test of whether the conditions can all hold at once*. It is the machinery underneath the whole instrument family, and tsecon exposes it directly.
+
+The intuition is a counting story you have already met in this chapter, run in reverse. Suppose theory hands you $m$ moment conditions $\mathbb{E}[g_t(\theta)] = 0$ for a $p$-vector of parameters $\theta$. At the truth every one of these averages is zero; in a finite sample the *sample* averages $\bar g(\theta) = \frac{1}{n}\sum_t g_t(\theta)$ are only approximately zero. GMM chooses the $\theta$ that makes them as close to zero as possible, in a quadratic metric:
+
+$$
+\hat\theta = \arg\min_{\theta}\; \bar g(\theta)'\, W\, \bar g(\theta),
+$$
+
+where $W$ is an $m \times m$ positive-definite **weighting matrix** that decides how much each moment's miss costs. When $m = p$ (**just-identified**) you can drive every sample moment to exactly zero and $W$ is irrelevant — this is old-fashioned method of moments, and for a linear model it is ordinary IV / 2SLS. When $m > p$ (**over-identified**) you cannot zero them all; the leftover slack is simultaneously a *gift* (extra moments carry extra information, so estimates get more efficient) and a *test* (if the moments truly all held at the truth, the minimized slack should be small — a big residual means at least one moment is false). The efficient choice of weight, Hansen showed, is $W = S^{-1}$, the inverse of the long-run covariance of the moments $S = \sum_j \mathbb{E}[g_t g_{t-j}']$: down-weight the noisy and correlated moments, lean on the sharp ones. That single idea — weight moments by the inverse of their covariance — is the thread connecting GMM to the HAC and long-run-variance tools of Chapter 3, which is exactly how tsecon builds $S$.
+
+## Linear IV-GMM with `iv_gmm`
+
+The workhorse case is a linear model with endogenous regressors. Write $y_t = x_t'\beta + \varepsilon_t$ where some columns of the $K$-vector $x_t$ are correlated with $\varepsilon_t$ (the endogeneity that makes OLS lie), and let $z_t$ be an $L$-vector of instruments with $\mathbb{E}[z_t\varepsilon_t]=0$ and $L \ge K$. The moment conditions are linear in $\beta$:
+
+$$
+g_t(\beta) = z_t\,(y_t - x_t'\beta), \qquad \bar g(\beta) = \tfrac{1}{n} Z'(y - X\beta),
+$$
+
+and minimizing $\bar g(\beta)'W\bar g(\beta)$ has the closed form $\hat\beta = (X'ZWZ'X)^{-1}X'ZWZ'y$. `iv_gmm(x, z, y, method, weight, ...)` implements this. Three `method` choices trade simplicity for efficiency:
+
+- **`"2sls"`** — one step with $W = (Z'Z)^{-1}$. This is exactly two-stage least squares; fully efficient only under conditionally homoskedastic errors.
+- **`"2step"`** — 2SLS first to get residuals, form $\hat S$ from them (`weight="robust"` for a heteroskedasticity-robust $\hat S$, `weight="hac"` for a Newey-West long-run $\hat S$ with `bandwidth`), then re-estimate with $W = \hat S^{-1}$. Asymptotically efficient under heteroskedasticity (robust) or serial correlation (hac) — the natural default for time series is `weight="hac"`.
+- **`"iterated"`** — repeat the two-step update, refreshing $\hat S$ at each new $\hat\beta$ until both converge. This removes dependence on the first-step estimate and often behaves better in small samples.
+
+The one implementation detail that trips everyone: **`z` must contain the exogenous regressor columns.** Exogenous regressors are their own instruments, so if your design matrix is $X = [\text{const}, w, x_{\text{endog}}]$, the instrument matrix must be $Z = [\text{const}, w, z_1, z_2]$ — the constant and $w$ appear in *both*. Here is the full call on the `gmm.json` fixture, whose data were built so that `x` is endogenous, `const` and `w` are exogenous, and `z1, z2` are excluded instruments — over-identified by one:
+
+```python
+import json, numpy as np, tsecon
+
+d  = json.load(open("fixtures/gmm.json"))
+y  = np.array(d["y"]); x = np.array(d["x"]); w = np.array(d["w"])
+z1 = np.array(d["z1"]); z2 = np.array(d["z2"])
+const = np.ones(len(y))
+
+X = np.column_stack([const, w, x])           # regressors; x is endogenous
+Z = np.column_stack([const, w, z1, z2])      # instruments INCLUDE const, w
+
+fit = tsecon.iv_gmm(X, Z, y, method="2step", weight="robust")
+print(np.round(fit["params"], 4))   # [ 0.9994 -0.4736  0.5115 ]  (const, w, x)
+print(np.round(fit["bse"],    4))   # [ 0.0448  0.0445  0.0552 ]  robust sandwich SEs
+print(round(fit["j_stat"], 4), "dof", fit["j_dof"], "p", round(fit["j_pval"], 4))
+#   -> 0.2945 dof 1 p 0.5873
+```
+
+These reproduce `linearmodels` 7.0's `IVGMM` to the printed digits. **Reading the output:** `params` are the coefficients in the column order of `X`; `bse` are the robust (or HAC) sandwich standard errors; `steps` records how many weight updates ran; and, because the system is over-identified, `j_stat`/`j_dof`/`j_pval` report **Hansen's $J$ test of the over-identifying restrictions** (Hansen 1982; the linear-2SLS ancestor is Sargan 1958). Under the null that *every* instrument is valid, $J = n\,\bar g(\hat\beta)'\hat S^{-1}\bar g(\hat\beta) \to \chi^2_{L-K}$. Here $J = 0.29$ on 1 degree of freedom with $p = 0.59$: nowhere near rejection, so the extra instrument `z2` tells the same story as `z1` and the exogeneity assumption survives its one testable implication. The test needs the efficient weight, which is why it is reported only for `"2step"`/`"iterated"`; run the model **just-identified** (drop `z2`, so $L = K = 3$) and `iv_gmm` returns `j_stat=None` — with as many instruments as parameters $\bar g(\hat\beta)$ is exactly zero and there is nothing left to test.
+
+**When to use it, and versus what.** If your system is just-identified and you believe the errors are homoskedastic, 2SLS and GMM coincide — reach for whichever is closer to hand. GMM earns its keep when you are *over-identified* and the errors are *heteroskedastic or serially correlated*: there efficient two-step (or iterated) GMM is strictly more efficient than 2SLS, and only GMM gives you the $J$ test. In this chapter's terms, `iv_gmm` is the estimation engine sitting under the instrument-based SVAR schemes: the proxy-SVAR impact column $b_1 \propto \mathbb{E}[u_t z_t]$ is a one-instrument, just-identified GMM moment; the LP-IV multipliers of Chapter 9 are 2SLS, i.e. `iv_gmm(..., method="2sls")`. For serially correlated moments — the rule rather than the exception in macro time series — pass `weight="hac"` so $\hat S$ is a Newey-West long-run covariance rather than a White one.
+
+> ⚠ **Common mistake:** leaving the exogenous regressors out of `z`. If you pass only the excluded instruments `[z1, z2]` as `z` while `X` still contains `const` and `w`, you have implicitly declared your intercept and `w` endogenous, under-identified the model, and will get either an error or nonsense coefficients. Exogenous regressors instrument for themselves — they belong in *both* matrices.
+
+> ⚠ **Common mistake:** reading a non-rejecting $J$ as proof the instruments are good, or a rejecting $J$ as proof a *specific* instrument is bad. The $J$ test is a **joint** test of instrument validity *and* correct model specification, and it has little power when instruments are weak. Always check first-stage strength before trusting the $J$ test or the standard errors — regress the endogenous variable on the full instrument set and look at the excluded instruments' contribution:
+
+```python
+tvals = np.array(tsecon.ols(x, Z)["tvalues"])   # first stage: x on [const, w, z1, z2]
+print(np.round(tvals[2:], 1))                    # z1, z2 t-stats -> [22.4 14.5]
+```
+
+Both excluded instruments here are overwhelmingly strong, so the near-perfect $J$ p-value is informative rather than the false comfort a weak-instrument set would give (Stock, Wright & Yogo 2002). Efficient two-step GMM also inherits a finite-sample wrinkle: the estimated $\hat S$ is noisy, which can bias the second step and distort the $J$ test in small samples; `"iterated"` mitigates it, and the continuously-updating estimator (Hansen, Heaton & Yaron 1996) goes further — reach for `iterated` when $n$ is modest.
+
+## Nonlinear GMM with `gmm_nonlinear`
+
+Not every moment condition is linear in the parameters. The founding application of GMM is the consumption-based asset-pricing Euler equation of Hansen and Singleton (1982): a representative investor's optimum implies
+
+$$
+\mathbb{E}\!\left[\,\beta\left(\tfrac{C_{t+1}}{C_t}\right)^{-\gamma} R_{t+1} - 1 \;\Big|\; \mathcal{I}_t\right] = 0,
+$$
+
+which, interacted with any instruments $z_t$ in the period-$t$ information set, becomes moment conditions $\mathbb{E}\big[z_t\big(\beta(C_{t+1}/C_t)^{-\gamma}R_{t+1}-1\big)\big]=0$ that are hopelessly nonlinear in the deep parameters $(\beta,\gamma)$. There is no closed form; you minimize the GMM objective numerically. `gmm_nonlinear(moments_fn, initial, weight=None)` is the general escape hatch for exactly this. You supply a Python callback that maps a parameter vector to the $n \times m$ matrix of **per-observation** moment contributions (rows are observations, columns are moments); the library forms $\bar g(\theta)$, minimizes $\bar g(\theta)'W\bar g(\theta)$ by Nelder-Mead, and hands back the estimate plus optimizer diagnostics.
+
+A self-contained example keeps the moment algebra transparent: estimate the rate $\lambda$ of exponential data from two of its population moments — the mean $1/\lambda$ and the second raw moment $2/\lambda^2$. That is $m = 2$ moments for $p = 1$ parameter, so the model is over-identified and GMM has to compromise between the two:
+
+```python
+import numpy as np, tsecon
+
+rng  = np.random.default_rng(0)
+data = rng.exponential(scale=0.5, size=2000)   # true rate lambda = 2
+
+def moments(theta):                            # returns an (n, 2) matrix
+    lam = theta[0]
+    return np.column_stack([data - 1.0/lam,        # E[x - 1/lam]      = 0
+                            data**2 - 2.0/lam**2])  # E[x^2 - 2/lam^2] = 0
+
+res = tsecon.gmm_nonlinear(moments, initial=[1.0])
+print(round(res["params"][0], 3))     # 1.961   (true 2.0)
+print(res["converged"], res["iterations"], res["fevals"])   # True 30 62
+print(np.round(res["gbar"], 4))       # [-0.0038  0.0019]  sample moments ~ 0
+```
+
+**Reading the output:** `params` is $\hat\theta$; `gbar` is the sample-moment vector $\bar g(\hat\theta)$ at the optimum — both entries near zero confirms GMM balanced the two conditions; `objective` is the minimized quadratic; and `converged`/`iterations`/`fevals` are Nelder-Mead diagnostics you should *always* check, since a derivative-free simplex can stop short. The default `weight=None` uses the identity matrix, which is consistent but inefficient. To get the efficient estimator, do the standard two-step: estimate once with identity, build $\hat S$ from the first-step moment contributions, and re-optimize with $W = \hat S^{-1}$ passed as a **flattened row-major** $m \times m$ array:
+
+```python
+lam1 = res["params"]
+G    = moments(lam1)
+S    = (G.T @ G) / G.shape[0]                  # moment covariance at step 1
+Wopt = np.linalg.inv(S)
+res2 = tsecon.gmm_nonlinear(moments, initial=lam1, weight=Wopt.flatten())
+print(round(res2["params"][0], 3))             # 1.979   -> closer to 2.0
+```
+
+**When to use it.** Reach for `gmm_nonlinear` whenever the moment conditions are nonlinear in the parameters — Euler equations, structural production or demand systems, nonlinear-in-parameters IV — or when you want to estimate from custom moments that have no packaged estimator. For *linear* IV, prefer `iv_gmm`: it is a closed-form solve rather than a simplex search, and it returns sandwich standard errors and the Hansen $J$ test for free, neither of which `gmm_nonlinear` computes.
+
+> ⚠ **Common mistake:** trusting a single Nelder-Mead run. The simplex is local and derivative-free, so with a bad start it can converge to a non-global minimum or stall; restart from several `initial` values and confirm `converged` is `True` and `gbar` is small before believing the estimate. Two further traps: `gmm_nonlinear` returns **no standard errors or $J$ statistic** — for inference you must assemble the sandwich $\widehat{\mathrm{Avar}}(\hat\theta) = (G'WG)^{-1}G'WSWG(G'WG)^{-1}$ yourself (it collapses to $(G'S^{-1}G)^{-1}$ under the efficient weight), where $G$ is the Jacobian of the moments; and because the callback is evaluated hundreds of times, keep it vectorized in NumPy rather than looping over observations. See Newey and McFadden (1994) for the full asymptotic theory and Hansen, Heaton and Yaron (1996) for the continuously-updating alternative to the two-step weight.
+
 ## The frontier
 
 The research frontier of this field is mostly about *honesty at the edges* — inference that admits what the data cannot say — and it is where tsecon's identification module stakes its claim, since almost none of it has a software home.
