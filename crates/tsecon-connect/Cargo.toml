@@ -3,5 +3,17 @@ name = "tsecon-connect"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Diebold-Yilmaz variance-decomposition connectedness for the tsecon time-series econometrics library: Pesaran-Shin (1998) generalized forecast-error variance decompositions, row-normalized to the Diebold-Yilmaz (2012) spillover convention; total, directional (to/from others), net, and pairwise-net connectedness; a printable spillover table; and rolling-window total connectedness"
 
 [dependencies]
+# tsecon-var supplies the fitted reduced form (MA(inf) Psi weights via
+# ma_rep, and the residual covariance sigma_u); it re-exports
+# tsecon-linalg, but we also depend on it directly so the connectedness
+# core can be exercised on bare Psi/Sigma without an estimation step.
+tsecon-var = { path = "../tsecon-var" }
+tsecon-linalg = { path = "../tsecon-linalg" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern
+# NumPy printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
