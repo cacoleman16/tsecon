@@ -303,7 +303,7 @@ pub struct NowcastResult {
 /// Standardizes a panel column-by-column with the supplied moments,
 /// `Z[(i,j)] = (X[(i,j)] - center[j]) / scale[j]`. NaN entries stay NaN
 /// (missing observations propagate through the standardization untouched).
-fn standardize_panel(data: MatRef<'_, f64>, center: &[f64], scale: &[f64]) -> Mat<f64> {
+pub(crate) fn standardize_panel(data: MatRef<'_, f64>, center: &[f64], scale: &[f64]) -> Mat<f64> {
     Mat::from_fn(data.nrows(), data.ncols(), |i, j| {
         (data[(i, j)] - center[j]) / scale[j]
     })

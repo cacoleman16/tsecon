@@ -52,6 +52,21 @@
 //!   true factor (`corr > 0.9`), the balanced nowcast is finite, and the
 //!   ragged-edge nowcast moves in the economically expected direction.
 //!
+//! ## News / update decomposition
+//!
+//! When a newer data vintage arrives, the target nowcast revises. For fixed
+//! parameters the Kalman smoother is a purely linear operator on the
+//! observations, so the revision decomposes **exactly** as a weighted sum of
+//! *news*: `new_nowcast - old_nowcast = Σ_j weight_j · news_j`, where
+//! `news_j = actual_j - E_old[y_j]` is the surprise in each newly-revealed
+//! observation and `weight_j = ∂nowcast/∂actual_j` is its Kalman weight
+//! (Banbura-Modugno 2014). This adding-up identity is a *self-validating*
+//! exact identity — asserted to ~`1e-10` — and the analytic Kalman weights are
+//! cross-checked against an independent finite-difference reference to ~`1e-6`
+//! (`fixtures/nowcast_news.json`). See [`Nowcaster::news_decomposition`] and
+//! [`news::news_decomposition_at`], and the [`news`] module docs for the
+//! derivation.
+//!
 //! All fallible routines return [`NowcastError`]; nothing in this crate panics
 //! on user input.
 
@@ -59,10 +74,12 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod error;
+pub mod news;
 pub mod statespace;
 pub mod twostep;
 
 pub use error::NowcastError;
+pub use news::{news_decomposition_at, NewsContribution, NewsDecomposition};
 pub use statespace::{smooth_fixed, DfmParams, DfmSmoothing};
 pub use twostep::{NowcastResult, Nowcaster};
 

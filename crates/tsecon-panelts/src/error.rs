@@ -63,6 +63,30 @@ pub enum PanelTsError {
         /// The underlying `tsecon-hac` error.
         source: HacError,
     },
+    /// A unit did not carry enough periods for the pooled-mean-group ARDL(1,1)
+    /// error-correction reparameterization. One period is lost to the lag and
+    /// one to the first difference, and the per-unit short-run regression on
+    /// `[const, Δx]` plus the error-correction term needs strictly more rows
+    /// than parameters.
+    PmgTooFewPeriods {
+        /// Zero-based index of the offending unit.
+        unit: usize,
+        /// The number of periods `T` this unit carried.
+        got: usize,
+        /// The minimum number of periods required for `k` long-run regressors.
+        needed: usize,
+    },
+    /// The pooled long-run cross-product matrix `A = sum_i (phi_i^2 / sigma_i^2)
+    /// Xtilde_i' Xtilde_i` was not numerically positive definite, so the pooled
+    /// long-run coefficient `theta` is not identified (the partialled long-run
+    /// regressors are collinear across the whole panel).
+    PmgSingularLongRun,
+    /// The pooled-mean-group concentrated-likelihood iteration did not converge
+    /// within the iteration budget.
+    PmgNotConverged {
+        /// The number of iterations attempted before giving up.
+        iters: usize,
+    },
     /// An error propagated from the `tsecon-stats` distribution layer used for
     /// the mean-group p-values and confidence bands.
     Stats(StatsError),
@@ -116,6 +140,28 @@ impl fmt::Display for PanelTsError {
             Self::Ols { unit, source } => {
                 write!(f, "per-unit OLS failed for unit {unit}: {source}")
             }
+            Self::PmgTooFewPeriods { unit, got, needed } => write!(
+                f,
+                "unit {unit} spans {got} period(s); the pooled-mean-group \
+                 ARDL(1,1) error-correction form loses one period to the lag and \
+                 one to the first difference and then regresses on the \
+                 error-correction term plus [const, Δx], so it needs at least \
+                 {needed} periods for this many long-run regressors"
+            ),
+            Self::PmgSingularLongRun => write!(
+                f,
+                "the pooled long-run cross-product matrix A = sum_i \
+                 (phi_i^2 / sigma_i^2) Xtilde_i' Xtilde_i is not positive \
+                 definite; the partialled long-run regressors are collinear \
+                 across the panel, so the pooled long-run coefficient theta is \
+                 not identified"
+            ),
+            Self::PmgNotConverged { iters } => write!(
+                f,
+                "the pooled-mean-group concentrated-likelihood iteration did not \
+                 converge within {iters} iterations; the panel may be too short \
+                 or too weakly cointegrated to pin the pooled long run"
+            ),
             Self::Stats(e) => write!(f, "distribution error: {e}"),
         }
     }

@@ -25,6 +25,21 @@ pub fn as_mat(v: &Value) -> Mat<f64> {
     })
 }
 
+/// A JSON array-of-arrays (rows) as a faer matrix, mapping JSON `null` to
+/// `NaN` (the ragged-edge missing marker the panel routines expect).
+pub fn as_mat_nan(v: &Value) -> Mat<f64> {
+    let rows = v.as_array().expect("expected JSON array of rows");
+    let ncols = rows[0].as_array().expect("expected JSON row").len();
+    Mat::from_fn(rows.len(), ncols, |i, j| {
+        let cell = &rows[i].as_array().expect("expected JSON row")[j];
+        if cell.is_null() {
+            f64::NAN
+        } else {
+            cell.as_f64().expect("expected number or null")
+        }
+    })
+}
+
 /// A JSON array of numbers as a `Vec<f64>`.
 pub fn as_vec(v: &Value) -> Vec<f64> {
     v.as_array()

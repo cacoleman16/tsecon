@@ -18,24 +18,32 @@
 //!   MG-average only the own-`x` slopes. This purges a common factor that
 //!   would otherwise bias plain MG. See [`cce`].
 //!
-//! Both estimators are exact, deterministic maps from the per-unit OLS fits, so
+//! * [`pmg`] — the Pesaran, Shin & Smith (1999) **pooled-mean-group (PMG)**
+//!   ARDL(1,1) estimator. Fits an error-correction panel in which the
+//!   **long-run coefficients `theta` are pooled** (common across units) by
+//!   maximum likelihood, while the error-correction speed `phi_i`, the
+//!   short-run dynamics, and the intercept stay **free** per unit. Estimation
+//!   is the PSS concentrated-likelihood back-substitution — iterating per-unit
+//!   OLS of the error-correction term against a feasible-GLS pooled update for
+//!   `theta`. This is a constrained pooled-ML problem, not an average of
+//!   independent fits, so its golden is a documented-formula NumPy
+//!   reimplementation of the same iteration rather than an external package.
+//!   See [`pmg`].
+//!
+//! The mean-group estimators are exact, deterministic maps from the per-unit OLS fits, so
 //! the golden reproduces the coefficient vectors, standard errors, t-statistics,
 //! and per-unit slopes to machine precision (`1e-10`). The per-unit OLS is
 //! delegated to [`tsecon_hac::ols`]; the t-distribution p-values and confidence
 //! bands ([`MeanGroup::pvalues`], [`MeanGroup::conf_int`]) use `tsecon-stats`.
 //! Nothing in this crate reimplements least squares.
 //!
-//! ## Not (yet) implemented: PMG
+//! ## PMG scope: ARDL(1,1)
 //!
-//! The Pesaran, Shin & Smith (1999) **pooled mean-group (PMG)** ARDL estimator
-//! — which pools the *long-run* coefficients across units by maximum likelihood
-//! while leaving the short-run dynamics and error-correction speeds free — is a
-//! deliberate `TODO`. It is a constrained pooled-ML problem (a Newton /
-//! back-substitution iteration over the concentrated likelihood), not a simple
-//! average of independent OLS fits, so it has a different validation surface and
-//! is out of scope for this deliverable. MG and CCE-MG are the required,
-//! reference-validated estimators; PMG would be layered on the shared
-//! [`PanelUnit`] input when added.
+//! [`pmg`] ships the standard **ARDL(1,1)** pooled-mean-group estimator. General
+//! ARDL(p, q) lag orders (extra `Δy` / `Δx` lags in the short-run block) are a
+//! documented `TODO` in [`pmg`]: they only widen the per-unit short-run design,
+//! but the input shape and a lag-order argument are deferred to keep this
+//! deliverable focused.
 //!
 //! All fallible routines return [`PanelTsError`]; nothing panics on user input.
 
@@ -45,10 +53,12 @@
 pub mod cce;
 pub mod error;
 pub mod mg;
+pub mod pmg;
 
 pub use cce::cce_mean_group;
 pub use error::PanelTsError;
 pub use mg::{mean_group, MeanGroup, PanelUnit};
+pub use pmg::{pmg, PooledMeanGroup};
 
 // Re-export the OLS backend so downstream users see one `tsecon-hac` version
 // and can inspect the per-unit fits with the same types this crate consumes.
