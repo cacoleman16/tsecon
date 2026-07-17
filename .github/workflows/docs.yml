@@ -1,8 +1,13 @@
 name: Docs
 
-# Build the mkdocs-material site and publish it to GitHub Pages on every push
-# to main. The docs are pure Markdown (the API reference is generated from the
-# type stub), so this needs no Rust toolchain or built wheel.
+# Validate that the documentation site builds cleanly. `mkdocs build --strict`
+# fails on any broken internal link, missing nav entry, or stale reference, so
+# this keeps the docs honest on every push — but it does NOT deploy anywhere.
+#
+# The repo is private, where GitHub Pages needs a paid plan, so hosting is left
+# off by choice. To read the site: `pip install -r docs/requirements.txt &&
+# mkdocs serve` locally, or point any static host (Netlify / Cloudflare Pages,
+# both free even for private repos) at `mkdocs build`.
 on:
   push:
     branches: [main]
@@ -11,20 +16,18 @@ on:
       - "mkdocs.yml"
       - "bindings/python/tsecon.pyi"
       - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "bindings/python/tsecon.pyi"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-# Allow one concurrent deployment; skip runs superseded by a newer push.
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,21 +40,3 @@ jobs:
         run: pip install -r docs/requirements.txt
       - name: Build the site (strict — fails on a broken link or nav entry)
         run: mkdocs build --strict
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    # Best-effort: the build above is the required check (it validates the
-    # whole site). Deployment only works once GitHub Pages is enabled for the
-    # repo (Settings -> Pages -> Source: GitHub Actions); until then this step
-    # no-ops without failing the workflow.
-    continue-on-error: true
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4

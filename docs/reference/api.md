@@ -1032,14 +1032,18 @@ Pooled Mean Group ARDL(1,1) panel estimator (Pesaran-Shin-Smith 1999).
 
 ```python
 def dfm_nowcast(
-    data: _ArrayLike, n_factors: int = ..., factor_order: int = ...
+    data: _ArrayLike,
+    n_factors: int = ...,
+    factor_order: int = ...,
+    method: str = ...,
 ) -> dict[str, Any]:
 ```
 
-Two-step dynamic-factor-model nowcast (Doz-Giannone-Reichlin 2011).
+Dynamic-factor-model nowcast; data is T x N with an optional NaN edge.
 
-    data is T x N and may carry NaN at the ragged edge. Returns nowcast,
-    edge_factor, loglik, smoothed_factors, n_factors, factor_order.
+    method is "two_step" (Doz-Giannone-Reichlin 2011) or "mle" (exact
+    one-step Gaussian MLE, single factor). Returns nowcast, edge_factor,
+    loglik, fit_loglik, smoothed_factors, n_factors, factor_order.
 
 ### `dfm_news`
 
