@@ -316,3 +316,30 @@ def cw_test(
 
 def gw_test(loss1: _ArrayLike, loss2: _ArrayLike, lrv_lags: int = ...) -> dict[str, Any]:
     """Giacomini-White unconditional test of equal predictive ability."""
+
+# ------------------------------------------------------ spectral analysis
+def periodogram(
+    x: _ArrayLike, fs: float = ..., window: str = ..., detrend: str = ...
+) -> dict[str, _F64]:
+    """Periodogram PSD (freqs, psd); matches scipy.signal.periodogram."""
+
+def welch(
+    x: _ArrayLike,
+    nperseg: int = ...,
+    fs: float = ...,
+    noverlap: int | None = ...,
+    window: str = ...,
+    detrend: str = ...,
+) -> dict[str, _F64]:
+    """Welch averaged-periodogram PSD; matches scipy.signal.welch."""
+
+def coherence(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    nperseg: int = ...,
+    fs: float = ...,
+    noverlap: int | None = ...,
+    window: str = ...,
+    detrend: str = ...,
+) -> dict[str, _F64]:
+    """Magnitude-squared coherence in [0,1]; matches scipy.signal.coherence."""

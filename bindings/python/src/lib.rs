@@ -1390,6 +1390,112 @@ fn gw_test<'py>(
     Ok(d)
 }
 
+fn spectral_window(w: &str) -> PyResult<tsecon_spectral::Window> {
+    match w {
+        "boxcar" => Ok(tsecon_spectral::Window::Boxcar),
+        "hann" => Ok(tsecon_spectral::Window::Hann),
+        other => Err(PyValueError::new_err(format!(
+            "unknown window {other:?}; expected \"boxcar\" or \"hann\""
+        ))),
+    }
+}
+
+fn spectral_detrend(d: &str) -> PyResult<tsecon_spectral::Detrend> {
+    match d {
+        "none" => Ok(tsecon_spectral::Detrend::None),
+        "constant" => Ok(tsecon_spectral::Detrend::Constant),
+        "linear" => Ok(tsecon_spectral::Detrend::Linear),
+        other => Err(PyValueError::new_err(format!(
+            "unknown detrend {other:?}; expected none/constant/linear"
+        ))),
+    }
+}
+
+/// Periodogram power spectral density (one FFT). Matches
+/// `scipy.signal.periodogram` to ~1e-15. Returns `freqs` and `psd`.
+#[pyfunction]
+#[pyo3(signature = (x, fs = 1.0, window = "boxcar", detrend = "none"))]
+fn periodogram<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    fs: f64,
+    window: &str,
+    detrend: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_spectral::periodogram(
+        x.as_slice()?,
+        fs,
+        spectral_window(window)?,
+        tsecon_spectral::Scaling::Density,
+        spectral_detrend(detrend)?,
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("freqs", r.freqs.into_pyarray(py))?;
+    d.set_item("psd", r.psd.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Welch's averaged-periodogram PSD (periodic Hann, 50% overlap by
+/// default). Matches `scipy.signal.welch`. Returns `freqs` and `psd`.
+#[pyfunction]
+#[pyo3(signature = (x, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "none"))]
+fn welch<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    nperseg: usize,
+    fs: f64,
+    noverlap: Option<usize>,
+    window: &str,
+    detrend: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_spectral::welch(
+        x.as_slice()?,
+        fs,
+        nperseg,
+        noverlap,
+        spectral_window(window)?,
+        tsecon_spectral::Scaling::Density,
+        spectral_detrend(detrend)?,
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("freqs", r.freqs.into_pyarray(py))?;
+    d.set_item("psd", r.psd.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Magnitude-squared coherence between two series via Welch cross-spectra.
+/// Matches `scipy.signal.coherence`. Returns `freqs` and `coherence` in [0, 1].
+#[pyfunction]
+#[pyo3(signature = (x, y, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "none"))]
+#[allow(clippy::too_many_arguments)]
+fn coherence<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    y: PyReadonlyArray1<'py, f64>,
+    nperseg: usize,
+    fs: f64,
+    noverlap: Option<usize>,
+    window: &str,
+    detrend: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_spectral::coherence(
+        x.as_slice()?,
+        y.as_slice()?,
+        fs,
+        nperseg,
+        noverlap,
+        spectral_window(window)?,
+        spectral_detrend(detrend)?,
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("freqs", r.freqs.into_pyarray(py))?;
+    d.set_item("coherence", r.coherence.into_pyarray(py))?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -1435,5 +1541,8 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(panel_lp, m)?)?;
     m.add_function(wrap_pyfunction!(cw_test, m)?)?;
     m.add_function(wrap_pyfunction!(gw_test, m)?)?;
+    m.add_function(wrap_pyfunction!(periodogram, m)?)?;
+    m.add_function(wrap_pyfunction!(welch, m)?)?;
+    m.add_function(wrap_pyfunction!(coherence, m)?)?;
     Ok(())
 }
