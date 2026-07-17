@@ -694,9 +694,17 @@ def forecast_efficiency(
 ) -> dict[str, Any]:
     """Mincer-Zarnowitz forecast-efficiency Wald test (OLS-HAC); regressors is T x k."""
 
+def forecast_disagreement(
+    panel: Sequence[_ArrayLike], ddof: int = ...
+) -> dict[str, Any]:
+    """Forecast-disagreement measures (per-period std/quartiles/iqr) from a forecaster panel."""
+
 # --------------------------------------------------------- long memory
 def frac_diff(x: _ArrayLike, d: float) -> _F64:
     """Fractional differencing (1-L)^d via the binomial expansion."""
+
+def frac_integrate(x: _ArrayLike, d: float) -> _F64:
+    """Fractional integration (1-L)^-d, the inverse of frac_diff."""
 
 def long_memory_d(
     x: _ArrayLike, m: int | None = ..., method: str = ...

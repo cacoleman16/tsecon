@@ -3262,6 +3262,43 @@ fn long_memory_d<'py>(
     Ok(d)
 }
 
+/// Forecast-disagreement measures from a panel of forecasters.
+///
+/// `panel` is a list of per-period cross-sections (one array of the
+/// individual forecasts made for each period; the cross-sections may be
+/// ragged). Returns, per period, the dispersion `std` (with `ddof`), the
+/// quartiles `p25`/`p50`/`p75`, the inter-quartile range `iqr`, and the
+/// forecaster `counts`.
+#[pyfunction]
+#[pyo3(signature = (panel, ddof = 1))]
+fn forecast_disagreement<'py>(
+    py: Python<'py>,
+    panel: Vec<PyReadonlyArray1<'py, f64>>,
+    ddof: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let cross: Vec<Vec<f64>> = panel.iter().map(vec1).collect();
+    let dg = tsecon_survey::disagreement(&cross, ddof).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("std", dg.std.clone().into_pyarray(py))?;
+    d.set_item("p25", dg.p25.clone().into_pyarray(py))?;
+    d.set_item("p50", dg.p50.clone().into_pyarray(py))?;
+    d.set_item("p75", dg.p75.clone().into_pyarray(py))?;
+    d.set_item("iqr", dg.iqr.clone().into_pyarray(py))?;
+    d.set_item("counts", dg.counts.clone())?;
+    Ok(d)
+}
+
+/// Fractional integration `(1 - L)^{-d} x` — the inverse of `frac_diff`.
+#[pyfunction]
+fn frac_integrate<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    d: f64,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let out = tsecon_longmemory::frac_integrate(&vec1(&x), d).map_err(to_py)?;
+    Ok(out.into_pyarray(py))
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -3350,5 +3387,7 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(forecast_efficiency, m)?)?;
     m.add_function(wrap_pyfunction!(frac_diff, m)?)?;
     m.add_function(wrap_pyfunction!(long_memory_d, m)?)?;
+    m.add_function(wrap_pyfunction!(forecast_disagreement, m)?)?;
+    m.add_function(wrap_pyfunction!(frac_integrate, m)?)?;
     Ok(())
 }
