@@ -473,7 +473,7 @@ fn var_fit<'py>(
 /// variable i to a shock in variable j at horizon h (orthogonalized via
 /// the Cholesky factor of sigma_u when `orth=True`).
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, horizon = 10, orth = true, trend = "c"))]
+#[pyo3(signature = (data, lags = 2, horizon = 10, orth = true, trend = "c", cumulative = false))]
 fn var_irf<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
@@ -481,11 +481,25 @@ fn var_irf<'py>(
     horizon: usize,
     orth: bool,
     trend: &str,
+    cumulative: bool,
 ) -> PyResult<Bound<'py, pyo3::types::PyList>> {
     let r = var_results(&data, lags, trend)?;
     let irf = r.irf(horizon).map_err(to_py)?;
     let mats = if orth { &irf.orth_irfs } else { &irf.irfs };
-    let out: Vec<Vec<Vec<f64>>> = mats.iter().map(mat_to_vec2).collect();
+    let mut out: Vec<Vec<Vec<f64>>> = mats.iter().map(mat_to_vec2).collect();
+    if cumulative {
+        // Running total over horizons: the level response to a shock when the
+        // VAR is estimated in differences. Point path only — correct cumulative
+        // BANDS need the joint covariance across horizons (delta method or
+        // bootstrap; Bayesian: use bvar_irf_draws(cumulative=True)).
+        for h in 1..out.len() {
+            for i in 0..out[h].len() {
+                for j in 0..out[h][i].len() {
+                    out[h][i][j] += out[h - 1][i][j];
+                }
+            }
+        }
+    }
     pyo3::types::PyList::new(py, out.iter().map(|m| m.clone()))
 }
 
@@ -507,6 +521,13 @@ fn var_fevd<'py>(
 }
 
 /// Iterated VAR point forecasts with (innovation-uncertainty) intervals.
+///
+/// `alpha` sets the interval coverage: the bands are the symmetric
+/// `1 - alpha` asymptotic intervals `point +/- z_{1-alpha/2} * se`
+/// (normal quantile; e.g. the default `alpha=0.05` is a 95% interval
+/// with z = 1.96, `alpha=0.32` a 68% interval with z ~= 0.994).
+/// Intervals reflect innovation uncertainty only (coefficients treated
+/// as known), matching statsmodels `forecast_interval`.
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, steps = 8, alpha = 0.05, trend = "c"))]
 fn var_forecast<'py>(
@@ -703,6 +724,12 @@ fn theta_forecast<'py>(
 /// `dist`: "normal" or "t". Conventions and results match the `arch`
 /// package (fixed-parameter logliks at machine precision). Returns both
 /// MLE and Bollerslev-Wooldridge robust standard errors.
+///
+/// When `forecast_horizon > 0`, `variance_forecast` is the analytic
+/// *point* path of conditional variances `E[sigma2_{T+m} | F_T]`,
+/// m = 1..horizon — it carries no interval or coverage level, and none
+/// is implied (forecast distributions for GARCH variance paths require
+/// simulation, which is not yet exposed).
 #[pyfunction]
 #[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = 1, q = 1, forecast_horizon = 0))]
 #[allow(clippy::too_many_arguments)]
@@ -787,10 +814,16 @@ fn bvar_fit<'py>(
 }
 
 /// Posterior draws of Cholesky-orthogonalized impulse responses from the
-/// Minnesota-NIW BVAR: returns a list [draw][horizon][variable][shock] —
-/// take numpy quantiles across draws for credible bands.
+/// Minnesota-NIW BVAR: returns a list [draw][horizon][variable][shock].
+///
+/// Raw draws are returned exactly so credible-band coverage is
+/// configurable by construction: form pointwise bands with numpy
+/// quantiles across the draw axis, choosing the quantile pair to match
+/// the stated coverage — e.g. a 90% band is
+/// `np.quantile(draws, [0.05, 0.95], axis=0)`, a 68% band
+/// `np.quantile(draws, [0.16, 0.84], axis=0)`.
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, horizon = 16, n_draws = 500, seed = 0, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0))]
+#[pyo3(signature = (data, lags = 2, horizon = 16, n_draws = 500, seed = 0, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, cumulative = false))]
 #[allow(clippy::too_many_arguments)]
 fn bvar_irf_draws<'py>(
     py: Python<'py>,
@@ -803,6 +836,7 @@ fn bvar_irf_draws<'py>(
     lambda1: f64,
     lambda3: f64,
     delta: f64,
+    cumulative: bool,
 ) -> PyResult<Bound<'py, pyo3::types::PyList>> {
     let a = data.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
@@ -811,10 +845,24 @@ fn bvar_irf_draws<'py>(
     let post = prior.posterior(m.as_ref()).map_err(to_py)?;
     let mut stream = tsecon_rng::Stream::new(seed);
     let draws = post.irf_draws(n_draws, horizon, &mut stream).map_err(to_py)?;
-    let out: Vec<Vec<Vec<Vec<f64>>>> = draws
+    let mut out: Vec<Vec<Vec<Vec<f64>>>> = draws
         .iter()
         .map(|dr| dr.iter().map(mat_to_vec2_bayes).collect())
         .collect();
+    if cumulative {
+        // Cumulate WITHIN each draw, then the caller's quantiles across draws
+        // give correctly cumulated credible bands (the summed responses are
+        // correlated across horizons, so cumulating the bands would be wrong).
+        for draw in out.iter_mut() {
+            for h in 1..draw.len() {
+                for i in 0..draw[h].len() {
+                    for j in 0..draw[h][i].len() {
+                        draw[h][i][j] += draw[h - 1][i][j];
+                    }
+                }
+            }
+        }
+    }
     pyo3::types::PyList::new(py, out.iter().map(|d| d.clone()))
 }
 
@@ -844,8 +892,17 @@ fn mcmc_diagnostics<'py>(
 /// polish; Hannan-Rissanen starting values). `d > 0` uses simple
 /// differencing (the statsmodels simple_differencing=True convention),
 /// and forecasts are undifferenced with exact cumulative variance.
+///
+/// With `forecast_steps > 0`, `conf_alpha` (default None) additionally
+/// returns `forecast_lower`/`forecast_upper`: the symmetric Gaussian
+/// `1 - conf_alpha` intervals `mean +/- z_{1-conf_alpha/2} * se`
+/// (statsmodels `get_forecast(...).conf_int(alpha)` convention; e.g.
+/// `conf_alpha=0.05` gives 95% bands with z = 1.96). Standard errors
+/// reflect innovation and filtering uncertainty only (parameters
+/// treated as known).
 #[pyfunction]
-#[pyo3(signature = (y, p = 1, d = 0, q = 0, constant = true, forecast_steps = 0))]
+#[pyo3(signature = (y, p = 1, d = 0, q = 0, constant = true, forecast_steps = 0, conf_alpha = None))]
+#[allow(clippy::too_many_arguments)]
 fn arima_fit<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
@@ -854,7 +911,13 @@ fn arima_fit<'py>(
     q: usize,
     constant: bool,
     forecast_steps: usize,
+    conf_alpha: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
+    if conf_alpha.is_some() && forecast_steps == 0 {
+        return Err(PyValueError::new_err(
+            "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
+        ));
+    }
     let spec = tsecon_arima::ArimaSpec::new(p, d, q).map_err(to_py)?.with_constant(constant);
     let r = spec.fit(y.as_slice()?).map_err(to_py)?;
     let dct = PyDict::new(py);
@@ -865,6 +928,13 @@ fn arima_fit<'py>(
     dct.set_item("bic", r.bic)?;
     if forecast_steps > 0 {
         let fc = r.forecast(forecast_steps).map_err(to_py)?;
+        if let Some(alpha) = conf_alpha {
+            let ci = fc.conf_int(alpha).map_err(to_py)?;
+            let (lower, upper): (Vec<f64>, Vec<f64>) = ci.into_iter().unzip();
+            dct.set_item("forecast_lower", lower.into_pyarray(py))?;
+            dct.set_item("forecast_upper", upper.into_pyarray(py))?;
+            dct.set_item("conf_alpha", alpha)?;
+        }
         dct.set_item("forecast_mean", fc.mean.into_pyarray(py))?;
         dct.set_item("forecast_se", fc.se.into_pyarray(py))?;
     }
