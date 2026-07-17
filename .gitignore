@@ -3,8 +3,12 @@ Cargo.lock
 __pycache__/
 *.pyc
 .venv/
-dist/
+# Python wheel/sdist build output — ANCHORED to the build dir so it does not
+# also match Rust source module directories named `dist` (e.g.
+# crates/tsecon-stats/src/dist/, which is real source that must be committed).
+/bindings/python/dist/
 *.so
 *.egg-info/
 .pytest_cache/
 .DS_Store
+.claude/
