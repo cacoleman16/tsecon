@@ -499,8 +499,48 @@ def section_bvar():
         save(fig, "11-bvar-irf.png")
 
 
+# ------------------------------------------------------------------
+# 11. ARIMA: fit, forecast, fan chart — end to end
+# ------------------------------------------------------------------
+def section_arima():
+    n, h = 160, 16
+    e = rng.standard_normal(n + 60)
+    g = np.empty(n + 60)
+    g[0] = 0.0
+    for t in range(1, n + 60):          # ARMA(1,1) growth around 0.5
+        g[t] = 0.5 * 0.55 + 0.45 * g[t - 1] + e[t] * 0.9 + 0.35 * e[t - 1]
+    level = 100 + np.cumsum(g[60:])      # integrate: an ARIMA(1,1,1)+drift level
+
+    r = tsecon.arima_fit(level, p=1, d=1, q=1, constant=True, forecast_steps=h)
+    mean, se = np.asarray(r["forecast_mean"]), np.asarray(r["forecast_se"])
+
+    with ts.theme():
+        fig, ax = plt.subplots(figsize=(ts.WIDTH_DOUBLE, 2.9))
+        x_h, x_f = np.arange(n), np.arange(n - 1, n + h)
+        m = np.concatenate([[level[-1]], mean])
+        s = np.concatenate([[0.0], se])
+        for cov, step in zip([0.90, 0.68, 0.40], ts.SEQ_BLUE[:3]):
+            z = {0.40: 0.524, 0.68: 0.994, 0.90: 1.645}[cov]
+            ax.fill_between(x_f, m - z * s, m + z * s, color=step, lw=0, zorder=2)
+        ax.plot(x_h[-90:], level[-90:], color=ts.INK, lw=1.5, zorder=3)
+        ax.plot(x_f, m, color=ts.SEQ_BLUE[6], lw=1.6, ls=(0, (4, 2)), zorder=3)
+        ax.axvline(n - 1, color=ts.REF, lw=0.9, zorder=1.5)
+        ax.annotate("90% band", xy=(x_f[-1] + 0.4, m[-1] + 1.645 * s[-1] * 0.9),
+                    fontsize=7.5, color=ts.INK_2, va="center")
+        ax.annotate("point forecast", xy=(x_f[-1] + 0.4, m[-1]), fontsize=7.5,
+                    color=ts.SEQ_BLUE[6], va="center")
+        ax.set_xlim(n - 92, n + h + 7)
+        names = ", ".join(f"{k} = {v:.3f}" for k, v in zip(r["param_names"], r["params"]))
+        ax.set_title("ARIMA(1,1,1) with drift: fitted by exact MLE, forecast with honest fan")
+        fig.tight_layout()
+        ts.stamp(fig, f"tsecon.arima_fit (exact MLE via the Kalman engine) · {names} · "
+                      "undifferencing carries exact cumulative variance — the fan widens like sqrt(h)")
+        save(fig, "12-arima-fan.png")
+
+
 ALL = [section_acf, section_stationarity, section_hac, section_bootstrap, section_kalman,
-       section_var, section_filters, section_forecast_eval, section_garch, section_bvar]
+       section_var, section_filters, section_forecast_eval, section_garch, section_bvar,
+       section_arima]
 
 if __name__ == "__main__":
     only = sys.argv[1:] if len(sys.argv) > 1 else None

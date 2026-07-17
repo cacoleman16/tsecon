@@ -268,5 +268,26 @@ follow.
 
 ---
 
-*Coming when the last crate lands: ARIMA estimation with fan-chart
-forecasting — same format: use case, code, synthetic data, figure.*
+## 11 · ARIMA: fit, forecast, fan chart
+
+**Use case:** the default univariate forecasting model. Difference to
+stationarity, capture short-run dynamics with AR and MA terms, forecast,
+and undifference — with uncertainty that compounds correctly across the
+integration.
+
+```python
+r = tsecon.arima_fit(y, p=1, d=1, q=1, constant=True, forecast_steps=16)
+r["params"], r["loglik"], r["aic"]      # exact MLE via the Kalman engine
+r["forecast_mean"], r["forecast_se"]     # undifferenced, exact cumulative variance
+tsecon.ljung_box(r["residuals"])         # adequacy check: residuals ~ white noise?
+```
+
+![ARIMA fan chart](img/12-arima-fan.png)
+
+Fitted by exact maximum likelihood (Monahan-transformed L-BFGS with
+Hannan-Rissanen starting values), the fan widens like √h exactly as the
+random-walk-plus-dynamics theory requires. A validation note worth
+telling: on the Nile benchmark our optimizer found a *better* optimum than
+the one statsmodels' default fit had stored in our golden fixture — the
+fixture had pinned a non-converged artifact, which independent
+cross-checking confirmed. Validation-first development cuts both ways.
