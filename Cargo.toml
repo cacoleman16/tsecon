@@ -15,6 +15,9 @@ members = [
     "crates/tsecon-forecast",
     "crates/tsecon-bayes",
     "crates/tsecon-panel",
+    "crates/tsecon-ml",
+    "crates/tsecon-lp",
+    "crates/tsecon-ident",
     "crates/tsecon-ssm",
     "bindings/python",
 ]
