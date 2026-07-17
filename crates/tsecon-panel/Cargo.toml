@@ -3,5 +3,22 @@ name = "tsecon-panel"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Panel time series econometrics for the tsecon library: balanced fixed-effects (within) panel OLS with nonrobust, entity-clustered (Arellano 1987), and Driscoll-Kraay (1998) covariances matching linearmodels PanelOLS conventions, panel local projections (Jorda 2005) with Ramey-Zubairy cumulative multipliers and the Dhaene-Jochmans (2015) half-panel jackknife Nickell-bias correction, and the Pesaran-Smith (1995) mean-group panel VAR"
 
 [dependencies]
+# faer is consumed through the tsecon-linalg re-export so the whole
+# workspace shares one pinned version (0.24, default-features = false,
+# features = ["std"]).
+tsecon-linalg = { path = "../tsecon-linalg" }
+# Single owner of kernel weights (ROADMAP §5): Driscoll-Kraay is a
+# Bartlett-kernel HAC on per-period score sums, so the lag weights come
+# from tsecon-hac rather than being reimplemented here.
+tsecon-hac = { path = "../tsecon-hac" }
+# Per-entity reduced-form VARs and Cholesky-orthogonalized IRFs for the
+# Pesaran-Smith mean-group estimator.
+tsecon-var = { path = "../tsecon-var" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
