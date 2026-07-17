@@ -29,6 +29,9 @@ members = [
     "crates/tsecon-gmm",
     "crates/tsecon-termstructure",
     "crates/tsecon-ssm",
+    "crates/tsecon-gas",
+    "crates/tsecon-nowcast",
+    "crates/tsecon-panelts",
     "bindings/python",
 ]
 

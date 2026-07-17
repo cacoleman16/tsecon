@@ -1,0 +1,22 @@
+[package]
+name = "tsecon-panelts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Heterogeneous-panel time-series estimators for the tsecon time-series econometrics library: the Pesaran-Smith (1995) mean-group estimator with cross-unit standard errors, the Pesaran (2006) common-correlated-effects mean-group (CCE-MG) estimator that augments each unit with cross-section averages to purge unobserved common factors, and the pooled mean-group (Pesaran-Shin-Smith 1999) ARDL long-run estimator"
+
+[dependencies]
+# faer via the shared tsecon-linalg re-export.
+tsecon-linalg = { path = "../tsecon-linalg" }
+# OLS and HAC/robust standard errors — the library's single owner of the
+# kernel-weighted covariance; panel estimators never reimplement them.
+tsecon-hac = { path = "../tsecon-hac" }
+# t/normal quantiles for the mean-group confidence bands.
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# Seeded Philox streams drive the property-test Monte Carlo designs.
+tsecon-rng = { path = "../tsecon-rng" }

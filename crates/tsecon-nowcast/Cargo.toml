@@ -1,0 +1,26 @@
+[package]
+name = "tsecon-nowcast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Dynamic-factor-model nowcasting (Doz-Giannone-Reichlin 2011 two-step; Banbura-Modugno 2014) for the tsecon time-series econometrics library: PCA initial factors on a standardized panel, a factor VAR/AR transition, and the Kalman filter/smoother over a ragged-edge state space to produce the current-quarter nowcast, with the news/update decomposition"
+
+[dependencies]
+# faer via the shared tsecon-linalg re-export.
+tsecon-linalg = { path = "../tsecon-linalg" }
+# Validated principal-component factor extraction (standardization,
+# sign-fixed PCs/loadings, standardized reconstruction) for the DGR step 1.
+tsecon-favar = { path = "../tsecon-favar" }
+# The exact-diffuse Kalman filter/smoother state-space engine.
+tsecon-ssm = { path = "../tsecon-ssm" }
+# The factor VAR transition and its companion form.
+tsecon-var = { path = "../tsecon-var" }
+# Standardization / densities used in the likelihood.
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# Seeded Philox streams drive the property-test Monte Carlo designs.
+tsecon-rng = { path = "../tsecon-rng" }

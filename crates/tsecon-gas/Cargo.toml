@@ -1,0 +1,22 @@
+[package]
+name = "tsecon-gas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Generalized autoregressive score (GAS) / dynamic conditional score (DCS) models (Creal-Koopman-Lucas 2013; Harvey 2013) for the tsecon time-series econometrics library: score-driven time-varying parameters with Gaussian and Student-t observation densities, the scaled-score recursion, maximum-likelihood estimation, filtering, and multi-step forecasting"
+
+[dependencies]
+# Small dense linear algebra shared workspace-wide via the tsecon-linalg
+# faer re-export (no direct faer dependency).
+tsecon-linalg = { path = "../tsecon-linalg" }
+# Derivative-free optimizer for the score-driven ML estimation.
+tsecon-optim = { path = "../tsecon-optim" }
+# Densities / quantiles (Gaussian, Student-t) and their score terms.
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# Seeded Philox streams drive the property-test Monte Carlo designs.
+tsecon-rng = { path = "../tsecon-rng" }
