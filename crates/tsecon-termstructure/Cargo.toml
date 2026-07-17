@@ -3,5 +3,19 @@ name = "tsecon-termstructure"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Yield-curve / term-structure econometrics for the tsecon time-series library (extension E2): Nelson-Siegel (1987) loadings and cross-sectional factor fit at fixed lambda, optimal-lambda NLS Nelson-Siegel, the Svensson (1994) four-factor extension, the Diebold-Li (2006) dynamic Nelson-Siegel with AR(1) factor dynamics and one-step curve forecasts, plus fitted-yield and implied-forward curve utilities"
 
 [dependencies]
+# OLS / normal-equations solve — the library's single HAC/OLS owner. The
+# cross-sectional Nelson-Siegel and Svensson fits, the AR(1) factor dynamics,
+# and the R^2 diagnostics all route through this crate's `ols`.
+tsecon-hac = { path = "../tsecon-hac" }
+# Derivative-free minimizer used to profile out the linear factors and
+# estimate the Nelson-Siegel decay parameter lambda by nonlinear least
+# squares (Nelder-Mead over the concentrated curve-fit SSR).
+tsecon-optim = { path = "../tsecon-optim" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
