@@ -18,6 +18,10 @@ members = [
     "crates/tsecon-ml",
     "crates/tsecon-lp",
     "crates/tsecon-ident",
+    "crates/tsecon-coint",
+    "crates/tsecon-regime",
+    "crates/tsecon-midas",
+    "crates/tsecon-mgarch",
     "crates/tsecon-ssm",
     "bindings/python",
 ]
