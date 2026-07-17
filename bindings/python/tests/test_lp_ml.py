@@ -63,3 +63,34 @@ def test_ridge_lasso_elasticnet_match_sklearn():
         else:  # elastic net
             coef = tsecon.elastic_net(X, y, alpha=p["alpha"], l1_ratio=p["l1_ratio"])["coef"]
         np.testing.assert_allclose(coef, case["coef"], atol=1e-6, err_msg=case["name"])
+
+
+BVARDATA = np.array(json.loads((FIX / "bvar_niw.json").read_text())["data"])
+
+
+def test_sign_restricted_svar_runs_and_diagnoses():
+    # Restrict shock 0 to raise all three variables on impact.
+    restr = [(0, 0, 0, "+"), (1, 0, 0, "+"), (2, 0, 0, "+")]
+    r = tsecon.sign_restricted_svar(BVARDATA, restr, lags=2, horizon=8,
+                                    n_draws=300, max_tries=300, seed=42)
+    d = r["diagnostics"]
+    assert d["accepted"] > 0 and 0.0 < d["acceptance_rate"] <= 1.0
+    assert d["accepted"] <= d["posterior_draws_used"]
+    probs = np.asarray(r["probs"])
+    np.testing.assert_allclose(probs, [0.05, 0.16, 0.50, 0.84, 0.95])
+    q = np.asarray(r["quantiles"])          # [h][var][shock][prob]
+    assert q.shape == (9, 3, 3, 5)
+    # Median lies within the identified-set envelope [min, max]
+    smin, smax = np.asarray(r["set_min"]), np.asarray(r["set_max"])
+    med = q[..., 2]
+    assert (med >= smin - 1e-9).all() and (med <= smax + 1e-9).all()
+    # The imposed restrictions hold on impact for shock 0: responses positive
+    assert (q[0, :, 0, 2] > 0).all()
+
+
+def test_sign_restricted_svar_reproducible():
+    restr = [(0, 0, 0, "+"), (1, 0, 0, "+")]
+    a = tsecon.sign_restricted_svar(BVARDATA, restr, horizon=6, n_draws=200, seed=7)
+    b = tsecon.sign_restricted_svar(BVARDATA, restr, horizon=6, n_draws=200, seed=7)
+    np.testing.assert_array_equal(np.asarray(a["quantiles"]), np.asarray(b["quantiles"]))
+    assert a["diagnostics"]["accepted"] == b["diagnostics"]["accepted"]

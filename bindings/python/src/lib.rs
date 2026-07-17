@@ -1175,6 +1175,87 @@ fn lasso<'py>(
     elastic_net(py, x, y, alpha, 1.0, tol, max_iter)
 }
 
+/// Sign-restricted Bayesian SVAR (Uhlig 2005; Rubio-Ramirez-Waggoner-Zha
+/// 2010) on the Minnesota-NIW posterior.
+///
+/// `restrictions` is a list of `(variable, shock, horizon, sign)` tuples with
+/// `sign` in {"+", "-"}. Returns, per (horizon, variable, shock), the
+/// identified-set envelope (`set_min`/`set_max`) and posterior `quantiles` at
+/// `probs = [0.05, 0.16, 0.50, 0.84, 0.95]` (median + 68/90% credible bands),
+/// plus the mandatory acceptance `diagnostics` — in set-identified settings
+/// the diagnostics are the inference.
+#[pyfunction]
+#[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2))]
+#[allow(clippy::too_many_arguments)]
+fn sign_restricted_svar<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    restrictions: Vec<(usize, usize, usize, String)>,
+    lags: usize,
+    horizon: usize,
+    n_draws: usize,
+    max_tries: usize,
+    seed: u64,
+    lambda1: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::{Sign, SignRestriction, SignRestrictionSet, SignSampler};
+    let a = data.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let n_vars = a.ncols();
+    let prior = tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, 100.0, lambda1, 1.0, 0.0)
+        .map_err(to_py)?;
+    let posterior = prior.posterior(m.as_ref()).map_err(to_py)?;
+
+    let mut rs = Vec::with_capacity(restrictions.len());
+    for (v, s, h, sign) in restrictions {
+        let sg = match sign.as_str() {
+            "+" | "positive" => Sign::Positive,
+            "-" | "negative" => Sign::Negative,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown sign {other:?}; expected \"+\" or \"-\""
+                )))
+            }
+        };
+        rs.push(SignRestriction::at(v, s, h, sg));
+    }
+    let restr = SignRestrictionSet::new(rs, n_vars, horizon).map_err(to_py)?;
+    let result = SignSampler::new(horizon, n_draws, max_tries)
+        .map_err(to_py)?
+        .run(&posterior, &restr, seed)
+        .map_err(to_py)?;
+
+    let summary = result.summary();
+    let hs = horizon + 1;
+    // quantiles[h][var][shock][prob], set_min/set_max[h][var][shock]
+    let mut quantiles = vec![vec![vec![Vec::<f64>::new(); n_vars]; n_vars]; hs];
+    let mut set_min = vec![vec![vec![0.0_f64; n_vars]; n_vars]; hs];
+    let mut set_max = vec![vec![vec![0.0_f64; n_vars]; n_vars]; hs];
+    for h in 0..hs {
+        for i in 0..n_vars {
+            for j in 0..n_vars {
+                let bp = summary.point(i, j, h).map_err(to_py)?;
+                quantiles[h][i][j] = bp.quantiles.clone();
+                set_min[h][i][j] = bp.min;
+                set_max[h][i][j] = bp.max;
+            }
+        }
+    }
+    let d = PyDict::new(py);
+    d.set_item("probs", summary.probs().to_vec())?;
+    d.set_item("quantiles", quantiles)?;
+    d.set_item("set_min", set_min)?;
+    d.set_item("set_max", set_max)?;
+    let diag = result.diagnostics();
+    let dd = PyDict::new(py);
+    dd.set_item("posterior_draws_used", diag.posterior_draws_used)?;
+    dd.set_item("rotations_tried", diag.rotations_tried)?;
+    dd.set_item("accepted", diag.accepted)?;
+    dd.set_item("acceptance_rate", diag.acceptance_rate)?;
+    d.set_item("diagnostics", dd)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -1215,5 +1296,6 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ridge, m)?)?;
     m.add_function(wrap_pyfunction!(elastic_net, m)?)?;
     m.add_function(wrap_pyfunction!(lasso, m)?)?;
+    m.add_function(wrap_pyfunction!(sign_restricted_svar, m)?)?;
     Ok(())
 }

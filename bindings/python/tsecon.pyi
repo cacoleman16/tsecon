@@ -260,3 +260,22 @@ def lasso(
     max_iter: int = ...,
 ) -> dict[str, Any]:
     """Lasso (elastic net with l1_ratio = 1.0)."""
+
+# --------------------------------------------------- structural identification
+def sign_restricted_svar(
+    data: _ArrayLike,
+    restrictions: Sequence[tuple[int, int, int, str]],
+    lags: int = ...,
+    horizon: int = ...,
+    n_draws: int = ...,
+    max_tries: int = ...,
+    seed: int = ...,
+    lambda1: float = ...,
+) -> dict[str, Any]:
+    """Sign-restricted Bayesian SVAR: identified-set bands + acceptance diagnostics.
+
+    `restrictions` are (variable, shock, horizon, sign) tuples with sign in
+    {"+", "-"}. Returns per-(horizon, variable, shock) `quantiles` at
+    `probs=[0.05,0.16,0.50,0.84,0.95]`, the identified-set envelope
+    (`set_min`/`set_max`), and `diagnostics`.
+    """
