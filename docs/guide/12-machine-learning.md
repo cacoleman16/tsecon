@@ -202,12 +202,28 @@ Unpenalized OLS pays a 15% RMSE premium for estimating 22 coefficients that are 
 
 Two structured extensions matter for time series designs. The **group LASSO** (Yuan & Lin 2006) penalizes coefficients in pre-declared groups by $\lambda \sum_g \sqrt{p_g}\, \lVert \beta_g \rVert_2$, so a group — naturally, *all lags of one variable* — enters or leaves the model as a unit; selection happens at the economic level ("does oil matter?") rather than the lag level ("does the seventh lag of oil matter?"). The **sparse-group LASSO** (Simon, Friedman, Hastie & Tibshirani 2013) mixes in a within-group L1 term so a selected variable can still use only a few of its lags — it is also the engine under the nowcasting chapter's MIDAS regressions. For tuning, information criteria are often preferable to CV in time series (faster, no splitting subtleties): for the LASSO the degrees of freedom equal the number of nonzero coefficients *exactly* (Zou, Hastie & Tibshirani 2007), making BIC well-defined; when the predictor count outruns the sample, use the extended BIC (Chen & Chen 2008) or BIC will overselect catastrophically.
 
-*Roadmap preview — this API lands with Module 10:*
+The path solver has since landed as `tsecon.lasso_path` (taught in full below); the elastic-net blend is the same call with `l1_ratio < 1`, and the information criteria come back with it. On the 24-lag AR(2) design from the ridge example above:
 
 ```python
-path = tsecon.lasso_path(target, X)                     # glmnet-convention path
-fit  = tsecon.enet(target, X, alpha=0.5, tune="bic")    # IC-tuned elastic net
-grp  = tsecon.group_lasso(target, X, groups="lag-block")
+path = tsecon.lasso_path(X, target)                    # glmnet-convention LASSO path
+enet = tsecon.lasso_path(X, target, l1_ratio=0.5)      # l1_ratio<1 blends in the ridge penalty
+print(f"LASSO path: {len(path['lambdas'])} lambdas; "
+      f"BIC picks df={path['df'][path['bic_best']]}, AIC picks df={path['df'][path['aic_best']]}")
+print(f"elastic net (l1_ratio=0.5): BIC picks df={enet['df'][enet['bic_best']]}, "
+      f"AIC picks df={enet['df'][enet['aic_best']]}")
+```
+
+```text
+LASSO path: 100 lambdas; BIC picks df=1, AIC picks df=8
+elastic net (l1_ratio=0.5): BIC picks df=1, AIC picks df=9
+```
+
+The grouped variant — where all lags of one variable enter or leave together — is still on the roadmap:
+
+> **Preview** — `group_lasso` (whole-variable, all-lags-together selection) is on the [roadmap](../../ROADMAP.md); the call below shows the intended API, not a shipped function.
+
+```python
+grp = tsecon.group_lasso(X, target, groups="lag-block")   # a variable enters/leaves as a unit
 ```
 
 > **⚠ Common mistake.** Reporting ordinary OLS standard errors on coefficients after any selection step. Selection is a data-dependent event; conditioning on it invalidates the usual distribution theory, and the resulting "t-statistics" are fiction. Refitting OLS on the selected support (post-LASSO, Belloni & Chernozhukov 2013) de-biases the *point estimates* but does not rescue the standard errors — for honest inference you need the desparsified LASSO or post-double-selection, both below. A second, quieter trap: penalized objectives differ across software in loss scaling (the $1/2n$ above is the glmnet convention) and standardization defaults, so the same $\lambda$ means different things in different packages. tsecon matches glmnet's conventions exactly so published $\lambda$ values transfer.
@@ -232,12 +248,43 @@ with $\beta(L)$, $\gamma(L)$ short lag polynomials. The factors compress 130 ser
 
 Where does the ML framing earn its keep? Factor models *are* unsupervised learning — PCA is the textbook first example — followed by a supervised readout. Thinking of them that way clarifies both their power (they exploit the panel's pervasive comovement, exactly the structure that defeats sparse methods, as the next section explains) and their obligations (the entire pipeline, standardization and factor extraction included, must sit inside the honest backtest loop).
 
-*Roadmap preview — this API lands with Module 10:*
+The PCA factor extraction has landed as `tsecon.factor_model` — principal-component factors with the Bai-Ng (2002) count built in. Here a 60-series panel is driven by three persistent common factors; the estimator recovers the count, and the factors forecast a factor-driven target better than its own past does:
 
 ```python
-f  = tsecon.diffusion_index(panel, n_factors="bai-ng", kmax=8)
-fc = tsecon.factor_forecast(y, f["factors"], h=12, y_lags=4)
+import numpy as np, tsecon
+
+# A large panel driven by a few persistent common factors (the Stock-Watson setup):
+#   X_t = Λ F_t + e_t,  the factors following an AR(1) so they carry forecastable signal.
+rng = np.random.default_rng(0)
+T, N, r = 240, 60, 3
+F = np.zeros((T, r))
+for t in range(1, T):
+    F[t] = 0.9 * F[t-1] + rng.standard_normal(r)          # persistent common factors
+loadings = rng.standard_normal((N, r))
+panel = F @ loadings.T + rng.standard_normal((T, N))
+
+sel   = tsecon.factor_model(panel, kmax=8)                # Bai-Ng (2002) chooses the count
+r_hat = sel["icp2"]
+Fhat  = np.array(tsecon.factor_model(panel, n_factors=r_hat, kmax=8)["factors"])
+print(f"Bai-Ng ICp2 selects {r_hat} factors (truth {r}); ICp1={sel['icp1']}, ER={sel['er']}")
+
+# Supervised readout: forecast a factor-driven target h steps out from [const, F_t, y_t].
+y, h = F @ np.array([1.0, -0.6, 0.4]) + 0.5 * rng.standard_normal(T), 4
+def r2(cols):
+    Xr = np.column_stack([np.ones(T - h)] + cols)
+    p  = np.array(tsecon.ols(y[h:], Xr)["params"])
+    return 1.0 - np.sum((y[h:] - Xr @ p) ** 2) / np.sum((y[h:] - y[h:].mean()) ** 2)
+print(f"factor readout R^2 (h={h}) : {r2([Fhat[:-h], y[:-h]]):.3f}")
+print(f"AR(1) benchmark  R^2 (h={h}) : {r2([y[:-h]]):.3f}")
 ```
+
+```text
+Bai-Ng ICp2 selects 3 factors (truth 3); ICp1=3, ER=3
+factor readout R^2 (h=4) : 0.184
+AR(1) benchmark  R^2 (h=4) : 0.150
+```
+
+The factors carry predictive signal the target's own lag does not — the diffusion-index bet in miniature. A one-call `factor_forecast` facade (the supervised readout with automatic lag selection) is still on the roadmap; the lines above are all it would wrap.
 
 > **⚠ Common mistake.** Estimating factors once on the full sample and then "backtesting" the forecasting regression on subsamples. The factor estimates at date t now contain information from the entire future of the panel — leakage again, wearing a third hat. In a proper pseudo-out-of-sample exercise the factors are re-extracted at every origin from data observable at that origin. The difference is not academic: full-sample factors are visibly smoother and can flip the sign of apparent forecast gains.
 
@@ -320,7 +367,7 @@ The roadmap previews above have started to become real. Three of this module's T
 - `tsecon.lasso_path` — the glmnet-convention elastic-net path with AIC/BIC selection;
 - `tsecon.adaptive_lasso` — Zou's (2006) oracle-property estimator.
 
-The remaining previews (`enet`, `group_lasso`, `diffusion_index`, `factor_forecast`) are still on the roadmap. This section teaches the three that are here, on real data, with the outputs you actually get back. Everything below runs today.
+The remaining previews (`enet`, `group_lasso`, `factor_forecast`) are still on the roadmap (the PCA factor extraction previewed as `diffusion_index` now ships as `tsecon.factor_model`, used earlier). This section teaches the three that are here, on real data, with the outputs you actually get back. Everything below runs today.
 
 ### Leakage-safe splits: `cv_splits`
 

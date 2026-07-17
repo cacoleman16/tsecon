@@ -109,6 +109,10 @@ An ARMA(1,1) with two dynamic parameters often fits what would take an AR(5) or 
 The residual check is available today, and it has a degrees-of-freedom subtlety worth internalizing now:
 
 ```python
+# fit an ARMA(2,1) to the AR(2) series from the first block, then ask
+# whether its one-step residuals still carry structure
+fit   = tsecon.arima_fit(y, p=2, d=0, q=1, constant=True)
+resid = fit["residuals"]
 lb = tsecon.ljung_box(resid, nlags=10)   # dict: lags, lb_stat, lb_pvalue, ...
 ```
 
@@ -139,14 +143,32 @@ $$
 
 The story that made this famous is the **airline model**. Box and Jenkins took the monthly count of international airline passengers, 1949–1960 — a series with explosive trend growth and a seasonal swing that widens every year. Logs stabilize the widening; one regular difference removes the trend; one seasonal difference removes the stable seasonal pattern; and what remains is captured by just two MA parameters. The result, ARIMA(0,1,1)(0,1,1)$_{12}$ on the logged series, became the default model for seasonal economic data for decades, and its parameter estimates are the canonical cross-package validation target — tsecon's ARIMA crate validates against R's `arima()` on exactly this model.
 
-*Roadmap preview — this API lands with Module 02:*
+The non-seasonal ARIMA engine — exact-MLE ARIMA(p,d,q) with correctly integrated-back forecast intervals — ships in Python today. Here it is on a synthetic monthly series with the airline model's shape (a trend plus a seasonal swing), fit in logs after one regular difference:
 
 ```python
-m  = tsecon.arima_fit(np.log(air), order=(0, 1, 1), seasonal=(0, 1, 1, 12))
-fc = m.forecast(steps=24)        # points + intervals that integrate back correctly
+rng = np.random.default_rng(11)
+n = 144                                   # twelve years of monthly data
+t = np.arange(n)
+season = np.array([0, 6, 14, 8, 3, -2, -7, -5, 1, 4, 9, 15])[t % 12]
+air = np.exp(4.6 + 0.010 * t + 0.02 * season + 0.03 * rng.standard_normal(n))
+
+m = tsecon.arima_fit(np.log(air), p=0, d=1, q=1,
+                     forecast_steps=24, conf_alpha=0.05)
+m["forecast_mean"]                        # 24 log forecasts (integrate back by exp)
+m["forecast_lower"], m["forecast_upper"]  # intervals on the log scale
 ```
 
-(The underlying engine — exact-MLE and CSS estimation of ARIMA(p,d,q) with forecast intervals — is already implemented and tested in the `tsecon-arima` Rust crate; the Python bindings and the seasonal layer are what remain.)
+The *seasonal* layer — a second set of polynomials at the seasonal lag, the airline model proper — is still on the roadmap:
+
+> **Preview** — the seasonal `(P, D, Q, s)` order is on the [Module 02 roadmap](../roadmap/02-univariate.md); the call below shows the intended API, a seasonal argument added to the `arima_fit` that ships today.
+
+```python
+m = tsecon.arima_fit(np.log(air), p=0, d=1, q=1, seasonal=(0, 1, 1, 12),
+                     forecast_steps=24, conf_alpha=0.05)
+m["forecast_mean"]        # points + intervals that integrate back correctly
+```
+
+(The underlying engine — exact-MLE and CSS estimation of ARIMA(p,d,q) with forecast intervals — is implemented and tested in the `tsecon-arima` crate and now wired into Python as `arima_fit`; the seasonal layer is what remains.)
 
 > **⚠ Common mistake.** Overdifferencing. If you difference a series that was already stationary, you *inject* an MA unit root: the differenced series has $\theta = -1$, the likelihood piles up on the invertibility boundary, and estimation becomes unstable. The symptom is a first-lag autocorrelation near $-0.5$ in the differenced series. Related trap: never difference through missing values — a difference across a gap is not a one-period change. Fit in levels via the state-space form instead (below), which handles gaps exactly.
 
@@ -364,13 +386,14 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 
 - `ar_loglik(y, coeffs, sigma2, intercept=0.0)` — exact Gaussian AR(p) log-likelihood via the state-space form with stationary initialization; the exact-MLE kernel this chapter's estimation section is built on
 - `local_level_smooth(y, sigma2_eps, sigma2_eta)` — exact-diffuse Kalman filter and smoother for the local level model; NaNs handled natively as missing data
+- `arima_fit(y, p, d, q, constant=False, forecast_steps=0, conf_alpha=None)` — exact-MLE ARIMA(p,d,q): params, log-likelihood, AIC/BIC, residuals, and multi-step forecasts with correctly integrated-back intervals
 - Identification and diagnostics used throughout the chapter: `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`
 - Differencing decisions: `adf`, `kpss`, `check_stationarity`
 - The exponential-smoothing family's benchmark: `theta_forecast`, with `accuracy` and `dm_test` for honest evaluation
 
-**Built in Rust, awaiting Python bindings** (`tsecon-arima` crate):
+**Built in Rust, partly awaiting Python bindings** (`tsecon-arima` crate):
 
-- ARIMA(p,d,q) specification (`ArimaSpec`), exact MLE (`fit`) and CSS (`fit_css`) estimation, log-likelihood evaluation, residuals, and multi-step forecasting with correctly integrated-back confidence intervals (`forecast`, `conf_int`)
+- The non-seasonal ARIMA(p,d,q) engine ships in Python as `arima_fit` above (exact MLE, log-likelihood, residuals, integrated-back forecast intervals). Still Rust-only and on the roadmap for Python: the CSS estimator (`fit_css`) and the seasonal SARIMA layer
 
 **Roadmap** ([docs/roadmap/02-univariate.md](../roadmap/02-univariate.md)):
 

@@ -159,15 +159,21 @@ print("implied weight on each monthly lag:", np.round(w, 3))
 
 The recovered weight curve *is* the economics: it tells you how quickly information decays — whether last month matters twice as much as three months ago or twenty times as much. (In this raw Almon form the slope $\beta_1$ is absorbed into the polynomial rather than identified separately; the normalized nonlinear schemes separate them.)
 
-The nonlinear members of the family are built in the roadmap's MIDAS machinery, with the numerical safeguards they need — log-space weight evaluation (naive $\exp(\theta_1 k)$ overflows with daily lags), mandatory multistart for the multimodal NLS objective, and calendar-driven leads.
+The nonlinear members of the family ship today, with the numerical safeguards they need — log-space weight evaluation (naive $\exp(\theta_1 k)$ overflows with daily lags) and a multistart search for the multimodal NLS objective. `tsecon.midas_weights(scheme, theta1, theta2, k)` builds a weight curve for either the `"exp_almon"` or `"beta"` family; `tsecon.weighted_midas(y, hf_lags, scheme=...)` fits it by NLS; and `tsecon.umidas(y, hf_lags)` runs the unrestricted variant. (The further refinements — ADL autoregressive terms and calendar-driven leads — remain roadmap material.)
 
-*Roadmap preview — this API lands with Module 08:*
+Here are the two weight families the schemes generate, straight from the shipping primitive:
 
 ```python
-m = tsecon.midas(y_q, x_m, weights="expalmon", K=24, ar_lags=1)
-m = tsecon.midas(y_q, x_d, weights="beta", K=66, leads="calendar")
-u = tsecon.umidas(y_q, x_m, K=9, ic="bic")     # unrestricted: fine for m = 3
+# The nonlinear weight curves the prose just described, generated directly.
+# midas_weights returns the K weights (summing to 1); weighted_midas fits them.
+expalmon = tsecon.midas_weights("exp_almon", theta1=0.1, theta2=-0.05, k=24)
+beta = tsecon.midas_weights("beta", theta1=2.0, theta2=3.0, k=66)
+print("exp-Almon: %d daily lags, weights sum to %.6f, most-recent weight %.3f"
+      % (expalmon.size, expalmon.sum(), expalmon[0]))
+print("beta:      %d daily lags, hump peaks at lag %d" % (beta.size, beta.argmax()))
 ```
+
+The next section fits both schemes end-to-end with `weighted_midas` and `umidas` on the golden fixture.
 
 > **⚠ Common mistake** — Off-by-one lag alignment. The single most frequent MIDAS bug in applied work is an indexing error in mapping high-frequency observations to low-frequency periods, especially with leads: "lead = 2" written as index arithmetic quietly hands the regression a month it could not have seen, and the backtest improves for exactly the wrong reason. Leads must be derived from the release calendar. If your MIDAS results look surprisingly good, audit the alignment before you celebrate.
 

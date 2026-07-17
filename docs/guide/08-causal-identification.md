@@ -194,20 +194,39 @@ Draw random rotations $Q$ uniformly (from the *Haar distribution* — the unifor
 
 Two honesty rules come with the method. First, **pointwise medians mix models**: the horizon-3 median and the horizon-8 median of the accepted draws generally come from *different* rotations, so the "median IRF" is not the IRF of any admissible model. Fry and Pagan (2011) proposed reporting the single accepted rotation closest to the pointwise medians (the median-target rotation) alongside the band; tsecon makes that the documented default companion output. Second — the caveat that a decade of applied work learned the hard way — **the uniform prior on rotations is not uninformative about the things you care about**. Baumeister and Hamilton (2015) showed that the Haar prior on $Q$ induces a definitely-not-flat prior on impulse responses and variance shares, and because the data cannot distinguish points *within* the identified set, that prior never washes out, no matter the sample size. Part of any "posterior band" from sign restrictions is Haar-prior artifact rather than evidence. The remedies are to plot prior against posterior (if they overlap heavily, the data barely spoke), to put priors on economically meaningful structural parameters instead (Baumeister-Hamilton's own program), or to report prior-robust bounds — the Giacomini-Kitagawa approach in the frontier section. tsecon's design treats these diagnostics as mandatory output, not options.
 
-*Roadmap preview — this API lands with Module 06:*
+tsecon ships sign-restricted identification today as `sign_restricted_svar`. Here it is on a synthetic monetary system with variables ordered (output, prices, policy rate): the contractionary shock is asked only to raise the rate and lower prices for two quarters, and the *output* response is deliberately left free — so whatever band it traces out is the finding, not an assumption baked in.
 
 ```python
-mon = svar.identify_signs(
-    shock="monetary",
-    restrictions={"ffr": "+", "prices": "-", "nbr": "-"},
-    horizons=range(0, 6),
-    draws=100_000,                  # embarrassingly parallel in the Rust core
-)
-mon.acceptance_rate                 # an identification diagnostic in itself
-mon.irf_bands(alpha=0.32)           # pointwise bands, labeled honestly
-mon.median_target()                 # Fry-Pagan single-model summary
-mon.prior_posterior_overlay("gdp")  # how much is Haar artifact?
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(11)
+T = 500
+eps = rng.standard_normal((T, 3))                 # structural: supply, demand, monetary
+B0 = np.array([[ 0.8, -0.3, -0.4],                # variables: output, prices, ffr
+               [ 0.5,  0.6, -0.5],
+               [ 0.1,  0.4,  0.9]])
+A1 = np.array([[0.5, 0.0, -0.1],
+               [0.1, 0.4,  0.0],
+               [0.0, 0.1,  0.6]])
+y = np.zeros((T, 3))
+for t in range(1, T):
+    y[t] = A1 @ y[t - 1] + B0 @ eps[t]
+
+# a contractionary monetary shock (call it shock 0): the funds rate rises and prices
+# fall for two quarters; the OUTPUT response (variable 0) is left unrestricted.
+restr = [(2, 0, 0, "+"), (2, 0, 1, "+"),          # (variable, shock, horizon, sign): ffr up
+         (1, 0, 0, "-"), (1, 0, 1, "-")]          #                                   prices down
+mon = tsecon.sign_restricted_svar(y, restrictions=restr, lags=1, horizon=12,
+                                  n_draws=2000, seed=0)
+
+print(round(mon["diagnostics"]["acceptance_rate"], 3))   # 0.476 — a diagnostic in itself
+set_min = np.array(mon["set_min"]); set_max = np.array(mon["set_max"])
+print(np.round(set_min[:4, 0, 0], 2))   # [-1.04 -0.71 -0.48 -0.35]  output set, lower edge
+print(np.round(set_max[:4, 0, 0], 2))   # [ 0.65  0.38  0.24  0.15]  upper edge -> spans zero
 ```
+
+The identified set for output straddles zero on impact — Uhlig's punchline, reproduced: the sign restrictions that pin down the rate and price responses simply do not tell you the direction of the output effect, and the `acceptance_rate` (here ~48%) is itself an identification diagnostic. The `quantiles` key adds the pointwise posterior bands (at `probs` 0.05/0.16/0.50/0.84/0.95) inside that envelope; the Fry-Pagan median-target and prior-posterior overlay described above are Module 06 roadmap additions.
 
 > ⚠ **Common mistake:** stacking on sign restrictions to narrow the band without watching the acceptance rate. Acceptance decays roughly exponentially in the number of restrictions; an acceptance rate of $10^{-5}$ means your "posterior" is a handful of surviving draws and the restrictions may be close to mutually inconsistent. The acceptance rate is itself an identification diagnostic — tsecon prints it with every fit. Also: combining *zero* restrictions with sign restrictions naively (impose the zeros, then sign-check) samples from the wrong distribution; the correct algorithm with importance weights is Arias, Rubio-Ramírez, and Waggoner (2018), and the library ships only the corrected version.
 

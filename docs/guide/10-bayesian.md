@@ -165,16 +165,21 @@ $$
 
 with $\Gamma_n$ the multivariate gamma function. This number is the **evidence**: the probability the model-plus-prior assigned to the data you actually saw, with all parameters integrated out. Its practical use is immediate — the tightness dials $\lambda_0, \lambda_1, \lambda_3$ change $\Omega_0$, so you can *score* hyperparameter settings by their marginal likelihood and let the data pick the dials. That one observation powers the hierarchical methods two sections ahead.
 
-*Roadmap preview — this API lands with [Module 05](../roadmap/05-bayesian.md); the Rust core (`MinnesotaNiwPrior`, `NiwPosterior`) is built and validated today:*
+This runs today: `tsecon.bvar_fit` returns the closed-form NIW posterior and its log marginal likelihood, and `tsecon.bvar_irf_draws` pushes each posterior draw through the same companion-form recursion `tsecon.var_irf` uses to build the impulse-response draws for credible bands — both backed by the `MinnesotaNiwPrior` / `NiwPosterior` Rust core and pinned to the golden fixture above. These data are growth rates, so the own first lag shrinks toward white noise (`delta=0`), not a random walk:
 
 ```python
-post = tsecon.bvar_niw(data, lags=2, lambda0=100.0, lambda1=0.2,
-                       lambda3=1.0, delta=1.0)
-post["b_bar"]                       # posterior-mean coefficients, k x n
-post["s_bar"], post["v_bar"]        # inverse-Wishart scale and dof
-post["log_marginal_likelihood"]     # the evidence -- tune lambda1 with it
-draws = tsecon.bvar_niw_sample(data, lags=2, n_draws=2000, seed=0)
-irf   = tsecon.bvar_irf(draws, horizon=16)   # posterior IRF draws
+import json, numpy as np, tsecon
+
+data = np.array(json.load(open("fixtures/bvar_niw.json"))["data"])   # 202 x 3 macro growth rates
+
+post = tsecon.bvar_fit(data, lags=2, lambda0=100.0, lambda1=0.2,
+                       lambda3=1.0, delta=0.0)
+post["posterior_mean_coefs"]        # posterior-mean coefficients B-bar, k x n
+post["sigma_posterior_mean"]        # posterior-mean error covariance, n x n
+post["log_marginal_likelihood"]     # the evidence -- tune lambda1 with it   (-861.57)
+
+# Posterior IRF draws [draw][h][response][shock] -- the raw material for credible bands
+irf = tsecon.bvar_irf_draws(data, lags=2, horizon=16, n_draws=2000, seed=0)
 ```
 
 > **⚠ Common mistake.** Inverse-Wishart parameterization mismatches. "$\Sigma \sim \mathcal{IW}(S, v)$" means the *scale* convention in some papers and packages (prior mean $S/(v - n - 1)$) and the *rate* convention ($S^{-1}$ in the density) in others, with degrees-of-freedom offsets that differ too. This is the single most common reason your BVAR "doesn't replicate" a published result. tsecon uses the scale convention — mean $S/(v-n-1)$, matching R `BVAR`, BEAR, and the Giannone-Lenza-Primiceri replication code — and says so in the docs; check the convention before comparing numbers across packages.
@@ -229,12 +234,19 @@ The pre-flight checklist, then, for any MCMC output you intend to publish:
 - Require **$\widehat{R} < 1.01$** for every quantity you report, not just the headline parameters.
 - Check **bulk ESS** before quoting means and **tail ESS** before quoting credible-band endpoints; treat values below a few hundred as "collect more draws."
 
-*Roadmap preview — this API lands with [Module 05](../roadmap/05-bayesian.md); the Rust implementations (`rhat_rank`, `ess_bulk`, `ess_tail`, `ess_mean`) are built and validated against ArviZ today:*
+This runs today: `tsecon.mcmc_diagnostics` returns all three numbers in one call from a `(chains, draws)` array of one scalar quantity — the Rust implementations (`rhat_rank`, `ess_bulk`, `ess_tail`) validated against ArviZ:
 
 ```python
-tsecon.rhat(chains)       # rank-normalized split R-hat   (want < 1.01)
-tsecon.ess_bulk(chains)   # effective draws for means/medians
-tsecon.ess_tail(chains)   # effective draws for the 5%/95% quantiles
+import numpy as np, tsecon
+
+# 4 chains x 500 draws of one reported scalar (e.g. the horizon-8 IRF ordinate)
+rng = np.random.default_rng(0)
+chains = rng.standard_normal((4, 500))
+
+diag = tsecon.mcmc_diagnostics(chains)
+diag["rhat"]        # rank-normalized split R-hat        (want < 1.01)
+diag["ess_bulk"]    # effective draws for means/medians
+diag["ess_tail"]    # effective draws for the 5%/95% quantiles
 ```
 
 > **⚠ Common mistake.** Running one long chain and eyeballing its trace plot. A single chain stuck in one mode of a multimodal posterior — routine in Markov-switching models — produces a beautiful, stable, utterly misleading trace. $\widehat{R}$ can only detect this from *multiple chains started at overdispersed points*; that is why tsecon's samplers default to four chains and compute $\widehat{R}$ whether or not you ask. Diagnostics are also *per quantity*: a converged intercept says nothing about the horizon-12 IRF, so compute ESS for every function of draws you report.
@@ -286,8 +298,9 @@ With closed-form NIW marginal likelihoods, comparison is cheap enough to run ove
 Runnable today as the frequentist baseline (and the natural sanity check on any BVAR you fit — with loose priors, the posterior median IRF should approximately reproduce it):
 
 ```python
-import numpy as np
-import tsecon
+import json, numpy as np, tsecon
+
+data = np.array(json.load(open("fixtures/var.json"))["data_100dlog_gdp_cons_inv"])  # 202 x 3
 
 irf = tsecon.var_irf(data, lags=2, horizon=16)   # [h][response][shock]
 fc  = tsecon.var_forecast(data, lags=2, steps=8) # point + intervals
@@ -328,15 +341,16 @@ The state of the art, and where the [Module 05 roadmap](../roadmap/05-bayesian.m
 **Available now in Python** (`import tsecon`) — the pieces this chapter's runnable code used:
 
 - `tsecon.ols` — the shrinkage demonstration via dummy observations (`se_type="nonrobust"|"hc0"|"hc1"|"hac"`)
+- `tsecon.bvar_fit` — the conjugate Minnesota/NIW-BVAR: closed-form posterior-mean coefficients $\bar{B}$, posterior-mean $\Sigma$, and the matrix-variate-$t$ log marginal likelihood (backed by the `MinnesotaNiwPrior` / `NiwPosterior` Rust core)
+- `tsecon.bvar_irf_draws` — joint $(B, \Sigma)$ posterior sampling through the Kronecker structure, pushed through the Cholesky-IRF recursion for credible-band draws `[draw][h][response][shock]`
+- `tsecon.mcmc_diagnostics` — Vehtari et al. (2021) rank-normalized split $\widehat{R}$ and bulk/tail ESS in one call, numerically matching ArviZ and R `posterior`
 - `tsecon.var_fit`, `tsecon.var_irf`, `tsecon.var_fevd`, `tsecon.var_forecast`, `tsecon.var_granger` — the frequentist VAR baseline a BVAR wraps a posterior around
 - `tsecon.local_level_smooth`, `tsecon.ar_loglik` — the Kalman machinery beneath the simulation smoother
 - `tsecon.philox_uniforms` — the counter-based RNG substrate that makes multi-chain MCMC bitwise reproducible
 
 **Built in Rust, awaiting Python bindings** (crate `tsecon-bayes`; golden values pinned in [`fixtures/bvar_niw.json`](../../fixtures/bvar_niw.json) and `fixtures/convergence.json`):
 
-- `MinnesotaNiwPrior` / `NiwPosterior` — the conjugate Minnesota/NIW-BVAR: closed-form $\bar{B}, \bar{\Omega}, \bar{S}, \bar{v}$, the matrix-variate-$t$ log marginal likelihood, joint $(B, \Sigma)$ posterior sampling through the Kronecker structure, and `cholesky_irf` posterior impulse-response draws
 - `FfbsSampler` — the Carter-Kohn forward-filter backward-sampling simulation smoother, with rank-aware handling of singular state covariances
-- `rhat_rank`, `ess_bulk`, `ess_tail`, `ess_mean` — Vehtari et al. (2021) convergence diagnostics, numerically matching ArviZ and R `posterior`
 
 **Roadmap** ([docs/roadmap/05-bayesian.md](../roadmap/05-bayesian.md)): the GLP hierarchical prior and dummy-observation stack, independent Normal-Wishart Gibbs, large BVARs, stochastic volatility (KSC/Omori mixture, common and factor SV), corrected TVP-BVAR (Del Negro-Primiceri 2015), steady-state BVARs, conditional forecasts, the validated marginal-likelihood suite, SSVS/horseshoe/Normal-Gamma shrinkage, NUTS and SMC samplers, and Geweke/SBC sampler tests in CI.
 

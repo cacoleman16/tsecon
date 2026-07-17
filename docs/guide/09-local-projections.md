@@ -214,20 +214,35 @@ so the coefficient $\mathcal{M}_h$ *is* the horizon-$h$ multiplier, with correct
 
 One unglamorous detail that changes headline numbers: **units**. A multiplier should be "dollars of output per dollar of spending," but the natural regression variables are log GDP and log spending, whose coefficient is an elasticity — and converting an elasticity to a multiplier requires multiplying by the sample-average GDP/spending ratio, a number around 5 for the US, applied *ex post* and frozen at one value even though the ratio moves over a century of data. The **Gordon-Krenn transformation** avoids this: divide both output and spending by an estimate of trend GDP before running the LP, so both variables are already in "percent of trend GDP" units and the coefficient is a multiplier directly. Ramey and Zubairy use exactly this, and the roadmap module treats the transformation as a first-class option rather than a preprocessing chore.
 
-Per-horizon 2SLS is not yet exposed in the Python API, so this one is a preview of the dedicated module.
-
-*Roadmap preview — this API lands with Module 07 ([spec](../roadmap/07-local-projections.md)):*
+Per-horizon 2SLS ships today as `tsecon.lp_iv`: pass the outcome, the endogenous impulse, and the instrument, and it returns per-horizon IRFs, standard errors, and a first-stage effective F. Setting `cumulative=True` switches to the one-step Ramey-Zubairy construction — cumulated output regressed on the instrumented impulse. Here it is on a synthetic fiscal system where a confounder moves both spending and output, so naive OLS overstates the multiplier while the news instrument recovers it:
 
 ```python
-res = tsecon.lp_iv(
-    y=output, x=spending, z=military_news,   # outcome, endogenous impulse, instrument
-    controls=lagged_system, horizon=20,
-    cumulative=True,                          # one-step Ramey-Zubairy multipliers
-)
-res["multiplier"][8]       # 2-year cumulative multiplier (quarterly data)
-res["first_stage_F"]       # per-horizon effective F, HAC-robust
-res["bands"]["supt"]       # simultaneous bands from the joint covariance
+rng = np.random.default_rng(7)
+T = 400
+military_news = rng.standard_normal(T)               # exogenous instrument (news shock)
+confounder    = rng.standard_normal(T)               # moves both spending and output
+spending = np.zeros(T)                               # endogenous impulse
+output   = np.zeros(T)                               # outcome
+for t in range(1, T):
+    spending[t] = 0.5 * spending[t - 1] + military_news[t] + 0.4 * confounder[t]
+    output[t]   = 0.5 * output[t - 1]   + 0.6 * spending[t] + confounder[t]
+
+# Naive OLS confuses cause and effect: the confounder inflates the slope.
+biased = tsecon.ols(output[1:], np.column_stack([np.ones(T - 1), spending[1:]]))
+print(round(biased["params"][1], 2))                 # 1.14 -- far above the true 0.6
+
+# LP-IV instruments spending with the news shock at every horizon.
+res = tsecon.lp_iv(output, spending, military_news, horizons=20, n_lag_controls=4)
+print(round(res["irf"][0], 2))                        # 0.55 -- recovers the ~0.6 multiplier
+print(round(res["first_stage_f"][0], 0))              # 1588 -- news is a strong instrument
+
+# cumulative=True: the one-step Ramey-Zubairy cumulative-response regression.
+mult = tsecon.lp_iv(output, spending, military_news,
+                    horizons=20, n_lag_controls=4, cumulative=True)
+print(round(mult["irf"][8], 2))                       # 2.91 -- cumulative output response, ~2 yrs
 ```
+
+The `first_stage_f` ladder is the Montiel Olea-Pflueger effective F, horizon by horizon; a value below the rule-of-thumb 10 is the signal to switch from a point estimate to a weak-instrument-robust Anderson-Rubin set. The Anderson-Rubin sets and the sup-t simultaneous bands that harden this into publication output are still on the [roadmap](../roadmap/07-local-projections.md).
 
 > **⚠ Common mistake — the ratio-of-IRFs multiplier.** It is tempting to estimate the cumulative output IRF and the cumulative spending IRF separately and report their ratio, delta-method standard errors attached. That is a *different estimator* from the one-step IV regression, and the two can differ materially in finite samples — the one-step version is the standard for good reason (Ramey and Zubairy 2018). The roadmap module implements the ratio version only as a labeled comparison, never as the headline number.
 
@@ -243,14 +258,24 @@ $$
 
 giving one IRF per regime. The **smooth-transition** variant (Auerbach and Gorodnichenko 2012) replaces the on/off dummy with a logistic weight $F(z_t) = \exp(-\gamma z_t)/(1 + \exp(-\gamma z_t))$ on a standardized state variable $z_t$, so the IRF varies continuously with the depth of the recession; Auerbach and Gorodnichenko calibrate $\gamma = 1.5$. Ramey and Zubairy's state-dependent results combine the dummy-interaction design with the one-step IV multiplier, and are the module's headline validation target. Their substantive finding is worth knowing because it reversed the field's prior: where Auerbach and Gorodnichenko had reported recession multipliers well above 1, Ramey and Zubairy — with a longer sample, the one-step multiplier estimator, and careful attention to the state variable's construction — find little evidence that multipliers exceed 1 even in high-slack states. Methodological choices this chapter has been cataloging (estimator, sample convention, state timing) are exactly what separates the two conclusions.
 
-*Roadmap preview — this API lands with Module 07:*
+`tsecon.lp_state` runs the dummy-interaction design today: the impulse and controls are interacted with the *lagged* state indicator, so the regime is predetermined, and it returns one IRF per regime. On a synthetic system whose impact response is deliberately larger in recessions:
 
 ```python
-res = tsecon.lp_state(
-    y=output, shock=military_news, state=slack,   # state entered with a lag
-    horizon=20, transition="logistic", gamma=1.5, # Auerbach-Gorodnichenko
-)
+rng = np.random.default_rng(11)
+Ts = 400
+shock = rng.standard_normal(Ts)                            # identified shock
+recession = (rng.standard_normal(Ts) > 0.3).astype(float)  # predetermined 0/1 state
+y = np.zeros(Ts)
+for t in range(1, Ts):
+    impact = 1.4 if recession[t - 1] else 0.5              # bigger impact in recessions
+    y[t] = 0.5 * y[t - 1] + impact * shock[t] + rng.standard_normal()
+
+res = tsecon.lp_state(y, shock, recession, horizons=20, n_lag_controls=4)
+print(round(res["irf_state1"][0], 2))                     # 1.36 -- impact response, recession
+print(round(res["irf_state0"][0], 2))                     # 0.39 -- impact response, expansion
 ```
+
+The binary indicator is the design Ramey and Zubairy use. The smooth-transition (logistic) weighting of Auerbach-Gorodnichenko — which lets the IRF vary continuously with the *depth* of the recession rather than an on/off switch — is still on the [roadmap](../roadmap/07-local-projections.md).
 
 > **⚠ Common mistake — a state variable that responds to the shock.** The state must be *predetermined*: use $I_{t-1}$, not $I_t$. But even lagging does not fully solve the deeper problem identified by Gonçalves, Herrera, Kilian, and Pesavento: if the shock itself can move the economy across regimes within the response horizon, the regime-specific "IRF" no longer means what you think it means — the estimand changes. Relatedly, building the state from a centered moving average or two-sided filter smuggles *future* information into the regime classification (the standard critique of Auerbach-Gorodnichenko's original state variable). tsecon's implementation emits diagnostics for both traps.
 
@@ -291,19 +316,20 @@ The LP literature is one of the most active in econometrics; here is the current
 
 ## What tsecon implements today
 
-**Available now in Python** — everything the hand-rolled LP in this chapter needs:
+**Available now in Python** — the dedicated LP estimators, plus every primitive the hand-rolled LP in this chapter needs:
 
+- `tsecon.lp` (baseline LP: `se="lag_augmented"` default and `se="hac"` fallback, `cumulative` for Ramey-Zubairy responses), `tsecon.lp_iv` (per-horizon 2SLS with the Montiel Olea-Pflueger effective F), `tsecon.lp_state` (dummy-interaction state-dependent LP, per-regime IRFs), and `tsecon.panel_lp` (fixed-effects panel LP with clustered / Driscoll-Kraay SEs)
 - `tsecon.ols(y, X, se_type=...)` with `"hac"` (Newey-West, `maxlags` controls the bandwidth), `"hc0"`/`"hc1"` (the EHW standard errors that lag-augmented LP calls for), and `"nonrobust"`; returns `params`, `bse`, `tvalues`
 - `tsecon.long_run_variance` — the kernel LRV machinery under HAC
 - `tsecon.var_fit`, `tsecon.var_irf`, `tsecon.var_fevd`, `tsecon.var_forecast` — the VAR comparator for dual reporting
 - `tsecon.bootstrap_indices`, `tsecon.optimal_block_length`, `tsecon.philox_uniforms` — block-bootstrap experiments with reproducible parallel RNG
 - `tsecon.adf`, `tsecon.kpss`, `tsecon.check_stationarity` — the persistence pre-flight that tells you how much to worry about long-horizon inference
 
-Both runnable loops in this chapter — per-horizon HAC and lag-augmented EHW — work against today's API.
+Every runnable block in this chapter — the two hand-rolled loops, the VAR comparison, the LP-IV multiplier, and the state-dependent LP — works against today's API.
 
 **Built in Rust, awaiting Python bindings:** fixed-b/EWC (HAR) inference in the HAC crate — the modern small-sample answer where per-horizon HAC must be used, with the nonstandard critical values that make it size-correct.
 
-**Roadmap:** the dedicated module ([docs/roadmap/07-local-projections.md](../roadmap/07-local-projections.md)) automates and hardens everything this chapter hand-rolled, and owns what cannot reasonably be hand-rolled: baseline LP with the lag-augmented EHW default and explicit sample-alignment policy, LP-IV with effective-F and Anderson-Rubin sets, one-step cumulative multipliers, the joint cross-horizon covariance with sup-t simultaneous bands, wild and block bootstrap schemes that are actually valid for LP, state-dependent and smooth-transition variants with endogeneity diagnostics, panel LP and LP-DiD, smooth/Bayesian/GLS LP, and LP-VAR dual reporting. Its validation bar: reproduce the Ramey-Zubairy multipliers and the `lpirfs`/Stata reference numbers to three-plus decimals.
+**Roadmap:** the dedicated module ([docs/roadmap/07-local-projections.md](../roadmap/07-local-projections.md)) hardens what ships today and owns what cannot reasonably be hand-rolled: the joint cross-horizon covariance with sup-t simultaneous bands and path Wald tests, Anderson-Rubin weak-instrument sets for LP-IV, wild and block bootstrap schemes that are actually valid for LP, the smooth-transition (logistic) state-dependent variant with endogeneity diagnostics, LP-DiD with clean controls, smooth/Bayesian/GLS LP, and LP-VAR dual reporting. Its validation bar: reproduce the Ramey-Zubairy multipliers and the `lpirfs`/Stata reference numbers to three-plus decimals.
 
 ## Further reading
 

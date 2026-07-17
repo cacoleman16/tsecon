@@ -284,7 +284,7 @@ Calibration alone is not enough — the unconditional historical distribution is
 *Roadmap preview — this API lands with Module 09:*
 
 ```python
-bt   = tsecon.backtest(model, y, scheme="expanding", min_train=80, horizons=range(1, 9))
+bt   = tsecon.backtest(y, window="expanding", train=80, horizon=8)   # ships today as a dict; Module 09 wraps it in a typed object
 tab  = bt.accuracy()                      # per-horizon losses with HAC standard errors
 test = bt.compare(benchmark, auto=True)   # scheme-appropriate DM / Clark-West, auto-selected
 pits = bt.pit_histogram(bins=10)          # calibration diagnostics with binomial bands

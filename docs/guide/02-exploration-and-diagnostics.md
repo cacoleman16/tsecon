@@ -310,7 +310,7 @@ The conceptual toolkit, in ascending order of ambition:
 - **Quandt-Andrews sup-Wald** (Andrews, 1993): compute the Chow statistic at *every* plausible date and take the maximum. Because you searched, the maximum's distribution is nonstandard — critical values come from Hansen's (1997) approximations.
 - **Bai-Perron** (Bai and Perron, 1998, 2003): the full solution — estimate the *number* and *locations* of multiple breaks by dynamic programming over all partitions, with confidence intervals for each break date. The flagship of the roadmap's break suite; no credible Python implementation with full inference exists today.
 
-*Roadmap preview — this API lands with Module 01:*
+> **Preview** — `bai_perron` and `cusum_test` are on the [roadmap](../../ROADMAP.md); the calls below show the intended API, not shipped functions.
 
 ```python
 bp = tsecon.bai_perron(y, X, max_breaks=5, trim=0.15)
@@ -337,15 +337,19 @@ Reading it is intuitive: a stationary, mean-reverting series spreads its varianc
 
 The raw periodogram is noisy — its variance does not shrink as $T$ grows — so practical estimation smooths it (Daniell windows), tapers the data, or averages across segments (Welch) or orthogonal tapers (Thomson's multitaper).
 
-*Roadmap preview — this API lands with Module 01:*
+The periodogram, Welch's smoothed estimate, and magnitude-squared coherence all ship today, matching `scipy.signal` to machine precision:
 
 ```python
-sp = tsecon.periodogram(y, taper=0.1, smooth="daniell")
-sp["freq"], sp["spec"]          # the variance decomposition by frequency
-sp["conf_int"]                  # chi-squared confidence bands
+sp = tsecon.periodogram(y)              # one FFT; dict: "freqs", "psd"
+sp["freqs"][:3]                         # [0.0, 0.0025, 0.005] — cycles per observation
+peak = sp["freqs"][int(np.argmax(sp["psd"]))]   # 0.02 — variance piled at low frequency
+
+# Welch averages overlapping segments into a smoother, less noisy estimate
+sw = tsecon.welch(y, nperseg=64)        # same keys; window / detrend / noverlap kwargs
+sw["freqs"][int(np.argmax(sw["psd"]))]  # ~0.016 — the AR(2)'s low-frequency peak
 ```
 
-The spectral suite — periodogram, Welch, multitaper, cross-spectral coherence and phase — is specified in the [Module 01 roadmap](../roadmap/01-diagnostics-exploration.md); the band-pass intuition is already usable today through `bk_filter` and `cf_filter`, which are frequency-domain objects wearing time-domain clothes.
+`periodogram(x, fs, window, detrend)`, `welch(x, nperseg, fs, noverlap, window, detrend)`, and `coherence` (magnitude-squared) are available now; Thomson's multitaper and cross-spectral phase remain on the [Module 01 roadmap](../roadmap/01-diagnostics-exploration.md). The band-pass intuition is also usable today through `bk_filter` and `cf_filter`, which are frequency-domain objects wearing time-domain clothes.
 
 ## The frontier
 
@@ -376,7 +380,7 @@ Where does research-grade practice go beyond this chapter's defaults?
 | Prediction intervals or density forecasts needed | `jarque_bera` on residuals | Non-normality wrecks intervals even when point forecasts are fine |
 | Monthly/quarterly data, calendar rhythm suspected | `acf` at lags $s, 2s$ today; QS/HEGY (roadmap) | Seasonal spikes are unmistakable; dummies-vs-differencing needs HEGY |
 | Suspected regime change or policy break | Split-sample battery today; CUSUM, Bai-Perron (roadmap) | Breaks masquerade as unit roots and poison full-sample fits |
-| "Which frequencies dominate this series?" | `bk_filter`/`cf_filter` today; periodogram (roadmap) | Variance-by-frequency is the natural language for cycles |
+| "Which frequencies dominate this series?" | `periodogram`/`welch` today; `bk_filter`/`cf_filter` for band-pass | Variance-by-frequency is the natural language for cycles |
 | Inconclusive quadrant, small sample | More data, or DF-GLS/Ng-Perron (roadmap) | Near-unit roots are a power problem, not a software problem |
 
 ## What tsecon implements today
@@ -392,10 +396,11 @@ Where does research-grade practice go beyond this chapter's defaults?
 - `kpss(y, regression="c"|"ct", nlags=None|"auto"|"legacy"|int)` → statistic, interpolated p-value (clamped to [0.01, 0.10]), bandwidth used
 - `check_stationarity(y, alpha=0.05)` → quadrant, recommendation, interpretation, and both tests' statistics
 - `long_run_variance(x, kernel="bartlett"|"parzen"|"qs", bandwidth=None)` — the HAC machinery under KPSS
+- `periodogram(x, fs, window, detrend)`, `welch(x, nperseg, fs, noverlap, window, detrend)`, `coherence(x, y, ...)` → `{"freqs", "psd"}` (coherence: `{"freqs", "coherence"}`) — spectral estimation matching `scipy.signal` to ~1e-15
 
 **Built in Rust, awaiting Python bindings:** the EWC/fixed-b long-run variance estimator (`ewc_lrv`, the Lazarus-Lewis-Stock-Watson recommendation), Andrews (1991) automatic bandwidth and AR(1)-prewhitened LRV variants, and typed pass/fail `DiagnosticReport` objects attached to each test.
 
-**Roadmap** ([docs/roadmap/01-diagnostics-exploration.md](../roadmap/01-diagnostics-exploration.md)): Breusch-Godfrey, DF-GLS, Phillips-Perron, Ng-Perron M-tests, HEGY and Canova-Hansen seasonal unit roots, QS/Friedman seasonality tests, Chow/CUSUM/Quandt-Andrews/Bai-Perron break suite, Zivot-Andrews and Lee-Strazicich break-robust unit roots, periodogram/Welch/multitaper spectral estimation, GPH and local-Whittle long memory, BDS, GSADF bubble tests, STL/X-13 seasonal adjustment, and the `check_series()` one-call battery.
+**Roadmap** ([docs/roadmap/01-diagnostics-exploration.md](../roadmap/01-diagnostics-exploration.md)): Breusch-Godfrey, DF-GLS, Phillips-Perron, Ng-Perron M-tests, HEGY and Canova-Hansen seasonal unit roots, QS/Friedman seasonality tests, Chow/CUSUM/Quandt-Andrews/Bai-Perron break suite, Zivot-Andrews and Lee-Strazicich break-robust unit roots, multitaper and cross-spectral phase spectral estimation, GPH and local-Whittle long memory, BDS, GSADF bubble tests, STL/X-13 seasonal adjustment, and the `check_series()` one-call battery.
 
 ## Further reading
 

@@ -111,17 +111,20 @@ Nothing is estimated — $\lambda$ is fixed by convention — which is exactly w
 
 Estimation of the full model is by maximum likelihood: given a distribution for $z_t$, the likelihood factors into one term per observation, each a normal (say) density with variance $\sigma_t^2$ computed by running the recursion forward. The recursion needs a starting value $\sigma_0^2$ — the **backcast**, typically an exponentially weighted average of the first squared residuals.
 
-*Roadmap preview — this API lands with Module 03:*
+Estimation is a single call — QMLE, with both classical and robust standard errors returned as first-class outputs (continuing with `r` from the stylized-facts simulation):
 
 ```python
-fit = tsecon.garch_fit(r, p=1, q=1, dist="t")    # QMLE, arch-style backcast init
-fit["params"]            # mu, omega, alpha, beta, nu — the arch package ordering
-fit["robust_bse"]        # Bollerslev-Wooldridge sandwich standard errors
-fit["conditional_vol"]   # the sigma_t path; annualize with * np.sqrt(252)
-fit["persistence"]       # alpha + beta, plus the implied half-life
+fit = tsecon.garch_fit(r, mean="constant", p=1, q=1, dist="t")   # QMLE, arch-style backcast init
+fit["params"]                  # [mu, omega, alpha, beta, nu]; labels in fit["param_names"]
+fit["se_robust"]               # Bollerslev-Wooldridge sandwich standard errors
+fit["conditional_volatility"]  # the sigma_t path; annualize with * np.sqrt(252)
+
+alpha_hat, beta_hat = fit["params"][2], fit["params"][3]
+persistence = alpha_hat + beta_hat             # 0.95 — covariance-stationary, mean-reverting
+half_life = np.log(0.5) / np.log(persistence)  # 13.5 trading days
 ```
 
-The Rust engine behind this (`tsecon-garch`) is already built and validated against Kevin Sheppard's `arch` package: fixed-parameter log-likelihoods match to 1e-8 relative, conditional volatilities to 1e-6, robust standard errors to 5e-3.
+The Rust engine behind this (`tsecon-garch`) is validated against Kevin Sheppard's `arch` package: fixed-parameter log-likelihoods match to 1e-8 relative, conditional volatilities to 1e-6, robust standard errors to 5e-3.
 
 > **⚠ Common mistake.** Fitting GARCH on returns in *decimal* units (0.01 for one percent). The log-likelihood surface becomes nearly flat in $\omega$ and optimizers quietly fail or stop early — this is the best-known gotcha in the `arch` package, which warns about it loudly. Fit on percent returns. Relatedly, two packages given the same data can report different estimates simply because they initialize $\sigma_0^2$ differently; when comparing results across software, match the variance initialization before suspecting a bug.
 
@@ -222,7 +225,7 @@ hits.mean()                          # 0.0072 — 18 hits in 2500 days vs 25 exp
 int(hits[:-1] @ hits[1:])            # 0 consecutive-hit pairs: no clustering
 ```
 
-Eighteen hits against twenty-five expected looks like a shortfall, but the binomial standard deviation is $\sqrt{2500 \times 0.01 \times 0.99} \approx 5$, so the gap is well inside sampling noise — a Kupiec test would not reject, and that calibration judgment is exactly what the test formalizes. With a *fitted* model the same code runs on `fit["conditional_vol"]`, and a t or FHS quantile replaces the hardcoded normal one.
+Eighteen hits against twenty-five expected looks like a shortfall, but the binomial standard deviation is $\sqrt{2500 \times 0.01 \times 0.99} \approx 5$, so the gap is well inside sampling noise — a Kupiec test would not reject, and that calibration judgment is exactly what the test formalizes. With a *fitted* model the same code runs on `fit["conditional_volatility"]`, and a t or FHS quantile replaces the hardcoded normal one.
 
 > **⚠ Common mistake.** Trusting asymptotic backtest p-values on short windows. A 1% VaR over 250 trading days — the regulatory standard — expects 2.5 violations; the $\chi^2$ approximation to the LR statistic is poor with counts that small, and the tests have little power regardless. Use exact binomial or Monte Carlo p-values (Dufour 2006), and treat a "pass" on one year of data as weak evidence, not validation. And check the sign convention *first*: backtesting the wrong tail produces beautiful-looking results that mean nothing.
 
@@ -464,10 +467,13 @@ Honest open problems: distinguishing genuine long memory from structural breaks 
 - `jarque_bera(x)` — skewness/kurtosis normality test for the fat-tails fact and for standardized-residual checks
 - `acf(y, nlags=20)` — the autocorrelation function of squared returns is the clustering fingerprint
 - `ols(y, X, se_type="hac")` — estimates HAR-RV models correctly today, as in the example above
+- `garch_fit(y, vol="garch", mean="zero", dist="normal", p=1, o=1, q=1, forecast_horizon=0)` — GARCH/GJR/EGARCH QMLE with MLE and robust SEs; used in the workhorse example above
+- `gas_volatility(y, density="gaussian", horizon=0)` — score-driven (GAS) volatility with Gaussian or Student-t innovations, as in the score-driven section
+- `realized_measures`, `realized_quarticity`, `tripower_quarticity`, `bns_jump_test`, `realized_range`, `har_rv` — the realized-volatility toolkit demonstrated above
 - `dm_test(e1, e2, h=1, loss="squared")` and `accuracy(...)` — forecast-comparison machinery volatility horse races run on
 - `bootstrap_indices`, `philox_uniforms` — the reproducible resampling/RNG substrate that filtered historical simulation will consume
 
-**Built in Rust, awaiting Python bindings** (`crates/tsecon-garch`):
+**The GARCH engine in depth** (`crates/tsecon-garch`, exposed to Python as `garch_fit`):
 
 - GARCH(p, q) — including ARCH(p) as q = 0 — GJR-GARCH(p, o, q), and EGARCH(p, o, q), each with zero or constant mean and normal or standardized Student-t innovations
 - QMLE via grid start + L-BFGS + Nelder-Mead polish, with `arch`-style backcast variance initialization

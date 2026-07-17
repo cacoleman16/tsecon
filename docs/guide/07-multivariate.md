@@ -279,13 +279,29 @@ $$
 
 and everything hangs on the rank of $\Pi$. Rank zero: no cointegration, difference and move on. Full rank $K$: the levels were stationary all along. Rank $r$ in between: exactly $r$ cointegrating relationships, and $\Pi$ factors as $\alpha \beta'$, where the columns of $\beta$ are the cointegrating vectors (the leashes) and $\alpha$ holds each equation's adjustment speeds (who does the correcting). Johansen's trace and maximum-eigenvalue tests determine $r$ sequentially, with the notorious practical wrinkle that five different conventions for deterministic terms (constants and trends inside or outside the equilibrium relation) give five different critical-value families — the classic cross-package replication trap.
 
-*Roadmap preview — this API lands with Module 04:*
+Both the rank test and the VECM ship today (validated against statsmodels' `coint_johansen` and `VECM`). Here they are on a three-variable system built with *two* common stochastic trends, which leaves exactly one cointegrating relationship (rank $r = K - \#\text{trends} = 3 - 2 = 1$):
 
 ```python
-rank = tsecon.johansen(data, det="c", lags=2)    # trace & max-eig tests,
-rank["trace_stat"], rank["p_values"]             # MacKinnon-Haug-Michelis p-values
-vecm = tsecon.vecm_fit(data, rank=1, lags=2)     # alpha, beta (normalized),
-vecm["alpha"], vecm["beta"]                      # short-run Gammas, level-VAR map
+rng = np.random.default_rng(19)
+T = 400
+g1 = np.cumsum(rng.normal(size=T))                  # common stochastic trend 1
+g2 = np.cumsum(rng.normal(size=T))                  # common stochastic trend 2
+y1 = g1 + rng.normal(size=T)                        # I(1)
+y2 = g2 + rng.normal(size=T)                        # I(1)
+y3 = 0.5 * g1 - 0.8 * g2 + rng.normal(size=T)       # I(1), tethered to y1 and y2
+coint_data = np.column_stack([y1, y2, y3])          # 400 x 3, one equilibrium relation
+
+# Johansen: trace & max-eigenvalue rank tests (k_ar_diff = VAR lags minus one)
+rank = tsecon.johansen(coint_data, k_ar_diff=2)
+np.round(rank["trace_stat"], 1)                     # [134.0, 12.6, 0.6], tested sequentially
+np.round(np.array(rank["trace_crit_90_95_99"])[:, 1], 1)   # 5% crit: [29.8, 15.5, 3.8]
+rank["rank_trace_5pct"]                             # 1 — reject r=0, do NOT reject r<=1
+
+# VECM at the selected rank: alpha (adjustment speeds), beta (cointegrating vectors)
+vecm = tsecon.vecm(coint_data, k_ar_diff=2, coint_rank=1)
+np.round(np.array(vecm["beta"]).ravel(), 2)         # [1.0, -1.62, -2.02] — the leash, normalized
+np.round(np.array(vecm["alpha"]).ravel(), 3)        # [-0.267, 0.144, 0.234] — who corrects
+vecm["gamma"]                                       # short-run Gamma matrices; also sigma_u, llf
 ```
 
 ## A few forces drive many series: dynamic factor models
@@ -350,11 +366,13 @@ Where research-grade practice currently stands, and where the [module roadmap](.
 - `tsecon.var_fevd(data, lags=2, horizon=10, trend="c")` — variance decompositions, one matrix per variable: `fevd[i][h][j]`
 - `tsecon.var_forecast(data, lags=2, steps=8, alpha=0.05, trend="c")` — iterated point forecasts with innovation-uncertainty intervals
 - `tsecon.var_granger(data, caused, causing, lags=2, trend="c")` — block F test, group-to-group
+- `tsecon.johansen(data, k_ar_diff=2)` — Johansen trace and maximum-eigenvalue rank tests, returning `trace_stat`/`max_eig_stat`, the `_90_95_99` critical-value tables, and the implied `rank_trace_5pct`/`rank_max_eig_5pct`
+- `tsecon.vecm(data, k_ar_diff=2, coint_rank=1)` — ML VECM estimation: `alpha`, `beta`, `gamma`, `sigma_u`, `llf` (statsmodels-exact)
 - Supporting cast used in this chapter: `check_stationarity`, `adf`, `kpss`, `ols`, `ljung_box`, `long_run_variance`
 
 **Built in Rust, awaiting Python bindings** (in the `tsecon-var` crate): common-sample lag-order selection (`select_order`, AIC/BIC/HQ/FPE with the Lütkepohl fixed-sample convention), companion-matrix and stability accessors (`companion`, `is_stable`, `roots_moduli`), and full multi-step forecast MSE matrices (`forecast_cov`).
 
-**Roadmap** ([Module 04 — Multivariate Models](../roadmap/04-multivariate.md)): Engle-Granger and Phillips-Ouliaris tests with MacKinnon response-surface p-values; Johansen rank tests (MacKinnon-Haug-Michelis p-values, Bartlett correction) and VECM estimation with restriction testing; Toda-Yamamoto causality; bootstrap IRF bands (residual, Kilian double, Gonçalves-Kilian wild, moving-block) and sup-t simultaneous bands; historical decompositions; generalized IRF/FEVD and Diebold-Yilmaz connectedness; dynamic factor models and FAVAR; VARX/VARMA; threshold, Markov-switching, and smooth-transition VARs; panel and global VARs.
+**Roadmap** ([Module 04 — Multivariate Models](../roadmap/04-multivariate.md)): Engle-Granger and Phillips-Ouliaris tests with MacKinnon response-surface p-values; MacKinnon-Haug-Michelis p-values and Bartlett small-sample correction for the shipped Johansen tests, plus VECM restriction testing; Toda-Yamamoto causality; bootstrap IRF bands (residual, Kilian double, Gonçalves-Kilian wild, moving-block) and sup-t simultaneous bands; historical decompositions; generalized IRF/FEVD and Diebold-Yilmaz connectedness; dynamic factor models and FAVAR; VARX/VARMA; threshold, Markov-switching, and smooth-transition VARs; panel and global VARs.
 
 ## Three that have landed: connectedness, factors, and FAVAR
 
