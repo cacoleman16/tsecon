@@ -3,5 +3,13 @@ name = "tsecon-garch"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Univariate conditional-variance models for the tsecon time-series econometrics library: GARCH, GJR-GARCH, and EGARCH with zero or constant mean and normal or standardized Student-t innovations, arch-compatible backcast initialization, QMLE via reparameterized L-BFGS with Nelder-Mead polish, MLE and Bollerslev-Wooldridge robust standard errors, and analytic multi-step variance forecasts"
 
 [dependencies]
+tsecon-optim = { path = "../tsecon-optim" }
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
