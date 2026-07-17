@@ -105,6 +105,10 @@ nav:
           - Nowcasting & MIDAS: reference/model-cards/nowcasting-midas.md
           - Term structure: reference/model-cards/term-structure.md
           - Realized volatility: reference/model-cards/realized-vol.md
+          - Predictive regressions & IVX: reference/model-cards/predictive-regressions.md
+          - Recession probability: reference/model-cards/recession.md
+          - Survey expectations: reference/model-cards/expectations.md
+          - Long memory: reference/model-cards/long-memory.md
   - Migration:
       - From statsmodels: migration/from-statsmodels.md
       - From R: migration/from-r.md

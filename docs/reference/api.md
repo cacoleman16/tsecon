@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/tsecon.pyi`). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**80 functions.**
+**87 functions.**
 
 ## diagnostics
 
@@ -1090,4 +1090,87 @@ def ivx_test(
 Joint IVX predictability test for several persistent predictors (xs is T x k).
 
     Returns beta_ivx, the joint wald/pvalue, rz, nregressors, nobs.
+
+## recession probability
+
+### `recession_probit`
+
+```python
+def recession_probit(
+    y: _ArrayLike, x: _ArrayLike, link: str = ..., dynamic: bool = ...
+) -> dict[str, Any]:
+```
+
+Probit/logit of a binary recession indicator (Kauppi-Saikkonen dynamic option).
+
+    link is "probit" or "logit". Returns params, bse, zstats, probabilities,
+    loglik, pseudo_r2, converged (and rho for dynamic=True).
+
+## survey expectations
+
+### `cg_regression`
+
+```python
+def cg_regression(
+    errors: _ArrayLike,
+    revisions: _ArrayLike,
+    maxlags: int | None = ...,
+    use_correction: bool = ...,
+) -> dict[str, Any]:
+```
+
+Coibion-Gorodnichenko (2015) information-rigidity regression (OLS-HAC).
+
+    Returns intercept/slope with HAC se/t/p, r_squared, implied_rigidity.
+
+### `forecast_efficiency`
+
+```python
+def forecast_efficiency(
+    errors: _ArrayLike,
+    regressors: _ArrayLike,
+    maxlags: int | None = ...,
+    use_correction: bool = ...,
+) -> dict[str, Any]:
+```
+
+Mincer-Zarnowitz forecast-efficiency Wald test (OLS-HAC); regressors is T x k.
+
+### `forecast_disagreement`
+
+```python
+def forecast_disagreement(
+    panel: Sequence[_ArrayLike], ddof: int = ...
+) -> dict[str, Any]:
+```
+
+Forecast-disagreement measures (per-period std/quartiles/iqr) from a forecaster panel.
+
+## long memory
+
+### `frac_diff`
+
+```python
+def frac_diff(x: _ArrayLike, d: float) -> _F64:
+```
+
+Fractional differencing (1-L)^d via the binomial expansion.
+
+### `frac_integrate`
+
+```python
+def frac_integrate(x: _ArrayLike, d: float) -> _F64:
+```
+
+Fractional integration (1-L)^-d, the inverse of frac_diff.
+
+### `long_memory_d`
+
+```python
+def long_memory_d(
+    x: _ArrayLike, m: int | None = ..., method: str = ...
+) -> dict[str, float]:
+```
+
+Estimate the memory parameter d; method is "gph" or "local_whittle". Returns d, se, m.
 

@@ -31,3 +31,7 @@ method fits your problem and how to trust its output.
 | [Nowcasting & MIDAS](model-cards/nowcasting-midas.md) | `dfm_nowcast`, `dfm_news`, `midas_weights`, `umidas`, `weighted_midas` |
 | [Term structure](model-cards/term-structure.md) | `nelson_siegel`, `svensson`, `dynamic_ns` |
 | [Realized volatility](model-cards/realized-vol.md) | `realized_measures`, `har_rv`, `realized_quarticity`, `tripower_quarticity`, `bns_jump_test`, `realized_range` |
+| [Predictive regressions & IVX](model-cards/predictive-regressions.md) | `predictive_regression`, `ivx_test` |
+| [Recession probability](model-cards/recession.md) | `recession_probit` |
+| [Survey expectations](model-cards/expectations.md) | `cg_regression`, `forecast_efficiency`, `forecast_disagreement` |
+| [Long memory](model-cards/long-memory.md) | `frac_diff`, `frac_integrate`, `long_memory_d` |
