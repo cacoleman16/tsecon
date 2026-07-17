@@ -47,10 +47,11 @@ jobs:
         if: matrix.platform.target == 'x86_64' || matrix.platform.target == 'x64'
         shell: bash
         run: |
-          python -m pip install --upgrade pip pytest numpy
+          python -m pip install --upgrade pip pytest numpy scipy
           python -m pip install --no-index --find-links bindings/python/dist tsecon
-          cp -r bindings/python/tests _wheeltests
-          cd _wheeltests && python -m pytest -q
+          python -c "import tsecon; assert 'site-packages' in tsecon.__file__, tsecon.__file__"
+          # Run in place so the tests' repo-relative fixture paths resolve.
+          python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.platform.os }}-${{ matrix.platform.target }}
