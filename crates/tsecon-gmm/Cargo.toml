@@ -3,5 +3,23 @@ name = "tsecon-gmm"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Generalized method of moments (Hansen 1982) for the tsecon time-series econometrics library: linear IV-GMM (one-step, two-step efficient, iterated) with heteroskedasticity-robust and HAC weighting matrices and sandwich standard errors matching linearmodels, the Hansen J-test of over-identifying restrictions, and a general nonlinear GMM driver over user moment conditions"
 
 [dependencies]
+# Small dense linear algebra (faer, shared workspace-pinned version) for the
+# GMM normal-equation solves, moment-covariance inverses, and sandwich bread.
+tsecon-linalg = { path = "../tsecon-linalg" }
+# HAC / long-run variance: the library's single owner of kernel-weighted
+# moment covariances. GMM never reimplements HAC weighting.
+tsecon-hac = { path = "../tsecon-hac" }
+# Chi-squared survival function for the Hansen (1982) J-test p-value.
+tsecon-stats = { path = "../tsecon-stats" }
+# Derivative-free optimizer for the general nonlinear GMM driver.
+tsecon-optim = { path = "../tsecon-optim" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# Seeded Philox streams drive the property-test Monte Carlo designs.
+tsecon-rng = { path = "../tsecon-rng" }
