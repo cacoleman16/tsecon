@@ -3,5 +3,19 @@ name = "tsecon-coint"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Cointegration and vector error-correction models for the tsecon time-series econometrics library: the Johansen (1991) reduced-rank / canonical-correlation test with trace and maximum-eigenvalue statistics and MacKinnon-Haug-Michelis critical values, Johansen maximum-likelihood VECM estimation (cointegrating vectors, loadings, short-run dynamics, and log-likelihood in statsmodels normalization), the VECM-to-level-VAR companion mapping for downstream impulse responses, and the Engle-Granger two-step residual-based procedure"
 
 [dependencies]
+# faer is consumed through the tsecon-linalg re-export so the whole
+# workspace shares one pinned version (0.24, default-features = false,
+# features = ["std"]).
+tsecon-linalg = { path = "../tsecon-linalg" }
+tsecon-stats = { path = "../tsecon-stats" }
+# Engle-Granger step 2 delegates the residual unit-root test to the
+# augmented Dickey-Fuller machinery already validated in tsecon-diag.
+tsecon-diag = { path = "../tsecon-diag" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }

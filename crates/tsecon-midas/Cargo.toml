@@ -3,5 +3,21 @@ name = "tsecon-midas"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "MIDAS mixed-frequency regressions for the tsecon time-series econometrics library: exponential-Almon / Beta / Almon-PDL weight functions, unrestricted U-MIDAS and ADL-MIDAS via the shared HAC/OLS engine, weighted (nonlinear-least-squares) MIDAS through the shared optimizer, and the ragged-edge stacked high-frequency-lag design builder"
 
 [dependencies]
+# The library's single HAC / OLS owner: U-MIDAS and ADL-MIDAS are exactly OLS
+# on a stacked design, and all standard errors (nonrobust / HC / HAC) come
+# from here — MIDAS never reimplements robust inference.
+tsecon-hac = { path = "../tsecon-hac" }
+# The library's single optimizer: weighted (Beta / exponential-Almon) MIDAS is
+# a nonlinear least squares over the low-frequency slope plus the two
+# weight-function hyperparameters, minimized through this crate.
+tsecon-optim = { path = "../tsecon-optim" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# Seeded Philox streams drive the Beta-DGP weight-recovery Monte Carlo.
+tsecon-rng = { path = "../tsecon-rng" }
