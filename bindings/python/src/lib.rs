@@ -2248,6 +2248,441 @@ fn svensson<'py>(
     Ok(d)
 }
 
+/// Nonlinear GMM driver (Hansen 1982) minimizing `gbar(theta)' W gbar(theta)`
+/// by the derivative-free Nelder-Mead simplex, with a Python moment function.
+///
+/// `moments_fn(theta)` is a Python callable mapping a parameter vector (passed
+/// as a NumPy 1-D `float64` array) to the `n x m` matrix of per-observation
+/// moment contributions (rows = observations, cols = moments); it may return a
+/// NumPy 2-D array or a list of lists, and its shape must be the same at every
+/// `theta`. `initial` is the starting parameter vector. `weight` is the
+/// flattened `m x m` GMM weighting matrix (row-major) or `None` for the
+/// identity (the natural choice when exactly identified). A Python exception
+/// raised inside `moments_fn` is captured and re-raised. Returns `params`,
+/// `objective`, `gbar`, `converged`, `iterations`, `fevals`, `nmoments`, and
+/// `nparams`.
+#[pyfunction]
+#[pyo3(signature = (moments_fn, initial, weight = None))]
+fn gmm_nonlinear<'py>(
+    py: Python<'py>,
+    moments_fn: Bound<'py, PyAny>,
+    initial: Vec<f64>,
+    weight: Option<Vec<f64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    // The driver's moment closure is `FnMut(&[f64]) -> Vec<Vec<f64>>` and so
+    // cannot return a Result. On a failed callback (Python raised, or the
+    // return value did not coerce to an n-by-m float matrix) we stash the
+    // PyErr here and yield an empty matrix; the driver then rejects the empty
+    // / shape-inconsistent moments with a crate error that masks the true
+    // cause, so we re-raise the stashed PyErr first once the driver returns.
+    let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
+    let moments_ref = &moments_fn;
+    let err_ref = &err_slot;
+    let closure = move |theta: &[f64]| -> Vec<Vec<f64>> {
+        let params = theta.to_vec().into_pyarray(py);
+        match moments_ref.call1((params,)) {
+            Ok(ret) => match ret.extract::<Vec<Vec<f64>>>() {
+                Ok(mat) => mat,
+                Err(e) => {
+                    *err_ref.borrow_mut() = Some(e);
+                    Vec::new()
+                }
+            },
+            Err(e) => {
+                *err_ref.borrow_mut() = Some(e);
+                Vec::new()
+            }
+        }
+    };
+
+    let result = tsecon_gmm::gmm_nonlinear(closure, &initial, weight.as_deref());
+    // Surface a Python exception raised inside the callback first; it is the
+    // true cause and carries the original traceback.
+    if let Some(pyerr) = err_slot.into_inner() {
+        return Err(pyerr);
+    }
+    let fit = result.map_err(to_py)?;
+
+    let d = PyDict::new(py);
+    d.set_item("params", fit.params.into_pyarray(py))?;
+    d.set_item("objective", fit.objective)?;
+    d.set_item("gbar", fit.gbar.into_pyarray(py))?;
+    d.set_item("converged", fit.converged)?;
+    d.set_item("iterations", fit.iterations)?;
+    d.set_item("fevals", fit.fevals)?;
+    d.set_item("nmoments", fit.nmoments)?;
+    d.set_item("nparams", fit.nparams)?;
+    Ok(d)
+}
+
+/// Weighted MIDAS regression fit by nonlinear least squares (Ghysels,
+/// Santa-Clara & Valkanov 2004; Ghysels, Sinko & Valkanov 2007). Restricts the
+/// `K` high-frequency lag coefficients to a two-parameter weight shape and
+/// estimates `(alpha, beta, psi_1, psi_2)` by minimizing the residual sum of
+/// squares. `hf_lags` is `nobs x K` (each column a high-frequency lag,
+/// most-recent-first, aligned to `y`). `scheme`: "exp_almon" (unconstrained
+/// hyperparameters) or "beta" (strictly positive shapes; needs `K >= 2`).
+/// `weight_start` optionally overrides the starting hyperparameters
+/// `(psi_1, psi_2)` in natural space; `None` uses the scheme default. Because
+/// the weights sum to one, `slope` is the aggregate slope on a proper weighted
+/// average, comparable to the sum of the U-MIDAS lag coefficients. Returns dict
+/// keys: `scheme`, `intercept`, `slope`, `weight_params`, `weights`, `fitted`,
+/// `residuals`, `ssr`, `rsquared`, `converged`, `iterations`.
+#[pyfunction]
+#[pyo3(signature = (y, hf_lags, scheme = "exp_almon", weight_start = None))]
+fn weighted_midas<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    hf_lags: numpy::PyReadonlyArray2<'py, f64>,
+    scheme: &str,
+    weight_start: Option<(f64, f64)>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = hf_lags.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let sch = match scheme {
+        "exp_almon" => tsecon_midas::WeightScheme::ExpAlmon,
+        "beta" => tsecon_midas::WeightScheme::Beta,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown scheme {other:?}; expected \"exp_almon\" or \"beta\""
+            )))
+        }
+    };
+    let start = weight_start.map(|(p1, p2)| [p1, p2]);
+    let fit = tsecon_midas::weighted_midas(y.as_slice()?, &cols, sch, start).map_err(to_py)?;
+    let scheme_name = match fit.scheme {
+        tsecon_midas::WeightScheme::ExpAlmon => "exp_almon",
+        tsecon_midas::WeightScheme::Beta => "beta",
+    };
+    let d = PyDict::new(py);
+    d.set_item("scheme", scheme_name)?;
+    d.set_item("intercept", fit.intercept)?;
+    d.set_item("slope", fit.slope)?;
+    d.set_item("weight_params", fit.weight_params.to_vec().into_pyarray(py))?;
+    d.set_item("weights", fit.weights.into_pyarray(py))?;
+    d.set_item("fitted", fit.fitted.into_pyarray(py))?;
+    d.set_item("residuals", fit.residuals.into_pyarray(py))?;
+    d.set_item("ssr", fit.ssr)?;
+    d.set_item("rsquared", fit.rsquared)?;
+    d.set_item("converged", fit.converged)?;
+    d.set_item("iterations", fit.iterations)?;
+    Ok(d)
+}
+
+/// State-dependent (interacted) local projections (Ramey & Zubairy 2018).
+///
+/// The impulse and every control are interacted with the *lagged* binary
+/// state indicator `I_{t-1}` and its complement, so the regime is
+/// predetermined (not itself moved by the shock). Two response paths are
+/// returned. `se`: "lag_augmented" (Montiel Olea-Plagborg-Møller 2021, the
+/// default) or "hac" (Newey-West; `maxlags=None` grows with the horizon).
+/// `cumulative` regresses the cumulated outcome (Ramey-Zubairy). Returns dict
+/// keys `horizons`, `irf_state1`, `se_state1`, `irf_state0`, `se_state0` (the
+/// per-regime impulse responses and their standard errors at each horizon).
+#[pyfunction]
+#[pyo3(signature = (y, shock, state_indicator, horizons = 12, n_lag_controls = 4, se = "lag_augmented", maxlags = None, cumulative = false))]
+#[allow(clippy::too_many_arguments)]
+fn lp_state<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    shock: PyReadonlyArray1<'py, f64>,
+    state_indicator: PyReadonlyArray1<'py, f64>,
+    horizons: usize,
+    n_lag_controls: usize,
+    se: &str,
+    maxlags: Option<usize>,
+    cumulative: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).cumulative(cumulative);
+    spec = match se {
+        "lag_augmented" => spec,
+        "hac" => spec.with_hac(maxlags),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown se {other:?}; expected \"lag_augmented\" or \"hac\""
+            )))
+        }
+    };
+    let r = tsecon_lp::lp_state(
+        y.as_slice()?,
+        shock.as_slice()?,
+        state_indicator.as_slice()?,
+        spec,
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item(
+        "horizons",
+        r.horizons
+            .iter()
+            .map(|&h| h as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("irf_state1", r.irf_state1.into_pyarray(py))?;
+    d.set_item("se_state1", r.se_state1.into_pyarray(py))?;
+    d.set_item("irf_state0", r.irf_state0.into_pyarray(py))?;
+    d.set_item("se_state0", r.se_state0.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Pesaran-Smith (1995) mean-group panel VAR: fit a reduced-form VAR(p)
+/// to every entity (equation-by-equation OLS via `tsecon-var`) and average,
+/// with dispersion-based cross-entity standard errors `sd(theta_i)/sqrt(N)`.
+///
+/// `entities` is a list of per-entity `T_i x k` data matrices (rows are
+/// observations, oldest first; the time dimensions may differ but the `k`
+/// variables must match). `trend` is "c" (a constant in every equation) or
+/// "n" (no deterministic term). IRFs are Cholesky-orthogonalized entity by
+/// entity, then averaged. Requires `N >= 2` (the dispersion SE needs it).
+///
+/// Returns a dict with `intercept`/`intercept_se` (length k), `coefs`/
+/// `coefs_se` (the mean-group lag matrices `[A_1, ..., A_p]`, each k x k),
+/// `orth_irfs`/`orth_irfs_se` (the mean-group IRF path, `(horizon + 1)` of
+/// k x k matrices), `irf_path`/`irf_path_se` (the `mg_irf_path` response=
+/// `response`, impulse=`impulse` series over horizons), and the scalars
+/// `n_entities`, `neqs`, `lags`.
+#[pyfunction]
+#[pyo3(signature = (entities, lags = 1, trend = "c", horizon = 10, response = 0, impulse = 0))]
+fn mean_group_var<'py>(
+    py: Python<'py>,
+    entities: Vec<numpy::PyReadonlyArray2<'py, f64>>,
+    lags: usize,
+    trend: &str,
+    horizon: usize,
+    response: usize,
+    impulse: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let tr = match trend {
+        "c" => tsecon_var::Trend::Constant,
+        "n" => tsecon_var::Trend::None,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown trend {other:?}; expected \"c\" or \"n\""
+            )))
+        }
+    };
+    let mats: Vec<_> = entities.iter().map(to_faer).collect();
+    let mg = tsecon_panel::mean_group_var(&mats, lags, tr, horizon).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("intercept", mg.intercept.clone().into_pyarray(py))?;
+    d.set_item("intercept_se", mg.intercept_se.clone().into_pyarray(py))?;
+    let coefs: Vec<Vec<Vec<f64>>> = mg.coefs.iter().map(mat_to_vec2).collect();
+    d.set_item("coefs", coefs)?;
+    let coefs_se: Vec<Vec<Vec<f64>>> = mg.coefs_se.iter().map(mat_to_vec2).collect();
+    d.set_item("coefs_se", coefs_se)?;
+    let orth_irfs: Vec<Vec<Vec<f64>>> = mg.orth_irfs.iter().map(mat_to_vec2).collect();
+    d.set_item("orth_irfs", orth_irfs)?;
+    let orth_irfs_se: Vec<Vec<Vec<f64>>> = mg.orth_irfs_se.iter().map(mat_to_vec2).collect();
+    d.set_item("orth_irfs_se", orth_irfs_se)?;
+    match tsecon_panel::mg_irf_path(&mg, response, impulse) {
+        Some((path, path_se)) => {
+            d.set_item("irf_path", path.into_pyarray(py))?;
+            d.set_item("irf_path_se", path_se.into_pyarray(py))?;
+        }
+        None => {
+            return Err(PyValueError::new_err(format!(
+                "mg_irf_path indices out of range: response={response}, impulse={impulse}, neqs={}",
+                mg.neqs
+            )))
+        }
+    }
+    d.set_item("n_entities", mg.n_entities)?;
+    d.set_item("neqs", mg.neqs)?;
+    d.set_item("lags", mg.lags)?;
+    Ok(d)
+}
+
+/// Dynamic Nelson-Siegel factors and one-step curve forecast
+/// (Diebold & Li 2006, two-step estimator).
+///
+/// Step one fits the three Nelson-Siegel factors `[level, slope, curvature]`
+/// cross-sectionally for every date in `panel` (a `T x n_maturities` matrix of
+/// yield curves, one curve per row) at the fixed `decay` (lambda). Step two
+/// fits an independent AR(1) to each factor series and maps the one-step-ahead
+/// factor forecast back through the loadings to a forecast curve.
+///
+/// Returns `maturities`, `lambda`, the `T x 3` `factors`, per-date `rsquared`,
+/// the `level`/`slope`/`curvature` factor series, and a `forecast` sub-dict
+/// with the one-step forecast `factors`, forecast `yields`, and the per-factor
+/// AR(1) `ar1_intercept`/`ar1_phi`.
+#[pyfunction]
+#[pyo3(signature = (panel, maturities, decay = 0.0609))]
+fn dynamic_ns<'py>(
+    py: Python<'py>,
+    panel: numpy::PyReadonlyArray2<'py, f64>,
+    maturities: PyReadonlyArray1<'py, f64>,
+    decay: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let rows = mat_to_vec2(&to_faer(&panel));
+    let mat = maturities.as_slice()?;
+    let fit = tsecon_termstructure::fit_dynamic_ns(&rows, mat, decay).map_err(to_py)?;
+
+    let factors: Vec<Vec<f64>> = fit.factors.iter().map(|f| f.to_vec()).collect();
+    let level = fit.level();
+    let slope = fit.slope();
+    let curvature = fit.curvature();
+    let fc = fit.forecast().map_err(to_py)?;
+
+    let fdict = PyDict::new(py);
+    fdict.set_item("factors", fc.factors.to_vec().into_pyarray(py))?;
+    fdict.set_item("yields", fc.yields.into_pyarray(py))?;
+    let ar1_intercept: Vec<f64> = fc.factor_ar1.iter().map(|a| a.intercept).collect();
+    let ar1_phi: Vec<f64> = fc.factor_ar1.iter().map(|a| a.phi).collect();
+    fdict.set_item("ar1_intercept", ar1_intercept.into_pyarray(py))?;
+    fdict.set_item("ar1_phi", ar1_phi.into_pyarray(py))?;
+
+    let d = PyDict::new(py);
+    d.set_item("maturities", fit.maturities.into_pyarray(py))?;
+    d.set_item("lambda", fit.lambda)?;
+    d.set_item("factors", factors)?;
+    d.set_item("rsquared", fit.rsquared.into_pyarray(py))?;
+    d.set_item("level", level.into_pyarray(py))?;
+    d.set_item("slope", slope.into_pyarray(py))?;
+    d.set_item("curvature", curvature.into_pyarray(py))?;
+    d.set_item("forecast", fdict)?;
+    Ok(d)
+}
+
+/// Two-step factor-augmented VAR (Bernanke-Boivin-Eliasz 2005, QJE).
+///
+/// Step 1 extracts `n_factors` principal-component factors from the large
+/// standardized information panel `panel` (`T x N`, observations in rows);
+/// step 2 fits a VAR(`lags`) with deterministic `trend` on `[factors,
+/// policy]`, the observed `policy` series (length `T`) ordered last, so a
+/// recursive/Cholesky scheme identifies the policy innovation as the
+/// structural monetary shock. Pass `slow_indices` (column positions of the
+/// slow-moving series) to use the slow/fast factor rotation that purges the
+/// contemporaneous policy component (`Favar::two_step_slow_fast`); omit it
+/// for the plain `Favar::two_step`. Returns `factors` (`T x n_factors`), the
+/// factor-VAR `params` and `sigma_u`, `n_factors`, `n_endog`, `policy_index`,
+/// and the recursive policy-shock IRFs `irf_panel` (`N x (horizon + 1)`) and
+/// `irf_policy`.
+#[pyfunction]
+#[pyo3(signature = (panel, policy, n_factors = 2, lags = 2, trend = "c",
+                    slow_indices = None, horizon = 20, orth = true))]
+#[allow(clippy::too_many_arguments)]
+fn favar<'py>(
+    py: Python<'py>,
+    panel: numpy::PyReadonlyArray2<'py, f64>,
+    policy: PyReadonlyArray1<'py, f64>,
+    n_factors: usize,
+    lags: usize,
+    trend: &str,
+    slow_indices: Option<Vec<usize>>,
+    horizon: usize,
+    orth: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = to_faer(&panel);
+    let pol = policy.as_slice()?;
+    let tr = match trend {
+        "c" => tsecon_favar::Trend::Constant,
+        "n" => tsecon_favar::Trend::None,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown trend {other:?}; expected \"c\" or \"n\""
+            )))
+        }
+    };
+    let fit = match slow_indices {
+        Some(ref idx) => {
+            tsecon_favar::Favar::two_step_slow_fast(m.as_ref(), pol, idx, n_factors, lags, tr)
+                .map_err(to_py)?
+        }
+        None => {
+            tsecon_favar::Favar::two_step(m.as_ref(), pol, n_factors, lags, tr).map_err(to_py)?
+        }
+    };
+    let d = PyDict::new(py);
+    d.set_item("factors", mat_to_vec2(&fit.factors().to_owned()))?;
+    d.set_item("params", mat_to_vec2(&fit.var().params))?;
+    d.set_item("sigma_u", mat_to_vec2(&fit.var().sigma_u))?;
+    d.set_item("n_factors", fit.n_factors())?;
+    d.set_item("n_endog", fit.n_endog())?;
+    d.set_item("policy_index", fit.policy_index())?;
+    // Impulse responses to the recursive (Cholesky) policy shock, mapped onto
+    // the panel through the loadings (BBE observation equation X_t = L F_t).
+    let shock = fit.policy_index();
+    let irf_panel: Vec<Vec<f64>> = (0..fit.factor_model().n_series())
+        .map(|s| fit.series_response(s, shock, horizon, orth).map_err(to_py))
+        .collect::<PyResult<Vec<Vec<f64>>>>()?;
+    let irf_policy = fit.policy_response(shock, horizon, orth).map_err(to_py)?;
+    d.set_item("irf_panel", irf_panel)?;
+    d.set_item("irf_policy", irf_policy.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Realized quarticity `RQ = (n/3) sum r_i^4` (Barndorff-Nielsen &
+/// Shephard 2002), the non-jump-robust estimator of integrated quarticity
+/// `int sigma^4 ds` (the asymptotic-variance scale of realized variance).
+/// For a jump-robust version use `tripower_quarticity`.
+#[pyfunction]
+fn realized_quarticity(returns: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
+    let r = returns.as_slice()?;
+    tsecon_realized::realized_quarticity(r).map_err(to_py)
+}
+
+/// Tripower quarticity
+/// `TQ = n mu_{4/3}^{-3} sum |r_i|^{4/3}|r_{i-1}|^{4/3}|r_{i-2}|^{4/3}`
+/// (Barndorff-Nielsen & Shephard 2004), the jump-robust estimator of
+/// integrated quarticity `int sigma^4 ds` used to studentize the BNS ratio
+/// jump test.
+#[pyfunction]
+fn tripower_quarticity(returns: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
+    let r = returns.as_slice()?;
+    tsecon_realized::tripower_quarticity(r).map_err(to_py)
+}
+
+/// Barndorff-Nielsen-Shephard ratio jump test (BNS 2004; Huang & Tauchen
+/// 2005). Returns a dict with `ratio`, the studentized relative-jump
+/// z-statistic; compare against a standard-normal critical value (larger =
+/// stronger evidence of a jump).
+#[pyfunction]
+fn bns_jump_test<'py>(
+    py: Python<'py>,
+    returns: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = returns.as_slice()?;
+    let ratio = tsecon_realized::bns_jump_ratio(r).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("ratio", ratio)?;
+    Ok(d)
+}
+
+/// Range-based daily variance from OHLC bars, summed across the supplied
+/// bars. `method="parkinson"` gives the Parkinson (1980) high-low estimator
+/// `(1/(4 ln 2)) sum (ln(H/L))^2`; `method="garman_klass"` gives Garman &
+/// Klass (1980), which additionally requires the `open` and `close` series.
+#[pyfunction]
+#[pyo3(signature = (high, low, method = "parkinson", open = None, close = None))]
+fn realized_range(
+    high: PyReadonlyArray1<'_, f64>,
+    low: PyReadonlyArray1<'_, f64>,
+    method: &str,
+    open: Option<PyReadonlyArray1<'_, f64>>,
+    close: Option<PyReadonlyArray1<'_, f64>>,
+) -> PyResult<f64> {
+    let h = high.as_slice()?;
+    let l = low.as_slice()?;
+    match method {
+        "parkinson" => tsecon_realized::parkinson(h, l).map_err(to_py),
+        "garman_klass" => {
+            let open = open.ok_or_else(|| {
+                PyValueError::new_err("garman_klass requires the open and close series")
+            })?;
+            let close = close.ok_or_else(|| {
+                PyValueError::new_err("garman_klass requires the open and close series")
+            })?;
+            let o = open.as_slice()?;
+            let c = close.as_slice()?;
+            tsecon_realized::garman_klass(o, h, l, c).map_err(to_py)
+        }
+        other => Err(PyValueError::new_err(format!(
+            "unknown method {other:?}; expected \"parkinson\" or \"garman_klass\""
+        ))),
+    }
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -2314,5 +2749,15 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lasso_path, m)?)?;
     m.add_function(wrap_pyfunction!(cv_splits, m)?)?;
     m.add_function(wrap_pyfunction!(iv_gmm, m)?)?;
+    m.add_function(wrap_pyfunction!(gmm_nonlinear, m)?)?;
+    m.add_function(wrap_pyfunction!(weighted_midas, m)?)?;
+    m.add_function(wrap_pyfunction!(lp_state, m)?)?;
+    m.add_function(wrap_pyfunction!(mean_group_var, m)?)?;
+    m.add_function(wrap_pyfunction!(dynamic_ns, m)?)?;
+    m.add_function(wrap_pyfunction!(favar, m)?)?;
+    m.add_function(wrap_pyfunction!(realized_quarticity, m)?)?;
+    m.add_function(wrap_pyfunction!(tripower_quarticity, m)?)?;
+    m.add_function(wrap_pyfunction!(bns_jump_test, m)?)?;
+    m.add_function(wrap_pyfunction!(realized_range, m)?)?;
     Ok(())
 }

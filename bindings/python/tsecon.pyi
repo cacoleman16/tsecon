@@ -7,7 +7,7 @@ with `bindings/python/src/lib.rs` (a CI check asserts they agree).
 """
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -503,3 +503,94 @@ def backtest(
     window is "expanding" or "rolling"; forecaster is one of naive, drift,
     mean, seasonal_naive, theta. Returns origins, per-horizon forecasts and
     targets, and a per-horizon accuracy table."""
+
+# --------------------------------------------------- nonlinear GMM (callback)
+def gmm_nonlinear(
+    moments_fn: Callable[[_F64], _ArrayLike],
+    initial: _ArrayLike,
+    weight: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Nonlinear GMM (Hansen 1982) via Nelder-Mead over a Python moment function.
+
+    moments_fn maps a parameter vector (a 1-D float64 array) to an n-by-m matrix
+    of per-observation moment contributions (rows = observations, cols = moments),
+    returned as a NumPy array or list of lists. weight is the flattened m*m
+    weighting matrix (row-major) or None for the identity. Returns params,
+    objective, gbar, converged, iterations, fevals, nmoments, nparams."""
+
+# ------------------------------------------------------------ weighted MIDAS
+def weighted_midas(
+    y: _ArrayLike,
+    hf_lags: _ArrayLike,
+    scheme: str = ...,
+    weight_start: tuple[float, float] | None = ...,
+) -> dict[str, Any]:
+    """Weighted MIDAS by NLS (Ghysels et al. 2007); exp_almon/beta weights, hf_lags is nobs x K."""
+
+# ---------------------------------------------------- state-dependent LP
+def lp_state(
+    y: _ArrayLike,
+    shock: _ArrayLike,
+    state_indicator: _ArrayLike,
+    horizons: int = ...,
+    n_lag_controls: int = ...,
+    se: str = ...,
+    maxlags: int | None = ...,
+    cumulative: bool = ...,
+) -> dict[str, Any]:
+    """State-dependent (interacted) local projections (Ramey-Zubairy 2018); per-regime IRFs and SEs."""
+
+# ------------------------------------------------------ mean-group panel VAR
+def mean_group_var(
+    entities: Sequence[_ArrayLike],
+    lags: int = ...,
+    trend: str = ...,
+    horizon: int = ...,
+    response: int = ...,
+    impulse: int = ...,
+) -> dict[str, Any]:
+    """Pesaran-Smith (1995) mean-group panel VAR over per-entity T_i x k matrices."""
+
+# ------------------------------------------------------ dynamic Nelson-Siegel
+def dynamic_ns(
+    panel: _ArrayLike, maturities: _ArrayLike, decay: float = ...
+) -> dict[str, Any]:
+    """Dynamic Nelson-Siegel factors + one-step forecast (Diebold-Li 2006).
+
+    panel is T x n_maturities. Returns maturities, lambda, factors (T x 3),
+    rsquared, level/slope/curvature series, and a forecast dict."""
+
+# ------------------------------------------------------------------- FAVAR
+def favar(
+    panel: _ArrayLike,
+    policy: _ArrayLike,
+    n_factors: int = ...,
+    lags: int = ...,
+    trend: str = ...,
+    slow_indices: list[int] | None = ...,
+    horizon: int = ...,
+    orth: bool = ...,
+) -> dict[str, Any]:
+    """Two-step factor-augmented VAR (Bernanke-Boivin-Eliasz 2005).
+
+    factors (T x r), params, sigma_u, n_factors, n_endog, policy_index, and
+    the recursive policy-shock IRFs irf_panel (N x horizon+1) / irf_policy."""
+
+# ---------------------------------------------- realized-volatility extras
+def realized_quarticity(returns: _ArrayLike) -> float:
+    """Realized quarticity RQ = (n/3) sum r^4 (BNS 2002)."""
+
+def tripower_quarticity(returns: _ArrayLike) -> float:
+    """Jump-robust tripower quarticity of integrated quarticity (BNS 2004)."""
+
+def bns_jump_test(returns: _ArrayLike) -> dict[str, float]:
+    """BNS ratio jump test (BNS 2004; Huang & Tauchen 2005); dict with 'ratio'."""
+
+def realized_range(
+    high: _ArrayLike,
+    low: _ArrayLike,
+    method: str = ...,
+    open: _ArrayLike | None = ...,
+    close: _ArrayLike | None = ...,
+) -> float:
+    """Range variance from OHLC bars; method is "parkinson" or "garman_klass"."""
