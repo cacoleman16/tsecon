@@ -35,6 +35,7 @@ method when** (a decision table) → further reading (the founding papers).
 | 10 | [Bayesian Time Series](10-bayesian.md) | Priors as shrinkage, the Minnesota BVAR, samplers you can trust, and posterior impulse responses |
 | 11 | [Nowcasting and Mixed Frequencies](11-nowcasting.md) | Reading the economy in real time: ragged edges, MIDAS, factor-model nowcasts, and news decomposition |
 | 12 | [Machine Learning for Time Series](12-machine-learning.md) | Leakage-safe validation, shrinkage vs sparsity, trees and boosting, and an honest look at foundation models |
+| 13 | [Nonlinear Dynamics: Regimes, Thresholds, and State-Dependent Responses](13-nonlinear-dynamics.md) | When linearity fails: threshold and Markov-switching systems, generalized impulse responses, and state-dependent local projections |
 
 Worked, figure-rich examples for many of these methods live in the
 [gallery](../examples/README.md); the library's full technical plans live in
@@ -56,9 +57,10 @@ matters to you.
 risk) and 11 if your data arrive at mixed frequencies.
 
 **The macro-structural path** — you ask "what does a shock do?":
-1 → 2 → 3 → 7 → 8 → 9 → 10. This is the empirical-macro toolkit: from VARs
-through identification to local projections and Bayesian estimation, the
-sequence most PhD courses spread across two semesters.
+1 → 2 → 3 → 7 → 8 → 9 → 10 → 13. This is the empirical-macro toolkit: from
+VARs through identification to local projections and Bayesian estimation,
+the sequence most PhD courses spread across two semesters — capped by 13,
+where the linearity assumption everything else shares is finally relaxed.
 
 **The risk path** — volatility and tails are your job:
 1 → 2 → 3 → 6, then 5 for evaluating VaR forecasts like any other forecast.
