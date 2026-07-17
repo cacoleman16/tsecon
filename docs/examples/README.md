@@ -539,3 +539,104 @@ Student-t GAS (red) barely moves, because its score multiplies that shock by
 `1/(1 + y²/((ν−2)f))` — a soft-thresholding weight that treats a jump as a
 tail draw, not a change in the underlying volatility. The estimated `ν ≈ 7`
 confirms the heavy tails the model exploits.
+
+### Connectedness: who spills over to whom
+
+**Use case:** measuring how shocks propagate across a system of markets or
+sectors — which are net transmitters of volatility and which are receivers.
+The Diebold-Yilmaz framework reads this straight off a VAR's generalized
+forecast-error-variance decomposition.
+
+```python
+res = tsecon.connectedness(data, lags=1, horizon=10)   # data is T × k
+res["total"]        # system-wide spillover index (%)
+res["net"]          # per-variable net = to-others − from-others
+res["gfevd"]        # the full directional spillover table (rows sum to 1)
+```
+
+![Connectedness](img/depth-connectedness.png)
+
+At a total connectedness of 66%, two-thirds of the system's forecast-error
+variance is cross-variable, not own. The heatmap (left) is the directional
+spillover table — row `i`, column `j` is the share of variable `i`'s variance
+driven by shocks to `j`; the strong off-diagonal is the connectedness. The
+bars (right) rank each variable's *net* position: red variables transmit more
+than they receive, blue ones the reverse.
+
+### FAVAR: one policy shock, many responses
+
+**Use case:** you want the response of *hundreds* of series to a single
+identified shock without estimating a hundred-variable VAR. A factor-augmented
+VAR compresses the information set to a few factors, identifies the shock in
+that small system, and maps the responses back onto every series through the
+loadings.
+
+```python
+res = tsecon.favar(panel, policy, n_factors=2, lags=2, horizon=24)
+res["irf_policy"]   # the policy variable's own response
+res["irf_panel"]    # every information-panel series' response (N × horizon+1)
+```
+
+![FAVAR](img/depth-favar.png)
+
+A recursive shock to the policy variable (bold) propagates through the factor
+VAR and, via the estimated loadings, onto all 24 series in the information
+panel (faint). Two are highlighted: a strong factor loader that moves visibly
+and a weak one that barely responds — the loadings decide who feels the shock.
+
+### The term structure in three numbers
+
+**Use case:** summarizing an entire yield curve — dozens of maturities — with
+three interpretable factors (level, slope, curvature), and tracking how they
+move over time. The dynamic Nelson-Siegel model is the workhorse.
+
+```python
+res = tsecon.dynamic_ns(panel, maturities, decay=0.0609)   # panel is T × n_maturities
+res["level"], res["slope"], res["curvature"]               # the factor series
+fit = tsecon.nelson_siegel(maturities, curve, decay=0.0609)  # one date's curve
+```
+
+![Term structure](img/depth-term-structure.png)
+
+Each month's curve collapses to three numbers (left). The right panel shows the
+three-factor fit reconstructing a single date's curve to an $R^2$ of 0.95 — a
+whole cross-section of yields captured by level, slope, and curvature.
+
+### Realized volatility: separating jumps from diffusion
+
+**Use case:** with intraday data you can measure yesterday's volatility almost
+exactly — and split it into a smooth (diffusive) part and discrete jumps.
+Bipower variation is robust to jumps, so realized-variance-minus-bipower
+isolates the jump contribution, and the BNS ratio test says which days jumped.
+
+```python
+m = tsecon.realized_measures(intraday_returns)   # one day of returns
+m["rv"], m["bipower"], m["jump"]                 # total, continuous, jump
+tsecon.bns_jump_test(intraday_returns)["ratio"]  # > 1.96 ≈ a 5% jump day
+```
+
+![Realized volatility](img/depth-realized.png)
+
+Realized variance (thin) sits at or above the jump-robust bipower variation
+(blue); the shaded gap is the jump contribution, and the markers are the days
+the BNS ratio test flags as jumps — the big spikes are discrete jumps, not a
+change in the underlying diffusion.
+
+### Mean group vs CCE: the common-factor bias, and its cure
+
+**Use case:** a panel whose units have genuinely different slopes, contaminated
+by an unobserved common factor (a global cycle, a common shock). Plain
+mean-group averaging is biased; the common-correlated-effects estimator purges
+the factor by augmenting each unit with cross-section averages.
+
+```python
+mg  = tsecon.panel_mean_group(ys, xs, method="mg")    # Pesaran-Smith 1995
+cce = tsecon.panel_mean_group(ys, xs, method="cce")   # Pesaran 2006, factor-robust
+```
+
+![Mean group vs CCE](img/depth-panel-mg-cce.png)
+
+The dots are the per-unit slope estimates, the diamonds the group averages with
+95% bands. Plain mean group (top) is pulled well to the right of the true mean
+slope by the common factor; CCE-MG (bottom) sits right on it — the correction
+the common-correlated-effects augmentation buys.
