@@ -1639,6 +1639,122 @@ fn markov_switching_ar<'py>(
     Ok(d)
 }
 
+/// MIDAS weight function (normalized to sum 1). `scheme`: "exp_almon"
+/// (uses theta1, theta2) or "beta" (uses theta1, theta2 as the two shape
+/// parameters). `k` is the number of high-frequency lags.
+#[pyfunction]
+#[pyo3(signature = (scheme, theta1, theta2, k))]
+fn midas_weights<'py>(
+    py: Python<'py>,
+    scheme: &str,
+    theta1: f64,
+    theta2: f64,
+    k: usize,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let w = match scheme {
+        "exp_almon" => tsecon_midas::exp_almon_weights(theta1, theta2, k),
+        "beta" => tsecon_midas::beta_weights(theta1, theta2, k),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown scheme {other:?}; expected \"exp_almon\" or \"beta\""
+            )))
+        }
+    }
+    .map_err(to_py)?;
+    Ok(w.into_pyarray(py))
+}
+
+/// U-MIDAS: unrestricted mixed-frequency regression (= OLS of `y` on a
+/// constant plus the `hf_lags` columns). `hf_lags` is `nobs x K` (each
+/// column a high-frequency lag). Returns params, HAC standard errors, and R².
+#[pyfunction]
+#[pyo3(signature = (y, hf_lags, se_type = "hac", maxlags = None))]
+fn umidas<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    hf_lags: numpy::PyReadonlyArray2<'py, f64>,
+    se_type: &str,
+    maxlags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = hf_lags.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let se = match se_type {
+        "nonrobust" => tsecon_midas::SeType::NonRobust,
+        "hac" => tsecon_midas::SeType::Hac {
+            kernel: tsecon_hac::Kernel::Bartlett,
+            bandwidth: maxlags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(a.nrows())) as f64,
+            use_correction: true,
+        },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown se_type {other:?}; expected nonrobust/hac"
+            )))
+        }
+    };
+    let r = tsecon_midas::umidas(y.as_slice()?, &cols, se).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("params", r.params.into_pyarray(py))?;
+    d.set_item("bse", r.bse.into_pyarray(py))?;
+    d.set_item("rsquared", r.rsquared)?;
+    Ok(d)
+}
+
+fn garch11_spec() -> tsecon_garch::GarchSpec {
+    tsecon_garch::GarchSpec {
+        mean: tsecon_garch::MeanSpec::Zero,
+        vol: tsecon_garch::VolSpec::Garch { p: 1, q: 1 },
+        dist: tsecon_garch::DistSpec::Normal,
+    }
+}
+
+fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
+    let a = r.as_array();
+    (0..a.ncols()).map(|j| a.column(j).to_vec()).collect()
+}
+
+/// CCC-GARCH (Bollerslev 1990): a GARCH(1,1) per series with a constant
+/// conditional correlation. `returns` is `T x k`. Returns the correlation
+/// matrix and the log-likelihood.
+#[pyfunction]
+fn ccc_garch<'py>(
+    py: Python<'py>,
+    returns: numpy::PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let series = returns_to_series(&returns);
+    let fit = tsecon_mgarch::CccGarch::new(garch11_spec())
+        .fit(&series)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("correlation", mat_to_vec2_bayes(&fit.correlation))?;
+    d.set_item("loglik", fit.loglik)?;
+    Ok(d)
+}
+
+/// DCC-GARCH (Engle 2002): GARCH(1,1) per series with dynamic conditional
+/// correlations Q_t = (1-a-b)Qbar + a z z' + b Q_{t-1}. `returns` is `T x k`.
+/// Returns the DCC parameters (a, b), the targeted Qbar, the log-likelihood,
+/// convergence, and the final-period correlation matrix.
+#[pyfunction]
+fn dcc_garch<'py>(
+    py: Python<'py>,
+    returns: numpy::PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let series = returns_to_series(&returns);
+    let fit = tsecon_mgarch::DccGarch::new(garch11_spec())
+        .fit(&series)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("a", fit.a)?;
+    d.set_item("b", fit.b)?;
+    d.set_item("qbar", mat_to_vec2_bayes(&fit.qbar))?;
+    d.set_item("loglik", fit.loglik)?;
+    d.set_item("converged", fit.converged)?;
+    if let Some(last) = fit.correlation_path.last() {
+        d.set_item("correlation_last", mat_to_vec2_bayes(last))?;
+    }
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -1690,5 +1806,9 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(johansen, m)?)?;
     m.add_function(wrap_pyfunction!(vecm, m)?)?;
     m.add_function(wrap_pyfunction!(markov_switching_ar, m)?)?;
+    m.add_function(wrap_pyfunction!(midas_weights, m)?)?;
+    m.add_function(wrap_pyfunction!(umidas, m)?)?;
+    m.add_function(wrap_pyfunction!(ccc_garch, m)?)?;
+    m.add_function(wrap_pyfunction!(dcc_garch, m)?)?;
     Ok(())
 }

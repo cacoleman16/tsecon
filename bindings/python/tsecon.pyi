@@ -361,3 +361,19 @@ def markov_switching_ar(
     tol: float = ...,
 ) -> dict[str, Any]:
     """Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations."""
+
+# ------------------------------------------------------------------ MIDAS
+def midas_weights(scheme: str, theta1: float, theta2: float, k: int) -> _F64:
+    """MIDAS weights (sum to 1); scheme "exp_almon" or "beta"."""
+
+def umidas(
+    y: _ArrayLike, hf_lags: _ArrayLike, se_type: str = ..., maxlags: int | None = ...
+) -> dict[str, Any]:
+    """U-MIDAS: unrestricted mixed-frequency regression (hf_lags is nobs x K)."""
+
+# ---------------------------------------------------- multivariate GARCH
+def ccc_garch(returns: _ArrayLike) -> dict[str, Any]:
+    """CCC-GARCH (Bollerslev 1990); returns is T x k. Correlation + loglik."""
+
+def dcc_garch(returns: _ArrayLike) -> dict[str, Any]:
+    """DCC-GARCH (Engle 2002); a, b, qbar, loglik, last correlation matrix."""
