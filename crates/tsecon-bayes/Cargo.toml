@@ -3,5 +3,18 @@ name = "tsecon-bayes"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Bayesian foundations for the tsecon time-series econometrics library: the conjugate Minnesota/Normal-inverse-Wishart BVAR with closed-form posterior and marginal likelihood, posterior coefficient/covariance/IRF sampling, the Carter-Kohn forward-filter backward-sampling simulation smoother on the shared state-space engine, and ArviZ-convention convergence diagnostics (rank-normalized split R-hat, bulk/tail effective sample sizes)"
 
 [dependencies]
+# faer is consumed through the tsecon-linalg re-export so the whole
+# workspace shares one pinned version (0.24, default-features = false,
+# features = ["std"]).
+tsecon-linalg = { path = "../tsecon-linalg" }
+tsecon-rng = { path = "../tsecon-rng" }
+tsecon-ssm = { path = "../tsecon-ssm" }
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
