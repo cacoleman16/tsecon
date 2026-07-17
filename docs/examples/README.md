@@ -508,3 +508,34 @@ here those five are *exactly the true support*: sparsity delivering correct
 selection, not merely a smaller model. Ridge (`tsecon.ridge`) and the elastic
 net (`tsecon.elastic_net`) share the same coordinate-descent core for the
 shrink-don't-select and in-between cases.
+
+---
+
+## Depth methods
+
+### Score-driven volatility: the robust Student-t GAS
+
+**Use case:** volatility estimation when returns have fat tails and the
+occasional jump — the setting where a Gaussian GARCH-style filter over-reacts
+to a single large shock and reports spurious persistence. A GAS (generalized
+autoregressive score) model drives the variance by the *score* of the
+observation density; with a Student-t density that score down-weights
+outliers automatically.
+
+```python
+r = returns                                   # a return series with jumps
+g  = tsecon.gas_volatility(r, density="gaussian")
+st = tsecon.gas_volatility(r, density="student_t")   # estimates the dof nu
+vol_gaussian = np.sqrt(g["variance"])
+vol_student  = np.sqrt(st["variance"])        # far calmer at the jumps
+```
+
+![Score-driven volatility](img/depth-gas-volatility.png)
+
+The return series (top) carries three isolated jumps (red). At each one
+(dashed lines, bottom) the Gaussian GAS volatility (blue) spikes hard,
+because its score `y² − f` reacts one-for-one to the squared shock; the
+Student-t GAS (red) barely moves, because its score multiplies that shock by
+`1/(1 + y²/((ν−2)f))` — a soft-thresholding weight that treats a jump as a
+tail draw, not a change in the underlying volatility. The estimated `ν ≈ 7`
+confirms the heavy tails the model exploits.
