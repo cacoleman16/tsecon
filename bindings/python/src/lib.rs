@@ -2836,6 +2836,124 @@ fn dfm_nowcast<'py>(
     Ok(d)
 }
 
+/// Pooled Mean Group (PMG) ARDL(1,1) panel estimator (Pesaran-Shin-Smith
+/// 1999).
+///
+/// Estimates a panel error-correction model in which the LONG-RUN
+/// coefficients are pooled (common across units) by maximum likelihood,
+/// while the error-correction speed and short-run dynamics stay
+/// unit-specific. `ys`/`xs` are per-unit response vectors and `T_i x k`
+/// regressor matrices (as for `panel_mean_group`). Returns the pooled
+/// long-run `theta` and its `theta_se`, the average adjustment speed
+/// `phi_bar`, the per-unit speeds `phi`, per-unit innovation variances
+/// `sigma2`, the `loglik`, and iteration/shape info. Complements the
+/// mean-group and CCE-MG estimators: PMG pools the long run, they do not.
+#[pyfunction]
+fn panel_pmg<'py>(
+    py: Python<'py>,
+    ys: Vec<PyReadonlyArray1<'py, f64>>,
+    xs: Vec<numpy::PyReadonlyArray2<'py, f64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    if ys.len() != xs.len() {
+        return Err(PyValueError::new_err(format!(
+            "ys and xs must have the same number of units; got {} and {}",
+            ys.len(),
+            xs.len()
+        )));
+    }
+    let mut units = Vec::with_capacity(ys.len());
+    for (yi, xi) in ys.iter().zip(xs.iter()) {
+        let a = xi.as_array();
+        let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+        units.push(tsecon_panelts::PanelUnit::new(
+            yi.as_slice()?.to_vec(),
+            cols,
+        ));
+    }
+    let r = tsecon_panelts::pmg(&units).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("theta", r.theta.clone().into_pyarray(py))?;
+    d.set_item("theta_se", r.theta_se.clone().into_pyarray(py))?;
+    d.set_item("phi_bar", r.phi_bar)?;
+    d.set_item("phi", r.phi.clone().into_pyarray(py))?;
+    d.set_item("sigma2", r.sigma2.clone().into_pyarray(py))?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("iterations", r.iterations)?;
+    d.set_item("n_units", r.n_units)?;
+    d.set_item("k", r.k)?;
+    Ok(d)
+}
+
+/// News / update decomposition of a DFM nowcast revision (Bańbura-Modugno
+/// 2014).
+///
+/// Fits the two-step DFM on the balanced leading block of `old_vintage`,
+/// then decomposes the revision of the `target_series` nowcast at
+/// `target_period` between the `old_vintage` and `new_vintage` data panels
+/// (same shape; the new one reveals additional ragged-edge observations)
+/// into a per-newly-observed-datapoint breakdown. `target_period` defaults
+/// to the last row. Returns `old_nowcast`, `new_nowcast`, `total_revision`,
+/// and `contributions` — a list of `{series, period, actual, forecast,
+/// news, weight, contribution}` where `contribution = weight * news` and
+/// the contributions sum exactly to the total revision.
+#[pyfunction]
+#[pyo3(signature = (old_vintage, new_vintage, target_series = 0, target_period = None,
+                    n_factors = 1, factor_order = 2))]
+#[allow(clippy::too_many_arguments)]
+fn dfm_news<'py>(
+    py: Python<'py>,
+    old_vintage: numpy::PyReadonlyArray2<'py, f64>,
+    new_vintage: numpy::PyReadonlyArray2<'py, f64>,
+    target_series: usize,
+    target_period: Option<usize>,
+    n_factors: usize,
+    factor_order: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    let old_arr = old_vintage.as_array();
+    let (t, n) = (old_arr.nrows(), old_arr.ncols());
+    // Fit on the leading balanced block of the old vintage.
+    let mut first_ragged = t;
+    for i in 0..t {
+        if (0..n).any(|j| !old_arr[(i, j)].is_finite()) {
+            first_ragged = i;
+            break;
+        }
+    }
+    let train = Mat::from_fn(first_ragged, n, |r, j| old_arr[(r, j)]);
+    let old_m = to_faer(&old_vintage);
+    let new_m = to_faer(&new_vintage);
+    let nc = tsecon_nowcast::Nowcaster::fit_two_step(train.as_ref(), n_factors, factor_order)
+        .map_err(to_py)?;
+    let period = target_period.unwrap_or(t.saturating_sub(1));
+    let nd = nc
+        .news_decomposition(old_m.as_ref(), new_m.as_ref(), target_series, period)
+        .map_err(to_py)?;
+    let contribs = nd
+        .contributions
+        .iter()
+        .map(|c| {
+            let row = PyDict::new(py);
+            row.set_item("series", c.series)?;
+            row.set_item("period", c.period)?;
+            row.set_item("actual", c.actual)?;
+            row.set_item("forecast", c.forecast)?;
+            row.set_item("news", c.news)?;
+            row.set_item("weight", c.weight)?;
+            row.set_item("contribution", c.contribution)?;
+            Ok(row)
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    let d = PyDict::new(py);
+    d.set_item("target_series", nd.target_series)?;
+    d.set_item("target_period", nd.target_period)?;
+    d.set_item("old_nowcast", nd.old_nowcast)?;
+    d.set_item("new_nowcast", nd.new_nowcast)?;
+    d.set_item("total_revision", nd.total_revision)?;
+    d.set_item("contributions", contribs)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -2915,5 +3033,7 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(gas_volatility, m)?)?;
     m.add_function(wrap_pyfunction!(panel_mean_group, m)?)?;
     m.add_function(wrap_pyfunction!(dfm_nowcast, m)?)?;
+    m.add_function(wrap_pyfunction!(panel_pmg, m)?)?;
+    m.add_function(wrap_pyfunction!(dfm_news, m)?)?;
     Ok(())
 }

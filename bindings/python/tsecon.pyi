@@ -614,6 +614,15 @@ def panel_mean_group(
     method is "mg" or "cce". ys/xs are per-unit response vectors and T_i x k
     regressor matrices. Returns coef, se, tstat, coef_per_unit, n_units, k."""
 
+def panel_pmg(
+    ys: Sequence[_ArrayLike], xs: Sequence[_ArrayLike]
+) -> dict[str, Any]:
+    """Pooled Mean Group ARDL(1,1) panel estimator (Pesaran-Shin-Smith 1999).
+
+    Pools the long-run coefficient across units by ML; error-correction speed
+    and short-run dynamics stay unit-specific. Returns theta, theta_se,
+    phi_bar, phi, sigma2, loglik, iterations, n_units, k."""
+
 # -------------------------------------------------------- DFM nowcasting
 def dfm_nowcast(
     data: _ArrayLike, n_factors: int = ..., factor_order: int = ...
@@ -622,3 +631,17 @@ def dfm_nowcast(
 
     data is T x N and may carry NaN at the ragged edge. Returns nowcast,
     edge_factor, loglik, smoothed_factors, n_factors, factor_order."""
+
+def dfm_news(
+    old_vintage: _ArrayLike,
+    new_vintage: _ArrayLike,
+    target_series: int = ...,
+    target_period: int | None = ...,
+    n_factors: int = ...,
+    factor_order: int = ...,
+) -> dict[str, Any]:
+    """News/update decomposition of a DFM nowcast revision (Banbura-Modugno 2014).
+
+    Splits the target-series nowcast revision between two data vintages into
+    per-datapoint contributions (weight*news). Returns old_nowcast,
+    new_nowcast, total_revision, and contributions (a list of dicts)."""
