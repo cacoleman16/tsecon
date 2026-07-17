@@ -3,5 +3,14 @@ name = "tsecon-spectral"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Frequency-domain analysis (periodogram, Welch averaged PSD, magnitude-squared coherence, business-cycle band tools) for the tsecon time-series econometrics library; matches scipy.signal conventions"
 
 [dependencies]
+# Pure-Rust mixed-radix FFT (no C, keeps wheels static). Re-exports
+# num-complex, so the crate does not depend on it separately.
+rustfft = "6"
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern SciPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
