@@ -1889,6 +1889,109 @@ fn factor_model<'py>(
     Ok(d)
 }
 
+/// Pseudo-out-of-sample backtest over a rolling or expanding window.
+///
+/// Re-estimates `forecaster` along the series and evaluates horizons
+/// `1..=horizon` at every origin. `window` is `"expanding"` (training set
+/// grows from `train` observations) or `"rolling"` (fixed width `train`).
+/// `refit_every` sets the refit cadence. Built-in forecasters: `"naive"`,
+/// `"drift"`, `"mean"`, `"seasonal_naive"`, `"theta"` (`period` is used by
+/// the seasonal ones). Returns the origin indices, per-horizon `forecasts`
+/// and `targets`, and an `accuracy` table (ME/MSE/RMSE/MAE/MdAE, plus
+/// MAPE/sMAPE/MASE/RMSSE where defined) whose scaled measures use the
+/// first training window at `insample_period` — never the test sample.
+#[pyfunction]
+#[pyo3(signature = (y, window = "expanding", train = 20, horizon = 1, refit_every = 1,
+                    forecaster = "naive", period = 1, insample_period = 1))]
+#[allow(clippy::too_many_arguments)]
+fn backtest<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    window: &str,
+    train: usize,
+    horizon: usize,
+    refit_every: usize,
+    forecaster: &str,
+    period: usize,
+    insample_period: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_forecast::{
+        backtest::Window, drift, historical_mean, naive, seasonal_naive, theta_forecast, Backtest,
+        ForecastError,
+    };
+    let win = match window {
+        "expanding" => Window::Expanding { min_train: train },
+        "rolling" => Window::Rolling { width: train },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown window {other:?}; expected \"expanding\" or \"rolling\""
+            )))
+        }
+    };
+    let bt = Backtest::new(win, horizon, refit_every).map_err(to_py)?;
+    // Dispatch the forecaster string to a built-in point forecaster.
+    let fc = forecaster.to_string();
+    let point = |train: &[f64], h: usize| -> Result<Vec<f64>, ForecastError> {
+        match fc.as_str() {
+            "naive" => Ok(naive(train, h, 0.95)?.mean),
+            "drift" => Ok(drift(train, h, 0.95)?.mean),
+            "mean" => Ok(historical_mean(train, h, 0.95)?.mean),
+            "seasonal_naive" => Ok(seasonal_naive(train, period, h, 0.95)?.mean),
+            "theta" => Ok(theta_forecast(train, period, h)?.forecast),
+            // Unreachable: the forecaster name is validated before `run`.
+            _ => Err(ForecastError::NonFinite {
+                what: "forecaster",
+                index: 0,
+                value: f64::NAN,
+            }),
+        }
+    };
+    if !matches!(
+        fc.as_str(),
+        "naive" | "drift" | "mean" | "seasonal_naive" | "theta"
+    ) {
+        return Err(PyValueError::new_err(format!(
+            "unknown forecaster {forecaster:?}; expected one of naive, drift, mean, \
+             seasonal_naive, theta"
+        )));
+    }
+    let res = bt.run(y.as_slice()?, point).map_err(to_py)?;
+
+    let mut forecasts = Vec::with_capacity(horizon);
+    let mut targets = Vec::with_capacity(horizon);
+    for h in 1..=horizon {
+        forecasts.push(res.forecasts(h).map_err(to_py)?.to_vec());
+        targets.push(res.targets(h).map_err(to_py)?.to_vec());
+    }
+    let table = res.accuracy_table(insample_period).map_err(to_py)?;
+    let rows = table
+        .iter()
+        .map(|r| {
+            let row = PyDict::new(py);
+            row.set_item("name", &r.name)?;
+            row.set_item("me", r.me)?;
+            row.set_item("mse", r.mse)?;
+            row.set_item("rmse", r.rmse)?;
+            row.set_item("mae", r.mae)?;
+            row.set_item("mdae", r.mdae)?;
+            row.set_item("mape", r.mape)?;
+            row.set_item("smape", r.smape)?;
+            row.set_item("mase", r.mase)?;
+            row.set_item("rmsse", r.rmsse)?;
+            Ok(row)
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let d = PyDict::new(py);
+    d.set_item("origins", res.origins().to_vec())?;
+    d.set_item("n_origins", res.n_origins())?;
+    d.set_item("horizon", res.horizon())?;
+    d.set_item("forecasts", forecasts)?;
+    d.set_item("targets", targets)?;
+    d.set_item("accuracy", rows)?;
+    Ok(d)
+}
+
 /// Nelson-Siegel yield-curve fit (Diebold-Li 2006).
 ///
 /// Cross-sectional OLS of `yields` on the three Nelson-Siegel loadings at
@@ -2008,5 +2111,6 @@ fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(factor_model, m)?)?;
     m.add_function(wrap_pyfunction!(nelson_siegel, m)?)?;
     m.add_function(wrap_pyfunction!(svensson, m)?)?;
+    m.add_function(wrap_pyfunction!(backtest, m)?)?;
     Ok(())
 }

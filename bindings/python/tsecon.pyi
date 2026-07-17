@@ -426,3 +426,20 @@ def svensson(
     maturities: _ArrayLike, yields: _ArrayLike, lambda1: float, lambda2: float
 ) -> dict[str, Any]:
     """Svensson (1994) four-factor yield-curve fit; nests Nelson-Siegel."""
+
+# ------------------------------------------------------- forecast backtest
+def backtest(
+    y: _ArrayLike,
+    window: str = ...,
+    train: int = ...,
+    horizon: int = ...,
+    refit_every: int = ...,
+    forecaster: str = ...,
+    period: int = ...,
+    insample_period: int = ...,
+) -> dict[str, Any]:
+    """Rolling/expanding pseudo-out-of-sample backtest.
+
+    window is "expanding" or "rolling"; forecaster is one of naive, drift,
+    mean, seasonal_naive, theta. Returns origins, per-horizon forecasts and
+    targets, and a per-horizon accuracy table."""
