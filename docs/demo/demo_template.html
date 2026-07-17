@@ -1,0 +1,514 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tsecon — a time series econometrics engine, live</title>
+<style>
+  :root {
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e;
+    --muted: #898781; --grid: #e1e0d9; --baseline: #c3c2b7; --shade: #eceae4;
+    --blue: #2a78d6; --blue-deep: #0d366b; --red: #e34948; --green: #008300; --yellow: #eda100;
+    --b1: #cde2fb; --b2: #9ec5f4; --b3: #6da7ec; --b4: #3987e5; --b5: #256abf; --b6: #184f95;
+    --card-border: rgba(11,11,11,0.10); --band-op: 1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7;
+      --muted: #898781; --grid: #2c2c2a; --baseline: #383835; --shade: #242422;
+      --blue: #3987e5; --blue-deep: #9ec5f4; --red: #e66767; --green: #0ca30c; --yellow: #c98500;
+      --card-border: rgba(255,255,255,0.10); --band-op: 0.45;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7;
+    --muted: #898781; --grid: #2c2c2a; --baseline: #383835; --shade: #242422;
+    --blue: #3987e5; --blue-deep: #9ec5f4; --red: #e66767; --green: #0ca30c; --yellow: #c98500;
+    --card-border: rgba(255,255,255,0.10); --band-op: 0.45;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--page); color: var(--ink);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 28px 20px 80px; }
+  header.hero { padding: 34px 0 10px; }
+  .eyebrow { font-size: 11.5px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; }
+  h1 { font-size: clamp(26px, 4.4vw, 38px); line-height: 1.12; margin: 10px 0 12px;
+    font-weight: 700; letter-spacing: -0.015em; text-wrap: balance; max-width: 21ch; }
+  .lede { color: var(--ink2); max-width: 62ch; margin: 0 0 14px; }
+  .proof { font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
+    border-left: 2px solid var(--grid); padding-left: 12px; margin: 18px 0 0; overflow-x: auto; }
+  .proof b { color: var(--ink2); font-weight: 600; }
+  .layout { display: grid; grid-template-columns: 168px 1fr; gap: 28px; margin-top: 34px; }
+  nav.rail { position: sticky; top: 20px; align-self: start; display: flex;
+    flex-direction: column; gap: 2px; }
+  nav.rail a { color: var(--ink2); text-decoration: none; font-size: 13.5px;
+    padding: 7px 10px; border-radius: 7px; border-left: 2px solid transparent; }
+  nav.rail a:hover { background: var(--surface); color: var(--ink); }
+  nav.rail a:focus-visible, .chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.rail { position: static; flex-direction: row; flex-wrap: wrap; }
+    nav.rail a { border: 1px solid var(--card-border); border-radius: 99px; }
+  }
+  main { display: flex; flex-direction: column; gap: 42px; min-width: 0; }
+  section .kicker { font-size: 11.5px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+  section h2 { font-size: 21px; margin: 0 0 6px; letter-spacing: -0.01em; text-wrap: balance; }
+  section .why { color: var(--ink2); max-width: 66ch; margin: 0 0 14px; font-size: 14.5px; }
+  .card { background: var(--surface); border: 1px solid var(--card-border);
+    border-radius: 10px; padding: 16px 16px 10px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+  .controls .lbl { font-size: 12px; color: var(--muted); margin-right: 2px; }
+  .chip { font: 600 12.5px/1 system-ui, sans-serif; color: var(--ink2);
+    background: transparent; border: 1px solid var(--card-border); border-radius: 99px;
+    padding: 7px 12px; cursor: pointer; }
+  .chip:hover { color: var(--ink); border-color: var(--baseline); }
+  .chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .readout { margin-left: auto; font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--ink2);
+    display: flex; gap: 14px; flex-wrap: wrap; }
+  .readout .good { color: var(--green); font-weight: 700; }
+  .readout .bad { color: var(--red); font-weight: 700; }
+  .chartbox { position: relative; width: 100%; }
+  .chartbox svg { display: block; width: 100%; height: auto; }
+  .stamp { font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--grid);
+    margin-top: 10px; padding: 8px 2px 2px; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--page);
+    font: 11.5px/1.5 ui-monospace, Menlo, monospace; padding: 5px 8px; border-radius: 6px;
+    transform: translate(-50%, -130%); white-space: nowrap; display: none; z-index: 3; }
+  .verdict { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  @media (max-width: 640px) { .grid3 { grid-template-columns: 1fr; } }
+  .panel-title { font-size: 12px; color: var(--ink2); text-align: center; margin: 2px 0 0; }
+  footer { margin-top: 46px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--grid);
+    padding-top: 18px; }
+  footer a { color: var(--blue); }
+  .num { font-variant-numeric: tabular-nums; }
+  @media (prefers-reduced-motion: no-preference) {
+    section { scroll-margin-top: 16px; }
+  }
+</style>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">tsecon · working codename · Rust core, Python API</div>
+  <h1>A time series econometrics engine you can poke at</h1>
+  <p class="lede">Every number on this page was computed by the library's Rust core —
+  autocorrelations, unit-root verdicts, Kalman smoothers, impulse responses, Bayesian
+  posteriors, GARCH fits — then frozen here for you to explore. The page only switches
+  scenarios and draws; it never re-derives a statistic. Each result is validated against
+  a reference implementation (statsmodels, SciPy, NumPy, <span class="num">arch</span>)
+  in the library's golden-fixture test suite.</p>
+  <div class="proof"><b>Proof of reproducibility:</b> tsecon's from-scratch Philox stream is
+  bit-identical to NumPy's — Generator(Philox(42)).random(5) =<br>__PHILOX__<br>
+  same bits, ours from Rust, at any thread count.</div>
+</header>
+
+<div class="layout">
+<nav class="rail" aria-label="Sections">
+  <a href="#identify">1 · Identify</a>
+  <a href="#stationarity">2 · Stationarity</a>
+  <a href="#kalman">3 · Kalman</a>
+  <a href="#var">4 · VAR &amp; IRFs</a>
+  <a href="#bayes">5 · Bayesian VAR</a>
+  <a href="#garch">6 · GARCH</a>
+  <a href="#arima">7 · ARIMA fan</a>
+</nav>
+
+<main>
+<section id="identify">
+  <div class="kicker">Explore</div>
+  <h2>Read the process off its correlogram</h2>
+  <p class="why">Pick a process. An AR's autocorrelation decays geometrically while its
+  <em>partial</em> autocorrelation cuts off sharply; an MA does the reverse. This is how
+  practitioners guess a model before fitting one.</p>
+  <div class="card">
+    <div class="controls" id="identify-controls"><span class="lbl">Process</span></div>
+    <div class="chartbox" id="identify-series"></div>
+    <div class="grid3" style="grid-template-columns: 1fr 1fr;">
+      <div><div class="chartbox" id="identify-acf"></div><div class="panel-title">ACF</div></div>
+      <div><div class="chartbox" id="identify-pacf"></div><div class="panel-title">PACF</div></div>
+    </div>
+    <div class="stamp">tsecon.acf / tsecon.pacf on simulated data (n = 300, seeded) · shaded: 95% white-noise band · matches statsmodels at 1e-12</div>
+  </div>
+</section>
+
+<section id="stationarity">
+  <div class="kicker">Decide</div>
+  <h2>Should you difference? Ask both tests</h2>
+  <p class="why">ADF's null is a unit root; KPSS's null is stationarity. Only together do they
+  give a confident answer — <code>check_stationarity()</code> runs both and classifies the
+  quadrant. Watch the random walk get caught, differenced, and cleared.</p>
+  <div class="card">
+    <div class="controls" id="stat-controls"><span class="lbl">Series</span></div>
+    <div class="chartbox" id="stat-series"></div>
+    <div class="stamp" id="stat-stamp"></div>
+  </div>
+</section>
+
+<section id="kalman">
+  <div class="kicker">Filter</div>
+  <h2>The Kalman smoother bridges missing data honestly</h2>
+  <p class="why">Knock a hole in the observations and the exact-diffuse smoother bridges it —
+  with uncertainty bands that balloon exactly where information is missing, then tighten again.
+  Widen the gap and watch.</p>
+  <div class="card">
+    <div class="controls" id="kalman-controls"><span class="lbl">Gap width</span>
+      <span class="readout" id="kalman-readout"></span></div>
+    <div class="chartbox" id="kalman-chart"></div>
+    <div class="stamp">tsecon.local_level_smooth · local-level model, exact diffuse initialization · band: 95% smoothed-state interval · dashed: the true latent path (never shown to the model inside the gap) · matches statsmodels at ~1e-11</div>
+  </div>
+</section>
+
+<section id="var">
+  <div class="kicker">Systems</div>
+  <h2>Impulse responses of a three-variable VAR</h2>
+  <p class="why">A synthetic economy with a built-in story — demand moves first, output follows,
+  the policy rate leans against both — estimated by VAR(2). The grid shows how each variable
+  answers each shock. Toggle orthogonalization to see why identification (section 5 of the
+  roadmap) matters.</p>
+  <div class="card">
+    <div class="controls" id="var-controls"><span class="lbl">Shocks</span></div>
+    <div id="var-grid"></div>
+    <div class="stamp">tsecon.var_irf on 400 simulated observations · Cholesky orthogonalization when on · matches statsmodels at 1e-8 · bootstrap bands land with the structural module</div>
+  </div>
+</section>
+
+<section id="bayes">
+  <div class="kicker">Bayesian</div>
+  <h2>Turn the prior-tightness dial</h2>
+  <p class="why">The Minnesota prior shrinks a VAR toward random walks. Tight (λ = 0.05) means
+  smooth, confident, possibly-too-simple responses; loose (λ = 1.0) approaches the noisy OLS
+  answer. The log marginal likelihood — computable in closed form for this conjugate family —
+  says which the <em>evidence</em> prefers. Responses of all three variables to a GDP-growth
+  shock, with 90% credible bands from 600 posterior draws.</p>
+  <div class="card">
+    <div class="controls" id="bayes-controls"><span class="lbl">Tightness λ₁</span>
+      <span class="readout" id="bayes-readout"></span></div>
+    <div class="grid3" id="bayes-grid"></div>
+    <div class="stamp">tsecon.bvar_irf_draws · Minnesota-NIW conjugate BVAR(2), US GDP/consumption/investment growth · closed-form posterior validated at 1e-13 · draws seed-reproducible</div>
+  </div>
+</section>
+
+<section id="garch">
+  <div class="kicker">Volatility</div>
+  <h2>Volatility clusters — and GARCH forecasts it</h2>
+  <p class="why">Returns are nearly unpredictable; their <em>volatility</em> is not. A GARCH(1,1)
+  tracks the calm and stormy regimes and its forecast mean-reverts to the long-run level.
+  Switch the innovation distribution and compare fits — fat tails change the likelihood, barely
+  move the variance path.</p>
+  <div class="card">
+    <div class="controls" id="garch-controls"><span class="lbl">Innovations</span>
+      <span class="readout" id="garch-readout"></span></div>
+    <div class="chartbox" id="garch-chart"></div>
+    <div class="stamp" id="garch-stamp">tsecon.garch_fit · QMLE with Bollerslev-Wooldridge robust standard errors · conventions match the arch package at machine precision</div>
+  </div>
+</section>
+
+<section id="arima">
+  <div class="kicker">Forecast</div>
+  <h2>An honest fan</h2>
+  <p class="why">ARIMA(1,1,1) with drift, fitted by exact maximum likelihood on the Kalman
+  engine, forecast twenty periods out. The bands widen like √h because integrated uncertainty
+  compounds — no shortcuts, the undifferencing carries exact cumulative variance.</p>
+  <div class="card">
+    <div class="controls" id="arima-controls"><span class="lbl">Bands</span>
+      <span class="readout" id="arima-readout"></span></div>
+    <div class="chartbox" id="arima-chart"></div>
+    <div class="stamp" id="arima-stamp">tsecon.arima_fit · exact MLE (Monahan-transformed L-BFGS, Hannan-Rissanen starts)</div>
+  </div>
+</section>
+
+<footer>
+  Built from scratch in Rust (only faer + rayon under the hood), wrapped for Python with PyO3.
+  14 library crates · 248 Rust tests + 31 Python tests, all golden-fixture-gated · the full plans:
+  ROADMAP.md, the 12-chapter guide, and the worked gallery live in the repository.
+  This page: precomputed real output, rendered client-side — nothing here is mocked.
+</footer>
+</main>
+</div>
+</div>
+
+<script type="application/json" id="demo-data">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('demo-data').textContent);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---------- tiny SVG chart kit (house style) ----------
+function mkSvg(box, W, H) {
+  box.innerHTML = '';
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  box.appendChild(s);
+  return s;
+}
+function el(svg, tag, attrs) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  svg.appendChild(e); return e;
+}
+function scales(xs, lo, hi, W, H, pad) {
+  const sx = x => pad.l + (x - xs[0]) / (xs[1] - xs[0] || 1) * (W - pad.l - pad.r);
+  const sy = y => H - pad.b - (y - lo) / (hi - lo || 1) * (H - pad.t - pad.b);
+  return { sx, sy };
+}
+function extent(arrs, padFrac = 0.06) {
+  let lo = Infinity, hi = -Infinity;
+  for (const a of arrs) for (const v of a) { if (v == null || !isFinite(v)) continue;
+    if (v < lo) lo = v; if (v > hi) hi = v; }
+  const r = (hi - lo) || 1; return [lo - r * padFrac, hi + r * padFrac];
+}
+function grid(svg, sy, lo, hi, W, pad, n = 4) {
+  const step = (hi - lo) / n;
+  for (let i = 0; i <= n; i++) {
+    const v = lo + i * step, y = sy(v);
+    el(svg, 'line', { x1: pad.l, x2: W - pad.r, y1: y, y2: y, stroke: css('--grid'),
+      'stroke-width': 0.7, 'stroke-dasharray': '1,3' });
+    el(svg, 'text', { x: pad.l - 6, y: y + 3.5, 'text-anchor': 'end', 'font-size': 10,
+      fill: css('--muted'), class: 'num' }).textContent = +v.toFixed(Math.abs(hi) < 5 ? 2 : 1);
+  }
+}
+function linePath(xs, ys, sx, sy) {
+  let d = '', pen = false;
+  for (let i = 0; i < ys.length; i++) {
+    if (ys[i] == null || !isFinite(ys[i])) { pen = false; continue; }
+    d += (pen ? 'L' : 'M') + sx(xs[i]).toFixed(1) + ' ' + sy(ys[i]).toFixed(1); pen = true;
+  }
+  return d;
+}
+function bandPath(xs, lo, hi, sx, sy) {
+  let d = 'M';
+  for (let i = 0; i < xs.length; i++) d += sx(xs[i]).toFixed(1) + ' ' + sy(hi[i]).toFixed(1) + (i < xs.length - 1 ? 'L' : '');
+  for (let i = xs.length - 1; i >= 0; i--) d += 'L' + sx(xs[i]).toFixed(1) + ' ' + sy(lo[i]).toFixed(1);
+  return d + 'Z';
+}
+function addTip(box, svg, W, H, pad, xs, seriesList) {
+  const tip = document.createElement('div'); tip.className = 'tip'; box.appendChild(tip);
+  const cross = el(svg, 'line', { y1: pad.t, y2: H - pad.b, stroke: css('--baseline'),
+    'stroke-width': 0.8, visibility: 'hidden' });
+  svg.addEventListener('pointermove', ev => {
+    const r = svg.getBoundingClientRect();
+    const fx = (ev.clientX - r.left) / r.width * W;
+    const t = (fx - pad.l) / (W - pad.l - pad.r) * (xs[1] - xs[0]) + xs[0];
+    const i = Math.max(0, Math.min(Math.round(t - xs[0]), xs[1] - xs[0]));
+    const px = pad.l + (i) / (xs[1] - xs[0] || 1) * (W - pad.l - pad.r);
+    cross.setAttribute('x1', px); cross.setAttribute('x2', px);
+    cross.setAttribute('visibility', 'visible');
+    tip.style.display = 'block';
+    tip.style.left = (px / W * 100) + '%';
+    tip.style.top = '18px';
+    tip.innerHTML = 't = ' + (i + xs[0]) + seriesList.map(s =>
+      (s.vals[i] == null || !isFinite(s.vals[i])) ? '' :
+      `<br>${s.name}: <b>${(+s.vals[i]).toFixed(2)}</b>`).join('');
+  });
+  svg.addEventListener('pointerleave', () => { tip.style.display = 'none';
+    cross.setAttribute('visibility', 'hidden'); });
+}
+function lineChart(boxId, series, opts = {}) {
+  const box = document.getElementById(boxId);
+  const W = 920, H = opts.h || 240, pad = { l: 44, r: 10, t: 10, b: 18 };
+  const svg = mkSvg(box, W, H);
+  const n = series[0].vals.length;
+  const [lo, hi] = opts.ext || extent(series.filter(s => !s.noExt).map(s => s.vals).concat(opts.bands ? opts.bands.flatMap(b => [b.lo, b.hi]) : []));
+  const { sx, sy } = scales([0, n - 1], lo, hi, W, H, pad);
+  if (opts.shade) el(svg, 'rect', { x: sx(opts.shade[0]), y: pad.t,
+    width: sx(opts.shade[1]) - sx(opts.shade[0]), height: H - pad.t - pad.b,
+    fill: css('--shade') });
+  grid(svg, sy, lo, hi, W, pad);
+  if (opts.zero && lo < 0 && hi > 0) el(svg, 'path', { d: linePath([0, n - 1], [0, 0], sx, sy),
+    stroke: css('--baseline'), 'stroke-width': 1 });
+  (opts.bands || []).forEach(b => el(svg, 'path', { d: bandPath([...Array(n).keys()], b.lo, b.hi, sx, sy),
+    fill: b.color, opacity: (b.op || 1) * +css('--band-op') || b.op || 1 }));
+  series.forEach(s => {
+    if (s.dots) { s.vals.forEach((v, i) => { if (v != null && isFinite(v))
+      el(svg, 'circle', { cx: sx(i), cy: sy(v), r: 1.7, fill: s.color }); }); }
+    else el(svg, 'path', { d: linePath([...Array(n).keys()], s.vals, sx, sy), fill: 'none',
+      stroke: s.color, 'stroke-width': s.w || 1.8,
+      'stroke-dasharray': s.dash || 'none', 'stroke-linecap': 'round' });
+  });
+  if (opts.vline != null) el(svg, 'line', { x1: sx(opts.vline), x2: sx(opts.vline),
+    y1: pad.t, y2: H - pad.b, stroke: css('--baseline'), 'stroke-width': 1 });
+  addTip(box, svg, W, H, pad, [0, n - 1], series.filter(s => s.name));
+  return svg;
+}
+function stemChart(boxId, vals, band) {
+  const box = document.getElementById(boxId);
+  const W = 450, H = 170, pad = { l: 34, r: 8, t: 8, b: 16 };
+  const svg = mkSvg(box, W, H);
+  const [lo, hi] = extent([vals.slice(1), [-band * 1.4, band * 1.4, 1.02]]);
+  const { sx, sy } = scales([0, vals.length - 1], lo, hi, W, H, pad);
+  el(svg, 'rect', { x: pad.l, y: sy(band), width: W - pad.l - pad.r,
+    height: sy(-band) - sy(band), fill: css('--b1'), opacity: 0.55 * +css('--band-op') || 0.55 });
+  grid(svg, sy, lo, hi, W, pad, 2);
+  el(svg, 'line', { x1: pad.l, x2: W - pad.r, y1: sy(0), y2: sy(0),
+    stroke: css('--baseline'), 'stroke-width': 1 });
+  for (let k = 1; k < vals.length; k++) {
+    el(svg, 'line', { x1: sx(k), x2: sx(k), y1: sy(0), y2: sy(vals[k]),
+      stroke: css('--blue'), 'stroke-width': 2 });
+    el(svg, 'circle', { cx: sx(k), cy: sy(vals[k]), r: 2.4, fill: css('--blue') });
+  }
+  return svg;
+}
+const REDRAWS = [];
+function chips(containerId, labels, onPick, initial = 0) {
+  const c = document.getElementById(containerId);
+  let current = initial;
+  const btns = labels.map((lb, i) => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.textContent = lb;
+    b.addEventListener('click', () => { btns.forEach(x => x.classList.remove('on'));
+      b.classList.add('on'); current = i; onPick(i); });
+    c.insertBefore(b, c.querySelector('.readout'));
+    return b;
+  });
+  btns[initial].classList.add('on'); onPick(initial);
+  REDRAWS.push(() => onPick(current));
+  return btns;
+}
+// Colors are resolved at draw time — re-render everything when the theme flips
+// (viewer toggle stamps data-theme on the root; OS preference fires the media query).
+new MutationObserver(() => REDRAWS.forEach(f => f()))
+  .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',
+  () => REDRAWS.forEach(f => f()));
+
+// ---------- 1 · identify ----------
+function drawIdentify(i) {
+  const p = D.identify[i];
+  lineChart('identify-series', [{ vals: p.series, color: css('--blue'), name: 'y', w: 1.4 }], { h: 170, zero: true });
+  stemChart('identify-acf', p.acf, p.band);
+  stemChart('identify-pacf', [0, ...p.pacf.slice(1)], p.band);
+}
+chips('identify-controls', D.identify.map(p => p.label), drawIdentify, 3);
+
+// ---------- 2 · stationarity ----------
+function drawStat(i) {
+  const s = D.stationarity[i];
+  lineChart('stat-series', [{ vals: s.series, color: css('--blue'), name: 'y', w: 1.4 }], { h: 190, zero: true });
+  const ok = s.recommendation === 'Proceed';
+  document.getElementById('stat-stamp').innerHTML =
+    `<span class="verdict" style="color:${ok ? 'var(--green)' : 'var(--red)'}">` +
+    `${s.quadrant} → ${s.recommendation}</span> &nbsp;·&nbsp; ADF p = <span class="num">${s.adf_p}</span>` +
+    ` &nbsp;·&nbsp; KPSS p = <span class="num">${s.kpss_p}</span> &nbsp;·&nbsp; tsecon.check_stationarity (MacKinnon p-values; Hobijn-Franses-Ooms bandwidth)`;
+}
+chips('stat-controls', D.stationarity.map(s => s.label), drawStat, 1);
+
+// ---------- 3 · kalman ----------
+function drawKalman(i) {
+  const g = D.kalman.gaps[i];
+  const obs = D.kalman.observed.map((v, t) =>
+    (g.width && t >= g.start && t < g.end) ? null : v);
+  lineChart('kalman-chart', [
+      { vals: obs, color: css('--muted'), dots: true, name: 'observed' },
+      { vals: g.smoothed, color: css('--b5'), w: 2, name: 'smoothed' },
+      { vals: D.kalman.truth, color: css('--red'), w: 1.1, dash: '3,3', name: 'truth' },
+    ], { h: 250,
+      bands: [{ lo: g.smoothed.map((m, t) => m - g.band[t]), hi: g.smoothed.map((m, t) => m + g.band[t]), color: css('--b1'), op: 0.9 }],
+      shade: g.width ? [g.start, g.end - 1] : undefined });
+  document.getElementById('kalman-readout').innerHTML =
+    `gap = ${g.width} obs &nbsp; loglik = <span class="num">${g.loglik}</span>`;
+}
+chips('kalman-controls', D.kalman.gaps.map(g => g.width + ' obs'), drawKalman, 2);
+
+// ---------- 4 · var ----------
+function drawVar(mode) {
+  const irfs = mode === 0 ? D.var.orth : D.var.nonorth;
+  const H = irfs.length, names = D.var.names;
+  const gridBox = document.getElementById('var-grid');
+  gridBox.innerHTML = '';
+  gridBox.className = 'grid3';
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    const cell = document.createElement('div');
+    const id = `var-p-${r}-${c}`;
+    cell.innerHTML = `<div class="chartbox" id="${id}"></div>` +
+      `<div class="panel-title">${names[r]} ← ${names[c]} shock</div>`;
+    gridBox.appendChild(cell);
+    const vals = [...Array(H).keys()].map(h => irfs[h][r][c]);
+    setTimeout(() => {
+      const box = document.getElementById(id);
+      const W = 300, Hh = 130, pad = { l: 34, r: 6, t: 6, b: 10 };
+      const svg = mkSvg(box, W, Hh);
+      const [lo, hi] = extent([vals, [0]]);
+      const { sx, sy } = scales([0, H - 1], lo, hi, W, Hh, pad);
+      grid(svg, sy, lo, hi, W, pad, 2);
+      el(svg, 'line', { x1: pad.l, x2: W - pad.r, y1: sy(0), y2: sy(0), stroke: css('--baseline'), 'stroke-width': 1 });
+      el(svg, 'path', { d: linePath([...Array(H).keys()], vals, sx, sy), fill: 'none',
+        stroke: css('--blue'), 'stroke-width': 1.9, 'stroke-linecap': 'round' });
+    }, 0);
+  }
+}
+chips('var-controls', ['Orthogonalized (Cholesky)', 'Reduced-form'], drawVar, 0);
+
+// ---------- 5 · bayes ----------
+function drawBayes(i) {
+  const L = D.bayes.lams[i];
+  const box = document.getElementById('bayes-grid');
+  box.innerHTML = '';
+  D.bayes.names.forEach((nm, v) => {
+    const id = `bayes-p-${v}`;
+    const cell = document.createElement('div');
+    cell.innerHTML = `<div class="chartbox" id="${id}"></div><div class="panel-title">${nm}</div>`;
+    box.appendChild(cell);
+    setTimeout(() => {
+      const W = 300, Hh = 150, pad = { l: 36, r: 6, t: 6, b: 10 };
+      const svg = mkSvg(document.getElementById(id), W, Hh);
+      const n = L.q50[v].length;
+      const [lo, hi] = extent([L.q05[v], L.q95[v], [0]]);
+      const { sx, sy } = scales([0, n - 1], lo, hi, W, Hh, pad);
+      grid(svg, sy, lo, hi, W, pad, 2);
+      el(svg, 'line', { x1: pad.l, x2: W - pad.r, y1: sy(0), y2: sy(0), stroke: css('--baseline'), 'stroke-width': 1 });
+      el(svg, 'path', { d: bandPath([...Array(n).keys()], L.q05[v], L.q95[v], sx, sy),
+        fill: css('--b2'), opacity: 0.85 * +css('--band-op') || 0.85 });
+      el(svg, 'path', { d: linePath([...Array(n).keys()], L.q50[v], sx, sy), fill: 'none',
+        stroke: css('--b5'), 'stroke-width': 2 });
+    }, 0);
+  });
+  const best = D.bayes.lams.reduce((a, b) => (b.lml > a.lml ? b : a));
+  document.getElementById('bayes-readout').innerHTML =
+    `log marginal likelihood = <span class="num ${L.lml === best.lml ? 'good' : ''}">${L.lml}</span>` +
+    (L.lml === best.lml ? ' — the evidence’s pick' : ` (best: ${best.lml})`);
+}
+chips('bayes-controls', D.bayes.lams.map(l => 'λ₁ = ' + l.lambda1), drawBayes, 1);
+
+// ---------- 6 · garch ----------
+function drawGarch(i) {
+  const f = D.garch.fits[i];
+  const n = f.vol.length;
+  const volFull = f.vol.concat(f.fc_vol);
+  const retFull = D.garch.returns.concat(Array(f.fc_vol.length).fill(null));
+  lineChart('garch-chart', [
+      { vals: retFull, color: css('--baseline'), w: 0.6, name: 'return', noExt: false },
+      { vals: f.vol.concat(Array(f.fc_vol.length).fill(null)), color: css('--blue'), w: 1.6, name: 'σ (fitted)' },
+      { vals: Array(n).fill(null).concat(f.fc_vol), color: css('--blue-deep'), w: 1.8, dash: '5,3', name: 'σ forecast' },
+    ], { h: 250, zero: true, vline: n - 1 });
+  const ps = Object.entries(f.params).map(([k, v]) =>
+    `${k} = <span class="num">${v}</span> (${f.se[k]})`).join(' · ');
+  document.getElementById('garch-readout').innerHTML =
+    `loglik = <span class="num">${f.loglik}</span> · AIC = <span class="num">${f.aic}</span>`;
+  document.getElementById('garch-stamp').innerHTML =
+    `tsecon.garch_fit(dist="${f.dist}") · ${ps} · robust (Bollerslev-Wooldridge) SEs in parentheses · conventions match the arch package at machine precision`;
+}
+chips('garch-controls', ['Normal', 'Student-t'], drawGarch, 0);
+
+// ---------- 7 · arima ----------
+function drawArima(mode) {
+  const a = D.arima, nh = a.history.length, nf = a.mean.length;
+  const zs = [[1.645, '90%'], [0.994, '68%'], [0.524, '40%']];
+  const use = mode === 0 ? zs : [zs[0]];
+  const hist = a.history.concat(Array(nf).fill(null));
+  const mean = Array(nh - 1).fill(null).concat([a.history[nh - 1]], a.mean);
+  const se = Array(nh).fill(0).concat(a.se);
+  // Zero-width band over history (invisible), mean ± z·se over the forecast.
+  const bands = use.map(([z], k) => ({
+    lo: mean.map((m, t) => t < nh - 1 ? a.history[t] : m - z * se[t]),
+    hi: mean.map((m, t) => t < nh - 1 ? a.history[t] : m + z * se[t]),
+    color: [css('--b1'), css('--b2'), css('--b3')][k], op: 1,
+  }));
+  lineChart('arima-chart', [
+      { vals: hist, color: css('--ink'), w: 1.6, name: 'history' },
+      { vals: mean, color: css('--blue-deep'), w: 1.7, dash: '5,3', name: 'forecast' },
+    ], { h: 250, vline: nh - 1, bands });
+  const ps = Object.entries(a.params).map(([k, v]) => `${k} = <span class="num">${v}</span>`).join(' · ');
+  document.getElementById('arima-readout').innerHTML = `loglik = <span class="num">${a.loglik}</span>`;
+  document.getElementById('arima-stamp').innerHTML =
+    `tsecon.arima_fit(p=1, d=1, q=1, constant=True) · ${ps} · the fan widens like √h — exact cumulative variance through the undifferencing`;
+}
+chips('arima-controls', ['40 / 68 / 90%', '90% only'], drawArima, 0);
+</script>
