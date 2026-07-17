@@ -1,42 +1,118 @@
-# tsecon (working codename)
+# tsecon *(working codename)*
 
-A high-performance time series econometrics library: Rust core, Python-first API.
-The name `tsecon` is a placeholder — the real name is decided before first public
-release (see [ROADMAP.md §9](ROADMAP.md)).
+**A high-performance time series econometrics library — a Rust core with a
+Python-first API — built to be the centralized home for macro and financial
+time series work.**
 
-**Status: Phases 0–1 complete, Phases 2–4 substantially landed** — 23 crates,
-301 Rust + 45 Python tests, all golden-fixture-validated. See
-[ROADMAP.md §0](ROADMAP.md#0-current-build-status) for a full snapshot of
-what's built, what's callable from Python, and what's next; the
-[master plan](ROADMAP.md) and [module specs](docs/roadmap/) follow.
+[![CI](https://github.com/cacoleman16/tsecon/actions/workflows/ci.yml/badge.svg)](https://github.com/cacoleman16/tsecon/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 
-**Learn:** [The tsecon Guide to Time Series Econometrics](docs/guide/README.md) —
-a free 13-chapter course, beginner to research-grade, mirroring the library.
-**See it work:** [the gallery](docs/examples/README.md) — every method with
-use cases, code, and figures.
+> `tsecon` is a working codename; the public name is chosen before the first
+> release (see [ROADMAP.md §9](ROADMAP.md)). It is pre-1.0 and moving fast.
 
-## Layout
+Most of what economists actually do — structural identification, honest
+inference, Bayesian VARs, local projections, nowcasting, volatility, panels —
+is scattered across slow, unmaintained, non-interoperable packages. `tsecon`
+brings it together in one library, fast enough for simulation work, with
+**every estimator validated against a golden reference** (statsmodels, `arch`,
+`linearmodels`, scikit-learn, ArviZ, SciPy) so the numbers are trustworthy, not
+just present.
 
-| Path | Contents |
-|---|---|
-| `crates/tsecon-rng` | Philox counter-based RNG, NumPy bit-compatible; SeedSequence; parallel substreams |
-| `crates/tsecon-stats` | Special functions and the innovation-distribution zoo (normal, t, GED, skew-t) |
-| `crates/tsecon-linalg` | Structured solvers: Levinson-Durbin, Toeplitz, discrete Lyapunov, companion-form utilities |
-| `crates/tsecon-bootstrap` | Resampling engine: moving-block / stationary / wild bootstrap on RNG substreams |
-| `crates/tsecon-diag` | Diagnostics: ACF/PACF, Ljung-Box, Jarque-Bera, ARCH-LM |
-| `crates/tsecon-ssm` | Linear-Gaussian state-space engine: Kalman filter/smoother, exact diffuse initialization |
-| `fixtures/` | Golden values generated from NumPy/SciPy/statsmodels (`generate_fixtures.py`); Rust tests must match them |
-| `docs/roadmap/` | Module specifications |
+## Status
+
+Phases 0–1 complete; Phases 2–4 substantially landed. **32 Rust crates,
+434 Rust + 130 Python tests — all green and golden-fixture-gated.** The whole
+library builds and tests from a clean checkout on every push (CI matrix on
+Linux/macOS/Windows), and a strict-built docs site keeps the documentation
+honest. See [ROADMAP.md §0](ROADMAP.md#0-current-build-status) for the live
+snapshot of what's built and what's next.
+
+## Install
+
+Build the wheel from source with [maturin](https://www.maturin.rs/) (a Rust
+toolchain and Python ≥ 3.9 are required):
+
+```sh
+pip install maturin
+maturin develop -m bindings/python/Cargo.toml   # builds + installs into the active venv
+```
+
+A published wheel (no Rust toolchain needed) lands on PyPI once the library
+name is finalized.
+
+## Quickstart
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(0)
+
+# Is my series stationary? (ADF + KPSS, with a verdict)
+y = np.cumsum(rng.standard_normal(200))          # a random walk
+tsecon.check_stationarity(y)["quadrant"]          # -> "UnitRoot"
+tsecon.check_stationarity(np.diff(y))["quadrant"] # -> "Stationary"
+
+# A small macro panel: fit a VAR and read an impulse response.
+data = np.cumsum(rng.standard_normal((200, 3)), axis=0)
+fit = tsecon.var_fit(data, lags=2)
+irf = tsecon.var_irf(data, lags=2, horizon=12)   # orthogonalized IRF
+```
+
+The **[Quickstart](docs/quickstart.md)** and the symptom-driven
+**[Which model when?](docs/which-model-when.md)** guide are the fastest way in.
+
+## Documentation
+
+- **[The Guide](docs/guide/README.md)** — a free 15-chapter course in time
+  series econometrics, beginner to research-grade, mirroring the library.
+- **[Which model when?](docs/which-model-when.md)** — start from your problem,
+  get routed to the right function.
+- **[Model cards & API reference](docs/reference/README.md)** — the
+  assumptions, defaults, failure modes, and validation target of every
+  estimator, plus the full 80-function reference.
+- **[Migration guides](docs/migration/from-statsmodels.md)** — from
+  statsmodels, R, and Stata, with a Rosetta glossary.
+- **[Gallery](docs/examples/README.md)** — worked figures in a professional
+  house style.
+
+The docs render as a site with `pip install -r docs/requirements.txt &&
+mkdocs serve`.
+
+## What's inside
+
+80 functions callable from Python today: diagnostics and unit-root tests;
+ARIMA, GARCH, and GAS score-driven volatility; VAR/SVAR with sign-restricted
+identification, FAVAR, and Diebold-Yilmaz connectedness; local projections
+(state-dependent and LP-IV); Bayesian VARs; GMM/IV-GMM and IVX predictive
+regressions; the heterogeneous-panel trio (mean-group, CCE-MG, PMG); DFM
+nowcasting (two-step and one-step MLE) with a ragged edge and a news
+decomposition; MIDAS; realized volatility; the Nelson-Siegel term structure;
+forecast backtesting; and leakage-safe machine learning.
+
+## Architecture
+
+- **Rust core, Python API.** 32 workspace crates behind PyO3/`abi3` bindings;
+  a single self-contained wheel with no heavy runtime dependencies.
+- **Validation-gated.** Nothing lands without a golden target — a reference
+  value, a documented formula, or a Monte-Carlo size/power check. Reference
+  libraries are used *only* to generate fixtures offline, never at runtime.
+- **Single owner.** Shared capabilities (RNG, HAC, state space, distributions,
+  bootstrap) are implemented once and consumed everywhere (ROADMAP §5).
+- **Reproducible.** All randomness flows through NumPy-bit-compatible Philox
+  substreams; results are identical at any thread count.
 
 ## Development
 
 ```sh
-cargo test                          # run all Rust tests (golden-value + property)
-python3 fixtures/generate_fixtures.py   # regenerate golden fixtures (pinned versions recorded in each JSON)
+cargo test --workspace                              # Rust tests (golden + property)
+cargo clippy --workspace --all-targets -- -D warnings
+maturin develop -m bindings/python/Cargo.toml && pytest bindings/python/tests
+python fixtures/generate_fixtures.py                # regenerate goldens (pinned versions in each JSON)
 ```
 
-## Design rules (short form)
+## License
 
-- **Validation-gated**: nothing merges without a golden target (fixture, reference implementation, or published table).
-- **Reproducible parallelism**: all randomness flows through Philox substreams; results are bit-identical at any thread count.
-- **Single owner**: shared capabilities (bootstrap, HAC, SSM, distributions...) are implemented once, consumed everywhere (ROADMAP §5).
+Dual-licensed under either of [MIT](LICENSE-MIT) or
+[Apache-2.0](LICENSE-APACHE), at your option.
