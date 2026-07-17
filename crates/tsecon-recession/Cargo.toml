@@ -1,0 +1,18 @@
+[package]
+name = "tsecon-recession"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Recession-probability models for the tsecon time-series econometrics library: static and dynamic (Kauppi-Saikkonen 2008) probit/logit of a binary recession indicator on leading variables such as the term spread, by maximum likelihood, with the pseudo-R2 and in-sample probability path"
+
+[dependencies]
+tsecon-linalg = { path = "../tsecon-linalg" }
+# Newton/quasi-Newton ML for the probit/logit likelihood.
+tsecon-optim = { path = "../tsecon-optim" }
+# Normal and logistic CDFs and the chi-square tail for the LR test.
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
+tsecon-rng = { path = "../tsecon-rng" }

@@ -33,6 +33,9 @@ members = [
     "crates/tsecon-nowcast",
     "crates/tsecon-panelts",
     "crates/tsecon-predreg",
+    "crates/tsecon-recession",
+    "crates/tsecon-survey",
+    "crates/tsecon-longmemory",
     "bindings/python",
 ]
 

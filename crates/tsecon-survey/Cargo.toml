@@ -1,0 +1,17 @@
+[package]
+name = "tsecon-survey"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Survey-expectations toolkit for the tsecon time-series econometrics library: the Coibion-Gorodnichenko (2015) information-rigidity regression of the mean forecast error on the mean forecast revision, forecast-disagreement measures, and expectation-consistency (efficiency) tests, with HAC inference"
+
+[dependencies]
+tsecon-linalg = { path = "../tsecon-linalg" }
+# OLS + HAC/Newey-West — the CG regression and efficiency tests are OLS-HAC.
+tsecon-hac = { path = "../tsecon-hac" }
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
+tsecon-rng = { path = "../tsecon-rng" }

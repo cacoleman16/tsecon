@@ -1,0 +1,21 @@
+[package]
+name = "tsecon-longmemory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Fractional integration / long-memory tools for the tsecon time-series econometrics library: fractional differencing (1-L)^d, the Geweke-Porter-Hudak (1983) log-periodogram estimator of the memory parameter d, and the Robinson (1995) local Whittle estimator"
+
+[dependencies]
+tsecon-linalg = { path = "../tsecon-linalg" }
+# Periodogram for the GPH / local-Whittle spectral estimators.
+tsecon-spectral = { path = "../tsecon-spectral" }
+# OLS for the GPH log-periodogram regression.
+tsecon-hac = { path = "../tsecon-hac" }
+# Concentrated-likelihood minimization for local Whittle.
+tsecon-optim = { path = "../tsecon-optim" }
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
+tsecon-rng = { path = "../tsecon-rng" }
