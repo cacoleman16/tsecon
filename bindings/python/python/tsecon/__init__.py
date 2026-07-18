@@ -14,8 +14,23 @@ from ._core import *  # noqa: F401,F403  — the compiled estimator surface
 from ._core import __version__ as __version__
 
 from . import datasets as datasets
+from . import results as results
+
+# NOTE: `results` is exposed as a NAMESPACE only — deliberately never
+# star-imported. It defines its own `var_fit`/`var_irf` helpers that return rich
+# objects, and star-importing them here would silently shadow the compiled
+# `tsecon.var_fit`/`tsecon.var_irf`. Opt in explicitly instead:
+#
+#     from tsecon.results import VARResults
+#     fit = VARResults.fit(data, lags=2)      # a dict that also renders
+#
+# Every results class is a dict subclass, so adopting them is additive: the
+# plain-dict contract of the compiled functions is unchanged.
 
 # The compiled module defines no __all__, so `from ._core import *` above pulls
 # in every public name. Rebuild __all__ explicitly for `from tsecon import *`
 # and for tooling that introspects it.
-__all__ = [_n for _n in dir(_core) if not _n.startswith("_")] + ["datasets"]
+__all__ = [_n for _n in dir(_core) if not _n.startswith("_")] + [
+    "datasets",
+    "results",
+]

@@ -8,6 +8,13 @@ The complete callable surface — every function's signature and one-line
 contract, generated directly from the type stub so it never drifts from the
 shipped module. Start here when you know the function and need its arguments.
 
+## [Results objects](results.md)
+
+`tsecon.results` — an opt-in layer of `dict` subclasses that render themselves:
+`.summary()` output an economist can read, plus the standard plots. Because they
+subclass `dict`, the plain-dict contract every estimator already returns is
+preserved exactly; adopting them is additive.
+
 ## [Datasets](datasets.md)
 
 `tsecon.datasets` — download-on-first-use loaders for reference macro data
