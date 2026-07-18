@@ -156,7 +156,18 @@ def test_repr_is_the_summary(res):
 # --------------------------------------------------------------------- #
 # 4. plots
 # --------------------------------------------------------------------- #
-def test_plot_volatility_returns_a_figure(res):
+@pytest.fixture
+def mpl():
+    """matplotlib is an optional (`plots`) extra — skip if absent, and force a
+    headless backend so these run on CI runners with no display."""
+    pytest.importorskip("matplotlib")
+    import matplotlib
+
+    matplotlib.use("Agg")
+    return matplotlib
+
+
+def test_plot_volatility_returns_a_figure(res, mpl):
     from matplotlib.figure import Figure
 
     fig = res.plot_volatility()
@@ -170,7 +181,7 @@ def test_plot_volatility_returns_a_figure(res):
     assert ax.get_ylim()[0] == 0.0
 
 
-def test_plot_volatility_accepts_an_ax_and_a_path(res, tmp_path):
+def test_plot_volatility_accepts_an_ax_and_a_path(res, tmp_path, mpl):
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots()
@@ -181,7 +192,7 @@ def test_plot_volatility_accepts_an_ax_and_a_path(res, tmp_path):
     plt.close(fig)
 
 
-def test_plot_diagnostics_has_two_panels(res):
+def test_plot_diagnostics_has_two_panels(res, mpl):
     from matplotlib.figure import Figure
 
     fig = res.plot_diagnostics(lags=12)
