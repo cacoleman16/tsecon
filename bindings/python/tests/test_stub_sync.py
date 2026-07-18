@@ -19,7 +19,7 @@ def _runtime_funcs():
 
 
 def _stub_funcs():
-    text = (ROOT / "tsecon.pyi").read_text()
+    text = (ROOT / "python" / "tsecon" / "__init__.pyi").read_text()
     return set(re.findall(r"^def (\w+)\(", text, re.MULTILINE))
 
 
@@ -32,7 +32,7 @@ def test_stub_matches_runtime():
 
 
 def test_py_typed_marker_present():
-    assert (ROOT / "py.typed").exists()
+    assert (ROOT / "python" / "tsecon" / "py.typed").exists()
 
 
 def test_api_reference_not_stale():

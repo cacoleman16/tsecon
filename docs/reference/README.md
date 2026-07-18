@@ -8,6 +8,12 @@ The complete callable surface — every function's signature and one-line
 contract, generated directly from the type stub so it never drifts from the
 shipped module. Start here when you know the function and need its arguments.
 
+## [Datasets](datasets.md)
+
+`tsecon.datasets` — download-on-first-use loaders for reference macro data
+(individual FRED series and the FRED-MD monthly panel), with caching, checksums,
+and the McCracken-Ng transformation codes. No API key required.
+
 ## [Validation matrix](validation-matrix.md)
 
 What every method family is validated *against* — the reference implementation

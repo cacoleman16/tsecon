@@ -59,8 +59,14 @@ Changelog = "https://github.com/cacoleman16/tsecon/blob/main/CHANGELOG.md"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
-module-name = "tsecon"
+# Mixed Rust/Python layout: the compiled extension is installed as the private
+# `tsecon._core`, and the `tsecon` package itself lives in python/tsecon/ and
+# re-exports it. This is what allows pure-Python submodules (tsecon.datasets)
+# to sit alongside the Rust core. The type stub and py.typed marker now live
+# inside the package directory, so they are picked up as package data.
+python-source = "python"
+module-name = "tsecon._core"
 manifest-path = "Cargo.toml"
-# Ship the hand-written type stub and the py.typed marker inside the wheel so
-# the compiled extension is a first-class typed Python citizen.
-include = ["tsecon.pyi", "py.typed"]
+# Never ship compiled bytecode: a local __pycache__ would otherwise be picked
+# up out of python-source and baked into the wheel as stale .pyc files.
+exclude = ["**/__pycache__/**", "**/*.pyc"]

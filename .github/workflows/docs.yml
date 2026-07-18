@@ -14,13 +14,13 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
-      - "bindings/python/tsecon.pyi"
+      - "bindings/python/python/tsecon/__init__.pyi"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
       - "mkdocs.yml"
-      - "bindings/python/tsecon.pyi"
+      - "bindings/python/python/tsecon/__init__.pyi"
   workflow_dispatch:
 
 permissions:

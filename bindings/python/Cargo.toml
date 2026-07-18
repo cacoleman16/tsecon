@@ -6,7 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 
 [lib]
-name = "tsecon"
+# The compiled extension is the PRIVATE core of the `tsecon` Python package
+# (python/tsecon/__init__.py re-exports it), so it is named `_core` to match
+# `module-name = "tsecon._core"` in pyproject.toml. This mixed Rust/Python
+# layout is what lets pure-Python submodules like `tsecon.datasets` exist.
+name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]

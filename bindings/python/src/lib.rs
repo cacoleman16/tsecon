@@ -3481,7 +3481,7 @@ fn dsge_solve<'py>(
 }
 
 #[pymodule]
-fn tsecon(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_function(wrap_pyfunction!(acf, m)?)?;
     m.add_function(wrap_pyfunction!(pacf, m)?)?;

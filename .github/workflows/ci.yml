@@ -58,9 +58,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip pytest numpy scipy
           python -m pip install --no-index --find-links bindings/python/dist tsecon
-          # Prove the INSTALLED wheel is under test, not repo source. `tsecon` is
-          # a compiled extension with no source package in the tree, so there is
-          # nothing to shadow it — this assertion documents and guards that.
+          # Prove the INSTALLED wheel is under test, not repo source. Since the
+          # mixed-layout refactor there IS a source package at
+          # bindings/python/python/tsecon/, so shadowing is now genuinely
+          # possible if sys.path ever picks that directory up — this assertion
+          # is the guard against silently testing the source tree instead.
           python -c "import tsecon, pathlib; assert 'site-packages' in tsecon.__file__, tsecon.__file__; print('testing wheel at', tsecon.__file__)"
           # Run the tests in place so their repo-relative fixture paths
           # (Path(__file__).parents[3] / 'fixtures') resolve correctly.

@@ -54,10 +54,31 @@ maturin develop -m bindings/python/Cargo.toml   # compiles the Rust core + insta
 ```
 
 `maturin develop` compiles the whole Rust workspace and installs the resulting
-extension into the active interpreter. The module imports as `tsecon`
-(`module-name = "tsecon"` in `bindings/python/pyproject.toml`), and it ships its
-hand-written type stub (`tsecon.pyi`) and `py.typed` marker so autocomplete and
-`mypy` see fully typed signatures.
+extension into the active interpreter.
+
+The package uses maturin's **mixed Rust/Python layout**. The compiled extension
+is installed as the private `tsecon._core` (`module-name = "tsecon._core"`,
+`python-source = "python"` in `bindings/python/pyproject.toml`), and the public
+`tsecon` package lives at `bindings/python/python/tsecon/`, whose `__init__.py`
+re-exports the whole compiled surface. Estimators are therefore still the
+compiled functions with no Python indirection — the layer exists so that
+pure-Python submodules can sit beside the Rust core (today
+[`tsecon.datasets`](bindings/python/python/tsecon/datasets.py)).
+
+Layout, and where to add things:
+
+```
+bindings/python/
+  src/lib.rs                     # the PyO3 bindings (one shared file)
+  python/tsecon/__init__.py      # re-exports tsecon._core; add submodules here
+  python/tsecon/__init__.pyi     # the hand-written type stub (public surface)
+  python/tsecon/py.typed         # PEP 561 marker
+  python/tsecon/datasets.py      # pure-Python: download-on-first-use loaders
+```
+
+The stub and `py.typed` ship inside the package so autocomplete and `mypy` see
+fully typed signatures. Because a source package now exists in the tree, the
+wheel test in CI asserts the *installed* module is under test, not the source.
 
 Verify the build:
 
@@ -248,7 +269,7 @@ a concrete example of the shape (crate `crates/tsecon-predreg`, functions
    dicts — no framework objects.
 
 4. **Update the type stub.** Add the signature and a docstring to
-   [`bindings/python/tsecon.pyi`](bindings/python/tsecon.pyi) under the appropriate
+   [`bindings/python/python/tsecon/__init__.pyi`](bindings/python/python/tsecon/__init__.pyi) under the appropriate
    `# ---- section ----` heading (the section drives the API-reference grouping).
    The stub-sync guard requires the stub to match the runtime surface exactly.
 

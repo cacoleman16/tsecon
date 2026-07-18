@@ -1,4 +1,4 @@
-"""Generate docs/reference/api.md from the type stub bindings/python/tsecon.pyi.
+"""Generate docs/reference/api.md from the type stub bindings/python/python/tsecon/__init__.pyi.
 
 The stub is the single source of truth for the callable surface (a pytest
 guard keeps it in sync with the compiled module), so the API reference is
@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).parents[1]
-PYI = REPO / "bindings" / "python" / "tsecon.pyi"
+PYI = REPO / "bindings" / "python" / "python" / "tsecon" / "__init__.pyi"
 OUT = REPO / "docs" / "reference" / "api.md"
 
 text = PYI.read_text().splitlines()
@@ -59,7 +59,7 @@ lines = [
     "# API reference",
     "",
     "The complete callable surface of `tsecon`, generated from the type stub "
-    "(`bindings/python/tsecon.pyi`). Every function returns plain NumPy arrays "
+    "(`bindings/python/python/tsecon/__init__.pyi`). Every function returns plain NumPy arrays "
     "and dictionaries — no framework objects. For the *why* and *when* of each "
     "method, see the [model cards](README.md) and the "
     "[guide](../guide/README.md).",
