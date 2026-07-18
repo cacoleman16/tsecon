@@ -6,10 +6,9 @@ single most common thing an empirical macroeconomist asks a time-series
 library to do. Everything below runs today against the shipped API; the code
 blocks are the same ones the test suite exercises.
 
-> **A note on the name.** `tsecon` is a working codename. The final name (and
-> its PyPI availability) is settled before the first public release — see
-> [ROADMAP.md §9](../ROADMAP.md). Until then, `tsecon` is what you install and
-> what you import.
+> **Pre-1.0.** The name is settled — `tsecon` is what you install and what you
+> import — but the API may still change before the first release. See
+> [ROADMAP.md](../ROADMAP.md).
 
 ---
 
@@ -21,7 +20,7 @@ install the result:
 
 ```sh
 maturin build --release                       # writes target/wheels/tsecon-0.0.1-*.whl
-pip install target/wheels/tsecon-0.0.1-*.whl  # the codename package: `tsecon`
+pip install target/wheels/tsecon-0.0.1-*.whl  # installs the `tsecon` package
 ```
 
 The core wheel depends only on NumPy. Plotting is opt-in (`pip install
@@ -31,7 +30,7 @@ on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.0.1
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 93
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 94
           if not n.startswith("_")))
 ```
 
@@ -80,7 +79,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 93 functions, grouped by the task they serve. Every one is a plain
+The 94 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -157,6 +156,7 @@ and docstrings live in
 |---|---|
 | `lp` | Local-projection impulse responses (lag-augmented or HAC SEs) |
 | `lp_iv` | Instrumented local projections with a first-stage F diagnostic |
+| `lp_multiplier` | Integral multiplier (Ramey-Zubairy): cumulated outcome on cumulated impulse, instrumented |
 | `lp_state` | State-dependent (interacted) local projections (Ramey-Zubairy) |
 
 ### Forecasting and evaluation

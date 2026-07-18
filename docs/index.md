@@ -11,9 +11,10 @@ brings it together: one library, fast simulation, and **every estimator
 validated against a golden reference** (statsmodels, `arch`, `linearmodels`,
 scikit-learn, ArviZ, SciPy) so the numbers are trustworthy, not just present.
 
-!!! note "Working name"
-    `tsecon` is a working codename; the public name is chosen before the first
-    release. See the [roadmap](https://github.com/cacoleman16/tsecon/blob/main/ROADMAP.md).
+!!! note "Pre-1.0"
+    The name is settled — `tsecon` is what you install and import — but the API
+    may still change before the first release. See the
+    [roadmap](https://github.com/cacoleman16/tsecon/blob/main/ROADMAP.md).
 
 ## Start here
 
@@ -47,7 +48,7 @@ scikit-learn, ArviZ, SciPy) so the numbers are trustworthy, not just present.
 
 ## What's inside
 
-93 functions callable from Python today, spanning diagnostics, unit-root and
+94 functions callable from Python today, spanning diagnostics, unit-root and
 specification tests; ARIMA, GARCH, and GAS score-driven volatility; VAR / SVAR with
 sign-restricted identification, FAVAR, and Diebold-Yilmaz connectedness; local
 projections (including state-dependent and LP-IV); Bayesian VARs; GMM / IV-GMM
