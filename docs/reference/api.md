@@ -204,7 +204,11 @@ GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
 def var_fit(data: _ArrayLike, lags: int = ..., trend: str = ...) -> dict[str, Any]:
 ```
 
-Fit a VAR(p) by OLS; params, sigma_u, ICs, and max stability root.
+Fit a VAR(p) by OLS; params, sigma_u, ICs, and stability.
+
+    Read `is_stable` for the stability verdict. `min_root`/`max_root` are the
+    smallest/largest moduli of the reciprocal characteristic roots — stable iff
+    `min_root > 1`, so `max_root` alone is not a verdict.
 
 ### `var_irf`
 

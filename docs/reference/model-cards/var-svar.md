@@ -39,11 +39,13 @@ intercept. `orth=True` orthogonalizes IRFs via Cholesky; `cumulative=True`
 reports running sums (level responses). `horizon` and `steps` control length;
 `alpha=0.05` sets forecast-interval coverage.
 
-**How to read the output.** `var_fit`: `sigma_u`, `aic/bic/hqic`, and
-`max_root` — the largest modulus among the *inverse* characteristic roots
-(statsmodels `VARResults.roots` convention; stability requires the **smallest**
-inverse root to exceed 1, i.e. all companion eigenvalues inside the unit
-circle). `var_irf` returns `[h][response][shock]` (horizon 0..H). `var_fevd`
+**How to read the output.** `var_fit`: `sigma_u`, `aic/bic/hqic`, and the
+stability block — **`is_stable`** (the verdict; read this one), `min_root`, and
+`max_root`. These roots are the *inverse* characteristic roots (statsmodels
+`VARResults.roots` convention), so stability requires the **smallest** inverse
+root to exceed 1 — equivalently all companion eigenvalues inside the unit
+circle. `max_root` is the root *farthest* from the unit circle and remains above
+1 even for an explosive system, so it is not a stability verdict on its own. `var_irf` returns `[h][response][shock]` (horizon 0..H). `var_fevd`
 returns `[h][variable][shock]`, each variable's shares summing to 1.
 `var_granger`: `statistic`, `p_value`, `df_num/df_den`. `var_forecast`:
 `point`, `lower`, `upper` (each steps×k).

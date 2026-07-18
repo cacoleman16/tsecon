@@ -189,6 +189,36 @@ def test_var_fit_matches_statsmodels():
     assert r["max_root"] == pytest.approx(fx["stable_max_root"], rel=1e-8)
 
 
+def test_var_stability_verdict_is_not_max_root():
+    """`is_stable`/`min_root` must classify stability; `max_root` cannot.
+
+    `roots_moduli` are the RECIPROCAL characteristic roots, so the system is
+    stable iff EVERY modulus exceeds 1 — i.e. iff `min_root > 1`. `max_root` is
+    the root farthest from the unit circle: an explosive VAR can (and here does)
+    still have `max_root > 1`, so reading it as a verdict gives the wrong answer.
+    """
+    rng = np.random.default_rng(2)
+    n = 400
+
+    def sim(a0, a1, scale=0.5):
+        y = np.zeros((n, 2))
+        y[0] = [0.1, 0.1]
+        for t in range(1, n):
+            y[t] = [a0 * y[t - 1, 0], a1 * y[t - 1, 1]] + rng.standard_normal(2) * scale
+        return y
+
+    stable = tsecon.var_fit(sim(0.5, 0.3), lags=1)
+    assert stable["is_stable"] is True
+    assert stable["min_root"] > 1.0
+
+    explosive = tsecon.var_fit(sim(1.05, 0.3, scale=0.01), lags=1)
+    assert explosive["is_stable"] is False
+    assert explosive["min_root"] < 1.0
+    # The regression this guards: max_root stays above 1 even when explosive,
+    # so a "max_root > 1 means stable" reading would misclassify it.
+    assert explosive["max_root"] > 1.0
+
+
 def test_var_irf_fevd_match_statsmodels():
     irf = np.array(tsecon.var_irf(MACRO, lags=2, horizon=10, orth=True))
     np.testing.assert_allclose(irf, VARFX["irf_orth_h10"], atol=1e-10)

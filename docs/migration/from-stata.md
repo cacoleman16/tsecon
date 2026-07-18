@@ -56,7 +56,7 @@ callable now.
 | `irf ..., cumulative` | `var_irf(..., cumulative=True)` | |
 | `vargranger` | `var_granger(data, caused, causing, lags)` | F-test; pass integer column indices. |
 | `fcast compute, step(h)` | `var_forecast(data, lags, steps=h, alpha=0.05)` | `{"point", "lower", "upper"}`. |
-| `varstable` | read `var_fit(...)["max_root"]` | Stable iff `max_root < 1`. |
+| `varstable` | read `var_fit(...)["is_stable"]` | Stable iff `is_stable` (equivalently `min_root > 1`; these are *reciprocal* roots, so `max_root` is not a verdict). |
 | `varsoc` (lag-order selection) | compare `var_fit(...)["aic"/"bic"/"hqic"]` | No single command; loop over `lags`. |
 | `svar ..., aeq() beq()` (short-run A/B) | — | Explicit A/B restrictions: **roadmap**. Use Cholesky (`var_irf`) or sign restrictions. |
 | `svar ..., lreq()` (long-run) | — | Long-run / Blanchard-Quah: **roadmap**. |

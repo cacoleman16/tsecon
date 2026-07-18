@@ -126,14 +126,18 @@ import json, numpy as np, tsecon
 data = np.array(json.load(open("fixtures/var.json"))["data_100dlog_gdp_cons_inv"])  # T x 3
 
 fit  = tsecon.var_fit(data, lags=2)                       # coefficients, ICs, stability
-fit["max_root"]                                            # < 1 ⇒ stable
+fit["is_stable"]                                           # True ⇒ stable (read this)
+fit["min_root"]                                            # > 1 ⇒ stable (reciprocal roots)
 
 irf  = tsecon.var_irf(data, lags=2, horizon=16, orth=True)   # [h][response][shock]
 fevd = tsecon.var_fevd(data, lags=2, horizon=16)             # variance decomposition
 ```
 
-Check `fit["max_root"] < 1` before you trust any IRF — an explosive VAR has no
-meaningful impulse response. `orth=True` applies the Cholesky factorization in
+Check `fit["is_stable"]` before you trust any IRF — an explosive VAR has no
+meaningful impulse response. (The roots are the *reciprocal* characteristic
+roots, so stability means **every** modulus exceeds 1, i.e. `min_root > 1`.
+`max_root` is the root farthest from the unit circle and stays above 1 even for
+an explosive system, so it is not a verdict on its own.) `orth=True` applies the Cholesky factorization in
 column order; reorder the columns to change the ordering assumption.
 
 **Escape hatch — short sample, noisy IRFs.** Macro samples are short and VARs

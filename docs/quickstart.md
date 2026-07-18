@@ -69,8 +69,10 @@ horizon `h`.
 
 The `fit` object carries the rest of the story: `fit["params"]`, `fit["aic"]`
 / `fit["bic"]` / `fit["hqic"]`, the residual covariance `fit["sigma_u"]`, and
-`fit["max_root"]` — the largest characteristic-polynomial root, which a stable
-VAR keeps outside the unit circle (all root moduli greater than one). From
+and `fit["is_stable"]` — the stability verdict. (The roots are the *reciprocal*
+characteristic roots, so a stable VAR keeps them all outside the unit circle;
+`fit["min_root"] > 1` is the equivalent numeric check, while `fit["max_root"]`
+is the root farthest from the circle and is not a verdict on its own.) From
 here, `tsecon.var_fevd`, `tsecon.var_forecast`, and `tsecon.var_granger` take
 the same `(data, lags)` arguments.
 

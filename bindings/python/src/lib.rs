@@ -502,6 +502,10 @@ fn mat_to_vec2(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
 
 /// Fit a VAR(p) by OLS and return estimates, fit statistics, and stability.
 ///
+/// Stability: read `is_stable` (bool). `min_root`/`max_root` are the smallest
+/// and largest moduli of the reciprocal characteristic roots — the system is
+/// stable iff `min_root > 1`, so `max_root` alone is NOT a verdict.
+///
 /// Matches statsmodels `VAR(...).fit(lags, trend)` at 1e-8.
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, trend = "c"))]
@@ -519,8 +523,18 @@ fn var_fit<'py>(
     d.set_item("aic", r.aic)?;
     d.set_item("bic", r.bic)?;
     d.set_item("hqic", r.hqic)?;
+    // `roots_moduli` are the RECIPROCAL characteristic roots (the statsmodels
+    // convention): the VAR is stable iff EVERY modulus exceeds 1, i.e. iff
+    // `min_root > 1`. `max_root` is therefore the root FARTHEST from the unit
+    // circle and is NOT a stability verdict on its own — read `is_stable` (or
+    // compare `min_root` to 1). `max_root` is kept for backwards compatibility.
     let roots = r.roots_moduli().map_err(to_py)?;
     d.set_item("max_root", roots.iter().cloned().fold(0.0_f64, f64::max))?;
+    d.set_item(
+        "min_root",
+        roots.iter().cloned().fold(f64::INFINITY, f64::min),
+    )?;
+    d.set_item("is_stable", r.is_stable().map_err(to_py)?)?;
     Ok(d)
 }
 
