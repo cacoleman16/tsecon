@@ -223,7 +223,7 @@ PARITY MATRIX  (the deliverable -- machine-independent, must all PASS)
                                                     vs arch.arch_model (o=1)
                                                     note: Leverage-term QMLE; two different optimisers, so parity is at optimiser tolerance (loglik rtol 1e-5, params atol 1e-3), not machine precision.
   EGARCH(1,1,1) QMLE (constant mean, normal)        log-likelihood (rtol 1e-5)    2.99e-08     2e-02  PASS
-                                                    params (atol 1e-3)            1.19e-05     1e-03  PASS
+                                                    params (atol 1e-3)            1.15e-05     1e-03  PASS
                                                     vs arch.arch_model (vol='EGARCH')
                                                     note: Same parameterisation (mu, omega, alpha, gamma, beta) on both sides; parity at optimiser tolerance (loglik rtol 1e-5, params atol 1e-3).
   KPSS test (regression='c', auto lags)             statistic                     5.55e-17     1e-10  PASS
@@ -319,7 +319,7 @@ TIMINGS  (best of 20; release build)
   OLS + HAC (Newey-West) SEs (maxlags=4, corrected)        0.024       0.082     3.39x  faster
   GARCH(1,1) QMLE (constant mean, normal)                 19.406       7.936     0.41x  SLOWER
   GJR-GARCH(1,1,1) QMLE (constant mean, normal)           19.081       8.400     0.44x  SLOWER
-  EGARCH(1,1,1) QMLE (constant mean, normal)             100.993       6.248     0.06x  SLOWER
+  EGARCH(1,1,1) QMLE (constant mean, normal)              71.588       7.035     0.10x  SLOWER
   KPSS test (regression='c', auto lags)                    0.004       0.020     4.92x  faster
   ACF (20 lags) + Bartlett SEs                             0.006       0.024     4.24x  faster
   PACF (15 lags, Yule-Walker + OLS)                        0.005       0.284    60.33x  faster
@@ -346,16 +346,44 @@ TIMINGS  (best of 20; release build)
 ```
 
 **We publish the losses.** All three QMLE volatility fits are still *slower*
-than `arch`: GARCH(1,1) at `0.41x`, GJR at `0.44x`, and EGARCH at `0.06x`.
+than `arch`: GARCH(1,1) at `0.41x`, GJR at `0.43x`, and EGARCH at `0.10x`.
 
 GARCH and GJR used to be worse — `0.23x` and `0.16x`. They improved by **1.8×
 and 2.8×** when the estimation-time likelihood was made allocation-free and
 given an **analytic gradient**: the optimiser had been driving a plain closure,
 so every gradient cost `2k = 8` central-difference probes of the full
 likelihood. Profiling put one fit at 2543 likelihood evaluations; the fused
-objective also cut the per-evaluation cost from 18.3 µs to 10.9 µs. EGARCH was
-deliberately left on the old path (it needs its own fused recursion), so it is
-now by a wide margin the worst result in the suite, ~16× slower.
+objective also cut the per-evaluation cost from 18.3 µs to 10.9 µs.
+
+EGARCH has now had the same treatment, and went from `0.06x` to `0.10x` —
+**101 ms to 71.6 ms, a 1.4× win**. It is still the worst row in the suite, and
+the profile says exactly why. One EGARCH(1,1,1) fit at `T = 1500` took 2242
+likelihood evaluations, of which 930 were the `2k = 10` central-difference
+probes behind 93 gradient requests. The
+[log-variance derivative is a recursion too](../crates/tsecon-garch/src/objective.rs)
+— the `alpha` and `gamma` feedback through `z_{t-i}` collapses into a single
+time-varying coefficient because `sign(z) z = |z|` — so those 930 evaluations
+are now one extra sweep each, and the count fell to **1454**.
+
+The other half of the GARCH win did *not* repeat, and this is the honest part.
+Making the recursion allocation-free moved a single EGARCH evaluation only from
+38.7 µs to 35.6 µs (8%), against GARCH's 18.3 → 10.9 µs. EGARCH evaluations are
+intrinsically ~6× a GARCH evaluation on the same series (35.6 µs vs 5.5 µs at
+`T = 1500`) because the recursion is *serially dependent through a transcendental*:
+`z_t` needs `sigma2_t` needs `exp(h_t)`. Nothing vectorises. Stripping every
+`exp`/`ln`/`sqrt` out of the loop entirely — which would of course compute the
+wrong answer — still leaves 12.9 µs of the 35.6 µs. So ~63% of an EGARCH
+likelihood evaluation is a dependency chain of `exp` calls that cannot be
+removed, only avoided by evaluating the likelihood fewer times.
+
+One tempting shortcut we measured and **rejected**: the value pass computes
+`h_t`, exponentiates it, and then takes `ln` of the result inside the likelihood.
+Reusing `h_t` directly looks free, and saves 8% (34.1 → 31.3 µs). But
+`ln(exp(h))` differs from `h` in the last bit for **1052 of 1500** observations
+(max absolute difference 1.1e-16), so it would break the guarantee that the
+likelihood we *optimise* is bit-for-bit the likelihood we *report*. We kept the
+logarithm. 8% is not worth making two functions that are supposed to be the same
+function slightly different.
 
 **What we chose not to do.** About two-thirds of the remaining GARCH/GJR time is
 the Nelder-Mead polish stage. On these series it moves the log-likelihood by
@@ -365,6 +393,16 @@ take it: the restarts are the documented guard against Nelder-Mead false
 convergence, and trading a robustness property for a benchmark number is exactly
 the kind of tuning-to-the-test this file exists to refuse. We pay for it in the
 timing column instead.
+
+The same lever now dominates EGARCH, and we are refusing it there too, for the
+same reason. After the analytic gradient, essentially all 1454 remaining
+likelihood evaluations in an EGARCH fit are *value* calls, and the Nelder-Mead
+polish is what asks for them — L-BFGS needs only its 98 analytic gradients.
+At 35.6 µs each that stage is the bulk of the 71.6 ms. `arch` is faster here in
+large part because it runs SLSQP alone, with no derivative-free polish and no
+restarts; that is a different robustness posture, not a faster likelihood.
+Anyone who wants the `arch` trade can have it explicitly, but it will not be
+the default and it will not be made to make this table look better.
 
 Those three ratios are also the *least* stable numbers in the table, because the
 optimiser's iteration count depends on the path it takes, not just on the data.
@@ -378,6 +416,16 @@ licensed the optimisation: an analytic gradient is not the central-difference
 gradient, so the optimiser now walks a different path and the fitted parameters
 moved by ~1e-8 (relative ~5e-7) — far inside the stated optimiser tolerance, and
 the goldens caught the question rather than letting it pass unexamined.
+
+EGARCH moved by the same order when it was switched over: on a `T = 1500`
+control series the five fitted parameters shifted by at most **4.0e-8**
+absolute, with the log-likelihood unchanged to all six printed decimals
+(`-2130.503912`). Against `arch` on the benchmark series the parameter row
+actually *tightened*, from `1.19e-05` to `1.15e-05` (tolerance `1e-3`), and the
+log-likelihood agreement was unchanged at `2.99e-08`. Separately, the fused
+EGARCH value is asserted **bit-identical** to the reference `loglike` — by
+`to_bits()` equality, not a tolerance — across a grid of specifications
+including `p=2,o=1,q=2` and Student-t.
 
 ### On the DEBUG build
 

@@ -17,8 +17,21 @@
 //! - [`lp_iv`]: just-identified LP-IV (external-instrument local
 //!   projections) with a linearmodels-convention kernel-HAC covariance and a
 //!   first-stage effective-F diagnostic.
+//! - [`lp_multiplier`]: the Ramey-Zubairy (2018) one-step **integral
+//!   multiplier** — cumulated outcome on cumulated impulse, instrumented.
 //! - [`lp_state`]: state-dependent LP with the impulse and controls
 //!   interacted with the lagged regime indicator (Ramey-Zubairy 2018).
+//!
+//! ## Cumulative responses vs multipliers
+//!
+//! [`Cumulation`] names the thing that is easy to get wrong.
+//! `Cumulation::Outcome` (the historical `cumulative = true`) accumulates
+//! only the left-hand side: it is a cumulative *impulse response*, cumulated
+//! `y` per unit of contemporaneous impulse. Dividing it by nothing does not
+//! make it a multiplier — with a denominator that never grows, it rises
+//! roughly linearly in the horizon by construction. A multiplier needs
+//! `Cumulation::Both`, and the identified version of it is
+//! [`lp_multiplier`].
 //!
 //! ## Why lag-augmented HC1 is the default
 //!
@@ -92,7 +105,9 @@ mod spec;
 mod state;
 
 pub use error::LpError;
-pub use iv::lp_iv;
+pub use iv::{lp_iv, lp_multiplier};
 pub use level::lp;
-pub use spec::{LpIvResult, LpResult, LpSpec, LpStateResult, SeKind, SeSpec};
+pub use spec::{
+    Cumulation, LpIvResult, LpMultiplierResult, LpResult, LpSpec, LpStateResult, SeKind, SeSpec,
+};
 pub use state::lp_state;

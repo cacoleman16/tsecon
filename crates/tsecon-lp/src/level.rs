@@ -27,9 +27,17 @@ use crate::spec::{LpResult, LpSpec, SeKind, SeSpec};
 ///   `use_correction=True`); the lag truncation defaults to
 ///   `maxlags = h + p`.
 ///
-/// With `spec.cumulative`, the outcome is the cumulated `sum_{j=0}^{h}
-/// y_{t+j}` (Ramey-Zubairy), so the reported path is a cumulative response
-/// whose standard errors are correct by construction.
+/// `spec.cumulation` controls which side(s) are accumulated:
+///
+/// * [`Cumulation::Outcome`](crate::Cumulation::Outcome) — the outcome is the
+///   cumulated `sum_{j=0}^{h} y_{t+j}` (Ramey-Zubairy), so the reported path
+///   is a cumulative response whose standard errors are correct by
+///   construction. The impulse stays contemporaneous, so this is a cumulative
+///   *impulse response*, not a multiplier.
+/// * [`Cumulation::Both`](crate::Cumulation::Both) — the impulse is cumulated
+///   too, so `beta_h` is an OLS integral multiplier (cumulated `y` per
+///   cumulated `shock`). For the identified version see
+///   [`lp_multiplier`](crate::lp_multiplier).
 ///
 /// # Errors
 ///
@@ -87,8 +95,17 @@ pub fn lp(y: &[f64], shock: &[f64], spec: LpSpec) -> Result<LpResult, LpError> {
             });
         }
 
-        let response = outcome_column(y, h, start, nobs, spec.cumulative);
-        let cols = single_impulse_design(y, shock, h, start, nobs, p, n_shock_lags);
+        let response = outcome_column(y, h, start, nobs, spec.cumulation.accumulates_outcome());
+        let cols = single_impulse_design(
+            y,
+            shock,
+            h,
+            start,
+            nobs,
+            p,
+            n_shock_lags,
+            spec.cumulation.accumulates_impulse(),
+        );
 
         let fit = ols(&response, &cols)?;
         let se_type = match spec.se {

@@ -45,6 +45,54 @@ pub enum SeKind {
     IvKernelHac,
 }
 
+/// Which side(s) of the projection are accumulated over the horizon.
+///
+/// This is the difference between an impulse response and a *multiplier*, and
+/// getting it wrong is the classic LP-IV trap:
+///
+/// * [`Cumulation::None`] — level response `y_{t+h}` on `x_t`.
+/// * [`Cumulation::Outcome`] — `sum_{j=0}^{h} y_{t+j}` on `x_t`. This is the
+///   Ramey-Zubairy *cumulative impulse response*: cumulative output per unit
+///   of **contemporaneous** impulse. It is a perfectly good IRF and it is
+///   what `cumulative = true` has always meant, but it is **not** a
+///   multiplier: because the denominator never grows, the ratio grows without
+///   bound in `h`.
+/// * [`Cumulation::Both`] — `sum_{j=0}^{h} y_{t+j}` on `sum_{j=0}^{h} x_{t+j}`.
+///   Now numerator and denominator are the same accumulated object, and the
+///   coefficient is the *integral multiplier*: extra cumulated `y` per extra
+///   cumulated `x` through horizon `h`. In the just-identified IV case this
+///   is Ramey & Zubairy's (2018) one-step integral multiplier — see
+///   [`lp_multiplier`](crate::lp_multiplier), which is the recommended front
+///   door.
+///
+/// Under [`Cumulation::Both`] an external instrument stays **contemporaneous**
+/// (`z_t`): the accumulation belongs to the endogenous variables, not to the
+/// identifying variation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Cumulation {
+    /// Level response: `y_{t+h}` on `x_t`.
+    #[default]
+    None,
+    /// Cumulative impulse response: `sum_j y_{t+j}` on `x_t`.
+    Outcome,
+    /// Integral multiplier: `sum_j y_{t+j}` on `sum_j x_{t+j}`.
+    Both,
+}
+
+impl Cumulation {
+    /// Whether the outcome column is accumulated.
+    #[must_use]
+    pub fn accumulates_outcome(self) -> bool {
+        !matches!(self, Cumulation::None)
+    }
+
+    /// Whether the impulse column is accumulated.
+    #[must_use]
+    pub fn accumulates_impulse(self) -> bool {
+        matches!(self, Cumulation::Both)
+    }
+}
+
 /// Configuration for a local-projection run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LpSpec {
@@ -58,12 +106,16 @@ pub struct LpSpec {
     /// Standard-error construction; see [`SeSpec`]. Defaults to
     /// lag-augmented HC1.
     pub se: SeSpec,
-    /// When `true`, regress the *cumulated* outcome `sum_{j=0}^{h} y_{t+j}`
-    /// on the impulse (Ramey-Zubairy convention), so the reported response
-    /// is a cumulative impulse response and its standard errors are correct
-    /// by construction (no need to cumulate level SEs, which would be
-    /// wrong).
-    pub cumulative: bool,
+    /// Which side(s) of the projection are accumulated over the horizon; see
+    /// [`Cumulation`]. Defaults to [`Cumulation::None`].
+    ///
+    /// [`Cumulation::Outcome`] regresses the cumulated outcome
+    /// `sum_{j=0}^{h} y_{t+j}` on the contemporaneous impulse (Ramey-Zubairy
+    /// cumulative IRF), so the reported standard errors are the cumulative
+    /// ones by construction (no need to cumulate level SEs, which would be
+    /// wrong). [`Cumulation::Both`] also accumulates the impulse, turning the
+    /// coefficient into an integral multiplier.
+    pub cumulation: Cumulation,
 }
 
 impl LpSpec {
@@ -78,7 +130,7 @@ impl LpSpec {
             horizons,
             n_lag_controls,
             se: SeSpec::LagAugmented,
-            cumulative: false,
+            cumulation: Cumulation::None,
         }
     }
 
@@ -90,10 +142,28 @@ impl LpSpec {
         self
     }
 
-    /// Builder: request cumulative (Ramey-Zubairy) responses.
+    /// Builder: request cumulative-**outcome** (Ramey-Zubairy cumulative IRF)
+    /// responses. `true` maps to [`Cumulation::Outcome`], `false` to
+    /// [`Cumulation::None`]; this is the historical spelling and its meaning
+    /// is unchanged.
+    ///
+    /// For an integral *multiplier* you want both sides accumulated: use
+    /// [`LpSpec::with_cumulation`] with [`Cumulation::Both`], or better
+    /// [`lp_multiplier`](crate::lp_multiplier).
     #[must_use]
     pub fn cumulative(mut self, cumulative: bool) -> Self {
-        self.cumulative = cumulative;
+        self.cumulation = if cumulative {
+            Cumulation::Outcome
+        } else {
+            Cumulation::None
+        };
+        self
+    }
+
+    /// Builder: set the accumulation mode explicitly.
+    #[must_use]
+    pub fn with_cumulation(mut self, cumulation: Cumulation) -> Self {
+        self.cumulation = cumulation;
         self
     }
 }
@@ -135,6 +205,37 @@ pub struct LpIvResult {
     pub nobs_per_h: Vec<usize>,
     /// Always [`SeKind::IvKernelHac`]; recorded for symmetry with
     /// [`LpResult`].
+    pub se_kind: SeKind,
+}
+
+/// The result of a one-step integral-multiplier run
+/// ([`lp_multiplier`](crate::lp_multiplier)).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LpMultiplierResult {
+    /// Horizons estimated, `[0, 1, ..., H]`.
+    pub horizons: Vec<usize>,
+    /// The integral multiplier at each horizon: extra cumulated outcome per
+    /// extra cumulated impulse through horizon `h`.
+    pub multiplier: Vec<f64>,
+    /// Kernel-HAC standard error **of the multiplier itself**. Because the
+    /// multiplier is estimated as a single 2SLS coefficient rather than as a
+    /// ratio of two separately-estimated responses, this is the standard
+    /// error of the reported parameter — not a leg's SE and not a
+    /// delta-method approximation.
+    pub se: Vec<f64>,
+    /// First-stage effective-F diagnostic for the excluded instrument in the
+    /// *cumulated* first stage (`sum_j x_{t+j}` on `z_t` and controls).
+    /// Weak-instrument concern below the usual rule-of-thumb of 10.
+    pub first_stage_f: Vec<f64>,
+    /// Cumulative response of the outcome at each horizon (the numerator's
+    /// reduced form), reported for transparency.
+    pub cumulative_outcome: Vec<f64>,
+    /// Cumulative response of the impulse at each horizon (the denominator's
+    /// reduced form), reported for transparency.
+    pub cumulative_impulse: Vec<f64>,
+    /// Effective number of observations in each horizon regression.
+    pub nobs_per_h: Vec<usize>,
+    /// Always [`SeKind::IvKernelHac`].
     pub se_kind: SeKind,
 }
 

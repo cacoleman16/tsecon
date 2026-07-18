@@ -2,7 +2,7 @@
 
 use tsecon_hac::{ols, Kernel, SeType};
 
-use crate::design::{check_finite, horizon_sample, outcome_column};
+use crate::design::{check_finite, horizon_sample, impulse_column, outcome_column};
 use crate::error::LpError;
 use crate::spec::{LpSpec, LpStateResult, SeKind, SeSpec};
 
@@ -110,8 +110,18 @@ pub fn lp_state(
             });
         }
 
-        let response = outcome_column(y, h, start, nobs, spec.cumulative);
-        let cols = interacted_design(y, shock, &d, h, start, nobs, p, n_shock_lags);
+        let response = outcome_column(y, h, start, nobs, spec.cumulation.accumulates_outcome());
+        let cols = interacted_design(
+            y,
+            shock,
+            &d,
+            h,
+            start,
+            nobs,
+            p,
+            n_shock_lags,
+            spec.cumulation.accumulates_impulse(),
+        );
 
         let fit = ols(&response, &cols)?;
         let se_type = match spec.se {
@@ -158,16 +168,19 @@ fn interacted_design(
     nobs: usize,
     p: usize,
     n_shock_lags: usize,
+    cumulative_impulse: bool,
 ) -> Vec<Vec<f64>> {
     let idx = || start..start + nobs;
     let mut cols: Vec<Vec<f64>> = Vec::with_capacity(2 * (2 + p + n_shock_lags));
 
-    // Interacted impulse (state 1 then state 0).
-    cols.push(idx().enumerate().map(|(k, t)| d[k] * shock[t]).collect());
+    // Interacted impulse (state 1 then state 0). Accumulated over 0..=h when
+    // the spec asks for both-sides cumulation (state-dependent multiplier).
+    let imp = impulse_column(shock, h, start, nobs, cumulative_impulse);
+    cols.push(imp.iter().enumerate().map(|(k, &v)| d[k] * v).collect());
     cols.push(
-        idx()
+        imp.iter()
             .enumerate()
-            .map(|(k, t)| (1.0 - d[k]) * shock[t])
+            .map(|(k, &v)| (1.0 - d[k]) * v)
             .collect(),
     );
     // Regime intercepts.
@@ -198,6 +211,5 @@ fn interacted_design(
                 .collect(),
         );
     }
-    let _ = h;
     cols
 }

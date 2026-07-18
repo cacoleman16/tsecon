@@ -29,34 +29,36 @@ rz["series"]["news"]           # Ramey's military-news shock
 
 **Full historical sample, 1890Q1–2015Q4 (n = 504)**
 
-| h (quarters) | cumulative ΔY | cumulative ΔG | **multiplier** |
-|---|---|---|---|
-| 2 | 0.270 | 0.293 | 0.921 |
-| 4 | 0.510 | 0.764 | **0.667** |
-| 8 | 1.382 | 2.097 | **0.659** |
-| 12 | 2.492 | 3.572 | **0.698** |
-| 16 | 3.316 | 4.863 | **0.682** |
-| 20 | 3.763 | 5.331 | **0.706** |
+| h (quarters) | cumulative ΔY | cumulative ΔG | **multiplier** | SE | first-stage F |
+|---|---|---|---|---|---|
+| 2 | 0.280 | 0.382 | 0.735 | 0.115 | 10.9 |
+| 4 | 0.647 | 1.018 | **0.635** | 0.057 | 15.2 |
+| 8 | 1.813 | 2.758 | **0.657** | 0.039 | 16.8 |
+| 12 | 3.250 | 4.641 | **0.700** | 0.033 | 13.5 |
+| 16 | 4.219 | 5.973 | **0.706** | 0.048 | 11.7 |
+| 20 | 4.767 | 6.413 | **0.743** | 0.057 | 12.0 |
 
-Across horizons 4–20 the multiplier sits in **0.66 to 0.71** — inside RZ's
-published 0.6–0.8 range, and comfortably below one. The central economic claim
-replicates.
+Across horizons 4–20 the multiplier sits in **0.64 to 0.74** — inside RZ's
+published 0.6–0.8 range, and comfortably below one at every horizon (the
+95% band at h = 8 is 0.58 to 0.73). The central economic claim replicates.
 
 **Postwar subsample, 1947Q1–2015Q4 (n = 276)**
 
-| h | cumulative ΔY | cumulative ΔG | multiplier |
-|---|---|---|---|
-| 4 | 0.221 | 0.204 | 1.085 |
-| 8 | 0.404 | 0.692 | 0.583 |
-| 12 | 0.644 | 1.235 | 0.522 |
-| 16 | −0.072 | 1.926 | −0.037 |
-| 20 | −0.033 | 2.297 | −0.014 |
+| h | cumulative ΔY | cumulative ΔG | multiplier | SE | first-stage F |
+|---|---|---|---|---|---|
+| 2 | 0.085 | 0.082 | 1.032 | 0.377 | 17.0 |
+| 4 | 0.232 | 0.297 | 0.783 | 0.184 | 56.2 |
+| 8 | 0.509 | 0.856 | 0.594 | 0.129 | 112.9 |
+| 12 | 0.841 | 1.419 | 0.592 | 0.122 | 117.2 |
+| 16 | 0.943 | 1.789 | 0.527 | 0.125 | 65.6 |
+| 20 | 1.288 | 2.077 | 0.620 | 0.140 | 39.6 |
 
-The postwar ratios are unstable and go negative at long horizons. That is not a
-bug in the estimator — it is the same point RZ themselves make: the identifying
-variation in the military-news series is overwhelmingly pre-1950, which is
-precisely why their headline estimates use the long historical sample. A small
-denominator makes the ratio explode; the sign flips are noise, not economics.
+The postwar point estimates land lower, and their standard errors are roughly
+three times the full-sample ones — at h = 2 the multiplier is not
+distinguishable from anything between 0.3 and 1.8. That is the same point RZ
+themselves make: the identifying variation in the military-news series is
+overwhelmingly pre-1950, which is precisely why their headline estimates use the
+long historical sample.
 
 ---
 
@@ -74,22 +76,55 @@ newsy = news / lag(pgdp * rgdp_potcbo)
 Dividing rather than logging is what makes the estimate a **multiplier** —
 dollars of output per dollar of spending — instead of an elasticity.
 
-**The integral multiplier** is the ratio of two cumulative local projections on
-the same shock:
+**The integral multiplier** is one call:
 
 ```python
-cum_y = tsecon.lp(y, newsy, horizons=20, n_lag_controls=4, cumulative=True)["irf"]
-cum_g = tsecon.lp(g, newsy, horizons=20, n_lag_controls=4, cumulative=True)["irf"]
-multiplier = cum_y / cum_g
+r = tsecon.lp_multiplier(y, g, newsy, horizons=20, n_lag_controls=4)
+r["multiplier"]      # extra dollar of output per extra dollar of spending
+r["se"]              # standard error OF THE MULTIPLIER
+r["first_stage_f"]   # weak-instrument diagnostic
 ```
+
+`lp_multiplier` runs the one-step Ramey-Zubairy regression at each horizon:
+
+```text
+sum_{j=0..h} y_{t+j} = m_h * sum_{j=0..h} g_{t+j} + c
+                     + sum_{l=1..p} (phi_l y_{t-l} + psi_l g_{t-l}) + u
+```
+
+with the cumulated spending instrumented by the contemporaneous news shock.
+Because the multiplier is a single 2SLS coefficient rather than a ratio of two
+separately estimated responses, `se` is the standard error of the number being
+reported — not a delta-method approximation and not one leg's SE relabelled.
+The two reduced-form legs are returned as `cumulative_outcome` and
+`cumulative_impulse` for transparency; by the just-identified IV algebra their
+ratio equals `multiplier` to numerical precision, which is exactly the identity
+the tables above display.
 
 !!! warning "A trap worth naming"
     It is tempting to reach for `lp_iv(y, g, newsy, cumulative=True)` and read
-    the coefficient as the multiplier. **It is not.** `cumulative=True` cumulates
-    only the *outcome*, so that coefficient is output-per-unit-of-*contemporaneous*-
-    spending, which grows without bound in the horizon — in this data it climbs
-    past 48 by h=20. The multiplier needs *both* sides accumulated, which is what
-    the ratio above does.
+    the coefficient as the multiplier. **It is not.** `cumulative=True` (also
+    spelled `cumulative="outcome"`) cumulates only the *outcome*, so the
+    coefficient is output per unit of ***contemporaneous*** spending. Its
+    numerator accumulates and its denominator does not, so it inherits the
+    growth of the spending path rather than measuring anything per-dollar: on
+    this data it runs 7.4 at h = 4 and **48.7** by h = 20, with a first-stage F
+    of 1.68 into the bargain.
+
+    That flag still exists and still means what it always meant — a cumulative
+    *impulse response* is a perfectly good object. It is simply not a
+    multiplier. A multiplier needs both sides accumulated, which is why the
+    library now gives it its own entry point rather than a flag you have to
+    know to set correctly. If you want the both-sides cumulation without the
+    multiplier's control set you can also ask for it directly:
+    `lp_iv(..., cumulative="both")`.
+
+    *(Earlier versions of this page worked around the gap by running two
+    cumulative `lp` calls and dividing. That ratio used a different control set
+    in each leg — lags of `y` in the numerator, lags of `g` in the denominator —
+    which is not any single well-defined IV estimator. The one-step version
+    moves the h = 4..20 estimates from 0.66–0.71 to 0.64–0.74; the largest
+    change is +0.037 at h = 20 and the economic conclusion is unchanged.)*
 
 ---
 
@@ -98,8 +133,9 @@ multiplier = cum_y / cum_g
 This reproduces RZ's headline integral multiplier using their data, their
 instrument, and their normalisation. It is **not** a line-by-line port of their
 Stata code: their published tables involve sample splits, lag choices, and
-standard-error conventions this script does not reproduce exactly, and this page
-reports point estimates without RZ's inference.
+standard-error conventions this script does not reproduce exactly. The standard
+errors reported here are the library's kernel-HAC ones for the one-step
+multiplier regression, not RZ's own convention.
 
 The claim being checked is the one that carries the economics — that the
 multiplier is well below one, and stable across horizons in the long sample —

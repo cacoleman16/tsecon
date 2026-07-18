@@ -1060,14 +1060,58 @@ fn arima_fit<'py>(
     Ok(dct)
 }
 
+/// Parse the `cumulative=` argument shared by the LP entry points.
+///
+/// Accepts the historical booleans (`False` -> no cumulation, `True` ->
+/// outcome-only, unchanged in meaning) and the explicit spellings `"none"`,
+/// `"outcome"`, `"both"`. `"both"` accumulates the impulse as well, turning
+/// the coefficient into an integral multiplier.
+fn parse_cumulation(arg: Option<&Bound<'_, PyAny>>) -> PyResult<tsecon_lp::Cumulation> {
+    use tsecon_lp::Cumulation;
+    let Some(obj) = arg else {
+        return Ok(Cumulation::None);
+    };
+    if obj.is_none() {
+        return Ok(Cumulation::None);
+    }
+    if let Ok(b) = obj.extract::<bool>() {
+        return Ok(if b {
+            Cumulation::Outcome
+        } else {
+            Cumulation::None
+        });
+    }
+    let s: String = obj.extract().map_err(|_| {
+        PyValueError::new_err("cumulative must be a bool or one of \"none\", \"outcome\", \"both\"")
+    })?;
+    match s.as_str() {
+        "none" => Ok(Cumulation::None),
+        "outcome" => Ok(Cumulation::Outcome),
+        "both" => Ok(Cumulation::Both),
+        other => Err(PyValueError::new_err(format!(
+            "unknown cumulative {other:?}; expected \"none\", \"outcome\" or \"both\"              (or a bool). Note \"outcome\" is a cumulative impulse response, not a              multiplier -- for a multiplier use tsecon.lp_multiplier"
+        ))),
+    }
+}
+
 /// Local projection impulse responses (Jordà 2005).
 ///
 /// `se`: "lag_augmented" (Montiel Olea-Plagborg-Møller 2021, the default) or
-/// "hac" (Newey-West; `maxlags=None` grows with the horizon). `cumulative`
-/// regresses the cumulated outcome (Ramey-Zubairy). Returns per-horizon irf
-/// and standard errors.
+/// "hac" (Newey-West; `maxlags=None` grows with the horizon).
+///
+/// `cumulative` selects which side(s) accumulate over the horizon:
+/// `False`/`"none"` (level response), `True`/`"outcome"` (the Ramey-Zubairy
+/// cumulative impulse response: cumulated outcome on the *contemporaneous*
+/// impulse), or `"both"` (cumulated outcome on cumulated impulse, an OLS
+/// integral multiplier). `True` keeps its historical meaning exactly.
+///
+/// A cumulative-outcome response is NOT a multiplier: its denominator never
+/// grows with the horizon, so it rises roughly linearly in `h` by
+/// construction. For an identified multiplier use `tsecon.lp_multiplier`.
+///
+/// Returns per-horizon irf and standard errors.
 #[pyfunction]
-#[pyo3(signature = (y, shock, horizons = 12, n_lag_controls = 4, se = "lag_augmented", maxlags = None, cumulative = false))]
+#[pyo3(signature = (y, shock, horizons = 12, n_lag_controls = 4, se = "lag_augmented", maxlags = None, cumulative = None))]
 #[allow(clippy::too_many_arguments)]
 fn lp<'py>(
     py: Python<'py>,
@@ -1077,9 +1121,10 @@ fn lp<'py>(
     n_lag_controls: usize,
     se: &str,
     maxlags: Option<usize>,
-    cumulative: bool,
+    cumulative: Option<&Bound<'py, PyAny>>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).cumulative(cumulative);
+    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
+        .with_cumulation(parse_cumulation(cumulative)?);
     spec = match se {
         "lag_augmented" => spec,
         "hac" => spec.with_hac(maxlags),
@@ -1108,8 +1153,16 @@ fn lp<'py>(
 /// Ramey-Zubairy 2018). The `impulse` is instrumented by `instrument`;
 /// kernel-HAC standard errors match linearmodels IV2SLS. Returns per-horizon
 /// irf, se, and the first-stage effective F diagnostic.
+///
+/// `cumulative` takes `False`/`"none"`, `True`/`"outcome"` or `"both"`, with
+/// the same meaning as in `tsecon.lp`; the instrument stays contemporaneous
+/// in every mode. `True`/`"outcome"` cumulates ONLY the outcome, so it is a
+/// cumulative impulse response (cumulated outcome per unit of contemporaneous
+/// impulse) and NOT a multiplier -- it grows without bound in the horizon
+/// because its denominator does not accumulate. For the Ramey-Zubairy
+/// integral multiplier use `tsecon.lp_multiplier`.
 #[pyfunction]
-#[pyo3(signature = (y, impulse, instrument, horizons = 8, n_lag_controls = 4, cumulative = false))]
+#[pyo3(signature = (y, impulse, instrument, horizons = 8, n_lag_controls = 4, cumulative = None))]
 fn lp_iv<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
@@ -1117,9 +1170,10 @@ fn lp_iv<'py>(
     instrument: PyReadonlyArray1<'py, f64>,
     horizons: usize,
     n_lag_controls: usize,
-    cumulative: bool,
+    cumulative: Option<&Bound<'py, PyAny>>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).cumulative(cumulative);
+    let spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
+        .with_cumulation(parse_cumulation(cumulative)?);
     let r =
         tsecon_lp::lp_iv(&vec1(&y), &vec1(&impulse), &vec1(&instrument), spec).map_err(to_py)?;
     let d = PyDict::new(py);
@@ -1134,6 +1188,73 @@ fn lp_iv<'py>(
     d.set_item("irf", r.irf.into_pyarray(py))?;
     d.set_item("se", r.se.into_pyarray(py))?;
     d.set_item("first_stage_f", r.first_stage_f.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Ramey-Zubairy (2018) integral multiplier by one-step LP-IV.
+///
+/// At each horizon `h` this regresses the CUMULATED outcome
+/// `sum_{j=0..h} y_{t+j}` on the CUMULATED impulse `sum_{j=0..h} x_{t+j}`,
+/// instrumented by the contemporaneous `instrument`, controlling for a
+/// constant and `n_lag_controls` lags of BOTH the outcome and the impulse.
+/// Because both sides accumulate over the same window, the coefficient is a
+/// multiplier: extra cumulated outcome per extra cumulated impulse through
+/// horizon `h`.
+///
+/// This is the estimator you want for a fiscal (or any integral) multiplier.
+/// `lp_iv(..., cumulative=True)` is NOT: it accumulates only the outcome, so
+/// it reports cumulated output per unit of CONTEMPORANEOUS spending, which
+/// rises roughly linearly in the horizon by construction.
+///
+/// Standard errors: `se` is the kernel-HAC standard error of the multiplier
+/// coefficient itself. The multiplier is estimated as a single 2SLS
+/// parameter, not as a ratio of two separately estimated responses, so this
+/// is honest inference on the reported number -- not a delta-method
+/// approximation and not one leg's SE relabelled.
+///
+/// Returns a dict with `horizons`, `multiplier`, `se`, `first_stage_f`
+/// (weak-instrument concern below 10), and the two reduced-form legs
+/// `cumulative_outcome` / `cumulative_impulse` (no SEs; their ratio equals
+/// `multiplier` by the just-identified IV algebra).
+#[pyfunction]
+#[pyo3(signature = (y, impulse, instrument, horizons = 20, n_lag_controls = 4, maxlags = None))]
+fn lp_multiplier<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    impulse: PyReadonlyArray1<'py, f64>,
+    instrument: PyReadonlyArray1<'py, f64>,
+    horizons: usize,
+    n_lag_controls: usize,
+    maxlags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls);
+    if maxlags.is_some() {
+        spec = spec.with_hac(maxlags);
+    }
+    let r = tsecon_lp::lp_multiplier(&vec1(&y), &vec1(&impulse), &vec1(&instrument), spec)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item(
+        "horizons",
+        r.horizons
+            .iter()
+            .map(|&h| h as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("multiplier", r.multiplier.into_pyarray(py))?;
+    d.set_item("se", r.se.into_pyarray(py))?;
+    d.set_item("first_stage_f", r.first_stage_f.into_pyarray(py))?;
+    d.set_item("cumulative_outcome", r.cumulative_outcome.into_pyarray(py))?;
+    d.set_item("cumulative_impulse", r.cumulative_impulse.into_pyarray(py))?;
+    d.set_item(
+        "nobs_per_h",
+        r.nobs_per_h
+            .iter()
+            .map(|&v| v as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
     Ok(d)
 }
 
@@ -2408,7 +2529,7 @@ fn weighted_midas<'py>(
 /// keys `horizons`, `irf_state1`, `se_state1`, `irf_state0`, `se_state0` (the
 /// per-regime impulse responses and their standard errors at each horizon).
 #[pyfunction]
-#[pyo3(signature = (y, shock, state_indicator, horizons = 12, n_lag_controls = 4, se = "lag_augmented", maxlags = None, cumulative = false))]
+#[pyo3(signature = (y, shock, state_indicator, horizons = 12, n_lag_controls = 4, se = "lag_augmented", maxlags = None, cumulative = None))]
 #[allow(clippy::too_many_arguments)]
 fn lp_state<'py>(
     py: Python<'py>,
@@ -2419,9 +2540,10 @@ fn lp_state<'py>(
     n_lag_controls: usize,
     se: &str,
     maxlags: Option<usize>,
-    cumulative: bool,
+    cumulative: Option<&Bound<'py, PyAny>>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).cumulative(cumulative);
+    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
+        .with_cumulation(parse_cumulation(cumulative)?);
     spec = match se {
         "lag_augmented" => spec,
         "hac" => spec.with_hac(maxlags),
@@ -3517,6 +3639,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(arima_fit, m)?)?;
     m.add_function(wrap_pyfunction!(lp, m)?)?;
     m.add_function(wrap_pyfunction!(lp_iv, m)?)?;
+    m.add_function(wrap_pyfunction!(lp_multiplier, m)?)?;
     m.add_function(wrap_pyfunction!(ridge, m)?)?;
     m.add_function(wrap_pyfunction!(elastic_net, m)?)?;
     m.add_function(wrap_pyfunction!(lasso, m)?)?;

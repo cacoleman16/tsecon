@@ -7,7 +7,7 @@
 //! two-regime effect.
 
 use serde_json::Value;
-use tsecon_lp::{lp, lp_state, LpSpec, SeKind};
+use tsecon_lp::{lp, lp_iv, lp_multiplier, lp_state, Cumulation, LpSpec, SeKind};
 use tsecon_rng::Stream;
 use tsecon_stats::{ContinuousDist, StdNormal};
 
@@ -251,5 +251,108 @@ fn state_dependent_impact_is_larger_in_the_high_regime() {
     assert!(
         (1.5..2.6).contains(&b1) && (0.6..1.4).contains(&b0),
         "recovered impacts (state1 {b1}, state0 {b0}) far from the 2 vs 1 truth"
+    );
+}
+
+#[test]
+fn integral_multiplier_recovers_a_known_multiplier_and_the_trap_does_not() {
+    // A fiscal system with a KNOWN integral multiplier of 1.0: output moves
+    // one-for-one with persistent spending, and a confounder contaminates
+    // OLS so the news instrument has work to do.
+    let mut stream = Stream::new(20180618);
+    let n = 500usize;
+    let burn = 100usize;
+    let total = n + burn;
+    let (mut news, mut g, mut y) = (
+        Vec::with_capacity(total),
+        Vec::with_capacity(total),
+        Vec::with_capacity(total),
+    );
+    let mut g_prev = 0.0;
+    let mut news_prev = 0.0;
+    for _ in 0..total {
+        let z = gaussian(&mut stream);
+        let c = gaussian(&mut stream);
+        let gt = 0.95 * g_prev + z + 0.8 * news_prev + 0.6 * c;
+        y.push(gt + 0.6 * c + 0.3 * gaussian(&mut stream));
+        g.push(gt);
+        news.push(z);
+        g_prev = gt;
+        news_prev = z;
+    }
+    let (news, g, y) = (
+        news[burn..].to_vec(),
+        g[burn..].to_vec(),
+        y[burn..].to_vec(),
+    );
+
+    let hmax = 16usize;
+    let spec = LpSpec::new(hmax, 4);
+    let m = lp_multiplier(&y, &g, &news, spec).expect("lp_multiplier");
+    let trap = lp_iv(&y, &g, &news, spec.with_cumulation(Cumulation::Outcome))
+        .expect("outcome-only lp_iv");
+
+    for h in 4..=hmax {
+        assert!(
+            (m.multiplier[h] - 1.0).abs() < 0.15,
+            "h={h}: integral multiplier {} should recover the true 1.0",
+            m.multiplier[h]
+        );
+        // Reported legs really are the legs: their ratio is the multiplier.
+        let ratio = m.cumulative_outcome[h] / m.cumulative_impulse[h];
+        assert!(
+            (ratio - m.multiplier[h]).abs() < 1e-6,
+            "h={h}: reduced-form ratio {ratio} vs multiplier {}",
+            m.multiplier[h]
+        );
+        assert!(m.se[h] > 0.0 && m.se[h].is_finite());
+    }
+
+    // The trap — cumulating only the outcome — climbs with the horizon
+    // instead of staying at the per-dollar effect.
+    assert!(
+        trap.irf[hmax] > 2.0 * trap.irf[4],
+        "outcome-only cumulation should inherit the growth of cumulated \
+         spending: h=4 {} vs h={hmax} {}",
+        trap.irf[4],
+        trap.irf[hmax]
+    );
+    assert!(
+        (trap.irf[hmax] - m.multiplier[hmax]).abs() > 1.0,
+        "the trap and the multiplier must not coincide"
+    );
+}
+
+#[test]
+fn cumulative_builder_still_means_outcome_only() {
+    // Backwards compatibility: the historical `.cumulative(bool)` spelling
+    // maps to Cumulation::Outcome / Cumulation::None and nothing else.
+    assert_eq!(
+        LpSpec::new(4, 2).cumulative(true).cumulation,
+        Cumulation::Outcome
+    );
+    assert_eq!(
+        LpSpec::new(4, 2).cumulative(false).cumulation,
+        Cumulation::None
+    );
+    assert_eq!(LpSpec::new(4, 2).cumulation, Cumulation::None);
+
+    let mut stream = Stream::new(4242);
+    let (y, e) = simulate_ar1_with_noise(&mut stream, 300, 0.9, 1.0);
+    let legacy = lp(&y, &e, LpSpec::new(6, 4).cumulative(true)).expect("legacy");
+    let explicit = lp(
+        &y,
+        &e,
+        LpSpec::new(6, 4).with_cumulation(Cumulation::Outcome),
+    )
+    .expect("explicit");
+    assert_eq!(legacy.irf, explicit.irf);
+    assert_eq!(legacy.se, explicit.se);
+
+    // Both-sides cumulation is a genuinely different estimator.
+    let both = lp(&y, &e, LpSpec::new(6, 4).with_cumulation(Cumulation::Both)).expect("both");
+    assert!(
+        (both.irf[6] - legacy.irf[6]).abs() > 1e-6,
+        "Cumulation::Both must not silently equal Cumulation::Outcome"
     );
 }

@@ -5,10 +5,11 @@ use tsecon_linalg::faer::linalg::solvers::DenseSolveCore;
 use tsecon_linalg::faer::{Mat, Side};
 
 use crate::design::{
-    check_finite, const_column, contemporaneous_column, horizon_sample, lag_column, outcome_column,
+    check_finite, const_column, contemporaneous_column, horizon_sample, impulse_column, lag_column,
+    outcome_column,
 };
 use crate::error::LpError;
-use crate::spec::{LpIvResult, LpSpec, SeKind, SeSpec};
+use crate::spec::{LpIvResult, LpMultiplierResult, LpSpec, SeKind, SeSpec};
 
 /// Estimate an instrumented (LP-IV) impulse-response function.
 ///
@@ -92,9 +93,18 @@ pub fn lp_iv(
             });
         }
 
-        let response = outcome_column(y, h, start, nobs, spec.cumulative);
+        let response = outcome_column(y, h, start, nobs, spec.cumulation.accumulates_outcome());
         let exog = exog_columns(y, start, nobs, p);
-        let endog = contemporaneous_column(impulse, start, nobs);
+        let endog = impulse_column(
+            impulse,
+            h,
+            start,
+            nobs,
+            spec.cumulation.accumulates_impulse(),
+        );
+        // The instrument stays contemporaneous under every cumulation mode:
+        // accumulation belongs to the endogenous variables, not to the
+        // identifying variation.
         let instr = contemporaneous_column(instrument, start, nobs);
 
         let bw = match spec.se {
@@ -270,4 +280,180 @@ fn first_stage_effective_f(
 
 fn singular(what: &'static str) -> LpError {
     LpError::Hac(tsecon_hac::HacError::SingularDesign { what })
+}
+
+/// Estimate the Ramey-Zubairy (2018) **integral multiplier** by one-step
+/// LP-IV.
+///
+/// For each horizon `h in 0..=spec.horizons` this fits the just-identified
+/// two-stage least squares projection
+///
+/// ```text
+///   sum_{j=0}^{h} y_{t+j} = m_h * sum_{j=0}^{h} x_{t+j}
+///                         + c + sum_{l=1}^{p} (phi_l y_{t-l} + psi_l x_{t-l})
+///                         + u_{t,h}
+/// ```
+///
+/// with the cumulated impulse instrumented by the **contemporaneous**
+/// instrument `z_t`. Both sides of the projection are accumulated over the
+/// same window, so `m_h` is the extra cumulated outcome per extra cumulated
+/// impulse through horizon `h` — a multiplier, in the units of the two
+/// series.
+///
+/// # Why this is not `lp_iv(..., Cumulation::Outcome)`
+///
+/// [`Cumulation::Outcome`](crate::Cumulation::Outcome) accumulates only the left-hand side, so its
+/// coefficient is cumulated `y` per unit of *contemporaneous* `x`. That
+/// denominator does not grow with the horizon while the numerator does, so
+/// the reported number grows roughly linearly in `h` and is not a multiplier
+/// at all. Requesting a multiplier through this function makes the correct
+/// object the one you get.
+///
+/// # Standard errors
+///
+/// The multiplier is a **single 2SLS coefficient**, not a ratio of two
+/// separately estimated responses, so [`LpMultiplierResult::se`] is the
+/// kernel-HAC standard error of the reported parameter itself. No
+/// delta-method approximation is involved and no leg's standard error is
+/// being relabelled. (`cumulative_outcome` / `cumulative_impulse` are
+/// reported for transparency and carry no standard errors; by the
+/// just-identified IV algebra their ratio equals `multiplier` to numerical
+/// precision.)
+///
+/// `spec.cumulation` and `spec.se` are ignored: the cumulation is fixed at
+/// [`Cumulation::Both`](crate::Cumulation::Both) by definition, and the covariance is the
+/// linearmodels-convention kernel HAC, except that `SeSpec::Hac { maxlags:
+/// Some(m) }` overrides the default `bandwidth = h + p`.
+///
+/// # Errors
+///
+/// [`LpError::LengthMismatch`] if the inputs differ in length,
+/// [`LpError::NonFinite`] on NaN/inf input, [`LpError::SeriesTooShort`] /
+/// [`LpError::HorizonTooLong`] when a horizon has no usable sample, and
+/// [`LpError::Hac`] wrapping a singular first stage or projection.
+pub fn lp_multiplier(
+    y: &[f64],
+    impulse: &[f64],
+    instrument: &[f64],
+    spec: LpSpec,
+) -> Result<LpMultiplierResult, LpError> {
+    let n = y.len();
+    if impulse.len() != n {
+        return Err(LpError::LengthMismatch {
+            what: "impulse vs outcome (y)",
+            expected: n,
+            got: impulse.len(),
+        });
+    }
+    if instrument.len() != n {
+        return Err(LpError::LengthMismatch {
+            what: "instrument vs outcome (y)",
+            expected: n,
+            got: instrument.len(),
+        });
+    }
+    check_finite(y, "outcome (y)")?;
+    check_finite(impulse, "impulse")?;
+    check_finite(instrument, "instrument")?;
+
+    let p = spec.n_lag_controls;
+    if n <= p {
+        return Err(LpError::SeriesTooShort {
+            n,
+            n_lag_controls: p,
+        });
+    }
+
+    let cap = spec.horizons + 1;
+    let mut horizons = Vec::with_capacity(cap);
+    let mut multiplier = Vec::with_capacity(cap);
+    let mut se = Vec::with_capacity(cap);
+    let mut first_stage_f = Vec::with_capacity(cap);
+    let mut cumulative_outcome = Vec::with_capacity(cap);
+    let mut cumulative_impulse = Vec::with_capacity(cap);
+    let mut nobs_per_h = Vec::with_capacity(cap);
+
+    for h in 0..=spec.horizons {
+        let (start, nobs) = horizon_sample(n, h, p, p);
+        // X = [const, y lags, x lags, cum endog]; Z swaps the last column for
+        // the instrument. k = 2 + 2p, just identified.
+        let k = 2 + 2 * p;
+        if nobs <= k {
+            return Err(LpError::HorizonTooLong {
+                horizon: h,
+                nobs,
+                nparams: k,
+            });
+        }
+
+        let cum_y = outcome_column(y, h, start, nobs, true);
+        let cum_x = impulse_column(impulse, h, start, nobs, true);
+        let exog = multiplier_exog_columns(y, impulse, start, nobs, p);
+        let instr = contemporaneous_column(instrument, start, nobs);
+
+        let bw = match spec.se {
+            SeSpec::Hac {
+                maxlags: Some(ml), ..
+            } => ml,
+            _ => h + p,
+        };
+
+        let (m_h, se_h) = iv_kernel(&cum_y, &exog, &cum_x, &instr, bw)?;
+        let f = first_stage_effective_f(&cum_x, &exog, &instr, bw)?;
+        // Reduced forms, for transparency: the two legs whose ratio is m_h.
+        let rf_y = reduced_form_coef(&cum_y, &exog, &instr)?;
+        let rf_x = reduced_form_coef(&cum_x, &exog, &instr)?;
+
+        horizons.push(h);
+        multiplier.push(m_h);
+        se.push(se_h);
+        first_stage_f.push(f);
+        cumulative_outcome.push(rf_y);
+        cumulative_impulse.push(rf_x);
+        nobs_per_h.push(nobs);
+    }
+
+    Ok(LpMultiplierResult {
+        horizons,
+        multiplier,
+        se,
+        first_stage_f,
+        cumulative_outcome,
+        cumulative_impulse,
+        nobs_per_h,
+        se_kind: SeKind::IvKernelHac,
+    })
+}
+
+/// Included-instrument columns for the multiplier design:
+/// `[const, y_{t-1..t-p}, x_{t-1..t-p}]`.
+///
+/// Unlike [`lp_iv`], the multiplier design controls for lags of the impulse
+/// as well as the outcome: the denominator is now an endogenous *quantity*
+/// whose own dynamics must be soaked up for the ratio to be interpretable
+/// (Ramey & Zubairy 2018 condition on lags of both).
+fn multiplier_exog_columns(
+    y: &[f64],
+    impulse: &[f64],
+    start: usize,
+    nobs: usize,
+    p: usize,
+) -> Vec<Vec<f64>> {
+    let mut cols = Vec::with_capacity(1 + 2 * p);
+    cols.push(const_column(nobs));
+    for lag in 1..=p {
+        cols.push(lag_column(y, lag, start, nobs));
+    }
+    for lag in 1..=p {
+        cols.push(lag_column(impulse, lag, start, nobs));
+    }
+    cols
+}
+
+/// OLS coefficient on the instrument in the reduced form of `target`.
+fn reduced_form_coef(target: &[f64], exog: &[Vec<f64>], instr: &[f64]) -> Result<f64, LpError> {
+    let mut cols: Vec<Vec<f64>> = exog.to_vec();
+    cols.push(instr.to_vec());
+    let fit = ols(target, &cols)?;
+    Ok(fit.params[cols.len() - 1])
 }

@@ -355,8 +355,8 @@ impl GarchModel {
     ///
     /// The likelihood is evaluated through [`crate::objective`], whose
     /// value is bit-identical to [`GarchModel::loglike`] but allocation-
-    /// free, and which supplies an analytic gradient for the GARCH/GJR
-    /// recursion under normal innovations (other specifications keep the
+    /// free, and which supplies an analytic gradient for every volatility
+    /// specification under normal innovations (Student-t keeps the
     /// optimizer's central differences).
     ///
     /// # Errors

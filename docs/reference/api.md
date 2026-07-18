@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**93 functions.**
+**94 functions.**
 
 ## diagnostics
 
@@ -390,11 +390,16 @@ def lp(
     n_lag_controls: int = ...,
     se: str = ...,
     maxlags: int | None = ...,
-    cumulative: bool = ...,
+    cumulative: bool | str | None = ...,
 ) -> dict[str, Any]:
 ```
 
 Local projection IRFs; `se` is "lag_augmented" (default) or "hac".
+
+    `cumulative`: False/"none" (level), True/"outcome" (cumulated outcome on
+    the contemporaneous impulse — a cumulative IRF, NOT a multiplier), or
+    "both" (cumulated outcome on cumulated impulse). For an identified
+    multiplier use `lp_multiplier`.
 
 ### `lp_iv`
 
@@ -405,11 +410,39 @@ def lp_iv(
     instrument: _ArrayLike,
     horizons: int = ...,
     n_lag_controls: int = ...,
-    cumulative: bool = ...,
+    cumulative: bool | str | None = ...,
 ) -> dict[str, Any]:
 ```
 
 LP-IV: instrumented local projections with a first-stage F diagnostic.
+
+    `cumulative` takes False/"none", True/"outcome" or "both". True/"outcome"
+    cumulates only the OUTCOME, giving cumulated response per unit of
+    *contemporaneous* impulse — that grows without bound in the horizon and is
+    not a multiplier. Use `lp_multiplier` for the Ramey-Zubairy integral
+    multiplier.
+
+### `lp_multiplier`
+
+```python
+def lp_multiplier(
+    y: _ArrayLike,
+    impulse: _ArrayLike,
+    instrument: _ArrayLike,
+    horizons: int = ...,
+    n_lag_controls: int = ...,
+    maxlags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Ramey-Zubairy (2018) integral multiplier by one-step LP-IV.
+
+    Regresses the cumulated outcome on the cumulated impulse, instrumented by
+    the contemporaneous instrument, controlling for lags of both series. Both
+    sides accumulate over the same window, so the coefficient is a multiplier
+    rather than a cumulative impulse response. `se` is the kernel-HAC standard
+    error of that single 2SLS coefficient — inference on the multiplier
+    itself, not a delta-method ratio and not a leg's SE relabelled.
 
 ## penalized regression
 
@@ -885,11 +918,13 @@ def lp_state(
     n_lag_controls: int = ...,
     se: str = ...,
     maxlags: int | None = ...,
-    cumulative: bool = ...,
+    cumulative: bool | str | None = ...,
 ) -> dict[str, Any]:
 ```
 
 State-dependent (interacted) local projections (Ramey-Zubairy 2018); per-regime IRFs and SEs.
+
+    `cumulative` takes False/"none", True/"outcome" or "both", as in `lp`.
 
 ## mean-group panel VAR
 

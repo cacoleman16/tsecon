@@ -62,6 +62,26 @@ pub(crate) fn outcome_column(
         .collect()
 }
 
+/// The impulse column for horizon `h` over `t in [start, start + nobs)`.
+///
+/// `cumulative = false` yields the contemporaneous `x_t`; `true` yields the
+/// forward running sum `sum_{j=0}^{h} x_{t+j}`, which is what turns a
+/// cumulative impulse response into an integral multiplier.
+pub(crate) fn impulse_column(
+    x: &[f64],
+    h: usize,
+    start: usize,
+    nobs: usize,
+    cumulative: bool,
+) -> Vec<f64> {
+    if !cumulative {
+        return contemporaneous_column(x, start, nobs);
+    }
+    (start..start + nobs)
+        .map(|t| (0..=h).map(|j| x[t + j]).sum())
+        .collect()
+}
+
 /// A lag column `x_{t-lag}` over `t in [start, start + nobs)`.
 pub(crate) fn lag_column(x: &[f64], lag: usize, start: usize, nobs: usize) -> Vec<f64> {
     (start..start + nobs).map(|t| x[t - lag]).collect()
@@ -82,6 +102,12 @@ pub(crate) fn const_column(nobs: usize) -> Vec<f64> {
 ///
 /// `n_shock_lags = q` is `0` for the plain HAC path and `h` for the
 /// lag-augmented path. The impulse coefficient is always column 0.
+///
+/// `cumulative_impulse` replaces the contemporaneous `shock_t` in column 0
+/// with the accumulated `sum_{j=0}^{h} shock_{t+j}`. The *lagged* impulse
+/// controls stay in levels either way: they exist to project out
+/// already-known past impulses, which is a level object.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn single_impulse_design(
     y: &[f64],
     shock: &[f64],
@@ -90,9 +116,10 @@ pub(crate) fn single_impulse_design(
     nobs: usize,
     n_lag_controls: usize,
     n_shock_lags: usize,
+    cumulative_impulse: bool,
 ) -> Vec<Vec<f64>> {
     let mut cols = Vec::with_capacity(2 + n_lag_controls + n_shock_lags);
-    cols.push(contemporaneous_column(shock, start, nobs));
+    cols.push(impulse_column(shock, h, start, nobs, cumulative_impulse));
     cols.push(const_column(nobs));
     for lag in 1..=n_lag_controls {
         cols.push(lag_column(y, lag, start, nobs));
@@ -100,6 +127,5 @@ pub(crate) fn single_impulse_design(
     for lag in 1..=n_shock_lags {
         cols.push(lag_column(shock, lag, start, nobs));
     }
-    let _ = h;
     cols
 }
