@@ -193,3 +193,100 @@ fn error_paths() {
         Err(VarError::InvalidArgument { .. })
     ));
 }
+
+/// A VAR(0) (intercept-only) has an empty coefficient vector, so
+/// `VarResults::ma_rep` short-circuits rather than calling the free
+/// [`ma_rep`], which would reject the empty slice. The short-circuit must
+/// return `Psi_0 = I` with every later horizon exactly zero: an
+/// intercept-only model has no propagation. This branch was previously
+/// uncovered, and getting it wrong (e.g. returning all-zero including
+/// `Psi_0`) would silently zero out the impact response of every IRF and
+/// FEVD built on top of it.
+#[test]
+fn var0_ma_rep_is_identity_then_zeros() {
+    let fx = load_fixture("var.json");
+    let data = as_mat(&fx["data_100dlog_gdp_cons_inv"]);
+    let res = VarSpec::new(0, Trend::Constant)
+        .unwrap()
+        .fit(data.as_ref())
+        .unwrap();
+    let k = res.neqs;
+    assert!(k > 1, "fixture should be multivariate");
+
+    let psi = res.ma_rep(3).unwrap();
+    assert_eq!(psi.len(), 4, "horizon + 1 matrices");
+    for i in 0..k {
+        for j in 0..k {
+            let want = f64::from(u8::from(i == j));
+            assert!(
+                (psi[0][(i, j)] - want).abs() < 1e-15,
+                "Psi_0[{i},{j}] should be the identity, got {}",
+                psi[0][(i, j)]
+            );
+        }
+    }
+    for (h, m) in psi.iter().enumerate().skip(1) {
+        for i in 0..k {
+            for j in 0..k {
+                assert_eq!(m[(i, j)], 0.0, "Psi_{h}[{i},{j}] must be exactly zero");
+            }
+        }
+    }
+
+    // The orthogonalized version of the same degenerate model is the
+    // Cholesky factor at impact and zero thereafter.
+    let orth = res.orth_ma_rep(2).unwrap();
+    assert_eq!(orth.len(), 3);
+    for i in 0..k {
+        for j in 0..k {
+            assert_eq!(orth[2][(i, j)], 0.0, "orth Psi_2 must vanish for a VAR(0)");
+        }
+    }
+    // Impact must NOT be zero -- it is the Cholesky factor of sigma_u.
+    let impact_nonzero = (0..k).any(|i| orth[0][(i, i)].abs() > 1e-12);
+    assert!(impact_nonzero, "orth Psi_0 should be the Cholesky factor");
+}
+
+/// The free `ma_rep` validates its lag matrices: an empty slice, a `0 x 0`
+/// matrix, a non-square or size-mismatched matrix, and non-finite entries
+/// must all be typed errors rather than panics or silently truncated
+/// expansions.
+#[test]
+fn ma_rep_rejects_malformed_coefficient_matrices() {
+    assert!(matches!(
+        ma_rep(&[], 4),
+        Err(VarError::InvalidArgument { .. })
+    ));
+    assert!(matches!(
+        ma_rep(&[Mat::<f64>::zeros(0, 0)], 4),
+        Err(VarError::InvalidArgument { .. })
+    ));
+    // Non-square.
+    assert!(matches!(
+        ma_rep(&[Mat::<f64>::zeros(2, 3)], 4),
+        Err(VarError::Dimension { .. })
+    ));
+    // Square, but the second lag has a different size than the first.
+    assert!(matches!(
+        ma_rep(&[Mat::<f64>::zeros(2, 2), Mat::<f64>::zeros(3, 3)], 4),
+        Err(VarError::Dimension { .. })
+    ));
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let a = Mat::from_fn(2, 2, |i, j| if (i, j) == (1, 0) { bad } else { 0.2 });
+        assert!(
+            matches!(ma_rep(&[a], 3), Err(VarError::NonFinite { .. })),
+            "ma_rep accepted {bad}"
+        );
+    }
+}
+
+/// Horizon zero is a legitimate request and must return exactly the
+/// identity -- one matrix, not an empty vector.
+#[test]
+fn ma_rep_at_horizon_zero_is_the_identity_alone() {
+    let a = Mat::from_fn(2, 2, |i, j| if i == j { 0.5 } else { 0.1 });
+    let psi = ma_rep(&[a], 0).unwrap();
+    assert_eq!(psi.len(), 1);
+    assert_eq!(psi[0][(0, 0)], 1.0);
+    assert_eq!(psi[0][(0, 1)], 0.0);
+}

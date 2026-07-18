@@ -20,11 +20,11 @@ Verified on this working tree (macOS, Apple silicon, Rust 1.97.1, CPython
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **671 passed, 0 failed, 0 ignored** | `cargo test --workspace --exclude tsecon-python` |
+| Rust tests (total) | **718 passed, 0 failed, 0 ignored** | `cargo test --workspace --exclude tsecon-python` |
 | — integration tests in `crates/*/tests/` | 584 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 46 | |
 | — documentation tests | 41 | |
-| Python binding tests | **337 passed** in 4.9 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **403 passed** in 4.6 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 37, **every one** with a `tests/` directory | |
 | Golden fixtures | 41 JSON files, produced by 22 generator scripts | `fixtures/` |
 | Public Python functions | 93 — **all 93** are called at least once in the binding suite | |
@@ -202,7 +202,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-337 tests in 34 files. 31 of the 41 fixture JSONs are reloaded here and checked
+403 tests in 36 files. 31 of the 41 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -423,10 +423,10 @@ counts:
 ## 4 · How to run everything
 
 ```sh
-# 1. Rust core — 671 tests
+# 1. Rust core — 718 tests
 cargo test --workspace --exclude tsecon-python
 
-# 2. Python bindings — 337 tests
+# 2. Python bindings — 403 tests
 .venv/bin/python -m pytest bindings/python/tests -q
 
 # 3. Monte Carlo evidence (seeded, reproducible)
@@ -477,7 +477,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 671 passed, 0 failed
+# 718 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
@@ -533,9 +533,10 @@ discover.
 
 **Coverage gaps.**
 
-- **No coverage measurement.** There is no `tarpaulin`/`llvm-cov` run and no
-  coverage badge, so "all 93 functions are called" is a reachability claim, not
-  a line- or branch-coverage claim.
+- **Coverage is measured, but not gated.** See the section below for the real
+  numbers. There is deliberately no coverage threshold in CI: a percentage gate
+  manufactures pressure to write make-work tests, which is the opposite of the
+  point. Coverage is used as a finder, and the findings are acted on by hand.
 - **No randomized property framework.** Property tests are hand-written with
   seeded generators — there is no `proptest`/`quickcheck` in the workspace, so
   there is no automatic input shrinking or search for adversarial inputs, and
@@ -572,6 +573,68 @@ discover.
 - **Only CPython 3.12 is exercised in CI**, though the wheel is `abi3-py39` and
   the package declares `requires-python = ">=3.9"`. Older interpreters are
   supported by the ABI contract, not by a test run.
+
+---
+
+## 6 · Coverage
+
+Coverage here is a **finder, not a target**. A percentage bought with make-work
+tests launders untested risk into a green badge, so there is no threshold in CI
+and no badge; the numbers below are reported as measured, and what they *found*
+matters more than what they are.
+
+```sh
+./scripts/coverage.sh          # Rust, cargo-llvm-cov — ~3m15s
+coverage run -m pytest bindings/python/tests && coverage report   # Python, see .coveragerc
+```
+
+**Rust** (`cargo llvm-cov --workspace --exclude tsecon-python`):
+
+| | region | line |
+|---|---|---|
+| workspace | 89.94% | 85.22% |
+| excluding `error.rs` | — | **89.56%** |
+
+**33% of all remaining missed lines are `Display::fmt` match arms in `error.rs`
+files.** Those are deliberately left: exercising every error's prose would be
+make-work, and the error *types* are already asserted by the validation tier.
+
+**Python** (`coverage.py`, branch coverage, over the pure-Python package only —
+the compiled `_core` is Rust and is not measurable by coverage.py, so it is
+excluded rather than counted as a phantom gap): the `results/*` modules measured
+89–100%; `datasets.py` was the weakest at 71%, since only the `local_path=`
+parse path had tests and the whole download/cache/digest round-trip did not.
+
+### What it actually found
+
+The useful output was not a percentage — it was **four publicly exported
+estimators with zero Rust-side coverage**, whose input guards existed but had
+nothing asserting on them:
+
+| Where | Why an untested guard mattered |
+|---|---|
+| `realized::parkinson` / `garman_klass` | An inverted bar (`high < low`) would sail through `(ln(H/L))²` — the square destroys the sign — returning a finite, positive, wrong variance. The guard rejects it; nothing proved that. |
+| `midas::adl_midas` | Parameter ordering `[c, ρ₁..ρ_P, b₁..b_K]` unpinned: a transposed AR/high-frequency block returns a full set of plausible numbers. |
+| `panel_lp` jackknife | Silently *replaces* the reported estimates with the Dhaene-Jochmans correction; a sign error yields a complete, wrong impulse response and no error. |
+| `VarResults::ma_rep` (`lags == 0`) | Returning zeros instead of `Ψ₀ = I` would silently zero the impact response of every IRF and FEVD built on it. |
+
+`fit_svensson` was a fifth: with exactly four maturities the design is exactly
+determined, giving zero residuals and **R² = 1** — a curve that looks flawless
+and carries no information.
+
+To be precise about what this was: these guards **already worked**. Coverage did
+not find broken code, it found *untested safety nets* — code whose correctness
+nothing would notice regressing. That is a real class of risk and a weaker claim
+than "we found bugs", and it is worth stating as the former.
+
+42 Rust and 60 Python tests were added against exactly these paths. The
+per-crate movement is where the work landed, not the workspace total:
+`tsecon-realized` 42.81% → 82.27% line, `tsecon-midas` 69.21% → 75.16%,
+`tsecon-termstructure` 77.11% → 82.89%, `tsecon-panel` 77.19% → 81.29%.
+
+Least-covered crates after this pass, i.e. where a future look should start:
+`tsecon-connect` 74.67%, `tsecon-midas` 75.16%, `tsecon-longmemory` 76.05%,
+`tsecon-ident` 76.58%.
 
 ---
 

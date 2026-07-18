@@ -1,0 +1,39 @@
+# Coverage configuration for tsecon's PURE-PYTHON layer.
+#
+# What this measures: bindings/python/python/tsecon/ — the __init__ shim,
+# datasets.py, and results/*.py. That is the whole of the Python we write.
+#
+# What it CANNOT measure: tsecon._core, the compiled PyO3 extension
+# (_core.abi3.so). coverage.py traces CPython bytecode; Rust code executed
+# through the extension is invisible to it. The Rust core has its own coverage
+# story via `cargo test --workspace`. `_core` is therefore omitted below rather
+# than left to masquerade as an uncovered file.
+#
+# Run:
+#   .venv/bin/python -m coverage run -m pytest bindings/python/tests -q
+#   .venv/bin/python -m coverage report -m
+#
+# Deliberately NO `fail_under`: coverage here is a finder for untested risk,
+# not a gate to satisfy.
+
+[run]
+branch = True
+source = bindings/python/python/tsecon
+omit =
+    */__pycache__/*
+    */_core*
+
+[report]
+show_missing = True
+skip_covered = False
+# These four patterns currently match ZERO lines in the package — they are here
+# so the config stays honest as stubs/CLI entry points get added, not to buy a
+# percentage. The only real exclusions are coverage.py's built-in
+# `# pragma: no cover`, used on three defensive `except` blocks (see
+# docs/reference/testing.md). Disabling pragmas entirely gives 1110 statements,
+# 6 uncovered, 99%.
+exclude_also =
+    ^\s*if TYPE_CHECKING:
+    ^\s*\.\.\.$
+    ^\s*raise NotImplementedError
+    ^\s*if __name__ == .__main__.:
