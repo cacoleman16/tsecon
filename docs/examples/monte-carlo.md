@@ -118,4 +118,6 @@ library earns the claims its model cards make — and because they run in second
 from a fixed seed, they are cheap enough to keep honest.
 
 See also the [validation matrix](../reference/validation-matrix.md) for the
-fixture-level, reference-implementation side of the same story.
+fixture-level, reference-implementation side of the same story, and the
+[frontier experiments](monte-carlo-frontier.md) for the *comparative* questions —
+local projections vs VARs, and what a weak instrument actually breaks.

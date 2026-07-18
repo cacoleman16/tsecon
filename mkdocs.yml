@@ -122,4 +122,6 @@ nav:
       - From Stata: migration/from-stata.md
       - Rosetta glossary: migration/rosetta.md
   - Gallery: examples/README.md
-  - Monte Carlo validation: examples/monte-carlo.md
+  - Monte Carlo:
+      - Validation suite: examples/monte-carlo.md
+      - Frontier experiments: examples/monte-carlo-frontier.md
