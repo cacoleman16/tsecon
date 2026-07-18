@@ -78,7 +78,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 78 functions, grouped by the task they serve. Every one is a plain
+The 93 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in

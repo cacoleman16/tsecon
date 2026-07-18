@@ -310,16 +310,25 @@ The conceptual toolkit, in ascending order of ambition:
 - **Quandt-Andrews sup-Wald** (Andrews, 1993): compute the Chow statistic at *every* plausible date and take the maximum. Because you searched, the maximum's distribution is nonstandard — critical values come from Hansen's (1997) approximations.
 - **Bai-Perron** (Bai and Perron, 1998, 2003): the full solution — estimate the *number* and *locations* of multiple breaks by dynamic programming over all partitions, with confidence intervals for each break date. The flagship of the roadmap's break suite; no credible Python implementation with full inference exists today.
 
-> **Preview** — `bai_perron` and `cusum_test` are on the [roadmap](../../ROADMAP.md); the calls below show the intended API, not shipped functions.
+The **Chow test** and **CUSUM** ship today, alongside the rest of the
+specification-test battery (White/Breusch-Pagan heteroskedasticity, Ramsey
+RESET) — see the [specification-tests model card](../reference/model-cards/specification-tests.md):
 
 ```python
-bp = tsecon.bai_perron(y, X, max_breaks=5, trim=0.15)
-bp["n_breaks"]            # selected by sequential sup-F tests
-bp["break_dates"]         # estimated dates with confidence intervals
-cs = tsecon.cusum_test(y, X)     # recursive CUSUM with 5% boundaries
+chow = tsecon.chow_test(y, X, split=120)   # known-date break; F(k, n-2k)
+cs   = tsecon.cusum_test(y, X)             # recursive CUSUM with 5% boundaries
+breached = (cs["path"] > cs["bound_upper"]).any() or (cs["path"] < cs["bound_lower"]).any()
 ```
 
-Until then, the practical advice: plot the series and the rolling mean of its differences; if a break is visible, split the sample at the suspected date and run this chapter's battery on each half. Disagreement between halves is a break test of last resort — crude, but far better than averaging two regimes.
+> **Preview** — `bai_perron` (multiple breaks with confidence intervals) is on the [roadmap](../../ROADMAP.md); the call below shows the intended API, not a shipped function.
+
+```python
+bp = tsecon.bai_perron(y, X, max_breaks=5, trim=0.15)   # roadmap
+bp["n_breaks"]            # selected by sequential sup-F tests
+bp["break_dates"]         # estimated dates with confidence intervals
+```
+
+Until Bai-Perron lands, the practical advice for *unknown* multiple breaks: plot the series and the rolling mean of its differences; if a break is visible, split the sample at the suspected date and run this chapter's battery (and `chow_test`) on each half. Disagreement between halves is a break test of last resort — crude, but far better than averaging two regimes.
 
 > **⚠ Common mistake.** Concluding "unit root" from ADF without ever asking about breaks. The **Conflict** cell of the quadrant (ADF rejects, KPSS rejects) is often exactly this signature — and so is a stubborn non-rejection on a series with an obvious level shift. Break-robust unit-root tests (Zivot and Andrews, 1992; Lee and Strazicich, 2003 — both roadmap) exist because the plain ADF verdict is unreliable in the presence of breaks.
 

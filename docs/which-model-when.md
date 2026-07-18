@@ -45,7 +45,7 @@ A compact index. Find your row, jump to the section.
 | Intraday returns / a realized-variance series | `realized_measures`, `har_rv` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Panel whose units have genuinely different slopes | `panel_mean_group` (`mg`/`cce`), `panel_pmg` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
 | Panel IRF to a common shock; per-entity dynamics | `panel_lp`, `mean_group_var` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
-| Regressor is highly persistent (predictive regression) | IVX — *roadmap*; use `ols`/`iv_gmm` + HAC with care | [6](#6-my-regressor-is-highly-persistent) |
+| Regressor is highly persistent (predictive regression) | `predictive_regression` (OLS + Stambaugh + IVX), `ivx_test` | [6](#6-my-regressor-is-highly-persistent) |
 | Many candidate predictors, most of them noise | `adaptive_lasso`, `lasso_path`, `cv_splits` | [7](#7-i-have-many-candidate-predictors) |
 | Spillovers / who-shocks-whom across many markets | `connectedness` | [8](#8-i-need-spillovers-across-markets) |
 | Fit or forecast a yield curve | `nelson_siegel`, `svensson`, `dynamic_ns` | [9](#9-i-want-to-fit-a-yield-curve) |
@@ -441,18 +441,22 @@ over-reject wildly here: the Stambaugh bias and the near-integrated regressor
 break the textbook asymptotics, and you will "find" predictability that is not
 there.
 
-**The honest routing.** The dedicated fix — **IVX** inference (Kostakis,
-Magdalinos & Stamatogiannis 2015) and the Campbell-Yogo / Stambaugh-corrected
-predictive-regression toolkit — is **on the roadmap, not yet shipped** (Phase-5
-extension E3, gated on a validated IVX reference; see
-[ROADMAP.md](../ROADMAP.md) §10 and the extensions spec
-[docs/roadmap/12-extensions.md](roadmap/12-extensions.md)). Do not reach for a
-naive OLS t-statistic in the meantime.
+**The honest routing.** The dedicated fix ships today:
+`tsecon.predictive_regression(r, x)` returns three views of the same regression
+in one call — plain OLS (the misleading benchmark), the Stambaugh (1999)
+finite-sample bias correction, and the **IVX** estimator with a persistence-robust
+Wald test (Kostakis, Magdalinos & Stamatogiannis 2015) that keeps its size
+whether the predictor is stationary, near-integrated, or an exact unit root. For
+several persistent predictors at once, `tsecon.ivx_test(r, xs)` gives the joint
+IVX test. Read the IVX Wald verdict as your headline; use Stambaugh for a debiased
+point estimate; keep OLS only to show what the correction bought you. See the
+[predictive-regressions model card](reference/model-cards/predictive-regressions.md).
+Do not reach for a naive OLS t-statistic instead.
 
-**What ships today, used carefully.** If your persistent predictor is
-instrumentable, cast the regression as IV and use HAC-robust GMM — this
-side-steps part of the endogeneity that drives the Stambaugh bias, though it is
-*not* a substitute for IVX's near-unit-root correction. It is
+**A complementary route.** If your persistent predictor is also instrumentable,
+you can additionally cast the regression as IV and use HAC-robust GMM
+(`iv_gmm`) — this side-steps part of the endogeneity that drives the Stambaugh
+bias, though `predictive_regression`'s IVX view is the direct near-unit-root fix. It is
 [section 10](#10-endogenous-regressor-instruments)'s estimator (`X` holds the
 endogenous predictor, `Z` its instruments) with a HAC weight for the serially
 correlated moments:
@@ -619,8 +623,11 @@ whether the curve has a second bend:
 
 **Escape hatch — pricing, or the zero lower bound.** Nelson-Siegel is a
 *statistical* fit; it does not forbid arbitrage. For derivative pricing you want
-an arbitrage-free model (AFNS/affine), and when yields sit near zero you want a
-shadow-rate model — both are on the roadmap ([chapter 15 — the frontier](guide/15-term-structure.md)).
+an arbitrage-free model: `tsecon.afns_adjustment` adds the Christensen-Diebold-
+Rudebusch (2011) closed-form yield-adjustment term to a Nelson-Siegel curve to
+make it arbitrage-free (see the [AFNS model card](reference/model-cards/afns.md)).
+When yields sit near zero you want a shadow-rate model, still on the roadmap
+([chapter 15 — the frontier](guide/15-term-structure.md)).
 Always settle whether a DNS forecast *beats a random walk* with a proper
 backtest ([chapter 5](guide/05-forecasting.md)) before trusting it.
 

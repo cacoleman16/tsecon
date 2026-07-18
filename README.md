@@ -21,8 +21,8 @@ just present.
 
 ## Status
 
-Phases 0–1 complete; Phases 2–4 substantially landed. **32 Rust crates,
-434 Rust + 130 Python tests — all green and golden-fixture-gated.** The whole
+Phases 0–1 complete; Phases 2–4 substantially landed. **37 Rust crates,
+671 Rust + 155 Python tests — all green and golden-fixture-gated.** The whole
 library builds and tests from a clean checkout on every push (CI matrix on
 Linux/macOS/Windows), and a strict-built docs site keeps the documentation
 honest. See [ROADMAP.md §0](ROADMAP.md#0-current-build-status) for the live
@@ -82,7 +82,8 @@ mkdocs serve`.
 
 ## What's inside
 
-80 functions callable from Python today: diagnostics and unit-root tests;
+93 functions callable from Python today: diagnostics, unit-root and
+specification tests (White/Breusch-Pagan, RESET, Chow, CUSUM);
 ARIMA, GARCH, and GAS score-driven volatility; VAR/SVAR with sign-restricted
 identification, FAVAR, and Diebold-Yilmaz connectedness; local projections
 (state-dependent and LP-IV); Bayesian VARs; GMM/IV-GMM and IVX predictive

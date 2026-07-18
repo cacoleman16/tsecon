@@ -47,8 +47,8 @@ scikit-learn, ArviZ, SciPy) so the numbers are trustworthy, not just present.
 
 ## What's inside
 
-80 functions callable from Python today, spanning diagnostics and unit-root
-tests; ARIMA, GARCH, and GAS score-driven volatility; VAR / SVAR with
+93 functions callable from Python today, spanning diagnostics, unit-root and
+specification tests; ARIMA, GARCH, and GAS score-driven volatility; VAR / SVAR with
 sign-restricted identification, FAVAR, and Diebold-Yilmaz connectedness; local
 projections (including state-dependent and LP-IV); Bayesian VARs; GMM / IV-GMM
 and IVX predictive regressions; the heterogeneous-panel trio (mean-group,
