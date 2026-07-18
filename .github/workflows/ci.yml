@@ -131,3 +131,46 @@ jobs:
       # are reported but never gate; only agreement with statsmodels/arch does.
       - name: Cross-library parity gate
         run: python benchmarks/bench.py
+
+  abi3:
+    name: abi3 wheel runs on Python ${{ matrix.python-version }}
+    needs: rust
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The wheel is built abi3-py39 and pyproject declares requires-python
+        # ">=3.9". That promise was previously asserted but never tested — CI
+        # only ever ran 3.12. Build ONE wheel and import/test it on the oldest
+        # and newest supported interpreters, which is exactly what abi3 claims.
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: Swatinem/rust-cache@v2
+      # Build with a single fixed interpreter; abi3 means the artifact is not
+      # tied to it. Testing under a DIFFERENT interpreter is the whole point.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the abi3 wheel (on 3.12)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/python
+          command: build
+          args: --release --out dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install that same wheel on ${{ matrix.python-version }} and test
+        run: |
+          python -VV
+          # Test deps come from PyPI (scipy is needed by test_intervals.py, which
+          # pins interval multipliers to scipy.stats.norm.ppf).
+          python -m pip install --upgrade pip pytest numpy scipy
+          # tsecon, by contrast, must resolve to the wheel built above and never
+          # to PyPI or the source tree — hence --no-index.
+          python -m pip install --no-index --find-links bindings/python/dist tsecon
+          python -c "import tsecon, sys; print('python', sys.version.split()[0], '->', tsecon.__file__); assert 'site-packages' in tsecon.__file__"
+          python -c "import tsecon; n=len([f for f in dir(tsecon) if not f.startswith('_') and callable(getattr(tsecon,f))]); print('callables:', n); assert n == 93, n"
+          python -m pytest bindings/python/tests -q
