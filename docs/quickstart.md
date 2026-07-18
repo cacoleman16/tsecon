@@ -31,7 +31,7 @@ on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.0.1
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 78
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 93
           if not n.startswith("_")))
 ```
 
@@ -69,7 +69,7 @@ horizon `h`.
 
 The `fit` object carries the rest of the story: `fit["params"]`, `fit["aic"]`
 / `fit["bic"]` / `fit["hqic"]`, the residual covariance `fit["sigma_u"]`, and
-and `fit["is_stable"]` — the stability verdict. (The roots are the *reciprocal*
+`fit["is_stable"]` — the stability verdict. (The roots are the *reciprocal*
 characteristic roots, so a stable VAR keeps them all outside the unit circle;
 `fit["min_root"] > 1` is the equivalent numeric check, while `fit["max_root"]`
 is the root farthest from the circle and is not a verdict on its own.) From
@@ -84,7 +84,7 @@ The 93 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
-[`bindings/python/tsecon.pyi`](../bindings/python/tsecon.pyi).
+[`bindings/python/python/tsecon/__init__.pyi`](../bindings/python/python/tsecon/__init__.pyi).
 
 ### Diagnostics and data prep
 
@@ -218,6 +218,108 @@ and docstrings live in
 | `nelson_siegel` | Nelson-Siegel yield-curve fit (Diebold-Li) |
 | `svensson` | Svensson four-factor yield-curve fit |
 | `dynamic_ns` | Dynamic Nelson-Siegel factors + one-step forecast |
+
+---
+
+## Results objects — the same dict, with a summary
+
+Plain dicts are the contract, and they stay the contract. But when you are
+reading output rather than piping it somewhere, you want a table. `tsecon.results`
+is an **opt-in** layer of `dict` subclasses that carry the identical data and can
+also render themselves:
+
+```python
+import json, numpy as np, tsecon
+from tsecon.results import VARResults
+
+y = np.array(json.load(open("fixtures/var.json"))["data_100dlog_gdp_cons_inv"])
+fit = VARResults.fit(y, lags=2, names=["gdp", "cons", "inv"])
+print(fit.summary())
+```
+
+```
+====================================================================
+VAR(2) — 3 equations, trend='c' — stable
+====================================================================
+llf -800.531    aic -0.2983    bic 0.0480    hqic -0.1582
+reciprocal roots — min 1.6275    max 4.2538     (stable iff min > 1)
+--------------------------------------------------------------------
+coefficients — rows = regressors, cols = equations
+regressor              gdp          cons           inv
+--------------------------------------------------------------------
+const             +0.15270      +0.54596      -2.39025
+L1.gdp            -0.27943      -0.10047      -1.97097
+L1.cons           +0.67502      +0.26864      +4.41416
+L1.inv            +0.03322      +0.02574      +0.22548
+L2.gdp            +0.00822      -0.12317      +0.38079
+L2.cons           +0.29046      +0.23250      +0.80028
+L2.inv            -0.00732      +0.02350      -0.12408
+====================================================================
+```
+
+The point worth internalising: **it is still a dict.** Adopting this layer breaks
+nothing, because it only *adds* methods to the object you already had.
+
+```python
+print(fit["aic"])                              # -0.2983183237427347
+print(isinstance(fit, dict))                   # True
+print(set(fit) == set(tsecon.var_fit(y, 2)))   # True — identical keys
+```
+
+`tsecon.var_fit` is untouched: it is still the compiled builtin returning a plain
+dict, and `tsecon.results` is a namespace you reach into deliberately. `fit.irf(
+horizon=10)` returns an `IRFArray` (a `list` subclass) whose `.response(1, 0)`
+reproduces the raw `var_irf` numbers from the top of this page exactly. Plot
+methods lazy-import matplotlib — install it with `pip install 'tsecon[plots]'`,
+and until you call one, nothing imports it.
+
+Every wrapper — `VARResults`, `LPResults`, `GARCHResults`, `ARIMAResults`,
+`DSGEResults`, and the rest — is catalogued in
+[reference/results.md](reference/results.md).
+
+---
+
+## Datasets — real data, no API key
+
+Worked examples need real series, and vendoring macro data into a repository ages
+badly. `tsecon.datasets` instead downloads **on first use** and caches: nothing is
+fetched at import time, and the second call reads from disk.
+
+```python
+from tsecon import datasets as ds
+import numpy as np
+
+gs10 = ds.fred_series("GS10")                     # 10-year Treasury, monthly
+print(gs10["nobs"], gs10["dates"][0], gs10["values"][-1])
+# 879 1953-04-01 4.47
+```
+
+**No API key is required** — this uses FRED's public keyless CSV endpoint. (If
+`FRED_API_KEY` happens to be set it is passed along, which is harmless.) The
+printed numbers above are a real run on 2026-07-18; `nobs` and the last value grow
+as FRED publishes.
+
+`fred_md()` pulls the McCracken-Ng FRED-MD panel — the standard monthly macro
+dataset for factor models and nowcasting — together with its **transform codes**,
+the per-series integer recipe (1 level, 2 first difference, 5 first difference of
+logs, …) for making each column stationary:
+
+```python
+md = ds.fred_md()
+print(np.asarray(md["data"]).shape, md["dates"][0], md["dates"][-1])
+# (801, 126) 1959-01-01 2025-09-01
+print(md["names"][:3], md["transform_codes"][:3])
+# ['RPI', 'W875RX1', 'DPCERA3M086SBEA'] [5 5 5]
+
+stationary = ds.apply_fred_md_transforms(md["data"], md["transform_codes"])
+```
+
+Each loader records the source URL and a SHA-256 of the bytes it parsed, so a
+dataset can be pinned and audited. `ds.cache_dir()` reports where things land
+(`~/.cache/tsecon` by default; override with `TSECON_DATA_DIR`), `refresh=True`
+re-downloads, and `local_path=...` parses a file you already have — which is also
+how you work fully offline. See
+[reference/datasets.md](reference/datasets.md).
 
 ---
 

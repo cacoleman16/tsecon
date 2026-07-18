@@ -21,6 +21,13 @@ preserved exactly; adopting them is additive.
 (individual FRED series and the FRED-MD monthly panel), with caching, checksums,
 and the McCracken-Ng transformation codes. No API key required.
 
+## [Testing & validation](testing.md)
+
+The single map of how the library is tested: nine tiers from Rust goldens to a
+published-result replication, what each can and cannot prove, the commands to
+run them, and an honest list of what is *not* covered. Start here if you are
+deciding whether to trust a number this library produced.
+
 ## [Validation matrix](validation-matrix.md)
 
 What every method family is validated *against* — the reference implementation

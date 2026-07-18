@@ -94,6 +94,7 @@ nav:
       - Results objects: reference/results.md
       - Datasets: reference/datasets.md
       - Validation matrix: reference/validation-matrix.md
+      - Testing & validation: reference/testing.md
       - Model cards:
           - Diagnostics: reference/model-cards/diagnostics.md
           - ARIMA: reference/model-cards/arima.md

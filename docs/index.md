@@ -56,5 +56,22 @@ CCE-MG, PMG); DFM nowcasting with a ragged edge and a news decomposition;
 MIDAS; realized volatility; the Nelson-Siegel term structure; forecast
 backtesting; and leakage-safe machine learning.
 
+Every estimator returns a plain `dict`, and
+[`tsecon.results`](reference/results.md) adds an **opt-in** layer of `dict`
+subclasses that render themselves — a `.summary()` an economist can read and
+`.plot_*()` figures — without taking the dict away, so adopting it breaks
+nothing. [`tsecon.datasets`](reference/datasets.md) supplies the data to point
+them at: FRED series and the FRED-MD macro panel, downloaded on first use and
+cached, with **no API key required**.
+
+Correctness is argued, not asserted. Every estimator is pinned to a golden
+fixture with a stated tolerance ([validation
+matrix](reference/validation-matrix.md)); statistical *properties* that a
+fixture cannot prove — test size, interval coverage, parameter recovery — are
+checked by a seeded [Monte Carlo suite](examples/monte-carlo.md) whose tables
+are real output; and an
+[honest benchmark harness](https://github.com/cacoleman16/tsecon/blob/main/benchmarks/README.md)
+asserts cross-library estimate parity *before* it reports a single timing number.
+
 Everything installs as a single wheel with no heavy runtime dependencies, and
 the whole library builds and validates from a clean checkout on every push.
