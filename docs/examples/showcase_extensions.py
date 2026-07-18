@@ -439,6 +439,72 @@ def section_dsge():
         save(fig, "ext-dsge-saddle.png")
 
 
+# ------------------------------------------------------------------
+# X8. Spectral analysis: raw periodogram vs Welch, and coherence
+# ------------------------------------------------------------------
+def section_spectral():
+    rng = np.random.default_rng(20260714)
+    n = 1024
+    t = np.arange(n)
+    period = 20.0            # a cycle at frequency 1/20 = 0.05
+    f0 = 1.0 / period
+    # A series with one strong periodic component buried in noise...
+    x = 1.3 * np.sin(2 * np.pi * f0 * t) + 1.0 * rng.standard_normal(n)
+    # ...and a second series sharing that cycle (phase-shifted) plus its own noise.
+    y = 1.1 * np.sin(2 * np.pi * f0 * t + 0.9) + 1.0 * rng.standard_normal(n)
+
+    pg = tsecon.periodogram(x)
+    wl = tsecon.welch(x)
+    co = tsecon.coherence(x, y)
+    fp, psd_p = np.asarray(pg["freqs"]), np.asarray(pg["psd"])
+    fw, psd_w = np.asarray(wl["freqs"]), np.asarray(wl["psd"])
+    fc, coh = np.asarray(co["freqs"]), np.asarray(co["coherence"])
+
+    with ts.theme():
+        fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(ts.WIDTH_DOUBLE, 2.9))
+
+        # Left: raw periodogram (spiky, inconsistent) vs Welch (smooth, consistent).
+        ax0.plot(fp, psd_p, color=ts.INK_2, lw=0.6, zorder=3, alpha=0.8)
+        ax0.plot(fw, psd_w, color=ts.SERIES["red"], lw=1.8, zorder=5)
+        ax0.axvline(f0, color=ts.REF, lw=0.8, ls=(0, (2, 2)), zorder=2)
+        ax0.set_yscale("log")
+        ax0.set_xlim(0, 0.5)
+        ax0.set_xlabel("Frequency (cycles/period)", fontsize=8.5, color=ts.INK)
+        ax0.set_ylabel("Power spectral density", fontsize=8.5, color=ts.INK)
+        ax0.tick_params(labelsize=7.5)
+        ax0.annotate("cycle at f = 0.05", xy=(f0, psd_w.max()), xytext=(0.09, psd_w.max()),
+                     fontsize=7.5, color=ts.MUTED, va="center")
+        ax0.set_title("Periodogram vs Welch PSD", fontsize=9.5, color=ts.INK_2, loc="left")
+        handles = [
+            Line2D([0], [0], color=ts.INK_2, lw=0.8, label="raw periodogram"),
+            Line2D([0], [0], color=ts.SERIES["red"], lw=1.8, label="Welch (averaged)"),
+        ]
+        ax0.legend(handles=handles, loc="lower left", fontsize=7.5, frameon=False)
+
+        # Right: magnitude-squared coherence — high only at the shared frequency.
+        ax1.fill_between(fc, 0, coh, color=ts.SEQ_BLUE[2], lw=0, zorder=2)
+        ax1.plot(fc, coh, color=ts.SERIES["blue"], lw=1.4, zorder=4)
+        ax1.axvline(f0, color=ts.REF, lw=0.8, ls=(0, (2, 2)), zorder=3)
+        ax1.set_xlim(0, 0.5)
+        ax1.set_ylim(0, 1.02)
+        ax1.set_xlabel("Frequency (cycles/period)", fontsize=8.5, color=ts.INK)
+        ax1.set_ylabel("Coherence  $|\\gamma|^2$", fontsize=8.5, color=ts.INK)
+        ax1.tick_params(labelsize=7.5)
+        ax1.annotate("shared cycle", xy=(f0, coh[np.argmin(np.abs(fc - f0))]),
+                     xytext=(0.1, 0.85), fontsize=7.5, color=ts.MUTED, va="center")
+        ax1.set_title("Coherence between two series", fontsize=9.5, color=ts.INK_2, loc="left")
+
+        fig.suptitle("Spectral analysis: finding a cycle, and shared rhythm between series",
+                     x=0.005, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
+        fig.tight_layout(rect=(0, 0.0, 1, 0.91))
+        ts.stamp(fig, "Synthetic series with a period-20 cycle · tsecon.periodogram / "
+                      "tsecon.welch / tsecon.coherence (match scipy.signal to ~1e-15) · the raw "
+                      "periodogram (grey) is a spiky, inconsistent PSD estimate; Welch averaging "
+                      "(red) resolves the f = 0.05 peak cleanly, and the coherence spikes to ~1 "
+                      "only at the frequency the two series share")
+        save(fig, "ext-spectral.png")
+
+
 ALL = [
     section_recession,
     section_survey,
@@ -447,6 +513,7 @@ ALL = [
     section_ivx,
     section_afns,
     section_dsge,
+    section_spectral,
 ]
 
 if __name__ == "__main__":

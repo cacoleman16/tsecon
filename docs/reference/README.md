@@ -8,6 +8,15 @@ The complete callable surface — every function's signature and one-line
 contract, generated directly from the type stub so it never drifts from the
 shipped module. Start here when you know the function and need its arguments.
 
+## [Validation matrix](validation-matrix.md)
+
+What every method family is validated *against* — the reference implementation
+(statsmodels, SciPy, `arch`, `linearmodels`, scikit-learn, ArviZ) or the
+documented closed form, with the fixture, the test, and the tolerance for each.
+Correctness, made auditable. Its runtime companion is the
+[Monte Carlo suite](../examples/monte-carlo.md), which verifies the statistical
+*properties* (size, coverage, consistency) that a fixture match cannot.
+
 ## Model cards
 
 One card per method family, each with the same anatomy: **what it estimates ·
@@ -19,6 +28,8 @@ method fits your problem and how to trust its output.
 | Family | Functions |
 |---|---|
 | [Diagnostics](model-cards/diagnostics.md) | `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`, `adf`, `kpss`, `check_stationarity` |
+| [ARIMA](model-cards/arima.md) | `arima_fit`, `ar_loglik` |
+| [Spectral analysis](model-cards/spectral.md) | `periodogram`, `welch`, `coherence` |
 | [Volatility](model-cards/volatility.md) | `garch_fit`, `gas_volatility`, `ccc_garch`, `dcc_garch` |
 | [VAR / SVAR](model-cards/var-svar.md) | `var_fit`, `var_irf`, `var_fevd`, `var_granger`, `var_forecast`, `sign_restricted_svar`, `favar`, `connectedness` |
 | [Local projections](model-cards/local-projections.md) | `lp`, `lp_iv`, `lp_state` |

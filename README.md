@@ -22,7 +22,7 @@ just present.
 ## Status
 
 Phases 0–1 complete; Phases 2–4 substantially landed. **37 Rust crates,
-671 Rust + 155 Python tests — all green and golden-fixture-gated.** The whole
+671 Rust + 165 Python tests — all green and golden-fixture-gated.** The whole
 library builds and tests from a clean checkout on every push (CI matrix on
 Linux/macOS/Windows), and a strict-built docs site keeps the documentation
 honest. See [ROADMAP.md §0](ROADMAP.md#0-current-build-status) for the live
@@ -71,7 +71,7 @@ The **[Quickstart](docs/quickstart.md)** and the symptom-driven
   get routed to the right function.
 - **[Model cards & API reference](docs/reference/README.md)** — the
   assumptions, defaults, failure modes, and validation target of every
-  estimator, plus the full 80-function reference.
+  estimator, plus the full 93-function reference.
 - **[Migration guides](docs/migration/from-statsmodels.md)** — from
   statsmodels, R, and Stata, with a Rosetta glossary.
 - **[Gallery](docs/examples/README.md)** — worked figures in a professional
@@ -94,7 +94,7 @@ forecast backtesting; and leakage-safe machine learning.
 
 ## Architecture
 
-- **Rust core, Python API.** 32 workspace crates behind PyO3/`abi3` bindings;
+- **Rust core, Python API.** 37 workspace crates behind PyO3/`abi3` bindings;
   a single self-contained wheel with no heavy runtime dependencies.
 - **Validation-gated.** Nothing lands without a golden target — a reference
   value, a documented formula, or a Monte-Carlo size/power check. Reference
@@ -107,11 +107,45 @@ forecast backtesting; and leakage-safe machine learning.
 ## Development
 
 ```sh
-cargo test --workspace                              # Rust tests (golden + property)
+cargo test --workspace --exclude tsecon-python      # Rust tests (golden + property)
 cargo clippy --workspace --all-targets -- -D warnings
 maturin develop -m bindings/python/Cargo.toml && pytest bindings/python/tests
 python fixtures/generate_fixtures.py                # regenerate goldens (pinned versions in each JSON)
 ```
+
+(On macOS the `tsecon-python` crate's test binary can't find `libpython`, which
+aborts the run and truncates the count — hence `--exclude`. Linux CI runs
+everything. The bindings are covered by the pytest suite.)
+
+## Correctness and performance
+
+Two independent kinds of evidence, both reproducible:
+
+- **[Validation matrix](docs/reference/validation-matrix.md)** — what each family
+  is checked against (statsmodels, SciPy, `arch`, `linearmodels`, scikit-learn,
+  ArviZ, or a documented closed form), with fixture, test, and tolerance.
+- **[Monte Carlo suite](docs/examples/monte-carlo.md)** — the statistical
+  properties a fixture match can't prove: IVX holds its 5% size at an exact unit
+  root where the OLS t-test rejects 28% of the time; HAC restores CI coverage;
+  the AR(1) estimator is consistent with the textbook finite-sample bias.
+- **[Benchmarks](benchmarks/)** — a parity-first harness: estimates must match a
+  reference *before* anything is timed. On a release build, ADF is ~13× and
+  VAR(2) ~24× faster than statsmodels — and GARCH QMLE is ~4× *slower* than
+  `arch`, which we publish too.
+
+## Contributing
+
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for the
+build, the validation-first discipline (no estimator merges without a named
+golden target), and the CI gates. Participation is governed by our
+[Code of Conduct](CODE_OF_CONDUCT.md); project decision-making is described in
+[GOVERNANCE.md](GOVERNANCE.md).
+
+## Citation
+
+If you use tsecon in research, please cite it via [CITATION.cff](CITATION.cff)
+(GitHub's "Cite this repository" button renders it). A software paper draft
+lives in [`paper/`](paper/).
 
 ## License
 

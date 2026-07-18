@@ -781,3 +781,22 @@ sol["verdict"]   # "unique stable solution (1 unstable eigenvalue(s) = 1 jump va
 The Cagan money-demand model: the jump variable (price level) leads on impact by
 the present-value multiplier `G = 1/(1 − aρ)`, then both series revert at the
 fundamental's AR root. See the [DSGE card](../reference/model-cards/dsge.md).
+
+### Spectral analysis: finding a cycle, and shared rhythm
+
+**Use case:** how much of a series' variance sits at each frequency, and do two
+series share a cycle? The raw periodogram is a noisy, inconsistent estimate;
+Welch's segment-averaging turns it into a usable power spectral density, and
+magnitude-squared coherence measures frequency-by-frequency co-movement.
+
+```python
+pg = tsecon.periodogram(x)     # raw PSD (freqs, psd) — matches scipy.signal to ~1e-15
+wl = tsecon.welch(x)           # averaged, consistent PSD
+co = tsecon.coherence(x, y)    # magnitude-squared coherence in [0, 1]
+```
+
+![Spectral analysis](img/ext-spectral.png)
+
+Left: the raw periodogram (grey) is spiky; Welch averaging (red) resolves the
+`f = 0.05` cycle cleanly. Right: coherence spikes to ~1 only at the frequency the
+two series share. See the [spectral card](../reference/model-cards/spectral.md).

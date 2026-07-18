@@ -91,8 +91,11 @@ nav:
   - Reference:
       - Overview: reference/README.md
       - API reference: reference/api.md
+      - Validation matrix: reference/validation-matrix.md
       - Model cards:
           - Diagnostics: reference/model-cards/diagnostics.md
+          - ARIMA: reference/model-cards/arima.md
+          - Spectral analysis: reference/model-cards/spectral.md
           - Volatility: reference/model-cards/volatility.md
           - VAR / SVAR: reference/model-cards/var-svar.md
           - Local projections: reference/model-cards/local-projections.md
@@ -118,3 +121,4 @@ nav:
       - From Stata: migration/from-stata.md
       - Rosetta glossary: migration/rosetta.md
   - Gallery: examples/README.md
+  - Monte Carlo validation: examples/monte-carlo.md

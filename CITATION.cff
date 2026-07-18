@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+title: "tsecon: A Rust-core Python library for time-series econometrics"
+abstract: >-
+  A high-performance time-series econometrics library with a Rust core and a
+  Python-first API. Every estimator is validated against a golden reference
+  (statsmodels, arch, linearmodels, scikit-learn, ArviZ, SciPy, NumPy) so the
+  numbers are trustworthy, not just present. `tsecon` is a working codename
+  and the project is pre-1.0.
+type: software
+authors:
+  - given-names: Chase
+    family-names: Coleman
+    email: chasecoleman93@gmail.com
+repository-code: "https://github.com/cacoleman16/tsecon"
+url: "https://github.com/cacoleman16/tsecon"
+license: "MIT OR Apache-2.0"
+version: 0.0.1
+keywords:
+  - time series
+  - econometrics
+  - forecasting
+  - VAR
+  - SVAR
+  - local projections
+  - GARCH
+  - ARIMA
+  - Kalman filter
+  - Bayesian
+  - nowcasting
+  - macroeconomics
+  - Rust
+  - Python
