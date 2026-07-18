@@ -175,5 +175,21 @@ jobs:
           # to PyPI or the source tree — hence --no-index.
           python -m pip install --no-index --find-links bindings/python/dist tsecon
           python -c "import tsecon, sys; print('python', sys.version.split()[0], '->', tsecon.__file__); assert 'site-packages' in tsecon.__file__"
-          python -c "import tsecon; n=len([f for f in dir(tsecon) if not f.startswith('_') and callable(getattr(tsecon,f))]); print('callables:', n); assert n == 93, n"
+          # The point of this check is that the API is not SMALLER on an older
+          # interpreter — a version-dependent binding gap. Derive the expected
+          # count from the type stub rather than hardcoding it: the stub is
+          # already pinned to the runtime surface by test_stub_sync.py, so this
+          # stays correct when functions are added instead of failing the build
+          # on every legitimate addition (which is exactly what a hardcoded 93
+          # did the first time a function landed).
+          EXPECTED=$(grep -cE '^def ' bindings/python/python/tsecon/__init__.pyi)
+          python - "$EXPECTED" <<'PY'
+          import sys
+          import tsecon
+          expected = int(sys.argv[1])
+          n = len([f for f in dir(tsecon)
+                   if not f.startswith("_") and callable(getattr(tsecon, f))])
+          print(f"callables: {n} | stub declares: {expected}")
+          assert n == expected, f"runtime exposes {n} callables, stub declares {expected}"
+          PY
           python -m pytest bindings/python/tests -q
