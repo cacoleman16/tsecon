@@ -15,6 +15,7 @@ from tsecon import datasets as ds
 
 REPO = Path(__file__).resolve().parents[3]
 FRED_MD_SAMPLE = REPO / "fixtures" / "fred_md_sample.csv"
+RZ_SAMPLE = REPO / "fixtures" / "ramey_zubairy_sample.csv"
 
 
 # --------------------------------------------------------------------------- #
@@ -124,6 +125,60 @@ def test_transform_codes_must_align_with_columns():
 # --------------------------------------------------------------------------- #
 # cache
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# ramey_zubairy
+# --------------------------------------------------------------------------- #
+def test_ramey_zubairy_parses_the_real_sample():
+    rz = ds.ramey_zubairy(local_path=RZ_SAMPLE)
+    assert rz["names"][:3] == ["news", "ngov", "ngdp"]
+    assert "rgdp_potcbo" in rz["names"]
+    assert rz["quarter"][0] == 1875.0
+    # quarters are encoded as year + 0.25*(quarter-1)
+    assert rz["quarter"][1] == pytest.approx(1875.25)
+    assert rz["data"].shape == (len(rz["quarter"]), len(rz["names"]))
+    assert len(rz["sha256"]) == 64
+
+
+def test_ramey_zubairy_series_view_matches_data_columns():
+    rz = ds.ramey_zubairy(local_path=RZ_SAMPLE)
+    for j, name in enumerate(rz["names"]):
+        np.testing.assert_array_equal(rz["series"][name], rz["data"][:, j])
+
+
+def test_ramey_zubairy_early_rows_are_nan_not_zero():
+    """1875 predates the macro series — those cells must be nan, never 0."""
+    rz = ds.ramey_zubairy(local_path=RZ_SAMPLE)
+    early = rz["quarter"] < 1880
+    assert early.any()
+    assert np.all(np.isnan(rz["series"]["ngdp"][early]))
+    # ...while the WWII rows are fully populated.
+    war = (rz["quarter"] >= 1941) & (rz["quarter"] <= 1945)
+    assert war.any()
+    assert not np.any(np.isnan(rz["series"]["ngdp"][war]))
+
+
+def test_ramey_zubairy_rejects_an_empty_file(tmp_path):
+    bad = tmp_path / "empty.csv"
+    bad.write_text("quarter,news\n")
+    with pytest.raises(RuntimeError, match="(?i)empty or malformed"):
+        ds.ramey_zubairy(local_path=bad)
+
+
+def test_ramey_zubairy_multiplier_pipeline_runs():
+    """The published-replication path must stay wired: build RZ's variables
+    from the loader output and get a finite cumulative response."""
+    import tsecon
+
+    rz = ds.ramey_zubairy(local_path=RZ_SAMPLE)
+    s = rz["series"]
+    g = (s["ngov"] / s["pgdp"]) / s["rgdp_potcbo"]
+    y = s["rgdp"] / s["rgdp_potcbo"]
+    ok = ~np.isnan(g + y)
+    assert ok.sum() > 20
+    out = tsecon.lp(y[ok], g[ok], horizons=4, n_lag_controls=1, cumulative=True)
+    assert np.all(np.isfinite(np.asarray(out["irf"])))
+
+
 def test_cache_dir_honours_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("TSECON_DATA_DIR", str(tmp_path / "somewhere"))
     assert ds.cache_dir() == tmp_path / "somewhere"

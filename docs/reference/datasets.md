@@ -145,6 +145,40 @@ subsetting the codes alongside them.
 
 ---
 
+## `ramey_zubairy` — the RZ (2018) historical macro dataset
+
+**What it does.** Loads the quarterly US dataset behind Ramey & Zubairy's
+government-spending multiplier estimates: 564 quarters (1875Q1–2015Q4)
+including Ramey's **military-news shock** (`news`), nominal government spending,
+GDP, the deflator, and CBO potential output. The core variables are jointly
+available from 1890Q1.
+
+The file lives inside the authors' replication zip (~750 kB). The loader
+downloads it once, caches the archive, and extracts the CSV — nothing is
+vendored into this repository.
+
+**Returns** `quarter` (float, `2015.75` = 2015Q4), `names`, `data` (`T × k`,
+missing as `nan`), a `series` dict mapping each name to its column, plus
+`source`, `url`, `sha256`.
+
+```python
+from tsecon import datasets as ds
+
+rz = ds.ramey_zubairy()
+rz["series"]["news"].shape      # (564,)
+rz["quarter"][-1]                # 2015.75
+```
+
+This dataset drives the
+[Ramey-Zubairy replication](../examples/replication-ramey-zubairy.md), which
+recovers integral multipliers of 0.66–0.71 — inside the published 0.6–0.8 range.
+
+**Citation.** Ramey, V. A. & Zubairy, S. (2018), "Government Spending Multipliers
+in Good Times and in Bad: Evidence from US Historical Data," *Journal of
+Political Economy* 126(2):850-901.
+
+---
+
 ## Licensing and citation
 
 FRED series are US federal-government data redistributed by the Federal Reserve

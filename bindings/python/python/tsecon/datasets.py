@@ -49,8 +49,10 @@ __all__ = [
     "fred_series",
     "fred_md",
     "apply_fred_md_transforms",
+    "ramey_zubairy",
     "FRED_MD_URL",
     "FRED_SERIES_URL",
+    "RAMEY_ZUBAIRY_URL",
 ]
 
 FRED_SERIES_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
@@ -58,6 +60,10 @@ FRED_MD_URL = (
     "https://www.stlouisfed.org/-/media/project/frbstl/stlouisfed/research"
     "/fred-md/monthly/current.csv"
 )
+RAMEY_ZUBAIRY_URL = (
+    "https://econweb.ucsd.edu/~vramey/research/Ramey_Zubairy_replication_codes.zip"
+)
+_RZ_MEMBER = "Ramey_Zubairy_replication_codes/rzdatnew.csv"
 
 _USER_AGENT = "tsecon dataset loader (https://github.com/cacoleman16/tsecon)"
 
@@ -246,6 +252,101 @@ def fred_md(*, local_path=None, refresh: bool = False, drop_empty_rows: bool = T
         "data": np.asarray(data, dtype=float),
         "transform_codes": codes,
         "source": "McCracken & Ng (2016) FRED-MD, Federal Reserve Bank of St. Louis",
+        "url": src,
+        "sha256": digest,
+    }
+
+
+def ramey_zubairy(*, local_path=None, refresh: bool = False) -> dict:
+    """Load the Ramey & Zubairy (2018) quarterly US macro dataset.
+
+    This is the dataset behind their government-spending multiplier estimates:
+    564 quarters (1875Q1-2015Q4) including Ramey's **military-news shock**
+    (``news``), nominal government spending, GDP, the deflator, and CBO
+    potential output. The core variables are jointly available from 1890Q1.
+
+    The file is distributed inside the authors' replication zip (~750 kB); the
+    loader downloads it once, caches the archive, and extracts the CSV. Nothing
+    is vendored into this repository.
+
+    Returns ``quarter`` (float, e.g. ``2015.75`` for 2015Q4), ``names`` (column
+    ids), ``data`` (``T x k`` float array, missing as ``nan``), plus a
+    ``series`` dict mapping each name to its column for convenience, and
+    ``source``/``url``/``sha256``.
+
+    >>> rz = ramey_zubairy()                      # doctest: +SKIP
+    >>> rz["series"]["news"].shape                 # doctest: +SKIP
+    (564,)
+
+    Cite: Ramey, V. A. & Zubairy, S. (2018), "Government Spending Multipliers
+    in Good Times and in Bad: Evidence from US Historical Data", *Journal of
+    Political Economy* 126(2):850-901.
+    """
+    if local_path is not None:
+        raw = Path(local_path).expanduser().read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        src = str(local_path)
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        path = cache_dir() / "ramey_zubairy_replication.zip"
+        if path.exists() and not refresh:
+            blob = path.read_bytes()
+        else:
+            req = urllib.request.Request(
+                RAMEY_ZUBAIRY_URL, headers={"User-Agent": _USER_AGENT}
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
+                    blob = resp.read()
+            except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                raise RuntimeError(
+                    f"could not download the Ramey-Zubairy replication archive from "
+                    f"{RAMEY_ZUBAIRY_URL} ({exc}).\n"
+                    "Download it yourself and pass local_path=<the extracted "
+                    "rzdatnew.csv>, or set TSECON_DATA_DIR to a directory already "
+                    "containing 'ramey_zubairy_replication.zip'."
+                ) from exc
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(blob)
+
+        import zipfile
+
+        with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+            member = _RZ_MEMBER
+            if member not in zf.namelist():
+                candidates = [n for n in zf.namelist() if n.endswith("rzdatnew.csv")]
+                if not candidates:
+                    raise RuntimeError(
+                        "the Ramey-Zubairy archive no longer contains rzdatnew.csv; "
+                        f"members look like: {zf.namelist()[:5]}"
+                    )
+                member = candidates[0]
+            data_bytes = zf.read(member)
+        digest = hashlib.sha256(data_bytes).hexdigest()
+        src = f"{RAMEY_ZUBAIRY_URL}::{member}"
+        text = data_bytes.decode("utf-8", errors="replace")
+
+    rows = [r for r in csv.reader(io.StringIO(text)) if any(c.strip() for c in r)]
+    if len(rows) < 2:
+        raise RuntimeError("Ramey-Zubairy CSV appears empty or malformed")
+    header = [c.strip() for c in rows[0]]
+    names = header[1:]
+    quarters, values = [], []
+    for row in rows[1:]:
+        if not row[0].strip():
+            continue
+        quarters.append(_to_float(row[0]))
+        vals = [_to_float(c) for c in row[1 : 1 + len(names)]]
+        vals += [float("nan")] * (len(names) - len(vals))
+        values.append(vals)
+
+    arr = np.asarray(values, dtype=float)
+    return {
+        "quarter": np.asarray(quarters, dtype=float),
+        "names": names,
+        "data": arr,
+        "series": {n: arr[:, j] for j, n in enumerate(names)},
+        "source": "Ramey & Zubairy (2018), JPE 126(2):850-901 — replication files",
         "url": src,
         "sha256": digest,
     }
