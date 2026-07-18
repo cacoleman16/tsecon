@@ -77,7 +77,7 @@ Shrinkage toward zero is the statistician's default, but macroeconomists can do 
 Concretely, the prior mean of every coefficient is zero except each variable's own first lag, which is centered at $\delta = 1$ for levels data (random walk) or $\delta = 0$ for growth rates and other stationary series (white noise). The prior variances then encode three beliefs through a small set of **hyperparameters** — parameters of the prior itself, best thought of as tightness dials:
 
 $$
-\operatorname{Var}\big(\text{coefficient on lag } l \text{ of variable } j\big) \;\propto\; \frac{\lambda_1^2}{l^{2\lambda_3}\, \sigma_j^2}, \qquad \operatorname{Var}(\text{intercept}) = \lambda_0^2
+\mathrm{Var}\big(\text{coefficient on lag } l \text{ of variable } j\big) \;\propto\; \frac{\lambda_1^2}{l^{2\lambda_3}\, \sigma_j^2}, \qquad \mathrm{Var}(\text{intercept}) = \lambda_0^2
 $$
 
 - $\lambda_1$ — **overall tightness**. Small $\lambda_1$ (0.1–0.2 is typical): trust the random walk, shrink hard. Large: let the data speak. This is the single most consequential dial.
@@ -133,10 +133,10 @@ Many people equate "Bayesian" with "MCMC and long waits." The workhorse BVAR nee
 Stack the VAR($p$) as a multivariate regression: each row is $y_t' = x_t' B + u_t'$, where $x_t = (1, y_{t-1}', \dots, y_{t-p}')'$ collects the intercept and lags, $B$ is the $k \times n$ coefficient matrix ($k = 1 + np$ regressors, $n$ variables), and the errors are i.i.d. $N(0, \Sigma)$ across the $T$ usable rows. The **natural-conjugate Normal-inverse-Wishart (NIW)** prior (Kadiyala and Karlsson 1997) is
 
 $$
-\Sigma \sim \mathcal{IW}(S_0,\, v_0), \qquad \operatorname{vec}(B) \mid \Sigma \sim N\!\big(\operatorname{vec}(B_0),\; \Sigma \otimes \Omega_0\big)
+\Sigma \sim \mathcal{IW}(S_0,\, v_0), \qquad \mathrm{vec}(B) \mid \Sigma \sim N\!\big(\mathrm{vec}(B_0),\; \Sigma \otimes \Omega_0\big)
 $$
 
-where the inverse-Wishart $\mathcal{IW}$ is the standard prior for covariance matrices ($S_0$ a scale matrix, $v_0$ degrees of freedom — bigger $v_0$, tighter prior), $\otimes$ is the Kronecker product, and the Minnesota prior of the previous section supplies $B_0$ (random-walk centers), the diagonal of $\Omega_0$ (the $\lambda$-dial variances), $S_0 = \operatorname{diag}(\sigma_1^2, \dots, \sigma_n^2)$, and $v_0 = n + 2$. Conjugacy then delivers the posterior in four lines of matrix algebra — with $X$ and $Y$ the stacked regressor and data matrices:
+where the inverse-Wishart $\mathcal{IW}$ is the standard prior for covariance matrices ($S_0$ a scale matrix, $v_0$ degrees of freedom — bigger $v_0$, tighter prior), $\otimes$ is the Kronecker product, and the Minnesota prior of the previous section supplies $B_0$ (random-walk centers), the diagonal of $\Omega_0$ (the $\lambda$-dial variances), $S_0 = \mathrm{diag}(\sigma_1^2, \dots, \sigma_n^2)$, and $v_0 = n + 2$. Conjugacy then delivers the posterior in four lines of matrix algebra — with $X$ and $Y$ the stacked regressor and data matrices:
 
 $$
 \begin{aligned}
@@ -151,7 +151,7 @@ Look at $\bar{B}$: it is once again a precision-weighted average — prior preci
 
 Everything a practitioner wants then follows by *direct simulation* from these four moments — no Markov chains, no convergence worries:
 
-- **Coefficient uncertainty.** Draw $\Sigma \sim \mathcal{IW}(\bar{S}, \bar{v})$, then $\operatorname{vec}(B) \mid \Sigma \sim N(\operatorname{vec}(\bar{B}), \Sigma \otimes \bar{\Omega})$. Each draw is exact and independent — two thousand of them take a fraction of a second through the Kronecker structure (the $nk \times nk$ covariance is never formed).
+- **Coefficient uncertainty.** Draw $\Sigma \sim \mathcal{IW}(\bar{S}, \bar{v})$, then $\mathrm{vec}(B) \mid \Sigma \sim N(\mathrm{vec}(\bar{B}), \Sigma \otimes \bar{\Omega})$. Each draw is exact and independent — two thousand of them take a fraction of a second through the Kronecker structure (the $nk \times nk$ covariance is never formed).
 - **Impulse responses with uncertainty.** Push each $(B, \Sigma)$ draw through the same companion-form recursion that `tsecon.var_irf` uses, with a Cholesky factor of the drawn $\Sigma$; the collection of IRF surfaces *is* the posterior distribution of impulse responses.
 - **Forecast fan charts.** For each draw, simulate the VAR forward with fresh shocks. Crucially, this integrates *parameter* uncertainty into the predictive density — plugging in the posterior-mean parameters instead and simulating only shocks understates forecast uncertainty, a pervasive error in forecast-evaluation code.
 
@@ -215,7 +215,7 @@ MCMC output is only as good as the chain's behavior, and two failure modes matte
 **Rank-normalized split $\widehat{R}$** answers "did the chains converge — and to the same place?" Run several chains (four is the default) from deliberately scattered starting points, split each in half so a still-trending chain betrays itself as disagreement between its own halves, rank-normalize the draws so heavy tails cannot break the variance calculations, and compare within-chain variance $W$ to between-chain variance:
 
 $$
-\widehat{R} = \sqrt{\frac{\widehat{\operatorname{var}}^{+}}{W}}, \qquad \widehat{\operatorname{var}}^{+} = \frac{N-1}{N} W + \frac{1}{N} B
+\widehat{R} = \sqrt{\frac{\widehat{\mathrm{var}}^{+}}{W}}, \qquad \widehat{\mathrm{var}}^{+} = \frac{N-1}{N} W + \frac{1}{N} B
 $$
 
 If every chain explores the same distribution, between and within variation match and $\widehat{R} \to 1$. The working threshold: be suspicious above **1.01** — a far stricter bar than the 1.1 of older practice, and one that older, non-split, non-rank-normalized $\widehat{R}$ versions frequently pass while the sampler is failing.

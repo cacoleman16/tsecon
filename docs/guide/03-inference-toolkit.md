@@ -31,10 +31,10 @@ Both roads lead through the same toll booth. The long-run variance is the centra
 
 Everything in frequentist inference reduces, sooner or later, to the variance of an average: a sample mean, an OLS coefficient (a weighted average of the data), a test statistic. So start with the simplest case and do it carefully.
 
-Let $y_1, \dots, y_n$ be a stationary series with mean $\mu$, variance $\gamma_0 = \operatorname{Var}(y_t)$, and autocovariances $\gamma_k = \operatorname{Cov}(y_t, y_{t+k})$ — the same $\gamma_k$ that the ACF in Chapter 1 plots after dividing by $\gamma_0$. The variance of the sample mean $\bar y_n = \frac{1}{n}\sum_t y_t$ expands into $n^2$ covariance terms, and collecting them by lag gives
+Let $y_1, \dots, y_n$ be a stationary series with mean $\mu$, variance $\gamma_0 = \mathrm{Var}(y_t)$, and autocovariances $\gamma_k = \mathrm{Cov}(y_t, y_{t+k})$ — the same $\gamma_k$ that the ACF in Chapter 1 plots after dividing by $\gamma_0$. The variance of the sample mean $\bar y_n = \frac{1}{n}\sum_t y_t$ expands into $n^2$ covariance terms, and collecting them by lag gives
 
 $$
-\operatorname{Var}(\bar y_n) \;=\; \frac{1}{n}\sum_{k=-(n-1)}^{\,n-1}\Bigl(1-\frac{|k|}{n}\Bigr)\gamma_k
+\mathrm{Var}(\bar y_n) \;=\; \frac{1}{n}\sum_{k=-(n-1)}^{\,n-1}\Bigl(1-\frac{|k|}{n}\Bigr)\gamma_k
 \;\;\xrightarrow[\;n\to\infty\;]{}\;\; \frac{\Omega}{n},
 \qquad
 \Omega \;=\; \sum_{k=-\infty}^{\infty}\gamma_k .
@@ -121,7 +121,7 @@ Two smarter responses, both implemented in the Rust core (see [What tsecon imple
 Now bring this to regression, where practitioners actually live. OLS on $y_t = x_t'\beta + u_t$ gives $\hat\beta = (X'X)^{-1}X'y$, and its sampling variance has the famous **sandwich** form
 
 $$
-\operatorname{Var}(\hat\beta) \;=\; (X'X)^{-1}\; \hat S \;(X'X)^{-1},
+\mathrm{Var}(\hat\beta) \;=\; (X'X)^{-1}\; \hat S \;(X'X)^{-1},
 $$
 
 where the "bread" $(X'X)^{-1}$ is the same for everyone and the "meat" $\hat S$ estimates the variance of the score $g_t = x_t u_t$ — an average, so everything from the previous two sections applies to it. The ladder of standard errors is a ladder of assumptions about that meat:

@@ -34,7 +34,7 @@ Everything downstream — ARIMA in the univariate chapters, VARs in the multivar
 **The formalism.** For a covariance-stationary series $y_t$ with mean $\mu$, the autocovariance at lag $k$ and the autocorrelation are
 
 $$
-\gamma_k = \operatorname{Cov}(y_t, y_{t-k}), \qquad \rho_k = \frac{\gamma_k}{\gamma_0},
+\gamma_k = \mathrm{Cov}(y_t, y_{t-k}), \qquad \rho_k = \frac{\gamma_k}{\gamma_0},
 $$
 
 so $\rho_k$ is the correlation between the series and itself $k$ periods ago; $\rho_0 = 1$ always. The sample version replaces moments with averages:

@@ -67,11 +67,11 @@ $$
 $$
 
 $$
-\operatorname{Var}(Y_t) = \gamma_0 < \infty \quad \text{for all } t,
+\mathrm{Var}(Y_t) = \gamma_0 < \infty \quad \text{for all } t,
 $$
 
 $$
-\operatorname{Cov}(Y_t, Y_{t-k}) = \gamma_k \quad \text{for all } t \text{ and each } k.
+\mathrm{Cov}(Y_t, Y_{t-k}) = \gamma_k \quad \text{for all } t \text{ and each } k.
 $$
 
 The mean is constant, the variance is constant and finite, and the covariance between two observations depends only on the *distance* $k$ between them, not on *where* in time they sit. The covariance between 1970Q1 and 1970Q2 equals the covariance between 2020Q1 and 2020Q2. Almost everything in classical time series econometrics — ARMA modeling, the ACF, standard asymptotics — is built on weak stationarity, and when this guide says "stationary" without qualification, weak stationarity is what it means. (Neither form implies the other in general: strict stationarity with infinite variance is not weakly stationary, and a weakly stationary process can have time-varying higher moments. For Gaussian processes the two coincide, because a Gaussian distribution is fully determined by its first two moments.)
@@ -87,7 +87,7 @@ Every series you will ever meet gets understood by comparison to three reference
 **White noise** is the process with no memory at all: a sequence $\{\varepsilon_t\}$ with
 
 $$
-\mathbb{E}[\varepsilon_t] = 0, \qquad \operatorname{Var}(\varepsilon_t) = \sigma^2, \qquad \operatorname{Cov}(\varepsilon_t, \varepsilon_{t-k}) = 0 \ \text{ for all } k \neq 0,
+\mathbb{E}[\varepsilon_t] = 0, \qquad \mathrm{Var}(\varepsilon_t) = \sigma^2, \qquad \mathrm{Cov}(\varepsilon_t, \varepsilon_{t-k}) = 0 \ \text{ for all } k \neq 0,
 $$
 
 written $\varepsilon_t \sim WN(0, \sigma^2)$. Yesterday tells you nothing about today. White noise is the atom of the subject in two senses: it is the *building block* — every model below constructs its series out of white-noise shocks — and it is the *finish line* — a model is judged adequate when its residuals are indistinguishable from white noise, meaning it has extracted all the structure there was. In economics, the daily return on a liquid stock is approximately white noise (if it weren't, you could get rich predicting it).
@@ -109,7 +109,7 @@ $$
 Today is yesterday plus a shock, full stop — no pull toward any mean. The second form shows what that implies: the level is the *accumulation of every shock that ever happened*. Shocks are permanent. And the process is **not stationary**: from a fixed start $Y_0$,
 
 $$
-\operatorname{Var}(Y_t) = t\,\sigma^2,
+\mathrm{Var}(Y_t) = t\,\sigma^2,
 $$
 
 which grows without bound — the rules of the game change every period, with the spread of possible positions widening forever. A process like this is said to have a **unit root** (the name comes from the root of the lag polynomial, defined below, sitting exactly on 1). It is also called **integrated of order one**, written $I(1)$, because it is the running sum — the discrete integral — of a stationary series; differencing it once recovers stationarity, and $I(0)$ denotes a series that is stationary as it stands. Asset prices are the canonical economic example (log stock prices are close to random walks), and Nelson and Plosser (1982) famously argued that most US macroeconomic aggregates, GDP included, look more like random walks (with drift) than like stationary fluctuations around a trend — a finding that reshaped macroeconomics, because it means recessions are not fully temporary.
@@ -139,7 +139,7 @@ Plot them (or just trust the description): `eps` is featureless static; `ar1` sw
 
 The practitioner's first question about any series is "how much memory does it have, and how long does it last?" The object that answers it is the series' correlation with its own past.
 
-The **autocovariance function** of a weakly stationary process is $\gamma_k = \operatorname{Cov}(Y_t, Y_{t-k})$, already met in the definition of stationarity. Since its units are awkward (dollars-squared), we normalize by the variance to get the **autocorrelation function (ACF)**:
+The **autocovariance function** of a weakly stationary process is $\gamma_k = \mathrm{Cov}(Y_t, Y_{t-k})$, already met in the definition of stationarity. Since its units are awkward (dollars-squared), we normalize by the variance to get the **autocorrelation function (ACF)**:
 
 $$
 \rho_k = \frac{\gamma_k}{\gamma_0}, \qquad \rho_0 = 1, \quad -1 \le \rho_k \le 1.
@@ -156,7 +156,7 @@ $$
 An estimate needs a standard error, and Bartlett (1946) supplies it: under the hypothesis that the true ACF dies after lag $k-1$, approximately
 
 $$
-\operatorname{Var}(\hat{\rho}_k) \approx \frac{1}{T}\Bigl(1 + 2\sum_{j=1}^{k-1} \hat{\rho}_j^2\Bigr),
+\mathrm{Var}(\hat{\rho}_k) \approx \frac{1}{T}\Bigl(1 + 2\sum_{j=1}^{k-1} \hat{\rho}_j^2\Bigr),
 $$
 
 which reduces to the familiar $\pm 1.96/\sqrt{T}$ white-noise band when all earlier correlations are zero. tsecon returns both pieces:

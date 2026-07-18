@@ -93,7 +93,7 @@ The oldest and still the most common answer, from Sims (1980): assume the impact
 This is attractive because it is exactly enough: a lower-triangular $B$ has $n(n+1)/2$ free elements, matching what $\Sigma_u$ delivers, and there is a unique lower-triangular matrix with positive diagonal satisfying $BB' = \Sigma_u$ — the **Cholesky factor**:
 
 $$
-B = \operatorname{chol}(\Sigma_u).
+B = \mathrm{chol}(\Sigma_u).
 $$
 
 No optimization, no sampling; one matrix decomposition and you have point-identified shocks. In the classic monetary VAR of Christiano, Eichenbaum, and Evans (1999), slow-moving variables (output, prices) are ordered before the federal funds rate: the identifying claim is that production and pricing decisions cannot react to a policy surprise within the same quarter — plausible if firms set production plans and prices in advance — while the Fed *can* react to output and prices within the quarter, which is exactly what its information set allows. When the timing claim is institutionally grounded like this, Cholesky is defensible. When the ordering is chosen by habit, it is an unexamined assumption wearing a lab coat.
@@ -162,7 +162,7 @@ $$
 Blanchard-Quah imposes that $\Theta(1)$ is lower triangular — in the bivariate (output growth, unemployment) system: the second ("demand") shock has zero long-run effect on output. That again supplies exactly $n(n-1)/2$ restrictions, and the solution is closed-form:
 
 $$
-\Theta(1) = \operatorname{chol}\!\left( A(1)^{-1} \Sigma_u A(1)^{-1\prime} \right), \qquad B = A(1)\, \Theta(1).
+\Theta(1) = \mathrm{chol}\!\left( A(1)^{-1} \Sigma_u A(1)^{-1\prime} \right), \qquad B = A(1)\, \Theta(1).
 $$
 
 It is a Cholesky decomposition applied at the infinite horizon instead of at impact — an elegant trick, and the origin of the whole supply/demand decomposition literature.
@@ -187,7 +187,7 @@ Recursive and long-run schemes deliver a point — one $B$ — by imposing hard 
 The algorithm is direct. Given the reduced form, the admissible impact matrices are
 
 $$
-\mathcal{B} = \left\{ \operatorname{chol}(\Sigma_u)\, Q \;:\; Q \in \mathcal{O}(n), \ \text{IRFs of } \operatorname{chol}(\Sigma_u) Q \text{ satisfy the sign restrictions} \right\}.
+\mathcal{B} = \left\{ \mathrm{chol}(\Sigma_u)\, Q \;:\; Q \in \mathcal{O}(n), \ \text{IRFs of } \mathrm{chol}(\Sigma_u) Q \text{ satisfy the sign restrictions} \right\}.
 $$
 
 Draw random rotations $Q$ uniformly (from the *Haar distribution* — the uniform distribution on the orthogonal group), keep the ones whose IRFs pass, and summarize the survivors. Because signs are inequalities, not equalities, they do not pin down a point: **you end with a set of models, not one**. This is called **set identification**, and it changes what honest reporting means. The output is a band of IRFs that are all fully consistent with both the data and your assumptions — the width of that band *is* a finding. If the output response to a sign-identified monetary shock spans zero, that is the paper's result, not a nuisance to be narrowed by prettier plotting. (Uhlig's own punchline was exactly this: under agnostic sign restrictions, the contractionary effect of money on output is far less certain than the Cholesky consensus suggested.)
