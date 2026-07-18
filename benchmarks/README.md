@@ -16,6 +16,14 @@ python benchmarks/bench.py --repeats 50
 The script exits `0` **iff** every parity check passes, so it doubles as a
 cross-library correctness gate you can run in CI.
 
+**Optional references never shrink the gate silently.** `scikit-learn` backs
+only the ridge and elastic-net rows; if it is missing, those two cases are
+skipped, the banner prints `NOT INSTALLED (2 cases skipped)`, a loud block names
+exactly which cases were dropped, and the win count reports out of the reduced
+total (`20/23` instead of `22/25`). A gate that quietly covers less while still
+exiting `0` is worse than one that fails outright. CI installs every reference,
+so that path should never be exercised there.
+
 ## What it does, in order
 
 For each operation that both tsecon and a mature reference

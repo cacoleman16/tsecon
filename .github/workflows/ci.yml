@@ -118,7 +118,10 @@ jobs:
           args: --release --out dist
       - name: Install
         run: |
-          python -m pip install --upgrade pip numpy scipy statsmodels arch
+          # Every reference the parity matrix compares against must be present,
+          # or the gate silently covers less than it claims. bench.py reports
+          # any it cannot find, but CI should never exercise that path.
+          python -m pip install --upgrade pip numpy scipy statsmodels arch scikit-learn
           python -m pip install --no-index --find-links bindings/python/dist tsecon
       # The Monte Carlo suites are seeded and assert their own expectations, so a
       # statistical regression (a test losing its size, an interval losing

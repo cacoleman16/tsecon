@@ -56,8 +56,19 @@ from statsmodels.stats.stattools import jarque_bera as sm_jarque_bera
 import scipy
 from scipy import signal
 from scipy.stats import norm
-import sklearn
-from sklearn.linear_model import ElasticNet, Ridge
+# scikit-learn backs only the ridge / elastic-net rows. Treat it as optional so
+# the other 23 cases still run without it — but NEVER silently: if it is absent
+# the runner says so loudly and names the cases it dropped. A gate that quietly
+# shrinks is worse than one that fails, because it still exits 0.
+try:
+    import sklearn
+    from sklearn.linear_model import ElasticNet, Ridge
+
+    HAVE_SKLEARN = True
+except ImportError:  # pragma: no cover - exercised only where sklearn is absent
+    sklearn = None
+    ElasticNet = Ridge = None
+    HAVE_SKLEARN = False
 from arch import arch_model
 import arch
 
@@ -770,7 +781,10 @@ def print_env(build_mode, build_detail):
     print(f"  scipy            : {scipy.__version__}")
     print(f"  statsmodels      : {statsmodels.__version__}")
     print(f"  arch             : {arch.__version__}")
-    print(f"  scikit-learn     : {sklearn.__version__}")
+    print(
+        "  scikit-learn     : "
+        + (sklearn.__version__ if HAVE_SKLEARN else "NOT INSTALLED (2 cases skipped)")
+    )
     print(f"  tsecon build     : {build_mode.upper()}")
     print(f"    detected via   : {build_detail}")
     if build_mode == "debug":
@@ -876,10 +890,20 @@ def main() -> int:
         case_cf_filter(rng, repeats),
         case_periodogram(rng, repeats),
         case_welch(rng, repeats),
-        # Penalised regression.
-        case_ridge(rng, repeats),
-        case_elastic_net(rng, repeats),
     ]
+    if HAVE_SKLEARN:
+        # Penalised regression.
+        cases += [case_ridge(rng, repeats), case_elastic_net(rng, repeats)]
+    else:
+        print()
+        hr("!")
+        print("  scikit-learn is NOT installed. SKIPPING 2 cases:")
+        print("    - Ridge regression (alpha=1.0, no intercept)")
+        print("    - Elastic net / lasso (coordinate descent)")
+        print("  The remaining cases still run and still gate the exit code, but")
+        print("  this run covers LESS than a full one. Install scikit-learn for")
+        print("  the complete parity matrix.")
+        hr("!")
 
     ok = print_parity(cases)
     print_timings(cases, build_mode, repeats)
