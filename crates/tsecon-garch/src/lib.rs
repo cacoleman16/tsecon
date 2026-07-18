@@ -12,9 +12,10 @@
 //! [`tsecon_stats::Standardized::student_t`], Bollerslev 1987).
 //!
 //! Estimation is quasi-maximum likelihood (Bollerslev-Wooldridge 1992):
-//! an `arch`-style grid start, L-BFGS with central-difference gradients in
-//! a reparameterized working space, and a Nelder-Mead polish, all from
-//! `tsecon-optim`. Inference offers both classical MLE (inverse numerical
+//! an `arch`-style grid start, L-BFGS in a reparameterized working space
+//! (with an analytic likelihood gradient for the GARCH/GJR recursion under
+//! normal innovations, central differences otherwise), and a Nelder-Mead
+//! polish, all from `tsecon-optim`. Inference offers both classical MLE (inverse numerical
 //! Hessian) and Bollerslev-Wooldridge robust sandwich standard errors
 //! ([`StdErrors`]). [`GarchResults`] carries the conditional volatility,
 //! standardized residuals, information criteria, and analytic multi-step
@@ -52,6 +53,7 @@
 mod error;
 mod inference;
 mod model;
+mod objective;
 mod recursion;
 mod results;
 mod spec;

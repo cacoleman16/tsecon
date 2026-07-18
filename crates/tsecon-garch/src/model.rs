@@ -1,13 +1,12 @@
 //! The [`GarchModel`] entry point: likelihood evaluation at fixed
 //! parameters, quasi-maximum-likelihood estimation, and standard errors.
 
-use tsecon_optim::{
-    minimize, Bounded, FnObjective, Method, NelderMeadOptions, Positive, Transform,
-};
+use tsecon_optim::{minimize, Bounded, Method, NelderMeadOptions, Positive, Transform};
 use tsecon_stats::special::ln_gamma;
 
 use crate::error::GarchError;
 use crate::inference::{self, StdErrors};
+use crate::objective::FitObjective;
 use crate::recursion::{backcast, egarch_recursion, garch_recursion};
 use crate::results::GarchResults;
 use crate::spec::{DistSpec, GarchSpec, MeanSpec, VolSpec};
@@ -349,11 +348,16 @@ impl GarchModel {
     /// `tsecon-optim` treats as an infeasible trial. The interior optimum
     /// of a stationary model is untouched by the barrier.
     ///
-    /// **Search strategy**: `arch`-style grid starting values, L-BFGS with
-    /// central-difference gradients, a Nelder-Mead polish (2 restarts),
-    /// and a final L-BFGS pass, keeping the best point found. The fixture
-    /// tests pin the optimum to within 1e-6 absolute log-likelihood of the
-    /// `arch` package (or better).
+    /// **Search strategy**: `arch`-style grid starting values, L-BFGS, a
+    /// Nelder-Mead polish (2 restarts), and a final L-BFGS pass, keeping
+    /// the best point found. The fixture tests pin the optimum to within
+    /// 1e-6 absolute log-likelihood of the `arch` package (or better).
+    ///
+    /// The likelihood is evaluated through [`crate::objective`], whose
+    /// value is bit-identical to [`GarchModel::loglike`] but allocation-
+    /// free, and which supplies an analytic gradient for the GARCH/GJR
+    /// recursion under normal innovations (other specifications keep the
+    /// optimizer's central differences).
     ///
     /// # Errors
     ///
@@ -392,18 +396,11 @@ impl GarchModel {
             Ok(z)
         };
 
-        let mut objective = FnObjective::new(|z: &[f64]| -> f64 {
-            let Ok(theta) = to_natural(z) else {
-                return f64::INFINITY;
-            };
-            if self.spec.validate_params(&theta).is_err() {
-                return f64::INFINITY;
-            }
-            match self.loglike(&theta) {
-                Ok(ll) if ll.is_finite() => -ll,
-                _ => f64::INFINITY,
-            }
-        });
+        // The estimation-time objective: a fused, allocation-free
+        // evaluation of the same likelihood, with an analytic gradient
+        // where one exists (see [`crate::objective`]). Its value agrees
+        // with `self.loglike` bit for bit.
+        let mut objective = FitObjective::new(self, NU_BOUNDS);
 
         let z0 = to_working(&sv)?;
         let nm_opts = NelderMeadOptions {
