@@ -13,7 +13,7 @@ REPO = Path(__file__).parents[1]
 PYI = REPO / "bindings" / "python" / "python" / "tsecon" / "__init__.pyi"
 OUT = REPO / "docs" / "reference" / "api.md"
 
-text = PYI.read_text().splitlines()
+text = PYI.read_text(encoding="utf-8").splitlines()
 
 # Walk the stub, tracking the most recent "# ---- section ----" comment as a
 # group heading, and collect (section, signature, docstring) per def.
@@ -90,5 +90,5 @@ for sec in order:
             lines.append("")
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
-OUT.write_text("\n".join(lines) + "\n")
+OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
 print(f"wrote {OUT} ({len(entries)} functions, {len(order)} sections)")

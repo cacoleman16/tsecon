@@ -19,7 +19,9 @@ def _runtime_funcs():
 
 
 def _stub_funcs():
-    text = (ROOT / "python" / "tsecon" / "__init__.pyi").read_text()
+    # UTF-8 explicitly: the stub's docstrings contain em-dashes, which the
+    # Windows default (cp1252) decodes to mush rather than failing loudly.
+    text = (ROOT / "python" / "tsecon" / "__init__.pyi").read_text(encoding="utf-8")
     return set(re.findall(r"^def (\w+)\(", text, re.MULTILINE))
 
 
@@ -55,11 +57,14 @@ def test_api_reference_not_stale():
     if not gen_path.exists() or not out_path.exists():
         pytest.skip("docs tree not present in this checkout")
 
-    before = out_path.read_text()
+    # Read explicitly as UTF-8: the docs contain em-dashes, and on Windows the
+    # platform default (cp1252) would mangle them and make this compare garbage
+    # against garbage. The generator is pinned to UTF-8 for the same reason.
+    before = out_path.read_text(encoding="utf-8")
     subprocess.run(
         [sys.executable, str(gen_path)], cwd=str(repo), check=True, capture_output=True
     )
-    after = out_path.read_text()
+    after = out_path.read_text(encoding="utf-8")
     assert before == after, (
         "docs/reference/api.md is stale — run "
         "`python docs/gen_api_reference.py` and commit the result"
