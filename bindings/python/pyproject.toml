@@ -4,9 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "tsecon"
-# NOTE: `tsecon` is a working codename. The real name is resolved (and its
-# PyPI availability confirmed) before the first public upload — see
-# docs/roadmap/14-packaging-distribution.md and docs/roadmap/11-docs-ux-adoption.md.
+# The name is settled: `tsecon` ships as-is. PyPI availability was verified
+# (unregistered) before committing to it — see docs/roadmap/14-packaging-distribution.md.
 version = "0.0.1"
 description = "High-performance time series econometrics: a Rust core with a Python-first API — validation-gated against statsmodels, SciPy, NumPy, and arch"
 readme = "README.md"

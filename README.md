@@ -1,4 +1,4 @@
-# tsecon *(working codename)*
+# tsecon
 
 **A high-performance time series econometrics library — a Rust core with a
 Python-first API — built to be the centralized home for macro and financial
@@ -8,8 +8,8 @@ time series work.**
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 
-> `tsecon` is a working codename; the public name is chosen before the first
-> release (see [ROADMAP.md §9](ROADMAP.md)). It is pre-1.0 and moving fast.
+> Pre-1.0 and moving fast. The name is settled (`tsecon`), but the API may
+> still change before the first release — see [ROADMAP.md](ROADMAP.md).
 
 Most of what economists actually do — structural identification, honest
 inference, Bayesian VARs, local projections, nowcasting, volatility, panels —
@@ -22,7 +22,7 @@ just present.
 ## Status
 
 Phases 0–1 complete; Phases 2–4 substantially landed. **37 Rust crates,
-671 Rust + 165 Python tests — all green and golden-fixture-gated.** The whole
+671 Rust + 337 Python tests — all green and golden-fixture-gated.** The whole
 library builds and tests from a clean checkout on every push (CI matrix on
 Linux/macOS/Windows), and a strict-built docs site keeps the documentation
 honest. See [ROADMAP.md §0](ROADMAP.md#0-current-build-status) for the live
@@ -38,8 +38,8 @@ pip install maturin
 maturin develop -m bindings/python/Cargo.toml   # builds + installs into the active venv
 ```
 
-A published wheel (no Rust toolchain needed) lands on PyPI once the library
-name is finalized.
+A published wheel (no Rust toolchain needed) lands on PyPI with the first
+tagged release.
 
 ## Quickstart
 
