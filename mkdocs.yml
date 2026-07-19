@@ -126,6 +126,7 @@ nav:
   - Gallery: examples/README.md
   - Replications:
       - Ramey-Zubairy (2018): examples/replication-ramey-zubairy.md
+      - Yield curve & recessions (Estrella-Mishkin 1998): examples/replication-yield-curve-recession.md
   - Monte Carlo:
       - Validation suite: examples/monte-carlo.md
       - Frontier experiments: examples/monte-carlo-frontier.md

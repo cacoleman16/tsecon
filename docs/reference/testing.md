@@ -305,23 +305,31 @@ form, or a DGP we wrote. Those can all be simultaneously wrong in the same
 direction if a specification is misunderstood. A replication cannot: the data,
 the identification, and the target number all come from outside.
 
-[**Ramey & Zubairy (2018)**](../examples/replication-ramey-zubairy.md), *JPE*
+**1. [Ramey & Zubairy (2018)](../examples/replication-ramey-zubairy.md)**, *JPE*
 126(2) — government-spending multipliers from US historical data, using their
-military-news shock and Gordon-Krenn normalisation:
+military-news shock and Gordon-Krenn normalisation, via `tsecon.lp_multiplier`:
 
 | h (quarters) | 4 | 8 | 12 | 16 | 20 |
 |---|---|---|---|---|---|
-| integral multiplier | 0.667 | 0.659 | 0.698 | 0.682 | 0.706 |
+| integral multiplier | 0.635 | 0.657 | 0.700 | 0.706 | 0.743 |
 
-0.66–0.71 against RZ's published **0.6–0.8**, and below one — their central
+0.64–0.74 against RZ's published **0.6–0.8**, and below one — their central
 claim. The dataset downloads on first use via
 [`tsecon.datasets.ramey_zubairy()`](datasets.md); the offline loader path is
-covered by `test_datasets.py` against a committed real slice, so the replication
-code stays wired even in CI, where the network is not used.
+covered by `test_datasets.py` against a committed real slice.
 
-The scope is stated on the page rather than implied: this reproduces the
-headline integral multiplier, not a line-by-line port of their Stata code, and
-reports point estimates without RZ's inference.
+**2. [Estrella & Mishkin (1998)](../examples/replication-yield-curve-recession.md)**,
+*REStat* 80(1) — the Treasury yield curve predicts recessions. A probit of the
+NBER recession indicator twelve months ahead on the term spread
+(`GS10 − TB3MS`), monthly FRED data 1953–2026, recovers the signature result: a
+spread coefficient of **−0.58** (`z = −9.6`), a −1pp inversion implying a **48%**
+recession probability within the year against **0.8%** for a +3pp steepness.
+Guarded offline by `test_replication_yield_curve.py` against a committed FRED
+snapshot.
+
+Both pages state scope explicitly: they reproduce the economic result — the
+sign, significance and magnitude of the published finding — not a line-by-line
+port of the authors' code or their exact inference conventions.
 
 ### Tier 8 — Benchmarks (parity first)
 

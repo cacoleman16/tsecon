@@ -149,5 +149,6 @@ authors; please cite the paper if you use the data.
 
 **See also.** [`lp` / `lp_iv` model card](../reference/model-cards/local-projections.md) ·
 [datasets reference](../reference/datasets.md) ·
+[yield-curve recession replication](replication-yield-curve-recession.md) ·
 [frontier Monte Carlo](monte-carlo-frontier.md), which measures what LP-IV does
 when the instrument is weak.
