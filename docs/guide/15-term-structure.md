@@ -145,9 +145,73 @@ That near-unit persistence is also the model's sober lesson. Diebold and Li's he
 
 > **⚠ Common mistake — trusting the two-step standard errors as if the factors were observed.** The two-step estimator treats the first-stage fitted factors as if they were data in the second stage, so the AR(1) standard errors — and any forecast bands built naively from them — ignore the estimation error in the factors themselves. For point forecasts this two-step approach is fast and famously effective; for *inference* it understates uncertainty. The principled fix is to write DNS as a single state-space model — factors as latent states, the AR(1) as the transition, the loadings as the measurement matrix — and estimate it in one pass with the Kalman filter of chapter 4, which propagates factor uncertainty into everything downstream. Use the two-step for forecasting and exploration; reach for the one-step state-space form when you need honest error bands.
 
+## Arbitrage-free Nelson-Siegel: keep the loadings, add one term
+
+Everything to this point is *reduced-form* curve-fitting. Nelson-Siegel, Svensson, and dynamic Nelson-Siegel describe the curve and forecast it beautifully, but none of them is **arbitrage-free**: nothing in the fit forces the yields it quotes across maturities to be mutually consistent under no-arbitrage. That is fine for summarizing and forecasting — it is *not* fine the moment you price a derivative off the curve, extract risk-neutral rate expectations, or want a long yield that a trader could not, in principle, arbitrage against the shorter maturities. A no-arbitrage model ties the cross-section and the dynamics together with a single restriction; the price of admission has always seemed to be giving up the interpretable level-slope-curvature loadings for the machinery of an affine term-structure model.
+
+Christensen, Diebold and Rudebusch (2011) showed you do not have to give them up. Their result is remarkably clean: **keep all three Nelson-Siegel factor loadings exactly as they are, and add one deterministic yield-adjustment term $-A(\tau)/\tau$.** With that single term the curve becomes arbitrage-free — a member of the affine class — while the part you like, the shapes that read off as level, slope, and curvature, is left completely untouched. The AFNS curve (independent-factor case, a diagonal factor-volatility matrix $\Sigma = \mathrm{diag}(\sigma_{11}, \sigma_{22}, \sigma_{33})$) is Nelson-Siegel plus that one correction:
+
+$$
+y(\tau) \;=\; \underbrace{\beta_1 \;+\; \beta_2\,\frac{1 - e^{-\lambda \tau}}{\lambda \tau} \;+\; \beta_3\!\left(\frac{1 - e^{-\lambda \tau}}{\lambda \tau} - e^{-\lambda \tau}\right)}_{\text{ordinary Nelson-Siegel, unchanged}} \;-\; \frac{A(\tau)}{\tau} .
+$$
+
+The correction $A(\tau)/\tau$ is a function of the *factor volatilities* and the decay — not of the fitted factors — and it captures a convexity, or Jensen's-inequality, effect that the reduced-form model simply omits. Here is the intuition. A long yield is an average of expected future short rates, and expectations of a nonlinear (convex) function of a volatile state sit *below* the function of the expectation: $\mathbb{E}[f(X)] < f(\mathbb{E}[X])$ for the relevant curvature. The more volatile the factors and the longer the horizon over which that volatility compounds, the larger the wedge. So the adjustment is **non-positive** — it can only pull yields down, never up — and it **deepens with maturity**, because volatility has more time to compound out at the long end. At the short end there is almost nothing to correct; the gap opens up precisely where pricing cares about it. And it **vanishes as $\Sigma \to 0$**: with no factor volatility there is no convexity wedge, so $A(\tau)/\tau \to 0$ and AFNS collapses back onto plain Nelson-Siegel exactly. AFNS *nests* the reduced-form model, adding the no-arbitrage correction as a volatility-scaled perturbation on top of it.
+
+tsecon's `afns_adjustment` computes exactly this term — the signed $-A(\tau)/\tau$, one value per maturity — from a maturity grid, the three diagonal factor volatilities $\sigma = [\sigma_{11}, \sigma_{22}, \sigma_{33}]$ (level, slope, curvature vols), and the decay. It does not fit anything: the volatilities are inputs you bring from a dynamic AFNS estimation, a calibration, or a scenario. You add the returned array to any Nelson-Siegel curve to obtain its arbitrage-free companion, $y_{\mathrm{AFNS}}(\tau) = y_{\mathrm{NS}}(\tau) + \text{adjustment}$. One keyword deserves a flag up front: the decay argument is spelled **`decay`, not `lambda`** — `lambda` is a reserved word in Python, so the library cannot use it.
+
+Take the last curve of our Treasury panel, extract its Nelson-Siegel factors as before, reconstruct the reduced-form curve, and then make it arbitrage-free by adding the adjustment. We supply an illustrative set of monthly factor volatilities (level, slope, curvature) in the same month/decay units as the loadings:
+
+```python
+lam = 0.0609
+yields = panel[-1]                                     # last curve in the panel
+fit = tsecon.nelson_siegel(maturities, yields, decay=lam)
+L, S, C = fit["level"], fit["slope"], fit["curvature"]
+
+# Reduced-form NS curve on the observed maturity grid.
+b_slope = (1 - np.exp(-lam*maturities)) / (lam*maturities)
+b_curv  = b_slope - np.exp(-lam*maturities)
+y_ns = L + S*b_slope + C*b_curv
+
+# Illustrative independent-factor vols [level, slope, curvature], monthly units.
+sigma = np.array([0.010, 0.020, 0.030])
+adj = tsecon.afns_adjustment(maturities, sigma, decay=lam)   # signed -A(tau)/tau
+y_afns = y_ns + adj
+
+print("non-positive          :", bool(np.all(adj <= 0.0)))
+print("deepens with maturity :", bool(np.all(np.diff(adj) <= 0.0)))
+print("  tau    y_NS   y_AFNS   gap(bp)")
+for t, a, b in zip(maturities, y_ns, y_afns):
+    print(f"{t:5.0f}  {a:6.3f}  {b:6.3f}   {(b-a)*100:7.2f}")
+# non-positive          : True
+# deepens with maturity : True
+#   tau    y_NS   y_AFNS   gap(bp)
+#     3   5.910   5.909     -0.07
+#     6   5.870   5.868     -0.25
+#    12   5.804   5.795     -0.89
+#    24   5.709   5.678     -3.05
+#    36   5.648   5.587     -6.01
+#    60   5.578   5.446    -13.20
+#    84   5.541   5.328    -21.40
+#   120   5.513   5.154    -35.87
+```
+
+Read the last column. Inside the first year the arbitrage-free curve is indistinguishable from the reduced-form one — the gap is under a basis point out to 12 months. Then it widens monotonically: 3 bp at 2 years, 13 bp at 5 years, and 36 bp by the 10-year point, the long end always pulled *down*. That widening, non-positive wedge is the entire content of the no-arbitrage restriction, and its magnitude scales with the *square* of the factor volatilities — dominated at the long end by the level vol $\sigma_{11}$, whose contribution grows like $\sigma_{11}^2\,\tau^2/6$. The specific numbers here are as large as they are because these illustrative vols are on the generous side; halve them and the long-end gap falls by a factor of four. The shape and the sign, though, are not calibration artifacts — they are what no-arbitrage requires.
+
+The nesting is worth seeing directly, because it is the sanity check that the adjustment is a perturbation and nothing more:
+
+```python
+z = tsecon.afns_adjustment(maturities, np.array([0.0, 0.0, 0.0]), decay=lam)
+print("sigma = 0 -> adjustment all zero:", bool(np.all(z == 0.0)))
+# sigma = 0 -> adjustment all zero: True
+```
+
+With the factor volatilities switched off there is no convexity wedge, the adjustment is identically zero, and $y_{\mathrm{AFNS}} = y_{\mathrm{NS}}$: AFNS *is* Nelson-Siegel when volatility is zero. The full closed form of $A(\tau)/\tau$ — the slope- and curvature-vol terms on top of the level term shown above — and the exact argument contract live on the [AFNS model card](../reference/model-cards/afns.md). The teaching point stands on its own: no-arbitrage does not cost you the loadings you spent this chapter learning to read; it costs you one deterministic, volatility-scaled term that bends the long end down.
+
+> **⚠ Common mistake — reading `afns_adjustment` as a fit.** It estimates nothing. It is a deterministic evaluation of the CDR closed form, and it is only as meaningful as the factor volatilities $\sigma$ you feed it — garbage vols give a garbage adjustment with no residual, no $R^2$, and no diagnostic to warn you. The volatilities must come from a dynamic AFNS estimation, a calibration, or an explicit scenario; and they, the maturities, and `decay` must all be in one consistent time unit (months with $\lambda = 0.0609$ here, or years with a years-scaled decay). A monthly vol against a yearly grid mis-scales the whole correction. And do not read the adjustment as a forecast or a risk premium — it is the convexity term, nothing more.
+
 ## The frontier
 
-**No-arbitrage restrictions.** Dynamic Nelson-Siegel is a *statistical* description of the curve — it fits and forecasts, but nothing in it forbids arbitrage across maturities. For pricing derivatives or extracting risk-neutral expectations you want a model where the cross-section and the dynamics are tied together by no-arbitrage. Christensen, Diebold and Rudebusch (2011) found the arbitrage-free member of the Nelson-Siegel family — the **AFNS** model — which keeps the beloved level-slope-curvature loadings while adding a small "yield-adjustment" term that the no-arbitrage condition requires. It is the bridge from this chapter's reduced-form curve-fitting to the affine term-structure models (Duffie-Kan 1996; Dai-Singleton 2000; Ang-Piazzesi 2003) that asset pricing is built on.
+**Beyond the independent-factor AFNS.** The `afns_adjustment` above is the arbitrage-free bridge for the *diagonal*-volatility case; the general correlated-factor AFNS carries cross-terms, and estimating the factor volatilities jointly with the dynamics is a dynamic term-structure problem in its own right. Both sit on the road to the full affine term-structure models (Duffie-Kan 1996; Dai-Singleton 2000; Ang-Piazzesi 2003) that asset pricing is built on — models where the cross-section and the dynamics are locked together by no-arbitrage from the start rather than corrected after the fact.
 
 **Yields and the macroeconomy, jointly.** The level, slope, and curvature are not just statistical conveniences — the slope famously predicts recessions, and the level tracks long-run inflation expectations. Diebold, Rudebusch and Aruoba (2006) put the DNS factors and macro variables (output, inflation, the policy rate) into *one* state-space VAR, letting the curve and the economy feed back on each other. This is the natural marriage of this chapter with the VARs of chapter 7 and the nowcasting of chapter 11, and it is where curve modeling meets monetary policy analysis.
 
@@ -165,7 +229,7 @@ That near-unit persistence is also the model's sober lesson. Diebold and Li's he
 | A *panel* of curves — extract factor series and forecast | `dynamic_ns` | Collapses a many-maturity forecast to three AR(1)s; the Diebold-Li workhorse |
 | Comparable factors across dates in a panel | Fix `decay` globally, never re-optimize per date | Time-varying loadings make the factor series incommensurable |
 | Honest forecast *bands*, not just point forecasts | State-space DNS + Kalman filter (roadmap) | Two-step SEs ignore factor estimation error; the one-step form propagates it |
-| Pricing, derivatives, risk-neutral expectations | Arbitrage-free NS / affine models (roadmap) | DNS is statistical, not arbitrage-free; AFNS keeps the loadings and adds the no-arb term |
+| Make a Nelson-Siegel curve arbitrage-free (pricing, risk-neutral expectations) | `afns_adjustment` added to an NS fit | DNS is statistical, not arbitrage-free; AFNS keeps the loadings and adds the one no-arb yield-adjustment term |
 | Curve *and* macro feedback (recession signals, policy) | DNS-macro state-space VAR (roadmap) | Ties the factors to output, inflation, and the policy rate in one system |
 | Yields near or below zero | Shadow-rate models (roadmap) | Gaussian curve models predict impossible deeply-negative yields at the bound |
 
@@ -176,10 +240,11 @@ That near-unit persistence is also the model's sober lesson. Diebold and Li's he
 - `tsecon.nelson_siegel(maturities, yields, decay=..., optimal_lambda=...)` — the three-factor Diebold-Li fit, with either a fixed decay or an NLS-optimal one; returns `level`, `slope`, `curvature`, `factors`, `lambda`, `residuals`, and `rsquared`
 - `tsecon.svensson(maturities, yields, lambda1=..., lambda2=...)` — the four-factor extension that nests Nelson-Siegel; returns the four `factors`, both decays, `residuals`, and `rsquared`
 - `tsecon.dynamic_ns(panel, maturities, decay=...)` — the two-step dynamic model over a $T \times$ (n maturities) panel; returns the `factors` path (T × 3), per-date `rsquared`, the named `level`/`slope`/`curvature` series, and a `forecast` dict with the one-step-ahead `factors` and `yields` plus the fitted `ar1_intercept` and `ar1_phi`
+- `tsecon.afns_adjustment(maturities, sigma, decay=...)` — the Christensen-Diebold-Rudebusch (2011) independent-factor yield-adjustment term $-A(\tau)/\tau$; add it to a Nelson-Siegel curve to obtain its arbitrage-free companion. Takes the three-element factor-vol diagonal `sigma` (level, slope, curvature) and returns the signed, non-positive, maturity-deepening adjustment; note the keyword is `decay`, not `lambda`
 
-All three take **NumPy arrays** — pass `np.array(...)`, not bare Python lists. The factor extraction is a cross-sectional OLS (chapter 2's regression machinery); the optimal-$\lambda$ and Svensson fits add a small nonlinear search over the decay(s); the dynamic model layers per-factor AR(1) estimation (chapter 4) on top.
+All four take **NumPy arrays** — pass `np.array(...)`, not bare Python lists. The factor extraction is a cross-sectional OLS (chapter 2's regression machinery); the optimal-$\lambda$ and Svensson fits add a small nonlinear search over the decay(s); the dynamic model layers per-factor AR(1) estimation (chapter 4) on top; and `afns_adjustment` is a deterministic evaluation of the CDR closed form given volatilities you supply.
 
-**Roadmap** — the extensions the frontier section named are specified but not yet callable: the one-step **state-space / Kalman-filter** DNS (for honest forecast bands), the **arbitrage-free Nelson-Siegel** and affine term-structure models (for pricing), the **DNS-macro** joint state-space VAR (for curve-macro feedback), the **Adrian-Crump-Moench** term-premium decomposition, and **shadow-rate** models for the lower bound.
+**Roadmap** — the further extensions the frontier section named are specified but not yet callable: the one-step **state-space / Kalman-filter** DNS (for honest forecast bands), the general **correlated-factor AFNS** and full affine term-structure models (for pricing), the **DNS-macro** joint state-space VAR (for curve-macro feedback), the **Adrian-Crump-Moench** term-premium decomposition, and **shadow-rate** models for the lower bound.
 
 ## Further reading
 

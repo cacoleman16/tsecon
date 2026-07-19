@@ -407,6 +407,163 @@ This is the rigorous version of the pooled DM snippet from the Diebold-Mariano s
 
 A few caveats to carry. The built-in forecasters are point forecasters, so `backtest` scores point accuracy only; interval and density evaluation (PITs, CRPS, the interval score) arrive with the typed forecast objects still on the roadmap. The MASE and RMSSE denominators are computed once, from the first training window at `insample_period`, never from the test sample — the correct, leakage-free convention, but it means the scaling reflects the earliest window's seasonality. The engine refuses degenerate designs loudly rather than returning a short or empty track record: ask for a horizon so long that no origin has all its targets in sample and it raises a `ValueError` that names the exact index arithmetic and tells you to lengthen the series, shrink the window, or shorten the horizon. And the leakage guarantee here is structural only because the forecaster is a trusted built-in that sees a single training slice; when the roadmap opens the engine to user-supplied models, every transformation, scaling, and hyperparameter choice must live *inside* that closure — the same discipline the manual-loop warning demanded, now the engine's contract (Tashman 2000).
 
+## Forecasting an event, not a level: recession probabilities
+
+Every forecast so far in this chapter has aimed at a number — a level, a growth rate, a point on a continuous scale, scored by how far it lands from the realization. But some of the most consequential forecasts in macroeconomics are about a *binary event*: will the economy be in recession next quarter? The target is 0 or 1, and squared error against a 0/1 outcome is the wrong instrument. What you want is a **probability**, and a probability is judged by calibration — did the quarters you called 30 percent recession risk turn out to be recessions about 30 percent of the time? — not by its distance from the realized 0 or 1.
+
+The workhorse for this is the binary-choice model, and the leading indicator is one you already know from the yield-curve chapter: the **term spread**, the long yield minus the short yield. An *inverted* curve — a negative spread, short rates above long — has preceded almost every postwar US recession, and a single-regressor term-spread probit (Estrella and Mishkin 1998) is still a staple of central-bank recession dashboards. The model runs a linear index of leading variables through a probit or logit link and reads off a recession probability:
+
+$$
+P(y_t = 1 \mid x_t) = \Phi(x_t' \beta),
+$$
+
+with $\Phi$ the standard normal CDF (a logit swaps in the logistic CDF; the coefficients land on a different scale — roughly $1.6\times$ the probit's — but the fitted probabilities are close). A negative coefficient on the spread is the whole story: the lower the spread, the higher the index, the higher $\Phi(\cdot)$, the higher the recession probability.
+
+`recession_probit` fits this by maximum likelihood. The object you actually use is `probabilities` — the fitted $P(y_t=1)$ path you plot or threshold — and the coefficients come with `zstats` for the usual asymptotic z-tests. Fit quality is reported as McFadden's **pseudo-$R^2$**, $1 - \ell/\ell_0$ (the fitted log-likelihood over the intercept-only one). It is *not* the ordinary $R^2$ and does not live on the same scale: values of 0.2–0.4 are strong for binary choice, so do not be alarmed that a genuinely useful recession model scores what would be a mediocre $R^2$ in a level regression.
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(11)
+n = 400
+spread = np.zeros(n)                              # term spread: a persistent leading indicator
+for t in range(1, n):
+    spread[t] = 0.7 * spread[t - 1] + rng.standard_normal()
+
+index = -0.8 - 1.0 * spread                       # inverted curve (low spread) -> higher recession risk
+y = (index + rng.standard_normal(n) > 0).astype(float)
+print(f"recession share in sample: {y.mean():.2f}")
+
+X = np.column_stack([np.ones(n), spread])         # STATIC probit: X MUST carry the constant column
+fit = tsecon.recession_probit(y, X, link="probit")
+print("params [const, spread]:", np.round(fit["params"], 3))
+print("z-stats               :", np.round(fit["zstats"], 3))
+print(f"pseudo-R2 = {fit['pseudo_r2']:.3f}")
+print("first 3 fitted P(recession):", np.round(fit["probabilities"][:3], 3))
+# recession share in sample: 0.27
+# params [const, spread]: [-0.9   -1.056]
+# z-stats               : [-9.177 -9.899]
+# pseudo-R2 = 0.393
+# first 3 fitted P(recession): [0.184 0.175 0.009]
+```
+
+The spread coefficient is $-1.06$ with a z-statistic near $-10$: strongly negative, exactly the inverted-curve signal. The pseudo-$R^2$ of 0.39 is excellent for a recession probit, and `probabilities` is the calibrated risk series a policymaker reads month by month.
+
+### Static or dynamic: does recession pressure persist on its own?
+
+The static model treats each quarter's recession risk as a function of *today's* indicators alone. But recessions are sticky in a way the leading indicators do not fully capture: being in a downturn this quarter makes one next quarter more likely, over and above whatever the spread is saying. The **Kauppi-Saikkonen (2008) dynamic probit** builds that persistence into the index itself, giving it an autoregressive term:
+
+$$
+\mathrm{index}_t = w + x_t' b + \rho\,\mathrm{index}_{t-1}, \qquad P(y_t = 1) = \Phi(\mathrm{index}_t).
+$$
+
+Here $\rho$ measures how much recession pressure carries over period to period. It nests the static probit at $\rho = 0$, so on persistent data it can only fit better — and flipping `dynamic=True` switches to it. The one rule that bites: the static model **needs** a constant column in `x`, and the dynamic model must **not** have one, because it estimates its own intercept $w$ and a redundant constant makes the information matrix singular.
+
+```python
+rng = np.random.default_rng(3)
+n = 800
+w, b, rho = -0.4, 1.1, 0.6
+x = np.zeros(n)
+for t in range(1, n):
+    x[t] = 0.6 * x[t - 1] + rng.standard_normal()
+y = np.zeros(n)
+prev = w / (1 - rho)                              # stationary-mean initialization
+for t in range(n):
+    idx = w + b * x[t] + rho * prev               # the index carries its own lag
+    y[t] = 1.0 if idx + rng.standard_normal() > 0 else 0.0
+    prev = idx
+
+Xd = x.reshape(-1, 1)                             # DYNAMIC probit: NO constant column
+dyn = tsecon.recession_probit(y, Xd, dynamic=True)
+print("params [w, b, rho]:", np.round(dyn["params"], 3))
+print(f"rho = {dyn['rho']:.3f}   pseudo-R2 = {dyn['pseudo_r2']:.3f}")
+
+stat = tsecon.recession_probit(y, np.column_stack([np.ones(n), x]))   # static comparison
+print(f"loglik  dynamic {dyn['loglik']:.1f}  >=  static {stat['loglik']:.1f}")
+# params [w, b, rho]: [-0.396  1.116  0.606]
+# rho = 0.606   pseudo-R2 = 0.625
+# loglik  dynamic -200.9  >=  static -323.3
+```
+
+The estimator recovers $\rho \approx 0.61$ against the true 0.6, and the dynamic log-likelihood ($-200.9$) crushes the static one ($-323.3$) because the static model has no way to represent the recession's self-perpetuation. Reach for `dynamic=True` when downturns persist beyond what your covariates explain; if the data has no index persistence, $\rho$ simply estimates near zero and you have lost nothing. Do not use either variant for a continuous target — this is classification, and a level forecast belongs to `theta_forecast`, `var_forecast`, and the rest of this chapter. The full argument contract, the separation failure mode, and the `converged` caveat live in the [recession-probability model card](../reference/model-cards/recession.md).
+
+> ⚠ **Common mistake.** Getting the constant column backwards. The static probit needs `x` to include a column of ones; the dynamic probit must omit it. Include a constant in the dynamic model and the information matrix is singular; forget it in the static model and every coefficient is biased. It is the single most common way to misuse `recession_probit`.
+
+## Are the forecasts themselves rational? Survey expectations
+
+The whole chapter so far has compared *models* — is your VAR beating the random walk, is Theta beating the seasonal naive? A different and older question asks whether a set of published forecasts is *rational* on its own terms, without any competing model in sight. Given the Survey of Professional Forecasters, the Michigan survey, or a central bank's own projections, are those forecasts using information efficiently, or are they leaving predictable money on the table? Diebold-Mariano compares forecasts against each other; this family interrogates a single forecast against the standard of rationality.
+
+The benchmark is **full-information rational expectations** (FIRE): a rational forecaster's error should be unpredictable from anything known when the forecast was made — including the forecaster's own past behavior. Two classic tests operationalize that, and both are OLS with a Newey-West (HAC) covariance, because forecast errors at overlapping horizons are serially correlated *by construction* (the same MA($h-1$) overlap that has haunted every multi-step regression in this chapter).
+
+### Coibion-Gorodnichenko: do forecasters underreact?
+
+The sharpest modern test regresses the mean forecast error on the mean forecast *revision* (Coibion and Gorodnichenko 2015):
+
+$$
+\mathrm{error}_t = c + \beta\,\mathrm{revision}_t + u_t .
+$$
+
+Under FIRE the revision the consensus just made carries no information about the error it is about to realize, so $\beta = 0$. A **positive** slope is the signature of *information rigidity*: forecasters underreact to news, so the direction they just revised predicts the error they are about to make. It is a beautiful test because the null does not care how the forecasts were made — it is a statement about the mean of one observable series. The estimator also reports the **implied rigidity** $\beta/(1+\beta)$, which under sticky-information reads as the fraction of forecasters who did not update this period, and under noisy-information as the Kalman-gain complement — the same number, two stories.
+
+```python
+rng = np.random.default_rng(0)
+n = 200
+rev = np.zeros(n); u = np.zeros(n)                # consensus revision (persistent) and a persistent error
+for t in range(1, n):
+    rev[t] = 0.5 * rev[t - 1] + rng.normal(0.0, 1.0)
+    u[t]   = 0.6 * u[t - 1] + rng.normal(0.0, 0.8)
+err = 0.1 + 0.7 * rev + u                          # true CG slope 0.7: forecasters underreact
+
+cg = tsecon.cg_regression(err, rev)                # maxlags=None -> Newey-West rule-of-thumb bandwidth
+print(f"CG slope {cg['slope']:.3f}  (HAC se {cg['se_slope']:.3f}, p {cg['p_slope']:.4f}), maxlags {cg['maxlags']}")
+print(f"implied information rigidity = {cg['implied_rigidity']:.3f}")
+# CG slope 0.699  (HAC se 0.085, p 0.0000), maxlags 4
+# implied information rigidity = 0.411
+```
+
+The slope of 0.70 is precisely estimated away from zero: FIRE is rejected toward underreaction, and the implied rigidity of 0.41 says something like 40 percent of the information is stale each period. One caveat the model card stresses: this is a *consensus*-level test. Run the same regression on individual forecasters and the sign often flips to *overreaction* — a genuinely different exercise, not a bug.
+
+### Mincer-Zarnowitz: is the forecast even unbiased?
+
+The older test asks the more basic question of efficiency: regress the forecast error on a constant and the forecast itself (or any information known at forecast time), and jointly test that *all* coefficients are zero. A rational forecast leaves errors that are mean-zero and unpredictable from the forecast, so a rejection says the forecast is systematically biased or inefficient with respect to those regressors.
+
+```python
+rng = np.random.default_rng(1)
+n = 200
+fc = np.cumsum(rng.normal(0.0, 1.0, n)) * 0.3      # the forecasts
+e = np.zeros(n)
+for t in range(1, n):
+    e[t] = 0.4 * e[t - 1] + rng.normal(0.0, 1.0)    # near-rational error
+err = 0.15 + 0.05 * fc + e
+
+mz = tsecon.forecast_efficiency(err, fc[:, None])   # regressors is T x k; the constant is added internally
+print(f"Wald = {mz['wald']:.2f} on {mz['wald_df']} df, p = {mz['wald_pvalue']:.3f}")
+print("coeffs [const, forecast]:", np.round(mz["params"], 3))
+# Wald = 2.53 on 2 df, p = 0.282
+# coeffs [const, forecast]: [-0.178 -0.039]
+```
+
+The Wald p-value of 0.28 does not reject: consistent with an efficient forecast, as designed. A rejection would tell you *that* the forecast is inefficient with respect to these regressors, not *why* — and the classic MZ regresses the outcome on the forecast to test intercept-and-slope $=(0,1)$; the error-on-forecast form here is the algebraically equivalent restriction with a cleaner "all zero" null.
+
+### Disagreement: how far apart are the forecasters?
+
+Rationality tests work on the *consensus*; a complementary and purely descriptive object is the cross-sectional **disagreement** — how much the individual forecasters spread out in each period. In sticky- and noisy-information models disagreement moves with the degree of information rigidity, so it is the natural companion series to the CG regression, and it doubles as an uncertainty proxy in downstream work. `forecast_disagreement` takes a ragged panel (one array of individual forecasts per period) and returns the within-period standard deviation and quartiles:
+
+```python
+rng = np.random.default_rng(2)
+panel = [rng.normal(2.0, s, 40) for s in (0.4, 0.8, 1.5)]   # three periods, each more dispersed
+dis = tsecon.forecast_disagreement(panel)
+print("std:", np.round(dis["std"], 3))
+print("IQR:", np.round(dis["iqr"], 3), " counts:", list(dis["counts"]))
+# std: [0.38  0.862 1.437]
+# IQR: [0.506 1.38  2.09 ]  counts: [40, 40, 40]
+```
+
+Rising `std` or `iqr` is widening disagreement; prefer the IQR when a few extreme forecasters would otherwise dominate the standard deviation. Note the distinction the model card insists on: this is dispersion *across* forecasters, not the uncertainty *of* any single forecaster (which needs a density forecast) — do not conflate the two. Full argument contracts and validation for all three tools are in the [survey-expectations model card](../reference/model-cards/expectations.md).
+
+> ⚠ **Common mistake.** Reading `implied_rigidity` off a *negative* CG slope. The formula $\beta/(1+\beta)$ still returns a number, but the sticky/noisy-information interpretation only applies when the slope is positive (underreaction). A negative consensus slope — or the overreaction you tend to find on individual data — is a different phenomenon, not a rigidity to be reported.
+
 ## The frontier
 
 Three threads define the research edge of forecast evaluation.
@@ -430,6 +587,9 @@ The honest open problems: evaluation under structural instability is unsolved in
 | Many candidate models against one benchmark | SPA / Model Confidence Set (roadmap) | Pairwise DM tests ignore the search; MCS reports the statistically-best set |
 | Multi-step forecast evaluation regressions | `ols(..., se_type="hac", maxlags=h-1)` | Direct h-step errors are MA(h−1) by construction |
 | Forecasting a small system of related variables | `var_forecast` | Iterated multi-step point + interval forecasts from joint dynamics |
+| Forecasting a binary business-cycle event (recession) | `recession_probit` | Turns leading indicators (the term spread) into a calibrated P(recession); `dynamic=True` for persistence |
+| Testing whether published forecasts are rational | `cg_regression`, `forecast_efficiency` | CG slope $=0$ under FIRE (positive $=$ underreaction); Mincer-Zarnowitz tests unbiasedness |
+| Measuring dispersion across a forecaster panel | `forecast_disagreement` | Cross-sectional spread — the empirical proxy for belief dispersion and information rigidity |
 | Several plausible models, none dominant | Equal-weight average | The combination puzzle: 1/N beats estimated weights out of sample |
 | Judging interval or density forecasts | Coverage counts now; PITs, CRPS, Berkowitz (roadmap) | Point measures cannot see whether the promised probabilities were kept |
 | Valid intervals without a trusted distributional model | Conformal prediction (roadmap) | Distribution-free calibration-window quantiles; adaptive variants handle drift |
@@ -443,6 +603,8 @@ The honest open problems: evaluation under structural instability is unsolved in
 - `accuracy(actual, forecast, insample=None, period=1)` — ME, RMSE, MAE, MAPE and sMAPE (omitted on zero denominators rather than returning garbage), and MASE/RMSSE when a training sample is supplied.
 - `dm_test(e1, e2, h=1, loss="squared")` — Diebold-Mariano with the HLN small-sample correction and $t(P-1)$ p-values as the default, not an option; `loss` is `"squared"` or `"absolute"`.
 - `var_forecast(data, lags=2, steps=8, alpha=0.05, trend="c")` — iterated multi-step VAR forecasts with interval bands.
+- `recession_probit(y, x, link="probit", dynamic=False)` — static probit/logit and the Kauppi-Saikkonen dynamic probit for a 0/1 recession indicator; returns the fitted `probabilities`, coefficient `zstats`, and McFadden `pseudo_r2`. See the [recession model card](../reference/model-cards/recession.md).
+- `cg_regression(error, revision)` and `forecast_efficiency(error, regressors)` — the Coibion-Gorodnichenko information-rigidity and Mincer-Zarnowitz rationality regressions (OLS with a Newey-West HAC covariance for the overlapping errors), plus `forecast_disagreement(panel)` for cross-forecaster dispersion. See the [expectations model card](../reference/model-cards/expectations.md).
 - Supporting cast from earlier chapters: `ols(..., se_type="hac", maxlags=...)` for evaluation regressions with overlapping errors, and `long_run_variance` — the same machinery inside the DM denominator.
 
 **Built in Rust, awaiting Python bindings** (in the `tsecon-forecast` crate):
@@ -464,4 +626,6 @@ The honest open problems: evaluation under structural instability is unsolved in
 - **Assimakopoulos, V. and K. Nikolopoulos (2000), "The Theta Model," *International Journal of Forecasting*** — with **Hyndman, R. J. and B. Billah (2003), "Unmasking the Theta Method," same journal**, which revealed it as SES with drift. Read as a pair.
 - **Bates, J. M. and C. W. J. Granger (1969), "The Combination of Forecasts," *Operational Research Quarterly*.** Two pages of algebra that launched fifty years of combination literature; Timmermann's (2006) *Handbook of Economic Forecasting* chapter is the modern survey.
 - **Gneiting, T. and A. E. Raftery (2007), "Strictly Proper Scoring Rules, Prediction, and Estimation," *Journal of the American Statistical Association*.** The theory of scoring densities honestly: propriety, CRPS, and why improper scores corrupt evaluation.
+- **Estrella, A. and F. S. Mishkin (1998), "Predicting U.S. Recessions: Financial Variables as Leading Indicators," *Review of Economics and Statistics*** — with **Kauppi, H. and P. Saikkonen (2008), "Predicting U.S. Recessions with Dynamic Binary Response Models," same journal**. The term-spread recession probit and its dynamic extension; read as a pair.
+- **Coibion, O. and Y. Gorodnichenko (2015), "Information Rigidity and the Expectations Formation Process," *American Economic Review*.** Reduces the test of full-information rational expectations to a single regression of the mean forecast error on the mean revision; **Mincer, J. and V. Zarnowitz (1969), "The Evaluation of Economic Forecasts"** is the classic unbiasedness test it complements.
 - **Hyndman, R. J. and G. Athanasopoulos, *Forecasting: Principles and Practice* (3rd ed., OTexts).** The best practical introduction to the workflow — benchmarks, tsCV, accuracy measures; **Elliott, G. and A. Timmermann, *Economic Forecasting* (Princeton, 2016)** is the graduate-level treatment of the econometric theory behind this chapter.

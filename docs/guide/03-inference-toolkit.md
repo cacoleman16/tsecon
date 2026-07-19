@@ -336,6 +336,132 @@ The bootstrap loops above already used the idiom this enables: replication $b$ d
 
 > **⚠ Common mistake** — Believing reproducibility claims transfer across *everything*. Thread-count invariance and same-platform bit-identity are guaranteed; bit-identity across operating systems and CPU generations is not (math-library and FMA differences at the last bit), and tsecon's documentation says so rather than promising the impossible. Record the platform alongside the seed for exact replication.
 
+## Interrogating the model: specification and stability tests
+
+Everything so far has repaired the *variance* of an estimate while quietly trusting the *model*. The sandwich formula, HAC, EWC, the block bootstrap — every one of them takes the regression $y_t = x_t'\beta + u_t$ as correctly specified and stationary, and fixes only how uncertain $\hat\beta$ is. But a standard error, however robust, is a statement about sampling variability *around a target*. If the target is wrong — the conditional mean is not linear, the variance is not constant, the coefficients drifted mid-sample — then no denominator saves you. You would be reporting a beautifully calibrated interval around the wrong number. Before you trust an inference, you have to interrogate the assumptions that produced it.
+
+Three of those assumptions are checkable, and each has a test whose *null* is "the assumption holds." Read a rejection not as a repair but as a redirection — it tells you which maintained assumption failed and therefore which fix to reach for.
+
+- **Constant error variance.** `heteroskedasticity_test` regresses the squared residuals on functions of the design. **White (1980)** is the omnibus version — residuals on the columns, their squares, and cross-products — with power against general heteroskedasticity; **Koenker's studentised Breusch–Pagan** regresses on the design alone, a focused, higher-power test when the variance is *linear* in a regressor. Null: homoskedasticity. A rejection means your `nonrobust` standard errors are wrong — climb the ladder to `hc1` (cross-section) or `hac`/EWC (time series). It is a cue to change the *denominator*, not to abandon the model.
+- **Correct functional form.** `reset_test` (Ramsey 1969) refits with low-order powers of the fitted values, $\hat y^2, \hat y^3$, appended to the design and $F$-tests whether they belong. The fitted value is a parsimonious index standing in for whatever nonlinearity you left out. Null: the linear mean is correct. A rejection means you have the *form* wrong — and here robust standard errors do **not** help, because the problem is $\beta$ itself, not $\mathrm{Var}(\hat\beta)$.
+- **Stable coefficients.** `chow_test` (Chow 1960) splits at a break date you *know* — a policy change, a crisis onset — and $F$-tests whether the two regimes share one $\beta$. `cusum_test` (Brown–Durbin–Evans 1975) scans the *whole* sample when you do **not** know the date: it accumulates recursive residuals into a path that stays inside a pair of boundary lines under stability and drifts out through them when $\beta$ moves. Null (both): the relationship held still. A rejection means it moved — reach for a split-sample fit, interactions with a regime dummy, or a time-varying model.
+
+One input contract binds all four, and it is the single most common way to trip over them: **the design must carry an explicit intercept column of ones.** These are auxiliary-regression LM and $F$ tests whose statistics are only valid when the auxiliary design has an intercept, so tsecon refuses to guess — a design without a constant raises `MissingConstant` rather than silently adding one. There is also an ordering discipline: run `reset_test` *before* `heteroskedasticity_test`, because a misspecified mean leaves structure in the residuals that a variance test will misread as heteroskedasticity. Fix the form first, then ask about the variance.
+
+The cleanest way to see what each test is *for* is to break one assumption at a time and watch exactly one test light up:
+
+```python
+import numpy as np, tsecon
+
+n = 240
+t = np.arange(n)
+
+def battery(y, X):
+    reset = tsecon.reset_test(y, X, max_power=3)["pvalue"]
+    white = tsecon.heteroskedasticity_test(y, X, test="white")["pvalue"]
+    chow  = tsecon.chow_test(y, X, split=160)["pvalue"]
+    cus   = tsecon.cusum_test(y, X)
+    breach = bool(np.any(cus["path"] > cus["bound_upper"]) or
+                  np.any(cus["path"] < cus["bound_lower"]))
+    return reset, white, chow, breach
+
+rng = np.random.default_rng(0)
+x1 = rng.uniform(1.0, 4.0, size=n)
+X = np.column_stack([np.ones(n), x1])                       # constant column -- required
+
+scenarios = {
+    "well-specified": 1.0 + 0.5 * x1 + rng.normal(size=n),
+    "omitted x1^2":   1.0 + 0.5 * x1 + 0.4 * x1**2 + rng.normal(size=n),
+    "variance ~ x1":  1.0 + 0.5 * x1 + x1 * rng.normal(size=n),
+    "break at t=160": 1.0 + 0.5 * x1 + rng.normal(size=n) + 2.0 * (t > 160),
+}
+
+print(f"{'scenario':>16} | {'RESET':>7} {'White':>7} {'Chow':>7} | CUSUM")
+print("-" * 56)
+for label, y in scenarios.items():
+    reset, white, chow, breach = battery(y, X)
+    print(f"{label:>16} | {reset:7.4f} {white:7.4f} {chow:7.4f} | {breach}")
+
+#         scenario |   RESET   White    Chow | CUSUM
+# --------------------------------------------------------
+#   well-specified |  0.8954  0.8057  0.2541 | False
+#     omitted x1^2 |  0.0000  0.2877  0.7850 | False
+#    variance ~ x1 |  0.0146  0.0000  0.5660 | False
+#   break at t=160 |  0.2342  0.7541  0.0000 | True
+```
+
+The near-diagonal pattern is the whole lesson. The well-specified row is quiet everywhere. Omitting the true $x_1^2$ term lights up RESET alone; a variance that scales with $x_1$ lights up White decisively (with a small RESET leak — a reminder that these symptoms are not perfectly orthogonal, and why RESET goes first); a mid-sample intercept jump lights up Chow *and* pushes the CUSUM path across its band, precisely because Chow was handed the right date while CUSUM found the instability on its own. Notice that CUSUM returns a boolean-from-a-path, not a p-value: the [model card](../reference/model-cards/specification-tests.md) documents its four keys (`path`, `bound_upper`, `bound_lower`, `sigma`) and the per-test argument contracts.
+
+> **⚠ Common mistake** — Handing these tests a design with no constant column ("the intercept is implied"). It is not — `heteroskedasticity_test`, `reset_test`, `chow_test`, and `cusum_test` all raise `MissingConstant`, by design, because their auxiliary statistics are only valid with an explicit intercept. Always pass `X = np.column_stack([np.ones(n), ...])`. And read a rejection as a redirection, never as a death sentence: heteroskedasticity → robust standard errors, RESET → a richer functional form, Chow/CUSUM → a model whose coefficients are allowed to move.
+
+## When the predictor is persistent: predictive regressions and IVX
+
+There is one setting where even a correctly specified, stable regression yields a t-test you should not believe — and it is common enough in finance and macro to deserve its own section. You want to know whether a slow-moving variable *predicts* next period's return: regress $r_{t+1}$ on a dividend yield, a term spread, a valuation ratio. Two features of that regression conspire against you. The predictor is **persistent** — its autoregressive root sits near one, the near-unit-root territory of the [ADF discussion in Chapter 2](02-exploration-and-diagnostics.md#unit-roots-done-right-the-adf-test) — and its innovation is **correlated with the return** it is meant to forecast (endogeneity). That combination is the **Stambaugh (1999) setting**, and in it OLS misbehaves twice:
+
+$$
+r_{t+1} = \alpha + \beta\, x_t + u_{t+1}, \qquad x_t = \rho\, x_{t-1} + e_t, \qquad \rho \approx 1,\ \ \mathrm{Corr}(u_{t+1}, e_t) \neq 0 .
+$$
+
+First, the slope $\hat\beta$ is *biased* in finite samples — the least-squares root bias in $\hat\rho$ (Kendall 1954) leaks into $\hat\beta$ through the endogeneity. Second, and worse for inference, the OLS t-statistic **over-rejects a true "no predictability" null**, and the distortion grows as $\rho \to 1$. The near-integrated regressor breaks the standard normal approximation for the t-statistic, so comparing it to $\pm 1.96$ manufactures significance that is not there. This is not something HAC fixes: HAC repairs serial correlation in the *errors*, but here the errors can be perfectly clean — the problem is the *regressor's* near-unit-root persistence combined with endogeneity, a different disease entirely.
+
+The cure is **IVX** (Kostakis, Magdalinos & Stamatogiannis 2015), which instruments the persistent predictor with a self-generated *mildly integrated* process $z_t$ — more persistent than any stationary variable but strictly less than a unit root. That instrument is persistent enough to be relevant yet just stationary enough to deliver a well-behaved limit, so the resulting Wald test of $H_0:\beta = 0$ is asymptotically $\chi^2$ **uniformly over the predictor's persistence** — whether $x_t$ is stationary, near-integrated, or an exact unit root. `predictive_regression` returns three views of the same regression in one call: the misleading `ols` benchmark, the `stambaugh` bias-corrected point estimate, and the `ivx` Wald test you should actually report.
+
+```python
+import numpy as np, tsecon
+
+# One draw: a near-unit-root predictor, endogenous innovation, TRUE slope = 0.
+rng = np.random.default_rng(0)
+n, rho, corr = 300, 0.99, -0.9
+e = rng.standard_normal(n)
+x = np.zeros(n)
+for t in range(1, n):
+    x[t] = rho * x[t - 1] + e[t]
+u = corr * e + np.sqrt(1 - corr**2) * rng.standard_normal(n)
+r = u                                              # beta = 0: nothing to predict
+
+fit = tsecon.predictive_regression(r, x)
+print(f"OLS  : beta={fit['ols']['beta']:+.4f}  t={fit['ols']['tstat']:+.2f}")
+print(f"IVX  : beta={fit['ivx']['beta_ivx']:+.4f}  Wald={fit['ivx']['wald']:.2f}  "
+      f"p={fit['ivx']['pvalue']:.3f}")
+
+# OLS  : beta=+0.0123  t=+1.06
+# IVX  : beta=+0.0108  Wald=0.85  p=0.358
+```
+
+A single draw only illustrates the machinery; the *claim* is about repeated sampling, and it is exactly a size claim of the kind the coverage experiment above taught you to check. Simulate a true null ($\beta = 0$) across a ladder of persistence and count how often each test rejects at the nominal 5%:
+
+```python
+chi2_95, z_95 = 3.841, 1.96
+corr = -0.9
+print(f"{'rho':>6} | {'OLS t-test':>11} | {'IVX Wald':>9}")
+print("-" * 34)
+for rho in [0.90, 0.95, 0.99, 1.00]:
+    rej_ols = rej_ivx = 0
+    reps = 1000
+    for rep in range(reps):
+        g = np.random.default_rng(int(rho * 100) * 10_000 + rep)  # per-replication stream
+        e = g.standard_normal(300)
+        x = np.zeros(300)
+        for t in range(1, 300):
+            x[t] = rho * x[t - 1] + e[t]
+        u = corr * e + np.sqrt(1 - corr**2) * g.standard_normal(300)
+        f = tsecon.predictive_regression(u, x)          # r = u, true beta = 0
+        rej_ols += abs(f["ols"]["tstat"]) > z_95
+        rej_ivx += f["ivx"]["wald"] > chi2_95
+    print(f"{rho:6.2f} | {rej_ols/reps:11.3f} | {rej_ivx/reps:9.3f}")
+
+#    rho |  OLS t-test |  IVX Wald
+# ----------------------------------
+#   0.90 |       0.058 |     0.055
+#   0.95 |       0.065 |     0.051
+#   0.99 |       0.131 |     0.048
+#   1.00 |       0.238 |     0.046
+```
+
+Read the OLS column top to bottom: a test that is meant to reject 5% of the time creeps to 13% at $\rho = 0.99$ and to 24% at an exact unit root — roughly one "significant predictor" in four is a phantom, and it is *precisely* the persistent predictors (dividend yields, valuation ratios) where the distortion is worst. The IVX column holds its size across the entire ladder, including $\rho = 1$. The library's [Monte Carlo suite](../examples/monte-carlo.md#1-ivx-predictive-regressions-hold-their-size-at-a-unit-root) runs this at larger scale and pins the exact-unit-root numbers at **27.8% for OLS versus 5.3% for IVX** — over five times the nominal rate, dissolved. For a *panel* of competing predictors, `ivx_test` gives the same uniform-size guarantee for a single joint Wald test; both functions and the Stambaugh view are documented in the [predictive-regressions model card](../reference/model-cards/predictive-regressions.md).
+
+> **⚠ Common mistake** — Reaching for HAC or Newey–West standard errors to rescue a predictive regression on a persistent predictor. HAC corrects serial correlation in the *residuals*; the Stambaugh problem is near-unit-root persistence in the *regressor* combined with endogeneity, which HAC leaves untouched — the over-rejection survives. And do not read IVX's honesty as pessimism: it controls *size*, not power, so a large p-value near a unit root means "no evidence of predictability," not "predictability disproven."
+
 ## The frontier
 
 Heteroskedasticity-and-autocorrelation-robust ("HAR") inference is an unusually live corner of econometric theory, and its modern consensus is recent. The state of the art:
@@ -358,6 +484,8 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 | Regression, independent but heteroskedastic errors, small sample | Wild bootstrap (Rademacher weights via `philox_uniforms`) | Keeps each residual's variance attached to its observation; refines on HC asymptotics |
 | Serially correlated *and* heteroskedastic regression errors, asymptotics dubious | Block bootstrap of the regression, or HAC/EWC | Wild bootstrap alone breaks the serial correlation; blocks or kernels respect it |
 | Evaluating a procedure (does my CI cover? does my test have size 5%?) | A seeded Monte Carlo with per-replication streams (`seed=base+rep`) | Coverage is checkable, not guessable — and per-index streams make the experiment exactly reproducible |
+| Before trusting any regression inference: is the model even right? | `reset_test` (form), `heteroskedasticity_test` (variance), `chow_test`/`cusum_test` (stability) | A robust standard error is honest only if the mean, variance, and coefficients are what you assumed; test that first |
+| Predicting a return with a persistent, endogenous predictor | `predictive_regression` / `ivx_test` (report the IVX Wald) | The OLS t-test over-rejects near a unit root; IVX keeps its size uniformly over the predictor's persistence |
 | AR root near one, confidence interval for persistence | Grid bootstrap (roadmap) | Standard asymptotics and standard bootstraps are both invalid near the unit root |
 
 ## What tsecon implements today
@@ -369,6 +497,8 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 - `tsecon.bootstrap_indices(n, scheme=..., seed=..., block_length=..., p=...)` — resampling indices for `"iid"`, `"moving"`, `"circular"` (pass `block_length`), and `"stationary"` (pass `p`; expected block length $1/p$). Same seed, same indices, always.
 - `tsecon.optimal_block_length(y)` — Politis–White (2004) automatic block lengths with the Patton–Politis–White (2009) correction, for the stationary and circular schemes.
 - `tsecon.philox_uniforms(seed, n)` — seeded uniform draws, bit-compatible with `numpy.random.Philox`.
+- `tsecon.heteroskedasticity_test(y, X, test=...)`, `tsecon.reset_test(y, X, max_power=...)`, `tsecon.chow_test(y, X, split=...)`, `tsecon.cusum_test(y, X)` — the specification-and-stability battery (White / Koenker–Breusch–Pagan, Ramsey RESET, Chow, Brown–Durbin–Evans CUSUM). `X` must include an explicit constant column. See the [specification-tests model card](../reference/model-cards/specification-tests.md).
+- `tsecon.predictive_regression(r, x)` and `tsecon.ivx_test(r, xs)` — OLS / Stambaugh / IVX views of a predictive regression and the joint IVX Wald test, with correct size uniformly over a persistent predictor's root. See the [predictive-regressions model card](../reference/model-cards/predictive-regressions.md).
 
 **Built in Rust, awaiting Python bindings** (in `tsecon-hac` and `tsecon-bootstrap`):
 

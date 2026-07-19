@@ -356,9 +356,89 @@ These families are estimation minefields — multimodal likelihoods requiring mu
 
 > **⚠ Common mistake.** Testing "linear vs. threshold" (or "one regime vs. two") with a standard likelihood-ratio test and $\chi^2$ critical values. Under the null of linearity the threshold $\tau$ (or the transition matrix) is *unidentified* — the Davies problem — and the LR statistic is not $\chi^2$. Valid inference needs sup-type tests with simulated or bootstrapped critical values (Hansen, 1996). Every naive $\chi^2$ p-value in this territory overstates the evidence for nonlinearity.
 
+## Long memory: when d refuses to be an integer
+
+Return to the two rungs the ARIMA ladder actually offers for persistence. Either the series is stationary — $d = 0$, and the autocorrelations decay *geometrically*, $\rho_k \approx \phi^k$, so the memory of a shock is gone within a handful of lags — or it has a unit root — $d = 1$, and a shock never fades at all. In the thermostat picture from the top of the chapter, that is a choice between a working thermostat and no thermostat. But some series behave as if the thermostat is real yet arbitrarily *weak*: it does pull the room back to the set point, so the series is mean-reverting, but it pulls ever more feebly, so a shock takes hundreds of periods to disappear. The autocorrelations of such a series decay **hyperbolically** — like $k^{2d-1}$, a slow power law — not geometrically. Plot the ACF and it crawls toward zero across dozens of lags while never suggesting a unit root; run an ADF test and it rejects the unit root; fit an ARMA and it wants ever more AR terms, all with coefficients summing suspiciously close to one. The data are telling you the integer choice is too coarse.
+
+**Fractional integration** (Granger and Joyeux, 1980; Hosking, 1981) fills the gap between the rungs by letting $d$ be *continuous*. The device is to read integer differencing as a special case of a filter that makes sense for any real $d$. The first-difference operator is $(1-L)$; differencing twice is $(1-L)^2 = 1 - 2L + L^2$; and the binomial theorem defines $(1-L)^d$ for fractional $d$ through the same expansion carried to infinitely many terms,
+
+$$
+(1-L)^d = \sum_{k=0}^{\infty} \pi_k L^k, \qquad \pi_0 = 1, \quad \pi_k = \pi_{k-1}\,\frac{k-1-d}{k}.
+$$
+
+For $d = 1$ the weights are $1, -1, 0, 0, \dots$ and you recover the ordinary first difference; for $d = 2$ you recover $1, -2, 1, 0, \dots$; but for $d = 0.4$ the weights never terminate — they trail off slowly, and *that slow tail is exactly the long memory*. An **ARFIMA(p, d, q)** process (fractionally-integrated ARMA) applies this operator in place of the integer difference:
+
+$$
+\phi(L)\,(1-L)^d\, y_t = c + \theta(L)\,\varepsilon_t , \qquad -\tfrac12 < d < \tfrac12 .
+$$
+
+The memory parameter $d$ now indexes a whole spectrum of persistence, not a binary switch. For $0 < d < 0.5$ the process is stationary with autocorrelations decaying like $k^{2d-1}$ — genuine **long memory**, summable nowhere yet finite in variance. At $d = 0$ it collapses to plain ARMA (short memory); at $d = 0.5$ the variance diverges and stationarity is lost; $d < 0$ is antipersistence, the fingerprint of a series that has been *over*-differenced. The value $d$ takes is an economically meaningful measurement, not a modeling nuisance — which is why it deserves to be estimated rather than assumed.
+
+Where does this actually bite? The classic cases are exactly the series where practitioners kept noticing "near unit roots that reject the unit root":
+
+- **Realized volatility.** Daily realized variance of equity returns is the textbook long-memory series, with $d$ reliably near $0.4$; the HAR model owes its success to approximating precisely this hyperbolic decay.
+- **Inflation.** Inflation persistence sits in the awkward $d \approx 0.3$–$0.5$ region — too persistent for a comfortable ARMA, not obviously $I(1)$ — and the long-memory-versus-breaks debate over it is unresolved (see the frontier note below).
+- **Trading volume and bid-ask spreads.** Market-microstructure series show the same slow ACF decay, a signature of the aggregation of many heterogeneous, slowly-adjusting traders.
+
+Estimating $d$ does *not* require committing to the full ARMA structure. The workhorses are **semiparametric**: they use only the low-frequency behavior of the periodogram, where the spectral density blows up like $\lambda^{-2d}$ near the origin, and leave the short-run dynamics away from zero unmodeled. The **GPH log-periodogram regression** (Geweke and Porter-Hudak, 1983) regresses the log-periodogram at the lowest $m$ Fourier frequencies on a simple transform of frequency; the slope is $-d$ — a transparent OLS you can eyeball. The **local Whittle** estimator (Robinson, 1995) instead minimizes a concentrated Gaussian (Whittle) objective over the same low-frequency window; it is more efficient than GPH and is the modern default. Both share one tuning knob, the bandwidth $m$: too large and the ARMA short-run structure leaks in and biases $d$; too small and the estimate is noisy. The textbook default is $m = \lfloor\sqrt{n}\rfloor$, and the standard discipline is to re-estimate across a grid of $m$ and confirm $d$ is stable.
+
+Once you have $d$, `frac_diff` earns its keep: apply $(1-L)^{\hat d}$ and the long memory is *whitened out*, leaving an approximately short-memory series that ordinary ARMA tools can finish off. That is the whole ARFIMA workflow — estimate $d$ semiparametrically, fractionally difference, fit ARMA to the remainder — and it is the fractional analogue of "difference, then fit ARMA" that defines ARIMA. The contrast with the ARIMA section is the entire point: **ARIMA forces $d$ to be an integer you pick with a unit-root test; fractional integration lets the data choose a non-integer $d$ you estimate.**
+
+Here is the full loop — simulate an ARFIMA(0, d, 0) by fractionally integrating white noise, recover $d$ two ways, and watch the ACF collapse from hyperbolic decay to nothing under fractional differencing:
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(20)
+n, d_true = 6000, 0.40
+eps = rng.standard_normal(n)
+x = tsecon.frac_integrate(eps, d_true)          # ARFIMA(0, d, 0): known long memory
+
+# estimate d two ways, at the textbook bandwidth m = floor(sqrt(n))
+gph = tsecon.long_memory_d(x, method="gph")             # Geweke-Porter-Hudak (1983)
+lw  = tsecon.long_memory_d(x, method="local_whittle")   # Robinson (1995)
+print(f"true d          = {d_true}")
+print(f"GPH d           = {gph['d']:.3f}  se {gph['se']:.3f}  (m={gph['m']})")
+print(f"local-Whittle d = {lw['d']:.3f}  se {lw['se']:.3f}  (m={lw['m']})")
+
+# whiten with the local-Whittle estimate, then compare the ACF before/after
+white = tsecon.frac_diff(x, lw["d"])
+acf_x     = tsecon.acf(x,     nlags=20)["acf"]
+acf_white = tsecon.acf(white, nlags=20)["acf"]
+print("\nlag :   memory   whitened")
+for k in (1, 5, 10, 20):
+    print(f"{k:>3} :   {acf_x[k]:+.3f}   {acf_white[k]:+.3f}")
+
+# does any structure survive the whitening?
+print("\nLjung-Box(20) p, memory series :",
+      f"{tsecon.ljung_box(x,     nlags=20)['lb_pvalue'][-1]:.3g}")
+print("Ljung-Box(20) p, whitened      :",
+      f"{tsecon.ljung_box(white, nlags=20)['lb_pvalue'][-1]:.3g}")
+```
+
+```text
+true d          = 0.4
+GPH d           = 0.435  se 0.073  (m=77)
+local-Whittle d = 0.451  se 0.057  (m=77)
+
+lag :   memory   whitened
+  1 :   +0.606   -0.041
+  5 :   +0.375   -0.021
+ 10 :   +0.317   +0.002
+ 20 :   +0.255   +0.009
+
+Ljung-Box(20) p, memory series : 0
+Ljung-Box(20) p, whitened      : 0.0455
+```
+
+Read the ACF column top to bottom: the memory series is still correlated at $+0.26$ *twenty lags out* — a decay no stationary ARMA would produce with a lag-1 of only $0.61$ — while the fractionally-differenced series sits within sampling noise of zero everywhere. The two estimators land at $0.44$ and $0.45$, both within about one standard error of the true $0.40$ (semiparametric estimators buy their freedom from the ARMA structure with wide bands — note the $se$ of $0.06$–$0.07$ even at $n = 6000$). And because local Whittle landed slightly *high*, `frac_diff` differenced a touch too hard: the whitened series shows a small *negative* lag-1 autocorrelation ($-0.041$), the mild-over-differencing tell, which is exactly why the Ljung-Box p on the whitened series is borderline rather than comfortably large. That residual is short-range and tiny — precisely the mopping-up job an ARMA(p, q) on the whitened series is for. See the [long-memory model card](../reference/model-cards/long-memory.md) for the estimator conventions, the exact `se` formulas, and `frac_integrate` as the exact inverse of `frac_diff`.
+
+> **⚠ Common mistake.** Choosing the bandwidth $m$ too large "to use more data." Semiparametric $d$ estimation is local to the origin *on purpose*; as $m$ grows, the ARMA short-run dynamics at higher frequencies contaminate the regression and bias $\hat d$ — usually upward, manufacturing long memory that is really just AR persistence. Report $\hat d$ across a grid of $m$, not a single value. And do not read an estimate near $0.5$ as a verdict on stationarity: the band almost always straddles the boundary, and neither GPH nor local Whittle is built to *test* $d = 1$ — that is a unit-root test's job.
+
 ## The frontier
 
-**Long memory and ARFIMA.** The ladder's integer choice — $d = 0$ (shocks fade geometrically) or $d = 1$ (shocks last forever) — is coarser than some data. Realized volatility, inflation, and interest-rate spreads show autocorrelations that decay *hyperbolically*: far too slowly for any stationary ARMA, yet clearly reverting rather than random-walking. Fractional integration (Granger and Joyeux, 1980; Hosking, 1981) fills the gap by letting $d$ be fractional in $(1-L)^d$, defined through its binomial expansion; for $0 < d < 0.5$ the ARFIMA(p,d,q) process is stationary with autocorrelations decaying like $k^{2d-1}$ — **long memory**. Estimation splits into semiparametric approaches that use only low frequencies — the GPH log-periodogram regression (Geweke and Porter-Hudak, 1983), local Whittle (Robinson, 1995), and exact local Whittle, which is valid for nonstationary $d$ (Shimotsu and Phillips, 2005) — and full MLE via Sowell's (1992) exact autocovariances, numerically delicate as $d \to 0.5$. The genuinely open problem: **long memory and structural breaks are nearly observationally equivalent** (Diebold and Inoue, 2001) — a short-memory process with occasional mean shifts produces every classic long-memory signature — and distinguishing them on realistic sample sizes remains unsolved in general.
+**Long memory beyond the stationary window.** The [previous section](#long-memory-when-d-refuses-to-be-an-integer) covers the stationary case ($0 < d < 0.5$) and its shipped estimators; the research edge lies just outside it. Estimating $d$ when the series is *non*stationary ($d \ge 0.5$) breaks GPH and ordinary local Whittle, and needs the exact local Whittle estimator (Shimotsu and Phillips, 2005), valid across the stationary boundary. Full ARFIMA(p, d, q) maximum likelihood via Sowell's (1992) exact autocovariances jointly estimates $d$ with the ARMA parameters but is numerically delicate as $d \to 0.5$. And the genuinely open problem is identification: **long memory and structural breaks are nearly observationally equivalent** (Diebold and Inoue, 2001) — a short-memory process with occasional mean shifts reproduces every classic long-memory signature, hyperbolic ACF decay included — so a significant $\hat d$ is never on its own proof of long memory rather than a wandering mean, and distinguishing the two on realistic sample sizes remains unsolved in general.
 
 **Elsewhere on the research edge.** Score-driven (GAS/DCS) models (Creal, Koopman and Lucas, 2013) make parameters time-varying through the score of the likelihood, giving robust filters that automatically discount outliers. Bayesian TVP models with global-local shrinkage priors (Bitto and Frühwirth-Schnatter, 2019) let the data decide *which* coefficients drift — the current standard in empirical macro. Testing for the *number* of Markov regimes is finally practical via Carrasco, Hu and Ploberger (2014). Mixed causal-noncausal AR models (Lanne and Saikkonen, 2011; Gouriéroux and Zakoïan, 2017) use roots *inside* the unit circle, identified through non-Gaussianity, to capture bubble episodes that explode and collapse. And an ecosystem-wide embarrassment remains open: default prediction intervals nearly everywhere ignore parameter and selection uncertainty and are systematically too narrow — dramatically so near unit roots and for $T < 100$; bootstrap and conformal methods are the frontier fixes.
 

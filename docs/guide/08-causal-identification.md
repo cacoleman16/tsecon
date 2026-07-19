@@ -429,6 +429,131 @@ print(round(res2["params"][0], 3))             # 1.979   -> closer to 2.0
 
 > ⚠ **Common mistake:** trusting a single Nelder-Mead run. The simplex is local and derivative-free, so with a bad start it can converge to a non-global minimum or stall; restart from several `initial` values and confirm `converged` is `True` and `gbar` is small before believing the estimate. Two further traps: `gmm_nonlinear` returns **no standard errors or $J$ statistic** — for inference you must assemble the sandwich $\widehat{\mathrm{Avar}}(\hat\theta) = (G'WG)^{-1}G'WSWG(G'WG)^{-1}$ yourself (it collapses to $(G'S^{-1}G)^{-1}$ under the efficient weight), where $G$ is the Jacobian of the moments; and because the callback is evaluated hundreds of times, keep it vectorized in NumPy rather than looping over observations. See Newey and McFadden (1994) for the full asymptotic theory and Hansen, Heaton and Yaron (1996) for the continuously-updating alternative to the two-step weight.
 
+## Identification by full specification: the linear RE solver
+
+Every scheme so far spends *some* outside information to pick one impact matrix out of the rotation family — a zero, a sign, a variance regime, an instrument. Push that logic to its limit and you arrive at a different object entirely: write down the *whole* model. Instead of a handful of restrictions on a reduced form you fit by OLS, you commit to a complete set of structural equations — every cross-equation restriction the theory implies — and there is no rotation left to choose. The impulse response is no longer a decomposition of estimated residuals; it *is* the model's own solution. Where an SVAR asks "which unmixing of my residuals is causal?", a linearised rational-expectations (RE) model asks "given these equations and the requirement that nothing explode, what is the unique path?" This is the structural end of the identification spectrum: maximal assumptions, and in exchange, zero residual ambiguity. tsecon's `dsge_solve` is the tool for that end — a *linear RE solver*, deliberately minimal (more on the scope below).
+
+Writing the model down is not, by itself, enough: a system of expectational equations need not have a unique non-explosive solution. That existence-and-uniqueness question was settled by **Blanchard and Kahn (1980)**, and `dsge_solve` is its implementation. Hand it the model in first-order expectational form
+
+$$
+A\, \mathbb{E}_t[y_{t+1}] = B\, y_t + C\, z_{t+1}, \qquad y_t = \begin{bmatrix}\text{predetermined}\\[2pt] \text{jump}\end{bmatrix},
+$$
+
+with the `n_predetermined` backward-looking variables stacked on top of the forward-looking ones and $z_{t+1}$ a mean-zero innovation ($\mathbb{E}_t[z_{t+1}] = 0$). When the lead matrix $A$ is invertible, premultiply by $A^{-1}$ to get the reduced form
+
+$$
+\mathbb{E}_t[y_{t+1}] = M\, y_t + N\, z, \qquad M = A^{-1}B, \quad N = A^{-1}C,
+$$
+
+and everything hinges on the eigenvalues of $M$.
+
+### The counting rule, in one idea
+
+Predetermined variables carry an initial condition — yesterday fixed them. **Jump** variables — a price level, an asset price, a shadow value — carry none; nothing in the past pins them. What pins them is *the refusal to explode*. Eigen-decompose $M$: each eigenvalue with modulus above one is an **unstable** direction along which any nonzero component grows without bound. A non-explosive solution must therefore start with exactly zero weight on every unstable direction — and the only free coordinates it has to arrange that are the jumps. Count them against each other:
+
+- **$\#\text{unstable} = \#\text{jumps}$** — exactly enough freedom: one and only one setting of the jumps zeroes out every explosive direction. **Unique stable solution.**
+- **$\#\text{unstable} < \#\text{jumps}$** — more free jumps than explosive directions to kill, so a continuum of stable solutions survives. **Indeterminate** — the door through which sunspots and self-fulfilling beliefs enter.
+- **$\#\text{unstable} > \#\text{jumps}$** — too few jumps to neutralize every explosive direction, so no non-explosive path exists. **No stable solution.**
+
+That single comparison — eigenvalues outside the unit circle versus forward-looking variables — is the whole Blanchard-Kahn theorem, and it is the **verdict** `dsge_solve` reads out first. When the counts match, the stable eigenvectors deliver two objects: the **policy rule** $G$ ties each jump to the predetermined state, $\text{jump}_t = G\,\text{predetermined}_t$ (the model's decision rule — the analogue of an SVAR impact column, but *derived* rather than rotated into place), and the **law of motion** $P$ (with shock impact $Q$) propagates the state, $\text{predetermined}_{t+1} = P\,\text{predetermined}_t + Q\,z$, and is stable by construction — its eigenvalues are exactly the stable roots of $M$. Together $G$ and $P$ *are* the impulse response.
+
+### The Cagan model, closed form and solved
+
+The cleanest illustration is Cagan's (1956) model of a price (or asset) level that depends on its own expected future value plus a fundamental:
+
+$$
+p_t = a\, \mathbb{E}_t[p_{t+1}] + x_t, \qquad x_t = \rho\, x_{t-1} + \varepsilon_t,
+$$
+
+where $a \in (0,1)$ is how heavily today's price discounts the expected future price, and $x$ is an AR(1) fundamental (money growth, dividends). Guess the no-bubble solution $p_t = G\, x_t$; substituting and matching gives $G(1 - a\rho) = 1$, so
+
+$$
+G = \frac{1}{1 - a\rho},
+$$
+
+the discounted present value $\sum_{j\ge 0}(a\rho)^j$ of the fundamental's own persistence. Stack $y = (x, p)$ with $x$ predetermined and $p$ the jump, and `dsge_solve` returns exactly that $G$:
+
+```python
+import numpy as np, tsecon
+
+# Cagan asset/price model:  p_t = a E_t[p_{t+1}] + x_t,   x_t = rho x_{t-1} + eps
+# Stack y = (x, p): x predetermined (exogenous fundamental), p the forward-looking jump.
+a, rho = 0.7, 0.6
+A = np.array([[1.0, 0.0],
+              [0.0, a  ]])      # lead matrix (invertible)
+B = np.array([[rho, 0.0],
+              [-1.0, 1.0]])
+C = np.array([[1.0],
+              [0.0]])           # eps loads on the predetermined (x) row only
+
+sol = tsecon.dsge_solve(A, B, C, n_predetermined=1)
+print("verdict :", sol["verdict"])
+print("|eig|   :", np.round(sol["eigenvalue_moduli"], 4))
+print("G       :", np.round(sol["g"], 6), "  closed form 1/(1-a*rho) =", round(1/(1-a*rho), 6))
+print("P       :", sol["p"], "   Q :", sol["q"])
+# verdict : unique stable solution (1 unstable eigenvalue(s) = 1 jump variable(s))
+# |eig|   : [0.6    1.4286]
+# G       : [[1.724138]]   closed form 1/(1-a*rho) = 1.724138
+# P       : [[0.6]]    Q : [[1.0]]
+```
+
+Read the verdict first. There is one unstable root ($1/a = 1.4286$, above the circle) and one jump ($p$), so Blanchard-Kahn holds *with equality*: the price is pinned to the fundamental by the unique forward-looking solution, with no free bubble term left to roam. The returned $G = 1.7241$ is $1/(1 - a\rho)$ to machine precision — the Cagan present-value multiplier. The stable eigenvalue is just $\rho = 0.6$, the fundamental's own AR root, which reappears as $P$: the state reverts at its own pace and the price rides along.
+
+### Tracing the impulse response by hand
+
+The binding returns matrices, not trajectories — but $G$, $P$, $Q$ are all you need. A one-time unit innovation $\varepsilon = 1$ lands on the state as $Q\varepsilon$, propagates by $x_{t+1} = P\,x_t$, and the price reads off as $p_t = G\,x_t$ at each date. That loop *is* the impulse response:
+
+```python
+P = np.asarray(sol["p"], float)     # state law of motion
+Q = np.asarray(sol["q"], float)     # shock impact on the state
+G = np.asarray(sol["g"], float)     # jump loading
+
+x = Q @ np.array([1.0])             # impact of a unit eps on the fundamental x
+for t in range(6):
+    p = (G @ x)[0]
+    print(f"t={t}:  x={x[0]:6.4f}   p={p:6.4f}")
+    x = P @ x                       # x_{t+1} = P x_t
+# t=0:  x=1.0000   p=1.7241
+# t=1:  x=0.6000   p=1.0345
+# t=2:  x=0.3600   p=0.6207
+# t=3:  x=0.2160   p=0.3724
+# t=4:  x=0.1296   p=0.2234
+# t=5:  x=0.0778   p=0.1341
+```
+
+Both series decay at the stable root $\rho = 0.6$, and at every horizon the price is exactly $1.7241 \times$ the fundamental — the saddle path, drawn one step at a time. This is the payoff of the framing that opened the section: no reduced form was fit, no residuals were orthogonalized, no rotation was chosen. The impulse response fell straight out of the model's own solution, because the full specification *is* the identification.
+
+### The verdict is the finding: determinacy
+
+The counting rule is not a formality — it flips on economically meaningful parameters, and often the *verdict itself* is the object you came for. In this model the unstable root is $1/a$, so determinacy requires $a < 1$: the price must genuinely discount the future for the no-bubble path to be the *only* stable one. Push $a$ above one and $1/a$ falls inside the unit circle; now there are zero unstable roots for one jump, and the model is indeterminate — self-fulfilling price bubbles become admissible equilibria:
+
+```python
+rho = 0.6
+for a in (0.7, 2.0):
+    A = np.array([[1.0, 0.0], [0.0, a]])
+    B = np.array([[rho, 0.0], [-1.0, 1.0]])
+    C = np.array([[1.0], [0.0]])
+    try:
+        v = tsecon.dsge_solve(A, B, C, n_predetermined=1)["verdict"]
+    except ValueError as exc:
+        v = str(exc)
+    print(f"a={a}:  {v}")
+# a=0.7:  unique stable solution (1 unstable eigenvalue(s) = 1 jump variable(s))
+# a=2.0:  Blanchard-Kahn: indeterminate: 0 unstable eigenvalue(s) < 1 jump variable(s),
+#         so a continuum of stable solutions exists — add a jump variable or a
+#         forward-looking equation
+```
+
+Scanning a parameter grid this way maps the model's **determinacy region** — the set of calibrations that deliver a unique equilibrium at all — which for many New-Keynesian cores is the whole point of the exercise (the Taylor principle is a determinacy condition of exactly this form). When the counts *disagree*, `dsge_solve` raises rather than returning matrices, so an indeterminate or explosive calibration can never be silently plotted as if it had a clean impulse response.
+
+### Scope: a solver, not an estimator
+
+`dsge_solve` is deliberately the minimal layer. It is a *linear RE solver*: there is no likelihood, no prior, no data step. You hand it an already-linearised (or log-linearised) model around its steady state, and it returns the decision rule and the determinacy verdict — nothing is estimated. It is the right tool for teaching-scale forward-looking models (Cagan/asset pricing, a Fisherian core, a present-value multiplier) and for mapping determinacy regions; it is the *wrong* tool if you wanted to estimate deep parameters from data, which is the likelihood/Bayesian machinery this library keeps well outside a linear solver. It also requires an **invertible lead matrix** $A$ — it forms $M = A^{-1}B$ explicitly — so a model with static/definitional equations that make $A$ singular must have those substituted out first, or be handed to a QZ / `gensys` solver (Sims 2002); `dsge_solve` raises a specific teaching error rather than returning garbage. The full contract — every failure mode, the shock-routing convention, the singular-$A$ error message — lives in the [`dsge_solve` model card](../reference/model-cards/dsge.md).
+
+> ⚠ **Common mistake:** mis-declaring `n_predetermined`. The jump count is *your* input, not something the solver infers from the matrices — and getting it wrong flips the verdict. Declare too few jumps and a genuinely unique model is reported as *no stable solution*; too many and the same model is reported *indeterminate*. The determinacy verdict is only ever as trustworthy as the count you supply, so pin down which variables are forward-looking before you trust the classification.
+
+> ⚠ **Common mistake:** routing a shock onto a forward-looking equation. Because $\mathbb{E}_t[z_{t+1}] = 0$, the innovation drops out of the forward-looking solve and can re-enter only through the law of motion — so it must load on a predetermined (exogenous-state) row. A shock written directly onto a jump row is not representable as $\text{jump}_t = G\,\text{predetermined}_t$ and is rejected; move it onto an exogenous AR state, exactly as $x$ carries $\varepsilon$ in the Cagan example.
+
 ## The frontier
 
 The research frontier of this field is mostly about *honesty at the edges* — inference that admits what the data cannot say — and it is where tsecon's identification module stakes its claim, since almost none of it has a software home.
@@ -462,7 +587,7 @@ The decision framework, compressed: start from the **question** (which shock?), 
 
 ## What tsecon implements today
 
-**Available now in Python** (`import tsecon`): the recursive scheme end to end — `var_fit` (estimates, `sigma_u`, information criteria, and a characteristic-root stability summary for the long-run fragility check), `var_irf(data, lags, horizon, orth=True)` for Cholesky-orthogonalized impulse responses (set `orth=False` for reduced-form responses), `var_fevd` for the matching variance decompositions, `var_forecast`, and `var_granger`. The internal-instrument pattern from this chapter runs today by ordering the shock series first. Supporting machinery that identification inference leans on is also live: `ols(se_type="hac")` and `long_run_variance` for instrument first stages, `optimal_block_length` and `bootstrap_indices` for the moving-block bootstrap, and `philox_uniforms` for the reproducible parallel random streams that sign-restriction sampling requires.
+**Available now in Python** (`import tsecon`): the recursive scheme end to end — `var_fit` (estimates, `sigma_u`, information criteria, and a characteristic-root stability summary for the long-run fragility check), `var_irf(data, lags, horizon, orth=True)` for Cholesky-orthogonalized impulse responses (set `orth=False` for reduced-form responses), `var_fevd` for the matching variance decompositions, `var_forecast`, and `var_granger`. The internal-instrument pattern from this chapter runs today by ordering the shock series first. Supporting machinery that identification inference leans on is also live: `ols(se_type="hac")` and `long_run_variance` for instrument first stages, `optimal_block_length` and `bootstrap_indices` for the moving-block bootstrap, and `philox_uniforms` for the reproducible parallel random streams that sign-restriction sampling requires. Separately, the structural end of the spectrum ships today too: `dsge_solve` solves a small linearised rational-expectations model to its Blanchard-Kahn decision rule and determinacy verdict (the section above), the one place in this chapter where the model *is* the identification.
 
 **Built in Rust awaiting bindings:** no identification-specific kernels yet — but the foundations this module consumes are in the crates and exercised: companion-form IRF/FEVD recursions (bound via `var_irf`/`var_fevd`), the block-bootstrap engine, the Philox counter-based RNG (bitwise-reproducible accept-reject at any thread count), and the scaffolded Bayesian crate (`tsecon-bayes`, NIW-BVAR fixtures pinned) that will supply reduced-form posterior draws to every set-identification sampler.
 
