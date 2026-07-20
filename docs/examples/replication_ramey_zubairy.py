@@ -7,8 +7,9 @@ roughly 0.6-0.8 — below one — in US historical data.
 
 Data: Ramey & Zubairy (2018), "Government Spending Multipliers in Good Times and
 in Bad: Evidence from US Historical Data", *Journal of Political Economy*
-126(2):850-901. Downloaded on first use from the authors' replication archive by
-`tsecon.datasets.ramey_zubairy()` and cached; nothing is vendored here.
+126(2):850-901. The dataset (their public replication file) is committed to this
+repository at fixtures/ramey_zubairy.csv, so this runs offline with no data
+fetching — the library ships no network loaders.
 
     .venv/bin/python docs/examples/replication_ramey_zubairy.py
 
@@ -21,10 +22,36 @@ splits, lag choices and standard-error conventions this script does not
 replicate exactly. The claim being checked is the one that matters
 economically — that the multiplier is well below one — not bitwise equality.
 """
+import csv
+from pathlib import Path
+
 import numpy as np
 
 import tsecon
-from tsecon import datasets as ds
+
+DATA = Path(__file__).resolve().parents[2] / "fixtures" / "ramey_zubairy.csv"
+
+
+def load_ramey_zubairy(path=DATA):
+    """Read the committed RZ quarterly panel into a {name: array} dict.
+
+    Public academic data, vendored with attribution — no download, no loader.
+    """
+    rows = [r for r in csv.reader(open(path)) if r and not r[0].startswith("#")]
+    names = rows[0][1:]
+    quarter, cols = [], {n: [] for n in names}
+    for r in rows[1:]:
+        if not r[0].strip():
+            continue
+        quarter.append(float(r[0]))
+        for j, n in enumerate(names):
+            cell = r[j + 1].strip() if j + 1 < len(r) else ""
+            cols[n].append(float(cell) if cell not in ("", ".") else np.nan)
+    return {
+        "quarter": np.asarray(quarter),
+        "names": names,
+        "series": {n: np.asarray(v) for n, v in cols.items()},
+    }
 
 
 def rule(width=70, ch="-"):
@@ -92,10 +119,9 @@ def main():
     print("government-spending multipliers from US historical data")
     rule(70, "=")
 
-    rz = ds.ramey_zubairy()
-    print(f"data: {rz['source']}")
+    rz = load_ramey_zubairy()
+    print(f"data: Ramey & Zubairy (2018) replication file (committed)")
     print(f"      {len(rz['quarter'])} quarters, {len(rz['names'])} series")
-    print(f"      sha256 {rz['sha256'][:16]}...")
 
     quarter = rz["quarter"]
     g, y, newsy = build_variables(rz)

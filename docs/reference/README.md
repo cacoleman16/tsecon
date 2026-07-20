@@ -15,12 +15,6 @@ shipped module. Start here when you know the function and need its arguments.
 subclass `dict`, the plain-dict contract every estimator already returns is
 preserved exactly; adopting them is additive.
 
-## [Datasets](datasets.md)
-
-`tsecon.datasets` — download-on-first-use loaders for reference macro data
-(individual FRED series and the FRED-MD monthly panel), with caching, checksums,
-and the McCracken-Ng transformation codes. No API key required.
-
 ## [Testing & validation](testing.md)
 
 The single map of how the library is tested: nine tiers from Rust goldens to a

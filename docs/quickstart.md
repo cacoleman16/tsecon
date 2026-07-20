@@ -279,47 +279,28 @@ Every wrapper — `VARResults`, `LPResults`, `GARCHResults`, `ARIMAResults`,
 
 ---
 
-## Datasets — real data, no API key
+## Bring your own arrays — no data loaders, no network
 
-Worked examples need real series, and vendoring macro data into a repository ages
-badly. `tsecon.datasets` instead downloads **on first use** and caches: nothing is
-fetched at import time, and the second call reads from disk.
-
-```python
-from tsecon import datasets as ds
-import numpy as np
-
-gs10 = ds.fred_series("GS10")                     # 10-year Treasury, monthly
-print(gs10["nobs"], gs10["dates"][0], gs10["values"][-1])
-# 879 1953-04-01 4.47
-```
-
-**No API key is required** — this uses FRED's public keyless CSV endpoint. (If
-`FRED_API_KEY` happens to be set it is passed along, which is harmless.) The
-printed numbers above are a real run on 2026-07-18; `nobs` and the last value grow
-as FRED publishes.
-
-`fred_md()` pulls the McCracken-Ng FRED-MD panel — the standard monthly macro
-dataset for factor models and nowcasting — together with its **transform codes**,
-the per-series integer recipe (1 level, 2 first difference, 5 first difference of
-logs, …) for making each column stationary:
+tsecon deliberately ships **no data-fetching loaders**. `import tsecon` makes no
+network request, and the only runtime dependency is NumPy. Every function takes
+plain arrays, so bring data in with whatever you already use — `pandas`,
+`pandas.read_csv`, `pandas-datareader` for FRED, or a CSV — and hand tsecon the
+columns:
 
 ```python
-md = ds.fred_md()
-print(np.asarray(md["data"]).shape, md["dates"][0], md["dates"][-1])
-# (801, 126) 1959-01-01 2025-09-01
-print(md["names"][:3], md["transform_codes"][:3])
-# ['RPI', 'W875RX1', 'DPCERA3M086SBEA'] [5 5 5]
+import pandas as pd, tsecon
 
-stationary = ds.apply_fred_md_transforms(md["data"], md["transform_codes"])
+df = pd.read_csv("my_macro_panel.csv", parse_dates=["date"]).set_index("date")
+fit = tsecon.var_fit(df[["gdp", "cpi", "ffr"]].to_numpy(), lags=2)
 ```
 
-Each loader records the source URL and a SHA-256 of the bytes it parsed, so a
-dataset can be pinned and audited. `ds.cache_dir()` reports where things land
-(`~/.cache/tsecon` by default; override with `TSECON_DATA_DIR`), `refresh=True`
-re-downloads, and `local_path=...` parses a file you already have — which is also
-how you work fully offline. See
-[reference/datasets.md](reference/datasets.md).
+Keeping data acquisition out of the library is a deliberate boundary: a loader
+that hardcodes external URLs becomes a maintenance liability the moment a
+provider reorganizes its site (FRED, for one, has already moved the canonical
+FRED-MD file). Fetching is a solved problem with well-maintained specialist
+tools; tsecon does the econometrics. The [replication gallery](examples/README.md)
+shows real-data workflows end to end, running on small public datasets committed
+to the repository.
 
 ---
 

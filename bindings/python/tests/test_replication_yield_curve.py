@@ -19,7 +19,7 @@ replication = pytest.importorskip("replication_yield_curve_recession")
 
 
 def test_term_spread_predicts_recessions():
-    dates, spread, recession = replication.load_aligned(local_path=str(FIXTURE))
+    dates, spread, recession = replication.load_aligned(FIXTURE)
     fit, b, z = replication.run(dates, spread, recession)
 
     # The signature Estrella-Mishkin result: the spread coefficient is negative
@@ -43,7 +43,7 @@ def test_term_spread_predicts_recessions():
 
 
 def test_fixture_is_the_real_monthly_panel():
-    dates, spread, recession = replication.load_aligned(local_path=str(FIXTURE))
+    dates, spread, recession = replication.load_aligned(FIXTURE)
     assert len(dates) > 800  # decades of monthly data
     assert dates[0] == np.datetime64("1953-04-01")
     assert set(np.unique(recession)) == {0.0, 1.0}

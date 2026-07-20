@@ -92,7 +92,6 @@ nav:
       - Overview: reference/README.md
       - API reference: reference/api.md
       - Results objects: reference/results.md
-      - Datasets: reference/datasets.md
       - Validation matrix: reference/validation-matrix.md
       - Testing & validation: reference/testing.md
       - Model cards:

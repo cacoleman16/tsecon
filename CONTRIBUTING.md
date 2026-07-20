@@ -63,7 +63,8 @@ is installed as the private `tsecon._core` (`module-name = "tsecon._core"`,
 re-exports the whole compiled surface. Estimators are therefore still the
 compiled functions with no Python indirection — the layer exists so that
 pure-Python submodules can sit beside the Rust core (today
-[`tsecon.datasets`](bindings/python/python/tsecon/datasets.py)).
+[`tsecon.results`](bindings/python/python/tsecon/results/__init__.py), the
+opt-in rendering layer).
 
 Layout, and where to add things:
 
@@ -73,7 +74,7 @@ bindings/python/
   python/tsecon/__init__.py      # re-exports tsecon._core; add submodules here
   python/tsecon/__init__.pyi     # the hand-written type stub (public surface)
   python/tsecon/py.typed         # PEP 561 marker
-  python/tsecon/datasets.py      # pure-Python: download-on-first-use loaders
+  python/tsecon/results/         # pure-Python: the Results-object facade
 ```
 
 The stub and `py.typed` ship inside the package so autocomplete and `mypy` see

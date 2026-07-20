@@ -61,9 +61,9 @@ Every estimator returns a plain `dict`, and
 [`tsecon.results`](reference/results.md) adds an **opt-in** layer of `dict`
 subclasses that render themselves — a `.summary()` an economist can read and
 `.plot_*()` figures — without taking the dict away, so adopting it breaks
-nothing. [`tsecon.datasets`](reference/datasets.md) supplies the data to point
-them at: FRED series and the FRED-MD macro panel, downloaded on first use and
-cached, with **no API key required**.
+nothing. The library ships **no data loaders and makes no network calls**:
+`import tsecon` depends only on NumPy, and you bring data in with whatever you
+already use.
 
 Correctness is argued, not asserted. Every estimator is pinned to a golden
 fixture with a stated tolerance ([validation

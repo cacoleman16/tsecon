@@ -14,14 +14,10 @@ dollar of output.
 .venv/bin/python docs/examples/replication_ramey_zubairy.py
 ```
 
-The data downloads on first use from the authors' replication archive and is
-cached; nothing is vendored into this repository.
-
-```python
-from tsecon import datasets as ds
-rz = ds.ramey_zubairy()        # 564 quarters, 27 series, 1875Q1-2015Q4
-rz["series"]["news"]           # Ramey's military-news shock
-```
+The data is Ramey & Zubairy's public replication file, committed to the
+repository at [`fixtures/ramey_zubairy.csv`](../../fixtures/ramey_zubairy.csv)
+(564 quarters, 27 series, 1875Q1–2015Q4), so this runs fully offline — tsecon
+ships no data loaders. The script reads it with a dozen lines of `csv`.
 
 ---
 
@@ -148,7 +144,6 @@ Political Economy* 126(2):850-901. The replication archive is distributed by the
 authors; please cite the paper if you use the data.
 
 **See also.** [`lp` / `lp_iv` model card](../reference/model-cards/local-projections.md) ·
-[datasets reference](../reference/datasets.md) ·
 [yield-curve recession replication](replication-yield-curve-recession.md) ·
 [frontier Monte Carlo](monte-carlo-frontier.md), which measures what LP-IV does
 when the instrument is weak.

@@ -24,10 +24,10 @@ Verified on this working tree (macOS, Apple silicon, Rust 1.97.1, CPython
 | — integration tests in `crates/*/tests/` | 584 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 46 | |
 | — documentation tests | 41 | |
-| Python binding tests | **403 passed** in 4.6 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **364 passed** in 4.7 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 37, **every one** with a `tests/` directory | |
 | Golden fixtures | 41 JSON files, produced by 22 generator scripts | `fixtures/` |
-| Public Python functions | 93 — **all 93** are called at least once in the binding suite | |
+| Public Python functions | 94 — **all 94** are called at least once in the binding suite | |
 
 Of the 584 Rust integration tests, **144 are golden tests** (`golden.rs` in 33
 crates, plus `unitroot_golden.rs` and `pmg_golden.rs`) and **311 are property
@@ -202,7 +202,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-403 tests in 36 files. 31 of the 41 fixture JSONs are reloaded here and checked
+364 tests in 37 files. 31 of the 41 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -314,9 +314,9 @@ military-news shock and Gordon-Krenn normalisation, via `tsecon.lp_multiplier`:
 | integral multiplier | 0.635 | 0.657 | 0.700 | 0.706 | 0.743 |
 
 0.64–0.74 against RZ's published **0.6–0.8**, and below one — their central
-claim. The dataset downloads on first use via
-[`tsecon.datasets.ramey_zubairy()`](datasets.md); the offline loader path is
-covered by `test_datasets.py` against a committed real slice.
+claim. The dataset is RZ's public replication file, committed at
+`fixtures/ramey_zubairy.csv`, so the replication runs fully offline;
+`test_replication_ramey_zubairy.py` re-runs the estimation and pins the result.
 
 **2. [Estrella & Mishkin (1998)](../examples/replication-yield-curve-recession.md)**,
 *REStat* 80(1) — the Treasury yield curve predicts recessions. A probit of the
@@ -394,7 +394,8 @@ counts:
 | `test_backtest.py` | 4 | Pseudo-out-of-sample backtest engine; no external golden — the naive forecaster makes every quantity a closed form checked against NumPy. |
 | `test_coint_regime.py` | 3 | Johansen / Engle-Granger cointegration and Markov-switching AR against `coint.json` and `regime.json`. |
 | `test_cv_splits.py` | 4 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored. |
-| `test_datasets.py` | 23 | `tsecon.datasets` loaders, fully offline — committed real FRED-MD and Ramey-Zubairy samples or tmp-path CSVs; transform codes, nan-not-zero for pre-sample cells, malformed-file and offline error paths. |
+| `test_replication_ramey_zubairy.py` | 4 | The RZ government-spending replication, offline against the committed panel: multiplier below one across horizons, strong first stage, and a guard that it is not the outcome-only cumulative trap. |
+| `test_replication_yield_curve.py` | 2 | The Estrella-Mishkin yield-curve recession probit, offline against the committed FRED snapshot: the spread coefficient stays significantly negative. |
 | `test_depth.py` | 4 | Realized volatility / HAR-RV, Diebold-Yilmaz connectedness, PCA factor model vs `{realized,connect,favar}.json`. |
 | `test_dynamic_ns.py` | 4 | Dynamic Nelson-Siegel (Diebold-Li 2006) two-step fit; row-100 cross-sectional golden anchors the per-date fit exactly. |
 | `test_favar.py` | 4 | Two-step FAVAR (Bernanke-Boivin-Eliasz 2005): step-1 factors must match the NumPy PCA golden up to a joint sign flip; assembly and IRFs checked structurally. |
@@ -556,13 +557,14 @@ discover.
   nothing in the suite passes `float32`, Fortran-ordered, or masked arrays to
   assert the coercion behavior. If you feed a non-`float64` array, you are
   outside what the tests pin.
-- **The dataset loaders are only tested offline.** `test_datasets.py` is
-  deliberately hermetic — every test uses the committed FRED-MD sample or a
-  tmp-path CSV, and the unreachable-host path is tested by *simulating* a
-  failure. The live download against the real FRED-MD endpoint is never
-  exercised in CI, so an upstream schema change would not be caught here.
-- **Benchmarks compare only 4 of 93 functions.** The parity gate covers ADF,
-  VAR, OLS+HAC, and GARCH. It is a spot check on the hottest paths, not a
+- **No network is exercised, by design.** The library ships no data loaders and
+  makes no external requests, so there is nothing to test on that front. The two
+  published-result replications run against small public datasets committed to
+  the repo (`fixtures/ramey_zubairy.csv`, `fixtures/yield_curve_recession.csv`),
+  so they are reproduced offline and cannot break on a provider's URL change.
+- **Benchmarks compare 25 of 94 functions.** The parity gate covers the unit-root
+  tests, the diagnostics, VAR and its IRF/FEVD/Granger, Johansen, the filters,
+  the spectra, ridge/elastic-net, and the GARCH family — a broad spot check, not a
   library-wide cross-library audit — that job belongs to the fixtures.
 
 **CI scope.**

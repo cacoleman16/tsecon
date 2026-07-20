@@ -13,10 +13,12 @@ data**, and recovers the canonical numbers.
 .venv/bin/python docs/examples/replication_yield_curve_recession.py
 ```
 
-The three series download on first use (keyless, cached) via
-[`tsecon.datasets`](../reference/datasets.md): `GS10` (10-year Treasury),
-`TB3MS` (3-month bill), and `USREC` (the NBER recession indicator). The term
-spread is `GS10 − TB3MS`.
+The three FRED series — `GS10` (10-year Treasury), `TB3MS` (3-month bill), and
+`USREC` (the NBER recession indicator) — are aligned into one monthly panel
+committed at
+[`fixtures/yield_curve_recession.csv`](../../fixtures/yield_curve_recession.csv),
+so this runs fully offline (tsecon ships no data loaders). The term spread is
+`GS10 − TB3MS`.
 
 ---
 
@@ -54,13 +56,13 @@ here it is estimated from scratch in a dozen lines.
 ## How it is built
 
 ```python
-from tsecon import datasets as ds
-import tsecon, numpy as np
+import csv, numpy as np, tsecon
 
-gs10 = ds.fred_series("GS10")     # keyless, downloaded once and cached
-tb3  = ds.fred_series("TB3MS")
-rec  = ds.fred_series("USREC")
-# ... align on common monthly dates, spread = gs10 - tb3 ...
+# read the committed monthly panel: date, gs10, tb3ms, usrec
+rows = [r for r in csv.reader(open("fixtures/yield_curve_recession.csv"))
+        if r and not r[0].startswith("#")][1:]
+spread    = np.array([float(r[1]) - float(r[2]) for r in rows])   # GS10 - TB3MS
+recession = np.array([float(r[3]) for r in rows])
 
 lead = 12
 y = recession[lead:]                              # recession at t+12
@@ -102,5 +104,4 @@ Financial Variables as Leading Indicators," *Review of Economics and Statistics*
 80(1):45-61.
 
 **See also.** [recession-probability model card](../reference/model-cards/recession.md) ·
-[datasets reference](../reference/datasets.md) ·
 [Ramey-Zubairy replication](replication-ramey-zubairy.md).

@@ -60,7 +60,7 @@ Changelog = "https://github.com/cacoleman16/tsecon/blob/main/CHANGELOG.md"
 features = ["pyo3/extension-module"]
 # Mixed Rust/Python layout: the compiled extension is installed as the private
 # `tsecon._core`, and the `tsecon` package itself lives in python/tsecon/ and
-# re-exports it. This is what allows pure-Python submodules (tsecon.datasets)
+# re-exports it. This is what allows pure-Python submodules (tsecon.results)
 # to sit alongside the Rust core. The type stub and py.typed marker now live
 # inside the package directory, so they are picked up as package data.
 python-source = "python"
