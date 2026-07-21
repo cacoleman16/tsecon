@@ -6,8 +6,9 @@ rise above long-term rates — a recession has tended to follow within a year or
 so. Estrella & Mishkin (1998) put a number on it with a probit, and it has held
 up across the cycles since.
 
-This reproduces the core result with `tsecon.recession_probit` on **live FRED
-data**, and recovers the canonical numbers.
+This reproduces the core result with `tsecon.recession_probit`, estimated from a
+**committed FRED snapshot** (retrieved 2026-07-18) — it runs fully offline — and
+recovers the canonical numbers.
 
 ```sh
 .venv/bin/python docs/examples/replication_yield_curve_recession.py
@@ -25,10 +26,12 @@ so this runs fully offline (tsecon ships no data loaders). The term spread is
 ## The result
 
 A probit of the recession indicator **twelve months ahead** on the current term
-spread, monthly, 1953–2026 (867 observations after the 12-month lead):
+spread, monthly, 1953–2026 (867 observations after the 12-month lead). The
+estimand is the **12-month-ahead probability** — the chance the economy is in
+recession *in month t+12*, not at some point during the intervening year:
 
 ```text
-Probit:  P(recession in 12m) = Φ(b0 + b1 · term_spread)
+Probit:  P(recession at t+12) = Φ(b0 + b1 · term_spread)
 
   b0 (const)   = -0.6421
   b1 (spread)  = -0.5833   (z = -9.62)
@@ -36,20 +39,25 @@ Probit:  P(recession in 12m) = Φ(b0 + b1 · term_spread)
 ```
 
 The signature finding is the **sign and significance of `b1`**: strongly
-negative, `z ≈ -10`. A flatter or inverted curve raises the recession
-probability. Reading it as probabilities:
+negative, `z ≈ -10`. One honest caveat on that z-statistic: these are i.i.d.
+maximum-likelihood standard errors, and recession months are strongly serially
+dependent, so `z ≈ -10` overstates the precision — the sign and economic
+magnitude are the robust part. The shipped route to modelling that dependence
+is the Kauppi-Saikkonen **dynamic** probit (`dynamic=True`, below). A flatter
+or inverted curve raises the recession probability. Reading it as probabilities:
 
-| term spread | P(recession within 12 months) |
+| term spread | P(recession in month t+12) |
 |---|---|
 | +3.0 pp (steep) | **0.8%** |
-| +1.0 pp | 6% |
+| +1.0 pp | 11% |
 | 0.0 pp (flat) | 26% |
 | −1.0 pp (inverted) | **48%** |
 
-A steeply upward-sloping curve implies almost no chance of recession within the
-year; a one-percentage-point inversion implies close to a coin flip. This is the
-"inverted yield curve" signal that appears in the financial press every cycle —
-here it is estimated from scratch in a dozen lines.
+A steeply upward-sloping curve implies a near-zero probability of being in
+recession a year later; a one-percentage-point inversion implies close to a
+coin flip. This is the "inverted yield curve" signal that appears in the
+financial press every cycle — here it is estimated from scratch in a dozen
+lines.
 
 ---
 

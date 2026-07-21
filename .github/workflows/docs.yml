@@ -4,7 +4,7 @@ name: Docs
 # fails on any broken internal link, missing nav entry, or stale reference, so
 # this keeps the docs honest on every push — but it does NOT deploy anywhere.
 #
-# The repo is private, where GitHub Pages needs a paid plan, so hosting is left
+# Hosting is left
 # off by choice. To read the site: `pip install -r docs/requirements.txt &&
 # mkdocs serve` locally, or point any static host (Netlify / Cloudflare Pages,
 # both free even for private repos) at `mkdocs build`.

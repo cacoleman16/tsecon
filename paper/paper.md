@@ -12,12 +12,12 @@ tags:
   - nowcasting
 authors:
   - name: Chase Coleman
-    orcid: 0000-0000-0000-0000  # TODO: replace with the author's real ORCID
     affiliation: 1
 affiliations:
-  - name: "TODO: affiliation placeholder — replace with institution, city, country"
+  - name: Independent Researcher, United States
     index: 1
 date: 17 July 2026
+# Draft — confirm author metadata (ORCID, affiliation) before JOSS submission.
 bibliography: paper.bib
 ---
 
@@ -33,7 +33,7 @@ Python and NumPy; the estimation kernels (state-space filtering, bootstrap and
 posterior resampling, sign-restriction rotation sampling, spectral transforms,
 optimization) are implemented in Rust and exposed through `PyO3` and built into
 portable wheels with `maturin` [@pyo3; @maturin]. The current release exposes
-**93 functions** organized as a task-oriented facade over **37 Rust crates**,
+**94 functions** organized as a task-oriented facade over **37 Rust crates**,
 and NumPy is the only required runtime dependency.
 
 The design goal is not another forecasting toolkit but a maintained, fast, and
@@ -86,7 +86,7 @@ comfortable default rather than an overnight job.
 
 # Functionality
 
-The 93 functions span the applied workflow end to end:
+The 94 functions span the applied workflow end to end:
 
 - **Diagnostics and exploration**: `acf`, `pacf`, `ljung_box`, `jarque_bera`,
   `arch_lm`; the unit-root workflow `adf`, `kpss`, `check_stationarity`;
@@ -127,7 +127,7 @@ settings can never yield different p-values in different modules.
 without a named golden validation target — a published table, a reference
 implementation, or both. The Rust core carries a large unit and integration
 suite (more than 600 `#[test]` cases) and the Python layer adds a conformance
-suite (156 tests collected) whose fixtures are gated against `statsmodels`,
+suite (364 tests collected) whose fixtures are gated against `statsmodels`,
 `arch`, `linearmodels`, `scikit-learn`, SciPy, and `ArviZ`. The replication
 fixtures *are* the integration test suite.
 

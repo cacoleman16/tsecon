@@ -28,8 +28,8 @@ def test_term_spread_predicts_recessions():
     assert z[1] < -5.0
     assert fit["pseudo_r2"] > 0.1
 
-    # Economic magnitude: an inverted (-1pp) curve implies a far higher 12-month
-    # recession probability than a steep (+3pp) one.
+    # Economic magnitude: an inverted (-1pp) curve implies a far higher
+    # 12-month-ahead recession probability than a steep (+3pp) one.
     from math import erf
 
     def phi(x):

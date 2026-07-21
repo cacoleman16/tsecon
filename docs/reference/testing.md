@@ -21,16 +21,16 @@ Verified on this working tree (macOS, Apple silicon, Rust 1.97.1, CPython
 | Tier | Count | Command |
 |---|---|---|
 | Rust tests (total) | **718 passed, 0 failed, 0 ignored** | `cargo test --workspace --exclude tsecon-python` |
-| — integration tests in `crates/*/tests/` | 584 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 46 | |
+| — integration tests in `crates/*/tests/` | 628 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 49 | |
 | — documentation tests | 41 | |
 | Python binding tests | **364 passed** in 4.7 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 37, **every one** with a `tests/` directory | |
 | Golden fixtures | 41 JSON files, produced by 22 generator scripts | `fixtures/` |
 | Public Python functions | 94 — **all 94** are called at least once in the binding suite | |
 
-Of the 584 Rust integration tests, **144 are golden tests** (`golden.rs` in 33
-crates, plus `unitroot_golden.rs` and `pmg_golden.rs`) and **311 are property
+Of the 628 Rust integration tests, **144 are golden tests** (`golden.rs` in 33
+crates, plus `unitroot_golden.rs` and `pmg_golden.rs`) and **316 are property
 tests** (`properties.rs` in 31 crates, plus `unitroot_properties.rs` and
 `pmg_properties.rs`). The remainder are validation, cross-check, and
 reproducibility suites described below.
@@ -140,7 +140,7 @@ quantity is a valid test statistic. That is Tier 5.
 ### Tier 2 — Rust property tests
 
 **What it proves:** invariants that must hold for *every* input, not just the
-fixture's. 311 tests across 31 crates. These are hand-written with seeded
+fixture's. 316 tests across 32 crates. These are hand-written with seeded
 generators, and they fall into recognizable families:
 
 | Invariant family | Real example |
@@ -435,7 +435,7 @@ counts:
 # 1. Rust core — 718 tests
 cargo test --workspace --exclude tsecon-python
 
-# 2. Python bindings — 403 tests
+# 2. Python bindings — 364 tests
 .venv/bin/python -m pytest bindings/python/tests -q
 
 # 3. Monte Carlo evidence (seeded, reproducible)

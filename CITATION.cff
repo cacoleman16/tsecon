@@ -5,8 +5,7 @@ abstract: >-
   A high-performance time-series econometrics library with a Rust core and a
   Python-first API. Every estimator is validated against a golden reference
   (statsmodels, arch, linearmodels, scikit-learn, ArviZ, SciPy, NumPy) so the
-  numbers are trustworthy, not just present. `tsecon` is a working codename
-  and the project is pre-1.0.
+  numbers are trustworthy, not just present. The project is pre-1.0.
 type: software
 authors:
   - given-names: Chase

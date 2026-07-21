@@ -4,10 +4,13 @@ One of the most durable results in macro-finance: the slope of the Treasury yiel
 curve, twelve months earlier, is a strong leading indicator of recessions. When
 the curve inverts (short rates above long rates), a recession tends to follow.
 
-This reproduces the core result with `tsecon.recession_probit` on live FRED data:
-a probit of the NBER recession indicator on the term spread, and it recovers the
-canonical numbers — a strongly negative spread coefficient and an inverted curve
-implying a high probability of recession within the year.
+This reproduces the core result with `tsecon.recession_probit` from a committed
+FRED snapshot (retrieved 2026-07-18), fully offline: a probit of the NBER
+recession indicator twelve months ahead on the term spread. The estimand is the
+12-month-ahead probability — the chance the economy is in recession in month
+t+12, not at some point during the intervening year — and it recovers the
+canonical numbers: a strongly negative spread coefficient, with an inverted
+curve implying a high probability of being in recession a year later.
 
     .venv/bin/python docs/examples/replication_yield_curve_recession.py
 
@@ -76,10 +79,14 @@ def main():
     print(f"sample: {dates[0]} to {dates[-1]}   "
           f"{int(recession[LEAD:].sum())} recession months of {len(recession) - LEAD}")
     print()
-    print("  Probit:  P(recession in 12m) = Phi(b0 + b1 * term_spread)")
+    print("  Probit:  P(recession at t+12) = Phi(b0 + b1 * term_spread)")
     print(f"    b0 (const)   = {b[0]:+.4f}")
     print(f"    b1 (spread)  = {b[1]:+.4f}   (z = {z[1]:+.2f})")
     print(f"    McFadden R2  = {fit['pseudo_r2']:.3f}")
+    print()
+    print("  Caveat: the z-stat uses i.i.d. ML standard errors; recession months")
+    print("  are serially dependent, so z overstates precision. The dynamic probit")
+    print("  (dynamic=True) is the shipped route to modelling that dependence.")
     print()
     print("  Implied 12-month-ahead recession probability:")
     for s in (3.0, 1.0, 0.0, -1.0):
@@ -87,9 +94,10 @@ def main():
     print("=" * 66)
     print("The signature result: b1 < 0 and strongly significant — an inverting")
     print("curve raises the recession probability. A steep (+3pp) curve implies a")
-    print("near-zero chance of recession within the year; a 1pp inversion implies")
-    print("close to a coin flip. This is the yield-curve recession signal that")
-    print("shows up in the financial press every cycle, estimated from scratch.")
+    print("near-zero probability of being in recession a year later; a 1pp")
+    print("inversion implies close to a coin flip. This is the yield-curve")
+    print("recession signal that shows up in the financial press every cycle,")
+    print("estimated from scratch.")
     print()
     print("Estrella-Mishkin (1998) report a term-spread probit of the same shape")
     print("with a similar pseudo-R2; the point being replicated is the sign,")

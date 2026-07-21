@@ -200,17 +200,36 @@ interacted design of Ramey-Zubairy 2018); shares the `fixtures/lp.json` golden.
 
 **References.** Ramey & Zubairy (2018); Tenreyro & Thwaites (2016).
 
+The DGP below builds in real state dependence — the shock's effect is 1.5 in
+regime 1 and 0.5 in regime 0, decided by the regime the shock *landed* in — so
+the two estimated IRFs have something genuine to disagree about:
+
 ```python
 import numpy as np, tsecon
 rng = np.random.default_rng(0)
-n = 400
+n = 600
 shock = rng.standard_normal(n)
+state = ((np.arange(n) // 40) % 2).astype(float)   # 40-period spells: 0,1,0,1,...
 y = np.zeros(n)
 for t in range(n):
-    y[t] = sum(0.9 ** h * shock[t - h] for h in range(min(t, 20) + 1))
+    # The multiplier depends on the regime the shock LANDED in:
+    # 1.5 in state 1 (slack), 0.5 in state 0 (tight), both decaying at 0.9.
+    y[t] = sum(0.9 ** h * (1.5 if state[t - h] == 1.0 else 0.5) * shock[t - h]
+               for h in range(min(t, 20) + 1))
 y += 0.3 * rng.standard_normal(n)
-state = (np.arange(n) % 2).astype(float)          # a toy alternating regime
+
 out = tsecon.lp_state(y, shock, state, horizons=8, n_lag_controls=2)
 print("state 1 IRF (h=0..3):", np.round(out["irf_state1"][:4], 3))
 print("state 0 IRF (h=0..3):", np.round(out["irf_state0"][:4], 3))
+print("state 1 SE  (h=0..3):", np.round(out["se_state1"][:4], 3))
+print("state 0 SE  (h=0..3):", np.round(out["se_state0"][:4], 3))
+# state 1 IRF (h=0..3): [1.489 1.505 1.35  1.154]
+# state 0 IRF (h=0..3): [0.545 0.396 0.338 0.336]
+# state 1 SE  (h=0..3): [0.026 0.08  0.122 0.143]
+# state 0 SE  (h=0..3): [0.024 0.042 0.049 0.059]
 ```
+
+The impact responses recover the true regime multipliers (1.489 vs 0.545
+against true 1.5 vs 0.5), each path decays at roughly the true 0.9 rate, and
+the gap between them dwarfs the combined standard errors at every horizon —
+the state-dependence finding, read exactly as described above.

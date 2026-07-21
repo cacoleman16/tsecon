@@ -81,7 +81,7 @@ def section_local_projection():
         fig.tight_layout()
         ts.stamp(fig, "AR(2), φ = (1.3, −0.4), n = 480, shock observed · one tsecon.ols(se_type=\"hac\", "
                       "maxlags=h+1) per horizon, 4 lag controls · bands: ±1.645 × HAC se · "
-                      "the dedicated LP module (roadmap 07) adds lag augmentation and sup-t bands")
+                      "tsecon.lp does this in one call, lag-augmented inference by default")
         save(fig, "adv-local-projection.png")
 
 

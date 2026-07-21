@@ -328,7 +328,7 @@ def section_var():
                      x=0.002, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
         fig.tight_layout(rect=(0, 0.012, 1, 0.955))
         ts.stamp(fig, "Synthetic VAR(2), n = 400 · tsecon.var_irf(orth=True) · matches statsmodels at 1e-8 · "
-                      "bootstrap bands land with the structural module")
+                      "point IRFs — for bands see tsecon.bvar_irf_draws or tsecon.lp")
         save(fig, "06-var-irf.png")
 
         # FEVD as stacked areas for the output variable.

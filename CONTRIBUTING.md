@@ -1,7 +1,6 @@
 # Contributing to tsecon
 
-Thanks for your interest in contributing. `tsecon` (a working codename — the
-public name is resolved before the first release) is a Rust-core, Python-first
+Thanks for your interest in contributing. `tsecon` is a Rust-core, Python-first
 time-series econometrics library, and it is built on one non-negotiable rule:
 **nothing lands without a golden target it has to hit.** This guide explains how
 to build it, how to run the tests, the validation discipline every change must

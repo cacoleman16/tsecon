@@ -159,8 +159,10 @@ def experiment_hac(reps=2000, T=200):
             w_hac += 2 * Z95 * sh
         print(f"{phi:>6.2f} | {cov_iid / reps:>10.3f} | {cov_hac / reps:>10.3f} | "
               f"{w_iid / reps:>10.3f} | {w_hac / reps:>10.3f}")
-    print("expected: IID coverage collapses as phi grows; HAC stays near 0.95,")
-    print("          and at phi=0 HAC matches IID (no cost when uncorrelated)")
+    print("expected: IID coverage collapses as phi grows; HAC recovers much of")
+    print("          the gap but NOT all of it at high phi (a fixed-bandwidth")
+    print("          kernel cannot fully repair coverage near a unit root);")
+    print("          at phi=0 HAC matches IID (no cost when uncorrelated)")
 
 
 # --------------------------------------------------------------------------

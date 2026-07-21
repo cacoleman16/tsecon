@@ -17,7 +17,7 @@ Scope boundaries: this module owns the *release* mechanics — wheels, sdist, CI
 - **The current state is a development install only**: `maturin develop` into a local venv. There is no wheel-building CI, no published package, no way for anyone but a contributor with the repo checked out to use the library.
 - **`pyproject.toml` is minimal**: name, version, one dependency, the maturin backend. It is missing the metadata PyPI needs to present the package well — long description, classifiers, license expression, project URLs, keywords, Python-version floor, author.
 - **No type stubs**: a compiled extension module (`.so`/`.pyd`) exposes nothing to static analyzers or IDEs by default. Without a `.pyi` stub and a `py.typed` marker, every user loses autocomplete and type checking — a large, silent usability tax on a numeric library with many keyword arguments.
-- **The name is a working codename** (`tsecon`): the real name (see [Module 11](11-docs-ux-adoption.md) — impulse/kairos/tempora/metrika shortlist, avoid "chronos") must be checked for PyPI availability *before* first publish, because the first upload claims the name permanently.
+- **The name is resolved**: the library ships as `tsecon`. PyPI availability was verified (unregistered) before committing, because the first upload claims the name permanently — see [Module 11](11-docs-ux-adoption.md).
 - **No provenance story**: research users need to cite an exact version and, ideally, verify the artifact they installed matches the source. Trusted publishing and build attestations exist to provide this and are not yet configured.
 
 ## Inventory

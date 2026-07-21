@@ -202,7 +202,7 @@ Unpenalized OLS pays a 15% RMSE premium for estimating 22 coefficients that are 
 
 Two structured extensions matter for time series designs. The **group LASSO** (Yuan & Lin 2006) penalizes coefficients in pre-declared groups by $\lambda \sum_g \sqrt{p_g}\, \lVert \beta_g \rVert_2$, so a group — naturally, *all lags of one variable* — enters or leaves the model as a unit; selection happens at the economic level ("does oil matter?") rather than the lag level ("does the seventh lag of oil matter?"). The **sparse-group LASSO** (Simon, Friedman, Hastie & Tibshirani 2013) mixes in a within-group L1 term so a selected variable can still use only a few of its lags — it is also the engine under the nowcasting chapter's MIDAS regressions. For tuning, information criteria are often preferable to CV in time series (faster, no splitting subtleties): for the LASSO the degrees of freedom equal the number of nonzero coefficients *exactly* (Zou, Hastie & Tibshirani 2007), making BIC well-defined; when the predictor count outruns the sample, use the extended BIC (Chen & Chen 2008) or BIC will overselect catastrophically.
 
-The path solver has since landed as `tsecon.lasso_path` (taught in full below); the elastic-net blend is the same call with `l1_ratio < 1`, and the information criteria come back with it. On the 24-lag AR(2) design from the ridge example above:
+The path solver has since landed as `tsecon.lasso_path` (taught in full below); the elastic-net blend is the same call with `l1_ratio < 1`, and the information criteria come back with it. When you already know the penalty and want a single fit rather than the whole path, `tsecon.elastic_net(x, y, alpha, l1_ratio=0.5)` solves that one scikit-learn-convention objective directly (see the [machine-learning model card](../reference/model-cards/machine-learning.md)). On the 24-lag AR(2) design from the ridge example above:
 
 ```python
 path = tsecon.lasso_path(X, target)                    # glmnet-convention LASSO path
@@ -367,7 +367,7 @@ The roadmap previews above have started to become real. Three of this module's T
 - `tsecon.lasso_path` — the glmnet-convention elastic-net path with AIC/BIC selection;
 - `tsecon.adaptive_lasso` — Zou's (2006) oracle-property estimator.
 
-The remaining previews (`enet`, `group_lasso`, `factor_forecast`) are still on the roadmap (the PCA factor extraction previewed as `diffusion_index` now ships as `tsecon.factor_model`, used earlier). This section teaches the three that are here, on real data, with the outputs you actually get back. Everything below runs today.
+The remaining previews (`group_lasso`, `factor_forecast`) are still on the roadmap; the single-fit `enet` preview has landed as `tsecon.elastic_net` (introduced in the shrinkage section above), and the PCA factor extraction previewed as `diffusion_index` now ships as `tsecon.factor_model`, used earlier. This section teaches the three that are here, on real data, with the outputs you actually get back. Everything below runs today.
 
 ### Leakage-safe splits: `cv_splits`
 

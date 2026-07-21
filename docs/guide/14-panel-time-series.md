@@ -236,7 +236,7 @@ The assumptions that make the trick work, and the conditions under which it fray
 
 **Dynamic CCE and the small-$T$ bias.** The basic CCE estimator assumes the regressors are exogenous given the factors; add a lagged dependent variable and it inherits a Nickell-type bias in short panels. Chudik and Pesaran (2015) show that augmenting with a growing number of *lags* of the cross-section averages restores consistency, and their cross-sectionally-augmented distributed-lag (CS-DL) estimator targets long-run coefficients directly. This is the active edge of applied panel time series — the estimator most current cross-country growth and finance papers actually run — and it sits in the roadmap's heterogeneous-panel tier.
 
-**Pooled mean group: homogeneous long run, heterogeneous short run.** Pesaran, Shin and Smith (1999) split the difference between pooling and mean group with the pooled mean group (PMG) estimator: it forces the *long-run* relationship to be common across entities (economic theory often predicts a shared equilibrium — purchasing power parity, a common capital-output ratio) while letting the *short-run* adjustment dynamics differ. A Hausman test of PMG against MG is the standard way to ask whether the long-run homogeneity restriction is admissible. It is the natural next model once you have both the mean-group and error-correction machinery.
+**Pooled mean group: homogeneous long run, heterogeneous short run.** Pesaran, Shin and Smith (1999) split the difference between pooling and mean group with the pooled mean group (PMG) estimator: it forces the *long-run* relationship to be common across entities (economic theory often predicts a shared equilibrium — purchasing power parity, a common capital-output ratio) while letting the *short-run* adjustment dynamics differ. A Hausman test of PMG against MG is the standard way to ask whether the long-run homogeneity restriction is admissible. The estimator itself ships today as `tsecon.panel_pmg` (below); the Hausman companion test is still on the roadmap.
 
 **Interactive fixed effects — the other way to kill a factor.** CCE purges the factor with observed averages; Bai's (2009) interactive fixed effects instead *estimates* the factors and loadings jointly with the slopes, by iterating principal components on the residuals against least squares on the slopes. The two approaches target the same enemy from opposite directions — CCE never estimates the factor, Bai insists on it — and they have complementary strengths: CCE is robust and needs no count of factors, Bai's is efficient when the factor count is known and correct. A mature panel module offers both and a specification comparison between them.
 
@@ -258,24 +258,25 @@ The assumptions that make the trick work, and the conditions under which it fray
 | Common unobserved factor drives both $y$ and $x$ | `panel_mean_group(method="cce")` | Cross-section averages span the factor space and purge the bias |
 | Heterogeneous exposure to common shocks | CCE, *not* a time dummy | A time dummy removes only homogeneous factor effects |
 | Lagged dependent variable *and* common factors | Dynamic CCE / CS-DL (roadmap) | Static CCE is biased with dynamics in short $T$ |
-| Theory predicts a shared long-run relation, heterogeneous adjustment | PMG (roadmap) | Restricts the long run, frees the short run; Hausman-testable |
+| Theory predicts a shared long-run relation, heterogeneous adjustment | `panel_pmg` | Restricts the long run, frees the short run (the Hausman test against MG is roadmap) |
 | Entities linked by trade/finance, not just common shocks | Global VAR (roadmap) | Models spillovers *between* units rather than purging them |
 | Short entities, cannot fit a per-unit model | Pool (bias and all) or shrink | Mean group's variance explodes when $T_i$ is small |
 
 ## What tsecon implements today
 
-**Available now in Python** — everything this chapter's four runnable examples call:
+**Available now in Python** — everything this chapter's four runnable examples call, plus the frontier's pooled mean group:
 
 - `tsecon.panel_fe(outcome, regressors, se_type="cluster", bandwidth=4.0)` — fixed-effects panel OLS with `outcome` shaped $N \times T$ and `regressors` shaped $k \times N \times T$; `se_type` is `"nonrobust"`, `"cluster"` (by entity), or `"driscoll_kraay"`, and `bandwidth` is the Driscoll-Kraay HAC lag length. Returns `params`, `bse`, `tvalues`, `se_type`.
 - `tsecon.panel_lp(outcome, shock, horizon=8, n_lag_controls=2, se_type="driscoll_kraay", bandwidth=4.0, cumulative=False, jackknife=False)` — panel local projection of a common `shock` (length $T$) on an $N \times T$ outcome with entity fixed effects; `cumulative` returns the summed multiplier, `jackknife` applies the split-panel bias correction. Returns `irf`, `se`, `nobs`.
 - `tsecon.mean_group_var(entities, lags=1, trend="c", horizon=10, response=0, impulse=0)` — Pesaran-Smith mean-group panel VAR over a *list* of per-entity $T_i \times k$ matrices (the $T_i$ may differ). Returns averaged `intercept`, `coefs`, and orthogonalized `orth_irfs` with dispersion-based `*_se`, plus the selected `irf_path`/`irf_path_se` for one `(response, impulse)` pair.
 - `tsecon.panel_mean_group(ys, xs, method="mg")` — mean-group (`"mg"`) and CCE-MG (`"cce"`) for a heterogeneous panel, taking per-unit response vectors `ys` and $T_i \times k$ regressor matrices `xs`. Returns `coef`, `se`, `tstat`, the per-unit slope matrix `coef_per_unit`, `n_units`, and `k`. Validated to $\sim$1e-10 against a statsmodels per-unit-OLS golden (see `fixtures/tsecon-panelts.json`).
+- `tsecon.panel_pmg(ys, xs)` — the pooled mean group ARDL(1,1) estimator (Pesaran-Shin-Smith 1999), taking the same per-unit `ys`/`xs` as `panel_mean_group`. It pools the *long-run* coefficients across units by maximum likelihood while leaving the error-correction speed and short-run dynamics unit-specific, and returns the pooled long-run `theta` with `theta_se`, the average adjustment speed `phi_bar`, the per-unit speeds `phi` and innovation variances `sigma2`, and the `loglik`.
 
 These lean on machinery from earlier chapters you can reach for directly: `tsecon.ols` with `se_type="hac"` (chapter 3) is the single-series engine underneath the panel regressions; `tsecon.var_fit` and `tsecon.var_irf` (chapter 7) are the per-entity fits `mean_group_var` averages; and the whole panel-LP design is chapter 9's local projection with an entity dimension bolted on.
 
 **Roadmap** — the heterogeneous-panel frontier is specified but not yet callable:
 
-- **Dynamic CCE / CS-DL** (Chudik-Pesaran 2015) for panels with lagged dependent variables and long-run coefficients; **pooled mean group** (Pesaran-Shin-Smith 1999) with the long-run homogeneity restriction and its Hausman test against MG.
+- **Dynamic CCE / CS-DL** (Chudik-Pesaran 2015) for panels with lagged dependent variables and long-run coefficients; the **Hausman test** of `panel_pmg` against MG that decides whether the long-run homogeneity restriction is admissible.
 - **Interactive fixed effects** (Bai 2009) as the estimate-the-factor alternative to CCE's purge-the-factor, with a specification comparison between the two.
 - **Cross-sectional dependence diagnostics** — Pesaran's CD test and the CSD-exponent — to turn "is there a common factor?" into a pre-estimation hypothesis; **panel unit-root and cointegration** tests under cross-sectional dependence; and the **global VAR** for modeling spillovers between linked entities rather than purging common shocks.
 

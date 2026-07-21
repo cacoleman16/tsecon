@@ -44,6 +44,7 @@ A compact index. Find your row, jump to the section.
 | Volatility with fat tails or occasional jumps | `gas_volatility(density="student_t")` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Intraday returns / a realized-variance series | `realized_measures`, `har_rv` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Panel whose units have genuinely different slopes | `panel_mean_group` (`mg`/`cce`), `panel_pmg` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| A fiscal (integral) multiplier from an instrumented shock | `lp_multiplier` — not `lp_iv(..., cumulative=True)` | [2](#2-i-want-an-impulse-response) |
 | Panel IRF to a common shock; per-entity dynamics | `panel_lp`, `mean_group_var` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
 | Regressor is highly persistent (predictive regression) | `predictive_regression` (OLS + Stambaugh + IVX), `ivx_test` | [6](#6-my-regressor-is-highly-persistent) |
 | Many candidate predictors, most of them noise | `adaptive_lasso`, `lasso_path`, `cv_splits` | [7](#7-i-have-many-candidate-predictors) |
@@ -206,7 +207,17 @@ Then branch by what you have:
   ```python
   iv = tsecon.lp_iv(y, shock, instrument, horizons=16, n_lag_controls=4)
   iv["first_stage_f"]                             # first-stage strength
-  mult = tsecon.lp_iv(y, shock, instrument, horizons=16, cumulative=True)   # Ramey–Zubairy multiplier
+  ```
+
+- **You want a fiscal (integral) multiplier** — cumulated response per
+  cumulated dollar of the impulse. This has its own entry point, because
+  `lp_iv(..., cumulative=True)` cumulates only the *outcome* (a cumulative
+  IRF — a fine object, but **not** a multiplier; on the Ramey-Zubairy data it
+  runs 7 to 49 where the true multiplier is ~0.7):
+
+  ```python
+  m = tsecon.lp_multiplier(y, spending, instrument, horizons=16)
+  m["multiplier"], m["se"], m["first_stage_f"]    # the Ramey-Zubairy integral multiplier
   ```
 
 - **The response differs by regime** (recession vs expansion) — interact with a

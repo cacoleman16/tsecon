@@ -170,7 +170,7 @@ Read the pattern: the coefficient never moves — robust standard errors reweigh
 
 ![Robust standard errors: naive intervals lie, HAC restores coverage](../examples/img/03-robust-se.png)
 
-The left panel is one representative sample where the naive 95% interval confidently *excludes* the true $\beta = 0.5$ while the HAC interval honestly includes it. The right panel is the same comparison run 3,000 times — which brings us to the most useful habit this chapter can teach you.
+The left panel is one representative sample where the naive 95% interval is so misleadingly tight it barely reaches the true $\beta = 0.5$, while the honestly wider HAC interval covers it with room to spare. The right panel is the same comparison run 3,000 times — which brings us to the most useful habit this chapter can teach you.
 
 > **⚠ Common mistake** — Reaching for `hc1` ("robust standard errors") on time series data. White-type corrections fix heteroskedasticity only; they assume *independent* errors and are just as overconfident as `nonrobust` when errors are serially correlated. In cross-sections, HC1 is the workhorse; in time series, the relevant rung is HAC or better.
 

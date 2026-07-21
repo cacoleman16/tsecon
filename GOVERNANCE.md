@@ -1,7 +1,6 @@
 # Governance
 
-This document describes how decisions are made in `tsecon` (a working codename;
-the public name is resolved before the first release). It is deliberately
+This document describes how decisions are made in `tsecon`. It is deliberately
 lightweight and honest about the project's current stage: `tsecon` is pre-1.0,
 under active development, and maintained by one person with contributions
 welcome. As the community grows, this document is expected to grow with it — the

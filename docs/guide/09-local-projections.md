@@ -214,7 +214,12 @@ so the coefficient $\mathcal{M}_h$ *is* the horizon-$h$ multiplier, with correct
 
 One unglamorous detail that changes headline numbers: **units**. A multiplier should be "dollars of output per dollar of spending," but the natural regression variables are log GDP and log spending, whose coefficient is an elasticity — and converting an elasticity to a multiplier requires multiplying by the sample-average GDP/spending ratio, a number around 5 for the US, applied *ex post* and frozen at one value even though the ratio moves over a century of data. The **Gordon-Krenn transformation** avoids this: divide both output and spending by an estimate of trend GDP before running the LP, so both variables are already in "percent of trend GDP" units and the coefficient is a multiplier directly. Ramey and Zubairy use exactly this, and the roadmap module treats the transformation as a first-class option rather than a preprocessing chore.
 
-Per-horizon 2SLS ships today as `tsecon.lp_iv`: pass the outcome, the endogenous impulse, and the instrument, and it returns per-horizon IRFs, standard errors, and a first-stage effective F. Setting `cumulative=True` switches to the one-step Ramey-Zubairy construction — cumulated output regressed on the instrumented impulse. Here it is on a synthetic fiscal system where a confounder moves both spending and output, so naive OLS overstates the multiplier while the news instrument recovers it:
+Per-horizon 2SLS ships today as `tsecon.lp_iv`: pass the outcome, the endogenous impulse, and the instrument, and it returns per-horizon IRFs, standard errors, and a first-stage effective F. Two cumulative objects come out of this machinery, and conflating them is the classic way to report a wrong multiplier:
+
+- **The cumulative IRF.** `lp_iv(..., cumulative=True)` cumulates *only the outcome*: the horizon-$h$ coefficient is $\sum_{j=0}^{h} y_{t+j}$ per unit of *contemporaneous* spending. Because the numerator keeps accumulating while the denominator stays a one-period impulse, this number grows with the horizon by construction. It is a perfectly good summary of the output path; it is **not** a multiplier.
+- **The integral multiplier.** `tsecon.lp_multiplier` runs the one-step Ramey-Zubairy regression displayed above — cumulated output on cumulated spending, instrumented by the shock — so both sides accumulate over the same window and $\mathcal{M}_h$ is cumulated output per unit of cumulated spending, estimated as a single 2SLS parameter with honest HAC standard errors on that number (not a ratio of two separately estimated responses with a delta method bolted on).
+
+Here are both on a synthetic fiscal system where a confounder moves both spending and output, so naive OLS overstates the multiplier while the news instrument recovers it:
 
 ```python
 rng = np.random.default_rng(7)
@@ -233,18 +238,27 @@ print(round(biased["params"][1], 2))                 # 1.14 -- far above the tru
 
 # LP-IV instruments spending with the news shock at every horizon.
 res = tsecon.lp_iv(output, spending, military_news, horizons=20, n_lag_controls=4)
-print(round(res["irf"][0], 2))                        # 0.55 -- recovers the ~0.6 multiplier
+print(round(res["irf"][0], 2))                        # 0.55 -- recovers the true impact effect of 0.6
 print(round(res["first_stage_f"][0], 0))              # 1588 -- news is a strong instrument
 
-# cumulative=True: the one-step Ramey-Zubairy cumulative-response regression.
-mult = tsecon.lp_iv(output, spending, military_news,
-                    horizons=20, n_lag_controls=4, cumulative=True)
-print(round(mult["irf"][8], 2))                       # 2.91 -- cumulative output response, ~2 yrs
+# cumulative=True cumulates ONLY the outcome: a cumulative IRF, not a multiplier.
+cum_resp = tsecon.lp_iv(output, spending, military_news,
+                        horizons=20, n_lag_controls=4, cumulative=True)
+print(round(cum_resp["irf"][8], 2))                   # 2.91 -- cumulated output per unit of impact spending
+
+# lp_multiplier cumulates BOTH sides: the one-step Ramey-Zubairy integral multiplier.
+mult = tsecon.lp_multiplier(output, spending, military_news,
+                            horizons=20, n_lag_controls=4)
+print(round(mult["multiplier"][8], 2))                # 1.33 -- the DGP's true integral multiplier here is ~1.19
+print(round(mult["se"][8], 2))                        # 0.14 -- HAC SE on the multiplier coefficient itself
+print(round(mult["first_stage_f"][8], 0))             # 53 -- cumulated-impulse first stage, still strong
 ```
 
-The `first_stage_f` ladder is the Montiel Olea-Pflueger effective F, horizon by horizon; a value below the rule-of-thumb 10 is the signal to switch from a point estimate to a weak-instrument-robust Anderson-Rubin set. The Anderson-Rubin sets and the sup-t simultaneous bands that harden this into publication output are still on the [roadmap](../roadmap/07-local-projections.md).
+Read the contrast: at two years the cumulative IRF says 2.91 and is still climbing (it must — its denominator is a one-period impulse), while the integral multiplier says 1.33 ± 0.14, sitting on the DGP's true value — cumulated output over cumulated spending converges to $0.6/(1-0.5) = 1.2$, and equals 1.19 at $h = 8$. Only the second number answers "how many dollars of output per dollar of spending." `lp_multiplier` also returns the two reduced-form legs, `cumulative_outcome` and `cumulative_impulse`, whose ratio reproduces the multiplier by the just-identified IV algebra — useful for plotting, but the headline coefficient and its standard error come from the one-step regression.
 
-> **⚠ Common mistake — the ratio-of-IRFs multiplier.** It is tempting to estimate the cumulative output IRF and the cumulative spending IRF separately and report their ratio, delta-method standard errors attached. That is a *different estimator* from the one-step IV regression, and the two can differ materially in finite samples — the one-step version is the standard for good reason (Ramey and Zubairy 2018). The roadmap module implements the ratio version only as a labeled comparison, never as the headline number.
+The `first_stage_f` ladder — reported by both estimators — is the Montiel Olea-Pflueger effective F, horizon by horizon; a value below the rule-of-thumb 10 is the signal to switch from a point estimate to a weak-instrument-robust Anderson-Rubin set. The Anderson-Rubin sets and the sup-t simultaneous bands that harden this into publication output are still on the [roadmap](../roadmap/07-local-projections.md).
+
+> **⚠ Common mistake — the ratio-of-IRFs multiplier.** It is tempting to estimate the cumulative output IRF and the cumulative spending IRF separately and report their ratio, delta-method standard errors attached. That is a *different estimator* from the one-step IV regression, and the two can differ materially in finite samples — the one-step version is the standard for good reason (Ramey and Zubairy 2018). `lp_multiplier` follows suit: the two cumulated legs come back as a labeled comparison, never as the headline number.
 
 ## State dependence, panels, and other extensions
 
@@ -305,7 +319,7 @@ The LP literature is one of the most active in econometrics; here is the current
 | Medium/long horizons, misspecification a live worry | Local projections | Bias does not compound with horizon; robustness is the point |
 | Observed but possibly noisy shock series | LP with the shock ordered first among controls, unit-effect normalization | Equivalent to recursive identification; normalization survives classical measurement error |
 | Impulse variable endogenous, external instrument available | LP-IV with effective-F diagnostics | Lead-lag exogeneity + per-horizon 2SLS is the modern identification standard |
-| Fiscal (or any cumulative) multiplier | One-step IV on cumulated sums | The Ramey-Zubairy estimator; ratio-of-IRFs is a different, inferior estimator |
+| Fiscal (or any integral) multiplier | One-step IV on cumulated sums (`lp_multiplier`) | The Ramey-Zubairy estimator; ratio-of-IRFs is a different, inferior estimator, and outcome-only cumulation (`cumulative=True`) is a cumulative IRF, not a multiplier |
 | Persistent data and/or long horizons | Lag-augmented LP with plain robust SEs | Uniformly valid across persistence (incl. unit roots) and horizon length |
 | Impulse regressor is not innovation-like | Per-horizon HAC/HAR inference | Lag augmentation's EHW validity does not apply; HAC is the honest fallback |
 | Claims about a *stretch* of the IRF or its shape | Sup-t simultaneous bands | Pointwise bands overstate joint significance |
@@ -318,14 +332,14 @@ The LP literature is one of the most active in econometrics; here is the current
 
 **Available now in Python** — the dedicated LP estimators, plus every primitive the hand-rolled LP in this chapter needs:
 
-- `tsecon.lp` (baseline LP: `se="lag_augmented"` default and `se="hac"` fallback, `cumulative` for Ramey-Zubairy responses), `tsecon.lp_iv` (per-horizon 2SLS with the Montiel Olea-Pflueger effective F), `tsecon.lp_state` (dummy-interaction state-dependent LP, per-regime IRFs), and `tsecon.panel_lp` (fixed-effects panel LP with clustered / Driscoll-Kraay SEs)
+- `tsecon.lp` (baseline LP: `se="lag_augmented"` default and `se="hac"` fallback, `cumulative` for cumulated-outcome responses), `tsecon.lp_iv` (per-horizon 2SLS with the Montiel Olea-Pflueger effective F), `tsecon.lp_multiplier` (the one-step Ramey-Zubairy integral multiplier: cumulated outcome on cumulated instrumented impulse, HAC SEs on the multiplier itself, per-horizon effective F, and the two reduced-form legs for inspection), `tsecon.lp_state` (dummy-interaction state-dependent LP, per-regime IRFs), and `tsecon.panel_lp` (fixed-effects panel LP with clustered / Driscoll-Kraay SEs)
 - `tsecon.ols(y, X, se_type=...)` with `"hac"` (Newey-West, `maxlags` controls the bandwidth), `"hc0"`/`"hc1"` (the EHW standard errors that lag-augmented LP calls for), and `"nonrobust"`; returns `params`, `bse`, `tvalues`
 - `tsecon.long_run_variance` — the kernel LRV machinery under HAC
 - `tsecon.var_fit`, `tsecon.var_irf`, `tsecon.var_fevd`, `tsecon.var_forecast` — the VAR comparator for dual reporting
 - `tsecon.bootstrap_indices`, `tsecon.optimal_block_length`, `tsecon.philox_uniforms` — block-bootstrap experiments with reproducible parallel RNG
 - `tsecon.adf`, `tsecon.kpss`, `tsecon.check_stationarity` — the persistence pre-flight that tells you how much to worry about long-horizon inference
 
-Every runnable block in this chapter — the two hand-rolled loops, the VAR comparison, the LP-IV multiplier, and the state-dependent LP — works against today's API.
+Every runnable block in this chapter — the two hand-rolled loops, the VAR comparison, the LP-IV cumulative-IRF-versus-integral-multiplier contrast, and the state-dependent LP — works against today's API.
 
 **Built in Rust, awaiting Python bindings:** fixed-b/EWC (HAR) inference in the HAC crate — the modern small-sample answer where per-horizon HAC must be used, with the nonstandard critical values that make it size-correct.
 

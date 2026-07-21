@@ -29,15 +29,20 @@ leverage is real. Do **not** use it as a mean model, on a series with no ARCH
 effect (check `arch_lm` first), or on daily data when you have intraday data —
 realized measures (`har_rv`) dominate there.
 
-**Key arguments and defaults (and why).** `vol="garch"` is the workhorse;
-`mean="constant"` matches the common practice of demeaning; `dist="normal"`
-gives clean QMLE, switch to `dist="t"` when standardized residuals stay
-fat-tailed. `p=1, q=1` is the near-universal order; `o=1` turns on the
-asymmetry term for GJR/EGARCH. `forecast_horizon` returns the multi-step
+**Key arguments and defaults (and why).** `vol="garch"` is the workhorse.
+The default is `mean="zero"` — it assumes you feed *pre-demeaned* returns;
+pass `mean="constant"` to have the fit estimate `mu` for you (as the example
+below does). This is a real porting gotcha: the `arch` package defaults to a
+*constant* mean, so `arch_model(r).fit()` and `tsecon.garch_fit(r)` are not the
+same model unless `r` is already demeaned or you say `mean="constant"`.
+`dist="normal"` gives clean QMLE, switch to `dist="t"` when standardized
+residuals stay fat-tailed. `p=1, q=1` is the near-universal order; `o=1` turns
+on the asymmetry term for GJR/EGARCH. `forecast_horizon` returns the multi-step
 variance path.
 
 **How to read the output.** `params` are named by `param_names`
-(`mu, omega, alpha[1], beta[1]`, plus `nu` for *t*). Trust **`se_robust`**
+(`omega, alpha[1], beta[1]`, with `mu` prepended under `mean="constant"` and
+`nu` appended for *t*). Trust **`se_robust`**
 (Bollerslev-Wooldridge) over `se_mle` unless you believe the density.
 `conditional_volatility` is the filtered σ_t, `std_residuals` should look
 i.i.d. (re-run `arch_lm` on them), and `variance_forecast` is the horizon path.
@@ -143,21 +148,37 @@ positive-definiteness / variance-targeting properties (`fixtures/mgarch.json`).
 
 **References.** Bollerslev (1990, CCC); Engle (2002, DCC).
 
+The DGP below is chosen to make the CCC/DCC contrast visible: the true
+correlation *moves* — a calm regime (ρ = 0.2) followed by a crisis regime
+(ρ = 0.8). On constant-correlation data DCC would (correctly) collapse to the
+CCC special case with `b ≈ 0`; here the dynamics have something to track.
+
 ```python
 import numpy as np, tsecon
 
 rng = np.random.default_rng(0)
-n, k = 1500, 3
-L = np.linalg.cholesky([[1.0, 0.4, 0.2],       # target contemporaneous correlation
-                        [0.4, 1.0, 0.3],
-                        [0.2, 0.3, 1.0]])
-R = np.zeros((n, k)); s2 = np.full(k, 0.5)
+n = 2000
+rho = np.where(np.arange(n) < n // 2, 0.2, 0.8)   # calm rho=0.2, then crisis rho=0.8
+R = np.zeros((n, 2)); s2 = np.full(2, 0.5)
 for t in range(n):
-    z = L @ rng.standard_normal(k)             # correlated unit shocks
-    R[t] = np.sqrt(s2) * z
-    s2 = 0.05 + 0.08 * R[t] ** 2 + 0.90 * s2   # per-series GARCH(1,1) recursion
+    z1 = rng.standard_normal()                     # correlated unit shocks at rho[t]
+    z2 = rho[t] * z1 + np.sqrt(1.0 - rho[t] ** 2) * rng.standard_normal()
+    R[t] = np.sqrt(s2) * np.array([z1, z2])
+    s2 = 0.05 + 0.08 * R[t] ** 2 + 0.90 * s2       # per-series GARCH(1,1) recursion
 
-dcc = tsecon.dcc_garch(R)                       # returns is T x k
+ccc = tsecon.ccc_garch(R)                           # returns is T x k
+print("CCC correlation:", round(ccc["correlation"][0][1], 3))
+# CCC correlation: 0.479
+
+dcc = tsecon.dcc_garch(R)
 print("a, b:", round(dcc["a"], 3), round(dcc["b"], 3), " converged:", dcc["converged"])
-print("last conditional correlation:\n", np.round(dcc["correlation_last"], 3))
+print("last conditional correlation:", round(dcc["correlation_last"][0][1], 3))
+# a, b: 0.026 0.974  converged: True
+# last conditional correlation: 0.802
 ```
+
+The two fits tell the story. CCC reports 0.479 — a blend of the two regimes
+that is true of *neither*. DCC estimates persistent dynamics (`a + b ≈ 0.999`,
+the near-unit persistence a one-time break masquerades as) and its most recent
+conditional correlation, 0.802, has tracked its way to the crisis regime's
+true ρ = 0.8.

@@ -79,8 +79,8 @@ tsecon.long_run_variance(x, kernel="qs")     # the underlying LRV machinery
 
 ![Robust SEs](img/03-robust-se.png)
 
-Left: one representative sample where the naive interval confidently
-excludes the true β while the HAC interval honestly includes it. Right: the
+Left: one representative sample where the naive intervals only just graze
+the true β while the wider HAC interval covers it comfortably. Right: the
 same comparison run **3,000 times** (9,000 regressions, seconds through the
 Rust core): nominal 95% intervals cover only ~75% of the time under iid or
 White standard errors; Newey-West restores most of the gap (the remainder is
@@ -208,10 +208,10 @@ dm  = tsecon.dm_test(e_benchmark, e_model, h=1, loss="squared")
 
 ![Forecast evaluation](img/09-forecast-eval.png)
 
-Theta beats the seasonal naive decisively here (MASE 1.23 vs 2.15, DM p =
-0.001) — and the plot shows *why*: it captures both the trend and the
-seasonal shape. The DM statistic matches the documented reference case at
-1e-10.
+Theta beats the seasonal naive decisively here (MASE 2.23 vs 3.43, with the
+plain naive at 5.71; DM stat 4.96, p = 0.000) — and the plot shows *why*: it
+captures both the trend and the seasonal shape. The DM statistic matches the
+documented reference case at 1e-10.
 
 ---
 
@@ -328,8 +328,9 @@ The test bed is an AR(2) whose true impulse response is computable
 analytically (the ψ-weights, dashed red), and the local projection tracks it
 inside its 90% HAC bands at every horizon — including the hump at h = 1 and
 the long geometric tail. This is Jordà (2005) built from tsecon primitives
-today; the dedicated module ([Module 07](../roadmap/07-local-projections.md))
-hardens the inference with lag augmentation and joint sup-t bands.
+by hand; the shipped `tsecon.lp` ([Module 07](../roadmap/07-local-projections.md))
+packages the same estimator with lag-augmented inference as its default —
+see the structural wing below.
 
 ### News impact curves: is volatility asymmetric?
 

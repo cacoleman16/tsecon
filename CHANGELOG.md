@@ -7,8 +7,8 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Pre-alpha, under active development. Not yet published to PyPI; the library
-name is a working codename that will change before the first public release.
+Pre-1.0, under active development. The name is settled — the package publishes
+to PyPI as `tsecon` at the first tagged release.
 
 ### Added — foundations and first model classes
 - **Foundations**: Philox RNG (bit-identical to NumPy), special functions and
@@ -17,23 +17,75 @@ name is a working codename that will change before the first public release.
   linear-Gaussian state-space (Kalman) engine, the numerical optimizer suite
   with the Monahan stationarity transform, and the HAC/robust-inference module.
 - **Diagnostics**: ACF/PACF, Ljung-Box, Jarque-Bera, ARCH-LM; the full
-  unit-root workflow (ADF with MacKinnon p-values, KPSS, `check_stationarity`).
-- **Models**: exact-MLE ARIMA; GARCH/GJR/EGARCH with normal and Student-t
-  QMLE and Bollerslev-Wooldridge robust standard errors; reduced-form VAR with
-  IRF/FEVD/Granger causality/forecasting; trend-cycle filters (HP, one-sided
-  HP, Baxter-King, Christiano-Fitzgerald, Hamilton); forecast evaluation
-  (Diebold-Mariano with HLN, Theta, accuracy measures); a Minnesota-NIW
-  Bayesian VAR with closed-form posterior, posterior impulse-response draws,
-  and ArviZ-exact convergence diagnostics; and a first panel slice
-  (fixed effects with clustered/Driscoll-Kraay SEs, panel LP, mean-group VAR).
+  unit-root workflow (ADF with MacKinnon p-values, KPSS, `check_stationarity`);
+  spectral analysis (periodogram, Welch, coherence).
+- **Univariate models**: exact-MLE ARIMA; GARCH/GJR/EGARCH with normal and
+  Student-t QMLE, Bollerslev-Wooldridge robust standard errors, and a fused
+  allocation-free likelihood with analytic gradients; GAS/DCS score-driven
+  volatility (Gaussian and Student-t); Markov-switching AR; trend-cycle
+  filters (HP, one-sided HP, Baxter-King, Christiano-Fitzgerald, Hamilton);
+  long memory (fractional differencing/integration, GPH, local Whittle).
+- **Multivariate and structural**: reduced-form VAR with IRF/FEVD/Granger/
+  forecasting and an honest stability block (`is_stable`/`min_root`);
+  sign-restricted Bayesian SVARs; FAVAR; Diebold-Yilmaz connectedness; the PCA
+  factor model with Bai-Ng selection; Johansen cointegration and VECM;
+  multivariate GARCH (CCC/DCC).
+- **Local projections**: `lp` (lag-augmented inference by default), `lp_iv`
+  with a per-horizon first-stage F, state-dependent `lp_state`, a three-valued
+  `cumulative` mode, and `lp_multiplier` — the one-step Ramey-Zubairy integral
+  multiplier as a first-class entry point (because outcome-only cumulation is
+  a cumulative IRF, not a multiplier).
+- **Bayesian**: a Minnesota-NIW Bayesian VAR with closed-form posterior,
+  posterior impulse-response draws, and ArviZ-exact convergence diagnostics.
+- **Forecasting and evaluation**: Diebold-Mariano (HLN), Clark-West,
+  Giacomini-White, Theta, accuracy measures, and the rolling/expanding
+  backtest engine.
+- **GMM**: linear IV-GMM (2SLS/two-step/iterated, Hansen J) and nonlinear GMM
+  with Python-callback moment conditions.
+- **Predictive regressions**: OLS/Stambaugh/IVX in one call plus the joint
+  IVX test — Monte-Carlo-validated to hold size through an exact unit root.
+- **Panels**: fixed effects with clustered/Driscoll-Kraay SEs, panel LP,
+  mean-group VAR, and the heterogeneous-panel trio (mean group, CCE-MG, PMG).
+- **Nowcasting and mixed frequencies**: MIDAS (weights/U-MIDAS/weighted),
+  DFM nowcasting (two-step and exact one-step MLE) with a ragged edge and the
+  Bańbura-Modugno news decomposition.
+- **Term structure**: Nelson-Siegel, Svensson, dynamic Nelson-Siegel, and the
+  arbitrage-free (AFNS) yield adjustment of Christensen-Diebold-Rudebusch.
+- **Applied-macro extensions**: recession-probability models (static and
+  Kauppi-Saikkonen dynamic probit/logit); survey-expectations tools
+  (Coibion-Gorodnichenko, Mincer-Zarnowitz, disagreement); the specification
+  and stability battery (White, Koenker-Breusch-Pagan, RESET, Chow, CUSUM);
+  and a linear rational-expectations (DSGE-lite) solver via Blanchard-Kahn.
+- **Python layer**: maturin mixed layout (`tsecon._core` + a pure-Python
+  package); the opt-in `tsecon.results` rendering layer — `dict` subclasses
+  with `.summary()`/`.plot_*()` that preserve the plain-dict contract;
+  complete type stubs with `py.typed`.
 - **Configurable inference**: a uniform `se_type=` on regression estimators;
-  configurable interval coverage (`alpha`/`conf_alpha`); cumulative IRF views
-  that cumulate draws (Bayesian) or the running sum (frequentist).
-- **Docs**: a 13-chapter teaching guide, a worked figure gallery, the
-  module-by-module roadmap, and an interactive demo.
-- **Packaging**: complete `pyproject.toml` metadata, type stubs with
-  `py.typed`, and GitHub Actions CI + a tag-triggered release pipeline with
-  PyPI trusted publishing (see [Module 14](docs/roadmap/14-packaging-distribution.md)).
+  configurable interval coverage; cumulative IRF views.
+- **Evidence beyond fixtures**: a seeded Monte Carlo validation suite (size /
+  coverage / consistency) and frontier experiments (LP vs VAR; weak-IV LP-IV);
+  a 25-case cross-library parity benchmark harness (statsmodels, SciPy,
+  scikit-learn, `arch`) that gates CI; two replications of published results —
+  Ramey-Zubairy (2018) government-spending multipliers and Estrella-Mishkin
+  (1998) yield-curve recession prediction — running offline from committed
+  public data; Rust and Python coverage tooling.
+- **Docs**: a 15-chapter teaching guide, model cards for every estimator
+  family, a generated API reference with a drift guard, a validation matrix,
+  a testing-and-validation map, migration guides (statsmodels/R/Stata) with a
+  Rosetta glossary, a worked figure gallery, and an interactive demo.
+- **Packaging**: complete `pyproject.toml` metadata, abi3-py39 wheels tested
+  on Python 3.9 and 3.13 in CI, GitHub Actions CI (Rust gates, a three-OS
+  wheel matrix, a mypy stub check, and an evidence job running the Monte Carlo
+  suites and the parity gate), and a tag-triggered release pipeline with PyPI
+  trusted publishing.
+
+### Removed
+- **Data-fetching loaders** (`tsecon.datasets`): built, then deliberately
+  removed before release. A library that hardcodes external data URLs owns
+  their breakage (the widely-cited FRED-MD URL had already moved), so tsecon
+  ships no network code — the only runtime dependency is NumPy, and the
+  replications run on small public datasets committed to the repository.
 
 Every estimator is validated against a reference implementation (statsmodels,
-SciPy, NumPy, `arch`, `linearmodels`) in the test suite.
+SciPy, NumPy, `arch`, `linearmodels`, scikit-learn, ArviZ) or a documented
+closed form in the test suite.

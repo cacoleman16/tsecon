@@ -180,7 +180,7 @@ this solver leaves out of scope).
 ```python
 import numpy as np, tsecon
 
-# Cagan money demand:  m_t = a·E_t[m_{t+1}] + rho·x_t,   x_t = rho·x_{t-1} + eps_t
+# Cagan money demand:  m_t = a·E_t[m_{t+1}] + x_t,   x_t = rho·x_{t-1} + eps_t
 # with a = 0.7 (semi-elasticity) and an AR(1) forcing variable, rho = 0.6.
 # Stack y = (x, m):  x is predetermined (the exogenous state), m is the jump.
 a, rho = 0.7, 0.6

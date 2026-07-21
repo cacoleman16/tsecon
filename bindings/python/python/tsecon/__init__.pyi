@@ -15,7 +15,11 @@ import numpy.typing as npt
 __version__: str
 
 _F64 = npt.NDArray[np.float64]
-_ArrayLike = npt.ArrayLike
+# Array arguments must be float64 NumPy arrays (C-order or strided views both
+# work; non-float64 dtypes and plain lists are rejected at the Rust boundary).
+# The alias is deliberately narrow so type checkers catch the mismatch that the
+# runtime would otherwise report with a low-level error.
+_ArrayLike = npt.NDArray[np.float64]
 
 # ----------------------------------------------------------- diagnostics
 def acf(y: _ArrayLike, nlags: int = ..., adjusted: bool = ...) -> dict[str, _F64]:

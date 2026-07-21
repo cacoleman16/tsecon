@@ -164,7 +164,7 @@ fc_drift  = train[-1] + np.arange(1, h + 1) * (train[-1] - train[0]) / (n - 1)
 
 ![Forecast evaluation](../examples/img/09-forecast-eval.png)
 
-The gallery figure shows this exact exercise: Theta captures both the trend and the seasonal shape while the naive methods each miss one, and the MASE panel quantifies it (Theta 1.23 against the seasonal naive's 2.15, with a Diebold-Mariano p-value of 0.001 — both tools defined next).
+The gallery figure shows this exact exercise: Theta captures both the trend and the seasonal shape while the naive methods each miss one, and the MASE panel quantifies it (Theta 2.23 against the seasonal naive's 3.43 and the naive's 5.71, with a Diebold-Mariano statistic of 4.96, p < 0.001 — both tools defined next).
 
 > ⚠ **Common mistake.** Publishing a forecast evaluation with no benchmark column. An RMSE in isolation is uninterpretable; the reader cannot tell whether your model added anything over "tomorrow equals today." The macro literature's convention — report RMSE *ratios* against a random walk (Atkeson and Ohanian 2001 made this famous for inflation) — exists precisely because bare loss numbers hide the benchmark comparison.
 
@@ -209,7 +209,7 @@ which penalizes being on the wrong side of the realization asymmetrically — ex
 
 ## Is the difference real? The Diebold-Mariano test
 
-Your model's MASE is 1.23 and the benchmark's is 2.15. Over only 20 evaluation points, could that gap be luck? Accuracy tables without significance tests invite overreading — this is the forecasting analogue of reporting coefficients without standard errors.
+Your model's MASE is 2.23 and the benchmark's is 3.43. Over only 20 evaluation points, could that gap be luck? Accuracy tables without significance tests invite overreading — this is the forecasting analogue of reporting coefficients without standard errors.
 
 Diebold and Mariano (1995) reduced the question to something elegant. Take two forecast error streams $e_{1t}$ and $e_{2t}$, pick a loss function $L$ (squared or absolute), and form the **loss differential**
 

@@ -218,6 +218,41 @@ and docstrings live in
 | `nelson_siegel` | Nelson-Siegel yield-curve fit (Diebold-Li) |
 | `svensson` | Svensson four-factor yield-curve fit |
 | `dynamic_ns` | Dynamic Nelson-Siegel factors + one-step forecast |
+| `afns_adjustment` | Arbitrage-free (AFNS) yield adjustment (Christensen-Diebold-Rudebusch) |
+
+### Specification & stability tests
+
+| Function | What it does |
+|---|---|
+| `heteroskedasticity_test` | White or Koenker-Breusch-Pagan heteroskedasticity test |
+| `reset_test` | Ramsey RESET functional-form test |
+| `chow_test` | Chow break test at a known split date |
+| `cusum_test` | Brown-Durbin-Evans CUSUM parameter-stability test |
+
+### Predictive regressions & recession probability
+
+| Function | What it does |
+|---|---|
+| `predictive_regression` | OLS + Stambaugh correction + IVX inference in one call |
+| `ivx_test` | Joint IVX predictability test for several persistent predictors |
+| `recession_probit` | Static or Kauppi-Saikkonen dynamic recession probit/logit |
+
+### Survey expectations & long memory
+
+| Function | What it does |
+|---|---|
+| `cg_regression` | Coibion-Gorodnichenko information-rigidity regression (HAC SEs) |
+| `forecast_efficiency` | Mincer-Zarnowitz unbiasedness/efficiency test |
+| `forecast_disagreement` | Cross-forecaster dispersion, quartiles, IQR per period |
+| `frac_diff` | Fractional differencing `(1 − L)^d x` |
+| `frac_integrate` | Fractional integration (the inverse of `frac_diff`) |
+| `long_memory_d` | Estimate `d` (GPH log-periodogram or Robinson local Whittle) |
+
+### Structural models
+
+| Function | What it does |
+|---|---|
+| `dsge_solve` | Blanchard-Kahn solution of a linear rational-expectations model |
 
 ---
 
