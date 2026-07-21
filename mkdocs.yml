@@ -1,5 +1,6 @@
 site_name: tsecon
 site_description: A high-performance, Rust-core time series econometrics library for Python.
+site_url: https://cacoleman16.github.io/tsecon/
 docs_dir: docs
 repo_url: https://github.com/cacoleman16/tsecon
 repo_name: tsecon
@@ -65,6 +66,9 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 extra_javascript:
+  # Config must load before the bundle; docs/javascripts/mathjax.js scopes
+  # MathJax to arithmatex nodes and re-typesets on page swaps.
+  - javascripts/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 nav:
