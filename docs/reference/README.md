@@ -46,7 +46,7 @@ method fits your problem and how to trust its output.
 | [Spectral analysis](model-cards/spectral.md) | `periodogram`, `welch`, `coherence` |
 | [Volatility](model-cards/volatility.md) | `garch_fit`, `gas_volatility`, `ccc_garch`, `dcc_garch` |
 | [VAR / SVAR](model-cards/var-svar.md) | `var_fit`, `var_irf`, `var_fevd`, `var_granger`, `var_forecast`, `sign_restricted_svar`, `favar`, `connectedness` |
-| [Local projections](model-cards/local-projections.md) | `lp`, `lp_iv`, `lp_state` |
+| [Local projections](model-cards/local-projections.md) | `lp`, `lp_iv`, `lp_multiplier`, `lp_state`, `smooth_lp` |
 | [Bayesian](model-cards/bayesian.md) | `bvar_fit`, `bvar_irf_draws`, `mcmc_diagnostics` |
 | [GMM](model-cards/gmm.md) | `iv_gmm`, `gmm_nonlinear` |
 | [Cointegration & regimes](model-cards/cointegration-regime.md) | `johansen`, `vecm`, `markov_switching_ar` |
@@ -63,3 +63,6 @@ method fits your problem and how to trust its output.
 | [Specification & diagnostic tests](model-cards/specification-tests.md) | `heteroskedasticity_test`, `reset_test`, `chow_test`, `cusum_test` |
 | [Arbitrage-free Nelson-Siegel](model-cards/afns.md) | `afns_adjustment` |
 | [DSGE (linear RE solver)](model-cards/dsge.md) | `dsge_solve` |
+| [Quantile regression & growth-at-risk](model-cards/quantile.md) | `quantile_regression`, `quantile_lp`, `growth_at_risk` |
+| [Functional shocks (FVAR/FLP)](model-cards/functional-shocks.md) | `functional_pca`, `flp`, `flp_scenario`, `fvar_scenario` |
+| [Structural breaks](model-cards/structural-breaks.md) | `bai_perron`, `sup_f_test` |

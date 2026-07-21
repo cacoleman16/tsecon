@@ -11,6 +11,7 @@
 - The robust standard-error ladder — iid → HC0/HC1 → HAC — and how to climb it with `tsecon.ols(se_type=...)`
 - Modern fixed-b and EWC inference (Lazarus–Lewis–Stock–Watson 2018), and why it exists
 - Block and wild bootstraps that respect dependence, with Monte Carlo experiments that reproduce exactly on any machine
+- Quantile regression: inference on the conditional *distribution* rather than the mean — the check loss, when quantile slopes fan apart, and the Powell sandwich
 
 ## The idea
 
@@ -462,6 +463,51 @@ Read the OLS column top to bottom: a test that is meant to reject 5% of the time
 
 > **⚠ Common mistake** — Reaching for HAC or Newey–West standard errors to rescue a predictive regression on a persistent predictor. HAC corrects serial correlation in the *residuals*; the Stambaugh problem is near-unit-root persistence in the *regressor* combined with endogeneity, which HAC leaves untouched — the over-rejection survives. And do not read IVX's honesty as pessimism: it controls *size*, not power, so a large p-value near a unit root means "no evidence of predictability," not "predictability disproven."
 
+## Beyond the mean: quantile regression
+
+Everything in this chapter so far has been about one target: the conditional **mean**, and how uncertain its estimate is. But "how does $x$ move the average of $y$" is only one question you can ask a conditional distribution, and for many economic problems it is the wrong one. A risk manager cares about the 5th percentile of returns, not the mean; a labor economist asking whether education compresses or stretches the wage distribution needs the whole ladder of quantiles; the growth-at-risk workflow in the [forecasting chapter](05-forecasting.md#growth-at-risk-forecasting-the-downside) is built on nothing else. **Quantile regression** (Koenker and Bassett, 1978) makes any conditional quantile a regression target — same design matrix, different loss.
+
+The trick is the **check loss** (you will meet it again as the *pinball loss* when the forecasting chapter scores quantile forecasts):
+
+$$
+\rho_\tau(u) \;=\; u\,\bigl(\tau - \mathbf{1}\{u < 0\}\bigr),
+$$
+
+an asymmetrically tilted absolute value: positive residuals cost $\tau |u|$, negative ones cost $(1-\tau)|u|$. Minimizing $\sum_t \rho_\tau(y_t - x_t'\beta)$ over $\beta$ estimates the conditional $\tau$-quantile, for exactly the reason the median minimizes absolute error: the asymmetry is calibrated so the optimal fit leaves a fraction $\tau$ of the observations below it. Set $\tau = 0.5$ and you have median regression; sweep $\tau$ across $(0,1)$ and you trace out how the *entire shape* of the conditional distribution moves with $x$.
+
+When does this tell you something OLS cannot? There is a sharp null case: if the model is a pure location shift — $y = x'\beta + u$ with iid errors — then every quantile's slope equals the OLS slope, and the quantile fits differ only in their intercepts. Quantile regression earns its keep exactly when that fails: under **heteroskedasticity** (the spread of $y$ depends on $x$, so upper and lower quantile slopes fan apart) or **asymmetry** (a covariate that lengthens one tail only). Both are the norm, not the exception, in economic data.
+
+Inference needs one more idea. The asymptotic variance of a quantile estimator has a sandwich form whose meat involves the **sparsity** — one over the density of the errors at the quantile being estimated. Intuition: where data are dense, the quantile is pinned down precisely; in a sparse tail, it wobbles. The density must itself be estimated, and `quantile_regression` does it the standard way (Powell, 1991): a kernel estimate of the density at the fitted quantile, Epanechnikov kernel, Hall-Sheather (1988) bandwidth — the same estimator statsmodels' `QuantReg` reports, matched at 1e-6 in the test suite, with the IRLS coefficients matched likewise.
+
+Watch the slopes fan apart on a location-*scale* model where the spread of $y$ grows with $x$:
+
+```python
+rng = np.random.default_rng(21)
+n = 600
+x = rng.uniform(0.0, 4.0, n)
+u = rng.standard_normal(n)
+y = 1.0 + 0.5 * x + (0.4 + 0.45 * x) * u        # true tau-slope: 0.5 + 0.45 * z_tau
+X = np.column_stack([np.ones(n), x])            # include your own constant, as always
+
+qr = tsecon.quantile_regression(y, X, taus=[0.10, 0.50, 0.90])
+for i, tau in enumerate(qr["taus"]):
+    b, s, tv = qr["params"][i], qr["bse"][i], qr["tvalues"][i]
+    print(f"tau={tau}: slope {b[1]:+.3f}  (se {s[1]:.3f}, t {tv[1]:+.1f})")
+
+# tau=0.1: slope -0.092  (se 0.058, t -1.6)     true: -0.077
+# tau=0.5: slope +0.574  (se 0.048, t +12.0)    true: +0.500
+# tau=0.9: slope +1.185  (se 0.064, t +18.7)    true: +1.077
+
+r = tsecon.ols(y, X, se_type="hc1")
+print(round(r["params"][1], 3))                  # 0.541 — the mean slope, one number for three stories
+```
+
+OLS reports a single slope of 0.54 and, with its HC1 standard error, reports it *honestly* — but it is an honest answer to a question that averages away the phenomenon. The quantile ladder shows what is actually happening: at the 10th percentile the slope is statistically indistinguishable from zero, at the median it is 0.57, at the 90th it is 1.19 — all three within two standard errors of their true values ($0.5 + 0.45\,z_\tau$). The relationship lives in the upper tail and vanishes in the lower one, and no amount of robust-standard-error machinery on the mean regression could have said so. The result dict also carries per-tau `bandwidth` and `sparsity` (report them, for the same reproducibility reason you report a HAC bandwidth) and a single `converged` flag over all taus. Full contract and validation: the [quantile model card](../reference/model-cards/quantile.md).
+
+Two pointers for where this machinery goes next. Dynamic responses of quantiles to shocks — how a financial shock moves the *left tail* of future GDP growth — are quantile local projections, `tsecon.quantile_lp` ([Chapter 9](09-local-projections.md)); the full policy-institution workflow around them is growth-at-risk, `tsecon.growth_at_risk` ([Chapter 5](05-forecasting.md#growth-at-risk-forecasting-the-downside)).
+
+> **⚠ Common mistake** — Fitting quantiles one $\tau$ at a time and treating the fits as a coherent distribution. Each $\tau$ is estimated separately, so nothing forces the fitted 90th percentile to sit above the fitted 50th at every $x$ — **quantile crossing** is a finite-sample fact of life, worst in small samples and at extreme taus. If you need a valid distribution (fan charts, density evaluation), sort the fitted quantiles at each observation — the Chernozhukov–Fernández-Val–Galichon rearrangement, which `growth_at_risk` applies for you and flags via `crossing`. A second trap: the Powell sandwich here assumes independent errors — it is the quantile analogue of HC, not HAC. For strongly autocorrelated data, treat the reported `bse` as a lower bound and lean on the moving-block bootstrap from this chapter.
+
 ## The frontier
 
 Heteroskedasticity-and-autocorrelation-robust ("HAR") inference is an unusually live corner of econometric theory, and its modern consensus is recent. The state of the art:
@@ -486,6 +532,7 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 | Evaluating a procedure (does my CI cover? does my test have size 5%?) | A seeded Monte Carlo with per-replication streams (`seed=base+rep`) | Coverage is checkable, not guessable — and per-index streams make the experiment exactly reproducible |
 | Before trusting any regression inference: is the model even right? | `reset_test` (form), `heteroskedasticity_test` (variance), `chow_test`/`cusum_test` (stability) | A robust standard error is honest only if the mean, variance, and coefficients are what you assumed; test that first |
 | Predicting a return with a persistent, endogenous predictor | `predictive_regression` / `ivx_test` (report the IVX Wald) | The OLS t-test over-rejects near a unit root; IVX keeps its size uniformly over the predictor's persistence |
+| The question is about a tail or the distribution's shape, not the mean | `quantile_regression` | Check-loss estimation targets any conditional quantile; slopes fan apart under heteroskedasticity or asymmetry that OLS averages away |
 | AR root near one, confidence interval for persistence | Grid bootstrap (roadmap) | Standard asymptotics and standard bootstraps are both invalid near the unit root |
 
 ## What tsecon implements today
@@ -499,6 +546,7 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 - `tsecon.philox_uniforms(seed, n)` — seeded uniform draws, bit-compatible with `numpy.random.Philox`.
 - `tsecon.heteroskedasticity_test(y, X, test=...)`, `tsecon.reset_test(y, X, max_power=...)`, `tsecon.chow_test(y, X, split=...)`, `tsecon.cusum_test(y, X)` — the specification-and-stability battery (White / Koenker–Breusch–Pagan, Ramsey RESET, Chow, Brown–Durbin–Evans CUSUM). `X` must include an explicit constant column. See the [specification-tests model card](../reference/model-cards/specification-tests.md).
 - `tsecon.predictive_regression(r, x)` and `tsecon.ivx_test(r, xs)` — OLS / Stambaugh / IVX views of a predictive regression and the joint IVX Wald test, with correct size uniformly over a persistent predictor's root. See the [predictive-regressions model card](../reference/model-cards/predictive-regressions.md).
+- `tsecon.quantile_regression(y, x, taus=...)` — IRLS check-loss coefficients with Powell kernel-sandwich standard errors (Epanechnikov kernel, Hall-Sheather bandwidth); per-tau `params`, `bse`, `tvalues`, `bandwidth`, `sparsity`, plus `converged`. statsmodels-`QuantReg`-validated at 1e-6; include your own constant column. See the [quantile model card](../reference/model-cards/quantile.md).
 
 **Built in Rust, awaiting Python bindings** (in `tsecon-hac` and `tsecon-bootstrap`):
 
@@ -521,4 +569,5 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 - **Künsch (1989), Annals of Statistics** — the moving block bootstrap; the founding paper of dependent-data resampling.
 - **Politis & Romano (1994), Journal of the American Statistical Association** — the stationary bootstrap: random geometric block lengths, and the scheme whose automatic tuning (Politis–White 2004) tsecon ships as the default.
 - **Davidson & Flachaire (2008), Journal of Econometrics** — the wild bootstrap "tamed": why Rademacher weights are the right default and how to implement restricted-residual schemes correctly.
+- **Koenker, R. & G. Bassett (1978), Econometrica** — the founding paper of quantile regression: the check loss and the insight that any quantile is a regression target; **Koenker (2005), *Quantile Regression*, Cambridge** is the book-length treatment, including the sparsity-based inference tsecon implements.
 - **Lahiri (2003), *Resampling Methods for Dependent Data*, Springer** — the canonical book-length treatment of block bootstraps, their higher-order properties, and when they beat asymptotic inference.

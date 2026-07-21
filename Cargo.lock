@@ -909,6 +909,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tsecon-breaks"
+version = "0.0.1"
+dependencies = [
+ "serde_json",
+ "tsecon-hac",
+ "tsecon-linalg",
+ "tsecon-rng",
+ "tsecon-stats",
+]
+
+[[package]]
 name = "tsecon-coint"
 version = "0.0.1"
 dependencies = [
@@ -968,6 +979,17 @@ dependencies = [
  "serde_json",
  "tsecon-hac",
  "tsecon-stats",
+]
+
+[[package]]
+name = "tsecon-funcshock"
+version = "0.0.1"
+dependencies = [
+ "serde_json",
+ "tsecon-hac",
+ "tsecon-linalg",
+ "tsecon-rng",
+ "tsecon-var",
 ]
 
 [[package]]
@@ -1139,6 +1161,7 @@ dependencies = [
  "tsecon-arima",
  "tsecon-bayes",
  "tsecon-bootstrap",
+ "tsecon-breaks",
  "tsecon-coint",
  "tsecon-connect",
  "tsecon-diag",
@@ -1146,6 +1169,7 @@ dependencies = [
  "tsecon-favar",
  "tsecon-filters",
  "tsecon-forecast",
+ "tsecon-funcshock",
  "tsecon-garch",
  "tsecon-gas",
  "tsecon-gmm",
@@ -1160,6 +1184,7 @@ dependencies = [
  "tsecon-panel",
  "tsecon-panelts",
  "tsecon-predreg",
+ "tsecon-quantile",
  "tsecon-realized",
  "tsecon-recession",
  "tsecon-regime",
@@ -1171,6 +1196,17 @@ dependencies = [
  "tsecon-survey",
  "tsecon-termstructure",
  "tsecon-var",
+]
+
+[[package]]
+name = "tsecon-quantile"
+version = "0.0.1"
+dependencies = [
+ "serde_json",
+ "tsecon-hac",
+ "tsecon-linalg",
+ "tsecon-rng",
+ "tsecon-stats",
 ]
 
 [[package]]

@@ -117,6 +117,9 @@ nav:
           - Specification & diagnostic tests: reference/model-cards/specification-tests.md
           - Arbitrage-free Nelson-Siegel: reference/model-cards/afns.md
           - DSGE (linear RE solver): reference/model-cards/dsge.md
+          - Quantile regression & growth-at-risk: reference/model-cards/quantile.md
+          - Functional shocks (FVAR/FLP): reference/model-cards/functional-shocks.md
+          - Structural breaks: reference/model-cards/structural-breaks.md
   - Migration:
       - From statsmodels: migration/from-statsmodels.md
       - From R: migration/from-r.md

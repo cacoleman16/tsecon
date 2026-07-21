@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**94 functions.**
+**104 functions.**
 
 ## diagnostics
 
@@ -1274,4 +1274,186 @@ def dsge_solve(
 Blanchard-Kahn solution of a linear RE model A E[y_{t+1}] = B y_t + C z.
 
     Returns the decision rule g, the law of motion p/q, eigenvalue_moduli, and verdict.
+
+## quantile & growth-at-risk
+
+### `quantile_regression`
+
+```python
+def quantile_regression(
+    y: _ArrayLike,
+    x: _ArrayLike,
+    taus: Sequence[float] | None = ...,
+    se: str = ...,
+) -> dict[str, Any]:
+```
+
+Linear quantile regression (statsmodels QuantReg, all defaults).
+
+    IRLS check-loss coefficients with Powell kernel-sandwich standard errors
+    (Epanechnikov kernel, Hall-Sheather bandwidth; `se="robust"` is the only
+    flavor). Include the constant column in `x`. Returns per-tau `params`,
+    `bse`, `tvalues`, `iterations`, `bandwidth`, `sparsity`, plus a single
+    `converged` bool over all taus.
+
+### `quantile_lp`
+
+```python
+def quantile_lp(
+    y: _ArrayLike,
+    shock: _ArrayLike,
+    taus: Sequence[float] | None = ...,
+    horizons: int = ...,
+    n_lag_controls: int = ...,
+) -> dict[str, Any]:
+```
+
+Quantile local projections: `irf[tau][h]` with Powell-sandwich `se[tau][h]`.
+
+    Per horizon, `y_{t+h}` on `[shock_t, const, p lags of y and shock]` at
+    each tau (tsecon-lp design conventions); matches statsmodels QuantReg on
+    the identical design.
+
+### `growth_at_risk`
+
+```python
+def growth_at_risk(
+    y: _ArrayLike,
+    conditions: _ArrayLike,
+    horizon: int = ...,
+    taus: Sequence[float] | None = ...,
+    rearrange: bool = ...,
+) -> dict[str, Any]:
+```
+
+Growth-at-risk (Adrian-Boyarchenko-Giannone 2019).
+
+    Conditional quantiles of the h-ahead outcome on `[const, conditions,
+    y_t]`, evaluated at every t — `current` is the latest risk read. `taus`
+    must be strictly increasing and `horizon >= 1`. `rearrange` applies the
+    Chernozhukov-Fernandez-Val-Galichon monotone sort across tau; `crossing`
+    reports whether the raw fitted quantile paths crossed either way.
+
+## functional shocks (FVAR / FLP)
+
+### `functional_pca`
+
+```python
+def functional_pca(curves: _ArrayLike, n_factors: int = ...) -> dict[str, Any]:
+```
+
+Functional PCA of a T x M curve panel (Inoue-Rossi 2021).
+
+    Returns mean_curve, eigenfunctions (K x M), scores (T x K), eigenvalues,
+    explained, total_variance. Sign: each eigenfunction's largest-|.| entry
+    is positive.
+
+### `flp`
+
+```python
+def flp(
+    y: _ArrayLike,
+    scores: _ArrayLike,
+    horizons: int = ...,
+    n_lag_controls: int = ...,
+    hac_maxlags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Functional local projection: y_{t+h} on ALL K scores jointly + const +
+    lags of y, Newey-West HAC (maxlags = h + n_lag_controls default).
+
+    Returns horizons, n_factors, betas ((H+1) x K), covs (joint (H+1) x K x K),
+    se, nobs.
+
+### `flp_scenario`
+
+```python
+def flp_scenario(
+    y: _ArrayLike,
+    curves: _ArrayLike,
+    delta: _ArrayLike,
+    n_factors: int = ...,
+    horizons: int = ...,
+    n_lag_controls: int = ...,
+    hac_maxlags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+IRF of y to a whole-curve scenario delta (length M): FPCA, joint FLP,
+    then response w'beta_h with se sqrt(w' Cov_h w).
+
+    Returns horizons, weights, response, se, betas, explained.
+
+### `fvar_scenario`
+
+```python
+def fvar_scenario(
+    y: _ArrayLike,
+    curves: _ArrayLike,
+    delta: _ArrayLike,
+    n_factors: int = ...,
+    lags: int = ...,
+    horizon: int = ...,
+) -> dict[str, Any]:
+```
+
+FVAR scenario: VAR([scores, y], scores FIRST) with Cholesky
+    identification; score innovation set to w = phi'delta, outcome's own
+    structural shock zero (impact response of y is a modeling assumption).
+
+    Returns horizons, weights, response_outcome, responses ((H+1) x (K+1),
+    scores first then outcome), implied_outcome_innovation.
+
+## structural breaks
+
+### `bai_perron`
+
+```python
+def bai_perron(
+    y: _ArrayLike, x: _ArrayLike, max_breaks: int = ..., trim: float = ...
+) -> dict[str, Any]:
+```
+
+Bai-Perron multiple breaks: DP global partitions, sequential supF(l+1|l) selection at 5%, per-regime OLS, and Bai (1997) break-date confidence intervals; x is T x q with all coefficients switching (include your constant).
+
+### `sup_f_test`
+
+```python
+def sup_f_test(y: _ArrayLike, x: _ArrayLike, trim: float = ...) -> dict[str, Any]:
+```
+
+Andrews sup-F (Quandt) unknown-break test with Hansen (1997) approximate p-value; returns stat, p_value, break_date, and the full f_path over the trimmed dates.
+
+## smooth local projections
+
+### `smooth_lp`
+
+```python
+def smooth_lp(
+    y: _ArrayLike,
+    shock: _ArrayLike,
+    horizons: int = ...,
+    n_lag_controls: int = ...,
+    lam: float | str | None = ...,
+    degree: int = ...,
+    n_basis: int | None = ...,
+    penalty_order: int = ...,
+    lambda_grid: Sequence[float] | None = ...,
+    n_folds: int = ...,
+    hac_maxlags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
+    penalized B-spline in the horizon, estimated jointly across horizons.
+
+    `lam`: a float fixes the smoothing parameter (0.0 reproduces the
+    per-horizon `lp(se="hac")` point estimates with the default basis);
+    "cv"/None cross-validates it by leave-h-block-out CV over `lambda_grid`
+    (or a default log-spaced grid). `penalty_order=2` shrinks the IRF toward
+    a straight line as `lam` grows. `se` conditions on `lam` and does not
+    account for shrinkage bias; `irf_raw`/`se_raw` are the unsmoothed
+    per-horizon HAC LP for comparison. Keys: horizons, irf, se, lambda_used,
+    cv_grid, cv_scores, theta, irf_raw, se_raw.
 

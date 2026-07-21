@@ -11,6 +11,7 @@
 - Why naive benchmarks are scandalously hard to beat, and what fifty years of forecasting competitions proved.
 - How to score forecasts without fooling yourself — MAPE's failure modes, why MASE exists, and what pinball loss and CRPS measure.
 - How to test whether an accuracy difference is real (Diebold-Mariano with the HLN correction), when that test is invalid, and why averaging forecasts usually beats picking one.
+- Growth-at-risk: why policy institutions forecast the *downside* of the growth distribution, and how financial conditions move the left tail more than the center.
 
 ## The idea
 
@@ -490,6 +491,60 @@ The estimator recovers $\rho \approx 0.61$ against the true 0.6, and the dynamic
 
 > ⚠ **Common mistake.** Getting the constant column backwards. The static probit needs `x` to include a column of ones; the dynamic probit must omit it. Include a constant in the dynamic model and the information matrix is singular; forget it in the static model and every coefficient is biased. It is the single most common way to misuse `recession_probit`.
 
+## Growth-at-risk: forecasting the downside
+
+The recession probit collapses the future into a binary event. The workflow that has taken over policy institutions since 2019 keeps the whole distribution and asks a sharper question: **how bad could growth plausibly get, given what financial conditions look like today?** Adrian, Boyarchenko, and Giannone (2019) — "Vulnerable Growth," the paper behind the IMF's growth-at-risk surveillance and half the financial-stability reports now published — ran quantile regressions of future US GDP growth on the National Financial Conditions Index and found a striking asymmetry: **tightening financial conditions drag down the lower quantiles of future growth far more than the median, while the upper quantiles barely move.** The center of the forecast distribution is stable; its left tail breathes with financial stress. A mean forecast — even a perfect one — is structurally incapable of showing this.
+
+The machinery is the quantile regression of [Chapter 3](03-inference-toolkit.md#beyond-the-mean-quantile-regression), pointed at the future: for each $\tau$ in a ladder, regress $h$-ahead growth on a constant, the conditions variables, and current growth,
+
+$$
+\hat{Q}_\tau\left(y_{t+h} \mid f_t, y_t\right) \;=\; \hat\alpha_\tau + \hat\beta_\tau' f_t + \hat\gamma_\tau\, y_t ,
+$$
+
+and read the fitted quantiles, at every $t$, as a conditional forecast *distribution* — a fan chart whose shape is allowed to depend on the state of the financial system. `growth_at_risk` runs the whole workflow in one call. On a synthetic quarterly economy built with the ABG asymmetry (tight conditions add a purely negative fat tail to future growth):
+
+```python
+rng = np.random.default_rng(5)
+T = 320                                        # 80 years of quarters
+f = np.zeros(T)                                # financial-conditions index (high = tight)
+y = np.zeros(T)                                # GDP growth, annualized
+y[0] = 2.0
+for t in range(1, T):
+    f[t] = 0.8 * f[t - 1] + 0.6 * rng.standard_normal()
+    downside = 0.9 * max(f[t - 1], 0.0) * abs(rng.standard_normal())   # stress fattens the LEFT tail only
+    y[t] = 2.0 + 0.3 * y[t - 1] - 0.2 * f[t - 1] + rng.standard_normal() - downside
+
+gar = tsecon.growth_at_risk(y, f.reshape(-1, 1), horizon=4)   # conditions is T x k
+for i, tau in enumerate(gar["taus"]):                          # default taus: 5/25/50/75/95
+    print(f"tau={tau}: conditions coeff {gar['params'][i][1]:+.3f}  (se {gar['bse'][i][1]:.3f})")
+
+# tau=0.05: conditions coeff -0.829  (se 0.221)
+# tau=0.25: conditions coeff -0.417  (se 0.117)
+# tau=0.5: conditions coeff -0.324  (se 0.105)
+# tau=0.75: conditions coeff -0.311  (se 0.119)
+# tau=0.95: conditions coeff -0.362  (se 0.085)
+```
+
+The coefficient ladder *is* the ABG finding: a one-point tightening of conditions lowers median four-quarter growth by about 0.3, but lowers the 5th percentile by 0.83 — two and a half times as much, and the gap is many standard errors wide. Financial stress is not a forecast of lower growth so much as a forecast of *fatter downside risk*.
+
+Reading the output like a policy economist:
+
+```python
+fit = np.array(gar["fitted"])                    # (n_taus, T): the fan at every observation
+t_tight, t_calm = int(np.argmax(f)), int(np.argmin(f))
+print(np.round(fit[:, t_tight], 2))              # [-3.51 -0.03  1.07  2.11  2.81]  f = +3.62
+print(np.round(fit[:, t_calm], 2))               # [ 2.32  2.7   3.3   4.15  5.44]  f = -2.69
+
+print(np.round(np.array(gar["current"]), 2))     # [0.09 1.48 2.42 3.25 4.52] — the latest risk read
+print(gar["crossing"])                           # False — the raw quantile paths never crossed here
+```
+
+The two fans are the story in two lines. In the calmest quarter of the sample the 5-to-95 fan spans 2.3 to 5.4 — narrow, healthy, roughly symmetric around 3.3. In the most stressed quarter it spans $-3.5$ to $2.8$: the median has slipped about two points, but the 5th percentile has collapsed by nearly six — the fan does not shift, it *smears leftward*. And `current` is the number that goes in the briefing: conditional on the latest observation, the central expectation for growth a year out is 2.4, but there is a 5% risk it comes in at 0.1 or below. That 5th percentile *is* "growth-at-risk," the GaR(5%) that policy institutions now track the way they track the modal forecast.
+
+Two mechanical notes. Because each $\tau$ is fit separately, fitted quantile paths can cross; `growth_at_risk` applies the Chernozhukov–Fernández-Val–Galichon monotone rearrangement (a per-observation sort across $\tau$) by default, reports whether the raw paths crossed in `crossing`, and keeps the unsorted paths in `fitted_raw` so you can see what the rearrangement did — here it did nothing, because nothing crossed. And the fitted quantiles are *forecasts*, so they are scored like forecasts: with the pinball loss from the accuracy section at each $\tau$, never with RMSE against the realization. Contract, validation, and the full ABG framing: the [quantile model card](../reference/model-cards/quantile.md). For the *dynamic* version of this question — how the whole quantile ladder responds horizon by horizon to an identified shock — see quantile local projections (`quantile_lp`) in [Chapter 9](09-local-projections.md).
+
+> ⚠ **Common mistake.** Reading GaR(5%) as "the forecast." The 5th percentile is not what you expect to happen — it is the threshold below which outcomes should land one time in twenty, and if realized growth never comes in near your GaR estimates, your tail is too wide, not prudent. Calibration cuts both ways: over many quarters, roughly 5% of realizations should fall below the reported 5th percentile, and checking that (the pinball loss, the PIT machinery above) is what separates a risk measure from a scary number. Relatedly: `taus` must be strictly increasing, and extreme taus need long samples — the function refuses a 5th percentile the Hall-Sheather bandwidth cannot support rather than reporting one it cannot defend.
+
 ## Are the forecasts themselves rational? Survey expectations
 
 The whole chapter so far has compared *models* — is your VAR beating the random walk, is Theta beating the seasonal naive? A different and older question asks whether a set of published forecasts is *rational* on its own terms, without any competing model in sight. Given the Survey of Professional Forecasters, the Michigan survey, or a central bank's own projections, are those forecasts using information efficiently, or are they leaving predictable money on the table? Diebold-Mariano compares forecasts against each other; this family interrogates a single forecast against the standard of rationality.
@@ -588,6 +643,7 @@ The honest open problems: evaluation under structural instability is unsolved in
 | Multi-step forecast evaluation regressions | `ols(..., se_type="hac", maxlags=h-1)` | Direct h-step errors are MA(h−1) by construction |
 | Forecasting a small system of related variables | `var_forecast` | Iterated multi-step point + interval forecasts from joint dynamics |
 | Forecasting a binary business-cycle event (recession) | `recession_probit` | Turns leading indicators (the term spread) into a calibrated P(recession); `dynamic=True` for persistence |
+| Downside risk to growth from financial conditions | `growth_at_risk` | ABG: conditions move the lower quantiles far more than the median; `current` is the latest conditional fan, and its 5th percentile is GaR(5%) |
 | Testing whether published forecasts are rational | `cg_regression`, `forecast_efficiency` | CG slope $=0$ under FIRE (positive $=$ underreaction); Mincer-Zarnowitz tests unbiasedness |
 | Measuring dispersion across a forecaster panel | `forecast_disagreement` | Cross-sectional spread — the empirical proxy for belief dispersion and information rigidity |
 | Several plausible models, none dominant | Equal-weight average | The combination puzzle: 1/N beats estimated weights out of sample |
@@ -604,6 +660,7 @@ The honest open problems: evaluation under structural instability is unsolved in
 - `dm_test(e1, e2, h=1, loss="squared")` — Diebold-Mariano with the HLN small-sample correction and $t(P-1)$ p-values as the default, not an option; `loss` is `"squared"` or `"absolute"`.
 - `var_forecast(data, lags=2, steps=8, alpha=0.05, trend="c")` — iterated multi-step VAR forecasts with interval bands.
 - `recession_probit(y, x, link="probit", dynamic=False)` — static probit/logit and the Kauppi-Saikkonen dynamic probit for a 0/1 recession indicator; returns the fitted `probabilities`, coefficient `zstats`, and McFadden `pseudo_r2`. See the [recession model card](../reference/model-cards/recession.md).
+- `growth_at_risk(y, conditions, horizon=1, taus=..., rearrange=True)` — the ABG conditional-quantile workflow: per-tau `params`/`bse`, the fitted quantile fan at every observation (`fitted`, CFG-rearranged; `fitted_raw` unsorted; `crossing` flag), and `current`, the risk read at the latest observation. `conditions` is T x k. See the [quantile model card](../reference/model-cards/quantile.md).
 - `cg_regression(error, revision)` and `forecast_efficiency(error, regressors)` — the Coibion-Gorodnichenko information-rigidity and Mincer-Zarnowitz rationality regressions (OLS with a Newey-West HAC covariance for the overlapping errors), plus `forecast_disagreement(panel)` for cross-forecaster dispersion. See the [expectations model card](../reference/model-cards/expectations.md).
 - Supporting cast from earlier chapters: `ols(..., se_type="hac", maxlags=...)` for evaluation regressions with overlapping errors, and `long_run_variance` — the same machinery inside the DM denominator.
 
@@ -627,5 +684,6 @@ The honest open problems: evaluation under structural instability is unsolved in
 - **Bates, J. M. and C. W. J. Granger (1969), "The Combination of Forecasts," *Operational Research Quarterly*.** Two pages of algebra that launched fifty years of combination literature; Timmermann's (2006) *Handbook of Economic Forecasting* chapter is the modern survey.
 - **Gneiting, T. and A. E. Raftery (2007), "Strictly Proper Scoring Rules, Prediction, and Estimation," *Journal of the American Statistical Association*.** The theory of scoring densities honestly: propriety, CRPS, and why improper scores corrupt evaluation.
 - **Estrella, A. and F. S. Mishkin (1998), "Predicting U.S. Recessions: Financial Variables as Leading Indicators," *Review of Economics and Statistics*** — with **Kauppi, H. and P. Saikkonen (2008), "Predicting U.S. Recessions with Dynamic Binary Response Models," same journal**. The term-spread recession probit and its dynamic extension; read as a pair.
+- **Adrian, T., N. Boyarchenko and D. Giannone (2019), "Vulnerable Growth," *American Economic Review*.** The growth-at-risk paper: quantile regressions of future GDP growth on financial conditions, the downside asymmetry, and the framing now standard in financial-stability surveillance.
 - **Coibion, O. and Y. Gorodnichenko (2015), "Information Rigidity and the Expectations Formation Process," *American Economic Review*.** Reduces the test of full-information rational expectations to a single regression of the mean forecast error on the mean revision; **Mincer, J. and V. Zarnowitz (1969), "The Evaluation of Economic Forecasts"** is the classic unbiasedness test it complements.
 - **Hyndman, R. J. and G. Athanasopoulos, *Forecasting: Principles and Practice* (3rd ed., OTexts).** The best practical introduction to the workflow — benchmarks, tsCV, accuracy measures; **Elliott, G. and A. Timmermann, *Economic Forecasting* (Princeton, 2016)** is the graduate-level treatment of the econometric theory behind this chapter.

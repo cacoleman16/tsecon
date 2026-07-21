@@ -11,6 +11,7 @@
 - How to get LP inference right — why per-horizon HAC was the old default and lag augmentation is the new one
 - How LP-IV and one-step cumulative multipliers work, with the Ramey-Zubairy fiscal multiplier as the running example
 - How the LP framework extends to recessions-vs-expansions asymmetries, panels, and difference-in-differences
+- How to smooth a jagged IRF honestly (Barnichon-Brownlees), and what to do when the shock is an entire curve rather than a number (functional LPs)
 
 ## The idea
 
@@ -297,7 +298,100 @@ The binary indicator is the design Ramey and Zubairy use. The smooth-transition 
 
 **LP-DiD.** Difference-in-differences event studies are LPs in disguise: regress the $h$-horizon change in the outcome on treatment switching. Dube, Girardi, Jordà, and Taylor (2023) formalize this and add the crucial **clean-control condition** — compare switchers only to not-yet-treated or never-treated units — which sidesteps the negative-weighting pathologies that plague two-way-fixed-effects event studies under staggered adoption. The LP framing also makes pre-trend checks natural: run the same regressions at *negative* horizons ($h < 0$), where a well-identified design should show flat responses before treatment. If you know the modern DiD literature, LP-DiD is the time-series native's route to the same destination; it is in the roadmap module's core scope.
 
-**Smooth LP.** Raw LP estimates are jagged because each horizon is estimated separately — but true IRFs are smooth, and readers *will* interpret every wiggle ("the effect dies at quarter 9 and revives at quarter 11") even when the wiggles are pure noise. Barnichon and Brownlees (2019) estimate all horizons jointly with the IRF expanded in a B-spline basis and a ridge penalty on its second differences, shrinking the path toward a smooth polynomial: information is shared across neighboring horizons, and variance drops dramatically at modest bias cost. The catch: the penalty parameter must be tuned by *blocked* (time-series-aware) cross-validation — ordinary k-fold leaks the MA($h$) overlap across folds and systematically undersmooths — and post-shrinkage standard errors are not honest, so bands come from the bootstrap with explicit caveats.
+## Smoothing the jagged path: smooth local projections
+
+Raw LP estimates are jagged because each horizon is estimated separately — but true IRFs are smooth, and readers *will* interpret every wiggle ("the effect dies at quarter 9 and revives at quarter 11") even when the wiggles are pure noise. Barnichon and Brownlees (2019) attack the jaggedness at its source: instead of $H+1$ unrelated coefficients, write the IRF as a smooth function of the horizon — a B-spline expansion $\beta_h = \sum_k \theta_k B_k(h)$ — and estimate all horizons **jointly**, with a ridge penalty on the second differences of the basis coefficients that shrinks the path toward a straight line:
+
+$$
+\hat\theta \;=\; \arg\min_\theta \; \sum_{h=0}^{H} \sum_t \bigl(y_{t+h} - x_{t,h}'\theta\bigr)^2 \;+\; \lambda\, \theta' P\,\theta .
+$$
+
+Information now flows across neighboring horizons — the horizon-9 estimate borrows strength from horizons 8 and 10 — and variance drops sharply at the price of a little smoothing bias. That is the same bias-variance dial as LP-versus-VAR, but turned continuously by a single knob $\lambda$ rather than by switching estimators.
+
+`tsecon.smooth_lp` implements this with two design decisions worth knowing. First, **the $\lambda = 0$ anchor**: with the penalty off, the joint estimator collapses *exactly* to the per-horizon `lp(se="hac")` point estimates — machine precision, pinned in the test suite — so smooth LP is never a different model, only the same LP with its horizons asked to agree. Second, **the cross-validation is blocked**: `lam="cv"` tunes $\lambda$ by leave-one-block-out CV over contiguous horizon-blocks with a dependence buffer of `horizons + n_lag_controls` periods around each held-out block, because ordinary k-fold leaks the MA($h$) overlap across folds and systematically undersmooths. On the chapter's running DGP (where the truth is $0.7^h$):
+
+```python
+rng = np.random.default_rng(42)                  # rebuild the chapter's opening DGP
+T, H, phi = 400, 20, 0.7
+eps, eta = rng.standard_normal(T), rng.standard_normal(T)
+y = np.zeros(T)
+for t in range(1, T):
+    y[t] = phi * y[t - 1] + eps[t] + 0.5 * eta[t]
+
+sm = tsecon.smooth_lp(y, eps, horizons=H, n_lag_controls=1, lam="cv")
+sm["lambda_used"]                                # 1000.0 — chosen by blocked CV on a log grid
+
+true = phi ** np.arange(H + 1)
+print(np.round(np.array(sm["irf_raw"])[:6], 2))  # [0.98 0.74 0.49 0.3  0.24 0.19]  per-horizon LP
+print(np.round(np.array(sm["irf"])[:6], 2))      # [0.93 0.72 0.53 0.37 0.25 0.17]  smoothed
+print(np.round(true[:6], 2))                     # [1.   0.7  0.49 0.34 0.24 0.17]
+
+rmse = lambda a: float(np.sqrt(np.mean((np.array(a) - true) ** 2)))
+print(round(rmse(sm["irf_raw"]), 3), round(rmse(sm["irf"]), 3))   # 0.068 -> 0.055 against the truth
+```
+
+The smoothed path gives up a little at impact (0.93 versus the true 1.0 — shrinkage bias, exactly where the IRF bends fastest) and pays it back everywhere else: RMSE against the true path drops from 0.068 to 0.055, and the long-horizon wiggles that invite over-interpretation are gone. The anchor is checkable in one line:
+
+```python
+sm0 = tsecon.smooth_lp(y, eps, horizons=H, n_lag_controls=1, lam=0.0)
+lp0 = tsecon.lp(y, eps, horizons=H, n_lag_controls=1, se="hac")
+np.abs(np.array(sm0["irf"]) - np.array(lp0["irf"])).max()   # 4.3e-13 — same estimator, penalty off
+```
+
+The returned `se` is a delta method through the basis over a stacked Bartlett-HAC sandwich — and it is honest about what it is: it *conditions on* $\lambda$ (even a cross-validated one) and describes the penalized estimator's own sampling variability, not the shrinkage bias. That is the "post-shrinkage inference is unsolved" caveat from the frontier section made concrete; `irf_raw`/`se_raw` always come back alongside, so the unshrunk comparison is never more than one plot away. Both the B-spline basis (against `scipy` `BSpline.design_matrix`) and the full estimator (against NumPy normal equations) are golden-tested; see the [local-projections model card](../reference/model-cards/local-projections.md) for the contract.
+
+> **⚠ Common mistake — reporting only the smoothed path.** Smoothing is a presentation *and* an estimation choice, and $\lambda$ is a researcher degree of freedom. Show `irf_raw` next to `irf` (or at least report `lambda_used` and the CV grid), and be suspicious of any smoothed IRF whose economically important feature — a hump, a sign flip — is absent from the raw path. If the feature only exists after smoothing, the penalty put it there.
+
+## When the shock is a curve: functional local projections
+
+Every LP so far took a *scalar* impulse. But some shocks arrive as entire curves: an FOMC announcement moves the whole yield curve — 3 months to 30 years — in one afternoon, and an OPEC surprise moves the whole oil futures strip. Collapsing that object to one number (the 2-year rate, the front-month future) throws away exactly the information that distinguishes a *level* shock from a *twist* — and those can have very different effects on the economy. Inoue and Rossi (2021) formalize the alternative: treat the **curve itself as the shock**, and estimate the response of an outcome to an arbitrary *shift of the whole curve*.
+
+The machinery is a two-step. First, compress the $T \times M$ panel of observed curves with **functional principal components**: `functional_pca` demeans, eigendecomposes the $M \times M$ covariance, and returns the leading `eigenfunctions` (the shapes: level, slope, curvature in yield-curve applications), their `scores` (how much of each shape each period's curve contains), and `explained` shares — numpy-`eigh`-validated, with a documented sign convention (each eigenfunction's largest-magnitude entry is positive). Second, run a **joint** LP of the outcome on *all* $K$ scores at once (`flp`): per horizon, $y_{t+h}$ on the $K$ scores, a constant, and lags of $y$, with Newey-West HAC — jointly, because the response to any curve scenario mixes all the betas, so you need their joint covariance, not $K$ separate regressions.
+
+Then any scenario you can draw is a linear combination: a curve shift $\delta(\cdot)$ has score-weights $w_k = \langle \phi_k, \delta \rangle$, and the response of $y$ is $w'\beta_h$ with standard error $\sqrt{w' \,\mathrm{Cov}_h\, w}$. `flp_scenario` does the whole pipeline in one call. On a synthetic yield-curve panel driven by a level factor and a short-end slope factor, where the outcome responds $-0.8$ to level and $+0.5$ to slope:
+
+```python
+rng = np.random.default_rng(3)
+T, M = 400, 8
+grid = np.array([0.25, 0.5, 1, 2, 3, 5, 7, 10])            # maturities in years
+level = np.ones(M)                                          # parallel-shift loading
+slope = np.exp(-grid / 2.0) - np.exp(-grid / 2.0).mean()    # short-end twist, demeaned
+L, S = rng.standard_normal(T), rng.standard_normal(T)
+curves = np.outer(L, level) + np.outer(S, slope) + 0.05 * rng.standard_normal((T, M))
+
+yy = np.zeros(T)
+for t in range(1, T):
+    yy[t] = 0.5 * yy[t - 1] - 0.8 * L[t] + 0.5 * S[t] + rng.standard_normal()
+
+fp = tsecon.functional_pca(curves, n_factors=2)
+np.round(np.array(fp["explained"]), 3)          # [0.907 0.091] — two shapes carry 99.8%
+np.round(np.array(fp["eigenfunctions"][0]), 2)  # [0.34 .. 0.36] — flat: the level shape
+np.round(np.array(fp["eigenfunctions"][1]), 2)  # [0.57 0.45 .. -0.39] — the slope shape
+
+# The response of yy to the WHOLE curve shifting up in parallel by 1:
+par = tsecon.flp_scenario(yy, curves, np.ones(M), n_factors=2, horizons=8, n_lag_controls=2)
+print(np.round(np.array(par["response"]), 2))   # [-0.82 -0.41 -0.18 -0.01 -0.02 -0.01  0.01 -0.04 -0.  ]
+print(np.round(np.array(par["se"])[:3], 2))     # [0.05 0.06 0.07]
+
+# The response to a pure short-end steepening of the same size:
+tw = tsecon.flp_scenario(yy, curves, slope, n_factors=2, horizons=8, n_lag_controls=2)
+print(np.round(np.array(tw["response"])[:3], 2))   # [0.51 0.24 0.09] — opposite SIGN
+```
+
+The truth for the parallel shift is $-0.8 \times 0.5^h = [-0.8, -0.4, -0.2, \dots]$, and the estimate sits on it. But the punchline is the second scenario: a *steepening* of the same magnitude moves the outcome in the **opposite direction** ($+0.51$ on impact). A scalar-shock LP on any single point of the curve would have averaged those two responses into something misleading about both — which is the entire case for treating the curve as the object.
+
+The internal consistency is checkable, and test-pinned: feed the $j$-th eigenfunction itself in as the scenario and the response must reproduce the $j$-th column of the joint FLP betas exactly ($w$ becomes the $j$-th unit vector):
+
+```python
+res = tsecon.flp(yy, np.array(fp["scores"]), horizons=8, n_lag_controls=2)
+sc  = tsecon.flp_scenario(yy, curves, np.array(fp["eigenfunctions"][0]),
+                          n_factors=2, horizons=8, n_lag_controls=2)
+np.abs(np.array(sc["response"]) - np.array(res["betas"])[:, 0]).max()   # 5.6e-17
+```
+
+There is also a VAR route to the same question: `fvar_scenario` fits a VAR to `[scores, y]` (scores ordered first), identifies with a Cholesky factorization, sets the score innovation to $w = \phi'\delta$, and reads the outcome response off the orthogonalized IRFs. It buys the usual VAR smoothness at the usual VAR price *plus* one more assumption worth saying out loud: the recursive ordering sets the outcome's own contemporaneous structural shock to zero in the scenario, so the impact response of $y$ is an identification choice, not an estimate. The FLP route is the robust default; the FVAR route is the cross-check, per the dual-reporting discipline of this chapter. Contracts, the sign convention, and validation for the whole family live in the [functional-shocks model card](../reference/model-cards/functional-shocks.md).
+
+> **⚠ Common mistake — reading eigenfunction responses as economics.** The $K$ score paths from `flp` are responses to *statistical* shapes: whatever directions happen to dominate the sample covariance of the curves, in units set by the normalization $\|\phi_k\| = 1$. They are not "the effect of monetary policy" until you map an economically meaningful scenario — a parallel 100bp hike, a 2s10s flattening, the announcement-day curve change itself — through `flp_scenario`, which is why the scenario interface, not the raw betas, is the reporting object. And mind the truncation: `explained` tells you how much of the curves' variation your $K$ factors carry; a scenario $\delta$ that loads heavily on discarded shapes ($w \approx 0$ despite $\delta \neq 0$) is answered with "no response" not because the economy is indifferent but because the basis cannot see it.
 
 ## The frontier
 
@@ -309,7 +403,7 @@ The LP literature is one of the most active in econometrics; here is the current
 
 **Why LP defaults won the argument.** Montiel Olea, Plagborg-Møller, Qian, and Wolf (2024) — the memorably titled "Unpleasant VARithmetic" paper — show lag-augmented LP is *doubly robust* to misspecification in a sense VARs cannot match: VAR bias does not vanish even as you widen the bands. This is the intellectual foundation under the library's lag-augmented default.
 
-**Frontier variants awaiting anyone's implementation.** Weak-instrument-robust Anderson-Rubin confidence sets for LP-IV (which can be unbounded or disjoint — an honest API must represent that, not truncate it); quantile LP for growth-at-risk dynamics (how shocks move the *tails* of the GDP distribution, extending Adrian, Boyarchenko, and Giannone 2019); time-varying LP for unstable transmission mechanisms (Inoue, Rossi, and Wang 2024); doubly-robust IPW/AIPW LP treating policy as a treatment (Angrist, Jordà, and Kuersteiner 2018); policy counterfactuals assembled from estimated IRFs (McKay and Wolf 2023); and estimand diagnostics for nonlinear LPs — Kolesár and Plagborg-Møller (2025) characterize exactly what weighted average a misspecified nonlinear LP recovers. Essentially none of this exists in any maintained package in any language; it is the roadmap module's Tier 3 and 4 territory, and the honest reason a Rust core matters — the bootstrap- and simulation-heavy inference this literature now demands is too slow in interpreted loops to be anyone's default.
+**Frontier variants — two shipped, the rest awaiting anyone's implementation.** Two items on this list have already crossed over into the library: smooth LP (the Barnichon-Brownlees estimator of the section above) and **quantile LP** — how a shock moves the *tails* of the outcome distribution rather than its mean, the dynamic engine behind growth-at-risk (Adrian, Boyarchenko, and Giannone 2019). `tsecon.quantile_lp(y, shock, taus, horizons, n_lag_controls)` runs the check-loss analogue of this chapter's LP at each (tau, horizon) pair with Powell-sandwich standard errors — the same design conventions as `lp`, the same quantile machinery as [Chapter 3](03-inference-toolkit.md#beyond-the-mean-quantile-regression), and the static one-call workflow in [Chapter 5's growth-at-risk section](05-forecasting.md#growth-at-risk-forecasting-the-downside) (see the [quantile model card](../reference/model-cards/quantile.md)). Still genuinely unimplemented anywhere: weak-instrument-robust Anderson-Rubin confidence sets for LP-IV (which can be unbounded or disjoint — an honest API must represent that, not truncate it); time-varying LP for unstable transmission mechanisms (Inoue, Rossi, and Wang 2024); doubly-robust IPW/AIPW LP treating policy as a treatment (Angrist, Jordà, and Kuersteiner 2018); policy counterfactuals assembled from estimated IRFs (McKay and Wolf 2023); and estimand diagnostics for nonlinear LPs — Kolesár and Plagborg-Møller (2025) characterize exactly what weighted average a misspecified nonlinear LP recovers. That remainder is the roadmap module's Tier 3 and 4 territory, and the honest reason a Rust core matters — the bootstrap- and simulation-heavy inference this literature now demands is too slow in interpreted loops to be anyone's default.
 
 ## Which method when
 
@@ -325,7 +419,9 @@ The LP literature is one of the most active in econometrics; here is the current
 | Claims about a *stretch* of the IRF or its shape | Sup-t simultaneous bands | Pointwise bands overstate joint significance |
 | Recession-vs-expansion asymmetry | State-dependent LP with a *lagged* state | Predetermined states limit endogeneity; check the state isn't shock-responsive |
 | Staggered policy adoption in a panel | LP-DiD with clean controls | Avoids TWFE negative-weight pathologies |
-| IRF too jagged to present | Smooth LP (blocked CV) or LP-VAR shrinkage | Large variance reduction; accept bootstrap-only bands |
+| IRF too jagged to present | `smooth_lp(lam="cv")` | Joint B-spline estimation with blocked CV; `lam=0` collapses to per-horizon LP, and `irf_raw` always comes back for comparison |
+| Shock moves the tails, not the mean (growth-at-risk dynamics) | `quantile_lp` | Check-loss LPs per (tau, horizon); the mean IRF cannot see downside asymmetry |
+| The shock is a whole curve (yield curve, futures strip) | `functional_pca` + `flp` / `flp_scenario` | Level and twist scenarios can have opposite effects; any scalar summary averages them away |
 | LP and VAR disagree from the same spec | Dual reporting, then more VAR lags | Divergence is a specification diagnostic, not a horse race |
 
 ## What tsecon implements today
@@ -333,17 +429,19 @@ The LP literature is one of the most active in econometrics; here is the current
 **Available now in Python** — the dedicated LP estimators, plus every primitive the hand-rolled LP in this chapter needs:
 
 - `tsecon.lp` (baseline LP: `se="lag_augmented"` default and `se="hac"` fallback, `cumulative` for cumulated-outcome responses), `tsecon.lp_iv` (per-horizon 2SLS with the Montiel Olea-Pflueger effective F), `tsecon.lp_multiplier` (the one-step Ramey-Zubairy integral multiplier: cumulated outcome on cumulated instrumented impulse, HAC SEs on the multiplier itself, per-horizon effective F, and the two reduced-form legs for inspection), `tsecon.lp_state` (dummy-interaction state-dependent LP, per-regime IRFs), and `tsecon.panel_lp` (fixed-effects panel LP with clustered / Driscoll-Kraay SEs)
+- `tsecon.smooth_lp` (Barnichon-Brownlees joint B-spline LP: `lam="cv"` blocked cross-validation, the machine-precision `lam=0` collapse to `lp(se="hac")`, `irf`/`se` plus `irf_raw`/`se_raw`, scipy-BSpline-golden basis) and `tsecon.quantile_lp` (check-loss LPs at each (tau, horizon) with Powell-sandwich SEs — see the [quantile model card](../reference/model-cards/quantile.md))
+- `tsecon.functional_pca`, `tsecon.flp`, `tsecon.flp_scenario`, `tsecon.fvar_scenario` — the Inoue-Rossi functional-shock family: FPCA of a curve panel, the joint score LP with per-horizon `covs`, whole-curve scenario responses, and the FVAR cross-check (see the [functional-shocks model card](../reference/model-cards/functional-shocks.md))
 - `tsecon.ols(y, X, se_type=...)` with `"hac"` (Newey-West, `maxlags` controls the bandwidth), `"hc0"`/`"hc1"` (the EHW standard errors that lag-augmented LP calls for), and `"nonrobust"`; returns `params`, `bse`, `tvalues`
 - `tsecon.long_run_variance` — the kernel LRV machinery under HAC
 - `tsecon.var_fit`, `tsecon.var_irf`, `tsecon.var_fevd`, `tsecon.var_forecast` — the VAR comparator for dual reporting
 - `tsecon.bootstrap_indices`, `tsecon.optimal_block_length`, `tsecon.philox_uniforms` — block-bootstrap experiments with reproducible parallel RNG
 - `tsecon.adf`, `tsecon.kpss`, `tsecon.check_stationarity` — the persistence pre-flight that tells you how much to worry about long-horizon inference
 
-Every runnable block in this chapter — the two hand-rolled loops, the VAR comparison, the LP-IV cumulative-IRF-versus-integral-multiplier contrast, and the state-dependent LP — works against today's API.
+Every runnable block in this chapter — the two hand-rolled loops, the VAR comparison, the LP-IV cumulative-IRF-versus-integral-multiplier contrast, the state-dependent LP, the smooth LP with its $\lambda = 0$ anchor, and the functional-shock scenarios — works against today's API.
 
 **Built in Rust, awaiting Python bindings:** fixed-b/EWC (HAR) inference in the HAC crate — the modern small-sample answer where per-horizon HAC must be used, with the nonstandard critical values that make it size-correct.
 
-**Roadmap:** the dedicated module ([docs/roadmap/07-local-projections.md](../roadmap/07-local-projections.md)) hardens what ships today and owns what cannot reasonably be hand-rolled: the joint cross-horizon covariance with sup-t simultaneous bands and path Wald tests, Anderson-Rubin weak-instrument sets for LP-IV, wild and block bootstrap schemes that are actually valid for LP, the smooth-transition (logistic) state-dependent variant with endogeneity diagnostics, LP-DiD with clean controls, smooth/Bayesian/GLS LP, and LP-VAR dual reporting. Its validation bar: reproduce the Ramey-Zubairy multipliers and the `lpirfs`/Stata reference numbers to three-plus decimals.
+**Roadmap:** the dedicated module ([docs/roadmap/07-local-projections.md](../roadmap/07-local-projections.md)) hardens what ships today and owns what cannot reasonably be hand-rolled: the joint cross-horizon covariance with sup-t simultaneous bands and path Wald tests, Anderson-Rubin weak-instrument sets for LP-IV, wild and block bootstrap schemes that are actually valid for LP, the smooth-transition (logistic) state-dependent variant with endogeneity diagnostics, LP-DiD with clean controls, Bayesian and GLS LP, and LP-VAR dual reporting. Its validation bar: reproduce the Ramey-Zubairy multipliers and the `lpirfs`/Stata reference numbers to three-plus decimals.
 
 ## Further reading
 
@@ -355,5 +453,7 @@ Every runnable block in this chapter — the two hand-rolled loops, the VAR comp
 - **Montiel Olea & Plagborg-Møller (2019), *Journal of Applied Econometrics*** — sup-t simultaneous confidence bands: what an honest IRF band actually is.
 - **Li, Plagborg-Møller & Wolf (2024), *Journal of Econometrics*** — the bias-variance tradeoff measured across thousands of DGPs; why intermediate estimators win in MSE.
 - **Auerbach & Gorodnichenko (2012), *American Economic Journal: Economic Policy*** — smooth-transition state dependence; the design half the nonlinear-LP literature builds on.
+- **Barnichon & Brownlees (2019), *Review of Economics and Statistics*** — smooth local projections: the IRF as a penalized B-spline in the horizon, and the bias-variance case for estimating horizons jointly.
+- **Inoue & Rossi (2021), *Quantitative Economics*** — functional shocks: identification and estimation when the shock is a whole curve (their application: the yield curve on FOMC days), the framework behind `functional_pca`/`flp`/`fvar_scenario`.
 - **Ramey (2016), "Macroeconomic Shocks and Their Propagation," *Handbook of Macroeconomics*** — the survey that doubles as the field's textbook: identification approaches, LP practice, and hard-won conventions.
 - **Kilian & Lütkepohl (2017), *Structural Vector Autoregressive Analysis*, Cambridge University Press** — the reference text situating LP within the broader structural-IRF toolkit.

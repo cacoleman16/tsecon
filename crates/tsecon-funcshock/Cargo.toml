@@ -1,0 +1,16 @@
+[package]
+name = "tsecon-funcshock"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Functional-shock impulse responses for the tsecon time-series econometrics library: functional principal components of curve shocks and the Inoue-Rossi FVAR / functional local projection machinery for tracing responses to whole-curve scenarios"
+
+[dependencies]
+tsecon-linalg = { path = "../tsecon-linalg" }
+tsecon-hac = { path = "../tsecon-hac" }
+tsecon-var = { path = "../tsecon-var" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
+tsecon-rng = { path = "../tsecon-rng" }

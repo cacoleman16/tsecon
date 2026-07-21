@@ -1,0 +1,16 @@
+[package]
+name = "tsecon-breaks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Multiple structural breaks for the tsecon time-series econometrics library: the Bai-Perron dynamic-programming estimator of break number and locations with confidence intervals, and the Andrews sup-F test with Hansen approximate p-values"
+
+[dependencies]
+tsecon-linalg = { path = "../tsecon-linalg" }
+tsecon-hac = { path = "../tsecon-hac" }
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
+tsecon-rng = { path = "../tsecon-rng" }

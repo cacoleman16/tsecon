@@ -67,7 +67,7 @@ the dict contract.
 
 ## What's here today
 
-94 functions across the full applied workflow: the diagnostic battery and
+104 functions across the full applied workflow: the diagnostic battery and
 unit-root workflow (ADF, KPSS, `check_stationarity`); specification and
 stability tests (White, Breusch-Pagan, RESET, Chow, CUSUM); robust and HAC
 standard errors; the bootstrap family; an exact-diffuse Kalman filter; ARIMA,

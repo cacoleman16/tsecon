@@ -38,6 +38,9 @@ members = [
     "crates/tsecon-longmemory",
     "crates/tsecon-spectest",
     "crates/tsecon-dsge",
+    "crates/tsecon-quantile",
+    "crates/tsecon-funcshock",
+    "crates/tsecon-breaks",
     "bindings/python",
 ]
 

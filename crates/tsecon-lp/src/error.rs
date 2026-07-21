@@ -66,6 +66,37 @@ pub enum LpError {
         /// Observations falling in the sparse regime.
         regime_nobs: usize,
     },
+    /// The B-spline configuration passed to [`crate::smooth_lp`] is
+    /// infeasible (degree/basis/penalty constraints violated).
+    SplineConfig {
+        /// Maximum horizon requested.
+        horizons: usize,
+        /// B-spline degree requested.
+        degree: usize,
+        /// Number of basis functions (after defaulting).
+        n_basis: usize,
+        /// Difference-penalty order requested.
+        penalty_order: usize,
+        /// The violated constraint, with the fix spelled out.
+        constraint: &'static str,
+    },
+    /// A smoothing parameter (fixed `lambda` or a grid entry) is negative or
+    /// non-finite.
+    InvalidLambda {
+        /// The offending value.
+        value: f64,
+    },
+    /// An explicit cross-validation grid with no entries was supplied.
+    EmptyLambdaGrid,
+    /// The cross-validation fold structure is infeasible: too few folds,
+    /// more folds than usable base periods, or a fold whose held-out block
+    /// plus dependence buffer leaves too little training data.
+    CvConfig {
+        /// Number of folds requested.
+        n_folds: usize,
+        /// Usable base periods (`n - n_lag_controls`).
+        n_base: usize,
+    },
     /// An error propagated from the shared HAC / OLS engine (singular
     /// design, degrees-of-freedom exhaustion, invalid bandwidth, ...).
     Hac(HacError),
@@ -122,6 +153,40 @@ impl fmt::Display for LpError {
                  observations, so its interacted block is (near-)collinear and \
                  the per-state response is unidentified; use a more balanced \
                  state indicator or a shorter horizon"
+            ),
+            LpError::SplineConfig {
+                horizons,
+                degree,
+                n_basis,
+                penalty_order,
+                constraint,
+            } => write!(
+                f,
+                "smooth-LP spline configuration (horizons = {horizons}, degree = \
+                 {degree}, n_basis = {n_basis}, penalty_order = {penalty_order}) \
+                 is infeasible: the constraint is {constraint}"
+            ),
+            LpError::InvalidLambda { value } => write!(
+                f,
+                "smoothing parameter lambda = {value} is not a finite \
+                 non-negative number; use lambda = 0 for the unpenalized \
+                 stacked estimator, a positive value for smoothing, or \
+                 cross-validation to pick one from a grid"
+            ),
+            LpError::EmptyLambdaGrid => write!(
+                f,
+                "the cross-validation lambda grid is empty; supply at least \
+                 one candidate value, or pass None to use the default \
+                 log-spaced grid"
+            ),
+            LpError::CvConfig { n_folds, n_base } => write!(
+                f,
+                "cross-validation with {n_folds} folds over {n_base} usable \
+                 base periods is infeasible: each fold holds out a contiguous \
+                 block plus a buffer of horizons + n_lag_controls periods on \
+                 each side, and what remains must still support the stacked \
+                 fit; use 2 <= n_folds << n_base, reduce horizons, or supply \
+                 a longer series"
             ),
             LpError::Hac(e) => write!(f, "{e}"),
         }

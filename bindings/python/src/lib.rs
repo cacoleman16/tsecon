@@ -3602,6 +3602,605 @@ fn dsge_solve<'py>(
     Ok(d)
 }
 
+// --------------------------------------------------------------------------
+// quantile bindings (assembled from the quantile builder's draft)
+// --------------------------------------------------------------------------
+/// Linear quantile regression at one or many quantile levels.
+///
+/// IRLS check-loss estimation with Powell kernel-sandwich standard errors
+/// (Epanechnikov kernel, Hall-Sheather bandwidth). Matches statsmodels
+/// `QuantReg(y, x).fit(q=tau)` (all defaults): `params` at 1e-6 (the shared
+/// IRLS stopping tolerance) and `bse`/`bandwidth`/`sparsity` at 1e-6
+/// relative. Include the constant column in `x` yourself (statsmodels exog
+/// convention). `taus` defaults to [0.05, 0.25, 0.5, 0.75, 0.95].
+#[pyfunction]
+#[pyo3(signature = (y, x, taus = None, se = "robust"))]
+fn quantile_regression<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    taus: Option<Vec<f64>>,
+    se: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    if se != "robust" {
+        return Err(PyValueError::new_err(format!(
+            "unknown se {se:?}; only \"robust\" (the Powell kernel sandwich, \
+             statsmodels' default) is implemented"
+        )));
+    }
+    let taus = taus.unwrap_or_else(|| vec![0.05, 0.25, 0.5, 0.75, 0.95]);
+    let ys = vec1(&y);
+    let xa = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..xa.ncols()).map(|j| xa.column(j).to_vec()).collect();
+    let fits = tsecon_quantile::quantile_regression(&ys, &cols, &taus).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("taus", taus.into_pyarray(py))?;
+    d.set_item(
+        "params",
+        fits.iter().map(|f| f.params.clone()).collect::<Vec<_>>(),
+    )?;
+    d.set_item(
+        "bse",
+        fits.iter().map(|f| f.bse.clone()).collect::<Vec<_>>(),
+    )?;
+    d.set_item(
+        "tvalues",
+        fits.iter().map(|f| f.tvalues.clone()).collect::<Vec<_>>(),
+    )?;
+    d.set_item(
+        "iterations",
+        fits.iter().map(|f| f.iterations as u64).collect::<Vec<_>>(),
+    )?;
+    d.set_item("converged", fits.iter().all(|f| f.converged))?;
+    d.set_item(
+        "bandwidth",
+        fits.iter()
+            .map(|f| f.bandwidth)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "sparsity",
+        fits.iter()
+            .map(|f| f.sparsity)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    Ok(d)
+}
+
+/// Quantile local projections: per-horizon check-loss IRFs of `y` to `shock`
+/// at each tau, controlling for a constant and `n_lag_controls` lags of BOTH
+/// `y` and `shock` (tsecon-lp design conventions; the impulse coefficient is
+/// design column 0). Matches statsmodels `QuantReg` per (tau, horizon) on
+/// the identical design at 1e-6; `se` is the Powell kernel sandwich.
+/// `taus` defaults to [0.1, 0.5, 0.9]. Returns `irf[tau][h]`, `se[tau][h]`.
+#[pyfunction]
+#[pyo3(signature = (y, shock, taus = None, horizons = 12, n_lag_controls = 4))]
+fn quantile_lp<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    shock: PyReadonlyArray1<'py, f64>,
+    taus: Option<Vec<f64>>,
+    horizons: usize,
+    n_lag_controls: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let taus = taus.unwrap_or_else(|| vec![0.1, 0.5, 0.9]);
+    let r = tsecon_quantile::quantile_lp(&vec1(&y), &vec1(&shock), &taus, horizons, n_lag_controls)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("taus", r.taus.into_pyarray(py))?;
+    d.set_item(
+        "horizons",
+        r.horizons
+            .iter()
+            .map(|&h| h as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("irf", r.irf)?;
+    d.set_item("se", r.se)?;
+    Ok(d)
+}
+
+/// Growth-at-risk (Adrian-Boyarchenko-Giannone 2019 AER): conditional
+/// quantiles of the `horizon`-ahead outcome on `[const, conditions, y_t]`
+/// (canonically GDP growth on NFCI + own growth), fitted at EVERY
+/// observation — `current` is the risk read at the latest one. `rearrange`
+/// applies the Chernozhukov-Fernandez-Val-Galichon monotone rearrangement;
+/// `crossing` reports whether the raw quantile paths crossed either way.
+/// Matches statsmodels `QuantReg` per tau plus a numpy sort at 1e-6.
+/// `taus` must be strictly increasing; defaults to
+/// [0.05, 0.25, 0.5, 0.75, 0.95]. Requires `horizon >= 1`.
+#[pyfunction]
+#[pyo3(signature = (y, conditions, horizon = 1, taus = None, rearrange = true))]
+fn growth_at_risk<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    conditions: numpy::PyReadonlyArray2<'py, f64>,
+    horizon: usize,
+    taus: Option<Vec<f64>>,
+    rearrange: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let taus = taus.unwrap_or_else(|| vec![0.05, 0.25, 0.5, 0.75, 0.95]);
+    let ca = conditions.as_array();
+    let cond_cols: Vec<Vec<f64>> = (0..ca.ncols()).map(|j| ca.column(j).to_vec()).collect();
+    let r = tsecon_quantile::growth_at_risk(&vec1(&y), &cond_cols, horizon, &taus, rearrange)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("taus", r.taus.into_pyarray(py))?;
+    d.set_item("horizon", r.horizon as u64)?;
+    d.set_item("params", r.params)?;
+    d.set_item("bse", r.bse)?;
+    d.set_item("fitted", r.fitted)?;
+    d.set_item("fitted_raw", r.fitted_raw)?;
+    d.set_item("crossing", r.crossing)?;
+    d.set_item("current", r.current.into_pyarray(py))?;
+    Ok(d)
+}
+
+// --------------------------------------------------------------------------
+// funcshock bindings (assembled from the funcshock builder's draft)
+// --------------------------------------------------------------------------
+// ------------------------------------------------------------------
+// tsecon-funcshock: functional shocks (Inoue-Rossi 2021)
+// ------------------------------------------------------------------
+
+/// A 2-D `f64` array as owned rows (Vec of row Vecs). Like `vec1`, accepts
+/// non-contiguous input (transposed slices, strided views, pandas frames).
+fn rows2(a: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
+    let v = a.as_array();
+    (0..v.nrows())
+        .map(|i| (0..v.ncols()).map(|j| v[(i, j)]).collect())
+        .collect()
+}
+
+/// Per-horizon K*K row-major covariances -> (H+1) x K x K nested lists.
+fn flp_covs_nested(covs: &[Vec<f64>], k: usize) -> Vec<Vec<Vec<f64>>> {
+    covs.iter()
+        .map(|c| (0..k).map(|i| c[i * k..(i + 1) * k].to_vec()).collect())
+        .collect()
+}
+
+/// Functional PCA of a T x M panel of curve observations (e.g. daily
+/// yield-curve changes on a maturity grid): demean, eigendecompose the M x M
+/// covariance Xc'Xc/T, keep the leading `n_factors` eigenfunctions, scores,
+/// eigenvalues, and explained-variance shares. Sign convention: each
+/// eigenfunction's largest-|.| entry is positive.
+///
+/// Matches numpy.linalg.eigh of the same covariance at 1e-10.
+#[pyfunction]
+#[pyo3(signature = (curves, n_factors = 3))]
+fn functional_pca<'py>(
+    py: Python<'py>,
+    curves: numpy::PyReadonlyArray2<'py, f64>,
+    n_factors: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_funcshock::functional_pca(&rows2(&curves), n_factors).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("mean_curve", r.mean_curve.into_pyarray(py))?;
+    d.set_item("eigenfunctions", r.eigenfunctions)?; // K rows, each length M
+    d.set_item("scores", r.scores)?; // T rows, each length K
+    d.set_item("eigenvalues", r.eigenvalues.into_pyarray(py))?;
+    d.set_item("explained", r.explained.into_pyarray(py))?;
+    d.set_item("total_variance", r.total_variance)?;
+    Ok(d)
+}
+
+/// Functional local projection (Inoue-Rossi 2021): at each horizon h regress
+/// y_{t+h} JOINTLY on all K scores + a constant + `n_lag_controls` lags of y,
+/// with Newey-West Bartlett HAC standard errors (maxlags = h + n_lag_controls
+/// unless `hac_maxlags` is given; statsmodels use_correction=True). `covs` is
+/// the per-horizon JOINT K x K coefficient covariance — whole-curve scenarios
+/// need its off-diagonals.
+///
+/// Matches statsmodels OLS(...).fit(cov_type="HAC") per horizon at 1e-8.
+#[pyfunction]
+#[pyo3(signature = (y, scores, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
+fn flp<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    scores: numpy::PyReadonlyArray2<'py, f64>,
+    horizons: usize,
+    n_lag_controls: usize,
+    hac_maxlags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_funcshock::flp(
+        &vec1(&y),
+        &rows2(&scores),
+        horizons,
+        n_lag_controls,
+        hac_maxlags,
+    )
+    .map_err(to_py)?;
+    let covs = flp_covs_nested(&r.covs, r.n_factors);
+    let d = PyDict::new(py);
+    d.set_item(
+        "horizons",
+        r.horizons
+            .iter()
+            .map(|h| *h as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("n_factors", r.n_factors)?;
+    d.set_item("betas", r.betas)?; // (H+1) x K
+    d.set_item("covs", covs)?; // (H+1) x K x K
+    d.set_item("se", r.se)?; // (H+1) x K
+    d.set_item(
+        "nobs",
+        r.nobs
+            .iter()
+            .map(|n| *n as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    Ok(d)
+}
+
+/// One-call functional-shock IRF: functional PCA of the curves, joint FLP of
+/// y on the scores, then the response of y to the whole-curve scenario
+/// `delta` (length M, same grid as the curves): weights w_k = <phi_k, delta>,
+/// response_h = w'beta_h, se_h = sqrt(w' Cov_h w). This is the response of y
+/// to the ENTIRE curve moving by delta — the functional deliverable.
+///
+/// Matches the numpy/statsmodels composition (eigh + OLS-HAC + closed form)
+/// at 1e-8.
+#[pyfunction]
+#[pyo3(signature = (y, curves, delta, n_factors = 3, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
+#[allow(clippy::too_many_arguments)] // py + 7 user args; the composite scenario call genuinely needs them
+fn flp_scenario<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    curves: numpy::PyReadonlyArray2<'py, f64>,
+    delta: PyReadonlyArray1<'py, f64>,
+    n_factors: usize,
+    horizons: usize,
+    n_lag_controls: usize,
+    hac_maxlags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let fpca = tsecon_funcshock::functional_pca(&rows2(&curves), n_factors).map_err(to_py)?;
+    let fit = tsecon_funcshock::flp(
+        &vec1(&y),
+        &fpca.scores,
+        horizons,
+        n_lag_controls,
+        hac_maxlags,
+    )
+    .map_err(to_py)?;
+    let irf = tsecon_funcshock::flp_scenario(&fpca, &fit, &vec1(&delta)).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item(
+        "horizons",
+        irf.horizons
+            .iter()
+            .map(|h| *h as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("weights", irf.weights.into_pyarray(py))?;
+    d.set_item("response", irf.response.into_pyarray(py))?;
+    d.set_item("se", irf.se.into_pyarray(py))?;
+    d.set_item("betas", fit.betas)?; // per-horizon joint score coefficients
+    d.set_item("explained", fpca.explained.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// FVAR whole-curve scenario (Inoue-Rossi 2021): fit a VAR to [scores, y]
+/// (scores ordered FIRST, outcome last, constant included), set the
+/// reduced-form score innovation to w = phi'delta and the outcome's own
+/// structural shock to zero (recursive/Cholesky identification), and read the
+/// response off the orthogonalized IRFs. IDENTIFICATION CAVEAT: the impact
+/// response of y is the in-sample regression of its innovation on the score
+/// innovations — credible under announcement-day timing, an assumption
+/// otherwise. `responses[h]` lists the K score responses then the outcome;
+/// at h=0 the score responses equal the weights exactly.
+///
+/// Matches statsmodels VAR(...).fit(lags, trend="c") + orth_ma_rep + scipy
+/// triangular solve at 1e-8.
+#[pyfunction]
+#[pyo3(signature = (y, curves, delta, n_factors = 3, lags = 2, horizon = 10))]
+fn fvar_scenario<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    curves: numpy::PyReadonlyArray2<'py, f64>,
+    delta: PyReadonlyArray1<'py, f64>,
+    n_factors: usize,
+    lags: usize,
+    horizon: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let fpca = tsecon_funcshock::functional_pca(&rows2(&curves), n_factors).map_err(to_py)?;
+    let w =
+        tsecon_funcshock::scenario_weights(&fpca.eigenfunctions, &vec1(&delta)).map_err(to_py)?;
+    let r = tsecon_funcshock::fvar_scenario(&fpca.scores, &vec1(&y), &w, lags, horizon)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item(
+        "horizons",
+        r.horizons
+            .iter()
+            .map(|h| *h as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("weights", r.weights.into_pyarray(py))?;
+    d.set_item("response_outcome", r.response_outcome.into_pyarray(py))?;
+    d.set_item("responses", r.responses)?; // (H+1) x (K+1): scores first, outcome last
+    d.set_item("implied_outcome_innovation", r.implied_outcome_innovation)?;
+    Ok(d)
+}
+
+// --------------------------------------------------------------------------
+// breaks bindings (assembled from the breaks builder's draft)
+// --------------------------------------------------------------------------
+// Compile-checked verbatim against pyo3 0.29 / numpy 0.29 and the real crate
+// (scratch harness). Uses only the existing helpers `to_py` and `vec1`.
+
+/// Bai-Perron multiple structural breaks: global partitions by dynamic
+/// programming, number of breaks selected by sequential supF(l+1|l) tests
+/// at 5% (published Bai-Perron critical values), per-regime OLS, and
+/// Bai (1997) break-date confidence intervals.
+///
+/// `x` is the T x q design whose coefficients ALL switch at each break
+/// (add your own constant column). `trim` must be one of 0.05, 0.10,
+/// 0.15, 0.20, 0.25 (the published critical-value grid); q <= 10. Break
+/// dates are 0-indexed last observations of each regime. Validated
+/// against exact brute-force enumeration + numpy segment OLS at 1e-8
+/// (dates exact); CIs assume homogeneous regressor moments and error
+/// variance across regimes.
+#[pyfunction]
+#[pyo3(signature = (y, x, max_breaks = 5, trim = 0.15))]
+fn bai_perron<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    max_breaks: usize,
+    trim: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let r = tsecon_breaks::bai_perron(
+        &vec1(&y),
+        &cols,
+        tsecon_breaks::BaiPerronConfig { max_breaks, trim },
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("n_breaks", r.n_breaks)?;
+    d.set_item(
+        "break_dates",
+        r.break_dates
+            .iter()
+            .map(|v| *v as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("sup_f_seq", r.sup_f_seq.into_pyarray(py))?;
+    d.set_item("sup_f_crit", r.sup_f_crit.into_pyarray(py))?;
+    d.set_item("ssr_path", r.ssr_path.into_pyarray(py))?;
+    d.set_item(
+        "break_dates_by_m",
+        r.break_dates_by_m
+            .iter()
+            .map(|dates| dates.iter().map(|v| *v as u64).collect())
+            .collect::<Vec<Vec<u64>>>(),
+    )?;
+    d.set_item(
+        "regime_starts",
+        r.regimes
+            .iter()
+            .map(|s| s.start as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "regime_ends",
+        r.regimes
+            .iter()
+            .map(|s| s.end as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "params",
+        r.regimes
+            .iter()
+            .map(|s| s.params.clone())
+            .collect::<Vec<Vec<f64>>>(),
+    )?;
+    d.set_item(
+        "bse",
+        r.regimes
+            .iter()
+            .map(|s| s.se.clone())
+            .collect::<Vec<Vec<f64>>>(),
+    )?;
+    d.set_item(
+        "regime_ssr",
+        r.regimes
+            .iter()
+            .map(|s| s.ssr)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "ci_lower_90",
+        r.ci.iter()
+            .map(|c| c.lower90 as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "ci_upper_90",
+        r.ci.iter()
+            .map(|c| c.upper90 as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "ci_lower_95",
+        r.ci.iter()
+            .map(|c| c.lower95 as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "ci_upper_95",
+        r.ci.iter()
+            .map(|c| c.upper95 as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "ci_scale",
+        r.ci.iter()
+            .map(|c| c.scale)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("h", r.h)?;
+    Ok(d)
+}
+
+/// Andrews (1993) sup-F (Quandt) test for a single structural break at an
+/// unknown date, with Hansen (1997) approximate asymptotic p-value from
+/// his published response surfaces.
+///
+/// `x` is the T x q design (add your own constant column, q <= 10);
+/// candidate dates leave at least `h = ceil(trim * T)` observations per
+/// regime. The statistic is the Wald-form sup of the Chow path (matches
+/// R strucchange `Fstats`/`sctest` at 1e-8; p-value 1e-10 against the
+/// transcribed surface). Returns the full `f_path` over `dates` plus the
+/// argmax `break_date`.
+#[pyfunction]
+#[pyo3(signature = (y, x, trim = 0.15))]
+fn sup_f_test<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    trim: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
+    let r = tsecon_breaks::sup_f_test(&vec1(&y), &cols, trim).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("break_date", r.break_date)?;
+    d.set_item(
+        "dates",
+        r.dates
+            .iter()
+            .map(|v| *v as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("f_path", r.f_path.into_pyarray(py))?;
+    d.set_item("h", r.h)?;
+    Ok(d)
+}
+
+// --------------------------------------------------------------------------
+// smoothlp bindings (assembled from the smoothlp builder's draft)
+// --------------------------------------------------------------------------
+/// Smooth local projections (Barnichon-Brownlees 2019): the IRF path is
+/// estimated jointly across horizons as a B-spline in `h` with a ridge
+/// penalty on the `penalty_order`-th difference of the basis coefficients
+/// (default 2: shrink toward a straight line). Closed form
+/// `theta = (X'X + lam*P)^{-1} X'y` over the stacked per-horizon design.
+///
+/// `lam`: a float fixes the smoothing parameter (`0.0` reproduces the
+/// per-horizon `tsecon.lp(se="hac")` point estimates exactly with the
+/// default basis); `"cv"` or `None` selects it by leave-h-block-out
+/// cross-validation over `lambda_grid` (or a default log-spaced grid) with
+/// `n_folds` contiguous folds and a dependence buffer of
+/// `horizons + n_lag_controls` periods around each held-out block.
+///
+/// `se` is the delta method through the basis over a stacked Bartlett-HAC
+/// sandwich (bandwidth `hac_maxlags`, default `horizons + n_lag_controls`).
+/// It conditions on `lam` (even when cross-validated) and describes the
+/// penalized estimator's own sampling variability — shrinkage bias is not
+/// accounted for. `irf_raw`/`se_raw` are the unsmoothed per-horizon HAC LP
+/// for comparison.
+///
+/// Matches fixtures/smoothlp.json: basis vs scipy BSpline.design_matrix at
+/// 1e-10, theta/irf/se and CV scores vs NumPy normal equations at ~1e-8
+/// relative, lambda=0 IRF vs statsmodels per-horizon OLS at 1e-8.
+#[pyfunction]
+#[pyo3(signature = (y, shock, horizons = 12, n_lag_controls = 4, lam = None, degree = 3, n_basis = None, penalty_order = 2, lambda_grid = None, n_folds = 5, hac_maxlags = None))]
+#[allow(clippy::too_many_arguments)]
+fn smooth_lp<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    shock: PyReadonlyArray1<'py, f64>,
+    horizons: usize,
+    n_lag_controls: usize,
+    lam: Option<&Bound<'py, PyAny>>,
+    degree: usize,
+    n_basis: Option<usize>,
+    penalty_order: usize,
+    lambda_grid: Option<Vec<f64>>,
+    n_folds: usize,
+    hac_maxlags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let mut spec = tsecon_lp::SmoothLpSpec::new(horizons, n_lag_controls)
+        .with_degree(degree)
+        .with_penalty_order(penalty_order);
+    if let Some(k) = n_basis {
+        spec = spec.with_n_basis(k);
+    }
+    if let Some(ml) = hac_maxlags {
+        spec = spec.with_hac_maxlags(ml);
+    }
+    // lam: None / "cv" -> cross-validation; a number -> fixed lambda.
+    spec = match lam {
+        None => spec.with_cv(lambda_grid, n_folds),
+        Some(obj) if obj.is_none() => spec.with_cv(lambda_grid, n_folds),
+        Some(obj) => {
+            if let Ok(s) = obj.extract::<String>() {
+                if s == "cv" {
+                    spec.with_cv(lambda_grid, n_folds)
+                } else {
+                    return Err(PyValueError::new_err(format!(
+                        "unknown lam {s:?}; expected a non-negative float, \"cv\", or None"
+                    )));
+                }
+            } else if let Ok(v) = obj.extract::<f64>() {
+                if lambda_grid.is_some() {
+                    return Err(PyValueError::new_err(
+                        "lambda_grid was given together with a fixed lam; pass lam=\"cv\" to \
+                         cross-validate over the grid, or drop lambda_grid to use the fixed value",
+                    ));
+                }
+                spec.with_lambda(v)
+            } else {
+                return Err(PyValueError::new_err(
+                    "lam must be a non-negative float, \"cv\", or None",
+                ));
+            }
+        }
+    };
+    let r = tsecon_lp::smooth_lp(&vec1(&y), &vec1(&shock), &spec).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item(
+        "horizons",
+        r.horizons
+            .iter()
+            .map(|&h| h as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("irf", r.irf.into_pyarray(py))?;
+    d.set_item("se", r.se.into_pyarray(py))?;
+    d.set_item("lambda_used", r.lambda)?;
+    d.set_item("cv_grid", r.cv_grid.into_pyarray(py))?;
+    d.set_item("cv_scores", r.cv_scores.into_pyarray(py))?;
+    d.set_item("theta", r.theta.into_pyarray(py))?;
+    d.set_item("irf_raw", r.irf_raw.into_pyarray(py))?;
+    d.set_item("se_raw", r.se_raw.into_pyarray(py))?;
+    Ok(d)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -3699,5 +4298,15 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cusum_test, m)?)?;
     m.add_function(wrap_pyfunction!(afns_adjustment, m)?)?;
     m.add_function(wrap_pyfunction!(dsge_solve, m)?)?;
+    m.add_function(wrap_pyfunction!(quantile_regression, m)?)?;
+    m.add_function(wrap_pyfunction!(quantile_lp, m)?)?;
+    m.add_function(wrap_pyfunction!(growth_at_risk, m)?)?;
+    m.add_function(wrap_pyfunction!(functional_pca, m)?)?;
+    m.add_function(wrap_pyfunction!(flp, m)?)?;
+    m.add_function(wrap_pyfunction!(flp_scenario, m)?)?;
+    m.add_function(wrap_pyfunction!(fvar_scenario, m)?)?;
+    m.add_function(wrap_pyfunction!(bai_perron, m)?)?;
+    m.add_function(wrap_pyfunction!(sup_f_test, m)?)?;
+    m.add_function(wrap_pyfunction!(smooth_lp, m)?)?;
     Ok(())
 }

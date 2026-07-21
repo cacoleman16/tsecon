@@ -33,7 +33,7 @@ Python and NumPy; the estimation kernels (state-space filtering, bootstrap and
 posterior resampling, sign-restriction rotation sampling, spectral transforms,
 optimization) are implemented in Rust and exposed through `PyO3` and built into
 portable wheels with `maturin` [@pyo3; @maturin]. The current release exposes
-**94 functions** organized as a task-oriented facade over **37 Rust crates**,
+**104 functions** organized as a task-oriented facade over **40 Rust crates**,
 and NumPy is the only required runtime dependency.
 
 The design goal is not another forecasting toolkit but a maintained, fast, and
@@ -86,7 +86,7 @@ comfortable default rather than an overnight job.
 
 # Functionality
 
-The 94 functions span the applied workflow end to end:
+The 104 functions span the applied workflow end to end:
 
 - **Diagnostics and exploration**: `acf`, `pacf`, `ljung_box`, `jarque_bera`,
   `arch_lm`; the unit-root workflow `adf`, `kpss`, `check_stationarity`;
@@ -103,6 +103,15 @@ The 94 functions span the applied workflow end to end:
   models and `favar`; and Diebold–Yilmaz `connectedness`.
 - **Forecast evaluation**: `dm_test`, `cw_test`, `gw_test`, `theta_forecast`,
   and a leakage-checked rolling/expanding `backtest` engine.
+- **Distributions, breaks, and smoothing**: quantile regression and quantile
+  local projections (`quantile_regression`, `quantile_lp`) with the
+  growth-at-risk workflow of @adrian2019 (`growth_at_risk`); functional shocks
+  — FPCA of curve-valued shocks with functional local projections and scenario
+  analysis (`functional_pca`, `flp`, `flp_scenario`, `fvar_scenario`)
+  [@inoue2021]; multiple structural breaks by dynamic programming with
+  break-date confidence intervals (`bai_perron`, `sup_f_test`)
+  [@baiperron1998]; and smooth local projections (`smooth_lp`)
+  [@barnichon2019].
 - **Machine learning for econometrics**: penalized regression (`ridge`,
   `lasso`, `elastic_net`, `adaptive_lasso`, `lasso_path`) with leakage-safe
   time-series cross-validation (`cv_splits`).
@@ -126,8 +135,8 @@ settings can never yield different p-values in different modules.
 `tsecon`'s central engineering discipline is that no estimator is included
 without a named golden validation target — a published table, a reference
 implementation, or both. The Rust core carries a large unit and integration
-suite (more than 600 `#[test]` cases) and the Python layer adds a conformance
-suite (364 tests collected) whose fixtures are gated against `statsmodels`,
+suite (more than 800 `#[test]` cases) and the Python layer adds a conformance
+suite (380 tests collected) whose fixtures are gated against `statsmodels`,
 `arch`, `linearmodels`, `scikit-learn`, SciPy, and `ArviZ`. The replication
 fixtures *are* the integration test suite.
 

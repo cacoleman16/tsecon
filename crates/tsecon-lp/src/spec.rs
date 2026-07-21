@@ -43,6 +43,11 @@ pub enum SeKind {
     /// Kernel HAC standard errors matching the linearmodels IV2SLS
     /// convention (used by [`crate::lp_iv`]).
     IvKernelHac,
+    /// Bartlett-HAC sandwich over the base-time-aggregated scores of the
+    /// stacked smooth-LP estimator, pushed through the B-spline basis by the
+    /// delta method (used by [`crate::smooth_lp`]; conditional on the
+    /// smoothing parameter — see [`crate::SmoothLpResult::se`]).
+    SmoothStackedHac,
 }
 
 /// Which side(s) of the projection are accumulated over the horizon.

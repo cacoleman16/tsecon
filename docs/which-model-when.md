@@ -45,6 +45,10 @@ A compact index. Find your row, jump to the section.
 | Intraday returns / a realized-variance series | `realized_measures`, `har_rv` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Panel whose units have genuinely different slopes | `panel_mean_group` (`mg`/`cce`), `panel_pmg` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
 | A fiscal (integral) multiplier from an instrumented shock | `lp_multiplier` — not `lp_iv(..., cumulative=True)` | [2](#2-i-want-an-impulse-response) |
+| A smoother, lower-variance IRF across horizons | `smooth_lp` (B-spline penalty; λ=0 = raw LP) | [2](#2-i-want-an-impulse-response) |
+| The shock is a whole curve (e.g. the yield curve shifts) | `functional_pca` + `flp_scenario` / `fvar_scenario` | [2](#2-i-want-an-impulse-response) |
+| Downside risk of growth, not the mean forecast | `growth_at_risk` (conditional quantiles, ABG) | [4](#4-my-volatility-has-fat-tails-or-jumps) |
+| Did the coefficients break, and how many times? | `bai_perron` (unknown, multiple), `sup_f_test` (unknown, single) | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Panel IRF to a common shock; per-entity dynamics | `panel_lp`, `mean_group_var` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
 | Regressor is highly persistent (predictive regression) | `predictive_regression` (OLS + Stambaugh + IVX), `ivx_test` | [6](#6-my-regressor-is-highly-persistent) |
 | Many candidate predictors, most of them noise | `adaptive_lasso`, `lasso_path`, `cv_splits` | [7](#7-i-have-many-candidate-predictors) |

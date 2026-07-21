@@ -30,7 +30,7 @@ on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.0.1
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 94
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 104
           if not n.startswith("_")))
 ```
 
@@ -79,7 +79,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 94 functions, grouped by the task they serve. Every one is a plain
+The 104 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -158,6 +158,16 @@ and docstrings live in
 | `lp_iv` | Instrumented local projections with a first-stage F diagnostic |
 | `lp_multiplier` | Integral multiplier (Ramey-Zubairy): cumulated outcome on cumulated impulse, instrumented |
 | `lp_state` | State-dependent (interacted) local projections (Ramey-Zubairy) |
+| `smooth_lp` | Smooth local projections: B-spline-penalized IRFs (Barnichon-Brownlees) |
+
+### Functional shocks (FVAR / FLP)
+
+| Function | What it does |
+|---|---|
+| `functional_pca` | Functional PCA of curve-valued shocks into interpretable scores |
+| `flp` | Functional local projections: the response to each shock-curve score |
+| `flp_scenario` | Response to a user-drawn shock *curve* (scenario analysis via FLP) |
+| `fvar_scenario` | The same scenario answer through a VAR in the curve scores (FVAR) |
 
 ### Forecasting and evaluation
 
@@ -228,6 +238,8 @@ and docstrings live in
 | `reset_test` | Ramsey RESET functional-form test |
 | `chow_test` | Chow break test at a known split date |
 | `cusum_test` | Brown-Durbin-Evans CUSUM parameter-stability test |
+| `sup_f_test` | Andrews sup-F test for a break at an unknown date (Hansen p-values) |
+| `bai_perron` | Multiple structural breaks: dates, confidence intervals, IC selection |
 
 ### Predictive regressions & recession probability
 
@@ -236,6 +248,14 @@ and docstrings live in
 | `predictive_regression` | OLS + Stambaugh correction + IVX inference in one call |
 | `ivx_test` | Joint IVX predictability test for several persistent predictors |
 | `recession_probit` | Static or Kauppi-Saikkonen dynamic recession probit/logit |
+
+### Quantile regression & growth-at-risk
+
+| Function | What it does |
+|---|---|
+| `quantile_regression` | Koenker-Bassett quantile regression with sandwich SEs |
+| `quantile_lp` | Quantile local projections: the IRF at chosen quantiles |
+| `growth_at_risk` | Conditional quantiles of future growth (Adrian-Boyarchenko-Giannone) |
 
 ### Survey expectations & long memory
 

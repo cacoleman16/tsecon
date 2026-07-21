@@ -10,7 +10,8 @@
 - How to test whether residuals are white noise (Ljung-Box), normal (Jarque-Bera), and free of volatility clustering (Engle's ARCH-LM)
 - How unit-root testing actually works — ADF mechanics, why lag and deterministic choices decide the outcome, and why KPSS must run alongside it
 - The confirmatory quadrant workflow, and how `check_stationarity` codifies it
-- Where seasonality detection, structural-break tests, and spectral analysis fit in — and what is still on the roadmap
+- How to hunt structural breaks up the full ladder — a known date (Chow), monitoring (CUSUM), an unknown date (sup-F), and multiple breaks with confidence intervals (Bai-Perron)
+- Where seasonality detection and spectral analysis fit in — and what is still on the roadmap
 
 ## The idea
 
@@ -308,29 +309,65 @@ The conceptual toolkit, in ascending order of ambition:
 - **Chow test** (Chow, 1960): you *know* the candidate break date; fit the model on each side and F-test whether the coefficients differ.
 - **CUSUM** (Brown, Durbin and Evans, 1975): you suspect instability but have no date; monitor the cumulative sum of recursive residuals and flag when it drifts outside probabilistic boundaries. A drifting CUSUM path is the classic picture of a model quietly going stale.
 - **Quandt-Andrews sup-Wald** (Andrews, 1993): compute the Chow statistic at *every* plausible date and take the maximum. Because you searched, the maximum's distribution is nonstandard — critical values come from Hansen's (1997) approximations.
-- **Bai-Perron** (Bai and Perron, 1998, 2003): the full solution — estimate the *number* and *locations* of multiple breaks by dynamic programming over all partitions, with confidence intervals for each break date. The flagship of the roadmap's break suite; no credible Python implementation with full inference exists today.
+- **Bai-Perron** (Bai and Perron, 1998, 2003): the full solution — estimate the *number* and *locations* of multiple breaks by dynamic programming over all partitions, with confidence intervals for each break date. Long the headline gap in every Python stack; tsecon ships it.
 
-The **Chow test** and **CUSUM** ship today, alongside the rest of the
-specification-test battery (White/Breusch-Pagan heteroskedasticity, Ramsey
-RESET) — see the [specification-tests model card](../reference/model-cards/specification-tests.md):
+The entire ladder is callable today — Chow and CUSUM alongside the rest of the specification-test battery (see the [specification-tests model card](../reference/model-cards/specification-tests.md)), sup-F and Bai-Perron in the break suite proper (see the [structural-breaks model card](../reference/model-cards/structural-breaks.md)). Walk it end to end on a series built to have *two* mean breaks:
 
 ```python
-chow = tsecon.chow_test(y, X, split=120)   # known-date break; F(k, n-2k)
-cs   = tsecon.cusum_test(y, X)             # recursive CUSUM with 5% boundaries
-breached = (cs["path"] > cs["bound_upper"]).any() or (cs["path"] < cs["bound_lower"]).any()
+rng = np.random.default_rng(42)
+T = 300
+mu = np.where(np.arange(T) < 100, 0.0, np.where(np.arange(T) < 200, 2.0, 0.5))
+y_brk = mu + rng.normal(0.0, 1.0, T)   # white noise around a mean that jumps twice
+X = np.ones((T, 1))                    # mean-shift model: every coefficient switches
+
+# The Perron trap, live: this stationary series FAILS the unit-root screen.
+rep = tsecon.check_stationarity(y_brk)
+rep["quadrant"]                        # "UnitRoot" — wrong, and confidently so
+rep["adf_p_value"], rep["kpss_p_value"]  # (0.057, 0.021) — both point the same (wrong) way
 ```
 
-> **Preview** — `bai_perron` (multiple breaks with confidence intervals) is on the [roadmap](../../ROADMAP.md); the call below shows the intended API, not a shipped function.
+The quadrant workflow from earlier in this chapter — run in good faith — recommends differencing a series that is white noise around a broken mean. That is Perron's warning made concrete, and it is why the break ladder belongs in the *diagnostic* pass, not in an appendix.
+
+**Rung 1 — you know the date.** If history hands you the candidate break (a policy change, a war), `chow_test` is sharp:
 
 ```python
-bp = tsecon.bai_perron(y, X, max_breaks=5, trim=0.15)   # roadmap
-bp["n_breaks"]            # selected by sequential sup-F tests
-bp["break_dates"]         # estimated dates with confidence intervals
+tsecon.chow_test(y_brk, X, split=100)["pvalue"]   # 9.3e-18 — but only because we guessed right
 ```
 
-Until Bai-Perron lands, the practical advice for *unknown* multiple breaks: plot the series and the rolling mean of its differences; if a break is visible, split the sample at the suspected date and run this chapter's battery (and `chow_test`) on each half. Disagreement between halves is a break test of last resort — crude, but far better than averaging two regimes.
+**Rung 2 — you merely suspect instability.** CUSUM monitors the recursive residuals with no date in hand:
 
-> **⚠ Common mistake.** Concluding "unit root" from ADF without ever asking about breaks. The **Conflict** cell of the quadrant (ADF rejects, KPSS rejects) is often exactly this signature — and so is a stubborn non-rejection on a series with an obvious level shift. Break-robust unit-root tests (Zivot and Andrews, 1992; Lee and Strazicich, 2003 — both roadmap) exist because the plain ADF verdict is unreliable in the presence of breaks.
+```python
+cs = tsecon.cusum_test(y_brk, X)
+((cs["path"] > cs["bound_upper"]) | (cs["path"] < cs["bound_lower"])).any()   # True — drifted out
+```
+
+**Rung 3 — one unknown date, with honest inference.** `sup_f_test` computes the Chow F at every admissible date (15% trimming by default) and takes the supremum, with Hansen's (1997) response-surface p-value that correctly prices the search:
+
+```python
+sf = tsecon.sup_f_test(y_brk, X, trim=0.15)
+sf["stat"], sf["p_value"]   # (83.7, 3.9e-18) — decisive instability
+sf["break_date"]            # 99 — the argmax of the F path: the first break, found blind
+```
+
+The function also returns the full `f_path` over the trimmed `dates`, which is worth plotting: a sharp single peak reads very differently from a broad plateau (one clean break versus smeared drift). Here the path towers at observation 99 — the true first break — then falls to nothing near observation 180 and rises to a *second* local peak (F $\approx 13$, itself above the critical value) near observation 201. A sup-F test can only report one date; a two-humped F path is its way of telling you it was asked the wrong question, and the next rung exists for exactly that.
+
+**Rung 4 — how many breaks, where, and how sure?** `bai_perron` solves the multi-break problem by dynamic programming over all admissible partitions (validated in the test suite against brute-force enumeration), picks the number of breaks by sequential sup-F tests at the published Bai-Perron 5% critical values, and attaches Bai (1997) confidence intervals to each estimated date:
+
+```python
+bp = tsecon.bai_perron(y_brk, X, max_breaks=5, trim=0.15)
+bp["n_breaks"]                                   # 2
+bp["break_dates"]                                # [99, 201] — truth: 99 and 199
+list(zip(bp["ci_lower_95"], bp["ci_upper_95"]))  # [(95, 103), (196, 206)] — both cover
+[round(p[0], 2) for p in bp["params"]]           # [-0.05, 1.98, 0.42] — truth: 0.0, 2.0, 0.5
+np.round(bp["sup_f_seq"][:3], 1)                 # [83.7, 121.5, 4.5]
+bp["sup_f_crit"][:3]                             # [8.58, 10.13, 11.14]
+```
+
+Read the selection logic off the last two lines: supF(1|0) $= 83.7 > 8.58$, so at least one break; supF(2|1) $= 121.5 > 10.13$, so a second; supF(3|2) $= 4.5 < 11.14$, stop. Two breaks, dated within two observations of the truth, with 95% intervals that cover — and the three regime means recovered to within sampling noise. The `ssr_path` (global minimum SSR for each break count) and `break_dates_by_m` (the optimal partition for every candidate $m$) come back too, so you can see the diminishing returns the sequential test formalized.
+
+One honesty note before you cite the intervals in a paper: the confidence intervals are the Bai (1997) *homogeneous* case — regressors and errors assumed to have the same distribution across regimes. The heterogeneity-robust variant (regime-specific moment matrices) is **not** shipped; if the regimes plausibly differ in variance, read the intervals as approximate. The [structural-breaks model card](../reference/model-cards/structural-breaks.md) states the full contract, including the `trim`-implied minimum regime length ($h = 45$ here — a `trim` of 0.15 means no regime shorter than 15% of the sample can be found, which is a modeling choice, not a numerical detail).
+
+> **⚠ Common mistake.** Concluding "unit root" from ADF without ever asking about breaks. The two-break example above did exactly that on purpose: `check_stationarity` returned **UnitRoot** on a series that is white noise around a broken mean, and only `bai_perron` told the truth. The **Conflict** cell of the quadrant (ADF rejects, KPSS rejects) is often the same signature — and so is a stubborn non-rejection on a series with an obvious level shift. Whenever the quadrant surprises you, run `sup_f_test` before you difference. Break-robust unit-root tests (Zivot and Andrews, 1992; Lee and Strazicich, 2003 — both roadmap) exist because the plain ADF verdict is unreliable in the presence of breaks.
 
 ## The spectrum: variance, frequency by frequency
 
@@ -366,7 +403,7 @@ Where does research-grade practice go beyond this chapter's defaults?
 
 **Better unit-root tests.** Plain ADF is no longer the state of the art. DF-GLS (Elliott, Rothenberg and Stock, 1996) detrends by GLS before testing and gains substantial power near the null; the Ng-Perron M-tests with the MAIC lag-selection rule (Ng and Perron, 2001) fix the severe size distortions that negative MA errors inflict on ADF and Phillips-Perron. Facing uncertainty about trends and initial conditions, the union-of-rejections strategies of Harvey, Leybourne and Taylor (2009, 2012) combine OLS- and GLS-detrended tests with size-corrected joint critical values. All are roadmap items, and the `check_stationarity` workflow is designed to escalate to them.
 
-**Breaks everywhere.** The frontier treats breaks and unit roots jointly: Zivot and Andrews (1992) and Lee and Strazicich (2003) allow breaks within the unit-root test itself; Carrion-i-Silvestre, Kim and Perron (2009) push to multiple breaks under both null and alternative with GLS detrending. On the pure break side, modern changepoint methods (PELT, wild binary segmentation) trade econometric inference for speed on very long series — the roadmap positions them explicitly as *detection*, with Bai-Perron owning *inference*.
+**Breaks everywhere.** The frontier treats breaks and unit roots jointly: Zivot and Andrews (1992) and Lee and Strazicich (2003) allow breaks within the unit-root test itself; Carrion-i-Silvestre, Kim and Perron (2009) push to multiple breaks under both null and alternative with GLS detrending. On the pure break side, modern changepoint methods (PELT, wild binary segmentation) trade econometric inference for speed on very long series — the roadmap positions them explicitly as *detection*, with the shipped `bai_perron` owning *inference*. The main inference gaps that remain: the heterogeneity-robust break-date intervals, and breaks in variance rather than mean.
 
 **Smarter portmanteau tests.** The arbitrary `nlags` choice is a real weakness: Escanciano and Lobato (2009) automate it with a data-driven, heteroskedasticity-robust statistic; Fisher and Gallagher (2012) improve power with weighted variants. Both are natural defaults for an automated diagnostic report.
 
@@ -388,7 +425,9 @@ Where does research-grade practice go beyond this chapter's defaults?
 | Volatility clustering suspected (returns data) | `arch_lm` | Rejection is the entry ticket to GARCH modeling |
 | Prediction intervals or density forecasts needed | `jarque_bera` on residuals | Non-normality wrecks intervals even when point forecasts are fine |
 | Monthly/quarterly data, calendar rhythm suspected | `acf` at lags $s, 2s$ today; QS/HEGY (roadmap) | Seasonal spikes are unmistakable; dummies-vs-differencing needs HEGY |
-| Suspected regime change or policy break | Split-sample battery today; CUSUM, Bai-Perron (roadmap) | Breaks masquerade as unit roots and poison full-sample fits |
+| Suspected break, date known | `chow_test(y, X, split=...)` | The F-test is sharpest when history hands you the date |
+| Suspected instability, no date | `cusum_test`, then `sup_f_test` | CUSUM monitors; sup-F locates one break with a search-corrected p-value |
+| Multiple breaks, count unknown | `bai_perron` | Sequential sup-F selection, DP-optimal dates, Bai (1997) confidence intervals — breaks masquerade as unit roots and poison full-sample fits |
 | "Which frequencies dominate this series?" | `periodogram`/`welch` today; `bk_filter`/`cf_filter` for band-pass | Variance-by-frequency is the natural language for cycles |
 | Inconclusive quadrant, small sample | More data, or DF-GLS/Ng-Perron (roadmap) | Near-unit roots are a power problem, not a software problem |
 
@@ -404,12 +443,14 @@ Where does research-grade practice go beyond this chapter's defaults?
 - `adf(y, regression="n"|"c"|"ct", autolag="aic"|"bic"|"t-stat"|None, maxlag=None)` → statistic, MacKinnon p-value, `used_lag`, `crit` (validated at 1e-8)
 - `kpss(y, regression="c"|"ct", nlags=None|"auto"|"legacy"|int)` → statistic, interpolated p-value (clamped to [0.01, 0.10]), bandwidth used
 - `check_stationarity(y, alpha=0.05)` → quadrant, recommendation, interpretation, and both tests' statistics
+- `sup_f_test(y, x, trim=0.15)` → `{"stat", "p_value", "break_date", "f_path", "dates", "h"}` — Andrews (1993) sup-F for one unknown break, Hansen (1997) approximate p-value
+- `bai_perron(y, x, max_breaks=5, trim=0.15)` → `n_breaks`, `break_dates` with 90/95% confidence intervals, per-regime `params`/`bse`, the sequential `sup_f_seq` against published critical values, `ssr_path`, and `break_dates_by_m` — DP-validated against brute-force enumeration; Bai (1997) homogeneous-case intervals only (see the [structural-breaks model card](../reference/model-cards/structural-breaks.md))
 - `long_run_variance(x, kernel="bartlett"|"parzen"|"qs", bandwidth=None)` — the HAC machinery under KPSS
 - `periodogram(x, fs, window, detrend)`, `welch(x, nperseg, fs, noverlap, window, detrend)`, `coherence(x, y, ...)` → `{"freqs", "psd"}` (coherence: `{"freqs", "coherence"}`) — spectral estimation matching `scipy.signal` to ~1e-15
 
 **Built in Rust, awaiting Python bindings:** the EWC/fixed-b long-run variance estimator (`ewc_lrv`, the Lazarus-Lewis-Stock-Watson recommendation), Andrews (1991) automatic bandwidth and AR(1)-prewhitened LRV variants, and typed pass/fail `DiagnosticReport` objects attached to each test.
 
-**Roadmap** ([docs/roadmap/01-diagnostics-exploration.md](../roadmap/01-diagnostics-exploration.md)): Breusch-Godfrey, DF-GLS, Phillips-Perron, Ng-Perron M-tests, HEGY and Canova-Hansen seasonal unit roots, QS/Friedman seasonality tests, Chow/CUSUM/Quandt-Andrews/Bai-Perron break suite, Zivot-Andrews and Lee-Strazicich break-robust unit roots, multitaper and cross-spectral phase spectral estimation, GPH and local-Whittle long memory, BDS, GSADF bubble tests, STL/X-13 seasonal adjustment, and the `check_series()` one-call battery.
+**Roadmap** ([docs/roadmap/01-diagnostics-exploration.md](../roadmap/01-diagnostics-exploration.md)): Breusch-Godfrey, DF-GLS, Phillips-Perron, Ng-Perron M-tests, HEGY and Canova-Hansen seasonal unit roots, QS/Friedman seasonality tests, the heterogeneity-robust Bai-Perron break-date intervals and variance breaks, Zivot-Andrews and Lee-Strazicich break-robust unit roots, multitaper and cross-spectral phase spectral estimation, GPH and local-Whittle long memory, BDS, GSADF bubble tests, STL/X-13 seasonal adjustment, and the `check_series()` one-call battery.
 
 ## Further reading
 
@@ -422,4 +463,5 @@ Where does research-grade practice go beyond this chapter's defaults?
 - **Kwiatkowski, D., P. C. B. Phillips, P. Schmidt and Y. Shin (1992), "Testing the Null Hypothesis of Stationarity Against the Alternative of a Unit Root," *Journal of Econometrics*.** The mirror-image null that makes confirmatory analysis possible.
 - **MacKinnon, J. G. (2010), "Critical Values for Cointegration Tests," Queen's Economics Department Working Paper 1227.** The response-surface methodology behind every credible ADF p-value, including tsecon's.
 - **Perron, P. (1989), "The Great Crash, the Oil Price Shock, and the Unit Root Hypothesis," *Econometrica*.** The demonstration that one structural break can make a stationary series test as I(1) — required reading before believing any unit-root verdict.
+- **Bai, J. and P. Perron (1998), "Estimating and Testing Linear Models with Multiple Structural Changes," *Econometrica*** — with their (2003) *Journal of Applied Econometrics* computation paper. The dynamic-programming estimator, the sequential sup-F selection rule, and the break-date confidence intervals behind `bai_perron`; read as a pair.
 - **Hamilton, J. D. (1994), *Time Series Analysis*, Princeton University Press.** The graduate reference: chapters 15–17 develop unit-root asymptotics with full rigor, and chapter 6 covers spectral analysis.
