@@ -96,6 +96,7 @@ nav:
       - Testing & validation: reference/testing.md
       - Model cards:
           - Diagnostics: reference/model-cards/diagnostics.md
+          - Check series (one-call battery): reference/model-cards/check-series.md
           - ARIMA: reference/model-cards/arima.md
           - Spectral analysis: reference/model-cards/spectral.md
           - Volatility: reference/model-cards/volatility.md

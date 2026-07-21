@@ -23,6 +23,7 @@ Each plot method raises a message naming that extra if it is missing.
 
 from ._base import Results
 from ._arima import ARIMAResults
+from ._check import CheckSeriesResults, check_series
 from ._dsge import DSGEResults
 from ._garch import GARCHResults
 from ._lp import LPResults
@@ -32,6 +33,7 @@ from ._var import CoefficientFrame, IRFArray, VARResults, var_fit, var_irf
 __all__ = [
     "Results",
     "ARIMAResults",
+    "CheckSeriesResults",
     "CoefficientFrame",
     "DSGEResults",
     "GARCHResults",
@@ -40,6 +42,7 @@ __all__ = [
     "LPResults",
     "PredictiveRegressionResults",
     "VARResults",
+    "check_series",
     "var_fit",
     "var_irf",
 ]

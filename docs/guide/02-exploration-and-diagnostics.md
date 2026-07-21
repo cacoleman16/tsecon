@@ -411,7 +411,22 @@ Where does research-grade practice go beyond this chapter's defaults?
 
 **Long memory.** Between I(0) and I(1) lies fractional integration: ACFs that decay like a power law rather than geometrically. Semiparametric estimators of the memory parameter (log-periodogram regression, Geweke and Porter-Hudak, 1983; exact local Whittle, Shimotsu and Phillips, 2005) are essentially absent from Python — a roadmap gap — and Qu (2011) provides the crucial test distinguishing true long memory from level shifts masquerading as it.
 
-**The battery itself.** The library's flagship goal is `check_series()`: one call running the full family of diagnostics and returning a typed report with recommendations. The honest open problem is **multiple testing**: thirty tests on one series guarantee false alarms at the 5% level, yet blindly Bonferroni-correcting published statistics would misrepresent them. The roadmap's answer — group tests into families, report adjusted and unadjusted evidence side by side, never silently — is a design stance, not a solved problem. Deeper still lies a limit no software fixes: near the unit circle, stationary and integrated processes are nearly observationally equivalent in finite samples (Cochrane, 1991). The tests in this chapter organize the evidence; they cannot manufacture information the data do not contain.
+**The battery itself — the flagship, shipped.** `check_series()` is one call running this chapter's diagnostic families in order — on the right analysis scale, each family recording what it was computed on — and returning a report whose recommendations route to concrete tsecon calls (see its [model card](../reference/model-cards/check-series.md)). The honest problem it had to answer is **multiple testing**: a battery of tests on one series guarantees false alarms at the 5% level, yet blindly Bonferroni-correcting published statistics would misrepresent them. The answer — group tests into families, show the evidence and the expected-false-alarm arithmetic, never silently correct — is now implemented, not merely a stance: every hypothesis test lands in the report's `tests_run`, and the report closes by stating the arithmetic. Run it on this chapter's own two-break series:
+
+```python
+from tsecon.results import check_series   # the same battery, plus rendering
+
+battery = check_series(y_brk)            # the two-break series the quadrant misread
+battery["analysis_scale"]["scale"]       # "first_difference" — the Perron trap, swallowed whole
+[t["name"] for t in battery["tests_run"]]
+# ['adf', 'kpss', 'ljung_box (lags 1..10)', 'arch_lm', 'jarque_bera', 'sup_f_test']
+print(battery.summary().splitlines()[-2])   # the report's closing line
+# 6 hypothesis tests at alpha=0.05 - expect ~0.25 false alarms from the 5 true-null
+# tests on a clean series.  (ADF's null is a unit root — false on clean data — so
+# its rejection there would be correct, and it is excluded from the count.)
+```
+
+The battery, run in good faith, swallows the Perron trap whole — the quadrant says difference, so it differences — which is exactly why its recommendations ship as evidence-functions-caveat triples and why the break ladder above stays in your hands. Deeper still lies a limit no software fixes: near the unit circle, stationary and integrated processes are nearly observationally equivalent in finite samples (Cochrane, 1991). The tests in this chapter organize the evidence; they cannot manufacture information the data do not contain.
 
 ## Which method when
 
@@ -450,7 +465,7 @@ Where does research-grade practice go beyond this chapter's defaults?
 
 **Built in Rust, awaiting Python bindings:** the EWC/fixed-b long-run variance estimator (`ewc_lrv`, the Lazarus-Lewis-Stock-Watson recommendation), Andrews (1991) automatic bandwidth and AR(1)-prewhitened LRV variants, and typed pass/fail `DiagnosticReport` objects attached to each test.
 
-**Roadmap** ([docs/roadmap/01-diagnostics-exploration.md](../roadmap/01-diagnostics-exploration.md)): Breusch-Godfrey, DF-GLS, Phillips-Perron, Ng-Perron M-tests, HEGY and Canova-Hansen seasonal unit roots, QS/Friedman seasonality tests, the heterogeneity-robust Bai-Perron break-date intervals and variance breaks, Zivot-Andrews and Lee-Strazicich break-robust unit roots, multitaper and cross-spectral phase spectral estimation, GPH and local-Whittle long memory, BDS, GSADF bubble tests, STL/X-13 seasonal adjustment, and the `check_series()` one-call battery.
+**Roadmap** ([docs/roadmap/01-diagnostics-exploration.md](../roadmap/01-diagnostics-exploration.md)): Breusch-Godfrey, DF-GLS, Phillips-Perron, Ng-Perron M-tests, HEGY and Canova-Hansen seasonal unit roots, QS/Friedman seasonality tests, the heterogeneity-robust Bai-Perron break-date intervals and variance breaks, Zivot-Andrews and Lee-Strazicich break-robust unit roots, multitaper and cross-spectral phase spectral estimation, GPH and local-Whittle long memory, BDS, GSADF bubble tests, and STL/X-13 seasonal adjustment.
 
 ## Further reading
 

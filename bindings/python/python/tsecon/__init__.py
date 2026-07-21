@@ -5,9 +5,11 @@ A Rust core with a Python-first API. The estimators themselves are compiled
 and friends are the compiled functions with no Python-level indirection.
 
 This package layer exists so that pure-Python pieces can sit alongside the Rust
-core — currently :mod:`tsecon.results` (the opt-in rendering layer). The library
-ships no data loaders and makes no network calls; the only runtime dependency is
-NumPy. The public surface and its type stubs live in ``__init__.pyi``.
+core — currently :mod:`tsecon.results` (the opt-in rendering layer) and
+:func:`tsecon.check_series` (the one-call diagnostic battery composed from the
+compiled tests). The library ships no data loaders and makes no network calls;
+the only runtime dependency is NumPy. The public surface and its type stubs
+live in ``__init__.pyi``.
 """
 
 from . import _core as _core
@@ -15,6 +17,11 @@ from ._core import *  # noqa: F401,F403  — the compiled estimator surface
 from ._core import __version__ as __version__
 
 from . import results as results
+
+# check_series is pure Python (a composition over the compiled tests). It is
+# imported AFTER the star import above, and the name does not exist in _core,
+# so nothing compiled can be shadowed in either direction.
+from ._inspect import check_series as check_series
 
 # NOTE: `results` is exposed as a NAMESPACE only — deliberately never
 # star-imported. It defines its own `var_fit`/`var_irf` helpers that return rich
@@ -34,4 +41,7 @@ from . import results as results
 # The compiled module defines no __all__, so `from ._core import *` above pulls
 # in every public name. Rebuild __all__ explicitly for `from tsecon import *`
 # and for tooling that introspects it.
-__all__ = [_n for _n in dir(_core) if not _n.startswith("_")] + ["results"]
+__all__ = [_n for _n in dir(_core) if not _n.startswith("_")] + [
+    "check_series",
+    "results",
+]

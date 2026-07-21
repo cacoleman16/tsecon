@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**104 functions.**
+**105 functions.**
 
 ## diagnostics
 
@@ -78,6 +78,35 @@ def check_stationarity(y: _ArrayLike, alpha: float = ...) -> dict[str, Any]:
 ```
 
 The ADF + KPSS confirmatory-quadrant workflow with a recommendation.
+
+### `check_series`
+
+```python
+def check_series(
+    data: npt.ArrayLike,
+    seasonal_period: int | None = ...,
+    lags: int | None = ...,
+    alpha: float = ...,
+    max_breaks: int = ...,
+    trim: float = ...,
+) -> dict[str, Any]:
+```
+
+One-call diagnostic battery with model recommendations (the Module 01 flagship).
+
+    Pure Python over the compiled tests, so plain lists are coerced. 1D input
+    runs descriptives, outliers, the ADF+KPSS quadrant, Ljung-Box/ACF/PACF,
+    ARCH-LM, Jarque-Bera, a sup-F/Bai-Perron mean-shift scan, GPH long memory,
+    and seasonality evidence; 2D (n, k) input runs per-series integration,
+    Johansen, and VAR lag selection with a stability check. Evidence is
+    reported in families with the multiple-testing arithmetic shown — never
+    silently corrected — and the report ends in an ordered `recommendations`
+    list routing to concrete tsecon calls. JSON-serializable throughout.
+    `lags` is shape-dependent: the Ljung-Box horizon for 1D input (default
+    min(10, n//5)), the VAR lag-search cap for 2D input (default 8). `alpha`
+    must lie in (0.01, 0.10] — the compiled KPSS p-value is clamped to that
+    range. `seasonal_period` must be an integer >= 2 with at least two full
+    cycles in sample.
 
 ## robust inference
 

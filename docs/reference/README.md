@@ -42,6 +42,7 @@ method fits your problem and how to trust its output.
 | Family | Functions |
 |---|---|
 | [Diagnostics](model-cards/diagnostics.md) | `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`, `adf`, `kpss`, `check_stationarity` |
+| [Check series (one-call battery)](model-cards/check-series.md) | `check_series` (plus the `tsecon.results.check_series` facade with `.summary()` / `.plot_diagnostics()`) |
 | [ARIMA](model-cards/arima.md) | `arima_fit`, `ar_loglik` |
 | [Spectral analysis](model-cards/spectral.md) | `periodogram`, `welch`, `coherence` |
 | [Volatility](model-cards/volatility.md) | `garch_fit`, `gas_volatility`, `ccc_garch`, `dcc_garch` |

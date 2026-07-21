@@ -31,6 +31,13 @@ When a call complains about dimensions, it is almost always this.
 
 ## The decision table
 
+**Not sure where to start?** `tsecon.check_series(y)` is this page as an
+executable: one call runs the diagnostic families and returns recommendations
+that route to the same functions the rows below name (see the
+[model card](reference/model-cards/check-series.md)). Run it first, then come
+back here for the branches it cannot see — it inspects one dataset; it cannot
+know your research question.
+
 A compact index. Find your row, jump to the section.
 
 | Your situation | Reach for | Section |

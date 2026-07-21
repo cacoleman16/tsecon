@@ -19,6 +19,15 @@ to PyPI as `tsecon` at the first tagged release.
 - **Diagnostics**: ACF/PACF, Ljung-Box, Jarque-Bera, ARCH-LM; the full
   unit-root workflow (ADF with MacKinnon p-values, KPSS, `check_stationarity`);
   spectral analysis (periodogram, Welch, coherence).
+- **One-call battery**: `check_series` — the Module 01 flagship — runs the
+  diagnostic families in order (outlier screen, ADF+KPSS quadrant with
+  analysis-scale routing, Ljung-Box/ACF/PACF, ARCH-LM, Jarque-Bera, a
+  sup-F/Bai-Perron mean-shift scan, GPH long memory, seasonality evidence;
+  for a 2D panel: per-series integration, Johansen, and VAR lag selection
+  with a stability check) and ends in recommendations that route to concrete
+  tsecon calls — every hypothesis test on the record in `tests_run` with the
+  multiple-testing arithmetic shown, never silently corrected.
+  `tsecon.results.check_series` adds `.summary()` and `.plot_diagnostics()`.
 - **Univariate models**: exact-MLE ARIMA; GARCH/GJR/EGARCH with normal and
   Student-t QMLE, Bollerslev-Wooldridge robust standard errors, and a fused
   allocation-free likelihood with analytic gradients; GAS/DCS score-driven

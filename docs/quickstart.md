@@ -30,7 +30,7 @@ on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.0.1
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 104
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 105
           if not n.startswith("_")))
 ```
 
@@ -79,7 +79,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 104 functions, grouped by the task they serve. Every one is a plain
+The 105 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -97,6 +97,7 @@ and docstrings live in
 | `adf` | Augmented Dickey-Fuller unit-root test (MacKinnon p-values) |
 | `kpss` | KPSS stationarity test — the ADF complement |
 | `check_stationarity` | The ADF + KPSS confirmatory workflow, with a recommendation |
+| `check_series` | One-call diagnostic battery: runs the test families, suggests models with evidence |
 | `ols` | Linear regression with nonrobust / HC / HAC standard errors |
 | `long_run_variance` | Kernel long-run variance of a series |
 | `periodogram` | Raw spectral density (matches SciPy) |
