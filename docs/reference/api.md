@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**113 functions.**
+**116 functions.**
 
 ## diagnostics
 
@@ -406,6 +406,32 @@ def bvar_hierarchical(
 
 Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015).
 
+### `bvar_ssvs`
+
+```python
+def bvar_ssvs(
+    data: _ArrayLike,
+    lags: int = ...,
+    n_draws: int = ...,
+    burn: int = ...,
+    seed: int = ...,
+    c0: float = ...,
+    c1: float = ...,
+    prior_inclusion: float = ...,
+    ssvs_cov: bool = ...,
+    kappa0: float = ...,
+    kappa1: float = ...,
+    prior_inclusion_cov: float = ...,
+    gamma_a: float = ...,
+    gamma_b: float = ...,
+    horizon: int = ...,
+    thin: int = ...,
+    n_chains: int = ...,
+) -> dict[str, Any]:
+```
+
+SSVS-BVAR (George-Sun-Ni 2008): spike-and-slab stochastic-search selection of VAR (and error-precision) restrictions by Gibbs; posterior inclusion probabilities, coef/Sigma means, and orthogonalized IRF draws.
+
 ### `mcmc_diagnostics`
 
 ```python
@@ -613,6 +639,41 @@ Sign-restricted Bayesian SVAR: identified-set bands + acceptance diagnostics.
     {"+", "-"}. Returns per-(horizon, variable, shock) `quantiles` at
     `probs=[0.05,0.16,0.50,0.84,0.95]`, the identified-set envelope
     (`set_min`/`set_max`), and `diagnostics`.
+
+### `zero_sign_svar`
+
+```python
+def zero_sign_svar(
+    data: _ArrayLike,
+    sign_restrictions: Sequence[tuple[int, int, int, str]],
+    zero_restrictions: Sequence[tuple[int, int, int]],
+    lags: int = ...,
+    horizon: int = ...,
+    n_draws: int = ...,
+    max_tries: int = ...,
+    seed: int = ...,
+    lambda1: float = ...,
+    weighted: bool = ...,
+) -> dict[str, Any]:
+```
+
+Zero + sign restricted Bayesian SVAR: exact zeros by construction + sign rejection.
+
+    `sign_restrictions` are (variable, shock, horizon, sign) tuples with sign in
+    {"+", "-"} (may be empty); `zero_restrictions` are (variable, shock, horizon)
+    tuples imposing an exact zero on `Theta_h[variable, shock]` (horizon 0 =
+    impact). At least one list must be non-empty. Returns per-(horizon, variable,
+    shock) `quantiles` at `probs=[0.05,0.16,0.50,0.84,0.95]` (ARW-2018 importance-
+    weighted when `weighted=True`), the weight-invariant identified-set envelope
+    (`set_min`/`set_max`), per-accepted-draw `weights` (normalized to sum to 1) and
+        their effective sample size `ess`, and the acceptance `diagnostics`. With
+    strict-upper-triangle impact zeros and no sign restrictions the rotation at
+    every draw is pinned to Q=I, so each posterior draw's structural IRF equals
+    that draw's recursive Cholesky IRF (a per-draw identity checked to ~1e-10 in
+    the crate golden); the posterior of the bands therefore coincides with the
+    recursive-Cholesky posterior, and the reported `set_min`/`set_max` span
+    reflects posterior (not identified-set) uncertainty since the rotation is
+    fixed. The ARW weight is exactly 1 for impact-only zero patterns.
 
 ### `long_run_svar`
 
@@ -1285,6 +1346,31 @@ Pooled Mean Group ARDL(1,1) panel estimator (Pesaran-Shin-Smith 1999).
     Pools the long-run coefficient across units by ML; error-correction speed
     and short-run dynamics stay unit-specific. Returns theta, theta_se,
     phi_bar, phi, sigma2, loglik, iterations, n_units, k.
+
+### `panel_unit_root`
+
+```python
+def panel_unit_root(
+    data: _ArrayLike | Sequence[_ArrayLike],
+    test: str = ...,
+    lags: str | int | None = ...,
+    regression: str = ...,
+    max_lags: int | None = ...,
+    lrv_kernel: str = ...,
+    lrv_bandwidth: float | None = ...,
+) -> dict[str, Any]:
+```
+
+First-generation panel unit-root tests (LLC, IPS, Fisher/Maddala-Wu-Choi).
+
+    data is a balanced N x T array (rows = units) or a list of 1-D per-unit
+    series (unbalanced OK for "ips"/"fisher"; "llc" needs a common T). test is
+    "ips" (default), "llc", or "fisher"; regression is "c"/"ct"/"n" ("n" is
+    invalid for "ips"); lags is None (per-unit auto AIC), an int (fixed common
+    lag), or "aic"/"bic"/"t-stat". Returns statistic, p_value,
+    per_unit_tstat/pvalue/lags/nobs, n_units, regression, plus test-specific
+    extras: ips -> t_bar; llc -> delta_hat, t_delta, s_n, t_bar_periods;
+    fisher -> maddala_wu, choi_z, choi_z_pvalue.
 
 ## DFM nowcasting
 

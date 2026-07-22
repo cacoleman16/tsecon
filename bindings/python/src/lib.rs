@@ -1318,6 +1318,94 @@ fn bvar_hierarchical<'py>(
     Ok(d)
 }
 
+/// SSVS-BVAR (George, Sun & Ni 2008): spike-and-slab stochastic-search
+/// variable selection on the VAR coefficients (and, optionally, the
+/// off-diagonal error precision), estimated by a 4-block Gibbs sampler with
+/// semi-automatic prior scales from the OLS standard errors.
+///
+/// Returns posterior inclusion probabilities (`inclusion_prob`, k x n, the
+/// intercept row pinned to 1), the coefficient/covariance posterior means
+/// (`coef_mean` k x n same layout as `bvar_fit["posterior_mean_coefs"]`,
+/// `sigma_mean` n x n), Cholesky-orthogonalized `irf_draws`
+/// [draw][h][variable][shock] for credible bands, the off-diagonal precision
+/// inclusion probabilities `inclusion_prob_cov` (only when `ssvs_cov`), and a
+/// `diagnostics` dict.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, n_draws = 10000, burn = 2000, seed = 0, c0 = 0.1, c1 = 10.0, prior_inclusion = 0.5, ssvs_cov = false, kappa0 = 0.1, kappa1 = 10.0, prior_inclusion_cov = 0.5, gamma_a = 0.01, gamma_b = 0.01, horizon = 16, thin = 1, n_chains = 1))]
+#[allow(clippy::too_many_arguments)]
+fn bvar_ssvs<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    n_draws: usize,
+    burn: usize,
+    seed: u64,
+    c0: f64,
+    c1: f64,
+    prior_inclusion: f64,
+    ssvs_cov: bool,
+    kappa0: f64,
+    kappa1: f64,
+    prior_inclusion_cov: f64,
+    gamma_a: f64,
+    gamma_b: f64,
+    horizon: usize,
+    thin: usize,
+    n_chains: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = data.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let cfg = tsecon_bayes::SsvsConfig {
+        lags,
+        n_draws,
+        burn,
+        c0,
+        c1,
+        prior_inclusion,
+        ssvs_cov,
+        kappa0,
+        kappa1,
+        prior_inclusion_cov,
+        gamma_a,
+        gamma_b,
+        horizon,
+        thin,
+        n_chains,
+    };
+    let res = tsecon_bayes::bvar_ssvs(m.as_ref(), &cfg, seed).map_err(to_py)?;
+
+    let d = PyDict::new(py);
+    d.set_item("inclusion_prob", mat_to_vec2_bayes(&res.inclusion_prob))?;
+    d.set_item("coef_mean", mat_to_vec2_bayes(&res.coef_mean))?;
+    d.set_item("sigma_mean", mat_to_vec2_bayes(&res.sigma_mean))?;
+    let irf: Vec<Vec<Vec<Vec<f64>>>> = res
+        .irf_draws
+        .iter()
+        .map(|dr| dr.iter().map(mat_to_vec2_bayes).collect())
+        .collect();
+    d.set_item("irf_draws", irf)?;
+    if let Some(cov) = &res.inclusion_prob_cov {
+        d.set_item("inclusion_prob_cov", mat_to_vec2_bayes(cov))?;
+    }
+    let diag = PyDict::new(py);
+    diag.set_item("n_draws_kept", res.n_draws_kept)?;
+    diag.set_item("burn", burn)?;
+    diag.set_item("thin", thin)?;
+    diag.set_item("mean_model_size", res.mean_model_size)?;
+    diag.set_item(
+        "log_marginal_likelihood_median",
+        res.log_marginal_likelihood_median,
+    )?;
+    if let Some(rhat) = res.rhat {
+        diag.set_item("rhat", rhat)?;
+    }
+    if let Some(ess) = res.ess_bulk {
+        diag.set_item("ess_bulk", ess)?;
+    }
+    d.set_item("diagnostics", diag)?;
+    Ok(d)
+}
+
 /// MCMC convergence diagnostics (Vehtari et al. 2021, ArviZ-exact):
 /// rank-normalized split R-hat and bulk/tail effective sample sizes.
 /// `chains` is (n_chains, n_draws).
@@ -1730,6 +1818,117 @@ fn sign_restricted_svar<'py>(
     d.set_item("quantiles", quantiles)?;
     d.set_item("set_min", set_min)?;
     d.set_item("set_max", set_max)?;
+    let diag = result.diagnostics();
+    let dd = PyDict::new(py);
+    dd.set_item("posterior_draws_used", diag.posterior_draws_used)?;
+    dd.set_item("rotations_tried", diag.rotations_tried)?;
+    dd.set_item("accepted", diag.accepted)?;
+    dd.set_item("acceptance_rate", diag.acceptance_rate)?;
+    d.set_item("diagnostics", dd)?;
+    Ok(d)
+}
+
+/// Zero + sign restricted Bayesian SVAR (Rubio-Ramirez-Waggoner-Zha 2010
+/// exact-zero column recursion; Arias-Rubio-Ramirez-Waggoner 2018 importance
+/// weighting) on the Minnesota-NIW posterior. A superset of
+/// `sign_restricted_svar`.
+///
+/// `sign_restrictions` are (variable, shock, horizon, sign) tuples with sign in
+/// {"+","-"} (may be empty); `zero_restrictions` are (variable, shock, horizon)
+/// tuples imposing Theta_h[(variable,shock)] = 0 exactly (horizon 0 = impact).
+/// At least one list must be non-empty. Returns per-(horizon, variable, shock)
+/// `set_min`/`set_max` (weight-invariant identified-set envelope) and
+/// ARW-weighted `quantiles` at probs=[0.05,0.16,0.50,0.84,0.95], plus per-draw
+/// `weights` (normalized), `ess`, and acceptance `diagnostics`. With
+/// strict-upper-triangle impact zeros and no signs it reproduces
+/// `var_irf(orth=True)` deterministically.
+#[pyfunction]
+#[pyo3(signature = (data, sign_restrictions, zero_restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, weighted = true))]
+#[allow(clippy::too_many_arguments)]
+fn zero_sign_svar<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    sign_restrictions: Vec<(usize, usize, usize, String)>,
+    zero_restrictions: Vec<(usize, usize, usize)>,
+    lags: usize,
+    horizon: usize,
+    n_draws: usize,
+    max_tries: usize,
+    seed: u64,
+    lambda1: f64,
+    weighted: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::{
+        Sign, SignRestriction, SignRestrictionSet, ZeroRestriction, ZeroRestrictionSet,
+        ZeroSignSampler,
+    };
+    if sign_restrictions.is_empty() && zero_restrictions.is_empty() {
+        return Err(PyValueError::new_err(
+            "at least one of sign_restrictions / zero_restrictions must be non-empty",
+        ));
+    }
+    let a = data.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let n_vars = a.ncols();
+    let prior = tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, 100.0, lambda1, 1.0, 0.0)
+        .map_err(to_py)?;
+    let posterior = prior.posterior(m.as_ref()).map_err(to_py)?;
+
+    // Sign restrictions (optional; None => pure-zero / recursive identification).
+    let signs = if sign_restrictions.is_empty() {
+        None
+    } else {
+        let mut rs = Vec::with_capacity(sign_restrictions.len());
+        for (v, s, h, sign) in sign_restrictions {
+            let sg = match sign.as_str() {
+                "+" | "positive" => Sign::Positive,
+                "-" | "negative" => Sign::Negative,
+                other => {
+                    return Err(PyValueError::new_err(format!(
+                        "unknown sign {other:?}; expected \"+\" or \"-\""
+                    )))
+                }
+            };
+            rs.push(SignRestriction::at(v, s, h, sg));
+        }
+        Some(SignRestrictionSet::new(rs, n_vars, horizon).map_err(to_py)?)
+    };
+
+    // Zero restrictions (may be empty => degenerates to the sign-only sampler).
+    let zero_rs: Vec<ZeroRestriction> = zero_restrictions
+        .into_iter()
+        .map(|(v, s, h)| ZeroRestriction::at(v, s, h))
+        .collect();
+    let zeros = ZeroRestrictionSet::new(zero_rs, n_vars, horizon).map_err(to_py)?;
+
+    let result = ZeroSignSampler::new(horizon, n_draws, max_tries)
+        .map_err(to_py)?
+        .with_weighting(weighted)
+        .run(&posterior, signs.as_ref(), &zeros, seed)
+        .map_err(to_py)?;
+
+    // quantiles[h][var][shock][prob], set_min/set_max[h][var][shock]
+    let hs = horizon + 1;
+    let mut quantiles = vec![vec![vec![Vec::<f64>::new(); n_vars]; n_vars]; hs];
+    let mut set_min = vec![vec![vec![0.0_f64; n_vars]; n_vars]; hs];
+    let mut set_max = vec![vec![vec![0.0_f64; n_vars]; n_vars]; hs];
+    for h in 0..hs {
+        for i in 0..n_vars {
+            for j in 0..n_vars {
+                let bp = result.summary_point(i, j, h).map_err(to_py)?;
+                quantiles[h][i][j] = bp.quantiles.clone();
+                set_min[h][i][j] = bp.min;
+                set_max[h][i][j] = bp.max;
+            }
+        }
+    }
+    let d = PyDict::new(py);
+    d.set_item("probs", result.probs().to_vec())?;
+    d.set_item("quantiles", quantiles)?;
+    d.set_item("set_min", set_min)?;
+    d.set_item("set_max", set_max)?;
+    d.set_item("weights", result.weights().to_vec())?;
+    d.set_item("ess", result.ess())?;
     let diag = result.diagnostics();
     let dd = PyDict::new(py);
     dd.set_item("posterior_draws_used", diag.posterior_draws_used)?;
@@ -3843,6 +4042,144 @@ fn panel_pmg<'py>(
     Ok(d)
 }
 
+/// First-generation panel unit-root tests: Levin-Lin-Chu, Im-Pesaran-Shin,
+/// and the Fisher-type (Maddala-Wu / Choi) p-value combinations.
+///
+/// `data` is a balanced `N x T` array (each ROW a unit) or a list of 1-D
+/// per-unit series (unbalanced is fine for "ips"/"fisher"; "llc" needs a
+/// common length). `test` is "ips" (default), "llc", or "fisher". `lags` is
+/// None (per-unit auto AIC), an int (fixed common lag), or "aic"/"bic"/
+/// "t-stat". `regression` is "c" (default), "ct", or "n" ("n" is invalid for
+/// "ips"). `lrv_kernel`/`lrv_bandwidth` configure the LLC long-run variance.
+/// Conventions match plm::purtest (validated to plm, and for "fisher" to statsmodels).
+#[pyfunction]
+#[pyo3(signature = (data, test = "ips", lags = None, regression = "c", max_lags = None, lrv_kernel = "bartlett", lrv_bandwidth = None))]
+#[allow(clippy::too_many_arguments)]
+fn panel_unit_root<'py>(
+    py: Python<'py>,
+    data: Bound<'py, pyo3::PyAny>,
+    test: &str,
+    lags: Option<Bound<'py, pyo3::PyAny>>,
+    regression: &str,
+    max_lags: Option<usize>,
+    lrv_kernel: &str,
+    lrv_bandwidth: Option<f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::AdfLagSelection as L;
+    use tsecon_panelroot::{panel_unit_root as run, PanelRootDetail, PanelRootOpts, PanelRootTest};
+
+    // Accept an N x T array (rows = units) or a list of 1-D per-unit series.
+    let units: Vec<Vec<f64>> = if let Ok(arr) = data.extract::<numpy::PyReadonlyArray2<'py, f64>>()
+    {
+        let a = arr.as_array();
+        (0..a.nrows()).map(|i| a.row(i).to_vec()).collect()
+    } else {
+        let list = data
+            .extract::<Vec<PyReadonlyArray1<'py, f64>>>()
+            .map_err(|_| {
+                PyValueError::new_err(
+                    "data must be a 2-D array (rows = units) or a list of 1-D per-unit arrays",
+                )
+            })?;
+        list.iter().map(vec1).collect()
+    };
+
+    let test_enum = match test {
+        "ips" => PanelRootTest::Ips,
+        "llc" => PanelRootTest::Llc,
+        "fisher" => PanelRootTest::Fisher,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown test {other:?}; expected \"ips\", \"llc\", or \"fisher\""
+            )))
+        }
+    };
+    let reg = adf_regression(regression)?;
+
+    let sel = match lags {
+        None => L::Aic(max_lags),
+        Some(obj) => {
+            if let Ok(k) = obj.extract::<usize>() {
+                L::Fixed(k)
+            } else if let Ok(s) = obj.extract::<String>() {
+                match s.as_str() {
+                    "aic" | "AIC" => L::Aic(max_lags),
+                    "bic" | "BIC" => L::Bic(max_lags),
+                    "t-stat" => L::TStat(max_lags),
+                    other => {
+                        return Err(PyValueError::new_err(format!(
+                            "unknown lags {other:?}; expected None, an int, or \"aic\"/\"bic\"/\"t-stat\""
+                        )))
+                    }
+                }
+            } else {
+                return Err(PyValueError::new_err(
+                    "lags must be None, an int, or one of \"aic\"/\"bic\"/\"t-stat\"",
+                ));
+            }
+        }
+    };
+
+    let opts = PanelRootOpts {
+        lrv_kernel: hac_kernel(lrv_kernel)?,
+        lrv_bandwidth,
+    };
+    let r = run(&units, test_enum, reg, sel, &opts).map_err(to_py)?;
+
+    let d = PyDict::new(py);
+    d.set_item("test", test)?;
+    d.set_item("statistic", r.statistic)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("per_unit_tstat", r.per_unit_tstat.clone().into_pyarray(py))?;
+    d.set_item(
+        "per_unit_pvalue",
+        r.per_unit_pvalue.clone().into_pyarray(py),
+    )?;
+    d.set_item(
+        "per_unit_lags",
+        r.per_unit_lags
+            .iter()
+            .map(|&x| x as i64)
+            .collect::<Vec<i64>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "per_unit_nobs",
+        r.per_unit_nobs
+            .iter()
+            .map(|&x| x as i64)
+            .collect::<Vec<i64>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item("n_units", r.n_units)?;
+    d.set_item("regression", regression)?;
+    match r.detail {
+        PanelRootDetail::Ips { t_bar } => {
+            d.set_item("t_bar", t_bar)?;
+        }
+        PanelRootDetail::Llc {
+            delta_hat,
+            t_delta,
+            s_n,
+            t_bar_periods,
+        } => {
+            d.set_item("delta_hat", delta_hat)?;
+            d.set_item("t_delta", t_delta)?;
+            d.set_item("s_n", s_n)?;
+            d.set_item("t_bar_periods", t_bar_periods)?;
+        }
+        PanelRootDetail::Fisher {
+            choi_z,
+            choi_z_pvalue,
+        } => {
+            d.set_item("maddala_wu", r.statistic)?;
+            d.set_item("choi_z", choi_z)?;
+            d.set_item("choi_z_pvalue", choi_z_pvalue)?;
+        }
+    }
+    Ok(d)
+}
+
 /// News / update decomposition of a DFM nowcast revision (Bańbura-Modugno
 /// 2014).
 ///
@@ -5033,6 +5370,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(elastic_net, m)?)?;
     m.add_function(wrap_pyfunction!(lasso, m)?)?;
     m.add_function(wrap_pyfunction!(sign_restricted_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(zero_sign_svar, m)?)?;
     m.add_function(wrap_pyfunction!(panel_fe, m)?)?;
     m.add_function(wrap_pyfunction!(panel_lp, m)?)?;
     m.add_function(wrap_pyfunction!(cw_test, m)?)?;
@@ -5072,6 +5410,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(panel_mean_group, m)?)?;
     m.add_function(wrap_pyfunction!(dfm_nowcast, m)?)?;
     m.add_function(wrap_pyfunction!(panel_pmg, m)?)?;
+    m.add_function(wrap_pyfunction!(panel_unit_root, m)?)?;
     m.add_function(wrap_pyfunction!(dfm_news, m)?)?;
     m.add_function(wrap_pyfunction!(predictive_regression, m)?)?;
     m.add_function(wrap_pyfunction!(ivx_test, m)?)?;
@@ -5105,5 +5444,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(proxy_svar, m)?)?;
     m.add_function(wrap_pyfunction!(hetero_svar, m)?)?;
     m.add_function(wrap_pyfunction!(bvar_hierarchical, m)?)?;
+    m.add_function(wrap_pyfunction!(bvar_ssvs, m)?)?;
     Ok(())
 }

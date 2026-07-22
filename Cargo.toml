@@ -41,6 +41,7 @@ members = [
     "crates/tsecon-quantile",
     "crates/tsecon-funcshock",
     "crates/tsecon-breaks",
+    "crates/tsecon-panelroot",
     "bindings/python",
 ]
 

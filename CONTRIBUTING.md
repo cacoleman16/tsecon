@@ -100,7 +100,7 @@ cargo test --workspace
 ```
 
 This is exactly what CI runs. It exercises the golden-fixture tests and the
-property/Monte-Carlo tests across all 40 crates. If you want a pure-Rust run that
+property/Monte-Carlo tests across all 41 crates. If you want a pure-Rust run that
 skips building the PyO3 extension crate (which links against Python), exclude it:
 
 ```sh

@@ -1133,6 +1133,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tsecon-panelroot"
+version = "0.0.1"
+dependencies = [
+ "serde_json",
+ "tsecon-diag",
+ "tsecon-hac",
+ "tsecon-rng",
+ "tsecon-stats",
+]
+
+[[package]]
 name = "tsecon-panelts"
 version = "0.0.1"
 dependencies = [
@@ -1184,6 +1195,7 @@ dependencies = [
  "tsecon-ml",
  "tsecon-nowcast",
  "tsecon-panel",
+ "tsecon-panelroot",
  "tsecon-panelts",
  "tsecon-predreg",
  "tsecon-quantile",

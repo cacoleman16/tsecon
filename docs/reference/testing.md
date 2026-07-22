@@ -20,16 +20,16 @@ Verified on this working tree (macOS, Apple silicon, Rust 1.97.1, CPython
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **897 passed, 0 failed, 0 ignored** | `cargo test --workspace --exclude tsecon-python` |
-| — integration tests in `crates/*/tests/` | 790 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 63 | |
+| Rust tests (total) | **947 passed, 0 failed, 0 ignored** | `cargo test --workspace --exclude tsecon-python` |
+| — integration tests in `crates/*/tests/` | 817 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 86 | |
 | — documentation tests | 44 | |
-| Python binding tests | **471 passed** in 5.3 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
-| Crates | 40, **every one** with a `tests/` directory | |
-| Golden fixtures | 53 JSON files, produced by 34 generator scripts | `fixtures/` |
-| Public Python functions | 113 — **all 113** are called at least once in the binding suite | |
+| Python binding tests | **483 passed** in 5.4 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Crates | 41, **every one** with a `tests/` directory | |
+| Golden fixtures | 56 JSON files, produced by 37 generator scripts | `fixtures/` |
+| Public Python functions | 116 — **all 116** are called at least once in the binding suite | |
 
-Of the 790 Rust integration tests, **174 are golden tests** (`golden.rs` in 38
+Of the 817 Rust integration tests, **174 are golden tests** (`golden.rs` in 38
 crates, plus `unitroot_golden.rs`, `smooth_golden.rs`, `pmg_golden.rs`, and the
 new identification/unit-root goldens) and **434 are property tests**
 (`properties.rs` in 38 crates, plus `unitroot_properties.rs`,
@@ -433,10 +433,10 @@ counts:
 ## 4 · How to run everything
 
 ```sh
-# 1. Rust core — 897 tests
+# 1. Rust core — 947 tests
 cargo test --workspace --exclude tsecon-python
 
-# 2. Python bindings — 471 tests
+# 2. Python bindings — 483 tests
 .venv/bin/python -m pytest bindings/python/tests -q
 
 # 3. Monte Carlo evidence (seeded, reproducible)
@@ -487,7 +487,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 897 passed, 0 failed
+# 947 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
@@ -563,7 +563,7 @@ discover.
   published-result replications run against small public datasets committed to
   the repo (`fixtures/ramey_zubairy.csv`, `fixtures/yield_curve_recession.csv`),
   so they are reproduced offline and cannot break on a provider's URL change.
-- **Benchmarks compare 25 of 113 functions.** The parity gate covers the unit-root
+- **Benchmarks compare 25 of 116 functions.** The parity gate covers the unit-root
   tests, the diagnostics, VAR and its IRF/FEVD/Granger, Johansen, the filters,
   the spectra, ridge/elastic-net, and the GARCH family — a broad spot check, not a
   library-wide cross-library audit — that job belongs to the fixtures.

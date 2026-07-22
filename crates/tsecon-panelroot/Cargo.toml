@@ -1,0 +1,18 @@
+[package]
+name = "tsecon-panelroot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "First-generation panel unit-root tests for the tsecon time-series econometrics library: Levin-Lin-Chu (2002) pooled-ADF with bias adjustment, Im-Pesaran-Shin (2003) standardized t-bar, and the Maddala-Wu (1999) / Choi (2001) Fisher-type p-value combinations, all built on the pinned per-unit ADF"
+
+[dependencies]
+tsecon-diag = { path = "../tsecon-diag" }
+tsecon-hac = { path = "../tsecon-hac" }
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+tsecon-rng = { path = "../tsecon-rng" }

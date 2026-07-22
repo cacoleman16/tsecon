@@ -254,6 +254,87 @@ The identified set for output straddles zero on impact — Uhlig's punchline, re
 
 > ⚠ **Common mistake:** stacking on sign restrictions to narrow the band without watching the acceptance rate. Acceptance decays roughly exponentially in the number of restrictions; an acceptance rate of $10^{-5}$ means your "posterior" is a handful of surviving draws and the restrictions may be close to mutually inconsistent. The acceptance rate is itself an identification diagnostic — tsecon prints it with every fit. Also: combining *zero* restrictions with sign restrictions naively (impose the zeros, then sign-check) samples from the wrong distribution; the correct algorithm with importance weights is Arias, Rubio-Ramírez, and Waggoner (2018), and the library ships only the corrected version.
 
+## Zero and sign restrictions together: the corrected ARW sampler
+
+The common-mistake callout above flagged the trap: imposing hard *zeros* by
+construction and then checking *signs* samples from the wrong distribution. Yet
+mixing the two is exactly what modern applied identification wants — a monetary
+shock with a zero-impact-on-output timing restriction *and* a sign on the rate,
+say, or a recursive block *plus* a sign on an unrestricted variable. Rubio-
+Ramírez, Waggoner and Zha (2010) gave the algorithm that imposes exact zeros by
+a column-by-column null-space recursion; Arias, Rubio-Ramírez and Waggoner
+(2018) proved that recursion needs a per-draw **importance weight** to sample the
+conditional Haar measure correctly, and supplied it. `tsecon.zero_sign_svar`
+ships that corrected sampler — a strict superset of `sign_restricted_svar` that
+takes both a `zero_restrictions` list of `(variable, shock, horizon)` triples
+(imposing $\Theta_h[\text{variable},\text{shock}]=0$ exactly) and a
+`sign_restrictions` list.
+
+Here it is on the same monetary system as the sign-restriction example, now with
+an added *zero*: the monetary shock (shock 0) has no *impact* effect on output
+(variable 0) — a Cholesky-style timing restriction — while the signs still ask
+the funds rate up and prices down, and output's response at later horizons is
+left free:
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(11)
+T = 500
+eps = rng.standard_normal((T, 3))                 # structural: output, prices, monetary
+B0 = np.array([[0.8, -0.3, -0.4],                 # variables: output, prices, ffr
+               [0.5,  0.6, -0.5],
+               [0.1,  0.4,  0.9]])
+A1 = np.array([[0.5, 0.0, -0.1],
+               [0.1, 0.4,  0.0],
+               [0.0, 0.1,  0.6]])
+y = np.zeros((T, 3))
+for t in range(1, T):
+    y[t] = A1 @ y[t - 1] + B0 @ eps[t]
+
+zeros = [(0, 0, 0)]                                       # output: zero IMPACT to the monetary shock
+signs = [(2, 0, 0, "+"), (1, 0, 0, "-"), (1, 0, 1, "-")]  # ffr up; prices down for two quarters
+zs = tsecon.zero_sign_svar(y, sign_restrictions=signs, zero_restrictions=zeros,
+                           lags=1, horizon=12, n_draws=500, max_tries=2000, seed=0)
+
+d = zs["diagnostics"]
+smin = np.asarray(zs["set_min"]); smax = np.asarray(zs["set_max"])
+print("acceptance_rate:", round(d["acceptance_rate"], 3), " ARW ess:", round(zs["ess"], 1),
+      "of", d["accepted"])
+print("output IMPACT response (imposed zero):", f"[{smin[0,0,0]:+.1e}, {smax[0,0,0]:+.1e}]")
+print("output identified set h=0..4  set_min:", np.round(smin[:5, 0, 0], 3))
+print("                              set_max:", np.round(smax[:5, 0, 0], 3))
+```
+
+```
+acceptance_rate: 0.41  ARW ess: 500.0 of 500
+output IMPACT response (imposed zero): [-2.2e-15, +1.9e-15]
+output identified set h=0..4  set_min: [-0.    -0.127 -0.129 -0.114 -0.088]
+                              set_max: [0.    0.135 0.13  0.098 0.069]
+```
+
+The imposed impact zero holds to machine precision — output's contemporaneous
+response to the monetary shock is $\pm 2\times10^{-15}$ — while the *free* output
+response at every later horizon straddles zero: the zero and sign restrictions
+together still do not pin its direction, and that envelope is the finding. Two
+properties are worth internalising. First, the **recursive special case**: impose
+strict-upper-triangle *impact* zeros ($\Theta_0[i,j]=0$ for $i<j$) with no
+signs, and the RWZ recursion is one-dimensional at every step — the rotation is
+pinned to the identity, and the whole scheme collapses to `var_irf(orth=True)`,
+the Cholesky corner of the set-identified family. Second, the **ARW weight**: it
+is *exactly 1* for **impact-only** zero patterns (as here — `ess` equals the full
+accepted count), because those restriction functions are linear in the rotation.
+
+> ⚠ **Common mistake:** reading the ARW-weighted pointwise quantiles as
+> prior-robust. For zeros at horizon $\ge 1$ the exact ARW volume-element
+> correction is genuinely non-constant — and this build does *not* yet apply it
+> (it returns the honest RWZ-2010 unit weight, an explicit roadmap swap-point).
+> The **weight-invariant `set_min`/`set_max` envelope is the deliverable to
+> trust** in that case, not the weighted bands; the pointwise `quantiles` blend
+> data with the Haar/Minnesota prior (the Baumeister-Hamilton caveat) even after
+> weighting. For impact-only zeros the weight is exact, so both are honest.
+
 ## Maximum-share identification: the shock that moves the most variance
 
 A third point-identified scheme spends neither a timing zero nor a long-run neutrality but a *variance objective*. Uhlig (2004) asked: of all the unit-variance structural shocks the reduced form admits, which single one explains the largest share of a target variable's forecast-error variance, accumulated over a chosen horizon window? That shock — the leading eigenvector of a small symmetric matrix built from the orthogonalized MA coefficients — is the **main business cycle shock** of Francis, Owyang, Roush and DiCecio (2014) when the window is the business-cycle band, and (with a zero-impact constraint) the Barsky-Sims (2011) **news shock** when you want the driver of *future* rather than current movements. It is agnostic in the spirit of sign restrictions — no economic label is imposed — but it returns a *point*, because "maximize the variance share" has a unique answer, and it is closed-form: no rotation sampling.
@@ -710,7 +791,7 @@ The decision framework, compressed: start from the **question** (which shock?), 
 | Theory speaks about permanent versus transitory effects, not timing | Blanchard-Quah long-run restrictions (`long_run_svar`) | Imposes neutrality you believe anyway; but check the VAR's roots first — fragile near unit roots (Faust-Leeper) |
 | Only weak qualitative beliefs ("contractionary policy doesn't raise prices") | Sign restrictions + Fry-Pagan median-target + prior-posterior overlay | Set identification matches the actual state of knowledge; the band width is the finding |
 | The single dominant driver of a target's forecast-error variance | Max-share / maximum-FEV shock (`max_share_svar`) | Agnostic *point* identification — the variance-maximizing shock, no ordering or signs; watch the eigenvalue gap |
-| Sign restrictions plus a few credible zeros | Arias-Rubio-Ramírez-Waggoner zero+sign | The only correct sampler for the combination; naive zeroing distorts inference |
+| Sign restrictions plus a few credible zeros | `zero_sign_svar` (Arias-Rubio-Ramírez-Waggoner) | The only correct sampler for the combination; naive zeroing distorts inference |
 | Documented variance regimes (crisis dates, announcement days) | Rigobon heteroskedasticity (`hetero_svar`) | Variance shifts substitute for economic restrictions; test that relative variances actually differ |
 | An archival record isolating exogenous policy actions | Narrative series (Romer-Romer, Ramey news) as regressor, proxy, or internal instrument | Transparent, debatable identification; watch measurement error and time-varying strength |
 | A high-frequency surprise series or other measured proxy | Proxy SVAR (`proxy_svar`); weak-IV-robust bands (Montiel Olea-Stock-Watson) on the v2 roadmap | Weakest assumptions on the rest of the system; check the first-stage F before trusting it |
@@ -719,11 +800,11 @@ The decision framework, compressed: start from the **question** (which shock?), 
 
 ## What tsecon implements today
 
-**Available now in Python** (`import tsecon`): the recursive scheme end to end — `var_fit` (estimates, `sigma_u`, information criteria, and a characteristic-root stability summary for the long-run fragility check), `var_irf(data, lags, horizon, orth=True)` for Cholesky-orthogonalized impulse responses (set `orth=False` for reduced-form responses), `var_fevd` for the matching variance decompositions, `var_forecast`, and `var_granger`. Beyond the recursive scheme, **five identification methods ship today**: set-identified `sign_restricted_svar` (Haar rotations with the acceptance-rate diagnostic), and four *point*-identified closed-form schemes — `long_run_svar` (Blanchard-Quah), `max_share_svar` (Uhlig/Francis main-business-cycle and Barsky-Sims news shocks), `proxy_svar` (external-instrument SVAR-IV with a first-stage-F report), and `hetero_svar` (Rigobon two-regime, with the Box's-M covariance-equality gate) — each worked through above. The internal-instrument pattern runs today by ordering the shock series first. Supporting machinery that identification inference leans on is also live: `ols(se_type="hac")` and `long_run_variance` for instrument first stages, `optimal_block_length` and `bootstrap_indices` for the moving-block bootstrap, and `philox_uniforms` for the reproducible parallel random streams that sign-restriction sampling requires. Separately, the structural end of the spectrum ships too: `dsge_solve` solves a small linearised rational-expectations model to its Blanchard-Kahn decision rule and determinacy verdict (the section above), the one place in this chapter where the model *is* the identification.
+**Available now in Python** (`import tsecon`): the recursive scheme end to end — `var_fit` (estimates, `sigma_u`, information criteria, and a characteristic-root stability summary for the long-run fragility check), `var_irf(data, lags, horizon, orth=True)` for Cholesky-orthogonalized impulse responses (set `orth=False` for reduced-form responses), `var_fevd` for the matching variance decompositions, `var_forecast`, and `var_granger`. Beyond the recursive scheme, **six identification methods ship today**: two *set*-identified samplers — `sign_restricted_svar` (Haar rotations with the acceptance-rate diagnostic) and `zero_sign_svar` (the corrected RWZ/ARW zero-plus-sign sampler, a superset that reproduces the recursive scheme as its degenerate impact-only-zero corner) — and four *point*-identified closed-form schemes — `long_run_svar` (Blanchard-Quah), `max_share_svar` (Uhlig/Francis main-business-cycle and Barsky-Sims news shocks), `proxy_svar` (external-instrument SVAR-IV with a first-stage-F report), and `hetero_svar` (Rigobon two-regime, with the Box's-M covariance-equality gate) — each worked through above. The internal-instrument pattern runs today by ordering the shock series first. Supporting machinery that identification inference leans on is also live: `ols(se_type="hac")` and `long_run_variance` for instrument first stages, `optimal_block_length` and `bootstrap_indices` for the moving-block bootstrap, and `philox_uniforms` for the reproducible parallel random streams that sign-restriction sampling requires. Separately, the structural end of the spectrum ships too: `dsge_solve` solves a small linearised rational-expectations model to its Blanchard-Kahn decision rule and determinacy verdict (the section above), the one place in this chapter where the model *is* the identification.
 
 **Built in Rust awaiting bindings:** the scaffolded Bayesian crate (`tsecon-bayes`, NIW-BVAR fixtures pinned) that supplies reduced-form posterior draws to the set-identification samplers, and the block-bootstrap engine that the proxy-SVAR moving-block bands will consume; the Philox counter-based RNG (bitwise-reproducible accept-reject at any thread count) is already bound via `sign_restricted_svar`.
 
-**Roadmap:** the honest-inference layer on top of what ships — Jentsch-Lunsford (2019) moving-block and Montiel Olea-Stock-Watson (2021) weak-IV-robust bands for `proxy_svar`, the Fry-Pagan median-target and prior-posterior overlay for sign restrictions, zero+sign restrictions with ARW importance weights, combined short/long-run restrictions, the statistical-identification family beyond two-regime Rigobon (Markov-switching / GARCH / non-Gaussian), narrative sign restrictions (on bring-your-own series — the library ships no data loaders), the composable restriction algebra, and Giacomini-Kitagawa robust Bayes — is specified in [docs/roadmap/06-identification.md](../roadmap/06-identification.md), the module the roadmap designates as the library's headline differentiator: no maintained Python home for modern SVAR identification exists today, and every fit is designed to print its identification diagnostics because, in set-identified and instrument-based settings, the diagnostics are the inference.
+**Roadmap:** the honest-inference layer on top of what ships — Jentsch-Lunsford (2019) moving-block and Montiel Olea-Stock-Watson (2021) weak-IV-robust bands for `proxy_svar`, the Fry-Pagan median-target and prior-posterior overlay for sign restrictions, the exact ARW volume-element weight for horizon-≥1 zero restrictions (the impact-only case, exact, ships today in `zero_sign_svar`), combined short/long-run restrictions, the statistical-identification family beyond two-regime Rigobon (Markov-switching / GARCH / non-Gaussian), narrative sign restrictions (on bring-your-own series — the library ships no data loaders), the composable restriction algebra, and Giacomini-Kitagawa robust Bayes — is specified in [docs/roadmap/06-identification.md](../roadmap/06-identification.md), the module the roadmap designates as the library's headline differentiator: no maintained Python home for modern SVAR identification exists today, and every fit is designed to print its identification diagnostics because, in set-identified and instrument-based settings, the diagnostics are the inference.
 
 ## Further reading
 

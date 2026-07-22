@@ -696,20 +696,55 @@ pub fn inv_gamma_p(a: f64, p: f64) -> Result<f64, StatsError> {
     };
 
     // Safeguarded Halley iteration on f(x) = P(a, x) - p (increasing in x).
-    let mut lo = 0.0_f64;
-    let mut hi = f64::INFINITY;
-    if x <= lo {
-        x = 1e-300;
+    //
+    // The iterate is kept inside a FINITE bracket `[lo, hi]` at all times. This
+    // matters for large `a`: `P(a, .)` has a ~1e-11 round-off floor, so near the
+    // root a Halley step can land microscopically on the wrong side; without a
+    // finite upper bound an "expand upward" safeguard would then send the
+    // iterate diverging. Bracketing first makes the solver globally convergent
+    // and lets it terminate on bracket collapse regardless of that floor.
+    let positive_start = x > 0.0;
+    if !positive_start {
+        x = 1e-3;
     }
-    for _ in 0..INV_MAX_ITER {
-        let f = gamma_p(a, x)? - p;
-        if f == 0.0 {
+    let (mut lo, mut hi) = {
+        let f0 = gamma_p(a, x)? - p;
+        if f0 < 0.0 {
+            // Root is above x: expand upward until P(a, hi) >= p.
+            let mut lo = x;
+            let mut step = (x * 0.5).max(1.0);
+            let mut hi = x + step;
+            while gamma_p(a, hi)? - p < 0.0 {
+                lo = hi;
+                step *= 2.0;
+                let next = hi + step;
+                hi = if next.is_finite() { next } else { break };
+            }
+            (lo, hi)
+        } else if f0 > 0.0 {
+            // Root is below x: expand downward until P(a, lo) <= p (or 0).
+            let mut hi = x;
+            let mut step = (x * 0.5).max(1.0);
+            let mut lo = (x - step).max(0.0);
+            while lo > 0.0 && gamma_p(a, lo)? - p > 0.0 {
+                hi = lo;
+                step *= 2.0;
+                lo = (lo - step).max(0.0);
+            }
+            (lo, hi)
+        } else {
             return Ok(x);
         }
+    };
+
+    for _ in 0..INV_MAX_ITER {
+        let f = gamma_p(a, x)? - p;
         if f > 0.0 {
             hi = x;
-        } else {
+        } else if f < 0.0 {
             lo = x;
+        } else {
+            return Ok(x);
         }
         // Gamma(a,1) density at x (the derivative of P w.r.t. x).
         let dens = if a > 1.0 {
@@ -725,28 +760,23 @@ pub fn inv_gamma_p(a: f64, p: f64) -> Result<f64, StatsError> {
         } else {
             f64::NAN
         };
-        if !x_new.is_finite() || x_new <= lo || x_new >= hi {
-            // Bisection safeguard (doubling while the upper bracket is open).
-            x_new = if hi.is_finite() {
-                0.5 * (lo + hi)
-            } else {
-                2.0 * x.max(1.0)
-            };
+        // Any step that escapes the (open) bracket falls back to bisection,
+        // which is guaranteed to make progress and cannot diverge. Written via
+        // a bool so a NaN step (all comparisons false) also triggers bisection.
+        let inside_bracket = x_new > lo && x_new < hi;
+        if !inside_bracket {
+            x_new = 0.5 * (lo + hi);
         }
         let dx = (x_new - x).abs();
         x = x_new;
-        if dx <= 1e-14 * x.max(1e-300) {
+        // Converged on a tiny relative step, or once the bracket has collapsed
+        // to floating-point resolution (the best `x` that `P(a, .)` can resolve).
+        if dx <= 1e-13 * x.max(1e-300) || (hi - lo) <= 8.0 * f64::EPSILON * hi.max(1e-300) {
             return Ok(x);
         }
     }
-    // Accept only if the residual is genuinely small.
-    if (gamma_p(a, x)? - p).abs() <= 1e-9 {
-        return Ok(x);
-    }
-    Err(StatsError::NoConvergence {
-        what: "inverse incomplete gamma",
-        iterations: INV_MAX_ITER,
-    })
+    // The bracket always contains the root; its midpoint is the best estimate.
+    Ok(0.5 * (lo + hi))
 }
 
 // ---------------------------------------------------------------------------

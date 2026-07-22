@@ -42,7 +42,12 @@ to PyPI as `tsecon` at the first tagged release.
   (1990) delta-method SEs validated against statsmodels to machine precision,
   and a Kilian (1998) residual bootstrap with optional bias correction), and an
   honest stability block (`is_stable`/`min_root`); sign-restricted Bayesian
-  SVARs; and four closed-form point-identification schemes —
+  SVARs; `zero_sign_svar` — the corrected Rubio-Ramírez-Waggoner-Zha (2010) /
+  Arias-Rubio-Ramírez-Waggoner (2018) **zero + sign** restricted SVAR (a
+  superset of the sign-only sampler that reproduces the recursive Cholesky IRF
+  as its degenerate impact-only-zero corner, with the weight-invariant
+  identified-set envelope as the prior-robust deliverable); and four closed-form
+  point-identification schemes —
   `long_run_svar` (Blanchard-Quah long-run restrictions), `max_share_svar`
   (Uhlig/Francis maximum-FEV-share and Barsky-Sims news shocks), `proxy_svar`
   (external-instrument SVAR-IV with a first-stage-F report and NaN-window
@@ -57,9 +62,13 @@ to PyPI as `tsecon` at the first tagged release.
   a cumulative IRF, not a multiplier).
 - **Bayesian**: a Minnesota-NIW Bayesian VAR with closed-form posterior,
   posterior impulse-response draws, and ArviZ-exact convergence diagnostics;
-  plus `bvar_hierarchical` — empirical-Bayes (ML-II / GLP MAP-II) selection of
+  `bvar_hierarchical` — empirical-Bayes (ML-II / GLP MAP-II) selection of
   the prior tightness by maximizing the Giannone-Lenza-Primiceri (2015)
-  marginal likelihood, then refitting the posterior at the optimum.
+  marginal likelihood, then refitting the posterior at the optimum; and
+  `bvar_ssvs` — the George-Sun-Ni (2008) spike-and-slab **stochastic-search
+  variable selection** BVAR (a four-block Gibbs sampler returning per-coefficient
+  posterior inclusion probabilities, optional error-precision selection, and
+  Cholesky-orthogonalized IRF draws), MC-recovery-validated on a sparse VAR.
 - **Forecasting and evaluation**: Diebold-Mariano (HLN), Clark-West,
   Giacomini-White, Theta, accuracy measures, and the rolling/expanding
   backtest engine.
@@ -68,7 +77,10 @@ to PyPI as `tsecon` at the first tagged release.
 - **Predictive regressions**: OLS/Stambaugh/IVX in one call plus the joint
   IVX test — Monte-Carlo-validated to hold size through an exact unit root.
 - **Panels**: fixed effects with clustered/Driscoll-Kraay SEs, panel LP,
-  mean-group VAR, and the heterogeneous-panel trio (mean group, CCE-MG, PMG).
+  mean-group VAR, the heterogeneous-panel trio (mean group, CCE-MG, PMG), and
+  `panel_unit_root` — the three first-generation panel unit-root tests
+  (Levin-Lin-Chu, Im-Pesaran-Shin, Fisher/Maddala-Wu-Choi) of the joint
+  unit-root null, validated to R `plm::purtest` (and, for Fisher, statsmodels).
 - **Nowcasting and mixed frequencies**: MIDAS (weights/U-MIDAS/weighted),
   DFM nowcasting (two-step and exact one-step MLE) with a ragged edge and the
   Bańbura-Modugno news decomposition.

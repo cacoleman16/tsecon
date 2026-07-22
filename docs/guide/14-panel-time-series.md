@@ -232,6 +232,76 @@ The assumptions that make the trick work, and the conditions under which it fray
 
 > **⚠ Common mistake — sweeping a common factor into a time dummy.** The instinct on meeting cross-sectional dependence is to add time fixed effects: one dummy per date to soak up "whatever hit everyone." That works if and only if the factor loads *homogeneously* — every entity with the same exposure $\gamma_i = \gamma$. A time dummy subtracts the same amount from every unit at date $t$, but a factor with heterogeneous loadings hits each unit by a *different* amount, and the dummy removes only the cross-sectional mean of that effect, leaving the loading-weighted remainder to keep biasing the slopes. CCE's cross-section averages, entered per unit, let each entity absorb the factor through its *own* estimated coefficient — which is precisely the heterogeneity a time dummy assumes away. When you suspect heterogeneous exposure to common shocks (you almost always should), test for residual cross-sectional dependence (Pesaran's CD test) after the time dummies; if it survives, you need CCE, not another dummy.
 
+## Panel unit roots: is the *whole panel* nonstationary?
+
+Chapter 2 asked, of a single series, "is there a unit root?" and answered with
+ADF and KPSS. A panel lets you ask the *joint* version — "does **every** unit
+have a unit root?" — and answer it with far more power, because the same
+stacking that sharpened the slope estimates sharpens the unit-root evidence. One
+70-quarter series barely separates a persistent stationary process from a random
+walk; twenty of them, combined, separate them decisively. This is the standard
+pre-test before a panel VAR or a panel cointegration analysis: are these series
+I(1) (difference them, or model a cointegrating relationship) or I(0) (model the
+levels)?
+
+`tsecon.panel_unit_root` runs the three **first-generation** classics behind one
+switch, all built on chapter 2's per-unit ADF:
+
+- **`"ips"`** (Im-Pesaran-Shin 2003, the default) averages the per-unit ADF
+  t-statistics and standardizes; its alternative is *heterogeneous* — it rejects
+  when *some* units are stationary.
+- **`"fisher"`** (Maddala-Wu 1999 / Choi 2001) combines the per-unit ADF
+  p-values (a $\chi^2$ and an inverse-normal); heterogeneous alternative,
+  unbalanced panels allowed, and its accuracy is inherited directly from the
+  validated single-series ADF.
+- **`"llc"`** (Levin-Lin-Chu 2002) pools the ADF under a single *common* root;
+  its alternative is *homogeneous* (all units share one stationary root), and it
+  needs a balanced panel.
+
+Build one stationary panel and one unit-root panel and watch the power:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(31)
+N, T = 12, 80
+
+stat = np.empty((N, T))                         # each row an AR(1), own |rho| < 1
+for i in range(N):
+    rho = rng.uniform(0.5, 0.85)
+    u = np.empty(T); u[0] = rng.standard_normal()
+    for t in range(1, T):
+        u[t] = rho * u[t - 1] + rng.standard_normal()
+    stat[i] = u
+rw = np.cumsum(rng.standard_normal((N, T)), axis=1)   # each row an independent random walk
+
+for name, panel in [("stationary", stat), ("unit-root ", rw)]:
+    ps = {t: tsecon.panel_unit_root(panel, test=t, regression="c", max_lags=4)["p_value"]
+          for t in ["ips", "llc", "fisher"]}
+    print(name, "  p:", {k: float(f"{v:.2g}") for k, v in ps.items()})
+# stationary   p: {'ips': 8.4e-13, 'llc': 1.6e-09, 'fisher': 2.9e-12}
+# unit-root    p: {'ips': 0.46, 'llc': 0.4, 'fisher': 0.58}
+```
+
+All three reject the joint unit-root null on the stationary panel at p ≈ 1e-12
+and comfortably fail to reject on the random walks — the power the panel buys,
+and the size it keeps *when the units are independent*. That last clause is the
+whole caveat, and it is not a footnote:
+
+> **⚠ Common mistake — a first-generation panel unit-root test under
+> cross-sectional dependence.** LLC, IPS, and Fisher all derive their null
+> distributions assuming the units' errors are independent across $i$. Let a
+> common factor — a world business cycle, a global financial shock — correlate
+> the units at each date, and the true variance of the pooled or averaged
+> statistic is wrong, so the tests distort in size (typically over-rejecting,
+> "finding" stationarity that is not there). This is the same cross-sectional
+> dependence the rest of this chapter spent its length purging, now corrupting a
+> *test* rather than an estimator. Run Pesaran's CD test first; if dependence is
+> present, the honest tools are the **second-generation** panel unit-root tests
+> (Pesaran's 2007 CIPS, Bai-Ng PANIC), which is the frontier's business below.
+> A first-generation "stationary" verdict on a strongly co-moving panel should
+> be treated as a hypothesis, not a finding.
+
 ## The frontier
 
 **Dynamic CCE and the small-$T$ bias.** The basic CCE estimator assumes the regressors are exogenous given the factors; add a lagged dependent variable and it inherits a Nickell-type bias in short panels. Chudik and Pesaran (2015) show that augmenting with a growing number of *lags* of the cross-section averages restores consistency, and their cross-sectionally-augmented distributed-lag (CS-DL) estimator targets long-run coefficients directly. This is the active edge of applied panel time series — the estimator most current cross-country growth and finance papers actually run — and it sits in the roadmap's heterogeneous-panel tier.
@@ -261,6 +331,8 @@ The assumptions that make the trick work, and the conditions under which it fray
 | Theory predicts a shared long-run relation, heterogeneous adjustment | `panel_pmg` | Restricts the long run, frees the short run (the Hausman test against MG is roadmap) |
 | Entities linked by trade/finance, not just common shocks | Global VAR (roadmap) | Models spillovers *between* units rather than purging them |
 | Short entities, cannot fit a per-unit model | Pool (bias and all) or shrink | Mean group's variance explodes when $T_i$ is small |
+| Is the whole panel I(1)? (pre-test before a panel VAR / cointegration) | `panel_unit_root` (`ips`/`fisher`/`llc`) | First-generation joint unit-root test; pooling buys power — assumes cross-sectional independence |
+| Same, but the units share a common factor | Second-generation CIPS / PANIC (roadmap) | First-generation tests distort in size under cross-sectional dependence |
 
 ## What tsecon implements today
 
@@ -271,6 +343,7 @@ The assumptions that make the trick work, and the conditions under which it fray
 - `tsecon.mean_group_var(entities, lags=1, trend="c", horizon=10, response=0, impulse=0)` — Pesaran-Smith mean-group panel VAR over a *list* of per-entity $T_i \times k$ matrices (the $T_i$ may differ). Returns averaged `intercept`, `coefs`, and orthogonalized `orth_irfs` with dispersion-based `*_se`, plus the selected `irf_path`/`irf_path_se` for one `(response, impulse)` pair.
 - `tsecon.panel_mean_group(ys, xs, method="mg")` — mean-group (`"mg"`) and CCE-MG (`"cce"`) for a heterogeneous panel, taking per-unit response vectors `ys` and $T_i \times k$ regressor matrices `xs`. Returns `coef`, `se`, `tstat`, the per-unit slope matrix `coef_per_unit`, `n_units`, and `k`. Validated to $\sim$1e-10 against a statsmodels per-unit-OLS golden (see `fixtures/tsecon-panelts.json`).
 - `tsecon.panel_pmg(ys, xs)` — the pooled mean group ARDL(1,1) estimator (Pesaran-Shin-Smith 1999), taking the same per-unit `ys`/`xs` as `panel_mean_group`. It pools the *long-run* coefficients across units by maximum likelihood while leaving the error-correction speed and short-run dynamics unit-specific, and returns the pooled long-run `theta` with `theta_se`, the average adjustment speed `phi_bar`, the per-unit speeds `phi` and innovation variances `sigma2`, and the `loglik`.
+- `tsecon.panel_unit_root(data, test="ips", regression="c", lags=None, max_lags=None)` — the three first-generation panel unit-root tests (`"ips"` Im-Pesaran-Shin, `"fisher"` Maddala-Wu/Choi, `"llc"` Levin-Lin-Chu) of the joint null "every unit has a unit root", built on chapter 2's per-unit ADF. `data` is a balanced $N \times T$ array (rows = units) or a list of per-unit series (unbalanced OK for `ips`/`fisher`). Returns `statistic`, `p_value`, the `per_unit_*` vectors, and test-specific extras (`t_bar`; `delta_hat`/`t_delta`; `maddala_wu`/`choi_z`). Validated to R `plm::purtest` — and, for Fisher, statsmodels — to floating-point precision. **First-generation**: it assumes cross-sectional independence (see the caveat above). Full card: [panel unit-root tests](../reference/model-cards/panel-unit-root.md).
 
 These lean on machinery from earlier chapters you can reach for directly: `tsecon.ols` with `se_type="hac"` (chapter 3) is the single-series engine underneath the panel regressions; `tsecon.var_fit` and `tsecon.var_irf` (chapter 7) are the per-entity fits `mean_group_var` averages; and the whole panel-LP design is chapter 9's local projection with an entity dimension bolted on.
 
@@ -278,7 +351,7 @@ These lean on machinery from earlier chapters you can reach for directly: `tseco
 
 - **Dynamic CCE / CS-DL** (Chudik-Pesaran 2015) for panels with lagged dependent variables and long-run coefficients; the **Hausman test** of `panel_pmg` against MG that decides whether the long-run homogeneity restriction is admissible.
 - **Interactive fixed effects** (Bai 2009) as the estimate-the-factor alternative to CCE's purge-the-factor, with a specification comparison between the two.
-- **Cross-sectional dependence diagnostics** — Pesaran's CD test and the CSD-exponent — to turn "is there a common factor?" into a pre-estimation hypothesis; **panel unit-root and cointegration** tests under cross-sectional dependence; and the **global VAR** for modeling spillovers between linked entities rather than purging common shocks.
+- **Cross-sectional dependence diagnostics** — Pesaran's CD test and the CSD-exponent — to turn "is there a common factor?" into a pre-estimation hypothesis; **second-generation panel unit-root and cointegration** tests under cross-sectional dependence (Pesaran's 2007 CIPS, Bai-Ng PANIC — the first-generation `panel_unit_root` ships today); and the **global VAR** for modeling spillovers between linked entities rather than purging common shocks.
 
 ## Further reading
 

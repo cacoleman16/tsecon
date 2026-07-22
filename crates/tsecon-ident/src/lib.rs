@@ -68,6 +68,8 @@ pub mod max_share;
 pub mod proxy;
 pub mod sampler;
 pub mod sign;
+pub mod zero;
+pub mod zero_sampler;
 
 pub use error::IdentError;
 pub use haar::haar_rotation;
@@ -79,6 +81,8 @@ pub use sampler::{
     IrfBandPoint, SignRestrictionDiagnostics, SignSampleResult, SignSampler, StructuralIrfSummary,
 };
 pub use sign::{Sign, SignRestriction, SignRestrictionSet};
+pub use zero::{zero_constrained_rotation, ZeroRestriction, ZeroRestrictionSet};
+pub use zero_sampler::{ZeroSignSampleResult, ZeroSignSampler};
 
 // Re-export the reduced-form posterior type so consumers wire one stack.
 pub use tsecon_bayes;

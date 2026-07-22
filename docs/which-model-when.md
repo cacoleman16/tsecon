@@ -46,16 +46,19 @@ A compact index. Find your row, jump to the section.
 | Unit-root test without picking an augmentation lag (ADF alternative / cross-check) | `phillips_perron` | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Impulse response, and you trust a recursive ordering | `var_irf` (`var_fit`, `var_fevd`) | [2](#2-i-want-an-impulse-response) |
 | Impulse response, but you only trust the *signs* of a few responses | `sign_restricted_svar` | [2](#2-i-want-an-impulse-response) |
+| Impulse response combining exact *zeros* with *sign* restrictions | `zero_sign_svar` (RWZ 2010 + ARW 2018) | [2](#2-i-want-an-impulse-response) |
 | Impulse response with a long-run neutrality (permanent vs transitory) | `long_run_svar` (Blanchard-Quah) | [2](#2-i-want-an-impulse-response) |
 | The single shock that drives a target's business-cycle variance | `max_share_svar` (main-BC / news shock) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from one measured instrument / narrative surprise | `proxy_svar` (SVAR-IV) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from documented variance regimes (crisis vs calm) | `hetero_svar` (Rigobon) | [2](#2-i-want-an-impulse-response) |
+| A Bayesian VAR that selects which coefficients are non-zero | `bvar_ssvs` (spike-and-slab SSVS) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from one equation, no full VAR to commit to | `lp`; instrumented `lp_iv`; state-dependent `lp_state` | [2](#2-i-want-an-impulse-response) |
 | Quarterly target, monthly indicators, a ragged data edge | `dfm_nowcast` | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
 | A handful of high-frequency lags to compress into a target | `weighted_midas` (large ratio) / `umidas` (small ratio) | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
 | Volatility with fat tails or occasional jumps | `gas_volatility(density="student_t")` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Intraday returns / a realized-variance series | `realized_measures`, `har_rv` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Panel whose units have genuinely different slopes | `panel_mean_group` (`mg`/`cce`), `panel_pmg` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| Is a whole panel of series I(1)? (pre-test before a panel VAR / cointegration) | `panel_unit_root` (LLC / IPS / Fisher) | [5](#5-i-have-a-panel-with-heterogeneous-units) |
 | A fiscal (integral) multiplier from an instrumented shock | `lp_multiplier` — not `lp_iv(..., cumulative=True)` | [2](#2-i-want-an-impulse-response) |
 | A smoother, lower-variance IRF across horizons | `smooth_lp` (B-spline penalty; λ=0 = raw LP) | [2](#2-i-want-an-impulse-response) |
 | The shock is a whole curve (e.g. the yield curve shifts) | `functional_pca` + `flp_scenario` / `fvar_scenario` | [2](#2-i-want-an-impulse-response) |
@@ -227,7 +230,17 @@ bands = np.quantile(draws, [0.05, 0.5, 0.95], axis=0)     # [draw][h][var][shock
 ```
 
 See [chapter 10 — the conjugate NIW-BVAR](guide/10-bayesian.md#the-conjugate-niw-bvar-a-posterior-without-mcmc)
-and [its gallery figure](examples/img/11-bvar-irf.png).
+and [its gallery figure](examples/img/11-bvar-irf.png). If instead you suspect the
+system is *sparse* — most distant lags and cross-effects truly zero — let the
+data select which coefficients survive with `bvar_ssvs` (spike-and-slab
+stochastic search): it returns a posterior *inclusion probability* per
+coefficient plus the same Cholesky-IRF draws for bands.
+
+```python
+ss = tsecon.bvar_ssvs(data, lags=2, n_draws=4000, burn=1000, seed=1, n_chains=2)
+ss["inclusion_prob"]                   # per-coefficient posterior inclusion (intercept row = 1)
+ss["diagnostics"]["rhat"]              # < 1.01 to trust it (needs n_chains >= 2)
+```
 
 **Go deeper:** [chapter 7 — IRFs and FEVD](guide/07-multivariate.md#irfs-and-fevd-the-vars-native-language) ·
 [chapter 8 — recursive identification](guide/08-causal-identification.md#recursive-identification-what-an-ordering-buys-you) ·
@@ -255,7 +268,30 @@ honest object: the set is the range the restrictions alone cannot rule out.
 Watch `acceptance_rate` — a very low value means the restrictions are nearly
 incompatible and the reported set rests on few rotations.
 
-**Go deeper:** [chapter 8 — sign restrictions](guide/08-causal-identification.md#sign-restrictions-honest-bands-not-points) ·
+**…and I also want to impose exact zeros.** When your identification mixes hard
+*zeros* (a shock has no effect on some variable at some horizon — a timing zero,
+a neutrality, a recursive block) with the signs, use `zero_sign_svar` — a strict
+superset of `sign_restricted_svar` that runs the corrected Rubio-Ramírez-
+Waggoner-Zha (2010) / Arias-Rubio-Ramírez-Waggoner (2018) sampler. Naively
+zeroing-then-sign-checking samples from the wrong distribution; this is the
+right one.
+
+```python
+zeros = [(0, 0, 0)]                                       # variable 0: zero IMPACT to shock 0
+signs = [(2, 0, 0, "+"), (1, 0, 0, "-")]                 # (variable, shock, horizon, sign)
+zsr = tsecon.zero_sign_svar(data, sign_restrictions=signs, zero_restrictions=zeros,
+                            horizon=12, n_draws=500, seed=0)
+zsr["set_min"], zsr["set_max"]        # weight-invariant identified-set envelope — read this
+zsr["ess"], zsr["diagnostics"]        # ARW effective sample size + acceptance
+```
+
+Read the weight-invariant `set_min`/`set_max` envelope as the prior-robust
+object. The ARW importance weight is *exactly 1* for impact-only zeros; for zeros
+at horizon ≥ 1 the exact volume-element correction is a v2 item, so the envelope
+(not the weighted quantiles) is the honest deliverable there.
+
+**Go deeper:** [chapter 8 — sign restrictions](guide/08-causal-identification.md#sign-restrictions-honest-bands-not-points),
+[zero + sign together](guide/08-causal-identification.md#zero-and-sign-restrictions-together-the-corrected-arw-sampler) ·
 [gallery figure](examples/img/struct-sign-svar.png)
 
 ### 2c · …I want a single-equation IRF, no full VAR
@@ -648,7 +684,28 @@ standard errors with caution and prefer a wild cluster bootstrap. For a *long*
 panel LP in a *short* panel, `panel_lp(..., jackknife=True)` applies the
 split-panel correction for Nickell bias that grows like O(h/T).
 
+**Escape hatch — is the panel even stationary?** Before a panel VAR or a
+cointegration analysis, test the *joint* null "every unit has a unit root" —
+the panel analogue of [section 1](#1-is-my-series-stationary-do-i-need-to-difference).
+`panel_unit_root` runs the three first-generation classics: `"ips"`
+(Im-Pesaran-Shin, heterogeneous alternative, the default), `"fisher"`
+(Maddala-Wu/Choi p-value combination), and `"llc"` (Levin-Lin-Chu, a *common*
+root, balanced panels only). Pooling across units buys far more power than any
+single-series ADF.
+
+```python
+r = tsecon.panel_unit_root(outcome, test="ips", regression="c")   # outcome is N×T
+r["statistic"], r["p_value"]          # small p ⇒ reject the joint unit-root null
+r["per_unit_pvalue"]                  # which units drive the verdict
+```
+
+These are *first-generation* tests: they assume cross-sectional independence and
+distort in size when a common factor correlates the units (the
+second-generation CIPS/PANIC tests under cross-sectional dependence are on the
+roadmap). Run Pesaran's CD check first if a global factor is plausible.
+
 **Go deeper:** [chapter 14 — fixed effects](guide/14-panel-time-series.md#fixed-effects-with-dependence-robust-standard-errors),
+[panel unit roots](guide/14-panel-time-series.md#panel-unit-roots-is-the-whole-panel-nonstationary),
 [mean-group VAR](guide/14-panel-time-series.md#mean-group-panel-var-when-the-dynamics-themselves-differ),
 [the CCE cure](guide/14-panel-time-series.md#the-common-factor-problem-and-the-cce-cure),
 [panel LP](guide/14-panel-time-series.md#panel-local-projections)

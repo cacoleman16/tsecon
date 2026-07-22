@@ -114,6 +114,7 @@ nav:
           - Forecasting: reference/model-cards/forecasting.md
           - Machine learning: reference/model-cards/machine-learning.md
           - Panel: reference/model-cards/panel.md
+          - Panel unit-root tests: reference/model-cards/panel-unit-root.md
           - Nowcasting & MIDAS: reference/model-cards/nowcasting-midas.md
           - Term structure: reference/model-cards/term-structure.md
           - Realized volatility: reference/model-cards/realized-vol.md

@@ -30,7 +30,7 @@ on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.0.1
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 113
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 116
           if not n.startswith("_")))
 ```
 
@@ -79,7 +79,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 113 functions, grouped by the task they serve. Every one is a plain
+The 116 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -148,6 +148,7 @@ and docstrings live in
 | `var_forecast` | Iterated VAR forecasts with intervals |
 | `var_granger` | Granger-causality F test |
 | `sign_restricted_svar` | Sign-restricted Bayesian SVAR identified-set bands |
+| `zero_sign_svar` | Zero + sign restricted Bayesian SVAR (RWZ 2010 / ARW 2018) |
 | `long_run_svar` | Blanchard-Quah long-run SVAR (supply/demand decomposition) |
 | `max_share_svar` | Max-share / maximum-FEV shock (main business cycle, news) |
 | `proxy_svar` | Proxy SVAR / external-instrument identification (SVAR-IV) |
@@ -194,6 +195,7 @@ and docstrings live in
 |---|---|
 | `bvar_fit` | Minnesota-NIW conjugate BVAR posterior + log marginal likelihood |
 | `bvar_hierarchical` | Empirical-Bayes BVAR: tightness chosen by marginal likelihood (GLP) |
+| `bvar_ssvs` | Spike-and-slab SSVS-BVAR: posterior coefficient inclusion probabilities |
 | `bvar_irf_draws` | Posterior Cholesky-IRF draws for credible bands |
 | `mcmc_diagnostics` | Split R-hat and bulk/tail effective sample size |
 
@@ -206,6 +208,7 @@ and docstrings live in
 | `panel_mean_group` | Mean-group / CCE-MG heterogeneous-panel estimator (Pesaran) |
 | `panel_pmg` | Pooled Mean Group ARDL estimator (Pesaran-Shin-Smith) |
 | `mean_group_var` | Pesaran-Smith mean-group panel VAR |
+| `panel_unit_root` | First-generation panel unit-root tests (LLC / IPS / Fisher) |
 
 ### Nowcasting and mixed frequency
 

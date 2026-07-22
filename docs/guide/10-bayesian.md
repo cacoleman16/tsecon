@@ -294,6 +294,60 @@ short sample: selected lambda1 = 0.3058  log-ML gain over fixed 0.2 = 3.564
 
 On the long fixture sample the evidence is nearly flat in `lambda1`: the ML-II optimum (0.194) sits a whisker from the folklore 0.2 and barely improves the marginal likelihood — the data have little to say about the dial. On the short, persistent 4-variable sample the picture flips: the data pull the tightness up to 0.31 and buy a 3.6-log-point improvement, exactly the regime where letting the evidence set the dial matters. Pass `optimize="lambda1+lambda3"` to also tune the lag-decay rate, or `hyperprior="glp"` for the GLP Gamma hyperprior (MAP-II rather than pure ML-II); the fully sampled hierarchical posterior with credible bands on `lambda` remains a [Module 05](../roadmap/05-bayesian.md) roadmap item.
 
+**Spike-and-slab selection: let the data zero out coefficients.** Shrinkage
+pulls *every* coefficient toward the prior by a common dial; **stochastic search
+variable selection** (SSVS; George, Sun and Ni 2008) instead asks, one
+coefficient at a time, whether it belongs in the model at all. Each coefficient
+gets a two-component prior — a narrow *spike* $N(0,(c_0\tau)^2)$ pinning it near
+zero and a wide *slab* $N(0,(c_1\tau)^2)$ letting the data speak — with a latent
+0/1 indicator switching between them, and a Gibbs sampler draws the indicators
+alongside the coefficients. The *fraction of draws* in which a coefficient is
+"in" is its **posterior inclusion probability**: a soft, honest selector where
+the LASSO gives a hard threshold, and a full posterior where the LASSO gives a
+point. It is the Bayesian answer to a *sparse* VAR — most distant lags and
+cross-effects truly zero — and `tsecon.bvar_ssvs` ships it today. On a sparse
+VAR(2) it recovers the pattern without a single hard cutoff:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+n, T, p = 3, 300, 2
+A1 = np.array([[0.5, 0.0, 0.0], [0.3, 0.4, 0.0], [0.0, 0.0, 0.6]])   # sparse
+A2 = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.2]])   # sparser
+c = np.array([0.2, -0.1, 0.0])
+Y = np.zeros((T + 50, n))
+for t in range(2, T + 50):
+    Y[t] = c + A1 @ Y[t - 1] + A2 @ Y[t - 2] + 0.5 * rng.standard_normal(n)
+Y = Y[50:]
+
+res = tsecon.bvar_ssvs(Y, lags=2, n_draws=4000, burn=1000, seed=1, n_chains=2)
+inc = np.asarray(res["inclusion_prob"])    # (1+pK) x n; intercept row pinned to 1
+print(np.round(inc, 2))
+print("mean model size:", round(res["diagnostics"]["mean_model_size"], 2),
+      "slopes (true: 5)  R-hat:", round(res["diagnostics"]["rhat"], 4))
+```
+
+```
+[[1.   1.   1.  ]
+ [1.   1.   0.11]
+ [0.36 1.   0.08]
+ [0.07 0.16 1.  ]
+ [0.12 0.21 0.08]
+ [0.09 0.09 0.09]
+ [0.09 0.22 0.84]]
+mean model size: 6.59 slopes (true: 5)  R-hat: 1.0043
+```
+
+Every one of the five true non-zero coefficients earns an inclusion probability
+from 0.84 to 1.0 — the weakest, the `0.2` second-lag term, still clears 0.8 —
+while the true zeros stay at 0.36 or below. The one SSVS wrinkle to watch: the
+discrete inclusion indicators are highly autocorrelated, so their effective
+sample size lags the continuous parameters' badly (check `ess_bulk`) — run long,
+and diagnose with multiple chains as always. The horseshoe and Normal-Gamma
+global-local shrinkage families that SSVS competes with in forecasting horse
+races are the frontier, below.
+
 **Time-varying parameters (TVP).** Was the Fed's inflation response the same in 1975 as in 2005? A TVP-VAR answers by letting coefficients follow random walks, $\beta_t = \beta_{t-1} + \eta_t$ — a state-space model estimated by Gibbs with FFBS drawing the coefficient paths (Cogley and Sargent 2005; Primiceri 2005, as corrected by Del Negro and Primiceri 2015). Conceptually: the Minnesota prior shrinks coefficients toward a point; a TVP prior shrinks *changes* in coefficients toward zero, with the state-innovation variance controlling how much history is allowed to bend. One documented choice deserves daylight: many TVP implementations discard coefficient draws whose implied VAR is explosive (following Cogley and Sargent). That truncation is a *change of prior*, not a numerical detail — it alters the posterior and the marginal likelihood, and near unit roots it can silently reject almost every draw. tsecon's roadmap makes it an explicit, reported option rather than a hidden default.
 
 **Stochastic volatility (SV).** Macro residual variances are wildly non-constant — the Great Moderation, 2008, March 2020. SV lets each shock's log-variance follow its own random walk, sampled with the Kim-Shephard-Chib (1998) mixture trick that turns the nonlinear volatility model into a conditionally linear one FFBS can handle. In forecasting exercises SV is often worth more than any other single extension: it is what lets a fan chart widen in turbulent times and narrow in calm ones.
@@ -349,6 +403,7 @@ The state of the art, and where the [Module 05 roadmap](../roadmap/05-bayesian.m
 |---|---|---|
 | Forecasting VAR, 3–10 variables, typical macro sample | Minnesota/NIW-BVAR, tightness via marginal likelihood | Closed form — fast, no convergence worries; shrinkage cures overparameterization |
 | Choosing the tightness dials | `bvar_hierarchical` — GLP empirical-Bayes / ML-II | The data pick $\lambda$ by maximizing the closed-form evidence; folklore values retire |
+| Sparse VAR — let the data zero out coefficients | `bvar_ssvs` — spike-and-slab stochastic search | Posterior inclusion probabilities select which lags/cross-effects survive; a soft LASSO with a full posterior |
 | 20–130 variables | Large conjugate BVAR, shrinkage tightened with dimension | Bańbura et al. (2010): beats factor models; conjugacy keeps it feasible |
 | Prior must differ freely across equations | Independent Normal-Wishart + Gibbs | The Kronecker restriction of the conjugate form is the price of closed forms |
 | Suspected drift in dynamics (policy regimes, structural change) | TVP-BVAR via FFBS, with shrinkage on state variances | Random-walk coefficients; shrinkage prevents hallucinated time variation |
@@ -366,6 +421,7 @@ The state of the art, and where the [Module 05 roadmap](../roadmap/05-bayesian.m
 - `tsecon.ols` — the shrinkage demonstration via dummy observations (`se_type="nonrobust"|"hc0"|"hc1"|"hac"`)
 - `tsecon.bvar_fit` — the conjugate Minnesota/NIW-BVAR: closed-form posterior-mean coefficients $\bar{B}$, posterior-mean $\Sigma$, and the matrix-variate-$t$ log marginal likelihood (backed by the `MinnesotaNiwPrior` / `NiwPosterior` Rust core)
 - `tsecon.bvar_hierarchical` — empirical-Bayes / ML-II tightness selection (Giannone-Lenza-Primiceri 2015): maximizes that same marginal likelihood over `lambda1` (optionally `lambda1+lambda3`, or MAP-II under the GLP Gamma hyperprior), then refits the posterior at the optimum
+- `tsecon.bvar_ssvs` — spike-and-slab stochastic-search variable selection (George-Sun-Ni 2008): a four-block Gibbs sampler returning posterior inclusion probabilities for every VAR coefficient (and, with `ssvs_cov=True`, the off-diagonal error precisions), the model-averaged coefficient/covariance means, and Cholesky-orthogonalized IRF draws — the sampler-based sparse-VAR counterpart to `bvar_fit`'s shrinkage
 - `tsecon.bvar_irf_draws` — joint $(B, \Sigma)$ posterior sampling through the Kronecker structure, pushed through the Cholesky-IRF recursion for credible-band draws `[draw][h][response][shock]`
 - `tsecon.mcmc_diagnostics` — Vehtari et al. (2021) rank-normalized split $\widehat{R}$ and bulk/tail ESS in one call, numerically matching ArviZ and R `posterior`
 - `tsecon.var_fit`, `tsecon.var_irf`, `tsecon.var_fevd`, `tsecon.var_forecast`, `tsecon.var_granger` — the frequentist VAR baseline a BVAR wraps a posterior around
@@ -376,7 +432,7 @@ The state of the art, and where the [Module 05 roadmap](../roadmap/05-bayesian.m
 
 - `FfbsSampler` — the Carter-Kohn forward-filter backward-sampling simulation smoother, with rank-aware handling of singular state covariances
 
-**Roadmap** ([docs/roadmap/05-bayesian.md](../roadmap/05-bayesian.md)): the *fully sampled* GLP hierarchical posterior (credible bands on $\lambda$, beyond the ML-II/MAP-II point selection `bvar_hierarchical` ships) and the "prior on the long run" dummy-observation stack, independent Normal-Wishart Gibbs, large BVARs, stochastic volatility (KSC/Omori mixture, common and factor SV), corrected TVP-BVAR (Del Negro-Primiceri 2015), steady-state BVARs, conditional forecasts, the validated marginal-likelihood suite, SSVS/horseshoe/Normal-Gamma shrinkage, NUTS and SMC samplers, and Geweke/SBC sampler tests in CI.
+**Roadmap** ([docs/roadmap/05-bayesian.md](../roadmap/05-bayesian.md)): the *fully sampled* GLP hierarchical posterior (credible bands on $\lambda$, beyond the ML-II/MAP-II point selection `bvar_hierarchical` ships) and the "prior on the long run" dummy-observation stack, independent Normal-Wishart Gibbs, large BVARs, stochastic volatility (KSC/Omori mixture, common and factor SV), corrected TVP-BVAR (Del Negro-Primiceri 2015), steady-state BVARs, conditional forecasts, the validated marginal-likelihood suite, the horseshoe/Normal-Gamma global-local shrinkage families (the spike-and-slab `bvar_ssvs` ships today), NUTS and SMC samplers, and Geweke/SBC sampler tests in CI.
 
 ## Further reading
 

@@ -1,7 +1,8 @@
 # Model card — VAR and structural VAR
 
 `var_fit` · `var_irf` · `var_irf_bands` · `var_fevd` · `var_granger` ·
-`var_forecast` · `sign_restricted_svar` · `favar` · `connectedness`
+`var_forecast` · `sign_restricted_svar` · `zero_sign_svar` · `favar` ·
+`connectedness`
 
 The vector autoregression treats a handful of series as one system: every
 variable is regressed on the recent past of every variable. From that one
@@ -217,6 +218,138 @@ in the [guide](../../guide/08-causal-identification.md).
 
 **References.** Uhlig (2005); Rubio-Ramírez, Waggoner & Zha (2010); Arias,
 Rubio-Ramírez & Waggoner (2018, corrected zero+sign).
+
+---
+
+## `zero_sign_svar` — zero **and** sign restrictions together
+
+**What it estimates.** A *set* of structural VARs consistent with the data, a
+handful of **exact zero** restrictions on impulse responses, and a handful of
+**sign** restrictions — the Rubio-Ramírez-Waggoner-Zha (2010) exact-zero column
+recursion combined with sign rejection, importance-weighted by Arias-Rubio-
+Ramírez-Waggoner (2018). A strict superset of `sign_restricted_svar`: the zeros
+carve exact structure into the rotation (a shock has *no* effect on some
+variable at some horizon — a timing zero, a neutrality, a recursive block),
+while the signs prune the rest. `sign_restrictions` are `(variable, shock,
+horizon, sign)` tuples (may be empty); `zero_restrictions` are `(variable,
+shock, horizon)` tuples imposing $\Theta_h[\text{variable},\text{shock}] = 0$
+exactly (horizon 0 = impact); at least one list must be non-empty.
+
+**The recursive special case.** With strict-upper-triangle **impact** zeros
+($\Theta_0[i,j]=0$ for $i<j$) and no sign restrictions, the RWZ column recursion
+is one-dimensional at every step: the rotation is pinned to $Q = I$, the ARW
+weight is exactly 1, and each draw's structural IRF collapses to that draw's
+Cholesky IRF. The scheme then reproduces `var_irf(orth=True)` — this is the
+degenerate, point-identified corner of the set-identified family, and it is how
+the crate golden pins the whole machinery.
+
+**Assumptions.** Everything `sign_restricted_svar` assumes (correct reduced
+form; economically defensible signs; the Haar/Minnesota prior is *not*
+uninformative about the responses — Baumeister-Hamilton 2015), plus that the
+imposed zeros are economically true. The zeros are enforced by construction to
+machine precision; the signs by accept-reject.
+
+**When to use (and when not).** Use when your identification mixes hard zeros
+with soft signs — the modern applied pattern (e.g. a monetary shock with a
+zero-impact-on-output timing restriction *and* a sign on the rate and prices).
+Use it also as the honest way to impose *any* zeros alongside signs: naively
+zeroing then sign-checking samples from the wrong distribution — this is the
+corrected sampler. Do not stack restrictions without watching the acceptance
+rate; do not read the pointwise median as "the" IRF.
+
+**Key arguments and defaults.** `sign_restrictions` / `zero_restrictions` (at
+least one non-empty); `lags`, `horizon`, `n_draws`, `max_tries` (rotation-attempt
+cap), `seed`; `lambda1=0.2` (the Minnesota tightness of the reduced-form
+posterior the sampler draws from); `weighted=True` (apply the ARW importance
+weights to the pointwise quantiles).
+
+**How to read the output.** `set_min` / `set_max` per `(horizon, variable,
+shock)` — the **weight-invariant identified-set envelope**, and the
+prior-robust object to read. `quantiles` at `probs=[0.05,0.16,0.50,0.84,0.95]`
+(ARW-weighted when `weighted=True`) are the descriptive pointwise bands *inside*
+that envelope. `weights` (per accepted draw, normalized) and `ess` (their
+effective sample size); `diagnostics["acceptance_rate"]` is itself an
+identification diagnostic. A response left *unrestricted* — its envelope is the
+finding.
+
+**The ARW importance-weight caveat — read this.** The ARW weight is **exactly 1**
+for **impact-only** zero patterns (the restriction functions are linear in $Q$,
+so the volume element is $Q$-independent — the recursive golden and every
+impact-only applied SVAR are unweighted, and `ess` equals the accepted count).
+For zeros at horizon $\ge 1$ (or on a long-run matrix) the ARW volume element is
+genuinely non-constant, and **this build does not yet apply the exact ARW
+volume-element correction** — it returns the conditionally-uniform (unit) weight,
+i.e. the honest RWZ-2010 draw. In that case the **weight-invariant `set_min` /
+`set_max` envelope is the deliverable to trust**, not the pointwise weighted
+bands; the exact ARW weight for non-impact zeros is a roadmap swap-point.
+
+**Failure modes.** Acceptance decays roughly exponentially in the number of sign
+restrictions; over-reading the pointwise median (it mixes rotations across
+horizons); and, for non-impact zeros, reading the weighted quantiles as if the
+ARW correction were applied — read the envelope instead.
+
+**Validated against.** A **documented-formula cross-implementation golden**: the
+generator ([`generate_zero_sign_svar_fixtures.py`](../../../fixtures/generate_zero_sign_svar_fixtures.py),
+never imports tsecon) transcribes $\Theta_h = \Psi_h\,\mathrm{chol}_{\text{lower}}(\Sigma)$
+from the pure companion-power MA recursion. The **primary** golden is the
+recursive/Cholesky recovery — strict-upper-triangle impact zeros, no signs,
+positive-diagonal normalization — which the RWZ recursion reproduces
+deterministically (weight 1) to `1e-10`, validating `cholesky_irf` and the
+null-space recursion at once; an end-to-end binding check confirms the posterior
+median recovers the `var_irf(orth=True)` structure through the Minnesota-NIW
+posterior (approximately, up to posterior scatter — the machine-precision
+identity is per-draw at a fixed reduced form). Sign
+behavior, feasibility, and reproducibility are property-tested alongside.
+Fixture: [`zero_sign_svar.json`](../../../fixtures/zero_sign_svar.json); test:
+[`zero_sign.rs`](../../../crates/tsecon-ident/tests/zero_sign.rs). See the
+[validation matrix](../validation-matrix.md).
+
+**References.** Rubio-Ramírez, Waggoner & Zha (2010); Arias, Rubio-Ramírez &
+Waggoner (2018, corrected zero+sign); Baumeister & Hamilton (2015).
+
+```python
+import numpy as np, tsecon
+
+# monetary system (output, prices, ffr); shock 0 = the monetary shock.
+rng = np.random.default_rng(11)
+T = 500
+eps = rng.standard_normal((T, 3))
+B0 = np.array([[0.8, -0.3, -0.4], [0.5, 0.6, -0.5], [0.1, 0.4, 0.9]])
+A1 = np.array([[0.5, 0.0, -0.1], [0.1, 0.4, 0.0], [0.0, 0.1, 0.6]])
+y = np.zeros((T, 3))
+for t in range(1, T):
+    y[t] = A1 @ y[t - 1] + B0 @ eps[t]
+
+zeros = [(0, 0, 0)]                                       # output: zero IMPACT to shock 0
+signs = [(2, 0, 0, "+"), (1, 0, 0, "-"), (1, 0, 1, "-")]  # ffr up; prices down for two quarters
+zs = tsecon.zero_sign_svar(y, sign_restrictions=signs, zero_restrictions=zeros,
+                           lags=1, horizon=12, n_draws=500, max_tries=2000, seed=0)
+
+d = zs["diagnostics"]
+smin = np.asarray(zs["set_min"]); smax = np.asarray(zs["set_max"])
+print("acceptance_rate:", round(d["acceptance_rate"], 3), " accepted:", d["accepted"])
+print("ARW ess:", round(zs["ess"], 1), "of", d["accepted"],
+      "(impact-only zero -> weight exactly 1)")
+print("output IMPACT response (imposed zero):",
+      f"[{smin[0,0,0]:+.1e}, {smax[0,0,0]:+.1e}]")
+print("output identified set h=0..4  set_min:", np.round(smin[:5, 0, 0], 3))
+print("                              set_max:", np.round(smax[:5, 0, 0], 3))
+```
+
+```
+acceptance_rate: 0.41  accepted: 500
+ARW ess: 500.0 of 500 (impact-only zero -> weight exactly 1)
+output IMPACT response (imposed zero): [-2.2e-15, +1.9e-15]
+output identified set h=0..4  set_min: [-0.    -0.127 -0.129 -0.114 -0.088]
+                              set_max: [0.    0.135 0.13  0.098 0.069]
+```
+
+The imposed impact zero holds to machine precision (output's contemporaneous
+response to the monetary shock is $\pm 2\times10^{-15}$), the impact-only zero
+leaves the ARW weight at exactly 1 (`ess` = the full 500 accepted draws), and
+the *free* output response at every later horizon straddles zero — the sign and
+zero restrictions together simply do not pin its direction, and that envelope is
+the finding.
 
 ---
 
