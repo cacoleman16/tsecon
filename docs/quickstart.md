@@ -30,7 +30,7 @@ on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.0.1
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 105
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 106
           if not n.startswith("_")))
 ```
 
@@ -79,7 +79,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 105 functions, grouped by the task they serve. Every one is a plain
+The 106 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -141,6 +141,7 @@ and docstrings live in
 |---|---|
 | `var_fit` | Fit a VAR(p) by OLS: params, covariance, ICs, stability |
 | `var_irf` | Orthogonalized or raw impulse responses |
+| `var_irf_bands` | Frequentist IRF confidence bands (delta-method or bootstrap) |
 | `var_fevd` | Forecast-error variance decomposition |
 | `var_forecast` | Iterated VAR forecasts with intervals |
 | `var_granger` | Granger-causality F test |

@@ -167,6 +167,131 @@ class VARResults(Results):
             names=self.names,
         )
 
+    def irf_bands(
+        self,
+        horizon: int = 12,
+        orth: bool = True,
+        method: str = "asymptotic",
+        alpha: float = 0.1,
+        cumulative: bool = False,
+        n_boot: int = 1000,
+        seed: int = 0,
+        bias_correct: bool = False,
+    ) -> dict:
+        """Frequentist confidence bands on this VAR's impulse responses.
+
+        Returns the raw :func:`tsecon.var_irf_bands` dict unchanged — keys
+        ``point``/``se``/``lower``/``upper`` (each ``[h][response][shock]``,
+        matching :meth:`irf`), plus ``method``/``alpha``/``n_boot``. ``method``
+        is ``"asymptotic"`` (Lütkepohl delta-method) or ``"bootstrap"``
+        (residual bootstrap, with optional Kilian ``bias_correct``).
+        """
+        if getattr(self, "_data", None) is None:
+            raise ValueError(
+                "this VARResults was not built by VARResults.fit(), so the original "
+                "data is unavailable; call tsecon.var_irf_bands(data, ...) instead"
+            )
+        return _compiled().var_irf_bands(
+            self._data,
+            lags=self.lags,
+            horizon=horizon,
+            orth=orth,
+            method=method,
+            alpha=alpha,
+            cumulative=cumulative,
+            n_boot=n_boot,
+            seed=seed,
+            trend=self.trend,
+            bias_correct=bias_correct,
+        )
+
+    def plot_irf(
+        self,
+        horizon: int = 12,
+        orth: bool = True,
+        cumulative: bool = False,
+        *,
+        bands: str | None = None,
+        alpha: float = 0.1,
+        n_boot: int = 1000,
+        seed: int = 0,
+        bias_correct: bool = False,
+        path=None,
+        figsize=None,
+        color=None,
+    ):
+        """A k x k grid of impulse responses, optionally with a shaded band.
+
+        ``bands`` selects the confidence-band method: ``None`` (point path
+        only — identical to ``self.irf(...).plot()``), ``"asymptotic"``
+        (delta-method) or ``"bootstrap"``. ``alpha`` is the two-sided level
+        (default ``0.1`` → a 90% band). ``n_boot``/``seed``/``bias_correct``
+        apply to the bootstrap band only. Returns the
+        :class:`matplotlib.figure.Figure`; saves it to ``path`` first when
+        given. A zero reference line is always drawn.
+        """
+        if bands is None:
+            return self.irf(horizon, orth=orth, cumulative=cumulative).plot(
+                path=path, figsize=figsize, color=color
+            )
+
+        bd = self.irf_bands(
+            horizon=horizon,
+            orth=orth,
+            method=bands,
+            alpha=alpha,
+            cumulative=cumulative,
+            n_boot=n_boot,
+            seed=seed,
+            bias_correct=bias_correct,
+        )
+        point = np.asarray(bd["point"], dtype=float)
+        lower = np.asarray(bd["lower"], dtype=float)
+        upper = np.asarray(bd["upper"], dtype=float)
+        k = self.neqs
+        if k == 0:
+            raise ValueError("no impulse responses to plot")
+
+        plt = pyplot()
+        horizons = np.arange(point.shape[0])
+        palette = list(SERIES.values())
+        figsize = figsize or (1.9 * k + 1.1, 1.55 * k + 0.9)
+        fig, axes = plt.subplots(
+            k, k, figsize=figsize, sharex=True, squeeze=False, constrained_layout=True
+        )
+        for i in range(k):          # response variable — rows
+            for j in range(k):      # shock variable — columns
+                ax = axes[i][j]
+                apply_style(ax, zero_line=True)
+                col = color or palette[j % len(palette)]
+                ax.fill_between(
+                    horizons, lower[:, i, j], upper[:, i, j],
+                    color=col, alpha=0.2, linewidth=0,
+                )
+                ax.plot(
+                    horizons, point[:, i, j],
+                    color=col, lw=1.6, solid_capstyle="round",
+                )
+                ax.set_title(
+                    f"{self.names[i]} ← shock {self.names[j]}",
+                    fontsize=8, color=INK, pad=4,
+                )
+                ax.margins(x=0)
+                ax.set_xlim(horizons[0], horizons[-1])
+                if i == k - 1:
+                    ax.set_xlabel("horizon", fontsize=8, color=INK_2)
+
+        kind = "cumulative " if cumulative else ""
+        kind += "orthogonalised" if orth else "reduced-form"
+        pct = int(round((1.0 - alpha) * 100))
+        fig.suptitle(
+            f"{kind} impulse responses — {pct}% {bands} bands",
+            fontsize=10, color=INK_2,
+        )
+        if path is not None:
+            fig.savefig(path, dpi=150)
+        return fig
+
     # --------------------------------------------------------------- summary
     def summary(self) -> str:
         verdict = "stable" if self.stable else "UNSTABLE"

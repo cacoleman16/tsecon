@@ -12,6 +12,12 @@ description = "Reduced-form VAR estimation and analysis for the tsecon time-seri
 # features = ["std"]).
 tsecon-linalg = { path = "../tsecon-linalg" }
 tsecon-stats = { path = "../tsecon-stats" }
+# Shared resampling engine (indices / par_replicate) for the residual
+# bootstrap IRF bands in `src/irf_bootstrap.rs`. tsecon-bootstrap does NOT
+# depend on tsecon-var, so there is no dependency cycle. tsecon-rng is the
+# reproducible RNG it is built on (transitive, listed for clarity).
+tsecon-bootstrap = { path = "../tsecon-bootstrap" }
+tsecon-rng = { path = "../tsecon-rng" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy

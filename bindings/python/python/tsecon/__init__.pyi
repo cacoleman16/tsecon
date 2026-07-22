@@ -162,7 +162,33 @@ def var_irf(
     trend: str = ...,
     cumulative: bool = ...,
 ) -> list[list[list[float]]]:
-    """Impulse responses [h][response][shock]; `cumulative` gives running sums."""
+    """Impulse responses [h][response][shock]; `cumulative` gives running sums.
+
+    Point path only. For frequentist confidence bands use `var_irf_bands`.
+    """
+
+def var_irf_bands(
+    data: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    orth: bool = ...,
+    method: str = ...,
+    alpha: float = ...,
+    cumulative: bool = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    trend: str = ...,
+    bias_correct: bool = ...,
+) -> dict[str, Any]:
+    """Frequentist confidence bands on VAR impulse responses — the banded companion to `var_irf`.
+
+    Returns a dict with `point`/`se`/`lower`/`upper`, each `[h][response][shock]`
+    (same layout as `var_irf`), plus echoed `method`/`alpha`/`n_boot`. `method`:
+    "asymptotic" (Lütkepohl 1990 delta-method SEs, Wald bands
+    `point ± z_{1-alpha/2}·se`; `n_boot` is `None`) or "bootstrap" (residual
+    Efron/Kilian bootstrap, percentile bands, optional Kilian 1998
+    `bias_correct`). `orth` and `cumulative` behave exactly as in `var_irf`.
+    """
 
 def var_fevd(
     data: _ArrayLike, lags: int = ..., horizon: int = ..., trend: str = ...

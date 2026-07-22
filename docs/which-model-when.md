@@ -180,6 +180,24 @@ roots, so stability means **every** modulus exceeds 1, i.e. `min_root > 1`.
 an explosive system, so it is not a verdict on its own.) `orth=True` applies the Cholesky factorization in
 column order; reorder the columns to change the ordering assumption.
 
+**Put a band on it.** A point IRF invites over-reading; report the uncertainty.
+**Frequentist** bands come from `var_irf_bands` — Lütkepohl (1990) delta-method
+(`method="asymptotic"`) or a Kilian (1998) residual bootstrap
+(`method="bootstrap"`), with the same `orth`/`cumulative` flags as `var_irf`.
+**Bayesian** credible bands come from `bvar_irf_draws` (the escape hatch below);
+**set-identified** bands under sign restrictions from `sign_restricted_svar`
+([2b](#2b-but-i-only-trust-sign-restrictions)).
+
+```python
+band = tsecon.var_irf_bands(data, lags=2, horizon=16, orth=True, method="asymptotic", alpha=0.1)
+lo, hi = np.asarray(band["lower"]), np.asarray(band["upper"])
+lo[1, 1, 0], hi[1, 1, 0]        # (0.030, 0.184): 90% band, consumption's h=1 response to a GDP shock
+```
+
+The `var_irf_bands` bands are **pointwise** (one horizon at a time), not joint
+over the whole path — the honest per-horizon uncertainty, not a simultaneous
+coverage statement.
+
 **Escape hatch — short sample, noisy IRFs.** Macro samples are short and VARs
 are parameter-hungry, so the frequentist IRF can be jagged. Shrink it with a
 Minnesota-prior Bayesian VAR and read credible bands off posterior draws:

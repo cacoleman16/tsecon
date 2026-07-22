@@ -33,7 +33,7 @@ Python and NumPy; the estimation kernels (state-space filtering, bootstrap and
 posterior resampling, sign-restriction rotation sampling, spectral transforms,
 optimization) are implemented in Rust and exposed through `PyO3` and built into
 portable wheels with `maturin` [@pyo3; @maturin]. The current release exposes
-**105 functions** organized as a task-oriented facade over **40 Rust crates**,
+**106 functions** organized as a task-oriented facade over **40 Rust crates**,
 and NumPy is the only required runtime dependency.
 
 The design goal is not another forecasting toolkit but a maintained, fast, and
@@ -86,7 +86,7 @@ comfortable default rather than an overnight job.
 
 # Functionality
 
-The 105 functions span the applied workflow end to end:
+The 106 functions span the applied workflow end to end:
 
 - **Diagnostics and exploration**: `acf`, `pacf`, `ljung_box`, `jarque_bera`,
   `arch_lm`; the unit-root workflow `adf`, `kpss`, `check_stationarity`;
@@ -138,7 +138,7 @@ settings can never yield different p-values in different modules.
 without a named golden validation target — a published table, a reference
 implementation, or both. The Rust core carries a large unit and integration
 suite (more than 800 `#[test]` cases) and the Python layer adds a conformance
-suite (454 tests collected) whose fixtures are gated against `statsmodels`,
+suite (468 tests collected) whose fixtures are gated against `statsmodels`,
 `arch`, `linearmodels`, `scikit-learn`, SciPy, and `ArviZ`. The replication
 fixtures *are* the integration test suite.
 

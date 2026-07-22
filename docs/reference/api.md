@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**105 functions.**
+**106 functions.**
 
 ## diagnostics
 
@@ -253,6 +253,35 @@ def var_irf(
 ```
 
 Impulse responses [h][response][shock]; `cumulative` gives running sums.
+
+    Point path only. For frequentist confidence bands use `var_irf_bands`.
+
+### `var_irf_bands`
+
+```python
+def var_irf_bands(
+    data: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    orth: bool = ...,
+    method: str = ...,
+    alpha: float = ...,
+    cumulative: bool = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    trend: str = ...,
+    bias_correct: bool = ...,
+) -> dict[str, Any]:
+```
+
+Frequentist confidence bands on VAR impulse responses — the banded companion to `var_irf`.
+
+    Returns a dict with `point`/`se`/`lower`/`upper`, each `[h][response][shock]`
+    (same layout as `var_irf`), plus echoed `method`/`alpha`/`n_boot`. `method`:
+    "asymptotic" (Lütkepohl 1990 delta-method SEs, Wald bands
+    `point ± z_{1-alpha/2}·se`; `n_boot` is `None`) or "bootstrap" (residual
+    Efron/Kilian bootstrap, percentile bands, optional Kilian 1998
+    `bias_correct`). `orth` and `cumulative` behave exactly as in `var_irf`.
 
 ### `var_fevd`
 

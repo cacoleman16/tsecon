@@ -46,7 +46,7 @@ method fits your problem and how to trust its output.
 | [ARIMA](model-cards/arima.md) | `arima_fit`, `ar_loglik` |
 | [Spectral analysis](model-cards/spectral.md) | `periodogram`, `welch`, `coherence` |
 | [Volatility](model-cards/volatility.md) | `garch_fit`, `gas_volatility`, `ccc_garch`, `dcc_garch` |
-| [VAR / SVAR](model-cards/var-svar.md) | `var_fit`, `var_irf`, `var_fevd`, `var_granger`, `var_forecast`, `sign_restricted_svar`, `favar`, `connectedness` |
+| [VAR / SVAR](model-cards/var-svar.md) | `var_fit`, `var_irf`, `var_irf_bands`, `var_fevd`, `var_granger`, `var_forecast`, `sign_restricted_svar`, `favar`, `connectedness` |
 | [Local projections](model-cards/local-projections.md) | `lp`, `lp_iv`, `lp_multiplier`, `lp_state`, `smooth_lp` |
 | [Bayesian](model-cards/bayesian.md) | `bvar_fit`, `bvar_irf_draws`, `mcmc_diagnostics` |
 | [GMM](model-cards/gmm.md) | `iv_gmm`, `gmm_nonlinear` |

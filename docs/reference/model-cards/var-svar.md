@@ -1,7 +1,7 @@
 # Model card — VAR and structural VAR
 
-`var_fit` · `var_irf` · `var_fevd` · `var_granger` · `var_forecast` ·
-`sign_restricted_svar` · `favar` · `connectedness`
+`var_fit` · `var_irf` · `var_irf_bands` · `var_fevd` · `var_granger` ·
+`var_forecast` · `sign_restricted_svar` · `favar` · `connectedness`
 
 The vector autoregression treats a handful of series as one system: every
 variable is regressed on the recent past of every variable. From that one
@@ -79,6 +79,102 @@ print("IRF shape:", irf.shape, " var0<-shock2 @ h=4:", round(irf[4, 0, 2], 4))
 gc = tsecon.var_granger(Y, caused=[0], causing=[2], lags=2)
 print("var2 Granger-causes var0? p =", round(gc["p_value"], 4))
 ```
+
+### Confidence bands on the IRF — `var_irf_bands`
+
+`var_irf` returns the point path only. **`var_irf_bands`** is its banded
+companion: same estimand, same `[h][i][j]` layout, but a `dict` with
+`point`/`se`/`lower`/`upper` plus the echoed `method`/`alpha`/`n_boot`
+(`n_boot` is `None` on the asymptotic branch). Two methods, one flag apart:
+
+- **`method="asymptotic"`** (default) — the Lütkepohl (1990) **delta-method**
+  standard errors: the analytic derivative of the MA / orthogonalized responses
+  propagated through the estimated coefficient covariance, with symmetric Wald
+  bands `point ± z_{1-alpha/2}·se`. These are statsmodels' `irf.stderr`. Closed
+  form, no simulation.
+- **`method="bootstrap"`** — a residual (Efron/Kilian) recursive-design
+  bootstrap: resample the fitted residuals, rebuild the sample through the
+  estimated VAR, refit, and read **percentile** bands off the `n_boot` IRF
+  draws (`se` is the draw SD). `bias_correct=True` adds the **Kilian (1998)**
+  bias correction that the frontier made the frequentist default for persistent
+  data. Reproducible through `seed`.
+
+**The orthogonalization caveat.** `orth=True` bands are *not* the reduced-form
+bands rescaled. The Cholesky factor $P$ in $\Theta_h = \Phi_h P$ is itself a
+function of the estimated $\Sigma_u$, so the delta-method SE of an
+orthogonalized response carries an extra term for
+$\partial\,\mathrm{vech}(P)/\partial\,\mathrm{vech}(\Sigma_u)$ (and the
+bootstrap re-factors $\Sigma_u$ on every draw). `cumulative=True` puts the
+bands on the cumulated IRF — delta method via statsmodels `cum_effect_stderr`,
+bootstrap by cumulating each draw first.
+
+**The honest caveat.** These are **pointwise** bands: each covers one
+$(h, i, j)$ cell at level `alpha`. They are *not* joint/simultaneous over the
+horizon, so a reader who traces the whole shaded path is over-reading the
+coverage. Sims-Zha (1999) likelihood-shape and Jordà (2009) /
+Montiel Olea-Plagborg-Møller (2019) sup-t simultaneous bands remain on the
+roadmap; use these for the honest per-horizon uncertainty, not for "does the
+path lie in the band with 90% probability".
+
+**Validated against.** statsmodels `VARResults.irf().stderr()` and
+`cum_effect_stderr()` (reduced-form and orthogonalized) to machine precision;
+the bootstrap by seed reproducibility and Monte-Carlo coverage. See the
+[validation matrix](../validation-matrix.md).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+k, n = 3, 400
+A = np.array([[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.5]])
+Y = np.zeros((n, k))
+for t in range(1, n):
+    Y[t] = A @ Y[t - 1] + 0.3 * rng.standard_normal(k)
+
+# 90% asymptotic (Lütkepohl delta-method) bands on the orthogonalized IRF
+band = tsecon.var_irf_bands(Y, lags=2, horizon=8, orth=True,
+                            method="asymptotic", alpha=0.1)
+pt = np.asarray(band["point"]); se = np.asarray(band["se"])
+lo = np.asarray(band["lower"]); hi = np.asarray(band["upper"])
+print("keys:", sorted(band), " n_boot:", band["n_boot"])
+
+# variable 0's response to its OWN shock, h = 0..8, with the 90% band
+print(" h   point      se     [ lower ,  upper ]")
+for h in range(9):
+    print(f" {h}  {pt[h,0,0]:+.4f}  {se[h,0,0]:.4f}  [{lo[h,0,0]:+.4f}, {hi[h,0,0]:+.4f}]")
+
+# bootstrap cross-check at h=1 (residual bootstrap, percentile band)
+boot = tsecon.var_irf_bands(Y, lags=2, horizon=8, orth=True,
+                            method="bootstrap", alpha=0.1, n_boot=2000, seed=0)
+blo = np.asarray(boot["lower"]); bhi = np.asarray(boot["upper"])
+print("bootstrap h=1 band",
+      f"[{blo[1,0,0]:+.4f}, {bhi[1,0,0]:+.4f}]  vs asymptotic",
+      f"[{lo[1,0,0]:+.4f}, {hi[1,0,0]:+.4f}]")
+```
+
+```
+keys: ['alpha', 'lower', 'method', 'n_boot', 'point', 'se', 'upper']  n_boot: None
+ h   point      se     [ lower ,  upper ]
+ 0  +0.2963  0.0105  [+0.2790, +0.3136]
+ 1  +0.1584  0.0160  [+0.1321, +0.1847]
+ 2  +0.0742  0.0155  [+0.0487, +0.0998]
+ 3  +0.0351  0.0142  [+0.0117, +0.0585]
+ 4  +0.0174  0.0104  [+0.0003, +0.0345]
+ 5  +0.0089  0.0070  [-0.0026, +0.0204]
+ 6  +0.0046  0.0046  [-0.0029, +0.0121]
+ 7  +0.0024  0.0029  [-0.0024, +0.0072]
+ 8  +0.0013  0.0018  [-0.0017, +0.0042]
+bootstrap h=1 band [+0.1269, +0.1816]  vs asymptotic [+0.1321, +0.1847]
+```
+
+The impact response is a clean 0.30 with a band well clear of zero; by $h=5$
+the band straddles zero — the response is no longer distinguishable from noise.
+The bootstrap band at $h=1$ lands within a whisker of the delta-method band, the
+reassurance you want when the asymptotics are the thing being trusted.
+
+**References (bands).** Lütkepohl (1990, asymptotic IRF SEs); Kilian (1998,
+bias-corrected bootstrap); Sims & Zha (1999) and Montiel Olea &
+Plagborg-Møller (2019) for the simultaneous-band frontier.
 
 ---
 

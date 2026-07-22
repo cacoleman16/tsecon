@@ -200,6 +200,34 @@ fevd[1][15]     # output at h=16: [0.26, 0.73, 0.02] — demand grows to a quart
 
 > **⚠ Common mistake.** Reporting one Cholesky ordering and moving on. With $K$ variables there are $K!$ orderings; if your headline IRF survives only one of them, that is a finding about your assumption, not about the economy. At minimum, re-run `var_irf` on reordered columns of `data` and confirm the responses you interpret are not artifacts of position. (The module roadmap ships an "all orderings" sensitivity helper precisely because almost nobody does this by hand — and order-invariant generalized IRFs, Pesaran and Shin 1998, as the alternative.)
 
+## Putting bands on the IRF
+
+Every response above is a *point* estimate — one line per panel. But $\hat\Phi_h$ is a nonlinear function of estimated coefficients, so each point carries sampling uncertainty, and a responsible IRF plot shades it. `var_irf_bands` is the banded companion to `var_irf`: it returns the identical `[h][i][j]` point path plus `se`, `lower`, and `upper`, by either of two routes. The **asymptotic** method (the default) uses the Lütkepohl (1990) **delta method** — the analytic derivative of the responses propagated through the coefficient covariance — and reports symmetric Wald bands $\hat\Phi_{h,ij} \pm z_{1-\alpha/2}\,\widehat{\mathrm{se}}$. The **bootstrap** method resamples the fitted residuals, rebuilds and refits the VAR `n_boot` times, and reads percentile bands off the draws; `bias_correct=True` adds the Kilian (1998) bias correction that is the frequentist default for persistent data.
+
+```python
+band = tsecon.var_irf_bands(data, lags=1, horizon=16, orth=True,
+                            method="asymptotic", alpha=0.1)     # 90% bands
+pt = np.asarray(band["point"]); lo = np.asarray(band["lower"]); hi = np.asarray(band["upper"])
+for h in (0, 1, 4):                        # output (col 1) response to a demand shock (col 0)
+    print(f"h={h:2d}  {pt[h,1,0]:+.3f}  90% band [{lo[h,1,0]:+.3f}, {hi[h,1,0]:+.3f}]")
+
+boot = tsecon.var_irf_bands(data, lags=1, horizon=16, orth=True,
+                            method="bootstrap", alpha=0.1, n_boot=2000, seed=0)
+blo, bhi = np.asarray(boot["lower"]), np.asarray(boot["upper"])
+print(f"bootstrap h=1 band [{blo[1,1,0]:+.3f}, {bhi[1,1,0]:+.3f}]")
+```
+
+```
+h= 0  +0.079  90% band [+0.015, +0.144]
+h= 1  +0.347  90% band [+0.280, +0.414]
+h= 4  +0.092  90% band [+0.038, +0.146]
+bootstrap h=1 band [+0.278, +0.415]
+```
+
+The delta-method SEs reproduce statsmodels' `irf.stderr` to machine precision; the bootstrap band lands on top of the asymptotic one here because the system is well-identified and nowhere near a unit root. Both routes carry the two flags through from `var_irf`: `orth` toggles Cholesky versus reduced-form responses — and the orthogonalized bands correctly pick up the extra term from differentiating the Cholesky factor $P$ through $\Sigma_u$, so they are *not* the reduced-form bands rescaled — while `cumulative=True` bands the running sum instead of the per-horizon response.
+
+> **⚠ Common mistake.** Reading a **pointwise** band as a **joint** one. `var_irf_bands` covers each horizon separately at level $\alpha$; the probability that the *entire* response path stays inside the shaded region is smaller, and shrinks as you add horizons. The fix is a simultaneous (sup-$t$) band — Jordà (2009), Montiel Olea and Plagborg-Møller (2019) — which the frontier section below flags as roadmap. Until it lands, describe the shaded region as "pointwise 90%", never "the path lies here with 90% probability".
+
 ## Forecasting with a VAR
 
 A fitted VAR forecasts by iteration: the one-step forecast plugs the last $p$ observations into the estimated equations; the two-step forecast plugs in the one-step forecast where data are missing; and so on. Formally, with $\hat y_{T+h|T}$ denoting the $h$-step forecast made at time $T$,

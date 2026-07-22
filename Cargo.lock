@@ -1303,7 +1303,9 @@ name = "tsecon-var"
 version = "0.0.1"
 dependencies = [
  "serde_json",
+ "tsecon-bootstrap",
  "tsecon-linalg",
+ "tsecon-rng",
  "tsecon-stats",
 ]
 

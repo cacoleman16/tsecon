@@ -541,6 +541,9 @@ fn var_fit<'py>(
 /// Impulse responses of a fitted VAR: `irfs[h][i][j]` is the response of
 /// variable i to a shock in variable j at horizon h (orthogonalized via
 /// the Cholesky factor of sigma_u when `orth=True`).
+///
+/// This returns the point path only. For frequentist confidence bands
+/// (delta-method or bootstrap) use `var_irf_bands`.
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, orth = true, trend = "c", cumulative = false))]
 fn var_irf<'py>(
@@ -570,6 +573,146 @@ fn var_irf<'py>(
         }
     }
     pyo3::types::PyList::new(py, out.iter().cloned())
+}
+
+/// Frequentist confidence bands on VAR impulse responses — the banded
+/// companion to `var_irf` (which stays a bare nested list; this returns a
+/// dict). Keys: `point`/`se`/`lower`/`upper`, each `[h][i][j]` (response of
+/// variable i to a shock in variable j at horizon h, matching `var_irf`),
+/// plus echoed `method`/`alpha`/`n_boot` (`n_boot` is `None` for the
+/// asymptotic branch).
+///
+/// `method="asymptotic"` (default) uses the Lütkepohl (1990) delta-method
+/// standard errors (statsmodels `irf.stderr`) and symmetric Wald bands
+/// `point ± z_{1-alpha/2}·se`. `method="bootstrap"` uses a residual
+/// (Efron/Kilian) recursive-design bootstrap with percentile bands, an
+/// optional Kilian (1998) bias correction (`bias_correct`), `n_boot`
+/// replications and a reproducible `seed`. `orth` toggles orthogonalized
+/// (Cholesky) vs reduced-form responses and `cumulative` puts the bands on
+/// the cumulated IRF — both exactly as in `var_irf`.
+#[pyfunction]
+#[pyo3(signature = (
+    data,
+    lags = 2,
+    horizon = 10,
+    orth = true,
+    method = "asymptotic",
+    alpha = 0.1,
+    cumulative = false,
+    n_boot = 1000,
+    seed = 0,
+    trend = "c",
+    bias_correct = false,
+))]
+#[allow(clippy::too_many_arguments)]
+fn var_irf_bands<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    orth: bool,
+    method: &str,
+    alpha: f64,
+    cumulative: bool,
+    n_boot: usize,
+    seed: u64,
+    trend: &str,
+    bias_correct: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    if !(alpha > 0.0 && alpha < 1.0) {
+        return Err(PyValueError::new_err(format!(
+            "alpha must lie strictly in (0, 1), got {alpha}"
+        )));
+    }
+    let d = PyDict::new(py);
+    match method {
+        "asymptotic" => {
+            let r = var_results(&data, lags, trend)?;
+            // Point path: exactly what `var_irf` returns, cumulated when asked
+            // so the bands are anchored on the same estimate the SE describes.
+            let irf = r.irf(horizon).map_err(to_py)?;
+            let mats = if orth { &irf.orth_irfs } else { &irf.irfs };
+            let mut point: Vec<Vec<Vec<f64>>> = mats.iter().map(mat_to_vec2).collect();
+            if cumulative {
+                for h in 1..point.len() {
+                    for i in 0..point[h].len() {
+                        for j in 0..point[h][i].len() {
+                            point[h][i][j] += point[h - 1][i][j];
+                        }
+                    }
+                }
+            }
+            // Delta-method standard errors, same [h][i][j] layout as `point`.
+            let se_mats =
+                tsecon_var::irf_asymptotic::irf_asymptotic_se(&r, horizon, orth, cumulative)
+                    .map_err(to_py)?;
+            let se: Vec<Vec<Vec<f64>>> = se_mats.iter().map(mat_to_vec2).collect();
+            // Symmetric Wald bands: point ± z_{1-alpha/2} · se.
+            let z = tsecon_stats::special::inv_norm_cdf(1.0 - alpha / 2.0).map_err(to_py)?;
+            let mut lower = point.clone();
+            let mut upper = point.clone();
+            for h in 0..point.len() {
+                for i in 0..point[h].len() {
+                    for j in 0..point[h][i].len() {
+                        let half = z * se[h][i][j];
+                        lower[h][i][j] = point[h][i][j] - half;
+                        upper[h][i][j] = point[h][i][j] + half;
+                    }
+                }
+            }
+            d.set_item("point", point)?;
+            d.set_item("se", se)?;
+            d.set_item("lower", lower)?;
+            d.set_item("upper", upper)?;
+            d.set_item("method", "asymptotic")?;
+            d.set_item("alpha", alpha)?;
+            d.set_item("n_boot", py.None())?;
+        }
+        "bootstrap" => {
+            use tsecon_var::tsecon_linalg::faer::Mat;
+            let a = data.as_array();
+            let m = Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+            let tr = match trend {
+                "c" => tsecon_var::Trend::Constant,
+                "n" => tsecon_var::Trend::None,
+                other => {
+                    return Err(PyValueError::new_err(format!(
+                        "unknown trend {other:?}; expected \"c\" or \"n\""
+                    )))
+                }
+            };
+            let bands = tsecon_var::bootstrap_irf_bands(
+                m.as_ref(),
+                lags,
+                tr,
+                horizon,
+                orth,
+                cumulative,
+                alpha,
+                n_boot,
+                seed,
+                bias_correct,
+            )
+            .map_err(to_py)?;
+            let point: Vec<Vec<Vec<f64>>> = bands.point.iter().map(mat_to_vec2).collect();
+            let se: Vec<Vec<Vec<f64>>> = bands.se.iter().map(mat_to_vec2).collect();
+            let lower: Vec<Vec<Vec<f64>>> = bands.lower.iter().map(mat_to_vec2).collect();
+            let upper: Vec<Vec<Vec<f64>>> = bands.upper.iter().map(mat_to_vec2).collect();
+            d.set_item("point", point)?;
+            d.set_item("se", se)?;
+            d.set_item("lower", lower)?;
+            d.set_item("upper", upper)?;
+            d.set_item("method", "bootstrap")?;
+            d.set_item("alpha", bands.alpha)?;
+            d.set_item("n_boot", bands.n_boot)?;
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"asymptotic\" or \"bootstrap\""
+            )))
+        }
+    }
+    Ok(d)
 }
 
 /// Forecast-error variance decomposition: `fevd[h][i][j]` is the share of
@@ -4221,6 +4364,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ols, m)?)?;
     m.add_function(wrap_pyfunction!(var_fit, m)?)?;
     m.add_function(wrap_pyfunction!(var_irf, m)?)?;
+    m.add_function(wrap_pyfunction!(var_irf_bands, m)?)?;
     m.add_function(wrap_pyfunction!(var_fevd, m)?)?;
     m.add_function(wrap_pyfunction!(var_forecast, m)?)?;
     m.add_function(wrap_pyfunction!(var_granger, m)?)?;

@@ -35,10 +35,12 @@ to PyPI as `tsecon` at the first tagged release.
   filters (HP, one-sided HP, Baxter-King, Christiano-Fitzgerald, Hamilton);
   long memory (fractional differencing/integration, GPH, local Whittle).
 - **Multivariate and structural**: reduced-form VAR with IRF/FEVD/Granger/
-  forecasting and an honest stability block (`is_stable`/`min_root`);
-  sign-restricted Bayesian SVARs; FAVAR; Diebold-Yilmaz connectedness; the PCA
-  factor model with Bai-Ng selection; Johansen cointegration and VECM;
-  multivariate GARCH (CCC/DCC).
+  forecasting, frequentist IRF confidence bands (`var_irf_bands` — Lütkepohl
+  (1990) delta-method SEs validated against statsmodels to machine precision,
+  and a Kilian (1998) residual bootstrap with optional bias correction), and an
+  honest stability block (`is_stable`/`min_root`); sign-restricted Bayesian
+  SVARs; FAVAR; Diebold-Yilmaz connectedness; the PCA factor model with Bai-Ng
+  selection; Johansen cointegration and VECM; multivariate GARCH (CCC/DCC).
 - **Local projections**: `lp` (lag-augmented inference by default), `lp_iv`
   with a per-horizon first-stage F, state-dependent `lp_state`, a three-valued
   `cumulative` mode, and `lp_multiplier` — the one-step Ramey-Zubairy integral
