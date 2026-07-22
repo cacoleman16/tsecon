@@ -60,6 +60,7 @@ use tsecon_rng::Stream;
 use crate::error::IdentError;
 use crate::haar::haar_rotation;
 use crate::sign::SignRestrictionSet;
+use crate::summary::{normalize, structural_irf, summarize};
 
 /// Default pointwise credible-band probabilities: the 5/16/50/84/95
 /// percentiles (the 68% and 90% equal-tailed bands plus the median, the
@@ -110,6 +111,25 @@ pub struct StructuralIrfSummary {
 }
 
 impl StructuralIrfSummary {
+    /// Assembles a summary from its already-computed parts. `points` must be
+    /// row-major over `[horizon][variable][shock]` with
+    /// `(horizon + 1) * n_vars * n_vars` entries. Used by the `summary`
+    /// module's (weighted and unweighted) band builders so the private field
+    /// layout stays encapsulated here.
+    pub(crate) fn from_parts(
+        n_vars: usize,
+        horizon: usize,
+        probs: Vec<f64>,
+        points: Vec<IrfBandPoint>,
+    ) -> Self {
+        Self {
+            n_vars,
+            horizon,
+            probs,
+            points,
+        }
+    }
+
     /// Number of variables (and shocks).
     pub fn n_vars(&self) -> usize {
         self.n_vars
@@ -332,176 +352,5 @@ impl SignSampler {
             diagnostics,
             summary,
         })
-    }
-}
-
-/// Candidate structural IRF `Theta_h = Theta^chol_h Q` (post-multiplying
-/// each horizon matrix by the rotation).
-fn structural_irf(base: &[Mat<f64>], q: tsecon_linalg::faer::MatRef<'_, f64>) -> Vec<Mat<f64>> {
-    base.iter().map(|m| m.as_ref() * q).collect()
-}
-
-/// Applies per-shock sign orientations in place: column `j` is scaled by
-/// `orient[j]` at every horizon.
-fn normalize(mut irf: Vec<Mat<f64>>, orient: &[f64]) -> Vec<Mat<f64>> {
-    let n = orient.len();
-    for m in irf.iter_mut() {
-        for (j, &s) in orient.iter().enumerate().take(n) {
-            if s != 1.0 {
-                for i in 0..n {
-                    m[(i, j)] *= s;
-                }
-            }
-        }
-    }
-    irf
-}
-
-/// Type-7 (NumPy default) linear-interpolation quantile of a sorted slice.
-fn quantile_sorted(sorted: &[f64], p: f64) -> f64 {
-    let len = sorted.len();
-    if len == 0 {
-        return f64::NAN;
-    }
-    if len == 1 {
-        return sorted[0];
-    }
-    let pos = p * (len - 1) as f64;
-    let lo = pos.floor() as usize;
-    if lo >= len - 1 {
-        return sorted[len - 1];
-    }
-    let frac = pos - lo as f64;
-    sorted[lo] + frac * (sorted[lo + 1] - sorted[lo])
-}
-
-/// Builds the per-cell min/max/quantile summary from the accepted draws.
-fn summarize(
-    draws: &[Vec<Mat<f64>>],
-    n_vars: usize,
-    horizon: usize,
-    probs: &[f64],
-) -> StructuralIrfSummary {
-    let n_cells = (horizon + 1) * n_vars * n_vars;
-    let mut points = Vec::with_capacity(n_cells);
-
-    if draws.is_empty() {
-        for _ in 0..n_cells {
-            points.push(IrfBandPoint {
-                min: f64::NAN,
-                max: f64::NAN,
-                quantiles: vec![f64::NAN; probs.len()],
-            });
-        }
-        return StructuralIrfSummary {
-            n_vars,
-            horizon,
-            probs: probs.to_vec(),
-            points,
-        };
-    }
-
-    let mut values = Vec::with_capacity(draws.len());
-    for h in 0..=horizon {
-        for i in 0..n_vars {
-            for j in 0..n_vars {
-                values.clear();
-                for d in draws {
-                    values.push(d[h][(i, j)]);
-                }
-                values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
-                let min = values[0];
-                let max = values[values.len() - 1];
-                let quantiles = probs.iter().map(|&p| quantile_sorted(&values, p)).collect();
-                points.push(IrfBandPoint {
-                    min,
-                    max,
-                    quantiles,
-                });
-            }
-        }
-    }
-
-    StructuralIrfSummary {
-        n_vars,
-        horizon,
-        probs: probs.to_vec(),
-        points,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A small stable VAR(1) coefficient matrix in the crate's regressor
-    /// layout (`k = 1 + n` rows: intercept then the lag-1 block) and a
-    /// positive-definite covariance, for exercising the IRF plumbing.
-    fn toy_var() -> (Mat<f64>, Mat<f64>) {
-        let n = 3;
-        // b[(1 + v, i)] = coefficient of y_{t-1,v} in equation i.
-        let phi = [[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.3]];
-        let mut b = Mat::<f64>::zeros(1 + n, n);
-        for i in 0..n {
-            for v in 0..n {
-                b[(1 + v, i)] = phi[i][v];
-            }
-        }
-        // Sigma = A A' with A lower triangular, positive diagonal.
-        let a = [[1.0, 0.0, 0.0], [0.4, 0.9, 0.0], [0.2, 0.3, 0.7]];
-        let sigma = Mat::from_fn(n, n, |i, j| {
-            a[i].iter().zip(a[j].iter()).map(|(x, y)| x * y).sum()
-        });
-        (b, sigma)
-    }
-
-    #[test]
-    fn identity_rotation_reproduces_cholesky_irf() -> Result<(), IdentError> {
-        // Q = I must leave the Cholesky IRF unchanged to 1e-12.
-        let (b, sigma) = toy_var();
-        let horizon = 10;
-        let base = cholesky_irf(b.as_ref(), sigma.as_ref(), 1, horizon)?;
-        let eye = Mat::<f64>::identity(3, 3);
-        let rotated = structural_irf(&base, eye.as_ref());
-        assert_eq!(rotated.len(), base.len());
-        for (r, o) in rotated.iter().zip(base.iter()) {
-            for i in 0..3 {
-                for j in 0..3 {
-                    assert!(
-                        (r[(i, j)] - o[(i, j)]).abs() < 1e-12,
-                        "identity-rotated IRF differs from cholesky_irf at ({i},{j})"
-                    );
-                }
-            }
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn normalize_flips_only_marked_columns() -> Result<(), IdentError> {
-        let (b, sigma) = toy_var();
-        let base = cholesky_irf(b.as_ref(), sigma.as_ref(), 1, 3)?;
-        let orient = [-1.0, 1.0, -1.0];
-        let flipped = normalize(base.clone(), &orient);
-        for h in 0..base.len() {
-            for i in 0..3 {
-                for j in 0..3 {
-                    assert!((flipped[h][(i, j)] - orient[j] * base[h][(i, j)]).abs() < 1e-15);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn quantile_matches_numpy_type7() {
-        // NumPy: np.quantile([1,2,3,4], [0,0.25,0.5,0.75,1]) =
-        // [1, 1.75, 2.5, 3.25, 4].
-        let xs = [1.0, 2.0, 3.0, 4.0];
-        assert!((quantile_sorted(&xs, 0.0) - 1.0).abs() < 1e-15);
-        assert!((quantile_sorted(&xs, 0.25) - 1.75).abs() < 1e-15);
-        assert!((quantile_sorted(&xs, 0.5) - 2.5).abs() < 1e-15);
-        assert!((quantile_sorted(&xs, 0.75) - 3.25).abs() < 1e-15);
-        assert!((quantile_sorted(&xs, 1.0) - 4.0).abs() < 1e-15);
     }
 }

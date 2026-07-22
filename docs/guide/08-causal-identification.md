@@ -250,9 +250,124 @@ print(np.round(set_min[:4, 0, 0], 2))   # [-1.04 -0.71 -0.48 -0.35]  output set,
 print(np.round(set_max[:4, 0, 0], 2))   # [ 0.65  0.38  0.24  0.15]  upper edge -> spans zero
 ```
 
-The identified set for output straddles zero on impact — Uhlig's punchline, reproduced: the sign restrictions that pin down the rate and price responses simply do not tell you the direction of the output effect, and the `acceptance_rate` (here ~48%) is itself an identification diagnostic. The `quantiles` key adds the pointwise posterior bands (at `probs` 0.05/0.16/0.50/0.84/0.95) inside that envelope; the Fry-Pagan median-target and prior-posterior overlay described above are Module 06 roadmap additions.
+The identified set for output straddles zero on impact — Uhlig's punchline, reproduced: the sign restrictions that pin down the rate and price responses simply do not tell you the direction of the output effect, and the `acceptance_rate` (here ~48%) is itself an identification diagnostic. The `quantiles` key adds the pointwise posterior bands (at `probs` 0.05/0.16/0.50/0.84/0.95) inside that envelope; the Fry-Pagan median-target that answers the "medians mix models" critique, and the Giacomini-Kitagawa prior-robust bounds that answer the Haar-prior critique, both ship today — see [the section below](#after-the-set-median-target-robust-bounds-and-narrative-restrictions). The prior-posterior overlay plot remains a Module 06 roadmap addition.
 
 > ⚠ **Common mistake:** stacking on sign restrictions to narrow the band without watching the acceptance rate. Acceptance decays roughly exponentially in the number of restrictions; an acceptance rate of $10^{-5}$ means your "posterior" is a handful of surviving draws and the restrictions may be close to mutually inconsistent. The acceptance rate is itself an identification diagnostic — tsecon prints it with every fit. Also: combining *zero* restrictions with sign restrictions naively (impose the zeros, then sign-check) samples from the wrong distribution; the correct algorithm with importance weights is Arias, Rubio-Ramírez, and Waggoner (2018), and the library ships only the corrected version.
+
+## After the set: median-target, robust bounds, and narrative restrictions
+
+The two honesty rules above each raised a critique and named a remedy: pointwise medians mix models (report the Fry-Pagan median-target instead), and the Haar rotation prior never washes out (report prior-robust bounds). Both remedies now ship, together with the historical-decomposition machinery and the Antolín-Díaz and Rubio-Ramírez narrative sign restrictions that sharpen a set with episode knowledge. All four *take* the sign-identified set from above and post-process it; none invents a new identification. They share the monetary system from the previous section:
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(11)
+T = 500
+eps = rng.standard_normal((T, 3))                 # structural: supply, demand, monetary
+B0 = np.array([[ 0.8, -0.3, -0.4],                # variables: output, prices, ffr
+               [ 0.5,  0.6, -0.5],
+               [ 0.1,  0.4,  0.9]])
+A1 = np.array([[0.5, 0.0, -0.1],
+               [0.1, 0.4,  0.0],
+               [0.0, 0.1,  0.6]])
+y = np.zeros((T, 3))
+for t in range(1, T):
+    y[t] = A1 @ y[t - 1] + B0 @ eps[t]
+
+# the contractionary monetary shock (shock 0): ffr up, prices down, for two quarters
+restr = [(2, 0, 0, "+"), (2, 0, 1, "+"), (1, 0, 0, "-"), (1, 0, 1, "-")]
+```
+
+**The median-target: one coherent model.** The pointwise-median IRF stitches together the horizon-3 median from one rotation and the horizon-8 median from another — it is not a model any admissible rotation produces. `fry_pagan_svar` returns the single accepted draw closest to the median band, an internally coherent companion to it:
+
+```python
+fp = tsecon.fry_pagan_svar(y, restr, lags=1, horizon=12, n_draws=2000, seed=0)
+mt  = np.asarray(fp["median_target_irf"])   # the coherent draw [h][var][shock]
+med = np.asarray(fp["median_irf"])          # the incoherent pointwise median
+print("selected draw", fp["mt_index"], "of", fp["n_accepted"], " MT stat", round(fp["mt_statistic"], 3))
+print("ffr<-monetary   coherent :", np.round(mt[:4, 2, 0], 3))
+print("ffr<-monetary   pointwise:", np.round(med[:4, 2, 0], 3))
+```
+
+```
+selected draw 919 of 2000  MT stat 1.626
+ffr<-monetary   coherent : [0.717 0.355 0.183 0.096]
+ffr<-monetary   pointwise: [0.541 0.283 0.155 0.085]
+```
+
+Draw 919 is the most central *coherent* model. Its own-impact funds-rate response (0.717) is markedly larger than the pointwise-median value (0.541), because no single admissible rotation pairs the median impact with the median at every later horizon — exactly the incoherence Fry and Pagan warned about. Report it *alongside* the band, never instead of it: the band width is still the finding.
+
+**Prior-robust bounds: the Haar artifact, made visible.** Because the data cannot move you *within* the identified set, any prior on rotations — the Haar default included — injects information that never washes out. `robust_svar_bounds` computes the exact identified-set edges over the whole admissible rotation set per reduced-form draw (Giacomini-Kitagawa 2021), the honest object the Haar band only approximates:
+
+```python
+sr = tsecon.sign_restricted_svar(y, restr, lags=1, horizon=12, n_draws=2000, seed=0)
+q  = np.asarray(sr["quantiles"])            # Haar-posterior bands [h][var][shock][prob]
+rb = tsecon.robust_svar_bounds(y, restr, lags=1, horizon=12, n_draws=2000, seed=0, alpha=0.10)
+cil = np.asarray(rb["robust_ci_lower"]); cih = np.asarray(rb["robust_ci_upper"])
+print("restricted_shocks", rb["restricted_shocks"], " empty_set_rate", rb["diagnostics"]["empty_set_rate"])
+for h in range(3):
+    hb = q[h, 0, 0, 4] - q[h, 0, 0, 0]      # Haar 5-95 width
+    rw = cih[h, 0, 0] - cil[h, 0, 0]        # GK robust-region width
+    print(f"h={h} output<-monetary: Haar 5-95 [{q[h,0,0,0]:+.3f},{q[h,0,0,4]:+.3f}] (w {hb:.3f})"
+          f" | GK robust CI [{cil[h,0,0]:+.3f},{cih[h,0,0]:+.3f}] (w {rw:.3f})")
+```
+
+```
+restricted_shocks [0]  empty_set_rate 0.0
+h=0 output<-monetary: Haar 5-95 [-0.971,+0.259] (w 1.230) | GK robust CI [-1.044,+0.677] (w 1.721)
+h=1 output<-monetary: Haar 5-95 [-0.591,+0.163] (w 0.754) | GK robust CI [-0.650,+0.413] (w 1.063)
+h=2 output<-monetary: Haar 5-95 [-0.370,+0.096] (w 0.466) | GK robust CI [-0.421,+0.264] (w 0.685)
+```
+
+The robust region is *wider* than the Haar band at every horizon (1.72 vs 1.23 on impact) — and the gap is not noise, it is the Haar-prior artifact quantified. The Haar band's upper edge on impact is $+0.26$; the honest identified set reaches $+0.68$, so the rotation prior was quietly concentrating draws toward the lower part of the set and making output look more reliably contractionary than the restrictions alone can support. This is the object to put next to a sign-identified band headed for publication.
+
+**Historical decomposition: who drove each observation.** The prerequisite for narrative work — and a useful report in its own right — splits every observation into a baseline plus each structural shock's cumulated contribution, exactly:
+
+```python
+hd = tsecon.historical_decomposition(y, lags=1, identification="cholesky")
+contrib = np.asarray(hd["hd"]); base = np.asarray(hd["baseline"]); ye = y[1:]
+print("adding-up max|y - baseline - sum_j hd|:", np.max(np.abs(ye - (base + contrib.sum(axis=2)))))
+t = int(np.argmax(np.abs(ye[:, 2])))        # the quarter of the funds rate's largest swing
+gap = ye[t, 2] - base[t, 2]
+c = contrib[t, 2, :]                          # ffr contributions from shocks 0, 1, 2
+print(f"t={t}: ffr {ye[t,2]:+.3f}, baseline {base[t,2]:+.3f};"
+      f" recursive contributions [{c[0]:+.3f} {c[1]:+.3f} {c[2]:+.3f}]")
+print("funds-rate own-shock share of that swing:", round(contrib[t, 2, 2] / gap, 3))
+```
+
+```
+adding-up max|y - baseline - sum_j hd|: 3.1086244689504383e-15
+t=299: ffr +4.383, baseline +0.030; recursive contributions [+0.891 -0.001 +3.464]
+funds-rate own-shock share of that swing: 0.796
+```
+
+The identity holds to machine precision. In this *recursive* decomposition — where the shocks are the Cholesky innovations, not the sign-identified monetary shock — the funds rate's own orthogonalized innovation accounts for 80% of its largest historical swing. That is a neutral, descriptive attribution; the narrative step brings an *outside* claim about it.
+
+**Narrative sign restrictions: episode knowledge as a set-shrinker.** Suppose the historical record tells you that swing was a deliberate policy action — the monetary shock (shock 0) was its dominant driver. Antolín-Díaz and Rubio-Ramírez (2018) impose exactly such statements, keeping the reduced-form posterior fixed and reweighting each accepted rotation by $1/\hat{P}(N\mid S)$ so that draws whose narrative-admissible slice is small are up-weighted:
+
+```python
+narr = [{"type": "contribution", "variable": 2, "shock": 0,
+         "start": t - 1, "end": t + 1, "rule": "most", "strong": False}]
+nv = tsecon.narrative_svar(y, restr, narr, lags=1, horizon=12, n_draws=2000, seed=0, n_weight_draws=200)
+d = nv["diagnostics"]; qn = np.asarray(nv["quantiles"])
+print("accepted", d["accepted"], " narrative rate", round(d["narrative_acceptance_rate"], 3),
+      " ess", round(d["ess"], 1), " min_ptilde", round(d["min_ptilde"], 3))
+for h in [0, 2, 4]:                          # output<-monetary median and 5-95 width
+    print(f"h={h}: plain {q[h,0,0,2]:+.3f} (w {q[h,0,0,4]-q[h,0,0,0]:.3f})"
+          f" | narrative {qn[h,0,0,2]:+.3f} (w {qn[h,0,0,4]-qn[h,0,0,0]:.3f})")
+print("no narrative == sign_restricted_svar:",
+      np.array_equal(np.asarray(tsecon.narrative_svar(y, restr, None, lags=1, horizon=12, n_draws=2000, seed=0)["quantiles"]), q))
+```
+
+```
+accepted 226  narrative rate 0.113  ess 159.4  min_ptilde 0.02
+h=0: plain -0.640 (w 1.230) | narrative -0.374 (w 0.804)
+h=2: plain -0.221 (w 0.466) | narrative -0.161 (w 0.292)
+h=4: plain -0.076 (w 0.178) | narrative -0.067 (w 0.129)
+```
+
+The episode statement bites hard: only 11% of the sign-admissible rotations also make the monetary shock the dominant driver of that quarter's funds-rate swing, the smallest $\hat{P}$ (0.02) marks a draw earning a large importance weight, and the effective sample falls to 159 of 226. The reweighting both narrows the output band (1.23 → 0.80 on impact) and shifts its median toward zero — episode knowledge doing real work. **Watch the ESS**: a narrative that collapses it to a handful of draws is fighting the posterior, not sharpening it. With no narrative restriction the function is `sign_restricted_svar` bit-for-bit, so it is a safe drop-in. (This is narrative identification in the AD&RR *sign-restriction* sense; the distinct sense — a measured narrative *series* used as an instrument — is [its own section below](#narrative-identification-reading-the-record).)
 
 ## Zero and sign restrictions together: the corrected ARW sampler
 
@@ -770,11 +885,11 @@ Scanning a parameter grid this way maps the model's **determinacy region** — t
 
 The research frontier of this field is mostly about *honesty at the edges* — inference that admits what the data cannot say — and it is where tsecon's identification module stakes its claim, since almost none of it has a software home.
 
-**Robust Bayes for set-identified models.** Giacomini and Kitagawa (2021) resolve the Haar-prior problem head-on: keep the standard prior on the reduced form (where data genuinely update beliefs), but replace the single prior on rotations with the *class of all priors* consistent with the identified set, and report the range of posterior means and robustified credible regions across the class. The output separates, draw by draw, what the data plus the restrictions imply from what the rotation prior was inventing. If the robust band is dramatically wider than the Haar-prior band, the discrepancy *is* the Haar artifact, made visible. Computationally it demands minimizing and maximizing IRFs over the admissible rotations for every reduced-form draw — a nonconvex optimization on the orthogonal group that the roadmap attacks with analytic active-set solutions where available and manifold optimization with many random starts elsewhere; this is precisely where a parallel Rust kernel changes what is feasible. The frequentist mirror image — confidence sets for the identified set itself — is Gafarov, Meier, and Montiel Olea (2018) and Granziera, Moon, and Schorfheide (2018), and Moon and Schorfheide (2012) is the classic warning that Bayesian and frequentist answers *diverge* under set identification even asymptotically.
+**Robust Bayes for set-identified models.** Giacomini and Kitagawa (2021) resolve the Haar-prior problem head-on: keep the standard prior on the reduced form (where data genuinely update beliefs), but replace the single prior on rotations with the *class of all priors* consistent with the identified set, and report the range of posterior means and robustified credible regions across the class. The output separates, draw by draw, what the data plus the restrictions imply from what the rotation prior was inventing. If the robust band is dramatically wider than the Haar-prior band, the discrepancy *is* the Haar artifact, made visible — the single-restricted-shock case ships today as [`robust_svar_bounds`](#after-the-set-median-target-robust-bounds-and-narrative-restrictions) with exactly the analytic active-set closed form. Computationally it demands minimizing and maximizing IRFs over the admissible rotations for every reduced-form draw — a nonconvex optimization on the orthogonal group that the roadmap attacks with analytic active-set solutions where available (the Gafarov-Meier-Montiel-Olea single-column case, live now) and manifold optimization with many random starts for the coupled multi-shock case; this is precisely where a parallel Rust kernel changes what is feasible. The frequentist mirror image — confidence sets for the identified set itself — is Gafarov, Meier, and Montiel Olea (2018) and Granziera, Moon, and Schorfheide (2018), and Moon and Schorfheide (2012) is the classic warning that Bayesian and frequentist answers *diverge* under set identification even asymptotically.
 
 **Correct zero-plus-sign sampling.** Arias, Rubio-Ramírez, and Waggoner (2018) proved that the widespread practice of imposing zero restrictions by construction and then checking signs samples from the wrong distribution, distorting inference in published papers, and supplied the corrected algorithm with volume-element importance weights. The corrected version is the only code path tsecon will ship, with importance-weight effective sample size monitored and reported.
 
-**Sharper and stranger restrictions.** Narrative *sign* restrictions (Antolín-Díaz and Rubio-Ramírez 2018) constrain the model to agree with history — e.g., the monetary shock in October 1979 was contractionary, and it was the dominant driver of the funds rate move that month — and shrink sign-identified sets dramatically, at the cost of heavy-tailed importance weights that demand ESS discipline. Bounds on elasticities (Kilian and Murphy 2012) and on forecast-error-variance shares (Volpicella 2022) are further inequality families. The architectural bet of tsecon's module is that all of these are *composable*: zeros shape the null spaces the rotations are drawn from, signs, narratives, and FEVD bounds act as accept-reject or importance weights, proxies enter as moment conditions — any mix constraining the same rotation space, with the diagnostics (acceptance rates, ESS, prior-posterior overlays) emitted automatically because in set-identified settings *the diagnostics are the inference*. That composability exists in no package today, in any language; it is the module's centerpiece and the reason the roadmap calls identification the library's headline differentiator.
+**Sharper and stranger restrictions.** Narrative *sign* restrictions (Antolín-Díaz and Rubio-Ramírez 2018) constrain the model to agree with history — e.g., the monetary shock in October 1979 was contractionary, and it was the dominant driver of the funds rate move that month — and shrink sign-identified sets dramatically, at the cost of heavy-tailed importance weights that demand ESS discipline; these ship today as [`narrative_svar`](#after-the-set-median-target-robust-bounds-and-narrative-restrictions) (with the `ess`/`min_ptilde` diagnostics that keep the weights honest). Bounds on elasticities (Kilian and Murphy 2012) and on forecast-error-variance shares (Volpicella 2022) are further inequality families. The architectural bet of tsecon's module is that all of these are *composable*: zeros shape the null spaces the rotations are drawn from, signs, narratives, and FEVD bounds act as accept-reject or importance weights, proxies enter as moment conditions — any mix constraining the same rotation space, with the diagnostics (acceptance rates, ESS, prior-posterior overlays) emitted automatically because in set-identified settings *the diagnostics are the inference*. That composability exists in no package today, in any language; it is the module's centerpiece and the reason the roadmap calls identification the library's headline differentiator.
 
 **Statistical identification, stress-tested.** Beyond two-regime Rigobon: Markov-switching variances, smooth-transition and GARCH covariances, stochastic-volatility identification (Bertsche and Braun 2022; Lewis 2021), and non-Gaussianity — mutually independent non-Gaussian shocks identify $B$ up to permutation and scale by the ICA theorem, failing if more than one shock is Gaussian. The honest open problem is that these methods rest on strong independence assumptions that are themselves economic claims (Montiel Olea, Plagborg-Møller, and Qian 2022); Drautzburg and Wright (2023) show how to relax independence into bounds. The library's documentation obligation, stated in the spec, is to teach when *not* to trust statistical identification.
 
@@ -789,22 +904,22 @@ The decision framework, compressed: start from the **question** (which shock?), 
 | A defensible within-period timing convention (slow macro variables, policy moves last) | Recursive/Cholesky (`var_irf` today) | Exactly identifying, transparent, one decomposition — and the assumption is auditable: either the timing story is institutionally true or it is not |
 | Financial variables in the system (spreads, asset prices) | External or internal instruments | No recursive ordering is defensible when some variables react to everything within the period |
 | Theory speaks about permanent versus transitory effects, not timing | Blanchard-Quah long-run restrictions (`long_run_svar`) | Imposes neutrality you believe anyway; but check the VAR's roots first — fragile near unit roots (Faust-Leeper) |
-| Only weak qualitative beliefs ("contractionary policy doesn't raise prices") | Sign restrictions + Fry-Pagan median-target + prior-posterior overlay | Set identification matches the actual state of knowledge; the band width is the finding |
+| Only weak qualitative beliefs ("contractionary policy doesn't raise prices") | `sign_restricted_svar` + `fry_pagan_svar` median-target (prior-posterior overlay on the roadmap) | Set identification matches the actual state of knowledge; the band width is the finding |
 | The single dominant driver of a target's forecast-error variance | Max-share / maximum-FEV shock (`max_share_svar`) | Agnostic *point* identification — the variance-maximizing shock, no ordering or signs; watch the eigenvalue gap |
 | Sign restrictions plus a few credible zeros | `zero_sign_svar` (Arias-Rubio-Ramírez-Waggoner) | The only correct sampler for the combination; naive zeroing distorts inference |
 | Documented variance regimes (crisis dates, announcement days) | Rigobon heteroskedasticity (`hetero_svar`) | Variance shifts substitute for economic restrictions; test that relative variances actually differ |
 | An archival record isolating exogenous policy actions | Narrative series (Romer-Romer, Ramey news) as regressor, proxy, or internal instrument | Transparent, debatable identification; watch measurement error and time-varying strength |
 | A high-frequency surprise series or other measured proxy | Proxy SVAR (`proxy_svar`); weak-IV-robust bands (Montiel Olea-Stock-Watson) on the v2 roadmap | Weakest assumptions on the rest of the system; check the first-stage F before trusting it |
 | Fiscal foresight / news shocks / suspected noninvertibility | Instrument ordered first in the VAR, or LP-IV | Internal instruments stay valid under noninvertibility (Plagborg-Møller & Wolf) |
-| Any set-identified result headed for publication | Giacomini-Kitagawa robust bounds alongside | Separates data information from rotation-prior artifact — the honest default |
+| Any set-identified result headed for publication | `robust_svar_bounds` (Giacomini-Kitagawa) alongside; `narrative_svar` when you can defend an episode | Separates data information from rotation-prior artifact — the honest default |
 
 ## What tsecon implements today
 
-**Available now in Python** (`import tsecon`): the recursive scheme end to end — `var_fit` (estimates, `sigma_u`, information criteria, and a characteristic-root stability summary for the long-run fragility check), `var_irf(data, lags, horizon, orth=True)` for Cholesky-orthogonalized impulse responses (set `orth=False` for reduced-form responses), `var_fevd` for the matching variance decompositions, `var_forecast`, and `var_granger`. Beyond the recursive scheme, **six identification methods ship today**: two *set*-identified samplers — `sign_restricted_svar` (Haar rotations with the acceptance-rate diagnostic) and `zero_sign_svar` (the corrected RWZ/ARW zero-plus-sign sampler, a superset that reproduces the recursive scheme as its degenerate impact-only-zero corner) — and four *point*-identified closed-form schemes — `long_run_svar` (Blanchard-Quah), `max_share_svar` (Uhlig/Francis main-business-cycle and Barsky-Sims news shocks), `proxy_svar` (external-instrument SVAR-IV with a first-stage-F report), and `hetero_svar` (Rigobon two-regime, with the Box's-M covariance-equality gate) — each worked through above. The internal-instrument pattern runs today by ordering the shock series first. Supporting machinery that identification inference leans on is also live: `ols(se_type="hac")` and `long_run_variance` for instrument first stages, `optimal_block_length` and `bootstrap_indices` for the moving-block bootstrap, and `philox_uniforms` for the reproducible parallel random streams that sign-restriction sampling requires. Separately, the structural end of the spectrum ships too: `dsge_solve` solves a small linearised rational-expectations model to its Blanchard-Kahn decision rule and determinacy verdict (the section above), the one place in this chapter where the model *is* the identification.
+**Available now in Python** (`import tsecon`): the recursive scheme end to end — `var_fit` (estimates, `sigma_u`, information criteria, and a characteristic-root stability summary for the long-run fragility check), `var_irf(data, lags, horizon, orth=True)` for Cholesky-orthogonalized impulse responses (set `orth=False` for reduced-form responses), `var_fevd` for the matching variance decompositions, `var_forecast`, and `var_granger`. Beyond the recursive scheme, **six identification methods ship today**: two *set*-identified samplers — `sign_restricted_svar` (Haar rotations with the acceptance-rate diagnostic) and `zero_sign_svar` (the corrected RWZ/ARW zero-plus-sign sampler, a superset that reproduces the recursive scheme as its degenerate impact-only-zero corner) — and four *point*-identified closed-form schemes — `long_run_svar` (Blanchard-Quah), `max_share_svar` (Uhlig/Francis main-business-cycle and Barsky-Sims news shocks), `proxy_svar` (external-instrument SVAR-IV with a first-stage-F report), and `hetero_svar` (Rigobon two-regime, with the Box's-M covariance-equality gate) — each worked through above. The internal-instrument pattern runs today by ordering the shock series first. Supporting machinery that identification inference leans on is also live: `ols(se_type="hac")` and `long_run_variance` for instrument first stages, `optimal_block_length` and `bootstrap_indices` for the moving-block bootstrap, and `philox_uniforms` for the reproducible parallel random streams that sign-restriction sampling requires. Separately, the structural end of the spectrum ships too: `dsge_solve` solves a small linearised rational-expectations model to its Blanchard-Kahn decision rule and determinacy verdict (the section above), the one place in this chapter where the model *is* the identification. On top of those identification schemes, a **post-identification layer** now ships as well — `structural_fevd` (variance decomposition for any impact matrix), `historical_decomposition` (the exact per-observation shock attribution), `fry_pagan_svar` (the median-target answer to "medians mix models"), `robust_svar_bounds` (the Giacomini-Kitagawa prior-robust bounds that strip out the Haar artifact), and `narrative_svar` (Antolín-Díaz-Rubio-Ramírez narrative sign restrictions) — each worked through in the [median-target/robust-bounds/narrative section](#after-the-set-median-target-robust-bounds-and-narrative-restrictions) above.
 
 **Built in Rust awaiting bindings:** the scaffolded Bayesian crate (`tsecon-bayes`, NIW-BVAR fixtures pinned) that supplies reduced-form posterior draws to the set-identification samplers, and the block-bootstrap engine that the proxy-SVAR moving-block bands will consume; the Philox counter-based RNG (bitwise-reproducible accept-reject at any thread count) is already bound via `sign_restricted_svar`.
 
-**Roadmap:** the honest-inference layer on top of what ships — Jentsch-Lunsford (2019) moving-block and Montiel Olea-Stock-Watson (2021) weak-IV-robust bands for `proxy_svar`, the Fry-Pagan median-target and prior-posterior overlay for sign restrictions, the exact ARW volume-element weight for horizon-≥1 zero restrictions (the impact-only case, exact, ships today in `zero_sign_svar`), combined short/long-run restrictions, the statistical-identification family beyond two-regime Rigobon (Markov-switching / GARCH / non-Gaussian), narrative sign restrictions (on bring-your-own series — the library ships no data loaders), the composable restriction algebra, and Giacomini-Kitagawa robust Bayes — is specified in [docs/roadmap/06-identification.md](../roadmap/06-identification.md), the module the roadmap designates as the library's headline differentiator: no maintained Python home for modern SVAR identification exists today, and every fit is designed to print its identification diagnostics because, in set-identified and instrument-based settings, the diagnostics are the inference.
+**Roadmap:** the honest-inference layer on top of what ships — Jentsch-Lunsford (2019) moving-block and Montiel Olea-Stock-Watson (2021) weak-IV-robust bands for `proxy_svar`, the prior-posterior overlay plot for sign restrictions (the Fry-Pagan median-target itself now ships as `fry_pagan_svar`), the exact ARW volume-element weight for horizon-≥1 zero restrictions (the impact-only case, exact, ships today in `zero_sign_svar`), combined short/long-run restrictions, the statistical-identification family beyond two-regime Rigobon (Markov-switching / GARCH / non-Gaussian), the composable restriction algebra, and the full multi-shock Giacomini-Kitagawa robust Bayes (the single-restricted-shock closed form and narrative sign restrictions ship today as `robust_svar_bounds` and `narrative_svar`, on bring-your-own series — the library ships no data loaders) — is specified in [docs/roadmap/06-identification.md](../roadmap/06-identification.md), the module the roadmap designates as the library's headline differentiator: no maintained Python home for modern SVAR identification exists today, and every fit is designed to print its identification diagnostics because, in set-identified and instrument-based settings, the diagnostics are the inference.
 
 ## Further reading
 

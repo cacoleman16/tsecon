@@ -61,26 +61,48 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod error;
+pub mod fry_pagan;
 pub mod haar;
 pub mod hetero;
+pub mod histdecomp;
 pub mod long_run;
 pub mod max_share;
+pub mod narrative;
 pub mod proxy;
+pub mod robust_bounds;
 pub mod sampler;
+/// Structural-shock extraction primitives (`E = Q' P^-1 U`). Internal to the
+/// crate; shared by `histdecomp` and `narrative`.
+pub(crate) mod shocks;
 pub mod sign;
+pub mod structural_fevd;
+/// Shared structural-IRF construction and (weighted) band-summary helpers
+/// reused across identification schemes. Internal to the crate.
+pub(crate) mod summary;
 pub mod zero;
 pub mod zero_sampler;
 
 pub use error::IdentError;
+pub use fry_pagan::{median_target, MedianTargetResult};
 pub use haar::haar_rotation;
 pub use hetero::{box_m_test, hetero_decompose, BoxMResult, HeteroDecomp, SignConvention};
+pub use histdecomp::{decompose, HistoricalDecomposition};
 pub use long_run::{long_run_multiplier, long_run_svar, LongRunSvar};
 pub use max_share::{max_share_shock, MaxShareResult, MaxShareSign, MaxShareWeighting};
+pub use narrative::{
+    ContributionRule, HdSetSummary, NarrativeDiagnostics, NarrativeRestriction,
+    NarrativeRestrictionSet, NarrativeSampleResult, NarrativeSampler,
+};
 pub use proxy::{proxy_svar, ProxySvarResult};
+pub use robust_bounds::{
+    identified_set_bounds, robust_svar_bounds, robust_svar_bounds_default, RobustBoundPoint,
+    RobustBounds, RobustBoundsDiagnostics,
+};
 pub use sampler::{
     IrfBandPoint, SignRestrictionDiagnostics, SignSampleResult, SignSampler, StructuralIrfSummary,
 };
 pub use sign::{Sign, SignRestriction, SignRestrictionSet};
+pub use structural_fevd::{structural_fevd, structural_fevd_from_theta};
 pub use zero::{zero_constrained_rotation, ZeroRestriction, ZeroRestrictionSet};
 pub use zero_sampler::{ZeroSignSampleResult, ZeroSignSampler};
 

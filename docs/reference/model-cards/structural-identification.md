@@ -1,17 +1,35 @@
 # Model card — Structural identification (advanced)
 
-`long_run_svar` · `max_share_svar` · `proxy_svar` · `hetero_svar`
+`long_run_svar` · `max_share_svar` · `proxy_svar` · `hetero_svar` ·
+`structural_fevd` · `historical_decomposition` · `narrative_svar` ·
+`fry_pagan_svar` · `robust_svar_bounds`
 
 A structural VAR is a reduced-form VAR plus one identifying assumption that
 rotates the estimated residuals into economically meaningful shocks. The
 [VAR/SVAR card](var-svar.md) covers the recursive (Cholesky) and
-sign-restricted schemes; this card covers four schemes that spend a *different*
-kind of outside information — a long-run neutrality, a variance-share objective,
-an external instrument, or a documented variance regime. Each returns a **point**
-identification (no bands in this build): the estimand is one impact matrix or one
-structural column, and the honest uncertainty is a v2 bootstrap item flagged per
-method below. All four take a plain data matrix, estimate the reduced form
-internally, and are deterministic — no RNG, no rejection sampling.
+sign-restricted schemes; this card covers two families that build on them.
+
+**Point-identification schemes** ([below](#long_run_svar-blanchard-quah-long-run-restrictions))
+spend a *different* kind of outside information — a long-run neutrality, a
+variance-share objective, an external instrument, or a documented variance
+regime. Each returns a **point** identification (no bands in this build): the
+estimand is one impact matrix or one structural column, and the honest
+uncertainty is a v2 bootstrap item flagged per method below. All four take a
+plain data matrix, estimate the reduced form internally, and are deterministic —
+no RNG, no rejection sampling.
+
+**Post-identification and prior-robust tools**
+([below](#post-identification-and-prior-robust-tools)) do not identify a new
+scheme; they *take* an identification (any impact matrix `A0`, or a
+sign-restricted set) and answer the questions that come after: how a shock splits
+a variable's forecast-error variance (`structural_fevd`); how it drove each
+historical observation (`historical_decomposition`); which single coherent draw
+sits at the middle of a sign-restricted set (`fry_pagan_svar`); how the
+identified set widens once the Haar-prior artifact is removed
+(`robust_svar_bounds`); and how episode knowledge from the historical record
+shrinks it (`narrative_svar`). These are the answers to the two honesty
+critiques the [sign-restriction section](../../guide/08-causal-identification.md#sign-restrictions-honest-bands-not-points)
+raises — pointwise medians mix models, and the rotation prior never washes out.
 
 Which one you reach for is a question about *what you can defend*, laid out in
 [chapter 8](../../guide/08-causal-identification.md) and the
@@ -19,7 +37,8 @@ Which one you reach for is a question about *what you can defend*, laid out in
 one-line map: **long-run** when theory speaks about permanent vs. transitory
 effects; **max-share** when you want the single shock that drives a target's
 business-cycle variance; **proxy** when you have a measured instrument for one
-shock; **heteroskedasticity** when you have documented variance regimes.
+shock; **heteroskedasticity** when you have documented variance regimes; then the
+post-identification tools once a scheme is chosen.
 
 ---
 
@@ -390,3 +409,533 @@ true `B = [[1, 0.5], [0.4, 1]]` up to the variance-ratio ordering and scale: the
 low-ratio column ≈ true shock 1 `[0.5, 1]`, the high-ratio column ≈ true shock 0
 `[1, 0.4]`. Box's M rejects covariance equality (p ≈ 0), confirming the two
 regimes genuinely differ — the precondition for the whole scheme.
+
+---
+
+## Post-identification and prior-robust tools
+
+The four schemes above (and the recursive / sign / zero-sign schemes in the
+[VAR/SVAR card](var-svar.md)) each hand you an identification. The five tools
+below answer what comes next. Three take a single structural impact matrix `A0`
+(columns = one-standard-deviation shocks, $A_0 A_0' = \Sigma_u$) from *any*
+scheme; two operate on the sign-restricted set directly.
+
+The shared object is the structural moving-average representation
+$\Theta_h = \Psi_h A_0$, where $\Psi_h$ are the reduced-form MA weights
+($\Psi_0 = I$, $\Psi_h = \sum_{i=1}^{\min(h,p)} \Psi_{h-i} A_i$) and the columns
+of $\Theta_h$ are the horizon-$h$ impulse responses. Because $A_0 = P Q$ for a
+lower-Cholesky $P$ and *any* orthogonal $Q$, every one of these tools reads the
+same $(\Psi_h, P)$ off the reduced form and differs only in what it does with the
+rotation $Q$ — a fixed one, a sampled set, or the whole admissible set.
+
+The examples below share one 3-variable macro system — output, prices, policy
+rate — with a genuine simultaneity between the three shocks:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(7)
+T = 300
+eps = rng.standard_normal((T, 3))          # structural: [demand, cost, policy]
+B0 = np.array([[0.8,  0.4, -0.3],          # variables: output, prices, ffr
+               [0.2,  0.9, -0.2],
+               [0.3, -0.1,  0.7]])
+A1 = np.array([[0.5,  0.0, -0.1],
+               [0.1,  0.4,  0.0],
+               [0.0,  0.1,  0.6]])
+data = np.zeros((T, 3))
+for t in range(1, T):
+    data[t] = A1 @ data[t - 1] + B0 @ eps[t]
+```
+
+---
+
+## `structural_fevd` — variance decomposition for an arbitrary impact matrix
+
+**What it estimates.** The forecast-error variance decomposition
+`fevd[h][i][j]` — the share of variable $i$'s $(h{+}1)$-step forecast-error
+variance attributable to structural shock $j$ — for a **general** structural
+impact matrix $A_0$. `var_fevd` computes this only for the recursive-Cholesky
+$A_0 = P$; `structural_fevd` fills the gap, accepting the $A_0$ from a sign-,
+zero-, proxy-, max-share-, long-run-, or heteroskedasticity-identified model.
+The share is $\omega_{ij}(h) = \big[\sum_{s\le h}\Theta_s[i,j]^2\big] /
+\big[\sum_m\sum_{s\le h}\Theta_s[i,m]^2\big]$ with $\Theta_s = \Psi_s A_0$.
+
+**Assumptions.** A correct reduced form and an $A_0$ that satisfies
+$A_0 A_0' = \Sigma_u$. That is the *only* requirement — the shares inherit
+whatever identification produced $A_0$, and carry no more economic content than
+it does.
+
+**The invariant that makes it honest.** The denominator — variable $i$'s total
+$(h{+}1)$-step forecast MSE — is **rotation-invariant**: $A_0 A_0' = PQQ'P' =
+\Sigma_u$ regardless of $Q$, so the total variance being split does not depend on
+the identification. Only the split across shocks $j$ changes. Consequently each
+row sums to exactly 1, and column sign-flips of $A_0$ leave the shares unchanged
+(they enter squared). With $A_0 = P$ the result equals `var_fevd` and
+statsmodels' `VARResults.fevd` exactly.
+
+**When to use (and when not).** Use to report "shock $j$ explains X% of variable
+$i$'s variance at horizon $h$" *after* you have identified $A_0$ — the standard
+companion table to an IRF plot. Do not read a Cholesky FEVD when your shock is
+sign- or proxy-identified: feed the actual $A_0$. Do not over-interpret shares
+from a set-identified scheme without checking they are stable across the
+admissible rotations (that is what `robust_svar_bounds` is for on the IRFs).
+
+**Key arguments and defaults (and why).** `lags`, `horizon` (the FEVD is
+reported for steps $0..\,$`horizon`), `trend="c"`. `impact=None` uses the lower
+Cholesky of $\Sigma_u$ (so the result reproduces `var_fevd`); pass an
+$(n\times n)$ `impact` for any other scheme. `sigma="dfadj"` (default) or
+`"mle"` sets the default Cholesky's df scaling — the **shares are invariant to
+it** (numerator and denominator scale together); it only rescales the reported
+`impact`.
+
+**How to read the output.** `fevd` `[horizon+1][variable][shock]` (each
+`fevd[h][i]` sums to 1), and `impact` `[n][n]` (the $A_0$ used — the Cholesky
+factor when `impact=None`).
+
+**Failure modes.** Passing an $A_0$ that does not satisfy $A_0 A_0' = \Sigma_u$
+(the row sums stay 1 by construction, but the shares are then meaningless);
+reading a recursive FEVD for a non-recursive shock; confusing the `[h][i][j]`
+layout (variable then shock) with `var_fevd`'s `[i][h][j]`.
+
+**Validated against.** statsmodels `VARResults.fevd` and the independent
+`tsecon-var` `var_fevd`, an exact cross-implementation golden for the Cholesky
+case (tol 1e-10); the general-$A_0$ shares are pinned by the exact algebraic
+invariants — row sums = 1 and denominator rotation-invariance under a random
+orthogonal $Q$ (tol 1e-12)
+([`structural_fevd.json`](../../../fixtures/structural_fevd.json),
+[`structural_fevd.rs`](../../../crates/tsecon-ident/tests/structural_fevd.rs), 7
+tests). See the [validation matrix](../validation-matrix.md).
+
+**References.** Lütkepohl (2005, §2.3.3); Kilian & Lütkepohl (2017, ch. 4).
+
+```python
+sf = tsecon.structural_fevd(data, lags=2, horizon=12)
+fevd = np.asarray(sf["fevd"])          # [h][variable][shock]
+print("row sums at h=12 (each variable's shares):", np.round(fevd[12].sum(axis=1), 12))
+print("ffr (variable 2) FEVD at h = 0, 4, 12:\n", np.round(fevd[[0, 4, 12], 2, :], 4))
+
+# impact=None reproduces var_fevd exactly (aligning the two array layouts)
+vf = np.asarray(tsecon.var_fevd(data, lags=2, horizon=12))     # [variable][step][shock]
+print("matches var_fevd:", np.allclose(np.transpose(fevd, (1, 0, 2))[:, :12, :], vf))
+
+# feed a rotated A0 = P @ Q: the total MSE is invariant, only the split moves
+Q, _ = np.linalg.qr(rng.standard_normal((3, 3)))
+sf2 = tsecon.structural_fevd(data, lags=2, horizon=12, impact=np.asarray(sf["impact"]) @ Q)
+row = np.asarray(sf2["fevd"])[12, 2, :]
+print("rotated-A0 ffr FEVD at h=12:", np.round(row, 4), " sum:", round(row.sum(), 12))
+```
+
+```
+row sums at h=12 (each variable's shares): [1. 1. 1.]
+ffr (variable 2) FEVD at h = 0, 4, 12:
+ [[4.000e-04 1.429e-01 8.567e-01]
+ [1.190e-02 9.210e-02 8.960e-01]
+ [1.180e-02 9.030e-02 8.979e-01]]
+matches var_fevd: True
+rotated-A0 ffr FEVD at h=12: [0.0377 0.299  0.6633]  sum: 1.0
+```
+
+Under the Cholesky ordering the funds rate's own shock explains 86% of its
+one-step forecast error and 90% by horizon 12. Rotate the impact matrix and the
+split changes completely (4% / 30% / 66%) — yet the row still sums to exactly 1,
+because the *total* variance being decomposed is the reduced-form object the
+rotation cannot touch. That is the whole point: the FEVD is only as identified as
+the $A_0$ you feed it.
+
+---
+
+## `historical_decomposition` — who drove each observation
+
+**What it estimates.** The exact split of each realized observation into a
+deterministic/initial-condition **baseline** plus the cumulated contribution of
+each structural shock: `hd[t][i][j]` is shock $j$'s contribution to variable $i$
+at effective date $t$, with $\mathrm{hd}[t,i,j] = \sum_{s=0}^{t} \Theta_s[i,j]\,
+\varepsilon_{t-s,j}$. It answers "how much did shock $j$ contribute to variable
+$i$ during episode X" — the Kilian & Lütkepohl (2017, ch. 4) historical
+decomposition, and the hard prerequisite for `narrative_svar`.
+
+**The adding-up identity.** For *any* invertible $A_0$,
+$$y_{t,i} = \mathrm{baseline}[t,i] + \sum_{j} \mathrm{hd}[t,i,j]$$
+holds **exactly** — not asymptotically — because $y - \mathrm{baseline}$ is the
+finite truncated MA sum from the initial condition, and the presample shocks are
+fully absorbed into the baseline. The example below verifies it to $\sim10^{-15}$.
+
+**Assumptions.** A correct reduced form and an $A_0$. In the default
+`identification="cholesky"` mode the decomposition is *exactly identified* given
+the reduced form — the only modeling choice is the ordering. In
+`identification="sign"` mode the contributions become a set, summarized over the
+sign- (and optionally narrative-) restricted rotations.
+
+**When to use (and when not).** Use to attribute a specific historical episode —
+"the 1979-82 funds-rate run-up was N% monetary shock" — or to plot the shock
+contributions to a variable over time. Do not read the cholesky-mode
+contributions as sign-identified shocks: in that mode the shocks are the
+recursive ones (variable $i$'s own orthogonalized innovation is shock $i$). For a
+set-identified scheme pass `identification="sign"` with `restrictions`.
+
+**Key arguments and defaults (and why).** `restrictions` — traditional
+`(variable, shock, horizon, sign)` tuples, needed only for
+`identification="sign"`. `lags`, `horizon=None` (the MA is truncated at the exact
+$T_{\mathrm{eff}}-1$ by default). `identification="cholesky"` (point, $Q=I$) or
+`"sign"` (set). `n_draws`, `max_tries`, `seed`, `lambda1` control the sampler in
+sign mode; `narrative_restrictions` and `n_weight_draws` add episode restrictions
+(see `narrative_svar`).
+
+**How to read the output.** `times` (0-based effective-sample indices, $=$
+`data_row - lags`), `baseline` `[T_eff][n]`. In cholesky mode: `hd`
+`[T_eff][variable][shock]` and the structural `shocks` `[T_eff][n]`. In sign
+mode: `probs`, `hd_quantiles` `[T_eff][n][n][len(probs)]` (weighted type-7), the
+weight-free `hd_set_min`/`hd_set_max` envelope, per-draw `weights`, and
+`diagnostics`.
+
+**Failure modes.** Reading cholesky-mode "shock 2" as an economically named
+shock (it is the third variable's recursive innovation); a singular $A_0$ (the
+structural shocks $\varepsilon = A_0^{-1}u$ are then undefined — reported as an
+error); off-by-`lags` alignment between `times` and the original data rows.
+
+**Validated against.** A self-contained NumPy closed-form reference that fits a
+fixed VAR(2) by OLS, Cholesky-identifies, and computes $\varepsilon$, $\Theta_s$,
+`hd`, and `baseline` — matched cell-by-cell (rtol 1e-8, atol 1e-10), with the
+adding-up residual $\max|y - \mathrm{baseline} - \sum_j \mathrm{hd}| < 10^{-9}$
+([`historical_decomposition_chol.json`](../../../fixtures/historical_decomposition_chol.json),
+[`historical_decomposition.rs`](../../../crates/tsecon-ident/tests/historical_decomposition.rs)
+plus the `shocks.rs`/`histdecomp.rs` unit tests).
+
+**References.** Kilian & Lütkepohl (2017, ch. 4); Antolín-Díaz & Rubio-Ramírez
+(2018, for the sign-mode set version).
+
+```python
+hd = tsecon.historical_decomposition(data, lags=2, identification="cholesky")
+contrib = np.asarray(hd["hd"])         # [t][variable][shock]
+base = np.asarray(hd["baseline"])      # [t][variable]
+y_eff = data[2:]                       # the effective sample (lags dropped)
+
+print("adding-up  max|y - baseline - sum_j hd|:",
+      np.max(np.abs(y_eff - (base + contrib.sum(axis=2)))))
+
+t = 150
+print(f"at t={t}: ffr actual {y_eff[t, 2]:+.4f}  baseline {base[t, 2]:+.4f}")
+print("  ffr contributions from shocks [0, 1, 2]:", np.round(contrib[t, 2, :], 4))
+```
+
+```
+adding-up  max|y - baseline - sum_j hd|: 2.6645352591003757e-15
+at t=150: ffr actual +0.1345  baseline -0.2017
+  ffr contributions from shocks [0, 1, 2]: [-0.0845  0.3348  0.0859]
+```
+
+The identity holds to machine precision, and the funds rate's deviation from its
+baseline at $t=150$ is decomposed into the three recursive shocks — here the
+second shock (the price equation's innovation) is doing most of the work. Swap in
+`identification="sign"` with the restrictions below and each `hd[t][i][j]` becomes
+a band over the admissible monetary-shock rotations instead of a point.
+
+---
+
+## `fry_pagan_svar` — the coherent draw the median band is not
+
+**What it estimates.** The single accepted, sign-normalized structural draw whose
+IRFs are jointly closest to the pointwise median — the Fry-Pagan (2011)
+median-target rotation. Sign restrictions identify a *set* of models; the
+pointwise median band stitches together responses from mutually inconsistent
+draws (the horizon-3 median and the horizon-8 median generally come from
+different rotations), so it is **not the IRF of any admissible model**.
+`fry_pagan_svar` returns one that is.
+
+**The criterion.** Over a set of target cells $\mathcal{C}$ (by default all
+response cells of the sign-restricted shocks, every variable and horizon), the
+median-target statistic is $\mathrm{MT}(d) = \sum_{(i,j,h)\in\mathcal{C}}
+z^{(d)}_{i,j,h}{}^2$ where $z^{(d)} = (\Theta^{(d)} - \mathrm{median})/\mathrm{sd}$
+is each draw's standardized deviation from the pointwise median. The selected
+draw is $d^\star = \arg\min_d \mathrm{MT}(d)$ — the interior point of the
+identified set that is *internally coherent* and central.
+
+**Assumptions.** Everything `sign_restricted_svar` assumes, plus the honest
+caveat that **the selected draw is a descriptive summary, not a point estimate**:
+it is one interior point of a set, and *which* point depends on the informative
+Haar prior over rotations. It answers "give me one coherent model near the middle
+of the band," not "give me the identified impulse response."
+
+**When to use (and when not).** Use to report a single set of numbers — an IRF
+table, an $A_0$ to feed `structural_fevd` or `historical_decomposition` — that
+comes from one real model rather than a mix. Do not present it as *the* estimate,
+and do not drop the band: the median-target IRF is a companion to the identified
+set, not a replacement. When the prior matters, pair it with
+`robust_svar_bounds`.
+
+**Key arguments and defaults (and why).** `restrictions` (required) — the
+`(variable, shock, horizon, sign)` tuples. `lags`, `horizon`, `n_draws=500`,
+`max_tries=400`, `seed=0`, `lambda1=0.2` — same sampler as
+`sign_restricted_svar`. `target="restricted"` scores only the response cells of
+the sign-restricted shocks (default); `"all"` scores every cell.
+
+**How to read the output.** `median_target_irf` `[horizon+1][n][n]` (the coherent
+Fry-Pagan IRF — its `[0]` slice is a valid $A_0$), `median_irf` (the incoherent
+pointwise median, for side-by-side), `mt_index` (0-based into the accepted set),
+`mt_statistic`, `n_accepted`, and `diagnostics`
+(`posterior_draws_used`/`rotations_tried`/`accepted`/`acceptance_rate`).
+Reproducible bit-for-bit at a fixed `seed`.
+
+**Failure modes.** Reporting the median-target IRF without the band (it hides the
+set-identification width, which *is* the finding); reading it as prior-free (the
+Haar prior selects which interior point); too few accepted draws to estimate a
+stable pointwise median (watch `n_accepted`).
+
+**Validated against.** A stored fixture of $D$ candidate structural IRFs (seeded
+NumPy Haar rotations of a fixed Cholesky IRF, sign-filtered) with an independent
+NumPy computation of the median, dispersion, $\mathrm{MT}(d)$, and $\arg\min$;
+the Rust selection must return the same `mt_index` and `mt_statistic` (tol
+1e-10), plus end-to-end seed reproducibility
+([`fry_pagan_svar.json`](../../../fixtures/fry_pagan_svar.json),
+[`fry_pagan.rs`](../../../crates/tsecon-ident/tests/fry_pagan.rs)). The *selection
+rule* is validated exactly; the *estimand* inherits the set-identification
+caveat.
+
+**References.** Fry & Pagan (2011, *Journal of Economic Literature*).
+
+```python
+# policy shock (2): raises the funds rate, lowers output and prices on impact
+restr = [(2, 2, 0, "+"), (0, 2, 0, "-"), (1, 2, 0, "-")]
+fp = tsecon.fry_pagan_svar(data, restr, lags=2, horizon=12, n_draws=500, seed=0)
+
+print("n_accepted:", fp["n_accepted"], " mt_index:", fp["mt_index"],
+      " mt_statistic:", round(fp["mt_statistic"], 4))
+mt = np.asarray(fp["median_target_irf"]); med = np.asarray(fp["median_irf"])
+print("coherent  output<-policy  h = 0, 2, 4, 8:", np.round(mt[[0, 2, 4, 8], 0, 2], 4))
+print("pointwise output<-policy  h = 0, 2, 4, 8:", np.round(med[[0, 2, 4, 8], 0, 2], 4))
+```
+
+```
+n_accepted: 500  mt_index: 348  mt_statistic: 1.9921
+coherent  output<-policy  h = 0, 2, 4, 8: [-0.3532 -0.0762 -0.0159 -0.0012]
+pointwise output<-policy  h = 0, 2, 4, 8: [-0.4892 -0.0758 -0.0127 -0.0007]
+```
+
+Draw 348 of the 500 accepted is the single most central *coherent* model. Its
+output-on-impact response ($-0.35$) differs from the pointwise median ($-0.49$)
+precisely because the pointwise median is not a model — no single admissible
+rotation produces the $-0.49$ impact together with the median responses at every
+other horizon. Read the two together: the band for the set, the median-target for
+one model that lives inside it.
+
+---
+
+## `robust_svar_bounds` — the identified set without the Haar artifact
+
+**What it estimates.** The Giacomini-Kitagawa (2021) prior-robust identified-set
+bounds. For each restricted shock and each response cell $(h, i, j)$, and *each*
+reduced-form posterior draw, it computes the **exact min and max** of the
+structural IRF over the entire admissible rotation set — not a sampled interval,
+the whole set. It then summarizes those per-draw edges across the posterior. This
+removes the informative-Haar-prior artifact that the pointwise
+`sign_restricted_svar` bands carry: because the data cannot distinguish points
+*within* the identified set, any single prior on rotations (the Haar default
+included) injects information the data never provided, and that never washes out
+(Baumeister-Hamilton 2015).
+
+**The closed form.** For a shock restricted alone, each restriction is a linear
+inequality $a_k' q_j \ge 0$ on that shock's rotation column, and the IRF
+$\eta = g' q_j$ is optimized over $\{\|q\|=1,\ a_k'q\ge0\}$ — a quadratically
+constrained linear program whose optimum is a KKT point found by active-set
+enumeration (Gafarov-Meier-Montiel-Olea 2018). This is **exact for a single
+restricted shock**. With several jointly-restricted shocks the admissible columns
+must be mutually orthogonal, the per-column problem no longer decouples, and each
+reported bound is that shock's *marginal* identified set — a **conservative outer
+approximation** of the joint set, flagged honestly rather than oversold.
+
+**Assumptions.** A correct reduced form and sign restrictions that are feasible
+for at least some draws. The Minnesota-NIW posterior on the reduced form supplies
+the draws; the *rotation* prior is exactly what this method refuses to commit to.
+
+**When to use (and when not).** Use for any set-identified result headed for
+publication: report the robust bounds alongside the sign-restricted band so a
+reader can see how much of the band's apparent sharpness was prior rather than
+data (if the robust region is much wider, the gap *is* the Haar artifact). Do not
+use it as a point estimate; do not read the multi-shock bounds as certified joint
+bounds — each is a per-shock *marginal* set that is a conservative **outer**
+approximation of the true joint region (consistent with the "conservative outer
+approximation" note above), never an inner one.
+
+**Key arguments and defaults (and why).** `restrictions` (required). `lags`,
+`horizon`, `n_draws=500`, `seed=0`, `lambda1=0.2`. `alpha=0.10` sets the robust
+credible level (0.10 → a 90% robust credible region).
+
+**How to read the output.** Per `[horizon+1][variable][shock]`:
+`set_lower_mean`/`set_upper_mean` (posterior-mean identified-set edges,
+$\hat{E}[l]$/$\hat{E}[u]$), `robust_ci_lower`/`robust_ci_upper` (the level-`alpha`
+robust credible region — the $\alpha/2$ quantile of the lower edges and the
+$1-\alpha/2$ quantile of the upper edges), and `lower_quantiles`/`upper_quantiles`
+at `probs`. Unrestricted shocks are `NaN`; `restricted_shocks` lists the valid
+$j$; `diagnostics` reports `empty_set_rate` (the share of draws whose restrictions
+were mutually infeasible — a first-order GK diagnostic).
+
+**Failure modes.** Treating the multi-shock bounds as exact joint bounds
+(they are marginal); a high `empty_set_rate` signalling near-inconsistent
+restrictions; reading the robust region as *narrower* than the sign band and
+concluding the data are sharp — it is the opposite (the robust region is the
+honest, wider object).
+
+**Validated against.** An independent NumPy implementation of the
+Gafarov-Meier-Montiel-Olea (2018) active-set closed form for a fixed
+$(B, \Sigma)$ and single-shock restrictions (tol 1e-8), plus a brute-force
+random-sphere search ($\ge10^6$ feasible unit vectors) that must bracket the
+analytic optimum from the inside, and a NumPy aggregation golden for the
+set-mean and robust-region quantiles
+([`robust_svar_bounds.json`](../../../fixtures/robust_svar_bounds.json),
+[`robust_bounds.rs`](../../../crates/tsecon-ident/src/robust_bounds.rs), 7 tests).
+Strong for a single restricted shock; moderate (inside-bracket only) for the
+multi-shock path.
+
+**References.** Giacomini & Kitagawa (2021, *Econometrica*); Gafarov, Meier &
+Montiel Olea (2018, *Journal of Econometrics*); Baumeister & Hamilton (2015).
+
+```python
+rb = tsecon.robust_svar_bounds(data, restr, lags=2, horizon=12, n_draws=500,
+                               seed=0, alpha=0.10)
+print("restricted_shocks:", rb["restricted_shocks"], " empty_set_rate:",
+      rb["diagnostics"]["empty_set_rate"])
+lo = np.asarray(rb["set_lower_mean"]); hi = np.asarray(rb["set_upper_mean"])
+cil = np.asarray(rb["robust_ci_lower"]); cih = np.asarray(rb["robust_ci_upper"])
+for h in [0, 2, 4]:
+    print(f"h={h} output<-policy  set-mean [{lo[h,0,2]:+.4f}, {hi[h,0,2]:+.4f}]"
+          f"  90% robust CI [{cil[h,0,2]:+.4f}, {cih[h,0,2]:+.4f}]")
+print("unrestricted shock 0 is NaN:", bool(np.isnan(lo[0, 0, 0])))
+```
+
+```
+restricted_shocks: [2]  empty_set_rate: 0.0
+h=0 output<-policy  set-mean [-0.9062, +0.0000]  90% robust CI [-0.9716, +0.0000]
+h=2 output<-policy  set-mean [-0.1559, +0.0341]  90% robust CI [-0.2329, +0.0978]
+h=4 output<-policy  set-mean [-0.0376, +0.0203]  90% robust CI [-0.0750, +0.0590]
+```
+
+The impact bound's *upper* edge is exactly zero — the sign restriction
+$(0,2,0,\text{"-"})$ forces output's on-impact response to the policy shock to be
+$\le 0$, and the exact identified-set optimizer honors it to the last digit. Only
+shock 2 is restricted, so shocks 0 and 1 return `NaN`. Away from impact the set
+straddles zero (e.g. $[-0.16, +0.03]$ at $h=2$): the sign restrictions pin the
+*sign on impact* but not the persistence, and the robust bounds say so without
+borrowing sharpness from the rotation prior.
+
+---
+
+## `narrative_svar` — episode knowledge from the historical record
+
+**What it estimates.** The Antolín-Díaz & Rubio-Ramírez (2018) narrative
+sign-restricted SVAR: `sign_restricted_svar` augmented with restrictions on named
+historical episodes — the sign of a structural shock in a specific quarter, or a
+"most/least important contributor" statement about a shock's role in a variable's
+historical decomposition over an episode. It is a strict superset of
+`sign_restricted_svar` (with no narrative restrictions it reproduces it
+bit-for-bit).
+
+**How the episodes enter.** Shock-sign restrictions constrain the per-shock
+orientation jointly with the traditional signs. Contribution restrictions are
+checked on the historical decomposition (orientation-free, since both
+$\Theta$ and $\varepsilon$ flip together). The AD&RR estimator keeps the
+reduced-form marginal at the traditional posterior and imposes the narrative event
+$N$ by **importance-reweighting**: each accepted draw $m$ carries weight
+$w^{(m)} = 1/\hat{P}(N\mid S, \phi^{(m)})$, where $\hat{P}$ is a Monte-Carlo
+estimate over `n_weight_draws` sign-passing rotations. A draw whose
+narrative-admissible slice of the identified set is small is up-weighted, so all
+bands and quantiles become **weighted**.
+
+**Assumptions.** Everything `sign_restricted_svar` assumes, plus that your
+episode statements are *true of the data-generating process* — a claim you defend
+by reading the same historical record the restriction encodes. The honest caveat:
+$1/\hat{P}$ is a biased (Jensen) estimator of $1/P(N\mid S)$, so use
+`n_weight_draws` $\ge 100$ and **watch the effective sample size** — heavy-tailed
+weights are the method's characteristic failure.
+
+**When to use (and when not).** Use when you have credible episode knowledge — "the
+monetary shock was contractionary in October 1979, and it was the dominant driver
+of that quarter's funds-rate move" — and want to shrink a wide sign-identified set.
+Do not use it to rescue restrictions the data reject (a low
+`narrative_acceptance_rate` with a collapsing `ess` means the narrative is fighting
+the traditional posterior); do not ignore the weights when reading the bands.
+
+**Key arguments and defaults (and why).** `sign_restrictions` (the traditional
+tuples; may be empty if narrative restrictions are given), `narrative_restrictions`
+(a list of dicts, schema below), `lags`, `horizon`, `n_draws`, `max_tries`,
+`seed`, `lambda1`, and `n_weight_draws=200` (the $K_w$ for $\hat{P}$). The dict
+schemas use 0-based **effective-sample** indices ($=$ `data_row - lags`):
+
+```python
+{"type": "shock_sign",   "shock": int, "period": int, "sign": "+"|"-"}
+{"type": "contribution", "variable": int, "shock": int, "start": int, "end": int,
+                         "rule": "most"|"least", "strong": bool}
+{"type": "contribution_sign", "variable": int, "shock": int,
+                         "start": int, "end": int, "sign": "+"|"-"}
+```
+
+**How to read the output.** Same shape as `sign_restricted_svar` —
+`quantiles` `[horizon+1][n][n][len(probs)]` (weighted type-7 at `probs =
+[0.05, 0.16, 0.50, 0.84, 0.95]`), the weight-free `set_min`/`set_max` envelope —
+plus `weights` (per accepted draw, mean 1) and an extended `diagnostics`:
+`narrative_accepted`, `narrative_acceptance_rate`, `ess` (effective sample size),
+`mean_weight`, and `min_ptilde` (the smallest $\hat{P}$ — a small value flags a
+draw carrying a large weight).
+
+**Failure modes.** A collapsing `ess` (a few draws carrying all the weight —
+the bands are then unreliable); reading a redundant narrative (one already implied
+by the traditional signs) as informative (its weights are ~uniform and the bands
+barely move); off-by-`lags` episode indices.
+
+**Validated against.** Reweighting-invariance (no narrative ⇒ every weight 1 and
+quantiles equal `sign_restricted_svar` bit-for-bit; a redundant narrative ⇒
+$\hat{P}=1$, uniform weights, bands unchanged to 1e-12) and a deterministic
+weight-formula unit test against a brute-force high-$K$ Monte-Carlo $P(N\mid S)$;
+the underlying HD core carries the strong closed-form golden above
+([`narrative.rs`](../../../crates/tsecon-ident/src/narrative.rs) unit tests).
+Set-identified and statistical — honestly weaker than the HD golden, validated by
+property rather than a golden posterior.
+
+**References.** Antolín-Díaz & Rubio-Ramírez (2018, *American Economic Review*);
+the `bsvarSIGNs` R package implements the same estimator.
+
+```python
+# by construction, the largest policy innovation lands in this quarter
+peak = int(np.argmax(eps[2:, 2]))      # effective-sample index = 136
+
+# episode: the policy shock (2) was the MOST important driver of the ffr (2) over [peak-2, peak+2]
+narr = [{"type": "contribution", "variable": 2, "shock": 2,
+         "start": peak - 2, "end": peak + 2, "rule": "most", "strong": False}]
+nv = tsecon.narrative_svar(data, restr, narr, lags=2, horizon=12,
+                           n_draws=500, seed=0, n_weight_draws=200)
+d = nv["diagnostics"]
+print("accepted:", d["accepted"], " narrative_acceptance_rate:",
+      round(d["narrative_acceptance_rate"], 3), " ess:", round(d["ess"], 1),
+      " min_ptilde:", round(d["min_ptilde"], 3))
+
+base = tsecon.sign_restricted_svar(data, restr, lags=2, horizon=12, n_draws=500, seed=0)
+qb = np.asarray(base["quantiles"]); qn = np.asarray(nv["quantiles"])
+for h in [0, 2, 4]:                    # output<-policy: median and 5-95 width
+    mb, wb = qb[h,0,2,2], qb[h,0,2,4]-qb[h,0,2,0]
+    mn, wn = qn[h,0,2,2], qn[h,0,2,4]-qn[h,0,2,0]
+    print(f"h={h}: plain median {mb:+.4f} (width {wb:.4f}) | narrative {mn:+.4f} (width {wn:.4f})")
+
+# with no narrative restrictions it IS sign_restricted_svar
+none = tsecon.narrative_svar(data, restr, None, lags=2, horizon=12, n_draws=500, seed=0)
+print("narrative=None reproduces sign_restricted_svar:",
+      np.array_equal(np.asarray(none["quantiles"]), qb))
+```
+
+```
+accepted: 163  narrative_acceptance_rate: 0.326  ess: 143.8  min_ptilde: 0.124
+h=0: plain median -0.4892 (width 0.8097) | narrative -0.2131 (width 0.6648)
+h=2: plain median -0.0758 (width 0.2108) | narrative -0.0423 (width 0.1599)
+h=4: plain median -0.0127 (width 0.0814) | narrative -0.0089 (width 0.0742)
+narrative=None reproduces sign_restricted_svar: True
+```
+
+The narrative binds: only a third of the sign-passing rotations (`rate` 0.326)
+also make the policy shock the dominant driver of the funds rate in that episode,
+and the smallest $\hat{P}$ (0.124) marks a draw whose slice is narrow enough to
+earn an eightfold weight. The reweighting both shifts the output-on-impact median
+(from $-0.49$ toward $-0.21$) and narrows the band (0.81 → 0.66) — episode
+knowledge, imposed as an importance weight, is doing real work. And with no
+narrative restriction the function is exactly `sign_restricted_svar`, so it is a
+safe drop-in default. A shock-sign restriction that merely *agrees* with the
+impact signs is nearly redundant instead — $\hat{P}\approx0.98$, weights ~uniform,
+bands unchanged — which is the reweighting-invariance check the tests pin down.

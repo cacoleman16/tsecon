@@ -51,6 +51,11 @@ A compact index. Find your row, jump to the section.
 | The single shock that drives a target's business-cycle variance | `max_share_svar` (main-BC / news shock) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from one measured instrument / narrative surprise | `proxy_svar` (SVAR-IV) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from documented variance regimes (crisis vs calm) | `hetero_svar` (Rigobon) | [2](#2-i-want-an-impulse-response) |
+| Variance decomposition (FEVD) for an already-identified shock (any scheme) | `structural_fevd` | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
+| How much did shock *j* contribute to variable *i* in episode X | `historical_decomposition` | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
+| One *coherent* IRF from a sign-restricted set (not the median-mixes-models band) | `fry_pagan_svar` (median-target) | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
+| Sign-restriction bounds with the Haar-prior artifact removed | `robust_svar_bounds` (Giacomini-Kitagawa) | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
+| Shrink a sign-identified set with knowledge of a historical episode | `narrative_svar` (Antolín-Díaz-Rubio-Ramírez) | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
 | A Bayesian VAR that selects which coefficients are non-zero | `bvar_ssvs` (spike-and-slab SSVS) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from one equation, no full VAR to commit to | `lp`; instrumented `lp_iv`; state-dependent `lp_state` | [2](#2-i-want-an-impulse-response) |
 | Quarterly target, monthly indicators, a ragged data edge | `dfm_nowcast` | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
@@ -465,6 +470,82 @@ IRF-band route and [chapter 10](guide/10-bayesian.md#letting-the-data-set-the-di
 
 **Go deeper:** [chapter 8 — long-run, max-share, proxy, and heteroskedasticity identification](guide/08-causal-identification.md#long-run-restrictions-the-blanchard-quah-decomposition) ·
 [structural-identification model card](reference/model-cards/structural-identification.md)
+
+### 2f · …and now I want to decompose, narrate, or prior-robustify the shock
+
+**When it applies:** you have *already* identified a shock (by any scheme above)
+and want the standard follow-up objects — a variance decomposition, a historical
+attribution, one coherent IRF instead of a median that mixes models, honest
+prior-robust bounds, or a set sharpened with episode knowledge. These five tools
+*take* an identification; they do not invent one. Reusing the `data` matrix and
+sign restrictions from [2b](#2b-but-i-only-trust-sign-restrictions):
+
+```python
+restr = [(0, 0, 0, "+"), (1, 0, 0, "+"), (2, 0, 0, "+")]   # a demand shock lifts all three
+```
+
+- **A variance decomposition for the identified shock** — `var_fevd` only knows
+  the recursive Cholesky; feed *any* impact matrix `A0` (here the coherent
+  Fry-Pagan draw's) to `structural_fevd`:
+
+  ```python
+  fp = tsecon.fry_pagan_svar(data, restr, lags=2, horizon=16, n_draws=500, seed=1)
+  A0 = np.asarray(fp["median_target_irf"])[0]                # a valid identified impact matrix
+  sf = tsecon.structural_fevd(data, lags=2, horizon=16, impact=A0)
+  np.asarray(sf["fevd"])[8, 0, 0]        # 0.604: demand-shock share of GDP's h=8 FE variance; each row sums to 1
+  ```
+
+- **One coherent model, not the median band** — the pointwise median mixes
+  mutually inconsistent draws. `fry_pagan_svar` returns the single accepted draw
+  closest to it (a companion to the band, not a replacement):
+
+  ```python
+  mt  = np.asarray(fp["median_target_irf"])   # coherent [h][var][shock]; mt[0] is an A0
+  med = np.asarray(fp["median_irf"])          # the incoherent pointwise median
+  mt[0, 0, 0], med[0, 0, 0]              # (0.702, 0.560): the coherent impact response is not the median
+  ```
+
+- **How much did shock *j* drive variable *i* in episode X** — the historical
+  decomposition, with an exact adding-up identity `y = baseline + Σ_j hd`:
+
+  ```python
+  hd = tsecon.historical_decomposition(data, lags=2, identification="cholesky")
+  hd["hd"]          # [time][variable][shock] contributions; identification="sign" gives the weighted set
+  hd["baseline"]    # deterministic + initial-condition path; times are 0-based effective-sample indices
+  ```
+
+- **Prior-robust bounds** — the Haar rotation prior never washes out, so part of
+  a sign-restricted band is artifact. `robust_svar_bounds` reports the exact
+  identified set with that prior removed (Giacomini-Kitagawa):
+
+  ```python
+  rb = tsecon.robust_svar_bounds(data, restr, lags=2, horizon=16, n_draws=500, seed=1, alpha=0.10)
+  rb["robust_ci_lower"][0][0][0], rb["robust_ci_upper"][0][0][0]   # (0.000, 0.833): wider than the sign band's (0.119, 0.756)
+  rb["restricted_shocks"]         # [0] — unrestricted shocks are NaN; empty_set_rate is a GK diagnostic
+  ```
+
+- **Shrink the set with episode knowledge** — if the historical record tells you a
+  shock's sign or that it dominated an episode, `narrative_svar` imposes it by
+  importance-reweighting (Antolín-Díaz-Rubio-Ramírez):
+
+  ```python
+  narr = [{"type": "contribution", "variable": 0, "shock": 0, "start": 73, "end": 75, "rule": "most"}]
+  nv = tsecon.narrative_svar(data, restr, narr, lags=2, horizon=16, n_draws=500, seed=1, n_weight_draws=200)
+  nv["weights"], nv["diagnostics"]["ess"]   # per-draw weights (mean 1) and the effective sample size — watch it
+  ```
+
+  With `narrative_restrictions=None` it *is* `sign_restricted_svar`, bit-for-bit,
+  so it is a safe default. A collapsing `ess` means the narrative is fighting the
+  posterior — the diagnostic to read.
+
+The rule of thumb: report `structural_fevd` and `historical_decomposition`
+alongside any IRF; add `fry_pagan_svar` for a single coherent set of numbers;
+and for a set-identified result headed for publication, show
+`robust_svar_bounds` next to the sign band so the reader sees how much was prior
+rather than data — with `narrative_svar` when you can defend an episode.
+
+**Go deeper:** [chapter 8 — sign restrictions, honest bands, and the two critiques](guide/08-causal-identification.md#sign-restrictions-honest-bands-not-points) ·
+[post-identification tools in the model card](reference/model-cards/structural-identification.md#post-identification-and-prior-robust-tools)
 
 ---
 

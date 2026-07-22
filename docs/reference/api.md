@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**116 functions.**
+**121 functions.**
 
 ## diagnostics
 
@@ -674,6 +674,169 @@ Zero + sign restricted Bayesian SVAR: exact zeros by construction + sign rejecti
     recursive-Cholesky posterior, and the reported `set_min`/`set_max` span
     reflects posterior (not identified-set) uncertainty since the rotation is
     fixed. The ARW weight is exactly 1 for impact-only zero patterns.
+
+### `structural_fevd`
+
+```python
+def structural_fevd(
+    data: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    trend: str = ...,
+    impact: _ArrayLike | None = ...,
+    sigma: str = ...,
+) -> dict[str, Any]:
+```
+
+Structural FEVD for an arbitrary structural impact matrix A0 (the gap
+    var_fevd, recursive-Cholesky only, leaves).
+
+    `impact` is an optional (n, n) structural impact A0 (columns = one-SD
+    structural shocks, A0 A0' = Sigma; from any identification scheme). If None,
+    A0 is the lower Cholesky of the innovation covariance and the result equals
+    `var_fevd` exactly. `sigma` ("dfadj"|"mle") sets the default Cholesky's df
+    scaling; the FEVD shares are invariant to it (it only rescales the reported
+    `impact`). Returns `fevd` [horizon+1][variable][shock] (each row sums to 1)
+    and `impact` [n][n] (the A0 used).
+
+### `historical_decomposition`
+
+```python
+def historical_decomposition(
+    data: _ArrayLike,
+    restrictions: Sequence[tuple[int, int, int, str]] = ...,
+    lags: int = ...,
+    horizon: int | None = ...,
+    identification: str = ...,
+    n_draws: int = ...,
+    max_tries: int = ...,
+    seed: int = ...,
+    lambda1: float = ...,
+    narrative_restrictions: list[dict] | None = ...,
+    n_weight_draws: int = ...,
+) -> dict[str, Any]:
+```
+
+Historical decomposition: per-(time, variable, shock) structural-shock contributions.
+
+    Splits each variable into a deterministic/initial-condition `baseline` plus the
+    cumulated contribution `hd[time][variable][shock]` of each structural shock,
+    obeying the exact adding-up identity y = baseline + sum_j hd (validated to ~1e-10
+    against a NumPy reference). `times` are 0-based effective-sample indices
+    (= data_row - lags).
+
+    identification="cholesky" (default): a point decomposition at the OLS VAR with
+    Q=I; returns `times`, `baseline` [T_eff][n], `hd` [T_eff][n][n] indexed
+    [time][variable][shock], and the structural `shocks` [T_eff][n].
+    identification="sign": the importance-weighted SET decomposition over sign- (and
+    optionally narrative-) restricted rotations; returns `times`, `baseline`
+    (posterior-mean), `probs`, `hd_quantiles` [T_eff][n][n][len(probs)] (weighted
+    type-7), the weight-free identified-set envelope `hd_set_min`/`hd_set_max`,
+    per-draw `weights`, and `diagnostics`.
+
+    `narrative_restrictions` (sign mode) is a list of dicts with 0-based effective
+    indices:
+      {"type":"shock_sign","shock":int,"period":int,"sign":"+"|"-"}
+      {"type":"contribution","variable":int,"shock":int,"start":int,"end":int,
+       "rule":"most"|"least","strong":bool}
+      {"type":"contribution_sign","variable":int,"shock":int,"start":int,"end":int,
+       "sign":"+"|"-"}
+
+### `narrative_svar`
+
+```python
+def narrative_svar(
+    data: _ArrayLike,
+    sign_restrictions: Sequence[tuple[int, int, int, str]] = ...,
+    narrative_restrictions: list[dict] | None = ...,
+    lags: int = ...,
+    horizon: int = ...,
+    n_draws: int = ...,
+    max_tries: int = ...,
+    seed: int = ...,
+    lambda1: float = ...,
+    n_weight_draws: int = ...,
+) -> dict[str, Any]:
+```
+
+Narrative sign-restricted Bayesian SVAR (Antolín-Díaz & Rubio-Ramírez 2018).
+
+    Augments traditional sign restrictions with restrictions on named historical
+    episodes — shock signs and "most/least important contributor" statements (see
+    `historical_decomposition` for the `narrative_restrictions` dict schema) —
+    imposed by importance-reweighting the accepted rotations with weight = 1/P̂(N|S).
+    Returns per-(horizon, variable, shock) `quantiles` (weighted type-7) at
+    `probs=[0.05,0.16,0.50,0.84,0.95]`, the weight-free identified-set envelope
+    `set_min`/`set_max`, per-draw `weights` (mean 1), and `diagnostics` (with `ess`,
+    `narrative_acceptance_rate`, `min_ptilde`). With no narrative restrictions every
+    weight is 1 and it reproduces `sign_restricted_svar` bit-for-bit.
+
+### `fry_pagan_svar`
+
+```python
+def fry_pagan_svar(
+    data: _ArrayLike,
+    restrictions: Sequence[tuple[int, int, int, str]],
+    lags: int = ...,
+    horizon: int = ...,
+    n_draws: int = ...,
+    max_tries: int = ...,
+    seed: int = ...,
+    lambda1: float = ...,
+    target: str = ...,
+) -> dict[str, Any]:
+```
+
+Fry-Pagan (2011) median-target SVAR: the single coherent draw closest to the median band.
+
+    Sign restrictions set-identify a *set* of structural models; the pointwise
+    median band mixes responses from mutually inconsistent draws and is not
+    itself a model. This returns instead the single accepted, sign-normalized
+    draw whose structural IRFs jointly minimize the Fry-Pagan criterion -- the
+    sum, over the target cells, of squared deviations from the pointwise median,
+    each standardized by that cell's across-draw dispersion. `restrictions` are
+    (variable, shock, horizon, sign) tuples with sign in {"+", "-"}; `target` is
+    "restricted" (response cells of the sign-restricted shocks; default) or
+    "all". Returns the coherent `median_target_irf` [horizon+1][n][n], the
+    incoherent pointwise `median_irf` (for comparison), the selected `mt_index`
+    (0-based into the accepted set), its `mt_statistic`, `n_accepted`, and the
+    acceptance `diagnostics`. Reproducible at a fixed `seed` (substream
+    contract). The selected draw is a descriptive summary -- one interior point
+    of the identified set, dependent on the informative Haar prior -- not a
+    prior-free point estimate.
+
+### `robust_svar_bounds`
+
+```python
+def robust_svar_bounds(
+    data: _ArrayLike,
+    restrictions: Sequence[tuple[int, int, int, str]],
+    lags: int = ...,
+    horizon: int = ...,
+    n_draws: int = ...,
+    seed: int = ...,
+    lambda1: float = ...,
+    alpha: float = ...,
+) -> dict[str, Any]:
+```
+
+Giacomini-Kitagawa prior-robust identified-set bounds for a sign-restricted SVAR.
+
+    `restrictions` are (variable, shock, horizon, sign) tuples with sign in
+    {"+", "-"}. For each restricted shock, the per-draw identified set of the
+    structural IRF is computed exactly over the admissible rotation set and
+    summarized over the reduced-form posterior, removing the informative-Haar-
+    prior artifact that pointwise `sign_restricted_svar` bands carry. Returns
+    per (horizon, variable, shock): `set_lower_mean`/`set_upper_mean` (posterior-
+    mean identified-set edges), `robust_ci_lower`/`robust_ci_upper` (the level-
+    `alpha` robust credible region), and `lower_quantiles`/`upper_quantiles` at
+    `probs=[0.05,0.16,0.50,0.84,0.95]`. Unrestricted shocks are NaN;
+    `restricted_shocks` lists the valid shock indices; `diagnostics` reports
+    `empty_set_rate` (the share of draws whose restrictions were mutually
+    infeasible). Exact for a single restricted shock (Gafarov-Meier-Montiel-Olea
+    2018 closed form); with multiple jointly-restricted shocks each bound is that
+    shock's marginal identified set — a conservative outer approximation of the
+    joint set, since the cross-shock orthogonality coupling is not imposed.
 
 ### `long_run_svar`
 

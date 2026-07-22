@@ -5327,6 +5327,578 @@ fn smooth_lp<'py>(
     Ok(d)
 }
 
+/// Structural forecast-error variance decomposition for an arbitrary structural
+/// impact matrix `A0` — the gap `var_fevd` (recursive-Cholesky only) leaves.
+///
+/// `impact` is an optional (n x n) structural impact matrix A0 (columns =
+/// one-standard-deviation structural shocks, A0 A0' = Sigma; from any
+/// identification — sign, zero, proxy, max-share, long-run). If None, A0 is the
+/// lower Cholesky of the innovation covariance and the result equals `var_fevd`
+/// exactly. `sigma` ('dfadj'|'mle') selects the default Cholesky's df scaling;
+/// the FEVD shares are INVARIANT to it (numerator and denominator scale
+/// together) — it only rescales the reported `impact`.
+///
+/// Returns `fevd` [horizon+1][variable][shock] (each row sums to 1) and the
+/// `impact` [n][n] A0 used.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c", impact = None, sigma = "dfadj"))]
+fn structural_fevd<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    trend: &str,
+    impact: Option<numpy::PyReadonlyArray2<'py, f64>>,
+    sigma: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_bayes::cholesky_irf;
+    use tsecon_var::tsecon_linalg::faer::Mat;
+
+    let n_vars = data.as_array().ncols();
+    let r = var_results(&data, lags, trend)?;
+
+    let (a0, fevd) = match impact {
+        Some(arr) => {
+            let a = arr.as_array();
+            if a.nrows() != n_vars || a.ncols() != n_vars {
+                return Err(PyValueError::new_err(format!(
+                    "impact must be {n_vars}x{n_vars}, got {}x{}",
+                    a.nrows(),
+                    a.ncols()
+                )));
+            }
+            let a0 = Mat::from_fn(n_vars, n_vars, |i, j| a[(i, j)]);
+            let fevd = tsecon_ident::structural_fevd::structural_fevd(
+                r.params.as_ref(),
+                a0.as_ref(),
+                lags,
+                horizon,
+            )
+            .map_err(to_py)?;
+            (a0, fevd)
+        }
+        None => {
+            // Default recursive impact A0 = chol_lower(Sigma). cholesky_irf returns
+            // Theta_0 = A0, so we lift A0 straight from theta[0] (no extra factor).
+            // Shares are scale-invariant; `sigma` only rescales the reported A0.
+            let sig = match sigma {
+                "dfadj" => r.sigma_u.clone(),
+                "mle" => r.sigma_u_mle.clone(),
+                other => {
+                    return Err(PyValueError::new_err(format!(
+                        "unknown sigma {other:?}; expected \"dfadj\" or \"mle\""
+                    )))
+                }
+            };
+            let theta =
+                cholesky_irf(r.params.as_ref(), sig.as_ref(), lags, horizon).map_err(to_py)?;
+            let a0 = theta[0].clone();
+            let fevd =
+                tsecon_ident::structural_fevd::structural_fevd_from_theta(&theta).map_err(to_py)?;
+            (a0, fevd)
+        }
+    };
+
+    let out: Vec<Vec<Vec<f64>>> = fevd.iter().map(mat_to_vec2).collect();
+    let d = PyDict::new(py);
+    d.set_item("fevd", out)?;
+    d.set_item("impact", mat_to_vec2(&a0))?;
+    Ok(d)
+}
+
+/// Parse a list of narrative-restriction dicts into a NarrativeRestrictionSet.
+/// period/start/end are 0-based EFFECTIVE-sample indices (= data_row - lags).
+fn parse_narrative_restrictions(
+    restrictions: &[Bound<'_, PyDict>],
+    n_vars: usize,
+    t_eff: usize,
+) -> PyResult<tsecon_ident::NarrativeRestrictionSet> {
+    use tsecon_ident::{ContributionRule, NarrativeRestriction, Sign};
+    let parse_sign = |v: &Bound<'_, pyo3::PyAny>| -> PyResult<Sign> {
+        match v.extract::<String>()?.as_str() {
+            "+" | "positive" => Ok(Sign::Positive),
+            "-" | "negative" => Ok(Sign::Negative),
+            other => Err(PyValueError::new_err(format!(
+                "unknown sign {other:?}; expected \"+\" or \"-\""
+            ))),
+        }
+    };
+    fn get<'a>(d: &Bound<'a, PyDict>, k: &str) -> PyResult<Bound<'a, pyo3::PyAny>> {
+        d.get_item(k)?.ok_or_else(|| {
+            PyValueError::new_err(format!("narrative restriction missing key {k:?}"))
+        })
+    }
+    let mut items = Vec::with_capacity(restrictions.len());
+    for d in restrictions {
+        match get(d, "type")?.extract::<String>()?.as_str() {
+            "shock_sign" => items.push(NarrativeRestriction::ShockSign {
+                shock: get(d, "shock")?.extract()?,
+                period: get(d, "period")?.extract()?,
+                sign: parse_sign(&get(d, "sign")?)?,
+            }),
+            "contribution" => {
+                let rule = match get(d, "rule")?.extract::<String>()?.as_str() {
+                    "most" => ContributionRule::Most,
+                    "least" => ContributionRule::Least,
+                    o => {
+                        return Err(PyValueError::new_err(format!(
+                            "unknown rule {o:?}; expected \"most\"|\"least\""
+                        )))
+                    }
+                };
+                let strong = d
+                    .get_item("strong")?
+                    .map(|v| v.extract::<bool>())
+                    .transpose()?
+                    .unwrap_or(false);
+                items.push(NarrativeRestriction::Contribution {
+                    variable: get(d, "variable")?.extract()?,
+                    shock: get(d, "shock")?.extract()?,
+                    start: get(d, "start")?.extract()?,
+                    end: get(d, "end")?.extract()?,
+                    rule,
+                    strong,
+                });
+            }
+            "contribution_sign" => items.push(NarrativeRestriction::ContributionSign {
+                variable: get(d, "variable")?.extract()?,
+                shock: get(d, "shock")?.extract()?,
+                start: get(d, "start")?.extract()?,
+                end: get(d, "end")?.extract()?,
+                sign: parse_sign(&get(d, "sign")?)?,
+            }),
+            o => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown narrative restriction type {o:?}"
+                )))
+            }
+        }
+    }
+    tsecon_ident::NarrativeRestrictionSet::new(items, n_vars, t_eff).map_err(to_py)
+}
+
+/// Historical decomposition (Kilian & Lütkepohl 2017, ch.4): per-(time, variable,
+/// shock) structural-shock contributions.
+#[pyfunction]
+#[pyo3(signature = (data, restrictions = vec![], lags = 2, horizon = None, identification = "cholesky",
+                    n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2,
+                    narrative_restrictions = None, n_weight_draws = 200))]
+#[allow(clippy::too_many_arguments)]
+fn historical_decomposition<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    restrictions: Vec<(usize, usize, usize, String)>,
+    lags: usize,
+    horizon: Option<usize>,
+    identification: &str,
+    n_draws: usize,
+    max_tries: usize,
+    seed: u64,
+    lambda1: f64,
+    narrative_restrictions: Option<Vec<Bound<'py, PyDict>>>,
+    n_weight_draws: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    let a = data.as_array();
+    let m = Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let n = a.ncols();
+    if a.nrows() <= lags {
+        return Err(PyValueError::new_err("need more than `lags` observations"));
+    }
+    let t_eff = a.nrows() - lags;
+    let d = PyDict::new(py);
+    d.set_item("times", (0..t_eff).collect::<Vec<usize>>())?;
+
+    match identification {
+        "cholesky" => {
+            let vr = var_results(&data, lags, "c")?;
+            let sigma = vr.sigma_u_mle.clone();
+            let eye = Mat::<f64>::identity(n, n);
+            let h = horizon.unwrap_or(t_eff - 1);
+            let hd = tsecon_ident::decompose(
+                m.as_ref(),
+                vr.params.as_ref(),
+                sigma.as_ref(),
+                eye.as_ref(),
+                lags,
+                h,
+            )
+            .map_err(to_py)?;
+            let ref_to_vec2 =
+                |r: tsecon_var::tsecon_linalg::faer::MatRef<'_, f64>| -> Vec<Vec<f64>> {
+                    (0..r.nrows())
+                        .map(|i| (0..r.ncols()).map(|j| r[(i, j)]).collect())
+                        .collect()
+                };
+            let hd_tensor: Vec<Vec<Vec<f64>>> = hd
+                .hd()
+                .iter()
+                .map(|mm| {
+                    (0..n)
+                        .map(|i| (0..n).map(|j| mm[(i, j)]).collect())
+                        .collect()
+                })
+                .collect();
+            d.set_item("baseline", ref_to_vec2(hd.baseline()))?;
+            d.set_item("hd", hd_tensor)?;
+            d.set_item("shocks", ref_to_vec2(hd.shocks()))?;
+        }
+        "sign" => {
+            use tsecon_ident::{NarrativeSampler, Sign, SignRestriction, SignRestrictionSet};
+            let prior =
+                tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, 100.0, lambda1, 1.0, 0.0)
+                    .map_err(to_py)?;
+            let posterior = prior.posterior(m.as_ref()).map_err(to_py)?;
+            let sign_h = horizon.unwrap_or(12);
+            let signs = if restrictions.is_empty() {
+                None
+            } else {
+                let mut rs = Vec::new();
+                for (v, s, hh, sign) in restrictions {
+                    let sg = match sign.as_str() {
+                        "+" | "positive" => Sign::Positive,
+                        "-" | "negative" => Sign::Negative,
+                        o => return Err(PyValueError::new_err(format!("unknown sign {o:?}"))),
+                    };
+                    rs.push(SignRestriction::at(v, s, hh, sg));
+                }
+                Some(SignRestrictionSet::new(rs, n, sign_h).map_err(to_py)?)
+            };
+            let narrative = match &narrative_restrictions {
+                Some(l) if !l.is_empty() => Some(parse_narrative_restrictions(l, n, t_eff)?),
+                _ => None,
+            };
+            let result = NarrativeSampler::new(sign_h, n_draws, max_tries, n_weight_draws)
+                .map_err(to_py)?
+                .run(
+                    &posterior,
+                    m.as_ref(),
+                    signs.as_ref(),
+                    narrative.as_ref(),
+                    seed,
+                )
+                .map_err(to_py)?;
+            let hd = result.hd_summary().map_err(to_py)?;
+            let mut q = vec![vec![vec![Vec::<f64>::new(); n]; n]; t_eff];
+            let (mut lo, mut hi) = (
+                vec![vec![vec![0.0; n]; n]; t_eff],
+                vec![vec![vec![0.0; n]; n]; t_eff],
+            );
+            for t in 0..t_eff {
+                for i in 0..n {
+                    for j in 0..n {
+                        let bp = hd.point(i, j, t).map_err(to_py)?;
+                        q[t][i][j] = bp.quantiles.clone();
+                        lo[t][i][j] = bp.min;
+                        hi[t][i][j] = bp.max;
+                    }
+                }
+            }
+            let bl = hd.baseline();
+            d.set_item("probs", hd.probs().to_vec())?;
+            d.set_item(
+                "baseline",
+                (0..bl.nrows())
+                    .map(|i| (0..bl.ncols()).map(|j| bl[(i, j)]).collect::<Vec<_>>())
+                    .collect::<Vec<_>>(),
+            )?;
+            d.set_item("hd_quantiles", q)?;
+            d.set_item("hd_set_min", lo)?;
+            d.set_item("hd_set_max", hi)?;
+            d.set_item("weights", result.weights().to_vec())?;
+            let dg = result.diagnostics();
+            let dd = PyDict::new(py);
+            dd.set_item("accepted", dg.accepted)?;
+            dd.set_item("acceptance_rate", dg.acceptance_rate)?;
+            dd.set_item("ess", dg.ess)?;
+            dd.set_item("narrative_acceptance_rate", dg.narrative_acceptance_rate)?;
+            dd.set_item("min_ptilde", dg.min_ptilde)?;
+            d.set_item("diagnostics", dd)?;
+        }
+        o => {
+            return Err(PyValueError::new_err(format!(
+                "unknown identification {o:?}; expected \"cholesky\"|\"sign\""
+            )))
+        }
+    }
+    Ok(d)
+}
+
+/// Narrative sign-restricted Bayesian SVAR (Antolín-Díaz & Rubio-Ramírez 2018).
+/// Superset of sign_restricted_svar; narrative None + weights all 1 reproduces it.
+#[pyfunction]
+#[pyo3(signature = (data, sign_restrictions = vec![], narrative_restrictions = None, lags = 2,
+                    horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, n_weight_draws = 200))]
+#[allow(clippy::too_many_arguments)]
+fn narrative_svar<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    sign_restrictions: Vec<(usize, usize, usize, String)>,
+    narrative_restrictions: Option<Vec<Bound<'py, PyDict>>>,
+    lags: usize,
+    horizon: usize,
+    n_draws: usize,
+    max_tries: usize,
+    seed: u64,
+    lambda1: f64,
+    n_weight_draws: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::{NarrativeSampler, Sign, SignRestriction, SignRestrictionSet};
+    let a = data.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let n = a.ncols();
+    if a.nrows() <= lags {
+        return Err(PyValueError::new_err("need more than `lags` observations"));
+    }
+    let t_eff = a.nrows() - lags;
+    let prior = tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, 100.0, lambda1, 1.0, 0.0)
+        .map_err(to_py)?;
+    let posterior = prior.posterior(m.as_ref()).map_err(to_py)?;
+
+    let signs = if sign_restrictions.is_empty() {
+        None
+    } else {
+        let mut rs = Vec::new();
+        for (v, s, h, sign) in sign_restrictions {
+            let sg = match sign.as_str() {
+                "+" | "positive" => Sign::Positive,
+                "-" | "negative" => Sign::Negative,
+                o => return Err(PyValueError::new_err(format!("unknown sign {o:?}"))),
+            };
+            rs.push(SignRestriction::at(v, s, h, sg));
+        }
+        Some(SignRestrictionSet::new(rs, n, horizon).map_err(to_py)?)
+    };
+    let narrative = match &narrative_restrictions {
+        Some(l) if !l.is_empty() => Some(parse_narrative_restrictions(l, n, t_eff)?),
+        _ => None,
+    };
+    let result = NarrativeSampler::new(horizon, n_draws, max_tries, n_weight_draws)
+        .map_err(to_py)?
+        .run(
+            &posterior,
+            m.as_ref(),
+            signs.as_ref(),
+            narrative.as_ref(),
+            seed,
+        )
+        .map_err(to_py)?;
+
+    let summary = result.irf_summary(horizon).map_err(to_py)?;
+    let hs = horizon + 1;
+    let mut quantiles = vec![vec![vec![Vec::<f64>::new(); n]; n]; hs];
+    let (mut set_min, mut set_max) = (
+        vec![vec![vec![0.0; n]; n]; hs],
+        vec![vec![vec![0.0; n]; n]; hs],
+    );
+    for h in 0..hs {
+        for i in 0..n {
+            for j in 0..n {
+                let bp = summary.point(i, j, h).map_err(to_py)?;
+                quantiles[h][i][j] = bp.quantiles.clone();
+                set_min[h][i][j] = bp.min;
+                set_max[h][i][j] = bp.max;
+            }
+        }
+    }
+    let d = PyDict::new(py);
+    d.set_item("probs", summary.probs().to_vec())?;
+    d.set_item("quantiles", quantiles)?;
+    d.set_item("set_min", set_min)?;
+    d.set_item("set_max", set_max)?;
+    d.set_item("weights", result.weights().to_vec())?;
+    let dg = result.diagnostics();
+    let dd = PyDict::new(py);
+    dd.set_item("posterior_draws_used", dg.posterior_draws_used)?;
+    dd.set_item("rotations_tried", dg.rotations_tried)?;
+    dd.set_item("accepted", dg.accepted)?;
+    dd.set_item("acceptance_rate", dg.acceptance_rate)?;
+    dd.set_item("narrative_accepted", dg.narrative_accepted)?;
+    dd.set_item("narrative_acceptance_rate", dg.narrative_acceptance_rate)?;
+    dd.set_item("ess", dg.ess)?;
+    dd.set_item("mean_weight", dg.mean_weight)?;
+    dd.set_item("min_ptilde", dg.min_ptilde)?;
+    d.set_item("diagnostics", dd)?;
+    Ok(d)
+}
+
+/// Fry-Pagan (2011) median-target SVAR: the single accepted sign-restricted
+/// draw whose structural IRFs are jointly closest to the pointwise median.
+#[pyfunction]
+#[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, target = "restricted"))]
+#[allow(clippy::too_many_arguments)]
+fn fry_pagan_svar<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    restrictions: Vec<(usize, usize, usize, String)>,
+    lags: usize,
+    horizon: usize,
+    n_draws: usize,
+    max_tries: usize,
+    seed: u64,
+    lambda1: f64,
+    target: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::{median_target, Sign, SignRestriction, SignRestrictionSet, SignSampler};
+    let a = data.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let n_vars = a.ncols();
+    let prior = tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, 100.0, lambda1, 1.0, 0.0)
+        .map_err(to_py)?;
+    let posterior = prior.posterior(m.as_ref()).map_err(to_py)?;
+
+    let mut rs = Vec::with_capacity(restrictions.len());
+    for (v, s, h, sign) in restrictions {
+        let sg = match sign.as_str() {
+            "+" | "positive" => Sign::Positive,
+            "-" | "negative" => Sign::Negative,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown sign {other:?}; expected \"+\" or \"-\""
+                )))
+            }
+        };
+        rs.push(SignRestriction::at(v, s, h, sg));
+    }
+    let restr = SignRestrictionSet::new(rs, n_vars, horizon).map_err(to_py)?;
+    let result = SignSampler::new(horizon, n_draws, max_tries)
+        .map_err(to_py)?
+        .run(&posterior, &restr, seed)
+        .map_err(to_py)?;
+
+    let shocks: Vec<usize> = match target {
+        "restricted" => restr.restricted_shocks().to_vec(),
+        "all" => (0..n_vars).collect(),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown target {other:?}; expected \"restricted\" or \"all\""
+            )))
+        }
+    };
+    let hs = horizon + 1;
+    let mut cells = Vec::with_capacity(hs * n_vars * shocks.len());
+    for h in 0..hs {
+        for i in 0..n_vars {
+            for &j in &shocks {
+                cells.push((i, j, h));
+            }
+        }
+    }
+
+    let draws = result.draws();
+    let mt = median_target(draws, &cells).map_err(to_py)?;
+
+    let to_nested = |irf: &[tsecon_var::tsecon_linalg::faer::Mat<f64>]| {
+        let mut out = vec![vec![vec![0.0_f64; n_vars]; n_vars]; hs];
+        for (h, mh) in irf.iter().enumerate() {
+            for i in 0..n_vars {
+                for j in 0..n_vars {
+                    out[h][i][j] = mh[(i, j)];
+                }
+            }
+        }
+        out
+    };
+    let median_target_irf = to_nested(&draws[mt.index]);
+    let median_irf = to_nested(&mt.median_irf);
+
+    let d = PyDict::new(py);
+    d.set_item("median_target_irf", median_target_irf)?;
+    d.set_item("median_irf", median_irf)?;
+    d.set_item("mt_index", mt.index)?;
+    d.set_item("mt_statistic", mt.statistic)?;
+    d.set_item("n_accepted", draws.len())?;
+    let diag = result.diagnostics();
+    let dd = PyDict::new(py);
+    dd.set_item("posterior_draws_used", diag.posterior_draws_used)?;
+    dd.set_item("rotations_tried", diag.rotations_tried)?;
+    dd.set_item("accepted", diag.accepted)?;
+    dd.set_item("acceptance_rate", diag.acceptance_rate)?;
+    d.set_item("diagnostics", dd)?;
+    Ok(d)
+}
+
+/// Giacomini-Kitagawa (2021) prior-robust identified-set bounds for a sign-
+/// restricted SVAR on the Minnesota-NIW posterior.
+#[pyfunction]
+#[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, seed = 0, lambda1 = 0.2, alpha = 0.10))]
+#[allow(clippy::too_many_arguments)]
+fn robust_svar_bounds<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    restrictions: Vec<(usize, usize, usize, String)>,
+    lags: usize,
+    horizon: usize,
+    n_draws: usize,
+    seed: u64,
+    lambda1: f64,
+    alpha: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::{robust_svar_bounds_default, Sign, SignRestriction, SignRestrictionSet};
+    let a = data.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+    let n_vars = a.ncols();
+    let prior = tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, 100.0, lambda1, 1.0, 0.0)
+        .map_err(to_py)?;
+    let posterior = prior.posterior(m.as_ref()).map_err(to_py)?;
+
+    let mut rs = Vec::with_capacity(restrictions.len());
+    for (v, s, h, sign) in restrictions {
+        let sg = match sign.as_str() {
+            "+" | "positive" => Sign::Positive,
+            "-" | "negative" => Sign::Negative,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown sign {other:?}; expected \"+\" or \"-\""
+                )))
+            }
+        };
+        rs.push(SignRestriction::at(v, s, h, sg));
+    }
+    let restr = SignRestrictionSet::new(rs, n_vars, horizon).map_err(to_py)?;
+    let result = robust_svar_bounds_default(&posterior, &restr, horizon, n_draws, seed, alpha)
+        .map_err(to_py)?;
+
+    let hs = horizon + 1;
+    let mut set_lower_mean = vec![vec![vec![0.0_f64; n_vars]; n_vars]; hs];
+    let mut set_upper_mean = vec![vec![vec![0.0_f64; n_vars]; n_vars]; hs];
+    let mut robust_ci_lower = vec![vec![vec![0.0_f64; n_vars]; n_vars]; hs];
+    let mut robust_ci_upper = vec![vec![vec![0.0_f64; n_vars]; n_vars]; hs];
+    let mut lower_quantiles = vec![vec![vec![Vec::<f64>::new(); n_vars]; n_vars]; hs];
+    let mut upper_quantiles = vec![vec![vec![Vec::<f64>::new(); n_vars]; n_vars]; hs];
+    for h in 0..hs {
+        for i in 0..n_vars {
+            for j in 0..n_vars {
+                let bp = result.point(i, j, h).map_err(to_py)?;
+                set_lower_mean[h][i][j] = bp.set_lower_mean;
+                set_upper_mean[h][i][j] = bp.set_upper_mean;
+                robust_ci_lower[h][i][j] = bp.robust_ci_lower;
+                robust_ci_upper[h][i][j] = bp.robust_ci_upper;
+                lower_quantiles[h][i][j] = bp.lower_quantiles.clone();
+                upper_quantiles[h][i][j] = bp.upper_quantiles.clone();
+            }
+        }
+    }
+
+    let d = PyDict::new(py);
+    d.set_item("set_lower_mean", set_lower_mean)?;
+    d.set_item("set_upper_mean", set_upper_mean)?;
+    d.set_item("robust_ci_lower", robust_ci_lower)?;
+    d.set_item("robust_ci_upper", robust_ci_upper)?;
+    d.set_item("lower_quantiles", lower_quantiles)?;
+    d.set_item("upper_quantiles", upper_quantiles)?;
+    d.set_item("probs", result.probs().to_vec())?;
+    d.set_item("alpha", result.alpha())?;
+    d.set_item("restricted_shocks", result.restricted_shocks().to_vec())?;
+    let diag = result.diagnostics();
+    let dd = PyDict::new(py);
+    dd.set_item("posterior_draws_used", diag.posterior_draws_used)?;
+    dd.set_item("nonempty_draws", diag.nonempty_draws)?;
+    dd.set_item("empty_set_rate", diag.empty_set_rate)?;
+    d.set_item("diagnostics", dd)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -5445,5 +6017,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(hetero_svar, m)?)?;
     m.add_function(wrap_pyfunction!(bvar_hierarchical, m)?)?;
     m.add_function(wrap_pyfunction!(bvar_ssvs, m)?)?;
+    m.add_function(wrap_pyfunction!(structural_fevd, m)?)?;
+    m.add_function(wrap_pyfunction!(historical_decomposition, m)?)?;
+    m.add_function(wrap_pyfunction!(narrative_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(fry_pagan_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(robust_svar_bounds, m)?)?;
     Ok(())
 }

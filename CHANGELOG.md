@@ -55,6 +55,27 @@ to PyPI as `tsecon` at the first tagged release.
   heteroskedasticity, with a Box's-M covariance-equality gate); FAVAR;
   Diebold-Yilmaz connectedness; the PCA factor model with Bai-Ng selection;
   Johansen cointegration and VECM; multivariate GARCH (CCC/DCC).
+- **Post-identification and prior-robust SVAR tools**: a layer that *takes* an
+  identification (any impact matrix `A0`, or a sign-restricted set) and answers
+  what comes after — `structural_fevd` (forecast-error variance decomposition
+  for an arbitrary structural `A0`, the gap the recursive-only `var_fevd`
+  leaves; reproduces `var_fevd`/statsmodels exactly for the Cholesky case,
+  rows sum to 1 by the rotation-invariant-denominator identity);
+  `historical_decomposition` (per-`(time, variable, shock)` contributions with
+  the exact `y = baseline + Σ_j hd` adding-up identity, in a Cholesky point mode
+  and an importance-weighted sign-identified set mode); `fry_pagan_svar`
+  (Fry-Pagan 2011 median-target — the single accepted, coherent draw closest to
+  the pointwise-median band, the answer to "medians mix models");
+  `robust_svar_bounds` (Giacomini-Kitagawa 2021 prior-robust identified-set
+  bounds via the Gafarov-Meier-Montiel-Olea 2018 active-set closed form, exact
+  for a single restricted shock and a conservative marginal outer bound for
+  jointly-restricted shocks — removing the Haar-prior artifact that pointwise
+  sign-restricted bands carry); and `narrative_svar` (Antolín-Díaz-Rubio-Ramírez
+  2018 narrative sign restrictions — shock-sign and "most/least important
+  contributor" episode statements imposed by importance-reweighting with weight
+  `1/P̂(N|S)`, reporting `ess`/`min_ptilde`; a strict superset of
+  `sign_restricted_svar` that reproduces it bit-for-bit with no narrative
+  restrictions).
 - **Local projections**: `lp` (lag-augmented inference by default), `lp_iv`
   with a per-horizon first-stage F, state-dependent `lp_state`, a three-valued
   `cumulative` mode, and `lp_multiplier` — the one-step Ramey-Zubairy integral

@@ -22,7 +22,7 @@ just present.
 ## Status
 
 Phases 0–1 complete; Phases 2–4 substantially landed. **41 Rust crates,
-947 Rust + 483 Python tests — all green and golden-fixture-gated.** The whole
+1001 Rust + 491 Python tests — all green and golden-fixture-gated.** The whole
 library builds and tests from a clean checkout on every push (CI matrix on
 Linux/macOS/Windows), and a strict-built docs site keeps the documentation
 honest. See [ROADMAP.md §0](ROADMAP.md#0-current-build-status) for the live
@@ -71,7 +71,7 @@ The **[Quickstart](docs/quickstart.md)** and the symptom-driven
   get routed to the right function.
 - **[Model cards & API reference](docs/reference/README.md)** — the
   assumptions, defaults, failure modes, and validation target of every
-  estimator, plus the full 116-function reference.
+  estimator, plus the full 121-function reference.
 - **[Migration guides](docs/migration/from-statsmodels.md)** — from
   statsmodels, R, and Stata, with a Rosetta glossary.
 - **[Gallery](docs/examples/README.md)** — worked figures in a professional
@@ -82,7 +82,7 @@ mkdocs serve`.
 
 ## What's inside
 
-116 functions callable from Python today: diagnostics, unit-root and
+121 functions callable from Python today: diagnostics, unit-root and
 specification tests (White/Breusch-Pagan, RESET, Chow, CUSUM);
 ARIMA, GARCH, and GAS score-driven volatility; VAR/SVAR with sign-restricted
 identification, FAVAR, and Diebold-Yilmaz connectedness; local projections
