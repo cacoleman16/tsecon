@@ -11,6 +11,7 @@ description = "Bayesian foundations for the tsecon time-series econometrics libr
 # workspace shares one pinned version (0.24, default-features = false,
 # features = ["std"]).
 tsecon-linalg = { path = "../tsecon-linalg" }
+tsecon-optim = { path = "../tsecon-optim" }
 tsecon-rng = { path = "../tsecon-rng" }
 tsecon-ssm = { path = "../tsecon-ssm" }
 tsecon-stats = { path = "../tsecon-stats" }

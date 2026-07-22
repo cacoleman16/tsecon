@@ -894,6 +894,7 @@ version = "0.0.1"
 dependencies = [
  "serde_json",
  "tsecon-linalg",
+ "tsecon-optim",
  "tsecon-rng",
  "tsecon-ssm",
  "tsecon-stats",
@@ -943,6 +944,7 @@ name = "tsecon-diag"
 version = "0.0.1"
 dependencies = [
  "serde_json",
+ "tsecon-hac",
  "tsecon-stats",
 ]
 

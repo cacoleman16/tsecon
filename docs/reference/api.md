@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**106 functions.**
+**113 functions.**
 
 ## diagnostics
 
@@ -78,6 +78,33 @@ def check_stationarity(y: _ArrayLike, alpha: float = ...) -> dict[str, Any]:
 ```
 
 The ADF + KPSS confirmatory-quadrant workflow with a recommendation.
+
+### `phillips_perron`
+
+```python
+def phillips_perron(
+    y: _ArrayLike,
+    regression: str = ...,
+    test_type: str = ...,
+    lags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Phillips-Perron unit-root test (Z-tau/Z-alpha) with MacKinnon p-values.
+
+### `phillips_ouliaris`
+
+```python
+def phillips_ouliaris(
+    y: _ArrayLike,
+    x: _ArrayLike,
+    trend: str = ...,
+    test_type: str = ...,
+    bandwidth: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Phillips-Ouliaris residual cointegration test (Zt/Za) with MacKinnon N-surfaces.
 
 ### `check_series`
 
@@ -357,6 +384,28 @@ def bvar_irf_draws(
 
 Posterior Cholesky-IRF draws [draw][h][variable][shock] for credible bands.
 
+### `bvar_hierarchical`
+
+```python
+def bvar_hierarchical(
+    data: _ArrayLike,
+    lags: int = ...,
+    delta: float = ...,
+    lambda0: float = ...,
+    lambda3: float = ...,
+    lambda1_init: float = ...,
+    lambda1_lo: float = ...,
+    lambda1_hi: float = ...,
+    optimize: str = ...,
+    hyperprior: str = ...,
+    n_grid: int = ...,
+    max_iter: int = ...,
+    tol: float = ...,
+) -> dict[str, Any]:
+```
+
+Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015).
+
 ### `mcmc_diagnostics`
 
 ```python
@@ -564,6 +613,120 @@ Sign-restricted Bayesian SVAR: identified-set bands + acceptance diagnostics.
     {"+", "-"}. Returns per-(horizon, variable, shock) `quantiles` at
     `probs=[0.05,0.16,0.50,0.84,0.95]`, the identified-set envelope
     (`set_min`/`set_max`), and `diagnostics`.
+
+### `long_run_svar`
+
+```python
+def long_run_svar(
+    data: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    trend: str = ...,
+    restrictions: Sequence[tuple[int, int]] | None = ...,
+    normalize: str = ...,
+) -> dict[str, Any]:
+```
+
+Blanchard-Quah long-run SVAR: closed-form structural IRFs under frequency-zero restrictions.
+
+    `restrictions` is a list of (variable, shock) long-run zero pairs (None =>
+    classic recursive BQ); `normalize` is "long_run" (positive LR diagonal;
+    default) or "impact" (positive B diagonal). Returns `impact` (B),
+    `long_run` (LR = C(1) B), `long_run_multiplier` (C(1)), `irf`
+    [horizon+1][i][j], `cumulative_irf`, and `fevd`. Point estimate, no RNG.
+
+### `max_share_svar`
+
+```python
+def max_share_svar(
+    data: _ArrayLike,
+    lags: int = ...,
+    target: int = ...,
+    h0: int = ...,
+    h1: int = ...,
+    horizon: int = ...,
+    trend: str = ...,
+    exclude_impact: bool = ...,
+    weighting: str = ...,
+    sign: str = ...,
+) -> dict[str, Any]:
+```
+
+Max-share / maximum-FEV structural shock (Uhlig 2004; Francis et al 2014; Barsky-Sims 2011 news).
+
+    Identifies the single UNIT-VARIANCE structural shock maximizing the `target`
+    variable's forecast-error variance accumulated over the window `[h0, h1]`.
+    `weighting="window"` selects the Uhlig/Francis objective (incremental
+    windowed FEV; `share_window` is an exact accumulated-FEV fraction),
+    `"cumulative"` the Barsky-Sims objective (window-mean cumulative FEV share).
+    `exclude_impact=True` imposes zero impact on the target (Barsky-Sims news
+    shock). `sign` pins the identified sign ("cumsum"|"impact"|"none").
+    Returns `irf` [horizon+1][k], `impact` [k], `q` [k], `share_window` (float),
+    `fev_share` [horizon+1], and `eigenvalues` (ascending; length k, or k-1 when
+    `exclude_impact`).
+
+### `proxy_svar`
+
+```python
+def proxy_svar(
+    data: _ArrayLike,
+    proxy: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    norm_var: int = ...,
+    unit: float = ...,
+    trend: str = ...,
+    robust_f: bool = ...,
+) -> dict[str, Any]:
+```
+
+Proxy SVAR (external-instrument SVAR-IV): one shock from one instrument.
+
+    The residual-instrument covariance identifies the target shock's impact
+    column up to scale; the unit-effect normalization sets its impact on
+    `norm_var` to `unit` (sign pinned). `proxy` aligns to `data` rows (NaN
+    outside the instrument window is dropped). Returns `irf` (horizon+1, n),
+    `impact`, `relative_impact`, `cov_um`, `first_stage_f` (weak below 10),
+    `reliability` = Corr(m, u_norm)^2, `n_proxy`, and the estimated `shock`
+    (length T). Point estimate only -- no bands (v2: Jentsch-Lunsford MBB).
+
+### `hetero_svar`
+
+```python
+def hetero_svar(
+    data: _ArrayLike,
+    regime_labels: npt.NDArray[np.integer] | Sequence[int],
+    lags: int = ...,
+    horizon: int = ...,
+    trend: str = ...,
+    base_regime: int | None = ...,
+    sign_normalization: str = ...,
+) -> dict[str, Any]:
+```
+
+SVAR identification through heteroskedasticity (Rigobon 2003; Lanne-Lutkepohl 2008), two known variance regimes.
+
+    `data` is (T, n); `regime_labels` is an array-like of length T with EXACTLY
+    two distinct integer values (labels align to observations; the first `lags`
+    are dropped to match residuals). `base_regime` is the label normalized to
+    Lambda=I (default: the smaller label); the other regime's shock-variance
+    ratios are reported. `sign_normalization`: "max" (largest-|entry| per B
+    column made positive; default) or "diag" (B[j,j] >= 0).
+
+    Returns a dict with `B` (n x n impact matrix = Theta_0, columns in
+    ascending variance-ratio order), `variance_ratios` (the n generalized
+    eigenvalues, ascending), `structural_irf` ([h][i][j] = Theta_h = Psi_h B),
+    `min_ratio_gap` and `ratio_dist_from_unity` (identification margins),
+    `identified` (bool heuristic), `covariance_equality` (Bartlett-corrected
+    Box's M: statistic/dof/pvalue/distinct_regimes), `sigma_regime1`,
+    `sigma_regime2`, `regime1_label`, `regime2_label`, `regime_sizes`,
+    `n_vars`, `horizon`, `lags`, `sign_convention`.
+
+    Point-identified IF AND ONLY IF the variance ratios are pairwise distinct
+    (min_ratio_gap > 0); the shocks come out ordered by variance ratio and
+    carry no economic labels. Standard errors on B/Theta_h are not provided in
+    this closed-form build. The >2-regime and Markov-switching/GARCH variants
+    are deferred.
 
 ## panel
 

@@ -263,13 +263,36 @@ $$
 
 The magic ingredient is one you already have: $p(Y \mid \lambda)$ is exactly the closed-form NIW marginal likelihood, evaluated at the prior that $\lambda$ implies. Estimating the dials costs a low-dimensional sampler (or just an optimizer, for the empirical-Bayes mode) wrapped around a formula — and it works so well that "GLP" is now the default prior in serious BVAR forecasting. One implementation subtlety with teeth: every term of the marginal likelihood that depends on $\lambda$ must be kept — the "constants" people drop when they only ever compare parameters *within* one model are not constant across priors, and dropping them silently corrupts the hyperparameter posterior.
 
-*Roadmap preview — this API lands with [Module 05](../roadmap/05-bayesian.md):*
+tsecon ships the empirical-Bayes (ML-II) mode today as `bvar_hierarchical`: it maximizes the closed-form marginal likelihood over the tightness `lambda1`, then refits the conjugate posterior at the optimum — a drop-in `bvar_fit` that tunes its own shrinkage.
 
 ```python
-res = tsecon.bvar_glp(data, lags=4, n_draws=2000, seed=0)
-res["lambda_posterior"]     # the data's verdict on the tightness dials
-res["hyper_mode"]           # empirical-Bayes mode, for a quick look
+import json, numpy as np, tsecon
+
+bh_data = np.array(json.load(open("fixtures/var.json"))["data_100dlog_gdp_cons_inv"])
+h = tsecon.bvar_hierarchical(bh_data, lags=2, optimize="lambda1")
+print("selected lambda1:", round(h["lambda1_opt"], 4),
+      " log-ML at optimum:", round(h["log_marginal_likelihood"], 4))
+print("log-ML at the conventional lambda1 = 0.2:", round(h["lambda1_fixed_log_ml"], 4))
+
+# On a short, persistent sample the data-chosen tightness moves off 0.2 and the
+# marginal likelihood improves materially over the folklore default.
+rng_bh = np.random.default_rng(1)
+Ys = np.zeros((60, 4))
+for t in range(1, 60):
+    Ys[t] = 0.8 * Ys[t - 1] + 0.3 * rng_bh.standard_normal(4)
+hs = tsecon.bvar_hierarchical(Ys, lags=3, optimize="lambda1")
+print("short sample: selected lambda1 =", round(hs["lambda1_opt"], 4),
+      " log-ML gain over fixed 0.2 =",
+      round(hs["log_marginal_likelihood"] - hs["lambda1_fixed_log_ml"], 3))
 ```
+
+```
+selected lambda1: 0.1942  log-ML at optimum: -861.5642
+log-ML at the conventional lambda1 = 0.2: -861.5704
+short sample: selected lambda1 = 0.3058  log-ML gain over fixed 0.2 = 3.564
+```
+
+On the long fixture sample the evidence is nearly flat in `lambda1`: the ML-II optimum (0.194) sits a whisker from the folklore 0.2 and barely improves the marginal likelihood — the data have little to say about the dial. On the short, persistent 4-variable sample the picture flips: the data pull the tightness up to 0.31 and buy a 3.6-log-point improvement, exactly the regime where letting the evidence set the dial matters. Pass `optimize="lambda1+lambda3"` to also tune the lag-decay rate, or `hyperprior="glp"` for the GLP Gamma hyperprior (MAP-II rather than pure ML-II); the fully sampled hierarchical posterior with credible bands on `lambda` remains a [Module 05](../roadmap/05-bayesian.md) roadmap item.
 
 **Time-varying parameters (TVP).** Was the Fed's inflation response the same in 1975 as in 2005? A TVP-VAR answers by letting coefficients follow random walks, $\beta_t = \beta_{t-1} + \eta_t$ — a state-space model estimated by Gibbs with FFBS drawing the coefficient paths (Cogley and Sargent 2005; Primiceri 2005, as corrected by Del Negro and Primiceri 2015). Conceptually: the Minnesota prior shrinks coefficients toward a point; a TVP prior shrinks *changes* in coefficients toward zero, with the state-innovation variance controlling how much history is allowed to bend. One documented choice deserves daylight: many TVP implementations discard coefficient draws whose implied VAR is explosive (following Cogley and Sargent). That truncation is a *change of prior*, not a numerical detail — it alters the posterior and the marginal likelihood, and near unit roots it can silently reject almost every draw. tsecon's roadmap makes it an explicit, reported option rather than a hidden default.
 
@@ -325,7 +348,7 @@ The state of the art, and where the [Module 05 roadmap](../roadmap/05-bayesian.m
 | Situation | Reach for | Because |
 |---|---|---|
 | Forecasting VAR, 3–10 variables, typical macro sample | Minnesota/NIW-BVAR, tightness via marginal likelihood | Closed form — fast, no convergence worries; shrinkage cures overparameterization |
-| Choosing the tightness dials | GLP hierarchical prior (or empirical-Bayes ML maximization) | The data pick $\lambda$ through the closed-form evidence; folklore values retire |
+| Choosing the tightness dials | `bvar_hierarchical` — GLP empirical-Bayes / ML-II | The data pick $\lambda$ by maximizing the closed-form evidence; folklore values retire |
 | 20–130 variables | Large conjugate BVAR, shrinkage tightened with dimension | Bańbura et al. (2010): beats factor models; conjugacy keeps it feasible |
 | Prior must differ freely across equations | Independent Normal-Wishart + Gibbs | The Kronecker restriction of the conjugate form is the price of closed forms |
 | Suspected drift in dynamics (policy regimes, structural change) | TVP-BVAR via FFBS, with shrinkage on state variances | Random-walk coefficients; shrinkage prevents hallucinated time variation |
@@ -342,6 +365,7 @@ The state of the art, and where the [Module 05 roadmap](../roadmap/05-bayesian.m
 
 - `tsecon.ols` — the shrinkage demonstration via dummy observations (`se_type="nonrobust"|"hc0"|"hc1"|"hac"`)
 - `tsecon.bvar_fit` — the conjugate Minnesota/NIW-BVAR: closed-form posterior-mean coefficients $\bar{B}$, posterior-mean $\Sigma$, and the matrix-variate-$t$ log marginal likelihood (backed by the `MinnesotaNiwPrior` / `NiwPosterior` Rust core)
+- `tsecon.bvar_hierarchical` — empirical-Bayes / ML-II tightness selection (Giannone-Lenza-Primiceri 2015): maximizes that same marginal likelihood over `lambda1` (optionally `lambda1+lambda3`, or MAP-II under the GLP Gamma hyperprior), then refits the posterior at the optimum
 - `tsecon.bvar_irf_draws` — joint $(B, \Sigma)$ posterior sampling through the Kronecker structure, pushed through the Cholesky-IRF recursion for credible-band draws `[draw][h][response][shock]`
 - `tsecon.mcmc_diagnostics` — Vehtari et al. (2021) rank-normalized split $\widehat{R}$ and bulk/tail ESS in one call, numerically matching ArviZ and R `posterior`
 - `tsecon.var_fit`, `tsecon.var_irf`, `tsecon.var_fevd`, `tsecon.var_forecast`, `tsecon.var_granger` — the frequentist VAR baseline a BVAR wraps a posterior around
@@ -352,7 +376,7 @@ The state of the art, and where the [Module 05 roadmap](../roadmap/05-bayesian.m
 
 - `FfbsSampler` — the Carter-Kohn forward-filter backward-sampling simulation smoother, with rank-aware handling of singular state covariances
 
-**Roadmap** ([docs/roadmap/05-bayesian.md](../roadmap/05-bayesian.md)): the GLP hierarchical prior and dummy-observation stack, independent Normal-Wishart Gibbs, large BVARs, stochastic volatility (KSC/Omori mixture, common and factor SV), corrected TVP-BVAR (Del Negro-Primiceri 2015), steady-state BVARs, conditional forecasts, the validated marginal-likelihood suite, SSVS/horseshoe/Normal-Gamma shrinkage, NUTS and SMC samplers, and Geweke/SBC sampler tests in CI.
+**Roadmap** ([docs/roadmap/05-bayesian.md](../roadmap/05-bayesian.md)): the *fully sampled* GLP hierarchical posterior (credible bands on $\lambda$, beyond the ML-II/MAP-II point selection `bvar_hierarchical` ships) and the "prior on the long run" dummy-observation stack, independent Normal-Wishart Gibbs, large BVARs, stochastic volatility (KSC/Omori mixture, common and factor SV), corrected TVP-BVAR (Del Negro-Primiceri 2015), steady-state BVARs, conditional forecasts, the validated marginal-likelihood suite, SSVS/horseshoe/Normal-Gamma shrinkage, NUTS and SMC samplers, and Geweke/SBC sampler tests in CI.
 
 ## Further reading
 

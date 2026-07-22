@@ -43,8 +43,10 @@ mod acf;
 mod arch;
 mod error;
 mod mackinnon;
+mod mackinnon_ext;
 mod normality;
 mod ols;
+mod phillips;
 mod portmanteau;
 mod report;
 mod unitroot;
@@ -55,6 +57,9 @@ pub use arch::{arch_lm, ArchLmResult};
 pub use error::DiagError;
 pub use mackinnon::{mackinnon_crit, mackinnon_p, AdfCriticalValues};
 pub use normality::{jarque_bera, JarqueBeraResult};
+pub use phillips::{
+    phillips_ouliaris, phillips_perron, PoResult, PoTestType, PoTrend, PpResult, PpTestType,
+};
 pub use portmanteau::{ljung_box, PortmanteauResult};
 pub use report::DiagnosticReport;
 pub use unitroot::{

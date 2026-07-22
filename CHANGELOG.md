@@ -18,7 +18,10 @@ to PyPI as `tsecon` at the first tagged release.
   with the Monahan stationarity transform, and the HAC/robust-inference module.
 - **Diagnostics**: ACF/PACF, Ljung-Box, Jarque-Bera, ARCH-LM; the full
   unit-root workflow (ADF with MacKinnon p-values, KPSS, `check_stationarity`);
-  spectral analysis (periodogram, Welch, coherence).
+  the semiparametric Phillips family — `phillips_perron` (Z-tau/Z-alpha
+  unit-root test) and `phillips_ouliaris` (single-equation residual
+  cointegration test), matched to `arch` to < 1e-10 with MacKinnon
+  response-surface p-values; spectral analysis (periodogram, Welch, coherence).
 - **One-call battery**: `check_series` — the Module 01 flagship — runs the
   diagnostic families in order (outlier screen, ADF+KPSS quadrant with
   analysis-scale routing, Ljung-Box/ACF/PACF, ARCH-LM, Jarque-Bera, a
@@ -39,15 +42,24 @@ to PyPI as `tsecon` at the first tagged release.
   (1990) delta-method SEs validated against statsmodels to machine precision,
   and a Kilian (1998) residual bootstrap with optional bias correction), and an
   honest stability block (`is_stable`/`min_root`); sign-restricted Bayesian
-  SVARs; FAVAR; Diebold-Yilmaz connectedness; the PCA factor model with Bai-Ng
-  selection; Johansen cointegration and VECM; multivariate GARCH (CCC/DCC).
+  SVARs; and four closed-form point-identification schemes —
+  `long_run_svar` (Blanchard-Quah long-run restrictions), `max_share_svar`
+  (Uhlig/Francis maximum-FEV-share and Barsky-Sims news shocks), `proxy_svar`
+  (external-instrument SVAR-IV with a first-stage-F report and NaN-window
+  handling), and `hetero_svar` (Rigobon two-regime identification through
+  heteroskedasticity, with a Box's-M covariance-equality gate); FAVAR;
+  Diebold-Yilmaz connectedness; the PCA factor model with Bai-Ng selection;
+  Johansen cointegration and VECM; multivariate GARCH (CCC/DCC).
 - **Local projections**: `lp` (lag-augmented inference by default), `lp_iv`
   with a per-horizon first-stage F, state-dependent `lp_state`, a three-valued
   `cumulative` mode, and `lp_multiplier` — the one-step Ramey-Zubairy integral
   multiplier as a first-class entry point (because outcome-only cumulation is
   a cumulative IRF, not a multiplier).
 - **Bayesian**: a Minnesota-NIW Bayesian VAR with closed-form posterior,
-  posterior impulse-response draws, and ArviZ-exact convergence diagnostics.
+  posterior impulse-response draws, and ArviZ-exact convergence diagnostics;
+  plus `bvar_hierarchical` — empirical-Bayes (ML-II / GLP MAP-II) selection of
+  the prior tightness by maximizing the Giannone-Lenza-Primiceri (2015)
+  marginal likelihood, then refitting the posterior at the optimum.
 - **Forecasting and evaluation**: Diebold-Mariano (HLN), Clark-West,
   Giacomini-White, Theta, accuracy measures, and the rolling/expanding
   backtest engine.

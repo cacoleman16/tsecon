@@ -187,6 +187,29 @@ Note what a *failure to reject* means: not "this series has a unit root," but "w
 
 > **⚠ Common mistake.** Treating the deterministic specification as a nuisance detail. It is the whole game. Include a trend the data do not need and you throw away power: on the level-drifting series in the worked example below, `regression="c"` gives $p = 0.06$ while an unnecessary `regression="ct"` gives $p = 0.62$ — same data, opposite verdicts. Omit a trend the data do have and the test cannot reject a unit root against the trend-stationary truth *no matter how much data you collect*. Plot the series, decide what the stationary alternative would look like, and match the specification to it. And never look up a plain $t$ table: $-2.5$ is "significant" in a $t$ world and nothing at all in the Dickey-Fuller world.
 
+## The Phillips-Perron alternative: correct for serial correlation without lags
+
+ADF soaks up serial correlation by *adding* lagged differences — and you must choose how many. Phillips and Perron (1988) take the other route: run the plain Dickey-Fuller *level* regression with no augmentation, then **correct the statistic itself** for serial correlation using a kernel (Bartlett) estimate of the residual's long-run variance — the same HAC machinery behind Newey-West standard errors and the KPSS denominator below. The null (a unit root), the nonstandard Dickey-Fuller distribution, and the MacKinnon p-values are all identical to ADF; only the nuisance-correction differs. `phillips_perron` ships it, matching `arch.unitroot.PhillipsPerron` to machine precision:
+
+```python
+rng_pp = np.random.default_rng(0)
+walk = np.cumsum(rng_pp.standard_normal(300))     # a random walk (unit root)
+noise = rng_pp.standard_normal(300)               # i.i.d. (stationary)
+
+pp = tsecon.phillips_perron(walk, regression="c")            # test_type="tau" (Z-tau) is the default
+pp_noise = tsecon.phillips_perron(noise)
+print("PP(walk)  Z-tau:", round(pp["stat"], 4), " p:", round(pp["pvalue"], 4),
+      " bandwidth:", pp["lags"])
+print("PP(noise) Z-tau:", round(pp_noise["stat"], 4), " p:", round(pp_noise["pvalue"], 4))
+```
+
+```
+PP(walk)  Z-tau: -0.7675  p: 0.8285  bandwidth: 16
+PP(noise) Z-tau: -18.7697  p: 0.0
+```
+
+The random walk cannot reject the unit root; the i.i.d. series rejects overwhelmingly. Use PP as a robustness cross-check on ADF — agreement is reassuring — but it inherits ADF's low power near the boundary and its size distortion under a large negative MA root, so it does *not* replace the confirmatory ADF+KPSS quadrant below. The same semiparametric correction, applied to the residual of a cointegrating regression, gives `phillips_ouliaris` — the single-equation cointegration test (null: no cointegration); see the [model card](../reference/model-cards/unit-root-cointegration-tests.md).
+
 ## KPSS and the confirmatory quadrant
 
 **Why you care.** ADF puts the unit root under the null, so it is conservative *toward* finding unit roots: with low power, "cannot reject" is weak evidence. The KPSS test (Kwiatkowski, Phillips, Schmidt and Shin, 1992) flips the burden of proof: its null is **stationarity**, its alternative a unit root. Running both gives you two independent angles on the same question, and only their agreement deserves your confidence. This confirmatory logic is standard advice in every textbook and implemented almost nowhere — tsecon ships it as `check_stationarity`.
@@ -437,6 +460,7 @@ The battery, run in good faith, swallows the Perron trap whole — the quadrant 
 | Deciding whether to difference | `check_stationarity` | Neither ADF nor KPSS alone is trustworthy; the quadrant is |
 | Visibly trending series, unit-root question | `adf(regression="ct")` + `kpss(regression="ct")` | Deterministics must match the alternative or the test is broken |
 | Series with no trend, unit-root question | `adf(regression="c")` (default) | An unneeded trend term drains power (0.06 → 0.62 in this chapter's example) |
+| Unit root without choosing an augmentation lag | `phillips_perron` | Semiparametric: corrects the DF statistic for serial correlation instead of adding lags; a robustness cross-check on ADF |
 | Volatility clustering suspected (returns data) | `arch_lm` | Rejection is the entry ticket to GARCH modeling |
 | Prediction intervals or density forecasts needed | `jarque_bera` on residuals | Non-normality wrecks intervals even when point forecasts are fine |
 | Monthly/quarterly data, calendar rhythm suspected | `acf` at lags $s, 2s$ today; QS/HEGY (roadmap) | Seasonal spikes are unmistakable; dummies-vs-differencing needs HEGY |
@@ -457,6 +481,8 @@ The battery, run in good faith, swallows the Perron trap whole — the quadrant 
 - `arch_lm(resid, nlags=4)` → `{"statistic", "p_value", "df", "nobs"}` — Engle's LM test, statsmodels `het_arch` convention
 - `adf(y, regression="n"|"c"|"ct", autolag="aic"|"bic"|"t-stat"|None, maxlag=None)` → statistic, MacKinnon p-value, `used_lag`, `crit` (validated at 1e-8)
 - `kpss(y, regression="c"|"ct", nlags=None|"auto"|"legacy"|int)` → statistic, interpolated p-value (clamped to [0.01, 0.10]), bandwidth used
+- `phillips_perron(y, regression="n"|"c"|"ct", test_type="tau"|"rho", lags=None)` → `{"stat", "pvalue", "crit", "lags", "nobs", "ztau", "zalpha"}` — semiparametric Phillips-Perron unit-root test, `arch`-validated to < 1e-10 (see the [Phillips-Perron & Ouliaris model card](../reference/model-cards/unit-root-cointegration-tests.md))
+- `phillips_ouliaris(y, x, trend="n"|"c"|"ct", test_type="Zt"|"Za", bandwidth=None)` → `{"stat", "pvalue", "crit", "lags", "nobs", "n_vars"}` — Phillips-Ouliaris single-equation residual cointegration test (Zt p-values via MacKinnon N-surfaces; Za statistic-only)
 - `check_stationarity(y, alpha=0.05)` → quadrant, recommendation, interpretation, and both tests' statistics
 - `sup_f_test(y, x, trim=0.15)` → `{"stat", "p_value", "break_date", "f_path", "dates", "h"}` — Andrews (1993) sup-F for one unknown break, Hansen (1997) approximate p-value
 - `bai_perron(y, x, max_breaks=5, trim=0.15)` → `n_breaks`, `break_dates` with 90/95% confidence intervals, per-regime `params`/`bse`, the sequential `sup_f_seq` against published critical values, `ssr_path`, and `break_dates_by_m` — DP-validated against brute-force enumeration; Bai (1997) homogeneous-case intervals only (see the [structural-breaks model card](../reference/model-cards/structural-breaks.md))
@@ -465,7 +491,7 @@ The battery, run in good faith, swallows the Perron trap whole — the quadrant 
 
 **Built in Rust, awaiting Python bindings:** the EWC/fixed-b long-run variance estimator (`ewc_lrv`, the Lazarus-Lewis-Stock-Watson recommendation), Andrews (1991) automatic bandwidth and AR(1)-prewhitened LRV variants, and typed pass/fail `DiagnosticReport` objects attached to each test.
 
-**Roadmap** ([docs/roadmap/01-diagnostics-exploration.md](../roadmap/01-diagnostics-exploration.md)): Breusch-Godfrey, DF-GLS, Phillips-Perron, Ng-Perron M-tests, HEGY and Canova-Hansen seasonal unit roots, QS/Friedman seasonality tests, the heterogeneity-robust Bai-Perron break-date intervals and variance breaks, Zivot-Andrews and Lee-Strazicich break-robust unit roots, multitaper and cross-spectral phase spectral estimation, GPH and local-Whittle long memory, BDS, GSADF bubble tests, and STL/X-13 seasonal adjustment.
+**Roadmap** ([docs/roadmap/01-diagnostics-exploration.md](../roadmap/01-diagnostics-exploration.md)): Breusch-Godfrey, DF-GLS, Ng-Perron M-tests, HEGY and Canova-Hansen seasonal unit roots, QS/Friedman seasonality tests, the heterogeneity-robust Bai-Perron break-date intervals and variance breaks, Zivot-Andrews and Lee-Strazicich break-robust unit roots, multitaper and cross-spectral phase spectral estimation, GPH and local-Whittle long memory, BDS, GSADF bubble tests, and STL/X-13 seasonal adjustment.
 
 ## Further reading
 

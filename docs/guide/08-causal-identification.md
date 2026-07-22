@@ -169,16 +169,40 @@ It is a Cholesky decomposition applied at the infinite horizon instead of at imp
 
 The scheme's weakness is equally famous. $A(1)^{-1}$ blows up as the VAR's largest roots approach one — precisely the region macro data live in — so small estimation errors in the lag coefficients become enormous errors in the long-run matrix. Faust and Leeper (1997) showed that in finite samples the long-run restriction can have essentially no bite: sizable short-run misidentification is consistent with the long-run constraint holding. The practical readings: check the estimated VAR's characteristic roots before trusting a long-run scheme (in the statsmodels convention `var_fit` follows, stability requires every root to lie *outside* the unit circle — a root modulus close to 1 is the warning sign), prefer the vector-error-correction formulation when cointegration is plausible, and treat Blanchard-Quah conclusions as fragile whenever persistence is high. tsecon's implementation (Module 06) will warn on near-unit roots by default, because the failure is silent otherwise.
 
-*Roadmap preview — this API lands with Module 06:*
+tsecon ships the Blanchard-Quah decomposition today as `long_run_svar` — closed-form, the analog of R's `vars::BQ`. Here it is on a synthetic bivariate system (output growth, unemployment) built so a "supply" shock has a permanent effect on the level of output and a "demand" shock does not:
 
 ```python
-svar = tsecon.svar(data, lags=8)
-bq = svar.identify_long_run(permanent=["supply"], transitory=["demand"])
-bq.irf(horizon=40)      # cumulated correctly for differenced variables
-bq.diagnostics          # near-unit-root warning fires when a root modulus nears 1
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(0)
+T = 400
+es = rng.standard_normal(T)     # supply (permanent)
+ed = rng.standard_normal(T)     # demand (transitory)
+dy = np.zeros(T); u = np.zeros(T)
+for t in range(2, T):
+    dy[t] = 0.2 * dy[t - 1] + es[t] + 0.5 * ed[t] - 0.5 * ed[t - 1]
+    u[t] = 0.6 * u[t - 1] - 0.3 * es[t] + 0.7 * ed[t]
+bq_data = np.column_stack([dy, u])
+
+bq = tsecon.long_run_svar(bq_data, lags=4, horizon=20)
+print("long-run matrix (lower-triangular by construction):")
+print(np.round(np.asarray(bq["long_run"]), 4))
+cum = np.asarray(bq["cumulative_irf"])      # [h][response][shock]
+print("output's cumulative response to the demand shock, h = 0, 4, 20:",
+      np.round(cum[[0, 4, 20], 0, 1], 6))
 ```
 
-> ⚠ **Common mistake:** forgetting that with differenced variables in the VAR, the interesting IRF is the *cumulated* one (the response of the level), and cumulating after orthogonalization is not the same as orthogonalizing cumulated responses if done carelessly. The library cumulates inside the IRF object so the level response of output to a demand shock visibly returns to zero — the restriction you imposed — as a built-in sanity check.
+```
+long-run matrix (lower-triangular by construction):
+[[ 1.2008  0.    ]
+ [-0.3017  1.6799]]
+output's cumulative response to the demand shock, h = 0, 4, 20: [ 3.75038e-01 -1.11681e-01 -1.10000e-05]
+```
+
+The imposed zero sits in the upper-right of the long-run matrix, and output's cumulated response to the demand shock returns to zero by horizon 20 — the neutrality, echoed back as a built-in sanity check. Pass a custom `restrictions=[(variable, shock), …]` list for a non-recursive long-run pattern (`normalize` flips the sign convention). The fluent `tsecon.svar(...).identify_long_run(...)` wrapper with an automatic near-unit-root warning remains a Module 06 roadmap item.
+
+> ⚠ **Common mistake:** forgetting that with differenced variables in the VAR, the interesting IRF is the *cumulated* one (the response of the level), and cumulating after orthogonalization is not the same as orthogonalizing cumulated responses if done carelessly. `long_run_svar` returns `cumulative_irf` alongside `irf` so the level response of output to a demand shock visibly returns to zero — the restriction you imposed — without you re-deriving it.
 
 ## Sign restrictions: honest bands, not points
 
@@ -230,6 +254,51 @@ The identified set for output straddles zero on impact — Uhlig's punchline, re
 
 > ⚠ **Common mistake:** stacking on sign restrictions to narrow the band without watching the acceptance rate. Acceptance decays roughly exponentially in the number of restrictions; an acceptance rate of $10^{-5}$ means your "posterior" is a handful of surviving draws and the restrictions may be close to mutually inconsistent. The acceptance rate is itself an identification diagnostic — tsecon prints it with every fit. Also: combining *zero* restrictions with sign restrictions naively (impose the zeros, then sign-check) samples from the wrong distribution; the correct algorithm with importance weights is Arias, Rubio-Ramírez, and Waggoner (2018), and the library ships only the corrected version.
 
+## Maximum-share identification: the shock that moves the most variance
+
+A third point-identified scheme spends neither a timing zero nor a long-run neutrality but a *variance objective*. Uhlig (2004) asked: of all the unit-variance structural shocks the reduced form admits, which single one explains the largest share of a target variable's forecast-error variance, accumulated over a chosen horizon window? That shock — the leading eigenvector of a small symmetric matrix built from the orthogonalized MA coefficients — is the **main business cycle shock** of Francis, Owyang, Roush and DiCecio (2014) when the window is the business-cycle band, and (with a zero-impact constraint) the Barsky-Sims (2011) **news shock** when you want the driver of *future* rather than current movements. It is agnostic in the spirit of sign restrictions — no economic label is imposed — but it returns a *point*, because "maximize the variance share" has a unique answer, and it is closed-form: no rotation sampling.
+
+tsecon ships it as `max_share_svar`. Here it is on a synthetic 3-variable system, asking for the shock that dominates variable 0's forecast-error variance over the `[6, 32]`-quarter window:
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(3)
+T = 500
+eps = rng.standard_normal((T, 3))
+B0 = np.array([[0.9, 0.6, 0.5],
+               [0.4, 0.9, 0.30],
+               [0.3, 0.25, 0.8]])
+A1 = np.array([[0.4, 0.05, 0.0],
+               [0.1, 0.4, 0.05],
+               [0.0, 0.1, 0.45]])
+ms_data = np.zeros((T, 3))
+for t in range(1, T):
+    ms_data[t] = A1 @ ms_data[t - 1] + B0 @ eps[t]
+
+ms = tsecon.max_share_svar(ms_data, lags=2, target=0, h0=6, h1=32, horizon=40)
+print("share of variable 0's FEV explained over [6,32]:", round(ms["share_window"], 4))
+print("impact vector:", np.round(np.asarray(ms["impact"]), 4))
+print("target response, h = 0, 4, 8:", np.round(np.asarray(ms["irf"])[[0, 4, 8], 0], 4))
+
+# the Barsky-Sims news variant: zero impact on the target, cumulative weighting
+news = tsecon.max_share_svar(ms_data, lags=2, target=0, h0=0, h1=40, horizon=40,
+                             exclude_impact=True, weighting="cumulative")
+print("news-shock impact on target:", round(float(np.asarray(news["impact"])[0]), 6))
+```
+
+```
+share of variable 0's FEV explained over [6,32]: 0.9499
+impact vector: [0.7025 0.9239 0.3703]
+target response, h = 0, 4, 8: [0.7025 0.0357 0.0028]
+news-shock impact on target: 0.0
+```
+
+The identified shock explains 95% of variable 0's forecast-error variance accumulated across the business-cycle window — it *is* that variable's dominant medium-run driver in this synthetic system. Flip `exclude_impact=True` and the problem becomes a news shock: the impact response is forced to an exact zero, so the shock moves the target only at future horizons. The returned `eigenvalues` (ascending) let you check that the leading direction is well separated from the rest — the identification margin.
+
+> ⚠ **Common mistake:** reading the max-share shock as "the technology shock" (or whatever your prior wants) without corroboration. The scheme identifies the shock that *maximizes a variance objective*, nothing more — confirm the leading eigenvalue is well separated from the next, and check the shock's sign and IRF pattern against an economic prior, before you attach a name.
+
 ## Identification from variance shifts: heteroskedasticity as an instrument
 
 All the schemes so far spend economic assumptions. Rigobon (2003) noticed that the *statistical* properties of the data can sometimes pay instead. The intuition is worth having in pictures. Simultaneity is a problem because a cloud of (price, quantity) points traced out by both supply and demand shocks lets you fit neither curve. But suppose you know that during a crisis window the *demand* shock variance triples while the supply curve and the supply shock variance stay put. In the crisis subsample, the data cloud stretches *along the supply curve* — demand shocks trace it out for you. Comparing the calm and crisis covariance matrices reveals the slope. The variance shift did the work an instrument usually does: it moved one curve while leaving the other fixed.
@@ -245,6 +314,41 @@ where $\Lambda_1, \Lambda_2$ are diagonal structural-shock variance matrices. Tw
 The event-study variant deserves its own mention because it is quietly everywhere in monetary economics. Rigobon and Sack (2003, 2004) compare the covariance of asset prices and policy rates on FOMC *announcement days* against neighboring control days: the policy-shock variance jumps on announcement days while everything else's variance stays roughly flat, so the announcement-day/control-day covariance *difference* isolates the policy response. This dominates a naive event study whenever announcement days also carry background news — the event study attributes all announcement-day movement to policy; the heteroskedasticity estimator attributes only the *extra variance*.
 
 The price is a different set of maintained assumptions: the regime dates are known and correct, the impact coefficients are genuinely constant across regimes, and the relative variances genuinely differ. And the method delivers *statistically* identified shocks with no labels attached — shock 2 is "the one whose variance rose most," not "the monetary shock," until you attach economic meaning via sign patterns or correlation with external series. Labeling is a real step, easy to get silently wrong; tsecon's design makes unlabeled statistical shocks impossible to plot without a warning.
+
+tsecon ships the two-known-regime case as `hetero_svar`. On a synthetic bivariate system with a constant impact matrix and a second regime in which the *first* shock's variance quadruples:
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(9)
+T = 1000
+B_true = np.array([[1.0, 0.5],
+                   [0.4, 1.0]])                  # constant across regimes
+labels = np.zeros(T, dtype=int); labels[T // 2:] = 1
+het_data = np.zeros((T, 2))
+for t in range(T):
+    scale = np.array([1.0, 1.0]) if labels[t] == 0 else np.array([2.0, 1.0])
+    het_data[t] = B_true @ (rng.standard_normal(2) * scale)
+
+het = tsecon.hetero_svar(het_data, labels, lags=1)
+print("identified:", het["identified"])
+print("variance ratios (regime 1 / regime 0):", np.round(np.asarray(het["variance_ratios"]), 3))
+print("recovered B (columns ordered by variance ratio):")
+print(np.round(np.asarray(het["B"]), 4))
+print("regimes genuinely differ? Box's M p-value:", round(het["covariance_equality"]["pvalue"], 4))
+```
+
+```
+identified: True
+variance ratios (regime 1 / regime 0): [0.962 4.053]
+recovered B (columns ordered by variance ratio):
+[[0.4341 0.9798]
+ [1.0013 0.4017]]
+regimes genuinely differ? Box's M p-value: 0.0
+```
+
+The variance ratios (≈1 and ≈4) recover the design, and because they are distinct the impact matrix is point-identified. The recovered columns are `B_true` up to the variance-ratio ordering and column scale — the low-ratio column ≈ the true second shock `[0.5, 1]`, the high-ratio column ≈ the true first shock `[1, 0.4]` — with no zeros, no signs, and no instrument spent. Box's M confirms the two regimes' covariances genuinely differ; when it does not, the whole scheme is void, which is why `hetero_svar` reports it and `min_ratio_gap` alongside the `identified` verdict.
 
 > ⚠ **Common mistake:** proceeding when the relative variances barely differ across regimes. Identification strength here is measured by the separation of the generalized eigenvalues; when two shocks' relative variances are similar, their columns of $B$ are near-unidentified and estimates are garbage with tight-looking bogus standard errors. The equality-of-relative-variances test must run automatically and gate the output — statistical identification fails quietly.
 
@@ -280,16 +384,43 @@ The canonical example is Gertler and Karadi (2015): identify monetary policy sho
 
 The dangers are the IV dangers, amplified by time series. **Weak instruments**: many published proxies have first-stage strength that is modest at best, and with a weak proxy the normalized IRFs have heavy-tailed distributions and conventional confidence bands are junk. The honest response is weak-instrument-robust inference — Montiel Olea, Stock, and Watson (2021) invert Anderson-Rubin statistics horizon by horizon, and the resulting confidence set can be an interval, a union of two rays, or the entire real line; when it is the whole line, the data are telling you the instrument cannot answer the question at that horizon, and software should render that honestly rather than clip it. **Invalid bootstraps**: the wild bootstrap that most published proxy-SVAR bands used is asymptotically invalid here (Jentsch and Lunsford 2019); the moving-block bootstrap is the valid replacement, and the corrected Mertens-Ravn tax-multiplier intervals widen substantially. No mainstream package implements the robust confidence sets today — it is a headline item of tsecon's identification module.
 
-*Roadmap preview — this API lands with Module 06:*
+tsecon ships the proxy SVAR today as `proxy_svar`. Here it is on a synthetic monetary system (output, prices, the policy rate) where the instrument is a noisy measure of the true policy shock, available only on the later part of the sample — the realistic case:
 
 ```python
-gk = svar.identify_proxy(instrument=hf_surprises, target="ffr",
-                         normalize=("ffr", 0.25))
-gk.report_card            # effective first-stage F, rolling relevance, alignment
-gk.irf_bands(method="moving_block")            # Jentsch-Lunsford valid bands
-gk.irf_bands(method="ar_robust")               # Montiel Olea-Stock-Watson sets;
-                                               # may be rays or the whole line — shown as such
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(5)
+T = 500
+eps = rng.standard_normal((T, 3))       # structural shocks: output, prices, policy
+B0 = np.array([[0.8, -0.2, -0.5],
+               [0.3, 0.7, -0.4],
+               [0.1, 0.2, 0.9]])
+A1 = np.array([[0.5, 0.0, -0.1],
+               [0.1, 0.4, 0.0],
+               [0.0, 0.1, 0.6]])
+pv_data = np.zeros((T, 3))
+for t in range(1, T):
+    pv_data[t] = A1 @ pv_data[t - 1] + B0 @ eps[t]
+
+proxy = eps[:, 2] + 0.7 * rng.standard_normal(T)    # noisy measure of the policy shock
+proxy[:120] = np.nan                                # unavailable early in the sample
+
+pr = tsecon.proxy_svar(pv_data, proxy, lags=2, horizon=16, norm_var=2, unit=1.0)
+print("first-stage F (weak below 10):", round(pr["first_stage_f"], 2))
+print("reliability Corr(m,u)^2:", round(pr["reliability"], 4), " effective obs:", pr["n_proxy"])
+print("policy-rate response, h = 0, 1, 4, 8:", np.round(np.asarray(pr["irf"])[[0, 1, 4, 8], 2], 4))
+print("output response,      h = 0, 1, 4, 8:", np.round(np.asarray(pr["irf"])[[0, 1, 4, 8], 0], 4))
 ```
+
+```
+first-stage F (weak below 10): 475.45
+reliability Corr(m,u)^2: 0.5797  effective obs: 380
+policy-rate response, h = 0, 1, 4, 8: [1.     0.5947 0.1548 0.0265]
+output response,      h = 0, 1, 4, 8: [-0.6957 -0.3841 -0.0914 -0.0147]
+```
+
+The unit-effect normalization sets the policy rate's own impact response to exactly 1; the instrument is strong (F ≈ 475) despite covering only 380 of 500 periods — the `NaN` window is dropped from the moments automatically — and output falls on impact and stays below baseline: the contractionary-policy pattern, identified from one column with nothing assumed about the rest of the system. **This is a point estimate only.** Valid bands need the Jentsch-Lunsford (2019) moving-block bootstrap or the Montiel Olea-Stock-Watson (2021) weak-IV-robust sets; those, and the fluent `svar(...).identify_proxy(...)` report card, are Module 06 roadmap items.
 
 > ⚠ **Common mistake:** reporting delta-method or wild-bootstrap bands with a first-stage F of 4 and calling it identification. Check instrument strength *first*, use weak-IV-robust sets when it is questionable, and watch the unit-effect normalization: dividing by a near-zero impact coefficient makes IRF quantiles explode in some draws — a fragility tsecon detects and reports rather than averaging away. A subtler trap: proxies typically cover a shorter sample than the VAR and contain gaps; silently truncating to the overlap misaligns instrument and residuals, a classic proxy-SVAR bug the library catches at ingestion.
 
@@ -576,22 +707,23 @@ The decision framework, compressed: start from the **question** (which shock?), 
 |---|---|---|
 | A defensible within-period timing convention (slow macro variables, policy moves last) | Recursive/Cholesky (`var_irf` today) | Exactly identifying, transparent, one decomposition — and the assumption is auditable: either the timing story is institutionally true or it is not |
 | Financial variables in the system (spreads, asset prices) | External or internal instruments | No recursive ordering is defensible when some variables react to everything within the period |
-| Theory speaks about permanent versus transitory effects, not timing | Blanchard-Quah long-run restrictions | Imposes neutrality you believe anyway; but check the VAR's roots first — fragile near unit roots (Faust-Leeper) |
+| Theory speaks about permanent versus transitory effects, not timing | Blanchard-Quah long-run restrictions (`long_run_svar`) | Imposes neutrality you believe anyway; but check the VAR's roots first — fragile near unit roots (Faust-Leeper) |
 | Only weak qualitative beliefs ("contractionary policy doesn't raise prices") | Sign restrictions + Fry-Pagan median-target + prior-posterior overlay | Set identification matches the actual state of knowledge; the band width is the finding |
+| The single dominant driver of a target's forecast-error variance | Max-share / maximum-FEV shock (`max_share_svar`) | Agnostic *point* identification — the variance-maximizing shock, no ordering or signs; watch the eigenvalue gap |
 | Sign restrictions plus a few credible zeros | Arias-Rubio-Ramírez-Waggoner zero+sign | The only correct sampler for the combination; naive zeroing distorts inference |
-| Documented variance regimes (crisis dates, announcement days) | Rigobon heteroskedasticity | Variance shifts substitute for economic restrictions; test that relative variances actually differ |
+| Documented variance regimes (crisis dates, announcement days) | Rigobon heteroskedasticity (`hetero_svar`) | Variance shifts substitute for economic restrictions; test that relative variances actually differ |
 | An archival record isolating exogenous policy actions | Narrative series (Romer-Romer, Ramey news) as regressor, proxy, or internal instrument | Transparent, debatable identification; watch measurement error and time-varying strength |
-| A high-frequency surprise series or other measured proxy | Proxy SVAR with weak-IV-robust bands (Montiel Olea-Stock-Watson) | Weakest assumptions on the rest of the system; the report card tells you if the instrument can carry the question |
+| A high-frequency surprise series or other measured proxy | Proxy SVAR (`proxy_svar`); weak-IV-robust bands (Montiel Olea-Stock-Watson) on the v2 roadmap | Weakest assumptions on the rest of the system; check the first-stage F before trusting it |
 | Fiscal foresight / news shocks / suspected noninvertibility | Instrument ordered first in the VAR, or LP-IV | Internal instruments stay valid under noninvertibility (Plagborg-Møller & Wolf) |
 | Any set-identified result headed for publication | Giacomini-Kitagawa robust bounds alongside | Separates data information from rotation-prior artifact — the honest default |
 
 ## What tsecon implements today
 
-**Available now in Python** (`import tsecon`): the recursive scheme end to end — `var_fit` (estimates, `sigma_u`, information criteria, and a characteristic-root stability summary for the long-run fragility check), `var_irf(data, lags, horizon, orth=True)` for Cholesky-orthogonalized impulse responses (set `orth=False` for reduced-form responses), `var_fevd` for the matching variance decompositions, `var_forecast`, and `var_granger`. The internal-instrument pattern from this chapter runs today by ordering the shock series first. Supporting machinery that identification inference leans on is also live: `ols(se_type="hac")` and `long_run_variance` for instrument first stages, `optimal_block_length` and `bootstrap_indices` for the moving-block bootstrap, and `philox_uniforms` for the reproducible parallel random streams that sign-restriction sampling requires. Separately, the structural end of the spectrum ships today too: `dsge_solve` solves a small linearised rational-expectations model to its Blanchard-Kahn decision rule and determinacy verdict (the section above), the one place in this chapter where the model *is* the identification.
+**Available now in Python** (`import tsecon`): the recursive scheme end to end — `var_fit` (estimates, `sigma_u`, information criteria, and a characteristic-root stability summary for the long-run fragility check), `var_irf(data, lags, horizon, orth=True)` for Cholesky-orthogonalized impulse responses (set `orth=False` for reduced-form responses), `var_fevd` for the matching variance decompositions, `var_forecast`, and `var_granger`. Beyond the recursive scheme, **five identification methods ship today**: set-identified `sign_restricted_svar` (Haar rotations with the acceptance-rate diagnostic), and four *point*-identified closed-form schemes — `long_run_svar` (Blanchard-Quah), `max_share_svar` (Uhlig/Francis main-business-cycle and Barsky-Sims news shocks), `proxy_svar` (external-instrument SVAR-IV with a first-stage-F report), and `hetero_svar` (Rigobon two-regime, with the Box's-M covariance-equality gate) — each worked through above. The internal-instrument pattern runs today by ordering the shock series first. Supporting machinery that identification inference leans on is also live: `ols(se_type="hac")` and `long_run_variance` for instrument first stages, `optimal_block_length` and `bootstrap_indices` for the moving-block bootstrap, and `philox_uniforms` for the reproducible parallel random streams that sign-restriction sampling requires. Separately, the structural end of the spectrum ships too: `dsge_solve` solves a small linearised rational-expectations model to its Blanchard-Kahn decision rule and determinacy verdict (the section above), the one place in this chapter where the model *is* the identification.
 
-**Built in Rust awaiting bindings:** no identification-specific kernels yet — but the foundations this module consumes are in the crates and exercised: companion-form IRF/FEVD recursions (bound via `var_irf`/`var_fevd`), the block-bootstrap engine, the Philox counter-based RNG (bitwise-reproducible accept-reject at any thread count), and the scaffolded Bayesian crate (`tsecon-bayes`, NIW-BVAR fixtures pinned) that will supply reduced-form posterior draws to every set-identification sampler.
+**Built in Rust awaiting bindings:** the scaffolded Bayesian crate (`tsecon-bayes`, NIW-BVAR fixtures pinned) that supplies reduced-form posterior draws to the set-identification samplers, and the block-bootstrap engine that the proxy-SVAR moving-block bands will consume; the Philox counter-based RNG (bitwise-reproducible accept-reject at any thread count) is already bound via `sign_restricted_svar`.
 
-**Roadmap:** everything else in this chapter — Haar rotation sampling with the QR sign-fix, sign and zero+sign restrictions with ARW importance weights, Blanchard-Quah and combined short/long-run restrictions, max-share, Rigobon and the statistical-identification family, narrative sign restrictions (on bring-your-own narrative series — the library ships no data loaders), proxy SVARs with the mandatory identification report card and Montiel Olea-Stock-Watson robust sets, the composable restriction algebra, and Giacomini-Kitagawa robust Bayes — is specified in [docs/roadmap/06-identification.md](../roadmap/06-identification.md), the module the roadmap designates as the library's headline differentiator: no maintained Python home for modern SVAR identification exists today, and every fit is designed to print its identification diagnostics because, in set-identified and instrument-based settings, the diagnostics are the inference.
+**Roadmap:** the honest-inference layer on top of what ships — Jentsch-Lunsford (2019) moving-block and Montiel Olea-Stock-Watson (2021) weak-IV-robust bands for `proxy_svar`, the Fry-Pagan median-target and prior-posterior overlay for sign restrictions, zero+sign restrictions with ARW importance weights, combined short/long-run restrictions, the statistical-identification family beyond two-regime Rigobon (Markov-switching / GARCH / non-Gaussian), narrative sign restrictions (on bring-your-own series — the library ships no data loaders), the composable restriction algebra, and Giacomini-Kitagawa robust Bayes — is specified in [docs/roadmap/06-identification.md](../roadmap/06-identification.md), the module the roadmap designates as the library's headline differentiator: no maintained Python home for modern SVAR identification exists today, and every fit is designed to print its identification diagnostics because, in set-identified and instrument-based settings, the diagnostics are the inference.
 
 ## Further reading
 

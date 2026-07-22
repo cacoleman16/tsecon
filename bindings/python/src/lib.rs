@@ -394,6 +394,117 @@ fn check_stationarity<'py>(
     Ok(d)
 }
 
+fn po_trend(s: &str) -> PyResult<tsecon_diag::PoTrend> {
+    use tsecon_diag::PoTrend::*;
+    match s {
+        "n" => Ok(None),
+        "c" => Ok(Constant),
+        "ct" => Ok(ConstantTrend),
+        other => Err(PyValueError::new_err(format!(
+            "unknown trend {other:?}; expected \"n\", \"c\", or \"ct\""
+        ))),
+    }
+}
+
+/// Phillips-Perron unit-root test (semiparametric; null: unit root).
+///
+/// `regression`: "n", "c" (default), "ct". `test_type`: "tau" (Z-tau,
+/// default) or "rho" (Z-alpha). `lags`: Bartlett LRV bandwidth; None uses
+/// ceil(12*(n/100)^(1/4)). Matches arch.unitroot.PhillipsPerron (< 1e-10).
+#[pyfunction]
+#[pyo3(signature = (y, regression = "c", test_type = "tau", lags = None))]
+fn phillips_perron<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    regression: &str,
+    test_type: &str,
+    lags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::PpTestType;
+    let tt = match test_type {
+        "tau" => PpTestType::Tau,
+        "rho" => PpTestType::Rho,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown test_type {other:?}; expected \"tau\" or \"rho\""
+            )))
+        }
+    };
+    let r = tsecon_diag::phillips_perron(&vec1(&y), adf_regression(regression)?, tt, lags)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("ztau", r.ztau)?;
+    d.set_item("zalpha", r.zalpha)?;
+    d.set_item("pvalue", r.p_value)?;
+    d.set_item("lags", r.lags)?;
+    d.set_item("nobs", r.nobs)?;
+    let crit = PyDict::new(py);
+    crit.set_item("1%", r.crit.pct1)?;
+    crit.set_item("5%", r.crit.pct5)?;
+    crit.set_item("10%", r.crit.pct10)?;
+    d.set_item("crit", crit)?;
+    Ok(d)
+}
+
+/// Phillips-Ouliaris residual cointegration test (null: no cointegration).
+///
+/// `x` is a 2-D (T, m) matrix of the m stochastic regressors, used as-is
+/// (deterministics come from `trend`; do NOT add your own constant column).
+/// `trend`: "n", "c" (default), "ct". `test_type`: "Zt" (default) or "Za".
+/// `bandwidth`: Bartlett LRV bandwidth of the AR(1) residual; None uses the
+/// Newey-West rule floor(4*((T-1)/100)^(2/9)). Za is statistic-only
+/// (pvalue None/crit None). Zt p-value/crit use the MacKinnon N-surfaces
+/// (statsmodels `coint` route). N = 1 + m.
+#[pyfunction]
+#[pyo3(signature = (y, x, trend = "c", test_type = "Zt", bandwidth = None))]
+fn phillips_ouliaris<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+    trend: &str,
+    test_type: &str,
+    bandwidth: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::PoTestType;
+    let tt = match test_type {
+        "Zt" | "zt" => PoTestType::Zt,
+        "Za" | "za" => PoTestType::Za,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown test_type {other:?}; expected \"Zt\" or \"Za\""
+            )))
+        }
+    };
+    let xa = x.as_array();
+    if xa.ncols() < 1 {
+        return Err(PyValueError::new_err(
+            "phillips_ouliaris requires at least one regressor column in x \
+             (n_vars = 1 + ncols(x) must be >= 2)",
+        ));
+    }
+    let cols: Vec<Vec<f64>> = (0..xa.ncols()).map(|j| xa.column(j).to_vec()).collect();
+    let r = tsecon_diag::phillips_ouliaris(&vec1(&y), &cols, po_trend(trend)?, tt, bandwidth)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("pvalue", r.p_value)?; // f64::NAN -> Python nan for Za / N>6
+    match r.crit {
+        Some(c) => {
+            let crit = PyDict::new(py);
+            crit.set_item("1%", c.pct1)?;
+            crit.set_item("5%", c.pct5)?;
+            crit.set_item("10%", c.pct10)?;
+            d.set_item("crit", crit)?;
+        }
+        None => d.set_item("crit", py.None())?, // Za, N>12, or no-constant N>1
+    }
+    d.set_item("lags", r.lags)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("n_vars", r.n_vars)?;
+    Ok(d)
+}
+
 fn hac_kernel(s: &str) -> PyResult<tsecon_hac::Kernel> {
     use tsecon_hac::Kernel::*;
     match s {
@@ -1120,6 +1231,93 @@ fn mat_to_vec2_bayes(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f
         .collect()
 }
 
+/// Hierarchical (empirical-Bayes / ML-II) Minnesota-BVAR: select the prior
+/// tightness lambda1 by maximizing the closed-form marginal likelihood
+/// (Giannone-Lenza-Primiceri 2015), then refit the conjugate posterior at
+/// the optimum — a drop-in richer `bvar_fit` that tunes its own shrinkage.
+///
+/// `optimize` is "lambda1" (default) or "lambda1+lambda3"; `hyperprior` is
+/// "none" (pure ML-II) or "glp" (GLP Gamma, mode 0.2, sd 0.4 — MAP-II).
+/// Returns the selected lambdas, the log marginal likelihood and log
+/// posterior, the posterior coefficient/Sigma means, the pre-scan ML
+/// profile, and the fixed-lambda reference the optimum dominates.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, delta = 0.0, lambda0 = 100.0, lambda3 = 1.0, lambda1_init = 0.2, lambda1_lo = 1e-4, lambda1_hi = 10.0, optimize = "lambda1", hyperprior = "none", n_grid = 25, max_iter = 200, tol = 1e-8))]
+#[allow(clippy::too_many_arguments)]
+fn bvar_hierarchical<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    delta: f64,
+    lambda0: f64,
+    lambda3: f64,
+    lambda1_init: f64,
+    lambda1_lo: f64,
+    lambda1_hi: f64,
+    optimize: &str,
+    hyperprior: &str,
+    n_grid: usize,
+    max_iter: usize,
+    tol: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = data.as_array();
+    let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
+
+    let optimize_lambda3 = match optimize {
+        "lambda1" => false,
+        "lambda1+lambda3" => true,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "optimize must be 'lambda1' or 'lambda1+lambda3', got '{other}'"
+            )))
+        }
+    };
+    let hyper = match hyperprior {
+        "none" => tsecon_bayes::Hyperprior::None,
+        "glp" => tsecon_bayes::Hyperprior::Glp,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "hyperprior must be 'none' or 'glp', got '{other}'"
+            )))
+        }
+    };
+
+    let cfg = tsecon_bayes::HierarchicalConfig {
+        lambda0,
+        lambda3,
+        delta,
+        lambda1_init,
+        lambda1_lo,
+        lambda1_hi,
+        optimize_lambda3,
+        hyperprior: hyper,
+        n_grid,
+        max_iter,
+        tol,
+    };
+    let fit = tsecon_bayes::bvar_hierarchical(m.as_ref(), lags, &cfg).map_err(to_py)?;
+
+    let d = PyDict::new(py);
+    d.set_item("lambda1_opt", fit.lambda1)?;
+    d.set_item("lambda3_opt", fit.lambda3)?;
+    d.set_item("log_marginal_likelihood", fit.log_ml)?;
+    d.set_item("log_posterior", fit.log_posterior)?;
+    d.set_item(
+        "posterior_mean_coefs",
+        mat_to_vec2_bayes(&fit.posterior.b_bar().to_owned()),
+    )?;
+    d.set_item(
+        "sigma_posterior_mean",
+        mat_to_vec2_bayes(&fit.posterior.sigma_posterior_mean().map_err(to_py)?),
+    )?;
+    d.set_item("grid_lambda1", fit.grid_lambda1)?;
+    d.set_item("grid_log_ml", fit.grid_log_ml)?;
+    d.set_item("lambda1_fixed_log_ml", fit.lambda1_fixed_log_ml)?;
+    d.set_item("converged", fit.converged)?;
+    d.set_item("n_evals", fit.n_evals)?;
+    Ok(d)
+}
+
 /// MCMC convergence diagnostics (Vehtari et al. 2021, ArviZ-exact):
 /// rank-normalized split R-hat and bulk/tail effective sample sizes.
 /// `chains` is (n_chains, n_draws).
@@ -1539,6 +1737,454 @@ fn sign_restricted_svar<'py>(
     dd.set_item("accepted", diag.accepted)?;
     dd.set_item("acceptance_rate", diag.acceptance_rate)?;
     d.set_item("diagnostics", dd)?;
+    Ok(d)
+}
+
+/// Blanchard-Quah long-run SVAR: closed-form structural IRFs under the
+/// recursive frequency-zero restriction (the analog of R `vars::BQ`).
+///
+/// Returns `impact` (B), `long_run` (LR), `irf`, `cumulative_irf`, `fevd`,
+/// and `long_run_multiplier` (C(1)). Point estimates, no RNG.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", restrictions = None, normalize = "long_run"))]
+fn long_run_svar<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    trend: &str,
+    restrictions: Option<Vec<(usize, usize)>>,
+    normalize: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let normalize_impact = match normalize {
+        "long_run" => false,
+        "impact" => true,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown normalize {other:?}; expected \"long_run\" or \"impact\""
+            )))
+        }
+    };
+    // Reduced form via the existing OLS VAR path (this is the only use of
+    // tsecon-var here; r.coefs is already the split [A_1..A_p] form).
+    let r = var_results(&data, lags, trend)?;
+    let coefs: Vec<_> = r.coefs.iter().map(|m| m.as_ref()).collect();
+    let res = tsecon_ident::long_run::long_run_svar(
+        &coefs,
+        r.sigma_u.as_ref(),
+        horizon,
+        restrictions.as_deref(),
+        normalize_impact,
+    )
+    .map_err(to_py)?;
+
+    // irf[h][i][j] and its running-sum cumulative (level response in differences).
+    let irf: Vec<Vec<Vec<f64>>> = res.irf.iter().map(mat_to_vec2).collect();
+    let mut cum = irf.clone();
+    for h in 1..cum.len() {
+        for i in 0..cum[h].len() {
+            for j in 0..cum[h][i].len() {
+                cum[h][i][j] += cum[h - 1][i][j];
+            }
+        }
+    }
+
+    // Structural FEVD: shares of variable i's (h+1)-step FEV due to shock j.
+    // Numerator = sum_{s<=h} Theta_s[i][j]^2; denominator = i-th diagonal of
+    // the cumulative Theta Theta'. Rows sum to 1 (orthonormal structural shocks).
+    let k = res.impact.nrows();
+    let hs = res.irf.len();
+    let mut fevd = vec![vec![vec![0.0_f64; k]; k]; hs];
+    let mut contrib = vec![vec![0.0_f64; k]; k];
+    for (th, fevd_h) in res.irf.iter().zip(fevd.iter_mut()) {
+        for i in 0..k {
+            for j in 0..k {
+                contrib[i][j] += th[(i, j)] * th[(i, j)];
+            }
+        }
+        for i in 0..k {
+            let total: f64 = (0..k).map(|j| contrib[i][j]).sum();
+            for j in 0..k {
+                fevd_h[i][j] = if total > 0.0 {
+                    contrib[i][j] / total
+                } else {
+                    0.0
+                };
+            }
+        }
+    }
+
+    let d = PyDict::new(py);
+    d.set_item("impact", mat_to_vec2(&res.impact))?;
+    d.set_item("long_run", mat_to_vec2(&res.long_run))?;
+    d.set_item("long_run_multiplier", mat_to_vec2(&res.long_run_multiplier))?;
+    d.set_item("irf", irf)?;
+    d.set_item("cumulative_irf", cum)?;
+    d.set_item("fevd", fevd)?;
+    Ok(d)
+}
+
+/// Max-share / maximum-FEV structural shock (Uhlig 2004; Francis, Owyang,
+/// Roush & DiCecio 2014 main-business-cycle shock; Barsky & Sims 2011 news
+/// shock). Identifies the single unit-variance structural shock whose share of
+/// the `target` variable's forecast-error variance, accumulated over the
+/// horizon window `[h0, h1]`, is maximal — the leading eigenvector of a small
+/// symmetric PSD matrix built from the orthogonalized MA coefficients.
+///
+/// `weighting="window"` (Uhlig/Francis, default) maximizes the incremental
+/// windowed FEV (its `share_window` is an exact accumulated-FEV fraction);
+/// `"cumulative"` (Barsky-Sims) maximizes the window-mean cumulative FEV share.
+/// `exclude_impact=True` imposes zero impact on the target (Barsky-Sims news
+/// shock). `sign` pins the identified shock's sign
+/// ("cumsum"|"impact"|"none"). Deterministic — no seed.
+///
+/// Keys: `irf` [horizon+1][k], `impact` [k], `q` [k], `share_window` (float),
+/// `fev_share` [horizon+1], `eigenvalues` (ascending; length k, or k-1 when
+/// `exclude_impact`).
+#[pyfunction]
+#[pyo3(signature = (
+    data,
+    lags = 2,
+    target = 0,
+    h0 = 0,
+    h1 = 40,
+    horizon = 40,
+    trend = "c",
+    exclude_impact = false,
+    weighting = "window",
+    sign = "cumsum",
+))]
+#[allow(clippy::too_many_arguments)]
+fn max_share_svar<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    target: usize,
+    h0: usize,
+    h1: usize,
+    horizon: usize,
+    trend: &str,
+    exclude_impact: bool,
+    weighting: &str,
+    sign: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::{max_share_shock, MaxShareSign, MaxShareWeighting};
+
+    if h0 > h1 {
+        return Err(PyValueError::new_err(format!(
+            "window bounds must satisfy h0 <= h1, got h0={h0}, h1={h1}"
+        )));
+    }
+    if h1 > horizon {
+        return Err(PyValueError::new_err(format!(
+            "window end h1={h1} must not exceed horizon={horizon}"
+        )));
+    }
+    let weighting_kind = match weighting {
+        "window" => MaxShareWeighting::Window,
+        "cumulative" => MaxShareWeighting::Cumulative,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown weighting {other:?}; expected \"window\" or \"cumulative\""
+            )))
+        }
+    };
+    let sign_kind = match sign {
+        "cumsum" => MaxShareSign::Cumsum,
+        "impact" => MaxShareSign::Impact,
+        "none" => MaxShareSign::None,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown sign {other:?}; expected \"cumsum\", \"impact\", or \"none\""
+            )))
+        }
+    };
+
+    // Reduced form via the shared VAR OLS helper (matches var_fit at 1e-8),
+    // then the orthogonalized MA Theta_s = Psi_s P (identical to the array
+    // behind var_fevd / var_irf orth=True).
+    let r = var_results(&data, lags, trend)?;
+    let theta = r.orth_ma_rep(horizon).map_err(to_py)?;
+
+    let out = max_share_shock(
+        &theta,
+        target,
+        h0,
+        h1,
+        exclude_impact,
+        weighting_kind,
+        sign_kind,
+    )
+    .map_err(to_py)?;
+
+    let d = PyDict::new(py);
+    d.set_item("irf", out.irf)?;
+    d.set_item("impact", out.impact)?;
+    d.set_item("q", out.q)?;
+    d.set_item("share_window", out.share_window)?;
+    d.set_item("fev_share", out.fev_share)?;
+    d.set_item("eigenvalues", out.eigenvalues)?;
+    Ok(d)
+}
+
+/// Proxy SVAR / external-instrument identification (SVAR-IV): one structural
+/// shock from a single external instrument (Stock-Watson 2018; Mertens-Ravn
+/// 2013; Gertler-Karadi 2015; Montiel-Olea-Stock-Watson 2021).
+///
+/// The residual-instrument covariance pins the target shock's impact column up
+/// to scale; the unit-effect normalization fixes scale and sign so a positive
+/// shock raises `norm_var` by `unit` on impact. `proxy` aligns to `data` rows
+/// (pass length n_obs -- the first `lags` presample rows are dropped -- or the
+/// residual length T directly); NaN entries outside the instrument's
+/// availability window are dropped from the moments and the first stage.
+///
+/// Returns `irf` (horizon+1, n), `impact`/`relative_impact`/`cov_um` (n),
+/// `first_stage_f` (weak below 10), `reliability` = Corr(m, u_norm)^2,
+/// `n_proxy` (effective obs), and the estimated structural `shock` (T). Point
+/// estimate only: valid bands need the Jentsch-Lunsford (2019) moving-block
+/// bootstrap (documented v2 extension).
+#[pyfunction]
+#[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0, trend = "c", robust_f = true))]
+#[allow(clippy::too_many_arguments)]
+fn proxy_svar<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    proxy: PyReadonlyArray1<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    norm_var: usize,
+    unit: f64,
+    trend: &str,
+    robust_f: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = var_results(&data, lags, trend)?;
+    let psi = r.ma_rep(horizon).map_err(to_py)?;
+    let n_obs = data.as_array().nrows();
+    let t = r.resid.nrows();
+
+    // Align the proxy to the residual sample: accept the full n_obs series
+    // (drop the first `lags` presample rows) or a series already of length T.
+    let pv = vec1(&proxy);
+    let proxy_aligned: Vec<f64> = if pv.len() == t {
+        pv
+    } else if pv.len() == n_obs {
+        pv[lags..].to_vec()
+    } else {
+        return Err(PyValueError::new_err(format!(
+            "proxy length {} must equal the number of observations {} or the residual sample length {}",
+            pv.len(),
+            n_obs,
+            t
+        )));
+    };
+
+    let res = tsecon_ident::proxy_svar(
+        r.resid.as_ref(),
+        &proxy_aligned,
+        &psi,
+        r.sigma_u.as_ref(),
+        norm_var,
+        unit,
+        robust_f,
+    )
+    .map_err(to_py)?;
+
+    let d = PyDict::new(py);
+    // irf is (H+1, n); returned as a nested list, matching var_fit's `params`
+    // (Vec<Vec<f64>> -> list-of-lists; users np.asarray it).
+    d.set_item("irf", res.irf)?;
+    d.set_item("impact", res.impact.into_pyarray(py))?;
+    d.set_item("relative_impact", res.relative_impact.into_pyarray(py))?;
+    d.set_item("first_stage_f", res.first_stage_f)?;
+    d.set_item("reliability", res.reliability)?;
+    d.set_item("cov_um", res.cov_um.into_pyarray(py))?;
+    d.set_item("n_proxy", res.n_proxy)?;
+    d.set_item("shock", res.shock.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Identification through heteroskedasticity (Rigobon 2003; Lanne-Lutkepohl
+/// 2008), exactly two known variance regimes. Recovers the constant SVAR
+/// impact matrix B (up to column sign/order) from the two within-regime
+/// reduced-form residual covariances via a generalized eigendecomposition;
+/// point-identified iff the variance ratios are pairwise distinct.
+#[pyfunction]
+#[pyo3(signature = (data, regime_labels, lags = 2, horizon = 12, trend = "c", base_regime = None, sign_normalization = "max"))]
+#[allow(clippy::too_many_arguments)]
+fn hetero_svar<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    regime_labels: Vec<i64>,
+    lags: usize,
+    horizon: usize,
+    trend: &str,
+    base_regime: Option<i64>,
+    sign_normalization: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    if lags < 1 {
+        return Err(PyValueError::new_err("lags must be at least 1"));
+    }
+    let sign = match sign_normalization {
+        "max" => tsecon_ident::SignConvention::MaxAbs,
+        "diag" => tsecon_ident::SignConvention::Diagonal,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown sign_normalization {other:?}; expected \"max\" or \"diag\""
+            )))
+        }
+    };
+    let a = data.as_array();
+    let t_total = a.nrows();
+    let n = a.ncols();
+    if regime_labels.len() != t_total {
+        return Err(PyValueError::new_err(format!(
+            "regime_labels length {} != number of observations {}",
+            regime_labels.len(),
+            t_total
+        )));
+    }
+
+    // One pooled reduced-form VAR on the full sample.
+    let r = var_results(&data, lags, trend)?;
+    let resid = &r.resid; // (T - p) x n
+    let t_eff = resid.nrows();
+
+    // Residual row rr <-> regime_labels[lags + rr]; require exactly 2 labels.
+    let mut distinct: Vec<i64> = Vec::new();
+    for rr in 0..t_eff {
+        let lab = regime_labels[lags + rr];
+        if !distinct.contains(&lab) {
+            distinct.push(lab);
+        }
+    }
+    if distinct.len() != 2 {
+        return Err(PyValueError::new_err(format!(
+            "expected exactly 2 distinct regime labels among the {t_eff} \
+             residual-aligned observations, found {}",
+            distinct.len()
+        )));
+    }
+    // Regime 1 (Lambda = I base): base_regime if given, else the smaller label.
+    let base = match base_regime {
+        Some(b) => {
+            if !distinct.contains(&b) {
+                return Err(PyValueError::new_err(format!(
+                    "base_regime {b} is not among the regime labels"
+                )));
+            }
+            b
+        }
+        None => distinct[0].min(distinct[1]),
+    };
+    let other = if base == distinct[0] {
+        distinct[1]
+    } else {
+        distinct[0]
+    };
+
+    let mut rows1: Vec<usize> = Vec::new();
+    let mut rows2: Vec<usize> = Vec::new();
+    for rr in 0..t_eff {
+        if regime_labels[lags + rr] == base {
+            rows1.push(rr);
+        } else {
+            rows2.push(rr);
+        }
+    }
+    let n1 = rows1.len();
+    let n2 = rows2.len();
+    if n1 < n || n2 < n {
+        return Err(PyValueError::new_err(format!(
+            "each regime needs at least n={n} residuals for a nonsingular \
+             within-regime covariance (got n1={n1}, n2={n2})"
+        )));
+    }
+
+    // Decomposition covariance: ML divisor, raw residuals (mean ~ 0).
+    let sigma_ml = |rows: &[usize]| -> Mat<f64> {
+        let ns = rows.len() as f64;
+        Mat::from_fn(n, n, |i, j| {
+            let mut acc = 0.0;
+            for &rr in rows {
+                acc += resid[(rr, i)] * resid[(rr, j)];
+            }
+            acc / ns
+        })
+    };
+    // Box's M covariance: unbiased divisor, mean-subtracted.
+    let sigma_boxm = |rows: &[usize]| -> Mat<f64> {
+        let ns = rows.len();
+        let mut mean = vec![0.0_f64; n];
+        for &rr in rows {
+            for i in 0..n {
+                mean[i] += resid[(rr, i)];
+            }
+        }
+        for m in &mut mean {
+            *m /= ns as f64;
+        }
+        Mat::from_fn(n, n, |i, j| {
+            let mut acc = 0.0;
+            for &rr in rows {
+                acc += (resid[(rr, i)] - mean[i]) * (resid[(rr, j)] - mean[j]);
+            }
+            acc / (ns as f64 - 1.0)
+        })
+    };
+    let sigma1 = sigma_ml(&rows1);
+    let sigma2 = sigma_ml(&rows2);
+    let s1_boxm = sigma_boxm(&rows1);
+    let s2_boxm = sigma_boxm(&rows2);
+
+    let decomp =
+        tsecon_ident::hetero_decompose(sigma1.as_ref(), sigma2.as_ref(), sign).map_err(to_py)?;
+    let bm = tsecon_ident::box_m_test(&[(s1_boxm.as_ref(), n1), (s2_boxm.as_ref(), n2)])
+        .map_err(to_py)?;
+
+    // Structural IRF: Theta_h = Psi_h @ B.
+    let psi = r.ma_rep(horizon).map_err(to_py)?;
+    let structural_irf: Vec<Vec<Vec<f64>>> = psi
+        .iter()
+        .map(|p| mat_to_vec2(&(p.as_ref() * decomp.b.as_ref())))
+        .collect();
+
+    // identified heuristic (documented tol; the honest inference is the
+    // returned numbers + covariance_equality, not this flag alone).
+    let max_lam = decomp.lambda.iter().fold(0.0_f64, |m, &l| m.max(l.abs()));
+    let tol = 1e-6 * max_lam.max(1.0);
+    let min_dist_unity = decomp
+        .ratio_dist_from_unity
+        .iter()
+        .cloned()
+        .fold(f64::INFINITY, f64::min);
+    let identified = decomp.min_ratio_gap > tol && min_dist_unity > tol;
+
+    let d = PyDict::new(py);
+    d.set_item("B", mat_to_vec2(&decomp.b))?;
+    d.set_item("variance_ratios", decomp.lambda.clone())?;
+    d.set_item("structural_irf", structural_irf)?;
+    d.set_item("min_ratio_gap", decomp.min_ratio_gap)?;
+    d.set_item(
+        "ratio_dist_from_unity",
+        decomp.ratio_dist_from_unity.clone(),
+    )?;
+    d.set_item("identified", identified)?;
+    let ce = PyDict::new(py);
+    ce.set_item("statistic", bm.statistic)?;
+    ce.set_item("dof", bm.dof)?;
+    ce.set_item("pvalue", bm.pvalue)?;
+    ce.set_item("distinct_regimes", bm.pvalue < 0.05)?;
+    d.set_item("covariance_equality", ce)?;
+    d.set_item("sigma_regime1", mat_to_vec2(&sigma1))?;
+    d.set_item("sigma_regime2", mat_to_vec2(&sigma2))?;
+    d.set_item("regime1_label", base)?;
+    d.set_item("regime2_label", other)?;
+    d.set_item("regime_sizes", vec![n1 as u64, n2 as u64])?;
+    d.set_item("n_vars", n)?;
+    d.set_item("horizon", horizon)?;
+    d.set_item("lags", lags)?;
+    d.set_item("sign_convention", sign_normalization)?;
     Ok(d)
 }
 
@@ -4452,5 +5098,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bai_perron, m)?)?;
     m.add_function(wrap_pyfunction!(sup_f_test, m)?)?;
     m.add_function(wrap_pyfunction!(smooth_lp, m)?)?;
+    m.add_function(wrap_pyfunction!(phillips_perron, m)?)?;
+    m.add_function(wrap_pyfunction!(phillips_ouliaris, m)?)?;
+    m.add_function(wrap_pyfunction!(long_run_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(max_share_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(proxy_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(hetero_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(bvar_hierarchical, m)?)?;
     Ok(())
 }

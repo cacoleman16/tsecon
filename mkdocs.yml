@@ -100,11 +100,13 @@ nav:
       - Testing & validation: reference/testing.md
       - Model cards:
           - Diagnostics: reference/model-cards/diagnostics.md
+          - Phillips-Perron & Ouliaris tests: reference/model-cards/unit-root-cointegration-tests.md
           - Check series (one-call battery): reference/model-cards/check-series.md
           - ARIMA: reference/model-cards/arima.md
           - Spectral analysis: reference/model-cards/spectral.md
           - Volatility: reference/model-cards/volatility.md
           - VAR / SVAR: reference/model-cards/var-svar.md
+          - Structural identification (advanced): reference/model-cards/structural-identification.md
           - Local projections: reference/model-cards/local-projections.md
           - Bayesian: reference/model-cards/bayesian.md
           - GMM: reference/model-cards/gmm.md

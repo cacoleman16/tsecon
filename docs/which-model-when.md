@@ -43,8 +43,13 @@ A compact index. Find your row, jump to the section.
 | Your situation | Reach for | Section |
 |---|---|---|
 | Series may be nonstationary; need to decide whether to difference | `check_stationarity` (`adf` + `kpss`) | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
+| Unit-root test without picking an augmentation lag (ADF alternative / cross-check) | `phillips_perron` | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Impulse response, and you trust a recursive ordering | `var_irf` (`var_fit`, `var_fevd`) | [2](#2-i-want-an-impulse-response) |
 | Impulse response, but you only trust the *signs* of a few responses | `sign_restricted_svar` | [2](#2-i-want-an-impulse-response) |
+| Impulse response with a long-run neutrality (permanent vs transitory) | `long_run_svar` (Blanchard-Quah) | [2](#2-i-want-an-impulse-response) |
+| The single shock that drives a target's business-cycle variance | `max_share_svar` (main-BC / news shock) | [2](#2-i-want-an-impulse-response) |
+| Impulse response from one measured instrument / narrative surprise | `proxy_svar` (SVAR-IV) | [2](#2-i-want-an-impulse-response) |
+| Impulse response from documented variance regimes (crisis vs calm) | `hetero_svar` (Rigobon) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from one equation, no full VAR to commit to | `lp`; instrumented `lp_iv`; state-dependent `lp_state` | [2](#2-i-want-an-impulse-response) |
 | Quarterly target, monthly indicators, a ragged data edge | `dfm_nowcast` | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
 | A handful of high-frequency lags to compress into a target | `weighted_midas` (large ratio) / `umidas` (small ratio) | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
@@ -61,6 +66,7 @@ A compact index. Find your row, jump to the section.
 | Regressor is highly persistent (predictive regression) | `predictive_regression` (OLS + Stambaugh + IVX), `ivx_test` | [6](#6-my-regressor-is-highly-persistent) |
 | Many candidate predictors, most of them noise | `adaptive_lasso`, `lasso_path`, `cv_splits` | [7](#7-i-have-many-candidate-predictors) |
 | Spillovers / who-shocks-whom across many markets | `connectedness` | [8](#8-i-need-spillovers-across-markets) |
+| Single-equation cointegration test (is this pair tied in the long run?) | `phillips_ouliaris`; rank via `johansen` | [8](#8-i-need-spillovers-across-markets) |
 | Fit or forecast a yield curve | `nelson_siegel`, `svensson`, `dynamic_ns` | [9](#9-i-want-to-fit-a-yield-curve) |
 | Endogenous regressor with instruments | `iv_gmm`; nonlinear moments `gmm_nonlinear` | [10](#10-endogenous-regressor-instruments) |
 
@@ -107,6 +113,19 @@ Run the components directly when you need the statistic and p-value:
 ```python
 tsecon.adf(y, regression="c")["p_value"]         # ADF, constant only
 tsecon.kpss(y, regression="ct")["p_value"]       # KPSS around a linear trend
+```
+
+**Prefer not to pick an augmentation lag?** `phillips_perron` is the
+semiparametric alternative to ADF: it runs the plain Dickey-Fuller *level*
+regression and corrects the statistic for serial correlation with a kernel long-run
+variance instead of adding lagged differences. Same unit-root null, same MacKinnon
+p-values, no `maxlag` to choose. Use it as a robustness cross-check on ADF —
+agreement between the two is reassuring — but it shares ADF's low power near the
+boundary, so it does *not* replace the ADF+KPSS quadrant.
+
+```python
+pp = tsecon.phillips_perron(y, regression="c")   # test_type="tau" (Z-tau) or "rho" (Z-alpha)
+pp["stat"], pp["pvalue"], pp["lags"]             # small p ⇒ reject the unit root
 ```
 
 **Escape hatch — did the relationship *break*?** A conflict that survives
@@ -340,6 +359,76 @@ This is frontier, tsecon-native territory with no off-the-shelf R/Stata
 equivalent — treat the responses as exploratory, not settled.
 
 **Go deeper:** [chapter 15 — the term-structure frontier](guide/15-term-structure.md)
+
+### 2e · …I can defend a long-run, variance-share, instrument, or variance-regime restriction
+
+**When it applies:** you want a *point* identification (one impact matrix, not a
+set) and you have exactly one of four kinds of outside information. Each is a
+different assumption — pick the one you can actually defend, and read the full
+anatomy in the
+[structural-identification card](reference/model-cards/structural-identification.md).
+All four take the reduced-form `data` matrix and are closed-form (no RNG). Below,
+`data` is the 3-variable macro matrix from [2a](#2a-and-i-trust-a-recursive-cholesky-ordering).
+
+- **A long-run neutrality** — some shock has no permanent effect on some variable
+  (demand is neutral for output in the long run). Blanchard-Quah:
+
+  ```python
+  bq = tsecon.long_run_svar(data, lags=4, horizon=20)   # e.g. data = [dlog output, unemployment]
+  bq["cumulative_irf"]        # plot this for differenced variables; the neutral shock's level effect decays to 0
+  ```
+
+  Check the VAR's roots first — the scheme is fragile near a unit root (Faust-Leeper).
+
+- **A variance objective** — you want the single shock that explains the most of a
+  target's forecast-error variance over a business-cycle window (the "main
+  business cycle" or technology/news shock):
+
+  ```python
+  ms = tsecon.max_share_svar(data, target=0, h0=6, h1=32, horizon=40)
+  ms["share_window"], ms["impact"]     # exclude_impact=True gives the Barsky-Sims news shock
+  ```
+
+- **A measured instrument** — a narrative surprise or high-frequency series that is
+  relevant for one shock and exogenous to the rest (the modern monetary/tax
+  default):
+
+  ```python
+  proxy = data[:, 2] + np.random.default_rng(0).standard_normal(len(data))  # use your real instrument
+  pr = tsecon.proxy_svar(data, proxy, norm_var=2, unit=1.0)   # proxy aligns to rows; NaN outside its window is dropped
+  pr["first_stage_f"], pr["irf"]       # check F ≥ 10 first; point estimate only (Jentsch-Lunsford bands are v2)
+  ```
+
+- **Documented variance regimes** — B is constant but the shock variances differ
+  across known windows (crisis vs calm, announcement vs control days):
+
+  ```python
+  regime_labels = (np.arange(len(data)) >= len(data) // 2).astype(int)   # your documented split (two labels)
+  het = tsecon.hetero_svar(data, regime_labels)
+  het["B"], het["min_ratio_gap"]       # identified iff the variance ratios are distinct; the shocks carry no labels
+  ```
+
+The order of preference when more than one applies: if you have a credible
+instrument, use it (`proxy_svar` makes the weakest assumptions about the rest of
+the system); otherwise let the *question* choose — permanent-vs-transitory →
+`long_run_svar`, "the dominant driver" → `max_share_svar`, documented volatility
+shifts → `hetero_svar`.
+
+**Escape hatch — short sample, and you don't want to hand-tune shrinkage.** All of
+these estimate a reduced-form VAR first, and on short macro samples that VAR is
+noisy. A hierarchical BVAR lets the *data* pick the Minnesota tightness by
+maximizing the marginal likelihood, rather than the folklore 0.2:
+
+```python
+hb = tsecon.bvar_hierarchical(data, lags=2, optimize="lambda1")
+hb["lambda1_opt"], hb["log_marginal_likelihood"]   # the data's tightness vs hb["lambda1_fixed_log_ml"]
+```
+
+See [section 2a](#2a-and-i-trust-a-recursive-cholesky-ordering) for the Bayesian
+IRF-band route and [chapter 10](guide/10-bayesian.md#letting-the-data-set-the-dials-hierarchical-priors-tvp-and-stochastic-volatility).
+
+**Go deeper:** [chapter 8 — long-run, max-share, proxy, and heteroskedasticity identification](guide/08-causal-identification.md#long-run-restrictions-the-blanchard-quah-decomposition) ·
+[structural-identification model card](reference/model-cards/structural-identification.md)
 
 ---
 
@@ -701,7 +790,18 @@ the measure.
 **Escape hatch — the markets share a common stochastic trend.** If the series
 are cointegrated (I(1) but tied together in the long run), model the shared
 trend explicitly rather than the spillovers of their differences: test with
-`johansen` and estimate the error-correction system with `vecm`. See
+`johansen` and estimate the error-correction system with `vecm`. For a *single*
+candidate relationship — one dependent series regressed on the others — the
+lighter `phillips_ouliaris` residual test asks the yes/no question directly
+(null: no cointegration), the semiparametric Engle-Granger route; reach for
+`johansen` when you need the *number* of cointegrating vectors in a larger system.
+
+```python
+po = tsecon.phillips_ouliaris(data[:, 0], data[:, 1:], trend="c")   # y on the other columns; no constant column
+po["stat"], po["pvalue"]                                             # small p ⇒ reject "no cointegration"
+```
+
+See
 [chapter 7 — cointegration](guide/07-multivariate.md#the-drunk-and-her-dog-cointegration).
 If instead one *policy* variable and hundreds of indicators are in play,
 `favar` compresses the indicators to factors and traces one policy shock across

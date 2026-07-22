@@ -62,11 +62,19 @@
 
 pub mod error;
 pub mod haar;
+pub mod hetero;
+pub mod long_run;
+pub mod max_share;
+pub mod proxy;
 pub mod sampler;
 pub mod sign;
 
 pub use error::IdentError;
 pub use haar::haar_rotation;
+pub use hetero::{box_m_test, hetero_decompose, BoxMResult, HeteroDecomp, SignConvention};
+pub use long_run::{long_run_multiplier, long_run_svar, LongRunSvar};
+pub use max_share::{max_share_shock, MaxShareResult, MaxShareSign, MaxShareWeighting};
+pub use proxy::{proxy_svar, ProxySvarResult};
 pub use sampler::{
     IrfBandPoint, SignRestrictionDiagnostics, SignSampleResult, SignSampler, StructuralIrfSummary,
 };

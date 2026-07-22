@@ -30,7 +30,7 @@ on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.0.1
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 106
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 113
           if not n.startswith("_")))
 ```
 
@@ -79,7 +79,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 106 functions, grouped by the task they serve. Every one is a plain
+The 113 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -96,6 +96,8 @@ and docstrings live in
 | `arch_lm` | Engle's test for conditional heteroskedasticity |
 | `adf` | Augmented Dickey-Fuller unit-root test (MacKinnon p-values) |
 | `kpss` | KPSS stationarity test — the ADF complement |
+| `phillips_perron` | Phillips-Perron semiparametric unit-root test (ADF alternative) |
+| `phillips_ouliaris` | Phillips-Ouliaris residual cointegration test |
 | `check_stationarity` | The ADF + KPSS confirmatory workflow, with a recommendation |
 | `check_series` | One-call diagnostic battery: runs the test families, suggests models with evidence |
 | `ols` | Linear regression with nonrobust / HC / HAC standard errors |
@@ -146,6 +148,10 @@ and docstrings live in
 | `var_forecast` | Iterated VAR forecasts with intervals |
 | `var_granger` | Granger-causality F test |
 | `sign_restricted_svar` | Sign-restricted Bayesian SVAR identified-set bands |
+| `long_run_svar` | Blanchard-Quah long-run SVAR (supply/demand decomposition) |
+| `max_share_svar` | Max-share / maximum-FEV shock (main business cycle, news) |
+| `proxy_svar` | Proxy SVAR / external-instrument identification (SVAR-IV) |
+| `hetero_svar` | SVAR identification through heteroskedasticity (Rigobon) |
 | `favar` | Factor-augmented VAR policy-shock IRFs (Bernanke-Boivin-Eliasz) |
 | `johansen` | Johansen cointegration rank test |
 | `vecm` | VECM maximum-likelihood estimation |
@@ -187,6 +193,7 @@ and docstrings live in
 | Function | What it does |
 |---|---|
 | `bvar_fit` | Minnesota-NIW conjugate BVAR posterior + log marginal likelihood |
+| `bvar_hierarchical` | Empirical-Bayes BVAR: tightness chosen by marginal likelihood (GLP) |
 | `bvar_irf_draws` | Posterior Cholesky-IRF draws for credible bands |
 | `mcmc_diagnostics` | Split R-hat and bulk/tail effective sample size |
 
