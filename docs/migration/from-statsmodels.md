@@ -66,6 +66,7 @@ else is a shipped function you can call now.
 | `adfuller(y)` | `adf(y, regression="c", autolag=..., maxlag=None)` | Returns a dict (`statistic`, `p_value`, `used_lag`, `nobs`, `crit`), not a tuple. MacKinnon p-values. |
 | `kpss(y)` | `kpss(y, regression="c", nlags=None)` | Null is stationarity. Dict return. |
 | — | `check_stationarity(y, alpha=0.05)` | The ADF+KPSS confirmatory quadrant with a `recommendation`. No `statsmodels` analogue. |
+| *(run each test by hand)* | `check_series(data, seasonal_period=None, lags=None, alpha=0.05)` | One-call diagnostic battery: descriptives, outliers, the ADF+KPSS quadrant, Ljung-Box/ACF/PACF, ARCH-LM, Jarque-Bera, a sup-F/Bai-Perron mean-shift scan, GPH long memory, and seasonality — ending in an ordered `recommendations` list routing to concrete tsecon calls. 2D `(n, k)` input adds per-series integration, Johansen, and VAR lag selection. A tsecon convenience, not a `statsmodels` port. |
 | `acf(y, nlags=n)` | `acf(y, nlags=20, adjusted=False)` | Returns `{"acf", "bartlett_se"}`. |
 | `pacf(y, nlags=n, method="yw")` | `pacf(y, nlags=20, method="yw")` | Returns a bare array. `method` is `"yw"` or `"ols"`. |
 | `acorr_ljungbox(y, lags=n)` | `ljung_box(y, nlags=10)` | Returns Ljung-Box *and* Box-Pierce for lags `1..=nlags`. |
@@ -83,6 +84,22 @@ else is a shipped function you can call now.
 | `... .fit(cov_type="HAC", cov_kwds={"maxlags": L})` | `ols(y, Xc, se_type="hac", maxlags=L)` | Newey-West. `use_correction=` toggles the small-sample factor. |
 | `... .fit(cov_type="HC0".."HC3")` | `ols(y, Xc, se_type="hc0".."hc3")` | Same White family. |
 | `cov_hac`, `cov_nw_panel` helpers | `long_run_variance(x, kernel=, bandwidth=)` | The kernel LRV as a standalone number. |
+
+### Specification and structural-break tests
+
+`statsmodels` scatters these across `stats.diagnostic`; tsecon gathers them behind
+a uniform `(y, x)` signature — pass the regression's design matrix (with its
+constant column), not pre-computed residuals.
+
+| statsmodels | tsecon | Notes |
+|---|---|---|
+| `het_white(resid, exog)` | `heteroskedasticity_test(y, x, test="white")` | Pass the regression `(y, x-with-constant)`, not residuals. Dict `statistic`/`pvalue` (LM) plus `fstat`/`f_pvalue`. |
+| `het_breuschpagan(resid, exog)` | `heteroskedasticity_test(y, x, test="breusch_pagan")` | Same signature; Breusch-Pagan variant. |
+| `linear_reset(res, power=[2,3])` | `reset_test(y, x, max_power=3)` | Ramsey RESET functional-form F-test; fitted powers `2..=max_power` of ŷ. |
+| `breaks_cusumolsresid(resid)` | `cusum_test(y, x)` | Brown-Durbin-Evans recursive-residual CUSUM; returns the `path` and 5% `bound_lower`/`bound_upper`. (`statsmodels`' test is the OLS-residual variant.) |
+| *(no direct Chow test)* | `chow_test(y, x, split=k)` | Structural-break F-test at a *known* 0-indexed split `k`. |
+| *(only `breaks_cusumolsresid`)* | `bai_perron(y, x, max_breaks=m, trim=0.15)` | Bai-Perron multiple breaks (global DP partitions + sequential supF selection). **No `statsmodels` analogue.** |
+| — | `sup_f_test(y, x, trim=0.15)` | Andrews sup-F (Quandt) *unknown*-break test, Hansen (1997) p-value. **No `statsmodels` analogue.** |
 
 ### Univariate models and volatility
 
@@ -138,6 +155,17 @@ reasons to adopt tsecon.
 | — | `lp_iv(y, impulse, instrument, horizons=8)` | LP-IV with a first-stage F diagnostic. |
 | — | `lp_state(y, shock, state_indicator, ...)` | State-dependent (Ramey-Zubairy 2018) per-regime IRFs. |
 | — | `panel_lp(outcome, shock, ...)` | Panel local projection with fixed effects. |
+
+### Quantile regression and Growth-at-Risk
+
+`statsmodels` ships `QuantReg`; tsecon matches it and adds the projection and
+tail-risk extensions built on the same check-loss estimator.
+
+| statsmodels | tsecon | Notes |
+|---|---|---|
+| `QuantReg(y, X).fit(q=tau)` | `quantile_regression(y, x, taus=[tau])` | IRLS check-loss with Powell kernel-sandwich SEs; matches `QuantReg` defaults. Include the constant column in `x`; pass several `taus` in one call. |
+| — | `quantile_lp(y, shock, taus=..., horizons=8)` | Quantile local projections, `irf[tau][h]`. **No `statsmodels` analogue.** |
+| — | `growth_at_risk(y, conditions, horizon=4, taus=...)` | Adrian-Boyarchenko-Giannone (2019) conditional-quantile Growth-at-Risk; `current` is the latest tail read. **No `statsmodels` analogue.** |
 
 ### Filters, spectral, forecast evaluation
 
@@ -269,9 +297,10 @@ is the modern macro-structural toolkit: local projections (`lp`/`lp_iv`/
 `lp_state`/`panel_lp`), Bayesian VARs (`bvar_fit`/`bvar_irf_draws`),
 sign-restricted SVARs (`sign_restricted_svar`), FAVAR (`favar`), nowcasting
 (`dfm_nowcast`/`dfm_news`), MIDAS mixed frequency (`umidas`/`weighted_midas`),
-IV-GMM (`iv_gmm`), heterogeneous panels (`panel_mean_group`/`panel_pmg`), and a
-Rust core fast enough to make 5,000-draw bootstraps a default rather than a
-luxury.
+IV-GMM (`iv_gmm`), heterogeneous panels (`panel_mean_group`/`panel_pmg`),
+conditional-quantile Growth-at-Risk (`growth_at_risk`/`quantile_lp`),
+Bai-Perron multiple-break estimation (`bai_perron`/`sup_f_test`), and a Rust core
+fast enough to make 5,000-draw bootstraps a default rather than a luxury.
 
 See also the [R](from-r.md) and [Stata](from-stata.md) guides, and the
 cross-package [Rosetta glossary](rosetta.md).

@@ -2,9 +2,9 @@
 
 > Part of [The tsecon Guide to Time Series Econometrics](../guide/README.md). An
 > adoption guide for R users: it maps the packages you already load — `vars`,
-> `svars`, `lpirfs`, `BVAR`, `urca`, `rugarch`, `midasr`, `plm`, and friends — to
-> tsecon functions, and says plainly where tsecon has no equivalent yet. Every
-> Python block runs against the current library.
+> `svars`, `lpirfs`, `BVAR`, `urca`, `rugarch`, `midasr`, `plm`, `quantreg`,
+> `strucchange`, and friends — to tsecon functions, and says plainly where tsecon
+> has no equivalent yet. Every Python block runs against the current library.
 
 R's time-series econometrics is spread across dozens of specialized packages,
 each with its own conventions, and much of it is unmaintained. tsecon's pitch to
@@ -71,6 +71,7 @@ entry points.
 | `lpirfs::lp_lin_iv(...)` | `lp_iv(y, impulse, instrument, horizons)` | Reports a first-stage F. |
 | `lpirfs::lp_nl(...)` (state-dependent) | `lp_state(y, shock, state_indicator, ...)` | Ramey-Zubairy (2018) per-regime IRFs. |
 | `lpirfs::lp_lin_panel(...)` | `panel_lp(outcome, shock, ...)` | Panel LP with fixed effects; Driscoll-Kraay SEs. |
+| Smooth/penalized LP — no `lpirfs` support | `smooth_lp(y, shock, horizons, lam="cv")` | Barnichon-Brownlees (2019) penalized-B-spline IRF, estimated jointly across horizons; cross-validates `lam`. tsecon-native. |
 
 ### Bayesian VARs — `BVAR`, `bvartools`
 
@@ -92,8 +93,21 @@ entry points.
 | `tseries::Box.test(y, type="Ljung-Box")` | `ljung_box(y, nlags)` | Box-Pierce also returned. |
 | `tseries::jarque.bera.test(y)` | `jarque_bera(y)` | |
 | `FinTS::ArchTest(y)` | `arch_lm(y, nlags)` | Engle's ARCH-LM. |
+| `ur.df` + `ur.kpss` read together | `check_stationarity(y)` | The ADF+KPSS confirmatory-quadrant workflow with a differencing recommendation. |
+| (a whole battery of `ur.df`/`Box.test`/`ArchTest`/`Fstats` by hand) | `check_series(y)` | One-call diagnostic battery returning ordered model `recommendations` (also runs Johansen + VAR lag search on 2-D input). A tsecon convenience, not a 1:1 port. |
 | `urca::ca.po` (Phillips-Ouliaris), `ur.pp` | — | Phillips-Perron / Phillips-Ouliaris: **roadmap**. |
 | `urca::ca.jo` (Engle-Granger via `po.test`) | — | Engle-Granger two-step: **roadmap**; use `johansen`. |
+
+### Structural breaks and specification tests — `strucchange`, `lmtest`
+
+| R | tsecon | Notes |
+|---|---|---|
+| `strucchange::breakpoints(y ~ x)` | `bai_perron(y, x, max_breaks=, trim=)` | Bai-Perron multiple breaks: global DP partition, sequential supF(l+1\|l) at 5%, per-regime OLS, Bai (1997) break-date CIs. `x` is `T x q` with all coefficients switching (include the constant). |
+| `strucchange::Fstats`, `sctest(type="supF")` | `sup_f_test(y, x, trim=)` | Andrews-Quandt sup-F unknown-break test; Hansen (1997) p-value and the full `f_path`. |
+| Chow test (`strucchange::sctest(type="Chow")`) | `chow_test(y, x, split)` | F-test at a known 0-indexed `split`. |
+| `strucchange::efp(type="OLS-CUSUM")` + `sctest` | `cusum_test(y, x)` | Brown-Durbin-Evans CUSUM path with 5% bounds. |
+| `lmtest::resettest` | `reset_test(y, x, max_power=)` | Ramsey RESET functional-form F-test. |
+| `lmtest::bptest`, `skedastic::white` | `heteroskedasticity_test(y, x, test="breusch_pagan"/"white")` | Breusch-Pagan / White; `x` is `T x k` with a constant. |
 
 ### Univariate models and volatility — `forecast`, `rugarch`, `rmgarch`, `MSwM`
 
@@ -163,6 +177,14 @@ alternative `panel_fe`/`panel_lp` layout is a dense `N x T` outcome with a
 | `glmnet(x, y, alpha=a)` (elastic net) | `elastic_net(x, y, alpha, l1_ratio)` | scikit-learn objective. |
 | `glmnet(x, y, alpha=0)` (ridge) | `ridge(x, y, alpha)` | Closed form. |
 | adaptive lasso (`glmnet` + weights) | `adaptive_lasso(x, y, alpha, gamma=)` | Zou (2006) oracle-property weights. |
+
+### Quantile regression and Growth-at-Risk — `quantreg`
+
+| R | tsecon | Notes |
+|---|---|---|
+| `quantreg::rq(y ~ x, tau=)` | `quantile_regression(y, x, taus=)` | IRLS check-loss with Powell kernel-sandwich SEs; include the constant column in `x`. |
+| Quantile local projections — no standard R package | `quantile_lp(y, shock, taus, horizons)` | Per-tau IRFs `irf[tau][h]` with Powell-sandwich SEs. tsecon-native. |
+| Conditional-quantile Growth-at-Risk — no single-call R equivalent | `growth_at_risk(y, conditions, horizon, taus)` | Adrian-Boyarchenko-Giannone (2019); `current` is the latest GaR read, with optional CFG monotone rearrangement. |
 
 ### Filters and spectra — `mFilter`, `neverhpfilter`
 

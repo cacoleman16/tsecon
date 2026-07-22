@@ -37,7 +37,14 @@ print(rep["quadrant"], "->", rep["recommendation"])   # UnitRoot -> Difference
 | Unit-root test (ADF) | `adf` | `adfuller` | `urca::ur.df`, `tseries::adf.test` | `dfuller` |
 | Stationarity test (KPSS) | `kpss` | `kpss` | `urca::ur.kpss` | `kpss` |
 | Confirmatory stationarity workflow | `check_stationarity` | — | — | — |
+| One-call diagnostic battery + model routing | `check_series` | — | — | — |
 | Phillips-Perron test | *(roadmap)* | `PhillipsPerron` | `urca::ur.pp` | `pperron` |
+| Heteroskedasticity test (White / Breusch-Pagan) | `heteroskedasticity_test` | `het_white`, `het_breuschpagan` | `lmtest::bptest` | `estat hettest`, `estat imtest, white` |
+| Ramsey RESET functional-form test | `reset_test` | `linear_reset` | `lmtest::resettest` | `estat ovtest` |
+| Chow known-break test | `chow_test` | — | `strucchange::sctest(type="Chow")` | `estat sbknown` |
+| Unknown single-break sup-F (Quandt-Andrews) | `sup_f_test` | `breaks_cusumolsresid` (approx.) | `strucchange::Fstats`, `sctest(type="supF")` | `estat sbsingle` |
+| Multiple structural breaks (Bai-Perron) | `bai_perron` | — | `strucchange::breakpoints` | — |
+| CUSUM parameter-stability test | `cusum_test` | `breaks_cusumolsresid` | `strucchange::efp` (OLS-CUSUM) | `cusum` |
 | HAC / Newey-West standard errors | `ols(se_type="hac")` | `cov_type="HAC"` | `sandwich::NeweyWest` | `newey` |
 | ARIMA | `arima_fit` | `ARIMA` | `forecast::Arima` | `arima` |
 | Seasonal ARIMA (SARIMA) | *(roadmap)* | `SARIMAX` | `forecast::auto.arima` | `arima ...(P,D,Q)` |
@@ -57,8 +64,15 @@ print(rep["quadrant"], "->", rep["recommendation"])   # UnitRoot -> Difference
 | FAVAR | `favar` | — | — | — |
 | Connectedness (Diebold-Yilmaz) | `connectedness` | — | `frequencyConnectedness` | — |
 | Local projection | `lp` | — | `lpirfs::lp_lin` | — (user `lp`) |
-| Local projection with IV (multiplier) | `lp_iv` | — | `lpirfs::lp_lin_iv` | — |
+| Local projection with external IV (LP-IV) | `lp_iv` | — | `lpirfs::lp_lin_iv` | — |
+| Integral multiplier (Ramey-Zubairy) | `lp_multiplier` | — | `lpirfs::lp_lin_iv` (approx.) | — |
 | State-dependent local projection | `lp_state` | — | `lpirfs::lp_nl` | — |
+| Smooth local projection (penalized B-spline) | `smooth_lp` | — | — | — |
+| Quantile regression | `quantile_regression` | `QuantReg` | `quantreg::rq` | `qreg`, `sqreg`, `bsqreg` |
+| Quantile local projection | `quantile_lp` | — | — | — |
+| Growth-at-Risk (conditional quantiles) | `growth_at_risk` | — | — | — |
+| Functional PCA of a curve panel | `functional_pca` | — | — | — |
+| Functional shocks (FLP / FVAR) | `flp`, `flp_scenario`, `fvar_scenario` | — | — | — |
 | Markov-switching model | `markov_switching_ar` | `MarkovAutoregression` | `MSwM::msmFit` | `mswitch` |
 | HP filter | `hp_filter` | `hpfilter` | `mFilter::hpfilter` | `tsfilter hp` |
 | Baxter-King / Christiano-Fitzgerald filter | `bk_filter`, `cf_filter` | `bkfilter`, `cffilter` | `mFilter::bkfilter`/`cffilter` | `tsfilter bk`/`cf` |
@@ -87,7 +101,9 @@ print(rep["quadrant"], "->", rep["recommendation"])   # UnitRoot -> Difference
 | Leakage-safe time-series CV | `cv_splits` | — | `rsample::rolling_origin` | — |
 | Yield curve (Nelson-Siegel / Svensson) | `nelson_siegel`, `svensson` | — | `YieldCurve::Nelson.Siegel` | — |
 | Dynamic Nelson-Siegel (Diebold-Li) | `dynamic_ns` | — | `YieldCurve` | — |
+| Arbitrage-free Nelson-Siegel (AFNS) | `afns_adjustment` | — | — | — |
 | Kalman filter / smoother (local level) | `local_level_smooth` | `UnobservedComponents` | `dlm`, `KFAS` | `sspace` |
+| Linear RE / DSGE solution (Blanchard-Kahn) | `dsge_solve` | — | `gEcon` (approx.) | `dsge` |
 | Bootstrap resampling (block/stationary) | `bootstrap_indices`, `optimal_block_length` | — | `boot`, `np::b.star` | `bootstrap:` |
 
 ## How to read the roadmap gaps
@@ -96,6 +112,7 @@ A handful of concepts above are marked *(roadmap)* in the tsecon column —
 Phillips-Perron, seasonal ARIMA, and explicit short-/long-run SVAR restrictions
 are the notable ones. tsecon covers the *identification* frontier that the other
 packages mostly lack (sign restrictions, BVARs, local projections, FAVAR,
-nowcasting), and is still filling in some classical corners. The per-package
+nowcasting, quantile/growth-at-risk, Bai-Perron breaks, smooth LP, and
+functional shocks), and is still filling in some classical corners. The per-package
 guides spell out each gap and the nearest shipped substitute; nothing in the
 tsecon column is aspirational unless it carries the *(roadmap)* tag.

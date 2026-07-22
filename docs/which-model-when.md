@@ -55,7 +55,8 @@ A compact index. Find your row, jump to the section.
 | A smoother, lower-variance IRF across horizons | `smooth_lp` (B-spline penalty; λ=0 = raw LP) | [2](#2-i-want-an-impulse-response) |
 | The shock is a whole curve (e.g. the yield curve shifts) | `functional_pca` + `flp_scenario` / `fvar_scenario` | [2](#2-i-want-an-impulse-response) |
 | Downside risk of growth, not the mean forecast | `growth_at_risk` (conditional quantiles, ABG) | [4](#4-my-volatility-has-fat-tails-or-jumps) |
-| Did the coefficients break, and how many times? | `bai_perron` (unknown, multiple), `sup_f_test` (unknown, single) | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
+| The whole IRF at a tail quantile (downside *dynamics*, not the mean path) | `quantile_lp`; static coefficients `quantile_regression` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
+| Did the coefficients break, and how many times? | `bai_perron` (unknown, multiple), `sup_f_test` (unknown, single); known date `chow_test` | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Panel IRF to a common shock; per-entity dynamics | `panel_lp`, `mean_group_var` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
 | Regressor is highly persistent (predictive regression) | `predictive_regression` (OLS + Stambaugh + IVX), `ivx_test` | [6](#6-my-regressor-is-highly-persistent) |
 | Many candidate predictors, most of them noise | `adaptive_lasso`, `lasso_path`, `cv_splits` | [7](#7-i-have-many-candidate-predictors) |
@@ -108,9 +109,36 @@ tsecon.adf(y, regression="c")["p_value"]         # ADF, constant only
 tsecon.kpss(y, regression="ct")["p_value"]       # KPSS around a linear trend
 ```
 
-**Escape hatch.** A conflict that survives detrending often means a *structural
-break* (the mean moved once, not every period) — see the breaks discussion in
-[chapter 2](guide/02-exploration-and-diagnostics.md#unit-roots-done-right-the-adf-test).
+**Escape hatch — did the relationship *break*?** A conflict that survives
+detrending often means a *structural break*: the mean, or a regression
+coefficient, moved once rather than every period. Do not eyeball it — test for
+it. With a **known** candidate date, `chow_test(y, X, split)` is the textbook
+F-test. When the date is **unknown**, `sup_f_test` scans every interior date and
+returns the strongest break with a Hansen (1997) p-value; `bai_perron` goes
+further and estimates *how many* breaks there are (sequential supF(l+1|l)) with a
+confidence interval on each date:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0); T = 200
+X = np.column_stack([np.ones(T), rng.standard_normal(T)])     # regressors; ALL coefficients may switch
+b1, b2 = np.array([0.0, 0.5]), np.array([2.0, 0.5])           # the intercept jumps at t=100
+yb = np.empty(T)
+yb[:100] = X[:100] @ b1 + rng.standard_normal(100) * 0.5
+yb[100:] = X[100:] @ b2 + rng.standard_normal(100) * 0.5
+
+sf = tsecon.sup_f_test(yb, X)                     # unknown single break
+sf["stat"], sf["p_value"], sf["break_date"]       # reject the null of stability ⇒ break at break_date
+bp = tsecon.bai_perron(yb, X, max_breaks=3)       # unknown, possibly several
+bp["n_breaks"], bp["break_dates"], bp["ci_lower_95"], bp["ci_upper_95"]
+ch = tsecon.chow_test(yb, X, split=100)           # a *known* candidate date
+ch["fstat"], ch["pvalue"]
+```
+
+To *watch* parameters drift rather than count discrete breaks,
+`cusum_test(yb, X)` returns the recursive-residual CUSUM path and its 5% bounds.
+
 If two series are each I(1) but move together, you do not want to difference
 away their shared trend — that is cointegration, [section 8](#8-i-need-spillovers-across-markets).
 
@@ -227,7 +255,7 @@ Then branch by what you have:
   runs 7 to 49 where the true multiplier is ~0.7):
 
   ```python
-  m = tsecon.lp_multiplier(y, spending, instrument, horizons=16)
+  m = tsecon.lp_multiplier(y, shock, instrument, horizons=16)
   m["multiplier"], m["se"], m["first_stage_f"]    # the Ramey-Zubairy integral multiplier
   ```
 
@@ -243,6 +271,17 @@ Then branch by what you have:
 - **You have a panel of units all hit by the same shock** — pool them; see
   [section 5](#5-i-have-a-panel-with-heterogeneous-units) (`panel_lp`).
 
+- **The horizon-by-horizon IRF is jagged** (short sample, noisy shock) — shrink
+  it toward a smooth curve with `smooth_lp`, a penalized B-spline in the horizon
+  estimated jointly across horizons (Barnichon-Brownlees 2019). `lam=0.0`
+  reproduces the raw per-horizon LP; `lam="cv"` picks the penalty by
+  block cross-validation:
+
+  ```python
+  sm = tsecon.smooth_lp(y, shock, horizons=16, n_lag_controls=4, lam="cv")
+  sm["irf"], sm["se"], sm["lambda_used"]          # irf_raw / se_raw = the unsmoothed LP for comparison
+  ```
+
 **Escape hatch — the response itself is nonlinear** (thresholds, regime
 switching in the *system*, not just a known indicator): the generalized impulse
 response averages over histories and shock signs. See
@@ -252,6 +291,37 @@ response averages over histories and shock signs. See
 [inference done right](guide/09-local-projections.md#inference-done-right),
 [LP-IV and multipliers](guide/09-local-projections.md#lp-iv-and-fiscal-multipliers) ·
 [gallery figure](examples/img/struct-lp-vs-truth.png)
+
+### 2d · …the shock is a whole *curve*, not a scalar
+
+**When it applies:** the thing that moves is an entire function — the whole yield
+curve shifts and twists, a cross-sectional distribution slides — and you want the
+response of an outcome to a *named scenario* for that curve (a parallel shift, a
+steepening). Compress the curve panel to a few functional principal components
+(`functional_pca`, Inoue-Rossi 2021), then project the outcome on the scores.
+
+```python
+import json, numpy as np, tsecon
+
+t = json.load(open("fixtures/termstructure.json"))
+curves = np.array(t["yields_panel"])              # T × M: one whole curve per period
+y = curves.mean(axis=1)                            # an outcome driven by the curve (use your own series)
+delta = np.ones(curves.shape[1])                   # the scenario: a parallel +1 shift across maturities
+
+fp  = tsecon.functional_pca(curves, n_factors=3)   # eigenfunctions + scores; read fp["explained"]
+fls = tsecon.flp_scenario(y, curves, delta, n_factors=3, horizons=8, n_lag_controls=2)
+fls["response"], fls["se"]                         # single-equation (LP) IRF to the whole-curve shock
+fvs = tsecon.fvar_scenario(y, curves, delta, n_factors=3, lags=2, horizon=8)
+fvs["response_outcome"]                            # the VAR-form counterpart
+```
+
+Use `flp_scenario` for the local-projection reading (robust to misspecified
+dynamics) and `fvar_scenario` for the VAR-form reading, and always report the
+FPCA `explained` so the reader knows how much of the curve your factors capture.
+This is frontier, tsecon-native territory with no off-the-shelf R/Stata
+equivalent — treat the responses as exploratory, not settled.
+
+**Go deeper:** [chapter 15 — the term-structure frontier](guide/15-term-structure.md)
 
 ---
 
@@ -382,6 +452,26 @@ g["conditional_volatility"], g["variance_forecast"]                   # fitted p
 See [chapter 6 — GARCH(1,1)](guide/06-volatility.md#garch11-the-workhorse) and
 [its gallery figure](examples/img/10-garch.png). For a portfolio of assets,
 `ccc_garch` / `dcc_garch` give the correlation dynamics.
+
+**Escape hatch — the downside *risk* of an outcome, not its variance.**
+Volatility is symmetric; sometimes the question is one-tailed ("how bad is the
+5th-percentile GDP outcome a year out, given today's financial conditions?").
+That is a conditional *quantile*, not a conditional variance. `growth_at_risk`
+fits the Adrian-Boyarchenko-Giannone (2019) conditional-quantile Growth-at-Risk
+directly — the lower tail of the h-ahead outcome given conditioning variables:
+
+```python
+rng = np.random.default_rng(1); T = 200
+fci = rng.standard_normal(T)                                  # a financial-conditions index
+g   = 0.3 - 0.8 * fci + rng.standard_normal(T) * (1 + 0.5 * np.abs(fci))
+gar = tsecon.growth_at_risk(g, fci.reshape(-1, 1), horizon=4, taus=[0.05, 0.5, 0.95])
+gar["current"]                                                # [5%, 50%, 95%] read for today; [0] is GaR
+```
+
+For the *dynamic* version — the impulse response *at* a quantile rather than the
+mean path — `quantile_lp(y, shock, taus=..., horizons=...)` runs a quantile
+local projection per horizon; `quantile_regression(y, X, taus=...)` is the static
+building block (the check-loss analogue of `ols`).
 
 **Go deeper:** [chapter 6 — score-driven volatility](guide/06-volatility.md#score-driven-volatility-gas-and-the-robust-t-score),
 [realized measures](guide/06-volatility.md#realized-measures-without-the-plumbing-rv-bipower-and-jumps),

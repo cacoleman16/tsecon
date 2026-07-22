@@ -91,6 +91,27 @@ callable now.
 | `mswitch dr y` (dynamic regression) | `markov_switching_ar(..., order=0)` | Switching-mean model. |
 | *(score-driven — not in Stata)* | `gas_volatility(y, density=)` | GAS(1,1), Gaussian or Student-t. |
 
+### Quantile regression and Growth-at-Risk
+
+| Stata | tsecon | Notes |
+|---|---|---|
+| `qreg y x` | `quantile_regression(y, X)` | Median regression by default; `X` is `T x k` with a constant. Powell kernel-sandwich SEs (`bse`, `tvalues`). |
+| `sqreg y x, quantiles(10 50 90)` | `quantile_regression(y, X, taus=[0.1, 0.5, 0.9])` | Simultaneous multi-tau fit; `params`/`bse` are per-tau. |
+| *(quantile LP — user-written)* | `quantile_lp(y, shock, taus=, horizons=h)` | Quantile local projections, `irf[tau][h]` with sandwich `se`. |
+| *(Growth-at-Risk — no native command)* | `growth_at_risk(y, conditions, horizon=h)` | Adrian-Boyarchenko-Giannone conditional-quantile GaR; `current` is the latest risk read across `taus`. |
+
+### Specification tests and structural breaks
+
+| Stata | tsecon | Notes |
+|---|---|---|
+| `estat hettest` (Breusch-Pagan) | `heteroskedasticity_test(y, X, test="breusch_pagan")` | `X` is `T x k` with a constant; `test="white"` for `estat imtest, white`. |
+| `estat ovtest` (Ramsey RESET) | `reset_test(y, X, max_power=3)` | Functional-form F-test on fitted powers. |
+| `estat sbknown, break(t)` | `chow_test(y, X, split=t)` | Chow break at a known 0-indexed split; `fstat`, `pvalue`, per-regime SSR. |
+| `estat sbsingle` (unknown break) | `sup_f_test(y, X, trim=0.15)` | Andrews-Quandt sup-F, Hansen (1997) p-value, estimated `break_date`. |
+| *(multiple breaks — no native command)* | `bai_perron(y, X, max_breaks=m)` | Bai-Perron global partition + sequential supF(l+1\|l); `break_dates` with Bai (1997) CIs. |
+| `estat sbcusum` / `cusum` | `cusum_test(y, X)` | Brown-Durbin-Evans CUSUM `path` with 5% bounds. |
+| *(one-call diagnostics — run each `estat` by hand)* | `check_series(y)` | Battery: stationarity, serial correlation, ARCH, normality, a break scan, long memory, seasonality, plus an ordered `recommendations` list routing to concrete calls. |
+
 ### Panels — `xt` commands
 
 Stata's long `xt` layout maps to lists of per-unit arrays or a dense `N x T`
@@ -144,7 +165,7 @@ outcome, as noted above.
 
 ## Worked translations
 
-Five you can run. The Stata command is shown as a comment.
+Six you can run. The Stata command is shown as a comment.
 
 ### `arch` → `garch_fit`
 
@@ -216,6 +237,23 @@ nc = tsecon.dfm_nowcast(data, n_factors=2, factor_order=1)
 print(np.round(nc["nowcast"][4:], 4))                  # the filled-in missing entries
 ```
 
+### Growth-at-Risk → `growth_at_risk` (no Stata equivalent)
+
+Stata has `qreg`/`sqreg` but no conditional-quantile Growth-at-Risk in one call;
+`growth_at_risk` fits the h-ahead quantiles on `[const, conditions, y_t]` at every
+date and hands back the latest read.
+
+```python
+import numpy as np, tsecon
+rng = np.random.default_rng(20)
+n = 200
+fci = rng.standard_normal(n)                           # a financial-conditions index
+g = 0.5 - 0.8 * fci + rng.standard_normal(n)           # growth, downside-sensitive to FCI
+
+gar = tsecon.growth_at_risk(g, fci[:, None], horizon=4, taus=[0.05, 0.5, 0.95])
+print(np.round(gar["current"], 3))                     # 5% / 50% / 95% four-quarter-ahead
+```
+
 ## What Stata has that tsecon does not (yet)
 
 Being direct about the gaps, the following are **roadmap**, not shipped:
@@ -226,15 +264,19 @@ Being direct about the gaps, the following are **roadmap**, not shipped:
 - **Phillips-Perron** (`pperron`) and **panel unit-root tests** (`xtunitroot`).
 - **Seasonal ARIMA** (`arima ...(P,D,Q)`) and general **`ucm`** unobserved-components models.
 - **Engle-Granger** (`egranger`) two-step cointegration; use `johansen`.
-- **`estat` post-estimation batteries** and formatted `esttab`/`irf table`
-  output — you format results from the returned dicts yourself.
+- **Formatted `esttab`/`irf table` output** — you format results from the
+  returned dicts yourself. (The individual `estat` diagnostics *do* ship —
+  `hettest`, `ovtest`, `sbknown`, `sbsingle`, `sbcusum` map to functions; see
+  the specification-tests table.)
 - **Full MLE `dfactor`**; the shipped nowcaster is the two-step DGR estimator.
 
 Where tsecon pays you back is the frontier Stata reaches only through
 user-written `.ado` files or not at all: local projections
-(`lp`/`lp_iv`/`lp_state`/`panel_lp`), sign-restricted and Bayesian VARs, FAVAR,
-Diebold-Yilmaz connectedness, realized-volatility measures, and DFM nowcasting —
-all under one calling grammar, on a core fast enough to bootstrap by default.
+(`lp`/`lp_iv`/`lp_state`/`panel_lp`, plus smooth and quantile variants),
+sign-restricted and Bayesian VARs, FAVAR, Diebold-Yilmaz connectedness,
+realized-volatility measures, DFM nowcasting, and conditional-quantile
+Growth-at-Risk — all under one calling grammar, on a core fast enough to
+bootstrap by default.
 
 See also the [statsmodels](from-statsmodels.md) and [R](from-r.md) guides, and
 the cross-package [Rosetta glossary](rosetta.md).
