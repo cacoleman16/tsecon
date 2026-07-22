@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**121 functions.**
+**122 functions.**
 
 ## diagnostics
 
@@ -913,6 +913,39 @@ Proxy SVAR (external-instrument SVAR-IV): one shock from one instrument.
     `impact`, `relative_impact`, `cov_um`, `first_stage_f` (weak below 10),
     `reliability` = Corr(m, u_norm)^2, `n_proxy`, and the estimated `shock`
     (length T). Point estimate only -- no bands (v2: Jentsch-Lunsford MBB).
+
+### `nongaussian_svar`
+
+```python
+def nongaussian_svar(
+    data: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    trend: str = ...,
+    contrast: str = ...,
+    max_iter: int = ...,
+    tol: float = ...,
+    order_by: str = ...,
+) -> dict[str, Any]:
+```
+
+Non-Gaussian / independent-component SVAR identification (Lanne-Meitz-Saikkonen 2017; Gourieroux-Monfort-Renne 2017; FastICA).
+
+    Point-identifies the structural impact matrix B in u_t = B eps_t from the
+    reduced-form residuals ALONE -- no sign, zero, long-run, or proxy
+    restriction -- by exploiting the statistical INDEPENDENCE and NON-GAUSSIANITY
+    of the structural shocks (at most one Gaussian). Whitens by Sigma_u^{-1/2},
+    finds the orthogonal rotation maximizing non-Gaussianity via a deterministic
+    symmetric FastICA fixed point (log-cosh contrast, identity init -- bit-
+    reproducible), then B = Sigma_u^{1/2} Q. Columns are ordered by `order_by`
+    ("kurtosis" = descending |excess kurtosis|, or "colnorm") and signed max-abs-
+    positive; both are CONVENTIONS, not economics. This is STATISTICAL
+    identification: it FAILS if the shocks are Gaussian, and a `shock_kurtosis`
+    near zero flags a weakly identified (near-Gaussian) column. Returns `impact`
+    (B, [var][shock]), `irf` ([horizon+1][var][shock], Theta_h = Psi_h B),
+    `rotation` (Q, [whitened][shock]), `shock_kurtosis` [k] (identified order),
+    `converged` (bool), `n_iter` (int), and `order` [k] (raw FastICA index per
+    identified position).
 
 ### `hetero_svar`
 

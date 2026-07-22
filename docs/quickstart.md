@@ -30,7 +30,7 @@ on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.0.1
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 121
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 122
           if not n.startswith("_")))
 ```
 
@@ -79,7 +79,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 121 functions, grouped by the task they serve. Every one is a plain
+The 122 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -153,6 +153,7 @@ and docstrings live in
 | `max_share_svar` | Max-share / maximum-FEV shock (main business cycle, news) |
 | `proxy_svar` | Proxy SVAR / external-instrument identification (SVAR-IV) |
 | `hetero_svar` | SVAR identification through heteroskedasticity (Rigobon) |
+| `nongaussian_svar` | Non-Gaussian / independent-component SVAR identification (ICA; fails if Gaussian) |
 | `structural_fevd` | FEVD for an arbitrary structural impact matrix A0 (any scheme) |
 | `historical_decomposition` | Per-(time, variable, shock) historical decomposition (exact adding-up) |
 | `fry_pagan_svar` | Fry-Pagan median-target: the coherent draw closest to the median band |

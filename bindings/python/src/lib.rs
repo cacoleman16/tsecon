@@ -2202,6 +2202,102 @@ fn proxy_svar<'py>(
     Ok(d)
 }
 
+/// Non-Gaussian / independent-component SVAR identification (Lanne-Meitz-
+/// Saikkonen 2017; Gourieroux-Monfort-Renne 2017; FastICA/Hyvarinen).
+///
+/// Point-identifies the structural impact matrix `B` in `u_t = B eps_t` from
+/// the reduced-form residuals ALONE -- no sign, zero, long-run, or proxy
+/// restriction -- by exploiting the statistical INDEPENDENCE and NON-
+/// GAUSSIANITY of the structural shocks (at most one Gaussian). Whitens by
+/// `Sigma_u^{-1/2}`, finds the orthogonal rotation maximizing non-Gaussianity
+/// via a deterministic symmetric FastICA fixed point (log-cosh contrast,
+/// identity init -- bit-reproducible), then `B = Sigma_u^{1/2} Q`. Columns are
+/// ordered by `order_by` ("kurtosis"|"colnorm") and signed max-abs-positive;
+/// both are CONVENTIONS. STATISTICAL identification: it FAILS if the shocks are
+/// Gaussian, and a `shock_kurtosis` near zero flags a weakly identified column.
+#[pyfunction]
+#[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", contrast = "logcosh", max_iter = 200, tol = 1e-8, order_by = "kurtosis"))]
+#[allow(clippy::too_many_arguments)]
+fn nongaussian_svar<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    trend: &str,
+    contrast: &str,
+    max_iter: usize,
+    tol: f64,
+    order_by: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::{nongaussian_svar as ng, Contrast, OrderBy};
+    use tsecon_var::tsecon_linalg::faer::Mat;
+
+    let contrast_kind = match contrast {
+        "logcosh" => Contrast::LogCosh,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown contrast {other:?}; expected \"logcosh\""
+            )))
+        }
+    };
+    let order_kind = match order_by {
+        "kurtosis" => OrderBy::Kurtosis,
+        "colnorm" => OrderBy::ColumnNorm,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown order_by {other:?}; expected \"kurtosis\" or \"colnorm\""
+            )))
+        }
+    };
+
+    // Reduced form via the shared VAR OLS helper (matches var_fit at 1e-8):
+    // residuals U and covariance Sigma_u for whitening.
+    let r = var_results(&data, lags, trend)?;
+    let k = r.neqs;
+
+    // Pack coefficients as (1 + k*lags) x k -- intercept row then lag blocks,
+    // the layout structural_ma expects -- so the IRF path is correct for any
+    // trend (the intercept row is zero when trend = "n").
+    let mut b_coefs = Mat::<f64>::zeros(1 + k * lags, k);
+    for i in 0..k {
+        b_coefs[(0, i)] = r.intercept[i];
+    }
+    for (l, a) in r.coefs.iter().enumerate() {
+        // structural_ma reads A_l[(i,j)] = coef of y_{t-l,j} in eq i at
+        // b[(1 + l*k + j, i)].
+        for i in 0..k {
+            for j in 0..k {
+                b_coefs[(1 + l * k + j, i)] = a[(i, j)];
+            }
+        }
+    }
+
+    let out = ng(
+        r.resid.as_ref(),
+        r.sigma_u.as_ref(),
+        b_coefs.as_ref(),
+        lags,
+        horizon,
+        contrast_kind,
+        max_iter,
+        tol,
+        order_kind,
+    )
+    .map_err(to_py)?;
+
+    let irf: Vec<Vec<Vec<f64>>> = out.irf.iter().map(mat_to_vec2).collect();
+
+    let d = PyDict::new(py);
+    d.set_item("impact", mat_to_vec2(&out.impact))?; // [var][shock]
+    d.set_item("irf", irf)?; // [h][var][shock]
+    d.set_item("rotation", mat_to_vec2(&out.rotation))?; // Q [whitened][shock]
+    d.set_item("shock_kurtosis", out.shock_kurtosis)?; // [shock]
+    d.set_item("converged", out.converged)?;
+    d.set_item("n_iter", out.n_iter)?;
+    d.set_item("order", out.order)?; // [position] -> raw index
+    Ok(d)
+}
+
 /// Identification through heteroskedasticity (Rigobon 2003; Lanne-Lutkepohl
 /// 2008), exactly two known variance regimes. Recovers the constant SVAR
 /// impact matrix B (up to column sign/order) from the two within-regime
@@ -6014,6 +6110,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(long_run_svar, m)?)?;
     m.add_function(wrap_pyfunction!(max_share_svar, m)?)?;
     m.add_function(wrap_pyfunction!(proxy_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(nongaussian_svar, m)?)?;
     m.add_function(wrap_pyfunction!(hetero_svar, m)?)?;
     m.add_function(wrap_pyfunction!(bvar_hierarchical, m)?)?;
     m.add_function(wrap_pyfunction!(bvar_ssvs, m)?)?;

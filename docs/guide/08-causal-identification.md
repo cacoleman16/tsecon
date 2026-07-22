@@ -548,6 +548,54 @@ The variance ratios (≈1 and ≈4) recover the design, and because they are dis
 
 > ⚠ **Common mistake:** proceeding when the relative variances barely differ across regimes. Identification strength here is measured by the separation of the generalized eigenvalues; when two shocks' relative variances are similar, their columns of $B$ are near-unidentified and estimates are garbage with tight-looking bogus standard errors. The equality-of-relative-variances test must run automatically and gate the output — statistical identification fails quietly.
 
+## Identification from non-Gaussianity: independent components
+
+Heteroskedasticity buys identification from a shift in the *second* moment across known regimes. There is a second statistical route that needs no regimes at all — it reads the *shape* of the shock distribution. The reduced-form residuals are a linear mix $u_t = B \varepsilon_t$ of the structural shocks; if those shocks are **mutually independent** and **at most one is Gaussian**, the independent-component-analysis (ICA) theorem (Comon 1994) says the mixing matrix $B$ is recoverable from the residuals alone, up to the sign and ordering of its columns. The mechanism is Hyvärinen's: whiten the residuals by $\Sigma_u^{-1/2}$ so that any remaining structure is pure rotation, then rotate to make the components **maximally non-Gaussian** — a whitened *Gaussian* vector is rotation-invariant, so non-Gaussianity is exactly the signal a rotation can chase. tsecon's `nongaussian_svar` runs a deterministic symmetric FastICA fixed point (identity-initialized, bit-reproducible, no RNG) and returns $B = \Sigma_u^{1/2} Q$. This is identification from the *distribution* of the shocks, spending no economic restriction whatsoever: no ordering, no signs, no instrument, no regime.
+
+The price is the independence assumption — strictly stronger than the orthogonality every SVAR already imposes, and itself an economic claim you must be able to defend (two shocks sharing a common volatility factor are dependent and break it silently; Montiel Olea, Plagborg-Møller, and Qian 2022). And the method has a hard boundary: **it fails under Gaussianity.** Gaussian shocks have zero excess kurtosis, and every rotation of a whitened Gaussian is again i.i.d. Gaussian, so there is no most-non-Gaussian direction to find and $B$ is simply not identified. The `shock_kurtosis` diagnostic makes that visible — a value near zero means the corresponding column is near-Gaussian and weakly (or not) identified. On the *same* constant impact matrix as the heteroskedasticity example, now driven by independent Student-$t$ shocks with no variance regime at all:
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(4)
+T = 2000
+B_true = np.array([[1.0, 0.5],
+                   [0.4, 1.0]])                       # same constant impact matrix as above
+# independent, standardized Student-t(5) shocks -- leptokurtic, NOT Gaussian
+eps = rng.standard_t(5, size=(T, 2)) / np.sqrt(5 / 3)
+ng_data = np.zeros((T, 2))
+u = eps @ B_true.T
+for t in range(1, T):
+    ng_data[t] = 0.5 * ng_data[t - 1] + u[t]
+
+ng = tsecon.nongaussian_svar(ng_data, lags=1, horizon=8)
+print("converged:", ng["converged"], " shock excess kurtosis:",
+      np.round(np.asarray(ng["shock_kurtosis"]), 3))
+print("recovered B (columns ordered by |kurtosis|, signed):")
+print(np.round(np.asarray(ng["impact"]), 4))
+
+# same system, GAUSSIAN shocks: kurtosis collapses to ~0, the scheme is void
+gauss = np.zeros((T, 2))
+uG = rng.standard_normal((T, 2)) @ B_true.T
+for t in range(1, T):
+    gauss[t] = 0.5 * gauss[t - 1] + uG[t]
+print("Gaussian shocks -> excess kurtosis:",
+      np.round(np.asarray(tsecon.nongaussian_svar(gauss, lags=1)["shock_kurtosis"]), 3))
+```
+
+```
+converged: True  shock excess kurtosis: [5.451 2.559]
+recovered B (columns ordered by |kurtosis|, signed):
+[[0.5192 0.9387]
+ [1.021  0.3451]]
+Gaussian shocks -> excess kurtosis: [ 0.135 -0.043]
+```
+
+The recovered columns are `B_true` up to the kurtosis ordering and sign — the higher-kurtosis column ≈ the true second shock `[0.5, 1.0]`, the lower ≈ the true first shock `[1.0, 0.4]` — with no zeros, no signs, no instrument, and no regime spent, exactly as in the heteroskedasticity case, but now the leverage is the fat tails of the shocks rather than a variance shift. Feed the same system Gaussian shocks and the excess kurtoses collapse toward zero: the identification evaporates, and the diagnostic says so out loud rather than returning a confident-looking but arbitrary rotation.
+
+> ⚠ **Common mistake:** trusting the recovered $B$ when the shocks are near-Gaussian, or when independence is implausible. A `shock_kurtosis` near zero is not a small number to round away — it is the method announcing that this column is *unidentified*, because at the Gaussian boundary the estimand does not exist. And independence is an assumption about the *economics*, not a technicality: if a common volatility factor drives several shocks, the ICA "shocks" are a statistical artifact, not the structural ones. Statistical identification is powerful precisely because it spends no economic restriction — which is also exactly why its own maintained assumptions have to be argued, not assumed (Drautzburg and Wright 2023 show how to relax independence into set-valued bounds when you cannot).
+
 ## Narrative identification: reading the record
 
 The most labor-intensive outside information is also the most transparent: *read the documents*. Romer and Romer (2004) went through FOMC minutes and the Fed's internal Greenbook forecasts, meeting by meeting, and constructed a series of monetary policy shocks defined as the change in the intended funds rate *not* explained by the Fed's own forecasts of output and inflation — policy motion purged, by hand and by regression, of the systematic reaction to the economy. Ramey (2011) built a defense-news series by reading Business Week and other sources to date the moments when expectations of future military spending changed — capturing fiscal *news* when it arrives, rather than when spending shows up in the accounts, which matters because anticipated spending is already in agents' behavior long before it is in the data. Ramey and Zubairy (2018) extended the military-news series back to 1889 for state-dependent multiplier analysis, and Romer and Romer (2010) did the narrative exercise for tax changes, classifying each legislated change by motive so that only exogenously motivated changes count.
@@ -908,6 +956,7 @@ The decision framework, compressed: start from the **question** (which shock?), 
 | The single dominant driver of a target's forecast-error variance | Max-share / maximum-FEV shock (`max_share_svar`) | Agnostic *point* identification — the variance-maximizing shock, no ordering or signs; watch the eigenvalue gap |
 | Sign restrictions plus a few credible zeros | `zero_sign_svar` (Arias-Rubio-Ramírez-Waggoner) | The only correct sampler for the combination; naive zeroing distorts inference |
 | Documented variance regimes (crisis dates, announcement days) | Rigobon heteroskedasticity (`hetero_svar`) | Variance shifts substitute for economic restrictions; test that relative variances actually differ |
+| No defensible restriction to spend, but shocks are plausibly non-Gaussian | Non-Gaussian / independent-component identification (`nongaussian_svar`) | Data-driven point ID from the shock *distribution*; fails under Gaussianity (read `shock_kurtosis`), and independence is itself an assumption |
 | An archival record isolating exogenous policy actions | Narrative series (Romer-Romer, Ramey news) as regressor, proxy, or internal instrument | Transparent, debatable identification; watch measurement error and time-varying strength |
 | A high-frequency surprise series or other measured proxy | Proxy SVAR (`proxy_svar`); weak-IV-robust bands (Montiel Olea-Stock-Watson) on the v2 roadmap | Weakest assumptions on the rest of the system; check the first-stage F before trusting it |
 | Fiscal foresight / news shocks / suspected noninvertibility | Instrument ordered first in the VAR, or LP-IV | Internal instruments stay valid under noninvertibility (Plagborg-Møller & Wolf) |

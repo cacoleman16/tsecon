@@ -68,6 +68,7 @@ pub mod histdecomp;
 pub mod long_run;
 pub mod max_share;
 pub mod narrative;
+pub mod nongaussian;
 pub mod proxy;
 pub mod robust_bounds;
 pub mod sampler;
@@ -93,6 +94,7 @@ pub use narrative::{
     ContributionRule, HdSetSummary, NarrativeDiagnostics, NarrativeRestriction,
     NarrativeRestrictionSet, NarrativeSampleResult, NarrativeSampler,
 };
+pub use nongaussian::{nongaussian_svar, Contrast, NonGaussianSvar, OrderBy};
 pub use proxy::{proxy_svar, ProxySvarResult};
 pub use robust_bounds::{
     identified_set_bounds, robust_svar_bounds, robust_svar_bounds_default, RobustBoundPoint,

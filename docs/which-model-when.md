@@ -51,6 +51,7 @@ A compact index. Find your row, jump to the section.
 | The single shock that drives a target's business-cycle variance | `max_share_svar` (main-BC / news shock) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from one measured instrument / narrative surprise | `proxy_svar` (SVAR-IV) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from documented variance regimes (crisis vs calm) | `hetero_svar` (Rigobon) | [2](#2-i-want-an-impulse-response) |
+| Impulse response with no defensible sign/zero restriction, but plausibly non-Gaussian shocks | `nongaussian_svar` (independent-component / ICA) | [2](#2-i-want-an-impulse-response) |
 | Variance decomposition (FEVD) for an already-identified shock (any scheme) | `structural_fevd` | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
 | How much did shock *j* contribute to variable *i* in episode X | `historical_decomposition` | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
 | One *coherent* IRF from a sign-restricted set (not the median-mixes-models band) | `fry_pagan_svar` (median-target) | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
@@ -404,11 +405,11 @@ equivalent — treat the responses as exploratory, not settled.
 ### 2e · …I can defend a long-run, variance-share, instrument, or variance-regime restriction
 
 **When it applies:** you want a *point* identification (one impact matrix, not a
-set) and you have exactly one of four kinds of outside information. Each is a
+set) and you have exactly one of five kinds of leverage. Each is a
 different assumption — pick the one you can actually defend, and read the full
 anatomy in the
 [structural-identification card](reference/model-cards/structural-identification.md).
-All four take the reduced-form `data` matrix and are closed-form (no RNG). Below,
+All five take the reduced-form `data` matrix and are deterministic (no RNG). Below,
 `data` is the 3-variable macro matrix from [2a](#2a-and-i-trust-a-recursive-cholesky-ordering).
 
 - **A long-run neutrality** — some shock has no permanent effect on some variable
@@ -449,11 +450,26 @@ All four take the reduced-form `data` matrix and are closed-form (no RNG). Below
   het["B"], het["min_ratio_gap"]       # identified iff the variance ratios are distinct; the shocks carry no labels
   ```
 
+- **Non-Gaussian shocks and no restriction to spend** — you distrust every
+  economic story (no ordering, no instrument, no regime), but the shocks are
+  plausibly independent and non-Gaussian (fat-tailed, skewed). Let the *shape of
+  the distribution* identify B via independent-component analysis:
+
+  ```python
+  ng = tsecon.nongaussian_svar(data, lags=2, horizon=12)
+  ng["impact"], ng["shock_kurtosis"]   # FAILS under Gaussianity: kurtosis near 0 flags a weakly identified column
+  ```
+
+  It point-identifies the *whole* B with no restriction — but fails if the shocks
+  are Gaussian (the diagnostic is `shock_kurtosis`), and column sign/order are
+  conventions.
+
 The order of preference when more than one applies: if you have a credible
 instrument, use it (`proxy_svar` makes the weakest assumptions about the rest of
 the system); otherwise let the *question* choose — permanent-vs-transitory →
 `long_run_svar`, "the dominant driver" → `max_share_svar`, documented volatility
-shifts → `hetero_svar`.
+shifts → `hetero_svar`, and — when you can spend *no* economic restriction but the
+shocks are non-Gaussian — `nongaussian_svar`.
 
 **Escape hatch — short sample, and you don't want to hand-tune shrinkage.** All of
 these estimate a reduced-form VAR first, and on short macro samples that VAR is

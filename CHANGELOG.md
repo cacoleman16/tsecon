@@ -55,6 +55,20 @@ to PyPI as `tsecon` at the first tagged release.
   heteroskedasticity, with a Box's-M covariance-equality gate); FAVAR;
   Diebold-Yilmaz connectedness; the PCA factor model with Bai-Ng selection;
   Johansen cointegration and VECM; multivariate GARCH (CCC/DCC).
+- **Statistical (non-Gaussian) SVAR identification**: `nongaussian_svar` —
+  independent-component / ICA identification (Lanne-Meitz-Saikkonen 2017;
+  Gouriéroux-Monfort-Renne 2017) that point-identifies the *whole* structural
+  impact matrix from the reduced-form residuals alone — no sign, zero, long-run,
+  proxy, or variance-regime restriction — by exploiting the mutual independence
+  and non-Gaussianity of the shocks. A deterministic symmetric FastICA fixed
+  point (Hyvärinen log-cosh contrast, identity-initialized — bit-reproducible, no
+  RNG) rotates the whitened residuals to maximal non-Gaussianity and returns
+  `B = Σ_u^{1/2} Q`; column sign and order are conventions, and the scheme
+  **fails under Gaussianity** — a boundary the returned `shock_kurtosis`
+  diagnostic flags (near zero ⇒ weakly identified). Validated by an independent
+  NumPy FastICA golden (itself cross-checked to `sklearn.decomposition.FastICA`)
+  for the core, plus seeded Monte-Carlo recovery of the true `B` up to sign and
+  permutation.
 - **Post-identification and prior-robust SVAR tools**: a layer that *takes* an
   identification (any impact matrix `A0`, or a sign-restricted set) and answers
   what comes after — `structural_fevd` (forecast-error variance decomposition

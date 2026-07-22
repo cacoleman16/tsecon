@@ -1,8 +1,8 @@
 # Model card — Structural identification (advanced)
 
 `long_run_svar` · `max_share_svar` · `proxy_svar` · `hetero_svar` ·
-`structural_fevd` · `historical_decomposition` · `narrative_svar` ·
-`fry_pagan_svar` · `robust_svar_bounds`
+`nongaussian_svar` · `structural_fevd` · `historical_decomposition` ·
+`narrative_svar` · `fry_pagan_svar` · `robust_svar_bounds`
 
 A structural VAR is a reduced-form VAR plus one identifying assumption that
 rotates the estimated residuals into economically meaningful shocks. The
@@ -11,12 +11,13 @@ sign-restricted schemes; this card covers two families that build on them.
 
 **Point-identification schemes** ([below](#long_run_svar-blanchard-quah-long-run-restrictions))
 spend a *different* kind of outside information — a long-run neutrality, a
-variance-share objective, an external instrument, or a documented variance
-regime. Each returns a **point** identification (no bands in this build): the
-estimand is one impact matrix or one structural column, and the honest
-uncertainty is a v2 bootstrap item flagged per method below. All four take a
-plain data matrix, estimate the reduced form internally, and are deterministic —
-no RNG, no rejection sampling.
+variance-share objective, an external instrument, a documented variance regime,
+or the non-Gaussianity of the shocks themselves (a distributional assumption
+rather than an economic restriction). Each returns a **point** identification (no
+bands in this build): the estimand is one impact matrix or one structural column,
+and the honest uncertainty is a v2 bootstrap item flagged per method below. All
+five take a plain data matrix, estimate the reduced form internally, and are
+deterministic — no RNG, no rejection sampling.
 
 **Post-identification and prior-robust tools**
 ([below](#post-identification-and-prior-robust-tools)) do not identify a new
@@ -37,8 +38,10 @@ Which one you reach for is a question about *what you can defend*, laid out in
 one-line map: **long-run** when theory speaks about permanent vs. transitory
 effects; **max-share** when you want the single shock that drives a target's
 business-cycle variance; **proxy** when you have a measured instrument for one
-shock; **heteroskedasticity** when you have documented variance regimes; then the
-post-identification tools once a scheme is chosen.
+shock; **heteroskedasticity** when you have documented variance regimes;
+**non-Gaussianity** when you distrust every economic restriction but the shocks
+are plausibly non-Gaussian; then the post-identification tools once a scheme is
+chosen.
 
 ---
 
@@ -409,6 +412,183 @@ true `B = [[1, 0.5], [0.4, 1]]` up to the variance-ratio ordering and scale: the
 low-ratio column ≈ true shock 1 `[0.5, 1]`, the high-ratio column ≈ true shock 0
 `[1, 0.4]`. Box's M rejects covariance equality (p ≈ 0), confirming the two
 regimes genuinely differ — the precondition for the whole scheme.
+
+---
+
+## `nongaussian_svar` — independent-component (non-Gaussian) identification
+
+**What it estimates.** The full structural impact matrix B in
+$u_t = B\varepsilon_t$ from the reduced-form residuals **alone** — no sign, zero,
+long-run, proxy, or variance-regime restriction — by exploiting the statistical
+**independence and non-Gaussianity** of the structural shocks (Lanne, Meitz &
+Saikkonen 2017; Gouriéroux, Monfort & Renne 2017). It whitens the residuals by
+$\Sigma_u^{-1/2}$, rotates them to be **maximally non-Gaussian** with a
+deterministic symmetric FastICA fixed point (Hyvärinen's log-cosh contrast,
+identity initialization — bit-reproducible, no RNG), and sets $B = \Sigma_u^{1/2}
+Q$ for the recovered orthogonal rotation $Q$. By the ICA theorem (Comon 1994) B
+is point-identified up to column sign and order **iff at most one** structural
+shock is Gaussian.
+
+**Assumptions.** The structural shocks are **mutually independent** — strictly
+stronger than the orthogonality every SVAR assumes — and **at most one is
+Gaussian**. Independence is itself an economic claim, and the honest open problem
+of the whole family: two shocks driven by a common volatility factor are
+dependent and violate it silently (Montiel Olea, Plagborg-Møller & Qian 2022;
+Drautzburg & Wright 2023 relax independence into bounds). Plus a correct reduced
+form and enough non-Gaussianity to estimate — heavier tails or stronger skew give
+sharper identification.
+
+**When to use (and when not).** Use when you distrust every economic restriction
+on hand — no defensible recursive ordering, no credible instrument, no documented
+variance regime — but the shocks are plausibly non-Gaussian (fat-tailed financial
+innovations, skewed macro shocks). It is the data-driven fallback: identification
+is bought from the *shape of the shock distribution*, not a story you must defend.
+Do **not** use it when the shocks are near-Gaussian (it fails — see below), when
+independence is implausible (a common-volatility system), or as a labeled scheme
+without corroboration: the recovered columns are *statistically* identified shocks
+with no economic names until you check their IRF signs or an external correlation.
+
+**It FAILS under Gaussianity — and says so.** Gaussian shocks have zero excess
+kurtosis, and *every* orthogonal rotation of a whitened Gaussian vector is again
+i.i.d. Gaussian — there is no "most non-Gaussian" direction to find, so B is **not
+identified**. This is the theorem's boundary, not a numerical nuisance: the method
+has nothing to exploit. The `shock_kurtosis` diagnostic is the tell — a value near
+zero flags a column whose shock is near-Gaussian and therefore weakly (or not)
+identified. The example below shows it directly: swap in Gaussian shocks and the
+kurtoses collapse to ≈0 while the recovered B drifts far from the truth.
+
+**Column sign and order are conventions.** ICA recovers the shocks only up to
+*which column is which* and *each column's sign* — the math cannot know that
+"column 0 is the demand shock" or that a positive shock raises output.
+`order_by="kurtosis"` (default) orders columns by descending |excess kurtosis|
+(most non-Gaussian first); `"colnorm"` orders by impact-column norm. Each column is
+then signed so its largest-magnitude entry is positive. Both are **labels you
+impose**, exactly as in `hetero_svar` — reorder or re-sign to match your economic
+reading and it is the same model.
+
+**Key arguments and defaults (and why).** `lags`, `horizon`, `trend="c"`.
+`contrast="logcosh"` is Hyvärinen's general-purpose robust nonlinearity (the
+FastICA default). `max_iter=200`, `tol=1e-8` govern the symmetric fixed-point
+iteration — from the identity initialization it is deterministic and typically
+converges in a handful of steps (`n_iter` reports how many, `converged` whether
+`tol` was met). `order_by="kurtosis"` / `"colnorm"` chooses the column-ordering
+convention.
+
+**How to read the output.** `impact` (B — its columns are the
+one-standard-deviation structural shocks, $BB' = \Sigma_u$ **exactly**),
+`rotation` (the orthogonal $Q$ acting on the whitened residuals), `irf` `[h][i][j]`
+(the structural IRF, `irf[0]` $=$ `impact`), `shock_kurtosis` `[j]` (each
+identified shock's excess kurtosis, in the reported order — **the
+identification-strength diagnostic; near zero ⇒ weak or unidentified**), `order`
+(the permutation applied), and `converged`/`n_iter`. No standard errors in this
+build — an honest bootstrap band is a v2 item.
+
+**Failure modes.** Near-Gaussian shocks (identification silently vanishes — read
+`shock_kurtosis`); genuinely dependent shocks violating the independence
+assumption (the ICA estimand is then not the structural B); reading an unlabeled
+statistical shock as a named one; too few observations to pin down the higher
+moments the contrast leans on (the weakest-kurtosis column degrades first).
+
+**Validated against.** An independent NumPy FastICA pipeline
+(`numpy.linalg.lstsq` OLS, `numpy.linalg.eigh` for the whitening inverse-square-root
+and the decorrelation, `numpy.tanh` for the log-cosh contrast) that never imports
+tsecon — a genuine cross-implementation golden bit-matching B, $Q$, the per-shock
+excess kurtosis, the structural IRF, the ordering, and the convergence
+flag/iteration count (tol 1e-10; achieved ~1e-15). That NumPy reference is itself
+cross-checked against `sklearn.decomposition.FastICA` at generation (~4e-16), so
+it is a faithful FastICA, not a bespoke re-derivation. Two statistical **property**
+checks carry the estimand: the recovered B equals the *true* DGP B up to
+sign+permutation on simulated non-Gaussian data (MC tol 5e-2), and the ICA
+rotation provably lowers fourth-order cross-dependence relative to the raw whitened
+residuals; plus $BB' = \Sigma_u$, $Q$ orthogonal, and bit-identical
+reproducibility ([`nongaussian_svar.json`](../../../fixtures/nongaussian_svar.json),
+[`nongaussian.rs`](../../../crates/tsecon-ident/tests/nongaussian.rs)). The novel
+ICA core is pinned *exactly*; the *statistical-identification* claim rests on the
+recovery property — honestly weaker than a closed-form golden. See the
+[validation matrix](../validation-matrix.md).
+
+**References.** Comon (1994); Hyvärinen & Oja (2000, FastICA); Lanne, Meitz &
+Saikkonen (2017, *Journal of Econometrics*); Gouriéroux, Monfort & Renne (2017,
+*Journal of Econometrics*); Montiel Olea, Plagborg-Møller & Qian (2022);
+Drautzburg & Wright (2023).
+
+```python
+import numpy as np, tsecon
+import itertools
+
+def best_align(B_hat, B_true):
+    # align recovered columns to the true B up to sign + permutation (n = 3)
+    best, aligned = np.inf, None
+    for perm in itertools.permutations(range(B_true.shape[1])):
+        for signs in itertools.product([1, -1], repeat=B_true.shape[1]):
+            cand = B_hat[:, perm] * np.array(signs)
+            d = np.max(np.abs(cand - B_true))
+            if d < best:
+                best, aligned = d, cand
+    return best, aligned
+
+rng = np.random.default_rng(0)
+T = 2000
+# independent, standardized Student-t(5) structural shocks (excess kurtosis = 6)
+eps = rng.standard_t(5, size=(T, 3)) / np.sqrt(5 / 3)
+B_true = np.array([[1.0,  0.5, -0.3],       # true impact matrix, u = B eps
+                   [0.4,  1.0,  0.2],
+                   [-0.2, 0.3,  1.0]])
+A1 = np.array([[0.5, 0.0, -0.1],
+               [0.1, 0.4,  0.0],
+               [0.0, 0.1,  0.5]])
+y = np.zeros((T, 3))
+u = eps @ B_true.T
+for t in range(1, T):
+    y[t] = A1 @ y[t - 1] + u[t]
+
+ng = tsecon.nongaussian_svar(y, lags=1, horizon=8)
+print("converged:", ng["converged"], " n_iter:", ng["n_iter"],
+      " identified order:", np.asarray(ng["order"]))
+print("shock excess kurtosis (identified order):",
+      np.round(np.asarray(ng["shock_kurtosis"]), 3))
+err, B_aligned = best_align(np.asarray(ng["impact"]), B_true)
+print("recovered B, aligned to true B up to sign+permutation:\n", np.round(B_aligned, 4))
+print("max|recovered B - true B|:", round(err, 4))
+
+# FAILS under Gaussianity: same B, Gaussian shocks -> kurtosis ~ 0, rotation arbitrary
+rng2 = np.random.default_rng(1)
+yG = np.zeros((T, 3))
+uG = rng2.standard_normal((T, 3)) @ B_true.T
+for t in range(1, T):
+    yG[t] = A1 @ yG[t - 1] + uG[t]
+ngG = tsecon.nongaussian_svar(yG, lags=1, horizon=8)
+errG, _ = best_align(np.asarray(ngG["impact"]), B_true)
+print("\nGaussian shocks -- identification FAILS")
+print("shock excess kurtosis (all near zero):",
+      np.round(np.asarray(ngG["shock_kurtosis"]), 3))
+print("max|recovered B - true B|:", round(errG, 4))
+```
+
+```
+converged: True  n_iter: 4  identified order: [2 0 1]
+shock excess kurtosis (identified order): [6.604 3.806 3.387]
+recovered B, aligned to true B up to sign+permutation:
+ [[ 0.9998  0.5073 -0.2329]
+ [ 0.3814  0.9931  0.2283]
+ [-0.2418  0.2898  0.9486]]
+max|recovered B - true B|: 0.0671
+
+Gaussian shocks -- identification FAILS
+shock excess kurtosis (all near zero): [ 0.209 -0.207  0.084]
+max|recovered B - true B|: 0.5695
+```
+
+With independent, heavy-tailed shocks the FastICA fixed point converges in four
+steps and recovers the true impact matrix to within `0.067` — no ordering, no
+sign, no instrument, no variance regime spent, only the non-Gaussianity of the
+shocks. The three `shock_kurtosis` values (6.6, 3.8, 3.4) are all comfortably
+positive: the leverage is real, and the columns are ordered most-non-Gaussian
+first. Feed the *same* system Gaussian shocks and the story collapses exactly as
+the theorem promises — the excess kurtoses fall to ≈0, there is no most-non-Gaussian
+direction left to find, and the recovered B wanders `0.57` from the truth. The
+`shock_kurtosis` diagnostic is what turns that failure from silent to loud: when
+it is near zero, the identification is not there to be had.
 
 ---
 
