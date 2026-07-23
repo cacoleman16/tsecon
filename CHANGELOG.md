@@ -7,8 +7,13 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Pre-1.0, under active development. The name is settled — the package publishes
-to PyPI as `tsecon` at the first tagged release.
+Nothing yet.
+
+## [0.1.0] - 2026-07-23
+
+First tagged release, published to PyPI as `tsecon`. Pre-1.0 and under active
+development: minor versions may make breaking changes, patch versions are
+fixes, until 1.0.
 
 ### Added — foundations and first model classes
 - **Foundations**: Philox RNG (bit-identical to NumPy), special functions and

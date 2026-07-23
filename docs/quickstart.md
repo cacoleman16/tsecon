@@ -19,8 +19,8 @@ wheel. Build it from the repository with [maturin](https://www.maturin.rs/) and
 install the result:
 
 ```sh
-maturin build --release                       # writes target/wheels/tsecon-0.0.1-*.whl
-pip install target/wheels/tsecon-0.0.1-*.whl  # installs the `tsecon` package
+maturin build --release                       # writes target/wheels/tsecon-0.1.0-*.whl
+pip install target/wheels/tsecon-0.1.0-*.whl  # installs the `tsecon` package
 ```
 
 The core wheel depends only on NumPy. Plotting is opt-in (`pip install
@@ -29,7 +29,7 @@ on the shelf:
 
 ```python
 import tsecon
-print(tsecon.__version__)                                       # 0.0.1
+print(tsecon.__version__)                                       # 0.1.0
 print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 122
           if not n.startswith("_")))
 ```

@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "tsecon"
 # The name is settled: `tsecon` ships as-is. PyPI availability was verified
 # (unregistered) before committing to it — see docs/roadmap/14-packaging-distribution.md.
-version = "0.0.1"
+version = "0.1.0"
 description = "High-performance time series econometrics: a Rust core with a Python-first API — validation-gated against statsmodels, SciPy, NumPy, and arch"
 readme = "README.md"
 requires-python = ">=3.9"
