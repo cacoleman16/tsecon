@@ -4,9 +4,12 @@
 //! The bootstrap is stochastic, so this suite validates it honestly on
 //! four fronts:
 //!
-//! * **Reproducibility** — the same seed produces bit-identical bands, for
-//!   the plain, cumulative, and bias-corrected paths, and the plain path
-//!   matches the seeded snapshot pinned in `fixtures/var_irf_bootstrap.json`.
+//! * **Reproducibility** — the same seed produces bit-identical bands on one
+//!   platform, for the plain, cumulative, and bias-corrected paths; the plain
+//!   path also reproduces the seeded snapshot pinned in
+//!   `fixtures/var_irf_bootstrap.json` to a tight tolerance (the snapshot was
+//!   generated on one architecture, so it is held cross-platform to tolerance,
+//!   not to the bit — see [`assert_cube_close`]).
 //! * **Structure** — `lower <= point <= upper` everywhere, standard errors
 //!   are non-negative and finite, and the point estimate matches `var_irf`
 //!   (statsmodels `orth_irfs`).
@@ -95,10 +98,18 @@ fn cube_to_json(cube: &[Mat<f64>]) -> Value {
     )
 }
 
-/// Assert every cell of a cube equals the stored JSON cube to the exact
-/// f64 bit pattern (the fixture doubles round-trip exactly via serde_json's
-/// `float_roundtrip` feature).
-fn assert_cube_bits_eq(actual: &[Mat<f64>], stored: &Value, what: &str) {
+/// Assert every cell of a cube reproduces the stored JSON snapshot to a tight
+/// tolerance. The fixture is generated on one platform; bootstrap resampling
+/// and the recursive DGP accumulate sub-ULP rounding that differs across
+/// architectures (SIMD width, FMA contraction), so a *cross-platform* snapshot
+/// can only be held to tolerance, never to the exact bit pattern — the library
+/// promises bit-identical reproducibility per platform (see
+/// `same_seed_is_bit_identical`, which stays bit-exact), not across them.
+fn assert_cube_close(actual: &[Mat<f64>], stored: &Value, what: &str) {
+    // Tight enough to catch a real regression, loose enough to absorb the
+    // handful-of-ULPs cross-architecture drift the point path exhibits.
+    const RTOL: f64 = 1e-9;
+    const ATOL: f64 = 1e-12;
     let arr = stored
         .as_array()
         .unwrap_or_else(|| panic!("{what}: not an array"));
@@ -112,10 +123,11 @@ fn assert_cube_bits_eq(actual: &[Mat<f64>], stored: &Value, what: &str) {
             for j in 0..m.ncols() {
                 let a = m[(i, j)];
                 let e = cols[j].as_f64().unwrap();
-                assert_eq!(
-                    a.to_bits(),
-                    e.to_bits(),
-                    "{what}[{h}][{i}][{j}] not bit-identical: {a} vs {e}"
+                let tol = ATOL + RTOL * e.abs();
+                assert!(
+                    (a - e).abs() <= tol,
+                    "{what}[{h}][{i}][{j}] off snapshot: {a} vs {e} (|Δ|={:e} > {tol:e})",
+                    (a - e).abs()
                 );
             }
         }
@@ -143,8 +155,10 @@ fn bands_bits_eq(a: &IrfBands, b: &IrfBands) -> bool {
 
 // ------------------------------------------------------ reproducibility
 
-/// The plain bootstrap bands match the seeded snapshot pinned in the
-/// fixture bit-for-bit — the regression guard on the whole pipeline.
+/// The plain bootstrap bands reproduce the seeded snapshot pinned in the
+/// fixture to a tight tolerance — the regression guard on the whole pipeline
+/// (held to tolerance rather than the bit because the snapshot crosses
+/// architectures; see [`assert_cube_close`]).
 #[test]
 fn snapshot_matches_stored() {
     let fx = load_fixture("var_irf_bootstrap.json");
@@ -156,10 +170,10 @@ fn snapshot_matches_stored() {
         )
     });
     let bands = run_snapshot(&fx);
-    assert_cube_bits_eq(&bands.point, &snap["point"], "point");
-    assert_cube_bits_eq(&bands.se, &snap["se"], "se");
-    assert_cube_bits_eq(&bands.lower, &snap["lower"], "lower");
-    assert_cube_bits_eq(&bands.upper, &snap["upper"], "upper");
+    assert_cube_close(&bands.point, &snap["point"], "point");
+    assert_cube_close(&bands.se, &snap["se"], "se");
+    assert_cube_close(&bands.lower, &snap["lower"], "lower");
+    assert_cube_close(&bands.upper, &snap["upper"], "upper");
 }
 
 /// Same seed => bit-identical bands, across the plain, cumulative, and
