@@ -16,7 +16,15 @@ NILE = np.array(DIAG["nile"])
 
 
 def test_version():
-    assert tsecon.__version__ == "0.0.1"
+    # Version-agnostic: __version__ must exist, be a non-empty dotted string,
+    # and agree with the installed package metadata — so a release bump never
+    # breaks this test (hardcoding the number here did, at 0.0.1 -> 0.1.0).
+    import re
+    from importlib.metadata import version as _pkg_version
+
+    assert isinstance(tsecon.__version__, str)
+    assert re.match(r"^\d+\.\d+\.\d+", tsecon.__version__), tsecon.__version__
+    assert tsecon.__version__ == _pkg_version("tsecon")
 
 
 def test_philox_bit_compatible_with_numpy():
