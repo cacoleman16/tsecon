@@ -26,7 +26,11 @@ jobs:
         platform:
           - { os: ubuntu-latest,  target: x86_64,  manylinux: auto }
           - { os: ubuntu-latest,  target: aarch64, manylinux: auto }
-          - { os: macos-13,       target: x86_64,  manylinux: "" }
+          # macOS Apple Silicon (arm64). Intel-Mac (x86_64) wheels are NOT built:
+          # the macos-13 Intel runner label queues indefinitely on GitHub Actions,
+          # so Intel-Mac users install from the published sdist and compile locally
+          # (they need a Rust toolchain). Restore an x86_64 row here once a working
+          # Intel runner — or Apple-Silicon cross-compilation — is wired up.
           - { os: macos-latest,   target: aarch64, manylinux: "" }
           - { os: windows-latest, target: x64,     manylinux: "" }
     steps:
