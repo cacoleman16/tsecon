@@ -26,6 +26,7 @@ from ._arima import ARIMAResults
 from ._check import CheckSeriesResults, check_series
 from ._dsge import DSGEResults
 from ._garch import GARCHResults
+from ._generic import Result, summarize
 from ._lp import LPResults
 from ._predreg import IVXTestResults, PredictiveRegressionResults
 from ._var import CoefficientFrame, IRFArray, VARResults, var_fit, var_irf
@@ -41,8 +42,10 @@ __all__ = [
     "IVXTestResults",
     "LPResults",
     "PredictiveRegressionResults",
+    "Result",
     "VARResults",
     "check_series",
+    "summarize",
     "var_fit",
     "var_irf",
 ]

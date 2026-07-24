@@ -95,6 +95,16 @@ def check_series(
     range. `seasonal_period` must be an integer >= 2 with at least two full
     cycles in sample."""
 
+def summarize(obj: Any, *, title: str | None = ..., wrap: str = ...) -> Any:
+    """Render any tsecon output as a readable results object (opt-in).
+
+    `print(tsecon.summarize(tsecon.adf(y)))` works for every function: a plain
+    dict becomes a generic `tsecon.results.Result` with an aligned `.summary()`,
+    while a bespoke `tsecon.results.*` object is returned unchanged. Additive —
+    the returned object is a `dict` subclass, so the plain-dict contract holds.
+    `wrap="generic"` forces the structural dump even on a bespoke object.
+    """
+
 # ------------------------------------------------------- robust inference
 def long_run_variance(
     x: _ArrayLike, kernel: str = ..., bandwidth: float | None = ...

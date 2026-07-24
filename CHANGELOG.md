@@ -7,7 +7,19 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added — ergonomics
+- **Forgiving input**: every estimator now accepts a pandas `DataFrame`/`Series`
+  (or any `.to_numpy` array-like) and off-dtype/non-contiguous float arrays —
+  they are converted to `float64` at the boundary instead of raising. The rule
+  is type-based and conservative: integer *label* arrays (`hetero_svar`
+  regime labels, `var_granger` indices), restriction-tuple specs, ragged panel
+  lists, and callables are left untouched, so nothing that was correct before
+  changes behaviour. (An integer *data* array still raises — pass
+  `.astype(float)` or a DataFrame; type alone can't distinguish it from labels.)
+- **`tsecon.summarize(result)`**: a uniform, opt-in renderer for *any* function's
+  output. Plain dicts get a generic aligned `.summary()`; the six bespoke
+  `tsecon.results` objects pass through unchanged. Still a `dict` subclass, so
+  the plain-data contract is preserved.
 
 ## [0.1.0] - 2026-07-23
 

@@ -8,6 +8,62 @@ get locked out of.
 data but can also *render* themselves — a `.summary()` an economist can read, and
 `.plot_*()` methods for the standard figures.
 
+## `tsecon.summarize` — a readable view of any result
+
+Six families (VAR, LP, GARCH, ARIMA, predictive-regression, DSGE) have
+hand-written summaries. For everything else, `tsecon.summarize(result)` renders
+*any* returned dict as an aligned, honest report — scalars in a key/value block,
+small matrices as shaped tables, large arrays summarized by shape and range,
+nested dicts one level deep. It never invents or hides a key, and its header
+says "generic Result" so it is never mistaken for a bespoke model summary.
+
+```python
+import numpy as np, tsecon
+
+y = np.cumsum(np.random.default_rng(0).standard_normal(120))
+print(tsecon.summarize(tsecon.adf(y), title="adf"))
+```
+
+```
+====================================================================
+adf — generic Result  (5 fields)
+====================================================================
+statistic   -0.794469
+p_value      0.820741
+used_lag            0
+nobs              119
+--------------------------------------------------------------------
+crit  (dict, 3 entries)
+    1%       -3.486535
+    5%       -2.886151
+    10%      -2.579896
+====================================================================
+```
+
+Pass a bespoke `tsecon.results` object and it is returned unchanged (you keep
+the better summary); `summarize` deliberately does **not** guess a bespoke class
+from a raw dict, because the raw dict has already dropped the labels and data a
+rich summary needs, and shape-guessing collides. The result is still a `dict`
+subclass, so the plain-data contract below holds.
+
+## Forgiving input — pandas and array-likes
+
+Every estimator accepts a pandas `DataFrame`/`Series` (or any object exposing
+`.to_numpy`, e.g. polars) and `float32`/`float16`/non-contiguous arrays; they are
+converted to `float64` at the boundary. The conversion is conservative and
+type-based, so it never touches an argument that is not data — integer *label*
+arrays (`hetero_svar` regime labels, `var_granger` indices), restriction-tuple
+specs, ragged panel lists, and callables pass through untouched. An integer
+*data* array still raises (type alone can't tell it from a label array); pass
+`data.astype(float)` or a `DataFrame`.
+
+```python
+import pandas as pd
+df = pd.DataFrame(np.random.default_rng(0).standard_normal((200, 3)),
+                  columns=["gdp", "cons", "inv"])
+tsecon.var_fit(df, lags=2)          # a DataFrame in — no .to_numpy() needed
+```
+
 The key property:
 
 !!! note "A results object **is** a `dict`"

@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**122 functions.**
+**123 functions.**
 
 ## diagnostics
 
@@ -134,6 +134,20 @@ One-call diagnostic battery with model recommendations (the Module 01 flagship).
     must lie in (0.01, 0.10] — the compiled KPSS p-value is clamped to that
     range. `seasonal_period` must be an integer >= 2 with at least two full
     cycles in sample.
+
+### `summarize`
+
+```python
+def summarize(obj: Any, *, title: str | None = ..., wrap: str = ...) -> Any:
+```
+
+Render any tsecon output as a readable results object (opt-in).
+
+    `print(tsecon.summarize(tsecon.adf(y)))` works for every function: a plain
+    dict becomes a generic `tsecon.results.Result` with an aligned `.summary()`,
+    while a bespoke `tsecon.results.*` object is returned unchanged. Additive —
+    the returned object is a `dict` subclass, so the plain-dict contract holds.
+    `wrap="generic"` forces the structural dump even on a bespoke object.
 
 ## robust inference
 

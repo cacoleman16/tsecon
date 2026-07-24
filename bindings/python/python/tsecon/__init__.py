@@ -16,12 +16,27 @@ from . import _core as _core
 from ._core import *  # noqa: F401,F403  — the compiled estimator surface
 from ._core import __version__ as __version__
 
+# Wrap every compiled estimator so pandas DataFrames/Series and off-dtype or
+# non-contiguous float arrays are accepted directly (converted to float64 at
+# the boundary). Must run after the star import so the raw names exist to be
+# rebound; only the package globals are touched — `_core.<fn>` stays raw.
+# See `_coerce` for the (conservative, integer-array-safe) rule.
+from . import _coerce as _coerce
+
+_coerce.install(globals(), _core)
+
 from . import results as results
 
 # check_series is pure Python (a composition over the compiled tests). It is
 # imported AFTER the star import above, and the name does not exist in _core,
 # so nothing compiled can be shadowed in either direction.
 from ._inspect import check_series as check_series
+
+# summarize: a uniform, opt-in renderer for ANY function's dict output. Pure
+# Python (lives in tsecon.results); re-exported at the top level as the one
+# obvious verb — `print(tsecon.summarize(tsecon.adf(y)))`. Not a _core name,
+# so nothing compiled is shadowed.
+from .results import summarize as summarize
 
 # NOTE: `results` is exposed as a NAMESPACE only — deliberately never
 # star-imported. It defines its own `var_fit`/`var_irf` helpers that return rich
@@ -44,4 +59,5 @@ from ._inspect import check_series as check_series
 __all__ = [_n for _n in dir(_core) if not _n.startswith("_")] + [
     "check_series",
     "results",
+    "summarize",
 ]
