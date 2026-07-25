@@ -102,7 +102,14 @@ def detect_build_mode() -> tuple[str, str]:
     repo = os.path.dirname(here)
     dbg = os.path.join(repo, "target", "debug", "libtsecon.dylib")
     rel = os.path.join(repo, "target", "release", "libtsecon.dylib")
-    detail = f"{so_path} ({so_size / 1e6:.1f} MB)"
+    # Report the extension's location relative to the repo (or to $HOME) rather
+    # than as an absolute path: this output gets pasted into benchmarks/README.md,
+    # and an absolute path would publish the runner's home directory / username.
+    if so_path.startswith(repo + os.sep):
+        shown = "<repo>" + so_path[len(repo) :]
+    else:
+        shown = so_path.replace(os.path.expanduser("~"), "~", 1)
+    detail = f"{shown} ({so_size / 1e6:.1f} MB)"
     if os.path.exists(dbg) and os.path.getsize(dbg) == so_size:
         return "debug", detail + " == target/debug/libtsecon.dylib"
     if os.path.exists(rel) and os.path.getsize(rel) == so_size:

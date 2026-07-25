@@ -193,7 +193,7 @@ banner:
   arch             : 8.0.0
   scikit-learn     : 1.9.0
   tsecon build     : RELEASE
-    detected via   : /Users/chasecoleman/Time-Series-python/bindings/python/python/tsecon/_core.abi3.so (6.1 MB) (size heuristic: small -> likely release)
+    detected via   : <repo>/bindings/python/python/tsecon/_core.abi3.so (6.1 MB) (size heuristic: small -> likely release)
 ```
 
 **Parity — all 65 metrics across 25 operations PASS.** This is the deliverable,
