@@ -11,9 +11,13 @@ brings it together: one library, fast simulation, and **every estimator
 validated against a golden reference** (statsmodels, `arch`, `linearmodels`,
 scikit-learn, ArviZ, SciPy) so the numbers are trustworthy, not just present.
 
+```sh
+pip install tsecon
+```
+
 !!! note "Pre-1.0"
     The name is settled — `tsecon` is what you install and import — but the API
-    may still change before the first release. See the
+    may still change before 1.0. See the
     [roadmap](https://github.com/cacoleman16/tsecon/blob/main/ROADMAP.md).
 
 ## Start here

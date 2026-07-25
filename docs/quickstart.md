@@ -7,31 +7,39 @@ library to do. Everything below runs today against the shipped API; the code
 blocks are the same ones the test suite exercises.
 
 > **Pre-1.0.** The name is settled — `tsecon` is what you install and what you
-> import — but the API may still change before the first release. See
+> import — but the API may still change before 1.0. See
 > [ROADMAP.md](../ROADMAP.md).
 
 ---
 
 ## Install
 
-tsecon is a compiled Rust extension with a thin Python API, distributed as a
-wheel. Build it from the repository with [maturin](https://www.maturin.rs/) and
-install the result:
-
 ```sh
-maturin build --release                       # writes target/wheels/tsecon-0.1.0-*.whl
-pip install target/wheels/tsecon-0.1.0-*.whl  # installs the `tsecon` package
+pip install tsecon
 ```
 
-The core wheel depends only on NumPy. Plotting is opt-in (`pip install
-'tsecon[plots]'` pulls in matplotlib). Confirm the install and see how much is
-on the shelf:
+tsecon is a compiled Rust extension with a thin Python API, shipped as a single
+self-contained wheel whose only runtime dependency is NumPy — no Rust toolchain,
+no system BLAS. Prebuilt wheels cover Linux (`x86_64`, `aarch64`), macOS on
+Apple Silicon (`arm64`), and Windows (`x64`), for every Python ≥ 3.9. Plotting
+is opt-in (`pip install 'tsecon[plots]'` pulls in matplotlib). Confirm the
+install and see how much is on the shelf:
 
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.1.0
 print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 123
           if not n.startswith("_")))
+```
+
+There is no prebuilt wheel for Intel macOS (`x86_64`); on that platform pip
+builds from the source distribution, which needs a
+[Rust toolchain](https://rustup.rs/). That same from-source path is how
+contributors build from a checkout with [maturin](https://www.maturin.rs/):
+
+```sh
+maturin build --release                       # writes target/wheels/tsecon-0.1.0-*.whl
+pip install target/wheels/tsecon-0.1.0-*.whl  # installs the `tsecon` package
 ```
 
 ---

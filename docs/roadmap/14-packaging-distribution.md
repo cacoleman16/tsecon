@@ -2,6 +2,17 @@
 
 > Part of the time series econometrics library roadmap. Master plan: [ROADMAP.md](../../ROADMAP.md).
 
+> **Status — delivered in 0.1.0.** `pip install tsecon` is live on PyPI. The
+> Tier 1 pipeline shipped: complete `pyproject.toml` metadata, cross-platform
+> abi3 wheels (Linux `x86_64`/`aarch64`, macOS `arm64`, Windows `x64`) plus an
+> sdist for everything else (Intel macOS included), type stubs + `py.typed`,
+> single-sourced `__version__`, and a tag-triggered GitHub Actions release that
+> publishes via PyPI **trusted publishing (OIDC)**. Tier 2 extras
+> (`[plots]`/`[polars]`/`[all]`), the `CHANGELOG.md`, wheel-level smoke tests,
+> and the hosted docs site are in place too. Still open: the **conda-forge
+> feedstock** and the Tier 3 advanced items. The rest of this module is retained
+> as the design record.
+
 **The library is only as useful as `pip install <name>` is reliable. This module is the release-engineering plan: cross-platform wheels built and published automatically from a git tag, a source distribution that builds anywhere a Rust toolchain exists, type stubs so the compiled extension is a first-class typed Python citizen, a conda-forge feedstock, and the versioning, provenance, and reproducibility discipline that a library used in published research must have.** A native-extension library that is hard to install is a library nobody adopts; the packaging is not an afterthought to the econometrics, it is the delivery mechanism for all of it.
 
 ## Purpose and scope
@@ -14,7 +25,7 @@ Scope boundaries: this module owns the *release* mechanics — wheels, sdist, CI
 
 ## Where the friction is today
 
-- **The current state is a development install only**: `maturin develop` into a local venv. There is no wheel-building CI, no published package, no way for anyone but a contributor with the repo checked out to use the library.
+- **~~The current state is a development install only~~** *(resolved in 0.1.0)*: the pre-release state was a `maturin develop` into a local venv with no wheel-building CI and no published package. `pip install tsecon` now serves prebuilt wheels from PyPI; `maturin develop` remains the contributor and Intel-macOS path.
 - **`pyproject.toml` is minimal**: name, version, one dependency, the maturin backend. It is missing the metadata PyPI needs to present the package well — long description, classifiers, license expression, project URLs, keywords, Python-version floor, author.
 - **No type stubs**: a compiled extension module (`.so`/`.pyd`) exposes nothing to static analyzers or IDEs by default. Without a `.pyi` stub and a `py.typed` marker, every user loses autocomplete and type checking — a large, silent usability tax on a numeric library with many keyword arguments.
 - **The name is resolved**: the library ships as `tsecon`. PyPI availability was verified (unregistered) before committing, because the first upload claims the name permanently — see [Module 11](11-docs-ux-adoption.md).

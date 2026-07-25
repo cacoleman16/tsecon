@@ -3,8 +3,7 @@
 **High-performance time series econometrics: a Rust core with a Python-first API.**
 
 > Pre-1.0 software under active development. The name is settled — `tsecon` is
-> what you install and import — but the API may still change before the first
-> stable release.
+> what you install and import — but the API may still change before 1.0.
 
 `tsecon` brings the scattered toolkit of modern time series econometrics —
 diagnostics and specification tests, ARIMA, GARCH, VARs and structural
@@ -24,11 +23,29 @@ dependency is NumPy.
 ## Install
 
 ```sh
-pip install tsecon            # once published; a single self-contained wheel
+pip install tsecon
 ```
 
-Until the first PyPI release, build from source with
-[maturin](https://www.maturin.rs/) (needs a Rust toolchain and Python >= 3.9):
+A single self-contained wheel whose only runtime dependency is NumPy — no Rust
+toolchain, no system BLAS. Prebuilt wheels cover Linux (`x86_64`, `aarch64`),
+macOS on Apple Silicon (`arm64`), and Windows (`x64`), for every Python >= 3.9.
+Plotting is an optional extra:
+
+```sh
+pip install 'tsecon[plots]'    # adds matplotlib for the .plot_*() methods
+```
+
+Then check what you got:
+
+```python
+import tsecon
+print(tsecon.__version__)   # 0.1.0
+```
+
+There is no prebuilt wheel for Intel macOS (`x86_64`); on that platform, and for
+building from a checkout, pip compiles from the source distribution, which needs
+a [Rust toolchain](https://rustup.rs/) and Python >= 3.9. Contributors build
+with [maturin](https://www.maturin.rs/):
 
 ```sh
 pip install maturin

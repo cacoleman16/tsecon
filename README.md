@@ -9,7 +9,7 @@ time series work.**
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 
 > Pre-1.0 and moving fast. The name is settled (`tsecon`), but the API may
-> still change before the first release — see [ROADMAP.md](ROADMAP.md).
+> still change before 1.0 — see [ROADMAP.md](ROADMAP.md).
 
 Most of what economists actually do — structural identification, honest
 inference, Bayesian VARs, local projections, nowcasting, volatility, panels —
@@ -30,16 +30,39 @@ snapshot of what's built and what's next.
 
 ## Install
 
-Build the wheel from source with [maturin](https://www.maturin.rs/) (a Rust
-toolchain and Python ≥ 3.9 are required):
+```sh
+pip install tsecon
+```
+
+That is the whole install: a single self-contained wheel whose only runtime
+dependency is NumPy — no Rust toolchain, no system BLAS. Prebuilt wheels cover
+Linux (`x86_64` and `aarch64`), macOS on Apple Silicon (`arm64`), and Windows
+(`x64`), for every Python ≥ 3.9 (one abi3 wheel per platform). Plotting is an
+optional extra:
+
+```sh
+pip install 'tsecon[plots]'    # adds matplotlib for the .plot_*() methods
+```
+
+Verify what you got:
+
+```python
+import tsecon
+print(tsecon.__version__)                                       # 0.1.0
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 123
+          if not n.startswith("_")))
+```
+
+**From source (contributors, and Intel Macs).** There is no prebuilt wheel for
+Intel macOS (`x86_64`); on that platform pip builds from the sdist, which needs
+a [Rust toolchain](https://rustup.rs/) and Python ≥ 3.9. The same path is how
+contributors build a working copy from a checkout, with
+[maturin](https://www.maturin.rs/):
 
 ```sh
 pip install maturin
-maturin develop -m bindings/python/Cargo.toml   # builds + installs into the active venv
+maturin develop --release -m bindings/python/Cargo.toml   # builds + installs into the active venv
 ```
-
-A published wheel (no Rust toolchain needed) lands on PyPI with the first
-tagged release.
 
 ## Quickstart
 
