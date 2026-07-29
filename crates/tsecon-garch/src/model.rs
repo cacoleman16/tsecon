@@ -56,20 +56,28 @@ impl GarchModel {
     ///   `max_lag + n_params + 1`.
     pub fn new(y: &[f64], spec: GarchSpec) -> Result<Self, GarchError> {
         spec.validate()?;
-        if y.iter().any(|v| !v.is_finite()) {
-            return Err(GarchError::NonFinite { what: "y" });
+        if let Some(index) = y.iter().position(|v| !v.is_finite()) {
+            return Err(GarchError::NonFinite {
+                what: "the series y",
+                at: Some(index),
+            });
         }
         let needed = spec.vol.max_lag() + spec.n_params() + 1;
         if y.len() < needed {
             return Err(GarchError::InsufficientData {
                 needed,
                 got: y.len(),
+                max_lag: spec.vol.max_lag(),
+                n_params: spec.n_params(),
             });
         }
         let bc = backcast(&Self::starting_resids(y, spec.mean));
         if !(bc > 0.0 && bc.is_finite()) {
             return Err(GarchError::NonFinite {
-                what: "backcast (series has zero presample variance)",
+                what: "the variance backcast: the series has zero presample variance, so \
+                       it is constant over the first observations and there is no \
+                       volatility to model",
+                at: None,
             });
         }
         Ok(Self {
@@ -151,7 +159,8 @@ impl GarchModel {
         }
         if sigma2.iter().any(|&s| !(s > 0.0 && s.is_finite())) {
             return Err(GarchError::NonFinite {
-                what: "conditional variance",
+                what: "the conditional variance recursion",
+                at: None,
             });
         }
         Ok(sigma2)
@@ -329,7 +338,9 @@ impl GarchModel {
             }
         }
         best.map(|(_, cand)| cand).ok_or(GarchError::InvalidSpec {
-            what: "no admissible starting value found (degenerate series?)",
+            what: "no admissible starting value gives a finite log-likelihood; the \
+                   series is degenerate (constant, or nearly so) or on a scale that \
+                   overflows — GARCH is normally fitted to returns in percent",
         })
     }
 
@@ -422,11 +433,13 @@ impl GarchModel {
             .into_iter()
             .min_by(|a, b| a.f.partial_cmp(&b.f).unwrap_or(core::cmp::Ordering::Equal))
             .ok_or(GarchError::InvalidSpec {
-                what: "optimization produced no result",
+                what: "the QMLE optimizer produced no result at all (this should be \
+                       unreachable; please report it)",
             })?;
         if !best.f.is_finite() {
             return Err(GarchError::NonFinite {
-                what: "optimized log-likelihood",
+                what: "the optimized log-likelihood",
+                at: None,
             });
         }
 

@@ -20,7 +20,7 @@ from ._core import __version__ as __version__
 # non-contiguous float arrays are accepted directly (converted to float64 at
 # the boundary). Must run after the star import so the raw names exist to be
 # rebound; only the package globals are touched — `_core.<fn>` stays raw.
-# See `_coerce` for the (conservative, integer-array-safe) rule.
+# See `_coerce` for the (parameter-aware, label-array-safe) rule.
 from . import _coerce as _coerce
 
 _coerce.install(globals(), _core)

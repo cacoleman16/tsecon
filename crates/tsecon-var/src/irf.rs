@@ -52,19 +52,22 @@ pub struct Irf {
 pub fn ma_rep(coefs: &[Mat<f64>], horizon: usize) -> Result<Vec<Mat<f64>>, VarError> {
     if coefs.is_empty() {
         return Err(VarError::InvalidArgument {
-            what: "coefs must contain at least one lag matrix",
+            what: "the VAR has no lag matrices, so it has no moving-average \
+                   representation and every impulse response beyond h = 0 is zero; \
+                   refit with lags >= 1",
         });
     }
     let k = coefs[0].nrows();
     if k == 0 {
         return Err(VarError::InvalidArgument {
-            what: "coefs matrices must be non-empty",
+            what: "the VAR coefficient matrices are 0 x 0, so the system has no \
+                   variables; pass data shaped (n_obs, n_series)",
         });
     }
     for a in coefs {
         if a.nrows() != k || a.ncols() != k {
             return Err(VarError::Dimension {
-                what: "all VAR coefficient matrices must be square of one size",
+                what: "the VAR coefficient matrices are not all square of the same size",
                 expected: k,
                 got: if a.nrows() != k { a.nrows() } else { a.ncols() },
             });
@@ -72,7 +75,10 @@ pub fn ma_rep(coefs: &[Mat<f64>], horizon: usize) -> Result<Vec<Mat<f64>>, VarEr
         for j in 0..k {
             for i in 0..k {
                 if !a[(i, j)].is_finite() {
-                    return Err(VarError::NonFinite { what: "coefs" });
+                    return Err(VarError::NonFinite {
+                        what: "the VAR coefficient matrices",
+                        at: Some((i, j)),
+                    });
                 }
             }
         }
@@ -123,7 +129,7 @@ impl VarResults {
     /// [`VarError::NotPositiveDefinite`] if `sigma_u` has no Cholesky
     /// factor, plus [`ma_rep`] failures.
     pub fn orth_ma_rep(&self, horizon: usize) -> Result<Vec<Mat<f64>>, VarError> {
-        let p_chol = chol_lower(self.sigma_u.as_ref(), "sigma_u")?;
+        let p_chol = chol_lower(self.sigma_u.as_ref(), "Sigma_u, the residual covariance")?;
         let psi = self.ma_rep(horizon)?;
         Ok(psi.iter().map(|m| m * &p_chol).collect())
     }
@@ -137,7 +143,7 @@ impl VarResults {
     /// See [`VarResults::orth_ma_rep`].
     pub fn irf(&self, horizon: usize) -> Result<Irf, VarError> {
         let irfs = self.ma_rep(horizon)?;
-        let p_chol = chol_lower(self.sigma_u.as_ref(), "sigma_u")?;
+        let p_chol = chol_lower(self.sigma_u.as_ref(), "Sigma_u, the residual covariance")?;
         let orth_irfs = irfs.iter().map(|m| m * &p_chol).collect();
         Ok(Irf { irfs, orth_irfs })
     }

@@ -75,6 +75,20 @@ nav:
   - Home: index.md
   - Quickstart: quickstart.md
   - Which model when?: which-model-when.md
+  - Cookbook:
+      - Overview: cookbook/README.md
+      - Screen a new series before you model it: cookbook/screen-a-series.md
+      - Test whether a series has a unit root: cookbook/unit-root-test.md
+      - Find structural breaks at unknown dates: cookbook/structural-breaks.md
+      - HAC (Newey-West) standard errors: cookbook/hac-standard-errors.md
+      - Driscoll-Kraay SEs for a panel LP: cookbook/panel-lp-standard-errors.md
+      - Confidence bands on a VAR IRF: cookbook/var-irf-bands.md
+      - Forecast a VAR with intervals: cookbook/var-forecast-intervals.md
+      - Sign-restricted SVAR: cookbook/sign-restricted-svar.md
+      - A fiscal multiplier from an instrumented shock: cookbook/fiscal-multiplier.md
+      - GARCH with fat tails, and a forecast: cookbook/garch-fat-tails.md
+      - Growth-at-risk: cookbook/growth-at-risk.md
+      - Export a results table to LaTeX/Markdown: cookbook/results-table-export.md
   - Guide:
       - Overview: guide/README.md
       - 1. Thinking in Time Series: guide/01-foundations.md

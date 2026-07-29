@@ -58,7 +58,9 @@ impl ArimaSpec {
     pub fn new(p: usize, d: usize, q: usize) -> Result<Self, ArimaError> {
         if p > MAX_ORDER || d > MAX_ORDER || q > MAX_ORDER {
             return Err(ArimaError::InvalidArgument {
-                what: "ARIMA orders p, d, q must each be at most 1000",
+                what: "each of the ARIMA orders p, d, q must be at most 1000; a larger \
+                       one is almost always a typo and would allocate an enormous \
+                       state-space matrix",
             });
         }
         Ok(Self {
@@ -131,13 +133,16 @@ impl ArimaSpec {
         let k = self.k_params();
         if params.len() != k {
             return Err(ArimaError::Dimension {
-                what: "params must be [const?, ar.., ma.., sigma2]",
+                what: "the packed parameter vector must be [const?, ar.., ma.., sigma2]",
                 expected: k,
                 got: params.len(),
             });
         }
         if params.iter().any(|v| !v.is_finite()) {
-            return Err(ArimaError::NonFinite { what: "params" });
+            return Err(ArimaError::NonFinite {
+                what: "the packed parameter vector",
+                at: None,
+            });
         }
         let (constant, rest) = if self.include_constant {
             (params[0], &params[1..])
@@ -149,7 +154,7 @@ impl ArimaSpec {
         let sigma2 = rest[self.p + self.q];
         if sigma2 <= 0.0 {
             return Err(ArimaError::InvalidArgument {
-                what: "sigma2 must be strictly positive",
+                what: "sigma2 (the innovation variance) must be strictly positive",
             });
         }
         Ok(ParamBlocks {

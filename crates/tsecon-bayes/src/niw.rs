@@ -75,13 +75,17 @@ const MINNESOTA_AR_ORDER: usize = 4;
 fn check_data(data: MatRef<'_, f64>) -> Result<(), BayesError> {
     if data.ncols() == 0 {
         return Err(BayesError::InvalidArgument {
-            what: "data must have at least one column (variable)",
+            what: "the data matrix has no columns; pass a 2-D array shaped \
+                   (n_obs, n_series) with observations in rows, oldest first",
         });
     }
     for j in 0..data.ncols() {
         for i in 0..data.nrows() {
             if !data[(i, j)].is_finite() {
-                return Err(BayesError::NonFinite { what: "data" });
+                return Err(BayesError::NonFinite {
+                    what: "the data matrix",
+                    at: Some((i, j)),
+                });
             }
         }
     }
@@ -98,6 +102,8 @@ fn ar_resid_var(y: &[f64], p: usize) -> Result<f64, BayesError> {
         return Err(BayesError::InsufficientObservations {
             needed: p + k + 1,
             got: t,
+            what: "the AR(p) scale regression that calibrates the Minnesota prior \
+                   (p presample rows plus p + 1 coefficients)",
         });
     }
     let t_eff = t - p;
@@ -190,18 +196,21 @@ impl MinnesotaNiwPrior {
     ) -> Result<Self, BayesError> {
         if p == 0 {
             return Err(BayesError::InvalidArgument {
-                what: "lag length p must be at least 1",
+                what: "lags = 0: a BVAR needs at least one lag; pass lags >= 1",
             });
         }
         if !(lambda0.is_finite() && lambda1.is_finite() && lambda3.is_finite() && delta.is_finite())
         {
             return Err(BayesError::NonFinite {
-                what: "Minnesota hyperparameters (lambda0, lambda1, lambda3, delta)",
+                what: "the Minnesota hyperparameters (lambda0, lambda1, lambda3, delta)",
+                at: None,
             });
         }
         if lambda0 <= 0.0 || lambda1 <= 0.0 {
             return Err(BayesError::InvalidArgument {
-                what: "lambda0 and lambda1 must be strictly positive",
+                what: "the Minnesota tightness hyperparameters lambda0 and lambda1 must \
+                   both be strictly positive (the Litterman defaults are lambda0 = 0.2, \
+                   lambda1 = 1)",
             });
         }
         if lambda3 < 0.0 {
@@ -296,7 +305,8 @@ impl MinnesotaNiwPrior {
         let k = 1 + n * p;
         if data.ncols() != n {
             return Err(BayesError::Dimension {
-                what: "data must have the same number of variables as the prior",
+                what: "the data has a different number of series than the prior was built \
+                   for; rebuild the prior on the same columns",
                 expected: n,
                 got: data.ncols(),
             });
@@ -305,6 +315,7 @@ impl MinnesotaNiwPrior {
             return Err(BayesError::InsufficientObservations {
                 needed: p + 1,
                 got: data.nrows(),
+                what: "building the lagged design (p rows are consumed by lagging)",
             });
         }
         let t_eff = data.nrows() - p;
@@ -672,7 +683,7 @@ pub fn cholesky_irf(
     }
     if p == 0 {
         return Err(BayesError::InvalidArgument {
-            what: "lag length p must be at least 1",
+            what: "lags = 0: a BVAR needs at least one lag; pass lags >= 1",
         });
     }
     let k = 1 + n * p;
@@ -693,7 +704,10 @@ pub fn cholesky_irf(
     for j in 0..n {
         for i in 0..k {
             if !b[(i, j)].is_finite() {
-                return Err(BayesError::NonFinite { what: "b" });
+                return Err(BayesError::NonFinite {
+                    what: "the coefficient matrix b",
+                    at: Some((i, j)),
+                });
             }
         }
     }

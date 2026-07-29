@@ -167,7 +167,8 @@ pub fn fit_vecm(
     let k = endog.ncols();
     if k == 0 {
         return Err(CointError::Dimension {
-            what: "endog must have at least one column",
+            what: "the data matrix has no columns; pass a 2-D array shaped \
+                   (n_obs, n_series) with observations in rows, oldest first",
             expected: 1,
             got: 0,
         });
@@ -178,13 +179,16 @@ pub fn fit_vecm(
             neqs: k,
         });
     }
-    check_finite(endog, "endog")?;
+    check_finite(endog, "the data matrix")?;
     let n = endog.nrows();
     let p = k_ar_diff + 1;
     if n <= p {
         return Err(CointError::InsufficientObservations {
-            needed: p + 1,
-            got: n,
+            needed: k * k_ar_diff + k + 1,
+            got: 0,
+            nobs: n,
+            neqs: k,
+            k_ar_diff,
         });
     }
     let t = n - p;
@@ -193,6 +197,9 @@ pub fn fit_vecm(
         return Err(CointError::InsufficientObservations {
             needed: n_short + k + 1,
             got: t,
+            nobs: n,
+            neqs: k,
+            k_ar_diff,
         });
     }
 
@@ -223,7 +230,13 @@ pub fn fit_vecm(
     let mut beta_raw = Mat::from_fn(k, r, |i, j| evec[(i, j)]);
     if r > 0 {
         let top = Mat::from_fn(r, r, |i, j| beta_raw[(i, j)]);
-        let top_inv = inv_general(top.as_ref(), "beta[:r, :r]")?;
+        let top_inv = inv_general(
+            top.as_ref(),
+            "beta[:r, :r], the block used to normalize the cointegrating vectors; \
+             coint_rank exceeds the number of independent cointegrating relations \
+             in this sample — lower coint_rank (johansen() reports the rank it \
+             selects at 5%)",
+        )?;
         beta_raw = &beta_raw * &top_inv;
     }
     let beta = beta_raw;
@@ -233,7 +246,12 @@ pub fn fit_vecm(
         Mat::<f64>::zeros(k, 0)
     } else {
         let bsb = beta.transpose() * &s11 * &beta;
-        let bsb_inv = inv_general(bsb.as_ref(), "beta' S_11 beta")?;
+        let bsb_inv = inv_general(
+            bsb.as_ref(),
+            "beta' S_11 beta, the cointegrating-space second moment; two series are \
+             collinear, so the cointegrating space is not identified — drop the \
+             redundant series",
+        )?;
         &s01 * &beta * &bsb_inv
     };
 
@@ -246,7 +264,10 @@ pub fn fit_vecm(
         Mat::<f64>::zeros(k, 0)
     } else {
         let dxtdx = delta_x.transpose() * &delta_x;
-        let dxtdx_inv = inv_spd(dxtdx.as_ref(), "Delta X' Delta X")?;
+        let dxtdx_inv = inv_spd(
+            dxtdx.as_ref(),
+            "Delta X' Delta X, the short-run regressor cross-product",
+        )?;
         // gamma = W' Delta X (Delta X' Delta X)^{-1}  (k x n_short).
         &(w.transpose() * &delta_x) * &dxtdx_inv
     };
@@ -264,7 +285,10 @@ pub fn fit_vecm(
     // Concentrated log-likelihood (Lütkepohl 2005, eq. 7.2.20;
     // statsmodels VECMResults.llf):
     // llf = -kT/2 ln(2pi) - T/2 (ln|S_00| + sum_{i<r} ln(1 - lambda_i)) - kT/2.
-    let ln_det_s00 = ln_det_spd(s00.as_ref(), "S_00")?;
+    let ln_det_s00 = ln_det_spd(
+        s00.as_ref(),
+        "S_00, the second-moment matrix of the differenced residuals",
+    )?;
     let mut sum_ln = 0.0;
     for &lam in eig.iter().take(r) {
         sum_ln += (1.0 - lam).ln();

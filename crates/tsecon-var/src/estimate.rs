@@ -28,40 +28,50 @@ pub(crate) fn estimate(
     let k = endog.ncols();
     if k == 0 {
         return Err(VarError::Dimension {
-            what: "endog must have at least one column",
+            what: "the data matrix has no columns; pass a 2-D array shaped \
+                   (n_obs, n_series) with observations in rows, oldest first",
             expected: 1,
             got: 0,
         });
     }
     if lags == 0 && trend == Trend::None {
         return Err(VarError::InvalidArgument {
-            what: "lags = 0 with Trend::None leaves no regressors; \
-                   include a constant or at least one lag",
+            what: "lags = 0 with trend = \"n\" leaves no regressors at all; \
+                   pass trend = \"c\" for an intercept-only model, or lags >= 1",
         });
     }
     for j in 0..k {
         for i in 0..endog.nrows() {
             if !endog[(i, j)].is_finite() {
-                return Err(VarError::NonFinite { what: "endog" });
+                return Err(VarError::NonFinite {
+                    what: "the data matrix",
+                    at: Some((i, j)),
+                });
             }
         }
     }
+    let n_trend = trend.n_terms();
     if endog.nrows() < offset {
         return Err(VarError::InsufficientObservations {
             needed: offset,
             got: endog.nrows(),
+            lags,
+            neqs: k,
+            n_trend,
         });
     }
     let n = endog.nrows() - offset;
     let y_all = endog.submatrix(offset, 0, n, k);
 
-    let n_trend = trend.n_terms();
     let m = n_trend + k * lags;
     // OLS needs T = n - lags > m for a positive df_resid.
     if n < lags + m + 1 {
         return Err(VarError::InsufficientObservations {
             needed: offset + lags + m + 1,
             got: endog.nrows(),
+            lags,
+            neqs: k,
+            n_trend,
         });
     }
     let t_eff = n - lags;
@@ -96,14 +106,14 @@ pub(crate) fn estimate(
     let zz_inv = zz
         .llt(Side::Lower)
         .map_err(|_| VarError::NotPositiveDefinite {
-            what: "Z'Z (regressors are collinear)",
+            what: "Z'Z, the VAR regressor cross-product",
         })?
         .inverse();
 
     // Gaussian log-likelihood at the ML covariance (Lütkepohl 2005,
     // eq. 3.4.5; the quadratic form collapses to T k at the optimum):
     // llf = -(T k / 2) ln(2 pi) - (T / 2) ln det(Sigma_mle) - T k / 2.
-    let ld = ln_det_spd(sigma_u_mle.as_ref(), "sigma_u_mle")?;
+    let ld = ln_det_spd(sigma_u_mle.as_ref(), "Sigma_u, the residual covariance")?;
     let (tf, kf) = (t_eff as f64, k as f64);
     let llf = -0.5 * tf * kf * (1.0 + core::f64::consts::TAU.ln()) - 0.5 * tf * ld;
 

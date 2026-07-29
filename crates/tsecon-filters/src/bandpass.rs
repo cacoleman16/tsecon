@@ -23,19 +23,8 @@ use crate::error::{check_finite, FiltersError};
 /// Validate a band-pass frequency band: `2 <= low < high` (periods
 /// shorter than 2 observations are above the Nyquist frequency).
 fn check_band(low: f64, high: f64) -> Result<(), FiltersError> {
-    if !low.is_finite() || low < 2.0 {
-        return Err(FiltersError::InvalidParameter {
-            name: "low",
-            value: low,
-            requirement: "a finite period >= 2 observations (Nyquist)",
-        });
-    }
-    if !high.is_finite() || high <= low {
-        return Err(FiltersError::InvalidParameter {
-            name: "high",
-            value: high,
-            requirement: "a finite period > low",
-        });
+    if !low.is_finite() || low < 2.0 || !high.is_finite() || high <= low {
+        return Err(FiltersError::InvalidBand { low, high });
     }
     Ok(())
 }
@@ -79,7 +68,8 @@ pub fn bk_filter(y: &[f64], low: f64, high: f64, k: usize) -> Result<Decompositi
         return Err(FiltersError::InvalidParameter {
             name: "k",
             value: 0.0,
-            requirement: "a truncation lag >= 1",
+            requirement: "a truncation lag >= 1 (12 is the usual choice for \
+                          quarterly data)",
         });
     }
     let n = y.len();
@@ -89,6 +79,9 @@ pub fn bk_filter(y: &[f64], low: f64, high: f64, k: usize) -> Result<Decompositi
             filter: "bk_filter",
             needed,
             got: n,
+            why: "the two-sided moving average of half-width k drops k observations at \
+                  each end, so it needs 2k + 1 rows to produce even one output point; \
+                  lower k or supply a longer series",
         });
     }
     check_finite(y)?;
@@ -176,6 +169,8 @@ pub fn cf_filter(
             filter: "cf_filter",
             needed: 3,
             got: n,
+            why: "the Christiano-Fitzgerald projection needs an interior point plus one \
+                  observation on each side",
         });
     }
     check_finite(y)?;

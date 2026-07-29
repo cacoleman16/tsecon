@@ -9,17 +9,38 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ### Added — ergonomics
 - **Forgiving input**: every estimator now accepts a pandas `DataFrame`/`Series`
-  (or any `.to_numpy` array-like) and off-dtype/non-contiguous float arrays —
-  they are converted to `float64` at the boundary instead of raising. The rule
-  is type-based and conservative: integer *label* arrays (`hetero_svar`
-  regime labels, `var_granger` indices), restriction-tuple specs, ragged panel
-  lists, and callables are left untouched, so nothing that was correct before
-  changes behaviour. (An integer *data* array still raises — pass
-  `.astype(float)` or a DataFrame; type alone can't distinguish it from labels.)
+  (or any `.to_numpy` array-like), off-dtype/non-contiguous float arrays,
+  **integer and boolean arrays** (data read as `int`, a 0/1 dummy, a `y > 0`
+  mask), and a **plain list of numbers**. All are converted to `float64` at the
+  boundary instead of raising. Coercion is *parameter-aware*, so it never
+  touches an argument that is not data: the four audited integer label/index
+  parameters (`hetero_svar.regime_labels`, `var_granger.caused`/`causing`,
+  `favar.slow_indices`), restriction-tuple specs, tuple-valued options, and
+  callables pass through untouched, and ragged panel lists keep their container
+  while each per-unit array is converted. A *nested* Python list is
+  deliberately left alone — `[(0, 1), (0, 2)]` is a restriction spec and
+  `[[1.0, 2.0], [3.0, 4.0]]` is a matrix, and the values are indistinguishable.
+- **Errors that teach**: the messages a first run is most likely to hit now say
+  what happened, why, and what to try, with the offending numbers included. For
+  example, too few observations for the requested lags now reports the required
+  row count and the degrees-of-freedom arithmetic behind it, and suggests a
+  concrete smaller `lags`. A wrong-rank array argument reports the shapes it
+  received instead of the low-level `'ndarray' object is not an instance of
+  'ndarray'`.
 - **`tsecon.summarize(result)`**: a uniform, opt-in renderer for *any* function's
   output. Plain dicts get a generic aligned `.summary()`; the six bespoke
   `tsecon.results` objects pass through unchanged. Still a `dict` subclass, so
   the plain-data contract is preserved.
+- **Cookbook**: short single-task recipes under `docs/cookbook/`, each a
+  self-contained page with executed output.
+
+### Added — estimators
+- `ndiffs` — how many differences a series needs, with the per-order test
+  evidence rather than just the integer.
+- `box_cox_lambda` — variance-stabilising Box-Cox lambda (MLE, matched to
+  `scipy.stats.boxcox_normmax`; Guerrero as a documented-formula alternative).
+- `engle_granger` — the two-step cointegration test now returns p-values and
+  critical values from the MacKinnon response surfaces, not just the statistic.
 
 ## [0.1.0] - 2026-07-23
 

@@ -30,7 +30,7 @@ fn frame(n: usize, nperseg: usize, noverlap: Option<usize>) -> Result<Vec<usize>
         return Err(SpectralError::InvalidParameter {
             name: "nperseg",
             value: 0.0,
-            requirement: "a positive segment length",
+            requirement: "a positive segment length; SciPy's default is min(256, n)",
         });
     }
     if nperseg > n {
@@ -42,7 +42,9 @@ fn frame(n: usize, nperseg: usize, noverlap: Option<usize>) -> Result<Vec<usize>
         return Err(SpectralError::InvalidParameter {
             name: "noverlap",
             value: noverlap as f64,
-            requirement: "noverlap < nperseg",
+            requirement: "a value below nperseg — at noverlap >= nperseg the window \
+                          would advance by zero samples and never reach the end of the \
+                          series (SciPy's default is nperseg / 2)",
         });
     }
     let step = nperseg - noverlap;
@@ -103,7 +105,9 @@ pub fn welch(
         return Err(SpectralError::InvalidParameter {
             name: "fs",
             value: fs,
-            requirement: "a positive sampling frequency",
+            requirement: "a positive sampling frequency, in observations per unit of \
+                          time (4 for quarterly data, 12 for monthly; 1 leaves the \
+                          frequency axis in cycles per observation)",
         });
     }
     let starts = frame(x.len(), nperseg, noverlap)?;
@@ -166,7 +170,9 @@ pub fn coherence(
         return Err(SpectralError::InvalidParameter {
             name: "fs",
             value: fs,
-            requirement: "a positive sampling frequency",
+            requirement: "a positive sampling frequency, in observations per unit of \
+                          time (4 for quarterly data, 12 for monthly; 1 leaves the \
+                          frequency axis in cycles per observation)",
         });
     }
     let starts = frame(x.len(), nperseg, noverlap)?;

@@ -13,7 +13,10 @@ pub(crate) fn check_finite(m: MatRef<'_, f64>, what: &'static str) -> Result<(),
     for j in 0..m.ncols() {
         for i in 0..m.nrows() {
             if !m[(i, j)].is_finite() {
-                return Err(CointError::NonFinite { what });
+                return Err(CointError::NonFinite {
+                    what,
+                    at: Some((i, j)),
+                });
             }
         }
     }
@@ -135,14 +138,19 @@ pub(crate) fn reduced_rank_eig(
     s01: MatRef<'_, f64>,
     s11: MatRef<'_, f64>,
 ) -> Result<(Vec<f64>, Mat<f64>), CointError> {
-    let s00_inv = inv_spd(s00, "S_00")?;
+    let s00_inv = inv_spd(
+        s00,
+        "S_00, the second-moment matrix of the differenced residuals",
+    )?;
     // B = S_10 S_00^{-1} S_01 = S_01' S_00^{-1} S_01 (symmetric PSD).
     let s10 = s01.transpose().to_owned();
     let b = &s10 * &s00_inv * s01;
 
     let l = s11
         .llt(Side::Lower)
-        .map_err(|_| CointError::NotPositiveDefinite { what: "S_11" })?
+        .map_err(|_| CointError::NotPositiveDefinite {
+            what: "S_11, the second-moment matrix of the lagged-level residuals",
+        })?
         .L()
         .to_owned();
     let l_inv = lower_tri_inverse(l.as_ref());

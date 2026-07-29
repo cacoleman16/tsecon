@@ -61,26 +61,30 @@ impl VarResults {
         let p = self.spec.lags;
         if p == 0 {
             return Err(VarError::InvalidArgument {
-                what: "Granger causality needs at least one lag",
+                what: "Granger causality is undefined for a VAR(0): with no lags there is \
+                       nothing for one variable to predict in another — refit with lags >= 1",
             });
         }
         for set in [caused, causing] {
             if set.is_empty() {
                 return Err(VarError::InvalidArgument {
-                    what: "caused/causing index sets must be non-empty",
+                    what: "the caused and causing variable sets must each name at least one \
+                       column index of the fitted VAR (0-based)",
                 });
             }
             for (i, &v) in set.iter().enumerate() {
                 if v >= k {
                     return Err(VarError::Dimension {
-                        what: "variable index out of range",
+                        what: "a caused/causing index is past the last column of the fitted VAR; \
+                        indices are 0-based, so the largest valid one is k - 1",
                         expected: k,
                         got: v,
                     });
                 }
                 if set[..i].contains(&v) {
                     return Err(VarError::InvalidArgument {
-                        what: "caused/causing index sets must not contain duplicates",
+                        what: "a variable index is listed twice in the caused or causing set; \
+                           each restriction may appear only once",
                     });
                 }
             }
@@ -115,7 +119,7 @@ impl VarResults {
         let x = middle
             .llt(Side::Lower)
             .map_err(|_| VarError::NotPositiveDefinite {
-                what: "restriction covariance C Cov(beta) C'",
+                what: "C Cov(beta) C', the Granger restriction covariance",
             })?
             .solve(&rhs);
         let wald: f64 = (0..nr).map(|i| b[i] * x[(i, 0)]).sum();
@@ -147,12 +151,14 @@ impl VarResults {
 pub(crate) fn f_sf(x: f64, d1: f64, d2: f64) -> Result<f64, VarError> {
     if !d1.is_finite() || !d2.is_finite() || d1 <= 0.0 || d2 <= 0.0 {
         return Err(VarError::InvalidArgument {
-            what: "F degrees of freedom must be positive and finite",
+            what: "the F test has non-positive degrees of freedom, which means the \
+                   restricted model used up the whole sample; refit with fewer lags",
         });
     }
     if x.is_nan() {
         return Err(VarError::NonFinite {
-            what: "F statistic",
+            what: "the F statistic",
+            at: None,
         });
     }
     if x <= 0.0 {

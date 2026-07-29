@@ -30,6 +30,16 @@ pub enum FiltersError {
         needed: usize,
         /// Number of observations supplied.
         got: usize,
+        /// Where the requirement comes from, and what to change.
+        why: &'static str,
+    },
+    /// A band-pass frequency band is malformed: the two period bounds are
+    /// validated together, so the message names both.
+    InvalidBand {
+        /// The shorter period bound that was supplied.
+        low: f64,
+        /// The longer period bound that was supplied.
+        high: f64,
     },
     /// The input series contains a NaN or infinite value. Filters propagate
     /// non-finite values in surprising, filter-specific ways (a single NaN
@@ -63,16 +73,31 @@ impl fmt::Display for FiltersError {
                 filter,
                 needed,
                 got,
+                why,
             } => write!(
                 f,
-                "{filter} requires at least {needed} observations, got {got}"
+                "{filter} needs at least {needed} observation{} but got {got}: {why}",
+                if *needed == 1 { "" } else { "s" }
             ),
-            FiltersError::NonFiniteInput { index } => {
-                write!(f, "input series has a non-finite value at index {index}")
-            }
-            FiltersError::RankDeficient { what } => {
-                write!(f, "{what}: regressor matrix is numerically rank deficient")
-            }
+            FiltersError::InvalidBand { low, high } => write!(
+                f,
+                "invalid band low = {low}, high = {high}: the band is given in *periods* \
+                 (observations per cycle) and needs 2 <= low < high — for quarterly \
+                 business-cycle work the usual band is low = 6, high = 32"
+            ),
+            FiltersError::NonFiniteInput { index } => write!(
+                f,
+                "the input series has a non-finite value (NaN or inf) at index {index}: \
+                 filters spread it in surprising ways — one NaN contaminates the entire \
+                 Hodrick-Prescott trend — so drop or impute it first \
+                 (pandas: s.dropna() or s.interpolate())"
+            ),
+            FiltersError::RankDeficient { what } => write!(
+                f,
+                "{what}: the regressor matrix is numerically rank deficient, which \
+                 happens when the series is constant (or constant over the regression \
+                 window), so every lag column is collinear with the intercept"
+            ),
         }
     }
 }

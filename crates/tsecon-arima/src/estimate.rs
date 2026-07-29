@@ -337,6 +337,9 @@ fn hannan_rissanen(
         return Err(ArimaError::InsufficientObservations {
             needed: t0 + k_reg + 2,
             got: n,
+            nobs: n,
+            what: "the Hannan-Rissanen starting-value regression (a long \
+                   autoregression of order h, then p + q + constant terms)",
         });
     }
 
@@ -415,7 +418,8 @@ fn hannan_rissanen(
     out.push(sigma2);
     if out.iter().any(|v| !v.is_finite()) {
         return Err(ArimaError::NonFinite {
-            what: "Hannan-Rissanen starting values",
+            what: "the Hannan-Rissanen starting values",
+            at: None,
         });
     }
     Ok(out)
@@ -481,8 +485,9 @@ fn pick_best(
         (Some(a), None) => Ok(a),
         (None, Some(b)) => Ok(b),
         (None, None) => Err(ArimaError::EstimationFailed {
-            what: "the objective was non-finite at every point visited by \
-                   both optimization stages",
+            what: "the log-likelihood was non-finite at every point visited by both \
+                   optimization stages; rescale the series (very large or very small \
+                   magnitudes overflow the recursion) or lower p and q",
         }),
     }
 }
@@ -665,6 +670,9 @@ impl ArimaSpec {
             return Err(ArimaError::InsufficientObservations {
                 needed: k + 1,
                 got: n_eff,
+                nobs: n_eff + self.d(),
+                what: "exact-likelihood estimation of the p + q + constant + sigma2 \
+                       free parameters",
             });
         }
 
@@ -732,6 +740,9 @@ impl ArimaSpec {
             return Err(ArimaError::InsufficientObservations {
                 needed: self.p() + k + 1,
                 got: n_eff,
+                nobs: n_eff + self.d(),
+                what: "conditional-sum-of-squares estimation (p presample values plus \
+                       the p + q + constant + sigma2 free parameters)",
             });
         }
 
@@ -769,12 +780,15 @@ impl ArimaSpec {
         let ar = &mean_params[c..c + self.p()];
         let ma = &mean_params[c + self.p()..k_mean];
         let (ssr, n_c) = css_ssr(&x, constant, ar, ma).ok_or(ArimaError::EstimationFailed {
-            what: "CSS residual recursion overflowed at the optimum",
+            what: "the conditional-sum-of-squares recursion overflowed at the \
+                   optimum; rescale the series or lower p and q",
         })?;
         let sigma2 = ssr / n_c as f64;
         if !(sigma2.is_finite() && sigma2 > 0.0) {
             return Err(ArimaError::EstimationFailed {
-                what: "CSS residual variance is not strictly positive",
+                what: "the conditional-sum-of-squares residual variance is not \
+                       strictly positive, which means the series is (near) constant \
+                       over the estimation window",
             });
         }
         let loglik = -0.5 * n_c as f64 * ((2.0 * std::f64::consts::PI).ln() + 1.0 + sigma2.ln());

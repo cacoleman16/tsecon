@@ -28,7 +28,7 @@ install and see how much is on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.1.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 123
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 126
           if not n.startswith("_")))
 ```
 
@@ -87,7 +87,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 123 functions, grouped by the task they serve. Every one is a plain
+The 126 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -372,7 +372,7 @@ columns:
 import pandas as pd, tsecon
 
 df = pd.read_csv("my_macro_panel.csv", parse_dates=["date"]).set_index("date")
-fit = tsecon.var_fit(df[["gdp", "cpi", "ffr"]].to_numpy(), lags=2)
+fit = tsecon.var_fit(df[["gdp", "cpi", "ffr"]], lags=2)   # a DataFrame goes straight in
 ```
 
 Keeping data acquisition out of the library is a deliberate boundary: a loader

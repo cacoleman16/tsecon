@@ -150,18 +150,22 @@ pub fn johansen(endog: MatRef<'_, f64>, k_ar_diff: usize) -> Result<JohansenResu
     let k = endog.ncols();
     if k == 0 {
         return Err(CointError::Dimension {
-            what: "endog must have at least one column",
+            what: "the data matrix has no columns; pass a 2-D array shaped \
+                   (n_obs, n_series) with observations in rows, oldest first",
             expected: 1,
             got: 0,
         });
     }
-    check_finite(endog, "endog")?;
+    check_finite(endog, "the data matrix")?;
     let n = endog.nrows();
     // Effective sample: one difference, then k_ar_diff presample rows.
     if n <= k_ar_diff + 1 {
         return Err(CointError::InsufficientObservations {
-            needed: k_ar_diff + 2,
-            got: n,
+            needed: k * k_ar_diff + k + 1,
+            got: 0,
+            nobs: n,
+            neqs: k,
+            k_ar_diff,
         });
     }
     let t = n - 1 - k_ar_diff;
@@ -171,6 +175,9 @@ pub fn johansen(endog: MatRef<'_, f64>, k_ar_diff: usize) -> Result<JohansenResu
         return Err(CointError::InsufficientObservations {
             needed: n_short + k + 1,
             got: t,
+            nobs: n,
+            neqs: k,
+            k_ar_diff,
         });
     }
 

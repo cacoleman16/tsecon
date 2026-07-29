@@ -40,6 +40,7 @@
 #![warn(missing_docs)]
 
 mod acf;
+mod advisors;
 mod arch;
 mod error;
 mod mackinnon;
@@ -53,9 +54,14 @@ mod unitroot;
 mod validate;
 
 pub use acf::{acf, pacf_ols, pacf_yw, AcfResult};
+pub use advisors::{
+    box_cox_lambda, box_cox_llf, guerrero_cv, ndiffs, AdvisorError, BoxCoxLambda, BoxCoxMethod,
+    NdiffsResult, NdiffsStep, NdiffsStop, NdiffsTest,
+};
 pub use arch::{arch_lm, ArchLmResult};
 pub use error::DiagError;
 pub use mackinnon::{mackinnon_crit, mackinnon_p, AdfCriticalValues};
+pub use mackinnon_ext::{mackinnon_coint_crit, mackinnon_coint_p};
 pub use normality::{jarque_bera, JarqueBeraResult};
 pub use phillips::{
     phillips_ouliaris, phillips_perron, PoResult, PoTestType, PoTrend, PpResult, PpTestType,

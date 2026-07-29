@@ -505,6 +505,148 @@ fn phillips_ouliaris<'py>(
     Ok(d)
 }
 
+fn ndiffs_test(s: &str) -> PyResult<tsecon_diag::NdiffsTest> {
+    use tsecon_diag::NdiffsTest::*;
+    match s {
+        "kpss" => Ok(Kpss),
+        "adf" => Ok(Adf),
+        "pp" => Ok(Pp),
+        other => Err(PyValueError::new_err(format!(
+            "unknown test {other:?}; expected \"kpss\", \"adf\", or \"pp\""
+        ))),
+    }
+}
+
+/// How many differences a series needs — with the evidence at every order.
+///
+/// `test`: "kpss" (null: stationarity; the `forecast::ndiffs` default),
+/// "adf", or "pp" (null: a unit root). The standard sequential rule
+/// (Hyndman & Khandakar 2008): difference while the test calls for it,
+/// capped at `max_d`. Because the nulls are opposite, so is the rule —
+/// KPSS differences while `p < alpha`, ADF/PP while `p > alpha`.
+/// Composition over the shipped tests at their conventional defaults
+/// (constant term; automatic bandwidth / AIC lag selection), so the
+/// per-order numbers match statsmodels/arch to 1e-13.
+///
+/// Returns dict keys: `d`, `test`, `alpha`, `max_d`, `stop`
+/// ("Stationary" | "MaxD" | "Constant"), `steps` (one dict per order
+/// tried, keys `d`, `n`, `statistic`, `p_value`, `lags`,
+/// `needs_differencing`), `interpretation`.
+#[pyfunction]
+#[pyo3(signature = (y, test = "kpss", alpha = 0.05, max_d = 2))]
+fn ndiffs<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    test: &str,
+    alpha: f64,
+    max_d: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_diag::ndiffs(&vec1(&y), ndiffs_test(test)?, alpha, max_d).map_err(to_py)?;
+    let steps = r
+        .steps
+        .iter()
+        .map(|s| {
+            let e = PyDict::new(py);
+            e.set_item("d", s.d)?;
+            e.set_item("n", s.n)?;
+            e.set_item("statistic", s.statistic)?;
+            e.set_item("p_value", s.p_value)?;
+            e.set_item("lags", s.lags)?;
+            e.set_item("needs_differencing", s.needs_differencing)?;
+            Ok(e)
+        })
+        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
+    let d = PyDict::new(py);
+    d.set_item("d", r.d)?;
+    d.set_item("test", r.test.code())?;
+    d.set_item("alpha", r.alpha)?;
+    d.set_item("max_d", r.max_d)?;
+    d.set_item("stop", format!("{:?}", r.stop))?;
+    d.set_item("steps", steps)?;
+    d.set_item("interpretation", &r.interpretation)?;
+    Ok(d)
+}
+
+/// Variance-stabilizing Box-Cox lambda, with the objective at the optimum.
+///
+/// `method`: "mle" (profile likelihood of Box & Cox 1964 — the objective
+/// `scipy.stats.boxcox_llf` maximizes, matched to 1e-15; the optimizing
+/// lambda itself agrees with `scipy.stats.boxcox_normmax` to about 1e-7,
+/// which is the bounded optimizer's tolerance floor, not a disagreement)
+/// or "guerrero" (Guerrero's 1993 grouped coefficient-of-variation
+/// criterion, the R `forecast` default). The likelihood is very flat in
+/// lambda, so report a round value rather than a seventh decimal.
+/// `bounds` are HARD bounds on lambda, unlike
+/// SciPy's `brack`, which is only a starting bracket for an unbounded
+/// search; an optimum sitting on a bound is reported via `at_bound`.
+/// `period` is the Guerrero grouping length — set it to the seasonal
+/// frequency (12 monthly, 4 quarterly); the default 2 is the non-seasonal
+/// convention, and it does not apply to the MLE. The data must be strictly
+/// positive; a non-positive observation is an error naming its index.
+///
+/// Returns dict keys: `lambda`, `objective`, `method`, `lower`, `upper`,
+/// `at_bound`, `period` (None for the MLE), `n`, `loglik_at_zero`,
+/// `loglik_at_one`, `lr_vs_zero`, `lr_vs_one` (the last four None for
+/// Guerrero, which has no likelihood), `interpretation`.
+#[pyfunction]
+#[pyo3(signature = (y, method = "mle", bounds = (-2.0, 2.0), period = None))]
+fn box_cox_lambda<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    method: &str,
+    bounds: (f64, f64),
+    period: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::BoxCoxMethod;
+    let m = match method {
+        "mle" => {
+            if period.is_some() {
+                return Err(PyValueError::new_err(
+                    "period applies to method=\"guerrero\" only: the MLE objective \
+                     has no grouping. Drop period, or switch method",
+                ));
+            }
+            BoxCoxMethod::Mle
+        }
+        "guerrero" => BoxCoxMethod::Guerrero {
+            period: period.unwrap_or(2),
+        },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"mle\" or \"guerrero\""
+            )))
+        }
+    };
+    let r = tsecon_diag::box_cox_lambda(&vec1(&y), m, bounds).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("lambda", r.lambda)?;
+    d.set_item("objective", r.objective)?;
+    d.set_item("method", r.method.code())?;
+    d.set_item("lower", r.lower)?;
+    d.set_item("upper", r.upper)?;
+    d.set_item("at_bound", r.at_bound)?;
+    d.set_item("n", r.n)?;
+    match r.method {
+        BoxCoxMethod::Guerrero { period } => d.set_item("period", period)?,
+        BoxCoxMethod::Mle => d.set_item("period", py.None())?,
+    }
+    // The likelihood fields exist for the MLE only; Guerrero is not a
+    // likelihood, so they stay None rather than being faked.
+    for (key, value) in [
+        ("loglik_at_zero", r.loglik_at_zero),
+        ("loglik_at_one", r.loglik_at_one),
+        ("lr_vs_zero", r.lr_vs_zero),
+        ("lr_vs_one", r.lr_vs_one),
+    ] {
+        match value {
+            Some(v) => d.set_item(key, v)?,
+            None => d.set_item(key, py.None())?,
+        }
+    }
+    d.set_item("interpretation", &r.interpretation)?;
+    Ok(d)
+}
+
 fn hac_kernel(s: &str) -> PyResult<tsecon_hac::Kernel> {
     use tsecon_hac::Kernel::*;
     match s {
@@ -2781,6 +2923,85 @@ fn vecm<'py>(
     d.set_item("gamma", mat_to_vec2_bayes(&r.gamma))?;
     d.set_item("sigma_u", mat_to_vec2_bayes(&r.sigma_u))?;
     d.set_item("llf", r.llf)?;
+    Ok(d)
+}
+
+/// Engle-Granger two-step cointegration test (null: no cointegration).
+///
+/// `data` is T x k (rows are observations, oldest first); column 0 is the
+/// regressand of the step-1 cointegrating regression and columns 1.. are
+/// its regressors — do NOT add your own constant column, deterministics
+/// come from `trend`. `trend`: "n", "c" (default), "ct". `autolag` /
+/// `maxlag` are the residual-ADF lag rule: "aic" (default), "bic",
+/// "t-stat", or None with an explicit `maxlag` (used as a fixed lag).
+///
+/// Returns stat / pvalue / crit exactly as `statsmodels.tsa.stattools.coint`
+/// (validated at 1e-10 on the statistic and 1e-9 on the p-value), plus the
+/// step-1 coefficients and residuals. `pvalue` is NaN for k > 6 (the
+/// MacKinnon 1994 tables stop there, where statsmodels raises IndexError);
+/// `crit` is None for trend="n" or k > 12 (no published 2010 surface).
+/// Small p-values are evidence FOR cointegration.
+#[pyfunction]
+#[pyo3(signature = (data, trend = "c", autolag = Some("aic"), maxlag = None))]
+fn engle_granger<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    trend: &str,
+    autolag: Option<&str>,
+    maxlag: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_coint::EngleGrangerTrend as T;
+    use tsecon_diag::AdfLagSelection as L;
+    let tr = match trend {
+        "n" => T::None,
+        "c" => T::Constant,
+        "ct" => T::ConstantTrend,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown trend {other:?}; expected \"n\", \"c\", or \"ct\""
+            )))
+        }
+    };
+    let sel = match autolag {
+        Some("aic") | Some("AIC") => L::Aic(maxlag),
+        Some("bic") | Some("BIC") => L::Bic(maxlag),
+        Some("t-stat") => L::TStat(maxlag),
+        None => L::Fixed(maxlag.ok_or_else(|| {
+            PyValueError::new_err("autolag=None requires an explicit maxlag (used as fixed lag)")
+        })?),
+        Some(other) => {
+            return Err(PyValueError::new_err(format!(
+                "unknown autolag {other:?}; expected \"aic\", \"bic\", \"t-stat\", or None"
+            )))
+        }
+    };
+    let m = data_to_faer(&data);
+    if m.ncols() < 2 {
+        return Err(PyValueError::new_err(
+            "engle_granger needs at least two series: data must be T x k with k >= 2 \
+             (column 0 is the regressand, columns 1.. the regressors)",
+        ));
+    }
+    let r = tsecon_coint::engle_granger(m.as_ref(), tr, sel).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("pvalue", r.p_value)?; // f64::NAN -> Python nan when n_vars > 6
+    match r.crit {
+        Some(c) => {
+            let crit = PyDict::new(py);
+            crit.set_item("1%", c.pct1)?;
+            crit.set_item("5%", c.pct5)?;
+            crit.set_item("10%", c.pct10)?;
+            d.set_item("crit", crit)?;
+        }
+        None => d.set_item("crit", py.None())?, // trend="n", or n_vars > 12
+    }
+    d.set_item("n_vars", r.n_vars)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("used_lag", r.resid_adf.used_lag)?;
+    d.set_item("adf_nobs", r.resid_adf.nobs)?;
+    d.set_item("coint_coefs", r.coint_coefs.into_pyarray(py))?;
+    d.set_item("resid", r.resid.into_pyarray(py))?;
     Ok(d)
 }
 
@@ -6048,6 +6269,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(coherence, m)?)?;
     m.add_function(wrap_pyfunction!(johansen, m)?)?;
     m.add_function(wrap_pyfunction!(vecm, m)?)?;
+    m.add_function(wrap_pyfunction!(engle_granger, m)?)?;
     m.add_function(wrap_pyfunction!(markov_switching_ar, m)?)?;
     m.add_function(wrap_pyfunction!(midas_weights, m)?)?;
     m.add_function(wrap_pyfunction!(umidas, m)?)?;
@@ -6107,6 +6329,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(smooth_lp, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_perron, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_ouliaris, m)?)?;
+    m.add_function(wrap_pyfunction!(ndiffs, m)?)?;
+    m.add_function(wrap_pyfunction!(box_cox_lambda, m)?)?;
     m.add_function(wrap_pyfunction!(long_run_svar, m)?)?;
     m.add_function(wrap_pyfunction!(max_share_svar, m)?)?;
     m.add_function(wrap_pyfunction!(proxy_svar, m)?)?;

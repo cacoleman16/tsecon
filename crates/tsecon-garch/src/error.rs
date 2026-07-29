@@ -42,6 +42,9 @@ pub enum GarchError {
     NonFinite {
         /// Name of the offending quantity.
         what: &'static str,
+        /// Zero-based index of the first offending entry, when the check
+        /// scanned a user-supplied series.
+        at: Option<usize>,
     },
     /// Too few observations for the requested model.
     InsufficientData {
@@ -49,6 +52,10 @@ pub enum GarchError {
         needed: usize,
         /// Number of observations supplied.
         got: usize,
+        /// Longest lag in the volatility recursion.
+        max_lag: usize,
+        /// Number of free parameters in the specification.
+        n_params: usize,
     },
     /// The numerical Hessian of the log-likelihood could not be inverted
     /// (flat or boundary optimum); standard errors are unavailable at this
@@ -84,17 +91,41 @@ impl fmt::Display for GarchError {
                 f,
                 "dimension mismatch: {what} (expected {expected}, got {actual})"
             ),
-            Self::NonFinite { what } => {
-                write!(f, "non-finite value (NaN or infinity) in {what}")
-            }
-            Self::InsufficientData { needed, got } => write!(
+            Self::NonFinite {
+                what,
+                at: Some(index),
+            } => write!(
                 f,
-                "insufficient data: {got} observations, at least {needed} required"
+                "non-finite value (NaN or inf) in {what} at index {index}: the volatility \
+                 recursion has no missing-value handling, so one gap would contaminate \
+                 every later conditional variance — drop or impute it first \
+                 (pandas: s.dropna()). Note that a return series built with .pct_change() \
+                 starts with a NaN."
+            ),
+            Self::NonFinite { what, at: None } => write!(
+                f,
+                "non-finite value (NaN or inf) in {what}: the series is probably on a \
+                 scale that overflows the recursion — GARCH is normally fitted to returns \
+                 in percent (100 * log-differences), not to raw levels"
+            ),
+            Self::InsufficientData {
+                needed,
+                got,
+                max_lag,
+                n_params,
+            } => write!(
+                f,
+                "this volatility model needs at least {needed} observations but got {got}: \
+                 the recursion consumes {max_lag} presample observation(s) and its \
+                 {n_params} parameters must then be estimated from what is left. Supply a \
+                 longer series, or lower p/o/q."
             ),
             Self::SingularHessian => write!(
                 f,
-                "numerical Hessian is singular (flat or boundary optimum); \
-                 standard errors unavailable"
+                "the numerical Hessian of the log-likelihood is singular, so standard \
+                 errors are unavailable: the optimum sits on a boundary (persistence at \
+                 1, or omega at 0), which usually means the series is too short or has \
+                 no volatility clustering to identify"
             ),
             Self::UnsupportedForecast { what } => {
                 write!(f, "unsupported forecast: {what}")

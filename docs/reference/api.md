@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**123 functions.**
+**126 functions.**
 
 ## diagnostics
 
@@ -105,6 +105,29 @@ def phillips_ouliaris(
 ```
 
 Phillips-Ouliaris residual cointegration test (Zt/Za) with MacKinnon N-surfaces.
+
+### `ndiffs`
+
+```python
+def ndiffs(
+    y: _ArrayLike, test: str = ..., alpha: float = ..., max_d: int = ...
+) -> dict[str, Any]:
+```
+
+How many differences a series needs, with the per-order test evidence.
+
+### `box_cox_lambda`
+
+```python
+def box_cox_lambda(
+    y: _ArrayLike,
+    method: str = ...,
+    bounds: tuple[float, float] = ...,
+    period: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Variance-stabilising Box-Cox lambda (MLE or Guerrero) with its objective.
 
 ### `check_series`
 
@@ -1109,6 +1132,19 @@ def johansen(data: _ArrayLike, k_ar_diff: int = ...) -> dict[str, Any]:
 ```
 
 Johansen cointegration test (data is T x k); trace + max-eig + rank.
+
+### `engle_granger`
+
+```python
+def engle_granger(
+    data: _ArrayLike,
+    trend: str = ...,
+    autolag: str | None = ...,
+    maxlag: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Engle-Granger two-step cointegration test: stat + MacKinnon p-value/crit (statsmodels `coint`).
 
 ### `vecm`
 

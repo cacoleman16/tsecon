@@ -41,7 +41,8 @@ impl VarResults {
     pub fn fevd(&self, periods: usize) -> Result<Fevd, VarError> {
         if periods == 0 {
             return Err(VarError::InvalidArgument {
-                what: "fevd needs at least one period",
+                what: "horizon = 0: a forecast-error variance decomposition needs at \
+                       least one forecast period; pass horizon >= 1",
             });
         }
         let k = self.neqs;
@@ -59,7 +60,8 @@ impl VarResults {
                 let mse_i: f64 = (0..k).map(|j| cum[(i, j)]).sum();
                 if mse_i <= 0.0 {
                     return Err(VarError::NotPositiveDefinite {
-                        what: "forecast MSE diagonal in fevd",
+                        what: "the forecast-error MSE of one variable (it is zero, so its \
+                                variance cannot be apportioned)",
                     });
                 }
                 for j in 0..k {

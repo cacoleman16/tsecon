@@ -170,7 +170,8 @@ impl ArimaResults {
             let f = out.predicted_state_cov[t][(0, 0)];
             if !f.is_finite() || f <= 0.0 {
                 return Err(ArimaError::NonFinite {
-                    what: "one-step prediction variance F_t",
+                    what: "the one-step prediction variance F_t",
+                    at: None,
                 });
             }
             resid.push(v / f.sqrt());
@@ -203,7 +204,7 @@ impl ArimaResults {
     pub fn forecast(&self, steps: usize) -> Result<ArimaForecast, ArimaError> {
         if steps == 0 {
             return Err(ArimaError::InvalidArgument {
-                what: "forecast requires steps >= 1",
+                what: "steps = 0: a forecast needs at least one step ahead; pass steps >= 1",
             });
         }
         let model = self.model()?;
@@ -331,7 +332,8 @@ impl ArimaForecast {
     pub fn conf_int(&self, alpha: f64) -> Result<Vec<(f64, f64)>, ArimaError> {
         if !(alpha > 0.0 && alpha < 1.0) {
             return Err(ArimaError::InvalidArgument {
-                what: "conf_int requires 0 < alpha < 1",
+                what: "conf_int needs an alpha strictly inside (0, 1) — alpha = 0.05 \
+                       gives a 95% interval",
             });
         }
         let z = StdNormal.ppf(1.0 - 0.5 * alpha)?;

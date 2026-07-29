@@ -303,8 +303,11 @@ fn coint_p_table(trend: PoTrend) -> &'static [CointPSurface; 5] {
 ///
 /// Matches `statsmodels.tsa.adfvalues.mackinnonp(stat, regression=trend,
 /// N)` for `2 <= N <= 6`. Returns NaN outside that range (the published
-/// tables stop at N = 6).
-pub(crate) fn mackinnon_coint_p(stat: f64, trend: PoTrend, n_vars: usize) -> f64 {
+/// tables stop at N = 6; statsmodels raises `IndexError` there).
+///
+/// Shared by the two residual-based cointegration tests in the library:
+/// [`crate::phillips_ouliaris`] here and `tsecon_coint::engle_granger`.
+pub fn mackinnon_coint_p(stat: f64, trend: PoTrend, n_vars: usize) -> f64 {
     if !(2..=6).contains(&n_vars) {
         return f64::NAN;
     }
@@ -473,7 +476,10 @@ const COINT_CRIT_CT: [[[f64; 4]; 3]; 11] = [
 /// Returns `None` when no published 2010 surface exists: `N < 2`,
 /// `N > 12`, or the no-constant (`n`) case for `N > 1` (which
 /// `statsmodels.tsa.stattools.coint` also reports as unavailable).
-pub(crate) fn mackinnon_coint_crit(
+///
+/// Shared by the two residual-based cointegration tests in the library:
+/// [`crate::phillips_ouliaris`] here and `tsecon_coint::engle_granger`.
+pub fn mackinnon_coint_crit(
     trend: PoTrend,
     n_vars: usize,
     nobs: usize,

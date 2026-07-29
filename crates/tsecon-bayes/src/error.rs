@@ -43,6 +43,9 @@ pub enum BayesError {
     NonFinite {
         /// Name of the offending argument.
         what: &'static str,
+        /// Zero-based `(row, column)` of the first offending entry, when
+        /// the check scanned a user-supplied array.
+        at: Option<(usize, usize)>,
     },
     /// The sample is too short for the requested specification.
     InsufficientObservations {
@@ -50,6 +53,8 @@ pub enum BayesError {
         needed: usize,
         /// Number of usable observations available.
         got: usize,
+        /// What those observations are needed for.
+        what: &'static str,
     },
     /// The exact-diffuse initialization had not collapsed after the first
     /// time period, so the stored filtered/predicted moments the backward
@@ -82,13 +87,26 @@ impl fmt::Display for BayesError {
                 f,
                 "dimension mismatch: {what} (expected {expected}, got {got})"
             ),
-            Self::InvalidArgument { what } => write!(f, "invalid argument: {what}"),
-            Self::NonFinite { what } => {
-                write!(f, "non-finite value (NaN or infinity) in {what}")
-            }
-            Self::InsufficientObservations { needed, got } => write!(
+            Self::InvalidArgument { what } => write!(f, "{what}"),
+            Self::NonFinite {
+                what,
+                at: Some((row, col)),
+            } => write!(
                 f,
-                "insufficient observations: need at least {needed} usable rows, got {got}"
+                "non-finite value (NaN or inf) in {what} at row {row}, column {col}: the \
+                 Bayesian samplers have no missing-value handling, so one gap would \
+                 corrupt every draw — drop or impute those rows first \
+                 (pandas: df.dropna())"
+            ),
+            Self::NonFinite { what, at: None } => write!(
+                f,
+                "non-finite value (NaN or inf) in {what}: check the inputs for missing \
+                 values or magnitudes large enough to overflow"
+            ),
+            Self::InsufficientObservations { needed, got, what } => write!(
+                f,
+                "this model needs at least {needed} rows for {what}, but got {got}. \
+                 Use fewer lags, drop a series, or supply a longer sample."
             ),
             Self::DiffuseNotCollapsed { periods } => write!(
                 f,
@@ -96,9 +114,11 @@ impl fmt::Display for BayesError {
                  the backward sampler needs proper filtered moments (use Known or \
                  Stationary initialization, or more informative first-period data)"
             ),
-            Self::NoConvergence { what } => {
-                write!(f, "{what} failed to converge")
-            }
+            Self::NoConvergence { what } => write!(
+                f,
+                "{what} failed to converge; the posterior is very poorly conditioned — \
+                 rescale the data to comparable magnitudes, or tighten the prior"
+            ),
         }
     }
 }

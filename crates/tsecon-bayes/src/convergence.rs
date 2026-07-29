@@ -156,7 +156,10 @@ fn validate(chains: MatRef<'_, f64>, min_chains: usize) -> Result<Vec<Vec<f64>>,
         for j in 0..chains.ncols() {
             let v = chains[(i, j)];
             if !v.is_finite() {
-                return Err(BayesError::NonFinite { what: "chains" });
+                return Err(BayesError::NonFinite {
+                    what: "the MCMC chains",
+                    at: None,
+                });
             }
             row.push(v);
         }
@@ -337,7 +340,8 @@ fn ess_core(chains: &[Vec<f64>]) -> Result<f64, BayesError> {
     tau = tau.max(1.0 / size.log10());
     if !tau.is_finite() {
         return Err(BayesError::NonFinite {
-            what: "integrated autocorrelation time",
+            what: "the integrated autocorrelation time",
+            at: None,
         });
     }
     Ok(size / tau)

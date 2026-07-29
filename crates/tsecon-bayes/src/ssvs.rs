@@ -448,6 +448,8 @@ fn ols_pieces(
         return Err(BayesError::InsufficientObservations {
             needed: k + 1,
             got: t_eff,
+            what: "the OLS pieces the SSVS sampler starts from (the design has \
+                   k = 1 + n*lags columns per equation)",
         });
     }
     let mut xtx = x.transpose() * x;
@@ -732,13 +734,17 @@ pub fn bvar_ssvs(
     let n = data.ncols();
     if n == 0 {
         return Err(BayesError::InvalidArgument {
-            what: "data must have at least one column (variable)",
+            what: "the data matrix has no columns; pass a 2-D array shaped \
+                   (n_obs, n_series) with observations in rows, oldest first",
         });
     }
     for c in 0..n {
         for r in 0..data.nrows() {
             if !data[(r, c)].is_finite() {
-                return Err(BayesError::NonFinite { what: "data" });
+                return Err(BayesError::NonFinite {
+                    what: "the data matrix",
+                    at: Some((r, c)),
+                });
             }
         }
     }
@@ -748,6 +754,8 @@ pub fn bvar_ssvs(
         return Err(BayesError::InsufficientObservations {
             needed: k + p + 1,
             got: data.nrows(),
+            what: "the SSVS BVAR design (lags consume p rows and each equation then \
+                   has 1 + n*lags regressors)",
         });
     }
     let (x, y) = build_xy(data, p);

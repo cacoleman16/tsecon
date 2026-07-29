@@ -233,11 +233,11 @@ fn error_paths() {
     ));
     assert!(matches!(
         bk_filter(&y, 1.0, 32.0, 12),
-        Err(FiltersError::InvalidParameter { name: "low", .. })
+        Err(FiltersError::InvalidBand { low: 1.0, .. })
     ));
     assert!(matches!(
         cf_filter(&y, 6.0, 6.0, true),
-        Err(FiltersError::InvalidParameter { name: "high", .. })
+        Err(FiltersError::InvalidBand { high: 6.0, .. })
     ));
     assert!(matches!(
         bk_filter(&y, 6.0, 32.0, 0),

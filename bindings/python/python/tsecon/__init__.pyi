@@ -71,6 +71,19 @@ def phillips_ouliaris(
 ) -> dict[str, Any]:
     """Phillips-Ouliaris residual cointegration test (Zt/Za) with MacKinnon N-surfaces."""
 
+def ndiffs(
+    y: _ArrayLike, test: str = ..., alpha: float = ..., max_d: int = ...
+) -> dict[str, Any]:
+    """How many differences a series needs, with the per-order test evidence."""
+
+def box_cox_lambda(
+    y: _ArrayLike,
+    method: str = ...,
+    bounds: tuple[float, float] = ...,
+    period: int | None = ...,
+) -> dict[str, Any]:
+    """Variance-stabilising Box-Cox lambda (MLE or Guerrero) with its objective."""
+
 def check_series(
     data: npt.ArrayLike,
     seasonal_period: int | None = ...,
@@ -803,6 +816,14 @@ def coherence(
 # ---------------------------------------------------------- cointegration
 def johansen(data: _ArrayLike, k_ar_diff: int = ...) -> dict[str, Any]:
     """Johansen cointegration test (data is T x k); trace + max-eig + rank."""
+
+def engle_granger(
+    data: _ArrayLike,
+    trend: str = ...,
+    autolag: str | None = ...,
+    maxlag: int | None = ...,
+) -> dict[str, Any]:
+    """Engle-Granger two-step cointegration test: stat + MacKinnon p-value/crit (statsmodels `coint`)."""
 
 def vecm(data: _ArrayLike, k_ar_diff: int = ..., coint_rank: int = ...) -> dict[str, Any]:
     """VECM ML estimation: alpha, beta, gamma, sigma_u, llf (statsmodels-exact)."""

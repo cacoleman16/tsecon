@@ -20,14 +20,14 @@ Verified on this working tree (macOS, Apple silicon, Rust 1.97.1, CPython
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1010 passed, 0 failed, 0 ignored** | `cargo test --workspace --exclude tsecon-python` |
+| Rust tests (total) | **1037 passed, 0 failed, 0 ignored** | `cargo test --workspace --exclude tsecon-python` |
 | — integration tests in `crates/*/tests/` | 836 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 130 | |
 | — documentation tests | 44 | |
-| Python binding tests | **517 passed** in 5.7 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **538 passed** in 5.7 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 41, **every one** with a `tests/` directory | |
 | Golden fixtures | 61 JSON files, produced by 42 generator scripts | `fixtures/` |
-| Public Python functions | 123 — **all 123** are called at least once in the binding suite | |
+| Public Python functions | 126 — **all 126** are called at least once in the binding suite | |
 
 Of the 836 Rust integration tests, **174 are golden tests** (`golden.rs` in 38
 crates, plus `unitroot_golden.rs`, `smooth_golden.rs`, `pmg_golden.rs`, and the
@@ -203,7 +203,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-517 tests in 47 files. 37 of the 53 fixture JSONs are reloaded here and checked
+538 tests in 47 files. 37 of the 63 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -433,10 +433,10 @@ counts:
 ## 4 · How to run everything
 
 ```sh
-# 1. Rust core — 1010 tests
+# 1. Rust core — 1037 tests
 cargo test --workspace --exclude tsecon-python
 
-# 2. Python bindings — 517 tests
+# 2. Python bindings — 538 tests
 .venv/bin/python -m pytest bindings/python/tests -q
 
 # 3. Monte Carlo evidence (seeded, reproducible)
@@ -487,7 +487,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 1010 passed, 0 failed
+# 1037 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
@@ -563,7 +563,7 @@ discover.
   published-result replications run against small public datasets committed to
   the repo (`fixtures/ramey_zubairy.csv`, `fixtures/yield_curve_recession.csv`),
   so they are reproduced offline and cannot break on a provider's URL change.
-- **Benchmarks compare 25 of 123 functions.** The parity gate covers the unit-root
+- **Benchmarks compare 25 of 126 functions.** The parity gate covers the unit-root
   tests, the diagnostics, VAR and its IRF/FEVD/Granger, Johansen, the filters,
   the spectra, ridge/elastic-net, and the GARCH family — a broad spot check, not a
   library-wide cross-library audit — that job belongs to the fixtures.

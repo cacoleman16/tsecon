@@ -47,9 +47,12 @@ pub enum SpectralError {
 impl fmt::Display for SpectralError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SpectralError::NonFiniteInput { index } => {
-                write!(f, "input series has a non-finite value at index {index}")
-            }
+            SpectralError::NonFiniteInput { index } => write!(
+                f,
+                "the input series has a non-finite value (NaN or inf) at index {index}: \
+                 the FFT would spread it across every frequency bin, so drop or impute \
+                 it first (pandas: s.dropna() or s.interpolate())"
+            ),
             SpectralError::InvalidParameter {
                 name,
                 value,
@@ -60,11 +63,14 @@ impl fmt::Display for SpectralError {
             ),
             SpectralError::SegmentTooLong { nperseg, n } => write!(
                 f,
-                "segment length nperseg = {nperseg} exceeds the sample size {n}"
+                "the Welch segment length nperseg = {nperseg} exceeds the sample size \
+                 {n}, so not even one segment fits: lower nperseg (SciPy's default is \
+                 256, or the sample size when that is smaller)"
             ),
             SpectralError::LengthMismatch { x_len, y_len } => write!(
                 f,
-                "cross-spectral inputs differ in length: x has {x_len}, y has {y_len}"
+                "the cross-spectral inputs differ in length: x has {x_len} observations, \
+                 y has {y_len}; the two series must be index-aligned over the same window"
             ),
         }
     }

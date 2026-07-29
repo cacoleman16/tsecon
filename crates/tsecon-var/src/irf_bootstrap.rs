@@ -135,17 +135,21 @@ pub fn bootstrap_irf_bands(
 ) -> Result<IrfBands, VarError> {
     if lags == 0 {
         return Err(VarError::InvalidArgument {
-            what: "bootstrap IRF bands require lags >= 1 (a VAR(0) has no dynamics)",
+            what: "bootstrap IRF bands need lags >= 1: a VAR(0) has no dynamics, so \
+                   every response beyond h = 0 is identically zero",
         });
     }
     if n_boot < 2 {
         return Err(VarError::InvalidArgument {
-            what: "n_boot must be at least 2 to form a bootstrap distribution",
+            what: "n_boot must be at least 2 to form a bootstrap distribution; \
+                   1000 is the usual default",
         });
     }
     if !(alpha > 0.0 && alpha < 1.0) {
-        return Err(VarError::InvalidArgument {
-            what: "alpha must lie strictly in (0, 1)",
+        return Err(VarError::InvalidParameter {
+            name: "alpha",
+            value: alpha,
+            requirement: "a value strictly inside (0, 1) — alpha = 0.1 gives 90% bands",
         });
     }
 
@@ -280,7 +284,7 @@ fn irf_cube(
 ) -> Result<Vec<Mat<f64>>, VarError> {
     let psi = ma_rep(coefs, horizon)?;
     let mut cube: Vec<Mat<f64>> = if orth {
-        let pchol = chol_lower(sigma_u, "sigma_u")?;
+        let pchol = chol_lower(sigma_u, "Sigma_u, the residual covariance")?;
         psi.iter().map(|m| m * &pchol).collect()
     } else {
         psi
@@ -456,7 +460,8 @@ fn spectral_radius_of(coefs: &[Mat<f64>]) -> Result<f64, VarError> {
 /// `n_boot`.
 fn map_boot_err(_e: BootstrapError) -> VarError {
     VarError::InvalidArgument {
-        what: "bootstrap resampling failed (n_boot exceeds the RNG substream limit)",
+        what: "bootstrap resampling failed: n_boot exceeds the RNG substream \
+               limit; use a smaller n_boot",
     }
 }
 

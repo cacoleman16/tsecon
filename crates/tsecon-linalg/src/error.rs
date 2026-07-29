@@ -80,7 +80,11 @@ pub enum LinalgError {
 impl fmt::Display for LinalgError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyInput { what } => write!(f, "empty input: {what}"),
+            Self::EmptyInput { what } => write!(
+                f,
+                "empty input: {what} has no entries — check the column name, and that \
+                 dropping missing values did not remove everything"
+            ),
             Self::DimensionMismatch {
                 what,
                 expected,
@@ -92,12 +96,17 @@ impl fmt::Display for LinalgError {
             Self::NotSquare { what, rows, cols } => {
                 write!(f, "matrix must be square: {what} is {rows}x{cols}")
             }
-            Self::NonFinite { what } => {
-                write!(f, "non-finite value (NaN or infinity) in {what}")
-            }
-            Self::NotPositiveDefinite { what } => {
-                write!(f, "not positive definite: {what}")
-            }
+            Self::NonFinite { what } => write!(
+                f,
+                "non-finite value (NaN or inf) in {what}: nothing here skips missing \
+                 values silently — drop or impute them before estimating"
+            ),
+            Self::NotPositiveDefinite { what } => write!(
+                f,
+                "not positive definite: {what}; two columns are exact linear combinations \
+                 (a duplicated series, a scaled copy, or a column that is constant over \
+                 the sample) — drop the redundant column and refit"
+            ),
             Self::Unstable { spectral_radius } => write!(
                 f,
                 "transition matrix is not stable: spectral radius {spectral_radius} >= 1; \
@@ -108,7 +117,9 @@ impl fmt::Display for LinalgError {
                 residual,
             } => write!(
                 f,
-                "no convergence after {iterations} iterations (last relative update {residual:e})"
+                "no convergence after {iterations} iterations (last relative update \
+                 {residual:e}): the problem is very ill-conditioned — rescale the inputs \
+                 to comparable magnitudes, or shorten the sample"
             ),
             Self::JitterExhausted {
                 attempts,

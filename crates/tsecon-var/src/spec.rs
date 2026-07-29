@@ -60,8 +60,8 @@ impl VarSpec {
     pub fn new(lags: usize, trend: Trend) -> Result<Self, VarError> {
         if lags == 0 && trend == Trend::None {
             return Err(VarError::InvalidArgument {
-                what: "lags = 0 with Trend::None leaves no regressors; \
-                       include a constant or at least one lag",
+                what: "lags = 0 with trend = \"n\" leaves no regressors at all; \
+                       pass trend = \"c\" for an intercept-only model, or lags >= 1",
             });
         }
         Ok(Self { lags, trend })

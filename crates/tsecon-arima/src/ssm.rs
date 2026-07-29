@@ -54,15 +54,20 @@ pub fn arma_ssm(
 ) -> Result<LinearGaussianSSM, ArimaError> {
     if ar.iter().chain(ma.iter()).any(|v| !v.is_finite()) {
         return Err(ArimaError::NonFinite {
-            what: "ARMA coefficients",
+            what: "the ARMA coefficients",
+            at: None,
         });
     }
     if !intercept.is_finite() {
-        return Err(ArimaError::NonFinite { what: "intercept" });
+        return Err(ArimaError::NonFinite {
+            what: "the intercept",
+            at: None,
+        });
     }
     if !sigma2.is_finite() || sigma2 <= 0.0 {
         return Err(ArimaError::InvalidArgument {
-            what: "sigma2 must be strictly positive and finite",
+            what: "sigma2 (the innovation variance) must be strictly positive and \
+                   finite",
         });
     }
     let p = ar.len();

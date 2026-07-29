@@ -139,12 +139,13 @@ impl GarchSpec {
         let (p, o, _q) = self.vol.lags();
         if p == 0 {
             return Err(GarchError::InvalidSpec {
-                what: "p >= 1 (at least one shock lag) is required",
+                what: "p = 0: a volatility model needs at least one ARCH lag; pass p >= 1",
             });
         }
         if matches!(self.vol, VolSpec::Gjr { .. }) && o == 0 {
             return Err(GarchError::InvalidSpec {
-                what: "GJR requires o >= 1 (use Garch for o = 0)",
+                what: "GJR asymmetry needs o >= 1; for a symmetric model pass \
+                       vol=\"garch\" instead of o = 0",
             });
         }
         Ok(())
@@ -262,7 +263,8 @@ impl GarchSpec {
         let (_, omega, alphas, gammas, betas, dist) = self.split_params(params)?;
         if params.iter().any(|v| !v.is_finite()) {
             return Err(GarchError::NonFinite {
-                what: "parameter vector",
+                what: "the parameter vector",
+                at: None,
             });
         }
         match self.vol {

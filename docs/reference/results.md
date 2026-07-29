@@ -49,13 +49,24 @@ subclass, so the plain-data contract below holds.
 ## Forgiving input — pandas and array-likes
 
 Every estimator accepts a pandas `DataFrame`/`Series` (or any object exposing
-`.to_numpy`, e.g. polars) and `float32`/`float16`/non-contiguous arrays; they are
-converted to `float64` at the boundary. The conversion is conservative and
-type-based, so it never touches an argument that is not data — integer *label*
-arrays (`hetero_svar` regime labels, `var_granger` indices), restriction-tuple
-specs, ragged panel lists, and callables pass through untouched. An integer
-*data* array still raises (type alone can't tell it from a label array); pass
-`data.astype(float)` or a `DataFrame`.
+`.to_numpy`, e.g. polars), `float32`/`float16`/non-contiguous arrays, **integer
+and boolean arrays** (data read as `int`, a 0/1 recession dummy, a `y > 0` mask),
+and a **plain Python list** of numbers. All are converted to `float64` at the
+boundary.
+
+The conversion is *parameter-aware*, so it never touches an argument that is not
+data. Passing through untouched: the four integer label/index parameters
+(`hetero_svar.regime_labels`, `var_granger.caused`/`causing`,
+`favar.slow_indices`), restriction-tuple specs, tuple-valued options such as
+`box_cox_lambda(bounds=...)`, and callables. Ragged panel lists keep their list
+container while each per-unit array is converted, so a list of `Series` works.
+
+Two things are deliberately *not* guessed at. A **nested** Python list is left
+alone, because `[(0, 1), (0, 2)]` is a restriction spec and `[[1.0, 2.0], [3.0,
+4.0]]` is a matrix and nothing in the value distinguishes them — wrap a literal
+matrix with `np.array(...)`. And an argument of the wrong rank raises a message
+naming the shapes it received and what to do about it, rather than a low-level
+type error.
 
 ```python
 import pandas as pd

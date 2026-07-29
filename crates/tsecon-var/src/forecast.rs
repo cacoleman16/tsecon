@@ -38,7 +38,7 @@ impl VarResults {
     pub fn forecast(&self, steps: usize) -> Result<Mat<f64>, VarError> {
         if steps == 0 {
             return Err(VarError::InvalidArgument {
-                what: "forecast needs at least one step",
+                what: "steps = 0: a forecast needs at least one step ahead; pass steps >= 1",
             });
         }
         let k = self.neqs;
@@ -82,7 +82,8 @@ impl VarResults {
     pub fn forecast_cov(&self, steps: usize) -> Result<Vec<Mat<f64>>, VarError> {
         if steps == 0 {
             return Err(VarError::InvalidArgument {
-                what: "forecast_cov needs at least one step",
+                what: "steps = 0: a forecast covariance needs at least one step ahead; \
+                       pass steps >= 1",
             });
         }
         let psi = self.ma_rep(steps - 1)?;
@@ -120,8 +121,11 @@ impl VarResults {
         alpha: f64,
     ) -> Result<ForecastInterval, VarError> {
         if !(alpha > 0.0 && alpha < 1.0) {
-            return Err(VarError::InvalidArgument {
-                what: "alpha must lie strictly between 0 and 1",
+            return Err(VarError::InvalidParameter {
+                name: "alpha",
+                value: alpha,
+                requirement: "a value strictly inside (0, 1) — alpha = 0.05 gives a \
+                              95% forecast interval",
             });
         }
         let point = self.forecast(steps)?;

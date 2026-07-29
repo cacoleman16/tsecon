@@ -175,7 +175,8 @@ pub(crate) fn sym_eigen(a: MatRef<'_, f64>) -> Result<SymEigen, BayesError> {
         for i in 0..n {
             if !m[(i, j)].is_finite() {
                 return Err(BayesError::NonFinite {
-                    what: "sym_eigen input",
+                    what: "the symmetric eigendecomposition input",
+                    at: Some((i, j)),
                 });
             }
         }

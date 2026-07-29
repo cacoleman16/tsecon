@@ -221,17 +221,19 @@ pub fn bvar_hierarchical(
 ) -> Result<HierarchicalFit, BayesError> {
     if p == 0 {
         return Err(BayesError::InvalidArgument {
-            what: "lag length p must be at least 1",
+            what: "lags = 0: a BVAR needs at least one lag; pass lags >= 1",
         });
     }
     if !(cfg.lambda1_lo.is_finite() && cfg.lambda1_hi.is_finite()) {
         return Err(BayesError::NonFinite {
-            what: "lambda1 search bounds",
+            what: "the lambda1 search bounds",
+            at: None,
         });
     }
     if !(cfg.lambda1_lo > 0.0 && cfg.lambda1_lo < cfg.lambda1_hi) {
         return Err(BayesError::InvalidArgument {
-            what: "require 0 < lambda1_lo < lambda1_hi",
+            what: "the lambda1 search bracket must satisfy \
+                   0 < lambda1_lo < lambda1_hi",
         });
     }
     if !(cfg.lambda1_init.is_finite() && cfg.lambda1_init > 0.0) {

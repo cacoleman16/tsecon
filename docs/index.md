@@ -52,7 +52,7 @@ pip install tsecon
 
 ## What's inside
 
-123 functions callable from Python today, spanning diagnostics, unit-root and
+126 functions callable from Python today, spanning diagnostics, unit-root and
 specification tests; ARIMA, GARCH, and GAS score-driven volatility; VAR / SVAR with
 sign-restricted identification, FAVAR, and Diebold-Yilmaz connectedness; local
 projections (including state-dependent and LP-IV); Bayesian VARs; GMM / IV-GMM

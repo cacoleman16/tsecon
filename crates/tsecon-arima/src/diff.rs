@@ -26,13 +26,18 @@ pub(crate) struct Differenced {
 /// * [`ArimaError::InsufficientObservations`] if `y.len() <= d` (no
 ///   observations would remain).
 pub(crate) fn difference(y: &[f64], d: usize) -> Result<Differenced, ArimaError> {
-    if y.iter().any(|v| !v.is_finite()) {
-        return Err(ArimaError::NonFinite { what: "y" });
+    if let Some(index) = y.iter().position(|v| !v.is_finite()) {
+        return Err(ArimaError::NonFinite {
+            what: "the series y",
+            at: Some(index),
+        });
     }
     if y.len() <= d {
         return Err(ArimaError::InsufficientObservations {
             needed: d + 1,
             got: y.len(),
+            nobs: y.len(),
+            what: "differencing d times (each difference drops one observation)",
         });
     }
     let mut series = y.to_vec();

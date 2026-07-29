@@ -61,14 +61,16 @@ pub fn hamilton_filter(y: &[f64], h: usize, p: usize) -> Result<HamiltonResult, 
         return Err(FiltersError::InvalidParameter {
             name: "h",
             value: 0.0,
-            requirement: "a horizon >= 1",
+            requirement: "a forecast horizon >= 1 (Hamilton recommends h = 8 for \
+                          quarterly data)",
         });
     }
     if p == 0 {
         return Err(FiltersError::InvalidParameter {
             name: "p",
             value: 0.0,
-            requirement: "a lag count >= 1",
+            requirement: "a lag count >= 1 (Hamilton recommends p = 4 for quarterly \
+                          data)",
         });
     }
     let n = y.len();
@@ -80,6 +82,9 @@ pub fn hamilton_filter(y: &[f64], h: usize, p: usize) -> Result<HamiltonResult, 
             filter: "hamilton_filter",
             needed,
             got: n,
+            why: "the h-step-ahead regression on p lags discards h + p - 1 rows and then \
+                  needs p + 1 more to fit its coefficients (h + 2p in total); lower h or \
+                  p, or supply a longer series",
         });
     }
     check_finite(y)?;
@@ -142,7 +147,8 @@ pub fn hamilton_filter_random_walk(y: &[f64], h: usize) -> Result<Decomposition,
         return Err(FiltersError::InvalidParameter {
             name: "h",
             value: 0.0,
-            requirement: "a horizon >= 1",
+            requirement: "a forecast horizon >= 1 (Hamilton recommends h = 8 for \
+                          quarterly data)",
         });
     }
     let n = y.len();
@@ -151,6 +157,8 @@ pub fn hamilton_filter_random_walk(y: &[f64], h: usize) -> Result<Decomposition,
             filter: "hamilton_filter_random_walk",
             needed: h + 1,
             got: n,
+            why: "the h-step-ahead difference discards the first h rows; lower h or \
+                  supply a longer series",
         });
     }
     check_finite(y)?;

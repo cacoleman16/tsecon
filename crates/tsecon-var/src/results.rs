@@ -96,7 +96,8 @@ impl VarResults {
     pub fn companion(&self) -> Result<Mat<f64>, VarError> {
         if self.spec.lags == 0 {
             return Err(VarError::InvalidArgument {
-                what: "a VAR(0) has no companion matrix",
+                what: "a VAR(0) has no companion matrix (and therefore no stability \
+                       roots); refit with lags >= 1",
             });
         }
         let refs: Vec<MatRef<'_, f64>> = self.coefs.iter().map(Mat::as_ref).collect();

@@ -63,7 +63,8 @@ pub fn select_order(
 ) -> Result<LagOrderSelection, VarError> {
     if maxlags == 0 {
         return Err(VarError::InvalidArgument {
-            what: "maxlags must be at least 1",
+            what: "maxlags = 0: the lag-order search needs at least one candidate; \
+                   pass maxlags >= 1",
         });
     }
     let p_min = usize::from(trend == Trend::None);

@@ -173,7 +173,7 @@ fn error_paths() {
     ));
     assert!(matches!(
         res.forecast_interval(4, 0.0),
-        Err(VarError::InvalidArgument { .. })
+        Err(VarError::InvalidParameter { name: "alpha", .. })
     ));
     assert!(matches!(res.fevd(0), Err(VarError::InvalidArgument { .. })));
     assert!(matches!(

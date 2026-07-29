@@ -136,7 +136,8 @@ impl GarchResults {
     pub fn forecast_variance(&self, horizon: usize) -> Result<Vec<f64>, GarchError> {
         if horizon == 0 {
             return Err(GarchError::InvalidSpec {
-                what: "forecast horizon must be at least 1",
+                what: "horizon = 0: a variance forecast needs at least one step ahead; \
+                       pass horizon >= 1",
             });
         }
         let (_, omega, alphas, gammas, betas, _) = self.spec.split_params(&self.params)?;

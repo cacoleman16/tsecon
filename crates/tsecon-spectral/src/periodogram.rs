@@ -56,16 +56,20 @@ pub fn periodogram(
     let n = x.len();
     if n == 0 {
         return Err(SpectralError::InvalidParameter {
-            name: "x.len()",
+            name: "the length of x",
             value: 0.0,
-            requirement: "at least 1 observation",
+            requirement: "at least 1 observation — the series is empty, so check the \
+                          column name and that dropping missing values did not remove \
+                          everything",
         });
     }
     if fs.is_nan() || fs <= 0.0 {
         return Err(SpectralError::InvalidParameter {
             name: "fs",
             value: fs,
-            requirement: "a positive sampling frequency",
+            requirement: "a positive sampling frequency, in observations per unit of \
+                          time (4 for quarterly data, 12 for monthly; 1 leaves the \
+                          frequency axis in cycles per observation)",
         });
     }
 

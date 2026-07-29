@@ -222,7 +222,8 @@ pub fn irf_asymptotic_se(
     let p = res.spec.lags;
     if p == 0 {
         return Err(VarError::InvalidArgument {
-            what: "asymptotic IRF standard errors require at least one lag",
+            what: "asymptotic IRF standard errors need lags >= 1: a VAR(0) has no \
+                   dynamics, so there is no coefficient covariance to propagate",
         });
     }
     let k2 = k * k;
@@ -265,7 +266,7 @@ pub fn irf_asymptotic_se(
     }
 
     // Cholesky factor P and I_k reused by the orthogonalized branches.
-    let p_chol = chol_lower(res.sigma_u.as_ref(), "sigma_u")?;
+    let p_chol = chol_lower(res.sigma_u.as_ref(), "Sigma_u, the residual covariance")?;
     let ik = Mat::<f64>::from_fn(k, k, |i, j| f64::from(u8::from(i == j)));
 
     let mut covs: Vec<Mat<f64>> = Vec::with_capacity(horizon + 1);

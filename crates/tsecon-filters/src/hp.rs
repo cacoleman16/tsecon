@@ -82,7 +82,8 @@ pub fn hp_filter(y: &[f64], lambda: f64) -> Result<Decomposition, FiltersError> 
         return Err(FiltersError::InvalidParameter {
             name: "lambda",
             value: lambda,
-            requirement: "a finite value >= 0",
+            requirement: "a finite value >= 0 (1600 for quarterly data, 129600 for \
+                          monthly, 6.25 for annual)",
         });
     }
     if y.is_empty() {
@@ -90,6 +91,8 @@ pub fn hp_filter(y: &[f64], lambda: f64) -> Result<Decomposition, FiltersError> 
             filter: "hp_filter",
             needed: 1,
             got: 0,
+            why: "the series is empty — check the column name, and that dropping \
+                  missing values did not remove everything",
         });
     }
     check_finite(y)?;
@@ -126,7 +129,8 @@ pub fn hp_filter_one_sided(y: &[f64], lambda: f64) -> Result<Decomposition, Filt
         return Err(FiltersError::InvalidParameter {
             name: "lambda",
             value: lambda,
-            requirement: "a finite value >= 0",
+            requirement: "a finite value >= 0 (1600 for quarterly data, 129600 for \
+                          monthly, 6.25 for annual)",
         });
     }
     if y.is_empty() {
@@ -134,6 +138,8 @@ pub fn hp_filter_one_sided(y: &[f64], lambda: f64) -> Result<Decomposition, Filt
             filter: "hp_filter_one_sided",
             needed: 1,
             got: 0,
+            why: "the series is empty — check the column name, and that dropping \
+                  missing values did not remove everything",
         });
     }
     check_finite(y)?;
@@ -210,7 +216,9 @@ fn solve_hp_trend(y: &[f64], lambda: f64) -> Result<Vec<f64>, FiltersError> {
             return Err(FiltersError::InvalidParameter {
                 name: "lambda",
                 value: lambda,
-                requirement: "a value for which I + lambda*K'K stays numerically positive definite",
+                requirement: "a value for which I + lambda*K'K stays numerically positive \
+                              definite; this lambda is large enough to lose the \
+                              factorization",
             });
         }
         dd[i] = di;
