@@ -137,6 +137,23 @@ jobs:
       # are reported but never gate; only agreement with statsmodels/arch does.
       - name: Cross-library parity gate
         run: python benchmarks/bench.py
+      # The notebooks are generated from these plain-Python sources, so running
+      # them here proves every published notebook still executes against the
+      # current API — a notebook that quietly stopped working would otherwise be
+      # the worst thing a newcomer could land on.
+      - name: Notebooks execute
+        run: |
+          python -m pip install -q matplotlib pandas
+          export MPLBACKEND=Agg
+          for src in notebooks/*_src.py; do
+            echo "--- $src"
+            python "$src" > /dev/null
+          done
+      - name: Notebooks are in sync with their sources
+        run: |
+          python notebooks/build.py
+          git diff --exit-code -- notebooks/ \
+            || (echo "::error::notebooks/*.ipynb are stale — run 'python notebooks/build.py' and commit"; exit 1)
 
   abi3:
     name: abi3 wheel runs on Python ${{ matrix.python-version }}

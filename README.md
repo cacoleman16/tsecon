@@ -28,6 +28,16 @@ Linux/macOS/Windows), and a strict-built docs site keeps the documentation
 honest. See [ROADMAP.md §0](ROADMAP.md#0-current-build-status) for the live
 snapshot of what's built and what's next.
 
+## Try it without installing anything
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/cacoleman16/tsecon/blob/main/notebooks/01_tour.ipynb)
+&nbsp;**[tsecon in five minutes](notebooks/01_tour.ipynb)** — screen a series, fit a VAR, read an impulse response off it, and put honest bands on it.
+
+Two more runnable notebooks: **[IRF bands and the LP-vs-VAR question](notebooks/02_irf_bands_and_lp_vs_var.ipynb)**
+(where the bands actually fail a coverage check, and when local projections beat
+a VAR) and **[a Blanchard-Quah replication](notebooks/03_blanchard_quah.ipynb)**
+on real data. See [`notebooks/`](notebooks/README.md).
+
 ## Install
 
 ```sh
