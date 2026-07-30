@@ -269,7 +269,88 @@ a limitation it would be easy to hide (HAC recovers coverage under serial
 correlation but only to 0.451 at φ = 0.95, not to 0.95) and confirms the
 textbook Kendall AR(1) bias `−(1+3φ)/T` at four sample sizes.
 
-### Tier 6 — Frontier Monte Carlo
+### Tier 6 — Interval coverage
+
+**What it proves:** that the library's *intervals* keep the promise they make —
+that a nominal 95% confidence interval contains the truth in 95% of repeated
+samples — and, where they do not, by how much and why.
+
+Full write-up: **[Interval coverage](../examples/interval-coverage.md)**.
+
+```sh
+.venv/bin/python docs/examples/coverage/run_all.py            # 376 s here
+.venv/bin/python docs/examples/coverage/run_all.py --summary   # tables only
+.venv/bin/python docs/examples/coverage/run_all.py --quick      # ~40 s smoke run
+```
+
+This is a separate tier from Tier 5 rather than a section of it, because the
+object under test is different. Tier 5 asks whether a *test statistic* holds its
+size and whether an *estimator* is consistent. Tier 6 asks whether an
+**interval-valued output** covers, which is a claim about a specific
+`lower`/`upper` pair the library returns, at a specific nominal level, on a
+specific data-generating process — and it is the claim a reader is implicitly
+relying on every time they quote a standard error.
+
+Five modules under
+[`docs/examples/coverage/`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage)
+re-estimate 39 interval-valued outputs across 21 functions on seeded draws from
+processes whose truth is known in closed form, and count containment. (39 rather
+than 21 because the option and the regime change the answer: `var_irf_bands`
+contributes six rows, `bai_perron` three.) Every coverage number
+carries its own Monte Carlo standard error `sqrt(p(1−p)/reps)` so that 0.93 and
+0.95 can be told apart honestly, and `run_all.py` harvests the consolidated
+tables from the structured results the modules return — nothing is transcribed,
+so a schema change makes the runner exit non-zero rather than silently dropping
+a row.
+
+The design choice that makes the output usable is that each surface is measured
+**twice**: once on a design it is entitled to do well on, once on a design that
+pushes it where applied work goes. That separates "this asymptotic approximation
+degrades, as approximations do" from "this interval does not work". The headline:
+
+| | count |
+|---|---|
+| frequentist intervals measured (CI + PRED) | 31 |
+| — off nominal **even in the favourable design** | **8** |
+| — at nominal when entitled, off under stress | 23 |
+| objects that make no frequentist promise (Bayesian credible bands, set-identified bounds) — reported as labelled diagnostics | 7 |
+| surfaces that return no interval at all (`theta_forecast`, `backtest`) | 1 |
+
+Three results are worth naming here rather than leaving on the page:
+
+- **The delta-method VAR IRF band loses coverage monotonically in the horizon.**
+  Nominal 90%, `T=100`: 89.7% at impact, **67.3% at h=12**. And the standard
+  error is *not* the problem — mean reported SE / true sampling sd is 0.96 at
+  h=12. The standardised statistic has skewness −9.48 with 5th/95th percentiles
+  of −13.26/+0.76 against the ±1.645 a Wald band assumes, so the band is
+  **one-sidedly wrong**, not too narrow. That is a property of the asymptotics,
+  not a defect, and it is exactly the kind of thing no golden fixture can see.
+- **A pointwise band is not a joint band, and the gap does not close in T.** A
+  nominal 90% pointwise IRF band contains the *whole* 13-horizon path in 72.2%
+  of samples at `T=500`; nominal 95% marginal `var_forecast` bands contain every
+  horizon and series at once in 40.9% at `T=100` and still only 48.1% at
+  `T=800`. No function in the library reports a simultaneous (sup-t) band.
+- **`iv_gmm(weight="hac")` with the default bandwidth is bit-identical to
+  `weight="robust"`** — max |Δse| = `0.000e+00` over 3000 replications, because
+  `bandwidth` defaults to `0.0` and a Bartlett kernel truncated at zero lags *is*
+  the White estimator. Under AR(1) errors at φ=0.8 that is 0.632 coverage where
+  the caller believed they had asked for serial-correlation robustness. Both
+  code paths are correct and fixture-verified; only simulation exposes the trap.
+
+The page publishes the under-covering intervals as a table a reader can act on,
+each row attributed to one of five causes — APPROXIMATION, ESTIMATOR,
+CONVENTION, API GAP, READING — because those need different responses, and each
+cross-linked to the model card for the function so the caveat is reachable from
+the function too. The Bayesian and set-identified rows are segregated and
+labelled: a credible band makes no frequentist coverage promise, so measuring
+its coverage answers a *different* question, and a set-identified band is not an
+interval about a point at all.
+
+Like Tier 5, each module asserts its own qualitative findings and exits non-zero
+if they stop holding — deliberately the robust facts (a large gap between two
+designs, a monotone degradation), never a number that happened to land.
+
+### Tier 7 — Frontier Monte Carlo
 
 **What it proves:** the *comparative* questions, where the answer is a
 trade-off rather than a verdict.
@@ -295,7 +376,7 @@ Two experiments:
   against a truth of 1.0, a 29% bias. Hence `tsecon.lp_iv` returns
   `first_stage_f` per horizon.
 
-### Tier 7 — Published-result replication
+### Tier 8 — Published-result replication
 
 **What it proves:** that the library recovers a number a *journal* published,
 from the original authors' data — the only tier where neither the data nor the
@@ -332,7 +413,7 @@ Both pages state scope explicitly: they reproduce the economic result — the
 sign, significance and magnitude of the published finding — not a line-by-line
 port of the authors' code or their exact inference conventions.
 
-### Tier 8 — Benchmarks (parity first)
+### Tier 9 — Benchmarks (parity first)
 
 **What it proves:** that tsecon and a mature reference compute *the same
 number* — before anything is timed.
@@ -358,7 +439,7 @@ debug build the estimates are *identical to machine precision* and tsecon is
 the fourth (GARCH QMLE, ~4× slower than `arch`) is published as a loss rather
 than dropped.
 
-### Tier 9 — The structural guards
+### Tier 10 — The structural guards
 
 Two tests in
 [`bindings/python/tests/test_stub_sync.py`](../../bindings/python/tests/test_stub_sync.py)
@@ -442,6 +523,9 @@ cargo test --workspace --exclude tsecon-python
 # 3. Monte Carlo evidence (seeded, reproducible)
 .venv/bin/python docs/examples/monte_carlo.py
 .venv/bin/python docs/examples/monte_carlo_frontier.py
+
+# 3b. Interval coverage — exits non-zero if any family's assertions stop holding
+.venv/bin/python docs/examples/coverage/run_all.py
 
 # 4. Cross-library parity gate (exits non-zero on any parity failure)
 .venv/bin/python benchmarks/bench.py
@@ -540,6 +624,20 @@ discover.
   a standard error around 0.005. The property-test bands are set deliberately
   wide for this reason (IVX size is accepted in 0.05 ± 0.02, LP coverage in
   [0.85, 0.99]); they catch a broken estimator, not a third-decimal drift.
+- **The interval-coverage suite is not in CI.** Tier 6 takes ~6 minutes for a
+  full run, so it is currently a local and pre-release gate rather than a
+  per-push one. Every module already asserts its own qualitative findings and
+  exits non-zero, and `run_all.py` additionally exits non-zero if a returned
+  results schema moves under one of its probes, so it is CI-ready — it is not
+  wired in yet, and until it is, an interval losing coverage will not fail a
+  push the way a test losing its size will.
+- **Interval coverage is measured for 39 surfaces, not all of them.** The
+  [audit page](../examples/interval-coverage.md#what-is-not-measured) lists what
+  is left: `quantile_lp`, `growth_at_risk`, panel LP with Driscoll-Kraay SEs,
+  `favar`, `proxy_svar`, `nongaussian_svar`, GARCH forecast intervals,
+  `dfm_nowcast`, MIDAS, the term-structure fits, and `lp(cumulative=...)`. And
+  coverage is measured at one nominal level for most surfaces — where it *is*
+  swept, the shortfall is not linear in α.
 
 **Coverage gaps.**
 
@@ -655,6 +753,9 @@ Least-covered crates after this pass, i.e. where a future look should start:
   reference, which fixture, which test, which tolerance.
 - **[Monte Carlo validation](../examples/monte-carlo.md)** — size, coverage,
   and consistency, with real output.
+- **[Interval coverage](../examples/interval-coverage.md)** — the audit of every
+  interval the library returns: measured coverage with Monte Carlo standard
+  errors, and a named list of the ones that miss.
 - **[Frontier Monte Carlo](../examples/monte-carlo-frontier.md)** — LP vs VAR,
   and weak-instrument LP-IV.
 - **[CONTRIBUTING](https://github.com/cacoleman16/tsecon/blob/main/CONTRIBUTING.md)**

@@ -145,10 +145,29 @@ jobs:
         run: |
           python -m pip install -q matplotlib pandas
           export MPLBACKEND=Agg
+          # 04_gertler_karadi fetches Ramey's replication archive from a
+          # third-party academic server at runtime, because this repository
+          # deliberately redistributes no third-party data. That server going
+          # down is not a library regression, so a *download* failure warns and
+          # skips; every other failure is fatal. Keep running after a failure so
+          # one broken notebook does not mask the state of the rest.
+          # (not named "status" — that identifier is read-only in zsh, so the
+          # loop would not be copy-pasteable into a local shell to debug.)
+          failed=0
           for src in notebooks/*_src.py; do
             echo "--- $src"
-            python "$src" > /dev/null
+            if out=$(python "$src" 2>&1); then
+              continue
+            fi
+            if printf '%s' "$out" | grep -q "could not download"; then
+              echo "::warning::skipped $src — third-party data source unreachable"
+              continue
+            fi
+            printf '%s\n' "$out"
+            echo "::error::$src failed"
+            failed=1
           done
+          exit $failed
       - name: Notebooks are in sync with their sources
         run: |
           python notebooks/build.py

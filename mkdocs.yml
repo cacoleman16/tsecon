@@ -14,6 +14,7 @@ exclude_docs: |
   _hooks/
   gen_api_reference.py
   requirements.txt
+  __pycache__/
 
 # Rewrite repo-relative links that escape docs/ to absolute GitHub URLs.
 hooks:
@@ -153,4 +154,5 @@ nav:
       - Yield curve & recessions (Estrella-Mishkin 1998): examples/replication-yield-curve-recession.md
   - Monte Carlo:
       - Validation suite: examples/monte-carlo.md
+      - Interval coverage: examples/interval-coverage.md
       - Frontier experiments: examples/monte-carlo-frontier.md

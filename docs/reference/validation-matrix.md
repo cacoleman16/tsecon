@@ -35,6 +35,23 @@ tighter than the crate spec requires and the achieved agreement is tighter
 still (frequently machine precision); where the two differ the table quotes the
 asserted bound.
 
+!!! note "What this table does *not* cover: whether the intervals cover"
+
+    Every row below pins a **point estimate or a standard-error formula** against
+    a reference. None of them pins the *coverage* of the resulting interval —
+    that is a property of repeated sampling, and two estimators can agree with
+    statsmodels to 1e-15 and still cover 95% and 63% of the time.
+
+    **[Interval coverage](../examples/interval-coverage.md)** is the companion
+    audit: 39 interval-valued surfaces re-estimated on seeded draws from
+    known-truth processes, with the measured containment rate and its Monte Carlo
+    standard error. It publishes the ones that miss — 8 of the 31 frequentist
+    intervals are off nominal even in the design they are entitled to do well on
+    — attributes each miss to the approximation, the estimator, a library
+    convention, an API gap, or a misreading, and cross-links each caveat to the
+    model card for the function. Read it before quoting a standard error from a
+    family in this table.
+
 ---
 
 ## Estimator families
