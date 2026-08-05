@@ -3498,7 +3498,7 @@ fn iv_gmm<'py>(
             None => GmmWeight::HacAuto {
                 kernel: tsecon_hac::Kernel::Bartlett,
             },
-            Some(bw) if bw == 0.0 => {
+            Some(0.0) => {
                 return Err(PyValueError::new_err(
                     "bandwidth=0.0 with weight=\"hac\" is a no-op: a Bartlett \
                      kernel truncated at zero lags IS the White estimator, so \
