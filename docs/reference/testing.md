@@ -20,16 +20,16 @@ Verified on this working tree (macOS, Apple silicon, Rust 1.97.1, CPython
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1037 passed, 0 failed, 0 ignored** | `cargo test --workspace --exclude tsecon-python` |
-| — integration tests in `crates/*/tests/` | 836 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 130 | |
+| Rust tests (total) | **1083 passed, 0 failed, 1 ignored** | `cargo test --workspace --exclude tsecon-python` |
+| — integration tests in `crates/*/tests/` | 898 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 141 | |
 | — documentation tests | 44 | |
-| Python binding tests | **538 passed** in 5.7 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **562 passed** in 6.5 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 41, **every one** with a `tests/` directory | |
-| Golden fixtures | 61 JSON files, produced by 42 generator scripts | `fixtures/` |
+| Golden fixtures | 66 JSON files, produced by 47 generator scripts | `fixtures/` |
 | Public Python functions | 126 — **all 126** are called at least once in the binding suite | |
 
-Of the 836 Rust integration tests, **174 are golden tests** (`golden.rs` in 38
+Of the 898 Rust integration tests, **174 are golden tests** (`golden.rs` in 38
 crates, plus `unitroot_golden.rs`, `smooth_golden.rs`, `pmg_golden.rs`, and the
 new identification/unit-root goldens) and **434 are property tests**
 (`properties.rs` in 38 crates, plus `unitroot_properties.rs`,
@@ -293,7 +293,7 @@ relying on every time they quote a standard error.
 
 Five modules under
 [`docs/examples/coverage/`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage)
-re-estimate 39 interval-valued outputs across 21 functions on seeded draws from
+re-estimate 40 interval-valued outputs across 21 functions on seeded draws from
 processes whose truth is known in closed form, and count containment. (39 rather
 than 21 because the option and the regime change the answer: `var_irf_bands`
 contributes six rows, `bai_perron` three.) Every coverage number
@@ -330,12 +330,15 @@ Three results are worth naming here rather than leaving on the page:
   of samples at `T=500`; nominal 95% marginal `var_forecast` bands contain every
   horizon and series at once in 40.9% at `T=100` and still only 48.1% at
   `T=800`. No function in the library reports a simultaneous (sup-t) band.
-- **`iv_gmm(weight="hac")` with the default bandwidth is bit-identical to
+- **`iv_gmm(weight="hac")` with the default bandwidth *was* bit-identical to
   `weight="robust"`** — max |Δse| = `0.000e+00` over 3000 replications, because
-  `bandwidth` defaults to `0.0` and a Bartlett kernel truncated at zero lags *is*
-  the White estimator. Under AR(1) errors at φ=0.8 that is 0.632 coverage where
-  the caller believed they had asked for serial-correlation robustness. Both
-  code paths are correct and fixture-verified; only simulation exposes the trap.
+  `bandwidth` defaulted to `0.0` and a Bartlett kernel truncated at zero lags
+  *is* the White estimator. Under AR(1) errors at φ=0.8 that was 0.632 coverage
+  where the caller believed they had asked for serial-correlation robustness.
+  Both code paths were correct and fixture-verified; only simulation exposed the
+  trap. Fixed in `0.2.0` (the default is now the Newey-West rule and an explicit
+  `0.0` raises), which lifts coverage to 0.842 — better, and still not nominal.
+  This is the tier's clearest result: a defect no golden fixture could see.
 
 The page publishes the under-covering intervals as a table a reader can act on,
 each row attributed to one of five causes — APPROXIMATION, ESTIMATOR,
@@ -631,7 +634,7 @@ discover.
   results schema moves under one of its probes, so it is CI-ready — it is not
   wired in yet, and until it is, an interval losing coverage will not fail a
   push the way a test losing its size will.
-- **Interval coverage is measured for 39 surfaces, not all of them.** The
+- **Interval coverage is measured for 40 surfaces, not all of them.** The
   [audit page](../examples/interval-coverage.md#what-is-not-measured) lists what
   is left: `quantile_lp`, `growth_at_risk`, panel LP with Driscoll-Kraay SEs,
   `favar`, `proxy_svar`, `nongaussian_svar`, GARCH forecast intervals,

@@ -10,7 +10,7 @@ estimates and its standard-error *algebra* against independent references
 elsewhere. This module tests the promise itself, for the standard-error
 machinery attached to regression coefficients:
 
-  * `ols`                  se_type = nonrobust / hc0 / hc1 / hac
+  * `ols`                  se_type = nonrobust / hc0 / hc1 / hc2 / hc3 / hac
   * `iv_gmm`               2sls / 2step / iterated, weight = robust / hac
   * `har_rv`               Bartlett-HAC SEs on the Corsi (2009) HAR
   * `recession_probit`     inverse-observed-information (Wald) SEs
@@ -116,7 +116,10 @@ REPS_FULL = 3000
 REPS_QUICK = 250
 
 # `ols` accepts exactly these, lower-case (see the ValueError it raises).
-OLS_SE_TYPES = ("nonrobust", "hc0", "hc1", "hac")
+# hc2/hc3 were added after this suite first measured what their absence cost;
+# experiment 2 now reports tsecon's own hc2/hc3 coverage rather than a
+# reference computed here.
+OLS_SE_TYPES = ("nonrobust", "hc0", "hc1", "hc2", "hc3", "hac")
 
 
 # --------------------------------------------------------------------------
@@ -307,12 +310,16 @@ def report_ols_se_types(res):
 # because they are fitted, and the shrinkage is worst at high-leverage points.
 # HC1 multiplies the covariance by n/(n-k) -- with k=2 that is a rounding
 # error. HC2 and HC3 divide by (1-h_i) and (1-h_i)^2, which is the fix that
-# actually targets leverage; tsecon does not expose them, so they are computed
-# here with numpy and starred in the table as a REFERENCE, not as library
-# output. The oracle column uses the true sd(e_i|x_i), so it isolates the cost
-# of ESTIMATING the variance from the cost of the normal approximation.
+# actually targets leverage. `ols` now EXPOSES both, so the hc2/hc3 columns
+# below are tsecon's own output; the starred hc2*/hc3* columns are the same
+# sandwich rebuilt with numpy on the same draws and kept as a cross-check.
+# They agree to ~1e-15 and `assertions()` locks that down -- if the two ever
+# diverge, the library moved. The oracle column uses the true sd(e_i|x_i), so
+# it isolates the cost of ESTIMATING the variance from the cost of the normal
+# approximation.
 LEVERAGE_SIZES = (25, 50, 100, 400, 1600)
-LEVERAGE_COLUMNS = ("nonrobust", "hc0", "hc1", "hc2*", "hc3*", "oracle")
+LEVERAGE_LIB_COLUMNS = ("nonrobust", "hc0", "hc1", "hc2", "hc3")
+LEVERAGE_COLUMNS = LEVERAGE_LIB_COLUMNS + ("hc2*", "hc3*", "oracle")
 
 
 def exp_hc_leverage(reps, sizes=LEVERAGE_SIZES):
@@ -326,16 +333,27 @@ def exp_hc_leverage(reps, sizes=LEVERAGE_SIZES):
         hits = {c: 0 for c in LEVERAGE_COLUMNS}
         se_sum = {c: 0.0 for c in LEVERAGE_COLUMNS}
         est = np.empty(reps)
+        # largest |tsecon hc2 - numpy hc2*| (and hc3) seen on any replication:
+        # the library-vs-reference cross-check, asserted below.
+        ref_gap = 0.0
+        # largest violation of the exact ladder hc0 <= hc2 <= hc3, which holds
+        # sample by sample because the weights are ordered pointwise.
+        ladder_gap = 0.0
         for i in range(reps):
             design = np.column_stack([np.ones(n), x[i]])
             y = design @ beta + e[i]
-            # library columns
-            for name in ("nonrobust", "hc0", "hc1"):
+            # library columns -- hc2/hc3 are now tsecon output, not a reference
+            lib_se = {}
+            for name in LEVERAGE_LIB_COLUMNS:
                 res = tsecon.ols(y, design, se_type=name)
                 point, se = res["params"][1], res["bse"][1]
+                lib_se[name] = se
                 hits[name] += covered(point, se, beta[1])
                 se_sum[name] += se
             est[i] = point
+            ladder_gap = max(ladder_gap,
+                             lib_se["hc0"] - lib_se["hc2"],
+                             lib_se["hc2"] - lib_se["hc3"])
             # numpy reference columns on the same draw
             xtxi = np.linalg.inv(design.T @ design)
             coef = xtxi @ (design.T @ y)
@@ -347,34 +365,42 @@ def exp_hc_leverage(reps, sizes=LEVERAGE_SIZES):
                 se = sandwich_se(design, w)[1]
                 hits[name] += covered(coef[1], se, beta[1])
                 se_sum[name] += se
+                if name in ("hc2*", "hc3*"):
+                    ref_gap = max(ref_gap, abs(se - lib_se[name[:-1]]))
         sd = float(est.std(ddof=1))
-        row = {"n": n, "mc_sd": sd, "cover": {}, "se_over_sd": {}}
+        row = {"n": n, "mc_sd": sd, "cover": {}, "se_over_sd": {},
+               "max_ref_gap": float(ref_gap), "max_ladder_gap": float(ladder_gap)}
         for name in LEVERAGE_COLUMNS:
             row["cover"][name] = cov_pair(hits[name] / reps, reps)
             row["se_over_sd"][name] = (se_sum[name] / reps) / sd
         rows.append(row)
     return {"name": "hc family under leverage", "reps": reps,
-            "columns": list(LEVERAGE_COLUMNS), "rows": rows}
+            "columns": list(LEVERAGE_COLUMNS), "rows": rows,
+            "max_ref_gap": max(r["max_ref_gap"] for r in rows),
+            "max_ladder_gap": max(r["max_ladder_gap"] for r in rows)}
 
 
 def report_hc_leverage(res):
     header(f"2. ols HC family -- x ~ chi2(1) (high leverage), sd(e|x) = x, "
            f"reps={res['reps']}")
-    print("hc2*/hc3* are NOT tsecon outputs -- numpy references on the same draws,")
-    print("shown to size the gap. `oracle` is the sandwich at the TRUE sd(e|x): with")
-    print("Gaussian errors the estimate is exactly normal around it, so the oracle")
-    print("column is exactly 0.95 by construction and every shortfall to its left is")
-    print("the variance ESTIMATE, not the normal approximation.")
+    print("hc2/hc3 ARE tsecon outputs (`se_type=\"hc2\"` / `\"hc3\"`). The starred")
+    print("hc2*/hc3* columns are the same sandwich rebuilt with numpy on the same")
+    print("draws, kept as a cross-check: largest |tsecon - numpy| over every")
+    print(f"replication and every T is {res['max_ref_gap']:.2e}. `oracle` is the")
+    print("sandwich at the TRUE sd(e|x): with Gaussian errors the estimate is exactly")
+    print("normal around it, so the oracle column is exactly 0.95 by construction and")
+    print("every shortfall to its left is the variance ESTIMATE, not the normal")
+    print("approximation.")
     print()
     print(f"{'T':>6}" + "".join(f"{c:>13}" for c in res["columns"]))
-    rule(84)
+    rule(110)
     for row in res["rows"]:
         print(f"{row['n']:>6d}"
               + "".join(cov_cell(row["cover"][c]["cover"], res["reps"])
                         for c in res["columns"]))
     print()
     print(f"{'T':>6}" + "".join(f"{c:>13}" for c in res["columns"]) + "   (se/sd)")
-    rule(84)
+    rule(110)
     for row in res["rows"]:
         print(f"{row['n']:>6d}"
               + "".join(f"{row['se_over_sd'][c]:>13.3f}" for c in res["columns"]))
@@ -382,7 +408,12 @@ def report_hc_leverage(res):
     print("read: `nonrobust` never converges to 0.95 -- it is inconsistent here, so")
     print("      more data does not help. hc0 does converge, but slowly, and hc1's")
     print("      n/(n-k) correction is nearly worthless at k=2. hc2/hc3 target the")
-    print("      leverage directly and recover most of the small-T gap.")
+    print("      leverage directly and recover most of the small-T gap -- that is")
+    print("      the whole reason they were added. They are still not exact: read")
+    print("      the T=25 row as `hc3 is the best available answer here`, not as")
+    print("      `hc3 is nominal`. Note also what hc3 costs when leverage is NOT a")
+    print("      problem -- at T=1600 it is indistinguishable from hc0/hc1, so the")
+    print("      leverage correction is close to free asymptotically.")
 
 
 # ==========================================================================
@@ -474,6 +505,25 @@ def report_hac_slope(res):
 # probability limit, the reported SE is if anything too WIDE, and the interval
 # still misses because it is centred in the wrong place. The se/sd and bias
 # columns are what make that diagnosis instead of a guess.
+#
+# `iv_gmm` now RETURNS this diagnostic itself, as `first_stage`: a list of
+# dicts with keys regressor / fstat / dof_num / dof_den / pval, one per
+# endogenous regressor with excluded instruments to explain it. Entries are
+# OMITTED where the statistic is undefined, so the list can be shorter than
+# the regressor count and must be indexed by `regressor`, never by position.
+# The `lib med F` column below is tsecon's own number; `med F` remains the
+# textbook homoskedastic F computed here. They are DIFFERENT statistics --
+# tsecon's is heteroskedasticity-robust -- so they are compared as medians,
+# not sample by sample.
+#
+# With ONE endogenous regressor this is the right object. With two or more it
+# is NOT a weak-identification test: every regressor can clear 10 while the
+# system is under-identified, because the instruments may predict only one
+# common combination of them. Angrist-Pischke (per regressor) and
+# Cragg-Donald / Kleibergen-Paap against Stock-Yogo (joint) are the right
+# objects there and tsecon implements none of them. Even here F > 10 is not a
+# safety threshold -- the pi=0.20 row below has a median F of ~10 and covers
+# well under nominal.
 IV_STRENGTHS = (0.60, 0.20, 0.05)
 IV_METHODS = ("2sls", "2step", "iterated")
 
@@ -504,12 +554,25 @@ def exp_iv_strength(reps, n=250, strengths=IV_STRENGTHS, endog=0.7):
                    "ses": np.empty(reps)}
                for m in IV_METHODS}
         f_stats = np.empty(reps)
+        lib_f = np.full(reps, np.nan)   # tsecon's own first_stage, robust F
+        fs_missing = 0                  # replications with no entry for col 1
+        fs_keys = set()
         for i in range(reps):
             design = np.column_stack([np.ones(n), x[i]])
             inst = np.column_stack([np.ones(n), z[i]])
             f_stats[i] = _first_stage_f(x[i], z[i], n)
             for m in IV_METHODS:
                 res = tsecon.iv_gmm(design, inst, y[i], method=m, weight="robust")
+                if m == "2sls":
+                    # index by `regressor`, NOT by position: undefined entries
+                    # are omitted, so the list may be short.
+                    by_col = {int(d["regressor"]): d
+                              for d in res.get("first_stage", [])}
+                    fs_keys.update(by_col)
+                    if 1 in by_col:
+                        lib_f[i] = float(by_col[1]["fstat"])
+                    else:
+                        fs_missing += 1
                 point, se = res["params"][1], res["bse"][1]
                 a = acc[m]
                 a["est"][i] = point
@@ -531,6 +594,11 @@ def exp_iv_strength(reps, n=250, strengths=IV_STRENGTHS, endog=0.7):
             rows.append({
                 "pi": pi, "method": m,
                 "first_stage_f": float(np.median(f_stats)),
+                # tsecon's own `first_stage` diagnostic on the same draws
+                "lib_first_stage_f": float(np.nanmedian(lib_f)),
+                "lib_first_stage_missing": fs_missing / reps,
+                # the constant is exogenous, so it must NOT get an entry
+                "lib_first_stage_cols": sorted(fs_keys),
                 "cover": cov_pair(a["hits"] / reps, reps),
                 "oracle_cover": cov_pair(oracle, reps),
                 "centred_cover": cov_pair(centred, reps),
@@ -565,13 +633,18 @@ def report_iv_strength(res):
     print("is not a usable summary. `IQR/N` is the estimate's interquartile range")
     print("divided by 1.349 sd, which is 1.00 for a normal -- below 1 means peaked")
     print("with fat tails, i.e. the Wald approximation is not describing this.")
+    print("`med F` is the textbook homoskedastic first-stage F computed here; `lib F`")
+    print("is the median of tsecon's own `first_stage` fstat for the endogenous")
+    print("column, which is heteroskedasticity-ROBUST and so is a different statistic")
+    print("on the same draws -- they track, they do not coincide sample by sample.")
     print()
-    print(f"{'pi':>6}{'med F':>7}{'method':>10}{'cover':>15}{'oracle':>15}"
+    print(f"{'pi':>6}{'med F':>7}{'lib F':>7}{'method':>10}{'cover':>15}{'oracle':>15}"
           f"{'se/sd':>8}{'med se/sd':>10}{'IQR/N':>7}{'skew':>8}{'corr':>7}"
           f"{'bias':>9}{'J size':>15}")
-    rule(118)
+    rule(125)
     for row in res["rows"]:
-        print(f"{row['pi']:>6.2f}{row['first_stage_f']:>7.1f}{row['method']:>10}"
+        print(f"{row['pi']:>6.2f}{row['first_stage_f']:>7.1f}"
+              f"{row['lib_first_stage_f']:>7.1f}{row['method']:>10}"
               + cov_cell(row["cover"]["cover"], res["reps"], 15)
               + cov_cell(row["oracle_cover"]["cover"], res["reps"], 15)
               + f"{row['se_over_sd']:>8.3f}{row['median_se_over_sd']:>10.3f}"
@@ -606,10 +679,11 @@ def report_iv_strength(res):
           " oracle is not")
     print("      available in practice, so the fix is not a better SE but a")
     print("      different interval: a weak-instrument-robust one (Anderson-Rubin),")
-    print("      which tsecon does not expose. Read")
-    print("      `first_stage_f` before you read the SE -- and note that even at a")
-    print(f"      median F of {mod['first_stage_f']:.0f}, the conventional"
-          " rule-of-thumb threshold, the median")
+    print("      which tsecon does not expose. Read the `first_stage` diagnostic")
+    print("      iv_gmm now returns before you read the SE -- and note that even at a")
+    print(f"      median F of {mod['first_stage_f']:.0f} (tsecon's robust version:"
+          f" {mod['lib_first_stage_f']:.1f}), the conventional")
+    print("      rule-of-thumb threshold, the median")
     print(f"      SE is already short ({mod['median_se_over_sd']:.2f}) and coverage"
           f" is {mod['cover']['cover']:.3f}.")
     print("      `skew` is reported but is itself barely estimable here -- 2SLS has")
@@ -621,22 +695,78 @@ def report_iv_strength(res):
     print("      The J test over-rejects slightly under the efficient 2-step/iterated")
     print("      weight (Hansen-Heaton-Yaron 1996) and under-rejects when the")
     print("      first stage is weak, because it has nothing to detect with.")
+    print(f"      `first_stage` reports on columns {weak['lib_first_stage_cols']}"
+          " only -- the constant is")
+    print("      exogenous, so it correctly gets no entry. Index the list by")
+    print("      `regressor`; a missing entry means UNDEFINED, not a failed fit.")
+    print("      With one endogenous regressor this F is the right object. With two")
+    print("      or more it is NOT a weak-identification test: all of them can clear")
+    print("      10 while the system is under-identified. Angrist-Pischke and")
+    print("      Cragg-Donald / Kleibergen-Paap are the right objects there, and")
+    print("      tsecon implements none of them.")
 
 
 # ==========================================================================
-# Experiment 4b -- iv_gmm weight="hac": the default bandwidth is ZERO
+# Experiment 4b -- iv_gmm weight="hac": what the default bandwidth now does
 # ==========================================================================
-# `iv_gmm(..., weight="hac")` looks like it turns on serial-correlation
-# robustness. It does not, on its own: `bandwidth` defaults to 0.0, and a
-# Bartlett kernel truncated at 0 lags IS the White estimator. The identity is
-# verified bit-for-bit below. Under AR(1) errors that costs ~23 points of
-# coverage relative to passing a real bandwidth.
+# `iv_gmm(..., weight="hac")` used to be a SILENT NO-OP: `bandwidth` defaulted
+# to 0.0, and a Bartlett kernel truncated at 0 lags IS the White estimator, so
+# it returned results bit-identical to weight="robust" while the caller
+# believed they had serial-correlation robustness. Earlier runs of this file
+# asserted that identity to nail the bug down.
+#
+# It is fixed. `bandwidth=None` is now the default and selects the Newey-West
+# rule of thumb floor(4 (n/100)^(2/9)); an EXPLICIT bandwidth=0.0 raises; the
+# truncation actually used comes back as `hac_bandwidth`. The assertions below
+# now check the OPPOSITE of what they used to: the default must NO LONGER
+# equal weight="robust", it must equal the rule-of-thumb lag count, and
+# bandwidth=0.0 must raise instead of silently returning White.
+#
+# What the fix does NOT do is restore coverage. The rule of thumb picks 4 lags
+# at T=250, FEWER than the 10 that the original audit found still left 0.868
+# against nominal 0.95. It is a sensible default, not a remedy, and the table
+# below is what says so.
+def nw_bandwidth(n):
+    """The Newey-West rule of thumb `iv_gmm` now uses: floor(4 (n/100)^(2/9))."""
+    return float(int(4.0 * (n / 100.0) ** (2.0 / 9.0)))
+
+
 IV_HAC_COLUMNS = (
     ("robust", {"weight": "robust"}),
-    ("hac bw=0 (DEFAULT)", {"weight": "hac"}),
+    ("hac auto (NW rule)", {"weight": "hac"}),
     ("hac bw=4", {"weight": "hac", "bandwidth": 4.0}),
     ("hac bw=10", {"weight": "hac", "bandwidth": 10.0}),
 )
+IV_HAC_DEFAULT = "hac auto (NW rule)"
+
+
+def _iv_hac_guardrails(design, inst, y):
+    """The two ValueErrors that replaced the silent no-op, checked once.
+
+    Neither depends on the draw, so they are evaluated on a single replication
+    rather than 3000 times.
+    """
+    out = {}
+    try:
+        tsecon.iv_gmm(design, inst, y, method="2step", weight="hac",
+                      bandwidth=0.0)
+        out["zero_bandwidth_raises"] = False
+        out["zero_bandwidth_msg"] = "(no error raised)"
+    except ValueError as exc:
+        out["zero_bandwidth_raises"] = True
+        out["zero_bandwidth_msg"] = str(exc).splitlines()[0]
+    try:
+        tsecon.iv_gmm(design, inst, y, method="2sls", weight="hac")
+        out["twosls_hac_raises"] = False
+        out["twosls_hac_msg"] = "(no error raised)"
+    except ValueError as exc:
+        out["twosls_hac_raises"] = True
+        out["twosls_hac_msg"] = str(exc).splitlines()[0]
+    # weight="robust" has no truncation to report, so hac_bandwidth is None
+    out["robust_bandwidth_is_none"] = (
+        tsecon.iv_gmm(design, inst, y, method="2step",
+                      weight="robust").get("hac_bandwidth") is None)
+    return out
 
 
 def exp_iv_hac(reps, n=250, phi=0.8, endog=0.7, pi=0.60):
@@ -653,7 +783,17 @@ def exp_iv_hac(reps, n=250, phi=0.8, endog=0.7, pi=0.60):
     # unlike `ols`, a GMM weight matrix changes the POINT estimate too, so each
     # column needs its own sampling sd for the se/sd column to mean anything.
     est = {c: np.empty(reps) for c, _ in IV_HAC_COLUMNS}
-    max_default_gap = 0.0  # |se(weight="hac", default bw) - se(weight="robust")|
+    # |se(weight="hac", default bw) - se(weight="robust")|. This used to be
+    # exactly 0 in every replication -- that WAS the bug. The MINIMUM is now
+    # the interesting statistic: it must be strictly positive everywhere.
+    max_default_gap = 0.0
+    min_default_gap = np.inf
+    # |se(default) - se(explicit bandwidth=4)|: the default IS the rule, so at
+    # T=250 (rule of thumb = 4) these two columns must agree bit for bit.
+    max_auto_vs_bw4 = 0.0
+    reported_bw = set()
+    guards = _iv_hac_guardrails(np.column_stack([np.ones(n), x[0]]),
+                                np.column_stack([np.ones(n), z[0]]), y[0])
     for i in range(reps):
         design = np.column_stack([np.ones(n), x[i]])
         inst = np.column_stack([np.ones(n), z[i]])
@@ -665,26 +805,50 @@ def exp_iv_hac(reps, n=250, phi=0.8, endog=0.7, pi=0.60):
             est[name][i] = point
             hits[name] += covered(point, se, b1)
             se_sum[name] += se
-        max_default_gap = max(max_default_gap,
-                              abs(ses["hac bw=0 (DEFAULT)"] - ses["robust"]))
+            if name == IV_HAC_DEFAULT:
+                reported_bw.add(res.get("hac_bandwidth"))
+        gap = abs(ses[IV_HAC_DEFAULT] - ses["robust"])
+        max_default_gap = max(max_default_gap, gap)
+        min_default_gap = min(min_default_gap, gap)
+        max_auto_vs_bw4 = max(max_auto_vs_bw4,
+                              abs(ses[IV_HAC_DEFAULT] - ses["hac bw=4"]))
     sd = {c: float(est[c].std(ddof=1)) for c, _ in IV_HAC_COLUMNS}
     return {
         "name": "iv_gmm hac bandwidth", "reps": reps, "n": n, "phi": phi,
-        "mc_sd": sd, "max_default_gap": max_default_gap,
+        "mc_sd": sd,
+        "max_default_gap": max_default_gap,
+        "min_default_gap": float(min_default_gap),
+        "max_auto_vs_bw4": max_auto_vs_bw4,
+        "reported_bandwidth": sorted(b for b in reported_bw if b is not None),
+        "n_reported_bandwidths": len(reported_bw),
+        "nw_rule_bandwidth": nw_bandwidth(n),
         "columns": [c for c, _ in IV_HAC_COLUMNS],
         "cover": {c: cov_pair(hits[c] / reps, reps) for c, _ in IV_HAC_COLUMNS},
         "se_over_sd": {c: (se_sum[c] / reps) / sd[c] for c, _ in IV_HAC_COLUMNS},
         "bias": {c: float(est[c].mean() - b1) for c, _ in IV_HAC_COLUMNS},
+        **guards,
     }
 
 
 def report_iv_hac(res):
     header(f"4b. iv_gmm weight='hac' -- AR(1) errors phi={res['phi']}, "
            f"method='2step', T={res['n']}, reps={res['reps']}")
-    print("TRAP: `bandwidth` defaults to 0.0, and Bartlett at 0 lags is White. So")
-    print("`weight=\"hac\"` alone changes NOTHING. Largest |se(hac,default) -")
-    print(f"se(robust)| over all {res['reps']} replications: "
-          f"{res['max_default_gap']:.3e} (bit-identical).")
+    print("FIXED (this experiment used to record the bug): `bandwidth` defaulted to")
+    print("0.0, and Bartlett at 0 lags is White, so `weight=\"hac\"` alone changed")
+    print("NOTHING. The default is now `bandwidth=None` -> the Newey-West rule of")
+    print(f"thumb floor(4 (T/100)^(2/9)) = {res['nw_rule_bandwidth']:.0f} at T="
+          f"{res['n']}, returned as `hac_bandwidth`")
+    print(f"({res['reported_bandwidth']} on every one of {res['reps']} replications).")
+    print("Smallest |se(hac,default) - se(robust)| over all replications: "
+          f"{res['min_default_gap']:.3e}")
+    print(f"(it used to be 0.000e+00 in every one). |se(default) - se(bandwidth=4)|"
+          f" = {res['max_auto_vs_bw4']:.1e},")
+    print("so the default really is the rule and not a coincidence.")
+    print(f"  explicit bandwidth=0.0 raises ValueError: {res['zero_bandwidth_raises']}")
+    print(f"  method='2sls' with weight='hac' raises ValueError: "
+          f"{res['twosls_hac_raises']}")
+    print(f"  weight='robust' reports hac_bandwidth=None: "
+          f"{res['robust_bandwidth_is_none']}")
     print()
     print(f"{'weight':>22}{'cover':>15}{'se/sd':>9}{'bias':>10}{'mc sd':>9}")
     rule(65)
@@ -693,12 +857,21 @@ def report_iv_hac(res):
               + f"{res['se_over_sd'][c]:>9.3f}{res['bias'][c]:>+10.4f}"
               + f"{res['mc_sd'][c]:>9.4f}")
     print()
-    print("read: you must pass `bandwidth` yourself. Even then, as in experiment 3,")
-    print("      a Bartlett kernel does not fully repair coverage under this much")
-    print(f"      persistence -- bw=10 reaches "
-          f"{res['cover']['hac bw=10']['cover']:.2f}, not 0.95. The weight matrix")
-    print("      moves the POINT estimate as well as the SE, so each row has its own")
-    print("      sampling sd; the bias column confirms the differences are tiny.")
+    print("read: a working default is NOT a fix for coverage, and this table is the")
+    print("      reason to say so out loud. The rule of thumb picks "
+          f"{res['nw_rule_bandwidth']:.0f} lags at T={res['n']},")
+    print(f"      which buys "
+          f"{res['cover'][IV_HAC_DEFAULT]['cover'] - res['cover']['robust']['cover']:+.3f}"
+          f" of coverage over weight='robust' -- real, and")
+    print("      nowhere near nominal. Passing a LONGER bandwidth than the rule does")
+    print(f"      better ({res['cover']['hac bw=10']['cover']:.3f} at bw=10) and is"
+          " still short of 0.95, exactly as in")
+    print("      experiment 3: a Bartlett kernel cannot repair coverage under this")
+    print("      much persistence at T=250. Choose the bandwidth for the persistence")
+    print("      you actually have; the default only stops the silent no-op. The")
+    print("      weight matrix moves the POINT estimate as well as the SE, so each")
+    print("      row has its own sampling sd; the bias column confirms the")
+    print("      differences are tiny.")
 
 
 # ==========================================================================
@@ -1096,10 +1269,29 @@ def structural_checks():
     facts["hc1_over_hc0"] = float(
         np.max(np.abs(hc1 / hc0 - np.sqrt(m / (m - x.shape[1])))))
 
+    # hc2 / hc3 are the leverage-corrected sandwiches: weights r_i^2/(1-h_i)
+    # and r_i^2/(1-h_i)^2. Reproduce both from the hat matrix by hand -- this
+    # is the algebraic identity behind experiment 2's cross-check columns.
+    xtxi = np.linalg.inv(x.T @ x)
+    coef = xtxi @ (x.T @ yy)
+    resid = yy - x @ coef
+    h = leverage(x, xtxi)
+    hc2 = np.asarray(tsecon.ols(yy, x, se_type="hc2")["bse"])
+    hc3 = np.asarray(tsecon.ols(yy, x, se_type="hc3")["bse"])
+    facts["hc2_vs_numpy"] = float(np.max(np.abs(
+        hc2 - sandwich_se(x, resid ** 2 / (1.0 - h)))))
+    facts["hc3_vs_numpy"] = float(np.max(np.abs(
+        hc3 - sandwich_se(x, resid ** 2 / (1.0 - h) ** 2))))
+    # 1 <= 1/(1-h) <= 1/(1-h)^2 pointwise, so the sandwich differences are
+    # PSD and the ladder hc0 <= hc2 <= hc3 holds coefficient by coefficient
+    # in EVERY sample. (hc1 is not in the ladder: n/(n-k) is unrelated to h.)
+    facts["hc_ladder_violation"] = float(
+        max(np.max(hc0 - hc2), np.max(hc2 - hc3)))
+
     # `se_type` must not touch the POINT estimate -- experiments 1-3 rely on
     # this to share one sampling sd across every se_type column, and it also
     # licenses comparing the numpy hc2*/hc3* references in experiment 2 to
-    # tsecon's own columns on the same draw.
+    # tsecon's own hc2/hc3 columns on the same draw.
     params = [np.asarray(tsecon.ols(yy, x, se_type=s)["params"])
               for s in OLS_SE_TYPES]
     facts["params_invariant_to_se_type"] = float(
@@ -1107,14 +1299,45 @@ def structural_checks():
     facts["params_match_numpy"] = float(np.max(np.abs(
         params[0] - np.linalg.lstsq(x, yy, rcond=None)[0])))
 
-    # the se_type menu really is just these four
+    # the se_type menu really is just these six, lower-case
     rejected = []
-    for bad in ("HC0", "HC1", "hc2", "hc3", "HAC"):
+    for bad in ("HC0", "HC1", "HC2", "HC3", "HAC", "hc4"):
         try:
             tsecon.ols(yy, x, se_type=bad)
         except ValueError:
             rejected.append(bad)
     facts["rejected_se_types"] = rejected
+    accepted = []
+    for good in OLS_SE_TYPES:
+        try:
+            tsecon.ols(yy, x, se_type=good)
+            accepted.append(good)
+        except ValueError:
+            pass
+    facts["accepted_se_types"] = accepted
+
+    # A leverage of exactly 1 makes the hc2/hc3 weight infinite AND forces the
+    # residual to 0 by construction -- the fit runs through that point. `ols`
+    # refuses instead of returning a near-infinite SE. A dummy that isolates a
+    # single observation is the canonical way to produce h_i = 1.
+    m2 = 10
+    d = np.zeros(m2)
+    d[3] = 1.0
+    x_lev = np.column_stack([np.ones(m2), d])
+    y_lev = x_lev @ np.array([1.0, 2.0]) + rng.standard_normal(m2)
+    refused = []
+    for name in ("hc2", "hc3"):
+        try:
+            tsecon.ols(y_lev, x_lev, se_type=name)
+        except ValueError as exc:
+            if "leverage" in str(exc):
+                refused.append(name)
+    facts["unit_leverage_refused"] = refused
+    # hc0/hc1 do NOT refuse -- their weights stay finite there. Recording this
+    # keeps the contrast honest rather than implying a blanket guard.
+    facts["unit_leverage_hc0_ok"] = bool(
+        np.all(np.isfinite(np.asarray(
+            tsecon.ols(y_lev, x_lev, se_type="hc0")["bse"]))))
     return facts
 
 
@@ -1126,13 +1349,26 @@ def report_structural(facts):
           f"{facts['har_design_bse']:.2e}, nobs diff = {facts['har_nobs']}")
     print(f"hc1 / hc0 == sqrt(n/(n-k)) exactly: max deviation = "
           f"{facts['hc1_over_hc0']:.2e}")
+    print(f"hc2 / hc3 reproduce the hand-built leverage sandwiches r^2/(1-h) and")
+    print(f"  r^2/(1-h)^2: max |diff| = {facts['hc2_vs_numpy']:.2e} and "
+          f"{facts['hc3_vs_numpy']:.2e}. The exact ladder")
+    print(f"  hc0 <= hc2 <= hc3 holds coefficient by coefficient (max violation "
+          f"{facts['hc_ladder_violation']:.2e}).")
     print(f"se_type does not move the point estimate (max diff "
           f"{facts['params_invariant_to_se_type']:.2e}) and the estimate matches")
     print(f"  numpy lstsq (max diff {facts['params_match_numpy']:.2e}) -- so one")
     print("  sampling sd is shared across the se_type columns in experiments 1-3.")
-    print(f"se_type rejects {facts['rejected_se_types']} -- the menu is exactly")
-    print(f"  {list(OLS_SE_TYPES)}, lower-case. HC2/HC3 are NOT available; see")
-    print("  experiment 2 for what that costs in small samples.")
+    print(f"se_type accepts {facts['accepted_se_types']}")
+    print(f"  and rejects {facts['rejected_se_types']} -- the menu is exactly")
+    print(f"  {list(OLS_SE_TYPES)}, lower-case. hc2/hc3 were ADDED after this")
+    print("  suite measured what their absence cost; experiment 2 now reports")
+    print("  tsecon's own hc2/hc3 coverage rather than a numpy reference.")
+    print(f"hc2/hc3 refuse a point with leverage exactly 1 "
+          f"({facts['unit_leverage_refused']}) rather than")
+    print("  return a near-infinite SE -- the weight 1/(1-h) is infinite there and")
+    print("  the residual is 0 by construction. hc0 still returns a finite SE on the")
+    print(f"  same design ({facts['unit_leverage_hc0_ok']}); the guard is specific to")
+    print("  the leverage-corrected weights, not a blanket refusal.")
 
 
 # ==========================================================================
@@ -1171,6 +1407,26 @@ def assertions(results, facts, reps):
     check("hc1 == hc0 * sqrt(n/(n-k)) exactly",
           facts["hc1_over_hc0"] < 1e-12,
           f"max deviation {facts['hc1_over_hc0']:.1e}")
+    check("ols exposes hc2/hc3 and they match the hand-built leverage sandwich",
+          "hc2" in facts["accepted_se_types"] and "hc3" in facts["accepted_se_types"]
+          and facts["hc2_vs_numpy"] < 1e-12 and facts["hc3_vs_numpy"] < 1e-12,
+          f"accepted {facts['accepted_se_types']}, hc2 diff "
+          f"{facts['hc2_vs_numpy']:.1e}, hc3 diff {facts['hc3_vs_numpy']:.1e}")
+    check("ols: the exact ladder hc0 <= hc2 <= hc3 holds coefficient by coefficient",
+          facts["hc_ladder_violation"] <= 1e-12,
+          f"worst margin {facts['hc_ladder_violation']:.1e} (negative = strictly "
+          "ordered)")
+    check("ols: hc2/hc3 REFUSE a point with leverage exactly 1 (hc0 does not)",
+          facts["unit_leverage_refused"] == ["hc2", "hc3"]
+          and facts["unit_leverage_hc0_ok"],
+          f"refused {facts['unit_leverage_refused']}, hc0 still finite "
+          f"{facts['unit_leverage_hc0_ok']}")
+    check("ols se_type menu is exactly the six lower-case names",
+          list(facts["accepted_se_types"]) == list(OLS_SE_TYPES)
+          and facts["rejected_se_types"] == ["HC0", "HC1", "HC2", "HC3", "HAC",
+                                             "hc4"],
+          f"accepted {facts['accepted_se_types']}, rejected "
+          f"{facts['rejected_se_types']}")
     check("se_type leaves the point estimate untouched, and it matches numpy",
           facts["params_invariant_to_se_type"] == 0.0
           and facts["params_match_numpy"] < 1e-10,
@@ -1213,6 +1469,15 @@ def assertions(results, facts, reps):
 
     # ---- experiment 2 ----
     lev = {r["n"]: r for r in results["leverage"]["rows"]}
+    # the library columns and the numpy cross-check must be the same numbers.
+    # This is what licenses reading the hc2/hc3 coverage as tsecon's OWN.
+    check("leverage: tsecon hc2/hc3 == the numpy hc2*/hc3* cross-check",
+          results["leverage"]["max_ref_gap"] < 1e-10,
+          f"max |tsecon - numpy| {results['leverage']['max_ref_gap']:.1e} over "
+          f"{reps} reps x {len(lev)} sample sizes")
+    check("leverage: hc0 <= hc2 <= hc3 in every replication (exact ladder)",
+          results["leverage"]["max_ladder_gap"] <= 1e-12,
+          f"max violation {results['leverage']['max_ladder_gap']:.1e}")
     for n, row in lev.items():
         p = row["cover"]["oracle"]["cover"]
         # exact: Gaussian errors + fixed design => the estimate is exactly
@@ -1234,12 +1499,36 @@ def assertions(results, facts, reps):
           lev[large]["cover"]["nonrobust"]["cover"] < 0.75,
           f"T={small} {lev[small]['cover']['nonrobust']['cover']:.3f}, "
           f"T={large} {lev[large]['cover']['nonrobust']['cover']:.3f}")
-    check(f"leverage T={small}: hc3* reference beats tsecon's best HC by >= 0.08",
-          gap_at_least(lev[small]["cover"]["hc3*"]["cover"],
+    # This used to compare a numpy hc3* REFERENCE against tsecon's best
+    # available HC, to argue hc2/hc3 were worth adding. They were added, so it
+    # now measures tsecon's own hc3 against tsecon's own hc1 -- same gap, and
+    # the library is on both sides of it.
+    check(f"leverage T={small}: tsecon hc3 beats tsecon hc1 by >= 0.08",
+          gap_at_least(lev[small]["cover"]["hc3"]["cover"],
                        lev[small]["cover"]["hc1"]["cover"], 0.08, reps),
-          f"hc3* {lev[small]['cover']['hc3*']['cover']:.3f} vs "
+          f"hc3 {lev[small]['cover']['hc3']['cover']:.3f} vs "
           f"hc1 {lev[small]['cover']['hc1']['cover']:.3f} "
-          "-> HC2/HC3 are worth adding")
+          "-> the leverage correction, not n/(n-k), is what pays")
+    check(f"leverage T={small}: hc2 sits between hc1 and hc3 in coverage",
+          (lev[small]["cover"]["hc1"]["cover"]
+           <= lev[small]["cover"]["hc2"]["cover"]
+           <= lev[small]["cover"]["hc3"]["cover"]),
+          f"hc1 {lev[small]['cover']['hc1']['cover']:.3f} <= "
+          f"hc2 {lev[small]['cover']['hc2']['cover']:.3f} <= "
+          f"hc3 {lev[small]['cover']['hc3']['cover']:.3f}")
+    # honesty: hc3 is the best available answer at T=25, NOT a nominal one.
+    check(f"leverage T={small}: even hc3 still under-covers (<= 0.92) -- recorded,"
+          " not fixed",
+          at_most(lev[small]["cover"]["hc3"]["cover"], 0.92, reps),
+          f"{lev[small]['cover']['hc3']['cover']:.3f} against nominal 0.95, "
+          f"oracle {lev[small]['cover']['oracle']['cover']:.3f}")
+    check(f"leverage T={large}: hc3 costs nothing once leverage is diluted "
+          "(within 0.02 of hc1)",
+          abs(lev[large]["cover"]["hc3"]["cover"]
+              - lev[large]["cover"]["hc1"]["cover"])
+          <= 0.02 + 3.0 * mc_se(0.95, reps),
+          f"hc1 {lev[large]['cover']['hc1']['cover']:.3f} vs "
+          f"hc3 {lev[large]['cover']['hc3']['cover']:.3f}")
 
     # ---- experiment 3 ----
     hac = {r["phi"]: r for r in results["hac_slope"]["rows"]}
@@ -1302,16 +1591,93 @@ def assertions(results, facts, reps):
                            0.05, reps),
               f"oracle {row['oracle_cover']['cover']:.3f} vs reported "
               f"{row['cover']['cover']:.3f}")
+    # iv_gmm now returns its own first-stage diagnostic. Assert the shape of
+    # the contract, not just that a number came back: the ENDOGENOUS column
+    # gets an entry, the exogenous constant does NOT, and the robust F tracks
+    # the textbook one at the median (they are different statistics, so they
+    # are not compared sample by sample).
+    for row in iv["rows"]:
+        if row["method"] != "2sls":
+            continue
+        tag = f"pi={row['pi']}"
+        check(f"iv_gmm first_stage [{tag}]: reports the endogenous column only "
+              "(the constant is exogenous)",
+              row["lib_first_stage_cols"] == [1]
+              and row["lib_first_stage_missing"] == 0.0,
+              f"columns {row['lib_first_stage_cols']}, missing "
+              f"{row['lib_first_stage_missing']:.3f}")
+        check(f"iv_gmm first_stage [{tag}]: the robust F tracks the textbook F "
+              "at the median (within 20%)",
+              abs(row["lib_first_stage_f"] / row["first_stage_f"] - 1.0) < 0.20,
+              f"tsecon {row['lib_first_stage_f']:.2f} vs textbook "
+              f"{row['first_stage_f']:.2f}")
+    mod2sls = [r for r in iv["rows"] if r["pi"] == 0.20 and r["method"] == "2sls"][0]
+    # the honesty check: F > 10 is not a safety threshold. If this ever starts
+    # failing because coverage rose to nominal at F ~ 10, delete it -- but do
+    # not raise the threshold to make it pass.
+    check("iv_gmm: a first-stage F at the rule-of-thumb 10 does NOT buy nominal "
+          "coverage",
+          9.0 <= mod2sls["lib_first_stage_f"] <= 13.0
+          and at_most(mod2sls["cover"]["cover"], 0.93, reps),
+          f"tsecon median F {mod2sls['lib_first_stage_f']:.1f}, coverage "
+          f"{mod2sls['cover']['cover']:.3f}")
+
     ivhac = results["iv_hac"]
-    # If this ever fails because the default bandwidth changed, that is an
-    # IMPROVEMENT to the library -- update this experiment, do not "fix" it.
-    check("iv_gmm weight='hac' with the DEFAULT bandwidth == weight='robust'",
-          ivhac["max_default_gap"] < 1e-12,
-          f"max |se diff| {ivhac['max_default_gap']:.1e} over {ivhac['reps']} reps")
+    # THIS ASSERTION USED TO BE ITS OWN OPPOSITE. It read "weight='hac' with
+    # the DEFAULT bandwidth == weight='robust'", because `bandwidth` defaulted
+    # to 0.0 and Bartlett at 0 lags IS White -- a silent no-op that the audit
+    # verified bit-for-bit over 3000 replications. The default is now the
+    # Newey-West rule of thumb, so what has to be locked in is the negation:
+    # the default must NEVER coincide with weight='robust' again.
+    check("iv_gmm weight='hac' with the DEFAULT bandwidth is NO LONGER "
+          "weight='robust'",
+          ivhac["min_default_gap"] > 1e-9,
+          f"smallest |se diff| over {ivhac['reps']} reps "
+          f"{ivhac['min_default_gap']:.1e} (largest "
+          f"{ivhac['max_default_gap']:.1e}); it used to be 0.0e+00 in every one")
+    check("iv_gmm: the default hac_bandwidth is the Newey-West rule "
+          "floor(4 (T/100)^(2/9))",
+          ivhac["reported_bandwidth"] == [ivhac["nw_rule_bandwidth"]]
+          and ivhac["n_reported_bandwidths"] == 1,
+          f"reported {ivhac['reported_bandwidth']}, rule "
+          f"{ivhac['nw_rule_bandwidth']:.0f} at T={ivhac['n']}")
+    check("iv_gmm: the default equals an EXPLICIT bandwidth=4 bit for bit "
+          "(the rule, not a coincidence)",
+          ivhac["max_auto_vs_bw4"] == 0.0,
+          f"max |se diff| {ivhac['max_auto_vs_bw4']:.1e}")
+    check("iv_gmm: an EXPLICIT bandwidth=0.0 raises ValueError instead of "
+          "silently returning White",
+          ivhac["zero_bandwidth_raises"],
+          ivhac["zero_bandwidth_msg"][:88])
+    check("iv_gmm: method='2sls' with weight='hac' raises (2SLS fixes its own "
+          "weight)",
+          ivhac["twosls_hac_raises"], ivhac["twosls_hac_msg"][:88])
+    check("iv_gmm: weight='robust' reports hac_bandwidth=None (no truncation "
+          "to report)",
+          ivhac["robust_bandwidth_is_none"],
+          f"{ivhac['robust_bandwidth_is_none']}")
     check("iv_gmm: passing bandwidth=10 buys >= 0.10 of coverage under AR(1)",
           gap_at_least(ivhac["cover"]["hac bw=10"]["cover"],
                        ivhac["cover"]["robust"]["cover"], 0.10, reps),
           f"{ivhac['cover']['robust']['cover']:.3f} -> "
+          f"{ivhac['cover']['hac bw=10']['cover']:.3f}")
+    # the fix is a default, NOT a remedy. The rule of thumb picks 4 lags at
+    # T=250 -- fewer than the 10 that already left a large shortfall -- so the
+    # default must still under-cover, and this assertion says so on the record.
+    check("iv_gmm: the NEW default still UNDER-covers (<= 0.90) -- a working "
+          "default is not a fix",
+          at_most(ivhac["cover"][IV_HAC_DEFAULT]["cover"], 0.90, reps),
+          f"{ivhac['cover'][IV_HAC_DEFAULT]['cover']:.3f} at bandwidth "
+          f"{ivhac['nw_rule_bandwidth']:.0f}, vs "
+          f"{ivhac['cover']['hac bw=10']['cover']:.3f} at bandwidth 10, "
+          "nominal 0.95")
+    check("iv_gmm: the rule-of-thumb bandwidth is SHORTER than 10, so it covers "
+          "no better",
+          ivhac["nw_rule_bandwidth"] < 10.0
+          and ivhac["cover"][IV_HAC_DEFAULT]["cover"]
+          <= ivhac["cover"]["hac bw=10"]["cover"] + 3.0 * mc_se(0.9, reps),
+          f"rule {ivhac['nw_rule_bandwidth']:.0f} -> "
+          f"{ivhac['cover'][IV_HAC_DEFAULT]['cover']:.3f}, bw=10 -> "
           f"{ivhac['cover']['hac bw=10']['cover']:.3f}")
 
     # ---- experiment 5 ----
@@ -1475,7 +1841,8 @@ def findings(results, reps):
           f"{ols_rows['het']['cover']['nonrobust']['cover']:.3f} at T=200, and in the")
     print(f"    high-leverage design it is stuck at "
           f"{lev[max(lev)]['cover']['nonrobust']['cover']:.3f} even at T={max(lev)}.")
-    print("    It is inconsistent; data does not help. Use hc0/hc1.")
+    print("    It is inconsistent; data does not help. Use hc0/hc1 -- or hc2/hc3")
+    print("    when T is small and a few points carry the leverage.")
     print(f"  * hc0/hc1 under serial correlation: "
           f"{ols_rows['ar1']['cover']['hc1']['cover']:.3f}, indistinguishable from")
     print("    nonrobust. HC is not serial-correlation robust. Use hac.")
@@ -1519,22 +1886,66 @@ def findings(results, reps):
     print("    x ~ U(0,2), so the intercept is an extrapolation to the edge of the")
     print("    support and its sandwich SE is conservative.")
     print()
+    print("FIXED SINCE THE LAST AUDIT -- what the fix bought, and what it did NOT.")
+    print("  * iv_gmm(weight=\"hac\") was a SILENT NO-OP. `bandwidth` defaulted to")
+    print("    0.0 and a Bartlett kernel truncated at zero lags IS the White")
+    print("    estimator, so it returned results bit-identical to weight=\"robust\"")
+    print("    while the caller believed they had serial-correlation robustness.")
+    print("    The default is now bandwidth=None -> the Newey-West rule of thumb")
+    print(f"    floor(4 (T/100)^(2/9)) = {ivhac['nw_rule_bandwidth']:.0f} at "
+          f"T={ivhac['n']}, returned as `hac_bandwidth`;")
+    print("    an explicit bandwidth=0.0 raises; and method=\"2sls\" with")
+    print("    weight=\"hac\" raises, because 2SLS fixes its weight at (Z'Z/n)^-1")
+    print("    by construction, so accepting a weight there was the same no-op.")
+    print("    Smallest |se(default) - se(robust)| over "
+          f"{ivhac['reps']} replications is now")
+    print(f"    {ivhac['min_default_gap']:.1e}; it used to be exactly 0 in every"
+          " one.")
+    print("    IT DOES NOT RESTORE COVERAGE, and that is the point worth carrying:")
+    print(f"    the rule picks {ivhac['nw_rule_bandwidth']:.0f} lags, FEWER than the"
+          " 10 that already left a")
+    print(f"    shortfall. Default {ivhac['cover'][IV_HAC_DEFAULT]['cover']:.3f}, "
+          f"bw=10 {ivhac['cover']['hac bw=10']['cover']:.3f}, robust "
+          f"{ivhac['cover']['robust']['cover']:.3f}, nominal 0.95. A sensible")
+    print("    default, not a remedy -- pick the bandwidth for the persistence you")
+    print("    actually have.")
+    print("  * ols gained se_type=\"hc2\" and \"hc3\", so the leverage correction is")
+    print(f"    library output rather than a reference. At T={small} in the")
+    print(f"    high-leverage design tsecon's own hc3 covers "
+          f"{lev[small]['cover']['hc3']['cover']:.3f} and hc2 "
+          f"{lev[small]['cover']['hc2']['cover']:.3f},")
+    print(f"    against hc1's {lev[small]['cover']['hc1']['cover']:.3f} -- "
+          f"{100 * (lev[small]['cover']['hc3']['cover'] - lev[small]['cover']['hc1']['cover']):.0f}"
+          " points that n/(n-k) could never buy at")
+    print("    k=2. Both reproduce a hand-built r^2/(1-h) sandwich to "
+          f"{results['leverage']['max_ref_gap']:.0e}, and a")
+    print("    point with leverage exactly 1 is REFUSED rather than returned as a")
+    print(f"    near-infinite SE. hc3 is still NOT nominal at T={small} "
+          f"({lev[small]['cover']['hc3']['cover']:.3f} against")
+    print(f"    0.95, with the oracle at {lev[small]['cover']['oracle']['cover']:.3f}):"
+          " it is the best available answer")
+    print(f"    in that design, not a correct one. By T={max(lev)} it is"
+          " indistinguishable")
+    print(f"    from hc1 ({lev[max(lev)]['cover']['hc3']['cover']:.3f} vs "
+          f"{lev[max(lev)]['cover']['hc1']['cover']:.3f}), so the correction is close"
+          " to free asymptotically.")
+    print("  * iv_gmm now returns `first_stage`: a robust per-regressor F as a list")
+    print("    of dicts (regressor, fstat, dof_num, dof_den, pval). Index it by")
+    print("    `regressor`, NOT by position -- entries are OMITTED where the")
+    print("    statistic is undefined (exogenous regressor, no excluded")
+    print("    instruments, rank-deficient Z), so a missing entry means UNDEFINED,")
+    print(f"    not a failed fit. Here it reports on columns "
+          f"{weak['lib_first_stage_cols']} only; the constant")
+    print("    correctly gets none. It is NOT a weak-identification test with two")
+    print("    or more endogenous regressors -- all of them can clear 10 while the")
+    print("    system is under-identified -- and even with one, F > 10 is not a")
+    print(f"    safety threshold: at a robust median F of "
+          f"{moderate['lib_first_stage_f']:.1f} coverage is "
+          f"{moderate['cover']['cover']:.3f}.")
+    print("    Angrist-Pischke, Cragg-Donald / Kleibergen-Paap against Stock-Yogo,")
+    print("    and Anderson-Rubin sets are all still missing.")
+    print()
     print("API TRAPS -- correct code, misleading surface.")
-    print(f"  * iv_gmm(weight=\"hac\") does NOTHING on its own: `bandwidth` defaults")
-    print(f"    to 0.0 and Bartlett at 0 lags IS White. Verified bit-identical to")
-    print(f"    weight=\"robust\" over {ivhac['reps']} replications (max diff "
-          f"{ivhac['max_default_gap']:.0e}). Under AR(1) errors that is")
-    print(f"    {ivhac['cover']['robust']['cover']:.3f} coverage instead of "
-          f"{ivhac['cover']['hac bw=10']['cover']:.3f}. The default should either be")
-    print("    a data-driven bandwidth or an error.")
-    print(f"  * ols has no HC2/HC3. In the high-leverage design at T={small}, an")
-    print(f"    HC3 reference covers {lev[small]['cover']['hc3*']['cover']:.3f} where")
-    print(f"    tsecon's best available HC covers "
-          f"{lev[small]['cover']['hc1']['cover']:.3f} -- "
-          f"{100 * (lev[small]['cover']['hc3*']['cover'] - lev[small]['cover']['hc1']['cover']):.0f}"
-          " points left on the")
-    print("    table. hc1's n/(n-k) factor does almost nothing at k=2; the leverage")
-    print("    correction is what matters. Worth adding.")
     print(f"  * ols se_type is lower-case only: 'HC0' and 'HAC' raise ValueError.")
     print(f"  * quantile_regression's `converged` flag trips on "
           f"{qr['location-scale T=200']['nonconverged']}/{reps} replications at")
@@ -1546,10 +1957,21 @@ def findings(results, reps):
     print("    tables above keep them. A per-tau flag would be more useful.")
     print()
     print("NOT BROKEN -- worth saying explicitly.")
-    print("  * Under iid Gaussian errors all four se_types sit at nominal at T=200.")
+    print(f"  * Under iid Gaussian errors all {len(results['ols']['columns'])} "
+          "columns of experiment 1 sit at")
+    print("    nominal at T=200, and every HC column of experiment 2 does by "
+          f"T={max(lev)}")
+    print(f"    (hc0 {lev[max(lev)]['cover']['hc0']['cover']:.3f}, "
+          f"hc1 {lev[max(lev)]['cover']['hc1']['cover']:.3f}, "
+          f"hc2 {lev[max(lev)]['cover']['hc2']['cover']:.3f}, "
+          f"hc3 {lev[max(lev)]['cover']['hc3']['cover']:.3f}).")
     print("  * hc0/hc1 recover essentially all of the heteroskedasticity loss:")
     print(f"    {ols_rows['het']['cover']['nonrobust']['cover']:.3f} -> "
           f"{ols_rows['het']['cover']['hc1']['cover']:.3f}.")
+    print("  * tsecon's hc2/hc3 reproduce a hand-built leverage sandwich to "
+          f"{results['leverage']['max_ref_gap']:.0e}")
+    print("    on every replication, and the exact ladder hc0 <= hc2 <= hc3 holds")
+    print("    coefficient by coefficient in every sample.")
     print("  * har_rv's three slope coefficients cover at nominal under both iid")
     print("    and heteroskedastic innovations.")
     print("  * recession_probit's common-regime intervals cover at nominal from")

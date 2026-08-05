@@ -358,9 +358,18 @@ def probes_regression_se() -> list[Probe]:
               "CI", 0.95,
               "large sample", lev(1600, "hc1"),
               "T=25, high leverage", lev(25, "hc1"),
-              "API GAP",
-              "no HC2/HC3 in the se_type menu; an HC3 reference on the same "
-              "draws covers 0.86 where hc1 covers 0.68 at T=25", guide),
+              "ESTIMATOR",
+              "hc1's n/(n-k) factor is blind to leverage; se_type='hc3' covers "
+              "0.863 on the same draws where hc1 covers 0.682 at T=25 (still "
+              "short of nominal -- prefer hc3 at small n)", guide),
+        Probe("regression_se", "tsecon.ols", 'se_type="hc3"; small T, leverage',
+              "CI", 0.95,
+              "large sample", lev(1600, "hc3"),
+              "T=25, high leverage", lev(25, "hc3"),
+              "APPROXIMATION",
+              "the leverage correction recovers most of the small-T gap but "
+              "not all of it; the SE distribution is skewed, so mean se/sd of "
+              "0.942 overstates the typical interval", guide),
         Probe("regression_se", "tsecon.ols", 'se_type="hac"', "CI", 0.95,
               "no serial correlation", hacs(0.0, "hac auto"),
               "near-unit-root regressor AND errors", hacs(0.95, "hac auto"),
@@ -372,15 +381,16 @@ def probes_regression_se() -> list[Probe]:
               "strong instruments", iv(0.60, "2sls"),
               "weak instruments", iv(0.05, "2sls"),
               "ESTIMATOR",
-              "read first_stage_f before the SE; no weak-instrument-robust "
-              "(Anderson-Rubin) set is exposed",
+              "read the reported first_stage F before the SE; no "
+              "weak-instrument-robust (Anderson-Rubin) set is exposed",
               "../../reference/model-cards/gmm.md"),
         Probe("regression_se", "tsecon.iv_gmm", 'weight="hac"', "CI", 0.95,
               "bandwidth passed explicitly", ivhac("hac bw=10"),
-              "default bandwidth (=0)", ivhac("hac bw=0 (DEFAULT)"),
-              "CONVENTION",
-              "bandwidth defaults to 0 and Bartlett at 0 lags IS White, so "
-              "weight='hac' alone changes nothing -- pass bandwidth yourself",
+              "the automatic default", ivhac("hac auto (NW rule)"),
+              "APPROXIMATION",
+              "the Newey-West default (4 lags at T=250) lifts coverage from "
+              "0.632 to 0.842, and bandwidth=10 reaches 0.868 -- neither "
+              "reaches nominal, so the default is not a remedy",
               "../../reference/model-cards/gmm.md"),
         Probe("regression_se", "tsecon.har_rv", "HAC SEs on the three slopes",
               "CI", 0.95,

@@ -6,7 +6,9 @@ use tsecon_ssm::LinearGaussianSSM;
 use tsecon_stats::dist::ContinuousDist;
 use tsecon_stats::StdNormal;
 
+use crate::cov::{observed_information, ParamCov};
 use crate::error::ArimaError;
+use crate::estimate::css_ssr;
 use crate::spec::ArimaSpec;
 use crate::ssm::arma_ssm;
 
@@ -133,14 +135,130 @@ impl ArimaResults {
         self.params[self.params.len() - 1]
     }
 
+    /// The state-space form at the fitted parameters, with the intercept
+    /// overridden — the hook the drift-uncertainty derivative needs
+    /// (everything else about the model is held fixed).
+    fn model_at(&self, intercept: f64) -> Result<LinearGaussianSSM, ArimaError> {
+        arma_ssm(self.ar(), self.ma(), self.sigma2(), intercept)
+    }
+
     /// The state-space form at the fitted parameters.
     fn model(&self) -> Result<LinearGaussianSSM, ArimaError> {
-        arma_ssm(
-            self.ar(),
-            self.ma(),
-            self.sigma2(),
-            self.constant().unwrap_or(0.0),
-        )
+        self.model_at(self.constant().unwrap_or(0.0))
+    }
+
+    /// Negative total log-likelihood at an arbitrary packed parameter
+    /// vector, using the objective that this fit's
+    /// [`EstimationMethod`] maximized: the exact Kalman likelihood for
+    /// [`EstimationMethod::ExactMle`] and [`EstimationMethod::Fixed`],
+    /// the conditional (CSS) Gaussian likelihood
+    ///
+    /// ```text
+    /// -l = n_c/2 (ln 2*pi + ln sigma2) + SSR / (2 sigma2)
+    /// ```
+    ///
+    /// for [`EstimationMethod::Css`], with `sigma2` free rather than
+    /// concentrated out (the CSS optimum is a stationary point of this
+    /// in `sigma2` too, since `sigma2_hat = SSR / n_c`).
+    ///
+    /// Differentiating the wrong objective is the classic way to get a
+    /// covariance that is not the covariance of the estimator that was
+    /// actually computed, which is why this dispatches on the method.
+    fn neg_loglik_at(&self, params: &[f64]) -> Result<f64, ArimaError> {
+        let blocks = self.spec.unpack(params)?;
+        match self.method {
+            EstimationMethod::ExactMle | EstimationMethod::Fixed => {
+                let model = arma_ssm(blocks.ar, blocks.ma, blocks.sigma2, blocks.constant)?;
+                let n = self.x.len();
+                let y_mat = Mat::from_fn(n, 1, |i, _| self.x[i]);
+                let ll = model.loglike(y_mat.as_ref())?;
+                if ll.is_finite() {
+                    Ok(-ll)
+                } else {
+                    Err(ArimaError::NonFinite {
+                        what: "the exact log-likelihood at a probe parameter vector",
+                        at: None,
+                    })
+                }
+            }
+            EstimationMethod::Css => {
+                let (ssr, n_c) = css_ssr(&self.x, blocks.constant, blocks.ar, blocks.ma).ok_or(
+                    ArimaError::NonFinite {
+                        what: "the conditional-sum-of-squares recursion at a probe \
+                               parameter vector",
+                        at: None,
+                    },
+                )?;
+                let n_c = n_c as f64;
+                let s2 = blocks.sigma2;
+                let neg =
+                    0.5 * n_c * ((2.0 * std::f64::consts::PI).ln() + s2.ln()) + ssr / (2.0 * s2);
+                if neg.is_finite() {
+                    Ok(neg)
+                } else {
+                    Err(ArimaError::NonFinite {
+                        what: "the conditional log-likelihood at a probe parameter vector",
+                        at: None,
+                    })
+                }
+            }
+        }
+    }
+
+    /// Parameter covariance from the observed information — the inverse
+    /// of the negative numerical Hessian of the log-likelihood at the
+    /// reported parameters, in the natural (untransformed) parameter
+    /// space `[const?, ar.., ma.., sigma2]`.
+    ///
+    /// This is the statsmodels `SARIMAX(...).fit(cov_type='approx')`
+    /// estimator; see [`crate::cov`] for the step rules and the measured
+    /// agreement. It is recomputed on each call (`k(k+1)/2` groups of
+    /// four likelihood evaluations), so hold onto the result if you need
+    /// it more than once.
+    ///
+    /// The `sigma2` slot is differentiated multiplicatively, so the
+    /// standard errors are invariant to the units of the series: on
+    /// ARIMA(0,1,0)+c the closed form `se(sigma2) = sqrt(2 sigma2^2 / n)`
+    /// is reproduced to 1e-7 for `sigma2` anywhere from 1e-8 to 1e2. The
+    /// remaining `k - 1` coordinates use the statsmodels step rule.
+    ///
+    /// For [`EstimationMethod::Fixed`] the supplied parameters are not
+    /// generally a maximizer, so the "covariance" is the observed
+    /// information at whatever point you named; it is a valid curvature
+    /// summary there but only a sampling covariance if that point is the
+    /// MLE.
+    ///
+    /// # Errors
+    ///
+    /// [`ArimaError::CovarianceFailed`] when a finite-difference probe
+    /// leaves the admissible region (a fit that stopped on the
+    /// stationarity/invertibility boundary), or when the observed
+    /// information is non-finite, singular, or numerically rank-deficient
+    /// (near-cancelling AR and MA roots — the parameters are not
+    /// identified by this sample; lower `p` or `q`).
+    pub fn param_cov(&self) -> Result<ParamCov, ArimaError> {
+        // Only `sigma2` — the last slot — is a positive scale parameter.
+        // The constant and the AR/MA coefficients live on the whole line.
+        let mut log_scale = vec![false; self.params.len()];
+        if let Some(last) = log_scale.last_mut() {
+            *last = true;
+        }
+        observed_information(|p| self.neg_loglik_at(p), &self.params, &log_scale)
+    }
+
+    /// Parameter standard errors `sqrt(diag(cov))` in packed parameter
+    /// order — the statsmodels `.bse` vector, aligned with
+    /// [`ArimaResults::param_names`].
+    ///
+    /// An entry is NaN when its variance came out negative (a numerical
+    /// Hessian that is not negative definite at the reported
+    /// parameters); see [`ParamCov::se`].
+    ///
+    /// # Errors
+    ///
+    /// As for [`ArimaResults::param_cov`].
+    pub fn bse(&self) -> Result<Vec<f64>, ArimaError> {
+        Ok(self.param_cov()?.se().to_vec())
     }
 
     /// Standardized one-step prediction errors from the Kalman filter,
@@ -195,19 +313,38 @@ impl ArimaResults {
     ///
     /// Standard errors reflect innovation and filtering uncertainty only
     /// (parameters treated as known — the statsmodels `get_forecast`
-    /// convention).
+    /// convention). That convention makes intervals too narrow whenever
+    /// an estimated constant drives a trending forecast: on a random walk
+    /// with drift (`T = 60`, nominal 95%) the measured coverage at
+    /// `h = 24` is 90%. [`ArimaResults::forecast_with`] adds the missing
+    /// term; this method's numbers are deliberately left unchanged so the
+    /// statsmodels parity gate keeps meaning what it says.
     ///
     /// # Errors
     ///
     /// * [`ArimaError::InvalidArgument`] for `steps == 0`;
     /// * [`ArimaError::Ssm`] if filtering at the stored parameters fails.
     pub fn forecast(&self, steps: usize) -> Result<ArimaForecast, ArimaError> {
+        self.forecast_at_intercept(steps, self.constant().unwrap_or(0.0))
+    }
+
+    /// The forecast recursion with the intercept overridden.
+    ///
+    /// Called with the fitted constant this *is* [`ArimaResults::forecast`]
+    /// — same operations in the same order, so the default path is
+    /// unchanged to the bit. Called at `c +- delta` it supplies the
+    /// derivative the drift-uncertainty correction needs.
+    fn forecast_at_intercept(
+        &self,
+        steps: usize,
+        intercept: f64,
+    ) -> Result<ArimaForecast, ArimaError> {
         if steps == 0 {
             return Err(ArimaError::InvalidArgument {
                 what: "steps = 0: a forecast needs at least one step ahead; pass steps >= 1",
             });
         }
-        let model = self.model()?;
+        let model = self.model_at(intercept)?;
         let n = self.x.len();
         let y_mat = Mat::from_fn(n, 1, |i, _| self.x[i]);
         let out = model.filter(y_mat.as_ref())?;
@@ -216,7 +353,6 @@ impl ArimaResults {
         let d = self.spec.d();
         let mm = m + d;
         let sigma2 = self.sigma2();
-        let intercept = self.constant().unwrap_or(0.0);
 
         // Augmented transition: the ARMA block, plus one cumulator row
         // per difference order. With Z = e_1', row (m + i) carries
@@ -307,16 +443,157 @@ impl ArimaResults {
         }
         Ok(ArimaForecast { mean, se })
     }
+
+    /// Forecasts with a choice of which uncertainty sources enter the
+    /// standard errors — see [`ForecastOptions`].
+    ///
+    /// With the default options this is exactly
+    /// [`ArimaResults::forecast`]. With
+    /// [`ForecastOptions::with_drift_uncertainty(true)`](ForecastOptions::with_drift_uncertainty)
+    /// the standard errors additionally carry the delta-method
+    /// contribution of the *estimated constant*,
+    ///
+    /// ```text
+    /// se_h = sqrt( se_known_h^2 + (d yhat_{T+h} / d c)^2 Var(c_hat) )
+    /// ```
+    ///
+    /// with `Var(c_hat)` the leading diagonal entry of
+    /// [`ArimaResults::param_cov`]. The point forecasts are untouched;
+    /// only the bands widen.
+    ///
+    /// **Why a finite difference is exact here.** The Kalman gains
+    /// depend on `T`, `R`, `Q` and the initial `P` — never on the
+    /// intercept — so the filtered state, and hence every forecast mean,
+    /// is an *affine* function of `c` for any `(p, d, q)`. The central
+    /// difference at `c +- delta` therefore returns the derivative to
+    /// roundoff rather than to `O(delta^2)`, which is why `delta` is
+    /// chosen large (`1e-3 (1 + |c|)`) — the only error to trade against
+    /// is cancellation, and there is no truncation term to balance.
+    ///
+    /// For ARIMA(0, 1, 0) with a constant this reduces to the textbook
+    /// random-walk-with-drift result
+    ///
+    /// ```text
+    /// d yhat_{T+h} / d c = h,   Var(c_hat) = sigma2 / n,
+    /// se_h = sigma sqrt(h + h^2 / n),
+    /// ```
+    ///
+    /// `n` being the number of differenced observations. That is the
+    /// term the parameters-known convention drops: at `T = 60`, `h = 24`
+    /// and a nominal 95% level it is the difference between 90% and 94.5%
+    /// measured coverage.
+    ///
+    /// Only the constant's uncertainty is added. AR/MA/`sigma2`
+    /// uncertainty is a genuinely smaller, second-order effect on a
+    /// trending forecast, and it is not included — the option is named
+    /// for what it does.
+    ///
+    /// # Errors
+    ///
+    /// * everything [`ArimaResults::forecast`] can return;
+    /// * [`ArimaError::InvalidArgument`] when `drift_uncertainty` is set
+    ///   on a specification with no constant (there is no drift to be
+    ///   uncertain about — the option would silently do nothing);
+    /// * [`ArimaError::CovarianceFailed`] when the parameter covariance
+    ///   cannot be formed, or when `Var(c_hat)` comes out negative or
+    ///   non-finite.
+    pub fn forecast_with(
+        &self,
+        steps: usize,
+        options: ForecastOptions,
+    ) -> Result<ArimaForecast, ArimaError> {
+        let base = self.forecast(steps)?;
+        if !options.drift_uncertainty {
+            return Ok(base);
+        }
+        let c = self.constant().ok_or(ArimaError::InvalidArgument {
+            what: "drift_uncertainty needs an estimated constant, but this specification \
+                   has none. Refit with ArimaSpec::with_constant(true) — with no constant \
+                   the forecast does not depend on an estimated drift and the correction \
+                   would be identically zero",
+        })?;
+        let var_c = self
+            .param_cov()?
+            .get(0, 0)
+            .ok_or(ArimaError::CovarianceFailed {
+                what: "the parameter covariance is empty, so Var(c_hat) is unavailable",
+            })?;
+        if !var_c.is_finite() || var_c < 0.0 {
+            return Err(ArimaError::CovarianceFailed {
+                what: "Var(c_hat) is negative or non-finite, so the numerical Hessian is \
+                       not negative definite at the reported parameters; the drift \
+                       correction would be imaginary. Check that the fit converged",
+            });
+        }
+
+        // The forecast mean is affine in c (see the method docs), so a
+        // wide central step costs nothing in truncation and buys
+        // conditioning.
+        let delta = 1e-3 * (1.0 + c.abs());
+        let up = self.forecast_at_intercept(steps, c + delta)?;
+        let down = self.forecast_at_intercept(steps, c - delta)?;
+        let se = base
+            .se
+            .iter()
+            .zip(up.mean.iter().zip(&down.mean))
+            .map(|(&s, (&mu, &md))| {
+                let dydc = (mu - md) / (2.0 * delta);
+                (s * s + dydc * dydc * var_c).max(0.0).sqrt()
+            })
+            .collect();
+        Ok(ArimaForecast {
+            mean: base.mean,
+            se,
+        })
+    }
+}
+
+/// Which uncertainty sources enter the forecast standard errors of
+/// [`ArimaResults::forecast_with`].
+///
+/// The default is the statsmodels `get_forecast` convention —
+/// innovation and filtering uncertainty with the parameters treated as
+/// known — so `ForecastOptions::default()` reproduces
+/// [`ArimaResults::forecast`] exactly.
+///
+/// Marked `#[non_exhaustive]`: build it with
+/// [`ForecastOptions::new`] and the `with_*` setters so that future
+/// uncertainty sources can be added without breaking callers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ForecastOptions {
+    /// Add the delta-method contribution of the estimated constant to
+    /// the forecast variance (default `false`).
+    pub drift_uncertainty: bool,
+}
+
+impl ForecastOptions {
+    /// The statsmodels-parity defaults: no parameter uncertainty.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Toggles the estimated constant's delta-method contribution.
+    #[must_use]
+    pub fn with_drift_uncertainty(mut self, drift_uncertainty: bool) -> Self {
+        self.drift_uncertainty = drift_uncertainty;
+        self
+    }
 }
 
 /// Point forecasts and standard errors from
-/// [`ArimaResults::forecast`], in level units.
+/// [`ArimaResults::forecast`] or [`ArimaResults::forecast_with`], in
+/// level units.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArimaForecast {
-    /// Forecast means for horizons `1..=steps`.
+    /// Forecast means for horizons `1..=steps`. Identical whichever
+    /// [`ForecastOptions`] produced them — the options only widen bands.
     pub mean: Vec<f64>,
-    /// Forecast standard errors (innovation + filtering uncertainty;
-    /// parameters treated as known).
+    /// Forecast standard errors: innovation + filtering uncertainty with
+    /// the parameters treated as known, plus whatever parameter
+    /// uncertainty the [`ForecastOptions`] asked for (nothing, by
+    /// default).
     pub se: Vec<f64>,
 }
 

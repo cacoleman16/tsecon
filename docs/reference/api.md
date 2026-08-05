@@ -196,7 +196,11 @@ def ols(
 ) -> dict[str, Any]:
 ```
 
-OLS with nonrobust / HC0 / HC1 / HAC standard errors.
+OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC standard errors.
+
+    The leverage-corrected hc2/hc3 are what matter in small samples with
+    influential points; hc1's n/(n-k) factor barely moves. HC is
+    heteroskedasticity-robust only -- under serial correlation use "hac".
 
 ## bootstrap
 
@@ -265,10 +269,20 @@ def arima_fit(
     constant: bool = ...,
     forecast_steps: int = ...,
     conf_alpha: float | None = ...,
+    drift_uncertainty: bool = ...,
 ) -> dict[str, Any]:
 ```
 
 Exact-MLE ARIMA(p,d,q) fit, with optional forecast + conf_alpha bands.
+
+    Forecast standard errors treat parameters as known by default (the
+    statsmodels get_forecast convention). With d >= 1 and constant=True that
+    omits the estimated drift's own uncertainty, which grows like h^2 and
+    measurably under-covers: 90.2% at h=24, T=60 against a nominal 95%. Pass
+    drift_uncertainty=True to add it (94.5% on the same design).
+
+    Also returns bse / param_cov from the observed information, or None with
+    cov_ok=False when that matrix is too ill-conditioned to invert honestly.
 
 ## GARCH
 
@@ -1303,7 +1317,7 @@ def iv_gmm(
     y: _ArrayLike,
     method: str = ...,
     weight: str = ...,
-    bandwidth: float = ...,
+    bandwidth: float | None = ...,
     tol: float = ...,
     max_iter: int = ...,
 ) -> dict[str, Any]:
@@ -1311,9 +1325,26 @@ def iv_gmm(
 
 Linear IV-GMM (Hansen 1982) with robust or HAC weighting.
 
+    bandwidth defaults to None, which selects the Newey-West rule of thumb.
+    It previously defaulted to 0.0 -- a Bartlett kernel truncated at zero
+    lags IS White, so weight="hac" used to be a silent no-op returning
+    results bit-identical to weight="robust". An explicit bandwidth=0.0 now
+    raises. The truncation actually used comes back as hac_bandwidth.
+    Neither setting restores nominal coverage under persistent moments: the
+    audit measured 0.868 against nominal 0.95 at bandwidth=10.
+
+    Also returns first_stage, a list of per-regressor weak-instrument F
+    diagnostics keyed by "regressor". Entries are omitted where the
+    statistic is undefined, so it may be shorter than the regressor count,
+    and a missing entry is not a failed fit. With two or more endogenous
+    regressors these are NOT a weak-identification test -- all can clear 10
+    while the system is under-identified. F > 10 is not a safety threshold
+    even with one: coverage was 0.915 at a median F of 10.5.
+
     method is "2sls", "2step", or "iterated"; weight is "robust" or "hac".
-    Z must include the exogenous regressor columns. Returns params, bse,
-    residuals, and (over-identified) the Hansen j_stat/j_dof/j_pval.
+    Z must include the exogenous regressor columns. Returns params, bse, cov,
+    residuals, nobs, nmoments, nparams, steps, hac_bandwidth, first_stage,
+    and (over-identified) the Hansen j_stat/j_dof/j_pval.
 
 ## leakage-safe time-series CV
 

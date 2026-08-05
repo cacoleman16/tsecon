@@ -116,6 +116,68 @@ fn css_and_mle_agree_on_long_series() {
     assert_rel_close(css.loglik, expected_ll, 1e-10, "css loglik identity");
 }
 
+/// CSS and exact-MLE standard errors are asymptotically equivalent, so
+/// on a long series the two vectors must agree to `O(1/n)` while both
+/// stay positive and finite. That is all this test checks, and all it
+/// can check.
+///
+/// **It is not a guard on which objective the CSS branch differentiates**
+/// — it used to claim to be, and it was not. A same-vs-same tolerance
+/// cannot detect the CSS arm being wired to the exact likelihood,
+/// because that mutation makes the two vectors agree *better*: it was
+/// run, and this assertion (and the whole crate suite) stayed green. The
+/// real guard is
+/// `cov_accuracy::css_standard_errors_match_ols_on_the_conditional_sample`,
+/// which compares against the OLS closed form that only the conditional
+/// objective satisfies, and which the same mutation fails by 386x.
+#[test]
+fn css_and_mle_standard_errors_agree_on_long_series() {
+    let mut rng = Lcg::new(42);
+    let y = simulate_arma(&mut rng, 800, 0.5, &[0.7], &[0.4], 1.2);
+
+    let spec = ArimaSpec::new(1, 0, 1).unwrap().with_constant(true);
+    let mle_se = spec.fit(&y).unwrap().bse().unwrap();
+    let css_se = spec.fit_css(&y).unwrap().bse().unwrap();
+
+    assert_eq!(mle_se.len(), 4);
+    assert_eq!(css_se.len(), 4);
+    for (name, (&m, &c)) in ["const", "ar.L1", "ma.L1", "sigma2"]
+        .iter()
+        .zip(mle_se.iter().zip(&css_se))
+    {
+        assert!(m.is_finite() && m > 0.0, "mle se({name}) = {m}");
+        assert!(c.is_finite() && c > 0.0, "css se({name}) = {c}");
+        assert!(
+            (c / m - 1.0).abs() < 0.10,
+            "se({name}): mle {m} vs css {c} differ by more than the O(1/n) gap"
+        );
+    }
+}
+
+/// A results object with no constant has no drift term to report, and a
+/// covariance whose leading block is the AR coefficients: `k = p + q + 1`
+/// with no `const` slot. Checks the packing survives the missing slot.
+#[test]
+fn param_cov_dimension_tracks_the_constant() {
+    let mut rng = Lcg::new(7);
+    let y = simulate_arma(&mut rng, 400, 0.0, &[0.5], &[], 1.0);
+
+    let with_c = ArimaSpec::new(1, 0, 0).unwrap().with_constant(true);
+    let no_c = ArimaSpec::new(1, 0, 0).unwrap();
+    let pc_with = with_c.fit(&y).unwrap().param_cov().unwrap();
+    let pc_no = no_c.fit(&y).unwrap().param_cov().unwrap();
+
+    assert_eq!(pc_with.k(), 3, "const + ar + sigma2");
+    assert_eq!(pc_no.k(), 2, "ar + sigma2");
+    assert_eq!(pc_with.cov().len(), 9);
+    assert_eq!(pc_no.cov().len(), 4);
+    assert_eq!(pc_no.get(2, 0), None, "out-of-range access must be None");
+    // Variances are positive at a genuine maximum.
+    for i in 0..pc_no.k() {
+        assert!(pc_no.get(i, i).unwrap() > 0.0, "var[{i}]");
+    }
+}
+
 /// Forecast standard errors are monotone nondecreasing in the horizon,
 /// both without differencing (stationary ARMA: they converge upward to
 /// the unconditional standard deviation) and with d = 1 (they grow

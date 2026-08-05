@@ -86,6 +86,17 @@ pub enum HacError {
         /// The name of the rejected kernel.
         kernel: &'static str,
     },
+    /// An observation has (numerically) full leverage `h_t = 1`, so the
+    /// HC2/HC3 weight `1/(1 - h_t)` is infinite and the leverage-corrected
+    /// standard errors are undefined.
+    FullLeverage {
+        /// Which standard-error flavor hit it (`"HC2"` / `"HC3"`).
+        what: &'static str,
+        /// Zero-based index of the offending observation.
+        index: usize,
+        /// That observation's leverage `h_t = x_t' (X'X)^{-1} x_t`.
+        leverage: f64,
+    },
     /// A numerical invariant that holds in exact arithmetic broke down
     /// (e.g. a negative sandwich-variance diagonal from a non-PSD kernel,
     /// or a unit AR(1) root in a plug-in bandwidth).
@@ -163,6 +174,20 @@ impl fmt::Display for HacError {
                  truncated kernel is not positive semi-definite and has no \
                  published plug-in bandwidth rule — use Bartlett, Parzen, or \
                  quadratic spectral"
+            ),
+            HacError::FullLeverage {
+                what,
+                index,
+                leverage,
+            } => write!(
+                f,
+                "{what}: observation {index} has leverage h = {leverage} (at or \
+                 numerically at 1), so the {what} weight 1/(1-h) is infinite and \
+                 that observation's residual is 0 by construction — the fit runs \
+                 exactly through it. Usually a regressor that isolates a single \
+                 observation (a singleton dummy or a perfectly collinear-within-\
+                 subgroup control): drop or pool it, or fall back to HC0/HC1, \
+                 which need no leverage correction"
             ),
             HacError::NumericalBreakdown { what } => write!(
                 f,

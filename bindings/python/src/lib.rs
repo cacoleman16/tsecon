@@ -4,10 +4,10 @@
 //! Rust-to-Python pipeline end to end; the ergonomic model-object API
 //! (Spec -> fit() -> Results) arrives with the model crates.
 
-use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
+use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -683,9 +683,24 @@ fn long_run_variance(
 /// OLS with robust standard-error options.
 ///
 /// `x` is a 2-D design matrix used as-is (add your own constant column).
-/// `se_type`: "nonrobust", "hc0", "hc1", or "hac" (Bartlett kernel;
-/// `maxlags=None` uses the Newey-West rule of thumb). HAC results match
-/// statsmodels `cov_type="HAC"` at 1e-10.
+/// `se_type`: "nonrobust", "hc0", "hc1", "hc2", "hc3", or "hac" (Bartlett
+/// kernel; `maxlags=None` uses the Newey-West rule of thumb). HAC results
+/// match statsmodels `cov_type="HAC"` at 1e-10.
+///
+/// **Choosing among the HC ladder.** `hc0` is White; `hc1` adds the
+/// `n/(n - k)` inflation; `hc2` and `hc3` instead divide each squared
+/// residual by `1 - h_t` and `(1 - h_t)^2`, where `h_t` is that
+/// observation's leverage. The leverage correction is what matters in small
+/// samples with influential points: the library's interval-coverage audit
+/// measured `hc1` at 0.682 coverage on a T=25 high-leverage design (nominal
+/// 0.95), where NumPy HC2/HC3 references on the identical draws reached
+/// 0.773 and 0.863. Prefer `hc3` at small `n`; the ladder converges as `n`
+/// grows. Note the HC family is heteroskedasticity-robust only — under
+/// serial correlation it repairs nothing and you want `hac`.
+///
+/// `hc2`/`hc3` match statsmodels `cov_type="HC2"`/`"HC3"` while `1 - h_t`
+/// stays clear of machine noise; a point with leverage numerically equal to
+/// 1 is refused rather than returned as a near-infinite standard error.
 #[pyfunction]
 #[pyo3(signature = (y, x, se_type = "hac", maxlags = None, use_correction = true))]
 fn ols<'py>(
@@ -705,6 +720,8 @@ fn ols<'py>(
         "nonrobust" => tsecon_hac::SeType::NonRobust,
         "hc0" => tsecon_hac::SeType::Hc0,
         "hc1" => tsecon_hac::SeType::Hc1,
+        "hc2" => tsecon_hac::SeType::Hc2,
+        "hc3" => tsecon_hac::SeType::Hc3,
         "hac" => tsecon_hac::SeType::Hac {
             kernel: tsecon_hac::Kernel::Bartlett,
             bandwidth: maxlags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(ys.len())) as f64,
@@ -712,7 +729,7 @@ fn ols<'py>(
         },
         other => {
             return Err(PyValueError::new_err(format!(
-                "unknown se_type {other:?}; expected nonrobust/hc0/hc1/hac"
+                "unknown se_type {other:?}; expected nonrobust/hc0/hc1/hc2/hc3/hac"
             )))
         }
     };
@@ -1584,11 +1601,32 @@ fn mcmc_diagnostics<'py>(
 /// returns `forecast_lower`/`forecast_upper`: the symmetric Gaussian
 /// `1 - conf_alpha` intervals `mean +/- z_{1-conf_alpha/2} * se`
 /// (statsmodels `get_forecast(...).conf_int(alpha)` convention; e.g.
-/// `conf_alpha=0.05` gives 95% bands with z = 1.96). Standard errors
-/// reflect innovation and filtering uncertainty only (parameters
-/// treated as known).
+/// `conf_alpha=0.05` gives 95% bands with z = 1.96). By default those
+/// standard errors reflect innovation and filtering uncertainty only,
+/// with parameters treated as known — the statsmodels
+/// `get_forecast(...)` convention, which this matches to 1e-6.
+///
+/// **That default under-covers when there is an estimated drift.** With
+/// `d >= 1` and `constant=True` the h-step forecast contains an estimated
+/// drift whose own uncertainty grows like `h^2`, and the default omits it
+/// entirely: for a random walk with drift the reported se is exactly
+/// `sigma * sqrt(h)`. The library's interval-coverage audit measured 90.2%
+/// containment at `h=24`, `T=60` against a nominal 95%, matching the
+/// closed-form prediction `2*Phi(z/sqrt(1 + h/(T-1))) - 1` to a decimal.
+/// Pass `drift_uncertainty=True` to add the term (delta method on the
+/// constant); the same design then covers 94.5%. It is opt-in rather than
+/// default so the statsmodels-matching path stays available and
+/// bit-unchanged — the two are different estimands, not a right and a wrong
+/// one.
+///
+/// Also returns `bse` and `param_cov`: parameter standard errors and the
+/// full covariance, from the numerically differentiated observed
+/// information (statsmodels `cov_type="approx"`). Both are `None` with
+/// `cov_ok=False` when the information matrix is too ill-conditioned to
+/// invert honestly, which is a refusal, not a failure of the fit.
 #[pyfunction]
-#[pyo3(signature = (y, p = 1, d = 0, q = 0, constant = true, forecast_steps = 0, conf_alpha = None))]
+#[pyo3(signature = (y, p = 1, d = 0, q = 0, constant = true, forecast_steps = 0,
+                    conf_alpha = None, drift_uncertainty = false))]
 #[allow(clippy::too_many_arguments)]
 fn arima_fit<'py>(
     py: Python<'py>,
@@ -1599,10 +1637,22 @@ fn arima_fit<'py>(
     constant: bool,
     forecast_steps: usize,
     conf_alpha: Option<f64>,
+    drift_uncertainty: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     if conf_alpha.is_some() && forecast_steps == 0 {
         return Err(PyValueError::new_err(
             "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
+        ));
+    }
+    if drift_uncertainty && forecast_steps == 0 {
+        return Err(PyValueError::new_err(
+            "drift_uncertainty requires forecast_steps >= 1 (there is no forecast to widen)",
+        ));
+    }
+    if drift_uncertainty && !constant {
+        return Err(PyValueError::new_err(
+            "drift_uncertainty=True needs constant=True: with no constant there is no \
+             estimated drift, so the correction would be identically zero",
         ));
     }
     let spec = tsecon_arima::ArimaSpec::new(p, d, q)
@@ -1615,8 +1665,39 @@ fn arima_fit<'py>(
     dct.set_item("loglik", r.loglik)?;
     dct.set_item("aic", r.aic)?;
     dct.set_item("bic", r.bic)?;
+    // Parameter covariance is a refusal-capable diagnostic: an information
+    // matrix too ill-conditioned to invert honestly yields None rather than
+    // confident nonsense, and must never take down an otherwise-valid fit.
+    match r.param_cov() {
+        Ok(pc) => {
+            let k = pc.k();
+            dct.set_item("bse", pc.se().to_vec().into_pyarray(py))?;
+            dct.set_item(
+                "param_cov",
+                pc.cov().to_vec().into_pyarray(py).reshape([k, k])?,
+            )?;
+            dct.set_item("cov_ok", true)?;
+        }
+        Err(e) => {
+            dct.set_item("bse", py.None())?;
+            dct.set_item("param_cov", py.None())?;
+            dct.set_item("cov_ok", false)?;
+            dct.set_item("cov_error", e.to_string())?;
+        }
+    }
+    // Always present, like cov_ok, so a caller can branch on it without
+    // knowing whether this particular call asked for a forecast.
+    dct.set_item("drift_uncertainty", drift_uncertainty)?;
     if forecast_steps > 0 {
-        let fc = r.forecast(forecast_steps).map_err(to_py)?;
+        let fc = if drift_uncertainty {
+            r.forecast_with(
+                forecast_steps,
+                tsecon_arima::ForecastOptions::new().with_drift_uncertainty(true),
+            )
+            .map_err(to_py)?
+        } else {
+            r.forecast(forecast_steps).map_err(to_py)?
+        };
         if let Some(alpha) = conf_alpha {
             let ci = fc.conf_int(alpha).map_err(to_py)?;
             let (lower, upper): (Vec<f64>, Vec<f64>) = ci.into_iter().unzip();
@@ -3345,13 +3426,44 @@ fn factor_model<'py>(
 /// columns — exogenous regressors instrument themselves). `method`:
 /// `"2sls"` (one-step with the 2SLS weight), `"2step"` (two-step efficient),
 /// or `"iterated"`. `weight`: `"robust"` (heteroskedasticity-robust White)
-/// or `"hac"` (Newey-West at `bandwidth`). Returns `params`, robust-sandwich
-/// `bse`, the parameter covariance `cov`, `residuals`, and — when the model
-/// is over-identified — the Hansen `j_stat`/`j_pval`/`j_dof` test of the
-/// over-identifying restrictions. Matches linearmodels IVGMM to machine
-/// precision.
+/// or `"hac"` (Newey-West). Returns `params`, robust-sandwich `bse`, the
+/// parameter covariance `cov`, `residuals`, `first_stage`, `hac_bandwidth`,
+/// and — when the model is over-identified — the Hansen
+/// `j_stat`/`j_pval`/`j_dof` test of the over-identifying restrictions.
+/// Matches linearmodels IVGMM to machine precision.
+///
+/// **`bandwidth` changed meaning in 0.2.0.** It is now `None` by default,
+/// which selects the Newey-West rule of thumb `floor(4 (n/100)^(2/9))`. It
+/// previously defaulted to `0.0`, and a Bartlett kernel truncated at zero
+/// lags *is* the White estimator — so `weight="hac"` alone used to be a
+/// silent no-op, returning results bit-identical to `weight="robust"`
+/// (verified: max |delta se| = 0.000e+00 over 3000 replications) while the
+/// caller believed they had asked for serial-correlation robustness. Passing
+/// `bandwidth=0.0` explicitly is now an error rather than a no-op. The lag
+/// truncation actually used is always reported back as `hac_bandwidth`.
+///
+/// **HAC does not restore coverage here.** The library's interval-coverage
+/// audit measured this estimator at 0.868 ± 0.006 against a nominal 0.95
+/// under AR(1) moments with `phi=0.8`, `T=250`, and an explicit
+/// `bandwidth=10`. The automatic rule picks 4 lags at that `T` — *fewer*
+/// than the setting that under-covered — so it is a sensible default, not a
+/// remedy. Treat a nominal-95% GMM interval under persistent moments as
+/// narrower than its label.
+///
+/// **`first_stage` is a diagnostic, not a test, when more than one regressor
+/// is endogenous.** Each entry is a robust first-stage F for one instrumented
+/// regressor on the excluded instruments. With two or more endogenous
+/// regressors every one of these can clear 10 while the system is still
+/// under-identified, because the instruments may predict only a single common
+/// combination of them. The right objects there are Angrist-Pischke
+/// (per regressor) and Cragg-Donald / Kleibergen-Paap against Stock-Yogo
+/// (joint); none are implemented. Even with one endogenous regressor, F > 10
+/// is not a safety threshold — the audit measured 0.915 coverage at a median
+/// F of 10.5. Entries are keyed by `regressor`; a regressor that is exogenous,
+/// has no excluded instruments, or is reproduced exactly by the instruments
+/// gets no entry, and a missing entry is not a failed fit.
 #[pyfunction]
-#[pyo3(signature = (x, z, y, method = "2step", weight = "robust", bandwidth = 0.0,
+#[pyo3(signature = (x, z, y, method = "2step", weight = "robust", bandwidth = None,
                     tol = 1e-8, max_iter = 100))]
 #[allow(clippy::too_many_arguments)]
 fn iv_gmm<'py>(
@@ -3361,7 +3473,7 @@ fn iv_gmm<'py>(
     y: PyReadonlyArray1<'py, f64>,
     method: &str,
     weight: &str,
-    bandwidth: f64,
+    bandwidth: Option<f64>,
     tol: f64,
     max_iter: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
@@ -3378,9 +3490,30 @@ fn iv_gmm<'py>(
     let yv = yv.as_slice();
     let cov_weight = match weight {
         "robust" => GmmWeight::Robust,
-        "hac" => GmmWeight::Hac {
-            kernel: tsecon_hac::Kernel::Bartlett,
-            bandwidth,
+        // bandwidth=None selects the Newey-West rule of thumb. An EXPLICIT
+        // 0.0 is refused rather than silently honoured: Bartlett truncated at
+        // zero lags is exactly White, so it is the one value that makes
+        // weight="hac" a no-op, and it was this function's old default.
+        "hac" => match bandwidth {
+            None => GmmWeight::HacAuto {
+                kernel: tsecon_hac::Kernel::Bartlett,
+            },
+            Some(bw) if bw == 0.0 => {
+                return Err(PyValueError::new_err(
+                    "bandwidth=0.0 with weight=\"hac\" is a no-op: a Bartlett \
+                     kernel truncated at zero lags IS the White estimator, so \
+                     this returns exactly weight=\"robust\" while looking like \
+                     it corrects for serial correlation. Pass a positive \
+                     bandwidth (the lag truncation), or bandwidth=None to use \
+                     the Newey-West rule of thumb floor(4*(n/100)^(2/9)). Note \
+                     that neither restores nominal coverage under persistent \
+                     moments -- see the iv_gmm docstring.",
+                ))
+            }
+            Some(bw) => GmmWeight::Hac {
+                kernel: tsecon_hac::Kernel::Bartlett,
+                bandwidth: bw,
+            },
         },
         other => {
             return Err(PyValueError::new_err(format!(
@@ -3388,6 +3521,18 @@ fn iv_gmm<'py>(
             )))
         }
     };
+    // "2sls" fixes the weight at (Z'Z/n)^-1 by construction, so it never reads
+    // `weight`. Accepting weight="hac" there would be the same silent no-op we
+    // just closed on the bandwidth: the caller asks for serial-correlation
+    // robustness and receives something else without being told.
+    if method == "2sls" && weight != "robust" {
+        return Err(PyValueError::new_err(format!(
+            "method=\"2sls\" ignores weight={weight:?}: the 2SLS weight matrix \
+             is (Z'Z/n)^-1 by definition, so no weighting choice applies. Use \
+             method=\"2step\" or \"iterated\" to get {weight:?} weighting, or \
+             drop the weight argument."
+        )));
+    }
     let fit = match method {
         "2sls" => tsecon_gmm::two_stage_least_squares(&x_cols, &z_cols, yv).map_err(to_py)?,
         "2step" => tsecon_gmm::two_step_gmm(&x_cols, &z_cols, yv, cov_weight).map_err(to_py)?,
@@ -3402,11 +3547,32 @@ fn iv_gmm<'py>(
     let d = PyDict::new(py);
     d.set_item("params", fit.params.clone().into_pyarray(py))?;
     d.set_item("bse", fit.bse.clone().into_pyarray(py))?;
+    // The docstring has always promised `cov`; it was never actually set.
+    let k = fit.nparams;
+    d.set_item("cov", fit.cov.clone().into_pyarray(py).reshape([k, k])?)?;
     d.set_item("residuals", fit.residuals.clone().into_pyarray(py))?;
     d.set_item("nobs", fit.nobs)?;
     d.set_item("nmoments", fit.nmoments)?;
     d.set_item("nparams", fit.nparams)?;
     d.set_item("steps", fit.steps)?;
+    // The lag truncation actually used, so "which bandwidth did I get?" is
+    // never a guess — None under weight="robust", the resolved rule-of-thumb
+    // value under weight="hac" with bandwidth=None.
+    d.set_item("hac_bandwidth", fit.hac_bandwidth)?;
+    // Weak-instrument diagnostic, keyed by regressor index. Entries are
+    // OMITTED (not zero, not NaN) where the statistic is undefined, so the
+    // list can be shorter than the number of regressors; see the docstring.
+    let fs = PyList::empty(py);
+    for f in &fit.first_stage {
+        let e = PyDict::new(py);
+        e.set_item("regressor", f.regressor)?;
+        e.set_item("fstat", f.fstat)?;
+        e.set_item("dof_num", f.dof_num)?;
+        e.set_item("dof_den", f.dof_den)?;
+        e.set_item("pval", f.pval)?;
+        fs.append(e)?;
+    }
+    d.set_item("first_stage", fs)?;
     if let Some(j) = fit.jtest {
         d.set_item("j_stat", j.stat)?;
         d.set_item("j_dof", j.dof)?;

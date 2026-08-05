@@ -22,7 +22,7 @@ just present.
 ## Status
 
 Phases 0–1 complete; Phases 2–4 substantially landed. **41 Rust crates,
-1037 Rust + 538 Python tests — all green and golden-fixture-gated.** The whole
+1083 Rust + 562 Python tests — all green and golden-fixture-gated.** The whole
 library builds and tests from a clean checkout on every push (CI matrix on
 Linux/macOS/Windows), and a strict-built docs site keeps the documentation
 honest. See [ROADMAP.md §0](ROADMAP.md#0-current-build-status) for the live
@@ -58,8 +58,8 @@ Verify what you got:
 
 ```python
 import tsecon
-print(tsecon.__version__)                                       # 0.1.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 123
+print(tsecon.__version__)                                       # 0.2.0
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 126
           if not n.startswith("_")))
 ```
 
@@ -127,7 +127,7 @@ forecast backtesting; and leakage-safe machine learning.
 
 ## Architecture
 
-- **Rust core, Python API.** 37 workspace crates behind PyO3/`abi3` bindings;
+- **Rust core, Python API.** 41 workspace crates behind PyO3/`abi3` bindings;
   a single self-contained wheel with no heavy runtime dependencies.
 - **Validation-gated.** Nothing lands without a golden target — a reference
   value, a documented formula, or a Monte-Carlo size/power check. Reference

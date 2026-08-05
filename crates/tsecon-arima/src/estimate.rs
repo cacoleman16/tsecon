@@ -174,7 +174,12 @@ impl ObjectiveFn for ExactNegLoglik {
 /// innovations (Box & Jenkins 1976, chapter 7). Returns `(ssr, n_c)` with
 /// `n_c = n - p` effective observations, or `None` when the recursion
 /// overflows (numerically explosive coefficients).
-fn css_ssr(x: &[f64], constant: f64, ar: &[f64], ma: &[f64]) -> Option<(f64, usize)> {
+///
+/// Shared with [`crate::results`], which differentiates the conditional
+/// log-likelihood built from this SSR to get the parameter covariance of
+/// a CSS fit — that covariance must come from the objective the fit
+/// actually maximized, not from the exact likelihood.
+pub(crate) fn css_ssr(x: &[f64], constant: f64, ar: &[f64], ma: &[f64]) -> Option<(f64, usize)> {
     let n = x.len();
     let p = ar.len();
     if n <= p {

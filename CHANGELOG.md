@@ -7,6 +7,77 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.0] - 2026-08-05
+
+An interval-coverage audit took the library's interval-producing surfaces,
+pointed each at its own nominal level, and measured what fraction of intervals
+actually covered. It found four real defects. This release fixes them. **One
+fix is breaking**: it changes numbers callers were already getting, and
+changing those numbers is the point of the release.
+
+### Changed — BREAKING
+- **`iv_gmm(weight="hac")` was a silent no-op, and its standard errors will
+  move.** `bandwidth` defaulted to `0.0`, and a Bartlett kernel truncated at
+  zero lags *is* the White estimator — so `weight="hac"` returned results
+  bit-identical to `weight="robust"` (max |Δ se| = 0.000e+00 over 3000
+  replications) while the caller believed they had bought serial-correlation
+  robustness. `bandwidth` now defaults to `None`, which selects the
+  Newey-West rule of thumb `floor(4 * (n/100)^(2/9))`; an **explicit**
+  `bandwidth=0.0` now raises instead of silently degrading to White; and the
+  truncation actually used comes back as `hac_bandwidth`. On an AR(1)-error
+  design at n = 250 the slope standard error moves from 0.10522 (`robust`, and
+  the old `hac`) to 0.09393 (`hac`, automatic bandwidth 4) or 0.09228 (`hac`,
+  `bandwidth=10`). If you passed `weight="hac"` before, you were reporting
+  White standard errors under a HAC label and your numbers will change.
+  **This does not restore coverage.** The audit measured 0.868 ± 0.006 against
+  a nominal 0.95 at `bandwidth=10`, and the automatic rule picks *fewer* lags
+  (4 at T = 250). A defensible default is not a remedy: those intervals are
+  still too narrow, and the fix is that you can now see and set the bandwidth
+  rather than that the bandwidth is now right.
+- **`iv_gmm(method="2sls", weight="hac")` now raises.** 2SLS fixes its weight
+  matrix at `(Z'Z/n)^-1` by construction, so accepting a weight argument there
+  was the same silent no-op in a second place.
+
+### Added — inference
+- **`ols(se_type="hc2")` and `ols(se_type="hc3")`** — the leverage-corrected
+  heteroskedasticity-robust standard errors, matched to statsmodels HC2/HC3 to
+  2.96e-15 on the audit's own T = 25 chi2(1)-regressor high-leverage design. On
+  that design tsecon's own slope standard error runs 0.1749746 (nonrobust),
+  0.1751173 (hc0), 0.1825724 (hc1), 0.2095910 (hc2), 0.2629148 (hc3): HC3 is
+  44% larger than HC1, which is exactly the leverage correction that hc1's
+  `n/(n-k)` factor does not buy. An observation whose leverage is numerically
+  equal to 1 is refused, not returned as a near-infinite standard error.
+- **`iv_gmm` returns `first_stage`** — a list of dicts with keys `regressor`,
+  `fstat`, `dof_num`, `dof_den`, `pval`: a heteroskedasticity-robust
+  per-regressor first-stage F. Entries are **omitted** where the statistic is
+  undefined (an exogenous regressor, no excluded instruments, a regressor the
+  instruments reproduce exactly, rank-deficient `Z`, a non-finite statistic),
+  so the list can be shorter than the regressor count and must be indexed by
+  `regressor`, never by position; a missing entry is not a failed fit. **With
+  two or more endogenous regressors this is not a weak-identification test** —
+  every regressor can clear 10 while the system is under-identified, because
+  the instruments may predict only one common combination of them. The right
+  objects are Angrist-Pischke (per regressor) and Cragg-Donald /
+  Kleibergen-Paap against Stock-Yogo (joint), and none of those are
+  implemented. Even with a single endogenous regressor, F > 10 is not a safety
+  threshold: the audit measured 0.915 coverage at a median first-stage F of
+  10.5.
+- **`arima_fit(drift_uncertainty=True)`** — with `d >= 1` and `constant=True`
+  the h-step forecast contains an estimated drift whose uncertainty grows like
+  h², and the default omits it entirely (the reported se is exactly
+  `sigma*sqrt(h)`). Opt in and the se matches the closed form
+  `sigma*sqrt(h + h²/(T-1))` to 5.22e-09. It is **opt-in** so the default path
+  stays bit-identical and keeps matching the statsmodels `get_forecast` golden
+  at 1e-6: the two are different estimands, not a right one and a wrong one.
+- **`arima_fit` returns `bse`, `param_cov`, and `cov_ok`** — parameter standard
+  errors from the observed information (statsmodels `cov_type="approx"`).
+  ARIMA previously reported no parameter standard errors at all. `bse` and
+  `param_cov` are `None` with `cov_ok=False` when that matrix is too
+  ill-conditioned to invert honestly, rather than reporting a number the
+  numerics do not support.
+
 ### Added — ergonomics
 - **Forgiving input**: every estimator now accepts a pandas `DataFrame`/`Series`
   (or any `.to_numpy` array-like), off-dtype/non-contiguous float arrays,
@@ -41,6 +112,35 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   `scipy.stats.boxcox_normmax`; Guerrero as a documented-formula alternative).
 - `engle_granger` — the two-step cointegration test now returns p-values and
   critical values from the MacKinnon response surfaces, not just the statistic.
+
+### Fixed
+
+The four defects the interval-coverage audit found, with measured coverage
+before and after (nominal 0.95 throughout):
+
+- **`ols` robust intervals under-covered badly under high leverage.** On the
+  T = 25 chi2(1) design: **hc1 0.682 → hc3 0.863**. Fixed by adding hc2/hc3.
+  hc1 is still available and is still the wrong choice on that design; hc3 does
+  not reach nominal there either, and the honest reading is that a T = 25
+  tail-heavy design is hard, not that hc3 solves it.
+- **`arima_fit` forecast intervals ignored drift uncertainty.** With `d >= 1`
+  and `constant=True`, at h = 24 and T = 60: **0.902 → 0.945** with
+  `drift_uncertainty=True`.
+- **`iv_gmm(weight="hac")` never applied a HAC correction** (bit-identical to
+  `weight="robust"`, max |Δ se| = 0.000e+00 over 3000 replications). See the
+  breaking note above. **Not fixed by this release:** coverage on the audited
+  AR(1)-error design is 0.868 at `bandwidth=10`, and the new automatic default
+  picks fewer lags than that.
+- **`iv_gmm` reported no first-stage evidence at all.** Now returns
+  `first_stage`, with the caveats above — this is a diagnostic, not a
+  weak-identification test.
+
+### Not in this release
+
+Named so they are not read into the above: SARIMA seasonal orders `(P, D, Q, s)`;
+Anderson-Rubin and other weak-IV-robust confidence sets for `iv_gmm`;
+Angrist-Pischke, Cragg-Donald, and Kleibergen-Paap statistics; and simultaneous
+(joint) bands anywhere — every band in the library is pointwise.
 
 ## [0.1.0] - 2026-07-23
 

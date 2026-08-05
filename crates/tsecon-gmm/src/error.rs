@@ -64,6 +64,18 @@ pub enum GmmError {
         /// The offending bandwidth.
         value: f64,
     },
+    /// HAC weighting was requested with a zero bandwidth — a silent no-op
+    /// that returns the White estimator instead of anything
+    /// serial-correlation robust. Rejected rather than honored: a caller who
+    /// asks for HAC and gets White has the wrong standard errors and no way
+    /// to notice.
+    HacBandwidthNoOp {
+        /// Name of the kernel that was requested (for the message).
+        kernel: &'static str,
+        /// The lag truncation the automatic rule would pick at this sample
+        /// size, offered to the caller as a concrete alternative.
+        suggested: usize,
+    },
     /// A scalar or configuration argument was outside its valid domain
     /// (e.g. a non-positive convergence tolerance or a zero iteration cap).
     InvalidArgument {
@@ -127,6 +139,26 @@ impl fmt::Display for GmmError {
                 f,
                 "bandwidth = {value} is invalid: requires a finite value >= 0 \
                  (the lag-truncation parameter for the HAC weighting kernel)"
+            ),
+            Self::HacBandwidthNoOp { kernel, suggested } => write!(
+                f,
+                "HAC weighting requested with bandwidth = 0, which is a silent \
+                 no-op: at bandwidth 0 the {kernel} kernel puts zero weight on \
+                 every lag j >= 1, so the moment covariance collapses to its \
+                 lag-0 term (1/n) sum_t z_t z_t' u_t^2 — that is exactly the \
+                 White (heteroskedasticity-robust) estimator, with no \
+                 serial-correlation robustness at all. Pass an explicit \
+                 positive bandwidth (the lag truncation), or ask for the \
+                 automatic rule (GmmWeight::HacAuto), which at this sample \
+                 size picks {suggested} lags via Newey-West (1994) \
+                 floor(4*(n/100)^(2/9)). If the White estimator is what you \
+                 want, request it by name with GmmWeight::Robust. Note that \
+                 neither choice fixes HAC coverage: this library's \
+                 interval-coverage audit measured iv_gmm(weight=\"hac\") at \
+                 0.868 coverage against a nominal 0.95 under an AR(1) error \
+                 (phi = 0.8, T = 250) with an explicit bandwidth of 10, and \
+                 the automatic rule picks FEWER lags than that at the same \
+                 sample size — it is a nonzero default, not a remedy"
             ),
             Self::InvalidArgument { what } => write!(f, "invalid argument: {what}"),
             Self::InconsistentMoments { what } => write!(

@@ -7,7 +7,7 @@ repository proves that `tsecon`'s *point estimates and standard-error algebra*
 match an independent reference. None of them proves the promise itself.
 
 This page is that proof, and it is an audit rather than an advertisement.
-**39 interval-valued outputs across 21 functions** — a function paired with the
+**40 interval-valued outputs across 21 functions** — a function paired with the
 option and regime that change its answer — were re-estimated on thousands of
 seeded draws from data-generating processes whose truth is known in closed form,
 and the containment rate was counted. Where an interval covers at its nominal rate, the
@@ -17,7 +17,7 @@ Monte Carlo standard error of the measurement next to it, an attribution of
 
 !!! warning "The three headline results, before any table"
 
-    1. **8 of the 31 frequentist intervals miss their nominal rate even in the
+    1. **8 of the 32 frequentist intervals miss their nominal rate even in the
        design they are entitled to do well on.** That list is
        [below](#a-misses-even-in-the-favourable-design), and it is the most
        important output of this work.
@@ -33,6 +33,32 @@ Monte Carlo standard error of the measurement next to it, an attribution of
        still only 48.1% at T=800, because the joint rate does not converge to
        the marginal one. No function in this library reports a simultaneous
        band.
+
+---
+
+## Fixed in 0.2.0
+
+This audit was written against `0.1.0`. Four of its findings were defects rather
+than approximation error, and `0.2.0` closed all four. The rows they came from
+are still in the tables below, annotated — an audit that deletes its findings
+once they are fixed leaves nothing to check later, and the *sizes* of these gaps
+are the argument for measuring coverage at all.
+
+| finding | what shipped | measured effect |
+|---|---|---|
+| `ols` had no `hc2`/`hc3` | both added; match statsmodels to 2.96e-15 | T=25 leverage design: **0.682 → 0.863**. Still short of nominal |
+| `iv_gmm(weight="hac")` was a silent no-op at its default `bandwidth=0.0` | default is now the Newey-West rule; explicit `0.0` raises; the truncation used is returned as `hac_bandwidth` | **0.632 → 0.842**. A working default, *not* a remedy — `bandwidth=10` still only reaches 0.868 |
+| `iv_gmm` reported no first-stage F | `first_stage` returned per instrumented regressor | diagnostic only; coverage unchanged. F > 10 is still not a safe threshold (0.915 at median F = 10.5) |
+| `arima_fit(d=1)` omitted the drift-uncertainty term | `drift_uncertainty=True` adds it via the delta method; default unchanged so the statsmodels golden survives | h=24, T=60: **0.902 → 0.945** |
+
+**None of these repaired an approximation.** Each removed a case where the
+library returned something other than what the caller asked for, or withheld a
+number they needed to judge it. The approximation gaps on this page — the
+delta-method IRF band decaying in the horizon, pointwise-is-not-joint, HAC under
+persistence — are all still here, and are not bugs to be fixed.
+
+Two of the four were breaking. Anyone who called `iv_gmm(weight="hac")` before
+`0.2.0` received White standard errors; their published numbers will move.
 
 ---
 
@@ -261,12 +287,12 @@ from here.
 
 ### A. Misses even in the favourable design
 
-**8 of 31 frequentist intervals.** These are off nominal in the design they are
+**8 of 32 frequentist intervals.** These are off nominal in the design they are
 entitled to do well on, so a caller cannot fix them by having better data.
 
 | surface | favourable design | measured (nominal 0.95 / 0.90) | cause | what to do | documented in |
 |---|---|---|---|---|---|
-| `iv_gmm(weight="hac")` | AR(1) errors φ=0.8, `bandwidth=10` supplied | **0.868 ± 0.006** (default bandwidth: **0.632 ± 0.009**) | CONVENTION | `bandwidth` defaults to `0.0`, and a Bartlett kernel truncated at 0 lags **is** the White estimator — so `weight="hac"` alone changes nothing (verified bit-identical, max \|Δse\| = 0.000e+00 over 3000 reps). Pass `bandwidth` yourself; even `bandwidth=10` reaches only 0.868 under this much persistence | [GMM card](../reference/model-cards/gmm.md#iv_gmm-linear-iv-gmm) |
+| `iv_gmm(weight="hac")` | AR(1) errors φ=0.8, `bandwidth=10` supplied | **0.868 ± 0.006** (automatic default: **0.842 ± 0.007**) | APPROXIMATION *(was CONVENTION — [fixed in 0.2.0](#fixed-in-020))* | the original finding: `bandwidth` defaulted to `0.0`, and a Bartlett kernel truncated at 0 lags **is** the White estimator, so `weight="hac"` alone changed nothing (verified bit-identical, max \|Δse\| = 0.000e+00 over 3000 reps) and covered **0.632 ± 0.009**. `0.2.0` made the default the Newey-West rule and made an explicit `0.0` an error. That lifts coverage to 0.842 and **no further** — at this persistence T=250 cannot estimate the long-run variance, and even `bandwidth=10` reaches only 0.868 | [GMM card](../reference/model-cards/gmm.md#iv_gmm-linear-iv-gmm) |
 | `var_irf_bands(method="bootstrap")` | impact, persistent VAR, T=100 | **0.848 ± 0.008** (h=12: **0.410 ± 0.011**) | ESTIMATOR | the percentile band sits *below* an already downward-biased point estimate — a second dose of the same bias. Pass `bias_correct=True` on a persistent VAR: it lifts h=12 from 0.410 to **0.900** | [VAR/SVAR card](../reference/model-cards/var-svar.md#confidence-bands-on-the-irf-var_irf_bands) |
 | `har_rv` — the **constant** | heteroskedastic innovations, `maxlags=0` | **0.910 ± 0.005** (`maxlags=22`: **0.871 ± 0.006**) | ESTIMATOR | not the SE: the least-squares persistence bias at Σb = 0.95 is absorbed *entirely* by the intercept (measured bias −0.1000 against the mechanical prediction −0.1001). The three slopes are at nominal; do not read the HAR intercept as if it were | [Realized-vol card](../reference/model-cards/realized-vol.md#how-to-read-the-output) |
 | `lp_iv` — strong instrument | median first-stage F ≈ 134, best horizon | **0.930 ± 0.005** (worst horizon: **0.909 ± 0.005**) | CONVENTION | the kernel covariance follows `linearmodels`' `debiased=False` convention (which is what makes the point estimates match the golden) and applies *p* Bartlett lags even at h=0, where the score has nothing to smooth. Subtract two to four points from the nominal level before quoting an LP-IV interval | [LP card](../reference/model-cards/local-projections.md#lp_iv-instrumented-local-projections-lp-iv) |
@@ -287,12 +313,12 @@ you are actually in.
 | `var_forecast` marginal bands read as a joint band | 12 horizons × 2 series simultaneously, T=100 | **0.409 ± 0.006** | READING | see [pointwise is not joint](#pointwise-is-not-joint) | [VAR/SVAR card](../reference/model-cards/var-svar.md#reduced-form-var-var_fit-var_irf-var_fevd-var_granger-var_forecast) |
 | `ols(se_type="hac")` on a **slope** | regressor *and* errors AR(1) at φ=0.95, T=200 | **0.588 ± 0.009** | APPROXIMATION | the reported HAC SE is 0.43 of the true sampling sd. Lengthening the bandwidth helps and does not close it (0.703 at 12 lags, 0.728 at 24): at T=200 the sample does not contain enough independent information to estimate a long-run variance this large. Report such a slope with a bandwidth chosen for the persistence and treat the interval as indicative | [HAC cookbook](../cookbook/hac-standard-errors.md#choosing-the-bandwidth) |
 | `smooth_lp(lam="cv")` | impact response, T=200 | **0.640 ± 0.018** | ESTIMATOR | by design, and worst exactly where an applied reader looks first. At impact the cross-validated penalty pulls the estimate off the peak (\|bias\|/sd = 1.22 — the bias exceeds a whole sampling sd). A smooth-LP band is a band around the **penalized** estimand; the unpenalized `lam=0` anchor covers 0.936 at the same cell. Separately, `se` conditions on the selected λ, so mean se/sd falls from 0.907 to 0.812 | [LP card](../reference/model-cards/local-projections.md#smooth_lp-smooth-local-projections-barnichon-brownlees) |
-| `ols(se_type="hc1")`, small T with leverage | x ~ chi2(1), sd(e\|x)=x, T=25 | **0.682 ± 0.009** | **API GAP** | an HC3 reference on the *identical draws* covers **0.863** and HC2 covers 0.773 — 18 coverage points on the table. `hc1`'s n/(n−k) factor buys 0.015 at k=2; the leverage correction 1/(1−h_i) is what matters. **`se_type` has no `hc2`/`hc3`** | [Inference guide](../guide/03-inference-toolkit.md#the-robust-standard-error-ladder) |
+| `ols(se_type="hc1")`, small T with leverage | x ~ chi2(1), sd(e\|x)=x, T=25 | **0.682 ± 0.009** | ESTIMATOR *(was API GAP — [fixed in 0.2.0](#fixed-in-020))* | `hc1`'s n/(n−k) factor buys 0.015 at k=2; the leverage correction 1/(1−h_i) is what matters. `0.2.0` added `hc2`/`hc3`, and tsecon's own `hc3` now covers **0.863 ± 0.006** on these draws — 18 points recovered, and still short of nominal, so prefer `hc3` at small n without treating it as a cure | [Inference guide](../guide/03-inference-toolkit.md#the-robust-standard-error-ladder) |
 | `var_irf_bands(method="asymptotic")` | h=12, T=100 | **0.673 ± 0.010** | APPROXIMATION | [the horizon table](#the-delta-method-irf-band-horizon-by-horizon) | [VAR/SVAR card](../reference/model-cards/var-svar.md#confidence-bands-on-the-irf-var_irf_bands) |
 | `ols(se_type="nonrobust")` | heteroskedastic sd=\|x\|, T=200 | **0.732 ± 0.008** | ESTIMATOR | inconsistent, so data does not help: in the high-leverage design it is *stuck* at 0.428 even at T=1600 and slides **downward** with T. `hc0`/`hc1` repair almost all of it (0.732 → 0.942) | [Inference guide](../guide/03-inference-toolkit.md#the-robust-standard-error-ladder) |
 | `ols(se_type="hc1")` under serial correlation | AR(1) errors, AR(1) regressor φ=0.7, T=200 | **0.735 ± 0.008** | ESTIMATOR | HC repairs **nothing** here — statistically indistinguishable from `nonrobust`'s 0.744, with se/sd 0.569 vs 0.579. HC is heteroskedasticity-robust, not serial-correlation robust. Only `hac` moves the number (0.876) | [HAC cookbook](../cookbook/hac-standard-errors.md#gotchas) |
 | `var_irf_bands` pointwise read as joint | all of h=0..12 at once, T=500 | **0.722 ± 0.010** | READING | see [pointwise is not joint](#pointwise-is-not-joint) | [VAR/SVAR card](../reference/model-cards/var-svar.md#confidence-bands-on-the-irf-var_irf_bands) |
-| `iv_gmm` with weak instruments | median first-stage F = 1.2, T=250 | **0.839 ± 0.007** | ESTIMATOR + **API GAP** | the *mean* reported se/sd of 1.27 is a mirage: the **median** reported SE is only 0.456 of the true sampling sd, and the mean is dragged above 1 by a handful of replications with enormous SEs. IQR/(1.349 sd) = 0.42 says the sampling law is nothing like normal. A fixed-width interval at the true sd covers 0.968, so the damage is done by how the SE *varies* across samples (corr(\|error\|, SE) = +0.83 — it is smallest in exactly the samples where the estimate is worst). **And the rule-of-thumb F of 10 is not safe: at median F = 10.5 coverage is already 0.915 with a median se/sd of 0.841.** No Anderson-Rubin set is exposed; `iv_gmm` does not even report a first-stage F | [GMM card](../reference/model-cards/gmm.md#iv_gmm-linear-iv-gmm) |
+| `iv_gmm` with weak instruments | median first-stage F = 1.2, T=250 | **0.839 ± 0.007** | ESTIMATOR + **API GAP** | the *mean* reported se/sd of 1.27 is a mirage: the **median** reported SE is only 0.456 of the true sampling sd, and the mean is dragged above 1 by a handful of replications with enormous SEs. IQR/(1.349 sd) = 0.42 says the sampling law is nothing like normal. A fixed-width interval at the true sd covers 0.968, so the damage is done by how the SE *varies* across samples (corr(\|error\|, SE) = +0.83 — it is smallest in exactly the samples where the estimate is worst). **And the rule-of-thumb F of 10 is not safe: at median F = 10.5 coverage is already 0.915 with a median se/sd of 0.841.** `0.2.0` added the `first_stage` diagnostic so the caller can at least see the strength; no Anderson-Rubin set is exposed, and that remains the real answer here | [GMM card](../reference/model-cards/gmm.md#iv_gmm-linear-iv-gmm) |
 | `var_irf_bands` per-horizon vs `cumulative=True` | per-horizon band, h=12, T=200 | **0.789 ± 0.009** (cumulative: 0.884 ± 0.007) | APPROXIMATION | on this DGP the running sum is dominated by the early, well-estimated horizons, so it is a much more nearly linear function of the estimated slopes. Measured here, not a general theorem | [VAR/SVAR card](../reference/model-cards/var-svar.md#confidence-bands-on-the-irf-var_irf_bands) |
 | `quantile_regression`, extreme τ | τ=0.05, location-scale, T=200 | **0.866 ± 0.006** | APPROXIMATION | se/sd is 0.818 while the point-estimate bias is +0.008, so it is squarely the SE: the Powell sandwich needs a conditional density at the fitted quantile, estimated from the handful of observations near an extreme quantile. It shrinks with T (0.916 at T=1000) but does not close. τ=0.50 is fine (0.940). Bootstrap the quantile process for extreme τ at a few hundred observations | [Quantile card](../reference/model-cards/quantile.md#quantile_regression-linear-quantile-regression) |
 | `lp(se="hac")` | h=12, T=100 | **0.870 ± 0.008** | APPROXIMATION | the default `se="lag_augmented"` covers better at **every** horizon on the same draws (paired gap +0.027 pooled over h≥6, se 0.0014). Newey-West at bandwidth h+p spends its degrees of freedom estimating autocovariances that lag augmentation has already removed. The gap closes in T (0.870 at T=100 → 0.939 at T=800) | [LP card](../reference/model-cards/local-projections.md#lp-local-projection-irfs) |
@@ -468,8 +494,10 @@ Row 4 is a small but genuine reversal of the usual advice: under t(3) errors the
 moment, which is exactly what the sandwich's asymptotics assume.
 
 The next table is the cleanest decomposition in the audit. Design:
-x ~ chi2(1) (high leverage), sd(e\|x) = x. `hc2*`/`hc3*` are **NumPy references
-on the same draws**, not `tsecon` output — `se_type` has no such option.
+x ~ chi2(1) (high leverage), sd(e\|x) = x. `hc2`/`hc3` are `tsecon` output as of
+`0.2.0`; the `hc2*`/`hc3*` columns are independent **NumPy references on the
+same draws**, kept as a cross-check (the two agree to 1.04e-14 across every
+replication and sample size).
 `oracle` is the sandwich at the *true* per-observation error variances; with
 Gaussian errors and a fixed design the estimate is exactly normal about it, so
 the oracle column must be exactly 0.95 at every T. It is — which proves that
@@ -489,8 +517,10 @@ approximation.
 `nonrobust` never converges — it is inconsistent here, so more data does not
 help, and it slides *downward* with T. `hc0` converges but slowly. `hc1`'s
 n/(n−k) factor is nearly worthless at k=2. **HC2/HC3 target the leverage
-directly and recover most of the small-T gap, and `tsecon` does not expose
-them.**
+directly and recover most of the small-T gap** — which is why `0.2.0` added
+them. Note the word *most*: `hc3` reaches 0.863 at T=25, not 0.95, and its mean
+se/sd of 0.942 overstates the typical interval because the SE distribution is
+skewed. The remaining gap is the same one the oracle column isolates.
 
 And the worst single number in the audit — a slope with a persistent regressor
 *and* persistent errors, `hac auto` = ⌊4(T/100)^(2/9)⌋ = 4 lags, T=200:
@@ -784,8 +814,11 @@ nominal 90% delta-method band, response of y1 to shock 0, T=200, reps=500
   h=12  truth 0.0197   coverage 0.784 +- 0.018
 ```
 
-**2. `weight="hac"` with the default bandwidth is the White estimator.** No
-Monte Carlo needed — it is an identity:
+**2. `weight="hac"` used to be the White estimator, and no longer is.** No
+Monte Carlo needed — the old behaviour was an identity, and the fix is visible
+in one draw. This audit found it; `0.2.0` closed it. The `"robust"` and
+`bandwidth=10` numbers below are unchanged from the original run, which is the
+point: only the default moved.
 
 ```python
 import numpy as np
@@ -802,26 +835,47 @@ x = (0.6 * z.sum(axis=1) + 0.7 * e + rng.standard_normal(T)).reshape(-1, 1)
 y = 1.0 * x[:, 0] + e
 
 robust = tsecon.iv_gmm(x, z, y, method="2step", weight="robust")
-hac_default = tsecon.iv_gmm(x, z, y, method="2step", weight="hac")
+hac_auto = tsecon.iv_gmm(x, z, y, method="2step", weight="hac")
 hac_bw10 = tsecon.iv_gmm(x, z, y, method="2step", weight="hac", bandwidth=10.0)
 
-print(f'weight="robust"                se = {robust["bse"][0]:.6f}')
-print(f'weight="hac"  (bandwidth=0.0)  se = {hac_default["bse"][0]:.6f}')
-print(f'weight="hac", bandwidth=10.0   se = {hac_bw10["bse"][0]:.6f}')
-print(f'|hac(default) - robust|        = {abs(hac_default["bse"][0] - robust["bse"][0]):.3e}')
+print(f'weight="robust"                  se = {robust["bse"][0]:.6f}')
+print(f'weight="hac"  (auto: {hac_auto["hac_bandwidth"]:.0f} lags)     se = {hac_auto["bse"][0]:.6f}')
+print(f'weight="hac", bandwidth=10.0     se = {hac_bw10["bse"][0]:.6f}')
+print(f'|hac(auto) - robust|             = {abs(hac_auto["bse"][0] - robust["bse"][0]):.3e}')
+
+try:
+    tsecon.iv_gmm(x, z, y, method="2step", weight="hac", bandwidth=0.0)
+except ValueError as exc:
+    print(f'\nbandwidth=0.0 -> ValueError: {str(exc)[:72]}...')
+print(f'\nfirst-stage F on the endogenous regressor: '
+      f'{hac_auto["first_stage"][0]["fstat"]:.1f}')
 ```
 
 ```text
-weight="robust"                se = 0.204701
-weight="hac"  (bandwidth=0.0)  se = 0.204701
-weight="hac", bandwidth=10.0   se = 0.193519
-|hac(default) - robust|        = 0.000e+00
+weight="robust"                  se = 0.204701
+weight="hac"  (auto: 4 lags)     se = 0.198534
+weight="hac", bandwidth=10.0     se = 0.193519
+|hac(auto) - robust|             = 6.167e-03
+
+bandwidth=0.0 -> ValueError: bandwidth=0.0 with weight="hac" is a no-op: a Bartlett kernel truncated ...
+
+first-stage F on the endogenous regressor: 22.1
 ```
 
-The third line proves `bandwidth` does something; *which* value is better is a
-coverage question, not a one-draw question, and the answer is in
-[Table 2](#table-2-the-stress-case): 0.632 at the default versus 0.868 at
-`bandwidth=10`.
+Before `0.2.0` the second line read `0.204701` and the fourth read
+`0.000e+00` — bit-identical to `"robust"`, in every one of 3000 replications.
+Now the default resolves to the Newey-West rule of thumb
+`floor(4 (n/100)^(2/9))` = 4 lags at `T=250`, reports that choice back as
+`hac_bandwidth`, and refuses an explicit `0.0` rather than honouring it.
+
+**The fix does not repair the coverage**, and the numbers say so: 0.632 at the
+old no-op default, **0.842** at the automatic rule, 0.868 at `bandwidth=10`
+against a nominal 0.95. A working default is not a remedy — under moments this
+persistent, `T=250` does not contain enough independent information to estimate
+the long-run variance, and the automatic rule picks *fewer* lags than the
+setting that reached 0.868. The last line is the other half of the fix: the
+first-stage F is now reported, so the caller can see the instrument strength
+their interval rests on.
 
 **3. The omitted drift-uncertainty term in an I(1) forecast band.** Also an
 identity:
@@ -914,28 +968,38 @@ Stated so you do not have to discover it.
 Ordered by how much coverage each would buy, and separated into what the
 library should change and what a caller should change.
 
-**For the library.**
+**For the library — shipped in `0.2.0`.** Three of the five recommendations
+below were acted on. They are kept here, marked, rather than deleted: an audit
+that quietly edits out its own findings once they are fixed cannot be checked
+against later.
 
-1. **Add `hc2`/`hc3` to `ols`'s `se_type` menu.** The largest actionable gap
-   measured: 18 coverage points at T=25 in a high-leverage design, and still 5.7
-   at T=100. It is a few lines given the hat diagonal. (Note also that `se_type`
-   is lower-case only — `"HC0"` and `"HAC"` raise `ValueError`.)
-2. **Make `iv_gmm(weight="hac")` refuse to silently degrade.** `bandwidth=0.0`
-   means Bartlett-at-zero-lags, which *is* White. Either pick a data-driven
-   bandwidth (Newey-West) or raise when `weight="hac"` arrives without one.
-   Silently returning the estimator the caller was trying to move away from is
-   the worst of the three options. 31.8 coverage points under AR(1) errors.
-3. **Expose a simultaneous band.** A sup-t or Bonferroni band for
-   `var_irf_bands`, `lp`, and `var_forecast` would close the largest *reading*
-   gap on this page — 90% pointwise is 72% joint at T=500, and the joint rate
-   does not improve toward the marginal one as T grows.
-4. **Expose an Anderson-Rubin set for LP-IV and `iv_gmm`.** Under weak
-   identification no bounded Wald set can be honest; the current fallback is for
-   the caller to read `first_stage_f`, which `iv_gmm` does not even report.
-5. **A per-τ convergence flag for `quantile_regression`.** The single shared
-   `converged` bool trips on 232/3000 replications at T=200 and is the IRLS
-   iteration cap, not an estimation failure — dropping those replications moves
-   τ=0.05 coverage only from 0.866 to 0.870.
+1. ~~**Add `hc2`/`hc3` to `ols`'s `se_type` menu.**~~ **Done.** Both match
+   statsmodels HC2/HC3 to 2.96e-15. Measured on the same design that motivated
+   it: tsecon's own `hc3` covers **0.863 ± 0.006** at T=25 where `hc1` covers
+   0.682 — and is still short of nominal, so prefer it without treating it as a
+   cure. The gap closes with n (0.910 at T=100, 0.945 at T=1600). (`se_type`
+   remains lower-case only — `"HC0"` and `"HAC"` raise `ValueError`.)
+2. ~~**Make `iv_gmm(weight="hac")` refuse to silently degrade.**~~ **Done, and
+   it is a breaking change.** `bandwidth` now defaults to `None`, which selects
+   the Newey-West rule; an explicit `0.0` raises; the resolved truncation comes
+   back as `hac_bandwidth`. Coverage moves 0.632 → **0.842**, which is the
+   honest number: it buys 21 points and **still misses nominal**, so this closed
+   a silent-wrongness bug, not the coverage gap.
+3. **Expose a simultaneous band.** *Still open, and now the largest gap on this
+   page.* A sup-t or Bonferroni band for `var_irf_bands`, `lp`, and
+   `var_forecast` would close the largest *reading* gap — 90% pointwise is 72%
+   joint at T=500, and the joint rate does not improve toward the marginal one
+   as T grows.
+4. **Expose an Anderson-Rubin set for LP-IV and `iv_gmm`.** *Half done.*
+   `iv_gmm` now reports `first_stage`, so the caller can at least see the
+   instrument strength — but the audit also showed F > 10 is not a safe
+   threshold (0.915 coverage at median F = 10.5), which is precisely why a
+   weak-IV-robust set is still the real answer. Under weak identification no
+   bounded Wald set can be honest.
+5. **A per-τ convergence flag for `quantile_regression`.** *Still open.* The
+   single shared `converged` bool trips on 232/3000 replications at T=200 and is
+   the IRLS iteration cap, not an estimation failure — dropping those
+   replications moves τ=0.05 coverage only from 0.866 to 0.870.
 
 **For a caller, in order of how often it will bite.**
 

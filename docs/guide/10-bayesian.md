@@ -418,7 +418,7 @@ The state of the art, and where the [Module 05 roadmap](../roadmap/05-bayesian.m
 
 **Available now in Python** (`import tsecon`) — the pieces this chapter's runnable code used:
 
-- `tsecon.ols` — the shrinkage demonstration via dummy observations (`se_type="nonrobust"|"hc0"|"hc1"|"hac"`)
+- `tsecon.ols` — the shrinkage demonstration via dummy observations (`se_type="nonrobust"|"hc0"|"hc1"|"hc2"|"hc3"|"hac"`; the leverage-corrected `hc2`/`hc3` rungs are the ones that matter at small $n$ — see [Chapter 3](03-inference-toolkit.md#the-robust-standard-error-ladder))
 - `tsecon.bvar_fit` — the conjugate Minnesota/NIW-BVAR: closed-form posterior-mean coefficients $\bar{B}$, posterior-mean $\Sigma$, and the matrix-variate-$t$ log marginal likelihood (backed by the `MinnesotaNiwPrior` / `NiwPosterior` Rust core)
 - `tsecon.bvar_hierarchical` — empirical-Bayes / ML-II tightness selection (Giannone-Lenza-Primiceri 2015): maximizes that same marginal likelihood over `lambda1` (optionally `lambda1+lambda3`, or MAP-II under the GLP Gamma hyperprior), then refits the posterior at the optimum
 - `tsecon.bvar_ssvs` — spike-and-slab stochastic-search variable selection (George-Sun-Ni 2008): a four-block Gibbs sampler returning posterior inclusion probabilities for every VAR coefficient (and, with `ssvs_cov=True`, the off-diagonal error precisions), the model-averaged coefficient/covariance means, and Cholesky-orthogonalized IRF draws — the sampler-based sparse-VAR counterpart to `bvar_fit`'s shrinkage

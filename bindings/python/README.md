@@ -39,7 +39,7 @@ Then check what you got:
 
 ```python
 import tsecon
-print(tsecon.__version__)   # 0.1.0
+print(tsecon.__version__)   # 0.2.0
 ```
 
 There is no prebuilt wheel for Intel macOS (`x86_64`); on that platform, and for

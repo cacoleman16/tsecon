@@ -32,7 +32,22 @@
 //!   [`ArimaResults::forecast`] via the state-space prediction recursion
 //!   with exact re-cumulation to levels (correct cumulative variance)
 //!   for `d > 0`, and [`ArimaResults::residuals`] — standardized
-//!   one-step prediction errors from the Kalman filter.
+//!   one-step prediction errors from the Kalman filter;
+//! * [`ArimaResults::param_cov`] / [`ArimaResults::bse`] — the observed
+//!   information (inverse negative numerical Hessian of the
+//!   log-likelihood) and the parameter standard errors on its diagonal,
+//!   matching statsmodels `fit(cov_type='approx').bse`. `sigma2` is
+//!   differentiated multiplicatively, so the standard errors do not
+//!   depend on the units of the series; the inversion refuses a
+//!   numerically rank-deficient information matrix rather than returning
+//!   the pseudo-inverse statsmodels would, and [`ParamCov::rcond`]
+//!   reports how much conditioning was left;
+//! * [`ArimaResults::forecast_with`] — forecasts that optionally add the
+//!   estimated constant's delta-method contribution to the band width.
+//!   [`ArimaResults::forecast`] deliberately keeps the
+//!   parameters-treated-as-known convention that statsmodels
+//!   `get_forecast` uses, so the parity gate keeps its meaning; the
+//!   opt-in is where the honest drift term lives.
 //!
 //! All fallible routines return [`ArimaError`]; nothing in this crate
 //! panics on user input.
@@ -40,6 +55,7 @@
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod cov;
 mod diff;
 pub mod error;
 mod estimate;
@@ -47,7 +63,8 @@ pub mod results;
 pub mod spec;
 pub mod ssm;
 
+pub use cov::ParamCov;
 pub use error::ArimaError;
-pub use results::{ArimaForecast, ArimaResults, EstimationMethod};
+pub use results::{ArimaForecast, ArimaResults, EstimationMethod, ForecastOptions};
 pub use spec::ArimaSpec;
 pub use ssm::arma_ssm;

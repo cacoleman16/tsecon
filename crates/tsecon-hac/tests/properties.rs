@@ -370,6 +370,141 @@ fn hc1_is_hc0_scaled_and_hac_bw0_matches_hc0() {
     }
 }
 
+/// A labelled OLS design: `(what it exercises, y, design columns)`.
+type Design = (&'static str, Vec<f64>, Vec<Vec<f64>>);
+
+/// The leverage weights `(1-h_t)^{-1} >= 1` and `(1-h_t)^{-2} >=
+/// (1-h_t)^{-1}`, so `S_HC3 - S_HC2` and `S_HC2 - S_HC0` are sums of
+/// PSD rank-one terms with non-negative coefficients. Sandwiching a PSD
+/// matrix keeps it PSD, so every variance diagonal — hence every standard
+/// error — is ordered HC3 >= HC2 >= HC0. This holds on *any* design, so it
+/// is checked on a deliberately mixed bag of them.
+#[test]
+fn hc3_dominates_hc2_dominates_hc0_on_every_design() {
+    let (y_base, x_base) = regression_data(200, 31);
+    let designs: Vec<Design> = vec![
+        ("homoskedastic n=200", y_base, x_base),
+        {
+            // Small-T, high-leverage, conditionally heteroskedastic: the
+            // regime the coverage audit flagged.
+            let n = 25;
+            let x: Vec<f64> = lcg_series(n, 99).iter().map(|v| (v + 0.5).exp()).collect();
+            let z = lcg_series(n, 100);
+            let y: Vec<f64> = (0..n).map(|t| 1.0 + 0.5 * x[t] + x[t] * z[t]).collect();
+            ("chi2-like x, sd(e|x)=x, n=25", y, vec![vec![1.0; n], x])
+        },
+        {
+            // One near-isolated observation: leverage close to (but not at) 1.
+            let n = 40;
+            let mut x = lcg_series(n, 7);
+            x[3] = 50.0;
+            let y: Vec<f64> = x
+                .iter()
+                .enumerate()
+                .map(|(t, v)| 0.2 * v + 0.1 * t as f64)
+                .collect();
+            ("single far-out x", y, vec![vec![1.0; n], x])
+        },
+    ];
+
+    for (label, y, x) in designs {
+        let fit = ols(&y, &x).unwrap();
+        let hc0 = fit.inference(SeType::Hc0).unwrap();
+        let hc2 = fit.inference(SeType::Hc2).unwrap();
+        let hc3 = fit.inference(SeType::Hc3).unwrap();
+        for i in 0..x.len() {
+            assert!(
+                hc2.bse[i] >= hc0.bse[i] * (1.0 - 1e-12),
+                "{label}: HC2 bse[{i}] = {} must be >= HC0 {}",
+                hc2.bse[i],
+                hc0.bse[i]
+            );
+            assert!(
+                hc3.bse[i] >= hc2.bse[i] * (1.0 - 1e-12),
+                "{label}: HC3 bse[{i}] = {} must be >= HC2 {}",
+                hc3.bse[i],
+                hc2.bse[i]
+            );
+            for se in [hc0.bse[i], hc2.bse[i], hc3.bse[i]] {
+                assert!(se.is_finite() && se > 0.0, "{label}: bse[{i}] = {se}");
+            }
+        }
+    }
+}
+
+/// Under homoskedasticity all four HC members estimate the same thing, so
+/// on a large balanced design they must agree with each other and with the
+/// nonrobust standard errors. (Leverage is O(k/n) there, so the HC2/HC3
+/// weights are 1 + O(k/n) and the whole ladder collapses.)
+#[test]
+fn hc_ladder_collapses_to_nonrobust_under_homoskedasticity() {
+    let n = 4000;
+    let x1 = lcg_series(n, 61);
+    let x2 = lcg_series(n, 62);
+    let u = lcg_series(n, 63); // i.i.d., variance independent of x
+    let y: Vec<f64> = (0..n)
+        .map(|t| 1.0 + 0.5 * x1[t] - 0.3 * x2[t] + u[t])
+        .collect();
+    let fit = ols(&y, &[vec![1.0; n], x1, x2]).unwrap();
+
+    let plain = fit.inference(SeType::NonRobust).unwrap();
+    for se_type in [SeType::Hc0, SeType::Hc1, SeType::Hc2, SeType::Hc3] {
+        let inf = fit.inference(se_type).unwrap();
+        for i in 0..3 {
+            let rel = (inf.bse[i] / plain.bse[i] - 1.0).abs();
+            assert!(
+                rel < 0.05,
+                "{se_type:?} bse[{i}] = {} is {rel:.4} away from nonrobust {}",
+                inf.bse[i],
+                plain.bse[i]
+            );
+        }
+    }
+    // And to each other: HC3/HC0 differ only by the leverage weights,
+    // which are 1 + O(k/n) = 1 + O(7.5e-4) here.
+    let hc0 = fit.inference(SeType::Hc0).unwrap();
+    let hc3 = fit.inference(SeType::Hc3).unwrap();
+    for i in 0..3 {
+        assert!(
+            (hc3.bse[i] / hc0.bse[i] - 1.0).abs() < 0.01,
+            "HC3/HC0 ratio at param {i} should be ~1 at n = {n}"
+        );
+    }
+}
+
+/// HC2/HC3 are undefined where the fit interpolates an observation exactly.
+/// A singleton dummy does that: with the constant in the design, the point
+/// it flags has `h = 1` and residual 0, so the weight `1/(1-h)` blows up.
+/// The crate must name the observation instead of returning inf/NaN, while
+/// HC0/HC1 — which never touch leverage — keep working on the same fit.
+#[test]
+fn full_leverage_observation_is_named_not_silently_infinite() {
+    let n = 30;
+    let x = lcg_series(n, 404);
+    let mut dummy = vec![0.0; n];
+    dummy[7] = 1.0;
+    let y: Vec<f64> = (0..n).map(|t| 1.0 + 2.0 * x[t] + 0.1 * t as f64).collect();
+    let fit = ols(&y, &[vec![1.0; n], x, dummy]).unwrap();
+
+    for se_type in [SeType::Hc2, SeType::Hc3] {
+        match fit.inference(se_type) {
+            Err(HacError::FullLeverage { index, what, .. }) => {
+                assert_eq!(index, 7, "{se_type:?} must name the singleton observation");
+                assert!(what == "HC2" || what == "HC3", "unexpected flavor {what}");
+            }
+            other => panic!("{se_type:?} should refuse full leverage, got {other:?}"),
+        }
+    }
+    // The message teaches a way out, and HC0/HC1 are that way out.
+    let msg = fit.inference(SeType::Hc3).unwrap_err().to_string();
+    assert!(msg.contains("observation 7"), "unexpected message: {msg}");
+    assert!(msg.contains("HC0/HC1"), "unexpected message: {msg}");
+    for se_type in [SeType::Hc0, SeType::Hc1] {
+        let inf = fit.inference(se_type).unwrap();
+        assert!(inf.bse.iter().all(|s| s.is_finite()));
+    }
+}
+
 #[test]
 fn tvalues_are_params_over_bse() {
     let (y, x) = regression_data(180, 23);

@@ -18,9 +18,11 @@
 //!   (Andrews-Monahan 1992).
 //! - [`ewc_lrv`] / [`ewc_default_b`]: the equal-weighted cosine estimator
 //!   of Lazarus-Lewis-Stock-Watson (2018).
-//! - [`ols`] + [`OlsFit::inference`]: OLS with nonrobust, HC0/HC1, and HAC
+//! - [`ols`] + [`OlsFit::inference`]: OLS with nonrobust, HC0-HC3, and HAC
 //!   sandwich standard errors matching statsmodels `cov_type="HAC"`
-//!   (`maxlags`, `use_correction`) to golden-fixture precision.
+//!   (`maxlags`, `use_correction`) to golden-fixture precision. HC2/HC3
+//!   carry the leverage correction `1/(1 - h_t)^{1,2}` that HC0/HC1 lack;
+//!   prefer HC3 in small samples (Long & Ervin 2000).
 //!
 //! ## The library-wide default policy (ROADMAP §5; LLSW 2018)
 //!

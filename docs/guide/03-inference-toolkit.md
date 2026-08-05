@@ -8,7 +8,7 @@
 
 - Why autocorrelation makes textbook standard errors too small — and how to think about it as a loss of effective sample size
 - The long-run variance: the one number that repairs the variance of any time series average
-- The robust standard-error ladder — iid → HC0/HC1 → HAC — and how to climb it with `tsecon.ols(se_type=...)`
+- The robust standard-error ladder — iid → HC0/HC1/HC2/HC3 → HAC — which rung to pick at your sample size, and how to climb it with `tsecon.ols(se_type=...)`
 - Modern fixed-b and EWC inference (Lazarus–Lewis–Stock–Watson 2018), and why it exists
 - Block and wild bootstraps that respect dependence, with Monte Carlo experiments that reproduce exactly on any machine
 - Quantile regression: inference on the conditional *distribution* rather than the mean — the check loss, when quantile slopes fan apart, and the Powell sandwich
@@ -131,10 +131,14 @@ where the "bread" $(X'X)^{-1}$ is the same for everyone and the "meat" $\hat S$ 
 |---|---|---|
 | `nonrobust` | iid, constant variance | $\hat\sigma^2 X'X$ |
 | `hc0` (White 1980) | independent, any variances | $\sum_t \hat u_t^2\, x_t x_t'$ |
-| `hc1` | as HC0, small-sample corrected | HC0 $\times\; n/(n-k)$ |
+| `hc1` | as HC0, degrees-of-freedom corrected | $\dfrac{n}{n-k}\sum_t \hat u_t^2\, x_t x_t'$ |
+| `hc2` | as HC0, leverage-corrected | $\sum_t \dfrac{\hat u_t^2}{1-h_t}\, x_t x_t'$ |
+| `hc3` (MacKinnon–White 1985) | as HC0, jackknife approximation | $\sum_t \dfrac{\hat u_t^2}{(1-h_t)^2}\, x_t x_t'$ |
 | `hac` (Newey–West 1987) | autocorrelated *and* heteroskedastic | kernel-weighted score autocovariances |
 
-The HAC meat applies the kernel machinery of the last section to the scores:
+The three middle rungs differ only in how they answer one question: OLS residuals are systematically *too small*, so by how much should each $\hat u_t^2$ be inflated before it stands in for $\sigma_t^2$? The fit chases every observation a little, and the amount it chases observation $t$ is its **leverage** $h_t = x_t'(X'X)^{-1}x_t$ — a number in $[0,1]$ that sums to $k$ over the sample. Under homoskedasticity $\mathbb{E}[\hat u_t^2] = (1-h_t)\sigma^2$ exactly, so the shrinkage is worst precisely at the high-leverage points, which are the observations a sandwich estimator most needs to hear from. HC0 ignores this. HC1 multiplies *every* squared residual by the same $n/(n-k)$, a degrees-of-freedom gesture that cannot know which observations were shrunk and by how much. HC2 divides each one by its own $1-h_t$, which makes the meat exactly unbiased under homoskedasticity. HC3 divides by $(1-h_t)^2$ — a cheap stand-in for the leave-one-out jackknife (MacKinnon and White 1985) that deliberately overshoots, and is therefore the conservative choice.
+
+The HAC meat instead applies the kernel machinery of the last section to the scores:
 
 $$
 \hat S_{\text{HAC}} \;=\; \hat\Gamma_0 + \sum_{j=1}^{S_n} k\!\Bigl(\frac{j}{S_n}\Bigr)\bigl(\hat\Gamma_j + \hat\Gamma_j'\bigr),
@@ -142,7 +146,45 @@ $$
 \hat\Gamma_j = \sum_{t=j+1}^{n} \hat g_t\, \hat g_{t-j}', \quad \hat g_t = x_t \hat u_t .
 $$
 
-HAC stands for *heteroskedasticity- and autocorrelation-consistent*: it is White's estimator plus off-diagonal terms for serial correlation, so it strictly generalizes the lower rungs. In tsecon the whole ladder is one keyword:
+HAC stands for *heteroskedasticity- and autocorrelation-consistent*: it is White's estimator plus off-diagonal terms for serial correlation. At zero lags it collapses back to HC0, so it generalizes that rung — but notice what it does *not* contain: no $h_t$ appears anywhere in it. HAC is not the top of a single ladder that HC2 and HC3 sit partway up. It is a different repair, aimed at a different disease, and in a small sample it can be *narrower* than HC3 on the same data — the [HAC cookbook](../cookbook/hac-standard-errors.md#if-the-problem-is-heteroskedasticity-not-serial-correlation) shows a draw where it is.
+
+In tsecon the whole ladder is one keyword. Start where the leverage correction earns its keep — a short sample whose regressor is right-skewed, so a handful of observations carry most of the design's weight, and whose error spread grows with that same regressor:
+
+```python
+rungs = ["nonrobust", "hc0", "hc1", "hc2", "hc3"]
+m, beta_lev = 25, 2.0
+
+def leverage_draw(seed):                    # x ~ chi2(1): a few points hold most of the leverage
+    g = np.random.default_rng(seed)
+    xd = g.chisquare(1.0, m)
+    yd = 1.0 + beta_lev * xd + xd * g.standard_normal(m)   # sd(e|x) = x, errors independent
+    return yd, np.column_stack([np.ones(m), xd])
+
+y_lev, X_lev = leverage_draw(20_000)
+cover = dict.fromkeys(rungs, 0)
+for rep in range(2000):                     # fresh world each time, truth known
+    yr, Xr = leverage_draw(20_000 + rep)
+    for se in rungs:
+        r = tsecon.ols(yr, Xr, se_type=se)
+        b, s = r["params"][1], r["bse"][1]
+        cover[se] += (b - 1.96 * s <= beta_lev <= b + 1.96 * s)
+
+for se in rungs:
+    one = tsecon.ols(y_lev, X_lev, se_type=se)["bse"][1]
+    print(f"{se:>9}  se {one:6.3f}   coverage {cover[se] / 2000:.3f}")
+
+# nonrobust  se  0.134   coverage 0.479
+#       hc0  se  0.220   coverage 0.663
+#       hc1  se  0.230   coverage 0.675
+#       hc2  se  0.263   coverage 0.752
+#       hc3  se  0.319   coverage 0.856
+```
+
+The second column is the honest scoreboard: out of 2,000 nominal-95% intervals, how many actually contained the true slope of 2. Read the rungs in order. Ignoring heteroskedasticity costs 47 coverage points. Climbing to HC0 buys back 18 of them. HC1's celebrated $n/(n-k)$ factor — with $k=2$ and $n=25$, a uniform 8.7% inflation of every squared residual — buys **one further point**, 0.663 to 0.675. Then HC2 buys 8 more and HC3 another 10, for the simple reason that they are the only rungs that know *which* observations were shrunk. HC3's standard error on the displayed draw is 39% larger than HC1's, and that extra width is not timidity: the interval it produces is still too narrow, just far less so.
+
+So the practical rule is short. **At small $n$, or whenever a few observations dominate the design, use `hc3`.** It is the default recommendation in the applied literature (Long and Ervin 2000 argue it should simply replace HC1 whenever $n < 250$), it costs nothing to compute, and its conservatism is on the right side of the error you care about. The rungs converge as the sample grows — the [interval-coverage audit](../examples/interval-coverage.md#regression-standard-errors) runs this same design out to $n=1600$, where HC0 through HC3 land within half a coverage point of each other at 0.940–0.945 — so at large $n$ the choice stops mattering and `hc1` is fine. The gap is a small-sample phenomenon, which is exactly when you cannot afford it.
+
+Now climb the same ladder on a time series, where the errors are serially correlated rather than merely heteroskedastic:
 
 ```python
 def simulate(seed, n=200, beta=0.5):
@@ -157,33 +199,35 @@ def simulate(seed, n=200, beta=0.5):
 y, x = simulate(seed=0)
 X = np.column_stack([np.ones(len(x)), x])    # design matrix: add your own constant
 
-for se in ["nonrobust", "hc0", "hc1", "hac"]:
+for se in ["nonrobust", "hc0", "hc1", "hc2", "hc3", "hac"]:
     r = tsecon.ols(y, X, se_type=se)
     print(se, round(r["params"][1], 3), round(r["bse"][1], 4))
 
 # nonrobust 0.389 0.063
 # hc0       0.389 0.0657
 # hc1       0.389 0.066
+# hc2       0.389 0.0665
+# hc3       0.389 0.0673
 # hac       0.389 0.0994
 ```
 
-Read the pattern: the coefficient never moves — robust standard errors reweight *uncertainty*, not estimates — and the White corrections barely move either, because the problem in this design is autocorrelation, which they do not address. Only the HAC rung (Bartlett kernel; `maxlags=None` uses the rule of thumb, or pass `maxlags=8` explicitly; `use_correction` toggles the $n/(n-k)$ small-sample factor) reflects the true sampling variability. The danger of the naive rung is precisely that its interval looks so pleasingly tight:
+Read the pattern: the coefficient never moves — robust standard errors reweight *uncertainty*, not estimates — and the entire HC block barely moves either, spanning 0.0657 to 0.0673 while the honest HAC number is half again as large at 0.0994. That is not HC3 being timid; it is HC3 correctly solving a problem this design does not have. The leverage correction that bought 18 coverage points a moment ago buys 2% here, because the errors are not heteroskedastic — they are *autocorrelated*, and no reweighting of individual squared residuals, however clever, can see a covariance between two different observations. Only the HAC rung (Bartlett kernel; `maxlags=None` uses the rule of thumb, or pass `maxlags=8` explicitly; `use_correction` toggles the $n/(n-k)$ small-sample factor) reflects the true sampling variability. The danger of the naive rung is precisely that its interval looks so pleasingly tight:
 
 ![Robust standard errors: naive intervals lie, HAC restores coverage](../examples/img/03-robust-se.png)
 
 The left panel is one representative sample where the naive 95% interval is so misleadingly tight it barely reaches the true $\beta = 0.5$, while the honestly wider HAC interval covers it with room to spare. The right panel is the same comparison run 3,000 times — which brings us to the most useful habit this chapter can teach you.
 
-> **⚠ Common mistake** — Reaching for `hc1` ("robust standard errors") on time series data. White-type corrections fix heteroskedasticity only; they assume *independent* errors and are just as overconfident as `nonrobust` when errors are serially correlated. In cross-sections, HC1 is the workhorse; in time series, the relevant rung is HAC or better.
+> **⚠ Common mistake** — Reaching for "robust standard errors" on time series data and believing the word *robust* covers you. Every HC rung — HC0 through HC3 — assumes *independent* errors, and every one of them is just as overconfident as `nonrobust` when the errors are serially correlated. Climbing from `hc1` to `hc3` does not help: the next section measures 0.737 and 0.740 on the same serially correlated design. In cross-sections, HC3 is the workhorse; in time series, the relevant rung is `hac` or better. And the reverse trap is just as real — `hac` carries no leverage correction, so on a short, high-leverage, non-autocorrelated sample it can be narrower than `hc3`. Neither is a superset of the other; pick by which assumption your data actually violates.
 
 ## A coverage experiment: Monte Carlo as a first-class tool
 
-How do you *know* a standard error is honest? Theory gives asymptotic promises; a **Monte Carlo experiment** checks them at your sample size. The design pattern is always the same: simulate a world where you know the truth, apply the procedure many times, and count how often it succeeds. For confidence intervals the score is **coverage**: a nominal 95% interval should contain the truth in 95% of simulated samples. This is not just a textbook exercise — it is how econometricians evaluate procedures in published research, and tsecon treats it as a first-class workflow (the Rust core makes thousands of regressions per second routine).
+How do you *know* a standard error is honest? Theory gives asymptotic promises; a **Monte Carlo experiment** checks them at your sample size. The leverage block above already used the trick in miniature; here it is as a first-class workflow. The design pattern is always the same: simulate a world where you know the truth, apply the procedure many times, and count how often it succeeds. For confidence intervals the score is **coverage**: a nominal 95% interval should contain the truth in 95% of simulated samples. This is not just a textbook exercise — it is how econometricians evaluate procedures in published research, and tsecon treats it as a first-class workflow (the Rust core makes thousands of regressions per second routine).
 
 The following experiment reproduces the right panel of the figure above, end to end:
 
 ```python
 n_mc, beta_true = 1000, 0.5
-cover = {"nonrobust": 0, "hc1": 0, "hac": 0}
+cover = {"nonrobust": 0, "hc1": 0, "hc3": 0, "hac": 0}
 
 for rep in range(n_mc):
     y, x = simulate(seed=10_000 + rep)          # fresh world, known truth
@@ -193,11 +237,11 @@ for rep in range(n_mc):
         b, s = r["params"][1], r["bse"][1]
         cover[se] += (b - 1.96 * s <= beta_true <= b + 1.96 * s)
 
-print({k: v / n_mc for k, v in cover.items()})
-# {'nonrobust': 0.742, 'hc1': 0.737, 'hac': 0.876}
+print({k: float(v) / n_mc for k, v in cover.items()})
+# {'nonrobust': 0.742, 'hc1': 0.737, 'hc3': 0.74, 'hac': 0.876}
 ```
 
-Three lessons in three numbers. First, the naive interval covers 74% of the time while claiming 95% — in this design, roughly one in four "significant" findings at the 5% level would be false alarms. Second, HC1 does nothing, as promised. Third — and this is the honest part — Newey–West gets to 88%, not 95%. That remaining gap is the well-documented small-sample undercoverage of kernel HAC inference: $\hat\Omega$ is itself noisy, and plugging it in as if it were the truth understates uncertainty. Closing that last gap is what the next section is about.
+Four lessons in four numbers. First, the naive interval covers 74% of the time while claiming 95% — in this design, roughly one in four "significant" findings at the 5% level would be false alarms. Second, HC1 does nothing, as promised. Third, neither does HC3: 0.740 against `nonrobust`'s 0.742, a gap of 0.002 against a Monte Carlo standard error of 0.014 — pure noise. Climbing to the top of the HC ladder is not a partial fix for serial correlation, it is *no* fix — which is the cleanest possible statement of what "heteroskedasticity-robust" does and does not buy. Fourth — and this is the honest part — Newey–West gets to 88%, not 95%. That remaining gap is the well-documented small-sample undercoverage of kernel HAC inference: $\hat\Omega$ is itself noisy, and plugging it in as if it were the truth understates uncertainty. Closing that last gap is what the next section is about.
 
 > **⚠ Common mistake** — Seeding a Monte Carlo once at the top and letting all replications share one wandering RNG state. It works until you parallelize or re-order the loop, and then results silently change. Derive each replication's randomness from its own index (`seed=10_000 + rep` above): every replication becomes reproducible in isolation, and the experiment gives identical results in any execution order. The Philox section below shows why tsecon builds this contract into the core.
 
@@ -343,7 +387,7 @@ Everything so far has repaired the *variance* of an estimate while quietly trust
 
 Three of those assumptions are checkable, and each has a test whose *null* is "the assumption holds." Read a rejection not as a repair but as a redirection — it tells you which maintained assumption failed and therefore which fix to reach for.
 
-- **Constant error variance.** `heteroskedasticity_test` regresses the squared residuals on functions of the design. **White (1980)** is the omnibus version — residuals on the columns, their squares, and cross-products — with power against general heteroskedasticity; **Koenker's studentised Breusch–Pagan** regresses on the design alone, a focused, higher-power test when the variance is *linear* in a regressor. Null: homoskedasticity. A rejection means your `nonrobust` standard errors are wrong — climb the ladder to `hc1` (cross-section) or `hac`/EWC (time series). It is a cue to change the *denominator*, not to abandon the model.
+- **Constant error variance.** `heteroskedasticity_test` regresses the squared residuals on functions of the design. **White (1980)** is the omnibus version — residuals on the columns, their squares, and cross-products — with power against general heteroskedasticity; **Koenker's studentised Breusch–Pagan** regresses on the design alone, a focused, higher-power test when the variance is *linear* in a regressor. Null: homoskedasticity. A rejection means your `nonrobust` standard errors are wrong — climb the ladder to `hc3` (cross-section, and especially at small $n$) or `hac`/EWC (time series). It is a cue to change the *denominator*, not to abandon the model.
 - **Correct functional form.** `reset_test` (Ramsey 1969) refits with low-order powers of the fitted values, $\hat y^2, \hat y^3$, appended to the design and $F$-tests whether they belong. The fitted value is a parsimonious index standing in for whatever nonlinearity you left out. Null: the linear mean is correct. A rejection means you have the *form* wrong — and here robust standard errors do **not** help, because the problem is $\beta$ itself, not $\mathrm{Var}(\hat\beta)$.
 - **Stable coefficients.** `chow_test` (Chow 1960) splits at a break date you *know* — a policy change, a crisis onset — and $F$-tests whether the two regimes share one $\beta$. `cusum_test` (Brown–Durbin–Evans 1975) scans the *whole* sample when you do **not** know the date: it accumulates recursive residuals into a path that stays inside a pair of boundary lines under stability and drifts out through them when $\beta$ moves. Null (both): the relationship held still. A rejection means it moved — reach for a split-sample fit, interactions with a regime dummy, or a time-varying model.
 
@@ -524,7 +568,8 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 |---|---|---|
 | Standard error of the mean (or any average) of a stationary series | `long_run_variance(y) / n`, square root | The naive $s/\sqrt{n}$ ignores every cross-covariance; $\Omega$ is the honest variance |
 | Time series regression, routine inference | `ols(y, X, se_type="hac")` | Coefficients stay OLS; the variance accounts for autocorrelation and heteroskedasticity |
-| Cross-section or independent errors, unequal variances | `ols(y, X, se_type="hc1")` | White's fix is enough when there is no serial correlation; HAC would waste power |
+| Cross-section or independent errors, unequal variances, $n$ in the hundreds or more | `ols(y, X, se_type="hc1")` | White's fix is enough when there is no serial correlation; HAC would waste power, and the HC rungs have converged by then |
+| The same, but $n$ is small or a few observations dominate the design | `ols(y, X, se_type="hc3")` | Only HC2/HC3 correct for leverage $h_t$; at $n=25$ that is worth 18 coverage points over `hc1`, which buys 1 |
 | Persistent errors, sample not huge, size matters | EWC with $t_B$ critical values (bindings landing; Rust core today) | Kernel HAC with normal critical values undercovers; fixed-b/EWC prices in the noise of $\hat\Omega$ |
 | Nonstandard statistic (median, ratio, custom estimator) on dependent data | `optimal_block_length` + `bootstrap_indices(scheme="stationary")` | No formula needed; blocks preserve the dependence that drives the true sampling variance |
 | Regression, independent but heteroskedastic errors, small sample | Wild bootstrap (Rademacher weights via `philox_uniforms`) | Keeps each residual's variance attached to its observation; refines on HC asymptotics |
@@ -539,7 +584,7 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 
 **Available now in Python** (`import tsecon`):
 
-- `tsecon.ols(y, X, se_type=..., maxlags=..., use_correction=...)` — OLS with the full ladder: `"nonrobust"`, `"hc0"`, `"hc1"`, `"hac"` (Bartlett kernel; `maxlags=None` applies the Newey–West rule of thumb). Matches statsmodels `cov_type="HAC"` at 1e-10. `X` is used as-is — add your own constant column.
+- `tsecon.ols(y, X, se_type=..., maxlags=..., use_correction=...)` — OLS with the full ladder: `"nonrobust"`, `"hc0"`, `"hc1"`, `"hc2"`, `"hc3"`, `"hac"` (Bartlett kernel; `maxlags=None` applies the Newey–West rule of thumb). Matches statsmodels `cov_type="HAC"` at 1e-10 and `HC2`/`HC3` at 3e-15. An observation whose leverage is numerically 1 makes HC2/HC3 undefined — tsecon raises rather than returning a near-infinite standard error. `X` is used as-is — add your own constant column.
 - `tsecon.long_run_variance(x, kernel=..., bandwidth=...)` — kernel LRV of a series (demeaned internally); kernels `"bartlett"`/`"newey-west"`, `"parzen"`, `"qs"`, `"truncated"`.
 - `tsecon.bootstrap_indices(n, scheme=..., seed=..., block_length=..., p=...)` — resampling indices for `"iid"`, `"moving"`, `"circular"` (pass `block_length`), and `"stationary"` (pass `p`; expected block length $1/p$). Same seed, same indices, always.
 - `tsecon.optimal_block_length(y)` — Politis–White (2004) automatic block lengths with the Patton–Politis–White (2009) correction, for the stationary and circular schemes.
@@ -561,6 +606,7 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 ## Further reading
 
 - **White (1980), Econometrica** — the heteroskedasticity-consistent covariance estimator; the paper that made "robust standard errors" a phrase every economist knows.
+- **MacKinnon & White (1985), Journal of Econometrics** — the leverage-corrected members of the family: HC2's exact unbiasedness and HC3's jackknife approximation, with the simulations showing both beat HC0/HC1 in small samples. **Long & Ervin (2000), The American Statistician** extend the evidence and give the blunt recommendation this chapter follows: use HC3 whenever $n$ is below a few hundred.
 - **Newey & West (1987), Econometrica** — the HAC estimator: Bartlett weights guaranteeing a positive semi-definite variance in three pages; still the most-cited fix in applied time series work.
 - **Andrews (1991), Econometrica** — the theory of kernel and bandwidth choice: QS optimality and data-driven plug-in bandwidths that replace folklore with formulas.
 - **Andrews & Monahan (1992), Econometrica** — prewhitened HAC estimation; the cheap AR(1) filter that markedly improves kernel estimates on persistent data.

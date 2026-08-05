@@ -1,6 +1,8 @@
-//! OLS with nonrobust, heteroskedasticity-robust (HC0/HC1), and HAC
-//! (kernel sandwich) standard errors, matching statsmodels
-//! `OLS(...).fit(cov_type=...)` conventions exactly.
+//! OLS with nonrobust, heteroskedasticity-robust (HC0-HC3), and HAC
+//! (kernel sandwich) standard errors, following statsmodels
+//! `OLS(...).fit(cov_type=...)` conventions exactly and agreeing with it to
+//! 1e-10 relative on the goldens. HC2/HC3 carry one documented exception:
+//! see "when the leverage correction runs out of digits" below.
 //!
 //! The point estimates solve the normal equations `(X'X) b = X'y` with a
 //! dense Cholesky factorization plus one step of iterative refinement
@@ -17,10 +19,57 @@
 //! * nonrobust: `sigma2_hat (X'X)^{-1}`, `sigma2_hat = RSS/(n - k)`;
 //! * HC0 (White 1980): `S = sum_t u_t^2 x_t x_t'`;
 //! * HC1 (MacKinnon & White 1985): HC0 scaled by `n/(n - k)`;
+//! * HC2 (Horn, Horn & Duncan 1975): `S = sum_t u_t^2/(1 - h_t) x_t x_t'`;
+//! * HC3 (MacKinnon & White 1985): `S = sum_t u_t^2/(1 - h_t)^2 x_t x_t'`;
 //! * HAC (Newey & West 1987): `S = Gamma_0 + sum_{j>=1} w_j (Gamma_j +
 //!   Gamma_j')` with `Gamma_j = sum_{t>j} s_t s_{t-j}'` and kernel weights
 //!   `w_j` from [`Kernel::weight`]; optionally scaled by `n/(n - k)`
 //!   (statsmodels `use_correction=True`).
+//!
+//! ## Why the leverage-corrected members exist
+//!
+//! `h_t = x_t' (X'X)^{-1} x_t` is observation `t`'s leverage. OLS residuals
+//! are shrunk toward zero exactly where leverage is high — under
+//! homoskedasticity `E[u_t^2] = sigma^2 (1 - h_t)` — so the White meat
+//! systematically understates the variance contribution of high-leverage
+//! points, and HC0/HC1 standard errors come out too small in small samples
+//! with unbalanced designs. HC2 divides that bias out (it is exactly
+//! unbiased for the covariance under homoskedasticity); HC3 divides it out
+//! twice, approximating the jackknife (Efron 1982) and deliberately
+//! over-correcting, which is why Long & Ervin (2000) recommend it as the
+//! default for `n < 250`.
+//!
+//! The library's interval-coverage audit measured this crate's HC1 at 0.682
+//! coverage (nominal 0.95) on a `T = 25`, `x ~ chi2(1)`, `sd(e|x) = x`
+//! design; a **NumPy HC2/HC3 reference on the identical draws** reached
+//! 0.773 and 0.863 respectively. Those two are references, not measurements
+//! of the code below — the audit predates these variants and has not been
+//! re-run against them — but they size the prize: the `n/(n - k)` factor
+//! buys ~0.015 at `k = 2`, the `1/(1 - h_t)` weights buy the rest. Neither
+//! HC2 nor HC3 takes the `n/(n - k)` inflation on top (statsmodels does not
+//! either).
+//!
+//! ## When the leverage correction runs out of digits
+//!
+//! `h_t` is accumulated from `(X'X)^{-1}` with an absolute error of a few
+//! ulp, so forming `1 - h_t` is catastrophic cancellation once `h_t` is
+//! close to 1: the complement's *relative* error is of order
+//! `eps_mach / (1 - h_t)`, and HC2's weight inherits it once, HC3's twice.
+//! This is a property of the subtraction, not of the conditioning — the
+//! `near_singleton` fixture reaches `1 - h_t = 1e-11` with `cond(X'X)` of
+//! only ~47, so no conditioning diagnostic would flag it.
+//!
+//! Consequence, measured in
+//! `golden.rs::hc2_hc3_parity_degrades_as_the_leverage_complement_approaches_noise`:
+//! HC2/HC3 hold the 1e-10 spec tolerance while `1 - h_t` stays above roughly
+//! `1e-5`, and degrade smoothly below it — about 7e-10 at `1 - h_t = 1e-6`
+//! and about 9e-6 at `1 - h_t = 1e-10`, with no error and no warning.
+//! `LEVERAGE_FLOOR` stops the slide at `1 - h_t = 1e-12`. Everything else in
+//! this module — including HC0/HC1 on the very same fits — stays at 1e-10.
+//! Near-singleton controls are ordinary in dummy-heavy and fixed-effects
+//! designs, so this band is reachable in practice: if a coefficient's HC3
+//! standard error matters to three digits and its observation is nearly
+//! interpolated, check `1 - h_t` before trusting the tail of the number.
 
 use crate::error::HacError;
 use crate::kernel::Kernel;
@@ -39,6 +88,23 @@ pub enum SeType {
     /// HC0 with the `n/(n - k)` degrees-of-freedom inflation
     /// (MacKinnon & White 1985; statsmodels `cov_type="HC1"`).
     Hc1,
+    /// Leverage-corrected robust covariance weighting `u_t^2` by
+    /// `1/(1 - h_t)`, unbiased under homoskedasticity (Horn, Horn & Duncan
+    /// 1975; statsmodels `cov_type="HC2"`). No `n/(n - k)` inflation.
+    ///
+    /// Matches statsmodels to the crate's 1e-10 spec tolerance *while
+    /// `1 - h_t` is not near machine noise*; see the module docs' "when the
+    /// leverage correction runs out of digits". Below `1 - h_t ~ 1e-5` the
+    /// two implementations agree only to about `eps_mach / (1 - h_t)`.
+    Hc2,
+    /// Jackknife-approximating robust covariance weighting `u_t^2` by
+    /// `1/(1 - h_t)^2` (MacKinnon & White 1985; statsmodels
+    /// `cov_type="HC3"`). The small-sample default recommended by Long &
+    /// Ervin (2000); no `n/(n - k)` inflation.
+    ///
+    /// Same parity caveat as [`SeType::Hc2`], and twice as sharp: the
+    /// squared weight doubles the relative error of `1 - h_t`.
+    Hc3,
     /// Kernel HAC sandwich covariance (statsmodels `cov_type="HAC"` with
     /// `cov_kwds={"maxlags": bandwidth, "use_correction": ...}` when the
     /// kernel is [`Kernel::Bartlett`]).
@@ -53,6 +119,62 @@ pub enum SeType {
         use_correction: bool,
     },
 }
+
+/// How much of the leverage correction a heteroskedasticity-robust meat
+/// carries — the only thing HC0, HC2 and HC3 disagree about, which is why
+/// they share one accumulation in [`OlsFit::hc_meat`]. (HC1 is HC0 with a
+/// scalar applied afterwards, so it needs no variant of its own.)
+#[derive(Debug, Clone, Copy)]
+enum HcFlavor {
+    Hc0,
+    Hc2,
+    Hc3,
+}
+
+impl HcFlavor {
+    /// Exponent `p` in the weight `(1 - h_t)^{-p}` applied to `u_t^2`:
+    /// 0 (HC0, no leverage correction), 1 (HC2), 2 (HC3).
+    fn leverage_power(self) -> u32 {
+        match self {
+            HcFlavor::Hc0 => 0,
+            HcFlavor::Hc2 => 1,
+            HcFlavor::Hc3 => 2,
+        }
+    }
+
+    /// statsmodels' `cov_type` spelling, for error messages.
+    fn name(self) -> &'static str {
+        match self {
+            HcFlavor::Hc0 => "HC0",
+            HcFlavor::Hc2 => "HC2",
+            HcFlavor::Hc3 => "HC3",
+        }
+    }
+}
+
+/// Smallest `1 - h_t` HC2/HC3 will divide by.
+///
+/// This is an absolute floor on the *complement*, deliberately, and it is
+/// not scaled by anything. `h_t` is accumulated from `(X'X)^{-1}` with an
+/// absolute error of a few ulp of 1, so `1 - h_t` retains roughly
+/// `eps_mach / (1 - h_t)` relative error — a cancellation law in the
+/// complement itself, independent of how well conditioned `X'X` is. (The
+/// `near_singleton` fixture drives `1 - h_t` to `1e-13` at `cond(X'X) ~ 47`;
+/// scaling this constant by a conditioning proxy would not move on that
+/// design at all.) So a floor on `1 - h_t` *is* a floor on precision: at
+/// `1e-12` the HC3 weight retains about three correct digits, which is the
+/// least this crate is willing to return without saying so. Below it the
+/// complement is noise, the weight would exceed `1e24`, and one observation
+/// would swamp every other.
+///
+/// The floor is a backstop, not a parity boundary: agreement with
+/// statsmodels leaves the crate's 1e-10 spec tolerance around
+/// `1 - h_t ~ 1e-5`, seven orders above this constant. See the module docs.
+///
+/// A design that trips the floor has an observation the fit interpolates
+/// exactly (a singleton dummy, say), which no reweighting of a zero residual
+/// can repair.
+const LEVERAGE_FLOOR: f64 = 1e-12;
 
 /// Standard errors, t-statistics, and the full parameter covariance for
 /// one [`SeType`].
@@ -187,9 +309,12 @@ impl OlsFit {
     /// # Errors
     ///
     /// [`HacError::InvalidBandwidth`] for a negative/non-finite HAC
-    /// bandwidth; [`HacError::NumericalBreakdown`] if a covariance
-    /// diagonal comes out negative, which can only happen with a
-    /// non-positive-semi-definite kernel ([`Kernel::Truncated`]).
+    /// bandwidth; [`HacError::FullLeverage`] if [`SeType::Hc2`]/
+    /// [`SeType::Hc3`] meet an observation whose `1 - h_t` has fallen to the
+    /// crate's leverage floor of `1e-12` (its weight would be noise);
+    /// [`HacError::NumericalBreakdown`] if a covariance diagonal comes out
+    /// negative, which can only happen with a non-positive-semi-definite
+    /// kernel ([`Kernel::Truncated`]).
     pub fn inference(&self, se_type: SeType) -> Result<OlsInference, HacError> {
         let n = self.nobs;
         let k = self.nparams;
@@ -202,14 +327,16 @@ impl OlsFit {
                 let sigma2 = rss / (n - k) as f64;
                 self.xtx_inv.iter().map(|v| sigma2 * v).collect()
             }
-            SeType::Hc0 => self.sandwich(&self.hc_meat()),
+            SeType::Hc0 => self.sandwich(&self.hc_meat(HcFlavor::Hc0)?),
             SeType::Hc1 => {
-                let mut cov = self.sandwich(&self.hc_meat());
+                let mut cov = self.sandwich(&self.hc_meat(HcFlavor::Hc0)?);
                 for v in &mut cov {
                     *v *= dof_scale;
                 }
                 cov
             }
+            SeType::Hc2 => self.sandwich(&self.hc_meat(HcFlavor::Hc2)?),
+            SeType::Hc3 => self.sandwich(&self.hc_meat(HcFlavor::Hc3)?),
             SeType::Hac {
                 kernel,
                 bandwidth,
@@ -245,17 +372,25 @@ impl OlsFit {
         Ok(OlsInference { cov, bse, tvalues })
     }
 
-    /// White meat `S = sum_t u_t^2 x_t x_t'` (un-normalized, as in
-    /// statsmodels: the bread's `(X'X)^{-1}` factors absorb the scaling).
-    fn hc_meat(&self) -> Vec<f64> {
+    /// White meat `S = sum_t w_t u_t^2 x_t x_t'` (un-normalized, as in
+    /// statsmodels: the bread's `(X'X)^{-1}` factors absorb the scaling),
+    /// with the leverage weights `w_t` of the requested [`HcFlavor`]. HC0,
+    /// HC2 and HC3 differ only in `w_t`, so they share this accumulation.
+    ///
+    /// # Errors
+    ///
+    /// [`HacError::FullLeverage`] when a leverage-corrected flavor meets
+    /// `h_t` numerically equal to one; see [`OlsFit::leverage_weights`].
+    fn hc_meat(&self, flavor: HcFlavor) -> Result<Vec<f64>, HacError> {
         let k = self.nparams;
+        let weights = self.leverage_weights(flavor)?;
         let mut s = vec![0.0_f64; k * k];
         for (t, &u) in self.residuals.iter().enumerate() {
-            let u2 = u * u;
+            let wu2 = weights[t] * u * u;
             for i in 0..k {
                 let xi = self.x_cols[i][t];
                 for j in 0..=i {
-                    s[i * k + j] += u2 * xi * self.x_cols[j][t];
+                    s[i * k + j] += wu2 * xi * self.x_cols[j][t];
                 }
             }
         }
@@ -264,7 +399,62 @@ impl OlsFit {
                 s[j * k + i] = s[i * k + j];
             }
         }
-        s
+        Ok(s)
+    }
+
+    /// The per-observation weights `w_t` the HC family applies to `u_t^2`:
+    /// `1` for HC0, `1/(1 - h_t)` for HC2, `1/(1 - h_t)^2` for HC3, with
+    /// the leverage `h_t = x_t' (X'X)^{-1} x_t` (the hat-matrix diagonal,
+    /// statsmodels `get_influence().hat_matrix_diag`).
+    ///
+    /// # Errors
+    ///
+    /// [`HacError::FullLeverage`] naming the first observation whose
+    /// `1 - h_t` falls to [`LEVERAGE_FLOOR`] or below. In exact arithmetic
+    /// `h_t = 1` means the fit passes through that point (`u_t = 0`), so the
+    /// weighted term is `0/0`; numerically the complement is then pure
+    /// cancellation noise and the HC3 weight explodes past `1e24`, swamping
+    /// every other observation. Erroring out beats returning an inf/NaN
+    /// standard error that looks like a number — statsmodels, which has no
+    /// such guard, returns `inf` on the same design.
+    fn leverage_weights(&self, flavor: HcFlavor) -> Result<Vec<f64>, HacError> {
+        let power = flavor.leverage_power();
+        if power == 0 {
+            return Ok(vec![1.0; self.nobs]);
+        }
+        let mut weights = Vec::with_capacity(self.nobs);
+        for t in 0..self.nobs {
+            let h = self.leverage(t);
+            let rest = 1.0 - h;
+            if !rest.is_finite() || rest <= LEVERAGE_FLOOR {
+                return Err(HacError::FullLeverage {
+                    what: flavor.name(),
+                    index: t,
+                    leverage: h,
+                });
+            }
+            let inv = 1.0 / rest;
+            weights.push(if power == 1 { inv } else { inv * inv });
+        }
+        Ok(weights)
+    }
+
+    /// Leverage `h_t = x_t' (X'X)^{-1} x_t` of observation `t`.
+    fn leverage(&self, t: usize) -> f64 {
+        let k = self.nparams;
+        let mut h = 0.0;
+        for i in 0..k {
+            let xi = self.x_cols[i][t];
+            if xi == 0.0 {
+                continue;
+            }
+            let mut row = 0.0;
+            for j in 0..k {
+                row += self.xtx_inv[i * k + j] * self.x_cols[j][t];
+            }
+            h += xi * row;
+        }
+        h
     }
 
     /// HAC meat `S = Gamma_0 + sum_{j>=1} w_j (Gamma_j + Gamma_j')` from

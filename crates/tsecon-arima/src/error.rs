@@ -72,6 +72,14 @@ pub enum ArimaError {
         /// Description of the failure.
         what: &'static str,
     },
+    /// The parameter covariance (inverse observed information) could not
+    /// be formed at the reported parameters. The point estimates,
+    /// log-likelihood, and default forecasts are unaffected — only
+    /// standard errors and the drift-uncertainty forecast term need it.
+    CovarianceFailed {
+        /// Description of the failure.
+        what: &'static str,
+    },
 }
 
 impl fmt::Display for ArimaError {
@@ -124,6 +132,12 @@ impl fmt::Display for ArimaError {
                  supply a longer series."
             ),
             Self::EstimationFailed { what } => write!(f, "ARIMA estimation failed: {what}"),
+            Self::CovarianceFailed { what } => write!(
+                f,
+                "the ARIMA parameter covariance could not be formed: {what}. The fitted \
+                 parameters, log-likelihood, and default forecasts are still valid; only \
+                 standard errors and the drift-uncertainty forecast term need this."
+            ),
         }
     }
 }
