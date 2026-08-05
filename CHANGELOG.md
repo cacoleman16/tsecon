@@ -7,7 +7,102 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+`proxy_svar` identified an impulse response and told you nothing about how
+precisely. This release attaches uncertainty to it — twice, because one answer
+is not enough. When the instrument is strong you want a band; when it is weak a
+band is the wrong object no matter how you build it, and you want a set.
+
+### Added — proxy-SVAR inference
+
+- **`proxy_svar_bands`** — Jentsch-Lunsford moving-block bootstrap confidence
+  bands for the external-instrument SVAR impulse response. The joint pair
+  `(u_t, m_t)` is resampled under **one** set of block starts, and inside every
+  draw the VAR is reconstructed, re-estimated, re-identified, and the unit-effect
+  normalization is re-imposed. Returns the Hall/basic band (`lower`/`upper`,
+  recommended) alongside the Efron percentile band (`lower_efron`/`upper_efron`)
+  that Mertens-Ravn and Gertler-Karadi report; the two separate when the
+  bootstrap distribution is skewed.
+
+  **The `h = 0` cell of `norm_var` is degenerate at `unit` by construction** —
+  verified `[1.000000, 1.000000]`. That is not a bug, it is the free proof that
+  the normalization is re-imposed inside the loop rather than hoisted out of it.
+
+  **`bands="wild"` reproduces the published Mertens-Ravn / Gertler-Karadi bands
+  and is not asymptotically valid.** With the common Rademacher draw those papers
+  use, `e_t` hits the residuals and the proxy alike, so `m*_t u*_t' = e_t^2 m_t
+  u_t' = m_t u_t'` and the identifying moment is **bit-identical in every draw** —
+  verified 200/200, maximum deviation exactly `0.000e+00`. The step that does the
+  identifying contributes no variance at all. Measured on a known-truth DGP at
+  nominal 0.90, the wild arm covers **0.113** at impact against the moving
+  block's 0.860, with a mean width of 0.018 against 0.173. The arm is shipped
+  because reproducing a published figure is a legitimate thing to want; it sets
+  `asymptotically_valid=False` and carries a `validity_note`, and it is not
+  inference.
+
+  Failed draws are **counted by reason, never dropped**: six counters
+  (`too_few_proxy_obs`, `zero_proxy_variance`, `near_zero_gamma_norm`,
+  `refit_failed`, `identification_failed`, `non_finite`), a total in `n_failed`,
+  and a `failure_warning`. Dropping them would trim exactly the
+  near-zero-denominator tail and shrink the interval precisely when the
+  instrument is weakest. A nonzero `n_failed` means reach for `proxy_ar_sets`
+  instead.
+
+  These are strong-instrument asymptotics. The moving-block arm's own shortfall
+  at longer horizons (0.78-0.81 for a nominal 0.90) is inherited from the
+  reduced-form VAR bootstrap, not introduced by the proxy layer — the Cholesky
+  reference lands within 0.07 at every horizon on the same replications — and
+  there is no Kilian bias correction on this path.
+
+- **`proxy_ar_sets`** — weak-instrument-robust Anderson-Rubin confidence **sets**
+  for the same impulse response, inverted in closed form rather than searched
+  over a grid. Under weak identification no bounded set can be honest (Dufour
+  1997), so a cell may come back as a bounded `"interval"`, an `"exterior"` set
+  (the **complement** of a rejected middle region — two rays), the `"whole"`
+  line, `"empty"`, a degenerate `"point"`, or a one-sided ray. The shape is the
+  answer. Branch on `kind`: an `"exterior"` set reports `lower`/`upper` as
+  ±infinity precisely so it cannot be mistaken for an interval, and
+  **`excludes_zero` on an unbounded set does not establish a sign** — both signs
+  can be members while zero sits in the rejected middle.
+
+  **Reduced-form (VAR coefficient) uncertainty is propagated by default**,
+  because omitting it is not a drift but a collapse. Measured at nominal 0.95 on
+  an estimated VAR, `T = 300`, VAR(2), excluding the degenerate `(norm_var, 0)`
+  cell, coverage at `h = 0..8` runs `.952 .529 .458 .315 .247 .195 .163 .135
+  .119` omitted against `.952 .953 .954 .947 .941 .936 .930 .922 .913`
+  propagated. **The propagation is conservative under a weak instrument**: the
+  weak arm goes from `.9413` omitted to **`.9908`** propagated, because the extra
+  variance turns exterior sets into the whole line. That is the correct direction
+  to err, and it is disclosed rather than tuned. The price is width — the paired
+  median set-width ratio at `h = 8` is **13.5x**. With
+  `reduced_form_uncertainty=False` the returned `level` is `None`: a set
+  conditional on the reduced form has no honest 1-alpha label.
+
+### Validation, and what kind it is
+
+Neither function is pinned to an independent package, and neither is described
+as if it were. No external package implements Jentsch-Lunsford moving-block
+proxy-SVAR bands, so the band golden is a **documented-formula NumPy
+transcription** with the block starts pinned in the fixture (the RNG becomes a
+shared input, and everything downstream is compared cell for cell); it pins the
+arithmetic, and the theory is carried by property tests and seeded Monte-Carlo
+coverage. The Anderson-Rubin "golden" is likewise a **co-derived NumPy
+transcription by the same author from the same specification** — not a
+third-party reference. Its load-bearing validation is instead a **brute-force
+grid inversion** that re-tests `AR(lambda) <= c` directly at thousands of
+candidate values per cell for every shape the set can take, plus a numerical
+Jacobian check on the reduced-form correction. See the
+[validation matrix](docs/reference/validation-matrix.md) for the row-by-row
+grading.
+
+### Not in this release
+
+Named so they are not read into the above: **simultaneous (joint) bands** — both
+new surfaces are **pointwise**, covering each `(horizon, variable)` cell at the
+nominal rate and saying nothing about the path as a whole, and every other band
+in the library is pointwise too. Also still absent: SARIMA seasonal orders
+`(P, D, Q, s)`; Angrist-Pischke, Cragg-Donald, and Kleibergen-Paap statistics;
+and bootstrap bands for the other point-identification schemes (`long_run_svar`,
+`max_share_svar`, `hetero_svar`, `nongaussian_svar` remain point-only).
 
 ## [0.2.0] - 2026-08-05
 

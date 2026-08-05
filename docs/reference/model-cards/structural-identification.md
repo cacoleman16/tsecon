@@ -1,8 +1,9 @@
 # Model card — Structural identification (advanced)
 
-`long_run_svar` · `max_share_svar` · `proxy_svar` · `hetero_svar` ·
-`nongaussian_svar` · `structural_fevd` · `historical_decomposition` ·
-`narrative_svar` · `fry_pagan_svar` · `robust_svar_bounds`
+`long_run_svar` · `max_share_svar` · `proxy_svar` · `proxy_svar_bands` ·
+`proxy_ar_sets` · `hetero_svar` · `nongaussian_svar` · `structural_fevd` ·
+`historical_decomposition` · `narrative_svar` · `fry_pagan_svar` ·
+`robust_svar_bounds`
 
 A structural VAR is a reduced-form VAR plus one identifying assumption that
 rotates the estimated residuals into economically meaningful shocks. The
@@ -13,11 +14,15 @@ sign-restricted schemes; this card covers two families that build on them.
 spend a *different* kind of outside information — a long-run neutrality, a
 variance-share objective, an external instrument, a documented variance regime,
 or the non-Gaussianity of the shocks themselves (a distributional assumption
-rather than an economic restriction). Each returns a **point** identification (no
-bands in this build): the estimand is one impact matrix or one structural column,
-and the honest uncertainty is a v2 bootstrap item flagged per method below. All
-five take a plain data matrix, estimate the reduced form internally, and are
-deterministic — no RNG, no rejection sampling.
+rather than an economic restriction). Each returns a **point** identification:
+the estimand is one impact matrix or one structural column. All five take a plain
+data matrix, estimate the reduced form internally, and are deterministic — no
+RNG, no rejection sampling.
+
+**The external-instrument scheme is the one with honest uncertainty attached.**
+`proxy_svar_bands` supplies Jentsch-Lunsford moving-block bootstrap bands, and
+`proxy_ar_sets` supplies weak-instrument-robust Anderson-Rubin confidence sets;
+the other four schemes are still point-only, and their bands remain an open item.
 
 **Post-identification and prior-robust tools**
 ([below](#post-identification-and-prior-robust-tools)) do not identify a new
@@ -42,6 +47,18 @@ shock; **heteroskedasticity** when you have documented variance regimes;
 **non-Gaussianity** when you distrust every economic restriction but the shocks
 are plausibly non-Gaussian; then the post-identification tools once a scheme is
 chosen.
+
+**Within the proxy family the choice is about instrument strength, and it is not
+a matter of taste.** Reach for
+[`proxy_svar_bands`](#proxy_svar_bands-moving-block-bootstrap-bands-for-the-proxy-svar)
+when the instrument is **strong** — a healthy first-stage F, and `n_failed` back
+at zero. Reach for
+[`proxy_ar_sets`](#proxy_ar_sets-weak-instrument-robust-anderson-rubin-sets) when
+the instrument is **weak**, when the first stage is marginal, or whenever
+`proxy_svar_bands` returns a **nonzero `n_failed`**: the bootstrap is telling you
+its own denominator went near zero, and a Wald-type band is then the wrong
+object. Running both is cheap, and disagreement between them is itself the
+finding.
 
 ---
 
@@ -249,9 +266,10 @@ bands junk — check `first_stage_f` first.
 **When to use (and when not).** Use with a measured surprise or narrative series
 (high-frequency futures surprises, Romer-Romer shocks) — especially when the
 system contains fast-moving financial variables that admit no defensible Cholesky
-ordering. Do not report a point IRF as if it had a band (this build is
-point-only; valid bands need the Jentsch-Lunsford 2019 moving-block bootstrap,
-a documented v2 item); do not proceed on a first-stage F below ~10.
+ordering. Do not report a point IRF as if it had a band — `proxy_svar` itself
+returns none; reach for [`proxy_svar_bands`](#proxy_svar_bands-moving-block-bootstrap-bands-for-the-proxy-svar)
+(strong instrument) or [`proxy_ar_sets`](#proxy_ar_sets-weak-instrument-robust-anderson-rubin-sets)
+(weak instrument). Do not proceed on a first-stage F below ~10 with a Wald band.
 
 **Key arguments and defaults (and why).** `proxy` aligns to `data` rows (length
 `n_obs` — the first `lags` presample rows are dropped — or the residual length
@@ -267,8 +285,8 @@ normalized), `irf` `[h][n]`, `first_stage_f` (**weak below 10**), `reliability`
 `cov_um` (the raw residual-instrument covariances), `n_proxy` (effective
 non-missing obs), and the estimated structural `shock` (length T).
 
-**Failure modes.** A weak instrument reported with delta-method bands (the
-cardinal sin — there are no bands here for exactly this reason); dividing by a
+**Failure modes.** A weak instrument reported with a Wald band (the cardinal
+sin — `proxy_ar_sets` exists for exactly this case); dividing by a
 near-zero impact coefficient in the normalization (fragility); silently
 truncating a short proxy to the overlap and misaligning it with the residuals —
 which the NaN-drop path is designed to prevent.
@@ -320,6 +338,373 @@ The proxy is strong (F ≈ 475) and available on 380 of 500 observations; the
 unit-effect normalization sets the impact on the policy rate to exactly 1, and
 output falls on impact — the contractionary-policy pattern, identified from one
 column with no assumption on the rest of the system.
+
+---
+
+## `proxy_svar_bands` — moving-block bootstrap bands for the proxy SVAR
+
+**What it estimates.** Confidence bands for the `proxy_svar` impulse response —
+the Jentsch & Lunsford (2019) **moving-block bootstrap**. The joint pair
+$(u_t, m_t)$ — the reduced-form residual vector and the instrument, aligned date
+by date — is resampled in overlapping blocks under **one** set of block starts,
+so the residual and its instrument travel together and the identifying moment
+$\sum_t m_t u_t'$ inherits real sampling variability. Inside every draw the VAR
+is reconstructed recursively, **re-estimated**, re-identified, and the
+unit-effect normalization is **re-imposed**. Nothing is held fixed at its sample
+value; the estimator is run end to end $B$ times.
+
+**Why the moving block and not the wild bootstrap.** Mertens-Ravn (2013) and
+Gertler-Karadi (2015) draw a common Rademacher weight $e_t\in\{-1,+1\}$ and apply
+it to *both* the residuals and the proxy: $u^*_t = e_t\hat u_t$, $m^*_t = e_t
+m_t$. Then
+
+$$m^*_t u^{*\prime}_t = e_t^2\, m_t \hat u_t' = m_t \hat u_t'$$
+
+because $e_t^2 = 1$ identically. **The identifying moment is bit-identical in
+every draw** — verified 200/200 with a maximum deviation of exactly
+`0.000e+00` — so the wild bootstrap carries *no* variability at all in the step
+that does the identifying. That is not a small distortion: the crate's
+Monte-Carlo test measures the wild arm covering **0.113** at impact for a nominal
+0.90, with a mean interval width of 0.018 against the moving block's 0.173,
+against a moving-block impact coverage of 0.860. In the worked example below the
+wild impact band is 0.0240 wide where the moving block's is 0.2128 — 11% of the
+honest width. `bands="wild"` is offered because reproducing those published bands
+is a legitimate thing to want, and it sets `asymptotically_valid=False` with a
+`validity_note` saying so. Do not quote it as inference.
+
+**Assumptions.** Everything `proxy_svar` assumes, plus a **strong** instrument:
+these are strong-instrument asymptotics and the band is a Wald-type object. A
+correct reduced form, a block length long enough to carry the serial dependence,
+and enough effective proxy observations per block. When the instrument is weak
+the band is not merely wide — it is *wrong*, and `proxy_ar_sets` is the object to
+report instead.
+
+**The `h=0` cell of `norm_var` is degenerate by construction.** The unit-effect
+normalization pins variable `norm_var`'s impact response to exactly `unit` in
+every draw, so its band is `[unit, unit]` — verified `[1.000000, 1.000000]`. That
+is the free proof that the normalization is re-imposed *inside* the loop; a
+non-degenerate value there would mean it had been hoisted out, which is the
+classic way to get bands that look plausible and are not.
+
+**The bands are POINTWISE, not joint.** A nominal $1-\alpha$ band covers each
+$(h,\ \text{variable})$ cell at that rate. It does **not** cover the whole
+impulse-response path simultaneously, and reading "the path lies inside the band
+with 90% probability" off a pointwise band overstates what was computed. No
+simultaneous band exists anywhere in this library.
+
+**Key arguments and defaults (and why).** `alpha=0.10` (a 90% band, the
+proxy-SVAR convention), `n_boot=2000`, `seed=0` (bit-reproducible).
+`bands="moving_block"` (alias `"mbb"`) is the default and the only valid arm;
+`"wild"` is the reproduction arm above. `block_length=None` picks a default from
+the effective sample; pass an integer to override, and check that the answer is
+not sensitive to it. `lags`, `horizon`, `norm_var`, `unit`, `trend`, `robust_f`
+are `proxy_svar`'s.
+
+**How to read the output.** `point` `[h][n]` (the `proxy_svar` IRF),
+`lower`/`upper` (the **Hall / basic** band — the recommended one), and
+`lower_efron`/`upper_efron` (the percentile band Mertens-Ravn and Gertler-Karadi
+report). The two differ materially when the bootstrap distribution is skewed:
+they are reflections of each other about the point estimate, so a right-skewed
+draw distribution moves them in opposite directions. `se` is the bootstrap
+standard deviation. `n_boot`/`n_used`/`n_failed` and `block_length`, `alpha`,
+`method`, `asymptotically_valid`, `validity_note` describe what was run. The
+per-draw diagnostic series — `gamma_norm_draws`, `first_stage_f_draws`,
+`reliability_draws`, `rho_draws` — let you see the identification strength move
+across draws, with `point_gamma_norm`, `point_first_stage_f`,
+`point_reliability`, and `n_proxy` as their sample counterparts.
+
+**Failed draws are counted, never dropped.** `failures` is a dict of **six**
+counters — `too_few_proxy_obs`, `zero_proxy_variance`, `near_zero_gamma_norm`,
+`refit_failed`, `identification_failed`, `non_finite` — and `n_failed` is their
+total, with a `failure_warning` when it is nonzero. Silently discarding failed
+draws would be the worst available choice: the failures are exactly the
+near-zero-denominator tail, so dropping them trims the heavy side of the
+distribution and *shrinks* the interval precisely when the instrument is weakest.
+A nonzero `n_failed` is a signal that a Wald-type band is the wrong object —
+switch to `proxy_ar_sets`.
+
+**Failure modes.** Quoting the wild arm as inference (it is labelled invalid for
+a reason); reading a pointwise band as a path statement; a block length too short
+for the residual dependence; treating a weak instrument's wide-but-bounded band
+as if width alone made it honest. The moving-block arm's own shortfall at longer
+horizons (measured 0.78-0.81 for a nominal 0.90) is **inherited from the
+reduced-form VAR bootstrap**, not introduced by the proxy layer — the Cholesky
+reference lands within 0.07 at every horizon on the same replications, and this
+build offers no Kilian bias correction on the proxy path. That is the honest
+cost, documented rather than tuned away.
+
+**Validated against.** A **documented-formula golden**, not an
+independent-package match — no external package implements JL moving-block
+proxy-SVAR bands, so there is no third-party number to copy. The generator
+transcribes the documented algorithm into plain NumPy (with statsmodels' `VAR`
+cross-checking the reduced form) and never imports tsecon; the block starts are
+*pinned in the fixture* so the RNG becomes a shared input and everything
+downstream — position-wise centering, reconstruction, re-estimation, per-draw
+re-identification and re-normalization, both interval types — is compared cell
+for cell ([`proxy_svar_bands.json`](../../../fixtures/proxy_svar_bands.json),
+[`proxy_bands_golden.rs`](../../../crates/tsecon-var/tests/proxy_bands_golden.rs);
+asserted 1e-10, largest observed deviation 6.7e-16). That pins the *arithmetic*,
+not the *theory*. The theory is carried by
+[`proxy_bands_props.rs`](../../../crates/tsecon-var/tests/proxy_bands_props.rs):
+seed reproducibility, the degenerate impact cell, joint-versus-independent
+blocking, the frozen-moment proof for the wild arm, failure accounting, and
+seeded Monte-Carlo coverage against a known-truth DGP. See the
+[validation matrix](../validation-matrix.md).
+
+**References.** Jentsch & Lunsford (2019); Mertens & Ravn (2013); Gertler &
+Karadi (2015); Stock & Watson (2018); Hall (1992, the basic/Hall interval).
+Citation details beyond author and year are not asserted here.
+
+```python
+import numpy as np, tsecon
+
+# the same system as the proxy_svar example above
+bd = tsecon.proxy_svar_bands(y, proxy, lags=2, horizon=16, norm_var=2, unit=1.0,
+                             alpha=0.10, n_boot=2000, seed=0)
+print("method:", bd["method"], " block_length:", bd["block_length"],
+      " asymptotically_valid:", bd["asymptotically_valid"])
+print("n_used:", bd["n_used"], " n_failed:", bd["n_failed"], " failures:", bd["failures"])
+
+pt = np.asarray(bd["point"]); lo = np.asarray(bd["lower"]); hi = np.asarray(bd["upper"])
+print("h=0 ffr cell (degenerate at unit by construction): [%.6f, %.6f]" % (lo[0, 2], hi[0, 2]))
+for h in [0, 1, 4, 8]:
+    print(f"h={h} output<-policy {pt[h,0]:+.4f}  90% Hall [{lo[h,0]:+.4f}, {hi[h,0]:+.4f}]")
+
+# Hall and Efron disagree when the bootstrap distribution is skewed
+loe = np.asarray(bd["lower_efron"]); hie = np.asarray(bd["upper_efron"])
+print("h=1 output  Hall [%+.4f, %+.4f]   Efron [%+.4f, %+.4f]"
+      % (lo[1, 0], hi[1, 0], loe[1, 0], hie[1, 0]))
+
+# the wild arm: reproduces the published bands, and says it is not inference
+wild = tsecon.proxy_svar_bands(y, proxy, lags=2, horizon=16, norm_var=2,
+                               alpha=0.10, n_boot=2000, seed=0, bands="wild")
+wl = np.asarray(wild["lower"]); wh = np.asarray(wild["upper"])
+print("\nwild asymptotically_valid:", wild["asymptotically_valid"])
+print("impact width  moving_block %.4f   wild %.4f" % (hi[0, 0] - lo[0, 0], wh[0, 0] - wl[0, 0]))
+```
+
+```
+method: moving_block  block_length: 24  asymptotically_valid: True
+n_used: 2000  n_failed: 0  failures: {'too_few_proxy_obs': 0, 'zero_proxy_variance': 0, 'near_zero_gamma_norm': 0, 'refit_failed': 0, 'identification_failed': 0, 'non_finite': 0}
+h=0 ffr cell (degenerate at unit by construction): [1.000000, 1.000000]
+h=0 output<-policy -0.6957  90% Hall [-0.8013, -0.5885]
+h=1 output<-policy -0.3841  90% Hall [-0.4862, -0.2910]
+h=4 output<-policy -0.0914  90% Hall [-0.1474, -0.0350]
+h=8 output<-policy -0.0147  90% Hall [-0.0262, +0.0008]
+h=1 output  Hall [-0.4862, -0.2910]   Efron [-0.4771, -0.2819]
+
+wild asymptotically_valid: False
+impact width  moving_block 0.2128   wild 0.0240
+```
+
+The instrument is strong, every one of the 2000 draws survives, and all six
+failure counters are zero. Output's fall is significant on impact and through
+$h=4$, and by $h=8$ the band crosses zero — the response has died out. The
+funds-rate cell at $h=0$ comes back as exactly $[1, 1]$: that is the
+normalization being re-imposed in every draw, echoed back. And the same data
+through the wild arm produce an impact band **one ninth** as wide, which is the
+Jentsch-Lunsford result in one number: the interval that looks nine times sharper
+is the one whose identifying moment never moved.
+
+---
+
+## `proxy_ar_sets` — weak-instrument-robust Anderson-Rubin sets
+
+**What it estimates.** Weak-instrument-robust confidence **sets** for the
+proxy-SVAR impulse response, obtained by inverting the Anderson-Rubin statistic
+in **closed form** — no grid search. Under weak identification no *bounded*
+confidence set can be honest (Dufour 1997): a procedure that always returns a
+bounded interval must under-cover somewhere. Inverting AR instead of building a
+Wald interval buys correct coverage at the price of a set that is sometimes not
+an interval, and that shape *is* the answer.
+
+**The four shapes.** Each cell reports a `kind`:
+
+| `kind` | The set | Read it as |
+|---|---|---|
+| `"interval"` | `[lower, upper]`, bounded | the ordinary case — the data pin the response down |
+| `"exterior"` | the **complement** of `(excluded_lower, excluded_upper)` — two rays; `lower`/`upper` are $-\infty$/$+\infty$ | the data reject a middle region and nothing else |
+| `"whole"` | the entire real line | the data say nothing about this cell |
+| `"empty"` | no value survives | the moment condition is rejected everywhere — the model, not the response, is in trouble |
+
+Two degenerate shapes round it out: `"point"` (a single value — what the
+normalizing variable's impact cell returns under a strong instrument) and the
+one-sided rays `"ray_below"` / `"ray_above"`. Always branch on `kind`; `lower`
+and `upper` alone do not tell you which object you have.
+
+**Do not present an exterior set as an interval.** `lower` and `upper` are
+$-\infty$ and $+\infty$ for an `"exterior"` cell precisely so that reading them as
+endpoints cannot silently produce a plausible-looking number; the rejected region
+is in `excluded_lower`/`excluded_upper`, and the set is everything *outside* it.
+Plotting `[excluded_lower, excluded_upper]` as a band inverts the finding.
+
+**`excludes_zero` does not establish a sign on an unbounded set.** On a bounded
+interval, excluding zero does pin the sign. On an `"exterior"` set it does not:
+the two rays can contain large negative *and* large positive values while zero
+sits inside the rejected middle. The example below has exactly that — the data
+reject $(-0.2778, +4.5066)$ for output's impact response, so `excludes_zero` is
+`True`, and $-3$ and $+9$ are both members. "Not zero" and "negative" are
+different claims.
+
+**Reduced-form uncertainty is PROPAGATED by default, and it is not optional in
+practice.** The AR statistic is built on the identification moment, which treats
+the VAR coefficients as known. Every real caller estimates them. Measured at
+nominal 0.95 on an estimated VAR, $T=300$, VAR(2), excluding the degenerate
+`(norm_var, 0)` cell:
+
+| $h$ | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|---|
+| **omitted** | .952 | .529 | .458 | .315 | .247 | .195 | .163 | .135 | **.119** |
+| **propagated** | .952 | .953 | .954 | .947 | .941 | .936 | .930 | .922 | **.913** |
+
+That is not a drift, it is a collapse: a nominally 95% set covering 11.9% by
+$h=8$. At $h=0$ the two agree exactly, because $\Psi_0 = I$ carries no estimated
+coefficients. The correction is **conservative under weak instruments** — the
+measured weak arm goes from .9413 omitted to **.9908** propagated, because the
+extra variance turns exterior sets into the whole line — and erring wide is the
+right direction under weak identification. The price is width: the paired median
+set-width ratio at $h=8$ is **13.5x**. When
+`reduced_form_uncertainty=False` the returned `level` is `None`, deliberately: a
+set conditional on the reduced form has no honest $1-\alpha$ label to print.
+
+**Assumptions.** Instrument exogeneity — the identifying assumption AR does *not*
+relax, and the one you still have to defend. Relevance is exactly what AR is
+robust to, so no first-stage threshold applies. A correct reduced-form
+specification. The sets are pointwise across $(h, \text{variable})$ cells, like
+the bands: not a joint region over the path.
+
+**Key arguments and defaults (and why).** `alpha=0.05` (95% sets — the AR
+convention, unlike the bands' 0.10). `variance="hc0"` is the heteroskedasticity-
+robust moment variance; `hac_lags` switches to a HAC estimate when the proxy is
+serially correlated. `reduced_form_uncertainty=True` — leave it on. `lags`,
+`horizon`, `norm_var`, `unit`, `trend` are `proxy_svar`'s.
+
+**How to read the output.** `cells[h][variable]` is the dict described above:
+`kind`, `lower`, `upper`, `excluded_lower`, `excluded_upper`, `bounded`,
+`excludes_zero`, `point`. Alongside: `level` (the honest $1-\alpha$, or `None`
+when propagation is off), `critical_value` (the $c$ that was inverted),
+`ar_bound_stat` (the robust relevance statistic $T_O\,\gamma_k^2/\Omega_{kk}$ on
+the effective proxy sample $T_O$),
+`ar_bounded_all`, `impact`, `n_proxy`, and `reduced_form_uncertainty`.
+
+Boundedness is **all-or-nothing across the whole grid** — it depends only on the
+denominator — and the rule is exactly `ar_bound_stat > critical_value`. Note what
+that does *not* certify: at 95% the threshold is about 3.84, so a first-stage F
+of 4.5 can produce a page of tidy bounded intervals and still be a weak
+instrument. `ar_bounded_all=True` means the sets are intervals, not that the
+instrument is strong.
+
+**Failure modes.** Reading an exterior set as an interval; inferring a sign from
+`excludes_zero` on an unbounded set; turning off `reduced_form_uncertainty` for a
+narrower picture and then quoting 95%; reporting an `"empty"` cell as a very tight
+result rather than as a specification rejection; forgetting that AR is robust to
+weak *relevance* and not at all to a violated *exclusion* restriction.
+
+**Validated against.** A **co-derived NumPy transcription**, not a third-party
+reference: `fixtures/generate_proxy_ar_fixtures.py` takes its reduced form from
+statsmodels but writes the AR algebra as a plain-NumPy transcription of the same
+specification, by the same author — so agreement is a cross-implementation check
+of the arithmetic, not a match against an independent authority. The
+**load-bearing** validation is instead a **brute-force grid inversion**: the
+closed-form quadratic is proved against a scan that re-tests
+$\mathrm{AR}(\lambda)\le c$ directly at thousands of candidate values per cell,
+for every shape the set can take, and that needs no external reference at all.
+Third, the reduced-form correction `psi_reduced_form_cov` is checked against a
+**numerical Jacobian** built by perturbing VAR coefficients one at a time — no
+Kronecker product, no companion matrix, no shared code with the analytic route —
+and is required to widen every set while leaving the weak-instrument algebra
+bit-identical. Plus exact properties (`unit`-equivariance, nesting in the level,
+NaN-prefix invariance, the point estimate always lying in its own set,
+boundedness all-or-nothing, sets genuinely asymmetric about the point estimate)
+and the seeded Monte-Carlo coverage that produced the table above
+([`proxy_ar.json`](../../../fixtures/proxy_ar.json),
+[`proxy_ar.rs`](../../../crates/tsecon-ident/tests/proxy_ar.rs),
+[`proxy_ar_coverage.rs`](../../../crates/tsecon-ident/tests/proxy_ar_coverage.rs);
+golden rtol 1e-9 / atol 1e-11). See the
+[validation matrix](../validation-matrix.md).
+
+**References.** Anderson & Rubin (1949); Dufour (1997); Staiger & Stock (1997);
+Montiel Olea, Stock & Watson (2021). Citation details beyond author and year are
+not asserted here.
+
+```python
+import numpy as np, tsecon
+
+# same system; `proxy` is the strong instrument from the proxy_svar example
+weak = 0.06 * mono + np.random.default_rng(6).standard_normal(T)   # nearly irrelevant
+
+def show(tag, pz, cells_to_print):
+    f = tsecon.proxy_svar(y, pz, lags=2, horizon=12, norm_var=2)["first_stage_f"]
+    st = tsecon.proxy_ar_sets(y, pz, lags=2, horizon=12, norm_var=2, unit=1.0, alpha=0.05)
+    print(f"--- {tag}: first-stage F {f:.2f}, level {st['level']}, "
+          f"every cell bounded: {st['ar_bounded_all']}")
+    for h, i, lab in cells_to_print:
+        c = st["cells"][h][i]
+        if c["kind"] == "exterior":
+            print(f"  h={h} {lab:6s} {c['kind']:8s} the data REJECT "
+                  f"({c['excluded_lower']:+.4f}, {c['excluded_upper']:+.4f}); the set is the "
+                  f"two rays outside it")
+            print(f"           excludes_zero={c['excludes_zero']}  bounded={c['bounded']}  "
+                  f"point {c['point']:+.4f}")
+        else:
+            print(f"  h={h} {lab:6s} {c['kind']:8s} [{c['lower']:+.4f}, {c['upper']:+.4f}]"
+                  f"  excludes_zero={c['excludes_zero']}  point {c['point']:+.4f}")
+    return st
+
+st = show("strong proxy", proxy,
+          [(0, 0, "output"), (1, 0, "output"), (8, 0, "output"), (0, 2, "ffr")])
+show("weak proxy", weak, [(0, 0, "output"), (2, 0, "output"), (8, 0, "output")])
+
+# the Wald band on the SAME weak proxy is bounded and tidy
+bd = tsecon.proxy_svar_bands(y, weak, lags=2, horizon=12, norm_var=2, alpha=0.05,
+                             n_boot=2000, seed=0)
+print("\nWald band on the weak proxy, h=0 output: [%+.4f, %+.4f]   n_failed=%d"
+      % (np.asarray(bd["lower"])[0, 0], np.asarray(bd["upper"])[0, 0], bd["n_failed"]))
+
+# what omitting the reduced-form uncertainty buys: a shorter set with no honest level
+off = tsecon.proxy_ar_sets(y, proxy, lags=2, horizon=12, norm_var=2, alpha=0.05,
+                           reduced_form_uncertainty=False)
+on8, off8 = st["cells"][8][0], off["cells"][8][0]
+print("h=8 output  propagated [%+.4f, %+.4f]  width %.4f  level %s"
+      % (on8["lower"], on8["upper"], on8["upper"] - on8["lower"], st["level"]))
+print("h=8 output  omitted    [%+.4f, %+.4f]  width %.4f  level %s"
+      % (off8["lower"], off8["upper"], off8["upper"] - off8["lower"], off["level"]))
+```
+
+```
+--- strong proxy: first-stage F 475.45, level 0.95, every cell bounded: True
+  h=0 output interval [-0.8293, -0.5680]  excludes_zero=True  point -0.6957
+  h=1 output interval [-0.5090, -0.2612]  excludes_zero=True  point -0.3841
+  h=8 output interval [-0.0354, +0.0061]  excludes_zero=False  point -0.0147
+  h=0 ffr    point    [+1.0000, +1.0000]  excludes_zero=True  point +1.0000
+--- weak proxy: first-stage F 2.88, level 0.95, every cell bounded: False
+  h=0 output exterior the data REJECT (-0.2778, +4.5066); the set is the two rays outside it
+           excludes_zero=True  bounded=False  point -1.4524
+  h=2 output exterior the data REJECT (-0.1060, +0.8205); the set is the two rays outside it
+           excludes_zero=True  bounded=False  point -0.4051
+  h=8 output whole    [-inf, +inf]  excludes_zero=False  point -0.0149
+
+Wald band on the weak proxy, h=0 output: [-2.7009, +2.1263]   n_failed=0
+h=8 output  propagated [-0.0354, +0.0061]  width 0.0415  level 0.95
+h=8 output  omitted    [-0.0151, -0.0143]  width 0.0008  level None
+```
+
+With a strong instrument the sets are ordinary bounded intervals, and they land
+close to the moving-block band on the same data at the same level: the 95% band's
+impact cell is $[-0.8205, -0.5639]$ against this set's $[-0.8293, -0.5680]$,
+about 0.01 apart at each endpoint. (The band printed in the previous section is a
+*90%* band — do not read the two side by side without matching `alpha`.) The
+funds rate's impact cell is the degenerate `"point"` at exactly 1 — the
+normalization again. Weaken the
+instrument to $F\approx2.9$ and the shapes change rather than the widths: impact
+becomes an **exterior** set that rejects $(-0.28, +4.51)$ and nothing else, and by
+$h=8$ the data have nothing to say at all (`"whole"`). Note what the exterior
+cell does *not* license — `excludes_zero` is `True`, yet $-3$ and $+9$ are both
+in the set, so there is no sign to report. Meanwhile a Wald band on the identical
+data comes back as a tidy $[-2.70, +2.13]$ with zero failed draws: bounded,
+plottable, and not entitled to its label. Finally, turning propagation off at
+$h=8$ shrinks the set from 0.0415 wide to 0.0008 — a fifty-fold narrowing that
+buys nothing, which is why `level` comes back `None` rather than `0.95`.
 
 ---
 
