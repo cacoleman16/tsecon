@@ -47,28 +47,98 @@
 //!
 //! while an element with `F_inf = 0` gets the ordinary update above. The
 //! diffuse period ends at the first `t` whose incoming `P_inf` is
-//! numerically zero; conventions (tolerances, the `-(ln 2*pi + ln F_inf)/2`
-//! diffuse likelihood contribution) match statsmodels'
-//! `use_exact_diffuse=True` filter exactly, so log-likelihoods are directly
-//! comparable. (Cross-package caution: some implementations, e.g. following
-//! Francke, Koopman & de Vos 2010, omit constants from the diffuse
-//! contribution.)
+//! numerically zero; the `-(ln 2*pi + ln F_inf)/2` diffuse likelihood
+//! contribution matches statsmodels' `use_exact_diffuse=True` filter, so
+//! log-likelihoods are directly comparable. (Cross-package caution: some
+//! implementations, e.g. following Francke, Koopman & de Vos 2010, omit
+//! constants from the diffuse contribution.)
+//!
+//! # Numerical-rank decisions
+//!
+//! Three decisions in the recursions above ask "is this quantity zero?":
+//! whether `P_inf` has washed out, whether `F_inf` is positive (diffuse
+//! branch), and whether `F_*` is positive (informative element). The two
+//! `F` tests are asked *relative to the scale of the quantity being
+//! tested*; the `P_inf` washout test is absolute, and deliberately so —
+//! see [`TOLERANCE_RANK`], which sets out why the three are not treated
+//! alike.
+//!
+//! An absolute floor on `F_*` is a units bug: `F_*` is a variance in the
+//! units of `y` squared, so a floor of `1e-10` silently declares every
+//! observation uninformative for any series whose variance happens to sit
+//! below it, and the filter then returns `loglik = 0` as though it had
+//! succeeded. The relative test is invariant to rescaling `y`, which is the
+//! property the closed-form `loglik(c y) = loglik(y) - n ln c` identity in
+//! `tests/scale.rs` pins.
+//!
+//! Getting *relative to what* right is the other half. The reference scale
+//! must be direction-aware: `F_{*,i}` is a variance along the single
+//! direction `Z_i`, so measuring it against a scale that sees states `Z_i`
+//! does not load on lets an unobserved nuisance state — a regression
+//! coefficient in different units, an approximate-diffuse prior of `1e6` —
+//! veto every observation in the sample. The reference used here is the
+//! cancellation-free quadratic form `|Z_i|' |P| |Z_i|`
+//! ([`abs_quad_form`](crate::dense::abs_quad_form)), which is both
+//! direction-aware and invariant to rescaling an individual state
+//! coordinate. `tests/scale.rs` pins both invariances on multi-state
+//! models.
 
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
 
 use crate::dense::{
-    axpy, chol_solve, dot, frob_sq, mat_vec, outer_sub, row_to_vec, sandwich, symmetrize_in_place,
+    abs_quad_form, axpy, chol_solve, dot, frob_sq, mat_vec, outer_sub, row_to_vec, sandwich,
+    symmetrize_in_place,
 };
 use crate::error::SsmError;
 use crate::model::LinearGaussianSSM;
 
-/// Numerical tolerance for the diffuse recursions, matching statsmodels'
-/// `tolerance_diffuse`: a time step is diffuse while `||P_inf||_F^2`
-/// exceeds it, an element takes the diffuse update while `F_inf` exceeds
-/// it, and an element with `F_* <= tolerance` is treated as carrying no
-/// information (skipped, like a missing value).
-pub(crate) const TOLERANCE_DIFFUSE: f64 = 1e-10;
+/// Tolerance for the filter's three numerical-rank decisions.
+///
+/// The two `F` tests are *relative*: each compares a computed nonnegative
+/// variance against this fraction of a reference scale carrying the same
+/// units, so both are invariant to rescaling the data and to rescaling any
+/// individual state coordinate. The washout test is *absolute*, because the
+/// quantity it tests is dimensionless. In detail:
+///
+/// * **informative element.** An element carries information while
+///   `F_* > TOLERANCE_RANK * (|Z_i|' |P_*| |Z_i| + H_ii)`; otherwise it is
+///   skipped exactly like a missing value. The reference is the magnitude
+///   `Z_i P_* Z_i' + H_ii` would have had with no cancellation, so the test
+///   reads "did at least `1e-10` of the available magnitude survive the
+///   sum?".
+/// * **diffuse element.** An element takes the diffuse update while
+///   `F_inf > TOLERANCE_RANK * |Z_i|' |P_inf| |Z_i|`, the same test applied
+///   to the diffuse part.
+/// * **diffuse period.** A step is diffuse while `||P_inf,t||_F^2 >
+///   TOLERANCE_RANK`, an **absolute** threshold.
+///
+/// ## Why the washout test is absolute, and the other two are not
+///
+/// The "three uses, one treatment" symmetry is the wrong instinct here, and
+/// it is worth recording why. `F_*` and `F_inf` are *variances*: `F_*` is
+/// in units of `y` squared and `F_inf` inherits the units of the diffuse
+/// prior, so an absolute floor on either is a units error — that is the
+/// defect this tolerance was rewritten to fix. `P_inf` is not a variance.
+/// It is a **rank indicator** for the limit `P_1 = P_* + kappa P_inf`,
+/// `kappa -> infinity`: it never touches `y`, `H` or `Q`, it is built as a
+/// 0/1 diagonal (`I`, or the flagged states of a `Mixed` initialization),
+/// and it is only ever asked how many diffuse directions are left. It is
+/// `O(1)` by construction, so there was no units bug at that site.
+///
+/// Normalizing it by `||P_inf,1||_F^2` — the diffuse prior's *total*
+/// initial size — would only add a failure mode: for a non-uniform prior
+/// like `diag(1e10, 1)` a still-live diffuse direction of size `1` is
+/// `1e-20` of the total and would be declared washed out, ending the
+/// diffuse period early and silently. Absolute is correct here.
+///
+/// The value `1e-10` is inherited from statsmodels' `tolerance_diffuse`,
+/// which applies it as an absolute floor everywhere. On unit-scale data the
+/// two agree to the last bit (`tests/golden.rs` is the proof); they part
+/// company only where the absolute floor is wrong, namely when a variance's
+/// own scale is below `1e-10` — small-variance data — or far above it,
+/// where the absolute floor is too permissive about cancellation.
+pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 
 /// `ln(2 pi)`, the per-element likelihood constant.
 #[inline]
@@ -84,6 +154,11 @@ pub(crate) struct ObsStep {
     /// missing (NaN) and numerically singular elements are both skipped
     /// by filter and smoother alike.
     pub(crate) observed: bool,
+    /// True when the filter took the *exact-diffuse* branch for this
+    /// element. Recorded rather than re-derived, so the smoother replays
+    /// the branch the filter actually took instead of re-running a
+    /// threshold comparison that could disagree with it.
+    pub(crate) diffuse: bool,
     /// Prediction error `v_{t,i}`.
     pub(crate) v: f64,
     /// Finite innovation variance `F_{*,t,i}` (includes `H_ii`).
@@ -102,6 +177,7 @@ impl ObsStep {
     fn skipped() -> Self {
         ObsStep {
             observed: false,
+            diffuse: false,
             v: 0.0,
             f_star: 0.0,
             f_inf: 0.0,
@@ -235,14 +311,22 @@ pub fn filter_univariate(
     };
     // Once P_inf collapses to (numerical) zero it stays zero, so the
     // diffuse period is a contiguous prefix; the flag makes that explicit.
-    let mut in_diffuse = true;
+    // A proper (non-diffuse) initialization has P_inf = 0 exactly, so the
+    // diffuse machinery is inert for the whole sample.
+    let mut in_diffuse = frob_sq(p_inf.as_ref()) > 0.0;
+    // Observed (non-NaN) elements, and how many of them carried
+    // information. An empty effective sample is an error, not a zero.
+    let mut n_observed = 0usize;
+    let mut n_informative = 0usize;
 
     for t in 0..n {
         let z = model.z().at(t);
         let h = model.h().at(t);
         let tr = model.t().at(t);
 
-        let diffuse = in_diffuse && frob_sq(p_inf.as_ref()) > TOLERANCE_DIFFUSE;
+        // Absolute, on purpose: P_inf is a dimensionless rank indicator,
+        // not a variance (see TOLERANCE_RANK).
+        let diffuse = in_diffuse && frob_sq(p_inf.as_ref()) > TOLERANCE_RANK;
         if diffuse {
             out.d_diffuse += 1;
         } else {
@@ -261,20 +345,37 @@ pub fn filter_univariate(
                 out.steps.push(ObsStep::skipped());
                 continue;
             }
+            n_observed += 1;
             let zi = row_to_vec(z, i);
             let v = yti - model.obs_intercept()[i] - dot(&zi, &a);
             let m_star = mat_vec(p_star.as_ref(), &zi);
             // Clamp roundoff-negative variances to zero (statsmodels does
             // the same) before branching.
             let f_star = (dot(&zi, &m_star) + h[(i, i)]).max(0.0);
-            let (f_inf, m_inf) = if diffuse {
+            // Reference scale for F_*: the magnitude Z_i P_* Z_i' + H_ii
+            // would have had if nothing in the sum cancelled. F_* below
+            // TOLERANCE_RANK of this is cancellation noise; F_* above it is
+            // a real (if tiny) variance. Direction-aware — a state Z_i does
+            // not load on contributes nothing, however large its variance.
+            let f_star_scale = abs_quad_form(&zi, p_star.as_ref()) + h[(i, i)];
+            let (f_inf, m_inf, f_inf_scale) = if diffuse {
                 let mi = mat_vec(p_inf.as_ref(), &zi);
-                (dot(&zi, &mi).max(0.0), mi)
+                let scale = abs_quad_form(&zi, p_inf.as_ref());
+                (dot(&zi, &mi).max(0.0), mi, scale)
             } else {
-                (0.0, Vec::new())
+                (0.0, Vec::new(), 0.0)
             };
 
-            if f_inf > TOLERANCE_DIFFUSE {
+            // Each reference scale is a sum of nonnegative terms that
+            // dominate the corresponding terms of the quantity it is
+            // compared against (`|z' P z| <= |z|' |P| |z|`; `H` is PSD), so
+            // both are nonnegative and passing `f > TOLERANCE_RANK * scale`
+            // implies `f > 0` — including when the scale is itself zero,
+            // where the test degenerates to exactly `f > 0`. The branches
+            // below therefore never divide by a zero variance.
+            debug_assert!(f_star_scale >= 0.0 && f_inf_scale >= 0.0);
+
+            if f_inf > TOLERANCE_RANK * f_inf_scale {
                 // Exact-diffuse element update (Koopman & Durbin 2003).
                 let k0: Vec<f64> = m_inf.iter().map(|x| x / f_inf).collect();
                 let f12 = -f_star / f_inf;
@@ -290,22 +391,26 @@ pub fn filter_univariate(
                 // P_inf <- P_inf L0' = P_inf - M_inf K0'.
                 outer_sub(&mut p_inf, &m_inf, &k0);
                 out.loglik -= 0.5 * (ln2pi + f_inf.ln());
+                n_informative += 1;
                 out.steps.push(ObsStep {
                     observed: true,
+                    diffuse: true,
                     v,
                     f_star,
                     f_inf,
                     m_star,
                     m_inf,
                 });
-            } else if f_star > TOLERANCE_DIFFUSE {
+            } else if f_star > TOLERANCE_RANK * f_star_scale {
                 // Standard scalar update (Koopman & Durbin 2000).
                 let k0: Vec<f64> = m_star.iter().map(|x| x / f_star).collect();
                 axpy(&mut a, v, &k0);
                 outer_sub(&mut p_star, &m_star, &k0);
                 out.loglik -= 0.5 * (ln2pi + f_star.ln() + v * v / f_star);
+                n_informative += 1;
                 out.steps.push(ObsStep {
                     observed: true,
+                    diffuse: false,
                     v,
                     f_star,
                     f_inf: 0.0,
@@ -338,6 +443,15 @@ pub fn filter_univariate(
         p_inf = sandwich(tr, p_inf.as_ref());
         symmetrize_in_place(&mut p_star);
         symmetrize_in_place(&mut p_inf);
+    }
+
+    // Every observed element was skipped as uninformative: the returned
+    // log-likelihood would be exactly 0.0 — not a small number, an *empty
+    // sum* — and reporting that as a success is a silent wrong answer.
+    // (An all-missing `y` is not this case: it is an explicit, documented
+    // request to run the recursions with nothing to condition on.)
+    if n_observed > 0 && n_informative == 0 {
+        return Err(SsmError::NoInformation);
     }
 
     out.predicted_state.push(a);
