@@ -58,6 +58,30 @@ pub enum SsmError {
         /// Name of the operation.
         what: &'static str,
     },
+    /// Every observed element of `y` was numerically uninformative, so the
+    /// effective sample is empty and the log-likelihood is an empty sum.
+    ///
+    /// The filter skips an element whose prediction variance `F` is below
+    /// the relative rank tolerance — it cannot be told apart from
+    /// cancellation noise. When *every* observed element is skipped the
+    /// likelihood would come back as exactly `0.0`, which is not a small
+    /// number but the absence of one; returning it as a success would let
+    /// a caller optimize a constant and report the result as a fit.
+    ///
+    /// The cause is never the *scale* of the data or of a state: the rank
+    /// test compares `F` against `|Z_i| |P| |Z_i|' + H_ii`, which carries
+    /// the same units and the same direction, so rescaling `y` — or
+    /// rescaling one state coordinate — cannot move this boundary. What
+    /// does move it is the model:
+    ///
+    /// * the observation equation loads on nothing that varies — `Z` is
+    ///   zero, or every state it does load on has zero variance from every
+    ///   source (`H_ii = 0` with a zero `P_1` and a zero `R Q R'` in those
+    ///   coordinates);
+    /// * or `Z_i P Z_i' + H_ii` is a near-exact cancellation, which means
+    ///   the model is deterministic along `Z_i` to within roundoff of the
+    ///   magnitudes it was assembled from.
+    NoInformation,
 }
 
 impl fmt::Display for SsmError {
@@ -93,6 +117,26 @@ impl fmt::Display for SsmError {
                 f,
                 "{what} does not support exact-diffuse initialization; \
                  use the univariate filtering path"
+            ),
+            Self::NoInformation => write!(
+                f,
+                "every observed element of y was numerically uninformative: \
+                 its prediction variance F = Z_i P Z_i' + H_ii was \
+                 indistinguishable from zero next to |Z_i| |P| |Z_i|' + \
+                 H_ii, the magnitude that same sum would have had without \
+                 cancellation. The effective sample is therefore empty and \
+                 the log-likelihood is an empty sum rather than a number. \
+                 The test carries the units and the direction of F, so \
+                 rescaling y will not change this, and neither will \
+                 rescaling a state — look at the model along the row Z_i \
+                 instead. Either it loads on nothing that varies (a zero \
+                 row of Z, or zero H_ii together with zero initial and \
+                 state variance in the states Z_i does load on — the \
+                 degenerate model), or Z_i P Z_i' is a near-total \
+                 cancellation, which says the model is deterministic along \
+                 Z_i to within roundoff of the numbers it was assembled \
+                 from. States in wildly different units make the second \
+                 case easy to hit by accident"
             ),
         }
     }
