@@ -70,6 +70,7 @@ pub mod max_share;
 pub mod narrative;
 pub mod nongaussian;
 pub mod proxy;
+pub mod proxy_ar;
 pub mod robust_bounds;
 pub mod sampler;
 /// Structural-shock extraction primitives (`E = Q' P^-1 U`). Internal to the

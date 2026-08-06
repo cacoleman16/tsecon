@@ -438,7 +438,7 @@ All five take the reduced-form `data` matrix and are deterministic (no RNG). Bel
   ```python
   proxy = data[:, 2] + np.random.default_rng(0).standard_normal(len(data))  # use your real instrument
   pr = tsecon.proxy_svar(data, proxy, norm_var=2, unit=1.0)   # proxy aligns to rows; NaN outside its window is dropped
-  pr["first_stage_f"], pr["irf"]       # check F ≥ 10 first; point estimate only (Jentsch-Lunsford bands are v2)
+  pr["first_stage_f"], pr["irf"]       # check F first; bands via proxy_svar_bands, weak-IV sets via proxy_ar_sets
   ```
 
 - **Documented variance regimes** — B is constant but the shock variances differ

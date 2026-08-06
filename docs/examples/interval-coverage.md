@@ -939,9 +939,12 @@ Stated so you do not have to discover it.
   pointwise or marginal. The joint rates in
   [pointwise is not joint](#pointwise-is-not-joint) are what a reader gets by
   mistake, not what a joint band would deliver.
-- **No weak-instrument-robust set exists to measure.** Anderson-Rubin is the
-  right interval for the `iv_gmm` and `lp_iv` weak-instrument rows, and the
-  library does not expose one.
+- **No weak-instrument-robust set exists to measure *for these two rows*.**
+  Anderson-Rubin is the right interval for the `iv_gmm` and `lp_iv`
+  weak-instrument rows, and neither function exposes one. The library does now
+  ship `proxy_ar_sets` — an Anderson-Rubin set for proxy-SVAR impulse
+  responses — so the machinery exists and the gap is that it has not been
+  extended to the IV regression estimators, not that it is unbuilt.
 - **`lp(cumulative=...)` intervals are unmeasured.** `var_irf_bands`'
   cumulative bands are measured; LP's are not, and the two are different code
   paths.

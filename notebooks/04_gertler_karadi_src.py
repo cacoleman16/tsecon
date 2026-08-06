@@ -13,13 +13,21 @@
 #
 # The pedagogical payoff is the contrast with a Cholesky ordering, which the
 # paper puts side by side in its Figure 1. We reproduce both and show where
-# they part company — and they part company badly.
+# they part company — and in point estimates they part company badly. Whether
+# the data can *resolve* that parting turns out to be a different question,
+# with a different answer, and it takes the second half of this notebook to
+# get there.
 #
-# **What this notebook does not do:** invent bands. `tsecon.proxy_svar` returns
-# a point estimate. Valid inference for a proxy SVAR needs the Jentsch-Lunsford
-# (2019) moving-block bootstrap, which is a documented roadmap item and is not
-# in v1. We say so where it matters instead of drawing a shaded region the
-# library did not compute.
+# **And then a second contrast, about inference rather than identification.**
+# The bands in the published figure come from a wild bootstrap, which Jentsch
+# and Lunsford (2019) showed is not asymptotically valid for this estimand.
+# `tsecon.proxy_svar_bands` computes both — their moving-block bootstrap, and
+# the wild bootstrap it replaces — so we do not have to take the critique on
+# trust. We reproduce it here, on Gertler and Karadi's own data, in numbers:
+# the mechanical reason the wild bootstrap fails is a two-line calculation on
+# the residuals that we run below and that comes out to *exactly* zero, and the
+# consequence on this data is a valid band half again wider than the invalid
+# one and roughly a quarter as many responses called significant.
 
 # %% [markdown]
 # ## The data, and where it comes from
@@ -236,7 +244,8 @@ print(f"Ljung-Box Q(12) = {lb['lb_stat'][-1]:.2f},  p = {lb['lb_pvalue'][-1]:.4f
 # condition. Reporting the autocorrelation is worth doing anyway, because it is
 # also the reason valid inference here needs a *block* bootstrap: the
 # instrument carries serial dependence that an i.i.d. resampling scheme would
-# destroy.
+# destroy. That is not a rhetorical point in this notebook — we run the block
+# bootstrap below and show what the alternative costs.
 
 # %% [markdown]
 # ## What the external instrument buys you
@@ -466,18 +475,213 @@ print("\nSame data, same lag order, different story. That is the cost of")
 print("identifying a shock with a calendar convention.")
 
 # %% [markdown]
+# ## Inference: the bands the paper drew, and the bands that are valid
+#
+# Gertler and Karadi's Figure 1 has shaded regions. They come from a wild
+# bootstrap — a common Rademacher sign flip applied to the reduced-form
+# residuals and to the instrument — which is what Mertens and Ravn (2013) used
+# before them and what most of the proxy-SVAR literature used after. Jentsch
+# and Lunsford (2019) showed that this is *not* an asymptotically valid
+# bootstrap for a proxy SVAR, and proposed a **moving-block** bootstrap that
+# is: the joint pair $(u_t, m_t)$ is resampled in overlapping blocks under one
+# set of block starts, the VAR is re-estimated inside every draw, and the
+# unit-effect normalisation is re-imposed per draw.
+#
+# `proxy_svar_bands` computes both, so the critique is checkable rather than
+# citable. Same data, same lag order, same number of draws, same seed.
+
+# %%
+H, ALPHA, N_BOOT, SEED = 48, 0.10, 2000, 0
+BAND_KW = dict(lags=12, horizon=H, norm_var=POLICY, unit=1.0, trend="c",
+               alpha=ALPHA, n_boot=N_BOOT, seed=SEED)
+mbb = tsecon.proxy_svar_bands(Y, proxy, bands="moving_block", **BAND_KW)
+wild = tsecon.proxy_svar_bands(Y, proxy, bands="wild", **BAND_KW)
+
+for label, r in (("moving block", mbb), ("wild", wild)):
+    print(f"{label:14} asymptotically_valid={str(r['asymptotically_valid']):5}  "
+          f"block_length={r['block_length']:3}  n_used={r['n_used']}  "
+          f"n_failed={r['n_failed']}")
+print(f"\nfailed draws by reason (moving block): {dict(mbb['failures'])}")
+print(f"failure_warning: {mbb['failure_warning']}")
+print(f"\nthe h=0 response of the policy variable, moving-block 90% band: "
+      f"[{np.asarray(mbb['lower'])[0, POLICY]:.6f}, "
+      f"{np.asarray(mbb['upper'])[0, POLICY]:.6f}]")
+print("that cell is degenerate by construction — the unit-effect normalisation")
+print("pins it in every draw — and a non-degenerate value there would mean the")
+print("normalisation had been hoisted out of the bootstrap loop.")
+print("\nwhat the library says about the wild bootstrap it just computed:")
+print(f"  {wild['validity_note']}")
+
+# %% [markdown]
+# ### Why the wild bootstrap cannot help here, in two lines of arithmetic
+#
+# The identifying moment of a proxy SVAR is
+# $\hat\gamma \propto \sum_t m_t \hat u_t'$. The wild bootstrap draws
+# $e_t \in \{-1, +1\}$ and sets $u^*_t = e_t \hat u_t$ and $m^*_t = e_t m_t$ —
+# *the same* $e_t$ on both, because flipping the residual without flipping the
+# instrument would destroy the correlation that identifies the shock. But then
+#
+# $$\sum_t m^*_t u^{*\prime}_t = \sum_t e_t^2\, m_t \hat u_t' = \sum_t m_t \hat u_t'$$
+#
+# because $e_t^2 = 1$. The identifying moment is not merely similar across
+# draws; it is the *same floating-point number*. Whatever the wild bootstrap is
+# resampling, it is not the uncertainty in the object that does the
+# identification. That is checkable on the real data, so let us check it — and
+# first confirm that the residuals we compute by hand are the ones the library
+# is using.
+
+# %%
+P = 12
+Xlag = np.column_stack([np.ones(len(Y) - P)]
+                       + [Y[P - lag:len(Y) - lag] for lag in range(1, P + 1)])
+U = Y[P:] - Xlag @ np.linalg.lstsq(Xlag, Y[P:], rcond=None)[0]  # reduced-form residuals
+inst = np.isfinite(proxy[P:])                                  # the instrument window
+mk, Uk = proxy[P:][inst], U[inst]
+
+gamma = ((mk - mk.mean())[:, None] * Uk).sum(0) / inst.sum()
+print("our residual moment vs the library's cov_um: max abs difference "
+      f"{np.abs(gamma - np.asarray(gk['cov_um'])).max():.2e}  (same residuals)")
+
+base = (mk[:, None] * Uk).sum(0)                  # sum_t m_t u_t', as in the theory
+base_c = ((mk - mk.mean())[:, None] * Uk).sum(0)  # as the estimator computes it
+rng = np.random.default_rng(0)
+worst = worst_c = 0.0
+for _ in range(200):
+    e = rng.choice([-1.0, 1.0], size=len(mk))          # one Rademacher draw...
+    m_star, U_star = e * mk, e[:, None] * Uk           # ...applied to BOTH
+    worst = max(worst, float(np.abs((m_star[:, None] * U_star).sum(0) - base).max()))
+    worst_c = max(worst_c, float(np.abs(
+        ((m_star - m_star.mean())[:, None] * U_star).sum(0) - base_c).max()))
+print(f"\nidentifying moment, sum_t m_t u_t':  {np.round(base, 6)}")
+print(f"max deviation over 200 common-Rademacher draws: {worst:.3e}")
+print("Not 'small'. Zero, exactly, in every draw, because e_t^2 = 1.")
+print(f"\nsame check on the demeaned moment the estimator actually forms: "
+      f"{worst_c:.3e}")
+print("nonzero, but that is the sample-mean correction wobbling, not the")
+print("covariance: the identifying content itself does not move at all.")
+
+# %% [markdown]
+# So the wild scheme injects **no** variability into the moment that identifies
+# the shock. Two caveats keep that from being a claim of a literally zero-width
+# band, and both are worth stating. First, the estimator subtracts the proxy's
+# *sample* mean before forming the moment, and a sign-flipped sample has a
+# different sample mean, so the centred version above does move a little —
+# that is the centering constant wobbling, not the covariance. Second, the
+# pseudo-data are regenerated and the VAR is re-estimated inside every draw, so
+# the reduced-form part of the uncertainty is represented. What is missing is
+# the part that is specific to external-instrument identification — the part
+# Jentsch and Lunsford's paper is about — and the library's per-draw
+# diagnostics show the size of the gap.
+
+# %%
+for label, r in (("moving block", mbb), ("wild", wild)):
+    g = np.asarray(r["gamma_norm_draws"])
+    f = np.asarray(r["first_stage_f_draws"])
+    print(f"{label:14} sd of gamma[norm_var] across draws {g.std(ddof=1):.3e}   "
+          f"sd of the first-stage F {f.std(ddof=1):6.2f}")
+ratio_g = (np.asarray(mbb["gamma_norm_draws"]).std(ddof=1)
+           / np.asarray(wild["gamma_norm_draws"]).std(ddof=1))
+print(f"\nthe valid bootstrap finds {ratio_g:.1f}x more dispersion in the identifying")
+print("moment than the wild bootstrap does, on identical data and draw count.")
+
+# %% [markdown]
+# ### What that costs, in band width and in conclusions
+#
+# The Hall (basic) band is the recommended one and is what we report; the
+# `lower_efron`/`upper_efron` percentile band is what the original papers plot,
+# and the two differ when the bootstrap distribution is skewed. The
+# $(h{=}0,\ \text{policy})$ cell is dropped from every count below because it is
+# degenerate under both schemes.
+
+# %%
+lo_m, up_m = np.asarray(mbb["lower"]), np.asarray(mbb["upper"])
+lo_w, up_w = np.asarray(wild["lower"]), np.asarray(wild["upper"])
+free = np.ones((H + 1, 4), bool)
+free[0, POLICY] = False                       # the degenerate normalisation cell
+
+print("90% bands per 100bp, moving block vs wild")
+print(f"{'':22}{'point':>8}{'moving block':>22}{'wild':>22}{'width ratio':>13}")
+for hz in (0, 6, 12, trough, 36, 48):
+    for i in range(4):
+        row = f"  h={hz:<3} {NAMES[i]:14}{irf[hz, i]:>8.3f}"
+        if free[hz, i]:
+            ratio = (up_m[hz, i] - lo_m[hz, i]) / (up_w[hz, i] - lo_w[hz, i])
+            print(row
+                  + f"{f'[{lo_m[hz, i]:+.3f}, {up_m[hz, i]:+.3f}]':>22}"
+                  + f"{f'[{lo_w[hz, i]:+.3f}, {up_w[hz, i]:+.3f}]':>22}"
+                  + f"{ratio:>12.2f}x")
+        else:
+            print(row + f"{'[degenerate at 1]':>22}{'[degenerate at 1]':>22}"
+                        f"{'':>13}")
+    print()
+
+w_m, w_w = (up_m - lo_m)[free], (up_w - lo_w)[free]
+r_w = w_m / w_w
+print(f"width ratio, moving block / wild, over {free.sum()} non-degenerate cells:")
+print(f"   median {np.median(r_w):.2f}x   min {r_w.min():.2f}x   max {r_w.max():.2f}x")
+print(f"   moving block is the wider band in {(r_w > 1).sum()} of {r_w.size} cells")
+grid = np.full(free.shape, -np.inf)          # the degenerate cell is 0/0; keep it out
+grid[free] = r_w
+worst_cell = np.unravel_index(np.argmax(grid), grid.shape)
+print(f"   widest gap at h={worst_cell[0]}, {NAMES[worst_cell[1]]}")
+
+
+def excludes_zero(lo, up):
+    return int(((lo > 0) | (up < 0))[free].sum())
+
+
+print(f"\ncells whose 90% band excludes zero, of {free.sum()}:")
+print(f"   moving block {excludes_zero(lo_m, up_m):4d}")
+print(f"   wild         {excludes_zero(lo_w, up_w):4d}")
+print(f"\nIP at the trough, h={trough}: point {irf[trough, 0]:.2f}% per 100bp")
+print(f"   moving block  [{lo_m[trough, 0]:+.2f}, {up_m[trough, 0]:+.2f}]")
+print(f"   wild          [{lo_w[trough, 0]:+.2f}, {up_w[trough, 0]:+.2f}]")
+print(f"   Hall vs Efron (moving block): [{lo_m[trough, 0]:+.2f}, {up_m[trough, 0]:+.2f}]"
+      f" vs [{np.asarray(mbb['lower_efron'])[trough, 0]:+.2f}, "
+      f"{np.asarray(mbb['upper_efron'])[trough, 0]:+.2f}]")
+
+# %% [markdown]
+# **That is the Jentsch-Lunsford critique, reproduced on a real replication.**
+# The valid band is wider than the invalid one in 194 of the 195 non-degenerate
+# cells, by a median factor of 1.47 and by as much as 3.3 at the impact
+# horizon, where the identifying moment is doing the most work and the wild
+# scheme's blind spot is therefore largest. The exception — one cell where the
+# wild band is 7% wider — is the kind of noise you should expect from two
+# bootstrap distributions with 2000 draws each; the direction of the effect is
+# systematic, and it is one-sided.
+#
+# The consequence for what you would *write down* is larger than the width
+# numbers suggest, because significance is a threshold and widths near the
+# threshold matter most. At a nominal 90%, the wild bootstrap declares 110 of
+# the 195 cells significantly different from zero. The valid bootstrap declares
+# 28 — a factor of four fewer claims about the world, from the same estimate on
+# the same data, differing only in how the resampling was done.
+#
+# The headline result survives, but not comfortably. The industrial-production
+# trough of $-2.09\%$ per 100bp has a moving-block band of $[-3.87, -0.05]$ —
+# still signed, and only just: the upper end is five hundredths of a percent
+# from zero, where the wild band puts it at $-0.94$. Note also that Hall and
+# Efron disagree materially here ($[-3.87, -0.05]$ against $[-4.13, -0.30]$),
+# which is the signature of a skewed bootstrap distribution; the original
+# papers report the percentile (Efron) band, `tsecon` recommends and defaults
+# to reporting Hall.
+#
 # ## The figure
 #
 # Gertler and Karadi's Figure 1, both identifications on one set of axes, per
-# 100 basis points. **No bands** — see the next section for why not.
+# 100 basis points, with the moving-block band on the instrument-identified
+# response. The band is **pointwise**: it covers each (horizon, variable) cell
+# at 90%, not the whole path simultaneously. `tsecon` has no simultaneous
+# (sup-$t$) band for this estimator, so we do not claim one.
 
 # %%
-H = 48
 h = np.arange(H + 1)
 fig, axes = plt.subplots(2, 2, figsize=(10, 6.5), sharex=True)
 for ax, i, title in zip(axes.ravel(), [2, 0, 1, 3],
                         ["One-year rate", "Industrial production",
                          "CPI", "Excess bond premium"]):
+    ax.fill_between(h, lo_m[:, i], up_m[:, i], color="C0", alpha=0.18, lw=0,
+                    label="moving-block 90% (pointwise)")
     ax.plot(h, irf[:H + 1, i], lw=2, color="C0", label="external instrument (FF4)")
     ax.plot(h, chol_irf[:H + 1, i], lw=1.6, color="C3", ls="--", label="Cholesky")
     ax.axhline(0, color="black", lw=0.8)
@@ -492,46 +696,259 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
-# ## Inference: what is missing, and how much it matters
+# ### The choice of bootstrap changes what the figure says
 #
-# `proxy_svar` returns a point estimate. There is no `lower`, no `upper`, no
-# `se`, and this notebook will not manufacture one. Asymptotically valid
-# bootstrap inference for a proxy SVAR is the Jentsch-Lunsford (2019)
-# moving-block bootstrap — a v2 item on the roadmap. The naive residual
-# bootstrap that works for a plain VAR is *not* valid here; Jentsch and
-# Lunsford's point is precisely that it gets the coverage wrong, because the
-# instrument and the residuals must be resampled jointly and in blocks.
-#
-# That said, "no bands" is not the same as "no information about precision".
-# For a single instrument the robust first-stage $F$ is the square of a
-# $t$-statistic, and that $t$ prices the scale of the impact vector.
+# Look at the red dashed Cholesky line against the shaded region. Now that
+# there *is* a region, we can ask how often the recursive path escapes it — and
+# ask it of both bootstraps.
 
 # %%
-t_first = np.sqrt(gk["first_stage_f"])
-print(f"robust first-stage F = {gk['first_stage_f']:.2f}  ->  |t| = {t_first:.2f}")
-print(f"relative standard error on the first-stage coefficient ~ 1/|t| = "
-      f"{100 / t_first:.0f}%")
-print()
-print(f"The whole IRF path is proportional to that coefficient, so a ~{100/t_first:.0f}% "
-      "relative\nstandard error is a LOWER BOUND on the uncertainty in every number in\n"
-      "the table above: it ignores sampling error in the 12 lags of VAR\n"
-      "coefficients and in the residual covariance. Bands would be wide.")
-print()
-print(f"Concretely, the IP trough of {irf[trough, 0]:.2f}% per 100bp carries at least "
-      f"+/-{abs(1.96 * irf[trough, 0] / t_first):.2f}%\nfrom the first stage alone: "
-      f"a range of roughly [{irf[trough,0]*(1+1.96/t_first):.2f}, "
-      f"{irf[trough,0]*(1-1.96/t_first):.2f}]. That range is NOT a\n"
-      "proxy-SVAR confidence interval, makes no coverage promise, and must not be\n"
-      "reported as one — it is a floor on how much room the point estimate has.")
+for label, lo, up in (("moving block (valid)", lo_m, up_m),
+                      ("wild (not valid)   ", lo_w, up_w)):
+    esc = (chol_irf[:H + 1] < lo) | (chol_irf[:H + 1] > up)
+    print(f"Cholesky response outside the 90% band, {label}: {esc[free].sum():3d} of "
+          f"{free.sum()} cells")
+    for i in range(4):
+        hs = [hz for hz in range(H + 1) if free[hz, i] and esc[hz, i]]
+        if hs:
+            print(f"      {NAMES[i]:14}{len(hs):3d} cells, horizons {min(hs)}-{max(hs)}")
+
+# %% [markdown]
+# **63 of 195, against zero of 195.** With the published procedure's bands you
+# would report that the recursive identification is significantly rejected at
+# 63 horizon-variable cells — 38 of the 49 CPI cells, the excess bond premium
+# over its first fourteen months, industrial production between months 12 and
+# 20. With the valid bands you cannot reject it anywhere. The choice of
+# resampling scheme is the difference between a decisive empirical rejection
+# and no rejection at all, on identical point estimates.
+#
+# Be careful about what the second answer does and does not say. It is *not* a
+# test that the two identifications agree, and it is not a joint statement
+# about paths: it says the proxy SVAR on its own is not precise enough to
+# reject the recursive answer cell by cell, on 258 months of instrument. The
+# argument for the external instrument was never that it beats Cholesky in a
+# horse race of confidence bands — it is that its identifying assumption is one
+# you can state and argue about, where the recursive assumption is a claim
+# about a calendar that changes the answer when you permute the columns. That
+# argument is untouched. But anyone reading the two point-estimate paths as a
+# decisive rejection is reading more than this sample supports, and an invalid
+# bootstrap is what made that reading look safe.
+#
+# ### Both bootstraps, on one set of axes
+#
+# The same responses with the two bands on top of each other. The
+# shaded region is the valid one; the dashed red pair is what the published
+# procedure draws.
+
+# %%
+fig, axes = plt.subplots(2, 2, figsize=(10, 6.5), sharex=True)
+for ax, i, title in zip(axes.ravel(), [2, 0, 1, 3],
+                        ["One-year rate", "Industrial production",
+                         "CPI", "Excess bond premium"]):
+    ax.fill_between(h, lo_m[:, i], up_m[:, i], color="C0", alpha=0.18, lw=0,
+                    label="moving block (valid)")
+    ax.plot(h, lo_w[:, i], lw=1.3, color="C3", ls="--", label="wild (not valid)")
+    ax.plot(h, up_w[:, i], lw=1.3, color="C3", ls="--")
+    ax.plot(h, irf[:H + 1, i], lw=2, color="C0")
+    ax.axhline(0, color="black", lw=0.8)
+    ax.set_title(title, fontsize=10)
+    ax.set_ylabel("percent" if i in (0, 1) else "percentage points", fontsize=8)
+axes[0][0].legend(fontsize=8, frameon=False)
+for ax in axes[1]:
+    ax.set_xlabel("months")
+fig.suptitle("Two 90% bands for the same estimate, 2000 draws, same seed",
+             fontsize=12)
+plt.tight_layout()
+plt.show()
+
+# %% [markdown]
+# ## The other kind of honesty: weak-instrument-robust sets
+#
+# The moving-block bootstrap fixes the *bootstrap*. It does not fix weak
+# identification — its asymptotics are strong-instrument asymptotics, and a
+# Wald-type band around a ratio whose denominator might be near zero is exactly
+# the object that fails when the instrument is not strong.
+#
+# This data set is the interesting case for that, because its two strength
+# diagnostics disagree, as we saw above: a robust first-stage $F$ near 18, well
+# clear of the rule-of-thumb 10, alongside a reliability $R^2$ under 8%. The
+# moving-block draws let us say something sharper than either number — the
+# bootstrap distribution of the first-stage $F$ itself.
+
+# %%
+fdraw = np.asarray(mbb["first_stage_f_draws"])
+rdraw = np.asarray(mbb["reliability_draws"])
+print(f"first-stage F : point {mbb['point_first_stage_f']:.2f},  "
+      f"bootstrap 5th pct {np.quantile(fdraw, 0.05):.2f},  "
+      f"median {np.median(fdraw):.2f},  95th pct {np.quantile(fdraw, 0.95):.2f}")
+print(f"                {100 * (fdraw < 10).mean():.0f}% of moving-block draws fall "
+      "below the rule-of-thumb F = 10")
+print(f"reliability   : point {mbb['point_reliability']:.4f},  "
+      f"5th pct {np.quantile(rdraw, 0.05):.4f},  "
+      f"95th pct {np.quantile(rdraw, 0.95):.4f}")
+
+# %% [markdown]
+# The point estimate clears 10 comfortably; a substantial minority of resamples
+# of the same data do not. That is precisely the configuration in which a
+# weak-instrument-robust set is worth computing alongside the Wald band rather
+# than instead of it.
+#
+# `proxy_ar_sets` inverts an Anderson-Rubin statistic in closed form. What
+# comes back need not be an interval: it can be the *complement* of an interval
+# (two rays), the whole line, or a single point. Dufour (1997) is the reason —
+# no bounded confidence set can be valid when a parameter may be unidentified,
+# so an honest procedure has to be allowed to return an unbounded answer. The
+# shape is the finding, and we print whatever shape we get.
+
+# %%
+ar = tsecon.proxy_ar_sets(Y, proxy, lags=12, horizon=H, norm_var=POLICY, unit=1.0,
+                          trend="c", alpha=ALPHA, variance="hc0")
+cells = ar["cells"]
+
+
+def describe(c):
+    """Render one AR set honestly, whatever shape it turned out to be."""
+    if c["kind"] in ("interval", "point"):
+        return f"[{c['lower']:+.3f}, {c['upper']:+.3f}]"
+    if c["kind"] == "exterior":                       # two rays, NOT an interval
+        return f"everything outside ({c['excluded_lower']:+.3f}, {c['excluded_upper']:+.3f})"
+    if c["kind"] == "ray_below":
+        return f"(-inf, {c['upper']:+.3f}]"
+    if c["kind"] == "ray_above":
+        return f"[{c['lower']:+.3f}, +inf)"
+    return {"whole": "the whole real line", "empty": "empty"}[c["kind"]]
+
+
+shapes = {}
+for hz in range(H + 1):
+    for i in range(4):
+        shapes[cells[hz][i]["kind"]] = shapes.get(cells[hz][i]["kind"], 0) + 1
+print(f"level {ar['level']}, AR critical value {ar['critical_value']:.3f}, "
+      f"n_proxy {ar['n_proxy']}, reduced-form uncertainty "
+      f"{ar['reduced_form_uncertainty']}")
+print(f"boundedness statistic {ar['ar_bound_stat']:.2f} vs critical value "
+      f"{ar['critical_value']:.2f}  ->  every set bounded: {ar['ar_bounded_all']}")
+print(f"set shapes over all {4 * (H + 1)} cells: {shapes}")
+
+print(f"\n{'':22}{'AR set':>24}{'moving-block band':>24}")
+for hz in (0, 6, 12, trough, 36, 48):
+    for i in range(4):
+        print(f"  h={hz:<3} {NAMES[i]:14}{describe(cells[hz][i]):>24}"
+              f"{f'[{lo_m[hz, i]:+.3f}, {up_m[hz, i]:+.3f}]':>24}")
+    print()
+
+ar_lo = np.array([[cells[hz][i]["lower"] for i in range(4)] for hz in range(H + 1)],
+                 dtype=float)
+ar_up = np.array([[cells[hz][i]["upper"] for i in range(4)] for hz in range(H + 1)],
+                 dtype=float)
+n_ex0 = sum(cells[hz][i]["excludes_zero"] for hz in range(H + 1) for i in range(4)
+            if free[hz, i])
+print(f"cells whose AR set excludes zero, of {free.sum()}: {n_ex0}"
+      f"   (moving block: {excludes_zero(lo_m, up_m)}, wild: {excludes_zero(lo_w, up_w)})")
+if ar["ar_bounded_all"]:
+    ra = (ar_up - ar_lo)[free] / w_m
+    print(f"AR set width / moving-block width: median {np.median(ra):.2f}x, "
+          f"min {ra.min():.2f}x, max {ra.max():.2f}x")
+
+# %% [markdown]
+# **The shapes we actually got: 195 bounded intervals and one point.** The
+# point is the $(h{=}0,\ \text{one-year rate})$ cell, which the normalisation
+# fixes at exactly 1 — the same degeneracy the bootstrap band shows, arrived at
+# by completely different algebra. Nothing here is an exterior set, a ray or
+# the whole line, and that is a *result*: the statistic that governs
+# boundedness comes out at 10.11 against a critical value of 2.71, far enough
+# from the non-identified boundary that every cell closes. Had we been handed a
+# weaker
+# instrument, `describe` above would be printing "everything outside
+# $(a, b)$" — two rays, which must never be reported as though it were the
+# interval $[a, b]$ — or "the whole real line". We wrote the branches; this
+# data set did not need them.
+#
+# So what did the robust set buy? Not much width — a median of 1.09 times the
+# moving-block band, ranging from 0.86 to 1.35, so it is not uniformly the
+# wider object either. That is the *good* case, and it is worth seeing: when
+# the instrument really is strong enough, the weak-IV-robust set and the Wald
+# band land in much the same place, and the agreement is evidence rather than
+# assumption. It buys two things all the same. First, its validity does not
+# rest on the strong-instrument asymptotics that the moving-block bootstrap
+# needs, which matters here precisely because 36% of the bootstrap draws put
+# the first-stage $F$ below 10 even though the point estimate is 17.58. Second,
+# it disagrees in informative places: at the trough ($h = 25$) it gives
+# $[-4.74, -0.13]$ for industrial production against the band's
+# $[-3.87, -0.05]$, and at the same horizon it signs the one-year rate's own
+# reversal ($[-1.02, -0.03]$) where the band does not ($[-0.79, +0.08]$).
+# Counting cells, the AR sets exclude zero 38 times against the moving-block
+# band's 28 — the robust object is not a widened version of the Wald band, it
+# is a different statistic, and it is not uniformly less decisive.
+
+# %% [markdown]
+# ### What reduced-form uncertainty costs
+#
+# An AR set for a proxy SVAR has two sources of sampling error: the identifying
+# moment, and the VAR coefficients that map it into a response at horizon $h$.
+# Conditioning on the estimated VAR — treating $\hat\Psi_h$ as if it were the
+# truth — makes the algebra easier and the sets much narrower. It also destroys
+# the coverage: the library's own Monte Carlo puts nominal-95% coverage at
+# 0.119 by $h = 8$ without propagation and 0.913 with it. `proxy_ar_sets`
+# propagates by default, and returns `level = None` if you switch it off,
+# because a set conditional on the reduced form has no honest $1-\alpha$ label.
+# On this data the difference is not subtle.
+
+# %%
+ar_cond = tsecon.proxy_ar_sets(Y, proxy, lags=12, horizon=H, norm_var=POLICY,
+                               unit=1.0, trend="c", alpha=ALPHA, variance="hc0",
+                               reduced_form_uncertainty=False)
+cc = ar_cond["cells"]
+n_ex0_cond = sum(cc[hz][i]["excludes_zero"] for hz in range(H + 1) for i in range(4)
+                 if free[hz, i])
+print(f"reduced-form uncertainty propagated: level={ar['level']}, "
+      f"{n_ex0} of {free.sum()} cells exclude zero")
+print(f"reduced-form uncertainty omitted:    level={ar_cond['level']}, "
+      f"{n_ex0_cond} of {free.sum()} cells exclude zero")
+print(f"\n{'':22}{'propagated':>24}{'conditional on the VAR':>26}")
+for hz in (6, 12, trough, 48):
+    for i in (0,):
+        print(f"  h={hz:<3} {NAMES[i]:14}{describe(cells[hz][i]):>24}"
+              f"{describe(cc[hz][i]):>26}")
+flips = [(hz, i) for hz in range(H + 1) for i in range(4)
+         if free[hz, i] and cc[hz][i]["excludes_zero"]
+         and not cells[hz][i]["excludes_zero"]]
+print(f"\nDropping the reduced-form uncertainty flips {len(flips)} of the "
+      f"{free.sum()} cells from\n'contains zero' to 'excludes zero'. Those "
+      "narrower sets are not a 90% anything,\nand the library refuses to label "
+      "them as one — which is why `level` came back None.")
+
+# %% [markdown]
+# ### Putting the three inference objects on one picture
+#
+# Point estimate, moving-block band, wild band, AR set — industrial production,
+# the response the paper's headline is about.
+
+# %%
+fig, ax = plt.subplots(figsize=(9, 4.5))
+ax.fill_between(h, ar_lo[:, 0], ar_up[:, 0], color="C2", alpha=0.13, lw=0,
+                label="Anderson-Rubin 90% set (weak-IV robust)")
+ax.fill_between(h, lo_m[:, 0], up_m[:, 0], color="C0", alpha=0.22, lw=0,
+                label="moving-block 90% band")
+ax.plot(h, lo_w[:, 0], lw=1.3, color="C3", ls="--", label="wild 90% band (not valid)")
+ax.plot(h, up_w[:, 0], lw=1.3, color="C3", ls="--")
+ax.plot(h, irf[:H + 1, 0], lw=2.2, color="C0", label="point estimate")
+ax.axhline(0, color="black", lw=0.8)
+ax.set_xlabel("months")
+ax.set_ylabel("percent per 100bp")
+ax.set_title("Industrial production: three answers to 'how sure are we?'", fontsize=11)
+ax.legend(fontsize=8, frameon=False)
+plt.tight_layout()
+plt.show()
 
 # %% [markdown]
 # ### Why not just run LP-IV instead?
 #
-# `tsecon.lp_iv` *does* report standard errors, and local projections
-# instrumented by the same surprise are the natural alternative (Stock-Watson
-# 2018). So why not read inference off that instead? Because the two
-# estimators do not instrument the same thing, and the diagnostic says so
-# loudly.
+# Local projections instrumented by the same surprise are the natural
+# alternative (Stock-Watson 2018), and `tsecon.lp_iv` reports standard errors
+# without any of the bootstrap machinery above. So why not sidestep the whole
+# question and read the inference off that? Because the two estimators do not
+# instrument the same thing, and the diagnostic says so loudly.
 #
 # The proxy SVAR instruments the *reduced-form residual* of the one-year rate —
 # the rate with 12 lags of all four variables projected out — and there the
@@ -585,9 +1002,25 @@ print("having inference. Read the F first, every time.")
 # spread that a Cholesky ordering produces on the same data.
 #
 # **Not replicated:** the timing of the IP trough (25 months here, about 18 in
-# the paper), and every confidence band in the published figure, because
-# `proxy_svar` v1 does not compute one. The paper's bands come from a wild
-# bootstrap of both stages; we draw nothing.
+# the paper). We do not tune that away; the candidates remain the data vintage
+# and the treatment of the crisis months.
+#
+# **Deliberately not matched: the published bands.** We can now draw them —
+# `bands="wild"` is exactly the published procedure — and we can show on this
+# data that they are too narrow, by a median factor of 1.47 in width and by a
+# factor of about four in the number of responses they call significant. The
+# band this notebook plots is therefore *not* the band in the paper, on
+# purpose. The bands are also **pointwise**, at both stages: neither the
+# moving-block band nor the AR set covers the whole response path
+# simultaneously, and `tsecon` has no sup-$t$ band for this estimator.
+#
+# **A finding the point estimates hid.** With valid bands, the Cholesky
+# response lies inside the proxy-SVAR band at all 195 non-degenerate cells; with
+# the wild bands it lies outside at 63. The identification contrast is stark in
+# point estimates and unresolved at pointwise 90% — which does not weaken the
+# case for the instrument (that case is about the assumption you have to
+# defend, not about band width) but does change what a reader is entitled to
+# conclude from the figure.
 #
 # **Assumed, not shown:**
 #
@@ -607,6 +1040,11 @@ print("having inference. Read the F first, every time.")
 # - *One shock, not four.* An external instrument identifies **one column** of
 #   the impact matrix. There is no full structural decomposition here, and no
 #   FEVD for the other three shocks.
+# - *Strong-instrument asymptotics, for the bootstrap.* The moving-block band
+#   fixes the resampling scheme, not weak identification. The AR sets are the
+#   part of this notebook that does not need that assumption, and on this data
+#   they broadly agree with the band — which is a check that passed, not a
+#   guarantee it will pass on your instrument.
 #
 # ## Provenance, stated plainly
 #
@@ -623,12 +1061,16 @@ print("having inference. Read the F first, every time.")
 # constraint in this literature, and it is worth knowing about before planning
 # work that depends on it.
 #
-# **Reproducibility.** Nothing here draws a random number — no bootstrap, no
-# simulation, so no seed to set. Every figure in this notebook is a
-# deterministic function of the workbook it downloads and the lag order,
-# horizon and sample window written above. Re-run it and you get these numbers.
-# The only thing that could move them is Ramey's archive being revised, which is
-# also why the download is attributed rather than silently vendored.
+# **Reproducibility.** The point estimates, the Cholesky contrast and the AR
+# sets draw no random numbers at all — they are deterministic functions of the
+# workbook, the lag order, the horizon and the sample window written above. The
+# two bootstraps do, and they are pinned: `n_boot=2000, seed=0`, printed in the
+# code rather than buried in a default. The one place we call a random number
+# generator ourselves — the Rademacher demonstration — is seeded too, and its
+# answer is exactly zero for every seed, which is the whole point. Re-run this
+# notebook and you get these numbers. The only thing that could move them is
+# Ramey's archive being revised, which is also why the download is attributed
+# rather than silently vendored.
 #
 # ## Further reading
 #
@@ -639,8 +1081,17 @@ print("having inference. Read the F first, every time.")
 # - Stock, J. H. & Watson, M. W. (2018), "Identification and Estimation of
 #   Dynamic Causal Effects in Macroeconomics Using External Instruments",
 #   *Economic Journal* 128, 917-948.
-# - Jentsch, C. & Lunsford, K. G. (2019), "Asymptotically Valid Bootstrap
-#   Inference for Proxy SVARs", FRB Cleveland working paper — the bands this
-#   notebook does not draw.
+# - Jentsch, C. & Lunsford, K. G. (2019), "The Dynamic Effects of Personal
+#   Income Tax Changes on Macroeconomic Aggregates: A Reassessment",
+#   *American Economic Review* — the wild-bootstrap critique and the
+#   moving-block replacement, reproduced above on this data. Their
+#   asymptotic theory also appears as a Federal Reserve Bank of Cleveland
+#   working paper, "Asymptotically Valid Bootstrap Inference for Proxy SVARs".
+# - Montiel Olea, J. L., Stock, J. H. & Watson, M. W. (2021), "Inference in
+#   Structural Vector Autoregressions Identified with an External Instrument",
+#   *Journal of Econometrics* — the weak-instrument-robust sets.
+# - Dufour, J.-M. (1997), "Some Impossibility Theorems in Econometrics with
+#   Applications to Structural and Dynamic Models", *Econometrica* — why an
+#   honest confidence set has to be allowed to be unbounded.
 # - Ramey, V. A. (2016), "Macroeconomic Shocks and Their Propagation",
 #   *Handbook of Macroeconomics* vol. 2 — the source of the data used here.
