@@ -48,11 +48,15 @@ use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::{companion_from_var, spectral_radius};
 
 use tsecon_bootstrap::{indices, par_replicate, BlockScheme, BootstrapError};
+use tsecon_stats::simultaneous;
 
 use crate::error::VarError;
 use crate::irf::ma_rep;
+use crate::irf_asymptotic::{apply_critical_values, irf_families, IrfCriticalValues};
 use crate::results::chol_lower;
 use crate::spec::{Trend, VarSpec};
+
+pub use crate::irf_asymptotic::{BandMethod, IrfBandScope};
 
 /// Bootstrap confidence bands for the impulse responses of a VAR.
 ///
@@ -81,6 +85,24 @@ pub struct IrfBands {
     pub alpha: f64,
     /// Whether the Kilian (1998) bias correction was applied.
     pub bias_correct: bool,
+    /// Multipliers of the **simultaneous** band, when
+    /// [`bootstrap_irf_bands_simultaneous`] produced this object; `None` from
+    /// the plain [`bootstrap_irf_bands`].
+    pub simultaneous: Option<IrfCriticalValues>,
+    /// `point - c·se` of the simultaneous band, one `k x k` matrix per horizon.
+    /// `Some` exactly when [`Self::simultaneous`] is.
+    ///
+    /// **This is a different shape of interval from [`Self::lower`].**
+    /// [`Self::lower`] / [`Self::upper`] are Efron *percentile* bounds — they
+    /// pick up bootstrap skewness and need not be symmetric about `point`. The
+    /// simultaneous band is the sup-t construction `point ± c·se`, symmetric by
+    /// definition. So `sim_lower` is **not** a widened percentile bound, and it
+    /// is not guaranteed to sit outside `lower` at every cell. What it is
+    /// guaranteed to contain is the *symmetric* pointwise band `point ± z·se`,
+    /// which is the like-for-like comparator: only the multiplier differs.
+    pub sim_lower: Option<Vec<Mat<f64>>>,
+    /// `point + c·se` of the simultaneous band. See [`Self::sim_lower`].
+    pub sim_upper: Option<Vec<Mat<f64>>>,
 }
 
 /// One horizon-indexed impulse-response cube (`horizon + 1` `k x k`
@@ -132,6 +154,110 @@ pub fn bootstrap_irf_bands(
     n_boot: usize,
     seed: u64,
     bias_correct: bool,
+) -> Result<IrfBands, VarError> {
+    run_bootstrap(
+        endog,
+        lags,
+        trend,
+        horizon,
+        orth,
+        cumulative,
+        alpha,
+        n_boot,
+        seed,
+        bias_correct,
+        None,
+    )
+}
+
+/// [`bootstrap_irf_bands`] plus a **simultaneous** band over a declared family
+/// of `(horizon, response, shock)` cells.
+///
+/// The percentile bands, the point estimate, the standard errors and the
+/// resampling stream are all bit-identical to [`bootstrap_irf_bands`] at the
+/// same arguments: this only adds a second, jointly-valid interval alongside
+/// them.
+///
+/// # Why a bootstrap band needs this too
+///
+/// A pointwise bootstrap band is exactly as anti-conservative about whole paths
+/// as an asymptotic one — tsecon's interval-coverage audit measured the
+/// bootstrap band containing the whole `h = 0..12` path in 73.5% of samples at
+/// `T = 500` against a nominal 90%, versus 72.2% for the asymptotic band. The
+/// bootstrap fixes the sampling distribution, not the multiplicity.
+///
+/// # Method
+///
+/// [`BandMethod::SupT`] is the route to prefer here, and it needs no simulation
+/// and no seed beyond the one already driving the resampling: the bootstrap
+/// replications *are* draws of the estimand, so the max-|t| statistic can be
+/// evaluated on them directly (Montiel Olea and Plagborg-Møller's workhorse
+/// construction). For each replication `b` the statistic
+/// `M_b = max_cell |theta*_{b,cell} - theta_hat_cell| / se_cell` is formed over
+/// the family, and `c` is the `1 - alpha` quantile of `M_1, ..., M_B`. Centring
+/// is at the point estimate rather than at the bootstrap mean, so the band stays
+/// centred where the reported `point` is; under bootstrap bias that makes it
+/// slightly wider than a mean-centred version.
+///
+/// `n_boot` should be large — this reads a quantile in the tail of a maximum,
+/// so 999+ replications, not 199.
+///
+/// [`BandMethod::Sidak`] and [`BandMethod::Bonferroni`] are also available and
+/// need only `K`; [`BandMethod::Pointwise`] returns the symmetric Wald band
+/// `point ± z·se`, which is the honest comparator for the simultaneous band
+/// (see [`IrfBands::sim_lower`]).
+///
+/// # Errors
+///
+/// Everything [`bootstrap_irf_bands`] can return, plus:
+///
+/// * [`VarError::NonFinite`] if any bootstrap replication produced a non-finite
+///   impulse response — one `NaN` replication would otherwise silently poison
+///   the maximum;
+/// * [`VarError::Stats`] from the simultaneous-band layer.
+#[allow(clippy::too_many_arguments)]
+pub fn bootstrap_irf_bands_simultaneous(
+    endog: MatRef<'_, f64>,
+    lags: usize,
+    trend: Trend,
+    horizon: usize,
+    orth: bool,
+    cumulative: bool,
+    alpha: f64,
+    n_boot: usize,
+    seed: u64,
+    bias_correct: bool,
+    method: BandMethod,
+    scope: IrfBandScope,
+) -> Result<IrfBands, VarError> {
+    run_bootstrap(
+        endog,
+        lags,
+        trend,
+        horizon,
+        orth,
+        cumulative,
+        alpha,
+        n_boot,
+        seed,
+        bias_correct,
+        Some((method, scope)),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_bootstrap(
+    endog: MatRef<'_, f64>,
+    lags: usize,
+    trend: Trend,
+    horizon: usize,
+    orth: bool,
+    cumulative: bool,
+    alpha: f64,
+    n_boot: usize,
+    seed: u64,
+    bias_correct: bool,
+    band: Option<(BandMethod, IrfBandScope)>,
 ) -> Result<IrfBands, VarError> {
     if lags == 0 {
         return Err(VarError::InvalidArgument {
@@ -210,6 +336,17 @@ pub fn bootstrap_irf_bands(
 
     let (se, lower, upper) = summarize(&draws, horizon, k, alpha);
 
+    let (simultaneous, sim_lower, sim_upper) = match band {
+        None => (None, None, None),
+        Some((method, scope)) => {
+            let cv = draw_critical_values(
+                &draws, &point, &se, k, horizon, alpha, method, scope, n_boot,
+            )?;
+            let (lo, hi) = apply_critical_values(&point, &se, &cv)?;
+            (Some(cv), Some(lo), Some(hi))
+        }
+    };
+
     Ok(IrfBands {
         point,
         se,
@@ -218,6 +355,91 @@ pub fn bootstrap_irf_bands(
         n_boot,
         alpha,
         bias_correct,
+        simultaneous,
+        sim_lower,
+        sim_upper,
+    })
+}
+
+/// Simultaneous critical values from the bootstrap replications themselves.
+///
+/// Cells with `se == 0` are pinned by construction (the Cholesky zeros of the
+/// impact matrix, and the whole `orth = false` impact matrix): they take no part
+/// in the maximum and no part in the Šidák/Bonferroni cell count, and keep their
+/// zero-width band.
+#[allow(clippy::too_many_arguments)]
+fn draw_critical_values(
+    draws: &[Cube],
+    point: &[Mat<f64>],
+    se: &[Mat<f64>],
+    k: usize,
+    horizon: usize,
+    alpha: f64,
+    method: BandMethod,
+    scope: IrfBandScope,
+    n_boot: usize,
+) -> Result<IrfCriticalValues, VarError> {
+    let z = simultaneous::pointwise_critical_value(alpha).map_err(VarError::Stats)?;
+    let families = irf_families(k, horizon, scope);
+    let n_cells = families[0].0.len();
+    let mut values = vec![vec![z; k]; k];
+    let mut used = vec![vec![0usize; k]; k];
+
+    // Size the flattened draw matrix from the replications actually in hand,
+    // not from the requested `n_boot`: a stale tail would silently contribute
+    // zeros to the maximum, which is the one failure mode this routine must
+    // never have.
+    let n_draws = draws.len();
+    debug_assert_eq!(n_draws, n_boot);
+    let mut flat = vec![0.0f64; n_draws * n_cells];
+    for (cells, grid) in families.iter() {
+        let theta: Vec<f64> = cells.iter().map(|&(h, i, j)| point[h][(i, j)]).collect();
+        let sd: Vec<f64> = cells.iter().map(|&(h, i, j)| se[h][(i, j)]).collect();
+        let n_used = sd.iter().filter(|s| **s > 0.0).count();
+
+        let c = if n_used == 0 {
+            z
+        } else {
+            match method {
+                BandMethod::Pointwise => z,
+                BandMethod::SupT => {
+                    for (b, d) in draws.iter().enumerate() {
+                        for (c_idx, &(h, i, j)) in cells.iter().enumerate() {
+                            let v = d[h][(i, j)];
+                            if !v.is_finite() {
+                                return Err(VarError::NonFinite {
+                                    what: "a bootstrap impulse-response replication; drop \
+                                           the failed replications before banding",
+                                    at: Some((b, c_idx)),
+                                });
+                            }
+                            flat[b * n_cells + c_idx] = v;
+                        }
+                    }
+                    simultaneous::sup_t_from_draws(&flat, n_draws, &theta, &sd, alpha)
+                        .map_err(VarError::Stats)?
+                }
+                BandMethod::Sidak => {
+                    simultaneous::sidak_critical_value(alpha, n_used).map_err(VarError::Stats)?
+                }
+                BandMethod::Bonferroni => simultaneous::bonferroni_critical_value(alpha, n_used)
+                    .map_err(VarError::Stats)?,
+            }
+        };
+        for &(i, j) in grid {
+            values[i][j] = c;
+            used[i][j] = n_used;
+        }
+    }
+
+    Ok(IrfCriticalValues {
+        values,
+        n_cells,
+        n_cells_used: used,
+        pointwise: z,
+        method,
+        scope,
+        alpha,
     })
 }
 

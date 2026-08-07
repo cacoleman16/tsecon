@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Local projections (Jordà 2005) for the tsecon time-series econometrics library: horizon-by-horizon impulse responses with lag-augmented (Montiel Olea & Plagborg-Møller 2021) heteroskedasticity-robust inference as the default, Newey-West HAC as the statsmodels-compatibility option, just-identified LP-IV with a linearmodels-convention kernel covariance and a first-stage effective-F diagnostic, Ramey-Zubairy cumulative responses, state-dependent (interacted) local projections, and smooth local projections (Barnichon-Brownlees 2019) with penalized B-spline IRFs and leave-h-block-out cross-validation"
+description = "Local projections (Jordà 2005) for the tsecon time-series econometrics library: horizon-by-horizon impulse responses with lag-augmented (Montiel Olea & Plagborg-Møller 2021) heteroskedasticity-robust inference as the default, Newey-West HAC as the statsmodels-compatibility option, just-identified LP-IV with a linearmodels-convention kernel covariance and a first-stage effective-F diagnostic, Ramey-Zubairy cumulative responses, state-dependent (interacted) local projections, smooth local projections (Barnichon-Brownlees 2019) with penalized B-spline IRFs and leave-h-block-out cross-validation, and simultaneous (sup-t) confidence bands over the horizons of a response built on a cross-horizon influence-function covariance"
 
 [dependencies]
 # HAC / OLS machinery (kernels, Newey-West sandwich, HC0/HC1) — the library's
@@ -13,11 +13,15 @@ tsecon-hac = { path = "../tsecon-hac" }
 # faer is consumed through the tsecon-linalg re-export so the whole workspace
 # shares one pinned version; used for the LP-IV 2SLS projection solves.
 tsecon-linalg = { path = "../tsecon-linalg" }
+# Seeded Philox uniforms for the sup-t Gaussian simulation. tsecon-stats is
+# deliberately RNG-free and takes uniforms from its caller, so the caller is
+# this crate and the band is a pure function of the user's seed.
+tsecon-rng = { path = "../tsecon-rng" }
+# The workspace's single owner of simultaneous (sup-t / Sidak / Bonferroni)
+# critical values. LP never reimplements a multiplier.
+tsecon-stats = { path = "../tsecon-stats" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
 # printed, not serde_json's default 1-ulp fast path.
 serde_json = { version = "1", features = ["float_roundtrip"] }
-# Seeded Philox streams + the normal quantile drive the coverage Monte Carlo.
-tsecon-rng = { path = "../tsecon-rng" }
-tsecon-stats = { path = "../tsecon-stats" }
