@@ -235,15 +235,59 @@ def var_irf_bands(
     seed: int = ...,
     trend: str = ...,
     bias_correct: bool = ...,
+    band: str = ...,
+    band_scope: str = ...,
+    band_seed: int = ...,
+    band_n_sim: int = ...,
 ) -> dict[str, Any]:
     """Frequentist confidence bands on VAR impulse responses — the banded companion to `var_irf`.
 
     Returns a dict with `point`/`se`/`lower`/`upper`, each `[h][response][shock]`
-    (same layout as `var_irf`), plus echoed `method`/`alpha`/`n_boot`. `method`:
-    "asymptotic" (Lütkepohl 1990 delta-method SEs, Wald bands
+    (same layout as `var_irf`), plus echoed `method`/`alpha`/`n_boot`/`band`.
+    `method`: "asymptotic" (Lütkepohl 1990 delta-method SEs, Wald bands
     `point ± z_{1-alpha/2}·se`; `n_boot` is `None`) or "bootstrap" (residual
     Efron/Kilian bootstrap, percentile bands, optional Kilian 1998
     `bias_correct`). `orth` and `cumulative` behave exactly as in `var_irf`.
+
+    **Simultaneous bands.** `lower`/`upper` are POINTWISE whatever you pass:
+    each covers one `(horizon, response, shock)` cell and promises nothing
+    about the path as a whole. Set `band` to `"sup-t"`, `"sidak"` or
+    `"bonferroni"` to also get `sim_lower`/`sim_upper` — the same `point` and
+    the same `se` with a larger multiplier — plus `critical_value` (a k x k
+    grid), `pointwise_critical_value`, `band_scope`, `n_cells` (K) and
+    `n_cells_used`. `band="pointwise"` is the default and adds nothing.
+
+    Simultaneous **over what** is your choice and is always reported back:
+    `band_scope="horizon"` (default; `K = horizon+1`, one family per
+    response-shock pair — the object the coverage audit measured),
+    `"shock"` (`K = k(horizon+1)`) or `"all"` (`K = k²(horizon+1)`). Every cell
+    added to a family widens the band for every other cell in it.
+
+    **What it fixes and what it does not.** Audit design, nominal 90%, T=500,
+    h=0..12, 3000 replications, asymptotic branch: the pointwise band contained
+    the whole path in 70.4% ± 0.8 of samples, the sup-t band in 84.8% ± 0.7
+    (crate Monte Carlo, T=500, 3000 reps). The published harness measures the
+    same shape on its own BASE design: 71.7% ± 1.4 pointwise, 85.2% ± 1.1
+    sup-t. The sup-t rate **does not reach nominal**, and the residual is not
+    multiplicity — the pointwise band it is built from covers only about 91%
+    marginally at h=0 falling to 85.3% at h=12 against nominal 90%. sup-t fixes
+    multiplicity exactly and inherits everything else, so what is left needs a
+    better standard error, not a bigger multiplier.
+
+    **Shape, on the bootstrap branch.** `lower`/`upper` there are Efron
+    *percentile* bounds and pick up bootstrap skewness; the simultaneous band is
+    the symmetric `point ± c·se`. These are different shapes of interval, so
+    `sim_lower` is **not** guaranteed to sit below `lower` cell by cell. What it
+    is guaranteed to contain is the symmetric pointwise band
+    `point ± pointwise_critical_value·se` — the like-for-like comparator, in
+    which only the multiplier differs.
+
+    `band_seed`/`band_n_sim` drive the Gaussian simulation behind `"sup-t"` on
+    the asymptotic branch only, where the band is a pure function of
+    `band_seed`. On the bootstrap branch sup-t reads its quantile off the
+    bootstrap replications, so `seed` alone reproduces it (use `n_boot` ≥ 999);
+    Šidák and Bonferroni are closed forms in K and need neither. Method:
+    Montiel Olea and Plagborg-Møller.
     """
 
 def var_fevd(
@@ -257,8 +301,39 @@ def var_forecast(
     steps: int = ...,
     alpha: float = ...,
     trend: str = ...,
+    band: str = ...,
+    band_scope: str = ...,
+    band_seed: int = ...,
+    band_n_sim: int = ...,
 ) -> dict[str, Any]:
-    """Iterated VAR point forecasts with (1-alpha) intervals."""
+    """Iterated VAR point forecasts with (1-alpha) intervals.
+
+    **Simultaneous bands.** `lower`/`upper` are MARGINAL whatever you pass: each
+    covers one `(horizon, series)` cell. Read as a statement about a whole fan
+    chart they are the worst offender in the library — the interval-coverage
+    audit, nominal 95% at T=100 over 12 horizons x 2 series, 6000 replications,
+    measured the marginal bands containing every cell at once in 41.2% ± 0.6 of
+    samples, and still only 48.1% at T=800. That is multiplicity, not a small
+    sample.
+
+    Set `band` to `"sup-t"`, `"sidak"` or `"bonferroni"` to also get `se`,
+    `sim_lower`/`sim_upper` (same `point`, same `se`, larger multiplier),
+    `critical_value` (one per series), `pointwise_critical_value`, `band_scope`,
+    `n_cells` (K) and `n_cells_used`. `band="pointwise"` is the default and adds
+    nothing. `band_scope="all"` (default) is `K = steps*k`, every horizon of
+    every series as one statement — the object the audit measured; `"horizon"`
+    is `K = steps`, one family per series.
+
+    **What it fixes and what it does not.** On that design the sup-t joint rate
+    was 90.5% ± 0.4 against a nominal 95%. It **does not reach nominal**, and
+    the residual is not multiplicity: these intervals are a plug-in treating the
+    coefficients as known, so their measured *marginal* rate is 93.3%, not 95%.
+    sup-t fixes multiplicity exactly and inherits that approximation unchanged.
+
+    `band_seed`/`band_n_sim` drive the Gaussian simulation behind `"sup-t"`, so
+    that band is a pure function of `band_seed`; the closed forms use neither.
+    Method: Montiel Olea and Plagborg-Møller.
+    """
 
 def var_granger(
     data: _ArrayLike,
@@ -378,6 +453,10 @@ def lp(
     se: str = ...,
     maxlags: int | None = ...,
     cumulative: bool | str | None = ...,
+    band: str | None = ...,
+    band_alpha: float = ...,
+    band_seed: int = ...,
+    band_n_sim: int = ...,
 ) -> dict[str, Any]:
     """Local projection IRFs; `se` is "lag_augmented" (default) or "hac".
 
@@ -385,6 +464,27 @@ def lp(
     the contemporaneous impulse — a cumulative IRF, NOT a multiplier), or
     "both" (cumulated outcome on cumulated impulse). For an identified
     multiplier use `lp_multiplier`.
+
+    **Bands.** `band=None` (default) returns the point path and its standard
+    errors only, exactly as before. `"pointwise"`, `"sup-t"`, `"sidak"` or
+    `"bonferroni"` add `lower`/`upper`, `critical_value`,
+    `pointwise_critical_value`, `band_scope`, `n_cells` (K) and `n_cells_used`.
+    The family is **the horizons of this one response**, `K = horizons + 1`
+    (`band_scope` reports `"horizon"`). A pointwise band covers one horizon at a
+    time; the other three cover every horizon at once at `1 - band_alpha`.
+
+    LP is the clean case for this. Audit, nominal 90% over 13 horizons, 400
+    replications: pointwise contained the whole path in 36.5% of samples at
+    T=240 and sup-t in 81.8%; at T=720, where the per-horizon marginals sit on
+    nominal, sup-t lands on nominal too (89.5%) while pointwise reached only
+    42.7%. Tripling the sample moved pointwise 36.5% → 42.7% — it is not
+    converging, because the problem is multiplicity, not consistency.
+
+    `"sup-t"` builds the cross-horizon covariance and simulates `band_n_sim`
+    Gaussian draws from `band_seed`, so the band is a **pure function** of that
+    seed; the closed forms use neither. Measured at K=13, alpha=0.10: pointwise
+    1.6449, sup-t 2.20–2.65 depending on persistence, Šidák 2.6490, Bonferroni
+    2.6653. Method: Montiel Olea and Plagborg-Møller.
     """
 
 def lp_iv(
@@ -394,6 +494,8 @@ def lp_iv(
     horizons: int = ...,
     n_lag_controls: int = ...,
     cumulative: bool | str | None = ...,
+    band: str | None = ...,
+    band_alpha: float = ...,
 ) -> dict[str, Any]:
     """LP-IV: instrumented local projections with a first-stage F diagnostic.
 
@@ -402,6 +504,18 @@ def lp_iv(
     *contemporaneous* impulse — that grows without bound in the horizon and is
     not a multiplier. Use `lp_multiplier` for the Ramey-Zubairy integral
     multiplier.
+
+    **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
+    and `"bonferroni"` add `lower`/`upper` over the horizons of this response
+    (`K = horizons + 1`, `band_scope="horizon"`) with `critical_value`,
+    `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+
+    `band="sup-t"` is **refused** here with an error saying why: sup-t needs the
+    covariance ACROSS horizons and tsecon estimates none for LP-IV, so `lp_iv`,
+    `lp_multiplier` and `lp_state` get the **closed-form** simultaneous routes
+    only. Šidák and Bonferroni need nothing but K, are valid under arbitrary
+    dependence, and are simply wider than a sup-t band would be — never describe
+    a band from this function as sup-t. For sup-t use `lp` or `smooth_lp`.
     """
 
 def lp_multiplier(
@@ -411,6 +525,8 @@ def lp_multiplier(
     horizons: int = ...,
     n_lag_controls: int = ...,
     maxlags: int | None = ...,
+    band: str | None = ...,
+    band_alpha: float = ...,
 ) -> dict[str, Any]:
     """Ramey-Zubairy (2018) integral multiplier by one-step LP-IV.
 
@@ -420,6 +536,14 @@ def lp_multiplier(
     rather than a cumulative impulse response. `se` is the kernel-HAC standard
     error of that single 2SLS coefficient — inference on the multiplier
     itself, not a delta-method ratio and not a leg's SE relabelled.
+
+    **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
+    and `"bonferroni"` add `lower`/`upper` around `multiplier` over the horizons
+    of this path (`K = horizons + 1`, `band_scope="horizon"`) with
+    `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+    `band="sup-t"` is **refused**: no cross-horizon covariance is estimated for
+    the multiplier path, so this function (like `lp_iv` and `lp_state`) gets the
+    closed-form routes only. Do not call such a band sup-t.
     """
 
 # -------------------------------------------------- penalized regression
@@ -1047,10 +1171,26 @@ def lp_state(
     se: str = ...,
     maxlags: int | None = ...,
     cumulative: bool | str | None = ...,
+    band: str | None = ...,
+    band_alpha: float = ...,
 ) -> dict[str, Any]:
     """State-dependent (interacted) local projections (Ramey-Zubairy 2018); per-regime IRFs and SEs.
 
     `cumulative` takes False/"none", True/"outcome" or "both", as in `lp`.
+
+    **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
+    and `"bonferroni"` add one band PER REGIME —
+    `lower_state1`/`upper_state1` and `lower_state0`/`upper_state0`, with
+    `critical_value_state1`/`critical_value_state0` and
+    `n_cells_used_state1`/`n_cells_used_state0` — over the horizons of that
+    regime's own response (`K = horizons + 1`, `band_scope="horizon"`). The two
+    regimes are banded separately; nothing here is simultaneous *across*
+    regimes.
+
+    `band="sup-t"` is **refused**: no cross-horizon covariance is estimated for
+    the interacted regressions, so `lp_state` (like `lp_iv` and `lp_multiplier`)
+    gets the closed-form simultaneous routes only. Report such a band as Šidák
+    or Bonferroni, never as sup-t.
     """
 
 # ------------------------------------------------------ mean-group panel VAR
@@ -1393,6 +1533,10 @@ def smooth_lp(
     lambda_grid: Sequence[float] | None = ...,
     n_folds: int = ...,
     hac_maxlags: int | None = ...,
+    band: str | None = ...,
+    band_alpha: float = ...,
+    band_seed: int = ...,
+    band_n_sim: int = ...,
 ) -> dict[str, Any]:
     """Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
     penalized B-spline in the horizon, estimated jointly across horizons.
@@ -1405,4 +1549,20 @@ def smooth_lp(
     account for shrinkage bias; `irf_raw`/`se_raw` are the unsmoothed
     per-horizon HAC LP for comparison. Keys: horizons, irf, se, lambda_used,
     cv_grid, cv_scores, theta, irf_raw, se_raw.
+
+    **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sup-t"`,
+    `"sidak"` or `"bonferroni"` add `lower`/`upper` over the horizons of this
+    response (`K = horizons + 1`, `band_scope="horizon"`) with
+    `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+    A pointwise band covers one horizon at a time; the other three cover every
+    horizon at once at `1 - band_alpha`.
+
+    Smooth LP is the one estimator here that already had the full cross-horizon
+    covariance — the path is `irf_h = B_h' theta` for a single jointly-estimated
+    coefficient vector — so `"sup-t"` needs no extra estimation and no
+    compromise. It simulates `band_n_sim` Gaussian draws from `band_seed`, so
+    the band is a **pure function** of that seed. The usual smooth-LP caveat
+    still applies and is not a band problem: `se` conditions on `lam` and
+    ignores the penalty's shrinkage bias, so any band here is centred on a
+    shrunk estimator. Method: Montiel Olea and Plagborg-Møller.
     """

@@ -31,8 +31,12 @@ Monte Carlo standard error of the measurement next to it, an attribution of
        **72.2%** of samples at T=500; nominal 95% marginal VAR forecast bands
        contain every horizon and series at once in **40.9%** at T=100 — and
        still only 48.1% at T=800, because the joint rate does not converge to
-       the marginal one. No function in this library reports a simultaneous
-       band.
+       the marginal one. ~~No function in this library reports a simultaneous
+       band.~~ **A simultaneous (sup-t) band now exists** — scored against a
+       pointwise arm on the *same* replications it reaches **85.2% ± 1.1**
+       (IRF, nominal 90%) and **90.5% ± 0.7** (forecast, nominal 95%). That is
+       the largest repair on this page and **neither VAR arm reaches nominal**:
+       [what it buys and what it cannot](#pointwise-is-not-joint).
 
 ---
 
@@ -89,7 +93,7 @@ This is [Tier 6](../reference/testing.md#tier-6-interval-coverage) of the
 
 ```sh
 # the whole audit: five families, one consolidated report
-.venv/bin/python docs/examples/coverage/run_all.py            # 376 s here
+.venv/bin/python docs/examples/coverage/run_all.py            # 397 s here
 
 # just the consolidated tables, without the five per-family reports
 .venv/bin/python docs/examples/coverage/run_all.py --summary
@@ -98,11 +102,11 @@ This is [Tier 6](../reference/testing.md#tier-6-interval-coverage) of the
 .venv/bin/python docs/examples/coverage/run_all.py --quick     # ~40 s
 
 # or one family at a time
-.venv/bin/python docs/examples/coverage/regression_se.py       #  41 s
-.venv/bin/python docs/examples/coverage/irf_bands.py           #  55 s
-.venv/bin/python docs/examples/coverage/lp_family.py           #  67 s
-.venv/bin/python docs/examples/coverage/forecast_intervals.py  # 113 s
-.venv/bin/python docs/examples/coverage/bayes_and_sets.py      #  99 s
+.venv/bin/python docs/examples/coverage/regression_se.py       #  40 s
+.venv/bin/python docs/examples/coverage/irf_bands.py           #  65 s
+.venv/bin/python docs/examples/coverage/lp_family.py           #  66 s
+.venv/bin/python docs/examples/coverage/forecast_intervals.py  # 131 s
+.venv/bin/python docs/examples/coverage/bayes_and_sets.py      #  95 s
 ```
 
 Every family draws from one master seed, `20260729`, and prints it. Every draw
@@ -116,13 +120,13 @@ regression fails a build rather than quietly rotting in this page.
 ```text
   module                   assertions   runtime   result
   ----------------------------------------------------------------------
-  regression_se.py            87 pass     41.1s   OK
-  irf_bands.py                27 pass     56.4s   OK
-  lp_family.py                16 pass     68.1s   OK
-  forecast_intervals.py        9 pass    111.2s   OK
-  bayes_and_sets.py           23 pass     98.9s   OK
+  regression_se.py           110 pass     40.0s   OK
+  irf_bands.py                34 pass     65.1s   OK
+  lp_family.py                16 pass     65.6s   OK
+  forecast_intervals.py       13 pass    130.6s   OK
+  bayes_and_sets.py           23 pass     94.7s   OK
 
-  39 probes harvested from 5 families in 376.2s
+  40 probes harvested from 5 families in 396.6s
 ```
 
 The coverage numbers are byte-reproducible; the runtimes are wall clock and will
@@ -176,7 +180,7 @@ and each family module's docstring derives its truth in closed form.
 
 ---
 
-## The headline: 39 measured interval-valued outputs
+## The headline: 40 measured interval-valued outputs
 
 Each row names **two** measured cells. `favourable` is a design the interval is
 entitled to do well on; `stress` is a design that pushes the same interval
@@ -371,10 +375,109 @@ nothing about the whole path, and the two rates are far apart:
 Note the T=800 row: the joint rate is 0.481 even where the marginal rate is at
 nominal (0.948 ± 0.002). **Joint coverage does not converge to the marginal level as
 the sample grows** — it is a different quantity, and a band that contains the
-whole path 95% of the time has to be materially wider. `tsecon` reports no
-simultaneous (sup-t) band for any object; that is an
-[API gap](#what-this-audit-recommends), and until it closes, a fan chart should
-be read one horizon at a time.
+whole path 95% of the time has to be materially wider.
+
+### The remedy, and the two places it stops
+
+*Added after `0.2.0`. The finding above is left exactly as it was measured — it
+is still what a pointwise band delivers, and it is still the default.*
+
+When this page was written, `tsecon` reported no simultaneous band for any
+object, and that was [the largest open recommendation](#what-this-audit-recommends)
+on it. A **simultaneous (sup-t) band** now exists: `var_irf_bands`,
+`var_forecast`, `lp` and `smooth_lp` take `band="sup-t"` (or `"sidak"` /
+`"bonferroni"`), and the two VAR functions take a `band_scope` as well. It
+changes exactly one thing: the multiplier. Same point estimate, same standard
+errors, and a constant `c` in `point ± c·se` chosen so that **every cell of a
+declared family** is covered at once — the construction of Montiel Olea and
+Plagborg-Møller. Scored against a pointwise arm **on the same replications**:
+
+| object | nominal | design | pointwise, joint | **sup-t, joint** | Šidák | Bonferroni | measured by |
+|---|---|---|---|---|---|---|---|
+| `var_forecast` | 95% | T=100, 12 horizons × 2 series, K=24, 2000 reps | 42.0% ± 1.1 | **90.5% ± 0.7** | 91.3% ± 0.6 | 91.5% ± 0.6 | [`forecast_intervals.py`](coverage/forecast_intervals.py) |
+| `var_irf_bands`, asymptotic | 90% | T=500, h=0..12, K=13, 1000 reps | 71.7% ± 1.4 | **85.2% ± 1.1** | 91.7% ± 0.9 | 92.0% ± 0.9 | [`irf_bands.py`](coverage/irf_bands.py) |
+| `lp`, lag-augmented | 90% | T=240, 13 horizons, 400 reps | 36.5% | **81.8%** | — | — | the crate's own tests |
+| `lp`, lag-augmented | 90% | T=720, 13 horizons, 400 reps | 42.7% | **89.5%** | — | — | the crate's own tests |
+
+The two VAR rows are measured by this page's own modules, and both arms are read
+off the **same call**: asking for a simultaneous band leaves `point`, `se`,
+`lower` and `upper` bit-identical — those modules assert it — so the comparison
+is paired rather than two independent runs, and every replication that gains the
+path gains it because the multiplier grew. Their pointwise rates reproduce this
+page's 0.409 and 0.722 on fresh seeds, and their sup-t rates reproduce what the
+crates' own tests measure at higher replication counts (41.2% → 90.5% at 6000
+reps; 70.4% → 84.8% at 3000). The LP rows are the crate tests' — `lp` has no arm
+in the five modules below.
+
+**Neither VAR simultaneous rate reaches nominal — 85.2% against 90%, 90.5%
+against 95% — and that is the honest headline, not a footnote.** A sup-t band
+fixes **multiplicity** and inherits every other defect on this page, because it
+reuses the same standard errors:
+
+- the IRF band's own **marginal** coverage on the same 1000 draws is 91.0% at
+  h=0 and **85.3%** at h=12, so the residual belongs to
+  [the delta-method problem](#the-delta-method-irf-band-horizon-by-horizon).
+  What that cell needs is a better standard error, not a bigger multiplier;
+- `var_forecast` is a **plug-in** band that ignores coefficient sampling error,
+  so its pooled per-cell marginal rate is **93.4%**, not 95% — see
+  [the oracle column](#predictive-intervals). A simultaneous band cannot hand
+  back coverage the marginal band never had;
+- **LP is the clean case, and it is the one that proves the mechanism.** At
+  T=720, where the marginal rates sit on nominal, sup-t lands on nominal
+  (89.5% against 90%). At T=240 it does not (81.8%) — for the same reason the
+  marginals are off there.
+
+The LP rows also settle what kind of problem this is. **Tripling T moved the
+pointwise joint rate from 36.5% to 42.7%.** It is not converging: multiplicity
+is not a small-sample caveat that data cures.
+
+**Simultaneous over *what*? — this is a user-visible choice, not a detail.**
+Every cell added to the family widens the band for every other cell in it, so
+the same `alpha` over a different family is a different band, and a band whose
+scope is ambiguous is worse than no band. The scopes are:
+
+| object | scope | the family | K on the designs above (k=2 series; IRF h=0..12, forecast 12 steps) |
+|---|---|---|---|
+| `var_irf_bands` | `"horizon"` (default) | one response-shock pair's path — the object measured above | 13 |
+| `var_irf_bands` | `"shock"` | every response to one shock, all horizons | 26 |
+| `var_irf_bands` | `"all"` | the whole IRF grid | 52 |
+| `var_forecast` | `"all"` (default) | every horizon of every series — the object measured above | 24 |
+| `var_forecast` | `"horizon"` | one series' whole forecast path | 12 |
+| `lp` / `smooth_lp` | — | the horizons of the one response | 13 |
+
+Every result reports its scope and its `K`. Report them too.
+
+**Which multiplier, and what the fallbacks cost.** The closed forms depend on
+nothing but `K`: at K=13 and α=0.10 they are Šidák **2.6490** and Bonferroni
+**2.6653**, against a pointwise **1.6449**. The sup-t multiplier is a property
+of the *path*, because it is the only route that uses the dependence across
+cells — adjacent horizons of an impulse response are strongly positively
+correlated, while Šidák (exact under independence) and Bonferroni (valid under
+any dependence) pay for a worst case a smooth response path does not present. On
+this page's `BASE` VAR(1) it averages **2.0742** over 1000 replications: 22%
+below Šidák, and only 26% above the pointwise `z`. On more persistent paths the
+crates' tests see it run up to about 2.65 — no saving at all. **Read the critical
+value your own fit reports; do not assume the saving.**
+
+And read the Šidák and Bonferroni columns above before treating them as safe
+fallbacks. On the IRF row they land at **91.7%** and **92.0%** against a nominal
+90% — *over* the line, because over-widening happened to cancel a marginal
+shortfall of an entirely different origin. That is a coincidence on one DGP, not
+a calibration.
+
+**Three things this does not do.** `lp_iv`, `lp_multiplier` and `lp_state` have
+no cross-horizon covariance, so they get Šidák and Bonferroni **only** — sup-t
+is refused with an error naming the reason, and their bands must never be
+described as sup-t. The bootstrap simultaneous band is a **different shape**
+from the bootstrap percentile band — symmetric `point ± c·se` against asymmetric
+Efron percentiles — so it is not guaranteed to sit outside the percentile band
+cell by cell, only outside the symmetric `point ± z·se`. And nothing that
+already reads these functions changed meaning: `var_irf_bands` and `var_forecast` return
+**pointwise** `lower`/`upper` whatever you pass — the simultaneous edges arrive
+as extra `sim_lower`/`sim_upper` keys — and `lp` returns no band at all unless
+asked. Every number in the tables above is a pointwise band and stays one, so
+**a fan chart you did not ask a simultaneous band for is still read one horizon
+at a time**.
 
 ---
 
@@ -935,10 +1038,17 @@ mechanism rather than a constant for the function.
 
 Stated so you do not have to discover it.
 
-- **No simultaneous (sup-t) band exists to measure.** Every band on this page is
-  pointwise or marginal. The joint rates in
-  [pointwise is not joint](#pointwise-is-not-joint) are what a reader gets by
-  mistake, not what a joint band would deliver.
+- ~~**No simultaneous (sup-t) band exists to measure.**~~ **One exists now, and
+  it is measured — but only for two of the four surfaces that offer it.**
+  `irf_bands.py` and `forecast_intervals.py` each carry a simultaneous arm, and
+  those numbers are in [pointwise is not joint](#pointwise-is-not-joint). They
+  are **not** in Table 1 or Table 2: every row of those tables is a pointwise or
+  marginal band, which is still what a caller gets by default and still what a
+  reader gets by mistake. `lp` and `smooth_lp` also take a band selector and
+  have **no arm in `lp_family.py`** — the LP rows quoted are the crate's own
+  tests. Both VAR arms run at a reduced `band_n_sim` (20000 against the library
+  default of 100000) to keep the harness runtime modest; that puts simulation
+  noise into the multiplier, not bias into the coverage it delivers.
 - **No weak-instrument-robust set exists to measure.** Anderson-Rubin is the
   right interval for the `iv_gmm` and `lp_iv` weak-instrument rows, and the
   library does not expose one.
@@ -985,11 +1095,18 @@ against later.
    back as `hac_bandwidth`. Coverage moves 0.632 → **0.842**, which is the
    honest number: it buys 21 points and **still misses nominal**, so this closed
    a silent-wrongness bug, not the coverage gap.
-3. **Expose a simultaneous band.** *Still open, and now the largest gap on this
-   page.* A sup-t or Bonferroni band for `var_irf_bands`, `lp`, and
-   `var_forecast` would close the largest *reading* gap — 90% pointwise is 72%
-   joint at T=500, and the joint rate does not improve toward the marginal one
-   as T grows.
+3. ~~**Expose a simultaneous band.**~~ **Done, after `0.2.0` — and it does not
+   reach nominal on either VAR arm.** `var_irf_bands`, `var_forecast`, `lp` and
+   `smooth_lp` take a band selector with four routes (sup-t, Šidák, Bonferroni,
+   and the unchanged pointwise default), each reporting the cell family it is
+   simultaneous over. Scored against a pointwise arm on the same replications:
+   the forecast band goes **42.0% → 90.5%** at nominal 95%, the IRF band
+   **71.7% → 85.2%** at nominal 90%, and LP **42.7% → 89.5%** at T=720. So this
+   closed the *reading* gap and left two *coverage* gaps standing, both
+   inherited: the IRF band's marginal coverage is itself 85.3% at h=12, and
+   `var_forecast`'s pooled per-cell marginal rate is 93.4%. `lp_iv`,
+   `lp_multiplier` and `lp_state` get the closed forms only.
+   [The full comparison](#the-remedy-and-the-two-places-it-stops).
 4. **Expose an Anderson-Rubin set for LP-IV and `iv_gmm`.** *Half done.*
    `iv_gmm` now reports `first_stage`, so the caller can at least see the
    instrument strength — but the audit also showed F > 10 is not a safe
@@ -1017,7 +1134,9 @@ against later.
 7. Read `recession_probit`'s failure share with its coverage. A quarter of rare-
    event samples at T=100 have no finite MLE.
 8. Do not read the HAR intercept as if it were as reliable as the HAR slopes.
-9. Read a fan chart one horizon at a time.
+9. Read a fan chart one horizon at a time — or ask for the simultaneous band
+   and say which family it is simultaneous over. The pointwise default is
+   unchanged, so nothing you already plotted became a joint statement.
 
 ---
 

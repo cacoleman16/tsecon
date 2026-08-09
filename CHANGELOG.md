@@ -7,7 +7,106 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added — simultaneous (sup-t) bands
+
+- **A band you can read as a statement about a whole path.** Every band this
+  library produced was **pointwise**: it covered one horizon, or one
+  `(horizon, series)` cell, at the level you asked for and promised nothing
+  about the path a reader actually traces with their eye. The
+  [interval-coverage audit](docs/examples/interval-coverage.md) measured what
+  that costs — a nominal 90% pointwise IRF band contained the whole `h = 0..12` path
+  in **72.2%** of samples at T=500, and nominal 95% forecast bands contained
+  every horizon of every series at once in **40.9%** at T=100 and still only
+  **48.1%** at T=800. The gap is **multiplicity, not sample size**: it does not
+  shrink as the data grows, which is what makes it a design gap rather than a
+  small-sample caveat. `var_irf_bands`, `var_forecast`, `lp` and `smooth_lp` now
+  take a band selector — `band="sup-t"`, `"sidak"` or `"bonferroni"` — that
+  changes the multiplier and **nothing else**: same point estimate, same
+  standard errors, a larger `c` in `point ± c·se` chosen so the whole declared
+  family is covered at once. The sup-t construction is Montiel Olea and
+  Plagborg-Møller's. **Nothing that already reads these functions changes
+  meaning**: `var_irf_bands` and `var_forecast` keep returning pointwise
+  `lower`/`upper` whatever you pass and hand the simultaneous edges back as
+  extra `sim_lower`/`sim_upper` keys (with `critical_value`,
+  `pointwise_critical_value`, `band_scope`, `n_cells` and `n_cells_used`), and
+  the LP family returns no band at all unless `band` is set. `lp` and
+  `smooth_lp` take their own `band_alpha`; the sup-t simulation is a pure
+  function of `band_seed` and `band_n_sim`.
+- **Measured, with both arms scored on the same replications** — joint coverage
+  of the whole family, pointwise band against sup-t band:
+
+```text
+  object                        nominal  design                                pointwise   sup-t
+  var_forecast                      95%  T=100, 12 horizons x 2 series, 6000    41.2+-0.6   90.5+-0.4
+  var_irf_bands (asymptotic)        90%  T=500, h=0..12, 3000 reps              70.4+-0.8   84.8+-0.7
+  lp (lag-augmented)                90%  T=240, 13 horizons, 400 reps           36.5        81.8
+  lp (lag-augmented)                90%  T=720, 13 horizons, 400 reps           42.7        89.5
+```
+
+Tripling T moved LP's *pointwise* joint rate from 36.5% to 42.7%. It is not
+converging.
+
+- **Neither VAR simultaneous rate reaches nominal — 84.8% against 90%, 90.5%
+  against 95% — and the tests say so rather than tuning.** A sup-t band fixes
+  multiplicity and **inherits every other defect of the band it widens**,
+  because it reuses the same standard errors. The IRF band's own *marginal*
+  coverage on that design is 88.7% at h=0 falling to 85.2% at h=12, so what that
+  cell needs is a better standard error, not a bigger multiplier; `var_forecast`
+  is a plug-in band that ignores coefficient sampling error, so its marginal
+  rate is 93.3% rather than 95%. LP is the clean case and it demonstrates the
+  mechanism: at T=720, where the marginals sit on nominal, sup-t lands on
+  nominal.
+- **The cell family is a user-visible choice, not a detail.** "Simultaneous over
+  what?" has several defensible answers that give different critical values, and
+  a band whose scope is ambiguous is worse than no band. `var_irf_bands` takes
+  `band_scope="horizon"` (the default: `K = horizon+1`, one family per
+  response-shock pair — the object the audit measured), `"shock"`
+  (`K = k(horizon+1)`), or `"all"` (`K = k²(horizon+1)`); `var_forecast` takes
+  `"all"` (the default, `K = steps·k`) or `"horizon"` (`K = steps`); `lp` and
+  `smooth_lp` band the horizons of the one response. **Every result reports its
+  scope and its `K`.**
+- **`lp_iv`, `lp_multiplier` and `lp_state` get Šidák and Bonferroni only.**
+  `band="sup-t"` is **refused with an error naming the reason** — no
+  cross-horizon covariance exists for them, and none was invented. Their bands
+  must not be described as sup-t.
+- **What the four routes cost.** At `K = 13` and `alpha = 0.10`: pointwise
+  1.6449, sup-t 2.20–2.65 depending on the persistence of the path, Šidák
+  2.6490, Bonferroni 2.6653. Only sup-t uses the dependence across cells, which
+  is why it is the one that moves; the closed forms pay for a worst case that a
+  smooth response path does not present.
+- **Two shapes that must not be blurred.** On `var_irf_bands(method="bootstrap")`
+  the simultaneous band is symmetric `point ± c·se`, while the reported
+  percentile band is asymmetric Efron. The simultaneous band is therefore **not**
+  guaranteed to lie outside `lower`/`upper` cell by cell — only outside the
+  symmetric `point ± z·se`.
+- **Nothing you already plotted changed.** The pointwise output is
+  bit-identical, verified rather than assumed:
+  FNV-1a fingerprints of the raw f64 bit patterns were captured against the
+  unmodified tree and re-checked after every edit, and the statsmodels goldens
+  still pass.
+- **Measured again, from Python, by the audit that asked for this.** The
+  interval-coverage harness now carries a simultaneous arm in
+  `docs/examples/coverage/irf_bands.py` and
+  `docs/examples/coverage/forecast_intervals.py`. Both read the pointwise and
+  the simultaneous arm off the **same call** — the pointwise band is
+  bit-identical whether or not a band is requested, and the harness asserts
+  that — so the comparison is paired and every replication that gains the whole
+  path gains it because the multiplier grew, never because the point estimate
+  moved. It reproduces the crate numbers: joint coverage 42.0% → 90.5% for
+  `var_forecast` (K=24, 2000 reps) and 71.7% → 85.2% for `var_irf_bands` (K=13,
+  1000 reps), with the shortfall-to-nominal asserted rather than smoothed. The
+  closed forms are worth a look there too: on the IRF cell Šidák and Bonferroni
+  land at 91.7% and 92.0% against a nominal 90%, over the line because
+  over-widening cancelled a marginal shortfall of a different origin. `lp` and
+  `smooth_lp` have no harness arm yet.
+- **Implementation.** One owner for the critical value, `tsecon_stats::simultaneous`,
+  with four routes (sup-t from bootstrap draws, sup-t from a covariance by
+  Gaussian simulation, Šidák, Bonferroni). LP's cross-horizon covariance was
+  **built**, not faked — the Frisch-Waugh-Lovell influence representation, with
+  `sqrt(diag)` matching the reported standard errors to 1.3e-15 and ragged
+  samples handled so the matrix is PSD by construction. `smooth_lp` already
+  computed a joint covariance and discarded all but the diagonal, so its band is
+  exact and nearly free.
 
 ## [0.2.0] - 2026-08-05
 
