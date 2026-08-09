@@ -47,6 +47,7 @@ pub mod forecast;
 pub mod irf;
 pub mod irf_asymptotic;
 pub mod irf_bootstrap;
+pub mod proxy_bands;
 pub mod results;
 pub mod select;
 pub mod spec;

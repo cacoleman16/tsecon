@@ -1,7 +1,11 @@
-"""Do `tsecon.var_irf_bands` confidence bands cover at their nominal rate?
+"""Do `tsecon`'s impulse-response bands cover at their nominal rate?
 
     .venv/bin/python docs/examples/coverage/irf_bands.py            # full run, ~1-2 min
     .venv/bin/python docs/examples/coverage/irf_bands.py --quick    # smoke run, ~10 s
+
+Two functions are measured here: `var_irf_bands` (experiments 1-5, reduced-form
+VAR bands under a Cholesky ordering) and `proxy_svar_bands` (experiment 6,
+external-instrument SVAR bands).
 
 A confidence band is a promise about repeated samples: a 90% band should
 contain the *population* impulse response in 90% of samples. This module
@@ -37,6 +41,15 @@ Known-truth DGPs
           taken from the companion form. Fitting this as a VAR(1) is the
           misspecified case: the target stays the *true* path, so the band is
           being asked to cover something the estimator is not consistent for.
+`PROXY`   stationary VAR(1), largest root 0.758, with a *named* structural
+          impact matrix `B` (so `Sigma = B B'`) and an external instrument
+          `m_t = rho * eps_{1t} + sqrt(1 - rho^2) * v_t`. The proxy is relevant
+          for structural shock 0 with strength `rho` and exogenous with respect
+          to every other shock by construction. A proxy SVAR identifies column
+          0 of `B` up to scale, and the unit-effect normalisation fixes the
+          scale, so the population target is exactly
+          `Psi_h b_1 * unit / b_1[norm_var]` -- closed form, same companion
+          algebra as above. Verified against an 80,000-observation fit.
 
 Structural zeros -- read this before interpreting any table
 -----------------------------------------------------------
@@ -48,6 +61,16 @@ holds for the whole `orth=False` impact matrix, which is the identity with
 zero width. Those cells are verified as exact structural facts in
 `assertions()` and excluded from every coverage claim. All coverage numbers
 below track cells whose population impact response is nonzero.
+
+The proxy-SVAR arm has one more such cell. The unit-effect normalisation pins
+the `h = 0` response of `norm_var` at `unit` inside *every* bootstrap draw, so
+that cell has `se = 0`, `lower = upper = point = unit`, and covers in 100% of
+samples by construction. It is verified as an exact fact and then EXCLUDED from
+every average reported for experiment 6. It is worth being blunt about why: at
+`n = 240` the wild arm's real `h = 0` coverage is about 15%, and averaging it
+with the degenerate 100% cell would print "57%" -- a number that describes
+nothing. Where an average includes the degenerate cell it is labelled as such
+and printed next to the excluded version.
 """
 
 from __future__ import annotations
@@ -72,6 +95,17 @@ REPS_FULL = 2000
 REPS_QUICK = 250
 
 METHODS = ("asymptotic", "bootstrap")
+
+# --- experiment 6 (proxy SVAR) ---------------------------------------------
+PROXY_N_BOOT = 399  # matches N_BOOT so the two families cost the same per draw
+PROXY_NORM_VAR = 0  # unit-effect normalisation is imposed on variable 0 ...
+PROXY_UNIT = 1.0  # ... and pins its h=0 response at exactly this value
+PROXY_RESP = 1  # the tracked cell: the OTHER variable, informative at h=0
+# corr(m_t, eps_{1t}). Everything else in the proxy is independent noise, so
+# this single number IS the instrument's strength.
+PROXY_STRENGTHS = (("strong", 0.50), ("moderate", 0.25), ("weak", 0.12))
+PROXY_BANDS = ("moving_block", "wild")
+PROXY_INTERVALS = (("hall", "lower", "upper"), ("efron", "lower_efron", "upper_efron"))
 
 
 # --------------------------------------------------------------------------
@@ -179,6 +213,80 @@ LAG4 = make_dgp(
     [[[0.40, 0.08], [0.10, 0.30]], _Z, _Z, [[0.32, 0.00], [0.06, 0.26]]],
     [[1.0, 0.4], [0.4, 2.0]],
     "LAG4 VAR(4), root 0.900",
+)
+
+
+# --------------------------------------------------------------------------
+# proxy-SVAR plumbing: a DGP whose STRUCTURAL IRF is known in closed form
+# --------------------------------------------------------------------------
+def make_proxy_dgp(coefs, impact, name):
+    """A VAR(p) with a named structural impact matrix `B`, so `Sigma = B B'`.
+
+    Column 0 of `B` is the shock the instrument is relevant for. No other
+    column of `B` is identified by a proxy SVAR and none is used as truth
+    here -- which is the point: the reduced form is the same object whatever
+    `B` is, and the proxy is the only thing that picks out `b_1`. `B` is
+    deliberately NOT triangular, so `b_1` is not a Cholesky column and a
+    Cholesky-shaped bug could not pass.
+    """
+    impact = np.asarray(impact, dtype=float)
+    dgp = make_dgp(coefs, impact @ impact.T, name)
+    dgp["B"] = impact
+    return dgp
+
+
+def simulate_proxy(dgp, n, rng, rho):
+    """One exactly-stationary draw `(y, m)` of length `n`. No burn-in needed.
+
+    `m_t = rho * eps_{1t} + sqrt(1 - rho^2) * v_t` with `v_t` independent
+    standard normal, so `E[m_t eps_t'] = (rho, 0, ..., 0)`: RELEVANT for
+    structural shock 0 with strength `rho`, EXOGENOUS with respect to every
+    other shock. Both proxy-SVAR conditions hold exactly, by construction, at
+    every `rho` -- so anything experiment 6 measures is a property of the
+    band, never of a violated assumption.
+    """
+    k, p = dgp["k"], dgp["p"]
+    eps = rng.standard_normal((n, k))
+    m = rho * eps[:, 0] + math.sqrt(1.0 - rho * rho) * rng.standard_normal(n)
+    shocks = eps @ dgp["B"].T
+    buf = np.zeros((p + n, k))
+    state = dgp["chol_state"] @ rng.standard_normal(k * p)
+    for i in range(p):
+        buf[p - 1 - i] = state[i * k : (i + 1) * k]
+    nz = dgp["nz"]
+    for t in range(n):
+        row = shocks[t].copy()
+        for lag, a in nz:
+            row += a @ buf[p + t - 1 - lag]
+        buf[p + t] = row
+    return buf[p:], m
+
+
+def true_proxy_irf(dgp, horizon, norm_var=PROXY_NORM_VAR, unit=PROXY_UNIT):
+    """Population proxy-SVAR IRF `[h][response]`, exact, from the companion form.
+
+    The proxy identifies `b_1` only up to scale; the unit-effect normalisation
+    fixes the scale so the impact response of `norm_var` is exactly `unit`.
+    The target is therefore `Psi_h b_1 * unit / b_1[norm_var]`, with `Psi_h`
+    read off the companion form exactly as in `true_irf`.
+    """
+    k, m = dgp["k"], dgp["companion"].shape[0]
+    sel = np.zeros((k, m))
+    sel[:, :k] = np.eye(k)
+    b1 = dgp["B"][:, 0]
+    impulse = b1 * (unit / b1[norm_var])
+    power = np.eye(m)
+    out = []
+    for _ in range(horizon + 1):
+        out.append((sel @ power @ sel.T) @ impulse)
+        power = power @ dgp["companion"]
+    return np.asarray(out)
+
+
+PROXY = make_proxy_dgp(
+    [[[0.70, 0.10], [0.15, 0.50]]],
+    [[1.00, 0.30], [0.50, 1.40]],
+    "PROXY VAR(1), root 0.758, structural impact b_1 = (1.0, 0.5)",
 )
 
 
@@ -690,6 +798,231 @@ def report_nominal_levels(res, show=(0, 2, 4, 8, 12)):
 
 
 # ==========================================================================
+# Experiment 6 -- proxy-SVAR bands: moving-block vs wild, Hall vs Efron
+# ==========================================================================
+def exp_proxy_svar(reps, horizon=12, ns=(240, 480)):
+    """Coverage of `proxy_svar_bands` on a known-truth external-instrument SVAR.
+
+    Four things are measured on one set of draws, so every comparison below is
+    paired and none of the differences is Monte Carlo noise between samples:
+
+    1. `bands="moving_block"` (Jentsch-Lunsford) with a STRONG instrument.
+       This is the headline: the band the library recommends, on the design it
+       is entitled to do well on.
+    2. `bands="wild"` on the IDENTICAL draws. The wild scheme applies a common
+       Rademacher draw to the residuals and to the proxy, which leaves the
+       identifying moment untouched, so the impact vector carries no bootstrap
+       variability at all. If that critique is right, the `h = 0` band should
+       be far too narrow and should NOT improve with the sample size.
+    3. Hall (`lower`/`upper`) against Efron (`lower_efron`/`upper_efron`) on
+       the identical bootstrap distribution -- the two come out of the same
+       call, so the comparison is exact. Also counted: how often each covers
+       when the other does not, which is what "paired" actually buys.
+    4. An instrument-strength sweep (`rho` = 0.50 / 0.25 / 0.12, i.e. median
+       first-stage F of roughly 72 / 15 / 3 at n = 240). A Wald-type band is
+       not entitled to weak instruments and this is where it should show it.
+
+    The tracked cell is the response of variable 1, whose `h = 0` value (0.5)
+    is informative. Variable 0 is `norm_var`: its `h = 0` cell is degenerate at
+    `unit` and is excluded from every average, its `h >= 1` cells are ordinary.
+    """
+    truth = true_proxy_irf(PROXY, horizon)
+    k = PROXY["k"]
+    strengths = [s for s, _ in PROXY_STRENGTHS]
+    arms = [
+        (s, b, kind)
+        for s in strengths
+        for b in PROXY_BANDS
+        for kind, _, _ in PROXY_INTERVALS
+    ]
+    # the one cell that covers by construction and therefore measures nothing
+    keep = np.ones((horizon + 1, k), dtype=bool)
+    keep[0, PROXY_NORM_VAR] = False
+
+    out = {
+        "name": "exp6_proxy_svar",
+        "dgp": PROXY["name"],
+        "cell": f"response of y{PROXY_RESP} to the proxy-identified shock",
+        "truth": truth[:, PROXY_RESP].tolist(),
+        "truth_norm_var": truth[:, PROXY_NORM_VAR].tolist(),
+        "norm_var": PROXY_NORM_VAR,
+        "unit": PROXY_UNIT,
+        "nominal": NOMINAL,
+        "reps": reps,
+        "n_boot": PROXY_N_BOOT,
+        "strengths": dict(PROXY_STRENGTHS),
+        "n_cells_nondegenerate": int(keep.sum()),
+        "by_n": {},
+        "kind": "BAND-H, frequentist; the wild arm is documented NOT valid here",
+    }
+    for n in ns:
+        rng = np.random.default_rng(SEED + 1301 + n)
+        cov = {a: np.zeros((horizon + 1, k)) for a in arms}
+        width = {a: np.zeros((horizon + 1, k)) for a in arms}
+        fstat = {s: np.empty(reps) for s in strengths}
+        n_failed = {s: 0 for s in strengths}
+        failures = {s: {} for s in strengths}
+        points = {s: np.empty((reps, horizon + 1)) for s in strengths}
+        hall_only = {s: np.zeros(horizon + 1) for s in strengths}
+        efron_only = {s: np.zeros(horizon + 1) for s in strengths}
+        blocks, valid_flag = set(), {}
+        for rep in range(reps):
+            for si, (s, rho) in enumerate(PROXY_STRENGTHS):
+                y, m = simulate_proxy(PROXY, n, rng, rho)
+                for bi, b in enumerate(PROXY_BANDS):
+                    res = tsecon.proxy_svar_bands(
+                        y,
+                        m,
+                        lags=PROXY["p"],
+                        horizon=horizon,
+                        norm_var=PROXY_NORM_VAR,
+                        unit=PROXY_UNIT,
+                        alpha=ALPHA,
+                        n_boot=PROXY_N_BOOT,
+                        seed=boot_seed(10 + 2 * si + bi, n, rep),
+                        bands=b,
+                    )
+                    inside = {}
+                    for kind, lo_key, hi_key in PROXY_INTERVALS:
+                        lo = np.asarray(res[lo_key])
+                        hi = np.asarray(res[hi_key])
+                        ok = (lo <= truth) & (truth <= hi)
+                        inside[kind] = ok
+                        cov[(s, b, kind)] += ok
+                        width[(s, b, kind)] += hi - lo
+                    valid_flag[b] = bool(res["asymptotically_valid"])
+                    if b != "moving_block":
+                        continue
+                    # diagnostics are recorded once per draw, off the valid arm
+                    fstat[s][rep] = float(res["point_first_stage_f"])
+                    n_failed[s] += int(res["n_failed"])
+                    for reason, count in res["failures"].items():
+                        failures[s][reason] = failures[s].get(reason, 0) + int(count)
+                    points[s][rep] = np.asarray(res["point"])[:, PROXY_RESP]
+                    blocks.add(int(res["block_length"]))
+                    h_ok = inside["hall"][:, PROXY_RESP]
+                    e_ok = inside["efron"][:, PROXY_RESP]
+                    hall_only[s] += h_ok & ~e_ok
+                    efron_only[s] += e_ok & ~h_ok
+        out["by_n"][n] = {
+            "block_length": sorted(blocks),
+            "asymptotically_valid": dict(valid_flag),
+            "median_first_stage_f": {s: float(np.median(fstat[s])) for s in strengths},
+            "n_failed": dict(n_failed),
+            "failures": {s: dict(failures[s]) for s in strengths},
+            "median_bias": {
+                s: (np.median(points[s], axis=0) - truth[:, PROXY_RESP]).tolist()
+                for s in strengths
+            },
+            "mc_sd_point": {
+                s: points[s].std(axis=0, ddof=1).tolist() for s in strengths
+            },
+            "paired": {
+                s: {
+                    "hall_only": (hall_only[s] / reps).tolist(),
+                    "efron_only": (efron_only[s] / reps).tolist(),
+                }
+                for s in strengths
+            },
+            "arms": {
+                "/".join(a): {
+                    "coverage": (cov[a][:, PROXY_RESP] / reps).tolist(),
+                    "coverage_norm_var": (cov[a][:, PROXY_NORM_VAR] / reps).tolist(),
+                    "mean_width": (width[a][:, PROXY_RESP] / reps).tolist(),
+                    # the two averages the module refuses to conflate
+                    "mean_coverage_excl_degenerate": float(
+                        (cov[a] / reps)[keep].mean()
+                    ),
+                    "mean_coverage_incl_degenerate": float((cov[a] / reps).mean()),
+                    "h0_avg_over_variables_incl_degenerate": float(
+                        (cov[a][0] / reps).mean()
+                    ),
+                }
+                for a in arms
+            },
+        }
+    return out
+
+
+def report_proxy_svar(res, show=(0, 1, 2, 3, 4, 6, 8, 12)):
+    header(
+        f"EXP 6  Proxy-SVAR bands.  {res['dgp']}\n"
+        f"        cell: {res['cell']};  nominal {100 * res['nominal']:.0f}%, "
+        f"R = {res['reps']}, n_boot = {res['n_boot']};  "
+        f"normalisation: unit {res['unit']:.1f} effect on y{res['norm_var']}"
+    )
+    show = tuple(h for h in show if h < len(res["truth"]))
+    for n, block in res["by_n"].items():
+        fs = block["median_first_stage_f"]
+        print(
+            f"\n  n = {n}   median first-stage F: "
+            + ", ".join(
+                f"{s} (rho={res['strengths'][s]:.2f}) {fs[s]:.1f}" for s in fs
+            )
+            + f"   block length {block['block_length']}"
+        )
+        print(
+            "  failed bootstrap draws, moving-block arm: "
+            + ", ".join(f"{s} {block['n_failed'][s]}" for s in block["n_failed"])
+            + f"  (out of {res['reps'] * res['n_boot']:,} per strength; "
+            "failed draws are counted by reason, never dropped)"
+        )
+        print(
+            "  " + f"{'true response':<34}" + "".join(f"{res['truth'][h]:9.3f}" for h in show)
+        )
+        print("  " + f"{'arm':<34}" + "".join(f"{'h=' + str(h):>9}" for h in show) + "   mean*")
+        for arm, stats in block["arms"].items():
+            row = "".join(
+                f"{cov_cell(stats['coverage'][h], mc_se(stats['coverage'][h], res['reps'])):>9}"
+                for h in show
+            )
+            print(f"  {arm:<34}{row}{100 * stats['mean_coverage_excl_degenerate']:8.1f}")
+        print(
+            f"  mean* = average over all {res['n_cells_nondegenerate']} non-degenerate "
+            f"(h, variable) cells, EXCLUDING (y{res['norm_var']}, h=0). Its MC se is bounded "
+            f"above by the\n  single-cell figure printed in each row, since the cells within a "
+            "replication are positively correlated."
+        )
+        print(
+            "  asymptotically_valid, as the library reports it: "
+            + ", ".join(f"{b} {v}" for b, v in block["asymptotically_valid"].items())
+            + ". The wild rows are NOT inference."
+        )
+        print("\n  mean band width, same cell (a band that covers by being useless is not a win)")
+        for arm, stats in block["arms"].items():
+            if arm.endswith("/efron"):
+                # Hall and Efron are the SAME two bootstrap quantiles, reflected
+                # about the point estimate, so their widths are identical to
+                # floating point. Only the location differs. Verified below.
+                continue
+            print(
+                f"  {arm.replace('/hall', ''):<34}"
+                + "".join(f"{stats['mean_width'][h]:9.3f}" for h in show)
+            )
+        print(
+            "\n  paired Hall vs Efron on the identical moving-block draws "
+            "(% of samples where exactly one covers)"
+        )
+        for s, pair in block["paired"].items():
+            print(
+                f"  {s + ' Hall covers, Efron misses':<34}"
+                + "".join(f"{100 * pair['hall_only'][h]:9.1f}" for h in show)
+            )
+            print(
+                f"  {s + ' Efron covers, Hall misses':<34}"
+                + "".join(f"{100 * pair['efron_only'][h]:9.1f}" for h in show)
+            )
+        wild = block["arms"]["strong/wild/hall"]
+        print(
+            f"\n  the excluded cell, made concrete: for strong/wild/hall the h=0 average over "
+            f"BOTH variables is {100 * wild['h0_avg_over_variables_incl_degenerate']:.1f}%, "
+            f"which is 100.0% (the\n  normalisation-pinned y{res['norm_var']} cell, degenerate) "
+            f"averaged with {100 * wild['coverage'][0]:.1f}% (the real one). "
+            "Only the second number means anything."
+        )
+
+
+# ==========================================================================
 # structural facts and the assertions worth making
 # ==========================================================================
 def structural_checks():
@@ -741,6 +1074,67 @@ def structural_checks():
             ),
         }
     facts["asymptotic_halfwidth_over_se"] = _halfwidth_ratio(y)
+    return facts
+
+
+def proxy_structural_checks(big_t=80_000):
+    """Exact facts about `proxy_svar_bands`, plus one convention check.
+
+    The convention check is the only thing in this file that verifies the
+    *target* rather than the band: it fits the estimator to an 80,000
+    observation draw and compares against the closed form. It is not a
+    coverage claim -- it is the guarantee that experiment 6 is aiming at the
+    number the estimator is actually consistent for, so that a shortfall there
+    can be read as a band problem instead of a bookkeeping error.
+    """
+    rng = np.random.default_rng(SEED + 8181)
+    facts = {}
+
+    y_big, m_big = simulate_proxy(PROXY, big_t, rng, 0.5)
+    fit = tsecon.proxy_svar(y_big, m_big, lags=PROXY["p"], horizon=6)
+    facts["big_t"] = big_t
+    facts["big_t_max_abs_dev"] = float(
+        np.abs(np.asarray(fit["irf"]) - true_proxy_irf(PROXY, 6)).max()
+    )
+
+    y, m = simulate_proxy(PROXY, 300, rng, 0.5)
+    for b in PROXY_BANDS:
+        res = tsecon.proxy_svar_bands(
+            y,
+            m,
+            lags=PROXY["p"],
+            horizon=6,
+            norm_var=PROXY_NORM_VAR,
+            unit=PROXY_UNIT,
+            alpha=ALPHA,
+            n_boot=PROXY_N_BOOT,
+            seed=13,
+            bands=b,
+        )
+        nv = PROXY_NORM_VAR
+        pinned = [
+            float(np.asarray(res[key])[0, nv])
+            for key in ("point", "lower", "upper", "lower_efron", "upper_efron")
+        ]
+        note = res["validity_note"] or ""
+        hall_w = np.asarray(res["upper"]) - np.asarray(res["lower"])
+        efron_w = np.asarray(res["upper_efron"]) - np.asarray(res["lower_efron"])
+        facts[b] = {
+            # The normalisation is re-imposed INSIDE every draw, so this cell
+            # is pinned at `unit` exactly -- in the point estimate and in both
+            # interval types. A non-degenerate value here would mean the
+            # normalisation had been hoisted out of the bootstrap loop.
+            "pinned_cell": pinned,
+            "pinned_exactly": all(v == PROXY_UNIT for v in pinned),
+            "pinned_se": float(np.asarray(res["se"])[0, nv]),
+            "asymptotically_valid": bool(res["asymptotically_valid"]),
+            "validity_note_chars": len(note),
+            "draws_accounted": int(res["n_used"]) + int(res["n_failed"]),
+            "n_boot": int(res["n_boot"]),
+            "failure_reasons": sorted(res["failures"]),
+            # Hall and Efron are one bootstrap distribution read two ways.
+            "hall_efron_width_gap": float(np.abs(hall_w - efron_w).max()),
+        }
     return facts
 
 
@@ -892,6 +1286,189 @@ def assertions(results, facts, reps):
             f"n={lo_n}: {100 * a:.1f}%  ->  n={hi_n}: {100 * b:.1f}%",
         )
 
+    # ======================================================================
+    # proxy SVAR
+    # ======================================================================
+    pf = facts["proxy"]
+    check(
+        "proxy-SVAR target matches the estimator's normalisation convention "
+        f"at T={pf['big_t']:,}",
+        pf["big_t_max_abs_dev"] < 0.03,
+        f"max |fitted - closed form| = {pf['big_t_max_abs_dev']:.4f} over h=0..6; "
+        "a wrong impulse vector or a wrong scale would be off by an order of "
+        "magnitude more, so experiment 6 is aiming at the right number",
+    )
+    for b in PROXY_BANDS:
+        f = pf[b]
+        check(
+            f"[proxy/{b}] the (norm_var, h=0) cell is pinned at unit exactly, "
+            "in point and BOTH interval types",
+            f["pinned_exactly"] and f["pinned_se"] == 0.0,
+            f"point/lower/upper/lower_efron/upper_efron = {f['pinned_cell']}, "
+            f"se = {f['pinned_se']} -- the normalisation is re-imposed inside "
+            "every draw, which is why this cell is excluded from every average",
+        )
+        check(
+            f"[proxy/{b}] every bootstrap draw is accounted for (used + failed "
+            "== n_boot), with all six failure reasons reported",
+            f["draws_accounted"] == f["n_boot"] and len(f["failure_reasons"]) == 6,
+            f"{f['draws_accounted']} == {f['n_boot']}; reasons: "
+            + ", ".join(f["failure_reasons"]),
+        )
+        check(
+            f"[proxy/{b}] Hall and Efron are the same two quantiles reflected "
+            "about the point: identical width, different location",
+            f["hall_efron_width_gap"] < 1e-9,
+            f"max |width_hall - width_efron| = {f['hall_efron_width_gap']:.2e}",
+        )
+    check(
+        "the library flags the wild bootstrap as NOT asymptotically valid here "
+        "and the moving block as valid",
+        pf["moving_block"]["asymptotically_valid"]
+        and not pf["wild"]["asymptotically_valid"]
+        and pf["wild"]["validity_note_chars"] > 100,
+        f"moving_block valid={pf['moving_block']['asymptotically_valid']}, "
+        f"wild valid={pf['wild']['asymptotically_valid']} with a "
+        f"{pf['wild']['validity_note_chars']}-character validity_note",
+    )
+
+    e6 = results["exp6"]
+    e6_ns = sorted(e6["by_n"])
+    hmax6 = len(e6["truth"]) - 1
+    for n in e6_ns:
+        blk = e6["by_n"][n]
+        mbb = blk["arms"]["strong/moving_block/hall"]
+        wild = blk["arms"]["strong/wild/hall"]
+        # -- the headline: the recommended band on the design it is entitled to
+        check(
+            f"[n={n}] strong instrument, moving-block Hall: impact coverage is "
+            "in the right neighbourhood (>= 80% against a 90% promise)",
+            mbb["coverage"][0] >= 0.80,
+            f"coverage={100 * mbb['coverage'][0]:.1f}% +/- "
+            f"{100 * mc_se(mbb['coverage'][0], reps):.1f}pp, median first-stage "
+            f"F = {blk['median_first_stage_f']['strong']:.1f}",
+        )
+        # -- the Jentsch-Lunsford critique, reproduced on our own code ---------
+        # A common Rademacher draw on residuals AND proxy cancels out of the
+        # identifying moment, so the impact vector has no bootstrap variability
+        # to speak of. The prediction is a far-too-narrow h=0 band. It is not a
+        # close call: the measured gap is tens of percentage points.
+        check(
+            f"[n={n}] wild bootstrap catastrophically under-covers the IMPACT "
+            "response (< 40% against a 90% promise)",
+            wild["coverage"][0] < 0.40,
+            f"wild {100 * wild['coverage'][0]:.1f}% vs moving-block "
+            f"{100 * mbb['coverage'][0]:.1f}% on the SAME draws",
+        )
+        check(
+            f"[n={n}] moving block beats wild at impact by more than 40pp",
+            mbb["coverage"][0] - wild["coverage"][0] > 0.40,
+            f"{100 * (mbb['coverage'][0] - wild['coverage'][0]):.1f}pp",
+        )
+        check(
+            f"[n={n}] the mechanism: the wild impact band is less than a "
+            "quarter the width of the moving-block one",
+            wild["mean_width"][0] < 0.25 * mbb["mean_width"][0],
+            f"mean width {wild['mean_width'][0]:.3f} vs {mbb['mean_width'][0]:.3f} "
+            f"(ratio {wild['mean_width'][0] / mbb['mean_width'][0]:.3f}) -- the "
+            "identifying moment is invariant to the Rademacher draw, so the "
+            "impact vector barely moves across draws",
+        )
+        # -- weak instruments: a Wald-type band is not entitled to them --------
+        weak = blk["arms"]["weak/moving_block/hall"]
+        check(
+            f"[n={n}] weak instrument (median F = "
+            f"{blk['median_first_stage_f']['weak']:.1f}): the moving-block band "
+            "goes uninformative -- more than 4x wider at impact",
+            weak["mean_width"][0] > 4.0 * mbb["mean_width"][0],
+            f"width {weak['mean_width'][0]:.3f} vs {mbb['mean_width'][0]:.3f} "
+            f"({weak['mean_width'][0] / mbb['mean_width'][0]:.1f}x) around a true "
+            f"response of {e6['truth'][0]:.2f}",
+        )
+        check(
+            f"[n={n}] weak instrument: the moving-block band does NOT lose "
+            "coverage at impact -- it loses width",
+            weak["coverage"][0] >= NOMINAL - 0.02,
+            f"coverage={100 * weak['coverage'][0]:.1f}% against a "
+            f"{100 * NOMINAL:.0f}% promise "
+            f"({100 * (weak['coverage'][0] - NOMINAL):+.1f}pp), while the band is "
+            f"{weak['mean_width'][0] / mbb['mean_width'][0]:.1f}x wider than the "
+            "strong-instrument one. The Wald-type band degrades by going "
+            "uninformative, not by missing",
+        )
+        check(
+            f"[n={n}] weak instrument AND the wild bootstrap is the worst "
+            "combination in the file: h=1 coverage below 60%",
+            blk["arms"]["weak/wild/hall"]["coverage"][1] < 0.60,
+            f"coverage={100 * blk['arms']['weak/wild/hall']['coverage'][1]:.1f}%",
+        )
+        # -- ordering claims, robust to the exact numbers ----------------------
+        check(
+            f"[n={n}] moving-block coverage decays with the horizon, as every "
+            "other band in this file does",
+            mbb["coverage"][-1] < mbb["coverage"][0],
+            f"h=0 {100 * mbb['coverage'][0]:.1f}% -> h={hmax6} "
+            f"{100 * mbb['coverage'][-1]:.1f}%",
+        )
+        widths = [
+            blk["arms"][f"{s}/moving_block/hall"]["mean_width"][0]
+            for s, _ in PROXY_STRENGTHS
+        ]
+        check(
+            f"[n={n}] impact band width is monotone in instrument strength",
+            widths[0] < widths[1] < widths[2],
+            " < ".join(f"{w:.3f}" for w in widths)
+            + " for rho = "
+            + "/".join(f"{r:.2f}" for _, r in PROXY_STRENGTHS),
+        )
+        # -- Hall vs Efron, measured on identical draws ------------------------
+        efron = blk["arms"]["strong/moving_block/efron"]
+        pair = blk["paired"]["strong"]
+        # An ordering claim on identical draws, not a threshold: the paired
+        # discordance is the evidence, and it runs one way at every n and
+        # every horizon measured here.
+        check(
+            f"[n={n}] at the longest horizon Efron covers more than Hall, on "
+            "the identical bootstrap draws",
+            efron["coverage"][-1] - mbb["coverage"][-1] > 0.02
+            and pair["efron_only"][-1] > pair["hall_only"][-1],
+            f"h={hmax6}: Hall {100 * mbb['coverage'][-1]:.1f}% vs Efron "
+            f"{100 * efron['coverage'][-1]:.1f}% "
+            f"({100 * (efron['coverage'][-1] - mbb['coverage'][-1]):+.1f}pp); paired, "
+            f"Efron-covers-Hall-misses {100 * pair['efron_only'][-1]:.1f}% of samples "
+            f"against {100 * pair['hall_only'][-1]:.1f}% the other way. Same width "
+            "either way, so this is entirely about where the band sits",
+        )
+        # -- the excluded cell is not a rounding detail ------------------------
+        check(
+            f"[n={n}] including the degenerate cell would overstate the wild "
+            "arm's h=0 coverage by more than 20pp",
+            wild["h0_avg_over_variables_incl_degenerate"] - wild["coverage"][0] > 0.20,
+            f"h=0 average over both variables "
+            f"{100 * wild['h0_avg_over_variables_incl_degenerate']:.1f}% vs the "
+            f"informative cell alone {100 * wild['coverage'][0]:.1f}%",
+        )
+        check(
+            f"[n={n}] no bootstrap draw failed, so no coverage number in "
+            "experiment 6 is conditioned on a discarded tail",
+            all(v == 0 for v in blk["n_failed"].values()),
+            "n_failed = "
+            + ", ".join(f"{s} {v}" for s, v in blk["n_failed"].items())
+            + f" out of {reps * e6['n_boot']} draws each",
+        )
+    # The wild bootstrap's impact failure is INCONSISTENCY, not a small-sample
+    # artefact: doubling the sample does not buy any of it back.
+    if len(e6_ns) > 1:
+        lo_n, hi_n = e6_ns[0], e6_ns[-1]
+        a = e6["by_n"][lo_n]["arms"]["strong/wild/hall"]["coverage"][0]
+        b = e6["by_n"][hi_n]["arms"]["strong/wild/hall"]["coverage"][0]
+        check(
+            "wild-bootstrap impact coverage does NOT improve with n (it is "
+            "invalidity, not a finite-sample approximation)",
+            b <= a + 0.02,
+            f"n={lo_n}: {100 * a:.1f}%  ->  n={hi_n}: {100 * b:.1f}%",
+        )
+
     # --- coverage is monotone in the nominal level ------------------------
     e5 = results["exp5"]
     lv = e5["levels"]
@@ -989,6 +1566,81 @@ def findings(results, reps):
                 f"h=4 {100 * row[4]:.1f}%, h={hmax} {100 * row[-1]:.1f}% "
                 f"(under-covers by {100 * (lvl - row[-1]):.1f}pp at h={hmax})"
             )
+
+    e6 = results["exp6"]
+    hmax6 = len(e6["truth"]) - 1
+    for n, blk in e6["by_n"].items():
+        for arm, stats in blk["arms"].items():
+            prof = stats["coverage"]
+            strength = arm.split("/")[0]
+            lines.append(
+                f"EXP6 n={n:<4} {arm:<32} F~{blk['median_first_stage_f'][strength]:6.1f}  "
+                f"coverage h=0 {100 * prof[0]:.1f}%, h=1 {100 * prof[1]:.1f}%, "
+                f"h=4 {100 * prof[4]:.1f}%, h={hmax6} {100 * prof[-1]:.1f}%; "
+                f"mean over the {e6['n_cells_nondegenerate']} non-degenerate cells "
+                f"{100 * stats['mean_coverage_excl_degenerate']:.1f}%"
+            )
+    for n, blk in e6["by_n"].items():
+        mbb = blk["arms"]["strong/moving_block/hall"]
+        wild = blk["arms"]["strong/wild/hall"]
+        lines.append(
+            f"EXP6 n={n:<4} THE JENTSCH-LUNSFORD CRITIQUE, REPRODUCED ON THIS IMPLEMENTATION: "
+            f"with a strong instrument the wild bootstrap covers the IMPACT response "
+            f"{100 * wild['coverage'][0]:.1f}% of the time against a "
+            f"{100 * NOMINAL:.0f}% promise, because its impact band is "
+            f"{mbb['mean_width'][0] / max(wild['mean_width'][0], 1e-12):.1f}x too narrow "
+            f"({wild['mean_width'][0]:.3f} against the moving block's "
+            f"{mbb['mean_width'][0]:.3f}). The common Rademacher draw cancels out of "
+            f"sum_t m_t u_t', so the impulse vector is nearly frozen across draws. "
+            f"Use bands='wild' to REPRODUCE Mertens-Ravn / Gertler-Karadi figures, never "
+            f"to make an inferential claim."
+        )
+        lines.append(
+            f"EXP6 n={n:<4} the strong-instrument wild arm recovers by h>=2 "
+            f"({100 * wild['coverage'][1]:.1f}% at h=1, {100 * wild['coverage'][2]:.1f}% at h=2) "
+            f"because the reduced-form slopes DO vary across wild draws -- only the "
+            f"identification step is frozen. So the damage is concentrated at impact and h=1, "
+            f"which is exactly where proxy-SVAR papers put their headline number."
+        )
+        efron = blk["arms"]["strong/moving_block/efron"]
+        pair = blk["paired"]["strong"]
+        lines.append(
+            f"EXP6 n={n:<4} Hall vs Efron, measured not asserted, on identical draws: at h=0 "
+            f"Hall {100 * mbb['coverage'][0]:.1f}% / Efron {100 * efron['coverage'][0]:.1f}%; "
+            f"at h={hmax6} Hall {100 * mbb['coverage'][-1]:.1f}% / Efron "
+            f"{100 * efron['coverage'][-1]:.1f}%. Paired at h={hmax6}, Efron covers where Hall "
+            f"misses in {100 * pair['efron_only'][-1]:.1f}% of samples and the reverse in "
+            f"{100 * pair['hall_only'][-1]:.1f}%. Same width either way -- they are the same two "
+            f"quantiles, reflected -- so this is purely about where the band sits. The library "
+            f"recommends Hall; on THIS DGP Efron holds up better at long horizons and the two "
+            f"are within a few points at impact. Neither dominates; report which you used."
+        )
+        weak = blk["arms"]["weak/moving_block/hall"]
+        lines.append(
+            f"EXP6 n={n:<4} weak instrument (median first-stage F "
+            f"{blk['median_first_stage_f']['weak']:.1f}): the moving-block band does NOT lose "
+            f"coverage at impact -- it covers {100 * weak['coverage'][0]:.1f}% against "
+            f"{100 * NOMINAL:.0f}% -- it goes USELESS instead, "
+            f"{weak['mean_width'][0] / mbb['mean_width'][0]:.1f}x wider "
+            f"({weak['mean_width'][0]:.2f} around a true response of {e6['truth'][0]:.2f}). "
+            f"That is the Wald-type band degrading in the only way it can. It still loses "
+            f"coverage at long horizons ({100 * weak['coverage'][-1]:.1f}% at h={hmax6}). For "
+            f"weak instruments prefer proxy_ar_sets, whose shape is allowed to say 'unbounded'."
+        )
+        lines.append(
+            f"EXP6 n={n:<4} across the three moving-block arms, "
+            f"{sum(blk['n_failed'].values())} bootstrap draws failed out of "
+            f"{len(blk['n_failed']) * e6['reps'] * e6['n_boot']:,}. The six failure guards never "
+            f"fired on this DGP -- the normalisation variable carries the LARGEST impact loading "
+            f"here, so the near-zero-denominator tail the guards exist for is never entered. "
+            f"This harness therefore measures nothing about how those guards behave when it is, "
+            f"and no coverage number above is conditioned on a discarded draw."
+        )
+    lines.append(
+        f"EXP6 bands are POINTWISE. No simultaneous band is measured for proxy_svar_bands "
+        f"and none is offered by the library; the joint shortfall documented for "
+        f"var_irf_bands above applies here for the same reason."
+    )
     return lines
 
 
@@ -1007,9 +1659,12 @@ def run(quick=False, reps=None):
     print(f"nominal level      : {100 * NOMINAL:.0f}%  (alpha = {ALPHA:.2f}, the library default)")
     print(f"horizons           : 0..{horizon}")
     print(f"mode               : {'QUICK smoke run' if quick else 'full run'}")
-    print("DGPs               : " + "; ".join(d["name"] for d in (BASE, PERSIST, LAG4)))
+    print("DGPs               : " + "; ".join(d["name"] for d in (BASE, PERSIST, LAG4, PROXY)))
+    print(f"functions measured : tsecon.var_irf_bands (exp 1-5); "
+          f"tsecon.proxy_svar_bands (exp 6, n_boot = {PROXY_N_BOOT})")
 
     facts = structural_checks()
+    facts["proxy"] = proxy_structural_checks()
     results = {}
     ns_small = (100, 200) if quick else (100, 200, 500)
     results["exp1"] = exp_horizon_profile(reps, horizon, ns=ns_small)
@@ -1029,6 +1684,10 @@ def run(quick=False, reps=None):
     results["exp5"] = exp_nominal_levels(reps, horizon)
     report_nominal_levels(
         results["exp5"], show=tuple(h for h in (0, 2, 4, 8, 12) if h <= horizon)
+    )
+    results["exp6"] = exp_proxy_svar(reps, horizon, ns=(240,) if quick else (240, 480))
+    report_proxy_svar(
+        results["exp6"], show=tuple(h for h in (0, 1, 2, 3, 4, 6, 8, 12) if h <= horizon)
     )
 
     header("FINDINGS -- measured, not targeted")
