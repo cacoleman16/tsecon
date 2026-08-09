@@ -63,7 +63,7 @@ use tsecon_linalg::faer::{Mat, MatRef};
 
 use crate::dense::{axpy, mat_t_vec, mat_vec, outer_scaled, sandwich_t, symmetrize_in_place};
 use crate::error::SsmError;
-use crate::filter::{filter_univariate, FilterOutput, TOLERANCE_DIFFUSE};
+use crate::filter::{filter_univariate, FilterOutput};
 use crate::model::LinearGaussianSSM;
 
 /// Output of the univariate state smoother: smoothed moments plus the
@@ -123,7 +123,7 @@ pub fn smooth_univariate(
             }
             let zi: Vec<f64> = (0..m).map(|j| z[(i, j)]).collect();
 
-            if step.f_inf > TOLERANCE_DIFFUSE {
+            if step.diffuse {
                 // Exact-diffuse element (only occurs while t < d_diffuse).
                 let f1 = 1.0 / step.f_inf;
                 let f2 = -step.f_star * f1 * f1;
