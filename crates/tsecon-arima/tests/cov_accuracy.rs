@@ -13,6 +13,12 @@
 //!   9.8e-9 to 9.8e5. This is the test that would have caught the
 //!   absolute-floored `sigma2` step, which was 4.6% wrong at
 //!   `sigma2 = 9.8e-5` and silent about it.
+//! * [`bse_is_exact_far_below_the_old_absolute_floor`] — the same closed
+//!   forms plus the `loglik(c y) = loglik(y) - n ln c` identity, carried
+//!   down to `sigma2 = 9.8e-19`. This is the test that would have caught
+//!   the state-space filter's absolute variance floor, which discarded
+//!   every observation below `sigma2 ~ 1e-10` and returned `loglik = 0.0`
+//!   as a success.
 //! * [`css_standard_errors_match_ols_on_the_conditional_sample`] — the
 //!   CSS branch of the covariance dispatch, against the OLS closed form
 //!   for the conditional likelihood. This one has teeth: the exact-MLE
@@ -70,12 +76,14 @@ fn rw_drift_mle(y: &[f64]) -> (f64, f64, f64) {
 /// 4.6e-2 relative error with no error and no NaN. Measured worst case
 /// with the log-scale step, over the whole sweep: 4.6e-7.
 ///
-/// The lower end stops at `sigma2 ~ 1e-8` for a reason outside this
-/// crate: the state-space filter drops observations whose prediction
-/// variance is below `1e-10` (`tsecon_ssm::filter::TOLERANCE_DIFFUSE`, an
-/// absolute threshold), so below that the log-likelihood itself goes
-/// numerically constant. The sweep asserts that this shows up as an
-/// *error* and never as a number.
+/// The lower end used to stop at `sigma2 ~ 1e-8` for a reason outside this
+/// crate: the state-space filter compared each prediction variance against
+/// an *absolute* `1e-10` floor and dropped everything below it, so beneath
+/// that the log-likelihood went numerically constant and this sweep could
+/// not be extended. That floor is now relative to the variance's own scale
+/// (`tsecon_ssm::filter::TOLERANCE_RANK`), so the likelihood is real all
+/// the way down; [`bse_is_exact_far_below_the_old_absolute_floor`] carries
+/// the sweep another ten decades to `sigma2 ~ 9.8e-19`.
 #[test]
 fn bse_is_scale_free_across_fourteen_decades_of_sigma2() {
     let base = random_walk_with_drift(7, 200);
@@ -122,20 +130,100 @@ fn bse_is_scale_free_across_fourteen_decades_of_sigma2() {
         bse[1]
     );
 
-    // Below the filter's absolute variance floor the likelihood is
-    // numerically constant. That must be an error, never a number.
+    // Below the old absolute variance floor the likelihood used to go
+    // numerically constant, and this assertion used to demand an error.
+    // With the relative floor the likelihood is real there, so the
+    // standard errors are simply correct — see
+    // `bse_is_exact_far_below_the_old_absolute_floor` for the full sweep.
     let y: Vec<f64> = base.iter().map(|v| v * 1e-6).collect();
-    let (c, s2, _) = rw_drift_mle(&y);
-    assert!(s2 < 1e-10, "expected sigma2 under the filter floor: {s2:e}");
-    let err = spec.at_params(&y, &[c, s2]).unwrap().bse().unwrap_err();
+    let (c, s2, n) = rw_drift_mle(&y);
     assert!(
-        matches!(err, ArimaError::CovarianceFailed { .. }),
-        "a numerically flat likelihood produced {err:?}, not an error"
+        s2 < 1e-10,
+        "expected sigma2 under the old filter floor: {s2:e}"
     );
+    let bse = spec
+        .at_params(&y, &[c, s2])
+        .unwrap()
+        .bse()
+        .expect("a sub-1e-10 sigma2 is filterable, not a flat likelihood");
+    let want = (2.0 * s2 * s2 / n).sqrt();
     assert!(
-        err.to_string().contains("Rescale"),
-        "the error must name the fix: {err}"
+        (bse[1] - want).abs() <= 5e-6 * want,
+        "se(sigma2) at sigma2 = {s2:e}: {} vs the closed form {want}",
+        bse[1]
     );
+}
+
+/// **The regression test for the silent `loglik = 0.0`.** The exact
+/// log-likelihood of ARIMA(0,1,0)+c is a closed form in the series scale:
+/// multiplying `y` by `c` multiplies the MLE `sigma2` by `c^2` and shifts
+/// the log-likelihood by exactly `-n ln c`, where `n` is the number of
+/// first differences. Nothing external is needed to check it.
+///
+/// Before the fix, the state-space filter compared each prediction
+/// variance against an absolute `1e-10`. At `sigma2 ~ 1e-13` that
+/// discarded *every* observation, and `arima` reported `loglik = 0.0` as a
+/// success — a meaningless optimum indistinguishable from a real one. The
+/// sweep here runs `sigma2` from `9.8e5` down to `9.8e-19`, twenty-four
+/// decades, and asserts the likelihood sits on the closed-form line the
+/// whole way. Under the old floor everything from `k = 5` on returned
+/// exactly `0.0`, missing the line by thousands of nats.
+///
+/// The standard errors are checked alongside, because a likelihood that is
+/// merely *nonzero* but wrong would still pass a nonzero-check.
+#[test]
+fn bse_is_exact_far_below_the_old_absolute_floor() {
+    let base = random_walk_with_drift(7, 200);
+    let spec = ArimaSpec::new(0, 1, 0).unwrap().with_constant(true);
+
+    let (c0, _, n) = rw_drift_mle(&base);
+    let (_, s2_0, _) = rw_drift_mle(&base);
+    let ll0 = spec
+        .loglike(&base, &[c0, s2_0])
+        .expect("the unit-scale likelihood is well defined");
+
+    let mut worst_ll = 0.0_f64;
+    let mut worst_bse = 0.0_f64;
+    // scale 1e-9 .. 1e3 puts sigma2 in 9.8e-19 .. 9.8e5.
+    for k in -3..=9 {
+        let scale = 10f64.powi(-k);
+        let y: Vec<f64> = base.iter().map(|v| v * scale).collect();
+        let (c, s2, _) = rw_drift_mle(&y);
+
+        let ll = spec
+            .loglike(&y, &[c, s2])
+            .unwrap_or_else(|e| panic!("sigma2 = {s2:e}: loglike failed with {e}"));
+        assert_ne!(
+            ll, 0.0,
+            "sigma2 = {s2:e}: loglik collapsed to exactly 0.0 — every \
+             observation was discarded, which is the absolute-floor defect"
+        );
+
+        // loglik(scale * y) = loglik(y) - n ln(scale).
+        let want_ll = ll0 - n * scale.ln();
+        let rel_ll = (ll - want_ll).abs() / want_ll.abs().max(1.0);
+        worst_ll = worst_ll.max(rel_ll);
+        assert!(
+            rel_ll <= 1e-12,
+            "sigma2 = {s2:e}: loglik {ll} vs the closed form {want_ll} (rel {rel_ll:e})"
+        );
+
+        let bse = spec
+            .at_params(&y, &[c, s2])
+            .unwrap()
+            .bse()
+            .unwrap_or_else(|e| panic!("sigma2 = {s2:e}: bse failed with {e}"));
+        let want = [(s2 / n).sqrt(), (2.0 * s2 * s2 / n).sqrt()];
+        for (i, (&got, &w)) in bse.iter().zip(&want).enumerate() {
+            let rel = (got - w).abs() / w;
+            worst_bse = worst_bse.max(rel);
+            assert!(
+                rel <= 5e-6,
+                "sigma2 = {s2:e}: bse[{i}] = {got} vs the closed form {w} (rel {rel:e})"
+            );
+        }
+    }
+    println!("24-decade sweep: worst loglik deviation {worst_ll:e}, worst bse {worst_bse:e}");
 }
 
 /// OLS of `y_t` on `[1, y_{t-1}, ..., y_{t-p}]` over `t = p..n`, with the

@@ -20,16 +20,16 @@ Verified on this working tree (macOS, Apple silicon, Rust 1.97.1, CPython
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1083 passed, 0 failed, 1 ignored** | `cargo test --workspace --exclude tsecon-python` |
-| — integration tests in `crates/*/tests/` | 898 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 141 | |
+| Rust tests (total) | **1150 passed, 0 failed, 1 ignored** | `cargo test --workspace --exclude tsecon-python` |
+| — integration tests in `crates/*/tests/` | 952 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 154 | |
 | — documentation tests | 44 | |
-| Python binding tests | **562 passed** in 6.5 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **600 passed** in 7.1 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 41, **every one** with a `tests/` directory | |
-| Golden fixtures | 66 JSON files, produced by 47 generator scripts | `fixtures/` |
-| Public Python functions | 126 — **all 126** are called at least once in the binding suite | |
+| Golden fixtures | 68 JSON files, produced by 49 generator scripts | `fixtures/` |
+| Public Python functions | 128 — **all 128** are called at least once in the binding suite | |
 
-Of the 898 Rust integration tests, **174 are golden tests** (`golden.rs` in 38
+Of the 952 Rust integration tests, **174 are golden tests** (`golden.rs` in 38
 crates, plus `unitroot_golden.rs`, `smooth_golden.rs`, `pmg_golden.rs`, and the
 new identification/unit-root goldens) and **434 are property tests**
 (`properties.rs` in 38 crates, plus `unitroot_properties.rs`,
@@ -470,9 +470,10 @@ library with lying documentation.
 
 ## 3 · The Python test files
 
-All 34 files in
+36 of the 49 files in
 [`bindings/python/tests/`](../../bindings/python/tests), with collected test
-counts:
+counts. The 13 not listed here are a gap in *this table*, not in the suite —
+every one of them runs on every invocation of the command above:
 
 | File | Tests | What it covers |
 |---|---:|---|
@@ -496,6 +497,7 @@ counts:
 | `test_panel_fceval.py` | 3 | Panel estimators and the Clark-West / Giacomini-White forecast comparison tests. |
 | `test_pmg_news.py` | 3 | PMG panel estimator against its documented-formula golden; `dfm_news` against its exact adding-up identity. |
 | `test_predreg.py` | 2 | IVX / Stambaugh predictive-regression point estimates and Wald statistics (the *size* claim lives in the crate's MC property tests). |
+| `test_proxy_svar_bands.py` | 38 | Jentsch-Lunsford moving-block bands and the Anderson-Rubin sets. No external package computes either, so the Python layer pins what the binding must not lose: the `h = 0` cell of `norm_var` degenerate at `unit`, the six failure counters surfaced rather than dropped, the wild arm labelled `asymptotically_valid=False`, every AR set shape reachable and branch-able by `kind`, `unit`-equivariance, level nesting, the point estimate always a member of its own set, and `level is None` when reduced-form uncertainty is switched off. |
 | `test_realized_extras.py` | 7 | Realized/tripower quarticity, BNS jump test, Parkinson & Garman-Klass range variances against documented closed forms. |
 | `test_results_arima.py` | 20 | `ARIMAResults` is *additive*: key-by-key dict equality against a raw `arima_fit` call, then the rendering. |
 | `test_results_dsge.py` | 26 | `DSGEResults` against the Cagan money-demand model, which has a closed-form saddle-path solution (`G = 1/(1−aρ)`, `P = ρ`, `Q = 1`). |
@@ -664,7 +666,7 @@ discover.
   published-result replications run against small public datasets committed to
   the repo (`fixtures/ramey_zubairy.csv`, `fixtures/yield_curve_recession.csv`),
   so they are reproduced offline and cannot break on a provider's URL change.
-- **Benchmarks compare 25 of 126 functions.** The parity gate covers the unit-root
+- **Benchmarks compare 25 of 128 functions.** The parity gate covers the unit-root
   tests, the diagnostics, VAR and its IRF/FEVD/Granger, Johansen, the filters,
   the spectra, ridge/elastic-net, and the GARCH family — a broad spot check, not a
   library-wide cross-library audit — that job belongs to the fixtures.

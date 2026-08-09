@@ -764,6 +764,18 @@ fn var_results(
         .map_err(to_py)
 }
 
+/// Parse the `trend` string on its own, for entry points that build a spec
+/// rather than fitting through [`var_results`]. Same vocabulary, one owner.
+fn parse_trend(trend: &str) -> PyResult<tsecon_var::Trend> {
+    match trend {
+        "c" => Ok(tsecon_var::Trend::Constant),
+        "n" => Ok(tsecon_var::Trend::None),
+        other => Err(PyValueError::new_err(format!(
+            "unknown trend {other:?}; expected \"c\" or \"n\""
+        ))),
+    }
+}
+
 fn mat_to_vec2(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
     (0..m.nrows())
         .map(|i| (0..m.ncols()).map(|j| m[(i, j)]).collect())
@@ -2876,6 +2888,348 @@ fn proxy_svar<'py>(
     d.set_item("cov_um", res.cov_um.into_pyarray(py))?;
     d.set_item("n_proxy", res.n_proxy)?;
     d.set_item("shock", res.shock.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Align a proxy to the residual sample: accept the full `n_obs` series (drop
+/// the first `lags` presample rows) or one already of length `T`. NaN marks
+/// unavailability and is never compacted away -- compacting would destroy the
+/// date alignment with the residuals, which is the whole identification.
+fn align_proxy(pv: Vec<f64>, n_obs: usize, lags: usize, t: usize) -> PyResult<Vec<f64>> {
+    if pv.len() == t {
+        Ok(pv)
+    } else if pv.len() == n_obs {
+        Ok(pv[lags..].to_vec())
+    } else {
+        Err(PyValueError::new_err(format!(
+            "proxy length {} must equal the number of observations {} or the \
+             residual sample length {}",
+            pv.len(),
+            n_obs,
+            t
+        )))
+    }
+}
+
+/// Confidence bands for a proxy (external-instrument) SVAR impulse response.
+///
+/// `bands="moving_block"` (the default, alias `"mbb"`) is the Jentsch-Lunsford
+/// (2019) moving-block bootstrap: the joint pair `(u_t, m_t)` is resampled in
+/// blocks under a single set of block starts, the VAR is reconstructed and
+/// re-estimated inside every draw, and the unit-effect normalization is
+/// re-imposed per draw. `bands="wild"` reproduces the wild bootstrap used by
+/// Mertens-Ravn (2013) and Gertler-Karadi (2015) and is **not asymptotically
+/// valid for this estimand** -- a common Rademacher draw applied to both the
+/// residuals and the proxy leaves the identifying moment `sum_t m_t u_t'`
+/// bit-identical in every draw, so it carries no bootstrap variability at all.
+/// It is offered because reproducing those papers' published bands is a
+/// legitimate thing to want; read `asymptotically_valid` and `validity_note`
+/// before quoting it as inference.
+///
+/// Returns `lower`/`upper` (Hall / basic, the recommended band) and
+/// `lower_efron`/`upper_efron` (the percentile band Mertens-Ravn and
+/// Gertler-Karadi report), which differ materially when the bootstrap
+/// distribution is skewed.
+///
+/// **The `h=0` entry for `norm_var` is degenerate at `unit` by construction,
+/// not a bug** -- the normalization pins it in every draw, and a non-degenerate
+/// value there would mean the normalization had been hoisted out of the loop.
+///
+/// **These bands are pointwise, not joint.** A nominal `1-alpha` band covers
+/// each `(h, variable)` cell at that rate; it does not cover the whole path
+/// simultaneously.
+///
+/// Failed draws are counted by reason in `failures` and reported in
+/// `n_failed`, never silently dropped -- the failures are exactly the
+/// near-zero-denominator tail, so discarding them would shrink the interval.
+/// A nonzero `n_failed` with a `failure_warning` is a sign the instrument is
+/// too weak for a Wald-type band; prefer `proxy_ar_sets`.
+///
+/// These are strong-instrument asymptotics.
+#[pyfunction]
+#[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0,
+                    trend = "c", alpha = 0.10, n_boot = 2000, seed = 0,
+                    bands = "moving_block", block_length = None, robust_f = true))]
+#[allow(clippy::too_many_arguments)]
+fn proxy_svar_bands<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    proxy: PyReadonlyArray1<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    norm_var: usize,
+    unit: f64,
+    trend: &str,
+    alpha: f64,
+    n_boot: usize,
+    seed: u64,
+    bands: &str,
+    block_length: Option<usize>,
+    robust_f: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::proxy_bands::{proxy_svar_bands as bands_fn, ProxyBandMethod, ProxyBandSpec};
+
+    let method = match bands {
+        "moving_block" | "mbb" => ProxyBandMethod::MovingBlock,
+        "wild" => ProxyBandMethod::Wild,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown bands {other:?}; expected \"moving_block\" (the \
+                 Jentsch-Lunsford moving-block bootstrap, the default) or \
+                 \"wild\". Note that \"wild\" is NOT asymptotically valid for a \
+                 proxy SVAR -- it freezes the identifying moment -- and is \
+                 offered only to reproduce Mertens-Ravn / Gertler-Karadi bands."
+            )))
+        }
+    };
+    let spec = ProxyBandSpec {
+        lags,
+        trend: parse_trend(trend)?,
+        horizon,
+        norm_var,
+        unit,
+        alpha,
+        n_boot,
+        seed,
+        method,
+        block_length,
+        robust_f,
+    };
+    let pv = vec1(&proxy);
+    let n_obs = data.as_array().nrows();
+    let arr = data.as_array();
+    let endog =
+        tsecon_var::tsecon_linalg::faer::Mat::from_fn(arr.nrows(), arr.ncols(), |i, j| arr[(i, j)]);
+    let t = n_obs.saturating_sub(lags);
+    let proxy_aligned = align_proxy(pv, n_obs, lags, t)?;
+
+    let r = bands_fn(endog.as_ref(), &proxy_aligned, &spec).map_err(to_py)?;
+
+    let d = PyDict::new(py);
+    let cube = |v: &Vec<Vec<f64>>| -> Vec<Vec<f64>> { v.clone() };
+    d.set_item("point", cube(&r.point))?;
+    d.set_item("lower", cube(&r.lower))?;
+    d.set_item("upper", cube(&r.upper))?;
+    d.set_item("lower_efron", cube(&r.lower_efron))?;
+    d.set_item("upper_efron", cube(&r.upper_efron))?;
+    d.set_item("se", cube(&r.se))?;
+    d.set_item("n_boot", r.n_boot)?;
+    d.set_item("n_used", r.n_used)?;
+    d.set_item("n_failed", r.n_failed)?;
+    let f = PyDict::new(py);
+    f.set_item("too_few_proxy_obs", r.failures.too_few_proxy_obs)?;
+    f.set_item("zero_proxy_variance", r.failures.zero_proxy_variance)?;
+    f.set_item("near_zero_gamma_norm", r.failures.near_zero_gamma_norm)?;
+    f.set_item("refit_failed", r.failures.refit_failed)?;
+    f.set_item("identification_failed", r.failures.identification_failed)?;
+    f.set_item("non_finite", r.failures.non_finite)?;
+    d.set_item("failures", f)?;
+    d.set_item("failure_warning", r.failure_warning.clone())?;
+    d.set_item("block_length", r.block_length)?;
+    d.set_item("alpha", r.alpha)?;
+    d.set_item(
+        "method",
+        match r.method {
+            ProxyBandMethod::MovingBlock => "moving_block",
+            ProxyBandMethod::Wild => "wild",
+            _ => "unknown",
+        },
+    )?;
+    d.set_item("asymptotically_valid", r.asymptotically_valid)?;
+    d.set_item("validity_note", r.validity_note)?;
+    d.set_item(
+        "gamma_norm_draws",
+        r.gamma_norm_draws.clone().into_pyarray(py),
+    )?;
+    d.set_item(
+        "first_stage_f_draws",
+        r.first_stage_f_draws.clone().into_pyarray(py),
+    )?;
+    d.set_item(
+        "reliability_draws",
+        r.reliability_draws.clone().into_pyarray(py),
+    )?;
+    // rho* is the scale-free diagnostic: rows are draws (NaN for a failure, so
+    // row alignment with the other per-draw vectors is preserved), and
+    // rho[norm_var] == 1.0 exactly for every survivor.
+    d.set_item("rho_draws", r.rho_draws.clone())?;
+    d.set_item("point_gamma_norm", r.point_gamma_norm)?;
+    d.set_item("point_first_stage_f", r.point_first_stage_f)?;
+    d.set_item("point_reliability", r.point_reliability)?;
+    d.set_item("n_proxy", r.n_proxy)?;
+    Ok(d)
+}
+
+/// Weak-instrument-robust (Anderson-Rubin) confidence SETS for a proxy-SVAR
+/// impulse response.
+///
+/// Under weak identification no *bounded* confidence set can be honest
+/// (Dufour 1997), so a Wald band stays valid only by becoming uninformative --
+/// and in finite samples it usually just under-covers instead. This inverts the
+/// Anderson-Rubin statistic in closed form, which means a set here may be a
+/// bounded interval, the **complement** of an interval (two rays), the whole
+/// line, or empty. That shape is the answer, not a failure: an unbounded set is
+/// the honest statement that the data do not pin the response down.
+///
+/// Each cell reports `kind` (`"interval"`, `"exterior"`, `"whole"`, `"empty"`,
+/// `"point"`), `lower`/`upper`, and for `"exterior"` the `excluded_lower` /
+/// `excluded_upper` of the region the data reject. **Do not read an
+/// `"exterior"` set as an interval**, and note that `excludes_zero` on an
+/// unbounded set does *not* establish a sign -- both signs can be members.
+///
+/// By default the reduced-form (VAR coefficient) uncertainty is PROPAGATED,
+/// because omitting it is catastrophic in exactly the case every real caller is
+/// in: measured on an estimated VAR at nominal 0.95, coverage runs 0.952 at
+/// h=0 down to **0.119** by h=8 without it, and 0.952 to 0.913 with it. When
+/// `reduced_form_uncertainty` is False the returned `level` is `None`, because
+/// a set conditional on the reduced form has no honest 1-alpha label.
+///
+/// Propagation is conservative under weak instruments (measured 0.991 at a
+/// nominal 0.95), because the extra variance turns exterior sets into the whole
+/// line. That is the correct direction to err.
+#[pyfunction]
+#[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0,
+                    trend = "c", alpha = 0.05, variance = "hc0", hac_lags = None,
+                    reduced_form_uncertainty = true))]
+#[allow(clippy::too_many_arguments)]
+fn proxy_ar_sets<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    proxy: PyReadonlyArray1<'py, f64>,
+    lags: usize,
+    horizon: usize,
+    norm_var: usize,
+    unit: f64,
+    trend: &str,
+    alpha: f64,
+    variance: &str,
+    hac_lags: Option<usize>,
+    reduced_form_uncertainty: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::proxy_ar::{
+        proxy_ar_sets as ar_fn, psi_reduced_form_cov, ArCritical, ArReducedForm, ArVariance,
+        ArVarianceSpec,
+    };
+
+    let r = var_results(&data, lags, trend)?;
+    let psi = r.ma_rep(horizon).map_err(to_py)?;
+    let n_obs = data.as_array().nrows();
+    let t = r.resid.nrows();
+    let proxy_aligned = align_proxy(vec1(&proxy), n_obs, lags, t)?;
+
+    let moment = match variance {
+        "hc0" => ArVariance::Hc0,
+        "hac" => ArVariance::HacBartlett {
+            lags: hac_lags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(t)),
+        },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown variance {other:?}; expected \"hc0\" or \"hac\""
+            )))
+        }
+    };
+
+    // Build the reduced-form contribution here rather than asking the caller
+    // for it: `psi` came from this very VAR fit, so the binding already has
+    // everything needed. Sigma_alpha = (Z'Z)^-1 (x) Sigma_u restricted to the
+    // lag block, matching irf_asymptotic.rs's construction exactly.
+    let k = r.neqs;
+    let n_trend = r.df_model - k * lags;
+    let dim = lags * k * k;
+    let cov_alpha = tsecon_var::tsecon_linalg::faer::Mat::from_fn(dim, dim, |rr, cc| {
+        let (a1, e1) = (rr / k + n_trend, rr % k);
+        let (a2, e2) = (cc / k + n_trend, cc % k);
+        r.zz_inv[(a1, a2)] * r.sigma_u[(e1, e2)]
+    });
+
+    let n_proxy = proxy_aligned.iter().filter(|v| v.is_finite()).count();
+    let gamma: Vec<f64> = {
+        // gamma_hat = mean over the finite-proxy overlap of centred m * centred u
+        let idx: Vec<usize> = (0..t).filter(|&i| proxy_aligned[i].is_finite()).collect();
+        let mbar = idx.iter().map(|&i| proxy_aligned[i]).sum::<f64>() / idx.len() as f64;
+        (0..k)
+            .map(|j| {
+                let ubar = idx.iter().map(|&i| r.resid[(i, j)]).sum::<f64>() / idx.len() as f64;
+                idx.iter()
+                    .map(|&i| (proxy_aligned[i] - mbar) * (r.resid[(i, j)] - ubar))
+                    .sum::<f64>()
+                    / idx.len() as f64
+            })
+            .collect()
+    };
+
+    let psi_var = if reduced_form_uncertainty {
+        Some(
+            psi_reduced_form_cov(&psi, &r.coefs, cov_alpha.as_ref(), &gamma, n_proxy)
+                .map_err(to_py)?,
+        )
+    } else {
+        None
+    };
+    let reduced_form = psi_var.as_ref().map(|pv| ArReducedForm {
+        psi_var: pv,
+        psi_gamma_cov: None,
+    });
+    let spec = ArVarianceSpec {
+        moment,
+        reduced_form,
+    };
+
+    let res = ar_fn(
+        r.resid.as_ref(),
+        &proxy_aligned,
+        &psi,
+        norm_var,
+        unit,
+        spec,
+        ArCritical::Chi2 { level: 1.0 - alpha },
+    )
+    .map_err(to_py)?;
+
+    let d = PyDict::new(py);
+    let cells = PyList::empty(py);
+    for row in &res.cells {
+        let hrow = PyList::empty(py);
+        for c in row {
+            let e = PyDict::new(py);
+            // `endpoints()` is the SET's own bounds -- (-inf, +inf) for an
+            // exterior set -- and `excluded_middle()` is the region the data
+            // reject. Keeping them separate is the whole point: collapsing an
+            // exterior set to (lo, hi) would shade exactly the values ruled out.
+            let (lo, hi) = c.set.endpoints();
+            let (xlo, xhi) = match c.set.excluded_middle() {
+                Some((a, b)) => (Some(a), Some(b)),
+                None => (None, None),
+            };
+            e.set_item("kind", c.set.kind().as_str())?;
+            e.set_item("lower", lo)?;
+            e.set_item("upper", hi)?;
+            e.set_item("excluded_lower", xlo)?;
+            e.set_item("excluded_upper", xhi)?;
+            e.set_item("bounded", c.set.is_bounded())?;
+            e.set_item("excludes_zero", c.excludes_zero)?;
+            e.set_item("point", c.point)?;
+            hrow.append(e)?;
+        }
+        cells.append(hrow)?;
+    }
+    d.set_item("cells", cells)?;
+    d.set_item("impact", res.impact.clone().into_pyarray(py))?;
+    d.set_item("n_proxy", res.n_proxy)?;
+    // `level` is None whenever reduced-form uncertainty was NOT propagated: a
+    // set conditional on the reduced form carries no honest 1-alpha label, and
+    // back-filling the requested level here would reintroduce the exact defect
+    // this argument exists to prevent.
+    d.set_item("level", res.level)?;
+    d.set_item("reduced_form_uncertainty", res.reduced_form_uncertainty)?;
+    d.set_item("critical_value", res.critical_value)?;
+    d.set_item("ar_bound_stat", res.ar_bound_stat)?;
+    d.set_item("ar_bounded_all", res.ar_bounded_all)?;
+    // Carried so the instrument's strength can be read beside the sets: a
+    // BOUNDED set certifies only that the AR bound statistic cleared the
+    // critical value, NOT that the instrument is strong. A first-stage F of
+    // 4.5 with tidy bounded intervals is still a weak instrument.
+    d.set_item("first_stage_f", res.first_stage_f)?;
     Ok(d)
 }
 
@@ -7048,6 +7402,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(long_run_svar, m)?)?;
     m.add_function(wrap_pyfunction!(max_share_svar, m)?)?;
     m.add_function(wrap_pyfunction!(proxy_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(proxy_svar_bands, m)?)?;
+    m.add_function(wrap_pyfunction!(proxy_ar_sets, m)?)?;
     m.add_function(wrap_pyfunction!(nongaussian_svar, m)?)?;
     m.add_function(wrap_pyfunction!(hetero_svar, m)?)?;
     m.add_function(wrap_pyfunction!(bvar_hierarchical, m)?)?;

@@ -1049,9 +1049,12 @@ Stated so you do not have to discover it.
   tests. Both VAR arms run at a reduced `band_n_sim` (20000 against the library
   default of 100000) to keep the harness runtime modest; that puts simulation
   noise into the multiplier, not bias into the coverage it delivers.
-- **No weak-instrument-robust set exists to measure.** Anderson-Rubin is the
-  right interval for the `iv_gmm` and `lp_iv` weak-instrument rows, and the
-  library does not expose one.
+- **No weak-instrument-robust set exists to measure *for these two rows*.**
+  Anderson-Rubin is the right interval for the `iv_gmm` and `lp_iv`
+  weak-instrument rows, and neither function exposes one. The library does now
+  ship `proxy_ar_sets` — an Anderson-Rubin set for proxy-SVAR impulse
+  responses — so the machinery exists and the gap is that it has not been
+  extended to the IV regression estimators, not that it is unbuilt.
 - **`lp(cumulative=...)` intervals are unmeasured.** `var_irf_bands`'
   cumulative bands are measured; LP's are not, and the two are different code
   paths.

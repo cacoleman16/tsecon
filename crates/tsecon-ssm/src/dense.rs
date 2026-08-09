@@ -93,6 +93,49 @@ pub(crate) fn frob_sq(m: MatRef<'_, f64>) -> f64 {
     s
 }
 
+/// Cancellation-free bound on a quadratic form:
+/// `|z|' |M| |z| = sum_{a,b} |z_a| |z_b| |M_ab|`.
+///
+/// This is the reference scale the filter measures `F = z' M z (+ H)`
+/// against when asking "is this value a variance, or is it cancellation
+/// noise?". It dominates `|z' M z|` term by term (triangle inequality), so
+/// it is exactly the magnitude the quadratic form would have reached had no
+/// cancellation occurred — and `F / (|z|' |M| |z|)` is therefore the
+/// fraction of that magnitude that survived the sum.
+///
+/// Two properties earn it the job:
+///
+/// * **direction-aware.** Only the entries of `M` that `z` actually touches
+///   enter, weighted by how hard `z` touches them. A state the observation
+///   equation does not load on (`z_a = 0`) contributes nothing, no matter
+///   how large its variance. The cruder `||z||_1^2 max_j M_jj` fails this:
+///   one large-variance nuisance state raises the bar for every element.
+/// * **cancellation-bounding.** It still dominates the intermediate
+///   `M z` products, so it rejects a `F` that is small only because the
+///   terms of `z' M z` cancelled — which is the failure the test exists to
+///   catch. (`dot(|z|, |M z|)` would not: cancellation inside `M z` itself
+///   would already have shrunk it.)
+///
+/// Both scale as `c^2` when `M` does, so the test built on this is
+/// invariant to rescaling the data, and invariant to rescaling any single
+/// state coordinate (which rescales `z_a` and the `a`-th row/column of `M`
+/// by reciprocal factors).
+pub(crate) fn abs_quad_form(z: &[f64], m: MatRef<'_, f64>) -> f64 {
+    debug_assert_eq!(m.nrows(), z.len());
+    debug_assert_eq!(m.ncols(), z.len());
+    let mut s = 0.0;
+    for (b, zb) in z.iter().enumerate() {
+        if *zb == 0.0 {
+            continue;
+        }
+        let zb = zb.abs();
+        for (a, za) in z.iter().enumerate() {
+            s += za.abs() * zb * m[(a, b)].abs();
+        }
+    }
+    s
+}
+
 /// In-place exact symmetrization `M <- (M + M') / 2` of a square matrix.
 ///
 /// Cheap hygiene applied after covariance updates so downstream code never

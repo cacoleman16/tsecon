@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**126 functions.**
+**128 functions.**
 
 ## diagnostics
 
@@ -1062,6 +1062,76 @@ Max-share / maximum-FEV structural shock (Uhlig 2004; Francis et al 2014; Barsky
     Returns `irf` [horizon+1][k], `impact` [k], `q` [k], `share_window` (float),
     `fev_share` [horizon+1], and `eigenvalues` (ascending; length k, or k-1 when
     `exclude_impact`).
+
+### `proxy_svar_bands`
+
+```python
+def proxy_svar_bands(
+    data: _ArrayLike,
+    proxy: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    norm_var: int = ...,
+    unit: float = ...,
+    trend: str = ...,
+    alpha: float = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    bands: str = ...,
+    block_length: int | None = ...,
+    robust_f: bool = ...,
+) -> dict[str, Any]:
+```
+
+Confidence bands for a proxy-SVAR impulse response.
+
+    bands="moving_block" (default) is the Jentsch-Lunsford moving-block
+    bootstrap: (u_t, m_t) resampled jointly, the VAR reconstructed and
+    re-estimated per draw, the unit-effect normalization re-imposed per draw.
+    bands="wild" reproduces Mertens-Ravn / Gertler-Karadi but is NOT
+    asymptotically valid here -- a common Rademacher draw leaves the
+    identifying moment bit-identical across draws, so it carries no bootstrap
+    variability. Check asymptotically_valid / validity_note.
+
+    Returns lower/upper (Hall, recommended) and lower_efron/upper_efron.
+    The h=0 entry for norm_var is degenerate at `unit` by construction.
+    Bands are pointwise, not joint. Failed draws are counted by reason in
+    `failures`, never dropped; a nonzero n_failed means the instrument may be
+    too weak for a Wald band -- see proxy_ar_sets.
+
+### `proxy_ar_sets`
+
+```python
+def proxy_ar_sets(
+    data: _ArrayLike,
+    proxy: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    norm_var: int = ...,
+    unit: float = ...,
+    trend: str = ...,
+    alpha: float = ...,
+    variance: str = ...,
+    hac_lags: int | None = ...,
+    reduced_form_uncertainty: bool = ...,
+) -> dict[str, Any]:
+```
+
+Weak-instrument-robust (Anderson-Rubin) confidence SETS for a proxy SVAR.
+
+    Under weak identification no bounded set can be honest (Dufour 1997), so a
+    cell may be a bounded interval, the COMPLEMENT of an interval (kind
+    "exterior", two rays), the whole line, or empty. That shape is the answer.
+    Do not read an "exterior" set as an interval -- `lower`/`upper` are the
+    set's own bounds (+/-inf there) and `excluded_lower`/`excluded_upper` are
+    the rejected middle. `excludes_zero` on an unbounded set does NOT establish
+    a sign: both signs can be members.
+
+    Reduced-form uncertainty is propagated by default. Omitting it is
+    catastrophic on an estimated VAR -- measured coverage 0.952 at h=0 falling
+    to 0.119 by h=8 against nominal 0.95, versus 0.952 to 0.913 with it. When
+    reduced_form_uncertainty=False the returned `level` is None, because a set
+    conditional on the reduced form has no honest 1-alpha label.
 
 ### `proxy_svar`
 
