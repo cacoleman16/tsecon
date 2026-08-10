@@ -885,7 +885,8 @@ def proxy_svar(
     outside the instrument window is dropped). Returns `irf` (horizon+1, n),
     `impact`, `relative_impact`, `cov_um`, `first_stage_f` (weak below 10),
     `reliability` = Corr(m, u_norm)^2, `n_proxy`, and the estimated `shock`
-    (length T). Point estimate only -- no bands (v2: Jentsch-Lunsford MBB).
+    (length T). Point estimate only; see proxy_svar_bands for
+    moving-block bands and proxy_ar_sets for weak-IV-robust sets.
     """
 
 def nongaussian_svar(
@@ -1444,7 +1445,15 @@ def frac_integrate(x: _ArrayLike, d: float) -> _F64:
 def long_memory_d(
     x: _ArrayLike, m: int | None = ..., method: str = ...
 ) -> dict[str, float]:
-    """Estimate the memory parameter d; method is "gph" or "local_whittle". Returns d, se, m."""
+    """Estimate the memory parameter d; method is "gph" or "local_whittle".
+
+    Returns d, se, se_asymptotic and m for both methods, plus se_regression for
+    method="gph". BUILD INTERVALS FROM `se`: it is the standard error at the
+    bandwidth actually used. `se_asymptotic` is the textbook large-m closed form
+    (pi/sqrt(24m) for GPH, 1/(2*sqrt(m)) for local Whittle), kept for reference
+    -- at the default bandwidth it is materially too NARROW, measured about 25%
+    at n=512.
+    """
 
 # ---------------------------------------------------- specification tests
 def heteroskedasticity_test(

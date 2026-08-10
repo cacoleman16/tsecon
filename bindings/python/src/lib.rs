@@ -1116,6 +1116,21 @@ fn var_irf_bands<'py>(
     let scope = tsecon_var::irf_asymptotic::IrfBandScope::parse(band_scope).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("band", band_method.label())?;
+    // Kilian bias correction is a property of the BOOTSTRAP resampling loop --
+    // the delta-method arm has no draws to re-centre, so it cannot apply it.
+    // Accepting the flag here and discarding it is exactly the silent no-op
+    // that shipped in iv_gmm's HAC bandwidth, and it is worse here because the
+    // library's own coverage audit instructs callers to set it.
+    if bias_correct && method == "asymptotic" {
+        return Err(PyValueError::new_err(
+            "bias_correct=True has no effect with method=\"asymptotic\": Kilian's \
+             correction re-centres bootstrap draws, and the delta-method arm draws \
+             none. Pass method=\"bootstrap\" to get it (that is the combination the \
+             interval-coverage audit measures at 0.410 -> 0.900 for h=12 on a \
+             persistent VAR), or drop bias_correct to keep the asymptotic band.",
+        ));
+    }
+    d.set_item("bias_correct", bias_correct)?;
     match method {
         "asymptotic" => {
             let r = var_results(&data, lags, trend)?;
@@ -2419,6 +2434,10 @@ fn elastic_net<'py>(
     d.set_item("coef", fit.coef.into_pyarray(py))?;
     d.set_item("n_iter", fit.n_iter)?;
     d.set_item("max_change", fit.max_change)?;
+    // The convergence check is on this dimensionless quantity, not on
+    // `max_change`: max_j |db_j| * ||x_j|| / ||y||. Guaranteed <= tol on a
+    // successful return, and unchanged by rescaling X or y.
+    d.set_item("max_rel_change", fit.max_rel_change)?;
     Ok(d)
 }
 
@@ -2618,6 +2637,10 @@ fn zero_sign_svar<'py>(
     d.set_item("set_max", set_max)?;
     d.set_item("weights", result.weights().to_vec())?;
     d.set_item("ess", result.ess())?;
+    // False exactly when `weights` is empty and `ess` is NaN -- i.e. an
+    // unweighted RWZ draw. Without this a reader sees an empty weights list
+    // with no explanation.
+    d.set_item("arw_weighted", result.arw_weighted())?;
     let diag = result.diagnostics();
     let dd = PyDict::new(py);
     dd.set_item("posterior_draws_used", diag.posterior_draws_used)?;
@@ -2829,8 +2852,9 @@ fn max_share_svar<'py>(
 /// Returns `irf` (horizon+1, n), `impact`/`relative_impact`/`cov_um` (n),
 /// `first_stage_f` (weak below 10), `reliability` = Corr(m, u_norm)^2,
 /// `n_proxy` (effective obs), and the estimated structural `shock` (T). Point
-/// estimate only: valid bands need the Jentsch-Lunsford (2019) moving-block
-/// bootstrap (documented v2 extension).
+/// estimate only. For inference use `proxy_svar_bands` (Jentsch-Lunsford
+/// moving-block bootstrap) or `proxy_ar_sets` (weak-instrument-robust
+/// Anderson-Rubin sets) -- both ship in this module.
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0, trend = "c", robust_f = true))]
 #[allow(clippy::too_many_arguments)]
@@ -4466,6 +4490,10 @@ fn adaptive_lasso<'py>(
     d.set_item("coef", fit.coef.into_pyarray(py))?;
     d.set_item("n_iter", fit.n_iter)?;
     d.set_item("max_change", fit.max_change)?;
+    // The convergence check is on this dimensionless quantity, not on
+    // `max_change`: max_j |db_j| * ||x_j|| / ||y||. Guaranteed <= tol on a
+    // successful return, and unchanged by rescaling X or y.
+    d.set_item("max_rel_change", fit.max_rel_change)?;
     Ok(d)
 }
 
@@ -5837,13 +5865,22 @@ fn long_memory_d<'py>(
         "gph" => {
             let r = tsecon_longmemory::gph(xs, bw).map_err(to_py)?;
             d.set_item("d", r.d)?;
+            // `se` is the standard error at the bandwidth actually used -- the
+            // one to build intervals from. `se_asymptotic` is the textbook
+            // large-m closed form pi/sqrt(24m), kept for reference and
+            // materially too NARROW at the default bandwidth.
             d.set_item("se", r.se)?;
+            d.set_item("se_asymptotic", r.se_asymptotic)?;
+            d.set_item("se_regression", r.se_regression)?;
             d.set_item("m", r.m)?;
         }
         "local_whittle" | "whittle" => {
             let r = tsecon_longmemory::local_whittle(xs, bw).map_err(to_py)?;
             d.set_item("d", r.d)?;
+            // See the gph branch: `se` is bandwidth-exact, `se_asymptotic` is
+            // the 1/(2 sqrt(m)) closed form and is too narrow at the default.
             d.set_item("se", r.se)?;
+            d.set_item("se_asymptotic", r.se_asymptotic)?;
             d.set_item("m", r.m)?;
         }
         other => {
@@ -6189,6 +6226,9 @@ fn growth_at_risk<'py>(
     d.set_item("horizon", r.horizon as u64)?;
     d.set_item("params", r.params)?;
     d.set_item("bse", r.bse)?;
+    // Newey-West lags used for the overlapping-horizon correction (horizon-1).
+    // Zero at horizon=1, where there is no overlap to correct.
+    d.set_item("hac_lags", r.hac_lags as u64)?;
     d.set_item("fitted", r.fitted)?;
     d.set_item("fitted_raw", r.fitted_raw)?;
     d.set_item("crossing", r.crossing)?;
@@ -6883,6 +6923,33 @@ fn historical_decomposition<'py>(
     narrative_restrictions: Option<Vec<Bound<'py, PyDict>>>,
     n_weight_draws: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // The cholesky path is a single point decomposition: it draws nothing, so
+    // none of these are read. Accepting them silently lets a caller believe a
+    // seeded posterior draw was taken when it was not -- the same class as an
+    // ignored seed anywhere else.
+    if identification == "cholesky" {
+        let inert: [(&str, bool); 5] = [
+            ("n_draws", n_draws != 500),
+            ("max_tries", max_tries != 400),
+            ("seed", seed != 0),
+            ("lambda1", (lambda1 - 0.2).abs() > f64::EPSILON),
+            ("n_weight_draws", n_weight_draws != 200),
+        ];
+        let named: Vec<&str> = inert
+            .iter()
+            .filter(|(_, set)| *set)
+            .map(|(n, _)| *n)
+            .collect();
+        if !named.is_empty() {
+            return Err(PyValueError::new_err(format!(
+                "identification=\"cholesky\" ignores {named:?}: it is a single point \
+                 decomposition with no sampling step, so there is nothing for a seed or \
+                 a draw count to control. Use identification=\"sign\" (or \"narrative\") \
+                 if you want a set-identified posterior, or drop these arguments."
+            )));
+        }
+    }
+
     use tsecon_var::tsecon_linalg::faer::Mat;
     let a = data.as_array();
     let m = Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
