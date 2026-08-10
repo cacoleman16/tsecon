@@ -7,11 +7,20 @@ use crate::error::GasError;
 use crate::kernel::{log_density, scaled_score, validate_params, Density};
 use crate::results::{GasFiltered, GasResults};
 
-/// Lower floor on the filtered variance, guarding positivity when a large
-/// `a` and a small realized `y^2` would otherwise drive `f_{t+1}` to zero
-/// or below. Chosen far below any economically meaningful variance so it
-/// never perturbs a well-specified fit.
-const VAR_FLOOR: f64 = 1e-12;
+/// Lower floor on the filtered variance, as a fraction of the sample second
+/// moment `mean(y^2)` — the scale the variance is actually measured in.
+///
+/// The floor guards positivity when a large `a` and a small realized `y^2`
+/// would otherwise drive `f_{t+1}` to zero or below. It must be relative:
+/// an *absolute* floor is a variance in units of `y^2`, so rescaling the
+/// data changes the estimator's character. At `1e-12` times the sample
+/// second moment it sits twelve orders below any variance the series can
+/// support, so it never perturbs a well-specified fit at any data scale —
+/// whereas the absolute `1e-12` it replaces pinned the whole filtered path
+/// to the floor for returns quoted in units where `Var(y) <~ 1e-12`
+/// (basis points of a daily return, say), turning the fit into an artifact
+/// of the constant.
+const VAR_FLOOR_REL: f64 = 1e-12;
 
 /// Parameters of a GAS(1,1) time-varying-variance model.
 ///
@@ -62,6 +71,9 @@ impl GasParams {
 pub struct GasModel<'a> {
     y: &'a [f64],
     density: Density,
+    /// Sample second moment `mean(y^2)`: the scale every variance in this
+    /// model is measured against (see [`VAR_FLOOR_REL`]).
+    scale: f64,
 }
 
 impl<'a> GasModel<'a> {
@@ -82,7 +94,16 @@ impl<'a> GasModel<'a> {
         if y.iter().any(|v| !v.is_finite()) {
             return Err(GasError::NonFinite { what: "y" });
         }
-        Ok(Self { y, density })
+        let scale = y.iter().map(|v| v * v).sum::<f64>() / y.len() as f64;
+        Ok(Self { y, density, scale })
+    }
+
+    /// The floor applied to the filtered variance: [`VAR_FLOOR_REL`] times
+    /// the sample second moment, backstopped at the smallest positive
+    /// double so a degenerate all-zero series still yields `f_t > 0` rather
+    /// than `log(0)`.
+    fn var_floor(&self) -> f64 {
+        (VAR_FLOOR_REL * self.scale).max(f64::MIN_POSITIVE)
     }
 
     /// The observation density.
@@ -106,7 +127,8 @@ impl<'a> GasModel<'a> {
     /// The recursion is initialized at the stationary mean
     /// `f_1 = omega / (1 - b)` and advanced by
     /// `f_{t+1} = omega + a s_t + b f_t`, with each variance floored at
-    /// [`VAR_FLOOR`] to preserve positivity.
+    /// [`VAR_FLOOR_REL`] times the sample second moment to preserve
+    /// positivity.
     ///
     /// # Errors
     ///
@@ -121,8 +143,10 @@ impl<'a> GasModel<'a> {
         let mut f = vec![0.0_f64; n];
         let mut scores = vec![0.0_f64; n];
         let mut loglik = 0.0_f64;
+        let var_floor = self.var_floor();
 
-        // Stationary-mean initialization.
+        // Stationary-mean initialization (`omega > 0` and `b < 1` are
+        // validated above, so this is strictly positive without a floor).
         let mut ft = omega / (1.0 - b);
         for (t, &yt) in self.y.iter().enumerate() {
             f[t] = ft;
@@ -130,8 +154,8 @@ impl<'a> GasModel<'a> {
             let st = scaled_score(self.density, nu, yt, ft);
             scores[t] = st;
             let mut next = omega + a * st + b * ft;
-            if next < VAR_FLOOR {
-                next = VAR_FLOOR;
+            if next < var_floor {
+                next = var_floor;
             }
             ft = next;
         }
@@ -190,11 +214,10 @@ impl<'a> GasModel<'a> {
         let density = self.density;
         let dim = if density.needs_dof() { 4 } else { 3 };
 
-        // Sample second moment for the intercept start.
-        let sig2 = {
-            let s: f64 = self.y.iter().map(|v| v * v).sum();
-            (s / self.y.len() as f64).max(VAR_FLOOR)
-        };
+        // Sample second moment for the intercept start, backstopped only
+        // at the representation limit (an all-zero series has no scale to
+        // start from; every other series supplies its own).
+        let sig2 = self.scale.max(f64::MIN_POSITIVE);
         let b0 = 0.9_f64;
         let a0 = 0.05_f64;
         let omega0 = (1.0 - b0) * sig2;
@@ -213,9 +236,10 @@ impl<'a> GasModel<'a> {
         // Objective: negative log-likelihood over the working parameters.
         // A non-finite likelihood maps to +inf so Nelder-Mead retreats.
         let y = self.y;
+        let scale = self.scale;
         let mut objective = tsecon_optim::FnObjective::new(move |z: &[f64]| {
             let params = params_from_working(density, z);
-            let model = GasModel { y, density };
+            let model = GasModel { y, density, scale };
             match model.filter(&params) {
                 Ok(out) if out.loglik.is_finite() => -out.loglik,
                 _ => f64::INFINITY,

@@ -38,9 +38,20 @@
 //! support of the identified set — *weight-invariant* and the defensible,
 //! prior-robust object (Baumeister-Hamilton 2015 caveat, documented in the
 //! crate root). The pointwise `quantiles` blend data with prior even after
-//! ARW weighting and are descriptive. The ARW importance weight is exactly
-//! one for impact-only zero patterns; see [`crate::zero`] for the horizon
-//! `>= 1` limitation.
+//! ARW weighting and are descriptive.
+//!
+//! The ARW importance weight is implemented **only** for impact-only
+//! (horizon-0) zero patterns, where it is exactly one. For a pattern with any
+//! zero at horizon `>= 1` the volume element is not computed (see
+//! [`crate::zero`]), so there is no weight to apply and this sampler
+//! *refuses* to run weighted: [`ZeroSignSampler::run`] returns
+//! [`IdentError::InvalidArgument`] when weighting is on and the pattern is not
+//! impact-only. Such a pattern must be run with
+//! [`ZeroSignSampler::with_weighting`]`(false)`, which yields the honest,
+//! unweighted RWZ (2010) draws — and in that case
+//! [`ZeroSignSampleResult::weights`] is empty and
+//! [`ZeroSignSampleResult::ess`] is `NaN`, because reporting uniform weights
+//! and `ess = n_accepted` would assert an ARW weight that was never computed.
 
 use tsecon_bayes::{cholesky_irf, NiwPosterior};
 use tsecon_linalg::faer::Mat;
@@ -62,6 +73,9 @@ const DEFAULT_QUANTILE_PROBS: [f64; 5] = [0.05, 0.16, 0.50, 0.84, 0.95];
 pub struct ZeroSignSampleResult {
     draws: Vec<Vec<Mat<f64>>>,
     weights: Vec<f64>,
+    /// Whether `weights`/`ess` are genuine ARW weights (impact-only pattern)
+    /// rather than absent because the volume element is not implemented.
+    arw_weighted: bool,
     diagnostics: SignRestrictionDiagnostics,
     ess: f64,
     probs: Vec<f64>,
@@ -82,8 +96,24 @@ impl ZeroSignSampleResult {
     /// Per-accepted-draw ARW importance weights, normalized to sum to one
     /// (all equal `1 / n_accepted` when every zero is impact-only). Aligned
     /// with [`ZeroSignSampleResult::draws`].
+    ///
+    /// **Empty** when the ARW weight is not implemented for the zero pattern
+    /// (any zero at horizon `>= 1`); check
+    /// [`ZeroSignSampleResult::arw_weighted`] before reading it. An empty
+    /// slice means "no ARW weight was computed", not "the weights are
+    /// uniform".
     pub fn weights(&self) -> &[f64] {
         &self.weights
+    }
+
+    /// Whether the reported [`ZeroSignSampleResult::weights`] and
+    /// [`ZeroSignSampleResult::ess`] are genuine ARW-2018 importance weights.
+    ///
+    /// `false` for a zero pattern with any horizon `>= 1` zero, whose volume
+    /// element this build does not compute: the draws are then the unweighted
+    /// RWZ (2010) draws, `weights` is empty and `ess` is `NaN`.
+    pub fn arw_weighted(&self) -> bool {
+        self.arw_weighted
     }
 
     /// The run diagnostics (always inspect before reading any band).
@@ -95,6 +125,10 @@ impl ZeroSignSampleResult {
     /// to `n_accepted` when weights are constant); a weight-concentration
     /// diagnostic — a low value means the weighted bands are dominated by a
     /// few draws.
+    ///
+    /// `NaN` when no ARW weight was computed (see
+    /// [`ZeroSignSampleResult::arw_weighted`]). Reporting `n_accepted` there
+    /// would claim perfectly uniform ARW weights that were never evaluated.
     pub fn ess(&self) -> f64 {
         self.ess
     }
@@ -223,8 +257,16 @@ impl ZeroSignSampler {
 
     /// Whether to apply ARW importance weights to the pointwise quantiles
     /// (`true` by default). The `set_min`/`set_max` envelope is unaffected —
-    /// it is weight-invariant. With impact-only zeros the weights are constant
-    /// and this flag has no effect.
+    /// it is weight-invariant.
+    ///
+    /// The ARW weight is implemented only for impact-only (horizon-0) zero
+    /// patterns, where it is exactly constant — so on those patterns this flag
+    /// genuinely has no effect on the output. On a pattern with a zero at
+    /// horizon `>= 1` there is no weight to apply, and leaving this at `true`
+    /// makes [`ZeroSignSampler::run`] fail with
+    /// [`IdentError::InvalidArgument`] rather than quietly return the
+    /// unweighted answer under a weighted label. Pass `false` there to opt
+    /// into the unweighted RWZ draws.
     pub fn with_weighting(mut self, weighted: bool) -> Self {
         self.weighted = weighted;
         self
@@ -239,7 +281,10 @@ impl ZeroSignSampler {
     /// * [`IdentError::Dimension`] if the posterior and a restriction set
     ///   disagree on the number of variables;
     /// * [`IdentError::InvalidArgument`] if a restriction set's horizon
-    ///   differs from the sampler's;
+    ///   differs from the sampler's, or if ARW weighting is enabled (the
+    ///   default) on a zero pattern with a horizon `>= 1` zero, for which the
+    ///   ARW volume element is not implemented — rerun with
+    ///   [`ZeroSignSampler::with_weighting`]`(false)`;
     /// * [`IdentError::Rng`] if substream spawning fails;
     /// * [`IdentError::Bayes`] on a posterior-draw or Cholesky-IRF failure;
     /// * [`IdentError::Stats`]/[`IdentError::NoConvergence`] on a rotation
@@ -279,6 +324,22 @@ impl ZeroSignSampler {
                 });
             }
         }
+
+        // The ARW-2018 importance weight is only implemented for impact-only
+        // zero patterns. Asking for weighting on any other pattern used to
+        // return the *unweighted* answer under a weighted label — a silently
+        // dead knob. Refuse instead, so the limitation cannot be missed.
+        let arw_available = zeros.arw_weight_available();
+        if self.weighted && !arw_available {
+            return Err(IdentError::InvalidArgument {
+                what: "ARW-2018 importance weighting is implemented only for impact-only \
+                       (horizon-0) zero patterns; this pattern has a zero at horizon >= 1, \
+                       whose volume element is not computed. Disable weighting \
+                       (with_weighting(false) / weighted=False) to get the unweighted RWZ \
+                       draws, and read the weight-invariant set_min/set_max envelope",
+            });
+        }
+
         let p = posterior.lag_order();
 
         let mut substreams = Stream::substreams(seed, self.n_posterior_draws)?;
@@ -296,20 +357,23 @@ impl ZeroSignSampler {
                     // Zeros are satisfied by construction: one rotation, always
                     // accepted, positive-diagonal normalized.
                     rotations_tried += 1;
-                    let (q, w) = zero_constrained_rotation(&base, zeros, stream)?;
+                    let (q, weight) = zero_constrained_rotation(&base, zeros, stream)?;
                     let candidate = structural_irf(&base, q.as_ref());
                     let orient = positive_diagonal_orient(&candidate, n);
                     draws.push(normalize(candidate, &orient));
-                    weights_raw.push(w);
+                    // `None` (no ARW weight for this pattern) pushes nothing:
+                    // `weights_raw` stays empty and is reported as absent.
+                    weights_raw.extend(weight);
                 }
                 Some(sign_set) => {
                     for _try in 0..self.max_tries_per_draw {
                         rotations_tried += 1;
-                        let (q, w) = zero_constrained_rotation(&base, zeros, stream)?;
+                        let (q, weight) = zero_constrained_rotation(&base, zeros, stream)?;
                         let candidate = structural_irf(&base, q.as_ref());
                         if let Some(orient) = sign_set.accept_orientations(&candidate) {
                             draws.push(normalize(candidate, &orient));
-                            weights_raw.push(w);
+                            // See the no-signs arm: `None` pushes nothing.
+                            weights_raw.extend(weight);
                             break;
                         }
                     }
@@ -330,17 +394,26 @@ impl ZeroSignSampler {
             acceptance_rate,
         };
 
-        let sum_w: f64 = weights_raw.iter().sum();
-        let sum_w2: f64 = weights_raw.iter().map(|w| w * w).sum();
-        let ess = if sum_w2 > 0.0 {
-            sum_w * sum_w / sum_w2
+        let (weights, ess) = if arw_available {
+            let sum_w: f64 = weights_raw.iter().sum();
+            let sum_w2: f64 = weights_raw.iter().map(|w| w * w).sum();
+            let ess = if sum_w2 > 0.0 {
+                sum_w * sum_w / sum_w2
+            } else {
+                0.0
+            };
+            let weights: Vec<f64> = if sum_w > 0.0 {
+                weights_raw.iter().map(|w| w / sum_w).collect()
+            } else {
+                Vec::new()
+            };
+            (weights, ess)
         } else {
-            0.0
-        };
-        let weights: Vec<f64> = if sum_w > 0.0 {
-            weights_raw.iter().map(|w| w / sum_w).collect()
-        } else {
-            Vec::new()
+            // No ARW weight exists for this pattern (guarded above, so
+            // `self.weighted` is false here). Returning uniform weights and
+            // `ess = n_accepted` would assert a perfectly flat ARW weight that
+            // was never evaluated; report the absence instead.
+            (Vec::new(), f64::NAN)
         };
 
         let points = summarize(
@@ -355,6 +428,7 @@ impl ZeroSignSampler {
         Ok(ZeroSignSampleResult {
             draws,
             weights,
+            arw_weighted: arw_available,
             diagnostics,
             ess,
             probs: self.quantile_probs.clone(),
@@ -654,6 +728,88 @@ mod tests {
                     assert!((a.max - b.max).abs() < 1e-15);
                 }
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn weighting_is_refused_on_a_non_impact_zero_pattern() {
+        // The `weighted` flag must not be a dead knob: on a pattern whose ARW
+        // volume element is not implemented, asking for weighting fails loudly
+        // instead of returning the unweighted answer under a weighted label.
+        let horizon = 6;
+        let posterior = toy_posterior(2);
+        for rs in [
+            vec![ZeroRestriction::at(0, 1, 2)],
+            vec![ZeroRestriction::at(1, 2, 4)],
+            vec![ZeroRestriction::at(0, 1, 3), ZeroRestriction::at(2, 1, 5)],
+            // Mixed: a single non-impact zero is enough to disqualify.
+            vec![ZeroRestriction::at(2, 0, 0), ZeroRestriction::at(1, 0, 2)],
+        ] {
+            let zeros = ZeroRestrictionSet::new(rs.clone(), 3, horizon).expect("zeros");
+            assert!(!zeros.arw_weight_available());
+
+            // Weighting on (the default) => refused.
+            let out = ZeroSignSampler::new(horizon, 20, 100)
+                .expect("sampler")
+                .run(&posterior, None, &zeros, 11);
+            assert!(
+                matches!(out, Err(IdentError::InvalidArgument { .. })),
+                "weighted run must be refused for {rs:?}"
+            );
+            // The default really is weighted, so the bare constructor refuses too.
+            let out_default = ZeroSignSampler::new(horizon, 20, 100)
+                .expect("sampler")
+                .with_weighting(true)
+                .run(&posterior, None, &zeros, 11);
+            assert!(matches!(
+                out_default,
+                Err(IdentError::InvalidArgument { .. })
+            ));
+
+            // Weighting off => runs, and says so.
+            let ok = ZeroSignSampler::new(horizon, 20, 100)
+                .expect("sampler")
+                .with_weighting(false)
+                .run(&posterior, None, &zeros, 11)
+                .expect("unweighted run must succeed");
+            assert_eq!(ok.diagnostics().accepted, 20);
+            assert!(!ok.arw_weighted(), "must not claim ARW weighting");
+            assert!(
+                ok.weights().is_empty(),
+                "absent weights must be empty, not uniform"
+            );
+            assert!(ok.ess().is_nan(), "absent weights must not report an ESS");
+            // The zeros still hold exactly.
+            for r in &rs {
+                for d in ok.draws() {
+                    assert!(
+                        d[r.horizon][(r.variable, r.shock)].abs() < 1e-10,
+                        "zero restriction violated"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn weighting_is_allowed_and_reported_on_impact_only_patterns() -> Result<(), IdentError> {
+        // The complement of the guard: impact-only patterns (including the
+        // vacuous empty set) do have a closed-form ARW weight, so weighting
+        // stays enabled and the weights/ESS are reported as genuine.
+        let horizon = 4;
+        let posterior = toy_posterior(2);
+        for rs in [
+            Vec::new(),
+            vec![ZeroRestriction::at(0, 1, 0)],
+            vec![ZeroRestriction::at(0, 1, 0), ZeroRestriction::at(2, 0, 0)],
+        ] {
+            let zeros = ZeroRestrictionSet::new(rs, 3, horizon)?;
+            assert!(zeros.arw_weight_available());
+            let res = ZeroSignSampler::new(horizon, 20, 100)?.run(&posterior, None, &zeros, 3)?;
+            assert!(res.arw_weighted());
+            assert_eq!(res.weights().len(), res.draws().len());
+            assert!((res.ess() - 20.0).abs() < 1e-9);
         }
         Ok(())
     }

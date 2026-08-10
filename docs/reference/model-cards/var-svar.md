@@ -138,8 +138,10 @@ all of it inherited from the marginal band.
 
 `var_irf` returns the point path only. **`var_irf_bands`** is its banded
 companion: same estimand, same `[h][i][j]` layout, but a `dict` with
-`point`/`se`/`lower`/`upper` plus the echoed `method`/`alpha`/`n_boot`
-(`n_boot` is `None` on the asymptotic branch). Two methods, one flag apart:
+`point`/`se`/`lower`/`upper` plus the echoed `method`/`alpha`/`n_boot`/`band`
+(`n_boot` is `None` on the asymptotic branch; `band` echoes the band family and
+is `"pointwise"` unless you ask for a simultaneous one). Two methods, one flag
+apart:
 
 - **`method="asymptotic"`** (default) — the Lütkepohl (1990) **delta-method**
   standard errors: the analytic derivative of the MA / orthogonalized responses
@@ -206,7 +208,7 @@ print("bootstrap h=1 band",
 ```
 
 ```
-keys: ['alpha', 'lower', 'method', 'n_boot', 'point', 'se', 'upper']  n_boot: None
+keys: ['alpha', 'band', 'lower', 'method', 'n_boot', 'point', 'se', 'upper']  n_boot: None
  h   point      se     [ lower ,  upper ]
  0  +0.2963  0.0105  [+0.2790, +0.3136]
  1  +0.1584  0.0160  [+0.1321, +0.1847]

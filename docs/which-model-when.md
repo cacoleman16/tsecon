@@ -1112,7 +1112,9 @@ often:
 
 - **"Is my model's forecast actually better than the benchmark?"** → never claim
   it without a test: `dm_test` (Diebold-Mariano), `cw_test` (nested models),
-  `gw_test` (conditional); [chapter 5 — the Diebold-Mariano test](guide/05-forecasting.md#is-the-difference-real-the-diebold-mariano-test).
+  `gw_test` (Giacomini-White **unconditional**, fixed rolling window — the
+  *conditional* GW test is still a roadmap item);
+  [chapter 5 — the Diebold-Mariano test](guide/05-forecasting.md#is-the-difference-real-the-diebold-mariano-test).
 
 For the full method-by-method treatment with the math and the classic mistakes,
 every section above links into the [15-chapter guide](guide/README.md); for

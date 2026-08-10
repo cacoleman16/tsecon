@@ -1,5 +1,8 @@
 //! Adaptive Nelder-Mead behavior: Rosenbrock 2d, adaptive coefficients in
-//! higher dimension, restart support, termination semantics.
+//! higher dimension, restart support, termination semantics, and the two
+//! ways `converged` used to be uninformative — a default budget that a
+//! restarted search could not finish inside, and an absolute `x_tol` below
+//! the floating-point resolution of the incumbent.
 
 mod common;
 
@@ -72,6 +75,135 @@ fn nm_restart_improves() {
     assert!(restarted.f <= plain.f);
     assert!(restarted.fevals > plain.fevals, "restarts actually ran");
     assert!(restarted.converged);
+}
+
+/// The **default** budget is sized per run, so asking for restarts does not
+/// silently make convergence unreachable.
+///
+/// Regression test. The default used to be a flat `200 * n` shared across
+/// all `1 + restarts` runs. A 3-parameter likelihood needs ~280 evaluations
+/// to satisfy the default tolerances once, so with `restarts: 2` the 600
+/// evaluations ran out during the second run and *every* fit — however
+/// well-posed — came back `MaxFevals` / `converged = false`. Both
+/// directions are asserted here: the same options minus the restarts must
+/// converge too, and the restarted run must genuinely do more work.
+#[test]
+fn nm_default_budget_is_per_run() {
+    let x0 = [-1.2, 1.0, -0.5];
+
+    let mut obj = FnObjective::new(rosenbrock);
+    let plain = nelder_mead(&mut obj, &x0, &NelderMeadOptions::default()).unwrap();
+    assert!(
+        plain.converged,
+        "single run: {} after {} fevals",
+        plain.termination, plain.fevals
+    );
+
+    let restarted_opts = NelderMeadOptions {
+        restarts: 2,
+        ..NelderMeadOptions::default()
+    };
+    let mut obj = FnObjective::new(rosenbrock);
+    let restarted = nelder_mead(&mut obj, &x0, &restarted_opts).unwrap();
+    assert!(
+        restarted.converged,
+        "restarted run: {} after {} fevals",
+        restarted.termination, restarted.fevals
+    );
+    assert_eq!(restarted.termination, Termination::SimplexTolerance);
+    // The restarts really ran, and the extra work bought the default
+    // budget: more evaluations than one run, but still inside 200*n*3.
+    assert!(restarted.fevals > plain.fevals);
+    assert!(restarted.fevals <= 200 * x0.len() * 3 + x0.len() + 2);
+    assert!(restarted.f <= plain.f);
+
+    // An *explicitly* supplied budget keeps the shared-across-restarts
+    // meaning: the same problem starved at one run's worth of evaluations
+    // reports failure rather than pretending.
+    let starved = NelderMeadOptions {
+        restarts: 2,
+        max_fevals: Some(plain.fevals + 10),
+        ..NelderMeadOptions::default()
+    };
+    let mut obj = FnObjective::new(rosenbrock);
+    let res = nelder_mead(&mut obj, &x0, &starved).unwrap();
+    assert!(!res.converged, "starved run claimed convergence");
+    assert_eq!(res.termination, Termination::MaxFevals);
+}
+
+/// The simplex-size test tracks the scale of the point it is measuring.
+///
+/// Regression test for an absolute `x_tol`. The same quadratic is written
+/// in coordinates stretched by `c`; the minimizer sits at `x = c` and the
+/// optimizer lands on it exactly. But distinct doubles near `c` are
+/// `ulp(c) = eps * c` apart, so for `c` beyond about `x_tol / eps` the
+/// simplex physically cannot shrink below the absolute `1e-8` — the search
+/// used to burn its entire budget sitting on the exact answer and then
+/// report `converged = false`. The resolution floor makes the test
+/// satisfiable at every scale, and the recovered optimum stays exact.
+#[test]
+fn nm_x_scale_sweep_converges() {
+    for &c in &[1.0_f64, 1e2, 1e4, 1e6, 1e8, 1e10, 1e12] {
+        let mut obj = FnObjective::new(move |x: &[f64]| {
+            x.iter().map(|v| (v / c - 1.0) * (v / c - 1.0)).sum::<f64>()
+        });
+        let opts = NelderMeadOptions {
+            max_iter: Some(20_000),
+            max_fevals: Some(20_000),
+            ..NelderMeadOptions::default()
+        };
+        let x0 = vec![0.3 * c, -0.2 * c, 0.7 * c];
+        let res = nelder_mead(&mut obj, &x0, &opts).unwrap();
+        assert!(
+            res.converged,
+            "c = {c:e}: {} after {} fevals",
+            res.termination, res.fevals
+        );
+        assert_eq!(res.termination, Termination::SimplexTolerance);
+        // The objective is scale-free (it is written in x/c), so the same
+        // accuracy is demanded of every scale.
+        assert!(res.f <= 1e-14, "c = {c:e}: f = {:e}", res.f);
+        // Equivalently in x: within the simplex the run stopped on, which
+        // is `max(x_tol, 4 eps c)` wide.
+        let reached = 4.0 * (1e-8 + 4.0 * f64::EPSILON * c);
+        for &xi in &res.x {
+            assert!((xi - c).abs() <= reached, "c = {c:e}: x = {:?}", res.x);
+        }
+        // And it costs a normal amount of work — not the whole budget.
+        assert!(res.fevals < 2000, "c = {c:e}: {} fevals", res.fevals);
+    }
+}
+
+/// The resolution floor is *inert* at the scales the model crates work at.
+///
+/// The floor is `4 eps ||x_best||_inf`; at the O(1) reparameterized working
+/// spaces the model crates optimize over that is ~9e-16, six orders under
+/// the default `x_tol`, so `x_tol` is what stops the search and tightening
+/// it must still buy accuracy. If the floor were binding, both runs below
+/// would stop at the same place.
+#[test]
+fn nm_resolution_floor_is_inert_at_unit_scale() {
+    let budgeted = |x_tol: f64, f_tol: f64| NelderMeadOptions {
+        x_tol,
+        f_tol,
+        max_iter: Some(20_000),
+        max_fevals: Some(20_000),
+        ..NelderMeadOptions::default()
+    };
+    let mut obj = FnObjective::new(rosenbrock);
+    let loose = nelder_mead(&mut obj, &[-1.2, 1.0], &budgeted(1e-8, 1e-8)).unwrap();
+    let mut obj = FnObjective::new(rosenbrock);
+    let tight = nelder_mead(&mut obj, &[-1.2, 1.0], &budgeted(1e-11, 1e-11)).unwrap();
+
+    assert!(loose.converged && tight.converged);
+    assert!(
+        tight.fevals > loose.fevals,
+        "tightening x_tol from 1e-8 to 1e-11 changed nothing ({} vs {} \
+         fevals) — the resolution floor is binding at unit scale",
+        tight.fevals,
+        loose.fevals
+    );
+    assert!(tight.f <= loose.f);
 }
 
 /// Budget terminations are honest.

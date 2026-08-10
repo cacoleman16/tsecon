@@ -66,6 +66,14 @@ pub enum PanelRootTest {
 pub struct PanelRootOpts {
     /// Kernel for the per-unit long-run variance of the first differences
     /// (default [`Kernel::Bartlett`], the Levin-Lin-Chu choice).
+    ///
+    /// [`Kernel::Truncated`] is not positive semi-definite: its estimate can
+    /// come out negative, and the ratio `s_i = sigma_y_i / sigma_eps_i` then
+    /// has no real square root. LLC reports that as
+    /// [`PanelRootError::NonPsdLongRunVariance`] rather than returning a NaN
+    /// statistic; on persistent panels it is the usual outcome, so prefer
+    /// [`Kernel::Bartlett`], [`Kernel::Parzen`] or
+    /// [`Kernel::QuadraticSpectral`].
     pub lrv_kernel: Kernel,
     /// Bandwidth for the long-run variance. `None` uses the Levin-Lin-Chu
     /// rule `round(3.21 T^{1/3})`.
@@ -158,6 +166,9 @@ pub struct PanelRootResult {
 ///   `regression = NoConstant`.
 /// * [`PanelRootError::UnbalancedForLlc`] for `test = Llc` on an unbalanced
 ///   panel.
+/// * [`PanelRootError::NonPsdLongRunVariance`] if a unit's LLC long-run
+///   variance is non-positive — only possible with the non-PSD
+///   [`Kernel::Truncated`].
 /// * [`PanelRootError::UnitTooShort`] / [`PanelRootError::Adf`] /
 ///   [`PanelRootError::Hac`] / [`PanelRootError::DegeneratePool`] /
 ///   [`PanelRootError::Stats`] for per-unit or combination failures.

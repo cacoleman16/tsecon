@@ -197,6 +197,19 @@ pub(crate) fn llc(
         })?;
         let sigma_y2 =
             lrv(&dx, kernel, bandwidth).map_err(|e| PanelRootError::Hac { unit: i, source: e })?;
+        // A kernel LRV is only guaranteed non-negative for a positive
+        // semi-definite kernel. The truncated kernel is not PSD, so
+        // `sigma_y2` can be negative and `.sqrt()` would hand back a NaN that
+        // propagates silently into `s_n`, the bias term and the p-value. The
+        // sign test is scale-free — rescaling `y` scales `sigma_y2` by a
+        // positive factor and cannot flip it — so no tolerance is involved.
+        if sigma_y2 <= 0.0 || sigma_y2.is_nan() {
+            return Err(PanelRootError::NonPsdLongRunVariance {
+                unit: i,
+                kernel: kernel.name(),
+                value: sigma_y2,
+            });
+        }
         s_list.push(sigma_y2.sqrt() / sigma_eps);
         rows_list.push(rows);
     }

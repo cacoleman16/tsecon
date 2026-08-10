@@ -16,9 +16,31 @@
 //! fitted values are sorted across tau, which is exactly the monotone
 //! rearrangement of the estimated conditional quantile function and never
 //! increases estimation error.
+//!
+//! ## Overlapping windows and the standard errors
+//!
+//! For `h > 1` consecutive regressions share innovations: `y_{t+h}` and
+//! `y_{t+h-l}` have `h - l` of them in common, so even under a perfectly
+//! specified conditional quantile the check-loss score
+//! `psi_t = x_t (tau - 1{u_t < 0})` is an MA(h-1), not a martingale
+//! difference. The plain Powell sandwich assumes the latter and is therefore
+//! *optimistic by construction* at every horizon the function exists for.
+//! `bse` applies the standard remedy — a Newey-West (Bartlett) correction at
+//! `h - 1` lags, the exact MA order the overlap induces — and `bse_powell`
+//! keeps the uncorrected number.
+//!
+//! The correction is a large improvement, not a cure. Monte Carlo on an
+//! exact-truth, correctly specified, homoskedastic Gaussian design with a
+//! persistent conditioner (measured numbers in the model card) puts nominal
+//! 95% coverage of a slope at, e.g., `T = 250, tau = 0.05`: 0.60 (Powell) vs
+//! 0.69 (corrected) at `h = 12`, and 0.77 vs 0.81 at `h = 4`. The residual
+//! gap is *not* serial correlation: it is the upward finite-sample bias of
+//! the kernel density estimate `f_hat(0)` that both sandwiches divide by,
+//! which grows with the horizon because the overlap shrinks the effective
+//! sample. Quote long-horizon bands with that in mind.
 
 use crate::error::QuantileError;
-use crate::qreg::{check_finite, fit_one, validate_taus, QuantileFit};
+use crate::qreg::{check_finite, fit_one_hac, validate_taus, QuantileFit};
 
 /// Growth-at-risk results; produced by [`growth_at_risk`].
 #[derive(Debug, Clone, PartialEq)]
@@ -30,8 +52,23 @@ pub struct GrowthAtRisk {
     /// Per-tau coefficients on `[const, conditions..., y_t]`,
     /// indexed `params[tau_index][coef]`.
     pub params: Vec<Vec<f64>>,
-    /// Per-tau Powell-sandwich standard errors, same indexing.
+    /// Per-tau standard errors, same indexing: the Powell sandwich with a
+    /// Newey-West (Bartlett) correction at [`Self::hac_lags`] lags for the
+    /// serial correlation the *overlapping* `h`-step windows induce. At
+    /// `horizon = 1` there is no overlap, `hac_lags` is zero, and these are
+    /// exactly [`Self::bse_powell`].
+    ///
+    /// Even corrected these are optimistic at long horizons — see the
+    /// measured coverage table in the model card before quoting a band.
     pub bse: Vec<Vec<f64>>,
+    /// Per-tau *uncorrected* Powell-sandwich standard errors — what
+    /// statsmodels `QuantReg(...).fit(q=tau)` reports for this design, kept
+    /// for replication and for the (rare) case of a serially uncorrelated
+    /// conditioner, where the HAC correction only adds noise.
+    pub bse_powell: Vec<Vec<f64>>,
+    /// The Newey-West lag truncation used for [`Self::bse`]: `horizon - 1`,
+    /// the exact MA order the overlap induces in the check-loss score.
+    pub hac_lags: usize,
     /// Raw fitted conditional quantiles `x_t' beta_tau` at EVERY
     /// `t = 0..n-1` (not just the estimation sample), indexed
     /// `fitted_raw[tau_index][t]`.
@@ -56,8 +93,10 @@ pub struct GrowthAtRisk {
 /// series; the design is `[const, conditions..., y_t]` in that order. Fits
 /// use observations `t = 0..n-1-horizon`; fitted quantiles are evaluated at
 /// every `t`, so `current` (the last evaluation point) is a genuine
-/// out-of-sample risk read. Matches statsmodels `QuantReg` per tau plus a
-/// numpy `sort` rearrangement (see the fixture generator).
+/// out-of-sample risk read. Coefficients match statsmodels `QuantReg` per
+/// tau plus a numpy `sort` rearrangement (see the fixture generator); so do
+/// `bse_powell`, while `bse` adds the `horizon - 1`-lag Newey-West
+/// correction the overlapping windows require (module docs).
 ///
 /// # Errors
 ///
@@ -117,10 +156,15 @@ pub fn growth_at_risk(
     cols.push(y[..nobs].to_vec());
     let outcome: Vec<f64> = (0..nobs).map(|t| y[t + horizon]).collect();
 
-    let fits: Vec<QuantileFit> = taus
+    // Overlapping windows: y_{t+h} and y_{t+h-l} share h - l innovations for
+    // l < h, so the check-loss score x_t (tau - 1{u_t < 0}) is an MA(h-1)
+    // even under a correctly specified quantile. h - 1 is that exact order.
+    let hac_lags = horizon - 1;
+    let fitted_pairs: Vec<(QuantileFit, Vec<f64>)> = taus
         .iter()
-        .map(|&tau| fit_one(&outcome, &cols, tau))
+        .map(|&tau| fit_one_hac(&outcome, &cols, tau, hac_lags))
         .collect::<Result<_, _>>()?;
+    let (fits, bse): (Vec<QuantileFit>, Vec<Vec<f64>>) = fitted_pairs.into_iter().unzip();
 
     // Fitted quantiles at EVERY t (the last row is the current risk read).
     let fitted_raw: Vec<Vec<f64>> = fits
@@ -151,7 +195,9 @@ pub fn growth_at_risk(
         taus: taus.to_vec(),
         horizon,
         params: fits.iter().map(|f| f.params.clone()).collect(),
-        bse: fits.iter().map(|f| f.bse.clone()).collect(),
+        bse,
+        bse_powell: fits.iter().map(|f| f.bse.clone()).collect(),
+        hac_lags,
         fitted_raw,
         fitted,
         crossing,

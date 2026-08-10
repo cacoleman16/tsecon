@@ -16,19 +16,36 @@
 //! - [`gph`] / [`GphResult`] ([`mod@gph`]): the Geweke-Porter-Hudak (1983)
 //!   log-periodogram regression. The OLS slope of `log I(lambda_j)` on
 //!   `R_j = -2 log(2 sin(lambda_j/2))` over the lowest `m` Fourier
-//!   frequencies estimates `d`; the reported [`GphResult::se`] is the
-//!   documented asymptotic `pi / sqrt(24 m)`. Uses [`tsecon_spectral`] for
-//!   the periodogram and [`tsecon_hac`] for the OLS. **Documented-formula
-//!   golden**: NumPy builds the periodogram (FFT), the GPH regressor, and the
-//!   OLS, matched to ~1e-8 (there is no mainstream Python GPH package to
-//!   reference).
+//!   frequencies estimates `d`; the reported [`GphResult::se`] is the exact
+//!   slope SE `sqrt((pi^2/6) / sum_j (R_j - Rbar)^2)` at the bandwidth
+//!   actually used, with the textbook large-`m` limit `pi / sqrt(24 m)`
+//!   reported alongside as [`GphResult::se_asymptotic`]. Uses
+//!   [`tsecon_spectral`] for the periodogram and [`tsecon_hac`] for the OLS.
+//!   **Documented-formula golden**: NumPy builds the periodogram (FFT), the
+//!   GPH regressor, and the OLS, matched to ~1e-8 (there is no mainstream
+//!   Python GPH package to reference).
 //! - [`local_whittle`] / [`WhittleResult`] ([`mod@whittle`]): the Robinson
 //!   (1995) Gaussian semiparametric estimator, minimizing the concentrated
 //!   objective `R(d) = log((1/m) sum lambda_j^{2d} I_j) - (2d/m) sum log
-//!   lambda_j` over `(-1/2, 1)` through [`tsecon_optim`]; the asymptotic SE
-//!   is `1 / (2 sqrt(m))`. **Documented-formula golden**: NumPy evaluates
-//!   `R(d)` on a grid and reports its minimizer, matched to ~1e-6.
+//!   lambda_j` over `(-1/2, 1)` through [`tsecon_optim`]; the reported
+//!   [`WhittleResult::se`] is `1 / (2 sqrt(sum_j nu_j^2))` with
+//!   `nu_j = log lambda_j - mean(log lambda)`, whose large-`m` limit
+//!   `1 / (2 sqrt(m))` is reported alongside as
+//!   [`WhittleResult::se_asymptotic`]. **Documented-formula golden**: NumPy
+//!   evaluates `R(d)` on a grid and reports its minimizer, matched to ~1e-6.
 //! - [`default_bandwidth`]: the textbook `m = floor(sqrt(n))` rule.
+//!
+//! ## Standard errors at the default bandwidth
+//!
+//! Both estimators' textbook standard errors — `pi / sqrt(24 m)` for GPH,
+//! `1 / (2 sqrt(m))` for local Whittle — are large-`m` limits of exact
+//! expressions, and both replace the same slowly-converging quantity
+//! (`(1/m) sum_j nu_j^2 -> 1`) by its limit. At `m = floor(sqrt(n))` that
+//! quantity is only `0.65` (`n = 512`) to `0.76` (`n = 2048`), so the textbook
+//! constants are 15-25% too narrow — nominal-95% intervals cover 86-91% on
+//! exact ARFIMA(0, d, 0) draws. `se` therefore reports the exact
+//! bandwidth-dependent expression in both cases and `se_asymptotic` retains
+//! the limit; `properties.rs` pins the calibration by Monte Carlo.
 //!
 //! ## Validation: documented-formula vs property
 //!

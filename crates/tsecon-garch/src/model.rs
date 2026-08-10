@@ -231,10 +231,49 @@ impl GarchModel {
         Ok(self.loglike_obs(params)?.iter().sum())
     }
 
+    /// Finite-difference step scales for [`crate::inference::std_errors`]:
+    /// for each parameter, the length over which the log-likelihood varies
+    /// appreciably in that direction, in that parameter's own units.
+    ///
+    /// statsmodels (and therefore `arch`) uses `max(|theta_i|, 0.1)` for
+    /// every coordinate alike. That absolute floor is only defensible for
+    /// a dimensionless parameter; applied to one carrying the units of the
+    /// data it destroys the estimate — see [`crate::inference`]. The rules
+    /// here differ from statsmodels' only where the units demand it, and
+    /// each is equivariant under `y -> c * y`:
+    ///
+    /// * `mu` is in the units of `y`, so the floor is a tenth of the
+    ///   residual root-mean-square rather than a flat `0.1` (the same
+    ///   thing, at the percent-return scale `arch` is fitted on);
+    /// * GARCH/GJR `omega` is a *variance*: strictly positive (enforced by
+    ///   [`GarchSpec::validate_params`]), in units of `y^2`, and routinely
+    ///   many orders of magnitude below any absolute floor. Its own value
+    ///   is the only scale it has, so the step is purely relative — to
+    ///   first order this is the step you would take differentiating with
+    ///   respect to `ln(omega)`;
+    /// * the EGARCH intercept is a *log*-variance: rescaling `y` shifts it
+    ///   by `(1 - sum(beta)) * 2 ln c` rather than stretching it, so it is
+    ///   an O(1) quantity and keeps the `max(|omega|, 0.1)` rule;
+    /// * `alpha`, `gamma`, `beta` and `nu` are dimensionless and keep
+    ///   `max(|theta_i|, 0.1)` unchanged.
+    fn step_scales(&self, params: &[f64]) -> Result<Vec<f64>, GarchError> {
+        let (mean, omega, _, _, _, _) = self.spec.split_params(params)?;
+        let mut scales: Vec<f64> = params.iter().map(|v| v.abs().max(0.1)).collect();
+        if let Some(&mu) = mean.first() {
+            let resids = self.resids(mean);
+            let rms = (resids.iter().map(|e| e * e).sum::<f64>() / resids.len() as f64).sqrt();
+            scales[0] = mu.abs().max(0.1 * rms);
+        }
+        if !matches!(self.spec.vol, VolSpec::Egarch { .. }) {
+            scales[self.spec.n_mean_params()] = omega;
+        }
+        Ok(scales)
+    }
+
     /// MLE and Bollerslev-Wooldridge robust standard errors at `params`
     /// (usually the fitted values) — see [`crate::inference`] for the
-    /// estimators and the `arch`-compatible numerical-derivative
-    /// conventions.
+    /// estimators and `GarchModel::step_scales` for the
+    /// numerical-derivative steps.
     ///
     /// # Errors
     ///
@@ -242,6 +281,7 @@ impl GarchModel {
     /// likelihood error raised at a finite-difference probe.
     pub fn standard_errors(&self, params: &[f64]) -> Result<StdErrors, GarchError> {
         self.spec.validate_params(params)?;
+        let step_scale = self.step_scales(params)?;
         inference::std_errors(
             |p| self.loglike(p).map(|ll| -ll),
             |p| {
@@ -250,6 +290,7 @@ impl GarchModel {
             },
             params,
             self.y.len(),
+            &step_scale,
         )
     }
 
