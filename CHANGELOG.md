@@ -7,6 +7,56 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — BREAKING
+
+- **`long_memory_d`'s `se` changed meaning, and the number it reports moves.**
+  It used to be the large-*m* asymptotic closed form — `pi/sqrt(24m)` for GPH,
+  `1/(2*sqrt(m))` for local Whittle — a **constant that ignored the data**
+  entirely: two different series with the same bandwidth got the same standard
+  error. The data-dependent one was computed and then discarded. `se` is now
+  the standard error at the bandwidth actually used, and the closed form is
+  reported alongside it as `se_asymptotic` (plus `se_regression` for GPH).
+
+  This matters because the old value was too **narrow**. Measured at `n=512`,
+  `m=22`: `se` = 0.17037 against `se_asymptotic` = 0.13672, so intervals built
+  from the old number were about **25% too tight at the library's own default
+  bandwidth** — and the model card claimed the opposite, telling readers the
+  bands were conservatively wide. Verified against exact ARFIMA(0,d,0) draws
+  (Davies-Harte circulant embedding, 3000 replications): the new `se` tracks
+  the realised sampling dispersion at a ratio of 0.99–1.04 with 94.5–95.7%
+  coverage, where `se_asymptotic` ran 0.76–0.88 and covered 87–92%.
+
+  If you were reading `se`, your intervals were too narrow and will now widen.
+  If you need the old value for continuity, it is `se_asymptotic`.
+
+- **`var_irf_bands(bias_correct=True)` now raises on `method="asymptotic"`**
+  instead of silently discarding the flag. Kilian's correction re-centres
+  bootstrap draws and the delta-method arm draws none, so the flag never had
+  anything to act on — and this library's own coverage audit *instructed*
+  callers to set it, without saying `method="bootstrap"` was required. Both
+  instructions now name the method, and the flag is echoed in the result.
+
+- **`historical_decomposition` rejects the five sampling arguments the
+  `identification="cholesky"` path never reads** (`n_draws`, `max_tries`,
+  `seed`, `lambda1`, `n_weight_draws`), naming the ones that were set. An
+  accepted-and-inert `seed` makes a single point decomposition look like a
+  seeded draw from a set-identified posterior.
+
+- **`zero_sign_svar(weighted=True)` raises on a zero at horizon >= 1.** The ARW
+  importance weight was hardcoded to 1.0 on every path, so the flag could never
+  change the output, while the docstring implied non-impact patterns received a
+  non-unit weight. The volume element for those patterns is not implemented;
+  the refusal is now loud rather than a silent downgrade. New `arw_weighted`
+  key says whether the weighting actually applied.
+
+- **`panel_unit_root(test="llc", lrv_kernel="truncated")` raises** instead of
+  returning `statistic=nan, p_value=nan`. The truncated kernel is not positive
+  semi-definite, so the long-run variance can come out negative and `sqrt`
+  mints a NaN — it did on 57 of 60 test panels. The error names the kernel and
+  the PSD alternatives.
+
+---
+
 `proxy_svar` identified an impulse response and told you nothing about how
 precisely. This release attaches uncertainty to it — twice, because one answer
 is not enough. When the instrument is strong you want a band; when it is weak a

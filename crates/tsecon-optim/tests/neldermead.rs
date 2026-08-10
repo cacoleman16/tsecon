@@ -1,8 +1,10 @@
 //! Adaptive Nelder-Mead behavior: Rosenbrock 2d, adaptive coefficients in
-//! higher dimension, restart support, termination semantics, and the two
+//! higher dimension, restart support, termination semantics, and the three
 //! ways `converged` used to be uninformative — a default budget that a
-//! restarted search could not finish inside, and an absolute `x_tol` below
-//! the floating-point resolution of the incumbent.
+//! restarted search could not finish inside, an absolute `x_tol` below the
+//! floating-point resolution of the incumbent (both: `converged = false` on
+//! a good answer), and an absolute `f_tol` below the floating-point
+//! resolution of the objective (`converged = true` on a bad one).
 
 mod common;
 
@@ -204,6 +206,88 @@ fn nm_resolution_floor_is_inert_at_unit_scale() {
         loose.fevals
     );
     assert!(tight.f <= loose.f);
+}
+
+/// The f-spread test tracks the scale of the objective, and says so when
+/// the objective runs out of resolution before the search runs out of
+/// progress.
+///
+/// Regression test for an absolute `f_tol`. The same Rosenbrock is written
+/// with an additive constant `k` — the level of an objective is arbitrary
+/// (an unnormalized log-likelihood, an offset to keep a criterion
+/// positive), and the minimizer is at all-ones for every `k`. But two
+/// vertex values near `k` land on the same double as soon as the
+/// *variation* of the objective drops under `ulp(k)`, so past `k ~ 1e7` the
+/// spread hits exactly zero, every simplex move ties, and the simplex
+/// collapses wherever it happens to be. With an absolute `f_tol` that came
+/// back `converged = true` — at `k = 1e15`, after 104 evaluations, with `x`
+/// off by 2.05. Certifying that is worse than failing on it: the caller has
+/// no way to tell it from the `k = 0` run that lands within 1.6e-9.
+///
+/// Both ends are asserted here, because a flag that is merely pessimistic
+/// is no better than one that is merely optimistic.
+#[test]
+fn nm_f_offset_sweep_reports_resolution_loss() {
+    // Well-conditioned: the level leaves room to resolve `f_tol = 1e-8`, so
+    // the certificate is granted and the answer is good.
+    for &k in &[0.0_f64, 1e3, 1e6] {
+        let mut obj = FnObjective::new(move |x: &[f64]| rosenbrock(x) + k);
+        let res = nelder_mead(&mut obj, &[-1.2, 1.0], &NelderMeadOptions::default()).unwrap();
+        assert!(res.converged, "k = {k:e}: {}", res.termination);
+        assert_eq!(res.termination, Termination::SimplexTolerance);
+        assert!(res.f - k <= 1e-8, "k = {k:e}: f - k = {:e}", res.f - k);
+    }
+
+    // Past `f_tol / (4 eps) ~ 1e7` the spread test is decided by rounding.
+    // The optimizer still returns the best point it found — it is simply
+    // honest that no tolerance was verified.
+    for &k in &[1e10_f64, 1e15] {
+        let mut obj = FnObjective::new(move |x: &[f64]| rosenbrock(x) + k);
+        let res = nelder_mead(&mut obj, &[-1.2, 1.0], &NelderMeadOptions::default()).unwrap();
+        assert!(
+            !res.converged,
+            "k = {k:e}: certified convergence with x = {:?} after {} fevals",
+            res.x, res.fevals
+        );
+        assert_eq!(res.termination, Termination::ObjectiveResolution);
+        assert!(res.f.is_finite() && res.f >= k);
+    }
+
+    // The boundary is where the doc comment says it is: the same `k = 1e6`
+    // objective, asked for a tolerance finer than its resolution
+    // (`4 eps * 1e6 = 8.9e-10`), reports the resolution limit instead.
+    let mut obj = FnObjective::new(|x: &[f64]| rosenbrock(x) + 1e6);
+    let opts = NelderMeadOptions {
+        f_tol: 1e-12,
+        max_iter: Some(20_000),
+        max_fevals: Some(20_000),
+        ..NelderMeadOptions::default()
+    };
+    let res = nelder_mead(&mut obj, &[-1.2, 1.0], &opts).unwrap();
+    assert_eq!(res.termination, Termination::ObjectiveResolution);
+    // ...and it stops there rather than grinding out the whole budget, the
+    // way the unfloored absolute test would have.
+    assert!(res.fevals < 2000, "{} fevals", res.fevals);
+}
+
+/// The f-side floor is *relative*, so multiplying the objective — which
+/// leaves every level ratio intact — changes nothing.
+///
+/// This is the control for the additive sweep above: if the new floor were
+/// really a loosening knob rather than a resolution measure it would fire
+/// here too, and it must not, because a multiplied objective loses no
+/// resolution at all.
+#[test]
+fn nm_f_multiplicative_rescaling_is_inert() {
+    for &k in &[1.0_f64, 1e6, 1e12, 1e18] {
+        let mut obj = FnObjective::new(move |x: &[f64]| rosenbrock(x) * k);
+        let res = nelder_mead(&mut obj, &[-1.2, 1.0], &NelderMeadOptions::default()).unwrap();
+        assert!(res.converged, "k = {k:e}: {}", res.termination);
+        assert_eq!(res.termination, Termination::SimplexTolerance);
+        for &xi in &res.x {
+            assert!((xi - 1.0).abs() <= 1e-5, "k = {k:e}: x = {:?}", res.x);
+        }
+    }
 }
 
 /// Budget terminations are honest.

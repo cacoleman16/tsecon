@@ -83,7 +83,10 @@ impl<'a> GasModel<'a> {
     /// # Errors
     ///
     /// * [`GasError::InsufficientData`] — fewer than two observations;
-    /// * [`GasError::NonFinite`] — `y` contains a NaN or infinity.
+    /// * [`GasError::NonFinite`] — `y` contains a NaN or infinity;
+    /// * [`GasError::DegenerateSeries`] — the sample second moment
+    ///   `mean(y^2)` is zero, so the likelihood is unbounded above and no
+    ///   maximum-likelihood estimate exists.
     pub fn new(y: &'a [f64], density: Density) -> Result<Self, GasError> {
         if y.len() < 2 {
             return Err(GasError::InsufficientData {
@@ -95,15 +98,37 @@ impl<'a> GasModel<'a> {
             return Err(GasError::NonFinite { what: "y" });
         }
         let scale = y.iter().map(|v| v * v).sum::<f64>() / y.len() as f64;
+        // A variance model needs a variance to measure. Without this the
+        // whole crate is defined relative to a scale of zero: the variance
+        // floor, the intercept start, and the reported fit all collapse
+        // onto whatever representation limit they were backstopped at, and
+        // the optimizer certifies the result because a likelihood that
+        // diverges is a likelihood that looks converged from the inside.
+        // `scale` is a mean of squares of finite values: never NaN, never
+        // negative, so `<= 0` is exactly "the second moment is zero".
+        if scale <= 0.0 {
+            let what = if y.iter().all(|&v| v == 0.0) {
+                "every observation is exactly zero"
+            } else {
+                "every observation squares to zero in double precision"
+            };
+            return Err(GasError::DegenerateSeries { what });
+        }
         Ok(Self { y, density, scale })
     }
 
     /// The floor applied to the filtered variance: [`VAR_FLOOR_REL`] times
-    /// the sample second moment, backstopped at the smallest positive
-    /// double so a degenerate all-zero series still yields `f_t > 0` rather
-    /// than `log(0)`.
+    /// the sample second moment.
+    ///
+    /// [`GasModel::new`] guarantees `scale > 0`, so this needs no
+    /// representation backstop — and must not have one. The
+    /// `.max(f64::MIN_POSITIVE)` it used to carry did not rescue the
+    /// degenerate case it was written for; it only kept `log(f_t)` finite
+    /// while `f_t` was a subnormal with no relation to the data, which is
+    /// how an all-zero series came back as a *certified* fit rather than a
+    /// diagnosed one.
     fn var_floor(&self) -> f64 {
-        (VAR_FLOOR_REL * self.scale).max(f64::MIN_POSITIVE)
+        VAR_FLOOR_REL * self.scale
     }
 
     /// The observation density.
@@ -214,10 +239,10 @@ impl<'a> GasModel<'a> {
         let density = self.density;
         let dim = if density.needs_dof() { 4 } else { 3 };
 
-        // Sample second moment for the intercept start, backstopped only
-        // at the representation limit (an all-zero series has no scale to
-        // start from; every other series supplies its own).
-        let sig2 = self.scale.max(f64::MIN_POSITIVE);
+        // Sample second moment for the intercept start; strictly positive
+        // by the degeneracy check in `new`, so the series always supplies
+        // its own starting scale.
+        let sig2 = self.scale;
         let b0 = 0.9_f64;
         let a0 = 0.05_f64;
         let omega0 = (1.0 - b0) * sig2;

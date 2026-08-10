@@ -20,7 +20,7 @@
 //!    artifact of the constant rather than a maximum of the likelihood.
 
 use serde_json::Value;
-use tsecon_gas::{Density, GasModel};
+use tsecon_gas::{Density, GasError, GasModel};
 
 fn load_fixture() -> Value {
     let path = format!(
@@ -107,6 +107,68 @@ fn fit_does_not_claim_convergence_at_an_open_boundary() {
     // The t-fit found the same variance dynamics, so the non-convergence
     // really is about nu alone.
     assert!((gaussian.params.b - res.params.b).abs() < 1e-3);
+}
+
+/// A series with no scale is diagnosed, not fitted.
+///
+/// Regression test. An all-zero series used to come back
+/// `converged = true` with `omega = 5e-324`, `variance[0] = 4.4e-323`,
+/// `loglik = +70673` and `aic = -141340` — a certificate, a variance, and
+/// the best information criterion in the library, all on a series with no
+/// variance in it. The likelihood is unbounded above there (with every
+/// `y_t = 0` the Gaussian log-density is `-0.5 (ln 2 pi + ln f_t)`, which
+/// diverges as `f_t -> 0`), so the optimizer was not wrong to keep pushing
+/// `omega` down; what it found was the smallest subnormal the variance
+/// floor's `.max(f64::MIN_POSITIVE)` backstop would let it reach. The
+/// backstop is what made the answer look finite and therefore fitted.
+/// Refusing the input at construction says the true thing: no
+/// maximum-likelihood estimate exists.
+#[test]
+fn degenerate_series_is_refused_rather_than_certified() {
+    for density in [Density::Gaussian, Density::StudentT] {
+        let zeros = vec![0.0; 500];
+        let err = GasModel::new(&zeros, density).unwrap_err();
+        assert!(
+            matches!(err, GasError::DegenerateSeries { .. }),
+            "all-zero series under {}: {err}",
+            density.name()
+        );
+        // The message has to name the cause, not just the refusal.
+        let msg = err.to_string();
+        assert!(msg.contains("every observation is exactly zero"), "{msg}");
+        assert!(msg.contains("mean(y^2)"), "{msg}");
+        assert!(msg.contains("unbounded"), "{msg}");
+
+        // The same verdict when the series is nonzero but squares away:
+        // `mean(y^2)` is what the model measures, and it is zero here too.
+        let underflowed = vec![1e-200_f64; 500];
+        let err = GasModel::new(&underflowed, density).unwrap_err();
+        assert!(matches!(err, GasError::DegenerateSeries { .. }));
+        assert!(
+            err.to_string().contains("squares to zero"),
+            "underflow case should name underflow, not zeros: {err}"
+        );
+    }
+
+    // And the guard is not a blanket refusal of small numbers: a series a
+    // hundred orders below unit scale still has a second moment, so it
+    // still fits — and to the same answer, since the estimator is scale
+    // equivariant.
+    let fx = load_fixture();
+    let y = as_f64_vec(&fx["sim_gaussian"]["y"]);
+    let base = GasModel::new(&y, Density::Gaussian).unwrap().fit().unwrap();
+    let tiny: Vec<f64> = y.iter().map(|v| v * 1e-100).collect();
+    let res = GasModel::new(&tiny, Density::Gaussian)
+        .expect("mean(y^2) = 1e-200 is small, not degenerate")
+        .fit()
+        .unwrap();
+    assert!(res.params.omega > 0.0 && res.variance.iter().all(|&v| v > 0.0));
+    assert!(
+        (res.params.b - base.params.b).abs() <= 1e-5,
+        "b = {} at scale 1e-100 vs {} at unit scale",
+        res.params.b,
+        base.params.b
+    );
 }
 
 /// Rescaling the data must rescale the answer, not change it.
