@@ -202,6 +202,16 @@ remedy exists but is undocumented.
 
 **`silent-wrong-answer`.**
 
+> **Round 3 found this finding's real headline, and it is worse than what is
+> written below.** The same guard (`fe.rs:262`) also passes a regressor that is
+> merely *constant within every entity* — the canonical applied-panel mistake —
+> and there the output is not `±inf` but O(1), plausible, and **19.2% nominally
+> significant at 5%**. Five of five continuous entity-level covariates
+> (log land area, latitude, GDP p.c., a share, N(0,1)) are accepted; five of five
+> exactly-representable ones are refused. See
+> [rounds 3–4, finding 1](18-audit-rounds-3-4-findings.md#1--panel_fe-reports-a-t-statistic-for-a-regressor-the-fixed-effects-annihilate).
+> One guard, one fix.
+
 **Observed.** With two exactly duplicated regressors, `panel_fe` returns
 `params=[1.15e14, -1.15e14]`, `bse=[0.2503, 0.0]`, `tvalues=[4.60e14, -inf]`.
 

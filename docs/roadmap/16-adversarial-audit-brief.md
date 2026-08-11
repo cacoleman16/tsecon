@@ -220,6 +220,8 @@ These are not style preferences. Each was learned by losing hours.
 | **`--exclude tsecon-python` applies to `cargo test` only** | The PyO3 crate SIGABRTs on macOS hunting for libpython, so excluding it from *tests* is correct. Carrying that exclusion into `clippy`/`fmt` is not — they never run the binary, and doing so meant the most-edited file was the least-checked. That put a red commit on `main`. |
 | **Rebuild before judging Python behaviour** | `maturin develop --release -m bindings/python/Cargo.toml`. A stale `.venv` extension will show you the old behaviour and you will conclude the wrong thing. |
 | **Establish every promise from `__doc__` and the model card — never from the `.pyi` or a Rust crate doc** | `print(tsecon.<fn>.__doc__)` and `docs/reference/model-cards/` are what a Python user actually reads. The `.pyi` is a thin type stub and the Rust crate docs are invisible from Python; **neither is a promise**. Round 2 lost three findings to this in one sitting — `recession_probit`'s stub omits "probit only", `panel_unit_root`'s omits "LLC" — and hit the *inverse* three times, where a real defect looked worse than it was because the claim it violated lived only in a Rust module doc. Both a false positive and a false negative live in the gap between these four surfaces. |
+| **But read all three surfaces, and treat a disagreement among them as the finding** | The rule above is about *which surface binds*, not about reading only one. Round 4 found `long_memory_d`'s runtime `__doc__` — the surface this table calls authoritative — is the **stalest** of the three: it promises *"the estimate `d` and its asymptotic `se`"* while the function returns five keys and the model card correctly distinguishes `se` from a `se_asymptotic` it warns is materially too narrow. A fix can land in the code and the card and miss `__doc__`. Diff `sorted(fn(...).keys())` against all three. |
+| **Report comparisons *made*, never comparisons *attempted*** | A probe template that raises produces no comparison, and the sweep output is indistinguishable from a clean pass — the very failure class this brief hunts, in the tooling built to hunt it. Round 2's lens-1 sweep reported "164 axis-comparisons over all 45 callables" while **16 of 59 axes and 6 of 12 seed cases were never compared at all.** Print the reached/attempted ratio every run. The scale sweep already does this right (`reference scale FAILED`); copy it. |
 
 ---
 
@@ -272,13 +274,25 @@ the same number — so an entire class of bug was invisible by construction.
 
 ## Already found and fixed — do not re-report these
 
-> **Round 2 has been run.** Its results are in
-> [17-audit-round-2-findings.md](17-audit-round-2-findings.md): 21 candidates,
-> 8 survivors. Read its "Refuted" section before you start — it records
-> *thirteen* dead ends with the evidence that killed each, including several
-> that look compelling on first contact (`gmm_nonlinear` returning its own
-> starting value; `ccc_garch` on a singular correlation; `panel_fe` at N=1).
-> Re-deriving those is the single easiest way to waste a round.
+> **Rounds 2–4 have been run.** Results in
+> [17-audit-round-2-findings.md](17-audit-round-2-findings.md) (21 candidates,
+> 8 survivors) and
+> [18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md) (8
+> candidates, 3 survivors). **Read both "Refuted" sections before you start** —
+> together they record *seventeen* dead ends with the evidence that killed each,
+> including several that look compelling on first contact (`gmm_nonlinear`
+> returning its own starting value; `ccc_garch` on a singular correlation;
+> `panel_fe` at N=1; `zero_sign_svar`'s "dead" `weighted` flag; `cg_regression`'s
+> intercept). Re-deriving those is the single easiest way to waste a round.
+>
+> Lenses 1, 2, 3 and 4 are now swept to **measured, reported completion** —
+> 59/59 switch axes, 12/12 seed cases, 47 functions scale-swept, 128/128
+> callables degenerated on the data axis plus 192 argument-axis triples, and
+> 64/64 functions checked for constant diagnostics. Where the next round has
+> most room: **lens 7** (the `bvar_*` family framed as Bayesian calibration
+> rather than frequentist coverage, `bai_perron`'s Bai-1997 break-date CIs,
+> `proxy_ar_sets`, `adl_midas`) and **lens 4's source-read half** (a quantity
+> computed in Rust and never surfaced, which the mechanical probe cannot see).
 
 Fixed in `0.2.0`: `ols` gained `hc2`/`hc3`; `iv_gmm`'s HAC bandwidth no-op;
 `iv_gmm` reports `first_stage_f`; `arima_fit`'s missing drift-uncertainty term.
@@ -294,8 +308,20 @@ arguments; and roughly twenty documentation claims.
 
 ## Known open — pick these up
 
-**Found by round 2, confirmed after refutation, not yet fixed.** Full evidence
-and reproducers in [17-audit-round-2-findings.md](17-audit-round-2-findings.md).
+**Found by rounds 2–4, confirmed after refutation, not yet fixed.** Full
+evidence and reproducers in
+[17-audit-round-2-findings.md](17-audit-round-2-findings.md) and
+[18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md).
+
+- **`flp`'s standard errors condition on the estimated eigenfunctions** —
+  `trap`, generated-regressor problem. `se/sd` is flat at **0.66** over a 16×
+  range of T (cov95 0.80 against nominal 0.95), and on the model card's own
+  worked example β₂'s reported `se` is **one-fifth** of the truth. Matches a
+  closed form to three digits. `flp_scenario` is algebraically immune and is the
+  documented route; the docs disclose this exact hazard for FAVAR and dynamic
+  Nelson-Siegel but not here.
+- **`panel_fe`'s absorbed-regressor case** — the real headline of the
+  rank-deficiency finding below; see rounds 3–4, finding 1.
 
 - **`lp(cumulative="both")` reports an inconsistent standard error** —
   `silent-wrong-answer`, the most serious open item. Nominal 95% covers **0.507**
