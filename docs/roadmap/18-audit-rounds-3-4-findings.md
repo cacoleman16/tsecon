@@ -10,8 +10,8 @@ every probe drives the already-built Python surface.
 Same method — independent finder per lens, every finding then sent to an agent
 whose job was to **refute** it, defaulting to refuted.
 
-**Rounds 3–4: 11 candidates raised, 6 survived.** Refutation killed 4, re-scoped
-2 survivors, and merged 1 into a round-2 finding.
+**Rounds 3–4: 14 candidates raised, 7 survived.** Refutation killed 6, re-scoped
+3 survivors, and merged 1 into a round-2 finding.
 
 ---
 
@@ -260,7 +260,87 @@ number that is always ~0.
 
 ---
 
-## 4 — Diagnostics that misattribute their own cause
+## 4 — `ivx_test`'s joint Wald loses its size in the number of predictors, and n does not fix it
+
+**`trap`.** The test the docs route you to *specifically to avoid over-rejection*
+over-rejects, and the property test that certifies it only ever runs k=1.
+
+**Observed.** True β = 0 exactly, so the rejection rate *is* the size. ρ = 1
+exactly, δ = −0.9, n = 250. Coverage of the joint region at nominal 0.95,
+reproduced three times on independent code and seeds:
+
+| k | finder | orchestrator | refuter |
+|---|---|---|---|
+| 1 | 0.9502 | 0.9530 | 0.9433 |
+| 3 | 0.8945 | 0.8990 | 0.8960 |
+| 5 | 0.8332 | 0.8543 | 0.8350 |
+| 8 | **0.7242** | **0.7697** | **0.7370** |
+
+Monotone in k; **k = 1 is at nominal.**
+
+**It does not converge in n — this is the fact the finding rests on.** k=8, ρ=1,
+default `alpha`, size at nominal 0.05:
+
+| n | 250 | 4000 | 16000 | 64000 | 256000 |
+|---|---|---|---|---|---|
+| size | 0.2630 | 0.2305 | 0.2250 | 0.2240 | **0.2200** |
+
+**A thousandfold increase in the sample buys 4pp and leaves the test at 4.4×
+nominal.** The excess decays like `n^{-(1-alpha)/2} = n^{-0.025}`, so reaching
+even 0.10 would need `n ≈ 10^15`. *"Asymptotically chi-square(k)"* is formally
+true and operationally empty at k ≥ 5. This is what separates it from round 3's
+refuted `cg_regression` finding, whose whole gap was the Bartlett kernel and
+vanished in n.
+
+**Mechanism.** Not an arithmetic omission. `crates/tsecon-predreg/src/ivx.rs:290,311-318`
+normalises with a raw `Z'Z` where the conditional variance of the numerator is
+`σ²(Z'Z − N z̄z̄')` — so the shipped variance is *too large*, i.e. conservative,
+and the finder's own control confirmed the demeaned version rejects **more**.
+The driver is the instrument tuning `Rz = 1 + cz/n^alpha`: at the shipped
+`alpha = 0.95` the instrument's effective sample size is `n^{1−alpha} = n^{0.05}`
+— **1.32 at n=250, 1.62 at n=16000**. The two errors happen to cancel at exactly
+the (k=1, δ=−0.9) point the test suite exercises; at δ=0, ρ=1 the same
+conservatism leaves k=1 **under**-rejecting at 0.0176.
+
+**Why the suite is green — confirmed in the source.**
+`crates/tsecon-predreg/tests/properties.rs:58`,
+`ivx_wald_holds_size_uniformly_over_persistence`, sweeps
+ρ ∈ {0.9, 0.95, 0.99, 1.0} and calls the **scalar** `ivx(&r, &x, cfg)` at line
+73. It varies *persistence*, never *dimension*. `properties.rs:231` is the only
+other test touching `ivx_multi` and is a k=1 specialization check.
+`golden.rs:105-116` pins k=2 to a closed-form fixture — algebra, no size. A grep
+for `ivx_test|joint` across the test directory returns nothing. **k=1 is the
+only k tested, and k=1 is the only k at which the size holds.** Every published
+size number in `docs/examples/monte-carlo.md:35-54` is likewise scalar (the
+experiment reproduces digit for digit).
+
+**Expected.** Nothing anywhere mentions k-dependence, a predictor-count limit,
+or a different `alpha` for the joint path — checked across the card, the guide
+chapter, `results.md`, `which-model-when.md`, `monte-carlo.md`, `testing.md`,
+and all three doc surfaces. What is claimed: card `:164-167` *"asymptotically
+chi-square(`k`) and uniform over the predictors' persistence"*; `:171-174` *"…a
+competing-predictors horse race"*; `:63-67` the KMS defaults *"are the ones you
+should keep"*; `guide/03-inference-toolkit.md:506` *"the same uniform-size
+guarantee"* for a panel of predictors, immediately after a table showing IVX at
+0.046–0.055 across the ρ ladder.
+
+**Honest scoping.** *"Uniform over persistence"* is not *"uniform in k"*, so the
+narrow reading survives — which is why this is `trap`, not
+`silent-wrong-answer`. And **the card's own worked example is fine**: at its
+`:201-221` configuration (n=400, ρ=0.98, k=2) size is 0.0500. The distortion
+needs many predictors *and* ρ at or near 1 *and* strong endogeneity. But those
+coincide in the canonical application — eight valuation ratios, monthly, δ=−0.9
+at ρ=0.99 rejects a true null **21% of the time at nominal 5%**, and still 12%
+with 83 years of monthly data.
+
+**The mitigation ships but is under-powered and counter-advised.** `alpha` is a
+public kwarg, but `alpha=0.70` only plateaus at ~2× nominal (0.1014 at
+n=16000); only `alpha=0.50` converges (0.0543 at n=16000) — and the card tells
+the user to keep the defaults.
+
+---
+
+## 5 — Diagnostics that misattribute their own cause
 
 **`cosmetic`**, grouped because they are one shape — the same shape as round 2's
 *"`panel_pmg` blames the panel for a floating-point failure"*.
@@ -278,18 +358,28 @@ Blast radius is one function — `gmm_nonlinear` is the only public
 callback-taking callable — and the native Rust message on the adjacent route is
 excellent.
 
-**`long_memory_d`'s runtime docstring is stale relative to its own round-1 fix**,
-and this is the surface the brief calls authoritative:
+**The runtime docstring is systematically the least-maintained doc surface** —
+two independent instances, both with `__doc__` stale and the model card correct:
 
-| surface | says |
-|---|---|
-| runtime `__doc__` | *"Returns the estimate `d` and its **asymptotic** `se`."* |
-| actually returns | `d`, `m`, `se`, `se_asymptotic`, `se_regression` (GPH) |
-| `long-memory.md:124-126` | `se` = "at the bandwidth actually used"; `se_asymptotic` = "textbook large-`m`", **materially too narrow** |
+| function | `__doc__` says | reality |
+|---|---|---|
+| `long_memory_d` | *"the estimate `d` and its **asymptotic** `se`"* | returns `d`, `m`, `se`, `se_asymptotic`, `se_regression`; `long-memory.md:124-126` distinguishes `se` ("at the bandwidth actually used") from `se_asymptotic` ("textbook large-`m`", **materially too narrow**) |
+| `predictive_regression` | Stambaugh returns *"…estimated `rho`"* | actual sub-keys are `beta_corrected`, `beta_ols`, `bias_term`, **`rho_ols`**, `se`; `__doc__` names a key that does not exist and omits two that do. Card `:69-73` lists all five correctly |
 
-The docstring omits three of five returned keys and calls `se` "asymptotic" —
-the exact label the card attaches to the quantity round 1 found was ~25% too
-narrow. The fix landed in the code and the card and missed `__doc__`.
+`long_memory_d`'s case is the sharper one: the docstring calls `se`
+"asymptotic", the exact label the card attaches to the quantity round 1 found
+was ~25% too narrow. The fix landed in the code and the card and missed
+`__doc__`.
+
+**This refines the brief's own rule.** Round 3 added *"establish promises from
+`__doc__` and the model card, never the `.pyi`"*. Round 4 shows `__doc__` is
+itself the surface a fix most often misses — so the rule is **read all three and
+treat any disagreement as data**, which is now what the brief says.
+
+**`which-model-when.md` contradicts itself about IVX on one page.** `:821` —
+*"The dedicated fix ships today"*; `:858` — *"…should be treated as a
+hypothesis, not a finding, until IVX lands."* Stale-doc drift. (Given finding 4,
+the stale sentence is the better advice.)
 
 ---
 
@@ -320,6 +410,23 @@ narrow. The fix landed in the code and the card and missed `__doc__`.
 - **`var_forecast(band_scope=)` bit-identical.** Inert only at
   `band="pointwise"`, where a simultaneity scope has no meaning; it moves the
   critical value on every simultaneous band (sup-t 2.694654 → 3.044305).
+- **`predictive_regression`'s `stambaugh` interval being re-centred but not
+  re-scaled.** Every fact reproduces — `stambaugh["se"]` is bit-identical to
+  `ols["se"]` (200/200 draws, hex-confirmed by the refuter), the bias correction
+  works (`|bias|/sd` 1.08 → 0.27) while `se/sd` stays 0.68, and cov95 is 0.878
+  **flat** from n=120 to n=4000. **It dies on disclosure, on four surfaces.**
+  Model card `:72-73` states the finding literally: *"`se` (to first order the
+  OLS standard error — the correction is a data-dependent location shift)"*.
+  `crates/tsecon-predreg/src/stambaugh.rs:39-42` says the same and calls it
+  deliberate. `docs/reference/results.md:176-182` prints the **identical**
+  `0.01112` in both `std err` cells and says *"the OLS and Stambaugh p-values
+  above are naive normal ones."* Card `:49-51` says to use `stambaugh` for a
+  debiased **point estimate** and not to trust the `ols` t-statistic. It is also
+  standard practice for Stambaugh (1999) — the reference behaviour, kept — and
+  the correction still buys 12pp of coverage (0.756 → 0.878) using that
+  unchanged `se`. Residue, `cosmetic`: `results/_predreg.py:319-324` titles the
+  forest plot *"Predictive slope, 95% intervals"* with no caveat, while
+  `summary()` does carry the "naive normal" line.
 - **`factor_model`'s Bai-Ng criteria returning the ceiling.** `icp`/`pcp` return
   `kmax` on small-N panels where the eigenvalue-ratio `er` gets it right — but
   the criteria do select correctly at larger N (r=5 → 5), `kmax` is an exposed
@@ -360,6 +467,13 @@ narrow. The fix landed in the code and the card and missed `__doc__`.
   `d̂ = 0.999999985` in up to 30% of draws at `d = 0.9`, and since the reported
   `se` is a deterministic function of `m`, coverage turns non-monotone in α
   (cov68 0.641, cov95 0.967 at d=0.8, n=1024).
+- **`umidas` is sound.** HAC coverage converges monotonically (cov95 0.917 → 0.947
+  at T = 60 → 1000, `se/sd` 0.935 → 0.994), is flat in K (0.926–0.930 at
+  K = 2…12), and the `maxlags=None` Newey-West default ties the best fixed
+  value. The decisive contrast: on AR(1) errors the `nonrobust` control is stuck
+  at 0.898 with one coefficient pinned at 0.585 while HAC reaches 0.937 — the
+  estimator-vs-approximation distinction the coverage suite exists to draw, with
+  `umidas` on the right side.
 - **SVAR restriction validation** — 36/52 malformed inputs raise, each naming the
   offending index. Unsatisfiable sets return `accepted: 0` with **all-NaN**
   quantiles rather than laundering them.
