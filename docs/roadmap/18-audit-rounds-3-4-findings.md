@@ -10,8 +10,8 @@ every probe drives the already-built Python surface.
 Same method — independent finder per lens, every finding then sent to an agent
 whose job was to **refute** it, defaulting to refuted.
 
-**Rounds 3–4: 8 candidates raised, 3 survived.** Refutation killed 4, re-scoped
-2 of the 3 survivors, and merged 1 into a round-2 finding.
+**Rounds 3–4: 11 candidates raised, 6 survived.** Refutation killed 4, re-scoped
+2 survivors, and merged 1 into a round-2 finding.
 
 ---
 
@@ -197,7 +197,70 @@ not here.** `flp` is also documented for externally supplied scores, where the
 
 ---
 
-## 3 — Diagnostics that misattribute their own cause
+## 3 — Three quantities computed, documented, and then dropped at the binding
+
+**`overclaim`** ×2 and **`trap`** ×1. Lens 4's actual yield — and a lesson about
+the lens: **the mechanical probe structurally cannot see these.** It flags
+*returned* quantities that come back constant; these are quantities **never
+returned at all**. The two halves of this lens do not overlap, and only the
+source read finds this shape.
+
+**`growth_at_risk` computes `bse_powell` and drops it.**
+`crates/tsecon-quantile/src/gar.rs:199` computes it and `gar.rs:68` declares the
+field; `bindings/python/src/lib.rs:6224-6236` sets nine keys and never that one,
+with the value live in `r` on the line above. Returned keys are
+`['bse','crossing','current','fitted','fitted_raw','hac_lags','horizon','params','taus']`.
+
+The promise is not incidental — `docs/reference/model-cards/quantile.md:260-268`
+is the section headed **"How to read the output"**, and it walks
+`params`/`bse`/`bse_powell`/`fitted`/`fitted_raw`/`crossing` in sequence. Every
+one except `bse_powell` is returned. Then `:338` offers advice a caller cannot
+act on — *"The one case where `bse_powell` is the better number is a serially
+uncorrelated conditioner"* — and `:347` says the golden *"pins `params`,
+`bse_powell`, and the fitted paths."* At `horizon=4` the probe measured
+`hac_lags = 3`, so `bse != bse_powell` and the missing number is not
+recoverable from what is returned.
+
+**The house style makes this a defect rather than a design choice.**
+`docs/reference/model-cards/specification-tests.md:341-344` shows what the
+library does when non-exposure is deliberate: *"the raw `recursive_residuals`
+array and the `a` constant exist in the underlying Rust struct but are
+deliberately **not** exposed in Python: the four returned keys are `path`,
+`bound_upper`, `bound_lower`, and `sigma`, and nothing else."* Stated twice. The
+quantile card does the opposite.
+
+**`markov_switching_ar` reduces the Kim smoother's `n × k` matrix to one
+column.** `crates/tsecon-regime/src/results.rs:47` holds the full `n`-by-`k`
+`smoothed_prob`; `bindings/python/src/lib.rs:3990-3991` keeps only
+`p[k_regimes - 1]` and publishes it as `smoothed_prob_last_regime`.
+`filtered_prob` (`results.rs:15`) never surfaces at all. Measured at both `k=2`
+and `k=3`: the only probability key is `smoothed_prob_last_regime`, shape
+`(399,)`.
+
+At `k=2` the drop is recoverable as `1−p`, which is why it has gone unnoticed.
+**At `k ≥ 3` it is not** — only the sum of the remaining columns is known. The
+runtime docstring promises *"smoothed regime probabilities"*, and
+`docs/reference/model-cards/cointegration-regime.md:113-114` promises
+*"filtered/smoothed regime probabilities"* — both plural, both matrices — while
+`:136` of the same card correctly names the scalar-path key. The card
+contradicts itself. `k_regimes` is a free argument and
+`docs/migration/from-stata.md:90` maps Stata's `mswitch ar y, states(k)` onto it
+with no caveat. Severity `trap`.
+
+**`lp(se="hac", band=…)` computes `cov_se_max_rel_diff` and drops it.**
+`crates/tsecon-lp/src/band.rs:795` computes it, `:814` stores it, `:401`
+declares it; the Python call returns 14 keys and neither it nor the
+cross-horizon `cov` is among them. `smooth_lp(band="sup-t")` shares the drop.
+`docs/reference/model-cards/local-projections.md:97` promises *"…the multiplier
+uses only the correlation matrix, **and the largest relative gap is reported so
+you can see how far apart they were**."* Reconstructed from the public surface
+at `H=8, p=4, T=300`, the per-horizon gaps run 7.48 / 0.94 / 6.29 / 0.86 / 4.38
+/ 0.14 / 0.09 / 1.68 / 0.00 % — **max 7.48%**, so this is not a promise about a
+number that is always ~0.
+
+---
+
+## 4 — Diagnostics that misattribute their own cause
 
 **`cosmetic`**, grouped because they are one shape — the same shape as round 2's
 *"`panel_pmg` blames the panel for a floating-point failure"*.
@@ -268,16 +331,26 @@ narrow. The fix landed in the code and the card and missed `__doc__`.
 
 # Swept and found sound
 
-- **Lens 4 (discarded computation) is essentially clean.** Its mechanical half —
-  call each function on 8 independent datasets and flag every returned quantity
-  that comes back bit-identical — reached **64 of 64** functions with **0**
-  template failures and surfaced 124 constant leaves. On triage all but one are
+- **Lens 4's *mechanical* half found the returned surface clean.** Calling each
+  function on 8 independent datasets and flagging every returned quantity that
+  comes back bit-identical reached **64 of 64** functions with **0** template
+  failures and surfaced 124 constant leaves. On triage all but one are
   legitimately constant: tabulated critical values (`phillips_perron`,
   `phillips_ouliaris`, `engle_granger`, `johansen`), deterministic bandwidths
   (`long_memory_d`'s `m = ⌊√n⌋`), CUSUM bounds (a function of T and k), echoed
   input flags, sample sizes, `converged` flags that were all true, zero failure
   counters, and IVX's `rz = 1 − n^{-cz}`. The one real item is
-  `long_memory_d`'s stale docstring, above.
+  `long_memory_d`'s stale docstring, above. **The source read found three more
+  that this probe structurally cannot see** (finding 3) — the two halves of the
+  lens are complementary, not redundant, and a future round must run both.
+- **The round-1 `long_memory_d` fix is complete.** `gph.rs:139` and
+  `whittle.rs:155` both compute the finite-`m` standard error from the realized
+  frequency spread, keeping the asymptotic constant alongside as
+  `se_asymptotic`. A rich-vs-crude identifier sweep over all 41 crates found
+  `gph.rs` to be the **only** file in the tree containing both a "rich"
+  (hac/sandwich/robust/regression/empirical) and a "crude"
+  (asymptotic/plugin/simple/analytic) variance-flavoured identifier — i.e. the
+  original defect's signature does not recur anywhere.
 - **`long_memory_d` is sound — the round-1 discarded-SE fix works.** The harness
   was validated by reproducing the model card's published numbers exactly
   (0.954/0.951/0.948 against the card's *"94–96%"*), then measured the

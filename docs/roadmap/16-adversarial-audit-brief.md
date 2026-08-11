@@ -287,12 +287,20 @@ the same number — so an entire class of bug was invisible by construction.
 >
 > Lenses 1, 2, 3 and 4 are now swept to **measured, reported completion** —
 > 59/59 switch axes, 12/12 seed cases, 47 functions scale-swept, 128/128
-> callables degenerated on the data axis plus 192 argument-axis triples, and
-> 64/64 functions checked for constant diagnostics. Where the next round has
-> most room: **lens 7** (the `bvar_*` family framed as Bayesian calibration
-> rather than frequentist coverage, `bai_perron`'s Bai-1997 break-date CIs,
-> `proxy_ar_sets`, `adl_midas`) and **lens 4's source-read half** (a quantity
-> computed in Rust and never surfaced, which the mechanical probe cannot see).
+> callables degenerated on the data axis plus 192 argument-axis triples, 64/64
+> functions checked for constant diagnostics, and all 41 crates cross-referenced
+> for public Rust names the binding layer never mentions (172 of them).
+>
+> **Lens 4 needs both halves.** Its mechanical probe flags *returned* quantities
+> that come back constant; its source read finds quantities **never returned at
+> all**. The two do not overlap — the mechanical half declared the returned
+> surface clean while the source read found three documented-then-dropped
+> quantities. Run both.
+>
+> Where the next round has most room: **lens 7** — the `bvar_*` family framed as
+> Bayesian calibration (draw from the model's own prior and check the credible
+> set) rather than frequentist coverage, `bai_perron`'s Bai-1997 break-date CIs,
+> `proxy_ar_sets`, `adl_midas`.
 
 Fixed in `0.2.0`: `ols` gained `hc2`/`hc3`; `iv_gmm`'s HAC bandwidth no-op;
 `iv_gmm` reports `first_stage_f`; `arima_fit`'s missing drift-uncertainty term.
@@ -322,6 +330,12 @@ evidence and reproducers in
   Nelson-Siegel but not here.
 - **`panel_fe`'s absorbed-regressor case** — the real headline of the
   rank-deficiency finding below; see rounds 3–4, finding 1.
+- **Three quantities computed, documented, and dropped at the binding** —
+  `growth_at_risk`'s `bse_powell` (walked through the model card's own "How to
+  read the output"), `markov_switching_ar`'s `n × k` smoothed-probability matrix
+  reduced to one column and unrecoverable at `k ≥ 3`, and
+  `lp(band=…)`'s `cov_se_max_rel_diff`, which the card says is *"reported"* and
+  which reaches 7.5% on a routine design.
 
 - **`lp(cumulative="both")` reports an inconsistent standard error** —
   `silent-wrong-answer`, the most serious open item. Nominal 95% covers **0.507**
