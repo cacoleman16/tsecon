@@ -141,7 +141,7 @@ $$
 \phi(L)\,\Phi(L^s)\,(1-L)^d\,(1-L^s)^D\, y_t = \theta(L)\,\Theta(L^s)\,\varepsilon_t .
 $$
 
-The story that made this famous is the **airline model**. Box and Jenkins took the monthly count of international airline passengers, 1949–1960 — a series with explosive trend growth and a seasonal swing that widens every year. Logs stabilize the widening; one regular difference removes the trend; one seasonal difference removes the stable seasonal pattern; and what remains is captured by just two MA parameters. The result, ARIMA(0,1,1)(0,1,1)$_{12}$ on the logged series, became the default model for seasonal economic data for decades, and its parameter estimates are the canonical cross-package validation target — tsecon's ARIMA crate validates against R's `arima()` on exactly this model.
+The story that made this famous is the **airline model**. Box and Jenkins took the monthly count of international airline passengers, 1949–1960 — a series with explosive trend growth and a seasonal swing that widens every year. Logs stabilize the widening; one regular difference removes the trend; one seasonal difference removes the stable seasonal pattern; and what remains is captured by just two MA parameters. The result, ARIMA(0,1,1)(0,1,1)$_{12}$ on the logged series, became the default model for seasonal economic data for decades, and its parameter estimates are the canonical cross-package validation target — tsecon's ARIMA crate validates against statsmodels `SARIMAX` on exactly this model (`fixtures/sarima.json` pins the fit on the real Series G, landing at the textbook $\hat\theta \approx -0.40$, $\hat\Theta \approx -0.56$).
 
 The non-seasonal ARIMA engine — exact-MLE ARIMA(p,d,q) with correctly integrated-back forecast intervals — ships in Python today. Here it is on a synthetic monthly series with the airline model's shape (a trend plus a seasonal swing), fit in logs after one regular difference:
 
@@ -158,17 +158,28 @@ m["forecast_mean"]                        # 24 log forecasts (integrate back by 
 m["forecast_lower"], m["forecast_upper"]  # intervals on the log scale
 ```
 
-The *seasonal* layer — a second set of polynomials at the seasonal lag, the airline model proper — is still on the roadmap:
-
-> **Preview** — the seasonal `(P, D, Q, s)` order is on the [Module 02 roadmap](../roadmap/02-univariate.md); the call below shows the intended API, a seasonal argument added to the `arima_fit` that ships today.
+The *seasonal* layer — a second set of polynomials at the seasonal lag, the airline model proper — ships as the `seasonal=(P, D, Q, s)` argument. Note the deliberate choice of data below: the synthetic `air` above has a *deterministic* seasonal, so the airline model — built for a *stochastic* one — would correctly pile $\hat\theta$ onto the invertibility boundary (the overdifferencing warning below, live). Simulating from the airline DGP itself shows the estimator recovering its parameters:
 
 ```python
-m = tsecon.arima_fit(np.log(air), p=0, d=1, q=1, seasonal=(0, 1, 1, 12),
-                     forecast_steps=24, conf_alpha=0.05)
-m["forecast_mean"]        # points + intervals that integrate back correctly
+rng = np.random.default_rng(1960)
+n, s = 144, 12
+theta, Theta = -0.4, -0.56
+e = 0.037 * rng.standard_normal(n)
+y = np.full(n, 4.7)
+for t in range(s + 1, n):              # Delta Delta_12 y_t = theta(L) Theta(L^12) e_t
+    y[t] = (y[t-1] + y[t-s] - y[t-s-1] + e[t] + theta * e[t-1]
+            + Theta * e[t-s] + theta * Theta * e[t-s-1])
+
+m = tsecon.arima_fit(y, p=0, d=1, q=1, seasonal=(0, 1, 1, 12),
+                     constant=False, forecast_steps=24, conf_alpha=0.05)
+print(dict(zip(m["param_names"], np.round(m["params"], 4))))
 ```
 
-(The underlying engine — exact-MLE and CSS estimation of ARIMA(p,d,q) with forecast intervals — is implemented and tested in the `tsecon-arima` crate and now wired into Python as `arima_fit`; the seasonal layer is what remains.)
+```text
+{'ma.L1': np.float64(-0.4473), 'ma.S.L12': np.float64(-0.5766), 'sigma2': np.float64(0.0015)}
+```
+
+Differencing (regular and seasonal) is simple differencing — the statsmodels `simple_differencing=True` convention, `d + D*s` observations lost — and forecasts are re-cumulated to levels with the exact cumulative variance, seasonal stages included. The real Box-Jenkins airline series is the golden target: `fixtures/sarima.json` pins the fixed-parameter log-likelihood to statsmodels at 1e-8 relative and the full fit at the textbook parameters.
 
 > **⚠ Common mistake.** Overdifferencing. If you difference a series that was already stationary, you *inject* an MA unit root: the differenced series has $\theta = -1$, the likelihood piles up on the invertibility boundary, and estimation becomes unstable. The symptom is a first-lag autocorrelation near $-0.5$ in the differenced series. Related trap: never difference through missing values — a difference across a gap is not a one-period change. Fit in levels via the state-space form instead (below), which handles gaps exactly.
 
@@ -473,11 +484,11 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 
 **Built in Rust, partly awaiting Python bindings** (`tsecon-arima` crate):
 
-- The non-seasonal ARIMA(p,d,q) engine ships in Python as `arima_fit` above (exact MLE, log-likelihood, residuals, integrated-back forecast intervals). Still Rust-only and on the roadmap for Python: the CSS estimator (`fit_css`) and the seasonal SARIMA layer
+- The ARIMA(p,d,q) engine — seasonal `(P, D, Q, s)` orders included — ships in Python as `arima_fit` above (exact MLE, log-likelihood, residuals, integrated-back forecast intervals). Still Rust-only and on the roadmap for Python: the CSS estimator (`fit_css`)
 
 **Roadmap** ([docs/roadmap/02-univariate.md](../roadmap/02-univariate.md)):
 
-- SARIMA and regression with ARMA errors (regARIMA); Hannan-Rissanen starts and the Monahan reparameterization as public API
+- Regression with ARMA errors (regARIMA); Hannan-Rissanen starts and the Monahan reparameterization as public API
 - The full ETS taxonomy with AutoETS selection; auto-ARIMA (Hyndman-Khandakar)
 - Fitted unobserved-components models (local level/trend with estimated variances, cycles, stochastic seasonals), validated on the Nile and UK-seatbelt canon
 - Markov-switching AR validated against Hamilton (1989); SETAR/STAR with proper sup-test linearity inference; Bai-Perron structural breaks

@@ -60,16 +60,22 @@ information and moment methods bias toward stationarity. Do **not** let AIC pick
 `d` (choose it with `check_stationarity`); do not overfit ARMA orders — an
 ARMA(2,2) on ARMA(1,1) data creates near-canceling AR/MA roots, a flat
 likelihood, and fragile estimates with huge standard errors; do not difference
-through missing values (fit in levels via the state-space form instead); and do
-not reach here for **seasonal** structure — the SARIMA `(P,D,Q,s)` layer is not
-yet in this estimator (it is on the Module 02 roadmap).
+through missing values (fit in levels via the state-space form instead); and for
+**seasonal** structure pass `seasonal = (P, D, Q, s)` — the multiplicative
+SARIMA `(p,d,q)(P,D,Q)_s`, with the airline model `(0,1,1)(0,1,1)_12` on the
+logged series as the canonical starting point.
 
-**Key arguments and defaults (and why).** `p`, `d`, `q` are the orders (all
-default `0`). `constant = False` — a mean/drift term is *off* by default because
-for a differenced (`d >= 1`) series a constant is a deterministic **drift**,
-which you should add deliberately, not by accident; for `d = 0` it is the level
-term, and note the fitted `const` is `c`, **not** the process mean, which is
-`c / (1 - sum phi)`. `forecast_steps = 0` — set it to the horizon `h` to return
+**Key arguments and defaults (and why).** `p`, `d`, `q` are the orders
+(defaults `p = 1`, `d = 0`, `q = 0`: an AR(1) on the levels).
+`seasonal = None` — pass `(P, D, Q, s)` with `s >= 2` for the multiplicative
+seasonal model; seasonal parameters are named statsmodels-style (`ar.S.L12`,
+`ma.S.L12`) and seasonal differencing is applied before regular differencing,
+losing `d + D*s` observations. `constant = True` — the level term for `d = 0`
+(note the fitted `const` is `c`, **not** the process mean, which is
+`c / (1 - sum phi)`); for a differenced (`d >= 1`) series the constant is a
+deterministic **drift**, so the default fits a drift — pass `constant = False`
+deliberately when a drifting forecast is not what you mean.
+`forecast_steps = 0` — set it to the horizon `h` to return
 `h`-step forecasts. `conf_alpha = None` — leave it `None` for point forecasts and
 standard errors only; set it (e.g. `0.05` for 95%) to also return symmetric
 Gaussian prediction bands. `conf_alpha` requires `forecast_steps > 0` and must
@@ -181,10 +187,19 @@ result means the standard errors were refused, not that the fit failed — but i
 is a strong hint that the orders are too rich for the data.
 
 **Validated against.** `statsmodels` 0.14.6 `SARIMAX`, on documented fixtures
-(`fixtures/arima.json`) and live tests. The Rust golden pins fixed-parameter
-exact log-likelihoods to **1e-8 relative** — ARMA(1,1) demeaned against
-`SARIMAX(order=(1,0,1)).loglike`, and ARIMA(1,1,1) with simple differencing on
-the Nile against `SARIMAX(order=(1,1,1), simple_differencing=True).loglike`. For
+(`fixtures/arima.json`, `fixtures/sarima.json`) and live tests. The Rust golden
+pins fixed-parameter exact log-likelihoods to **1e-8 relative** — ARMA(1,1)
+demeaned against `SARIMAX(order=(1,0,1)).loglike`, ARIMA(1,1,1) with simple
+differencing on the Nile against
+`SARIMAX(order=(1,1,1), simple_differencing=True).loglike`, and three seasonal
+gates in `tests/seasonal_golden.rs`: the airline model
+`(0,1,1)(0,1,1)_12` on the real log Series G, a quarterly
+SAR(1)x(1)_4-with-constant, and the mixed `(1,1,1)(1,1,1)_4` — each with
+`seasonal_order` and `simple_differencing=True`. The airline fit is additionally
+held to the textbook parameters (`theta ~ -0.40`, `Theta ~ -0.56`) at 5e-3
+relative, its `cov_type='approx'` standard errors at 1e-4, and its 24-step
+*levels* forecasts against the statsmodels levels state-space form at 1e-6
+(means). For
 the full exact-MLE fit of ARMA(1,1)+constant on the Nile the estimator is held to
 a **match-or-beat** floor on the log-likelihood and to **1e-4 relative** on the
 parameters against an independently cross-verified maximizer. That gate has a

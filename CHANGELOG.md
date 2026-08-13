@@ -7,6 +7,32 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — seasonal ARIMA
+
+- **`arima_fit(..., seasonal=(P, D, Q, s))`** — the multiplicative
+  SARIMA(p,d,q)(P,D,Q)_s, closing the gap the docs have been honest about
+  since 0.1.0. The seasonal and regular lag polynomials are multiplied into a
+  single dense ARMA and run through the existing exact-MLE state-space engine;
+  seasonal differencing follows the statsmodels order (seasonal first, then
+  regular; `simple_differencing=True` semantics, `d + D*s` observations lost);
+  forecasts are re-cumulated to levels through the augmented state — one
+  cumulator per regular difference, one `s`-long delay line per seasonal
+  difference — so the reported forecast variance is the exact cumulative one,
+  seasonal stages included (the pure seasonal random walk reproduces
+  `se_h = sigma * sqrt(ceil(h/s))` bit-for-bit). Seasonal parameters are named
+  statsmodels-style (`ar.S.L12`, `ma.S.L12`), stationarity/invertibility is
+  enforced per factor polynomial through the same Monahan transform, and
+  Hannan-Rissanen starting values gain the seasonal lags. Golden-pinned to
+  statsmodels `SARIMAX` in `fixtures/sarima.json`: the airline model
+  `(0,1,1)(0,1,1)_12` on the real log Series G (fixed-parameter log-likelihood
+  at 1e-8 relative, fit at the textbook `theta ~ -0.40`, `Theta ~ -0.56`,
+  `cov_type='approx'` standard errors at 1e-4, 24-step levels forecasts against
+  the statsmodels levels state-space form at 1e-6), a quarterly
+  SAR(1)x(1)_4-with-constant, and the mixed `(1,1,1)(1,1,1)_4`. The Rust
+  `ArimaSpec` gains `seasonal(P, D, Q, s)` and the results object
+  `seasonal_ar()` / `seasonal_ma()`; CSS (`fit_css`) conditions on the expanded
+  `p + s*P` presample.
+
 `proxy_svar` identified an impulse response and told you nothing about how
 precisely. This release attaches uncertainty to it — twice, because one answer
 is not enough. When the instrument is strong you want a band; when it is weak a

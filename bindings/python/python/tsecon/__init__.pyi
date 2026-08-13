@@ -171,12 +171,19 @@ def arima_fit(
     p: int = ...,
     d: int = ...,
     q: int = ...,
+    seasonal: tuple[int, int, int, int] | None = ...,
     constant: bool = ...,
     forecast_steps: int = ...,
     conf_alpha: float | None = ...,
     drift_uncertainty: bool = ...,
 ) -> dict[str, Any]:
     """Exact-MLE ARIMA(p,d,q) fit, with optional forecast + conf_alpha bands.
+
+    seasonal=(P, D, Q, s) fits the multiplicative SARIMA(p,d,q)(P,D,Q)_s —
+    the airline model is seasonal=(0, 1, 1, 12) on the logged series with
+    p=0, d=1, q=1, constant=False. Seasonal parameters are named
+    statsmodels-style (ar.S.L12, ma.S.L12); differencing (regular and
+    seasonal) is simple differencing, losing d + D*s observations.
 
     Forecast standard errors treat parameters as known by default (the
     statsmodels get_forecast convention). With d >= 1 and constant=True that

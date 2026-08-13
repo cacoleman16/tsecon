@@ -54,6 +54,9 @@ _EXEMPT: dict[str, frozenset[str]] = {
     "hetero_svar": frozenset({"regime_labels"}),
     "var_granger": frozenset({"caused", "causing"}),
     "favar": frozenset({"slow_indices"}),
+    # (P, D, Q, s) integer orders, not data: coercing to float64 would make
+    # the compiled parser reject a plain [0, 1, 1, 12].
+    "arima_fit": frozenset({"seasonal"}),
 }
 
 _POSITIONAL = (
