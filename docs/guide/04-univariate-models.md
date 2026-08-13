@@ -430,8 +430,8 @@ print("Ljung-Box(20) p, whitened      :",
 
 ```text
 true d          = 0.4
-GPH d           = 0.435  se 0.073  (m=77)
-local-Whittle d = 0.451  se 0.057  (m=77)
+GPH d           = 0.435  se 0.080  (m=77)
+local-Whittle d = 0.451  se 0.063  (m=77)
 
 lag :   memory   whitened
   1 :   +0.606   -0.041
@@ -443,7 +443,7 @@ Ljung-Box(20) p, memory series : 0
 Ljung-Box(20) p, whitened      : 0.0455
 ```
 
-Read the ACF column top to bottom: the memory series is still correlated at $+0.26$ *twenty lags out* — a decay no stationary ARMA would produce with a lag-1 of only $0.61$ — while the fractionally-differenced series sits within sampling noise of zero everywhere. The two estimators land at $0.44$ and $0.45$, both within about one standard error of the true $0.40$ (semiparametric estimators buy their freedom from the ARMA structure with wide bands — note the $se$ of $0.06$–$0.07$ even at $n = 6000$). And because local Whittle landed slightly *high*, `frac_diff` differenced a touch too hard: the whitened series shows a small *negative* lag-1 autocorrelation ($-0.041$), the mild-over-differencing tell, which is exactly why the Ljung-Box p on the whitened series is borderline rather than comfortably large. That residual is short-range and tiny — precisely the mopping-up job an ARMA(p, q) on the whitened series is for. See the [long-memory model card](../reference/model-cards/long-memory.md) for the estimator conventions, the exact `se` formulas, and `frac_integrate` as the exact inverse of `frac_diff`.
+Read the ACF column top to bottom: the memory series is still correlated at $+0.26$ *twenty lags out* — a decay no stationary ARMA would produce with a lag-1 of only $0.61$ — while the fractionally-differenced series sits within sampling noise of zero everywhere. The two estimators land at $0.44$ and $0.45$, both within about one standard error of the true $0.40$ (semiparametric estimators buy their freedom from the ARMA structure with wide bands — note the $se$ of $0.06$–$0.08$ even at $n = 6000$). And because local Whittle landed slightly *high*, `frac_diff` differenced a touch too hard: the whitened series shows a small *negative* lag-1 autocorrelation ($-0.041$), the mild-over-differencing tell, which is exactly why the Ljung-Box p on the whitened series is borderline rather than comfortably large. That residual is short-range and tiny — precisely the mopping-up job an ARMA(p, q) on the whitened series is for. See the [long-memory model card](../reference/model-cards/long-memory.md) for the estimator conventions, the exact `se` formulas, and `frac_integrate` as the exact inverse of `frac_diff`.
 
 > **⚠ Common mistake.** Choosing the bandwidth $m$ too large "to use more data." Semiparametric $d$ estimation is local to the origin *on purpose*; as $m$ grows, the ARMA short-run dynamics at higher frequencies contaminate the regression and bias $\hat d$ — usually upward, manufacturing long memory that is really just AR persistence. Report $\hat d$ across a grid of $m$, not a single value. And do not read an estimate near $0.5$ as a verdict on stationarity: the band almost always straddles the boundary, and neither GPH nor local Whittle is built to *test* $d = 1$ — that is a unit-root test's job.
 

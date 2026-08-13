@@ -31,6 +31,7 @@
 
 pub mod dist;
 pub mod error;
+pub mod simultaneous;
 pub mod special;
 
 pub use dist::{

@@ -97,6 +97,14 @@ pub enum LpError {
         /// Usable base periods (`n - n_lag_controls`).
         n_base: usize,
     },
+    /// A confidence-band request could not be honoured: an out-of-range
+    /// `alpha`, too few sup-t simulations, sup-t asked for where no
+    /// cross-horizon covariance exists, or a rejection from the shared
+    /// simultaneous-band routine.
+    Band {
+        /// What went wrong and what to do about it.
+        what: &'static str,
+    },
     /// An error propagated from the shared HAC / OLS engine (singular
     /// design, degrees-of-freedom exhaustion, invalid bandwidth, ...).
     Hac(HacError),
@@ -188,6 +196,7 @@ impl fmt::Display for LpError {
                  fit; use 2 <= n_folds << n_base, reduce horizons, or supply \
                  a longer series"
             ),
+            LpError::Band { what } => write!(f, "simultaneous band: {what}"),
             LpError::Hac(e) => write!(f, "{e}"),
         }
     }

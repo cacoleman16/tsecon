@@ -28,7 +28,7 @@ install and see how much is on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.2.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 126
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 128
           if not n.startswith("_")))
 ```
 
@@ -87,7 +87,7 @@ the same `(data, lags)` arguments.
 
 ## The API at a glance
 
-The 126 functions, grouped by the task they serve. Every one is a plain
+The 128 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -106,6 +106,9 @@ and docstrings live in
 | `kpss` | KPSS stationarity test — the ADF complement |
 | `phillips_perron` | Phillips-Perron semiparametric unit-root test (ADF alternative) |
 | `phillips_ouliaris` | Phillips-Ouliaris residual cointegration test |
+| `engle_granger` | Engle-Granger two-step cointegration test (matches statsmodels `coint`) |
+| `ndiffs` | How many differences a series needs, with the evidence at every order |
+| `box_cox_lambda` | Variance-stabilizing Box-Cox lambda (MLE or Guerrero) |
 | `check_stationarity` | The ADF + KPSS confirmatory workflow, with a recommendation |
 | `check_series` | One-call diagnostic battery: runs the test families, suggests models with evidence |
 | `ols` | Linear regression with nonrobust / HC / HAC standard errors |
@@ -160,6 +163,8 @@ and docstrings live in
 | `long_run_svar` | Blanchard-Quah long-run SVAR (supply/demand decomposition) |
 | `max_share_svar` | Max-share / maximum-FEV shock (main business cycle, news) |
 | `proxy_svar` | Proxy SVAR / external-instrument identification (SVAR-IV) |
+| `proxy_svar_bands` | Proxy-SVAR IRF bands (Jentsch-Lunsford moving-block bootstrap) |
+| `proxy_ar_sets` | Weak-instrument-robust (Anderson-Rubin) confidence *sets* for a proxy-SVAR IRF |
 | `hetero_svar` | SVAR identification through heteroskedasticity (Rigobon) |
 | `nongaussian_svar` | Non-Gaussian / independent-component SVAR identification (ICA; fails if Gaussian) |
 | `structural_fevd` | FEVD for an arbitrary structural impact matrix A0 (any scheme) |
@@ -299,6 +304,12 @@ and docstrings live in
 | Function | What it does |
 |---|---|
 | `dsge_solve` | Blanchard-Kahn solution of a linear rational-expectations model |
+
+### Presentation
+
+| Function | What it does |
+|---|---|
+| `summarize` | Wrap any tsecon output in a renderable results object (see below) |
 
 ---
 

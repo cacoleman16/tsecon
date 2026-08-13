@@ -160,6 +160,20 @@ pub struct SmoothLpResult {
     /// shrinkage bias of the penalty is not accounted for, so these are
     /// shrinkage-estimator standard errors, not exact frequentist ones.
     pub se: Vec<f64>,
+    /// Delta-method covariance of the **whole IRF path**, `B V B'`, row-major
+    /// `(H+1) x (H+1)`: `cov[a * (H+1) + b]` is the covariance of the responses
+    /// at horizons `a` and `b`.
+    ///
+    /// Per-horizon local projections fit each horizon in its own regression and
+    /// so have no cross-horizon block; smooth LP fits one spline coefficient
+    /// vector for every horizon at once, so this matrix is a by-product of the
+    /// estimator rather than extra work. `sqrt(cov[h * (H+1) + h])` is exactly
+    /// [`SmoothLpResult::se`], bit for bit, and it carries the same
+    /// conditional-on-`lambda` caveat.
+    ///
+    /// This is what [`smooth_lp_band`](crate::smooth_lp_band) simulates the
+    /// sup-t critical value from.
+    pub cov: Vec<f64>,
     /// The smoothing parameter actually used (the fixed value, or the CV
     /// winner).
     pub lambda: f64,
@@ -349,18 +363,42 @@ pub fn smooth_lp(y: &[f64], shock: &[f64], spec: &SmoothLpSpec) -> Result<Smooth
         .map(|row| row.iter().zip(&theta).map(|(b, t)| b * t).sum())
         .collect();
 
-    // Sandwich SEs: Bartlett HAC over base-time-aggregated scores.
+    // Sandwich covariance of the whole IRF path: `B V B'`, delta method
+    // through the basis. Smooth LP estimates one spline coefficient vector for
+    // all horizons at once, so unlike per-horizon LP the cross-horizon block is
+    // already there and costs nothing extra. The diagonal is accumulated in
+    // exactly the order the per-horizon variance always was, so `se` is bit-for-
+    // bit what it was before the matrix was reported.
     let bw = spec.hac_maxlags.unwrap_or(hmax + p);
     let m = stack.score_hac(&theta_full, bw);
     let v = &a_inv * &m * &a_inv;
-    let mut se = Vec::with_capacity(hmax + 1);
-    for row in &basis {
-        let mut var = 0.0;
-        for (i, &bi) in row.iter().enumerate() {
-            for (j, &bj) in row.iter().enumerate() {
-                var += bi * v[(i, j)] * bj;
+    let nh = hmax + 1;
+    let mut cov = vec![0.0_f64; nh * nh];
+    for (a, row_a) in basis.iter().enumerate() {
+        for (b, row_b) in basis.iter().enumerate() {
+            let mut var = 0.0;
+            for (i, &bi) in row_a.iter().enumerate() {
+                for (j, &bj) in row_b.iter().enumerate() {
+                    var += bi * v[(i, j)] * bj;
+                }
             }
+            cov[a * nh + b] = var;
         }
+    }
+    // Exact symmetry: `B V B'` is symmetric in exact arithmetic, but the two
+    // triangles accumulate the same terms in opposite order and the shared
+    // sup-t routine checks symmetry to 1e-8 relative. Averaging leaves the
+    // diagonal untouched.
+    for a in 0..nh {
+        for b in (a + 1)..nh {
+            let s = 0.5 * (cov[a * nh + b] + cov[b * nh + a]);
+            cov[a * nh + b] = s;
+            cov[b * nh + a] = s;
+        }
+    }
+    let mut se = Vec::with_capacity(nh);
+    for a in 0..nh {
+        let var = cov[a * nh + a];
         if var < 0.0 {
             return Err(LpError::Hac(tsecon_hac::HacError::NumericalBreakdown {
                 what: "smooth-LP sandwich variance",
@@ -377,6 +415,7 @@ pub fn smooth_lp(y: &[f64], shock: &[f64], spec: &SmoothLpSpec) -> Result<Smooth
         horizons: (0..=hmax).collect(),
         irf,
         se,
+        cov,
         lambda,
         cv_grid,
         cv_scores,

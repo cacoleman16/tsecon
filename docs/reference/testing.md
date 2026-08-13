@@ -15,26 +15,40 @@ around it.
 
 ## The state of the suite
 
-Verified on this working tree (macOS, Apple silicon, Rust 1.97.1, CPython
-3.12.7, release build of the extension):
+Every number in this section was produced by a command run on this working tree
+(macOS, Apple silicon, CPython 3.12, **release** build of the extension). One
+caveat about how, stated up front because it changes what the numbers mean: the
+Rust total is the **sum of 41 separate `cargo test -p <crate>` runs**, one per
+workspace crate other than the PyO3 binding — not a single workspace run. The
+two should agree, and on CI they do; but a summed figure is what was measured
+here, so that is what is labelled.
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1150 passed, 0 failed, 1 ignored** | `cargo test --workspace --exclude tsecon-python` |
-| — integration tests in `crates/*/tests/` | 952 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 154 | |
-| — documentation tests | 44 | |
-| Python binding tests | **600 passed** in 7.1 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Rust tests (total) | **1235 passed, 0 failed, 7 ignored** | `for c in <41 crates>; do cargo test -p $c; done`, summed |
+| — integration tests in `crates/*/tests/` | 1028 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 162 | |
+| — documentation tests | 45 | |
+| Python binding tests | **652 passed** in 7.5 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 41, **every one** with a `tests/` directory | |
-| Golden fixtures | 68 JSON files, produced by 49 generator scripts | `fixtures/` |
-| Public Python functions | 128 — **all 128** are called at least once in the binding suite | |
+| Golden fixtures | 69 JSON files, produced by 50 generator scripts | `fixtures/` |
+| Public Python functions | 128, of which **124** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4--python-binding-tests) names the gap |
 
-Of the 952 Rust integration tests, **174 are golden tests** (`golden.rs` in 38
-crates, plus `unitroot_golden.rs`, `smooth_golden.rs`, `pmg_golden.rs`, and the
-new identification/unit-root goldens) and **434 are property tests**
-(`properties.rs` in 38 crates, plus `unitroot_properties.rs`,
-`smooth_properties.rs`, and `pmg_properties.rs`). The remainder are validation, cross-check, and
-reproducibility suites described below.
+All 7 ignored tests are in `tsecon-var`, and each `#[ignore]` gives its reason:
+three stored-bit-pattern fingerprints that are platform-specific, three
+release-only Monte Carlo runs, and one timing test.
+
+Of the 1028 Rust integration tests, **214 are golden tests** and **392 are
+property tests**. The goldens live in 47 files across 37 crates — `golden.rs` in
+each of those 37, plus `golden_bse.rs`, `engle_granger_golden.rs`,
+`advisors_golden.rs`, `phillips_golden.rs`, `unitroot_golden.rs`,
+`smooth_golden.rs`, `pmg_golden.rs`, `simultaneous_golden.rs`,
+`irf_bands_golden.rs` and `proxy_bands_golden.rs`. The property tests live in 41
+files across 35 crates — `properties.rs` in each of those 35, plus
+`advisors_properties.rs`, `phillips_properties.rs`, `unitroot_properties.rs`,
+`smooth_properties.rs`, `pmg_properties.rs` and `simultaneous_properties.rs`.
+The remainder are validation (111 tests in 11 `*validation*.rs` files),
+cross-check, and reproducibility suites described below.
 
 ---
 
@@ -54,11 +68,19 @@ is one of exactly three things:
    coverage, consistency, parameter recovery).
 
 The [validation matrix](validation-matrix.md) says which of the three each
-method family gets. Across its 40 estimator-family rows, **20 name an
-independent package**, 16 are documented-formula goldens, and 4 are mixed or
-explicitly property-validated. That distribution is published rather than
-smoothed over, because a documented-formula golden is a weaker claim than a
-cross-implementation match and you should know which one you are relying on.
+method family gets, row by row: **52 estimator-family rows**, plus 14 more
+covering the foundational numerics. It grades each row rather than averaging
+over them, and several rows are explicitly **mixed** — where they are, the row
+grades each leg separately and gives each its own tolerance.
+
+No three-way summary split is quoted here, and that is deliberate. The grade
+lives in each row's prose, not in a machine-readable column, so any tally
+published on *this* page would be a hand count that silently goes stale the next
+time a row is added — which is exactly what happened to the tally that used to
+sit in this paragraph. Read the row. What matters is the distinction it draws: a
+documented-formula golden is a weaker claim than a cross-implementation match,
+and `panel_unit_root` is the clearest case on that page where an
+independent-package leg exists but is *not* the leg carrying the tight number.
 
 ### Reference libraries are an offline build tool, not a dependency
 
@@ -124,7 +146,7 @@ the values are reproducible. See
 **What it proves:** the arithmetic agrees with a named reference on a specific
 dataset, to a stated tolerance.
 
-144 tests across 33 crates load `fixtures/*.json` and assert the crate
+214 tests across 37 crates load `fixtures/*.json` and assert the crate
 reproduces the stored reference values. Tolerances are the *asserted* bounds in
 the test source and are frequently far tighter than the spec floor — 1e-12
 relative for diagnostics, 1e-8 for VAR parameters and IRFs, bit-exact for the
@@ -141,7 +163,7 @@ quantity is a valid test statistic. That is Tier 5.
 ### Tier 2 — Rust property tests
 
 **What it proves:** invariants that must hold for *every* input, not just the
-fixture's. 316 tests across 32 crates. These are hand-written with seeded
+fixture's. 392 tests across 35 crates. These are hand-written with seeded
 generators, and they fall into recognizable families:
 
 | Invariant family | Real example |
@@ -167,9 +189,10 @@ coincidental at one dataset.
 **What it proves:** every guard returns a *typed, informative* error rather
 than panicking, producing `NaN`, or silently returning garbage.
 
-Eight dedicated tests carry names like `error_paths`,
+Nine dedicated tests carry names like `error_paths`,
 `errors_display_teaching_messages`, `error_paths_teach`, and
-`guardrails_teach_on_degenerate_inputs`, alongside
+`guardrails_teach_on_degenerate_inputs`, alongside 11 `*validation*.rs` files
+holding 111 tests between them — among them
 [`tsecon-spectest/tests/validation.rs`](../../crates/tsecon-spectest/tests/validation.rs)
 (9 tests, "every guard in the crate returns a typed `SpecTestError` rather than
 panicking") and
@@ -203,7 +226,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-538 tests in 47 files. 37 of the 63 fixture JSONs are reloaded here and checked
+652 tests in 50 files. 37 of the 69 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -215,27 +238,46 @@ cannot cover:
   `test_coint_regime.py`, `test_favar.py`, `test_midas_mgarch.py` and
   `test_mean_group_var.py` all take that path.
 - **Dict keys and shapes.** Estimators return Python dicts; the `Results`
-  facades (`test_results_*.py`, 148 tests) assert key by key that the object
-  *is* the dict the raw function has always returned, with rendering added on
-  top and nothing removed.
-- **Error propagation.** 41 `pytest.raises` assertions check that a Rust
+  facades (nine `test_results_*.py` files, 212 tests) assert key by key that the
+  object *is* the dict the raw function has always returned, with rendering
+  added on top and nothing removed.
+- **Error propagation.** 67 `pytest.raises` assertions check that a Rust
   `Err(...)` surfaces as a Python `ValueError`/`RuntimeError` with a message
   you can act on, rather than an abort. `test_gmm_nonlinear.py` goes the other
   direction too: a Python moment function that raises must propagate its
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
-- **Surface completeness.** All 93 exported functions are invoked as
-  `tsecon.f(...)` somewhere in the suite — verified, not asserted:
+- **Surface completeness — and the four functions it says are missing.** The
+  module exports 128 public callables. This is checked by running the check,
+  not by asserting the answer, and the honest output is *not* empty:
 
   ```sh
   .venv/bin/python -c "
   import tsecon, re, pathlib
   fns = {n for n in dir(tsecon) if not n.startswith('_') and callable(getattr(tsecon, n))}
   txt = ''.join(p.read_text() for p in pathlib.Path('bindings/python/tests').glob('*.py'))
-  print(sorted(f for f in fns if not re.search(rf'tsecon\.{f}\s*\(', txt)))
+  print(len(fns), sorted(f for f in fns if not re.search(rf'tsecon\.{f}\s*\(', txt)))
   "
-  # []
+  # 128 ['engle_granger', 'fvar_scenario', 'ndiffs', 'quantile_lp', 'summarize']
   ```
+
+  One of those five is a false positive. `summarize` **is** exercised, in
+  `test_results_generic.py`, but reached through
+  `from tsecon.results import summarize` rather than the `tsecon.` prefix the
+  regex looks for. The other four are real: **`engle_granger`,
+  `fvar_scenario`, `ndiffs` and `quantile_lp` appear nowhere under
+  `bindings/python/tests/`** — not under any spelling, since `grep -r` on the
+  bare name returns nothing either. So 124 of 128 are exercised here, not 128.
+
+  All four are golden-pinned on the Rust side —
+  `tsecon-coint/tests/engle_granger_golden.rs`,
+  `tsecon-funcshock/tests/golden.rs`, `tsecon-diag/tests/advisors_golden.rs`,
+  `tsecon-quantile/tests/golden.rs` — so the *estimator* is validated. What is
+  untested is the binding: the marshalling, the dict keys and the error
+  propagation that are precisely what this tier exists to check, and precisely
+  what a Rust golden structurally cannot see. Nothing in the suite fails because
+  of this today; it is listed again under
+  [what is not tested](#5--what-is-not-tested).
 
 ### Tier 5 — Monte Carlo validation
 

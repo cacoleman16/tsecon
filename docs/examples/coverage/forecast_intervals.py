@@ -573,6 +573,174 @@ def exp_var_forecast(
 
 
 # --------------------------------------------------------------------------
+# Experiment 3b: the simultaneous (sup-t) forecast band.
+# --------------------------------------------------------------------------
+SIM_N_SIM = 20_000
+"""Gaussian draws behind each sup-t critical value in experiment 3b.
+
+The library default is 100000 and is what production should use; 20000 keeps
+this experiment inside a modest runtime.  The multiplier is a simulated
+quantile redrawn on every replication, so a smaller draw count puts noise into
+``c`` rather than bias into the coverage ``c`` delivers.
+"""
+
+SIM_BANDS = ("sup-t", "sidak", "bonferroni")
+
+
+def exp_var_forecast_simultaneous(
+    t_obs: int = 100,
+    fit_lags: int = 1,
+    h_max: int = 12,
+    reps: int = 2000,
+    stream: int = 33,
+) -> dict[str, Any]:
+    """Marginal vs simultaneous joint coverage of ``var_forecast``, same draws.
+
+    Experiment 3 reports ``joint_all_horizons``: how often *every* one of the
+    ``h_max * k`` marginal intervals holds at once.  It is far below nominal and
+    it stays there as ``T`` grows, because the deficit is multiplicity rather
+    than sample size.  This experiment measures the remedy on the same DGP.
+
+    ``band="sup-t"`` keeps the point forecasts and every standard error exactly
+    as they are and replaces ``z`` with the ``1-alpha`` quantile of
+    ``max_cell |t|`` over the declared family.  The default family --
+    ``band_scope="all"`` -- is every horizon of every series, ``K = steps * k``,
+    which is what a multi-panel fan chart is read as.  ``lower``/``upper`` stay
+    marginal whatever is passed, so both arms below come off the SAME call and
+    the comparison is paired by construction.
+
+    Read the shortfall as well as the repair.  sup-t fixes multiplicity exactly
+    and inherits everything else -- and these are plug-in intervals whose
+    *marginal* rate is already short of nominal, so the joint rate is short too.
+    """
+    rng = _rng(stream)
+    k = VAR_A.shape[0]
+    z = stats.norm.ppf(1.0 - ALPHA / 2.0)
+
+    joint_marginal = 0
+    joint = {m: 0 for m in SIM_BANDS}
+    gain = {m: 0 for m in SIM_BANDS}
+    loss = {m: 0 for m in SIM_BANDS}
+    crit = {m: 0.0 for m in SIM_BANDS}
+    crit_pointwise = 0.0
+    cell_hits = np.zeros((h_max, k))
+    nests = True
+    n_cells = None
+    scope = None
+    failures = 0
+    used = 0
+
+    data = sim_var1(rng, reps, t_obs + h_max, VAR_A, VAR_SIGMA)
+    for r in range(reps):
+        train, future = data[r, :t_obs, :], data[r, t_obs:, :]
+        marginal_ok = None
+        try:
+            per_band = {
+                m: tsecon.var_forecast(
+                    train,
+                    lags=fit_lags,
+                    steps=h_max,
+                    alpha=ALPHA,
+                    band=m,
+                    band_scope="all",
+                    band_seed=1 + (SEED + 7919 * r + 104729 * i) % (2**31 - 2),
+                    band_n_sim=SIM_N_SIM,
+                )
+                for i, m in enumerate(SIM_BANDS)
+            }
+        except Exception:  # pragma: no cover
+            failures += 1
+            continue
+        used += 1
+        for i, m in enumerate(SIM_BANDS):
+            fc = per_band[m]
+            lo = np.asarray(fc["lower"], dtype=float)
+            hi = np.asarray(fc["upper"], dtype=float)
+            slo = np.asarray(fc["sim_lower"], dtype=float)
+            shi = np.asarray(fc["sim_upper"], dtype=float)
+            inside = (future >= lo) & (future <= hi)
+            if i == 0:
+                cell_hits += inside
+                marginal_ok = bool(inside.all())
+                joint_marginal += marginal_ok
+                crit_pointwise += float(fc["pointwise_critical_value"])
+                n_cells = int(fc["n_cells"])
+                scope = fc["band_scope"]
+            covered = bool(((future >= slo) & (future <= shi)).all())
+            joint[m] += covered
+            gain[m] += covered and not marginal_ok
+            loss[m] += marginal_ok and not covered
+            crit[m] += float(np.mean(fc["critical_value"]))
+            # A simultaneous band must nest the marginal band it widens.
+            nests = nests and bool((slo <= lo).all() and (hi <= shi).all())
+
+    denom = max(used, 1)
+    return {
+        "name": f"exp3b_var_forecast_simultaneous_T{t_obs}",
+        "title": (
+            f"var_forecast: marginal vs SIMULTANEOUS bands on a stationary "
+            f"VAR(1), T={t_obs}, fitted lags={fit_lags}"
+        ),
+        "surface": 'var_forecast(band=...) -> sim_lower / sim_upper',
+        "kind": "PRED",
+        "t_obs": t_obs,
+        "fit_lags": fit_lags,
+        "h_max": h_max,
+        "reps": used,
+        "failures": failures,
+        "seed": SEED,
+        "stream": stream,
+        "nominal": NOMINAL,
+        "band_n_sim": SIM_N_SIM,
+        "band_scope": scope,
+        "n_cells": n_cells,
+        "joint_marginal": joint_marginal / denom,
+        "joint": {m: joint[m] / denom for m in SIM_BANDS},
+        "paired_gain": {m: gain[m] for m in SIM_BANDS},
+        "paired_loss": {m: loss[m] for m in SIM_BANDS},
+        "critical_value": {m: crit[m] / denom for m in SIM_BANDS},
+        "pointwise_critical_value": crit_pointwise / denom,
+        "marginal_cell_coverage": float(cell_hits.sum() / (denom * h_max * k)),
+        "simultaneous_nests_marginal": nests,
+        "z": z,
+    }
+
+
+def print_simultaneous_table(res: dict[str, Any]) -> None:
+    """The paired marginal-vs-simultaneous table for `var_forecast`."""
+    print(_RULE)
+    print(res["title"])
+    print(_RULE)
+    reps = res["reps"]
+    print(
+        f"  family: band_scope='{res['band_scope']}', K = {res['n_cells']} cells "
+        f"({res['h_max']} horizons x {res['n_cells'] // res['h_max']} series); "
+        f"nominal {100 * res['nominal']:.0f}%; R = {reps}; "
+        f"band_n_sim = {res['band_n_sim']} (library default 100000)"
+    )
+    print(f"  {'band':<12} {'crit value':>11} {'joint, all K cells':>22}")
+    jm = res["joint_marginal"]
+    print(
+        f"  {'marginal':<12} {res['pointwise_critical_value']:11.4f} "
+        f"{100 * jm:16.1f}+-{100 * mc_se(jm, reps):.1f}"
+    )
+    for m in SIM_BANDS:
+        j = res["joint"][m]
+        print(
+            f"  {m:<12} {res['critical_value'][m]:11.4f} "
+            f"{100 * j:16.1f}+-{100 * mc_se(j, reps):.1f}"
+        )
+    print(
+        f"  the residual is NOT multiplicity: these are PLUG-IN intervals, and "
+        f"their pooled\n  per-cell marginal coverage is "
+        f"{100 * res['marginal_cell_coverage']:.1f}% against nominal "
+        f"{100 * res['nominal']:.0f}%. sup-t fixes multiplicity\n  exactly and "
+        f"inherits that approximation unchanged."
+    )
+    print()
+
+
+# --------------------------------------------------------------------------
 # Experiment 4: nominal-level sweep.
 # --------------------------------------------------------------------------
 def exp_level_sweep(
@@ -1047,6 +1215,7 @@ def check(
     res_levels: dict,
     res_point: dict,
     res_rw: dict,
+    res_sim: dict,
     quick: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Assert what is robustly true.
@@ -1212,6 +1381,65 @@ def check(
         "any interval a user reports around them is the user's own"
     )
 
+    # (9) The simultaneous band: what it buys, paired, and what it does not.
+    assert res_sim["simultaneous_nests_marginal"], (
+        "a simultaneous band must nest the marginal band it widens; some cell "
+        "of some replication came back narrower"
+    )
+    claims.append(
+        f"the simultaneous band nests the marginal band in every one of "
+        f"{res_sim['n_cells']} cells on all {res_sim['reps']} replications -- it "
+        "is a change of multiplier and nothing else"
+    )
+    jm = res_sim["joint_marginal"]
+    for m in SIM_BANDS:
+        gain, loss = res_sim["paired_gain"][m], res_sim["paired_loss"][m]
+        # Paired and one-directional by nesting: `loss` must be 0, so the
+        # difference is gain/reps with paired se sqrt(gain)/reps. Clearing 3 of
+        # those is exactly gain >= 9.
+        assert loss == 0 and gain >= 9, (
+            f"band={m} joint coverage {100 * res_sim['joint'][m]:.1f}% vs marginal "
+            f"{100 * jm:.1f}%: {gain} replications gained, {loss} lost -- not the "
+            "one-directional improvement a nested band must deliver"
+        )
+    claims.append(
+        f"over K={res_sim['n_cells']} cells (band_scope='{res_sim['band_scope']}') "
+        f"the marginal bands hold jointly in {100 * jm:.1f}% of replications and "
+        f"the sup-t band in {100 * res_sim['joint']['sup-t']:.1f}%, paired on the "
+        f"same draws, with 0 replications lost in either closed-form arm"
+    )
+    j_supt = res_sim["joint"]["sup-t"]
+    se_supt = mc_se(j_supt, res_sim["reps"])
+    assert j_supt < NOMINAL - 3.0 * se_supt, (
+        f"sup-t joint coverage {100 * j_supt:.1f}% now reaches nominal "
+        f"{100 * NOMINAL:.0f}% -- if the plug-in shortfall has been fixed, this "
+        "claim and the docs that quote it must be rewritten, not relaxed"
+    )
+    claims.append(
+        f"and it still does NOT reach nominal: sup-t covers "
+        f"{100 * j_supt:.1f}% (+/-{100 * se_supt:.1f}pp) against "
+        f"{100 * NOMINAL:.0f}%, because the pooled per-cell MARGINAL rate of "
+        f"these plug-in intervals is itself only "
+        f"{100 * res_sim['marginal_cell_coverage']:.1f}% -- sup-t fixes "
+        "multiplicity exactly and inherits the plug-in approximation unchanged"
+    )
+    assert (
+        res_sim["pointwise_critical_value"]
+        < res_sim["critical_value"]["sup-t"]
+        < res_sim["critical_value"]["sidak"]
+        < res_sim["critical_value"]["bonferroni"]
+    ), (
+        "expected pointwise < sup-t < sidak < bonferroni multipliers, got "
+        + ", ".join(f"{m} {res_sim['critical_value'][m]:.4f}" for m in SIM_BANDS)
+    )
+    claims.append(
+        f"at K={res_sim['n_cells']}, alpha={ALPHA:.2f} the multipliers order "
+        f"pointwise {res_sim['pointwise_critical_value']:.4f} < "
+        + " < ".join(f"{m} {res_sim['critical_value'][m]:.4f}" for m in SIM_BANDS)
+        + " -- sup-t is tighter than both closed forms because it uses the "
+        "dependence across cells, which the closed forms cannot"
+    )
+
     return claims, skipped
 
 
@@ -1239,6 +1467,7 @@ def run(quick: bool = False) -> dict[str, Any]:
     reps_var = 400 if quick else 6000
     reps_lev = 300 if quick else 4000
     reps_pt = 60 if quick else 1000
+    reps_sim = 250 if quick else 2000
 
     timings: dict[str, float] = {}
 
@@ -1264,6 +1493,16 @@ def run(quick: bool = False) -> dict[str, Any]:
     timings["exp3_var_forecast"] = time.perf_counter() - t0
     for res in (var_small, var_over, var_big):
         print_horizon_table(res)
+
+    # Fewer replications than exp3: every one of them simulates a sup-t
+    # critical value on top of the fit. The claim it carries is a ~50 point
+    # difference, which is many MC standard errors wide even at this count.
+    t0 = time.perf_counter()
+    var_sim = exp_var_forecast_simultaneous(
+        t_obs=100, fit_lags=1, reps=reps_sim, stream=33
+    )
+    timings["exp3b_var_simultaneous"] = time.perf_counter() - t0
+    print_simultaneous_table(var_sim)
 
     t0 = time.perf_counter()
     rw = exp_rw_drift_arima(t_obs=100, h_max=12, reps=reps_rw, stream=6)
@@ -1292,6 +1531,7 @@ def run(quick: bool = False) -> dict[str, Any]:
         "exp3_var_T100_lags1": var_small,
         "exp3_var_T100_lags4": var_over,
         "exp3_var_T800_lags1": var_big,
+        "exp3b_var_simultaneous_T100": var_sim,
         "exp4_level_sweep": levels,
         "exp5_point_only": point_only,
         "exp6_rw_drift_T100_h12": rw,
@@ -1307,6 +1547,7 @@ def run(quick: bool = False) -> dict[str, Any]:
         levels,
         point_only,
         rw_short,
+        var_sim,
         quick=quick,
     )
     results["claims"] = claims
@@ -1363,6 +1604,16 @@ def _verdict(results: dict[str, Any]) -> list[str]:
             f"drift term gives {100 * rw['coverage']['corrected'][-1]:.1f}% -- the "
             "shortfall is fully accounted for and it is the approximation"
         )
+    sim = results["exp3b_var_simultaneous_T100"]
+    lines.append(
+        f"exp3b_var_simultaneous_T100: over K={sim['n_cells']} cells the marginal "
+        f"bands hold jointly in {100 * sim['joint_marginal']:.1f}% of samples and "
+        f"the sup-t band in {100 * sim['joint']['sup-t']:.1f}% "
+        f"(+/-{100 * mc_se(sim['joint']['sup-t'], sim['reps']):.1f}pp), against "
+        f"nominal {100 * sim['nominal']:.0f}% -- a large repair that does NOT "
+        f"reach nominal, because the pooled per-cell marginal rate is itself "
+        f"{100 * sim['marginal_cell_coverage']:.1f}%"
+    )
     for key in ("exp3_var_T100_lags1", "exp3_var_T100_lags4", "exp3_var_T800_lags1"):
         r = results[key]
         lib = r["coverage"]["library"]

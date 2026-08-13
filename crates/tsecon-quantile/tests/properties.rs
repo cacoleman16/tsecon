@@ -255,3 +255,118 @@ fn rearranged_quantile_paths_are_monotone_and_crossing_is_reported_exactly() {
         "the replication set must include at least one genuine crossing"
     );
 }
+
+/// Exact-truth overlapping-horizon design for the growth-at-risk standard
+/// errors. `x` is AR(1) with `phi = 0.8` (macro conditioners are
+/// persistent); `y_{t+h} = 2 - x_t + v_{t+h}` with `v` an MA(h-1) of unit
+/// variance, so `growth_at_risk`'s own design `[const, x_t, y_t]` is
+/// CORRECTLY SPECIFIED at every tau, with true coefficients
+/// `[2 + Phi^{-1}(tau), -1, 0]` — `y_t` carries no information about
+/// `v_{t+h}` because the two MA windows do not overlap. Returns `(y, x)`.
+fn overlapping_dgp(s: &mut Stream, n: usize, h: usize) -> (Vec<f64>, Vec<f64>) {
+    let burn = 200;
+    let tot = burn + n;
+    let mut x = vec![0.0_f64; tot];
+    for t in 1..tot {
+        x[t] = 0.8 * x[t - 1] + gaussian(s);
+    }
+    let eps: Vec<f64> = (0..tot).map(|_| gaussian(s)).collect();
+    let scale = 1.0 / (h as f64).sqrt();
+    let mut y = vec![0.0_f64; tot];
+    for t in h..tot {
+        let v: f64 = (0..h).map(|j| eps[t - j]).sum::<f64>() * scale;
+        y[t] = 2.0 - x[t - h] + v;
+    }
+    (y[burn..].to_vec(), x[burn..].to_vec())
+}
+
+/// One (horizon, seed) cell: coverage of the TRUE conditions slope (-1) by
+/// the corrected and uncorrected 95% intervals, plus the mean se ratio.
+fn coverage_cell(h: usize, n: usize, reps: usize, seed: u64) -> (f64, f64, f64) {
+    const Z: f64 = 1.959_963_984_540_054;
+    let mut s = Stream::new(seed);
+    let (mut hit_hac, mut hit_powell) = (0usize, 0usize);
+    let (mut sum_hac, mut sum_powell) = (0.0_f64, 0.0_f64);
+    for _ in 0..reps {
+        let (y, x) = overlapping_dgp(&mut s, n, h);
+        let r = growth_at_risk(&y, &[x], h, &[0.05], false).expect("gar ok");
+        let (b, se_hac, se_powell) = (r.params[0][1], r.bse[0][1], r.bse_powell[0][1]);
+        if (b + 1.0).abs() <= Z * se_hac {
+            hit_hac += 1;
+        }
+        if (b + 1.0).abs() <= Z * se_powell {
+            hit_powell += 1;
+        }
+        sum_hac += se_hac;
+        sum_powell += se_powell;
+    }
+    let d = reps as f64;
+    (
+        hit_hac as f64 / d,
+        hit_powell as f64 / d,
+        sum_hac / sum_powell,
+    )
+}
+
+#[test]
+fn overlapping_horizons_widen_the_growth_at_risk_standard_errors() {
+    // A HORIZON SWEEP, for the same reason a scale-dependent bug needs a
+    // scale sweep: a single-horizon test cannot see this class of defect.
+    // The uncorrected Powell sandwich treats the check-loss score as a
+    // martingale difference, which the overlapping h-step windows make
+    // false for h > 1, and the resulting intervals are too narrow — worst
+    // at exactly the multi-quarter horizons growth-at-risk exists for.
+    //
+    // Measured here (n = 200, tau = 0.05, 250 replications), coverage of a
+    // nominal 95% interval around the true slope:
+    //     h  =  1      4      8
+    //   Powell  .888   .776   .672
+    //   HAC     .888   .812   .756
+    // The h = 1 column must be IDENTICAL (no overlap, no correction).
+    let n = 200;
+    let reps = 250;
+    let mut previous_ratio = 0.0;
+    for (i, &h) in [1usize, 4, 8].iter().enumerate() {
+        let (cov_hac, cov_powell, ratio) = coverage_cell(h, n, reps, 8_675_309 + h as u64);
+        println!("MEAS h={h} powell={cov_powell:.3} hac={cov_hac:.3} ratio={ratio:.4}");
+        if h == 1 {
+            assert!(
+                (ratio - 1.0).abs() < 1e-15,
+                "h=1 has no overlapping windows: the correction must be an \
+                 exact no-op, got a mean se ratio of {ratio}"
+            );
+            assert!(
+                (cov_hac - cov_powell).abs() < 1e-15,
+                "h=1 coverage must be identical, got {cov_hac} vs {cov_powell}"
+            );
+        } else {
+            // The correction must WIDEN, monotonically in the horizon --
+            // more overlap, more neglected autocovariance.
+            assert!(
+                ratio > 1.10 && ratio > previous_ratio + 0.05,
+                "h={h}: the Newey-West correction must widen the sandwich \
+                 materially and more than at the shorter horizon (ratio \
+                 {ratio}, previous {previous_ratio})"
+            );
+            // ... and it must buy real coverage back.
+            assert!(
+                cov_hac > cov_powell + 0.02,
+                "h={h}: corrected coverage {cov_hac} must beat uncorrected \
+                 {cov_powell} by a clear margin"
+            );
+        }
+        // The defect is not fully cured: the density estimate f_hat(0) that
+        // BOTH sandwiches divide by is itself biased upward in these
+        // overlapping samples. This assertion documents the residual and
+        // will fire (usefully) if anyone ever fixes it -- read the model
+        // card's coverage table before widening it.
+        if h == 8 {
+            assert!(
+                cov_hac < 0.90,
+                "corrected coverage at h=8 is {cov_hac}: if this now reaches \
+                 nominal, the model card's coverage table is stale"
+            );
+        }
+        previous_ratio = if i == 0 { 0.0 } else { ratio };
+    }
+}

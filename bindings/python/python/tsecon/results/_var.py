@@ -177,6 +177,10 @@ class VARResults(Results):
         n_boot: int = 1000,
         seed: int = 0,
         bias_correct: bool = False,
+        band: str = "pointwise",
+        band_scope: str = "horizon",
+        band_seed: int = 0,
+        band_n_sim: int = 100_000,
     ) -> dict:
         """Frequentist confidence bands on this VAR's impulse responses.
 
@@ -185,6 +189,15 @@ class VARResults(Results):
         matching :meth:`irf`), plus ``method``/``alpha``/``n_boot``. ``method``
         is ``"asymptotic"`` (Lütkepohl delta-method) or ``"bootstrap"``
         (residual bootstrap, with optional Kilian ``bias_correct``).
+
+        ``band`` selects the multiplicity correction and defaults to
+        ``"pointwise"``, which leaves the output exactly as before. The
+        pointwise band is a statement about ONE cell: on the audit's design a
+        nominal 90% one contains the whole 13-horizon path about 72% of the
+        time. ``"sup-t"`` (also ``"sidak"``/``"bonferroni"``) adds
+        ``sim_lower``/``sim_upper`` covering every cell in ``band_scope`` at
+        once. See :func:`tsecon.var_irf_bands` for what each scope means and
+        for why the sup-t rate still falls short of nominal.
         """
         if getattr(self, "_data", None) is None:
             raise ValueError(
@@ -203,6 +216,10 @@ class VARResults(Results):
             seed=seed,
             trend=self.trend,
             bias_correct=bias_correct,
+            band=band,
+            band_scope=band_scope,
+            band_seed=band_seed,
+            band_n_sim=band_n_sim,
         )
 
     def plot_irf(

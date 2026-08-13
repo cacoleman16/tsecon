@@ -373,6 +373,162 @@ fn fit_respects_stationarity() {
     assert!(res.params[0] > 0.0, "omega stayed positive");
 }
 
+/// The exponent of `c` that each parameter (and hence its standard error)
+/// carries when the data are rescaled `y -> c * y`. `omega` is a variance
+/// (`c^2`), `mu` is a location (`c^1`), and every coefficient is
+/// dimensionless (`c^0`).
+///
+/// The EGARCH intercept is deliberately absent: it is a *log*-variance, so
+/// rescaling shifts it by `(1 - sum(beta)) * 2 ln c` instead of stretching
+/// it, and its standard error genuinely changes with the units. See
+/// [`egarch_coefficient_standard_errors_are_scale_invariant`].
+fn se_scale_exponents(spec: &GarchSpec) -> Vec<i32> {
+    let mut e = Vec::with_capacity(spec.n_params());
+    if matches!(spec.mean, MeanSpec::Constant) {
+        e.push(1);
+    }
+    e.push(2); // omega, a variance
+    let (p, o, q) = spec.vol.lags();
+    e.extend(std::iter::repeat_n(0, p + o + q));
+    if matches!(spec.dist, DistSpec::StudentT) {
+        e.push(0); // nu
+    }
+    e
+}
+
+/// **Scale equivariance of the standard errors.** Rescaling the data
+/// `y -> c * y` is an exact reparameterization of a GARCH/GJR model:
+/// `omega -> c^2 omega`, `mu -> c mu`, every coefficient unchanged. The
+/// standard errors must follow the same rule, so dividing each by `c` to
+/// its parameter's exponent has to give the *same* numbers at every `c`.
+///
+/// This is a regression test for a silent wrong answer that a single-scale
+/// test cannot see. The finite-difference steps behind the covariance used
+/// to carry statsmodels' absolute floor, `h_i = eps^(1/4) max(|theta_i|,
+/// 0.1)`. Daily equity returns quoted in *decimals* rather than percent
+/// put `omega` around `1e-6`, twelve orders of magnitude below that floor:
+/// the Hessian probe pushed `omega` negative, the likelihood refused the
+/// point, and `fit` reported `se_mle = se_robust = [NaN, ...]` with no
+/// error. One decade up (`omega ~ 8e-5`) it did not fail, it just came
+/// back 8% (MLE) and 15% (robust) wrong. Steps are now scaled per
+/// parameter in that parameter's own units, so the sweep below spans ten
+/// decades of `c` -- five orders of magnitude either side of the percent
+/// scale `arch` is fitted on -- and holds to 1e-3.
+#[test]
+fn standard_errors_are_scale_equivariant() {
+    // sd(base) ~ 0.0068: daily equity returns in decimals, the scale at
+    // which the absolute step floor used to produce all-NaN.
+    let base = simulate_garch11(1e-6, 0.08, 0.90, 2500, 7);
+    let specs = [
+        GarchSpec {
+            mean: MeanSpec::Zero,
+            vol: VolSpec::Garch { p: 1, q: 1 },
+            dist: DistSpec::Normal,
+        },
+        GarchSpec {
+            mean: MeanSpec::Constant,
+            vol: VolSpec::Garch { p: 1, q: 1 },
+            dist: DistSpec::Normal,
+        },
+        GarchSpec {
+            mean: MeanSpec::Constant,
+            vol: VolSpec::Gjr { p: 1, o: 1, q: 1 },
+            dist: DistSpec::Normal,
+        },
+    ];
+    for spec in specs {
+        let names = spec.param_names();
+        let exps = se_scale_exponents(&spec);
+        let mut reference: Option<(Vec<f64>, Vec<f64>)> = None;
+        for &c in &[1e-4_f64, 1e-2, 1.0, 1e2, 1e4, 1e6] {
+            let y: Vec<f64> = base.iter().map(|v| v * c).collect();
+            let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+            let rescale = |v: &[f64]| -> Vec<f64> {
+                v.iter().zip(&exps).map(|(&x, &e)| x / c.powi(e)).collect()
+            };
+            let (mle, robust) = (rescale(&res.se_mle), rescale(&res.se_robust));
+            for (i, nm) in names.iter().enumerate() {
+                // The headline symptom: never NaN, never a non-positive
+                // "standard error", at any scale.
+                for (which, v) in [("mle", mle[i]), ("robust", robust[i])] {
+                    assert!(
+                        v.is_finite() && v > 0.0,
+                        "{spec:?} c={c:e}: se_{which}[{nm}] = {v}"
+                    );
+                }
+            }
+            match &reference {
+                None => reference = Some((mle, robust)),
+                Some((ref_mle, ref_robust)) => {
+                    for (i, nm) in names.iter().enumerate() {
+                        for (which, v, r) in [
+                            ("mle", mle[i], ref_mle[i]),
+                            ("robust", robust[i], ref_robust[i]),
+                        ] {
+                            let dev = ((v - r) / r).abs();
+                            assert!(
+                                dev < 1e-3,
+                                "{spec:?} se_{which}[{nm}]: {v:e} at c={c:e} vs {r:e} at the \
+                                 reference scale -- {dev:.2e} relative, but rescaling the data \
+                                 cannot move a standard error at all"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// EGARCH's dimensionless coefficients under the same rescaling.
+///
+/// `alpha`, `gamma` and `beta` are untouched by `y -> c * y` (only the
+/// log-variance intercept absorbs the units, and it does so by a *shift*
+/// of `(1 - sum(beta)) * 2 ln c`, so `se(omega)` legitimately moves and is
+/// not asserted here). The coefficient standard errors are exactly
+/// invariant in exact arithmetic; the tolerance is 3e-2 because the
+/// intercept's own step still follows statsmodels' `max(|omega|, 0.1)` --
+/// correct for an O(1) log-scale quantity, but it does drift as the
+/// intercept slides past 0.1, and that drift leaks into the rest of the
+/// Hessian. This pins the leak at its measured size (<= 1e-2) so a
+/// regression that reintroduced a units mistake here would be caught.
+#[test]
+fn egarch_coefficient_standard_errors_are_scale_invariant() {
+    let base = simulate_garch11(1e-6, 0.08, 0.90, 2500, 7);
+    let spec = GarchSpec {
+        mean: MeanSpec::Zero,
+        vol: VolSpec::Egarch { p: 1, o: 1, q: 1 },
+        dist: DistSpec::Normal,
+    };
+    let names = spec.param_names();
+    let mut reference: Option<Vec<f64>> = None;
+    for &c in &[1.0_f64, 1e1, 1e2, 1e3] {
+        let y: Vec<f64> = base.iter().map(|v| v * c).collect();
+        let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+        assert!(
+            res.se_robust.iter().all(|v| v.is_finite() && *v > 0.0),
+            "c={c:e}: se_robust = {:?}",
+            res.se_robust
+        );
+        // Skip the intercept (index 0 under a zero mean).
+        let coefs: Vec<f64> = res.se_robust[1..].to_vec();
+        match &reference {
+            None => reference = Some(coefs),
+            Some(rf) => {
+                for (i, (&v, &r)) in coefs.iter().zip(rf).enumerate() {
+                    let dev = ((v - r) / r).abs();
+                    assert!(
+                        dev < 3e-2,
+                        "egarch se_robust[{}]: {v:e} at c={c:e} vs {r:e} at c=1 -- {dev:.2e} \
+                         relative, but the EGARCH coefficients are unit-free",
+                        names[i + 1]
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Construction errors: NaN data, too-short series, malformed lag
 /// structures, and error display strings.
 #[test]

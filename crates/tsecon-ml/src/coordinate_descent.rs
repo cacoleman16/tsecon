@@ -52,15 +52,46 @@
 //! *active set* (currently nonzero coordinates) with cheaper sweeps until
 //! that set converges, then takes another full sweep to test whether any
 //! zeroed coordinate should re-enter. It stops when a **full** sweep moves
-//! no coefficient by more than `tol`. This is the classic *glmnet*
-//! two-loop scheme; it reaches the same global optimum as naive full
+//! no coefficient by more than the tolerance below. This is the classic
+//! *glmnet* two-loop scheme; it reaches the same global optimum as naive full
 //! cycling (the objective is convex and separable in the penalty) while
 //! spending most iterations on the handful of active features.
 //!
 //! # Convergence
 //!
-//! Convergence is declared on the **maximum absolute coefficient change**
-//! in a full sweep falling below `tol` (the roadmap's stated criterion).
+//! Convergence is declared on the maximum coefficient change in a full
+//! sweep, measured **relative to the scale of the problem**: a full sweep
+//! stops the solver when
+//!
+//! ```text
+//! max_j |b_j^new - b_j^old| * ||x_j||  <=  tol * ||y|| .
+//! ```
+//!
+//! `|Δb_j| * ||x_j||` is the Euclidean size of the change feature `j`
+//! makes to the fitted values, so both sides carry the units of `y` and
+//! `tol` is **dimensionless**. That matters because the objective has an
+//! exact equivariance: sending `X -> s*X` and `alpha -> s*alpha` leaves
+//! `(1/(2n))||y - Xb||^2 + alpha*l1_ratio*||b||_1 + ...` bit-for-bit
+//! identical with the solution at `b/s`, and sending `y -> c*y`,
+//! `alpha -> c*alpha` scales the solution by `c`. A tolerance compared
+//! against a *bare* coefficient change is blind to both: coefficients of a
+//! large-scale design move by `O(1/s)` per sweep, so an absolute `tol`
+//! is met after a single sweep and the solver returns a silently wrong,
+//! badly under-converged answer (it stops one soft-threshold step away
+//! from the zero warm start). Normalizing by `||x_j||` and `||y||` makes
+//! the stopping rule — and therefore the returned coefficients — exactly
+//! invariant under both reparametrizations. `properties.rs`'s
+//! `coordinate_descent_is_scale_equivariant`,
+//! `coordinate_descent_is_equivariant_in_the_target_scale` and
+//! `regularization_path_is_scale_equivariant` sweep `s` and `c` over
+//! twenty-odd decades each; with an absolute rule they miss the scale-1
+//! answer by as much as 9% while reporting success.
+//!
+//! Normalizing *per column* rather than by one global constant also keeps
+//! the rule sane on designs whose columns carry wildly different scales:
+//! each coordinate is judged by how much it moved the fit, not by the
+//! magnitude of a coefficient whose units are the column's own.
+//!
 //! Against the golden fixture — where scikit-learn ran to `tol = 1e-12` —
 //! the default `tol = 1e-11` reproduces every coefficient to better than
 //! `1e-9` absolute, comfortably inside the `1e-6` fixture tolerance (the
@@ -75,8 +106,14 @@ use crate::util::{check_xy, columns, dot};
 /// Stopping controls for the coordinate-descent solvers.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CoordDescentOptions {
-    /// Convergence tolerance on the maximum absolute coefficient change in
-    /// a full sweep. Smaller tightens the match to scikit-learn's optimum.
+    /// Convergence tolerance on the maximum coefficient change in a full
+    /// sweep, expressed **relative** to the problem's scale: the solver
+    /// stops when `max_j |Δb_j| * ||x_j|| <= tol * ||y||`. Being
+    /// dimensionless, `tol` means the same thing however `X` and `y` are
+    /// scaled (see the [module docs](self#convergence)). Smaller tightens
+    /// the match to scikit-learn's optimum; values below `~1e-15` are
+    /// below what double precision can resolve and will exhaust
+    /// `max_iter`.
     pub tol: f64,
     /// Maximum number of coordinate sweeps (full and active-set combined)
     /// before [`MlError::NoConvergence`] is returned.
@@ -99,8 +136,16 @@ pub struct PenalizedFit {
     pub coef: Vec<f64>,
     /// Number of coordinate sweeps performed.
     pub n_iter: usize,
-    /// Largest absolute coefficient change in the final full sweep.
+    /// Largest absolute coefficient change in the final full sweep, in the
+    /// coefficients' own units. Diagnostic only — the stopping rule
+    /// compares the *scale-free* [`Self::max_rel_change`] against `tol`.
     pub max_change: f64,
+    /// Largest coefficient change in the final full sweep measured
+    /// relative to the problem's scale, `max_j |Δb_j| * ||x_j|| / ||y||`.
+    /// This is the quantity tested against
+    /// [`CoordDescentOptions::tol`], so `max_rel_change <= tol` on a
+    /// successful return regardless of how `X` and `y` are scaled.
+    pub max_rel_change: f64,
 }
 
 /// Soft-threshold operator `S(z, t) = sign(z) * max(|z| - t, 0)`.
@@ -140,11 +185,24 @@ fn check_penalty(alpha: f64, l1_ratio: f64, opts: CoordDescentOptions) -> Result
     Ok(())
 }
 
+/// The size of one sweep's largest coefficient move, reported two ways.
+#[derive(Debug, Clone, Copy)]
+struct SweepChange {
+    /// `max_j |Δb_j|`, in the coefficients' own units.
+    abs: f64,
+    /// `max_j |Δb_j| * ||x_j||` — the same moves measured as the change
+    /// each feature makes to the fitted values, i.e. in the units of `y`.
+    /// The stopping rule divides this by `||y||`, which is what makes the
+    /// tolerance scale-free.
+    fit: f64,
+}
+
 /// One coordinate sweep over `order`. Updates `beta` and the residual `r`
-/// in place and returns the largest absolute coefficient change seen.
+/// in place and returns the largest coefficient change seen, both in raw
+/// coefficient units and in fitted-value units.
 ///
-/// `cols[j]` is column `j` of `X`, `norm2[j] = ||x_j||^2`, `l1_pen =
-/// n*alpha*l1_ratio`, `l2_pen = n*alpha*(1-l1_ratio)`.
+/// `cols[j]` is column `j` of `X`, `norm2[j] = ||x_j||^2`, `norm[j] =
+/// ||x_j||`, `l1_pen = n*alpha*l1_ratio`, `l2_pen = n*alpha*(1-l1_ratio)`.
 #[allow(clippy::too_many_arguments)]
 fn sweep(
     order: &[usize],
@@ -152,10 +210,12 @@ fn sweep(
     r: &mut [f64],
     cols: &[Vec<f64>],
     norm2: &[f64],
+    norm: &[f64],
     l1_pen: f64,
     l2_pen: f64,
-) -> f64 {
+) -> SweepChange {
     let mut max_change = 0.0f64;
+    let mut max_fit_change = 0.0f64;
     for &j in order {
         if norm2[j] == 0.0 {
             // A constant (zero-variance) column contributes nothing and is
@@ -183,9 +243,18 @@ fn sweep(
         if change > max_change {
             max_change = change;
         }
+        // ||x_j (b_j^new - b_j^old)||_2 = |Δb_j| * ||x_j||: how far this
+        // coordinate moved the fit, in the units of y.
+        let fit_change = change * norm[j];
+        if fit_change > max_fit_change {
+            max_fit_change = fit_change;
+        }
         beta[j] = new_bj;
     }
-    max_change
+    SweepChange {
+        abs: max_change,
+        fit: max_fit_change,
+    }
 }
 
 /// Core coordinate-descent engine operating on pre-extracted columns and a
@@ -202,8 +271,20 @@ pub(crate) fn cd_engine(
     let n = y.len();
     let p = cols.len();
     let norm2: Vec<f64> = cols.iter().map(|c| dot(c, c)).collect();
+    let norm: Vec<f64> = norm2.iter().map(|v| v.sqrt()).collect();
     let l1_pen = (n as f64) * alpha * l1_ratio;
     let l2_pen = (n as f64) * alpha * (1.0 - l1_ratio);
+
+    // Convergence budget in the units of y. A sweep converges when no
+    // coordinate moved the fit by more than `tol` times the size of the
+    // target; both sides scale identically under X -> s*X (with
+    // alpha -> s*alpha) and under y -> c*y (with alpha -> c*alpha), so the
+    // stopping point — and hence the answer — is scale-invariant. A
+    // degenerate y = 0 leaves the budget at zero, which is right: the
+    // solution is exactly zero and the sweep change is exactly zero, so
+    // the `<=` test below still terminates on the first sweep.
+    let y_norm = dot(y, y).sqrt();
+    let budget = opts.tol * y_norm;
 
     let mut beta = warm_start.to_vec();
     // Residual for the warm start: R = y - X beta.
@@ -223,14 +304,14 @@ pub(crate) fn cd_engine(
     loop {
         // Full sweep over every coordinate.
         n_iter += 1;
-        last_full_change = sweep(&all, &mut beta, &mut r, cols, &norm2, l1_pen, l2_pen);
-        if last_full_change < opts.tol {
+        last_full_change = sweep(&all, &mut beta, &mut r, cols, &norm2, &norm, l1_pen, l2_pen);
+        if last_full_change.fit <= budget {
             break;
         }
         if n_iter >= opts.max_iter {
             return Err(MlError::NoConvergence {
                 iterations: n_iter,
-                max_change: last_full_change,
+                max_change: last_full_change.abs,
             });
         }
 
@@ -239,14 +320,16 @@ pub(crate) fn cd_engine(
         if !active.is_empty() {
             loop {
                 n_iter += 1;
-                let ch = sweep(&active, &mut beta, &mut r, cols, &norm2, l1_pen, l2_pen);
-                if ch < opts.tol {
+                let ch = sweep(
+                    &active, &mut beta, &mut r, cols, &norm2, &norm, l1_pen, l2_pen,
+                );
+                if ch.fit <= budget {
                     break;
                 }
                 if n_iter >= opts.max_iter {
                     return Err(MlError::NoConvergence {
                         iterations: n_iter,
-                        max_change: ch,
+                        max_change: ch.abs,
                     });
                 }
             }
@@ -256,7 +339,14 @@ pub(crate) fn cd_engine(
     Ok(PenalizedFit {
         coef: beta,
         n_iter,
-        max_change: last_full_change,
+        max_change: last_full_change.abs,
+        // y_norm == 0 only when y is identically zero, in which case the
+        // sweep change is exactly zero too; report 0 rather than 0/0.
+        max_rel_change: if y_norm > 0.0 {
+            last_full_change.fit / y_norm
+        } else {
+            0.0
+        },
     })
 }
 
@@ -379,5 +469,6 @@ pub fn adaptive_lasso(
         coef,
         n_iter: fit.n_iter,
         max_change: fit.max_change,
+        max_rel_change: fit.max_rel_change,
     })
 }

@@ -75,6 +75,41 @@ fn strict_upper_impact_zeros(n: usize, horizon: usize) -> ZeroRestrictionSet {
     ZeroRestrictionSet::new(rs, n, horizon).expect("recursive zeros valid")
 }
 
+/// The ARW-2018 importance weight is implemented only for impact-only zero
+/// patterns. On a fixture VAR, a horizon `>= 1` zero must report *no* weight
+/// rather than a stand-in `1.0` — otherwise the sampler's `weighted` flag is a
+/// dead knob that silently passes an unweighted RWZ draw off as ARW-weighted.
+#[test]
+fn arw_weight_absent_for_horizon_ge_1_zeros() -> Result<(), IdentError> {
+    let fx = load();
+    let case = &fx["recursive_3var_p1"];
+    let b = mat_from(&case["b"]);
+    let sigma = mat_from(&case["sigma"]);
+    let p = case["p"].as_u64().expect("p") as usize;
+    let horizon = case["horizon"].as_u64().expect("horizon") as usize;
+    let n = sigma.nrows();
+    let base = cholesky_irf(b.as_ref(), sigma.as_ref(), p, horizon)?;
+
+    // Impact-only: weight available and exactly 1.
+    let impact = ZeroRestrictionSet::new(vec![ZeroRestriction::at(0, 1, 0)], n, horizon)?;
+    assert!(impact.arw_weight_available());
+    let mut streams = Stream::substreams(11, 1)?;
+    let (_q, w) = zero_constrained_rotation(&base, &impact, &mut streams[0])?;
+    assert_eq!(w, Some(1.0));
+
+    // Same cell, horizon 2: no weight is available.
+    let deferred = ZeroRestrictionSet::new(vec![ZeroRestriction::at(0, 1, 2)], n, horizon)?;
+    assert!(!deferred.arw_weight_available());
+    let mut streams = Stream::substreams(11, 1)?;
+    let (q, w) = zero_constrained_rotation(&base, &deferred, &mut streams[0])?;
+    assert_eq!(w, None, "horizon-2 zero must not report an ARW weight");
+
+    // The rotation is still a valid RWZ draw satisfying the zero exactly.
+    let theta = structural_irf(&base, q.as_ref());
+    assert!(theta[2][(0, 1)].abs() < TOL, "horizon-2 zero not satisfied");
+    Ok(())
+}
+
 /// Runs the recursive-recovery golden for one fixture case at one seed.
 fn check_recursive_case(case: &Value, seed: u64) -> Result<(), IdentError> {
     let b = mat_from(&case["b"]);
@@ -89,8 +124,8 @@ fn check_recursive_case(case: &Value, seed: u64) -> Result<(), IdentError> {
     let mut streams = Stream::substreams(seed, 1)?;
     let (q, w) = zero_constrained_rotation(&base, &zeros, &mut streams[0])?;
 
-    // Impact-only pattern => weight is exactly one.
-    assert_eq!(w, 1.0, "impact-only weight must be 1");
+    // Impact-only pattern => the ARW weight is available and exactly one.
+    assert_eq!(w, Some(1.0), "impact-only weight must be 1");
 
     // Q orthogonal to 1e-12.
     for a in 0..n {

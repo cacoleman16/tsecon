@@ -120,19 +120,48 @@ the estimate is noisy (variance). Leaving `m=None` applies the textbook
 `m = floor(sqrt(n))` rule. A common sensitivity check is to re-estimate across a
 grid of `m` and confirm `d` is stable.
 
-**How to read the output.** A dict with `d` (the estimate), `se` (its asymptotic
-standard error), and `m` (the bandwidth actually used — useful when you left it
-at the default). The GPH `se` is the documented `π / sqrt(24m)`; the local-Whittle
-`se` is `1 / (2·sqrt(m))` — notice both shrink only as `sqrt(m)`, so honest bands
-are wide unless `m` is large. Locate `d` on the spectrum in the intro:
+**How to read the output.** A dict with `d` (the estimate), `se` (its standard
+error at the bandwidth actually used), `se_asymptotic` (the textbook large-`m`
+closed form, kept for reference), and `m` (the bandwidth actually used — useful
+when you left it at the default). GPH additionally reports `se_regression`.
+Build intervals from `se`. Locate `d` on the spectrum in the intro:
 `0 < d < 0.5` is stationary long memory, `d ≥ 0.5` nonstationary, `d ≈ 1` a unit
 root, `d < 0` over-differenced.
+
+**Why `se` is not the textbook constant.** The familiar closed forms —
+`π / sqrt(24m)` for GPH, `1 / (2·sqrt(m))` for local Whittle — are *large-`m`
+limits*. Both substitute the same slowly-converging quantity,
+`(1/m)·Σ_j (log j − mean log j)² → 1`, by its limit of 1. At the default
+bandwidth that quantity is nowhere near 1: `0.58` at `m = 16`, `0.65` at
+`m = 22`, `0.71` at `m = 32`, `0.76` at `m = 45`, and still only `0.94` at
+`m = 400`. So the textbook constants are **too narrow**, by a factor
+`1/sqrt(that)` that grows as `m` shrinks:
+
+| `n` | `m = floor(sqrt n)` | GPH `se` | GPH `se_asymptotic` | LW `se` | LW `se_asymptotic` |
+|---|---|---|---|---|---|
+| 256  | 16 | 0.210 | 0.160 | 0.164 | 0.125 |
+| 512  | 22 | 0.170 | 0.137 | 0.133 | 0.107 |
+| 1024 | 32 | 0.135 | 0.113 | 0.105 | 0.088 |
+| 2048 | 45 | 0.110 | 0.096 | 0.086 | 0.075 |
+| 8000 | 400 (explicit) | 0.033 | 0.032 | 0.026 | 0.025 |
+
+Measured on exact ARFIMA(0, d, 0) draws (Davies-Harte circulant embedding,
+1500 replications, `d ∈ {0, 0.2, 0.4}`) at `n = 512`, `m = 22`: the realised
+sampling standard deviation of `d̂` is `0.167–0.170` for GPH and `0.139–0.141`
+for local Whittle. The reported `se` matches (`0.170`, `0.133`; nominal-95%
+intervals cover 94–96% and 92–94%), while `se_asymptotic` covers only 89% and
+86%. So earlier advice that these bands "are wide unless `m` is large" had it
+backwards — at the default bandwidth they were **over**confident, not
+conservative. Local Whittle retains a residual 5–9% narrowness at these
+bandwidths (the low-frequency periodogram ordinates are not exactly i.i.d.
+`Exp(1)` at small `m`); treat its interval as a floor.
 
 **Failure modes.** Choosing `m` too large so ARMA short-run structure leaks into
 `d` (the dominant bias); over-interpreting a single `d` without an `m`-sensitivity
 sweep; treating an estimate near `0.5` as a stationarity verdict when the band is
-wide; confusing genuine long memory with a structural break or slowly-varying
-mean, both of which mimic a low-frequency spectral peak.
+wide; quoting `se_asymptotic` as if it were the interval to use at a small
+default bandwidth; confusing genuine long memory with a structural break or
+slowly-varying mean, both of which mimic a low-frequency spectral peak.
 
 **Validated against.** Documented-formula goldens — NumPy builds the periodogram
 (FFT), the GPH regressor and OLS, and a grid evaluation of the Whittle objective
@@ -141,7 +170,12 @@ local Whittle to ~1e-6 (there is no mainstream Python GPH/local-Whittle package
 to reference). Separately, seeded Monte-Carlo property tests establish the
 statistical claim the algebra supports: on simulated ARFIMA(0, d, 0) series with
 known `d ∈ {0.2, 0.4}`, both estimators recover `d` within Monte-Carlo bands
-(`fixtures/longmemory.json`).
+(`fixtures/longmemory.json`). A further Monte-Carlo test **calibrates `se`
+itself** — over a sweep of bandwidths (`n = 256, m = 16` and `n = 512, m = 22`,
+1000 replications each, `d ∈ {0, 0.2, 0.4}`) it asserts that the reported `se`
+is within 15% of the realised sampling standard deviation of `d̂` and that its
+nominal-95% interval covers at least 89%. The sweep is the point: an SE that is
+a bandwidth-independent constant passes at one `m` and fails across a range.
 
 **References.** Geweke & Porter-Hudak (1983, GPH); Robinson (1995, local
 Whittle); Granger & Joyeux (1980) and Hosking (1981) for the ARFIMA model.
@@ -158,6 +192,12 @@ gph = tsecon.long_memory_d(x, m=400, method="gph")
 lw  = tsecon.long_memory_d(x, m=400, method="local_whittle")
 print(f"GPH: d={gph['d']:.3f}  se={gph['se']:.3f}  (m={gph['m']})")   # d ~ 0.383
 print(f"LW : d={lw['d']:.3f}  se={lw['se']:.3f}  (m={lw['m']})")      # d ~ 0.378
+
+# At the default bandwidth m = floor(sqrt(n)) = 89 the textbook constant is
+# ~9% narrower than the SE you should actually quote; at m = 22 (n = 512) the
+# gap is 25%. Always read `se`, not `se_asymptotic`.
+d89 = tsecon.long_memory_d(x, method="local_whittle")
+print(f"m={d89['m']}: se={d89['se']:.4f}  vs textbook={d89['se_asymptotic']:.4f}")
 
 white = tsecon.frac_diff(x, lw["d"])         # whiten using the estimate
 print("whitened series std:", round(white.std(), 3))                 # ~1.0

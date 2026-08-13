@@ -156,13 +156,31 @@ fn growth_at_risk_matches_statsmodels_plus_rearrangement() {
 
         let r = growth_at_risk(&y, &conditions, horizon, &taus, true).expect("gar ok");
         let params_fx = columns(&case["params"]);
+        // The fixture's `bse` is the statsmodels Powell sandwich; that is
+        // `bse_powell` here. `bse` additionally carries the horizon-1-lag
+        // Newey-West correction for the overlapping windows, which no
+        // statsmodels call produces — it is pinned by the property tests
+        // and by the h = 1 identity below.
         let bse_fx = columns(&case["bse"]);
         let raw_fx = columns(&case["fitted_raw"]);
         let rearr_fx = columns(&case["fitted_rearranged"]);
+        assert_eq!(r.hac_lags, horizon - 1, "gar[{name}] hac lag truncation");
+        if horizon == 1 {
+            assert_eq!(
+                r.bse, r.bse_powell,
+                "gar[{name}] h=1 has no overlap: the correction must be an \
+                 exact no-op, not merely a close one"
+            );
+        } else {
+            assert_ne!(
+                r.bse, r.bse_powell,
+                "gar[{name}] h={horizon} overlaps: bse must be corrected"
+            );
+        }
         for (i, &tau) in taus.iter().enumerate() {
             let label = format!("gar[{name}] tau={tau}");
             close_slice(&r.params[i], &params_fx[i], &format!("{label} params"));
-            close_slice(&r.bse[i], &bse_fx[i], &format!("{label} bse"));
+            close_slice(&r.bse_powell[i], &bse_fx[i], &format!("{label} bse_powell"));
             close_slice(&r.fitted_raw[i], &raw_fx[i], &format!("{label} fitted_raw"));
             close_slice(
                 &r.fitted[i],
@@ -180,6 +198,43 @@ fn growth_at_risk_matches_statsmodels_plus_rearrangement() {
             &f64s(&case["current"]),
             &format!("gar[{name}] current"),
         );
+
+        if name == "gar_h4_dense" {
+            // Independent reference for the Newey-West correction itself,
+            // computed WITHOUT tsecon: statsmodels `QuantReg(outcome,
+            // X).fit(q=tau)` on the identical design supplies `params` and
+            // `sparsity`, then numpy assembles
+            //   psi_t  = X_t * (tau - 1{u_t < 0}) / (1 / sparsity),
+            //   S_hat  = psi'psi + sum_{l=1..3} (1 - l/4) (Gamma_l + Gamma_l'),
+            //   cov    = (X'X)^{-1} S_hat (X'X)^{-1}.
+            // Only the overlap-bearing case is pinned; h = 1 is pinned by
+            // the exact no-op assertion above.
+            let reference: [(f64, [f64; 3]); 3] = [
+                (
+                    0.1,
+                    [1.287437064026e-1, 1.317440304944e-1, 1.171932257942e-1],
+                ),
+                (
+                    0.5,
+                    [1.457642018070e-1, 1.472402191418e-1, 1.362964722346e-1],
+                ),
+                (
+                    0.9,
+                    [2.173357605833e-1, 1.924081222472e-1, 2.430262696576e-1],
+                ),
+            ];
+            for (tau, expected) in reference {
+                let i = taus
+                    .iter()
+                    .position(|&t| (t - tau).abs() < 1e-12)
+                    .expect("reference tau present in the fixture grid");
+                close_slice(
+                    &r.bse[i],
+                    &expected,
+                    &format!("gar[{name}] bse (HAC) tau={tau}"),
+                );
+            }
+        }
 
         // rearrange = false must return the raw fits unchanged.
         let raw = growth_at_risk(&y, &conditions, horizon, &taus, false).expect("gar raw ok");

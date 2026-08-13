@@ -26,6 +26,23 @@ pub enum Termination {
     /// The gradient evaluated non-finite away from the starting point; the
     /// best point found so far is returned.
     GradientFailed,
+    /// The search stopped because the objective ran out of *resolution*, not
+    /// because a tolerance was met (Nelder-Mead).
+    ///
+    /// The vertex values agreed to within the floating-point resolution of
+    /// the objective at the incumbent, `4 * eps * |f_best|`, while the
+    /// requested `f_tol` was finer than that. A spread that small is then
+    /// decided by rounding rather than by the search: at `|f| = 1e15` two
+    /// vertices land on the same double as soon as the *variation* of `f`
+    /// drops under `0.125`, and the simplex collapses on ties from there,
+    /// however far the incumbent still is from the minimum.
+    ///
+    /// This is not convergence, and it is not a budget failure either — it
+    /// is a statement about the objective's conditioning. The usual cause is
+    /// a large additive constant (an unnormalized log-likelihood, an
+    /// objective offset to keep it positive); subtracting the level restores
+    /// the resolution and the run converges normally.
+    ObjectiveResolution,
 }
 
 impl Termination {
@@ -52,6 +69,11 @@ impl fmt::Display for Termination {
             Termination::MaxFevals => "maximum function evaluations reached",
             Termination::LineSearchFailed => "line search failed to find an acceptable step",
             Termination::GradientFailed => "gradient evaluated non-finite",
+            Termination::ObjectiveResolution => {
+                "objective values indistinguishable at machine resolution \
+                 (f_tol is finer than 4 * eps * |f|); subtract the additive \
+                 level of the objective"
+            }
         };
         f.write_str(msg)
     }

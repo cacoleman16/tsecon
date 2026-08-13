@@ -7,12 +7,20 @@
 //!
 //! * fractional differencing / integration weights, filter, and exact
 //!   round-trip inverse — to ~1e-12;
-//! * the GPH log-periodogram regression `d`, its asymptotic SE
-//!   `pi/sqrt(24 m)`, and the OLS nonrobust slope SE — to ~1e-8;
-//! * the Robinson (1995) local-Whittle minimizer `d` and its SE
-//!   `1/(2 sqrt(m))` — to ~1e-6.
+//! * the GPH log-periodogram regression `d`, its large-`m` closed form
+//!   `pi/sqrt(24 m)` (the field `se_asymptotic`), and the OLS nonrobust slope
+//!   SE — to ~1e-8;
+//! * the Robinson (1995) local-Whittle minimizer `d` and its large-`m` closed
+//!   form `1/(2 sqrt(m))` (the field `se_asymptotic`) — to ~1e-6.
 //!
-//! These pin the algebra only; the statistical recovery of a true `d` is what
+//! The headline `se` fields are the *bandwidth-exact* expressions those two
+//! closed forms are limits of. The fixture predates them, so they are checked
+//! here by writing the documented formula out longhand from `(n, m)` alone
+//! — no periodogram, no OLS, nothing from the crate's code path — plus the
+//! limit relation `se / se_asymptotic -> 1` as `m` grows.
+//!
+//! These pin the algebra only; the statistical recovery of a true `d`, and the
+//! calibration of `se` against the realised sampling dispersion, is what
 //! `properties.rs` establishes by Monte-Carlo.
 
 use serde_json::Value;
@@ -101,6 +109,34 @@ fn fracdiff_weights_filter_and_inverse_match_documented_formula() {
     }
 }
 
+/// The documented GPH and local-Whittle SE expressions written out longhand
+/// from `(n, m)` alone, independent of the crate's estimation path.
+///
+/// Returns `(gph_se, gph_se_asymptotic, whittle_se, whittle_se_asymptotic)`.
+fn documented_ses(n: usize, m: usize) -> (f64, f64, f64, f64) {
+    let pi = std::f64::consts::PI;
+    let lambdas: Vec<f64> = (1..=m)
+        .map(|j| 2.0 * pi * (j as f64) / (n as f64))
+        .collect();
+    // GPH regressor R_j = -2 log(2 sin(lambda_j / 2)).
+    let r: Vec<f64> = lambdas
+        .iter()
+        .map(|&l| -2.0 * (2.0 * (l / 2.0).sin()).ln())
+        .collect();
+    let r_bar = r.iter().sum::<f64>() / m as f64;
+    let ss_r: f64 = r.iter().map(|&v| (v - r_bar) * (v - r_bar)).sum();
+    // Local-Whittle nu_j = log lambda_j - mean(log lambda).
+    let ll: Vec<f64> = lambdas.iter().map(|&l| l.ln()).collect();
+    let ll_bar = ll.iter().sum::<f64>() / m as f64;
+    let s_nu: f64 = ll.iter().map(|&v| (v - ll_bar) * (v - ll_bar)).sum();
+    (
+        (pi * pi / 6.0 / ss_r).sqrt(),
+        pi / (24.0 * m as f64).sqrt(),
+        1.0 / (2.0 * s_nu.sqrt()),
+        1.0 / (2.0 * (m as f64).sqrt()),
+    )
+}
+
 #[test]
 fn gph_matches_documented_regression() {
     let fx = load();
@@ -110,7 +146,29 @@ fn gph_matches_documented_regression() {
     let fit = gph(&x, m).expect("gph");
     let e = &s["gph"];
     close(fit.d, g(&e["d"]), 1e-8, "gph.d");
-    close(fit.se, g(&e["se"]), 1e-12, "gph.se (pi/sqrt(24m))");
+    // The fixture's `se` is the large-m closed form, now reported separately.
+    close(
+        fit.se_asymptotic,
+        g(&e["se"]),
+        1e-12,
+        "gph.se_asymptotic (pi/sqrt(24m))",
+    );
+    let (want_se, want_asym, _, _) = documented_ses(x.len(), m);
+    close(fit.se_asymptotic, want_asym, 1e-14, "gph.se_asymptotic");
+    close(
+        fit.se,
+        want_se,
+        1e-12,
+        "gph.se (sqrt((pi^2/6) / sum (R_j - Rbar)^2))",
+    );
+    // The headline SE is strictly wider than its large-m limit at this
+    // bandwidth — the whole point of reporting it.
+    assert!(
+        fit.se > fit.se_asymptotic * 1.10,
+        "gph.se = {:.6} is not materially wider than the asymptotic {:.6} at m = {m}",
+        fit.se,
+        fit.se_asymptotic
+    );
     close(
         fit.se_regression,
         g(&e["se_regression"]),
@@ -134,6 +192,66 @@ fn local_whittle_matches_documented_minimizer() {
     let fit = local_whittle(&x, m).expect("local_whittle");
     let e = &s["whittle"];
     close(fit.d, g(&e["d"]), 1e-6, "whittle.d");
-    close(fit.se, g(&e["se"]), 1e-12, "whittle.se (1/(2 sqrt m))");
+    // The fixture's `se` is the large-m closed form, now reported separately.
+    close(
+        fit.se_asymptotic,
+        g(&e["se"]),
+        1e-12,
+        "whittle.se_asymptotic (1/(2 sqrt m))",
+    );
+    let (_, _, want_se, want_asym) = documented_ses(x.len(), m);
+    close(fit.se_asymptotic, want_asym, 1e-14, "whittle.se_asymptotic");
+    close(
+        fit.se,
+        want_se,
+        1e-12,
+        "whittle.se (1/(2 sqrt(sum nu_j^2)))",
+    );
+    assert!(
+        fit.se > fit.se_asymptotic * 1.10,
+        "whittle.se = {:.6} is not materially wider than the asymptotic {:.6} at m = {m}",
+        fit.se,
+        fit.se_asymptotic
+    );
     assert_eq!(fit.m, m);
+}
+
+/// The reported `se` is a genuine refinement, not a reparametrisation: it
+/// exceeds the textbook constant at every usable bandwidth, by a factor that
+/// decays monotonically toward 1 as `m` grows. A test at one bandwidth cannot
+/// see this — which is exactly how a constant SE passed review.
+#[test]
+fn the_exact_ses_converge_to_their_textbook_limits_as_m_grows() {
+    let n = 65_536_usize;
+    let x: Vec<f64> = (0..n).map(|t| ((t as f64) * 0.017).sin() + 0.5).collect();
+    let mut prev_gph = f64::INFINITY;
+    let mut prev_lw = f64::INFINITY;
+    for &m in &[16_usize, 32, 64, 256, 1024, 4096] {
+        let (se_g, asym_g, se_w, asym_w) = documented_ses(n, m);
+        let rg = se_g / asym_g;
+        let rw = se_w / asym_w;
+        assert!(
+            rg > 1.0 && rw > 1.0,
+            "m = {m}: ratios {rg:.4}, {rw:.4} <= 1"
+        );
+        assert!(
+            rg < prev_gph && rw < prev_lw,
+            "m = {m}: ratios {rg:.4}/{rw:.4} did not fall below {prev_gph:.4}/{prev_lw:.4}"
+        );
+        prev_gph = rg;
+        prev_lw = rw;
+
+        // ...and the crate reports exactly these on a real series.
+        let fg = gph(&x, m).expect("gph");
+        let fw = local_whittle(&x, m).expect("local_whittle");
+        close(fg.se, se_g, 1e-12, &format!("gph.se(m={m})"));
+        close(fg.se_asymptotic, asym_g, 1e-14, &format!("gph.asym(m={m})"));
+        close(fw.se, se_w, 1e-12, &format!("whittle.se(m={m})"));
+        close(fw.se_asymptotic, asym_w, 1e-14, &format!("lw.asym(m={m})"));
+    }
+    // By m = 4096 the correction is under 2%; at m = 16 it is over 30%.
+    assert!(
+        prev_gph < 1.02 && prev_lw < 1.02,
+        "the exact SEs have not converged to their limits by m = 4096: {prev_gph:.4}, {prev_lw:.4}"
+    );
 }

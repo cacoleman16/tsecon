@@ -24,11 +24,22 @@
 //!
 //! **Cross-package parity**: every convention — the RiskMetrics-decay
 //! backcast initialization, presample terms, likelihood constants,
-//! parameter ordering and names, and the numerical-derivative steps behind
-//! the standard errors — matches Kevin Sheppard's `arch` package, pinned
-//! by the golden fixture `fixtures/garch.json` (fixed-parameter
+//! parameter ordering and names, and the numerical-derivative formulas
+//! behind the standard errors — matches Kevin Sheppard's `arch` package,
+//! pinned by the golden fixture `fixtures/garch.json` (fixed-parameter
 //! log-likelihoods to 1e-8 relative, conditional volatilities to 1e-6,
-//! robust standard errors to 5e-3).
+//! robust standard errors to 5e-3; measured 3e-5).
+//!
+//! The one deliberate departure is the finite-difference *step size* in
+//! those derivatives. statsmodels floors it at an absolute `0.1` for every
+//! parameter alike, which silently destroys the covariance of a parameter
+//! carrying the units of the data — `omega` for returns quoted in decimals
+//! is around `1e-6`, and the standard errors come back all-NaN. Steps here
+//! are scaled per parameter, in that parameter's own units
+//! (`GarchModel::step_scales` documents each rule), so the standard
+//! errors are equivariant under `y -> c * y` over ten decades of scale
+//! while still reproducing `arch` at the percent-return scale it is fitted
+//! on.
 //!
 //! ```
 //! use tsecon_garch::{DistSpec, GarchModel, GarchSpec, MeanSpec, VolSpec};
