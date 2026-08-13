@@ -277,10 +277,12 @@ the same number — so an entire class of bug was invisible by construction.
 > **Rounds 2–4 have been run.** Results in
 > [17-audit-round-2-findings.md](17-audit-round-2-findings.md) (21 candidates,
 > 8 survivors) and
-> [18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md) (8
-> candidates, 3 survivors). **Read both "Refuted" sections before you start** —
-> together they record *seventeen* dead ends with the evidence that killed each,
-> including several that look compelling on first contact (`gmm_nonlinear`
+> [18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md) (14
+> candidates raised, 7 survived). **Read both "Refuted" sections before you
+> start** — together they record every dead end with the evidence that killed
+> it (no count quoted here: the one that used to sit in this sentence went
+> stale within two commits), including several that look compelling on first
+> contact (`gmm_nonlinear`
 > returning its own starting value; `ccc_garch` on a singular correlation;
 > `panel_fe` at N=1; `zero_sign_svar`'s "dead" `weighted` flag; `cg_regression`'s
 > intercept). Re-deriving those is the single easiest way to waste a round.
@@ -336,6 +338,19 @@ evidence and reproducers in
   reduced to one column and unrecoverable at `k ≥ 3`, and
   `lp(band=…)`'s `cov_se_max_rel_diff`, which the card says is *"reported"* and
   which reaches 7.5% on a routine design.
+- **`ivx_test`'s joint Wald loses its size in the number of predictors, and
+  `n` does not fix it** — `trap`. At true β = 0, ρ = 1, n = 250 the
+  nominal-0.95 joint region covers 0.95 at k=1 but 0.72–0.77 at k=8,
+  reproduced three times on independent code and seeds; the excess decays like
+  `n^{-0.025}`, so even n = 256000 rejects at 4.4× nominal. The suite's
+  property test only ever runs k = 1. Rounds 3–4, finding 4.
+- **Diagnostics that misattribute their own cause** — `cosmetic`, one shape:
+  `gmm_nonlinear` blames `initial` for a fault in `moments_fn` (and following
+  its advice makes things worse — the fix belongs on the moment function's
+  *return*), `which-model-when.md` contradicts itself on IVX, and two stale
+  runtime `__doc__`s where the model card is correct. Rounds 3–4, finding 5 —
+  and note the refuted-dead-ends warning above names `gmm_nonlinear`: the
+  *starting-value* finding died, this diagnostics one is confirmed.
 
 - **`lp(cumulative="both")` reports an inconsistent standard error** —
   `silent-wrong-answer`, the most serious open item. Nominal 95% covers **0.507**
