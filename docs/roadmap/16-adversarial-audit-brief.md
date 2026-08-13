@@ -219,6 +219,9 @@ These are not style preferences. Each was learned by losing hours.
 | **Never `cmd \| tail` and read the exit code** | A pipeline returns the *last* command's status. This masked a failed `maturin` build and a failed `cargo check`, both reported as green. Use `set -o pipefail` or capture `$?` directly. A trailing `grep` that finds nothing exits 1 and fakes a *failure* in the other direction — read the log, not the status. |
 | **`--exclude tsecon-python` applies to `cargo test` only** | The PyO3 crate SIGABRTs on macOS hunting for libpython, so excluding it from *tests* is correct. Carrying that exclusion into `clippy`/`fmt` is not — they never run the binary, and doing so meant the most-edited file was the least-checked. That put a red commit on `main`. |
 | **Rebuild before judging Python behaviour** | `maturin develop --release -m bindings/python/Cargo.toml`. A stale `.venv` extension will show you the old behaviour and you will conclude the wrong thing. |
+| **Establish every promise from `__doc__` and the model card — never from the `.pyi` or a Rust crate doc** | `print(tsecon.<fn>.__doc__)` and `docs/reference/model-cards/` are what a Python user actually reads. The `.pyi` is a thin type stub and the Rust crate docs are invisible from Python; **neither is a promise**. Round 2 lost three findings to this in one sitting — `recession_probit`'s stub omits "probit only", `panel_unit_root`'s omits "LLC" — and hit the *inverse* three times, where a real defect looked worse than it was because the claim it violated lived only in a Rust module doc. Both a false positive and a false negative live in the gap between these four surfaces. |
+| **But read all three surfaces, and treat a disagreement among them as the finding** | The rule above is about *which surface binds*, not about reading only one. Round 4 found `long_memory_d`'s runtime `__doc__` — the surface this table calls authoritative — is the **stalest** of the three: it promises *"the estimate `d` and its asymptotic `se`"* while the function returns five keys and the model card correctly distinguishes `se` from a `se_asymptotic` it warns is materially too narrow. A fix can land in the code and the card and miss `__doc__`. Diff `sorted(fn(...).keys())` against all three. |
+| **Report comparisons *made*, never comparisons *attempted*** | A probe template that raises produces no comparison, and the sweep output is indistinguishable from a clean pass — the very failure class this brief hunts, in the tooling built to hunt it. Round 2's lens-1 sweep reported "164 axis-comparisons over all 45 callables" while **16 of 59 axes and 6 of 12 seed cases were never compared at all.** Print the reached/attempted ratio every run. The scale sweep already does this right (`reference scale FAILED`); copy it. |
 
 ---
 
@@ -241,6 +244,22 @@ pointwise output?" is a same-run comparison — one binary, one CPU, one set of
 kernels — so it can be bit-exact *and* portable. That is almost always the
 better test than a stored cross-machine hash.
 
+**Predict the shortfall in closed form, then measure it.** A coverage miss you
+can only measure is a finding; one whose size you can *derive* is a proof, and it
+cannot be argued away as a finite-sample artefact. For `lp(cumulative="both")`
+the overlapping-score autocovariance gives
+`sd/se = sqrt([(h+1)² + 2Σ_{k=1}^{h}(h+1−k)²] / (h+1)²)`, which matched the
+measured ratio to three digits at every horizon. That turned a contested finding
+into a settled one in a single step.
+
+**Separate the treatment from the seed before believing a Monte Carlo gap.** Run
+the *same* perturbation you care about at several seeds, and the seed alone at
+fixed perturbation, and compare the two spreads. For `bvar_ssvs` this was
+decisive: varying the seed moved posterior inclusion by at most 0.054, varying
+the data scale moved it 0.390–0.445 on every one of six seeds. Without that
+control the finding is indistinguishable from a badly-mixed chain, and a refuter
+will say so.
+
 **Mutation-test the tests.** Break the implementation deliberately and confirm
 the test fails. Several assertions turned out to be inert: a CSS-covariance
 guard passed under the exact mutation it existed to catch, because a
@@ -255,6 +274,36 @@ the same number — so an entire class of bug was invisible by construction.
 
 ## Already found and fixed — do not re-report these
 
+> **Rounds 2–4 have been run.** Results in
+> [17-audit-round-2-findings.md](17-audit-round-2-findings.md) (21 candidates,
+> 8 survivors) and
+> [18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md) (14
+> candidates raised, 7 survived). **Read both "Refuted" sections before you
+> start** — together they record every dead end with the evidence that killed
+> it (no count quoted here: the one that used to sit in this sentence went
+> stale within two commits), including several that look compelling on first
+> contact (`gmm_nonlinear`
+> returning its own starting value; `ccc_garch` on a singular correlation;
+> `panel_fe` at N=1; `zero_sign_svar`'s "dead" `weighted` flag; `cg_regression`'s
+> intercept). Re-deriving those is the single easiest way to waste a round.
+>
+> Lenses 1, 2, 3 and 4 are now swept to **measured, reported completion** —
+> 59/59 switch axes, 12/12 seed cases, 47 functions scale-swept, 128/128
+> callables degenerated on the data axis plus 192 argument-axis triples, 64/64
+> functions checked for constant diagnostics, and all 41 crates cross-referenced
+> for public Rust names the binding layer never mentions (172 of them).
+>
+> **Lens 4 needs both halves.** Its mechanical probe flags *returned* quantities
+> that come back constant; its source read finds quantities **never returned at
+> all**. The two do not overlap — the mechanical half declared the returned
+> surface clean while the source read found three documented-then-dropped
+> quantities. Run both.
+>
+> Where the next round has most room: **lens 7** — the `bvar_*` family framed as
+> Bayesian calibration (draw from the model's own prior and check the credible
+> set) rather than frequentist coverage, `bai_perron`'s Bai-1997 break-date CIs,
+> `proxy_ar_sets`, `adl_midas`.
+
 Fixed in `0.2.0`: `ols` gained `hc2`/`hc3`; `iv_gmm`'s HAC bandwidth no-op;
 `iv_gmm` reports `first_stage_f`; `arima_fit`'s missing drift-uncertainty term.
 
@@ -268,6 +317,80 @@ correction; Nelder-Mead's absolute `f_tol` certificate;
 arguments; and roughly twenty documentation claims.
 
 ## Known open — pick these up
+
+**Found by rounds 2–4, confirmed after refutation, not yet fixed.** Full
+evidence and reproducers in
+[17-audit-round-2-findings.md](17-audit-round-2-findings.md) and
+[18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md).
+
+- **`flp`'s standard errors condition on the estimated eigenfunctions** —
+  `trap`, generated-regressor problem. `se/sd` is flat at **0.66** over a 16×
+  range of T (cov95 0.80 against nominal 0.95), and on the model card's own
+  worked example β₂'s reported `se` is **one-fifth** of the truth. Matches a
+  closed form to three digits. `flp_scenario` is algebraically immune and is the
+  documented route; the docs disclose this exact hazard for FAVAR and dynamic
+  Nelson-Siegel but not here.
+- **`panel_fe`'s absorbed-regressor case** — the real headline of the
+  rank-deficiency finding below; see rounds 3–4, finding 1.
+- **Three quantities computed, documented, and dropped at the binding** —
+  `growth_at_risk`'s `bse_powell` (walked through the model card's own "How to
+  read the output"), `markov_switching_ar`'s `n × k` smoothed-probability matrix
+  reduced to one column and unrecoverable at `k ≥ 3`, and
+  `lp(band=…)`'s `cov_se_max_rel_diff`, which the card says is *"reported"* and
+  which reaches 7.5% on a routine design.
+- **`ivx_test`'s joint Wald loses its size in the number of predictors, and
+  `n` does not fix it** — `trap`. At true β = 0, ρ = 1, n = 250 the
+  nominal-0.95 joint region covers 0.95 at k=1 but 0.72–0.77 at k=8,
+  reproduced three times on independent code and seeds; the excess decays like
+  `n^{-0.025}`, so even n = 256000 rejects at 4.4× nominal. The suite's
+  property test only ever runs k = 1. Rounds 3–4, finding 4.
+- **Diagnostics that misattribute their own cause** — `cosmetic`, one shape:
+  `gmm_nonlinear` blames `initial` for a fault in `moments_fn` (and following
+  its advice makes things worse — the fix belongs on the moment function's
+  *return*), `which-model-when.md` contradicts itself on IVX, and two stale
+  runtime `__doc__`s where the model card is correct. Rounds 3–4, finding 5 —
+  and note the refuted-dead-ends warning above names `gmm_nonlinear`: the
+  *starting-value* finding died, this diagnostics one is confirmed.
+
+- **`lp(cumulative="both")` reports an inconsistent standard error** —
+  `silent-wrong-answer`, the most serious open item. Nominal 95% covers **0.507**
+  at h=12 and quadrupling T barely moves it. The regressor is
+  `Σ_{j=0}^{h} shock_{t+j}`, so nearby base times share *future* shocks, which
+  the past-lag augmentation cannot project out; the shortfall matches the omitted
+  autocovariance terms in closed form to three digits. `lp_state` shares it;
+  `lp_iv`/`lp_multiplier` do not. All four `band=` routes reuse the same `se`, so
+  the sup-t band is narrower than a correct pointwise one. `se="hac"` is the fix
+  the library already ships.
+- **`bvar_ssvs` is not scale-invariant** — `silent-wrong-answer`. `gamma_b` is an
+  absolute Gamma rate on a precision in `1/y²`. Percent→decimal moves posterior
+  inclusion probabilities by up to 0.517 and flips two selection decisions;
+  `irf_draws` move +65%. Ruled out as MC noise by a control-vs-treatment design.
+- **`panel_fe` accepts a rank-deficient design its own guard exists to reject** —
+  `silent-wrong-answer`. The `SingularDesign` guard catches ~105/200 seeds and is
+  *anti-monotone*: it rejects `eps=1e-9` and accepts exact duplication.
+  linearmodels deliberately refuses, and the docstring claims to match it.
+- **`ols(se_type="hac")` misses its documented statsmodels match at the default**
+  — `trap`. 6.6e-2 at T=25 against a promised 1e-10, exactly `n/(n−k)`, because
+  the two libraries default `use_correction` oppositely. `crates/tsecon-hac/src/ols.rs:118`
+  and `docs/reference/model-cards/expectations.md:47` state the reference's
+  default **backwards**. `cg_regression` inherits it; `har_rv` does not.
+- **The interval-coverage tables drop a harvested row** — `trap`. The runner
+  emits 40, the page publishes 39, and `docs/reference/testing.md:343` promises
+  that cannot happen. The missing row is `hc3`.
+- **`panel_lp(jackknife=True)` costs 8pp of coverage** — `trap`. The correction
+  inflates the estimator's variance 36% while the reported `se` is unchanged, and
+  the cookbook recommends it "when `T` is short", the regime where it costs most.
+- **`smooth_lp`'s default CV λ grid is absolute** — `trap`, but only at the grid
+  endpoints; invariance holds over four decades of data scale.
+- **Two missing shape preconditions panic instead of raising** — `trap`.
+  `crates/tsecon-coint/src/engle_granger.rs:202` and `bindings/python/src/lib.rs:2926`
+  raise `PanicException`, which subclasses `BaseException` and escapes
+  `except Exception`. Narrow: 1 panic in 542 degenerate-shape trials.
+- **Documentation drift** — two pages still say no sup-t band exists; test counts
+  wrong in three of four places (Python is **652**); `docs/quickstart.md:412`
+  ships literal `</content></invoke>` harness markup.
+
+**Carried over from round 1, still open:**
 
 - **`garch_fit` still returns silent all-NaN standard errors** when a
   *dimensionless* coefficient (`alpha`/`gamma`/`beta`) sits at its boundary.

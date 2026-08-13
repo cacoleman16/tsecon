@@ -1,0 +1,528 @@
+# Adversarial audit, rounds 3–4 — findings
+
+> **Working document.** Continuation of [round 2](17-audit-round-2-findings.md),
+> run under [the brief](16-adversarial-audit-brief.md). Excluded from the
+> published site.
+
+Read-only throughout; HEAD unchanged, `git status` clean at both ends. No cargo:
+every probe drives the already-built Python surface.
+
+Same method — independent finder per lens, every finding then sent to an agent
+whose job was to **refute** it, defaulting to refuted.
+
+**Rounds 3–4: 14 candidates raised, 7 survived.** Refutation killed 6, re-scoped
+3 survivors, and merged 1 into a round-2 finding.
+
+---
+
+## 0 — The audit's own tooling had the defect it hunts
+
+Round 2's report claimed *"164 axis-comparisons over all 45 switch-carrying
+callables."* A checker that counts comparisons **made** rather than **attempted**
+found otherwise:
+
+| | axes / cases | fully swept | partial | **never compared** |
+|---|---|---|---|---|
+| lens 1 switch axes | 59 | 38 | 5 | **16** |
+| lens 1 seed cases | 12 | 6 | — | **6** |
+
+A probe template that raises produces no comparison, and the sweep output is
+indistinguishable from a clean pass — *an argument that looks like it does
+something and does not*, in the tooling built to find exactly that. Most were bad
+templates (`favar(data=)` where the argument is `panel=`;
+`markov_switching_ar(n_regimes=)` where it is `k_regimes=`; kernel
+`"quadratic_spectral"` where the menu is `"qs"`).
+
+**The scale sweep did not have this defect** — it printed `reference scale
+FAILED` for every template that raised — but it still left **13 functions**
+unreached.
+
+**Both holes are closed and nothing was hiding in either.** Lens 1 pass 2:
+3 apparent hits, all refuted. Lens 2 pass 2: 13 functions swept across nine
+decades, 13 clean, and its one hit independently re-derived the confirmed
+`panel_pmg` finding — evidence the sweep bites. This is now a hard constraint in
+the brief: **report comparisons made, never attempted.** The round-3
+degenerate-input sweep, told this up front, reported 192 attempted / 192 reached
+/ 0 template-raised; round 4's lens-4 sweep reports 64/64.
+
+---
+
+# Confirmed
+
+## 1 — `panel_fe` reports a t-statistic for a regressor the fixed effects annihilate
+
+**`silent-wrong-answer`. Verdict: this is round-2 finding 3's new headline
+evidence,** not a separate finding — same guard, same line
+(`crates/tsecon-panel/src/fe.rs:262`), different trigger, one fix. But round 2's
+trigger returns `±inf` and this one returns publishable numbers.
+
+**Observed.** A regressor constant *within* every entity — a firm's founding
+year, a country's land area — is zeroed exactly by the within transformation
+(`max|Qx| = 4.441e-16` against a raw scale of 1.4139). `panel_fe` fits it to that
+residue and returns a coefficient, an SE and a t.
+
+**The invariance test settles it.** Adding a constant to an absorbed regressor
+must change nothing, since the fixed effects absorb it:
+
+```
++0      t_dead = -0.0180    beta_live = -0.889607134419
++1      t_dead = +0.1675    beta_live = -0.889607134419
++10     t_dead = +0.3647    beta_live = -0.889607134419
++100    t_dead = +2.1258    beta_live = -0.889607134419
+```
+
+`beta_live` is bit-identical to 12 digits — the estimator is otherwise correct —
+while `t_dead` reaches nominal significance at 5% purely from adding 100. **A
+statistic that moves when the data does not is not a statistic about the data.**
+
+**The guard is adversarially selective**, reproduced on two independent draws:
+
+| entity-level covariate | result |
+|---|---|
+| founding year (int), dummy, categorical, all-3.0, halves | **raised** (5/5) |
+| log land area, latitude, GDP p.c., share ∈ [0,1], N(0,1) | **RETURNED** (5/5) |
+
+`share ∈ [0,1]` came back at **t = −2.267**. It protects you from the toy cases
+and fails on exactly the covariates applied panel work uses.
+
+**Mechanism.** `fe.rs:260-262` is `xtx.llt(Side::Lower)` — a **positive-definiteness
+test, not a rank test**. numpy's Cholesky succeeds on this trigger and on round
+2's at rank 1 of 2. It fires only when the residue is bit-exactly zero, which is
+why exactly-representable entity constants raise and ordinary doubles do not.
+
+**Only the default `se_type` launders it**, and the arithmetic is exact: bread
+`(X̃'X̃)⁻¹[dead,dead] = 4.58e27` × cluster meat `3.54e-59` = `7.40e-04`. The two
+blow-ups cancel, so the cluster t is scale-**equivariant** in the dead column and
+1e-16 residue yields an O(1) t. `nonrobust` and `driscoll_kraay` do not cancel
+and honestly report `bse ≈ 7e13`, `t = 0.000`. Default is `se_type="cluster"`
+(`bindings/python/src/lib.rs:3559`).
+
+**Knife-edge, not graceful degradation.** At `eps = 0` the cluster t is +0.466;
+at every `eps` from 1e-14 to 1.0 it is **+2.244, stable across 14 decades**.
+
+**Expected.** `panel_fe.__doc__`: *"Matches linearmodels PanelOLS conventions."*
+linearmodels 7.0 raises `AbsorbingEffectError` — a dedicated exception class that
+names the offending variable and offers `drop_absorbed=True` — at every
+`cov_type`. The library's own doc comment at `fe.rs:129` names this trigger as
+*the* example of what the guard exists to catch: *"`SingularDesign` if the
+within-transformed design is collinear (e.g. a regressor constant within every
+entity)."* That is **not** documentation of the silent path — a user sees that
+error only when the guard fires, i.e. only when nothing is wrong. It is proof of
+intent, which makes the silent path worse.
+
+**The guard has no test.** `grep -rn "SingularDesign\|singular"` across
+`crates/tsecon-panel/tests/` and `bindings/python/tests/test_panel_fceval.py`
+returns nothing.
+
+**Rates.** 600/600 returns across six (N,T) shapes and 780/780 across a T sweep;
+**19.2% nominally significant at 5%**, 11.0% at 1%, max |t| = 25.79.
+
+**Boundary, honestly.** At k=1 linearmodels also returns garbage — its rank check
+is relative and has no scale reference with one column — so the finding holds
+only at **k ≥ 2**: an entity characteristic included *alongside* time-varying
+controls. Mitigation: the live coefficients are uncontaminated (max shift
+5.55e-16). That does not help the user who included the entity characteristic
+*because that was the coefficient they wanted*.
+
+---
+
+## 2 — `flp`'s standard errors condition on the estimated eigenfunctions
+
+**`trap`** (top of the band). Generated-regressor problem: `flp` regresses on
+FPCA scores estimated with `O_p(T^{-1/2})` error, and the HAC sandwich treats
+them as fixed.
+
+**Observed** — internal control, same function, same draws, same code path, only
+the scores differ:
+
+| arm | T=200 | T=800 | T=3200 |
+|---|---|---|---|
+| true scores handed in — `se/sd` | 0.989 | 1.005 | 1.009 |
+| true scores — cov95 | 0.943 | 0.951 | 0.948 |
+| **FPCA scores — `se/sd`** | **0.675** | **0.664** | **0.674** |
+| **FPCA scores — cov95** | **0.811** | **0.801** | **0.810** |
+
+`mean_se` agrees to three digits between arms; only the true sd differs.
+`|bias|/sd ≤ 0.096`. Flat over a 16× range of T ⇒ inconsistency, not a small
+sample.
+
+**On the model card's own worked example** (`functional-shocks.md:248-321`,
+n=400) against *population* eigenfunctions: β₁ `se/sd` **0.854**, β₂ `se/sd`
+**0.212** — one-fifth of the truth, at the card's own sample size, on the column
+the card prints (`se[:5, 0]` at `:284`).
+
+**Closed form, which makes it a proof rather than a measurement.** PCA
+perturbation gives
+`se/sd = sqrt(V_OLS / (V_OLS + Σ_{j≠k} λ_kλ_j/(λ_k−λ_j)²·β_j²/T))`, predicting
+0.675 / 0.679 / 0.677 at T = 200 / 800 / 3200 against measured 0.671 / 0.664 /
+0.667.
+
+**Mechanism swept two ways.** With all responses equal there is nothing for the
+eigenvector rotation to mix and coverage sits at nominal (0.952); as
+signal-to-noise falls, `se/sd` degrades to 0.247 — **worst exactly where the
+finding is most significant.**
+
+**Expected.** `functional-shocks.md:117-119` — *"`se` its per-element standard
+errors"* — unqualified, and `:271-284` runs precisely
+`functional_pca → scores → flp` and prints `betas` and `se` side by side. **No
+page anywhere warns that FPCA scores are generated regressors.** The library's
+own house style discloses this exact hazard in warning boxes for two
+structurally identical two-step estimators — `docs/guide/07-multivariate.md:513`
+(FAVAR: *"The factors are generated regressors … bands that condition on F̂ as if
+it were data are too narrow"*) and `docs/guide/15-term-structure.md:146`
+(dynamic Nelson-Siegel). The functional-shock family has neither.
+
+**Why the kept statsmodels promise does not exculpate.** `flp.__doc__` promises
+*"Matches statsmodels OLS(...).fit(cov_type='HAC') per horizon at 1e-8"* and that
+**is** kept (max |Δse| 3.5e-16). But the `ols(hac, maxlags=0)` refutation worked
+because statsmodels was asked the *same question*; here statsmodels never saw a
+first stage, so it cannot be the authority on whether the first stage should
+enter.
+
+**Scope correction, which caps severity.** The finder claimed the guide's
+headline scenario `delta = np.ones(M)` does not recover. **It does** —
+`flp_scenario` gives `se/sd` 0.986–1.006 and cov95 0.944–0.952 at every horizon,
+identical to the true-factor control. The finder had mislabelled their own arm.
+The immunity is algebraic: under an arbitrary basis rotation with the weights
+rotated to match, raw `beta_1` moves **194.5%** and `se_1` **102.3%**, while
+`w'beta` agrees to 1.3e-15 and `sqrt(w'Cov w)` to 1.1e-16 — because
+`Φ̂ = RΦ ⇒ ŵ'β̂ = w'β`. The card states the underlying fact at `:70-71`: *"their
+span is fine, their labels are not."*
+
+So the surviving claim: **`flp`'s per-element `se` (and the diagonal of `covs`)
+is inconsistent for `functional_pca` scores, the card's own printed example
+understates it, and the docs disclose the identical hazard for FAVAR and DNS but
+not here.** `flp` is also documented for externally supplied scores, where the
+`se` is correct.
+
+---
+
+## 3 — Three quantities computed, documented, and then dropped at the binding
+
+**`overclaim`** ×2 and **`trap`** ×1. Lens 4's actual yield — and a lesson about
+the lens: **the mechanical probe structurally cannot see these.** It flags
+*returned* quantities that come back constant; these are quantities **never
+returned at all**. The two halves of this lens do not overlap, and only the
+source read finds this shape.
+
+**`growth_at_risk` computes `bse_powell` and drops it.**
+`crates/tsecon-quantile/src/gar.rs:199` computes it and `gar.rs:68` declares the
+field; `bindings/python/src/lib.rs:6224-6236` sets nine keys and never that one,
+with the value live in `r` on the line above. Returned keys are
+`['bse','crossing','current','fitted','fitted_raw','hac_lags','horizon','params','taus']`.
+
+The promise is not incidental — `docs/reference/model-cards/quantile.md:260-268`
+is the section headed **"How to read the output"**, and it walks
+`params`/`bse`/`bse_powell`/`fitted`/`fitted_raw`/`crossing` in sequence. Every
+one except `bse_powell` is returned. Then `:338` offers advice a caller cannot
+act on — *"The one case where `bse_powell` is the better number is a serially
+uncorrelated conditioner"* — and `:347` says the golden *"pins `params`,
+`bse_powell`, and the fitted paths."* At `horizon=4` the probe measured
+`hac_lags = 3`, so `bse != bse_powell` and the missing number is not
+recoverable from what is returned.
+
+**The house style makes this a defect rather than a design choice.**
+`docs/reference/model-cards/specification-tests.md:341-344` shows what the
+library does when non-exposure is deliberate: *"the raw `recursive_residuals`
+array and the `a` constant exist in the underlying Rust struct but are
+deliberately **not** exposed in Python: the four returned keys are `path`,
+`bound_upper`, `bound_lower`, and `sigma`, and nothing else."* Stated twice. The
+quantile card does the opposite.
+
+**`markov_switching_ar` reduces the Kim smoother's `n × k` matrix to one
+column.** `crates/tsecon-regime/src/results.rs:47` holds the full `n`-by-`k`
+`smoothed_prob`; `bindings/python/src/lib.rs:3990-3991` keeps only
+`p[k_regimes - 1]` and publishes it as `smoothed_prob_last_regime`.
+`filtered_prob` (`results.rs:15`) never surfaces at all. Measured at both `k=2`
+and `k=3`: the only probability key is `smoothed_prob_last_regime`, shape
+`(399,)`.
+
+At `k=2` the drop is recoverable as `1−p`, which is why it has gone unnoticed.
+**At `k ≥ 3` it is not** — only the sum of the remaining columns is known. The
+runtime docstring promises *"smoothed regime probabilities"*, and
+`docs/reference/model-cards/cointegration-regime.md:113-114` promises
+*"filtered/smoothed regime probabilities"* — both plural, both matrices — while
+`:136` of the same card correctly names the scalar-path key. The card
+contradicts itself. `k_regimes` is a free argument and
+`docs/migration/from-stata.md:90` maps Stata's `mswitch ar y, states(k)` onto it
+with no caveat. Severity `trap`.
+
+**`lp(se="hac", band=…)` computes `cov_se_max_rel_diff` and drops it.**
+`crates/tsecon-lp/src/band.rs:795` computes it, `:814` stores it, `:401`
+declares it; the Python call returns 14 keys and neither it nor the
+cross-horizon `cov` is among them. `smooth_lp(band="sup-t")` shares the drop.
+`docs/reference/model-cards/local-projections.md:97` promises *"…the multiplier
+uses only the correlation matrix, **and the largest relative gap is reported so
+you can see how far apart they were**."* Reconstructed from the public surface
+at `H=8, p=4, T=300`, the per-horizon gaps run 7.48 / 0.94 / 6.29 / 0.86 / 4.38
+/ 0.14 / 0.09 / 1.68 / 0.00 % — **max 7.48%**, so this is not a promise about a
+number that is always ~0.
+
+---
+
+## 4 — `ivx_test`'s joint Wald loses its size in the number of predictors, and n does not fix it
+
+**`trap`.** The test the docs route you to *specifically to avoid over-rejection*
+over-rejects, and the property test that certifies it only ever runs k=1.
+
+**Observed.** True β = 0 exactly, so the rejection rate *is* the size. ρ = 1
+exactly, δ = −0.9, n = 250. Coverage of the joint region at nominal 0.95,
+reproduced three times on independent code and seeds:
+
+| k | finder | orchestrator | refuter |
+|---|---|---|---|
+| 1 | 0.9502 | 0.9530 | 0.9433 |
+| 3 | 0.8945 | 0.8990 | 0.8960 |
+| 5 | 0.8332 | 0.8543 | 0.8350 |
+| 8 | **0.7242** | **0.7697** | **0.7370** |
+
+Monotone in k; **k = 1 is at nominal.**
+
+**It does not converge in n — this is the fact the finding rests on.** k=8, ρ=1,
+default `alpha`, size at nominal 0.05:
+
+| n | 250 | 4000 | 16000 | 64000 | 256000 |
+|---|---|---|---|---|---|
+| size | 0.2630 | 0.2305 | 0.2250 | 0.2240 | **0.2200** |
+
+**A thousandfold increase in the sample buys 4pp and leaves the test at 4.4×
+nominal.** The excess decays like `n^{-(1-alpha)/2} = n^{-0.025}`, so reaching
+even 0.10 would need `n ≈ 10^15`. *"Asymptotically chi-square(k)"* is formally
+true and operationally empty at k ≥ 5. This is what separates it from round 3's
+refuted `cg_regression` finding, whose whole gap was the Bartlett kernel and
+vanished in n.
+
+**Mechanism.** Not an arithmetic omission. `crates/tsecon-predreg/src/ivx.rs:290,311-318`
+normalises with a raw `Z'Z` where the conditional variance of the numerator is
+`σ²(Z'Z − N z̄z̄')` — so the shipped variance is *too large*, i.e. conservative,
+and the finder's own control confirmed the demeaned version rejects **more**.
+The driver is the instrument tuning `Rz = 1 + cz/n^alpha`: at the shipped
+`alpha = 0.95` the instrument's effective sample size is `n^{1−alpha} = n^{0.05}`
+— **1.32 at n=250, 1.62 at n=16000**. The two errors happen to cancel at exactly
+the (k=1, δ=−0.9) point the test suite exercises; at δ=0, ρ=1 the same
+conservatism leaves k=1 **under**-rejecting at 0.0176.
+
+**Why the suite is green — confirmed in the source.**
+`crates/tsecon-predreg/tests/properties.rs:58`,
+`ivx_wald_holds_size_uniformly_over_persistence`, sweeps
+ρ ∈ {0.9, 0.95, 0.99, 1.0} and calls the **scalar** `ivx(&r, &x, cfg)` at line
+73. It varies *persistence*, never *dimension*. `properties.rs:231` is the only
+other test touching `ivx_multi` and is a k=1 specialization check.
+`golden.rs:105-116` pins k=2 to a closed-form fixture — algebra, no size. A grep
+for `ivx_test|joint` across the test directory returns nothing. **k=1 is the
+only k tested, and k=1 is the only k at which the size holds.** Every published
+size number in `docs/examples/monte-carlo.md:35-54` is likewise scalar (the
+experiment reproduces digit for digit).
+
+**Expected.** Nothing anywhere mentions k-dependence, a predictor-count limit,
+or a different `alpha` for the joint path — checked across the card, the guide
+chapter, `results.md`, `which-model-when.md`, `monte-carlo.md`, `testing.md`,
+and all three doc surfaces. What is claimed: card `:164-167` *"asymptotically
+chi-square(`k`) and uniform over the predictors' persistence"*; `:171-174` *"…a
+competing-predictors horse race"*; `:63-67` the KMS defaults *"are the ones you
+should keep"*; `guide/03-inference-toolkit.md:506` *"the same uniform-size
+guarantee"* for a panel of predictors, immediately after a table showing IVX at
+0.046–0.055 across the ρ ladder.
+
+**Honest scoping.** *"Uniform over persistence"* is not *"uniform in k"*, so the
+narrow reading survives — which is why this is `trap`, not
+`silent-wrong-answer`. And **the card's own worked example is fine**: at its
+`:201-221` configuration (n=400, ρ=0.98, k=2) size is 0.0500. The distortion
+needs many predictors *and* ρ at or near 1 *and* strong endogeneity. But those
+coincide in the canonical application — eight valuation ratios, monthly, δ=−0.9
+at ρ=0.99 rejects a true null **21% of the time at nominal 5%**, and still 12%
+with 83 years of monthly data.
+
+**The mitigation ships but is under-powered and counter-advised.** `alpha` is a
+public kwarg, but `alpha=0.70` only plateaus at ~2× nominal (0.1014 at
+n=16000); only `alpha=0.50` converges (0.0543 at n=16000) — and the card tells
+the user to keep the defaults.
+
+---
+
+## 5 — Diagnostics that misattribute their own cause
+
+**`cosmetic`**, grouped because they are one shape — the same shape as round 2's
+*"`panel_pmg` blames the panel for a floating-point failure"*.
+
+**`gmm_nonlinear` blames `initial` for a fault in the moment function.** With a
+valid `initial=array([0.5])` and a `moments_fn` returning a 1-D array, the error
+names `arg1` (= `initial`, correct as passed) and tells the user to reshape it,
+never mentioning `moments_fn`. Cause:
+`bindings/python/python/tsecon/_coerce.py:197-218` — `_rank_error` enumerates
+only `args`/`kwargs`, and the `_RANK_HINT = "is not an instance of"` trigger at
+`:194` also matches a callback-return coercion error. **Following the advice
+makes it worse**: reshaping `initial` as instructed yields a second, more opaque
+`TypeError`. The real fix is `.reshape(-1, 1)` on the moment function's *return*.
+Blast radius is one function — `gmm_nonlinear` is the only public
+callback-taking callable — and the native Rust message on the adjacent route is
+excellent.
+
+**The runtime docstring is systematically the least-maintained doc surface** —
+two independent instances, both with `__doc__` stale and the model card correct:
+
+| function | `__doc__` says | reality |
+|---|---|---|
+| `long_memory_d` | *"the estimate `d` and its **asymptotic** `se`"* | returns `d`, `m`, `se`, `se_asymptotic`, `se_regression`; `long-memory.md:124-126` distinguishes `se` ("at the bandwidth actually used") from `se_asymptotic` ("textbook large-`m`", **materially too narrow**) |
+| `predictive_regression` | Stambaugh returns *"…estimated `rho`"* | actual sub-keys are `beta_corrected`, `beta_ols`, `bias_term`, **`rho_ols`**, `se`; `__doc__` names a key that does not exist and omits two that do. Card `:69-73` lists all five correctly |
+
+`long_memory_d`'s case is the sharper one: the docstring calls `se`
+"asymptotic", the exact label the card attaches to the quantity round 1 found
+was ~25% too narrow. The fix landed in the code and the card and missed
+`__doc__`.
+
+**This refines the brief's own rule.** Round 3 added *"establish promises from
+`__doc__` and the model card, never the `.pyi`"*. Round 4 shows `__doc__` is
+itself the surface a fix most often misses — so the rule is **read all three and
+treat any disagreement as data**, which is now what the brief says.
+
+**`which-model-when.md` contradicts itself about IVX on one page.** `:821` —
+*"The dedicated fix ships today"*; `:858` — *"…should be treated as a
+hypothesis, not a finding, until IVX lands."* Stale-doc drift. (Given finding 4,
+the stale sentence is the better advice.)
+
+---
+
+# Refuted
+
+- **`cg_regression`'s intercept / `forecast_efficiency`'s Wald size.** Numbers
+  reproduce (intercept cov95 0.860 vs slope 0.891 at n=100; MZ Wald size 0.812).
+  Four things kill it. (a) **The finder's own defense fails on their own DGP**:
+  they computed the score autocovariance as `0.3^k` — the *slope's* score — while
+  the intercept's is `u_t` itself with `γ(k) = 0.6^k`, geometric and never zero,
+  so the bandwidth does **not** cover and this is literally the disclosed failure
+  mode at `expectations.md:63`. (b) The whole gap is the **Bartlett kernel in
+  closed form**. (c) It **vanishes in n**, monotone, because
+  `L = ⌊4(n/100)^{2/9}⌋` grows — the opposite of the `lp(cumulative="both")`
+  signature. (d) An **oracle arm proves the code is right**: the same `params`
+  through the true asymptotic covariance give Wald size 0.946/0.948/0.955. And it
+  is disclosed in four places, including a table indexed by score autocorrelation
+  at `docs/examples/interval-coverage.md:632-645` whose band contains both
+  measured numbers.
+- **`zero_sign_svar(weighted=)` bit-identical.** Refuted on the library's own
+  documented theory (`crates/tsecon-ident/src/zero.rs:293-305`): for impact-only
+  zeros the restriction functions are linear in `Q`, the volume element is
+  `Q`-independent, and the ARW weight is **exactly one**. All probed zeros were at
+  horizon 0. The round-1 fix is live where it matters — a zero at horizon ≥ 1
+  **raises** rather than substituting 1.0.
+- **`growth_at_risk(rearrange=)` bit-identical.** A no-op precisely when the
+  fitted quantile curve does not cross, which is what rearrangement means.
+- **`var_forecast(band_scope=)` bit-identical.** Inert only at
+  `band="pointwise"`, where a simultaneity scope has no meaning; it moves the
+  critical value on every simultaneous band (sup-t 2.694654 → 3.044305).
+- **`predictive_regression`'s `stambaugh` interval being re-centred but not
+  re-scaled.** Every fact reproduces — `stambaugh["se"]` is bit-identical to
+  `ols["se"]` (200/200 draws, hex-confirmed by the refuter), the bias correction
+  works (`|bias|/sd` 1.08 → 0.27) while `se/sd` stays 0.68, and cov95 is 0.878
+  **flat** from n=120 to n=4000. **It dies on disclosure, on four surfaces.**
+  Model card `:72-73` states the finding literally: *"`se` (to first order the
+  OLS standard error — the correction is a data-dependent location shift)"*.
+  `crates/tsecon-predreg/src/stambaugh.rs:39-42` says the same and calls it
+  deliberate. `docs/reference/results.md:176-182` prints the **identical**
+  `0.01112` in both `std err` cells and says *"the OLS and Stambaugh p-values
+  above are naive normal ones."* Card `:49-51` says to use `stambaugh` for a
+  debiased **point estimate** and not to trust the `ols` t-statistic. It is also
+  standard practice for Stambaugh (1999) — the reference behaviour, kept — and
+  the correction still buys 12pp of coverage (0.756 → 0.878) using that
+  unchanged `se`. Residue, `cosmetic`: `results/_predreg.py:319-324` titles the
+  forest plot *"Predictive slope, 95% intervals"* with no caveat, while
+  `summary()` does carry the "naive normal" line.
+- **`factor_model`'s Bai-Ng criteria returning the ceiling.** `icp`/`pcp` return
+  `kmax` on small-N panels where the eigenvalue-ratio `er` gets it right — but
+  the criteria do select correctly at larger N (r=5 → 5), `kmax` is an exposed
+  parameter defaulting to 8, and PCp's `kmax`-dependence is Bai-Ng (2002) by
+  construction, since the penalty uses `σ̂²(kmax)`. Overselection at small N is a
+  textbook property, not a defect.
+
+---
+
+# Swept and found sound
+
+- **Lens 4's *mechanical* half found the returned surface clean.** Calling each
+  function on 8 independent datasets and flagging every returned quantity that
+  comes back bit-identical reached **64 of 64** functions with **0** template
+  failures and surfaced 124 constant leaves. On triage all but one are
+  legitimately constant: tabulated critical values (`phillips_perron`,
+  `phillips_ouliaris`, `engle_granger`, `johansen`), deterministic bandwidths
+  (`long_memory_d`'s `m = ⌊√n⌋`), CUSUM bounds (a function of T and k), echoed
+  input flags, sample sizes, `converged` flags that were all true, zero failure
+  counters, and IVX's `rz = 1 − n^{-cz}`. The one real item is
+  `long_memory_d`'s stale docstring, above. **The source read found three more
+  that this probe structurally cannot see** (finding 3) — the two halves of the
+  lens are complementary, not redundant, and a future round must run both.
+- **The round-1 `long_memory_d` fix is complete.** `gph.rs:139` and
+  `whittle.rs:155` both compute the finite-`m` standard error from the realized
+  frequency spread, keeping the asymptotic constant alongside as
+  `se_asymptotic`. A rich-vs-crude identifier sweep over all 41 crates found
+  `gph.rs` to be the **only** file in the tree containing both a "rich"
+  (hac/sandwich/robust/regression/empirical) and a "crude"
+  (asymptotic/plugin/simple/analytic) variance-flavoured identifier — i.e. the
+  original defect's signature does not recur anywhere.
+- **`long_memory_d` is sound — the round-1 discarded-SE fix works.** The harness
+  was validated by reproducing the model card's published numbers exactly
+  (0.954/0.951/0.948 against the card's *"94–96%"*), then measured the
+  previously unmeasured `d ≥ 0.5` region: GPH sits at nominal across
+  `d ∈ [0, 0.9]` (cov95 0.938–0.954). Local Whittle's 5–9% narrowness is real and
+  exactly as the card discloses. New observation: LW's documented box pins
+  `d̂ = 0.999999985` in up to 30% of draws at `d = 0.9`, and since the reported
+  `se` is a deterministic function of `m`, coverage turns non-monotone in α
+  (cov68 0.641, cov95 0.967 at d=0.8, n=1024).
+- **`umidas` is sound.** HAC coverage converges monotonically (cov95 0.917 → 0.947
+  at T = 60 → 1000, `se/sd` 0.935 → 0.994), is flat in K (0.926–0.930 at
+  K = 2…12), and the `maxlags=None` Newey-West default ties the best fixed
+  value. The decisive contrast: on AR(1) errors the `nonrobust` control is stuck
+  at 0.898 with one coefficient pinned at 0.585 while HAC reaches 0.937 — the
+  estimator-vs-approximation distinction the coverage suite exists to draw, with
+  `umidas` on the right side.
+- **SVAR restriction validation** — 36/52 malformed inputs raise, each naming the
+  offending index. Unsatisfiable sets return `accepted: 0` with **all-NaN**
+  quantiles rather than laundering them.
+- **`robust_svar_bounds` diverging from its siblings is correct** — it uses an
+  exact active-set optimizer, not rotation sampling, so it can represent a
+  measure-zero non-empty set a sampler can never hit.
+- **`lp`'s collinearity guard is monotone** — the direct sibling of finding 1,
+  tested for the same pathology and clean.
+- **Argument-axis scale equivariance holds** — `lp` irf/se equivariant to 6e-15
+  over `c ∈ [1e-150, 1e8]` when scaling the *shock* alone; `lp_iv` invariant to
+  instrument scale to 1e-14.
+- **Thirteen previously-unreached functions are scale-clean** across nine
+  decades: `afns_adjustment`, `dsge_solve`, `functional_pca`, `flp`,
+  `flp_scenario`, `favar`, `max_share_svar`, `historical_decomposition`,
+  `panel_mean_group` (mg and cce), `ivx_test`, `mcmc_diagnostics`,
+  `phillips_ouliaris`.
+- **Six previously-unswept seed cases all move with the seed** — `bvar_ssvs`,
+  `sign_restricted_svar`, `zero_sign_svar`, `narrative_svar`, `fry_pagan_svar`,
+  `robust_svar_bounds`.
+
+---
+
+# Incidental
+
+- `docs/examples/interval-coverage.md:1063`'s "what is not measured" list omits
+  `flp` / `flp_scenario`.
+- These surfaces ship **no interval of any kind**, so there is nothing for a
+  coverage round to measure: `nelson_siegel`, `svensson`, `dynamic_ns`,
+  `weighted_midas`, `favar`, `bvar_fit`, `structural_fevd`.
+- `iv_gmm`'s positional argument order is `(x, z, y)`, not `(y, x, z)` — an easy
+  silent misuse, since all three are float arrays of compatible shape. Worth a
+  keyword-only signature or a docstring warning.
+
+---
+
+## Reproducing
+
+Probe scripts were scratchpad-only (an audit is read-only), so every finding
+above carries a self-contained reproducer inline. The four harnesses worth
+rebuilding are described in
+[round 2's report](17-audit-round-2-findings.md#reproducing-this-audit); rounds
+3–4 add two more:
+
+- **The coverage checker** — for each (function, axis), count how many
+  comparisons were actually *made*, not attempted. Nine lines of logic; it found
+  a 27% hole in work already written up as complete.
+- **The constant-diagnostic detector** — call each function on K independent
+  datasets, flatten every returned leaf, and flag those bit-identical across all
+  K. Classify rather than judge: echoed inputs, tabulated critical values,
+  dimensions and deterministic functions of *n* are all legitimately constant, so
+  the probe should partition into benign-by-name and candidates rather than
+  reporting a raw count.
