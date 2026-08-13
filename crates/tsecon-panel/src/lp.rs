@@ -166,6 +166,20 @@ pub fn panel_lp(
     }
 
     let hmax = config.max_horizon;
+    // Reject an infeasible request up front: the last horizon's window is
+    // `[lag_max, T - hmax)`, and if that is already empty the failure is a
+    // sample-size problem — reported as such here, rather than as whatever
+    // symptom (a rank-deficient shrunken design, an empty window) the
+    // per-horizon loop would trip over first.
+    let lag_max = config.shock_lags.max(config.outcome_lags);
+    if t_len.saturating_sub(hmax) <= lag_max {
+        return Err(PanelError::InsufficientObservations {
+            what: "panel local projection: the largest horizon plus the lag order \
+                   leaves no regression window inside the panel's periods",
+            needed: hmax + lag_max + 1,
+            got: t_len,
+        });
+    }
     let mut irf = Vec::with_capacity(hmax + 1);
     let mut se = Vec::with_capacity(hmax + 1);
     let mut params = Vec::with_capacity(hmax + 1);

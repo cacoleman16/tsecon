@@ -575,8 +575,11 @@ the bands: not a joint region over the path.
 
 **Key arguments and defaults (and why).** `alpha=0.05` (95% sets — the AR
 convention, unlike the bands' 0.10). `variance="hc0"` is the heteroskedasticity-
-robust moment variance; `hac_lags` switches to a HAC estimate when the proxy is
-serially correlated. `reduced_form_uncertainty=True` — leave it on. `lags`,
+robust moment variance; pass `variance="hac"` for a HAC estimate when the proxy
+is serially correlated (`hac_lags` then sets its lag count, defaulting to the
+Newey-West rule — it applies only on the HAC route, and passing it with
+`"hc0"` raises rather than being silently ignored).
+`reduced_form_uncertainty=True` — leave it on. `lags`,
 `horizon`, `norm_var`, `unit`, `trend` are `proxy_svar`'s.
 
 **How to read the output.** `cells[h][variable]` is the dict described above:

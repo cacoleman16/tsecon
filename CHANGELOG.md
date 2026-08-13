@@ -33,6 +33,47 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   `seasonal_ar()` / `seasonal_ma()`; CSS (`fit_css`) conditions on the expanded
   `p + s*P` presample.
 
+### Fixed — audit findings (rounds 2–5)
+
+- **`panel_fe` / `panel_lp` now refuse a design the fixed effects have
+  absorbed** instead of returning a publishable t-statistic for it. The old
+  guard was a Cholesky positive-definiteness test that fired only when the
+  within-demeaned residue was bit-exactly zero: entity constants stored as
+  ordinary doubles (log land area, a share in `[0, 1]`) slipped through, and
+  the default cluster covariance turned the `O(1e-16)` residue into
+  t-statistics that reached nominal 5% significance in 19.2% of audit draws —
+  a statistic that moved when a constant was added to the data. The guard is
+  now two scale-invariant checks (per-column absorption of the demeaned norm
+  relative to the raw norm, plus the numpy/linearmodels singular-value rank
+  criterion), matching the linearmodels `AbsorbingEffectError` refusal the
+  docstring promises — and, unlike its predecessor, it is monotone: a merely
+  ill-conditioned near-duplicate still fits while an exact duplicate raises.
+  `panel_lp` additionally rejects an infeasible `max_horizon` up front as a
+  sample-size error, rather than tripping over whatever symptom the shrunken
+  per-horizon window produced first.
+- **`engle_granger` raises instead of panicking when the sample has no more
+  rows than step-1 design columns** — the `(0, k)` / `(1, k)` shapes escaped
+  `except Exception` as `PanicException` through the Python boundary.
+- **`proxy_svar_bands`'s proxy alignment can no longer panic** when `lags`
+  exceeds the observation count (the same `PanicException` class).
+- **`proxy_ar_sets(hac_lags=...)` with the default `variance="hc0"` now
+  raises** instead of silently ignoring the argument — output used to be
+  bit-identical with and without it. `hac_lags` parameterizes only the
+  `variance="hac"` route, and the structural-identification model card now
+  says so instead of implying `hac_lags` itself switches the estimator.
+- **The `bvar_fit` model card had its two shrinkage dials swapped**: it called
+  `lambda0` "overall tightness" and `lambda1` the "own-lag scale", while in
+  the implementation (deliberately, and consistently with the conjugate
+  Kronecker form) `lambda0` scales only the intercept prior and `lambda1` is
+  the overall tightness on every lag coefficient, own and cross alike. A
+  card-following user lowering `lambda0` for shrinkage got a pinned intercept
+  and untouched dynamics. The card now matches the code, and states that the
+  conjugate form cannot express the classic cross-variable `lambda2`.
+- **The ARIMA model card mis-stated `arima_fit`'s defaults** (`p`, `d`, `q`
+  "all default 0", `constant = False`): the shipped defaults are `p = 1` and
+  `constant = True`, so with `d >= 1` the default fits a drift. The card now
+  matches the code and says to turn the constant off deliberately.
+
 `proxy_svar` identified an impulse response and told you nothing about how
 precisely. This release attaches uncertainty to it — twice, because one answer
 is not enough. When the instrument is strong you want a band; when it is weak a

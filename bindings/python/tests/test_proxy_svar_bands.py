@@ -378,3 +378,16 @@ def test_point_estimate_is_always_a_member_of_its_own_set(label, spec, rfu):
                                  reduced_form_uncertainty=rfu)
         for h, j, c in _all_cells(r):
             assert _contains(c, c["point"]), (label, rfu, h, j, c)
+
+
+def test_hac_lags_without_hac_variance_raises():
+    """`hac_lags` parameterizes only the HAC moment variance; under the
+    default `variance="hc0"` it used to be a silent no-op (bit-identical
+    output with and without it -- audit round 5). It must raise instead."""
+    with pytest.raises(ValueError, match='variance="hac"'):
+        tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4, hac_lags=8)
+    # The HAC route accepts it, and it is live there.
+    base = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4, variance="hac")
+    with_lags = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4,
+                                     variance="hac", hac_lags=2)
+    assert base["ar_bound_stat"] != with_lags["ar_bound_stat"]

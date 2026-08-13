@@ -2475,7 +2475,15 @@ fn align_proxy(pv: Vec<f64>, n_obs: usize, lags: usize, t: usize) -> PyResult<Ve
     if pv.len() == t {
         Ok(pv)
     } else if pv.len() == n_obs {
-        Ok(pv[lags..].to_vec())
+        // `get` rather than a slice: with `lags > n_obs` a raw `pv[lags..]`
+        // panics (PanicException escapes `except Exception`) instead of
+        // raising the shape error below.
+        pv.get(lags..).map(<[f64]>::to_vec).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "lags = {lags} exceeds the {n_obs} observations, so no residual \
+                 sample remains to align the proxy against",
+            ))
+        })
     } else {
         Err(PyValueError::new_err(format!(
             "proxy length {} must equal the number of observations {} or the \
@@ -2694,7 +2702,19 @@ fn proxy_ar_sets<'py>(
     let proxy_aligned = align_proxy(vec1(&proxy), n_obs, lags, t)?;
 
     let moment = match variance {
-        "hc0" => ArVariance::Hc0,
+        // `hac_lags` only parameterizes the HAC estimator; accepting it
+        // under "hc0" would make it a silent no-op (audit round 5).
+        "hc0" => {
+            if hac_lags.is_some() {
+                return Err(PyValueError::new_err(
+                    "hac_lags was given but variance=\"hc0\" ignores it: pass \
+                     variance=\"hac\" to use a HAC moment variance (hac_lags then \
+                     sets its lag count; omit it for the Newey-West rule), or drop \
+                     hac_lags",
+                ));
+            }
+            ArVariance::Hc0
+        }
         "hac" => ArVariance::HacBartlett {
             lags: hac_lags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(t)),
         },

@@ -19,8 +19,11 @@ VAR(p) under a Minnesota prior: posterior-mean coefficients, the posterior-mean
 residual covariance, and the log marginal likelihood used to compare
 hyperparameter settings.
 
-**Assumptions.** Gaussian innovations; the Minnesota prior structure (own first
-lag centered at `delta`, tighter shrinkage on other variables and higher lags);
+**Assumptions.** Gaussian innovations; the conjugate Minnesota-NIW prior
+structure (own first lag centered at `delta`, tighter shrinkage at higher lags;
+the Kronecker form applies the *same* tightness to own and cross lags — the
+classic cross-variable `lambda2` is not expressible in conjugate form, and the
+units ratio is carried by the error-scale prior instead);
 covariance-stationary data is *not* required for estimation, but the random-walk
 prior encodes a persistence belief you should mean to hold.
 
@@ -31,21 +34,26 @@ fine), and the conjugate prior cannot express stochastic volatility or
 time-varying parameters — those need a sampler beyond this card.
 
 **Key arguments and defaults (and why).** `lags`; the shrinkage
-hyperparameters `lambda0` (overall tightness — smaller = more shrinkage toward
-the prior), `lambda1` (own-lag scale), `lambda3` (lag-decay rate), and `delta`
-(prior mean of the own first lag; 1.0 = random-walk prior). Defaults follow the
-standard Minnesota calibration; tune `lambda0`/`lambda1` by maximizing
-`log_marginal_likelihood` (the Giannone-Lenza-Primiceri 2015 hierarchical
-recommendation).
+hyperparameters `lambda1` (**overall tightness** on every lag coefficient, own
+and cross alike — smaller = more shrinkage toward the prior; the Litterman 0.2
+default), `lambda0` (the **intercept** prior scale only — its default of 100 is
+deliberately diffuse, and shrinking it pins the intercept without touching the
+dynamics), `lambda3` (lag-decay rate), and `delta` (prior mean of the own first
+lag; 1.0 = random-walk prior). Defaults follow the standard Minnesota
+calibration; tune `lambda1` by maximizing `log_marginal_likelihood` (the
+Giannone-Lenza-Primiceri 2015 hierarchical recommendation — and what
+`bvar_hierarchical` below automates over exactly this `lambda1`).
 
 **How to read the output.** `posterior_mean_coefs` ((1+pK)×K),
 `sigma_posterior_mean` (K×K), and `log_marginal_likelihood` — the model-
 comparison score: fit at one hyperparameter setting is meaningful only *relative*
 to another, so use it to choose shrinkage, not as an absolute number.
 
-**Failure modes.** Over-shrinkage (`lambda0` too small) flattens dynamics toward
-the random-walk prior; under-shrinkage buys nothing over OLS. Comparing marginal
-likelihoods across different samples or variable transforms is meaningless.
+**Failure modes.** Over-shrinkage (`lambda1` too small) flattens dynamics toward
+the random-walk prior; under-shrinkage buys nothing over OLS; turning `lambda0`
+down expecting shrinkage pins only the intercept and leaves the dynamics
+untouched. Comparing marginal likelihoods across different samples or variable
+transforms is meaningless.
 
 **Validated against.** Self-authored closed-form NIW posterior updating checked
 against the analytic conjugate formulas (`fixtures/bvar_niw.json`).
