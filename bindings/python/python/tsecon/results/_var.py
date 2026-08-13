@@ -179,7 +179,10 @@ class VARResults(Results):
         bias_correct: bool = False,
         band: str = "pointwise",
         band_scope: str = "horizon",
-        band_seed: int = 0,
+        # Same default as the module-level var_irf_bands: the two documented
+        # routes to the same sup-t band must agree at their defaults, and a
+        # facade-only 0 made them return different critical values.
+        band_seed: int = 20_260_807,
         band_n_sim: int = 100_000,
     ) -> dict:
         """Frequentist confidence bands on this VAR's impulse responses.

@@ -73,6 +73,16 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   "all default 0", `constant = False`): the shipped defaults are `p = 1` and
   `constant = True`, so with `d >= 1` the default fits a drift. The card now
   matches the code and says to turn the constant off deliberately.
+- **`VARResults.irf_bands` and `var_irf_bands` now share the same default
+  `band_seed` (20260807)**: the facade defaulted to 0, so the two documented
+  routes to the same sup-t band returned different critical values for
+  identical inputs. A regression test pins the two routes bit-identical at
+  their defaults. Also swept the sup-t release's own doc surface:
+  `testing.md` no longer claims "no function reports a simultaneous band"
+  (the feature it was released alongside), and its stale tallies (`49`
+  files / `13` unlisted, the RZ replication's test count, the
+  "16 of the 40" validation split) are corrected or replaced with
+  references to surfaces that cannot go stale.
 ### Changed — BREAKING
 
 - **`long_memory_d`'s `se` changed meaning, and the number it reports moves.**

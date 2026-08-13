@@ -558,3 +558,18 @@ def test_sup_t_spellings_are_equivalent_and_echo_canonically(spelling):
         band_n_sim=20_000,
     )
     assert r["band"] == "sup-t"
+
+
+def test_facade_and_module_supt_defaults_agree():
+    """The two documented routes to the same sup-t band must return the
+    same critical values at their defaults. The facade once defaulted
+    band_seed=0 against the module's 20260807, so identical inputs gave
+    different bands by route (audit round 5)."""
+    rng = np.random.default_rng(0)
+    y = rng.standard_normal((200, 2)).cumsum(axis=0) * 0.1 + rng.standard_normal((200, 2))
+    mod = tsecon.var_irf_bands(y, lags=2, horizon=8, method="asymptotic", band="sup-t")
+    res = tsecon.results.var_fit(y, lags=2).irf_bands(
+        horizon=8, method="asymptotic", band="sup-t"
+    )
+    np.testing.assert_array_equal(np.asarray(mod["lower"]), np.asarray(res["lower"]))
+    np.testing.assert_array_equal(np.asarray(mod["upper"]), np.asarray(res["upper"]))
