@@ -79,9 +79,12 @@ def test_seasonal_argument_errors_teach():
         tsecon.arima_fit(y, seasonal=(0, 1, 1, 1))
     with pytest.raises(ValueError, match=r"non-negative"):
         tsecon.arima_fit(y, seasonal=(0, 1, -1, 12))
-    # A non-sequence-of-ints is rejected at the boundary with the
-    # argument named (PyO3's conversion error).
-    with pytest.raises(TypeError, match="seasonal"):
+    # A non-sequence-of-ints is rejected at the boundary as a TypeError
+    # (PyO3's conversion error). The message text varies with the Python
+    # version — 3.9's abi3 build says "Can't extract `str` to `Vec`"
+    # while newer Pythons prefix the argument name — so only the
+    # exception type is pinned.
+    with pytest.raises(TypeError):
         tsecon.arima_fit(y, seasonal="monthly")
 
 
