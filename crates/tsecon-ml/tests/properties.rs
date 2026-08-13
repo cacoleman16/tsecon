@@ -8,15 +8,21 @@
 //! * expanding-origin training sets are strictly nested and never peek
 //!   ahead;
 //! * CV selection on iid data loosely agrees with BIC selection;
-//! * the `Scaler` is fit on train and replayed on test.
+//! * the `Scaler` is fit on train and replayed on test;
+//! * the coordinate-descent solvers and the regularization path are exactly
+//!   scale equivariant — `coef * s` is invariant under `X -> s*X` with
+//!   `alpha -> s*alpha`, and `coef / c` under `y -> c*y` with
+//!   `alpha -> c*alpha` — swept over twenty-odd decades and both shipped
+//!   tolerances, which is the only way a scale-blind stopping rule is
+//!   visible.
 
 mod common;
 
 use common::{as_f64_vec, as_mat, load_fixture, mat_from_cols, Lcg};
 use tsecon_ml::{
-    adaptive_lasso, cv_select, expanding_origin_splits, lasso, mse, purged_kfold_splits,
-    regularization_path, ridge, rolling_origin_splits, CoordDescentOptions, PathOptions, Scaler,
-    TargetCenterer,
+    adaptive_lasso, cv_select, elastic_net, expanding_origin_splits, lasso, mse,
+    purged_kfold_splits, regularization_path, ridge, rolling_origin_splits, CoordDescentOptions,
+    PathOptions, Scaler, TargetCenterer,
 };
 
 const CD: CoordDescentOptions = CoordDescentOptions {
@@ -72,6 +78,202 @@ fn adaptive_lasso_sparser_on_true_zeros() {
         strict_wins >= 1,
         "adaptive LASSO never strictly beat plain LASSO on the true zeros"
     );
+}
+
+/// A seeded `n = 300`, `p = 8` design with three strong signals and five
+/// true zeros, returned column-major together with its target.
+fn scale_sweep_design() -> (Vec<Vec<f64>>, Vec<f64>) {
+    const N: usize = 300;
+    const P: usize = 8;
+    let mut rng = Lcg::new(12);
+    let cols: Vec<Vec<f64>> = (0..P)
+        .map(|_| (0..N).map(|_| rng.normal()).collect())
+        .collect();
+    let beta = [3.0, -2.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let y: Vec<f64> = (0..N)
+        .map(|i| {
+            let fit: f64 = (0..P).map(|j| cols[j][i] * beta[j]).sum();
+            fit + 0.5 * rng.normal()
+        })
+        .collect();
+    (cols, y)
+}
+
+/// `cols` with every entry multiplied by `s`, as a faer matrix.
+fn scaled_design(cols: &[Vec<f64>], s: f64) -> tsecon_ml::faer::Mat<f64> {
+    let scaled: Vec<Vec<f64>> = cols
+        .iter()
+        .map(|c| c.iter().map(|v| v * s).collect())
+        .collect();
+    mat_from_cols(&scaled)
+}
+
+/// The `(alpha, l1_ratio)` pair that reproduces the scale-1 penalties after
+/// `X -> s*X`, i.e. that leaves the objective identical with the minimizer
+/// at `b/s`.
+///
+/// The `L1` term `alpha*l1_ratio*||b||_1` picks up one factor of `1/s` from
+/// `b`, so it needs `alpha*l1_ratio -> alpha*l1_ratio*s`; the `L2` term
+/// `0.5*alpha*(1-l1_ratio)*||b||^2` picks up two, so it needs
+/// `alpha*(1-l1_ratio) -> alpha*(1-l1_ratio)*s^2`. A pure LASSO
+/// (`l1_ratio = 1`) therefore has the simple `alpha -> alpha*s` of the
+/// finding; a genuine elastic net needs both penalties moved, which the
+/// `(alpha, l1_ratio)` parametrization can still express.
+fn rescale_penalty(alpha: f64, l1_ratio: f64, s: f64) -> (f64, f64) {
+    let a1 = alpha * l1_ratio * s;
+    let a2 = alpha * (1.0 - l1_ratio) * s * s;
+    let a = a1 + a2;
+    (a, a1 / a)
+}
+
+/// **Scale equivariance of the coordinate-descent solvers.**
+///
+/// With the penalties moved by [`rescale_penalty`], sending `X -> s*X`
+/// leaves `(1/(2n))||y - Xb||^2 + alpha*l1_ratio*||b||_1 +
+/// 0.5*alpha*(1-l1_ratio)*||b||^2` reproduced term for term, so the
+/// minimizer at scale `s` is the scale-1 minimizer divided by `s`.
+/// `coef * s` cannot depend on `s`: it is an algebraic identity, not an
+/// approximation.
+///
+/// A single-scale test cannot see a violation of it. With an **absolute**
+/// stopping tolerance the solver silently breaks the identity: coefficient
+/// moves shrink like `1/s`, so past `s ~ |b|/tol` the very first sweep out
+/// of the zero warm start already looks converged and the solver returns
+/// that one soft-threshold step as a success. At `s = 1e9` with the
+/// binding's `tol = 1e-8` that turned a leading coefficient of `2.934` into
+/// `3.211` — a 9% error, no warning, `n_iter = 1`. Hence the sweep over
+/// fifteen-plus decades *and* over both shipped tolerances: the scale at
+/// which an absolute rule collapses is proportional to `1/tol`, so a sweep
+/// pinned to one tolerance can miss it.
+#[test]
+fn coordinate_descent_is_scale_equivariant() {
+    let (cols, y) = scale_sweep_design();
+    // A pure LASSO tolerates the widest sweep; the elastic net's `s^2` on
+    // the L2 penalty drives `1 - l1_ratio'` toward cancellation at extreme
+    // `s`, which is a limit of the *reparametrization*, not of the solver.
+    let lasso_scales = [1e-8, 1e-4, 1e-2, 1.0, 1e2, 1e4, 1e8, 1e12];
+    let enet_scales = [1e-6, 1e-3, 1.0, 1e3, 1e6, 1e9];
+    let cases: [(f64, f64, &[f64]); 3] = [
+        (1.0, 0.1, &lasso_scales),
+        (0.5, 0.1, &enet_scales),
+        (0.5, 0.02, &enet_scales),
+    ];
+
+    let base_x = mat_from_cols(&cols);
+    // Both tolerances the bindings ship (lasso/elastic_net 1e-8,
+    // adaptive_lasso/lasso_path 1e-7) plus the crate default.
+    for &tol in &[1e-11f64, 1e-8] {
+        let opts = CoordDescentOptions {
+            tol,
+            max_iter: 100_000,
+        };
+        for &(l1_ratio, alpha1, scales) in &cases {
+            let base = elastic_net(base_x.as_ref(), &y, alpha1, l1_ratio, opts).unwrap();
+            let mag = base.coef.iter().fold(0.0f64, |m, &b| m.max(b.abs()));
+            assert!(mag > 1.0, "degenerate baseline fit: max |coef| = {mag}");
+            // The baseline must be a real fit, not one soft-threshold step.
+            assert!(base.n_iter >= 3, "baseline converged suspiciously fast");
+
+            let mut worst = 0.0f64;
+            for &s in scales {
+                let (alpha_s, l1_s) = rescale_penalty(alpha1, l1_ratio, s);
+                let x = scaled_design(&cols, s);
+                let fit = elastic_net(x.as_ref(), &y, alpha_s, l1_s, opts).unwrap();
+                assert!(
+                    fit.max_rel_change <= tol,
+                    "tol={tol:e} l1_ratio={l1_ratio} s={s:e}: reported \
+                     max_rel_change {:e} exceeds tol",
+                    fit.max_rel_change
+                );
+                for j in 0..base.coef.len() {
+                    let d = (fit.coef[j] * s - base.coef[j]).abs();
+                    worst = worst.max(d);
+                    assert!(
+                        d <= 1e-6 * mag,
+                        "tol={tol:e} l1_ratio={l1_ratio} alpha={alpha1} s={s:e} \
+                         coord {j}: coef*s = {} but s=1 gives {} (diff {d:e}, \
+                         allowed {:e})",
+                        fit.coef[j] * s,
+                        base.coef[j],
+                        1e-6 * mag
+                    );
+                }
+            }
+            println!(
+                "tol={tol:e} l1_ratio={l1_ratio} alpha={alpha1}: worst \
+                 |coef*s - coef_1| = {worst:e} (max |coef| = {mag:e})"
+            );
+        }
+    }
+}
+
+/// The companion equivariance in the **target**: `y -> c*y`,
+/// `alpha -> c*alpha` scales the objective by `c^2`, so the minimizer
+/// scales by `c` and `coef / c` must be invariant. This is the half of the
+/// scale-freedom that the `||y||` in the stopping rule buys; a tolerance
+/// compared against a bare coefficient change fails it for the same reason
+/// it fails the design-scaling version.
+#[test]
+fn coordinate_descent_is_equivariant_in_the_target_scale() {
+    let (cols, y) = scale_sweep_design();
+    let x = mat_from_cols(&cols);
+    let base = lasso(x.as_ref(), &y, 0.1, CD).unwrap();
+    let mag = base.coef.iter().fold(0.0f64, |m, &b| m.max(b.abs()));
+
+    for &c in &[1e-12, 1e-6, 1e-3, 1e3, 1e6, 1e12] {
+        let yc: Vec<f64> = y.iter().map(|v| v * c).collect();
+        let fit = lasso(x.as_ref(), &yc, 0.1 * c, CD).unwrap();
+        for j in 0..base.coef.len() {
+            let d = (fit.coef[j] / c - base.coef[j]).abs();
+            assert!(
+                d <= 1e-8 * mag,
+                "c={c:e} coord {j}: coef/c = {} but c=1 gives {} (diff {d:e})",
+                fit.coef[j] / c,
+                base.coef[j]
+            );
+        }
+    }
+}
+
+/// The regularization path inherits the same equivariance: the grid is
+/// built from `lambda_max = max_j |x_j'y| / (n*l1_ratio)`, which scales
+/// like `s`, so every `coefs[i] * s` must be invariant. This exercises the
+/// warm-started `cd_engine` calls, where the stopping rule is applied to a
+/// nonzero start rather than to zeros.
+#[test]
+fn regularization_path_is_scale_equivariant() {
+    let (cols, y) = scale_sweep_design();
+    let opts = PathOptions {
+        n_lambdas: 25,
+        eps: 1e-3,
+        cd: CD,
+    };
+    let base = regularization_path(mat_from_cols(&cols).as_ref(), &y, 1.0, opts).unwrap();
+    let mag = base
+        .coefs
+        .iter()
+        .flatten()
+        .fold(0.0f64, |m, &b| m.max(b.abs()));
+
+    for &s in &[1e-6, 1e3, 1e9] {
+        let x = scaled_design(&cols, s);
+        let path = regularization_path(x.as_ref(), &y, 1.0, opts).unwrap();
+        // `df` itself is not compared: at the very first grid point the
+        // soft-threshold argument sits exactly on `lambda_max`, so which
+        // side of zero the rounding lands on is a floating-point coin flip
+        // that changes `df` by one while the coefficient stays at ~1e-17.
+        for (i, (bs, b1)) in path.coefs.iter().zip(&base.coefs).enumerate() {
+            for (j, (&a, &b)) in bs.iter().zip(b1).enumerate() {
+                let d = (a * s - b).abs();
+                assert!(
+                    d <= 1e-6 * mag,
+                    "s={s:e} grid {i} coord {j}: {} vs {} (diff {d:e})",
+                    a * s,
+                    b
+                );
+            }
+        }
+    }
 }
 
 /// At `lambda_max = max_j |x_j'y| / (n*l1_ratio)` every coefficient is

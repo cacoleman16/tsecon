@@ -43,7 +43,9 @@ response*, not a multiplier.
 
 **How to read the output.** `horizons`, `irf` (the response path), and `se` (one
 standard error per horizon — build bands as `irf ± z·se`). Plot `irf` against
-`horizons`; the per-horizon `se` widening is a feature, not a defect.
+`horizons`; the per-horizon `se` widening is a feature, not a defect. `irf ±
+z·se` is a **pointwise** band and makes no promise about the path as a whole; for
+that, see [the band selector](#simultaneous-bands-over-the-horizons-lp).
 
 **Failure modes.** Feeding a *non*-identified shock (a raw endogenous variable)
 returns a correlation, not a causal response — use `lp_iv`. Too few
@@ -72,6 +74,68 @@ print("IRF (h=0..3):", np.round(out["irf"][:4], 3))        # ~[1.0, 0.9, 0.81, 0
 print("SEs (h=0..3):", np.round(out["se"][:4], 3))
 ```
 
+### Simultaneous bands over the horizons — `lp`
+
+**What it estimates.** The same `irf` and the same per-horizon `se`, with one
+multiplier `c` chosen so that the **whole path** `irf_h ± c·se_h`, `h = 0..H`,
+is inside the band at once. The default band is pointwise and promises nothing
+about the path: the interval-coverage audit measured a nominal 90% pointwise LP
+band containing all 13 horizons in **36.5%** of samples at T=240 and **42.7%** at
+T=720. Tripling the sample bought six points; this is multiplicity, not a
+small-sample caveat.
+
+**Assumptions.** `band="sup-t"` needs the `K x K` cross-horizon covariance
+of the response path. LP fits every horizon in its own regression, so only the
+diagonal of that matrix ever existed; it is assembled from the
+Frisch-Waugh-Lovell influence representation and is positive semi-definite by
+construction. On the default `se="lag_augmented"` path its `sqrt(diag)`
+reproduces the reported `se` to floating-point noise — that agreement is the
+check that the covariance and the standard errors are the *same* estimator. On
+`se="hac"` one **common** Bartlett bandwidth serves the whole matrix (the
+per-horizon default `maxlags` grows with `h`), so `sqrt(diag)` can
+differ from the reported `se`; the multiplier uses only the correlation matrix,
+and the largest relative gap is reported so you can see how far apart they were.
+
+**Key arguments and defaults (and why).** `band=None` is the **default** and
+returns exactly what `lp` always returned — the point path and its standard
+errors, no band at all. `band="pointwise"` adds the ordinary per-horizon band;
+`"sup-t"` is the one to prefer when you want a joint statement; `"sidak"` and
+`"bonferroni"` are closed forms that need nothing but `K`. The band's level is
+its own argument, `band_alpha` — a band is not the same object as an `se`.
+`band_n_sim` and `band_seed` drive the sup-t simulation and make the band a
+**pure function** of `band_seed`; do not cut `band_n_sim` far down, since this is
+a quantile in the tail of a maximum.
+
+**How to read the output.** Asking for a band adds `lower`/`upper`,
+`critical_value`, `pointwise_critical_value`, `band_scope`, `n_cells` (the `K`)
+and `n_cells_used`. The family is fixed and simple here — the horizons of this
+one response, `K = horizons + 1`, and `band_scope` echoes `"horizon"` — but
+**report it anyway**, together with the method. The ratio of `critical_value` to
+`pointwise_critical_value` is exactly what simultaneity cost on this path. At
+`K = 13`, `alpha = 0.10` the closed forms are fixed — Šidák 2.6490, Bonferroni
+2.6653 against a pointwise 1.6449 — while sup-t depends on the path: the audit
+measures it averaging 2.0742 on a moderately persistent VAR IRF and running up
+to about 2.65 on more persistent ones. Read the value your own fit returns.
+
+**Failure modes.** A simultaneous band fixes multiplicity and inherits
+everything else — if a horizon's standard error is too small, widening the
+multiplier does not repair it. Šidák and Bonferroni are conservative on an IRF
+path, whose adjacent horizons are strongly positively correlated; use them only
+where sup-t is unavailable.
+
+**Validation target.** Nominal 90%, 13 horizons, 400 replications (MC standard
+error ≈ 1.5pp), pointwise and sup-t scored on the **same** replications:
+**36.5% → 81.8%** at T=240 and **42.7% → 89.5%** at T=720. These are the crate's
+own coverage tests: `lp` has **no arm in the Python coverage harness** yet, so
+they do not appear in the audit's tables. LP is the clean case
+in the library: at T=720, where the per-horizon rates sit on nominal, the
+simultaneous band lands on nominal too. Where the marginals are off (T=240), so
+is the joint rate — see
+[pointwise is not joint](../../examples/interval-coverage.md#the-remedy-and-the-two-places-it-stops).
+
+**References (bands).** Montiel Olea and Plagborg-Møller, *Simultaneous
+confidence bands: theory, implementation, and an application to SVARs*.
+
 ---
 
 ## `lp_iv` — instrumented local projections (LP-IV)
@@ -94,6 +158,19 @@ the response and understate uncertainty.
 the first-stage F at each horizon. Treat `first_stage_f` below ~10 as a
 weak-instrument warning: the point estimate and band at that horizon are not to
 be trusted.
+
+**Bands over the horizons — closed forms only.** `band` defaults to `None` (no
+band). `"pointwise"`, `"sidak"` and `"bonferroni"` add `lower`/`upper` over the
+horizons of this response at level `band_alpha`, with `critical_value`,
+`pointwise_critical_value`, `n_cells` and `n_cells_used`; **`band="sup-t"` is
+refused, with an error naming the reason.** LP-IV has no cross-horizon covariance in this library — the
+kernel covariance is formed one horizon at a time and no joint object exists —
+so there is nothing for a sup-t simulation to draw from. None of these bands may
+be described as sup-t. Šidák and Bonferroni are valid under arbitrary dependence
+across horizons and are simply *wider* than a sup-t band would be; on a
+persistent response path that gap is real. And the multiplicity question sits on
+top of the marginal one, which is already off here: the audit measured **0.930 ±
+0.005** at the *best* horizon against a nominal 0.95.
 
 **Failure modes.** Weak instruments (low `first_stage_f`) are the dominant
 failure; a proxy correlated with other shocks violates exogeneity silently.
@@ -152,6 +229,14 @@ standard errors; by the just-identified IV algebra their ratio equals
 `cumulative_outcome`, `cumulative_impulse`, `nobs_per_h`. Treat `first_stage_f`
 below ~10 as a weak-instrument warning at that horizon.
 
+**Bands over the horizons — closed forms only.** As for `lp_iv`: `band` defaults
+to `None`, `"pointwise"`/`"sidak"`/`"bonferroni"` put `lower`/`upper` around
+`multiplier` at level `band_alpha`, and **`band="sup-t"` is refused with an error
+naming the reason** — no cross-horizon covariance of the multiplier path exists.
+Do not call the resulting band sup-t. Note also that the horizons of an integral
+multiplier are *nested* windows and therefore very strongly dependent, which is
+exactly the case where a closed-form multiplier is at its most conservative.
+
 **Failure modes.** A weak instrument in the *cumulated* first stage; an impulse
 that is not measured in the same units as the outcome (the coefficient is then
 an elasticity-like object, not a multiplier — this is why Ramey-Zubairy divide
@@ -190,6 +275,16 @@ weight), `horizons`, `n_lag_controls`, `se` (lag-augmented default),
 **How to read the output.** `horizons` and, per regime, `irf_state1`/`se_state1`
 and `irf_state0`/`se_state0`. Compare the two paths — a gap that exceeds the
 combined bands is the state-dependence finding.
+
+**Bands over the horizons — closed forms only, and per regime.** `band` defaults
+to `None`; `"pointwise"`, `"sidak"` and `"bonferroni"` add **one band per
+regime** — `lower_state1`/`upper_state1` and `lower_state0`/`upper_state0`, with
+`critical_value_state1`/`critical_value_state0` and the matching
+`n_cells_used_*` — each over that regime's own horizons at level `band_alpha`.
+**Nothing here is simultaneous *across* regimes**: if your claim is that the two
+paths differ, that is a larger family than either band answers for.
+**`band="sup-t"` is refused with an error naming the reason**, because the
+interacted design produces no joint cross-horizon covariance here.
 
 **Failure modes.** Thin regimes (few periods in one state) give noisy,
 unreliable per-state estimates; a state that reacts to the shock contaminates
@@ -302,6 +397,21 @@ selected (or fixed) value; `cv_grid`/`cv_scores` expose the whole CV objective
 Two honest caveats on `se`, stated rather than hidden: it conditions on
 `lambda` (treated as fixed even when cross-validated) and does not account for
 shrinkage bias — bands are around the estimator's own smoothed target.
+
+**Bands over the horizons — `band=...`.** Smooth LP is the one estimator in this
+family that already held the joint object. The IRF is `irf_h = B_h' theta` for a
+single jointly estimated coefficient vector, so the cross-horizon covariance is
+`B V B'`, it is already computed, and the shipped `se` is exactly its
+`sqrt(diag)` — bit for bit. `band="sup-t"` therefore costs no extra estimation
+and makes no approximation that the point estimate has not already made (it
+simulates `band_n_sim` draws from `band_seed`, so the band is a pure function of
+that seed); `"pointwise"`, `"sidak"` and `"bonferroni"` are the other three, and
+`band=None` — no band — remains the default. What a simultaneous band **cannot**
+fix is the caveat above: it is a joint statement about the *penalized* path, not
+about the truth. The audit
+measured the pointwise `lam="cv"` band covering **0.640 ± 0.018** at impact
+against a nominal 0.95 with |bias|/sd = 1.22 — no multiplier repairs a band
+centred in the wrong place.
 
 **Failure modes.** Over-smoothing a genuinely kinked IRF (compare against
 `irf_raw`; if the raw path departs from the band systematically rather than

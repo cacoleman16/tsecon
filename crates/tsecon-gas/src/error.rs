@@ -33,6 +33,18 @@ pub enum GasError {
         /// Name of the offending quantity.
         what: &'static str,
     },
+    /// The series has no scale for a variance model to measure: the sample
+    /// second moment `mean(y^2)` is zero.
+    ///
+    /// The log-likelihood is then unbounded above — with every `y_t = 0`
+    /// the Gaussian log-density is `-0.5 (ln 2 pi + ln f_t)`, which grows
+    /// without limit as the variance is driven to zero — so no
+    /// maximum-likelihood estimate exists and any "fit" is an artifact of
+    /// wherever the optimizer's floor happened to stop it.
+    DegenerateSeries {
+        /// What about the series leaves it without a scale.
+        what: &'static str,
+    },
     /// Too few observations for the requested operation.
     InsufficientData {
         /// Minimum number of observations required.
@@ -61,6 +73,17 @@ impl fmt::Display for GasError {
             Self::NonFinite { what } => {
                 write!(f, "non-finite value (NaN or infinity) in {what}")
             }
+            Self::DegenerateSeries { what } => write!(
+                f,
+                "degenerate series: {what}, so the sample second moment \
+                 mean(y^2) is zero. A score-driven variance model has no \
+                 maximum here — the log-likelihood is unbounded above, \
+                 growing without limit as the variance is driven to zero, \
+                 so no maximum-likelihood estimate exists. Check the input: \
+                 an all-zero placeholder, a difference that is identically \
+                 zero, or returns quoted in units so small that y^2 \
+                 underflows"
+            ),
             Self::InsufficientData { needed, got } => write!(
                 f,
                 "insufficient data: {got} observations, at least {needed} required"

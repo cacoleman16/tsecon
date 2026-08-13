@@ -69,6 +69,21 @@ pub enum PanelRootError {
         /// The error propagated from `tsecon-hac`.
         source: HacError,
     },
+    /// The kernel long-run variance of a unit's first differences came out
+    /// non-positive, so the long-run/short-run ratio
+    /// `s_i = sigma_y_i / sigma_eps_i` has no real square root and the
+    /// Levin-Lin-Chu bias adjustment is undefined. Only a
+    /// non-positive-semi-definite kernel (the truncated one) can produce a
+    /// negative estimate; on persistent panels that is the normal outcome,
+    /// not a rare edge case.
+    NonPsdLongRunVariance {
+        /// The offending unit (0-indexed).
+        unit: usize,
+        /// The kernel that produced it (see `tsecon_hac::Kernel::name`).
+        kernel: &'static str,
+        /// The offending long-run variance estimate.
+        value: f64,
+    },
     /// The pooled Levin-Lin-Chu regression degenerated: the projected
     /// lagged level has zero variation across the whole panel, so its
     /// coefficient and t-ratio are undefined.
@@ -127,6 +142,26 @@ impl fmt::Display for PanelRootError {
                 f,
                 "the Levin-Lin-Chu auxiliary regression / long-run variance \
                  failed for unit {unit}: {source}"
+            ),
+            Self::NonPsdLongRunVariance {
+                unit,
+                kernel,
+                value,
+            } => write!(
+                f,
+                "the Levin-Lin-Chu long-run variance of unit {unit}'s first \
+                 differences came out non-positive ({value:.6e}) under the \
+                 {kernel} kernel, so the long-run/short-run ratio \
+                 s_i = sigma_y_i / sigma_eps_i has no real square root and the \
+                 mu*/sigma* bias adjustment is undefined. The truncated kernel \
+                 is not positive semi-definite — it sums raw autocovariances \
+                 with unit weights, and on a persistent panel the sum is \
+                 routinely negative, so this is the usual outcome rather than \
+                 an edge case. Use lrv_kernel = \"bartlett\" (the Levin-Lin-Chu \
+                 default), \"parzen\", or \"qs\": all three are guaranteed \
+                 non-negative. A negative estimate is never silently clamped, \
+                 because clamping would report a bias adjustment the data does \
+                 not support"
             ),
             Self::DegeneratePool => write!(
                 f,

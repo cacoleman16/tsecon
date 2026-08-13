@@ -857,11 +857,163 @@ fn var_irf<'py>(
     pyo3::types::PyList::new(py, out.iter().cloned())
 }
 
+// --------------------------------------------------------------------------
+// Simultaneous (sup-t) bands: shared parsing and reporting
+// --------------------------------------------------------------------------
+//
+// Every band tsecon shipped before this was POINTWISE: a statement about one
+// cell. Read as a statement about a whole path — "does this band contain the
+// entire impulse response?" — a pointwise band fails badly, and the failure is
+// multiplicity, not inconsistency, so it does NOT shrink as the sample grows.
+// tsecon's own interval-coverage audit, scoring pointwise and simultaneous on
+// the SAME replications, measured:
+//
+//   var_forecast   nominal 95%, T=100, 12 horizons x 2 series, 6000 reps:
+//                  pointwise joint 41.2% +/- 0.6, sup-t joint 90.5% +/- 0.4
+//   var_irf_bands  nominal 90%, T=500, h=0..12, 3000 reps (asymptotic):
+//                  pointwise joint 70.4% +/- 0.8, sup-t joint 84.8% +/- 0.7
+//   lp             nominal 90%, 13 horizons, 400 reps:
+//                  T=240 pointwise 36.5% / sup-t 81.8%
+//                  T=720 pointwise 42.7% / sup-t 89.5%
+//
+// Tripling T moved LP's pointwise joint rate from 36.5% only to 42.7%.
+//
+// The critical value has exactly one owner, `tsecon_stats::simultaneous`; these
+// bindings only parse the user's choice and report what came back.
+
+/// Canonical lower-case spelling of the `band=` selector, shared by every
+/// banded surface. `"supt"` and `"sup_t"` are accepted spellings of `"sup-t"`.
+fn parse_band_choice(s: &str) -> PyResult<&'static str> {
+    match s {
+        "pointwise" => Ok("pointwise"),
+        "sup-t" | "supt" | "sup_t" => Ok("sup-t"),
+        "sidak" => Ok("sidak"),
+        "bonferroni" => Ok("bonferroni"),
+        other => Err(PyValueError::new_err(format!(
+            "unknown band {other:?}; expected \"pointwise\" (the default: a marginal, \
+             one-cell-at-a-time band that makes no joint promise), \"sup-t\" (simultaneous \
+             and the tightest of the three, because it uses the dependence across cells), \
+             \"sidak\", or \"bonferroni\" (both simultaneous, closed-form in the number of \
+             cells K, and wider)"
+        ))),
+    }
+}
+
+/// The `band=` selector as the VAR crate's [`BandMethod`].
+fn var_band_method(band: &str) -> PyResult<tsecon_var::irf_asymptotic::BandMethod> {
+    use tsecon_var::irf_asymptotic::BandMethod;
+    Ok(match parse_band_choice(band)? {
+        "pointwise" => BandMethod::Pointwise,
+        "sup-t" => BandMethod::SupT,
+        "sidak" => BandMethod::Sidak,
+        _ => BandMethod::Bonferroni,
+    })
+}
+
+/// The `band=` selector as the LP crate's `BandMethod`.
+fn lp_band_method(band: &str) -> PyResult<tsecon_lp::BandMethod> {
+    use tsecon_lp::BandMethod;
+    Ok(match parse_band_choice(band)? {
+        "pointwise" => BandMethod::Pointwise,
+        "sup-t" => BandMethod::SupT,
+        "sidak" => BandMethod::Sidak,
+        _ => BandMethod::Bonferroni,
+    })
+}
+
+/// Write a VAR impulse-response simultaneous band into a result dict.
+///
+/// `sim_lower`/`sim_upper` are `point ± c·se` with `c` from `cv`, so they
+/// contain the SYMMETRIC pointwise band `point ± pointwise_critical_value·se`
+/// cell by cell. On the bootstrap branch that is *not* the same object as
+/// `lower`/`upper` (Efron percentiles); see the `var_irf_bands` docstring.
+fn set_irf_band_items(
+    d: &Bound<'_, PyDict>,
+    cv: &tsecon_var::irf_asymptotic::IrfCriticalValues,
+    lower: &[tsecon_var::tsecon_linalg::faer::Mat<f64>],
+    upper: &[tsecon_var::tsecon_linalg::faer::Mat<f64>],
+) -> PyResult<()> {
+    d.set_item(
+        "sim_lower",
+        lower.iter().map(mat_to_vec2).collect::<Vec<_>>(),
+    )?;
+    d.set_item(
+        "sim_upper",
+        upper.iter().map(mat_to_vec2).collect::<Vec<_>>(),
+    )?;
+    d.set_item("critical_value", cv.values.clone())?;
+    d.set_item("pointwise_critical_value", cv.pointwise)?;
+    d.set_item("band_scope", cv.scope.label())?;
+    d.set_item("n_cells", cv.n_cells)?;
+    d.set_item("n_cells_used", cv.n_cells_used.clone())?;
+    Ok(())
+}
+
+/// Build an LP [`BandSpec`](tsecon_lp::BandSpec), validating `band_alpha` at
+/// the Python boundary so the error names the Python keyword.
+fn lp_band_spec(band: &str, alpha: f64, n_sim: usize, seed: u64) -> PyResult<tsecon_lp::BandSpec> {
+    if !(alpha > 0.0 && alpha < 1.0) {
+        return Err(PyValueError::new_err(format!(
+            "band_alpha must lie strictly in (0, 1), got {alpha}"
+        )));
+    }
+    Ok(tsecon_lp::BandSpec::new(lp_band_method(band)?, alpha)
+        .with_n_sim(n_sim)
+        .with_seed(seed))
+}
+
+/// The closed-form-only band spec, for the LP estimators that have no
+/// cross-horizon covariance in `tsecon-lp` — `lp_iv`, `lp_multiplier`,
+/// `lp_state`. Refuses `"sup-t"` by name rather than silently substituting a
+/// different method: there is nothing to simulate from, so a sup-t number here
+/// would be fabricated.
+fn lp_closed_form_spec(band: &str, alpha: f64, who: &str) -> PyResult<tsecon_lp::BandSpec> {
+    let spec = lp_band_spec(band, alpha, 0, 0)?;
+    if spec.method == tsecon_lp::BandMethod::SupT {
+        return Err(PyValueError::new_err(format!(
+            "band=\"sup-t\" is not available for {who}: sup-t needs the covariance \
+             ACROSS horizons and tsecon estimates no such covariance for this \
+             estimator, so there would be nothing to simulate from. Use \
+             band=\"sidak\" or band=\"bonferroni\" — both are simultaneous, valid \
+             under any dependence across horizons, and simply wider than a sup-t \
+             band would be — or use tsecon.lp / tsecon.smooth_lp, which do build \
+             the cross-horizon covariance"
+        )));
+    }
+    Ok(spec)
+}
+
+/// Write an `LpBand` into a result dict. `suffix` is `""` for the
+/// single-response surfaces and `"_state1"` / `"_state0"` for `lp_state`'s two
+/// regimes; the scalars that cannot differ between regimes are written once.
+fn set_lp_band_items<'py>(
+    py: Python<'py>,
+    d: &Bound<'py, PyDict>,
+    b: &tsecon_lp::LpBand,
+    suffix: &str,
+) -> PyResult<()> {
+    d.set_item(format!("lower{suffix}"), b.lower.clone().into_pyarray(py))?;
+    d.set_item(format!("upper{suffix}"), b.upper.clone().into_pyarray(py))?;
+    d.set_item(format!("critical_value{suffix}"), b.critical_value)?;
+    d.set_item(format!("n_cells_used{suffix}"), b.n_cells_used)?;
+    d.set_item("band", b.method.label())?;
+    d.set_item("band_alpha", b.alpha)?;
+    // An LP band's family is always the horizons of one response path.
+    d.set_item("band_scope", "horizon")?;
+    d.set_item("n_cells", b.n_cells)?;
+    d.set_item("pointwise_critical_value", b.pointwise_critical_value)?;
+    // 0 for every closed-form route: no simulation was needed, and `band_seed`
+    // is then inert.
+    d.set_item("band_n_sim", b.n_sim)?;
+    d.set_item("band_seed", b.seed)?;
+    Ok(())
+}
+
 /// Frequentist confidence bands on VAR impulse responses — the banded
 /// companion to `var_irf` (which stays a bare nested list; this returns a
 /// dict). Keys: `point`/`se`/`lower`/`upper`, each `[h][i][j]` (response of
 /// variable i to a shock in variable j at horizon h, matching `var_irf`),
-/// plus echoed `method`/`alpha`/`n_boot` (`n_boot` is `None` for the
+/// plus echoed `method`/`alpha`/`n_boot`/`band` (`n_boot` is `None` for the
 /// asymptotic branch).
 ///
 /// `method="asymptotic"` (default) uses the Lütkepohl (1990) delta-method
@@ -872,6 +1024,50 @@ fn var_irf<'py>(
 /// replications and a reproducible `seed`. `orth` toggles orthogonalized
 /// (Cholesky) vs reduced-form responses and `cumulative` puts the bands on
 /// the cumulated IRF — both exactly as in `var_irf`.
+///
+/// SIMULTANEOUS BANDS (`band=`). `lower`/`upper` are POINTWISE whatever you
+/// pass: each covers ONE (horizon, response, shock) cell at the nominal rate
+/// and promises nothing about the path as a whole. Setting `band` to `"sup-t"`,
+/// `"sidak"` or `"bonferroni"` adds `sim_lower`/`sim_upper` — the same `point`
+/// and the same `se` with a larger multiplier — plus `critical_value` (a k x k
+/// grid), `pointwise_critical_value`, `band_scope`, `n_cells` (K) and
+/// `n_cells_used`. `band="pointwise"` is the default and adds nothing.
+///
+/// Simultaneous OVER WHAT is a real choice, not a detail, so `band_scope` is
+/// yours and is always reported back: `"horizon"` (the default; K = horizon+1,
+/// one family per response-shock pair — "does the band contain the whole path
+/// of THIS response to THIS shock?", which is the object the coverage audit
+/// measured), `"shock"` (K = k(horizon+1), one family per shock's whole column
+/// of panels) or `"all"` (K = k²(horizon+1), the entire IRF grid read as one
+/// statement). Every cell added to a family widens the band for every other
+/// cell in it.
+///
+/// WHAT IT FIXES AND WHAT IT DOES NOT. On the audit's design (nominal 90%,
+/// T=500, h=0..12, 3000 replications, asymptotic branch) the pointwise band
+/// contained the whole path in 70.4% ± 0.8 of samples and the sup-t band in
+/// 84.8% ± 0.7. The sup-t rate DOES NOT REACH NOMINAL, and the reason is not
+/// multiplicity: the same audit measured the pointwise band covering 88.7%
+/// marginally at h=0 falling to 85.2% at h=12 against its nominal 90%. sup-t
+/// fixes multiplicity exactly and inherits everything else, so the residual gap
+/// needs a better standard error, not a bigger multiplier.
+///
+/// SHAPE, on the bootstrap branch. `lower`/`upper` there are Efron PERCENTILE
+/// bounds and pick up bootstrap skewness; the simultaneous band is the
+/// symmetric `point ± c·se`. They are different shapes of interval, so
+/// `sim_lower` is NOT guaranteed to sit below `lower` cell by cell. What it is
+/// guaranteed to contain is the symmetric pointwise band
+/// `point ± pointwise_critical_value·se`, which is the like-for-like
+/// comparator: only the multiplier differs.
+///
+/// `band_seed`/`band_n_sim` drive the Gaussian simulation behind `"sup-t"` on
+/// the ASYMPTOTIC branch only; the band is a pure function of `band_seed`
+/// there. On the bootstrap branch sup-t reads its quantile off the bootstrap
+/// replications themselves, so `band_seed`/`band_n_sim` are inert and `seed`
+/// alone reproduces it — use a large `n_boot` (999+, not 199), since this is a
+/// quantile in the tail of a maximum. Šidák and Bonferroni need neither.
+///
+/// Method: Montiel Olea and Plagborg-Møller, simultaneous confidence bands for
+/// SVARs.
 #[pyfunction]
 #[pyo3(signature = (
     data,
@@ -885,6 +1081,10 @@ fn var_irf<'py>(
     seed = 0,
     trend = "c",
     bias_correct = false,
+    band = "pointwise",
+    band_scope = "horizon",
+    band_seed = 20260807,
+    band_n_sim = 100000,
 ))]
 #[allow(clippy::too_many_arguments)]
 fn var_irf_bands<'py>(
@@ -900,13 +1100,37 @@ fn var_irf_bands<'py>(
     seed: u64,
     trend: &str,
     bias_correct: bool,
+    band: &str,
+    band_scope: &str,
+    band_seed: u64,
+    band_n_sim: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     if !(alpha > 0.0 && alpha < 1.0) {
         return Err(PyValueError::new_err(format!(
             "alpha must lie strictly in (0, 1), got {alpha}"
         )));
     }
+    let band_method = var_band_method(band)?;
+    // Parsed even at `band="pointwise"`, so a typo in `band_scope` is caught
+    // rather than quietly ignored.
+    let scope = tsecon_var::irf_asymptotic::IrfBandScope::parse(band_scope).map_err(to_py)?;
     let d = PyDict::new(py);
+    d.set_item("band", band_method.label())?;
+    // Kilian bias correction is a property of the BOOTSTRAP resampling loop --
+    // the delta-method arm has no draws to re-centre, so it cannot apply it.
+    // Accepting the flag here and discarding it is exactly the silent no-op
+    // that shipped in iv_gmm's HAC bandwidth, and it is worse here because the
+    // library's own coverage audit instructs callers to set it.
+    if bias_correct && method == "asymptotic" {
+        return Err(PyValueError::new_err(
+            "bias_correct=True has no effect with method=\"asymptotic\": Kilian's \
+             correction re-centres bootstrap draws, and the delta-method arm draws \
+             none. Pass method=\"bootstrap\" to get it (that is the combination the \
+             interval-coverage audit measures at 0.410 -> 0.900 for h=12 on a \
+             persistent VAR), or drop bias_correct to keep the asymptotic band.",
+        ));
+    }
+    d.set_item("bias_correct", bias_correct)?;
     match method {
         "asymptotic" => {
             let r = var_results(&data, lags, trend)?;
@@ -942,6 +1166,32 @@ fn var_irf_bands<'py>(
                     }
                 }
             }
+            if band_method.is_simultaneous() {
+                use tsecon_var::tsecon_linalg::faer::Mat;
+                // Rebuilt from the very arrays reported above, so the
+                // simultaneous band is anchored on bit-identically the same
+                // point estimate and standard errors as the pointwise one.
+                let point_mats: Vec<Mat<f64>> = point
+                    .iter()
+                    .map(|m| Mat::from_fn(m.len(), m[0].len(), |i, j| m[i][j]))
+                    .collect();
+                let cv = tsecon_var::irf_asymptotic::irf_asymptotic_critical_values(
+                    &r,
+                    horizon,
+                    orth,
+                    cumulative,
+                    alpha,
+                    band_method,
+                    scope,
+                    band_seed,
+                    band_n_sim,
+                )
+                .map_err(to_py)?;
+                let (sim_lower, sim_upper) =
+                    tsecon_var::irf_asymptotic::apply_critical_values(&point_mats, &se_mats, &cv)
+                        .map_err(to_py)?;
+                set_irf_band_items(&d, &cv, &sim_lower, &sim_upper)?;
+            }
             d.set_item("point", point)?;
             d.set_item("se", se)?;
             d.set_item("lower", lower)?;
@@ -963,19 +1213,47 @@ fn var_irf_bands<'py>(
                     )))
                 }
             };
-            let bands = tsecon_var::bootstrap_irf_bands(
-                m.as_ref(),
-                lags,
-                tr,
-                horizon,
-                orth,
-                cumulative,
-                alpha,
-                n_boot,
-                seed,
-                bias_correct,
-            )
-            .map_err(to_py)?;
+            let bands = if band_method.is_simultaneous() {
+                // Bit-identical percentile bands, point estimate, standard
+                // errors and resampling stream; this only adds a second,
+                // jointly-valid interval alongside them.
+                tsecon_var::irf_bootstrap::bootstrap_irf_bands_simultaneous(
+                    m.as_ref(),
+                    lags,
+                    tr,
+                    horizon,
+                    orth,
+                    cumulative,
+                    alpha,
+                    n_boot,
+                    seed,
+                    bias_correct,
+                    band_method,
+                    scope,
+                )
+                .map_err(to_py)?
+            } else {
+                tsecon_var::bootstrap_irf_bands(
+                    m.as_ref(),
+                    lags,
+                    tr,
+                    horizon,
+                    orth,
+                    cumulative,
+                    alpha,
+                    n_boot,
+                    seed,
+                    bias_correct,
+                )
+                .map_err(to_py)?
+            };
+            if let (Some(cv), Some(sl), Some(su)) = (
+                bands.simultaneous.as_ref(),
+                bands.sim_lower.as_ref(),
+                bands.sim_upper.as_ref(),
+            ) {
+                set_irf_band_items(&d, cv, sl, su)?;
+            }
             let point: Vec<Vec<Vec<f64>>> = bands.point.iter().map(mat_to_vec2).collect();
             let se: Vec<Vec<Vec<f64>>> = bands.se.iter().map(mat_to_vec2).collect();
             let lower: Vec<Vec<Vec<f64>>> = bands.lower.iter().map(mat_to_vec2).collect();
@@ -1022,8 +1300,51 @@ fn var_fevd<'py>(
 /// with z = 1.96, `alpha=0.32` a 68% interval with z ~= 0.994).
 /// Intervals reflect innovation uncertainty only (coefficients treated
 /// as known), matching statsmodels `forecast_interval`.
+///
+/// SIMULTANEOUS BANDS (`band=`). `lower`/`upper` are MARGINAL whatever you
+/// pass: each covers one (horizon, series) cell. Read as a statement about a
+/// whole fan chart they are the worst offender in the library — tsecon's
+/// interval-coverage audit, nominal 95% at T=100 over 12 horizons x 2 series,
+/// 6000 replications, measured the marginal bands containing every cell at once
+/// in 41.2% ± 0.6 of samples. That is multiplicity, not a small sample: at
+/// T=800 the joint rate was still only 48.1%.
+///
+/// Setting `band` to `"sup-t"`, `"sidak"` or `"bonferroni"` adds `se`,
+/// `sim_lower`/`sim_upper` (the same `point` and the same `se`, larger
+/// multiplier), `critical_value` (one per series), `pointwise_critical_value`,
+/// `band_scope`, `n_cells` (K) and `n_cells_used`. `band="pointwise"` is the
+/// default and adds nothing.
+///
+/// Simultaneous OVER WHAT is yours to declare and is always reported back:
+/// `band_scope="all"` (the default; K = steps*k, every horizon of every series
+/// as one statement — the object the audit measured) or `"horizon"`
+/// (K = steps, one family per series, for a single-series fan chart). Every
+/// cell added to a family widens the band for every other cell in it.
+///
+/// WHAT IT FIXES AND WHAT IT DOES NOT. On that same design the sup-t band's
+/// joint rate was 90.5% ± 0.4 against a nominal 95%. IT DOES NOT REACH NOMINAL,
+/// and the residual is not multiplicity: these intervals are a plug-in that
+/// treats the coefficients as known, so the audit measured their MARGINAL rate
+/// at 93.3%, not 95%. sup-t fixes multiplicity exactly and inherits that
+/// approximation unchanged — the gap that is left needs coefficient sampling
+/// error in the standard error, not a bigger multiplier.
+///
+/// `band_seed`/`band_n_sim` drive the Gaussian simulation behind `"sup-t"`, so
+/// that band is a pure function of `band_seed`; Šidák and Bonferroni are closed
+/// forms in K and use neither. Method: Montiel Olea and Plagborg-Møller.
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, steps = 8, alpha = 0.05, trend = "c"))]
+#[pyo3(signature = (
+    data,
+    lags = 2,
+    steps = 8,
+    alpha = 0.05,
+    trend = "c",
+    band = "pointwise",
+    band_scope = "all",
+    band_seed = 20260807,
+    band_n_sim = 100000,
+))]
+#[allow(clippy::too_many_arguments)]
 fn var_forecast<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
@@ -1031,13 +1352,36 @@ fn var_forecast<'py>(
     steps: usize,
     alpha: f64,
     trend: &str,
+    band: &str,
+    band_scope: &str,
+    band_seed: u64,
+    band_n_sim: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = var_results(&data, lags, trend)?;
-    let fc = r.forecast_interval(steps, alpha).map_err(to_py)?;
+    let band_method = var_band_method(band)?;
+    // Parsed even at `band="pointwise"`, so a typo is caught, not ignored.
+    let scope = tsecon_var::forecast::ForecastBandScope::parse(band_scope).map_err(to_py)?;
+    let fc = if band_method.is_simultaneous() {
+        r.forecast_interval_simultaneous(steps, alpha, band_method, scope, band_seed, band_n_sim)
+            .map_err(to_py)?
+    } else {
+        r.forecast_interval(steps, alpha).map_err(to_py)?
+    };
     let d = PyDict::new(py);
     d.set_item("point", mat_to_vec2(&fc.point))?;
     d.set_item("lower", mat_to_vec2(&fc.lower))?;
     d.set_item("upper", mat_to_vec2(&fc.upper))?;
+    d.set_item("band", band_method.label())?;
+    if let Some(s) = fc.simultaneous.as_ref() {
+        d.set_item("se", mat_to_vec2(&fc.se))?;
+        d.set_item("sim_lower", mat_to_vec2(&s.lower))?;
+        d.set_item("sim_upper", mat_to_vec2(&s.upper))?;
+        d.set_item("critical_value", s.critical_value.clone())?;
+        d.set_item("pointwise_critical_value", s.pointwise)?;
+        d.set_item("band_scope", s.scope.label())?;
+        d.set_item("n_cells", s.n_cells)?;
+        d.set_item("n_cells_used", s.n_cells_used.clone())?;
+    }
     Ok(d)
 }
 
@@ -1774,8 +2118,47 @@ fn parse_cumulation(arg: Option<&Bound<'_, PyAny>>) -> PyResult<tsecon_lp::Cumul
 /// construction. For an identified multiplier use `tsecon.lp_multiplier`.
 ///
 /// Returns per-horizon irf and standard errors.
+///
+/// BANDS (`band=`). `band=None` (the default) returns the point path and its
+/// standard errors and nothing else, exactly as before. Pass `"pointwise"`,
+/// `"sup-t"`, `"sidak"` or `"bonferroni"` to also get `lower`/`upper`,
+/// `critical_value`, `pointwise_critical_value`, `band_scope`, `n_cells` (K)
+/// and `n_cells_used`.
+///
+/// The family is THE HORIZONS OF THIS ONE RESPONSE, `K = horizons + 1`
+/// (`band_scope` reports `"horizon"`). A `"pointwise"` band covers one horizon
+/// at a time and says nothing about the path; the other three cover every
+/// horizon at once with probability `1 - band_alpha`.
+///
+/// LP is the clean case for this. tsecon's interval-coverage audit, nominal
+/// 90% over 13 horizons, 400 replications, measured the pointwise band
+/// containing the whole path in 36.5% of samples at T=240 and the sup-t band in
+/// 81.8%; at T=720, where the per-horizon marginals sit on nominal, sup-t lands
+/// on nominal too (89.5%) while pointwise reached only 42.7%. Tripling the
+/// sample moved the pointwise joint rate 36.5% -> 42.7%: it is not converging,
+/// because the problem is multiplicity, not consistency.
+///
+/// `"sup-t"` builds the cross-horizon covariance (one extra OLS per horizon)
+/// and simulates `band_n_sim` Gaussian draws from `band_seed`, so the band is a
+/// PURE FUNCTION of that seed; `"sidak"` and `"bonferroni"` are closed forms in
+/// K and use neither. Measured at K=13, alpha=0.10: pointwise 1.6449, sup-t
+/// 2.20-2.65 depending on persistence, Šidák 2.6490, Bonferroni 2.6653.
+///
+/// Method: Montiel Olea and Plagborg-Møller.
 #[pyfunction]
-#[pyo3(signature = (y, shock, horizons = 12, n_lag_controls = 4, se = "lag_augmented", maxlags = None, cumulative = None))]
+#[pyo3(signature = (
+    y,
+    shock,
+    horizons = 12,
+    n_lag_controls = 4,
+    se = "lag_augmented",
+    maxlags = None,
+    cumulative = None,
+    band = None,
+    band_alpha = 0.1,
+    band_seed = 20260807,
+    band_n_sim = 100000,
+))]
 #[allow(clippy::too_many_arguments)]
 fn lp<'py>(
     py: Python<'py>,
@@ -1786,6 +2169,10 @@ fn lp<'py>(
     se: &str,
     maxlags: Option<usize>,
     cumulative: Option<&Bound<'py, PyAny>>,
+    band: Option<&str>,
+    band_alpha: f64,
+    band_seed: u64,
+    band_n_sim: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
         .with_cumulation(parse_cumulation(cumulative)?);
@@ -1798,7 +2185,17 @@ fn lp<'py>(
             )))
         }
     };
-    let r = tsecon_lp::lp(&vec1(&y), &vec1(&shock), spec).map_err(to_py)?;
+    let (y, shock) = (vec1(&y), vec1(&shock));
+    // One fit either way: `lp_band` calls `lp` and passes its result through
+    // untouched, so `irf`/`se` are bit-identical to the band-free call.
+    let (r, fitted_band) = match band {
+        None => (tsecon_lp::lp(&y, &shock, spec).map_err(to_py)?, None),
+        Some(b) => {
+            let bspec = lp_band_spec(b, band_alpha, band_n_sim, band_seed)?;
+            let out = tsecon_lp::lp_band(&y, &shock, spec, bspec).map_err(to_py)?;
+            (out.lp, Some(out.band))
+        }
+    };
     let d = PyDict::new(py);
     d.set_item(
         "horizons",
@@ -1810,6 +2207,9 @@ fn lp<'py>(
     )?;
     d.set_item("irf", r.irf.into_pyarray(py))?;
     d.set_item("se", r.se.into_pyarray(py))?;
+    if let Some(b) = fitted_band.as_ref() {
+        set_lp_band_items(py, &d, b, "")?;
+    }
     Ok(d)
 }
 
@@ -1825,8 +2225,32 @@ fn lp<'py>(
 /// impulse) and NOT a multiplier -- it grows without bound in the horizon
 /// because its denominator does not accumulate. For the Ramey-Zubairy
 /// integral multiplier use `tsecon.lp_multiplier`.
+///
+/// BANDS (`band=`). `band=None` (the default) returns no band, exactly as
+/// before. `"pointwise"`, `"sidak"` and `"bonferroni"` add `lower`/`upper` over
+/// the horizons of this response (`K = horizons + 1`, `band_scope="horizon"`)
+/// together with `critical_value`, `pointwise_critical_value`, `n_cells` and
+/// `n_cells_used`.
+///
+/// `band="sup-t"` IS REFUSED HERE, with an error saying why: sup-t needs the
+/// covariance ACROSS horizons and tsecon estimates none for LP-IV, so
+/// `lp_iv`, `lp_multiplier` and `lp_state` get the CLOSED-FORM simultaneous
+/// routes only. Šidák and Bonferroni need nothing but K, are valid under
+/// arbitrary dependence across horizons, and are simply wider than a sup-t band
+/// would be — never describe a band from this function as sup-t. For sup-t use
+/// `tsecon.lp` or `tsecon.smooth_lp`, which do build the covariance.
 #[pyfunction]
-#[pyo3(signature = (y, impulse, instrument, horizons = 8, n_lag_controls = 4, cumulative = None))]
+#[pyo3(signature = (
+    y,
+    impulse,
+    instrument,
+    horizons = 8,
+    n_lag_controls = 4,
+    cumulative = None,
+    band = None,
+    band_alpha = 0.1,
+))]
+#[allow(clippy::too_many_arguments)]
 fn lp_iv<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
@@ -1835,11 +2259,20 @@ fn lp_iv<'py>(
     horizons: usize,
     n_lag_controls: usize,
     cumulative: Option<&Bound<'py, PyAny>>,
+    band: Option<&str>,
+    band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
     let spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
         .with_cumulation(parse_cumulation(cumulative)?);
     let r =
         tsecon_lp::lp_iv(&vec1(&y), &vec1(&impulse), &vec1(&instrument), spec).map_err(to_py)?;
+    let fitted_band = match band {
+        None => None,
+        Some(b) => {
+            let bspec = lp_closed_form_spec(b, band_alpha, "lp_iv")?;
+            Some(tsecon_lp::closed_form_band(&r.irf, &r.se, bspec).map_err(to_py)?)
+        }
+    };
     let d = PyDict::new(py);
     d.set_item(
         "horizons",
@@ -1852,6 +2285,9 @@ fn lp_iv<'py>(
     d.set_item("irf", r.irf.into_pyarray(py))?;
     d.set_item("se", r.se.into_pyarray(py))?;
     d.set_item("first_stage_f", r.first_stage_f.into_pyarray(py))?;
+    if let Some(b) = fitted_band.as_ref() {
+        set_lp_band_items(py, &d, b, "")?;
+    }
     Ok(d)
 }
 
@@ -1880,8 +2316,29 @@ fn lp_iv<'py>(
 /// (weak-instrument concern below 10), and the two reduced-form legs
 /// `cumulative_outcome` / `cumulative_impulse` (no SEs; their ratio equals
 /// `multiplier` by the just-identified IV algebra).
+///
+/// BANDS (`band=`). `band=None` (the default) returns no band. `"pointwise"`,
+/// `"sidak"` and `"bonferroni"` add `lower`/`upper` around `multiplier` over
+/// the horizons of this path (`K = horizons + 1`, `band_scope="horizon"`) with
+/// `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+///
+/// `band="sup-t"` IS REFUSED, with an error saying why: no cross-horizon
+/// covariance is estimated for the multiplier path, so `lp_multiplier` (like
+/// `lp_iv` and `lp_state`) gets the CLOSED-FORM simultaneous routes only. A
+/// Šidák or Bonferroni band here is valid under arbitrary dependence across
+/// horizons and wider than sup-t would be — do not call it sup-t.
 #[pyfunction]
-#[pyo3(signature = (y, impulse, instrument, horizons = 20, n_lag_controls = 4, maxlags = None))]
+#[pyo3(signature = (
+    y,
+    impulse,
+    instrument,
+    horizons = 20,
+    n_lag_controls = 4,
+    maxlags = None,
+    band = None,
+    band_alpha = 0.1,
+))]
+#[allow(clippy::too_many_arguments)]
 fn lp_multiplier<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
@@ -1890,6 +2347,8 @@ fn lp_multiplier<'py>(
     horizons: usize,
     n_lag_controls: usize,
     maxlags: Option<usize>,
+    band: Option<&str>,
+    band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
     let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls);
     if maxlags.is_some() {
@@ -1897,6 +2356,13 @@ fn lp_multiplier<'py>(
     }
     let r = tsecon_lp::lp_multiplier(&vec1(&y), &vec1(&impulse), &vec1(&instrument), spec)
         .map_err(to_py)?;
+    let fitted_band = match band {
+        None => None,
+        Some(b) => {
+            let bspec = lp_closed_form_spec(b, band_alpha, "lp_multiplier")?;
+            Some(tsecon_lp::closed_form_band(&r.multiplier, &r.se, bspec).map_err(to_py)?)
+        }
+    };
     let d = PyDict::new(py);
     d.set_item(
         "horizons",
@@ -1919,6 +2385,9 @@ fn lp_multiplier<'py>(
             .collect::<Vec<_>>()
             .into_pyarray(py),
     )?;
+    if let Some(b) = fitted_band.as_ref() {
+        set_lp_band_items(py, &d, b, "")?;
+    }
     Ok(d)
 }
 
@@ -1965,6 +2434,10 @@ fn elastic_net<'py>(
     d.set_item("coef", fit.coef.into_pyarray(py))?;
     d.set_item("n_iter", fit.n_iter)?;
     d.set_item("max_change", fit.max_change)?;
+    // The convergence check is on this dimensionless quantity, not on
+    // `max_change`: max_j |db_j| * ||x_j|| / ||y||. Guaranteed <= tol on a
+    // successful return, and unchanged by rescaling X or y.
+    d.set_item("max_rel_change", fit.max_rel_change)?;
     Ok(d)
 }
 
@@ -2164,6 +2637,10 @@ fn zero_sign_svar<'py>(
     d.set_item("set_max", set_max)?;
     d.set_item("weights", result.weights().to_vec())?;
     d.set_item("ess", result.ess())?;
+    // False exactly when `weights` is empty and `ess` is NaN -- i.e. an
+    // unweighted RWZ draw. Without this a reader sees an empty weights list
+    // with no explanation.
+    d.set_item("arw_weighted", result.arw_weighted())?;
     let diag = result.diagnostics();
     let dd = PyDict::new(py);
     dd.set_item("posterior_draws_used", diag.posterior_draws_used)?;
@@ -2375,8 +2852,9 @@ fn max_share_svar<'py>(
 /// Returns `irf` (horizon+1, n), `impact`/`relative_impact`/`cov_um` (n),
 /// `first_stage_f` (weak below 10), `reliability` = Corr(m, u_norm)^2,
 /// `n_proxy` (effective obs), and the estimated structural `shock` (T). Point
-/// estimate only: valid bands need the Jentsch-Lunsford (2019) moving-block
-/// bootstrap (documented v2 extension).
+/// estimate only. For inference use `proxy_svar_bands` (Jentsch-Lunsford
+/// moving-block bootstrap) or `proxy_ar_sets` (weak-instrument-robust
+/// Anderson-Rubin sets) -- both ship in this module.
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0, trend = "c", robust_f = true))]
 #[allow(clippy::too_many_arguments)]
@@ -4012,6 +4490,10 @@ fn adaptive_lasso<'py>(
     d.set_item("coef", fit.coef.into_pyarray(py))?;
     d.set_item("n_iter", fit.n_iter)?;
     d.set_item("max_change", fit.max_change)?;
+    // The convergence check is on this dimensionless quantity, not on
+    // `max_change`: max_j |db_j| * ||x_j|| / ||y||. Guaranteed <= tol on a
+    // successful return, and unchanged by rescaling X or y.
+    d.set_item("max_rel_change", fit.max_rel_change)?;
     Ok(d)
 }
 
@@ -4353,8 +4835,32 @@ fn weighted_midas<'py>(
 /// `cumulative` regresses the cumulated outcome (Ramey-Zubairy). Returns dict
 /// keys `horizons`, `irf_state1`, `se_state1`, `irf_state0`, `se_state0` (the
 /// per-regime impulse responses and their standard errors at each horizon).
+///
+/// BANDS (`band=`). `band=None` (the default) returns no band. `"pointwise"`,
+/// `"sidak"` and `"bonferroni"` add one band PER REGIME —
+/// `lower_state1`/`upper_state1` and `lower_state0`/`upper_state0`, with
+/// `critical_value_state1`/`critical_value_state0` and
+/// `n_cells_used_state1`/`n_cells_used_state0` — over the horizons of that
+/// regime's own response (`K = horizons + 1`, `band_scope="horizon"`). The two
+/// regimes are banded separately; nothing here is simultaneous ACROSS regimes.
+///
+/// `band="sup-t"` IS REFUSED, with an error saying why: no cross-horizon
+/// covariance is estimated for the interacted regressions, so `lp_state` (like
+/// `lp_iv` and `lp_multiplier`) gets the CLOSED-FORM simultaneous routes only.
+/// Report such a band as Šidák or Bonferroni, never as sup-t.
 #[pyfunction]
-#[pyo3(signature = (y, shock, state_indicator, horizons = 12, n_lag_controls = 4, se = "lag_augmented", maxlags = None, cumulative = None))]
+#[pyo3(signature = (
+    y,
+    shock,
+    state_indicator,
+    horizons = 12,
+    n_lag_controls = 4,
+    se = "lag_augmented",
+    maxlags = None,
+    cumulative = None,
+    band = None,
+    band_alpha = 0.1,
+))]
 #[allow(clippy::too_many_arguments)]
 fn lp_state<'py>(
     py: Python<'py>,
@@ -4366,6 +4872,8 @@ fn lp_state<'py>(
     se: &str,
     maxlags: Option<usize>,
     cumulative: Option<&Bound<'py, PyAny>>,
+    band: Option<&str>,
+    band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
     let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
         .with_cumulation(parse_cumulation(cumulative)?);
@@ -4380,6 +4888,16 @@ fn lp_state<'py>(
     };
     let r = tsecon_lp::lp_state(&vec1(&y), &vec1(&shock), &vec1(&state_indicator), spec)
         .map_err(to_py)?;
+    let regime_bands = match band {
+        None => None,
+        Some(b) => {
+            let bspec = lp_closed_form_spec(b, band_alpha, "lp_state")?;
+            Some((
+                tsecon_lp::closed_form_band(&r.irf_state1, &r.se_state1, bspec).map_err(to_py)?,
+                tsecon_lp::closed_form_band(&r.irf_state0, &r.se_state0, bspec).map_err(to_py)?,
+            ))
+        }
+    };
     let d = PyDict::new(py);
     d.set_item(
         "horizons",
@@ -4393,6 +4911,10 @@ fn lp_state<'py>(
     d.set_item("se_state1", r.se_state1.into_pyarray(py))?;
     d.set_item("irf_state0", r.irf_state0.into_pyarray(py))?;
     d.set_item("se_state0", r.se_state0.into_pyarray(py))?;
+    if let Some((b1, b0)) = regime_bands.as_ref() {
+        set_lp_band_items(py, &d, b1, "_state1")?;
+        set_lp_band_items(py, &d, b0, "_state0")?;
+    }
     Ok(d)
 }
 
@@ -5343,13 +5865,22 @@ fn long_memory_d<'py>(
         "gph" => {
             let r = tsecon_longmemory::gph(xs, bw).map_err(to_py)?;
             d.set_item("d", r.d)?;
+            // `se` is the standard error at the bandwidth actually used -- the
+            // one to build intervals from. `se_asymptotic` is the textbook
+            // large-m closed form pi/sqrt(24m), kept for reference and
+            // materially too NARROW at the default bandwidth.
             d.set_item("se", r.se)?;
+            d.set_item("se_asymptotic", r.se_asymptotic)?;
+            d.set_item("se_regression", r.se_regression)?;
             d.set_item("m", r.m)?;
         }
         "local_whittle" | "whittle" => {
             let r = tsecon_longmemory::local_whittle(xs, bw).map_err(to_py)?;
             d.set_item("d", r.d)?;
+            // See the gph branch: `se` is bandwidth-exact, `se_asymptotic` is
+            // the 1/(2 sqrt(m)) closed form and is too narrow at the default.
             d.set_item("se", r.se)?;
+            d.set_item("se_asymptotic", r.se_asymptotic)?;
             d.set_item("m", r.m)?;
         }
         other => {
@@ -5695,6 +6226,9 @@ fn growth_at_risk<'py>(
     d.set_item("horizon", r.horizon as u64)?;
     d.set_item("params", r.params)?;
     d.set_item("bse", r.bse)?;
+    // Newey-West lags used for the overlapping-horizon correction (horizon-1).
+    // Zero at horizon=1, where there is no overlap to correct.
+    d.set_item("hac_lags", r.hac_lags as u64)?;
     d.set_item("fitted", r.fitted)?;
     d.set_item("fitted_raw", r.fitted_raw)?;
     d.set_item("crossing", r.crossing)?;
@@ -6089,8 +6623,42 @@ fn sup_f_test<'py>(
 /// Matches fixtures/smoothlp.json: basis vs scipy BSpline.design_matrix at
 /// 1e-10, theta/irf/se and CV scores vs NumPy normal equations at ~1e-8
 /// relative, lambda=0 IRF vs statsmodels per-horizon OLS at 1e-8.
+///
+/// BANDS (`band=`). `band=None` (the default) returns no band. `"pointwise"`,
+/// `"sup-t"`, `"sidak"` or `"bonferroni"` add `lower`/`upper` over the horizons
+/// of this response (`K = horizons + 1`, `band_scope="horizon"`) with
+/// `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+/// A pointwise band covers one horizon at a time and promises nothing about the
+/// path; the other three cover every horizon at once at `1 - band_alpha`.
+///
+/// Smooth LP is the one estimator here that already had the full cross-horizon
+/// covariance — the path is `irf_h = B_h' theta` for a single jointly-estimated
+/// coefficient vector — so `"sup-t"` needs no extra estimation and no
+/// compromise. It simulates `band_n_sim` Gaussian draws from `band_seed`, so
+/// the band is a PURE FUNCTION of that seed; the closed forms use neither. The
+/// usual smooth-LP caveat still applies and is not a band problem: `se`
+/// conditions on `lam` and ignores the penalty's shrinkage bias, so any band
+/// here is centred on a shrunk estimator.
+///
+/// Method: Montiel Olea and Plagborg-Møller.
 #[pyfunction]
-#[pyo3(signature = (y, shock, horizons = 12, n_lag_controls = 4, lam = None, degree = 3, n_basis = None, penalty_order = 2, lambda_grid = None, n_folds = 5, hac_maxlags = None))]
+#[pyo3(signature = (
+    y,
+    shock,
+    horizons = 12,
+    n_lag_controls = 4,
+    lam = None,
+    degree = 3,
+    n_basis = None,
+    penalty_order = 2,
+    lambda_grid = None,
+    n_folds = 5,
+    hac_maxlags = None,
+    band = None,
+    band_alpha = 0.1,
+    band_seed = 20260807,
+    band_n_sim = 100000,
+))]
 #[allow(clippy::too_many_arguments)]
 fn smooth_lp<'py>(
     py: Python<'py>,
@@ -6105,6 +6673,10 @@ fn smooth_lp<'py>(
     lambda_grid: Option<Vec<f64>>,
     n_folds: usize,
     hac_maxlags: Option<usize>,
+    band: Option<&str>,
+    band_alpha: f64,
+    band_seed: u64,
+    band_n_sim: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let mut spec = tsecon_lp::SmoothLpSpec::new(horizons, n_lag_controls)
         .with_degree(degree)
@@ -6143,7 +6715,20 @@ fn smooth_lp<'py>(
             }
         }
     };
-    let r = tsecon_lp::smooth_lp(&vec1(&y), &vec1(&shock), &spec).map_err(to_py)?;
+    let (y, shock) = (vec1(&y), vec1(&shock));
+    // One fit either way: `smooth_lp_band` calls `smooth_lp` and passes its
+    // result through untouched, bit for bit.
+    let (r, fitted_band) = match band {
+        None => (
+            tsecon_lp::smooth_lp(&y, &shock, &spec).map_err(to_py)?,
+            None,
+        ),
+        Some(b) => {
+            let bspec = lp_band_spec(b, band_alpha, band_n_sim, band_seed)?;
+            let out = tsecon_lp::smooth_lp_band(&y, &shock, &spec, bspec).map_err(to_py)?;
+            (out.smooth, Some(out.band))
+        }
+    };
     let d = PyDict::new(py);
     d.set_item(
         "horizons",
@@ -6161,6 +6746,9 @@ fn smooth_lp<'py>(
     d.set_item("theta", r.theta.into_pyarray(py))?;
     d.set_item("irf_raw", r.irf_raw.into_pyarray(py))?;
     d.set_item("se_raw", r.se_raw.into_pyarray(py))?;
+    if let Some(b) = fitted_band.as_ref() {
+        set_lp_band_items(py, &d, b, "")?;
+    }
     Ok(d)
 }
 
@@ -6335,6 +6923,33 @@ fn historical_decomposition<'py>(
     narrative_restrictions: Option<Vec<Bound<'py, PyDict>>>,
     n_weight_draws: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // The cholesky path is a single point decomposition: it draws nothing, so
+    // none of these are read. Accepting them silently lets a caller believe a
+    // seeded posterior draw was taken when it was not -- the same class as an
+    // ignored seed anywhere else.
+    if identification == "cholesky" {
+        let inert: [(&str, bool); 5] = [
+            ("n_draws", n_draws != 500),
+            ("max_tries", max_tries != 400),
+            ("seed", seed != 0),
+            ("lambda1", (lambda1 - 0.2).abs() > f64::EPSILON),
+            ("n_weight_draws", n_weight_draws != 200),
+        ];
+        let named: Vec<&str> = inert
+            .iter()
+            .filter(|(_, set)| *set)
+            .map(|(n, _)| *n)
+            .collect();
+        if !named.is_empty() {
+            return Err(PyValueError::new_err(format!(
+                "identification=\"cholesky\" ignores {named:?}: it is a single point \
+                 decomposition with no sampling step, so there is nothing for a seed or \
+                 a draw count to control. Use identification=\"sign\" (or \"narrative\") \
+                 if you want a set-identified posterior, or drop these arguments."
+            )));
+        }
+    }
+
     use tsecon_var::tsecon_linalg::faer::Mat;
     let a = data.as_array();
     let m = Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);

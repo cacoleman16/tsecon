@@ -218,6 +218,108 @@ pub fn irf_asymptotic_se(
     orth: bool,
     cumulative: bool,
 ) -> Result<Vec<Mat<f64>>, VarError> {
+    let w = delta_workspace(res, horizon)?;
+    let (k, k2, dim, t) = (w.k, w.k2, w.dim, w.t);
+    let (phi, cov_a, g, p_chol, ik) = (&w.phi, &w.cov_a, &w.g, &w.p_chol, &w.ik);
+
+    let mut covs: Vec<Mat<f64>> = Vec::with_capacity(horizon + 1);
+
+    if !orth && !cumulative {
+        covs.push(Mat::<f64>::zeros(k2, k2));
+        for gi in g.iter() {
+            covs.push(sandwich(gi, cov_a));
+        }
+    } else if orth && !cumulative {
+        let (pik, h_mat, cov_sig) = orth_delta_pieces(res.sigma_u.as_ref(), p_chol, ik, k)?;
+        for i in 0..=horizon {
+            let apiece = if i == 0 {
+                Mat::<f64>::zeros(k2, k2)
+            } else {
+                let ci = &pik * &g[i - 1];
+                sandwich(&ci, cov_a)
+            };
+            let cibar = &kron(ik.as_ref(), phi[i].as_ref()) * &h_mat;
+            let bpiece_raw = sandwich(&cibar, &cov_sig);
+            let cov = Mat::from_fn(k2, k2, |r, c| apiece[(r, c)] + bpiece_raw[(r, c)] / t);
+            covs.push(cov);
+        }
+    } else if !orth && cumulative {
+        let mut f = Mat::<f64>::zeros(k2, dim);
+        for i in 0..=horizon {
+            if i > 0 {
+                f = &f + &g[i - 1];
+            }
+            if i == 0 {
+                covs.push(Mat::<f64>::zeros(k2, k2));
+            } else {
+                covs.push(sandwich(&f, cov_a));
+            }
+        }
+    } else {
+        // orth && cumulative
+        let (pik, h_mat, cov_sig) = orth_delta_pieces(res.sigma_u.as_ref(), p_chol, ik, k)?;
+        // Cumulated non-orth responses Xi_h.
+        let xi = cumulate(phi);
+        let mut f = Mat::<f64>::zeros(k2, dim);
+        for i in 0..=horizon {
+            if i > 0 {
+                f = &f + &g[i - 1];
+            }
+            let apiece = if i == 0 {
+                Mat::<f64>::zeros(k2, k2)
+            } else {
+                let bn = &pik * &f;
+                sandwich(&bn, cov_a)
+            };
+            let bnbar = &kron(ik.as_ref(), xi[i].as_ref()) * &h_mat;
+            let bpiece_raw = sandwich(&bnbar, &cov_sig);
+            let cov = Mat::from_fn(k2, k2, |r, c| apiece[(r, c)] + bpiece_raw[(r, c)] / t);
+            covs.push(cov);
+        }
+    }
+
+    Ok(se_from_cov(&covs, k))
+}
+
+/// Running total `Xi_h = sum_{i <= h} M_i` of a horizon-indexed cube.
+fn cumulate(m: &[Mat<f64>]) -> Vec<Mat<f64>> {
+    let mut out = Vec::with_capacity(m.len());
+    let mut acc = Mat::<f64>::zeros(m[0].nrows(), m[0].ncols());
+    for mh in m.iter() {
+        acc = &acc + mh;
+        out.push(acc.clone());
+    }
+    out
+}
+
+/// The horizon-independent delta-method building blocks, shared verbatim by
+/// [`irf_asymptotic_se`] (which turns them into per-horizon variances) and by
+/// [`irf_asymptotic_critical_values`] (which turns them into a *cross-horizon*
+/// covariance). Extracting them moves no arithmetic: every expression below is
+/// the one `irf_asymptotic_se` used before the simultaneous-band work, which is
+/// what `tests/pointwise_bitwise_baseline.rs` pins.
+struct DeltaWorkspace {
+    /// Number of series.
+    k: usize,
+    /// `k * k`, the length of `vec(Phi_h)`.
+    k2: usize,
+    /// `p * k^2`, the length of `vec(alpha)`.
+    dim: usize,
+    /// Effective sample size `T`, the divisor on the `vech(Sigma_u)` term.
+    t: f64,
+    /// Non-orthogonalized MA coefficients `Phi_0, ..., Phi_horizon`.
+    phi: Vec<Mat<f64>>,
+    /// `Sigma_alpha = (Z'Z)^{-1} ⊗ Sigma_u`, lag block only.
+    cov_a: Mat<f64>,
+    /// Jacobians `G_1, ..., G_horizon` (`g[i - 1]` is `G_i`; `G_0 = 0`).
+    g: Vec<Mat<f64>>,
+    /// Lower Cholesky factor `P` of `Sigma_u`.
+    p_chol: Mat<f64>,
+    /// `I_k`.
+    ik: Mat<f64>,
+}
+
+fn delta_workspace(res: &VarResults, horizon: usize) -> Result<DeltaWorkspace, VarError> {
     let k = res.neqs;
     let p = res.spec.lags;
     if p == 0 {
@@ -269,66 +371,583 @@ pub fn irf_asymptotic_se(
     let p_chol = chol_lower(res.sigma_u.as_ref(), "Sigma_u, the residual covariance")?;
     let ik = Mat::<f64>::from_fn(k, k, |i, j| f64::from(u8::from(i == j)));
 
-    let mut covs: Vec<Mat<f64>> = Vec::with_capacity(horizon + 1);
+    Ok(DeltaWorkspace {
+        k,
+        k2,
+        dim,
+        t,
+        phi,
+        cov_a,
+        g,
+        p_chol,
+        ik,
+    })
+}
 
-    if !orth && !cumulative {
-        covs.push(Mat::<f64>::zeros(k2, k2));
-        for gi in g.iter() {
-            covs.push(sandwich(gi, &cov_a));
-        }
-    } else if orth && !cumulative {
-        let (pik, h_mat, cov_sig) = orth_delta_pieces(res.sigma_u.as_ref(), &p_chol, &ik, k)?;
-        for i in 0..=horizon {
-            let apiece = if i == 0 {
-                Mat::<f64>::zeros(k2, k2)
-            } else {
-                let ci = &pik * &g[i - 1];
-                sandwich(&ci, &cov_a)
-            };
-            let cibar = &kron(ik.as_ref(), phi[i].as_ref()) * &h_mat;
-            let bpiece_raw = sandwich(&cibar, &cov_sig);
-            let cov = Mat::from_fn(k2, k2, |r, c| apiece[(r, c)] + bpiece_raw[(r, c)] / t);
-            covs.push(cov);
-        }
-    } else if !orth && cumulative {
-        let mut f = Mat::<f64>::zeros(k2, dim);
-        for i in 0..=horizon {
-            if i > 0 {
-                f = &f + &g[i - 1];
-            }
-            if i == 0 {
-                covs.push(Mat::<f64>::zeros(k2, k2));
-            } else {
-                covs.push(sandwich(&f, &cov_a));
-            }
-        }
-    } else {
-        // orth && cumulative
-        let (pik, h_mat, cov_sig) = orth_delta_pieces(res.sigma_u.as_ref(), &p_chol, &ik, k)?;
-        // Cumulated non-orth responses Xi_h.
-        let mut xi = Vec::with_capacity(horizon + 1);
-        let mut acc = Mat::<f64>::zeros(k, k);
-        for phi_m in phi.iter() {
-            acc = &acc + phi_m;
-            xi.push(acc.clone());
-        }
-        let mut f = Mat::<f64>::zeros(k2, dim);
-        for i in 0..=horizon {
-            if i > 0 {
-                f = &f + &g[i - 1];
-            }
-            let apiece = if i == 0 {
-                Mat::<f64>::zeros(k2, k2)
-            } else {
-                let bn = &pik * &f;
-                sandwich(&bn, &cov_a)
-            };
-            let bnbar = &kron(ik.as_ref(), xi[i].as_ref()) * &h_mat;
-            let bpiece_raw = sandwich(&bnbar, &cov_sig);
-            let cov = Mat::from_fn(k2, k2, |r, c| apiece[(r, c)] + bpiece_raw[(r, c)] / t);
-            covs.push(cov);
+// ===========================================================================
+// Simultaneous (sup-t) bands
+// ===========================================================================
+//
+// Everything below is additive. It never touches `irf_asymptotic_se`, and the
+// pointwise band it feeds is unchanged to the last bit
+// (`tests/pointwise_bitwise_baseline.rs`).
+//
+// ## Why
+//
+// A pointwise band is a statement about one cell. Read as a statement about a
+// whole impulse-response path it is badly anti-conservative, and the shortfall
+// does not shrink with the sample: it is a multiplicity problem, not a
+// consistency problem. tsecon's own interval-coverage audit measured a nominal
+// 90% pointwise band containing the entire h = 0..12 path in 72.2% of samples
+// at T = 500 (and 65.0% at T = 200, 56.7% at T = 100).
+//
+// A simultaneous band keeps the same point estimate and the same pointwise
+// standard errors and replaces only the multiplier: `point ± c·se` with `c`
+// chosen so that *every* cell of a declared family is covered at once with
+// probability `1 - alpha`. The sup-t construction used here — the `1 - alpha`
+// quantile of the maximum absolute t-statistic over the family — is the method
+// of Montiel Olea and Plagborg-Møller, "Simultaneous confidence bands: Theory,
+// implementation, and an application to SVARs".
+
+use tsecon_rng::Stream;
+use tsecon_stats::simultaneous;
+
+/// Which multiplier a band applies to its pointwise standard errors.
+///
+/// [`BandMethod::Pointwise`] is the pre-existing behaviour and the default
+/// everywhere; the other three widen the multiplier without moving the point
+/// estimate or the standard errors.
+///
+/// This enum lives in `irf_asymptotic` because that is where the band algebra
+/// is, but it is the shared vocabulary for every banded surface in the crate —
+/// [`crate::irf_bootstrap`] and [`crate::forecast`] re-export it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BandMethod {
+    /// `z_{1 - alpha/2}`: the ordinary marginal multiplier. Makes **no** joint
+    /// promise across cells.
+    Pointwise,
+    /// Sup-t: the `1 - alpha` quantile of `max_cell |t|`, from bootstrap draws
+    /// where they exist and from the delta-method covariance otherwise. The
+    /// tightest of the three simultaneous routes, because it uses the actual
+    /// dependence across cells.
+    SupT,
+    /// Šidák: `z` at per-cell level `1 - (1 - alpha)^(1/K)`. Exact under
+    /// independence across cells — a condition no impulse-response path meets,
+    /// so in practice a mild improvement on Bonferroni, not a correct answer.
+    Sidak,
+    /// Bonferroni: `z` at per-cell level `alpha / K`. Valid under any
+    /// dependence, and correspondingly the loosest.
+    Bonferroni,
+}
+
+impl BandMethod {
+    /// Parse the Python-facing spelling: `"pointwise"`, `"sup-t"`, `"sidak"`,
+    /// `"bonferroni"`. `"supt"` and `"sup_t"` are accepted spellings of
+    /// `"sup-t"`.
+    ///
+    /// # Errors
+    ///
+    /// [`VarError::InvalidArgument`] naming the four accepted values.
+    pub fn parse(s: &str) -> Result<Self, VarError> {
+        match s {
+            "pointwise" => Ok(BandMethod::Pointwise),
+            "sup-t" | "supt" | "sup_t" => Ok(BandMethod::SupT),
+            "sidak" => Ok(BandMethod::Sidak),
+            "bonferroni" => Ok(BandMethod::Bonferroni),
+            _ => Err(VarError::InvalidArgument {
+                what: "unknown band; expected \"pointwise\" (the default, a marginal \
+                       band), \"sup-t\" (simultaneous, tightest), \"sidak\", or \
+                       \"bonferroni\"",
+            }),
         }
     }
 
-    Ok(se_from_cov(&covs, k))
+    /// The canonical Python-facing spelling, for echoing back in a result dict.
+    pub fn label(self) -> &'static str {
+        match self {
+            BandMethod::Pointwise => "pointwise",
+            BandMethod::SupT => "sup-t",
+            BandMethod::Sidak => "sidak",
+            BandMethod::Bonferroni => "bonferroni",
+        }
+    }
+
+    /// Whether this method makes a joint promise over the declared cell family.
+    pub fn is_simultaneous(self) -> bool {
+        !matches!(self, BandMethod::Pointwise)
+    }
+}
+
+/// Which cells an IRF band is simultaneous **over**.
+///
+/// This is the load-bearing choice, not a detail: every cell added to a family
+/// widens the band for every other cell in it, so a band whose scope is
+/// ambiguous is worse than no band. The scope is therefore reported alongside
+/// the band, and the critical value is returned per `(response, shock)` cell so
+/// the caller can see exactly which multiplier hit which cell.
+///
+/// Measured on the audit's own design (a stationary bivariate VAR(1), h = 0..12,
+/// alpha = 0.10, orthogonalized), the three scopes cost roughly `c = 2.3`,
+/// `2.6`, and `2.8` against a pointwise `z = 1.645`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IrfBandScope {
+    /// One family per `(response, shock)` pair: the `horizon + 1` cells of that
+    /// single impulse-response path. `K = horizon + 1`.
+    ///
+    /// **The default.** It is the narrowest defensible family and it is exactly
+    /// the object the audit measured — "does the band contain the whole path of
+    /// *this* response to *this* shock?" — which is what a reader of a single
+    /// IRF panel is implicitly asking.
+    Horizon,
+    /// One family per shock: every response of every variable to that shock,
+    /// over every horizon. `K = k * (horizon + 1)`.
+    ///
+    /// The right scope when a figure shows one shock's whole column of panels
+    /// and the reader draws a conclusion from the column as a whole.
+    Shock,
+    /// A single family: every horizon, every response, every shock.
+    /// `K = k * k * (horizon + 1)`.
+    ///
+    /// The right scope when a conclusion is read off the entire IRF grid at
+    /// once. It is also the most conservative, by a wide margin at large `k`.
+    All,
+}
+
+impl IrfBandScope {
+    /// Parse the Python-facing spelling: `"horizon"`, `"shock"`, `"all"`.
+    ///
+    /// # Errors
+    ///
+    /// [`VarError::InvalidArgument`] naming the three accepted values.
+    pub fn parse(s: &str) -> Result<Self, VarError> {
+        match s {
+            "horizon" => Ok(IrfBandScope::Horizon),
+            "shock" => Ok(IrfBandScope::Shock),
+            "all" => Ok(IrfBandScope::All),
+            _ => Err(VarError::InvalidArgument {
+                what: "unknown band_scope; expected \"horizon\" (the default: joint \
+                       over horizons, separately for each response-shock pair), \
+                       \"shock\" (joint over horizons and responses, per shock), or \
+                       \"all\" (joint over the whole IRF grid)",
+            }),
+        }
+    }
+
+    /// The canonical Python-facing spelling, for echoing back.
+    pub fn label(self) -> &'static str {
+        match self {
+            IrfBandScope::Horizon => "horizon",
+            IrfBandScope::Shock => "shock",
+            IrfBandScope::All => "all",
+        }
+    }
+}
+
+/// The multiplier to apply to each impulse-response standard error, plus
+/// everything needed to say honestly what the resulting band promises.
+///
+/// Deliberately *not* a band: the caller already holds `point` and `se` and
+/// applies the multiplier itself (or calls [`apply_critical_values`]). That
+/// keeps the simultaneous band anchored on bit-identically the same point
+/// estimate and standard errors as the pointwise band, so
+/// `lower_simultaneous <= lower_pointwise <= upper_pointwise <= upper_simultaneous`
+/// holds by construction rather than by coincidence.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IrfCriticalValues {
+    /// `values[i][j]` is the multiplier for every cell of the family that
+    /// contains (response `i`, shock `j`). Under [`IrfBandScope::Shock`] the
+    /// entries are constant down each column; under [`IrfBandScope::All`] every
+    /// entry is the same number.
+    pub values: Vec<Vec<f64>>,
+    /// Number of cells in each family — the `K` the multiplier answers for.
+    pub n_cells: usize,
+    /// `n_cells_used[i][j]`: cells of that family with a strictly positive
+    /// standard error. Cells pinned by construction (the Cholesky zeros at
+    /// `h = 0`, and the whole `orth = false` impact matrix) carry no information
+    /// about simultaneous coverage, take no part in choosing the multiplier, and
+    /// keep their zero-width band. When this is below [`Self::n_cells`] the band
+    /// is simultaneous over fewer cells than it looks.
+    pub n_cells_used: Vec<Vec<usize>>,
+    /// The pointwise multiplier `z_{1 - alpha/2}`, for reference. Every entry of
+    /// [`Self::values`] is `>=` this.
+    pub pointwise: f64,
+    /// The method that produced [`Self::values`].
+    pub method: BandMethod,
+    /// The cell family [`Self::values`] is simultaneous over.
+    pub scope: IrfBandScope,
+    /// The two-sided level, echoed back.
+    pub alpha: f64,
+}
+
+/// The `(horizon, response, shock)` cells of each family, paired with the
+/// `(response, shock)` grid entries that share that family's multiplier.
+///
+/// Cell order inside a family is horizon-major, then response, then shock — and
+/// it is the order the covariance rows and the flattened draws must use.
+pub(crate) type Family = (Vec<(usize, usize, usize)>, Vec<(usize, usize)>);
+
+pub(crate) fn irf_families(k: usize, horizon: usize, scope: IrfBandScope) -> Vec<Family> {
+    match scope {
+        IrfBandScope::Horizon => {
+            let mut out = Vec::with_capacity(k * k);
+            for i in 0..k {
+                for j in 0..k {
+                    let cells = (0..=horizon).map(|h| (h, i, j)).collect();
+                    out.push((cells, vec![(i, j)]));
+                }
+            }
+            out
+        }
+        IrfBandScope::Shock => {
+            let mut out = Vec::with_capacity(k);
+            for j in 0..k {
+                let mut cells = Vec::with_capacity(k * (horizon + 1));
+                for h in 0..=horizon {
+                    for i in 0..k {
+                        cells.push((h, i, j));
+                    }
+                }
+                out.push((cells, (0..k).map(|i| (i, j)).collect()));
+            }
+            out
+        }
+        IrfBandScope::All => {
+            let mut cells = Vec::with_capacity(k * k * (horizon + 1));
+            for h in 0..=horizon {
+                for i in 0..k {
+                    for j in 0..k {
+                        cells.push((h, i, j));
+                    }
+                }
+            }
+            let grid = (0..k).flat_map(|i| (0..k).map(move |j| (i, j))).collect();
+            vec![(cells, grid)]
+        }
+    }
+}
+
+/// Per-horizon delta-method loadings: the rows of `vec(Theta_h)` as linear
+/// functions of `vec(alpha)` and of `vech(Sigma_u)`.
+///
+/// The pointwise standard errors are the diagonal of `L_h Sigma_alpha L_h'`
+/// (plus the `vech` term) at a single `h`. A simultaneous band needs the
+/// *cross-horizon* blocks `L_h Sigma_alpha L_g'`, which are built from exactly
+/// the same loadings — the only new algebra in this module.
+struct Loadings {
+    /// `alpha[h]`: `k^2 x dim` loading of `vec(Theta_h)` on `vec(alpha)`.
+    alpha: Vec<Mat<f64>>,
+    /// `sigma[h]`: `k^2 x k(k+1)/2` loading on `vech(Sigma_u)`; `None` for
+    /// reduced-form (non-orthogonalized) responses, which do not involve
+    /// `Sigma_u` at all.
+    sigma: Option<Vec<Mat<f64>>>,
+    /// `Sigma_alpha`.
+    cov_a: Mat<f64>,
+    /// `Sigma_sigma`, the covariance of `vech(Sigma_u)`.
+    cov_sig: Option<Mat<f64>>,
+    /// `T`.
+    t: f64,
+    /// Number of series.
+    k: usize,
+}
+
+fn loadings(
+    res: &VarResults,
+    w: &DeltaWorkspace,
+    horizon: usize,
+    orth: bool,
+    cumulative: bool,
+) -> Result<Loadings, VarError> {
+    let (k, k2, dim) = (w.k, w.k2, w.dim);
+
+    // G_h (non-cumulative) or F_h = sum_{i <= h} G_i (cumulative), with the
+    // h = 0 entry identically zero: Phi_0 = I does not depend on alpha.
+    let mut jac: Vec<Mat<f64>> = Vec::with_capacity(horizon + 1);
+    let mut f = Mat::<f64>::zeros(k2, dim);
+    for h in 0..=horizon {
+        if h == 0 {
+            jac.push(Mat::<f64>::zeros(k2, dim));
+        } else if cumulative {
+            f = &f + &w.g[h - 1];
+            jac.push(f.clone());
+        } else {
+            jac.push(w.g[h - 1].clone());
+        }
+    }
+
+    if !orth {
+        return Ok(Loadings {
+            alpha: jac,
+            sigma: None,
+            cov_a: w.cov_a.clone(),
+            cov_sig: None,
+            t: w.t,
+            k,
+        });
+    }
+
+    let (pik, h_mat, cov_sig) = orth_delta_pieces(res.sigma_u.as_ref(), &w.p_chol, &w.ik, k)?;
+    let alpha: Vec<Mat<f64>> = jac.iter().map(|j| &pik * j).collect();
+    let resp = if cumulative {
+        cumulate(&w.phi)
+    } else {
+        w.phi.clone()
+    };
+    let sigma: Vec<Mat<f64>> = resp
+        .iter()
+        .map(|m| &kron(w.ik.as_ref(), m.as_ref()) * &h_mat)
+        .collect();
+
+    Ok(Loadings {
+        alpha,
+        sigma: Some(sigma),
+        cov_a: w.cov_a.clone(),
+        cov_sig: Some(cov_sig),
+        t: w.t,
+        k,
+    })
+}
+
+/// Joint delta-method covariance of the listed cells, row-major `K x K`.
+///
+/// `Sigma = M_alpha Sigma_alpha M_alpha' + (1/T) M_sigma Sigma_sigma M_sigma'`,
+/// where row `r` of `M` is row `j*k + i` (the `vec` index of `Theta_h[i, j]`) of
+/// the horizon-`h` loading. At `K = 1` this reduces to exactly the variance
+/// `irf_asymptotic_se` squares — see
+/// `simultaneous_diagonal_matches_pointwise_se` in the tests, which measures the
+/// agreement rather than asserting it by construction.
+///
+/// The result is explicitly symmetrized (the sandwich is symmetric in exact
+/// arithmetic but not in floating point, and `sup_t_from_cov` checks symmetry to
+/// 1e-8 relative) and its diagonal is clamped at zero, matching
+/// `se_from_cov`'s own `.max(0.0)`.
+fn joint_cov(l: &Loadings, cells: &[(usize, usize, usize)]) -> Vec<f64> {
+    let kk = cells.len();
+    let dim = l.cov_a.ncols();
+    let m_alpha = Mat::from_fn(kk, dim, |r, c| {
+        let (h, i, j) = cells[r];
+        l.alpha[h][(j * l.k + i, c)]
+    });
+    let mut raw = sandwich(&m_alpha, &l.cov_a);
+    if let (Some(s), Some(cs)) = (&l.sigma, &l.cov_sig) {
+        let half = cs.ncols();
+        let m_sig = Mat::from_fn(kk, half, |r, c| {
+            let (h, i, j) = cells[r];
+            s[h][(j * l.k + i, c)]
+        });
+        let b = sandwich(&m_sig, cs);
+        raw = Mat::from_fn(kk, kk, |r, c| raw[(r, c)] + b[(r, c)] / l.t);
+    }
+    let mut out = vec![0.0f64; kk * kk];
+    for a in 0..kk {
+        for b in 0..kk {
+            out[a * kk + b] = if a == b {
+                raw[(a, a)].max(0.0)
+            } else {
+                0.5 * (raw[(a, b)] + raw[(b, a)])
+            };
+        }
+    }
+    out
+}
+
+/// Recommended `n_sim` for the Gaussian simulation behind
+/// [`BandMethod::SupT`]'s asymptotic route.
+///
+/// This is a quantile deep in the tail of a maximum, so it wants a lot of
+/// draws and they are cheap. Cost is `O(n_sim * K^2)` **per family**, so the
+/// total work scales with the scope: `k^2` families at `K = horizon + 1` under
+/// [`IrfBandScope::Horizon`], one family at `K = k^2 (horizon + 1)` under
+/// [`IrfBandScope::All`] — the latter being the expensive one.
+pub const DEFAULT_N_SIM: usize = 100_000;
+
+/// Critical values for a **simultaneous** band on the asymptotic
+/// (delta-method) impulse responses.
+///
+/// The multiplier is applied to the standard errors
+/// [`irf_asymptotic_se`] already returns; nothing else about the band changes.
+/// The four methods are:
+///
+/// * [`BandMethod::Pointwise`] — `z_{1 - alpha/2}` everywhere. Included so that
+///   a caller can route all four through one code path; the result is exactly
+///   the existing marginal band.
+/// * [`BandMethod::SupT`] — the `1 - alpha` quantile of `max |t|` under
+///   `N(0, Sigma)`, where `Sigma` is the delta-method covariance of the whole
+///   cell family (this function's only genuinely new algebra: the cross-horizon
+///   blocks `G_h Sigma_alpha G_g'`, which the pointwise path never forms).
+///   Simulated from `n_sim` seeded draws, so the band is a pure function of
+///   `seed`; **expose that seed to the user**.
+/// * [`BandMethod::Sidak`] / [`BandMethod::Bonferroni`] — closed forms in the
+///   number of *non-degenerate* cells. They need no covariance and no seed.
+///
+/// # Degenerate cells
+///
+/// Cells pinned by construction have `se = 0`: the above-diagonal impact
+/// responses under a Cholesky ordering, and the entire `orth = false` impact
+/// matrix. They are excluded from the maximum and from the Šidák/Bonferroni
+/// cell count, and keep their zero-width band. [`IrfCriticalValues::n_cells_used`]
+/// reports how many cells actually carried information. If a family is
+/// *entirely* degenerate (only possible at `horizon = 0, orth = false`) the
+/// pointwise multiplier is returned rather than an error, since every band in
+/// that family has zero width either way.
+///
+/// # What the band does and does not fix
+///
+/// It fixes multiplicity. It inherits everything else from the pointwise band:
+/// if the delta-method standard error is too small in finite samples, or the
+/// point estimate is biased, the simultaneous band under-covers jointly by
+/// about as much as the pointwise band under-covers marginally.
+///
+/// # Errors
+///
+/// * [`VarError::InvalidParameter`] if `alpha` is outside `(0, 1)`;
+/// * [`VarError::InvalidArgument`] if `n_sim < 2` under [`BandMethod::SupT`];
+/// * anything [`irf_asymptotic_se`] can return (a VAR(0) fit, a non-PSD
+///   `Sigma_u`, a singular intermediate matrix);
+/// * [`VarError::Stats`] from the simultaneous-band layer.
+#[allow(clippy::too_many_arguments)]
+pub fn irf_asymptotic_critical_values(
+    res: &VarResults,
+    horizon: usize,
+    orth: bool,
+    cumulative: bool,
+    alpha: f64,
+    method: BandMethod,
+    scope: IrfBandScope,
+    seed: u64,
+    n_sim: usize,
+) -> Result<IrfCriticalValues, VarError> {
+    if !(alpha > 0.0 && alpha < 1.0) {
+        return Err(VarError::InvalidParameter {
+            name: "alpha",
+            value: alpha,
+            requirement: "a value strictly inside (0, 1) — alpha = 0.1 gives 90% bands",
+        });
+    }
+    if method == BandMethod::SupT && n_sim < 2 {
+        return Err(VarError::InvalidArgument {
+            what: "n_sim must be at least 2 to simulate a sup-t critical value; \
+                   100000 is the recommended default and 50000 the practical floor \
+                   (this is a quantile in the tail of a maximum)",
+        });
+    }
+    let z = simultaneous::pointwise_critical_value(alpha).map_err(VarError::Stats)?;
+    let k = res.neqs;
+    let families = irf_families(k, horizon, scope);
+
+    let mut values = vec![vec![z; k]; k];
+    let mut used = vec![vec![0usize; k]; k];
+    let n_cells = families[0].0.len();
+
+    // Every route needs the per-cell standard errors (to count degenerate
+    // cells); only sup-t needs the full covariance and the RNG.
+    let w = delta_workspace(res, horizon)?;
+    let l = loadings(res, &w, horizon, orth, cumulative)?;
+    let mut streams = if method == BandMethod::SupT {
+        Stream::substreams(seed, families.len()).map_err(|_| VarError::InvalidArgument {
+            what: "cannot spawn one reproducible RNG substream per band family; \
+                   reduce the number of series or the horizon",
+        })?
+    } else {
+        Vec::new()
+    };
+    let mut uniforms = if method == BandMethod::SupT {
+        vec![0.0f64; simultaneous::required_uniforms(n_cells, n_sim)]
+    } else {
+        Vec::new()
+    };
+
+    for (f, (cells, grid)) in families.iter().enumerate() {
+        let sigma = joint_cov(&l, cells);
+        let se = simultaneous::std_errors_from_cov(&sigma, n_cells).map_err(VarError::Stats)?;
+        let n_used = se.iter().filter(|s| **s > 0.0).count();
+
+        let c = if n_used == 0 {
+            // Every cell pinned by construction: the band has zero width
+            // whatever multiplier we pick, so do not manufacture an error.
+            z
+        } else {
+            match method {
+                BandMethod::Pointwise => z,
+                BandMethod::SupT => {
+                    if let Some(stream) = streams.get_mut(f) {
+                        stream.fill_uniform_f64(&mut uniforms);
+                    }
+                    simultaneous::sup_t_from_cov(&sigma, n_cells, alpha, &uniforms)
+                        .map_err(VarError::Stats)?
+                }
+                BandMethod::Sidak => {
+                    simultaneous::sidak_critical_value(alpha, n_used).map_err(VarError::Stats)?
+                }
+                BandMethod::Bonferroni => simultaneous::bonferroni_critical_value(alpha, n_used)
+                    .map_err(VarError::Stats)?,
+            }
+        };
+        for &(i, j) in grid {
+            values[i][j] = c;
+            used[i][j] = n_used;
+        }
+    }
+
+    Ok(IrfCriticalValues {
+        values,
+        n_cells,
+        n_cells_used: used,
+        pointwise: z,
+        method,
+        scope,
+        alpha,
+    })
+}
+
+/// The lower and upper bounds of a banded impulse-response cube, each
+/// `horizon + 1` matrices of shape `k x k`.
+pub type IrfBandBounds = (Vec<Mat<f64>>, Vec<Mat<f64>>);
+
+/// Apply per-`(response, shock)` critical values to an impulse-response cube:
+/// `(point - c·se, point + c·se)`.
+///
+/// The band is anchored on the caller's own `point` and `se`, so it shares the
+/// pointwise band's centre exactly and — because every entry of
+/// [`IrfCriticalValues::values`] is at least [`IrfCriticalValues::pointwise`] —
+/// contains the symmetric pointwise band cell by cell.
+///
+/// # Errors
+///
+/// [`VarError::Dimension`] if `point` and `se` disagree in length, or if either
+/// is not `k x k` per horizon for the `k` the critical values were built for.
+pub fn apply_critical_values(
+    point: &[Mat<f64>],
+    se: &[Mat<f64>],
+    cv: &IrfCriticalValues,
+) -> Result<IrfBandBounds, VarError> {
+    if point.len() != se.len() {
+        return Err(VarError::Dimension {
+            what: "the impulse-response point cube and its standard errors must have \
+                   the same number of horizons",
+            expected: point.len(),
+            got: se.len(),
+        });
+    }
+    let k = cv.values.len();
+    for m in point.iter().chain(se.iter()) {
+        if m.nrows() != k || m.ncols() != k {
+            return Err(VarError::Dimension {
+                what: "every impulse-response matrix must be k x k for the k the \
+                       critical values were built for",
+                expected: k,
+                got: m.nrows(),
+            });
+        }
+    }
+    let lower = point
+        .iter()
+        .zip(se.iter())
+        .map(|(p, s)| Mat::from_fn(k, k, |i, j| p[(i, j)] - cv.values[i][j] * s[(i, j)]))
+        .collect();
+    let upper = point
+        .iter()
+        .zip(se.iter())
+        .map(|(p, s)| Mat::from_fn(k, k, |i, j| p[(i, j)] + cv.values[i][j] * s[(i, j)]))
+        .collect();
+    Ok((lower, upper))
 }

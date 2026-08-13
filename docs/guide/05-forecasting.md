@@ -10,7 +10,7 @@
 - Why in-sample fit is a lie, and how pseudo-out-of-sample backtesting with rolling or expanding origins replaces it.
 - Why naive benchmarks are scandalously hard to beat, and what fifty years of forecasting competitions proved.
 - How to score forecasts without fooling yourself — MAPE's failure modes, why MASE exists, and what pinball loss and CRPS measure.
-- How to test whether an accuracy difference is real (Diebold-Mariano with the HLN correction), when that test is invalid, and why averaging forecasts usually beats picking one.
+- How to test whether an accuracy difference is real (Diebold-Mariano with the HLN correction), when that test is invalid, and what to run instead — `cw_test` for nested models, `gw_test` for forecasting *methods* — and why averaging forecasts usually beats picking one.
 - Growth-at-risk: why policy institutions forecast the *downside* of the growth distribution, and how financial conditions move the left tail more than the center.
 
 ## The idea
@@ -240,9 +240,70 @@ $$
 \widehat{d}_t^{\,CW} = e_{1t}^2 - e_{2t}^2 + \left(\hat{y}_{1t} - \hat{y}_{2t}\right)^2,
 $$
 
-which adds back the estimation-noise term. Clark-West is a roadmap item; until it lands, do not run plain DM on nested comparisons. Second, **multiple comparisons**: run DM against a benchmark for 50 candidate models and at the 5% level roughly two or three "significant" winners appear under the null by construction. The honest tools — White's (2000) Reality Check, Hansen's (2005) SPA test, and the Model Confidence Set of Hansen, Lunde and Nason (2011), which reports the *set* of models statistically indistinguishable from the best — are roadmap items, but the discipline costs nothing today: count every specification you tried, not just the survivors, and treat a lone marginal DM rejection from a large search as noise. Diebold's own retrospective (Diebold 2015) is blunt that the test compares *forecasts*, not models — it takes the error streams as given, which is exactly why it is so widely applicable and so widely misapplied.
+which adds back the estimation-noise term. Clark-West ships as `tsecon.cw_test(e_small, e_large, yhat_small, yhat_large)` — it needs the two *forecasts* as well as the two error streams, because the correction term is built from their difference — and the next section runs it. Never run plain DM on a nested comparison; run `cw_test`. Second, **multiple comparisons**: run DM against a benchmark for 50 candidate models and at the 5% level roughly two or three "significant" winners appear under the null by construction. The honest tools — White's (2000) Reality Check, Hansen's (2005) SPA test, and the Model Confidence Set of Hansen, Lunde and Nason (2011), which reports the *set* of models statistically indistinguishable from the best — are roadmap items, but the discipline costs nothing today: count every specification you tried, not just the survivors, and treat a lone marginal DM rejection from a large search as noise. Diebold's own retrospective (Diebold 2015) is blunt that the test compares *forecasts*, not models — it takes the error streams as given, which is exactly why it is so widely applicable and so widely misapplied.
 
-> ⚠ **Common mistake.** Running a plain DM test on nested models (an AR(2) against the same AR(2) plus an unemployment gap, say). The comparison feels natural — it is the most common question in applied work — but it is precisely the degenerate case. The roadmap API routes nested comparisons to Clark-West rather than letting the DM test return a meaningless p-value.
+> ⚠ **Common mistake.** Running a plain DM test on nested models (an AR(2) against the same AR(2) plus an unemployment gap, say). The comparison feels natural — it is the most common question in applied work — but it is precisely the degenerate case. Nothing stops you: `dm_test` takes error streams and cannot know where they came from, so it will return a p-value that looks perfectly ordinary. Recognizing nestedness and reaching for `cw_test` is your job today; having the backtest object route the comparison automatically is the roadmap item.
+
+### The nested case, run three ways
+
+Here is the degeneracy on the chapter's quarterly recipe, with the null *true* by construction. The small model is an AR(1); the large model is the same AR(1) plus one extra regressor that is pure noise. A **fixed rolling window** is used throughout, because the third test below requires it. This block rebuilds its own series, so it runs on its own:
+
+```python
+import numpy as np, tsecon
+
+g = np.random.default_rng(7)                       # the quarterly recipe from earlier
+T = 160
+ti = np.arange(T)
+sn = 4.0 * np.array([1.0, -0.4, 0.6, -1.2])[ti % 4]
+nz = np.zeros(T)
+u = g.standard_normal(T)
+for i in range(1, T):
+    nz[i] = 0.6 * nz[i - 1] + 1.5 * u[i]
+yq = 50 + 0.3 * ti + sn + nz
+
+z = np.random.default_rng(99).standard_normal(T)   # an irrelevant predictor: the null is TRUE
+W = 60                                             # fixed ROLLING width
+
+tgt, f_small, f_large = [], [], []
+for t in range(W, T - 1):
+    sl = slice(t - W, t)                           # rolling window of width W
+    Yw = yq[sl][1:]
+    X_s = np.column_stack([np.ones(W - 1), yq[sl][:-1]])
+    X_l = np.column_stack([X_s, z[sl][:-1]])
+    b_s = tsecon.ols(Yw, X_s)["params"]
+    b_l = tsecon.ols(Yw, X_l)["params"]
+    tgt.append(yq[t])
+    f_small.append(b_s[0] + b_s[1] * yq[t - 1])
+    f_large.append(b_l[0] + b_l[1] * yq[t - 1] + b_l[2] * z[t - 1])
+tgt, f_small, f_large = map(np.asarray, (tgt, f_small, f_large))
+e_small, e_large = tgt - f_small, tgt - f_large
+
+dmn = tsecon.dm_test(e_small, e_large, h=1, loss="squared")
+cwn = tsecon.cw_test(e_small, e_large, f_small, f_large)     # needs the forecasts too
+gwn = tsecon.gw_test(e_small ** 2, e_large ** 2)             # any two loss streams
+
+print(f"origins {len(tgt)}")
+print(f"MSE  small {np.mean(e_small**2):.3f}   large {np.mean(e_large**2):.3f}")
+print(f"DM (HLN)  stat {dmn['hln_stat']:+.3f}   p {dmn['p_value']:.3f}")
+print(f"CW        stat {cwn['cw_stat']:+.3f}   p {cwn['p_value']:.3f}")
+print(f"GW        stat {gwn['gw_stat']:.3f}    p {gwn['p_value']:.3f}")
+```
+
+```
+origins 99
+MSE  small 50.617   large 53.100
+DM (HLN)  stat -2.653   p 0.009
+CW        stat -2.441   p 0.993
+GW        stat 7.113    p 0.008
+```
+
+Read those three lines carefully, because they are three *different questions*, not three attempts at one.
+
+**DM is the one that misleads.** The extra regressor is noise, so in population the two models are identical — yet the large model's MSE is about 2.5 higher (53.100 against 50.617), purely because it burns a degree of freedom estimating a coefficient that should be zero. DM takes that estimation noise at face value and reports the large model significantly *worse* ($p = 0.009$). That is the nested-model bias, visible: the statistic is not testing what it looks like it is testing.
+
+**`cw_test` is the fix, and it is one-sided.** Its null is "the small model is as good," so a large *positive* statistic is evidence the extra predictor helps. Here $-2.44$ with $p = 0.993$ correctly refuses to reject — the adjustment adds back exactly the $(\hat{y}_1 - \hat{y}_2)^2$ term DM was charging to the large model. Do not read the near-1 p-value as "the small model won significantly"; a one-sided test that fails to reject is silent, not affirmative.
+
+**`gw_test` rejects, and is also right.** Giacomini-White tests the forecasting *method* — estimation window and all — so its null is a statement about the procedure you would actually run, and under a fixed rolling window the cost of estimating a useless coefficient never washes out. "The large *method* forecasts worse" ($\chi^2(1) = 7.11$, $p = 0.008$) and "the extra predictor has no population content" (CW) are both true. That is why the scheme matters: `gw_test` is only valid on the fixed-width rolling design used above, which is the frontier section's point made concrete.
 
 ## Combining forecasts: the free lunch that mostly is
 
@@ -287,7 +348,7 @@ Calibration alone is not enough — the unconditional historical distribution is
 ```python
 bt   = tsecon.backtest(y, window="expanding", train=80, horizon=8)   # ships today as a dict; Module 09 wraps it in a typed object
 tab  = bt.accuracy()                      # per-horizon losses with HAC standard errors
-test = bt.compare(benchmark, auto=True)   # scheme-appropriate DM / Clark-West, auto-selected
+test = bt.compare(benchmark, auto=True)   # auto-picks dm_test / cw_test / gw_test from the scheme; the tests themselves ship today
 pits = bt.pit_histogram(bins=10)          # calibration diagnostics with binomial bands
 ```
 
@@ -345,7 +406,7 @@ rol = tsecon.backtest(y, window="rolling",   train=60, horizon=4, forecaster="th
 exp["n_origins"], rol["n_origins"]      # (77, 97) — rolling starts earlier here (width 60 < min_train 80)
 ```
 
-Expanding uses every observation and lets estimation error die away as the sample grows — the right default when you believe the parameters are stable. Rolling deliberately forgets, holding the window at a fixed width so old regimes cannot contaminate the fit — the right choice when you suspect the world changes. The choice is not only about robustness: as the frontier section notes, the Giacomini and White (2006) test of *forecasting-method* accuracy requires a fixed-width rolling window, because its asymptotics depend on estimation error *not* vanishing. If a Giacomini-White comparison is where you are headed, back-test rolling from the start.
+Expanding uses every observation and lets estimation error die away as the sample grows — the right default when you believe the parameters are stable. Rolling deliberately forgets, holding the window at a fixed width so old regimes cannot contaminate the fit — the right choice when you suspect the world changes. The choice is not only about robustness: as the frontier section notes, the Giacomini and White (2006) test of *forecasting-method* accuracy requires a fixed-width rolling window, because its asymptotics depend on estimation error *not* vanishing. If a `gw_test` comparison is where you are headed, back-test rolling from the start — `window="rolling"` is not a robustness variant there, it is the test's precondition.
 
 ### Refit cadence: `refit_every`
 
@@ -638,7 +699,8 @@ The honest open problems: evaluation under structural instability is unsolved in
 | First forecast of a new series | `theta_forecast` + naive benchmarks | The M3 winner and the mandatory floor; anything fancier must beat both |
 | Comparing accuracy across series of different scales | MASE / RMSSE via `accuracy(..., insample=train)` | Scale-free, self-benchmarking (1.0 = in-sample naive); MAPE explodes near zero |
 | Deciding if a two-model accuracy gap is real (non-nested) | `dm_test` (HLN correction is the default) | A t-test on the loss differential; HAC handles the overlap autocorrelation |
-| Nested models (baseline vs baseline + extras) | Clark-West ([roadmap](../roadmap/09-forecasting-evaluation.md)) | Plain DM is degenerate under the null; CW adds back the estimation-noise term |
+| Nested models (baseline vs baseline + extras) | `cw_test(e_small, e_large, yhat_small, yhat_large)` | Plain DM is degenerate under the null; CW adds back the estimation-noise term. One-sided |
+| Comparing forecasting *methods*, estimation error included | `gw_test(loss1, loss2)` on a **fixed rolling-window** backtest | GW's null is about the procedure, so nestedness is not a problem — but the rolling scheme is a requirement |
 | Many candidate models against one benchmark | SPA / Model Confidence Set (roadmap) | Pairwise DM tests ignore the search; MCS reports the statistically-best set |
 | Multi-step forecast evaluation regressions | `ols(..., se_type="hac", maxlags=h-1)` | Direct h-step errors are MA(h−1) by construction |
 | Forecasting a small system of related variables | `var_forecast` | Iterated multi-step point + interval forecasts from joint dynamics |
@@ -658,6 +720,8 @@ The honest open problems: evaluation under structural instability is unsolved in
 - `theta_forecast(y, steps, period=1)` — the Theta method, seasonal adjustment included; matches statsmodels' `ThetaModel`.
 - `accuracy(actual, forecast, insample=None, period=1)` — ME, RMSE, MAE, MAPE and sMAPE (omitted on zero denominators rather than returning garbage), and MASE/RMSSE when a training sample is supplied.
 - `dm_test(e1, e2, h=1, loss="squared")` — Diebold-Mariano with the HLN small-sample correction and $t(P-1)$ p-values as the default, not an option; `loss` is `"squared"` or `"absolute"`.
+- `cw_test(e_small, e_large, yhat_small, yhat_large, lrv_lags=0)` — Clark-West for **nested** models: the adjusted differential $e_1^2 - e_2^2 + (\hat{y}_1 - \hat{y}_2)^2$, returned as `cw_stat` / `p_value` (**one-sided**, null "the small model is as good") / `mean_adj_diff`. This is why it wants the forecasts and not only the errors. See the [forecasting model card](../reference/model-cards/forecasting.md).
+- `gw_test(loss1, loss2, lrv_lags=0)` — the Giacomini-White **unconditional** test of equal predictive ability on any two loss streams: `gw_stat` is $\chi^2(\text{df})$ with `df` = 1. Valid for nested models *provided* the backtest used a fixed-width rolling window, because its null is about the forecasting method rather than the population model. The *conditional* GW test is still a roadmap item.
 - `var_forecast(data, lags=2, steps=8, alpha=0.05, trend="c")` — iterated multi-step VAR forecasts with interval bands.
 - `recession_probit(y, x, link="probit", dynamic=False)` — static probit/logit and the Kauppi-Saikkonen dynamic probit for a 0/1 recession indicator; returns the fitted `probabilities`, coefficient `zstats`, and McFadden `pseudo_r2`. See the [recession model card](../reference/model-cards/recession.md).
 - `growth_at_risk(y, conditions, horizon=1, taus=..., rearrange=True)` — the ABG conditional-quantile workflow: per-tau `params`/`bse`, the fitted quantile fan at every observation (`fitted`, CFG-rearranged; `fitted_raw` unsorted; `crossing` flag), and `current`, the risk read at the latest observation. `conditions` is T x k. See the [quantile model card](../reference/model-cards/quantile.md).
@@ -670,14 +734,15 @@ The honest open problems: evaluation under structural instability is unsolved in
 - `mse` and `mdae` as standalone measures.
 - `ForecastComparison` — a one-call report combining the full accuracy table, all pairwise HLN-corrected DM tests, and a plain-language interpretation naming the winner and the next methodological step.
 
-**Roadmap** ([Module 09 — Forecasting and Evaluation](../roadmap/09-forecasting-evaluation.md)): the unified backtesting engine with fixed/rolling/expanding schemes and scheme-aware test routing; typed forecast objects (point/interval/density/path); CRPS, log score, and the interval score; Clark-West, Giacomini-White, SPA, and the Model Confidence Set; PIT histograms and the Berkowitz and Knüppel calibration tests; the full combination stack from Bates-Granger to online expert aggregation; conformal prediction (split, ACI, EnbPI); fan charts and conditional forecasting; hierarchical reconciliation; and the M4 reproduction harness that pins the whole stack to published competition numbers.
+**Roadmap** ([Module 09 — Forecasting and Evaluation](../roadmap/09-forecasting-evaluation.md)): the unified backtesting engine with fixed/rolling/expanding schemes and scheme-aware test routing; typed forecast objects (point/interval/density/path); CRPS, log score, and the interval score; the *conditional* Giacomini-White test and automatic scheme-aware routing of nested comparisons to `cw_test`; SPA and the Model Confidence Set; PIT histograms and the Berkowitz and Knüppel calibration tests; the full combination stack from Bates-Granger to online expert aggregation; conformal prediction (split, ACI, EnbPI); fan charts and conditional forecasting; hierarchical reconciliation; and the M4 reproduction harness that pins the whole stack to published competition numbers.
 
 ## Further reading
 
 - **Diebold, F. X. and R. S. Mariano (1995), "Comparing Predictive Accuracy," *Journal of Business & Economic Statistics*.** The founding paper: reduces model comparison to a t-test on the loss differential.
 - **Harvey, D., S. Leybourne and P. Newbold (1997), "Testing the Equality of Prediction Mean Squared Errors," *International Journal of Forecasting*.** The small-sample correction every DM test should carry — and in tsecon, does.
 - **Diebold, F. X. (2015), "Comparing Predictive Accuracy, Twenty Years Later," *Journal of Business & Economic Statistics*.** The author's own retrospective on what the test is for (comparing forecasts) and how it gets misused (comparing models).
-- **Clark, T. E. and K. D. West (2007), "Approximately Normal Tests for Equal Predictive Accuracy in Nested Models," *Journal of Econometrics*.** The standard fix for the nested-model degeneracy.
+- **Clark, T. E. and K. D. West (2007), "Approximately Normal Tests for Equal Predictive Accuracy in Nested Models," *Journal of Econometrics*.** The standard fix for the nested-model degeneracy, and what `cw_test` implements.
+- **Giacomini, R. and H. White (2006), "Tests of Conditional Predictive Ability," *Econometrica*.** Reframes the null around the forecasting *method* rather than the population model — which is what makes the test legitimate on nested comparisons, and what makes the fixed rolling window mandatory. `gw_test` is the unconditional case.
 - **Hyndman, R. J. and A. B. Koehler (2006), "Another Look at Measures of Forecast Accuracy," *International Journal of Forecasting*.** The definitive dissection of MAPE's pathologies and the paper that introduced MASE.
 - **Makridakis, S., E. Spiliotis and V. Assimakopoulos (2020), "The M4 Competition: 100,000 Time Series and 61 Forecasting Methods," *International Journal of Forecasting*.** The largest empirical evidence base in forecasting; humbling reading for model builders.
 - **Assimakopoulos, V. and K. Nikolopoulos (2000), "The Theta Model," *International Journal of Forecasting*** — with **Hyndman, R. J. and B. Billah (2003), "Unmasking the Theta Method," same journal**, which revealed it as SES with drift. Read as a pair.

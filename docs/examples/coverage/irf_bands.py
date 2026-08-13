@@ -4,8 +4,8 @@
     .venv/bin/python docs/examples/coverage/irf_bands.py --quick    # smoke run, ~10 s
 
 Two functions are measured here: `var_irf_bands` (experiments 1-5, reduced-form
-VAR bands under a Cholesky ordering) and `proxy_svar_bands` (experiment 6,
-external-instrument SVAR bands).
+VAR bands under a Cholesky ordering, and experiment 7, its simultaneous sup-t
+bands) and `proxy_svar_bands` (experiment 6, external-instrument SVAR bands).
 
 A confidence band is a promise about repeated samples: a 90% band should
 contain the *population* impulse response in 90% of samples. This module
@@ -1023,6 +1023,160 @@ def report_proxy_svar(res, show=(0, 1, 2, 3, 4, 6, 8, 12)):
 
 
 # ==========================================================================
+# Experiment 7 -- the simultaneous (sup-t) band
+# ==========================================================================
+SIM_N_SIM = 20_000
+"""Gaussian draws behind each sup-t critical value in experiment 7.
+
+The library default is 100000 and is what production should use. 20000 keeps
+this experiment inside a modest runtime; because the multiplier is a simulated
+quantile that is re-drawn on every replication, a smaller draw count adds noise
+to `c` rather than bias to the coverage `c` delivers.
+"""
+
+SIM_METHODS = ("sup-t", "sidak", "bonferroni")
+
+
+def band_seed(tag, n, rep):
+    """A deterministic sup-t simulation seed that does not depend on ordering."""
+    return 1 + (SEED + 15485863 * n + 32452843 * rep + 49979687 * tag) % (2**31 - 2)
+
+
+def exp_simultaneous(reps, horizon=12, n=500):
+    """Pointwise vs simultaneous joint coverage, scored on the SAME draws.
+
+    Experiment 1 measures how often the *whole* path lies inside the pointwise
+    band and finds it far below nominal. That is a multiplicity problem, not a
+    small-sample one: it does not shrink with `n`. This experiment measures the
+    remedy on the same cell and the same DGP -- `band="sup-t"` replaces the
+    multiplier `z` with the `1-alpha` quantile of `max_h |t_h|`, keeping the
+    point estimate and every standard error exactly as they were.
+
+    Asking for a band does not disturb the pointwise one: `point`, `se`,
+    `lower` and `upper` come back bit-identical (asserted in
+    `structural_checks`), so both arms below are read off the *same* call and
+    the comparison is paired by construction.
+
+    The number to read is not only the repair. It is also what the repair does
+    NOT reach: sup-t fixes multiplicity exactly and inherits everything else,
+    so where the *marginal* coverage of this band is already short of nominal
+    -- and at h = 12 it is -- the simultaneous rate is short of nominal too.
+    A bigger multiplier cannot mend a standard error.
+    """
+    resp, shock = 1, 0
+    truth = true_irf(BASE, horizon)[:, resp, shock]
+    out = {
+        "name": "exp7_simultaneous",
+        "dgp": BASE["name"],
+        "cell": "response of y1 to orthogonalised shock 0",
+        "truth": truth.tolist(),
+        "nominal": NOMINAL,
+        "reps": reps,
+        "n": n,
+        "band_n_sim": SIM_N_SIM,
+        "scope": None,
+        "n_cells": None,
+        "kind": "BAND-H, frequentist, pointwise vs simultaneous on the same draws",
+    }
+    rng = np.random.default_rng(SEED + 613 + n)
+    cov_pointwise = np.zeros(horizon + 1)
+    joint_pointwise = 0
+    joint = {m: 0 for m in SIM_METHODS}
+    gain = {m: 0 for m in SIM_METHODS}  # sim covers the path, pointwise does not
+    loss = {m: 0 for m in SIM_METHODS}  # pointwise covers it, sim does not
+    crit = {m: 0.0 for m in SIM_METHODS}
+    width_ratio = {m: 0.0 for m in SIM_METHODS}
+    crit_pointwise = 0.0
+    nests = True
+    for rep in range(reps):
+        y = simulate(BASE, n, rng)
+        joint_pw_this_rep = None
+        for tag, method in enumerate(SIM_METHODS):
+            res = tsecon.var_irf_bands(
+                y,
+                lags=1,
+                horizon=horizon,
+                orth=True,
+                method="asymptotic",
+                alpha=ALPHA,
+                band=method,
+                band_scope="horizon",
+                band_seed=band_seed(tag, n, rep),
+                band_n_sim=SIM_N_SIM,
+            )
+            lo = cell(res, "lower", resp, shock)
+            hi = cell(res, "upper", resp, shock)
+            slo = cell(res, "sim_lower", resp, shock)
+            shi = cell(res, "sim_upper", resp, shock)
+            covered_sim = bool(((slo <= truth) & (truth <= shi)).all())
+            joint[method] += covered_sim
+            c = float(np.asarray(res["critical_value"])[resp, shock])
+            crit[method] += c
+            width_ratio[method] += float(np.mean((shi - slo) / (hi - lo)))
+            # The simultaneous band must nest the *symmetric* pointwise band it
+            # widens. On this branch lower/upper ARE that symmetric band.
+            nests = nests and bool((slo <= lo).all() and (hi <= shi).all())
+            if tag == 0:
+                inside = (lo <= truth) & (truth <= hi)
+                cov_pointwise += inside
+                joint_pw_this_rep = bool(inside.all())
+                joint_pointwise += joint_pw_this_rep
+                crit_pointwise += float(res["pointwise_critical_value"])
+                out["scope"] = res["band_scope"]
+                out["n_cells"] = int(res["n_cells"])
+            # Paired, on this replication: the two arms share the point
+            # estimate and the standard errors, so the honest comparison is a
+            # discordant-pair count, not two independent proportions.
+            gain[method] += covered_sim and not joint_pw_this_rep
+            loss[method] += joint_pw_this_rep and not covered_sim
+    out["coverage_pointwise"] = (cov_pointwise / reps).tolist()
+    out["joint_pointwise"] = joint_pointwise / reps
+    out["joint"] = {m: joint[m] / reps for m in SIM_METHODS}
+    out["paired_gain"] = {m: gain[m] for m in SIM_METHODS}
+    out["paired_loss"] = {m: loss[m] for m in SIM_METHODS}
+    out["critical_value"] = {m: crit[m] / reps for m in SIM_METHODS}
+    out["mean_width_ratio"] = {m: width_ratio[m] / reps for m in SIM_METHODS}
+    out["pointwise_critical_value"] = crit_pointwise / reps
+    out["simultaneous_nests_pointwise"] = nests
+    return out
+
+
+def report_simultaneous(res):
+    hmax = len(res["truth"]) - 1
+    header(
+        f"EXP 7  Simultaneous (sup-t) bands.  {res['dgp']}, n = {res['n']}, "
+        f"R = {res['reps']}\n"
+        f"        cell: {res['cell']};  family = scope '{res['scope']}', "
+        f"K = {res['n_cells']} horizons;  nominal {100 * res['nominal']:.0f}%\n"
+        f"        both arms read off the SAME call, so the comparison is paired; "
+        f"band_n_sim = {res['band_n_sim']} (library default 100000)"
+    )
+    reps = res["reps"]
+    jp = res["joint_pointwise"]
+    print(f"  {'band':<12} {'crit value':>11} {'width vs pw':>12} {'joint h=0..' + str(hmax):>16}")
+    print(
+        f"  {'pointwise':<12} {res['pointwise_critical_value']:11.4f} "
+        f"{1.0:12.2f} {cov_cell(jp, mc_se(jp, reps)).strip():>16}"
+    )
+    for m in SIM_METHODS:
+        j = res["joint"][m]
+        print(
+            f"  {m:<12} {res['critical_value'][m]:11.4f} "
+            f"{res['mean_width_ratio'][m]:12.2f} {cov_cell(j, mc_se(j, reps)).strip():>16}"
+        )
+    marg = res["coverage_pointwise"]
+    print(
+        f"  the residual is NOT multiplicity: the same band's MARGINAL coverage is "
+        f"{100 * marg[0]:.1f}% at h=0 and {100 * marg[hmax]:.1f}% at h={hmax} "
+        f"against nominal {100 * res['nominal']:.0f}%."
+    )
+    print(
+        "  sup-t fixes multiplicity exactly and inherits everything else, so a "
+        "simultaneous band\n  over cells that are short marginally is short jointly."
+    )
+
+
+# ==========================================================================
 # structural facts and the assertions worth making
 # ==========================================================================
 def structural_checks():
@@ -1074,6 +1228,7 @@ def structural_checks():
             ),
         }
     facts["asymptotic_halfwidth_over_se"] = _halfwidth_ratio(y)
+    facts["band_request_inert"] = _band_request_inert(y)
     return facts
 
 
@@ -1136,6 +1291,33 @@ def proxy_structural_checks(big_t=80_000):
             "hall_efron_width_gap": float(np.abs(hall_w - efron_w).max()),
         }
     return facts
+
+
+def _band_request_inert(y):
+    """Asking for a simultaneous band must not move the pointwise one.
+
+    `point`, `se`, `lower` and `upper` have to come back bit-identical, because
+    a simultaneous band is a change of *multiplier* and nothing else. This is
+    also what licenses experiment 7 to read both arms off one call.
+    """
+    plain = tsecon.var_irf_bands(
+        y, lags=1, horizon=8, orth=True, method="asymptotic", alpha=ALPHA
+    )
+    banded = tsecon.var_irf_bands(
+        y,
+        lags=1,
+        horizon=8,
+        orth=True,
+        method="asymptotic",
+        alpha=ALPHA,
+        band="sup-t",
+        band_seed=11,
+        band_n_sim=2000,
+    )
+    return all(
+        np.array_equal(np.asarray(plain[k]), np.asarray(banded[k]))
+        for k in ("point", "se", "lower", "upper")
+    )
 
 
 def _halfwidth_ratio(y):
@@ -1469,6 +1651,48 @@ def assertions(results, facts, reps):
             f"n={lo_n}: {100 * a:.1f}%  ->  n={hi_n}: {100 * b:.1f}%",
         )
 
+    # --- the simultaneous band: what it buys, and what it does not --------
+    e7 = results["exp7"]
+    r7 = e7["reps"]
+    check(
+        "asking for a simultaneous band leaves the pointwise band bit-identical",
+        facts["band_request_inert"],
+        "point / se / lower / upper unchanged; only the multiplier is new",
+    )
+    check(
+        "the simultaneous band nests the symmetric pointwise band, every cell",
+        e7["simultaneous_nests_pointwise"],
+        f"c >= z on all {len(SIM_METHODS)} routes and all {r7} replications",
+    )
+    jp7 = e7["joint_pointwise"]
+    for m in SIM_METHODS:
+        j, gain, loss = e7["joint"][m], e7["paired_gain"][m], e7["paired_loss"][m]
+        # Paired: the arms share point and se, and the simultaneous band nests
+        # the pointwise one, so `loss` must be exactly 0 and the difference is
+        # `gain / reps` with paired se sqrt(gain)/reps. Requiring the difference
+        # to clear 3 of those is exactly `gain >= 9`.
+        check(
+            f"[{m}] covers the whole path in strictly more samples, never in fewer",
+            loss == 0 and gain >= 9,
+            f"{100 * j:.1f}% vs pointwise {100 * jp7:.1f}% over K={e7['n_cells']} "
+            f"horizons; {gain} discordant replications gained, {loss} lost",
+        )
+    j_supt = e7["joint"]["sup-t"]
+    check(
+        "sup-t still does NOT reach nominal here, and the shortfall is inherited",
+        j_supt < NOMINAL - 3.0 * mc_se(j_supt, r7),
+        f"sup-t joint {100 * j_supt:.1f}% vs nominal {100 * NOMINAL:.0f}%; the same "
+        f"band's marginal coverage at h={len(e7['truth']) - 1} is "
+        f"{100 * e7['coverage_pointwise'][-1]:.1f}%",
+    )
+    check(
+        "sup-t is tighter than both closed forms (it uses the cross-horizon dependence)",
+        e7["critical_value"]["sup-t"] < e7["critical_value"]["sidak"]
+        < e7["critical_value"]["bonferroni"],
+        "  <  ".join(f"{m} {e7['critical_value'][m]:.4f}" for m in SIM_METHODS)
+        + f"  (pointwise {e7['pointwise_critical_value']:.4f})",
+    )
+
     # --- coverage is monotone in the nominal level ------------------------
     e5 = results["exp5"]
     lv = e5["levels"]
@@ -1637,9 +1861,31 @@ def findings(results, reps):
             f"and no coverage number above is conditioned on a discarded draw."
         )
     lines.append(
-        f"EXP6 bands are POINTWISE. No simultaneous band is measured for proxy_svar_bands "
-        f"and none is offered by the library; the joint shortfall documented for "
+        f"EXP6 proxy-SVAR bands are POINTWISE. No simultaneous band is measured for "
+        f"proxy_svar_bands and none is offered by the library for it -- `band=` is a "
+        f"var_irf_bands option, measured in EXP7; the joint shortfall documented for "
         f"var_irf_bands above applies here for the same reason."
+    )
+
+    e7 = results["exp7"]
+    hmax7 = len(e7["truth"]) - 1
+    lines.append(
+        f"EXP7 n={e7['n']:<4} the SAME draws, K={e7['n_cells']} horizons: the pointwise band "
+        f"contains the whole path in {100 * e7['joint_pointwise']:.1f}% of samples, the sup-t "
+        f"band in {100 * e7['joint']['sup-t']:.1f}% (sidak {100 * e7['joint']['sidak']:.1f}%, "
+        f"bonferroni {100 * e7['joint']['bonferroni']:.1f}%), nominal {100 * NOMINAL:.0f}%."
+    )
+    lines.append(
+        f"EXP7 n={e7['n']:<4} sup-t does NOT reach nominal, and that is not multiplicity: the "
+        f"same band covers {100 * e7['coverage_pointwise'][0]:.1f}% marginally at h=0 and "
+        f"{100 * e7['coverage_pointwise'][hmax7]:.1f}% at h={hmax7}. What is left needs a better "
+        f"standard error, not a bigger multiplier."
+    )
+    lines.append(
+        f"EXP7 n={e7['n']:<4} multipliers at K={e7['n_cells']}, alpha={ALPHA:.2f}: pointwise "
+        f"{e7['pointwise_critical_value']:.4f}, "
+        + ", ".join(f"{m} {e7['critical_value'][m]:.4f}" for m in SIM_METHODS)
+        + ". The closed forms pay for a worst case a smooth response path does not present."
     )
     return lines
 
@@ -1660,7 +1906,7 @@ def run(quick=False, reps=None):
     print(f"horizons           : 0..{horizon}")
     print(f"mode               : {'QUICK smoke run' if quick else 'full run'}")
     print("DGPs               : " + "; ".join(d["name"] for d in (BASE, PERSIST, LAG4, PROXY)))
-    print(f"functions measured : tsecon.var_irf_bands (exp 1-5); "
+    print(f"functions measured : tsecon.var_irf_bands (exp 1-5, and exp 7 sup-t bands); "
           f"tsecon.proxy_svar_bands (exp 6, n_boot = {PROXY_N_BOOT})")
 
     facts = structural_checks()
@@ -1689,6 +1935,11 @@ def run(quick=False, reps=None):
     report_proxy_svar(
         results["exp6"], show=tuple(h for h in (0, 1, 2, 3, 4, 6, 8, 12) if h <= horizon)
     )
+    # Half the replications, because each one simulates a sup-t critical value
+    # on top of the fit. The claim it carries is a 20+ point difference, which
+    # is many MC standard errors wide even at this count.
+    results["exp7"] = exp_simultaneous(max(reps // 2, REPS_QUICK), horizon, n=ns_small[-1])
+    report_simultaneous(results["exp7"])
 
     header("FINDINGS -- measured, not targeted")
     for line in findings(results, reps):

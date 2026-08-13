@@ -30,11 +30,29 @@
 //!   cross-validation, and `lambda = 0` with the default interpolating
 //!   basis reproduces the per-horizon HAC-path [`lp`] point estimates
 //!   exactly.
+//! - [`lp_band`] / [`smooth_lp_band`]: **simultaneous (sup-t) confidence
+//!   bands** over the horizons of one response, plus the Šidák and Bonferroni
+//!   fallbacks and the pointwise status quo. See the `band` module docs for
+//!   what the band is simultaneous over and where the cross-horizon covariance
+//!   ([`lp_irf_cov`]) comes from.
 //!
 //! Module map: `level` ([`lp`]), `iv` ([`lp_iv`], [`lp_multiplier`]),
-//! `state` ([`lp_state`]), `smooth` ([`smooth_lp`]), with the shared design
-//! bookkeeping in `design`, the spec/result types in `spec`, and the typed
-//! error in `error`.
+//! `state` ([`lp_state`]), `smooth` ([`smooth_lp`]), `band` ([`lp_band`]),
+//! with the shared design bookkeeping in `design`, the spec/result types in
+//! `spec`, and the typed error in `error`.
+//!
+//! ## Pointwise is not simultaneous
+//!
+//! An LP impulse response is a *path*, and readers interpret it as one — "the
+//! response is positive for two years and back to zero by three" is a joint
+//! statement about every horizon at once. All of [`lp`], [`lp_iv`],
+//! [`lp_state`] and [`smooth_lp`] report **pointwise** standard errors, and a
+//! pointwise band does not support that reading: the library's own
+//! interval-coverage audit measured a nominal 90% pointwise IRF band containing
+//! the whole 13-horizon path in 72.2% of samples at `T = 500`, and the shortfall
+//! is multiplicity, so it does not shrink with the sample. [`lp_band`] widens
+//! the multiplier — not the standard errors — so that the band covers the whole
+//! path jointly. Point estimates and standard errors are unchanged by it.
 //!
 //! ## Cumulative responses vs multipliers
 //!
@@ -121,7 +139,13 @@
 //! lag-augmented default, the Ramey-Zubairy identities, `lambda -> 0` /
 //! `lambda -> inf` limits of smooth LP and its MSE gain over raw LP under a
 //! smooth true IRF); `tests/validation.rs` covers the errors-that-teach
-//! guards.
+//! guards; `tests/simultaneous.rs` covers the bands — bit-identity of the
+//! pointwise output under every band route, agreement of the cross-horizon
+//! covariance diagonal with the reported standard errors (`1.3e-15` relative
+//! on the lag-augmented path, bit-exact for smooth LP), and a seeded Monte
+//! Carlo measuring **joint** coverage of the whole horizon path. That last one
+//! is the acceptance test: at `T = 720`, `K = 13`, nominal 90%, the pointwise
+//! band held the entire path in 42.7% of samples and the sup-t band in 89.5%.
 //!
 //! ## References
 //!
@@ -139,10 +163,14 @@
 //!   B-splines and Penalties." *Statistical Science*.
 //! - Burman, P., Chow, E., & Nolan, D. (1994). "A Cross-Validatory Method
 //!   for Dependent Data." *Biometrika*.
+//! - Montiel Olea, J. L., & Plagborg-Møller, M. "Simultaneous Confidence
+//!   Bands: Theory, Implementation, and an Application to SVARs." (The sup-t
+//!   construction behind [`lp_band`].)
 
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+mod band;
 mod design;
 mod error;
 mod iv;
@@ -151,6 +179,11 @@ mod smooth;
 mod spec;
 mod state;
 
+pub use band::{
+    closed_form_band, lp_band, lp_irf_cov, smooth_lp_band, BandMethod, BandSpec, LpBand,
+    LpBandResult, LpIrfCov, SmoothLpBandResult, DEFAULT_BAND_ALPHA, DEFAULT_BAND_N_SIM,
+    DEFAULT_BAND_SEED,
+};
 pub use error::LpError;
 pub use iv::{lp_iv, lp_multiplier};
 pub use level::lp;

@@ -28,6 +28,7 @@
 //! `h = min(std(y), IQR(e)/1.34) * (Phi^{-1}(tau + h_HS) - Phi^{-1}(tau - h_HS))`
 //! with `h_HS = n^{-1/3} z_{0.975}^{2/3} (1.5 phi(z_tau)^2 / (2 z_tau^2 + 1))^{1/3}`.
 
+use tsecon_hac::Kernel;
 use tsecon_linalg::faer::linalg::solvers::DenseSolveCore;
 use tsecon_linalg::faer::{Mat, Side};
 use tsecon_stats::special::inv_norm_cdf;
@@ -151,6 +152,37 @@ pub(crate) fn fit_one(
     x_cols: &[Vec<f64>],
     tau: f64,
 ) -> Result<QuantileFit, QuantileError> {
+    fit_one_hac(y, x_cols, tau, 0).map(|(fit, _)| fit)
+}
+
+/// One tau, with a Newey-West-corrected second covariance alongside the
+/// Powell one.
+///
+/// Returns `(fit, bse_hac)`. `fit` is exactly what [`fit_one`] returns —
+/// the statsmodels-equivalent Powell sandwich. `bse_hac` replaces the
+/// sandwich meat `sum_t psi_t psi_t'` by its Bartlett-weighted long-run
+/// counterpart
+///
+/// ```text
+/// S_hat = Gamma_0 + sum_{l=1..L} (1 - l/(L+1)) (Gamma_l + Gamma_l'),
+/// Gamma_l = sum_t psi_t psi_{t-l}',   psi_t = x_t (tau - 1{u_t < 0}),
+/// ```
+///
+/// where `psi_t` is the check-loss score (its lag-0 outer product is
+/// algebraically the Powell meat, which is why `hac_lags = 0` returns the
+/// Powell `bse` itself — bit for bit, by construction below). The bread is
+/// unchanged: the Jacobian estimate `f_hat(0) X'X` does not depend on the
+/// serial dependence of the score.
+///
+/// This is the standard remedy for *overlapping* multi-step regressions
+/// (Hansen-Hodrick 1980; Newey-West 1987), where the horizon-`h` score is
+/// an MA(h-1) even under correct specification — see [`crate::growth_at_risk`].
+pub(crate) fn fit_one_hac(
+    y: &[f64],
+    x_cols: &[Vec<f64>],
+    tau: f64,
+    hac_lags: usize,
+) -> Result<(QuantileFit, Vec<f64>), QuantileError> {
     let n = y.len();
     let k = x_cols.len();
 
@@ -255,13 +287,46 @@ pub(crate) fn fit_one(
         }
     }
 
-    // cov = bread * meat * bread.
+    let cov = sandwich(&xtx_inv, &xtdx, k);
+    let bse = bse_from_cov(&cov, k)?;
+
+    // The HAC meat adds the Bartlett-weighted lag terms to the SAME lag-0
+    // block, so `hac_lags = 0` reuses `bse` untouched rather than
+    // recomputing an arithmetically identical number.
+    let bse_hac = if hac_lags == 0 {
+        bse.clone()
+    } else {
+        let mut meat = xtdx.clone();
+        add_hac_lags(&mut meat, x_cols, &resid, tau, fhat0, hac_lags);
+        bse_from_cov(&sandwich(&xtx_inv, &meat, k), k)?
+    };
+
+    let tvalues = beta.iter().zip(bse.iter()).map(|(p, s)| p / s).collect();
+
+    Ok((
+        QuantileFit {
+            tau,
+            params: beta,
+            bse,
+            tvalues,
+            cov,
+            iterations: n_iter,
+            converged,
+            bandwidth,
+            sparsity: 1.0 / fhat0,
+        },
+        bse_hac,
+    ))
+}
+
+/// `bread * meat * bread` for row-major `k x k` blocks.
+fn sandwich(bread: &Mat<f64>, meat: &[f64], k: usize) -> Vec<f64> {
     let mut tmp = vec![0.0_f64; k * k];
     for i in 0..k {
         for j in 0..k {
             let mut acc = 0.0;
             for l in 0..k {
-                acc += xtx_inv[(i, l)] * xtdx[l * k + j];
+                acc += bread[(i, l)] * meat[l * k + j];
             }
             tmp[i * k + j] = acc;
         }
@@ -271,12 +336,17 @@ pub(crate) fn fit_one(
         for j in 0..k {
             let mut acc = 0.0;
             for l in 0..k {
-                acc += tmp[i * k + l] * xtx_inv[(l, j)];
+                acc += tmp[i * k + l] * bread[(l, j)];
             }
             cov[i * k + j] = acc;
         }
     }
+    cov
+}
 
+/// Standard errors from a row-major covariance, rejecting a negative or
+/// non-finite variance.
+fn bse_from_cov(cov: &[f64], k: usize) -> Result<Vec<f64>, QuantileError> {
     let mut bse = Vec::with_capacity(k);
     for i in 0..k {
         let v = cov[i * k + i];
@@ -287,19 +357,55 @@ pub(crate) fn fit_one(
         }
         bse.push(v.sqrt());
     }
-    let tvalues = beta.iter().zip(bse.iter()).map(|(p, s)| p / s).collect();
+    Ok(bse)
+}
 
-    Ok(QuantileFit {
-        tau,
-        params: beta,
-        bse,
-        tvalues,
-        cov,
-        iterations: n_iter,
-        converged,
-        bandwidth,
-        sparsity: 1.0 / fhat0,
-    })
+/// Add the Bartlett-weighted lag terms `sum_{l>=1} w_l (Gamma_l + Gamma_l')`
+/// to a lag-0 sandwich meat, with `psi_t = x_t (tau - 1{u_t < 0}) / f_hat(0)`
+/// and `w_l` from [`Kernel::Bartlett`] at bandwidth `lags` (the library's
+/// single owner of kernel weights): `w_l = 1 - l/(lags + 1)`.
+///
+/// Bartlett weights make the result positive semi-definite, so the variance
+/// guard in [`bse_from_cov`] can only fire on a genuinely broken input.
+fn add_hac_lags(
+    meat: &mut [f64],
+    x_cols: &[Vec<f64>],
+    resid: &[f64],
+    tau: f64,
+    fhat0: f64,
+    lags: usize,
+) {
+    let n = resid.len();
+    let k = x_cols.len();
+    // psi_t = x_t * (tau - 1{u_t < 0}) / f, matching the lag-0 convention
+    // (d_t = (tau/f)^2 when e_t > 0, ((1-tau)/f)^2 otherwise).
+    let s: Vec<f64> = resid
+        .iter()
+        .map(|&e| {
+            if e > 0.0 {
+                tau / fhat0
+            } else {
+                (tau - 1.0) / fhat0
+            }
+        })
+        .collect();
+    for l in 1..=lags.min(n.saturating_sub(1)) {
+        let w = Kernel::Bartlett.weight(l, lags as f64);
+        if w <= 0.0 {
+            continue;
+        }
+        for t in l..n {
+            let st = s[t] * s[t - l] * w;
+            for i in 0..k {
+                let xi_t = x_cols[i][t];
+                let xi_lag = x_cols[i][t - l];
+                for j in 0..k {
+                    // Gamma_l + Gamma_l' in one pass.
+                    meat[i * k + j] += st * (xi_t * x_cols[j][t - l] + xi_lag * x_cols[j][t]);
+                }
+            }
+        }
+    }
 }
 
 /// One weighted least-squares step: solve

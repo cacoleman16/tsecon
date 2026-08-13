@@ -211,12 +211,12 @@ Structural breaks — on first_difference
   bai_perron skipped: sup-F did not reject at alpha=0.05
 --------------------------------------------------------------------
 Long memory (GPH) — on level
-  gph (level)   d +0.5558   se 0.1434   m 20
-  gph (differences)   d -0.5694   se 0.1471   m 19
-  GPH on the level gives d=0.556 (se 0.143), significantly below 1
+  gph (level)   d +0.5558   se 0.1813   m 20
+  gph (differences)   d -0.5694   se 0.1874   m 19
+  GPH on the level gives d=0.556 (se 0.181), significantly below 1
   at the 5% level — the unit-root verdict's integer difference may
   be the wrong filter (a fractional d is plausible); read the
-  differences next. On the first differences d=-0.569 (se 0.147):
+  differences next. On the first differences d=-0.569 (se 0.187):
   significantly negative — integer differencing may be too much
   (over-differencing); a fractional filter frac_diff(y, d) with d ≈
   0.43 on the level is the alternative.
@@ -260,7 +260,7 @@ Recommendations
     ARMA signatures need the IC comparison to disambiguate.
 --------------------------------------------------------------------
  4. long_memory
-    GPH d=-0.569 (se 0.147) on the differences is significantly
+    GPH d=-0.569 (se 0.187) on the differences is significantly
     negative — integer differencing looks like too much
     -> The level may be fractionally integrated with d<1: apply
        frac_diff(y, d=0.43) to the level instead of a first
@@ -320,7 +320,7 @@ print(m["recommendations"][0]["suggestion"])
 ['UnitRoot', 'UnitRoot']
 trace rank = 1: 1 cointegrating relation(s) — differencing everything would discard the error-correction terms; route through vecm
 ['cointegration', 'single_shock_irf']
-Model the system as a VECM: vecm(data, k_ar_diff=1, coint_rank=1). Differencing everything would throw away the error-correction terms that tie the levels together.
+Model the system as a VECM: vecm(data, k_ar_diff=0, coint_rank=1). Differencing everything would throw away the error-correction terms that tie the levels together.
 ```
 
 Both series draw `UnitRoot` verdicts, Johansen finds rank 1, and the routing

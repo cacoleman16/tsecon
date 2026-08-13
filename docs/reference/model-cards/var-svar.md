@@ -49,7 +49,9 @@ circle. `max_root` is the root *farthest* from the unit circle and remains above
 1 even for an explosive system, so it is not a stability verdict on its own. `var_irf` returns `[h][response][shock]` (horizon 0..H). `var_fevd`
 returns `[h][variable][shock]`, each variable's shares summing to 1.
 `var_granger`: `statistic`, `p_value`, `df_num/df_den`. `var_forecast`:
-`point`, `lower`, `upper` (each steps×k).
+`point`, `lower`, `upper` (each steps×k) — **marginal** intervals, one cell at a
+time, which is not what a fan chart is read as; see
+[simultaneous forecast bands](#simultaneous-forecast-bands-var_forecast).
 
 **Failure modes.** A pointwise IRF median is not itself a model at long
 horizons; Cholesky ordering silently drives every "structural" reading;
@@ -81,12 +83,65 @@ gc = tsecon.var_granger(Y, caused=[0], causing=[2], lags=2)
 print("var2 Granger-causes var0? p =", round(gc["p_value"], 4))
 ```
 
+### Simultaneous forecast bands — `var_forecast`
+
+**What it estimates.** The same iterated point forecasts and the same per-cell
+standard errors $\sqrt{\mathrm{diag}\,\mathrm{MSE}(h)}$, with a multiplier chosen
+so that a **whole declared family** of `(horizon, series)` cells is inside the
+band at once, rather than each cell separately at level `alpha`.
+
+**Why it exists.** A multi-panel fan chart is read as one statement, and the
+default marginal bands do not support one. The interval-coverage audit measured
+nominal 95% marginal bands containing every horizon of every series
+simultaneously in **40.9%** of samples at T=100 — and **48.1%** at T=800, so the
+gap is multiplicity, not sample size.
+
+**Assumptions.** `band="sup-t"` needs the **cross-horizon and cross-series**
+blocks of the forecast MSE, which the marginal interval never forms; the
+critical value is the `1-alpha` quantile of $\max_\text{cell}|t|$ under
+$N(0,\Sigma)$, simulated. Everything the marginal interval assumes still
+applies — in particular this remains a **plug-in** band that conditions on the
+estimated coefficients.
+
+**Key arguments and defaults (and why).** `band="pointwise"` (the **default**,
+which adds nothing to the existing return), `"sup-t"`, `"sidak"`,
+`"bonferroni"`. `band_scope="all"` is the **default** — one family covering every
+horizon of every series, $K = \text{steps} \times k$, because that is how a
+forecast figure is normally read. `band_scope="horizon"` gives one family per
+series ($K = \text{steps}$), the right scope for a single-series fan chart.
+`band_seed` and `band_n_sim` drive the sup-t Gaussian simulation and make that
+band a pure function of `band_seed`; the closed forms use neither.
+
+**How to read the output.** **`lower`/`upper` stay marginal whatever you pass** —
+nothing that already reads them changes meaning. Asking for a simultaneous band
+*adds* keys: `sim_lower`/`sim_upper`, the per-cell `se` the band is built from,
+`critical_value` (one per series), `pointwise_critical_value`, `band_scope`,
+`n_cells` (the `K`) and `n_cells_used`. Seeing the same `point` and `se` behind
+both pairs of edges is the check that a simultaneous band is a **multiplier
+change and nothing else**. Always quote the scope: the same 95% over $K=24$ is a
+different band from the same 95% over $K=12$.
+
+**Failure modes.** The multiplier cannot fix a band that is off *marginally*. On
+the audit's design `var_forecast`'s pooled per-cell marginal coverage is
+**93.4%** rather than 95%, because the band ignores coefficient sampling error —
+see the plug-in decomposition in
+[the audit](../../examples/interval-coverage.md#predictive-intervals) — and the
+simultaneous band inherits that shortfall exactly.
+
+**Validation target.** Nominal 95%, T=100, 12 horizons × 2 series (K=24), 2000
+replications, both arms read off the **same** call: joint coverage
+**42.0% ± 1.1 → 90.5% ± 0.7** ([`forecast_intervals.py`](../../examples/coverage/forecast_intervals.py),
+which asserts it). A 48-point repair that still misses nominal by 4.5 points,
+all of it inherited from the marginal band.
+
 ### Confidence bands on the IRF — `var_irf_bands`
 
 `var_irf` returns the point path only. **`var_irf_bands`** is its banded
 companion: same estimand, same `[h][i][j]` layout, but a `dict` with
-`point`/`se`/`lower`/`upper` plus the echoed `method`/`alpha`/`n_boot`
-(`n_boot` is `None` on the asymptotic branch). Two methods, one flag apart:
+`point`/`se`/`lower`/`upper` plus the echoed `method`/`alpha`/`n_boot`/`band`
+(`n_boot` is `None` on the asymptotic branch; `band` echoes the band family and
+is `"pointwise"` unless you ask for a simultaneous one). Two methods, one flag
+apart:
 
 - **`method="asymptotic"`** (default) — the Lütkepohl (1990) **delta-method**
   standard errors: the analytic derivative of the MA / orthogonalized responses
@@ -109,13 +164,12 @@ bootstrap re-factors $\Sigma_u$ on every draw). `cumulative=True` puts the
 bands on the cumulated IRF — delta method via statsmodels `cum_effect_stderr`,
 bootstrap by cumulating each draw first.
 
-**The honest caveat.** These are **pointwise** bands: each covers one
-$(h, i, j)$ cell at level `alpha`. They are *not* joint/simultaneous over the
-horizon, so a reader who traces the whole shaded path is over-reading the
-coverage. Sims-Zha (1999) likelihood-shape and Jordà (2009) /
-Montiel Olea-Plagborg-Møller (2019) sup-t simultaneous bands remain on the
-roadmap; use these for the honest per-horizon uncertainty, not for "does the
-path lie in the band with 90% probability".
+**The honest caveat.** By default these are **pointwise** bands: each covers one
+$(h, i, j)$ cell at level `alpha`. They are *not* joint over the horizon, so a
+reader who traces the whole shaded path is over-reading the coverage — the
+interval-coverage audit measured a nominal 90% pointwise band containing the
+whole $h = 0..12$ path in **72.2%** of samples at T=500. `band="sup-t"` below is
+the fix for exactly that, and only that.
 
 **Validated against.** statsmodels `VARResults.irf().stderr()` and
 `cum_effect_stderr()` (reduced-form and orthogonalized) to machine precision;
@@ -154,7 +208,7 @@ print("bootstrap h=1 band",
 ```
 
 ```
-keys: ['alpha', 'lower', 'method', 'n_boot', 'point', 'se', 'upper']  n_boot: None
+keys: ['alpha', 'band', 'lower', 'method', 'n_boot', 'point', 'se', 'upper']  n_boot: None
  h   point      se     [ lower ,  upper ]
  0  +0.2963  0.0105  [+0.2790, +0.3136]
  1  +0.1584  0.0160  [+0.1321, +0.1847]
@@ -174,8 +228,86 @@ The bootstrap band at $h=1$ lands within a whisker of the delta-method band, the
 reassurance you want when the asymptotics are the thing being trusted.
 
 **References (bands).** Lütkepohl (1990, asymptotic IRF SEs); Kilian (1998,
-bias-corrected bootstrap); Sims & Zha (1999) and Montiel Olea &
-Plagborg-Møller (2019) for the simultaneous-band frontier.
+bias-corrected bootstrap); Montiel Olea and Plagborg-Møller, *Simultaneous
+confidence bands: theory, implementation, and an application to SVARs* — the
+sup-t construction `band="sup-t"` implements. Sims & Zha (1999) likelihood-shape
+bands are a different object and are **not** implemented.
+
+#### Simultaneous bands — `band` and `band_scope`
+
+**What it changes.** Only the multiplier. `point` and `se` are bit-identical to
+the pointwise call, and `lower`/`upper` stay **pointwise whatever you pass**; the
+simultaneous band arrives as *extra* keys `sim_lower`/`sim_upper`, equal to
+`point ± c·se` with a constant `c` chosen so that **every cell of a declared
+family** is covered at once — the sup-t construction of Montiel Olea and
+Plagborg-Møller.
+
+**Assumptions.** `band="sup-t"` needs the dependence *across* cells. On
+`method="asymptotic"` that is the delta-method covariance including the
+cross-horizon blocks, which the pointwise path never forms; the `1-alpha`
+quantile of $\max_\text{cell} |t|$ under $N(0,\Sigma)$ is then simulated. On
+`method="bootstrap"` the replications *are* draws of the estimand, so the
+statistic is read off them directly with no extra simulation — centred at the
+point estimate, not the bootstrap mean. `sidak` and `bonferroni` assume nothing
+beyond `K` and are correspondingly loose.
+
+**Key arguments and defaults (and why).**
+
+- `band="pointwise"` is the **default** and adds nothing to the returned dict,
+  so an existing call is untouched. The other three are `"sup-t"` (tightest —
+  prefer it wherever it is available), `"sidak"`, `"bonferroni"`.
+- `band_scope="horizon"` is the **default**: one family per response-shock pair,
+  $K = h_{\max}+1$. That is the narrowest defensible family and the one a reader
+  of a single IRF panel is implicitly asking about. `"shock"` gives one family
+  per shock ($K = k(h_{\max}+1)$) — the right scope when a conclusion is drawn
+  from a whole column of panels. `"all"` covers the entire grid
+  ($K = k^2(h_{\max}+1)$) and is much the most conservative at large $k$.
+- `band_seed` and `band_n_sim` drive the sup-t Gaussian simulation on the
+  **asymptotic branch only**, where the band is a pure function of `band_seed`.
+  Do not cut `band_n_sim` far down — this is a quantile in the tail of a
+  maximum. On the **bootstrap branch** sup-t reads its quantile straight off the
+  replications, so the existing `seed` reproduces it and neither band argument is
+  used; give it `n_boot` ≥ 999 for the same tail-quantile reason. Šidák and
+  Bonferroni are closed forms in `K` and need neither.
+
+**How to read the output.** The extra keys are `sim_lower`/`sim_upper`,
+`critical_value` (a k×k grid — one multiplier per response-shock cell, so you can
+see exactly which cell got which), `pointwise_critical_value`, `band_scope`,
+`n_cells` (the `K`) and `n_cells_used`. Report the **method, the scope, and `K`**
+next to any simultaneous band; the same `alpha` over a different family is a
+different band, and a band whose scope is ambiguous is worse than no band. The
+ratio of `critical_value` to `pointwise_critical_value` is exactly what
+simultaneity cost on this path, and `n_cells_used` is how many cells actually
+entered the maximum. Cells pinned by construction have `se = 0` (the above-diagonal
+Cholesky impact responses, and the whole `orth=False` impact matrix); they are
+excluded from the maximum and from the Šidák/Bonferroni cell count, and keep
+their zero-width band.
+
+**Failure modes.** (i) **It fixes multiplicity and nothing else.** It reuses the
+pointwise standard errors, so it inherits the delta-method decay documented
+above: on the audit's design the *marginal* coverage of this band is already
+91.0% at h=0 and 85.3% at h=12, and no multiplier repairs a standard error.
+(ii) On the bootstrap branch the simultaneous band is **symmetric**
+`point ± c·se` while the reported `lower`/`upper` are **asymmetric** Efron
+percentiles — two different shapes of interval, so `sim_lower` is **not**
+guaranteed to sit below `lower` cell by cell. What it is guaranteed to contain is
+the like-for-like symmetric band `point ± pointwise_critical_value·se`, in which
+only the multiplier differs. (iii) Šidák is exact under independence across cells, a
+condition no impulse response meets; both closed forms pay for a worst case a
+smooth response path does not present. At $K = 13$, $\alpha = 0.10$ the closed
+forms are fixed at Šidák 2.6490 and Bonferroni 2.6653 against a pointwise
+1.6449, while sup-t is a property of the path: it averages 2.0742 on the audit's
+`BASE` VAR(1) and runs up to about 2.65 on more persistent ones. Read the
+`critical_value` your own fit returns rather than assuming the saving.
+
+**Validation target.** Measured on the audit's own DGP at nominal 90%, T=500,
+$h = 0..12$ (K=13), 1000 replications, pointwise and sup-t read off the **same**
+call: joint coverage **71.7% ± 1.4 → 85.2% ± 1.1**
+([`irf_bands.py`](../../examples/coverage/irf_bands.py), which asserts it; the
+crate's own tests see 70.4% → 84.8% at 3000 replications). That repairs most of
+the multiplicity gap and **does not reach nominal**, for the reason in failure
+mode (i). See
+[pointwise is not joint](../../examples/interval-coverage.md#the-remedy-and-the-two-places-it-stops).
 
 ---
 

@@ -257,6 +257,22 @@ impl ZeroRestrictionSet {
         self.all_impact_only
     }
 
+    /// Whether the ARW-2018 importance weight is **implemented** for this zero
+    /// pattern.
+    ///
+    /// True exactly when every zero is impact-only, the case in which the
+    /// weight is known in closed form (and equals one). For a pattern with any
+    /// zero at horizon `>= 1` the weight would require the ARW volume-element
+    /// ratio, which this build does not compute — so no weight is available,
+    /// and callers that promise ARW weighting must refuse such a pattern
+    /// rather than substitute one (see [`crate::ZeroSignSampler::with_weighting`]).
+    ///
+    /// This is the single predicate to flip when the horizon `>= 1` volume
+    /// element is implemented.
+    pub fn arw_weight_available(&self) -> bool {
+        self.all_impact_only
+    }
+
     /// The constraint rows for `shock`: row `variable` of `base[horizon]` for
     /// each restriction on that shock. Each returned vector has length
     /// `n_vars`.
@@ -273,11 +289,12 @@ impl ZeroRestrictionSet {
     }
 }
 
-/// ARW-2018 importance log-volume for a drawn rotation.
+/// ARW-2018 importance log-volume for a drawn rotation, or `None` when it is
+/// not implemented for this zero pattern.
 ///
-/// Returns `0.0` (unit weight) when every zero restriction lies on the impact
-/// matrix `Theta_0 = P Q`: those restriction functions are linear in `Q`, the
-/// volume element of the structural-vs-orthogonal-reduced-form
+/// Returns `Some(0.0)` (unit weight) when every zero restriction lies on the
+/// impact matrix `Theta_0 = P Q`: those restriction functions are linear in
+/// `Q`, the volume element of the structural-vs-orthogonal-reduced-form
 /// parameterization is `Q`-independent, and the weight is *exactly* one
 /// (Arias, Rubio-Ramirez & Waggoner 2018) — this is why the recursive/
 /// Cholesky golden and every impact-only applied SVAR are unweighted.
@@ -286,17 +303,22 @@ impl ZeroRestrictionSet {
 /// functions are nonlinear through the reduced-form coefficients and the ARW
 /// volume element is nonconstant; the exact correction requires the ARW
 /// Appendix volume-element ratio (differentiating the IRF map with respect to
-/// the structural coefficients). That correction is **not yet applied**: this
-/// build returns the conditionally-uniform (unit) weight for those patterns
-/// too — the honest RWZ (2010) draw — and the prior-robust deliverable is the
-/// weight-invariant identified-set envelope (min/max), not the weighted
-/// bands. This function is the single, isolated swap point for a future exact
-/// ARW weight.
-fn arw_log_volume(zeros: &ZeroRestrictionSet) -> f64 {
-    // Impact-only is exact at 0.0; the horizon >= 1 branch is intentionally
-    // also 0.0 until the ARW volume-element ratio is ported (see docs).
-    let _ = zeros.all_impact_only();
-    0.0
+/// the structural coefficients). That correction is **not implemented**, so
+/// this returns `None` rather than the unit weight: a `1.0` would be
+/// indistinguishable from the exact impact-only answer and would silently
+/// pass off the unweighted RWZ (2010) draw as an ARW-weighted one. The
+/// prior-robust deliverable for those patterns is the weight-invariant
+/// identified-set envelope (min/max), not weighted bands. This function is the
+/// single, isolated swap point for a future exact ARW weight.
+fn arw_log_volume(zeros: &ZeroRestrictionSet) -> Option<f64> {
+    if zeros.arw_weight_available() {
+        // Impact-only: exact, and exactly 0.0.
+        Some(0.0)
+    } else {
+        // Horizon >= 1: the volume-element ratio is not implemented. Report
+        // its absence instead of a stand-in value.
+        None
+    }
 }
 
 /// Orthonormalizes `v` against the current basis `basis` (modified
@@ -340,9 +362,15 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
 /// (from [`tsecon_bayes::cholesky_irf`]); its length must exceed every
 /// restriction horizon and each matrix must be `n x n` with `n =
 /// zeros.n_vars()`. Columns are built in `zeros.order()` and placed at their
-/// true shock indices, so `Q` is a genuine `n x n` orthogonal matrix. The
-/// returned weight is the ARW-2018 importance weight (exactly `1.0` for
-/// impact-only patterns; see [`arw_log_volume`]).
+/// true shock indices, so `Q` is a genuine `n x n` orthogonal matrix.
+///
+/// The rotation itself is always a valid RWZ conditionally-uniform draw. The
+/// second element is the ARW-2018 importance weight *when it is available*:
+/// `Some(1.0)` for impact-only zero patterns, and `None` for a pattern with a
+/// zero at horizon `>= 1`, whose volume element this build does not compute
+/// (see [`arw_log_volume`]). `None` means "no ARW weight exists for this
+/// draw", **not** "the weight is one": treating it as one silently converts an
+/// unweighted draw into a claimed-weighted one.
 ///
 /// # Errors
 ///
@@ -357,7 +385,7 @@ pub fn zero_constrained_rotation(
     base: &[Mat<f64>],
     zeros: &ZeroRestrictionSet,
     stream: &mut Stream,
-) -> Result<(Mat<f64>, f64), IdentError> {
+) -> Result<(Mat<f64>, Option<f64>), IdentError> {
     let n = zeros.n_vars();
     if base.is_empty() {
         return Err(IdentError::Dimension {
@@ -421,7 +449,7 @@ pub fn zero_constrained_rotation(
         }
     }
 
-    let weight = arw_log_volume(zeros).exp();
+    let weight = arw_log_volume(zeros).map(f64::exp);
     Ok((q, weight))
 }
 
@@ -540,7 +568,7 @@ mod tests {
         let set = ZeroRestrictionSet::new(rs, 3, horizon)?;
         let mut streams = Stream::substreams(123, 1)?;
         let (q, w) = zero_constrained_rotation(&base, &set, &mut streams[0])?;
-        assert_eq!(w, 1.0);
+        assert_eq!(w, Some(1.0));
         assert!(orthogonal_to(q.as_ref(), 1e-12));
         // Each column is +/- a unit basis vector.
         for j in 0..3 {
@@ -567,7 +595,9 @@ mod tests {
         let set = ZeroRestrictionSet::new(rs, 3, horizon)?;
         assert!(!set.all_impact_only());
         let mut streams = Stream::substreams(7, 1)?;
-        let (q, _w) = zero_constrained_rotation(&base, &set, &mut streams[0])?;
+        let (q, w) = zero_constrained_rotation(&base, &set, &mut streams[0])?;
+        // The rotation is a valid RWZ draw, but no ARW weight exists for it.
+        assert_eq!(w, None, "a horizon >= 1 pattern must not report a weight");
         assert!(orthogonal_to(q.as_ref(), 1e-12));
         let theta = structural_irf(&base, q.as_ref());
         assert!(theta[0][(2, 0)].abs() < 1e-12, "impact zero not satisfied");
@@ -586,8 +616,60 @@ mod tests {
         assert!(set.all_impact_only()); // vacuously
         let mut streams = Stream::substreams(9, 1)?;
         let (q, w) = zero_constrained_rotation(&base, &set, &mut streams[0])?;
-        assert_eq!(w, 1.0);
+        assert_eq!(w, Some(1.0));
         assert!(orthogonal_to(q.as_ref(), 1e-12));
+        Ok(())
+    }
+
+    #[test]
+    fn arw_weight_is_available_exactly_for_impact_only_patterns() -> Result<(), IdentError> {
+        // The ARW volume element is implemented only for impact-only zeros.
+        // Availability must track the horizon of the zeros, not merely their
+        // count or position, so that no non-impact pattern can be handed a
+        // stand-in unit weight.
+        let (b, sigma) = toy_var();
+        let horizon = 6;
+        let base = cholesky_irf(b.as_ref(), sigma.as_ref(), 1, horizon)?;
+
+        // (restrictions, expected availability)
+        let cases: Vec<(Vec<ZeroRestriction>, bool)> = vec![
+            (Vec::new(), true),                         // empty: vacuous
+            (vec![ZeroRestriction::at(0, 1, 0)], true), // impact-only
+            (
+                vec![ZeroRestriction::at(0, 1, 0), ZeroRestriction::at(2, 0, 0)],
+                true,
+            ), // two impact zeros
+            (vec![ZeroRestriction::at(0, 1, 1)], false), // horizon 1
+            (vec![ZeroRestriction::at(0, 1, 2)], false), // horizon 2
+            (vec![ZeroRestriction::at(1, 2, horizon)], false), // last horizon
+            (
+                vec![ZeroRestriction::at(0, 1, 0), ZeroRestriction::at(2, 0, 3)],
+                false,
+            ), // mixed: one non-impact spoils it
+        ];
+
+        for (rs, expect_available) in cases {
+            let set = ZeroRestrictionSet::new(rs.clone(), 3, horizon)?;
+            assert_eq!(
+                set.arw_weight_available(),
+                expect_available,
+                "availability wrong for {rs:?}"
+            );
+            let mut streams = Stream::substreams(31, 1)?;
+            let (_q, w) = zero_constrained_rotation(&base, &set, &mut streams[0])?;
+            if expect_available {
+                assert_eq!(
+                    w,
+                    Some(1.0),
+                    "impact-only weight must be exactly 1 for {rs:?}"
+                );
+            } else {
+                assert_eq!(
+                    w, None,
+                    "non-impact pattern must report no weight for {rs:?}"
+                );
+            }
+        }
         Ok(())
     }
 }

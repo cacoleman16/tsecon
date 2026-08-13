@@ -21,7 +21,11 @@ min_b  sum_t  rho_tau(y_t - x_t' b),      rho_tau(u) = u * (tau - 1{u < 0})
 solved by iteratively reweighted least squares (IRLS), with Powell
 kernel-sandwich standard errors (Epanechnikov kernel, Hall-Sheather
 bandwidth) — the same estimator and covariance as statsmodels `QuantReg`
-at its defaults.
+at its defaults. `growth_at_risk` adds one thing statsmodels has no
+counterpart for: a Newey-West correction to that sandwich for the serial
+correlation its *overlapping* `h`-step windows induce. Read
+[the measured coverage table](#standard-errors-at-long-horizons-measured)
+before you quote any multi-period interval from this family.
 
 ---
 
@@ -36,11 +40,16 @@ at `tau = 0.9` means the regressor widens the distribution, not (only) shifts
 it.
 
 **Assumptions.** Correct linear specification of each conditional quantile;
-independent-enough observations for the Powell sandwich to be a sensible
-covariance (it is a heteroskedasticity-robust estimator, not a HAC one — for
-serially correlated LP-style designs use `quantile_lp`, which is built for
-that shape of problem). The conditional density at the quantile must be
-positive (no flat spots of the distribution at the quantile being estimated).
+serially uncorrelated check-loss scores, because the Powell sandwich is a
+heteroskedasticity-robust estimator and **not** a HAC one. If your design
+has overlapping multi-step outcomes — anything of the `y_{t+h}` on `x_t`
+shape — that assumption fails by construction and these `bse` are too
+narrow; `growth_at_risk` carries the Newey-West correction for exactly that
+case (with measured coverage below), `quantile_lp` does not yet. The
+conditional density at the quantile must be positive (no flat spots of the
+distribution at the quantile being estimated), and it is estimated by a
+kernel: at tail `tau` in short samples that estimate is biased *upward*,
+which biases every `bse` here *downward* (see the `fhat/f` note below).
 
 **When to use (and when not).** Use it whenever the *tails* are the question —
 risk measures, heterogeneous effects across the outcome distribution,
@@ -131,9 +140,14 @@ outcome separately.
 **Assumptions.** An identified, exogenous-conditional-on-controls shock,
 exactly as for `lp`; correct linear quantile specification per horizon. The
 standard errors are the Powell kernel sandwich per (tau, horizon) —
-heteroskedasticity-robust but **not** HAC, so with overlapping multi-horizon
-residuals treat far-horizon bands as approximate and lean on the lag controls
-to soak up serial dependence.
+heteroskedasticity-robust but **not** HAC. The `y_{t+h}`-on-`shock_t` design
+overlaps exactly as `growth_at_risk` does, so the measured undercoverage in
+[the table below](#standard-errors-at-long-horizons-measured) is the right
+order of magnitude to expect here too, and `se[i][h]` does **not** yet carry
+the Newey-West correction that `growth_at_risk`'s `bse` does. Treat
+far-horizon bands as indicative, lean on the lag controls to soak up serial
+dependence, and prefer `lp`'s HAC/lag-augmented inference when the mean
+response is the question.
 
 **When to use (and when not).** Use it when the question is distributional —
 "does a financial shock raise *downside* risk to growth?", "do oil shocks fatten
@@ -246,7 +260,12 @@ quality; leave it on unless you specifically want to inspect the raw paths.
 **How to read the output.** `params`/`bse` are per-tau coefficient rows in the
 order `[const, conditions..., y_t]` — the asymmetry finding is read straight
 off the conditions column: a large negative slope at `tau = 0.05` shrinking to
-nothing at `tau = 0.95`. `fitted` is the `(n_taus × T)` matrix of conditional
+nothing at `tau = 0.95`. `bse` is the Powell sandwich with a Newey-West
+(Bartlett) correction at `hac_lags = horizon - 1` lags — see the next
+subsection for why, and for what it does and does not buy you.
+`bse_powell` is the uncorrected sandwich, i.e. what statsmodels `QuantReg`
+reports for this design; at `horizon = 1` the two are identical because
+nothing overlaps. `fitted` is the `(n_taus × T)` matrix of conditional
 quantiles after rearrangement (`fitted_raw` before); `crossing` flags whether
 the raw paths crossed anywhere, i.e. whether rearrangement actually did
 something. `current` is the risk read at the latest observation — the row of
@@ -257,18 +276,87 @@ timing: `fitted[:, t]` conditions on date-`t` information and describes
 **Failure modes.** Reading `current` without checking what the conditions were
 at `T-1` (a benign read in calm conditions says nothing about the slope of
 risk). Overfitting with many conditioning variables — ABG's power comes from
-one financial-conditions index, not twenty indicators. Long horizons with
-overlapping observations make the sandwich SEs optimistic. And extreme taus on
+one financial-conditions index, not twenty indicators. **Quoting a long-horizon
+tail interval as if it were a 95% interval** — read the next subsection first;
+it is the single most important caveat on this function. And extreme taus on
 short macro samples (200 quarterly observations put only ~10 of them below the
 5% quantile) carry honest, wide uncertainty — report `bse`.
 
+### Standard errors at long horizons (measured)
+
+Growth-at-risk is a multi-quarter tool by construction, and the horizon it is
+built for is the horizon where its standard error is worst. Two things go
+wrong as `horizon` grows, and only one of them is fixed.
+
+**1. Overlapping windows (fixed).** For `h > 1` consecutive regressions share
+innovations — `y_{t+h}` and `y_{t+h-l}` have `h - l` of them in common — so
+the check-loss score `x_t (tau - 1{u_t < 0})` is an MA(h-1) *even when the
+conditional quantile is perfectly specified*. The plain Powell sandwich
+assumes it is a martingale difference and is therefore optimistic by
+construction. `bse` applies the standard remedy (Hansen-Hodrick 1980;
+Newey-West 1987): a Bartlett-weighted long-run variance at `horizon - 1`
+lags, the exact MA order the overlap induces. Bartlett rather than a
+rectangular truncation because only Bartlett guarantees a positive
+semi-definite covariance — the rectangular version really does return
+negative variances on these designs.
+
+**2. The density estimate (not fixed).** Both sandwiches divide by a kernel
+estimate `f_hat(0)` of the residual density at the quantile. In the lower
+tail that density is *convex*, so kernel smoothing biases the estimate
+upward, and the bias grows with the horizon because the overlap shrinks the
+effective sample. Too large an `f_hat` means too small a standard error.
+This is inherited from the statsmodels-standard Hall-Sheather/Epanechnikov
+recipe and is not specific to growth-at-risk.
+
+Coverage of a nominal 95% interval for a slope coefficient, Monte Carlo on an
+exact-truth design (correctly specified, Gaussian, homoskedastic, persistent
+AR(1) conditioner, 4000 replications per cell), reported as
+**Powell → Newey-West**:
+
+| `horizon` | T=200, τ=0.05 | T=200, τ=0.50 | T=500, τ=0.05 | T=500, τ=0.50 |
+|----------:|:--------------|:--------------|:--------------|:--------------|
+| 1  | 0.899 → 0.899 | 0.958 → 0.958 | 0.916 → 0.916 | 0.951 → 0.951 |
+| 2  | 0.850 → 0.858 | 0.916 → 0.936 | 0.882 → 0.894 | 0.912 → 0.936 |
+| 4  | 0.763 → 0.798 | 0.827 → 0.914 | 0.791 → 0.850 | 0.812 → 0.922 |
+| 8  | 0.642 → 0.714 | 0.716 → 0.897 | 0.682 → 0.822 | 0.719 → 0.916 |
+| 12 | 0.614 → 0.686 | 0.671 → 0.884 | 0.631 → 0.794 | 0.650 → 0.906 |
+
+How to read it. **At the median the correction is essentially the whole
+story** — 0.671 → 0.884 at `T=200, h=12`, and 0.906 at `T=500`. **In the 5%
+tail it is half the story.** The residual gap there is effect (2): the
+measured `f_hat / f` ratio at `tau = 0.05` runs 1.23 (h=1) to 1.56 (h=12) at
+`T=200`, and 1.12 to 1.28 at `T=500` — it shrinks with the sample but not
+with anything you can pass to this function. At `tau = 0.5` that ratio stays
+within 0.96-1.06, which is exactly why the median column behaves.
+
+**What to do about it.** For a one-year (h=4) read on 50 years of quarterly
+data, treat the `tau = 0.05` interval as roughly 80% rather than 95%. For
+`h = 8` or beyond in the tail, do not quote a coefficient interval from `bse`
+at all — quote the fitted quantile path and its economic movement, which is
+what ABG's own figures do, or bootstrap the whole procedure. `bse_powell` is
+strictly worse for this purpose and is kept only for statsmodels replication.
+The one case where `bse_powell` is the better number is a serially
+uncorrelated conditioner, where there is nothing to correct and the
+Newey-West lag terms only add noise (measured cost there: about 5 points of
+coverage at `h = 12, T = 250`). Macro conditioners are essentially never
+that, and `y_t` is in the design regardless, so the correction is on by
+default.
+
 **Validated against.** statsmodels `QuantReg` per tau on the identical
 `[const, conditions, y_t]` design, plus a numpy sort for the rearrangement, at
-1e-6 ([`fixtures/tsecon-quantile.json`](../../../fixtures/tsecon-quantile.json)).
+1e-6 — that pins `params`, `bse_powell`, and the fitted paths
+([`fixtures/tsecon-quantile.json`](../../../fixtures/tsecon-quantile.json)).
+The Newey-West `bse` has no statsmodels counterpart; it is pinned to an
+independent numpy assembly of the same sandwich, and to an exact no-op at
+`horizon = 1`, in the crate's golden tests, with the coverage improvement
+above re-measured as a seeded property test
+(`crates/tsecon-quantile/tests/properties.rs`).
 
 **References.** Adrian, Boyarchenko & Giannone (2019, *American Economic
 Review* 109:1263-1289); Chernozhukov, Fernandez-Val & Galichon (2010,
-*Econometrica* 78:1093-1125, rearrangement); Koenker & Bassett (1978).
+*Econometrica* 78:1093-1125, rearrangement); Koenker & Bassett (1978);
+Hansen & Hodrick (1980, *JPE* 88:829-853) and Newey & West (1987,
+*Econometrica* 55:703-708) for the overlapping-horizon correction.
 
 The DGP builds in the ABG mechanism: tighter financial conditions `f` lower
 the conditional *mean* of growth and raise its *variance*, so the lower tail

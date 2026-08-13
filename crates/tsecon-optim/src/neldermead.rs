@@ -26,26 +26,65 @@ use crate::result::{OptimizeResult, Termination};
 /// Options for [`nelder_mead`]. Termination semantics match
 /// `scipy.optimize.minimize(method="Nelder-Mead")` for easy cross-checking:
 /// convergence requires **both** the simplex size and the function spread
-/// below their (absolute) tolerances.
+/// below their tolerances.
 #[derive(Debug, Clone, Copy)]
 pub struct NelderMeadOptions {
-    /// Absolute simplex-size tolerance: converged when
-    /// `max_j ||x_j - x_best||_inf <= x_tol` over the non-best vertices;
-    /// default `1e-8`.
+    /// Simplex-size tolerance: converged when
+    /// `max_j ||x_j - x_best||_inf <= max(x_tol, RESOLUTION_ULPS * eps *
+    /// ||x_best||_inf)` over the non-best vertices; default `1e-8`.
+    ///
+    /// The second term is a floating-point *resolution floor*, not a
+    /// loosening knob: distinct simplex vertices near a point of magnitude
+    /// `m` cannot be closer than `ulp(m) = eps * m`, so an absolute
+    /// `x_tol` below that is unsatisfiable and the search would grind out
+    /// its whole budget on an already-exact answer. The floor only binds
+    /// once `||x_best||_inf` exceeds roughly `x_tol / (4 * eps)` — about
+    /// `1e7` at the default — and is inert for the O(1) reparameterized
+    /// working spaces the model crates optimize over.
     pub x_tol: f64,
-    /// Absolute function-spread tolerance: converged when
-    /// `max_j |f_j - f_best| <= f_tol`; default `1e-8`.
+    /// Function-spread tolerance: the run stops when
+    /// `max_j |f_j - f_best| <= max(f_tol, RESOLUTION_ULPS * eps *
+    /// |f_best|)`; default `1e-8`.
+    ///
+    /// The second term is the same floating-point *resolution floor* as on
+    /// [`x_tol`](NelderMeadOptions::x_tol), and it is needed for the same
+    /// reason: vertex values of magnitude `|f|` cannot differ by less than
+    /// `ulp(|f|) = eps * |f|` without being the same double, so an absolute
+    /// `f_tol` below that is not a tolerance the search can be held to.
+    ///
+    /// Unlike the x side, though, the floor is not a fix — it is a
+    /// *detector*. Reaching it means the objective has stopped
+    /// discriminating between the vertices, so the stopping decision was
+    /// made by rounding rather than by the search, and the point returned
+    /// is only as good as the objective's conditioning allowed. Whenever
+    /// `f_tol` is finer than that floor the run therefore terminates
+    /// [`Termination::ObjectiveResolution`] and reports `converged =
+    /// false`, rather than certifying a tolerance it never verified. The
+    /// floor binds once `|f_best|` exceeds roughly `f_tol / (4 * eps)` —
+    /// about `1e7` at the default — which no correctly centered objective
+    /// in this workspace reaches; the usual cause is a large additive
+    /// constant, and subtracting it restores the certificate.
+    ///
+    /// Note that `f_tol = 0` (exact equality of the vertex values) is
+    /// finer than the floor at every nonzero `|f_best|`, so it always
+    /// terminates `ObjectiveResolution`.
     pub f_tol: f64,
-    /// Iteration budget; `None` (default) means `200 * n`.
+    /// Iteration budget; `None` (default) means `200 * n` **per run**, that
+    /// is `200 * n * (1 + restarts)` in total. An explicit budget is a
+    /// total, shared across restarts.
     pub max_iter: Option<usize>,
-    /// Objective-evaluation budget; `None` (default) means `200 * n`.
-    /// Checked between iterations, so it can overshoot by at most `n + 2`
-    /// evaluations (one shrink step).
+    /// Objective-evaluation budget; `None` (default) means `200 * n` **per
+    /// run**, that is `200 * n * (1 + restarts)` in total; an explicit
+    /// budget is a total, shared across restarts. Checked between
+    /// iterations, so it can overshoot by at most `n + 2` evaluations (one
+    /// shrink step).
     pub max_fevals: Option<usize>,
     /// Number of restarts after convergence: the simplex is rebuilt around
     /// the current best point and the search re-run, guarding against the
     /// false convergence Nelder-Mead is prone to (simplex collapse along a
-    /// valley). Budgets are shared across restarts. Default 0.
+    /// valley). An explicitly supplied budget is shared across restarts;
+    /// the *default* budget is sized per run, so raising `restarts` raises
+    /// the default budget with it. Default 0.
     pub restarts: usize,
     /// Use the Gao-Han (2012) dimension-adaptive coefficients (default
     /// `true`); `false` selects the standard `(1, 2, 1/2, 1/2)`.
@@ -101,6 +140,13 @@ impl NelderMeadOptions {
 /// building the initial simplex (scipy's `zdelt`).
 const ZERO_STEP: f64 = 0.00025;
 
+/// Width, in units of the last place, of the floating-point resolution
+/// floor under [`NelderMeadOptions::x_tol`] and
+/// [`NelderMeadOptions::f_tol`]. A simplex of `n + 1` distinct vertices
+/// needs a few ulps of room around the incumbent, so neither the size test
+/// nor the spread test can be driven below this no matter the budget.
+const RESOLUTION_ULPS: f64 = 4.0;
+
 /// Minimizes `f` by the Nelder-Mead simplex method with Gao-Han (2012)
 /// adaptive parameters. See [`NelderMeadOptions`] for the convergence
 /// tests, budgets, and restart support; the module docs give the
@@ -128,8 +174,18 @@ pub fn nelder_mead<F: ObjectiveFn + ?Sized>(
     if x0.iter().any(|v| !v.is_finite()) {
         return Err(OptimError::NonFinite { what: "x0" });
     }
-    let max_iter = opts.max_iter.unwrap_or(200 * n);
-    let max_fevals = opts.max_fevals.unwrap_or(200 * n);
+    // Default budgets are per run: a restarted search re-solves the problem
+    // from a fresh simplex each time, so a budget sized for one run and
+    // then shared across `1 + restarts` of them can only ever terminate on
+    // exhaustion, leaving `converged` false on every fit.
+    let runs = 1usize.saturating_add(opts.restarts);
+    let per_run = 200usize.saturating_mul(n);
+    let max_iter = opts
+        .max_iter
+        .unwrap_or_else(|| per_run.saturating_mul(runs));
+    let max_fevals = opts
+        .max_fevals
+        .unwrap_or_else(|| per_run.saturating_mul(runs));
 
     // Gao-Han (2012) adaptive coefficients; standard for n <= 2 (identical
     // at n = 2, degenerate shrink at n = 1).
@@ -184,7 +240,23 @@ pub fn nelder_mead<F: ObjectiveFn + ?Sized>(
                 best_x.copy_from_slice(&simplex[0]);
             }
 
-            // Convergence: simplex size AND f-spread below tolerance.
+            // Convergence: simplex size AND f-spread below tolerance. Both
+            // tests are floored at the floating-point resolution of the
+            // quantity they measure — two distinct doubles near a magnitude
+            // `m` cannot be closer than `ulp(m)`, so an absolute tolerance
+            // below that can never be met and the search would burn its
+            // whole budget sitting on an answer it already has.
+            //
+            // The two floors mean opposite things, though. On the x side
+            // the floor is the fix: the simplex has genuinely shrunk to the
+            // resolution of `x_best`, and the answer is as good as doubles
+            // get. On the f side reaching the floor says the objective has
+            // stopped *discriminating* — the vertex values agree only
+            // because they rounded onto the same double, which happens as
+            // soon as the variation of `f` drops under `ulp(|f_best|)`
+            // however far the incumbent still is from the minimum. So a run
+            // that stops there is reported as `ObjectiveResolution` rather
+            // than certified against a tolerance it never verified.
             let size = simplex[1..]
                 .iter()
                 .map(|v| {
@@ -194,9 +266,17 @@ pub fn nelder_mead<F: ObjectiveFn + ?Sized>(
                         .fold(0.0, f64::max)
                 })
                 .fold(0.0, f64::max);
+            let x_scale = simplex[0].iter().fold(0.0_f64, |m, v| m.max(v.abs()));
+            let x_stop = opts.x_tol.max(RESOLUTION_ULPS * f64::EPSILON * x_scale);
+            let f_resolution = RESOLUTION_ULPS * f64::EPSILON * fx[0].abs();
+            let f_stop = opts.f_tol.max(f_resolution);
             let spread = fx[n] - fx[0];
-            if size <= opts.x_tol && spread.abs() <= opts.f_tol {
-                termination = Termination::SimplexTolerance;
+            if size <= x_stop && spread.abs() <= f_stop {
+                termination = if opts.f_tol < f_resolution {
+                    Termination::ObjectiveResolution
+                } else {
+                    Termination::SimplexTolerance
+                };
                 break;
             }
             if iterations >= max_iter {

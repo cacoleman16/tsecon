@@ -9,6 +9,48 @@ use crate::params::MsarParams;
 use crate::results::{FilterResult, FitResult, SmoothResult};
 use crate::spec::MsarSpec;
 
+/// Ridge added to the diagonal of an M-step normal-equation matrix, as a
+/// fraction of that matrix's own largest diagonal entry.
+///
+/// The ridge exists only to keep the system solvable when a regime is
+/// unoccupied under the smoother, so it must be negligible relative to the
+/// information the data actually carry — and "negligible" is a statement
+/// about a ratio, not about an absolute size. The mean normal equations are
+/// weighted by `1 / sigma^2` and so carry the *inverse square* of the data's
+/// scale: measure the same series in persons rather than in thousands of
+/// persons and every entry shrinks by `10^-6`, which would inflate a fixed
+/// absolute ridge by the same factor and shrink the estimated means toward
+/// zero. At unit scale this relative ridge reproduces the magnitude of the
+/// absolute `1e-10` it replaced.
+const M_STEP_RIDGE_REL: f64 = 1e-12;
+
+/// Floor on an estimated innovation variance, as a fraction of the sample
+/// variance of the data.
+///
+/// The floor keeps `sigma^2` strictly positive when a regime fits its
+/// observations exactly. An innovation variance is in units of `y` squared,
+/// so the floor has to be too: an absolute floor silently becomes binding
+/// once the series is measured in units that make its variance small, and
+/// the estimate then stops scaling with the data.
+const VARIANCE_FLOOR_REL: f64 = 1e-12;
+
+/// The largest diagonal entry of the row-major `n`-by-`n` matrix `mat`.
+///
+/// The M-step normal-equation matrices are weighted sums of outer products
+/// and hence positive semidefinite, so their largest diagonal entry bounds
+/// their spectral norm within a factor of `n` and is the natural scale to
+/// measure a ridge against.
+fn max_diagonal(mat: &[f64], n: usize) -> f64 {
+    (0..n).map(|i| mat[i * n + i]).fold(0.0, f64::max)
+}
+
+/// Whether `x` can serve as the scale a tolerance is measured against:
+/// strictly positive and finite (`NaN` is not).
+#[inline]
+fn is_usable_scale(x: f64) -> bool {
+    x > 0.0 && x.is_finite()
+}
+
 /// Result of running the forward (Hamilton) recursion, retaining the
 /// internal expanded-state quantities the smoother and EM need.
 struct FilterState {
@@ -60,6 +102,10 @@ pub struct MarkovSwitchingAr<'a> {
     m: usize,
     /// Cached powers of `k`: `pow_k[l] = k^l`, `l = 0..=order + 1`.
     pow_k: Vec<usize>,
+    /// Cached sample variance of `y`, in units of `y` squared. This is the
+    /// scale the estimated innovation variances live on, and the yardstick
+    /// the EM variance floor is measured against.
+    y_var: f64,
 }
 
 impl<'a> MarkovSwitchingAr<'a> {
@@ -86,7 +132,16 @@ impl<'a> MarkovSwitchingAr<'a> {
         for l in 1..pow_k.len() {
             pow_k[l] = pow_k[l - 1] * k;
         }
-        Ok(Self { y, spec, m, pow_k })
+        let n = y.len() as f64;
+        let mean_y = y.iter().sum::<f64>() / n;
+        let y_var = y.iter().map(|v| (v - mean_y) * (v - mean_y)).sum::<f64>() / n;
+        Ok(Self {
+            y,
+            spec,
+            m,
+            pow_k,
+            y_var,
+        })
     }
 
     /// The `l`-th regime digit of expanded state `a`: `S_{t-l}` when `a`
@@ -351,8 +406,16 @@ impl<'a> MarkovSwitchingAr<'a> {
     /// Because the likelihood surface is multimodal, EM converges to a
     /// *local* optimum determined by `start`; callers should assess fits by
     /// log-likelihood improvement and approximate parameter recovery rather
-    /// than exact agreement with any single optimum. `order >= 1` is
-    /// required.
+    /// than exact agreement with any single optimum. `order >= 1` and a
+    /// non-constant `y` are required.
+    ///
+    /// The estimator is **scale-equivariant**: fitting `c * y` from the
+    /// correspondingly scaled start (`c * mu`, `c^2 * sigma^2`, the same AR
+    /// coefficients and transition matrix) returns `c * mu`, `c^2 *
+    /// sigma^2`, and an unchanged transition matrix, AR block, smoothed
+    /// probability path, iteration count and convergence flag, with the
+    /// log-likelihood shifted by the Jacobian `-n ln c`. Changing the unit
+    /// the series is measured in does not change the estimate.
     pub fn fit(
         &self,
         start: &MsarParams,
@@ -363,6 +426,19 @@ impl<'a> MarkovSwitchingAr<'a> {
         if self.spec.order < 1 {
             return Err(RegimeError::InvalidSpec {
                 what: "fit requires order >= 1 (a Markov-switching autoregression)",
+            });
+        }
+        // The M-step measures its variance floor against the scale of the
+        // data (see `VARIANCE_FLOOR_REL`), which a constant series does not
+        // have; such a series also identifies no regimes and drives the
+        // likelihood to infinity. Scoring fixed parameters on it
+        // (`filter`/`smooth`/`loglike`) remains well defined.
+        if !is_usable_scale(self.y_var) {
+            return Err(RegimeError::InvalidParameter {
+                name: "y",
+                value: self.y_var,
+                requirement: "a series with strictly positive sample variance \
+                              (a constant series identifies no regimes)",
             });
         }
 
@@ -534,9 +610,19 @@ impl<'a> MarkovSwitchingAr<'a> {
                 }
             }
         }
-        // Ridge for numerical safety against an unoccupied regime.
+        // Ridge for numerical safety against an unoccupied regime, sized
+        // relative to the information the matrix itself carries (see
+        // `M_STEP_RIDGE_REL`); an absolute ridge here is a `1 / scale(y)^2`
+        // quantity and would make the estimate depend on the unit of `y`.
+        let scale = max_diagonal(&mat, k);
+        if !is_usable_scale(scale) {
+            // No observation carries information about any mean at this
+            // pass, so `rhs` is zero as well and every `mu` maximizes the
+            // objective equally: keep the incumbent means.
+            return Ok(());
+        }
         for i in 0..k {
-            mat[i * k + i] += 1e-10;
+            mat[i * k + i] += M_STEP_RIDGE_REL * scale;
         }
         let solved = solve(mat, rhs, k, "M-step means")?;
         means.copy_from_slice(&solved);
@@ -596,8 +682,20 @@ impl<'a> MarkovSwitchingAr<'a> {
 
         for (block, ar_block) in ar.iter_mut().enumerate() {
             let mut mat = std::mem::take(&mut mats[block]);
+            // The AR normal equations are `sum g/sigma^2 x x'`, in which the
+            // two powers of `scale(y)` in `x x'` cancel the two in
+            // `sigma^2`, so a rescaling of `y` leaves them alone; their
+            // magnitude still depends on the sample size and the
+            // signal-to-noise ratio, so the ridge is measured against the
+            // matrix rather than fixed (see `M_STEP_RIDGE_REL`).
+            let scale = max_diagonal(&mat, p);
+            if !is_usable_scale(scale) {
+                // The lagged regressors carry no weighted variation; the
+                // objective is flat in this block, so keep the incumbent.
+                continue;
+            }
             for i in 0..p {
-                mat[i * p + i] += 1e-10;
+                mat[i * p + i] += M_STEP_RIDGE_REL * scale;
             }
             let rhs = std::mem::take(&mut rhss[block]);
             let solved = solve(mat, rhs, p, "M-step AR coefficients")?;
@@ -608,7 +706,9 @@ impl<'a> MarkovSwitchingAr<'a> {
 
     /// ECM update of the innovation variances: the weighted residual second
     /// moment `sigma^2_i = sum g e^2 / sum g` (switching), or its pooled
-    /// counterpart (shared). Floored at a small positive value.
+    /// counterpart (shared). Floored at a negligible fraction of the sample
+    /// variance of `y` (see `VARIANCE_FLOOR_REL`), which keeps the floor in
+    /// the units the variances are measured in.
     fn update_variances(
         &self,
         fs: &FilterState,
@@ -640,9 +740,10 @@ impl<'a> MarkovSwitchingAr<'a> {
                 den[block] += g;
             }
         }
+        let floor = VARIANCE_FLOOR_REL * self.y_var;
         for b in 0..blocks {
             if den[b] > 0.0 {
-                variances[b] = (num[b] / den[b]).max(1e-12);
+                variances[b] = (num[b] / den[b]).max(floor);
             }
         }
     }

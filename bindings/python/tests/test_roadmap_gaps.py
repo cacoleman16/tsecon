@@ -87,7 +87,14 @@ def test_long_memory_d_gph_and_whittle_match_golden():
     m = sp["m"]
     gph = tsecon.long_memory_d(x, m=m, method="gph")
     assert abs(gph["d"] - sp["gph"]["d"]) < 1e-6
-    assert abs(gph["se"] - sp["gph"]["se"]) < 1e-6
+    # The fixture's stored `se` is the large-m closed form pi/sqrt(24m), which
+    # the function now reports separately as `se_asymptotic`; `se` itself is the
+    # bandwidth-exact standard error and is the one to build intervals from.
+    # Same tolerance, same stored number -- only the field name moved.
+    assert abs(gph["se_asymptotic"] - sp["gph"]["se"]) < 1e-6
+    # And the exact SE must be WIDER than the asymptotic one at this bandwidth,
+    # which is the whole point of the change.
+    assert gph["se"] > gph["se_asymptotic"]
     lw = tsecon.long_memory_d(x, m=m, method="local_whittle")
     assert abs(lw["d"] - sp["whittle"]["d"]) < 1e-5
     # Both recover a genuinely long-memory series (d well above 0).
