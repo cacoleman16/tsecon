@@ -7,6 +7,82 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — seasonal ARIMA
+
+- **`arima_fit(..., seasonal=(P, D, Q, s))`** — the multiplicative
+  SARIMA(p,d,q)(P,D,Q)_s, closing the gap the docs have been honest about
+  since 0.1.0. The seasonal and regular lag polynomials are multiplied into a
+  single dense ARMA and run through the existing exact-MLE state-space engine;
+  seasonal differencing follows the statsmodels order (seasonal first, then
+  regular; `simple_differencing=True` semantics, `d + D*s` observations lost);
+  forecasts are re-cumulated to levels through the augmented state — one
+  cumulator per regular difference, one `s`-long delay line per seasonal
+  difference — so the reported forecast variance is the exact cumulative one,
+  seasonal stages included (the pure seasonal random walk reproduces
+  `se_h = sigma * sqrt(ceil(h/s))` bit-for-bit). Seasonal parameters are named
+  statsmodels-style (`ar.S.L12`, `ma.S.L12`), stationarity/invertibility is
+  enforced per factor polynomial through the same Monahan transform, and
+  Hannan-Rissanen starting values gain the seasonal lags. Golden-pinned to
+  statsmodels `SARIMAX` in `fixtures/sarima.json`: the airline model
+  `(0,1,1)(0,1,1)_12` on the real log Series G (fixed-parameter log-likelihood
+  at 1e-8 relative, fit at the textbook `theta ~ -0.40`, `Theta ~ -0.56`,
+  `cov_type='approx'` standard errors at 1e-4, 24-step levels forecasts against
+  the statsmodels levels state-space form at 1e-6), a quarterly
+  SAR(1)x(1)_4-with-constant, and the mixed `(1,1,1)(1,1,1)_4`. The Rust
+  `ArimaSpec` gains `seasonal(P, D, Q, s)` and the results object
+  `seasonal_ar()` / `seasonal_ma()`; CSS (`fit_css`) conditions on the expanded
+  `p + s*P` presample.
+
+### Fixed — audit findings (rounds 2–5)
+
+- **`panel_fe` / `panel_lp` now refuse a design the fixed effects have
+  absorbed** instead of returning a publishable t-statistic for it. The old
+  guard was a Cholesky positive-definiteness test that fired only when the
+  within-demeaned residue was bit-exactly zero: entity constants stored as
+  ordinary doubles (log land area, a share in `[0, 1]`) slipped through, and
+  the default cluster covariance turned the `O(1e-16)` residue into
+  t-statistics that reached nominal 5% significance in 19.2% of audit draws —
+  a statistic that moved when a constant was added to the data. The guard is
+  now two scale-invariant checks (per-column absorption of the demeaned norm
+  relative to the raw norm, plus the numpy/linearmodels singular-value rank
+  criterion), matching the linearmodels `AbsorbingEffectError` refusal the
+  docstring promises — and, unlike its predecessor, it is monotone: a merely
+  ill-conditioned near-duplicate still fits while an exact duplicate raises.
+  `panel_lp` additionally rejects an infeasible `max_horizon` up front as a
+  sample-size error, rather than tripping over whatever symptom the shrunken
+  per-horizon window produced first.
+- **`engle_granger` raises instead of panicking when the sample has no more
+  rows than step-1 design columns** — the `(0, k)` / `(1, k)` shapes escaped
+  `except Exception` as `PanicException` through the Python boundary.
+- **`proxy_svar_bands`'s proxy alignment can no longer panic** when `lags`
+  exceeds the observation count (the same `PanicException` class).
+- **`proxy_ar_sets(hac_lags=...)` with the default `variance="hc0"` now
+  raises** instead of silently ignoring the argument — output used to be
+  bit-identical with and without it. `hac_lags` parameterizes only the
+  `variance="hac"` route, and the structural-identification model card now
+  says so instead of implying `hac_lags` itself switches the estimator.
+- **The `bvar_fit` model card had its two shrinkage dials swapped**: it called
+  `lambda0` "overall tightness" and `lambda1` the "own-lag scale", while in
+  the implementation (deliberately, and consistently with the conjugate
+  Kronecker form) `lambda0` scales only the intercept prior and `lambda1` is
+  the overall tightness on every lag coefficient, own and cross alike. A
+  card-following user lowering `lambda0` for shrinkage got a pinned intercept
+  and untouched dynamics. The card now matches the code, and states that the
+  conjugate form cannot express the classic cross-variable `lambda2`.
+- **The ARIMA model card mis-stated `arima_fit`'s defaults** (`p`, `d`, `q`
+  "all default 0", `constant = False`): the shipped defaults are `p = 1` and
+  `constant = True`, so with `d >= 1` the default fits a drift. The card now
+  matches the code and says to turn the constant off deliberately.
+- **`VARResults.irf_bands` and `var_irf_bands` now share the same default
+  `band_seed` (20260807)**: the facade defaulted to 0, so the two documented
+  routes to the same sup-t band returned different critical values for
+  identical inputs. A regression test pins the two routes bit-identical at
+  their defaults. Also swept the sup-t release's own doc surface:
+  `testing.md` no longer claims "no function reports a simultaneous band"
+  (the feature it was released alongside), and its stale tallies (`49`
+  files / `13` unlisted, the RZ replication's test count, the
+  "16 of the 40" validation split) are corrected or replaced with
+  references to surfaces that cannot go stale.
 ### Changed — BREAKING
 
 - **`long_memory_d`'s `se` changed meaning, and the number it reports moves.**

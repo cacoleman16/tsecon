@@ -53,3 +53,26 @@ def test_cw_and_gw_match_fixture():
     gw = tsecon.gw_test(e1**2, e2**2, lrv_lags=L)
     assert gw["gw_stat"] == pytest.approx(FE2["giacomini_white_uncond"]["stat"], rel=1e-9)
     assert gw["df"] == 1
+
+
+def test_absorbed_regressor_raises_not_a_t_statistic():
+    """A regressor constant within every entity is annihilated by the
+    within transformation; the old positive-definiteness guard returned a
+    publishable cluster t for it unless the residue was bit-exactly zero
+    (audit rounds 2-4, finding 1). linearmodels refuses this design, and
+    the docstring promises its conventions -- so must we, at every
+    se_type, for entity constants stored as ordinary doubles too."""
+    rng = np.random.default_rng(20260813)
+    n_ent, n_per = 20, 8
+    live = rng.standard_normal((n_ent, n_per))
+    outcome = 0.9 * live + rng.standard_normal((n_ent, n_per))
+    for label, col in [
+        ("log land area", np.log(7.3 * (np.arange(n_ent) + 2.0))),
+        ("share in [0,1]", ((np.arange(n_ent) * 37 % 97) + 0.5) / 98.0),
+        ("founding year", 1950.0 + 3.0 * np.arange(n_ent)),
+    ]:
+        dead = np.repeat(col[:, None], n_per, axis=1)
+        regressors = np.stack([live, dead])
+        for se in ("cluster", "nonrobust", "driscoll_kraay"):
+            with pytest.raises(ValueError, match="constant within"):
+                tsecon.panel_fe(outcome, regressors, se_type=se)

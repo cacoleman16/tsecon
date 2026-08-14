@@ -371,7 +371,10 @@ Three results are worth naming here rather than leaving on the page:
   nominal 90% pointwise IRF band contains the *whole* 13-horizon path in 72.2%
   of samples at `T=500`; nominal 95% marginal `var_forecast` bands contain every
   horizon and series at once in 40.9% at `T=100` and still only 48.1% at
-  `T=800`. No function in the library reports a simultaneous (sup-t) band.
+  `T=800`. The simultaneous (sup-t) band that closes this gap now ships —
+  `band="sup-t"` on `var_irf_bands`, `var_forecast`, and the `lp` family — with
+  its joint coverage measured in
+  [the interval-coverage audit](../examples/interval-coverage.md).
 - **`iv_gmm(weight="hac")` with the default bandwidth *was* bit-identical to
   `weight="robust"`** — max |Δse| = `0.000e+00` over 3000 replications, because
   `bandwidth` defaulted to `0.0` and a Bartlett kernel truncated at zero lags
@@ -512,17 +515,18 @@ library with lying documentation.
 
 ## 3 · The Python test files
 
-36 of the 49 files in
+37 of the 51 files in
 [`bindings/python/tests/`](../../bindings/python/tests), with collected test
-counts. The 13 not listed here are a gap in *this table*, not in the suite —
+counts. The 14 not listed here are a gap in *this table*, not in the suite —
 every one of them runs on every invocation of the command above:
 
 | File | Tests | What it covers |
 |---|---:|---|
+| `test_arima_seasonal.py` | 5 | Seasonal ARIMA through the Python surface: the airline model against `sarima.json` (fit parity, naming, output shape), seasonal-argument parsing/errors, and the closed-form seasonal random-walk forecast law. |
 | `test_backtest.py` | 4 | Pseudo-out-of-sample backtest engine; no external golden — the naive forecaster makes every quantity a closed form checked against NumPy. |
 | `test_coint_regime.py` | 3 | Johansen / Engle-Granger cointegration and Markov-switching AR against `coint.json` and `regime.json`. |
 | `test_cv_splits.py` | 4 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored. |
-| `test_replication_ramey_zubairy.py` | 4 | The RZ government-spending replication, offline against the committed panel: multiplier below one across horizons, strong first stage, and a guard that it is not the outcome-only cumulative trap. |
+| `test_replication_ramey_zubairy.py` | 3 | The RZ government-spending replication, offline against the committed panel: multiplier below one across horizons (with the first stage asserted strong inside it), and a guard that it is not the outcome-only cumulative trap. |
 | `test_replication_yield_curve.py` | 2 | The Estrella-Mishkin yield-curve recession probit, offline against the committed FRED snapshot: the spread coefficient stays significantly negative. |
 | `test_depth.py` | 4 | Realized volatility / HAR-RV, Diebold-Yilmaz connectedness, PCA factor model vs `{realized,connect,favar}.json`. |
 | `test_dynamic_ns.py` | 4 | Dynamic Nelson-Siegel (Diebold-Li 2006) two-step fit; row-100 cross-sectional golden anchors the per-date fit exactly. |
@@ -648,8 +652,11 @@ discover.
 
 **Validation strength.**
 
-- **16 of the 40 estimator families are documented-formula goldens, not
-  cross-implementation checks.** No independent package computes the quantity,
+- **A substantial share of the estimator families are documented-formula
+  goldens, not cross-implementation checks.** (No summary tally is quoted here
+  — the one that used to sit in this sentence went stale twice; the
+  [validation matrix](validation-matrix.md) grades every row.) No independent
+  package computes the quantity,
   so the generator transcribes the published closed form into NumPy and pins
   the crate to it. This proves the Rust reproduces the documented algebra; it
   does *not* independently confirm the algebra is the statistically right

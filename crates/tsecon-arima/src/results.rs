@@ -61,10 +61,12 @@ pub struct ArimaResults {
     pub converged: bool,
     params: Vec<f64>,
     param_names: Vec<String>,
-    /// The ARMA estimation sample (the `d`-times-differenced data).
+    /// The ARMA estimation sample (the fully differenced data).
     x: Vec<f64>,
-    /// Undifferencing anchors (see [`crate::diff`]).
+    /// Regular undifferencing anchors (see [`crate::diff`]).
     anchors: Vec<f64>,
+    /// Seasonal undifferencing anchors (see [`crate::diff`]).
+    seasonal_anchors: Vec<Vec<f64>>,
 }
 
 impl ArimaResults {
@@ -80,6 +82,7 @@ impl ArimaResults {
         converged: bool,
         x: Vec<f64>,
         anchors: Vec<f64>,
+        seasonal_anchors: Vec<Vec<f64>>,
     ) -> Self {
         let k = spec.k_params();
         debug_assert_eq!(params.len(), k);
@@ -98,6 +101,7 @@ impl ArimaResults {
             param_names: spec.param_names(),
             x,
             anchors,
+            seasonal_anchors,
         }
     }
 
@@ -130,16 +134,48 @@ impl ArimaResults {
         &self.params[c + self.spec.p()..c + self.spec.p() + self.spec.q()]
     }
 
+    /// The fitted seasonal AR coefficients `Phi_1..Phi_P` (empty for a
+    /// non-seasonal specification).
+    pub fn seasonal_ar(&self) -> &[f64] {
+        let at = usize::from(self.spec.include_constant()) + self.spec.p() + self.spec.q();
+        &self.params[at..at + self.spec.seasonal_p()]
+    }
+
+    /// The fitted seasonal MA coefficients `Theta_1..Theta_Q` (empty for
+    /// a non-seasonal specification).
+    pub fn seasonal_ma(&self) -> &[f64] {
+        let at = usize::from(self.spec.include_constant())
+            + self.spec.p()
+            + self.spec.q()
+            + self.spec.seasonal_p();
+        &self.params[at..at + self.spec.seasonal_q()]
+    }
+
     /// The fitted innovation variance `sigma2`.
     pub fn sigma2(&self) -> f64 {
         self.params[self.params.len() - 1]
+    }
+
+    /// The multiplied-out dense AR and MA coefficient vectors at the
+    /// fitted parameters — `phi(L)Phi(L^s)` and `theta(L)Theta(L^s)`.
+    fn expanded_polys(&self) -> (Vec<f64>, Vec<f64>) {
+        (
+            crate::spec::multiply_lag_polys(
+                self.ar(),
+                self.seasonal_ar(),
+                self.spec.period(),
+                -1.0,
+            ),
+            crate::spec::multiply_lag_polys(self.ma(), self.seasonal_ma(), self.spec.period(), 1.0),
+        )
     }
 
     /// The state-space form at the fitted parameters, with the intercept
     /// overridden — the hook the drift-uncertainty derivative needs
     /// (everything else about the model is held fixed).
     fn model_at(&self, intercept: f64) -> Result<LinearGaussianSSM, ArimaError> {
-        arma_ssm(self.ar(), self.ma(), self.sigma2(), intercept)
+        let (ar_full, ma_full) = self.expanded_polys();
+        arma_ssm(&ar_full, &ma_full, self.sigma2(), intercept)
     }
 
     /// The state-space form at the fitted parameters.
@@ -166,9 +202,10 @@ impl ArimaResults {
     /// actually computed, which is why this dispatches on the method.
     fn neg_loglik_at(&self, params: &[f64]) -> Result<f64, ArimaError> {
         let blocks = self.spec.unpack(params)?;
+        let (ar_full, ma_full) = blocks.expanded(self.spec.period());
         match self.method {
             EstimationMethod::ExactMle | EstimationMethod::Fixed => {
-                let model = arma_ssm(blocks.ar, blocks.ma, blocks.sigma2, blocks.constant)?;
+                let model = arma_ssm(&ar_full, &ma_full, blocks.sigma2, blocks.constant)?;
                 let n = self.x.len();
                 let y_mat = Mat::from_fn(n, 1, |i, _| self.x[i]);
                 let ll = model.loglike(y_mat.as_ref())?;
@@ -182,7 +219,7 @@ impl ArimaResults {
                 }
             }
             EstimationMethod::Css => {
-                let (ssr, n_c) = css_ssr(&self.x, blocks.constant, blocks.ar, blocks.ma).ok_or(
+                let (ssr, n_c) = css_ssr(&self.x, blocks.constant, &ar_full, &ma_full).ok_or(
                     ArimaError::NonFinite {
                         what: "the conditional-sum-of-squares recursion at a probe \
                                parameter vector",
@@ -351,38 +388,89 @@ impl ArimaResults {
 
         let m = model.state_dim();
         let d = self.spec.d();
-        let mm = m + d;
+        let sd = self.spec.seasonal_d();
+        let s = self.spec.period();
+        let mm = m + d + sd * s;
         let sigma2 = self.sigma2();
 
-        // Augmented transition: the ARMA block, plus one cumulator row
-        // per difference order. With Z = e_1', row (m + i) carries
-        // Z T = (first row of T) on the ARMA columns and ones on
-        // cumulator columns m..=m+i; the disturbance loading of every
-        // cumulator is Z R = 1 and its intercept Z c = c.
+        // Augmented transition: the ARMA block; one cumulator row per
+        // regular difference order; and one s-long delay line per
+        // seasonal difference order. With Z = e_1', cumulator row (m + i)
+        // carries Z T = (first row of T) on the ARMA columns and ones on
+        // cumulator columns m..=m+i, so cumulator m + i tracks the
+        // (d-1-i)-times-regularly-differenced series and the last
+        // cumulator tracks the seasonally-differenced-only series.
+        //
+        // Undoing a seasonal difference v_t = w_t + v_{t-s} needs the
+        // last s values of v, so each seasonal stage k (from the
+        // most-differenced down to the level) is a delay line
+        // [v_t, v_{t-1}, .., v_{t-s+1}]: its head row is the row
+        // producing the new value one stage above plus a 1 on its own
+        // oldest element (v_{t+1-s}), and the remaining rows shift. The
+        // innovation loading and the intercept telescope through every
+        // "new current value" row exactly once (Z R = 1, Z c = c).
         let t_mat = model.t().at(0);
         let r_mat = model.r().at(0);
-        let t_star = Mat::from_fn(mm, mm, |i, j| {
-            if i < m && j < m {
-                t_mat[(i, j)]
-            } else if i >= m && j < m {
-                t_mat[(0, j)]
-            } else if i >= m && j >= m && j <= i {
-                1.0
-            } else {
-                0.0
+        let mut rows = vec![vec![0.0; mm]; mm];
+        for (i, row) in rows.iter_mut().enumerate().take(m) {
+            for (j, v) in row.iter_mut().enumerate().take(m) {
+                *v = t_mat[(i, j)];
             }
-        });
+        }
+        for i in 0..d {
+            for j in 0..m {
+                rows[m + i][j] = t_mat[(0, j)];
+            }
+            for v in &mut rows[m + i][m..=m + i] {
+                *v = 1.0;
+            }
+        }
+        // The row producing the new value of the series one stage above
+        // the delay line being built: the last regular cumulator, or the
+        // new ARMA observation when d = 0.
+        let mut chain = if d > 0 {
+            rows[m + d - 1].clone()
+        } else {
+            let mut r = vec![0.0; mm];
+            r[..m].copy_from_slice(&(0..m).map(|j| t_mat[(0, j)]).collect::<Vec<f64>>());
+            r
+        };
+        for b in 0..sd {
+            let base = m + d + b * s;
+            chain[base + s - 1] += 1.0;
+            rows[base] = chain.clone();
+            for j in 1..s {
+                rows[base + j][base + j - 1] = 1.0;
+            }
+        }
+        let t_star = Mat::from_fn(mm, mm, |i, j| rows[i][j]);
+
+        // "New current value" rows: the ARMA head state, every regular
+        // cumulator, and the head of every seasonal delay line.
+        let is_current = |i: usize| -> bool {
+            i == 0 || (i >= m && i < m + d) || (i >= m + d && (i - m - d) % s == 0)
+        };
         let r_star: Vec<f64> = (0..mm)
-            .map(|i| if i < m { r_mat[(i, 0)] } else { 1.0 })
+            .map(|i| {
+                if i < m {
+                    r_mat[(i, 0)]
+                } else if is_current(i) {
+                    1.0
+                } else {
+                    0.0
+                }
+            })
             .collect();
         let c_star: Vec<f64> = (0..mm)
-            .map(|i| if i == 0 || i >= m { intercept } else { 0.0 })
+            .map(|i| if is_current(i) { intercept } else { 0.0 })
             .collect();
 
         // Initial augmented moments at the forecast origin T: the
         // filtered ARMA state, and the (exactly known) undifferencing
-        // anchors — cumulator m + i tracks the (d-1-i)-times-differenced
-        // series, so the last cumulator is the level.
+        // anchors. Cumulator m + i takes the terminal value of the
+        // (d-1-i)-times-regularly-differenced series; seasonal delay
+        // line b (stage k = D-1-b, so the last line is the level) takes
+        // the last s in-sample values of that stage, most recent first.
         // `filtered_state` is non-empty because `difference` guarantees
         // at least one observation.
         let a_last = &out.filtered_state[n - 1];
@@ -391,8 +479,15 @@ impl ArimaResults {
             .map(|i| {
                 if i < m {
                     a_last[i]
-                } else {
+                } else if i < m + d {
                     self.anchors[d - 1 - (i - m)]
+                } else {
+                    let b = (i - m - d) / s;
+                    let j = (i - m - d) % s;
+                    let stage = &self.seasonal_anchors[sd - 1 - b];
+                    // Chronological storage (most recent last) read
+                    // backwards: element j holds the value j steps back.
+                    stage[s - 1 - j]
                 }
             })
             .collect();
@@ -408,7 +503,13 @@ impl ArimaResults {
             },
         );
 
-        let obs_idx = if d == 0 { 0 } else { mm - 1 };
+        let obs_idx = if sd > 0 {
+            m + d + (sd - 1) * s
+        } else if d > 0 {
+            mm - 1
+        } else {
+            0
+        };
         let mut mean = Vec::with_capacity(steps);
         let mut se = Vec::with_capacity(steps);
         let mut a_next = vec![0.0; mm];

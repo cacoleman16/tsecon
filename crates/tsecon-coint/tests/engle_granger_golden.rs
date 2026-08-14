@@ -337,3 +337,24 @@ fn single_series_is_rejected() {
     .unwrap_err();
     assert!(matches!(err, CointError::Dimension { .. }), "{err:?}");
 }
+
+/// A sample with no more rows than step-1 design columns must raise a
+/// typed error, not panic inside the QR least-squares solve (audit round
+/// 2: the `(0, 2)` and `(1, 2)` shapes raised `PanicException` through
+/// the Python boundary, which `except Exception` cannot catch).
+#[test]
+fn short_sample_is_rejected_not_a_panic() {
+    for (rows, cols, trend) in [
+        (0usize, 2usize, EngleGrangerTrend::None),
+        (1, 2, EngleGrangerTrend::None),
+        (2, 2, EngleGrangerTrend::Constant),
+        (3, 2, EngleGrangerTrend::ConstantTrend),
+    ] {
+        let m = Mat::<f64>::from_fn(rows, cols, |i, j| (i + 2 * j) as f64);
+        let err = engle_granger(m.as_ref(), trend, AdfLagSelection::Fixed(0)).unwrap_err();
+        assert!(
+            matches!(err, CointError::Dimension { .. }),
+            "rows={rows}: {err:?}"
+        );
+    }
+}

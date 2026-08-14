@@ -254,6 +254,50 @@ pub(crate) fn fit_within(
         }
     }
 
+    // Rank guard on the within-transformed design. The Cholesky below is a
+    // positive-definiteness test, not a rank test: it passes on a design
+    // the within transformation has annihilated unless the residue is
+    // bit-exactly zero — an entity-constant regressor stored as ordinary
+    // doubles (log land area, a share in [0, 1]) demeans to an O(1e-16)
+    // residue that survives it, and the cluster covariance then launders
+    // the blown-up bread into a publishable t-statistic. linearmodels
+    // deliberately refuses this design (`AbsorbingEffectError`) and the
+    // docstring promises its conventions. Two scale-invariant checks:
+    //
+    // * per-column absorption: the demeaned column norm collapses
+    //   relative to the raw column norm exactly when the fixed effects
+    //   absorb the regressor;
+    // * joint rank: the numpy/linearmodels singular-value criterion
+    //   (`sigma_min <= sigma_max * max(n, k) * eps`) catches duplicated
+    //   and linearly dependent demeaned columns — and, unlike the old
+    //   guard, accepts a merely ill-conditioned design, so the check is
+    //   monotone in the perturbation.
+    const ABSORPTION_TOL: f64 = 1e-10;
+    for (j, col) in x_cols.iter().enumerate() {
+        let raw = col.iter().map(|v| v * v).sum::<f64>().sqrt();
+        let within = (0..n).map(|r| xd[(r, j)] * xd[(r, j)]).sum::<f64>().sqrt();
+        if within <= ABSORPTION_TOL * raw {
+            return Err(PanelError::SingularDesign {
+                what: "within (fixed-effects) OLS: a regressor is constant within \
+                       every entity, so the fixed effects absorb it and no within \
+                       variation remains to identify its coefficient",
+            });
+        }
+    }
+    let svd = xd.thin_svd().map_err(|_| PanelError::SingularDesign {
+        what: "within (fixed-effects) OLS: the singular-value decomposition of the \
+               demeaned design failed",
+    })?;
+    let sv: Vec<f64> = svd.S().column_vector().iter().copied().collect();
+    let smax = sv.iter().copied().fold(0.0_f64, f64::max);
+    let rank_tol = smax * (n.max(k) as f64) * f64::EPSILON;
+    if smax <= 0.0 || sv.iter().any(|&v| v <= rank_tol) {
+        return Err(PanelError::SingularDesign {
+            what: "within (fixed-effects) OLS: the demeaned design is rank-deficient \
+                   (duplicated or linearly dependent regressors)",
+        });
+    }
+
     let ymat = Mat::from_fn(n, 1, |r, _| yd[r]);
     let xtx = xd.transpose() * &xd;
     let xtx_inv = xtx

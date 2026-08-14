@@ -6,15 +6,20 @@
 //! statsmodels `SARIMAX`, and the golden fixture `fixtures/arima.json`
 //! arbitrates:
 //!
-//! * [`ArimaSpec`] — the ARIMA(p, d, q) specification (optional constant;
-//!   seasonal orders are `// TODO(phase0)` and slot into the same
-//!   struct);
+//! * [`ArimaSpec`] — the ARIMA(p, d, q) specification (optional
+//!   constant), with multiplicative seasonal orders `(P, D, Q)_s` added
+//!   through [`ArimaSpec::seasonal`]: the seasonal and regular lag
+//!   polynomials are multiplied into a single dense
+//!   ARMA(p + s*P, q + s*Q) that runs through the same engine, golden-
+//!   pinned to statsmodels `SARIMAX(seasonal_order=...)` on the airline
+//!   model (`fixtures/sarima.json`);
 //! * [`arma_ssm`] — the Harvey (1989) / Jones (1980) canonical
 //!   state-space form with state dimension `max(p, q + 1)`, stationary
 //!   (discrete-Lyapunov) initialization, and the constant entering the
 //!   state equation exactly as statsmodels `SARIMAX(trend='c')`;
-//! * differencing (`d > 0`) is **simple differencing**: the data are
-//!   differenced `d` times and the ARMA fits the differences, losing `d`
+//! * differencing (`d > 0`, `D > 0`) is **simple differencing**: the
+//!   data are seasonally differenced `D` times and then differenced `d`
+//!   times, and the ARMA fits the differences, losing `d + D*s`
 //!   observations (statsmodels `simple_differencing=True`); the levels
 //!   state-space form is `// TODO(phase0)`;
 //! * [`ArimaSpec::fit`] — exact Gaussian MLE: the Monahan (1984)

@@ -1947,11 +1947,21 @@ fn mcmc_diagnostics<'py>(
     Ok(d)
 }
 
-/// Fit an ARIMA(p,d,q) by exact Gaussian maximum likelihood on the
-/// state-space engine (Monahan-transformed L-BFGS with Nelder-Mead
-/// polish; Hannan-Rissanen starting values). `d > 0` uses simple
-/// differencing (the statsmodels simple_differencing=True convention),
-/// and forecasts are undifferenced with exact cumulative variance.
+/// Fit an ARIMA(p,d,q) — optionally a seasonal SARIMA(p,d,q)(P,D,Q)_s
+/// via `seasonal=(P, D, Q, s)` — by exact Gaussian maximum likelihood on
+/// the state-space engine (Monahan-transformed L-BFGS with Nelder-Mead
+/// polish; Hannan-Rissanen starting values). `d > 0` (and `D > 0`) uses
+/// simple differencing (the statsmodels simple_differencing=True
+/// convention, seasonal difference applied first), and forecasts are
+/// undifferenced with exact cumulative variance.
+///
+/// The seasonal model is the multiplicative Box-Jenkins form: the
+/// airline model on log passengers is
+/// `arima_fit(np.log(air), p=0, d=1, q=1, seasonal=(0, 1, 1, 12),
+/// constant=False)`. Seasonal parameters are named statsmodels-style
+/// (`ar.S.L12`, `ma.S.L12`) and validated against
+/// `SARIMAX(order, seasonal_order, simple_differencing=True)` on the
+/// airline model itself (`fixtures/sarima.json`).
 ///
 /// With `forecast_steps > 0`, `conf_alpha` (default None) additionally
 /// returns `forecast_lower`/`forecast_upper`: the symmetric Gaussian
@@ -1981,8 +1991,8 @@ fn mcmc_diagnostics<'py>(
 /// `cov_ok=False` when the information matrix is too ill-conditioned to
 /// invert honestly, which is a refusal, not a failure of the fit.
 #[pyfunction]
-#[pyo3(signature = (y, p = 1, d = 0, q = 0, constant = true, forecast_steps = 0,
-                    conf_alpha = None, drift_uncertainty = false))]
+#[pyo3(signature = (y, p = 1, d = 0, q = 0, seasonal = None, constant = true,
+                    forecast_steps = 0, conf_alpha = None, drift_uncertainty = false))]
 #[allow(clippy::too_many_arguments)]
 fn arima_fit<'py>(
     py: Python<'py>,
@@ -1990,6 +2000,7 @@ fn arima_fit<'py>(
     p: usize,
     d: usize,
     q: usize,
+    seasonal: Option<Vec<i64>>,
     constant: bool,
     forecast_steps: usize,
     conf_alpha: Option<f64>,
@@ -2011,9 +2022,28 @@ fn arima_fit<'py>(
              estimated drift, so the correction would be identically zero",
         ));
     }
-    let spec = tsecon_arima::ArimaSpec::new(p, d, q)
+    let mut spec = tsecon_arima::ArimaSpec::new(p, d, q)
         .map_err(to_py)?
         .with_constant(constant);
+    if let Some(v) = seasonal {
+        if v.len() != 4 {
+            return Err(PyValueError::new_err(format!(
+                "seasonal must have exactly four entries (P, D, Q, s), got {} — e.g. \
+                 seasonal=(0, 1, 1, 12) for the airline model, or None for a \
+                 non-seasonal ARIMA",
+                v.len()
+            )));
+        }
+        if v.iter().any(|&x| x < 0) {
+            return Err(PyValueError::new_err(
+                "the seasonal orders (P, D, Q, s) must be non-negative integers — \
+                 e.g. seasonal=(0, 1, 1, 12) for the airline model",
+            ));
+        }
+        spec = spec
+            .seasonal(v[0] as usize, v[1] as usize, v[2] as usize, v[3] as usize)
+            .map_err(to_py)?;
+    }
     let r = spec.fit(&vec1(&y)).map_err(to_py)?;
     let dct = PyDict::new(py);
     dct.set_item("params", r.params().to_vec().into_pyarray(py))?;
@@ -2923,7 +2953,15 @@ fn align_proxy(pv: Vec<f64>, n_obs: usize, lags: usize, t: usize) -> PyResult<Ve
     if pv.len() == t {
         Ok(pv)
     } else if pv.len() == n_obs {
-        Ok(pv[lags..].to_vec())
+        // `get` rather than a slice: with `lags > n_obs` a raw `pv[lags..]`
+        // panics (PanicException escapes `except Exception`) instead of
+        // raising the shape error below.
+        pv.get(lags..).map(<[f64]>::to_vec).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "lags = {lags} exceeds the {n_obs} observations, so no residual \
+                 sample remains to align the proxy against",
+            ))
+        })
     } else {
         Err(PyValueError::new_err(format!(
             "proxy length {} must equal the number of observations {} or the \
@@ -3142,7 +3180,19 @@ fn proxy_ar_sets<'py>(
     let proxy_aligned = align_proxy(vec1(&proxy), n_obs, lags, t)?;
 
     let moment = match variance {
-        "hc0" => ArVariance::Hc0,
+        // `hac_lags` only parameterizes the HAC estimator; accepting it
+        // under "hc0" would make it a silent no-op (audit round 5).
+        "hc0" => {
+            if hac_lags.is_some() {
+                return Err(PyValueError::new_err(
+                    "hac_lags was given but variance=\"hc0\" ignores it: pass \
+                     variance=\"hac\" to use a HAC moment variance (hac_lags then \
+                     sets its lag count; omit it for the Newey-West rule), or drop \
+                     hac_lags",
+                ));
+            }
+            ArVariance::Hc0
+        }
         "hac" => ArVariance::HacBartlett {
             lags: hac_lags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(t)),
         },

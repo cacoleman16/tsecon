@@ -177,6 +177,17 @@ pub fn engle_granger(
     let n = endog.nrows();
     let n_det = trend.n_det();
     let n_reg = n_det + (k - 1);
+    // The least-squares solve requires a tall design; without this check a
+    // short sample panics inside the QR instead of raising.
+    if n <= n_reg {
+        return Err(CointError::Dimension {
+            what: "the Engle-Granger step-1 regression needs strictly more rows than \
+                   design columns (the deterministic terms plus the k - 1 regressor \
+                   series); supply more observations — rows",
+            expected: n_reg + 1,
+            got: n,
+        });
+    }
 
     // Step 1: design [deterministics, series 1..k-1], response series 0.
     // The trend column runs 1..=n, matching statsmodels `add_trend`; the
