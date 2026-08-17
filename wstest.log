@@ -1,0 +1,143 @@
+   Compiling tsecon-hac v0.2.0 (/home/user/tsecon/crates/tsecon-hac)
+   Compiling tsecon-bayes v0.2.0 (/home/user/tsecon/crates/tsecon-bayes)
+   Compiling tsecon-filters v0.2.0 (/home/user/tsecon/crates/tsecon-filters)
+   Compiling tsecon-ml v0.2.0 (/home/user/tsecon/crates/tsecon-ml)
+   Compiling tsecon-ident v0.2.0 (/home/user/tsecon/crates/tsecon-ident)
+   Compiling tsecon-diag v0.2.0 (/home/user/tsecon/crates/tsecon-diag)
+   Compiling tsecon-var v0.2.0 (/home/user/tsecon/crates/tsecon-var)
+   Compiling tsecon-lp v0.2.0 (/home/user/tsecon/crates/tsecon-lp)
+   Compiling tsecon-favar v0.2.0 (/home/user/tsecon/crates/tsecon-favar)
+   Compiling tsecon-forecast v0.2.0 (/home/user/tsecon/crates/tsecon-forecast)
+   Compiling tsecon-termstructure v0.2.0 (/home/user/tsecon/crates/tsecon-termstructure)
+   Compiling tsecon-panelts v0.2.0 (/home/user/tsecon/crates/tsecon-panelts)
+   Compiling tsecon-nowcast v0.2.0 (/home/user/tsecon/crates/tsecon-nowcast)
+   Compiling tsecon-coint v0.2.0 (/home/user/tsecon/crates/tsecon-coint)
+   Compiling tsecon-panelroot v0.2.0 (/home/user/tsecon/crates/tsecon-panelroot)
+   Compiling tsecon-funcshock v0.2.0 (/home/user/tsecon/crates/tsecon-funcshock)
+   Compiling tsecon-panel v0.2.0 (/home/user/tsecon/crates/tsecon-panel)
+   Compiling tsecon-quantile v0.2.0 (/home/user/tsecon/crates/tsecon-quantile)
+   Compiling tsecon-realized v0.2.0 (/home/user/tsecon/crates/tsecon-realized)
+   Compiling tsecon-midas v0.2.0 (/home/user/tsecon/crates/tsecon-midas)
+   Compiling tsecon-spectest v0.2.0 (/home/user/tsecon/crates/tsecon-spectest)
+   Compiling tsecon-breaks v0.2.0 (/home/user/tsecon/crates/tsecon-breaks)
+   Compiling tsecon-connect v0.2.0 (/home/user/tsecon/crates/tsecon-connect)
+   Compiling tsecon-predreg v0.2.0 (/home/user/tsecon/crates/tsecon-predreg)
+   Compiling tsecon-longmemory v0.2.0 (/home/user/tsecon/crates/tsecon-longmemory)
+   Compiling tsecon-survey v0.2.0 (/home/user/tsecon/crates/tsecon-survey)
+   Compiling tsecon-gmm v0.2.0 (/home/user/tsecon/crates/tsecon-gmm)
+   Compiling tsecon-dsge v0.2.0 (/home/user/tsecon/crates/tsecon-dsge)
+   Compiling tsecon-python v0.2.0 (/home/user/tsecon/bindings/python)
+   Compiling tsecon-recession v0.2.0 (/home/user/tsecon/crates/tsecon-recession)
+   Compiling tsecon-gas v0.2.0 (/home/user/tsecon/crates/tsecon-gas)
+   Compiling tsecon-regime v0.2.0 (/home/user/tsecon/crates/tsecon-regime)
+   Compiling tsecon-garch v0.2.0 (/home/user/tsecon/crates/tsecon-garch)
+   Compiling tsecon-arima v0.2.0 (/home/user/tsecon/crates/tsecon-arima)
+   Compiling tsecon-spectral v0.2.0 (/home/user/tsecon/crates/tsecon-spectral)
+   Compiling tsecon-bootstrap v0.2.0 (/home/user/tsecon/crates/tsecon-bootstrap)
+   Compiling tsecon-ssm v0.2.0 (/home/user/tsecon/crates/tsecon-ssm)
+   Compiling tsecon-linalg v0.2.0 (/home/user/tsecon/crates/tsecon-linalg)
+   Compiling tsecon-rng v0.2.0 (/home/user/tsecon/crates/tsecon-rng)
+   Compiling tsecon-stats v0.2.0 (/home/user/tsecon/crates/tsecon-stats)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 28.68s
+     Running unittests src/lib.rs (target/debug/deps/tsecon_arima-22487246e8f01e67)
+
+running 9 tests
+test cov::tests::invert_is_accurate_under_extreme_scaling ... ok
+test cov::tests::covariance_of_a_gaussian_quadratic_is_the_inverse_curvature ... ok
+test cov::tests::invert_recovers_identity ... ok
+test cov::tests::invert_rejects_exactly_singular ... ok
+test cov::tests::invert_rejects_near_singular_but_keeps_merely_ill_conditioned ... ok
+test cov::tests::log_scale_hessian_is_scale_free_for_a_gaussian_variance ... ok
+test cov::tests::log_scale_flag_falls_back_when_the_parameter_is_not_positive ... ok
+test cov::tests::log_scale_hessian_matches_closed_form_away_from_a_stationary_point ... ok
+test cov::tests::singularity_verdict_is_scale_invariant ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cov_accuracy.rs (target/debug/deps/cov_accuracy-b39345f27fd71c65)
+
+running 5 tests
+test bse_is_scale_free_across_fourteen_decades_of_sigma2 ... ok
+test bse_is_exact_far_below_the_old_absolute_floor ... ok
+test an_unidentified_arma_never_reports_a_confident_standard_error ... ok
+test rank_guard_margins ... ok
+test css_standard_errors_match_ols_on_the_conditional_sample ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.48s
+
+     Running tests/forecast_drift.rs (target/debug/deps/forecast_drift-4daff812560e8234)
+
+running 6 tests
+test drift_anchor_random_walk_closed_form ... ok
+test drift_anchor_holds_through_fit ... ok
+test drift_derivative_matches_ar1_geometric_sum ... ok
+test drift_uncertainty_without_a_constant_is_an_error ... ok
+test default_options_are_byte_identical_to_forecast ... ok
+test coverage_shortfall_and_repair has been running for over 60 seconds
+test coverage_shortfall_and_repair ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 78.94s
+
+     Running tests/golden.rs (target/debug/deps/golden-0d6bdb9167cc1727)
+
+running 4 tests
+test golden_nile_arima111_simple_diff_loglike_fixed ... ok
+test golden_nile_arma11c_forecast_at_fixture_params ... ok
+test golden_arma11_loglike_fixed ... ok
+test golden_nile_arma11c_fit ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.68s
+
+     Running tests/golden_bse.rs (target/debug/deps/golden_bse-7147f5a77ccfd46b)
+
+running 6 tests
+test golden_bse_arma11_no_constant ... ok
+test golden_bse_nile_arma11c ... ok
+test golden_bse_ar2c ... ok
+test golden_bse_arma11c ... ok
+test golden_bse_arima111c ... ok
+test golden_bse_rw_drift_010c ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.17s
+
+     Running tests/properties.rs (target/debug/deps/properties-bee10ff75bff3f8c)
+
+running 12 tests
+test at_params_consistent_with_loglike ... ok
+test error_paths ... ok
+test arma_ssm_matches_ar_constructor ... ok
+test forecast_conf_int ... ok
+test forecast_se_monotone_nondecreasing ... ok
+test mle_recovers_simulated_arima111 ... ok
+test param_cov_dimension_tracks_the_constant ... ok
+test random_walk_forecast_law_exact ... ok
+test residuals_standardized ... ok
+test css_and_mle_agree_on_long_series ... ok
+test css_and_mle_standard_errors_agree_on_long_series ... ok
+test mle_recovers_simulated_arma11c ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 41.34s
+
+     Running tests/seasonal.rs (target/debug/deps/seasonal-0480367846ec8277)
+
+running 8 tests
+test param_names_and_layout ... ok
+test seasonal_differencing_matches_manual ... ok
+test levels_forecast_satisfies_difference_equation ... ok
+test seasonal_random_walk_forecast_law_exact ... ok
+test seasonal_validation_errors ... ok
+test seasonal_expansion_equals_dense_arma ... ok
+test css_and_mle_agree_on_long_seasonal_series has been running for over 60 seconds
+test mle_recovers_simulated_seasonal_ar has been running for over 60 seconds
+test mle_recovers_simulated_seasonal_ar ... ok
+test css_and_mle_agree_on_long_seasonal_series ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 186.50s
+
+     Running tests/seasonal_golden.rs (target/debug/deps/seasonal_golden-c315197494e97278)
+
+running 6 tests
+test golden_airline_loglike_fixed ... ok
+test golden_mixed_sarima_loglike_fixed ... ok
+test golden_airline_levels_forecast ... ok
+test golden_airline_bse_at_recorded_params ... ok

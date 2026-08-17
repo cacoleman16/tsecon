@@ -1,0 +1,39 @@
+🍹 Building a mixed python/rust project
+🐍 Found CPython 3.11 at /home/user/tsecon/.venv/bin/python
+🔗 Found pyo3 bindings with abi3-py3.9 support
+📡 Using build options features from pyproject.toml
+Ignoring matplotlib: markers 'extra == "all"' don't match your environment
+Ignoring polars: markers 'extra == "all"' don't match your environment
+Ignoring matplotlib: markers 'extra == "plots"' don't match your environment
+Ignoring polars: markers 'extra == "polars"' don't match your environment
+Requirement already satisfied: numpy>=1.22 in ./.venv/lib/python3.11/site-packages (2.4.6)
+   Compiling tsecon-stats v0.3.0 (/home/user/tsecon/crates/tsecon-stats)
+   Compiling tsecon-optim v0.3.0 (/home/user/tsecon/crates/tsecon-optim)
+   Compiling tsecon-hac v0.3.0 (/home/user/tsecon/crates/tsecon-hac)
+   Compiling tsecon-linalg v0.3.0 (/home/user/tsecon/crates/tsecon-linalg)
+   Compiling tsecon-rng v0.3.0 (/home/user/tsecon/crates/tsecon-rng)
+   Compiling tsecon-filters v0.3.0 (/home/user/tsecon/crates/tsecon-filters)
+   Compiling tsecon-bootstrap v0.3.0 (/home/user/tsecon/crates/tsecon-bootstrap)
+   Compiling tsecon-spectral v0.3.0 (/home/user/tsecon/crates/tsecon-spectral)
+   Compiling tsecon-ssm v0.3.0 (/home/user/tsecon/crates/tsecon-ssm)
+   Compiling tsecon-diag v0.3.0 (/home/user/tsecon/crates/tsecon-diag)
+   Compiling tsecon-bayes v0.3.0 (/home/user/tsecon/crates/tsecon-bayes)
+   Compiling tsecon-garch v0.3.0 (/home/user/tsecon/crates/tsecon-garch)
+   Compiling tsecon-ident v0.3.0 (/home/user/tsecon/crates/tsecon-ident)
+   Compiling tsecon-mgarch v0.3.0 (/home/user/tsecon/crates/tsecon-mgarch)
+   Compiling tsecon-arima v0.3.0 (/home/user/tsecon/crates/tsecon-arima)
+   Compiling tsecon-var v0.3.0 (/home/user/tsecon/crates/tsecon-var)
+   Compiling tsecon-panelroot v0.3.0 (/home/user/tsecon/crates/tsecon-panelroot)
+   Compiling tsecon-favar v0.3.0 (/home/user/tsecon/crates/tsecon-favar)
+   Compiling tsecon-nowcast v0.3.0 (/home/user/tsecon/crates/tsecon-nowcast)
+   Compiling tsecon-funcshock v0.3.0 (/home/user/tsecon/crates/tsecon-funcshock)
+   Compiling tsecon-connect v0.3.0 (/home/user/tsecon/crates/tsecon-connect)
+   Compiling tsecon-panel v0.3.0 (/home/user/tsecon/crates/tsecon-panel)
+   Compiling tsecon-coint v0.3.0 (/home/user/tsecon/crates/tsecon-coint)
+   Compiling tsecon-longmemory v0.3.0 (/home/user/tsecon/crates/tsecon-longmemory)
+   Compiling tsecon-ml v0.3.0 (/home/user/tsecon/crates/tsecon-ml)
+   Compiling tsecon-breaks v0.3.0 (/home/user/tsecon/crates/tsecon-breaks)
+   Compiling tsecon-quantile v0.3.0 (/home/user/tsecon/crates/tsecon-quantile)
+   Compiling tsecon-predreg v0.3.0 (/home/user/tsecon/crates/tsecon-predreg)
+   Compiling tsecon-panelts v0.3.0 (/home/user/tsecon/crates/tsecon-panelts)
+   Compiling tsecon-gas v0.3.0 (/home/user/tsecon/crates/tsecon-gas)

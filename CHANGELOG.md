@@ -7,6 +7,100 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] - 2026-08-17
+
+### Added — the unit-root battery completed (DF-GLS, Zivot-Andrews)
+
+- **`dfgls`** — the DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996):
+  GLS detrending at the ERS local alternative (c̄ = −7 constant / −13.5 trend),
+  AIC/BIC/t-stat lag selection on the GLS-detrended series, and the trendless
+  ADF regression — statistic, selected lag, and nobs match `arch.unitroot.DFGLS`
+  to < 1e-12 on `fixtures/dfgls.json` (Nile, seeded walks, trend-stationary,
+  noise, fixed-lag/max-lags paths). P-values and critical values transcribe
+  arch's DF-GLS response surfaces bit-for-bit, with the constants re-exported
+  in the fixture so upstream drift is visible (attribution recorded in
+  `THIRD-PARTY-LICENSES.md`, which now also documents the pre-existing
+  MacKinnon-surface transcriptions). The GLS-detrending engine is shared
+  internal machinery the Ng-Perron M-tests will reuse.
+- **`zivot_andrews(y, regression=, trim=, max_lags=, autolag=, lags=)`** — the
+  Zivot-Andrews (1992) unit-root test with one endogenous break (intercept /
+  trend / both): minimum-t over trimmed candidate break dates, statsmodels'
+  Baum single up-front autolag convention matched exactly (break-dummy timing,
+  `int(n*trim)` trimming, the `"t"`-model ramp quirk — all documented in the
+  module), `break_index` reported as the last pre-break observation.
+  P-values/critical values interpolate the statsmodels-simulated null table
+  (transcribed, BSD-3). Golden-pinned in `fixtures/zivot_andrews.json`:
+  24 cases at 1e-10 relative on the statistic with break/lag exact; arch 8.0.0
+  agrees on every expressible case (same Baum lineage — corroboration, not an
+  independent derivation). The card flags the break-only-under-the-alternative
+  criticism and points to Lee-Strazicich.
+
+### Added — STL and the seasonal workflow
+
+- **`stl(y, period, ...)`** — Cleveland et al. (1990) seasonal-trend
+  decomposition using LOESS, a statement-for-statement port of the netlib
+  `stl.f` semantics statsmodels preserves: cycle-subseries seasonal LOESS,
+  3×MA + LOESS low pass, bisquare outer robustness loop, and the jump speedups
+  replicated exactly. Parameters, defaults (trend/low-pass window rules; 2/15
+  vs 5/0 inner/outer under `robust`) and the resolved `config` mirror
+  `statsmodels.tsa.seasonal.STL`; pinned elementwise at 1e-8 (observed ~1e-12)
+  across 20 cases in `fixtures/stl.json`. Requires `n >= 2*period` — R's
+  `stl()` bound, where statsmodels silently misbehaves.
+- **`seasonal_strength(y, period)`** — the Wang-Smith-Hyndman trend/seasonal
+  strength measures from the STL fit, and **`nsdiffs(y, period)`** — the
+  Hyndman-Khandakar seasonal-differencing advisor (D = 1 iff seasonal strength
+  ≥ 0.64, the `forecast::nsdiffs(test="seas")` rule), in the `ndiffs` house
+  style: per-order evidence, stop reason, teaching interpretation.
+
+### Added — threshold autoregression
+
+- **`setar(y, p, delay=1, trim=0.15, delays=None, ic="aic", constant=True)`** —
+  the two-regime self-exciting threshold AR (Tong-Lim 1980) by concentrated
+  least squares (Hansen 1997): trimmed order-statistic threshold grid with a
+  `max(k+1, ceil(trim·n))` per-regime minimum, optional joint delay search on
+  a common sample, per-regime coefficients with classical SEs, pooled and
+  per-regime variances, AIC/BIC, and the full SSR profile. Golden-pinned at
+  1e-10 against an independent NumPy transcription of the published algorithm
+  (`fixtures/setar.json` — graded honestly: no third-party SETAR reference
+  runs in the test environment); MC-validated threshold recovery (median
+  absolute error 0.008 at T=400 over 200 seeded replications, reported on the
+  card).
+- **`setar_test(y, p, delay=1, trim=0.15, n_boot=499, seed=0)`** — the Hansen
+  (1996) sup-F linearity test with the fixed-regressor wild bootstrap; the
+  threshold is unidentified under the null (the Davies problem), so no
+  chi-squared p-value exists or is reported. Rayon-parallel, one seeded Philox
+  substream per replication — bit-identical at any thread count. Statistic
+  golden-pinned; null rejection rate 0.08 at nominal 5% over 200 seeded series.
+
+### Added — EVT tails (the first E11 slice)
+
+- **`gpd_fit`** / **`gev_fit`** — extreme value theory, in the new
+  `tsecon-evt` crate. Peaks-over-threshold GPD MLE over a default 0.90-quantile
+  threshold with observed-information SEs and McNeil-Frey (2000) VaR/ES at the
+  empirical exceedance rate; GEV MLE on block maxima (pre-computed, or series +
+  `block_size`) with return levels. A shared `ln(1+ξx)/ξ` kernel switches to
+  the documented Gumbel/exponential-limit branch below |ξ| = 1e-8 (continuity
+  property-tested); the ξ ≤ −0.5 irregularity is reported but not certified
+  (`se_valid`), and ξ ≤ −1 non-existence (uniform tails) is documented and
+  tested. Golden-pinned to polished `scipy.stats.genpareto`/`genextreme` fits
+  in `fixtures/tsecon-evt.json`: params at 1e-6, log-likelihood at the optimum
+  at 1e-10, SEs at 1e-4, VaR/ES/return levels at 1e-5, on t(3), exponential
+  (ξ = 0 boundary), negative-ξ, and real absolute-log-return data.
+
+### Added — repository (not part of the wheel)
+
+- **`lab/`** — a frontier-methods research bench outside the released surface:
+  a from-scratch Taylor-Letham decomposable forecaster, asymmetric-Laplace
+  score-driven quantiles, DCS robust local levels, LAD-ARMA, and a seeded
+  five-experiment study against the shipped baselines with the losses reported
+  as prominently as the wins (`lab/REPORT.md`). Graduation candidates named:
+  the DCS-t robust local level and a VaR backtest battery.
+- **`docs/roadmap/19-research-contributions.md`** — a ranked
+  research-contribution scan (ten opportunities, a next-quarter shortlist, a
+  venue map), sequenced against the JOSS six-month public-history gate.
+
 ### Added — seasonal ARIMA
 
 - **`arima_fit(..., seasonal=(P, D, Q, s))`** — the multiplicative
@@ -83,7 +177,131 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   files / `13` unlisted, the RZ replication's test count, the
   "16 of the 40" validation split) are corrected or replaced with
   references to surfaces that cannot go stale.
+### Fixed — the confirmed-open audit backlog (rounds 1–4)
+
+- **`lp(se="hac", band=…)` now returns the `cov_se_max_rel_diff` the model
+  card always promised** (the largest relative gap between the band's
+  cross-horizon covariance diagonal and the per-horizon SEs — measured up to
+  9.7% on a routine design, so not a promise about a number that is always
+  ~0). `smooth_lp(band="sup-t")` returns it too; closed-form band routes
+  report `None`.
+- **`growth_at_risk` returns `bse_powell`** — computed, golden-pinned, and
+  walked through the card's "How to read the output" since the feature
+  shipped, but dropped at the binding. At `horizon=4` (where `hac_lags=3`)
+  it differs from `bse` elementwise and was unrecoverable.
+- **`markov_switching_ar` returns the full `(n, k)` smoothed and filtered
+  probability matrices** the docs promised, not just the last regime's
+  column (unrecoverable at `k >= 3`). `smoothed_prob_last_regime` is kept,
+  bit-identical to the last column.
+- **`gmm_nonlinear` now blames the moment function, not `initial`, when the
+  callback's return has the wrong shape** — the old message told the user to
+  reshape `initial`, and following that advice made things worse. The
+  callback's return is validated before the Rust boundary: a bad return names
+  `moments_fn`, states the `(n_obs, n_moments)` 2-D contract, and shows the
+  `return g.reshape(-1, 1)` remedy (which now, verified, converges).
+- **The interval-coverage page is generated-checked against the runner.** The
+  published tables had silently dropped the `ols se_type="hc3"` row (the one
+  estimator 0.2.0 added because of the previous audit — restored with its
+  honest 0.863 UNDER verdict) and carried a second stale row (`iv_gmm` HAC
+  stress at the pre-0.2.0 0.632 where the shipped default measures 0.842).
+  Tables are regenerated from a full fresh run; a new
+  `docs/examples/coverage/check_page.py` + binding-suite test now diff every
+  page row against the runner's probe registry, so a dropped row fails CI
+  instead of a promise.
+- **The functional-shock family now carries the generated-regressor warning
+  the library already prints for FAVAR and dynamic Nelson-Siegel**: `flp`'s
+  per-element `se` conditions on `functional_pca` scores as if they were data
+  (measured se/sd ≈ 0.66, and one-fifth of the truth on one column of the
+  card's own worked example); externally supplied scores are unaffected and
+  `flp_scenario`'s `w'beta` contrasts are algebraically immune — the card,
+  guide, and docstring now say exactly that, and the coverage page's
+  "not measured" list names it.
+- **`ivx_test`'s joint-Wald size caveat is documented where the advice was.**
+  Measured: size 0.056/0.105/0.164/0.269 at k=1/3/5/8 (n=250, ρ=1, δ=−0.9),
+  non-convergent in n (0.22 at n=256000). The card's "keep the defaults" is
+  scoped to the single-predictor test, the horse-race advice now names
+  `alpha=0.50` beyond a few predictors, and `which-model-when.md`'s
+  self-contradiction is resolved. Behaviour is unchanged (bit-identical
+  probe pre/post) — this round documents; a size-restoring joint test is
+  future work.
+- **`panel_lp(jackknife=True)`'s cookbook advice matched the regime where it
+  costs most.** The Dhaene-Jochmans correction fixes the bias but inflates the
+  estimator's variance (+36–53% measured) while the reported `se` comes from
+  the uncorrected fit, costing 6–8pp of coverage at short T — precisely where
+  the cookbook recommended it. The cookbook, card, guide, and docstring now
+  recommend it at moderate-to-long T and say what the `se` ignores at short T.
+- **`iv_gmm`'s docstring leads with its `(x, z, y)` positional order** — three
+  same-shaped float arrays, so a swap coerces cleanly and returns
+  plausible-looking garbage; keywords recommended.
+- **Two stale runtime docstrings fixed, with a tripwire.** `long_memory_d.__doc__`
+  called `se` "asymptotic" — the exact label of the quantity round 1 proved
+  ~25% too narrow; `predictive_regression.__doc__` named a `rho` key that does
+  not exist. Both now name every returned key with the cards' semantics, and a
+  new `test_docstring_keys.py` diffs `sorted(fn(...).keys())` against the
+  docstring for these functions so this drift class fails a test.
+- **`results.plot_estimates` (predictive regressions) renders the "naive
+  normal intervals" caveat on the figure** that `summary()` already printed,
+  so the forest plot can no longer circulate without the warning.
+- **`docs/quickstart.md` no longer ships literal harness markup**, and the
+  stale test-count claims in `README.md`/`testing.md` were re-measured and
+  corrected (README now uses resilient phrasing).
+
 ### Changed — BREAKING
+
+- **`lp(cumulative="both")` and `lp_state(cumulative="both")` no longer pair
+  the cumulative-shock regressor with lag-augmented standard errors.** The
+  regressor is `Σ_{j=0..h} shock_{t+j}`, so nearby base times share *future*
+  shocks that past-lag augmentation cannot project out; the audit measured
+  nominal-95% coverage of **0.472–0.550 at h=12, flat in T**, with the
+  shortfall matching the omitted overlapping-score autocovariance in closed
+  form — and every `band=` route reused that `se`, making a sup-t band
+  narrower than an honest pointwise interval. The default `se` for this mode
+  is now **HAC** with `maxlags >= h` (measured coverage 0.882 at T=400 rising
+  to 0.920 at T=1600), the result stamps `se_method`, and an explicit
+  `se="lag_augmented"` with `cumulative="both"` **raises** — in Rust and in
+  Python — with the closed-form reason and the escape hatch named. Defaults
+  everywhere else are unchanged.
+- **`smooth_lp`'s default CV λ grid is now scale-relative** — the old fixed
+  `1e-2…1e6` ladder was compared against `X'X`, which carries data units
+  squared, so rescaling the shock ×100 pinned `lambda_used` at the grid
+  maximum and changed the unit-normalized IRF by up to 7.6×. The default grid
+  is the same 17-point half-decade ladder anchored to the penalized spline
+  block's mean diagonal (`tr(S'S)/k`) — which transforms exactly as the CV
+  optimum does — making λ selection invariant across eight decades of shock
+  or outcome scale (verified: λ/c² constant to 1e-9, unit IRF drift ≤ 2e-11).
+  Explicitly supplied grids remain absolute and are documented as such.
+- **`bvar_ssvs`'s scale-carrying hyperpriors are now semi-automatic.**
+  `gamma_b` was an absolute Gamma rate on an error *precision* (units 1/y²)
+  and `kappa0`/`kappa1` absolute spike/slab sds on covariance off-diagonals
+  (units 1/y) — so changing the units of `y` (percent → decimal) moved
+  posterior inclusion probabilities by up to 0.543 and flipped 8 selection
+  decisions on the audit's probe, while a Rust doc claimed scale-invariance.
+  The defaults now resolve per equation against the unrestricted-OLS residual
+  variance (`rate = 0.01·s2_j`; sds `0.1/√s2_i`, `10/√s2_i`), exactly
+  reproducing the old semantics at unit-variance data and making the posterior
+  equivariant across eight decades (verified to MC-noise zero: max
+  |Δinclusion| 0.0000, 0 flips). Explicit floats remain the absolute escape
+  hatch and reproduce the old build bit-for-bit.
+- **`har_rv` now defaults `use_correction=True`**, so the whole library takes
+  the finite-sample `n/(n−k)` HAC scaling by default. It was the one HAC
+  surface defaulting `False`, and the docs told the story backwards —
+  `expectations.md` said tsecon's `True` default *matched* statsmodels when
+  statsmodels `cov_type="HAC"` defaults `False` (its `cov_hac_simple` helper,
+  inconsistently, defaults `True`). `bse` and `tvalues` move by exactly
+  `sqrt(n/(n−k))` — +0.35% at the golden fixture's n=577, k=4;
+  `use_correction=False` restores the old numbers and is the bit-for-bit
+  match for a *default* statsmodels `cov_type="HAC"` call. Every docstring,
+  card, cookbook, and migration-guide claim now states which way each library
+  defaults.
+- **`cv_splits(purge=…, embargo=…)` can no longer be silently ignored.**
+  On `expanding`/`rolling`, `purge` now acts — the last `purge` rows are
+  dropped from the end of each training window (the López de Prado purge
+  adapted to walk-forward; test geometry unchanged) — and nonzero `embargo`
+  **raises**: a walk-forward training window ends before its own test block by
+  construction, so an embargo has nothing to remove, and implementing it would
+  be a permanent no-op wearing an argument's name. The guide's claim that
+  these schemes "handle leakage automatically" was false for h-step labels
+  and is rewritten.
 
 - **`long_memory_d`'s `se` changed meaning, and the number it reports moves.**
   It used to be the large-*m* asymptotic closed form — `pi/sqrt(24m)` for GPH,

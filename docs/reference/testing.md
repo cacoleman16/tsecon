@@ -32,7 +32,7 @@ here, so that is what is labelled.
 | Python binding tests | **662 collected, 0 failed** in 16 s (extras-gated files skip collection without matplotlib/scipy; 7 runtime skips without statsmodels/arch) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 41, **every one** with a `tests/` directory | |
 | Golden fixtures | 69 JSON files, produced by 50 generator scripts | `fixtures/` |
-| Public Python functions | 128, of which **124** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4--python-binding-tests) names the gap |
+| Public Python functions | 128, of which **124** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
 
 All 7 ignored tests are in `tsecon-var`, and each `#[ignore]` gives its reason:
 three stored-bit-pattern fingerprints that are platform-specific, three
@@ -277,7 +277,7 @@ cannot cover:
   propagation that are precisely what this tier exists to check, and precisely
   what a Rust golden structurally cannot see. Nothing in the suite fails because
   of this today; it is listed again under
-  [what is not tested](#5--what-is-not-tested).
+  [what is not tested](#5-what-is-not-tested).
 
 ### Tier 5 — Monte Carlo validation
 
