@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**128 functions.**
+**137 functions.**
 
 ## diagnostics
 
@@ -92,6 +92,34 @@ def phillips_perron(
 
 Phillips-Perron unit-root test (Z-tau/Z-alpha) with MacKinnon p-values.
 
+### `dfgls`
+
+```python
+def dfgls(
+    y: _ArrayLike,
+    regression: str = ...,
+    lags: int | None = ...,
+    max_lags: int | None = ...,
+    method: str = ...,
+) -> dict[str, Any]:
+```
+
+DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996; null: unit root).
+
+    The ADF test run on a GLS-detrended series (quasi-differenced at the ERS
+    local alternative, cbar = -7.0 for "c", -13.5 for "ct") with no
+    deterministics in the test regression — near-optimal local power, the
+    recommended default over plain ADF. `regression`: "c" (constant, default)
+    or "ct" (constant + trend). `lags`: fixed lag count; None selects it by
+    `method` ("aic" default, "bic", "t-stat") on the OLS-detrended series
+    (Perron-Qu 2007) searching 0..=`max_lags` (default: Schwert's
+    ceil(12*(n/100)^(1/4)), capped at (n-1)/2 - 1). When `lags` is given,
+    `method`/`max_lags` are ignored (arch behavior). Returns `statistic`,
+    `p_value`, `used_lag`, `nobs` (= n - 1 - used_lag), `crit`
+    ({"1%","5%","10%"}), `trend`. Statistic and selected lag match
+    arch.unitroot.DFGLS (< 1e-10); p-values/critical values are arch's DF-GLS
+    response surfaces (Sheppard's MacKinnon-style simulations, transcribed).
+
 ### `phillips_ouliaris`
 
 ```python
@@ -106,6 +134,36 @@ def phillips_ouliaris(
 
 Phillips-Ouliaris residual cointegration test (Zt/Za) with MacKinnon N-surfaces.
 
+### `zivot_andrews`
+
+```python
+def zivot_andrews(
+    y: _ArrayLike,
+    regression: str = ...,
+    trim: float = ...,
+    max_lags: int | None = ...,
+    autolag: str | None = ...,
+    lags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Zivot-Andrews unit-root test with one endogenous break.
+
+    Null: unit root with no break; alternative: stationary around one broken
+    deterministic component — `regression` "c" (intercept shift, default),
+    "t" (trend-slope shift), "ct" (both); the regression itself always has a
+    constant and a trend. The statistic is the minimum t on the lagged level
+    over candidate break dates inside the `trim` window (default 0.15, must
+    be in [0, 1/3]); `break_index` is the last pre-break observation (the
+    shift begins at `break_index + 1`). Lag selection follows the
+    statsmodels/Baum single up-front convention on the "ct" base ADF:
+    `autolag` "aic" (default) / "bic" / "t-stat" capped at `max_lags`, or
+    `autolag=None` with `lags` fixed (both None: int(12*(n/100)**0.25)).
+    Pass either `lags` or `autolag`, not both. P-values and critical values
+    interpolate the statsmodels-simulated null table. Returns dict keys:
+    `stat`, `pvalue`, `crit` {"1%","5%","10%"}, `break_index`, `lags`,
+    `nobs`, `trim`, `regression`. Matches statsmodels `zivot_andrews`.
+
 ### `ndiffs`
 
 ```python
@@ -115,6 +173,22 @@ def ndiffs(
 ```
 
 How many differences a series needs, with the per-order test evidence.
+
+### `nsdiffs`
+
+```python
+def nsdiffs(
+    y: _ArrayLike, period: int, alpha: float = ..., max_d: int = ...
+) -> dict[str, Any]:
+```
+
+How many SEASONAL differences a series needs (Hyndman-Khandakar rule).
+
+    D += 1 while the STL seasonal strength is >= 0.64, capped at max_d
+    (the forecast::nsdiffs test="seas" rule; alpha is validated but unused
+    by this threshold rule, as in forecast). Returns `d`, `period`,
+    `threshold`, `alpha`, `max_d`, `stop`, per-order `steps`, and an
+    `interpretation`.
 
 ### `box_cox_lambda`
 
@@ -201,6 +275,10 @@ OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC standard errors.
     The leverage-corrected hc2/hc3 are what matter in small samples with
     influential points; hc1's n/(n-k) factor barely moves. HC is
     heteroskedasticity-robust only -- under serial correlation use "hac".
+
+    HAC matches statsmodels cov_type="HAC" when use_correction is matched;
+    the DEFAULTS differ deliberately (tsecon True, statsmodels False), so
+    pass use_correction=False to reproduce a default statsmodels call.
 
 ## bootstrap
 
@@ -551,18 +629,18 @@ def bvar_ssvs(
     c1: float = ...,
     prior_inclusion: float = ...,
     ssvs_cov: bool = ...,
-    kappa0: float = ...,
-    kappa1: float = ...,
+    kappa0: float | None = ...,
+    kappa1: float | None = ...,
     prior_inclusion_cov: float = ...,
     gamma_a: float = ...,
-    gamma_b: float = ...,
+    gamma_b: float | None = ...,
     horizon: int = ...,
     thin: int = ...,
     n_chains: int = ...,
 ) -> dict[str, Any]:
 ```
 
-SSVS-BVAR (George-Sun-Ni 2008): spike-and-slab stochastic-search selection of VAR (and error-precision) restrictions by Gibbs; posterior inclusion probabilities, coef/Sigma means, and orthogonalized IRF draws.
+SSVS-BVAR (George-Sun-Ni 2008): spike-and-slab stochastic-search selection of VAR (and error-precision) restrictions by Gibbs; posterior inclusion probabilities, coef/Sigma means, and orthogonalized IRF draws. Default hyperpriors are unit-adaptive (None = scale by the per-equation OLS residual variance); explicit gamma_b/kappa0/kappa1 floats pin absolute prior scales.
 
 ### `mcmc_diagnostics`
 
@@ -610,6 +688,48 @@ def hamilton_filter(y: _ArrayLike, h: int = ..., p: int = ...) -> dict[str, Any]
 
 Hamilton (2018) regression filter — the modern HP alternative.
 
+### `stl`
+
+```python
+def stl(
+    y: _ArrayLike,
+    period: int,
+    seasonal: int = ...,
+    trend: int | None = ...,
+    low_pass: int | None = ...,
+    seasonal_deg: int = ...,
+    trend_deg: int = ...,
+    low_pass_deg: int = ...,
+    robust: bool = ...,
+    seasonal_jump: int = ...,
+    trend_jump: int = ...,
+    low_pass_jump: int = ...,
+    inner_iter: int | None = ...,
+    outer_iter: int | None = ...,
+) -> dict[str, Any]:
+```
+
+STL seasonal-trend decomposition using LOESS (Cleveland et al. 1990).
+
+    Mirrors statsmodels.tsa.seasonal.STL parameter semantics and defaults
+    exactly (matched elementwise at 1e-8; observed ~1e-12); requires
+    n >= 2*period. Returns `seasonal`, `trend`, `resid` (y = seasonal +
+    trend + resid), `weights` (bisquare robustness weights; all 1 unless
+    the outer loop runs), `period`, and `config` (the resolved windows,
+    degrees, jumps, and inner/outer iteration counts).
+
+### `seasonal_strength`
+
+```python
+def seasonal_strength(y: _ArrayLike, period: int) -> dict[str, Any]:
+```
+
+Wang-Smith-Hyndman seasonal/trend strength from a default STL fit.
+
+    strength = max(0, 1 - var(resid)/var(component + resid)), sample
+    variances; near 1 means the component dominates. Returns
+    `seasonal_strength`, `trend_strength`, `period`.
+
 ## forecasting / evaluation
 
 ### `dm_test`
@@ -653,7 +773,7 @@ def lp(
     shock: _ArrayLike,
     horizons: int = ...,
     n_lag_controls: int = ...,
-    se: str = ...,
+    se: str | None = ...,
     maxlags: int | None = ...,
     cumulative: bool | str | None = ...,
     band: str | None = ...,
@@ -663,7 +783,16 @@ def lp(
 ) -> dict[str, Any]:
 ```
 
-Local projection IRFs; `se` is "lag_augmented" (default) or "hac".
+Local projection IRFs; `se` is None (auto), "lag_augmented" or "hac".
+
+    `se=None` (the default) resolves to "lag_augmented" — except under
+    `cumulative="both"`, where it resolves to "hac": the cumulated impulse
+    `sum_(j=0..h) shock_(t+j)` shares FUTURE shocks across base times up to h
+    apart, which past-lag augmentation cannot project out, so lag-augmented
+    HC1 standard errors are inconsistent there (audit: 0.507 coverage at a
+    nominal 95%, h=12, flat in T) and `se="lag_augmented"` with
+    `cumulative="both"` raises. The method actually used is returned as
+    `se_method`.
 
     `cumulative`: False/"none" (level), True/"outcome" (cumulated outcome on
     the contemporaneous impulse — a cumulative IRF, NOT a multiplier), or
@@ -673,7 +802,11 @@ Local projection IRFs; `se` is "lag_augmented" (default) or "hac".
     **Bands.** `band=None` (default) returns the point path and its standard
     errors only, exactly as before. `"pointwise"`, `"sup-t"`, `"sidak"` or
     `"bonferroni"` add `lower`/`upper`, `critical_value`,
-    `pointwise_critical_value`, `band_scope`, `n_cells` (K) and `n_cells_used`.
+    `pointwise_critical_value`, `band_scope`, `n_cells` (K), `n_cells_used`
+    and `cov_se_max_rel_diff` (largest relative gap between the band
+    covariance's sqrt(diag) and the reported `se`; ~machine epsilon on the
+    lag-augmented sup-t path, up to a few percent on the HAC sup-t path,
+    None where no covariance is built).
     The family is **the horizons of this one response**, `K = horizons + 1`
     (`band_scope` reports `"horizon"`). A pointwise band covers one horizon at a
     time; the other three cover every horizon at once at `1 - band_alpha`.
@@ -717,7 +850,8 @@ LP-IV: instrumented local projections with a first-stage F diagnostic.
     **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
     and `"bonferroni"` add `lower`/`upper` over the horizons of this response
     (`K = horizons + 1`, `band_scope="horizon"`) with `critical_value`,
-    `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+    `pointwise_critical_value`, `n_cells`, `n_cells_used` and
+    `cov_se_max_rel_diff` (always None here: no covariance is built).
 
     `band="sup-t"` is **refused** here with an error saying why: sup-t needs the
     covariance ACROSS horizons and tsecon estimates none for LP-IV, so `lp_iv`,
@@ -753,7 +887,8 @@ Ramey-Zubairy (2018) integral multiplier by one-step LP-IV.
     **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
     and `"bonferroni"` add `lower`/`upper` around `multiplier` over the horizons
     of this path (`K = horizons + 1`, `band_scope="horizon"`) with
-    `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+    `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used` and
+    `cov_se_max_rel_diff` (always None here: no covariance is built).
     `band="sup-t"` is **refused**: no cross-horizon covariance is estimated for
     the multiplier path, so this function (like `lp_iv` and `lp_state`) gets the
     closed-form routes only. Do not call such a band sup-t.
@@ -1394,6 +1529,60 @@ Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations.
     matrices, n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0
     scalar path (= smoothed_prob[:, -1]).
 
+### `setar`
+
+```python
+def setar(
+    y: _ArrayLike,
+    p: int,
+    delay: int = ...,
+    trim: float = ...,
+    delays: Sequence[int] | None = ...,
+    ic: str = ...,
+    constant: bool = ...,
+) -> dict[str, Any]:
+```
+
+Two-regime SETAR(p) (Tong-Lim 1980) by concentrated least squares
+    (Hansen 1997): grid over the trimmed order statistics of y_{t-delay},
+    per-candidate OLS in each regime, pooled-SSR-minimizing threshold (and
+    delay, when `delays` is a list — all candidates then share the common
+    sample t >= max(p, max(delays)) so SSRs are comparable; `delays`
+    overrides `delay`).
+
+    Keys: threshold, delay, params_low/params_high (constant first) with
+    classical nonrobust bse_low/bse_high, n_low/n_high/nobs, pooled ssr and
+    sigma2 = SSR/(nobs - 2k), sigma2_low/sigma2_high, aic/bic (n ln(SSR/n) +
+    penalty * m, m = 2k + 1 counting the threshold), ic/ic_used (`ic`
+    selects which criterion is *reported* — with p fixed the SSR ranking and
+    the IC ranking coincide), min_regime, k, and the candidate grid
+    thresholds with its ssr_path. Validated against an independent NumPy
+    transcription of the published algorithm (fixtures/setar.json).
+
+### `setar_test`
+
+```python
+def setar_test(
+    y: _ArrayLike,
+    p: int,
+    delay: int = ...,
+    trim: float = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+) -> dict[str, Any]:
+```
+
+Hansen (1996) sup-F linearity test against a two-regime SETAR(p):
+    stat = nobs (ssr_linear - ssr_setar)/ssr_setar over the trimmed
+    threshold grid. The threshold is unidentified under the null (Davies
+    problem), so NO chi-squared p-value exists; p_value = (1 + #{F* >= F}) /
+    (n_boot + 1) from the fixed-regressor wild bootstrap (y* = resid * eta,
+    eta iid N(0,1), same fixed regressors, same grid) — seeded, parallel,
+    bit-identical at any thread count.
+
+    Keys: stat, p_value, threshold, delay, n_boot, nobs, ssr_linear,
+    ssr_setar, thresholds, f_path, boot_stats.
+
 ## MIDAS
 
 ### `midas_weights`
@@ -1456,7 +1645,10 @@ def har_rv(
 
 HAR-RV (Corsi 2009): RV_t on [const, daily, weekly, monthly], HAC SEs.
 
-    variant is "level", "log", or "sqrt".
+    variant is "level", "log", or "sqrt". use_correction now defaults True
+    (False through 0.2.0): bse/tvalues carry the finite-sample sqrt(n/(n-k))
+    factor by default. statsmodels cov_type="HAC" defaults the correction
+    off -- pass use_correction=False to match it (and the old numbers).
 
 ## connectedness
 
@@ -1533,6 +1725,10 @@ def iv_gmm(
 ```
 
 Linear IV-GMM (Hansen 1982) with robust or HAC weighting.
+
+    POSITIONAL ORDER IS (x, z, y): regressors, instruments, outcome. x and z
+    are both 2-D float matrices, so swapping them coerces cleanly and returns
+    plausible-looking garbage -- prefer keywords: iv_gmm(x=X, z=Z, y=y).
 
     bandwidth defaults to None, which selects the Newey-West rule of thumb.
     It previously defaulted to 0.0 -- a Bartlett kernel truncated at zero
@@ -1658,7 +1854,9 @@ Nonlinear GMM (Hansen 1982) via Nelder-Mead over a Python moment function.
 
     moments_fn maps a parameter vector (a 1-D float64 array) to an n-by-m matrix
     of per-observation moment contributions (rows = observations, cols = moments),
-    returned as a NumPy array or list of lists. weight is the flattened m*m
+    returned as a NumPy array or list of lists -- the return must be 2-D even
+    for a single moment condition (reshape with g.reshape(-1, 1)); a 1-D return
+    raises a TypeError naming moments_fn. weight is the flattened m*m
     weighting matrix (row-major) or None for the identity. Returns params,
     objective, gbar, converged, iterations, fevals, nmoments, nparams.
 
@@ -1688,7 +1886,7 @@ def lp_state(
     state_indicator: _ArrayLike,
     horizons: int = ...,
     n_lag_controls: int = ...,
-    se: str = ...,
+    se: str | None = ...,
     maxlags: int | None = ...,
     cumulative: bool | str | None = ...,
     band: str | None = ...,
@@ -1699,12 +1897,21 @@ def lp_state(
 State-dependent (interacted) local projections (Ramey-Zubairy 2018); per-regime IRFs and SEs.
 
     `cumulative` takes False/"none", True/"outcome" or "both", as in `lp`.
+    `se=None` (the default) resolves to "lag_augmented" — except under
+    `cumulative="both"`, where it resolves to "hac" for the same reason as in
+    `lp` (the cumulated impulse shares future shocks across nearby base
+    times, so lag-augmented HC1 is inconsistent there; audit: 0.640 coverage
+    at a nominal 95%, h=12) — and `se="lag_augmented"` with
+    `cumulative="both"` raises. The method actually used is returned as
+    `se_method`.
 
     **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
     and `"bonferroni"` add one band PER REGIME —
     `lower_state1`/`upper_state1` and `lower_state0`/`upper_state0`, with
-    `critical_value_state1`/`critical_value_state0` and
-    `n_cells_used_state1`/`n_cells_used_state0` — over the horizons of that
+    `critical_value_state1`/`critical_value_state0`,
+    `n_cells_used_state1`/`n_cells_used_state0` and
+    `cov_se_max_rel_diff_state1`/`cov_se_max_rel_diff_state0` (always None
+    here: no covariance is built) — over the horizons of that
     regime's own response (`K = horizons + 1`, `band_scope="horizon"`). The two
     regimes are banded separately; nothing here is simultaneous *across*
     regimes.
@@ -1977,6 +2184,8 @@ def cg_regression(
 Coibion-Gorodnichenko (2015) information-rigidity regression (OLS-HAC).
 
     Returns intercept/slope with HAC se/t/p, r_squared, implied_rigidity.
+    use_correction defaults True (the n/(n-k) HAC scaling); statsmodels
+    cov_type="HAC" defaults it off -- match it when comparing.
 
 ### `forecast_efficiency`
 
@@ -1990,6 +2199,9 @@ def forecast_efficiency(
 ```
 
 Mincer-Zarnowitz forecast-efficiency Wald test (OLS-HAC); regressors is T x k.
+
+    use_correction defaults True (the n/(n-k) HAC scaling); statsmodels
+    cov_type="HAC" defaults it off.
 
 ### `forecast_disagreement`
 
@@ -2282,8 +2494,14 @@ Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
 
     `lam`: a float fixes the smoothing parameter (0.0 reproduces the
     per-horizon `lp(se="hac")` point estimates with the default basis);
-    "cv"/None cross-validates it by leave-h-block-out CV over `lambda_grid`
-    (or a default log-spaced grid). `penalty_order=2` shrinks the IRF toward
+    "cv"/None cross-validates it by leave-h-block-out CV over `lambda_grid`.
+    `lambda_grid=None` uses the default **scale-relative** grid — a 17-point
+    log ladder spanning eight decades, anchored to the mean diagonal of the
+    spline block of the stacked X'X, so the selected smoothing (and the
+    unit-normalized IRF) is invariant to rescaling `y` and/or `shock`; an
+    explicit `lambda_grid` is absolute (in the units of your data) and used
+    verbatim, and `cv_grid` always reports the grid actually searched.
+    `penalty_order=2` shrinks the IRF toward
     a straight line as `lam` grows. `se` conditions on `lam` and does not
     account for shrinkage bias; `irf_raw`/`se_raw` are the unsmoothed
     per-horizon HAC LP for comparison. Keys: horizons, irf, se, lambda_used,
@@ -2292,7 +2510,9 @@ Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
     **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sup-t"`,
     `"sidak"` or `"bonferroni"` add `lower`/`upper` over the horizons of this
     response (`K = horizons + 1`, `band_scope="horizon"`) with
-    `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+    `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used`
+    and `cov_se_max_rel_diff` (~machine epsilon here: the band covariance IS
+    the delta-method matrix behind `se`; None where no covariance is built).
     A pointwise band covers one horizon at a time; the other three cover every
     horizon at once at `1 - band_alpha`.
 
@@ -2304,4 +2524,59 @@ Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
     still applies and is not a band problem: `se` conditions on `lam` and
     ignores the penalty's shrinkage bias, so any band here is centred on a
     shrunk estimator. Method: Montiel Olea and Plagborg-Møller.
+
+## extreme value theory
+
+### `gpd_fit`
+
+```python
+def gpd_fit(
+    y: _ArrayLike,
+    threshold: float | None = ...,
+    quantile: float = ...,
+    p_tail: Sequence[float] | None = ...,
+) -> dict[str, Any]:
+```
+
+Peaks-over-threshold GPD tail fit with McNeil-Frey (2000) VaR/ES.
+
+    Fits a generalized Pareto distribution by MLE to the strict exceedances
+    of `y` over `threshold` (default: the empirical `quantile` of `y`,
+    numpy-linear convention; both the threshold and its quantile are
+    reported). `xi` is the tail index — scipy's `genpareto` `c` is the same
+    quantity (matches `scipy.stats.genpareto.fit(z, floc=0)`, polished, at
+    1e-6). Standard errors are observed-information; when `xi <= -0.5`
+    (Smith 1985 irregularity) they are reported but `se_valid` is False.
+    `var`/`es` are the McNeil-Frey POT tail quantiles at each `p_tail` entry
+    (default [0.99, 0.995, 0.999]; each must reach beyond the threshold:
+    `1 - p < n_exceed / n`) in the units of `y` — fit losses (`-returns` or
+    `abs(returns)`) to read them as risk numbers; `es` is NaN where
+    `xi >= 1`. At least 10 exceedances are required. Keys: threshold,
+    threshold_quantile, n, n_exceed, exceed_rate, xi, beta, se_xi, se_beta,
+    se_valid, loglik, converged, p_tail, var, es.
+
+### `gev_fit`
+
+```python
+def gev_fit(
+    y: _ArrayLike,
+    block_size: int | None = ...,
+    return_periods: Sequence[float] | None = ...,
+) -> dict[str, Any]:
+```
+
+GEV block-maxima fit with return levels.
+
+    With `block_size=None`, `y` IS the pre-computed block maxima; otherwise
+    `y` is cut into consecutive non-overlapping blocks of that length (a
+    trailing partial block is dropped) and each block contributes its
+    maximum. Fits GEV(`xi`, `mu`, `sigma`) by MLE — `xi` is the tail index;
+    scipy's `genextreme` shape is `c = -xi` (matches
+    `scipy.stats.genextreme.fit(maxima)`, polished, at 1e-6). Standard
+    errors are observed-information with the same `se_valid` certification
+    as `gpd_fit` (`xi <= -0.5` reported, not certified). `return_levels`
+    are the `1 - 1/T` GEV quantiles at each `return_periods` entry (default
+    [10, 50, 100] blocks; each `T > 1`). At least 10 maxima are required.
+    Keys: xi, mu, sigma, se_xi, se_mu, se_sigma, se_valid, loglik,
+    converged, n_maxima, block_size, return_periods, return_levels.
 
