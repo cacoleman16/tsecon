@@ -18,7 +18,7 @@
 mod common;
 
 use common::load_fixture;
-use tsecon_bayes::ssvs::{bvar_ssvs, SsvsConfig};
+use tsecon_bayes::ssvs::{bvar_ssvs, SsvsConfig, SsvsResult};
 use tsecon_linalg::faer::Mat;
 use tsecon_rng::Stream;
 
@@ -334,6 +334,112 @@ fn multi_chain_reports_convergence() {
 }
 
 // -------------------------------------------------------------------------
+// Scale equivariance of the default (semi-automatic) hyperpriors.
+// -------------------------------------------------------------------------
+
+/// Posterior mean over the kept IRF draws of entry `(i, j)` at horizon `h`.
+fn mean_irf(r: &SsvsResult, h: usize, i: usize, j: usize) -> f64 {
+    r.irf_draws.iter().map(|d| d[h][(i, j)]).sum::<f64>() / r.irf_draws.len() as f64
+}
+
+/// Under a pure change of data units `y -> c*y` the default posterior is
+/// equivariant: inclusion probabilities are invariant (to MC noise),
+/// `sigma_mean` scales by `c^2`, the posterior-mean IRF by `c`, and
+/// `mean_model_size` is unchanged. Regression for the round-2 audit
+/// finding: the old absolute `gamma_b`/`kappa0`/`kappa1` defaults broke
+/// this downward — at `c = 1e-4` `sigma_mean/c^2` was inflated ~8500x and
+/// inclusion probabilities moved by ~0.5, flipping selection decisions.
+/// The tolerances are MC-noise bounds (both runs consume the same uniform
+/// stream, so in practice they agree far more tightly); the pre-fix defect
+/// exceeds them by 10x-10^5.
+#[test]
+fn default_prior_is_scale_equivariant() {
+    let fx = load_fixture("ssvs.json");
+    let data = simulate(&fx);
+    let n = fx["mc_recovery"]["n"].as_u64().unwrap() as usize;
+    let cfg = SsvsConfig {
+        lags: 2,
+        n_draws: 3_000,
+        burn: 1_000,
+        horizon: 4,
+        thin: 5,
+        ..SsvsConfig::default()
+    };
+    let base = bvar_ssvs(data.as_ref(), &cfg, 77).unwrap();
+    let k = base.inclusion_prob.nrows();
+
+    for &c in &[1e-4f64, 1e4] {
+        let scaled = Mat::from_fn(data.nrows(), data.ncols(), |i, j| c * data[(i, j)]);
+        let res = bvar_ssvs(scaled.as_ref(), &cfg, 77).unwrap();
+
+        for r in 0..k {
+            for col in 0..n {
+                assert!(
+                    (res.inclusion_prob[(r, col)] - base.inclusion_prob[(r, col)]).abs() <= 0.05,
+                    "c={c}: inclusion ({r},{col}) moved {} -> {}",
+                    base.inclusion_prob[(r, col)],
+                    res.inclusion_prob[(r, col)]
+                );
+            }
+        }
+        for r in 0..n {
+            for col in 0..n {
+                let want = base.sigma_mean[(r, col)];
+                let got = res.sigma_mean[(r, col)] / (c * c);
+                let tol = 0.02 * (base.sigma_mean[(r, r)] * base.sigma_mean[(col, col)]).sqrt();
+                assert!(
+                    (got - want).abs() <= tol,
+                    "c={c}: sigma_mean/c^2 ({r},{col}) = {got} vs {want}"
+                );
+            }
+        }
+        assert!(
+            (res.mean_model_size - base.mean_model_size).abs() <= 0.5,
+            "c={c}: mean_model_size {} vs {}",
+            res.mean_model_size,
+            base.mean_model_size
+        );
+        let mut max_base = 0.0f64;
+        for i in 0..n {
+            for j in 0..n {
+                max_base = max_base.max(mean_irf(&base, 1, i, j).abs());
+            }
+        }
+        for i in 0..n {
+            for j in 0..n {
+                let want = mean_irf(&base, 1, i, j);
+                let got = mean_irf(&res, 1, i, j) / c;
+                assert!(
+                    (got - want).abs() <= 0.05 * max_base,
+                    "c={c}: mean IRF h=1 ({i},{j})/c = {got} vs {want}"
+                );
+            }
+        }
+    }
+
+    // The escape hatch is really absolute: the historical defaults, given
+    // explicitly, reproduce the old unit-dependent posterior — at c = 1e-4
+    // the Gamma-rate prior mass dominates the tiny residual scale and
+    // inflates sigma_mean/c^2 by orders of magnitude. Documented, reachable,
+    // no longer the default.
+    let cfg_abs = SsvsConfig {
+        gamma_b: Some(0.01),
+        kappa0: Some(0.1),
+        kappa1: Some(10.0),
+        ..cfg
+    };
+    let c = 1e-4f64;
+    let scaled = Mat::from_fn(data.nrows(), data.ncols(), |i, j| c * data[(i, j)]);
+    let abs_res = bvar_ssvs(scaled.as_ref(), &cfg_abs, 77).unwrap();
+    let ratio = abs_res.sigma_mean[(0, 0)] / (c * c) / base.sigma_mean[(0, 0)];
+    assert!(
+        ratio > 100.0,
+        "the absolute-hyperprior escape hatch should reproduce the old \
+         unit-dependent behaviour at c=1e-4 (sigma ratio {ratio})"
+    );
+}
+
+// -------------------------------------------------------------------------
 // Input guardrails.
 // -------------------------------------------------------------------------
 
@@ -358,6 +464,34 @@ fn errors_on_invalid_config_and_data() {
     .is_err());
     // Non-positive scale factor.
     assert!(bvar_ssvs(data.as_ref(), &SsvsConfig { c0: 0.0, ..base }, 0).is_err());
+    // Non-positive explicit (absolute) hyperpriors.
+    assert!(bvar_ssvs(
+        data.as_ref(),
+        &SsvsConfig {
+            gamma_b: Some(0.0),
+            ..base
+        },
+        0
+    )
+    .is_err());
+    assert!(bvar_ssvs(
+        data.as_ref(),
+        &SsvsConfig {
+            kappa0: Some(-1.0),
+            ..base
+        },
+        0
+    )
+    .is_err());
+    assert!(bvar_ssvs(
+        data.as_ref(),
+        &SsvsConfig {
+            kappa1: Some(f64::NAN),
+            ..base
+        },
+        0
+    )
+    .is_err());
     // Prior probability out of range.
     assert!(bvar_ssvs(
         data.as_ref(),

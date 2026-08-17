@@ -97,6 +97,35 @@ def test_bvar_ssvs_large_T_does_not_crash(T):
     assert np.all(np.isfinite(np.asarray(r["coef_mean"])))
 
 
+def test_bvar_ssvs_default_prior_is_scale_invariant():
+    # Audit round-2 finding 2: the old absolute gamma_b/kappa0/kappa1 defaults
+    # made a pure units change (percent vs decimal, c = 1e-4) inflate
+    # sigma_mean/c^2 by ~8500x and move inclusion probabilities by ~0.5,
+    # flipping selection decisions. The default hyperpriors now scale by the
+    # per-equation OLS residual variance, so y -> c*y must leave inclusion
+    # unchanged (to MC noise) and scale sigma_mean by c^2 exactly in
+    # distribution. Tolerances are loose MC bounds; the pre-fix defect
+    # exceeds them by orders of magnitude.
+    y = _var2(300, seed=3)
+    kw = dict(lags=2, n_draws=1500, burn=500, seed=11)
+    c = 1e-4
+    a = tsecon.bvar_ssvs(y, **kw)
+    b = tsecon.bvar_ssvs(y * c, **kw)
+    ia, ib = np.asarray(a["inclusion_prob"]), np.asarray(b["inclusion_prob"])
+    assert np.max(np.abs(ia - ib)) <= 0.05
+    sa, sb = np.asarray(a["sigma_mean"]), np.asarray(b["sigma_mean"])
+    assert np.max(np.abs(sb / c**2 - sa)) <= 0.02 * np.max(np.abs(sa))
+    fa = np.median(np.asarray(a["irf_draws"])[:, 1], axis=0)
+    fb = np.median(np.asarray(b["irf_draws"])[:, 1], axis=0)
+    assert np.max(np.abs(fb / c - fa)) <= 0.05 * np.max(np.abs(fa))
+
+    # The escape hatch is really absolute: the historical defaults, passed
+    # explicitly, reproduce the old unit-dependent posterior — badly wrong
+    # at c = 1e-4 (documented, reachable, no longer the default).
+    h = tsecon.bvar_ssvs(y * c, gamma_b=0.01, kappa0=0.1, kappa1=10.0, **kw)
+    assert np.asarray(h["sigma_mean"])[0, 0] / c**2 > 100.0 * sa[0, 0]
+
+
 # --------------------------------------------------------------------------- #
 # zero_sign_svar — recursive special case vs var_irf(orth=True)
 # --------------------------------------------------------------------------- #
