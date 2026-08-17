@@ -4360,6 +4360,128 @@ fn markov_switching_ar<'py>(
     Ok(d)
 }
 
+/// Two-regime self-exciting threshold autoregression (SETAR; Tong-Lim
+/// 1980), fitted by concentrated least squares (Hansen 1997):
+/// `y_t = x_t' b1` if `y_{t-d} <= threshold` else `x_t' b2`, with
+/// `x_t = [1?, y_{t-1}, ..., y_{t-p}]`.
+///
+/// The threshold grid is the unique order statistics of `y_{t-d}` with a
+/// `trim` fraction excluded at each end; each regime must also keep at
+/// least `k + 1` observations (`k = p + constant`). The threshold (and,
+/// when `delays` is a list, the delay — all candidates then share the
+/// common sample `t >= max(p, max(delays))` so SSRs are comparable)
+/// minimize the pooled SSR. `delays` overrides `delay` when given.
+///
+/// Returns per-regime coefficients (`params_low`/`params_high`, constant
+/// first) with classical nonrobust SEs (`bse_low`/`bse_high`, per-regime
+/// `s_j^2 = SSR_j/(n_j - k)`), the threshold and delay, regime sizes,
+/// pooled `ssr` and `sigma2 = SSR/(nobs - 2k)`, per-regime variances, both
+/// information criteria `aic`/`bic` (`n ln(SSR/n) + penalty * m`,
+/// `m = 2k + 1` counting the threshold), the full candidate grid
+/// (`thresholds`) with its SSR profile (`ssr_path`), and `ic` — the
+/// criterion named by `ic=` ("aic"/"bic"; with `p` fixed the SSR-minimizing
+/// threshold/delay is also the IC-minimizing one, so `ic` selects what is
+/// *reported*, not what is optimized). Validated against an independent
+/// NumPy transcription of the published algorithm (fixtures/setar.json);
+/// see `setar_test` for the linearity test.
+#[pyfunction]
+#[pyo3(signature = (y, p, delay = 1, trim = 0.15, delays = None, ic = "aic", constant = true))]
+#[allow(clippy::too_many_arguments)]
+fn setar<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    delay: usize,
+    trim: f64,
+    delays: Option<Vec<usize>>,
+    ic: &str,
+    constant: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dl: Vec<usize> = delays.unwrap_or_else(|| vec![delay]);
+    let ys = vec1(&y);
+    let r = tsecon_regime::setar(&ys, p, &dl, trim, constant).map_err(to_py)?;
+    let (ic_used, ic_value) = match ic {
+        "aic" | "AIC" => ("aic", r.aic),
+        "bic" | "BIC" => ("bic", r.bic),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown ic {other:?}; expected \"aic\" or \"bic\""
+            )))
+        }
+    };
+    let d = PyDict::new(py);
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("delay", r.delay)?;
+    d.set_item("params_low", r.coefs_low.into_pyarray(py))?;
+    d.set_item("params_high", r.coefs_high.into_pyarray(py))?;
+    d.set_item("bse_low", r.se_low.into_pyarray(py))?;
+    d.set_item("bse_high", r.se_high.into_pyarray(py))?;
+    d.set_item("n_low", r.n_low)?;
+    d.set_item("n_high", r.n_high)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("ssr", r.ssr)?;
+    d.set_item("sigma2", r.sigma2)?;
+    d.set_item("sigma2_low", r.sigma2_low)?;
+    d.set_item("sigma2_high", r.sigma2_high)?;
+    d.set_item("aic", r.aic)?;
+    d.set_item("bic", r.bic)?;
+    d.set_item("ic", ic_value)?;
+    d.set_item("ic_used", ic_used)?;
+    d.set_item("min_regime", r.min_regime)?;
+    d.set_item("k", r.k)?;
+    d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
+    d.set_item("ssr_path", r.ssr_path.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Hansen (1996) sup-F test of linearity against a two-regime SETAR(p)
+/// alternative, p-valued by the fixed-regressor wild bootstrap.
+///
+/// The statistic is `sup-F = nobs * (ssr_linear - ssr_setar) / ssr_setar`
+/// (Hansen 1997), maximized over the same trimmed threshold grid `setar`
+/// uses. Under the null of a linear AR(p) the threshold is an unidentified
+/// nuisance parameter (the Davies problem), so a naive chi-squared p-value
+/// is WRONG and is never reported. Instead, each of the `n_boot`
+/// replications regresses `y*_t = e_t * eta_t` (`e` the null residuals,
+/// `eta` iid standard normal) on the same fixed regressors and recomputes
+/// the sup; `p_value = (1 + #{F* >= F}) / (n_boot + 1)`. Replications run
+/// in parallel with one seeded RNG substream each, so the p-value is
+/// bit-identical for a given `seed` at any thread count.
+///
+/// Returns stat, p_value, the threshold attaining the sup, delay, n_boot,
+/// nobs, ssr_linear, ssr_setar, the candidate grid (`thresholds`) with the
+/// per-candidate F path (`f_path`), and the bootstrap draws (`boot_stats`).
+/// The statistic is validated against an independent NumPy transcription
+/// (fixtures/setar.json); the bootstrap null rejection rate is validated by
+/// seeded Monte Carlo (~nominal size on linear data).
+#[pyfunction]
+#[pyo3(signature = (y, p, delay = 1, trim = 0.15, n_boot = 499, seed = 0))]
+fn setar_test<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    delay: usize,
+    trim: f64,
+    n_boot: usize,
+    seed: u64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let ys = vec1(&y);
+    let r = tsecon_regime::setar_test(&ys, p, delay, trim, true, n_boot, seed).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("delay", r.delay)?;
+    d.set_item("n_boot", r.n_boot)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("ssr_linear", r.ssr_linear)?;
+    d.set_item("ssr_setar", r.ssr_setar)?;
+    d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
+    d.set_item("f_path", r.f_path.into_pyarray(py))?;
+    d.set_item("boot_stats", r.boot_stats.into_pyarray(py))?;
+    Ok(d)
+}
+
 /// MIDAS weight function (normalized to sum 1). `scheme`: "exp_almon"
 /// (uses theta1, theta2) or "beta" (uses theta1, theta2 as the two shape
 /// parameters). `k` is the number of high-frequency lags.
@@ -7768,6 +7890,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vecm, m)?)?;
     m.add_function(wrap_pyfunction!(engle_granger, m)?)?;
     m.add_function(wrap_pyfunction!(markov_switching_ar, m)?)?;
+    m.add_function(wrap_pyfunction!(setar, m)?)?;
+    m.add_function(wrap_pyfunction!(setar_test, m)?)?;
     m.add_function(wrap_pyfunction!(midas_weights, m)?)?;
     m.add_function(wrap_pyfunction!(umidas, m)?)?;
     m.add_function(wrap_pyfunction!(ccc_garch, m)?)?;

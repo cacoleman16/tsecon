@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**129 functions.**
+**130 functions.**
 
 ## diagnostics
 
@@ -92,34 +92,6 @@ def phillips_perron(
 
 Phillips-Perron unit-root test (Z-tau/Z-alpha) with MacKinnon p-values.
 
-### `dfgls`
-
-```python
-def dfgls(
-    y: _ArrayLike,
-    regression: str = ...,
-    lags: int | None = ...,
-    max_lags: int | None = ...,
-    method: str = ...,
-) -> dict[str, Any]:
-```
-
-DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996; null: unit root).
-
-    The ADF test run on a GLS-detrended series (quasi-differenced at the ERS
-    local alternative, cbar = -7.0 for "c", -13.5 for "ct") with no
-    deterministics in the test regression — near-optimal local power, the
-    recommended default over plain ADF. `regression`: "c" (constant, default)
-    or "ct" (constant + trend). `lags`: fixed lag count; None selects it by
-    `method` ("aic" default, "bic", "t-stat") on the OLS-detrended series
-    (Perron-Qu 2007) searching 0..=`max_lags` (default: Schwert's
-    ceil(12*(n/100)^(1/4)), capped at (n-1)/2 - 1). When `lags` is given,
-    `method`/`max_lags` are ignored (arch behavior). Returns `statistic`,
-    `p_value`, `used_lag`, `nobs` (= n - 1 - used_lag), `crit`
-    ({"1%","5%","10%"}), `trend`. Statistic and selected lag match
-    arch.unitroot.DFGLS (< 1e-10); p-values/critical values are arch's DF-GLS
-    response surfaces (Sheppard's MacKinnon-style simulations, transcribed).
-
 ### `phillips_ouliaris`
 
 ```python
@@ -133,36 +105,6 @@ def phillips_ouliaris(
 ```
 
 Phillips-Ouliaris residual cointegration test (Zt/Za) with MacKinnon N-surfaces.
-
-### `zivot_andrews`
-
-```python
-def zivot_andrews(
-    y: _ArrayLike,
-    regression: str = ...,
-    trim: float = ...,
-    max_lags: int | None = ...,
-    autolag: str | None = ...,
-    lags: int | None = ...,
-) -> dict[str, Any]:
-```
-
-Zivot-Andrews unit-root test with one endogenous break.
-
-    Null: unit root with no break; alternative: stationary around one broken
-    deterministic component — `regression` "c" (intercept shift, default),
-    "t" (trend-slope shift), "ct" (both); the regression itself always has a
-    constant and a trend. The statistic is the minimum t on the lagged level
-    over candidate break dates inside the `trim` window (default 0.15, must
-    be in [0, 1/3]); `break_index` is the last pre-break observation (the
-    shift begins at `break_index + 1`). Lag selection follows the
-    statsmodels/Baum single up-front convention on the "ct" base ADF:
-    `autolag` "aic" (default) / "bic" / "t-stat" capped at `max_lags`, or
-    `autolag=None` with `lags` fixed (both None: int(12*(n/100)**0.25)).
-    Pass either `lags` or `autolag`, not both. P-values and critical values
-    interpolate the statsmodels-simulated null table. Returns dict keys:
-    `stat`, `pvalue`, `crit` {"1%","5%","10%"}, `break_index`, `lags`,
-    `nobs`, `trim`, `regression`. Matches statsmodels `zivot_andrews`.
 
 ### `ndiffs`
 
@@ -1443,6 +1385,60 @@ def markov_switching_ar(
 ```
 
 Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations.
+
+### `setar`
+
+```python
+def setar(
+    y: _ArrayLike,
+    p: int,
+    delay: int = ...,
+    trim: float = ...,
+    delays: Sequence[int] | None = ...,
+    ic: str = ...,
+    constant: bool = ...,
+) -> dict[str, Any]:
+```
+
+Two-regime SETAR(p) (Tong-Lim 1980) by concentrated least squares
+    (Hansen 1997): grid over the trimmed order statistics of y_{t-delay},
+    per-candidate OLS in each regime, pooled-SSR-minimizing threshold (and
+    delay, when `delays` is a list — all candidates then share the common
+    sample t >= max(p, max(delays)) so SSRs are comparable; `delays`
+    overrides `delay`).
+
+    Keys: threshold, delay, params_low/params_high (constant first) with
+    classical nonrobust bse_low/bse_high, n_low/n_high/nobs, pooled ssr and
+    sigma2 = SSR/(nobs - 2k), sigma2_low/sigma2_high, aic/bic (n ln(SSR/n) +
+    penalty * m, m = 2k + 1 counting the threshold), ic/ic_used (`ic`
+    selects which criterion is *reported* — with p fixed the SSR ranking and
+    the IC ranking coincide), min_regime, k, and the candidate grid
+    thresholds with its ssr_path. Validated against an independent NumPy
+    transcription of the published algorithm (fixtures/setar.json).
+
+### `setar_test`
+
+```python
+def setar_test(
+    y: _ArrayLike,
+    p: int,
+    delay: int = ...,
+    trim: float = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+) -> dict[str, Any]:
+```
+
+Hansen (1996) sup-F linearity test against a two-regime SETAR(p):
+    stat = nobs (ssr_linear - ssr_setar)/ssr_setar over the trimmed
+    threshold grid. The threshold is unidentified under the null (Davies
+    problem), so NO chi-squared p-value exists; p_value = (1 + #{F* >= F}) /
+    (n_boot + 1) from the fixed-regressor wild bootstrap (y* = resid * eta,
+    eta iid N(0,1), same fixed regressors, same grid) — seeded, parallel,
+    bit-identical at any thread count.
+
+    Keys: stat, p_value, threshold, delay, n_boot, nobs, ssr_linear,
+    ssr_setar, thresholds, f_path, boot_stats.
 
 ## MIDAS
 

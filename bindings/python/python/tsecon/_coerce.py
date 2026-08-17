@@ -57,6 +57,8 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # (P, D, Q, s) integer orders, not data: coercing to float64 would make
     # the compiled parser reject a plain [0, 1, 1, 12].
     "arima_fit": frozenset({"seasonal"}),
+    # Candidate threshold delays d in y_{t-d}: integer lags, not data.
+    "setar": frozenset({"delays"}),
 }
 
 _POSITIONAL = (

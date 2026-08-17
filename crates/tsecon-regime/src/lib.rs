@@ -45,6 +45,15 @@
 //! fits are assessed by log-likelihood improvement and approximate
 //! parameter recovery, not exact agreement with a single optimum.
 //!
+//! The crate also owns the library's *observed*-regime nonlinear model: the
+//! two-regime **self-exciting threshold autoregression** (SETAR) of Tong &
+//! Lim (1980) — [`setar`] (concentrated least squares over the trimmed
+//! order-statistic threshold grid, Hansen 1997/2000) and [`setar_test`]
+//! (the Hansen 1996 sup-F linearity test with a fixed-regressor wild
+//! bootstrap p-value; never a chi-squared tail — the Davies problem). See
+//! the `setar` module docs for the model, the algorithm, and the
+//! reproducible-parallel-bootstrap contract.
+//!
 //! ```
 //! use tsecon_regime::{MarkovSwitchingAr, MsarParams, MsarSpec};
 //!
@@ -69,10 +78,12 @@ mod linsolve;
 mod model;
 mod params;
 mod results;
+mod setar;
 mod spec;
 
 pub use error::RegimeError;
 pub use model::MarkovSwitchingAr;
 pub use params::MsarParams;
 pub use results::{classify, FilterResult, FitResult, SmoothResult};
+pub use setar::{setar, setar_test, SetarFit, SetarTest};
 pub use spec::MsarSpec;
