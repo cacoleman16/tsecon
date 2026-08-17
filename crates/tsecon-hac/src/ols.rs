@@ -115,7 +115,12 @@ pub enum SeType {
         /// Bartlett/Parzen/truncated this is the lag-truncation `maxlags`).
         bandwidth: f64,
         /// Apply the small-sample `n/(n - k)` correction to the covariance
-        /// (statsmodels `use_correction`, default `true` there).
+        /// (statsmodels `use_correction`). Note statsmodels is internally
+        /// inconsistent about the default: `cov_type="HAC"` defaults it
+        /// **off**, while the `cov_hac_simple` helper defaults it on.
+        /// tsecon's Python surface deliberately defaults `true` (the
+        /// statistically recommended finite-sample choice), so matching a
+        /// default statsmodels `cov_type="HAC"` call requires `false` here.
         use_correction: bool,
     },
 }

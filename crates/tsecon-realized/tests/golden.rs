@@ -5,7 +5,11 @@
 //! 7-element return vector to 1e-12; `har` pins the Corsi (2009) HAR-RV
 //! params / HAC bse / centered R^2 to 1e-8. The HAR block is exactly OLS on
 //! `[const, RV_{t-1}, mean(RV[t-6..t-1]), mean(RV[t-23..t-1])]` over
-//! `t = start+1 .. n-1`, with Bartlett HAC(maxlags=5, use_correction=false).
+//! `t = start+1 .. n-1`, with Bartlett HAC(maxlags=5): `har.bse` is
+//! `use_correction=false` (the statsmodels `cov_type="HAC"` default) and
+//! `har.bse_corrected` is `use_correction=true` (the `HarConfig` default),
+//! so both the matched-settings match and the library's own default are
+//! golden-pinned.
 
 use serde_json::Value;
 use tsecon_realized::{bipower_variation, har_rv, realized_variance, HarConfig, HarVariant};
@@ -87,8 +91,12 @@ fn har_params_bse_rsquared_match_fixture() {
 
 #[test]
 fn har_default_config_uses_fixture_settings() {
-    // The library default (start=22, Level, maxlags=5, no correction) must
-    // reproduce the fixture without any explicit configuration.
+    // The library default (start=22, Level, maxlags=5, use_correction=true)
+    // must reproduce the fixture without any explicit configuration —
+    // including the DEFAULT standard errors, pinned to the statsmodels
+    // use_correction=True run (`bse_corrected`), so the default story
+    // ("tsecon takes the n/(n-k) correction by default") is golden-tested,
+    // not just the matched-settings agreement.
     let fx = load();
     let rv = f64s(&fx["rv_series"]);
     let fit = har_rv(&rv, &HarConfig::default()).unwrap();
@@ -97,5 +105,11 @@ fn har_default_config_uses_fixture_settings() {
         &f64s(&fx["har"]["params"]),
         1e-8,
         "default params",
+    );
+    assert_all_close(
+        &fit.bse,
+        &f64s(&fx["har"]["bse_corrected"]),
+        1e-8,
+        "default bse (use_correction=true)",
     );
 }

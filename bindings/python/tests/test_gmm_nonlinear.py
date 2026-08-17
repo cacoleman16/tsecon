@@ -80,3 +80,57 @@ def test_nonlinear_gmm_propagates_callback_error():
 
     with pytest.raises(ValueError, match="boom from the Python moment function"):
         tsecon.gmm_nonlinear(bad_moments, [0.0, 1.0])
+
+
+def test_one_d_moment_return_blames_moments_fn_not_initial():
+    """Audit rounds 3-4, finding 5: the diagnostic must name its true cause.
+
+    A 1-D moment return used to surface through the coercion layer's rank-error
+    rewriter, which enumerates only args/kwargs — so the message named `arg1`
+    (= `initial`, correct as passed) and advised reshaping it, and following
+    that advice produced a second, more opaque TypeError. The error must name
+    `moments_fn`, state the (n_obs, n_moments) 2-D contract, show the
+    `.reshape(-1, 1)` remedy, and never mention `initial`.
+    """
+    rng = np.random.default_rng(3)
+    data = rng.normal(1.5, 1.0, 200)
+
+    with pytest.raises(TypeError) as excinfo:
+        tsecon.gmm_nonlinear(lambda th: data - th[0], np.array([0.5]))
+    msg = str(excinfo.value)
+    assert "moments_fn" in msg
+    assert "(n_obs, n_moments)" in msg
+    assert ".reshape(-1, 1)" in msg
+    assert "initial" not in msg
+    assert "arg1" not in msg
+
+    # The remedy the message gives must actually work.
+    fixed = tsecon.gmm_nonlinear(
+        lambda th: (data - th[0]).reshape(-1, 1), np.array([0.5])
+    )
+    assert fixed["converged"]
+    np.testing.assert_allclose(fixed["params"], [data.mean()], atol=1e-4)
+
+
+def test_scalar_and_ragged_moment_returns_blame_moments_fn():
+    rng = np.random.default_rng(4)
+    y = rng.standard_normal(50)  # noqa: F841 - closure intent
+
+    with pytest.raises(TypeError, match="moments_fn"):
+        tsecon.gmm_nonlinear(lambda th: 1.0, [0.0])  # scalar return
+    with pytest.raises(TypeError, match="moments_fn"):
+        tsecon.gmm_nonlinear(lambda th: [[1.0, 2.0], [3.0]], [0.0])  # ragged
+
+
+def test_moment_return_dtype_is_coerced_like_data_arguments():
+    # An integer or float32 matrix return works, consistent with the coercion
+    # applied to ordinary data arguments.
+    rng = np.random.default_rng(5)
+    y = 2.0 + rng.standard_normal(300)
+
+    def f32_moments(theta):
+        return (y - theta[0]).reshape(-1, 1).astype(np.float32)
+
+    fit = tsecon.gmm_nonlinear(f32_moments, [0.0])
+    assert fit["converged"]
+    np.testing.assert_allclose(fit["params"], [y.mean()], atol=1e-3)

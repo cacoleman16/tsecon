@@ -85,7 +85,7 @@ available, range estimators recover much of the same signal.
 | | `start` | `22` | burn-in (needs the monthly window) |
 | | `variant` | `"level"` | `"level"`, `"log"`, or `"sqrt"` |
 | | `hac_maxlags` | `5` | Newey-West lags on the HAR SEs |
-| | `use_correction` | `False` | small-sample HAC correction |
+| | `use_correction` | `True` | small-sample `n/(n−k)` HAC scaling; defaulted `False` through 0.2.0 — statsmodels `cov_type="HAC"` defaults it off, so pass `False` to match a default statsmodels call (and the old numbers) |
 | `realized_range` | `method` | `"parkinson"` | or `"garman_klass"` (needs `open`, `close`) |
 | | `open` / `close` | `None` | required for Garman-Klass |
 
@@ -126,7 +126,10 @@ available, range estimators recover much of the same signal.
 ## Validated against
 
 `har_rv` is validated as an OLS regression with Newey-West HAC SEs against
-`statsmodels`; `realized_measures`, `realized_quarticity`,
+`statsmodels` — both at matched `use_correction=False` (a default statsmodels
+`cov_type="HAC"` call) and at the library's own `use_correction=True` default
+against statsmodels with the correction switched on, each pinned in the
+fixture; `realized_measures`, `realized_quarticity`,
 `tripower_quarticity`, `bns_jump_test`, and `realized_range` reproduce the
 documented Barndorff-Nielsen-Shephard (2002, 2004), Huang-Tauchen (2005),
 Corsi (2009), Parkinson (1980), and Garman-Klass (1980) measure definitions.

@@ -86,7 +86,10 @@ Rust core): nominal 95% intervals cover only ~75% of the time under iid or
 White standard errors; Newey-West restores most of the gap (the remainder is
 the well-known small-sample HAC undercoverage — the roadmap's EWC fixed-b
 inference, already implemented in the crate, is the modern answer).
-HAC standard errors match statsmodels `cov_type="HAC"` at 1e-10.
+HAC standard errors match statsmodels `cov_type="HAC"` at 1e-10 with
+`use_correction` matched (the defaults differ: tsecon defaults the
+finite-sample `n/(n−k)` correction on, statsmodels off — pass
+`use_correction=False` to reproduce a default statsmodels call).
 
 ---
 
