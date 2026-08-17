@@ -182,3 +182,104 @@ that is true of *neither*. DCC estimates persistent dynamics (`a + b ≈ 0.999`,
 the near-unit persistence a one-time break masquerades as) and its most recent
 conditional correlation, 0.802, has tracked its way to the crisis regime's
 true ρ = 0.8.
+
+---
+
+## `gpd_fit` / `gev_fit` — EVT tails (peaks-over-threshold and block maxima)
+
+**What they estimate.** The far tail, past where the data thin out. `gpd_fit`
+models the *exceedances* of a series over a high threshold with a generalized
+Pareto distribution (the Pickands-Balkema-de Haan limit) and turns the fit
+into McNeil-Frey (2000) tail quantiles: `var` and `es` at probabilities like
+0.999, beyond anything a sample quantile can see. `gev_fit` models *block
+maxima* (annual maxima, worst-day-per-quarter) with the generalized extreme
+value distribution and reports return levels — "the 100-block event". Both by
+MLE with observed-information standard errors. The shape `xi` is the tail
+index in both: positive = power-law tail, zero = exponential, negative =
+finite endpoint. Sign conventions vs scipy, verified numerically in the
+fixture generator: `genpareto`'s `c` **is** this `xi`; `genextreme`'s shape is
+`c = -xi`.
+
+**Assumptions.** I.i.d. observations in the tail — the raw threshold on serial
+data (as below) reads as an unconditional tail; for a *conditional* risk
+pipeline, fit GARCH first and run `gpd_fit` on the standardized residuals
+(the actual McNeil-Frey two-step, which arrives with the VaR forecasting
+layer). The threshold must be high enough for the GPD limit to hold but leave
+enough exceedances (bias-variance; the default 0.90 quantile is the
+conventional compromise, and `threshold=` lets you probe sensitivity).
+
+**When to use (and when not).** Use `gpd_fit` for tail probabilities beyond
+the sample (p = 0.999 with 1,000 observations), for tail-index estimates
+with standard errors, and as the tail half of filtered historical simulation.
+Use `gev_fit` when the data arrive as maxima (engineering, insurance,
+climate) or when you want return-level language. POT uses the data more
+efficiently than block maxima — prefer it when you have the raw series. Do
+**not** read the VaR/ES as risk numbers unless you fitted *losses*
+(`-returns` or `abs(returns)`): they are upper-tail quantiles of whatever you
+passed.
+
+**Key arguments and defaults (and why).** `gpd_fit(y, threshold=None,
+quantile=0.90, p_tail=[0.99, 0.995, 0.999])`: the default threshold is the
+empirical 0.90 quantile (top decile as exceedances, the standard POT
+default); each `p_tail` entry must reach beyond the threshold
+(`1 - p < n_exceed/n`) — the POT formula extrapolates outward, never inward.
+At least 10 exceedances are required (a documented floor, not a
+recommendation; serious work wants hundreds). `gev_fit(y, block_size=None,
+return_periods=[10, 50, 100])`: with `block_size=None` the input *is* the
+maxima; with `block_size=b` the series is cut into non-overlapping blocks
+(trailing partial block dropped) and at least 10 maxima are required.
+
+**How to read the output.** `xi` with `se_xi` is the headline: a `xi` within
+two SEs of zero is exponential-tail-compatible (the t-distribution has
+`xi = 1/df`). `se_valid` is the honesty flag — `False` means the standard
+errors are reported but not certified: the observed information failed, or
+`xi <= -0.5`, where MLE regularity breaks down (Smith 1985). `es` is NaN when
+`xi >= 1` (infinite tail mean). `loglik` is comparable across thresholds only
+per exceedance set.
+
+**Failure modes.** Threshold too low: the GPD limit has not kicked in and
+`xi` is biased. Threshold too high: a handful of exceedances and huge SEs.
+Bounded data (true `xi <= -1`, e.g. anything uniform-tailed): the MLE does
+not exist — the fit returns the best point with `se_valid=False` and a
+strongly negative `xi`; treat it as a boundary diagnosis, not an estimate.
+Serial dependence clusters exceedances and makes the effective sample smaller
+than `n_exceed` (SEs too tight) — decluster or fit standardized residuals.
+
+**Validated against.** scipy 1.17.1 — `scipy.stats.genpareto.fit(z, floc=0)`
+and `scipy.stats.genextreme.fit(maxima)` (Nelder-Mead-polished in the
+generator; scipy's own `fit` stops at 1e-4), parameters at 1e-6 with
+log-likelihood agreement at 1e-10, observed-information SEs at 1e-4, VaR/ES
+and return levels through `genpareto.ppf`/`genextreme.ppf` plus the
+documented closed forms at 1e-5, on t(3), exponential, negative-`xi`, and
+real (GS10 absolute log return) data (`fixtures/tsecon-evt.json`).
+
+**References.** Pickands (1975); Balkema & de Haan (1974); Smith (1985);
+McNeil & Frey (2000); Coles (2001).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+r = rng.standard_t(4, 2500)                      # heavy-tailed daily "returns"
+loss = np.abs(r)                                  # POT works on losses
+
+pot = tsecon.gpd_fit(loss, quantile=0.90)         # top decile as exceedances
+print("xi:", round(pot["xi"], 3), "+/-", round(pot["se_xi"], 3),
+      " beta:", round(pot["beta"], 3), " n_exceed:", pot["n_exceed"])
+# xi: 0.164 +/- 0.071  beta: 0.906  n_exceed: 250
+for p, v, e in zip(pot["p_tail"], pot["var"], pot["es"]):
+    print(f"  p={p}: VaR={v:.3f}  ES={e:.3f}")
+#   p=0.99: VaR=4.623  ES=6.203
+#   p=0.995: VaR=5.593  ES=7.363
+#   p=0.999: VaR=8.318  ES=10.622
+
+gev = tsecon.gev_fit(loss, block_size=50)         # 50 blocks of 50 days
+print("GEV xi:", round(gev["xi"], 3), " 10/50/100-year levels:",
+      np.round(gev["return_levels"], 2))
+# GEV xi: 0.181  10/50/100-year levels: [ 7.11 10.66 12.5 ]
+```
+
+The two routes agree on the diagnosis — a heavy tail with `xi` in the 0.15-0.25
+zone (the true value for t(4) is 1/4) — but not on precision: POT extracts 250
+exceedances from the same 2,500 points that give block maxima only 50, which is
+exactly why POT is the default route when the raw series is available.

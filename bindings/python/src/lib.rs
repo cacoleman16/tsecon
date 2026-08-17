@@ -7401,6 +7401,93 @@ fn robust_svar_bounds<'py>(
     Ok(d)
 }
 
+// --------------------------------------------------------------------------
+// extreme value theory (tsecon-evt)
+// --------------------------------------------------------------------------
+/// Peaks-over-threshold GPD tail fit with McNeil-Frey (2000) VaR/ES.
+///
+/// Fits a generalized Pareto distribution by MLE to the strict exceedances
+/// of `y` over `threshold` (default: the empirical `quantile` of `y`,
+/// numpy-linear convention; both the threshold and its quantile are
+/// reported). `xi` is the tail index — scipy's `genpareto` `c` is the same
+/// quantity (matches `scipy.stats.genpareto.fit(z, floc=0)`, polished, at
+/// 1e-6). Standard errors are observed-information; when `xi <= -0.5`
+/// (Smith 1985 irregularity) they are reported but `se_valid` is False.
+/// `var`/`es` are the McNeil-Frey POT tail quantiles at each `p_tail`
+/// entry (default [0.99, 0.995, 0.999]; each must reach beyond the
+/// threshold: `1 - p < n_exceed / n`) in the units of `y` — fit losses
+/// (`-returns` or `abs(returns)`) to read them as risk numbers; `es` is
+/// NaN where `xi >= 1`. At least 10 exceedances are required.
+#[pyfunction]
+#[pyo3(signature = (y, threshold = None, quantile = 0.90, p_tail = None))]
+fn gpd_fit<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    threshold: Option<f64>,
+    quantile: f64,
+    p_tail: Option<Vec<f64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let p_tail = p_tail.unwrap_or_else(|| vec![0.99, 0.995, 0.999]);
+    let r = tsecon_evt::gpd_fit(&vec1(&y), threshold, quantile, &p_tail).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("threshold_quantile", r.threshold_quantile)?;
+    d.set_item("n", r.n)?;
+    d.set_item("n_exceed", r.n_exceed)?;
+    d.set_item("exceed_rate", r.exceed_rate)?;
+    d.set_item("xi", r.xi)?;
+    d.set_item("beta", r.beta)?;
+    d.set_item("se_xi", r.se_xi)?;
+    d.set_item("se_beta", r.se_beta)?;
+    d.set_item("se_valid", r.se_valid)?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("converged", r.converged)?;
+    d.set_item("p_tail", r.p_tail.into_pyarray(py))?;
+    d.set_item("var", r.var.into_pyarray(py))?;
+    d.set_item("es", r.es.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// GEV block-maxima fit with return levels.
+///
+/// With `block_size=None`, `y` IS the pre-computed block maxima; otherwise
+/// `y` is cut into consecutive non-overlapping blocks of that length (a
+/// trailing partial block is dropped) and each block contributes its
+/// maximum. Fits GEV(`xi`, `mu`, `sigma`) by MLE — `xi` is the tail index;
+/// scipy's `genextreme` shape is `c = -xi` (matches
+/// `scipy.stats.genextreme.fit(maxima)`, polished, at 1e-6). Standard
+/// errors are observed-information with the same `se_valid` certification
+/// as `gpd_fit` (`xi <= -0.5` reported, not certified). `return_levels`
+/// are the `1 - 1/T` GEV quantiles at each `return_periods` entry
+/// (default [10, 50, 100] blocks; each `T > 1`). At least 10 maxima are
+/// required.
+#[pyfunction]
+#[pyo3(signature = (y, block_size = None, return_periods = None))]
+fn gev_fit<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    block_size: Option<usize>,
+    return_periods: Option<Vec<f64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let return_periods = return_periods.unwrap_or_else(|| vec![10.0, 50.0, 100.0]);
+    let r = tsecon_evt::gev_fit(&vec1(&y), block_size, &return_periods).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("xi", r.xi)?;
+    d.set_item("mu", r.mu)?;
+    d.set_item("sigma", r.sigma)?;
+    d.set_item("se_xi", r.se_xi)?;
+    d.set_item("se_mu", r.se_mu)?;
+    d.set_item("se_sigma", r.se_sigma)?;
+    d.set_item("se_valid", r.se_valid)?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("converged", r.converged)?;
+    d.set_item("n_maxima", r.n_maxima)?;
+    d.set_item("block_size", r.block_size)?;
+    d.set_item("return_periods", r.return_periods.into_pyarray(py))?;
+    d.set_item("return_levels", r.return_levels.into_pyarray(py))?;
+    Ok(d)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -7530,5 +7617,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(narrative_svar, m)?)?;
     m.add_function(wrap_pyfunction!(fry_pagan_svar, m)?)?;
     m.add_function(wrap_pyfunction!(robust_svar_bounds, m)?)?;
+    m.add_function(wrap_pyfunction!(gpd_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(gev_fit, m)?)?;
     Ok(())
 }

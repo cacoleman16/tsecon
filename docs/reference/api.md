@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**128 functions.**
+**130 functions.**
 
 ## diagnostics
 
@@ -2284,4 +2284,59 @@ Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
     still applies and is not a band problem: `se` conditions on `lam` and
     ignores the penalty's shrinkage bias, so any band here is centred on a
     shrunk estimator. Method: Montiel Olea and Plagborg-Møller.
+
+## extreme value theory
+
+### `gpd_fit`
+
+```python
+def gpd_fit(
+    y: _ArrayLike,
+    threshold: float | None = ...,
+    quantile: float = ...,
+    p_tail: Sequence[float] | None = ...,
+) -> dict[str, Any]:
+```
+
+Peaks-over-threshold GPD tail fit with McNeil-Frey (2000) VaR/ES.
+
+    Fits a generalized Pareto distribution by MLE to the strict exceedances
+    of `y` over `threshold` (default: the empirical `quantile` of `y`,
+    numpy-linear convention; both the threshold and its quantile are
+    reported). `xi` is the tail index — scipy's `genpareto` `c` is the same
+    quantity (matches `scipy.stats.genpareto.fit(z, floc=0)`, polished, at
+    1e-6). Standard errors are observed-information; when `xi <= -0.5`
+    (Smith 1985 irregularity) they are reported but `se_valid` is False.
+    `var`/`es` are the McNeil-Frey POT tail quantiles at each `p_tail` entry
+    (default [0.99, 0.995, 0.999]; each must reach beyond the threshold:
+    `1 - p < n_exceed / n`) in the units of `y` — fit losses (`-returns` or
+    `abs(returns)`) to read them as risk numbers; `es` is NaN where
+    `xi >= 1`. At least 10 exceedances are required. Keys: threshold,
+    threshold_quantile, n, n_exceed, exceed_rate, xi, beta, se_xi, se_beta,
+    se_valid, loglik, converged, p_tail, var, es.
+
+### `gev_fit`
+
+```python
+def gev_fit(
+    y: _ArrayLike,
+    block_size: int | None = ...,
+    return_periods: Sequence[float] | None = ...,
+) -> dict[str, Any]:
+```
+
+GEV block-maxima fit with return levels.
+
+    With `block_size=None`, `y` IS the pre-computed block maxima; otherwise
+    `y` is cut into consecutive non-overlapping blocks of that length (a
+    trailing partial block is dropped) and each block contributes its
+    maximum. Fits GEV(`xi`, `mu`, `sigma`) by MLE — `xi` is the tail index;
+    scipy's `genextreme` shape is `c = -xi` (matches
+    `scipy.stats.genextreme.fit(maxima)`, polished, at 1e-6). Standard
+    errors are observed-information with the same `se_valid` certification
+    as `gpd_fit` (`xi <= -0.5` reported, not certified). `return_levels`
+    are the `1 - 1/T` GEV quantiles at each `return_periods` entry (default
+    [10, 50, 100] blocks; each `T > 1`). At least 10 maxima are required.
+    Keys: xi, mu, sigma, se_xi, se_mu, se_sigma, se_valid, loglik,
+    converged, n_maxima, block_size, return_periods, return_levels.
 
