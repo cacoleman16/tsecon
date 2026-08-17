@@ -996,6 +996,17 @@ fn set_lp_band_items<'py>(
     d.set_item(format!("upper{suffix}"), b.upper.clone().into_pyarray(py))?;
     d.set_item(format!("critical_value{suffix}"), b.critical_value)?;
     d.set_item(format!("n_cells_used{suffix}"), b.n_cells_used)?;
+    // The largest relative gap between sqrt(diag(cov)) and the reported
+    // standard errors the band is built from — the diagnostic the model card
+    // promises "is reported". ~machine epsilon on the lag-augmented and
+    // smooth-LP sup-t paths; materially non-zero (the audit measured up to
+    // ~7.5%) on lp's HAC sup-t path, where one common Bartlett bandwidth
+    // serves the whole covariance; None on the closed-form/pointwise routes,
+    // which never build a covariance.
+    d.set_item(
+        format!("cov_se_max_rel_diff{suffix}"),
+        b.cov_se_max_rel_diff,
+    )?;
     d.set_item("band", b.method.label())?;
     d.set_item("band_alpha", b.alpha)?;
     // An LP band's family is always the horizons of one response path.
@@ -2132,10 +2143,68 @@ fn parse_cumulation(arg: Option<&Bound<'_, PyAny>>) -> PyResult<tsecon_lp::Cumul
     }
 }
 
+/// Resolve the `se=` argument shared by `lp` and `lp_state` against the
+/// cumulation mode, returning the effective method name (stamped into the
+/// result as `se_method`).
+///
+/// `None` — the default — resolves to `"lag_augmented"` except under
+/// `Cumulation::Both`, where it resolves to `"hac"`: the cumulated impulse
+/// `sum_(j=0..h) shock_(t+j)` makes base times up to `h` apart share *future*
+/// shocks, which augmentation with *past* impulse lags cannot project out, so
+/// the lag-augmented HC1 score is serially correlated and its standard errors
+/// are inconsistent (audit: nominal 95% covered 0.507 at h = 12, not
+/// improving in T). An explicit `"lag_augmented"` with `"both"` is refused
+/// with an error that teaches, rather than answered wrongly.
+fn resolve_lp_se(se: Option<&str>, cumulation: tsecon_lp::Cumulation) -> PyResult<&'static str> {
+    let both = cumulation == tsecon_lp::Cumulation::Both;
+    match se {
+        None => Ok(if both { "hac" } else { "lag_augmented" }),
+        Some("hac") => Ok("hac"),
+        Some("lag_augmented") => {
+            if both {
+                return Err(PyValueError::new_err(
+                    "se=\"lag_augmented\" is statistically invalid with cumulative=\"both\" \
+                     and is refused rather than answered wrongly. The cumulated impulse \
+                     sum_(j=0..h) shock_(t+j) makes base times up to h apart share FUTURE \
+                     shocks; augmenting with past impulse lags cannot project those out, so \
+                     the horizon-h score is serially correlated and HC1 omits every \
+                     overlapping-score autocovariance term — the audit measured 0.507 \
+                     coverage at a nominal 95% (h=12), with sd/se matching \
+                     sqrt([(h+1)^2 + 2*sum_(k=1..h)(h+1-k)^2]/(h+1)^2) in closed form, and \
+                     more data does not repair it. Use se=\"hac\" (the default for this \
+                     mode; its maxlags = h + n_lag_controls covers the induced MA(h) \
+                     overlap), or tsecon.lp_multiplier for an identified multiplier",
+                ));
+            }
+            Ok("lag_augmented")
+        }
+        Some(other) => Err(PyValueError::new_err(format!(
+            "unknown se {other:?}; expected \"lag_augmented\", \"hac\", or None \
+             (auto: \"lag_augmented\", or \"hac\" when cumulative=\"both\")"
+        ))),
+    }
+}
+
 /// Local projection impulse responses (Jordà 2005).
 ///
-/// `se`: "lag_augmented" (Montiel Olea-Plagborg-Møller 2021, the default) or
-/// "hac" (Newey-West; `maxlags=None` grows with the horizon).
+/// `se`: None (the default) resolves to "lag_augmented" (Montiel
+/// Olea-Plagborg-Møller 2021) for level and cumulative-outcome responses,
+/// and to "hac" (Newey-West) when `cumulative="both"`. Explicit values:
+/// "lag_augmented" or "hac" (`maxlags=None` grows with the horizon,
+/// `maxlags = h + n_lag_controls`). The method actually used is returned as
+/// `se_method`.
+///
+/// WHY THE DEFAULT DEPENDS ON `cumulative`. Lag augmentation makes the
+/// horizon-h score serially uncorrelated by adding the impulse's own PAST
+/// lags — valid for level and cumulative-outcome responses. Under
+/// `cumulative="both"` the regressor is `sum_(j=0..h) shock_(t+j)`, so base
+/// times up to h apart share FUTURE shocks that no past-lag augmentation can
+/// project out; HC1 then omits the overlapping-score autocovariances and its
+/// standard errors are inconsistent (audit: nominal 95% covered 0.507 at
+/// h=12, flat in T). Passing `se="lag_augmented"` together with
+/// `cumulative="both"` therefore RAISES rather than answers wrongly. The
+/// "hac" default's `maxlags = h + n_lag_controls >= h` covers the induced
+/// MA(h) overlap at every horizon.
 ///
 /// `cumulative` selects which side(s) accumulate over the horizon:
 /// `False`/`"none"` (level response), `True`/`"outcome"` (the Ramey-Zubairy
@@ -2147,13 +2216,18 @@ fn parse_cumulation(arg: Option<&Bound<'_, PyAny>>) -> PyResult<tsecon_lp::Cumul
 /// grows with the horizon, so it rises roughly linearly in `h` by
 /// construction. For an identified multiplier use `tsecon.lp_multiplier`.
 ///
-/// Returns per-horizon irf and standard errors.
+/// Returns per-horizon irf and standard errors, plus `se_method` (the
+/// standard-error construction actually used).
 ///
 /// BANDS (`band=`). `band=None` (the default) returns the point path and its
 /// standard errors and nothing else, exactly as before. Pass `"pointwise"`,
 /// `"sup-t"`, `"sidak"` or `"bonferroni"` to also get `lower`/`upper`,
-/// `critical_value`, `pointwise_critical_value`, `band_scope`, `n_cells` (K)
-/// and `n_cells_used`.
+/// `critical_value`, `pointwise_critical_value`, `band_scope`, `n_cells` (K),
+/// `n_cells_used` and `cov_se_max_rel_diff` — the largest relative gap
+/// between the band covariance's own sqrt(diag) and the reported `se`
+/// (~machine epsilon on the lag-augmented sup-t path, up to a few percent on
+/// the HAC sup-t path where one common Bartlett bandwidth serves the whole
+/// matrix, and None for the routes that build no covariance).
 ///
 /// The family is THE HORIZONS OF THIS ONE RESPONSE, `K = horizons + 1`
 /// (`band_scope` reports `"horizon"`). A `"pointwise"` band covers one horizon
@@ -2181,7 +2255,7 @@ fn parse_cumulation(arg: Option<&Bound<'_, PyAny>>) -> PyResult<tsecon_lp::Cumul
     shock,
     horizons = 12,
     n_lag_controls = 4,
-    se = "lag_augmented",
+    se = None,
     maxlags = None,
     cumulative = None,
     band = None,
@@ -2196,7 +2270,7 @@ fn lp<'py>(
     shock: PyReadonlyArray1<'py, f64>,
     horizons: usize,
     n_lag_controls: usize,
-    se: &str,
+    se: Option<&str>,
     maxlags: Option<usize>,
     cumulative: Option<&Bound<'py, PyAny>>,
     band: Option<&str>,
@@ -2204,17 +2278,12 @@ fn lp<'py>(
     band_seed: u64,
     band_n_sim: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
-        .with_cumulation(parse_cumulation(cumulative)?);
-    spec = match se {
-        "lag_augmented" => spec,
-        "hac" => spec.with_hac(maxlags),
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown se {other:?}; expected \"lag_augmented\" or \"hac\""
-            )))
-        }
-    };
+    let cumulation = parse_cumulation(cumulative)?;
+    let se_method = resolve_lp_se(se, cumulation)?;
+    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).with_cumulation(cumulation);
+    if se_method == "hac" {
+        spec = spec.with_hac(maxlags);
+    }
     let (y, shock) = (vec1(&y), vec1(&shock));
     // One fit either way: `lp_band` calls `lp` and passes its result through
     // untouched, so `irf`/`se` are bit-identical to the band-free call.
@@ -2237,6 +2306,10 @@ fn lp<'py>(
     )?;
     d.set_item("irf", r.irf.into_pyarray(py))?;
     d.set_item("se", r.se.into_pyarray(py))?;
+    // The standard-error construction actually used. Loud on purpose: the
+    // default resolves differently under cumulative="both", and a result
+    // must carry its own inference label.
+    d.set_item("se_method", se_method)?;
     if let Some(b) = fitted_band.as_ref() {
         set_lp_band_items(py, &d, b, "")?;
     }
@@ -2259,8 +2332,9 @@ fn lp<'py>(
 /// BANDS (`band=`). `band=None` (the default) returns no band, exactly as
 /// before. `"pointwise"`, `"sidak"` and `"bonferroni"` add `lower`/`upper` over
 /// the horizons of this response (`K = horizons + 1`, `band_scope="horizon"`)
-/// together with `critical_value`, `pointwise_critical_value`, `n_cells` and
-/// `n_cells_used`.
+/// together with `critical_value`, `pointwise_critical_value`, `n_cells`,
+/// `n_cells_used` and `cov_se_max_rel_diff` (always None here: the
+/// closed-form routes build no covariance).
 ///
 /// `band="sup-t"` IS REFUSED HERE, with an error saying why: sup-t needs the
 /// covariance ACROSS horizons and tsecon estimates none for LP-IV, so
@@ -2350,7 +2424,9 @@ fn lp_iv<'py>(
 /// BANDS (`band=`). `band=None` (the default) returns no band. `"pointwise"`,
 /// `"sidak"` and `"bonferroni"` add `lower`/`upper` around `multiplier` over
 /// the horizons of this path (`K = horizons + 1`, `band_scope="horizon"`) with
-/// `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+/// `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used`
+/// and `cov_se_max_rel_diff` (always None here: the closed-form routes build
+/// no covariance).
 ///
 /// `band="sup-t"` IS REFUSED, with an error saying why: no cross-horizon
 /// covariance is estimated for the multiplier path, so `lp_multiplier` (like
@@ -4880,19 +4956,30 @@ fn weighted_midas<'py>(
 /// The impulse and every control are interacted with the *lagged* binary
 /// state indicator `I_{t-1}` and its complement, so the regime is
 /// predetermined (not itself moved by the shock). Two response paths are
-/// returned. `se`: "lag_augmented" (Montiel Olea-Plagborg-Møller 2021, the
-/// default) or "hac" (Newey-West; `maxlags=None` grows with the horizon).
+/// returned. `se`: None (the default) resolves to "lag_augmented" (Montiel
+/// Olea-Plagborg-Møller 2021) — except under `cumulative="both"`, where it
+/// resolves to "hac" (Newey-West; `maxlags=None` grows with the horizon) for
+/// the same reason as in `tsecon.lp`: the cumulated impulse shares FUTURE
+/// shocks across base times up to h apart, which past-lag augmentation
+/// cannot project out, so lag-augmented HC1 standard errors are inconsistent
+/// there (audit: 0.640 coverage at a nominal 95%, h=12) and
+/// `se="lag_augmented"` with `cumulative="both"` RAISES. The method actually
+/// used is returned as `se_method`.
 /// `cumulative` regresses the cumulated outcome (Ramey-Zubairy). Returns dict
 /// keys `horizons`, `irf_state1`, `se_state1`, `irf_state0`, `se_state0` (the
-/// per-regime impulse responses and their standard errors at each horizon).
+/// per-regime impulse responses and their standard errors at each horizon)
+/// and `se_method`.
 ///
 /// BANDS (`band=`). `band=None` (the default) returns no band. `"pointwise"`,
 /// `"sidak"` and `"bonferroni"` add one band PER REGIME —
 /// `lower_state1`/`upper_state1` and `lower_state0`/`upper_state0`, with
-/// `critical_value_state1`/`critical_value_state0` and
-/// `n_cells_used_state1`/`n_cells_used_state0` — over the horizons of that
-/// regime's own response (`K = horizons + 1`, `band_scope="horizon"`). The two
-/// regimes are banded separately; nothing here is simultaneous ACROSS regimes.
+/// `critical_value_state1`/`critical_value_state0`,
+/// `n_cells_used_state1`/`n_cells_used_state0` and
+/// `cov_se_max_rel_diff_state1`/`cov_se_max_rel_diff_state0` (always None
+/// here: the closed-form routes build no covariance) — over the horizons of
+/// that regime's own response (`K = horizons + 1`, `band_scope="horizon"`).
+/// The two regimes are banded separately; nothing here is simultaneous
+/// ACROSS regimes.
 ///
 /// `band="sup-t"` IS REFUSED, with an error saying why: no cross-horizon
 /// covariance is estimated for the interacted regressions, so `lp_state` (like
@@ -4905,7 +4992,7 @@ fn weighted_midas<'py>(
     state_indicator,
     horizons = 12,
     n_lag_controls = 4,
-    se = "lag_augmented",
+    se = None,
     maxlags = None,
     cumulative = None,
     band = None,
@@ -4919,23 +5006,18 @@ fn lp_state<'py>(
     state_indicator: PyReadonlyArray1<'py, f64>,
     horizons: usize,
     n_lag_controls: usize,
-    se: &str,
+    se: Option<&str>,
     maxlags: Option<usize>,
     cumulative: Option<&Bound<'py, PyAny>>,
     band: Option<&str>,
     band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
-        .with_cumulation(parse_cumulation(cumulative)?);
-    spec = match se {
-        "lag_augmented" => spec,
-        "hac" => spec.with_hac(maxlags),
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown se {other:?}; expected \"lag_augmented\" or \"hac\""
-            )))
-        }
-    };
+    let cumulation = parse_cumulation(cumulative)?;
+    let se_method = resolve_lp_se(se, cumulation)?;
+    let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).with_cumulation(cumulation);
+    if se_method == "hac" {
+        spec = spec.with_hac(maxlags);
+    }
     let r = tsecon_lp::lp_state(&vec1(&y), &vec1(&shock), &vec1(&state_indicator), spec)
         .map_err(to_py)?;
     let regime_bands = match band {
@@ -4961,6 +5043,9 @@ fn lp_state<'py>(
     d.set_item("se_state1", r.se_state1.into_pyarray(py))?;
     d.set_item("irf_state0", r.irf_state0.into_pyarray(py))?;
     d.set_item("se_state0", r.se_state0.into_pyarray(py))?;
+    // The standard-error construction actually used (shared by both regimes);
+    // see `lp` for why the default depends on the cumulation mode.
+    d.set_item("se_method", se_method)?;
     if let Some((b1, b0)) = regime_bands.as_ref() {
         set_lp_band_items(py, &d, b1, "_state1")?;
         set_lp_band_items(py, &d, b0, "_state0")?;
@@ -6659,9 +6744,16 @@ fn sup_f_test<'py>(
 /// `lam`: a float fixes the smoothing parameter (`0.0` reproduces the
 /// per-horizon `tsecon.lp(se="hac")` point estimates exactly with the
 /// default basis); `"cv"` or `None` selects it by leave-h-block-out
-/// cross-validation over `lambda_grid` (or a default log-spaced grid) with
-/// `n_folds` contiguous folds and a dependence buffer of
-/// `horizons + n_lag_controls` periods around each held-out block.
+/// cross-validation over `lambda_grid` with `n_folds` contiguous folds and a
+/// dependence buffer of `horizons + n_lag_controls` periods around each
+/// held-out block. `lambda_grid=None` uses the default SCALE-RELATIVE grid:
+/// a 17-point log ladder spanning eight decades, anchored to the mean
+/// diagonal of the spline block of the stacked X'X — lambda competes with
+/// X'X, which carries the squared units of the data, so anchoring makes the
+/// selected smoothing (and the unit-normalized IRF) invariant to rescaling
+/// `y` and/or `shock` by any constant. An EXPLICIT `lambda_grid` is
+/// absolute, in the units of your data, and is used verbatim; the grid
+/// actually searched is always returned as `cv_grid`.
 ///
 /// `se` is the delta method through the basis over a stacked Bartlett-HAC
 /// sandwich (bandwidth `hac_maxlags`, default `horizons + n_lag_controls`).
@@ -6677,7 +6769,11 @@ fn sup_f_test<'py>(
 /// BANDS (`band=`). `band=None` (the default) returns no band. `"pointwise"`,
 /// `"sup-t"`, `"sidak"` or `"bonferroni"` add `lower`/`upper` over the horizons
 /// of this response (`K = horizons + 1`, `band_scope="horizon"`) with
-/// `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+/// `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used` and
+/// `cov_se_max_rel_diff` (the largest relative gap between the band
+/// covariance's sqrt(diag) and the reported `se` — ~machine epsilon here,
+/// because the covariance IS the delta-method matrix behind `se`; None for
+/// the routes that build no covariance).
 /// A pointwise band covers one horizon at a time and promises nothing about the
 /// path; the other three cover every horizon at once at `1 - band_alpha`.
 ///

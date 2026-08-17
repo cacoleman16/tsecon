@@ -108,7 +108,7 @@ def test_lp_default_returns_no_band_and_the_same_estimates():
     banded call must not disturb the point path or the standard errors."""
     y, shock = _lp_series()
     base = tsecon.lp(y, shock, horizons=10, n_lag_controls=4)
-    assert set(base) == {"horizons", "irf", "se"}
+    assert set(base) == {"horizons", "irf", "se", "se_method"}
     for method in ("pointwise", "sup-t", "sidak", "bonferroni"):
         got = tsecon.lp(
             y, shock, horizons=10, n_lag_controls=4, band=method, band_n_sim=20_000

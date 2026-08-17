@@ -39,14 +39,27 @@ use crate::spec::{LpResult, LpSpec, SeKind, SeSpec};
 ///   cumulated `shock`). For the identified version see
 ///   [`lp_multiplier`](crate::lp_multiplier).
 ///
+///   This mode **requires** [`SeSpec::Hac`] and refuses
+///   [`SeSpec::LagAugmented`]: the cumulated impulse
+///   `sum_{j=0}^{h} shock_{t+j}` makes base times up to `h` apart share
+///   *future* shocks, which no augmentation with *past* impulse lags can
+///   project out, so the Montiel Olea & Plagborg-Møller MDS-score argument
+///   fails and HC1 omits the overlapping-score autocovariances (measured
+///   coverage 0.507 at nominal 95%, `h = 12`, not improving in `T`). The
+///   HAC default `maxlags = h + p` covers the induced MA(`h`) overlap at
+///   every horizon.
+///
 /// # Errors
 ///
 /// [`LpError::LengthMismatch`] if `shock` and `y` differ in length,
 /// [`LpError::NonFinite`] on NaN/inf input, [`LpError::SeriesTooShort`] or
-/// [`LpError::HorizonTooLong`] when a horizon has no usable sample, and
-/// [`LpError::Hac`] wrapping any failure of the shared OLS/HAC engine
-/// (e.g. a collinear design).
+/// [`LpError::HorizonTooLong`] when a horizon has no usable sample,
+/// [`LpError::InvalidSeForCumulation`] for lag-augmented inference under
+/// [`Cumulation::Both`](crate::Cumulation::Both), and [`LpError::Hac`]
+/// wrapping any failure of the shared OLS/HAC engine (e.g. a collinear
+/// design).
 pub fn lp(y: &[f64], shock: &[f64], spec: LpSpec) -> Result<LpResult, LpError> {
+    spec.check_se_supports_cumulation()?;
     if shock.len() != y.len() {
         return Err(LpError::LengthMismatch {
             what: "impulse (shock) vs outcome (y)",

@@ -147,7 +147,7 @@ $$
 
 where $Y_t$ stacks the outcome, the impulse, and any other system variables. If the impulse $\varepsilon_t$ is **innovation-like** — unpredictable from the past, as a properly identified shock should be — then the part of the regression score attached to $\beta_h$ becomes approximately a martingale difference sequence: serially *uncorrelated*, despite the MA($h$) errors. Plain heteroskedasticity-robust (Eicker-Huber-White) standard errors are then valid. No HAC, no bandwidth choice at all.
 
-Better still, the result is **uniform**: it holds whether the data are mildly persistent or have an exact unit root, and it holds at horizons that are a nontrivial fraction of the sample — precisely the territory where HAC-based LP inference is known to break down. Simpler *and* more robust. This is why the tsecon roadmap module makes lag-augmented LP with robust standard errors the loud, documented default, with HAC as the explicit fallback.
+Better still, the result is **uniform**: it holds whether the data are mildly persistent or have an exact unit root, and it holds at horizons that are a nontrivial fraction of the sample — precisely the territory where HAC-based LP inference is known to break down. Simpler *and* more robust. This is why the tsecon roadmap module makes lag-augmented LP with robust standard errors the loud, documented default, with HAC as the explicit fallback — with one carve-out where the argument itself fails: under `cumulative="both"` the regressor is `sum_(j=0..h) shock_(t+j)`, so nearby base times share **future** shocks that no past-lag augmentation can project out, the score is not a martingale difference, and lag-augmented HC1 intervals collapse (the audit measured 0.507 coverage at a nominal 95%, h=12, flat in T). For that mode `tsecon.lp` and `tsecon.lp_state` default to HAC instead, stamp the choice in the returned `se_method`, and refuse an explicit `se="lag_augmented"` with an error that says why.
 
 The lag-augmented version of our example, using today's API:
 
@@ -319,23 +319,26 @@ for t in range(1, T):
     y[t] = phi * y[t - 1] + eps[t] + 0.5 * eta[t]
 
 sm = tsecon.smooth_lp(y, eps, horizons=H, n_lag_controls=1, lam="cv")
-sm["lambda_used"]                                # 1000.0 — chosen by blocked CV on a log grid
+sm["lambda_used"]                                # 538.2 — chosen by blocked CV on a log grid
+                                                 # (the default grid is scale-relative: anchored to
+                                                 # X'X, so this choice is invariant to the units
+                                                 # of y and eps; see the model card)
 
 true = phi ** np.arange(H + 1)
 print(np.round(np.array(sm["irf_raw"])[:6], 2))  # [0.98 0.74 0.49 0.3  0.24 0.19]  per-horizon LP
-print(np.round(np.array(sm["irf"])[:6], 2))      # [0.93 0.72 0.53 0.37 0.25 0.17]  smoothed
+print(np.round(np.array(sm["irf"])[:6], 2))      # [0.94 0.72 0.52 0.36 0.24 0.16]  smoothed
 print(np.round(true[:6], 2))                     # [1.   0.7  0.49 0.34 0.24 0.17]
 
 rmse = lambda a: float(np.sqrt(np.mean((np.array(a) - true) ** 2)))
 print(round(rmse(sm["irf_raw"]), 3), round(rmse(sm["irf"]), 3))   # 0.068 -> 0.055 against the truth
 ```
 
-The smoothed path gives up a little at impact (0.93 versus the true 1.0 — shrinkage bias, exactly where the IRF bends fastest) and pays it back everywhere else: RMSE against the true path drops from 0.068 to 0.055, and the long-horizon wiggles that invite over-interpretation are gone. The anchor is checkable in one line:
+The smoothed path gives up a little at impact (0.94 versus the true 1.0 — shrinkage bias, exactly where the IRF bends fastest) and pays it back everywhere else: RMSE against the true path drops from 0.068 to 0.055, and the long-horizon wiggles that invite over-interpretation are gone. The anchor is checkable in one line:
 
 ```python
 sm0 = tsecon.smooth_lp(y, eps, horizons=H, n_lag_controls=1, lam=0.0)
 lp0 = tsecon.lp(y, eps, horizons=H, n_lag_controls=1, se="hac")
-np.abs(np.array(sm0["irf"]) - np.array(lp0["irf"])).max()   # 4.3e-13 — same estimator, penalty off
+np.abs(np.array(sm0["irf"]) - np.array(lp0["irf"])).max()   # 3.0e-13 — same estimator, penalty off
 ```
 
 The returned `se` is a delta method through the basis over a stacked Bartlett-HAC sandwich — and it is honest about what it is: it *conditions on* $\lambda$ (even a cross-validated one) and describes the penalized estimator's own sampling variability, not the shrinkage bias. That is the "post-shrinkage inference is unsolved" caveat from the frontier section made concrete; `irf_raw`/`se_raw` always come back alongside, so the unshrunk comparison is never more than one plot away. Both the B-spline basis (against `scipy` `BSpline.design_matrix`) and the full estimator (against NumPy normal equations) are golden-tested; see the [local-projections model card](../reference/model-cards/local-projections.md) for the contract.

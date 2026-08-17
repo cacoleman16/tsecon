@@ -653,7 +653,7 @@ def lp(
     shock: _ArrayLike,
     horizons: int = ...,
     n_lag_controls: int = ...,
-    se: str = ...,
+    se: str | None = ...,
     maxlags: int | None = ...,
     cumulative: bool | str | None = ...,
     band: str | None = ...,
@@ -663,7 +663,16 @@ def lp(
 ) -> dict[str, Any]:
 ```
 
-Local projection IRFs; `se` is "lag_augmented" (default) or "hac".
+Local projection IRFs; `se` is None (auto), "lag_augmented" or "hac".
+
+    `se=None` (the default) resolves to "lag_augmented" — except under
+    `cumulative="both"`, where it resolves to "hac": the cumulated impulse
+    `sum_(j=0..h) shock_(t+j)` shares FUTURE shocks across base times up to h
+    apart, which past-lag augmentation cannot project out, so lag-augmented
+    HC1 standard errors are inconsistent there (audit: 0.507 coverage at a
+    nominal 95%, h=12, flat in T) and `se="lag_augmented"` with
+    `cumulative="both"` raises. The method actually used is returned as
+    `se_method`.
 
     `cumulative`: False/"none" (level), True/"outcome" (cumulated outcome on
     the contemporaneous impulse — a cumulative IRF, NOT a multiplier), or
@@ -673,7 +682,11 @@ Local projection IRFs; `se` is "lag_augmented" (default) or "hac".
     **Bands.** `band=None` (default) returns the point path and its standard
     errors only, exactly as before. `"pointwise"`, `"sup-t"`, `"sidak"` or
     `"bonferroni"` add `lower`/`upper`, `critical_value`,
-    `pointwise_critical_value`, `band_scope`, `n_cells` (K) and `n_cells_used`.
+    `pointwise_critical_value`, `band_scope`, `n_cells` (K), `n_cells_used`
+    and `cov_se_max_rel_diff` (largest relative gap between the band
+    covariance's sqrt(diag) and the reported `se`; ~machine epsilon on the
+    lag-augmented sup-t path, up to a few percent on the HAC sup-t path,
+    None where no covariance is built).
     The family is **the horizons of this one response**, `K = horizons + 1`
     (`band_scope` reports `"horizon"`). A pointwise band covers one horizon at a
     time; the other three cover every horizon at once at `1 - band_alpha`.
@@ -717,7 +730,8 @@ LP-IV: instrumented local projections with a first-stage F diagnostic.
     **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
     and `"bonferroni"` add `lower`/`upper` over the horizons of this response
     (`K = horizons + 1`, `band_scope="horizon"`) with `critical_value`,
-    `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+    `pointwise_critical_value`, `n_cells`, `n_cells_used` and
+    `cov_se_max_rel_diff` (always None here: no covariance is built).
 
     `band="sup-t"` is **refused** here with an error saying why: sup-t needs the
     covariance ACROSS horizons and tsecon estimates none for LP-IV, so `lp_iv`,
@@ -753,7 +767,8 @@ Ramey-Zubairy (2018) integral multiplier by one-step LP-IV.
     **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
     and `"bonferroni"` add `lower`/`upper` around `multiplier` over the horizons
     of this path (`K = horizons + 1`, `band_scope="horizon"`) with
-    `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+    `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used` and
+    `cov_se_max_rel_diff` (always None here: no covariance is built).
     `band="sup-t"` is **refused**: no cross-horizon covariance is estimated for
     the multiplier path, so this function (like `lp_iv` and `lp_state`) gets the
     closed-form routes only. Do not call such a band sup-t.
@@ -1676,7 +1691,7 @@ def lp_state(
     state_indicator: _ArrayLike,
     horizons: int = ...,
     n_lag_controls: int = ...,
-    se: str = ...,
+    se: str | None = ...,
     maxlags: int | None = ...,
     cumulative: bool | str | None = ...,
     band: str | None = ...,
@@ -1687,12 +1702,21 @@ def lp_state(
 State-dependent (interacted) local projections (Ramey-Zubairy 2018); per-regime IRFs and SEs.
 
     `cumulative` takes False/"none", True/"outcome" or "both", as in `lp`.
+    `se=None` (the default) resolves to "lag_augmented" — except under
+    `cumulative="both"`, where it resolves to "hac" for the same reason as in
+    `lp` (the cumulated impulse shares future shocks across nearby base
+    times, so lag-augmented HC1 is inconsistent there; audit: 0.640 coverage
+    at a nominal 95%, h=12) — and `se="lag_augmented"` with
+    `cumulative="both"` raises. The method actually used is returned as
+    `se_method`.
 
     **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
     and `"bonferroni"` add one band PER REGIME —
     `lower_state1`/`upper_state1` and `lower_state0`/`upper_state0`, with
-    `critical_value_state1`/`critical_value_state0` and
-    `n_cells_used_state1`/`n_cells_used_state0` — over the horizons of that
+    `critical_value_state1`/`critical_value_state0`,
+    `n_cells_used_state1`/`n_cells_used_state0` and
+    `cov_se_max_rel_diff_state1`/`cov_se_max_rel_diff_state0` (always None
+    here: no covariance is built) — over the horizons of that
     regime's own response (`K = horizons + 1`, `band_scope="horizon"`). The two
     regimes are banded separately; nothing here is simultaneous *across*
     regimes.
@@ -2262,8 +2286,14 @@ Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
 
     `lam`: a float fixes the smoothing parameter (0.0 reproduces the
     per-horizon `lp(se="hac")` point estimates with the default basis);
-    "cv"/None cross-validates it by leave-h-block-out CV over `lambda_grid`
-    (or a default log-spaced grid). `penalty_order=2` shrinks the IRF toward
+    "cv"/None cross-validates it by leave-h-block-out CV over `lambda_grid`.
+    `lambda_grid=None` uses the default **scale-relative** grid — a 17-point
+    log ladder spanning eight decades, anchored to the mean diagonal of the
+    spline block of the stacked X'X, so the selected smoothing (and the
+    unit-normalized IRF) is invariant to rescaling `y` and/or `shock`; an
+    explicit `lambda_grid` is absolute (in the units of your data) and used
+    verbatim, and `cv_grid` always reports the grid actually searched.
+    `penalty_order=2` shrinks the IRF toward
     a straight line as `lam` grows. `se` conditions on `lam` and does not
     account for shrinkage bias; `irf_raw`/`se_raw` are the unsmoothed
     per-horizon HAC LP for comparison. Keys: horizons, irf, se, lambda_used,
@@ -2272,7 +2302,9 @@ Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
     **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sup-t"`,
     `"sidak"` or `"bonferroni"` add `lower`/`upper` over the horizons of this
     response (`K = horizons + 1`, `band_scope="horizon"`) with
-    `critical_value`, `pointwise_critical_value`, `n_cells` and `n_cells_used`.
+    `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used`
+    and `cov_se_max_rel_diff` (~machine epsilon here: the band covariance IS
+    the delta-method matrix behind `se`; None where no covariance is built).
     A pointwise band covers one horizon at a time; the other three cover every
     horizon at once at `1 - band_alpha`.
 

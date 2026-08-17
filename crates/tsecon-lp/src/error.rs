@@ -97,6 +97,16 @@ pub enum LpError {
         /// Usable base periods (`n - n_lag_controls`).
         n_base: usize,
     },
+    /// Lag-augmented (HC1) inference was requested together with
+    /// [`Cumulation::Both`](crate::Cumulation::Both). The combination is
+    /// statistically invalid, so it is refused rather than answered wrongly:
+    /// the cumulated impulse `sum_{j=0..h} shock_{t+j}` makes base times up
+    /// to `h` apart share *future* shocks, augmenting with *past* impulse
+    /// lags cannot project those out, and the horizon-`h` score is therefore
+    /// serially correlated — HC1 omits every one of those autocovariance
+    /// terms. Measured: a nominal 95% interval covered 0.507 at `h = 12`,
+    /// and the shortfall does not shrink in `T`.
+    InvalidSeForCumulation,
     /// A confidence-band request could not be honoured: an out-of-range
     /// `alpha`, too few sup-t simulations, sup-t asked for where no
     /// cross-horizon covariance exists, or a rejection from the shared
@@ -195,6 +205,20 @@ impl fmt::Display for LpError {
                  each side, and what remains must still support the stacked \
                  fit; use 2 <= n_folds << n_base, reduce horizons, or supply \
                  a longer series"
+            ),
+            LpError::InvalidSeForCumulation => write!(
+                f,
+                "se = \"lag_augmented\" cannot be combined with cumulative = \
+                 \"both\": the cumulated impulse sum_(j=0..h) shock_(t+j) makes \
+                 base times up to h apart share FUTURE shocks, and augmenting \
+                 with past impulse lags cannot project those out, so the \
+                 horizon-h score is serially correlated and HC1 standard errors \
+                 omit the (h+1-k)^2-weighted autocovariance terms entirely — a \
+                 nominal 95% interval measured 0.507 coverage at h = 12, and \
+                 more data does not repair it. Use se = \"hac\" (its default \
+                 maxlags = h + n_lag_controls covers the induced MA(h) overlap \
+                 at every horizon), which is what the default resolves to for \
+                 this mode; for an identified multiplier use lp_multiplier"
             ),
             LpError::Band { what } => write!(f, "simultaneous band: {what}"),
             LpError::Hac(e) => write!(f, "{e}"),

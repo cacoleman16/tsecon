@@ -90,6 +90,16 @@
 //! lag-augmented HC1 the default ([`SeSpec::LagAugmented`]) and keeps HAC
 //! ([`SeSpec::Hac`]) as the statsmodels-compatibility option.
 //!
+//! The argument has one hard boundary: it projects out **past** shocks.
+//! Under [`Cumulation::Both`] the regressor is `sum_{j=0..h} shock_{t+j}`,
+//! so base times up to `h` apart share **future** shocks, the score is
+//! serially correlated no matter how many past lags are added, and HC1 is
+//! inconsistent (measured: 0.507 coverage at a nominal 95%, `h = 12`, flat
+//! in `T`). [`lp`], [`lp_state`] and [`lp_irf_cov`] therefore refuse
+//! `SeSpec::LagAugmented` + `Cumulation::Both` with
+//! [`LpError::InvalidSeForCumulation`]; use `SeSpec::Hac`, whose default
+//! `maxlags = h + p` covers the induced MA(`h`) overlap.
+//!
 //! ```
 //! use tsecon_lp::{lp, LpSpec};
 //!

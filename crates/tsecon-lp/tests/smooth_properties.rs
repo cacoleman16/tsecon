@@ -200,6 +200,67 @@ fn grid_is_increasing(g: &[f64]) -> bool {
 }
 
 #[test]
+fn default_cv_grid_is_scale_relative() {
+    // The default grid is anchored to the spline block of X'X, so the
+    // *selection* must be invariant to scalar rescaling of the shock and of
+    // y: the chosen lambda tracks c^2 under shock -> c*shock (and sits still
+    // under y -> c*y), the chosen grid INDEX never moves, and the
+    // unit-normalized IRF does not change. The pre-fix absolute 1e-2..1e6
+    // ladder failed this at the endpoints: shock*100 pinned lambda_used at
+    // the grid max and moved the unit IRF materially.
+    let mut stream = Stream::new(20260817);
+    let (y, e) = simulate_smooth_irf(&mut stream, 220, 1.5);
+    let spec = SmoothLpSpec::new(10, 2);
+    let base = smooth_lp(&y, &e, &spec).expect("baseline default CV");
+    let base_idx = base
+        .cv_grid
+        .iter()
+        .position(|&l| l == base.lambda)
+        .expect("lambda in grid");
+
+    for &c in &[1e-4_f64, 1e-2, 1e2, 1e4] {
+        // Shock rescaled: lambda* and the grid both scale by c^2, so the
+        // selected index is unchanged and irf * c reproduces the baseline.
+        let es: Vec<f64> = e.iter().map(|v| v * c).collect();
+        let s = smooth_lp(&y, &es, &spec).expect("scaled-shock default CV");
+        let idx = s
+            .cv_grid
+            .iter()
+            .position(|&l| l == s.lambda)
+            .expect("lambda in grid");
+        assert_eq!(idx, base_idx, "c={c}: CV picked a different grid index");
+        let lam_ratio = s.lambda / (c * c) / base.lambda;
+        assert!(
+            (lam_ratio - 1.0).abs() < 1e-9,
+            "c={c}: lambda_used {} does not track c^2 * baseline {}",
+            s.lambda,
+            base.lambda
+        );
+        for h in 0..s.irf.len() {
+            let rel = (s.irf[h] * c - base.irf[h]).abs() / base.irf[h].abs().max(1e-12);
+            assert!(
+                rel < 1e-7,
+                "c={c}, h={h}: unit-normalized IRF moved by {rel:e}"
+            );
+        }
+
+        // y rescaled: the CV optimum does not move, the anchor must not
+        // either, and irf / c reproduces the baseline.
+        let ys: Vec<f64> = y.iter().map(|v| v * c).collect();
+        let s = smooth_lp(&ys, &e, &spec).expect("scaled-y default CV");
+        assert_eq!(s.cv_grid, base.cv_grid, "c={c}: y-scaling moved the grid");
+        assert_eq!(s.lambda, base.lambda, "c={c}: y-scaling moved lambda_used");
+        for h in 0..s.irf.len() {
+            let rel = (s.irf[h] / c - base.irf[h]).abs() / base.irf[h].abs().max(1e-12);
+            assert!(
+                rel < 1e-7,
+                "c={c}, h={h}: y-scaled unit IRF moved by {rel:e}"
+            );
+        }
+    }
+}
+
+#[test]
 fn basis_is_a_partition_of_unity_and_ses_are_positive() {
     let mut stream = Stream::new(2024);
     let (y, e) = simulate_smooth_irf(&mut stream, 220, 1.0);

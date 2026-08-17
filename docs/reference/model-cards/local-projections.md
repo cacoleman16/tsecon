@@ -34,15 +34,33 @@ from short samples — LP standard errors widen with the horizon and can be nois
 far out.
 
 **Key arguments and defaults (and why).** `horizons` (H). `n_lag_controls` sets
-how many own-lags enter as controls. `se="lag_augmented"` is the **default and
-the recommendation** (Montiel Olea & Plagborg-Møller 2021): it augments the
-regression with an extra lag so the response is inference-robust even under
-persistence, without hand-tuning a bandwidth; `se="hac"` gives Newey-West with
-`maxlags`. `cumulative` as above — note `True` is a cumulative *impulse
-response*, not a multiplier.
+how many own-lags enter as controls. `se=None` (the default) resolves to
+`"lag_augmented"` — the **recommendation** (Montiel Olea & Plagborg-Møller
+2021): it augments the regression with the impulse's own lags so the response is
+inference-robust even under persistence, without hand-tuning a bandwidth —
+**except under `cumulative="both"`, where the default resolves to `"hac"`**
+(Newey-West with `maxlags`, defaulting to `h + n_lag_controls`). The exception
+is not a taste: lag augmentation works by making the horizon-`h` score serially
+uncorrelated, and it does that by projecting out *past* shocks. Under `"both"`
+the regressor is `Σ_{j=0..h} shock_{t+j}`, so base times up to `h` apart share
+**future** shocks that no past-lag augmentation can reach; the score is then
+serially correlated and HC1 standard errors omit the overlap entirely. The
+audit measured the damage: a nominal 95% interval covered **0.507** at `h=12`,
+with a reported `se` flat across horizons while the true sampling sd grew
+2.7×, and quadrupling `T` did not repair it — the shortfall matches the omitted
+autocovariance terms in closed form. `se="hac"` restores 0.90+ (its default
+bandwidth `h + n_lag_controls ≥ h` covers the induced MA(`h`) overlap at every
+horizon), so that is what the default now selects for this mode, and an
+explicit `se="lag_augmented"` with `cumulative="both"` **raises** rather than
+answering wrongly. `cumulative` as above — note `True` is a cumulative *impulse
+response*, not a multiplier. For the other cumulation modes the lag-augmented
+default is measured sound (0.92–0.97 on the same draws): only the cumulated
+*impulse* imports future shocks into the regressor.
 
-**How to read the output.** `horizons`, `irf` (the response path), and `se` (one
-standard error per horizon — build bands as `irf ± z·se`). Plot `irf` against
+**How to read the output.** `horizons`, `irf` (the response path), `se` (one
+standard error per horizon — build bands as `irf ± z·se`), and `se_method` —
+the inference route actually used (`"lag_augmented"` or `"hac"`); report it,
+since the default depends on `cumulative`. Plot `irf` against
 `horizons`; the per-horizon `se` widening is a feature, not a defect. `irf ±
 z·se` is a **pointwise** band and makes no promise about the path as a whole; for
 that, see [the band selector](#simultaneous-bands-over-the-horizons-lp).
@@ -94,7 +112,9 @@ check that the covariance and the standard errors are the *same* estimator. On
 `se="hac"` one **common** Bartlett bandwidth serves the whole matrix (the
 per-horizon default `maxlags` grows with `h`), so `sqrt(diag)` can
 differ from the reported `se`; the multiplier uses only the correlation matrix,
-and the largest relative gap is reported so you can see how far apart they were.
+and the largest relative gap is reported as `cov_se_max_rel_diff` so you can
+see how far apart they were (the audit reconstructed gaps up to ~7.5% on a
+routine design — this is not a diagnostic that is always ≈0).
 
 **Key arguments and defaults (and why).** `band=None` is the **default** and
 returns exactly what `lp` always returned — the point path and its standard
@@ -107,8 +127,11 @@ its own argument, `band_alpha` — a band is not the same object as an `se`.
 a quantile in the tail of a maximum.
 
 **How to read the output.** Asking for a band adds `lower`/`upper`,
-`critical_value`, `pointwise_critical_value`, `band_scope`, `n_cells` (the `K`)
-and `n_cells_used`. The family is fixed and simple here — the horizons of this
+`critical_value`, `pointwise_critical_value`, `band_scope`, `n_cells` (the `K`),
+`n_cells_used` and `cov_se_max_rel_diff` (the sup-t diagnostic above —
+~machine epsilon on the lag-augmented path, materially non-zero on the HAC
+path, `None` on the routes that build no covariance). The family is fixed and
+simple here — the horizons of this
 one response, `K = horizons + 1`, and `band_scope` echoes `"horizon"` — but
 **report it anyway**, together with the method. The ratio of `critical_value` to
 `pointwise_critical_value` is exactly what simultaneity cost on this path. At
@@ -269,11 +292,16 @@ regression per horizon delivers a separate IRF and SE for each state.
 that is predetermined (does not itself respond to the shock within the period).
 
 **Key arguments.** `state_indicator` (per-period 0/1, or a continuous transition
-weight), `horizons`, `n_lag_controls`, `se` (lag-augmented default),
+weight), `horizons`, `n_lag_controls`, `se` (`None` resolves to lag-augmented,
+except under `cumulative="both"` where it resolves to HAC, exactly as in `lp`
+and for the same reason — the cumulated impulse shares future shocks across
+nearby base times, and the audit measured 0.640 coverage at a nominal 95% for
+the lag-augmented pairing here; `se="lag_augmented"` with `"both"` raises),
 `cumulative` (`False`/`"none"`, `True`/`"outcome"`, `"both"`).
 
 **How to read the output.** `horizons` and, per regime, `irf_state1`/`se_state1`
-and `irf_state0`/`se_state0`. Compare the two paths — a gap that exceeds the
+and `irf_state0`/`se_state0`, plus `se_method` (the inference route actually
+used, shared by both regimes). Compare the two paths — a gap that exceeds the
 combined bands is the state-dependence finding.
 
 **Bands over the horizons — closed forms only, and per regime.** `band` defaults
@@ -382,7 +410,18 @@ finding.
 parameter (`0.0` = raw LP); `"cv"` or `None` (the default) selects it by
 leave-h-block-out cross-validation — blocks of adjacent base periods are held
 out to respect the serial dependence of the stacked residuals — over
-`lambda_grid` (default: a log-spaced grid from 1e-2 to 1e6). `degree = 3`
+`lambda_grid`. The default grid is **scale-relative**: a 17-point log ladder
+spanning eight decades, anchored to the mean diagonal of the spline block of
+the stacked `X'X`. The anchor matters because `λ` competes with `X'X`, which
+carries the *squared units* of your data — an absolute default grid (the
+pre-0.3 behaviour, a fixed 1e-2..1e6 ladder) tied the amount of smoothing to
+the units of the series: rescaling the shock by 100 walked the CV optimum off
+the grid, pinned `lambda_used` at the endpoint, and changed the
+unit-normalized IRF materially. With the anchored grid the *selection* is
+exactly invariant to rescaling `y` and/or the shock — `lambda_used` tracks the
+units, the unit response does not move. An **explicit** `lambda_grid` is
+absolute, in the units of your data, and is used verbatim; `cv_grid` always
+reports the grid actually searched. `degree = 3`
 (cubic splines), `n_basis = horizons + 1` (the interpolating size that makes
 the `lam = 0` anchor exact), `penalty_order = 2` (shrink toward a line),
 `n_folds = 5`, `hac_maxlags = horizons + n_lag_controls` by default.
@@ -402,7 +441,8 @@ shrinkage bias — bands are around the estimator's own smoothed target.
 family that already held the joint object. The IRF is `irf_h = B_h' theta` for a
 single jointly estimated coefficient vector, so the cross-horizon covariance is
 `B V B'`, it is already computed, and the shipped `se` is exactly its
-`sqrt(diag)` — bit for bit. `band="sup-t"` therefore costs no extra estimation
+`sqrt(diag)` — bit for bit (the returned `cov_se_max_rel_diff` says so:
+~machine epsilon here, unlike `lp`'s HAC path). `band="sup-t"` therefore costs no extra estimation
 and makes no approximation that the point estimate has not already made (it
 simulates `band_n_sim` draws from `band_seed`, so the band is a pure function of
 that seed); `"pointwise"`, `"sidak"` and `"bonferroni"` are the other three, and
@@ -466,16 +506,19 @@ print("smoothed :", "  ".join(f"{irf[h]:5.2f}" for h in range(0, 9, 2)))
 print("true     :", "  ".join(f"{true[h]:5.2f}" for h in range(0, 9, 2)))
 print(f"RMSE vs truth: raw {np.sqrt(np.mean((raw - true) ** 2)):.4f}"
       f"  smoothed {np.sqrt(np.mean((irf - true) ** 2)):.4f}")
-# max |smooth_lp(lam=0).irf - lp(se='hac').irf| = 1.5420997812043424e-13
-# lambda_used = 3.16e+05
+# max |smooth_lp(lam=0).irf - lp(se='hac').irf| = 1.503241975342462e-13
+# lambda_used = 3.7e+05
 # h        :     0      2      4      6      8
 # raw LP   :  0.95   0.79   0.67   0.49   0.48
-# smoothed :  1.02   0.84   0.67   0.50   0.33
+# smoothed :  0.90   0.75   0.61   0.46   0.31
 # true     :  1.00   0.72   0.52   0.38   0.27
-# RMSE vs truth: raw 0.1822  smoothed 0.1434
+# RMSE vs truth: raw 0.1822  smoothed 0.1436
 ```
 
-The anchor holds to 1.5e-13, CV lands mid-grid, and the smoothed path cuts the
+The anchor holds to 1.5e-13, CV lands one notch below the top of its grid (a
+noisy short sample wants heavy smoothing; `lambda_used` near the top is the
+"as smooth as allowed" signal described above, and extending `lambda_grid` is
+the check), and the smoothed path cuts the
 RMSE against the true IRF by about a fifth on this draw — the bias-variance
 trade doing exactly what it promises: giving up nothing at the horizons where
 raw LP was right, and pulling in the ones where noise had it wandering.
