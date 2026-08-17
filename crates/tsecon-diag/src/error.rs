@@ -64,6 +64,12 @@ pub enum DiagError {
         /// The offending value.
         value: f64,
     },
+    /// The trimming fraction passed to a break-search test is outside
+    /// `[0, 1/3]`.
+    InvalidTrim {
+        /// The offending value.
+        value: f64,
+    },
     /// An error propagated from the `tsecon-stats` special functions (e.g.
     /// the chi-squared survival function used for p-values).
     Stats(StatsError),
@@ -115,6 +121,14 @@ impl fmt::Display for DiagError {
                 f,
                 "significance level alpha = {value} is invalid: requires \
                  0 < alpha < 1 (conventional choices are 0.01, 0.05, 0.10)"
+            ),
+            DiagError::InvalidTrim { value } => write!(
+                f,
+                "trim = {value} is invalid: requires 0 <= trim <= 1/3. The \
+                 trim fraction excludes the first and last int(n*trim) \
+                 observations from the break search — a break too close to \
+                 either end cannot be told apart from the sample boundary \
+                 (the conventional choice is 0.15)"
             ),
             DiagError::Stats(e) => write!(f, "special-function error: {e}"),
         }

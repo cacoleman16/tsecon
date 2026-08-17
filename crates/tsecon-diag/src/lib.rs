@@ -25,6 +25,10 @@
 //! * [`dfgls`] — DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996):
 //!   GLS detrending at the ERS local alternative, Perron-Qu (2007) lag
 //!   selection, and the arch DF-GLS response-surface p-values.
+//! * [`zivot_andrews`] — Zivot-Andrews (1992) unit-root test with one
+//!   endogenous break (intercept, trend, or both), minimum-t over trimmed
+//!   candidate break dates, with the simulated-table p-values of
+//!   statsmodels ([`za_p`], [`za_crit`]).
 //! * [`check_stationarity`] — the joint ADF + KPSS confirmatory decision
 //!   workflow, classifying the evidence into a quadrant with a concrete
 //!   recommendation (proceed / difference / detrend).
@@ -56,6 +60,7 @@ mod portmanteau;
 mod report;
 mod unitroot;
 mod validate;
+mod zivot_andrews;
 
 pub use acf::{acf, pacf_ols, pacf_yw, AcfResult};
 pub use advisors::{
@@ -77,4 +82,7 @@ pub use unitroot::{
     adf, check_stationarity, check_stationarity_at, kpss, AdfLagSelection, AdfRegression,
     AdfResult, KpssCriticalValues, KpssLags, KpssRegression, KpssResult, Recommendation,
     StationarityQuadrant, StationarityReport,
+};
+pub use zivot_andrews::{
+    za_crit, za_p, zivot_andrews, ZaCriticalValues, ZaLagSelection, ZaRegression, ZaResult,
 };

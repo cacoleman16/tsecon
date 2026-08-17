@@ -1,8 +1,8 @@
-# Model card — DF-GLS, Phillips-Perron, and Phillips-Ouliaris tests
+# Model card — DF-GLS, Phillips-Perron, Phillips-Ouliaris, and Zivot-Andrews tests
 
-`dfgls` · `phillips_perron` · `phillips_ouliaris`
+`dfgls` · `phillips_perron` · `phillips_ouliaris` · `zivot_andrews`
 
-Three unit-root-family tests beyond the core ADF/KPSS pair. `dfgls` attacks the
+Four unit-root-family tests beyond the core ADF/KPSS pair. `dfgls` attacks the
 ADF's power problem: estimating a constant or trend by OLS costs the plain ADF
 real power near the unit-root boundary, and GLS-detrending at the ERS local
 alternative recovers most of it — it is the recommended default over plain ADF
@@ -14,14 +14,17 @@ the residual's long-run variance with a nonparametric (Bartlett) kernel.
 `phillips_perron` is the unit-root test — a drop-in alternative to
 [`adf`](diagnostics.md); `phillips_ouliaris` is its cointegration analog — a
 residual-based alternative to [`johansen`](cointegration-regime.md) for a single
-cointegrating relationship. All three are companions to the confirmatory
-stationarity workflow, not replacements for reading ADF and KPSS together.
+cointegrating relationship. `zivot_andrews` guards the workflow against a
+one-time structural break masquerading as a unit root. All four are companions
+to the confirmatory stationarity workflow, not replacements for reading ADF and
+KPSS together.
 
 | Function | Null hypothesis | The analog it complements |
 |----------|-----------------|---------------------------|
 | `dfgls` | the series has a unit root | `adf` (GLS-detrended, near-optimal local power) |
 | `phillips_perron` | the series has a unit root | `adf` (semiparametric, no lag augmentation) |
 | `phillips_ouliaris` | the regressors are **not** cointegrated with `y` | Engle-Granger; `johansen` (single-equation route) |
+| `zivot_andrews` | a unit root with **no** break | `adf` when a one-time structural break may masquerade as a root |
 
 ---
 
@@ -271,3 +274,104 @@ The genuinely cointegrated pair rejects "no cointegration" decisively; two
 independent random walks do not (p ≈ 0.11) — the spurious-regression trap the
 test exists to catch. Because it is single-equation, use `johansen` when you need
 to know *how many* cointegrating relations a larger system supports.
+
+---
+
+## `zivot_andrews` — unit root against break-stationarity
+
+**What it estimates.** The Zivot-Andrews (1992) minimum-t unit-root statistic
+with **one endogenous structural break**. Perron (1989) showed that a stationary
+series with a one-time level or trend shift fools the ADF test into "finding" a
+unit root; Zivot-Andrews turns Perron's known-break-date test into an estimated
+one: for every candidate break date inside a trimmed window it runs the ADF-style
+regression with the chosen break dummies and takes the **minimum** t-statistic on
+the lagged level — the break date least favorable to the unit-root null. Because
+the date is estimated, the null distribution shifts far left of the ADF one and
+has its own critical values (a simulated table, not MacKinnon surfaces).
+
+**Assumptions.** At most one break, and only under the *alternative*: the null is
+a no-break unit root. That asymmetry is the test's classic weakness — a unit root
+*with* a genuine break (a broken drift) is outside both hypotheses and produces
+spurious rejections (Lee & Strazicich 2003 fix this with a minimum-LM test that
+allows the break under both; not yet shipped, flagged here for honesty). Lag
+selection follows the statsmodels/Baum convention: a *single* up-front ADF
+(`"ct"`, no dummies) autolag pass fixes the augmentation lag for all candidate
+regressions — slightly more pessimistic than the paper's per-candidate
+re-selection.
+
+**When to use (and when not).** Use when ADF/PP fail to reject but the plot shows
+a one-time event (a policy regime change, a dam, a reunification) — if
+`zivot_andrews` rejects where `adf` did not, the "unit root" was likely a broken
+deterministic. Do not use it to *date* breaks in a series you already believe is
+stationary (that is [`bai_perron`](structural-breaks.md)'s job, with proper break
+confidence intervals); do not read the estimated break date as inference — it is
+a by-product of the min-t search. With two or more suspected breaks, no shipped
+test applies (Lumsdaine-Papell / Lee-Strazicich territory).
+
+**Key arguments and defaults (and why).** `regression`: which component breaks
+under the alternative — `"c"` intercept shift (default, Perron's "crash" model),
+`"t"` trend-slope shift, `"ct"` both; the regression itself always carries a
+constant *and* a trend. `trim` (default 0.15, in `[0, 1/3]`): excludes the first
+and last `int(n*trim)` observations from the break search — a break too near an
+end is indistinguishable from the boundary. `autolag`/`max_lags`/`lags`: the
+statsmodels lag conventions — `autolag="aic"` (default; also `"bic"`,
+`"t-stat"`) with `max_lags` capping the search, or `autolag=None` with `lags`
+fixed. Pass one of `lags`/`autolag`, not both — the binding refuses the
+ambiguous spelling.
+
+**How to read the output.** `stat`, `pvalue`, `crit` (1/5/10%), `break_index`,
+`lags`, `nobs`, `trim`, `regression`. **Small `pvalue` ⇒ reject the no-break
+unit root** in favor of break-stationarity. `break_index` is the **last
+pre-break observation** — the estimated shift begins at `break_index + 1` (the
+statsmodels `bpidx` convention). The p-value interpolates a simulated table
+(100,000 replications): read at most two decimals into it, and treat values at
+the clamps (1e-05, 0.999) as "off the table", not as exact probabilities.
+
+**Failure modes.** Rejecting because of a break under the *null* (broken random
+walk — the Lee-Strazicich critique); reading `break_index` as a dated,
+confidence-bounded break (use `bai_perron`); a `trim` too small for the lag
+order (the break dummy needs a pre-break regime — the error explains); treating
+the `"t"` model's dating convention as identical to `"ct"`'s (the reference
+starts the `"t"` ramp one observation earlier; tsecon replicates it exactly and
+documents it in the module).
+
+**Validated against.** `statsmodels.tsa.stattools.zivot_andrews` (0.14.6) —
+statistic to 1e-10, break index and selected lag exact, p-values/critical values
+to the interpolation's resolution — with `arch.unitroot.ZivotAndrews` (8.0.0)
+agreeing on every expressible case as a cross-check (the two share the same Baum
+code lineage, so arch corroborates the transcription rather than independently
+deriving it; graded accordingly in the fixture header)
+([`zivot_andrews.json`](../../../fixtures/zivot_andrews.json),
+[`zivot_andrews_golden.rs`](../../../crates/tsecon-diag/tests/zivot_andrews_golden.rs)).
+
+**References.** Zivot & Andrews (1992); Perron (1989); Baum (2004, rev. 2015);
+Schwert (1989); Lee & Strazicich (2003).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(7)
+y = rng.standard_normal(200)                # stationary noise ...
+y[100:] += 10.0                             # ... with a level shift at t = 100
+
+za = tsecon.zivot_andrews(y, regression="c")
+print("ZA(break-stationary):", round(za["stat"], 4), " p:", za["pvalue"],
+      " break at:", za["break_index"] + 1)
+print("ADF on the same series p:", round(tsecon.adf(y)["p_value"], 4))
+
+rw = np.cumsum(rng.standard_normal(200))    # a genuine random walk
+za2 = tsecon.zivot_andrews(rw, regression="c")
+print("ZA(random walk):", round(za2["stat"], 4), " p:", round(za2["pvalue"], 4))
+```
+
+```
+ZA(break-stationary): -16.3861  p: 1e-05  break at: 100
+ADF on the same series p: 0.7496
+ZA(random walk): -3.0233  p: 0.9051
+```
+
+The broken-but-stationary series: plain ADF is completely fooled (p ≈ 0.75, "unit
+root"), while Zivot-Andrews rejects overwhelmingly *and* recovers the break date
+exactly (shift begins at observation 100). The genuine random walk is correctly
+not rejected. That contrast — same data, opposite verdicts — is exactly the
+Perron (1989) point the test exists to make.
