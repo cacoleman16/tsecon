@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**130 functions.**
+**137 functions.**
 
 ## diagnostics
 
@@ -92,6 +92,34 @@ def phillips_perron(
 
 Phillips-Perron unit-root test (Z-tau/Z-alpha) with MacKinnon p-values.
 
+### `dfgls`
+
+```python
+def dfgls(
+    y: _ArrayLike,
+    regression: str = ...,
+    lags: int | None = ...,
+    max_lags: int | None = ...,
+    method: str = ...,
+) -> dict[str, Any]:
+```
+
+DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996; null: unit root).
+
+    The ADF test run on a GLS-detrended series (quasi-differenced at the ERS
+    local alternative, cbar = -7.0 for "c", -13.5 for "ct") with no
+    deterministics in the test regression — near-optimal local power, the
+    recommended default over plain ADF. `regression`: "c" (constant, default)
+    or "ct" (constant + trend). `lags`: fixed lag count; None selects it by
+    `method` ("aic" default, "bic", "t-stat") on the OLS-detrended series
+    (Perron-Qu 2007) searching 0..=`max_lags` (default: Schwert's
+    ceil(12*(n/100)^(1/4)), capped at (n-1)/2 - 1). When `lags` is given,
+    `method`/`max_lags` are ignored (arch behavior). Returns `statistic`,
+    `p_value`, `used_lag`, `nobs` (= n - 1 - used_lag), `crit`
+    ({"1%","5%","10%"}), `trend`. Statistic and selected lag match
+    arch.unitroot.DFGLS (< 1e-10); p-values/critical values are arch's DF-GLS
+    response surfaces (Sheppard's MacKinnon-style simulations, transcribed).
+
 ### `phillips_ouliaris`
 
 ```python
@@ -106,6 +134,36 @@ def phillips_ouliaris(
 
 Phillips-Ouliaris residual cointegration test (Zt/Za) with MacKinnon N-surfaces.
 
+### `zivot_andrews`
+
+```python
+def zivot_andrews(
+    y: _ArrayLike,
+    regression: str = ...,
+    trim: float = ...,
+    max_lags: int | None = ...,
+    autolag: str | None = ...,
+    lags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Zivot-Andrews unit-root test with one endogenous break.
+
+    Null: unit root with no break; alternative: stationary around one broken
+    deterministic component — `regression` "c" (intercept shift, default),
+    "t" (trend-slope shift), "ct" (both); the regression itself always has a
+    constant and a trend. The statistic is the minimum t on the lagged level
+    over candidate break dates inside the `trim` window (default 0.15, must
+    be in [0, 1/3]); `break_index` is the last pre-break observation (the
+    shift begins at `break_index + 1`). Lag selection follows the
+    statsmodels/Baum single up-front convention on the "ct" base ADF:
+    `autolag` "aic" (default) / "bic" / "t-stat" capped at `max_lags`, or
+    `autolag=None` with `lags` fixed (both None: int(12*(n/100)**0.25)).
+    Pass either `lags` or `autolag`, not both. P-values and critical values
+    interpolate the statsmodels-simulated null table. Returns dict keys:
+    `stat`, `pvalue`, `crit` {"1%","5%","10%"}, `break_index`, `lags`,
+    `nobs`, `trim`, `regression`. Matches statsmodels `zivot_andrews`.
+
 ### `ndiffs`
 
 ```python
@@ -115,6 +173,22 @@ def ndiffs(
 ```
 
 How many differences a series needs, with the per-order test evidence.
+
+### `nsdiffs`
+
+```python
+def nsdiffs(
+    y: _ArrayLike, period: int, alpha: float = ..., max_d: int = ...
+) -> dict[str, Any]:
+```
+
+How many SEASONAL differences a series needs (Hyndman-Khandakar rule).
+
+    D += 1 while the STL seasonal strength is >= 0.64, capped at max_d
+    (the forecast::nsdiffs test="seas" rule; alpha is validated but unused
+    by this threshold rule, as in forecast). Returns `d`, `period`,
+    `threshold`, `alpha`, `max_d`, `stop`, per-order `steps`, and an
+    `interpretation`.
 
 ### `box_cox_lambda`
 
@@ -609,6 +683,48 @@ def hamilton_filter(y: _ArrayLike, h: int = ..., p: int = ...) -> dict[str, Any]
 ```
 
 Hamilton (2018) regression filter — the modern HP alternative.
+
+### `stl`
+
+```python
+def stl(
+    y: _ArrayLike,
+    period: int,
+    seasonal: int = ...,
+    trend: int | None = ...,
+    low_pass: int | None = ...,
+    seasonal_deg: int = ...,
+    trend_deg: int = ...,
+    low_pass_deg: int = ...,
+    robust: bool = ...,
+    seasonal_jump: int = ...,
+    trend_jump: int = ...,
+    low_pass_jump: int = ...,
+    inner_iter: int | None = ...,
+    outer_iter: int | None = ...,
+) -> dict[str, Any]:
+```
+
+STL seasonal-trend decomposition using LOESS (Cleveland et al. 1990).
+
+    Mirrors statsmodels.tsa.seasonal.STL parameter semantics and defaults
+    exactly (matched elementwise at 1e-8; observed ~1e-12); requires
+    n >= 2*period. Returns `seasonal`, `trend`, `resid` (y = seasonal +
+    trend + resid), `weights` (bisquare robustness weights; all 1 unless
+    the outer loop runs), `period`, and `config` (the resolved windows,
+    degrees, jumps, and inner/outer iteration counts).
+
+### `seasonal_strength`
+
+```python
+def seasonal_strength(y: _ArrayLike, period: int) -> dict[str, Any]:
+```
+
+Wang-Smith-Hyndman seasonal/trend strength from a default STL fit.
+
+    strength = max(0, 1 - var(resid)/var(component + resid)), sample
+    variances; near 1 means the component dominates. Returns
+    `seasonal_strength`, `trend_strength`, `period`.
 
 ## forecasting / evaluation
 
