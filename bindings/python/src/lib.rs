@@ -505,6 +505,95 @@ fn phillips_ouliaris<'py>(
     Ok(d)
 }
 
+/// Zivot-Andrews unit-root test with one endogenous break (null: unit
+/// root, no break; alternative: stationary around one broken
+/// deterministic component).
+///
+/// `regression` selects which break dummies enter (the regression always
+/// has constant + trend): "c" intercept shift (default), "t" trend-slope
+/// shift, "ct" both. `trim` (default 0.15, must be in [0, 1/3]) excludes
+/// the first/last int(n*trim) observations from the break search. The
+/// statistic is the MINIMUM t on the lagged level over candidate breaks;
+/// `break_index` is the last pre-break observation (the shift begins at
+/// `break_index + 1`). Lag selection is the Baum single up-front pass on
+/// the "ct" base ADF (statsmodels convention): `autolag` "aic" (default),
+/// "bic", "t-stat" (search capped at `max_lags`), or None with `lags` an
+/// explicit fixed lag (None/None uses int(12*(n/100)^(1/4))). Pass either
+/// `lags` or `autolag`, not both; `max_lags` only caps an automatic
+/// search. P-values/critical values interpolate the simulated null table
+/// (statsmodels, 100k MC reps) — read at most two decimals into them.
+/// Matches statsmodels `zivot_andrews` (statistic 1e-10, break/lag exact).
+///
+/// Returns dict keys: `stat`, `pvalue`, `crit` {"1%","5%","10%"},
+/// `break_index`, `lags` (the shared augmentation lag), `nobs`, `trim`,
+/// `regression`.
+#[pyfunction]
+#[pyo3(signature = (y, regression = "c", trim = 0.15, max_lags = None, autolag = Some("aic"), lags = None))]
+fn zivot_andrews<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    regression: &str,
+    trim: f64,
+    max_lags: Option<usize>,
+    autolag: Option<&str>,
+    lags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::{ZaLagSelection as L, ZaRegression};
+    let reg = match regression {
+        "c" => ZaRegression::Constant,
+        "t" => ZaRegression::Trend,
+        "ct" => ZaRegression::ConstantTrend,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown regression {other:?}; expected \"c\" (intercept break), \
+                 \"t\" (trend break), or \"ct\" (both)"
+            )))
+        }
+    };
+    if lags.is_some() && autolag.is_some() {
+        return Err(PyValueError::new_err(
+            "lags= fixes the augmentation lag, which conflicts with automatic \
+             selection: pass autolag=None alongside lags (autolag defaults to \
+             \"aic\"), or drop lags",
+        ));
+    }
+    if max_lags.is_some() && autolag.is_none() {
+        return Err(PyValueError::new_err(
+            "max_lags caps the automatic lag search, but autolag=None disables \
+             it: use lags= to fix the lag, or keep autolag",
+        ));
+    }
+    let sel = match autolag {
+        Some("aic") | Some("AIC") => L::Aic(max_lags),
+        Some("bic") | Some("BIC") => L::Bic(max_lags),
+        Some("t-stat") => L::TStat(max_lags),
+        None => match lags {
+            Some(l) => L::Fixed(l),
+            None => L::SchwertTrunc,
+        },
+        Some(other) => {
+            return Err(PyValueError::new_err(format!(
+                "unknown autolag {other:?}; expected \"aic\", \"bic\", \"t-stat\", or None"
+            )))
+        }
+    };
+    let r = tsecon_diag::zivot_andrews(&vec1(&y), reg, trim, sel).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.statistic)?;
+    d.set_item("pvalue", r.p_value)?;
+    let crit = PyDict::new(py);
+    crit.set_item("1%", r.crit.pct1)?;
+    crit.set_item("5%", r.crit.pct5)?;
+    crit.set_item("10%", r.crit.pct10)?;
+    d.set_item("crit", crit)?;
+    d.set_item("break_index", r.break_index)?;
+    d.set_item("lags", r.used_lag)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("trim", r.trim)?;
+    d.set_item("regression", r.regression.code())?;
+    Ok(d)
+}
+
 fn ndiffs_test(s: &str) -> PyResult<tsecon_diag::NdiffsTest> {
     use tsecon_diag::NdiffsTest::*;
     match s {
@@ -7514,6 +7603,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(smooth_lp, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_perron, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_ouliaris, m)?)?;
+    m.add_function(wrap_pyfunction!(zivot_andrews, m)?)?;
     m.add_function(wrap_pyfunction!(ndiffs, m)?)?;
     m.add_function(wrap_pyfunction!(box_cox_lambda, m)?)?;
     m.add_function(wrap_pyfunction!(long_run_svar, m)?)?;

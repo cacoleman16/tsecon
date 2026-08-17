@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**128 functions.**
+**129 functions.**
 
 ## diagnostics
 
@@ -105,6 +105,36 @@ def phillips_ouliaris(
 ```
 
 Phillips-Ouliaris residual cointegration test (Zt/Za) with MacKinnon N-surfaces.
+
+### `zivot_andrews`
+
+```python
+def zivot_andrews(
+    y: _ArrayLike,
+    regression: str = ...,
+    trim: float = ...,
+    max_lags: int | None = ...,
+    autolag: str | None = ...,
+    lags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Zivot-Andrews unit-root test with one endogenous break.
+
+    Null: unit root with no break; alternative: stationary around one broken
+    deterministic component — `regression` "c" (intercept shift, default),
+    "t" (trend-slope shift), "ct" (both); the regression itself always has a
+    constant and a trend. The statistic is the minimum t on the lagged level
+    over candidate break dates inside the `trim` window (default 0.15, must
+    be in [0, 1/3]); `break_index` is the last pre-break observation (the
+    shift begins at `break_index + 1`). Lag selection follows the
+    statsmodels/Baum single up-front convention on the "ct" base ADF:
+    `autolag` "aic" (default) / "bic" / "t-stat" capped at `max_lags`, or
+    `autolag=None` with `lags` fixed (both None: int(12*(n/100)**0.25)).
+    Pass either `lags` or `autolag`, not both. P-values and critical values
+    interpolate the statsmodels-simulated null table. Returns dict keys:
+    `stat`, `pvalue`, `crit` {"1%","5%","10%"}, `break_index`, `lags`,
+    `nobs`, `trim`, `regression`. Matches statsmodels `zivot_andrews`.
 
 ### `ndiffs`
 
