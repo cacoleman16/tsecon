@@ -22,6 +22,9 @@
 //!   ([`mackinnon_p`], [`mackinnon_crit`]).
 //! * [`kpss`] — KPSS stationarity test (Kwiatkowski et al. 1992) with
 //!   legacy and Hobijn-Franses-Ooms automatic Bartlett bandwidths.
+//! * [`dfgls`] — DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996):
+//!   GLS detrending at the ERS local alternative, Perron-Qu (2007) lag
+//!   selection, and the arch DF-GLS response-surface p-values.
 //! * [`check_stationarity`] — the joint ADF + KPSS confirmatory decision
 //!   workflow, classifying the evidence into a quadrant with a concrete
 //!   recommendation (proceed / difference / detrend).
@@ -42,6 +45,7 @@
 mod acf;
 mod advisors;
 mod arch;
+mod dfgls;
 mod error;
 mod mackinnon;
 mod mackinnon_ext;
@@ -59,6 +63,7 @@ pub use advisors::{
     NdiffsResult, NdiffsStep, NdiffsStop, NdiffsTest,
 };
 pub use arch::{arch_lm, ArchLmResult};
+pub use dfgls::{dfgls, DfglsResult, DfglsTrend};
 pub use error::DiagError;
 pub use mackinnon::{mackinnon_crit, mackinnon_p, AdfCriticalValues};
 pub use mackinnon_ext::{mackinnon_coint_crit, mackinnon_coint_p};

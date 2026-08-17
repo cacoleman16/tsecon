@@ -447,6 +447,73 @@ fn phillips_perron<'py>(
     Ok(d)
 }
 
+/// DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996; null: unit root).
+///
+/// The ADF test run on a GLS-detrended series (quasi-differenced at the
+/// ERS local alternative, cbar = -7.0 for "c", -13.5 for "ct") with no
+/// deterministics in the test regression — near-optimal local power, the
+/// recommended default over plain ADF. `regression`: "c" (constant,
+/// default) or "ct" (constant + trend). `lags`: fixed lag count; None
+/// selects it by `method` ("aic" default, "bic", "t-stat") on the
+/// OLS-detrended series (Perron-Qu 2007) searching 0..=`max_lags`
+/// (default: Schwert's ceil(12*(n/100)^(1/4)), capped at (n-1)/2 - 1).
+/// When `lags` is given, `method`/`max_lags` are ignored (arch behavior).
+///
+/// Returns dict keys: `statistic`, `p_value`, `used_lag`, `nobs`
+/// (= n - 1 - used_lag), `crit` ({"1%","5%","10%"}), `trend`. Statistic
+/// and selected lag match arch.unitroot.DFGLS (< 1e-10); p-values and
+/// critical values are arch's DF-GLS response surfaces (Sheppard's
+/// MacKinnon-style simulations, transcribed).
+#[pyfunction]
+#[pyo3(signature = (y, regression = "c", lags = None, max_lags = None, method = "aic"))]
+fn dfgls<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    regression: &str,
+    lags: Option<usize>,
+    max_lags: Option<usize>,
+    method: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::{AdfLagSelection as L, DfglsTrend};
+    let trend = match regression {
+        "c" => DfglsTrend::Constant,
+        "ct" => DfglsTrend::ConstantTrend,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown regression {other:?}; expected \"c\" or \"ct\" \
+                 (DF-GLS has no no-deterministics case: with nothing to \
+                 estimate, use adf with regression=\"n\")"
+            )))
+        }
+    };
+    let selection = match lags {
+        Some(l) => L::Fixed(l),
+        None => match method {
+            "aic" | "AIC" => L::Aic(max_lags),
+            "bic" | "BIC" => L::Bic(max_lags),
+            "t-stat" => L::TStat(max_lags),
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown method {other:?}; expected \"aic\", \"bic\", or \"t-stat\""
+                )))
+            }
+        },
+    };
+    let r = tsecon_diag::dfgls(&vec1(&y), trend, selection).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("statistic", r.statistic)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("used_lag", r.used_lag)?;
+    d.set_item("nobs", r.nobs)?;
+    let crit = PyDict::new(py);
+    crit.set_item("1%", r.crit.pct1)?;
+    crit.set_item("5%", r.crit.pct5)?;
+    crit.set_item("10%", r.crit.pct10)?;
+    d.set_item("crit", crit)?;
+    d.set_item("trend", regression)?;
+    Ok(d)
+}
+
 /// Phillips-Ouliaris residual cointegration test (null: no cointegration).
 ///
 /// `x` is a 2-D (T, m) matrix of the m stochastic regressors, used as-is
@@ -7513,6 +7580,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sup_f_test, m)?)?;
     m.add_function(wrap_pyfunction!(smooth_lp, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_perron, m)?)?;
+    m.add_function(wrap_pyfunction!(dfgls, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_ouliaris, m)?)?;
     m.add_function(wrap_pyfunction!(ndiffs, m)?)?;
     m.add_function(wrap_pyfunction!(box_cox_lambda, m)?)?;

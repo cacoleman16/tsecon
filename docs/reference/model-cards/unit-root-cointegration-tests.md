@@ -1,21 +1,120 @@
-# Model card — Phillips-Perron and Phillips-Ouliaris tests
+# Model card — DF-GLS, Phillips-Perron, and Phillips-Ouliaris tests
 
-`phillips_perron` · `phillips_ouliaris`
+`dfgls` · `phillips_perron` · `phillips_ouliaris`
 
-Two semiparametric tests built on the same idea: instead of adding lagged
-differences to soak up serial correlation (the augmentation in ADF and
-Engle-Granger), estimate a simple regression by OLS and then **correct the test
-statistic** for the residual's long-run variance with a nonparametric (Bartlett)
-kernel. `phillips_perron` is the unit-root test — a drop-in alternative to
+Three unit-root-family tests beyond the core ADF/KPSS pair. `dfgls` attacks the
+ADF's power problem: estimating a constant or trend by OLS costs the plain ADF
+real power near the unit-root boundary, and GLS-detrending at the ERS local
+alternative recovers most of it — it is the recommended default over plain ADF
+whenever deterministics must be estimated. `phillips_perron` and
+`phillips_ouliaris` are semiparametric: instead of adding lagged differences to
+soak up serial correlation (the augmentation in ADF and Engle-Granger), they
+estimate a simple regression by OLS and then **correct the test statistic** for
+the residual's long-run variance with a nonparametric (Bartlett) kernel.
+`phillips_perron` is the unit-root test — a drop-in alternative to
 [`adf`](diagnostics.md); `phillips_ouliaris` is its cointegration analog — a
 residual-based alternative to [`johansen`](cointegration-regime.md) for a single
-cointegrating relationship. Both are companions to the confirmatory stationarity
-workflow, not replacements for reading ADF and KPSS together.
+cointegrating relationship. All three are companions to the confirmatory
+stationarity workflow, not replacements for reading ADF and KPSS together.
 
 | Function | Null hypothesis | The analog it complements |
 |----------|-----------------|---------------------------|
+| `dfgls` | the series has a unit root | `adf` (GLS-detrended, near-optimal local power) |
 | `phillips_perron` | the series has a unit root | `adf` (semiparametric, no lag augmentation) |
 | `phillips_ouliaris` | the regressors are **not** cointegrated with `y` | Engle-Granger; `johansen` (single-equation route) |
+
+---
+
+## `dfgls` — GLS-detrended Dickey-Fuller (Elliott-Rothenberg-Stock)
+
+**What it estimates.** The DF-GLS statistic of Elliott, Rothenberg & Stock
+(1996): the deterministics are first estimated by GLS under the *local
+alternative* $\rho = 1 + \bar c/T$ — quasi-differencing $y$ and the trend
+columns at $\bar c = -7$ (`regression="c"`) or $\bar c = -13.5$ (`"ct"`), the
+points where the local asymptotic power envelope is tangent at 50% power — and
+the ADF regression is then run on the detrended series **with no deterministic
+terms**. The statistic is the usual $t$-ratio on the lagged level; only the
+detrending changed, but that change buys near-optimal local power where the
+plain ADF wastes it re-estimating the mean or trend.
+
+**Assumptions.** Same as ADF: the only nonstationarity under the null is a unit
+root, and the augmentation lags must absorb the serial correlation. There is no
+`"n"` case — with no deterministics to estimate, GLS detrending is a no-op and
+plain `adf(regression="n")` already sits on the power envelope. The test
+inherits ADF's size distortion under a large negative MA root (the Ng-Perron
+MAIC lag rule is the standard remedy; until the Ng-Perron tests land, be
+generous with `max_lags` in that case).
+
+**When to use (and when not).** Use as your default unit-root test whenever a
+constant or trend must be estimated — which is nearly always — and especially
+when the series is suspected to be *near*-integrated (ρ close to 1), where the
+ADF's power loss bites hardest. Do not use it to dodge the deterministics
+decision: choosing `"c"` vs `"ct"` matters exactly as much as it does for ADF.
+Do not read a non-rejection alone as proof of a unit root — pair it with `kpss`
+for the confirmatory quadrant, as with every unit-root test.
+
+**Key arguments and defaults (and why).** `regression`: `"c"` (constant;
+default) or `"ct"` (constant + trend). `lags`: a fixed number of augmentation
+lags; `None` (default) selects automatically. `method`: `"aic"` (default),
+`"bic"`, or `"t-stat"`; following Perron & Qu (2007) — and arch — the selection
+runs on the **OLS**-detrended series with no deterministics, which improves
+finite-sample power over selecting on the GLS-detrended series. `max_lags`
+caps the search; `None` uses Schwert's $\lceil 12 (T/100)^{1/4}\rceil$ capped
+at $(T-1)/2 - 1$. When `lags` is given, `method`/`max_lags` are ignored (arch
+behavior).
+
+**How to read the output.** `statistic`, `p_value`, `used_lag`, `nobs`
+($= T - 1 - \texttt{used\_lag}$), `crit` (1/5/10% critical values at `nobs`),
+`trend`. **Small `p_value` ⇒ reject the unit root.** The critical values are
+*not* the ADF ones — the `"ct"` case in particular has its own distribution —
+so compare the statistic only against the `crit` values reported here. Quote
+`used_lag`: a DF-GLS verdict without its lag length is not reproducible.
+
+**Failure modes.** Reading it alone (pair with KPSS); leaving `"c"` when the
+alternative is trend-stationary (the test then *diverges toward* non-rejection
+on trending data — see the trend-stationary fixture case, p ≈ 0.99 under `"c"`
+vs p ≈ 0 under `"ct"`); heavy negative MA errors (size distortion; AIC tends
+to pick too few lags there).
+
+**Validated against.** `arch.unitroot.DFGLS` (arch 8.0.0, an independent
+implementation) for the statistic, the AIC/BIC/t-stat selected lag, `nobs`,
+p-value, and critical values on the Nile series, three seeded random walks, a
+trend-stationary series, i.i.d. noise, and fixed-lag/max-lags cases — statistic
+at 1e-10 relative, lags exact ([`dfgls.json`](../../../fixtures/dfgls.json),
+[`dfgls_golden.rs`](../../../crates/tsecon-diag/tests/dfgls_golden.rs)).
+**Honest grading of the p-value/CV layer:** they reproduce the response
+surfaces shipped with arch (Sheppard's MacKinnon-methodology simulations,
+transcribed with attribution) bit-for-bit; they are not an independently
+published table. See the [validation matrix](../validation-matrix.md).
+
+**References.** Elliott, Rothenberg & Stock (1996); Ng & Perron (2001); Perron
+& Qu (2007); MacKinnon (1994, 2010, the response-surface methodology).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+walk = np.cumsum(rng.standard_normal(200))          # a random walk (unit root)
+
+r = tsecon.dfgls(walk, regression="c")
+print("DF-GLS(walk):", round(r["statistic"], 4), " p:", round(r["p_value"], 4),
+      " lag:", r["used_lag"], " 5% cv:", round(r["crit"]["5%"], 3))
+
+ar = np.empty(200); ar[0] = 0.0
+for t in range(1, 200):
+    ar[t] = 0.85 * ar[t - 1] + rng.standard_normal()  # near-integrated AR(1)
+print("DF-GLS(AR 0.85):", round(tsecon.dfgls(ar)["statistic"], 4),
+      " p:", round(tsecon.dfgls(ar)["p_value"], 4))
+```
+
+```
+DF-GLS(walk): -1.1486  p: 0.2358  lag: 0  5% cv: -2.047
+DF-GLS(AR 0.85): -4.7458  p: 0.0
+```
+
+The random walk cannot reject; the stationary-but-persistent AR(0.85) rejects
+decisively — the near-integrated regime is exactly where DF-GLS's power edge
+over plain ADF shows. These match `arch.unitroot.DFGLS` to machine precision.
 
 ---
 

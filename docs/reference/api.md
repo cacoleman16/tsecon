@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**128 functions.**
+**129 functions.**
 
 ## diagnostics
 
@@ -91,6 +91,34 @@ def phillips_perron(
 ```
 
 Phillips-Perron unit-root test (Z-tau/Z-alpha) with MacKinnon p-values.
+
+### `dfgls`
+
+```python
+def dfgls(
+    y: _ArrayLike,
+    regression: str = ...,
+    lags: int | None = ...,
+    max_lags: int | None = ...,
+    method: str = ...,
+) -> dict[str, Any]:
+```
+
+DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996; null: unit root).
+
+    The ADF test run on a GLS-detrended series (quasi-differenced at the ERS
+    local alternative, cbar = -7.0 for "c", -13.5 for "ct") with no
+    deterministics in the test regression — near-optimal local power, the
+    recommended default over plain ADF. `regression`: "c" (constant, default)
+    or "ct" (constant + trend). `lags`: fixed lag count; None selects it by
+    `method` ("aic" default, "bic", "t-stat") on the OLS-detrended series
+    (Perron-Qu 2007) searching 0..=`max_lags` (default: Schwert's
+    ceil(12*(n/100)^(1/4)), capped at (n-1)/2 - 1). When `lags` is given,
+    `method`/`max_lags` are ignored (arch behavior). Returns `statistic`,
+    `p_value`, `used_lag`, `nobs` (= n - 1 - used_lag), `crit`
+    ({"1%","5%","10%"}), `trend`. Statistic and selected lag match
+    arch.unitroot.DFGLS (< 1e-10); p-values/critical values are arch's DF-GLS
+    response surfaces (Sheppard's MacKinnon-style simulations, transcribed).
 
 ### `phillips_ouliaris`
 
