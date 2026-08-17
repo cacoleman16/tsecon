@@ -524,8 +524,8 @@ every one of them runs on every invocation of the command above:
 |---|---:|---|
 | `test_arima_seasonal.py` | 5 | Seasonal ARIMA through the Python surface: the airline model against `sarima.json` (fit parity, naming, output shape), seasonal-argument parsing/errors, and the closed-form seasonal random-walk forecast law. |
 | `test_backtest.py` | 4 | Pseudo-out-of-sample backtest engine; no external golden — the naive forecaster makes every quantity a closed form checked against NumPy. |
-| `test_coint_regime.py` | 3 | Johansen / Engle-Granger cointegration and Markov-switching AR against `coint.json` and `regime.json`. |
-| `test_cv_splits.py` | 4 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored. |
+| `test_coint_regime.py` | 4 | Johansen / Engle-Granger cointegration and Markov-switching AR against `coint.json` and `regime.json`; the full `(n, k)` smoothed/filtered probability matrices at `k = 3` (shapes, row sums, back-compat column). |
+| `test_cv_splits.py` | 12 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored — including the walk-forward purge gap (exact train-tail truncation, unmoved test blocks) and the embargo refusal on `expanding`/`rolling`. |
 | `test_replication_ramey_zubairy.py` | 3 | The RZ government-spending replication, offline against the committed panel: multiplier below one across horizons (with the first stage asserted strong inside it), and a guard that it is not the outcome-only cumulative trap. |
 | `test_replication_yield_curve.py` | 2 | The Estrella-Mishkin yield-curve recession probit, offline against the committed FRED snapshot: the spread coefficient stays significantly negative. |
 | `test_depth.py` | 4 | Realized volatility / HAR-RV, Diebold-Yilmaz connectedness, PCA factor model vs `{realized,connect,favar}.json`. |
