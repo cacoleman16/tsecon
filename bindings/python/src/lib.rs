@@ -723,6 +723,58 @@ fn ndiffs<'py>(
     Ok(d)
 }
 
+/// How many SEASONAL differences a series needs — the Hyndman-Khandakar
+/// seasonal-strength rule, with the STL evidence at every order.
+///
+/// The rule `forecast::nsdiffs(test="seas")` implements: compute the
+/// Wang-Smith-Hyndman seasonal strength from a default-parameter STL fit
+/// (see `seasonal_strength`); difference at the seasonal lag while the
+/// strength is >= 0.64, capped at `max_d` (forecast's default cap is 1).
+/// `alpha` is validated but UNUSED — the rule is threshold-based, not a
+/// hypothesis test; it is accepted for symmetry with `ndiffs`, exactly as
+/// forecast accepts and ignores it for test="seas". Composition over the
+/// shipped STL (statsmodels-pinned), plus the transcribed published rule.
+///
+/// Returns dict keys: `d`, `period`, `threshold` (0.64), `alpha`,
+/// `max_d`, `stop` ("WeakSeasonality" | "MaxD" | "Constant" |
+/// "TooShort"), `steps` (one dict per order tried, keys `d`, `n`,
+/// `seasonal_strength`, `trend_strength`, `needs_differencing`),
+/// `interpretation`.
+#[pyfunction]
+#[pyo3(signature = (y, period, alpha = 0.05, max_d = 1))]
+fn nsdiffs<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    period: usize,
+    alpha: f64,
+    max_d: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_diag::nsdiffs(&vec1(&y), period, alpha, max_d).map_err(to_py)?;
+    let steps = r
+        .steps
+        .iter()
+        .map(|s| {
+            let e = PyDict::new(py);
+            e.set_item("d", s.d)?;
+            e.set_item("n", s.n)?;
+            e.set_item("seasonal_strength", s.seasonal_strength)?;
+            e.set_item("trend_strength", s.trend_strength)?;
+            e.set_item("needs_differencing", s.needs_differencing)?;
+            Ok(e)
+        })
+        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
+    let d = PyDict::new(py);
+    d.set_item("d", r.d)?;
+    d.set_item("period", r.period)?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("alpha", r.alpha)?;
+    d.set_item("max_d", r.max_d)?;
+    d.set_item("stop", format!("{:?}", r.stop))?;
+    d.set_item("steps", steps)?;
+    d.set_item("interpretation", &r.interpretation)?;
+    Ok(d)
+}
+
 /// Variance-stabilizing Box-Cox lambda, with the objective at the optimum.
 ///
 /// `method`: "mle" (profile likelihood of Box & Cox 1964 — the objective
@@ -1636,6 +1688,108 @@ fn hamilton_filter<'py>(
     let r = tsecon_filters::hamilton_filter(&vec1(&y), h, p).map_err(to_py)?;
     let d = decomposition_dict(py, &r.decomposition)?;
     d.set_item("beta", r.beta.clone().into_pyarray(py))?;
+    Ok(d)
+}
+
+/// STL seasonal-trend decomposition using LOESS (Cleveland et al. 1990).
+///
+/// Mirrors `statsmodels.tsa.seasonal.STL` parameter semantics and defaults
+/// exactly (the netlib Fortran port): `seasonal` (odd, >= 3) is the
+/// seasonal LOESS window; `trend`/`low_pass` (odd, > period) default to
+/// the smallest odd integer >= 1.5*period/(1 - 1.5/seasonal) and the
+/// smallest odd integer > period; degrees are 0 or 1; jumps >= 1 evaluate
+/// each LOESS every jump-th point with linear interpolation in between;
+/// `inner_iter`/`outer_iter` default to 2/15 when `robust` else 5/0.
+/// Requires n >= 2*period (R's stl() bound). Matches statsmodels 0.14.6
+/// elementwise at 1e-8 (observed ~1e-12).
+///
+/// Returns dict keys: `seasonal`, `trend`, `resid` (`y = seasonal + trend
+/// + resid`), `weights` (bisquare robustness weights, all 1 when
+/// `outer_iter = 0`), `period`, and `config` (the fully-resolved windows,
+/// degrees, jumps, and iteration counts actually used).
+#[pyfunction]
+#[pyo3(signature = (y, period, seasonal = 7, trend = None, low_pass = None,
+    seasonal_deg = 1, trend_deg = 1, low_pass_deg = 1, robust = false,
+    seasonal_jump = 1, trend_jump = 1, low_pass_jump = 1,
+    inner_iter = None, outer_iter = None))]
+#[allow(clippy::too_many_arguments)]
+fn stl<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    period: usize,
+    seasonal: usize,
+    trend: Option<usize>,
+    low_pass: Option<usize>,
+    seasonal_deg: usize,
+    trend_deg: usize,
+    low_pass_deg: usize,
+    robust: bool,
+    seasonal_jump: usize,
+    trend_jump: usize,
+    low_pass_jump: usize,
+    inner_iter: Option<usize>,
+    outer_iter: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let params = tsecon_filters::StlParams {
+        seasonal,
+        trend,
+        low_pass,
+        seasonal_deg,
+        trend_deg,
+        low_pass_deg,
+        robust,
+        seasonal_jump,
+        trend_jump,
+        low_pass_jump,
+        inner_iter,
+        outer_iter,
+    };
+    let r = tsecon_filters::stl(&vec1(&y), period, &params).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("seasonal", r.seasonal.into_pyarray(py))?;
+    d.set_item("trend", r.trend.into_pyarray(py))?;
+    d.set_item("resid", r.resid.into_pyarray(py))?;
+    d.set_item("weights", r.weights.into_pyarray(py))?;
+    d.set_item("period", r.config.period)?;
+    let c = PyDict::new(py);
+    c.set_item("period", r.config.period)?;
+    c.set_item("seasonal", r.config.seasonal)?;
+    c.set_item("trend", r.config.trend)?;
+    c.set_item("low_pass", r.config.low_pass)?;
+    c.set_item("seasonal_deg", r.config.seasonal_deg)?;
+    c.set_item("trend_deg", r.config.trend_deg)?;
+    c.set_item("low_pass_deg", r.config.low_pass_deg)?;
+    c.set_item("robust", r.config.robust)?;
+    c.set_item("seasonal_jump", r.config.seasonal_jump)?;
+    c.set_item("trend_jump", r.config.trend_jump)?;
+    c.set_item("low_pass_jump", r.config.low_pass_jump)?;
+    c.set_item("inner_iter", r.config.inner_iter)?;
+    c.set_item("outer_iter", r.config.outer_iter)?;
+    d.set_item("config", c)?;
+    Ok(d)
+}
+
+/// Wang-Smith-Hyndman (2006) seasonal and trend strength from a
+/// default-parameter STL fit.
+///
+/// `strength_seasonal = max(0, 1 - var(resid)/var(seasonal + resid))` and
+/// the analogous trend measure, with sample variances (ddof = 1, R's
+/// `var`) — the numbers behind `nsdiffs` and the tsfeatures/feasts
+/// feature set. Near 1: the component dominates; near 0: absent.
+///
+/// Returns dict keys: `seasonal_strength`, `trend_strength`, `period`.
+#[pyfunction]
+#[pyo3(signature = (y, period))]
+fn seasonal_strength<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    period: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let r = tsecon_filters::seasonal_strength(&vec1(&y), period).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("seasonal_strength", r.seasonal_strength)?;
+    d.set_item("trend_strength", r.trend_strength)?;
+    d.set_item("period", r.period)?;
     Ok(d)
 }
 
@@ -7585,6 +7739,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bk_filter, m)?)?;
     m.add_function(wrap_pyfunction!(cf_filter, m)?)?;
     m.add_function(wrap_pyfunction!(hamilton_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(stl, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonal_strength, m)?)?;
     m.add_function(wrap_pyfunction!(dm_test, m)?)?;
     m.add_function(wrap_pyfunction!(accuracy, m)?)?;
     m.add_function(wrap_pyfunction!(theta_forecast, m)?)?;
@@ -7673,6 +7829,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(phillips_ouliaris, m)?)?;
     m.add_function(wrap_pyfunction!(zivot_andrews, m)?)?;
     m.add_function(wrap_pyfunction!(ndiffs, m)?)?;
+    m.add_function(wrap_pyfunction!(nsdiffs, m)?)?;
     m.add_function(wrap_pyfunction!(box_cox_lambda, m)?)?;
     m.add_function(wrap_pyfunction!(long_run_svar, m)?)?;
     m.add_function(wrap_pyfunction!(max_share_svar, m)?)?;

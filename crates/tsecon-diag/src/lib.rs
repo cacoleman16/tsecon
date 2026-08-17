@@ -64,8 +64,9 @@ mod zivot_andrews;
 
 pub use acf::{acf, pacf_ols, pacf_yw, AcfResult};
 pub use advisors::{
-    box_cox_lambda, box_cox_llf, guerrero_cv, ndiffs, AdvisorError, BoxCoxLambda, BoxCoxMethod,
-    NdiffsResult, NdiffsStep, NdiffsStop, NdiffsTest,
+    box_cox_lambda, box_cox_llf, guerrero_cv, ndiffs, nsdiffs, AdvisorError, BoxCoxLambda,
+    BoxCoxMethod, NdiffsResult, NdiffsStep, NdiffsStop, NdiffsTest, NsdiffsResult, NsdiffsStep,
+    NsdiffsStop, NSDIFFS_SEAS_THRESHOLD,
 };
 pub use arch::{arch_lm, ArchLmResult};
 pub use dfgls::{dfgls, DfglsResult, DfglsTrend};

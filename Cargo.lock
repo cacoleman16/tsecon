@@ -944,6 +944,7 @@ name = "tsecon-diag"
 version = "0.2.0"
 dependencies = [
  "serde_json",
+ "tsecon-filters",
  "tsecon-hac",
  "tsecon-stats",
 ]
