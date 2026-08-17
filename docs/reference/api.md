@@ -202,6 +202,10 @@ OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC standard errors.
     influential points; hc1's n/(n-k) factor barely moves. HC is
     heteroskedasticity-robust only -- under serial correlation use "hac".
 
+    HAC matches statsmodels cov_type="HAC" when use_correction is matched;
+    the DEFAULTS differ deliberately (tsecon True, statsmodels False), so
+    pass use_correction=False to reproduce a default statsmodels call.
+
 ## bootstrap
 
 ### `bootstrap_indices`
@@ -1448,7 +1452,10 @@ def har_rv(
 
 HAR-RV (Corsi 2009): RV_t on [const, daily, weekly, monthly], HAC SEs.
 
-    variant is "level", "log", or "sqrt".
+    variant is "level", "log", or "sqrt". use_correction now defaults True
+    (False through 0.2.0): bse/tvalues carry the finite-sample sqrt(n/(n-k))
+    factor by default. statsmodels cov_type="HAC" defaults the correction
+    off -- pass use_correction=False to match it (and the old numbers).
 
 ## connectedness
 
@@ -1525,6 +1532,10 @@ def iv_gmm(
 ```
 
 Linear IV-GMM (Hansen 1982) with robust or HAC weighting.
+
+    POSITIONAL ORDER IS (x, z, y): regressors, instruments, outcome. x and z
+    are both 2-D float matrices, so swapping them coerces cleanly and returns
+    plausible-looking garbage -- prefer keywords: iv_gmm(x=X, z=Z, y=y).
 
     bandwidth defaults to None, which selects the Newey-West rule of thumb.
     It previously defaulted to 0.0 -- a Bartlett kernel truncated at zero
@@ -1646,7 +1657,9 @@ Nonlinear GMM (Hansen 1982) via Nelder-Mead over a Python moment function.
 
     moments_fn maps a parameter vector (a 1-D float64 array) to an n-by-m matrix
     of per-observation moment contributions (rows = observations, cols = moments),
-    returned as a NumPy array or list of lists. weight is the flattened m*m
+    returned as a NumPy array or list of lists -- the return must be 2-D even
+    for a single moment condition (reshape with g.reshape(-1, 1)); a 1-D return
+    raises a TypeError naming moments_fn. weight is the flattened m*m
     weighting matrix (row-major) or None for the identity. Returns params,
     objective, gbar, converged, iterations, fevals, nmoments, nparams.
 
@@ -1962,6 +1975,8 @@ def cg_regression(
 Coibion-Gorodnichenko (2015) information-rigidity regression (OLS-HAC).
 
     Returns intercept/slope with HAC se/t/p, r_squared, implied_rigidity.
+    use_correction defaults True (the n/(n-k) HAC scaling); statsmodels
+    cov_type="HAC" defaults it off -- match it when comparing.
 
 ### `forecast_efficiency`
 
@@ -1975,6 +1990,9 @@ def forecast_efficiency(
 ```
 
 Mincer-Zarnowitz forecast-efficiency Wald test (OLS-HAC); regressors is T x k.
+
+    use_correction defaults True (the n/(n-k) HAC scaling); statsmodels
+    cov_type="HAC" defaults it off.
 
 ### `forecast_disagreement`
 

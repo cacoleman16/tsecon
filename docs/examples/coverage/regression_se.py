@@ -927,7 +927,15 @@ def exp_har_hac(reps, n=1000, lags=HAR_LAGS):
             se_sum = np.zeros(4)
             est = np.empty((reps, 4))
             for i in range(reps):
-                res = tsecon.har_rv(rv[i], variant="log", hac_maxlags=maxlags)
+                # use_correction pinned to what the published tables measured:
+                # this experiment ran (and its rows were harvested) while
+                # har_rv defaulted the n/(n-k) HAC correction OFF. The default
+                # flipped to True with the round-2 finding-4 fix; the delta on
+                # the SEs is sqrt(n/(n-k)) ~ +0.2% at this design's n, an
+                # order below the tables' +-0.004 MC error, so the published
+                # rows remain valid for the pinned setting they name.
+                res = tsecon.har_rv(rv[i], variant="log", hac_maxlags=maxlags,
+                                    use_correction=False)
                 point = np.asarray(res["params"], dtype=float)
                 se = np.asarray(res["bse"], dtype=float)
                 est[i] = point

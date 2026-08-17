@@ -44,9 +44,13 @@ noisy information, and rational inattention all imply `beta > 0`.
 **Key arguments and defaults (and why).** `maxlags=None` picks the Newey-West
 rule-of-thumb bandwidth `floor(4·(n/100)^(2/9))` (reported back in `maxlags`);
 set an integer to match a target horizon (a common choice is the forecast
-horizon in periods). `use_correction=True` applies the statsmodels small-sample
-`T/(T−k)` scaling to the HAC covariance — leave it on to match statsmodels'
-default, turn it off for the textbook asymptotic form.
+horizon in periods). `use_correction=True` applies the small-sample `T/(T−k)`
+scaling to the HAC covariance (statsmodels' `use_correction` option) — the
+statistically recommended finite-sample choice, and the library default. Note
+that statsmodels' own `cov_type="HAC"` defaults the correction **off**, so at
+each package's defaults the HAC standard errors differ by exactly
+`sqrt(T/(T−k))`; pass `use_correction=False` to reproduce a default
+statsmodels call, or turn it off for the textbook asymptotic form.
 
 **How to read the output.** `slope` is `beta` (the object of interest) with its
 HAC `se_slope`, `t_slope`, `p_slope`; `intercept`/`se_intercept` are the mean

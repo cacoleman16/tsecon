@@ -58,7 +58,11 @@ misleads), and prefer plain `ols` when nothing is endogenous.
     Treat a nominal-95% GMM interval under persistent moments as narrower than
     its label.
 
-**Key arguments and defaults (and why).** `method="2sls"` (one-step, robust to
+**Key arguments and defaults (and why).** The positional order is
+**`(x, z, y)`** — regressors, instruments, outcome. `x` and `z` are both 2-D
+float matrices, so swapping them coerces cleanly and returns plausible-looking
+garbage rather than raising; prefer keywords, `iv_gmm(x=X, z=Z, y=y)`.
+`method="2sls"` (one-step, robust to
 weak-ID concerns) vs `"2step"` (efficient GMM, the usual default choice) vs
 `"iterated"` (iterate the weighting matrix to convergence). `weight="robust"`
 (heteroskedasticity-robust) or `"hac"` (adds autocorrelation robustness).
@@ -240,7 +244,10 @@ derivative-free and robust but slow in high dimensions; keep the parameter count
 modest.
 
 **Key arguments and defaults (and why).** `moments_fn` returns an `n×m` array
-(rows = observations, columns = moments); `initial` is the starting parameter
+(rows = observations, columns = moments) — **2-D even for a single moment
+condition**: with `m = 1`, return `g.reshape(-1, 1)`, not the 1-D vector. A
+badly-shaped return raises a `TypeError` that names `moments_fn` and this
+contract. `initial` is the starting parameter
 vector (its length sets `nparams`); `weight` is the flattened `m×m` weighting
 matrix (row-major) or `None` for the identity. Start with the identity, then
 optionally re-weight by the inverse moment covariance for efficiency.

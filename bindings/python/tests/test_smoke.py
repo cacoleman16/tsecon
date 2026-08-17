@@ -174,6 +174,45 @@ def test_ols_hac_matches_statsmodels():
     np.testing.assert_allclose(rn["bse"], reg["ols_bse_nonrobust"], rtol=1e-10)
 
 
+def test_hac_use_correction_defaults_on_and_differs_from_statsmodels_default():
+    """One default story (audit round 2, finding 4).
+
+    Every public surface with a `use_correction` kwarg defaults it True — the
+    finite-sample n/(n-k) HAC scaling — which is the OPPOSITE of statsmodels
+    cov_type="HAC" (whose default is False). The bare call must be
+    bit-identical to use_correction=True, and must exceed use_correction=False
+    by exactly sqrt(n/(n-k)), so a silent default flip in either direction
+    fails this test. The matched-settings statsmodels agreement is pinned by
+    test_ols_hac_matches_statsmodels above.
+    """
+    reg = HAC["regression"]
+    y = np.array(reg["y"])
+    X = np.column_stack([np.ones(len(y)), reg["x1"], reg["x2"]])
+    n, k = X.shape
+
+    d = tsecon.ols(y, X, se_type="hac", maxlags=4)
+    on = tsecon.ols(y, X, se_type="hac", maxlags=4, use_correction=True)
+    off = tsecon.ols(y, X, se_type="hac", maxlags=4, use_correction=False)
+    assert list(d["bse"]) == list(on["bse"])  # bit-identical: default IS True
+    np.testing.assert_allclose(
+        np.asarray(d["bse"]) / np.asarray(off["bse"]),
+        np.sqrt(n / (n - k)),
+        rtol=1e-12,
+    )
+
+    # cg_regression inherits the same default through tsecon-survey.
+    rng = np.random.default_rng(11)
+    rev = rng.standard_normal(120)
+    err = 0.5 * rev + rng.standard_normal(120)
+    cg_d = tsecon.cg_regression(err, rev, maxlags=4)
+    cg_on = tsecon.cg_regression(err, rev, maxlags=4, use_correction=True)
+    cg_off = tsecon.cg_regression(err, rev, maxlags=4, use_correction=False)
+    assert cg_d["se_slope"] == cg_on["se_slope"]  # bit-identical
+    assert cg_d["se_slope"] == pytest.approx(
+        cg_off["se_slope"] * np.sqrt(120 / (120 - 2)), rel=1e-12
+    )
+
+
 def test_long_run_variance_matches_fixture():
     lrv_fx = HAC["lrv_nile_demeaned"]["bartlett"]
     for bw, val in lrv_fx.items():

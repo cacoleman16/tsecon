@@ -685,7 +685,14 @@ fn long_run_variance(
 /// `x` is a 2-D design matrix used as-is (add your own constant column).
 /// `se_type`: "nonrobust", "hc0", "hc1", "hc2", "hc3", or "hac" (Bartlett
 /// kernel; `maxlags=None` uses the Newey-West rule of thumb). HAC results
-/// match statsmodels `cov_type="HAC"` at 1e-10.
+/// match statsmodels `cov_type="HAC"` at 1e-10 **when `use_correction` is
+/// matched**. The defaults deliberately differ: tsecon defaults
+/// `use_correction=True` (the finite-sample `n/(n - k)` scaling — the
+/// statistically recommended small-sample choice), while statsmodels
+/// `cov_type="HAC"` defaults it off, so at each library's own defaults the
+/// HAC `bse` differ by exactly `sqrt(n/(n - k))` (4.3% at T=25, k=2; 0.02%
+/// at T=5000). Pass `use_correction=False` to reproduce a default
+/// statsmodels `cov_type="HAC"` call.
 ///
 /// **Choosing among the HC ladder.** `hc0` is White; `hc1` adds the
 /// `n/(n - k)` inflation; `hc2` and `hc3` instead divide each squared
@@ -4194,10 +4201,18 @@ fn realized_measures<'py>(
 /// Regresses `RV_t` on `[const, RV_{t-1}, RV_week, RV_month]`, where the
 /// weekly/monthly regressors are trailing averages known at `t-1`. The
 /// `variant` transforms the series first: `"level"`, `"log"`, or `"sqrt"`.
-/// Standard errors are Newey-West HAC with `hac_maxlags` lags. Matches
-/// statsmodels OLS-HAC at 1e-8.
+/// Standard errors are Newey-West HAC with `hac_maxlags` lags; matches
+/// statsmodels OLS-HAC at 1e-8 when `use_correction` is matched.
+///
+/// **`use_correction` now defaults to `True`** (it defaulted `False` through
+/// 0.2.0), so every HAC surface in the library takes the finite-sample
+/// `n/(n - k)` scaling by default. `bse`/`tvalues` move by the factor
+/// `sqrt(n/(n - k))` (+0.17% at the golden fixture's n=577, k=4); `params`
+/// and `rsquared` are unchanged. statsmodels `cov_type="HAC"` defaults the
+/// correction off — pass `use_correction=False` to reproduce a default
+/// statsmodels call (and the pre-change numbers).
 #[pyfunction]
-#[pyo3(signature = (rv, start = 22, variant = "level", hac_maxlags = 5, use_correction = false))]
+#[pyo3(signature = (rv, start = 22, variant = "level", hac_maxlags = 5, use_correction = true))]
 fn har_rv<'py>(
     py: Python<'py>,
     rv: PyReadonlyArray1<'py, f64>,
@@ -4302,6 +4317,12 @@ fn factor_model<'py>(
 }
 
 /// Linear IV-GMM (Hansen 1982) with a robust or HAC weighting matrix.
+///
+/// **The positional order is `(x, z, y)`** — regressors first, instruments
+/// second, outcome third. `x` and `z` are both 2-D float matrices, so
+/// swapping them (`iv_gmm(Z, X, y)`) coerces cleanly and returns
+/// plausible-looking garbage rather than raising. Prefer keywords:
+/// `iv_gmm(x=X, z=Z, y=y)`.
 ///
 /// Estimates `y = X beta + u` where the columns of `X` may be endogenous,
 /// using instrument matrix `Z` (which must include the exogenous regressor
@@ -5665,12 +5686,15 @@ fn dfm_news<'py>(
 /// Returns three views of `r_{t+1} = alpha + beta*x_t + u_{t+1}` where `x` is
 /// near-integrated and its innovation correlates with `u` (the Stambaugh
 /// setting, which biases OLS and makes the naive t-test over-reject):
-/// `ols` (plain OLS `beta`/`se`/`tstat`), `stambaugh` (the Stambaugh 1999
-/// bias-corrected `beta_corrected` with the `bias_term` and estimated
-/// `rho`), and `ivx` (the Kostakis-Magdalinos-Stamatogiannis 2015 estimator
-/// `beta_ivx` and its Wald test `wald`/`pvalue`, asymptotically chi-square
-/// uniformly over the persistence of `x`). `cz`/`alpha` tune the IVX
-/// instrument (defaults -1, 0.95).
+/// `ols` (plain OLS `alpha`/`beta`/`se`/`tstat`), `stambaugh` (the Stambaugh
+/// 1999 bias correction: `beta_corrected`, `beta_ols`, `bias_term`, the
+/// estimated predictor root `rho_ols`, and `se` — to first order the OLS
+/// standard error; the correction shifts the point estimate, not the
+/// width), and `ivx` (the Kostakis-Magdalinos-Stamatogiannis 2015 estimator
+/// `beta_ivx` with its Wald test `wald`/`pvalue`, asymptotically chi-square
+/// uniformly over the persistence of `x`, and the realized instrument
+/// persistence `rz`), plus the top-level aligned sample size `nobs`.
+/// `cz`/`alpha` tune the IVX instrument (defaults -1, 0.95).
 #[pyfunction]
 #[pyo3(signature = (r, x, cz = -1.0, alpha = 0.95))]
 fn predictive_regression<'py>(
@@ -5808,7 +5832,10 @@ fn recession_probit<'py>(
 ///
 /// Regresses the mean forecast `errors` on the mean forecast `revisions` by
 /// OLS with Newey-West HAC standard errors (`maxlags=None` uses the
-/// automatic rule). The `slope` measures information rigidity — 0 under
+/// automatic rule; `use_correction=True`, the default, applies the
+/// finite-sample `n/(n - k)` HAC scaling — note statsmodels
+/// `cov_type="HAC"` defaults it off, so match `use_correction` when
+/// comparing across libraries). The `slope` measures information rigidity — 0 under
 /// full-information rational expectations, positive under sticky/noisy
 /// information — and maps to `implied_rigidity = slope/(1+slope)`. Returns
 /// `intercept`/`slope` with HAC `se`/`t`/`p`, `r_squared`, `implied_rigidity`,
@@ -5849,6 +5876,8 @@ fn cg_regression<'py>(
 /// SEs, and jointly Wald-tests that all coefficients are zero — the null of
 /// forecast efficiency. Returns `params`/`bse`/`tvalues`/`pvalues`,
 /// `r_squared`, and the `wald`/`wald_df`/`wald_pvalue`.
+/// `use_correction=True` (the default) applies the finite-sample
+/// `n/(n - k)` HAC scaling; statsmodels `cov_type="HAC"` defaults it off.
 #[pyfunction]
 #[pyo3(signature = (errors, regressors, maxlags = None, use_correction = true))]
 fn forecast_efficiency<'py>(
@@ -5897,8 +5926,14 @@ fn frac_diff<'py>(
 /// `method="gph"` is the Geweke-Porter-Hudak (1983) log-periodogram
 /// regression; `method="local_whittle"` is the Robinson (1995) local Whittle
 /// estimator. `m` is the number of low Fourier frequencies used (bandwidth);
-/// `None` uses the standard `n^0.5` default. Returns the estimate `d` and its
-/// asymptotic `se`.
+/// `None` uses the standard `n^0.5` default.
+///
+/// Returns `d`, `se`, `se_asymptotic`, and `m` for both methods, plus
+/// `se_regression` for `method="gph"`. BUILD INTERVALS FROM `se`: it is the
+/// standard error at the bandwidth actually used. `se_asymptotic` is the
+/// textbook large-`m` closed form (`pi/sqrt(24m)` for GPH, `1/(2 sqrt(m))`
+/// for local Whittle), kept for reference — at the default bandwidth it is
+/// materially too NARROW, measured about 25% at n=512.
 #[pyfunction]
 #[pyo3(signature = (x, m = None, method = "gph"))]
 fn long_memory_d<'py>(
@@ -6341,7 +6376,9 @@ fn functional_pca<'py>(
 /// the per-horizon JOINT K x K coefficient covariance — whole-curve scenarios
 /// need its off-diagonals.
 ///
-/// Matches statsmodels OLS(...).fit(cov_type="HAC") per horizon at 1e-8.
+/// Matches statsmodels OLS(...).fit(cov_type="HAC", cov_kwds={"maxlags": L,
+/// "use_correction": True}) per horizon at 1e-8 (statsmodels defaults the
+/// correction off; this function always applies it).
 #[pyfunction]
 #[pyo3(signature = (y, scores, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 fn flp<'py>(
