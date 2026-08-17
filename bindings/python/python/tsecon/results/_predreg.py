@@ -22,7 +22,16 @@ import math
 from statistics import NormalDist
 
 from ._base import Results, rule, fmt_row, kv_line, param_table
-from ._plotting import pyplot, apply_style, SERIES, REF
+from ._plotting import pyplot, apply_style, SERIES, REF, INK_2
+
+#: Default caption under :meth:`PredictiveRegressionResults.plot_estimates` —
+#: the same caveat ``summary()`` prints, so the figure cannot circulate
+#: without it: the OLS/Stambaugh intervals are naive normal ones, and for a
+#: persistent predictor the naive interval is exactly the misleading one.
+PLOT_CAVEAT = (
+    "OLS and Stambaugh intervals are naive normal ones (undersized when x is\n"
+    "persistent); the IVX interval is the one to report."
+)
 
 __all__ = ["PredictiveRegressionResults", "IVXTestResults"]
 
@@ -273,12 +282,25 @@ class PredictiveRegressionResults(Results):
     # ------------------------------------------------------------------ #
     # plot
     # ------------------------------------------------------------------ #
-    def plot_estimates(self, ax=None, *, level: float = 0.95, path: str | None = None):
+    def plot_estimates(
+        self,
+        ax=None,
+        *,
+        level: float = 0.95,
+        path: str | None = None,
+        caption: str | None = PLOT_CAVEAT,
+    ):
         """Forest plot of the three slope estimates with confidence intervals.
 
         One dot per estimator with a horizontal interval, and a zero reference
         line — so a slope that OLS calls significant and IVX does not shows up
         as an interval that crosses zero. Returns the ``Figure``.
+
+        ``caption`` is rendered under the figure and defaults to
+        :data:`PLOT_CAVEAT` — the same warning ``summary()`` prints, that the
+        OLS and Stambaugh intervals are naive normal ones and the IVX interval
+        is the one to report. Pass ``caption=None`` to suppress it (e.g. when
+        composing into a figure that carries the caveat elsewhere).
         """
         plt = pyplot()
         z = _NORM.inv_cdf(0.5 + level / 2.0)
@@ -325,6 +347,13 @@ class PredictiveRegressionResults(Results):
         apply_style(ax)
         ax.grid(axis="y", visible=False)
         fig.tight_layout()
+        if caption:
+            # Reserve a strip under the axes and print the caveat there, so
+            # the figure carries the same warning the summary() text does.
+            n_lines = caption.count("\n") + 1
+            pad = 0.055 * n_lines + 0.04
+            fig.subplots_adjust(bottom=min(0.5, fig.subplotpars.bottom + pad))
+            fig.text(0.01, 0.012, caption, fontsize=7, color=INK_2, va="bottom")
         if path is not None:
             fig.savefig(path, dpi=150)
         return fig

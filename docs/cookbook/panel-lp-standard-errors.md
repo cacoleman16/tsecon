@@ -88,8 +88,18 @@ horizon would have looked significant.
 - **`bandwidth`** sets the Driscoll-Kraay kernel width. Like any HAC bandwidth
   it moves the answer; report it.
 - **`jackknife=True`** applies the Dhaene-Jochmans half-panel correction for
-  Nickell bias — worth using when `T` is short and lagged dependent variables
-  are in the controls.
+  Nickell bias. It does what it says to the *point estimate* — the bias is
+  essentially eliminated — but it also inflates the estimator's finite-sample
+  variance while the reported `se` is kept from the *uncorrected* full-sample
+  fit (the two are asymptotically equivalent, DJ Theorem 3.1; in a short panel
+  that equivalence has not arrived). Measured at N=20, T=60, h=8: bias
+  −0.070 → +0.005, but the true sampling sd grows **36%** (0.235 → 0.319)
+  against a bit-identical reported se of 0.212, so nominal-95% coverage falls
+  **0.880 → 0.804**. By T ≈ 240 the gap closes (0.944 → 0.927). So: reach for
+  the jackknife at *moderate-to-long* `T` where you want the bias gone and the
+  se is honest; at short `T` — the regime where the bias itself is largest —
+  know that the corrected estimate is noisier than its interval admits, and
+  treat the band as indicative.
 - **`cumulative=True`** switches to the Ramey-Zubairy cumulated-outcome
   convention.
 - Slopes genuinely heterogeneous across units? A pooled estimator is the wrong

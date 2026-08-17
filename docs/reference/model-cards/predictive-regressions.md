@@ -62,9 +62,13 @@ must lie in the open interval `(0, 1)` so the instrument is *mildly* integrated 
 more persistent than any stationary process but strictly less than a unit root,
 which is what makes the Wald limit hold uniformly. The KMS defaults
 (`cz = -1`, `alpha = 0.95`) are the values from the source paper and the ones
-you should keep unless you are deliberately studying instrument sensitivity;
-larger `alpha` pushes `Rz` closer to one (more persistent instrument), a smaller
-magnitude of `cz` does likewise.
+to keep **for this single-predictor function**, whose measured size holds
+across the whole persistence ladder (0.046–0.055 at every ρ up to and
+including 1); larger `alpha` pushes `Rz` closer to one (more persistent
+instrument), a smaller magnitude of `cz` does likewise. The same defaults do
+**not** carry over safely to the *joint* `ivx_test` with several predictors —
+its size degrades in `k` at the default tuning; see that function's measured
+size caveat below.
 
 **How to read the output.** A nested dict. `fit["ols"]` has `alpha`, `beta`,
 `se`, `tstat`. `fit["stambaugh"]` has `beta_ols`, `beta_corrected` (the debiased
@@ -168,10 +172,35 @@ uniform over the predictors' persistence. Each predictor is instrumented with
 its own IVX process built from the shared `Rz`; the joint statistic is the
 quadratic form `c' M⁻¹ c` in the instrumented cross-moments.
 
+!!! warning "Measured size caveat — uniform over persistence is not uniform in `k`"
+
+    "Asymptotically chi-square(`k`)" is formally true and operationally empty
+    at the default tuning once `k` is large. At the Stambaugh corner — ρ = 1
+    exactly, endogeneity −0.9, `n = 250`, true β = 0 — the measured rejection
+    rate of the nominal-5% joint test at the default `alpha = 0.95` is
+
+    | `k` | 1 | 3 | 5 | 8 |
+    |---|---|---|---|---|
+    | size | 0.05 | 0.10 | 0.17 | 0.26 |
+
+    and **growing `n` does not repair it**: at `k = 8` the size is still 0.22
+    at `n = 256000`, because the excess decays like
+    `n^{-(1-alpha)/2} = n^{-0.025}` at the default. `k = 1` is at nominal —
+    this is a many-predictor phenomenon, and it needs ρ at or near 1 *plus*
+    strong endogeneity (the worked example below, `n = 400`, ρ = 0.98,
+    `k = 2`, measures 0.050). Those conditions coincide in the canonical
+    application: a horse race of valuation ratios *is* many persistent,
+    endogenous predictors. The escape hatch is shipped: **`alpha = 0.50` is
+    the size-restoring option for many-predictor joint tests** — it makes the
+    size converge in `n` (0.054 by `n = 16000`; at `n = 250` it still roughly
+    halves the `k = 8` distortion, to ≈ 0.12). Pass it, and report it.
+
 **When to use (and when not).** Use it to ask "do *any* of these persistent
 variables predict the return, controlling for the others?" without the
 size distortion a naive joint F-test would carry near unit roots — a competing-
-predictors horse race. It is not a model-selection tool: rejection says at least
+predictors horse race, **run at `alpha = 0.5` once the field is larger than a
+few predictors** (at the default tuning the joint test's own size grows with
+`k`; see the caveat above). It is not a model-selection tool: rejection says at least
 one slope is non-zero, not which one; read the per-predictor `beta_ivx` for
 direction and rough magnitude, but there is no separate per-coefficient p-value
 in the returned surface. Collinear or degenerate predictors make the
@@ -182,7 +211,9 @@ views on the same call.
 **Key arguments and defaults.** Same instrument tuning as above — `cz = -1.0`,
 `alpha = 0.95` — with the identical roles and constraints (`cz < 0`,
 `alpha ∈ (0,1)`); the scalar `Rz` is shared across the predictor columns (the
-KMS matrix instrument specializes to `Rz·I`).
+KMS matrix instrument specializes to `Rz·I`). The default `alpha` is safe at
+small `k`; for joint tests of many persistent predictors pass `alpha = 0.5`
+(the measured size caveat above).
 
 **How to read the output.** `beta_ivx` is the length-`k` slope vector (column
 order of `xs`); `wald` is the joint statistic on `nregressors` degrees of

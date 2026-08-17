@@ -387,3 +387,29 @@ def test_joint_significant_reads_the_pvalue(joint):
     assert res.significant(max(1e-6, p - 0.01)) is False
     with pytest.raises(ValueError):
         res.significant(0.0)
+
+
+def test_plot_estimates_carries_the_naive_normal_caveat(res):
+    """The figure must carry the same caveat summary() prints (audit F5-6).
+
+    The forest plot puts naive-normal OLS/Stambaugh intervals next to the IVX
+    one; without the caption a reader screenshots exactly the interval the
+    summary warns about. Catches any regression that drops the caption.
+    """
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    from tsecon.results._predreg import PLOT_CAVEAT
+
+    fig = res.plot_estimates()
+    texts = [t.get_text() for t in fig.texts]
+    assert PLOT_CAVEAT in texts
+    assert "naive normal" in PLOT_CAVEAT
+    matplotlib.pyplot.close(fig)
+
+    fig2 = res.plot_estimates(caption=None)
+    assert [t.get_text() for t in fig2.texts] == []
+    matplotlib.pyplot.close(fig2)
+
+    fig3 = res.plot_estimates(caption="custom words")
+    assert "custom words" in [t.get_text() for t in fig3.texts]
+    matplotlib.pyplot.close(fig3)

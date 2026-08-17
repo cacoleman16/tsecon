@@ -409,5 +409,3 @@ to the repository.
 - **Want to see each method worked end to end?** The
   [gallery](examples/README.md) shows every function with a use case, code on
   real data, and the figure it produces.
-</content>
-</invoke>
