@@ -1,0 +1,13 @@
+[package]
+name = "tsecon-evt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Extreme value theory for the tsecon time-series econometrics library: peaks-over-threshold GPD tail fitting with McNeil-Frey VaR/ES, and GEV block-maxima fitting with return levels, both by MLE validated against scipy genpareto/genextreme"
+
+[dependencies]
+tsecon-optim = { path = "../tsecon-optim" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }

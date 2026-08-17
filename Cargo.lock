@@ -960,6 +960,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tsecon-evt"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+ "tsecon-optim",
+]
+
+[[package]]
 name = "tsecon-favar"
 version = "0.2.0"
 dependencies = [
@@ -1180,6 +1188,7 @@ dependencies = [
  "tsecon-connect",
  "tsecon-diag",
  "tsecon-dsge",
+ "tsecon-evt",
  "tsecon-favar",
  "tsecon-filters",
  "tsecon-forecast",

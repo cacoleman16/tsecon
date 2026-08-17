@@ -42,6 +42,7 @@ members = [
     "crates/tsecon-funcshock",
     "crates/tsecon-breaks",
     "crates/tsecon-panelroot",
+    "crates/tsecon-evt",
     "bindings/python",
 ]
 
