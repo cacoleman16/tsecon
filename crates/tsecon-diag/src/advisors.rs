@@ -1,11 +1,12 @@
 //! Preprocessing advisors: how many differences a series needs
-//! ([`ndiffs`]) and which variance-stabilising Box-Cox power to use
-//! ([`box_cox_lambda`]).
+//! ([`ndiffs`]), how many *seasonal* differences ([`nsdiffs`]), and which
+//! variance-stabilising Box-Cox power to use ([`box_cox_lambda`]).
 //!
-//! Both answer a question a first-time user asks *before* fitting
-//! anything, and both return the evidence behind the answer, not just the
-//! answer: `ndiffs` reports the test statistic and p-value at every
-//! differencing order it tried, and `box_cox_lambda` reports the objective
+//! All three answer a question a first-time user asks *before* fitting
+//! anything, and all three return the evidence behind the answer, not just
+//! the answer: `ndiffs` reports the test statistic and p-value at every
+//! differencing order it tried, `nsdiffs` the STL seasonal strength at
+//! every seasonal-differencing order, and `box_cox_lambda` the objective
 //! at the optimum (plus, for the MLE, the log-likelihood of the two
 //! transforms people actually reach for — the log and no transform at
 //! all).
@@ -15,6 +16,12 @@
 //!   (Hyndman & Khandakar 2008, JSS 27(3), sec. 3.2, as implemented by
 //!   `forecast::ndiffs`): difference until the test stops calling for a
 //!   difference, capped at `max_d`. No new statistics are introduced here.
+//! * [`nsdiffs`] applies the Hyndman-Khandakar seasonal-strength rule
+//!   (`forecast::nsdiffs(test = "seas")`): one seasonal difference
+//!   whenever the STL-based Wang-Smith-Hyndman seasonal strength
+//!   ([`tsecon_filters::seasonal_strength`]) is at least 0.64, iterated on
+//!   the seasonally-differenced series up to `max_d`. Composition over the
+//!   shipped STL, no new statistics.
 //! * [`box_cox_lambda`] selects the Box-Cox power either by profile
 //!   maximum likelihood (Box & Cox 1964 — the `scipy.stats.boxcox_normmax`
 //!   objective, matched to `1e-15` relative) or by Guerrero's (1993)
@@ -45,6 +52,10 @@ pub enum AdvisorError {
     /// An error from the underlying diagnostic (the unit-root tests
     /// composed by [`ndiffs`], or the shared input validation).
     Diag(DiagError),
+    /// An error from the STL decomposition underlying [`nsdiffs`] (most
+    /// often: fewer than `2 * period` observations, or `period < 2`),
+    /// printed exactly as `tsecon_filters::stl` would print it.
+    Filters(tsecon_filters::FiltersError),
     /// The Box-Cox family is only defined for strictly positive data.
     NonPositive {
         /// Which advisor rejected the series.
@@ -81,6 +92,7 @@ impl fmt::Display for AdvisorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AdvisorError::Diag(e) => write!(f, "{e}"),
+            AdvisorError::Filters(e) => write!(f, "{e}"),
             AdvisorError::NonPositive {
                 what,
                 index,
@@ -126,6 +138,7 @@ impl std::error::Error for AdvisorError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             AdvisorError::Diag(e) => Some(e),
+            AdvisorError::Filters(e) => Some(e),
             _ => None,
         }
     }
@@ -134,6 +147,12 @@ impl std::error::Error for AdvisorError {
 impl From<DiagError> for AdvisorError {
     fn from(e: DiagError) -> Self {
         AdvisorError::Diag(e)
+    }
+}
+
+impl From<tsecon_filters::FiltersError> for AdvisorError {
+    fn from(e: tsecon_filters::FiltersError) -> Self {
+        AdvisorError::Filters(e)
     }
 }
 
@@ -571,6 +590,243 @@ pub fn ndiffs(
         max_d,
         stop,
         interpretation: ndiffs_interpretation(d, test, alpha, max_d, stop, &steps),
+        steps,
+    })
+}
+
+// ----------------------------------------------------------------- nsdiffs
+
+/// The seasonal-strength threshold of the Hyndman-Khandakar rule as
+/// implemented by `forecast::nsdiffs(test = "seas")`: one seasonal
+/// difference whenever the STL seasonal strength is at least this value.
+pub const NSDIFFS_SEAS_THRESHOLD: f64 = 0.64;
+
+/// The evidence at one seasonal-differencing order: the STL-based
+/// Wang-Smith-Hyndman strengths and what they imply.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NsdiffsStep {
+    /// The seasonal-differencing order this evidence refers to
+    /// (0 = levels).
+    pub d: usize,
+    /// Number of observations at this order (`n - d * period`).
+    pub n: usize,
+    /// The Wang-Smith-Hyndman seasonal strength,
+    /// `max(0, 1 - Var(resid) / Var(seasonal + resid))`, from a
+    /// default-parameter STL fit.
+    pub seasonal_strength: f64,
+    /// The companion trend strength (reported as context; the rule does
+    /// not use it).
+    pub trend_strength: f64,
+    /// Whether this evidence calls for a seasonal difference
+    /// (`seasonal_strength >= 0.64`).
+    pub needs_differencing: bool,
+}
+
+/// Why the [`nsdiffs`] sequence stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NsdiffsStop {
+    /// The seasonal strength dropped below the 0.64 threshold — the
+    /// intended exit.
+    WeakSeasonality,
+    /// The `max_d` cap was hit while the strength still called for a
+    /// difference. The answer is a floor, not a verdict.
+    MaxD,
+    /// Differencing left an exactly constant series: the seasonality was
+    /// deterministic and is gone; no STL fit is defined (or needed).
+    Constant,
+    /// The seasonally-differenced series has fewer than `2 * period`
+    /// observations, so no further STL fit is possible; `d` is a floor.
+    TooShort,
+}
+
+/// Result of the seasonal-differencing advisor: the recommended `D`, the
+/// strength evidence at every order tried, and why the sequence stopped.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NsdiffsResult {
+    /// The recommended number of seasonal differences (0 or, rarely, more).
+    pub d: usize,
+    /// The seasonal period the strengths were computed at.
+    pub period: usize,
+    /// The strength threshold used ([`NSDIFFS_SEAS_THRESHOLD`]).
+    pub threshold: f64,
+    /// The significance level supplied. **Unused by the strength rule** —
+    /// it is threshold-based, not a hypothesis test — but validated and
+    /// recorded for interface symmetry with [`ndiffs`] (R's
+    /// `forecast::nsdiffs` accepts and ignores `alpha` for
+    /// `test = "seas"` the same way).
+    pub alpha: f64,
+    /// The cap the search was given (forecast's default `max.D` is 1).
+    pub max_d: usize,
+    /// Why the sequence stopped.
+    pub stop: NsdiffsStop,
+    /// One entry per order actually tested, in order (`steps[k].d == k`).
+    /// Empty only for an exactly constant input.
+    pub steps: Vec<NsdiffsStep>,
+    /// Plain-language interpretation.
+    pub interpretation: String,
+}
+
+impl fmt::Display for NsdiffsResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "nsdiffs(seas, period = {}) = {} [", self.period, self.d)?;
+        for (i, s) in self.steps.iter().enumerate() {
+            if i > 0 {
+                write!(f, "; ")?;
+            }
+            write!(f, "D = {}: strength = {:.4}", s.d, s.seasonal_strength)?;
+        }
+        write!(f, "] — {}", self.interpretation)
+    }
+}
+
+fn nsdiffs_interpretation(
+    d: usize,
+    period: usize,
+    max_d: usize,
+    stop: NsdiffsStop,
+    steps: &[NsdiffsStep],
+) -> String {
+    let evidence = match steps.last() {
+        Some(s) => format!(
+            "seasonal strength = {:.4} vs the 0.64 threshold",
+            s.seasonal_strength
+        ),
+        None => "no STL fit was run".to_string(),
+    };
+    match stop {
+        NsdiffsStop::Constant if steps.is_empty() => "The series is exactly constant, so D = 0: \
+             there is no variation to deseasonalize and no STL fit is \
+             defined. Check that the intended column was passed."
+            .to_string(),
+        NsdiffsStop::Constant => format!(
+            "D = {d}: seasonal differencing {d} time(s) leaves an exactly \
+             constant series — the seasonality was an exact deterministic \
+             pattern and is gone. Do not difference further."
+        ),
+        NsdiffsStop::TooShort => format!(
+            "D = {d}: after {d} seasonal difference(s) fewer than 2 * period \
+             = {} observations remain, so the STL-based strength cannot be \
+             recomputed. D = {d} is a floor from the evidence available, \
+             not a verdict.",
+            2 * period
+        ),
+        NsdiffsStop::MaxD => format!(
+            "D = {d}, the max_d = {max_d} cap — the seasonal strength still \
+             calls for another difference at order {d} ({evidence}), so \
+             this is a floor rather than a verdict. D > 1 is very rare in \
+             practice (forecast's default cap is 1); before raising max_d, \
+             check whether the residual 'seasonality' is really a calendar \
+             artefact or a changing seasonal pattern, which differencing \
+             cannot fix."
+        ),
+        NsdiffsStop::WeakSeasonality if d == 0 => format!(
+            "D = 0: the seasonal pattern is not strong enough to warrant a \
+             seasonal difference ({evidence}). Model the seasonality \
+             directly if it matters — seasonal dummies, Fourier terms, or a \
+             seasonal ARMA — rather than differencing it away; a seasonal \
+             difference of a weakly seasonal series injects a \
+             non-invertible seasonal MA unit root and loses {period} \
+             observations."
+        ),
+        NsdiffsStop::WeakSeasonality => format!(
+            "D = {d}: the seasonal pattern is strong enough to difference at \
+             the seasonal lag {period} ({d} time(s)); after that the \
+             strength drops below 0.64 ({evidence}). In SARIMA terms this \
+             is the D of ARIMA(p,d,q)(P,{d},Q)[{period}]. Combine with \
+             ndiffs on the seasonally-differenced series for the non- \
+             seasonal d."
+        ),
+    }
+}
+
+/// How many *seasonal* differences a series needs — the Hyndman-Khandakar
+/// seasonal-strength rule, with the STL evidence at every order tried.
+///
+/// The rule is the one `forecast::nsdiffs(test = "seas")` implements
+/// (Hyndman & Khandakar 2008, JSS 27(3); threshold form per the
+/// `forecast` package and FPP3 sec. 9.9 of Hyndman & Athanasopoulos):
+/// compute the Wang-Smith-Hyndman seasonal strength from a
+/// default-parameter STL fit ([`tsecon_filters::seasonal_strength`]);
+/// difference at the seasonal lag while the strength is at least 0.64,
+/// capped at `max_d` (forecast's default cap is 1). An exactly constant
+/// series stops the sequence, as does a differenced series too short for
+/// another STL fit (`n < 2 * period`).
+///
+/// This is composition, not new statistics: the per-order strengths are
+/// exactly what [`tsecon_filters::seasonal_strength`] returns, pinned to
+/// statsmodels STL components by that crate's golden tests; the 0.64 rule
+/// is a transcribed published rule (graded honestly as such in
+/// `fixtures/generate_stl_fixtures.py`).
+///
+/// `alpha` is validated but **unused** — the strength rule is
+/// threshold-based, not a hypothesis test. It is accepted for interface
+/// symmetry with [`ndiffs`], exactly as `forecast::nsdiffs` accepts and
+/// ignores `alpha` when `test = "seas"`.
+///
+/// # Errors
+///
+/// * [`AdvisorError::Diag`] wrapping [`DiagError::InvalidAlpha`] unless
+///   `0 < alpha < 1`.
+/// * [`AdvisorError::Filters`] for anything the underlying STL raises on
+///   the *original* series — most often
+///   [`tsecon_filters::FiltersError::SeriesTooShort`] (`n < 2 * period`)
+///   or an invalid `period < 2`. (Once at least one order has been
+///   tested, a too-short differenced series is a [`NsdiffsStop::TooShort`]
+///   stop, not an error.)
+pub fn nsdiffs(
+    y: &[f64],
+    period: usize,
+    alpha: f64,
+    max_d: usize,
+) -> Result<NsdiffsResult, AdvisorError> {
+    check_alpha(alpha)?;
+    check_series(y, 4, "nsdiffs")?;
+
+    let mut current: Vec<f64> = y.to_vec();
+    let mut steps: Vec<NsdiffsStep> = Vec::new();
+    let mut d = 0usize;
+    let stop = loop {
+        if current.iter().all(|&v| v == current[0]) {
+            break NsdiffsStop::Constant;
+        }
+        if current.len() < 2 * period {
+            if d == 0 {
+                // Teach on the original series rather than silently
+                // reporting D = 0 from no evidence.
+                tsecon_filters::seasonal_strength(&current, period)?;
+            }
+            break NsdiffsStop::TooShort;
+        }
+        let s = tsecon_filters::seasonal_strength(&current, period)?;
+        let needs = s.seasonal_strength >= NSDIFFS_SEAS_THRESHOLD;
+        steps.push(NsdiffsStep {
+            d,
+            n: current.len(),
+            seasonal_strength: s.seasonal_strength,
+            trend_strength: s.trend_strength,
+            needs_differencing: needs,
+        });
+        if !needs {
+            break NsdiffsStop::WeakSeasonality;
+        }
+        if d >= max_d {
+            break NsdiffsStop::MaxD;
+        }
+        d += 1;
+        current = current
+            .windows(period + 1)
+            .map(|w| w[period] - w[0])
+            .collect();
+    };
+
+    Ok(NsdiffsResult {
+        d,
+        period,
+        threshold: NSDIFFS_SEAS_THRESHOLD,
+        alpha,
+        max_d,
+        stop,
+        interpretation: nsdiffs_interpretation(d, period, max_d, stop, &steps),
         steps,
     })
 }

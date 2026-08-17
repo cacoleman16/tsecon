@@ -76,6 +76,18 @@ def ndiffs(
 ) -> dict[str, Any]:
     """How many differences a series needs, with the per-order test evidence."""
 
+def nsdiffs(
+    y: _ArrayLike, period: int, alpha: float = ..., max_d: int = ...
+) -> dict[str, Any]:
+    """How many SEASONAL differences a series needs (Hyndman-Khandakar rule).
+
+    D += 1 while the STL seasonal strength is >= 0.64, capped at max_d
+    (the forecast::nsdiffs test="seas" rule; alpha is validated but unused
+    by this threshold rule, as in forecast). Returns `d`, `period`,
+    `threshold`, `alpha`, `max_d`, `stop`, per-order `steps`, and an
+    `interpretation`.
+    """
+
 def box_cox_lambda(
     y: _ArrayLike,
     method: str = ...,
@@ -433,6 +445,40 @@ def cf_filter(
 
 def hamilton_filter(y: _ArrayLike, h: int = ..., p: int = ...) -> dict[str, Any]:
     """Hamilton (2018) regression filter — the modern HP alternative."""
+
+def stl(
+    y: _ArrayLike,
+    period: int,
+    seasonal: int = ...,
+    trend: int | None = ...,
+    low_pass: int | None = ...,
+    seasonal_deg: int = ...,
+    trend_deg: int = ...,
+    low_pass_deg: int = ...,
+    robust: bool = ...,
+    seasonal_jump: int = ...,
+    trend_jump: int = ...,
+    low_pass_jump: int = ...,
+    inner_iter: int | None = ...,
+    outer_iter: int | None = ...,
+) -> dict[str, Any]:
+    """STL seasonal-trend decomposition using LOESS (Cleveland et al. 1990).
+
+    Mirrors statsmodels.tsa.seasonal.STL parameter semantics and defaults
+    exactly (matched elementwise at 1e-8; observed ~1e-12); requires
+    n >= 2*period. Returns `seasonal`, `trend`, `resid` (y = seasonal +
+    trend + resid), `weights` (bisquare robustness weights; all 1 unless
+    the outer loop runs), `period`, and `config` (the resolved windows,
+    degrees, jumps, and inner/outer iteration counts).
+    """
+
+def seasonal_strength(y: _ArrayLike, period: int) -> dict[str, Any]:
+    """Wang-Smith-Hyndman seasonal/trend strength from a default STL fit.
+
+    strength = max(0, 1 - var(resid)/var(component + resid)), sample
+    variances; near 1 means the component dominates. Returns
+    `seasonal_strength`, `trend_strength`, `period`.
+    """
 
 # ------------------------------------------------- forecasting / evaluation
 def dm_test(
