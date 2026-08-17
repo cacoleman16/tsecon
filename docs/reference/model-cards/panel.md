@@ -90,7 +90,7 @@ cluster covariances.
 | | `n_lag_controls` | `2` | lags of outcome/shock included as controls |
 | | `se_type` | `"driscoll_kraay"` | robust to cross-sectional dependence |
 | | `cumulative` | `False` | `True` for cumulative IRFs |
-| | `jackknife` | `False` | leave-one-entity-out bias reduction |
+| | `jackknife` | `False` | Dhaene-Jochmans half-panel Nickell-bias correction; removes the bias but inflates the estimator's variance at short `T` while `se` is unchanged (measured: 95% coverage 0.880 → 0.804 at T=60) — see the [panel-LP cookbook](../../cookbook/panel-lp-standard-errors.md#gotchas) |
 | `mean_group_var` | `lags` | `1` | per-entity VAR order |
 | | `trend` | `"c"` | deterministic terms |
 | | `horizon` / `response` / `impulse` | `10` / `0` / `0` | IRF horizon and the response/shock variable indices |

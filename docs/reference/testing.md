@@ -29,7 +29,7 @@ here, so that is what is labelled.
 | — integration tests in `crates/*/tests/` | 1028 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 162 | |
 | — documentation tests | 45 | |
-| Python binding tests | **652 passed** in 7.5 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **662 collected, 0 failed** in 16 s (extras-gated files skip collection without matplotlib/scipy; 7 runtime skips without statsmodels/arch) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 41, **every one** with a `tests/` directory | |
 | Golden fixtures | 69 JSON files, produced by 50 generator scripts | `fixtures/` |
 | Public Python functions | 128, of which **124** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4--python-binding-tests) names the gap |
@@ -226,7 +226,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-652 tests in 50 files. 37 of the 69 fixture JSONs are reloaded here and checked
+662 tests in 52 files. 37 of the 69 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -336,14 +336,22 @@ relying on every time they quote a standard error.
 Five modules under
 [`docs/examples/coverage/`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage)
 re-estimate 40 interval-valued outputs across 21 functions on seeded draws from
-processes whose truth is known in closed form, and count containment. (39 rather
+processes whose truth is known in closed form, and count containment. (40 rather
 than 21 because the option and the regime change the answer: `var_irf_bands`
-contributes six rows, `bai_perron` three.) Every coverage number
+contributes six rows, `ols` five, `bai_perron` three.) Every coverage number
 carries its own Monte Carlo standard error `sqrt(p(1−p)/reps)` so that 0.93 and
 0.95 can be told apart honestly, and `run_all.py` harvests the consolidated
-tables from the structured results the modules return — nothing is transcribed,
-so a schema change makes the runner exit non-zero rather than silently dropping
-a row.
+tables from the structured results the modules return — nothing is transcribed
+*inside the runner*, so a schema change makes it exit non-zero rather than
+silently dropping a row. The published page's copies of the two tables **are** a
+transcription, and that is exactly where a row once went missing (the `hc3` row
+— audit round 2, finding 5), so they are now cross-checked row-for-row against
+the runner's probe registry by
+[`check_page.py`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage),
+which runs in the Python test suite: a dropped, duplicated, or unregistered
+row — and a headline or group count that stops summing to the registry — fails
+a build instead of shipping. (The coverage *numbers* themselves are still
+pinned by each family module's own assertions.)
 
 The design choice that makes the output usable is that each surface is measured
 **twice**: once on a design it is entitled to do well on, once on a design that
@@ -352,9 +360,9 @@ degrades, as approximations do" from "this interval does not work". The headline
 
 | | count |
 |---|---|
-| frequentist intervals measured (CI + PRED) | 31 |
+| frequentist intervals measured (CI + PRED) | 32 |
 | — off nominal **even in the favourable design** | **8** |
-| — at nominal when entitled, off under stress | 23 |
+| — at nominal when entitled, off under stress | 24 |
 | objects that make no frequentist promise (Bayesian credible bands, set-identified bounds) — reported as labelled diagnostics | 7 |
 | surfaces that return no interval at all (`theta_forecast`, `backtest`) | 1 |
 
@@ -565,10 +573,11 @@ every one of them runs on every invocation of the command above:
 ## 4 · How to run everything
 
 ```sh
-# 1. Rust core — 1037 tests
+# 1. Rust core (the count moves with development — the table above is the
+#    last measured snapshot)
 cargo test --workspace --exclude tsecon-python
 
-# 2. Python bindings — 538 tests
+# 2. Python bindings
 .venv/bin/python -m pytest bindings/python/tests -q
 
 # 3. Monte Carlo evidence (seeded, reproducible)
@@ -639,8 +648,8 @@ spend their time in.
 maturin develop --release -m bindings/python/Cargo.toml
 ```
 
-With a release extension installed, the full 332-test Python suite runs in
-**4.4 s** and `docs/examples/monte_carlo.py` in **3.0 s** on this machine. Do
+With a release extension installed, the full Python suite runs in a few
+seconds and `docs/examples/monte_carlo.py` in **3.0 s** on this machine. Do
 not quote any timing taken against a debug build.
 
 ---

@@ -542,8 +542,8 @@ def probes_irf_bands() -> list[Probe]:
               horizon_profile("big", "asymptotic"),
               "the whole path at once (what it does not)", joint,
               "READING",
-              "a pointwise band makes no joint promise; no function in the "
-              "library reports a simultaneous (sup-t) band", card),
+              "a pointwise band makes no joint promise; pass band=\"sup-t\" "
+              "for a simultaneous one (measured in irf_bands.py exp 7)", card),
     ]
 
 

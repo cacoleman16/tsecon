@@ -44,9 +44,10 @@ Monte Carlo standard error of the measurement next to it, an attribution of
 
 This audit was written against `0.1.0`. Four of its findings were defects rather
 than approximation error, and `0.2.0` closed all four. The rows they came from
-are still in the tables below, annotated — an audit that deletes its findings
-once they are fixed leaves nothing to check later, and the *sizes* of these gaps
-are the argument for measuring coverage at all.
+are still in the tables below, now measuring the shipped `0.2.0` behaviour —
+the before-numbers live in this table, because an audit that deletes its
+findings once they are fixed leaves nothing to check later, and the *sizes* of
+these gaps are the argument for measuring coverage at all.
 
 | finding | what shipped | measured effect |
 |---|---|---|
@@ -93,7 +94,7 @@ This is [Tier 6](../reference/testing.md#tier-6-interval-coverage) of the
 
 ```sh
 # the whole audit: five families, one consolidated report
-.venv/bin/python docs/examples/coverage/run_all.py            # 397 s here
+.venv/bin/python docs/examples/coverage/run_all.py            # 1312 s here
 
 # just the consolidated tables, without the five per-family reports
 .venv/bin/python docs/examples/coverage/run_all.py --summary
@@ -102,11 +103,14 @@ This is [Tier 6](../reference/testing.md#tier-6-interval-coverage) of the
 .venv/bin/python docs/examples/coverage/run_all.py --quick     # ~40 s
 
 # or one family at a time
-.venv/bin/python docs/examples/coverage/regression_se.py       #  40 s
-.venv/bin/python docs/examples/coverage/irf_bands.py           #  65 s
-.venv/bin/python docs/examples/coverage/lp_family.py           #  66 s
-.venv/bin/python docs/examples/coverage/forecast_intervals.py  # 131 s
-.venv/bin/python docs/examples/coverage/bayes_and_sets.py      #  95 s
+.venv/bin/python docs/examples/coverage/regression_se.py       # 110 s
+.venv/bin/python docs/examples/coverage/irf_bands.py           # 562 s
+.venv/bin/python docs/examples/coverage/lp_family.py           # 189 s
+.venv/bin/python docs/examples/coverage/forecast_intervals.py  # 234 s
+.venv/bin/python docs/examples/coverage/bayes_and_sets.py      # 217 s
+
+# the page-vs-registry row inventory (no Monte Carlo; runs in the test suite)
+.venv/bin/python docs/examples/coverage/check_page.py          #  <1 s
 ```
 
 Every family draws from one master seed, `20260729`, and prints it. Every draw
@@ -120,13 +124,13 @@ regression fails a build rather than quietly rotting in this page.
 ```text
   module                   assertions   runtime   result
   ----------------------------------------------------------------------
-  regression_se.py           110 pass     40.0s   OK
-  irf_bands.py                34 pass     65.1s   OK
-  lp_family.py                16 pass     65.6s   OK
-  forecast_intervals.py       13 pass    130.6s   OK
-  bayes_and_sets.py           23 pass     94.7s   OK
+  regression_se.py           110 pass    109.8s   OK
+  irf_bands.py                67 pass    562.2s   OK
+  lp_family.py                16 pass    188.6s   OK
+  forecast_intervals.py       13 pass    233.5s   OK
+  bayes_and_sets.py           23 pass    217.4s   OK
 
-  40 probes harvested from 5 families in 396.6s
+  40 probes harvested from 5 families in 1312.1s
 ```
 
 The coverage numbers are byte-reproducible; the runtimes are wall clock and will
@@ -197,6 +201,7 @@ interval does not work".
 | `tsecon.ols` | se_type="nonrobust" | CI | 0.95 | iid Gaussian, T=200 | 0.946 ± 0.004 | -1.0 | -0.4 | at nominal |
 | `tsecon.ols` | se_type="hc1" | CI | 0.95 | heteroskedastic sd=\|x\|, T=200 | 0.942 ± 0.004 | -1.9 | -0.8 | at nominal |
 | `tsecon.ols` | se_type="hc1"; small T, leverage | CI | 0.95 | x~chi2(1), sd(e\|x)=x, T=1600 | 0.940 ± 0.004 | -2.4 | -1.0 | at nominal |
+| `tsecon.ols` | se_type="hc3"; small T, leverage | CI | 0.95 | x~chi2(1), sd(e\|x)=x, T=1600 | 0.945 ± 0.004 | -1.3 | -0.5 | at nominal |
 | `tsecon.ols` | se_type="hac" | CI | 0.95 | x,e AR(1) phi=0.0, T=200 | 0.944 ± 0.004 | -1.5 | -0.6 | at nominal |
 | `tsecon.iv_gmm` | 2sls / 2step / iterated | CI | 0.95 | median first-stage F = 90.1 | 0.946 ± 0.004 | -1.0 | -0.4 | at nominal |
 | `tsecon.iv_gmm` | weight="hac" | CI | 0.95 | AR(1) errors phi=0.8, hac bw=10 | 0.868 ± 0.006 | -13.2 | -8.2 | **UNDER** |
@@ -246,7 +251,6 @@ miss here is expected; the deliverable is its **size**, not its existence.*
 | `tsecon.var_forecast` | marginal bands read as a JOINT band | PRED | 0.95 | every horizon and series inside simultaneously | 0.409 ± 0.006 | -85.2 | -54.1 | **UNDER** |
 | `tsecon.var_irf_bands` | method="bootstrap" | CI | 0.90 | n=100, h=12 | 0.410 ± 0.011 | -44.6 | -49.0 | **UNDER** |
 | `tsecon.ols` | se_type="hac" | CI | 0.95 | x,e AR(1) phi=0.95, T=200 | 0.588 ± 0.009 | -40.3 | -36.2 | **UNDER** |
-| `tsecon.iv_gmm` | weight="hac" | CI | 0.95 | AR(1) errors phi=0.8, hac bw=0 (DEFAULT) | 0.632 ± 0.009 | -36.1 | -31.8 | **UNDER** |
 | `tsecon.smooth_lp` | lam="cv" (the default) | CI | 0.95 | lam=cv, h=0 | 0.640 ± 0.018 | -17.1 | -31.0 | **UNDER** |
 | `tsecon.bvar_ssvs` | spike-and-slab credible band | CRED | 0.90 | prior 'SSVS spike-slab', h=12 | 0.594 ± 0.019 | -16.5 | -30.6 | n/a |
 | `tsecon.bvar_irf_draws` | 5th/95th posterior percentile band | CRED | 0.90 | prior 'default', h=4 | 0.610 ± 0.018 | -15.7 | -29.0 | n/a |
@@ -258,8 +262,10 @@ miss here is expected; the deliverable is its **size**, not its existence.*
 | `tsecon.var_irf_bands` | pointwise band read as a JOINT band | CI | 0.90 | n=500, all of h=0..12 at once | 0.722 ± 0.010 | -17.8 | -17.8 | **UNDER** |
 | `tsecon.iv_gmm` | 2sls / 2step / iterated | CI | 0.95 | median first-stage F = 1.2 | 0.839 ± 0.007 | -16.5 | -11.1 | **UNDER** |
 | `tsecon.var_irf_bands` | cumulative=True | CI | 0.90 | orth=True,cumulative=False, h=12 | 0.789 ± 0.009 | -12.2 | -11.1 | **UNDER** |
+| `tsecon.iv_gmm` | weight="hac" | CI | 0.95 | AR(1) errors phi=0.8, hac auto (NW rule) | 0.842 ± 0.007 | -16.3 | -10.8 | **UNDER** |
 | `tsecon.zero_sign_svar` | band at a TRUE point-identifying zero | CRED | 0.90 | lambda1=0.2, h=3 | 0.797 ± 0.020 | -5.1 | -10.3 | n/a |
 | `tsecon.robust_svar_bounds` | Giacomini-Kitagawa robust region | CRED | 0.90 | lambda1=0.2, h=3 | 0.800 ± 0.020 | -5.0 | -10.0 | n/a |
+| `tsecon.ols` | se_type="hc3"; small T, leverage | CI | 0.95 | x~chi2(1), sd(e\|x)=x, T=25 | 0.863 ± 0.006 | -13.9 | -8.7 | **UNDER** |
 | `tsecon.quantile_regression` | Powell sandwich, slope | CI | 0.95 | location-scale T=200, tau=0.05 | 0.866 ± 0.006 | -13.5 | -8.4 | **UNDER** |
 | `tsecon.lp` | se="hac" | CI | 0.95 | T=100 hac, h=12 | 0.870 ± 0.008 | -10.7 | -8.0 | **UNDER** |
 | `tsecon.har_rv` | HAC SE on the CONSTANT | CI | 0.95 | het innovations, maxlags=22, const | 0.871 ± 0.006 | -12.9 | -7.9 | **UNDER** |
@@ -307,7 +313,7 @@ entitled to do well on, so a caller cannot fix them by having better data.
 
 ### B. At nominal when entitled, off under stress
 
-**23 of 31.** These behave the way asymptotic approximations behave. Nothing
+**24 of 32.** These behave the way asymptotic approximations behave. Nothing
 here is an alarm; the number to quote is the *size* of the loss in the regime
 you are actually in.
 
@@ -317,7 +323,8 @@ you are actually in.
 | `var_forecast` marginal bands read as a joint band | 12 horizons × 2 series simultaneously, T=100 | **0.409 ± 0.006** | READING | see [pointwise is not joint](#pointwise-is-not-joint) | [VAR/SVAR card](../reference/model-cards/var-svar.md#reduced-form-var-var_fit-var_irf-var_fevd-var_granger-var_forecast) |
 | `ols(se_type="hac")` on a **slope** | regressor *and* errors AR(1) at φ=0.95, T=200 | **0.588 ± 0.009** | APPROXIMATION | the reported HAC SE is 0.43 of the true sampling sd. Lengthening the bandwidth helps and does not close it (0.703 at 12 lags, 0.728 at 24): at T=200 the sample does not contain enough independent information to estimate a long-run variance this large. Report such a slope with a bandwidth chosen for the persistence and treat the interval as indicative | [HAC cookbook](../cookbook/hac-standard-errors.md#choosing-the-bandwidth) |
 | `smooth_lp(lam="cv")` | impact response, T=200 | **0.640 ± 0.018** | ESTIMATOR | by design, and worst exactly where an applied reader looks first. At impact the cross-validated penalty pulls the estimate off the peak (\|bias\|/sd = 1.22 — the bias exceeds a whole sampling sd). A smooth-LP band is a band around the **penalized** estimand; the unpenalized `lam=0` anchor covers 0.936 at the same cell. Separately, `se` conditions on the selected λ, so mean se/sd falls from 0.907 to 0.812 | [LP card](../reference/model-cards/local-projections.md#smooth_lp-smooth-local-projections-barnichon-brownlees) |
-| `ols(se_type="hc1")`, small T with leverage | x ~ chi2(1), sd(e\|x)=x, T=25 | **0.682 ± 0.009** | ESTIMATOR *(was API GAP — [fixed in 0.2.0](#fixed-in-020))* | `hc1`'s n/(n−k) factor buys 0.015 at k=2; the leverage correction 1/(1−h_i) is what matters. `0.2.0` added `hc2`/`hc3`, and tsecon's own `hc3` now covers **0.863 ± 0.006** on these draws — 18 points recovered, and still short of nominal, so prefer `hc3` at small n without treating it as a cure | [Inference guide](../guide/03-inference-toolkit.md#the-robust-standard-error-ladder) |
+| `ols(se_type="hc1")`, small T with leverage | x ~ chi2(1), sd(e\|x)=x, T=25 | **0.682 ± 0.009** | ESTIMATOR *(was API GAP — [fixed in 0.2.0](#fixed-in-020))* | `hc1`'s n/(n−k) factor buys 0.015 at k=2; the leverage correction 1/(1−h_i) is what matters. `0.2.0` added `hc2`/`hc3`, and tsecon's own `hc3` now covers **0.863 ± 0.006** on these draws — 18 points recovered, and still short of nominal, so prefer `hc3` at small n without treating it as a cure (its own row is next) | [Inference guide](../guide/03-inference-toolkit.md#the-robust-standard-error-ladder) |
+| `ols(se_type="hc3")`, small T with leverage | x ~ chi2(1), sd(e\|x)=x, T=25 | **0.863 ± 0.006** | APPROXIMATION | the estimator `0.2.0` added because of this audit, measured on its own row: at nominal in the favourable design (0.945 ± 0.004 at T=1600) and still 8.7pp short at T=25 — the leverage correction recovers most of the small-T gap but not all of it. The SE distribution is skewed, so the mean se/sd of 0.942 overstates the typical interval; at a small, high-leverage n, widen deliberately or bootstrap | [Inference guide](../guide/03-inference-toolkit.md#the-robust-standard-error-ladder) |
 | `var_irf_bands(method="asymptotic")` | h=12, T=100 | **0.673 ± 0.010** | APPROXIMATION | [the horizon table](#the-delta-method-irf-band-horizon-by-horizon) | [VAR/SVAR card](../reference/model-cards/var-svar.md#confidence-bands-on-the-irf-var_irf_bands) |
 | `ols(se_type="nonrobust")` | heteroskedastic sd=\|x\|, T=200 | **0.732 ± 0.008** | ESTIMATOR | inconsistent, so data does not help: in the high-leverage design it is *stuck* at 0.428 even at T=1600 and slides **downward** with T. `hc0`/`hc1` repair almost all of it (0.732 → 0.942) | [Inference guide](../guide/03-inference-toolkit.md#the-robust-standard-error-ladder) |
 | `ols(se_type="hc1")` under serial correlation | AR(1) errors, AR(1) regressor φ=0.7, T=200 | **0.735 ± 0.008** | ESTIMATOR | HC repairs **nothing** here — statistically indistinguishable from `nonrobust`'s 0.744, with se/sd 0.569 vs 0.579. HC is heteroskedasticity-robust, not serial-correlation robust. Only `hac` moves the number (0.876) | [HAC cookbook](../cookbook/hac-standard-errors.md#gotchas) |
@@ -1060,8 +1067,15 @@ Stated so you do not have to discover it.
   paths.
 - **`quantile_lp`, `growth_at_risk`, panel LP (Driscoll-Kraay), `favar`,
   `proxy_svar`, `nongaussian_svar`, GARCH forecast intervals, `dfm_nowcast`,
-  MIDAS, and the term-structure fits are not in this audit.** They have golden
-  and property coverage; they do not yet have measured interval coverage.
+  MIDAS, `flp`/`flp_scenario`, and the term-structure fits are not in this
+  audit.** They have golden and property coverage; they do not yet have
+  measured interval coverage. For `flp` the gap is known to bite: its
+  per-element `se` conditions on `functional_pca`'s estimated eigenfunctions
+  and measures se/sd ≈ 0.66 on FPCA scores, flat in `T` (coverage ≈ 0.80
+  against a nominal 0.95) — the
+  [functional-shocks model card](../reference/model-cards/functional-shocks.md#flp-functional-local-projections)
+  carries the warning and the numbers; `flp_scenario`'s `w'beta` contrasts are
+  algebraically immune to that term and measured at the ordinary LP-HAC level.
 - **Only two nominal levels are swept.** `var_irf_bands` is measured at 68/90/95
   and `var_forecast` at 50/80/90/95/99. Everything else is measured at one
   level; coverage shortfalls are not guaranteed to scale linearly in α, and in

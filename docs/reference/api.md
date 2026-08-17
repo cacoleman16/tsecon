@@ -1271,6 +1271,10 @@ def panel_lp(
 
 Panel local projection of a common shock with fixed effects.
 
+    jackknife=True removes Nickell bias but inflates the estimator's variance
+    at short T while se is unchanged (measured: coverage 0.88 -> 0.80 at
+    T=60, equivalence by T ~ 240) — see the panel model card.
+
 ## forecast comparison
 
 ### `cw_test`
@@ -1929,7 +1933,10 @@ def ivx_test(
 
 Joint IVX predictability test for several persistent predictors (xs is T x k).
 
-    Returns beta_ivx, the joint wald/pvalue, rz, nregressors, nobs.
+    Returns beta_ivx, the joint wald/pvalue, rz, nregressors, nobs. The joint
+    Wald's size degrades in k near a unit root (measured 0.26 at k=8, n=250,
+    nominal 0.05) and n does not repair it; pass alpha=0.5 for many-predictor
+    joint tests — see the predictive-regressions model card.
 
 ## recession probability
 
@@ -2172,7 +2179,9 @@ Functional local projection: y_{t+h} on ALL K scores jointly + const +
     lags of y, Newey-West HAC (maxlags = h + n_lag_controls default).
 
     Returns horizons, n_factors, betas ((H+1) x K), covs (joint (H+1) x K x K),
-    se, nobs.
+    se, nobs. Per-element se conditions on the scores: inconsistent for
+    functional_pca-estimated scores (generated regressors) — flp_scenario's
+    w'beta contrasts are immune; see the functional-shocks model card.
 
 ### `flp_scenario`
 

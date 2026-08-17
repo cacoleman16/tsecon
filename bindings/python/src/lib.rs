@@ -3639,6 +3639,12 @@ fn panel_fe<'py>(
 /// fixed effects and panel-robust standard errors, the Ramey-Zubairy
 /// `cumulative` option, and the Dhaene-Jochmans half-panel `jackknife`
 /// Nickell-bias correction.
+///
+/// JACKKNIFE CAVEAT (measured): the correction removes the O(1/T) bias but
+/// inflates the estimator's finite-sample variance while `se` is kept from
+/// the full-sample fit (DJ Thm 3.1 asymptotic equivalence) — at T=60 the true
+/// sd is ~36% above the reported `se` and 95% coverage falls 0.88 -> 0.80;
+/// the equivalence arrives by T ~ 240. Prefer it at moderate-to-long T.
 #[pyfunction]
 #[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false))]
 #[allow(clippy::too_many_arguments)]
@@ -5723,6 +5729,13 @@ fn predictive_regression<'py>(
 /// over the predictors' persistence. Returns the IVX slope vector
 /// `beta_ivx`, the joint `wald`/`pvalue`, the instrument decay `rz`, and
 /// shape info.
+///
+/// SIZE CAVEAT (measured): uniformity over persistence is NOT uniformity in
+/// `k`. At rho = 1, endogeneity -0.9, n = 250 the nominal-5% joint test
+/// rejects ~0.05 / 0.10 / 0.17 / 0.26 at k = 1/3/5/8, and n does not repair
+/// it (still ~0.22 at k = 8, n = 256000: the excess decays like
+/// n^{-(1-alpha)/2}). For many-predictor joint tests near a unit root pass
+/// `alpha = 0.5`, the value that restores convergence of the size in n.
 #[pyfunction]
 #[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95))]
 fn ivx_test<'py>(
@@ -6340,6 +6353,12 @@ fn functional_pca<'py>(
 /// unless `hac_maxlags` is given; statsmodels use_correction=True). `covs` is
 /// the per-horizon JOINT K x K coefficient covariance — whole-curve scenarios
 /// need its off-diagonals.
+///
+/// GENERATED-REGRESSOR CAVEAT: `se` (and the diagonal of `covs`) conditions on
+/// the scores as if they were data. For scores estimated by `functional_pca`
+/// that makes the per-element `se` inconsistent (measured se/sd ~ 0.66; worse
+/// at low signal-to-noise); externally supplied scores are unaffected, and
+/// `flp_scenario`'s w'beta contrasts are algebraically immune — report those.
 ///
 /// Matches statsmodels OLS(...).fit(cov_type="HAC") per horizon at 1e-8.
 #[pyfunction]
