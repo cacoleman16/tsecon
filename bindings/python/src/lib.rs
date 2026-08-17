@@ -3973,8 +3973,12 @@ fn engle_granger<'py>(
 /// Estimates a `k_regimes`-state MS-AR(`order`) with a common AR and
 /// (optionally) switching variances, starting from an internal
 /// quantile-based initialization. Returns the estimated transition matrix,
-/// per-regime means and variances, log-likelihood, smoothed regime
-/// probabilities, the MAP regime path, and expected regime durations.
+/// per-regime means and variances, log-likelihood, the full `(n, k_regimes)`
+/// smoothed (`smoothed_prob`, Kim 1994) and filtered (`filtered_prob`,
+/// Hamilton filter) regime-probability matrices where `n = len(y) - order`,
+/// the MAP regime path, and expected regime durations.
+/// `smoothed_prob_last_regime` (= `smoothed_prob[:, -1]`) is kept for
+/// back-compatibility with 0.2.0, which returned only that column.
 #[pyfunction]
 #[pyo3(signature = (y, k_regimes = 2, order = 1, switching_variance = true, max_iter = 500, tol = 1e-6))]
 fn markov_switching_ar<'py>(
@@ -4037,6 +4041,28 @@ fn markov_switching_ar<'py>(
     d.set_item("iterations", fit.iterations)?;
     d.set_item("converged", fit.converged)?;
     d.set_item("expected_durations", fit.params.expected_durations())?;
+    // The full n x k probability matrices (n = len(y) - order). Until the
+    // round-3/4 audit only the last smoothed column was returned, which is
+    // unrecoverable at k >= 3 (only the sum of the dropped columns is known)
+    // while both docstring and model card promised the matrices.
+    let n_used = fit.smoothed_prob.len();
+    let smoothed_flat: Vec<f64> = fit.smoothed_prob.iter().flatten().copied().collect();
+    d.set_item(
+        "smoothed_prob",
+        smoothed_flat
+            .into_pyarray(py)
+            .reshape([n_used, k_regimes])?,
+    )?;
+    // Filtered P(S_t | Y_t) at the optimum: one extra Hamilton-filter pass.
+    let filt = model.filter(&fit.params).map_err(to_py)?;
+    let filtered_flat: Vec<f64> = filt.filtered_prob.iter().flatten().copied().collect();
+    d.set_item(
+        "filtered_prob",
+        filtered_flat
+            .into_pyarray(py)
+            .reshape([n_used, k_regimes])?,
+    )?;
+    // Kept for 0.2.0 back-compatibility; bit-identical to smoothed_prob[:, -1].
     let prob1: Vec<f64> = fit.smoothed_prob.iter().map(|p| p[k_regimes - 1]).collect();
     d.set_item("smoothed_prob_last_regime", prob1.into_pyarray(py))?;
     d.set_item(
@@ -4471,9 +4497,21 @@ fn iv_gmm<'py>(
 ///   by `step`.
 /// - `"rolling"`: fixed-width rolling-origin CV; `train` is the window
 ///   width.
-/// - `"purged_kfold"`: López de Prado purged K-fold with a `purge` gap and
-///   an `embargo` after each test fold, to prevent train/test leakage from
-///   serial correlation (`k` folds; `train` is ignored).
+/// - `"purged_kfold"`: López de Prado purged K-fold with a `purge` gap on
+///   both sides of each test fold and an `embargo` after it, to prevent
+///   train/test leakage from serial correlation (`k` folds; `train` is
+///   ignored).
+///
+/// `purge` acts on EVERY scheme: it drops the last `purge` indices from the
+/// end of each training window, opening a gap before the test block.
+/// Walk-forward ordering alone does not remove overlapping-target leakage —
+/// with an `h`-step-ahead label the last `h - 1` training rows share target
+/// innovations with the test block — so on `"expanding"`/`"rolling"` set
+/// `purge >= horizon - 1` too, not just on `"purged_kfold"`. `purge` must be
+/// smaller than `train`. `embargo` (an exclusion AFTER the test block) only
+/// has meaning where training rows can follow a test block, which
+/// walk-forward training windows never do; a nonzero `embargo` therefore
+/// raises on `"expanding"`/`"rolling"` instead of being silently ignored.
 #[pyfunction]
 #[pyo3(signature = (n, scheme = "expanding", train = 0, horizon = 1, step = 1,
                     k = 5, purge = 0, embargo = 0))]
@@ -4489,11 +4527,30 @@ fn cv_splits<'py>(
     purge: usize,
     embargo: usize,
 ) -> PyResult<Vec<Bound<'py, PyDict>>> {
+    // Walk-forward training windows end before their own test block by
+    // construction, so there is never a training row after the test set for
+    // an embargo to remove. Refuse rather than silently ignore (the same
+    // convention as var_irf_bands(bias_correct) and historical_decomposition):
+    // accepting the argument would let a caller believe extra leakage
+    // protection was applied when nothing changed.
+    if embargo != 0 && (scheme == "expanding" || scheme == "rolling") {
+        return Err(PyValueError::new_err(format!(
+            "embargo={embargo} has no effect under scheme={scheme:?}: an embargo \
+             excludes training rows AFTER a test block, and {scheme} training \
+             windows end before their test block by construction, so there is \
+             nothing for it to remove. For a gap between the end of training \
+             and the test block use purge (set purge >= horizon - 1 for \
+             h-step-ahead labels); embargo acts under scheme=\"purged_kfold\", \
+             where training rows do follow the test block."
+        )));
+    }
     let splits = match scheme {
         "expanding" => {
-            tsecon_ml::expanding_origin_splits(n, train, horizon, step).map_err(to_py)?
+            tsecon_ml::expanding_origin_splits(n, train, horizon, step, purge).map_err(to_py)?
         }
-        "rolling" => tsecon_ml::rolling_origin_splits(n, train, horizon, step).map_err(to_py)?,
+        "rolling" => {
+            tsecon_ml::rolling_origin_splits(n, train, horizon, step, purge).map_err(to_py)?
+        }
         "purged_kfold" => tsecon_ml::purged_kfold_splits(n, k, purge, embargo).map_err(to_py)?,
         other => {
             return Err(PyValueError::new_err(format!(
@@ -6253,6 +6310,11 @@ fn quantile_lp<'py>(
 /// observation — `current` is the risk read at the latest one. `rearrange`
 /// applies the Chernozhukov-Fernandez-Val-Galichon monotone rearrangement;
 /// `crossing` reports whether the raw quantile paths crossed either way.
+/// `bse` is the Powell sandwich with a Newey-West correction at
+/// `hac_lags = horizon - 1` lags (the MA order the overlapping windows
+/// induce); `bse_powell` is the uncorrected sandwich — what statsmodels
+/// `QuantReg` reports for this design — identical to `bse` at `horizon = 1`
+/// and kept for replication and for serially uncorrelated conditioners.
 /// Matches statsmodels `QuantReg` per tau plus a numpy sort at 1e-6.
 /// `taus` must be strictly increasing; defaults to
 /// [0.05, 0.25, 0.5, 0.75, 0.95]. Requires `horizon >= 1`.
@@ -6276,6 +6338,10 @@ fn growth_at_risk<'py>(
     d.set_item("horizon", r.horizon as u64)?;
     d.set_item("params", r.params)?;
     d.set_item("bse", r.bse)?;
+    // The uncorrected Powell sandwich (statsmodels QuantReg for this design).
+    // The model card's "How to read the output" walks this key; it was
+    // computed and documented but dropped here until the round-3/4 audit.
+    d.set_item("bse_powell", r.bse_powell)?;
     // Newey-West lags used for the overlapping-horizon correction (horizon-1).
     // Zero at horizon=1, where there is no overlap to correct.
     d.set_item("hac_lags", r.hac_lags as u64)?;

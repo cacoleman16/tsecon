@@ -1047,7 +1047,11 @@ def markov_switching_ar(
     max_iter: int = ...,
     tol: float = ...,
 ) -> dict[str, Any]:
-    """Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations."""
+    """Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations.
+
+    smoothed_prob / filtered_prob are the full (n, k_regimes) probability
+    matrices, n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0
+    scalar path (= smoothed_prob[:, -1])."""
 
 # ------------------------------------------------------------------ MIDAS
 def midas_weights(scheme: str, theta1: float, theta2: float, k: int) -> _F64:
@@ -1162,7 +1166,11 @@ def cv_splits(
     """Leakage-safe CV split indices for sequential data.
 
     scheme is "expanding", "rolling", or "purged_kfold". Returns a list of
-    {"train": [...], "test": [...]} index dicts."""
+    {"train": [...], "test": [...]} index dicts. purge drops the last purge
+    indices from the end of every training window (all schemes; set it >=
+    horizon - 1 for h-step-ahead labels). embargo excludes training rows
+    after the test block, which only exist under "purged_kfold"; nonzero
+    embargo raises on "expanding"/"rolling"."""
 
 # ------------------------------------------------------ penalized ML (paths)
 def adaptive_lasso(
@@ -1534,7 +1542,10 @@ def growth_at_risk(
     y_t]`, evaluated at every t — `current` is the latest risk read. `taus`
     must be strictly increasing and `horizon >= 1`. `rearrange` applies the
     Chernozhukov-Fernandez-Val-Galichon monotone sort across tau; `crossing`
-    reports whether the raw fitted quantile paths crossed either way.
+    reports whether the raw fitted quantile paths crossed either way. `bse`
+    carries the Newey-West overlap correction at `hac_lags = horizon - 1`
+    lags; `bse_powell` is the uncorrected Powell sandwich (the statsmodels
+    `QuantReg` number), identical to `bse` at `horizon = 1`.
     """
 
 # -------------------------------------------------- functional shocks (FVAR/FLP)

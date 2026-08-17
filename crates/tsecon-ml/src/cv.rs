@@ -18,7 +18,11 @@
 //! This module provides splitters that respect the arrow of time:
 //!
 //! * [`expanding_origin_splits`] / [`rolling_origin_splits`] — the
-//!   forecaster's evaluation, training only on the past of each test block;
+//!   forecaster's evaluation, training only on the past of each test block,
+//!   with an optional **purge** gap that drops the last `purge` training
+//!   rows before the test block (walk-forward ordering alone does *not*
+//!   remove the overlapping-target leak: with an `h`-step label, the last
+//!   `h - 1` training rows share target innovations with the test block);
 //! * [`purged_kfold_splits`] — blocked K-fold with **purging** and an
 //!   **embargo** (Lopez de Prado 2018, *Advances in Financial Machine
 //!   Learning*, ch. 7): drop training observations whose label window can
@@ -44,7 +48,7 @@ pub struct Split {
 }
 
 /// Expanding-origin (growing-window) splits: for each origin the training
-/// set is the entire history `0..origin` and the test set is the next
+/// set is the history `0..origin - purge` and the test set is the next
 /// `horizon` observations `origin..origin+horizon`. The first origin is
 /// `initial_train`; successive origins advance by `step`.
 ///
@@ -54,21 +58,36 @@ pub struct Split {
 /// Athanasopoulos, *Forecasting: Principles and Practice*, "time series
 /// cross-validation").
 ///
+/// **Purge** (Lopez de Prado 2018, ch. 7, adapted to walk-forward): the
+/// last `purge` observations are dropped from the END of every training
+/// window, opening a gap `[origin - purge, origin)` between training and
+/// test. Walk-forward ordering alone does not prevent overlapping-target
+/// leakage: when the label at row `t` is built from `y_{t+1..t+h}`, the
+/// labels of the last `h - 1` training rows share innovations with the
+/// test block, so callers with `h`-step labels should pass
+/// `purge >= h - 1`. Test blocks and fold count are identical to
+/// `purge = 0`; only the training windows shrink. There is no embargo
+/// parameter here *by construction*: an embargo excludes training rows
+/// AFTER a test block, and a walk-forward training window ends before its
+/// test block, so there is never anything for an embargo to remove.
+///
 /// # Errors
 ///
 /// [`MlError::InvalidArgument`] if `initial_train == 0`, `horizon == 0`,
-/// `step == 0`, or `initial_train + horizon > n` (no split fits).
+/// `step == 0`, `initial_train + horizon > n` (no split fits), or
+/// `purge >= initial_train` (the first training window would be empty).
 pub fn expanding_origin_splits(
     n: usize,
     initial_train: usize,
     horizon: usize,
     step: usize,
+    purge: usize,
 ) -> Result<Vec<Split>, MlError> {
-    validate_origin(n, initial_train, horizon, step)?;
+    validate_origin(n, initial_train, horizon, step, purge)?;
     let mut splits = Vec::new();
     let mut origin = initial_train;
     while origin + horizon <= n {
-        let train: Vec<usize> = (0..origin).collect();
+        let train: Vec<usize> = (0..origin - purge).collect();
         let test: Vec<usize> = (origin..origin + horizon).collect();
         splits.push(Split { train, test });
         origin += step;
@@ -78,24 +97,32 @@ pub fn expanding_origin_splits(
 
 /// Rolling-origin (sliding fixed-window) splits: like
 /// [`expanding_origin_splits`] but the training set is the most recent
-/// `window` observations `origin-window..origin` rather than all history.
+/// window `origin-window..origin - purge` rather than all history.
 /// Useful when the data-generating process drifts and stale history hurts.
+///
+/// **Purge** semantics are identical to [`expanding_origin_splits`]: the
+/// last `purge` observations are dropped from the END of every training
+/// window (the window start does *not* slide back to compensate, so each
+/// training set has `window - purge` rows), and callers with `h`-step
+/// labels should pass `purge >= h - 1`. As there, no embargo exists by
+/// construction.
 ///
 /// # Errors
 ///
 /// [`MlError::InvalidArgument`] if `window == 0`, `horizon == 0`,
-/// `step == 0`, or `window + horizon > n`.
+/// `step == 0`, `window + horizon > n`, or `purge >= window`.
 pub fn rolling_origin_splits(
     n: usize,
     window: usize,
     horizon: usize,
     step: usize,
+    purge: usize,
 ) -> Result<Vec<Split>, MlError> {
-    validate_origin(n, window, horizon, step)?;
+    validate_origin(n, window, horizon, step, purge)?;
     let mut splits = Vec::new();
     let mut origin = window;
     while origin + horizon <= n {
-        let train: Vec<usize> = (origin - window..origin).collect();
+        let train: Vec<usize> = (origin - window..origin - purge).collect();
         let test: Vec<usize> = (origin..origin + horizon).collect();
         splits.push(Split { train, test });
         origin += step;
@@ -108,6 +135,7 @@ fn validate_origin(
     train_size: usize,
     horizon: usize,
     step: usize,
+    purge: usize,
 ) -> Result<(), MlError> {
     if train_size == 0 {
         return Err(MlError::InvalidArgument {
@@ -127,6 +155,11 @@ fn validate_origin(
     if train_size + horizon > n {
         return Err(MlError::InvalidArgument {
             what: "initial training window plus horizon exceeds the sample size",
+        });
+    }
+    if purge >= train_size {
+        return Err(MlError::InvalidArgument {
+            what: "purge must be smaller than the training window, or every training set is empty",
         });
     }
     Ok(())
