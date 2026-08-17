@@ -19,3 +19,6 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
+
+# Local scratch logs from integration runs
+*.log
