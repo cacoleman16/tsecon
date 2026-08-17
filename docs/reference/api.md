@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**128 functions.**
+**130 functions.**
 
 ## diagnostics
 
@@ -1385,6 +1385,60 @@ def markov_switching_ar(
 ```
 
 Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations.
+
+### `setar`
+
+```python
+def setar(
+    y: _ArrayLike,
+    p: int,
+    delay: int = ...,
+    trim: float = ...,
+    delays: Sequence[int] | None = ...,
+    ic: str = ...,
+    constant: bool = ...,
+) -> dict[str, Any]:
+```
+
+Two-regime SETAR(p) (Tong-Lim 1980) by concentrated least squares
+    (Hansen 1997): grid over the trimmed order statistics of y_{t-delay},
+    per-candidate OLS in each regime, pooled-SSR-minimizing threshold (and
+    delay, when `delays` is a list — all candidates then share the common
+    sample t >= max(p, max(delays)) so SSRs are comparable; `delays`
+    overrides `delay`).
+
+    Keys: threshold, delay, params_low/params_high (constant first) with
+    classical nonrobust bse_low/bse_high, n_low/n_high/nobs, pooled ssr and
+    sigma2 = SSR/(nobs - 2k), sigma2_low/sigma2_high, aic/bic (n ln(SSR/n) +
+    penalty * m, m = 2k + 1 counting the threshold), ic/ic_used (`ic`
+    selects which criterion is *reported* — with p fixed the SSR ranking and
+    the IC ranking coincide), min_regime, k, and the candidate grid
+    thresholds with its ssr_path. Validated against an independent NumPy
+    transcription of the published algorithm (fixtures/setar.json).
+
+### `setar_test`
+
+```python
+def setar_test(
+    y: _ArrayLike,
+    p: int,
+    delay: int = ...,
+    trim: float = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+) -> dict[str, Any]:
+```
+
+Hansen (1996) sup-F linearity test against a two-regime SETAR(p):
+    stat = nobs (ssr_linear - ssr_setar)/ssr_setar over the trimmed
+    threshold grid. The threshold is unidentified under the null (Davies
+    problem), so NO chi-squared p-value exists; p_value = (1 + #{F* >= F}) /
+    (n_boot + 1) from the fixed-regressor wild bootstrap (y* = resid * eta,
+    eta iid N(0,1), same fixed regressors, same grid) — seeded, parallel,
+    bit-identical at any thread count.
+
+    Keys: stat, p_value, threshold, delay, n_boot, nobs, ssr_linear,
+    ssr_setar, thresholds, f_path, boot_stats.
 
 ## MIDAS
 
