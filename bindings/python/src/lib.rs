@@ -1838,6 +1838,20 @@ fn bvar_hierarchical<'py>(
 /// off-diagonal error precision), estimated by a 4-block Gibbs sampler with
 /// semi-automatic prior scales from the OLS standard errors.
 ///
+/// Every default hyperprior adapts to the units of the data: the spike/slab
+/// scales are `c0`/`c1` times the unrestricted-OLS coefficient standard
+/// errors; the Gamma prior on each error-precision diagonal `psi_jj^2`
+/// defaults to `Gamma(shape=gamma_a, rate=0.01*s2_j)` with `s2_j` that
+/// equation's OLS residual variance; and the spike/slab standard deviations
+/// on the off-diagonal precision elements default to `0.1/sqrt(s2_i)` and
+/// `10/sqrt(s2_i)`. The default posterior is therefore equivariant under a
+/// change of data units (`y -> c*y` leaves `inclusion_prob` unchanged and
+/// scales `sigma_mean` by `c**2`, `irf_draws` by `c`, up to Monte-Carlo
+/// noise). Pass explicit floats for `gamma_b` / `kappa0` / `kappa1` to pin
+/// ABSOLUTE prior scales instead (units `y_j**2` for `gamma_b`, `1/y_i` for
+/// the kappas); `gamma_b=0.01, kappa0=0.1, kappa1=10.0` reproduce the old
+/// unit-dependent defaults exactly.
+///
 /// Returns posterior inclusion probabilities (`inclusion_prob`, k x n, the
 /// intercept row pinned to 1), the coefficient/covariance posterior means
 /// (`coef_mean` k x n same layout as `bvar_fit["posterior_mean_coefs"]`,
@@ -1846,7 +1860,7 @@ fn bvar_hierarchical<'py>(
 /// inclusion probabilities `inclusion_prob_cov` (only when `ssvs_cov`), and a
 /// `diagnostics` dict.
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, n_draws = 10000, burn = 2000, seed = 0, c0 = 0.1, c1 = 10.0, prior_inclusion = 0.5, ssvs_cov = false, kappa0 = 0.1, kappa1 = 10.0, prior_inclusion_cov = 0.5, gamma_a = 0.01, gamma_b = 0.01, horizon = 16, thin = 1, n_chains = 1))]
+#[pyo3(signature = (data, lags = 2, n_draws = 10000, burn = 2000, seed = 0, c0 = 0.1, c1 = 10.0, prior_inclusion = 0.5, ssvs_cov = false, kappa0 = None, kappa1 = None, prior_inclusion_cov = 0.5, gamma_a = 0.01, gamma_b = None, horizon = 16, thin = 1, n_chains = 1))]
 #[allow(clippy::too_many_arguments)]
 fn bvar_ssvs<'py>(
     py: Python<'py>,
@@ -1859,11 +1873,11 @@ fn bvar_ssvs<'py>(
     c1: f64,
     prior_inclusion: f64,
     ssvs_cov: bool,
-    kappa0: f64,
-    kappa1: f64,
+    kappa0: Option<f64>,
+    kappa1: Option<f64>,
     prior_inclusion_cov: f64,
     gamma_a: f64,
-    gamma_b: f64,
+    gamma_b: Option<f64>,
     horizon: usize,
     thin: usize,
     n_chains: usize,

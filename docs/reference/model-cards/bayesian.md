@@ -201,9 +201,29 @@ large — e.g. `10.0`), whose *ratio* sets how sharply "in" and "out" are
 distinguished; `prior_inclusion` (the prior probability a coefficient is in;
 `0.5` is agnostic); `ssvs_cov` plus `kappa0` / `kappa1` / `prior_inclusion_cov`
 (the same three dials for the error-precision selection); `gamma_a` / `gamma_b`
-(the inverse-gamma prior on the precision diagonals); `horizon` (IRF length);
-`n_chains` (≥ 2 to get `rhat` / `ess_bulk`); `seed` (reproducible via the Philox
-stream).
+(the Gamma prior on the precision diagonals — see the units paragraph below);
+`horizon` (IRF length); `n_chains` (≥ 2 to get `rhat` / `ess_bulk`); `seed`
+(reproducible via the Philox stream).
+
+**Units — what the default hyperpriors actually are.** Every default hyperprior
+adapts to the units of the data. The spike/slab scales are `c0`/`c1` times the
+unrestricted-OLS coefficient standard errors (the GSN semi-automatic choice),
+and the precision-factor hyperpriors follow the same spirit: writing $s_j^2$
+for equation $j$'s unrestricted-OLS residual variance, each precision diagonal
+$\psi_{jj}^2$ (units $1/y_j^2$) carries the proper prior
+$\mathrm{Gamma}(\text{shape} = \gamma_a,\ \text{rate} = 0.01\, s_j^2)$, and the
+off-diagonal precision elements $\eta_{ij}$ (units $1/y_i$) carry spike/slab
+standard deviations $0.1/s_i$ and $10/s_i$ (row $i$'s residual sd). Because
+every scale in the prior tracks the data's own units, rescaling the data
+(`y -> c*y`; percent vs decimal is the classic case) leaves `inclusion_prob`
+unchanged and scales `sigma_mean` by `c**2` and `irf_draws` by `c`, up to
+Monte-Carlo noise. Passing explicit floats for `gamma_b` / `kappa0` / `kappa1`
+pins **absolute** prior scales instead (units $y_j^2$ for `gamma_b`, $1/y_i$
+for the kappas) and deliberately gives that equivariance up —
+`gamma_b=0.01, kappa0=0.1, kappa1=10.0` reproduces the old unit-dependent
+defaults exactly, which on unit-variance data are indistinguishable from the
+adaptive ones but on small-unit data (e.g. decimal returns) let the prior rate
+swamp the residual scale.
 
 **How to read the output.** `inclusion_prob` (k × n, same
 regressor-by-equation layout as `bvar_fit["posterior_mean_coefs"]`, the intercept

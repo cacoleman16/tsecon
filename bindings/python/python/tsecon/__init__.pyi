@@ -403,16 +403,16 @@ def bvar_ssvs(
     c1: float = ...,
     prior_inclusion: float = ...,
     ssvs_cov: bool = ...,
-    kappa0: float = ...,
-    kappa1: float = ...,
+    kappa0: float | None = ...,
+    kappa1: float | None = ...,
     prior_inclusion_cov: float = ...,
     gamma_a: float = ...,
-    gamma_b: float = ...,
+    gamma_b: float | None = ...,
     horizon: int = ...,
     thin: int = ...,
     n_chains: int = ...,
 ) -> dict[str, Any]:
-    """SSVS-BVAR (George-Sun-Ni 2008): spike-and-slab stochastic-search selection of VAR (and error-precision) restrictions by Gibbs; posterior inclusion probabilities, coef/Sigma means, and orthogonalized IRF draws."""
+    """SSVS-BVAR (George-Sun-Ni 2008): spike-and-slab stochastic-search selection of VAR (and error-precision) restrictions by Gibbs; posterior inclusion probabilities, coef/Sigma means, and orthogonalized IRF draws. Default hyperpriors are unit-adaptive (None = scale by the per-equation OLS residual variance); explicit gamma_b/kappa0/kappa1 floats pin absolute prior scales."""
 
 def mcmc_diagnostics(chains: _ArrayLike) -> dict[str, float]:
     """Rank-normalized split R-hat and bulk/tail ESS (ArviZ-exact)."""
