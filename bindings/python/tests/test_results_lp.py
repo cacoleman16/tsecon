@@ -53,13 +53,18 @@ def test_is_a_dict(res):
 
 
 def test_every_original_key_present_and_equal(res, raw):
-    assert set(res) == set(raw) == {"horizons", "irf", "se"}
+    # `se_method` joined the contract when the audit's cumulative="both"
+    # finding made the default inference route mode-dependent: a result must
+    # carry its own inference label. The old three-key set is exactly what
+    # made an auto-resolving default silent.
+    assert set(res) == set(raw) == {"horizons", "irf", "se", "se_method"}
     for key, value in raw.items():
         np.testing.assert_array_equal(res[key], value)
 
 
 def test_dict_star_unpacking_still_works(res):
-    def consume(*, horizons, irf, se):
+    def consume(*, horizons, irf, se, se_method):
+        assert se_method == "lag_augmented"
         return len(horizons), len(irf), len(se)
 
     assert consume(**res) == (HORIZONS + 1,) * 3
@@ -72,10 +77,13 @@ def test_to_dict_is_a_plain_dict(res):
 
 
 def test_json_round_trip(res):
-    payload = {k: v.tolist() for k, v in res.to_dict().items()}
+    payload = {
+        k: v if isinstance(v, str) else v.tolist() for k, v in res.to_dict().items()
+    }
     back = json.loads(json.dumps(payload))
     np.testing.assert_allclose(back["irf"], res["irf"])
     assert back["horizons"] == list(range(HORIZONS + 1))
+    assert back["se_method"] == "lag_augmented"
 
 
 def test_pickle_round_trip(res):
@@ -95,7 +103,10 @@ def test_summary_is_a_str_naming_the_estimator(res):
     text = res.summary()
     assert isinstance(text, str)
     assert "Local projection" in text
-    assert "lag-augmented, HAC standard errors" in text
+    # The lag-augmented path uses HC1, not HAC — that is its whole point
+    # (Montiel Olea & Plagborg-Møller 2021); the old label said "HAC" and
+    # misattributed the inference.
+    assert "lag-augmented, robust (HC1) standard errors" in text
 
 
 def test_summary_cites_lag_augmented_inference(res):

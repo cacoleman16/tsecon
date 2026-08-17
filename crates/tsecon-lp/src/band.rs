@@ -578,11 +578,14 @@ pub fn closed_form_band(theta_hat: &[f64], se: &[f64], spec: BandSpec) -> Result
 ///
 /// # Errors
 ///
-/// The same input and horizon errors as [`lp`], plus
+/// The same input and horizon errors as [`lp`] (including
+/// [`LpError::InvalidSeForCumulation`] for lag-augmented inference under
+/// [`Cumulation::Both`](crate::Cumulation::Both)), plus
 /// [`HacError::SingularDesign`] (wrapped in [`LpError::Hac`]) if a horizon's
 /// impulse column is fully explained by the other regressors, which would make
 /// the influence function `0/0`.
 pub fn lp_irf_cov(y: &[f64], shock: &[f64], spec: LpSpec) -> Result<LpIrfCov, LpError> {
+    spec.check_se_supports_cumulation()?;
     if shock.len() != y.len() {
         return Err(LpError::LengthMismatch {
             what: "impulse (shock) vs outcome (y)",
