@@ -152,6 +152,11 @@ nav:
   - Replications:
       - Ramey-Zubairy (2018): examples/replication-ramey-zubairy.md
       - Yield curve & recessions (Estrella-Mishkin 1998): examples/replication-yield-curve-recession.md
+      - Hamilton Markov-switching GNP (1989): examples/replication-hamilton-markov.md
+      - Uhlig sign-restricted monetary SVAR (2005): examples/replication-uhlig-monetary.md
+      - Bai-Perron real-interest-rate breaks (2003): examples/replication-bai-perron-realint.md
+      - Hansen sunspot SETAR (1999): examples/replication-setar-sunspots.md
+      - GLP prior selection (2015): examples/replication-glp-prior-selection.md
   - Monte Carlo:
       - Validation suite: examples/monte-carlo.md
       - Interval coverage: examples/interval-coverage.md

@@ -9,7 +9,112 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 Nothing yet.
 
-## [0.3.0] - 2026-08-17
+## [0.3.0] - 2026-08-18
+
+### Added — the replication gallery, opened wide
+
+Five published-paper replications on public data committed to the repository,
+each upgrading a validation grade that previously rested on a transcription or
+an internal oracle. Every page follows the Ramey-Zubairy pattern: a vendored
+CSV with full attribution, an executable doc, and a CI test pinning the
+published numbers at stated tolerances.
+
+- **Hamilton (1989) — `markov_switching_ar` upgraded to a dual golden.** The
+  founding Markov-switching paper, run offline on Hamilton's own GNP-growth
+  series (`fixtures/hamilton_gnp.csv`, vendored from statsmodels' test suite):
+  regime means +1.165/−0.344 vs the published +1.16/−0.36, persistences
+  0.902/0.763 vs 0.9049/0.7550, ~10/~4-quarter expected durations — while a
+  statsmodels cross-fit on identical data (itself pinned to its E-views
+  benchmark) agrees to ≤0.016 on every parameter and produces bit-identical
+  NBER recession calls (120/131 quarters). The CI guard also deliberately pins
+  the binding's non-exposure of the common AR coefficients so the comparison
+  extends the day that key appears.
+- **Uhlig (2005) — `sign_restricted_svar` upgraded from property-only to a
+  published-result replication** on the paper's own monthly dataset
+  (`fixtures/uhlig2005.csv`, via VARsignR): VAR(12), his K=5 restriction set —
+  **no price puzzle** (deflator 84% quantile negative through month 60) and
+  the **ambiguous output response** (68% band straddling zero at every
+  horizon 6–60, within the paper's ~±0.2% range) reproduce with a 5.9%
+  acceptance rate in ~3 s. Sampler-lineage differences (pure-sign rejection
+  matched; Minnesota-NIW vs flat posterior) documented, not hidden.
+- **Bai & Perron (2003) — `bai_perron` validated on the paper's own
+  application** (`fixtures/realint_bai_perron.csv`, the US ex-post real
+  interest rate 1961Q1–1986Q3): break dates **exact at every reported
+  partition size** (1972Q3/1980Q3; +1966Q4 at m=3), segment means at
+  published rounding, the published 5% sequential critical values verbatim,
+  the SSR path matching R strucchange to every printed digit and the
+  classical supF sequence matching Perron's own mbreaks to 3 d.p. (both run
+  during development for corroboration). Honest gaps stated: the paper's
+  HAC-robust supF (which selects 3 breaks where classical F and their own
+  BIC select 2) and heterogeneity-robust CIs are out of scope.
+- **Hansen (1999) — `setar` anchored to a published fit of real data**
+  (`fixtures/sunspots_tong.csv`, the Wolf sunspots 1700–1988 under the
+  Ghaddar-Tong transform): common-order p=11 SETAR — delay exact (d=2),
+  threshold 7.4234 printing as the published 7.4 (identified up to one order
+  statistic), and the seeded bootstrap linearity test rejecting at 0.02–0.03
+  vs the paper's ~0.03. The regime-specific-order Tong-Lim fits the common-p
+  design cannot express are named, not fudged.
+- **GLP (2015) — `bvar_hierarchical` grounded in the published application
+  *design*** (`fixtures/glp_smallvar.csv` — macrodata stand-ins, **not**
+  GLP's Stock-Watson panel; stated in bold everywhere): their
+  transformations, sample span, five lags, and Gamma hyperprior (verified
+  against the authors' own `setpriors.m`, publicly mirrored) reproduce the
+  paper's behavioural claims — tightness of a few tenths, looser than the
+  0.2 folklore for the small VAR, tightening as the cross-section grows,
+  dominance over fixed references. A development-time run on GLP's own data
+  attributes the remaining level gap entirely to the documented AR(4)-vs-AR(1)
+  residual-scale convention: switching it reproduces their published
+  Figure-1 modes (0.449/0.172).
+
+### Added — risk backtesting
+
+- **`var_backtest`** — Kupiec (1995) unconditional coverage, Christoffersen
+  (1998) independence and conditional coverage (with 0·ln 0 continuity for
+  empty Markov cells), and the Engle-Manganelli (2004) dynamic quantile test,
+  with a teaching verdict. One documented sign convention (return scale;
+  violation = return < VaR); pre-computed hit sequences accepted. The DQ
+  degrees of freedom are the **design rank**: a constant VaR path (collinear
+  with the intercept) is dropped with honest df — statsmodels' pinv would
+  silently miscount it — and unidentifiable designs raise. Golden-pinned to
+  first-principles closed forms and a statsmodels-OLS DQ construction
+  (`fixtures/var_backtest.json`), including a hand-derived n=250/5 case
+  (LR_uc = 6.0715) and Jorion's J.P. Morgan-1998 example (LR_uc = 3.91);
+  seeded size/power suites assert ≈-nominal size and the LR_ind/DQ-vs-Kupiec
+  separation on clustered violations.
+
+### Added — robust filtering (the lab's first graduation)
+
+- **`dcs_local_level(y, density="t"|"laplace"|"gaussian")`** — the
+  score-driven robust local level (Harvey 2013; Harvey-Luati 2014),
+  graduated from the lab's strongest result: a bounded redescending t-score
+  (−23%/−31% level RMSE vs the Gaussian control at 5/10% additive
+  contamination, zero clean-data tax, the gain-collapse mechanism asserted),
+  a Laplace sign filter, and a Gaussian case that is exactly the
+  steady-state Kalman local level — golden-pinned to statsmodels
+  `UnobservedComponents('llevel')` through the derived mapping
+  `kappa = p/(1+p)`, `p = (q+sqrt(q²+4q))/2`, `scale² = σ²_ε/(1−kappa)`
+  (loglik 1e-8, path 1e-6, fitted params 1e-4 vs a scipy same-criterion MLE)
+  in `fixtures/tsecon-dcs.json`; t/Laplace are MC-recovery graded (no
+  runnable reference exists — stated). Returns observed-information SEs and
+  an honest `converged` (t on clean Gaussian data reports non-convergence at
+  the ν → ∞ boundary rather than certifying it).
+
+### Added — split-panel jackknife for panel local projections
+
+- **`panel_lp(bias_correction="spj")`** — the Mei-Sheng-Shi (2026, J. Int.
+  Economics) split-panel jackknife: median-split halves with full-panel
+  leads/lags, `2F−(A+B)/2` corrected points, and — unlike the existing
+  Dhaene-Jochmans `jackknife` flag, which the round-2 audit measured costing
+  8pp of coverage by keeping the plug-in SE — **standard errors recomputed
+  for the corrected estimator** (adjusted-score cluster/Driscoll-Kraay
+  sandwiches per the authors' pLP reference implementation, transcribed
+  verbatim; `nonrobust` refused). Transcription golden at 1e-10
+  (`fixtures/panel_spj.json`) + seeded MC: at T=20, h=2 the FE Nickell bias
+  −0.137 falls to +0.009 and coverage improves 0.74 → 0.82 (neither reaches
+  nominal at T=20 — documented, with the residual attributed to
+  Driscoll-Kraay's own short-T approximation). `jackknife=True` keeps its
+  exact semantics (`bias_correction="dj"` alias); combining both raises;
+  the result stamps `se_type`/`cumulative`/`jackknife`/`bias_correction`.
 
 ### Added — the unit-root battery completed (DF-GLS, Zivot-Andrews)
 
