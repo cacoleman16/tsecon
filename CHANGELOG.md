@@ -116,6 +116,33 @@ published numbers at stated tolerances.
   exact semantics (`bias_correction="dj"` alias); combining both raises;
   the result stamps `se_type`/`cumulative`/`jackknife`/`bias_correction`.
 
+### Added — measured repairs for the two open inference problems
+
+- **`proxy_ar_sets(..., rf_method="second_order", rf_draws=, rf_seed=)`** —
+  second-order reduced-form propagation (`psi_reduced_form_cov_mc`: seeded
+  antithetic coefficient draws through the exact MA recursion, equal to the
+  delta method to first order plus the horizon-growing convexity the audit's
+  one-sided misses traced to). Measured on the audit's own harnesses (500
+  reps, estimand validated at T=200k): h=12 coverage **0.889 → 0.964** on the
+  card DGP and **0.830 → 0.932** on the harder VAR(1), at ~1.15×/~1.45×
+  median width (h=8/h=12), with weak-instrument boundedness bit-identical.
+  The default stays `"delta"` (a default flip needs its own audit round);
+  the card carries the six-arm comparison, including the structurally doomed
+  bootstrap-critical-values direction (it *raises* the unbounded share —
+  the bootstrap truth is the under-persistent fit itself).
+- **`ivx_test(..., joint="bonferroni")`** — a joint verdict built from the
+  scalar IVX tests (reject at level/k), leaning on the scalar test's measured
+  deep-tail calibration. Measured over a 64-cell k×ρ×δ×n grid (2000
+  reps/cell): size **0.011–0.059 everywhere**, where the chi-square default
+  reaches 0.28–0.34 at k=8 — with power ~equal on sparse alternatives and
+  ~20% lower on diffuse ones (stated on the card). The demeaned-variance and
+  FM-normaliser directions were verified and discarded (worse and inert,
+  respectively); the wild bootstrap fixes k=8 but breaks k=1 — all recorded
+  in `docs/roadmap/21-long-horizon-and-joint-inference.md` with the seeded
+  harnesses committed under `docs/examples/coverage/experiments/`. The
+  default stays `"chi2"`; the card's advice now routes many-predictor joint
+  tests to `"bonferroni"` instead of the old `alpha=0.50` workaround.
+
 ### Added — the unit-root battery completed (DF-GLS, Zivot-Andrews)
 
 - **`dfgls`** — the DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996):
