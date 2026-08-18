@@ -4155,6 +4155,86 @@ fn gw_test<'py>(
     Ok(d)
 }
 
+/// The VaR backtest battery: Kupiec (1995) unconditional coverage,
+/// Christoffersen (1998) independence + conditional coverage, and the
+/// Engle-Manganelli (2004) dynamic quantile (DQ) regression test.
+///
+/// Sign convention (fixed once): returns and VaR forecasts on the same
+/// (return) scale, `var_forecasts[t]` the alpha-quantile of the
+/// conditional return distribution (negative for small alpha); a
+/// violation is `return < VaR`. `alpha` is the VaR coverage level (0.05
+/// for a 95% VaR), not a test size.
+///
+/// `input="auto"` (default): with `var_forecasts` the first argument is
+/// a return series; without, it must be a pre-computed 0/1 violation
+/// sequence. Pass `input="hits"` to combine a pre-computed hit sequence
+/// WITH the VaR forecasts so the DQ regression keeps its VaR regressor.
+#[pyfunction]
+#[pyo3(signature = (returns_or_hits, var_forecasts = None, alpha = 0.05, dq_lags = 4, input = "auto"))]
+fn var_backtest<'py>(
+    py: Python<'py>,
+    returns_or_hits: PyReadonlyArray1<'py, f64>,
+    var_forecasts: Option<PyReadonlyArray1<'py, f64>>,
+    alpha: f64,
+    dq_lags: usize,
+    input: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let y = vec1(&returns_or_hits);
+    let var = var_forecasts.as_ref().map(vec1);
+    let r = match (input, &var) {
+        ("auto" | "returns", Some(v)) => {
+            tsecon_forecast::var_backtest(&y, v, alpha, dq_lags).map_err(to_py)?
+        }
+        ("auto" | "hits", None) => {
+            tsecon_forecast::var_backtest_hits(&y, None, alpha, dq_lags).map_err(to_py)?
+        }
+        ("hits", Some(v)) => {
+            tsecon_forecast::var_backtest_hits(&y, Some(v), alpha, dq_lags).map_err(to_py)?
+        }
+        ("returns", None) => {
+            return Err(PyValueError::new_err(
+                "var_backtest: input=\"returns\" needs the var_forecasts \
+                 series too — violations are computed as return < VaR. \
+                 Pass var_forecasts, or pass a pre-computed 0/1 violation \
+                 sequence (input=\"hits\" or the default \"auto\")",
+            ))
+        }
+        (other, _) => {
+            return Err(PyValueError::new_err(format!(
+                "var_backtest: unknown input {other:?}; expected \"auto\" \
+                 (returns when var_forecasts is given, hits otherwise), \
+                 \"returns\", or \"hits\""
+            )))
+        }
+    };
+    let d = PyDict::new(py);
+    d.set_item("n", r.n)?;
+    d.set_item("alpha", r.alpha)?;
+    d.set_item("n_violations", r.n_violations)?;
+    d.set_item("expected_violations", r.expected_violations)?;
+    d.set_item("hit_rate", r.hit_rate)?;
+    d.set_item("lr_uc", r.lr_uc)?;
+    d.set_item("p_uc", r.p_uc)?;
+    d.set_item("n00", r.n00)?;
+    d.set_item("n01", r.n01)?;
+    d.set_item("n10", r.n10)?;
+    d.set_item("n11", r.n11)?;
+    d.set_item("pi01", r.pi01)?;
+    d.set_item("pi11", r.pi11)?;
+    d.set_item("lr_ind", r.lr_ind)?;
+    d.set_item("p_ind", r.p_ind)?;
+    d.set_item("lr_cc", r.lr_cc)?;
+    d.set_item("p_cc", r.p_cc)?;
+    d.set_item("dq_stat", r.dq_stat)?;
+    d.set_item("p_dq", r.p_dq)?;
+    d.set_item("dq_lags", r.dq_lags)?;
+    d.set_item("dq_df", r.dq_df)?;
+    d.set_item("dq_includes_var", r.dq_includes_var)?;
+    d.set_item("dq_var_dropped", r.dq_var_dropped)?;
+    d.set_item("verdict", r.verdict)?;
+    Ok(d)
+}
+
 fn spectral_window(w: &str) -> PyResult<tsecon_spectral::Window> {
     match w {
         "boxcar" => Ok(tsecon_spectral::Window::Boxcar),
@@ -8223,6 +8303,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(panel_lp, m)?)?;
     m.add_function(wrap_pyfunction!(cw_test, m)?)?;
     m.add_function(wrap_pyfunction!(gw_test, m)?)?;
+    m.add_function(wrap_pyfunction!(var_backtest, m)?)?;
     m.add_function(wrap_pyfunction!(periodogram, m)?)?;
     m.add_function(wrap_pyfunction!(welch, m)?)?;
     m.add_function(wrap_pyfunction!(coherence, m)?)?;
