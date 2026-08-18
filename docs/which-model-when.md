@@ -778,8 +778,11 @@ mgv["irf_path"]                                             # averaged orthogona
 **Escape hatch — few units (< ~30).** Clustered asymptotics are unreliable with
 few clusters; the point estimate from `panel_fe` still stands, but treat its
 standard errors with caution and prefer a wild cluster bootstrap. For a *long*
-panel LP in a *short* panel, `panel_lp(..., jackknife=True)` applies the
-split-panel correction for Nickell bias that grows like O(h/T).
+panel LP in a *short* panel, correct the Nickell bias that grows like O(h/T):
+`panel_lp(..., bias_correction="spj")` (Mei-Sheng-Shi split-panel jackknife —
+corrects the points *and* recomputes the standard errors) or
+`panel_lp(..., jackknife=True)` (Dhaene-Jochmans — points only, plug-in SEs;
+see the panel model card for the measured difference).
 
 **Escape hatch — is the panel even stationary?** Before a panel VAR or a
 cointegration analysis, test the *joint* null "every unit has a unit root" —

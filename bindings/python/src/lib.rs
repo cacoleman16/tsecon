@@ -4065,16 +4065,21 @@ fn panel_fe<'py>(
 
 /// Panel local projection of a common shock (Jordà 2005 for panels), with
 /// fixed effects and panel-robust standard errors, the Ramey-Zubairy
-/// `cumulative` option, and the Dhaene-Jochmans half-panel `jackknife`
-/// Nickell-bias correction.
+/// `cumulative` option, and two half-panel Nickell-bias corrections: the
+/// Dhaene-Jochmans `jackknife` (point estimates only, full-sample SEs)
+/// and the Mei-Sheng-Shi split-panel jackknife
+/// `bias_correction="spj"` (corrected points AND the reference
+/// adjusted-score cluster / Driscoll-Kraay SEs).
 ///
-/// JACKKNIFE CAVEAT (measured): the correction removes the O(1/T) bias but
-/// inflates the estimator's finite-sample variance while `se` is kept from
-/// the full-sample fit (DJ Thm 3.1 asymptotic equivalence) — at T=60 the true
-/// sd is ~36% above the reported `se` and 95% coverage falls 0.88 -> 0.80;
-/// the equivalence arrives by T ~ 240. Prefer it at moderate-to-long T.
+/// JACKKNIFE CAVEAT (measured): the DJ correction removes the O(1/T) bias
+/// but inflates the estimator's finite-sample variance while `se` is kept
+/// from the full-sample fit (DJ Thm 3.1 asymptotic equivalence) — at T=60
+/// the true sd is ~36% above the reported `se` and 95% coverage falls
+/// 0.88 -> 0.80; the equivalence arrives by T ~ 240. At short T prefer
+/// `bias_correction="spj"`, whose SEs are recomputed for the corrected
+/// estimator.
 #[pyfunction]
-#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false))]
+#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false, bias_correction = "none"))]
 #[allow(clippy::too_many_arguments)]
 fn panel_lp<'py>(
     py: Python<'py>,
@@ -4086,6 +4091,7 @@ fn panel_lp<'py>(
     bandwidth: f64,
     cumulative: bool,
     jackknife: bool,
+    bias_correction: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_var::tsecon_linalg::faer::Mat;
     let o = outcome.as_array();
@@ -4095,6 +4101,18 @@ fn panel_lp<'py>(
         tsecon_panel::PanelLpConfig::new(horizon, n_lag_controls, panel_se(se_type, bandwidth)?);
     cfg.cumulative = cumulative;
     cfg.jackknife = jackknife;
+    cfg.bias_correction = match bias_correction {
+        "none" => tsecon_panel::LpBiasCorrection::None,
+        "spj" | "split_panel_jackknife" => tsecon_panel::LpBiasCorrection::Spj,
+        "dj" | "dhaene_jochmans" => tsecon_panel::LpBiasCorrection::DhaeneJochmans,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown bias_correction {other:?}; expected \"none\", \"spj\" \
+                 (Mei-Sheng-Shi split-panel jackknife), or \"dj\" \
+                 (Dhaene-Jochmans, same as jackknife=True)"
+            )))
+        }
+    };
     let r = tsecon_panel::panel_lp(&data, &vec1(&shock), &cfg).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("irf", r.irf.into_pyarray(py))?;
@@ -4106,6 +4124,17 @@ fn panel_lp<'py>(
             .map(|&x| x as u64)
             .collect::<Vec<_>>()
             .into_pyarray(py),
+    )?;
+    d.set_item("se_type", se_type)?;
+    d.set_item("cumulative", r.cumulative)?;
+    d.set_item("jackknife", r.jackknife)?;
+    d.set_item(
+        "bias_correction",
+        match r.bias_correction {
+            tsecon_panel::LpBiasCorrection::None => "none",
+            tsecon_panel::LpBiasCorrection::DhaeneJochmans => "dhaene_jochmans",
+            tsecon_panel::LpBiasCorrection::Spj => "spj",
+        },
     )?;
     Ok(d)
 }

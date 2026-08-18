@@ -1095,12 +1095,28 @@ def panel_lp(
     bandwidth: float = ...,
     cumulative: bool = ...,
     jackknife: bool = ...,
+    bias_correction: str = ...,
 ) -> dict[str, Any]:
     """Panel local projection of a common shock with fixed effects.
 
-    jackknife=True removes Nickell bias but inflates the estimator's variance
-    at short T while se is unchanged (measured: coverage 0.88 -> 0.80 at
-    T=60, equivalence by T ~ 240) — see the panel model card."""
+    `outcome` is N x T; `shock` is length T. Fixed effects + lagged outcomes
+    + short T carry Nickell bias (horizon-amplified); two half-panel
+    corrections are offered. `jackknife=True` (equivalently
+    `bias_correction="dj"`) is the Dhaene-Jochmans half-panel jackknife:
+    corrected point estimates, full-sample plug-in standard errors
+    (measured cost: the estimator's variance inflates at short T while se
+    is unchanged — coverage 0.88 -> 0.80 at T=60, equivalence by T ~ 240).
+    `bias_correction="spj"` is the Mei-Sheng-Shi (2026, J. Int. Economics)
+    split-panel jackknife for panel LPs: leads/lags stay full-panel, the
+    regression rows split at the median usable period, and the standard
+    errors are recomputed for the corrected estimator (adjusted-score
+    cluster or Driscoll-Kraay sandwich, matching their pLP reference
+    implementation; `se_type="nonrobust"` is refused under "spj").
+    Combining `jackknife=True` with `bias_correction="spj"` raises.
+
+    Returns a dict with `irf`, `se`, `nobs` (each length horizon+1) and the
+    stamped `se_type`, `cumulative`, `jackknife`, `bias_correction`.
+    """
 
 # --------------------------------------------------- forecast comparison
 def cw_test(
