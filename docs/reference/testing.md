@@ -320,9 +320,9 @@ samples — and, where they do not, by how much and why.
 Full write-up: **[Interval coverage](../examples/interval-coverage.md)**.
 
 ```sh
-.venv/bin/python docs/examples/coverage/run_all.py            # 376 s here
+.venv/bin/python docs/examples/coverage/run_all.py            # 1904 s here
 .venv/bin/python docs/examples/coverage/run_all.py --summary   # tables only
-.venv/bin/python docs/examples/coverage/run_all.py --quick      # ~40 s smoke run
+.venv/bin/python docs/examples/coverage/run_all.py --quick      # ~3 min smoke run
 ```
 
 This is a separate tier from Tier 5 rather than a section of it, because the
@@ -333,11 +333,11 @@ size and whether an *estimator* is consistent. Tier 6 asks whether an
 specific data-generating process — and it is the claim a reader is implicitly
 relying on every time they quote a standard error.
 
-Five modules under
+Seven modules under
 [`docs/examples/coverage/`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage)
-re-estimate 40 interval-valued outputs across 21 functions on seeded draws from
-processes whose truth is known in closed form, and count containment. (40 rather
-than 21 because the option and the regime change the answer: `var_irf_bands`
+re-estimate 50 interval-valued outputs across 28 functions on seeded draws from
+processes whose truth is known in closed form, and count containment. (50 rather
+than 28 because the option and the regime change the answer: `var_irf_bands`
 contributes six rows, `ols` five, `bai_perron` three.) Every coverage number
 carries its own Monte Carlo standard error `sqrt(p(1−p)/reps)` so that 0.93 and
 0.95 can be told apart honestly, and `run_all.py` harvests the consolidated
@@ -360,11 +360,11 @@ degrades, as approximations do" from "this interval does not work". The headline
 
 | | count |
 |---|---|
-| frequentist intervals measured (CI + PRED) | 32 |
-| — off nominal **even in the favourable design** | **8** |
-| — at nominal when entitled, off under stress | 24 |
+| frequentist intervals measured (CI + PRED) | 39 |
+| — off nominal **even in the favourable design** | **12** |
+| — at nominal when entitled, off under stress | 27 |
 | objects that make no frequentist promise (Bayesian credible bands, set-identified bounds) — reported as labelled diagnostics | 7 |
-| surfaces that return no interval at all (`theta_forecast`, `backtest`) | 1 |
+| surfaces that return no interval at all (`theta_forecast`/`backtest`, `weighted_midas`, `dfm_nowcast`, `nelson_siegel` — the last three verified by a per-run key-set tripwire) | 4 |
 
 Three results are worth naming here rather than leaving on the page:
 
@@ -701,20 +701,24 @@ discover.
   a standard error around 0.005. The property-test bands are set deliberately
   wide for this reason (IVX size is accepted in 0.05 ± 0.02, LP coverage in
   [0.85, 0.99]); they catch a broken estimator, not a third-decimal drift.
-- **The interval-coverage suite is not in CI.** Tier 6 takes ~6 minutes for a
+- **The interval-coverage suite is not in CI.** Tier 6 takes ~30 minutes for a
   full run, so it is currently a local and pre-release gate rather than a
   per-push one. Every module already asserts its own qualitative findings and
   exits non-zero, and `run_all.py` additionally exits non-zero if a returned
   results schema moves under one of its probes, so it is CI-ready — it is not
   wired in yet, and until it is, an interval losing coverage will not fail a
   push the way a test losing its size will.
-- **Interval coverage is measured for 40 surfaces, not all of them.** The
+- **Interval coverage is measured for 50 surfaces, not all of them.** The
   [audit page](../examples/interval-coverage.md#what-is-not-measured) lists what
-  is left: `quantile_lp`, `growth_at_risk`, panel LP with Driscoll-Kraay SEs,
-  `favar`, `proxy_svar`, `nongaussian_svar`, GARCH forecast intervals,
-  `dfm_nowcast`, MIDAS, the term-structure fits, and `lp(cumulative=...)`. And
-  coverage is measured at one nominal level for most surfaces — where it *is*
-  swept, the shortfall is not linear in α.
+  is left: `growth_at_risk`, `proxy_svar`, `nongaussian_svar`, GARCH forecast
+  intervals, and `flp`/`flp_scenario` (two of those carry measured coverage on
+  their model cards rather than in the audit registry). `quantile_lp`, panel LP
+  with Driscoll-Kraay and SPJ standard errors, `favar`'s two-step bands,
+  U-MIDAS, and `lp(cumulative=...)` were measured in the round that added the
+  `quantile_panel_lp` and `factor_midas` families; `weighted_midas`,
+  `dfm_nowcast` and `nelson_siegel` are verified every run to ship no interval
+  at all. And coverage is measured at one nominal level for most surfaces —
+  where it *is* swept, the shortfall is not linear in α.
 
 **Coverage gaps.**
 

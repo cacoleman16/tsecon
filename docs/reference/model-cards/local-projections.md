@@ -449,8 +449,8 @@ that seed); `"pointwise"`, `"sidak"` and `"bonferroni"` are the other three, and
 `band=None` — no band — remains the default. What a simultaneous band **cannot**
 fix is the caveat above: it is a joint statement about the *penalized* path, not
 about the truth. The audit
-measured the pointwise `lam="cv"` band covering **0.640 ± 0.018** at impact
-against a nominal 0.95 with |bias|/sd = 1.22 — no multiplier repairs a band
+measured the pointwise `lam="cv"` band covering **0.646 ± 0.018** at impact
+against a nominal 0.95 with |bias|/sd = 1.23 — no multiplier repairs a band
 centred in the wrong place.
 
 **Failure modes.** Over-smoothing a genuinely kinked IRF (compare against

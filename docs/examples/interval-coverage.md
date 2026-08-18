@@ -7,7 +7,7 @@ repository proves that `tsecon`'s *point estimates and standard-error algebra*
 match an independent reference. None of them proves the promise itself.
 
 This page is that proof, and it is an audit rather than an advertisement.
-**40 interval-valued outputs across 21 functions** — a function paired with the
+**50 interval-valued outputs across 28 functions** — a function paired with the
 option and regime that change its answer — were re-estimated on thousands of
 seeded draws from data-generating processes whose truth is known in closed form,
 and the containment rate was counted. Where an interval covers at its nominal rate, the
@@ -17,7 +17,7 @@ Monte Carlo standard error of the measurement next to it, an attribution of
 
 !!! warning "The three headline results, before any table"
 
-    1. **8 of the 32 frequentist intervals miss their nominal rate even in the
+    1. **12 of the 39 frequentist intervals miss their nominal rate even in the
        design they are entitled to do well on.** That list is
        [below](#a-misses-even-in-the-favourable-design), and it is the most
        important output of this work.
@@ -93,30 +93,36 @@ This is [Tier 6](../reference/testing.md#tier-6-interval-coverage) of the
 ## Reproducing every number
 
 ```sh
-# the whole audit: five families, one consolidated report
-.venv/bin/python docs/examples/coverage/run_all.py            # 1312 s here
+# the whole audit: seven families, one consolidated report
+.venv/bin/python docs/examples/coverage/run_all.py            # 1904 s here
 
-# just the consolidated tables, without the five per-family reports
+# just the consolidated tables, without the seven per-family reports
 .venv/bin/python docs/examples/coverage/run_all.py --summary
 
 # a smoke run; the MC standard errors are 2-4x larger, so do not quote it
 .venv/bin/python docs/examples/coverage/run_all.py --quick     # ~40 s
 
 # or one family at a time
-.venv/bin/python docs/examples/coverage/regression_se.py       # 110 s
-.venv/bin/python docs/examples/coverage/irf_bands.py           # 562 s
-.venv/bin/python docs/examples/coverage/lp_family.py           # 189 s
-.venv/bin/python docs/examples/coverage/forecast_intervals.py  # 234 s
-.venv/bin/python docs/examples/coverage/bayes_and_sets.py      # 217 s
+.venv/bin/python docs/examples/coverage/regression_se.py       # 108 s
+.venv/bin/python docs/examples/coverage/irf_bands.py           # 417 s
+.venv/bin/python docs/examples/coverage/lp_family.py           # 192 s
+.venv/bin/python docs/examples/coverage/forecast_intervals.py  # 236 s
+.venv/bin/python docs/examples/coverage/bayes_and_sets.py      # 240 s
+.venv/bin/python docs/examples/coverage/quantile_panel_lp.py   # 680 s
+.venv/bin/python docs/examples/coverage/factor_midas.py        #  32 s
 
 # the page-vs-registry row inventory (no Monte Carlo; runs in the test suite)
 .venv/bin/python docs/examples/coverage/check_page.py          #  <1 s
+
+# regenerate Table 1 / Table 2 below from the harvested results -- the rows
+# on this page are pasted from this output, never typed
+.venv/bin/python docs/examples/coverage/run_all.py --markdown tables.md
 ```
 
 Every family draws from one master seed, `20260729`, and prints it. Every draw
 is `default_rng([seed, experiment, replication])`, so the numbers do not depend
 on call ordering, on `PYTHONHASHSEED`, or on whether you run one family or all
-five — verified: every measured line from the five standalone runs appears
+seven — verified: every measured line from the standalone runs appears
 identically in the consolidated run. Each family asserts its own qualitative
 findings and **exits non-zero if they stop holding**, so a statistical
 regression fails a build rather than quietly rotting in this page.
@@ -124,13 +130,15 @@ regression fails a build rather than quietly rotting in this page.
 ```text
   module                   assertions   runtime   result
   ----------------------------------------------------------------------
-  regression_se.py           110 pass    109.8s   OK
-  irf_bands.py                67 pass    562.2s   OK
-  lp_family.py                16 pass    188.6s   OK
-  forecast_intervals.py       13 pass    233.5s   OK
-  bayes_and_sets.py           23 pass    217.4s   OK
+  regression_se.py           110 pass    108.3s   OK
+  irf_bands.py                67 pass    417.0s   OK
+  lp_family.py                16 pass    191.6s   OK
+  forecast_intervals.py       13 pass    235.8s   OK
+  bayes_and_sets.py           23 pass    239.5s   OK
+  quantile_panel_lp.py        17 pass    679.8s   OK
+  factor_midas.py              9 pass     31.6s   OK
 
-  40 probes harvested from 5 families in 1312.1s
+  50 probes harvested from 7 families in 1904.4s
 ```
 
 The coverage numbers are byte-reproducible; the runtimes are wall clock and will
@@ -184,7 +192,7 @@ and each family module's docstring derives its truth in closed form.
 
 ---
 
-## The headline: 40 measured interval-valued outputs
+## The headline: 50 measured interval-valued outputs
 
 Each row names **two** measured cells. `favourable` is a design the interval is
 entitled to do well on; `stress` is a design that pushes the same interval
@@ -237,7 +245,17 @@ interval does not work".
 | `tsecon.bai_perron` | break-date CI, conditional on detection | CI | 0.95 | break/sigma=1.0, T=800, cond. on detection | 0.970 ± 0.005 | +3.9 | +2.0 | **OVER** |
 | `tsecon.bai_perron` | break-date CI, UNconditional | CI | 0.95 | break/sigma=3.0, T=200, detection 0.97 | 0.967 ± 0.004 | +4.1 | +1.7 | **OVER** |
 | `tsecon.bai_perron` | break-date CI at a LARGE break | CI | 0.95 | break/sigma=1.0, T=200, cond. on detection | 0.957 ± 0.005 | +1.5 | +0.7 | at nominal |
+| `tsecon.quantile_lp` | Powell sandwich, identified iid shock | CI | 0.95 | iid T=400 tau=0.50, h=0 | 0.939 ± 0.008 | -1.5 | -1.1 | at nominal |
+| `tsecon.quantile_lp` | persistent regressor (phi=0.8) | CI | 0.95 | p=4, worst h (6) | 0.909 ± 0.009 | -4.5 | -4.1 | **UNDER** |
+| `tsecon.panel_lp` | se_type="driscoll_kraay" (the default) | CI | 0.95 | N=50 T=80 dk, h=0 | 0.916 ± 0.006 | -6.2 | -3.4 | **UNDER** |
+| `tsecon.panel_lp` | bias_correction="spj" at short T | CI | 0.95 | SPJ, N=50, T=40, h=2 | 0.843 ± 0.007 | -14.7 | -10.7 | **UNDER** |
+| `tsecon.lp` | cumulative="both" (default se resolves to "hac") | CI | 0.95 | T=400, h=12 (the pre-fix 0.507 cell) | 0.920 ± 0.006 | -4.9 | -3.0 | **UNDER** |
+| `tsecon.favar` + `tsecon.var_irf_bands` | two-step bands conditioned on F-hat | CI | 0.90 | N=100 T=200 F-hat, h=0 | 0.887 ± 0.007 | -1.8 | -1.3 | at nominal |
+| `tsecon.umidas` | se_type="hac" (the default) | CI | 0.95 | iid errors, T=300, k=1 (most recent lag) | 0.947 ± 0.004 | -0.8 | -0.3 | at nominal |
 | `tsecon.theta_forecast` / `tsecon.backtest` | no interval is returned | NONE | — | the library returns a point path only | — | — | — | no band |
+| `tsecon.weighted_midas` | no interval is returned | NONE | — | NLS point fit, weights and fit diagnostics only | — | — | — | no band |
+| `tsecon.dfm_nowcast` | no interval is returned | NONE | — | point nowcast + smoothed factor path only | — | — | — | no band |
+| `tsecon.nelson_siegel` | no interval is returned | NONE | — | factors, fitted lambda, residuals and R^2 only | — | — | — | no band |
 
 ### Table 2 — the stress case
 
@@ -251,15 +269,20 @@ miss here is expected; the deliverable is its **size**, not its existence.*
 | `tsecon.var_forecast` | marginal bands read as a JOINT band | PRED | 0.95 | every horizon and series inside simultaneously | 0.409 ± 0.006 | -85.2 | -54.1 | **UNDER** |
 | `tsecon.var_irf_bands` | method="bootstrap" | CI | 0.90 | n=100, h=12 | 0.410 ± 0.011 | -44.6 | -49.0 | **UNDER** |
 | `tsecon.ols` | se_type="hac" | CI | 0.95 | x,e AR(1) phi=0.95, T=200 | 0.588 ± 0.009 | -40.3 | -36.2 | **UNDER** |
-| `tsecon.smooth_lp` | lam="cv" (the default) | CI | 0.95 | lam=cv, h=0 | 0.640 ± 0.018 | -17.1 | -31.0 | **UNDER** |
 | `tsecon.bvar_ssvs` | spike-and-slab credible band | CRED | 0.90 | prior 'SSVS spike-slab', h=12 | 0.594 ± 0.019 | -16.5 | -30.6 | n/a |
+| `tsecon.smooth_lp` | lam="cv" (the default) | CI | 0.95 | lam=cv, h=0 | 0.646 ± 0.018 | -16.8 | -30.4 | **UNDER** |
 | `tsecon.bvar_irf_draws` | 5th/95th posterior percentile band | CRED | 0.90 | prior 'default', h=4 | 0.610 ± 0.018 | -15.7 | -29.0 | n/a |
 | `tsecon.ols` | se_type="hc1"; small T, leverage | CI | 0.95 | x~chi2(1), sd(e\|x)=x, T=25 | 0.682 ± 0.009 | -31.6 | -26.8 | **UNDER** |
+| `tsecon.favar` + `tsecon.var_irf_bands` | two-step bands conditioned on F-hat | CI | 0.90 | N=20 T=800, worst h (7) | 0.673 ± 0.010 | -21.6 | -22.7 | **UNDER** |
 | `tsecon.var_irf_bands` | method="asymptotic" | CI | 0.90 | n=100, h=12 | 0.673 ± 0.010 | -21.6 | -22.7 | **UNDER** |
 | `tsecon.ols` | se_type="nonrobust" | CI | 0.95 | heteroskedastic sd=\|x\|, T=200 | 0.732 ± 0.008 | -27.0 | -21.8 | **UNDER** |
 | `tsecon.ols` | se_type="hc1" | CI | 0.95 | AR(1) errors+regressor .7, T=200 | 0.735 ± 0.008 | -26.7 | -21.5 | **UNDER** |
 | `tsecon.sign_restricted_svar` | pointwise 5-95 band over rotations | CRED | 0.90 | lambda1=0.2, h=3 | 0.698 ± 0.023 | -8.8 | -20.2 | n/a |
+| `tsecon.quantile_lp` | persistent regressor (phi=0.8) | CI | 0.95 | p=0, worst h (6) | 0.758 ± 0.014 | -14.2 | -19.2 | **UNDER** |
+| `tsecon.panel_lp` | bias_correction="spj" at short T | CI | 0.95 | SPJ, N=50, T=20, h=2 | 0.761 ± 0.009 | -22.1 | -18.9 | **UNDER** |
 | `tsecon.var_irf_bands` | pointwise band read as a JOINT band | CI | 0.90 | n=500, all of h=0..12 at once | 0.722 ± 0.010 | -17.8 | -17.8 | **UNDER** |
+| `tsecon.panel_lp` | se_type="driscoll_kraay" (the default) | CI | 0.95 | N=50 T=40, worst h (4) | 0.818 ± 0.008 | -17.1 | -13.2 | **UNDER** |
+| `tsecon.umidas` | se_type="hac" (the default) | CI | 0.95 | AR(1) errors phi=0.7, T=150, intercept | 0.829 ± 0.007 | -17.6 | -12.1 | **UNDER** |
 | `tsecon.iv_gmm` | 2sls / 2step / iterated | CI | 0.95 | median first-stage F = 1.2 | 0.839 ± 0.007 | -16.5 | -11.1 | **UNDER** |
 | `tsecon.var_irf_bands` | cumulative=True | CI | 0.90 | orth=True,cumulative=False, h=12 | 0.789 ± 0.009 | -12.2 | -11.1 | **UNDER** |
 | `tsecon.iv_gmm` | weight="hac" | CI | 0.95 | AR(1) errors phi=0.8, hac auto (NW rule) | 0.842 ± 0.007 | -16.3 | -10.8 | **UNDER** |
@@ -271,6 +294,7 @@ miss here is expected; the deliverable is its **size**, not its existence.*
 | `tsecon.har_rv` | HAC SE on the CONSTANT | CI | 0.95 | het innovations, maxlags=22, const | 0.871 ± 0.006 | -12.9 | -7.9 | **UNDER** |
 | `tsecon.bai_perron` | break-date CI, conditional on detection | CI | 0.95 | break/sigma=0.5, T=200, cond. on detection | 0.888 ± 0.008 | -8.0 | -6.2 | **UNDER** |
 | `tsecon.var_irf_bands` | method="bootstrap", bias_correct=True | CI | 0.90 | n=100, h=0 | 0.842 ± 0.008 | -7.2 | -5.8 | **UNDER** |
+| `tsecon.quantile_lp` | Powell sandwich, identified iid shock | CI | 0.95 | iid T=200 tau=0.25, worst h (0) | 0.893 ± 0.010 | -5.8 | -5.7 | **UNDER** |
 | `tsecon.arima_fit` | forecast_lower / forecast_upper | PRED | 0.95 | worst h (10) | 0.899 ± 0.011 | -4.5 | -5.1 | **UNDER** |
 | `tsecon.arima_fit` | d=1 (random walk with drift) | PRED | 0.95 | worst h (22) | 0.902 ± 0.008 | -6.3 | -4.8 | **UNDER** |
 | `tsecon.lp_multiplier` | integral multiplier | CI | 0.95 | multiplier, worst h (8) | 0.903 ± 0.005 | -8.7 | -4.7 | **UNDER** |
@@ -281,11 +305,15 @@ miss here is expected; the deliverable is its **size**, not its existence.*
 | `tsecon.var_forecast` | lower / upper | PRED | 0.95 | worst h (11) | 0.925 ± 0.003 | -9.2 | -2.5 | **UNDER** |
 | `tsecon.lp` | se="lag_augmented" (the default) | CI | 0.95 | lag_augmented, worst h (6) | 0.934 ± 0.004 | -4.1 | -1.6 | **UNDER** |
 | `tsecon.recession_probit` | Wald interval | CI | 0.95 | probit rare   phi=0.9, T=100, 25% no MLE | 0.968 ± 0.004 | +4.9 | +1.8 | **OVER** |
+| `tsecon.lp` | cumulative="both" (default se resolves to "hac") | CI | 0.95 | T=1600, most extreme h (4) | 0.971 ± 0.004 | +5.4 | +2.1 | **OVER** |
 | `tsecon.lp_iv` | weak instrument | CI | 0.95 | weak iv, worst h (4) | 0.985 ± 0.002 | +15.5 | +3.5 | **OVER** |
 | `tsecon.quantile_regression` | Powell sandwich, intercept | CI | 0.95 | location-scale T=200, tau=0.5 | 0.993 ± 0.002 | +28.2 | +4.3 | **OVER** |
 | `tsecon.bai_perron` | break-date CI at a LARGE break | CI | 0.95 | break/sigma=3.0, T=200, cond. on detection | 0.998 ± 0.001 | +54.2 | +4.8 | **OVER** |
 | `tsecon.sign_restricted_svar` | set envelope (min/max over draws) | SET | 0.90 | lambda1=0.2, h=3 | 0.953 ± 0.011 | +4.9 | +5.2 | n/a |
 | `tsecon.theta_forecast` / `tsecon.backtest` | no interval is returned | NONE | — | the library returns a point path only | — | — | — | no band |
+| `tsecon.weighted_midas` | no interval is returned | NONE | — | NLS point fit, weights and fit diagnostics only | — | — | — | no band |
+| `tsecon.dfm_nowcast` | no interval is returned | NONE | — | point nowcast + smoothed factor path only | — | — | — | no band |
+| `tsecon.nelson_siegel` | no interval is returned | NONE | — | factors, fitted lambda, residuals and R^2 only | — | — | — | no band |
 
 ---
 
@@ -297,7 +325,7 @@ from here.
 
 ### A. Misses even in the favourable design
 
-**8 of 32 frequentist intervals.** These are off nominal in the design they are
+**12 of 39**. These are off nominal in the design they are
 entitled to do well on, so a caller cannot fix them by having better data.
 
 | surface | favourable design | measured (nominal 0.95 / 0.90) | cause | what to do | documented in |
@@ -310,10 +338,14 @@ entitled to do well on, so a caller cannot fix them by having better data.
 | `lp_iv` — weak instrument | kindest horizon of the weak arm itself | **0.969 ± 0.003** (worst: **0.985 ± 0.002**) | APPROXIMATION | it **over**-covers while the median interval width explodes about 5×. That is the correct symptom, not a lucky escape: Dufour (1997) — under weak identification no *bounded* confidence set can be honest, so a Wald set stays honest only by becoming uninformative. Report `first_stage_f` | [LP card](../reference/model-cards/local-projections.md#lp_iv-instrumented-local-projections-lp-iv) |
 | `bai_perron` — unconditional | break/σ = 3, T=200 | **0.967 ± 0.004** (break/σ = 0.25: **0.233 ± 0.009**) | ESTIMATOR | at a small break, detection itself collapses to 0.29, so the rate a user actually faces is 0.233. A break-date CI is meaningful only once the break is detectable | [Structural-breaks card](../reference/model-cards/structural-breaks.md#bai_perron-multiple-breaks-how-many-when-how-sure) |
 | `bai_perron` — conditional on detection | break/σ = 1, T=800 | **0.970 ± 0.005** (break/σ = 0.5, T=200: **0.888 ± 0.008**) | APPROXIMATION / CONVENTION | over-covers at a large break because the half-width is `ceil(c/scale)` **plus one index** on each side, and that discreteness padding dominates (0.998 at break/σ = 3). Under-covers at a small break because Bai's argmax limit distribution is a finite-sample approximation — it improves with T (0.877 → 0.914 → 0.944 at T = 200/400/800) while the interval *width* does not shrink at all (26.4 → 26.5 → 26.1), exactly as fixed-break asymptotics predict | [Structural-breaks card](../reference/model-cards/structural-breaks.md#bai_perron-multiple-breaks-how-many-when-how-sure) |
+| `quantile_lp` — persistent regressor | default lag controls (p=4), worst (τ, h) cell | **0.909 ± 0.009** (no lag controls, worst cell: **0.758 ± 0.014**) | ESTIMATOR | the Powell sandwich is heteroskedasticity-robust, **not** HAC — exactly as the card says. The default lag controls whiten an AR(1) regressor and hold every cell at 0.91–0.95; with `n_lag_controls=0` nothing whitens the score and the growth_at_risk-shaped decay appears in full (se/sd 0.66 at the far horizon, \|bias\|/sd ≈ 0.4). Keep the lag controls at least as long as the regressor's AR order — and note the canonical iid-shock design is measured near nominal everywhere | [Quantile card](../reference/model-cards/quantile.md#quantile_lp-quantile-local-projections) |
+| `panel_lp(se_type="driscoll_kraay")` — the default | N=50, T=80, impact | **0.916 ± 0.006** (T=40, worst horizon: **0.818 ± 0.008**) | APPROXIMATION | with a common shock the effective sample is T, not N·T: quintupling N moves pooled coverage by under a point while doubling T buys ~5pp. Driscoll-Kraay is a T-asymptotic estimator; at T=40 read the bands as indicative. And never swap in `se_type="cluster"` under a common factor — on the same draws it covers **0.20** (se/sd = 0.12) | [Panel-LP cookbook](../cookbook/panel-lp-standard-errors.md) |
+| `panel_lp(bias_correction="spj")` | T=40, h=2 (a short panel — the correction's home turf) | **0.843 ± 0.007** (T=20: **0.761 ± 0.009**) | APPROXIMATION | the SPJ removes most of the Nickell bias (−0.141 → +0.015 at T=20, h=2 — corroborating its card almost exactly) and recomputes the SEs for the corrected estimator, but Driscoll-Kraay remains a short-T approximation, so neither SPJ nor uncorrected FE reaches nominal at T=20. The measured T=20 coverage *gain* over FE is +2.5pp paired (se 0.6pp) — real, and smaller than the card's 300-replication point numbers (0.743 → 0.823) suggest; at T=40 the paired gain is −1.5pp | [Panel card](../reference/model-cards/panel.md#nickell-bias-and-the-two-half-panel-corrections-panel_lp) |
+| `lp(cumulative="both")` — the post-fix HAC default | T=400, h=12 (the repaired defect cell) | **0.920 ± 0.006** (T=1600, most extreme h: **0.971 ± 0.004**, over) | APPROXIMATION *(the 0.507 defect itself was fixed in 0.3.0)* | the official repair numbers: the pre-fix lag-augmented/HC1 default covered **0.507** at h=12 and was flat in T; the mode-dependent HAC default restores h=12 to 0.920 at T=400 and 0.956 at T=1600, with the residual deviation flipping mildly *conservative* at T=1600 mid-horizons — the Bartlett bandwidth `h + p` is generous once T is large relative to the MA(h) overlap. `se="lag_augmented"` with this mode now raises, and the suite asserts it | [LP card](../reference/model-cards/local-projections.md#lp-local-projection-irfs) |
 
 ### B. At nominal when entitled, off under stress
 
-**24 of 32.** These behave the way asymptotic approximations behave. Nothing
+**27 of 39**. These behave the way asymptotic approximations behave. Nothing
 here is an alarm; the number to quote is the *size* of the loss in the regime
 you are actually in.
 
@@ -322,7 +354,7 @@ you are actually in.
 | `var_irf_bands` with the wrong lag order | VAR(4) truth fitted as VAR(1), h=4, T=500 | **0.061 ± 0.005** | ESTIMATOR | inconsistency, not a band problem: coverage gets *worse* as T grows — 17.8% at T=200, 6.2% at T=500. Choose the lag order on the data before reading any band; with the correct order the same cell covers 0.905 | [VAR/SVAR card](../reference/model-cards/var-svar.md#confidence-bands-on-the-irf-var_irf_bands) |
 | `var_forecast` marginal bands read as a joint band | 12 horizons × 2 series simultaneously, T=100 | **0.409 ± 0.006** | READING | see [pointwise is not joint](#pointwise-is-not-joint) | [VAR/SVAR card](../reference/model-cards/var-svar.md#reduced-form-var-var_fit-var_irf-var_fevd-var_granger-var_forecast) |
 | `ols(se_type="hac")` on a **slope** | regressor *and* errors AR(1) at φ=0.95, T=200 | **0.588 ± 0.009** | APPROXIMATION | the reported HAC SE is 0.43 of the true sampling sd. Lengthening the bandwidth helps and does not close it (0.703 at 12 lags, 0.728 at 24): at T=200 the sample does not contain enough independent information to estimate a long-run variance this large. Report such a slope with a bandwidth chosen for the persistence and treat the interval as indicative | [HAC cookbook](../cookbook/hac-standard-errors.md#choosing-the-bandwidth) |
-| `smooth_lp(lam="cv")` | impact response, T=200 | **0.640 ± 0.018** | ESTIMATOR | by design, and worst exactly where an applied reader looks first. At impact the cross-validated penalty pulls the estimate off the peak (\|bias\|/sd = 1.22 — the bias exceeds a whole sampling sd). A smooth-LP band is a band around the **penalized** estimand; the unpenalized `lam=0` anchor covers 0.936 at the same cell. Separately, `se` conditions on the selected λ, so mean se/sd falls from 0.907 to 0.812 | [LP card](../reference/model-cards/local-projections.md#smooth_lp-smooth-local-projections-barnichon-brownlees) |
+| `smooth_lp(lam="cv")` | impact response, T=200 | **0.646 ± 0.018** | ESTIMATOR | by design, and worst exactly where an applied reader looks first. At impact the cross-validated penalty pulls the estimate off the peak (\|bias\|/sd = 1.23 — the bias exceeds a whole sampling sd). A smooth-LP band is a band around the **penalized** estimand; the unpenalized `lam=0` anchor covers 0.936 at the same cell. Separately, `se` conditions on the selected λ, so mean se/sd falls from 0.907 to 0.813 | [LP card](../reference/model-cards/local-projections.md#smooth_lp-smooth-local-projections-barnichon-brownlees) |
 | `ols(se_type="hc1")`, small T with leverage | x ~ chi2(1), sd(e\|x)=x, T=25 | **0.682 ± 0.009** | ESTIMATOR *(was API GAP — [fixed in 0.2.0](#fixed-in-020))* | `hc1`'s n/(n−k) factor buys 0.015 at k=2; the leverage correction 1/(1−h_i) is what matters. `0.2.0` added `hc2`/`hc3`, and tsecon's own `hc3` now covers **0.863 ± 0.006** on these draws — 18 points recovered, and still short of nominal, so prefer `hc3` at small n without treating it as a cure (its own row is next) | [Inference guide](../guide/03-inference-toolkit.md#the-robust-standard-error-ladder) |
 | `ols(se_type="hc3")`, small T with leverage | x ~ chi2(1), sd(e\|x)=x, T=25 | **0.863 ± 0.006** | APPROXIMATION | the estimator `0.2.0` added because of this audit, measured on its own row: at nominal in the favourable design (0.945 ± 0.004 at T=1600) and still 8.7pp short at T=25 — the leverage correction recovers most of the small-T gap but not all of it. The SE distribution is skewed, so the mean se/sd of 0.942 overstates the typical interval; at a small, high-leverage n, widen deliberately or bootstrap | [Inference guide](../guide/03-inference-toolkit.md#the-robust-standard-error-ladder) |
 | `var_irf_bands(method="asymptotic")` | h=12, T=100 | **0.673 ± 0.010** | APPROXIMATION | [the horizon table](#the-delta-method-irf-band-horizon-by-horizon) | [VAR/SVAR card](../reference/model-cards/var-svar.md#confidence-bands-on-the-irf-var_irf_bands) |
@@ -342,6 +374,9 @@ you are actually in.
 | `recession_probit` | rare events (rate 0.055), T=100 | **0.968 ± 0.004**, on survivors | ESTIMATOR | **over**-covers, and the number is *selected*: 25.0% of replications have no finite MLE and the library correctly raises (16.2% no recession months at all, 8.8% quasi-complete separation). Read the failure share with the coverage, always. Among survivors 12.4% carry an SE more than 3× the median, and the MLE is biased away from zero (median bias +0.117 at T=100, +0.012 at T=1000). Note `se/sd` = 0.496 *with* 0.968 coverage is an outlier signature, not a narrow interval | [Recession card](../reference/model-cards/recession.md#recession_probit) |
 | `quantile_regression` intercept | x ~ U(0,2), so x=0 is at the edge, τ=0.50 | **0.993 ± 0.002** | APPROXIMATION | over-covers because the intercept is an extrapolation to the edge of the support and its sandwich SE is conservative. Per-coefficient coverage in a quantile regression is not uniform, and the intercept is usually not the quantity of interest | [Quantile card](../reference/model-cards/quantile.md#quantile_regression-linear-quantile-regression) |
 | `var_irf_bands(bias_correct=True)` at impact | h=0, persistent VAR, T=100 | **0.842 ± 0.008** | APPROXIMATION | the cost side of a good trade: Kilian's correction buys ~49 coverage points at h=12 (0.410 → 0.900) and costs 5.8pp at impact. Take the trade on a persistent VAR | [VAR/SVAR card](../reference/model-cards/var-svar.md#confidence-bands-on-the-irf-var_irf_bands) |
+| `quantile_lp` — identified iid shock | worst (τ, h, T) cell of the whole grid: τ=0.25, h=0, T=200 | **0.893 ± 0.010** | APPROXIMATION | the audit's cleanest good news: the quantile card's transferred growth_at_risk warning does **not** bind on an identified iid shock, because the check-loss score is serially uncorrelated by construction (the same mechanism that makes lag-augmented mean-LP inference work). The worst cell is the location-scale tail *impact* — a Powell kernel density-estimation cost, not an overlap one — and it shrinks in T (0.923 at T=400) | [Quantile card](../reference/model-cards/quantile.md#quantile_lp-quantile-local-projections) |
+| `favar` + `var_irf_bands` — two-step bands | small noisy panel (N=20), T=800, worst horizon | **0.673 ± 0.010** | ESTIMATOR | `favar` ships no band; this is the guide's own construction and its warned generated-regressor hazard, priced against a true-factor oracle on the same draws. On a rich clean panel the two are within 0.3pp; on the small noisy one the F̂ band loses a further 6–14pp at long horizons — and more T makes it *worse* (0.747 → 0.673 at h=7) while the oracle improves, because the band shrinks around an O(1/N) factor-measurement distortion. Bootstrap the two-step procedure, or grow N before T | [Multivariate guide](../guide/07-multivariate.md) |
+| `umidas` — the intercept | AR(1) errors φ=0.7, persistent HF regressor, T=150 | **0.829 ± 0.007** | APPROXIMATION | the HF-lag coefficients hold ~0.92+ even here; the intercept inherits the error's full serial correlation (se/sd = 0.71) — the har_rv-constant mechanism on a new surface. Quote the constant with care or lengthen `maxlags` | [Nowcasting/MIDAS card](../reference/model-cards/nowcasting-midas.md#how-to-read-the-output) |
 | `theta_forecast`, `backtest` | — | **no interval at all** | READING | both return point paths only; `backtest` returns no interval-bearing key. Any band you report around them is your own construction and its coverage is your claim, not the library's. (For reference, a DIY interval built from `backtest` errors on a random walk with drift covers 93.0% at h=1 falling to 90.6% at h=6 — our construction, not a library promise) | [Forecasting card](../reference/model-cards/forecasting.md#how-to-read-the-output) |
 
 ### C. Objects that make no frequentist promise
@@ -413,8 +448,9 @@ is paired rather than two independent runs, and every replication that gains the
 path gains it because the multiplier grew. Their pointwise rates reproduce this
 page's 0.409 and 0.722 on fresh seeds, and their sup-t rates reproduce what the
 crates' own tests measure at higher replication counts (41.2% → 90.5% at 6000
-reps; 70.4% → 84.8% at 3000). The LP rows are the crate tests' — `lp` has no arm
-in the five modules below.
+reps; 70.4% → 84.8% at 3000). The LP rows are the crate tests' — `lp` has no
+simultaneous-band arm in the seven modules below (its cumulative-mode
+*pointwise* intervals are measured in `quantile_panel_lp.py`).
 
 **Neither VAR simultaneous rate reaches nominal — 85.2% against 90%, 90.5%
 against 95% — and that is the honest headline, not a footnote.** A sup-t band
@@ -734,18 +770,21 @@ exactly where an applied reader looks first:
 ```text
                   arm    h     truth       bias     sd_est    mean_se   se/sd   |b|/sd    cov95    mcse
                 lam=0    0    1.0000  -0.0003552    0.03993    0.04024    1.01     0.01    0.936   0.009
-               lam=cv    0    1.0000   -0.07852    0.06417    0.05081    0.79     1.22    0.640   0.018
+               lam=cv    0    1.0000   -0.07812    0.06334    0.05076    0.80     1.23    0.646   0.018
               lam=100    0    1.0000   -0.03906    0.04482     0.0451    1.01     0.87    0.861   0.013
 ```
 
-`|b|/sd = 1.22` at impact: the shrinkage bias exceeds a whole sampling standard
+`|b|/sd = 1.23` at impact: the shrinkage bias exceeds a whole sampling standard
 deviation, so the interval is centred in the wrong place and no standard error
 saves it. The `lam=100` arm isolates the two effects — se/sd is 1.01 there (the
 SE is correctly sized) while `|b|/sd` is already 0.87 (pure shrinkage). The
 library's own model card says `se` "conditions on `lam` and does not account for
-shrinkage bias"; **0.640 against 0.95 is the size of what that sentence is
+shrinkage bias"; **0.646 against 0.95 is the size of what that sentence is
 hiding.** Read a smooth-LP band as a band around the penalized estimand, and
 read the `lam=cv` column against the `lam=0` column rather than against 0.95.
+(This cell moved 0.640 → 0.646 — a third of its own MC standard error — when
+0.3.0 made the default CV λ grid scale-relative; every other pre-existing cell
+on this page reproduces the earlier run byte-for-byte.)
 
 Full report, including `lp_iv` strong vs weak, `lp_state` per regime, and
 `lp_multiplier`, plus a decomposition of every arm's worst horizon into
@@ -873,6 +912,162 @@ from 0.486 to 0.368 while coverage moves 0.724 → 0.736 — and the ARW bands a
 **not nested**, because importance reweighting can move an individual quantile
 outward) and the `bai_perron` break-date experiments:
 [`docs/examples/coverage/bayes_and_sets.py`](coverage/bayes_and_sets.py).
+
+### Quantile, panel and cumulative local projections
+
+The three LP surfaces the original audit did not measure. DGPs: a
+location-scale MA whose truncation at J = p + 1 makes the conditional
+quantile *exactly* linear in `quantile_lp`'s design (so the per-tau truths
+are closed-form: impact slope `θ₀ + 0.4·z_τ`, later slopes `θ_h`); a dynamic
+panel with a common shock, a common factor, and truth `0.8·0.8^h`; and the
+`lp_family` house MA for the cumulative modes. Nominal **95%** throughout;
+1000–2500 replications by experiment.
+
+**`quantile_lp` is the audit's cleanest good news, and the reason is
+structural.** Its own model card warns that these Powell-sandwich standard
+errors are "not HAC" and that `growth_at_risk`'s measured overlap
+under-coverage (0.72 at h=8, τ=0.5, T=200) "is the right order of magnitude
+to expect here too". Measured, that transfer does **not** bind on the
+canonical design: with an identified i.i.d. shock the check-loss score is
+serially uncorrelated at every horizon — the overlapping windows correlate
+the ψ factors, but each is multiplied by an independent shock draw, the same
+mechanism that makes lag-augmented inference work for mean LP. Coverage sits
+at 0.89–0.97 across every (τ, h, T) cell, worst at the location-scale impact
+tail (0.893 ± 0.010 at τ=0.25, T=200 — a density-estimation cost, not an
+overlap one). The hazard is real where nothing whitens the regressor:
+
+```text
+  persistent regressor (phi_s = 0.8), tau = 0.50, T = 200, nominal 0.95
+                        h=0     h=2     h=4     h=6
+  p=4 (the default)   0.946   0.933   0.946   0.931     se/sd 1.00-1.01
+  p=0 (no controls)   0.899   0.881   0.859   0.785     se/sd 0.88 -> 0.67
+  paired difference, p=4 minus p=0, pooled h >= 3: +0.106 (se 0.008)
+```
+
+The default lag controls include the regressor's own lags, so the
+residualised impulse is (nearly) the AR innovation and the sandwich survives;
+strip them and the growth_at_risk-shaped decay appears in full, driven by the
+SE (se/sd falls to 0.66 while |bias|/sd stays near 0.4). Keep
+`n_lag_controls` at least the regressor's AR order.
+
+**`panel_lp`'s Driscoll-Kraay default: the effective sample is T, and now
+that is a number.** With a common shock and a common factor
+(`y_it = α_i + 0.8·y_{i,t−1} + 0.8·s_t + 0.9·f_t + e_it`):
+
+```text
+  nominal 0.95, Driscoll-Kraay (the default), h = 0 / 2 / 4
+  N=10 T=40   0.875   0.841   0.824        N=10 T=80   0.904   0.884   0.887
+  N=50 T=40   0.889   0.839   0.818        N=50 T=80   0.916   0.887   0.894
+```
+
+Quintupling N moves pooled coverage by under a point; doubling T buys ~5pp.
+The Nickell bias is visible and behaves exactly as Nickell says (−0.071 at
+h=4, T=40 → −0.043 at T=80, untouched by N). And the cookbook's "wrong
+reflex" is priced: `se_type="cluster"` on the *same draws* covers **0.20**
+(se/sd = 0.12) — clustering by entity assumes independence across entities in
+the presence of a common factor, and the paired coverage difference to
+Driscoll-Kraay is +0.70 (se 0.004). The dramatic size is this DGP's strong
+factor loading; the sign is general.
+
+**The split-panel jackknife, re-measured on the panel card's own design at
+~8× its replications** (γ_f = 0, N=50, bandwidth=2; the card's 300-rep table
+claims FE 0.743 → SPJ 0.823 at T=20, h=2):
+
+```text
+  T=20  h=2   bias  fe -0.141 -> spj +0.015     cov95  fe 0.713 -> spj 0.761
+  T=40  h=2   bias  fe -0.059 -> spj +0.011     cov95  fe 0.846 -> spj 0.843
+  paired coverage difference, spj minus fe: T=20 +0.025 (se 0.006),
+                                            T=40 -0.015 (se 0.005)
+```
+
+The bias claim is corroborated almost exactly (the card's −0.137 → +0.009).
+The *coverage* gain at T=20 is real but smaller than the card's
+point numbers suggest — +2.5pp paired, not +8pp — and at T=40 SPJ covers
+very slightly *worse* than FE, consistent with the card's own T=40 cells.
+Neither route approaches nominal at T=20; Driscoll-Kraay is itself a short-T
+approximation, exactly as the card warns. Read that table with its
+mcse (~0.025) in mind.
+
+**`lp(cumulative="both")`: the official post-fix numbers.** The audit's most
+serious open finding was that this mode's old lag-augmented/HC1 default
+covered **0.507** at h=12, flat in T; 0.3.0 made `se=None` resolve to
+`"hac"` here and made an explicit `se="lag_augmented"` raise (both asserted
+every run):
+
+```text
+  cumulative="both", default se -> "hac", nominal 0.95
+            h=0     h=4     h=8    h=12
+  T=400   0.943   0.960   0.950   0.920      se/sd 0.94-1.05
+  T=1600  0.936   0.971   0.965   0.956      se/sd 0.97-1.10
+```
+
+h=12 goes 0.507 → **0.920 ± 0.006** at T=400 and 0.956 at T=1600 — the
+repair, measured on the audit's DGP (the fix's own probe reported 0.920 at
+the matching cell). The residual deviation flips mildly *conservative* at
+T=1600 mid-horizons (0.971 at h=4): the Bartlett bandwidth `h + p` is
+generous once T is large relative to the MA(h) overlap. The
+cumulated-outcome mode (`cumulative=True`) keeps its lag-augmented default
+and stays at 0.93–0.96 everywhere, as the LP card states.
+
+Full report:
+[`docs/examples/coverage/quantile_panel_lp.py`](coverage/quantile_panel_lp.py).
+
+### Factor models and mixed frequency
+
+Split by an honest question asked first: does the function ship an interval
+at all? `favar`, `weighted_midas`, `dfm_nowcast` and `nelson_siegel` do not —
+verified against their live key sets on every run, so a future `se` key
+breaks an assertion rather than silently outdating this page. `umidas` ships
+HAC `bse`, and `favar`'s *guide* documents how bands get built in practice
+(`var_irf_bands` on `[F̂, policy]`) while warning that "bands that condition
+on F̂ as if it were data are too narrow". Both measurable claims are
+measured.
+
+**The FAVAR generated-regressor hazard, priced.** The guide's own
+transmission DGP (two latent factors + a policy rate forming a VAR(1) with
+diagonal Σ); the measured cell is the policy rate's response to the
+recursive policy shock — the one FAVAR band cell invariant to factor
+rotation, so its truth is closed-form. Each replication fits the two-step
+band and, on the same draw, the infeasible band on the *true* factors:
+
+```text
+  nominal 0.90, h = 0 / 4 / 8, F-hat band vs oracle band (paired)
+  N=100 T=200 (rich, clean)   F-hat 0.887 0.903 0.816   oracle 0.889 0.898 0.824
+  N=20  T=200 (small, noisy)  F-hat 0.902 0.920 0.733   oracle 0.894 0.895 0.833
+  N=20  T=800                 F-hat 0.897 0.877 0.728   oracle 0.893 0.905 0.892
+  paired F-hat minus oracle, pooled h >= 4:
+    N=100 T=200: -0.003 (se 0.001)   N=20 T=200: -0.058 (se 0.004)   N=20 T=800: -0.138 (se 0.006)
+```
+
+On the rich panel the two are within 0.3pp — Bai-Ng negligibility
+(√T/N → 0) has effectively arrived, and what remains is the delta-method
+horizon decay this page already documents. On the small noisy panel the
+F̂ band loses a further 6–14pp at long horizons, and the T-growth column is
+the diagnosis: from T=200 to T=800 the *oracle* improves (0.833 → 0.892 at
+h=8) while the F̂ band gets **worse** (0.733 → 0.728, and 0.747 → 0.673 at
+h=7, with |bias|/sd reaching 1.03) — the band shrinks like 1/√T around a
+factor-measurement distortion that is O(1/N) and does not shrink in T at
+all. No standard error that conditions on F̂ can see it; bootstrap the
+two-step procedure, or grow N before T.
+
+**`umidas`'s HAC intervals: the slopes hold, the intercept is the casualty.**
+On a known-weights mixed-frequency DGP (truth `β·w_k` per lag, exactly):
+
+```text
+  nominal 0.95            intercept   worst HF-lag coefficient
+  iid errors, T=300           0.943        0.940
+  AR(1) errors phi_u=0.7,
+  HF phi_h=0.9, T=150         0.829        0.918   (intercept se/sd 0.71)
+```
+
+The lag coefficients stay ~0.92+ even under persistent errors and
+near-collinear lag columns; the intercept inherits the error's full serial
+correlation — the same constant-under-persistence mechanism this page
+documents for `har_rv`'s constant. Quote the constant with care or lengthen
+`maxlags`.
+
+Full report:
+[`docs/examples/coverage/factor_midas.py`](coverage/factor_midas.py).
 
 ---
 
@@ -1038,6 +1233,8 @@ mechanism rather than a constant for the function.
 | `lp_family` | `y_t = Σ_j 0.7^j s_{t−j} + nuisance_t` truncated at J=25, T ∈ {100, 200, 400, 800}; a heteroskedastic variant; strong vs weak LP-IV; a two-state Markov design with P(stay)=0.9; a persistent-impulse multiplier design at ρ_x=0.8 | 95% | 700–4000 by experiment |
 | `forecast_intervals` | AR(1) at φ ∈ {0.9, 0.5}, T=100; ARMA(1,1) φ=0.6 θ=0.4; VAR(1) A = [[.7,.15],[.1,.6]], Σ = [[1,.4],[.4,1]], T ∈ {100, 800}, fitted lags ∈ {1, 4}; random walk with drift 0.1 at (T=100, H=12) and (T=60, H=24) | 95% (plus a 50/80/90/95/99 sweep) | 600–6000 by experiment |
 | `bayes_and_sets` | `PERSIST` VAR(1) own lags 0.85 at T=100 under nine priors; white noise fitted as a VAR(1) so δ=0 is exactly right; a sign-restricted SVAR at T=200 whose true A₀ satisfies every imposed sign; a truly recursive VAR at T=200; `y_t = e_t + δ·1{t ≥ T/2}` at T ∈ {200, 400, 800} and δ/σ ∈ {3, 2, 1, 0.5, 0.25} | 90% | 250–2500 by experiment |
+| `quantile_panel_lp` | a location-scale MA `y_t = Σ_j 0.7^j s_{t−j} + (1 + 0.4 s_t) e_t` truncated at J = p + 1 = 5 so the conditional quantile is *exactly* linear in the design, s ~ U(−1.5, 1.5) iid, T ∈ {200, 400}, τ ∈ {0.25, 0.5, 0.75}; the same MA driven by a Gaussian AR(1) regressor at φ_s=0.8 (pure location, closed-form slopes), fitted with p ∈ {4, 0}; a dynamic panel `y_it = α_i + 0.8 y_i,t−1 + 0.8 s_t + 0.9 f_t + e_it` with a common shock and a common factor, N ∈ {10, 50}, T ∈ {40, 80}, plus the panel card's own SPJ design (γ_f = 0, N=50, T ∈ {20, 40}); the lp_family house MA for `cumulative` at T ∈ {400, 1600} | 95% | 1000–2500 by experiment |
+| `factor_midas` | the guide's FAVAR transmission DGP — 2 latent factors + a policy rate forming a VAR(1) with diagonal Σ, panel `X = ΛF + idio` with (N, idio sd, T) ∈ {(100, 0.5, 200), (20, 1.0, 200), (20, 1.0, 800)}, Λ redrawn per replication; a mixed-frequency DGP `y = 0.5 + 1.5 Σ_k w_k hf[t,k] + u` with exp-Almon weights, K=12, m=3, HF AR(1) φ_h ∈ {0.5, 0.9}, u iid or AR(1) φ_u=0.7, T ∈ {300, 150} | 90% (favar bands) / 95% (umidas) | 2000–3000 |
 
 ---
 
@@ -1062,20 +1259,37 @@ Stated so you do not have to discover it.
   ship `proxy_ar_sets` — an Anderson-Rubin set for proxy-SVAR impulse
   responses — so the machinery exists and the gap is that it has not been
   extended to the IV regression estimators, not that it is unbuilt.
-- **`lp(cumulative=...)` intervals are unmeasured.** `var_irf_bands`'
-  cumulative bands are measured; LP's are not, and the two are different code
-  paths.
-- **`quantile_lp`, `growth_at_risk`, panel LP (Driscoll-Kraay), `favar`,
-  `proxy_svar`, `nongaussian_svar`, GARCH forecast intervals, `dfm_nowcast`,
-  MIDAS, `flp`/`flp_scenario`, and the term-structure fits are not in this
-  audit.** They have golden and property coverage; they do not yet have
-  measured interval coverage. For `flp` the gap is known to bite: its
-  per-element `se` conditions on `functional_pca`'s estimated eigenfunctions
-  and measures se/sd ≈ 0.66 on FPCA scores, flat in `T` (coverage ≈ 0.80
-  against a nominal 0.95) — the
+- ~~**`lp(cumulative=...)` intervals are unmeasured.**~~ **Measured now** —
+  [`quantile_panel_lp.py`](coverage/quantile_panel_lp.py) publishes the
+  official post-fix numbers for the `cumulative="both"` HAC default (the
+  audit's 0.507-at-h=12 defect) and re-measures the cumulated-outcome mode's
+  lag-augmented default alongside.
+- **`growth_at_risk`, `proxy_svar`, `nongaussian_svar`, GARCH forecast
+  intervals, and `flp`/`flp_scenario` are not in this audit.** They have
+  golden and property coverage; they do not yet have measured interval
+  coverage *in this registry*. Two of them carry measured coverage
+  elsewhere: `growth_at_risk`'s Powell → Newey-West coverage table lives on
+  [its model card](../reference/model-cards/quantile.md#standard-errors-at-long-horizons-measured),
+  and `proxy_ar_sets`' propagated coverage (declining through the default
+  h=12) is on the
+  [identification card](../reference/model-cards/structural-identification.md).
+  For `flp` the gap is known to bite: its per-element `se` conditions on
+  `functional_pca`'s estimated eigenfunctions and measures se/sd ≈ 0.66 on
+  FPCA scores, flat in `T` (coverage ≈ 0.80 against a nominal 0.95) — the
   [functional-shocks model card](../reference/model-cards/functional-shocks.md#flp-functional-local-projections)
   carries the warning and the numbers; `flp_scenario`'s `w'beta` contrasts are
   algebraically immune to that term and measured at the ordinary LP-HAC level.
+- **The `bvar_*` family is measured here as frequentist diagnostics only**
+  (group C); its *Bayesian calibration* — draw from the model's own prior and
+  check the credible sets — was measured by audit round 6, which found the
+  ML-II `hyperprior="none"` collapse and the GLP plug-in's 0.82–0.85, and is
+  recorded in `docs/roadmap/20-audit-round-6-findings.md` and on the
+  [Bayesian card](../reference/model-cards/bayesian.md).
+- **The term-structure fits ship no interval at all.** `nelson_siegel`'s key
+  set is verified every run by
+  [`factor_midas.py`](coverage/factor_midas.py) (its row is in the tables);
+  `svensson` and `dynamic_ns` return the same interval-free shape (factors,
+  residuals, R², forecasts) but are not under a per-run tripwire.
 - **Only two nominal levels are swept.** `var_irf_bands` is measured at 68/90/95
   and `var_forecast` at 50/80/90/95/99. Everything else is measured at one
   level; coverage shortfalls are not guaranteed to scale linearly in α, and in
@@ -1172,11 +1386,14 @@ against later.
 - **[HAC standard errors](../cookbook/hac-standard-errors.md)** and
   **[Confidence bands on a VAR IRF](../cookbook/var-irf-bands.md)** — the
   recipes these caveats attach to.
-- The five modules themselves, each with a derivation of its truth in its
+- The seven modules themselves, each with a derivation of its truth in its
   docstring:
   [`regression_se.py`](coverage/regression_se.py),
   [`irf_bands.py`](coverage/irf_bands.py),
   [`lp_family.py`](coverage/lp_family.py),
   [`forecast_intervals.py`](coverage/forecast_intervals.py),
   [`bayes_and_sets.py`](coverage/bayes_and_sets.py),
-  and the runner [`run_all.py`](coverage/run_all.py).
+  [`quantile_panel_lp.py`](coverage/quantile_panel_lp.py),
+  [`factor_midas.py`](coverage/factor_midas.py),
+  the runner [`run_all.py`](coverage/run_all.py), and the page-sync guard
+  [`check_page.py`](coverage/check_page.py).
