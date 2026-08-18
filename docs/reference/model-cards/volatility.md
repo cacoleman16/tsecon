@@ -1,11 +1,17 @@
 # Model card — Volatility
 
-`garch_fit` · `gas_volatility` · `ccc_garch` · `dcc_garch`
+`garch_fit` · `gas_volatility` · `dcs_local_level` · `ccc_garch` · `dcc_garch`
 
 Conditional-variance models: they leave the mean alone and model how the
 *spread* of a return series evolves. Reach for this family when the level is
 roughly unpredictable but the turbulence is not — the hallmark of financial
 returns, where large moves cluster.
+
+One member is the exception that proves the family rule: `dcs_local_level`
+applies the same score-driven (GAS/DCS) machinery as `gas_volatility` to a
+time-varying **level** instead of a variance — it lives here because the
+score-driven house is one family, and its payoff (outlier-robust trend
+filtering) is the level-side twin of GAS-t's outlier-robust variance.
 
 ---
 
@@ -114,6 +120,117 @@ cross-checked to reproduce GARCH(1,1) and simulated parameters are recovered
 (`fixtures/tsecon-gas.json`).
 
 **References.** Creal, Koopman & Lucas (2013); Harvey (2013).
+
+---
+
+## `dcs_local_level` — score-driven robust local level (DCS-t)
+
+**What it estimates.** A time-varying *level* `mu_{t+1} = mu_t + kappa·u_t`,
+driven by the conditional score `u_t` of the chosen observation density —
+the DCS local level (Harvey 2013; Harvey & Luati 2014, the DCS-t case). With
+`density="t"` the driver `u_t = (nu+1)e_t/(nu + e_t²/scale²)` is bounded and
+*redescending*: a genuine level shift moves the filter, an 8-sigma outlier
+moves it almost not at all. `density="laplace"` gives the sign filter (the
+level tracks a local median); `density="gaussian"` gives `u_t = e_t` — which
+is *exactly* the steady-state Kalman local level, the nested control. MLE of
+`(kappa, scale[, nu])` on the exact conditional likelihood given a robust
+initial level (median of the first ten observations).
+
+**Assumptions.** A local-level signal (slow-moving mean, no slope/seasonal
+component), i.i.d. errors from the chosen density with constant scale, and
+`nu > 2` for the *t*. There is no smoother — `level[t]` is the one-step
+*prediction* of `y[t]` given data through `t-1` (the DCS literature
+filters), and the h-step forecast is flat at `next_level`.
+
+**When to use (and when not).** Use it to track a trend/level through data
+where additive outliers are plausible — the lab study that graduated it
+measured **−22%/−31% level RMSE vs the Kalman local-level pipeline at 5%/10%
+contamination with zero measurable cost on clean data**, because the
+contaminated Gaussian MLE absorbs outliers by collapsing its gain (going
+blind to real level movement) while the bounded *t* score discounts them
+point by point. On clean Gaussian data it matches the Kalman filter — so the
+robust default is cheap. Do **not** use it when you need smoothed (two-sided)
+estimates, slope/seasonal components, or time-varying volatility
+(`sigma` here is constant; pair with `gas_volatility` thinking, not inside
+it) — `local_level_smooth` covers the Gaussian smoothing case.
+
+**Key arguments and defaults (and why).** `density="t"` is the default —
+robustness is the point of the estimator, and on clean data it costs
+nothing. Switch to `"gaussian"` only as the nested control (it *is* the
+steady-state Kalman filter), or `"laplace"` for a median-tracking filter.
+
+**How to read the output.** `kappa` is the constant gain (for
+`"gaussian"` it is the steady-state Kalman gain: `kappa = p/(1+p)`,
+`p = (q + √(q²+4q))/2`, `q = sigma2_eta/sigma2_eps`, inverse
+`q = kappa²/(1−kappa)`); `scale` is the density's scale parameter (for
+`"gaussian"` the one-step prediction-error sd, `sigma_eps/√(1−kappa)`; for
+`"t"` the *t* scale, not the sd); `nu` the estimated dof. `*_se` are
+observed-information SEs — NaN means the Hessian was singular or the
+optimum sits at a boundary, reported honestly rather than clipped. `level`
+is the one-step-predicted path, `resid = y − level`, `next_level` the
+out-of-sample prediction. **Read `converged` as the optimizer's
+certificate, not a fit grade**: on (near-)Gaussian data the *t* fit's `nu`
+runs to the boundary and the flag reads `False` while `kappa`, `scale`, and
+the level path are fine.
+
+**Failure modes.** Under heavy contamination `nu` pins near its lower bound
+2 — the fat tail is doing outlier duty, so do **not** report `nu_hat` as the
+clean noise's tail index (and expect NaN SEs there: the boundary has no
+interior curvature). The Laplace likelihood is piecewise in `kappa` (every
+sign flip is a kink): a denser multistart is applied, but `converged`
+certifies the best basin found, not global optimality over the kinks, and
+single-sample `kappa` for the sign filter is noisy. A constant series is
+refused outright (the likelihood is unbounded as `scale → 0`).
+
+**Validated against.** statsmodels `UnobservedComponents(y, 'llevel')` for
+the Gaussian limit, pinned *through the steady-state mapping* above:
+statsmodels' UC-MLE variances are mapped to `(kappa, scale)` and statsmodels
+itself re-run at those values with known steady-state initialization — its
+constant Kalman gain equals `kappa` and the crate reproduces its level path
+(1e-6) and full log-likelihood (1e-8) on two seeded series and the Nile,
+plus the fitted params against a scipy MLE of the identical criterion at
+1e-4 across two optimizers (`fixtures/tsecon-dcs.json`). The t/Laplace
+filters have **no runnable third-party reference** (DCS reference code is
+R/Matlab) and are Monte-Carlo graded: 200-rep seeded recovery on simulated
+DCS-t data (kappa bias −0.003, RMSE 0.033; scale bias +0.001, RMSE 0.058;
+median `nu_hat` 5.17 at true 5; 200/200 converged), and a 20-rep replication
+of the lab's contamination study — mean one-step-level RMSE ratios vs the
+fitted Gaussian control of **1.00/0.77/0.69** for DCS-t at 0/5/10% additive
+8-sigma outliers (Laplace 1.10/0.81/0.74), with the Gaussian gain collapsing
+0.086 → 0.034 while DCS-t raises its own to 0.122
+(`crates/tsecon-gas/tests/dcs_properties.rs`).
+
+**References.** Harvey & Luati (2014), "Filtering with Heavy Tails", *JASA*
+109(507); Harvey (2013); Creal, Koopman & Lucas (2013); Durbin & Koopman
+(2012, steady-state Kalman filter).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+T = 500
+mu = np.cumsum(rng.normal(0.0, 0.1, T))          # slow-moving true level
+y = mu + rng.normal(0.0, 1.0, T)                 # noisy observations
+out = rng.choice(T, 50, replace=False)           # 10% additive outliers at 8 sigma
+y[out] += rng.choice([-1.0, 1.0], 50) * 8.0
+
+g = tsecon.dcs_local_level(y, density="gaussian")
+t = tsecon.dcs_local_level(y, density="t")
+rmse = lambda r: float(np.sqrt(np.mean((np.asarray(r["level"]) - mu) ** 2)))
+print(f"gaussian: kappa={g['kappa']:.3f}  level RMSE={rmse(g):.3f}")
+print(f"t:        kappa={t['kappa']:.3f} (se {t['kappa_se']:.3f})  "
+      f"nu={t['nu']:.2f}  level RMSE={rmse(t):.3f}")
+# gaussian: kappa=0.023  level RMSE=0.440
+# t:        kappa=0.118 (se nan)  nu=2.00  level RMSE=0.311
+```
+
+The two lines are the whole story. The contaminated Gaussian MLE has
+collapsed its gain to 0.023 — nearly blind to the real level — where the
+*t* filter keeps `kappa = 0.118` and cuts the level RMSE by 29%. And the
+fit is honest about its edges: `nu` has pinned at its lower bound (the fat
+tail is absorbing the outliers — not a tail estimate), so the
+observed-information SE correctly comes back NaN rather than a number
+computed from boundary curvature.
 
 ---
 

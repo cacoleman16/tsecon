@@ -5288,6 +5288,67 @@ fn gas_volatility<'py>(
     Ok(d)
 }
 
+/// DCS robust local level (Harvey 2013; Harvey-Luati 2014): a score-driven
+/// time-varying level `mu_{t+1} = mu_t + kappa * u_t` with `u_t` the
+/// conditional score of the observation density.
+///
+/// `density`: `"t"` (default — bounded redescending score: one bad tick
+/// moves the level almost not at all, so the filtered level is robust to
+/// additive outliers; estimates `nu > 2`), `"laplace"` (sign filter, tracks
+/// a local median), or `"gaussian"` (proportional score — exactly the
+/// steady-state Kalman local level, the nested control; `kappa` is the
+/// steady-state gain, `kappa = p/(1+p)` with `p = (q + sqrt(q^2+4q))/2`,
+/// `q = sigma2_eta/sigma2_eps`). Fits `(kappa, scale[, nu])` by exact
+/// conditional MLE given a robust initial level (median of the first ten
+/// observations). Returns the fitted params with observed-information
+/// standard errors (`*_se`; NaN at a flat/boundary optimum), the
+/// one-step-predicted `level` path (`level[t]` predicts `y[t]`), `resid`,
+/// the out-of-sample prediction `next_level`, `loglik`, `aic`, `bic`,
+/// honest `converged` (on near-Gaussian data a `"t"` fit's `nu` runs to
+/// the boundary and reports `False` while the level path stays valid),
+/// `iterations`, `n_obs`, and the `density` used.
+#[pyfunction]
+#[pyo3(signature = (y, density = "t"))]
+fn dcs_local_level<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    density: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dens = match density {
+        "t" | "student_t" => tsecon_gas::DcsDensity::StudentT,
+        "laplace" => tsecon_gas::DcsDensity::Laplace,
+        "gaussian" => tsecon_gas::DcsDensity::Gaussian,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown density {other:?}; expected \"t\", \"laplace\", or \"gaussian\""
+            )))
+        }
+    };
+    let yv = vec1(&y);
+    let model = tsecon_gas::DcsModel::new(&yv, dens).map_err(to_py)?;
+    let res = model.fit().map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("kappa", res.params.kappa)?;
+    d.set_item("kappa_se", res.se.kappa)?;
+    d.set_item("scale", res.params.scale)?;
+    d.set_item("scale_se", res.se.scale)?;
+    if dens.needs_dof() {
+        d.set_item("nu", res.params.nu)?;
+        d.set_item("nu_se", res.se.nu)?;
+    }
+    d.set_item("level", res.level.clone().into_pyarray(py))?;
+    d.set_item("resid", res.resid.clone().into_pyarray(py))?;
+    d.set_item("next_level", res.next_level)?;
+    d.set_item("loglik", res.loglik)?;
+    d.set_item("aic", res.aic())?;
+    d.set_item("bic", res.bic())?;
+    d.set_item("converged", res.converged)?;
+    d.set_item("iterations", res.iterations)?;
+    d.set_item("n_obs", res.n_obs)?;
+    d.set_item("density", res.density.name())?;
+    Ok(d)
+}
+
 /// Heterogeneous-panel mean-group estimator (Pesaran-Smith 1995) and its
 /// common-correlated-effects variant (Pesaran 2006, CCE-MG).
 ///
@@ -7482,6 +7543,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bns_jump_test, m)?)?;
     m.add_function(wrap_pyfunction!(realized_range, m)?)?;
     m.add_function(wrap_pyfunction!(gas_volatility, m)?)?;
+    m.add_function(wrap_pyfunction!(dcs_local_level, m)?)?;
     m.add_function(wrap_pyfunction!(panel_mean_group, m)?)?;
     m.add_function(wrap_pyfunction!(dfm_nowcast, m)?)?;
     m.add_function(wrap_pyfunction!(panel_pmg, m)?)?;
