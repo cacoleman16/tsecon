@@ -564,9 +564,7 @@ round 6): on this same DGP the mean coverage at the function's default
 VAR(1) at $T=250$ it reaches **0.80–0.85**. The misses are one-sided — the
 truth sits *above* the set, because the propagated variance shrinks together
 with $\hat\Psi_h$ at long horizons — and they fade in $T$ (0.907 by
-$T=1000$). Read long-horizon cells as approaching their nominal level from
-below; prefer shorter horizons or larger samples when the exact level
-matters. At $h=0$ the two agree exactly, because $\Psi_0 = I$ carries no estimated
+$T=1000$). At $h=0$ the two agree exactly, because $\Psi_0 = I$ carries no estimated
 coefficients. The correction is **conservative under weak instruments** — the
 measured weak arm goes from .9413 omitted to **.9908** propagated, because the
 extra variance turns exterior sets into the whole line — and erring wide is the
@@ -574,6 +572,44 @@ right direction under weak identification. The price is width: the paired median
 set-width ratio at $h=8$ is **13.5x**. When
 `reduced_form_uncertainty=False` the returned `level` is `None`, deliberately: a
 set conditional on the reduced form has no honest $1-\alpha$ label to print.
+
+**`rf_method="second_order"` is the measured long-horizon repair.** The
+default delta method evaluates the propagated variance at the *estimated*
+coefficients, so a fitted VAR that draws less persistent than the truth
+shrinks $\hat\Psi_h$ *and* the variance carried for it in the same
+replications — measured corr(propagated sd, |point error|) ≈ **+0.7** at
+$h=12$ while their average ratio is ≈ 0.94: right on average, wrong in
+exactly the draws that miss. Passing `rf_method="second_order"` (with
+`rf_draws`, default 256, and `rf_seed`, default 0) replaces the linearization
+with seeded antithetic simulation of the same Gaussian coefficient
+uncertainty through the exact nonlinear $\alpha \to \Psi_h$ map — equal to
+the delta method to first order, plus the convexity that grows with $h$ and
+re-inflates the variance in the under-persistent draws. Measured
+like-for-like on 500 seeded replications
+(`docs/examples/coverage/experiments/proxy_ar_long_horizon.py`), coverage by
+horizon against nominal 0.95:
+
+| arm | $h=8$ | $h=12$ | misses above/below at $h=12$ | median width vs delta, $h=8$ / $h=12$ |
+|---|---|---|---|---|
+| VAR(2) $T=300$, delta | .913 | .889 | 166 / 0 | 1.00 / 1.00 |
+| VAR(2) $T=300$, second_order | .944 | **.964** | 54 / 0 | 1.14 / 1.44 |
+| VAR(1) $T=250$, delta | .888 | .830 | 255 / 0 | 1.00 / 1.00 |
+| VAR(1) $T=250$, second_order | .928 | **.932** | 102 / 0 | 1.16 / 1.47 |
+
+Weak-instrument behaviour is untouched: the correction enters $v_0$ only, so
+the boundedness statistic is bit-identical, the weak arm's bounded share does
+not move, and its coverage stays conservative (measured 1.00). The same
+experiment measured the alternatives so they do not have to be re-run on
+faith: evaluating the delta at Pope-bias-corrected coefficients recovers only
+part of the gap ($h=12$: .929/.877), a monotone relative-variance floor is
+free at the median but overshoots mid-horizons, a parametric-bootstrap
+variance moves little, and a parametric-bootstrap *critical value* makes the
+long-horizon miss **worse** (.842/.829 — the bootstrap world inherits the
+fitted, under-persistent VAR, which is the mechanism itself). The default
+stays `"delta"` this release; the residual honesty note is that
+`second_order` still sits ~2pp below nominal on the harder VAR(1)-at-$T=250$
+DGP at $h=12$ — closer, not exact. Prefer it whenever the long horizons are
+the cells you will read.
 
 **Assumptions.** Instrument exogeneity — the identifying assumption AR does *not*
 relax, and the one you still have to defend. Relevance is exactly what AR is
@@ -587,7 +623,13 @@ robust moment variance; pass `variance="hac"` for a HAC estimate when the proxy
 is serially correlated (`hac_lags` then sets its lag count, defaulting to the
 Newey-West rule — it applies only on the HAC route, and passing it with
 `"hc0"` raises rather than being silently ignored).
-`reduced_form_uncertainty=True` — leave it on. `lags`,
+`reduced_form_uncertainty=True` — leave it on. `rf_method="delta"` is the
+first-order propagation; `"second_order"` is the measured long-horizon repair
+above, parameterized by `rf_draws` (even, ≥ 32; default 256 — its own
+Monte-Carlo error shrinks like $1/\sqrt{\text{draws}}$) and `rf_seed`
+(bit-reproducible; default 0). The `rf_*` knobs raise if passed where they
+cannot act (`rf_draws`/`rf_seed` under `"delta"`, any `rf_method` with
+propagation off) rather than being silently ignored. `lags`,
 `horizon`, `norm_var`, `unit`, `trend` are `proxy_svar`'s.
 
 **How to read the output.** `cells[h][variable]` is the dict described above:

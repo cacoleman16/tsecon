@@ -181,29 +181,56 @@ quadratic form `c' M⁻¹ c` in the instrumented cross-moments.
 
     | `k` | 1 | 3 | 5 | 8 |
     |---|---|---|---|---|
-    | size | 0.05 | 0.10 | 0.17 | 0.26 |
+    | `joint="chi2"`, `alpha=0.95` (default) | 0.05 | 0.10 | 0.17 | 0.28 |
+    | `joint="chi2"`, `alpha=0.50` | 0.06 | 0.06 | 0.09 | 0.13 |
+    | `joint="bonferroni"` | 0.05 | 0.02 | 0.02 | 0.02 |
 
-    and **growing `n` does not repair it**: at `k = 8` the size is still 0.22
-    at `n = 256000`, because the excess decays like
-    `n^{-(1-alpha)/2} = n^{-0.025}` at the default. `k = 1` is at nominal —
-    this is a many-predictor phenomenon, and it needs ρ at or near 1 *plus*
-    strong endogeneity (the worked example below, `n = 400`, ρ = 0.98,
-    `k = 2`, measures 0.050). Those conditions coincide in the canonical
-    application: a horse race of valuation ratios *is* many persistent,
-    endogenous predictors. The escape hatch is shipped: **`alpha = 0.50` is
-    the size-restoring option for many-predictor joint tests** — it makes the
-    size converge in `n` (0.054 by `n = 16000`; at `n = 250` it still roughly
-    halves the `k = 8` distortion, to ≈ 0.12). Pass it, and report it.
+    (2000 replications per cell; MC se ≤ 0.011.) **Growing `n` does not
+    repair the default**: at `k = 8` the size is still 0.22 at `n = 256000`,
+    because the excess decays like `n^{-(1-alpha)/2} = n^{-0.025}`. `k = 1`
+    is at nominal — this is a many-predictor phenomenon, and it needs ρ at or
+    near 1 *plus* strong endogeneity (the worked example below, `n = 400`,
+    ρ = 0.98, `k = 2`, measures 0.050). Those conditions coincide in the
+    canonical application: a horse race of valuation ratios *is* many
+    persistent, endogenous predictors. Two escape hatches ship.
+    `alpha = 0.50` makes the size converge in `n` (0.054 by `n = 16000`) but
+    still measures ≈ 0.13 at `n = 250`, `k = 8`. **`joint="bonferroni"` is
+    the one that holds the level at every measured cell** (0.011–0.059
+    across `k ∈ {1,3,5,8} × ρ ∈ {0.95, 1} × endogeneity ∈ {0, −0.9} ×
+    n ∈ {250, 1000}`, two DGP designs — 64 cells, never materially above
+    nominal): it runs the *scalar* IVX test — whose measured calibration
+    holds deep into its tail (rejection 0.0011 at the χ²₁ 99.9% point in the
+    hard corner) — on each predictor and rejects when the smallest p-value
+    falls below `level/k`. It is conservative at the unit-root corner
+    (0.016–0.025); that is the direction to err. The corrections that do
+    *not* work are recorded with evidence in
+    `docs/examples/coverage/experiments/ivx_joint_size.py`: the demeaned
+    variance rejects **more** (0.43–0.52 at `k = 8`), a KMS-style
+    FM-corrected normaliser moves nothing (0.280 vs 0.277 at `k = 8`), and a
+    restricted system wild bootstrap under-corrects at `k = 8` (0.082) while
+    breaking the `k = 1` case entirely (0.190) — the bootstrap cannot
+    estimate the local-to-unity parameter it would need.
 
 **When to use (and when not).** Use it to ask "do *any* of these persistent
 variables predict the return, controlling for the others?" without the
 size distortion a naive joint F-test would carry near unit roots — a competing-
-predictors horse race, **run at `alpha = 0.5` once the field is larger than a
-few predictors** (at the default tuning the joint test's own size grows with
-`k`; see the caveat above). It is not a model-selection tool: rejection says at least
-one slope is non-zero, not which one; read the per-predictor `beta_ivx` for
-direction and rough magnitude, but there is no separate per-coefficient p-value
-in the returned surface. Collinear or degenerate predictors make the
+predictors horse race, **run with `joint="bonferroni"` once the field is larger
+than a few predictors** (at the default tuning the chi-square joint test's own
+size grows with `k`; see the caveat above — `alpha = 0.5` is the weaker,
+chi-square-shaped mitigation). Measured power at the hard corner (ρ = 1,
+endogeneity −0.9, `n = 250`): against a *sparse* alternative — one genuine
+predictor among `k`, the horse-race case — Bonferroni matches the
+(infeasible) size-corrected chi-square test (0.85 vs 0.87 at `k = 3`, 0.80 vs
+0.77 at `k = 8`, slope 0.04) and beats size-corrected `alpha = 0.5`
+everywhere; against a *diffuse* alternative (every predictor a little
+predictive) it gives up a fifth to a quarter of the power (0.53 vs 0.61 at
+`k = 8`). The chi-square default remains the sharper test
+against a *diffuse* alternative when `k`
+is small or ρ is safely below 1. It is not a model-selection tool: rejection
+says at least one slope is non-zero, not which one; read the per-predictor
+`beta_ivx` for direction and rough magnitude — and under `joint="bonferroni"`
+the returned `wald_scalar`/`pvalue_scalar` give the per-predictor tests
+directly. Collinear or degenerate predictors make the
 cross-moment matrix singular (raised as an error). For a single predictor use
 `predictive_regression`, which additionally gives you the OLS and Stambaugh
 views on the same call.
@@ -211,20 +238,34 @@ views on the same call.
 **Key arguments and defaults.** Same instrument tuning as above — `cz = -1.0`,
 `alpha = 0.95` — with the identical roles and constraints (`cz < 0`,
 `alpha ∈ (0,1)`); the scalar `Rz` is shared across the predictor columns (the
-KMS matrix instrument specializes to `Rz·I`). The default `alpha` is safe at
-small `k`; for joint tests of many persistent predictors pass `alpha = 0.5`
-(the measured size caveat above).
+KMS matrix instrument specializes to `Rz·I`). `joint = "chi2"` (the default)
+is the KMS chi-square(`k`) Wald; `joint = "bonferroni"` is the
+union-intersection combination of per-predictor scalar tests (the measured
+size caveat above). The default `alpha` is safe at small `k`; for chi-square
+joint tests of many persistent predictors pass `alpha = 0.5`, or switch to
+`joint = "bonferroni"`, which needs no retuning.
 
 **How to read the output.** `beta_ivx` is the length-`k` slope vector (column
 order of `xs`); `wald` is the joint statistic on `nregressors` degrees of
 freedom with `pvalue`; `rz` is the shared instrument persistence; `nobs` is the
-aligned `N = n - 1`. A small `pvalue` rejects joint no-predictability.
+aligned `N = n - 1`. A small `pvalue` rejects joint no-predictability. Under
+`joint="bonferroni"` three keys are added — `wald_scalar` and `pvalue_scalar`
+(each entry exactly `predictive_regression`'s ivx test for that column) and
+`joint = "bonferroni"` — and two are re-interpreted: `wald` is the **largest
+scalar statistic** (chi-square(1) scale, *not* chi-square(`k`)) and `pvalue`
+is already Bonferroni-adjusted, `min(1, k · min_j p_j)`; compare it to your
+level directly.
 
 **Validated against.** The same `fixtures/predreg.json` documented-formula
 golden (its `multi` block pins the joint slope vector, the residual variance,
-and the chi-square(`k`) Wald statistic to ~1e-9), plus a crate property test
-confirming the multivariate path specializes exactly to the scalar `ivx` when
-`k = 1`.
+and the chi-square(`k`) Wald statistic to ~1e-9), plus crate property tests:
+the multivariate path specializes exactly to the scalar `ivx` at `k = 1`; the
+`k = 5` chi-square size defect is pinned as a regression test (it must stay
+measured, not become folklore) alongside the Bonferroni combination holding
+its level on the same draws and its power against a sparse slope; and the
+Bonferroni surface is pinned to be exactly the per-column scalar tests
+combined. The full size/power grid behind the caveat table is the seeded
+experiment `docs/examples/coverage/experiments/ivx_joint_size.py`.
 
 **References.** Kostakis, Magdalinos & Stamatogiannis (2015, *Review of
 Financial Studies* 28:1506-1553); Phillips & Magdalinos (2009).
@@ -250,3 +291,39 @@ print(f"aligned obs : {joint['nobs']}   (Rz = {joint['rz']:.4f})")
 # joint Wald  : 18.00  on 2 df,  p = 0.0001
 # aligned obs : 399   (Rz = 0.9966)
 ```
+
+**The horse race, run at the size that holds.** Six unit-root predictors with
+strong endogeneity is exactly the configuration where the chi-square default
+over-rejects (measured 0.26 at `k = 8`); `joint="bonferroni"` keeps the level
+and hands back the per-predictor verdicts the horse-race question actually
+wants. Here only the first predictor truly forecasts:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(10)
+n, rho, k = 250, 1.0, 6                 # six unit-root predictors; only one is real
+X = np.zeros((n, k))
+E = rng.standard_normal((n, k))
+for t in range(1, n):
+    X[t] = rho * X[t - 1] + E[t]
+u = -0.9 * E[:, 0] + np.sqrt(1 - 0.81) * rng.standard_normal(n)
+r = u.copy()
+r[1:] += 0.05 * X[:-1, 0]               # predictor 1 forecasts; 2..6 are noise
+
+horse = tsecon.ivx_test(r, X, joint="bonferroni")
+print(f"joint p (Bonferroni-adjusted) : {horse['pvalue']:.4f}")
+print(f"max scalar Wald               : {horse['wald']:.2f}   (chi-square(1) scale)")
+print(f"per-predictor p               : {np.round(horse['pvalue_scalar'], 4)}")
+chi2 = tsecon.ivx_test(r, X)            # the default chi-square(6) joint Wald
+print(f"chi2(6) joint p, for contrast : {chi2['pvalue']:.4f}")
+# joint p (Bonferroni-adjusted) : 0.0018
+# max scalar Wald               : 13.08   (chi-square(1) scale)
+# per-predictor p               : [3.000e-04 7.422e-01 1.887e-01 2.083e-01 2.709e-01 6.358e-01]
+# chi2(6) joint p, for contrast : 0.0000
+```
+
+Both modes reject here — the difference is what the rejection is worth: the
+Bonferroni p carries a size the measured grid supports at `k = 6` and points
+at *which* predictor did it, while the chi-square p at this `k`, ρ, and
+endogeneity comes from a test that rejects a true null a quarter of the time.

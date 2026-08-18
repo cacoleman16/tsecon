@@ -65,6 +65,8 @@ mod ols;
 mod stambaugh;
 
 pub use error::PredRegError;
-pub use ivx::{ivx, ivx_multi, IvxConfig, IvxMultiResult, IvxResult};
+pub use ivx::{
+    ivx, ivx_bonferroni, ivx_multi, IvxBonferroniResult, IvxConfig, IvxMultiResult, IvxResult,
+};
 pub use ols::{ols_predictive, OlsPredReg};
 pub use stambaugh::{stambaugh, StambaughCorrection};

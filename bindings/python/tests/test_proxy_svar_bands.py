@@ -391,3 +391,66 @@ def test_hac_lags_without_hac_variance_raises():
     with_lags = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4,
                                      variance="hac", hac_lags=2)
     assert base["ar_bound_stat"] != with_lags["ar_bound_stat"]
+
+
+# --------------------------------------------------------------------------- #
+# proxy_ar_sets — rf_method="second_order" (audit round 6, finding 8)
+# --------------------------------------------------------------------------- #
+def test_second_order_rf_widens_long_horizons_and_keeps_boundedness():
+    """The second-order propagation exists because the delta variance shrinks
+    together with Psi_hat_h at long horizons (the measured one-sided
+    long-horizon under-coverage). On a strong instrument it must widen the
+    long-horizon intervals, leave the boundedness statistic bit-identical
+    (it enters v0 only), leave the points untouched, and still claim the
+    level."""
+    delta = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=12)
+    second = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=12,
+                                  rf_method="second_order")
+    assert second["level"] == delta["level"] == 0.95
+    assert second["ar_bound_stat"] == delta["ar_bound_stat"]
+    assert second["ar_bounded_all"] == delta["ar_bounded_all"]
+    wider = 0
+    for j in range(3):
+        cd, cs = delta["cells"][12][j], second["cells"][12][j]
+        assert cs["point"] == cd["point"]
+        if cd["kind"] == cs["kind"] == "interval":
+            if (cs["upper"] - cs["lower"]) > (cd["upper"] - cd["lower"]):
+                wider += 1
+    assert wider >= 2, "second_order should widen the h=12 intervals here"
+    # h=0 is untouched: Psi_0 = I carries no estimated coefficients.
+    c0d, c0s = delta["cells"][0][1], second["cells"][0][1]
+    assert (c0s["lower"], c0s["upper"]) == (c0d["lower"], c0d["upper"])
+
+
+def test_second_order_rf_is_seeded_and_deterministic():
+    a = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=6,
+                             rf_method="second_order", rf_draws=128, rf_seed=7)
+    b = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=6,
+                             rf_method="second_order", rf_draws=128, rf_seed=7)
+    c = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=6,
+                             rf_method="second_order", rf_draws=128, rf_seed=8)
+    ca, cb, cc = a["cells"][6][1], b["cells"][6][1], c["cells"][6][1]
+    assert (ca["lower"], ca["upper"]) == (cb["lower"], cb["upper"])
+    assert (ca["lower"], ca["upper"]) != (cc["lower"], cc["upper"])
+
+
+def test_rf_knobs_never_no_op():
+    """The rf_* arguments must act or raise -- never be silently ignored
+    (the audit round-5 shape)."""
+    # rf_method with the reduced-form variance disabled entirely.
+    with pytest.raises(ValueError, match="reduced_form_uncertainty"):
+        tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4,
+                             reduced_form_uncertainty=False,
+                             rf_method="second_order")
+    # sampler knobs under the delta method, which ignores them.
+    with pytest.raises(ValueError, match="second_order"):
+        tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4, rf_draws=128)
+    with pytest.raises(ValueError, match="second_order"):
+        tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4, rf_seed=1)
+    # unknown method names both options.
+    with pytest.raises(ValueError, match="second_order"):
+        tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4, rf_method="mc")
+    # the crate's draw contract surfaces as a teaching error.
+    with pytest.raises(ValueError, match="even"):
+        tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4,
+                             rf_method="second_order", rf_draws=31)
