@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**137 functions.**
+**138 functions.**
 
 ## diagnostics
 
@@ -1434,6 +1434,31 @@ def gw_test(loss1: _ArrayLike, loss2: _ArrayLike, lrv_lags: int = ...) -> dict[s
 ```
 
 Giacomini-White unconditional test of equal predictive ability.
+
+### `var_backtest`
+
+```python
+def var_backtest(
+    returns_or_hits: _ArrayLike,
+    var_forecasts: _ArrayLike | None = ...,
+    alpha: float = ...,
+    dq_lags: int = ...,
+    input: str = ...,
+) -> dict[str, Any]:
+```
+
+VaR backtest battery: Kupiec unconditional coverage, Christoffersen
+    independence/conditional coverage, and the Engle-Manganelli DQ test.
+
+    Sign convention: returns and VaR forecasts on the same (return) scale,
+    `var_forecasts[t]` the alpha-quantile of the conditional return
+    distribution (negative for small alpha); a violation is return < VaR.
+    `alpha` is the VaR coverage level (0.05 for a 95% VaR), not a test
+    size. With `var_forecasts` the first argument is a return series;
+    without, a pre-computed 0/1 violation sequence (`input="hits"`
+    combines pre-computed hits WITH VaR forecasts so the DQ regression
+    keeps its VaR regressor). Returns the three statistics with p-values,
+    the violation counts/transition cells, and a teaching `verdict`.
 
 ## spectral analysis
 
