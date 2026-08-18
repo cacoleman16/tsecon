@@ -365,11 +365,18 @@ overflow message, and four doc-surface disagreements. See the CHANGELOG's
   whether the advisory belongs in the output itself is open.
 - **Uniform typed errors for negative integer arguments** (round 6):
   `lags=-1` and friends raise raw `OverflowError` library-wide.
-- **Coverage is unmeasured** for `quantile_lp`, panel LP (Driscoll-Kraay),
-  `favar`, `dfm_nowcast`, `nelson_siegel`, MIDAS, and the post-fix
-  `lp(cumulative=…)` HAC default. Round 6 added the first `bvar_*`
-  calibration measurements; the rest of the list stands. Only two nominal
-  levels are swept anywhere.
+- **The unmeasured-seven list is closed** — measured in
+  `docs/examples/coverage/quantile_panel_lp.py` and `factor_midas.py`
+  (the registry now holds 50 outputs; `check_page.py` guards the page).
+  `weighted_midas`, `dfm_nowcast`, `nelson_siegel` ship no interval
+  (per-run key-set tripwire). Headline numbers: post-fix
+  `lp(cumulative="both")` 0.920 at T=400; FAVAR bands 0.673 at N=20, T=800
+  (the generated-regressor cost, priced against a true-factor oracle);
+  the panel card's SPJ coverage gain re-measured at 8× the replications is
+  +2.5pp, not +8pp (bias removal corroborated exactly). Still outside the
+  registry: `growth_at_risk` (card table), `proxy_svar`/`proxy_ar_sets`
+  (card), `nongaussian_svar`, GARCH forecast intervals, `flp`. Only two
+  nominal levels are swept anywhere.
 
 ---
 

@@ -186,12 +186,18 @@ bias at h=2 is +0.007 / +0.002 / +0.003 at T=40/80/160 against FE's
 −0.060 / −0.025 / −0.010 — FE shrinks like `O(1/T)` and SPJ removes ~85-95%
 of the bias; the 300-rep T=80 SPJ entries are Monte-Carlo noise (the columns
 share draws). Read the coverage honestly: at T=20 the FE t-interval is
-clearly invalid (0.74) and SPJ recovers about half the gap (0.82) — **neither
-reaches the nominal 95% at T=20**, because with a common shock the horizon-h
-residual contains common future shocks, Driscoll-Kraay is the right
-covariance family, and DK is itself a short-T approximation (the same caveat
-this card and the cookbook attach to DK generally). From T=40 both sit in the
-high-0.80s/low-0.90s with the bias gone from SPJ.
+clearly invalid and SPJ improves it only modestly — the 300-rep table above
+shows 0.743 → 0.823, but the interval-coverage audit's 2500-rep re-measurement
+at the same design puts the paired gain at **+2.5pp (se 0.6), 0.713 → 0.761**,
+so treat SPJ's short-T coverage benefit as small; its real value at short T is
+the bias removal (which the re-measurement corroborates almost exactly:
+−0.141 → +0.015). **Neither estimator reaches the nominal 95% at T=20**,
+because with a common shock the horizon-h residual contains common future
+shocks, Driscoll-Kraay is the right covariance family, and DK is itself a
+short-T approximation (the same caveat this card and the cookbook attach to DK
+generally; see the [interval-coverage audit](../../examples/interval-coverage.md)
+for the full (N, T) table). From T=40 both sit in the high-0.80s/low-0.90s
+with the bias gone from SPJ.
 
 ## Failure modes
 

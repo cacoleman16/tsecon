@@ -103,10 +103,14 @@ data release that caused it.
   "weights", "fitted", "residuals", "ssr", "rsquared", "converged",
   "iterations"}`. Check `converged`; read the estimated lag shape off
   `weights`.
-- **`dfm_nowcast`** → `{"nowcast", "edge_factor", "loglik",
+- **`dfm_nowcast`** → `{"nowcast", "edge_factor", "loglik", "fit_loglik",
   "smoothed_factors", "n_factors", "factor_order"}`. `nowcast` is one value per
   series at the ragged edge (in the series' own standardized-then-restored
-  units); `smoothed_factors` is the factor path.
+  units); `smoothed_factors` is the factor path; `loglik` is the filtering
+  pass's log-likelihood on the full ragged panel, while `fit_loglik` is the
+  estimation pass's log-likelihood on the balanced sub-panel (the rows before
+  the first ragged edge — both `method` routes estimate there), so the two
+  differ whenever the panel actually has a ragged edge.
 - **`dfm_news`** → `{"target_series", "target_period", "old_nowcast",
   "new_nowcast", "total_revision", "contributions"}`. `total_revision =
   new_nowcast − old_nowcast`, and `contributions` is a list of dicts

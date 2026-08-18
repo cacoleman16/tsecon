@@ -116,6 +116,28 @@ published numbers at stated tolerances.
   exact semantics (`bias_correction="dj"` alias); combining both raises;
   the result stamps `se_type`/`cumulative`/`jackknife`/`bias_correction`.
 
+### Added — the interval-coverage audit closes the unmeasured-seven list
+
+- The registry grows **40 → 50 outputs (21 → 28 functions)**: `quantile_lp`
+  (near nominal on the canonical identified-iid-shock design — the card's
+  transferred overlap warning does not bind there; the persistent-regressor
+  hazard measured with and without the whitening lag controls, 0.909 vs
+  0.758), `panel_lp` Driscoll-Kraay over (N, T) (T drives it, N does not;
+  the naive cluster covariance on the same draws covers 0.20 — the DK
+  default is doing real work), the SPJ correction re-measured at 8× the
+  card's replications (bias removal corroborated exactly; the short-T
+  coverage gain is +2.5pp, smaller than the card's 300-rep point numbers
+  suggested — card softened), the official post-fix `lp(cumulative="both")`
+  numbers (0.507 → **0.920** at T=400, h=12), FAVAR two-step bands priced
+  against a true-factor oracle (**0.673** at N=20, T=800 — more T makes the
+  generated-regressor cost worse, matching the guide's warning), `umidas`
+  HAC intervals (slopes hold; the intercept 0.829 under AR(1) errors — the
+  disclosed kernel regime), and verified ships-no-interval rows for
+  `weighted_midas`/`dfm_nowcast`/`nelson_siegel` (key-set tripwire, so a
+  future interval cannot appear unmeasured). `run_all.py --markdown` now
+  emits the page's tables from the harvested results — nothing on the page
+  is typed by hand, and `check_page.py` enforces it.
+
 ### Added — measured repairs for the two open inference problems
 
 - **`proxy_ar_sets(..., rf_method="second_order", rf_draws=, rf_seed=)`** —

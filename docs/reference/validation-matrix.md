@@ -57,9 +57,9 @@ asserted bound.
     statsmodels to 1e-15 and still cover 95% and 63% of the time.
 
     **[Interval coverage](../examples/interval-coverage.md)** is the companion
-    audit: 40 interval-valued surfaces re-estimated on seeded draws from
+    audit: 50 interval-valued surfaces re-estimated on seeded draws from
     known-truth processes, with the measured containment rate and its Monte Carlo
-    standard error. It publishes the ones that miss — 8 of the 32 frequentist
+    standard error. It publishes the ones that miss — 12 of the 39 frequentist
     intervals are off nominal even in the design they are entitled to do well on
     — attributes each miss to the approximation, the estimator, a library
     convention, an API gap, or a misreading, and cross-links each caveat to the
