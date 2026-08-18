@@ -465,9 +465,22 @@ recession probability within the year against **0.8%** for a +3pp steepness.
 Guarded offline by `test_replication_yield_curve.py` against a committed FRED
 snapshot.
 
-Both pages state scope explicitly: they reproduce the economic result — the
-sign, significance and magnitude of the published finding — not a line-by-line
-port of the authors' code or their exact inference conventions.
+**3. [Uhlig (2005)](../examples/replication-uhlig-monetary.md)**, *JME* 52(2) —
+the sign-restricted monetary policy SVAR, on the paper's own monthly dataset
+(1965:1–2003:12, committed at `fixtures/uhlig2005.csv`), via
+`tsecon.sign_restricted_svar`: his VAR(12), his restriction set (deflator,
+commodity prices, nonborrowed reserves not positive; funds rate not negative,
+months 0–5). Both published findings reproduce — **no price puzzle** (the
+deflator's 84% quantile is negative at every horizon through month 60) and the
+**ambiguous output response** (the 68% band on real GDP straddles zero at
+months 6–60, staying within the ±0.2% magnitude the paper's text states). The
+first replication of a *set-identified* result: the target is a published
+shape of uncertainty, not a point. Guarded offline by
+`test_replication_uhlig.py`.
+
+All three pages state scope explicitly: they reproduce the economic result —
+the sign, significance and magnitude of the published finding — not a
+line-by-line port of the authors' code or their exact inference conventions.
 
 ### Tier 9 — Benchmarks (parity first)
 
@@ -523,7 +536,7 @@ library with lying documentation.
 
 ## 3 · The Python test files
 
-37 of the 51 files in
+38 of the 52 files in
 [`bindings/python/tests/`](../../bindings/python/tests), with collected test
 counts. The 14 not listed here are a gap in *this table*, not in the suite —
 every one of them runs on every invocation of the command above:
@@ -536,6 +549,7 @@ every one of them runs on every invocation of the command above:
 | `test_cv_splits.py` | 12 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored — including the walk-forward purge gap (exact train-tail truncation, unmoved test blocks) and the embargo refusal on `expanding`/`rolling`. |
 | `test_replication_ramey_zubairy.py` | 3 | The RZ government-spending replication, offline against the committed panel: multiplier below one across horizons (with the first stage asserted strong inside it), and a guard that it is not the outcome-only cumulative trap. |
 | `test_replication_yield_curve.py` | 2 | The Estrella-Mishkin yield-curve recession probit, offline against the committed FRED snapshot: the spread coefficient stays significantly negative. |
+| `test_replication_uhlig.py` | 8 | The Uhlig (2005) sign-restricted monetary SVAR, offline against the committed panel: no price puzzle (deflator 84% quantile negative through month 60), the ambiguous GDP response (68% band straddles zero at months 6–60, within ±0.35%), the sampler's sign enforcement, seed stability, and bit-reproducibility. 300 draws with a fixed seed, vs the docs page's 2000. |
 | `test_depth.py` | 4 | Realized volatility / HAR-RV, Diebold-Yilmaz connectedness, PCA factor model vs `{realized,connect,favar}.json`. |
 | `test_dynamic_ns.py` | 4 | Dynamic Nelson-Siegel (Diebold-Li 2006) two-step fit; row-100 cross-sectional golden anchors the per-date fit exactly. |
 | `test_favar.py` | 4 | Two-step FAVAR (Bernanke-Boivin-Eliasz 2005): step-1 factors must match the NumPy PCA golden up to a joint sign flip; assembly and IRFs checked structurally. |
