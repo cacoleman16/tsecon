@@ -37,8 +37,20 @@ pub enum SmoothLambda {
     /// divided by the total number of test rows, and the chosen `lambda` is
     /// the grid minimizer (first index on ties).
     CrossValidate {
-        /// Candidate `lambda` grid. `None` uses the default log-spaced grid
-        /// `10^(k/2)` for `k = -4..=12` (17 values, `1e-2` to `1e6`).
+        /// Candidate `lambda` grid. `None` uses the default **scale-relative**
+        /// grid: the log-spaced ladder `10^(k/2)` for `k = -8..=8` (17
+        /// values, spanning eight decades) multiplied by the mean diagonal of
+        /// the penalized (spline) block of the stacked `X'X`. `lambda`
+        /// competes with `X'X`, which carries the squared units of the
+        /// data, so an absolute default grid would tie the amount of
+        /// smoothing to the units of `y` and the shock; anchoring the ladder
+        /// to the spline block makes the *selection* exactly invariant to
+        /// rescaling `y` and/or the shock by any constant (the chosen
+        /// `lambda` tracks the units, the smoothed unit response does not
+        /// move). An **explicit** grid is used verbatim — it is absolute, in
+        /// the units of your data, and stays your responsibility under
+        /// rescaling. The grid actually used is always returned in
+        /// [`SmoothLpResult::cv_grid`].
         grid: Option<Vec<f64>>,
         /// Number of contiguous folds (default 5; must be `>= 2`).
         n_folds: usize,
@@ -259,7 +271,11 @@ pub struct SmoothLpResult {
 /// score over a grid — contiguous base-time folds with a buffer of
 /// `horizons + n_lag_controls` periods excluded around each held-out block,
 /// so the overlapping-residual dependence cannot leak into training. The
-/// rule is spelled out at [`SmoothLambda::CrossValidate`].
+/// rule is spelled out at [`SmoothLambda::CrossValidate`]. The **default**
+/// grid is scale-relative — the eight-decade ladder `10^(k/2)`,
+/// `k = -8..=8`, anchored to the mean diagonal of the spline block of the
+/// stacked `X'X` — so the selected smoothing is invariant to rescaling `y`
+/// and/or the shock; an explicit `grid` is absolute and used verbatim.
 ///
 /// # Errors
 ///
@@ -336,7 +352,7 @@ pub fn smooth_lp(y: &[f64], shock: &[f64], spec: &SmoothLpSpec) -> Result<Smooth
                     }
                     g.clone()
                 }
-                None => default_grid(),
+                None => default_grid(stack.spline_block_mean_diag()),
             };
             let scores = cross_validate(&stack, &pen, &grid, *n_folds)?;
             let mut best = 0usize;
@@ -519,6 +535,33 @@ impl Stack<'_> {
         }
     }
 
+    /// Mean diagonal of the penalized (spline) block of the full-sample
+    /// stacked `X'X`: `trace(S'S) / k`, where `S` holds the `k` spline
+    /// columns `shock_t * B_k(h)`.
+    ///
+    /// This is the scale anchor of the default cross-validation grid (see
+    /// [`default_grid`]). It carries the squared units of the shock — under
+    /// `shock -> c * shock` it scales by exactly `c^2`, and it ignores the
+    /// units of `y` — which is precisely the transformation law of the CV
+    /// optimum for `lambda`. Falls back to `1.0` on a degenerate (all-zero
+    /// or non-finite) shock, where the stacked fit fails downstream anyway.
+    fn spline_block_mean_diag(&self) -> f64 {
+        let g = self.geo;
+        let n = self.y.len();
+        let mut trace = 0.0_f64;
+        for (h, row) in self.basis.iter().enumerate() {
+            let b2: f64 = row.iter().map(|b| b * b).sum();
+            let s2: f64 = self.shock[g.p..n - h].iter().map(|s| s * s).sum();
+            trace += b2 * s2;
+        }
+        let scale = trace / g.k as f64;
+        if scale.is_finite() && scale > 0.0 {
+            scale
+        } else {
+            1.0
+        }
+    }
+
     /// Accumulate `X'X` and `X'y` over rows whose base time passes `keep`.
     /// Returns `(X'X, X'y)`.
     fn normal_equations<F: Fn(usize) -> bool>(&self, keep: F) -> (Mat<f64>, Mat<f64>) {
@@ -686,9 +729,29 @@ fn add_penalty(a0: &Mat<f64>, pen: &Mat<f64>, lambda: f64) -> Mat<f64> {
     Mat::from_fn(q, q, |i, j| a0[(i, j)] + lambda * pen[(i, j)])
 }
 
-/// The default cross-validation grid: `10^(k/2)` for `k = -4..=12`.
-fn default_grid() -> Vec<f64> {
-    (-4..=12).map(|k| 10f64.powf(k as f64 / 2.0)).collect()
+/// The default cross-validation grid: the log-spaced ladder `10^(k/2)` for
+/// `k = -8..=8` multiplied by `spline_scale`, the mean diagonal of the
+/// penalized (spline) block of the stacked `X'X`.
+///
+/// `lambda` multiplies the penalty `P` inside `X'X + lambda P`, so its
+/// natural units are those of `X'X` — which carries the squared units of the
+/// data. A fixed absolute ladder (the pre-0.3 default, `1e-2..1e6`) made the
+/// *amount of smoothing selected* depend on the units of `y` and the shock:
+/// rescaling the shock by `c` moves the CV optimum to `c^2 lambda`, and once
+/// that walks off a fixed grid the selection pins at an endpoint (or lands on
+/// a wrong interior value) and the unit-normalized IRF changes character.
+/// Anchoring the ladder to the spline block scales the whole grid by exactly
+/// `c^2` under `shock -> c * shock` (and leaves it fixed under `y -> c * y`,
+/// where the CV optimum does not move either), so the selected smoothing —
+/// and the unit response — is invariant to the units of both series.
+///
+/// For a unit-variance shock the anchor is roughly `0.4 * T`, so on typical
+/// inputs this grid spans about the same absolute range the old fixed ladder
+/// did; it is the badly-scaled inputs that change behaviour.
+fn default_grid(spline_scale: f64) -> Vec<f64> {
+    (-8..=8)
+        .map(|k| 10f64.powf(f64::from(k) / 2.0) * spline_scale)
+        .collect()
 }
 
 fn check_lambda(lambda: f64) -> Result<(), LpError> {

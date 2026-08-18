@@ -58,6 +58,46 @@ def test_growth_at_risk_orders_quantiles_and_reports_crossing():
     assert len(np.asarray(g["current"])) == 5
 
 
+def test_growth_at_risk_returns_bse_powell():
+    # Audit fix (rounds 3-4, finding 3): the model card's "How to read the
+    # output" walks bse_powell, but the binding computed it and dropped it.
+    # At horizon > 1 it is not recoverable from bse (hac_lags > 0), so the
+    # key must exist and differ; at horizon = 1 the correction is an exact
+    # no-op and the two must be identical.
+    rng = np.random.default_rng(42)
+    n = 250
+    cond = rng.standard_normal(n)
+    y = 0.3 * cond + (1.0 + 0.6 * np.abs(cond)) * rng.standard_normal(n)
+
+    g4 = tsecon.growth_at_risk(y, np.column_stack([cond]), horizon=4)
+    assert "bse_powell" in g4
+    bse = np.asarray(g4["bse"])
+    powell = np.asarray(g4["bse_powell"])
+    assert bse.shape == powell.shape
+    assert int(g4["hac_lags"]) == 3
+    # The overlap correction must have acted on every coefficient.
+    assert np.all(bse != powell)
+
+    g1 = tsecon.growth_at_risk(y, np.column_stack([cond]), horizon=1)
+    assert int(g1["hac_lags"]) == 0
+    np.testing.assert_array_equal(np.asarray(g1["bse"]), np.asarray(g1["bse_powell"]))
+
+
+def test_growth_at_risk_bse_powell_matches_the_statsmodels_fixture():
+    # The fixture's `bse` is the statsmodels QuantReg Powell sandwich — the
+    # quantile card says the golden pins `params`, `bse_powell`, and the
+    # fitted paths, so pin it at the Python surface too.
+    for case in QF["gar"]:
+        y = np.asarray(case["y"], float)
+        conditions = np.column_stack([np.asarray(c, float) for c in case["conditions"]])
+        g = tsecon.growth_at_risk(
+            y, conditions, horizon=case["horizon"], taus=np.asarray(case["taus"])
+        )
+        np.testing.assert_allclose(
+            np.asarray(g["bse_powell"]), np.asarray(case["bse"]), rtol=1e-6, atol=1e-8
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Bai-Perron — pinned to the brute-force fixture + fresh-DGP recovery
 # --------------------------------------------------------------------------- #

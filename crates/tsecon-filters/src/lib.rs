@@ -18,7 +18,11 @@
 //! * [`hamilton_filter`] — Hamilton (2018) regression filter (the
 //!   recommended HP replacement), plus the
 //!   [`hamilton_filter_random_walk`] special case
-//!   (`cycle_t = y_t - y_{t-h}`).
+//!   (`cycle_t = y_t - y_{t-h}`);
+//! * [`stl`] — STL seasonal-trend decomposition using LOESS (Cleveland et
+//!   al. 1990; the netlib Fortran semantics as preserved by statsmodels),
+//!   with the [`seasonal_strength`] Wang-Smith-Hyndman strength measures
+//!   computed from the fit.
 //!
 //! Every filter returns a [`Decomposition`] carrying explicit
 //! [`Alignment`] metadata: filters that lose observations must say so —
@@ -47,6 +51,7 @@ mod decomposition;
 mod error;
 mod hamilton;
 mod hp;
+mod stl;
 
 pub use bandpass::{bk_filter, cf_filter};
 pub use decomposition::{Alignment, Decomposition};
@@ -55,3 +60,7 @@ pub use hamilton::{
     hamilton_defaults, hamilton_filter, hamilton_filter_random_walk, HamiltonResult,
 };
 pub use hp::{hp_filter, hp_filter_one_sided, ravn_uhlig_lambda, Frequency};
+pub use stl::{
+    seasonal_strength, stl, strength_from_components, StlConfig, StlParams, StlResult,
+    StrengthResult,
+};

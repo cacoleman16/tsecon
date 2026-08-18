@@ -101,8 +101,13 @@ pub struct HarConfig {
     /// fixture uses `5`, matching the weekly aggregation horizon.
     pub hac_maxlags: usize,
     /// Apply the statsmodels `n/(n-k)` small-sample correction to the HAC
-    /// covariance. The fixture was generated with this **off**
-    /// (`use_correction=False`).
+    /// covariance. Defaults **on**, like every other HAC surface in the
+    /// library (it defaulted off through 0.2.0 — `bse`/`tvalues` moved by
+    /// `sqrt(n/(n-k))`, +0.35% at the fixture's n=577, k=4). statsmodels
+    /// `cov_type="HAC"` defaults the correction off, so matching a default
+    /// statsmodels call requires setting this to `false`; the fixture's
+    /// `har.bse` block was generated with it off, `har.bse_corrected` with
+    /// it on.
     pub use_correction: bool,
 }
 
@@ -112,7 +117,7 @@ impl Default for HarConfig {
             start: 22,
             variant: HarVariant::Level,
             hac_maxlags: 5,
-            use_correction: false,
+            use_correction: true,
         }
     }
 }

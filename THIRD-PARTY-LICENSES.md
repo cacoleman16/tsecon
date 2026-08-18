@@ -108,3 +108,23 @@ Generated from `cargo metadata` — 97 third-party packages.
 | zerocopy | 0.8.54 | BSD-2-Clause OR Apache-2.0 OR MIT |
 | zerocopy-derive | 0.8.54 | BSD-2-Clause OR Apache-2.0 OR MIT |
 | zmij | 1.0.23 | MIT |
+
+## Transcribed numerical constants
+
+Beyond linked crates, a few source files transcribe published/response-surface
+*numerical tables* from permissively licensed Python reference libraries, with
+attribution at the transcription site:
+
+- **arch** (Kevin Sheppard, NCSA license): the ADF-z response surfaces
+  (`crates/tsecon-diag/src/mackinnon_ext.rs`, from
+  `arch/unitroot/critical_values/dickey_fuller.py`) and the DF-GLS response
+  surfaces (`crates/tsecon-diag/src/dfgls.rs`, from
+  `arch/unitroot/critical_values/dfgls.py`).
+- **statsmodels** (BSD-3-Clause): the MacKinnon (1994, 2010) tau and
+  cointegration surfaces (`crates/tsecon-diag/src/mackinnon.rs`,
+  `mackinnon_ext.rs`, from `statsmodels/tsa/adfvalues.py`).
+
+These are transcriptions of numeric coefficients (facts of the underlying
+MacKinnon-methodology simulations), used under the respective permissive
+licenses; the golden fixtures re-export the same constants so any drift in a
+future upstream release is visible.

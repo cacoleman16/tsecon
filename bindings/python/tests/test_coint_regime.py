@@ -48,3 +48,39 @@ def test_markov_switching_recovers_regimes():
     assert np.allclose(T.sum(axis=0), 1.0, atol=1e-8)
     assert (np.asarray(r["expected_durations"]) > 1.0).all()
     assert set(np.unique(r["regimes"])).issubset({0, 1})
+
+
+def test_markov_switching_returns_full_probability_matrices():
+    """Audit fix (rounds 3-4, finding 3): the binding reduced the Kim
+    smoother's n x k matrix to its last column, which is unrecoverable at
+    k >= 3, and never surfaced the filtered probabilities at all.
+    """
+    rng = np.random.default_rng(7)
+    means = [-2.0, 0.5, 3.0]
+    y = np.concatenate(
+        [m + 0.4 * rng.standard_normal(50) for _ in range(4) for m in means]
+    )
+    order = 1
+    k = 3
+    r = tsecon.markov_switching_ar(y, k_regimes=k, order=order, switching_variance=True)
+
+    n = len(y) - order
+    smoothed = np.asarray(r["smoothed_prob"])
+    filtered = np.asarray(r["filtered_prob"])
+    assert smoothed.shape == (n, k)
+    assert filtered.shape == (n, k)
+    # Rows are probability distributions over regimes.
+    np.testing.assert_allclose(smoothed.sum(axis=1), 1.0, atol=1e-8)
+    np.testing.assert_allclose(filtered.sum(axis=1), 1.0, atol=1e-8)
+    # Back-compat: the 0.2.0 scalar path is bit-identical to the last column.
+    np.testing.assert_array_equal(
+        smoothed[:, -1], np.asarray(r["smoothed_prob_last_regime"])
+    )
+    # Smoothing conditions on the full sample, filtering on the past only;
+    # on a switching series they must genuinely differ in the interior.
+    assert not np.array_equal(filtered, smoothed)
+    # The MAP regime path is the argmax of the smoothed rows.
+    np.testing.assert_array_equal(
+        np.asarray(r["regimes"]), smoothed.argmax(axis=1)
+    )
+    assert set(np.unique(r["regimes"])).issubset(set(range(k)))

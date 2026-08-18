@@ -37,7 +37,10 @@ here is a fast Rust core and a validation scheme built for sequential data.
   knot, returning the AIC- and BIC-optimal indices.
 - **`cv_splits(n, ...)`** — index sets for time-series cross-validation:
   expanding or rolling origins, or de Prado's purged k-fold with an embargo for
-  overlapping-label problems. It returns indices only; you do the fitting.
+  overlapping-label problems. `purge` (a gap dropped from the end of every
+  training window) acts on all three schemes; `embargo` (an exclusion *after*
+  the test block) only exists under `purged_kfold` and raises elsewhere. It
+  returns indices only; you do the fitting.
 
 ## Assumptions
 
@@ -55,9 +58,13 @@ here is a fast Rust core and a validation scheme built for sequential data.
   is standard but not exact under heavy correlation.
 - **`cv_splits` guarantees no forward leakage**: every test index is strictly
   later than its training block (expanding/rolling), and purged k-fold removes
-  `purge` observations around each test fold plus an `embargo` after it. It
-  does *not* protect against leakage you introduce elsewhere (e.g. scaling on
-  the full sample before splitting).
+  `purge` observations around each test fold plus an `embargo` after it.
+  Ordering alone does **not** remove *overlapping-label* leakage: with an
+  `h`-step-ahead target the last `h - 1` training rows share target
+  innovations with the test block even in walk-forward schemes, so set
+  `purge >= horizon - 1` on `expanding`/`rolling` too. And it does *not*
+  protect against leakage you introduce elsewhere (e.g. scaling on the full
+  sample before splitting).
 
 ## When to use
 
@@ -89,10 +96,11 @@ here is a fast Rust core and a validation scheme built for sequential data.
 | | `n_lambdas` | `100` | grid resolution |
 | | `eps` | `1e-3` | λ_min / λ_max ratio |
 | `cv_splits` | `scheme` | `"expanding"` | `expanding`, `rolling`, `purged_kfold` |
-| | `train` | `0` | initial/fixed train length (0 = auto for expanding) |
+| | `train` | `0` | initial/fixed train length (required > 0 for expanding/rolling) |
 | | `horizon` | `1` | test-block length |
 | | `step` | `1` | origin increment |
-| | `k` / `purge` / `embargo` | `5` / `0` / `0` | purged-k-fold controls |
+| | `purge` | `0` | gap dropped from the end of every training window (all schemes); must be < `train`; use `>= horizon - 1` for h-step labels |
+| | `k` / `embargo` | `5` / `0` | purged-k-fold fold count / post-test exclusion; nonzero `embargo` raises on `expanding`/`rolling` |
 
 ## How to read the output
 
@@ -122,8 +130,9 @@ here is a fast Rust core and a validation scheme built for sequential data.
   produce optimistic CV error. Use `cv_splits`.
 - **Overlapping labels without purging.** If your target at t depends on data
   through t+h (multi-period returns), adjacent train/test points share
-  information; use `scheme="purged_kfold"` with `purge≥h` and a positive
-  `embargo`.
+  information *in every scheme*, walk-forward included; set
+  `purge >= horizon - 1` (on `purged_kfold` additionally use a positive
+  `embargo`).
 
 ## Validated against
 

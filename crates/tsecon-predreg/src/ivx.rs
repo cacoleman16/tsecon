@@ -339,3 +339,105 @@ pub fn ivx_multi(
         nobs: big_n,
     })
 }
+
+/// Result of the Bonferroni (union-intersection) joint IVX predictability
+/// test: one scalar IVX-Wald test per predictor, combined through the maximum.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IvxBonferroniResult {
+    /// The per-predictor scalar IVX-Wald statistics — column `j` is exactly
+    /// [`ivx`] run on `(r, x_cols[j])`, so each inherits the scalar test's
+    /// measured uniform-over-persistence size.
+    pub wald_scalar: Vec<f64>,
+    /// The per-predictor chi-square(1) p-values of `wald_scalar`.
+    pub pvalue_scalar: Vec<f64>,
+    /// `max_j wald_scalar[j]` — the union-intersection joint statistic.
+    pub wald_max: f64,
+    /// The Bonferroni-adjusted joint p-value
+    /// `min(1, q * min_j pvalue_scalar[j])` for `H0: beta = 0` (all slopes
+    /// zero). Valid under arbitrary dependence between the predictors;
+    /// conservative when they are strongly dependent.
+    pub pvalue: f64,
+    /// The shared instrument persistence `Rz = 1 + cz / n^alpha`.
+    pub rz: f64,
+    /// Number of predictors `q`.
+    pub nregressors: usize,
+    /// Number of aligned observations `N = n - 1`.
+    pub nobs: usize,
+}
+
+/// Joint IVX predictability test via the union-intersection (Bonferroni)
+/// principle: run the scalar test of [`ivx`] on every predictor column and
+/// reject `H0: beta = 0` (no predictor forecasts) when the smallest scalar
+/// p-value falls below `alpha / q`.
+///
+/// # Why this exists next to [`ivx_multi`]
+///
+/// The chi-square(`q`) Wald of [`ivx_multi`] is asymptotically valid
+/// uniformly over the predictors' *persistence*, but its finite-sample size
+/// grows with the *number* of predictors at the KMS default tuning: measured
+/// at `rho = 1`, endogeneity `-0.9`, `n = 250`, the nominal-5% joint test
+/// rejects a true null ~5% / 10% / 17% / 26% at `q = 1/3/5/8`, and the excess
+/// decays like `n^{-(1-alpha)/2}` — too slowly for any realistic sample to
+/// repair. The scalar test has no such distortion, and its measured
+/// calibration holds deep into the tail (rejection ~0.001 at the chi-square
+/// 99.9% point in the same hard corner), which is exactly what a
+/// Bonferroni-at-`alpha/q` combination leans on. Measured size of this
+/// combination on the same grid: 0.011-0.050 across
+/// `q in {1,3,5,8} x rho in {0.95, 1} x endogeneity in {0, -0.9}` — never
+/// above nominal, conservative at the unit-root corner.
+///
+/// The price is power against *diffuse* alternatives (every predictor
+/// carrying a small slope), where a genuine joint statistic pools signal and
+/// the maximum does not. Against *sparse* alternatives — one predictor truly
+/// forecasting, the horse-race question — measured power is on par with a
+/// (size-infeasible) critical-value-corrected chi-square joint test and well
+/// above `ivx_multi` at the size-restoring `alpha = 0.5` tuning.
+///
+/// Each scalar test regresses on its own predictor alone (matching what
+/// `ivx` reports for that column), so under the joint null every statistic
+/// is exactly the certified scalar object; no new asymptotics are invoked.
+///
+/// # Errors
+///
+/// [`PredRegError::EmptyInput`] with no predictor columns; otherwise
+/// whatever [`ivx`] raises for a column ([`PredRegError::DimensionMismatch`],
+/// [`PredRegError::NonFinite`], [`PredRegError::Singular`], ...).
+pub fn ivx_bonferroni(
+    r: &[f64],
+    x_cols: &[Vec<f64>],
+    config: IvxConfig,
+) -> Result<IvxBonferroniResult, PredRegError> {
+    config.validate()?;
+    let q = x_cols.len();
+    if q == 0 {
+        return Err(PredRegError::EmptyInput {
+            what: "predictor columns x_cols",
+        });
+    }
+    let mut wald_scalar = Vec::with_capacity(q);
+    let mut pvalue_scalar = Vec::with_capacity(q);
+    let mut rz = f64::NAN;
+    let mut nobs = 0usize;
+    for col in x_cols {
+        let fit = ivx(r, col, config)?;
+        wald_scalar.push(fit.wald);
+        pvalue_scalar.push(fit.pvalue);
+        rz = fit.rz;
+        nobs = fit.nobs;
+    }
+    let wald_max = wald_scalar
+        .iter()
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let p_min = pvalue_scalar.iter().cloned().fold(f64::INFINITY, f64::min);
+    let pvalue = (q as f64 * p_min).min(1.0);
+    Ok(IvxBonferroniResult {
+        wald_scalar,
+        pvalue_scalar,
+        wald_max,
+        pvalue,
+        rz,
+        nregressors: q,
+        nobs,
+    })
+}

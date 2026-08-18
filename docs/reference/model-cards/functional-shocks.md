@@ -116,10 +116,31 @@ with the overlap, the standard LP-HAC prescription).
 
 **How to read the output.** `betas` is `(H+1) × K` (row `h`, column `k` = the
 `h`-step response of `y` to a one-unit innovation in score `k`); `se` its
-per-element standard errors; `covs[h]` the joint `K × K` covariance at horizon
-`h`; `nobs` the per-horizon sample sizes. Score units are curve units times the
-eigenfunction normalization — economically meaningful statements come from
-`flp_scenario`'s weighted combinations, not from a raw score coefficient.
+per-element standard errors — **conditional on the scores being data; see the
+warning below before quoting one**; `covs[h]` the joint `K × K` covariance at
+horizon `h`; `nobs` the per-horizon sample sizes. Score units are curve units
+times the eigenfunction normalization — economically meaningful statements come
+from `flp_scenario`'s weighted combinations, not from a raw score coefficient.
+
+!!! warning "The scores from `functional_pca` are generated regressors — the per-element `se` is too small"
+
+    `se` (and the diagonal of `covs`) treats the scores as observed data. When
+    they come from `functional_pca` they are *estimated*, with
+    `O_p(T^{-1/2})` eigenfunction error the HAC sandwich cannot see, and the
+    per-element `se` is **inconsistent** — measured `se`/(true sampling sd)
+    sits near **0.66** and stays there over a 16× range of `T` (coverage ≈
+    0.80 against a nominal 0.95), degrading further as the signal-to-noise of
+    the curve panel falls (down to ≈ 0.25). The worked example below measures
+    it on this card's own DGP. Two cases are exempt: **externally supplied
+    scores** (scores you observed rather than estimated) make `se` correct,
+    and **`flp_scenario`'s `w'beta` contrasts are algebraically immune** —
+    under any rotation of the estimated basis the weights rotate to match, so
+    the scenario response and its `sqrt(w' Cov w)` standard error are
+    invariant. That is the documented reporting route. This is the same
+    two-step hazard the library discloses for FAVAR
+    ([guide 7](../../guide/07-multivariate.md)) and dynamic Nelson-Siegel
+    ([guide 15](../../guide/15-term-structure.md)); it applies here with the
+    eigenfunctions in the role of the factors/loadings.
 
 **Failure modes.** Endogenous scores (the identification point above).
 Near-collinear scores — by FPCA construction in-sample scores are orthogonal,
@@ -276,7 +297,22 @@ print("phi_1 (level-like):", np.round(phi[0], 3))
 print("phi_2 (slope-like):", np.round(phi[1], 3))
 scores = np.asarray(p["scores"])                       # T x K
 print("corr(score_1, true level):", round(float(np.corrcoef(scores[:, 0], level)[0, 1]), 3))
+```
 
+!!! warning "Before reading the `se` printed next"
+
+    These scores are `functional_pca` estimates, so the per-element `se` that
+    step 2 prints conditions on estimated eigenfunctions (the warning above).
+    Measured on 300 seeded replications of **this exact DGP** at `n = 400`:
+    the reported `se` is ≈ 0.70–0.77 of the true sampling sd for the score-1
+    betas and ≈ **0.20 — one-fifth of the truth** — for the score-2 betas at
+    short horizons. The scenario `se` in step 4, computed through
+    `flp_scenario`'s `w'beta` contrast, is immune to that collapse (measured
+    se/sd ≈ 0.83–0.95 on the same replications — the ordinary finite-sample
+    behaviour of an LP-HAC interval, nothing worse) and is the number to
+    quote.
+
+```python
 # ---- 2. flp: joint per-horizon response of y to the scores
 r = tsecon.flp(y, scores, horizons=8, n_lag_controls=2)
 betas = np.asarray(r["betas"]); se = np.asarray(r["se"])   # (H+1) x K

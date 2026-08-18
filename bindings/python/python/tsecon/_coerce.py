@@ -23,7 +23,13 @@ the wrapper knows which function it wraps. So coercion is *parameter-aware*:
   are all converted to C-contiguous ``float64``;
 * restriction specs (lists of tuples/dicts), ragged panels (Python lists of
   per-unit arrays), callables, scalars, strings, and ``None`` are non-ndarray,
-  non-pandas objects and still pass straight through.
+  non-pandas objects and still pass straight through;
+* the one callback parameter (``gmm_nonlinear``'s ``moments_fn``, listed in
+  ``_CALLBACK_PARAMS``) is wrapped so its RETURN VALUE is validated and coerced
+  on the Python side: a return that is not a 2-D numeric matrix raises a
+  ``TypeError`` naming the moment function and the ``(n_obs, n_moments)``
+  contract, instead of a boundary error that ``_rank_error`` would misattribute
+  to the parameter vector.
 
 Mapping a positional argument to its parameter name relies on
 ``inspect.signature`` of the compiled builtin (PyO3 emits a
@@ -57,6 +63,8 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # (P, D, Q, s) integer orders, not data: coercing to float64 would make
     # the compiled parser reject a plain [0, 1, 1, 12].
     "arima_fit": frozenset({"seasonal"}),
+    # Candidate threshold delays d in y_{t-d}: integer lags, not data.
+    "setar": frozenset({"delays"}),
 }
 
 _POSITIONAL = (
@@ -196,6 +204,80 @@ def _exempt_positions(fn, exempt: frozenset[str]) -> frozenset[int] | None:
 # 2-D panel is wanted, or a column matrix where a series is wanted).
 _RANK_HINT = "is not an instance of"
 
+# Callback-taking compiled functions: {function -> (positional index, name)}.
+# The coercion layer validates the CALLBACK'S RETURN VALUE itself, because a
+# badly-shaped return otherwise surfaces at the Rust boundary as the same
+# extraction ``TypeError`` a badly-shaped *argument* raises — ``_rank_error``
+# enumerates only args/kwargs, so it would blame the parameter vector for a
+# fault in the moment function and advise reshaping the wrong object (following
+# that advice yields a second, more opaque error; the real fix belongs on the
+# moment function's return).
+_CALLBACK_PARAMS: dict[str, tuple[int, str]] = {
+    "gmm_nonlinear": (0, "moments_fn"),
+}
+
+
+def _callback_return_error(fn_name: str, cb_name: str, got: str) -> TypeError:
+    return TypeError(
+        f"{fn_name}: {cb_name} must return a 2-D matrix of per-observation "
+        f"moment contributions, shaped (n_obs, n_moments) — one row per "
+        f"observation, one column per moment condition — as a NumPy array or "
+        f"list of lists (got {got}). With a single moment condition, reshape "
+        f"the 1-D vector before returning it: `return g.reshape(-1, 1)`. The "
+        f"parameter and weight arguments you passed to {fn_name} are used as "
+        f"given; the problem is the moment function's return value."
+    )
+
+
+def _checked_callback(fn_name: str, cb_name: str, cb):
+    """Wrap a user callback so a badly-shaped return raises a clear error.
+
+    A valid return is passed on as a C-contiguous float64 2-D array (so an
+    integer or float32 matrix works, consistent with the coercion this module
+    applies to ordinary data arguments); anything that is not coercible to a
+    2-D numeric matrix raises a ``TypeError`` that names the callback, not the
+    innocent scalar arguments of the outer call.
+    """
+
+    def checked(*cb_args, **cb_kwargs):
+        ret = cb(*cb_args, **cb_kwargs)
+        try:
+            arr = np.asarray(ret)
+        except Exception as exc:
+            # Ragged rows: modern NumPy refuses the inhomogeneous shape.
+            raise _callback_return_error(
+                fn_name,
+                cb_name,
+                f"{type(ret).__name__} that does not convert to an array — "
+                f"rows of unequal length?",
+            ) from exc
+        if arr.ndim != 2 or arr.dtype.kind not in "iufb":
+            if isinstance(ret, np.ndarray):
+                got = f"a {arr.ndim}-D array of shape {arr.shape}"
+            else:
+                got = f"{type(ret).__name__} coercing to {arr.ndim}-D shape {arr.shape}"
+            if arr.ndim == 2:  # numeric-dtype failure, not a rank failure
+                got = f"dtype {arr.dtype}"
+            raise _callback_return_error(fn_name, cb_name, got)
+        return np.ascontiguousarray(arr, dtype=np.float64)
+
+    return checked
+
+
+def _guard_callbacks(fn, args, kwargs):
+    """Substitute return-checked wrappers for a function's callback arguments."""
+    spec = _CALLBACK_PARAMS.get(fn.__name__)
+    if spec is None:
+        return args, kwargs
+    pos, name = spec
+    if len(args) > pos and callable(args[pos]):
+        args = list(args)
+        args[pos] = _checked_callback(fn.__name__, name, args[pos])
+    elif name in kwargs and callable(kwargs[name]):
+        kwargs = dict(kwargs)
+        kwargs[name] = _checked_callback(fn.__name__, name, kwargs[name])
+    return args, kwargs
+
 
 def _rank_error(fn_name: str, args, kwargs, original: TypeError) -> TypeError:
     """Rebuild an array-argument TypeError into one that says what to do."""
@@ -223,6 +305,7 @@ def _rank_error(fn_name: str, args, kwargs, original: TypeError) -> TypeError:
 
 def _call(fn, args, kwargs):
     """Invoke the compiled function, upgrading rank errors to teaching errors."""
+    args, kwargs = _guard_callbacks(fn, args, kwargs)
     try:
         return fn(*args, **kwargs)
     except TypeError as exc:  # noqa: PERF203 - only on the error path

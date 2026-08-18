@@ -4,7 +4,9 @@ Serially correlated errors do not bias OLS coefficients — they wreck the
 standard errors. In `tsecon` the whole robust ladder is one keyword on
 `tsecon.ols`: `se_type="nonrobust"`, `"hc0"`, `"hc1"`, `"hc2"`, `"hc3"`, or
 `"hac"`. This recipe is about the last one. The HAC rung is the Bartlett-kernel
-Newey-West estimator and matches statsmodels' `cov_type="HAC"` to 1e-10; the
+Newey-West estimator and matches statsmodels' `cov_type="HAC"` to 1e-10 when
+`use_correction` is matched — the two libraries default that flag opposite
+ways (see [Gotchas](#gotchas)); the
 `hc*` rungs fix heteroskedasticity only, and the
 [section below](#if-the-problem-is-heteroskedasticity-not-serial-correlation)
 shows why they are no help here and where they are indispensable instead.
@@ -128,8 +130,15 @@ influential points → `hc3`; both → `hac`, and treat it as a floor.
 
 - **`x` is used exactly as given.** `tsecon.ols` adds no constant; build the
   design matrix yourself with `np.column_stack([np.ones(n), ...])`.
-- `use_correction` toggles the small-sample $n/(n-k)$ factor. Packages differ on
-  this default; it is another reason two HAC numbers can disagree.
+- `use_correction` toggles the small-sample $n/(n-k)$ factor, and the packages
+  default it **opposite ways**: `tsecon` defaults it **on** (the finite-sample
+  choice), statsmodels `cov_type="HAC"` defaults it **off** (its
+  `cov_hac_simple` helper, confusingly, defaults on). So
+  `tsecon.ols(..., se_type="hac")` and a bare statsmodels
+  `.fit(cov_type="HAC", ...)` disagree by exactly $\sqrt{n/(n-k)}$ — 4.3% at
+  $n=25, k=2$ — while matching either flag setting agrees to 1e-10. Pass
+  `use_correction=False` to reproduce a default statsmodels call. It is the
+  first thing to check, after the bandwidth, when two HAC numbers disagree.
 - HAC undercovers in small samples even when the bandwidth is right — see the
   coverage experiment and the fixed-b / EWC discussion in the guide chapter
   below.

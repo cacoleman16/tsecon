@@ -1,5 +1,7 @@
 //! Specification and result types shared by the local-projection estimators.
 
+use crate::error::LpError;
+
 /// How the standard errors on the impulse-response coefficients are formed.
 ///
 /// The default, [`SeSpec::LagAugmented`], is the recommendation of Montiel
@@ -166,10 +168,31 @@ impl LpSpec {
     }
 
     /// Builder: set the accumulation mode explicitly.
+    ///
+    /// Note that [`Cumulation::Both`] requires [`SeSpec::Hac`]: the cumulated
+    /// impulse contains *future* shocks, so the lag-augmented score is not
+    /// serially uncorrelated and [`lp`](crate::lp) /
+    /// [`lp_state`](crate::lp_state) refuse the pairing with
+    /// [`LpError::InvalidSeForCumulation`].
     #[must_use]
     pub fn with_cumulation(mut self, cumulation: Cumulation) -> Self {
         self.cumulation = cumulation;
         self
+    }
+
+    /// Refuse the statistically invalid pairing of lag-augmented HC1
+    /// inference with both-sides cumulation.
+    ///
+    /// See [`LpError::InvalidSeForCumulation`] for the mechanism and the
+    /// measured coverage collapse. Called by every OLS-path entry point
+    /// ([`lp`](crate::lp), [`lp_state`](crate::lp_state),
+    /// [`lp_irf_cov`](crate::lp_irf_cov)); the IV estimators are immune (their
+    /// kernel-HAC covariance handles the overlap).
+    pub(crate) fn check_se_supports_cumulation(&self) -> Result<(), LpError> {
+        if self.cumulation == Cumulation::Both && self.se == SeSpec::LagAugmented {
+            return Err(LpError::InvalidSeForCumulation);
+        }
+        Ok(())
     }
 }
 

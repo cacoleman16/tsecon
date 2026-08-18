@@ -33,14 +33,43 @@
 //! with a tight "spike" `tau0` and a diffuse "slab" `tau1`. The prior scales
 //! are set semi-automatically (GSN §3.2): `tau0_i = c0 se_i`,
 //! `tau1_i = c1 se_i` with `c0 << 1 << c1` and `se_i` the unrestricted OLS
-//! coefficient standard error, so the estimator is scale-invariant and needs
-//! no data transformation. The closed-form OLS standard error uses the
+//! coefficient standard error. The closed-form OLS standard error uses the
 //! Kronecker structure `Cov(vec(A_hat)) = Sigma_hat (x) (X'X)^{-1}`, giving
 //! `se_{r,c} = sqrt( Sigma_hat_{cc} [(X'X)^{-1}]_{rr} )` without ever forming
-//! the `m x m` covariance. The optional spike-and-slab on the off-diagonal
-//! precision elements `eta_ij` (enabled by
-//! [`SsvsConfig::ssvs_cov`]) selects error-covariance restrictions the same
-//! way; the diagonal `psi_jj^2` carries a diffuse `Gamma(a, rate = b)` prior.
+//! the `m x m` covariance.
+//!
+//! # Precision hyperpriors and units
+//!
+//! The precision-factor hyperpriors are semi-automatic by default in the
+//! same spirit, so that *every* default prior adapts to the units of the
+//! data. With `s2_j = Sigma_hat_{jj}` the unrestricted-OLS residual variance
+//! of equation `j` (units `y_j^2`):
+//!
+//! * each diagonal `psi_jj^2` (a precision, units `1/y_j^2`) carries the
+//!   proper Gamma prior `psi_jj^2 ~ Gamma(shape = gamma_a, rate = b_j)`
+//!   with, by default, the per-equation rate
+//!   `b_j =` [`SsvsConfig::GAMMA_B_REL`] `* s2_j` (units `y_j^2`, as a
+//!   Gamma rate on a `1/y_j^2` quantity must be). Setting
+//!   [`SsvsConfig::gamma_b`] replaces `b_j` by that absolute rate in every
+//!   equation.
+//! * each strictly-upper `eta_ij` (units `1/y_i`) carries `N(0, kappa1_i^2)`
+//!   — or the `kappa0_i`/`kappa1_i` spike-and-slab selection when
+//!   [`SsvsConfig::ssvs_cov`] is on — with, by default, the per-row scales
+//!   `kappa0_i =` [`SsvsConfig::KAPPA0_REL`] `/ sqrt(s2_i)` and
+//!   `kappa1_i =` [`SsvsConfig::KAPPA1_REL`] `/ sqrt(s2_i)` (units `1/y_i`).
+//!   Setting [`SsvsConfig::kappa0`] / [`SsvsConfig::kappa1`] replaces them
+//!   by those absolute standard deviations for every element.
+//!
+//! With every hyperprior at its semi-automatic default the posterior is
+//! **equivariant under a change of data units** `y -> c y`: inclusion
+//! probabilities are invariant, `Sigma` draws scale by `c^2`, and IRF draws
+//! by `c`, up to Monte-Carlo noise. An explicit absolute `gamma_b`,
+//! `kappa0`, or `kappa1` pins the prior to fixed physical units and
+//! deliberately gives up that equivariance. (The defaults used to be the
+//! absolute `gamma_b = 0.01`, `kappa0 = 0.1`, `kappa1 = 10`, which made the
+//! *default* posterior depend on the units of `y`: measured on identical
+//! data, a percent-vs-decimal units change moved posterior inclusion
+//! probabilities by up to ~0.5 and flipped selection decisions.)
 //!
 //! The posterior inclusion probability of a coefficient is the Monte-Carlo
 //! mean of its `gamma_i` over the retained sweeps — the headline output.
@@ -101,16 +130,29 @@ pub struct SsvsConfig {
     /// Spike-and-slab on the off-diagonal precision elements `eta`.
     pub ssvs_cov: bool,
     /// Covariance spike standard deviation `kappa0` (used when `ssvs_cov`).
-    pub kappa0: f64,
+    /// `None` (the default): the semi-automatic per-row scale
+    /// [`Self::KAPPA0_REL`]` / sqrt(s2_i)` with `s2_i` the unrestricted-OLS
+    /// residual variance of equation `i`, matching `eta_ij`'s `1/y_i`
+    /// units. `Some(k)`: the absolute standard deviation `k` for every
+    /// element, pinning the prior to fixed physical units.
+    pub kappa0: Option<f64>,
     /// Covariance slab standard deviation `kappa1` (also the single diffuse
-    /// slab when `ssvs_cov` is off).
-    pub kappa1: f64,
+    /// slab when `ssvs_cov` is off). `None` (the default): the
+    /// semi-automatic per-row scale [`Self::KAPPA1_REL`]` / sqrt(s2_i)`;
+    /// `Some(k)`: the absolute standard deviation `k` for every element.
+    pub kappa1: Option<f64>,
     /// Prior inclusion probability `pi_cov` for the off-diagonal precision.
     pub prior_inclusion_cov: f64,
-    /// `Gamma(shape = gamma_a, rate = gamma_b)` prior on `psi_jj^2`.
+    /// Shape of the `Gamma(shape = gamma_a, rate = b_j)` prior on
+    /// `psi_jj^2` (dimensionless).
     pub gamma_a: f64,
-    /// Rate of the `Gamma` prior on `psi_jj^2`.
-    pub gamma_b: f64,
+    /// Rate of the `Gamma` prior on `psi_jj^2`. `None` (the default): the
+    /// semi-automatic per-equation rate [`Self::GAMMA_B_REL`]` * s2_j`
+    /// with `s2_j` the unrestricted-OLS residual variance of equation `j`,
+    /// which keeps the default posterior equivariant under a change of data
+    /// units. `Some(b)`: the absolute rate `b` (units `y_j^2`) for every
+    /// equation.
+    pub gamma_b: Option<f64>,
     /// Impulse-response horizon.
     pub horizon: usize,
     /// Keep every `thin`-th post-burn sweep for the IRF draws (`thin >= 1`).
@@ -130,11 +172,11 @@ impl Default for SsvsConfig {
             c1: 10.0,
             prior_inclusion: 0.5,
             ssvs_cov: false,
-            kappa0: 0.1,
-            kappa1: 10.0,
+            kappa0: None,
+            kappa1: None,
             prior_inclusion_cov: 0.5,
             gamma_a: 0.01,
-            gamma_b: 0.01,
+            gamma_b: None,
             horizon: 16,
             thin: 1,
             n_chains: 1,
@@ -143,14 +185,31 @@ impl Default for SsvsConfig {
 }
 
 impl SsvsConfig {
+    /// Relative rate of the default (semi-automatic) Gamma prior on
+    /// `psi_jj^2`: effective rate `b_j = GAMMA_B_REL * s2_j` per equation,
+    /// with `s2_j` the unrestricted-OLS residual variance. Chosen so that
+    /// unit-variance data reproduce the historical absolute default
+    /// `gamma_b = 0.01`.
+    pub const GAMMA_B_REL: f64 = 0.01;
+    /// Relative covariance spike scale of the default (semi-automatic)
+    /// prior on `eta_ij`: effective `kappa0_i = KAPPA0_REL / sqrt(s2_i)`
+    /// per row. Unit-variance data reproduce the historical absolute
+    /// default `kappa0 = 0.1`.
+    pub const KAPPA0_REL: f64 = 0.1;
+    /// Relative covariance slab scale of the default (semi-automatic)
+    /// prior on `eta_ij`: effective `kappa1_i = KAPPA1_REL / sqrt(s2_i)`
+    /// per row. Unit-variance data reproduce the historical absolute
+    /// default `kappa1 = 10`.
+    pub const KAPPA1_REL: f64 = 10.0;
+
     /// Validates the configuration independently of the data.
     ///
     /// # Errors
     ///
     /// [`BayesError::InvalidArgument`] for `lags == 0`, `burn >= n_draws`,
-    /// non-positive scale factors (`c0`, `c1`, `kappa0`, `kappa1`,
-    /// `gamma_a`, `gamma_b`), prior probabilities outside `[0, 1]`,
-    /// `thin == 0`, or `n_chains == 0`.
+    /// non-positive scale factors (`c0`, `c1`, `gamma_a`, and any
+    /// explicitly given `kappa0`, `kappa1`, `gamma_b`), prior probabilities
+    /// outside `[0, 1]`, `thin == 0`, or `n_chains == 0`.
     pub fn validate(&self) -> Result<(), BayesError> {
         if self.lags == 0 {
             return Err(BayesError::InvalidArgument {
@@ -167,14 +226,21 @@ impl SsvsConfig {
                 what: "spike/slab scale factors c0, c1 must be strictly positive",
             });
         }
-        if !(self.kappa0 > 0.0 && self.kappa1 > 0.0) {
+        if matches!(self.kappa0, Some(k) if k <= 0.0 || k.is_nan())
+            || matches!(self.kappa1, Some(k) if k <= 0.0 || k.is_nan())
+        {
             return Err(BayesError::InvalidArgument {
-                what: "covariance scales kappa0, kappa1 must be strictly positive",
+                what: "covariance scales kappa0, kappa1 must be strictly positive when given \
+                       (leave them unset for the semi-automatic unit-adaptive default)",
             });
         }
-        if !(self.gamma_a > 0.0 && self.gamma_b > 0.0) {
+        if self.gamma_a <= 0.0
+            || self.gamma_a.is_nan()
+            || matches!(self.gamma_b, Some(b) if b <= 0.0 || b.is_nan())
+        {
             return Err(BayesError::InvalidArgument {
-                what: "Gamma prior parameters gamma_a, gamma_b must be strictly positive",
+                what: "Gamma prior parameters gamma_a (and gamma_b, when given) must be \
+                       strictly positive",
             });
         }
         if !(0.0..=1.0).contains(&self.prior_inclusion)
@@ -334,7 +400,9 @@ pub(crate) fn inclusion_probability(x: f64, v_slab: f64, v_spike: f64, prior: f6
 /// `j` (0-indexed), given the residual cross-product `s = E'E` (`n x n`),
 /// the strictly-upper prior-precision diagonal `d_j_inv` (length `j`, the
 /// reciprocals `1/kappa^2`), the `Gamma(gamma_a, rate = gamma_b)` prior on
-/// `psi_jj^2`, and the effective sample size `t`.
+/// `psi_jj^2` (`gamma_b` the *effective absolute* rate for this column —
+/// the caller resolves the semi-automatic default), and the effective
+/// sample size `t`.
 ///
 /// Returns `(gamma_shape, gamma_rate, m_j, eta_mean_unit)` where
 /// `psi_jj^2 ~ Gamma(gamma_shape, rate = gamma_rate)`,
@@ -424,25 +492,38 @@ struct PriorScales {
     searchable: Vec<bool>,
 }
 
-/// The unrestricted-OLS pieces: `X'X`, `X'Y`, `(X'X)^{-1}`, `Sigma_hat`, and
-/// the semi-automatic prior scales.
+/// The unrestricted-OLS pieces: `X'X`, `X'Y`, `(X'X)^{-1}`, `Sigma_hat`,
+/// the semi-automatic prior scales, and the resolved (effective absolute)
+/// precision-factor hyperpriors.
 struct OlsPieces {
     xtx: Mat<f64>,
     xty: Mat<f64>,
     sigma_hat_inv: Mat<f64>,
     scales: PriorScales,
+    /// Effective absolute Gamma rate on `psi_jj^2`, per equation `j`:
+    /// `GAMMA_B_REL * Sigma_hat_jj` by default, or the explicit
+    /// [`SsvsConfig::gamma_b`] for every equation.
+    gamma_b_eff: Vec<f64>,
+    /// Effective spike prior *variance* on `eta_ij`, per row `i`:
+    /// `(KAPPA0_REL)^2 / Sigma_hat_ii` by default, or the explicit
+    /// [`SsvsConfig::kappa0`] squared.
+    kappa0_var: Vec<f64>,
+    /// Effective slab prior *variance* on `eta_ij`, per row `i` (also the
+    /// single diffuse slab when `ssvs_cov` is off).
+    kappa1_var: Vec<f64>,
 }
 
-/// Computes the OLS design cross-products and the GSN semi-automatic prior
-/// scales; errors when the sample cannot support the unrestricted fit.
+/// Computes the OLS design cross-products, the GSN semi-automatic prior
+/// scales, and the effective precision-factor hyperpriors; errors when the
+/// sample cannot support the unrestricted fit.
 fn ols_pieces(
     x: MatRef<'_, f64>,
     y: MatRef<'_, f64>,
     n: usize,
     k: usize,
-    c0: f64,
-    c1: f64,
+    cfg: &SsvsConfig,
 ) -> Result<OlsPieces, BayesError> {
+    let (c0, c1) = (cfg.c0, cfg.c1);
     let t_eff = x.nrows();
     if t_eff <= k {
         return Err(BayesError::InsufficientObservations {
@@ -481,6 +562,40 @@ fn ols_pieces(
     let sigma_hat_chol = jittered_cholesky(sigma_hat.as_ref())?;
     let sigma_hat_inv = chol_inverse(sigma_hat_chol.factor.as_ref());
 
+    // Resolve the precision-factor hyperpriors: semi-automatic (relative to
+    // the per-equation OLS residual variance, so the default prior is
+    // unit-adaptive) unless an absolute override was given. The Gamma prior
+    // must stay proper, so the default demands a strictly positive residual
+    // variance in every equation.
+    if (cfg.gamma_b.is_none() || cfg.kappa0.is_none() || cfg.kappa1.is_none())
+        && (0..n).any(|j| sigma_hat[(j, j)] <= 0.0 || sigma_hat[(j, j)].is_nan())
+    {
+        return Err(BayesError::InvalidArgument {
+            what: "the semi-automatic SSVS hyperpriors scale by each equation's OLS \
+                   residual variance, which must be strictly positive; an equation is \
+                   perfectly explained by the lags (or the data are degenerate) — fix \
+                   the data or pass absolute gamma_b / kappa0 / kappa1",
+        });
+    }
+    let gamma_b_eff: Vec<f64> = (0..n)
+        .map(|j| match cfg.gamma_b {
+            Some(b) => b,
+            None => SsvsConfig::GAMMA_B_REL * sigma_hat[(j, j)],
+        })
+        .collect();
+    let kappa0_var: Vec<f64> = (0..n)
+        .map(|i| match cfg.kappa0 {
+            Some(k0) => k0 * k0,
+            None => SsvsConfig::KAPPA0_REL * SsvsConfig::KAPPA0_REL / sigma_hat[(i, i)],
+        })
+        .collect();
+    let kappa1_var: Vec<f64> = (0..n)
+        .map(|i| match cfg.kappa1 {
+            Some(k1) => k1 * k1,
+            None => SsvsConfig::KAPPA1_REL * SsvsConfig::KAPPA1_REL / sigma_hat[(i, i)],
+        })
+        .collect();
+
     // Semi-automatic scales: se_{r,c} = sqrt(Sigma_hat_cc [(X'X)^-1]_rr).
     let m = n * k;
     let mut var_slab = vec![0.0; m];
@@ -504,6 +619,9 @@ fn ols_pieces(
             var_spike,
             searchable,
         },
+        gamma_b_eff,
+        kappa0_var,
+        kappa1_var,
     })
 }
 
@@ -592,19 +710,26 @@ fn run_chain(
         symmetrize_in_place(&mut s);
         let mut psi = Mat::<f64>::zeros(n, n);
         for j in 0..n {
-            // Prior precision diagonal d_j_inv for the j preceding etas.
+            // Prior precision diagonal d_j_inv for the j preceding etas
+            // (effective per-row spike/slab variances from `ols`).
             let d_j_inv: Vec<f64> = (0..j)
                 .map(|i| {
                     let var = if cfg.ssvs_cov && !omega[(i, j)] {
-                        cfg.kappa0 * cfg.kappa0
+                        ols.kappa0_var[i]
                     } else {
-                        cfg.kappa1 * cfg.kappa1
+                        ols.kappa1_var[i]
                     };
                     1.0 / var
                 })
                 .collect();
-            let (shape, rate, m_j, eta_mean_unit) =
-                psi_column_moments(s.as_ref(), j, &d_j_inv, cfg.gamma_a, cfg.gamma_b, t_eff)?;
+            let (shape, rate, m_j, eta_mean_unit) = psi_column_moments(
+                s.as_ref(),
+                j,
+                &d_j_inv,
+                cfg.gamma_a,
+                ols.gamma_b_eff[j],
+                t_eff,
+            )?;
             let psi2 = gamma_draw(shape, rate, stream)?;
             let psi_jj = psi2.sqrt();
             psi[(j, j)] = psi_jj;
@@ -637,8 +762,8 @@ fn run_chain(
                 for i in 0..j {
                     let prob = inclusion_probability(
                         psi[(i, j)],
-                        cfg.kappa1 * cfg.kappa1,
-                        cfg.kappa0 * cfg.kappa0,
+                        ols.kappa1_var[i],
+                        ols.kappa0_var[i],
                         cfg.prior_inclusion_cov,
                     );
                     omega[(i, j)] = positive_uniform(stream)? < prob;
@@ -710,6 +835,29 @@ fn run_chain(
     Ok(())
 }
 
+/// Audit round 6, finding: an internal overflow in the Gibbs updates used to
+/// escape through the shared linear-algebra hygiene guard, whose message
+/// blames *missing input values* ("drop or impute them") — unfollowable
+/// advice on all-finite data. After input validation has passed, a non-finite
+/// value can only arise from the sampler's own arithmetic (cross-moment
+/// products overflow on data of extreme magnitude, observed from
+/// `max|y| ~ 6e11` upward on explosive series), so it is re-labelled here
+/// with advice a caller can actually follow.
+fn relabel_internal_overflow(e: BayesError) -> BayesError {
+    match e {
+        BayesError::Linalg(_) => BayesError::InvalidArgument {
+            what: "the SSVS Gibbs sampler overflowed internally (a non-finite value \
+                   arose in the conditional updates) even though the input is all \
+                   finite. This happens when the series' magnitude is extreme -- \
+                   cross-moment products overflow, observed from max|y| ~ 1e12 \
+                   upward (e.g. an explosive level series). Rescale or standardize \
+                   the data (z-scores, logs, or growth rates) and refit; bvar_fit's \
+                   closed form may tolerate magnitudes the sampler cannot",
+        },
+        other => other,
+    }
+}
+
 /// SSVS-BVAR posterior estimation by the 4-block Gibbs sampler of George,
 /// Sun & Ni (2008); see the module docs for the model, prior, and sampler.
 ///
@@ -720,11 +868,17 @@ fn run_chain(
 /// # Errors
 ///
 /// * whatever [`SsvsConfig::validate`] returns (invalid hyperparameters);
+/// * [`BayesError::InvalidArgument`] when a semi-automatic hyperprior is in
+///   effect (any of `gamma_b`/`kappa0`/`kappa1` left at `None`) and some
+///   equation's unrestricted-OLS residual variance is not strictly
+///   positive (the scale the default prior adapts to would be degenerate);
 /// * [`BayesError::NonFinite`] for NaN/infinite data;
 /// * [`BayesError::InsufficientObservations`] when `T <= k + p` (the
 ///   unrestricted OLS standard errors are undefined);
-/// * [`BayesError::Linalg`] on a numerically indefinite conditional (not
-///   observed for valid inputs).
+/// * [`BayesError::InvalidArgument`] with rescaling advice when the
+///   sampler's own arithmetic overflows on all-finite data of extreme
+///   magnitude (observed from `max|y| ~ 6e11` upward on explosive series);
+/// * [`BayesError::Linalg`] on a numerically indefinite conditional.
 pub fn bvar_ssvs(
     data: MatRef<'_, f64>,
     cfg: &SsvsConfig,
@@ -760,7 +914,7 @@ pub fn bvar_ssvs(
     }
     let (x, y) = build_xy(data, p);
     let t_eff = x.nrows();
-    let ols = ols_pieces(x.as_ref(), y.as_ref(), n, k, cfg.c0, cfg.c1)?;
+    let ols = ols_pieces(x.as_ref(), y.as_ref(), n, k, cfg).map_err(relabel_internal_overflow)?;
 
     let m = n * k;
     let mut acc = Accumulators {
@@ -787,7 +941,8 @@ pub fn bvar_ssvs(
             cfg,
             stream,
             &mut acc,
-        )?;
+        )
+        .map_err(relabel_internal_overflow)?;
     }
 
     let cf = acc.count as f64;
@@ -1009,6 +1164,69 @@ mod tests {
         );
         assert_eq!(m0.nrows(), 0);
         assert!(eta0.is_empty());
+    }
+
+    /// The semi-automatic (unit-adaptive) precision-factor hyperpriors match
+    /// the independent NumPy computation on a mixed-units design (columns
+    /// scaled 1e-3 / 1 / 1e3): effective Gamma rate `GAMMA_B_REL * s2_j` per
+    /// equation and spike/slab sds `KAPPA*_REL / sqrt(s2_i)` per row, with
+    /// `s2` the per-equation OLS residual variances — and explicit absolute
+    /// overrides are honored verbatim in every equation.
+    #[test]
+    fn anchor_semi_automatic_hyperpriors() {
+        let fx = load();
+        let a = &fx["anchor_semi_automatic"];
+        let data = as_mat(&a["data"]);
+        let p = a["p"].as_u64().unwrap() as usize;
+        let n = a["n"].as_u64().unwrap() as usize;
+        let k = 1 + n * p;
+        let (x, y) = build_xy(data.as_ref(), p);
+
+        let cfg = SsvsConfig::default();
+        let ols = ols_pieces(x.as_ref(), y.as_ref(), n, k, &cfg).unwrap();
+        let s2 = as_vec(&a["s2_ols"]);
+        let gb = as_vec(&a["gamma_b_eff"]);
+        let k0 = as_vec(&a["kappa0_sd_eff"]);
+        let k1 = as_vec(&a["kappa1_sd_eff"]);
+        for j in 0..n {
+            assert!(
+                (ols.gamma_b_eff[j] - gb[j]).abs() <= 1e-10 * gb[j],
+                "gamma_b_eff[{j}]: {} vs {}",
+                ols.gamma_b_eff[j],
+                gb[j]
+            );
+            assert!(
+                (ols.gamma_b_eff[j] - SsvsConfig::GAMMA_B_REL * s2[j]).abs() <= 1e-10 * gb[j],
+                "gamma_b_eff[{j}] vs GAMMA_B_REL * s2"
+            );
+            assert!(
+                (ols.kappa0_var[j] - k0[j] * k0[j]).abs() <= 1e-10 * k0[j] * k0[j],
+                "kappa0_var[{j}]: {} vs {}",
+                ols.kappa0_var[j],
+                k0[j] * k0[j]
+            );
+            assert!(
+                (ols.kappa1_var[j] - k1[j] * k1[j]).abs() <= 1e-10 * k1[j] * k1[j],
+                "kappa1_var[{j}]: {} vs {}",
+                ols.kappa1_var[j],
+                k1[j] * k1[j]
+            );
+        }
+
+        // Explicit absolute overrides (the historical defaults) pin every
+        // equation to the given value, ignoring the data scale.
+        let cfg_abs = SsvsConfig {
+            gamma_b: Some(0.01),
+            kappa0: Some(0.1),
+            kappa1: Some(10.0),
+            ..SsvsConfig::default()
+        };
+        let ols_abs = ols_pieces(x.as_ref(), y.as_ref(), n, k, &cfg_abs).unwrap();
+        for j in 0..n {
+            assert_eq!(ols_abs.gamma_b_eff[j], 0.01);
+            assert_eq!(ols_abs.kappa0_var[j], 0.1 * 0.1);
+            assert_eq!(ols_abs.kappa1_var[j], 10.0 * 10.0);
+        }
     }
 
     /// Conditional-moment Monte Carlo on the stochastic block-1 kernel: with

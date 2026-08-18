@@ -28,12 +28,35 @@ def test_realized_measures_match_bns():
 
 
 def test_har_rv_matches_statsmodels_hac():
+    """Both HAC variants are golden-pinned (audit round 2, finding 4).
+
+    The DEFAULT call must reproduce statsmodels with use_correction=True
+    (fixture `bse_corrected`) — har_rv now defaults the finite-sample
+    n/(n-k) scaling ON like every other HAC surface in the library — while
+    use_correction=False reproduces a default statsmodels cov_type="HAC"
+    call (fixture `bse`).
+    """
     rv = np.array(REAL["rv_series"])
     fit = tsecon.har_rv(rv, start=REAL["har"]["start"])
     np.testing.assert_allclose(fit["params"], REAL["har"]["params"], atol=1e-8)
-    np.testing.assert_allclose(fit["bse"], REAL["har"]["bse"], atol=1e-8)
+    np.testing.assert_allclose(fit["bse"], REAL["har"]["bse_corrected"], atol=1e-8)
     assert abs(fit["rsquared"] - REAL["har"]["rsquared"]) < 1e-8
     assert len(fit["params"]) == 4  # const + daily + weekly + monthly
+
+    off = tsecon.har_rv(rv, start=REAL["har"]["start"], use_correction=False)
+    np.testing.assert_allclose(off["params"], REAL["har"]["params"], atol=1e-8)
+    np.testing.assert_allclose(off["bse"], REAL["har"]["bse"], atol=1e-8)
+
+    # Same-run invariant: the default is bit-identical to use_correction=True
+    # and exceeds use_correction=False by exactly sqrt(n/(n-k)).
+    on = tsecon.har_rv(rv, start=REAL["har"]["start"], use_correction=True)
+    assert list(fit["bse"]) == list(on["bse"])
+    n, k = fit["nobs"], 4
+    np.testing.assert_allclose(
+        np.asarray(fit["bse"]) / np.asarray(off["bse"]),
+        np.sqrt(n / (n - k)),
+        rtol=1e-12,
+    )
 
 
 # -------------------------------------------------------- connectedness

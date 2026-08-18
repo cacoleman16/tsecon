@@ -1,14 +1,17 @@
 """Results facade for local projections (:func:`tsecon.lp`).
 
-:class:`LPResults` is a ``dict`` subclass. Everything :func:`tsecon.lp` has
-always returned — ``horizons``, ``irf``, ``se`` — is present and unchanged;
-this object only *adds* a rendered :meth:`summary`, confidence intervals, a
-peak-response accessor, and a plot.
+:class:`LPResults` is a ``dict`` subclass. Everything :func:`tsecon.lp`
+returns — ``horizons``, ``irf``, ``se``, ``se_method`` — is present and
+unchanged; this object only *adds* a rendered :meth:`summary`, confidence
+intervals, a peak-response accessor, and a plot.
 
 The default inference is lag-augmented local projection (Montiel Olea &
 Plagborg-Møller, 2021), which is uniformly valid whether the underlying
 process is stationary or has a near-unit root; that is the library's
-documented default and the summary says so.
+documented default and the summary says so. Under ``cumulative="both"`` the
+default resolves to HAC instead (the cumulated impulse shares future shocks
+across nearby base times, which lag augmentation cannot project out); the
+summary reports whatever ``se_method`` the estimator stamped.
 """
 
 from __future__ import annotations
@@ -36,8 +39,9 @@ def _z(level: float) -> float:
 class LPResults(Results):
     """Local-projection impulse responses with horizon-wise inference.
 
-    A ``dict`` with keys ``horizons``, ``irf`` and ``se`` (all length ``H+1``),
-    plus :meth:`summary`, :meth:`conf_int`, :meth:`peak` and :meth:`plot_irf`.
+    A ``dict`` with keys ``horizons``, ``irf`` and ``se`` (all length ``H+1``)
+    and ``se_method`` (the inference route actually used), plus
+    :meth:`summary`, :meth:`conf_int`, :meth:`peak` and :meth:`plot_irf`.
     """
 
     _kind = "LPResults"
@@ -62,15 +66,18 @@ class LPResults(Results):
         """Estimate local projections and wrap the result.
 
         Extra keyword arguments are forwarded verbatim to :func:`tsecon.lp`:
-        ``n_lag_controls``, ``se`` (``"lag_augmented"`` or ``"hac"``),
-        ``maxlags``, ``cumulative``.
+        ``n_lag_controls``, ``se`` (``None`` — auto — ``"lag_augmented"`` or
+        ``"hac"``), ``maxlags``, ``cumulative``.
         """
         from tsecon._core import lp as _lp  # lazy: avoids an import cycle
 
         raw = _lp(y, shock, horizons=horizons, **kw)
         out = cls(raw)
         out._nobs = int(np.asarray(y).shape[0])
-        out._se_kind = str(kw.get("se", "lag_augmented"))
+        # The estimator stamps the inference route it actually used, which
+        # can differ from the (None-defaulted) `se` argument: under
+        # cumulative="both" the default resolves to HAC.
+        out._se_kind = str(raw.get("se_method") or kw.get("se") or "lag_augmented")
         out._cumulative = bool(kw.get("cumulative", False))
         ncontrols = kw.get("n_lag_controls")
         out._n_lag_controls = None if ncontrols is None else int(ncontrols)
@@ -118,7 +125,7 @@ class LPResults(Results):
         peak_h, peak_v = self.peak()
 
         se_label = {
-            "lag_augmented": "lag-augmented, HAC standard errors",
+            "lag_augmented": "lag-augmented, robust (HC1) standard errors",
             "hac": "HAC (Newey-West) standard errors",
         }.get(self._se_kind, f"{self._se_kind} standard errors")
 

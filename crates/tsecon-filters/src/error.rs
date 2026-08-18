@@ -56,6 +56,16 @@ pub enum FiltersError {
         /// Name of the computation that encountered the deficiency.
         what: &'static str,
     },
+    /// The input series is constant, so a variance-ratio diagnostic is
+    /// undefined: both variances in the strength ratio are pure float
+    /// noise from the decomposition, and the resulting number is
+    /// implementation noise, not a measurement (audit round 6 measured
+    /// `seasonal_strength ~ 0.64` — coincidentally at the `nsdiffs`
+    /// threshold — on flat lines).
+    ConstantSeries {
+        /// Name of the diagnostic that rejected the series.
+        what: &'static str,
+    },
 }
 
 impl fmt::Display for FiltersError {
@@ -97,6 +107,13 @@ impl fmt::Display for FiltersError {
                 "{what}: the regressor matrix is numerically rank deficient, which \
                  happens when the series is constant (or constant over the regression \
                  window), so every lag column is collinear with the intercept"
+            ),
+            FiltersError::ConstantSeries { what } => write!(
+                f,
+                "{what}: the series is constant (zero sample variance), so a \
+                 variance-ratio strength measure is undefined — the ratio of the \
+                 decomposition's float-noise variances is implementation noise, not \
+                 a measurement. A constant series has no seasonality to measure."
             ),
         }
     }

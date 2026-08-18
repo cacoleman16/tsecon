@@ -89,11 +89,21 @@ below).
 
 **Key arguments and defaults (and why).** `optimize="lambda1"` (default) tunes
 only the overall tightness; `"lambda1+lambda3"` also tunes the lag-decay rate.
-`hyperprior="none"` is pure ML-II (maximize the evidence); `"glp"` adds the GLP
-Gamma hyperprior (mode 0.2, sd 0.4) and maximizes the log *posterior* instead
-(MAP-II). `lambda1_lo`/`lambda1_hi` bracket the search; `n_grid` sets the
-pre-scan resolution; `delta`/`lambda0`/`lambda3` are the fixed Minnesota dials
-(as in `bvar_fit`).
+`hyperprior="glp"` is the **default**: the GLP Gamma hyperprior (mode 0.2,
+sd 0.4), maximizing the log *posterior* (MAP-II) — the guard Giannone, Lenza &
+Primiceri (2015) themselves recommend. `hyperprior="none"` is pure ML-II
+(maximize the evidence alone), and it is *not* the default for a measured
+reason: audit round 6 drew data from the model's own prior and found ML-II
+collapsing `lambda1_opt` to the search-box floor on roughly **a fifth to a
+quarter** of datasets (the marginal-likelihood profile genuinely peaks at
+`lambda1 -> 0` — classic empirical-Bayes variance-component collapse, worst in
+small systems, fading by ~16 slopes), and posterior IRF bands refit at a
+collapsed selection covered **~6% at nominal 90%**. The GLP hyperprior
+eliminated the collapse entirely in the same experiment (coverage 0.80–0.85).
+If you use `"none"`, treat a `lambda1_opt` at the bottom of the box as a red
+flag, not a selection. `lambda1_lo`/`lambda1_hi` bracket the search; `n_grid`
+sets the pre-scan resolution; `delta`/`lambda0`/`lambda3` are the fixed
+Minnesota dials (as in `bvar_fit`).
 
 **How to read the output.** `lambda1_opt` (and `lambda3_opt`) — the selected
 tightness; `log_marginal_likelihood` / `log_posterior` at the optimum;
@@ -107,7 +117,19 @@ and `n_evals`.
 likelihood silently corrupts the selection; reporting the ML-II tightness on a
 sample so short the evidence is nearly flat (the "optimum" is then noise — check
 the `grid_log_ml` profile); comparing the evidence across different samples or
-variable transforms (meaningless, same as `bvar_fit`).
+variable transforms (meaningless, same as `bvar_fit`). Two calibration facts
+the flat-evidence check **cannot** catch, both measured by audit round 6 with
+data drawn from the model's own prior: (1) under `hyperprior="none"` the
+collapse described above is *not* a flat profile — in collapsed replications
+the floor peak beat `lambda1=0.2` by a median 2.3 log points, so "check the
+profile" would falsely reassure you; the fix is the (default) GLP hyperprior.
+(2) Bands refit at the selected `lambda1` are a **plug-in**: they ignore the
+selection uncertainty in `lambda1` itself, and even for the well-behaved GLP
+route 90% credible bands covered **0.82–0.85** in the calibration experiment
+(the exact-`lambda1` oracle covered ~0.90). Separately, the AR(4)
+empirical-Bayes residual-variance scales make long-horizon IRF bands mildly
+*conservative* (c68 ≈ 0.75–0.78, c90 ≈ 0.94–0.95 at h ≥ 4) — a property of the
+documented prior rule, present identically in the independent oracle.
 
 **Validated against.** An independent NumPy/SciPy re-implementation of the same
 closed-form matrix-variate-t marginal likelihood (Kadiyala-Karlsson 1997 eq. 3.6),
@@ -201,9 +223,29 @@ large — e.g. `10.0`), whose *ratio* sets how sharply "in" and "out" are
 distinguished; `prior_inclusion` (the prior probability a coefficient is in;
 `0.5` is agnostic); `ssvs_cov` plus `kappa0` / `kappa1` / `prior_inclusion_cov`
 (the same three dials for the error-precision selection); `gamma_a` / `gamma_b`
-(the inverse-gamma prior on the precision diagonals); `horizon` (IRF length);
-`n_chains` (≥ 2 to get `rhat` / `ess_bulk`); `seed` (reproducible via the Philox
-stream).
+(the Gamma prior on the precision diagonals — see the units paragraph below);
+`horizon` (IRF length); `n_chains` (≥ 2 to get `rhat` / `ess_bulk`); `seed`
+(reproducible via the Philox stream).
+
+**Units — what the default hyperpriors actually are.** Every default hyperprior
+adapts to the units of the data. The spike/slab scales are `c0`/`c1` times the
+unrestricted-OLS coefficient standard errors (the GSN semi-automatic choice),
+and the precision-factor hyperpriors follow the same spirit: writing $s_j^2$
+for equation $j$'s unrestricted-OLS residual variance, each precision diagonal
+$\psi_{jj}^2$ (units $1/y_j^2$) carries the proper prior
+$\mathrm{Gamma}(\text{shape} = \gamma_a,\ \text{rate} = 0.01\, s_j^2)$, and the
+off-diagonal precision elements $\eta_{ij}$ (units $1/y_i$) carry spike/slab
+standard deviations $0.1/s_i$ and $10/s_i$ (row $i$'s residual sd). Because
+every scale in the prior tracks the data's own units, rescaling the data
+(`y -> c*y`; percent vs decimal is the classic case) leaves `inclusion_prob`
+unchanged and scales `sigma_mean` by `c**2` and `irf_draws` by `c`, up to
+Monte-Carlo noise. Passing explicit floats for `gamma_b` / `kappa0` / `kappa1`
+pins **absolute** prior scales instead (units $y_j^2$ for `gamma_b`, $1/y_i$
+for the kappas) and deliberately gives that equivariance up —
+`gamma_b=0.01, kappa0=0.1, kappa1=10.0` reproduces the old unit-dependent
+defaults exactly, which on unit-variance data are indistinguishable from the
+adaptive ones but on small-unit data (e.g. decimal returns) let the prior rate
+swamp the residual scale.
 
 **How to read the output.** `inclusion_prob` (k × n, same
 regressor-by-equation layout as `bvar_fit["posterior_mean_coefs"]`, the intercept
@@ -214,8 +256,8 @@ middle. `coef_mean` (k × n) and `sigma_mean` (n × n) are the posterior means
 `[draw][h][variable][shock]` are Cholesky-orthogonalized IRF draws for credible
 bands. `inclusion_prob_cov` appears only with `ssvs_cov=True`. The `diagnostics`
 dict carries `mean_model_size` (the average number of *selected slopes* — read it
-against the true sparsity), `n_draws_kept`, `log_marginal_likelihood_median`, and
-— with `n_chains ≥ 2` — `rhat` and `ess_bulk`.
+against the true sparsity), `n_draws_kept`, `log_marginal_likelihood_median`, the
+echoed `burn` and `thin`, and — with `n_chains ≥ 2` — `rhat` and `ess_bulk`.
 
 **Failure modes.** Reading an inclusion probability as a frequentist p-value (it
 is a posterior probability under *this* prior, and it moves with `c0`/`c1` and

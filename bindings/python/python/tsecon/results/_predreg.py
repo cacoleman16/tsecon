@@ -22,7 +22,16 @@ import math
 from statistics import NormalDist
 
 from ._base import Results, rule, fmt_row, kv_line, param_table
-from ._plotting import pyplot, apply_style, SERIES, REF
+from ._plotting import pyplot, apply_style, SERIES, REF, INK_2
+
+#: Default caption under :meth:`PredictiveRegressionResults.plot_estimates` —
+#: the same caveat ``summary()`` prints, so the figure cannot circulate
+#: without it: the OLS/Stambaugh intervals are naive normal ones, and for a
+#: persistent predictor the naive interval is exactly the misleading one.
+PLOT_CAVEAT = (
+    "OLS and Stambaugh intervals are naive normal ones (undersized when x is\n"
+    "persistent); the IVX interval is the one to report."
+)
 
 __all__ = ["PredictiveRegressionResults", "IVXTestResults"]
 
@@ -273,12 +282,25 @@ class PredictiveRegressionResults(Results):
     # ------------------------------------------------------------------ #
     # plot
     # ------------------------------------------------------------------ #
-    def plot_estimates(self, ax=None, *, level: float = 0.95, path: str | None = None):
+    def plot_estimates(
+        self,
+        ax=None,
+        *,
+        level: float = 0.95,
+        path: str | None = None,
+        caption: str | None = PLOT_CAVEAT,
+    ):
         """Forest plot of the three slope estimates with confidence intervals.
 
         One dot per estimator with a horizontal interval, and a zero reference
         line — so a slope that OLS calls significant and IVX does not shows up
         as an interval that crosses zero. Returns the ``Figure``.
+
+        ``caption`` is rendered under the figure and defaults to
+        :data:`PLOT_CAVEAT` — the same warning ``summary()`` prints, that the
+        OLS and Stambaugh intervals are naive normal ones and the IVX interval
+        is the one to report. Pass ``caption=None`` to suppress it (e.g. when
+        composing into a figure that carries the caveat elsewhere).
         """
         plt = pyplot()
         z = _NORM.inv_cdf(0.5 + level / 2.0)
@@ -325,6 +347,13 @@ class PredictiveRegressionResults(Results):
         apply_style(ax)
         ax.grid(axis="y", visible=False)
         fig.tight_layout()
+        if caption:
+            # Reserve a strip under the axes and print the caveat there, so
+            # the figure carries the same warning the summary() text does.
+            n_lines = caption.count("\n") + 1
+            pad = 0.055 * n_lines + 0.04
+            fig.subplots_adjust(bottom=min(0.5, fig.subplotpars.bottom + pad))
+            fig.text(0.01, 0.012, caption, fontsize=7, color=INK_2, va="bottom")
         if path is not None:
             fig.savefig(path, dpi=150)
         return fig
@@ -334,7 +363,11 @@ class IVXTestResults(Results):
     """Joint IVX predictability test across several persistent predictors.
 
     Wraps ``tsecon.ivx_test``: keys ``beta_ivx``, ``wald``, ``pvalue``, ``rz``,
-    ``nobs`` and ``nregressors`` are preserved exactly.
+    ``nobs`` and ``nregressors`` are preserved exactly. Under
+    ``joint="bonferroni"`` the extra keys ``wald_scalar``, ``pvalue_scalar``
+    and ``joint`` come through too, ``wald`` is the largest per-predictor
+    scalar statistic (chi-square(1) scale), and ``pvalue`` is already
+    Bonferroni-adjusted — the summary labels both accordingly.
     """
 
     _kind = "IVXTestResults"
@@ -375,17 +408,23 @@ class IVXTestResults(Results):
         k = int(self["nregressors"])
         wald = float(self["wald"])
         p = float(self["pvalue"])
+        bonferroni = self.get("joint") == "bonferroni"
 
-        left = f"Joint IVX test   H0: b = 0 for all {k} predictors"
+        head = "Joint IVX test (Bonferroni)" if bonferroni else "Joint IVX test"
+        left = f"{head}   H0: b = 0 for all {k} predictors"
         right = f"IVX p = {p:.4f}"
         pad = max(2, _W - len(left) - len(right))
         lines = [rule(_W), f"{left}{' ' * pad}{right}", rule(_W)]
+        # Under joint="bonferroni" the statistic is the LARGEST per-predictor
+        # scalar Wald — chi-square(1) scale — and the p-value is already
+        # Bonferroni-adjusted; labelling it chi2(k) would misstate both.
+        wald_label = "max Wald chi2(1)" if bonferroni else f"Wald chi2({k})"
         lines.append(
             kv_line(
                 [
                     ("nobs", self.get("nobs", "n/a")),
                     ("predictors", k),
-                    (f"Wald chi2({k})", _fnum(wald, ".4f")),
+                    (wald_label, _fnum(wald, ".4f")),
                     ("IVX rz", _fnum(self["rz"], ".4f")),
                 ]
             )
@@ -399,6 +438,9 @@ class IVXTestResults(Results):
             lines.append(f"At the {pct} level the predictors jointly predict r(t+1).")
         else:
             lines.append(f"At the {pct} level there is no joint evidence of predictability.")
-        lines.append("Individual slopes above are point estimates; the p-value is joint.")
+        if bonferroni:
+            lines.append("Per-predictor scalar tests are in wald_scalar / pvalue_scalar.")
+        else:
+            lines.append("Individual slopes above are point estimates; the p-value is joint.")
         lines.append(rule(_W))
         return "\n".join(lines)

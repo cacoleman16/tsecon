@@ -39,7 +39,14 @@ def gen_realized():
     start = 22
     y = rv[start + 1:]
     X = np.column_stack([np.ones(len(y)), rv_d[start:], rv_w[start:], rv_m[start:]])
+    # Two HAC variants: statsmodels' cov_type="HAC" default is
+    # use_correction=False; tsecon's har_rv default is use_correction=True
+    # (the finite-sample n/(n-k) scaling). Pin both so default-to-default
+    # behaviour is golden-tested, not just matched settings.
     ols = sm.OLS(y, X).fit(cov_type="HAC", cov_kwds={"maxlags": 5})
+    ols_corr = sm.OLS(y, X).fit(
+        cov_type="HAC", cov_kwds={"maxlags": 5, "use_correction": True}
+    )
 
     # A documented realized-measure golden: RV and bipower variation on a small
     # fixed return vector (Barndorff-Nielsen & Shephard 2004): BV = (pi/2) *
@@ -52,9 +59,12 @@ def gen_realized():
         "_meta": {"statsmodels": statsmodels.__version__, "numpy": np.__version__,
                   "python": platform.python_version(),
                   "note": "HAR-RV = OLS(RV_t on [const, RV_{t-1}, RV_week(5), RV_month(22)]) "
-                          "with HAC(maxlags=5); measures per BNS 2004."},
+                          "with HAC(maxlags=5); bse is use_correction=False (the "
+                          "statsmodels cov_type='HAC' default), bse_corrected is "
+                          "use_correction=True (the tsecon default); measures per BNS 2004."},
         "rv_series": full(rv),
         "har": {"start": start, "params": full(ols.params), "bse": full(ols.bse),
+                "bse_corrected": full(ols_corr.bse),
                 "rsquared": float(ols.rsquared)},
         "measures_small": {"returns": full(small), "rv": rv_small, "bipower": bv_small},
     }

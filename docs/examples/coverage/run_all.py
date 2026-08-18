@@ -1,16 +1,17 @@
 """Run every interval-coverage family and print ONE consolidated report.
 
-    .venv/bin/python docs/examples/coverage/run_all.py            # full run, ~7 min
-    .venv/bin/python docs/examples/coverage/run_all.py --quick    # smoke run, ~50 s
+    .venv/bin/python docs/examples/coverage/run_all.py            # full run, ~30 min
+    .venv/bin/python docs/examples/coverage/run_all.py --quick    # smoke run, ~3 min
     .venv/bin/python docs/examples/coverage/run_all.py --summary  # consolidated table only
     .venv/bin/python docs/examples/coverage/run_all.py --only irf_bands,lp_family
+    .venv/bin/python docs/examples/coverage/run_all.py --markdown tables.md
 
 WHAT THIS FILE ADDS
 -------------------
-The five modules under this directory each measure the coverage of one family
-of intervals and print their own report. This runner executes all five in one
-process and then answers the question none of them can answer alone: across
-every interval `tsecon` ships, WHICH ONES KEEP THEIR PROMISE?
+The seven modules under this directory each measure the coverage of one
+family of intervals and print their own report. This runner executes all
+seven in one process and then answers the question none of them can answer
+alone: across every interval `tsecon` ships, WHICH ONES KEEP THEIR PROMISE?
 
 Every number in the consolidated tables is harvested from the structured
 results the family modules return -- nothing is transcribed by hand, so the
@@ -76,7 +77,7 @@ responses:
                  a confidence interval).
 
 Reproducibility: every family seeds from the same master seed and prints it.
-The runner adds no randomness of its own, so `run_all.py` and the five
+The runner adds no randomness of its own, so `run_all.py` and the seven
 `python <family>.py` invocations produce the same numbers. The runner exits
 non-zero if any family fails its own assertions, or if any probe below can no
 longer find the number it reports -- so a schema change is loud rather than
@@ -110,6 +111,11 @@ FAMILIES: list[tuple[str, str, str]] = [
      "arima_fit / var_forecast forecast bands; theta_forecast, backtest"),
     ("bayes_and_sets", "Bayesian bands and identified sets",
      "bvar_irf_draws / bvar_ssvs / sign+zero+narrative SVAR / bai_perron"),
+    ("quantile_panel_lp", "Quantile, panel and cumulative local projections",
+     'quantile_lp / panel_lp (Driscoll-Kraay, SPJ) / lp(cumulative="both")'),
+    ("factor_midas", "Factor models and mixed frequency",
+     "favar two-step bands / umidas; weighted_midas, dfm_nowcast, "
+     "nelson_siegel ship no interval"),
 ]
 
 KIND_NOTE = {
@@ -542,8 +548,8 @@ def probes_irf_bands() -> list[Probe]:
               horizon_profile("big", "asymptotic"),
               "the whole path at once (what it does not)", joint,
               "READING",
-              "a pointwise band makes no joint promise; no function in the "
-              "library reports a simultaneous (sup-t) band", card),
+              "a pointwise band makes no joint promise; pass band=\"sup-t\" "
+              "for a simultaneous one (measured in irf_bands.py exp 7)", card),
     ]
 
 
@@ -835,12 +841,202 @@ def probes_bayes() -> list[Probe]:
     ]
 
 
+def rows_prefix(res: dict, exp: str, prefix: str) -> list[dict]:
+    """Every row of `exp` whose arm starts with `prefix` (>= 1 required)."""
+    rows = [r for r in res[exp]["rows"] if r["arm"].startswith(prefix)]
+    if not rows:
+        raise ProbeError(f"{exp}: no rows with arm prefix {prefix!r}")
+    return rows
+
+
+def worst_prefix(res: dict, exp: str, prefix: str,
+                 label: str | None = None) -> tuple[float, float, str]:
+    """The worst-covering cell over every arm matching `prefix`."""
+    row = min(rows_prefix(res, exp, prefix), key=lambda r: r["cov95"])
+    base = label if label is not None else row["arm"]
+    return (float(row["cov95"]), float(row["mcse"]),
+            f"{base}, worst h ({int(row['h'])})")
+
+
+def probes_quantile_panel() -> list[Probe]:
+    qcard = "../../reference/model-cards/quantile.md"
+    pcard = "../../reference/model-cards/panel.md"
+    lcard = "../../reference/model-cards/local-projections.md"
+    cook = "../../cookbook/panel-lp-standard-errors.md"
+
+    def umworst(R):
+        row = min((r for r in R["quantile_iid"]["rows"]), key=lambda r: r["cov95"])
+        return (float(row["cov95"]), float(row["mcse"]),
+                f"{row['arm']}, worst h ({int(row['h'])})")
+
+    def spj_cell(T, h):
+        def f(R):
+            row = pick(R["panel_spj"]["rows"], arm=f"T={T} spj", h=h)
+            return (float(row["cov95"]), float(row["mcse"]),
+                    f"SPJ, N=50, T={T}, h={h}")
+        return f
+
+    def cum_cell(T, h):
+        def f(R):
+            row = pick(R["lp_cumulative"]["rows"],
+                       arm=f"T={T} both (hac default)", h=h)
+            return (float(row["cov95"]), float(row["mcse"]),
+                    f"T={T}, h={h} (the pre-fix 0.507 cell)")
+        return f
+
+    def cum_extreme(T):
+        def f(R):
+            nom = float(R["lp_cumulative"]["meta"]["nominal"])
+            rows = rows_prefix(R, "lp_cumulative", f"T={T} both")
+            row = max(rows, key=lambda r: abs(r["cov95"] - nom))
+            return (float(row["cov95"]), float(row["mcse"]),
+                    f"T={T}, most extreme h ({int(row['h'])})")
+        return f
+
+    return [
+        Probe("quantile_panel_lp", "tsecon.quantile_lp",
+              "Powell sandwich, identified iid shock", "CI", 0.95,
+              "median tau, impact, T=400",
+              lambda R: lp_row(R, "quantile_iid", "iid T=400 tau=0.50", 0),
+              "worst (tau, h, T) cell of the whole iid grid", umworst,
+              "APPROXIMATION",
+              "close to nominal at every tau, horizon and T measured -- the "
+              "quantile card's transferred growth_at_risk warning does NOT "
+              "bind on an identified iid shock, because an iid impulse makes "
+              "the check-loss score serially uncorrelated (the same "
+              "mechanism that makes lag-augmented LP work). The residual "
+              "~1-2pp is the Powell kernel density estimate", qcard),
+        Probe("quantile_panel_lp", "tsecon.quantile_lp",
+              "persistent regressor (phi=0.8)", "CI", 0.95,
+              "default lag controls (p=4) whiten the score",
+              lambda R: worst_prefix(R, "quantile_persistent",
+                                     "persistent p=4", "p=4"),
+              "no lag controls (p=0): nothing whitens",
+              lambda R: worst_prefix(R, "quantile_persistent",
+                                     "persistent p=0", "p=0"),
+              "ESTIMATOR",
+              "the Powell sandwich is heteroskedasticity-robust, NOT HAC -- "
+              "exactly as the card says -- and the default lag controls are "
+              "what stand between a user and the growth_at_risk-shaped "
+              "decay: strip them and se/sd falls to ~0.65 at the far "
+              "horizon. Keep n_lag_controls >= the regressor's AR order",
+              qcard),
+        Probe("quantile_panel_lp", "tsecon.panel_lp",
+              'se_type="driscoll_kraay" (the default)', "CI", 0.95,
+              "T=80, impact",
+              lambda R: lp_row(R, "panel_dk", "N=50 T=80 dk", 0),
+              "T=40, worst horizon (N cannot help)",
+              lambda R: worst_prefix(R, "panel_dk", "N=50 T=40 dk",
+                                     "N=50 T=40"),
+              "APPROXIMATION",
+              "with a common shock the effective sample is T, not N*T: "
+              "quintupling N moves pooled coverage by under a point while "
+              "doubling T buys ~5pp -- the cookbook's caveat, measured. "
+              "Driscoll-Kraay is a T-asymptotic estimator; at T=40 read the "
+              "bands as indicative. (cluster-by-entity on the same draws is "
+              "strictly worse under the common factor)", cook),
+        Probe("quantile_panel_lp", "tsecon.panel_lp",
+              'bias_correction="spj" at short T', "CI", 0.95,
+              "T=40, h=2", spj_cell(40, 2),
+              "T=20, h=2 (the card's headline cell)", spj_cell(20, 2),
+              "APPROXIMATION",
+              "the split-panel jackknife removes most of the Nickell bias "
+              "and neither it nor uncorrected FE reaches nominal at T=20, "
+              "because Driscoll-Kraay itself is a short-T approximation -- "
+              "the card's own caveat, re-measured at ~8x its replication "
+              "count (and at these seeds the T=20 coverage GAIN over FE is "
+              "smaller than the card's 300-rep point numbers suggest; the "
+              "bias reduction is unambiguous)", pcard),
+        Probe("quantile_panel_lp", "tsecon.lp",
+              'cumulative="both" (default se resolves to "hac")', "CI", 0.95,
+              "T=400, h=12 (the repaired defect cell)", cum_cell(400, 12),
+              "T=1600, where the h+p bandwidth overshoots",
+              cum_extreme(1600),
+              "APPROXIMATION",
+              "the official post-fix numbers for the audit's most serious "
+              "finding: the pre-fix HC1 default covered 0.507 at h=12 and "
+              "was flat in T; the 0.3.0 mode-dependent HAC default restores "
+              "h=12 to ~0.93-0.94 at T=400, and at T=1600 the residual "
+              "deviation flips mildly CONSERVATIVE (the Bartlett bandwidth "
+              "h + p is generous once T is large relative to the overlap). "
+              "se=\"lag_augmented\" with this mode now raises (asserted "
+              "every run)", lcard),
+    ]
+
+
+def probes_factor_midas() -> list[Probe]:
+    guide = "../../guide/07-multivariate.md"
+    mcard = "../../reference/model-cards/nowcasting-midas.md"
+    tcard = "../../reference/model-cards/term-structure.md"
+
+    def um(arm, k, design):
+        def f(R):
+            row = pick(R["umidas"]["rows"], arm=arm, h=k)
+            return float(row["cov95"]), float(row["mcse"]), design
+        return f
+
+    return [
+        Probe("factor_midas", "tsecon.favar + tsecon.var_irf_bands",
+              "two-step bands conditioned on F-hat", "CI", 0.90,
+              "rich clean panel (N=100, T=200), impact",
+              lambda R: lp_row(R, "favar", "N=100 T=200 F-hat", 0),
+              "small noisy panel (N=20), T=800",
+              lambda R: worst_prefix(R, "favar", "N=20 T=800 F-hat",
+                                     "N=20 T=800"),
+              "ESTIMATOR",
+              "favar ships no band; this is the guide's own construction "
+              "and its warned hazard, priced. On a rich panel the F-hat "
+              "bands track the infeasible true-factor bands; on a small "
+              "noisy one they lose a further ~15-19pp at long horizons -- "
+              "and growing T makes it WORSE while the oracle improves, the "
+              "generated-regressor signature. Bootstrap the two-step "
+              "procedure, or grow N before T", guide),
+        Probe("factor_midas", "tsecon.umidas",
+              'se_type="hac" (the default)', "CI", 0.95,
+              "iid errors, T=300, most recent HF lag",
+              um("fav T=300 ph=0.5 pu=0.0", 1,
+                 "iid errors, T=300, k=1 (most recent lag)"),
+              "AR(1) errors phi=0.7, T=150, the intercept",
+              um("stress T=150 ph=0.9 pu=0.7", 0,
+                 "AR(1) errors phi=0.7, T=150, intercept"),
+              "APPROXIMATION",
+              "the HF-lag coefficients hold ~0.92+ even under persistent "
+              "errors and near-collinear lag columns; the INTERCEPT "
+              "inherits the error's full serial correlation and drops to "
+              "~0.82 -- the same constant-under-persistence mechanism this "
+              "page documents for har_rv. Quote the constant with care or "
+              "lengthen maxlags", mcard),
+        Probe("factor_midas", "tsecon.weighted_midas",
+              "no interval is returned", "NONE", 0.95,
+              "NLS point fit, weights and fit diagnostics only", None,
+              "", None, "READING",
+              "no se/bse/band key exists (the key set is verified every "
+              "run). If you need an interval on a mixed-frequency slope, "
+              "umidas ships HAC bse -- that is the supported route", mcard),
+        Probe("factor_midas", "tsecon.dfm_nowcast",
+              "no interval is returned", "NONE", 0.95,
+              "point nowcast + smoothed factor path only", None,
+              "", None, "READING",
+              "the Kalman smoother's variance is computed internally but "
+              "not exposed; any band around a nowcast is your own "
+              "construction", mcard),
+        Probe("factor_midas", "tsecon.nelson_siegel",
+              "no interval is returned", "NONE", 0.95,
+              "factors, fitted lambda, residuals and R^2 only", None,
+              "", None, "READING",
+              "no factor covariance is exposed; the same holds for the "
+              "other term-structure fits (svensson, dynamic_ns)", tcard),
+    ]
+
+
 PROBE_BUILDERS: dict[str, Callable[[], list[Probe]]] = {
     "regression_se": probes_regression_se,
     "irf_bands": probes_irf_bands,
     "lp_family": probes_lp_family,
     "forecast_intervals": probes_forecast,
     "bayes_and_sets": probes_bayes,
+    "quantile_panel_lp": probes_quantile_panel,
+    "factor_midas": probes_factor_midas,
 }
 
 
@@ -930,8 +1126,9 @@ def print_table(rows: list[dict], slot: str, title: str, note: str,
     dead = [r for r in rows if r[slot] is None]
     for r in dead:
         p = r["probe"]
+        reason = p.fav_label or "the library returns a point path only"
         print(f"  {p.surface:<30} {p.option:<44} {p.kind:<5}    -- "
-              f"{'the library returns a point path only':<46} "
+              f"{reason[:46]:<46} "
               f"{'--':>14} {'--':>6} {'--':>7} {'no band':<11}")
 
 
@@ -1009,11 +1206,90 @@ def print_honest_list(rows: list[dict]) -> None:
 
 
 # --------------------------------------------------------------------------
+# markdown emission -- the page's Table 1 / Table 2 rows, regenerated from
+# the harvested structured results so nothing on the page is hand-typed
+# --------------------------------------------------------------------------
+
+def _md_surface(surface: str) -> str:
+    return " ".join(f"`{tok}`" if tok.startswith("tsecon.") else tok
+                    for tok in surface.split(" "))
+
+
+def _md_escape(text: str) -> str:
+    return text.replace("|", "\\|")
+
+
+def _md_row(probe: Probe, cell: dict | None) -> str:
+    if cell is None:
+        reason = probe.fav_label or "the library returns a point path only"
+        return (f"| {_md_surface(probe.surface)} | "
+                f"{_md_escape(probe.option)} | {probe.kind} | — | "
+                f"{_md_escape(reason)} | — | — | — | no band |")
+    vd = verdict(cell["cover"], cell["mcse"], probe.nominal, probe.kind)
+    vd_md = f"**{vd}**" if vd in ("UNDER", "OVER") else vd
+    dev = ((cell["cover"] - probe.nominal) / cell["mcse"]
+           if cell["mcse"] > 0 else float("nan"))
+    return (f"| {_md_surface(probe.surface)} | {_md_escape(probe.option)} | "
+            f"{probe.kind} | {probe.nominal:.2f} | "
+            f"{_md_escape(cell['design'])} | "
+            f"{cell['cover']:.3f} ± {cell['mcse']:.3f} | {dev:+.1f} | "
+            f"{100 * (cell['cover'] - probe.nominal):+.1f} | {vd_md} |")
+
+
+def markdown_tables(rows: list[dict]) -> str:
+    """Both page tables as markdown, from the harvested rows."""
+    head = ("| surface | interval / option | kind | nom | design measured | "
+            "coverage ± MC se | dev | gap pp | verdict |\n"
+            "|---|---|---|---|---|---|---|---|---|")
+    out = ["### Table 1 rows (registry order)", head]
+    live = [r for r in rows if r["fav"] is not None]
+    dead = [r for r in rows if r["fav"] is None]
+    for r in live:
+        out.append(_md_row(r["probe"], r["fav"]))
+    for r in dead:
+        out.append(_md_row(r["probe"], None))
+    out += ["", "### Table 2 rows (sorted worst first)", head]
+    live2 = sorted((r for r in rows if r["stress"] is not None),
+                   key=lambda r: r["stress"]["cover"] - r["probe"].nominal)
+    for r in live2:
+        out.append(_md_row(r["probe"], r["stress"]))
+    for r in rows:
+        if r["stress"] is None:
+            out.append(_md_row(r["probe"], None))
+    # the registry counts the page's headline and group headers must match
+    n = len(rows)
+    n_freq = len([r for r in rows if r["probe"].kind in ("CI", "PRED")
+                  and r["stress"] is not None])
+    n_diag = len([r for r in rows if r["probe"].kind in ("CRED", "SET")])
+    n_fn = len({fn for r in rows
+                for fn in r["probe"].surface.replace(" + ", " / ")
+                .split(" / ")})
+    grp_a = grp_b = 0
+    for r in rows:
+        p = r["probe"]
+        if p.kind not in ("CI", "PRED") or r["stress"] is None:
+            continue
+        vd_f = (verdict(r["fav"]["cover"], r["fav"]["mcse"], p.nominal,
+                        p.kind) if r["fav"] is not None else "at nominal")
+        vd_s = verdict(r["stress"]["cover"], r["stress"]["mcse"], p.nominal,
+                       p.kind)
+        if vd_f in ("UNDER", "OVER"):
+            grp_a += 1
+        elif vd_s in ("UNDER", "OVER"):
+            grp_b += 1
+    out += ["", f"<!-- counts: {n} probes across {n_fn} functions; "
+                f"{n_freq} frequentist (CI+PRED); group A {grp_a}; "
+                f"group B {grp_b}; CRED/SET {n_diag}; "
+                f"no-band {n - n_freq - n_diag} -->"]
+    return "\n".join(out) + "\n"
+
+
+# --------------------------------------------------------------------------
 # driver
 # --------------------------------------------------------------------------
 
 def run(quick: bool = False, only: list[str] | None = None,
-        summary: bool = False) -> int:
+        summary: bool = False, markdown: str | None = None) -> int:
     t0 = time.perf_counter()
     keys = [k for k, _, _ in FAMILIES if only is None or k in only]
     if not keys:
@@ -1083,6 +1359,12 @@ def run(quick: bool = False, only: list[str] | None = None,
                 sort_by_gap=True)
     print_honest_list(rows)
 
+    if markdown is not None:
+        with open(markdown, "w", encoding="utf-8") as fh:
+            fh.write(markdown_tables(rows))
+        print()
+        print(f"  markdown table rows written to {markdown}")
+
     header("FAMILY STATUS")
     print(f"  {'module':<22} {'assertions':>12} {'runtime':>9}   result")
     print("  " + rule(70))
@@ -1120,9 +1402,13 @@ def main() -> None:
                          "per-family reports")
     ap.add_argument("--only", default=None,
                     help="comma-separated family keys, e.g. irf_bands,lp_family")
+    ap.add_argument("--markdown", default=None, metavar="PATH",
+                    help="also write the page's Table 1 / Table 2 rows as "
+                         "markdown, generated from the harvested results")
     args = ap.parse_args()
     only = [s.strip() for s in args.only.split(",")] if args.only else None
-    sys.exit(run(quick=args.quick, only=only, summary=args.summary))
+    sys.exit(run(quick=args.quick, only=only, summary=args.summary,
+                 markdown=args.markdown))
 
 
 if __name__ == "__main__":

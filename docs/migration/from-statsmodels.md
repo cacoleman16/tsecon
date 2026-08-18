@@ -81,7 +81,7 @@ else is a shipped function you can call now.
 | statsmodels | tsecon | Notes |
 |---|---|---|
 | `OLS(y, add_constant(X)).fit()` | `ols(y, Xc, se_type="nonrobust")` | Prepend your own constant column `Xc`. |
-| `... .fit(cov_type="HAC", cov_kwds={"maxlags": L})` | `ols(y, Xc, se_type="hac", maxlags=L)` | Newey-West. `use_correction=` toggles the small-sample factor. |
+| `... .fit(cov_type="HAC", cov_kwds={"maxlags": L})` | `ols(y, Xc, se_type="hac", maxlags=L, use_correction=False)` | Newey-West. **The `use_correction` defaults differ**: statsmodels `cov_type="HAC"` defaults the small-sample `n/(n−k)` factor off, tsecon defaults it on — so pass `use_correction=False` for a bit-for-bit migration, or add `"use_correction": True` to `cov_kwds` on the statsmodels side. At each library's own defaults the HAC `bse` differ by exactly `sqrt(n/(n−k))`. |
 | `... .fit(cov_type="HC0".."HC3")` | `ols(y, Xc, se_type="hc0".."hc3")` | Same White family. |
 | `cov_hac`, `cov_nw_panel` helpers | `long_run_variance(x, kernel=, bandwidth=)` | The kernel LRV as a standalone number. |
 

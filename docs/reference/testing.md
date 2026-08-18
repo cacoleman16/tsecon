@@ -29,10 +29,10 @@ here, so that is what is labelled.
 | — integration tests in `crates/*/tests/` | 1028 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 162 | |
 | — documentation tests | 45 | |
-| Python binding tests | **652 passed** in 7.5 s | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **839 collected, 0 failed** in 23 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 41, **every one** with a `tests/` directory | |
 | Golden fixtures | 69 JSON files, produced by 50 generator scripts | `fixtures/` |
-| Public Python functions | 128, of which **124** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4--python-binding-tests) names the gap |
+| Public Python functions | 139, of which **135** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
 
 All 7 ignored tests are in `tsecon-var`, and each `#[ignore]` gives its reason:
 three stored-bit-pattern fingerprints that are platform-specific, three
@@ -226,7 +226,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-652 tests in 50 files. 37 of the 69 fixture JSONs are reloaded here and checked
+839 tests in 67 files. 46 of the 78 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -248,7 +248,7 @@ cannot cover:
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
 - **Surface completeness — and the four functions it says are missing.** The
-  module exports 128 public callables. This is checked by running the check,
+  module exports 139 public callables. This is checked by running the check,
   not by asserting the answer, and the honest output is *not* empty:
 
   ```sh
@@ -267,7 +267,7 @@ cannot cover:
   regex looks for. The other four are real: **`engle_granger`,
   `fvar_scenario`, `ndiffs` and `quantile_lp` appear nowhere under
   `bindings/python/tests/`** — not under any spelling, since `grep -r` on the
-  bare name returns nothing either. So 124 of 128 are exercised here, not 128.
+  bare name returns nothing either. So 135 of 139 are exercised here, not 139.
 
   All four are golden-pinned on the Rust side —
   `tsecon-coint/tests/engle_granger_golden.rs`,
@@ -277,7 +277,7 @@ cannot cover:
   propagation that are precisely what this tier exists to check, and precisely
   what a Rust golden structurally cannot see. Nothing in the suite fails because
   of this today; it is listed again under
-  [what is not tested](#5--what-is-not-tested).
+  [what is not tested](#5-what-is-not-tested).
 
 ### Tier 5 — Monte Carlo validation
 
@@ -320,9 +320,9 @@ samples — and, where they do not, by how much and why.
 Full write-up: **[Interval coverage](../examples/interval-coverage.md)**.
 
 ```sh
-.venv/bin/python docs/examples/coverage/run_all.py            # 376 s here
+.venv/bin/python docs/examples/coverage/run_all.py            # 1904 s here
 .venv/bin/python docs/examples/coverage/run_all.py --summary   # tables only
-.venv/bin/python docs/examples/coverage/run_all.py --quick      # ~40 s smoke run
+.venv/bin/python docs/examples/coverage/run_all.py --quick      # ~3 min smoke run
 ```
 
 This is a separate tier from Tier 5 rather than a section of it, because the
@@ -333,17 +333,25 @@ size and whether an *estimator* is consistent. Tier 6 asks whether an
 specific data-generating process — and it is the claim a reader is implicitly
 relying on every time they quote a standard error.
 
-Five modules under
+Seven modules under
 [`docs/examples/coverage/`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage)
-re-estimate 40 interval-valued outputs across 21 functions on seeded draws from
-processes whose truth is known in closed form, and count containment. (39 rather
-than 21 because the option and the regime change the answer: `var_irf_bands`
-contributes six rows, `bai_perron` three.) Every coverage number
+re-estimate 50 interval-valued outputs across 28 functions on seeded draws from
+processes whose truth is known in closed form, and count containment. (50 rather
+than 28 because the option and the regime change the answer: `var_irf_bands`
+contributes six rows, `ols` five, `bai_perron` three.) Every coverage number
 carries its own Monte Carlo standard error `sqrt(p(1−p)/reps)` so that 0.93 and
 0.95 can be told apart honestly, and `run_all.py` harvests the consolidated
-tables from the structured results the modules return — nothing is transcribed,
-so a schema change makes the runner exit non-zero rather than silently dropping
-a row.
+tables from the structured results the modules return — nothing is transcribed
+*inside the runner*, so a schema change makes it exit non-zero rather than
+silently dropping a row. The published page's copies of the two tables **are** a
+transcription, and that is exactly where a row once went missing (the `hc3` row
+— audit round 2, finding 5), so they are now cross-checked row-for-row against
+the runner's probe registry by
+[`check_page.py`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage),
+which runs in the Python test suite: a dropped, duplicated, or unregistered
+row — and a headline or group count that stops summing to the registry — fails
+a build instead of shipping. (The coverage *numbers* themselves are still
+pinned by each family module's own assertions.)
 
 The design choice that makes the output usable is that each surface is measured
 **twice**: once on a design it is entitled to do well on, once on a design that
@@ -352,11 +360,11 @@ degrades, as approximations do" from "this interval does not work". The headline
 
 | | count |
 |---|---|
-| frequentist intervals measured (CI + PRED) | 31 |
-| — off nominal **even in the favourable design** | **8** |
-| — at nominal when entitled, off under stress | 23 |
+| frequentist intervals measured (CI + PRED) | 39 |
+| — off nominal **even in the favourable design** | **12** |
+| — at nominal when entitled, off under stress | 27 |
 | objects that make no frequentist promise (Bayesian credible bands, set-identified bounds) — reported as labelled diagnostics | 7 |
-| surfaces that return no interval at all (`theta_forecast`, `backtest`) | 1 |
+| surfaces that return no interval at all (`theta_forecast`/`backtest`, `weighted_midas`, `dfm_nowcast`, `nelson_siegel` — the last three verified by a per-run key-set tripwire) | 4 |
 
 Three results are worth naming here rather than leaving on the page:
 
@@ -457,9 +465,22 @@ recession probability within the year against **0.8%** for a +3pp steepness.
 Guarded offline by `test_replication_yield_curve.py` against a committed FRED
 snapshot.
 
-Both pages state scope explicitly: they reproduce the economic result — the
-sign, significance and magnitude of the published finding — not a line-by-line
-port of the authors' code or their exact inference conventions.
+**3. [Uhlig (2005)](../examples/replication-uhlig-monetary.md)**, *JME* 52(2) —
+the sign-restricted monetary policy SVAR, on the paper's own monthly dataset
+(1965:1–2003:12, committed at `fixtures/uhlig2005.csv`), via
+`tsecon.sign_restricted_svar`: his VAR(12), his restriction set (deflator,
+commodity prices, nonborrowed reserves not positive; funds rate not negative,
+months 0–5). Both published findings reproduce — **no price puzzle** (the
+deflator's 84% quantile is negative at every horizon through month 60) and the
+**ambiguous output response** (the 68% band on real GDP straddles zero at
+months 6–60, staying within the ±0.2% magnitude the paper's text states). The
+first replication of a *set-identified* result: the target is a published
+shape of uncertainty, not a point. Guarded offline by
+`test_replication_uhlig.py`.
+
+All three pages state scope explicitly: they reproduce the economic result —
+the sign, significance and magnitude of the published finding — not a
+line-by-line port of the authors' code or their exact inference conventions.
 
 ### Tier 9 — Benchmarks (parity first)
 
@@ -515,7 +536,7 @@ library with lying documentation.
 
 ## 3 · The Python test files
 
-37 of the 51 files in
+38 of the 52 files in
 [`bindings/python/tests/`](../../bindings/python/tests), with collected test
 counts. The 14 not listed here are a gap in *this table*, not in the suite —
 every one of them runs on every invocation of the command above:
@@ -524,10 +545,11 @@ every one of them runs on every invocation of the command above:
 |---|---:|---|
 | `test_arima_seasonal.py` | 5 | Seasonal ARIMA through the Python surface: the airline model against `sarima.json` (fit parity, naming, output shape), seasonal-argument parsing/errors, and the closed-form seasonal random-walk forecast law. |
 | `test_backtest.py` | 4 | Pseudo-out-of-sample backtest engine; no external golden — the naive forecaster makes every quantity a closed form checked against NumPy. |
-| `test_coint_regime.py` | 3 | Johansen / Engle-Granger cointegration and Markov-switching AR against `coint.json` and `regime.json`. |
-| `test_cv_splits.py` | 4 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored. |
+| `test_coint_regime.py` | 4 | Johansen / Engle-Granger cointegration and Markov-switching AR against `coint.json` and `regime.json`; the full `(n, k)` smoothed/filtered probability matrices at `k = 3` (shapes, row sums, back-compat column). |
+| `test_cv_splits.py` | 12 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored — including the walk-forward purge gap (exact train-tail truncation, unmoved test blocks) and the embargo refusal on `expanding`/`rolling`. |
 | `test_replication_ramey_zubairy.py` | 3 | The RZ government-spending replication, offline against the committed panel: multiplier below one across horizons (with the first stage asserted strong inside it), and a guard that it is not the outcome-only cumulative trap. |
 | `test_replication_yield_curve.py` | 2 | The Estrella-Mishkin yield-curve recession probit, offline against the committed FRED snapshot: the spread coefficient stays significantly negative. |
+| `test_replication_uhlig.py` | 8 | The Uhlig (2005) sign-restricted monetary SVAR, offline against the committed panel: no price puzzle (deflator 84% quantile negative through month 60), the ambiguous GDP response (68% band straddles zero at months 6–60, within ±0.35%), the sampler's sign enforcement, seed stability, and bit-reproducibility. 300 draws with a fixed seed, vs the docs page's 2000. |
 | `test_depth.py` | 4 | Realized volatility / HAR-RV, Diebold-Yilmaz connectedness, PCA factor model vs `{realized,connect,favar}.json`. |
 | `test_dynamic_ns.py` | 4 | Dynamic Nelson-Siegel (Diebold-Li 2006) two-step fit; row-100 cross-sectional golden anchors the per-date fit exactly. |
 | `test_favar.py` | 4 | Two-step FAVAR (Bernanke-Boivin-Eliasz 2005): step-1 factors must match the NumPy PCA golden up to a joint sign flip; assembly and IRFs checked structurally. |
@@ -565,10 +587,11 @@ every one of them runs on every invocation of the command above:
 ## 4 · How to run everything
 
 ```sh
-# 1. Rust core — 1037 tests
+# 1. Rust core (the count moves with development — the table above is the
+#    last measured snapshot)
 cargo test --workspace --exclude tsecon-python
 
-# 2. Python bindings — 538 tests
+# 2. Python bindings
 .venv/bin/python -m pytest bindings/python/tests -q
 
 # 3. Monte Carlo evidence (seeded, reproducible)
@@ -622,7 +645,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 1037 passed, 0 failed
+# 1388 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
@@ -639,8 +662,8 @@ spend their time in.
 maturin develop --release -m bindings/python/Cargo.toml
 ```
 
-With a release extension installed, the full 332-test Python suite runs in
-**4.4 s** and `docs/examples/monte_carlo.py` in **3.0 s** on this machine. Do
+With a release extension installed, the full Python suite runs in a few
+seconds and `docs/examples/monte_carlo.py` in **3.0 s** on this machine. Do
 not quote any timing taken against a debug build.
 
 ---
@@ -678,20 +701,24 @@ discover.
   a standard error around 0.005. The property-test bands are set deliberately
   wide for this reason (IVX size is accepted in 0.05 ± 0.02, LP coverage in
   [0.85, 0.99]); they catch a broken estimator, not a third-decimal drift.
-- **The interval-coverage suite is not in CI.** Tier 6 takes ~6 minutes for a
+- **The interval-coverage suite is not in CI.** Tier 6 takes ~30 minutes for a
   full run, so it is currently a local and pre-release gate rather than a
   per-push one. Every module already asserts its own qualitative findings and
   exits non-zero, and `run_all.py` additionally exits non-zero if a returned
   results schema moves under one of its probes, so it is CI-ready — it is not
   wired in yet, and until it is, an interval losing coverage will not fail a
   push the way a test losing its size will.
-- **Interval coverage is measured for 40 surfaces, not all of them.** The
+- **Interval coverage is measured for 50 surfaces, not all of them.** The
   [audit page](../examples/interval-coverage.md#what-is-not-measured) lists what
-  is left: `quantile_lp`, `growth_at_risk`, panel LP with Driscoll-Kraay SEs,
-  `favar`, `proxy_svar`, `nongaussian_svar`, GARCH forecast intervals,
-  `dfm_nowcast`, MIDAS, the term-structure fits, and `lp(cumulative=...)`. And
-  coverage is measured at one nominal level for most surfaces — where it *is*
-  swept, the shortfall is not linear in α.
+  is left: `growth_at_risk`, `proxy_svar`, `nongaussian_svar`, GARCH forecast
+  intervals, and `flp`/`flp_scenario` (two of those carry measured coverage on
+  their model cards rather than in the audit registry). `quantile_lp`, panel LP
+  with Driscoll-Kraay and SPJ standard errors, `favar`'s two-step bands,
+  U-MIDAS, and `lp(cumulative=...)` were measured in the round that added the
+  `quantile_panel_lp` and `factor_midas` families; `weighted_midas`,
+  `dfm_nowcast` and `nelson_siegel` are verified every run to ship no interval
+  at all. And coverage is measured at one nominal level for most surfaces —
+  where it *is* swept, the shortfall is not linear in α.
 
 **Coverage gaps.**
 

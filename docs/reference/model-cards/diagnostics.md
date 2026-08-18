@@ -1,7 +1,9 @@
 # Model card — Diagnostics and the stationarity workflow
 
 **Family:** `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`, `adf`, `kpss`,
-`check_stationarity`
+`check_stationarity` — plus the seasonal workflow: `stl`, `seasonal_strength`,
+`nsdiffs` (see the [dedicated section](#stl-decomposition-and-the-seasonal-workflow)
+at the end of this card)
 
 The first hour with any series. Before you fit a model you need to know how
 persistent the data are, what lag structure they carry, and whether they must
@@ -196,4 +198,164 @@ after differencing: Proceed
 Jarque-Bera p: 0.001
 ARCH-LM p: 0.175
 ADF p: 0.841  KPSS p: 0.01
+```
+
+---
+
+## STL decomposition and the seasonal workflow
+
+**Family:** `stl`, `seasonal_strength`, `nsdiffs`
+
+Season-Trend decomposition using LOESS (Cleveland, Cleveland, McRae &
+Terpenning 1990) — the workhorse for exploratory seasonal adjustment outside
+official statistics — plus the two advisors built on it: the
+Wang-Smith-Hyndman strength-of-seasonality measures and the
+Hyndman-Khandakar `nsdiffs` seasonal-differencing rule.
+
+### What it estimates
+
+- **`stl(y, period, ...)`** — the additive decomposition
+  `y = seasonal + trend + resid`. The inner loop LOESS-smooths each
+  *cycle-subseries* (all Januaries, all Februaries, …), low-passes the result
+  so the seasonal averages ~0 over every cycle, and LOESS-smooths the
+  deseasonalized series into the trend; the optional outer loop downweights
+  outliers with bisquare robustness weights on the remainder. This is the
+  netlib Fortran `stl.f` semantics, matched to `statsmodels.tsa.seasonal.STL`
+  elementwise.
+- **`seasonal_strength(y, period)`** — from a default STL fit:
+  `strength_seasonal = max(0, 1 − var(resid)/var(seasonal + resid))` and the
+  analogous `strength_trend` (sample variances). Near 1: the component
+  dominates; near 0: absent.
+- **`nsdiffs(y, period, alpha=0.05, max_d=1)`** — the number of seasonal
+  differences `D`: difference at the seasonal lag while
+  `seasonal_strength >= 0.64`, capped at `max_d` (the
+  `forecast::nsdiffs(test="seas")` rule). `alpha` is validated but unused —
+  the rule is threshold-based, not a hypothesis test (forecast ignores it for
+  this test too).
+
+### Assumptions and when to use
+
+- **Additive components.** STL decomposes additively; for multiplicative
+  seasonality (amplitude growing with the level) log-transform first —
+  `box_cox_lambda` tells you whether the log is defensible.
+- **One fixed integer period** (12 monthly, 4 quarterly). Multiple or
+  non-integer seasonalities need MSTL/STR (roadmap).
+- **Use `stl` before a SARIMA fit** (does the seasonal look stable? how big is
+  it relative to the noise?), to seasonally adjust for eyeballing turning
+  points, or to feed `resid` to outlier screens. `robust=True` when the series
+  has suspected outliers — the weights returned tell you which points the fit
+  ignored.
+- **Use `nsdiffs` + `ndiffs`, in that order** (seasonal difference first, then
+  the regular difference on the seasonally-differenced series) to pick
+  SARIMA's `(d, D)` the way auto-arima procedures do.
+
+### Key arguments and defaults (mirror statsmodels exactly)
+
+| Argument | Default | Notes |
+|----------|---------|-------|
+| `seasonal` | `7` | seasonal LOESS window; odd, ≥ 3; larger → smoother, more nearly periodic seasonal |
+| `trend` | `None` | odd, > period; `None` → smallest odd ≥ `1.5·period/(1−1.5/seasonal)` |
+| `low_pass` | `None` | odd, > period; `None` → smallest odd > period |
+| `seasonal_deg`/`trend_deg`/`low_pass_deg` | `1` | LOESS degree, 0 or 1 |
+| `robust` | `False` | `True` runs bisquare outer iterations |
+| `*_jump` | `1` | evaluate the LOESS every jump-th point, interpolate between (speedup) |
+| `inner_iter`/`outer_iter` | `None` | `None` → 2/15 if `robust` else 5/0 (Cleveland et al. §3.3) |
+
+Requires `n >= 2·period` (R's `stl()` bound; statsmodels silently misbehaves
+below it) and `period >= 2`.
+
+### How to read the output
+
+- **`stl`** → `{"seasonal", "trend", "resid", "weights", "period", "config"}`.
+  The identity `y = seasonal + trend + resid` holds exactly; `weights` are all
+  1 unless the outer loop ran (0 = ignored as an outlier); `config` reports
+  every resolved window/degree/jump and the iteration counts actually used.
+- **`seasonal_strength`** → `{"seasonal_strength", "trend_strength", "period"}`.
+- **`nsdiffs`** → `{"d", "stop", "steps", ...}` in the `ndiffs` house style:
+  per-order evidence in `steps`, and `stop` says *why* the sequence ended
+  (`WeakSeasonality` is the intended exit; `MaxD`/`TooShort` mean `d` is a
+  floor, not a verdict; `Constant` means the seasonality was deterministic and
+  is gone).
+
+### Failure modes
+
+- **Seasonal window too small.** `seasonal=7` lets the seasonal pattern evolve;
+  if you believe the pattern is fixed, use a large odd window (e.g. 51+ —
+  "periodic-ish") or the seasonal barely smooths and noise leaks into it.
+- **Trend window ≤ period is rejected** — it would let the trend absorb the
+  seasonal. The default rule exists precisely to prevent that leakage.
+- **Robust weights all ≈ 1 under `robust=True`** just means no outliers — not
+  a failure. Conversely a weight of 0 on a *real* event (a strike, a
+  recession trough) means the decomposition is describing the series without
+  that event; check `weights` before interpreting `resid`.
+- **`nsdiffs` on seasonally adjusted data** (e.g. most US macro releases)
+  correctly returns `D=0`; running it is still worthwhile as a check that the
+  adjustment did its job.
+- **Fewer than ~4 full cycles saturates the strength rule** (audit round 6,
+  measured on pure white noise, period 12): with only 2 cycles (n = 24) the
+  STL cycle-subseries interpolates noise straight into the seasonal component
+  and `seasonal_strength` is 1.000 on *every* draw — `nsdiffs` flags **D = 1
+  on 100% of white-noise series at n ≤ 28**, 38% at n = 48 (four cycles), 2%
+  at n = 72, 0% by n = 120. R's `forecast::nsdiffs` behaves identically (the
+  rule is matched, not mis-implemented), and the `stop="TooShort"` marker
+  warns in the *other* direction (d as a floor). With under ~4–6 cycles,
+  treat `D = 1` as "not enough data to tell", not as evidence of seasonality.
+- **A constant series raises** from `seasonal_strength` (the variance-ratio
+  measure is undefined there — the ratio of the decomposition's float-noise
+  variances is implementation noise; audit round 6 measured ≈ 0.61–0.67 on
+  flat lines before the guard). `nsdiffs` and `check_series` already
+  special-case constants themselves.
+
+### Validated against
+
+`statsmodels.tsa.seasonal.STL` 0.14.6 **elementwise** (seasonal, trend, resid,
+robustness weights) on CO2 monthly, 100·log US real GDP quarterly, and a
+seeded synthetic monthly series, across defaults / `robust=True` / a large
+seasonal window / `seasonal_deg=0` / non-unit jumps / explicit inner-outer
+counts, at 1e-8 tolerance (observed agreement ~1e-12; the algorithm is a
+deterministic port of the same Fortran). The strength measures and the 0.64
+rule have no reference implementation in the test environment (R-only), so
+they are graded honestly as documented-formula/rule transcriptions computed
+from statsmodels components — see the header of
+[`fixtures/generate_stl_fixtures.py`](../../../fixtures/generate_stl_fixtures.py).
+Pinned in [`fixtures/stl.json`](../../../fixtures/stl.json).
+
+### References
+
+- Cleveland, R. B., Cleveland, W. S., McRae, J. E. & Terpenning, I. (1990).
+  "STL: A Seasonal-Trend Decomposition Procedure Based on Loess."
+  *Journal of Official Statistics* 6, 3–73.
+- Wang, X., Smith, K. & Hyndman, R. (2006). "Characteristic-based clustering
+  for time series data." *Data Mining and Knowledge Discovery* 13, 335–364.
+- Hyndman, R. & Khandakar, Y. (2008). "Automatic time series forecasting:
+  the forecast package for R." *JSS* 27(3).
+- Hyndman, R. & Athanasopoulos, G. *Forecasting: Principles and Practice*
+  (3rd ed.), §3.6 (STL), §4.3 (strength), §9.9 (`nsdiffs`).
+
+### Runnable example
+
+```python
+import numpy as np
+import tsecon
+
+t = np.arange(240, dtype=float)
+y = 10 + 0.05*t + 3*np.sin(2*np.pi*t/12) + 0.4*np.sin(t*0.7134)
+
+r = tsecon.stl(y, 12, robust=True)                  # statsmodels-exact STL
+print("trend window:", r["config"]["trend"],        # default rule -> 23
+      "inner/outer:", r["config"]["inner_iter"], r["config"]["outer_iter"])
+
+s = tsecon.seasonal_strength(y, 12)
+print("seasonal strength:", round(s["seasonal_strength"], 3))
+
+d = tsecon.nsdiffs(y, 12)                           # SARIMA's D
+print("nsdiffs D =", d["d"], "| stop:", d["stop"])
+```
+
+Expected output:
+
+```
+trend window: 23 inner/outer: 2 15
+seasonal strength: 0.978
+nsdiffs D = 1 | stop: WeakSeasonality
 ```

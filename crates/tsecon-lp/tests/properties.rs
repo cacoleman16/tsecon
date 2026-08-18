@@ -7,7 +7,7 @@
 //! two-regime effect.
 
 use serde_json::Value;
-use tsecon_lp::{lp, lp_iv, lp_multiplier, lp_state, Cumulation, LpSpec, SeKind};
+use tsecon_lp::{lp, lp_iv, lp_multiplier, lp_state, Cumulation, LpError, LpSpec, SeKind};
 use tsecon_rng::Stream;
 use tsecon_stats::{ContinuousDist, StdNormal};
 
@@ -349,10 +349,59 @@ fn cumulative_builder_still_means_outcome_only() {
     assert_eq!(legacy.irf, explicit.irf);
     assert_eq!(legacy.se, explicit.se);
 
-    // Both-sides cumulation is a genuinely different estimator.
-    let both = lp(&y, &e, LpSpec::new(6, 4).with_cumulation(Cumulation::Both)).expect("both");
+    // Both-sides cumulation is a genuinely different estimator. It now
+    // requires the HAC path (lag augmentation cannot cover the future-shock
+    // overlap of the cumulated impulse), so the comparison runs both modes
+    // through the same HAC inference.
+    let legacy_hac = lp(&y, &e, LpSpec::new(6, 4).cumulative(true).with_hac(None)).expect("legacy");
+    let both = lp(
+        &y,
+        &e,
+        LpSpec::new(6, 4)
+            .with_cumulation(Cumulation::Both)
+            .with_hac(None),
+    )
+    .expect("both");
     assert!(
-        (both.irf[6] - legacy.irf[6]).abs() > 1e-6,
+        (both.irf[6] - legacy_hac.irf[6]).abs() > 1e-6,
         "Cumulation::Both must not silently equal Cumulation::Outcome"
+    );
+}
+
+#[test]
+fn both_sides_cumulation_refuses_lag_augmented_inference() {
+    // The cumulated impulse sum_{j=0..h} shock_{t+j} shares FUTURE shocks
+    // across base times up to h apart; augmenting with past impulse lags
+    // cannot project those out, so the lag-augmented HC1 score is serially
+    // correlated and its standard errors are inconsistent (audit: nominal
+    // 95% covered 0.507 at h = 12). The pairing must be refused, not
+    // answered wrongly — for lp, lp_state, and the cross-horizon covariance.
+    let mut stream = Stream::new(31);
+    let (y, e) = simulate_ar1_with_noise(&mut stream, 300, 0.5, 1.0);
+    let spec = LpSpec::new(6, 4).with_cumulation(Cumulation::Both);
+    assert_eq!(
+        lp(&y, &e, spec).unwrap_err(),
+        LpError::InvalidSeForCumulation
+    );
+    assert_eq!(
+        tsecon_lp::lp_irf_cov(&y, &e, spec).unwrap_err(),
+        LpError::InvalidSeForCumulation
+    );
+    let ind: Vec<f64> = (0..y.len())
+        .map(|t| f64::from(u8::from(t % 2 == 0)))
+        .collect();
+    assert_eq!(
+        lp_state(&y, &e, &ind, spec).unwrap_err(),
+        LpError::InvalidSeForCumulation
+    );
+
+    // The HAC escape hatch works, and its default bandwidth (h + p >= h)
+    // covers the induced MA(h) overlap: the SE path must grow with the
+    // horizon rather than stay flat.
+    let hac = lp(&y, &e, spec.with_hac(None)).expect("hac path");
+    assert!(
+        hac.se[6] > 1.5 * hac.se[0],
+        "HAC SEs under Cumulation::Both must grow with the horizon: {:?}",
+        hac.se
     );
 }

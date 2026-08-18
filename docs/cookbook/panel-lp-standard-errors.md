@@ -80,6 +80,73 @@ Under Driscoll-Kraay the response is significant through `h=2` and
 indistinguishable from zero afterwards. Under clustered standard errors every
 horizon would have looked significant.
 
+## Short panels: correcting Nickell bias without lying about the uncertainty
+
+With `T = 120` above, dynamic-panel (Nickell) bias is negligible. Shorten the
+panel and it is not: fixed effects + dynamics + short `T` biases the IRF by
+`O(h/T)` — growing with the horizon — and no `se_type` fixes a biased point
+estimate. `panel_lp` has two half-panel corrections, and they treat the
+*standard errors* very differently:
+
+```python
+rng = np.random.default_rng(3)
+N, T = 30, 40                                        # a SHORT panel this time
+shock = rng.standard_normal(T)
+alpha = rng.normal(0, 1, N)
+y = np.zeros((N, T))
+for i in range(N):
+    for t in range(1, T):
+        y[i, t] = (alpha[i] + 0.8 * y[i, t - 1] + 0.8 * shock[t]
+                   + rng.standard_normal())
+
+common = dict(horizon=4, n_lag_controls=1, se_type="driscoll_kraay", bandwidth=2.0)
+fe  = tsecon.panel_lp(y, shock, **common)
+dj  = tsecon.panel_lp(y, shock, jackknife=True, **common)
+spj = tsecon.panel_lp(y, shock, bias_correction="spj", **common)
+print("true                       " + " ".join(f"{0.8*0.8**h:+.3f}" for h in range(5)))
+for r, label in ((fe, "fe"), (dj, "dj"), (spj, "spj")):
+    irf = " ".join(f"{v:+.3f}" for v in r["irf"])
+    se  = " ".join(f"{v:.3f}" for v in r["se"])
+    print(f"{label:>4} ({r['bias_correction']:>15})  irf {irf}   se {se}")
+```
+
+```
+true                       +0.800 +0.640 +0.512 +0.410 +0.328
+  fe (           none)  irf +0.751 +0.512 +0.376 +0.300 +0.064   se 0.030 0.079 0.083 0.154 0.153
+  dj (dhaene_jochmans)  irf +0.752 +0.539 +0.436 +0.399 +0.346   se 0.030 0.079 0.083 0.154 0.153
+ spj (            spj)  irf +0.752 +0.546 +0.441 +0.369 +0.266   se 0.033 0.098 0.117 0.188 0.238
+```
+
+Reading it (one illustrative draw — the *rates* live in the
+[panel model card](../reference/model-cards/panel.md)'s Monte Carlo table):
+
+- **The uncorrected FE row sinks below the truth as `h` grows** — at `h=4` it
+  reports 0.064 against a true 0.328. That is the horizon-amplified Nickell
+  bias, and it shrinks with `T`, not with `N`.
+- **`jackknife=True` (Dhaene-Jochmans) moves the points and nothing else.**
+  Its `se` row is bit-identical to FE's by construction: the plug-in SE is kept
+  on an asymptotic-equivalence argument that has *not* arrived at `T=40`. The
+  round-2 audit measured the cost: at `N=20, T=60, h=8` the correction removes
+  the bias but inflates the estimator's dispersion ~36% while `se` doesn't
+  move, costing 8pp of coverage (0.880 → 0.804, recovering by `T≈240`).
+- **`bias_correction="spj"` (Mei-Sheng-Shi 2026) moves the points *and*
+  recomputes the SEs** for the corrected estimator (residuals at the corrected
+  coefficients, jackknife-adjusted scores, per their reference
+  implementation) — here 0.153 → 0.238 at `h=4`, wider exactly where the
+  correction is doing the most work. In the card's seeded Monte Carlo the SPJ
+  route cuts the `h=2` bias by ~4-15x at `T∈{20,40}` and covers no worse than
+  FE — but at `T=20` *neither* reaches the nominal 95% with Driscoll-Kraay
+  standard errors (0.74 FE vs 0.82 SPJ at `h=2`): DK itself is a short-`T`
+  approximation, the same caveat this page's `bandwidth` gotcha carries. Do
+  not read "bias-corrected" as "exact bands at `T=20`".
+
+The two corrections are the same `2·full − ½(half₁+half₂)` combination with
+different bookkeeping (the DJ halves are self-contained windows; the MSS/SPJ
+halves keep full-panel leads and lags and split the usable rows at their
+median), so they coincide in the points only in the degenerate
+no-lags-at-`h=0`-even-`T` case and differ everywhere else. Ask for one or the
+other; asking for both raises.
+
 ## Gotchas
 
 - **Shapes.** `outcome` is `N × T` (entities by time); `shock` is length `T`.
@@ -88,8 +155,19 @@ horizon would have looked significant.
 - **`bandwidth`** sets the Driscoll-Kraay kernel width. Like any HAC bandwidth
   it moves the answer; report it.
 - **`jackknife=True`** applies the Dhaene-Jochmans half-panel correction for
-  Nickell bias — worth using when `T` is short and lagged dependent variables
-  are in the controls.
+  Nickell bias. It does what it says to the *point estimate* — the bias is
+  essentially eliminated — but it also inflates the estimator's finite-sample
+  variance while the reported `se` is kept from the *uncorrected* full-sample
+  fit (the two are asymptotically equivalent, DJ Theorem 3.1; in a short panel
+  that equivalence has not arrived). Measured at N=20, T=60, h=8: bias
+  −0.070 → +0.005, but the true sampling sd grows **36%** (0.235 → 0.319)
+  against a bit-identical reported se of 0.212, so nominal-95% coverage falls
+  **0.880 → 0.804**. By T ≈ 240 the gap closes (0.944 → 0.927). So: at
+  *moderate-to-long* `T` the DJ jackknife is fine; when `T` is short —
+  exactly where a correction matters most — prefer `bias_correction="spj"`,
+  which recomputes the SEs for the corrected estimator (adjusted-score
+  sandwich); see the section above and the
+  [panel model card](../reference/model-cards/panel.md).
 - **`cumulative=True`** switches to the Ramey-Zubairy cumulated-outcome
   convention.
 - Slopes genuinely heterogeneous across units? A pooled estimator is the wrong

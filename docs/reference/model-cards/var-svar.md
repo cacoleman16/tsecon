@@ -343,10 +343,19 @@ and the restrictions may be near-inconsistent.
 restrictions; leaving a response *unrestricted* is the point (its band is the
 answer, not an assumption).
 
-**Validated against.** No external golden; validated internally by the
-Haar-rotation properties, sign-satisfaction of accepted draws, and the Uhlig
-(2005) punchline (an unrestricted output response straddling zero) reproduced
-in the [guide](../../guide/08-causal-identification.md).
+**Validated against.** The **Uhlig (2005) replication on the paper's own
+data** ([replication page](../../examples/replication-uhlig-monetary.md)):
+his monthly VAR(12), restriction set and K = 5 window reproduce both
+published findings — no price puzzle (the deflator's 84% quantile is
+negative at every horizon through month 60) and the ambiguous output
+response (the 68% band on real GDP straddles zero at months 6–60, within
+the ±0.2% magnitude the paper's text states) — pinned offline by
+[`test_replication_uhlig.py`](../../../bindings/python/tests/test_replication_uhlig.py)
+against the committed [`fixtures/uhlig2005.csv`](../../../fixtures/uhlig2005.csv).
+Beneath the replication, property validation: Haar-rotation moments,
+sign-satisfaction of accepted draws, seed bit-reproducibility, and the same
+punchline on synthetic data in the
+[guide](../../guide/08-causal-identification.md).
 
 **References.** Uhlig (2005); Rubio-Ramírez, Waggoner & Zha (2010); Arias,
 Rubio-Ramírez & Waggoner (2018, corrected zero+sign).

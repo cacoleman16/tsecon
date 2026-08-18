@@ -26,6 +26,15 @@ different priors anyway), so validation is a LAYERED stack. This generator
     moments (Gamma shape/rate, the eta covariance M_j, and the unit eta
     mean) for a chosen column, from a stored residual cross-product S.
 
+  * `anchor_semi_automatic` — the unit-adaptive default hyperpriors on the
+    precision factor: per-equation OLS residual variances s2_j on a small
+    mixed-units data matrix (columns deliberately scaled 1e-3 / 1 / 1e3),
+    and the effective scales derived from them — the Gamma rate
+    0.01 * s2_j on psi_jj^2 and the spike/slab sds 0.1 / sqrt(s2_i),
+    10 / sqrt(s2_i) on eta_ij. Pins the scale-adaptive defaults that make
+    the default posterior equivariant under a change of data units (the
+    audit round-2 scale-invariance finding).
+
 The design layout (must match the Rust `build_xy`): X = [1, y_{t-1}, ...,
 y_{t-p}], regressor index for lag l, variable v is 1 + (l-1) n + v; vec()
 stacks A (k x n) column-major, index i = r + c k.
@@ -233,6 +242,50 @@ def anchor_block3():
     }
 
 
+def anchor_semi_automatic():
+    """Per-equation OLS residual variances on a mixed-units VAR design and
+    the semi-automatic (unit-adaptive) precision-factor hyperpriors derived
+    from them: effective Gamma rate GAMMA_B_REL * s2_j on psi_jj^2 and
+    effective spike/slab sds KAPPA0_REL / sqrt(s2_i), KAPPA1_REL / sqrt(s2_i)
+    on eta_ij. The relative constants are chosen so unit-variance data
+    reproduce the historical absolute defaults (0.01, 0.1, 10)."""
+    GAMMA_B_REL, KAPPA0_REL, KAPPA1_REL = 0.01, 0.1, 10.0
+    rng = np.random.default_rng(20260817)
+    n, p = 3, 2
+    T_raw = 48
+    base = np.zeros((T_raw, n))
+    A1 = np.array(
+        [
+            [0.5, 0.1, 0.0],
+            [0.0, 0.4, 0.1],
+            [0.2, 0.0, 0.3],
+        ]
+    )
+    for t in range(1, T_raw):
+        base[t] = A1 @ base[t - 1] + rng.standard_normal(n)
+    # Deliberately mixed units per column: the anchor is only sharp if the
+    # per-equation scales differ by orders of magnitude.
+    units = np.array([1e-3, 1.0, 1e3])
+    data = base * units
+
+    Y, X = build_design(data, p)
+    k = X.shape[1]
+    T = Y.shape[0]
+    A_hat, *_ = np.linalg.lstsq(X, Y, rcond=None)
+    E = Y - X @ A_hat
+    s2 = np.diag(E.T @ E) / (T - k)  # per-equation OLS residual variance
+
+    return {
+        "n": n,
+        "p": p,
+        "data": data.tolist(),
+        "s2_ols": s2.tolist(),
+        "gamma_b_eff": (GAMMA_B_REL * s2).tolist(),
+        "kappa0_sd_eff": (KAPPA0_REL / np.sqrt(s2)).tolist(),
+        "kappa1_sd_eff": (KAPPA1_REL / np.sqrt(s2)).tolist(),
+    }
+
+
 def gen():
     dump = {
         "_meta": META,
@@ -240,6 +293,7 @@ def gen():
         "anchor_block1": anchor_block1(),
         "anchor_bernoulli": anchor_bernoulli(),
         "anchor_block3": anchor_block3(),
+        "anchor_semi_automatic": anchor_semi_automatic(),
     }
     path = OUT / "ssvs.json"
     path.write_text(json.dumps(dump, indent=1), encoding="utf-8")

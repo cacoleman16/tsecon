@@ -28,13 +28,18 @@ use crate::spec::{LpSpec, LpStateResult, SeKind, SeSpec};
 /// [`LpError::NonFinite`] on NaN/inf input, [`LpError::NonBinaryState`] if
 /// the indicator is not 0/1, [`LpError::DegenerateState`] when a regime is
 /// (nearly) empty, [`LpError::HorizonTooLong`] / [`LpError::SeriesTooShort`]
-/// on an exhausted sample, and [`LpError::Hac`] from the OLS/HAC engine.
+/// on an exhausted sample, [`LpError::InvalidSeForCumulation`] for
+/// lag-augmented inference under
+/// [`Cumulation::Both`](crate::Cumulation::Both) (the cumulated impulse
+/// shares *future* shocks across nearby base times, exactly as in
+/// [`lp`](crate::lp)), and [`LpError::Hac`] from the OLS/HAC engine.
 pub fn lp_state(
     y: &[f64],
     shock: &[f64],
     state_indicator: &[f64],
     spec: LpSpec,
 ) -> Result<LpStateResult, LpError> {
+    spec.check_se_supports_cumulation()?;
     let n = y.len();
     if shock.len() != n {
         return Err(LpError::LengthMismatch {

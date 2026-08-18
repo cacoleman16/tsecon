@@ -21,3 +21,6 @@ tsecon-stats = { path = "../tsecon-stats" }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 # Seeded Philox streams drive the property-test Monte Carlo designs.
 tsecon-rng = { path = "../tsecon-rng" }
+# Deterministic parallel replication for the DCS-t Monte-Carlo recovery
+# study (thread-count-invariant substreams).
+tsecon-bootstrap = { path = "../tsecon-bootstrap" }

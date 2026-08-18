@@ -4,12 +4,17 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Markov-switching time-series models for the tsecon econometrics library: the Hamilton (1989) filter and Kim (1994) smoother for k-regime Markov-switching autoregressions with switching means, common or switching AR coefficients, and switching variances, plus EM (Baum-Welch) maximum-likelihood estimation, regime classification, and expected-duration summaries"
+description = "Regime-switching time-series models for the tsecon econometrics library: the Hamilton (1989) filter and Kim (1994) smoother for k-regime Markov-switching autoregressions with switching means, common or switching AR coefficients, and switching variances, plus EM (Baum-Welch) maximum-likelihood estimation, regime classification, and expected-duration summaries; and the two-regime self-exciting threshold autoregression (SETAR, Tong-Lim 1980) by concentrated least squares with the Hansen (1996) fixed-regressor wild-bootstrap sup-F linearity test"
 
 [dependencies]
+tsecon-bootstrap = { path = "../tsecon-bootstrap" }
 tsecon-stats = { path = "../tsecon-stats" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
 # printed, not serde_json's default 1-ulp fast path.
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# The SETAR property tests simulate DGPs through the library RNG and pin
+# the bootstrap's any-thread-count determinism inside explicit rayon pools.
+rayon = "1"
+tsecon-rng = { path = "../tsecon-rng" }

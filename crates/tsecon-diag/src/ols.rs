@@ -115,6 +115,8 @@ pub(crate) fn ols_with_intercept(
 /// passed as explicit columns) with classical nonrobust standard errors,
 /// as needed by the unit-root regressions in [`crate::adf`].
 pub(crate) struct OlsDetailed {
+    /// Coefficients `b`, in the order the columns were supplied.
+    pub(crate) params: Vec<f64>,
     /// Coefficient t-ratios `b_j / se(b_j)` with
     /// `se(b_j) = sqrt(s^2 [(X'X)^{-1}]_{jj})` and `s^2 = RSS / (n - k)`,
     /// in the order the columns were supplied.
@@ -270,6 +272,7 @@ pub(crate) fn ols_detailed(
         .collect();
 
     Ok(OlsDetailed {
+        params: beta,
         t_values,
         ssr,
         nobs: n,

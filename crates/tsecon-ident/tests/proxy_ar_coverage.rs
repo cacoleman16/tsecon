@@ -32,8 +32,8 @@
 //! directly comparable.
 
 use tsecon_ident::proxy_ar::{
-    proxy_ar_sets, psi_reduced_form_cov, ArCritical, ArReducedForm, ArSet, ArVariance,
-    ArVarianceSpec,
+    proxy_ar_sets, psi_reduced_form_cov, psi_reduced_form_cov_mc, ArCritical, ArReducedForm, ArSet,
+    ArVariance, ArVarianceSpec,
 };
 use tsecon_ident::IdentError;
 use tsecon_linalg::faer::Mat;
@@ -718,4 +718,234 @@ fn arms_are_reproducible() -> Result<(), IdentError> {
         "different seeds produced identical results"
     );
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// SECOND-ORDER (SIMULATION) REDUCED-FORM VARIANCE — audit round 6, finding 8
+// ---------------------------------------------------------------------------
+
+/// One fitted dataset for the second-order tests: a seeded card-DGP draw with
+/// its OLS fit, its aligned strong proxy, and the moment `gamma` over the
+/// proxy overlap.
+#[allow(clippy::type_complexity)]
+fn fitted_example(
+    seed: u64,
+    t_obs: usize,
+) -> (Mat<f64>, Vec<f64>, Vec<Mat<f64>>, Mat<f64>, Vec<f64>) {
+    let mut stream = Stream::new(seed);
+    let (y, shock) = simulate_levels(&mut stream, t_obs);
+    let proxy: Vec<f64> = (LAGS..t_obs)
+        .map(|r| 1.0 * shock[r] + 1.5 * std_normal(&mut stream))
+        .collect();
+    let (resid, coefs, cov_alpha) = fit_var(&y);
+    let mut mbar = 0.0;
+    for &m in &proxy {
+        mbar += m;
+    }
+    mbar /= proxy.len() as f64;
+    let gamma: Vec<f64> = (0..N)
+        .map(|j| {
+            let mut ub = 0.0;
+            for r in 0..proxy.len() {
+                ub += resid[(r, j)];
+            }
+            ub /= proxy.len() as f64;
+            let mut s = 0.0;
+            for (r, &m) in proxy.iter().enumerate() {
+                s += (m - mbar) * (resid[(r, j)] - ub);
+            }
+            s / proxy.len() as f64
+        })
+        .collect();
+    (resid, proxy, coefs, cov_alpha, gamma)
+}
+
+/// The simulation variance is the exact propagation of the same Gaussian
+/// coefficient uncertainty, so as that uncertainty shrinks the nonlinear
+/// terms die and it must converge to the first-order delta method. Shrinking
+/// `cov_alpha` by `eps^2` scales both variances by `eps^2`; the ratio of
+/// diagonals must approach 1 within the sampler's own Monte-Carlo error.
+#[test]
+fn second_order_matches_delta_when_uncertainty_is_small() -> Result<(), IdentError> {
+    let (_resid, proxy, coefs, cov_alpha, gamma) = fitted_example(0x5A1E_0020, 300);
+    let horizon = 8;
+    let psi = ma_rep(&coefs, horizon);
+    let eps2 = 1e-12;
+    let tiny = Mat::from_fn(cov_alpha.nrows(), cov_alpha.ncols(), |i, j| {
+        eps2 * cov_alpha[(i, j)]
+    });
+    let delta = psi_reduced_form_cov(&psi, &coefs, tiny.as_ref(), &gamma, proxy.len())?;
+    let mc = psi_reduced_form_cov_mc(
+        horizon,
+        &coefs,
+        tiny.as_ref(),
+        &gamma,
+        proxy.len(),
+        4096,
+        0xD5EE_D001,
+    )?;
+    for h in 1..=horizon {
+        for i in 0..N {
+            let d = delta[h][(i, i)];
+            let m = mc[h][(i, i)];
+            assert!(
+                (m / d - 1.0).abs() < 0.2,
+                "h={h} i={i}: mc diag {m:.6e} vs delta diag {d:.6e} — the simulation \
+                 variance must reduce to the delta method as the uncertainty vanishes"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Same seed, same matrices, bit for bit; a different seed moves them.
+#[test]
+fn second_order_is_deterministic_in_the_seed() -> Result<(), IdentError> {
+    let (_resid, proxy, coefs, cov_alpha, gamma) = fitted_example(0x5A1E_0021, 250);
+    let a = psi_reduced_form_cov_mc(6, &coefs, cov_alpha.as_ref(), &gamma, proxy.len(), 256, 7)?;
+    let b = psi_reduced_form_cov_mc(6, &coefs, cov_alpha.as_ref(), &gamma, proxy.len(), 256, 7)?;
+    let c = psi_reduced_form_cov_mc(6, &coefs, cov_alpha.as_ref(), &gamma, proxy.len(), 256, 8)?;
+    let mut differs = false;
+    for h in 0..=6 {
+        for i in 0..N {
+            for j in 0..N {
+                assert_eq!(
+                    a[h][(i, j)].to_bits(),
+                    b[h][(i, j)].to_bits(),
+                    "same seed must reproduce bit-for-bit at h={h}"
+                );
+                if a[h][(i, j)] != c[h][(i, j)] {
+                    differs = true;
+                }
+            }
+        }
+    }
+    assert!(differs, "a different seed produced identical matrices");
+    Ok(())
+}
+
+/// The mechanism round 6 measured: at long horizons the exact propagation
+/// carries the convexity of `alpha -> Psi_h` that the first-order delta
+/// method drops, so on a fitted persistent system its diagonal exceeds the
+/// delta diagonal — and by more at `h = 12` than at `h = 2`. Deterministic
+/// given the seed.
+#[test]
+fn second_order_exceeds_delta_at_long_horizons() -> Result<(), IdentError> {
+    let (_resid, proxy, coefs, cov_alpha, gamma) = fitted_example(0x5A1E_0022, 300);
+    let horizon = 12;
+    let psi = ma_rep(&coefs, horizon);
+    let delta = psi_reduced_form_cov(&psi, &coefs, cov_alpha.as_ref(), &gamma, proxy.len())?;
+    let mc = psi_reduced_form_cov_mc(
+        horizon,
+        &coefs,
+        cov_alpha.as_ref(),
+        &gamma,
+        proxy.len(),
+        2048,
+        0xD5EE_D002,
+    )?;
+    let ratio_at = |h: usize| {
+        let mut r = 0.0f64;
+        for i in 0..N {
+            r = r.max(mc[h][(i, i)] / delta[h][(i, i)]);
+        }
+        r
+    };
+    let early = ratio_at(2);
+    let late = ratio_at(12);
+    assert!(
+        late > 1.05,
+        "expected the second-order variance to exceed the delta at h=12; max ratio {late:.4}"
+    );
+    assert!(
+        late > early,
+        "the second-order excess must grow with the horizon: h=2 ratio {early:.4}, \
+         h=12 ratio {late:.4}"
+    );
+    Ok(())
+}
+
+/// End to end: swapping the delta `psi_var` for the second-order one widens
+/// the long-horizon intervals, leaves the boundedness decision bit-identical
+/// (the correction enters `v0` only — never `q0` or `v2`), and leaves the
+/// point estimates untouched.
+#[test]
+fn second_order_widens_sets_and_preserves_boundedness() -> Result<(), IdentError> {
+    let (resid, proxy, coefs, cov_alpha, gamma) = fitted_example(0x5A1E_0023, 300);
+    let horizon = 12;
+    let psi = ma_rep(&coefs, horizon);
+    let pv_delta = psi_reduced_form_cov(&psi, &coefs, cov_alpha.as_ref(), &gamma, proxy.len())?;
+    let pv_mc = psi_reduced_form_cov_mc(
+        horizon,
+        &coefs,
+        cov_alpha.as_ref(),
+        &gamma,
+        proxy.len(),
+        512,
+        0xD5EE_D003,
+    )?;
+    let run = |pv: &Vec<Mat<f64>>| {
+        proxy_ar_sets(
+            resid.as_ref(),
+            &proxy,
+            &psi,
+            NORM_VAR,
+            UNIT,
+            ArVarianceSpec::with_reduced_form(
+                ArVariance::Hc0,
+                ArReducedForm {
+                    psi_var: pv,
+                    psi_gamma_cov: None,
+                },
+            ),
+            ArCritical::Chi2 { level: LEVEL },
+        )
+    };
+    let base = run(&pv_delta)?;
+    let second = run(&pv_mc)?;
+    assert_eq!(base.ar_bound_stat.to_bits(), second.ar_bound_stat.to_bits());
+    assert_eq!(base.ar_bounded_all, second.ar_bounded_all);
+    let mut wider = 0usize;
+    for i in 0..N {
+        let cb = &base.cells[horizon][i];
+        let cs = &second.cells[horizon][i];
+        assert_eq!(cb.point.to_bits(), cs.point.to_bits());
+        if let (ArSet::Interval { lo: bl, hi: bh }, ArSet::Interval { lo: sl, hi: sh }) =
+            (cb.set, cs.set)
+        {
+            if (sh - sl) > (bh - bl) {
+                wider += 1;
+            }
+        }
+    }
+    assert!(
+        wider >= 2,
+        "the second-order variance should widen the h={horizon} intervals on this fitted \
+         persistent system (wider in {wider}/3 cells)"
+    );
+    Ok(())
+}
+
+/// The sampler's argument contract: an odd or too-small draw count is refused
+/// with a teaching error, never silently adjusted.
+#[test]
+fn second_order_rejects_bad_draw_counts() {
+    let (_resid, proxy, coefs, cov_alpha, gamma) = fitted_example(0x5A1E_0024, 150);
+    for draws in [0usize, 16, 31, 33, 255] {
+        assert!(
+            matches!(
+                psi_reduced_form_cov_mc(
+                    4,
+                    &coefs,
+                    cov_alpha.as_ref(),
+                    &gamma,
+                    proxy.len(),
+                    draws,
+                    0
+                ),
+                Err(IdentError::InvalidArgument { .. })
+            ),
+            "draws={draws} must be rejected"
+        );
+    }
 }

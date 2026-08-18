@@ -199,10 +199,12 @@ pub(crate) struct WithinFit {
     pub(crate) params: Vec<f64>,
     /// Within residuals, stacked entity-major.
     pub(crate) resid: Vec<f64>,
-    /// Demeaned design (`n x k`), stacked entity-major.
-    xd: Mat<f64>,
+    /// Demeaned design (`n x k`), stacked entity-major. `pub(crate)` so
+    /// the split-panel jackknife in `lp.rs` can build its adjusted-score
+    /// sandwich from the same demeaned data.
+    pub(crate) xd: Mat<f64>,
     /// `(X'X)^{-1}` of the demeaned design — the sandwich bread.
-    xtx_inv: Mat<f64>,
+    pub(crate) xtx_inv: Mat<f64>,
     pub(crate) nobs: usize,
     pub(crate) nparams: usize,
     pub(crate) n_entities: usize,

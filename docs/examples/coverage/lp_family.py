@@ -1049,13 +1049,17 @@ says which.
     with the HAC rows of Experiment 1, which use a different variance for the
     same point estimates.
 
-11. What is NOT measured here, and should not be assumed: lp(cumulative=...)
-    intervals; any SIMULTANEOUS band. Every number in this module is a
-    POINTWISE interval at a single horizon. A band that contains the WHOLE
-    true IRF path 95% of the time must be wider than any of these -- with 13
-    horizons and correlated estimates, materially wider -- and none of these
-    functions reports one. Reading a pointwise 95% band as if it covered the
-    path is a bigger error than every miss listed above.
+11. What is NOT measured here, and should not be assumed: every number in
+    this module is a POINTWISE interval at a single horizon on a LEVEL
+    response. lp(cumulative=...) intervals are measured in
+    quantile_panel_lp.py (the post-fix mode-dependent default), not here.
+    A band that contains the WHOLE true IRF path 95% of the time must be
+    wider than any of these -- with 13 horizons and correlated estimates,
+    materially wider. `lp` now takes band="sup-t" for exactly that (its
+    joint coverage is measured by the crate's own tests and quoted on the
+    coverage page); nothing in this module asks for it, so reading any
+    pointwise 95% band here as if it covered the path is a bigger error
+    than every miss listed above.
 """
 
 

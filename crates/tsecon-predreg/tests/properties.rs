@@ -14,7 +14,9 @@
 //! All randomness is the library's seeded Philox stream (`tsecon_rng`); the
 //! numbers below are reproducible run to run.
 
-use tsecon_predreg::{ivx, ivx_multi, ols_predictive, stambaugh, IvxConfig, PredRegError};
+use tsecon_predreg::{
+    ivx, ivx_bonferroni, ivx_multi, ols_predictive, stambaugh, IvxConfig, PredRegError,
+};
 use tsecon_rng::Stream;
 use tsecon_stats::{ContinuousDist, StdNormal};
 
@@ -237,4 +239,161 @@ fn ivx_scalar_matches_multi_with_one_regressor() {
     let multi = ivx_multi(&r, std::slice::from_ref(&x), cfg).expect("multi");
     assert!((scalar.beta_ivx - multi.beta_ivx[0]).abs() < 1e-9);
     assert!((scalar.wald - multi.wald).abs() < 1e-9);
+}
+
+// -------------------------------------------------- joint tests in k (audit)
+
+/// Simulate the many-predictor Stambaugh corner: `k` independent predictors
+/// `x_j`, endogeneity `cue` carried by predictor 0 only,
+/// `r_{t+1} = sum_j beta_j x_{j,t} + u_{t+1}` (indexing as in `simulate`:
+/// `r_t` pairs with `x_{t}` one step ahead through the estimators' own
+/// alignment). Returns `(r, x_cols)`.
+fn simulate_k(
+    s: &mut Stream,
+    n: usize,
+    k: usize,
+    rho: f64,
+    cue: f64,
+    beta: &[f64],
+) -> (Vec<f64>, Vec<Vec<f64>>) {
+    let mut x_cols = vec![vec![0.0_f64; n]; k];
+    let mut e0 = vec![0.0_f64; n];
+    for (j, col) in x_cols.iter_mut().enumerate() {
+        for t in 0..n {
+            let e = gaussian(s);
+            if j == 0 {
+                e0[t] = e;
+            }
+            if t > 0 {
+                col[t] = rho * col[t - 1] + e;
+            }
+        }
+    }
+    let root = (1.0 - cue * cue).sqrt();
+    let r: Vec<f64> = (0..n)
+        .map(|t| {
+            let u = cue * e0[t] + root * gaussian(s);
+            let mut s_beta = 0.0;
+            for j in 0..k {
+                s_beta += beta[j] * x_cols[j][t];
+            }
+            s_beta + u
+        })
+        .collect();
+    (r, x_cols)
+}
+
+const CHI2_5_95: f64 = 11.070_498; // chi-square(5) 95th percentile
+
+/// The size defect rounds 3-4 measured, pinned as a regression test: at the
+/// default tuning the chi-square(k) joint Wald over-rejects a true null in k
+/// (rho = 1, endogeneity -0.9, n = 250, k = 5 measured ~0.17), while the
+/// Bonferroni combination of scalar tests stays at or below nominal. This is
+/// the k > 1 size test the audit found missing from the suite.
+#[test]
+fn ivx_joint_size_in_k_chi2_defect_and_bonferroni_repair() {
+    let reps = 800;
+    let n = 250;
+    let k = 5;
+    let cue = -0.9;
+    let beta = vec![0.0_f64; k];
+    let cfg = IvxConfig::default();
+    let mut s = Stream::new(0x10C0_FFEE);
+    let mut chi2_rej = 0usize;
+    let mut bonf_rej = 0usize;
+    for _ in 0..reps {
+        let (r, x_cols) = simulate_k(&mut s, n, k, 1.0, cue, &beta);
+        if ivx_multi(&r, &x_cols, cfg).expect("multi").wald > CHI2_5_95 {
+            chi2_rej += 1;
+        }
+        if ivx_bonferroni(&r, &x_cols, cfg).expect("bonf").pvalue < 0.05 {
+            bonf_rej += 1;
+        }
+    }
+    let chi2_size = chi2_rej as f64 / reps as f64;
+    let bonf_size = bonf_rej as f64 / reps as f64;
+    eprintln!(
+        "k={k} rho=1 cue={cue}: chi2 joint size={chi2_size:.3}  bonferroni size={bonf_size:.3}"
+    );
+    // The defect is real and large (measured ~0.17; generous MC band).
+    assert!(
+        chi2_size > 0.10,
+        "expected the chi-square(k) joint Wald to over-reject at k={k}, got {chi2_size:.3}"
+    );
+    // The Bonferroni combination holds the level (it may be conservative).
+    assert!(
+        bonf_size < 0.075,
+        "Bonferroni joint size {bonf_size:.3} above its validity band at k={k}"
+    );
+}
+
+/// Bonferroni power sanity: a sparse alternative (one genuine predictor among
+/// five) must be detected far above size.
+#[test]
+fn ivx_bonferroni_has_power_against_a_sparse_slope() {
+    let reps = 600;
+    let n = 250;
+    let k = 5;
+    let mut beta = vec![0.0_f64; k];
+    beta[0] = 0.06;
+    let cfg = IvxConfig::default();
+    let mut s = Stream::new(0xB0F);
+    let mut rej = 0usize;
+    for _ in 0..reps {
+        let (r, x_cols) = simulate_k(&mut s, n, k, 0.99, -0.9, &beta);
+        if ivx_bonferroni(&r, &x_cols, cfg).expect("bonf").pvalue < 0.05 {
+            rej += 1;
+        }
+    }
+    let power = rej as f64 / reps as f64;
+    eprintln!("bonferroni sparse power = {power:.3}");
+    assert!(
+        power > 0.5,
+        "Bonferroni joint power {power:.3} too low against a sparse slope"
+    );
+}
+
+/// At k = 1 the Bonferroni path IS the scalar test: identical wald and
+/// p-value, no adjustment.
+#[test]
+fn ivx_bonferroni_specialises_to_scalar_at_k1() {
+    let mut s = Stream::new(43);
+    let (r, x) = simulate(&mut s, 200, 0.97, -0.5, 0.04);
+    let cfg = IvxConfig::default();
+    let scalar = ivx(&r, &x, cfg).expect("scalar");
+    let bonf = ivx_bonferroni(&r, std::slice::from_ref(&x), cfg).expect("bonf");
+    assert!((scalar.wald - bonf.wald_max).abs() < 1e-12);
+    assert!((scalar.wald - bonf.wald_scalar[0]).abs() < 1e-12);
+    assert!((scalar.pvalue - bonf.pvalue).abs() < 1e-12);
+    assert_eq!(bonf.nregressors, 1);
+    assert_eq!(bonf.nobs, scalar.nobs);
+    assert!((bonf.rz - scalar.rz).abs() < 1e-15);
+}
+
+/// The Bonferroni p is exactly min(1, k * min_j p_j) of the per-column scalar
+/// tests, and every per-column entry matches the scalar function bit-for-bit.
+#[test]
+fn ivx_bonferroni_is_the_scalar_tests_combined() {
+    let mut s = Stream::new(44);
+    let k = 4;
+    let (r, x_cols) = simulate_k(&mut s, 180, k, 0.98, -0.6, &vec![0.0; k]);
+    let cfg = IvxConfig::default();
+    let bonf = ivx_bonferroni(&r, &x_cols, cfg).expect("bonf");
+    let mut p_min = f64::INFINITY;
+    for (j, col) in x_cols.iter().enumerate() {
+        let scalar = ivx(&r, col, cfg).expect("scalar");
+        assert_eq!(scalar.wald.to_bits(), bonf.wald_scalar[j].to_bits());
+        assert_eq!(scalar.pvalue.to_bits(), bonf.pvalue_scalar[j].to_bits());
+        p_min = p_min.min(scalar.pvalue);
+    }
+    assert!((bonf.pvalue - (k as f64 * p_min).min(1.0)).abs() < 1e-15);
+}
+
+#[test]
+fn ivx_bonferroni_rejects_empty_input() {
+    let r = [1.0, 2.0, 3.0];
+    assert!(matches!(
+        ivx_bonferroni(&r, &[], IvxConfig::default()),
+        Err(PredRegError::EmptyInput { .. })
+    ));
 }

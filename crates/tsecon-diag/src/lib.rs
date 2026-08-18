@@ -22,6 +22,13 @@
 //!   ([`mackinnon_p`], [`mackinnon_crit`]).
 //! * [`kpss`] — KPSS stationarity test (Kwiatkowski et al. 1992) with
 //!   legacy and Hobijn-Franses-Ooms automatic Bartlett bandwidths.
+//! * [`dfgls`] — DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996):
+//!   GLS detrending at the ERS local alternative, Perron-Qu (2007) lag
+//!   selection, and the arch DF-GLS response-surface p-values.
+//! * [`zivot_andrews`] — Zivot-Andrews (1992) unit-root test with one
+//!   endogenous break (intercept, trend, or both), minimum-t over trimmed
+//!   candidate break dates, with the simulated-table p-values of
+//!   statsmodels ([`za_p`], [`za_crit`]).
 //! * [`check_stationarity`] — the joint ADF + KPSS confirmatory decision
 //!   workflow, classifying the evidence into a quadrant with a concrete
 //!   recommendation (proceed / difference / detrend).
@@ -42,6 +49,7 @@
 mod acf;
 mod advisors;
 mod arch;
+mod dfgls;
 mod error;
 mod mackinnon;
 mod mackinnon_ext;
@@ -52,13 +60,16 @@ mod portmanteau;
 mod report;
 mod unitroot;
 mod validate;
+mod zivot_andrews;
 
 pub use acf::{acf, pacf_ols, pacf_yw, AcfResult};
 pub use advisors::{
-    box_cox_lambda, box_cox_llf, guerrero_cv, ndiffs, AdvisorError, BoxCoxLambda, BoxCoxMethod,
-    NdiffsResult, NdiffsStep, NdiffsStop, NdiffsTest,
+    box_cox_lambda, box_cox_llf, guerrero_cv, ndiffs, nsdiffs, AdvisorError, BoxCoxLambda,
+    BoxCoxMethod, NdiffsResult, NdiffsStep, NdiffsStop, NdiffsTest, NsdiffsResult, NsdiffsStep,
+    NsdiffsStop, NSDIFFS_SEAS_THRESHOLD,
 };
 pub use arch::{arch_lm, ArchLmResult};
+pub use dfgls::{dfgls, DfglsResult, DfglsTrend};
 pub use error::DiagError;
 pub use mackinnon::{mackinnon_crit, mackinnon_p, AdfCriticalValues};
 pub use mackinnon_ext::{mackinnon_coint_crit, mackinnon_coint_p};
@@ -72,4 +83,7 @@ pub use unitroot::{
     adf, check_stationarity, check_stationarity_at, kpss, AdfLagSelection, AdfRegression,
     AdfResult, KpssCriticalValues, KpssLags, KpssRegression, KpssResult, Recommendation,
     StationarityQuadrant, StationarityReport,
+};
+pub use zivot_andrews::{
+    za_crit, za_p, zivot_andrews, ZaCriticalValues, ZaLagSelection, ZaRegression, ZaResult,
 };

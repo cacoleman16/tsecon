@@ -42,11 +42,12 @@ members = [
     "crates/tsecon-funcshock",
     "crates/tsecon-breaks",
     "crates/tsecon-panelroot",
+    "crates/tsecon-evt",
     "bindings/python",
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"

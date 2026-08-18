@@ -1,13 +1,15 @@
 # Model card — Cointegration and regime switching
 
-`johansen` · `vecm` · `markov_switching_ar`
+`johansen` · `vecm` · `markov_switching_ar` · `setar` · `setar_test`
 
 Two ways the tidy linear-stationary world breaks. First, series can be
 individually nonstationary yet move together — share a long-run equilibrium
 (cointegration); differencing away the trends throws that equilibrium away, and
 the vector error-correction model keeps it. Second, the parameters themselves
-can switch between unobserved regimes — expansion and recession, calm and
-crisis — governed by a hidden Markov chain.
+can switch between regimes — either *unobserved* states governed by a hidden
+Markov chain (`markov_switching_ar`), or *observed* states triggered when a
+lagged value of the series itself crosses a threshold (`setar`, with
+`setar_test` deciding whether a threshold exists at all).
 
 ---
 
@@ -132,10 +134,15 @@ regimes (usually essential — regimes often *are* volatility states),
 
 **How to read the output.** `transition` (k×k; column-stochastic Markov matrix),
 `means`, `variances` (per regime), `expected_durations` (average spell length in
-each regime — the persistence read), `loglik`, `converged`, and the
-`smoothed_prob_last_regime` / `regimes` series (the smoothed probability path and
-the most-likely regime per period). Label regimes by their `means`/`variances`,
-not their index (EM does not order them).
+each regime — the persistence read), `loglik`, `converged`, the full
+probability matrices `smoothed_prob` (Kim 1994, `P(S_t | Y_T)`) and
+`filtered_prob` (Hamilton filter, `P(S_t | Y_t)`) — each `(n, k_regimes)`
+with `n = len(y) - order`, rows summing to 1 — and the `regimes` series (the
+most-likely regime per period, the argmax of each smoothed row).
+`smoothed_prob_last_regime` is `smoothed_prob[:, -1]`, kept because 0.2.0
+returned only that column (recoverable at `k_regimes = 2` as `1 - p`, not at
+`k_regimes >= 3`). Label regimes by their `means`/`variances`, not their
+index (EM does not order them).
 
 **Failure modes.** EM converges to local optima — try multiple starts; regime
 labels are arbitrary across runs; too many regimes on a short sample gives empty
@@ -157,4 +164,138 @@ ms = tsecon.markov_switching_ar(y, k_regimes=2, order=1, switching_variance=True
 print("regime means    :", np.round(ms["means"], 3))
 print("regime variances:", np.round(ms["variances"], 3))
 print("expected durations:", np.round(ms["expected_durations"], 1))
+```
+
+---
+
+## `setar` — self-exciting threshold autoregression
+
+**What it estimates.** A two-regime SETAR(p) (Tong & Lim 1980): an AR(p) whose
+coefficients switch when the *observed* lagged value `y_{t-d}` crosses a
+threshold `γ`. Fit by concentrated least squares (Hansen 1997): for each
+candidate threshold — the order statistics of `y_{t-d}` with a `trim` fraction
+excluded at each end — OLS in each regime; the threshold (and, when `delays`
+is a list, the delay) minimizes the pooled SSR. The workhorse observable-regime
+nonlinear benchmark (sunspots, unemployment asymmetry, floor/ceiling dynamics).
+
+**Assumptions.** Two regimes with an abrupt switch on a *lagged own value*
+(smooth transitions want STAR; switching on an unobserved state wants
+`markov_switching_ar`); iid errors within regime for the classical SEs; the
+threshold variable visits both sides of `γ` often enough (trimming plus the
+`k + 1` per-regime minimum enforce this mechanically, not statistically).
+
+**When to use (and when not).** Use when the *level* of the series itself
+plausibly triggers the regime — asymmetry over the cycle, floor/ceiling
+dynamics — and you want interpretable per-regime dynamics. Not for
+volatility-driven or unobserved regimes, and not before checking a threshold
+exists: run `setar_test` first — the split fit *always* lowers the SSR, so an
+unvalidated SETAR fit on linear data will happily report two regimes.
+
+**Key arguments and defaults (and why).** `p` (AR order, per regime);
+`delay=1` (the standard first try); `delays=[1, 2, 3]` searches the delay
+jointly with the threshold — all candidates then share the common sample
+`t ≥ max(p, max(delays))` so pooled SSRs are comparable; `trim=0.15` (Hansen's
+15% trimming — each regime keeps at least 15% of the sample, and never fewer
+than `k + 1` observations); `constant=True`; `ic="aic"|"bic"` selects which
+criterion is *reported* under the `ic` key (with `p` fixed, both rank
+candidates exactly as the SSR does, so the fit itself never depends on it).
+
+**How to read the output.** `threshold`, `delay`; `params_low`/`params_high`
+(constant first, then lags 1..p) with classical `bse_low`/`bse_high`;
+`n_low`/`n_high` (regime occupancy — a tiny regime means the threshold sits in
+a data-sparse corner even after trimming); pooled `ssr` and
+`sigma2 = SSR/(n−2k)`, per-regime `sigma2_low`/`sigma2_high`; `aic`/`bic`
+(`n·ln(SSR/n) + penalty·m`, `m = 2k+1` counting the threshold); the full
+candidate grid `thresholds` with its `ssr_path` — plot it: a sharp V says the
+threshold is well identified, a flat valley says it is not.
+
+**Failure modes.** Fitting SETAR to linear data "finds" a threshold (use
+`setar_test`); the threshold is superconsistent but its *sampling* distribution
+is nonstandard — the reported SEs are for the regression coefficients, not
+`γ`; near-empty regimes make per-regime SEs meaningless; delay search over
+many candidates on short samples overfits.
+
+**Validated against.** No third-party SETAR exists in the test venv (no R
+`tsDyn`), so the golden is an *independent NumPy transcription of the published
+algorithm* — explicit regime-split design matrices, per-regime `lstsq`, the SSR
+profile over the candidate grid (Hansen 1997 notation; the generator header
+states this honestly): threshold, per-regime coefficients and SEs, SSRs,
+variances, and ICs pinned at 1e-10 over six cases including delay search and a
+no-constant fit (`fixtures/setar.json`). Statistical correctness is established
+by seeded Monte Carlo (`setar_properties.rs`): over 200 replications of a
+two-regime DGP (`y = 1.0 + 0.6y₋₁` below 0, `−1.0 + 0.2y₋₁` above, T = 400),
+the threshold's median absolute error is **0.008** and per-coefficient biases
+are **|bias| ≤ 0.012** (c_low +0.012, φ_low +0.007, c_high −0.010, φ_high
++0.008); on data where both regimes are identical the regime fits reproduce the
+plain AR OLS fit, and coefficients/threshold are scale/location-equivariant.
+
+**References.** Tong & Lim (1980); Hansen (1997, 2000); Tong (1990).
+
+---
+
+## `setar_test` — Hansen (1996) bootstrap linearity test
+
+**What it estimates.** Whether a threshold exists at all: sup-F =
+`n·(S0 − S1)/S1` (S0 the linear-AR SSR, S1 the SETAR SSR at the concentrated
+optimum), with a p-value from Hansen's fixed-regressor wild bootstrap. Run it
+*before* interpreting any `setar` fit.
+
+**Assumptions.** The null is a linear AR(p) with a constant; the alternative a
+two-regime SETAR at the given `delay`. The bootstrap conditions on the
+regressors and reweights the null residuals (`y* = ê·η`, `η` iid N(0,1)), so it
+is robust to heteroskedasticity of the errors.
+
+**When to use (and when not).** Whenever a SETAR (or any regime story keyed to
+an observed lag) is on the table. Never replace the bootstrap p-value with a
+chi-squared tail: the threshold is unidentified under the null (the Davies
+problem), so the sup-F statistic does *not* have a chi-squared distribution —
+the library refuses to report one by design.
+
+**Key arguments and defaults (and why).** `n_boot=499` (odd B makes
+`(B+1)·α` an integer at the usual levels; the p-value lattice is
+`{1/(B+1), ..., 1}`); `seed=0` — the bootstrap is embarrassingly parallel
+(rayon) and bit-identical for a given seed at any thread count, so results
+replicate exactly across machines.
+
+**How to read the output.** `stat`, `p_value` (small ⇒ reject linearity ⇒ a
+threshold model is warranted), `threshold` (where the sup is attained — a
+preview of `setar`'s estimate), `f_path` over `thresholds` (the pointwise F
+profile), `boot_stats` (the null distribution actually used — histogram it
+against `stat`).
+
+**Failure modes.** Too few bootstrap draws make the p-value lattice coarse
+(with B = 99 the smallest possible p is 0.01); rejecting linearity does not
+choose *which* nonlinear model — STAR or Markov-switching may fit better;
+power falls when the true delay is not the one tested (search delays in
+`setar` but test at the chosen delay honestly: pre-testing distorts size).
+
+**Validated against.** The sup-F statistic is pinned at 1e-10 against the
+independent NumPy transcription (four cases, `fixtures/setar.json`); the
+bootstrap p-value is validated by *property*, not fixture: over 200 seeded
+linear-AR series (T = 100, B = 199), the test rejects at rate **0.08 at the 5%
+level** and **0.11 at the 10% level** with mean p-value **0.50** (approximately
+uniform); on a strongly separated SETAR (T = 500) it rejects with p ≤ 0.01.
+Determinism at any thread count is asserted by test.
+
+**References.** Hansen (1996, Econometrica); Hansen (1997); Davies (1987).
+
+```python
+import numpy as np, tsecon
+rng = np.random.default_rng(1)
+# Simulate a two-regime SETAR: mean-reverting pushes across the threshold 0.
+y = np.zeros(400)
+for t in range(1, 400):
+    if y[t-1] <= 0.0:
+        y[t] = 1.0 + 0.6 * y[t-1] + rng.standard_normal()
+    else:
+        y[t] = -1.0 + 0.2 * y[t-1] + rng.standard_normal()
+
+lin = tsecon.setar_test(y, p=1, delay=1, n_boot=499, seed=0)
+print(f"sup-F = {lin['stat']:.1f}, bootstrap p = {lin['p_value']:.3f}")
+
+if lin["p_value"] < 0.05:
+    fit = tsecon.setar(y, p=1, delays=[1, 2], trim=0.15)
+    print("threshold:", round(fit["threshold"], 3), " delay:", fit["delay"])
+    print("low  regime:", np.round(fit["params_low"], 2), " n =", fit["n_low"])
+    print("high regime:", np.round(fit["params_high"], 2), " n =", fit["n_high"])
 ```

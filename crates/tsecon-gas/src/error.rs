@@ -45,6 +45,15 @@ pub enum GasError {
         /// What about the series leaves it without a scale.
         what: &'static str,
     },
+    /// The series is constant, so the DCS *level* model has nothing to
+    /// measure: the robust initial level equals every observation, every
+    /// prediction error is exactly zero, and the log-likelihood is
+    /// unbounded above as the innovation scale is driven to zero — no
+    /// maximum-likelihood estimate exists.
+    DegenerateLevel {
+        /// What about the series leaves the level model degenerate.
+        what: &'static str,
+    },
     /// Too few observations for the requested operation.
     InsufficientData {
         /// Minimum number of observations required.
@@ -83,6 +92,15 @@ impl fmt::Display for GasError {
                  an all-zero placeholder, a difference that is identically \
                  zero, or returns quoted in units so small that y^2 \
                  underflows"
+            ),
+            Self::DegenerateLevel { what } => write!(
+                f,
+                "degenerate series for a level model: {what}. Every one-step \
+                 prediction error is then exactly zero, so the log-likelihood \
+                 is unbounded above as the innovation scale is driven to zero \
+                 and no maximum-likelihood estimate exists. Check the input: \
+                 a constant placeholder column, or a series filled with a \
+                 single repeated value"
             ),
             Self::InsufficientData { needed, got } => write!(
                 f,

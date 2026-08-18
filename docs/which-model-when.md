@@ -778,8 +778,11 @@ mgv["irf_path"]                                             # averaged orthogona
 **Escape hatch — few units (< ~30).** Clustered asymptotics are unreliable with
 few clusters; the point estimate from `panel_fe` still stands, but treat its
 standard errors with caution and prefer a wild cluster bootstrap. For a *long*
-panel LP in a *short* panel, `panel_lp(..., jackknife=True)` applies the
-split-panel correction for Nickell bias that grows like O(h/T).
+panel LP in a *short* panel, correct the Nickell bias that grows like O(h/T):
+`panel_lp(..., bias_correction="spj")` (Mei-Sheng-Shi split-panel jackknife —
+corrects the points *and* recomputes the standard errors) or
+`panel_lp(..., jackknife=True)` (Dhaene-Jochmans — points only, plug-in SEs;
+see the panel model card for the measured difference).
 
 **Escape hatch — is the panel even stationary?** Before a panel VAR or a
 cointegration analysis, test the *joint* null "every unit has a unit root" —
@@ -825,7 +828,12 @@ finite-sample bias correction, and the **IVX** estimator with a persistence-robu
 Wald test (Kostakis, Magdalinos & Stamatogiannis 2015) that keeps its size
 whether the predictor is stationary, near-integrated, or an exact unit root. For
 several persistent predictors at once, `tsecon.ivx_test(r, xs)` gives the joint
-IVX test. Read the IVX Wald verdict as your headline; use Stambaugh for a debiased
+IVX test — solid at a few predictors, but its size grows with `k` at the default
+tuning (measured 0.28 at k=8, ρ=1, nominal 5%, and larger samples do not fix it),
+so pass `joint="bonferroni"` for a many-predictor joint test (measured size at
+or below nominal at every k; `alpha=0.5` is the weaker mitigation) and see the
+[measured size caveat](reference/model-cards/predictive-regressions.md#ivx_test-joint-ivx-predictability-test-for-several-predictors).
+Read the IVX Wald verdict as your headline; use Stambaugh for a debiased
 point estimate; keep OLS only to show what the correction bought you. See the
 [predictive-regressions model card](reference/model-cards/predictive-regressions.md).
 Do not reach for a naive OLS t-statistic instead.
@@ -854,8 +862,8 @@ At minimum, always pair the estimate with an honest out-of-sample test
 historical-mean benchmark, and report unit-root diagnostics on the predictor
 ([section 1](#1-is-my-series-stationary-do-i-need-to-difference)) so the reader
 can judge how near-integrated it is. In-sample predictive significance on a
-persistent regressor should be treated as a hypothesis, not a finding, until
-IVX lands.
+persistent regressor should be treated as a hypothesis, not a finding, until it
+survives the IVX verdict *and* an out-of-sample test.
 
 **Go deeper:** [ROADMAP.md §10 (extension E3)](../ROADMAP.md) ·
 [chapter 10 — endogenous IV via GMM](guide/08-causal-identification.md#linear-iv-gmm-with-iv_gmm)

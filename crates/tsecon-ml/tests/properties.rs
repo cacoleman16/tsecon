@@ -376,7 +376,7 @@ fn purged_kfold_excludes_all_leaky_indices() {
 /// have constant size.
 #[test]
 fn origin_splits_are_ordered_and_nested() {
-    let splits = expanding_origin_splits(100, 40, 10, 10).unwrap();
+    let splits = expanding_origin_splits(100, 40, 10, 10, 0).unwrap();
     assert!(splits.len() >= 2, "need several splits to check nesting");
     for w in splits.windows(2) {
         let (a, b) = (&w[0], &w[1]);
@@ -402,11 +402,58 @@ fn origin_splits_are_ordered_and_nested() {
     }
 
     // Rolling windows keep a fixed training size.
-    let rolling = rolling_origin_splits(100, 30, 10, 10).unwrap();
+    let rolling = rolling_origin_splits(100, 30, 10, 10, 0).unwrap();
     for s in &rolling {
         assert_eq!(s.train.len(), 30, "rolling window changed size");
         assert!(*s.train.last().unwrap() < *s.test.first().unwrap());
     }
+}
+
+/// Walk-forward purge drops exactly the last `purge` rows of every training
+/// window and nothing else: test blocks and fold counts are identical to
+/// `purge = 0`, no training index comes within `purge` of its fold's test
+/// start, and an all-consuming purge is refused.
+#[test]
+fn origin_splits_purge_gap_is_exact() {
+    for &(n, tr, h, step, purge) in &[
+        (100usize, 40usize, 10usize, 10usize, 3usize),
+        (60, 20, 5, 5, 4),
+        (50, 12, 1, 1, 11),
+    ] {
+        let base_e = expanding_origin_splits(n, tr, h, step, 0).unwrap();
+        let purged_e = expanding_origin_splits(n, tr, h, step, purge).unwrap();
+        let base_r = rolling_origin_splits(n, tr, h, step, 0).unwrap();
+        let purged_r = rolling_origin_splits(n, tr, h, step, purge).unwrap();
+
+        for (base, purged, name) in [
+            (&base_e, &purged_e, "expanding"),
+            (&base_r, &purged_r, "rolling"),
+        ] {
+            assert_eq!(
+                base.len(),
+                purged.len(),
+                "{name}: purge changed the fold count"
+            );
+            for (b, p) in base.iter().zip(purged.iter()) {
+                // Purge must not move the test geometry.
+                assert_eq!(b.test, p.test, "{name}: purge moved a test block");
+                // Exactly the last `purge` training rows are gone.
+                assert_eq!(
+                    &p.train[..],
+                    &b.train[..b.train.len() - purge],
+                    "{name}: purge did not drop exactly the window tail"
+                );
+                // The leakage property: the documented gap between the end of
+                // training and the start of testing.
+                let gap = p.test[0] - p.train.last().unwrap() - 1;
+                assert_eq!(gap, purge, "{name}: train/test gap {gap} != purge {purge}");
+            }
+        }
+    }
+
+    // purge >= training window: every training set would be empty -> refused.
+    assert!(expanding_origin_splits(100, 20, 5, 5, 20).is_err());
+    assert!(rolling_origin_splits(100, 20, 5, 5, 25).is_err());
 }
 
 /// On seeded iid data with a sparse signal, CV selection over a `lambda`
@@ -448,7 +495,7 @@ fn cv_selection_agrees_with_ic_on_iid_data() {
     let bic_i = path.bic_best();
 
     // CV selection over the same grid, expanding origin, MSE loss.
-    let splits = expanding_origin_splits(n, 70, 14, 14).unwrap();
+    let splits = expanding_origin_splits(n, 70, 14, 14, 0).unwrap();
     let cv = cv_select(x.as_ref(), &y, &splits, &path.lambdas, 1.0, mse, CD).unwrap();
 
     // Loose agreement: the two selected grid indices are close (the grid
