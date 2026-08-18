@@ -837,8 +837,25 @@ pub fn strength_from_components(result: &StlResult) -> StrengthResult {
 ///
 /// # Errors
 ///
-/// Everything [`stl`] can raise, unchanged.
+/// Everything [`stl`] can raise, unchanged — plus
+/// [`FiltersError::ConstantSeries`] on a constant input. A constant series
+/// has zero sample variance, so both variances in the strength ratio are
+/// pure float noise from the decomposition and the ratio is implementation
+/// noise, not a measurement (audit round 6 measured `seasonal_strength`
+/// ≈ 0.61–0.67 on flat lines — coincidentally straddling the 0.64
+/// `nsdiffs` threshold). The `nsdiffs` advisor and `check_series` guard
+/// this case themselves; this standalone entry point now does too,
+/// matching the constant-series refusals of `adf`/`dfgls`/`zivot_andrews`.
+/// [`strength_from_components`] remains unguarded by design (it cannot see
+/// the input series); do not hand it a decomposition of a constant.
 pub fn seasonal_strength(y: &[f64], period: usize) -> Result<StrengthResult, FiltersError> {
+    if let Some(&first) = y.first() {
+        if y.iter().all(|&v| v == first) {
+            return Err(FiltersError::ConstantSeries {
+                what: "seasonal_strength",
+            });
+        }
+    }
     let fit = stl(y, period, &StlParams::default())?;
     Ok(strength_from_components(&fit))
 }

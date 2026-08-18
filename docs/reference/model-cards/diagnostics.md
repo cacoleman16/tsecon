@@ -291,6 +291,20 @@ below it) and `period >= 2`.
 - **`nsdiffs` on seasonally adjusted data** (e.g. most US macro releases)
   correctly returns `D=0`; running it is still worthwhile as a check that the
   adjustment did its job.
+- **Fewer than ~4 full cycles saturates the strength rule** (audit round 6,
+  measured on pure white noise, period 12): with only 2 cycles (n = 24) the
+  STL cycle-subseries interpolates noise straight into the seasonal component
+  and `seasonal_strength` is 1.000 on *every* draw — `nsdiffs` flags **D = 1
+  on 100% of white-noise series at n ≤ 28**, 38% at n = 48 (four cycles), 2%
+  at n = 72, 0% by n = 120. R's `forecast::nsdiffs` behaves identically (the
+  rule is matched, not mis-implemented), and the `stop="TooShort"` marker
+  warns in the *other* direction (d as a floor). With under ~4–6 cycles,
+  treat `D = 1` as "not enough data to tell", not as evidence of seasonality.
+- **A constant series raises** from `seasonal_strength` (the variance-ratio
+  measure is undefined there — the ratio of the decomposition's float-noise
+  variances is implementation noise; audit round 6 measured ≈ 0.61–0.67 on
+  flat lines before the guard). `nsdiffs` and `check_series` already
+  special-case constants themselves.
 
 ### Validated against
 

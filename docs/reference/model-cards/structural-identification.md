@@ -558,7 +558,15 @@ nominal 0.95 on an estimated VAR, $T=300$, VAR(2), excluding the degenerate
 | **propagated** | .952 | .953 | .954 | .947 | .941 | .936 | .930 | .922 | **.913** |
 
 That is not a drift, it is a collapse: a nominally 95% set covering 11.9% by
-$h=8$. At $h=0$ the two agree exactly, because $\Psi_0 = I$ carries no estimated
+$h=8$. **The propagated row keeps declining past the table's edge** (audit
+round 6): on this same DGP the mean coverage at the function's default
+`horizon=12` is **0.876–0.894** (worst single cell ≈ 0.85), and on a routine
+VAR(1) at $T=250$ it reaches **0.80–0.85**. The misses are one-sided — the
+truth sits *above* the set, because the propagated variance shrinks together
+with $\hat\Psi_h$ at long horizons — and they fade in $T$ (0.907 by
+$T=1000$). Read long-horizon cells as approaching their nominal level from
+below; prefer shorter horizons or larger samples when the exact level
+matters. At $h=0$ the two agree exactly, because $\Psi_0 = I$ carries no estimated
 coefficients. The correction is **conservative under weak instruments** — the
 measured weak arm goes from .9413 omitted to **.9908** propagated, because the
 extra variance turns exterior sets into the whole line — and erring wide is the
@@ -601,7 +609,9 @@ instrument is strong.
 `excludes_zero` on an unbounded set; turning off `reduced_form_uncertainty` for a
 narrower picture and then quoting 95%; reporting an `"empty"` cell as a very tight
 result rather than as a specification rejection; forgetting that AR is robust to
-weak *relevance* and not at all to a violated *exclusion* restriction.
+weak *relevance* and not at all to a violated *exclusion* restriction; quoting
+the nominal level for long-horizon cells without the caveat above (at the
+default `horizon=12` the measured coverage is 3–10pp below nominal, one-sided).
 
 **Validated against.** A **co-derived NumPy transcription**, not a third-party
 reference: `fixtures/generate_proxy_ar_fixtures.py` takes its reduced form from

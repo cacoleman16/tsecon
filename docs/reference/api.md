@@ -154,7 +154,7 @@ Zivot-Andrews unit-root test with one endogenous break.
     "t" (trend-slope shift), "ct" (both); the regression itself always has a
     constant and a trend. The statistic is the minimum t on the lagged level
     over candidate break dates inside the `trim` window (default 0.15, must
-    be in [0, 1/3]); `break_index` is the last pre-break observation (the
+    be in (0, 1/3] — 0 itself is unreachable); `break_index` is the last pre-break observation (the
     shift begins at `break_index + 1`). Lag selection follows the
     statsmodels/Baum single up-front convention on the "ct" base ADF:
     `autolag` "aic" (default) / "bic" / "t-stat" capped at `max_lags`, or
@@ -614,7 +614,7 @@ def bvar_hierarchical(
 ) -> dict[str, Any]:
 ```
 
-Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015).
+Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015). Default hyperprior="glp" (MAP-II under the GLP Gamma hyperprior) — pure ML-II (hyperprior="none") collapses lambda1 to the search-box floor on ~a fifth to a quarter of in-model datasets (audit round 6); a lambda1_opt at the box bottom is a red flag, not a selection.
 
 ### `bvar_ssvs`
 
@@ -1263,7 +1263,8 @@ Weak-instrument-robust (Anderson-Rubin) confidence SETS for a proxy SVAR.
 
     Under weak identification no bounded set can be honest (Dufour 1997), so a
     cell may be a bounded interval, the COMPLEMENT of an interval (kind
-    "exterior", two rays), the whole line, or empty. That shape is the answer.
+    "exterior", two rays), a single ray ("ray_below"/"ray_above"), the whole
+    line, empty, or a point. That shape is the answer.
     Do not read an "exterior" set as an interval -- `lower`/`upper` are the
     set's own bounds (+/-inf there) and `excluded_lower`/`excluded_upper` are
     the rejected middle. `excludes_zero` on an unbounded set does NOT establish

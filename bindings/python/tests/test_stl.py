@@ -128,3 +128,16 @@ def test_nsdiffs_errors_teach():
         tsecon.nsdiffs(y, 12, alpha=1.5)
     with pytest.raises(ValueError, match="two full cycles"):
         tsecon.nsdiffs(y[:20], 12)
+
+
+def test_seasonal_strength_refuses_constant_series():
+    """Audit round 6, finding 1: a flat line used to return a float-noise
+    strength of ~0.64 — coincidentally at the nsdiffs threshold — instead of
+    refusing. The refusal must hold at any scale and must teach."""
+    for c in [0.0, 3.7, -2.5, 1e6]:
+        with pytest.raises(ValueError, match="constant"):
+            tsecon.seasonal_strength(np.full(120, c), 12)
+    # Near-constant with visible variation still runs.
+    y = np.full(120, 3.7) + 1e-9 * (np.arange(120) % 12)
+    out = tsecon.seasonal_strength(y, 12)
+    assert 0.0 <= out["seasonal_strength"] <= 1.0

@@ -359,3 +359,29 @@ fn strength_bounds_and_orderings() {
         Err(FiltersError::SeriesTooShort { .. })
     ));
 }
+
+/// Audit round 6, finding 1: a constant series must refuse the strength
+/// measure rather than return a float-noise ratio (measured ~0.61-0.67 on
+/// flat lines — straddling the 0.64 nsdiffs threshold). The refusal must
+/// hold at every scale, including exact zero, and must not fire on a
+/// merely near-constant series.
+#[test]
+fn seasonal_strength_refuses_constant_series() {
+    for c in [0.0_f64, 1.0, 3.7, -2.5, 1e-6, 1e6] {
+        let y = vec![c; 120];
+        assert!(
+            matches!(
+                seasonal_strength(&y, 12),
+                Err(FiltersError::ConstantSeries { .. })
+            ),
+            "constant series at c = {c} was not refused"
+        );
+    }
+    // Near-constant (visible variation) still runs — the guard is exact
+    // equality, not a tolerance that could swallow real data.
+    let mut y = vec![3.7_f64; 120];
+    for (i, v) in y.iter_mut().enumerate() {
+        *v += 1e-9 * (i as f64 % 12.0);
+    }
+    assert!(seasonal_strength(&y, 12).is_ok());
+}

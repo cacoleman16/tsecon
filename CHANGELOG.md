@@ -246,8 +246,62 @@ Nothing yet.
   stale test-count claims in `README.md`/`testing.md` were re-measured and
   corrected (README now uses resilient phrasing).
 
+### Fixed — audit round 6 (run against this release's own merged tree)
+
+- **`seasonal_strength` refuses a constant series** instead of returning a
+  float-noise variance ratio that measured ≈ 0.61–0.67 on flat lines —
+  coincidentally straddling the 0.64 `nsdiffs` threshold, so a zero-variance
+  series read as "seasonality dominates". The refusal matches the
+  constant-series behaviour of every sibling diagnostic; `nsdiffs` and
+  `check_series` were already guarded.
+- **`bvar_ssvs` no longer blames missing values for its own internal
+  overflow.** On all-finite data of extreme magnitude (observed from
+  max|y| ≈ 6e11 on explosive series) the Gibbs sampler's overflow escaped
+  through the shared linear-algebra guard, whose message says "drop or impute"
+  values that do not exist. The error now names the real cause and the real
+  remedy (rescale/standardize; `bvar_fit`'s closed form may tolerate
+  magnitudes the sampler cannot).
+- **`har_rv`'s docstring halved its own breaking change** — it said the
+  correction moves `bse` by +0.17% at the fixture where the true factor
+  `sqrt(577/573)` is +0.35% (the CHANGELOG entry below was already correct).
+- **`zivot_andrews`'s documented `trim` range is now `(0, 1/3]`** — `trim=0`
+  was structurally unreachable (the candidate window must hold `lags + 1`
+  observations), so the documented lower endpoint could never run.
+- **`proxy_ar_sets`' `kind` enumeration is aligned across surfaces** (the
+  docstring and stub omitted `"ray_below"`/`"ray_above"`), and its
+  **long-horizon coverage is now disclosed**: the propagated sets' measured
+  coverage keeps declining past the card's h≤8 table — 0.876–0.894 at the
+  default `horizon=12` on the card's own DGP, 0.80–0.85 on a routine VAR(1)
+  at T=250, one-sided (the truth sits above the set), fading in T. The card,
+  docstring, and failure modes now carry the numbers, mirroring the
+  disclosure `proxy_svar_bands` already made.
+- **The seasonal-strength saturation hazard is documented**: below ~4 full
+  cycles the STL cycle-subseries interpolates noise into the seasonal and
+  `nsdiffs` flags D=1 on 100% of white-noise series at n ≤ 28 (period 12),
+  38% at four cycles — identical in R's `forecast::nsdiffs`, so a disclosure,
+  not a divergence.
+- Full round record — including the Bayesian-calibration sweep that found the
+  conjugate `bvar_fit` core machine-exact against an independent oracle and
+  the checker pass that verified no test was weakened across the release's
+  ten merged branches — in `docs/roadmap/20-audit-round-6-findings.md`.
+
 ### Changed — BREAKING
 
+- **`bvar_hierarchical` now defaults `hyperprior="glp"`.** Audit round 6 drew
+  data from the model's own prior and measured the old pure-ML-II default
+  collapsing `lambda1_opt` to the search-box floor on 15–24% of datasets —
+  and 90% credible IRF bands refit at a collapsed selection covered **5.7%**.
+  The marginal-likelihood profile genuinely peaks at λ→0 there (classic
+  empirical-Bayes variance-component collapse), so the card's old "check the
+  profile" advice would reassure exactly when it should alarm. The GLP Gamma
+  hyperprior (mode 0.2, sd 0.4) — the guard GLP (2015) themselves recommend —
+  eliminated the floor collapse entirely in the same experiment (verified
+  post-fix on the finder's own seed stream: 0.000 vs 0.220 below 1e-3).
+  `hyperprior="none"` remains the pure ML-II escape hatch; selected lambdas
+  and posteriors move wherever the two objectives disagree. The card now also
+  states the measured plug-in calibration of the GLP route itself (90% bands
+  cover 0.82–0.85; selection uncertainty is not propagated) and the mild
+  long-horizon conservatism of the AR(4) scale rule.
 - **`lp(cumulative="both")` and `lp_state(cumulative="both")` no longer pair
   the cumulative-shock regressor with lag-augmented standard errors.** The
   regressor is `Σ_{j=0..h} shock_{t+j}`, so nearby base times share *future*

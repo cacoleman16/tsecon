@@ -578,7 +578,9 @@ fn phillips_ouliaris<'py>(
 ///
 /// `regression` selects which break dummies enter (the regression always
 /// has constant + trend): "c" intercept shift (default), "t" trend-slope
-/// shift, "ct" both. `trim` (default 0.15, must be in [0, 1/3]) excludes
+/// shift, "ct" both. `trim` (default 0.15, must be in (0, 1/3] — 0 itself is
+/// unreachable, since the candidate window must hold at least `lags + 1`
+/// observations, i.e. `int(n * trim) >= lags + 1`) excludes
 /// the first/last int(n*trim) observations from the break search. The
 /// statistic is the MINIMUM t on the lagged level over candidate breaks;
 /// `break_index` is the last pre-break observation (the shift begins at
@@ -2080,12 +2082,24 @@ fn mat_to_vec2_bayes(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f
 /// the optimum — a drop-in richer `bvar_fit` that tunes its own shrinkage.
 ///
 /// `optimize` is "lambda1" (default) or "lambda1+lambda3"; `hyperprior` is
-/// "none" (pure ML-II) or "glp" (GLP Gamma, mode 0.2, sd 0.4 — MAP-II).
+/// "glp" (the default: the GLP Gamma hyperprior, mode 0.2, sd 0.4 — MAP-II
+/// selection) or "none" (pure ML-II — the flat-hyperprior empirical Bayes).
+/// The GLP hyperprior is the default because audit round 6 measured pure
+/// ML-II collapsing `lambda1_opt` to the search-box floor on roughly a
+/// fifth to a quarter of datasets drawn from the model's own prior —
+/// posterior IRF bands at a collapsed selection covered ~6% at nominal
+/// 90% — while the GLP hyperprior (the guard GLP 2015 itself recommends)
+/// eliminated the collapse entirely in the same experiment. Pass
+/// `hyperprior="none"` for pure ML-II, and treat a `lambda1_opt` at the
+/// bottom of the box as a red flag, not a selection. Either way, bands at
+/// the selected lambda1 ignore selection uncertainty (a plug-in): the same
+/// audit measured ~0.82-0.85 coverage at nominal 0.90 even for the
+/// well-behaved GLP route — see the model card's calibration section.
 /// Returns the selected lambdas, the log marginal likelihood and log
 /// posterior, the posterior coefficient/Sigma means, the pre-scan ML
 /// profile, and the fixed-lambda reference the optimum dominates.
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, delta = 0.0, lambda0 = 100.0, lambda3 = 1.0, lambda1_init = 0.2, lambda1_lo = 1e-4, lambda1_hi = 10.0, optimize = "lambda1", hyperprior = "none", n_grid = 25, max_iter = 200, tol = 1e-8))]
+#[pyo3(signature = (data, lags = 2, delta = 0.0, lambda0 = 100.0, lambda3 = 1.0, lambda1_init = 0.2, lambda1_lo = 1e-4, lambda1_hi = 10.0, optimize = "lambda1", hyperprior = "glp", n_grid = 25, max_iter = 200, tol = 1e-8))]
 #[allow(clippy::too_many_arguments)]
 fn bvar_hierarchical<'py>(
     py: Python<'py>,
@@ -3540,8 +3554,9 @@ fn proxy_svar_bands<'py>(
 /// line, or empty. That shape is the answer, not a failure: an unbounded set is
 /// the honest statement that the data do not pin the response down.
 ///
-/// Each cell reports `kind` (`"interval"`, `"exterior"`, `"whole"`, `"empty"`,
-/// `"point"`), `lower`/`upper`, and for `"exterior"` the `excluded_lower` /
+/// Each cell reports `kind` (`"interval"`, `"exterior"`, `"ray_below"`,
+/// `"ray_above"`, `"whole"`, `"empty"`, `"point"`), `lower`/`upper`, and for
+/// `"exterior"` the `excluded_lower` /
 /// `excluded_upper` of the region the data reject. **Do not read an
 /// `"exterior"` set as an interval**, and note that `excludes_zero` on an
 /// unbounded set does *not* establish a sign -- both signs can be members.
@@ -3549,7 +3564,13 @@ fn proxy_svar_bands<'py>(
 /// By default the reduced-form (VAR coefficient) uncertainty is PROPAGATED,
 /// because omitting it is catastrophic in exactly the case every real caller is
 /// in: measured on an estimated VAR at nominal 0.95, coverage runs 0.952 at
-/// h=0 down to **0.119** by h=8 without it, and 0.952 to 0.913 with it. When
+/// h=0 down to **0.119** by h=8 without it, and 0.952 to 0.913 with it. The
+/// decline continues smoothly past the published table: at the default
+/// `horizon=12` the propagated sets measured **0.876-0.894** on the same DGP
+/// (0.80-0.85 on a routine VAR(1), T=250; misses are one-sided -- the truth
+/// sits above the set), improving in T (0.907 by T=1000). Treat long-horizon
+/// cells as approaching their nominal level from below, and prefer shorter
+/// horizons or larger T when the exact level matters. When
 /// `reduced_form_uncertainty` is False the returned `level` is `None`, because
 /// a set conditional on the reduced form has no honest 1-alpha label.
 ///
@@ -4761,7 +4782,7 @@ fn realized_measures<'py>(
 /// **`use_correction` now defaults to `True`** (it defaulted `False` through
 /// 0.2.0), so every HAC surface in the library takes the finite-sample
 /// `n/(n - k)` scaling by default. `bse`/`tvalues` move by the factor
-/// `sqrt(n/(n - k))` (+0.17% at the golden fixture's n=577, k=4); `params`
+/// `sqrt(n/(n - k))` (+0.35% at the golden fixture's n=577, k=4); `params`
 /// and `rsquared` are unchanged. statsmodels `cov_type="HAC"` defaults the
 /// correction off — pass `use_correction=False` to reproduce a default
 /// statsmodels call (and the pre-change numbers).

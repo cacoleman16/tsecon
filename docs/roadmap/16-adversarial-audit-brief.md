@@ -274,15 +274,19 @@ the same number — so an entire class of bug was invisible by construction.
 
 ## Already found and fixed — do not re-report these
 
-> **Rounds 2–4 have been run.** Results in
+> **Rounds 2–6 have been run.** Results in
 > [17-audit-round-2-findings.md](17-audit-round-2-findings.md) (21 candidates,
-> 8 survivors) and
+> 8 survivors),
 > [18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md) (14
-> candidates raised, 7 survived). **Read both "Refuted" sections before you
-> start** — together they record every dead end with the evidence that killed
-> it (no count quoted here: the one that used to sit in this sentence went
-> stale within two commits), including several that look compelling on first
-> contact (`gmm_nonlinear`
+> candidates raised, 7 survived), and
+> [20-audit-round-6-findings.md](20-audit-round-6-findings.md) (13 raised,
+> 9 confirmed + 2 rescoped, 7 fixed in the same release — round 6 also ran
+> the checker role over the 0.3.0 merge range and the first Bayesian-
+> calibration/SBC pass, which is where its headline came from). **Read the
+> "Refuted" sections before you start** — together they record every dead end
+> with the evidence that killed it (no count quoted here: the one that used
+> to sit in this sentence went stale within two commits), including several
+> that look compelling on first contact (`gmm_nonlinear`
 > returning its own starting value; `ccc_garch` on a singular correlation;
 > `panel_fe` at N=1; `zero_sign_svar`'s "dead" `weighted` flag; `cg_regression`'s
 > intercept). Re-deriving those is the single easiest way to waste a round.
@@ -318,104 +322,54 @@ arguments; and roughly twenty documentation claims.
 
 ## Known open — pick these up
 
-**Found by rounds 2–4, confirmed after refutation, not yet fixed.** Full
-evidence and reproducers in
-[17-audit-round-2-findings.md](17-audit-round-2-findings.md) and
-[18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md).
+**The rounds-2–4 backlog was cleared in 0.3.0** — the `lp(cumulative="both")`
+standard-error defect (default now HAC for that mode, invalid pairing raises),
+`bvar_ssvs`'s scale-carrying hyperpriors (now semi-automatic), the HAC
+`use_correction` default story (`har_rv` flipped, every claim corrected),
+the three dropped-at-the-binding quantities, `cv_splits`' inert purge/embargo
+(act-or-raise), `smooth_lp`'s absolute λ grid, `flp`'s generated-regressor
+disclosure, the IVX joint-k caveats, the coverage-page hc3 row (plus a
+sync-check that makes a dropped row fail CI), `panel_lp`'s jackknife
+cookbook advice, `gmm_nonlinear`'s misattributed callback error, the panic
+pair, and the documentation drift. Round 6 then fixed its own headline
+(`bvar_hierarchical`'s ML-II collapse — default now `"glp"`) plus
+`seasonal_strength`'s constant-series noise, `bvar_ssvs`'s misattributed
+overflow message, and four doc-surface disagreements. See the CHANGELOG's
+0.3.0 section and [20-audit-round-6-findings.md](20-audit-round-6-findings.md).
 
-- **`flp`'s standard errors condition on the estimated eigenfunctions** —
-  `trap`, generated-regressor problem. `se/sd` is flat at **0.66** over a 16×
-  range of T (cov95 0.80 against nominal 0.95), and on the model card's own
-  worked example β₂'s reported `se` is **one-fifth** of the truth. Matches a
-  closed form to three digits. `flp_scenario` is algebraically immune and is the
-  documented route; the docs disclose this exact hazard for FAVAR and dynamic
-  Nelson-Siegel but not here.
-- **`panel_fe`'s absorbed-regressor case** — the real headline of the
-  rank-deficiency finding below; see rounds 3–4, finding 1.
-- **Three quantities computed, documented, and dropped at the binding** —
-  `growth_at_risk`'s `bse_powell` (walked through the model card's own "How to
-  read the output"), `markov_switching_ar`'s `n × k` smoothed-probability matrix
-  reduced to one column and unrecoverable at `k ≥ 3`, and
-  `lp(band=…)`'s `cov_se_max_rel_diff`, which the card says is *"reported"* and
-  which reaches 7.5% on a routine design.
-- **`ivx_test`'s joint Wald loses its size in the number of predictors, and
-  `n` does not fix it** — `trap`. At true β = 0, ρ = 1, n = 250 the
-  nominal-0.95 joint region covers 0.95 at k=1 but 0.72–0.77 at k=8,
-  reproduced three times on independent code and seeds; the excess decays like
-  `n^{-0.025}`, so even n = 256000 rejects at 4.4× nominal. The suite's
-  property test only ever runs k = 1. Rounds 3–4, finding 4.
-- **Diagnostics that misattribute their own cause** — `cosmetic`, one shape:
-  `gmm_nonlinear` blames `initial` for a fault in `moments_fn` (and following
-  its advice makes things worse — the fix belongs on the moment function's
-  *return*), `which-model-when.md` contradicts itself on IVX, and two stale
-  runtime `__doc__`s where the model card is correct. Rounds 3–4, finding 5 —
-  and note the refuted-dead-ends warning above names `gmm_nonlinear`: the
-  *starting-value* finding died, this diagnostics one is confirmed.
+**Still open — confirmed, documented where user-facing, not yet re-engineered:**
 
-- **`lp(cumulative="both")` reports an inconsistent standard error** —
-  `silent-wrong-answer`, the most serious open item. Nominal 95% covers **0.507**
-  at h=12 and quadrupling T barely moves it. The regressor is
-  `Σ_{j=0}^{h} shock_{t+j}`, so nearby base times share *future* shocks, which
-  the past-lag augmentation cannot project out; the shortfall matches the omitted
-  autocovariance terms in closed form to three digits. `lp_state` shares it;
-  `lp_iv`/`lp_multiplier` do not. All four `band=` routes reuse the same `se`, so
-  the sup-t band is narrower than a correct pointwise one. `se="hac"` is the fix
-  the library already ships.
-- **`bvar_ssvs` is not scale-invariant** — `silent-wrong-answer`. `gamma_b` is an
-  absolute Gamma rate on a precision in `1/y²`. Percent→decimal moves posterior
-  inclusion probabilities by up to 0.517 and flips two selection decisions;
-  `irf_draws` move +65%. Ruled out as MC noise by a control-vs-treatment design.
-- **`panel_fe` accepts a rank-deficient design its own guard exists to reject** —
-  `silent-wrong-answer`. The `SingularDesign` guard catches ~105/200 seeds and is
-  *anti-monotone*: it rejects `eps=1e-9` and accepts exact duplication.
-  linearmodels deliberately refuses, and the docstring claims to match it.
-- **`ols(se_type="hac")` misses its documented statsmodels match at the default**
-  — `trap`. 6.6e-2 at T=25 against a promised 1e-10, exactly `n/(n−k)`, because
-  the two libraries default `use_correction` oppositely. `crates/tsecon-hac/src/ols.rs:118`
-  and `docs/reference/model-cards/expectations.md:47` state the reference's
-  default **backwards**. `cg_regression` inherits it; `har_rv` does not.
-- **The interval-coverage tables drop a harvested row** — `trap`. The runner
-  emits 40, the page publishes 39, and `docs/reference/testing.md:343` promises
-  that cannot happen. The missing row is `hc3`.
-- **`panel_lp(jackknife=True)` costs 8pp of coverage** — `trap`. The correction
-  inflates the estimator's variance 36% while the reported `se` is unchanged, and
-  the cookbook recommends it "when `T` is short", the regime where it costs most.
-- **`smooth_lp`'s default CV λ grid is absolute** — `trap`, but only at the grid
-  endpoints; invariance holds over four decades of data scale.
-- **Two missing shape preconditions panic instead of raising** — `trap`.
-  `crates/tsecon-coint/src/engle_granger.rs:202` and `bindings/python/src/lib.rs:2926`
-  raise `PanicException`, which subclasses `BaseException` and escapes
-  `except Exception`. Narrow: 1 panic in 542 degenerate-shape trials.
-- **Documentation drift** — two pages still say no sup-t band exists; test counts
-  wrong in three of four places (Python is **652**); `docs/quickstart.md:412`
-  ships literal `</content></invoke>` harness markup.
-
-**Carried over from round 1, still open:**
-
-- **`garch_fit` still returns silent all-NaN standard errors** when a
-  *dimensionless* coefficient (`alpha`/`gamma`/`beta`) sits at its boundary.
-  Hit in 10 of 120 probe units, present identically before the scale fix. Same
-  user-visible symptom, different cause, and nothing tests it.
-- **`garch_fit`'s fitted parameters are still not scale-robust** — in 52 of 330
-  cross-scale comparisons the optimizer converged to a different point. The
+- **`garch_fit` returns silent all-NaN standard errors** when a
+  *dimensionless* coefficient (`alpha`/`gamma`/`beta`) sits at its boundary
+  (round 1; 10 of 120 probe units). Nothing tests it.
+- **`garch_fit`'s fitted parameters are not scale-robust** — 52 of 330
+  cross-scale comparisons converged to a different point (round 1). The
   standard-error machinery was fixed; the fit was not.
-- **Nelder-Mead's x-side floor is a mixed-scale test** — `x_stop` is set by the
-  largest component of `x_best`, so a huge coordinate can relax the test for an
-  O(1) one. Theoretical; not yet realized in a probe.
-- **The diffuse period terminates on a norm test over `P_inf`**, and `T`
-  propagates `P_inf`, so a reparametrized model can end it one step early
-  (0.47 nats). Absolute and relative floors fail this identically. The fix is
+- **Nelder-Mead's x-side floor is a mixed-scale test** — theoretical; not yet
+  realized in a probe.
+- **The diffuse period terminates on a norm test over `P_inf`** — the fix is
   rank-counting termination.
-- **`cv_splits(purge=…, embargo=…)` are inert** on `scheme="expanding"` and
-  `"rolling"` while the guide claims those schemes handle leakage
-  automatically. Confirmed, not yet fixed.
-- **`lp_iv`, `lp_multiplier`, `lp_state` have no cross-horizon covariance**, so
-  they get Šidák/Bonferroni bands only and refuse sup-t.
+- **`lp_iv`, `lp_multiplier`, `lp_state` have no cross-horizon covariance**,
+  so they get Šidák/Bonferroni bands only and refuse sup-t.
+- **`proxy_ar_sets`' propagated variance is estimate-correlated at long
+  horizons** (round 6): coverage 0.80–0.89 at the default `horizon=12`
+  depending on the DGP, one-sided misses, fading in T. Documented on every
+  surface; a re-engineered long-horizon correction is the open item.
+- **`ivx_test`'s joint Wald size in k** (rounds 3–4): documented everywhere
+  in 0.3.0; a size-restoring joint test is the open item.
+- **`flp`'s per-element `se` for estimated scores** (rounds 3–4): documented
+  in 0.3.0; a generated-regressor correction (or bootstrap route) is the
+  open item.
+- **A minimum-cycles advisory for `nsdiffs`/`seasonal_strength`** (round 6):
+  below ~4 cycles the rule flags pure noise (documented with measurements);
+  whether the advisory belongs in the output itself is open.
+- **Uniform typed errors for negative integer arguments** (round 6):
+  `lags=-1` and friends raise raw `OverflowError` library-wide.
 - **Coverage is unmeasured** for `quantile_lp`, panel LP (Driscoll-Kraay),
-  `favar`, `dfm_nowcast`, `nelson_siegel`, the `bvar_*` family, MIDAS, and
-  `lp(cumulative=…)`. Only two nominal levels are swept anywhere.
-- **SARIMA seasonal orders** `(P,D,Q,s)` are not implemented; the docs are
-  honest about it.
+  `favar`, `dfm_nowcast`, `nelson_siegel`, MIDAS, and the post-fix
+  `lp(cumulative=…)` HAC default. Round 6 added the first `bvar_*`
+  calibration measurements; the rest of the list stands. Only two nominal
+  levels are swept anywhere.
 
 ---
 

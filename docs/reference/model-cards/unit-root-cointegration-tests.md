@@ -311,7 +311,7 @@ test applies (Lumsdaine-Papell / Lee-Strazicich territory).
 **Key arguments and defaults (and why).** `regression`: which component breaks
 under the alternative — `"c"` intercept shift (default, Perron's "crash" model),
 `"t"` trend-slope shift, `"ct"` both; the regression itself always carries a
-constant *and* a trend. `trim` (default 0.15, in `[0, 1/3]`): excludes the first
+constant *and* a trend. `trim` (default 0.15, in `(0, 1/3]` — 0 itself is unreachable, since the candidate window must hold at least `lags + 1` observations): excludes the first
 and last `int(n*trim)` observations from the break search — a break too near an
 end is indistinguishable from the boundary. `autolag`/`max_lags`/`lags`: the
 statsmodels lag conventions — `autolag="aic"` (default; also `"bic"`,

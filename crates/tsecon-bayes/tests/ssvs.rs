@@ -523,3 +523,42 @@ fn errors_on_invalid_config_and_data() {
     bad[(0, 0)] = f64::NAN;
     assert!(bvar_ssvs(bad.as_ref(), &recovery_config(), 0).is_err());
 }
+
+/// Audit round 6: an internal Gibbs overflow on all-finite data used to
+/// escape as the linear-algebra hygiene error, whose message tells the user
+/// to "drop or impute" missing values that do not exist. It must now surface
+/// as an InvalidArgument with rescaling advice — and never mention missing
+/// values.
+#[test]
+fn internal_overflow_blames_magnitude_not_missing_values() {
+    // An explosive AR(1) reaching ~1e17: all finite, but cross-moment
+    // products overflow inside the sampler.
+    let n_obs = 200;
+    let mut y = Mat::<f64>::zeros(n_obs, 2);
+    y[(0, 0)] = 1.0;
+    y[(0, 1)] = 1.0;
+    for t in 1..n_obs {
+        y[(t, 0)] = 1.25 * y[(t - 1, 0)] + 1.0;
+        y[(t, 1)] = 1.20 * y[(t - 1, 1)] - 0.5;
+    }
+    assert!(y[(n_obs - 1, 0)].is_finite());
+    let cfg = SsvsConfig {
+        n_draws: 200,
+        burn: 50,
+        ..SsvsConfig::default()
+    };
+    match bvar_ssvs(y.as_ref(), &cfg, 0) {
+        Ok(_) => {} // if the sampler survives this magnitude, that is fine too
+        Err(e) => {
+            let msg = e.to_string();
+            assert!(
+                !msg.contains("missing values") && !msg.contains("impute"),
+                "internal overflow still blames missing input: {msg}"
+            );
+            assert!(
+                msg.contains("rescale") || msg.contains("standardize") || msg.contains("magnitude"),
+                "overflow error carries no rescaling advice: {msg}"
+            );
+        }
+    }
+}

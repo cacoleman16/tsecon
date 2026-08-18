@@ -835,6 +835,29 @@ fn run_chain(
     Ok(())
 }
 
+/// Audit round 6, finding: an internal overflow in the Gibbs updates used to
+/// escape through the shared linear-algebra hygiene guard, whose message
+/// blames *missing input values* ("drop or impute them") — unfollowable
+/// advice on all-finite data. After input validation has passed, a non-finite
+/// value can only arise from the sampler's own arithmetic (cross-moment
+/// products overflow on data of extreme magnitude, observed from
+/// `max|y| ~ 6e11` upward on explosive series), so it is re-labelled here
+/// with advice a caller can actually follow.
+fn relabel_internal_overflow(e: BayesError) -> BayesError {
+    match e {
+        BayesError::Linalg(_) => BayesError::InvalidArgument {
+            what: "the SSVS Gibbs sampler overflowed internally (a non-finite value \
+                   arose in the conditional updates) even though the input is all \
+                   finite. This happens when the series' magnitude is extreme -- \
+                   cross-moment products overflow, observed from max|y| ~ 1e12 \
+                   upward (e.g. an explosive level series). Rescale or standardize \
+                   the data (z-scores, logs, or growth rates) and refit; bvar_fit's \
+                   closed form may tolerate magnitudes the sampler cannot",
+        },
+        other => other,
+    }
+}
+
 /// SSVS-BVAR posterior estimation by the 4-block Gibbs sampler of George,
 /// Sun & Ni (2008); see the module docs for the model, prior, and sampler.
 ///
@@ -852,8 +875,10 @@ fn run_chain(
 /// * [`BayesError::NonFinite`] for NaN/infinite data;
 /// * [`BayesError::InsufficientObservations`] when `T <= k + p` (the
 ///   unrestricted OLS standard errors are undefined);
-/// * [`BayesError::Linalg`] on a numerically indefinite conditional (not
-///   observed for valid inputs).
+/// * [`BayesError::InvalidArgument`] with rescaling advice when the
+///   sampler's own arithmetic overflows on all-finite data of extreme
+///   magnitude (observed from `max|y| ~ 6e11` upward on explosive series);
+/// * [`BayesError::Linalg`] on a numerically indefinite conditional.
 pub fn bvar_ssvs(
     data: MatRef<'_, f64>,
     cfg: &SsvsConfig,
@@ -889,7 +914,7 @@ pub fn bvar_ssvs(
     }
     let (x, y) = build_xy(data, p);
     let t_eff = x.nrows();
-    let ols = ols_pieces(x.as_ref(), y.as_ref(), n, k, cfg)?;
+    let ols = ols_pieces(x.as_ref(), y.as_ref(), n, k, cfg).map_err(relabel_internal_overflow)?;
 
     let m = n * k;
     let mut acc = Accumulators {
@@ -916,7 +941,8 @@ pub fn bvar_ssvs(
             cfg,
             stream,
             &mut acc,
-        )?;
+        )
+        .map_err(relabel_internal_overflow)?;
     }
 
     let cf = acc.count as f64;
