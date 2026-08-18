@@ -27,6 +27,14 @@ venv) in one of two ways:
   100× dlog growth rates, and fitted model outputs) are stored — no raw
   licensed dataset is redistributed.
 
+The `*.csv` files are the exception, and are data rather than derived values:
+public datasets vendored **with attribution** for the replication pages
+(`ramey_zubairy.csv` — the authors' public replication archive;
+`yield_curve_recession.csv` — FRED series GS10/TB3MS/USREC;
+`sunspots_tong.csv` — the public-domain annual Wolf sunspot numbers
+1700–1988, via `statsmodels.datasets.sunspots`). Each carries its source in
+its header comments.
+
 Each fixture records the exact reference-library versions used, so the values
 are reproducible. Regenerate any of them with, e.g.:
 
