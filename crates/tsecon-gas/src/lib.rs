@@ -5,7 +5,19 @@
 //! Koopman & Lucas 2013, *J. Appl. Econometrics* 28; Harvey 2013,
 //! *Dynamic Models for Volatility and Heavy Tails*).
 //!
-//! This crate implements the **GAS(1,1) time-varying-variance** model. A
+//! This crate implements two score-driven models:
+//!
+//! * the **GAS(1,1) time-varying-variance** model ([`GasModel`], below);
+//! * the **DCS robust local level** ([`DcsModel`], module [`level`]) — a
+//!   score-driven time-varying *level* whose Student-t driver is bounded
+//!   and redescending (Harvey & Luati 2014), making the filtered level
+//!   robust to additive outliers; its Gaussian case is exactly the
+//!   steady-state Kalman local level. See the [`level`] module docs for
+//!   the model, the analytic scores, and the steady-state mapping.
+//!
+//! # The time-varying-variance model
+//!
+//! A
 //! single latent variance `f_t` evolves by the score-driven recursion
 //!
 //! ```text
@@ -76,10 +88,14 @@
 
 mod error;
 pub mod kernel;
+pub mod level;
 mod model;
 mod results;
 
 pub use error::GasError;
 pub use kernel::Density;
+pub use level::{
+    steady_state_gain, DcsDensity, DcsFiltered, DcsModel, DcsParams, DcsResults, DcsStdErrors,
+};
 pub use model::{forecast_from, GasModel, GasParams};
 pub use results::{GasFiltered, GasResults};

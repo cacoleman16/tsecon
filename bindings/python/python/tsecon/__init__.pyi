@@ -1528,7 +1528,7 @@ def realized_range(
 ) -> float:
     """Range variance from OHLC bars; method is "parkinson" or "garman_klass"."""
 
-# --------------------------------------------------- score-driven volatility
+# ------------------------------------------- score-driven models (GAS/DCS)
 def gas_volatility(
     y: _ArrayLike, density: str = ..., horizon: int = ...
 ) -> dict[str, Any]:
@@ -1537,6 +1537,17 @@ def gas_volatility(
     density is "gaussian" or "student_t". Returns omega/a/b (+ nu),
     variance, std_resid, loglik, aic, bic, next_variance, and (horizon>0) a
     forecast."""
+
+def dcs_local_level(y: _ArrayLike, density: str = ...) -> dict[str, Any]:
+    """DCS robust local level mu_{t+1} = mu_t + kappa*u_t (Harvey-Luati 2014).
+
+    MLE of (kappa, scale[, nu]). density is "t" (default; bounded redescending
+    score — robust to additive outliers), "laplace" (sign filter, tracks a
+    local median), or "gaussian" (exactly the steady-state Kalman local level;
+    kappa = steady-state gain). Returns kappa/scale (+ nu) with
+    observed-information *_se, the one-step-predicted level path, resid,
+    next_level, loglik, aic, bic, honest converged, iterations, n_obs,
+    density."""
 
 # ------------------------------------------------- heterogeneous panel (MG)
 def panel_mean_group(

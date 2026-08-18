@@ -46,7 +46,7 @@ method fits your problem and how to trust its output.
 | [Check series (one-call battery)](model-cards/check-series.md) | `check_series` (plus the `tsecon.results.check_series` facade with `.summary()` / `.plot_diagnostics()`) |
 | [ARIMA](model-cards/arima.md) | `arima_fit`, `ar_loglik` |
 | [Spectral analysis](model-cards/spectral.md) | `periodogram`, `welch`, `coherence` |
-| [Volatility](model-cards/volatility.md) | `garch_fit`, `gas_volatility`, `ccc_garch`, `dcc_garch` |
+| [Volatility](model-cards/volatility.md) | `garch_fit`, `gas_volatility`, `dcs_local_level`, `ccc_garch`, `dcc_garch` |
 | [VAR / SVAR](model-cards/var-svar.md) | `var_fit`, `var_irf`, `var_irf_bands`, `var_fevd`, `var_granger`, `var_forecast`, `sign_restricted_svar`, `zero_sign_svar`, `favar`, `connectedness` |
 | [Structural identification (advanced)](model-cards/structural-identification.md) | `long_run_svar`, `max_share_svar`, `proxy_svar`, `hetero_svar` |
 | [Local projections](model-cards/local-projections.md) | `lp`, `lp_iv`, `lp_multiplier`, `lp_state`, `smooth_lp` |

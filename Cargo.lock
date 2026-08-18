@@ -1017,6 +1017,7 @@ name = "tsecon-gas"
 version = "0.3.0"
 dependencies = [
  "serde_json",
+ "tsecon-bootstrap",
  "tsecon-linalg",
  "tsecon-optim",
  "tsecon-rng",
