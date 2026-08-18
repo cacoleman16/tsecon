@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**138 functions.**
+**139 functions.**
 
 ## diagnostics
 
@@ -2041,7 +2041,7 @@ def realized_range(
 
 Range variance from OHLC bars; method is "parkinson" or "garman_klass".
 
-## score-driven volatility
+## score-driven models (GAS/DCS)
 
 ### `gas_volatility`
 
@@ -2056,6 +2056,22 @@ GAS(1,1) score-driven volatility (Creal-Koopman-Lucas 2013).
     density is "gaussian" or "student_t". Returns omega/a/b (+ nu),
     variance, std_resid, loglik, aic, bic, next_variance, and (horizon>0) a
     forecast.
+
+### `dcs_local_level`
+
+```python
+def dcs_local_level(y: _ArrayLike, density: str = ...) -> dict[str, Any]:
+```
+
+DCS robust local level mu_{t+1} = mu_t + kappa*u_t (Harvey-Luati 2014).
+
+    MLE of (kappa, scale[, nu]). density is "t" (default; bounded redescending
+    score — robust to additive outliers), "laplace" (sign filter, tracks a
+    local median), or "gaussian" (exactly the steady-state Kalman local level;
+    kappa = steady-state gain). Returns kappa/scale (+ nu) with
+    observed-information *_se, the one-step-predicted level path, resid,
+    next_level, loglik, aic, bic, honest converged, iterations, n_obs,
+    density.
 
 ## heterogeneous panel (MG)
 
