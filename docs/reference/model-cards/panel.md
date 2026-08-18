@@ -90,7 +90,8 @@ cluster covariances.
 | | `n_lag_controls` | `2` | lags of outcome/shock included as controls |
 | | `se_type` | `"driscoll_kraay"` | robust to cross-sectional dependence |
 | | `cumulative` | `False` | `True` for cumulative IRFs |
-| | `jackknife` | `False` | leave-one-entity-out bias reduction |
+| | `jackknife` | `False` | Dhaene-Jochmans half-panel (time-split) jackknife; corrects the **points only**, SEs stay the full-sample plug-in (see the Nickell-bias section) |
+| | `bias_correction` | `"none"` | `"spj"` = Mei-Sheng-Shi split-panel jackknife: corrected points **and** the reference adjusted-score SEs; `"dj"` = alias for `jackknife=True`. Setting `jackknife=True` together with `"spj"` raises |
 | `mean_group_var` | `lags` | `1` | per-entity VAR order |
 | | `trend` | `"c"` | deterministic terms |
 | | `horizon` / `response` / `impulse` | `10` / `0` / `0` | IRF horizon and the response/shock variable indices |
@@ -102,7 +103,10 @@ cluster covariances.
 - **`panel_fe`** → `{"params", "bse", "tvalues", "se_type"}`, one entry per
   regressor. The stamped `se_type` tells you which covariance produced `bse`.
 - **`panel_lp`** → `{"irf", "se", "nobs"}`, each length `horizon+1`; plot `irf`
-  ±1.96·`se`. `irf[0]` is the impact response.
+  ±1.96·`se`. `irf[0]` is the impact response. The method metadata is stamped
+  on the result — `se_type`, `cumulative`, `jackknife`, and
+  `bias_correction` (`"none"` / `"dhaene_jochmans"` / `"spj"`) — so a saved
+  result records which estimator and covariance produced it.
 - **`mean_group_var`** → per-entity-averaged `intercept`, `coefs`
   (lags × neqs × neqs) and their SEs, plus `orth_irfs`
   (horizon+1 × response × shock) with SEs and a convenience `irf_path`
@@ -115,6 +119,79 @@ cluster covariances.
   "loglik", "iterations", "n_units", "k"}`. `theta` is the pooled long-run
   coefficient; `phi_bar` is the average error-correction speed (negative and
   bounded by −1 for stable adjustment); `phi` is the per-unit speed vector.
+
+## Nickell bias and the two half-panel corrections (`panel_lp`)
+
+Fixed effects + dynamics + short T biases a panel local projection even when
+no lagged dependent variable appears among the regressors: the within
+transformation correlates the demeaned regressors with the demeaned
+horizon-`h` error, the bias is `O(1/T)` and horizon-amplified (roughly
+`O(h/T)`), it does **not** shrink with the number of entities, and it
+invalidates the t-test (Nickell 1981; Mei-Sheng-Shi 2026). `panel_lp` offers
+two half-panel corrections. Both replace the point estimates with
+`2·θ_full − (θ_half1 + θ_half2)/2`; they differ in bookkeeping and —
+decisively — in the standard error:
+
+- **`jackknife=True`** (equivalently `bias_correction="dj"`) — the
+  Dhaene-Jochmans (2015) jackknife as originally shipped: each half is
+  re-estimated strictly inside its own time window (lags re-burnt, leads
+  truncated at the split; halves overlap by one period when T is odd), and
+  the reported `se` is the **unchanged full-sample plug-in** — asymptotically
+  justified (DJ Theorem 3.1) but a finite-T approximation with a measured
+  cost: the round-2 audit found that at N=20, T=60, h=8 the correction
+  removes the bias but inflates the estimator's sd by ~36% while `se` is
+  bit-identical, costing 8pp of coverage (0.880 → 0.804); the equivalence
+  arrives by T≈240. Use it when T is moderate, and read the bands
+  accordingly.
+- **`bias_correction="spj"`** — the Mei-Sheng-Shi (2026, *J. International
+  Economics*) split-panel jackknife for panel LPs, matching their reference
+  implementation (the `pLP` R package): leads and lags are computed on the
+  full panel and only the per-horizon regression rows are split, at the floor
+  of the median usable period (odd row counts give the extra row to the first
+  half; no overlap), so nothing is burnt at the boundary — and the SE is
+  **recomputed for the corrected estimator**: residuals at the SPJ
+  coefficients, sandwich meat from the jackknife-adjusted scores
+  `2·x̃ − x̃_half`, full-sample bread. Cluster-by-entity and Driscoll-Kraay
+  variants ship (`se_type="nonrobust"` is refused — the reference provides no
+  homoskedastic SPJ variance, and a plug-in SE would repeat the DJ trap).
+  Following `pLP`, the SPJ cluster covariance uses the Stata-style
+  `(N/(N−1))·((n−1)/(n−k))` factor and the SPJ Driscoll-Kraay applies no
+  small-sample factor — deliberately different conventions from the
+  uncorrected route's linearmodels ones; `pLP` hardcodes the DK lag
+  truncation to `floor((T−h)^(1/4))` while tsecon honours your `bandwidth`
+  (set it to that value to reproduce `pLP`).
+
+The two corrections coincide in the **points** only where the two
+half-samples are the same rows (horizon 0, no lag controls, even T — a pinned
+test); the SPJ SEs differ by construction everywhere. Requesting both at once
+raises.
+
+**Measured Monte Carlo evidence** (seed 20260818, 300 replications per T,
+N=50, `y_{i,t} = α_i + 0.8·y_{i,t−1} + 0.8·s_t + e_{i,t}` with a common iid
+shock; one shock lag + one outcome lag; Driscoll-Kraay `bandwidth=2`; true
+IRF `0.8·0.8^h`; `crates/tsecon-panel/tests/spj_properties.rs` reproduces
+this table):
+
+| T | h | bias FE | bias SPJ | \|FE\|/\|SPJ\| | 95% cov FE | 95% cov SPJ |
+|---|---|---------|----------|---------------|------------|-------------|
+| 20 | 1 | −0.094 | +0.023 | 4.1x | 0.770 | 0.817 |
+| 20 | 2 | −0.137 | +0.009 | 15.2x | 0.743 | 0.823 |
+| 40 | 1 | −0.035 | +0.015 | 2.3x | 0.900 | 0.873 |
+| 40 | 2 | −0.054 | +0.019 | 2.9x | 0.870 | 0.863 |
+| 80 | 1 | −0.009 | +0.012 | 0.7x | 0.920 | 0.907 |
+| 80 | 2 | −0.013 | +0.019 | 0.7x | 0.900 | 0.877 |
+
+A 2000-replication rerun (independent seed) sharpens the noisy cells: SPJ
+bias at h=2 is +0.007 / +0.002 / +0.003 at T=40/80/160 against FE's
+−0.060 / −0.025 / −0.010 — FE shrinks like `O(1/T)` and SPJ removes ~85-95%
+of the bias; the 300-rep T=80 SPJ entries are Monte-Carlo noise (the columns
+share draws). Read the coverage honestly: at T=20 the FE t-interval is
+clearly invalid (0.74) and SPJ recovers about half the gap (0.82) — **neither
+reaches the nominal 95% at T=20**, because with a common shock the horizon-h
+residual contains common future shocks, Driscoll-Kraay is the right
+covariance family, and DK is itself a short-T approximation (the same caveat
+this card and the cookbook attach to DK generally). From T=40 both sit in the
+high-0.80s/low-0.90s with the bias gone from SPJ.
 
 ## Failure modes
 
@@ -139,13 +216,23 @@ cluster covariances.
 `panel_fe` matches `linearmodels` `PanelOLS` for the within estimator under
 nonrobust, cluster-by-entity, and Driscoll-Kraay (Bartlett kernel) covariances.
 `panel_lp` is a documented-formula golden built on the same within-plus-DK
-machinery with a known simulated IRF. `mean_group_var`, `panel_mean_group`
+machinery with a known simulated IRF. The `bias_correction="spj"` route is a
+**transcription golden + Monte Carlo**, stated honestly: the method's
+reference implementation is R-only (the authors' `pLP` package,
+`github.com/zhentaoshi/panel-local-projection`, which commits datasets but no
+numeric outputs), so `fixtures/panel_spj.json` pins tsecon at 1e-10 against
+an independent NumPy reimplementation of the `panelLP.R` algebra (split
+convention, combination, both adjusted-score sandwiches — see the generator's
+docstring for provenance), and the statistical claims are separately measured
+in the seeded Monte Carlo above — not matched against a stored run of the R
+package. `mean_group_var`, `panel_mean_group`
 (MG and CCE-MG), and `panel_pmg` are documented-formula goldens reproducing the
 Pesaran-Smith (1995), Pesaran (2006), and Pesaran-Shin-Smith (1999)
 estimating equations, and are additionally property-validated: on data with a
 known common long run, PMG recovers it and pools far more tightly than a free
 mean-group of per-unit long runs. Fixtures:
 [`fixtures/panel.json`](../../../fixtures/panel.json),
+[`fixtures/panel_spj.json`](../../../fixtures/panel_spj.json),
 [`fixtures/tsecon-panelts.json`](../../../fixtures/tsecon-panelts.json),
 [`fixtures/pmg.json`](../../../fixtures/pmg.json).
 
@@ -161,6 +248,14 @@ mean-group of per-unit long runs. Fixtures:
   with Spatially Dependent Panel Data." *Rev. Econ. Stat.* 80.
 - Jordà, Ò. (2005). "Estimation and Inference of Impulse Responses by Local
   Projections." *AER* 95.
+- Nickell, S. (1981). "Biases in Dynamic Models with Fixed Effects."
+  *Econometrica* 49.
+- Dhaene, G. & Jochmans, K. (2015). "Split-Panel Jackknife Estimation of
+  Fixed-Effect Models." *Rev. Econ. Studies* 82.
+- Mei, Z., Sheng, L. & Shi, Z. (2026). "Nickell bias in panel local
+  projection: Financial crises are worse than you think." *J. International
+  Economics* (arXiv:2302.13455). Reference implementation: the `pLP` R
+  package, github.com/zhentaoshi/panel-local-projection.
 
 See the guide: [Panel Time Series](../../guide/14-panel-time-series.md).
 

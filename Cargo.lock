@@ -1129,6 +1129,8 @@ dependencies = [
  "serde_json",
  "tsecon-hac",
  "tsecon-linalg",
+ "tsecon-rng",
+ "tsecon-stats",
  "tsecon-var",
 ]
 

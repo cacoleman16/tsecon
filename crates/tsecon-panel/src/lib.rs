@@ -20,8 +20,11 @@
 //!   effects, lagged-shock/lagged-outcome controls, Ramey-Zubairy (2018)
 //!   cumulative multipliers estimated on the cumulated regressand (so the
 //!   standard errors are the cumulative ones — never a cumsum of level
-//!   estimates), and the Dhaene-Jochmans (2015) half-panel jackknife as a
-//!   Nickell-bias correction option;
+//!   estimates), and two half-panel Nickell-bias corrections: the
+//!   Dhaene-Jochmans (2015) jackknife ([`PanelLpConfig::jackknife`]) and
+//!   the Mei-Sheng-Shi (2026) split-panel jackknife with its
+//!   adjusted-score standard errors
+//!   ([`PanelLpConfig::bias_correction`]);
 //! * [`mean_group_var`] — the Pesaran-Smith (1995) mean-group panel VAR:
 //!   per-entity VARs via `tsecon-var`, cross-entity averages of
 //!   coefficients and Cholesky-orthogonalized IRFs, with dispersion-based
@@ -34,8 +37,9 @@
 //! correlated with the demeaned error, giving an incidental-parameter bias
 //! of roughly `-(1 + rho)/(T - 1)` for an AR(1) panel (Nickell 1981) that
 //! does **not** shrink with the number of entities and is horizon-amplified
-//! in local projections. See `lp.rs` for the full discussion and the
-//! half-panel jackknife correction ([`PanelLpConfig::jackknife`]).
+//! in local projections. See `lp.rs` for the full discussion and the two
+//! half-panel corrections ([`PanelLpConfig::jackknife`] and
+//! [`PanelLpConfig::bias_correction`]).
 //!
 //! All fallible routines return [`PanelError`]; nothing in this crate
 //! panics on user input.
@@ -52,7 +56,7 @@ pub mod mean_group;
 pub use data::PanelData;
 pub use error::PanelError;
 pub use fe::{panel_ols_fe, FePanelOls, PanelInference, PanelSeType};
-pub use lp::{panel_lp, PanelLpConfig, PanelLpResult};
+pub use lp::{panel_lp, LpBiasCorrection, PanelLpConfig, PanelLpResult};
 pub use mean_group::{mean_group_var, mg_irf_path, MeanGroupVar};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
