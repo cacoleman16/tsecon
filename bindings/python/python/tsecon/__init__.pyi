@@ -996,6 +996,27 @@ def cw_test(
 def gw_test(loss1: _ArrayLike, loss2: _ArrayLike, lrv_lags: int = ...) -> dict[str, Any]:
     """Giacomini-White unconditional test of equal predictive ability."""
 
+def var_backtest(
+    returns_or_hits: _ArrayLike,
+    var_forecasts: _ArrayLike | None = ...,
+    alpha: float = ...,
+    dq_lags: int = ...,
+    input: str = ...,
+) -> dict[str, Any]:
+    """VaR backtest battery: Kupiec unconditional coverage, Christoffersen
+    independence/conditional coverage, and the Engle-Manganelli DQ test.
+
+    Sign convention: returns and VaR forecasts on the same (return) scale,
+    `var_forecasts[t]` the alpha-quantile of the conditional return
+    distribution (negative for small alpha); a violation is return < VaR.
+    `alpha` is the VaR coverage level (0.05 for a 95% VaR), not a test
+    size. With `var_forecasts` the first argument is a return series;
+    without, a pre-computed 0/1 violation sequence (`input="hits"`
+    combines pre-computed hits WITH VaR forecasts so the DQ regression
+    keeps its VaR regressor). Returns the three statistics with p-values,
+    the violation counts/transition cells, and a teaching `verdict`.
+    """
+
 # ------------------------------------------------------ spectral analysis
 def periodogram(
     x: _ArrayLike, fs: float = ..., window: str = ..., detrend: str = ...

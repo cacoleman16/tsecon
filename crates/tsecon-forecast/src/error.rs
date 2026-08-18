@@ -185,6 +185,56 @@ pub enum ForecastError {
     /// A Giacomini-White conditional test received no test functions, so the
     /// Wald form has dimension zero.
     EmptyTestFunctions,
+    /// A pre-computed violation ("hit") series contains a value other than
+    /// exactly 0 or 1. The VaR backtests are defined on an indicator
+    /// sequence; anything else is almost certainly a raw return series
+    /// passed without its VaR forecasts.
+    InvalidHitValue {
+        /// Index of the first offending observation.
+        index: usize,
+        /// The offending value.
+        value: f64,
+    },
+    /// The hit sequence contains no violations at all, so the backtest
+    /// battery degenerates: the independence and DQ statistics are
+    /// undefined (their contingency cells / lagged-hit regressors are
+    /// empty), and the Kupiec statistic collapses to its continuity limit
+    /// `-2 n ln(1-alpha)`.
+    NoViolations {
+        /// The number of observations.
+        n: usize,
+        /// The VaR coverage level.
+        alpha: f64,
+    },
+    /// Every observation in the hit sequence is a violation — the mirror
+    /// degenerate case of [`ForecastError::NoViolations`], and almost
+    /// always a sign-convention slip (see the `var_backtest` docs).
+    AllViolations {
+        /// The number of observations.
+        n: usize,
+        /// The VaR coverage level.
+        alpha: f64,
+    },
+    /// The dynamic-quantile lag count is invalid for the sample: the DQ
+    /// regression needs `dq_lags >= 1` and enough post-lag observations to
+    /// identify its coefficients.
+    InvalidDqLags {
+        /// The offending lag count.
+        lags: usize,
+        /// The number of observations supplied.
+        n: usize,
+        /// The minimum series length for this lag count.
+        needed: usize,
+    },
+    /// The dynamic-quantile design matrix `X'X` is singular, so the DQ
+    /// statistic is undefined. With very few violations the lagged-hit
+    /// columns are (numerically) constant and collinear with the intercept.
+    SingularDqDesign {
+        /// The number of DQ regressors (constant + lagged hits + VaR).
+        k: usize,
+        /// The number of violations in the full hit sequence.
+        n_violations: usize,
+    },
     /// The Giacomini-White conditional Wald covariance `Shat` is singular or
     /// indefinite (typically collinear or constant test functions), so its
     /// inverse — and the Wald statistic — is undefined.
@@ -373,6 +423,64 @@ impl fmt::Display for ForecastError {
                  pass at least a constant (h_t = 1, which recovers the \
                  unconditional test) and typically also lagged loss \
                  differentials to test WHEN one forecast beats the other"
+            ),
+            ForecastError::InvalidHitValue { index, value } => write!(
+                f,
+                "VaR backtest: the hit series has value {value} at index \
+                 {index}, but a pre-computed violation sequence must contain \
+                 exactly 0 (no violation) and 1 (violation). If this is a \
+                 return series, pass its VaR forecasts too so the violations \
+                 can be computed (violation = return < VaR quantile)"
+            ),
+            ForecastError::NoViolations { n, alpha } => {
+                let expected = alpha * *n as f64;
+                let lr_limit = -2.0 * (*n as f64) * (1.0 - alpha).ln();
+                write!(
+                    f,
+                    "VaR backtest: 0 violations in {n} observations where \
+                     {expected:.1} were expected at alpha = {alpha}. With no \
+                     violations the independence (Christoffersen) and DQ \
+                     (Engle-Manganelli) statistics are undefined — their \
+                     contingency cells and lagged-hit regressors are empty — \
+                     and the Kupiec statistic degenerates to its continuity \
+                     limit LR_uc = -2 n ln(1-alpha) = {lr_limit:.3} \
+                     (chi-squared(1) 5% critical value 3.84; larger means \
+                     zero violations is itself evidence the VaR is too \
+                     conservative). Use a longer evaluation window or a \
+                     larger alpha — and check the sign convention: a \
+                     violation is return < VaR quantile, both on the return \
+                     scale"
+                )
+            }
+            ForecastError::AllViolations { n, alpha } => write!(
+                f,
+                "VaR backtest: every one of the {n} observations is a \
+                 violation, where alpha = {alpha} predicts a {:.1}% violation \
+                 rate. This is almost always a sign-convention slip: the \
+                 convention here is returns and VaR quantiles on the same \
+                 (return) scale, violation = return < VaR, so a 5% VaR \
+                 forecast is typically a negative number. If you work in \
+                 positive-loss space, negate both series before calling",
+                alpha * 100.0
+            ),
+            ForecastError::InvalidDqLags { lags, n, needed } => write!(
+                f,
+                "VaR backtest: dq_lags = {lags} is invalid for {n} \
+                 observations. The DQ test regresses hit_t - alpha on a \
+                 constant, {lags} lagged hits, and the VaR forecast, so it \
+                 needs dq_lags >= 1 and at least {needed} observations to \
+                 identify the coefficients; reduce dq_lags (the \
+                 Engle-Manganelli default is 4) or supply a longer series"
+            ),
+            ForecastError::SingularDqDesign { k, n_violations } => write!(
+                f,
+                "VaR backtest: the DQ design matrix X'X ({k}x{k}) is \
+                 singular, so the dynamic-quantile statistic is undefined. \
+                 With only {n_violations} violation(s) the lagged-hit \
+                 regressors are (numerically) constant and collinear with \
+                 the intercept; reduce dq_lags, use a longer evaluation \
+                 window, or rely on the Kupiec/Christoffersen results, which \
+                 remain valid"
             ),
             ForecastError::SingularWaldCovariance { q } => write!(
                 f,

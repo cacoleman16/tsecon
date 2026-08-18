@@ -38,6 +38,14 @@
 //! * [`gw`] — the Giacomini-White (2006) equal-conditional-predictive-ability
 //!   test: the unconditional [`gw_test`] (chi-squared, test function `h=1`)
 //!   and the general q-dimensional Wald [`gw_test_conditional`].
+//! * [`var_backtest`] — the VaR backtest battery ([`var_backtest`] on
+//!   returns + VaR forecasts with a documented sign convention,
+//!   [`var_backtest_hits`] on a pre-computed 0/1 violation sequence):
+//!   Kupiec (1995) unconditional coverage `LR_uc ~ chi^2(1)`,
+//!   Christoffersen (1998) independence `LR_ind` and conditional coverage
+//!   `LR_cc = LR_uc + LR_ind ~ chi^2(2)`, and the Engle-Manganelli (2004)
+//!   dynamic quantile regression test `DQ ~ chi^2(k)`, with a teaching
+//!   verdict string.
 //!
 //! Inputs follow the library-wide missing-data policy: NaN or infinite
 //! values are a loud error, never silently skipped. All long-run variances
@@ -61,6 +69,7 @@ pub mod gw;
 mod hac;
 pub mod theta;
 mod validate;
+pub mod var_backtest;
 
 pub use accuracy::{mae, mape, mase, mdae, me, mse, rmse, rmsse, smape};
 pub use backtest::{Backtest, BacktestResult, Window};
@@ -71,3 +80,4 @@ pub use dm::{dm_test, dm_test_with_loss, DmLoss, DmResult};
 pub use error::ForecastError;
 pub use gw::{gw_test, gw_test_conditional, GwResult};
 pub use theta::{theta_forecast, theta_forecast_with, ThetaForecast};
+pub use var_backtest::{var_backtest, var_backtest_hits, VarBacktestResult};
