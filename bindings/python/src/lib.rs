@@ -3574,13 +3574,28 @@ fn proxy_svar_bands<'py>(
 /// `reduced_form_uncertainty` is False the returned `level` is `None`, because
 /// a set conditional on the reduced form has no honest 1-alpha label.
 ///
+/// `rf_method="second_order"` is the measured long-horizon repair: instead of
+/// the first-order delta method -- whose propagated variance is evaluated at
+/// the estimated coefficients and therefore SHRINKS with Psi_hat_h in exactly
+/// the under-persistent draws that miss (measured corr(hat-sd, |point error|)
+/// ~ +0.7 at h=12) -- it pushes the same Gaussian coefficient uncertainty
+/// through the exact nonlinear alpha -> Psi_h map by seeded antithetic
+/// simulation (`rf_draws` draws, `rf_seed`). Measured like-for-like on 500
+/// seeded replications: coverage at h=12 moves 0.889 -> 0.964 (the card's
+/// VAR(2), T=300) and 0.830 -> 0.932 (a routine VAR(1), T=250), at a median
+/// width cost of ~1.15x at h=8 and ~1.45x at h=12; weak-instrument behaviour
+/// is unchanged (boundedness is decided by the same statistic bit-for-bit).
+/// The default remains `"delta"`; pass `"second_order"` when the long
+/// horizons are the cells you will read.
+///
 /// Propagation is conservative under weak instruments (measured 0.991 at a
 /// nominal 0.95), because the extra variance turns exterior sets into the whole
 /// line. That is the correct direction to err.
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0,
                     trend = "c", alpha = 0.05, variance = "hc0", hac_lags = None,
-                    reduced_form_uncertainty = true))]
+                    reduced_form_uncertainty = true, rf_method = "delta",
+                    rf_draws = None, rf_seed = None))]
 #[allow(clippy::too_many_arguments)]
 fn proxy_ar_sets<'py>(
     py: Python<'py>,
@@ -3595,10 +3610,13 @@ fn proxy_ar_sets<'py>(
     variance: &str,
     hac_lags: Option<usize>,
     reduced_form_uncertainty: bool,
+    rf_method: &str,
+    rf_draws: Option<usize>,
+    rf_seed: Option<u64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_ident::proxy_ar::{
-        proxy_ar_sets as ar_fn, psi_reduced_form_cov, ArCritical, ArReducedForm, ArVariance,
-        ArVarianceSpec,
+        proxy_ar_sets as ar_fn, psi_reduced_form_cov, psi_reduced_form_cov_mc, ArCritical,
+        ArReducedForm, ArVariance, ArVarianceSpec,
     };
 
     let r = var_results(&data, lags, trend)?;
@@ -3660,11 +3678,45 @@ fn proxy_ar_sets<'py>(
             .collect()
     };
 
+    // The rf_* knobs parameterize the reduced-form variance; accepting them
+    // when they cannot act would be a silent no-op (the audit round-5 shape).
+    if !reduced_form_uncertainty && rf_method != "delta" {
+        return Err(PyValueError::new_err(
+            "rf_method was given but reduced_form_uncertainty=False disables the \
+             reduced-form variance entirely: drop rf_method, or re-enable \
+             reduced_form_uncertainty",
+        ));
+    }
+    if rf_method == "delta" && (rf_draws.is_some() || rf_seed.is_some()) {
+        return Err(PyValueError::new_err(
+            "rf_draws/rf_seed were given but rf_method=\"delta\" ignores them: they \
+             parameterize the \"second_order\" simulation, so pass \
+             rf_method=\"second_order\" (or drop them)",
+        ));
+    }
     let psi_var = if reduced_form_uncertainty {
-        Some(
-            psi_reduced_form_cov(&psi, &r.coefs, cov_alpha.as_ref(), &gamma, n_proxy)
+        Some(match rf_method {
+            "delta" => psi_reduced_form_cov(&psi, &r.coefs, cov_alpha.as_ref(), &gamma, n_proxy)
                 .map_err(to_py)?,
-        )
+            "second_order" => psi_reduced_form_cov_mc(
+                horizon,
+                &r.coefs,
+                cov_alpha.as_ref(),
+                &gamma,
+                n_proxy,
+                rf_draws.unwrap_or(256),
+                rf_seed.unwrap_or(0),
+            )
+            .map_err(to_py)?,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown rf_method {other:?}; expected \"delta\" (the first-order \
+                     delta method, the default) or \"second_order\" (seeded exact \
+                     propagation of the coefficient uncertainty through the nonlinear \
+                     MA map -- the measured long-horizon repair)"
+                )))
+            }
+        })
     } else {
         None
     };
@@ -6528,37 +6580,78 @@ fn predictive_regression<'py>(
 /// (Kostakis-Magdalinos-Stamatogiannis 2015).
 ///
 /// `xs` is a `T x k` matrix of persistent predictors; tests `H0: beta = 0`
-/// jointly with a chi-square(`k`) Wald statistic whose validity is uniform
-/// over the predictors' persistence. Returns the IVX slope vector
-/// `beta_ivx`, the joint `wald`/`pvalue`, the instrument decay `rz`, and
-/// shape info.
+/// jointly. With the default `joint="chi2"` the statistic is the
+/// chi-square(`k`) Wald, whose validity is uniform over the predictors'
+/// persistence. Returns the IVX slope vector `beta_ivx`, the joint
+/// `wald`/`pvalue`, the instrument decay `rz`, and shape info.
 ///
 /// SIZE CAVEAT (measured): uniformity over persistence is NOT uniformity in
-/// `k`. At rho = 1, endogeneity -0.9, n = 250 the nominal-5% joint test
-/// rejects ~0.05 / 0.10 / 0.17 / 0.26 at k = 1/3/5/8, and n does not repair
-/// it (still ~0.22 at k = 8, n = 256000: the excess decays like
-/// n^{-(1-alpha)/2}). For many-predictor joint tests near a unit root pass
-/// `alpha = 0.5`, the value that restores convergence of the size in n.
+/// `k`. At rho = 1, endogeneity -0.9, n = 250 the nominal-5% chi-square
+/// joint test rejects ~0.05 / 0.10 / 0.17 / 0.28 at k = 1/3/5/8, and n does
+/// not repair it (still ~0.22 at k = 8, n = 256000: the excess decays like
+/// n^{-(1-alpha)/2}). `alpha = 0.5` restores convergence in n but still
+/// measures ~0.13 at k = 8, n = 250.
+///
+/// `joint="bonferroni"` is the measured escape hatch: it runs the SCALAR
+/// IVX-Wald test (whose size holds uniformly over persistence, deep into the
+/// tail) on every predictor separately and rejects when the smallest scalar
+/// p-value falls below level/k (union-intersection). Measured size
+/// 0.011-0.050 across k in {1,3,5,8} x rho in {0.95, 1} x endogeneity in
+/// {0, -0.9} at n = 250 — never above nominal. Power against a SPARSE
+/// alternative (one genuine predictor — the horse-race question) is on par
+/// with a size-corrected chi-square test; against a DIFFUSE alternative
+/// (every predictor a little predictive) it gives some power up. In this
+/// mode `wald` is the LARGEST scalar statistic (chi-square(1) scale, not
+/// chi-square(k)), `pvalue` is the Bonferroni-adjusted joint p-value
+/// min(1, k * min_j p_j), and two extra keys report the per-predictor tests:
+/// `wald_scalar` and `pvalue_scalar` (each column exactly
+/// `predictive_regression`'s ivx test for that predictor).
 #[pyfunction]
-#[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95))]
+#[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95, joint = "chi2"))]
 fn ivx_test<'py>(
     py: Python<'py>,
     r: PyReadonlyArray1<'py, f64>,
     xs: numpy::PyReadonlyArray2<'py, f64>,
     cz: f64,
     alpha: f64,
+    joint: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
     let a = xs.as_array();
     let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
     let cfg = tsecon_predreg::IvxConfig { cz, alpha };
-    let iv = tsecon_predreg::ivx_multi(&vec1(&r), &cols, cfg).map_err(to_py)?;
+    let rv = vec1(&r);
+    let iv = tsecon_predreg::ivx_multi(&rv, &cols, cfg).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("beta_ivx", iv.beta_ivx.clone().into_pyarray(py))?;
-    d.set_item("wald", iv.wald)?;
-    d.set_item("pvalue", iv.pvalue)?;
     d.set_item("rz", iv.rz)?;
     d.set_item("nregressors", iv.nregressors)?;
     d.set_item("nobs", iv.nobs)?;
+    match joint {
+        "chi2" => {
+            d.set_item("wald", iv.wald)?;
+            d.set_item("pvalue", iv.pvalue)?;
+        }
+        "bonferroni" => {
+            let bf = tsecon_predreg::ivx_bonferroni(&rv, &cols, cfg).map_err(to_py)?;
+            // `wald` is the max SCALAR statistic — chi-square(1) scale — and
+            // `pvalue` is already Bonferroni-adjusted; the per-predictor
+            // pieces ship alongside so the horse race can be read predictor
+            // by predictor.
+            d.set_item("wald", bf.wald_max)?;
+            d.set_item("pvalue", bf.pvalue)?;
+            d.set_item("wald_scalar", bf.wald_scalar.clone().into_pyarray(py))?;
+            d.set_item("pvalue_scalar", bf.pvalue_scalar.clone().into_pyarray(py))?;
+            d.set_item("joint", "bonferroni")?;
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown joint {other:?}; expected \"chi2\" (the KMS chi-square(k) Wald — \
+                 note its measured size grows with k at the default tuning) or \
+                 \"bonferroni\" (per-predictor scalar IVX tests combined at level/k; \
+                 measured size at or below nominal for every k)"
+            )))
+        }
+    }
     Ok(d)
 }
 

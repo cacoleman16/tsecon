@@ -829,8 +829,9 @@ Wald test (Kostakis, Magdalinos & Stamatogiannis 2015) that keeps its size
 whether the predictor is stationary, near-integrated, or an exact unit root. For
 several persistent predictors at once, `tsecon.ivx_test(r, xs)` gives the joint
 IVX test — solid at a few predictors, but its size grows with `k` at the default
-tuning (measured 0.26 at k=8, ρ=1, nominal 5%, and larger samples do not fix it),
-so pass `alpha=0.5` for a many-predictor joint test and see the
+tuning (measured 0.28 at k=8, ρ=1, nominal 5%, and larger samples do not fix it),
+so pass `joint="bonferroni"` for a many-predictor joint test (measured size at
+or below nominal at every k; `alpha=0.5` is the weaker mitigation) and see the
 [measured size caveat](reference/model-cards/predictive-regressions.md#ivx_test-joint-ivx-predictability-test-for-several-predictors).
 Read the IVX Wald verdict as your headline; use Stambaugh for a debiased
 point estimate; keep OLS only to show what the correction bought you. See the

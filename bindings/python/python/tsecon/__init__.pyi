@@ -970,6 +970,9 @@ def proxy_ar_sets(
     variance: str = ...,
     hac_lags: int | None = ...,
     reduced_form_uncertainty: bool = ...,
+    rf_method: str = ...,
+    rf_draws: int | None = ...,
+    rf_seed: int | None = ...,
 ) -> dict[str, Any]:
     """Weak-instrument-robust (Anderson-Rubin) confidence SETS for a proxy SVAR.
 
@@ -987,6 +990,14 @@ def proxy_ar_sets(
     to 0.119 by h=8 against nominal 0.95, versus 0.952 to 0.913 with it. When
     reduced_form_uncertainty=False the returned `level` is None, because a set
     conditional on the reduced form has no honest 1-alpha label.
+
+    rf_method="second_order" (with rf_draws/rf_seed) replaces the first-order
+    delta propagation with seeded exact simulation of the coefficient
+    uncertainty through the nonlinear MA map -- the measured long-horizon
+    repair (h=12 coverage 0.889 -> 0.964 on the card's VAR(2) at T=300, 0.830
+    -> 0.932 on a routine VAR(1) at T=250; median width ~1.15x at h=8, ~1.45x
+    at h=12; weak-instrument boundedness bit-identical). Default "delta" is
+    unchanged.
     """
 
 def proxy_svar(
@@ -1640,14 +1651,25 @@ def predictive_regression(
     Stamatogiannis 2015, Wald test valid uniformly over persistence)."""
 
 def ivx_test(
-    r: _ArrayLike, xs: _ArrayLike, cz: float = ..., alpha: float = ...
+    r: _ArrayLike,
+    xs: _ArrayLike,
+    cz: float = ...,
+    alpha: float = ...,
+    joint: str = ...,
 ) -> dict[str, Any]:
     """Joint IVX predictability test for several persistent predictors (xs is T x k).
 
-    Returns beta_ivx, the joint wald/pvalue, rz, nregressors, nobs. The joint
-    Wald's size degrades in k near a unit root (measured 0.26 at k=8, n=250,
-    nominal 0.05) and n does not repair it; pass alpha=0.5 for many-predictor
-    joint tests — see the predictive-regressions model card."""
+    Returns beta_ivx, the joint wald/pvalue, rz, nregressors, nobs. The
+    default joint="chi2" Wald's size degrades in k near a unit root (measured
+    0.28 at k=8, n=250, nominal 0.05) and n does not repair it (alpha=0.5
+    restores convergence but still ~0.13 at k=8, n=250).
+    joint="bonferroni" is the measured escape hatch: per-predictor scalar IVX
+    tests combined at level/k (size at or below nominal for every measured k;
+    power on par with a size-corrected chi-square test for sparse
+    alternatives). It adds wald_scalar/pvalue_scalar/joint keys, and its
+    `wald` is the LARGEST scalar statistic (chi-square(1) scale) with
+    `pvalue` already Bonferroni-adjusted — see the predictive-regressions
+    model card."""
 
 # ------------------------------------------------- recession probability
 def recession_probit(
