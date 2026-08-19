@@ -29,10 +29,10 @@ here, so that is what is labelled.
 | — integration tests in `crates/*/tests/` | 1028 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 162 | |
 | — documentation tests | 45 | |
-| Python binding tests | **839 collected, 0 failed** in 23 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **973 collected, 0 failed** in 28 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 41, **every one** with a `tests/` directory | |
 | Golden fixtures | 69 JSON files, produced by 50 generator scripts | `fixtures/` |
-| Public Python functions | 139, of which **135** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
+| Public Python functions | 145, of which **141** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
 
 All 7 ignored tests are in `tsecon-var`, and each `#[ignore]` gives its reason:
 three stored-bit-pattern fingerprints that are platform-specific, three
@@ -226,7 +226,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-839 tests in 67 files. 46 of the 78 fixture JSONs are reloaded here and checked
+973 tests in 76 files. 50 of the 82 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -248,7 +248,7 @@ cannot cover:
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
 - **Surface completeness — and the four functions it says are missing.** The
-  module exports 139 public callables. This is checked by running the check,
+  module exports 145 public callables. This is checked by running the check,
   not by asserting the answer, and the honest output is *not* empty:
 
   ```sh
@@ -267,7 +267,7 @@ cannot cover:
   regex looks for. The other four are real: **`engle_granger`,
   `fvar_scenario`, `ndiffs` and `quantile_lp` appear nowhere under
   `bindings/python/tests/`** — not under any spelling, since `grep -r` on the
-  bare name returns nothing either. So 135 of 139 are exercised here, not 139.
+  bare name returns nothing either. So 141 of 145 are exercised here, not 145.
 
   All four are golden-pinned on the Rust side —
   `tsecon-coint/tests/engle_granger_golden.rs`,
@@ -645,7 +645,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 1388 passed, 0 failed
+# 1472 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
