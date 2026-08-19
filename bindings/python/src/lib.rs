@@ -3301,11 +3301,17 @@ fn max_share_svar<'py>(
 /// availability window are dropped from the moments and the first stage.
 ///
 /// Returns `irf` (horizon+1, n), `impact`/`relative_impact`/`cov_um` (n),
-/// `first_stage_f` (weak below 10), `reliability` = Corr(m, u_norm)^2,
-/// `n_proxy` (effective obs), and the estimated structural `shock` (T). Point
-/// estimate only. For inference use `proxy_svar_bands` (Jentsch-Lunsford
-/// moving-block bootstrap) or `proxy_ar_sets` (weak-instrument-robust
-/// Anderson-Rubin sets) -- both ship in this module.
+/// `first_stage_f` (the HC1-robust F when `robust_f`, classical otherwise),
+/// `reliability` = Corr(m, u_norm)^2, `n_proxy` (effective obs), the
+/// estimated structural `shock` (T), and `first_stage`: the
+/// `proxy_first_stage` diagnostics dict -- the Montiel Olea-Pflueger
+/// effective F (== the HC1 robust F here) with its tau-based critical
+/// values (`mop_cv_tau10` = 23.11 is the conventional bar, NOT the folklore
+/// 10) and the implied `tau_bound`. Point estimate only. For inference use
+/// `proxy_svar_bands` (Jentsch-Lunsford moving-block bootstrap) when
+/// `first_stage["weak_mop_tau10"]` is False, or `proxy_ar_sets`
+/// (weak-instrument-robust Anderson-Rubin sets) when it is True -- both
+/// ship in this module.
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0, trend = "c", robust_f = true))]
 #[allow(clippy::too_many_arguments)]
@@ -3352,6 +3358,17 @@ fn proxy_svar<'py>(
     )
     .map_err(to_py)?;
 
+    // First-stage strength diagnostics (HC1 effective F + the MOP tau
+    // thresholds), stamped beside the scalar F so the thresholds travel with
+    // the number they judge.
+    let diag = tsecon_ident::proxy_first_stage(
+        r.resid.as_ref(),
+        &proxy_aligned,
+        norm_var,
+        tsecon_ident::FirstStageVariance::Hc1,
+    )
+    .map_err(to_py)?;
+
     let d = PyDict::new(py);
     // irf is (H+1, n); returned as a nested list, matching var_fit's `params`
     // (Vec<Vec<f64>> -> list-of-lists; users np.asarray it).
@@ -3363,7 +3380,113 @@ fn proxy_svar<'py>(
     d.set_item("cov_um", res.cov_um.into_pyarray(py))?;
     d.set_item("n_proxy", res.n_proxy)?;
     d.set_item("shock", res.shock.into_pyarray(py))?;
+    d.set_item("first_stage", first_stage_dict(py, &diag)?)?;
     Ok(d)
+}
+
+/// Render [`tsecon_ident::FirstStageDiagnostics`] as a Python dict.
+fn first_stage_dict<'py>(
+    py: Python<'py>,
+    d: &tsecon_ident::FirstStageDiagnostics,
+) -> PyResult<Bound<'py, PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("beta", d.beta)?;
+    out.set_item("se", d.se)?;
+    out.set_item("effective_f", d.effective_f)?;
+    out.set_item("f_classical", d.f_classical)?;
+    out.set_item("f_hc1", d.f_hc1)?;
+    out.set_item("reliability", d.reliability)?;
+    out.set_item("n_proxy", d.n_proxy)?;
+    out.set_item("hac_lags", d.hac_lags)?;
+    out.set_item("mop_cv_tau5", d.mop_cv_tau5)?;
+    out.set_item("mop_cv_tau10", d.mop_cv_tau10)?;
+    out.set_item("mop_cv_tau20", d.mop_cv_tau20)?;
+    out.set_item("mop_cv_tau30", d.mop_cv_tau30)?;
+    // +inf survives the crossing; Python reads float("inf").
+    out.set_item("tau_bound", d.tau_bound)?;
+    out.set_item("weak_mop_tau10", d.weak_mop_tau10)?;
+    out.set_item("weak_folklore", d.weak_folklore)?;
+    Ok(out)
+}
+
+/// First-stage instrument-strength diagnostics for a proxy SVAR: the
+/// Montiel Olea-Pflueger EFFECTIVE F with its tau-based critical values.
+///
+/// With a single instrument the MOP effective F coincides with the robust F
+/// -- the squared robust t-statistic of the first-stage slope (Windmeijer
+/// 2025) -- so this reports that statistic under the chosen variance
+/// (`variance="hc1"` default; `"hac"` = Bartlett/Newey-West for a serially
+/// correlated proxy, `hac_lags` defaulting to the Newey-West rule;
+/// `"classical"` for comparison with published homoskedastic tables) plus
+/// the thresholds it should actually be compared against:
+///
+/// * `mop_cv_tau10` = 23.11: rejecting "worst-case relative bias > 10%" at
+///   the 5% level -- the conventional "not weak" bar (tau5/20/30: 37.42 /
+///   15.06 / 12.05);
+/// * `tau_bound`: the smallest tau the observed effective F rejects
+///   (+inf when even zero relevance cannot be rejected);
+/// * `weak_mop_tau10` / `weak_folklore`: the MOP verdict vs the
+///   homoskedastic-folklore "F > 10", kept only because the literature
+///   reports it.
+///
+/// When `weak_mop_tau10` is True, do not trust Wald-type bands
+/// (`proxy_svar_bands`); use `proxy_ar_sets`, whose validity does not
+/// depend on instrument strength. The thresholds are imported from the
+/// linear-IV weak-instrument literature (the field's standard practice for
+/// proxy SVARs); they gate trust in strong-instrument inference, they do
+/// not repair it.
+#[pyfunction]
+#[pyo3(signature = (data, proxy, lags = 2, norm_var = 0, trend = "c", variance = "hc1", hac_lags = None))]
+#[allow(clippy::too_many_arguments)]
+fn proxy_first_stage<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    proxy: PyReadonlyArray1<'py, f64>,
+    lags: usize,
+    norm_var: usize,
+    trend: &str,
+    variance: &str,
+    hac_lags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::FirstStageVariance;
+
+    let r = var_results(&data, lags, trend)?;
+    let n_obs = data.as_array().nrows();
+    let t = r.resid.nrows();
+    let proxy_aligned = align_proxy(vec1(&proxy), n_obs, lags, t)?;
+
+    let var_kind = match variance {
+        // `hac_lags` only parameterizes the HAC estimator; accepting it
+        // elsewhere would make it a silent no-op.
+        "hc1" | "classical" => {
+            if hac_lags.is_some() {
+                return Err(PyValueError::new_err(format!(
+                    "hac_lags was given but variance={variance:?} ignores it: pass \
+                     variance=\"hac\" to use a HAC first-stage variance (hac_lags \
+                     then sets its lag count; omit it for the Newey-West rule), or \
+                     drop hac_lags"
+                )));
+            }
+            if variance == "hc1" {
+                FirstStageVariance::Hc1
+            } else {
+                FirstStageVariance::Classical
+            }
+        }
+        "hac" => FirstStageVariance::HacBartlett {
+            lags: hac_lags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(t)),
+        },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown variance {other:?}; expected \"hc1\" (the default), \
+                 \"hac\", or \"classical\""
+            )))
+        }
+    };
+
+    let d = tsecon_ident::proxy_first_stage(r.resid.as_ref(), &proxy_aligned, norm_var, var_kind)
+        .map_err(to_py)?;
+    first_stage_dict(py, &d)
 }
 
 /// Align a proxy to the residual sample: accept the full `n_obs` series (drop
@@ -8563,6 +8686,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(long_run_svar, m)?)?;
     m.add_function(wrap_pyfunction!(max_share_svar, m)?)?;
     m.add_function(wrap_pyfunction!(proxy_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(proxy_first_stage, m)?)?;
     m.add_function(wrap_pyfunction!(proxy_svar_bands, m)?)?;
     m.add_function(wrap_pyfunction!(proxy_ar_sets, m)?)?;
     m.add_function(wrap_pyfunction!(nongaussian_svar, m)?)?;

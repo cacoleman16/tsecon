@@ -651,14 +651,15 @@ proxy = eps[:, 2] + 0.7 * rng.standard_normal(T)    # noisy measure of the polic
 proxy[:120] = np.nan                                # unavailable early in the sample
 
 pr = tsecon.proxy_svar(pv_data, proxy, lags=2, horizon=16, norm_var=2, unit=1.0)
-print("first-stage F (weak below 10):", round(pr["first_stage_f"], 2))
+print("effective F:", round(pr["first_stage_f"], 2),
+      "vs MOP tau=10% bar:", round(pr["first_stage"]["mop_cv_tau10"], 2))
 print("reliability Corr(m,u)^2:", round(pr["reliability"], 4), " effective obs:", pr["n_proxy"])
 print("policy-rate response, h = 0, 1, 4, 8:", np.round(np.asarray(pr["irf"])[[0, 1, 4, 8], 2], 4))
 print("output response,      h = 0, 1, 4, 8:", np.round(np.asarray(pr["irf"])[[0, 1, 4, 8], 0], 4))
 ```
 
 ```
-first-stage F (weak below 10): 475.45
+effective F: 475.45 vs MOP tau=10% bar: 23.11
 reliability Corr(m,u)^2: 0.5797  effective obs: 380
 policy-rate response, h = 0, 1, 4, 8: [1.     0.5947 0.1548 0.0265]
 output response,      h = 0, 1, 4, 8: [-0.6957 -0.3841 -0.0914 -0.0147]

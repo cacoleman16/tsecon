@@ -1,9 +1,9 @@
 # Model card — Structural identification (advanced)
 
-`long_run_svar` · `max_share_svar` · `proxy_svar` · `proxy_svar_bands` ·
-`proxy_ar_sets` · `hetero_svar` · `nongaussian_svar` · `structural_fevd` ·
-`historical_decomposition` · `narrative_svar` · `fry_pagan_svar` ·
-`robust_svar_bounds`
+`long_run_svar` · `max_share_svar` · `proxy_svar` · `proxy_first_stage` ·
+`proxy_svar_bands` · `proxy_ar_sets` · `hetero_svar` · `nongaussian_svar` ·
+`structural_fevd` · `historical_decomposition` · `narrative_svar` ·
+`fry_pagan_svar` · `robust_svar_bounds`
 
 A structural VAR is a reduced-form VAR plus one identifying assumption that
 rotates the estimated residuals into economically meaningful shocks. The
@@ -49,16 +49,19 @@ are plausibly non-Gaussian; then the post-identification tools once a scheme is
 chosen.
 
 **Within the proxy family the choice is about instrument strength, and it is not
-a matter of taste.** Reach for
+a matter of taste — nor of the folklore "F > 10".** The gate is
+[`proxy_first_stage`](#proxy_first_stage-the-effective-f-and-the-thresholds-it-must-clear):
+the Montiel Olea-Pflueger **effective F** with its tau-based critical values
+(23.11 for the conventional 10%-bias bar, not 10). Reach for
 [`proxy_svar_bands`](#proxy_svar_bands-moving-block-bootstrap-bands-for-the-proxy-svar)
-when the instrument is **strong** — a healthy first-stage F, and `n_failed` back
+when the instrument is **strong** — `weak_mop_tau10` False, and `n_failed` back
 at zero. Reach for
 [`proxy_ar_sets`](#proxy_ar_sets-weak-instrument-robust-anderson-rubin-sets) when
-the instrument is **weak**, when the first stage is marginal, or whenever
-`proxy_svar_bands` returns a **nonzero `n_failed`**: the bootstrap is telling you
-its own denominator went near zero, and a Wald-type band is then the wrong
-object. Running both is cheap, and disagreement between them is itself the
-finding.
+the instrument is **weak** (`weak_mop_tau10` True), when the first stage is
+marginal, or whenever `proxy_svar_bands` returns a **nonzero `n_failed`**: the
+bootstrap is telling you its own denominator went near zero, and a Wald-type
+band is then the wrong object. Running both is cheap, and disagreement between
+them is itself the finding.
 
 ---
 
@@ -259,9 +262,9 @@ shock is the question.
 
 **Assumptions.** The instrument is **relevant** ($\mathbb{E}[z\varepsilon_1]\ne0$)
 and **exogenous** ($\mathbb{E}[z\varepsilon_j]=0$ for $j\ne1$). Relevance is
-testable (the first-stage F); exogeneity is the identifying assumption you must
-defend. A weak proxy makes the normalized IRFs heavy-tailed and conventional
-bands junk — check `first_stage_f` first.
+testable (the first-stage effective F); exogeneity is the identifying assumption
+you must defend. A weak proxy makes the normalized IRFs heavy-tailed and
+conventional bands junk — check the `first_stage` diagnostics first.
 
 **When to use (and when not).** Use with a measured surprise or narrative series
 (high-frequency futures surprises, Romer-Romer shocks) — especially when the
@@ -269,7 +272,9 @@ system contains fast-moving financial variables that admit no defensible Cholesk
 ordering. Do not report a point IRF as if it had a band — `proxy_svar` itself
 returns none; reach for [`proxy_svar_bands`](#proxy_svar_bands-moving-block-bootstrap-bands-for-the-proxy-svar)
 (strong instrument) or [`proxy_ar_sets`](#proxy_ar_sets-weak-instrument-robust-anderson-rubin-sets)
-(weak instrument). Do not proceed on a first-stage F below ~10 with a Wald band.
+(weak instrument). Do not proceed to a Wald band when
+`first_stage["weak_mop_tau10"]` is True — and do not treat "F > 10" as
+clearance; see [`proxy_first_stage`](#proxy_first_stage-the-effective-f-and-the-thresholds-it-must-clear).
 
 **Key arguments and defaults (and why).** `proxy` aligns to `data` rows (length
 `n_obs` — the first `lags` presample rows are dropped — or the residual length
@@ -280,10 +285,15 @@ raises `norm_var` by `unit` on impact). `lags`, `horizon`, `trend`,
 `robust_f=True`.
 
 **How to read the output.** `impact`/`relative_impact` (the identified column,
-normalized), `irf` `[h][n]`, `first_stage_f` (**weak below 10**), `reliability`
+normalized), `irf` `[h][n]`, `first_stage_f` (the HC1-robust F — which **is**
+the MOP effective F here; judge it against `first_stage["mop_cv_tau10"]` =
+23.11, not the folklore 10), `reliability`
 = Corr(m, u_norm)² (how much of the normalized residual the proxy explains),
 `cov_um` (the raw residual-instrument covariances), `n_proxy` (effective
-non-missing obs), and the estimated structural `shock` (length T).
+non-missing obs), the estimated structural `shock` (length T), and
+`first_stage` — the full
+[`proxy_first_stage`](#proxy_first_stage-the-effective-f-and-the-thresholds-it-must-clear)
+diagnostics dict stamped beside the point estimate.
 
 **Failure modes.** A weak instrument reported with a Wald band (the cardinal
 sin — `proxy_ar_sets` exists for exactly this case); dividing by a
@@ -320,7 +330,8 @@ proxy = mono + 0.7 * rng.standard_normal(T)   # noisy measure of the policy shoc
 proxy[:120] = np.nan                          # unavailable early in the sample
 
 pr = tsecon.proxy_svar(y, proxy, lags=2, horizon=16, norm_var=2, unit=1.0)
-print("first-stage F (weak below 10):", round(pr["first_stage_f"], 2))
+print("effective F:", round(pr["first_stage_f"], 2),
+      "vs MOP tau=10% bar:", round(pr["first_stage"]["mop_cv_tau10"], 2))
 print("reliability Corr(m,u)^2:", round(pr["reliability"], 4), " effective obs:", pr["n_proxy"])
 irf = np.asarray(pr["irf"])
 print("ffr response  h = 0, 1, 4, 8:", np.round(irf[[0, 1, 4, 8], 2], 4))
@@ -328,7 +339,7 @@ print("output response h = 0, 1, 4, 8:", np.round(irf[[0, 1, 4, 8], 0], 4))
 ```
 
 ```
-first-stage F (weak below 10): 475.45
+effective F: 475.45 vs MOP tau=10% bar: 23.11
 reliability Corr(m,u)^2: 0.5797  effective obs: 380
 ffr response  h = 0, 1, 4, 8: [1.     0.5947 0.1548 0.0265]
 output response h = 0, 1, 4, 8: [-0.6957 -0.3841 -0.0914 -0.0147]
@@ -338,6 +349,123 @@ The proxy is strong (F ≈ 475) and available on 380 of 500 observations; the
 unit-effect normalization sets the impact on the policy rate to exactly 1, and
 output falls on impact — the contractionary-policy pattern, identified from one
 column with no assumption on the rest of the system.
+
+---
+
+## `proxy_first_stage` — the effective F, and the thresholds it must clear
+
+**What it estimates.** The **Montiel Olea-Pflueger effective first-stage F**
+(Montiel Olea & Pflueger 2013, *JBES*) for the proxy-SVAR first stage, with
+the tau-based critical values it is supposed to be compared against stamped
+beside it. With a single instrument the effective F *coincides with the
+robust F* — the squared robust t-statistic of the first-stage slope
+(Windmeijer 2025, *J. Econometrics*) — so this is the same statistic
+`proxy_svar` reports as `first_stage_f`, named honestly and given its
+thresholds. It is also returned by `proxy_svar` itself as the `first_stage`
+key; the standalone function adds the HAC and classical variance choices.
+
+**Why "F > 10" is not the bar.** The folklore threshold descends from
+Staiger-Stock / Stock-Yogo *homoskedastic* TSLS-bias calculations; it is not a
+valid critical value for a robust F. MOP test the null "the worst-case
+(Nagar-benchmark) relative bias exceeds $\tau$" at level $\alpha$; with one
+instrument their effective degrees of freedom equal 1 and the critical value
+reduces to a noncentral chi-square quantile
+$Q_{\chi^2_1(\mathrm{ncp}=1/\tau)}(1-\alpha)$ — the Stata `weakivtest`
+construction (Pflueger & Wang 2015). At the 5% test level:
+
+| worst-case bias $\tau$ tolerated | 5% | 10% | 20% | 30% |
+|---|---|---|---|---|
+| critical value | 37.42 | **23.11** | 15.06 | 12.05 |
+
+An effective F of 12 clears only the 30%-bias bar; **23.11** is the number
+that certifies the conventional 10% bound. `tau_bound` inverts the table —
+the smallest $\tau$ the observed F rejects (+inf when even zero relevance
+cannot be rejected). This library's own interval-coverage audit measured why
+the folklore gate is unsafe: `iv_gmm` coverage was already down to 0.915 at a
+median first-stage F of 10.5
+([interval-coverage](../../examples/interval-coverage.md)).
+
+**When to distrust it, and where to go.** When `weak_mop_tau10` is True, do
+not trust Wald-type inference — `proxy_svar_bands` included. The diagnostic
+**gates** strong-instrument inference; it does not repair it. The honest
+object under weakness is
+[`proxy_ar_sets`](#proxy_ar_sets-weak-instrument-robust-anderson-rubin-sets),
+whose Anderson-Rubin sets are valid at *any* instrument strength (they simply
+become unbounded when the data cannot pin the response down). Even a passing
+F is a screen, not a proof: the MOP thresholds are imported from the linear-IV
+weak-instrument literature — the field's standard practice for proxy SVARs —
+not a theorem about the IRF estimand itself, and pre-testing distorts
+downstream inference in the usual way. When the verdict is marginal, report
+the AR sets alongside.
+
+**Key arguments and defaults (and why).** `variance="hc1"` (the default —
+matches `proxy_svar`'s `robust_f=True` statistic bit-for-bit);
+`"hac"` for a Bartlett/Newey-West variance when the proxy's score may be
+serially correlated (a time-aggregated or smoothed proxy; `hac_lags` defaults
+to the Newey-West rule, and autocovariances pair over **calendar time** so
+NaN gaps are never spliced across); `"classical"` for comparison with
+published homoskedastic tables (Gertler-Karadi 2015 report both). `lags`,
+`norm_var`, `trend` are `proxy_svar`'s.
+
+**How to read the output.** `effective_f` against `mop_cv_tau10` (23.11), or
+just read the two verdicts: `weak_mop_tau10` (the honest bar) and
+`weak_folklore` (F < 10, reported because the literature does). `tau_bound`
+is the one-number summary — "the data certify worst-case bias below
+`tau_bound` at the 5% level". `f_classical` and `f_hc1` are always included
+so published tables can be matched; `beta`, `se`, `reliability`, `n_proxy`
+describe the regression itself.
+
+**Failure modes.** Treating a passing F as proof of exogeneity (it says
+nothing about it); comparing a robust F against homoskedastic Stock-Yogo
+tables; HAC with a bandwidth near the overlap length (the variance estimate
+can degenerate — the function errors rather than returning a junk F); reading
+`weak_folklore=False` as strength when `weak_mop_tau10` is True — the 10-20
+range is exactly where the folklore and the honest bar disagree.
+
+**Validated against.** statsmodels OLS with HC1 and HAC(Bartlett) covariance
+for the regression algebra (rtol 1e-9) and `scipy.stats.ncx2.ppf` for the
+critical values and tau bounds (atol 1e-6)
+([`proxy_first_stage.json`](../../../fixtures/proxy_first_stage.json),
+[`first_stage.rs`](../../../crates/tsecon-ident/tests/first_stage.rs));
+property tests pin scale invariance, the weak-vs-strong ordering, and
+bit-for-bit agreement with `proxy_svar`'s `first_stage_f`. The critical
+values reproduce the published `weakivtest` single-instrument table
+(37.418 / 23.109 / 15.062; the tau=30% entry is 12.046 here vs. its 12.039
+because `weakivtest` rounds $1/\tau$ to 3.33).
+
+**References.** Montiel Olea & Pflueger (2013, *JBES*); Pflueger & Wang
+(2015, *Stata Journal*, `weakivtest`); Windmeijer (2025, *J. Econometrics*,
+the robust-F equivalence); Staiger & Stock (1997); Stock & Yogo (2005) for
+what the folklore threshold actually was; Lewis & Mertens (FRBNY SR 1020)
+for the multi-instrument generalization this single-proxy module does not
+claim.
+
+```python
+# the same system as the proxy_svar example above
+fs = tsecon.proxy_first_stage(y, proxy, lags=2, norm_var=2)
+print("effective F:", round(fs["effective_f"], 2),
+      " vs MOP tau=10% cv:", round(fs["mop_cv_tau10"], 2))
+print("tau bound:", round(fs["tau_bound"], 4),
+      " weak (MOP):", fs["weak_mop_tau10"], " weak (folklore):", fs["weak_folklore"])
+
+weak = proxy.copy()                       # now degrade the instrument
+weak[np.isfinite(weak)] = (0.05 * eps[120:, 2]
+                           + rng.standard_normal(T - 120))
+fw = tsecon.proxy_first_stage(y, weak, lags=2, norm_var=2)
+print("degraded F:", round(fw["effective_f"], 2),
+      " weak (MOP):", fw["weak_mop_tau10"],
+      " tau bound:", round(fw["tau_bound"], 3))
+```
+
+```
+effective F: 475.45  vs MOP tau=10% cv: 23.11
+tau bound: 0.0025  weak (MOP): False  weak (folklore): False
+degraded F: 1.47  weak (MOP): True  tau bound: inf
+```
+
+The strong instrument certifies worst-case bias below 0.25%; the degraded one
+cannot even reject zero relevance (`tau_bound` = inf) — its IRFs need
+`proxy_ar_sets`, not a band.
 
 ---
 

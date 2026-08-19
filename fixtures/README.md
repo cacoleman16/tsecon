@@ -30,6 +30,9 @@ venv) in one of two ways:
 The `*.csv` files are the exception, and are data rather than derived values:
 public datasets vendored **with attribution** for the replication pages
 (`ramey_zubairy.csv` — the authors' public replication archive;
+`gertler_karadi.csv` — the Gertler-Karadi (2015) AEJ replication dataset via
+the Plagborg-Møller & Wolf `svma_iv` mirror, cross-checked against the
+VAR-Toolbox mirror;
 `yield_curve_recession.csv` — FRED series GS10/TB3MS/USREC;
 `sunspots_tong.csv` — the public-domain annual Wolf sunspot numbers
 1700–1988, via `statsmodels.datasets.sunspots`). Each carries its source in
