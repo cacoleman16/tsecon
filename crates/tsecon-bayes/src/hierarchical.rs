@@ -141,6 +141,12 @@ pub struct HierarchicalConfig {
     pub max_iter: usize,
     /// Nelder-Mead simplex-size and function-spread tolerance.
     pub tol: f64,
+    /// Lag order of the univariate AR scale regressions calibrating the
+    /// Minnesota prior (see [`MinnesotaNiwPrior::with_scale_ar`]): `4` is
+    /// the library default; `1` is Giannone-Lenza-Primiceri (2015)'s own
+    /// convention (`setpriors.m`), the choice that makes this selection
+    /// GLP-exact.
+    pub scale_ar: usize,
 }
 
 impl Default for HierarchicalConfig {
@@ -157,6 +163,7 @@ impl Default for HierarchicalConfig {
             n_grid: 25,
             max_iter: 200,
             tol: 1e-8,
+            scale_ar: 4,
         }
     }
 }
@@ -241,6 +248,14 @@ pub fn bvar_hierarchical(
             what: "lambda1_init must be finite and positive",
         });
     }
+    if cfg.scale_ar == 0 {
+        return Err(BayesError::InvalidArgument {
+            what: "scale_ar = 0: the univariate scale regressions calibrating the \
+                   Minnesota prior need at least one lag; pass scale_ar >= 1 \
+                   (4 = the library default, 1 = the Giannone-Lenza-Primiceri \
+                   2015 convention)",
+        });
+    }
 
     let lo = cfg.lambda1_lo;
     let hi = cfg.lambda1_hi;
@@ -265,7 +280,15 @@ pub fn bvar_hierarchical(
                 i as f64 / (cfg.n_grid as f64 - 1.0)
             };
             let lam = (log_lo + t * (log_hi - log_lo)).exp();
-            let ml = eval_log_ml(data, p, cfg.lambda0, lam, cfg.lambda3, cfg.delta);
+            let ml = eval_log_ml(
+                data,
+                p,
+                cfg.lambda0,
+                lam,
+                cfg.lambda3,
+                cfg.delta,
+                cfg.scale_ar,
+            );
             let obj = ml + hyper.log_kernel(lam);
             if obj > best_obj {
                 best_obj = obj;
@@ -289,7 +312,15 @@ pub fn bvar_hierarchical(
 
     // Refit the conjugate posterior at the optimum (the returned drop-in
     // BVAR). Errors here are genuine model failures and propagate.
-    let prior = MinnesotaNiwPrior::new(data, p, cfg.lambda0, lambda1_opt, lambda3_opt, cfg.delta)?;
+    let prior = MinnesotaNiwPrior::with_scale_ar(
+        data,
+        p,
+        cfg.lambda0,
+        lambda1_opt,
+        lambda3_opt,
+        cfg.delta,
+        cfg.scale_ar,
+    )?;
     let posterior = prior.posterior(data)?;
     let log_ml = posterior.log_marginal_likelihood();
     let log_posterior = log_ml + hyper.log_prior(lambda1_opt);
@@ -300,6 +331,7 @@ pub fn bvar_hierarchical(
         cfg.lambda1_init,
         cfg.lambda3,
         cfg.delta,
+        cfg.scale_ar,
     );
 
     Ok(HierarchicalFit {
@@ -319,6 +351,7 @@ pub fn bvar_hierarchical(
 /// Closed-form `ln p(Y | lambda1, lambda3)` for a Minnesota-NIW prior; any
 /// prior/posterior failure returns `-inf` so the optimizer treats the point
 /// as infeasible (the `ObjectiveFn` non-finite contract).
+#[allow(clippy::too_many_arguments)]
 fn eval_log_ml(
     data: MatRef<'_, f64>,
     p: usize,
@@ -326,8 +359,9 @@ fn eval_log_ml(
     lambda1: f64,
     lambda3: f64,
     delta: f64,
+    scale_ar: usize,
 ) -> f64 {
-    match MinnesotaNiwPrior::new(data, p, lambda0, lambda1, lambda3, delta) {
+    match MinnesotaNiwPrior::with_scale_ar(data, p, lambda0, lambda1, lambda3, delta, scale_ar) {
         Ok(prior) => match prior.posterior(data) {
             Ok(post) => post.log_marginal_likelihood(),
             Err(_) => f64::NEG_INFINITY,
@@ -353,9 +387,10 @@ fn optimize_1d(
     let lambda0 = cfg.lambda0;
     let lambda3 = cfg.lambda3;
     let delta = cfg.delta;
+    let scale_ar = cfg.scale_ar;
     let inner = FnObjective::new(move |theta: &[f64]| {
         let l = theta[0];
-        let ml = eval_log_ml(data, p, lambda0, l, lambda3, delta);
+        let ml = eval_log_ml(data, p, lambda0, l, lambda3, delta, scale_ar);
         -(ml + hyper.log_kernel(l))
     });
     let mut obj = TransformedObjective::new(inner, bounded);
@@ -397,10 +432,11 @@ fn optimize_2d(
     let hi1 = cfg.lambda1_hi;
     let lambda0 = cfg.lambda0;
     let delta = cfg.delta;
+    let scale_ar = cfg.scale_ar;
     let mut obj = FnObjective::new(move |z: &[f64]| {
         let l1 = logistic(z[0], lo1, hi1);
         let l3 = logistic(z[1], LAMBDA3_LO, LAMBDA3_HI);
-        let ml = eval_log_ml(data, p, lambda0, l1, l3, delta);
+        let ml = eval_log_ml(data, p, lambda0, l1, l3, delta, scale_ar);
         -(ml + hyper.log_kernel(l1))
     });
     let seed_l3 = cfg

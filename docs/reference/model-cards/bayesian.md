@@ -44,6 +44,29 @@ calibration; tune `lambda1` by maximizing `log_marginal_likelihood` (the
 Giannone-Lenza-Primiceri 2015 hierarchical recommendation — and what
 `bvar_hierarchical` below automates over exactly this `lambda1`).
 
+**The residual-scale convention (`scale_ar`, 0.4.0+).** The prior's per-variable
+scales σ²ⱼ — the diagonal of the inverse-Wishart scale `S0` *and* the
+denominator of every lag coefficient's prior variance — are the residual
+variances of univariate AR(`scale_ar`) OLS regressions (with intercept,
+denominator `T_eff − scale_ar − 1`, fit to the full sample). Packages differ
+here and **results are sensitive**, which is why the convention is a documented
+argument rather than a burned-in constant. `scale_ar=4` (the default, and the
+only behavior before 0.4.0) is the common quarterly-data convention — a year of
+lags soaks the persistence out of the scale estimate. `scale_ar=1` is the
+convention of Giannone, Lenza & Primiceri (2015)'s own replication code (their
+`setpriors.m`: the IW scale diagonal is "the residual variance of an AR(1)";
+same OLS denominator as here) — the GLP-exact choice. How much it matters: on
+GLP's own data the hierarchically selected tightness is 0.26 under AR(4) and
+0.42 under AR(1), which is the entire gap to their published Figure-1 modes
+(see the [GLP replication](../../examples/replication-glp-prior-selection.md)).
+Any `scale_ar ≥ 1` the sample supports is accepted; the default is unchanged,
+so existing results do not move. The same argument appears on `bvar_irf_draws`
+and `bvar_hierarchical` (the Bayesian-SVAR wrappers — `sign_restricted_svar`
+and relatives — keep the AR(4) default; their deliberately minimal prior
+surface exposes only `lambda1`). `bvar_ssvs` is unaffected: its semi-automatic
+prior scales come from unrestricted-OLS coefficient standard errors and
+residual variances, not from the AR scale rule.
+
 **How to read the output.** `posterior_mean_coefs` ((1+pK)×K),
 `sigma_posterior_mean` (K×K), and `log_marginal_likelihood` — the model-
 comparison score: fit at one hyperparameter setting is meaningful only *relative*
@@ -103,7 +126,14 @@ eliminated the collapse entirely in the same experiment (coverage 0.80–0.85).
 If you use `"none"`, treat a `lambda1_opt` at the bottom of the box as a red
 flag, not a selection. `lambda1_lo`/`lambda1_hi` bracket the search; `n_grid`
 sets the pre-scan resolution; `delta`/`lambda0`/`lambda3` are the fixed
-Minnesota dials (as in `bvar_fit`).
+Minnesota dials (as in `bvar_fit`). `scale_ar` (0.4.0+) selects the
+residual-scale convention described on the `bvar_fit` card above — it moves
+the *location* of the selected tightness, not just its scale: `scale_ar=1`
+(GLP's own convention) is what turns this function into an exact
+implementation of their Figure-1 exercise, reproducing the published
+small/medium modes on their own data (the
+[point replication](../../examples/replication-glp-prior-selection.md)),
+while the AR(4) default keeps every pre-0.4.0 result bit-identical.
 
 **How to read the output.** `lambda1_opt` (and `lambda3_opt`) — the selected
 tightness; `log_marginal_likelihood` / `log_posterior` at the optimum;
@@ -134,8 +164,11 @@ documented prior rule, present identically in the independent oracle.
 **Validated against.** An independent NumPy/SciPy re-implementation of the same
 closed-form matrix-variate-t marginal likelihood (Kadiyala-Karlsson 1997 eq. 3.6),
 maximized with `scipy.optimize` — a cross-implementation golden that never imports
-tsecon ([`bvar_hierarchical.json`](../../../fixtures/bvar_hierarchical.json),
-[`hierarchical.rs`](../../../crates/tsecon-bayes/tests/hierarchical.rs)). See the
+tsecon, pinned under **both** scale conventions (`scale_ar=4` and `scale_ar=1`)
+([`bvar_hierarchical.json`](../../../fixtures/bvar_hierarchical.json),
+[`hierarchical.rs`](../../../crates/tsecon-bayes/tests/hierarchical.rs)); plus the
+GLP (2015) Figure-1 **point replication** on their own committed panel
+([`glp_sw_panel.csv`](../../../fixtures/glp_sw_panel.csv)). See the
 [validation matrix](../validation-matrix.md).
 
 **References.** Giannone, Lenza & Primiceri (2015, *REStat*); Kadiyala & Karlsson
@@ -347,7 +380,8 @@ correctly cumulated (draw-wise) when `cumulative=True`.
 
 **Key arguments and defaults.** `horizon`, `n_draws` (more for smoother bands),
 `seed` (reproducible via the Philox stream), the same shrinkage hyperparameters
-as `bvar_fit`, `cumulative`.
+as `bvar_fit` — including `scale_ar` (0.4.0+, the residual-scale convention
+documented on the `bvar_fit` card) — and `cumulative`.
 
 **How to read the output.** A `[draw][h][variable][shock]` array. Summarize with
 percentiles across the draw axis — e.g. the 16th/50th/84th percentiles give a

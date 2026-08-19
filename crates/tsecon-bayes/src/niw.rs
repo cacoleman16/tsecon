@@ -66,9 +66,13 @@ use crate::dense::{
 };
 use crate::error::BayesError;
 
-/// Lag length of the univariate autoregressions whose residual variances
-/// scale the Minnesota prior (the fixture/BEAR convention: AR(4) with
-/// intercept, OLS, denominator `T_eff - 5`).
+/// Default lag length of the univariate autoregressions whose residual
+/// variances scale the Minnesota prior (the fixture/BEAR convention: AR(4)
+/// with intercept, OLS, denominator `T_eff - 5`). Packages differ here and
+/// results are sensitive: Giannone-Lenza-Primiceri's own replication code
+/// (`setpriors.m`/`bvarGLP.m`) uses **AR(1)** residual variances — pass
+/// `scale_ar = 1` to [`MinnesotaNiwPrior::with_scale_ar`] for that
+/// convention.
 const MINNESOTA_AR_ORDER: usize = 4;
 
 /// Validates a data matrix: finite entries, at least one column.
@@ -151,9 +155,15 @@ fn ar_resid_var(y: &[f64], p: usize) -> Result<f64, BayesError> {
 /// * `S0 = diag(sigma_1^2, ..., sigma_n^2)`, `v0 = n + 2` (the smallest
 ///   integer degrees of freedom giving a finite prior mean `S0 / (v0 - n
 ///   - 1) = S0`);
-/// * `sigma_j^2` are univariate AR(4) OLS residual variances (the common
-///   convention; documented because packages differ and results are
-///   sensitive — see the module docs of the roadmap).
+/// * `sigma_j^2` are univariate AR(`scale_ar`) OLS residual variances.
+///   The default `scale_ar = 4` ([`MinnesotaNiwPrior::new`]) is the common
+///   quarterly-data convention this crate has always shipped;
+///   `scale_ar = 1` ([`MinnesotaNiwPrior::with_scale_ar`]) is the
+///   Giannone-Lenza-Primiceri (2015) convention (their `setpriors.m`:
+///   "the residual variance of an AR(1)"). Documented because packages
+///   differ here and results are sensitive — on GLP's own data the AR(4)
+///   vs AR(1) choice moves the hierarchically selected tightness from
+///   ~0.26 to their published ~0.45.
 ///
 /// Because `Omega0` is shared across equations, the cross-variable scaling
 /// `sigma_i^2 / sigma_j^2` of the original Minnesota prior lives in `S0`;
@@ -168,6 +178,7 @@ pub struct MinnesotaNiwPrior {
     v0: f64,
     p: usize,
     n_vars: usize,
+    scale_ar: usize,
 }
 
 impl MinnesotaNiwPrior {
@@ -175,6 +186,10 @@ impl MinnesotaNiwPrior {
     /// scales), the lag length `p`, the hyperparameters `lambda0`
     /// (intercept tightness), `lambda1` (overall tightness), `lambda3`
     /// (lag decay), and the own-first-lag prior mean `delta`.
+    ///
+    /// Equivalent to [`MinnesotaNiwPrior::with_scale_ar`] at the default
+    /// `scale_ar = 4`; pass `scale_ar = 1` there for the
+    /// Giannone-Lenza-Primiceri (2015) residual-scale convention.
     ///
     /// # Errors
     ///
@@ -193,6 +208,43 @@ impl MinnesotaNiwPrior {
         lambda1: f64,
         lambda3: f64,
         delta: f64,
+    ) -> Result<Self, BayesError> {
+        Self::with_scale_ar(
+            data,
+            p,
+            lambda0,
+            lambda1,
+            lambda3,
+            delta,
+            MINNESOTA_AR_ORDER,
+        )
+    }
+
+    /// Builds the prior like [`MinnesotaNiwPrior::new`], but with an
+    /// explicit lag order `scale_ar` for the univariate AR scale
+    /// regressions whose residual variances calibrate `S0` and the
+    /// coefficient prior variance.
+    ///
+    /// `scale_ar = 4` reproduces [`MinnesotaNiwPrior::new`] bit for bit
+    /// (the shipped default convention); `scale_ar = 1` is the
+    /// Giannone-Lenza-Primiceri (2015) convention (their `setpriors.m`
+    /// scales with AR(1) residual variances). Any `scale_ar >= 1` the
+    /// sample can support is accepted.
+    ///
+    /// # Errors
+    ///
+    /// As for [`MinnesotaNiwPrior::new`], plus
+    /// [`BayesError::InvalidArgument`] for `scale_ar = 0`;
+    /// [`BayesError::InsufficientObservations`] is judged against the
+    /// requested `scale_ar`.
+    pub fn with_scale_ar(
+        data: MatRef<'_, f64>,
+        p: usize,
+        lambda0: f64,
+        lambda1: f64,
+        lambda3: f64,
+        delta: f64,
+        scale_ar: usize,
     ) -> Result<Self, BayesError> {
         if p == 0 {
             return Err(BayesError::InvalidArgument {
@@ -218,6 +270,14 @@ impl MinnesotaNiwPrior {
                 what: "lambda3 (lag decay) must be nonnegative",
             });
         }
+        if scale_ar == 0 {
+            return Err(BayesError::InvalidArgument {
+                what: "scale_ar = 0: the univariate scale regressions calibrating the \
+                   Minnesota prior need at least one lag; pass scale_ar >= 1 \
+                   (4 = the library default, 1 = the Giannone-Lenza-Primiceri \
+                   2015 convention)",
+            });
+        }
         check_data(data)?;
         let n = data.ncols();
         let k = 1 + n * p;
@@ -225,7 +285,7 @@ impl MinnesotaNiwPrior {
         let mut s0_diag = Vec::with_capacity(n);
         for j in 0..n {
             let col: Vec<f64> = (0..data.nrows()).map(|i| data[(i, j)]).collect();
-            s0_diag.push(ar_resid_var(&col, MINNESOTA_AR_ORDER)?);
+            s0_diag.push(ar_resid_var(&col, scale_ar)?);
         }
 
         let mut b0 = Mat::<f64>::zeros(k, n);
@@ -250,6 +310,7 @@ impl MinnesotaNiwPrior {
             v0: n as f64 + 2.0,
             p,
             n_vars: n,
+            scale_ar,
         })
     }
 
@@ -264,10 +325,16 @@ impl MinnesotaNiwPrior {
         &self.omega0_diag
     }
 
-    /// Diagonal of the inverse-Wishart scale `S0` (the AR(4) residual
-    /// variances).
+    /// Diagonal of the inverse-Wishart scale `S0` (the AR(`scale_ar`)
+    /// residual variances; AR(4) under the default convention).
     pub fn s0_diag(&self) -> &[f64] {
         &self.s0_diag
+    }
+
+    /// Lag order of the univariate AR scale regressions this prior was
+    /// built with (4 = the default convention, 1 = the GLP convention).
+    pub fn scale_ar(&self) -> usize {
+        self.scale_ar
     }
 
     /// Inverse-Wishart degrees of freedom `v0 = n + 2`.

@@ -1975,11 +1975,17 @@ fn garch_fit<'py>(
 /// conjugate prior (closed-form posterior — no MCMC needed).
 ///
 /// `delta` is the own-first-lag prior mean (0 for growth rates, 1 for
-/// levels/random-walk shrinkage). Returns the posterior coefficient
-/// mean, posterior mean of Sigma, and the log marginal likelihood (the
-/// evidence — compare across lambda settings to tune tightness).
+/// levels/random-walk shrinkage). `scale_ar` is the lag order of the
+/// univariate AR regressions whose residual variances scale the prior
+/// (4 = the library default; 1 = the Giannone-Lenza-Primiceri 2015
+/// convention, their own `setpriors.m` — packages differ here and
+/// results are sensitive, see the Bayesian model card). Returns the
+/// posterior coefficient mean, posterior mean of Sigma, and the log
+/// marginal likelihood (the evidence — compare across lambda settings
+/// to tune tightness).
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0))]
+#[pyo3(signature = (data, lags = 2, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, scale_ar = 4))]
+#[allow(clippy::too_many_arguments)]
 fn bvar_fit<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
@@ -1988,12 +1994,20 @@ fn bvar_fit<'py>(
     lambda1: f64,
     lambda3: f64,
     delta: f64,
+    scale_ar: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let a = data.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
-    let prior =
-        tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
-            .map_err(to_py)?;
+    let prior = tsecon_bayes::MinnesotaNiwPrior::with_scale_ar(
+        m.as_ref(),
+        lags,
+        lambda0,
+        lambda1,
+        lambda3,
+        delta,
+        scale_ar,
+    )
+    .map_err(to_py)?;
     let post = prior.posterior(m.as_ref()).map_err(to_py)?;
     let d = PyDict::new(py);
     let bb = post.b_bar();
@@ -2023,8 +2037,11 @@ fn bvar_fit<'py>(
 /// the stated coverage — e.g. a 90% band is
 /// `np.quantile(draws, [0.05, 0.95], axis=0)`, a 68% band
 /// `np.quantile(draws, [0.16, 0.84], axis=0)`.
+///
+/// `scale_ar` selects the prior's residual-scale convention exactly as
+/// in `bvar_fit` (4 = default; 1 = the GLP 2015 convention).
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, horizon = 16, n_draws = 500, seed = 0, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, cumulative = false))]
+#[pyo3(signature = (data, lags = 2, horizon = 16, n_draws = 500, seed = 0, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, cumulative = false, scale_ar = 4))]
 #[allow(clippy::too_many_arguments)]
 fn bvar_irf_draws<'py>(
     py: Python<'py>,
@@ -2038,12 +2055,20 @@ fn bvar_irf_draws<'py>(
     lambda3: f64,
     delta: f64,
     cumulative: bool,
+    scale_ar: usize,
 ) -> PyResult<Bound<'py, pyo3::types::PyList>> {
     let a = data.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
-    let prior =
-        tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
-            .map_err(to_py)?;
+    let prior = tsecon_bayes::MinnesotaNiwPrior::with_scale_ar(
+        m.as_ref(),
+        lags,
+        lambda0,
+        lambda1,
+        lambda3,
+        delta,
+        scale_ar,
+    )
+    .map_err(to_py)?;
     let post = prior.posterior(m.as_ref()).map_err(to_py)?;
     let mut stream = tsecon_rng::Stream::new(seed);
     let draws = post
@@ -2095,11 +2120,16 @@ fn mat_to_vec2_bayes(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f
 /// the selected lambda1 ignore selection uncertainty (a plug-in): the same
 /// audit measured ~0.82-0.85 coverage at nominal 0.90 even for the
 /// well-behaved GLP route — see the model card's calibration section.
+/// `scale_ar` is the lag order of the univariate AR regressions whose
+/// residual variances scale the Minnesota prior: 4 (default) is the
+/// library convention; `scale_ar=1` is GLP's own (`setpriors.m`) — the
+/// GLP-exact choice, and the one documented convention that separated
+/// this machinery from their published Figure-1 tightness modes.
 /// Returns the selected lambdas, the log marginal likelihood and log
 /// posterior, the posterior coefficient/Sigma means, the pre-scan ML
 /// profile, and the fixed-lambda reference the optimum dominates.
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, delta = 0.0, lambda0 = 100.0, lambda3 = 1.0, lambda1_init = 0.2, lambda1_lo = 1e-4, lambda1_hi = 10.0, optimize = "lambda1", hyperprior = "glp", n_grid = 25, max_iter = 200, tol = 1e-8))]
+#[pyo3(signature = (data, lags = 2, delta = 0.0, lambda0 = 100.0, lambda3 = 1.0, lambda1_init = 0.2, lambda1_lo = 1e-4, lambda1_hi = 10.0, optimize = "lambda1", hyperprior = "glp", n_grid = 25, max_iter = 200, tol = 1e-8, scale_ar = 4))]
 #[allow(clippy::too_many_arguments)]
 fn bvar_hierarchical<'py>(
     py: Python<'py>,
@@ -2116,6 +2146,7 @@ fn bvar_hierarchical<'py>(
     n_grid: usize,
     max_iter: usize,
     tol: f64,
+    scale_ar: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let a = data.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
@@ -2151,6 +2182,7 @@ fn bvar_hierarchical<'py>(
         n_grid,
         max_iter,
         tol,
+        scale_ar,
     };
     let fit = tsecon_bayes::bvar_hierarchical(m.as_ref(), lags, &cfg).map_err(to_py)?;
 

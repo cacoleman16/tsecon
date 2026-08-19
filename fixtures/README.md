@@ -32,8 +32,13 @@ public datasets vendored **with attribution** for the replication pages
 (`ramey_zubairy.csv` — the authors' public replication archive;
 `yield_curve_recession.csv` — FRED series GS10/TB3MS/USREC;
 `sunspots_tong.csv` — the public-domain annual Wolf sunspot numbers
-1700–1988, via `statsmodels.datasets.sunspots`). Each carries its source in
-its header comments.
+1700–1988, via `statsmodels.datasets.sunspots`;
+`glp_sw_panel.csv` — the Stock-Watson (2008) US quarterly panel exactly as
+Giannone-Lenza-Primiceri (2015)'s own replication code consumes it, vendored
+from the public FRBNY-DSGE/BrookingsPC2020 GitHub mirror of their web
+replication files with the mirror's redistribution notice kept in the
+header; the underlying series are public-domain US-government statistics).
+Each carries its source in its header comments.
 
 Each fixture records the exact reference-library versions used, so the values
 are reproducible. Regenerate any of them with, e.g.:
