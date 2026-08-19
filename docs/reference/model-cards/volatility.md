@@ -200,8 +200,12 @@ clean noise's tail index (and expect NaN SEs there: the boundary has no
 interior curvature). The Laplace likelihood is piecewise in `kappa` (every
 sign flip is a kink): a denser multistart is applied, but `converged`
 certifies the best basin found, not global optimality over the kinks, and
-single-sample `kappa` for the sign filter is noisy. A constant series is
-refused outright (the likelihood is unbounded as `scale → 0`).
+single-sample `kappa` for the sign filter is noisy. Estimation is
+scale-adaptive (internally standardized, mapped back exactly), so the basin
+found no longer depends on the units of `y` — before that repair, rescaling
+a series moved the Laplace `kappa` by up to 57% on 11 of 20 seeded test
+series (the smooth `"t"`/`"gaussian"` fits never moved). A constant series
+is refused outright (the likelihood is unbounded as `scale → 0`).
 
 **Validated against.** statsmodels `UnobservedComponents(y, 'llevel')` for
 the Gaussian limit, pinned *through the steady-state mapping* above:

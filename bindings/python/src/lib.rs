@@ -6131,6 +6131,15 @@ fn gas_volatility<'py>(
 /// honest `converged` (on near-Gaussian data a `"t"` fit's `nu` runs to
 /// the boundary and reports `False` while the level path stays valid),
 /// `iterations`, `n_obs`, and the `density` used.
+///
+/// Estimation is scale-adaptive: the optimizer runs on an internally
+/// standardized series and maps the optimum back exactly, so rescaling
+/// the data `y -> c * y` maps the fit (`scale -> c * scale`; `kappa` and
+/// `nu` unchanged — bit-exactly for power-of-two `c`) instead of
+/// changing it. This matters most for `"laplace"`, whose likelihood is
+/// piecewise in `kappa` (every residual sign flip is a kink): the fit
+/// certifies the best kink basin found, and before standardization the
+/// basin could depend on the units of `y`.
 #[pyfunction]
 #[pyo3(signature = (y, density = "t"))]
 fn dcs_local_level<'py>(

@@ -192,10 +192,14 @@ fn recovers_simulated_garch11_parameters() {
 /// 1/7). White noise fitted as GARCH(1,1) drives `alpha` to its sign
 /// constraint (~1e-14): the observed information is singular in that
 /// direction by construction, and the pre-fix behaviour was an unflagged
-/// all-NaN `se_mle`/`se_robust` row. Now the boundary parameter is
-/// flagged (`boundary`, `se_valid = false`, a teaching note) while the
-/// interior parameters keep finite standard errors from the reduced
-/// Hessian over the free directions.
+/// all-NaN `se_mle`/`se_robust` row. Now every NaN standard error is a
+/// *flagged* NaN: the boundary parameter carries `boundary = true`,
+/// `se_valid = false`, and a teaching note, while interior parameters
+/// keep finite standard errors from the reduced Hessian over the free
+/// directions — except when the reduced problem is itself degenerate
+/// (with `alpha = 0` the pair `(omega, beta)` can sit on a flat
+/// likelihood ridge), where the honest report is all-invalid, still
+/// flagged, never silent.
 #[test]
 fn boundary_fit_flags_and_keeps_interior_standard_errors() {
     let spec = GarchSpec {
@@ -203,48 +207,34 @@ fn boundary_fit_flags_and_keeps_interior_standard_errors() {
         vol: VolSpec::Garch { p: 1, q: 1 },
         dist: DistSpec::Normal,
     };
-    // Seeds chosen so the alpha estimate lands at the constraint (the
-    // pre-fix all-NaN reproduction); asserted, not assumed.
     let mut boundary_seen = 0;
-    for seed in [2, 3, 5] {
+    let mut interior_se_seen = 0;
+    for seed in [2, 3, 5, 7, 11, 13] {
         let y: Vec<f64> = {
             let mut rng = SplitMix64(seed);
             (0..750).map(|_| rng.normal()).collect()
         };
         let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
-        let alpha = res.params[1];
-        if alpha > 1e-6 {
-            continue; // this seed did not produce a boundary fit
-        }
-        boundary_seen += 1;
-        // alpha is flagged, and its NaN is a *flagged* NaN.
-        assert!(res.boundary[1], "alpha at {alpha:e} must be flagged");
-        assert!(!res.se_valid[1]);
-        assert!(res.se_mle[1].is_nan() && res.se_robust[1].is_nan());
-        // omega is interior and must have finite standard errors — the
-        // round-1 defect was exactly this row coming back NaN.
-        assert!(
-            !res.boundary[0] && res.se_valid[0],
-            "omega must be interior/valid, se_mle = {:?}",
-            res.se_mle
-        );
-        assert!(
-            res.se_mle[0].is_finite()
-                && res.se_mle[0] > 0.0
-                && res.se_robust[0].is_finite()
-                && res.se_robust[0] > 0.0,
-            "interior omega standard errors must be finite: mle {} robust {}",
-            res.se_mle[0],
-            res.se_robust[0]
-        );
-        // Flags, values, and note are mutually consistent.
+        // Universal consistency: a NaN standard error is never unflagged.
         for i in 0..res.params.len() {
             assert_eq!(
                 res.se_valid[i],
                 !res.boundary[i] && res.se_mle[i].is_finite() && res.se_robust[i].is_finite(),
-                "se_valid[{i}] inconsistent"
+                "seed {seed}: se_valid[{i}] inconsistent with flags/values"
             );
         }
+        let alpha = res.params[1];
+        if alpha > 1e-6 {
+            continue; // this seed found an interior point
+        }
+        boundary_seen += 1;
+        // alpha is flagged, and its NaN is a *flagged* NaN.
+        assert!(
+            res.boundary[1],
+            "seed {seed}: alpha at {alpha:e} must be flagged"
+        );
+        assert!(!res.se_valid[1]);
+        assert!(res.se_mle[1].is_nan() && res.se_robust[1].is_nan());
         let note = res.boundary_note.as_deref().expect("boundary note");
         assert!(
             note.contains("alpha[1]"),
@@ -254,11 +244,31 @@ fn boundary_fit_flags_and_keeps_interior_standard_errors() {
             note.contains("sign constraint"),
             "note states the cause: {note}"
         );
+        // The round-1 defect was the interior rows coming back NaN too.
+        // Count the boundary fits whose reduced (omega, beta) problem is
+        // nondegenerate and delivers finite interior standard errors.
+        if res.se_valid[0] {
+            assert!(
+                res.se_mle[0].is_finite()
+                    && res.se_mle[0] > 0.0
+                    && res.se_robust[0].is_finite()
+                    && res.se_robust[0] > 0.0,
+                "seed {seed}: valid omega standard errors must be finite: mle {} robust {}",
+                res.se_mle[0],
+                res.se_robust[0]
+            );
+            interior_se_seen += 1;
+        }
     }
     assert!(
-        boundary_seen >= 2,
-        "the white-noise DGP no longer produces boundary fits ({boundary_seen}/3); \
+        boundary_seen >= 3,
+        "the white-noise DGP no longer produces boundary fits ({boundary_seen}/6); \
          the reproduction has drifted — re-derive the seeds"
+    );
+    assert!(
+        interior_se_seen >= 3,
+        "interior standard errors survived on only {interior_se_seen} of \
+         {boundary_seen} boundary fits — the reduced-Hessian path has regressed"
     );
 }
 

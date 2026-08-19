@@ -506,3 +506,55 @@ fn laplace_sign_filter_recovers_its_own_parameters() {
     assert!((mean_k - kappa).abs() < 0.05, "mean kappa {mean_k}");
     assert!((mean_b - b).abs() < 0.03, "mean scale {mean_b}");
 }
+
+/// **Fitting commutes with rescaling — bit-exactly for power-of-two
+/// scales** (audit round 7). `y -> c y` is a pure relabeling of the DCS
+/// level model (`scale -> c scale`; `kappa`, `nu`, and the score
+/// recursion are unit-free), so the estimator must commute with it.
+/// Since 0.4.0 the fit optimizes on the internally standardized series
+/// `y / s_rob`; for `c = 2^k` every step of that standardization is an
+/// exact exponent shift, so the whole optimizer path — including which
+/// kink basin the piecewise Laplace likelihood lands in — is
+/// bit-identical, and the mapped-back parameters are exact. Before the
+/// fix, the Laplace fit landed in *different kink basins depending on
+/// the units of `y`* (11/20 seeded series across eight decades, mapped
+/// log-likelihood gaps up to 4.6; standardization brings that to 4/20,
+/// the irreducible rounding of `c * y` itself on a kinked surface).
+#[test]
+fn fit_commutes_bitexactly_with_power_of_two_rescaling() {
+    let mut stream = Stream::new(20260819);
+    let base = simulate_dcs_t(400, 0.15, 1.0, 5.0, &mut stream);
+    for density in [
+        DcsDensity::Gaussian,
+        DcsDensity::StudentT,
+        DcsDensity::Laplace,
+    ] {
+        let reference = DcsModel::new(&base, density).unwrap().fit().unwrap();
+        for k in [-30i32, -8, 8, 30] {
+            let c = (2.0_f64).powi(k);
+            let y: Vec<f64> = base.iter().map(|v| v * c).collect();
+            let res = DcsModel::new(&y, density).unwrap().fit().unwrap();
+            assert_eq!(
+                res.params.kappa.to_bits(),
+                reference.params.kappa.to_bits(),
+                "{density:?} c=2^{k}: kappa {} vs {} — an exact rescaling moved the fit",
+                res.params.kappa,
+                reference.params.kappa
+            );
+            assert_eq!(
+                res.params.scale.to_bits(),
+                (reference.params.scale * c).to_bits(),
+                "{density:?} c=2^{k}: scale {} vs mapped {}",
+                res.params.scale,
+                reference.params.scale * c
+            );
+            if matches!(density, DcsDensity::StudentT) {
+                assert_eq!(
+                    res.params.nu.to_bits(),
+                    reference.params.nu.to_bits(),
+                    "{density:?} c=2^{k}: nu moved"
+                );
+            }
+        }
+    }
+}

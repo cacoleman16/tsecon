@@ -90,8 +90,19 @@ pub struct NelderMeadOptions {
     /// `true`); `false` selects the standard `(1, 2, 1/2, 1/2)`.
     pub adaptive: bool,
     /// Relative displacement used to build the initial simplex: vertex `i`
-    /// displaces coordinate `i` by `initial_step * x0_i` (or by `0.00025`
-    /// when `x0_i == 0`, matching scipy). Default `0.05`.
+    /// displaces coordinate `i` away from zero by
+    /// `max(initial_step * |x0_i|, 0.00025)`. Default `0.05`.
+    ///
+    /// The absolute floor closes a mixed-scale hole in scipy's rule
+    /// (`nonzdelt * x0_i`, with `zdelt = 0.00025` reserved for *exactly*
+    /// zero coordinates): a coordinate starting at `1e-9` used to get a
+    /// `5e-11` simplex edge — *smaller* than an exactly-zero coordinate's,
+    /// and already below the default `x_tol`, so the simplex-size test was
+    /// satisfied in that direction before the search began and the run
+    /// could certify convergence at the starting value (audit round 7:
+    /// realized by the DCS local-level fits, whose standardized log-scale
+    /// coordinate starts at `ln(1) ≈ 0`). For `|x0_i| >= 0.005` the floor
+    /// is inert and the vertex is bit-identical to scipy's.
     pub initial_step: f64,
 }
 
@@ -136,8 +147,9 @@ impl NelderMeadOptions {
     }
 }
 
-/// Absolute displacement used for coordinates that are exactly zero when
-/// building the initial simplex (scipy's `zdelt`).
+/// Absolute floor on the initial-simplex displacement (scipy's `zdelt`,
+/// applied here as a floor for *near*-zero coordinates too — see
+/// [`NelderMeadOptions::initial_step`]).
 const ZERO_STEP: f64 = 0.00025;
 
 /// Width, in units of the last place, of the floating-point resolution
@@ -212,11 +224,15 @@ pub fn nelder_mead<F: ObjectiveFn + ?Sized>(
         simplex.push(seed.clone());
         for i in 0..n {
             let mut v = seed.clone();
-            if v[i] != 0.0 {
-                v[i] += opts.initial_step * v[i];
-            } else {
-                v[i] = ZERO_STEP;
-            }
+            // Relative displacement with an absolute floor, away from
+            // zero. Bit-identical to scipy's `nonzdelt * x0_i` whenever
+            // `|x0_i| >= ZERO_STEP / initial_step` (0.005 at the default),
+            // and to its `zdelt` at exactly zero; in between, the floor
+            // keeps the simplex edge above the default `x_tol` so a
+            // near-zero coordinate cannot start out pre-converged (see
+            // `NelderMeadOptions::initial_step`).
+            let step = (opts.initial_step * v[i].abs()).max(ZERO_STEP);
+            v[i] += if v[i] < 0.0 { -step } else { step };
             simplex.push(v);
         }
         let mut fx: Vec<f64> = simplex.iter().map(|v| c.value(v)).collect();
