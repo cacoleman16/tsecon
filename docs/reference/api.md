@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**139 functions.**
+**142 functions.**
 
 ## diagnostics
 
@@ -2658,4 +2658,91 @@ GEV block-maxima fit with return levels.
     [10, 50, 100] blocks; each `T > 1`). At least 10 maxima are required.
     Keys: xi, mu, sigma, se_xi, se_mu, se_sigma, se_valid, loglik,
     converged, n_maxima, block_size, return_periods, return_levels.
+
+## static copulas
+
+### `pseudo_obs`
+
+```python
+def pseudo_obs(x: _ArrayLike) -> _F64:
+```
+
+Pseudo-observations: the average-rank probability-scale transform.
+
+    `u[i, j] = rank of x[i, j] within column j / (n + 1)`, ties assigned
+    their average rank — exactly scipy `rankdata(method="average")/(n+1)`
+    (golden-pinned, ties included). The `n + 1` denominator keeps every
+    value strictly inside (0, 1), which the copula quantile transforms
+    require. Ranks see only order, so any strictly monotone transform of a
+    margin (logs, standardization, exp) leaves the output — and any copula
+    fitted to it — bit-identical (property-tested). This is the one-line
+    companion to `copula_fit`: `copula_fit(pseudo_obs(x))`. Accepts any
+    number of columns (the transform is columnwise); `copula_fit` itself
+    is bivariate in this slice.
+
+### `copula_fit`
+
+```python
+def copula_fit(
+    u: _ArrayLike,
+    family: str = ...,
+    method: str = ...,
+) -> dict[str, Any]:
+```
+
+Fits a bivariate copula to (n, 2) probability-scale pseudo-observations.
+
+    `u` must lie strictly inside (0, 1): rank/PIT-transform the raw margins
+    first — `pseudo_obs(x)` does it in one line, and the whole workflow is
+    then invariant to monotone transforms of each margin (the point of the
+    copula decomposition; property-tested). At least 20 pairs required.
+
+    `family`: "gaussian" (param `rho`), "t" (`rho`, `nu`), "clayton"
+    (`theta` > 0, lower-tail), "gumbel" (`theta` >= 1, upper-tail), "frank"
+    (`theta`, either sign). Clayton/Gumbel model positive dependence only
+    in this slice (rotations deferred) and raise a teaching error when the
+    empirical Kendall tau is <= 0. `method`: "mle" (maximum likelihood,
+    observed-information SEs — matches a polished scipy optimum of the
+    statsmodels log-density at 1e-6) or "tau" (Kendall-tau inversion, the
+    statsmodels `fit_corr_param` route — for "t", tau pins `rho` and `nu`
+    is profiled by MLE; SEs are NaN with `se_valid` False, honestly, since
+    the moment-based SE is deferred).
+
+    Returns the named dependence parameter(s) (`rho` / `rho` + `nu` /
+    `theta`, also stacked in `params` with `param_names`), their SEs
+    (`se_rho` / `se_nu` / `se_theta`, stacked in `se`, certified by
+    `se_valid`), `loglik`, `aic`, `bic`, the empirical Kendall `tau` and
+    the fit-implied `tau_implied`, and the closed-form tail-dependence
+    coefficients `tail_lower`/`tail_upper` (Gaussian/Frank 0 — the classic
+    reason a Gaussian fit understates joint crashes; t symmetric
+    Demarta-McNeil; Clayton lower 2^(-1/theta); Gumbel upper
+    2 - 2^(1/theta)). Keys: family, method, n, params, param_names, rho,
+    nu, theta, se, se_rho, se_nu, se_theta, se_valid, loglik, aic, bic,
+    tau, tau_implied, tail_lower, tail_upper, converged (rho/nu/theta and
+    their se_* appear per family).
+
+### `copula_select`
+
+```python
+def copula_select(
+    u: _ArrayLike,
+    families: Sequence[str] | None = ...,
+    method: str = ...,
+) -> dict[str, Any]:
+```
+
+Fits several copula families to the same (n, 2) pseudo-observations
+    and ranks them by AIC/BIC, with a teaching verdict.
+
+    `families`: list of names (default all five: gaussian, t, clayton,
+    gumbel, frank); `method` as in `copula_fit`. Families whose domain
+    excludes the data (Clayton/Gumbel under Kendall tau <= 0) are
+    *skipped with a reason* rather than failing the call, so the default
+    menu works on any data. Each entry of `fits` is a full `copula_fit`
+    dict; `ranking_aic`/`ranking_bic` list family names best-first;
+    `best_aic`/`best_bic` name the winners; `verdict` states who wins, by
+    how much, whether AIC and BIC agree (they differ exactly when the
+    extra parameter is not earning its keep by BIC), what the winner
+    implies for tail dependence, and what was skipped and why. Keys:
+    fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
 

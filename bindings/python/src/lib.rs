@@ -8436,6 +8436,194 @@ fn gev_fit<'py>(
     Ok(d)
 }
 
+// --------------------------------------------------------------------------
+// static copulas (tsecon-copula)
+// --------------------------------------------------------------------------
+
+/// Splits an (n, 2) pseudo-observation matrix into its two columns with a
+/// teaching error for any other width (this slice is bivariate; d > 2 for
+/// the elliptical families is a documented deferral).
+fn copula_u_cols(u: &numpy::PyReadonlyArray2<'_, f64>) -> PyResult<(Vec<f64>, Vec<f64>)> {
+    let ua = u.as_array();
+    if ua.ncols() != 2 {
+        return Err(PyValueError::new_err(format!(
+            "copulas are bivariate in this slice: u must have exactly 2 \
+             columns (got {}); d > 2 for the gaussian/t families is a \
+             planned extension",
+            ua.ncols()
+        )));
+    }
+    Ok((ua.column(0).to_vec(), ua.column(1).to_vec()))
+}
+
+/// Builds the per-fit result dict shared by `copula_fit` and
+/// `copula_select`.
+fn copula_fit_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_copula::CopulaFit,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("family", r.family.name())?;
+    d.set_item("method", r.method.name())?;
+    d.set_item("n", r.n)?;
+    d.set_item("params", r.params.clone().into_pyarray(py))?;
+    d.set_item("param_names", r.family.param_names().to_vec())?;
+    // Named parameters (and SEs) for direct access.
+    for (i, &name) in r.family.param_names().iter().enumerate() {
+        d.set_item(name, r.params[i])?;
+        d.set_item(format!("se_{name}"), r.se[i])?;
+    }
+    d.set_item("se", r.se.clone().into_pyarray(py))?;
+    d.set_item("se_valid", r.se_valid)?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("aic", r.aic)?;
+    d.set_item("bic", r.bic)?;
+    d.set_item("tau", r.tau)?;
+    d.set_item("tau_implied", r.tau_implied)?;
+    d.set_item("tail_lower", r.tail_lower)?;
+    d.set_item("tail_upper", r.tail_upper)?;
+    d.set_item("converged", r.converged)?;
+    Ok(d)
+}
+
+/// Pseudo-observations: the average-rank probability-scale transform.
+///
+/// `u[i, j] = rank of x[i, j] within column j / (n + 1)`, ties assigned
+/// their average rank — exactly scipy `rankdata(method="average")/(n+1)`
+/// (golden-pinned, ties included). The `n + 1` denominator keeps every
+/// value strictly inside (0, 1), which the copula quantile transforms
+/// require. Ranks see only order, so any strictly monotone transform of a
+/// margin (logs, standardization, exp) leaves the output — and any copula
+/// fitted to it — bit-identical (property-tested). This is the one-line
+/// companion to `copula_fit`: `copula_fit(pseudo_obs(x))`. Accepts any
+/// number of columns (the transform is columnwise); `copula_fit` itself
+/// is bivariate in this slice.
+#[pyfunction]
+fn pseudo_obs<'py>(
+    py: Python<'py>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, numpy::PyArray2<f64>>> {
+    let xa = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..xa.ncols()).map(|j| xa.column(j).to_vec()).collect();
+    let u_cols = tsecon_copula::pseudo_obs(&cols).map_err(to_py)?;
+    let n = xa.nrows();
+    let rows: Vec<Vec<f64>> = (0..n)
+        .map(|i| u_cols.iter().map(|c| c[i]).collect())
+        .collect();
+    numpy::PyArray2::from_vec2(py, &rows).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Fits a bivariate copula to (n, 2) probability-scale pseudo-observations.
+///
+/// `u` must lie strictly inside (0, 1): rank/PIT-transform the raw margins
+/// first — `pseudo_obs(x)` does it in one line, and the whole workflow is
+/// then invariant to monotone transforms of each margin (the point of the
+/// copula decomposition; property-tested). At least 20 pairs required.
+///
+/// `family`: "gaussian" (param `rho`), "t" (`rho`, `nu`), "clayton"
+/// (`theta` > 0, lower-tail), "gumbel" (`theta` >= 1, upper-tail), "frank"
+/// (`theta`, either sign). Clayton/Gumbel model positive dependence only
+/// in this slice (rotations deferred) and raise a teaching error when the
+/// empirical Kendall tau is <= 0. `method`: "mle" (maximum likelihood,
+/// observed-information SEs — matches a polished scipy optimum of the
+/// statsmodels log-density at 1e-6) or "tau" (Kendall-tau inversion, the
+/// statsmodels `fit_corr_param` route — for "t", tau pins `rho` and `nu`
+/// is profiled by MLE; SEs are NaN with `se_valid` False, honestly, since
+/// the moment-based SE is deferred).
+///
+/// Returns the named dependence parameter(s) (`rho` / `rho` + `nu` /
+/// `theta`, also stacked in `params` with `param_names`), their SEs
+/// (`se_rho` / `se_nu` / `se_theta`, stacked in `se`, certified by
+/// `se_valid`), `loglik`, `aic`, `bic`, the empirical Kendall `tau` and
+/// the fit-implied `tau_implied`, and the closed-form tail-dependence
+/// coefficients `tail_lower`/`tail_upper` (Gaussian/Frank 0 — the classic
+/// reason a Gaussian fit understates joint crashes; t symmetric
+/// Demarta-McNeil; Clayton lower 2^(-1/theta); Gumbel upper
+/// 2 - 2^(1/theta)). Keys: family, method, n, params, param_names, rho,
+/// nu, theta, se, se_rho, se_nu, se_theta, se_valid, loglik, aic, bic,
+/// tau, tau_implied, tail_lower, tail_upper, converged (rho/nu/theta and
+/// their se_* appear per family).
+#[pyfunction]
+#[pyo3(signature = (u, family = "gaussian", method = "mle"))]
+fn copula_fit<'py>(
+    py: Python<'py>,
+    u: numpy::PyReadonlyArray2<'py, f64>,
+    family: &str,
+    method: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let (u1, u2) = copula_u_cols(&u)?;
+    let fam = tsecon_copula::Family::parse(family).map_err(to_py)?;
+    let meth = tsecon_copula::FitMethod::parse(method).map_err(to_py)?;
+    let r = tsecon_copula::copula_fit(&u1, &u2, fam, meth).map_err(to_py)?;
+    copula_fit_dict(py, &r)
+}
+
+/// Fits several copula families to the same (n, 2) pseudo-observations
+/// and ranks them by AIC/BIC, with a teaching verdict.
+///
+/// `families`: list of names (default all five: gaussian, t, clayton,
+/// gumbel, frank); `method` as in `copula_fit`. Families whose domain
+/// excludes the data (Clayton/Gumbel under Kendall tau <= 0) are
+/// *skipped with a reason* rather than failing the call, so the default
+/// menu works on any data. Each entry of `fits` is a full `copula_fit`
+/// dict; `ranking_aic`/`ranking_bic` list family names best-first;
+/// `best_aic`/`best_bic` name the winners; `verdict` states who wins, by
+/// how much, whether AIC and BIC agree (they differ exactly when the
+/// extra parameter is not earning its keep by BIC), what the winner
+/// implies for tail dependence, and what was skipped and why. Keys:
+/// fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
+#[pyfunction]
+#[pyo3(signature = (u, families = None, method = "mle"))]
+fn copula_select<'py>(
+    py: Python<'py>,
+    u: numpy::PyReadonlyArray2<'py, f64>,
+    families: Option<Vec<String>>,
+    method: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let (u1, u2) = copula_u_cols(&u)?;
+    let names = families.unwrap_or_else(|| {
+        ["gaussian", "t", "clayton", "gumbel", "frank"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    });
+    let fams: Vec<tsecon_copula::Family> = names
+        .iter()
+        .map(|n| tsecon_copula::Family::parse(n).map_err(to_py))
+        .collect::<PyResult<_>>()?;
+    let meth = tsecon_copula::FitMethod::parse(method).map_err(to_py)?;
+    let r = tsecon_copula::copula_select(&u1, &u2, &fams, meth).map_err(to_py)?;
+    let d = PyDict::new(py);
+    let fits = PyDict::new(py);
+    for fit in &r.fits {
+        fits.set_item(fit.family.name(), copula_fit_dict(py, fit)?)?;
+    }
+    d.set_item("fits", fits)?;
+    let skipped = PyDict::new(py);
+    for s in &r.skipped {
+        skipped.set_item(s.family.name(), s.reason.clone())?;
+    }
+    d.set_item("skipped", skipped)?;
+    d.set_item("best_aic", r.fits[r.best_aic].family.name())?;
+    d.set_item("best_bic", r.fits[r.best_bic].family.name())?;
+    d.set_item(
+        "ranking_aic",
+        r.ranking_aic
+            .iter()
+            .map(|&i| r.fits[i].family.name())
+            .collect::<Vec<_>>(),
+    )?;
+    d.set_item(
+        "ranking_bic",
+        r.ranking_bic
+            .iter()
+            .map(|&i| r.fits[i].family.name())
+            .collect::<Vec<_>>(),
+    )?;
+    d.set_item("verdict", r.verdict)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -8576,5 +8764,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(robust_svar_bounds, m)?)?;
     m.add_function(wrap_pyfunction!(gpd_fit, m)?)?;
     m.add_function(wrap_pyfunction!(gev_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(pseudo_obs, m)?)?;
+    m.add_function(wrap_pyfunction!(copula_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(copula_select, m)?)?;
     Ok(())
 }
