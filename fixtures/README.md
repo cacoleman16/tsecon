@@ -15,7 +15,12 @@ venv) in one of two ways:
   data-generating process, plus the reference output computed either by an
   independent library (statsmodels, SciPy, `arch`, `linearmodels`,
   scikit-learn, ArviZ) or by a documented closed-form formula transcribed in
-  the generator's docstring.
+  the generator's docstring. One fixture (`lpdid.json`) additionally requires
+  R with the `fixest` package on PATH: its generator shells out to the
+  committed `generate_lpdid_fixtures.R`, which runs the LP-DiD reference
+  conventions through fixest (the engine of the authors' own example code)
+  and cross-checks them against the generator's independent NumPy
+  reimplementation before anything is stored.
 - **Transformations of two public-domain reference series** loaded from
   statsmodels' bundled datasets:
   - the **Nile** annual river-flow series (`sm.datasets.nile`), a classic

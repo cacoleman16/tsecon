@@ -25,6 +25,15 @@
 //!   the Mei-Sheng-Shi (2026) split-panel jackknife with its
 //!   adjusted-score standard errors
 //!   ([`PanelLpConfig::bias_correction`]);
+//! * [`lp_did`] — LP-DiD, the local-projections difference-in-differences
+//!   of Dube, Girardi, Jordà & Taylor (2025, J. Applied Econometrics):
+//!   per-horizon long-difference regressions on the treatment switch with
+//!   period effects, restricted to clean controls (not-yet-treated /
+//!   never-treated / stabilized — avoiding TWFE's negative-weight
+//!   comparisons), with pre-trend horizons, the equally-weighted-ATT
+//!   reweighting, pooled ATTs, absorbing and non-absorbing treatments,
+//!   and entity-clustered standard errors in the authors'
+//!   fixest/reghdfe convention (see `lpdid.rs`);
 //! * [`mean_group_var`] — the Pesaran-Smith (1995) mean-group panel VAR:
 //!   per-entity VARs via `tsecon-var`, cross-entity averages of
 //!   coefficients and Cholesky-orthogonalized IRFs, with dispersion-based
@@ -51,12 +60,14 @@ pub mod data;
 pub mod error;
 pub mod fe;
 pub mod lp;
+pub mod lpdid;
 pub mod mean_group;
 
 pub use data::PanelData;
 pub use error::PanelError;
 pub use fe::{panel_ols_fe, FePanelOls, PanelInference, PanelSeType};
 pub use lp::{panel_lp, LpBiasCorrection, PanelLpConfig, PanelLpResult};
+pub use lpdid::{lp_did, LpDidConfig, LpDidPooled, LpDidResult};
 pub use mean_group::{mean_group_var, mg_irf_path, MeanGroupVar};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
