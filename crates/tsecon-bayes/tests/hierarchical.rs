@@ -291,6 +291,163 @@ fn simulated_var1_recovers_interior_dominant_optimum() {
 }
 
 // -------------------------------------------------------------------------
+// scale_ar: the GLP residual-scale convention (AR(1) scale regressions)
+// against the independent NumPy oracle, and the default path's bit-identity.
+// -------------------------------------------------------------------------
+
+/// The main-dataset config under the GLP scale convention (only the
+/// sigma_j^2 rule changes: AR(1) instead of AR(4) residual variances).
+fn ar1_config() -> HierarchicalConfig {
+    HierarchicalConfig {
+        scale_ar: 1,
+        ..HierarchicalConfig::default()
+    }
+}
+
+/// Under `scale_ar = 1` the prior's S0 diagonal is the AR(1) OLS residual
+/// variances the independent NumPy generator pinned.
+#[test]
+fn scale_ar1_prior_scales_match_reference() {
+    let (fx, data) = main_data();
+    let prior =
+        tsecon_bayes::MinnesotaNiwPrior::with_scale_ar(data.as_ref(), 2, 100.0, 0.2, 1.0, 0.0, 1)
+            .unwrap();
+    assert_eq!(prior.scale_ar(), 1);
+    let sig2 = as_vec(&fx["scale_ar1"]["ar_resid_var_lag1"]);
+    assert_eq!(prior.s0_diag().len(), sig2.len());
+    for (j, (&a, &e)) in prior.s0_diag().iter().zip(&sig2).enumerate() {
+        assert_rel_close(a, e, 1e-10, &format!("AR(1) s0_diag[{j}]"));
+    }
+}
+
+/// The scale_ar = 1 marginal-likelihood profile matches the independent
+/// NumPy oracle at every grid point (same grid, same closed form, AR(1)
+/// scales), at the same tolerance the AR(4) profile is pinned at.
+#[test]
+fn scale_ar1_grid_log_ml_matches_reference() {
+    let (fx, data) = main_data();
+    let fit = bvar_hierarchical(data.as_ref(), 2, &ar1_config()).unwrap();
+    let ref_ml = as_vec(&fx["scale_ar1"]["grid_log_ml_25"]);
+    assert_eq!(fit.grid_log_ml.len(), ref_ml.len());
+    for (i, (&a, &e)) in fit.grid_log_ml.iter().zip(&ref_ml).enumerate() {
+        assert_rel_close(a, e, 1e-9, &format!("AR(1) grid_log_ml[{i}]"));
+    }
+}
+
+/// The scale_ar = 1 selected tightness and its marginal likelihood match
+/// the oracle's `scipy.optimize` maximum (same tolerances as the AR(4)
+/// golden: 1e-8 on the ML value, loose on the flat-peak argmax), and the
+/// fixed-lambda reference reproduces the closed form exactly.
+#[test]
+fn scale_ar1_optimum_matches_reference() {
+    let (fx, data) = main_data();
+    let fit = bvar_hierarchical(data.as_ref(), 2, &ar1_config()).unwrap();
+    let blk = &fx["scale_ar1"];
+    assert_rel_close(
+        fit.log_ml,
+        blk["log_ml_star"].as_f64().unwrap(),
+        1e-8,
+        "AR(1) log_ml at optimum",
+    );
+    let star = blk["lambda1_star"].as_f64().unwrap();
+    assert!(
+        (fit.lambda1 - star).abs() <= 2e-2 || (fit.lambda1 - star).abs() <= 0.05 * star.abs(),
+        "AR(1) lambda1_opt {} vs reference {star}",
+        fit.lambda1
+    );
+    assert_rel_close(
+        fit.lambda1_fixed_log_ml,
+        blk["lambda1_init_log_ml"].as_f64().unwrap(),
+        1e-9,
+        "AR(1) lambda1_fixed_log_ml",
+    );
+    assert!(fit.converged, "AR(1) polish did not converge");
+}
+
+/// The default path must not move: `scale_ar = 4` passed explicitly is
+/// bit-identical to the default at both the prior level (every S0/Omega0
+/// entry, the posterior log-ML) and the hierarchical level (selected
+/// lambda1, profile, refit) — so the existing AR(4) fixture pins carry
+/// over to the explicit spelling unchanged.
+#[test]
+fn scale_ar4_is_bit_identical_to_default() {
+    let (_fx, data) = main_data();
+
+    let by_default =
+        tsecon_bayes::MinnesotaNiwPrior::new(data.as_ref(), 2, 100.0, 0.2, 1.0, 0.0).unwrap();
+    let explicit =
+        tsecon_bayes::MinnesotaNiwPrior::with_scale_ar(data.as_ref(), 2, 100.0, 0.2, 1.0, 0.0, 4)
+            .unwrap();
+    assert_eq!(by_default.scale_ar(), 4);
+    assert_eq!(explicit.scale_ar(), 4);
+    assert_eq!(by_default.s0_diag(), explicit.s0_diag());
+    assert_eq!(by_default.omega0_diag(), explicit.omega0_diag());
+    assert_eq!(
+        by_default
+            .posterior(data.as_ref())
+            .unwrap()
+            .log_marginal_likelihood(),
+        explicit
+            .posterior(data.as_ref())
+            .unwrap()
+            .log_marginal_likelihood()
+    );
+
+    let fit_default = bvar_hierarchical(data.as_ref(), 2, &main_config()).unwrap();
+    let cfg_explicit = HierarchicalConfig {
+        scale_ar: 4,
+        ..main_config()
+    };
+    let fit_explicit = bvar_hierarchical(data.as_ref(), 2, &cfg_explicit).unwrap();
+    assert_eq!(fit_default.lambda1, fit_explicit.lambda1);
+    assert_eq!(fit_default.log_ml, fit_explicit.log_ml);
+    assert_eq!(fit_default.grid_log_ml, fit_explicit.grid_log_ml);
+    assert_eq!(
+        fit_default.lambda1_fixed_log_ml,
+        fit_explicit.lambda1_fixed_log_ml
+    );
+}
+
+/// The two conventions genuinely differ on this data (the option is not a
+/// no-op): AR(1) and AR(4) scales produce different S0 diagonals and a
+/// different selected evidence.
+#[test]
+fn scale_ar1_differs_from_scale_ar4() {
+    let (_fx, data) = main_data();
+    let p4 = tsecon_bayes::MinnesotaNiwPrior::new(data.as_ref(), 2, 100.0, 0.2, 1.0, 0.0).unwrap();
+    let p1 =
+        tsecon_bayes::MinnesotaNiwPrior::with_scale_ar(data.as_ref(), 2, 100.0, 0.2, 1.0, 0.0, 1)
+            .unwrap();
+    for (j, (&a4, &a1)) in p4.s0_diag().iter().zip(p1.s0_diag()).enumerate() {
+        assert!(
+            (a4 - a1).abs() > 1e-12,
+            "s0_diag[{j}] identical across conventions: {a4}"
+        );
+    }
+}
+
+/// `scale_ar = 0` is rejected with a teaching error, at both entry points.
+#[test]
+fn scale_ar0_errors() {
+    let (_fx, data) = main_data();
+    assert!(tsecon_bayes::MinnesotaNiwPrior::with_scale_ar(
+        data.as_ref(),
+        2,
+        100.0,
+        0.2,
+        1.0,
+        0.0,
+        0
+    )
+    .is_err());
+    let cfg = HierarchicalConfig {
+        scale_ar: 0,
+        ..main_config()
+    };
+    assert!(bvar_hierarchical(data.as_ref(), 2, &cfg).is_err());
+}
+
+// -------------------------------------------------------------------------
 // GLP Gamma hyperprior: MAP-II pulls the tightness toward the mode.
 // -------------------------------------------------------------------------
 

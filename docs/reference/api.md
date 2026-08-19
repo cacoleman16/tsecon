@@ -570,10 +570,11 @@ def bvar_fit(
     lambda1: float = ...,
     lambda3: float = ...,
     delta: float = ...,
+    scale_ar: int = ...,
 ) -> dict[str, Any]:
 ```
 
-Minnesota-NIW conjugate BVAR posterior + log marginal likelihood.
+Minnesota-NIW conjugate BVAR posterior + log marginal likelihood. scale_ar sets the lag order of the AR residual-variance scale regressions (4 = default; 1 = the GLP 2015 convention).
 
 ### `bvar_irf_draws`
 
@@ -589,6 +590,7 @@ def bvar_irf_draws(
     lambda3: float = ...,
     delta: float = ...,
     cumulative: bool = ...,
+    scale_ar: int = ...,
 ) -> list[list[list[list[float]]]]:
 ```
 
@@ -611,10 +613,11 @@ def bvar_hierarchical(
     n_grid: int = ...,
     max_iter: int = ...,
     tol: float = ...,
+    scale_ar: int = ...,
 ) -> dict[str, Any]:
 ```
 
-Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015). Default hyperprior="glp" (MAP-II under the GLP Gamma hyperprior) — pure ML-II (hyperprior="none") collapses lambda1 to the search-box floor on ~a fifth to a quarter of in-model datasets (audit round 6); a lambda1_opt at the box bottom is a red flag, not a selection.
+Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015). Default hyperprior="glp" (MAP-II under the GLP Gamma hyperprior) — pure ML-II (hyperprior="none") collapses lambda1 to the search-box floor on ~a fifth to a quarter of in-model datasets (audit round 6); a lambda1_opt at the box bottom is a red flag, not a selection. scale_ar=1 switches the prior's residual-scale regressions to GLP's own AR(1) convention (default 4).
 
 ### `bvar_ssvs`
 

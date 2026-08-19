@@ -28,11 +28,18 @@ rate in levels/100, sample 1959Q1-2008Q4, five lags, random-walk prior mean
 (delta = 1), single overall-tightness hyperparameter with the GLP Gamma
 hyperprior (mode 0.2, sd 0.4 — verified against `setpriors.m` in GLP's own
 web replication files). One further documented convention difference: GLP's
-Figure-1 illustration scales the prior with AR(1) residual variances
-(Kadiyala-Karlsson); tsecon uses AR(4) residual variances (see the Bayesian
-model card). On GLP's own data that one convention moves the selected
-tightness from ~0.45 to ~0.26 — so expect this page's *numbers* to differ
-from the published figure while every *claim* reproduces.
+Figure-1 illustration scales the prior with AR(1) residual variances (their
+`setpriors.m` option `MNpsi=0`); tsecon's default is AR(4) residual
+variances (see the Bayesian model card). Since 0.4.0 the GLP convention is
+one keyword away — `scale_ar=1` — and this script reports both.
+
+SECOND LEG — the point replication on GLP's own panel. The Stock-Watson
+panel exactly as GLP's own web replication code consumes it (`DataSW.mat`)
+is committed as fixtures/glp_sw_panel.csv (vendored from the public
+FRBNY-DSGE/BrookingsPC2020 GitHub mirror of their replication files, with
+the mirror's redistribution notice kept in the CSV header). On that data,
+`scale_ar=1` puts the selected modes at the published Figure-1 locations —
+that leg is the point replication, and it runs in CI.
 
 The script is fully deterministic — the marginal likelihood is closed-form,
 nothing is simulated, so there is no seed to set.
@@ -48,6 +55,7 @@ import numpy as np
 import tsecon
 
 DATA = Path(__file__).resolve().parents[2] / "fixtures" / "glp_smallvar.csv"
+SW_PANEL = Path(__file__).resolve().parents[2] / "fixtures" / "glp_sw_panel.csv"
 
 # The GLP Gamma hyperprior: mode 0.2, sd 0.4  =>  shape a, scale s.
 GLP_A = (9.0 + math.sqrt(17.0)) / 8.0
@@ -95,17 +103,40 @@ def build_variables(m):
     return small, medium
 
 
-def select_tightness(data, tol=1e-8):
+def load_sw_panel(path=SW_PANEL):
+    """Read the committed Stock-Watson panel of GLP's own replication files.
+
+    Returns (small, medium): GLP's 3-variable VAR (real GDP, GDP deflator,
+    federal funds) and their 7-variable medium VAR, already in GLP's units
+    (4*log quantity/price indexes; funds rate / 100) — the CSV stores the
+    `y` matrix of their `DataSW.mat` verbatim.
+    """
+    rows = [r for r in csv.reader(open(path)) if r and not r[0].startswith("#")]
+    names = rows[0]
+    data = np.array([[float(v) for v in r] for r in rows[1:]])
+    cols = {n: data[:, i] for i, n in enumerate(names)}
+    medium = np.column_stack([
+        cols["rgdp_4log"], cols["pgdp_4log"], cols["cons_4log"],
+        cols["gpdinv_4log"], cols["hours_4log"], cols["rcomp_4log"],
+        cols["fedfunds_dec"],
+    ])
+    small = medium[:, [0, 1, 6]]
+    return small, medium
+
+
+def select_tightness(data, tol=1e-8, scale_ar=4):
     """GLP MAP-II selection: maximize log ML + log Gamma hyperprior.
 
     `hyperprior="glp"` is the library default; it is spelled out here because
     the *point* of this page is that this Gamma(mode 0.2, sd 0.4) hyperprior
     is GLP's own (their `setpriors.m`: mode.lambda = .2, sd.lambda = .4).
     delta = 1 puts the random-walk prior mean on the own first lag — GLP's
-    choice for variables entering in log-levels.
+    choice for variables entering in log-levels. `scale_ar=1` switches the
+    prior's residual-scale regressions to GLP's own AR(1) convention (their
+    `setpriors.m` option `MNpsi=0`); 4 is the library default.
     """
     return tsecon.bvar_hierarchical(
-        data, lags=5, delta=1.0, hyperprior="glp", tol=tol
+        data, lags=5, delta=1.0, hyperprior="glp", tol=tol, scale_ar=scale_ar
     )
 
 
@@ -179,6 +210,38 @@ def main():
             bar = "#" * int(round(40 * kk))
             print(f"  {g:>9.4f} | {ml_rel:>14.3f} | {kk:>7.3f}  {bar}")
 
+    print("\nTHE RESIDUAL-SCALE CONVENTION (scale_ar): AR(4) default vs GLP's AR(1)")
+    rule()
+    fit_s1 = select_tightness(small, scale_ar=1)
+    fit_m1 = select_tightness(medium, tol=1e-6, scale_ar=1)
+    print(f"  {'design':>22} | {'scale_ar=4':>10} | {'scale_ar=1 (GLP)':>16} |")
+    print(f"  {'small  (3 variables)':>22} | {fit_s['lambda1_opt']:>10.4f} | "
+          f"{fit_s1['lambda1_opt']:>16.4f} |")
+    print(f"  {'medium (7 variables)':>22} | {fit_m['lambda1_opt']:>10.4f} | "
+          f"{fit_m1['lambda1_opt']:>16.4f} |")
+    print("  On this NEARBY data the GLP convention moves the selection toward,")
+    print("  but not onto, their published modes — the residual gap is the data")
+    print("  (CPI is not the deflator, the T-bill is not fed funds).")
+
+    print()
+    rule(72, "=")
+    print("POINT REPLICATION — GLP's own Stock-Watson panel (fixtures/glp_sw_panel.csv)")
+    print("with scale_ar=1, the convention of their setpriors.m (MNpsi=0):")
+    rule()
+    sw_small, sw_medium = load_sw_panel()
+    sw_s4 = select_tightness(sw_small, scale_ar=4)
+    sw_s1 = select_tightness(sw_small, scale_ar=1)
+    sw_m4 = select_tightness(sw_medium, tol=1e-6, scale_ar=4)
+    sw_m1 = select_tightness(sw_medium, tol=1e-6, scale_ar=1)
+    print(f"  {'GLP data':>22} | {'scale_ar=4':>10} | {'scale_ar=1 (GLP)':>16} | published Fig. 1")
+    print(f"  {'small  (3 variables)':>22} | {sw_s4['lambda1_opt']:>10.4f} | "
+          f"{sw_s1['lambda1_opt']:>16.4f} | ~0.42-0.45")
+    print(f"  {'medium (7 variables)':>22} | {sw_m4['lambda1_opt']:>10.4f} | "
+          f"{sw_m1['lambda1_opt']:>16.4f} | ~0.17")
+    print("  The one documented convention IS the gap: on their data, AR(1)")
+    print("  scales put both modes at the published Figure-1 locations (read at")
+    print("  ~+/-0.03, the figure's resolution).")
+
     print()
     rule(72, "=")
     print("Published benchmarks (GLP 2015, verified against the paper draft and")
@@ -204,12 +267,10 @@ def main():
     print(f"    the direction (looser than 0.2) matches GLP's finding that")
     print(f"    Sims-Zha shrinkage is too tight for a 3-variable VAR.")
     print()
-    print("Numbers here are NOT GLP's published numbers: different price and")
-    print("interest-rate series, a different data vintage, and tsecon's AR(4)")
-    print("(not AR(1)) scale regressions. On GLP's own (uncommitted) data the")
-    print("same call selects 0.260/0.142, and switching only the scale")
-    print("convention to GLP's AR(1) yields 0.449/0.172 — matching their")
-    print("published Figure 1. See the docs page for that decomposition.")
+    print("Macrodata numbers here are NOT GLP's published numbers (different")
+    print("price and interest-rate series, different vintage). The panel above")
+    print("IS GLP's data, and there scale_ar=1 lands on the published modes —")
+    print("see the docs page for the full decomposition of the gap.")
 
 
 if __name__ == "__main__":

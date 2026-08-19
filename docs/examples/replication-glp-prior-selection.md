@@ -12,18 +12,27 @@ this page runs it through GLP's published application design.
 .venv/bin/python docs/examples/replication_glp_prior_selection.py
 ```
 
-!!! warning "This is a design replication on nearby public data — not a run on GLP's dataset"
+!!! warning "Two legs: a design replication on nearby data, and a point replication on GLP's own panel"
     GLP's application uses the **Stock-Watson (2008)** panel: real GDP, the
     **GDP deflator** and the **federal funds rate** for their small VAR
-    (1959Q1–2008Q4, five lags). Their replication archive is distributed
-    through their publishers and is not redistributed here. The committed
-    fixture, [`fixtures/glp_smallvar.csv`](../../fixtures/glp_smallvar.csv),
-    is the public-domain statsmodels `macrodata` panel (US-government
-    statistical series, BEA/BLS/FRB) over the same sample, carrying the same
-    *kind* of variables — but **CPI is not the GDP deflator**, the **3-month
-    T-bill is not the federal funds rate**, and the vintage differs. Every
-    *design* choice below is GLP's; no *number* below is GLP's, and none
-    should be quoted as such.
+    (1959Q1–2008Q4, five lags). The first leg of this page runs their design
+    on [`fixtures/glp_smallvar.csv`](../../fixtures/glp_smallvar.csv) — the
+    public-domain statsmodels `macrodata` panel (US-government statistical
+    series, BEA/BLS/FRB) over the same sample, carrying the same *kind* of
+    variables — but **CPI is not the GDP deflator**, the **3-month T-bill is
+    not the federal funds rate**, and the vintage differs. On that leg every
+    *design* choice is GLP's and no *number* is GLP's.
+
+    Since 0.4.0 there is a second leg: GLP's own panel, exactly as their web
+    replication code consumes it, is committed as
+    [`fixtures/glp_sw_panel.csv`](../../fixtures/glp_sw_panel.csv) (vendored
+    from the public FRBNY-DSGE/BrookingsPC2020 GitHub mirror of their
+    replication files; the mirror's redistribution notice is kept in the CSV
+    header, and the underlying series are public-domain US-government
+    statistics). On *that* data, with `scale_ar=1` — the option matching
+    GLP's own residual-scale convention — the selected modes land on their
+    published Figure-1 locations, and a CI test pins them
+    ([`test_replication_glp_point.py`](../../bindings/python/tests/test_replication_glp_point.py)).
 
 ---
 
@@ -44,7 +53,7 @@ publicly mirrored in FRBNY-DSGE/BrookingsPC2020 on GitHub under
 | prior mean | own first lag = 1 (random walk, levels data) | same (`delta=1`) |
 | lag decay | `1/l^2` in the prior variance | same (`lambda3=1`) |
 | hyperprior on λ | Gamma, **mode 0.2, sd 0.4** (their `setpriors.m`) | same (`hyperprior="glp"`, the library default) |
-| scale regressions σ²ⱼ | AR(1) residual variances (Figure 1 illustration) | **AR(4)** residual variances (tsecon's documented convention) |
+| scale regressions σ²ⱼ | AR(1) residual variances (their `setpriors.m`, `MNpsi=0`) | **AR(4)** by default; `scale_ar=1` gives GLP's AR(1) convention (new in 0.4.0) |
 
 GLP's medium VAR adds the Smets-Wouters real aggregates; macrodata has no
 hours or wages series, so the medium analogue substitutes government spending
@@ -74,45 +83,61 @@ scale convention):
 
 | quantity | published (GLP data) | obtained (nearby data) |
 |---|---|---|
-| selected λ₁, small (3-var) | mode ≈ 0.4–0.45 *(Figure 1)* | **0.215** |
-| selected λ₁, medium (7-var) | mode ≈ 0.17 *(Figure 1)* | **0.145** |
-| direction as the cross-section grows | tighter (small → medium → large) | tighter (0.215 → 0.145) ✓ |
+| selected λ₁, small (3-var) | mode ≈ 0.4–0.45 *(Figure 1)* | **0.215** (AR(4) default) / **0.269** (`scale_ar=1`) |
+| selected λ₁, medium (7-var) | mode ≈ 0.17 *(Figure 1)* | **0.145** (AR(4) default) / **0.155** (`scale_ar=1`) |
+| direction as the cross-section grows | tighter (small → medium → large) | tighter under both conventions ✓ |
 | selected vs. near-flat prior (λ₁ = 5) | hierarchical wins (their MSFE tables) | +92 nats of log-ML (small) ✓ |
 | selected vs. fixed 0.2 | small VAR wants *looser* than 0.2 | 0.215 > 0.2, log-ML gain +0.06 ✓ (direction) |
 
+GLP's own `scale_ar=1` convention moves the nearby-data selection toward the
+published modes (0.215 → 0.269 small, 0.145 → 0.155 medium) without reaching
+them — the residual gap on this leg is the data, not the machinery, which is
+exactly what the point replication below confirms.
+
 The λ₁ profile the script prints shows the small-VAR posterior kernel
 concentrated on roughly **0.12–0.36** with its peak near 0.215 — the same
-order of magnitude as the published behaviour, one documented convention away
-from it (next section), and far from both the collapse-to-zero and the
-flat-prior corner.
+order of magnitude as the published behaviour, one documented convention and
+one dataset away from it (next section), and far from both the
+collapse-to-zero and the flat-prior corner.
 
 ---
 
-## Closing the gap on GLP's own data
+## Closing the gap on GLP's own data — the point replication
 
 The gap between 0.215 here and ≈0.45 in Figure 1 has two sources: the data
 (CPI/T-bill/vintage vs. deflator/fed-funds) and one prior convention (AR(4)
 vs. AR(1) scale regressions — documented in the
 [Bayesian model card](../reference/model-cards/bayesian.md) precisely because
-packages differ here and results are sensitive). During development both were
-isolated on GLP's own web-replication dataset (`DataSW.mat`, the 7-variable
-Stock-Watson panel from the public mirror above — verified against the same
-design, but **not** committed to this repository, which is why these numbers
-live on this page and not in the test suite):
+packages differ here and results are sensitive). Since 0.4.0 both are
+resolved *in the test suite*: the convention is a keyword (`scale_ar=1`,
+matching GLP's own `setpriors.m`), and GLP's data is committed
+([`fixtures/glp_sw_panel.csv`](../../fixtures/glp_sw_panel.csv) — their
+`DataSW.mat`, the 7-variable Stock-Watson panel, vendored from the public
+FRBNY-DSGE/BrookingsPC2020 mirror with its redistribution notice kept):
 
 | run (GLP's own data, small / medium VAR) | selected λ₁ |
 |---|---|
 | `tsecon.bvar_hierarchical` as shipped (AR(4) scales) | 0.260 / 0.142 |
-| independent NumPy re-computation, AR(4) scales | ≈ 0.25 / — |
-| same NumPy code, **only** the scales switched to GLP's AR(1) | **0.449 / 0.172** |
-| published Figure 1 modes (vector-extracted) | ≈ 0.42–0.45 / ≈ 0.17 |
+| same call, **only** `scale_ar=1` (GLP's AR(1) convention) | **0.420 / 0.172** |
+| published Figure 1 modes (vector-extracted, ±0.03) | ≈ 0.42–0.45 / ≈ 0.17 |
 
 Switching the one documented convention reproduces the published figure's
-small- and medium-VAR modes to the resolution the figure can be read at. The
-residual difference between tsecon and the published curves is therefore the
-σ²ⱼ convention plus the data — not the selection machinery, which is
-golden-pinned to an independent implementation at 1e-9
+small- and medium-VAR modes to the resolution the figure can be read at, and
+[`test_replication_glp_point.py`](../../bindings/python/tests/test_replication_glp_point.py)
+pins both in CI: |λ_small − 0.449| ≤ 0.03 (obtained 0.420, at the lower edge
+of the reading band) and |λ_medium − 0.172| ≤ 0.01 (obtained 0.1716). The
+selection machinery itself is golden-pinned to an independent implementation
+at 1e-9 under *both* conventions
 ([validation matrix](../reference/validation-matrix.md)).
+
+One honesty note on the third decimal: the 0.3.0 development-time NumPy
+re-computation of this exercise recorded 0.449 for the small VAR where the
+shipped `scale_ar=1` path obtains 0.420. Both sit inside the figure-reading
+band. On this heavily collinear 4·log-levels design the marginal likelihood
+is flat near its peak (the log-ML within the band varies by well under one
+nat), so the argmax's second decimal is soft — sensitive to the linear-algebra
+path and library versions — while the log-ML *value* is sturdy. The CI pins
+above state exactly the tolerances at which the published claim is tested.
 
 ---
 
@@ -134,6 +159,11 @@ fit = tsecon.bvar_hierarchical(small, lags=5, delta=1.0, hyperprior="glp")
 fit["lambda1_opt"]              # 0.215 — the data-chosen tightness
 fit["log_marginal_likelihood"]  # the evidence at the optimum
 fit["grid_lambda1"], fit["grid_log_ml"]   # the profile behind the choice
+
+# GLP-exact: their setpriors.m scales the prior with AR(1), not AR(4),
+# residual variances. One keyword switches the convention (0.4.0+):
+tsecon.bvar_hierarchical(small, lags=5, delta=1.0, hyperprior="glp",
+                         scale_ar=1)["lambda1_opt"]   # 0.269 on this data
 ```
 
 `hyperprior="glp"` (the default) maximizes log-ML *plus* the log of GLP's
@@ -157,25 +187,30 @@ the optimum is returned in the same call (`posterior_mean_coefs`,
 
 ## What this is, and is not
 
-This reproduces GLP's prior-selection *design* — their transformations, their
-sample span, their lag length, their hyperprior — and checks the claims their
-paper actually makes: the data-chosen tightness is a few tenths (not 1e-4,
-not 10), it shrinks as the cross-section grows, a 3-variable VAR wants a
-looser prior than the 0.2 folklore, and the selection dominates fixed
-references in the evidence. All of those reproduce here.
+The macrodata leg reproduces GLP's prior-selection *design* — their
+transformations, their sample span, their lag length, their hyperprior — and
+checks the claims their paper actually makes: the data-chosen tightness is a
+few tenths (not 1e-4, not 10), it shrinks as the cross-section grows, a
+3-variable VAR wants a looser prior than the 0.2 folklore, and the selection
+dominates fixed references in the evidence. All of those reproduce there,
+and none of that leg's numbers are GLP's (different price and interest-rate
+concepts, different vintage).
 
-It does **not** reproduce GLP's published numbers, because it does not use
-GLP's data: the price and interest-rate series are different concepts, the
-vintage differs, and tsecon's scale-regression convention is AR(4) where
-their Figure-1 illustration uses AR(1). Where a published number is quoted
-above it is clearly marked as GLP's; where a number was obtained here it is
-never presented as theirs.
+The `glp_sw_panel.csv` leg *is* a run on GLP's data with GLP's own
+residual-scale convention (`scale_ar=1`), and it reproduces the published
+Figure-1 small/medium modes at the stated reading tolerances — a point
+replication of the figure's location claims. It is still not a re-run of
+their full paper: the out-of-sample MSFE horse race, the large (22-variable)
+VAR, and their sum-of-coefficients/single-unit-root dummy priors (which
+tsecon's conjugate Minnesota-NIW does not implement) remain out of scope.
 
 **Citation.** Giannone, D., Lenza, M. & Primiceri, G. E. (2015), "Prior
 Selection for Vector Autoregressions," *The Review of Economics and
 Statistics* 97(2):436–451. Data: statsmodels `macrodata` (public-domain US
-government statistical series); GLP's own materials consulted via the public
-mirror of their web replication files.
+government statistical series) for the design leg; GLP's own web replication
+panel (Stock-Watson 2008 US-government series, via the public
+FRBNY-DSGE/BrookingsPC2020 mirror, redistribution notice kept in the CSV
+header) for the point leg.
 
 **See also.** [Bayesian VAR model card](../reference/model-cards/bayesian.md) ·
 [Ramey-Zubairy replication](replication-ramey-zubairy.md) ·
