@@ -43,7 +43,10 @@
 //! the effective-`F` (HC1-robust by default, mirroring the
 //! Montiel-Olea-Pflueger effective `F` used by the local-projection IV path)
 //! and the Stock-Watson (2018) **reliability** `= Corr(m, u_norm)^2` over the
-//! overlap sample. An `F` below 10 flags a weak instrument.
+//! overlap sample. Judge the `F` against the MOP tau-based critical values
+//! (23.11 for the conventional 10%-worst-case-bias bar at the 5% level), not
+//! the folklore "10" — [`crate::first_stage::proxy_first_stage`] computes
+//! the thresholds and the implied bias bound.
 //!
 //! # Honest limitations
 //!
@@ -82,7 +85,9 @@ pub struct ProxySvarResult {
     /// `rho[norm_var] == 1.0` exactly.
     pub relative_impact: Vec<f64>,
     /// First-stage instrument-strength `F` (HC1-robust when `robust_f`,
-    /// classical otherwise). Below 10 signals a weak instrument.
+    /// classical otherwise). Judge it against the MOP tau-based thresholds
+    /// from [`crate::first_stage::proxy_first_stage`] (23.11 for the 10%
+    /// worst-case-bias bar), not the folklore "10".
     pub first_stage_f: f64,
     /// Stock-Watson reliability `= Corr(m, u_norm)^2` over the overlap, in
     /// `[0, 1]`.

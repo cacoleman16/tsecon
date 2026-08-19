@@ -61,6 +61,7 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod error;
+pub mod first_stage;
 pub mod fry_pagan;
 pub mod haar;
 pub mod hetero;
@@ -85,6 +86,9 @@ pub mod zero;
 pub mod zero_sampler;
 
 pub use error::IdentError;
+pub use first_stage::{
+    mop_critical_value, mop_tau_bound, proxy_first_stage, FirstStageDiagnostics, FirstStageVariance,
+};
 pub use fry_pagan::{median_target, MedianTargetResult};
 pub use haar::haar_rotation;
 pub use hetero::{box_m_test, hetero_decompose, BoxMResult, HeteroDecomp, SignConvention};
