@@ -213,6 +213,7 @@ These are not style preferences. Each was learned by losing hours.
 | Rule | Why |
 |---|---|
 | **Never run workspace-wide cargo** (`cargo test/build/check/clippy --workspace`) | It compiles silently for far longer than the 180-second no-progress threshold, so the harness kills the agent, retries six times, and reports the whole workflow failed. Use `cargo test -p <crate>`. Run the full suite yourself, outside the workflow. |
+| **Concurrent worktree agents must NOT share one `CARGO_TARGET_DIR`** | Same-named workspace crates from different worktrees produce identical unit hashes; last writer wins, and your build links a sibling's rlib (hit twice in one session: a `tsecon-bayes` compiled from another agent's sources broke two unrelated builds). Give each concurrent worktree its own target dir; share only when running alone. |
 | **Never ask an agent for verbatim reproduction of long code** | Same stall detector, different trigger: a huge accumulated context followed by one enormous generation with no tool call in it. Ask for `file:line` plus short quotes. |
 | **An audit is read-only** | No edits, no `git checkout/restore/stash/reset/commit/push/switch`. Probe scripts go in the scratchpad. |
 | **Fixture generators must never `import tsecon`** | A reference that calls the code it validates is circular and worthless. Mechanically checkable: `grep -l "import tsecon" fixtures/*.py` must return nothing. |
