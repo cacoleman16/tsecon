@@ -4223,6 +4223,109 @@ fn panel_lp<'py>(
     Ok(d)
 }
 
+/// LP-DiD: local-projections difference-in-differences (Dube, Girardi,
+/// Jordà & Taylor 2025, J. Applied Econometrics, doi:10.1002/jae.70000).
+///
+/// Per horizon h, regresses the long difference `y[i, t+h] - y[i, t-1]`
+/// on the treatment-switch indicator with period fixed effects, using
+/// ONLY clean controls (not-yet-treated under `absorbing=True`;
+/// unchanged-for-`nonabsorbing_lag`-periods under `absorbing=False`;
+/// never-treated when `never_treated_only=True`) — removing the
+/// forbidden already-treated comparisons that bias TWFE event studies.
+/// Pre-treatment horizons -pre_window..-2 display pre-trends; h = -1 is
+/// the omitted baseline (stored as exact zeros). `reweight=True` yields
+/// the equally-weighted ATT (default is OLS's variance-weighted ATT);
+/// `pooled=True` adds single-number pooled post/pre estimates. Standard
+/// errors are clustered by entity in the authors' fixest/reghdfe
+/// convention; validated against a run of their reference code
+/// (fixtures/lpdid.json).
+///
+/// `outcome` and `treatment` are `N x T`; treatment entries must be 0/1,
+/// and must never revert under `absorbing=True` (raises — set
+/// `absorbing=False` with a `nonabsorbing_lag` for reversible
+/// treatments).
+///
+/// Returns a dict with `horizons` (event times -pre_window..post_window),
+/// `coef`, `se`, `nobs`, `n_switchers` (aligned per horizon — the clean
+/// samples SHRINK with |h|; read them), the pooled keys
+/// `pooled_post_att`, `pooled_post_se`, `pooled_post_nobs`,
+/// `pooled_post_n_switchers` (and `pooled_pre_att`, `pooled_pre_se`,
+/// `pooled_pre_nobs`, `pooled_pre_n_switchers` when `pre_window >= 2`)
+/// only when `pooled=True`, and the stamped options `absorbing`,
+/// `nonabsorbing_lag`, `reweight`, `pooled`, `never_treated_only`,
+/// `se_type`.
+#[pyfunction]
+#[pyo3(signature = (outcome, treatment, pre_window = 4, post_window = 8, absorbing = true, nonabsorbing_lag = 0, reweight = false, pooled = false, never_treated_only = false))]
+#[allow(clippy::too_many_arguments)]
+fn lp_did<'py>(
+    py: Python<'py>,
+    outcome: numpy::PyReadonlyArray2<'py, f64>,
+    treatment: numpy::PyReadonlyArray2<'py, f64>,
+    pre_window: usize,
+    post_window: usize,
+    absorbing: bool,
+    nonabsorbing_lag: usize,
+    reweight: bool,
+    pooled: bool,
+    never_treated_only: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    let o = outcome.as_array();
+    let outcome_m = Mat::from_fn(o.nrows(), o.ncols(), |i, j| o[(i, j)]);
+    let tr = treatment.as_array();
+    let treatment_m = Mat::from_fn(tr.nrows(), tr.ncols(), |i, j| tr[(i, j)]);
+    let data = tsecon_panel::PanelData::balanced(outcome_m, vec![]).map_err(to_py)?;
+    let cfg = tsecon_panel::LpDidConfig {
+        pre_window,
+        post_window,
+        absorbing,
+        nonabsorbing_lag,
+        reweight,
+        pooled,
+        never_treated_only,
+    };
+    let r = tsecon_panel::lp_did(&data, treatment_m.as_ref(), &cfg).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("horizons", r.horizons.into_pyarray(py))?;
+    d.set_item("coef", r.coef.into_pyarray(py))?;
+    d.set_item("se", r.se.into_pyarray(py))?;
+    d.set_item(
+        "nobs",
+        r.nobs
+            .iter()
+            .map(|&x| x as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "n_switchers",
+        r.n_switchers
+            .iter()
+            .map(|&x| x as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    if let Some(p) = r.pooled_post {
+        d.set_item("pooled_post_att", p.att)?;
+        d.set_item("pooled_post_se", p.se)?;
+        d.set_item("pooled_post_nobs", p.nobs as u64)?;
+        d.set_item("pooled_post_n_switchers", p.n_switchers as u64)?;
+    }
+    if let Some(p) = r.pooled_pre {
+        d.set_item("pooled_pre_att", p.att)?;
+        d.set_item("pooled_pre_se", p.se)?;
+        d.set_item("pooled_pre_nobs", p.nobs as u64)?;
+        d.set_item("pooled_pre_n_switchers", p.n_switchers as u64)?;
+    }
+    d.set_item("absorbing", r.absorbing)?;
+    d.set_item("nonabsorbing_lag", r.nonabsorbing_lag)?;
+    d.set_item("reweight", r.reweight)?;
+    d.set_item("pooled", pooled)?;
+    d.set_item("never_treated_only", r.never_treated_only)?;
+    d.set_item("se_type", "cluster_entity")?;
+    Ok(d)
+}
+
 /// Clark-West test for nested-model equal predictive accuracy (Clark-West
 /// 2007). One-sided; the null is that the small (nested) model is as good.
 #[pyfunction]
@@ -8516,6 +8619,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(zero_sign_svar, m)?)?;
     m.add_function(wrap_pyfunction!(panel_fe, m)?)?;
     m.add_function(wrap_pyfunction!(panel_lp, m)?)?;
+    m.add_function(wrap_pyfunction!(lp_did, m)?)?;
     m.add_function(wrap_pyfunction!(cw_test, m)?)?;
     m.add_function(wrap_pyfunction!(gw_test, m)?)?;
     m.add_function(wrap_pyfunction!(var_backtest, m)?)?;

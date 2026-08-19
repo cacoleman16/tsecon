@@ -1,11 +1,12 @@
 # Model card — Panel time series
 
-**Family:** `panel_fe`, `panel_lp`, `mean_group_var`, `panel_mean_group`,
-`panel_pmg`
+**Family:** `panel_fe`, `panel_lp`, `lp_did`, `mean_group_var`,
+`panel_mean_group`, `panel_pmg`
 
 Many entities, each observed over time. The methods here span the two ends of
 the panel spectrum: **pooled** estimators that assume a common slope and
-difference out fixed effects (`panel_fe`, `panel_lp`), and **heterogeneous**
+difference out fixed effects (`panel_fe`, `panel_lp`), a **causal event-study**
+estimator built on the local-projection idea (`lp_did`), and **heterogeneous**
 estimators that let every unit have its own dynamics and then average or pool
 carefully across them (`mean_group_var`, `panel_mean_group`, `panel_pmg`). The
 recurring theme is honest inference: cross-sectional and serial correlation
@@ -16,6 +17,7 @@ cluster covariances.
 |----------|------------------|----------|
 | `panel_fe` | common | Fixed-effects OLS with robust SEs |
 | `panel_lp` | common | Panel local-projection IRF of a common shock |
+| `lp_did` | ATT (VW or EW) | LP-DiD event-study DiD with clean controls |
 | `mean_group_var` | heterogeneous | Mean-group panel VAR + orthogonalized IRFs |
 | `panel_mean_group` | heterogeneous | Mean-group / CCE-MG average slope |
 | `panel_pmg` | pooled long run, free short run | Pooled Mean Group ARDL(1,1) |
@@ -29,6 +31,12 @@ cluster covariances.
 - **`panel_lp(outcome, shock)`** — a panel local projection: at each horizon h,
   regress the h-step-ahead outcome on a **common** shock with entity fixed
   effects, tracing a dynamic causal response averaged across units.
+- **`lp_did(outcome, treatment)`** — LP-DiD (Dube-Girardi-Jordà-Taylor 2025):
+  per-horizon regressions of the long difference `y[i,t+h] − y[i,t−1]` on the
+  treatment-switch indicator with period effects, restricted to **clean
+  controls**, tracing the dynamic average treatment effect on the treated
+  around unit-level treatment events. `treatment` is an N×T binary indicator.
+  See the [dedicated section below](#lp-did-lp_did-event-study-did-with-clean-controls).
 - **`mean_group_var(entities)`** — fits a separate VAR to each entity's Tᵢ×k
   matrix and averages the coefficients and orthogonalized IRFs (Pesaran-Smith
   1995). Robust to slope heterogeneity that a pooled panel VAR would bias.
@@ -72,6 +80,12 @@ cluster covariances.
 - **`panel_lp`** — dynamic causal responses to a *common* shock (a global oil
   or monetary shock hitting many countries), fixed effects for level
   differences, Driscoll-Kraay bands.
+- **`lp_did`** — dynamic causal effects of a *unit-level binary* treatment
+  (a policy adopted by different states in different years): event-study
+  coefficients with pre-trends, a pooled ATT, and none of the TWFE
+  negative-weighting pathologies. If your "shock" is a common aggregate
+  series, use `panel_lp`; if it is a 0/1 adoption indicator per unit, use
+  `lp_did`.
 - **`mean_group_var`** — impulse responses in a heterogeneous panel where a
   pooled VAR would be misspecified.
 - **`panel_mean_group`** — the average marginal effect across heterogeneous
@@ -92,6 +106,12 @@ cluster covariances.
 | | `cumulative` | `False` | `True` for cumulative IRFs |
 | | `jackknife` | `False` | Dhaene-Jochmans half-panel (time-split) jackknife; corrects the **points only**, SEs stay the full-sample plug-in (measured: 95% coverage 0.880 → 0.804 at T=60 — see the [panel-LP cookbook](../../cookbook/panel-lp-standard-errors.md#gotchas)) |
 | | `bias_correction` | `"none"` | `"spj"` = Mei-Sheng-Shi split-panel jackknife: corrected points **and** the reference adjusted-score SEs; `"dj"` = alias for `jackknife=True`. Setting `jackknife=True` together with `"spj"` raises |
+| `lp_did` | `pre_window` / `post_window` | `4` / `8` | event window: horizons −pre..−2 (pre-trends) and 0..post; −1 is the omitted baseline |
+| | `absorbing` | `True` | treatment never reverses (raises on a reversal); `False` requires `nonabsorbing_lag` |
+| | `nonabsorbing_lag` | `0` | stabilization window L for non-absorbing treatments (units re-enter the control pool L quiet periods after a status change) |
+| | `reweight` | `False` | `True` = equally-weighted ATT; default OLS = variance-weighted ATT |
+| | `pooled` | `False` | also report single-number pooled post/pre estimates |
+| | `never_treated_only` | `False` | restrict controls to never-treated units |
 | `mean_group_var` | `lags` | `1` | per-entity VAR order |
 | | `trend` | `"c"` | deterministic terms |
 | | `horizon` / `response` / `impulse` | `10` / `0` / `0` | IRF horizon and the response/shock variable indices |
@@ -107,6 +127,16 @@ cluster covariances.
   on the result — `se_type`, `cumulative`, `jackknife`, and
   `bias_correction` (`"none"` / `"dhaene_jochmans"` / `"spj"`) — so a saved
   result records which estimator and covariance produced it.
+- **`lp_did`** → `{"horizons", "coef", "se", "nobs", "n_switchers"}` aligned
+  per event-time horizon (−pre_window..post_window; the −1 row is the omitted
+  baseline, stored as exact zeros), plus `pooled_post_att`/`pooled_post_se`/
+  `pooled_post_nobs`/`pooled_post_n_switchers` (and the `pooled_pre_*` four)
+  when `pooled=True`, and the stamped options (`absorbing`,
+  `nonabsorbing_lag`, `reweight`, `pooled`, `never_treated_only`,
+  `se_type="cluster_entity"`). **Read `nobs` and `n_switchers`**: the
+  clean-control samples shrink as |h| grows, and an event-study point
+  estimated from a handful of switchers is noise wearing a confidence
+  interval.
 - **`mean_group_var`** → per-entity-averaged `intercept`, `coefs`
   (lags × neqs × neqs) and their SEs, plus `orth_irfs`
   (horizon+1 × response × shock) with SEs and a convenience `irf_path`
@@ -199,6 +229,174 @@ generally; see the [interval-coverage audit](../../examples/interval-coverage.md
 for the full (N, T) table). From T=40 both sit in the high-0.80s/low-0.90s
 with the bias gone from SPJ.
 
+## LP-DiD (`lp_did`) — event-study DiD with clean controls
+
+The local-projections difference-in-differences of Dube, Girardi, Jordà &
+Taylor (2025, *J. Applied Econometrics*). Per horizon `h`, one regression:
+
+```text
+y[i,t+h] − y[i,t−1] = β_h ΔD[i,t] + δ_t + e[i,t]     estimated ONLY on
+    { newly treated (ΔD[i,t] = 1) } ∪ { clean controls }
+```
+
+with period effects `δ_t` and standard errors clustered by entity. Pre-event
+horizons (`h = −pre_window..−2`) run the same regression on
+`y[i,t+h] − y[i,t−1]` and display pre-trends; `h = −1` is the omitted
+baseline. The **clean-control condition** is the entire point: a two-way
+fixed-effects event study implicitly compares newly treated units against
+*already-treated* ones whose own dynamic effects sit in the "control"
+outcome — the forbidden comparisons that give TWFE its negative weights
+(Goodman-Bacon 2021; de Chaisemartin & D'Haultfœuille 2020). LP-DiD only ever
+compares switchers with units that are:
+
+- **not yet treated** through `t+h` (absorbing treatment, the default);
+- **never treated** in the observed sample (`never_treated_only=True`);
+- **stabilized** (`absorbing=False` + `nonabsorbing_lag=L`): treatment may
+  turn on and off, and an observation is clean if its status did not change
+  in `[t−L, t−1]` (post horizons also require no change through `t+h`; pre
+  horizon `−j` widens the lag window to `[t−L−(j−1), t−1]`). This is the
+  DGJT §3.2 effect-stabilization assumption: `L` periods after a change the
+  dynamic effect is assumed settled, so previously-treated units re-enter the
+  control pool. Exits (`ΔD = −1`) are excluded from both groups, and a
+  status change outside the observed panel counts as clean (the reference
+  implementation's Stata missing-value semantics — documented, not hidden).
+
+**Variance-weighted vs equally-weighted ATT.** Plain OLS on the clean sample
+gives a *variance-weighted* ATT: every period's clean 2×2 comparison enters
+with non-negative weight proportional to `n_t p_t (1−p_t)` — no negative
+weights, but precisely-estimated cohorts count more. `reweight=True`
+reweights each period cell by the inverse of its switcher share (the DGJT
+§2.5 construction, transcribed from the authors' `get_reweights`), which is
+exactly equivalent to weighting each cell's comparison by its number of
+switchers: the *equally-weighted* ATT across treated observations. Under
+reweighting, period cells with no switcher drop from the sample, and a
+switcher cell with no clean control raises (its equally-weighted
+contribution is undefined) rather than silently degrading.
+
+**Pooled ATT.** `pooled=True` adds two single-number estimates: the post
+regression replaces the regressand with `mean(y[t..t+H]) − y[t−1]` on the
+horizon-`H` clean sample (the average effect over the post window), and the
+pre regression uses `mean(y[t−Q..t−2]) − y[t−1]` (a one-number pre-trend
+test). Unlike the R port (where `pooled` replaces the event study), tsecon
+always reports the event study and adds the pooled rows.
+
+### Measured: recovery, coverage, and the naive contrast
+
+Seeded Monte Carlo (seed 20260819, 300 replications;
+`crates/tsecon-panel/tests/lpdid_properties.rs`). Recovery DGP: N = 60 (20
+never-treated), T = 36, five adoption cohorts, homogeneous effect ramping to
+6, true ATT(h) = h+1; variance-weighted LP-DiD with cluster-by-entity 95%
+z-intervals:
+
+| h | true | bias | coverage |
+|---|------|------|----------|
+| 0 | 1.0 | +0.008 | 0.970 |
+| 1 | 2.0 | −0.002 | 0.953 |
+| 2 | 3.0 | +0.002 | 0.970 |
+| 3 | 4.0 | +0.001 | 0.963 |
+| 4 | 5.0 | +0.011 | 0.960 |
+
+The contrast that motivates the method (asserted in CI on every run, not
+just described): heterogeneous cohort effects `θ_c · (e+1)` growing with
+event time, only 4 never-treated units in 44. A *naive all-controls* variant
+of the same horizon-3 regression — identical except previously-treated units
+stay in the control pool — loses more than half the effect, because the
+already-treated "controls" are still on their own effect trajectory
+(200 replications, true equally-weighted ATT 5.20):
+
+| estimator | mean | bias |
+|-----------|------|------|
+| LP-DiD (`reweight=True`) | 5.207 | +0.1% |
+| naive all-controls LP | 2.260 | −56.5% |
+
+### Worked example — staggered adoption, heterogeneous effects
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(31184)   # the working-paper number
+N, T = 200, 40
+
+# Staggered adoption: 60 never-treated units; the rest adopt in five
+# cohorts (t = 8, 13, 18, 23, 28). Effects ramp in over 4 periods and are
+# LARGER for early adopters (theta from 3.0 down to 2.0, mean 2.5) — the
+# setting where TWFE event studies break and LP-DiD is designed to work.
+adopt = np.full(N, -1)
+adopt[60:] = np.tile([8, 13, 18, 23, 28], 28)
+theta = np.where(adopt > 0, 3.0 - 0.05 * (adopt - 8), 0.0)
+
+alpha, delta = rng.normal(0, 1, N), rng.normal(0, 1, T)
+y = alpha[:, None] + delta[None, :] + rng.normal(0, 0.8, (N, T))
+d = np.zeros((N, T))
+for i in range(N):
+    if adopt[i] > 0:
+        d[i, adopt[i]:] = 1.0
+        e = np.arange(T - adopt[i])
+        y[i, adopt[i]:] += theta[i] * np.minimum(e + 1, 4) / 4.0
+
+# LP-DiD event study: variance-weighted and equally-weighted.
+vw = tsecon.lp_did(y, d, pre_window=4, post_window=6, pooled=True)
+ew = tsecon.lp_did(y, d, pre_window=4, post_window=6, reweight=True,
+                   pooled=True)
+
+print("h    VW ATT   (se)    EW ATT   (se)    nobs   switchers")
+for k, h in enumerate(vw["horizons"]):
+    if h == -1:
+        print("-1   (omitted baseline)")
+        continue
+    print(f"{h:+d}   {vw['coef'][k]:+.3f}  ({vw['se'][k]:.3f})  "
+          f"{ew['coef'][k]:+.3f}  ({ew['se'][k]:.3f})  {vw['nobs'][k]:5d}   "
+          f"{vw['n_switchers'][k]}")
+print(f"pooled post ATT: VW {vw['pooled_post_att']:+.3f} "
+      f"({vw['pooled_post_se']:.3f})   EW {ew['pooled_post_att']:+.3f} "
+      f"({ew['pooled_post_se']:.3f})")
+print(f"pooled pre     : VW {vw['pooled_pre_att']:+.3f} "
+      f"({vw['pooled_pre_se']:.3f})")
+```
+
+```text
+h    VW ATT   (se)    EW ATT   (se)    nobs   switchers
+-4   +0.022  (0.111)  +0.039  (0.110)   4260   140
+-3   -0.131  (0.098)  -0.127  (0.100)   4460   140
+-2   +0.051  (0.097)  +0.049  (0.098)   4660   140
+-1   (omitted baseline)
++0   +0.685  (0.106)  +0.678  (0.104)   4860   140
++1   +1.220  (0.099)  +1.202  (0.100)   4660   140
++2   +1.769  (0.109)  +1.749  (0.109)   4460   140
++3   +2.446  (0.107)  +2.409  (0.108)   4260   140
++4   +2.608  (0.094)  +2.588  (0.095)   4060   140
++5   +2.557  (0.108)  +2.528  (0.108)   3860   140
++6   +2.394  (0.113)  +2.370  (0.114)   3660   140
+pooled post ATT: VW +1.944 (0.079)   EW +1.922 (0.079)
+pooled pre     : VW -0.019 (0.084)
+```
+
+Reading it: pre-trends flat (all within ±1.5 se of zero), the effect ramps
+0.63 → 2.5 over four horizons exactly as built (true EW ATT is
+`2.5·min(h+1,4)/4`: 0.625, 1.25, 1.875, then 2.5), the equally-weighted
+column sits slightly below the variance-weighted one because early adopters
+have the larger effects *and* the more precisely estimated cohorts, and the
+pooled post ATT matches its truth (2.5·22/28 = 1.96). The clean samples
+shrink from 4,860 rows at h = 0 to 3,660 at h = 6 while all 140 switchers
+remain usable — on real data watch both columns.
+
+### Standard errors and the conventions transcribed
+
+Cluster-by-entity, in the exact small-sample convention the authors' code
+fixes (`setFixest_ssc(ssc(adj = TRUE, cluster.adj = TRUE))`, matching Stata
+`reghdfe`): `(n−1)/(n−K) · G/(G−1)` times the cluster sandwich, where `K`
+counts the slope **plus every absorbed period effect** (period effects are
+not nested in entity clusters) and `G` is the number of entities in that
+horizon's clean sample — deliberately different from the nested-cluster
+`n/(n−k)` convention `panel_fe`/`panel_lp` inherit from linearmodels, and
+verified against fixest at machine precision during fixture generation.
+Covariates / regression adjustment, the composition-effects correction
+(DGJT §2.10), pre-mean-differenced baselines (`pmd`), and the IV variant are
+not yet implemented; doubly-robust (AIPW) LP-DiD has no reference
+implementation anywhere and is out of scope until one exists to validate
+against.
+
 ## Failure modes
 
 - **Pooling heterogeneous slopes.** `panel_fe` on data with genuinely
@@ -214,6 +412,17 @@ with the bias gone from SPJ.
 - **Small Tᵢ with mean-group.** Per-unit regressions become unstable and the
   cross-unit average inherits the noise; prefer pooling (with heterogeneity
   tested) when time series are short.
+- **`lp_did` refusals are the method speaking.** A treatment reversal under
+  `absorbing=True` raises (choose `absorbing=False` with a stabilization
+  lag); `never_treated_only=True` with no never-treated units raises; a
+  horizon where no period cell mixes switchers with clean controls raises
+  (there is no clean comparison — not a bug, a fact about the design); under
+  `reweight=True` a switcher cell with no clean control raises. None of
+  these are silently patched over.
+- **`lp_did` pre-trends with thin cohorts.** The pre-window regressions use
+  the same switcher count as h = 0 but a shrinking control window; a
+  "significant" pre-trend at −Q built on a few dozen switchers is fragile —
+  check `n_switchers` before reading the pre-trend test.
 - **Reading `panel_mean_group(method="mg")` as a long run.** It is a static
   average slope; the ARDL long run comes from `panel_pmg`.
 
@@ -231,7 +440,19 @@ an independent NumPy reimplementation of the `panelLP.R` algebra (split
 convention, combination, both adjusted-score sandwiches — see the generator's
 docstring for provenance), and the statistical claims are separately measured
 in the seeded Monte Carlo above — not matched against a stored run of the R
-package. `mean_group_var`, `panel_mean_group`
+package. `lp_did` is a **reference-run golden**: `fixtures/lpdid.json` pins
+six cases (absorbing VW / equally-weighted / never-treated-only, each with
+pooled estimates; non-absorbing VW / reweighted / never-treated-only with a
+stabilization lag) at 1e-10 against an actual R/fixest run of the authors'
+own example implementations (github.com/danielegirardi/lpdid — the VW and EW
+R scripts and the non-absorbing do-file, transcribed file:line in
+`fixtures/generate_lpdid_fixtures.R`), cross-checked at generation time
+against an independent NumPy reimplementation (max deviation 5.3e-15); the
+one stated caveat is that the SSC-only Stata ado itself could not be fetched
+in the build environment, so the pin is to the authors' published example
+code, not the packaged command. The statistical claims (unbiasedness,
+coverage, and the naive-contrast table above) are separately measured in the
+seeded Monte Carlo. `mean_group_var`, `panel_mean_group`
 (MG and CCE-MG), and `panel_pmg` are documented-formula goldens reproducing the
 Pesaran-Smith (1995), Pesaran (2006), and Pesaran-Shin-Smith (1999)
 estimating equations, and are additionally property-validated: on data with a
@@ -239,6 +460,7 @@ known common long run, PMG recovers it and pools far more tightly than a free
 mean-group of per-unit long runs. Fixtures:
 [`fixtures/panel.json`](../../../fixtures/panel.json),
 [`fixtures/panel_spj.json`](../../../fixtures/panel_spj.json),
+[`fixtures/lpdid.json`](../../../fixtures/lpdid.json),
 [`fixtures/tsecon-panelts.json`](../../../fixtures/tsecon-panelts.json),
 [`fixtures/pmg.json`](../../../fixtures/pmg.json).
 
@@ -262,8 +484,20 @@ mean-group of per-unit long runs. Fixtures:
   projection: Financial crises are worse than you think." *J. International
   Economics* (arXiv:2302.13455). Reference implementation: the `pLP` R
   package, github.com/zhentaoshi/panel-local-projection.
+- Dube, A., Girardi, D., Jordà, Ò. & Taylor, A. M. (2025). "A Local
+  Projections Approach to Difference-in-Differences." *J. Applied
+  Econometrics* 40(7) (doi:10.1002/jae.70000; NBER WP 31184). Reference
+  implementations: the authors' example code at
+  github.com/danielegirardi/lpdid, the Stata `lpdid` package (SSC), and the
+  R port at github.com/alexCardazzi/lpdid.
+- Goodman-Bacon, A. (2021). "Difference-in-differences with variation in
+  treatment timing." *J. Econometrics* 225.
+- de Chaisemartin, C. & D'Haultfœuille, X. (2020). "Two-Way Fixed Effects
+  Estimators with Heterogeneous Treatment Effects." *AER* 110.
 
-See the guide: [Panel Time Series](../../guide/14-panel-time-series.md).
+See the guide: [Panel Time Series](../../guide/14-panel-time-series.md); for
+the wider local-projection family (`lp`, `lp_iv`, state-dependent and smooth
+LPs), see the [local projections model card](local-projections.md).
 
 ## Runnable example
 

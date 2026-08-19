@@ -8,6 +8,13 @@ periods ahead on today's shock (plus controls) — and reads the sequence of
 slope coefficients as the impulse response. Robust to misspecification of the
 long-run dynamics, and honest about uncertainty at each horizon separately.
 
+Two panel members of the family live on the
+[panel model card](panel.md): `panel_lp` (panel LP of a *common* shock, with
+the Nickell-bias corrections) and `lp_did` (LP-DiD, the
+Dube-Girardi-Jordà-Taylor event-study difference-in-differences with clean
+controls — the local-projection answer to TWFE's negative-weight problem,
+documented in its [own section](panel.md#lp-did-lp_did-event-study-did-with-clean-controls)).
+
 ---
 
 ## `lp` — local projection IRFs

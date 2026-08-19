@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**139 functions.**
+**140 functions.**
 
 ## diagnostics
 
@@ -1439,6 +1439,42 @@ Panel local projection of a common shock with fixed effects.
 
     Returns a dict with `irf`, `se`, `nobs` (each length horizon+1) and the
     stamped `se_type`, `cumulative`, `jackknife`, `bias_correction`.
+
+### `lp_did`
+
+```python
+def lp_did(
+    outcome: _ArrayLike,
+    treatment: _ArrayLike,
+    pre_window: int = ...,
+    post_window: int = ...,
+    absorbing: bool = ...,
+    nonabsorbing_lag: int = ...,
+    reweight: bool = ...,
+    pooled: bool = ...,
+    never_treated_only: bool = ...,
+) -> dict[str, Any]:
+```
+
+LP-DiD event-study difference-in-differences (Dube-Girardi-Jordà-Taylor).
+
+    `outcome` and `treatment` are N x T (treatment binary 0/1). Per horizon,
+    regresses `y[i, t+h] - y[i, t-1]` on the treatment switch with period
+    effects, using only clean controls (not-yet-treated; stabilized units
+    under `absorbing=False` with `nonabsorbing_lag`; never-treated when
+    `never_treated_only=True`) — avoiding the negative-weight comparisons of
+    TWFE event studies. `reweight=True` gives the equally-weighted ATT;
+    `pooled=True` adds pooled post/pre estimates. Entity-clustered SEs in
+    the authors' fixest/reghdfe convention.
+
+    Returns a dict with `horizons` (-pre_window..post_window; -1 is the
+    omitted baseline, stored as zeros), `coef`, `se`, `nobs`, `n_switchers`
+    (clean samples shrink with |h| — read them), pooled keys
+    (`pooled_post_att`, `pooled_post_se`, `pooled_post_nobs`,
+    `pooled_post_n_switchers`, and `pooled_pre_*` when `pre_window >= 2`)
+    only when `pooled=True`, and the stamped `absorbing`,
+    `nonabsorbing_lag`, `reweight`, `pooled`, `never_treated_only`,
+    `se_type`.
 
 ## forecast comparison
 
