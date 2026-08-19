@@ -388,6 +388,12 @@ def garch_fit(
 
 GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
 
+    Boundary fits (a coefficient at its sign constraint, persistence at 1)
+    carry per-parameter `se_valid`/`boundary` flags and a `boundary_note`:
+    boundary parameters have NaN standard errors (no classical asymptotics
+    exist there), interior parameters keep finite ones. `converged` reports
+    the optimizer's own verdict.
+
 ## VAR
 
 ### `var_fit`

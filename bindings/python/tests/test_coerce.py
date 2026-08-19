@@ -443,3 +443,61 @@ def test_wrong_rank_raises_a_teaching_error():
     assert "wrong shape or type" in msg
     assert "(200,)" in msg          # reports the actual shape
     assert "df[['x']]" in msg       # tells the user what to do
+
+
+# --------------------------------------------------------------------------- #
+# negative integer arguments (audit round 6 residue, fixed round 7)
+# --------------------------------------------------------------------------- #
+# PyO3 used to surface `lags=-1` and friends as a raw, unattributed
+# ``OverflowError: can't convert negative int to unsigned`` library-wide. The
+# coercion layer now rebuilds exactly that conversion error into the library's
+# teaching ValueError, naming the function and the offending parameter. A
+# representative sample across crates; the mechanism is central (`_call`), so
+# one wrapper covers every compiled function.
+
+
+def _negative_cases():
+    y = np.random.default_rng(0).standard_normal(220)
+    data = np.column_stack([y, np.roll(y, 1)])
+    return [
+        (lambda: tsecon.var_fit(data, lags=-2), "lags=-2"),
+        (lambda: tsecon.stl(y, 12, outer_iter=-1), "outer_iter=-1"),
+        (lambda: tsecon.garch_fit(y, p=-1), "p=-1"),
+        (lambda: tsecon.lp(y, y, horizons=-4), "horizons=-4"),
+        # numpy integers count as integers
+        (lambda: tsecon.var_fit(data, lags=np.int64(-3)), "lags=-3"),
+    ]
+
+
+def test_negative_integer_arguments_raise_teaching_valueerrors():
+    for call, expected_fragment in _negative_cases():
+        with pytest.raises(ValueError) as excinfo:
+            call()
+        msg = str(excinfo.value)
+        assert expected_fragment in msg, msg          # names the parameter
+        assert "nonnegative integer" in msg           # states the contract
+        # the original PyO3 error is chained, not swallowed
+        assert isinstance(excinfo.value.__cause__, OverflowError)
+
+
+def test_negative_integer_error_names_the_function():
+    with pytest.raises(ValueError, match=r"^garch_fit: "):
+        tsecon.garch_fit(np.random.default_rng(1).standard_normal(300), q=-1)
+
+
+def test_negative_seasonal_order_keeps_its_bespoke_teaching_error():
+    # arima_fit validates the (P, D, Q, s) tuple itself with a specific
+    # message; the central wrapper must not shadow a better error that the
+    # boundary already raises.
+    y = np.random.default_rng(4).standard_normal(120)
+    with pytest.raises(ValueError, match="non-negative"):
+        tsecon.arima_fit(y, seasonal=(0, -1, 0, 4))
+
+
+def test_negative_float_parameters_are_untouched():
+    # A parameter that legitimately accepts negative values (f64) must not
+    # trip the negative-int guard, even when passed as a Python int.
+    y = np.cumsum(np.random.default_rng(2).standard_normal(180))
+    data = np.column_stack([y, 0.5 * y + np.random.default_rng(3).standard_normal(180)])
+    out = tsecon.bvar_fit(data, lags=1, delta=-1)
+    assert "log_marginal_likelihood" in out

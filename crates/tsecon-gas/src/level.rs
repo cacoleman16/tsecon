@@ -555,13 +555,31 @@ impl<'a> DcsModel<'a> {
 
     /// Maximum-likelihood estimation.
     ///
+    /// **Scale-adaptive** (audit round 7): the optimizer runs on the
+    /// internally standardized series `y / s_rob` (the robust MAD scale
+    /// of the first differences — the same quantity the starting values
+    /// already use) and the optimum is mapped back through the exact
+    /// reparameterization `y -> c y` (`scale -> c scale`; `kappa`, `nu`,
+    /// and the whole score recursion are unit-free). Rescaling the data
+    /// is a pure relabeling of the model, so the estimator must commute
+    /// with it; without this the Laplace sign filter — whose likelihood
+    /// is piecewise in `kappa` — landed in *different kink basins
+    /// depending on the units of `y`* (measured: 11/20 seeded series
+    /// moved `kappa` by up to 57% across eight decades of rescaling, with
+    /// mapped log-likelihood gaps up to 4.6; the smooth t/Gaussian
+    /// likelihoods moved 0/20). For power-of-two rescalings the
+    /// standardization is an exact exponent shift, so the fit commutes
+    /// bit-exactly. The reported log-likelihood, level path, residuals,
+    /// and standard errors are all evaluated at the mapped parameters on
+    /// the original data.
+    ///
     /// Optimizes the mean negative log-likelihood by Nelder-Mead over the
     /// unconstrained working vector `z` mapped through the house
     /// [`Positive`](tsecon_optim::Positive) transform,
     /// `(kappa, scale, nu - 2) = exp(z)`, from a deterministic
-    /// three-point multistart over `kappa` (0.05, 0.3, 0.8; `scale`
-    /// starts at the MAD of the first differences, `nu` at 8). Standard
-    /// errors are observed-information (module docs).
+    /// multistart over `kappa` (`scale` starts at the (standardized) MAD
+    /// of the first differences, `nu` at 8). Standard errors are
+    /// observed-information (module docs).
     ///
     /// # Errors
     ///
@@ -569,6 +587,60 @@ impl<'a> DcsModel<'a> {
     ///   objective;
     /// * errors from [`filter`](DcsModel::filter) at the optimum.
     pub fn fit(&self) -> Result<DcsResults, GasError> {
+        let s = if self.s_rob.is_finite() && self.s_rob > 0.0 {
+            self.s_rob
+        } else {
+            1.0
+        };
+        let (params, converged, iterations, fevals) = if s == 1.0 {
+            self.optimize()?
+        } else {
+            let scaled: Vec<f64> = self.y.iter().map(|v| v / s).collect();
+            let inner = DcsModel::new(&scaled, self.density)?;
+            let (p, converged, iterations, fevals) = inner.optimize()?;
+            (
+                DcsParams {
+                    kappa: p.kappa,
+                    scale: p.scale * s,
+                    nu: p.nu,
+                },
+                converged,
+                iterations,
+                fevals,
+            )
+        };
+
+        // Everything reported is evaluated at the mapped parameters on the
+        // ORIGINAL data, so every output carries the caller's units.
+        let filtered = self.filter(&params)?;
+        let resid: Vec<f64> = self
+            .y
+            .iter()
+            .zip(&filtered.level)
+            .map(|(&yt, &mt)| yt - mt)
+            .collect();
+        let se = self.observed_information_se(&params);
+
+        Ok(DcsResults {
+            params,
+            se,
+            density: self.density,
+            loglik: filtered.loglik,
+            level: filtered.level,
+            resid,
+            next_level: filtered.next_level,
+            n_obs: self.y.len(),
+            converged,
+            iterations,
+            fevals,
+        })
+    }
+
+    /// The multistart Nelder-Mead search on this model's own data;
+    /// returns the best parameters (in this model's units), the
+    /// convergence certificate, and the iteration/evaluation totals.
+    /// [`DcsModel::fit`] calls it on the internally standardized model.
+    fn optimize(&self) -> Result<(DcsParams, bool, usize, usize), GasError> {
         let density = self.density;
 
         // Working space: theta = (kappa, scale, nu - 2) = exp(z), via the
@@ -626,29 +698,7 @@ impl<'a> DcsModel<'a> {
 
         let theta = objective.constrained(&res.x)?;
         let params = params_from_natural(density, &theta);
-        let filtered = self.filter(&params)?;
-        let resid: Vec<f64> = self
-            .y
-            .iter()
-            .zip(&filtered.level)
-            .map(|(&yt, &mt)| yt - mt)
-            .collect();
-
-        let se = self.observed_information_se(&params);
-
-        Ok(DcsResults {
-            params,
-            se,
-            density,
-            loglik: filtered.loglik,
-            level: filtered.level,
-            resid,
-            next_level: filtered.next_level,
-            n_obs: self.y.len(),
-            converged: res.converged,
-            iterations: ms.total_iterations,
-            fevals: ms.total_fevals,
-        })
+        Ok((params, res.converged, ms.total_iterations, ms.total_fevals))
     }
 
     /// Observed-information standard errors at `params`, in natural

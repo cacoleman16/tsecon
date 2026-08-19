@@ -207,6 +207,17 @@ def _exempt_positions(fn, exempt: frozenset[str]) -> frozenset[int] | None:
 # 2-D panel is wanted, or a column matrix where a series is wanted).
 _RANK_HINT = "is not an instance of"
 
+# PyO3 reports a negative Python int passed to an unsigned Rust parameter
+# (`lags=-1`, `outer_iter=-1`, a negative seed, ...) as a raw
+# ``OverflowError: can't convert negative int to unsigned`` that names
+# neither the function nor the parameter (audit round 6). Every unsigned
+# integer parameter in this API is a count — a lag length, order, horizon,
+# window, iteration cap, draw count, or seed — so the teaching upgrade is
+# uniform. The match is deliberately narrow: only this conversion message is
+# rebuilt, so a genuine numeric overflow inside an estimator still surfaces
+# as itself.
+_NEGATIVE_INT_HINT = "can't convert negative int to unsigned"
+
 # Callback-taking compiled functions: {function -> (positional index, name)}.
 # The coercion layer validates the CALLBACK'S RETURN VALUE itself, because a
 # badly-shaped return otherwise surfaces at the Rust boundary as the same
@@ -306,6 +317,52 @@ def _rank_error(fn_name: str, args, kwargs, original: TypeError) -> TypeError:
     )
 
 
+def _is_negative_int(v: object) -> bool:
+    return isinstance(v, (int, np.integer)) and not isinstance(v, bool) and v < 0
+
+
+def _negative_int_offenders(fn, args, kwargs) -> list[str]:
+    """``name=value`` for every plausibly offending negative integer argument.
+
+    Positional indices are mapped to parameter names through the compiled
+    signature when it resolves (the same introspection ``_exempt_positions``
+    relies on); otherwise the argument is named by position. Shallow
+    tuples/lists are scanned too, for spec arguments like
+    ``arima_fit(seasonal=(0, -1, 0, 4))``.
+    """
+    try:
+        names = list(inspect.signature(fn).parameters)
+    except (ValueError, TypeError):
+        names = []
+    found: list[str] = []
+    labeled = [
+        *(((names[i] if i < len(names) else f"argument {i}"), a) for i, a in enumerate(args)),
+        *kwargs.items(),
+    ]
+    for label, v in labeled:
+        if _is_negative_int(v):
+            found.append(f"{label}={v}")
+        elif isinstance(v, (list, tuple)) and any(_is_negative_int(e) for e in v):
+            found.append(f"{label}={v!r}")
+    return found
+
+
+def _negative_int_error(fn, args, kwargs, original: OverflowError) -> ValueError:
+    """Rebuild PyO3's bare negative-int OverflowError into a teaching error."""
+    offenders = _negative_int_offenders(fn, args, kwargs)
+    if offenders:
+        what = " and ".join(offenders)
+        verb = "are" if len(offenders) > 1 else "is"
+        subject = f"{what} {verb} negative, but this parameter"
+    else:
+        subject = "an integer argument is negative, but the parameter"
+    return ValueError(
+        f"{fn.__name__}: {subject} counts something — a lag length, order, "
+        f"horizon, window, iteration cap, draw count, or seed — and must be a "
+        f"nonnegative integer. Original error: {original}"
+    )
+
+
 def _call(fn, args, kwargs):
     """Invoke the compiled function, upgrading rank errors to teaching errors."""
     args, kwargs = _guard_callbacks(fn, args, kwargs)
@@ -314,6 +371,10 @@ def _call(fn, args, kwargs):
     except TypeError as exc:  # noqa: PERF203 - only on the error path
         if _RANK_HINT in str(exc):
             raise _rank_error(fn.__name__, args, kwargs, exc) from exc
+        raise
+    except OverflowError as exc:
+        if _NEGATIVE_INT_HINT in str(exc):
+            raise _negative_int_error(fn, args, kwargs, exc) from exc
         raise
 
 

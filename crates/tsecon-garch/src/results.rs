@@ -33,11 +33,28 @@ pub struct GarchResults {
     /// Standardized residuals `z_t = eps_t / sigma_t`.
     pub std_residuals: Vec<f64>,
     /// Classical MLE standard errors (inverse numerical Hessian); NaN in
-    /// flat directions.
+    /// flat directions and at active boundaries (see
+    /// [`GarchResults::se_valid`]).
     pub se_mle: Vec<f64>,
     /// Bollerslev-Wooldridge (1992) robust standard errors (`arch`'s
-    /// default covariance); NaN in flat directions.
+    /// default covariance); NaN in flat directions and at active
+    /// boundaries.
     pub se_robust: Vec<f64>,
+    /// Per parameter: `true` when the parameter is interior and both
+    /// standard errors are finite. `false` marks either an active
+    /// boundary ([`GarchResults::boundary`]) or a numerically degenerate
+    /// (flat) direction — in both cases the NaN standard error is a
+    /// statement, not an accident.
+    pub se_valid: Vec<bool>,
+    /// Per parameter: `true` when the estimate sits at an active
+    /// constraint boundary (a coefficient at its sign constraint, or
+    /// every coefficient of an integrated fit whose persistence sits at
+    /// 1). Standard QMLE asymptotics do not apply to such parameters.
+    pub boundary: Vec<bool>,
+    /// Teaching note describing any active boundary (which constraint,
+    /// which parameters, and what that does to the inference); `None` for
+    /// an interior fit.
+    pub boundary_note: Option<String>,
     /// Whether at least one optimizer stage terminated by its convergence
     /// criterion; the final point is at least as good as that stage's
     /// (the best point found is returned either way).
@@ -58,6 +75,7 @@ impl GarchResults {
         loglik: f64,
         se: StdErrors,
         converged: bool,
+        boundary_note: Option<String>,
     ) -> Result<Self, GarchError> {
         let spec = *model.spec();
         let sigma2 = model.conditional_variance(&params)?;
@@ -83,6 +101,9 @@ impl GarchResults {
             std_residuals,
             se_mle: se.mle,
             se_robust: se.robust,
+            se_valid: se.se_valid,
+            boundary: se.boundary,
+            boundary_note,
             converged,
             params,
             resids,

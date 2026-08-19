@@ -188,6 +188,262 @@ fn recovers_simulated_garch11_parameters() {
         .all(|(r, m)| r.is_finite() && *r > 0.0 && m.is_finite() && *m > 0.0));
 }
 
+/// **Boundary fits are reported, never silently all-NaN** (audit rounds
+/// 1/7). White noise fitted as GARCH(1,1) drives `alpha` to its sign
+/// constraint (~1e-14): the observed information is singular in that
+/// direction by construction, and the pre-fix behaviour was an unflagged
+/// all-NaN `se_mle`/`se_robust` row. Now every NaN standard error is a
+/// *flagged* NaN: the boundary parameter carries `boundary = true`,
+/// `se_valid = false`, and a teaching note, while interior parameters
+/// keep finite standard errors from the reduced Hessian over the free
+/// directions — except when the reduced problem is itself degenerate
+/// (with `alpha = 0` the pair `(omega, beta)` can sit on a flat
+/// likelihood ridge), where the honest report is all-invalid, still
+/// flagged, never silent.
+#[test]
+fn boundary_fit_flags_and_keeps_interior_standard_errors() {
+    let spec = GarchSpec {
+        mean: MeanSpec::Zero,
+        vol: VolSpec::Garch { p: 1, q: 1 },
+        dist: DistSpec::Normal,
+    };
+    let mut boundary_seen = 0;
+    let mut interior_se_seen = 0;
+    for seed in [2, 3, 5, 7, 11, 13] {
+        let y: Vec<f64> = {
+            let mut rng = SplitMix64(seed);
+            (0..750).map(|_| rng.normal()).collect()
+        };
+        let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+        // Universal consistency: a NaN standard error is never unflagged.
+        for i in 0..res.params.len() {
+            assert_eq!(
+                res.se_valid[i],
+                !res.boundary[i] && res.se_mle[i].is_finite() && res.se_robust[i].is_finite(),
+                "seed {seed}: se_valid[{i}] inconsistent with flags/values"
+            );
+        }
+        let alpha = res.params[1];
+        if alpha > 1e-6 {
+            continue; // this seed found an interior point
+        }
+        boundary_seen += 1;
+        // alpha is flagged, and its NaN is a *flagged* NaN.
+        assert!(
+            res.boundary[1],
+            "seed {seed}: alpha at {alpha:e} must be flagged"
+        );
+        assert!(!res.se_valid[1]);
+        assert!(res.se_mle[1].is_nan() && res.se_robust[1].is_nan());
+        let note = res.boundary_note.as_deref().expect("boundary note");
+        assert!(
+            note.contains("alpha[1]"),
+            "note names the parameter: {note}"
+        );
+        assert!(
+            note.contains("sign constraint"),
+            "note states the cause: {note}"
+        );
+        // The round-1 defect was the interior rows coming back NaN too.
+        // Count the boundary fits whose reduced (omega, beta) problem is
+        // nondegenerate and delivers finite interior standard errors.
+        if res.se_valid[0] {
+            assert!(
+                res.se_mle[0].is_finite()
+                    && res.se_mle[0] > 0.0
+                    && res.se_robust[0].is_finite()
+                    && res.se_robust[0] > 0.0,
+                "seed {seed}: valid omega standard errors must be finite: mle {} robust {}",
+                res.se_mle[0],
+                res.se_robust[0]
+            );
+            interior_se_seen += 1;
+        }
+    }
+    assert!(
+        boundary_seen >= 3,
+        "the white-noise DGP no longer produces boundary fits ({boundary_seen}/6); \
+         the reproduction has drifted — re-derive the seeds"
+    );
+    assert!(
+        interior_se_seen >= 3,
+        "interior standard errors survived on only {interior_se_seen} of \
+         {boundary_seen} boundary fits — the reduced-Hessian path has regressed"
+    );
+}
+
+/// An interior fit carries clean flags: every `se_valid` true, no
+/// boundary, no note — so the flags cannot cry wolf on routine data.
+#[test]
+fn interior_fit_flags_are_clean() {
+    let y = simulate_garch11(0.1, 0.1, 0.8, 1500, 42);
+    let spec = GarchSpec {
+        mean: MeanSpec::Constant,
+        vol: VolSpec::Garch { p: 1, q: 1 },
+        dist: DistSpec::Normal,
+    };
+    let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+    assert!(res.se_valid.iter().all(|&v| v), "{:?}", res.se_valid);
+    assert!(res.boundary.iter().all(|&b| !b), "{:?}", res.boundary);
+    assert!(res.boundary_note.is_none());
+}
+
+/// An integrated (IGARCH-boundary) fit flags every variance coefficient
+/// while `omega` keeps a finite standard error, and the note names the
+/// persistence bound.
+#[test]
+fn igarch_boundary_flags_all_coefficients() {
+    // An IGARCH DGP (alpha + beta = 1) attracts the QMLE to the
+    // persistence constraint on many draws.
+    let mut hit = 0;
+    for seed in [0u64, 1, 9, 12, 21] {
+        let y = {
+            // simulate with alpha + beta = 1: variance is a martingale, the
+            // path stays finite over 750 draws.
+            let mut rng = SplitMix64(seed);
+            let (omega, alpha, beta) = (0.02, 0.10, 0.90);
+            let mut s2 = 1.0_f64;
+            let mut eps = 0.0_f64;
+            let mut out = Vec::with_capacity(750);
+            for t in 0..1250 {
+                s2 = omega + alpha * eps * eps + beta * s2;
+                eps = s2.sqrt() * rng.normal();
+                if t >= 500 {
+                    out.push(eps);
+                }
+            }
+            out
+        };
+        let spec = GarchSpec {
+            mean: MeanSpec::Zero,
+            vol: VolSpec::Garch { p: 1, q: 1 },
+            dist: DistSpec::Normal,
+        };
+        let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+        let pers = spec.persistence(&res.params).unwrap();
+        if pers < 0.9995 || res.params[0] < 1e-8 {
+            // Not attracted to the bound on this draw, or omega itself
+            // collapsed toward 0 (a doubly degenerate fit whose reduced
+            // problem is honestly all-invalid — covered by the flag
+            // consistency assertions in the white-noise test).
+            continue;
+        }
+        hit += 1;
+        assert!(
+            res.boundary[1] && res.boundary[2],
+            "persistence {pers} at the bound must flag alpha and beta: {:?}",
+            res.boundary
+        );
+        assert!(!res.se_valid[1] && !res.se_valid[2]);
+        assert!(
+            res.se_valid[0] && res.se_mle[0].is_finite() && res.se_robust[0].is_finite(),
+            "omega keeps a finite standard error at an IGARCH boundary"
+        );
+        let note = res.boundary_note.as_deref().expect("boundary note");
+        assert!(note.contains("IGARCH"), "note names the bound: {note}");
+    }
+    assert!(
+        hit >= 1,
+        "no IGARCH draw reached the persistence bound; re-derive the seeds"
+    );
+}
+
+/// **Fitting commutes with rescaling — bit-exactly for power-of-two
+/// scales** (audit rounds 1/7). `y -> c y` is a pure relabeling of the
+/// model (`omega -> c^2 omega`, `mu -> c mu`, coefficients unchanged), so
+/// the estimator should commute with it. Since 0.4.0 the optimizer runs
+/// on the internally standardized series `y / rms(y)`; for `c = 2^k`
+/// every step of the standardization is an exact exponent shift, so the
+/// standardized series — and therefore the entire optimizer path — is
+/// bit-identical, and the mapped-back parameters are exact. This is a
+/// same-run invariant (one binary, one CPU), so bit-equality is portable.
+#[test]
+fn fit_commutes_bitexactly_with_power_of_two_rescaling() {
+    let base = simulate_garch11(0.05, 0.08, 0.88, 900, 13);
+    for spec in [
+        GarchSpec {
+            mean: MeanSpec::Zero,
+            vol: VolSpec::Garch { p: 1, q: 1 },
+            dist: DistSpec::Normal,
+        },
+        GarchSpec {
+            mean: MeanSpec::Constant,
+            vol: VolSpec::Garch { p: 1, q: 1 },
+            dist: DistSpec::Normal,
+        },
+        GarchSpec {
+            mean: MeanSpec::Zero,
+            vol: VolSpec::Gjr { p: 1, o: 1, q: 1 },
+            dist: DistSpec::Normal,
+        },
+    ] {
+        let reference = GarchModel::new(&base, spec).unwrap().fit().unwrap();
+        let names = spec.param_names();
+        for k in [-30i32, -8, 8, 30] {
+            let c = (2.0_f64).powi(k);
+            let y: Vec<f64> = base.iter().map(|v| v * c).collect();
+            let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+            for (i, nm) in names.iter().enumerate() {
+                let expected = match nm.as_str() {
+                    "mu" => reference.params[i] * c,
+                    "omega" => reference.params[i] * c * c,
+                    _ => reference.params[i],
+                };
+                assert_eq!(
+                    res.params[i].to_bits(),
+                    expected.to_bits(),
+                    "{spec:?} c=2^{k}: {nm} = {} but the mapped reference is {expected} — \
+                     an exact rescaling moved the fit",
+                    res.params[i]
+                );
+            }
+        }
+    }
+}
+
+/// The same commutation under *decade* scalings (the audit's own probe
+/// design). `c = 10^k` rounds in `c * y`, so bit-equality is impossible
+/// by construction — the two series are genuinely different data — but
+/// the standardized optimizer must land at the same point to far beyond
+/// statistical resolution. 1e-6 relative on every parameter, eight
+/// decades each side.
+#[test]
+fn fit_commutes_with_decade_rescaling() {
+    let base = simulate_garch11(0.05, 0.08, 0.88, 900, 13);
+    let spec = GarchSpec {
+        mean: MeanSpec::Constant,
+        vol: VolSpec::Garch { p: 1, q: 1 },
+        dist: DistSpec::Normal,
+    };
+    let reference = GarchModel::new(&base, spec).unwrap().fit().unwrap();
+    let names = spec.param_names();
+    let rms = (base.iter().map(|v| v * v).sum::<f64>() / base.len() as f64).sqrt();
+    for k in [-8i32, -4, 4, 8] {
+        let c = (10.0_f64).powi(k);
+        let y: Vec<f64> = base.iter().map(|v| v * c).collect();
+        let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+        for (i, nm) in names.iter().enumerate() {
+            let mapped = match nm.as_str() {
+                "mu" => res.params[i] / c,
+                "omega" => res.params[i] / (c * c),
+                _ => res.params[i],
+            };
+            // `mu` is a location whose natural scale is the residual RMS.
+            let denom = if nm == "mu" {
+                rms
+            } else {
+                reference.params[i].abs()
+            };
+            let dev = (mapped - reference.params[i]).abs() / denom;
+            assert!(
+                dev < 1e-6,
+                "c=1e{k}: {nm} mapped to {mapped} vs {} ({dev:.2e} relative)",
+                reference.params[i]
+            );
+        }
+    }
+}
+
 /// Inadmissible parameter vectors are rejected: explosive persistence,
 /// negative coefficients, non-positive omega, EGARCH |beta| >= 1, and
 /// nu <= 2 all error rather than evaluate.

@@ -1893,7 +1893,30 @@ fn theta_forecast<'py>(
 /// `vol`: "garch", "gjr", or "egarch"; `mean`: "zero" or "constant";
 /// `dist`: "normal" or "t". Conventions and results match the `arch`
 /// package (fixed-parameter logliks at machine precision). Returns both
-/// MLE and Bollerslev-Wooldridge robust standard errors.
+/// MLE and Bollerslev-Wooldridge robust standard errors. Estimation is
+/// scale-adaptive: the optimizer runs on an internally standardized
+/// series and maps the optimum back exactly, so rescaling the data
+/// `y -> c * y` maps the fit (`omega -> c^2 omega`, `mu -> c mu`,
+/// coefficients unchanged — bit-exactly for power-of-two `c`) instead of
+/// changing it; decimal and percent returns give the same model.
+///
+/// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
+/// `se_mle`, `se_robust`, `se_valid`, `boundary`, `boundary_note`,
+/// `converged`, `conditional_volatility`, `std_residuals`, and
+/// `variance_forecast` when `forecast_horizon > 0`.
+///
+/// **Boundary fits.** When the QMLE lands on a constraint (`alpha` at its
+/// sign bound, persistence at 1 — an IGARCH fit), the observed
+/// information is singular in the constrained direction by construction
+/// and no classical standard error exists for those parameters: their
+/// `se_mle`/`se_robust` entries are NaN with `se_valid` False and
+/// `boundary` True (per parameter), `boundary_note` says which constraint
+/// and why, and the *interior* parameters keep finite standard errors
+/// from the reduced Hessian over the free directions. `se_valid` False
+/// with `boundary` False marks a numerically flat (weakly identified)
+/// direction instead. `converged` reports whether an optimizer stage
+/// terminated by its convergence criterion (the best point found is
+/// returned either way).
 ///
 /// When `forecast_horizon > 0`, `variance_forecast` is the analytic
 /// *point* path of conditional variances `E[sigma2_{T+m} | F_T]`,
@@ -1955,6 +1978,10 @@ fn garch_fit<'py>(
     d.set_item("bic", r.bic)?;
     d.set_item("se_mle", r.se_mle.clone().into_pyarray(py))?;
     d.set_item("se_robust", r.se_robust.clone().into_pyarray(py))?;
+    d.set_item("se_valid", r.se_valid.clone().into_pyarray(py))?;
+    d.set_item("boundary", r.boundary.clone().into_pyarray(py))?;
+    d.set_item("boundary_note", r.boundary_note.clone())?;
+    d.set_item("converged", r.converged)?;
     d.set_item(
         "conditional_volatility",
         r.conditional_volatility.clone().into_pyarray(py),
@@ -6362,6 +6389,15 @@ fn gas_volatility<'py>(
 /// honest `converged` (on near-Gaussian data a `"t"` fit's `nu` runs to
 /// the boundary and reports `False` while the level path stays valid),
 /// `iterations`, `n_obs`, and the `density` used.
+///
+/// Estimation is scale-adaptive: the optimizer runs on an internally
+/// standardized series and maps the optimum back exactly, so rescaling
+/// the data `y -> c * y` maps the fit (`scale -> c * scale`; `kappa` and
+/// `nu` unchanged — bit-exactly for power-of-two `c`) instead of
+/// changing it. This matters most for `"laplace"`, whose likelihood is
+/// piecewise in `kappa` (every residual sign flip is a kink): the fit
+/// certifies the best kink basin found, and before standardization the
+/// basin could depend on the units of `y`.
 #[pyfunction]
 #[pyo3(signature = (y, density = "t"))]
 fn dcs_local_level<'py>(

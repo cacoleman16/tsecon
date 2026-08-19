@@ -96,8 +96,8 @@ beats another without a test that accounts for dependent forecast errors.
 - **`var_backtest`** whenever you report a VaR number — from `garch_fit`
   variance forecasts with a distributional quantile, from
   `quantile_regression`/`growth_at_risk` conditional quantiles, or from an
-  EVT tail (the POT/GPD `gpd_fit` slice scoped build-next on the roadmap,
-  Module 03/E11) — before anyone trades or reports against it. The three
+  EVT tail (`gpd_fit`'s McNeil-Frey POT VaR, shipped in 0.3.0) — before
+  anyone trades or reports against it. The three
   tests answer different questions: Kupiec catches the wrong *level* of
   risk, Christoffersen/DQ catch a model that is right on average but too
   slow to update after a breach (violations arriving in bursts).
