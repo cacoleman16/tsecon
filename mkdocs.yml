@@ -143,6 +143,7 @@ nav:
           - Quantile regression & growth-at-risk: reference/model-cards/quantile.md
           - Functional shocks (FVAR/FLP): reference/model-cards/functional-shocks.md
           - Structural breaks: reference/model-cards/structural-breaks.md
+          - Copulas: reference/model-cards/copulas.md
   - Migration:
       - From statsmodels: migration/from-statsmodels.md
       - From R: migration/from-r.md
