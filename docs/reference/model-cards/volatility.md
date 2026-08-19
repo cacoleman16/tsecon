@@ -44,7 +44,10 @@ same model unless `r` is already demeaned or you say `mean="constant"`.
 `dist="normal"` gives clean QMLE, switch to `dist="t"` when standardized
 residuals stay fat-tailed. `p=1, q=1` is the near-universal order; `o=1` turns
 on the asymmetry term for GJR/EGARCH. `forecast_horizon` returns the multi-step
-variance path.
+variance path. Units do not matter: estimation is scale-adaptive (the optimizer
+runs on an internally standardized series and the optimum is mapped back
+exactly), so decimal returns and percent returns give the same model with
+`omega` in the units of `y²` — no `rescale=` argument is needed or offered.
 
 **How to read the output.** `params` are named by `param_names`
 (`omega, alpha[1], beta[1]`, with `mu` prepended under `mean="constant"` and
@@ -100,7 +103,7 @@ for t in range(1, n):
 fit = tsecon.garch_fit(r, vol="garch", mean="constant", dist="t",
                        p=1, q=1, forecast_horizon=5)
 print(dict(zip(fit["param_names"], np.round(fit["params"], 4))))
-# {'mu': -0.0004, 'omega': 0.0267, 'alpha[1]': 0.0615, 'beta[1]': 0.9239, 'nu': 8.37}
+# {'mu': -0.0004, 'omega': 0.0267, 'alpha[1]': 0.0615, 'beta[1]': 0.9239, 'nu': 8.3708}
 print("robust SEs:", np.round(fit["se_robust"], 4))
 print("5-step variance path:", np.round(fit["variance_forecast"], 4))
 ```

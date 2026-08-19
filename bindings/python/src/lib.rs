@@ -1893,7 +1893,12 @@ fn theta_forecast<'py>(
 /// `vol`: "garch", "gjr", or "egarch"; `mean`: "zero" or "constant";
 /// `dist`: "normal" or "t". Conventions and results match the `arch`
 /// package (fixed-parameter logliks at machine precision). Returns both
-/// MLE and Bollerslev-Wooldridge robust standard errors.
+/// MLE and Bollerslev-Wooldridge robust standard errors. Estimation is
+/// scale-adaptive: the optimizer runs on an internally standardized
+/// series and maps the optimum back exactly, so rescaling the data
+/// `y -> c * y` maps the fit (`omega -> c^2 omega`, `mu -> c mu`,
+/// coefficients unchanged — bit-exactly for power-of-two `c`) instead of
+/// changing it; decimal and percent returns give the same model.
 ///
 /// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
 /// `se_mle`, `se_robust`, `se_valid`, `boundary`, `boundary_note`,

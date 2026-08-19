@@ -338,6 +338,102 @@ fn igarch_boundary_flags_all_coefficients() {
     );
 }
 
+/// **Fitting commutes with rescaling — bit-exactly for power-of-two
+/// scales** (audit rounds 1/7). `y -> c y` is a pure relabeling of the
+/// model (`omega -> c^2 omega`, `mu -> c mu`, coefficients unchanged), so
+/// the estimator should commute with it. Since 0.4.0 the optimizer runs
+/// on the internally standardized series `y / rms(y)`; for `c = 2^k`
+/// every step of the standardization is an exact exponent shift, so the
+/// standardized series — and therefore the entire optimizer path — is
+/// bit-identical, and the mapped-back parameters are exact. This is a
+/// same-run invariant (one binary, one CPU), so bit-equality is portable.
+#[test]
+fn fit_commutes_bitexactly_with_power_of_two_rescaling() {
+    let base = simulate_garch11(0.05, 0.08, 0.88, 900, 13);
+    for spec in [
+        GarchSpec {
+            mean: MeanSpec::Zero,
+            vol: VolSpec::Garch { p: 1, q: 1 },
+            dist: DistSpec::Normal,
+        },
+        GarchSpec {
+            mean: MeanSpec::Constant,
+            vol: VolSpec::Garch { p: 1, q: 1 },
+            dist: DistSpec::Normal,
+        },
+        GarchSpec {
+            mean: MeanSpec::Zero,
+            vol: VolSpec::Gjr { p: 1, o: 1, q: 1 },
+            dist: DistSpec::Normal,
+        },
+    ] {
+        let reference = GarchModel::new(&base, spec).unwrap().fit().unwrap();
+        let names = spec.param_names();
+        for k in [-30i32, -8, 8, 30] {
+            let c = (2.0_f64).powi(k);
+            let y: Vec<f64> = base.iter().map(|v| v * c).collect();
+            let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+            for (i, nm) in names.iter().enumerate() {
+                let expected = match nm.as_str() {
+                    "mu" => reference.params[i] * c,
+                    "omega" => reference.params[i] * c * c,
+                    _ => reference.params[i],
+                };
+                assert_eq!(
+                    res.params[i].to_bits(),
+                    expected.to_bits(),
+                    "{spec:?} c=2^{k}: {nm} = {} but the mapped reference is {expected} — \
+                     an exact rescaling moved the fit",
+                    res.params[i]
+                );
+            }
+        }
+    }
+}
+
+/// The same commutation under *decade* scalings (the audit's own probe
+/// design). `c = 10^k` rounds in `c * y`, so bit-equality is impossible
+/// by construction — the two series are genuinely different data — but
+/// the standardized optimizer must land at the same point to far beyond
+/// statistical resolution. 1e-6 relative on every parameter, eight
+/// decades each side.
+#[test]
+fn fit_commutes_with_decade_rescaling() {
+    let base = simulate_garch11(0.05, 0.08, 0.88, 900, 13);
+    let spec = GarchSpec {
+        mean: MeanSpec::Constant,
+        vol: VolSpec::Garch { p: 1, q: 1 },
+        dist: DistSpec::Normal,
+    };
+    let reference = GarchModel::new(&base, spec).unwrap().fit().unwrap();
+    let names = spec.param_names();
+    let rms = (base.iter().map(|v| v * v).sum::<f64>() / base.len() as f64).sqrt();
+    for k in [-8i32, -4, 4, 8] {
+        let c = (10.0_f64).powi(k);
+        let y: Vec<f64> = base.iter().map(|v| v * c).collect();
+        let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+        for (i, nm) in names.iter().enumerate() {
+            let mapped = match nm.as_str() {
+                "mu" => res.params[i] / c,
+                "omega" => res.params[i] / (c * c),
+                _ => res.params[i],
+            };
+            // `mu` is a location whose natural scale is the residual RMS.
+            let denom = if nm == "mu" {
+                rms
+            } else {
+                reference.params[i].abs()
+            };
+            let dev = (mapped - reference.params[i]).abs() / denom;
+            assert!(
+                dev < 1e-6,
+                "c=1e{k}: {nm} mapped to {mapped} vs {} ({dev:.2e} relative)",
+                reference.params[i]
+            );
+        }
+    }
+}
+
 /// Inadmissible parameter vectors are rejected: explosive persistence,
 /// negative coefficients, non-positive omega, EGARCH |beta| >= 1, and
 /// nu <= 2 all error rather than evaluate.

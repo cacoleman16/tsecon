@@ -600,8 +600,63 @@ impl GarchModel {
         })
     }
 
+    /// The internal standardization scale: the root-mean-square of the
+    /// starting residuals (the same quantity the backcast and the grid
+    /// starting values are built from). Estimation runs on `y / s` and the
+    /// optimum is mapped back — see [`GarchModel::fit`]. Falls back to 1
+    /// (no rescaling) if the RMS is degenerate, leaving whatever honest
+    /// error the unscaled path raises.
+    fn standardization_scale(&self) -> f64 {
+        let resids = Self::starting_resids(&self.y, self.spec.mean);
+        let rms = (resids.iter().map(|e| e * e).sum::<f64>() / resids.len() as f64).sqrt();
+        if rms.is_finite() && rms > 0.0 {
+            rms
+        } else {
+            1.0
+        }
+    }
+
+    /// Maps a parameter vector fitted on the standardized series `y / s`
+    /// back to the units of `y`: `mu -> s * mu`, GARCH/GJR
+    /// `omega -> s^2 * omega`, EGARCH `omega -> omega + (1 - sum(beta)) *
+    /// ln(s^2)` (its intercept is a log-variance, which *shifts* under
+    /// rescaling), every dimensionless coefficient (`alpha`, `gamma`,
+    /// `beta`, `nu`) unchanged. This is the exact reparameterization
+    /// `y -> c y` of the model, applied with `c = s`.
+    fn params_from_standardized(&self, params: &[f64], s: f64) -> Result<Vec<f64>, GarchError> {
+        let mut out = params.to_vec();
+        let nm = self.spec.n_mean_params();
+        if nm > 0 {
+            out[0] *= s;
+        }
+        match self.spec.vol {
+            VolSpec::Egarch { .. } => {
+                let (_, _, _, _, betas, _) = self.spec.split_params(params)?;
+                let sum_beta: f64 = betas.iter().sum();
+                out[nm] += (1.0 - sum_beta) * 2.0 * s.ln();
+            }
+            _ => out[nm] *= s * s,
+        }
+        Ok(out)
+    }
+
     /// Fits the model by quasi-maximum likelihood and returns the results
     /// object.
+    ///
+    /// **Scale-adaptive estimation** (audit round 7). The optimizer runs
+    /// on the internally standardized series `y / s`, `s` the RMS of the
+    /// starting residuals, and the optimum is mapped back through the
+    /// exact reparameterization `y -> c y` (see
+    /// `GarchModel::params_from_standardized`) — the same trick `arch`'s
+    /// `rescale=True` applies, done unconditionally so it cannot be
+    /// forgotten. Rescaling the data is a pure relabeling of the model,
+    /// so the *estimator* should commute with it; without this, the
+    /// round-1 audit measured 52/330 cross-scale comparisons converging
+    /// to a different point (the optimizer's paths, not its optima,
+    /// depend on the units through termination arithmetic). The
+    /// log-likelihood, conditional variances, and standard errors in the
+    /// results are all evaluated at the mapped parameters *on the
+    /// original data*, so their units are the caller's.
     ///
     /// **Constraint handling** (documented choice): the search runs in an
     /// unconstrained working space via the `tsecon-optim`
@@ -631,9 +686,35 @@ impl GarchModel {
     /// Starting-value/optimizer failures; likelihood errors at the
     /// optimum. If standard errors cannot be computed at the optimum
     /// (singular Hessian at a flat or boundary point), the fit still
-    /// succeeds with NaN standard errors — flatness is reported, not
-    /// hidden.
+    /// succeeds with NaN standard errors and per-parameter
+    /// `se_valid`/`boundary` flags — flatness is reported, not hidden.
     pub fn fit(&self) -> Result<GarchResults, GarchError> {
+        let s = self.standardization_scale();
+        let (params, converged) = if s == 1.0 {
+            self.optimize()?
+        } else {
+            let scaled: Vec<f64> = self.y.iter().map(|v| v / s).collect();
+            let inner = Self::new(&scaled, self.spec)?;
+            let (inner_params, converged) = inner.optimize()?;
+            (self.params_from_standardized(&inner_params, s)?, converged)
+        };
+        // Everything reported is evaluated at the mapped parameters on the
+        // ORIGINAL data (`self.loglike` is bit-identical to the optimizer's
+        // objective, re-based to the caller's units).
+        let loglik = self.loglike(&params)?;
+        // Boundary-aware standard errors: finite for interior parameters,
+        // NaN + `se_valid = false` at an active boundary, all-invalid when
+        // even the reduced Hessian is degenerate. Never a silent NaN row —
+        // the flags and the note say why.
+        let se = self.standard_errors(&params)?;
+        let note = self.boundary_note(&params, &se.boundary);
+        GarchResults::build(self, params, loglik, se, converged, note)
+    }
+
+    /// The three-stage QMLE search on this model's own data; returns the
+    /// best parameters (in this model's units) and the convergence flag.
+    /// [`GarchModel::fit`] calls it on the internally standardized model.
+    fn optimize(&self) -> Result<(Vec<f64>, bool), GarchError> {
         let sv = self.starting_values()?;
         let k = self.spec.n_params();
         let omega_idx = self.spec.n_mean_params();
@@ -699,14 +780,6 @@ impl GarchModel {
             });
         }
 
-        let params = to_natural(&best.x)?;
-        let loglik = -best.f;
-        // Boundary-aware standard errors: finite for interior parameters,
-        // NaN + `se_valid = false` at an active boundary, all-invalid when
-        // even the reduced Hessian is degenerate. Never a silent NaN row —
-        // the flags and the note say why.
-        let se = self.standard_errors(&params)?;
-        let note = self.boundary_note(&params, &se.boundary);
-        GarchResults::build(self, params, loglik, se, converged, note)
+        Ok((to_natural(&best.x)?, converged))
     }
 }
