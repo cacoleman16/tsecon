@@ -7023,6 +7023,82 @@ fn afns_adjustment<'py>(
     Ok(out.into_pyarray(py))
 }
 
+/// ACM regression-based term premium (Adrian-Crump-Moench 2013): a Gaussian
+/// affine term-structure model estimated entirely by linear regressions —
+/// principal-component factors from the yield panel, a factor VAR(1),
+/// excess-return regressions on lagged factors and contemporaneous
+/// innovations, the convexity-adjusted `lambda0`/`lambda1` price-of-risk OLS,
+/// and affine log-price recursions run with and without the prices of risk.
+/// Decomposes every fitted yield into a risk-neutral (expected-short-rate)
+/// component and the term premium.
+///
+/// UNITS ARE LOAD-BEARING: `yields` is a `T x M` panel of ANNUALIZED,
+/// continuously-compounded zero-coupon log yields in DECIMAL (0.05, not 5.0 —
+/// divide percent by 100; the Jensen convexity terms are quadratic, so
+/// percent input misprices them by 100x, it does not just rescale).
+/// `maturities` are integer PERIODS (months for monthly data), strictly
+/// ascending, containing 1; excess returns are built at every maturity n >= 2
+/// whose neighbour n - 1 is also in the grid (supply a contiguous grid or
+/// pairs around the return maturities, interpolating the curve first if
+/// needed — ACM interpolate the GSW curve to monthly maturities 1..120).
+///
+/// Returns factors (T x K), factor_loadings, mu, phi, sigma, rx_maturities,
+/// a/beta/c (the excess-return regression), sigma2, lambda0, lambda1,
+/// delta0/delta1 (the short-rate equation), the price recursions A/B and
+/// A_rn/B_rn, fitted / risk_neutral / term_premium (T x M, annualized
+/// decimal, fitted = risk_neutral + term_premium), and the diagnostic
+/// var_rsquared, rx_rsquared, short_rate_rsquared, yield_rsquared.
+///
+/// Validated end-to-end against an independent NumPy transcription at 1e-8,
+/// with term-premium recovery on a known-price-of-risk affine DGP, and — on
+/// the 1961-2014 GSW panel — against the NY Fed's published ACM 10-year term
+/// premium (correlation 0.985, RMSE 0.31pp; the level is estimation-sample
+/// sensitive, so compare premia only across models fit on the same sample).
+#[pyfunction]
+#[pyo3(signature = (yields, maturities, n_factors = 5, periods_per_year = 12.0))]
+fn acm_term_premium<'py>(
+    py: Python<'py>,
+    yields: numpy::PyReadonlyArray2<'py, f64>,
+    maturities: Vec<usize>,
+    n_factors: usize,
+    periods_per_year: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let rows = mat_to_vec2(&to_faer(&yields));
+    let fit =
+        tsecon_termstructure::acm_term_premium(&rows, &maturities, n_factors, periods_per_year)
+            .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("maturities", fit.maturities)?;
+    d.set_item("n_factors", fit.n_factors)?;
+    d.set_item("periods_per_year", fit.periods_per_year)?;
+    d.set_item("factors", fit.factors)?;
+    d.set_item("factor_loadings", fit.factor_loadings)?;
+    d.set_item("mu", fit.mu.into_pyarray(py))?;
+    d.set_item("phi", fit.phi)?;
+    d.set_item("sigma", fit.sigma)?;
+    d.set_item("rx_maturities", fit.rx_maturities)?;
+    d.set_item("a", fit.rx_a.into_pyarray(py))?;
+    d.set_item("beta", fit.rx_beta)?;
+    d.set_item("c", fit.rx_c)?;
+    d.set_item("sigma2", fit.sigma2)?;
+    d.set_item("lambda0", fit.lambda0.into_pyarray(py))?;
+    d.set_item("lambda1", fit.lambda1)?;
+    d.set_item("delta0", fit.delta0)?;
+    d.set_item("delta1", fit.delta1.into_pyarray(py))?;
+    d.set_item("A", fit.price_a.into_pyarray(py))?;
+    d.set_item("B", fit.price_b)?;
+    d.set_item("A_rn", fit.price_a_rn.into_pyarray(py))?;
+    d.set_item("B_rn", fit.price_b_rn)?;
+    d.set_item("fitted", fit.fitted)?;
+    d.set_item("risk_neutral", fit.risk_neutral)?;
+    d.set_item("term_premium", fit.term_premium)?;
+    d.set_item("var_rsquared", fit.var_rsquared.into_pyarray(py))?;
+    d.set_item("rx_rsquared", fit.rx_rsquared.into_pyarray(py))?;
+    d.set_item("short_rate_rsquared", fit.short_rate_rsquared)?;
+    d.set_item("yield_rsquared", fit.yield_rsquared.into_pyarray(py))?;
+    Ok(d)
+}
+
 /// Solve a linear rational-expectations (DSGE-lite) model by Blanchard-Kahn
 /// (1980): `A E_t[y_{t+1}] = B y_t + C z_{t+1}`, where `y` stacks the
 /// `n_predetermined` backward-looking variables then the forward-looking
@@ -8542,6 +8618,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(chow_test, m)?)?;
     m.add_function(wrap_pyfunction!(cusum_test, m)?)?;
     m.add_function(wrap_pyfunction!(afns_adjustment, m)?)?;
+    m.add_function(wrap_pyfunction!(acm_term_premium, m)?)?;
     m.add_function(wrap_pyfunction!(dsge_solve, m)?)?;
     m.add_function(wrap_pyfunction!(quantile_regression, m)?)?;
     m.add_function(wrap_pyfunction!(quantile_lp, m)?)?;

@@ -32,8 +32,12 @@ public datasets vendored **with attribution** for the replication pages
 (`ramey_zubairy.csv` — the authors' public replication archive;
 `yield_curve_recession.csv` — FRED series GS10/TB3MS/USREC;
 `sunspots_tong.csv` — the public-domain annual Wolf sunspot numbers
-1700–1988, via `statsmodels.datasets.sunspots`). Each carries its source in
-its header comments.
+1700–1988, via `statsmodels.datasets.sunspots`;
+`gsw_nss_params.csv` — the Gürkaynak-Sack-Wright NSS US Treasury curve
+parameters, Federal Reserve Board public data, monthly 1961-2014;
+`acm_published_10y.csv` — the NY Fed's published ACM 10-year term-premium
+decomposition, quarterly, a level/shape validation target). Each carries its
+source in its header comments.
 
 Each fixture records the exact reference-library versions used, so the values
 are reproducible. Regenerate any of them with, e.g.:

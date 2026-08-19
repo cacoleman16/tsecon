@@ -65,6 +65,9 @@ _EXEMPT: dict[str, frozenset[str]] = {
     "arima_fit": frozenset({"seasonal"}),
     # Candidate threshold delays d in y_{t-d}: integer lags, not data.
     "setar": frozenset({"delays"}),
+    # Integer maturities in periods (months), not data: the ACM excess
+    # returns pair maturity n with n - 1, so these must stay integers.
+    "acm_term_premium": frozenset({"maturities"}),
 }
 
 _POSITIONAL = (

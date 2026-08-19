@@ -1325,6 +1325,7 @@ version = "0.3.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
+ "tsecon-linalg",
  "tsecon-optim",
 ]
 
