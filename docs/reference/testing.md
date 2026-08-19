@@ -645,7 +645,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 1472 passed, 0 failed
+# 1476 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
