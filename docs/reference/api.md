@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**144 functions.**
+**145 functions.**
 
 ## diagnostics
 
@@ -1311,10 +1311,46 @@ Proxy SVAR (external-instrument SVAR-IV): one shock from one instrument.
     column up to scale; the unit-effect normalization sets its impact on
     `norm_var` to `unit` (sign pinned). `proxy` aligns to `data` rows (NaN
     outside the instrument window is dropped). Returns `irf` (horizon+1, n),
-    `impact`, `relative_impact`, `cov_um`, `first_stage_f` (weak below 10),
-    `reliability` = Corr(m, u_norm)^2, `n_proxy`, and the estimated `shock`
-    (length T). Point estimate only; see proxy_svar_bands for
-    moving-block bands and proxy_ar_sets for weak-IV-robust sets.
+    `impact`, `relative_impact`, `cov_um`, `first_stage_f` (HC1-robust when
+    `robust_f`), `reliability` = Corr(m, u_norm)^2, `n_proxy`, the estimated
+    `shock` (length T), and `first_stage`: the proxy_first_stage diagnostics
+    dict (the MOP effective F with its tau-based critical values --
+    mop_cv_tau10 = 23.11 is the conventional bar, not the folklore 10).
+    Point estimate only; see proxy_svar_bands for moving-block bands
+    (strong instrument) and proxy_ar_sets for weak-IV-robust sets (use when
+    first_stage["weak_mop_tau10"] is True).
+
+### `proxy_first_stage`
+
+```python
+def proxy_first_stage(
+    data: _ArrayLike,
+    proxy: _ArrayLike,
+    lags: int = ...,
+    norm_var: int = ...,
+    trend: str = ...,
+    variance: str = ...,
+    hac_lags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+First-stage strength diagnostics: the Montiel Olea-Pflueger effective F.
+
+    With one instrument the MOP effective F equals the robust F (the squared
+    robust t of the first-stage slope; Windmeijer 2025), reported under
+    variance="hc1" (default), "hac" (Bartlett/Newey-West, hac_lags defaulting
+    to the Newey-West rule -- for serially correlated proxies), or
+    "classical" (for comparison with published homoskedastic tables).
+
+    Returns `beta`, `se`, `effective_f`, `f_classical`, `f_hc1`,
+    `reliability`, `n_proxy`, `hac_lags`, the MOP critical values at 5% test
+    level (`mop_cv_tau5/10/20/30` = 37.42 / 23.11 / 15.06 / 12.05 -- the
+    null "worst-case relative bias > tau"), `tau_bound` (the smallest tau the
+    observed effective F rejects; +inf when even zero relevance cannot be
+    rejected), and the verdicts `weak_mop_tau10` (the honest bar) and
+    `weak_folklore` (F < 10, kept only because the literature reports it).
+    When weak_mop_tau10 is True do not trust Wald-type bands
+    (proxy_svar_bands); use proxy_ar_sets.
 
 ### `nongaussian_svar`
 
