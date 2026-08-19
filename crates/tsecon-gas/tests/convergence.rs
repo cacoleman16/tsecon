@@ -74,11 +74,14 @@ fn fit_reports_convergence_when_the_problem_is_well_posed() {
 /// Fitting the Student-t model to data that is Gaussian by construction is
 /// exactly that case. The Gaussian is the `nu -> infinity` limit of the
 /// standardized t, so the likelihood has no interior maximum in `nu`; the
-/// working coordinate `ln(nu - 2)` runs off to infinity and the simplex can
-/// never collapse around it, at any budget. The estimates of the other
-/// parameters are fine — which is the point. `converged` reports the
-/// optimizer's certificate, not the quality of the fit, and here there
-/// honestly is none.
+/// working coordinate `ln(nu - 2)` runs off toward infinity. Whether the
+/// simplex ever collapses out on that flat ridge is a floating-point
+/// rounding accident that varies by platform (Windows MSVC certified the
+/// analogous DCS level fit that Linux did not), which is why the flag is
+/// forced `false` past `NU_GAUSSIAN_RIDGE` rather than left to the
+/// optimizer. The estimates of the other parameters are fine — which is
+/// the point. `converged` reports that no interior optimum was certified,
+/// not the quality of the fit.
 #[test]
 fn fit_does_not_claim_convergence_at_an_open_boundary() {
     let fx = load_fixture();
@@ -97,7 +100,8 @@ fn fit_does_not_claim_convergence_at_an_open_boundary() {
         "nu = {} — expected the dof to diverge on Gaussian data",
         res.params.nu
     );
-    // And the run really did exhaust its budget chasing it.
+    // And the run really did chase it (the flag is not a fit that never
+    // started): work was done, and no certificate came back.
     assert!(!res.converged && res.fevals > 0);
 
     // Same data, correctly specified: the flag flips. Same series, same

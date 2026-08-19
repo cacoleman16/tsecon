@@ -2,7 +2,7 @@
 
 use super::{ContinuousDist, StudentT};
 use crate::error::StatsError;
-use crate::special::ln_gamma;
+use crate::special::ln_gamma_half_ratio;
 use core::f64::consts::PI;
 
 /// Hansen's skewed Student t distribution (Hansen 1994, "Autoregressive
@@ -65,8 +65,10 @@ impl HansenSkewT {
                 requirement: "-1 < lambda < 1",
             });
         }
-        let ln_c =
-            ln_gamma(0.5 * (eta + 1.0)) - ln_gamma(0.5 * eta) - 0.5 * (PI * (eta - 2.0)).ln();
+        // ln Γ((η+1)/2) - ln Γ(η/2) via the cancellation-safe ratio (the
+        // constant feeds a, b, and every density value, so large-η noise
+        // here would corrupt the whole distribution).
+        let ln_c = ln_gamma_half_ratio(0.5 * eta) - 0.5 * (PI * (eta - 2.0)).ln();
         let c = ln_c.exp();
         let a = 4.0 * lambda * c * (eta - 2.0) / (eta - 1.0);
         let b2 = 1.0 + 3.0 * lambda * lambda - a * a;

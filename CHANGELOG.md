@@ -105,6 +105,31 @@ Nothing yet.
 - Cosmetic: `forecasting.md` still called `gpd_fit` unshipped; a stale
   printed digit in the volatility card.
 
+### Fixed — caught by CI (Windows) after the 0.4.0 freeze
+
+- **The Student-t log-density constant is now cancellation-safe at large
+  `nu`** (new `tsecon_stats::special::ln_gamma_half_ratio`, asymptotic
+  branch above `x = 1e3`; used by `StudentT::ln_pdf`, the Hansen skew-t,
+  and both `tsecon-gas` models). The literal `lnΓ((ν+1)/2) − lnΓ(ν/2)`
+  difference turns into rounding noise as `nu` rides toward the Gaussian
+  boundary — measured: a clean-data `dcs_local_level(density="t")` fit
+  reported `loglik = +54230` on a series whose Gaussian log-likelihood is
+  `−744`, and the optimizer climbed that noise to `nu ≈ 1e16`. Post-fix
+  the t fit's loglik matches the Gaussian fit's to `1e-12` on the clean
+  fixtures (the mathematical nesting bound), pinned by new Rust and
+  Python regression tests. Interior optima (Nile `nu = 20.3`,
+  contaminated fixtures `nu ≈ 2`) are bit-identical pre/post: the literal
+  difference is kept below the seam.
+- **`converged` is now deterministic on the `nu → ∞` Gaussian ridge**
+  (`dcs_local_level` and `gas_volatility`, Student-t density). Whether
+  the simplex happens to collapse on that flat ridge is a libm rounding
+  accident — windows-latest CI certified `converged=True` on the exact
+  fixture where Linux reported `False`, failing the documented
+  "honest flag" contract. Past `tsecon_gas::kernel::NU_GAUSSIAN_RIDGE`
+  (`nu > 1e3`, far above any genuine interior optimum observed and far
+  below any tolerance stop on the stable ridge) the flag is forced
+  `False` on every platform; the estimates themselves are untouched.
+
 ## [0.3.0] - 2026-08-18
 
 ### Added — the replication gallery, opened wide

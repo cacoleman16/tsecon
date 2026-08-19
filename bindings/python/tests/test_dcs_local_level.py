@@ -72,7 +72,17 @@ def test_t_beats_gaussian_on_contaminated_fixture_series():
 def test_t_nests_gaussian_on_clean_data_with_honest_flag():
     """On clean Gaussian data the t fit collapses onto the Gaussian filter
     (huge nu, near-identical path) and honestly reports converged=False —
-    the nu boundary has no interior optimum to certify."""
+    the nu boundary has no interior optimum to certify.
+
+    The flag is deterministic, not an optimizer accident: whether the
+    simplex happens to collapse on the flat nu ridge varies with the
+    platform's libm (this exact assertion caught converged=True on
+    Windows MSVC while Linux reported False), so past the crate's
+    NU_GAUSSIAN_RIDGE threshold the fit forces the flag False everywhere.
+    The loglik assertion pins the companion fix: the t normalizing
+    constant used to cancel catastrophically at huge nu, reporting
+    loglik = +54230 on this series against the -744 Gaussian limit it
+    cannot exceed (measured Linux gap after the fix: 3.4e-13)."""
     case = DCS["gaussian_ss"][0]
     y = np.asarray(case["y"])
     rg = tsecon.dcs_local_level(y, density="gaussian")
@@ -82,6 +92,7 @@ def test_t_nests_gaussian_on_clean_data_with_honest_flag():
     assert rt["nu"] > 30.0
     assert not rt["converged"]
     assert rg["converged"]
+    assert rt["loglik"] == pytest.approx(rg["loglik"], abs=0.01)
 
 
 def test_laplace_sign_filter_is_sane():

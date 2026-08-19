@@ -230,6 +230,25 @@ fn closed_form_cross_checks() {
             "t(1e7) vs normal at {x}"
         );
     }
+
+    // The same limit must hold for ln_pdf at *extreme* df. Regression
+    // test: the normalizing constant used to be the literal difference
+    // ln Γ((v+1)/2) - ln Γ(v/2), which at v = 1e15 is the difference of
+    // two O(1e16) values — pure rounding noise of magnitude O(1e2), not
+    // a log-density (it fed a DCS-t likelihood that reported +54230 on
+    // clean data whose Gaussian log-likelihood is -744). Stable form:
+    // |ln t_v(x) - ln φ(x)| = O(1/v).
+    for &v in &[1e9, 1e15] {
+        let t_huge = StudentT::new(v).unwrap();
+        for &x in &[0.0, 1.0, 2.5] {
+            let normal = -0.5 * (2.0 * core::f64::consts::PI).ln() - 0.5 * x * x;
+            assert!(
+                (t_huge.ln_pdf(x) - normal).abs() < 1e-8,
+                "t({v:e}) ln_pdf at {x}: {} vs normal {normal}",
+                t_huge.ln_pdf(x)
+            );
+        }
+    }
 }
 
 /// Free chi-squared p-value helpers agree with the distribution object and

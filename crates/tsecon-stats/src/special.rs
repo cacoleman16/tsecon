@@ -97,6 +97,54 @@ pub fn ln_gamma(x: f64) -> f64 {
     0.5 * LN_2PI + (w + 0.5) * t.ln() - t + a.ln()
 }
 
+/// Seam of [`ln_gamma_half_ratio`]: literal difference below, asymptotic
+/// series at and above. Chosen so every bounded-`nu` caller in the
+/// workspace (GARCH boxes `nu` at 500, i.e. `x = 250`) stays on the
+/// literal branch its goldens were pinned against, while the branch
+/// switch happens where the two sides still agree to `~1e-10` absolute
+/// (asserted in the tests below).
+const HALF_RATIO_SEAM: f64 = 1e3;
+
+/// `ln Γ(x + 1/2) − ln Γ(x)`, stable for arbitrarily large `x > 0`.
+///
+/// This is the Student-t log-density normalizing constant
+/// `ln Γ((ν+1)/2) − ln Γ(ν/2)` evaluated at `x = ν/2`. Computed as the
+/// literal difference it cancels catastrophically once `x` is large:
+/// `ln Γ` grows like `x ln x`, so its `~1e-14` relative error becomes a
+/// large *absolute* error while the true difference stays `~(1/2) ln x`.
+/// At `x = 5e15` — a Student-t `nu` riding its Gaussian `nu -> inf`
+/// boundary — both terms are `O(1e17)` carrying absolute error `O(1e3)`
+/// against a true difference of `~18`, and a likelihood built on that
+/// noise *rewards* an optimizer for climbing further (measured before
+/// the fix: a DCS-t fit on clean Gaussian data reported "log-likelihood"
+/// `+54230` on 500 observations, against the `-744` Gaussian limit it
+/// cannot mathematically exceed).
+///
+/// For `x >=` [`HALF_RATIO_SEAM`] the Bernoulli-polynomial asymptotic
+/// series
+///
+/// ```text
+/// ln Γ(x+1/2) − ln Γ(x) = (1/2) ln x − 1/(8x) + 1/(192 x³) + O(x⁻⁵)
+/// ```
+///
+/// is used (the `x⁻²` and `x⁻⁴` terms vanish identically; Abramowitz &
+/// Stegun 6.1.47 with `a = 1/2`, `b = 0`). Its truncation error at the
+/// seam is `O(1e-18)` — below one ulp of the result — while the literal
+/// difference there still carries `~1e-10` of cancellation, so the series
+/// side of the seam is the more accurate one. Below the seam the literal
+/// difference is kept, bit-identical to what existing goldens were pinned
+/// against.
+///
+/// Intended for `x > 0`; `NaN` propagates; `+inf` returns `+inf`.
+pub fn ln_gamma_half_ratio(x: f64) -> f64 {
+    if x < HALF_RATIO_SEAM {
+        ln_gamma(x + 0.5) - ln_gamma(x)
+    } else {
+        let inv = 1.0 / x;
+        0.5 * x.ln() - 0.125 * inv * (1.0 - inv * inv / 24.0)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Error function (Cody's rational approximations)
 // ---------------------------------------------------------------------------
@@ -922,6 +970,60 @@ mod tests {
         assert!(ln_gamma(f64::NAN).is_nan());
         // Γ(10) = 362880
         assert_rel(ln_gamma(10.0), 362880.0_f64.ln(), 1e-14);
+    }
+
+    #[test]
+    fn ln_gamma_half_ratio_matches_literal_difference_below_seam() {
+        // Below the seam the helper IS the literal difference (bit-exact
+        // by construction), and both agree with closed forms:
+        // Γ(1)/Γ(1/2) = 1/sqrt(pi), Γ(3/2)/Γ(1) = sqrt(pi)/2.
+        assert_eq!(
+            ln_gamma_half_ratio(0.5),
+            ln_gamma(1.0) - ln_gamma(0.5),
+            "below the seam the helper must be the literal difference"
+        );
+        assert_rel(ln_gamma_half_ratio(0.5), -0.5 * PI.ln(), 1e-14);
+        assert_rel(ln_gamma_half_ratio(1.0), (0.5 * PI.sqrt()).ln(), 1e-14);
+        // Student-t constant at nu = 5 (x = 2.5), the regime every DCS/GAS
+        // golden was pinned in.
+        assert_eq!(ln_gamma_half_ratio(2.5), ln_gamma(3.0) - ln_gamma(2.5));
+    }
+
+    #[test]
+    fn ln_gamma_half_ratio_branches_agree_at_the_seam() {
+        // The doc's accuracy claim, asserted: just below the seam the
+        // literal difference and the asymptotic series agree to the
+        // literal branch's own cancellation error (~1e-10 absolute at
+        // x = 1e3, where ln Γ ~ 5.9e3 with ~1e-14 relative error).
+        for &x in &[9.99e2, 1e3, 1.001e3] {
+            let literal = ln_gamma(x + 0.5) - ln_gamma(x);
+            let inv = 1.0 / x;
+            let series = 0.5 * x.ln() - 0.125 * inv * (1.0 - inv * inv / 24.0);
+            assert!(
+                (literal - series).abs() < 1e-9,
+                "x = {x}: literal {literal} vs series {series}"
+            );
+        }
+    }
+
+    #[test]
+    fn ln_gamma_half_ratio_is_stable_where_the_literal_difference_is_noise() {
+        // At x = 5e15 the literal difference carries O(1e3) of absolute
+        // error (two O(1e17) terms at ~1e-14 relative each); the helper
+        // must return (1/2) ln x - 1/(8x) to full precision instead.
+        let x = 5e15_f64;
+        let expected = 0.5 * x.ln() - 1.0 / (8.0 * x);
+        assert_rel(ln_gamma_half_ratio(x), expected, 1e-15);
+        // Monotone in x across the seam and beyond (a ridge the optimizer
+        // climbs must at least be a *clean* ridge).
+        let mut prev = f64::NEG_INFINITY;
+        for &x in &[1.0, 10.0, 999.0, 1e3, 1e4, 1e8, 1e12, 1e15] {
+            let v = ln_gamma_half_ratio(x);
+            assert!(v > prev, "not monotone at x = {x}");
+            prev = v;
+        }
+        assert!(ln_gamma_half_ratio(f64::NAN).is_nan());
+        assert_eq!(ln_gamma_half_ratio(f64::INFINITY), f64::INFINITY);
     }
 
     #[test]

@@ -35,7 +35,10 @@ pub struct GasResults {
     pub next_variance: f64,
     /// The number of observations.
     pub n_obs: usize,
-    /// Whether the optimizer reported convergence.
+    /// Whether the optimizer reported convergence. Deterministically
+    /// `false` when a Student-t `nu` has run past
+    /// [`NU_GAUSSIAN_RIDGE`](crate::kernel::NU_GAUSSIAN_RIDGE) toward the
+    /// Gaussian boundary, where there is no interior optimum to certify.
     pub converged: bool,
     /// Optimizer iterations performed.
     pub iterations: usize,

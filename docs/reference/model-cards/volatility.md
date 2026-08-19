@@ -133,7 +133,9 @@ not `converged` alone** — a persistence `b` near 1 flattens the surface and th
 flag can read `False` at a good optimum; on Gaussian data `nu` drifts huge.
 
 **Failure modes.** Symmetric (no leverage) — pair with GJR/EGARCH for equities.
-`converged=False` is often benign near `b≈1`; huge `nu` signals Gaussian data.
+`converged=False` is often benign near `b≈1`; huge `nu` signals Gaussian data
+(past `nu > 1e3` the flag is `False` *by rule* on every platform — there is no
+interior optimum out there for a certificate to certify).
 
 **Validated against.** Hand-derived analytic score/density references (no
 external Python GAS library in the venv); the Gaussian recursion is
@@ -192,7 +194,10 @@ is the one-step-predicted path, `resid = y − level`, `next_level` the
 out-of-sample prediction. **Read `converged` as the optimizer's
 certificate, not a fit grade**: on (near-)Gaussian data the *t* fit's `nu`
 runs to the boundary and the flag reads `False` while `kappa`, `scale`, and
-the level path are fine.
+the level path are fine. That `False` is deterministic — past `nu > 1e3`
+the flag is forced off on every platform, because whether a simplex happens
+to collapse on the flat `nu` ridge is a rounding accident (Windows once
+certified the fit Linux refused), not a certificate.
 
 **Failure modes.** Under heavy contamination `nu` pins near its lower bound
 2 — the fat tail is doing outlier duty, so do **not** report `nu_hat` as the

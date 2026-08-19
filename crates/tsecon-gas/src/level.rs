@@ -113,7 +113,12 @@
 //!   maximum in `nu` (the Gaussian is its `nu -> inf` boundary), so the
 //!   fit reports `converged = false` while the level path and
 //!   `kappa`/`scale` are fine — same behavior, same reason, as the
-//!   volatility model in this crate ([`crate::GasModel`]).
+//!   volatility model in this crate ([`crate::GasModel`]). This is
+//!   *deterministic*, not left to the optimizer: whether a simplex
+//!   happens to collapse on the flat `nu` ridge varies with the
+//!   platform's libm rounding, so past
+//!   [`NU_GAUSSIAN_RIDGE`](crate::kernel::NU_GAUSSIAN_RIDGE) the flag is
+//!   forced `false` on every platform.
 //! * Under heavy contamination `nu_hat` is **not** an estimate of the
 //!   clean noise's tail index: the fat tail is doing outlier duty, and
 //!   `nu_hat` is pushed toward its lower boundary `2`. Read it as a
@@ -156,7 +161,7 @@
 use tsecon_optim::{
     multistart, FnObjective, Method, NelderMeadOptions, Transform, TransformedObjective,
 };
-use tsecon_stats::special::ln_gamma;
+use tsecon_stats::special::ln_gamma_half_ratio;
 
 use crate::error::GasError;
 
@@ -346,7 +351,9 @@ pub struct DcsResults {
     /// Whether the best multistart run's optimizer reported convergence.
     /// This is the optimizer's certificate, not a fit grade: a Student-t
     /// fit on effectively Gaussian data has its optimum at the `nu -> inf`
-    /// boundary and honestly reports `false` (module docs).
+    /// boundary and reports `false` — deterministically, past
+    /// [`NU_GAUSSIAN_RIDGE`](crate::kernel::NU_GAUSSIAN_RIDGE), rather
+    /// than at the mercy of platform rounding (module docs).
     pub converged: bool,
     /// Total optimizer iterations across the multistart runs.
     pub iterations: usize,
@@ -498,9 +505,13 @@ impl<'a> DcsModel<'a> {
             DcsDensity::StudentT => {
                 // log p = c(nu, s) - (nu+1)/2 ln(1 + e^2/(nu s^2));
                 // u = (nu+1) e / (nu + e^2/s^2)  (redescending).
-                let c = ln_gamma(0.5 * (nu + 1.0))
-                    - ln_gamma(0.5 * nu)
-                    - 0.5 * (nu * core::f64::consts::PI * s2).ln();
+                // The constant uses the cancellation-safe half-ratio: nu is
+                // unbounded above, and near the Gaussian nu -> inf boundary
+                // the literal ln-gamma difference is rounding noise that
+                // once fed this fit a "log-likelihood" of +54230 on data
+                // whose Gaussian log-likelihood is -744.
+                let c =
+                    ln_gamma_half_ratio(0.5 * nu) - 0.5 * (nu * core::f64::consts::PI * s2).ln();
                 for (t, &yt) in self.y.iter().enumerate() {
                     level[t] = m;
                     let e = yt - m;
@@ -609,6 +620,16 @@ impl<'a> DcsModel<'a> {
                 fevals,
             )
         };
+
+        // A Student-t whose dof ran past the ridge threshold is on the
+        // Gaussian nu -> inf boundary, where there is no interior optimum
+        // for the certificate to certify: whether the simplex happens to
+        // collapse out on that flat ridge is a libm rounding accident
+        // (measured: converged = false on Linux, true on Windows MSVC, on
+        // the identical fixture) — so out there the flag is false by
+        // decision, not by luck. See [`crate::kernel::NU_GAUSSIAN_RIDGE`].
+        let converged = converged
+            && !(self.density.needs_dof() && params.nu > crate::kernel::NU_GAUSSIAN_RIDGE);
 
         // Everything reported is evaluated at the mapped parameters on the
         // ORIGINAL data, so every output carries the caller's units.
@@ -935,11 +956,15 @@ pub fn steady_state_gain(q: f64) -> Result<f64, GasError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use tsecon_stats::special::ln_gamma;
     use tsecon_stats::ContinuousDist;
 
     #[test]
     fn student_t_log_density_matches_stats_crate() {
         // The Student-t observation density is StudentT.ln_pdf(e/s) - ln s.
+        // The inline c below deliberately keeps the literal ln-gamma
+        // difference: at nu = 5 it is exact, and it makes this test an
+        // independent transcription check of the shipped constant.
         let (nu, e, s) = (5.0_f64, 0.7_f64, 1.3_f64);
         let expected = tsecon_stats::StudentT::new(nu).unwrap().ln_pdf(e / s) - s.ln();
         let c = ln_gamma(0.5 * (nu + 1.0))

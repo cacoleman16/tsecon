@@ -283,6 +283,15 @@ impl<'a> GasModel<'a> {
         }
 
         let params = params_from_working(density, &res.x);
+        // A Student-t whose dof ran past the ridge threshold is on the
+        // Gaussian nu -> inf boundary, where there is no interior optimum
+        // for the certificate to certify: whether the simplex happens to
+        // collapse out on that flat ridge is a libm rounding accident, so
+        // out there the flag is false by decision, not by luck. See
+        // [`crate::kernel::NU_GAUSSIAN_RIDGE`] (NaN `nu` for the Gaussian
+        // never trips the comparison).
+        let converged =
+            res.converged && !(density.needs_dof() && params.nu > crate::kernel::NU_GAUSSIAN_RIDGE);
         let filtered = self.filter(&params)?;
         let std_resid: Vec<f64> = self
             .y
@@ -299,7 +308,7 @@ impl<'a> GasModel<'a> {
             std_resid,
             next_variance: filtered.next_variance,
             n_obs: self.y.len(),
-            converged: res.converged,
+            converged,
             iterations: res.iterations,
             fevals: res.fevals,
         })
