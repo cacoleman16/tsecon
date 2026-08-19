@@ -1895,6 +1895,24 @@ fn theta_forecast<'py>(
 /// package (fixed-parameter logliks at machine precision). Returns both
 /// MLE and Bollerslev-Wooldridge robust standard errors.
 ///
+/// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
+/// `se_mle`, `se_robust`, `se_valid`, `boundary`, `boundary_note`,
+/// `converged`, `conditional_volatility`, `std_residuals`, and
+/// `variance_forecast` when `forecast_horizon > 0`.
+///
+/// **Boundary fits.** When the QMLE lands on a constraint (`alpha` at its
+/// sign bound, persistence at 1 — an IGARCH fit), the observed
+/// information is singular in the constrained direction by construction
+/// and no classical standard error exists for those parameters: their
+/// `se_mle`/`se_robust` entries are NaN with `se_valid` False and
+/// `boundary` True (per parameter), `boundary_note` says which constraint
+/// and why, and the *interior* parameters keep finite standard errors
+/// from the reduced Hessian over the free directions. `se_valid` False
+/// with `boundary` False marks a numerically flat (weakly identified)
+/// direction instead. `converged` reports whether an optimizer stage
+/// terminated by its convergence criterion (the best point found is
+/// returned either way).
+///
 /// When `forecast_horizon > 0`, `variance_forecast` is the analytic
 /// *point* path of conditional variances `E[sigma2_{T+m} | F_T]`,
 /// m = 1..horizon — it carries no interval or coverage level, and none
@@ -1955,6 +1973,10 @@ fn garch_fit<'py>(
     d.set_item("bic", r.bic)?;
     d.set_item("se_mle", r.se_mle.clone().into_pyarray(py))?;
     d.set_item("se_robust", r.se_robust.clone().into_pyarray(py))?;
+    d.set_item("se_valid", r.se_valid.clone().into_pyarray(py))?;
+    d.set_item("boundary", r.boundary.clone().into_pyarray(py))?;
+    d.set_item("boundary_note", r.boundary_note.clone())?;
+    d.set_item("converged", r.converged)?;
     d.set_item(
         "conditional_volatility",
         r.conditional_volatility.clone().into_pyarray(py),

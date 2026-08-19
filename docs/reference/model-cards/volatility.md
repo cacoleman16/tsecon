@@ -52,10 +52,28 @@ variance path.
 (Bollerslev-Wooldridge) over `se_mle` unless you believe the density.
 `conditional_volatility` is the filtered σ_t, `std_residuals` should look
 i.i.d. (re-run `arch_lm` on them), and `variance_forecast` is the horizon path.
-`alpha[1] + beta[1]` near 1 means shocks persist for a long time.
+`alpha[1] + beta[1]` near 1 means shocks persist for a long time. Check
+`se_valid` before quoting a standard error, and `converged` before quoting
+anything: a `False` in `se_valid` means the NaN in that `se_mle`/`se_robust`
+slot is a statement, not a glitch.
+
+**Boundary fits.** When the estimate lands on a constraint — `alpha[1]` at its
+sign bound 0 (common on series with little ARCH structure), or persistence at
+1 (an integrated/IGARCH fit) — the observed information is singular in the
+constrained direction *by construction*, so no classical standard error exists
+for those parameters. The fit still succeeds and reports it honestly: the
+per-parameter `boundary` flag marks the constrained parameters, their SEs are
+NaN with `se_valid` `False`, `boundary_note` names the constraint in words,
+and the *interior* parameters keep finite SEs computed from the reduced
+Hessian over the free directions. Two warnings: a boundary parameter's
+sampling distribution is a boundary mixture (half-normal-like), so do not
+build a t-test from any substitute number; and with `alpha = 0` the recursion
+carries no shock feedback, so `beta` is only weakly identified — expect a
+likelihood ridge and treat the whole fit with care.
 
 **Failure modes.** Near-integrated variance (`alpha + beta ≈ 1`) flattens the
-likelihood and destabilizes SEs; a mis-specified mean leaks into the variance;
+likelihood and destabilizes SEs — at the bound itself the fit is flagged as a
+boundary fit as described above; a mis-specified mean leaks into the variance;
 on genuinely Gaussian data the *t* degrees of freedom `nu` drift very large
 (the *t* nesting the normal). Optimizer failures usually mean the series has no
 ARCH structure to fit.

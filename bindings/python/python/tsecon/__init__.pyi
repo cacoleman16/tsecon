@@ -271,7 +271,14 @@ def garch_fit(
     q: int = ...,
     forecast_horizon: int = ...,
 ) -> dict[str, Any]:
-    """GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs."""
+    """GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
+
+    Boundary fits (a coefficient at its sign constraint, persistence at 1)
+    carry per-parameter `se_valid`/`boundary` flags and a `boundary_note`:
+    boundary parameters have NaN standard errors (no classical asymptotics
+    exist there), interior parameters keep finite ones. `converged` reports
+    the optimizer's own verdict.
+    """
 
 # --------------------------------------------------------------- VAR
 def var_fit(data: _ArrayLike, lags: int = ..., trend: str = ...) -> dict[str, Any]:

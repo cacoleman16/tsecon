@@ -11,6 +11,7 @@ working unchanged. It only *adds* rendering and a couple of accessors.
 from __future__ import annotations
 
 import re
+import textwrap
 from typing import Any, Sequence
 
 import numpy as np
@@ -204,6 +205,15 @@ class GARCHResults(Results):
         persistence = self._persistence_line()
         if persistence is not None:
             lines += [rule(_WIDTH, "-"), persistence]
+        # Boundary fits (audit round 7): the teaching note must not be
+        # separable from the numbers it qualifies — NaN standard errors at
+        # an active constraint are a statement, and this is where it is
+        # made. Absent (or None) for interior fits and for dicts predating
+        # the key.
+        note = self.get("boundary_note")
+        if note:
+            lines += [rule(_WIDTH, "-")]
+            lines += textwrap.wrap(str(note), width=_WIDTH)
         lines.append(rule(_WIDTH))
         return "\n".join(lines)
 

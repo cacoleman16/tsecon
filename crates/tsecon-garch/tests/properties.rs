@@ -188,6 +188,156 @@ fn recovers_simulated_garch11_parameters() {
         .all(|(r, m)| r.is_finite() && *r > 0.0 && m.is_finite() && *m > 0.0));
 }
 
+/// **Boundary fits are reported, never silently all-NaN** (audit rounds
+/// 1/7). White noise fitted as GARCH(1,1) drives `alpha` to its sign
+/// constraint (~1e-14): the observed information is singular in that
+/// direction by construction, and the pre-fix behaviour was an unflagged
+/// all-NaN `se_mle`/`se_robust` row. Now the boundary parameter is
+/// flagged (`boundary`, `se_valid = false`, a teaching note) while the
+/// interior parameters keep finite standard errors from the reduced
+/// Hessian over the free directions.
+#[test]
+fn boundary_fit_flags_and_keeps_interior_standard_errors() {
+    let spec = GarchSpec {
+        mean: MeanSpec::Zero,
+        vol: VolSpec::Garch { p: 1, q: 1 },
+        dist: DistSpec::Normal,
+    };
+    // Seeds chosen so the alpha estimate lands at the constraint (the
+    // pre-fix all-NaN reproduction); asserted, not assumed.
+    let mut boundary_seen = 0;
+    for seed in [2, 3, 5] {
+        let y: Vec<f64> = {
+            let mut rng = SplitMix64(seed);
+            (0..750).map(|_| rng.normal()).collect()
+        };
+        let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+        let alpha = res.params[1];
+        if alpha > 1e-6 {
+            continue; // this seed did not produce a boundary fit
+        }
+        boundary_seen += 1;
+        // alpha is flagged, and its NaN is a *flagged* NaN.
+        assert!(res.boundary[1], "alpha at {alpha:e} must be flagged");
+        assert!(!res.se_valid[1]);
+        assert!(res.se_mle[1].is_nan() && res.se_robust[1].is_nan());
+        // omega is interior and must have finite standard errors — the
+        // round-1 defect was exactly this row coming back NaN.
+        assert!(
+            !res.boundary[0] && res.se_valid[0],
+            "omega must be interior/valid, se_mle = {:?}",
+            res.se_mle
+        );
+        assert!(
+            res.se_mle[0].is_finite()
+                && res.se_mle[0] > 0.0
+                && res.se_robust[0].is_finite()
+                && res.se_robust[0] > 0.0,
+            "interior omega standard errors must be finite: mle {} robust {}",
+            res.se_mle[0],
+            res.se_robust[0]
+        );
+        // Flags, values, and note are mutually consistent.
+        for i in 0..res.params.len() {
+            assert_eq!(
+                res.se_valid[i],
+                !res.boundary[i] && res.se_mle[i].is_finite() && res.se_robust[i].is_finite(),
+                "se_valid[{i}] inconsistent"
+            );
+        }
+        let note = res.boundary_note.as_deref().expect("boundary note");
+        assert!(
+            note.contains("alpha[1]"),
+            "note names the parameter: {note}"
+        );
+        assert!(
+            note.contains("sign constraint"),
+            "note states the cause: {note}"
+        );
+    }
+    assert!(
+        boundary_seen >= 2,
+        "the white-noise DGP no longer produces boundary fits ({boundary_seen}/3); \
+         the reproduction has drifted — re-derive the seeds"
+    );
+}
+
+/// An interior fit carries clean flags: every `se_valid` true, no
+/// boundary, no note — so the flags cannot cry wolf on routine data.
+#[test]
+fn interior_fit_flags_are_clean() {
+    let y = simulate_garch11(0.1, 0.1, 0.8, 1500, 42);
+    let spec = GarchSpec {
+        mean: MeanSpec::Constant,
+        vol: VolSpec::Garch { p: 1, q: 1 },
+        dist: DistSpec::Normal,
+    };
+    let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+    assert!(res.se_valid.iter().all(|&v| v), "{:?}", res.se_valid);
+    assert!(res.boundary.iter().all(|&b| !b), "{:?}", res.boundary);
+    assert!(res.boundary_note.is_none());
+}
+
+/// An integrated (IGARCH-boundary) fit flags every variance coefficient
+/// while `omega` keeps a finite standard error, and the note names the
+/// persistence bound.
+#[test]
+fn igarch_boundary_flags_all_coefficients() {
+    // An IGARCH DGP (alpha + beta = 1) attracts the QMLE to the
+    // persistence constraint on many draws.
+    let mut hit = 0;
+    for seed in [0u64, 1, 9, 12, 21] {
+        let y = {
+            // simulate with alpha + beta = 1: variance is a martingale, the
+            // path stays finite over 750 draws.
+            let mut rng = SplitMix64(seed);
+            let (omega, alpha, beta) = (0.02, 0.10, 0.90);
+            let mut s2 = 1.0_f64;
+            let mut eps = 0.0_f64;
+            let mut out = Vec::with_capacity(750);
+            for t in 0..1250 {
+                s2 = omega + alpha * eps * eps + beta * s2;
+                eps = s2.sqrt() * rng.normal();
+                if t >= 500 {
+                    out.push(eps);
+                }
+            }
+            out
+        };
+        let spec = GarchSpec {
+            mean: MeanSpec::Zero,
+            vol: VolSpec::Garch { p: 1, q: 1 },
+            dist: DistSpec::Normal,
+        };
+        let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+        let pers = spec.persistence(&res.params).unwrap();
+        if pers < 0.9995 || res.params[0] < 1e-8 {
+            // Not attracted to the bound on this draw, or omega itself
+            // collapsed toward 0 (a doubly degenerate fit whose reduced
+            // problem is honestly all-invalid — covered by the flag
+            // consistency assertions in the white-noise test).
+            continue;
+        }
+        hit += 1;
+        assert!(
+            res.boundary[1] && res.boundary[2],
+            "persistence {pers} at the bound must flag alpha and beta: {:?}",
+            res.boundary
+        );
+        assert!(!res.se_valid[1] && !res.se_valid[2]);
+        assert!(
+            res.se_valid[0] && res.se_mle[0].is_finite() && res.se_robust[0].is_finite(),
+            "omega keeps a finite standard error at an IGARCH boundary"
+        );
+        let note = res.boundary_note.as_deref().expect("boundary note");
+        assert!(note.contains("IGARCH"), "note names the bound: {note}");
+    }
+    assert!(
+        hit >= 1,
+        "no IGARCH draw reached the persistence bound; re-derive the seeds"
+    );
+}
+
 /// Inadmissible parameter vectors are rejected: explosive persistence,
 /// negative coefficients, non-positive omega, EGARCH |beta| >= 1, and
 /// nu <= 2 all error rather than evaluate.

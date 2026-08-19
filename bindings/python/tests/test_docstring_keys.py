@@ -44,6 +44,22 @@ def test_long_memory_d_docstring_names_every_returned_key():
     assert "se_asymptotic" in flat
 
 
+def test_garch_fit_docstring_names_every_returned_key():
+    """Round 7: garch_fit's docstring now enumerates its keys (it gained
+    `se_valid`/`boundary`/`boundary_note`/`converged`); keep it honest."""
+    rng = np.random.default_rng(3)
+    z = rng.standard_normal(700)
+    y = np.empty(700)
+    s2 = 1.0
+    for t in range(700):
+        y[t] = np.sqrt(s2) * z[t]
+        s2 = 0.05 + 0.08 * y[t] ** 2 + 0.88 * s2
+    tokens = _doc_tokens(tsecon.garch_fit)
+    keys = set(tsecon.garch_fit(y, forecast_horizon=3).keys())
+    missing = keys - tokens
+    assert not missing, f"garch_fit.__doc__ does not name returned keys: {sorted(missing)}"
+
+
 def test_predictive_regression_docstring_names_every_returned_key():
     rng = np.random.default_rng(2)
     T = 240
