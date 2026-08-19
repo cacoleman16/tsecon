@@ -52,6 +52,16 @@
 //!   volatilities) that makes the curve arbitrage-free. The adjustment is
 //!   negative, grows with maturity, and vanishes as the volatilities go to
 //!   zero (nesting plain Nelson-Siegel).
+//! - [`acm_term_premium`] — the **ACM regression-based term premium**
+//!   (Adrian-Crump-Moench 2013): a Gaussian affine term-structure model
+//!   estimated entirely by linear regressions (principal-component factors, a
+//!   factor VAR(1), excess-return regressions, the `lambda0`/`lambda1`
+//!   price-of-risk OLS) plus affine log-price recursions, decomposing every
+//!   fitted yield into a risk-neutral (expected-short-rate) component and the
+//!   term premium. Where AFNS restricts the *loadings* to make one curve
+//!   arbitrage-free, ACM prices the *time series* of returns to split long
+//!   yields into expectations and risk compensation — see the [`acm`] module
+//!   docs for the exact recursions and when to use which.
 //!
 //! ```
 //! use tsecon_termstructure::{fit_nelson_siegel, nelson_siegel_loadings};
@@ -79,6 +89,9 @@
 //!
 //! ## References
 //!
+//! - Adrian, T., Crump, R. K., & Moench, E. (2013). "Pricing the Term
+//!   Structure with Linear Regressions." *Journal of Financial Economics*,
+//!   110(1), 110-138.
 //! - Nelson, C. R., & Siegel, A. F. (1987). "Parsimonious Modeling of Yield
 //!   Curves." *Journal of Business*, 60(4), 473-489.
 //! - Svensson, L. E. O. (1994). "Estimating and Interpreting Forward Interest
@@ -95,6 +108,7 @@
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod acm;
 mod afns;
 mod dynamic;
 mod error;
@@ -103,6 +117,7 @@ mod loadings;
 mod optlambda;
 mod svensson;
 
+pub use acm::{acm_term_premium, AcmFit};
 pub use afns::{afns_yield_adjustment, fit_afns, AfnsFit};
 pub use dynamic::{ar1_fit, fit_dynamic_ns, Ar1, DynamicNsFit, DynamicNsForecast};
 pub use error::TermStructureError;

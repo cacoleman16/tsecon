@@ -2414,6 +2414,41 @@ def afns_adjustment(
 
 Arbitrage-free Nelson-Siegel yield adjustment (Christensen-Diebold-Rudebusch 2011); sigma has 3 elements.
 
+## ACM term premium
+
+### `acm_term_premium`
+
+```python
+def acm_term_premium(
+    yields: _ArrayLike,
+    maturities: Sequence[int],
+    n_factors: int = ...,
+    periods_per_year: float = ...,
+) -> dict[str, Any]:
+```
+
+ACM regression-based term premium (Adrian-Crump-Moench 2013).
+
+    The three-step estimator: PCA factors from the yield panel, a factor
+    VAR(1), excess-return regressions on lagged factors and contemporaneous
+    innovations, the convexity-adjusted lambda0/lambda1 price-of-risk OLS,
+    then affine log-price recursions with and without the prices of risk.
+    Decomposes fitted yields into risk-neutral (expected-short-rate) yields
+    and the term premium.
+
+    UNITS: `yields` is T x M of ANNUALIZED continuously-compounded zero-coupon
+    log yields in DECIMAL (divide percent by 100 — the convexity terms are
+    quadratic, so percent input misprices them, it does not just rescale).
+    `maturities` are integer PERIODS (months for monthly data), ascending,
+    containing 1; excess returns need n - 1 in the grid for each return
+    maturity n (contiguous grid or pairs; interpolate the curve first if
+    needed). Returns factors, factor_loadings, mu/phi/sigma, rx_maturities,
+    a/beta/c, sigma2, lambda0/lambda1, delta0/delta1, A/B, A_rn/B_rn,
+    fitted / risk_neutral / term_premium (T x M, fitted = risk_neutral +
+    term_premium), and var/rx/short_rate/yield R-squareds. The premium's
+    LEVEL is estimation-sample sensitive; compare only across models fit on
+    the same sample.
+
 ## DSGE-lite
 
 ### `dsge_solve`

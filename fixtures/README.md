@@ -41,9 +41,12 @@ public datasets vendored **with attribution** for the replication pages
 `glp_sw_panel.csv` — the Stock-Watson (2008) US quarterly panel exactly as
 Giannone-Lenza-Primiceri (2015)'s own replication code consumes it, vendored
 from the public FRBNY-DSGE/BrookingsPC2020 GitHub mirror of their web
-replication files with the mirror's redistribution notice kept in the
-header; the underlying series are public-domain US-government statistics).
-Each carries its source in its header comments.
+replication files with the mirror's redistribution notice kept in the header;
+`gsw_nss_params.csv` — the Gürkaynak-Sack-Wright NSS US Treasury curve
+parameters, Federal Reserve Board public data, monthly 1961-2014;
+`acm_published_10y.csv` — the NY Fed's published ACM 10-year term-premium
+decomposition, quarterly, a level/shape validation target). Each carries its
+source in its header comments.
 
 Each fixture records the exact reference-library versions used, so the values
 are reproducible. Regenerate any of them with, e.g.:
