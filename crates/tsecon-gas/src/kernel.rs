@@ -86,14 +86,48 @@ pub fn log_density(density: Density, nu: f64, y: f64, f: f64) -> f64 {
 /// Log density of the unit-variance ("standardized") Student-t at `z`,
 /// matching [`tsecon_stats::Standardized::student_t`] and, as a formula,
 /// `c(nu) - (nu+1)/2 ln(1 + z^2/(nu-2))` with the `c(nu)` above.
+///
+/// The constant uses the cancellation-safe
+/// [`ln_gamma_half_ratio`](tsecon_stats::special::ln_gamma_half_ratio):
+/// `nu` is unbounded above in this crate's fits (working coordinate
+/// `ln(nu - 2)`), and on thin-tailed data the optimizer legitimately
+/// pushes it toward the Gaussian `nu -> inf` boundary, where the literal
+/// `ln Γ((nu+1)/2) - ln Γ(nu/2)` difference degenerates into rounding
+/// noise large enough to dwarf — and corrupt — the whole log-likelihood.
 fn std_t_ln_pdf(nu: f64, z: f64) -> f64 {
-    use tsecon_stats::special::ln_gamma;
+    use tsecon_stats::special::ln_gamma_half_ratio;
     let a = nu - 2.0;
-    ln_gamma(0.5 * (nu + 1.0))
-        - ln_gamma(0.5 * nu)
+    ln_gamma_half_ratio(0.5 * nu)
         - 0.5 * (a * core::f64::consts::PI).ln()
         - 0.5 * (nu + 1.0) * (z * z / a).ln_1p()
 }
+
+/// Above this a fitted Student-t `nu` is read as having run off to the
+/// Gaussian `nu -> inf` boundary rather than as an interior optimum, and
+/// the fit's `converged` flag is forced `false`.
+///
+/// On (near-)Gaussian data the Student-t likelihood has no interior
+/// maximum in `nu` — the Gaussian is the open boundary of the family —
+/// so the working coordinate `ln(nu - 2)` climbs a ridge that only
+/// flattens when the per-observation likelihood gap `O(1/nu)` falls
+/// below floating-point resolution. Whether the simplex happens to
+/// collapse out there is a libm rounding accident, not a certificate:
+/// measured on the identical clean-Gaussian fixture, the DCS level fit
+/// reported `converged = false` on Linux and `true` on Windows MSVC.
+/// Past this threshold there is no interior optimum to certify, so the
+/// flag is made deterministic instead of platform-dependent.
+///
+/// The value sits far above any genuine interior optimum this crate has
+/// produced (Nile: `nu_hat = 20.3`; contaminated fixtures: `nu_hat ≈ 2`;
+/// Monte-Carlo recovery at true `nu = 5`: median 5.17) and far below
+/// where a tolerance stop is first possible on the stable ridge (the
+/// mean-log-likelihood spread at simplex scale only reaches the default
+/// `f_tol = 1e-8` once `nu > ~1e7`). Statistically, `t_1000` and the
+/// Gaussian differ by `~2.5e-4` nats per observation — nothing any
+/// realistic sample identifies. GARCH boxes `nu` at 500 and the t-copula
+/// at 1000 for the same reason; this is the same convention expressed as
+/// a flag rather than a box, leaving the estimate itself untouched.
+pub const NU_GAUSSIAN_RIDGE: f64 = 1e3;
 
 /// The scaled score `s_t = S_t nabla_t` with the inverse-information
 /// scaling `S_t = I_t^{-1}` (Creal-Koopman-Lucas 2013).

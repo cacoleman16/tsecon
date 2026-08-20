@@ -1,0 +1,14 @@
+[package]
+name = "tsecon-copula"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Static bivariate copulas for the tsecon time-series econometrics library: Gaussian/Student-t/Clayton/Gumbel/Frank fitting by MLE or Kendall-tau inversion with pseudo-observations, AIC/BIC selection, and closed-form tail dependence, validated against statsmodels.distributions.copula and scipy"
+
+[dependencies]
+tsecon-stats = { path = "../tsecon-stats" }
+tsecon-optim = { path = "../tsecon-optim" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }

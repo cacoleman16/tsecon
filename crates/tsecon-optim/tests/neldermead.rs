@@ -359,3 +359,43 @@ fn nm_input_errors() {
         Err(OptimError::InvalidOption { .. })
     ));
 }
+
+/// **A near-zero starting coordinate cannot begin pre-converged** (audit
+/// round 7). scipy's initial-simplex rule (`0.05 * x0_i`, `0.00025` only at
+/// exactly zero) gave a coordinate starting at `1e-9` a `5e-11` simplex
+/// edge — below the default `x_tol = 1e-8`, so the simplex-size test held
+/// in that direction before the first iteration and the run could certify
+/// convergence at the starting value. Realized in the wild by the DCS
+/// local-level fits, whose standardized log-scale coordinate starts at
+/// `ln(1) ≈ 0`. The displacement is now floored at the same `0.00025` an
+/// exactly-zero coordinate gets.
+#[test]
+fn nm_near_zero_start_coordinate_still_moves() {
+    // Smooth quadratic; optimum at (1.0, 0.25), start at (1.0, 1e-9): the
+    // only way to the optimum is along the coordinate whose simplex edge
+    // used to be degenerate.
+    let mut obj = FnObjective::new(|x: &[f64]| (x[0] - 1.0).powi(2) + (x[1] - 0.25).powi(2));
+    let res = nelder_mead(&mut obj, &[1.0, 1e-9], &NelderMeadOptions::default()).unwrap();
+    assert!(
+        (res.x[1] - 0.25).abs() < 1e-6,
+        "x1 = {} stalled at its near-zero start (f = {}, {:?})",
+        res.x[1],
+        res.f,
+        res.termination
+    );
+    // Sweep the whole near-zero band, both signs, at every magnitude the
+    // old rule handled worse than an exact zero.
+    for mag in [0.0, 1e-12, 1e-9, 1e-6, 1e-4, 4e-3] {
+        for sign in [1.0, -1.0] {
+            let start = sign * mag;
+            let mut obj =
+                FnObjective::new(|x: &[f64]| (x[0] - 1.0).powi(2) + (x[1] - 0.25).powi(2));
+            let res = nelder_mead(&mut obj, &[1.0, start], &NelderMeadOptions::default()).unwrap();
+            assert!(
+                (res.x[1] - 0.25).abs() < 1e-6,
+                "start {start:e}: x1 = {} did not reach the optimum",
+                res.x[1]
+            );
+        }
+    }
+}

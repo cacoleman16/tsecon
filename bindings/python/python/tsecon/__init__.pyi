@@ -271,7 +271,14 @@ def garch_fit(
     q: int = ...,
     forecast_horizon: int = ...,
 ) -> dict[str, Any]:
-    """GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs."""
+    """GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
+
+    Boundary fits (a coefficient at its sign constraint, persistence at 1)
+    carry per-parameter `se_valid`/`boundary` flags and a `boundary_note`:
+    boundary parameters have NaN standard errors (no classical asymptotics
+    exist there), interior parameters keep finite ones. `converged` reports
+    the optimizer's own verdict.
+    """
 
 # --------------------------------------------------------------- VAR
 def var_fit(data: _ArrayLike, lags: int = ..., trend: str = ...) -> dict[str, Any]:
@@ -424,8 +431,9 @@ def bvar_fit(
     lambda1: float = ...,
     lambda3: float = ...,
     delta: float = ...,
+    scale_ar: int = ...,
 ) -> dict[str, Any]:
-    """Minnesota-NIW conjugate BVAR posterior + log marginal likelihood."""
+    """Minnesota-NIW conjugate BVAR posterior + log marginal likelihood. scale_ar sets the lag order of the AR residual-variance scale regressions (4 = default; 1 = the GLP 2015 convention)."""
 
 def bvar_irf_draws(
     data: _ArrayLike,
@@ -438,6 +446,7 @@ def bvar_irf_draws(
     lambda3: float = ...,
     delta: float = ...,
     cumulative: bool = ...,
+    scale_ar: int = ...,
 ) -> list[list[list[list[float]]]]:
     """Posterior Cholesky-IRF draws [draw][h][variable][shock] for credible bands."""
 
@@ -455,8 +464,9 @@ def bvar_hierarchical(
     n_grid: int = ...,
     max_iter: int = ...,
     tol: float = ...,
+    scale_ar: int = ...,
 ) -> dict[str, Any]:
-    """Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015). Default hyperprior="glp" (MAP-II under the GLP Gamma hyperprior) — pure ML-II (hyperprior="none") collapses lambda1 to the search-box floor on ~a fifth to a quarter of in-model datasets (audit round 6); a lambda1_opt at the box bottom is a red flag, not a selection."""
+    """Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015). Default hyperprior="glp" (MAP-II under the GLP Gamma hyperprior) — pure ML-II (hyperprior="none") collapses lambda1 to the search-box floor on ~a fifth to a quarter of in-model datasets (audit round 6); a lambda1_opt at the box bottom is a red flag, not a selection. scale_ar=1 switches the prior's residual-scale regressions to GLP's own AR(1) convention (default 4)."""
 
 def bvar_ssvs(
     data: _ArrayLike,
@@ -1016,10 +1026,42 @@ def proxy_svar(
     column up to scale; the unit-effect normalization sets its impact on
     `norm_var` to `unit` (sign pinned). `proxy` aligns to `data` rows (NaN
     outside the instrument window is dropped). Returns `irf` (horizon+1, n),
-    `impact`, `relative_impact`, `cov_um`, `first_stage_f` (weak below 10),
-    `reliability` = Corr(m, u_norm)^2, `n_proxy`, and the estimated `shock`
-    (length T). Point estimate only; see proxy_svar_bands for
-    moving-block bands and proxy_ar_sets for weak-IV-robust sets.
+    `impact`, `relative_impact`, `cov_um`, `first_stage_f` (HC1-robust when
+    `robust_f`), `reliability` = Corr(m, u_norm)^2, `n_proxy`, the estimated
+    `shock` (length T), and `first_stage`: the proxy_first_stage diagnostics
+    dict (the MOP effective F with its tau-based critical values --
+    mop_cv_tau10 = 23.11 is the conventional bar, not the folklore 10).
+    Point estimate only; see proxy_svar_bands for moving-block bands
+    (strong instrument) and proxy_ar_sets for weak-IV-robust sets (use when
+    first_stage["weak_mop_tau10"] is True).
+    """
+
+def proxy_first_stage(
+    data: _ArrayLike,
+    proxy: _ArrayLike,
+    lags: int = ...,
+    norm_var: int = ...,
+    trend: str = ...,
+    variance: str = ...,
+    hac_lags: int | None = ...,
+) -> dict[str, Any]:
+    """First-stage strength diagnostics: the Montiel Olea-Pflueger effective F.
+
+    With one instrument the MOP effective F equals the robust F (the squared
+    robust t of the first-stage slope; Windmeijer 2025), reported under
+    variance="hc1" (default), "hac" (Bartlett/Newey-West, hac_lags defaulting
+    to the Newey-West rule -- for serially correlated proxies), or
+    "classical" (for comparison with published homoskedastic tables).
+
+    Returns `beta`, `se`, `effective_f`, `f_classical`, `f_hc1`,
+    `reliability`, `n_proxy`, `hac_lags`, the MOP critical values at 5% test
+    level (`mop_cv_tau5/10/20/30` = 37.42 / 23.11 / 15.06 / 12.05 -- the
+    null "worst-case relative bias > tau"), `tau_bound` (the smallest tau the
+    observed effective F rejects; +inf when even zero relevance cannot be
+    rejected), and the verdicts `weak_mop_tau10` (the honest bar) and
+    `weak_folklore` (F < 10, kept only because the literature reports it).
+    When weak_mop_tau10 is True do not trust Wald-type bands
+    (proxy_svar_bands); use proxy_ar_sets.
     """
 
 def nongaussian_svar(
@@ -1127,6 +1169,38 @@ def panel_lp(
 
     Returns a dict with `irf`, `se`, `nobs` (each length horizon+1) and the
     stamped `se_type`, `cumulative`, `jackknife`, `bias_correction`.
+    """
+
+def lp_did(
+    outcome: _ArrayLike,
+    treatment: _ArrayLike,
+    pre_window: int = ...,
+    post_window: int = ...,
+    absorbing: bool = ...,
+    nonabsorbing_lag: int = ...,
+    reweight: bool = ...,
+    pooled: bool = ...,
+    never_treated_only: bool = ...,
+) -> dict[str, Any]:
+    """LP-DiD event-study difference-in-differences (Dube-Girardi-Jordà-Taylor).
+
+    `outcome` and `treatment` are N x T (treatment binary 0/1). Per horizon,
+    regresses `y[i, t+h] - y[i, t-1]` on the treatment switch with period
+    effects, using only clean controls (not-yet-treated; stabilized units
+    under `absorbing=False` with `nonabsorbing_lag`; never-treated when
+    `never_treated_only=True`) — avoiding the negative-weight comparisons of
+    TWFE event studies. `reweight=True` gives the equally-weighted ATT;
+    `pooled=True` adds pooled post/pre estimates. Entity-clustered SEs in
+    the authors' fixest/reghdfe convention.
+
+    Returns a dict with `horizons` (-pre_window..post_window; -1 is the
+    omitted baseline, stored as zeros), `coef`, `se`, `nobs`, `n_switchers`
+    (clean samples shrink with |h| — read them), pooled keys
+    (`pooled_post_att`, `pooled_post_se`, `pooled_post_nobs`,
+    `pooled_post_n_switchers`, and `pooled_pre_*` when `pre_window >= 2`)
+    only when `pooled=True`, and the stamped `absorbing`,
+    `nonabsorbing_lag`, `reweight`, `pooled`, `never_treated_only`,
+    `se_type`.
     """
 
 # --------------------------------------------------- forecast comparison
@@ -1750,6 +1824,35 @@ def afns_adjustment(
 ) -> _F64:
     """Arbitrage-free Nelson-Siegel yield adjustment (Christensen-Diebold-Rudebusch 2011); sigma has 3 elements."""
 
+# ---------------------------------------------------- ACM term premium
+def acm_term_premium(
+    yields: _ArrayLike,
+    maturities: Sequence[int],
+    n_factors: int = ...,
+    periods_per_year: float = ...,
+) -> dict[str, Any]:
+    """ACM regression-based term premium (Adrian-Crump-Moench 2013).
+
+    The three-step estimator: PCA factors from the yield panel, a factor
+    VAR(1), excess-return regressions on lagged factors and contemporaneous
+    innovations, the convexity-adjusted lambda0/lambda1 price-of-risk OLS,
+    then affine log-price recursions with and without the prices of risk.
+    Decomposes fitted yields into risk-neutral (expected-short-rate) yields
+    and the term premium.
+
+    UNITS: `yields` is T x M of ANNUALIZED continuously-compounded zero-coupon
+    log yields in DECIMAL (divide percent by 100 — the convexity terms are
+    quadratic, so percent input misprices them, it does not just rescale).
+    `maturities` are integer PERIODS (months for monthly data), ascending,
+    containing 1; excess returns need n - 1 in the grid for each return
+    maturity n (contiguous grid or pairs; interpolate the curve first if
+    needed). Returns factors, factor_loadings, mu/phi/sigma, rx_maturities,
+    a/beta/c, sigma2, lambda0/lambda1, delta0/delta1, A/B, A_rn/B_rn,
+    fitted / risk_neutral / term_premium (T x M, fitted = risk_neutral +
+    term_premium), and var/rx/short_rate/yield R-squareds. The premium's
+    LEVEL is estimation-sample sensitive; compare only across models fit on
+    the same sample."""
+
 # ------------------------------------------------------------ DSGE-lite
 def dsge_solve(
     a: _ArrayLike, b: _ArrayLike, c: _ArrayLike, n_predetermined: int
@@ -1970,4 +2073,79 @@ def gev_fit(
     [10, 50, 100] blocks; each `T > 1`). At least 10 maxima are required.
     Keys: xi, mu, sigma, se_xi, se_mu, se_sigma, se_valid, loglik,
     converged, n_maxima, block_size, return_periods, return_levels.
+    """
+
+# ------------------------------------------------------------ static copulas
+
+def pseudo_obs(x: _ArrayLike) -> _F64:
+    """Pseudo-observations: the average-rank probability-scale transform.
+
+    `u[i, j] = rank of x[i, j] within column j / (n + 1)`, ties assigned
+    their average rank — exactly scipy `rankdata(method="average")/(n+1)`
+    (golden-pinned, ties included). The `n + 1` denominator keeps every
+    value strictly inside (0, 1), which the copula quantile transforms
+    require. Ranks see only order, so any strictly monotone transform of a
+    margin (logs, standardization, exp) leaves the output — and any copula
+    fitted to it — bit-identical (property-tested). This is the one-line
+    companion to `copula_fit`: `copula_fit(pseudo_obs(x))`. Accepts any
+    number of columns (the transform is columnwise); `copula_fit` itself
+    is bivariate in this slice.
+    """
+
+def copula_fit(
+    u: _ArrayLike,
+    family: str = ...,
+    method: str = ...,
+) -> dict[str, Any]:
+    """Fits a bivariate copula to (n, 2) probability-scale pseudo-observations.
+
+    `u` must lie strictly inside (0, 1): rank/PIT-transform the raw margins
+    first — `pseudo_obs(x)` does it in one line, and the whole workflow is
+    then invariant to monotone transforms of each margin (the point of the
+    copula decomposition; property-tested). At least 20 pairs required.
+
+    `family`: "gaussian" (param `rho`), "t" (`rho`, `nu`), "clayton"
+    (`theta` > 0, lower-tail), "gumbel" (`theta` >= 1, upper-tail), "frank"
+    (`theta`, either sign). Clayton/Gumbel model positive dependence only
+    in this slice (rotations deferred) and raise a teaching error when the
+    empirical Kendall tau is <= 0. `method`: "mle" (maximum likelihood,
+    observed-information SEs — matches a polished scipy optimum of the
+    statsmodels log-density at 1e-6) or "tau" (Kendall-tau inversion, the
+    statsmodels `fit_corr_param` route — for "t", tau pins `rho` and `nu`
+    is profiled by MLE; SEs are NaN with `se_valid` False, honestly, since
+    the moment-based SE is deferred).
+
+    Returns the named dependence parameter(s) (`rho` / `rho` + `nu` /
+    `theta`, also stacked in `params` with `param_names`), their SEs
+    (`se_rho` / `se_nu` / `se_theta`, stacked in `se`, certified by
+    `se_valid`), `loglik`, `aic`, `bic`, the empirical Kendall `tau` and
+    the fit-implied `tau_implied`, and the closed-form tail-dependence
+    coefficients `tail_lower`/`tail_upper` (Gaussian/Frank 0 — the classic
+    reason a Gaussian fit understates joint crashes; t symmetric
+    Demarta-McNeil; Clayton lower 2^(-1/theta); Gumbel upper
+    2 - 2^(1/theta)). Keys: family, method, n, params, param_names, rho,
+    nu, theta, se, se_rho, se_nu, se_theta, se_valid, loglik, aic, bic,
+    tau, tau_implied, tail_lower, tail_upper, converged (rho/nu/theta and
+    their se_* appear per family).
+    """
+
+def copula_select(
+    u: _ArrayLike,
+    families: Sequence[str] | None = ...,
+    method: str = ...,
+) -> dict[str, Any]:
+    """Fits several copula families to the same (n, 2) pseudo-observations
+    and ranks them by AIC/BIC, with a teaching verdict.
+
+    `families`: list of names (default all five: gaussian, t, clayton,
+    gumbel, frank); `method` as in `copula_fit`. Families whose domain
+    excludes the data (Clayton/Gumbel under Kendall tau <= 0) are
+    *skipped with a reason* rather than failing the call, so the default
+    menu works on any data. Each entry of `fits` is a full `copula_fit`
+    dict; `ranking_aic`/`ranking_bic` list family names best-first;
+    `best_aic`/`best_bic` name the winners; `verdict` states who wins, by
+    how much, whether AIC and BIC agree (they differ exactly when the
+    extra parameter is not earning its keep by BIC), what the winner
+    implies for tail dependence, and what was skipped and why. Keys:
+    fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
     """

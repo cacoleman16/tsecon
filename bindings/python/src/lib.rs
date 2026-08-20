@@ -1893,7 +1893,30 @@ fn theta_forecast<'py>(
 /// `vol`: "garch", "gjr", or "egarch"; `mean`: "zero" or "constant";
 /// `dist`: "normal" or "t". Conventions and results match the `arch`
 /// package (fixed-parameter logliks at machine precision). Returns both
-/// MLE and Bollerslev-Wooldridge robust standard errors.
+/// MLE and Bollerslev-Wooldridge robust standard errors. Estimation is
+/// scale-adaptive: the optimizer runs on an internally standardized
+/// series and maps the optimum back exactly, so rescaling the data
+/// `y -> c * y` maps the fit (`omega -> c^2 omega`, `mu -> c mu`,
+/// coefficients unchanged — bit-exactly for power-of-two `c`) instead of
+/// changing it; decimal and percent returns give the same model.
+///
+/// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
+/// `se_mle`, `se_robust`, `se_valid`, `boundary`, `boundary_note`,
+/// `converged`, `conditional_volatility`, `std_residuals`, and
+/// `variance_forecast` when `forecast_horizon > 0`.
+///
+/// **Boundary fits.** When the QMLE lands on a constraint (`alpha` at its
+/// sign bound, persistence at 1 — an IGARCH fit), the observed
+/// information is singular in the constrained direction by construction
+/// and no classical standard error exists for those parameters: their
+/// `se_mle`/`se_robust` entries are NaN with `se_valid` False and
+/// `boundary` True (per parameter), `boundary_note` says which constraint
+/// and why, and the *interior* parameters keep finite standard errors
+/// from the reduced Hessian over the free directions. `se_valid` False
+/// with `boundary` False marks a numerically flat (weakly identified)
+/// direction instead. `converged` reports whether an optimizer stage
+/// terminated by its convergence criterion (the best point found is
+/// returned either way).
 ///
 /// When `forecast_horizon > 0`, `variance_forecast` is the analytic
 /// *point* path of conditional variances `E[sigma2_{T+m} | F_T]`,
@@ -1955,6 +1978,10 @@ fn garch_fit<'py>(
     d.set_item("bic", r.bic)?;
     d.set_item("se_mle", r.se_mle.clone().into_pyarray(py))?;
     d.set_item("se_robust", r.se_robust.clone().into_pyarray(py))?;
+    d.set_item("se_valid", r.se_valid.clone().into_pyarray(py))?;
+    d.set_item("boundary", r.boundary.clone().into_pyarray(py))?;
+    d.set_item("boundary_note", r.boundary_note.clone())?;
+    d.set_item("converged", r.converged)?;
     d.set_item(
         "conditional_volatility",
         r.conditional_volatility.clone().into_pyarray(py),
@@ -1975,11 +2002,17 @@ fn garch_fit<'py>(
 /// conjugate prior (closed-form posterior — no MCMC needed).
 ///
 /// `delta` is the own-first-lag prior mean (0 for growth rates, 1 for
-/// levels/random-walk shrinkage). Returns the posterior coefficient
-/// mean, posterior mean of Sigma, and the log marginal likelihood (the
-/// evidence — compare across lambda settings to tune tightness).
+/// levels/random-walk shrinkage). `scale_ar` is the lag order of the
+/// univariate AR regressions whose residual variances scale the prior
+/// (4 = the library default; 1 = the Giannone-Lenza-Primiceri 2015
+/// convention, their own `setpriors.m` — packages differ here and
+/// results are sensitive, see the Bayesian model card). Returns the
+/// posterior coefficient mean, posterior mean of Sigma, and the log
+/// marginal likelihood (the evidence — compare across lambda settings
+/// to tune tightness).
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0))]
+#[pyo3(signature = (data, lags = 2, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, scale_ar = 4))]
+#[allow(clippy::too_many_arguments)]
 fn bvar_fit<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
@@ -1988,12 +2021,20 @@ fn bvar_fit<'py>(
     lambda1: f64,
     lambda3: f64,
     delta: f64,
+    scale_ar: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let a = data.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
-    let prior =
-        tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
-            .map_err(to_py)?;
+    let prior = tsecon_bayes::MinnesotaNiwPrior::with_scale_ar(
+        m.as_ref(),
+        lags,
+        lambda0,
+        lambda1,
+        lambda3,
+        delta,
+        scale_ar,
+    )
+    .map_err(to_py)?;
     let post = prior.posterior(m.as_ref()).map_err(to_py)?;
     let d = PyDict::new(py);
     let bb = post.b_bar();
@@ -2023,8 +2064,11 @@ fn bvar_fit<'py>(
 /// the stated coverage — e.g. a 90% band is
 /// `np.quantile(draws, [0.05, 0.95], axis=0)`, a 68% band
 /// `np.quantile(draws, [0.16, 0.84], axis=0)`.
+///
+/// `scale_ar` selects the prior's residual-scale convention exactly as
+/// in `bvar_fit` (4 = default; 1 = the GLP 2015 convention).
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, horizon = 16, n_draws = 500, seed = 0, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, cumulative = false))]
+#[pyo3(signature = (data, lags = 2, horizon = 16, n_draws = 500, seed = 0, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, cumulative = false, scale_ar = 4))]
 #[allow(clippy::too_many_arguments)]
 fn bvar_irf_draws<'py>(
     py: Python<'py>,
@@ -2038,12 +2082,20 @@ fn bvar_irf_draws<'py>(
     lambda3: f64,
     delta: f64,
     cumulative: bool,
+    scale_ar: usize,
 ) -> PyResult<Bound<'py, pyo3::types::PyList>> {
     let a = data.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
-    let prior =
-        tsecon_bayes::MinnesotaNiwPrior::new(m.as_ref(), lags, lambda0, lambda1, lambda3, delta)
-            .map_err(to_py)?;
+    let prior = tsecon_bayes::MinnesotaNiwPrior::with_scale_ar(
+        m.as_ref(),
+        lags,
+        lambda0,
+        lambda1,
+        lambda3,
+        delta,
+        scale_ar,
+    )
+    .map_err(to_py)?;
     let post = prior.posterior(m.as_ref()).map_err(to_py)?;
     let mut stream = tsecon_rng::Stream::new(seed);
     let draws = post
@@ -2095,11 +2147,16 @@ fn mat_to_vec2_bayes(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f
 /// the selected lambda1 ignore selection uncertainty (a plug-in): the same
 /// audit measured ~0.82-0.85 coverage at nominal 0.90 even for the
 /// well-behaved GLP route — see the model card's calibration section.
+/// `scale_ar` is the lag order of the univariate AR regressions whose
+/// residual variances scale the Minnesota prior: 4 (default) is the
+/// library convention; `scale_ar=1` is GLP's own (`setpriors.m`) — the
+/// GLP-exact choice, and the one documented convention that separated
+/// this machinery from their published Figure-1 tightness modes.
 /// Returns the selected lambdas, the log marginal likelihood and log
 /// posterior, the posterior coefficient/Sigma means, the pre-scan ML
 /// profile, and the fixed-lambda reference the optimum dominates.
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, delta = 0.0, lambda0 = 100.0, lambda3 = 1.0, lambda1_init = 0.2, lambda1_lo = 1e-4, lambda1_hi = 10.0, optimize = "lambda1", hyperprior = "glp", n_grid = 25, max_iter = 200, tol = 1e-8))]
+#[pyo3(signature = (data, lags = 2, delta = 0.0, lambda0 = 100.0, lambda3 = 1.0, lambda1_init = 0.2, lambda1_lo = 1e-4, lambda1_hi = 10.0, optimize = "lambda1", hyperprior = "glp", n_grid = 25, max_iter = 200, tol = 1e-8, scale_ar = 4))]
 #[allow(clippy::too_many_arguments)]
 fn bvar_hierarchical<'py>(
     py: Python<'py>,
@@ -2116,6 +2173,7 @@ fn bvar_hierarchical<'py>(
     n_grid: usize,
     max_iter: usize,
     tol: f64,
+    scale_ar: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let a = data.as_array();
     let m = tsecon_var::tsecon_linalg::faer::Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
@@ -2151,6 +2209,7 @@ fn bvar_hierarchical<'py>(
         n_grid,
         max_iter,
         tol,
+        scale_ar,
     };
     let fit = tsecon_bayes::bvar_hierarchical(m.as_ref(), lags, &cfg).map_err(to_py)?;
 
@@ -3301,11 +3360,17 @@ fn max_share_svar<'py>(
 /// availability window are dropped from the moments and the first stage.
 ///
 /// Returns `irf` (horizon+1, n), `impact`/`relative_impact`/`cov_um` (n),
-/// `first_stage_f` (weak below 10), `reliability` = Corr(m, u_norm)^2,
-/// `n_proxy` (effective obs), and the estimated structural `shock` (T). Point
-/// estimate only. For inference use `proxy_svar_bands` (Jentsch-Lunsford
-/// moving-block bootstrap) or `proxy_ar_sets` (weak-instrument-robust
-/// Anderson-Rubin sets) -- both ship in this module.
+/// `first_stage_f` (the HC1-robust F when `robust_f`, classical otherwise),
+/// `reliability` = Corr(m, u_norm)^2, `n_proxy` (effective obs), the
+/// estimated structural `shock` (T), and `first_stage`: the
+/// `proxy_first_stage` diagnostics dict -- the Montiel Olea-Pflueger
+/// effective F (== the HC1 robust F here) with its tau-based critical
+/// values (`mop_cv_tau10` = 23.11 is the conventional bar, NOT the folklore
+/// 10) and the implied `tau_bound`. Point estimate only. For inference use
+/// `proxy_svar_bands` (Jentsch-Lunsford moving-block bootstrap) when
+/// `first_stage["weak_mop_tau10"]` is False, or `proxy_ar_sets`
+/// (weak-instrument-robust Anderson-Rubin sets) when it is True -- both
+/// ship in this module.
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0, trend = "c", robust_f = true))]
 #[allow(clippy::too_many_arguments)]
@@ -3352,6 +3417,17 @@ fn proxy_svar<'py>(
     )
     .map_err(to_py)?;
 
+    // First-stage strength diagnostics (HC1 effective F + the MOP tau
+    // thresholds), stamped beside the scalar F so the thresholds travel with
+    // the number they judge.
+    let diag = tsecon_ident::proxy_first_stage(
+        r.resid.as_ref(),
+        &proxy_aligned,
+        norm_var,
+        tsecon_ident::FirstStageVariance::Hc1,
+    )
+    .map_err(to_py)?;
+
     let d = PyDict::new(py);
     // irf is (H+1, n); returned as a nested list, matching var_fit's `params`
     // (Vec<Vec<f64>> -> list-of-lists; users np.asarray it).
@@ -3363,7 +3439,113 @@ fn proxy_svar<'py>(
     d.set_item("cov_um", res.cov_um.into_pyarray(py))?;
     d.set_item("n_proxy", res.n_proxy)?;
     d.set_item("shock", res.shock.into_pyarray(py))?;
+    d.set_item("first_stage", first_stage_dict(py, &diag)?)?;
     Ok(d)
+}
+
+/// Render [`tsecon_ident::FirstStageDiagnostics`] as a Python dict.
+fn first_stage_dict<'py>(
+    py: Python<'py>,
+    d: &tsecon_ident::FirstStageDiagnostics,
+) -> PyResult<Bound<'py, PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("beta", d.beta)?;
+    out.set_item("se", d.se)?;
+    out.set_item("effective_f", d.effective_f)?;
+    out.set_item("f_classical", d.f_classical)?;
+    out.set_item("f_hc1", d.f_hc1)?;
+    out.set_item("reliability", d.reliability)?;
+    out.set_item("n_proxy", d.n_proxy)?;
+    out.set_item("hac_lags", d.hac_lags)?;
+    out.set_item("mop_cv_tau5", d.mop_cv_tau5)?;
+    out.set_item("mop_cv_tau10", d.mop_cv_tau10)?;
+    out.set_item("mop_cv_tau20", d.mop_cv_tau20)?;
+    out.set_item("mop_cv_tau30", d.mop_cv_tau30)?;
+    // +inf survives the crossing; Python reads float("inf").
+    out.set_item("tau_bound", d.tau_bound)?;
+    out.set_item("weak_mop_tau10", d.weak_mop_tau10)?;
+    out.set_item("weak_folklore", d.weak_folklore)?;
+    Ok(out)
+}
+
+/// First-stage instrument-strength diagnostics for a proxy SVAR: the
+/// Montiel Olea-Pflueger EFFECTIVE F with its tau-based critical values.
+///
+/// With a single instrument the MOP effective F coincides with the robust F
+/// -- the squared robust t-statistic of the first-stage slope (Windmeijer
+/// 2025) -- so this reports that statistic under the chosen variance
+/// (`variance="hc1"` default; `"hac"` = Bartlett/Newey-West for a serially
+/// correlated proxy, `hac_lags` defaulting to the Newey-West rule;
+/// `"classical"` for comparison with published homoskedastic tables) plus
+/// the thresholds it should actually be compared against:
+///
+/// * `mop_cv_tau10` = 23.11: rejecting "worst-case relative bias > 10%" at
+///   the 5% level -- the conventional "not weak" bar (tau5/20/30: 37.42 /
+///   15.06 / 12.05);
+/// * `tau_bound`: the smallest tau the observed effective F rejects
+///   (+inf when even zero relevance cannot be rejected);
+/// * `weak_mop_tau10` / `weak_folklore`: the MOP verdict vs the
+///   homoskedastic-folklore "F > 10", kept only because the literature
+///   reports it.
+///
+/// When `weak_mop_tau10` is True, do not trust Wald-type bands
+/// (`proxy_svar_bands`); use `proxy_ar_sets`, whose validity does not
+/// depend on instrument strength. The thresholds are imported from the
+/// linear-IV weak-instrument literature (the field's standard practice for
+/// proxy SVARs); they gate trust in strong-instrument inference, they do
+/// not repair it.
+#[pyfunction]
+#[pyo3(signature = (data, proxy, lags = 2, norm_var = 0, trend = "c", variance = "hc1", hac_lags = None))]
+#[allow(clippy::too_many_arguments)]
+fn proxy_first_stage<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    proxy: PyReadonlyArray1<'py, f64>,
+    lags: usize,
+    norm_var: usize,
+    trend: &str,
+    variance: &str,
+    hac_lags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_ident::FirstStageVariance;
+
+    let r = var_results(&data, lags, trend)?;
+    let n_obs = data.as_array().nrows();
+    let t = r.resid.nrows();
+    let proxy_aligned = align_proxy(vec1(&proxy), n_obs, lags, t)?;
+
+    let var_kind = match variance {
+        // `hac_lags` only parameterizes the HAC estimator; accepting it
+        // elsewhere would make it a silent no-op.
+        "hc1" | "classical" => {
+            if hac_lags.is_some() {
+                return Err(PyValueError::new_err(format!(
+                    "hac_lags was given but variance={variance:?} ignores it: pass \
+                     variance=\"hac\" to use a HAC first-stage variance (hac_lags \
+                     then sets its lag count; omit it for the Newey-West rule), or \
+                     drop hac_lags"
+                )));
+            }
+            if variance == "hc1" {
+                FirstStageVariance::Hc1
+            } else {
+                FirstStageVariance::Classical
+            }
+        }
+        "hac" => FirstStageVariance::HacBartlett {
+            lags: hac_lags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(t)),
+        },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown variance {other:?}; expected \"hc1\" (the default), \
+                 \"hac\", or \"classical\""
+            )))
+        }
+    };
+
+    let d = tsecon_ident::proxy_first_stage(r.resid.as_ref(), &proxy_aligned, norm_var, var_kind)
+        .map_err(to_py)?;
+    first_stage_dict(py, &d)
 }
 
 /// Align a proxy to the residual sample: accept the full `n_obs` series (drop
@@ -4188,6 +4370,109 @@ fn panel_lp<'py>(
             tsecon_panel::LpBiasCorrection::Spj => "spj",
         },
     )?;
+    Ok(d)
+}
+
+/// LP-DiD: local-projections difference-in-differences (Dube, Girardi,
+/// Jordà & Taylor 2025, J. Applied Econometrics, doi:10.1002/jae.70000).
+///
+/// Per horizon h, regresses the long difference `y[i, t+h] - y[i, t-1]`
+/// on the treatment-switch indicator with period fixed effects, using
+/// ONLY clean controls (not-yet-treated under `absorbing=True`;
+/// unchanged-for-`nonabsorbing_lag`-periods under `absorbing=False`;
+/// never-treated when `never_treated_only=True`) — removing the
+/// forbidden already-treated comparisons that bias TWFE event studies.
+/// Pre-treatment horizons -pre_window..-2 display pre-trends; h = -1 is
+/// the omitted baseline (stored as exact zeros). `reweight=True` yields
+/// the equally-weighted ATT (default is OLS's variance-weighted ATT);
+/// `pooled=True` adds single-number pooled post/pre estimates. Standard
+/// errors are clustered by entity in the authors' fixest/reghdfe
+/// convention; validated against a run of their reference code
+/// (fixtures/lpdid.json).
+///
+/// `outcome` and `treatment` are `N x T`; treatment entries must be 0/1,
+/// and must never revert under `absorbing=True` (raises — set
+/// `absorbing=False` with a `nonabsorbing_lag` for reversible
+/// treatments).
+///
+/// Returns a dict with `horizons` (event times -pre_window..post_window),
+/// `coef`, `se`, `nobs`, `n_switchers` (aligned per horizon — the clean
+/// samples SHRINK with |h|; read them), the pooled keys
+/// `pooled_post_att`, `pooled_post_se`, `pooled_post_nobs`,
+/// `pooled_post_n_switchers` (and `pooled_pre_att`, `pooled_pre_se`,
+/// `pooled_pre_nobs`, `pooled_pre_n_switchers` when `pre_window >= 2`)
+/// only when `pooled=True`, and the stamped options `absorbing`,
+/// `nonabsorbing_lag`, `reweight`, `pooled`, `never_treated_only`,
+/// `se_type`.
+#[pyfunction]
+#[pyo3(signature = (outcome, treatment, pre_window = 4, post_window = 8, absorbing = true, nonabsorbing_lag = 0, reweight = false, pooled = false, never_treated_only = false))]
+#[allow(clippy::too_many_arguments)]
+fn lp_did<'py>(
+    py: Python<'py>,
+    outcome: numpy::PyReadonlyArray2<'py, f64>,
+    treatment: numpy::PyReadonlyArray2<'py, f64>,
+    pre_window: usize,
+    post_window: usize,
+    absorbing: bool,
+    nonabsorbing_lag: usize,
+    reweight: bool,
+    pooled: bool,
+    never_treated_only: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_var::tsecon_linalg::faer::Mat;
+    let o = outcome.as_array();
+    let outcome_m = Mat::from_fn(o.nrows(), o.ncols(), |i, j| o[(i, j)]);
+    let tr = treatment.as_array();
+    let treatment_m = Mat::from_fn(tr.nrows(), tr.ncols(), |i, j| tr[(i, j)]);
+    let data = tsecon_panel::PanelData::balanced(outcome_m, vec![]).map_err(to_py)?;
+    let cfg = tsecon_panel::LpDidConfig {
+        pre_window,
+        post_window,
+        absorbing,
+        nonabsorbing_lag,
+        reweight,
+        pooled,
+        never_treated_only,
+    };
+    let r = tsecon_panel::lp_did(&data, treatment_m.as_ref(), &cfg).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("horizons", r.horizons.into_pyarray(py))?;
+    d.set_item("coef", r.coef.into_pyarray(py))?;
+    d.set_item("se", r.se.into_pyarray(py))?;
+    d.set_item(
+        "nobs",
+        r.nobs
+            .iter()
+            .map(|&x| x as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    d.set_item(
+        "n_switchers",
+        r.n_switchers
+            .iter()
+            .map(|&x| x as u64)
+            .collect::<Vec<_>>()
+            .into_pyarray(py),
+    )?;
+    if let Some(p) = r.pooled_post {
+        d.set_item("pooled_post_att", p.att)?;
+        d.set_item("pooled_post_se", p.se)?;
+        d.set_item("pooled_post_nobs", p.nobs as u64)?;
+        d.set_item("pooled_post_n_switchers", p.n_switchers as u64)?;
+    }
+    if let Some(p) = r.pooled_pre {
+        d.set_item("pooled_pre_att", p.att)?;
+        d.set_item("pooled_pre_se", p.se)?;
+        d.set_item("pooled_pre_nobs", p.nobs as u64)?;
+        d.set_item("pooled_pre_n_switchers", p.n_switchers as u64)?;
+    }
+    d.set_item("absorbing", r.absorbing)?;
+    d.set_item("nonabsorbing_lag", r.nonabsorbing_lag)?;
+    d.set_item("reweight", r.reweight)?;
+    d.set_item("pooled", pooled)?;
+    d.set_item("never_treated_only", r.never_treated_only)?;
+    d.set_item("se_type", "cluster_entity")?;
     Ok(d)
 }
 
@@ -6104,6 +6389,15 @@ fn gas_volatility<'py>(
 /// honest `converged` (on near-Gaussian data a `"t"` fit's `nu` runs to
 /// the boundary and reports `False` while the level path stays valid),
 /// `iterations`, `n_obs`, and the `density` used.
+///
+/// Estimation is scale-adaptive: the optimizer runs on an internally
+/// standardized series and maps the optimum back exactly, so rescaling
+/// the data `y -> c * y` maps the fit (`scale -> c * scale`; `kappa` and
+/// `nu` unchanged — bit-exactly for power-of-two `c`) instead of
+/// changing it. This matters most for `"laplace"`, whose likelihood is
+/// piecewise in `kappa` (every residual sign flip is a kink): the fit
+/// certifies the best kink basin found, and before standardization the
+/// basin could depend on the units of `y`.
 #[pyfunction]
 #[pyo3(signature = (y, density = "t"))]
 fn dcs_local_level<'py>(
@@ -7021,6 +7315,82 @@ fn afns_adjustment<'py>(
     let out = tsecon_termstructure::afns_yield_adjustment(&vec1(&maturities), decay, sig)
         .map_err(to_py)?;
     Ok(out.into_pyarray(py))
+}
+
+/// ACM regression-based term premium (Adrian-Crump-Moench 2013): a Gaussian
+/// affine term-structure model estimated entirely by linear regressions —
+/// principal-component factors from the yield panel, a factor VAR(1),
+/// excess-return regressions on lagged factors and contemporaneous
+/// innovations, the convexity-adjusted `lambda0`/`lambda1` price-of-risk OLS,
+/// and affine log-price recursions run with and without the prices of risk.
+/// Decomposes every fitted yield into a risk-neutral (expected-short-rate)
+/// component and the term premium.
+///
+/// UNITS ARE LOAD-BEARING: `yields` is a `T x M` panel of ANNUALIZED,
+/// continuously-compounded zero-coupon log yields in DECIMAL (0.05, not 5.0 —
+/// divide percent by 100; the Jensen convexity terms are quadratic, so
+/// percent input misprices them by 100x, it does not just rescale).
+/// `maturities` are integer PERIODS (months for monthly data), strictly
+/// ascending, containing 1; excess returns are built at every maturity n >= 2
+/// whose neighbour n - 1 is also in the grid (supply a contiguous grid or
+/// pairs around the return maturities, interpolating the curve first if
+/// needed — ACM interpolate the GSW curve to monthly maturities 1..120).
+///
+/// Returns factors (T x K), factor_loadings, mu, phi, sigma, rx_maturities,
+/// a/beta/c (the excess-return regression), sigma2, lambda0, lambda1,
+/// delta0/delta1 (the short-rate equation), the price recursions A/B and
+/// A_rn/B_rn, fitted / risk_neutral / term_premium (T x M, annualized
+/// decimal, fitted = risk_neutral + term_premium), and the diagnostic
+/// var_rsquared, rx_rsquared, short_rate_rsquared, yield_rsquared.
+///
+/// Validated end-to-end against an independent NumPy transcription at 1e-8,
+/// with term-premium recovery on a known-price-of-risk affine DGP, and — on
+/// the 1961-2014 GSW panel — against the NY Fed's published ACM 10-year term
+/// premium (correlation 0.985, RMSE 0.31pp; the level is estimation-sample
+/// sensitive, so compare premia only across models fit on the same sample).
+#[pyfunction]
+#[pyo3(signature = (yields, maturities, n_factors = 5, periods_per_year = 12.0))]
+fn acm_term_premium<'py>(
+    py: Python<'py>,
+    yields: numpy::PyReadonlyArray2<'py, f64>,
+    maturities: Vec<usize>,
+    n_factors: usize,
+    periods_per_year: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let rows = mat_to_vec2(&to_faer(&yields));
+    let fit =
+        tsecon_termstructure::acm_term_premium(&rows, &maturities, n_factors, periods_per_year)
+            .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("maturities", fit.maturities)?;
+    d.set_item("n_factors", fit.n_factors)?;
+    d.set_item("periods_per_year", fit.periods_per_year)?;
+    d.set_item("factors", fit.factors)?;
+    d.set_item("factor_loadings", fit.factor_loadings)?;
+    d.set_item("mu", fit.mu.into_pyarray(py))?;
+    d.set_item("phi", fit.phi)?;
+    d.set_item("sigma", fit.sigma)?;
+    d.set_item("rx_maturities", fit.rx_maturities)?;
+    d.set_item("a", fit.rx_a.into_pyarray(py))?;
+    d.set_item("beta", fit.rx_beta)?;
+    d.set_item("c", fit.rx_c)?;
+    d.set_item("sigma2", fit.sigma2)?;
+    d.set_item("lambda0", fit.lambda0.into_pyarray(py))?;
+    d.set_item("lambda1", fit.lambda1)?;
+    d.set_item("delta0", fit.delta0)?;
+    d.set_item("delta1", fit.delta1.into_pyarray(py))?;
+    d.set_item("A", fit.price_a.into_pyarray(py))?;
+    d.set_item("B", fit.price_b)?;
+    d.set_item("A_rn", fit.price_a_rn.into_pyarray(py))?;
+    d.set_item("B_rn", fit.price_b_rn)?;
+    d.set_item("fitted", fit.fitted)?;
+    d.set_item("risk_neutral", fit.risk_neutral)?;
+    d.set_item("term_premium", fit.term_premium)?;
+    d.set_item("var_rsquared", fit.var_rsquared.into_pyarray(py))?;
+    d.set_item("rx_rsquared", fit.rx_rsquared.into_pyarray(py))?;
+    d.set_item("short_rate_rsquared", fit.short_rate_rsquared)?;
+    d.set_item("yield_rsquared", fit.yield_rsquared.into_pyarray(py))?;
+    Ok(d)
 }
 
 /// Solve a linear rational-expectations (DSGE-lite) model by Blanchard-Kahn
@@ -8436,6 +8806,194 @@ fn gev_fit<'py>(
     Ok(d)
 }
 
+// --------------------------------------------------------------------------
+// static copulas (tsecon-copula)
+// --------------------------------------------------------------------------
+
+/// Splits an (n, 2) pseudo-observation matrix into its two columns with a
+/// teaching error for any other width (this slice is bivariate; d > 2 for
+/// the elliptical families is a documented deferral).
+fn copula_u_cols(u: &numpy::PyReadonlyArray2<'_, f64>) -> PyResult<(Vec<f64>, Vec<f64>)> {
+    let ua = u.as_array();
+    if ua.ncols() != 2 {
+        return Err(PyValueError::new_err(format!(
+            "copulas are bivariate in this slice: u must have exactly 2 \
+             columns (got {}); d > 2 for the gaussian/t families is a \
+             planned extension",
+            ua.ncols()
+        )));
+    }
+    Ok((ua.column(0).to_vec(), ua.column(1).to_vec()))
+}
+
+/// Builds the per-fit result dict shared by `copula_fit` and
+/// `copula_select`.
+fn copula_fit_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_copula::CopulaFit,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("family", r.family.name())?;
+    d.set_item("method", r.method.name())?;
+    d.set_item("n", r.n)?;
+    d.set_item("params", r.params.clone().into_pyarray(py))?;
+    d.set_item("param_names", r.family.param_names().to_vec())?;
+    // Named parameters (and SEs) for direct access.
+    for (i, &name) in r.family.param_names().iter().enumerate() {
+        d.set_item(name, r.params[i])?;
+        d.set_item(format!("se_{name}"), r.se[i])?;
+    }
+    d.set_item("se", r.se.clone().into_pyarray(py))?;
+    d.set_item("se_valid", r.se_valid)?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("aic", r.aic)?;
+    d.set_item("bic", r.bic)?;
+    d.set_item("tau", r.tau)?;
+    d.set_item("tau_implied", r.tau_implied)?;
+    d.set_item("tail_lower", r.tail_lower)?;
+    d.set_item("tail_upper", r.tail_upper)?;
+    d.set_item("converged", r.converged)?;
+    Ok(d)
+}
+
+/// Pseudo-observations: the average-rank probability-scale transform.
+///
+/// `u[i, j] = rank of x[i, j] within column j / (n + 1)`, ties assigned
+/// their average rank — exactly scipy `rankdata(method="average")/(n+1)`
+/// (golden-pinned, ties included). The `n + 1` denominator keeps every
+/// value strictly inside (0, 1), which the copula quantile transforms
+/// require. Ranks see only order, so any strictly monotone transform of a
+/// margin (logs, standardization, exp) leaves the output — and any copula
+/// fitted to it — bit-identical (property-tested). This is the one-line
+/// companion to `copula_fit`: `copula_fit(pseudo_obs(x))`. Accepts any
+/// number of columns (the transform is columnwise); `copula_fit` itself
+/// is bivariate in this slice.
+#[pyfunction]
+fn pseudo_obs<'py>(
+    py: Python<'py>,
+    x: numpy::PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, numpy::PyArray2<f64>>> {
+    let xa = x.as_array();
+    let cols: Vec<Vec<f64>> = (0..xa.ncols()).map(|j| xa.column(j).to_vec()).collect();
+    let u_cols = tsecon_copula::pseudo_obs(&cols).map_err(to_py)?;
+    let n = xa.nrows();
+    let rows: Vec<Vec<f64>> = (0..n)
+        .map(|i| u_cols.iter().map(|c| c[i]).collect())
+        .collect();
+    numpy::PyArray2::from_vec2(py, &rows).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Fits a bivariate copula to (n, 2) probability-scale pseudo-observations.
+///
+/// `u` must lie strictly inside (0, 1): rank/PIT-transform the raw margins
+/// first — `pseudo_obs(x)` does it in one line, and the whole workflow is
+/// then invariant to monotone transforms of each margin (the point of the
+/// copula decomposition; property-tested). At least 20 pairs required.
+///
+/// `family`: "gaussian" (param `rho`), "t" (`rho`, `nu`), "clayton"
+/// (`theta` > 0, lower-tail), "gumbel" (`theta` >= 1, upper-tail), "frank"
+/// (`theta`, either sign). Clayton/Gumbel model positive dependence only
+/// in this slice (rotations deferred) and raise a teaching error when the
+/// empirical Kendall tau is <= 0. `method`: "mle" (maximum likelihood,
+/// observed-information SEs — matches a polished scipy optimum of the
+/// statsmodels log-density at 1e-6) or "tau" (Kendall-tau inversion, the
+/// statsmodels `fit_corr_param` route — for "t", tau pins `rho` and `nu`
+/// is profiled by MLE; SEs are NaN with `se_valid` False, honestly, since
+/// the moment-based SE is deferred).
+///
+/// Returns the named dependence parameter(s) (`rho` / `rho` + `nu` /
+/// `theta`, also stacked in `params` with `param_names`), their SEs
+/// (`se_rho` / `se_nu` / `se_theta`, stacked in `se`, certified by
+/// `se_valid`), `loglik`, `aic`, `bic`, the empirical Kendall `tau` and
+/// the fit-implied `tau_implied`, and the closed-form tail-dependence
+/// coefficients `tail_lower`/`tail_upper` (Gaussian/Frank 0 — the classic
+/// reason a Gaussian fit understates joint crashes; t symmetric
+/// Demarta-McNeil; Clayton lower 2^(-1/theta); Gumbel upper
+/// 2 - 2^(1/theta)). Keys: family, method, n, params, param_names, rho,
+/// nu, theta, se, se_rho, se_nu, se_theta, se_valid, loglik, aic, bic,
+/// tau, tau_implied, tail_lower, tail_upper, converged (rho/nu/theta and
+/// their se_* appear per family).
+#[pyfunction]
+#[pyo3(signature = (u, family = "gaussian", method = "mle"))]
+fn copula_fit<'py>(
+    py: Python<'py>,
+    u: numpy::PyReadonlyArray2<'py, f64>,
+    family: &str,
+    method: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let (u1, u2) = copula_u_cols(&u)?;
+    let fam = tsecon_copula::Family::parse(family).map_err(to_py)?;
+    let meth = tsecon_copula::FitMethod::parse(method).map_err(to_py)?;
+    let r = tsecon_copula::copula_fit(&u1, &u2, fam, meth).map_err(to_py)?;
+    copula_fit_dict(py, &r)
+}
+
+/// Fits several copula families to the same (n, 2) pseudo-observations
+/// and ranks them by AIC/BIC, with a teaching verdict.
+///
+/// `families`: list of names (default all five: gaussian, t, clayton,
+/// gumbel, frank); `method` as in `copula_fit`. Families whose domain
+/// excludes the data (Clayton/Gumbel under Kendall tau <= 0) are
+/// *skipped with a reason* rather than failing the call, so the default
+/// menu works on any data. Each entry of `fits` is a full `copula_fit`
+/// dict; `ranking_aic`/`ranking_bic` list family names best-first;
+/// `best_aic`/`best_bic` name the winners; `verdict` states who wins, by
+/// how much, whether AIC and BIC agree (they differ exactly when the
+/// extra parameter is not earning its keep by BIC), what the winner
+/// implies for tail dependence, and what was skipped and why. Keys:
+/// fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
+#[pyfunction]
+#[pyo3(signature = (u, families = None, method = "mle"))]
+fn copula_select<'py>(
+    py: Python<'py>,
+    u: numpy::PyReadonlyArray2<'py, f64>,
+    families: Option<Vec<String>>,
+    method: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    let (u1, u2) = copula_u_cols(&u)?;
+    let names = families.unwrap_or_else(|| {
+        ["gaussian", "t", "clayton", "gumbel", "frank"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    });
+    let fams: Vec<tsecon_copula::Family> = names
+        .iter()
+        .map(|n| tsecon_copula::Family::parse(n).map_err(to_py))
+        .collect::<PyResult<_>>()?;
+    let meth = tsecon_copula::FitMethod::parse(method).map_err(to_py)?;
+    let r = tsecon_copula::copula_select(&u1, &u2, &fams, meth).map_err(to_py)?;
+    let d = PyDict::new(py);
+    let fits = PyDict::new(py);
+    for fit in &r.fits {
+        fits.set_item(fit.family.name(), copula_fit_dict(py, fit)?)?;
+    }
+    d.set_item("fits", fits)?;
+    let skipped = PyDict::new(py);
+    for s in &r.skipped {
+        skipped.set_item(s.family.name(), s.reason.clone())?;
+    }
+    d.set_item("skipped", skipped)?;
+    d.set_item("best_aic", r.fits[r.best_aic].family.name())?;
+    d.set_item("best_bic", r.fits[r.best_bic].family.name())?;
+    d.set_item(
+        "ranking_aic",
+        r.ranking_aic
+            .iter()
+            .map(|&i| r.fits[i].family.name())
+            .collect::<Vec<_>>(),
+    )?;
+    d.set_item(
+        "ranking_bic",
+        r.ranking_bic
+            .iter()
+            .map(|&i| r.fits[i].family.name())
+            .collect::<Vec<_>>(),
+    )?;
+    d.set_item("verdict", r.verdict)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -8484,6 +9042,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(zero_sign_svar, m)?)?;
     m.add_function(wrap_pyfunction!(panel_fe, m)?)?;
     m.add_function(wrap_pyfunction!(panel_lp, m)?)?;
+    m.add_function(wrap_pyfunction!(lp_did, m)?)?;
     m.add_function(wrap_pyfunction!(cw_test, m)?)?;
     m.add_function(wrap_pyfunction!(gw_test, m)?)?;
     m.add_function(wrap_pyfunction!(var_backtest, m)?)?;
@@ -8542,6 +9101,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(chow_test, m)?)?;
     m.add_function(wrap_pyfunction!(cusum_test, m)?)?;
     m.add_function(wrap_pyfunction!(afns_adjustment, m)?)?;
+    m.add_function(wrap_pyfunction!(acm_term_premium, m)?)?;
     m.add_function(wrap_pyfunction!(dsge_solve, m)?)?;
     m.add_function(wrap_pyfunction!(quantile_regression, m)?)?;
     m.add_function(wrap_pyfunction!(quantile_lp, m)?)?;
@@ -8563,6 +9123,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(long_run_svar, m)?)?;
     m.add_function(wrap_pyfunction!(max_share_svar, m)?)?;
     m.add_function(wrap_pyfunction!(proxy_svar, m)?)?;
+    m.add_function(wrap_pyfunction!(proxy_first_stage, m)?)?;
     m.add_function(wrap_pyfunction!(proxy_svar_bands, m)?)?;
     m.add_function(wrap_pyfunction!(proxy_ar_sets, m)?)?;
     m.add_function(wrap_pyfunction!(nongaussian_svar, m)?)?;
@@ -8576,5 +9137,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(robust_svar_bounds, m)?)?;
     m.add_function(wrap_pyfunction!(gpd_fit, m)?)?;
     m.add_function(wrap_pyfunction!(gev_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(pseudo_obs, m)?)?;
+    m.add_function(wrap_pyfunction!(copula_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(copula_select, m)?)?;
     Ok(())
 }

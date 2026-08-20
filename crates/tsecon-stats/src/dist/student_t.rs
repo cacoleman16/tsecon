@@ -2,7 +2,7 @@
 
 use super::ContinuousDist;
 use crate::error::StatsError;
-use crate::special::{beta_inc, inv_beta_inc, ln_gamma};
+use crate::special::{beta_inc, inv_beta_inc, ln_gamma_half_ratio};
 use core::f64::consts::PI;
 
 /// Student's t distribution with `df` degrees of freedom (non-integer `df`
@@ -49,10 +49,10 @@ impl ContinuousDist for StudentT {
 
     fn ln_pdf(&self, x: f64) -> f64 {
         let v = self.df;
-        ln_gamma(0.5 * (v + 1.0))
-            - ln_gamma(0.5 * v)
-            - 0.5 * (v * PI).ln()
-            - 0.5 * (v + 1.0) * (x * x / v).ln_1p()
+        // ln Γ((v+1)/2) - ln Γ(v/2) via the cancellation-safe ratio: the
+        // literal difference turns to rounding noise for huge v (the
+        // Gaussian-limit regime optimizers reach when data has no tails).
+        ln_gamma_half_ratio(0.5 * v) - 0.5 * (v * PI).ln() - 0.5 * (v + 1.0) * (x * x / v).ln_1p()
     }
 
     fn cdf(&self, x: f64) -> f64 {

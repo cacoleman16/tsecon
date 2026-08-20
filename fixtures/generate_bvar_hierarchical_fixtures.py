@@ -24,7 +24,14 @@ Minnesota-NIW prior (lambda-dependent piece is Omega0 only): Sigma ~ IW(S0,v0),
 vec(B)|Sigma ~ N(vec(B0), Sigma (x) Omega0), Omega0 = diag(omega),
 omega[0] = lambda0^2, omega[1+(l-1)n+j] = lambda1^2 / (l^(2 lambda3) sigma_j^2),
 S0 = diag(sigma_j^2), v0 = n + 2, B0 own-first-lag = delta. sigma_j^2 are
-lambda-independent univariate AR(4) OLS residual variances.
+lambda-independent univariate AR(scale_ar) OLS residual variances: AR(4) is
+the library default, AR(1) is Giannone-Lenza-Primiceri's own convention (their
+setpriors.m); the `scale_ar1` block pins the selection under the latter.
+
+ADDITIVE REGEN POLICY: when the output file already exists, every previously
+stored key is preserved byte-for-byte (after verifying the fresh recomputation
+still agrees within a stated tolerance); only genuinely new keys are written.
+Pinned values therefore never move under reference-library version churn.
 
 Run with the project venv:
     .venv/bin/python fixtures/generate_bvar_hierarchical_fixtures.py
@@ -136,6 +143,41 @@ def simulate_var1(seed=20260722, T=200, burn=100):
     return y[burn:]
 
 
+def _preserve_existing(dump, path, rtol=1e-6):
+    """Additive regen: keep every already-stored key byte-for-byte.
+
+    Verifies that the freshly recomputed value of each preserved key still
+    agrees with the stored one within `rtol` (relative, elementwise on
+    numeric leaves), then overwrites the fresh value with the stored one so
+    the emitted JSON never moves a pinned value. New keys pass through.
+    """
+
+    def close(a, b):
+        if isinstance(a, dict) and isinstance(b, dict):
+            return set(a) == set(b) and all(close(a[k], b[k]) for k in a)
+        if isinstance(a, list) and isinstance(b, list):
+            return len(a) == len(b) and all(close(x, y) for x, y in zip(a, b))
+        if isinstance(a, float) or isinstance(b, float):
+            fa, fb = float(a), float(b)
+            return abs(fa - fb) <= rtol * max(1.0, abs(fa), abs(fb))
+        return a == b
+
+    if not path.exists():
+        return dump
+    old = json.loads(path.read_text(encoding="utf-8"))
+    for key, stored in old.items():
+        if key == "_meta":
+            dump[key] = stored  # versions of the run that authored the pins
+            continue
+        if key in dump and not close(dump[key], stored):
+            raise AssertionError(
+                f"fresh recomputation of pinned key {key!r} disagrees with the "
+                "stored fixture beyond tolerance; refusing to regenerate"
+            )
+        dump[key] = stored
+    return dump
+
+
 def gen():
     var_fx = json.loads((OUT / "var.json").read_text(encoding="utf-8"))
     data = np.array(var_fx["data_100dlog_gdp_cons_inv"])
@@ -166,6 +208,32 @@ def gen():
     )
 
     fixed_lambda_lml = {f"{l}": ml(l) for l in FIXED_BATTERY}
+
+    # ---- scale_ar = 1: the Giannone-Lenza-Primiceri residual-scale
+    # convention (their setpriors.m scales the prior with AR(1), not AR(4),
+    # residual variances). Same design, same grid, same box — only the
+    # sigma_j^2 scale rule changes.
+    sig2_ar1 = np.array([ar_resid_var(data[:, j], p=1) for j in range(n)])
+    grid_log_ml_ar1 = np.array(
+        [ml_only(data, p, lam0, l, lam3, delta, sig2_ar1) for l in grid]
+    )
+    res_ar1 = minimize_scalar(
+        lambda l: -ml_only(data, p, lam0, l, lam3, delta, sig2_ar1),
+        method="bounded",
+        bounds=(LAMBDA1_LO, LAMBDA1_HI),
+        options={"xatol": 1e-10},
+    )
+    lambda1_star_ar1 = float(res_ar1.x)
+    scale_ar1 = {
+        "_meta": META,
+        "ar_resid_var_lag1": sig2_ar1.tolist(),
+        "grid_log_ml_25": grid_log_ml_ar1.tolist(),
+        "lambda1_star": lambda1_star_ar1,
+        "log_ml_star": float(-res_ar1.fun),
+        "lambda1_init_log_ml": float(
+            ml_only(data, p, lam0, LAMBDA1_INIT, lam3, delta, sig2_ar1)
+        ),
+    }
 
     # Simulated stationary VAR(1) for the interior-and-dominant recovery test.
     sim = simulate_var1()
@@ -210,13 +278,17 @@ def gen():
             "lambda1_star": float(sim_res.x),
             "log_ml_star": float(-sim_res.fun),
         },
+        "scale_ar1": scale_ar1,
     }
     path = OUT / "bvar_hierarchical.json"
+    dump = _preserve_existing(dump, path)
     path.write_text(json.dumps(dump, indent=1), encoding="utf-8")
     print(f"wrote {path} ({path.stat().st_size} bytes)")
     print(f"main dataset: lambda1_star = {lambda1_star:.6f}, log_ml_star = {log_ml_star:.6f}")
     print(f"  grid argmax lambda1 = {grid[int(np.argmax(grid_log_ml))]:.6f}")
     print(f"  fixed battery lml   = {fixed_lambda_lml}")
+    print(f"scale_ar=1 (GLP convention): lambda1_star = {lambda1_star_ar1:.6f}, "
+          f"log_ml_star = {float(-res_ar1.fun):.6f}")
     print(f"sim VAR(1): lambda1_star = {float(sim_res.x):.6f}, interior = {LAMBDA1_LO < sim_res.x < LAMBDA1_HI}")
 
 

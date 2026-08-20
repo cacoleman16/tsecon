@@ -43,11 +43,12 @@ members = [
     "crates/tsecon-breaks",
     "crates/tsecon-panelroot",
     "crates/tsecon-evt",
+    "crates/tsecon-copula",
     "bindings/python",
 ]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"

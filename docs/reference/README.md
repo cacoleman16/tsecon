@@ -58,7 +58,7 @@ method fits your problem and how to trust its output.
 | [Panel](model-cards/panel.md) | `panel_fe`, `panel_lp`, `mean_group_var`, `panel_mean_group`, `panel_pmg` |
 | [Panel unit-root tests](model-cards/panel-unit-root.md) | `panel_unit_root` (LLC, IPS, Fisher/Maddala-Wu-Choi) |
 | [Nowcasting & MIDAS](model-cards/nowcasting-midas.md) | `dfm_nowcast`, `dfm_news`, `midas_weights`, `umidas`, `weighted_midas` |
-| [Term structure](model-cards/term-structure.md) | `nelson_siegel`, `svensson`, `dynamic_ns` |
+| [Term structure](model-cards/term-structure.md) | `nelson_siegel`, `svensson`, `dynamic_ns`, `acm_term_premium` |
 | [Realized volatility](model-cards/realized-vol.md) | `realized_measures`, `har_rv`, `realized_quarticity`, `tripower_quarticity`, `bns_jump_test`, `realized_range` |
 | [Predictive regressions & IVX](model-cards/predictive-regressions.md) | `predictive_regression`, `ivx_test` |
 | [Recession probability](model-cards/recession.md) | `recession_probit` |

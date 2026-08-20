@@ -100,6 +100,38 @@ pub enum TermStructureError {
         /// The offending value.
         value: f64,
     },
+    /// An integer maturity grid was not strictly ascending. The ACM excess
+    /// returns pair each maturity `n` with `n - 1`, so the grid must be
+    /// sorted and duplicate-free.
+    MaturitiesNotAscending {
+        /// Zero-based index of the first entry that fails to increase.
+        index: usize,
+    },
+    /// The maturity grid does not start at the one-period maturity. The ACM
+    /// short-rate equation `r_t = delta0 + delta1' X_t` needs the one-period
+    /// yield, and every excess return subtracts it — interpolate the curve
+    /// (e.g. with the Nelson-Siegel fit) to the one-period maturity first,
+    /// exactly as ACM interpolate the GSW curve to monthly maturities.
+    MissingShortMaturity {
+        /// The shortest maturity actually supplied.
+        shortest: usize,
+    },
+    /// The requested number of pricing factors cannot be extracted: it must
+    /// satisfy `1 <= n_factors < n_maturities` (ACM's baseline is five
+    /// principal components of the yield panel).
+    InvalidFactorCount {
+        /// The requested factor count.
+        requested: usize,
+        /// The largest admissible count for this panel.
+        max: usize,
+    },
+    /// `periods_per_year` was non-positive or non-finite. It converts the
+    /// annualized input yields to the per-period log yields the recursions
+    /// price (12 for monthly maturities, 4 for quarterly).
+    InvalidPeriodsPerYear {
+        /// The offending value.
+        value: f64,
+    },
 }
 
 impl fmt::Display for TermStructureError {
@@ -172,6 +204,35 @@ impl fmt::Display for TermStructureError {
                  yield-adjustment term (Christensen-Diebold-Rudebusch 2011) sums \
                  squared factor volatilities, so each must be finite and \
                  non-negative (use 0 to recover plain Nelson-Siegel)"
+            ),
+            TermStructureError::MaturitiesNotAscending { index } => write!(
+                f,
+                "maturities must be strictly ascending integers (in periods), \
+                 but entry {index} does not increase; the ACM excess return at \
+                 maturity n prices the same bond at n and n - 1, so the grid \
+                 must be sorted and duplicate-free"
+            ),
+            TermStructureError::MissingShortMaturity { shortest } => write!(
+                f,
+                "the maturity grid starts at {shortest} periods but the ACM \
+                 estimator needs the one-period yield (the short rate r_t and \
+                 every excess return depend on it); interpolate the curve to \
+                 the one-period maturity first — ACM interpolate the GSW curve \
+                 to monthly maturities 1..120 before estimating"
+            ),
+            TermStructureError::InvalidFactorCount { requested, max } => write!(
+                f,
+                "n_factors = {requested} is invalid: the pricing factors are \
+                 principal components of the yield panel, so 1 <= n_factors <= \
+                 {max} (strictly fewer factors than maturities) is required; \
+                 ACM's baseline uses five"
+            ),
+            TermStructureError::InvalidPeriodsPerYear { value } => write!(
+                f,
+                "periods_per_year = {value} is invalid: it must be a strictly \
+                 positive, finite number of compounding periods per year (12 \
+                 for monthly maturities, 4 for quarterly) so annualized yields \
+                 convert to the per-period log yields the recursions price"
             ),
         }
     }

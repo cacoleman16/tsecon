@@ -113,7 +113,12 @@
 //!   maximum in `nu` (the Gaussian is its `nu -> inf` boundary), so the
 //!   fit reports `converged = false` while the level path and
 //!   `kappa`/`scale` are fine — same behavior, same reason, as the
-//!   volatility model in this crate ([`crate::GasModel`]).
+//!   volatility model in this crate ([`crate::GasModel`]). This is
+//!   *deterministic*, not left to the optimizer: whether a simplex
+//!   happens to collapse on the flat `nu` ridge varies with the
+//!   platform's libm rounding, so past
+//!   [`NU_GAUSSIAN_RIDGE`](crate::kernel::NU_GAUSSIAN_RIDGE) the flag is
+//!   forced `false` on every platform.
 //! * Under heavy contamination `nu_hat` is **not** an estimate of the
 //!   clean noise's tail index: the fat tail is doing outlier duty, and
 //!   `nu_hat` is pushed toward its lower boundary `2`. Read it as a
@@ -156,7 +161,7 @@
 use tsecon_optim::{
     multistart, FnObjective, Method, NelderMeadOptions, Transform, TransformedObjective,
 };
-use tsecon_stats::special::ln_gamma;
+use tsecon_stats::special::ln_gamma_half_ratio;
 
 use crate::error::GasError;
 
@@ -346,7 +351,9 @@ pub struct DcsResults {
     /// Whether the best multistart run's optimizer reported convergence.
     /// This is the optimizer's certificate, not a fit grade: a Student-t
     /// fit on effectively Gaussian data has its optimum at the `nu -> inf`
-    /// boundary and honestly reports `false` (module docs).
+    /// boundary and reports `false` — deterministically, past
+    /// [`NU_GAUSSIAN_RIDGE`](crate::kernel::NU_GAUSSIAN_RIDGE), rather
+    /// than at the mercy of platform rounding (module docs).
     pub converged: bool,
     /// Total optimizer iterations across the multistart runs.
     pub iterations: usize,
@@ -498,9 +505,13 @@ impl<'a> DcsModel<'a> {
             DcsDensity::StudentT => {
                 // log p = c(nu, s) - (nu+1)/2 ln(1 + e^2/(nu s^2));
                 // u = (nu+1) e / (nu + e^2/s^2)  (redescending).
-                let c = ln_gamma(0.5 * (nu + 1.0))
-                    - ln_gamma(0.5 * nu)
-                    - 0.5 * (nu * core::f64::consts::PI * s2).ln();
+                // The constant uses the cancellation-safe half-ratio: nu is
+                // unbounded above, and near the Gaussian nu -> inf boundary
+                // the literal ln-gamma difference is rounding noise that
+                // once fed this fit a "log-likelihood" of +54230 on data
+                // whose Gaussian log-likelihood is -744.
+                let c =
+                    ln_gamma_half_ratio(0.5 * nu) - 0.5 * (nu * core::f64::consts::PI * s2).ln();
                 for (t, &yt) in self.y.iter().enumerate() {
                     level[t] = m;
                     let e = yt - m;
@@ -555,13 +566,31 @@ impl<'a> DcsModel<'a> {
 
     /// Maximum-likelihood estimation.
     ///
+    /// **Scale-adaptive** (audit round 7): the optimizer runs on the
+    /// internally standardized series `y / s_rob` (the robust MAD scale
+    /// of the first differences — the same quantity the starting values
+    /// already use) and the optimum is mapped back through the exact
+    /// reparameterization `y -> c y` (`scale -> c scale`; `kappa`, `nu`,
+    /// and the whole score recursion are unit-free). Rescaling the data
+    /// is a pure relabeling of the model, so the estimator must commute
+    /// with it; without this the Laplace sign filter — whose likelihood
+    /// is piecewise in `kappa` — landed in *different kink basins
+    /// depending on the units of `y`* (measured: 11/20 seeded series
+    /// moved `kappa` by up to 57% across eight decades of rescaling, with
+    /// mapped log-likelihood gaps up to 4.6; the smooth t/Gaussian
+    /// likelihoods moved 0/20). For power-of-two rescalings the
+    /// standardization is an exact exponent shift, so the fit commutes
+    /// bit-exactly. The reported log-likelihood, level path, residuals,
+    /// and standard errors are all evaluated at the mapped parameters on
+    /// the original data.
+    ///
     /// Optimizes the mean negative log-likelihood by Nelder-Mead over the
     /// unconstrained working vector `z` mapped through the house
     /// [`Positive`](tsecon_optim::Positive) transform,
     /// `(kappa, scale, nu - 2) = exp(z)`, from a deterministic
-    /// three-point multistart over `kappa` (0.05, 0.3, 0.8; `scale`
-    /// starts at the MAD of the first differences, `nu` at 8). Standard
-    /// errors are observed-information (module docs).
+    /// multistart over `kappa` (`scale` starts at the (standardized) MAD
+    /// of the first differences, `nu` at 8). Standard errors are
+    /// observed-information (module docs).
     ///
     /// # Errors
     ///
@@ -569,6 +598,70 @@ impl<'a> DcsModel<'a> {
     ///   objective;
     /// * errors from [`filter`](DcsModel::filter) at the optimum.
     pub fn fit(&self) -> Result<DcsResults, GasError> {
+        let s = if self.s_rob.is_finite() && self.s_rob > 0.0 {
+            self.s_rob
+        } else {
+            1.0
+        };
+        let (params, converged, iterations, fevals) = if s == 1.0 {
+            self.optimize()?
+        } else {
+            let scaled: Vec<f64> = self.y.iter().map(|v| v / s).collect();
+            let inner = DcsModel::new(&scaled, self.density)?;
+            let (p, converged, iterations, fevals) = inner.optimize()?;
+            (
+                DcsParams {
+                    kappa: p.kappa,
+                    scale: p.scale * s,
+                    nu: p.nu,
+                },
+                converged,
+                iterations,
+                fevals,
+            )
+        };
+
+        // A Student-t whose dof ran past the ridge threshold is on the
+        // Gaussian nu -> inf boundary, where there is no interior optimum
+        // for the certificate to certify: whether the simplex happens to
+        // collapse out on that flat ridge is a libm rounding accident
+        // (measured: converged = false on Linux, true on Windows MSVC, on
+        // the identical fixture) — so out there the flag is false by
+        // decision, not by luck. See [`crate::kernel::NU_GAUSSIAN_RIDGE`].
+        let converged = converged
+            && !(self.density.needs_dof() && params.nu > crate::kernel::NU_GAUSSIAN_RIDGE);
+
+        // Everything reported is evaluated at the mapped parameters on the
+        // ORIGINAL data, so every output carries the caller's units.
+        let filtered = self.filter(&params)?;
+        let resid: Vec<f64> = self
+            .y
+            .iter()
+            .zip(&filtered.level)
+            .map(|(&yt, &mt)| yt - mt)
+            .collect();
+        let se = self.observed_information_se(&params);
+
+        Ok(DcsResults {
+            params,
+            se,
+            density: self.density,
+            loglik: filtered.loglik,
+            level: filtered.level,
+            resid,
+            next_level: filtered.next_level,
+            n_obs: self.y.len(),
+            converged,
+            iterations,
+            fevals,
+        })
+    }
+
+    /// The multistart Nelder-Mead search on this model's own data;
+    /// returns the best parameters (in this model's units), the
+    /// convergence certificate, and the iteration/evaluation totals.
+    /// [`DcsModel::fit`] calls it on the internally standardized model.
+    fn optimize(&self) -> Result<(DcsParams, bool, usize, usize), GasError> {
         let density = self.density;
 
         // Working space: theta = (kappa, scale, nu - 2) = exp(z), via the
@@ -626,29 +719,7 @@ impl<'a> DcsModel<'a> {
 
         let theta = objective.constrained(&res.x)?;
         let params = params_from_natural(density, &theta);
-        let filtered = self.filter(&params)?;
-        let resid: Vec<f64> = self
-            .y
-            .iter()
-            .zip(&filtered.level)
-            .map(|(&yt, &mt)| yt - mt)
-            .collect();
-
-        let se = self.observed_information_se(&params);
-
-        Ok(DcsResults {
-            params,
-            se,
-            density,
-            loglik: filtered.loglik,
-            level: filtered.level,
-            resid,
-            next_level: filtered.next_level,
-            n_obs: self.y.len(),
-            converged: res.converged,
-            iterations: ms.total_iterations,
-            fevals: ms.total_fevals,
-        })
+        Ok((params, res.converged, ms.total_iterations, ms.total_fevals))
     }
 
     /// Observed-information standard errors at `params`, in natural
@@ -885,11 +956,15 @@ pub fn steady_state_gain(q: f64) -> Result<f64, GasError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use tsecon_stats::special::ln_gamma;
     use tsecon_stats::ContinuousDist;
 
     #[test]
     fn student_t_log_density_matches_stats_crate() {
         // The Student-t observation density is StudentT.ln_pdf(e/s) - ln s.
+        // The inline c below deliberately keeps the literal ln-gamma
+        // difference: at nu = 5 it is exact, and it makes this test an
+        // independent transcription check of the shipped constant.
         let (nu, e, s) = (5.0_f64, 0.7_f64, 1.3_f64);
         let expected = tsecon_stats::StudentT::new(nu).unwrap().ln_pdf(e / s) - s.ln();
         let c = ln_gamma(0.5 * (nu + 1.0))

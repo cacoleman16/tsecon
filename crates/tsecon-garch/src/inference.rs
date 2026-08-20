@@ -40,15 +40,27 @@
 //! Near-flat directions (e.g. a Student-t `nu` in the hundreds) remain
 //! step-size sensitive in *any* implementation and are documented at their
 //! achieved tolerance in the golden tests.
+//!
+//! **Active boundaries** (audit round 7). When the QMLE lands on a
+//! constraint — `alpha` at its sign bound, persistence at 1 — the observed
+//! information is singular in the constrained direction *by construction*,
+//! and a central-difference probe there leaves the admissible region, so
+//! no full-vector covariance exists. The caller passes a `free` mask and
+//! this module computes the reduced Hessian/score covariance over the
+//! interior directions only, reporting finite standard errors for those
+//! and NaN + `se_valid = false` + `boundary = true` for the constrained
+//! ones. That is the same honesty contract as `tsecon-evt`'s `se_valid`.
 
 use crate::error::GarchError;
 
 /// Standard errors of the parameter vector under both covariance
 /// estimators, in parameter order.
 ///
-/// Entries are NaN when the corresponding covariance diagonal is negative
-/// (a non-positive-definite numerical Hessian at a flat or boundary
-/// optimum) — reported honestly rather than clipped.
+/// Entries are NaN when the parameter sits at an active constraint
+/// boundary (see [`StdErrors::boundary`]) or when the corresponding
+/// covariance diagonal is negative (a non-positive-definite numerical
+/// Hessian at a flat optimum) — reported honestly rather than clipped,
+/// and flagged per parameter in [`StdErrors::se_valid`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct StdErrors {
     /// Classical MLE standard errors, `sqrt(diag(A^{-1} / T))`.
@@ -57,6 +69,34 @@ pub struct StdErrors {
     /// `sqrt(diag(A^{-1} B A^{-1} / T))` — `arch`'s default (`robust`)
     /// covariance.
     pub robust: Vec<f64>,
+    /// Per parameter: `true` when the parameter was interior (not at a
+    /// constraint boundary) and both standard errors came out finite. A
+    /// `false` entry means the reported NaN (or a non-finite value) is a
+    /// statement — standard QMLE asymptotics do not back a standard error
+    /// for that parameter at this point.
+    pub se_valid: Vec<bool>,
+    /// Per parameter: `true` when the parameter sits at an active
+    /// constraint boundary at the resolution of the finite-difference
+    /// probes (a coefficient at its sign constraint, or every coefficient
+    /// in an active persistence/`|sum(beta)|` constraint). The observed
+    /// information is singular in the constrained direction by
+    /// construction, so such parameters are excluded from the Hessian and
+    /// their standard errors reported as NaN with `se_valid = false`.
+    pub boundary: Vec<bool>,
+}
+
+impl StdErrors {
+    /// The all-NaN, nothing-valid report for `k` parameters with the given
+    /// boundary flags — used when even the reduced (interior-direction)
+    /// Hessian is singular or a probe fails.
+    pub(crate) fn all_invalid(k: usize, boundary: Vec<bool>) -> Self {
+        Self {
+            mle: vec![f64::NAN; k],
+            robust: vec![f64::NAN; k],
+            se_valid: vec![false; k],
+            boundary,
+        }
+    }
 }
 
 /// Validates the caller's step scales: one strictly positive, finite
@@ -79,23 +119,28 @@ fn check_step_scales(step_scale: &[f64], k: usize) -> Result<(), GarchError> {
 }
 
 /// Four-point central-difference Hessian of `f` (the *negative* total
-/// log-likelihood), `approx_hess3` formula with caller-supplied step
-/// scales: `h_i = eps^(1/4) * step_scale[i]`.
+/// log-likelihood) over the coordinates in `idx`, `approx_hess3` formula
+/// with caller-supplied step scales: `h_i = eps^(1/4) * step_scale[i]`.
+/// Coordinates of `x` not in `idx` are held fixed at their values (an
+/// active-boundary parameter is never probed). With `idx = 0..n` this is
+/// the full Hessian, evaluated in exactly the order (and arithmetic) of
+/// the unmasked implementation.
 fn numerical_hessian<F>(
     mut f: F,
     x: &[f64],
     step_scale: &[f64],
+    idx: &[usize],
 ) -> Result<Vec<Vec<f64>>, GarchError>
 where
     F: FnMut(&[f64]) -> Result<f64, GarchError>,
 {
-    let n = x.len();
-    check_step_scales(step_scale, n)?;
+    check_step_scales(step_scale, x.len())?;
+    let m = idx.len();
     let h: Vec<f64> = step_scale
         .iter()
         .map(|&s| f64::EPSILON.powf(0.25) * s)
         .collect();
-    let mut hess = vec![vec![0.0; n]; n];
+    let mut hess = vec![vec![0.0; m]; m];
     let mut probe = x.to_vec();
     let mut eval = |probe: &mut Vec<f64>, di: (usize, f64), dj: (usize, f64)| {
         probe.copy_from_slice(x);
@@ -103,35 +148,40 @@ where
         probe[dj.0] += dj.1;
         f(probe)
     };
-    for i in 0..n {
-        for j in i..n {
+    for (a, &i) in idx.iter().enumerate() {
+        for (b, &j) in idx.iter().enumerate().skip(a) {
             let fpp = eval(&mut probe, (i, h[i]), (j, h[j]))?;
             let fpm = eval(&mut probe, (i, h[i]), (j, -h[j]))?;
             let fmp = eval(&mut probe, (i, -h[i]), (j, h[j]))?;
             let fmm = eval(&mut probe, (i, -h[i]), (j, -h[j]))?;
             let v = ((fpp - fpm) - (fmp - fmm)) / (4.0 * h[i] * h[j]);
-            hess[i][j] = v;
-            hess[j][i] = v;
+            hess[a][b] = v;
+            hess[b][a] = v;
         }
     }
     Ok(hess)
 }
 
-/// Forward-difference per-observation score matrix (`T x k`) of the
-/// negative log-likelihood contributions, `approx_fprime` formula with
-/// caller-supplied step scales: `h_i = eps^(1/2) * step_scale[i]`. (The
-/// sign is irrelevant for the score covariance.)
-fn numerical_scores<G>(mut g: G, x: &[f64], step_scale: &[f64]) -> Result<Vec<Vec<f64>>, GarchError>
+/// Forward-difference per-observation score matrix (`T x len(idx)`) of the
+/// negative log-likelihood contributions over the coordinates in `idx`,
+/// `approx_fprime` formula with caller-supplied step scales:
+/// `h_i = eps^(1/2) * step_scale[i]`. (The sign is irrelevant for the
+/// score covariance.)
+fn numerical_scores<G>(
+    mut g: G,
+    x: &[f64],
+    step_scale: &[f64],
+    idx: &[usize],
+) -> Result<Vec<Vec<f64>>, GarchError>
 where
     G: FnMut(&[f64]) -> Result<Vec<f64>, GarchError>,
 {
-    let k = x.len();
-    check_step_scales(step_scale, k)?;
+    check_step_scales(step_scale, x.len())?;
     let base = g(x)?;
     let nobs = base.len();
-    let mut scores = vec![vec![0.0; k]; nobs];
+    let mut scores = vec![vec![0.0; idx.len()]; nobs];
     let mut probe = x.to_vec();
-    for i in 0..k {
+    for (a, &i) in idx.iter().enumerate() {
         let h = f64::EPSILON.sqrt() * step_scale[i];
         probe.copy_from_slice(x);
         probe[i] += h;
@@ -144,7 +194,7 @@ where
             });
         }
         for (t, row) in scores.iter_mut().enumerate() {
-            row[i] = (shifted[t] - base[t]) / h;
+            row[a] = (shifted[t] - base[t]) / h;
         }
     }
     Ok(scores)
@@ -215,36 +265,56 @@ fn matmul(a: &[Vec<f64>], b: &[Vec<f64>]) -> Vec<Vec<f64>> {
     c
 }
 
-/// Computes both standard-error vectors at `params`.
+/// Computes both standard-error vectors at `params`, over the free
+/// (interior) coordinates only.
 ///
 /// `total` is the negative total log-likelihood; `per_obs` its
 /// per-observation contributions (length `nobs`). `step_scale` gives the
 /// finite-difference step scale of each coordinate — one strictly
 /// positive, finite entry per parameter, in that parameter's own units
-/// (see the module docs).
+/// (see the module docs). `free[i] = false` marks a coordinate at an
+/// active constraint boundary: it is held fixed (never probed — a central
+/// difference there would leave the admissible region), excluded from the
+/// Hessian and score covariance, and reported as `se = NaN`,
+/// `se_valid = false`, `boundary = true`. With every coordinate free the
+/// computation is bit-identical to the classical full-vector one.
 ///
 /// # Errors
 ///
 /// [`GarchError::DimensionMismatch`] / [`GarchError::NonFinite`] if
-/// `step_scale` is the wrong length or holds a non-positive entry;
-/// [`GarchError::SingularHessian`] if the numerical Hessian cannot be
-/// inverted; any error the likelihood evaluations raise at a probe point
-/// (e.g. a boundary optimum whose finite-difference probe leaves the
-/// admissible region).
+/// `step_scale`/`free` is the wrong length or `step_scale` holds a
+/// non-positive entry; [`GarchError::SingularHessian`] if the (reduced)
+/// numerical Hessian cannot be inverted, or if no coordinate is free at
+/// all; any error the likelihood evaluations raise at a probe point.
 pub(crate) fn std_errors<F, G>(
     total: F,
     per_obs: G,
     params: &[f64],
     nobs: usize,
     step_scale: &[f64],
+    free: &[bool],
 ) -> Result<StdErrors, GarchError>
 where
     F: FnMut(&[f64]) -> Result<f64, GarchError>,
     G: FnMut(&[f64]) -> Result<Vec<f64>, GarchError>,
 {
     let k = params.len();
+    if free.len() != k {
+        return Err(GarchError::DimensionMismatch {
+            what: "free-coordinate mask",
+            expected: k,
+            actual: free.len(),
+        });
+    }
+    let idx: Vec<usize> = (0..k).filter(|&i| free[i]).collect();
+    if idx.is_empty() {
+        // Every parameter at a boundary: there is no interior direction to
+        // differentiate along.
+        return Err(GarchError::SingularHessian);
+    }
+    let m = idx.len();
     let t = nobs as f64;
-    let mut hess = numerical_hessian(total, params, step_scale)?;
+    let mut hess = numerical_hessian(total, params, step_scale, &idx)?;
     for row in &mut hess {
         for v in row.iter_mut() {
             *v /= t;
@@ -252,22 +322,22 @@ where
     }
     let a_inv = invert(&hess)?;
 
-    let scores = numerical_scores(per_obs, params, step_scale)?;
+    let scores = numerical_scores(per_obs, params, step_scale, &idx)?;
     // Demeaned sample covariance of the scores, ddof = 1 (np.cov).
-    let mut mean = vec![0.0; k];
+    let mut mean = vec![0.0; m];
     for row in &scores {
-        for (m, &s) in mean.iter_mut().zip(row) {
-            *m += s;
+        for (mn, &s) in mean.iter_mut().zip(row) {
+            *mn += s;
         }
     }
-    for m in &mut mean {
-        *m /= t;
+    for mn in &mut mean {
+        *mn /= t;
     }
-    let mut b = vec![vec![0.0; k]; k];
+    let mut b = vec![vec![0.0; m]; m];
     for row in &scores {
-        for i in 0..k {
+        for i in 0..m {
             let di = row[i] - mean[i];
-            for j in 0..k {
+            for j in 0..m {
                 b[i][j] += di * (row[j] - mean[j]);
             }
         }
@@ -280,15 +350,25 @@ where
     }
 
     let sandwich = matmul(&matmul(&a_inv, &b), &a_inv);
-    let se = |m: &[Vec<f64>]| -> Vec<f64> {
-        m.iter()
-            .enumerate()
-            .map(|(i, row)| (row[i] / t).sqrt()) // negative diag -> NaN, kept.
-            .collect()
+    // Scatter the reduced diagonals back to full parameter order; fixed
+    // (boundary) coordinates stay NaN.
+    let se = |mat: &[Vec<f64>]| -> Vec<f64> {
+        let mut out = vec![f64::NAN; k];
+        for (a, &i) in idx.iter().enumerate() {
+            out[i] = (mat[a][a] / t).sqrt(); // negative diag -> NaN, kept.
+        }
+        out
     };
+    let mle = se(&a_inv);
+    let robust = se(&sandwich);
+    let se_valid: Vec<bool> = (0..k)
+        .map(|i| free[i] && mle[i].is_finite() && robust[i].is_finite())
+        .collect();
     Ok(StdErrors {
-        mle: se(&a_inv),
-        robust: se(&sandwich),
+        mle,
+        robust,
+        se_valid,
+        boundary: free.iter().map(|f| !f).collect(),
     })
 }
 
@@ -359,7 +439,7 @@ mod tests {
             }
             Ok(0.5 * p[0] * p[0] + 0.5 * (p[1] / 1e-6).powi(2))
         };
-        let good = numerical_hessian(f, &x, &[1.0, 1e-6]).unwrap();
+        let good = numerical_hessian(f, &x, &[1.0, 1e-6], &[0, 1]).unwrap();
         assert!((good[0][0] - 1.0).abs() < 1e-6, "d2/dx0^2 = {}", good[0][0]);
         assert!(
             (good[1][1] - 1e12).abs() < 1e12 * 1e-6,
@@ -367,10 +447,21 @@ mod tests {
             good[1][1]
         );
 
-        let floored = numerical_hessian(f, &x, &[1.0, 0.1]);
+        let floored = numerical_hessian(f, &x, &[1.0, 0.1], &[0, 1]);
         assert!(
             matches!(floored, Err(GarchError::InvalidParameter { .. })),
             "an absolute floor should drive x1 non-positive, got {floored:?}"
+        );
+
+        // Masking the boundary coordinate makes the same floored step
+        // harmless: x1 is never probed, and the reduced Hessian over x0
+        // alone is exact.
+        let masked = numerical_hessian(f, &x, &[1.0, 0.1], &[0]).unwrap();
+        assert_eq!(masked.len(), 1);
+        assert!(
+            (masked[0][0] - 1.0).abs() < 1e-6,
+            "reduced d2/dx0^2 = {}",
+            masked[0][0]
         );
     }
 
@@ -387,12 +478,52 @@ mod tests {
             Ok(vec![v / nobs as f64 + p[0] * 1e-9; nobs])
         };
         let total = |p: &[f64]| -> Result<f64, GarchError> { Ok(per_obs(p)?.iter().sum()) };
-        let se = std_errors(total, per_obs, &x, nobs, &[2.0, 1e-6]).unwrap();
+        let se = std_errors(total, per_obs, &x, nobs, &[2.0, 1e-6], &[true, true]).unwrap();
         // A = H/T, Cov = A^{-1}/T = H^{-1}: se = 1/sqrt(diag(H)).
         assert!((se.mle[0] - 0.5).abs() < 1e-6, "se[0] = {}", se.mle[0]);
         assert!((se.mle[1] - 1e-6).abs() < 1e-12, "se[1] = {}", se.mle[1]);
         assert!(se.robust.iter().all(|v| v.is_finite() && *v >= 0.0));
-        // The step-scale contract is enforced through this entry point too.
-        assert!(std_errors(total, per_obs, &x, nobs, &[2.0]).is_err());
+        assert_eq!(se.se_valid, vec![true, true]);
+        assert_eq!(se.boundary, vec![false, false]);
+        // The step-scale and mask contracts are enforced through this
+        // entry point too.
+        assert!(std_errors(total, per_obs, &x, nobs, &[2.0], &[true, true]).is_err());
+        assert!(std_errors(total, per_obs, &x, nobs, &[2.0, 1e-6], &[true]).is_err());
+        assert!(matches!(
+            std_errors(total, per_obs, &x, nobs, &[2.0, 1e-6], &[false, false]),
+            Err(GarchError::SingularHessian)
+        ));
+    }
+
+    /// Masking a coordinate at a boundary: the free coordinate keeps its
+    /// exact closed-form standard error, the fixed one reports NaN with
+    /// `se_valid = false` and `boundary = true`.
+    #[test]
+    fn std_errors_masked_scatter_boundary_coordinate() {
+        let nobs = 100usize;
+        let x = [2.0, 0.0]; // x1 pinned at its (hypothetical) lower bound
+        let per_obs = |p: &[f64]| -> Result<Vec<f64>, GarchError> {
+            if p[1] < 0.0 {
+                return Err(GarchError::InvalidParameter {
+                    name: "x1",
+                    value: p[1],
+                    requirement: "x1 >= 0",
+                });
+            }
+            let v = 0.5 * 4.0 * (p[0] - 2.0).powi(2) + p[1];
+            Ok(vec![v / nobs as f64 + p[0] * 1e-9; nobs])
+        };
+        let total = |p: &[f64]| -> Result<f64, GarchError> { Ok(per_obs(p)?.iter().sum()) };
+        // Unmasked, the central difference on x1 crosses zero and fails.
+        assert!(matches!(
+            std_errors(total, per_obs, &x, nobs, &[2.0, 0.1], &[true, true]),
+            Err(GarchError::InvalidParameter { .. })
+        ));
+        // Masked, the interior coordinate is differentiated exactly.
+        let se = std_errors(total, per_obs, &x, nobs, &[2.0, 0.1], &[true, false]).unwrap();
+        assert!((se.mle[0] - 0.5).abs() < 1e-6, "se[0] = {}", se.mle[0]);
+        assert!(se.mle[1].is_nan() && se.robust[1].is_nan());
+        assert_eq!(se.se_valid, vec![true, false]);
+        assert_eq!(se.boundary, vec![false, true]);
     }
 }

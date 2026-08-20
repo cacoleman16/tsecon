@@ -9,6 +9,127 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 Nothing yet.
 
+## [0.4.0] - 2026-08-18
+
+### Added — the weak-proxy workstream
+
+- **`proxy_first_stage`** — the Montiel Olea-Pflueger effective first-stage F
+  (equal to the robust F in the just-identified single-proxy case, Windmeijer
+  2025) under classical/HC1/HAC-Bartlett variance, with the τ-based
+  noncentral-χ² critical values (**23.11** for the conventional 10%-bias bar —
+  not the folklore 10), the implied worst-case-bias bound `tau_bound`, and
+  weak-verdict flags; stamped into every `proxy_svar` result as `first_stage`.
+  Pinned against statsmodels (rtol 1e-9) and scipy's `ncx2.ppf` (1e-6);
+  reproduces the published `weakivtest` table (37.418/23.109/15.062).
+- **Gertler-Karadi (2015) replication** — `proxy_svar` upgraded to a
+  published-result golden on the authors' AEJ dataset
+  (`fixtures/gertler_karadi.csv`): first-stage F **21.5499 vs the paper's
+  21.55** and robust F 17.50 vs ~17.5, the Figure-1 IRF shapes under the
+  +20bp normalization, the wild-vs-moving-block band contrast (GK's
+  significance pattern reproduced under their own asymptotically invalid
+  method, mostly undone by the valid Jentsch-Lunsford bands), and the
+  Doko Tchatoka-Haque post-1984 weakening reproduced end to end — with the
+  new diagnostic flagging that even GK's baseline effective F fails the MOP
+  τ=10% bar while passing folklore F>10.
+
+### Added — estimators
+
+- **`acm_term_premium`** (Adrian-Crump-Moench 2013): the three-step
+  regression-based Gaussian affine term-structure estimator — PCA factors,
+  factor VAR(1), excess-return regressions with convexity-adjusted λ₀/λ₁,
+  and affine recursions decomposing fitted yields into risk-neutral yields
+  and the term premium. Golden-gated at 1e-8 against an independent NumPy
+  pipeline (measured ≤1e-11) on a simulated affine DGP (known-truth premium
+  recovery corr 0.98) and the vendored 1961–2014 GSW panel; validated
+  against the NY Fed's published ACMTP10 (corr 0.985, RMSE 0.31pp; the
+  documented estimation-sample sensitivity demonstrated, not hidden).
+- **`copula_fit` / `copula_select` / `pseudo_obs`** — static bivariate
+  copulas (new crate `tsecon-copula`): Gaussian/Student-t/Clayton/Gumbel/
+  Frank by full MLE (observed-information SEs) or Kendall-tau inversion
+  (t's ν profiled), AIC/BIC selection with a teaching verdict, closed-form
+  tau maps (Frank via exact Debye D1) and tail-dependence coefficients.
+  Golden-pinned to statsmodels 0.14.6 densities/CDFs at 1e-10, a
+  scipy-polished MLE of the statsmodels log-density (statsmodels exposes no
+  copula MLE), kendalltau at 1e-15, and Owen's-T/quad for the CDFs
+  statsmodels lacks. Validation-first found a **fourth reference defect**:
+  statsmodels' `StudentTCopula.dependence_tail` operator-precedence bug
+  (0.1438 where the true Demarta-McNeil value is 0.2532) — recorded, the
+  correct closed form pinned by numeric copula limits. Bivariate this
+  slice; d>2, rotations, and dynamic copulas deferred and stated.
+- **`lp_did`** — LP-DiD (Dube-Girardi-Jordà-Taylor): clean-control
+  event-study difference-in-differences on the panel core — not-yet/never-
+  treated/stabilized controls, pre-trend horizons, equally-weighted-ATT
+  reweighting, pooled ATTs, non-absorbing treatments, entity-clustered SEs
+  in the authors' fixest convention. **Reference-run golden**: pinned at
+  1e-10 against an actual R/fixest execution of the authors' example code
+  (`fixtures/lpdid.json`; independent NumPy cross-check at 5.3e-15), with
+  the clean-control condition asserted in CI — a naive all-controls variant
+  loses 56.5% of a heterogeneous-cohort effect where LP-DiD lands within
+  0.1%. The first Python implementation.
+- **`scale_ar`** — the GLP-exact residual-scale convention on
+  `bvar_fit`/`bvar_irf_draws`/`bvar_hierarchical` (default 4, unchanged and
+  verified bit-identical to 0.3.0 by an out-of-band wheel-hash comparison):
+  `scale_ar=1` matches Giannone-Lenza-Primiceri's own `setpriors.m`. With
+  it, the GLP *design* replication becomes a **point replication**: on
+  GLP's own Stock-Watson panel (now committed from the public FRBNY mirror
+  with its redistribution notice kept) the selected tightness lands on the
+  published Figure-1 modes — 0.420 vs 0.449±0.03 (small VAR), 0.1716 vs
+  0.172±0.01 (medium) — where the AR(4) default selects 0.260/0.142.
+
+### Fixed — audit round 7 (docs/roadmap/22-audit-round-7-findings.md)
+
+- **`garch_fit` no longer returns silent all-NaN standard errors at a
+  parameter boundary** (open since round 1; 24 of 50 boundary-battery fits).
+  The SE path now uses a reduced Hessian over the interior directions with
+  per-parameter `se_valid`/`boundary` flags, a `boundary_note`, and an
+  exposed `converged` — 24/50 silent NaN rows → 0, all flagged with finite
+  interior SEs; the arch-pinned fixture cases are bit-identical pre/post.
+- **`garch_fit` and `dcs_local_level` estimation is now scale-adaptive**
+  (standardize-and-map-back, the arch `rescale` trick): cross-scale
+  disagreements 0/320 on the well-identified battery (was 93/320 on the
+  boundary-attracted one, now 75/320 — every one flag-covered,
+  loglik-equivalent ridge landings); power-of-two rescalings commute
+  **bit-exactly**, pinned as a same-run invariant. The finder half caught
+  the week-old DCS-Laplace path converging to unit-dependent points
+  (11/20 seeded series, κ moving up to 57%, all certified converged) —
+  fixed by the same route, 11/20 → 4/20 irreducible kink-surface rounding.
+- **Nelder-Mead's mixed-scale initial simplex — the brief's oldest
+  theoretical item, realized and fixed**: a near-zero coordinate's simplex
+  edge could fall below `x_tol`, pre-converging before iteration 1; edges
+  are now floored at scipy's `zdelt` (bit-identical vertices for
+  |x0| ≥ 0.005).
+- **Negative integer arguments now raise a teaching `ValueError`
+  library-wide** (naming the function and parameter, chaining the original)
+  instead of PyO3's raw `OverflowError: can't convert negative int to
+  unsigned` — fixed once at the `_coerce` choke-point.
+- Cosmetic: `forecasting.md` still called `gpd_fit` unshipped; a stale
+  printed digit in the volatility card.
+
+### Fixed — caught by CI (Windows) after the 0.4.0 freeze
+
+- **The Student-t log-density constant is now cancellation-safe at large
+  `nu`** (new `tsecon_stats::special::ln_gamma_half_ratio`, asymptotic
+  branch above `x = 1e3`; used by `StudentT::ln_pdf`, the Hansen skew-t,
+  and both `tsecon-gas` models). The literal `lnΓ((ν+1)/2) − lnΓ(ν/2)`
+  difference turns into rounding noise as `nu` rides toward the Gaussian
+  boundary — measured: a clean-data `dcs_local_level(density="t")` fit
+  reported `loglik = +54230` on a series whose Gaussian log-likelihood is
+  `−744`, and the optimizer climbed that noise to `nu ≈ 1e16`. Post-fix
+  the t fit's loglik matches the Gaussian fit's to `1e-12` on the clean
+  fixtures (the mathematical nesting bound), pinned by new Rust and
+  Python regression tests. Interior optima (Nile `nu = 20.3`,
+  contaminated fixtures `nu ≈ 2`) are bit-identical pre/post: the literal
+  difference is kept below the seam.
+- **`converged` is now deterministic on the `nu → ∞` Gaussian ridge**
+  (`dcs_local_level` and `gas_volatility`, Student-t density). Whether
+  the simplex happens to collapse on that flat ridge is a libm rounding
+  accident — windows-latest CI certified `converged=True` on the exact
+  fixture where Linux reported `False`, failing the documented
+  "honest flag" contract. Past `tsecon_gas::kernel::NU_GAUSSIAN_RIDGE`
+  (`nu > 1e3`, far above any genuine interior optimum observed and far
+  below any tolerance stop on the stable ridge) the flag is forced
+  `False` on every platform; the estimates themselves are untouched.
+
 ## [0.3.0] - 2026-08-18
 
 ### Added — the replication gallery, opened wide

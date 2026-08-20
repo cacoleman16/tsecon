@@ -226,3 +226,58 @@ fn fixed_parameter_filters_match_documented_recursion() {
         );
     }
 }
+
+/// Regression: the Student-t fit on clean Gaussian data rides `nu` up the
+/// Gaussian ridge — and both things that went wrong out there stay fixed.
+///
+/// 1. **The log-likelihood is a log-likelihood.** The t family's
+///    likelihood supremum on any data is bounded by (and approaches) the
+///    Gaussian fit's at `nu -> inf`, yet the literal
+///    `ln Γ((nu+1)/2) - ln Γ(nu/2)` constant used to cancel so badly at
+///    `nu ~ 1e15` that this fit reported `loglik = +54230` on a series
+///    whose Gaussian log-likelihood is `-744` — and the optimizer climbed
+///    that noise. Now the ridge is numerically clean: the t fit's loglik
+///    must sit within a whisker of the Gaussian fit's, never wildly above.
+/// 2. **The flag does not depend on the platform's libm.** Whether the
+///    simplex happens to collapse on the flat ridge differed between
+///    Linux and Windows MSVC (caught by CI on the identical fixture);
+///    past `NU_GAUSSIAN_RIDGE` the certificate is forced `false`
+///    deterministically.
+#[test]
+fn student_t_fit_on_gaussian_data_reports_ridge_not_garbage() {
+    let fx = load_fixture();
+    for case in fx["gaussian_ss"].as_array().expect("cases").iter().take(2) {
+        let name = case["series"].as_str().expect("name");
+        let y = as_f64_vec(&case["y"]);
+
+        let g = DcsModel::new(&y, DcsDensity::Gaussian)
+            .expect("model")
+            .fit()
+            .expect("gaussian fit");
+        let t = DcsModel::new(&y, DcsDensity::StudentT)
+            .expect("model")
+            .fit()
+            .expect("t fit");
+
+        assert!(
+            t.params.nu > tsecon_gas::kernel::NU_GAUSSIAN_RIDGE,
+            "{name}: expected nu to diverge on Gaussian data, got {}",
+            t.params.nu
+        );
+        assert!(
+            !t.converged,
+            "{name}: certified an optimum on the nu ridge (nu = {:e})",
+            t.params.nu
+        );
+        // The nesting bound: |t loglik - gaussian loglik| is O(n/nu) plus
+        // finite-termination slop in (kappa, scale) — small either way,
+        // and categorically not tens of thousands.
+        assert!(
+            (t.loglik - g.loglik).abs() < 0.5,
+            "{name}: t fit loglik {} vs gaussian {} — the ridge is not \
+             numerically clean",
+            t.loglik,
+            g.loglik
+        );
+    }
+}

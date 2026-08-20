@@ -44,7 +44,10 @@ same model unless `r` is already demeaned or you say `mean="constant"`.
 `dist="normal"` gives clean QMLE, switch to `dist="t"` when standardized
 residuals stay fat-tailed. `p=1, q=1` is the near-universal order; `o=1` turns
 on the asymmetry term for GJR/EGARCH. `forecast_horizon` returns the multi-step
-variance path.
+variance path. Units do not matter: estimation is scale-adaptive (the optimizer
+runs on an internally standardized series and the optimum is mapped back
+exactly), so decimal returns and percent returns give the same model with
+`omega` in the units of `y²` — no `rescale=` argument is needed or offered.
 
 **How to read the output.** `params` are named by `param_names`
 (`omega, alpha[1], beta[1]`, with `mu` prepended under `mean="constant"` and
@@ -52,10 +55,28 @@ variance path.
 (Bollerslev-Wooldridge) over `se_mle` unless you believe the density.
 `conditional_volatility` is the filtered σ_t, `std_residuals` should look
 i.i.d. (re-run `arch_lm` on them), and `variance_forecast` is the horizon path.
-`alpha[1] + beta[1]` near 1 means shocks persist for a long time.
+`alpha[1] + beta[1]` near 1 means shocks persist for a long time. Check
+`se_valid` before quoting a standard error, and `converged` before quoting
+anything: a `False` in `se_valid` means the NaN in that `se_mle`/`se_robust`
+slot is a statement, not a glitch.
+
+**Boundary fits.** When the estimate lands on a constraint — `alpha[1]` at its
+sign bound 0 (common on series with little ARCH structure), or persistence at
+1 (an integrated/IGARCH fit) — the observed information is singular in the
+constrained direction *by construction*, so no classical standard error exists
+for those parameters. The fit still succeeds and reports it honestly: the
+per-parameter `boundary` flag marks the constrained parameters, their SEs are
+NaN with `se_valid` `False`, `boundary_note` names the constraint in words,
+and the *interior* parameters keep finite SEs computed from the reduced
+Hessian over the free directions. Two warnings: a boundary parameter's
+sampling distribution is a boundary mixture (half-normal-like), so do not
+build a t-test from any substitute number; and with `alpha = 0` the recursion
+carries no shock feedback, so `beta` is only weakly identified — expect a
+likelihood ridge and treat the whole fit with care.
 
 **Failure modes.** Near-integrated variance (`alpha + beta ≈ 1`) flattens the
-likelihood and destabilizes SEs; a mis-specified mean leaks into the variance;
+likelihood and destabilizes SEs — at the bound itself the fit is flagged as a
+boundary fit as described above; a mis-specified mean leaks into the variance;
 on genuinely Gaussian data the *t* degrees of freedom `nu` drift very large
 (the *t* nesting the normal). Optimizer failures usually mean the series has no
 ARCH structure to fit.
@@ -82,7 +103,7 @@ for t in range(1, n):
 fit = tsecon.garch_fit(r, vol="garch", mean="constant", dist="t",
                        p=1, q=1, forecast_horizon=5)
 print(dict(zip(fit["param_names"], np.round(fit["params"], 4))))
-# {'mu': -0.0004, 'omega': 0.0267, 'alpha[1]': 0.0615, 'beta[1]': 0.9239, 'nu': 8.37}
+# {'mu': -0.0004, 'omega': 0.0267, 'alpha[1]': 0.0615, 'beta[1]': 0.9239, 'nu': 8.3708}
 print("robust SEs:", np.round(fit["se_robust"], 4))
 print("5-step variance path:", np.round(fit["variance_forecast"], 4))
 ```
@@ -112,7 +133,9 @@ not `converged` alone** — a persistence `b` near 1 flattens the surface and th
 flag can read `False` at a good optimum; on Gaussian data `nu` drifts huge.
 
 **Failure modes.** Symmetric (no leverage) — pair with GJR/EGARCH for equities.
-`converged=False` is often benign near `b≈1`; huge `nu` signals Gaussian data.
+`converged=False` is often benign near `b≈1`; huge `nu` signals Gaussian data
+(past `nu > 1e3` the flag is `False` *by rule* on every platform — there is no
+interior optimum out there for a certificate to certify).
 
 **Validated against.** Hand-derived analytic score/density references (no
 external Python GAS library in the venv); the Gaussian recursion is
@@ -171,7 +194,10 @@ is the one-step-predicted path, `resid = y − level`, `next_level` the
 out-of-sample prediction. **Read `converged` as the optimizer's
 certificate, not a fit grade**: on (near-)Gaussian data the *t* fit's `nu`
 runs to the boundary and the flag reads `False` while `kappa`, `scale`, and
-the level path are fine.
+the level path are fine. That `False` is deterministic — past `nu > 1e3`
+the flag is forced off on every platform, because whether a simplex happens
+to collapse on the flat `nu` ridge is a rounding accident (Windows once
+certified the fit Linux refused), not a certificate.
 
 **Failure modes.** Under heavy contamination `nu` pins near its lower bound
 2 — the fat tail is doing outlier duty, so do **not** report `nu_hat` as the
@@ -179,8 +205,12 @@ clean noise's tail index (and expect NaN SEs there: the boundary has no
 interior curvature). The Laplace likelihood is piecewise in `kappa` (every
 sign flip is a kink): a denser multistart is applied, but `converged`
 certifies the best basin found, not global optimality over the kinks, and
-single-sample `kappa` for the sign filter is noisy. A constant series is
-refused outright (the likelihood is unbounded as `scale → 0`).
+single-sample `kappa` for the sign filter is noisy. Estimation is
+scale-adaptive (internally standardized, mapped back exactly), so the basin
+found no longer depends on the units of `y` — before that repair, rescaling
+a series moved the Laplace `kappa` by up to 57% on 11 of 20 seeded test
+series (the smooth `"t"`/`"gaussian"` fits never moved). A constant series
+is refused outright (the likelihood is unbounded as `scale → 0`).
 
 **Validated against.** statsmodels `UnobservedComponents(y, 'llevel')` for
 the Gaussian limit, pinned *through the steady-state mapping* above:

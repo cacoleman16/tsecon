@@ -270,19 +270,232 @@ impl GarchModel {
         Ok(scales)
     }
 
+    /// Which parameters sit at an active constraint boundary at `params`,
+    /// at the resolution of the standard-error finite-difference probes.
+    ///
+    /// A constraint counts as *active* when a Hessian probe from `params`
+    /// would cross it — i.e. exactly when the classical full-vector
+    /// covariance is not computable. The probes move coordinate `i` by
+    /// `h_i = eps^(1/4) * step_scale[i]`, up to two coordinates at once,
+    /// so with a small safety factor:
+    ///
+    /// * GARCH/GJR `alpha_i` (resp. `beta_j`) is at its sign bound when
+    ///   `alpha_i <= safety * h_i`;
+    /// * a GJR pair constraint `alpha_i + gamma_i >= 0` is active when the
+    ///   sum is within the *joint* probe reach — both members are flagged,
+    ///   since probing either can cross it;
+    /// * the persistence bound (`< 1`) is active when the persistence plus
+    ///   twice the largest single-coordinate reach over the *remaining
+    ///   free* coefficients touches 1 — every free `alpha`/`gamma`/`beta`
+    ///   is then flagged (the constraint is a direction, not a
+    ///   coordinate; an IGARCH fit has no interior coefficient standard
+    ///   errors);
+    /// * EGARCH: same rule for `|sum(beta)| < 1` over the `beta`s.
+    ///
+    /// `omega` never triggers (GARCH/GJR probe it relatively, EGARCH's is
+    /// unrestricted); `mu` is unrestricted; `nu`'s admissibility bound
+    /// (`> 2`) is below the reach of its probe from the optimizer box
+    /// `(2.05, 500)`.
+    fn boundary_mask(&self, params: &[f64], step_scale: &[f64]) -> Result<Vec<bool>, GarchError> {
+        // The probes of `inference::numerical_hessian`, with slack for
+        // float slop in the comparisons below.
+        const SAFETY: f64 = 1.25;
+        let h: Vec<f64> = step_scale
+            .iter()
+            .map(|&s| f64::EPSILON.powf(0.25) * s)
+            .collect();
+        let (_, _, alphas, gammas, betas, _) = self.spec.split_params(params)?;
+        let k = params.len();
+        let mut mask = vec![false; k];
+        let (p, o, q) = self.spec.vol.lags();
+        let a0 = self.spec.n_mean_params() + 1; // first alpha
+        let g0 = a0 + p; // first gamma
+        let b0 = g0 + o; // first beta
+
+        match self.spec.vol {
+            VolSpec::Garch { .. } | VolSpec::Gjr { .. } => {
+                for (i, &a) in alphas.iter().enumerate() {
+                    if a <= SAFETY * h[a0 + i] {
+                        mask[a0 + i] = true;
+                    }
+                }
+                for (j, &b) in betas.iter().enumerate() {
+                    if b <= SAFETY * h[b0 + j] {
+                        mask[b0 + j] = true;
+                    }
+                }
+                for (i, &g) in gammas.iter().enumerate() {
+                    let (a, ha) = if i < p {
+                        (alphas[i], h[a0 + i])
+                    } else {
+                        (0.0, 0.0)
+                    };
+                    if a + g <= SAFETY * (ha + h[g0 + i]) {
+                        mask[g0 + i] = true;
+                        if i < p {
+                            mask[a0 + i] = true;
+                        }
+                    }
+                }
+                // Persistence reach over the still-free coefficients: a
+                // Hessian probe raises it by at most w_i h_i + w_j h_j
+                // <= 2 max(w h), with w = 1 for alpha/beta, 0.5 for gamma.
+                let mut reach: f64 = 0.0;
+                for i in 0..p {
+                    if !mask[a0 + i] {
+                        reach = reach.max(h[a0 + i]);
+                    }
+                }
+                for i in 0..o {
+                    if !mask[g0 + i] {
+                        reach = reach.max(0.5 * h[g0 + i]);
+                    }
+                }
+                for j in 0..q {
+                    if !mask[b0 + j] {
+                        reach = reach.max(h[b0 + j]);
+                    }
+                }
+                let pers = self.spec.persistence(params)?;
+                if pers + SAFETY * 2.0 * reach >= 1.0 {
+                    for i in 0..p {
+                        mask[a0 + i] = true;
+                    }
+                    for i in 0..o {
+                        mask[g0 + i] = true;
+                    }
+                    for j in 0..q {
+                        mask[b0 + j] = true;
+                    }
+                }
+            }
+            VolSpec::Egarch { .. } => {
+                let sum_beta: f64 = betas.iter().sum();
+                let mut reach: f64 = 0.0;
+                for j in 0..q {
+                    reach = reach.max(h[b0 + j]);
+                }
+                if sum_beta.abs() + SAFETY * 2.0 * reach >= 1.0 {
+                    for j in 0..q {
+                        mask[b0 + j] = true;
+                    }
+                }
+            }
+        }
+        Ok(mask)
+    }
+
+    /// A teaching note describing the active boundaries behind a `mask`
+    /// from [`GarchModel::boundary_mask`]; `None` when nothing is flagged.
+    pub(crate) fn boundary_note(&self, params: &[f64], mask: &[bool]) -> Option<String> {
+        if mask.len() != params.len() || !mask.iter().any(|&b| b) {
+            return None;
+        }
+        let names = self.spec.param_names();
+        let flagged: Vec<&str> = names
+            .iter()
+            .zip(mask)
+            .filter(|(_, &b)| b)
+            .map(|(n, _)| n.as_str())
+            .collect();
+        let pers = self.spec.persistence(params).ok()?;
+        // Classify the cause from the fitted values themselves: a masked
+        // coefficient that is not near a coordinate zero can only have
+        // been flagged by the joint persistence / |sum(beta)| constraint.
+        let step_scale = self.step_scales(params).ok()?;
+        let near_zero = |i: usize, v: f64| v.abs() <= 4.0 * f64::EPSILON.powf(0.25) * step_scale[i];
+        let (_, _, alphas, gammas, _, _) = self.spec.split_params(params).ok()?;
+        let a0 = self.spec.n_mean_params() + 1;
+        let g0 = a0 + alphas.len();
+        let mut causes: Vec<String> = Vec::new();
+        let joint_active = names
+            .iter()
+            .zip(mask)
+            .enumerate()
+            .any(|(i, (name, &b))| b && !name.starts_with("gamma") && !near_zero(i, params[i]));
+        if joint_active {
+            causes.push(match self.spec.vol {
+                VolSpec::Egarch { .. } => format!(
+                    "|sum(beta)| = {:.6} sits at its stationarity bound (1)",
+                    pers.abs()
+                ),
+                _ => format!(
+                    "the persistence sits at its upper bound (1) — an integrated (IGARCH) \
+                     fit, persistence = {pers:.6}"
+                ),
+            });
+        }
+        let coord_zeros: Vec<&str> = names
+            .iter()
+            .zip(mask)
+            .enumerate()
+            .filter(|(i, (name, &b))| {
+                b && (name.starts_with("alpha") || name.starts_with("beta"))
+                    && near_zero(*i, params[*i])
+            })
+            .map(|(_, (n, _))| n.as_str())
+            .collect();
+        if !coord_zeros.is_empty() {
+            causes.push(format!(
+                "{} at the sign constraint (0)",
+                coord_zeros.join(", ")
+            ));
+        }
+        for (i, &g) in gammas.iter().enumerate() {
+            if mask[g0 + i] && !near_zero(g0 + i, g) {
+                let a = alphas.get(i).copied().unwrap_or(0.0);
+                if (a + g).abs() <= 4.0 * f64::EPSILON.powf(0.25) * (step_scale[g0 + i] + 1.0) {
+                    causes.push(format!(
+                        "alpha[{n}] + gamma[{n}] at its lower bound (0)",
+                        n = i + 1
+                    ));
+                }
+            }
+        }
+        if causes.is_empty() {
+            causes.push("one or more coefficients sit at an active constraint".to_owned());
+        }
+        Some(format!(
+            "Boundary fit: {causes}. Parameters at an active boundary ({flagged}) have no \
+             classical standard errors — the observed information is singular there by \
+             construction, and their sampling distribution is a boundary mixture, not normal. \
+             Their entries in se_mle/se_robust are NaN with se_valid false; interior parameters \
+             keep finite standard errors from the reduced Hessian over the free directions. \
+             With alpha at 0 the variance recursion carries no shock feedback and beta is only \
+             weakly identified (a likelihood ridge): treat the whole fit with care.",
+            causes = causes.join("; "),
+            flagged = flagged.join(", ")
+        ))
+    }
+
     /// MLE and Bollerslev-Wooldridge robust standard errors at `params`
     /// (usually the fitted values) — see [`crate::inference`] for the
     /// estimators and `GarchModel::step_scales` for the
     /// numerical-derivative steps.
     ///
+    /// **Boundary-aware** (audit round 7): parameters at an active
+    /// constraint boundary ([`GarchModel::boundary_mask`]) are excluded
+    /// from the numerical Hessian — a probe across the constraint is not
+    /// evaluable and the information is singular there by construction —
+    /// and come back as `se = NaN`, `se_valid = false`,
+    /// `boundary = true`, while interior parameters keep finite standard
+    /// errors from the reduced Hessian. If even the reduced problem is
+    /// degenerate (singular reduced Hessian, no free direction, or a
+    /// failed probe), the report is all-NaN with every `se_valid` false —
+    /// flatness is reported, never a fabricated number and never a silent
+    /// error.
+    ///
     /// # Errors
     ///
-    /// [`GarchError::SingularHessian`] at a flat/boundary point; any
-    /// likelihood error raised at a finite-difference probe.
+    /// Parameter validation only ([`GarchSpec::validate_params`],
+    /// step-scale validation). Numerical failure is not an error: it is
+    /// reported through the flags as described above.
     pub fn standard_errors(&self, params: &[f64]) -> Result<StdErrors, GarchError> {
         self.spec.validate_params(params)?;
         let step_scale = self.step_scales(params)?;
-        inference::std_errors(
+        let mask = self.boundary_mask(params, &step_scale)?;
+        let free: Vec<bool> = mask.iter().map(|&b| !b).collect();
+        let result = inference::std_errors(
             |p| self.loglike(p).map(|ll| -ll),
             |p| {
                 self.loglike_obs(p)
@@ -291,7 +504,9 @@ impl GarchModel {
             params,
             self.y.len(),
             &step_scale,
-        )
+            &free,
+        );
+        Ok(result.unwrap_or_else(|_| StdErrors::all_invalid(params.len(), mask)))
     }
 
     /// Starting values by an `arch`-style grid search: candidate
@@ -385,8 +600,63 @@ impl GarchModel {
         })
     }
 
+    /// The internal standardization scale: the root-mean-square of the
+    /// starting residuals (the same quantity the backcast and the grid
+    /// starting values are built from). Estimation runs on `y / s` and the
+    /// optimum is mapped back — see [`GarchModel::fit`]. Falls back to 1
+    /// (no rescaling) if the RMS is degenerate, leaving whatever honest
+    /// error the unscaled path raises.
+    fn standardization_scale(&self) -> f64 {
+        let resids = Self::starting_resids(&self.y, self.spec.mean);
+        let rms = (resids.iter().map(|e| e * e).sum::<f64>() / resids.len() as f64).sqrt();
+        if rms.is_finite() && rms > 0.0 {
+            rms
+        } else {
+            1.0
+        }
+    }
+
+    /// Maps a parameter vector fitted on the standardized series `y / s`
+    /// back to the units of `y`: `mu -> s * mu`, GARCH/GJR
+    /// `omega -> s^2 * omega`, EGARCH `omega -> omega + (1 - sum(beta)) *
+    /// ln(s^2)` (its intercept is a log-variance, which *shifts* under
+    /// rescaling), every dimensionless coefficient (`alpha`, `gamma`,
+    /// `beta`, `nu`) unchanged. This is the exact reparameterization
+    /// `y -> c y` of the model, applied with `c = s`.
+    fn params_from_standardized(&self, params: &[f64], s: f64) -> Result<Vec<f64>, GarchError> {
+        let mut out = params.to_vec();
+        let nm = self.spec.n_mean_params();
+        if nm > 0 {
+            out[0] *= s;
+        }
+        match self.spec.vol {
+            VolSpec::Egarch { .. } => {
+                let (_, _, _, _, betas, _) = self.spec.split_params(params)?;
+                let sum_beta: f64 = betas.iter().sum();
+                out[nm] += (1.0 - sum_beta) * 2.0 * s.ln();
+            }
+            _ => out[nm] *= s * s,
+        }
+        Ok(out)
+    }
+
     /// Fits the model by quasi-maximum likelihood and returns the results
     /// object.
+    ///
+    /// **Scale-adaptive estimation** (audit round 7). The optimizer runs
+    /// on the internally standardized series `y / s`, `s` the RMS of the
+    /// starting residuals, and the optimum is mapped back through the
+    /// exact reparameterization `y -> c y` (see
+    /// `GarchModel::params_from_standardized`) — the same trick `arch`'s
+    /// `rescale=True` applies, done unconditionally so it cannot be
+    /// forgotten. Rescaling the data is a pure relabeling of the model,
+    /// so the *estimator* should commute with it; without this, the
+    /// round-1 audit measured 52/330 cross-scale comparisons converging
+    /// to a different point (the optimizer's paths, not its optima,
+    /// depend on the units through termination arithmetic). The
+    /// log-likelihood, conditional variances, and standard errors in the
+    /// results are all evaluated at the mapped parameters *on the
+    /// original data*, so their units are the caller's.
     ///
     /// **Constraint handling** (documented choice): the search runs in an
     /// unconstrained working space via the `tsecon-optim`
@@ -416,9 +686,35 @@ impl GarchModel {
     /// Starting-value/optimizer failures; likelihood errors at the
     /// optimum. If standard errors cannot be computed at the optimum
     /// (singular Hessian at a flat or boundary point), the fit still
-    /// succeeds with NaN standard errors — flatness is reported, not
-    /// hidden.
+    /// succeeds with NaN standard errors and per-parameter
+    /// `se_valid`/`boundary` flags — flatness is reported, not hidden.
     pub fn fit(&self) -> Result<GarchResults, GarchError> {
+        let s = self.standardization_scale();
+        let (params, converged) = if s == 1.0 {
+            self.optimize()?
+        } else {
+            let scaled: Vec<f64> = self.y.iter().map(|v| v / s).collect();
+            let inner = Self::new(&scaled, self.spec)?;
+            let (inner_params, converged) = inner.optimize()?;
+            (self.params_from_standardized(&inner_params, s)?, converged)
+        };
+        // Everything reported is evaluated at the mapped parameters on the
+        // ORIGINAL data (`self.loglike` is bit-identical to the optimizer's
+        // objective, re-based to the caller's units).
+        let loglik = self.loglike(&params)?;
+        // Boundary-aware standard errors: finite for interior parameters,
+        // NaN + `se_valid = false` at an active boundary, all-invalid when
+        // even the reduced Hessian is degenerate. Never a silent NaN row —
+        // the flags and the note say why.
+        let se = self.standard_errors(&params)?;
+        let note = self.boundary_note(&params, &se.boundary);
+        GarchResults::build(self, params, loglik, se, converged, note)
+    }
+
+    /// The three-stage QMLE search on this model's own data; returns the
+    /// best parameters (in this model's units) and the convergence flag.
+    /// [`GarchModel::fit`] calls it on the internally standardized model.
+    fn optimize(&self) -> Result<(Vec<f64>, bool), GarchError> {
         let sv = self.starting_values()?;
         let k = self.spec.n_params();
         let omega_idx = self.spec.n_mean_params();
@@ -484,14 +780,6 @@ impl GarchModel {
             });
         }
 
-        let params = to_natural(&best.x)?;
-        let loglik = -best.f;
-        // Flat or boundary optima can defeat the numerical Hessian; report
-        // NaN standard errors rather than failing the fit.
-        let se = self.standard_errors(&params).unwrap_or(StdErrors {
-            mle: vec![f64::NAN; k],
-            robust: vec![f64::NAN; k],
-        });
-        GarchResults::build(self, params, loglik, se, converged)
+        Ok((to_natural(&best.x)?, converged))
     }
 }

@@ -1,11 +1,12 @@
 # The tsecon gallery — every method, worked
 
-Seven pages leave synthetic data behind and target **published numbers on
+Eight pages leave synthetic data behind and target **published numbers on
 vendored public data**, each pinned in CI: the
 [Ramey-Zubairy multiplier](replication-ramey-zubairy.md), the
 [Estrella-Mishkin yield-curve probit](replication-yield-curve-recession.md),
 [Hamilton's Markov-switching GNP model](replication-hamilton-markov.md),
 [Uhlig's sign-restricted monetary SVAR](replication-uhlig-monetary.md),
+[the Gertler-Karadi proxy-SVAR monetary VAR](replication-gertler-karadi.md),
 [Bai-Perron's real-interest-rate breaks](replication-bai-perron-realint.md),
 [Hansen's sunspot SETAR](replication-setar-sunspots.md), and the
 [GLP prior-selection design](replication-glp-prior-selection.md).

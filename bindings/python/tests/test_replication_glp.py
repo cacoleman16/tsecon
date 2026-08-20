@@ -129,6 +129,51 @@ def test_grid_certificate_and_refit_consistency(designs, fit_small):
     )
 
 
+def test_scale_ar1_moves_the_selection_toward_the_published_modes(designs, fit_small, fit_medium):
+    """The 0.4.0 `scale_ar=1` option switches the prior's residual-scale
+    regressions from tsecon's AR(4) default to GLP's own AR(1) convention
+    (their setpriors.m, MNpsi=0). On this NEARBY panel the selection must
+    move toward — but, different data, not onto — the published Figure-1
+    modes (~0.45 small / ~0.17 medium): pinned bands around this
+    replication's 0.269 (small) and 0.155 (medium)."""
+    small, medium = designs
+    s1 = glp_repl.select_tightness(small, scale_ar=1)
+    m1 = glp_repl.select_tightness(medium, tol=1e-6, scale_ar=1)
+    assert s1["converged"] and m1["converged"]
+    # Toward the published small mode (0.215 -> 0.269, published ~0.45)...
+    assert s1["lambda1_opt"] > fit_small["lambda1_opt"]
+    assert 0.24 < s1["lambda1_opt"] < 0.30
+    # ...and toward the published medium mode (0.145 -> 0.155, published ~0.17),
+    assert m1["lambda1_opt"] > fit_medium["lambda1_opt"]
+    assert 0.14 < m1["lambda1_opt"] < 0.17
+    # still tightening as the cross-section grows (Figure 1's direction).
+    assert m1["lambda1_opt"] < s1["lambda1_opt"]
+
+
+def test_scale_ar_default_is_bit_identical_to_scale_ar4(designs):
+    """The default path must not move: omitting `scale_ar` and passing
+    `scale_ar=4` are the same computation, bit for bit, for bvar_fit,
+    bvar_hierarchical, and bvar_irf_draws — and `scale_ar=1` genuinely
+    changes the result (the option is not a no-op)."""
+    small, _ = designs
+
+    fit_default = tsecon.bvar_fit(small, lags=5, lambda1=0.2, delta=1.0)
+    fit_ar4 = tsecon.bvar_fit(small, lags=5, lambda1=0.2, delta=1.0, scale_ar=4)
+    assert fit_default == fit_ar4
+    fit_ar1 = tsecon.bvar_fit(small, lags=5, lambda1=0.2, delta=1.0, scale_ar=1)
+    assert fit_ar1["log_marginal_likelihood"] != fit_default["log_marginal_likelihood"]
+
+    h_default = glp_repl.select_tightness(small)
+    h_ar4 = glp_repl.select_tightness(small, scale_ar=4)
+    assert h_default == h_ar4
+
+    d_default = tsecon.bvar_irf_draws(small, lags=5, horizon=4, n_draws=3, seed=7, delta=1.0)
+    d_ar4 = tsecon.bvar_irf_draws(
+        small, lags=5, horizon=4, n_draws=3, seed=7, delta=1.0, scale_ar=4
+    )
+    assert d_default == d_ar4
+
+
 def test_hyperprior_accounting_is_the_glp_gamma(fit_small):
     """log_posterior - log_ml must equal the log density of GLP's Gamma
     hyperprior (mode 0.2, sd 0.4) at the selected lambda1 — the exact prior

@@ -213,6 +213,7 @@ These are not style preferences. Each was learned by losing hours.
 | Rule | Why |
 |---|---|
 | **Never run workspace-wide cargo** (`cargo test/build/check/clippy --workspace`) | It compiles silently for far longer than the 180-second no-progress threshold, so the harness kills the agent, retries six times, and reports the whole workflow failed. Use `cargo test -p <crate>`. Run the full suite yourself, outside the workflow. |
+| **Concurrent worktree agents must NOT share one `CARGO_TARGET_DIR`** | Same-named workspace crates from different worktrees produce identical unit hashes; last writer wins, and your build links a sibling's rlib (hit twice in one session: a `tsecon-bayes` compiled from another agent's sources broke two unrelated builds). Give each concurrent worktree its own target dir; share only when running alone. |
 | **Never ask an agent for verbatim reproduction of long code** | Same stall detector, different trigger: a huge accumulated context followed by one enormous generation with no tool call in it. Ask for `file:line` plus short quotes. |
 | **An audit is read-only** | No edits, no `git checkout/restore/stash/reset/commit/push/switch`. Probe scripts go in the scratchpad. |
 | **Fixture generators must never `import tsecon`** | A reference that calls the code it validates is circular and worthless. Mechanically checkable: `grep -l "import tsecon" fixtures/*.py` must return nothing. |
@@ -274,22 +275,29 @@ the same number — so an entire class of bug was invisible by construction.
 
 ## Already found and fixed — do not re-report these
 
-> **Rounds 2–6 have been run.** Results in
+> **Rounds 2–7 have been run.** Results in
 > [17-audit-round-2-findings.md](17-audit-round-2-findings.md) (21 candidates,
 > 8 survivors),
 > [18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md) (14
-> candidates raised, 7 survived), and
+> candidates raised, 7 survived),
 > [20-audit-round-6-findings.md](20-audit-round-6-findings.md) (13 raised,
 > 9 confirmed + 2 rescoped, 7 fixed in the same release — round 6 also ran
 > the checker role over the 0.3.0 merge range and the first Bayesian-
-> calibration/SBC pass, which is where its headline came from). **Read the
+> calibration/SBC pass, which is where its headline came from), and
+> [22-audit-round-7-findings.md](22-audit-round-7-findings.md) (the round-1
+> `garch_fit` backlog retired; the 0.3.0-late surface swept — 236/236
+> comparisons reached — with one confirmed code finding, the
+> `dcs_local_level` Laplace fit's unit-dependence, fixed together with the
+> latent Nelder-Mead initial-simplex hole it exposed). **Read the
 > "Refuted" sections before you start** — together they record every dead end
 > with the evidence that killed it (no count quoted here: the one that used
 > to sit in this sentence went stale within two commits), including several
 > that look compelling on first contact (`gmm_nonlinear`
 > returning its own starting value; `ccc_garch` on a singular correlation;
 > `panel_fe` at N=1; `zero_sign_svar`'s "dead" `weighted` flag; `cg_regression`'s
-> intercept). Re-deriving those is the single easiest way to waste a round.
+> intercept; round 7's `var_backtest` zero-violation "over-refusal" and the
+> `panel_lp` echo-alias). Re-deriving those is the single easiest way to
+> waste a round.
 >
 > Lenses 1, 2, 3 and 4 are now swept to **measured, reported completion** —
 > 59/59 switch axes, 12/12 seed cases, 47 functions scale-swept, 128/128
@@ -337,16 +345,26 @@ pair, and the documentation drift. Round 6 then fixed its own headline
 overflow message, and four doc-surface disagreements. See the CHANGELOG's
 0.3.0 section and [20-audit-round-6-findings.md](20-audit-round-6-findings.md).
 
+**Cleared in round 7** (see
+[22-audit-round-7-findings.md](22-audit-round-7-findings.md) for the pre/post
+tables): `garch_fit`'s silent all-NaN boundary SEs (now a reduced Hessian
+over the interior directions with per-parameter `se_valid`/`boundary` flags,
+a teaching `boundary_note`, and the `converged` flag exposed — 24/50 silent
+rows → 0, interior SEs kept on every flagged fit); `garch_fit`'s
+scale-sensitivity (standardize-and-map-back — power-of-two rescalings now
+commute bit-exactly, 0 cross-scale disagreements on any unflagged fit, the
+residual 75/320 confined to flag-covered likelihood-ridge fits);
+`dcs_local_level`'s Laplace unit-dependence (same repair; 11/20 → 4/20,
+t/gaussian 0/20 throughout); the Nelder-Mead mixed-scale concern — realized,
+not just theoretical: the **initial simplex** gave a near-zero starting
+coordinate an edge below the default `x_tol`, certifying convergence at the
+starting value; the edge is now floored at scipy's `zdelt` (bit-identical
+vertices for `|x0| >= 0.005`); and the round-6 negative-integer cosmetic
+(`lags=-1` and friends now raise a central teaching `ValueError` naming the
+function and parameter).
+
 **Still open — confirmed, documented where user-facing, not yet re-engineered:**
 
-- **`garch_fit` returns silent all-NaN standard errors** when a
-  *dimensionless* coefficient (`alpha`/`gamma`/`beta`) sits at its boundary
-  (round 1; 10 of 120 probe units). Nothing tests it.
-- **`garch_fit`'s fitted parameters are not scale-robust** — 52 of 330
-  cross-scale comparisons converged to a different point (round 1). The
-  standard-error machinery was fixed; the fit was not.
-- **Nelder-Mead's x-side floor is a mixed-scale test** — theoretical; not yet
-  realized in a probe.
 - **The diffuse period terminates on a norm test over `P_inf`** — the fix is
   rank-counting termination.
 - **`lp_iv`, `lp_multiplier`, `lp_state` have no cross-horizon covariance**,
@@ -363,8 +381,6 @@ overflow message, and four doc-surface disagreements. See the CHANGELOG's
 - **A minimum-cycles advisory for `nsdiffs`/`seasonal_strength`** (round 6):
   below ~4 cycles the rule flags pure noise (documented with measurements);
   whether the advisory belongs in the output itself is open.
-- **Uniform typed errors for negative integer arguments** (round 6):
-  `lags=-1` and friends raise raw `OverflowError` library-wide.
 - **The unmeasured-seven list is closed** — measured in
   `docs/examples/coverage/quantile_panel_lp.py` and `factor_midas.py`
   (the registry now holds 50 outputs; `check_page.py` guards the page).
