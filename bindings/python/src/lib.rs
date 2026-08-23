@@ -1813,6 +1813,138 @@ fn seasonal_strength<'py>(
     Ok(d)
 }
 
+/// A sequence of positive integers (a periods/windows argument), validated
+/// with a teaching error naming the argument.
+fn positive_int_seq(name: &str, v: &[i64], example: &str) -> PyResult<Vec<usize>> {
+    if let Some(&bad) = v.iter().find(|&&x| x < 1) {
+        return Err(PyValueError::new_err(format!(
+            "{name} must contain positive integers, got {bad} — {example}"
+        )));
+    }
+    Ok(v.iter().map(|&x| x as usize).collect())
+}
+
+/// MSTL — Multiple Seasonal-Trend decomposition using LOESS
+/// (Bandara-Hyndman-Bergmeir 2021): STL iterated over several seasonal
+/// periods, for series with more than one cycle (e.g. hourly data with
+/// daily and weekly seasonality, `periods=[24, 168]`). `periods` is
+/// always a sequence — a single period is `periods=[12]`.
+///
+/// Matches `statsmodels.tsa.seasonal.MSTL` elementwise at 1e-8 (observed
+/// <= ~5e-11): periods are sorted ascending; any period >= n/2 is dropped
+/// (statsmodels warns; here the drop is reported in `dropped_periods`);
+/// `windows` gives each period's seasonal LOESS window (odd, >= 3, paired
+/// with the same-index period; None uses the paper's rule 7 + 4*k for the
+/// k-th sorted period: 11, 15, 19, ...); `iterate` rounds (default 2,
+/// forced to 1 for a single period) cycle over the periods re-extracting
+/// each seasonal from the series deseasonalized of the others. The
+/// remaining STL keywords are forwarded to every per-period STL pass;
+/// trend and robustness weights come from the final pass. statsmodels'
+/// `lmbda` (Box-Cox) option is deliberately not implemented — transform
+/// `y` first if you need it. Unlike statsmodels, duplicate periods and
+/// `iterate=0` are refused with an error instead of misbehaving silently.
+///
+/// Returns dict keys: `seasonal` (a dict `{"seasonal_<period>": array}`,
+/// ascending periods; the components sum with trend and resid back to
+/// `y`), `trend`, `resid`, `weights` (all 1 unless the final pass ran
+/// outer robustness iterations), `periods` and `windows` (resolved:
+/// sorted, post-drop), `iterate` (rounds actually run),
+/// `dropped_periods`, and `seasonal_strength` (a dict of per-period
+/// Wang-Smith-Hyndman strengths `max(0, 1 - var(resid)/var(seasonal_k +
+/// resid))`, sample variances — or None for a constant input series,
+/// where the variance ratio would be float noise, matching the
+/// `seasonal_strength` function's refusal).
+#[pyfunction]
+#[pyo3(signature = (y, periods, windows = None, iterate = 2, trend = None,
+    low_pass = None, seasonal_deg = 1, trend_deg = 1, low_pass_deg = 1,
+    robust = false, seasonal_jump = 1, trend_jump = 1, low_pass_jump = 1,
+    inner_iter = None, outer_iter = None))]
+#[allow(clippy::too_many_arguments)]
+fn mstl<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    periods: Vec<i64>,
+    windows: Option<Vec<i64>>,
+    iterate: usize,
+    trend: Option<usize>,
+    low_pass: Option<usize>,
+    seasonal_deg: usize,
+    trend_deg: usize,
+    low_pass_deg: usize,
+    robust: bool,
+    seasonal_jump: usize,
+    trend_jump: usize,
+    low_pass_jump: usize,
+    inner_iter: Option<usize>,
+    outer_iter: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let periods = positive_int_seq(
+        "periods",
+        &periods,
+        "each period is the number of observations per seasonal cycle, e.g. \
+         periods=[24, 168] for hourly data with daily and weekly cycles",
+    )?;
+    let windows = windows
+        .map(|w| {
+            positive_int_seq(
+                "windows",
+                &w,
+                "each window is the (odd, >= 3) seasonal LOESS window for the \
+                 same-index period, e.g. windows=[11, 15]; or None for the \
+                 MSTL default rule",
+            )
+        })
+        .transpose()?;
+    let params = tsecon_filters::MstlParams {
+        windows,
+        iterate,
+        stl: tsecon_filters::StlParams {
+            trend,
+            low_pass,
+            seasonal_deg,
+            trend_deg,
+            low_pass_deg,
+            robust,
+            seasonal_jump,
+            trend_jump,
+            low_pass_jump,
+            inner_iter,
+            outer_iter,
+            ..Default::default()
+        },
+    };
+    let yv = vec1(&y);
+    let constant = yv.first().is_some_and(|&f| yv.iter().all(|&v| v == f));
+    let r = tsecon_filters::mstl(&yv, &periods, &params).map_err(to_py)?;
+    let strengths = tsecon_filters::mstl_seasonal_strengths(&r);
+    let d = PyDict::new(py);
+    let s = PyDict::new(py);
+    for (p, comp) in r.periods.iter().zip(r.seasonal) {
+        s.set_item(format!("seasonal_{p}"), comp.into_pyarray(py))?;
+    }
+    d.set_item("seasonal", s)?;
+    d.set_item("trend", r.trend.into_pyarray(py))?;
+    d.set_item("resid", r.resid.into_pyarray(py))?;
+    d.set_item("weights", r.weights.into_pyarray(py))?;
+    d.set_item("periods", r.periods.clone())?;
+    d.set_item("windows", r.windows)?;
+    d.set_item("iterate", r.iterate)?;
+    d.set_item("dropped_periods", r.dropped_periods)?;
+    if constant {
+        // A constant series has zero sample variance: the per-period
+        // strength ratio would be pure float noise (see seasonal_strength's
+        // ConstantSeries refusal), so no number is reported.
+        d.set_item("seasonal_strength", py.None())?;
+    } else {
+        let sd = PyDict::new(py);
+        for (p, v) in r.periods.iter().zip(strengths) {
+            sd.set_item(format!("seasonal_{p}"), v)?;
+        }
+        d.set_item("seasonal_strength", sd)?;
+    }
+    Ok(d)
+}
+
 /// Diebold-Mariano test of equal predictive accuracy with the
 /// Harvey-Leybourne-Newbold small-sample correction.
 #[pyfunction]
@@ -9023,6 +9155,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cf_filter, m)?)?;
     m.add_function(wrap_pyfunction!(hamilton_filter, m)?)?;
     m.add_function(wrap_pyfunction!(stl, m)?)?;
+    m.add_function(wrap_pyfunction!(mstl, m)?)?;
     m.add_function(wrap_pyfunction!(seasonal_strength, m)?)?;
     m.add_function(wrap_pyfunction!(dm_test, m)?)?;
     m.add_function(wrap_pyfunction!(accuracy, m)?)?;
