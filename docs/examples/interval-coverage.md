@@ -511,7 +511,9 @@ a calibration.
 **Three things this does not do.** `lp_iv`, `lp_multiplier` and `lp_state` have
 no cross-horizon covariance, so they get Šidák and Bonferroni **only** — sup-t
 is refused with an error naming the reason, and their bands must never be
-described as sup-t. The bootstrap simultaneous band is a **different shape**
+described as sup-t (`panel_lp` joined this closed-form-only list after the
+audit; its own seeded joint-coverage table lives on the
+[panel card](../reference/model-cards/panel.md#simultaneous-bands-over-the-horizons-panel_lp)). The bootstrap simultaneous band is a **different shape**
 from the bootstrap percentile band — symmetric `point ± c·se` against asymmetric
 Efron percentiles — so it is not guaranteed to sit outside the percentile band
 cell by cell, only outside the symmetric `point ± z·se`. And nothing that

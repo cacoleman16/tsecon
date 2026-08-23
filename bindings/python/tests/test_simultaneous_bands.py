@@ -18,8 +18,11 @@ These are the assertions that would fail if the exposure were wrong:
 * the scope label and K come back with every simultaneous band;
 * an unknown `band` raises, naming the accepted values;
 * the sup-t-from-covariance route is a pure function of its seed;
-* lp_iv / lp_multiplier / lp_state REFUSE sup-t, because no cross-horizon
-  covariance exists for them — they get Sidak/Bonferroni only.
+* lp_iv / lp_multiplier / lp_state / panel_lp REFUSE sup-t, because no
+  cross-horizon covariance exists for them — they get Sidak/Bonferroni only;
+* panel_lp's closed-form bands are measured for JOINT coverage on a seeded
+  known-truth panel MC (the numbers quoted in its docstring and the panel
+  model card come from that test).
 
 Every RNG is seeded, every panel is small, and matplotlib is never imported.
 """
@@ -59,6 +62,25 @@ def _lp_iv_series(n=360, seed=20260811):
     rng = np.random.default_rng(seed + 1)
     instrument = shock + 0.3 * rng.standard_normal(n)
     return y, shock, instrument
+
+
+def _panel_lp_data(n_entities=12, t=120, hmax=6, seed=20260823, rng=None):
+    """A balanced panel driven by an iid common shock with a known finite MA
+    response psi_h = 0.8 * 0.6^h. Because the shock is iid and independent of
+    every control dated earlier, the panel-LP estimand at horizon h is exactly
+    psi_h — which is what makes this usable for a joint-coverage measurement.
+    """
+    if rng is None:
+        rng = np.random.default_rng(seed)
+    psi = 0.8 * 0.6 ** np.arange(hmax + 1)
+    shock = rng.standard_normal(t)
+    common = np.convolve(shock, psi)[:t]
+    y = (
+        rng.normal(0.0, 1.0, (n_entities, 1))  # entity fixed effects
+        + common[None, :]
+        + rng.standard_normal((n_entities, t))
+    )
+    return y, shock, psi
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +168,23 @@ def test_closed_form_lp_surfaces_default_to_no_band():
     )
 
 
+def test_panel_lp_default_returns_no_band_and_the_same_estimates():
+    """panel_lp had no band before this; `band=None` must keep its result
+    keys exactly as shipped, and a banded call must not disturb the point
+    path or the standard errors."""
+    y, shock, _ = _panel_lp_data()
+    base = tsecon.panel_lp(y, shock, horizon=6, n_lag_controls=2)
+    assert set(base) == {
+        "irf", "se", "nobs", "se_type", "cumulative", "jackknife",
+        "bias_correction",
+    }
+    for method in ("pointwise",) + CLOSED_FORM:
+        got = tsecon.panel_lp(y, shock, horizon=6, n_lag_controls=2, band=method)
+        assert np.array_equal(got["irf"], base["irf"])
+        assert np.array_equal(got["se"], base["se"])
+        assert got["band"] == method
+
+
 # ---------------------------------------------------------------------------
 # Containment: the simultaneous band contains the SYMMETRIC pointwise band
 # ---------------------------------------------------------------------------
@@ -225,6 +264,26 @@ def test_lp_iv_and_multiplier_simultaneous_contain_pointwise(band):
         r = fn(y, shock, inst, horizons=6, n_lag_controls=4, band=band)
         assert (r["lower"] <= pw["lower"] + 1e-12).all()
         assert (r["upper"] >= pw["upper"] - 1e-12).all()
+
+
+@pytest.mark.parametrize("band", CLOSED_FORM)
+def test_panel_lp_simultaneous_contains_pointwise_and_edges_are_c_times_se(band):
+    y, shock, _ = _panel_lp_data()
+    pw = tsecon.panel_lp(y, shock, horizon=6, n_lag_controls=2, band="pointwise")
+    r = tsecon.panel_lp(y, shock, horizon=6, n_lag_controls=2, band=band)
+    assert (r["lower"] <= pw["lower"] + 1e-12).all()
+    assert (r["upper"] >= pw["upper"] - 1e-12).all()
+    # The band is exactly irf +/- c * se with the reported se — the widening
+    # lives in the multiplier alone.
+    c = r["critical_value"]
+    np.testing.assert_allclose(r["lower"], r["irf"] - c * r["se"], atol=1e-12)
+    np.testing.assert_allclose(r["upper"], r["irf"] + c * r["se"], atol=1e-12)
+    assert c > r["pointwise_critical_value"]
+    assert r["band"] == band and r["band_scope"] == "horizon"
+    assert r["n_cells"] == 7 and r["n_cells_used"] == 7
+    # Closed forms build no covariance and run no simulation.
+    assert r["cov_se_max_rel_diff"] is None
+    assert r["band_n_sim"] == 0
 
 
 @pytest.mark.parametrize("band", CLOSED_FORM)
@@ -476,6 +535,9 @@ def test_unknown_band_raises_on_the_lp_surfaces():
     y, shock = _lp_series(n=200)
     with pytest.raises(ValueError, match="unknown band"):
         tsecon.lp(y, shock, horizons=4, n_lag_controls=2, band="supt-ish")
+    py, pshock, _ = _panel_lp_data(n_entities=6, t=60, hmax=3)
+    with pytest.raises(ValueError, match="unknown band"):
+        tsecon.panel_lp(py, pshock, horizon=3, n_lag_controls=1, band="joint")
 
 
 @pytest.mark.parametrize("scope", ["horizons", "shocks", "everything", "series"])
@@ -494,14 +556,22 @@ def test_band_alpha_is_validated(bad):
     y, shock = _lp_series(n=200)
     with pytest.raises(ValueError, match="band_alpha"):
         tsecon.lp(y, shock, horizons=4, n_lag_controls=2, band="sidak", band_alpha=bad)
+    py, pshock, _ = _panel_lp_data(n_entities=6, t=60, hmax=3)
+    with pytest.raises(ValueError, match="band_alpha"):
+        tsecon.panel_lp(
+            py, pshock, horizon=3, n_lag_controls=1, band="sidak", band_alpha=bad
+        )
 
 
-@pytest.mark.parametrize("fn_name", ["lp_iv", "lp_multiplier", "lp_state"])
+@pytest.mark.parametrize(
+    "fn_name", ["lp_iv", "lp_multiplier", "lp_state", "panel_lp"]
+)
 def test_sup_t_is_refused_where_no_cross_horizon_covariance_exists(fn_name):
-    """lp_iv, lp_multiplier and lp_state get Sidak/Bonferroni ONLY. Refusing by
-    name is the point: a sup-t number here would be fabricated."""
+    """lp_iv, lp_multiplier, lp_state and panel_lp get Sidak/Bonferroni ONLY.
+    Refusing by name is the point: a sup-t number here would be fabricated."""
     y, shock, inst = _lp_iv_series(n=300)
     st = (np.arange(len(y)) % 5 < 2).astype(float)
+    py, pshock, _ = _panel_lp_data(n_entities=8, t=80, hmax=4)
     calls = {
         "lp_iv": lambda b: tsecon.lp_iv(
             y, shock, inst, horizons=6, n_lag_controls=4, band=b
@@ -511,6 +581,9 @@ def test_sup_t_is_refused_where_no_cross_horizon_covariance_exists(fn_name):
         ),
         "lp_state": lambda b: tsecon.lp_state(
             y, shock, st, horizons=6, n_lag_controls=4, band=b
+        ),
+        "panel_lp": lambda b: tsecon.panel_lp(
+            py, pshock, horizon=4, n_lag_controls=2, band=b
         ),
     }
     call = calls[fn_name]
@@ -573,3 +646,83 @@ def test_facade_and_module_supt_defaults_agree():
     )
     np.testing.assert_array_equal(np.asarray(mod["lower"]), np.asarray(res["lower"]))
     np.testing.assert_array_equal(np.asarray(mod["upper"]), np.asarray(res["upper"]))
+
+
+# ---------------------------------------------------------------------------
+# panel_lp joint coverage, measured
+# ---------------------------------------------------------------------------
+
+def test_panel_lp_joint_coverage_pointwise_fails_and_closed_forms_repair_it():
+    """The acceptance measurement for panel_lp's band surface. Seeded MC on
+    the known-truth panel DGP (estimand exactly psi_h = 0.8 * 0.6^h at every
+    horizon), nominal 90%, K = 9 horizons, Driscoll-Kraay standard errors,
+    joint = the band contains the WHOLE path at once.
+
+    Measured at this seed (200 reps, N=24, T=160; MC se ~ 0.03):
+    pointwise joint 0.305, Sidak 0.765, Bonferroni 0.765, with pointwise
+    per-horizon marginals 0.815-0.880. A wider sweep (same script, N=30) put
+    pointwise at 0.405 (T=400) and 0.425 (T=800) — not converging to 0.90 —
+    against Sidak/Bonferroni 0.840/0.845 rising to 0.880/0.890 as the DK
+    marginals reach nominal. Two honest readings, both asserted below: the
+    pointwise shortfall is multiplicity (marginals are near nominal, the
+    joint rate is nowhere near it), and the union bounds fix multiplicity
+    ONLY — at short T they inherit the Driscoll-Kraay standard errors'
+    documented downward finite-sample bias, so they sit below nominal here
+    and approach it with T. These are the numbers quoted in panel_lp's
+    docstring and on the panel model card.
+    """
+    reps, N, T, H = 200, 24, 160, 8
+    alpha = 0.10
+    psi = 0.8 * 0.6 ** np.arange(H + 1)
+    rng = np.random.default_rng(20260823)
+    joint = {"pointwise": 0, "sidak": 0, "bonferroni": 0}
+    marginal = np.zeros(H + 1)
+
+    for _ in range(reps):
+        y, shock, _ = _panel_lp_data(n_entities=N, t=T, hmax=H, rng=rng)
+        r_sid = tsecon.panel_lp(
+            y, shock, horizon=H, n_lag_controls=2,
+            se_type="driscoll_kraay", bandwidth=10.0,
+            band="sidak", band_alpha=alpha,
+        )
+        r_bon = tsecon.panel_lp(
+            y, shock, horizon=H, n_lag_controls=2,
+            se_type="driscoll_kraay", bandwidth=10.0,
+            band="bonferroni", band_alpha=alpha,
+        )
+        irf, se = np.asarray(r_sid["irf"]), np.asarray(r_sid["se"])
+        assert np.array_equal(irf, np.asarray(r_bon["irf"]))
+        err = np.abs(irf - psi)
+        cs = {
+            "pointwise": r_sid["pointwise_critical_value"],
+            "sidak": r_sid["critical_value"],
+            "bonferroni": r_bon["critical_value"],
+        }
+        for label, c in cs.items():
+            if np.all(err <= c * se):
+                joint[label] += 1
+        marginal += (err <= cs["pointwise"] * se).astype(float)
+
+    marginal /= reps
+    rates = {k: v / reps for k, v in joint.items()}
+    print(f"\npanel_lp joint coverage (reps={reps}, N={N}, T={T}, K={H + 1}, "
+          f"nominal {1 - alpha:.0%}): {rates}")
+    print(f"pointwise marginals by horizon: {np.round(marginal, 3).tolist()}")
+
+    # The pointwise standard errors are roughly right per horizon (short-T
+    # Driscoll-Kraay runs a few points short — the documented caveat), so the
+    # joint failure below is multiplicity, not a broken se.
+    assert all(0.75 <= m <= 0.97 for m in marginal), marginal
+    # Read as a path statement, the pointwise band fails badly.
+    assert rates["pointwise"] < 0.50, rates
+    # Both closed-form simultaneous routes repair most of the gap...
+    for label in ("sidak", "bonferroni"):
+        assert rates[label] >= rates["pointwise"] + 0.30, rates
+        # ... to a level consistent with what the DK marginals allow at this
+        # T (measured 0.765; nominal is reached as T grows — see docstring).
+        assert rates[label] >= 0.70, rates
+    # Bonferroni can never cover less than Sidak (its multiplier is larger).
+    assert (
+        r_bon["critical_value"] > r_sid["critical_value"]
+        > r_sid["pointwise_critical_value"]
+    )

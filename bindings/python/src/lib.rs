@@ -4312,8 +4312,39 @@ fn panel_fe<'py>(
 /// 0.88 -> 0.80; the equivalence arrives by T ~ 240. At short T prefer
 /// `bias_correction="spj"`, whose SEs are recomputed for the corrected
 /// estimator.
+///
+/// BANDS (`band=`). `band=None` (the default) returns no band, exactly as
+/// before. `"pointwise"`, `"sidak"` and `"bonferroni"` add `lower`/`upper`
+/// over the horizons of this response (`K = horizon + 1`,
+/// `band_scope="horizon"`) at level `band_alpha`, together with
+/// `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used`
+/// and `cov_se_max_rel_diff` (always None here: the closed-form routes build
+/// no covariance; `band_n_sim`/`band_seed` come back 0 — no simulation ran).
+/// A `"pointwise"` band covers one horizon at a time and promises nothing
+/// about the path; `"sidak"` and `"bonferroni"` cover every horizon at once
+/// with probability `1 - band_alpha` (Montiel Olea & Plagborg-Møller,
+/// "Simultaneous confidence bands", are the reference for why a pointwise
+/// band read as a path statement fails).
+///
+/// `band="sup-t"` IS REFUSED HERE, with an error saying why: sup-t needs the
+/// covariance ACROSS horizons and tsecon estimates none for the panel LP
+/// (building it would need new cross-horizon machinery in the panel crate —
+/// a documented follow-up), so `panel_lp` gets the CLOSED-FORM simultaneous
+/// routes only, like `lp_iv`/`lp_multiplier`/`lp_state`. Never describe a
+/// band from this function as sup-t.
+///
+/// Joint coverage, measured (seeded MC, known-truth panel IRF `0.8*0.6^h`,
+/// K=9 horizons, Driscoll-Kraay, nominal 90%, 200 reps per cell; the
+/// N=24/T=160 cell is `test_simultaneous_bands.py`): the pointwise band
+/// contained the whole path in 30.5% of samples at N=24, T=160 and still
+/// only 42.5% at N=30, T=800 — multiplicity does not shrink with the
+/// sample — while Sidak/Bonferroni scored 76.5%/76.5% at T=160 rising to
+/// 88.0%/89.0% at T=800, where the per-horizon Driscoll-Kraay marginals
+/// sit on nominal. The union bounds fix multiplicity ONLY and inherit
+/// whatever the DK standard errors get wrong at short T (the documented
+/// short-T DK caveat).
 #[pyfunction]
-#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false, bias_correction = "none"))]
+#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
 #[allow(clippy::too_many_arguments)]
 fn panel_lp<'py>(
     py: Python<'py>,
@@ -4326,6 +4357,8 @@ fn panel_lp<'py>(
     cumulative: bool,
     jackknife: bool,
     bias_correction: &str,
+    band: Option<&str>,
+    band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_var::tsecon_linalg::faer::Mat;
     let o = outcome.as_array();
@@ -4348,6 +4381,16 @@ fn panel_lp<'py>(
         }
     };
     let r = tsecon_panel::panel_lp(&data, &vec1(&shock), &cfg).map_err(to_py)?;
+    // Closed-form band over the horizons of this one response. Same machinery
+    // and same refusal (`sup-t` needs a cross-horizon covariance nobody
+    // estimates here) as lp_iv / lp_multiplier / lp_state.
+    let fitted_band = match band {
+        None => None,
+        Some(b) => {
+            let bspec = lp_closed_form_spec(b, band_alpha, "panel_lp")?;
+            Some(tsecon_lp::closed_form_band(&r.irf, &r.se, bspec).map_err(to_py)?)
+        }
+    };
     let d = PyDict::new(py);
     d.set_item("irf", r.irf.into_pyarray(py))?;
     d.set_item("se", r.se.into_pyarray(py))?;
@@ -4370,6 +4413,9 @@ fn panel_lp<'py>(
             tsecon_panel::LpBiasCorrection::Spj => "spj",
         },
     )?;
+    if let Some(b) = fitted_band.as_ref() {
+        set_lp_band_items(py, &d, b, "")?;
+    }
     Ok(d)
 }
 
