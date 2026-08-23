@@ -85,6 +85,32 @@ def dfgls(
     arch.unitroot.DFGLS (< 1e-10); p-values/critical values are arch's DF-GLS
     response surfaces (Sheppard's MacKinnon-style simulations, transcribed)."""
 
+def ng_perron(
+    y: _ArrayLike,
+    trend: str = ...,
+    lags: int | str | None = ...,
+    max_lags: int | None = ...,
+) -> dict[str, Any]:
+    """Ng-Perron (2001) M unit-root tests (MZa, MZt, MSB, MPT; null: unit root).
+
+    GLS-detrends `y` through the same engine as `dfgls` (cbar = -7.0 for
+    "c", -13.5 for "ct"), selects the ADF lag by the paper's MAIC on the
+    detrended series (`lags=None` or `"maic"`, searching 0..=`max_lags`;
+    default Schwert's ceil(12*(n/100)^(1/4)) capped at (n-1)/2 - 1) or uses
+    a fixed integer `lags`, estimates the autoregressive spectral density at
+    frequency zero `s2_ar = sigma2_e / (1 - b(1))^2`, and forms the four M
+    statistics. All four reject the unit-root null when SMALL (below the
+    critical value); `mzt == mza * msb` exactly. No p-values: no published
+    response surface exists for the M tests, so compare each statistic
+    against its own critical values (Ng-Perron 2001 Table 1, asymptotic,
+    transcribed). Returns dict keys: `mza`, `mzt`, `msb`, `mpt`,
+    `used_lag`, `nobs` (= n - 1 - used_lag), `s2_ar`, `crit`
+    ({"mza","mzt","msb","mpt"} each {"1%","5%","10%"}), `trend`. Prefer
+    this battery over `dfgls` under a suspected large negative MA root;
+    caveat (Perron-Qu 2007): on data far from the null MAIC drives the lag
+    to its maximum and power collapses — cap `max_lags` or fix `lags`
+    there."""
+
 def phillips_ouliaris(
     y: _ArrayLike,
     x: _ArrayLike,

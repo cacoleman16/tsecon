@@ -7,7 +7,25 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`ng_perron`** — the Ng-Perron (2001) M unit-root tests (MZa, MZt, MSB,
+  MPT): the same GLS-detrending engine as `dfgls` (bitwise-pinned), the
+  paper's MAIC lag selection on the detrended series, and the
+  autoregressive spectral density estimator at frequency zero, with the
+  transcribed Table 1 asymptotic critical values (statistic-only — no
+  p-value surface exists for the M tests and none is fabricated). No
+  runnable independent implementation exists anywhere (statsmodels, arch,
+  and CRAN all lack the M tests — a canary test pins the absence), so the
+  validation is the ROADMAP's planned table+MC grade: seeded Monte-Carlo
+  size at the asymptotic critical values (lag-0 T=1000: 5% size measured
+  0.039–0.058 across all eight statistic/trend rows; MAIC T=250:
+  0.027–0.045, slightly conservative per the paper's own Table 2), power
+  ordering, the MAIC negative-MA mechanism (mean lag 0.9 i.i.d. vs 7.8
+  under MA(−0.8)), the exact MZt = MZa × MSB identity, and an independent
+  NumPy re-implementation re-pinned through the binding at 1e-9. The
+  Perron-Qu (2007) far-from-null power reversal is pinned as documented
+  behavior and taught in the model card.
 
 ## [0.4.0] - 2026-08-18
 
