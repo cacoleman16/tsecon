@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**146 functions.**
+**147 functions.**
 
 ## diagnostics
 
@@ -757,6 +757,45 @@ STL seasonal-trend decomposition using LOESS (Cleveland et al. 1990).
     trend + resid), `weights` (bisquare robustness weights; all 1 unless
     the outer loop runs), `period`, and `config` (the resolved windows,
     degrees, jumps, and inner/outer iteration counts).
+
+### `mstl`
+
+```python
+def mstl(
+    y: _ArrayLike,
+    periods: Sequence[int],
+    windows: Sequence[int] | None = ...,
+    iterate: int = ...,
+    trend: int | None = ...,
+    low_pass: int | None = ...,
+    seasonal_deg: int = ...,
+    trend_deg: int = ...,
+    low_pass_deg: int = ...,
+    robust: bool = ...,
+    seasonal_jump: int = ...,
+    trend_jump: int = ...,
+    low_pass_jump: int = ...,
+    inner_iter: int | None = ...,
+    outer_iter: int | None = ...,
+) -> dict[str, Any]:
+```
+
+MSTL — STL iterated over multiple seasonal periods
+    (Bandara-Hyndman-Bergmeir 2021), e.g. `periods=[24, 168]` for hourly
+    data with daily and weekly cycles.
+
+    Matches statsmodels.tsa.seasonal.MSTL elementwise at 1e-8: periods
+    sorted ascending, any period >= n/2 dropped (reported in
+    `dropped_periods`), per-period seasonal windows from `windows` (None:
+    the 7 + 4*k rule -> 11, 15, 19, ...), `iterate` refinement rounds
+    (default 2; 1 for a single period), remaining STL keywords forwarded
+    to every pass. statsmodels' Box-Cox `lmbda` option is not implemented
+    (pre-transform y instead); duplicate periods and iterate=0 are
+    refused. Returns `seasonal` (dict of per-period arrays keyed
+    "seasonal_<period>"), `trend`, `resid`, `weights` (from the final
+    pass), the resolved `periods`/`windows`, `iterate`,
+    `dropped_periods`, and per-period `seasonal_strength` (None for a
+    constant series).
 
 ### `seasonal_strength`
 
