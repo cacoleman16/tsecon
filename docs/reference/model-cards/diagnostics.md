@@ -204,7 +204,7 @@ ADF p: 0.841  KPSS p: 0.01
 
 ## STL decomposition and the seasonal workflow
 
-**Family:** `stl`, `seasonal_strength`, `nsdiffs`
+**Family:** `stl`, `mstl`, `seasonal_strength`, `nsdiffs`
 
 Season-Trend decomposition using LOESS (Cleveland, Cleveland, McRae &
 Terpenning 1990) — the workhorse for exploratory seasonal adjustment outside
@@ -238,8 +238,10 @@ Hyndman-Khandakar `nsdiffs` seasonal-differencing rule.
 - **Additive components.** STL decomposes additively; for multiplicative
   seasonality (amplitude growing with the level) log-transform first —
   `box_cox_lambda` tells you whether the log is defensible.
-- **One fixed integer period** (12 monthly, 4 quarterly). Multiple or
-  non-integer seasonalities need MSTL/STR (roadmap).
+- **One fixed integer period** (12 monthly, 4 quarterly) per component.
+  Multiple seasonalities (hourly data with daily *and* weekly cycles) are
+  `mstl`'s job — see its section below; non-integer seasonalities need STR
+  (roadmap).
 - **Use `stl` before a SARIMA fit** (does the seasonal look stable? how big is
   it relative to the noise?), to seasonally adjust for eyeballing turning
   points, or to feed `resid` to outlier screens. `robust=True` when the series
@@ -358,4 +360,150 @@ Expected output:
 trend window: 23 inner/outer: 2 15
 seasonal strength: 0.978
 nsdiffs D = 1 | stop: WeakSeasonality
+```
+
+---
+
+## MSTL: decomposition with multiple seasonal cycles
+
+**Family:** `mstl`
+
+Multiple Seasonal-Trend decomposition using LOESS (Bandara, Hyndman &
+Bergmeir 2021) — STL iterated over several seasonal periods, for series
+whose seasonality has more than one layer: hourly load with a daily *and* a
+weekly cycle (`periods=[24, 168]`), daily sales with weekly and annual
+cycles, and so on. Matches `statsmodels.tsa.seasonal.MSTL` elementwise.
+
+### What it estimates
+
+The additive decomposition
+`y = seasonal_1 + … + seasonal_K + trend + resid`, one seasonal component
+per period. Periods are sorted ascending and any period ≥ n/2 is dropped
+(statsmodels warns; here the drop is reported in `dropped_periods`). Each
+of `iterate` rounds (default 2; forced to 1 for a single period) cycles
+over the periods, re-running STL at each period on the series
+deseasonalized of all the *other* components — so each seasonal is
+re-extracted with the competing cycles removed, which is what lets nested
+cycles (24 inside 168) separate cleanly. `trend` and the robustness
+`weights` come from the final STL pass; `resid` is what's left.
+
+### Assumptions and when to use
+
+- **Additive components**, as with `stl`: log-transform first for
+  multiplicative seasonality. statsmodels' `lmbda`/Box-Cox option is
+  deliberately **not implemented** — pre-transform `y` yourself
+  (`box_cox_lambda` advises on the exponent).
+- **Distinct integer periods**, each < n/2. A single period degenerates to
+  plain `stl` with seasonal window 11 (bit-for-bit — tested), so `mstl` is
+  a safe default entry point for seasonal decomposition generally.
+- **Use it before modeling multi-seasonal data** (which cycle dominates?
+  is the weekly pattern stable?), to seasonally adjust at several
+  frequencies at once, or to feed per-cycle strengths into a seasonality
+  triage. For one ordinary monthly/quarterly cycle, `stl` gives you finer
+  control (its `seasonal` window default 7 vs MSTL's 11).
+
+### Key arguments and defaults (mirror statsmodels exactly)
+
+| Argument | Default | Notes |
+|----------|---------|-------|
+| `periods` | required | sequence of observations-per-cycle, e.g. `[24, 168]`; a single period is `[12]`; sorted ascending internally |
+| `windows` | `None` | per-period seasonal LOESS window (odd, ≥ 3), paired with the same-index period; `None` → the paper's rule 7 + 4·k over the *sorted* periods: 11, 15, 19, … |
+| `iterate` | `2` | refinement rounds over all periods; 1 is faster and usually close; forced to 1 when only one period survives |
+| STL kwargs | as in `stl` | `trend`, `low_pass`, degrees, `robust`, jumps, `inner_iter`/`outer_iter` are forwarded unchanged to **every** per-period STL pass |
+
+Deliberate safe-side refusals where statsmodels crashes or degrades
+silently: empty `periods`, duplicate periods, `iterate=0`, and "every
+period was dropped" are teaching `ValueError`s.
+
+### How to read the output
+
+- `{"seasonal", "trend", "resid", "weights", "periods", "windows",
+  "iterate", "dropped_periods", "seasonal_strength"}`.
+- **`seasonal`** is a dict keyed `"seasonal_<period>"` in ascending-period
+  order; the components plus `trend` plus `resid` reconstruct `y` exactly.
+- **`periods`/`windows`** are the *resolved* values (sorted, post-drop) —
+  check `dropped_periods` whenever n is short relative to the longest
+  cycle: a silently absent component changes the meaning of `trend`.
+- **`seasonal_strength`** gives the Wang-Smith-Hyndman strength of each
+  component against the shared remainder (same guarded formula as
+  `seasonal_strength`); it is `None` for a constant input series, where
+  the variance ratio would be float noise.
+- **`weights`** are the final pass's bisquare robustness weights (all 1
+  unless `robust=True`/`outer_iter>0`).
+
+### Failure modes
+
+- **A period ≥ n/2 vanishes by design** (with `dropped_periods` saying
+  so): fewer than two full cycles cannot be told from trend. If the long
+  cycle is the one you care about, you need more data, not different
+  windows.
+- **Close periods compete.** Periods like 28 and 30 have nearly identical
+  frequencies at short n; MSTL will split their energy arbitrarily.
+  Merge them or fix one of them by prior knowledge.
+- **Leakage between cycles at iterate=1.** With strongly nested cycles
+  the first pass extracts the short cycle from a series still carrying
+  the long one; the second round (the default) cleans this up. If
+  components look contaminated, raise `iterate`, not the windows.
+- **The trend window binds across all periods.** A forwarded `trend`
+  window must exceed the *longest* period (each pass validates it); the
+  default rule re-resolves per pass, which is almost always what you
+  want.
+- **Duplicate periods are refused** rather than silently producing two
+  components of the same period (which statsmodels does).
+
+### Validated against
+
+`statsmodels.tsa.seasonal.MSTL` 0.14.6 **elementwise** (trend, every
+per-period seasonal, resid, robustness weights) on a seeded two-seasonal
+hourly-like series (24/168), a seeded three-seasonal awkward-period series
+(5/12/31), the degenerate single-period case, and a dropped-period case —
+across default and explicit (unsorted) windows, `robust`, forwarded
+`stl_kwargs` including `inner_iter`/`outer_iter`, and `iterate` 1–4, at
+1e-8 tolerance (observed ≤ ~5e-11 on components; the algorithm drives the
+same netlib STL core our `stl` pins). Grade: **strong third-party golden
+(statsmodels MSTL, elementwise)**. The single-period case is additionally
+required to reproduce tsecon's own `stl` **bitwise** — internal
+consistency, graded separately. Pinned in
+[`fixtures/mstl.json`](../../../fixtures/mstl.json); provenance in
+[`fixtures/generate_mstl_fixtures.py`](../../../fixtures/generate_mstl_fixtures.py).
+
+### References
+
+- Bandara, K., Hyndman, R. J. & Bergmeir, C. (2021). "MSTL: A
+  Seasonal-Trend Decomposition Algorithm for Time Series with Multiple
+  Seasonal Patterns." arXiv:2107.13462.
+- Cleveland, R. B., Cleveland, W. S., McRae, J. E. & Terpenning, I. (1990).
+  "STL: A Seasonal-Trend Decomposition Procedure Based on Loess."
+  *Journal of Official Statistics* 6, 3–73.
+- Hyndman, R. & Athanasopoulos, G. *Forecasting: Principles and Practice*
+  (3rd ed.), §12.1 (complex seasonality).
+
+### Runnable example
+
+```python
+import numpy as np
+import tsecon
+
+t = np.arange(24 * 7 * 6, dtype=float)                # 6 weeks hourly
+y = (20 + 0.01*t + 3*np.sin(2*np.pi*t/24)            # daily cycle
+     + 5*np.sin(2*np.pi*t/168) + 0.3*np.sin(t*0.91)) # weekly cycle + wobble
+
+r = tsecon.mstl(y, [168, 24])                         # order doesn't matter
+print("periods:", r["periods"], "| windows:", r["windows"],
+      "| dropped:", r["dropped_periods"])
+for k, v in r["seasonal_strength"].items():
+    print(k, "strength:", round(v, 3))
+
+recon = sum(np.asarray(s) for s in r["seasonal"].values()) \
+    + r["trend"] + r["resid"]
+print("reconstructs y:", bool(np.allclose(recon, y)))
+```
+
+Expected output:
+
+```
+periods: [24, 168] | windows: [11, 15] | dropped: []
+seasonal_24 strength: 0.991
+seasonal_168 strength: 0.997
+reconstructs y: True
 ```

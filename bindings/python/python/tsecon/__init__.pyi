@@ -561,6 +561,41 @@ def stl(
     degrees, jumps, and inner/outer iteration counts).
     """
 
+def mstl(
+    y: _ArrayLike,
+    periods: Sequence[int],
+    windows: Sequence[int] | None = ...,
+    iterate: int = ...,
+    trend: int | None = ...,
+    low_pass: int | None = ...,
+    seasonal_deg: int = ...,
+    trend_deg: int = ...,
+    low_pass_deg: int = ...,
+    robust: bool = ...,
+    seasonal_jump: int = ...,
+    trend_jump: int = ...,
+    low_pass_jump: int = ...,
+    inner_iter: int | None = ...,
+    outer_iter: int | None = ...,
+) -> dict[str, Any]:
+    """MSTL — STL iterated over multiple seasonal periods
+    (Bandara-Hyndman-Bergmeir 2021), e.g. `periods=[24, 168]` for hourly
+    data with daily and weekly cycles.
+
+    Matches statsmodels.tsa.seasonal.MSTL elementwise at 1e-8: periods
+    sorted ascending, any period >= n/2 dropped (reported in
+    `dropped_periods`), per-period seasonal windows from `windows` (None:
+    the 7 + 4*k rule -> 11, 15, 19, ...), `iterate` refinement rounds
+    (default 2; 1 for a single period), remaining STL keywords forwarded
+    to every pass. statsmodels' Box-Cox `lmbda` option is not implemented
+    (pre-transform y instead); duplicate periods and iterate=0 are
+    refused. Returns `seasonal` (dict of per-period arrays keyed
+    "seasonal_<period>"), `trend`, `resid`, `weights` (from the final
+    pass), the resolved `periods`/`windows`, `iterate`,
+    `dropped_periods`, and per-period `seasonal_strength` (None for a
+    constant series).
+    """
+
 def seasonal_strength(y: _ArrayLike, period: int) -> dict[str, Any]:
     """Wang-Smith-Hyndman seasonal/trend strength from a default STL fit.
 

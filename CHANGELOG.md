@@ -63,6 +63,24 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   (`maturities`/`n_factors`/`periods_per_year`, returned but previously
   absent from the docstring and card key list), with a returned-keys
   docstring tripwire test.
+- **`mstl`** — Multiple Seasonal-Trend decomposition using LOESS
+  (Bandara-Hyndman-Bergmeir 2021): STL iterated over several seasonal
+  periods (e.g. `periods=[24, 168]` for hourly data with daily and weekly
+  cycles), matching `statsmodels.tsa.seasonal.MSTL`'s algorithm and
+  defaults — ascending period sort with paired windows (default rule
+  7 + 4·k → 11, 15, 19, …), the period ≥ n/2 drop rule (reported in
+  `dropped_periods`), `iterate=2` refinement rounds, and full forwarding
+  of the STL knobs to every pass. Returns per-period seasonal components
+  keyed `seasonal_<period>`, trend/resid/weights, the resolved
+  periods/windows, and per-period Wang-Smith-Hyndman
+  `seasonal_strength` (withheld as `None` on a constant series).
+  Box-Cox `lmbda` is deliberately not implemented (pre-transform
+  instead); empty/duplicate periods, `iterate=0`, and all-periods-dropped
+  are teaching refusals where statsmodels crashes or degrades silently.
+  Pinned **elementwise** against statsmodels 0.14.6 MSTL
+  (`fixtures/mstl.json`; components ≤ ~5e-11 observed at a 1e-8 gate),
+  with the degenerate single-period case additionally required to
+  reproduce tsecon's own `stl` bit-for-bit.
 
 ## [0.4.0] - 2026-08-18
 

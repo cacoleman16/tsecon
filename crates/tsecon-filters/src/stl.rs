@@ -780,26 +780,32 @@ pub struct StrengthResult {
     pub period: usize,
 }
 
+/// Sample variance (denominator `n - 1`, matching R's `var` and NumPy's
+/// `ddof=1`) over an iterator; 0 for fewer than two observations. Shared by
+/// the STL and MSTL strength measures.
+pub(crate) fn sample_var(x: impl Iterator<Item = f64> + Clone) -> f64 {
+    let n = x.clone().count();
+    if n < 2 {
+        return 0.0;
+    }
+    let mean = x.clone().sum::<f64>() / n as f64;
+    x.map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n as f64 - 1.0)
+}
+
 /// Compute the Wang-Smith-Hyndman strengths from already-computed STL
 /// components (sample variances, denominator `n - 1`, matching R's `var`
 /// as used by `tsfeatures`/`feasts`). A zero-variance denominator (an
 /// exactly trend-free or seasonal-free decomposition) yields strength 0.
 pub fn strength_from_components(result: &StlResult) -> StrengthResult {
-    fn var(x: impl Iterator<Item = f64> + Clone) -> f64 {
-        let n = x.clone().count();
-        if n < 2 {
-            return 0.0;
-        }
-        let mean = x.clone().sum::<f64>() / n as f64;
-        x.map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n as f64 - 1.0)
-    }
-    let vr = var(result.resid.iter().copied());
-    let vsr = var(result
-        .seasonal
-        .iter()
-        .zip(&result.resid)
-        .map(|(&s, &r)| s + r));
-    let vtr = var(result.trend.iter().zip(&result.resid).map(|(&t, &r)| t + r));
+    let vr = sample_var(result.resid.iter().copied());
+    let vsr = sample_var(
+        result
+            .seasonal
+            .iter()
+            .zip(&result.resid)
+            .map(|(&s, &r)| s + r),
+    );
+    let vtr = sample_var(result.trend.iter().zip(&result.resid).map(|(&t, &r)| t + r));
     let seasonal_strength = if vsr > 0.0 {
         (1.0 - vr / vsr).max(0.0)
     } else {
