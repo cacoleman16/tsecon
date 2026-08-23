@@ -37,9 +37,8 @@ The remaining gaps were scoped against the same validation-first bar every shipp
 **Build-next — high value, runnable golden:**
 
 - **MSTL** (M, vs `statsmodels.tsa.seasonal.MSTL`) — unblocked now that STL is pinned elementwise.
-- **MSTL** stays the top remaining build-next item (see above).
 
-**Build-later — valuable but weaker validation or larger surface:** Ng-Perron M-tests (table+MC golden; the GLS-detrending engine they reuse shipped inside `dfgls`), auto.arima stepwise order selection (large; the famous pmdarima-vs-R-parity trap — will be graded MC-recovery, not R-parity), STAR/LSTAR/ESTAR, threshold cointegration (Hansen-Seo) and threshold VAR, Hansen (1997/2000) threshold confidence sets for SETAR, JSZ canonical affine term structure, tail-dependence coefficients, LP-DiD and joint-across-horizon LP bands (both mapped with citations in the contribution scan), and distributed-lag climate-impact regressions.
+**Build-later — valuable but weaker validation or larger surface:** Ng-Perron M-tests (table+MC golden; the GLS-detrending engine they reuse shipped inside `dfgls`), auto.arima stepwise order selection (large; the famous pmdarima-vs-R-parity trap — will be graded MC-recovery, not R-parity), STAR/LSTAR/ESTAR, threshold cointegration (Hansen-Seo) and threshold VAR, Hansen (1997/2000) threshold confidence sets for SETAR, JSZ canonical affine term structure, joint-across-horizon LP bands (mapped with citations in the contribution scan and roadmap note 21), and distributed-lag climate-impact regressions. (LP-DiD and the copula tail-dependence coefficients, formerly on this list, shipped in 0.4.0.)
 
 **Deferred — no runnable reference or niche:** HEGY and Lee-Strazicich seasonal/two-break unit roots (R-only, location-dependent tables), X-13ARIMA-SEATS (needs the external Census binary), dynamic/time-varying copulas, and cointegrated energy-climate systems.
 
