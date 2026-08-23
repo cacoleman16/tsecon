@@ -7,7 +7,26 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`panel_lp(..., band=, band_alpha=)`** — the closed-form simultaneous
+  bands (`"pointwise"`, `"sidak"`, `"bonferroni"`) over the horizons of the
+  panel local projection, completing the LP family's band surface with the
+  default (`band=None`) unchanged. Same contract as `lp_iv`/`lp_multiplier`/
+  `lp_state`: the extra keys (`lower`/`upper`, `critical_value`,
+  `pointwise_critical_value`, `band_scope`, `n_cells`, `n_cells_used`, …)
+  appear only when a band is requested, and `band="sup-t"` is **refused with
+  an error naming the reason** — no cross-horizon covariance is estimated
+  for the panel LP (building one is a documented follow-up in
+  `tsecon-panel`), so a sup-t number would be fabricated. Joint coverage of
+  the closed forms is measured on a seeded known-truth panel MC in
+  `test_simultaneous_bands.py` and quoted, with the honest pointwise
+  contrast, in the docstring and the panel model card.
+- **`tsecon-lp`: the independence algebraic anchor for sup-t** — a crate
+  test that zeroes the cross-horizon covariances of a real LP path and
+  checks the simulated sup-t critical value reproduces the closed-form
+  Šidák value from both sides (Šidák is exact under independence), closing
+  the one sanity check the sup-t release asserted only one-sidedly.
 
 ## [0.4.0] - 2026-08-18
 

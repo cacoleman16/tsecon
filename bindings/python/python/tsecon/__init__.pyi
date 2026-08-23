@@ -1149,6 +1149,8 @@ def panel_lp(
     cumulative: bool = ...,
     jackknife: bool = ...,
     bias_correction: str = ...,
+    band: str | None = ...,
+    band_alpha: float = ...,
 ) -> dict[str, Any]:
     """Panel local projection of a common shock with fixed effects.
 
@@ -1169,6 +1171,23 @@ def panel_lp(
 
     Returns a dict with `irf`, `se`, `nobs` (each length horizon+1) and the
     stamped `se_type`, `cumulative`, `jackknife`, `bias_correction`.
+
+    **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
+    and `"bonferroni"` add `lower`/`upper` over the horizons of this response
+    (`K = horizon + 1`, `band_scope="horizon"`) at level `band_alpha`, with
+    `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used`
+    and `cov_se_max_rel_diff` (always None here: no covariance is built;
+    `band_n_sim`/`band_seed` come back 0 — no simulation ran). A pointwise
+    band covers one horizon at a time; the closed-form simultaneous routes
+    cover every horizon at once at `1 - band_alpha` (Montiel Olea and
+    Plagborg-Møller's simultaneous-bands framework; joint coverage measured
+    in `test_simultaneous_bands.py` — see the panel model card).
+
+    `band="sup-t"` is **refused** with an error saying why: sup-t needs the
+    covariance ACROSS horizons and tsecon estimates none for the panel LP
+    (a cross-horizon panel covariance is a documented follow-up), so
+    `panel_lp` gets the closed-form routes only, like `lp_iv`,
+    `lp_multiplier` and `lp_state`. Never describe such a band as sup-t.
     """
 
 def lp_did(
