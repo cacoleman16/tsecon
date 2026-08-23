@@ -1,12 +1,16 @@
-# Model card — DF-GLS, Phillips-Perron, Phillips-Ouliaris, and Zivot-Andrews tests
+# Model card — DF-GLS, Ng-Perron, Phillips-Perron, Phillips-Ouliaris, and Zivot-Andrews tests
 
-`dfgls` · `phillips_perron` · `phillips_ouliaris` · `zivot_andrews`
+`dfgls` · `ng_perron` · `phillips_perron` · `phillips_ouliaris` · `zivot_andrews`
 
-Four unit-root-family tests beyond the core ADF/KPSS pair. `dfgls` attacks the
+Five unit-root-family tests beyond the core ADF/KPSS pair. `dfgls` attacks the
 ADF's power problem: estimating a constant or trend by OLS costs the plain ADF
 real power near the unit-root boundary, and GLS-detrending at the ERS local
 alternative recovers most of it — it is the recommended default over plain ADF
-whenever deterministics must be estimated. `phillips_perron` and
+whenever deterministics must be estimated. `ng_perron` builds on the same
+GLS-detrending engine and attacks the *size* problem too: the M statistics
+with MAIC lag selection are the standard remedy when a large negative MA root
+(an over-differenced series) wrecks the size of every ADF-family test.
+`phillips_perron` and
 `phillips_ouliaris` are semiparametric: instead of adding lagged differences to
 soak up serial correlation (the augmentation in ADF and Engle-Granger), they
 estimate a simple regression by OLS and then **correct the test statistic** for
@@ -22,6 +26,7 @@ KPSS together.
 | Function | Null hypothesis | The analog it complements |
 |----------|-----------------|---------------------------|
 | `dfgls` | the series has a unit root | `adf` (GLS-detrended, near-optimal local power) |
+| `ng_perron` | the series has a unit root | `dfgls` (the M statistics + MAIC, size-robust under a negative MA root) |
 | `phillips_perron` | the series has a unit root | `adf` (semiparametric, no lag augmentation) |
 | `phillips_ouliaris` | the regressors are **not** cointegrated with `y` | Engle-Granger; `johansen` (single-equation route) |
 | `zivot_andrews` | a unit root with **no** break | `adf` when a one-time structural break may masquerade as a root |
@@ -45,8 +50,8 @@ root, and the augmentation lags must absorb the serial correlation. There is no
 `"n"` case — with no deterministics to estimate, GLS detrending is a no-op and
 plain `adf(regression="n")` already sits on the power envelope. The test
 inherits ADF's size distortion under a large negative MA root (the Ng-Perron
-MAIC lag rule is the standard remedy; until the Ng-Perron tests land, be
-generous with `max_lags` in that case).
+MAIC lag rule is the standard remedy — reach for [`ng_perron`](#ng_perron-the-m-unit-root-tests-with-maic-ng-perron-2001)
+in that case).
 
 **When to use (and when not).** Use as your default unit-root test whenever a
 constant or trend must be estimated — which is nearly always — and especially
@@ -118,6 +123,122 @@ DF-GLS(AR 0.85): -4.7458  p: 0.0
 The random walk cannot reject; the stationary-but-persistent AR(0.85) rejects
 decisively — the near-integrated regime is exactly where DF-GLS's power edge
 over plain ADF shows. These match `arch.unitroot.DFGLS` to machine precision.
+
+---
+
+## `ng_perron` — the M unit-root tests with MAIC (Ng & Perron 2001)
+
+**What it estimates.** The four M statistics of Ng & Perron (2001) — MZa, MZt,
+MSB, MPT — on the GLS-detrended series, with the lag length chosen by their
+**MAIC** and the long-run variance from the **autoregressive spectral density
+estimator at frequency zero**. The detrending is bit-for-bit the `dfgls`
+engine (same quasi-differencing, same $\bar c = -7$ / $-13.5$). With
+$\tilde y_t$ the detrended series, $\kappa = T^{-2}\sum_{t=1}^{T-1}\tilde y_t^2$
+and $s^2_{AR} = \hat\sigma_e^2 / (1-\hat b(1))^2$ from the trendless ADF
+autoregression:
+
+$$MZ_\alpha = \frac{T^{-1}\tilde y_T^2 - s^2_{AR}}{2\kappa},\qquad
+  MSB = \sqrt{\kappa / s^2_{AR}},\qquad MZ_t = MZ_\alpha \times MSB,$$
+
+and MPT is the modified ERS point-optimal statistic. All four reject the
+unit-root null when **small** (below the critical value); $MZ_t = MZ_\alpha
+\times MSB$ is an exact identity, enforced as an internal invariant test.
+
+**Assumptions.** As for DF-GLS. The M statistics were built precisely for the
+case that breaks the rest of the family: a large negative MA root in the
+differences (the classic outcome of over-differencing), where ADF/DF-GLS with
+AIC/BIC lag selection reject a true unit root far too often. MAIC's
+data-dependent penalty lengthens the lag there, and the M statistics keep size
+close to nominal where the Phillips-Perron kernel correction fails completely.
+
+**When to use (and when not).** Use whenever you suspect over-differencing or
+an MA component in the shocks, or as the size-robust confirmation of a `dfgls`
+rejection. Do not expect p-values: none exist (no published response surface;
+this library declines to fabricate one), so read the verdict off the reported
+critical values. And know the documented flip side (Perron & Qu 2007): on data
+*far* from the null — an obviously stationary series — MAIC drives the lag to
+its maximum and power collapses (the crate pins a case where lag-0 MZa is
+−124.9 and the MAIC lag-16 MZa fails to reject). If the series is plainly
+stationary, a unit-root test is the wrong tool; if you must, cap `max_lags` or
+fix `lags`.
+
+**Key arguments and defaults (and why).** `trend`: `"c"` (constant; default)
+or `"ct"` (constant + trend) — the same choice, with the same stakes, as
+`dfgls`. `lags`: `None` or `"maic"` (default) selects by MAIC **on the
+GLS-detrended series** (the paper's own rule — not the Perron-Qu OLS-detrended
+variant `dfgls` uses for AIC/BIC); an integer fixes the lag. `max_lags` caps
+the MAIC search; `None` uses Schwert's $\lceil 12(T/100)^{1/4}\rceil$ capped at
+$(T-1)/2-1$ (the library-wide default; the paper's simulations truncate rather
+than round up — pass an explicit cap to reproduce a specific study).
+
+**How to read the output.** `mza`, `mzt`, `msb`, `mpt`, `used_lag`, `nobs`
+($= T - 1 - \texttt{used\_lag}$), `s2_ar`, `crit` (per-statistic 1/5/10%
+values from Ng-Perron 2001, Table 1), `trend`. **Reject the unit root when a
+statistic is below its critical value** — for all four, including MSB and MPT
+(positive statistics that shrink under the alternative). Quote `used_lag`; an
+M-test verdict without its lag is not reproducible. The statistics agree in
+spirit but are four tests, not one: MZa/MZt near their DF-GLS analogs, MSB
+the Sargan-Bhargava ratio, MPT the point-optimal form.
+
+**Failure modes.** Reading a non-rejection alone as proof of a unit root (pair
+with `kpss`, as always); the MAIC power reversal on far-from-null data (above);
+treating the asymptotic critical values as finite-sample exact in very short
+samples (the table is asymptotic-only — the measured size at $T=250$ runs
+0.027–0.045 at the 5% values, slightly conservative, matching the paper's
+Table 2); comparing MZt to ADF critical values (its distribution matches
+DF-GLS, not ADF, and the other three have their own tables).
+
+**Validated against.** **No runnable independent implementation exists** —
+statsmodels 0.14.6 and arch 8.0.0 do not ship the M tests (a canary test
+asserts this stays true), and no CRAN package does (`urca::ur.ers` stops at
+DF-GLS + the ERS P-test; `bootUR`/`CADFtest` borrow only MAIC) — so there is
+no reference-run golden, and the claim is carried honestly by: the transcribed
+Table 1 (cross-checked against the independent transcription in the GAUSS
+`tspdlib`); seeded Monte-Carlo **size at the asymptotic critical values** —
+lag-0 at $T=1000$, 2000 reps: 5% rejection measured 0.039–0.058 and 1%
+measured 0.006–0.010 across all eight statistic/trend combinations; the full
+MAIC pipeline at $T=250$: 0.027–0.045 at 5%; **power ordering** (AR(0.8)
+rejects ~0.80 vs size ~0.03); the MAIC mechanism (mean lag 0.9 i.i.d. vs 7.8
+under MA(−0.8)); the exact $MZ_t = MZ_\alpha MSB$ identity; a bitwise pin
+that the detrended series is the `dfgls` engine's; and an independent NumPy
+re-implementation of the whole pipeline re-pinned through the Python binding
+at 1e-9. See the [validation matrix](../validation-matrix.md).
+
+**References.** Ng & Perron (2001); Perron & Ng (1996, the M statistics);
+Stock (1999); Elliott, Rothenberg & Stock (1996, the detrending); Perron & Qu
+(2007, the power-reversal caveat).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+walk = np.cumsum(rng.standard_normal(200))          # a random walk (unit root)
+
+r = tsecon.ng_perron(walk, trend="c")
+print("MZa:", round(r["mza"], 4), " MZt:", round(r["mzt"], 4),
+      " MSB:", round(r["msb"], 4), " MPT:", round(r["mpt"], 4),
+      " lag:", r["used_lag"])
+print("5% cvs:", r["crit"]["mza"]["5%"], r["crit"]["mzt"]["5%"],
+      r["crit"]["msb"]["5%"], r["crit"]["mpt"]["5%"])
+
+ar = np.empty(200); ar[0] = 0.0
+for t in range(1, 200):
+    ar[t] = 0.85 * ar[t - 1] + rng.standard_normal()  # near-integrated AR(1)
+r2 = tsecon.ng_perron(ar)
+print("AR(0.85) MZa:", round(r2["mza"], 4), " MZt:", round(r2["mzt"], 4),
+      " lag:", r2["used_lag"])
+```
+
+```
+MZa: -2.6666  MZt: -1.1431  MSB: 0.4287  MPT: 9.144  lag: 0
+5% cvs: -8.1 -1.98 0.233 3.17
+AR(0.85) MZa: -27.3873  MZt: -3.7002  lag: 3
+```
+
+The random walk sits well inside the acceptance region on all four statistics;
+the near-integrated AR(0.85) rejects decisively (MZa −27.4 against a 1% value
+of −13.8). Same detrended series as `dfgls`, but with the size insurance the
+M statistics were designed to buy.
 
 ---
 

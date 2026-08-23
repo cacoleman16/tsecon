@@ -514,6 +514,97 @@ fn dfgls<'py>(
     Ok(d)
 }
 
+/// Ng-Perron (2001) M unit-root tests (MZa, MZt, MSB, MPT; null: unit root).
+///
+/// GLS-detrends `y` through the same engine as `dfgls` (cbar = -7.0 for
+/// "c", -13.5 for "ct"), selects the ADF lag by the paper's MAIC on the
+/// detrended series (`lags=None` or `"maic"`; searching 0..=`max_lags`,
+/// default Schwert's ceil(12*(n/100)^(1/4)) capped at (n-1)/2 - 1) or uses
+/// a fixed integer `lags`, estimates the autoregressive spectral density
+/// at frequency zero `s2_ar = sigma2_e / (1 - b(1))^2`, and forms the four
+/// M statistics. All four reject the unit-root null when SMALL (below the
+/// critical value); MZt = MZa * MSB exactly. There are no p-values: no
+/// published response surface exists for the M tests, so compare each
+/// statistic against its own critical values (Ng-Perron 2001 Table 1,
+/// asymptotic, transcribed).
+///
+/// Returns dict keys: `mza`, `mzt`, `msb`, `mpt`, `used_lag`, `nobs`
+/// (= n - 1 - used_lag), `s2_ar`, `crit` ({"mza","mzt","msb","mpt"} each
+/// {"1%","5%","10%"}), `trend`. Prefer this battery over `dfgls` when a
+/// large negative MA root is suspected (over-differenced series) — MAIC
+/// is the standard remedy for the size distortion there. Caveat
+/// (Perron-Qu 2007): on data far from the null MAIC drives the lag to its
+/// maximum and power collapses; cap `max_lags` or fix `lags` there.
+#[pyfunction]
+#[pyo3(signature = (y, trend = "c", lags = None, max_lags = None))]
+fn ng_perron<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    trend: &str,
+    lags: Option<Bound<'py, pyo3::PyAny>>,
+    max_lags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::{DfglsTrend, NgPerronLagSelection as L};
+    let trend_spec = match trend {
+        "c" => DfglsTrend::Constant,
+        "ct" => DfglsTrend::ConstantTrend,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown trend {other:?}; expected \"c\" or \"ct\" (like DF-GLS, \
+                 the M tests have no no-deterministics case: with nothing to \
+                 estimate, use adf with regression=\"n\")"
+            )))
+        }
+    };
+    let selection = match &lags {
+        None => L::Maic(max_lags),
+        Some(v) => {
+            if let Ok(s) = v.extract::<String>() {
+                match s.as_str() {
+                    "maic" | "MAIC" => L::Maic(max_lags),
+                    other => {
+                        return Err(PyValueError::new_err(format!(
+                            "unknown lags {other:?}; expected None or \"maic\" \
+                             (Ng-Perron MAIC selection) or an integer fixed lag"
+                        )))
+                    }
+                }
+            } else {
+                L::Fixed(v.extract::<usize>().map_err(|_| {
+                    PyValueError::new_err(
+                        "lags must be None, \"maic\", or a non-negative integer",
+                    )
+                })?)
+            }
+        }
+    };
+    let r = tsecon_diag::ng_perron(&vec1(&y), trend_spec, selection).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("mza", r.mza)?;
+    d.set_item("mzt", r.mzt)?;
+    d.set_item("msb", r.msb)?;
+    d.set_item("mpt", r.mpt)?;
+    d.set_item("used_lag", r.used_lag)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("s2_ar", r.s2_ar)?;
+    let crit = PyDict::new(py);
+    for (name, cv) in [
+        ("mza", r.crit.mza),
+        ("mzt", r.crit.mzt),
+        ("msb", r.crit.msb),
+        ("mpt", r.crit.mpt),
+    ] {
+        let c = PyDict::new(py);
+        c.set_item("1%", cv.pct1)?;
+        c.set_item("5%", cv.pct5)?;
+        c.set_item("10%", cv.pct10)?;
+        crit.set_item(name, c)?;
+    }
+    d.set_item("crit", crit)?;
+    d.set_item("trend", trend)?;
+    Ok(d)
+}
+
 /// Phillips-Ouliaris residual cointegration test (null: no cointegration).
 ///
 /// `x` is a 2-D (T, m) matrix of the m stochastic regressors, used as-is
@@ -9161,6 +9252,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(smooth_lp, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_perron, m)?)?;
     m.add_function(wrap_pyfunction!(dfgls, m)?)?;
+    m.add_function(wrap_pyfunction!(ng_perron, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_ouliaris, m)?)?;
     m.add_function(wrap_pyfunction!(zivot_andrews, m)?)?;
     m.add_function(wrap_pyfunction!(ndiffs, m)?)?;
