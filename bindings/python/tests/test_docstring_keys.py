@@ -85,3 +85,16 @@ def test_predictive_regression_docstring_names_every_returned_key():
     # key is `rho_ols`. A bare backticked `rho` token must not reappear.
     assert "rho" not in tokens, "docstring names a bare `rho` key that is not returned"
     assert "rho_ols" in tokens
+
+
+def test_theta_forecast_docstring_qualifies_the_statsmodels_match():
+    """Audit round 8: tsecon reproduces statsmodels ``ThetaModel`` at
+    ``deseasonalize=True, use_test=False``. statsmodels' *default* runs a
+    seasonality pre-test and skips deseasonalization when it fails, so the
+    bare claim "Matches statsmodels ThetaModel" was an overclaim (measured:
+    29/30 iid draws with period=12 diverge from the statsmodels default,
+    worst 2.6% relative). The docstring must carry the qualifier."""
+    doc = re.sub(r"\s+", " ", tsecon.theta_forecast.__doc__ or "")
+    assert "use_test=False" in doc
+    # The unqualified sentence must not stand alone as the whole claim.
+    assert "Matches statsmodels ThetaModel." not in doc

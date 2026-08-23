@@ -182,9 +182,9 @@ fn sample_gumbel(n: usize, theta: f64) -> (Vec<f64>, Vec<f64>) {
 // ---------------------------------------------------------------- fits
 
 #[test]
-fn monotone_margin_invariance_is_exact() {
+fn increasing_margin_invariance_is_exact() {
     // The whole point of the copula decomposition: pseudo-observations
-    // see only ranks, so strictly monotone transforms of each margin
+    // see only ranks, so strictly INCREASING transforms of each margin
     // leave the fit BIT-IDENTICAL — x vs (exp(x), cube(y)).
     let (u1, u2) = sample_gaussian(300, 0.6);
     // Fake "raw data" on absurd scales whose ranks equal those of u1/u2.
@@ -202,6 +202,42 @@ fn monotone_margin_invariance_is_exact() {
         assert_eq!(fa.loglik, fb.loglik, "{}: loglik drifted", fam.name());
         assert_eq!(fa.tau, fb.tau, "{}: tau drifted", fam.name());
     }
+}
+
+#[test]
+fn decreasing_margin_reverses_ranks_and_flips_dependence() {
+    // Audit round 8: the invariance above is increasing-only. A strictly
+    // DECREASING transform of one margin reverses its ranks — u -> 1 - u
+    // exactly (no ties here) — and the fitted dependence flips sign
+    // (Kendall tau negates exactly; the tau-inversion Gaussian rho with it).
+    let (u1, u2) = sample_gaussian(300, 0.6);
+    let x1: Vec<f64> = u1.iter().map(|&u| u * 1e6 - 3.0e5).collect();
+    let x2: Vec<f64> = u2.iter().map(|&u| u - 0.5).collect();
+    let neg1: Vec<f64> = x1.iter().map(|&v| -v).collect(); // strictly decreasing
+    let ua = pseudo_obs(&[x1.clone(), x2.clone()]).expect("po raw");
+    let un = pseudo_obs(&[neg1, x2]).expect("po negated");
+    for (a, n) in ua[0].iter().zip(un[0].iter()) {
+        assert!(
+            (a + n - 1.0).abs() < 1e-15,
+            "rank reversal must give u -> 1 - u: {a} vs {n}"
+        );
+    }
+    assert_eq!(ua[1], un[1], "the untouched margin must not move");
+    let fa = copula_fit(&ua[0], &ua[1], Family::Gaussian, FitMethod::Tau).expect("fit a");
+    let fb = copula_fit(&un[0], &un[1], Family::Gaussian, FitMethod::Tau).expect("fit n");
+    assert!(
+        (fa.tau + fb.tau).abs() < 1e-15,
+        "tau must negate exactly: {} vs {}",
+        fa.tau,
+        fb.tau
+    );
+    assert!(
+        (fa.params[0] + fb.params[0]).abs() < 1e-12,
+        "tau-inversion rho must flip sign: {} vs {}",
+        fa.params[0],
+        fb.params[0]
+    );
+    assert!(fa.params[0] > 0.3, "positive-dependence sanity: {}", fa.params[0]);
 }
 
 #[test]

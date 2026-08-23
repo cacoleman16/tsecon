@@ -1875,7 +1875,15 @@ fn accuracy<'py>(
 }
 
 /// The Theta method (Assimakopoulos-Nikolopoulos 2000) — a stubbornly hard
-/// benchmark to beat. Matches statsmodels ThetaModel.
+/// benchmark to beat.
+///
+/// Matches statsmodels `ThetaModel(deseasonalize=True, use_test=False)`.
+/// statsmodels' DEFAULT additionally runs a seasonality pre-test
+/// (`use_test=True`) and skips deseasonalization when it fails, so on
+/// weakly- or non-seasonal data declared with `period > 1` the two
+/// defaults diverge; pass `use_test=False` on the statsmodels side to
+/// compare. `period=1` skips deseasonalization entirely and the pre-test
+/// difference vanishes.
 #[pyfunction]
 #[pyo3(signature = (y, steps, period = 1))]
 fn theta_forecast<'py>(
@@ -7340,8 +7348,9 @@ fn afns_adjustment<'py>(
 /// a/beta/c (the excess-return regression), sigma2, lambda0, lambda1,
 /// delta0/delta1 (the short-rate equation), the price recursions A/B and
 /// A_rn/B_rn, fitted / risk_neutral / term_premium (T x M, annualized
-/// decimal, fitted = risk_neutral + term_premium), and the diagnostic
-/// var_rsquared, rx_rsquared, short_rate_rsquared, yield_rsquared.
+/// decimal, fitted = risk_neutral + term_premium), the diagnostic
+/// var_rsquared, rx_rsquared, short_rate_rsquared, yield_rsquared, and
+/// the echoed inputs maturities / n_factors / periods_per_year.
 ///
 /// Validated end-to-end against an independent NumPy transcription at 1e-8,
 /// with term-premium recovery on a known-price-of-risk affine DGP, and — on
@@ -8862,9 +8871,12 @@ fn copula_fit_dict<'py>(
 /// their average rank — exactly scipy `rankdata(method="average")/(n+1)`
 /// (golden-pinned, ties included). The `n + 1` denominator keeps every
 /// value strictly inside (0, 1), which the copula quantile transforms
-/// require. Ranks see only order, so any strictly monotone transform of a
-/// margin (logs, standardization, exp) leaves the output — and any copula
-/// fitted to it — bit-identical (property-tested). This is the one-line
+/// require. Ranks see only order, so any strictly INCREASING transform of
+/// a margin (logs, standardization, exp) leaves the output — and any
+/// copula fitted to it — bit-identical (property-tested). A strictly
+/// decreasing transform instead reverses that margin's ranks (`u -> 1 - u`
+/// when there are no ties), flipping the sign of the fitted dependence —
+/// the standard copula invariance is increasing-only. This is the one-line
 /// companion to `copula_fit`: `copula_fit(pseudo_obs(x))`. Accepts any
 /// number of columns (the transform is columnwise); `copula_fit` itself
 /// is bivariate in this slice.
@@ -8887,8 +8899,10 @@ fn pseudo_obs<'py>(
 ///
 /// `u` must lie strictly inside (0, 1): rank/PIT-transform the raw margins
 /// first — `pseudo_obs(x)` does it in one line, and the whole workflow is
-/// then invariant to monotone transforms of each margin (the point of the
-/// copula decomposition; property-tested). At least 20 pairs required.
+/// then invariant to strictly increasing transforms of each margin (the
+/// point of the copula decomposition; property-tested — a decreasing
+/// transform flips the sign of the dependence instead). At least 20 pairs
+/// required.
 ///
 /// `family`: "gaussian" (param `rho`), "t" (`rho`, `nu`), "clayton"
 /// (`theta` > 0, lower-tail), "gumbel" (`theta` >= 1, upper-tail), "frank"

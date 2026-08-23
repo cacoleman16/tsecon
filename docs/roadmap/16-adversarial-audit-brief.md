@@ -275,7 +275,7 @@ the same number — so an entire class of bug was invisible by construction.
 
 ## Already found and fixed — do not re-report these
 
-> **Rounds 2–7 have been run.** Results in
+> **Rounds 2–8 have been run.** Results in
 > [17-audit-round-2-findings.md](17-audit-round-2-findings.md) (21 candidates,
 > 8 survivors),
 > [18-audit-rounds-3-4-findings.md](18-audit-rounds-3-4-findings.md) (14
@@ -288,7 +288,13 @@ the same number — so an entire class of bug was invisible by construction.
 > `garch_fit` backlog retired; the 0.3.0-late surface swept — 236/236
 > comparisons reached — with one confirmed code finding, the
 > `dcs_local_level` Laplace fit's unit-dependence, fixed together with the
-> latent Nelder-Mead initial-simplex hole it exposed). **Read the
+> latent Nelder-Mead initial-simplex hole it exposed), and
+> [23-audit-round-8-findings.md](23-audit-round-8-findings.md) (the 0.4.0
+> additions swept — `proxy_first_stage`, ACM, the copula family, `lp_did`,
+> `scale_ar`, the garch boundary machinery — plus the two post-freeze fixes
+> attacked at their edges and three never-audited older estimators; 3
+> confirmed doc findings, all fixed the same round, 5 candidates refuted,
+> zero code defects). **Read the
 > "Refuted" sections before you start** — together they record every dead end
 > with the evidence that killed it (no count quoted here: the one that used
 > to sit in this sentence went stale within two commits), including several

@@ -46,9 +46,10 @@ def test_pseudo_obs_matches_scipy_rankdata_with_ties():
     assert np.all((u > 0) & (u < 1))
 
 
-def test_pseudo_obs_is_monotone_invariant_and_fit_identical():
+def test_pseudo_obs_is_increasing_invariant_and_fit_identical():
     # The point of the copula decomposition, asserted at the Python level:
-    # exp() one margin, cube the other — bit-identical pseudo-obs and fit.
+    # exp() one margin, cube the other (both strictly increasing) —
+    # bit-identical pseudo-obs and fit.
     ds = next(d for d in FX["fits"] if d["name"] == "gauss_rho07")
     u = _u(ds)
     x = np.column_stack([u[:, 0] * 1e4 - 5e3, u[:, 1] - 0.5])
@@ -59,6 +60,31 @@ def test_pseudo_obs_is_monotone_invariant_and_fit_identical():
     fb = tsecon.copula_fit(ub, family="gaussian")
     np.testing.assert_array_equal(np.asarray(fa["params"]), np.asarray(fb["params"]))
     assert fa["loglik"] == fb["loglik"] and fa["tau"] == fb["tau"]
+
+
+def test_pseudo_obs_decreasing_transform_flips_dependence():
+    # Audit round 8: the invariance is INCREASING-only. Negating one margin
+    # reverses its ranks (u -> 1 - u absent ties) and flips the sign of the
+    # fitted dependence; the docs must not promise invariance under "any
+    # strictly monotone transform".
+    ds = next(d for d in FX["fits"] if d["name"] == "gauss_rho07")
+    u = _u(ds)
+    x = np.column_stack([u[:, 0] * 1e4 - 5e3, u[:, 1] - 0.5])
+    x_neg = np.column_stack([-x[:, 0], x[:, 1]])
+    ua, un = tsecon.pseudo_obs(x), tsecon.pseudo_obs(x_neg)
+    np.testing.assert_allclose(un[:, 0], 1.0 - ua[:, 0], rtol=0, atol=1e-15)
+    np.testing.assert_array_equal(un[:, 1], ua[:, 1])
+    # Kendall tau negates exactly under rank reversal; the tau-inversion
+    # Gaussian rho = sin(pi*tau/2) therefore flips sign.
+    fa = tsecon.copula_fit(ua, family="gaussian", method="tau")
+    fn = tsecon.copula_fit(un, family="gaussian", method="tau")
+    assert abs(fn["tau"] + fa["tau"]) < 1e-15
+    assert abs(fn["rho"] + fa["rho"]) < 1e-12
+    # And the doc surfaces carry the corrected claim.
+    for fn_obj in (tsecon.pseudo_obs, tsecon.copula_fit):
+        doc = fn_obj.__doc__ or ""
+        assert "strictly monotone transform" not in doc, fn_obj.__name__
+        assert "increasing" in doc, fn_obj.__name__
 
 
 # --------------------------------------------------------------------------- #

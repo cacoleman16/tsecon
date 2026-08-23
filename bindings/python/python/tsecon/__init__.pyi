@@ -558,7 +558,12 @@ def accuracy(
     """Forecast accuracy measures (ME/RMSE/MAE/MAPE/sMAPE/MASE/RMSSE)."""
 
 def theta_forecast(y: _ArrayLike, steps: int, period: int = ...) -> _F64:
-    """The Theta method (Assimakopoulos-Nikolopoulos 2000)."""
+    """The Theta method (Assimakopoulos-Nikolopoulos 2000).
+
+    Matches statsmodels `ThetaModel(deseasonalize=True, use_test=False)`;
+    statsmodels' default additionally pre-tests seasonality and skips
+    deseasonalization when the test fails, so the two defaults diverge on
+    weakly-seasonal data declared with `period > 1`."""
 
 # ------------------------------------------------------- local projections
 def lp(
@@ -1849,7 +1854,8 @@ def acm_term_premium(
     needed). Returns factors, factor_loadings, mu/phi/sigma, rx_maturities,
     a/beta/c, sigma2, lambda0/lambda1, delta0/delta1, A/B, A_rn/B_rn,
     fitted / risk_neutral / term_premium (T x M, fitted = risk_neutral +
-    term_premium), and var/rx/short_rate/yield R-squareds. The premium's
+    term_premium), var/rx/short_rate/yield R-squareds, and the echoed
+    inputs maturities / n_factors / periods_per_year. The premium's
     LEVEL is estimation-sample sensitive; compare only across models fit on
     the same sample."""
 
@@ -2084,9 +2090,12 @@ def pseudo_obs(x: _ArrayLike) -> _F64:
     their average rank — exactly scipy `rankdata(method="average")/(n+1)`
     (golden-pinned, ties included). The `n + 1` denominator keeps every
     value strictly inside (0, 1), which the copula quantile transforms
-    require. Ranks see only order, so any strictly monotone transform of a
-    margin (logs, standardization, exp) leaves the output — and any copula
-    fitted to it — bit-identical (property-tested). This is the one-line
+    require. Ranks see only order, so any strictly INCREASING transform of
+    a margin (logs, standardization, exp) leaves the output — and any
+    copula fitted to it — bit-identical (property-tested). A strictly
+    decreasing transform instead reverses that margin's ranks (`u -> 1 - u`
+    when there are no ties), flipping the sign of the fitted dependence —
+    the standard copula invariance is increasing-only. This is the one-line
     companion to `copula_fit`: `copula_fit(pseudo_obs(x))`. Accepts any
     number of columns (the transform is columnwise); `copula_fit` itself
     is bivariate in this slice.
@@ -2101,8 +2110,10 @@ def copula_fit(
 
     `u` must lie strictly inside (0, 1): rank/PIT-transform the raw margins
     first — `pseudo_obs(x)` does it in one line, and the whole workflow is
-    then invariant to monotone transforms of each margin (the point of the
-    copula decomposition; property-tested). At least 20 pairs required.
+    then invariant to strictly increasing transforms of each margin (the
+    point of the copula decomposition; property-tested — a decreasing
+    transform flips the sign of the dependence instead). At least 20 pairs
+    required.
 
     `family`: "gaussian" (param `rho`), "t" (`rho`, `nu`), "clayton"
     (`theta` > 0, lower-tail), "gumbel" (`theta` >= 1, upper-tail), "frank"

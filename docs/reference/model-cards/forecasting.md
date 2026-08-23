@@ -181,8 +181,13 @@ beats another without a test that accounts for dependent forecast errors.
 
 ## Validated against
 
-- `theta_forecast` — `statsmodels` `ThetaModel` (deseasonalize=True), matched
-  numerically.
+- `theta_forecast` — `statsmodels` `ThetaModel(deseasonalize=True,
+  use_test=False)`, matched numerically (realgdp 8-step golden at 1e-6
+  relative). Note the qualifier: statsmodels' **default** additionally runs
+  a seasonality pre-test (`use_test=True`) and skips deseasonalization when
+  it fails, so on weakly- or non-seasonal data declared with `period > 1`
+  the two *defaults* diverge (measured up to a few percent on iid data with
+  `period=12`); pass `use_test=False` on the statsmodels side to compare.
 - `dm_test` — the Harvey-Leybourne-Newbold (1997) small-sample-corrected
   statistic, computed from the documented formula and pinned as a golden.
 - `cw_test`, `gw_test` — documented-formula goldens from Clark-West (2007) and

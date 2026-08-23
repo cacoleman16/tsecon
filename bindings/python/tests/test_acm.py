@@ -163,3 +163,21 @@ def test_acm_rejects_degenerate_inputs():
         bad = y.copy()
         bad[3, 4] = np.nan
         tsecon.acm_term_premium(bad, mats, n_factors=3)
+
+
+def test_acm_docstring_names_every_returned_key():
+    """Audit round 8: the returns enumeration in ``__doc__`` must cover every
+    key actually returned (the echoed inputs ``maturities``/``n_factors``/
+    ``periods_per_year`` were missing)."""
+    import re
+
+    case = ACM["sim"]
+    res = tsecon.acm_term_premium(
+        np.asarray(case["yields"], float),
+        case["maturities"],
+        n_factors=case["n_factors"],
+        periods_per_year=case["periods_per_year"],
+    )
+    words = set(re.findall(r"[A-Za-z_][A-Za-z_0-9]*", tsecon.acm_term_premium.__doc__ or ""))
+    missing = set(res.keys()) - words
+    assert not missing, f"acm_term_premium.__doc__ does not name returned keys: {sorted(missing)}"

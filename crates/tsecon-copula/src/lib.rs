@@ -19,10 +19,12 @@
 //! * [`pseudo_obs`] — the average-rank transform `u = rank/(n+1)`
 //!   (scipy `rankdata(method="average")` semantics, golden-pinned; the
 //!   `n+1` denominator keeps every value strictly inside `(0, 1)`).
-//!   Ranks see only order, so the fit is invariant to strictly monotone
-//!   transforms of each margin — the whole point of the copula
-//!   decomposition, asserted by a property test (`x` vs `exp(x)`:
-//!   bit-identical fits).
+//!   Ranks see only order, so the fit is invariant to strictly
+//!   *increasing* transforms of each margin — the whole point of the
+//!   copula decomposition, asserted by a property test (`x` vs `exp(x)`:
+//!   bit-identical fits). A strictly decreasing transform instead
+//!   reverses that margin's ranks (`u -> 1 - u` absent ties) and flips
+//!   the sign of the dependence — the invariance is increasing-only.
 //! * [`copula_fit`] — one family, `Mle` (default surface) or `Tau`
 //!   inversion; returns parameters, observed-information SEs, loglik,
 //!   AIC/BIC, empirical + implied Kendall tau, and the tail-dependence
@@ -90,8 +92,9 @@
 //!   0.1438 where the true value is 0.2532 at `rho = 0.5, nu = 4`; the
 //!   correct Demarta-McNeil form is pinned and the buggy value recorded.
 //!
-//! Property tests establish: monotone-margin invariance of the whole
-//! pipeline (bit-identical fits on `x` vs monotone transforms of `x`),
+//! Property tests establish: increasing-margin invariance of the whole
+//! pipeline (bit-identical fits on `x` vs increasing transforms of `x`,
+//! and the exact `u -> 1 - u` rank reversal under a decreasing one),
 //! parameter recovery on deterministic conditional-inversion samples
 //! from each family, near-zero tau/rho on independent data, exchange
 //! symmetry (`fit(u1, u2) == fit(u2, u1)` bitwise for these exchangeable
