@@ -52,7 +52,16 @@
 //!   [`ArimaResults::forecast`] deliberately keeps the
 //!   parameters-treated-as-known convention that statsmodels
 //!   `get_forecast` uses, so the parity gate keeps its meaning; the
-//!   opt-in is where the honest drift term lives.
+//!   opt-in is where the honest drift term lives;
+//! * [`auto_arima`] — Hyndman-Khandakar (2008) automatic order
+//!   selection: `d` from successive KPSS tests (`tsecon-diag::ndiffs`),
+//!   `D` from the seasonal-strength rule (`tsecon-diag::nsdiffs`), then
+//!   the stepwise AICc search (AIC/BIC selectable; full-grid optional)
+//!   with unit-circle admissibility guards, every candidate fit by
+//!   [`ArimaSpec::fit`] and the full search trace returned. Graded by
+//!   Monte-Carlo order recovery plus candidate-level statsmodels pins —
+//!   the selection loop itself deliberately has no R/pmdarima parity
+//!   gate (see the module docs of [`auto`]).
 //!
 //! All fallible routines return [`ArimaError`]; nothing in this crate
 //! panics on user input.
@@ -60,6 +69,7 @@
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod auto;
 pub mod cov;
 mod diff;
 pub mod error;
@@ -68,6 +78,10 @@ pub mod results;
 pub mod spec;
 pub mod ssm;
 
+pub use auto::{
+    auto_arima, AutoArimaCandidate, AutoArimaOptions, AutoArimaResult, CandidateStatus,
+    SelectionIc,
+};
 pub use cov::ParamCov;
 pub use error::ArimaError;
 pub use results::{ArimaForecast, ArimaResults, EstimationMethod, ForecastOptions};

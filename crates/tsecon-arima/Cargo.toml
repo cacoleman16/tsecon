@@ -14,6 +14,10 @@ tsecon-linalg = { path = "../tsecon-linalg" }
 tsecon-optim = { path = "../tsecon-optim" }
 tsecon-ssm = { path = "../tsecon-ssm" }
 tsecon-stats = { path = "../tsecon-stats" }
+# ndiffs (successive KPSS) and nsdiffs (seasonal strength) for the
+# auto_arima differencing stages. One-directional: tsecon-diag does not
+# depend on tsecon-arima, so no cycle.
+tsecon-diag = { path = "../tsecon-diag" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
