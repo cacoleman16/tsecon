@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**147 functions.**
+**148 functions.**
 
 ## diagnostics
 
@@ -399,6 +399,52 @@ Exact-MLE ARIMA(p,d,q) fit, with optional forecast + conf_alpha bands.
 
     Also returns bse / param_cov from the observed information, or None with
     cov_ok=False when that matrix is too ill-conditioned to invert honestly.
+
+### `auto_arima`
+
+```python
+def auto_arima(
+    y: _ArrayLike,
+    seasonal_period: int = ...,
+    ic: str = ...,
+    stepwise: bool = ...,
+    max_p: int = ...,
+    max_q: int = ...,
+    max_P: int = ...,
+    max_Q: int = ...,
+    max_order: int = ...,
+    max_d: int = ...,
+    max_D: int = ...,
+    d: int | None = ...,
+    D: int | None = ...,
+    alpha: float = ...,
+    forecast_steps: int = ...,
+    conf_alpha: float | None = ...,
+) -> dict[str, Any]:
+```
+
+Automatic ARIMA order selection (Hyndman-Khandakar 2008 stepwise).
+
+    D from the STL seasonal-strength rule (nsdiffs, when
+    seasonal_period >= 2), d from successive KPSS tests (ndiffs) on the
+    seasonally differenced series, then a stepwise search over
+    (p, q, P, Q, constant) minimizing `ic` ("aicc" default, "aic",
+    "bic") at those fixed differencing orders; stepwise=False fits the
+    exhaustive grid subject to max_order instead (like R, max_order
+    binds only the grid). Near-unit-root fits are recorded but never
+    selected; failed fits steer the search rather than aborting it.
+    Every candidate is fit by the exact-MLE engine behind arima_fit, so
+    the search is deterministic. No exogenous regressors in this slice.
+
+    Returns the arima_fit result dict for the selected model plus:
+    `order`, `seasonal_order`, `constant`, `converged`, `ic`,
+    `ic_value`, `aicc`, `stepwise`, `n_models`, `budget_exhausted`,
+    `trace` (every candidate tried, with its criterion and status),
+    `d_test` / `D_test` (the full ndiffs / nsdiffs evidence, None when
+    fixed or not applicable), and `interpretation`. Honest grading:
+    candidate fits are statsmodels-pinned; the selection loop itself is
+    graded by Monte-Carlo order recovery (rates in the model card), not
+    R/pmdarima parity.
 
 ## GARCH
 
