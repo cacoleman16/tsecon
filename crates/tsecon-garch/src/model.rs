@@ -1,7 +1,7 @@
 //! The [`GarchModel`] entry point: likelihood evaluation at fixed
 //! parameters, quasi-maximum-likelihood estimation, and standard errors.
 
-use tsecon_optim::{minimize, Bounded, Method, NelderMeadOptions, Positive, Transform};
+use tsecon_optim::{minimize, Bounded, Method, NelderMeadOptions, OptimError, Positive, Transform};
 use tsecon_stats::special::ln_gamma;
 
 use crate::error::GarchError;
@@ -675,6 +675,29 @@ impl GarchModel {
     /// the best point found. The fixture tests pin the optimum to within
     /// 1e-6 absolute log-likelihood of the `arch` package (or better).
     ///
+    /// **Deterministic derivative-free fallback** (0.5, field report
+    /// finding 1): a gradient-based (L-BFGS) stage whose *starting*
+    /// derivative state is not finite falls back to the derivative-free
+    /// Nelder-Mead stage instead of failing the fit. The condition is not
+    /// exotic: under Student-t innovations the gradient is a central
+    /// difference in the working space, and when a stage starts within one
+    /// finite-difference step (`~6e-6`) of an active constraint — the
+    /// Nelder-Mead polish routinely converges *onto* the persistence bound
+    /// (an IGARCH point) or a coefficient sign bound on short, noisy
+    /// samples (measured: 7/40 simulated GARCH(1,1)-t fits at `T = 252`
+    /// failed this way) — the probe crosses into the infeasible region and
+    /// the "gradient" is infinite by construction, while the point itself
+    /// is a perfectly reportable boundary optimum (which the
+    /// standard-error machinery then flags as such). The fallback replaces
+    /// only the failing gradient stage — stage 1 falls back to a
+    /// Nelder-Mead run from the same start, and a failing final polish
+    /// keeps the Nelder-Mead optimum — so a fit that never trips it is
+    /// bit-identical to the previous behavior, and genuinely degenerate
+    /// input still errors: a constant series fails in
+    /// [`GarchModel::new`], a scale with no finite-likelihood start fails
+    /// in starting-value search, and a Nelder-Mead failure or non-finite
+    /// final objective still propagates.
+    ///
     /// The likelihood is evaluated through [`crate::objective`], whose
     /// value is bit-identical to [`GarchModel::loglike`] but allocation-
     /// free, and which supplies an analytic gradient for every volatility
@@ -757,9 +780,28 @@ impl GarchModel {
             max_fevals: Some(40_000),
             ..NelderMeadOptions::default()
         };
-        let stage1 = minimize(&mut objective, &z0, &Method::lbfgs())?;
+        // Gradient stages carry a deterministic derivative-free fallback
+        // (see `GarchModel::fit`): a non-finite derivative state at a
+        // stage's start — a central-difference probe crossing an active
+        // constraint from a boundary point, `OptimError::NonFinite` — is
+        // not a degenerate model, just a point where this working space
+        // has no evaluable gradient, so the stage is replaced by (stage 1)
+        // a Nelder-Mead run from the same start or (stage 3) the
+        // Nelder-Mead optimum it started from. Every other error, and any
+        // error from the derivative-free stage itself, still propagates.
+        let stage1 = match minimize(&mut objective, &z0, &Method::lbfgs()) {
+            Ok(r) => r,
+            Err(OptimError::NonFinite { .. }) => {
+                minimize(&mut objective, &z0, &Method::NelderMead(nm_opts))?
+            }
+            Err(e) => return Err(e.into()),
+        };
         let stage2 = minimize(&mut objective, &stage1.x, &Method::NelderMead(nm_opts))?;
-        let stage3 = minimize(&mut objective, &stage2.x, &Method::lbfgs())?;
+        let stage3 = match minimize(&mut objective, &stage2.x, &Method::lbfgs()) {
+            Ok(r) => r,
+            Err(OptimError::NonFinite { .. }) => stage2.clone(),
+            Err(e) => return Err(e.into()),
+        };
         // Each stage starts from the previous best and every optimizer
         // returns the best point it saw, so the objective is non-increasing
         // across stages; `converged` is true when at least one stage

@@ -4,8 +4,9 @@
 //! `measures_small` pins realized variance and bipower variation on a fixed
 //! 7-element return vector to 1e-12; `har` pins the Corsi (2009) HAR-RV
 //! params / HAC bse / centered R^2 to 1e-8. The HAR block is exactly OLS on
-//! `[const, RV_{t-1}, mean(RV[t-6..t-1]), mean(RV[t-23..t-1])]` over
-//! `t = start+1 .. n-1`, with Bartlett HAC(maxlags=5): `har.bse` is
+//! `[const, RV_{t-1}, mean(RV[t-5..t]), mean(RV[t-22..t])]` over
+//! `t = start+1 .. n-1` — the Corsi windows, weekly/monthly aggregates
+//! including the daily lag `RV_{t-1}` — with Bartlett HAC(maxlags=5): `har.bse` is
 //! `use_correction=false` (the statsmodels `cov_type="HAC"` default) and
 //! `har.bse_corrected` is `use_correction=true` (the `HarConfig` default),
 //! so both the matched-settings match and the library's own default are

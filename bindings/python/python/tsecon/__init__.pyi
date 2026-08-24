@@ -341,6 +341,11 @@ def garch_fit(
 ) -> dict[str, Any]:
     """GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
 
+    Filter timing (matches `arch`): conditional_volatility[t] is the
+    one-step-ahead volatility FOR period t, formed from information through
+    t-1 (sigma2_t is built from eps_{t-1} and sigma2_{t-1}); the post-sample
+    continuation of that step is `variance_forecast`.
+
     Boundary fits (a coefficient at its sign constraint, persistence at 1)
     carry per-parameter `se_valid`/`boundary` flags and a `boundary_note`:
     boundary parameters have NaN standard errors (no classical asymptotics
@@ -1494,6 +1499,11 @@ def har_rv(
 ) -> dict[str, Any]:
     """HAR-RV (Corsi 2009): RV_t on [const, daily, weekly, monthly], HAC SEs.
 
+    The aggregates follow Corsi's definition and INCLUDE the daily lag:
+    weekly = mean(RV_{t-1}..RV_{t-5}), monthly = mean(RV_{t-1}..RV_{t-22}).
+    (Changed in 0.5: through 0.4.0 the windows mistakenly excluded RV_{t-1};
+    coefficients on the same data shift.)
+
     variant is "level", "log", or "sqrt". use_correction now defaults True
     (False through 0.2.0): bse/tvalues carry the finite-sample sqrt(n/(n-k))
     factor by default. statsmodels cov_type="HAC" defaults the correction
@@ -1861,16 +1871,18 @@ def ivx_test(
     """Joint IVX predictability test for several persistent predictors (xs is T x k).
 
     Returns beta_ivx, the joint wald/pvalue, rz, nregressors, nobs. The
-    default joint="chi2" Wald's size degrades in k near a unit root (measured
-    0.28 at k=8, n=250, nominal 0.05) and n does not repair it (alpha=0.5
-    restores convergence but still ~0.13 at k=8, n=250).
-    joint="bonferroni" is the measured escape hatch: per-predictor scalar IVX
-    tests combined at level/k (size at or below nominal for every measured k;
-    power on par with a size-corrected chi-square test for sparse
-    alternatives). It adds wald_scalar/pvalue_scalar/joint keys, and its
-    `wald` is the LARGEST scalar statistic (chi-square(1) scale) with
-    `pvalue` already Bonferroni-adjusted — see the predictive-regressions
-    model card."""
+    default is joint="bonferroni" (changed in 0.5; through 0.4.0 the default
+    was "chi2"): per-predictor scalar IVX tests combined at level/k, whose
+    measured size is at or below nominal for every measured k, with power on
+    par with a size-corrected chi-square test for sparse alternatives. It
+    adds wald_scalar/pvalue_scalar/joint keys, and its `wald` is the LARGEST
+    scalar statistic (chi-square(1) scale) with `pvalue` already
+    Bonferroni-adjusted. The flip is measured, not stylistic: the
+    joint="chi2" chi-square(k) Wald's size degrades in k near a unit root
+    (0.28 at k=8, n=250, nominal 0.05) and n does not repair it (alpha=0.5
+    restores convergence but still ~0.13 at k=8, n=250); chi2 stays
+    available for small k or rho safely below 1 — see the
+    predictive-regressions model card."""
 
 # ------------------------------------------------- recession probability
 def recession_probit(
