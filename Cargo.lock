@@ -882,6 +882,7 @@ name = "tsecon-arima"
 version = "0.4.0"
 dependencies = [
  "serde_json",
+ "tsecon-diag",
  "tsecon-linalg",
  "tsecon-optim",
  "tsecon-ssm",

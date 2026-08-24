@@ -80,6 +80,15 @@ pub enum ArimaError {
         /// Description of the failure.
         what: &'static str,
     },
+    /// Automatic order selection ([`crate::auto_arima`]) could not
+    /// complete: a differencing advisor (`ndiffs`/`nsdiffs`) failed to
+    /// run, or no candidate model produced an admissible fit. The
+    /// message carries the underlying cause verbatim.
+    Selection {
+        /// Description of the failure, including the advisor's or the
+        /// last candidate's own error text.
+        what: String,
+    },
 }
 
 impl fmt::Display for ArimaError {
@@ -138,6 +147,7 @@ impl fmt::Display for ArimaError {
                  parameters, log-likelihood, and default forecasts are still valid; only \
                  standard errors and the drift-uncertainty forecast term need this."
             ),
+            Self::Selection { what } => write!(f, "auto_arima: {what}"),
         }
     }
 }

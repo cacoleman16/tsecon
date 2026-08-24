@@ -81,6 +81,29 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   (`fixtures/mstl.json`; components ≤ ~5e-11 observed at a 1e-8 gate),
   with the degenerate single-period case additionally required to
   reproduce tsecon's own `stl` bit-for-bit.
+- **`auto_arima`** — Hyndman-Khandakar (2008) automatic ARIMA order
+  selection, built as pure composition over shipped pieces: `d` from the
+  successive-KPSS `ndiffs` sequence, `D` from the seasonal-strength
+  `nsdiffs` rule, then the stepwise AICc search (AIC/BIC selectable;
+  `stepwise=False` exhaustive grid for small caps) over
+  `(p, q, P, Q, constant)` at fixed differencing orders, with R's default
+  caps (`max_p=max_q=5`, `max_P=max_Q=2`, `max_order=5`, 94-model
+  budget), near-unit-root admissibility guards (roots within 0.1% of the
+  unit circle are recorded but never selected), and every candidate fit
+  by the exact-MLE engine behind `arima_fit` — deterministic end to end.
+  Returns the fitted winner (same keys as `arima_fit`), the full search
+  trace (every candidate with its criterion and status), and the
+  `ndiffs`/`nsdiffs` evidence behind `d`/`D`. Graded honestly per the
+  roadmap: **MC order recovery** (seeded study in
+  `scripts/mc_auto_arima_recovery.py`, rates quoted in the model card)
+  plus candidate-level statsmodels pins (`fixtures/auto_arima.json`:
+  fixed-parameter loglik/AICc at 1e-8, free fits match-or-beat) and
+  exact internal-consistency invariants (refitting the reported orders
+  reproduces the reported criterion bit-for-bit; identical traces across
+  runs); the selection loop itself deliberately has **no gating
+  R/pmdarima parity** — a pmdarima cross-run is reported as a non-gating
+  note. No exogenous regressors in this slice (the engine has no ARIMAX
+  yet); no Box-Cox lambda argument (use `box_cox_lambda` first).
 
 ## [0.4.0] - 2026-08-18
 

@@ -766,6 +766,68 @@ fn ndiffs_test(s: &str) -> PyResult<tsecon_diag::NdiffsTest> {
     }
 }
 
+/// The `ndiffs` result as a Python dict (shared by `ndiffs` and
+/// `auto_arima`, which returns the same evidence for its `d`).
+fn ndiffs_result_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_diag::NdiffsResult,
+) -> PyResult<Bound<'py, PyDict>> {
+    let steps = r
+        .steps
+        .iter()
+        .map(|s| {
+            let e = PyDict::new(py);
+            e.set_item("d", s.d)?;
+            e.set_item("n", s.n)?;
+            e.set_item("statistic", s.statistic)?;
+            e.set_item("p_value", s.p_value)?;
+            e.set_item("lags", s.lags)?;
+            e.set_item("needs_differencing", s.needs_differencing)?;
+            Ok(e)
+        })
+        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
+    let d = PyDict::new(py);
+    d.set_item("d", r.d)?;
+    d.set_item("test", r.test.code())?;
+    d.set_item("alpha", r.alpha)?;
+    d.set_item("max_d", r.max_d)?;
+    d.set_item("stop", format!("{:?}", r.stop))?;
+    d.set_item("steps", steps)?;
+    d.set_item("interpretation", &r.interpretation)?;
+    Ok(d)
+}
+
+/// The `nsdiffs` result as a Python dict (shared by `nsdiffs` and
+/// `auto_arima`, which returns the same evidence for its `D`).
+fn nsdiffs_result_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_diag::NsdiffsResult,
+) -> PyResult<Bound<'py, PyDict>> {
+    let steps = r
+        .steps
+        .iter()
+        .map(|s| {
+            let e = PyDict::new(py);
+            e.set_item("d", s.d)?;
+            e.set_item("n", s.n)?;
+            e.set_item("seasonal_strength", s.seasonal_strength)?;
+            e.set_item("trend_strength", s.trend_strength)?;
+            e.set_item("needs_differencing", s.needs_differencing)?;
+            Ok(e)
+        })
+        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
+    let d = PyDict::new(py);
+    d.set_item("d", r.d)?;
+    d.set_item("period", r.period)?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("alpha", r.alpha)?;
+    d.set_item("max_d", r.max_d)?;
+    d.set_item("stop", format!("{:?}", r.stop))?;
+    d.set_item("steps", steps)?;
+    d.set_item("interpretation", &r.interpretation)?;
+    Ok(d)
+}
+
 /// How many differences a series needs — with the evidence at every order.
 ///
 /// `test`: "kpss" (null: stationarity; the `forecast::ndiffs` default),
@@ -791,29 +853,7 @@ fn ndiffs<'py>(
     max_d: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_diag::ndiffs(&vec1(&y), ndiffs_test(test)?, alpha, max_d).map_err(to_py)?;
-    let steps = r
-        .steps
-        .iter()
-        .map(|s| {
-            let e = PyDict::new(py);
-            e.set_item("d", s.d)?;
-            e.set_item("n", s.n)?;
-            e.set_item("statistic", s.statistic)?;
-            e.set_item("p_value", s.p_value)?;
-            e.set_item("lags", s.lags)?;
-            e.set_item("needs_differencing", s.needs_differencing)?;
-            Ok(e)
-        })
-        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
-    let d = PyDict::new(py);
-    d.set_item("d", r.d)?;
-    d.set_item("test", r.test.code())?;
-    d.set_item("alpha", r.alpha)?;
-    d.set_item("max_d", r.max_d)?;
-    d.set_item("stop", format!("{:?}", r.stop))?;
-    d.set_item("steps", steps)?;
-    d.set_item("interpretation", &r.interpretation)?;
-    Ok(d)
+    ndiffs_result_dict(py, &r)
 }
 
 /// How many SEASONAL differences a series needs — the Hyndman-Khandakar
@@ -843,29 +883,7 @@ fn nsdiffs<'py>(
     max_d: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_diag::nsdiffs(&vec1(&y), period, alpha, max_d).map_err(to_py)?;
-    let steps = r
-        .steps
-        .iter()
-        .map(|s| {
-            let e = PyDict::new(py);
-            e.set_item("d", s.d)?;
-            e.set_item("n", s.n)?;
-            e.set_item("seasonal_strength", s.seasonal_strength)?;
-            e.set_item("trend_strength", s.trend_strength)?;
-            e.set_item("needs_differencing", s.needs_differencing)?;
-            Ok(e)
-        })
-        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
-    let d = PyDict::new(py);
-    d.set_item("d", r.d)?;
-    d.set_item("period", r.period)?;
-    d.set_item("threshold", r.threshold)?;
-    d.set_item("alpha", r.alpha)?;
-    d.set_item("max_d", r.max_d)?;
-    d.set_item("stop", format!("{:?}", r.stop))?;
-    d.set_item("steps", steps)?;
-    d.set_item("interpretation", &r.interpretation)?;
-    Ok(d)
+    nsdiffs_result_dict(py, &r)
 }
 
 /// Variance-stabilizing Box-Cox lambda, with the objective at the optimum.
@@ -2691,6 +2709,26 @@ fn arima_fit<'py>(
             .map_err(to_py)?;
     }
     let r = spec.fit(&vec1(&y)).map_err(to_py)?;
+    let dct = arima_results_dict(py, &r, forecast_steps, conf_alpha, drift_uncertainty)?;
+    // Always present, like cov_ok, so a caller can branch on it without
+    // knowing whether this particular call asked for a forecast.
+    dct.set_item("drift_uncertainty", drift_uncertainty)?;
+    Ok(dct)
+}
+
+/// A fitted `ArimaResults` as the `arima_fit` result dict (shared by
+/// `arima_fit` and `auto_arima`, so the selected model's keys are the
+/// same either way): params/param_names/loglik/aic/bic, the
+/// refusal-capable bse/param_cov/cov_ok(/cov_error), residuals, and —
+/// when `forecast_steps > 0` — forecast_mean/forecast_se plus the
+/// conf_alpha bands.
+fn arima_results_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_arima::ArimaResults,
+    forecast_steps: usize,
+    conf_alpha: Option<f64>,
+    drift_uncertainty: bool,
+) -> PyResult<Bound<'py, PyDict>> {
     let dct = PyDict::new(py);
     dct.set_item("params", r.params().to_vec().into_pyarray(py))?;
     dct.set_item("param_names", r.param_names().to_vec())?;
@@ -2717,9 +2755,6 @@ fn arima_fit<'py>(
             dct.set_item("cov_error", e.to_string())?;
         }
     }
-    // Always present, like cov_ok, so a caller can branch on it without
-    // knowing whether this particular call asked for a forecast.
-    dct.set_item("drift_uncertainty", drift_uncertainty)?;
     if forecast_steps > 0 {
         let fc = if drift_uncertainty {
             r.forecast_with(
@@ -2741,6 +2776,170 @@ fn arima_fit<'py>(
         dct.set_item("forecast_se", fc.se.into_pyarray(py))?;
     }
     dct.set_item("residuals", r.residuals().map_err(to_py)?.into_pyarray(py))?;
+    Ok(dct)
+}
+
+/// Automatic ARIMA order selection — Hyndman-Khandakar (2008), the
+/// `forecast::auto.arima` algorithm, on the exact-MLE engine behind
+/// `arima_fit`.
+///
+/// Three stages: `D` from the STL seasonal-strength rule (`nsdiffs`,
+/// seasonal searches only), then `d` from successive KPSS tests
+/// (`ndiffs`) on the seasonally differenced series, then a search over
+/// `(p, q, P, Q, constant)` minimizing `ic` at those FIXED differencing
+/// orders — information criteria are not comparable across differencing.
+/// `stepwise=True` (default) runs the Hyndman-Khandakar neighborhood
+/// search from the four standard starting models; `stepwise=False` fits
+/// the exhaustive grid subject to `max_order` (refused when the grid
+/// exceeds 512 fits — like R, `max_order` binds only the grid search).
+/// A constant is considered when `d + D <= 1` (mean or drift, R's
+/// allowmean/allowdrift defaults), never when `d + D >= 2`. Candidates
+/// whose fitted AR/MA roots sit within 0.1% of the unit circle are
+/// recorded but never selected; candidates that fail to fit steer the
+/// search instead of aborting it. Every candidate is fit by exact MLE
+/// (deterministic), so repeated calls give identical answers.
+///
+/// **Validation grade (honest):** candidate-level fits/AICc are pinned
+/// to statsmodels (`fixtures/auto_arima.json`); the selection loop
+/// itself is graded by Monte-Carlo order recovery (rates in the model
+/// card) and has NO gating third-party reference — R's auto.arima and
+/// pmdarima famously disagree with each other, so "parity" would pin an
+/// accident. No exogenous regressors in this slice (the engine has no
+/// ARIMAX yet).
+///
+/// Returns the `arima_fit` result dict for the selected model (same
+/// keys: params, param_names, loglik, aic, bic, bse, param_cov, cov_ok,
+/// residuals, plus forecast keys when `forecast_steps > 0`) with the
+/// selection extras: `order` (p, d, q), `seasonal_order` (P, D, Q, s —
+/// all zero when non-seasonal), `constant`, `converged`, `ic`,
+/// `ic_value`, `aicc`, `stepwise`, `n_models`, `budget_exhausted`,
+/// `trace` (one dict per candidate tried: `order`, `seasonal_order`,
+/// `constant`, `ic` — None when unavailable — `status`
+/// "ok" | "near_unit_root" | "ic_undefined" | "fit_failed", `error`),
+/// `d_test` / `D_test` (the full `ndiffs` / `nsdiffs` evidence dicts,
+/// None when fixed by the caller or not applicable), and
+/// `interpretation`. For drift-uncertainty forecast bands, refit the
+/// selected order with `arima_fit(..., drift_uncertainty=True)` — the
+/// option needs the constant to be a modeling choice, not a search
+/// outcome.
+#[pyfunction]
+#[pyo3(signature = (y, seasonal_period = 0, ic = "aicc", stepwise = true,
+                    max_p = 5, max_q = 5, max_P = 2, max_Q = 2, max_order = 5,
+                    max_d = 2, max_D = 1, d = None, D = None, alpha = 0.05,
+                    forecast_steps = 0, conf_alpha = None))]
+#[allow(non_snake_case, clippy::too_many_arguments)]
+fn auto_arima<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    seasonal_period: usize,
+    ic: &str,
+    stepwise: bool,
+    max_p: usize,
+    max_q: usize,
+    max_P: usize,
+    max_Q: usize,
+    max_order: usize,
+    max_d: usize,
+    max_D: usize,
+    d: Option<usize>,
+    D: Option<usize>,
+    alpha: f64,
+    forecast_steps: usize,
+    conf_alpha: Option<f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_arima::SelectionIc;
+    let ic = match ic {
+        "aicc" => SelectionIc::Aicc,
+        "aic" => SelectionIc::Aic,
+        "bic" => SelectionIc::Bic,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown ic {other:?}; expected \"aicc\" (the auto.arima default), \
+                 \"aic\", or \"bic\""
+            )))
+        }
+    };
+    if conf_alpha.is_some() && forecast_steps == 0 {
+        return Err(PyValueError::new_err(
+            "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
+        ));
+    }
+    let opts = tsecon_arima::AutoArimaOptions {
+        seasonal_period,
+        ic,
+        stepwise,
+        max_p,
+        max_q,
+        max_seasonal_p: max_P,
+        max_seasonal_q: max_Q,
+        max_order,
+        max_d,
+        max_seasonal_d: max_D,
+        fixed_d: d,
+        fixed_seasonal_d: D,
+        alpha,
+        max_models: 94,
+    };
+    let r = tsecon_arima::auto_arima(&vec1(&y), &opts).map_err(to_py)?;
+
+    let dct = arima_results_dict(py, &r.best, forecast_steps, conf_alpha, false)?;
+    let spec = r.best.spec;
+    dct.set_item("order", (spec.p(), spec.d(), spec.q()))?;
+    dct.set_item(
+        "seasonal_order",
+        (
+            spec.seasonal_p(),
+            spec.seasonal_d(),
+            spec.seasonal_q(),
+            spec.period(),
+        ),
+    )?;
+    dct.set_item("constant", spec.include_constant())?;
+    dct.set_item("converged", r.best.converged)?;
+    dct.set_item("ic", r.ic.code())?;
+    dct.set_item("ic_value", r.best_ic)?;
+    match SelectionIc::Aicc.evaluate(&r.best) {
+        Some(v) => dct.set_item("aicc", v)?,
+        None => dct.set_item("aicc", py.None())?,
+    }
+    dct.set_item("stepwise", r.stepwise)?;
+    dct.set_item("n_models", r.n_models)?;
+    dct.set_item("budget_exhausted", r.budget_exhausted)?;
+    let trace = r
+        .trace
+        .iter()
+        .map(|c| {
+            let e = PyDict::new(py);
+            e.set_item("order", (c.p, r.d, c.q))?;
+            // The search-level (D, s) are shared by every candidate; a
+            // non-seasonal search reports (P, D, Q, s) = (0, 0, 0, 0).
+            e.set_item(
+                "seasonal_order",
+                (c.seasonal_p, r.seasonal_d, c.seasonal_q, r.seasonal_period),
+            )?;
+            e.set_item("constant", c.constant)?;
+            match c.ic {
+                Some(v) => e.set_item("ic", v)?,
+                None => e.set_item("ic", py.None())?,
+            }
+            e.set_item("status", c.status.code())?;
+            match &c.error {
+                Some(msg) => e.set_item("error", msg)?,
+                None => e.set_item("error", py.None())?,
+            }
+            Ok(e)
+        })
+        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
+    dct.set_item("trace", trace)?;
+    match &r.d_evidence {
+        Some(ev) => dct.set_item("d_test", ndiffs_result_dict(py, ev)?)?,
+        None => dct.set_item("d_test", py.None())?,
+    }
+    match &r.seasonal_d_evidence {
+        Some(ev) => dct.set_item("D_test", nsdiffs_result_dict(py, ev)?)?,
+        None => dct.set_item("D_test", py.None())?,
+    }
+    dct.set_item("interpretation", &r.interpretation)?;
     Ok(dct)
 }
 
@@ -9316,6 +9515,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bvar_irf_draws, m)?)?;
     m.add_function(wrap_pyfunction!(mcmc_diagnostics, m)?)?;
     m.add_function(wrap_pyfunction!(arima_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(auto_arima, m)?)?;
     m.add_function(wrap_pyfunction!(lp, m)?)?;
     m.add_function(wrap_pyfunction!(lp_iv, m)?)?;
     m.add_function(wrap_pyfunction!(lp_multiplier, m)?)?;
