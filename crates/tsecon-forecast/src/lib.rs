@@ -38,6 +38,16 @@
 //! * [`gw`] — the Giacomini-White (2006) equal-conditional-predictive-ability
 //!   test: the unconditional [`gw_test`] (chi-squared, test function `h=1`)
 //!   and the general q-dimensional Wald [`gw_test_conditional`].
+//! * [`conformal`] — distribution-free conformal forecast intervals
+//!   wrapping arbitrary point forecasters, with the backtest engine's
+//!   leakage discipline: [`split_conformal`] (finite-sample-corrected
+//!   residual-quantile calibration, symmetric and asymmetric),
+//!   [`enbpi`] (Xu-Xie 2021 ensemble batch prediction intervals with
+//!   bootstrap-aggregated leave-one-out residuals and a sliding window),
+//!   and [`aci`] (Gibbs-Candès 2021 adaptive conformal inference,
+//!   `alpha_{t+1} = alpha_t + gamma (alpha - err_t)`), plus the
+//!   [`conformal_quantile`] primitive, the [`ar_forecast`] base learner,
+//!   and online evaluators ([`split_conformal_online`], [`enbpi_online`]).
 //! * [`var_backtest`] — the VaR backtest battery ([`var_backtest`] on
 //!   returns + VaR forecasts with a documented sign convention,
 //!   [`var_backtest_hits`] on a pre-computed 0/1 violation sequence):
@@ -62,6 +72,7 @@ pub mod accuracy;
 pub mod backtest;
 pub mod benchmarks;
 pub mod comparison;
+pub mod conformal;
 pub mod cw;
 pub mod dm;
 mod error;
@@ -75,6 +86,11 @@ pub use accuracy::{mae, mape, mase, mdae, me, mse, rmse, rmsse, smape};
 pub use backtest::{Backtest, BacktestResult, Window};
 pub use benchmarks::{drift, historical_mean, naive, seasonal_naive, BenchmarkForecast};
 pub use comparison::{AccuracyRow, CwPair, DmPair, ForecastComparison};
+pub use conformal::{
+    aci, ar_forecast, conformal_quantile, enbpi, enbpi_online, split_conformal,
+    split_conformal_online, AciForecast, AciOptions, ConformalOnline, EnbpiForecast, EnbpiOptions,
+    SplitConformalForecast, SplitConformalOptions, SplitOnlineOptions,
+};
 pub use cw::{cw_test, CwResult};
 pub use dm::{dm_test, dm_test_with_loss, DmLoss, DmResult};
 pub use error::ForecastError;

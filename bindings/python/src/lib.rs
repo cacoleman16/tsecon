@@ -5765,6 +5765,430 @@ fn backtest<'py>(
     Ok(d)
 }
 
+/// Parse the `order=(p, d, q)` argument of the `"arima"` conformal base.
+fn parse_conformal_order(order: Option<Vec<i64>>) -> PyResult<(usize, usize, usize)> {
+    match order {
+        None => Ok((1, 0, 0)),
+        Some(v) => {
+            if v.len() != 3 || v.iter().any(|&x| x < 0) {
+                return Err(PyValueError::new_err(format!(
+                    "order must be three non-negative integers (p, d, q) for the \
+                     \"arima\" base, got {v:?}; e.g. order=(1, 0, 1). Seasonal \
+                     orders are not supported here — wrap arima_fit output \
+                     yourself or use base=\"theta\" for seasonal data"
+                )));
+            }
+            Ok((v[0] as usize, v[1] as usize, v[2] as usize))
+        }
+    }
+}
+
+/// Build the base point-forecaster closure shared by the conformal entry
+/// points. Every base sees only the training slice it is handed.
+fn conformal_base(
+    base: &str,
+    period: usize,
+    lags: usize,
+    order: (usize, usize, usize),
+) -> PyResult<Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, tsecon_forecast::ForecastError>>> {
+    use tsecon_forecast::{
+        ar_forecast, drift, historical_mean, naive, seasonal_naive, theta_forecast, ForecastError,
+    };
+    let wrap = |e: tsecon_arima::ArimaError| ForecastError::BaseForecaster {
+        message: e.to_string(),
+    };
+    let f: Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, ForecastError>> = match base {
+        "theta" => Box::new(move |train, h| Ok(theta_forecast(train, period, h)?.forecast)),
+        "naive" => Box::new(|train, h| Ok(naive(train, h, 0.95)?.mean)),
+        "drift" => Box::new(|train, h| Ok(drift(train, h, 0.95)?.mean)),
+        "mean" => Box::new(|train, h| Ok(historical_mean(train, h, 0.95)?.mean)),
+        "seasonal_naive" => {
+            Box::new(move |train, h| Ok(seasonal_naive(train, period, h, 0.95)?.mean))
+        }
+        "ar" => Box::new(move |train, h| ar_forecast(train, lags, h)),
+        "arima" => {
+            let (p, d, q) = order;
+            Box::new(move |train, h| {
+                let spec = tsecon_arima::ArimaSpec::new(p, d, q)
+                    .map_err(wrap)?
+                    .with_constant(true);
+                let fit = spec.fit(train).map_err(wrap)?;
+                Ok(fit.forecast(h).map_err(wrap)?.mean)
+            })
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown base {other:?}; expected one of \"theta\", \"naive\", \
+                 \"drift\", \"mean\", \"seasonal_naive\", \"ar\", \"arima\""
+            )))
+        }
+    };
+    Ok(f)
+}
+
+/// Resolve `calib`/`n_eval` defaults against the series length: `calib`
+/// defaults to `n // 4` residuals and `n_eval` to `n // 5` origins.
+fn conformal_windows(n: usize, calib: Option<usize>, n_eval: Option<usize>) -> (usize, usize) {
+    (calib.unwrap_or(n / 4), n_eval.unwrap_or(n / 5))
+}
+
+fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
+    match (mode, method) {
+        ("symmetric", _) => Ok(true),
+        ("asymmetric", "split") => Ok(false),
+        ("asymmetric", "aci") => Err(PyValueError::new_err(
+            "mode=\"asymmetric\" is not available with method=\"aci\": the ACI \
+             recursion here scores misses against symmetric absolute-residual \
+             intervals (the level adapts instead of the shape). Use \
+             method=\"split\" for signed-residual asymmetric calibration.",
+        )),
+        ("asymmetric", "enbpi") => Err(PyValueError::new_err(
+            "mode=\"asymmetric\" is not how EnbPI expresses asymmetry: its \
+             published interval is the width-minimizing beta line search over \
+             signed-residual quantiles [q_beta, q_{1-alpha+beta}] — control it \
+             with optimize_beta=True (the default; False gives the symmetric \
+             absolute-residual variant of the authors' released code).",
+        )),
+        (other, _) => Err(PyValueError::new_err(format!(
+            "unknown mode {other:?}; expected \"symmetric\" or \"asymmetric\""
+        ))),
+    }
+}
+
+/// Distribution-free conformal prediction intervals around a point
+/// forecaster: split conformal, EnbPI, or adaptive conformal inference.
+///
+/// `method="split"` (the baseline): hold out the last `calib` forecast
+/// origins (expanding training windows, refit at every origin — the
+/// backtest engine's leakage discipline), record h-step-ahead residuals,
+/// and band the forward forecast with their finite-sample-corrected
+/// quantile, the `ceil((m+1)(1-alpha))`-th smallest score. `mode`
+/// `"symmetric"` uses absolute residuals; `"asymmetric"` calibrates the
+/// two tails separately on signed residuals at `alpha/2` each (the
+/// interval may exclude a biased base's point forecast — that is the
+/// point). Under exchangeable scores coverage is guaranteed `>= 1 - alpha`
+/// in finite samples; for dependent forecast residuals it is approximate,
+/// and the measured grades live in the model card.
+///
+/// `method="enbpi"` (Xu-Xie ICML 2021, Algorithm 1; journal version IEEE
+/// TPAMI 2023): a bootstrap ensemble of `n_boot` AR(`lags`) least-squares
+/// learners on the internally built lagged design (`base` must be `"ar"`),
+/// leave-one-out aggregated out-of-bag residuals, and the paper's
+/// width-minimizing `beta` line search over `[q_beta, q_{1-alpha+beta}]`
+/// (`optimize_beta=False` gives the symmetric absolute-residual variant of
+/// the authors' released code). Seeded and bit-reproducible via `seed`.
+/// Multi-step forecasts recurse the ensemble's own predictions into the
+/// lag vector (the paper's batch mode with s = horizon).
+///
+/// `method="aci"` (Gibbs-Candes NeurIPS 2021): split conformal run online
+/// over the last `n_eval` origins with the miscoverage level adapting as
+/// `alpha_{t+1} = alpha_t + gamma * (alpha - err_t)`; the forward interval
+/// uses the final adapted level, and the realized online diagnostics are
+/// returned. The default `gamma=0.005` is the step size used throughout
+/// the paper's experiments. When `alpha_t` collapses the interval is
+/// infinite (err 0); past 1 it is the degenerate point interval (err 1) —
+/// the paper's conventions.
+///
+/// `base` is the wrapped point forecaster for split/aci: `"theta"`,
+/// `"naive"`, `"drift"`, `"mean"`, `"seasonal_naive"` (with `period`),
+/// `"ar"` (least squares on `lags` lags), or `"arima"` (with
+/// `order=(p, d, q)`, constant included). `calib` defaults to `n // 4`
+/// residuals per horizon; `n_eval` (aci) defaults to `n // 5`.
+///
+/// Returns dict keys (all methods): `mean`, `lower`, `upper`, `level`
+/// (`1 - alpha`), `alpha`, `horizon`, `method`, `base`, `n_calib`.
+/// Split adds `q_lower`, `q_upper`, `scores` (the per-horizon signed
+/// calibration residuals), `finite_sample_level` (the exact exchangeable
+/// coverage `k/(m+1)` the correction targets), and `mode`. EnbPI adds
+/// `beta`, `residuals` (leave-one-out), `n_boot`, `lags`, `n_excluded`,
+/// and `optimize_beta`. ACI adds `gamma`, `alpha_final`,
+/// `alpha_trajectory`, `err`, `realized_coverage` (all per horizon over
+/// the online window), and `n_eval`.
+#[pyfunction]
+#[pyo3(signature = (y, horizon = 1, method = "split", base = "theta", alpha = 0.1,
+                    calib = None, mode = "symmetric", period = 1, gamma = 0.005,
+                    n_eval = None, lags = 1, n_boot = 25, seed = 0,
+                    optimize_beta = true, order = None))]
+#[allow(clippy::too_many_arguments)]
+fn conformal_forecast<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    horizon: usize,
+    method: &str,
+    base: &str,
+    alpha: f64,
+    calib: Option<usize>,
+    mode: &str,
+    period: usize,
+    gamma: f64,
+    n_eval: Option<usize>,
+    lags: usize,
+    n_boot: usize,
+    seed: u64,
+    optimize_beta: bool,
+    order: Option<Vec<i64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_forecast as fc;
+    let yv = vec1(&y);
+    let n = yv.len();
+    let (calib, n_eval) = conformal_windows(n, calib, n_eval);
+    let symmetric = parse_conformal_mode(mode, method)?;
+    let d = PyDict::new(py);
+    d.set_item("method", method)?;
+    d.set_item("horizon", horizon)?;
+    d.set_item("alpha", alpha)?;
+    match method {
+        "split" => {
+            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let opts = fc::SplitConformalOptions {
+                horizon,
+                alpha,
+                calib,
+                symmetric,
+            };
+            let r = fc::split_conformal(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?;
+            d.set_item("base", base)?;
+            d.set_item("mean", r.mean.into_pyarray(py))?;
+            d.set_item("lower", r.lower.into_pyarray(py))?;
+            d.set_item("upper", r.upper.into_pyarray(py))?;
+            d.set_item("level", r.level)?;
+            d.set_item("n_calib", r.n_calib)?;
+            d.set_item("q_lower", r.q_lower.into_pyarray(py))?;
+            d.set_item("q_upper", r.q_upper.into_pyarray(py))?;
+            let scores = PyList::new(
+                py,
+                r.scores.into_iter().map(|s| s.into_pyarray(py)),
+            )?;
+            d.set_item("scores", scores)?;
+            d.set_item("finite_sample_level", r.finite_sample_level)?;
+            d.set_item("mode", mode)?;
+        }
+        "enbpi" => {
+            if base != "ar" {
+                return Err(PyValueError::new_err(format!(
+                    "method=\"enbpi\" trains its own bootstrap ensemble of AR \
+                     least-squares learners on a lagged design, so base must be \
+                     \"ar\" (got {base:?}); choose the design with lags=... . \
+                     To wrap {base:?} itself, use method=\"split\" or \"aci\"."
+                )));
+            }
+            let opts = fc::EnbpiOptions {
+                horizon,
+                alpha,
+                lags,
+                n_boot,
+                seed,
+                optimize_beta,
+                n_beta: 21,
+            };
+            let r = fc::enbpi(&yv, &opts).map_err(to_py)?;
+            d.set_item("base", "ar")?;
+            d.set_item("mean", r.mean.into_pyarray(py))?;
+            d.set_item("lower", r.lower.into_pyarray(py))?;
+            d.set_item("upper", r.upper.into_pyarray(py))?;
+            d.set_item("level", r.level)?;
+            d.set_item("n_calib", r.n_calib)?;
+            d.set_item("beta", r.beta)?;
+            d.set_item("residuals", r.residuals.into_pyarray(py))?;
+            d.set_item("n_boot", r.n_boot)?;
+            d.set_item("lags", r.lags)?;
+            d.set_item("n_excluded", r.n_excluded)?;
+            d.set_item("optimize_beta", optimize_beta)?;
+        }
+        "aci" => {
+            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let opts = fc::AciOptions {
+                horizon,
+                alpha,
+                gamma,
+                calib,
+                n_eval,
+            };
+            let r = fc::aci(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?;
+            d.set_item("base", base)?;
+            d.set_item("mean", r.mean.into_pyarray(py))?;
+            d.set_item("lower", r.lower.into_pyarray(py))?;
+            d.set_item("upper", r.upper.into_pyarray(py))?;
+            d.set_item("level", r.level)?;
+            d.set_item("n_calib", r.n_calib)?;
+            d.set_item("gamma", r.gamma)?;
+            d.set_item("alpha_final", r.alpha_final.into_pyarray(py))?;
+            let online = r.online;
+            let traj = online
+                .alpha_trajectory
+                .unwrap_or_default();
+            d.set_item(
+                "alpha_trajectory",
+                PyList::new(py, traj.into_iter().map(|t| t.into_pyarray(py)))?,
+            )?;
+            d.set_item(
+                "err",
+                PyList::new(py, online.err.into_iter().map(|e| e.into_pyarray(py)))?,
+            )?;
+            d.set_item(
+                "realized_coverage",
+                online.realized_coverage.into_pyarray(py),
+            )?;
+            d.set_item("n_eval", n_eval)?;
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"split\", \"enbpi\", or \"aci\""
+            )))
+        }
+    }
+    Ok(d)
+}
+
+/// Online out-of-sample evaluation of conformal forecast intervals: form
+/// the interval at each of the last `n_eval` origins from information
+/// available *then*, score it against the realized target, and report the
+/// realized coverage — the honest way to grade what a conformal method
+/// actually delivers on a series (and the harness behind the model card's
+/// coverage tables).
+///
+/// `method="split"` recalibrates the trailing `calib` realized h-step
+/// residuals at every origin at the fixed level; `method="aci"` runs the
+/// Gibbs-Candes level recursion on top of the same trailing scores
+/// (`gamma`, default 0.005 from the paper); `method="enbpi"` is the
+/// published online algorithm — ensemble fit once on the pre-evaluation
+/// sample, residual window sliding forward by `batch` as labels are
+/// revealed (horizon must be 1; within a batch, lag values beyond the last
+/// reveal are plug-in ensemble predictions). `base`, `period`, `lags`,
+/// `order` as in `conformal_forecast`.
+///
+/// Returns dict keys: `origins`, `n_eval`, `horizon`, `level`, `alpha`,
+/// `method`, `base`, and per-horizon lists `mean`, `lower`, `upper`,
+/// `err` (missed-target indicators), plus `realized_coverage` (per
+/// horizon). ACI adds `alpha_trajectory`; EnbPI adds `batch`.
+#[pyfunction]
+#[pyo3(signature = (y, horizon = 1, method = "split", base = "theta", alpha = 0.1,
+                    calib = None, mode = "symmetric", period = 1, gamma = 0.005,
+                    n_eval = None, lags = 1, n_boot = 25, batch = 1, seed = 0,
+                    optimize_beta = true, order = None))]
+#[allow(clippy::too_many_arguments)]
+fn conformal_backtest<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    horizon: usize,
+    method: &str,
+    base: &str,
+    alpha: f64,
+    calib: Option<usize>,
+    mode: &str,
+    period: usize,
+    gamma: f64,
+    n_eval: Option<usize>,
+    lags: usize,
+    n_boot: usize,
+    batch: usize,
+    seed: u64,
+    optimize_beta: bool,
+    order: Option<Vec<i64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_forecast as fc;
+    let yv = vec1(&y);
+    let n = yv.len();
+    let (calib, n_eval) = conformal_windows(n, calib, n_eval);
+    let symmetric = parse_conformal_mode(mode, method)?;
+    let online = match method {
+        "split" => {
+            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let opts = fc::SplitOnlineOptions {
+                horizon,
+                alpha,
+                calib,
+                n_eval,
+                symmetric,
+            };
+            fc::split_conformal_online(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?
+        }
+        "aci" => {
+            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let opts = fc::AciOptions {
+                horizon,
+                alpha,
+                gamma,
+                calib,
+                n_eval,
+            };
+            fc::aci(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?.online
+        }
+        "enbpi" => {
+            if base != "ar" {
+                return Err(PyValueError::new_err(format!(
+                    "method=\"enbpi\" trains its own AR least-squares ensemble; \
+                     base must be \"ar\" (got {base:?})"
+                )));
+            }
+            if horizon != 1 {
+                return Err(PyValueError::new_err(format!(
+                    "conformal_backtest(method=\"enbpi\") is the published online \
+                     algorithm, which is one-step-ahead with labels revealed once \
+                     per batch — horizon={horizon} is not defined here. Set \
+                     horizon=1 and batch=s for the paper's batch-of-s mode, or \
+                     use conformal_forecast(method=\"enbpi\", horizon=...) for a \
+                     multi-step forecast from the end of the sample."
+                )));
+            }
+            let opts = fc::EnbpiOptions {
+                horizon: 1,
+                alpha,
+                lags,
+                n_boot,
+                seed,
+                optimize_beta,
+                n_beta: 21,
+            };
+            fc::enbpi_online(&yv, &opts, n_eval, batch).map_err(to_py)?
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"split\", \"enbpi\", or \"aci\""
+            )))
+        }
+    };
+
+    let d = PyDict::new(py);
+    d.set_item("method", method)?;
+    d.set_item("base", if method == "enbpi" { "ar" } else { base })?;
+    d.set_item("horizon", online.horizon)?;
+    d.set_item("alpha", online.alpha)?;
+    d.set_item("level", online.level)?;
+    d.set_item("origins", online.origins)?;
+    d.set_item("n_eval", n_eval)?;
+    d.set_item(
+        "mean",
+        PyList::new(py, online.mean.into_iter().map(|v| v.into_pyarray(py)))?,
+    )?;
+    d.set_item(
+        "lower",
+        PyList::new(py, online.lower.into_iter().map(|v| v.into_pyarray(py)))?,
+    )?;
+    d.set_item(
+        "upper",
+        PyList::new(py, online.upper.into_iter().map(|v| v.into_pyarray(py)))?,
+    )?;
+    d.set_item(
+        "err",
+        PyList::new(py, online.err.into_iter().map(|v| v.into_pyarray(py)))?,
+    )?;
+    d.set_item(
+        "realized_coverage",
+        online.realized_coverage.into_pyarray(py),
+    )?;
+    if let Some(traj) = online.alpha_trajectory {
+        d.set_item(
+            "alpha_trajectory",
+            PyList::new(py, traj.into_iter().map(|t| t.into_pyarray(py)))?,
+        )?;
+    }
+    if method == "enbpi" {
+        d.set_item("batch", batch)?;
+    }
+    Ok(d)
+}
+
 /// Nelson-Siegel yield-curve fit (Diebold-Li 2006).
 ///
 /// Cross-sectional OLS of `yields` on the three Nelson-Siegel loadings at
@@ -9066,6 +9490,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(nelson_siegel, m)?)?;
     m.add_function(wrap_pyfunction!(svensson, m)?)?;
     m.add_function(wrap_pyfunction!(backtest, m)?)?;
+    m.add_function(wrap_pyfunction!(conformal_forecast, m)?)?;
+    m.add_function(wrap_pyfunction!(conformal_backtest, m)?)?;
     m.add_function(wrap_pyfunction!(adaptive_lasso, m)?)?;
     m.add_function(wrap_pyfunction!(lasso_path, m)?)?;
     m.add_function(wrap_pyfunction!(cv_splits, m)?)?;

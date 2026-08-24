@@ -7,7 +7,40 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added — conformal forecast intervals
+
+- **`conformal_forecast`** — distribution-free conformal prediction
+  intervals around an arbitrary point forecaster (`base` = theta, naive,
+  drift, mean, seasonal_naive, ar, or arima), three methods:
+  **split conformal** (residual-quantile calibration on held-out origins
+  with the finite-sample correction `ceil((m+1)(1−α))/m`, symmetric and
+  asymmetric signed-residual modes), **EnbPI** (Xu-Xie, ICML 2021
+  Algorithm 1 / IEEE TPAMI 2023: bootstrap-ensemble AR least-squares
+  learners on a lagged design, leave-one-out aggregated residuals, the
+  width-minimizing β line search, seeded through the library's Philox
+  substreams), and **ACI** (Gibbs-Candès, NeurIPS 2021: the online level
+  recursion `α_{t+1} = α_t + γ(α − err_t)`, γ default 0.005 from the
+  paper, with the paper's infinite/empty-interval conventions and
+  horizon-h update delays). Calibration reuses the backtest engine's
+  rectangular `(origin, horizon, target)` grid — expanding windows,
+  refit every origin — so calibration never sees the future by
+  construction (guarded by exact-recompute leakage tests).
+- **`conformal_backtest`** — the online evaluator: per-origin intervals
+  formed from information available at each origin, miss indicators, and
+  realized coverage; ACI reports its `alpha_trajectory`, EnbPI runs the
+  published sliding-residual-window batch mode. Grades in the model
+  card: split/EnbPI/ACI all cover ≈ 0.90 nominal on iid-noise AR and
+  GARCH-noise DGPs; under a variance shift ACI recovers post-shift
+  coverage where fixed-level split conformal degrades (measured numbers
+  in `docs/reference/model-cards/forecasting.md`), and the split
+  exactness anchor verifies the ≥ 1−α finite-sample guarantee at small
+  calibration sizes where the correction bites. A `mapie`
+  cross-implementation check pins the corrected quantile arithmetic
+  (non-gating).
+- Rust core in `tsecon-forecast::conformal` (`conformal_quantile`,
+  `split_conformal(_online)`, `enbpi(_online)`, `aci`, `ar_forecast`),
+  with teaching errors for calibration sets too small for the level,
+  singular AR designs, and degenerate parameters.
 
 ## [0.4.0] - 2026-08-18
 
