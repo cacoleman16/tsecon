@@ -333,12 +333,12 @@ size and whether an *estimator* is consistent. Tier 6 asks whether an
 specific data-generating process — and it is the claim a reader is implicitly
 relying on every time they quote a standard error.
 
-Seven modules under
+Eight modules under
 [`docs/examples/coverage/`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage)
-re-estimate 50 interval-valued outputs across 28 functions on seeded draws from
-processes whose truth is known in closed form, and count containment. (50 rather
-than 28 because the option and the regime change the answer: `var_irf_bands`
-contributes six rows, `ols` five, `bai_perron` three.) Every coverage number
+re-estimate 63 interval-valued outputs across 35 functions on seeded draws from
+processes whose truth is known in closed form, and count containment. (63 rather
+than 35 because the option and the regime change the answer: `var_irf_bands`
+contributes six rows, `ols` five, `proxy_ar_sets` and `bai_perron` three each.) Every coverage number
 carries its own Monte Carlo standard error `sqrt(p(1−p)/reps)` so that 0.93 and
 0.95 can be told apart honestly, and `run_all.py` harvests the consolidated
 tables from the structured results the modules return — nothing is transcribed
@@ -360,11 +360,11 @@ degrades, as approximations do" from "this interval does not work". The headline
 
 | | count |
 |---|---|
-| frequentist intervals measured (CI + PRED) | 39 |
-| — off nominal **even in the favourable design** | **12** |
-| — at nominal when entitled, off under stress | 27 |
+| frequentist intervals measured (CI + PRED) | 50 |
+| — off nominal **even in the favourable design** | **14** |
+| — at nominal when entitled, off under stress | 36 |
 | objects that make no frequentist promise (Bayesian credible bands, set-identified bounds) — reported as labelled diagnostics | 7 |
-| surfaces that return no interval at all (`theta_forecast`/`backtest`, `weighted_midas`, `dfm_nowcast`, `nelson_siegel` — the last three verified by a per-run key-set tripwire) | 4 |
+| surfaces that return no interval at all (`theta_forecast`/`backtest`, `weighted_midas`, `dfm_nowcast`, `nelson_siegel`, `nongaussian_svar`, the GARCH `variance_forecast` — all but the first verified by a per-run key-set tripwire) | 6 |
 
 Three results are worth naming here rather than leaving on the page:
 

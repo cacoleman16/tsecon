@@ -7,7 +7,36 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`proxy_ar_sets(rf_method="second_order_bc")`** — the roadmap-note-21
+  follow-up on `second_order`'s residual ~2pp at `h=12`: the same seeded
+  second-order simulation with the coefficient draws centred at Pope (1990)
+  bias-corrected coefficients (Kilian stationarity shrinkage), implemented as
+  `tsecon_ident::proxy_ar::pope_bias_corrected_coefs`. Measured on the same
+  500 seeded replications as `second_order`: the only arm at-or-above nominal
+  at every horizon on both DGPs (`h=12`: 0.889 → 0.964 → **0.982** on the
+  card VAR(2); 0.830 → 0.932 → **0.966** on the routine VAR(1)), at a further
+  width price (median ~1.8x the delta width at `h=12`, vs ~1.45x) — a
+  conservative floor, not a calibration, and documented as such. Boundedness
+  is bit-identical across all three `rf_method`s; the default remains
+  `"delta"`. Crate tests pin the AR(1) closed form `-(1+3a)/T` exactly and
+  the experiment harness's NumPy transcription at 1e-10.
+
+### Measured
+
+- **The interval-coverage audit now measures the five families it previously
+  listed as unmeasured** — a new registry module
+  (`docs/examples/coverage/proxy_garch_tail.py`, 13 probes; the registry
+  grows 50 → 63) covering `growth_at_risk` (`bse` vs `bse_powell` on an
+  exact-truth overlap design), `proxy_svar_bands` (moving-block Hall/Efron
+  and the wild reproduction arm), `proxy_ar_sets` (all three `rf_method`s,
+  paired), `garch_fit` (`se_mle` vs `se_robust` under Gaussian and t(5)
+  QMLE), `flp`/`flp_scenario` (the generated-regressor warning, priced
+  against the external-score and `w'beta` exempt routes), plus verified
+  no-interval rows for `nongaussian_svar` and the GARCH `variance_forecast`
+  (key-set tripwires). Headline findings are on the
+  [interval-coverage page](docs/examples/interval-coverage.md).
 
 ## [0.4.0] - 2026-08-18
 

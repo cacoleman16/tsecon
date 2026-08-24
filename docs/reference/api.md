@@ -1296,6 +1296,14 @@ Weak-instrument-robust (Anderson-Rubin) confidence SETS for a proxy SVAR.
     at h=12; weak-instrument boundedness bit-identical). Default "delta" is
     unchanged.
 
+    rf_method="second_order_bc" centres the same seeded simulation at Pope
+    (1990) bias-corrected coefficients (Kilian stationarity shrinkage) --
+    measured at-or-above nominal at EVERY horizon on both DGPs (h=12: 0.982
+    card VAR(2) / 0.966 routine VAR(1)) at a further width price (median
+    ~1.8x the delta width at h=12). A conservative floor, not a calibration:
+    it overshoots where "second_order" already reaches nominal. Boundedness
+    is again bit-identical.
+
 ### `proxy_svar`
 
 ```python

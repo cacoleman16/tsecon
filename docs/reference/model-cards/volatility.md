@@ -52,9 +52,17 @@ exactly), so decimal returns and percent returns give the same model with
 **How to read the output.** `params` are named by `param_names`
 (`omega, alpha[1], beta[1]`, with `mu` prepended under `mean="constant"` and
 `nu` appended for *t*). Trust **`se_robust`**
-(Bollerslev-Wooldridge) over `se_mle` unless you believe the density.
-`conditional_volatility` is the filtered σ_t, `std_residuals` should look
-i.i.d. (re-run `arch_lm` on them), and `variance_forecast` is the horizon path.
+(Bollerslev-Wooldridge) over `se_mle` unless you believe the density — and
+that advice now carries [measured numbers](../../examples/interval-coverage.md):
+on a GARCH(1,1) with standardized t(5) innovations fitted with
+`dist="normal"` (the QMLE case every fat-tailed return series is in), nominal
+95% intervals from `se_mle` cover **0.75** of the time at T=2000 (se/sd ≈
+0.54 on every parameter) while `se_robust` holds **0.91**; under Gaussian
+innovations both sit at nominal. The interval-coverage registry re-measures
+this every run. `conditional_volatility` is the filtered σ_t, `std_residuals`
+should look i.i.d. (re-run `arch_lm` on them), and `variance_forecast` is the
+horizon path — a **point** path: it carries no interval, and the registry
+verifies by a key-set tripwire that none is implied.
 `alpha[1] + beta[1]` near 1 means shocks persist for a long time. Check
 `se_valid` before quoting a standard error, and `converged` before quoting
 anything: a `False` in `se_valid` means the NaN in that `se_mle`/`se_robust`

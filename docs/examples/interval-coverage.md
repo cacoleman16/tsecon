@@ -7,7 +7,7 @@ repository proves that `tsecon`'s *point estimates and standard-error algebra*
 match an independent reference. None of them proves the promise itself.
 
 This page is that proof, and it is an audit rather than an advertisement.
-**50 interval-valued outputs across 28 functions** — a function paired with the
+**63 interval-valued outputs across 35 functions** — a function paired with the
 option and regime that change its answer — were re-estimated on thousands of
 seeded draws from data-generating processes whose truth is known in closed form,
 and the containment rate was counted. Where an interval covers at its nominal rate, the
@@ -17,7 +17,7 @@ Monte Carlo standard error of the measurement next to it, an attribution of
 
 !!! warning "The three headline results, before any table"
 
-    1. **12 of the 39 frequentist intervals miss their nominal rate even in the
+    1. **14 of the 50 frequentist intervals miss their nominal rate even in the
        design they are entitled to do well on.** That list is
        [below](#a-misses-even-in-the-favourable-design), and it is the most
        important output of this work.
@@ -93,10 +93,10 @@ This is [Tier 6](../reference/testing.md#tier-6-interval-coverage) of the
 ## Reproducing every number
 
 ```sh
-# the whole audit: seven families, one consolidated report
+# the whole audit: eight families, one consolidated report
 .venv/bin/python docs/examples/coverage/run_all.py            # 1904 s here
 
-# just the consolidated tables, without the seven per-family reports
+# just the consolidated tables, without the eight per-family reports
 .venv/bin/python docs/examples/coverage/run_all.py --summary
 
 # a smoke run; the MC standard errors are 2-4x larger, so do not quote it
@@ -122,7 +122,7 @@ This is [Tier 6](../reference/testing.md#tier-6-interval-coverage) of the
 Every family draws from one master seed, `20260729`, and prints it. Every draw
 is `default_rng([seed, experiment, replication])`, so the numbers do not depend
 on call ordering, on `PYTHONHASHSEED`, or on whether you run one family or all
-seven — verified: every measured line from the standalone runs appears
+eight — verified: every measured line from the standalone runs appears
 identically in the consolidated run. Each family asserts its own qualitative
 findings and **exits non-zero if they stop holding**, so a statistical
 regression fails a build rather than quietly rotting in this page.
@@ -192,7 +192,7 @@ and each family module's docstring derives its truth in closed form.
 
 ---
 
-## The headline: 50 measured interval-valued outputs
+## The headline: 63 measured interval-valued outputs
 
 Each row names **two** measured cells. `favourable` is a design the interval is
 entitled to do well on; `stress` is a design that pushes the same interval
@@ -325,8 +325,11 @@ from here.
 
 ### A. Misses even in the favourable design
 
-**12 of 39**. These are off nominal in the design they are
+**14 of 50**. These are off nominal in the design they are
 entitled to do well on, so a caller cannot fix them by having better data.
+(The last two are the page's only *deliberately conservative* members: the
+two opt-in `proxy_ar_sets` repairs, which sit **over** nominal in their
+favourable cells by design.)
 
 | surface | favourable design | measured (nominal 0.95 / 0.90) | cause | what to do | documented in |
 |---|---|---|---|---|---|
@@ -342,10 +345,12 @@ entitled to do well on, so a caller cannot fix them by having better data.
 | `panel_lp(se_type="driscoll_kraay")` — the default | N=50, T=80, impact | **0.916 ± 0.006** (T=40, worst horizon: **0.818 ± 0.008**) | APPROXIMATION | with a common shock the effective sample is T, not N·T: quintupling N moves pooled coverage by under a point while doubling T buys ~5pp. Driscoll-Kraay is a T-asymptotic estimator; at T=40 read the bands as indicative. And never swap in `se_type="cluster"` under a common factor — on the same draws it covers **0.20** (se/sd = 0.12) | [Panel-LP cookbook](../cookbook/panel-lp-standard-errors.md) |
 | `panel_lp(bias_correction="spj")` | T=40, h=2 (a short panel — the correction's home turf) | **0.843 ± 0.007** (T=20: **0.761 ± 0.009**) | APPROXIMATION | the SPJ removes most of the Nickell bias (−0.141 → +0.015 at T=20, h=2 — corroborating its card almost exactly) and recomputes the SEs for the corrected estimator, but Driscoll-Kraay remains a short-T approximation, so neither SPJ nor uncorrected FE reaches nominal at T=20. The measured T=20 coverage *gain* over FE is +2.5pp paired (se 0.6pp) — real, and smaller than the card's 300-replication point numbers (0.743 → 0.823) suggest; at T=40 the paired gain is −1.5pp | [Panel card](../reference/model-cards/panel.md#nickell-bias-and-the-two-half-panel-corrections-panel_lp) |
 | `lp(cumulative="both")` — the post-fix HAC default | T=400, h=12 (the repaired defect cell) | **0.920 ± 0.006** (T=1600, most extreme h: **0.971 ± 0.004**, over) | APPROXIMATION *(the 0.507 defect itself was fixed in 0.3.0)* | the official repair numbers: the pre-fix lag-augmented/HC1 default covered **0.507** at h=12 and was flat in T; the mode-dependent HAC default restores h=12 to 0.920 at T=400 and 0.956 at T=1600, with the residual deviation flipping mildly *conservative* at T=1600 mid-horizons — the Bartlett bandwidth `h + p` is generous once T is large relative to the MA(h) overlap. `se="lag_augmented"` with this mode now raises, and the suite asserts it | [LP card](../reference/model-cards/local-projections.md#lp-local-projection-irfs) |
+| `proxy_ar_sets(rf_method="second_order")` | card VAR(2), T=300, h=12 — the cell the opt-in repair was shipped for | **0.974 ± 0.003**, over (routine VAR(1), h=12: **0.935 ± 0.004**, under) | APPROXIMATION | the shipped long-horizon repair, measured in-registry: on the card DGP it crosses ~2pp *past* nominal at h=12, on the harder routine VAR(1) it stops ~1.5pp *short* — the exact residual roadmap note 21 recorded (0.964/0.932 on its own 500-rep harness). No single evaluation point calibrates both DGPs; the width price is ~1.6x the delta set at h=12. It remains the best point-calibration choice, and the default stays `"delta"` | [Identification card](../reference/model-cards/structural-identification.md#proxy_ar_sets-weak-instrument-robust-anderson-rubin-sets) |
+| `proxy_ar_sets(rf_method="second_order_bc")` | routine VAR(1), T=250, h=12 — the residual-gap cell it was built for | **0.966 ± 0.003**, over (card VAR(2), h=12: **0.990 ± 0.002**, over) | CONVENTION | deliberately conservative: the same seeded simulation centred at Pope-bias-corrected coefficients is the only arm at-or-above nominal at **every** horizon on both DGPs, and that floor is bought with over-coverage (up to +4pp at the card DGP's h=12) and a ~2x width price at h=12. Choose it when long-horizon *under*-coverage is the error you must rule out; boundedness is bit-identical across all three `rf_method`s (asserted every run) | [Identification card](../reference/model-cards/structural-identification.md#proxy_ar_sets-weak-instrument-robust-anderson-rubin-sets) |
 
 ### B. At nominal when entitled, off under stress
 
-**27 of 39**. These behave the way asymptotic approximations behave. Nothing
+**36 of 50**. These behave the way asymptotic approximations behave. Nothing
 here is an alarm; the number to quote is the *size* of the loss in the regime
 you are actually in.
 
@@ -377,7 +382,17 @@ you are actually in.
 | `quantile_lp` — identified iid shock | worst (τ, h, T) cell of the whole grid: τ=0.25, h=0, T=200 | **0.893 ± 0.010** | APPROXIMATION | the audit's cleanest good news: the quantile card's transferred growth_at_risk warning does **not** bind on an identified iid shock, because the check-loss score is serially uncorrelated by construction (the same mechanism that makes lag-augmented mean-LP inference work). The worst cell is the location-scale tail *impact* — a Powell kernel density-estimation cost, not an overlap one — and it shrinks in T (0.923 at T=400) | [Quantile card](../reference/model-cards/quantile.md#quantile_lp-quantile-local-projections) |
 | `favar` + `var_irf_bands` — two-step bands | small noisy panel (N=20), T=800, worst horizon | **0.673 ± 0.010** | ESTIMATOR | `favar` ships no band; this is the guide's own construction and its warned generated-regressor hazard, priced against a true-factor oracle on the same draws. On a rich clean panel the two are within 0.3pp; on the small noisy one the F̂ band loses a further 6–14pp at long horizons — and more T makes it *worse* (0.747 → 0.673 at h=7) while the oracle improves, because the band shrinks around an O(1/N) factor-measurement distortion. Bootstrap the two-step procedure, or grow N before T | [Multivariate guide](../guide/07-multivariate.md) |
 | `umidas` — the intercept | AR(1) errors φ=0.7, persistent HF regressor, T=150 | **0.829 ± 0.007** | APPROXIMATION | the HF-lag coefficients hold ~0.92+ even here; the intercept inherits the error's full serial correlation (se/sd = 0.71) — the har_rv-constant mechanism on a new surface. Quote the constant with care or lengthen `maxlags` | [Nowcasting/MIDAS card](../reference/model-cards/nowcasting-midas.md#how-to-read-the-output) |
+| `growth_at_risk` — `bse` (the NW default) | τ=0.05, h=12, T=240 | **0.793 ± 0.010** (τ=0.5, h=12: 0.913 ± 0.007; h=1: 0.955 ± 0.005) | APPROXIMATION | the Newey-West correction at `hac_lags = horizon−1` is the whole story at the median and half the story in the tail, exactly as the card's own table says: the residual is the Powell kernel density estimate at an extreme quantile (se/sd falls to 0.73 by h=12 at τ=0.05), which nothing you can pass fixes. Quote the fitted quantile path, not a tail coefficient interval, at h ≥ 8 | [Quantile card](../reference/model-cards/quantile.md#standard-errors-at-long-horizons-measured) |
+| `growth_at_risk` — `bse_powell` (replication arm) | τ=0.5, h=12, T=240 | **0.826 ± 0.010** (identical to `bse` at h=1, asserted exact) | ESTIMATOR | the uncorrected Powell sandwich assumes a martingale-difference score; the h-step overlap makes it an MA(h−1), and the cost is ~9pp at the median by h=12 (se/sd 0.72 vs `bse`'s 0.95). It exists for statsmodels replication and serially uncorrelated conditioners — use the default `bse` | [Quantile card](../reference/model-cards/quantile.md#standard-errors-at-long-horizons-measured) |
+| `proxy_svar_bands` — moving-block Hall band | worst (h, variable) cell, h=12, T=300 | **0.749 ± 0.014** (impact: 0.891 ± 0.010) | APPROXIMATION | the long-horizon decay is inherited from the reduced-form VAR bootstrap (no Kilian correction runs on the proxy path) — the card's documented cost, reproduced in-registry. On this DGP the **Efron** band beats the recommended Hall band at h=12 (pooled 0.885 vs 0.787), because the bootstrap distribution is right-skewed exactly where Hall's reflection hurts; both endpoints ship, so read both at long horizons | [Identification card](../reference/model-cards/structural-identification.md#proxy_svar_bands-moving-block-bootstrap-bands-for-the-proxy-svar) |
+| `proxy_ar_sets(rf_method="delta")` — the default | routine VAR(1), T=250, h=12 | **0.828 ± 0.007** (h=1: 0.952 ± 0.004; card VAR(2) h=12: 0.881 ± 0.006) | APPROXIMATION | the audit's one-sided long-horizon decline (misses 515/0 above/below at h=12), reproduced in-registry: the delta variance is evaluated at the estimated coefficients and shrinks in exactly the under-persistent draws that miss. The two opt-in repairs are its group-A rows above; the default stays `"delta"` | [Identification card](../reference/model-cards/structural-identification.md#proxy_ar_sets-weak-instrument-robust-anderson-rubin-sets) |
+| `proxy_svar_bands(bands="wild")` — the reproduction arm | impact, strong instrument | **0.193 ± 0.020** | READING | not an interval at impact: the common-Rademacher draw leaves the identifying moment bit-identical in every draw, so the band carries no identification uncertainty at all — the card's frozen-moment defect, measured in-registry (the valid moving-block arm covers 0.891 at the same cell). It exists to reproduce published Mertens-Ravn / Gertler-Karadi bands and labels itself `asymptotically_valid=False` (asserted every run) | [Identification card](../reference/model-cards/structural-identification.md#proxy_svar_bands-moving-block-bootstrap-bands-for-the-proxy-svar) |
+| `garch_fit` — `se_mle` | t(5) innovations fit with `dist="normal"` (QMLE), T=2000 | **0.750 ± 0.014** (Gaussian innovations: 0.951–0.959) | ESTIMATOR | the inverse Hessian is only valid when the innovation distribution is correct; under fat tails its se/sd falls to ~0.54 for every parameter while the point estimates stay consistent. `se_robust` on the same fits holds 0.909–0.919. Quote `se_robust` unless you have a reason to believe the distribution | [Volatility card](../reference/model-cards/volatility.md) |
+| `garch_fit` — `se_robust` (Bollerslev-Wooldridge) | t(5) innovations (QMLE), T=2000, worst parameter | **0.909 ± 0.009** (Gaussian: 0.946–0.957; T=500 Gaussian: 0.877–0.901) | APPROXIMATION | the sandwich fat-tailed fits need: it holds most of nominal where `se_mle` collapses, a few points short in finite samples (se/sd ~0.86). Boundary fits carry NaN SEs with `se_valid=False` rather than an invented number — 0.7–0.8% of draws here, counted and excluded; read that flag before either SE | [Volatility card](../reference/model-cards/volatility.md) |
+| `flp` — per-element `se` on `functional_pca` scores | persistent yield-curve-like design, impact | **0.421 ± 0.013** (external true scores, same draws: 0.953 ± 0.005) | ESTIMATOR | the card's generated-regressor warning, priced: `se` conditions on the scores, and estimated eigenfunctions carry O_p(T^-1/2) rotation error the HAC sandwich cannot see — se/sd is 0.27 at impact. External scores are exempt (measured at nominal); on the canonical iid-impulse design the hazard is confined to impact and mild (0.860). Report `flp_scenario`'s w'beta contrasts | [Functional-shocks card](../reference/model-cards/functional-shocks.md#flp-functional-local-projections) |
+| `flp_scenario` — w'beta scenario band | in-span scenario, worst horizon (8) | **0.873 ± 0.009** (impact: 0.932 ± 0.007) | APPROXIMATION | the documented reporting route, and the immunity is real: at impact it covers at nominal on the same draws where the per-element `se` collapses to 0.42. The long-horizon decline is the ordinary LP-HAC cost this page documents for `lp(se="hac")` — se/sd drifts from 0.97 to 0.85 across the horizons | [Functional-shocks card](../reference/model-cards/functional-shocks.md#flp_scenario-response-of-y-to-a-whole-curve-scenario) |
 | `theta_forecast`, `backtest` | — | **no interval at all** | READING | both return point paths only; `backtest` returns no interval-bearing key. Any band you report around them is your own construction and its coverage is your claim, not the library's. (For reference, a DIY interval built from `backtest` errors on a random walk with drift covers 93.0% at h=1 falling to 90.6% at h=6 — our construction, not a library promise) | [Forecasting card](../reference/model-cards/forecasting.md#how-to-read-the-output) |
+| `nongaussian_svar`, `garch_fit`'s `variance_forecast` | — | **no interval at all** | READING | `nongaussian_svar` returns point `B`, IRF and kurtosis diagnostics only, and the GARCH `variance_forecast` is a documented analytic *point* path ("no interval or coverage level … none is implied") — both verified by per-run key-set tripwires, so a future `se` breaks an assertion rather than silently outdating this row. Any band you draw around either is your own construction | [Identification card](../reference/model-cards/structural-identification.md#nongaussian_svar-independent-component-non-gaussian-identification) / [Volatility card](../reference/model-cards/volatility.md) |
 
 ### C. Objects that make no frequentist promise
 
@@ -449,7 +464,7 @@ path gains it because the multiplier grew. Their pointwise rates reproduce this
 page's 0.409 and 0.722 on fresh seeds, and their sup-t rates reproduce what the
 crates' own tests measure at higher replication counts (41.2% → 90.5% at 6000
 reps; 70.4% → 84.8% at 3000). The LP rows are the crate tests' — `lp` has no
-simultaneous-band arm in the seven modules below (its cumulative-mode
+simultaneous-band arm in the eight modules below (its cumulative-mode
 *pointwise* intervals are measured in `quantile_panel_lp.py`).
 
 **Neither VAR simultaneous rate reaches nominal — 85.2% against 90%, 90.5%
@@ -1069,6 +1084,123 @@ documents for `har_rv`'s constant. Quote the constant with care or lengthen
 Full report:
 [`docs/examples/coverage/factor_midas.py`](coverage/factor_midas.py).
 
+### Proxy-SVAR inference, GARCH, growth-at-risk and functional LP
+
+The five families the original audit listed as unmeasured, split by the same
+question `factor_midas` asks first: does the surface ship an interval at all?
+`nongaussian_svar` and the GARCH `variance_forecast` do not — verified by
+key-set tripwires every run. Everything else is measured on closed-form-truth
+DGPs (stated [below](#the-data-generating-processes)).
+
+**`proxy_svar_bands`: the valid arm decays, the reproduction arm is not an
+interval.** Card VAR(2), T=300, strong instrument, nominal **90%**,
+`n_boot=2000`, 1000 replications (wild arm 400):
+
+```text
+  pooled over the three variables (the degenerate (norm_var, h=0) cell
+  asserted exact and excluded)     h=0*    h=1     h=4     h=8     h=12
+  moving-block, Hall              0.881   0.873   0.853   0.817   0.787
+  moving-block, Efron             0.865   0.875   0.851   0.866   0.885
+  wild, Hall                      0.218   0.856   0.848   0.819   0.787
+  (* h=0 excludes the normalized variable; wild h=0 is its two free cells)
+```
+
+The moving-block Hall band starts ~1–3pp short at impact and gives up
+~10pp more by h=12 — the reduced-form bootstrap decay the card documents (no
+Kilian correction runs on the proxy path). Two findings are sharper than the
+card's numbers: the **Efron** percentile band beats the recommended Hall band
+at h=12 on this DGP (0.885 vs 0.787 pooled — the bootstrap distribution is
+right-skewed exactly where Hall's reflection hurts; read both endpoints at
+long horizons), and the **wild** arm collapses to **0.19–0.24 at impact**
+while looking almost reasonable at h ≥ 1 — because the frozen identifying
+moment is the *whole* uncertainty at h=0 and only part of it later. It
+self-reports `asymptotically_valid=False`, asserted every run.
+
+**`proxy_ar_sets`: the audit's decline, its shipped repair, and the repair's
+conservative variant, paired on the same draws.** Nominal **95%**, 1000
+replications, mean over non-degenerate cells:
+
+```text
+                              h=1     h=4     h=8     h=12    misses at h=12   median width
+  card VAR(2), T=300                                          (above/below)    vs delta, h=12
+    delta (the default)     0.952   0.941   0.916   0.881       357 / 0            1.00
+    second_order            0.958   0.942   0.952   0.974        78 / 0            1.58
+    second_order_bc         0.958   0.952   0.970   0.990        30 / 0            1.94
+  routine VAR(1), T=250
+    delta                   0.957   0.933   0.884   0.828       515 / 0            1.00
+    second_order            0.961   0.945   0.930   0.935       194 / 0            1.61
+    second_order_bc         0.961   0.954   0.953   0.966       103 / 0            2.02
+```
+
+Every miss is one-sided (the truth exits above the set) and the boundedness
+decision is bit-identical across the three `rf_method`s on every draw (the
+corrections enter `v0` only — asserted). `second_order` recovers most of the
+decline and leaves the ~1.5pp residual on the routine VAR(1) that roadmap
+note 21 recorded; `second_order_bc` (the note-21 follow-up: the same
+simulation centred at Pope-bias-corrected coefficients) closes that residual
+*from the conservative side* — at-or-above nominal at every horizon on both
+DGPs, over-covering where `second_order` already sufficed, at ~2x the delta
+width. A floor, not a calibration; the default stays `"delta"`.
+
+**`growth_at_risk`: the Newey-West correction is the whole story at the
+median and half the story in the tail.** Exact Gaussian state-space truth,
+T=240, 1500 replications, the slope on the conditioning variable:
+
+```text
+  nominal 0.95              h=1      h=4      h=8      h=12     se/sd at h=12
+  bse,       tau=0.50     0.955    0.933    0.924    0.913        0.95
+  bse_powell tau=0.50     0.955    0.892    0.849    0.826        0.72
+  bse,       tau=0.05     0.888    0.845    0.794    0.793        0.73
+  bse_powell tau=0.05     0.888    0.830    0.784    0.783        0.68
+```
+
+At h=1 the two are bit-identical (asserted exact — nothing overlaps). At the
+median the correction holds ~0.91+ through h=12 where the uncorrected
+sandwich drops to 0.83. In the 5% tail the corrected interval still sits at
+0.79 by h=8 — the Powell kernel density estimate at an extreme quantile, the
+card's documented residual, which no argument fixes. The card's own advice
+stands, measured: at h ≥ 8 in the tail, quote the fitted quantile path.
+
+**`garch_fit`: the QMLE story, per standard error.** GARCH(1,1),
+(ω, α, β) = (0.05, 0.10, 0.85), 1000 replications each:
+
+```text
+  nominal 0.95, worst parameter    se_mle    se_robust
+  normal z, T=2000                  0.951      0.946
+  normal z, T=500                   0.902      0.877
+  t(5) z fit as normal, T=2000      0.750      0.909
+```
+
+Under Gaussian innovations at T=2000 both routes are at nominal. Under t(5)
+innovations — the QMLE case every fat-tailed financial series is in — the
+inverse-Hessian `se_mle` collapses (se/sd ≈ 0.54 on every parameter) while
+Bollerslev-Wooldridge `se_robust` holds ~0.91. Boundary fits are excluded
+and counted (≤ 0.8% here); the library marks them `se_valid=False` with NaN
+rather than inventing a number.
+
+**`flp` / `flp_scenario`: the generated-regressor warning, priced against
+both exempt routes.** Persistent yield-curve-like design, T=400, 1500
+replications, nominal **95%**:
+
+```text
+                                     h=0     h=2     h=4     h=8    se/sd h=0
+  est. scores, per-element se      0.421   0.733   0.846   0.881      0.27
+  TRUE scores, per-element se      0.953   0.925   0.895   0.883      0.99
+  flp_scenario w'beta band         0.932   0.923   0.893   0.873      0.97
+```
+
+The card's warned collapse is real and dramatic — 0.42 at impact with
+se/sd 0.27 — and both documented exemptions hold on the same draws: external
+scores are at nominal at impact, and the scenario contrast's rotation
+invariance keeps it at 0.93 where the per-element band fails. What remains
+at long horizons (~0.87–0.88 for *all three* arms) is the ordinary LP-HAC
+persistence cost, not the generated-regressor one. On the canonical
+iid-impulse design the hazard is confined to impact and mild (0.860 vs
+0.952 true-scores).
+
+Full report:
+[`docs/examples/coverage/proxy_garch_tail.py`](coverage/proxy_garch_tail.py).
+
 ---
 
 ## Check one number yourself
@@ -1235,6 +1367,7 @@ mechanism rather than a constant for the function.
 | `bayes_and_sets` | `PERSIST` VAR(1) own lags 0.85 at T=100 under nine priors; white noise fitted as a VAR(1) so δ=0 is exactly right; a sign-restricted SVAR at T=200 whose true A₀ satisfies every imposed sign; a truly recursive VAR at T=200; `y_t = e_t + δ·1{t ≥ T/2}` at T ∈ {200, 400, 800} and δ/σ ∈ {3, 2, 1, 0.5, 0.25} | 90% | 250–2500 by experiment |
 | `quantile_panel_lp` | a location-scale MA `y_t = Σ_j 0.7^j s_{t−j} + (1 + 0.4 s_t) e_t` truncated at J = p + 1 = 5 so the conditional quantile is *exactly* linear in the design, s ~ U(−1.5, 1.5) iid, T ∈ {200, 400}, τ ∈ {0.25, 0.5, 0.75}; the same MA driven by a Gaussian AR(1) regressor at φ_s=0.8 (pure location, closed-form slopes), fitted with p ∈ {4, 0}; a dynamic panel `y_it = α_i + 0.8 y_i,t−1 + 0.8 s_t + 0.9 f_t + e_it` with a common shock and a common factor, N ∈ {10, 50}, T ∈ {40, 80}, plus the panel card's own SPJ design (γ_f = 0, N=50, T ∈ {20, 40}); the lp_family house MA for `cumulative` at T ∈ {400, 1600} | 95% | 1000–2500 by experiment |
 | `factor_midas` | the guide's FAVAR transmission DGP — 2 latent factors + a policy rate forming a VAR(1) with diagonal Σ, panel `X = ΛF + idio` with (N, idio sd, T) ∈ {(100, 0.5, 200), (20, 1.0, 200), (20, 1.0, 800)}, Λ redrawn per replication; a mixed-frequency DGP `y = 0.5 + 1.5 Σ_k w_k hf[t,k] + u` with exp-Almon weights, K=12, m=3, HF AR(1) φ_h ∈ {0.5, 0.9}, u iid or AR(1) φ_u=0.7, T ∈ {300, 150} | 90% (favar bands) / 95% (umidas) | 2000–3000 |
+| `proxy_garch_tail` | the proxy card's 3-variable VAR(2) (T=300, spectral radius 0.68) and roadmap note 21's routine VAR(1) (T=250, radius ~0.70), u = Hε with a strong proxy m = ε₀ + 1.5ν, truth λ(h,i) = (Ψ_h H[:,0])_i / H[0,0] exactly; a Gaussian state VAR(1) (y, x) with ρ=0.5, β=0.5, φ=0.85 at T=240, whose h-ahead conditional quantile is exactly linear in [1, x_t, y_t] (the GaR design); GARCH(1,1) (ω, α, β) = (0.05, 0.10, 0.85) with standard-normal or standardized t(5) innovations at T ∈ {2000, 500}; curve panels exactly spanned by two orthonormal shapes with iid or AR(1) (0.9/0.7) scores, M=8, T ∈ {300, 400} | 90% (proxy_svar_bands) / 95% (everything else) | 400–1500 by experiment (`n_boot=2000`) |
 
 ---
 
@@ -1264,21 +1397,19 @@ Stated so you do not have to discover it.
   official post-fix numbers for the `cumulative="both"` HAC default (the
   audit's 0.507-at-h=12 defect) and re-measures the cumulated-outcome mode's
   lag-augmented default alongside.
-- **`growth_at_risk`, `proxy_svar`, `nongaussian_svar`, GARCH forecast
-  intervals, and `flp`/`flp_scenario` are not in this audit.** They have
-  golden and property coverage; they do not yet have measured interval
-  coverage *in this registry*. Two of them carry measured coverage
-  elsewhere: `growth_at_risk`'s Powell → Newey-West coverage table lives on
-  [its model card](../reference/model-cards/quantile.md#standard-errors-at-long-horizons-measured),
-  and `proxy_ar_sets`' propagated coverage (declining through the default
-  h=12) is on the
-  [identification card](../reference/model-cards/structural-identification.md).
-  For `flp` the gap is known to bite: its per-element `se` conditions on
-  `functional_pca`'s estimated eigenfunctions and measures se/sd ≈ 0.66 on
-  FPCA scores, flat in `T` (coverage ≈ 0.80 against a nominal 0.95) — the
-  [functional-shocks model card](../reference/model-cards/functional-shocks.md#flp-functional-local-projections)
-  carries the warning and the numbers; `flp_scenario`'s `w'beta` contrasts are
-  algebraically immune to that term and measured at the ordinary LP-HAC level.
+- ~~**`growth_at_risk`, `proxy_svar`, `nongaussian_svar`, GARCH forecast
+  intervals, and `flp`/`flp_scenario` are not in this audit.**~~ **Measured
+  now** — [`proxy_garch_tail.py`](coverage/proxy_garch_tail.py) added 13
+  registry rows: `growth_at_risk`'s two sandwiches on an exact-truth
+  design (corroborating the card's Powell → Newey-West table),
+  `proxy_svar_bands`' moving-block/Efron/wild arms, all three
+  `proxy_ar_sets` `rf_method`s paired, `garch_fit`'s two standard errors
+  under Gaussian and t(5) QMLE, and `flp`/`flp_scenario` priced against
+  their documented exempt routes. `nongaussian_svar` and the GARCH
+  `variance_forecast` ship no interval — now verified by per-run key-set
+  tripwires rather than assumed. `proxy_svar` itself remains point-estimate
+  only by design (its docstring routes inference to `proxy_svar_bands` /
+  `proxy_ar_sets`, both measured above).
 - **The `bvar_*` family is measured here as frequentist diagnostics only**
   (group C); its *Bayesian calibration* — draw from the model's own prior and
   check the credible sets — was measured by audit round 6, which found the
@@ -1386,7 +1517,7 @@ against later.
 - **[HAC standard errors](../cookbook/hac-standard-errors.md)** and
   **[Confidence bands on a VAR IRF](../cookbook/var-irf-bands.md)** — the
   recipes these caveats attach to.
-- The seven modules themselves, each with a derivation of its truth in its
+- The eight modules themselves, each with a derivation of its truth in its
   docstring:
   [`regression_se.py`](coverage/regression_se.py),
   [`irf_bands.py`](coverage/irf_bands.py),
@@ -1395,5 +1526,6 @@ against later.
   [`bayes_and_sets.py`](coverage/bayes_and_sets.py),
   [`quantile_panel_lp.py`](coverage/quantile_panel_lp.py),
   [`factor_midas.py`](coverage/factor_midas.py),
+  [`proxy_garch_tail.py`](coverage/proxy_garch_tail.py),
   the runner [`run_all.py`](coverage/run_all.py), and the page-sync guard
   [`check_page.py`](coverage/check_page.py).

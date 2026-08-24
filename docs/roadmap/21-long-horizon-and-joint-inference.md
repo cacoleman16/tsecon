@@ -246,3 +246,66 @@ the installed `tsecon` before measuring, and print every table above:
 ```
 
 `--quick` smoke modes run in about a minute each.
+
+---
+
+## 2026-08-23 follow-up — the `second_order` residual ~2pp, measured and shipped
+
+The Problem-A verdict above recorded an honest residual: `second_order`
+reaches 0.932 at `h=12` on the routine VAR(1) at T=250, not 0.95, and named
+"a combination arm (second_order at bias-corrected coefficients)" as the
+natural next candidate. That arm — `delta2bc` in the harness: the same
+antithetic Gaussian coefficient draws, **centred at Pope (1990)
+bias-corrected coefficients** (Kilian stationarity shrinkage) instead of the
+raw least-squares fit — is now measured on the same 500 seeded draws
+(`--arms delta,delta2,bcvar,delta2bc`; the boot arms were not re-run):
+
+**Card VAR(2), T=300** (nominal 0.95; `mean` is over h ≥ 1):
+
+| arm | mean | h=8 | h=12 | above/below h=12 | wr h=8 | wr h=12 |
+|---|---|---|---|---|---|---|
+| delta | .924 | .913 | .889 | 166 / 0 | 1.00 | 1.00 |
+| delta2 = second_order | .951 | .944 | .964 | 54 / 0 | 1.14 | 1.44 |
+| bcvar | .944 | .939 | .929 | 107 / 0 | 1.14 | 1.26 |
+| **delta2bc = second_order_bc** | .965 | .970 | **.982** | 27 / 0 | 1.30 | 1.78 |
+
+**Routine VAR(1), T=250** (the residual-gap DGP):
+
+| arm | mean | h=8 | h=12 | above/below h=12 | wr h=8 | wr h=12 |
+|---|---|---|---|---|---|---|
+| delta | .900 | .888 | .830 | 255 / 0 | 1.00 | 1.00 |
+| delta2 = second_order | .936 | .928 | .932 | 102 / 0 | 1.16 | 1.47 |
+| bcvar | .927 | .922 | .877 | 185 / 0 | 1.16 | 1.28 |
+| **delta2bc = second_order_bc** | .958 | .957 | **.966** | 51 / 0 | 1.33 | 1.82 |
+
+**Weak-instrument guard** (φ=0.06, 250 reps): coverage stays conservative
+(1.000 from h=4 on), and the bounded-cell share is bit-identical at 0.108
+for every arm — the centring enters `v0` only, so the boundedness statistic
+never moves.
+
+**Verdict — shipped, with its honest shape stated.** The residual gap *is*
+the bias channel, as the original verdict conjectured: adding the
+evaluation-point correction on top of the convexity closes it (0.932 →
+0.966 at the residual cell). But it does not close it *to* nominal — it
+crosses to the conservative side, and on the card VAR(2), where
+`second_order` had already reached nominal, it overshoots further (0.964 →
+0.982) at ~1.25x `second_order`'s width. `delta2bc` is the only arm measured
+at or above nominal at **every** horizon on both DGPs, which makes it a
+**conservative floor rather than a calibration** — the two channels
+overlap, and stacking them buys guaranteed-side coverage, not exactness.
+
+Shipped as `proxy_ar_sets(..., rf_method="second_order_bc")` (same
+`rf_draws`/`rf_seed` knobs), implemented as
+`tsecon_ident::proxy_ar::pope_bias_corrected_coefs` (Pope's closed form with
+the eigenvalue sum evaluated as the real trace power series
+`sum_j tr(A^{j+1}) (A')^j`, Kilian 0.05-step shrinkage, and the harness's
+conservative no-ops: an unstable fit, a non-convergent series, or a
+non-shrinkable correction all return the coefficients unchanged) feeding the
+existing `psi_reduced_form_cov_mc`. Crate tests pin the AR(1) closed form
+`E[a_hat] - a = -(1+3a)/T` exactly, the harness's NumPy transcription at
+1e-10 on a VAR(2) and on a shrunk near-unit-root case, the unstable no-op
+bit-for-bit, the h-growing variance excess over `second_order`, and the
+boundedness/point invariance. Both earlier defaults remain unchanged;
+`second_order` remains the best point-calibration choice, and the registry
+(`docs/examples/coverage/proxy_garch_tail.py`) now measures all three arms
+every run.

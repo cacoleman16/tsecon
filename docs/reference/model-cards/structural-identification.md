@@ -559,7 +559,13 @@ horizons (measured 0.78-0.81 for a nominal 0.90) is **inherited from the
 reduced-form VAR bootstrap**, not introduced by the proxy layer — the Cholesky
 reference lands within 0.07 at every horizon on the same replications, and this
 build offers no Kilian bias correction on the proxy path. That is the honest
-cost, documented rather than tuned away.
+cost, documented rather than tuned away. The
+[interval-coverage registry](../../examples/interval-coverage.md) re-measures
+it every run at 1000 replications (Hall pooled 0.881 at impact → 0.787 at
+h=12) and adds one sharper finding: on that DGP the **Efron** percentile band
+beats the recommended Hall band at h=12 (0.885 vs 0.787 pooled), because the
+bootstrap distribution is right-skewed exactly where Hall's reflection hurts —
+read both endpoints at long horizons.
 
 **Validated against.** A **documented-formula golden**, not an
 independent-package match — no external package implements JL moving-block
@@ -739,6 +745,31 @@ stays `"delta"` this release; the residual honesty note is that
 DGP at $h=12$ — closer, not exact. Prefer it whenever the long horizons are
 the cells you will read.
 
+**`rf_method="second_order_bc"` closes that residual from the conservative
+side.** It is the combination arm the note-21 verdict named as the natural
+next candidate — the same seeded simulation with the Gaussian coefficient
+draws **centred at Pope (1990) bias-corrected coefficients** (Kilian 1998
+stationarity shrinkage), so the convexity channel and the evaluation-point
+channel of the same coupling act at once. Measured on the same 500 seeded
+replications:
+
+| arm | VAR(2) $T=300$, $h=12$ | VAR(1) $T=250$, $h=12$ | median width vs delta, $h=12$ |
+|---|---|---|---|
+| delta | .889 | .830 | 1.00 |
+| second_order | .964 | .932 | ~1.45 |
+| **second_order_bc** | .982 | **.966** | ~1.8 |
+
+It is the only arm measured **at or above nominal at every horizon on both
+DGPs** — and that is precisely its honest description: a conservative floor,
+not a calibration. Where `second_order` already reaches nominal it
+*overshoots* (the VAR(2) column), and its width price is ~1.25x
+`second_order`'s. Boundedness is again bit-identical (the centring enters
+$v_0$ only; the unstable-fit and non-shrinkable cases fall back to the
+uncorrected coefficients, so the correction can only act where a stationary
+corrected fit exists). Choose `second_order` for the best point calibration;
+choose `second_order_bc` when long-horizon *under*-coverage is the error you
+most need to rule out. The default remains `"delta"`.
+
 **Assumptions.** Instrument exogeneity — the identifying assumption AR does *not*
 relax, and the one you still have to defend. Relevance is exactly what AR is
 robust to, so no first-stage threshold applies. A correct reduced-form
@@ -753,7 +784,8 @@ Newey-West rule — it applies only on the HAC route, and passing it with
 `"hc0"` raises rather than being silently ignored).
 `reduced_form_uncertainty=True` — leave it on. `rf_method="delta"` is the
 first-order propagation; `"second_order"` is the measured long-horizon repair
-above, parameterized by `rf_draws` (even, ≥ 32; default 256 — its own
+above and `"second_order_bc"` its bias-corrected conservative variant, both
+parameterized by `rf_draws` (even, ≥ 32; default 256 — its own
 Monte-Carlo error shrinks like $1/\sqrt{\text{draws}}$) and `rf_seed`
 (bit-reproducible; default 0). The `rf_*` knobs raise if passed where they
 cannot act (`rf_draws`/`rf_seed` under `"delta"`, any `rf_method` with
