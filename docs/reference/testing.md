@@ -29,10 +29,10 @@ here, so that is what is labelled.
 | — integration tests in `crates/*/tests/` | 1028 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 162 | |
 | — documentation tests | 45 | |
-| Python binding tests | **973 collected, 0 failed** in 28 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
-| Crates | 41, **every one** with a `tests/` directory | |
-| Golden fixtures | 69 JSON files, produced by 50 generator scripts | `fixtures/` |
-| Public Python functions | 145, of which **141** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
+| Python binding tests | **1022 collected, 0 failed** in 444 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Crates | 43, **every one** with a `tests/` directory | |
+| Golden fixtures | 84 JSON files, produced by 66 generator scripts | `fixtures/` |
+| Public Python functions | 148, of which **144** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
 
 All 7 ignored tests are in `tsecon-var`, and each `#[ignore]` gives its reason:
 three stored-bit-pattern fingerprints that are platform-specific, three
@@ -226,7 +226,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-973 tests in 76 files. 50 of the 82 fixture JSONs are reloaded here and checked
+1022 tests in 79 files. 50 of the 84 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -645,7 +645,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 1476 passed, 0 failed
+# 1520 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
