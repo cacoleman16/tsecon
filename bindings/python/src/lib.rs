@@ -571,9 +571,7 @@ fn ng_perron<'py>(
                 }
             } else {
                 L::Fixed(v.extract::<usize>().map_err(|_| {
-                    PyValueError::new_err(
-                        "lags must be None, \"maic\", or a non-negative integer",
-                    )
+                    PyValueError::new_err("lags must be None, \"maic\", or a non-negative integer")
                 })?)
             }
         }

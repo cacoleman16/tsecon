@@ -61,10 +61,7 @@ fn params_from_case(case: &Value) -> (Vec<usize>, MstlParams) {
         Value::Number(p) => vec![p.as_u64().expect("period") as usize],
         other => usizes(other),
     };
-    let windows = case
-        .get("windows_arg")
-        .filter(|v| !v.is_null())
-        .map(usizes);
+    let windows = case.get("windows_arg").filter(|v| !v.is_null()).map(usizes);
     let iterate = case["iterate"].as_u64().expect("iterate") as usize;
     let kw = &case["stl_kwargs"];
     let get = |key: &str| kw.get(key).and_then(Value::as_u64).map(|x| x as usize);
@@ -150,8 +147,18 @@ fn mstl_components_match_statsmodels() {
                 &format!("{ctx} seasonal[{}]", r.periods[k]),
             );
         }
-        assert_all_close(&r.trend, &f64s(&case["trend"]), 1e-8, &format!("{ctx} trend"));
-        assert_all_close(&r.resid, &f64s(&case["resid"]), 1e-8, &format!("{ctx} resid"));
+        assert_all_close(
+            &r.trend,
+            &f64s(&case["trend"]),
+            1e-8,
+            &format!("{ctx} trend"),
+        );
+        assert_all_close(
+            &r.resid,
+            &f64s(&case["resid"]),
+            1e-8,
+            &format!("{ctx} resid"),
+        );
         if let Some(w) = case.get("weights").filter(|v| !v.is_null()) {
             assert_all_close(&r.weights, &f64s(w), 1e-8, &format!("{ctx} weights"));
         } else {

@@ -79,8 +79,7 @@ pub mod spec;
 pub mod ssm;
 
 pub use auto::{
-    auto_arima, AutoArimaCandidate, AutoArimaOptions, AutoArimaResult, CandidateStatus,
-    SelectionIc,
+    auto_arima, AutoArimaCandidate, AutoArimaOptions, AutoArimaResult, CandidateStatus, SelectionIc,
 };
 pub use cov::ParamCov;
 pub use error::ArimaError;

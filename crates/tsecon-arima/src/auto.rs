@@ -410,9 +410,7 @@ fn min_root_modulus(a: &[f64]) -> Option<f64> {
     }
     x.into_iter()
         .map(|z| abs2(z).sqrt())
-        .fold(None, |m: Option<f64>, v| {
-            Some(m.map_or(v, |mv| mv.min(v)))
-        })
+        .fold(None, |m: Option<f64>, v| Some(m.map_or(v, |mv| mv.min(v))))
 }
 
 /// Whether a completed fit is admissible: every fitted AR and MA root
@@ -497,9 +495,7 @@ impl Search<'_> {
             status: CandidateStatus::FitFailed,
             error: None,
         };
-        let fitted = self
-            .spec_for(key)
-            .and_then(|spec| spec.fit(self.y));
+        let fitted = self.spec_for(key).and_then(|spec| spec.fit(self.y));
         let improved = match fitted {
             Err(e) => {
                 entry.error = Some(e.to_string());
@@ -770,8 +766,16 @@ pub fn auto_arima(y: &[f64], opts: &AutoArimaOptions) -> Result<AutoArimaResult,
             Key {
                 p: 2.min(opts.max_p),
                 q: 2.min(opts.max_q),
-                sp: if seasonal { cap1(opts.max_seasonal_p) } else { 0 },
-                sq: if seasonal { cap1(opts.max_seasonal_q) } else { 0 },
+                sp: if seasonal {
+                    cap1(opts.max_seasonal_p)
+                } else {
+                    0
+                },
+                sq: if seasonal {
+                    cap1(opts.max_seasonal_q)
+                } else {
+                    0
+                },
                 constant: allow_constant,
             },
             Key {
@@ -784,7 +788,11 @@ pub fn auto_arima(y: &[f64], opts: &AutoArimaOptions) -> Result<AutoArimaResult,
             Key {
                 p: cap1(opts.max_p),
                 q: 0,
-                sp: if seasonal { cap1(opts.max_seasonal_p) } else { 0 },
+                sp: if seasonal {
+                    cap1(opts.max_seasonal_p)
+                } else {
+                    0
+                },
                 sq: 0,
                 constant: allow_constant,
             },
@@ -792,7 +800,11 @@ pub fn auto_arima(y: &[f64], opts: &AutoArimaOptions) -> Result<AutoArimaResult,
                 p: 0,
                 q: cap1(opts.max_q),
                 sp: 0,
-                sq: if seasonal { cap1(opts.max_seasonal_q) } else { 0 },
+                sq: if seasonal {
+                    cap1(opts.max_seasonal_q)
+                } else {
+                    0
+                },
                 constant: allow_constant,
             },
         ];

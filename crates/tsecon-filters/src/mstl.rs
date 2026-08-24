@@ -219,8 +219,7 @@ fn resolve_periods_windows(
             return Err(FiltersError::InvalidParameter {
                 name: "windows",
                 value: w as f64,
-                requirement:
-                    "each seasonal LOESS window must be an odd integer >= 3 (it counts \
+                requirement: "each seasonal LOESS window must be an odd integer >= 3 (it counts \
                      observations of one cycle-subseries and needs a centre point); the \
                      MSTL default rule gives 11, 15, 19, ... for the sorted periods",
             });

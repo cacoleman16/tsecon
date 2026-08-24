@@ -388,9 +388,7 @@ fn under_an_independence_construction_sup_t_matches_sidak() {
     // Sidak value to simulation noise, from BOTH sides. One-sided
     // inequalities cannot catch a sup-t that is systematically too small;
     // this does.
-    use tsecon_stats::simultaneous::{
-        required_uniforms, sidak_critical_value, sup_t_from_cov,
-    };
+    use tsecon_stats::simultaneous::{required_uniforms, sidak_critical_value, sup_t_from_cov};
 
     let fx = load_fixture();
     let y = f64s(&fx["y"]);

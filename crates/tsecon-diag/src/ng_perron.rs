@@ -483,7 +483,10 @@ mod tests {
                 assert!(cv.pct1 < cv.pct5 && cv.pct5 < cv.pct10, "{trend:?}: {cv:?}");
             }
         }
-        let (c, ct) = (ng_perron_crit(DfglsTrend::Constant), ng_perron_crit(DfglsTrend::ConstantTrend));
+        let (c, ct) = (
+            ng_perron_crit(DfglsTrend::Constant),
+            ng_perron_crit(DfglsTrend::ConstantTrend),
+        );
         assert!(ct.mza.pct5 < c.mza.pct5);
         assert!(ct.mzt.pct5 < c.mzt.pct5);
         assert!(ct.msb.pct5 < c.msb.pct5);

@@ -8,9 +8,7 @@
 // as index loops.
 #![allow(clippy::needless_range_loop)]
 
-use tsecon_filters::{
-    mstl, mstl_seasonal_strengths, stl, FiltersError, MstlParams, StlParams,
-};
+use tsecon_filters::{mstl, mstl_seasonal_strengths, stl, FiltersError, MstlParams, StlParams};
 
 /// A deterministic two-seasonal test series (periods 6 and 21, n = 252 —
 /// no RNG dependency): trend + two stable seasonals + a small
@@ -50,7 +48,11 @@ fn period_order_does_not_matter() {
     let b = mstl(&y, &[21, 6], &MstlParams::default()).expect("unsorted runs");
     assert_eq!(a.periods, vec![6, 21], "periods sorted ascending");
     assert_eq!(b.periods, vec![6, 21], "input order normalized away");
-    assert_eq!(a.windows, vec![11, 15], "default windows follow sorted order");
+    assert_eq!(
+        a.windows,
+        vec![11, 15],
+        "default windows follow sorted order"
+    );
     assert_eq!(a.seasonal, b.seasonal, "components must match bitwise");
     assert_eq!(a.trend, b.trend);
     assert_eq!(a.resid, b.resid);
@@ -66,7 +68,10 @@ fn period_order_does_not_matter() {
     )
     .expect("paired runs");
     assert_eq!(c.windows, vec![11, 15]);
-    assert_eq!(c.seasonal, a.seasonal, "paired (period, window) sort matches");
+    assert_eq!(
+        c.seasonal, a.seasonal,
+        "paired (period, window) sort matches"
+    );
 }
 
 #[test]
@@ -140,14 +145,20 @@ fn stl_knobs_are_forwarded() {
         },
     )
     .expect("explicit runs");
-    assert_eq!(robust.seasonal, explicit.seasonal, "robust == inner 2/outer 15");
+    assert_eq!(
+        robust.seasonal, explicit.seasonal,
+        "robust == inner 2/outer 15"
+    );
     assert_eq!(robust.weights, explicit.weights);
     assert!(
         robust.weights[40] < 0.5,
         "outlier weight {} not downweighted",
         robust.weights[40]
     );
-    assert!(base.weights.iter().all(|&w| w == 1.0), "non-robust weights are 1");
+    assert!(
+        base.weights.iter().all(|&w| w == 1.0),
+        "non-robust weights are 1"
+    );
     assert_ne!(robust.trend, base.trend, "robustness must change the fit");
 
     // The ignored `stl.seasonal` field really is ignored (windows rule):
@@ -164,7 +175,10 @@ fn stl_knobs_are_forwarded() {
     )
     .expect("runs");
     assert_eq!(odd_seasonal.windows, vec![11, 15]);
-    assert_eq!(odd_seasonal.seasonal, base.seasonal, "stl.seasonal is ignored");
+    assert_eq!(
+        odd_seasonal.seasonal, base.seasonal,
+        "stl.seasonal is ignored"
+    );
 }
 
 #[test]
@@ -173,10 +187,7 @@ fn constant_series_decomposes_flat() {
     let r = mstl(&y, &[6, 21], &MstlParams::default()).expect("constant runs");
     for k in 0..2 {
         for i in 0..y.len() {
-            assert!(
-                r.seasonal[k][i].abs() <= 1e-10,
-                "seasonal[{k}][{i}] not ~0"
-            );
+            assert!(r.seasonal[k][i].abs() <= 1e-10, "seasonal[{k}][{i}] not ~0");
         }
     }
     for i in 0..y.len() {
@@ -208,7 +219,12 @@ fn empty_and_duplicate_periods_raise() {
 fn all_periods_dropped_raises_series_too_short() {
     let y = two_seasonal(40);
     match mstl(&y, &[20, 30], &MstlParams::default()) {
-        Err(FiltersError::SeriesTooShort { filter, needed, got, .. }) => {
+        Err(FiltersError::SeriesTooShort {
+            filter,
+            needed,
+            got,
+            ..
+        }) => {
             assert_eq!(filter, "mstl");
             assert_eq!(needed, 41, "2 * min(period) + 1");
             assert_eq!(got, 40);
@@ -323,5 +339,8 @@ fn per_period_strengths_are_sane() {
     .expect("stl runs");
     let reference = tsecon_filters::strength_from_components(&stl_fit);
     assert_eq!(s1.len(), 1);
-    assert_eq!(s1[0], reference.seasonal_strength, "same formula, same bits");
+    assert_eq!(
+        s1[0], reference.seasonal_strength,
+        "same formula, same bits"
+    );
 }

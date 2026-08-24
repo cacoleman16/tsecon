@@ -97,7 +97,11 @@ fn mzt_equals_mza_times_msb_to_machine_precision() {
     // sqrt(a)*sqrt(b) vs sqrt(a*b) — a couple of ulps.
     for seed in [3_u64, 21, 47, 90] {
         for trend in BOTH {
-            for lags in [MAIC, NgPerronLagSelection::Fixed(0), NgPerronLagSelection::Fixed(4)] {
+            for lags in [
+                MAIC,
+                NgPerronLagSelection::Fixed(0),
+                NgPerronLagSelection::Fixed(4),
+            ] {
                 for y in [walk(200, seed), stationary(200, seed), ar1(200, 0.8, seed)] {
                     let r = ng_perron(&y, trend, lags).unwrap();
                     let rel = ((r.mzt - r.mza * r.msb) / r.mzt).abs();
@@ -132,7 +136,10 @@ fn statistics_are_scale_invariant() {
                 (s.mpt, base.mpt, "mpt"),
             ] {
                 let rel = ((a - b) / b).abs();
-                assert!(rel < 1e-9, "{what} under scale {scale}: {a} vs {b} (rel {rel:e})");
+                assert!(
+                    rel < 1e-9,
+                    "{what} under scale {scale}: {a} vs {b} (rel {rel:e})"
+                );
             }
         }
     }
@@ -216,10 +223,26 @@ fn rejects_stationary_alternatives_and_not_a_random_walk() {
     for trend in BOTH {
         let r = ng_perron(&rw, trend, MAIC).unwrap();
         let cv = r.crit;
-        assert!(r.mza > cv.mza.pct10, "MZa should not reject ({trend:?}): {}", r.mza);
-        assert!(r.mzt > cv.mzt.pct10, "MZt should not reject ({trend:?}): {}", r.mzt);
-        assert!(r.msb > cv.msb.pct10, "MSB should not reject ({trend:?}): {}", r.msb);
-        assert!(r.mpt > cv.mpt.pct10, "MPT should not reject ({trend:?}): {}", r.mpt);
+        assert!(
+            r.mza > cv.mza.pct10,
+            "MZa should not reject ({trend:?}): {}",
+            r.mza
+        );
+        assert!(
+            r.mzt > cv.mzt.pct10,
+            "MZt should not reject ({trend:?}): {}",
+            r.mzt
+        );
+        assert!(
+            r.msb > cv.msb.pct10,
+            "MSB should not reject ({trend:?}): {}",
+            r.msb
+        );
+        assert!(
+            r.mpt > cv.mpt.pct10,
+            "MPT should not reject ({trend:?}): {}",
+            r.mpt
+        );
     }
 }
 
@@ -241,7 +264,11 @@ fn maic_power_reversal_on_far_from_null_data_is_real_and_documented() {
         r.mza
     );
     let lag0 = ng_perron(&noise, DfglsTrend::Constant, NgPerronLagSelection::Fixed(0)).unwrap();
-    assert!(lag0.mza < -100.0, "lag-0 MZa should be decisive: {}", lag0.mza);
+    assert!(
+        lag0.mza < -100.0,
+        "lag-0 MZa should be decisive: {}",
+        lag0.mza
+    );
 }
 
 /// Count of rejections (below the critical value) at the 1% and 5% level
@@ -381,13 +408,12 @@ fn maic_lengthens_the_lag_under_a_negative_ma_root() {
     for rep in 0..REPS {
         let iid = walk(T, 21_000_000 + rep);
         let ma = walk_ma(T, -0.8, 23_000_000 + rep);
-        iid_lags += ng_perron(&iid, DfglsTrend::Constant, MAIC).unwrap().used_lag;
+        iid_lags += ng_perron(&iid, DfglsTrend::Constant, MAIC)
+            .unwrap()
+            .used_lag;
         ma_lags += ng_perron(&ma, DfglsTrend::Constant, MAIC).unwrap().used_lag;
     }
-    let (iid_mean, ma_mean) = (
-        iid_lags as f64 / REPS as f64,
-        ma_lags as f64 / REPS as f64,
-    );
+    let (iid_mean, ma_mean) = (iid_lags as f64 / REPS as f64, ma_lags as f64 / REPS as f64);
     eprintln!("MAIC mean lag: iid {iid_mean:.3} vs MA(-0.8) {ma_mean:.3}");
     assert!(
         ma_mean > iid_mean + 1.0,
@@ -431,7 +457,11 @@ fn error_surface() {
     ));
     // A user max_lag too large for the sample.
     assert!(matches!(
-        ng_perron(&y, DfglsTrend::Constant, NgPerronLagSelection::Maic(Some(12))),
+        ng_perron(
+            &y,
+            DfglsTrend::Constant,
+            NgPerronLagSelection::Maic(Some(12))
+        ),
         Err(DiagError::SeriesTooShort { .. })
     ));
     // An exact linear trend: the GLS fit is exact and the regression

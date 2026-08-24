@@ -237,7 +237,11 @@ fn decreasing_margin_reverses_ranks_and_flips_dependence() {
         fa.params[0],
         fb.params[0]
     );
-    assert!(fa.params[0] > 0.3, "positive-dependence sanity: {}", fa.params[0]);
+    assert!(
+        fa.params[0] > 0.3,
+        "positive-dependence sanity: {}",
+        fa.params[0]
+    );
 }
 
 #[test]
