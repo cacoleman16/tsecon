@@ -83,6 +83,52 @@ Nothing yet.
   `scripts/mc_auto_arima_recovery.py`, rates quoted in the model card)
   plus candidate-level statsmodels pins (`fixtures/auto_arima.json`:
 
+### Fixed — reported from the field
+
+- **`garch_fit(dist="t")` no longer fails on ordinary short samples.** A
+  gradient stage started within a finite-difference step of the persistence
+  bound — a near-IGARCH point, routine for `dist="t"` on a couple of hundred
+  observations — could not evaluate its starting gradient and raised
+  `optimization failure: gradient at x0 contains NaN or infinity`. Measured
+  on a seeded GARCH(1,1)-t battery (ω=.05, α=.08, β=.90, ν=6, T=252, 40
+  seeds): **7/40 fits raised before, 0/40 after**. The optimizer now carries a
+  deterministic derivative-free fallback from the same starting point, so an
+  optimizer error from `garch_fit` again means genuinely degenerate input.
+- **`har_rv`'s weekly and monthly aggregates now match Corsi (2009).** The
+  windows excluded the daily lag — `mean(RV[t-6..t-2])` and
+  `mean(RV[t-23..t-2])` — while the module cited Corsi, whose aggregates
+  *include* `RV_{t-1}`: `mean(RV_{t-1}..RV_{t-5})` and
+  `mean(RV_{t-1}..RV_{t-22})`. The fixture was regenerated against the
+  corrected design (statsmodels OLS+HAC, unchanged method), so **`har_rv`
+  coefficients move**; the window definition is now pinned by its own
+  regression test.
+- **`markov_switching_ar`'s transition matrix orientation is documented.**
+  The returned matrix is *column*-stochastic — `P[i][j] = P(next = i |
+  current = j)`, matching statsmodels — so the forward step is `P @ p`.
+  Neither the docstring nor the card said so, leaving users to guess against
+  the row-stochastic textbook convention; a test now pins the claim. The
+  smoothed/filtered paragraph also gained an explicit warning that
+  `smoothed_prob` conditions on the full sample (Kim 1994) and must not be
+  used for real-time regime dating.
+- **`garch_fit`'s filter timing is stated.** `conditional_volatility[t]` is
+  the one-step-ahead volatility *for* period t formed from information
+  through t−1 (matching `arch`), and `variance_forecast` is the post-sample
+  continuation — documented rather than left to be inferred.
+
+### Changed — a default flipped on measured evidence
+
+- **`ivx_test`'s `joint` default is now `"bonferroni"`** (was `"chi2"`).
+  The library's own measurements make the old default indefensible: at
+  ρ = 1, endogeneity −0.9, n = 250, the nominal-5% chi-square joint test
+  rejects ~0.05 / 0.10 / 0.17 / **0.28** at k = 1/3/5/8, and n does not
+  repair it (still ~0.22 at k = 8, n = 256000). The union-intersection
+  alternative measures 0.011–0.050 across the same grid — never above
+  nominal — with power on par against a sparse alternative. Under the
+  roadmap's "the statistically-recommended choice is the default"
+  principle, the size-controlled test is now what you get by default;
+  `joint="chi2"` remains available and documented, and its golden tests
+  now pin that branch explicitly.
+
 ### Fixed — audit round 8 (docs/roadmap/23-audit-round-8-findings.md)
 
 - **`theta_forecast`'s statsmodels claim is now qualified**: the docstring,

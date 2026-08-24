@@ -7371,10 +7371,14 @@ fn predictive_regression<'py>(
 /// (Kostakis-Magdalinos-Stamatogiannis 2015).
 ///
 /// `xs` is a `T x k` matrix of persistent predictors; tests `H0: beta = 0`
-/// jointly. With the default `joint="chi2"` the statistic is the
-/// chi-square(`k`) Wald, whose validity is uniform over the predictors'
-/// persistence. Returns the IVX slope vector `beta_ivx`, the joint
+/// jointly. Returns the IVX slope vector `beta_ivx`, the joint
 /// `wald`/`pvalue`, the instrument decay `rz`, and shape info.
+///
+/// THE DEFAULT IS `joint="bonferroni"` (changed in 0.5.0), because the
+/// chi-square joint test's measured size is indefensible at the `k` values
+/// people actually use — see the caveat below. `joint="chi2"` remains
+/// available for the textbook chi-square(`k`) Wald, whose validity is
+/// uniform over the predictors' persistence but NOT over `k`.
 ///
 /// SIZE CAVEAT (measured): uniformity over persistence is NOT uniformity in
 /// `k`. At rho = 1, endogeneity -0.9, n = 250 the nominal-5% chi-square
@@ -7383,7 +7387,7 @@ fn predictive_regression<'py>(
 /// n^{-(1-alpha)/2}). `alpha = 0.5` restores convergence in n but still
 /// measures ~0.13 at k = 8, n = 250.
 ///
-/// `joint="bonferroni"` is the measured escape hatch: it runs the SCALAR
+/// `joint="bonferroni"` (the default) is the measured remedy: it runs the SCALAR
 /// IVX-Wald test (whose size holds uniformly over persistence, deep into the
 /// tail) on every predictor separately and rejects when the smallest scalar
 /// p-value falls below level/k (union-intersection). Measured size
@@ -7398,7 +7402,7 @@ fn predictive_regression<'py>(
 /// `wald_scalar` and `pvalue_scalar` (each column exactly
 /// `predictive_regression`'s ivx test for that predictor).
 #[pyfunction]
-#[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95, joint = "chi2"))]
+#[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95, joint = "bonferroni"))]
 fn ivx_test<'py>(
     py: Python<'py>,
     r: PyReadonlyArray1<'py, f64>,

@@ -47,7 +47,8 @@ def test_multi_ivx_joint_test_matches_golden():
     mu = PR["multi"]
     r = np.array(mu["r"])
     xs = np.column_stack([mu["x1"], mu["x2"]])
-    res = tsecon.ivx_test(r, xs)
+    # The golden is the chi-square(k) joint Wald, now the non-default branch.
+    res = tsecon.ivx_test(r, xs, joint="chi2")
     np.testing.assert_allclose(res["beta_ivx"], mu["ivx"]["beta_ivx"], atol=1e-6)
     assert abs(res["wald"] - mu["ivx"]["wald"]) < 1e-5
     assert abs(res["pvalue"] - mu["ivx"]["pvalue"]) < 1e-5
@@ -86,21 +87,28 @@ def test_ivx_test_bonferroni_is_the_scalar_tests_combined():
     assert res["wald"] == max(res["wald_scalar"])
     assert abs(res["pvalue"] - min(1.0, k * min(res["pvalue_scalar"]))) < 1e-15
     # The slope vector is still the joint IVX estimator (shared with chi2 mode).
-    chi2 = tsecon.ivx_test(r, x)
+    chi2 = tsecon.ivx_test(r, x, joint="chi2")
     np.testing.assert_array_equal(res["beta_ivx"], chi2["beta_ivx"])
     assert res["nobs"] == chi2["nobs"] and res["rz"] == chi2["rz"]
 
 
-def test_ivx_test_default_key_set_is_unchanged():
-    """joint="chi2" (the default) must return exactly the historical keys —
-    the bonferroni extras appear only when asked for."""
+def test_ivx_test_default_is_bonferroni():
+    """The default flipped to bonferroni in 0.5.0: the chi-square joint
+    test's measured size is ~0.28 at k=8 (nominal 5%) and n does not repair
+    it, so the size-controlled union-intersection test is the default the
+    library's own loud-defaults principle demands. The explicit chi2 branch
+    still returns exactly the historical key set."""
     r, x = _stambaugh_panel(k=2)
-    assert set(tsecon.ivx_test(r, x)) == {
-        "beta_ivx", "wald", "pvalue", "rz", "nregressors", "nobs",
-    }
-    assert set(tsecon.ivx_test(r, x, joint="bonferroni")) == {
+    default = tsecon.ivx_test(r, x)
+    explicit = tsecon.ivx_test(r, x, joint="bonferroni")
+    assert set(default) == set(explicit) == {
         "beta_ivx", "wald", "pvalue", "rz", "nregressors", "nobs",
         "wald_scalar", "pvalue_scalar", "joint",
+    }
+    assert default["pvalue"] == explicit["pvalue"]
+    assert default["wald"] == explicit["wald"]
+    assert set(tsecon.ivx_test(r, x, joint="chi2")) == {
+        "beta_ivx", "wald", "pvalue", "rz", "nregressors", "nobs",
     }
 
 
