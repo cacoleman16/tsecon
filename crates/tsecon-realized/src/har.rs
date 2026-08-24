@@ -3,12 +3,13 @@
 //! variance on its own daily, weekly, and monthly averages.
 //!
 //! With `RV_t` the daily realized variance, define the lagged aggregates
-//! known at the end of day `t-1`
+//! known at the end of day `t-1` (Corsi 2009, eqs. (4)-(5) — note that the
+//! weekly and monthly aggregates INCLUDE the daily lag `RV_{t-1}`)
 //!
 //! ```text
 //!   RV^d_{t-1} = RV_{t-1}
-//!   RV^w_{t-1} = (1/5)  (RV_{t-2} + ... + RV_{t-6})
-//!   RV^m_{t-1} = (1/22) (RV_{t-2} + ... + RV_{t-23})
+//!   RV^w_{t-1} = (1/5)  (RV_{t-1} + ... + RV_{t-5})
+//!   RV^m_{t-1} = (1/22) (RV_{t-1} + ... + RV_{t-22})
 //! ```
 //!
 //! and run the ordinary-least-squares regression
@@ -18,12 +19,17 @@
 //! ```
 //!
 //! Equivalently, writing the weekly/monthly averages as the trailing means
-//! `mean(RV[t-6..t-1])` and `mean(RV[t-23..t-1])` (Python-style half-open
-//! windows ending just before the daily lag). Because the regressors are
-//! overlapping moving averages the errors are serially correlated, so the
-//! standard errors are the HAC (Newey-West / Bartlett) sandwich errors
-//! delegated to [`tsecon_hac`]; the library never reimplements HAC
-//! (ROADMAP: one owner per capability).
+//! `mean(RV[t-5..t])` and `mean(RV[t-22..t])` (Python-style half-open
+//! windows running through the daily lag). **Changed in 0.5**: through
+//! 0.4.0 the windows were `mean(RV[t-6..t-1])` / `mean(RV[t-23..t-1])` —
+//! excluding `RV_{t-1}` — which is not the convention of the paper this
+//! module cites; coefficients on the same data shift accordingly (the
+//! window-definition regression test in `tests/properties.rs` pins the
+//! inclusive windows against an independently built design). Because the
+//! regressors are overlapping moving averages the errors are serially
+//! correlated, so the standard errors are the HAC (Newey-West / Bartlett)
+//! sandwich errors delegated to [`tsecon_hac`]; the library never
+//! reimplements HAC (ROADMAP: one owner per capability).
 //!
 //! The log and square-root variants (Corsi 2009 discusses both, since `RV`
 //! is strongly right-skewed) apply the transform to the RV series *before*
@@ -92,8 +98,11 @@ impl HarVariant {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HarConfig {
     /// Burn-in index: the first target row is `t = start + 1`. Must be
-    /// `>= 22` so the monthly regressor `mean(RV[t-23..t-1])` is defined.
-    /// The library-standard (and fixture) value is `22`.
+    /// `>= 22`, which guarantees the monthly regressor `mean(RV[t-22..t])`
+    /// is defined for every target row (with the Corsi windows the first
+    /// definable target is `t = 22`, so the minimum keeps one extra
+    /// observation of burn-in for API stability with 0.4.0). The
+    /// library-standard (and fixture) value is `22`.
     pub start: usize,
     /// Which RV transform to regress (level / log / sqrt).
     pub variant: HarVariant,
@@ -180,11 +189,13 @@ pub fn har_rv(rv: &[f64], config: &HarConfig) -> Result<HarFit, RealizedError> {
     for t in first..n {
         y.push(s[t]);
         daily.push(s[t - 1]);
-        // Trailing 5-day mean ending at t-2: indices t-6 ..= t-2.
-        let w: f64 = s[t - 6..t - 1].iter().sum::<f64>() / 5.0;
+        // Corsi (2009) trailing 5-day mean through the daily lag:
+        // indices t-5 ..= t-1.
+        let w: f64 = s[t - 5..t].iter().sum::<f64>() / 5.0;
         weekly.push(w);
-        // Trailing 22-day mean ending at t-2: indices t-23 ..= t-2.
-        let m: f64 = s[t - 23..t - 1].iter().sum::<f64>() / 22.0;
+        // Corsi (2009) trailing 22-day mean through the daily lag:
+        // indices t-22 ..= t-1.
+        let m: f64 = s[t - 22..t].iter().sum::<f64>() / 22.0;
         monthly.push(m);
     }
 

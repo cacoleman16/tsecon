@@ -132,17 +132,27 @@ covariate you could just include.
 regimes (usually essential — regimes often *are* volatility states),
 `max_iter`/`tol` govern EM convergence.
 
-**How to read the output.** `transition` (k×k; column-stochastic Markov matrix),
-`means`, `variances` (per regime), `expected_durations` (average spell length in
-each regime — the persistence read), `loglik`, `converged`, the full
-probability matrices `smoothed_prob` (Kim 1994, `P(S_t | Y_T)`) and
-`filtered_prob` (Hamilton filter, `P(S_t | Y_t)`) — each `(n, k_regimes)`
-with `n = len(y) - order`, rows summing to 1 — and the `regimes` series (the
-most-likely regime per period, the argmax of each smoothed row).
-`smoothed_prob_last_regime` is `smoothed_prob[:, -1]`, kept because 0.2.0
-returned only that column (recoverable at `k_regimes = 2` as `1 - p`, not at
-`k_regimes >= 3`). Label regimes by their `means`/`variances`, not their
-index (EM does not order them).
+**How to read the output.** `transition` is the k×k Markov matrix in the
+**column-stochastic** orientation: `transition[i][j] = P(S_t = i | S_{t-1} = j)`,
+so each **column** sums to 1 (matching statsmodels' `regime_transition`, *not*
+the row-stochastic textbook convention). The one-step forward propagation of a
+probability vector `p` over regimes is therefore `P @ p` — **not** `p @ P`;
+transposing by habit silently swaps the entry/exit probabilities. Also
+`means`, `variances` (per regime), `expected_durations` (average spell length
+in each regime — the persistence read, `1 / (1 - transition[i][i])`),
+`loglik`, `converged`, the full probability matrices `smoothed_prob`
+(Kim 1994, `P(S_t | Y_T)`) and `filtered_prob` (Hamilton filter,
+`P(S_t | Y_t)`) — each `(n, k_regimes)` with `n = len(y) - order`, rows
+summing to 1 — and the `regimes` series (the most-likely regime per period,
+the argmax of each smoothed row). One timing warning: `smoothed_prob`
+conditions on the **full sample** (Kim 1994 runs backward from `T`), so it
+must not be used for real-time regime dating — a "recession probability for
+March" computed with December's data in hand is not a real-time call;
+`filtered_prob` is the real-time object. `smoothed_prob_last_regime` is
+`smoothed_prob[:, -1]`, kept because 0.2.0 returned only that column
+(recoverable at `k_regimes = 2` as `1 - p`, not at `k_regimes >= 3`). Label
+regimes by their `means`/`variances`, not their index (EM does not order
+them).
 
 **Failure modes.** EM converges to local optima — try multiple starts; regime
 labels are arbitrary across runs; too many regimes on a short sample gives empty

@@ -53,8 +53,14 @@ exactly), so decimal returns and percent returns give the same model with
 (`omega, alpha[1], beta[1]`, with `mu` prepended under `mean="constant"` and
 `nu` appended for *t*). Trust **`se_robust`**
 (Bollerslev-Wooldridge) over `se_mle` unless you believe the density.
-`conditional_volatility` is the filtered σ_t, `std_residuals` should look
-i.i.d. (re-run `arch_lm` on them), and `variance_forecast` is the horizon path.
+`conditional_volatility` is the filtered σ_t with the standard GARCH filter
+timing (matching `arch`): **`conditional_volatility[t]` is the one-step-ahead
+volatility FOR period t, formed from information through t−1** — σ²_t is built
+from ε_{t−1}, σ²_{t−1}, so the entry at t is what the model predicted for t
+before seeing r_t, not a smoothed estimate using r_t. The post-sample
+continuation of that step is `variance_forecast` (its first entry is the
+prediction for T+1 from information through T). `std_residuals` should look
+i.i.d. (re-run `arch_lm` on them).
 `alpha[1] + beta[1]` near 1 means shocks persist for a long time. Check
 `se_valid` before quoting a standard error, and `converged` before quoting
 anything: a `False` in `se_valid` means the NaN in that `se_mle`/`se_robust`
@@ -78,8 +84,15 @@ likelihood ridge and treat the whole fit with care.
 likelihood and destabilizes SEs — at the bound itself the fit is flagged as a
 boundary fit as described above; a mis-specified mean leaks into the variance;
 on genuinely Gaussian data the *t* degrees of freedom `nu` drift very large
-(the *t* nesting the normal). Optimizer failures usually mean the series has no
-ARCH structure to fit.
+(the *t* nesting the normal). The optimizer carries a deterministic
+derivative-free fallback for the common short-sample failure (a gradient
+stage started within a finite-difference step of the persistence bound — a
+near-IGARCH point, routine for `dist="t"` on a couple of hundred
+observations — cannot evaluate its starting gradient and falls back to the
+Nelder-Mead stage from the same point), so an optimizer *error* from
+`garch_fit` signals genuinely degenerate input: a (near-)constant series, a
+scale that overflows, or no admissible starting value with a finite
+likelihood.
 
 **Validated against.** Kevin Sheppard's [`arch`](https://arch.readthedocs.io)
 package — GARCH/GJR/EGARCH QMLE point estimates, log-likelihood, and robust

@@ -32,13 +32,20 @@ def gen_realized():
     intraday[jump_days, 0] += rng.standard_normal(jump_days.sum()) * 1.5
     rv = np.sum(intraday ** 2, axis=1)  # realized variance
 
-    # HAR-RV (Corsi 2009): RV_t on [1, RV_{t-1}, RV_week, RV_month].
+    # HAR-RV (Corsi 2009): RV_t on [1, RV_{t-1}, RV_week, RV_month], with
+    # the weekly/monthly aggregates INCLUDING the daily lag (Corsi eqs.
+    # (4)-(5)): for target t, RV_week = mean(RV_{t-5}..RV_{t-1}) and
+    # RV_month = mean(RV_{t-22}..RV_{t-1}). (Through 0.4.0 both this
+    # generator and the crate mistakenly shifted the windows one day back,
+    # excluding RV_{t-1}.) rv_w[t]/rv_m[t] below are those means for target
+    # t; entries at t < 22 are ill-defined slices but the start=22 burn-in
+    # never uses them.
     rv_d = rv[:-1]
-    rv_w = np.array([rv[t - 5:t].mean() for t in range(len(rv))])[:-1]
-    rv_m = np.array([rv[t - 22:t].mean() for t in range(len(rv))])[:-1]
+    rv_w = np.array([rv[t - 5:t].mean() if t >= 5 else np.nan for t in range(len(rv))])
+    rv_m = np.array([rv[t - 22:t].mean() if t >= 22 else np.nan for t in range(len(rv))])
     start = 22
     y = rv[start + 1:]
-    X = np.column_stack([np.ones(len(y)), rv_d[start:], rv_w[start:], rv_m[start:]])
+    X = np.column_stack([np.ones(len(y)), rv_d[start:], rv_w[start + 1:], rv_m[start + 1:]])
     # Two HAC variants: statsmodels' cov_type="HAC" default is
     # use_correction=False; tsecon's har_rv default is use_correction=True
     # (the finite-sample n/(n-k) scaling). Pin both so default-to-default
@@ -59,9 +66,12 @@ def gen_realized():
         "_meta": {"statsmodels": statsmodels.__version__, "numpy": np.__version__,
                   "python": platform.python_version(),
                   "note": "HAR-RV = OLS(RV_t on [const, RV_{t-1}, RV_week(5), RV_month(22)]) "
-                          "with HAC(maxlags=5); bse is use_correction=False (the "
-                          "statsmodels cov_type='HAC' default), bse_corrected is "
-                          "use_correction=True (the tsecon default); measures per BNS 2004."},
+                          "with the Corsi (2009) windows INCLUDING the daily lag "
+                          "(RV_week = mean(RV_{t-5}..RV_{t-1}), RV_month = "
+                          "mean(RV_{t-22}..RV_{t-1})) and HAC(maxlags=5); bse is "
+                          "use_correction=False (the statsmodels cov_type='HAC' "
+                          "default), bse_corrected is use_correction=True (the "
+                          "tsecon default); measures per BNS 2004."},
         "rv_series": full(rv),
         "har": {"start": start, "params": full(ols.params), "bse": full(ols.bse),
                 "bse_corrected": full(ols_corr.bse),

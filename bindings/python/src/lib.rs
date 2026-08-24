@@ -1905,6 +1905,14 @@ fn theta_forecast<'py>(
 /// `converged`, `conditional_volatility`, `std_residuals`, and
 /// `variance_forecast` when `forecast_horizon > 0`.
 ///
+/// **Filter timing** (matches `arch`): `conditional_volatility[t]` is the
+/// one-step-ahead volatility FOR period t, formed from information through
+/// t-1 — `sigma2_t` is built from `eps_{t-1}` and `sigma2_{t-1}`, so the
+/// entry at t is the model's prediction for t before seeing `y[t]`, not a
+/// smoothed estimate using it. The post-sample continuation of that same
+/// step is `variance_forecast` (first entry: the prediction for T+1 from
+/// information through T).
+///
 /// **Boundary fits.** When the QMLE lands on a constraint (`alpha` at its
 /// sign bound, persistence at 1 — an IGARCH fit), the observed
 /// information is singular in the constrained direction by construction
@@ -1917,6 +1925,16 @@ fn theta_forecast<'py>(
 /// direction instead. `converged` reports whether an optimizer stage
 /// terminated by its convergence criterion (the best point found is
 /// returned either way).
+///
+/// **Short noisy samples** (0.5): a gradient (L-BFGS) stage that starts
+/// within a finite-difference step of an active constraint — routine for
+/// `dist="t"` on a couple of hundred observations, where the polish lands
+/// on the persistence bound or a sign bound — cannot evaluate its starting
+/// gradient; the fit now falls back deterministically to the
+/// derivative-free (Nelder-Mead) stage instead of raising, and reports the
+/// boundary through the flags above. An optimizer *error* therefore
+/// signals genuinely degenerate input (a near-constant series, or a scale
+/// with no finite-likelihood starting value).
 ///
 /// When `forecast_horizon > 0`, `variance_forecast` is the analytic
 /// *point* path of conditional variances `E[sigma2_{T+m} | F_T]`,
@@ -5220,8 +5238,13 @@ fn realized_measures<'py>(
 /// HAR-RV heterogeneous autoregression of realized variance (Corsi 2009).
 ///
 /// Regresses `RV_t` on `[const, RV_{t-1}, RV_week, RV_month]`, where the
-/// weekly/monthly regressors are trailing averages known at `t-1`. The
-/// `variant` transforms the series first: `"level"`, `"log"`, or `"sqrt"`.
+/// weekly/monthly regressors are trailing averages known at `t-1` that
+/// **include the daily lag**, per Corsi's definition:
+/// `RV_week = mean(RV_{t-1} .. RV_{t-5})`,
+/// `RV_month = mean(RV_{t-1} .. RV_{t-22})`. (**Changed in 0.5**: through
+/// 0.4.0 the windows mistakenly excluded `RV_{t-1}` — coefficients on the
+/// same data shift.) The `variant` transforms the series first:
+/// `"level"`, `"log"`, or `"sqrt"`.
 /// Standard errors are Newey-West HAC with `hac_maxlags` lags; matches
 /// statsmodels OLS-HAC at 1e-8 when `use_correction` is matched.
 ///

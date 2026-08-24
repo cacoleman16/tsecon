@@ -361,7 +361,7 @@ tsecon.realized_range(hi, lo, method="garman_klass", open=open_, close=close)  #
 
 The manual OLS in the previous section is what `har_rv` runs for you, with the one correction beginners forget baked in — HAC standard errors, mandatory because the weekly and monthly regressors are *overlapping* moving averages that induce serial correlation in the residuals. Given a series of daily realized variances $RV_t$, it forms the daily/weekly/monthly aggregates known at the end of day $t-1$,
 
-$$RV^d_{t-1} = RV_{t-1}, \quad RV^w_{t-1} = \tfrac{1}{5}\!\sum_{j=2}^{6} RV_{t-j}, \quad RV^m_{t-1} = \tfrac{1}{22}\!\sum_{j=2}^{23} RV_{t-j},$$
+$$RV^d_{t-1} = RV_{t-1}, \quad RV^w_{t-1} = \tfrac{1}{5}\!\sum_{j=1}^{5} RV_{t-j}, \quad RV^m_{t-1} = \tfrac{1}{22}\!\sum_{j=1}^{22} RV_{t-j},$$
 
 and regresses $RV_t$ on $[\,1,\ RV^d_{t-1},\ RV^w_{t-1},\ RV^m_{t-1}\,]$ by OLS with Newey-West HAC standard errors (`hac_maxlags=5` by default). The `start` argument (default 22) is the burn-in that guarantees the monthly window is defined.
 

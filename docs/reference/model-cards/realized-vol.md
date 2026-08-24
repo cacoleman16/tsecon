@@ -36,7 +36,12 @@ available, range estimators recover much of the same signal.
 - **`har_rv(rv)`** — the Corsi (2009) Heterogeneous AutoRegressive model:
   regress RV_t on a constant and the **daily**, **weekly**, and **monthly**
   averages of past RV, with HAC standard errors. Its cascade of horizons
-  captures RV's long memory with three regressors.
+  captures RV's long memory with three regressors. The aggregates follow
+  Corsi's definition — they **include the daily lag**: weekly =
+  mean(RV_{t−1} … RV_{t−5}), monthly = mean(RV_{t−1} … RV_{t−22}).
+  (Changed in 0.5: through 0.4.0 the windows mistakenly *excluded* RV_{t−1} —
+  weekly = mean(RV_{t−2} … RV_{t−6}) — while citing Corsi; coefficients on
+  the same data shift accordingly.)
 - **`realized_range(high, low)`** — the Parkinson (or Garman-Klass, given open
   and close) range estimator of variance from OHLC bars — far more efficient
   than close-to-close when intraday returns are unavailable.
