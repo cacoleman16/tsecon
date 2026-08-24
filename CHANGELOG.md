@@ -7,6 +7,10 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.0] - 2026-08-20
+
 ### Added
 
 - **`panel_lp(..., band=, band_alpha=)`** — the closed-form simultaneous
@@ -44,25 +48,6 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   NumPy re-implementation re-pinned through the binding at 1e-9. The
   Perron-Qu (2007) far-from-null power reversal is pinned as documented
   behavior and taught in the model card.
-### Fixed — audit round 8 (docs/roadmap/23-audit-round-8-findings.md)
-
-- **`theta_forecast`'s statsmodels claim is now qualified**: the docstring,
-  `.pyi`, and forecasting card say it matches
-  `ThetaModel(deseasonalize=True, use_test=False)` — statsmodels' *default*
-  additionally runs a seasonality pre-test and skips deseasonalization when
-  it fails, so the two defaults diverge on weakly-seasonal data declared
-  with `period > 1` (measured: 29/30 iid draws at `period=12`, worst 2.6%
-  relative). Was: an unqualified "Matches statsmodels ThetaModel."
-- **The copula invariance claim now says strictly *increasing*, not
-  "strictly monotone"**: a strictly decreasing margin transform reverses
-  that margin's ranks (`u -> 1 - u` absent ties) and flips the sign of the
-  fitted dependence — demonstrated and now property-tested in Rust and
-  Python (`pseudo_obs`/`copula_fit` docstrings, `.pyi`, the copulas card,
-  and the crate docs corrected).
-- **`acm_term_premium` documents its echoed-input keys**
-  (`maturities`/`n_factors`/`periods_per_year`, returned but previously
-  absent from the docstring and card key list), with a returned-keys
-  docstring tripwire test.
 - **`mstl`** — Multiple Seasonal-Trend decomposition using LOESS
   (Bandara-Hyndman-Bergmeir 2021): STL iterated over several seasonal
   periods (e.g. `periods=[24, 168]` for hourly data with daily and weekly
@@ -97,6 +82,27 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   roadmap: **MC order recovery** (seeded study in
   `scripts/mc_auto_arima_recovery.py`, rates quoted in the model card)
   plus candidate-level statsmodels pins (`fixtures/auto_arima.json`:
+
+### Fixed — audit round 8 (docs/roadmap/23-audit-round-8-findings.md)
+
+- **`theta_forecast`'s statsmodels claim is now qualified**: the docstring,
+  `.pyi`, and forecasting card say it matches
+  `ThetaModel(deseasonalize=True, use_test=False)` — statsmodels' *default*
+  additionally runs a seasonality pre-test and skips deseasonalization when
+  it fails, so the two defaults diverge on weakly-seasonal data declared
+  with `period > 1` (measured: 29/30 iid draws at `period=12`, worst 2.6%
+  relative). Was: an unqualified "Matches statsmodels ThetaModel."
+- **The copula invariance claim now says strictly *increasing*, not
+  "strictly monotone"**: a strictly decreasing margin transform reverses
+  that margin's ranks (`u -> 1 - u` absent ties) and flips the sign of the
+  fitted dependence — demonstrated and now property-tested in Rust and
+  Python (`pseudo_obs`/`copula_fit` docstrings, `.pyi`, the copulas card,
+  and the crate docs corrected).
+- **`acm_term_premium` documents its echoed-input keys**
+  (`maturities`/`n_factors`/`periods_per_year`, returned but previously
+  absent from the docstring and card key list), with a returned-keys
+  docstring tripwire test.
+
   fixed-parameter loglik/AICc at 1e-8, free fits match-or-beat) and
   exact internal-consistency invariants (refitting the reported orders
   reproduces the reported criterion bit-for-bit; identical traces across
