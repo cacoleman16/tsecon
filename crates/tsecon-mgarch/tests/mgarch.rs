@@ -12,7 +12,7 @@
 use serde_json::Value;
 use tsecon_garch::{DistSpec, GarchSpec, MeanSpec, VolSpec};
 use tsecon_mgarch::faer::{Mat, MatRef};
-use tsecon_mgarch::{CccGarch, DccGarch};
+use tsecon_mgarch::{constant_correlation_test, CccGarch, CorrDist, DccGarch, DccVariant};
 
 fn load() -> Value {
     let path = format!("{}/../../fixtures/mgarch.json", env!("CARGO_MANIFEST_DIR"));
@@ -275,4 +275,161 @@ fn dcc_one_step_forecast() {
     let h: Mat<f64> = fit.forecast_covariance_one_step().unwrap();
     assert!(is_symmetric(h.as_ref(), 1e-12));
     assert!(min_eig_sym(h.as_ref()) > 0.0);
+}
+
+/// A cheaper bivariate slice of the fixture (first two series, first 1200
+/// observations) for the variant fits that would otherwise double the
+/// suite's optimization time; the precision claims for the variants live in
+/// the release-built Python Monte-Carlo tests, not here.
+fn subset(series: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    series[..2].iter().map(|s| s[..1200].to_vec()).collect()
+}
+
+/// cDCC (Aielli 2013) on the fixture data: valid parameters, persistence in
+/// the same loose recovery band as DCC (the DGP is plain DCC, and at these
+/// parameter values the two recursions are near-coincident — the
+/// correction matters for *consistency*, not for this finite sample), the
+/// target `S` close to `Qbar` (documented magnitude), and h-step forecasts
+/// that are PD and converge to `corr(S)`.
+#[test]
+fn cdcc_fixture_recovery_and_forecast() {
+    let fx = load();
+    let series = returns(&fx);
+    let dcc = DccGarch::new(spec()).fit(&series).unwrap();
+    let fit = DccGarch::new(spec())
+        .with_variant(DccVariant::Cdcc)
+        .fit(&series)
+        .unwrap();
+
+    let true_pers = fx["true"]["a_dcc"].as_f64().unwrap() + fx["true"]["b_dcc"].as_f64().unwrap();
+    assert!(fit.a >= 0.0 && fit.b >= 0.0 && fit.persistence() < 1.0);
+    assert!(
+        (fit.persistence() - true_pers).abs() < 0.05,
+        "cDCC persistence {} vs true {true_pers}",
+        fit.persistence()
+    );
+    // The cDCC/DCC contrast on this DGP is small: parameters land close to
+    // the plain-DCC estimates and S is within 0.02 of Qbar entrywise.
+    assert!((fit.a - dcc.a).abs() < 0.02, "a {} vs {}", fit.a, dcc.a);
+    assert!((fit.b - dcc.b).abs() < 0.05, "b {} vs {}", fit.b, dcc.b);
+    for i in 0..fit.k() {
+        assert!((fit.qbar[(i, i)] - 1.0).abs() <= 1e-12, "S diagonal");
+        for j in 0..fit.k() {
+            assert!(
+                (fit.qbar[(i, j)] - dcc.qbar[(i, j)]).abs() < 0.02,
+                "S[{i}][{j}] {} vs Qbar {}",
+                fit.qbar[(i, j)],
+                dcc.qbar[(i, j)]
+            );
+        }
+    }
+
+    // h-step forecasts: PD every step, converging to corr(S).
+    let fc = fit.forecast(60).unwrap();
+    assert_eq!(fc.correlation.len(), 60);
+    for r in [&fc.correlation[0], &fc.correlation[59]] {
+        assert!(is_symmetric(r.as_ref(), 1e-12));
+        assert!(min_eig_sym(r.as_ref()) > 0.0);
+    }
+    for h in [&fc.covariance[0], &fc.covariance[59]] {
+        assert!(is_symmetric(h.as_ref(), 1e-10));
+        assert!(min_eig_sym(h.as_ref()) > 0.0);
+    }
+    // Geometric convergence: || R_60 - corr(S) || <= (a+b)^59 * || R_1 - corr(S) || + dust.
+    let k = fit.k();
+    let d: Vec<f64> = (0..k).map(|i| fit.qbar[(i, i)].sqrt()).collect();
+    let mut dist1 = 0.0_f64;
+    let mut dist60 = 0.0_f64;
+    for i in 0..k {
+        for j in 0..k {
+            let rbar = fit.qbar[(i, j)] / (d[i] * d[j]);
+            dist1 = dist1.max((fc.correlation[0][(i, j)] - rbar).abs());
+            dist60 = dist60.max((fc.correlation[59][(i, j)] - rbar).abs());
+        }
+    }
+    // Near-geometric contraction at rate (a + b): exact in Q-space, and
+    // within ~1% of geometric after the nonlinear correlation
+    // normalization (measured 0.1751 vs (a+b)^59 = 0.1730 on this
+    // fixture); 1.1x is the documented cushion for that nonlinearity.
+    assert!(
+        dist60 <= 1.1 * fit.persistence().powi(59) * dist1 + 1e-12,
+        "forecast not contracting geometrically: h=1 {dist1}, h=60 {dist60}, a+b = {}",
+        fit.persistence()
+    );
+}
+
+/// ADCC (Cappiello-Engle-Sheppard 2006) nests DCC: on the same (symmetric,
+/// no-leverage DGP) data the fitted ADCC log-likelihood is no worse than
+/// DCC's up to optimizer slack, the fitted `g` is small, and the
+/// stationarity/positivity constraint holds at the estimates.
+#[test]
+fn adcc_nests_dcc_on_fixture() {
+    let fx = load();
+    let series = subset(&returns(&fx));
+    let dcc = DccGarch::new(spec()).fit(&series).unwrap();
+    let adcc = DccGarch::new(spec())
+        .with_variant(DccVariant::Adcc)
+        .fit(&series)
+        .unwrap();
+
+    assert!(adcc.a >= 0.0 && adcc.b >= 0.0 && adcc.g >= 0.0);
+    // The feasible set contains every DCC point (g = 0), so the ADCC
+    // optimum cannot be materially worse.
+    assert!(
+        adcc.loglik >= dcc.loglik - 1e-2,
+        "ADCC loglik {} vs DCC {}",
+        adcc.loglik,
+        dcc.loglik
+    );
+    // The DGP has no asymmetry: g should be small (loose one-realization bar).
+    assert!(adcc.g < 0.08, "spurious asymmetry g = {}", adcc.g);
+    // Nbar is stored for the fit and the constraint holds strictly.
+    assert!(adcc.nbar.is_some());
+    assert!(adcc.persistence() < 1.0);
+}
+
+/// The Student-t second stage on (Gaussian-innovation) fixture data: the
+/// estimated degrees of freedom are large (the t nests the normal as
+/// `nu -> infinity`), and the correlation dynamics agree with the Gaussian
+/// fit to a loose band.
+#[test]
+fn student_t_second_stage_on_gaussian_data() {
+    let fx = load();
+    let series = subset(&returns(&fx));
+    let gauss = DccGarch::new(spec()).fit(&series).unwrap();
+    let t = DccGarch::new(spec())
+        .with_dist(CorrDist::StudentT)
+        .fit(&series)
+        .unwrap();
+
+    let nu = t.nu.expect("StudentT fit carries nu");
+    assert!(nu > 10.0, "Gaussian data should push nu up, got {nu}");
+    assert!((t.a - gauss.a).abs() < 0.02, "a {} vs {}", t.a, gauss.a);
+    assert!((t.b - gauss.b).abs() < 0.05, "b {} vs {}", t.b, gauss.b);
+    // The Gaussian fit reports a Gaussian loglik; the t fit a t loglik.
+    assert!(t.loglik.is_finite());
+    assert_eq!(t.dist, CorrDist::StudentT);
+    assert_eq!(gauss.nu, None);
+}
+
+/// Engle-Sheppard (2001) constant-correlation test on the fixture's DCC
+/// DGP (a = 0.03, b = 0.95): the diagnostic should reject constant
+/// correlation on this single long realization (T = 2400, three pairs).
+/// The size/power calibration lives in the Python Monte-Carlo tests; this
+/// pins the end-to-end wiring on real fixture data.
+#[test]
+fn engle_sheppard_rejects_on_dcc_fixture() {
+    let fx = load();
+    let series = returns(&fx);
+    let r = constant_correlation_test(&series, spec(), 5).unwrap();
+    assert_eq!(r.df, 6);
+    assert_eq!(r.nobs, 2400);
+    assert_eq!(r.n_stacked, (2400 - 5) * 3);
+    assert!(r.stat.is_finite() && r.stat >= 0.0);
+    assert!(
+        r.p_value < 0.05,
+        "expected rejection on the DCC DGP, got p = {} (stat {})",
+        r.p_value,
+        r.stat
+    );
 }

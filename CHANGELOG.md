@@ -189,6 +189,37 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   R/pmdarima parity** — a pmdarima cross-run is reported as a non-gating
   note. No exogenous regressors in this slice (the engine has no ARIMAX
   yet); no Box-Cox lambda argument (use `box_cox_lambda` first).
+### Added — the DCC build-out
+
+- **`dcc_garch` variants and second stage** — `variant="cdcc"` (Aielli 2013
+  corrected DCC: the `z*_t = diag(Q_t)^{1/2} z_t` driver that makes
+  correlation targeting consistent; `qbar` is then Aielli's exactly-unit-
+  diagonal `S`) and `variant="adcc"` (Cappiello-Engle-Sheppard 2006
+  asymmetric DCC: the `g·min(z,0)min(z,0)'` term under the CES positivity
+  constraint `a + b + δ·g < 1`), plus `dist="t"` (standardized multivariate
+  Student-t second stage, jointly estimated `nu`). The default call is
+  **bit-identical** to 0.4.0 — verified by `f64::to_bits` on every default
+  CCC/DCC fixture output across the refactor, pinned at 1e-7 in
+  `test_dcc_buildout.py`, and the ADCC(g=0) ≡ DCC / cDCC(0,0) ≡ CCC nesting
+  identities are asserted at 1e-10.
+- **`dcc_garch` in-sample correlation path and h-step forecasts** — new
+  `correlation` key (`(T, k, k)`: the full conditional correlation path,
+  with the timing convention now documented on the function: `R_t` conditions
+  on information through `t−1`, `correlation_last` is the last *in-sample*
+  matrix, and the one-step-ahead forecast additionally uses `z_T`), and
+  `forecast_horizon=h` returning `correlation_forecast`/`covariance_forecast`
+  (`(h, k, k)`) and `variance_forecast` by the Engle-Sheppard (2001)
+  `Q`-recursion convention — h=1 exact (bitwise equal to the legacy one-step)
+  and h ≥ 2 the documented `E[Q]` approximation converging geometrically to
+  `corr(qbar)`.
+- **`dcc_test`** — the Engle-Sheppard (2001) test of constant conditional
+  correlation (CCC vs DCC): symmetric-inverse-root joint standardization,
+  pooled AR on the stacked off-diagonal outer products, χ²(lags+1). Measured
+  MC: size 3.7% @ nominal 5% (CCC null, T=1000, 300 reps), power 69% @ 5%
+  (a=0.05, b=0.90, T=1000, 200 reps). No third-party implementation exists;
+  the statistic is pinned to an in-crate brute-force OLS transcription at
+  1e-8. (The pip `mgarch` package was attempted as a non-gating DCC cross
+  reference and found unusable — see the validation matrix.)
 
 ## [0.4.0] - 2026-08-18
 

@@ -1106,6 +1106,7 @@ dependencies = [
  "tsecon-garch",
  "tsecon-linalg",
  "tsecon-optim",
+ "tsecon-stats",
 ]
 
 [[package]]

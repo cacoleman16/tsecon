@@ -18,6 +18,30 @@
 //!   evolves through a scalar GARCH-like recursion on an auxiliary matrix
 //!   `Q_t`, correlation-targeted to `Qbar = (1/T) sum_t z_t z_t'`.
 //!
+//! The DCC estimator additionally supports (all opt-in; the default path is
+//! bit-identical to earlier releases):
+//!
+//! * the **cDCC** recursion of Aielli (2013) ([`DccVariant::Cdcc`]) — the
+//!   corrected driver `z*_t = diag(Q_t)^{1/2} z_t` that makes correlation
+//!   targeting consistent (see [`crate::dynamics`]);
+//! * the **ADCC** recursion of Cappiello-Engle-Sheppard (2006)
+//!   ([`DccVariant::Adcc`]) — an extra `g n_{t-1} n_{t-1}'` term,
+//!   `n_t = min(z_t, 0)`, so joint bad news moves correlations more, with
+//!   the sufficient constraint `a + b + delta g < 1`;
+//! * a **Student-t second stage** ([`CorrDist::StudentT`]) — `(a, b[, g],
+//!   nu)` maximize the standardized multivariate-t likelihood;
+//! * **h-step correlation/covariance forecasts** ([`DccFit::forecast`]) by
+//!   the Engle-Sheppard (2001) `Q`-recursion convention
+//!   (see [`crate::forecast`] for the approximation involved);
+//! * the **Engle-Sheppard (2001) constant-correlation test**
+//!   ([`constant_correlation_test`]) — the CCC-vs-DCC diagnostic.
+//!
+//! **Timing convention** (all models here): `R_t`, `H_t`, and `sigma2_t`
+//! condition on information through `t - 1` — the standard filter
+//! convention (`Q_t` is built from `z_{t-1}` and `Q_{t-1}`; `Q_0 = Qbar`).
+//! The last in-sample `R_T` is therefore *not* the one-step forecast:
+//! `R_{T+1}` from [`DccFit::forecast`] additionally uses `z_T`.
+//!
 //! Both use **two-step (Engle) estimation**: step 1 fits a univariate
 //! GARCH to each series — delegated wholesale to [`tsecon_garch`] — and
 //! step 2 estimates the correlation structure from the standardized
@@ -100,13 +124,19 @@
 
 mod ccc;
 mod dcc;
+mod dynamics;
 mod error;
+mod estest;
+mod forecast;
 mod stage;
 mod util;
 
 pub use ccc::{CccFit, CccGarch};
 pub use dcc::{DccFit, DccGarch};
+pub use dynamics::{CorrDist, DccVariant};
 pub use error::MgarchError;
+pub use estest::{constant_correlation_test, DccTestResult};
+pub use forecast::DccForecast;
 pub use stage::UnivariateStage;
 
 // Re-export the shared dense backend so callers manipulate the returned
