@@ -337,3 +337,68 @@ Reject independence at 5% (Christoffersen LR_ind = 6.064, p = 0.014): violations
 75 violations where 75 were expected: the flat VaR's Kupiec p-value is 1.000.
 Only the dependence tests expose it — which is exactly why the battery has
 three legs.
+
+## Conformal prediction intervals — `conformal_forecast` / `conformal_backtest`
+
+**What they do.** Distribution-free prediction intervals wrapped around any of
+the library's point forecasters: **split conformal** (residual-quantile
+calibration on held-out forecast origins with the finite-sample
+`ceil((m+1)(1−α))` correction, symmetric or per-tail), **EnbPI** (Xu & Xie,
+ICML 2021 / IEEE TPAMI 2023 — a bootstrap ensemble of AR learners with
+leave-one-out out-of-bag residuals and the paper's width-minimizing β
+search), and **ACI** — adaptive conformal inference (Gibbs & Candès, NeurIPS
+2021 — the online update `α_{t+1} = α_t + γ(α − err_t)`, the go-to under
+distribution shift). `conformal_backtest` replays any of the three over a
+rolling evaluation window and returns the realized per-origin errors, so
+coverage claims about your own series are measurable rather than assumed.
+
+**Assumptions, honestly.** The split guarantee (coverage ≥ 1−α in finite
+samples) holds under *exchangeable* calibration scores; h-step forecast
+residuals from a time series are not exchangeable, so on real data all three
+are approximate — that is why every claim below is a measured number, not a
+theorem. Calibration respects the backtest engine's leakage discipline:
+expanding training windows, refit at every origin, and a regression test
+pins that perturbing the last observation can move only its own score.
+
+**Key arguments.** `method="split"` (default) with `base=` any of
+`"theta"`, `"naive"`, `"drift"`, `"mean"`, `"seasonal_naive"`, `"ar"`,
+`"arima"`; `alpha=0.1`; `calib=n//4` residuals per horizon. `method="enbpi"`
+(AR base only, `n_boot`, `lags`, seeded and bit-reproducible). `method="aci"`
+(`gamma=0.005`, the paper's step size; raise it for faster adaptation —
+Setting B below shows why that matters).
+
+**Measured coverage (nominal 90%, one-step-ahead).** Exchangeable-iid
+anchor at `calib=20`, where the +1 correction targets 19/21 ≈ 0.905: measured
+within 2 MC standard errors of the guarantee across 2000 reps (asserted in
+CI). AR(1) with iid noise (250 reps, T=300): split **0.916**, EnbPI
+**0.888**, ACI **0.912**. AR(1) with GARCH noise: split **0.936**, EnbPI
+**0.924**, ACI **0.936** — marginal coverage holds, mildly conservative,
+though none of the methods conditions on volatility, so *conditional*
+coverage in calm vs turbulent stretches is not claimed. Under a variance
+shift inside the evaluation window (the published ACI scenario, 100 reps):
+post-shift coverage split **0.705**, EnbPI **0.510**, ACI at the default γ
+**0.794**, ACI at γ=0.05 **0.892** — the ACI recursion recovers what the
+fixed-level methods lose, exactly as Gibbs-Candès claim, and EnbPI is the
+most exposed because its residual window adapts slowest
+(`lab/experiments/results/exp06.md` holds the full tables; a CI-sized subset
+is asserted in `test_conformal.py`).
+
+**Failure modes.** An interval is only as good as its base's residuals:
+a badly misspecified base gives wide-but-valid marginal intervals, not
+useful ones. ACI with an aggressive γ oscillates (its `alpha_trajectory` is
+returned — look at it); when `α_t` collapses to 0 the interval is infinite
+by the paper's convention, and past 1 it is the degenerate point interval.
+EnbPI's guarantee arguments lean on its stationarity assumptions; under
+shifts it degrades fastest of the three (measured above).
+
+**Validated against.** Property-MC (the tables above, seeded and asserted
+in CI) plus the exchangeable-case exactness anchor, and — for the split
+leg — a runnable third-party cross-check: on identical residuals our
+finite-sample-corrected quantile reproduces `mapie`'s
+`SplitConformalRegressor` interval half-width to 1e-12 relative
+(`test_mapie_split_quantile_cross_check`, skipped automatically where
+`mapie` is absent). EnbPI and ACI have no runnable Python reference —
+they are graded property-MC against their papers' own claims, stated.
+
+**References.** Vovk, Gammerman & Shafer (2005); Xu & Xie (2021, 2023);
+Gibbs & Candès (2021).

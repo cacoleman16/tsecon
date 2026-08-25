@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**148 functions.**
+**150 functions.**
 
 ## diagnostics
 
@@ -2120,6 +2120,74 @@ Rolling/expanding pseudo-out-of-sample backtest.
     window is "expanding" or "rolling"; forecaster is one of naive, drift,
     mean, seasonal_naive, theta. Returns origins, per-horizon forecasts and
     targets, and a per-horizon accuracy table.
+
+## conformal forecast intervals
+
+### `conformal_forecast`
+
+```python
+def conformal_forecast(
+    y: _ArrayLike,
+    horizon: int = ...,
+    method: str = ...,
+    base: str = ...,
+    alpha: float = ...,
+    calib: int | None = ...,
+    mode: str = ...,
+    period: int = ...,
+    gamma: float = ...,
+    n_eval: int | None = ...,
+    lags: int = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    optimize_beta: bool = ...,
+    order: tuple[int, int, int] | None = ...,
+) -> dict[str, Any]:
+```
+
+Distribution-free conformal forecast intervals around a point forecaster.
+
+    method is "split" (finite-sample-corrected residual-quantile calibration
+    on held-out origins; mode "symmetric" or "asymmetric"), "enbpi" (Xu-Xie
+    2021 bootstrap-ensemble batch prediction intervals; base must be "ar"),
+    or "aci" (Gibbs-Candes 2021 adaptive conformal inference,
+    alpha_{t+1} = alpha_t + gamma (alpha - err_t), gamma default 0.005 from
+    the paper). base wraps "theta", "naive", "drift", "mean",
+    "seasonal_naive", "ar", or "arima" (order=(p, d, q)). calib defaults to
+    n // 4 residuals per horizon; n_eval (aci) to n // 5. Returns mean,
+    lower, upper, level, plus per-method calibration diagnostics (split:
+    q_lower/q_upper/scores/finite_sample_level; enbpi: beta/residuals;
+    aci: alpha_final/alpha_trajectory/err/realized_coverage).
+
+### `conformal_backtest`
+
+```python
+def conformal_backtest(
+    y: _ArrayLike,
+    horizon: int = ...,
+    method: str = ...,
+    base: str = ...,
+    alpha: float = ...,
+    calib: int | None = ...,
+    mode: str = ...,
+    period: int = ...,
+    gamma: float = ...,
+    n_eval: int | None = ...,
+    lags: int = ...,
+    n_boot: int = ...,
+    batch: int = ...,
+    seed: int = ...,
+    optimize_beta: bool = ...,
+    order: tuple[int, int, int] | None = ...,
+) -> dict[str, Any]:
+```
+
+Online out-of-sample evaluation of conformal intervals ("split",
+    "aci", or "enbpi") over the last n_eval origins: per-origin intervals
+    formed from information available then, miss indicators, and realized
+    coverage per horizon. ACI adds its alpha_t trajectory; EnbPI is the
+    published one-step online algorithm with the residual window sliding
+    by batch.
 
 ## nonlinear GMM (callback)
 
