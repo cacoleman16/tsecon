@@ -264,12 +264,13 @@ computed from boundary curvature.
 
 ---
 
-## `ccc_garch` / `dcc_garch` — multivariate GARCH
+## `ccc_garch` / `dcc_garch` / `dcc_test` — multivariate GARCH
 
 **What they estimate.** The conditional covariance of a *panel* of returns
 (`returns` is T×k). CCC fits per-series GARCH and holds the correlation matrix
 **constant**; DCC lets that correlation matrix **evolve** with two extra scalars
-`a, b` (mean-reverting to the unconditional `qbar`).
+`a, b` (mean-reverting to the unconditional `qbar`). `dcc_test` is the
+Engle-Sheppard (2001) diagnostic that decides between them.
 
 **Assumptions / when to use.** Each series is GARCH-like; CCC assumes the
 cross-correlations do not move (often violated in crises), DCC relaxes exactly
@@ -277,23 +278,110 @@ that. Use CCC for a fast, parsimonious baseline; use DCC when correlations
 plausibly rise together in stress (portfolio risk, contagion). Not for very
 large k without regularization.
 
-**Key arguments.** Both take only `returns` (T×k) in the shipped surface;
-defaults handle the two-step estimation internally.
+**Key arguments.** `ccc_garch` takes only `returns` (T×k). `dcc_garch` adds
+three opt-ins (the bare call is bit-identical to earlier releases):
+
+- `variant="dcc"|"cdcc"|"adcc"`. `"cdcc"` is Aielli's (2013) corrected DCC:
+  Engle's recursion drives `Q_t` with `z_{t-1} z_{t-1}'`, whose conditional
+  mean is `R_t`, *not* `Q_t` — so targeting `qbar` by the sample second moment
+  is (mildly, but provably) inconsistent. cDCC rescales the driver to
+  `z*_t = diag(Q_t)^{1/2} z_t`, restoring `E_{t-1}[z*z*'] = Q_t` and making
+  the targeting consistent; `qbar` in the output is then Aielli's `S`, an
+  exactly-unit-diagonal correlation matrix. On symmetric, moderately
+  persistent data the two are near-coincident (measured below) — the
+  correction matters in principle and at scale, not on one finite sample.
+  `"adcc"` is Cappiello-Engle-Sheppard (2006) asymmetric DCC: an extra
+  `g · n_{t-1} n_{t-1}'` term with `n_t = min(z_t, 0)`, so *joint bad news*
+  moves correlations more than joint good news (the documented equity fact),
+  estimated under the CES sufficient condition `a + b + δ·g < 1`
+  (`δ = λ_max(Qbar^{-1/2} Nbar Qbar^{-1/2})`), which keeps every `Q_t`
+  positive-definite. At `g = 0` ADCC *is* DCC — asserted numerically in the
+  test suite.
+- `dist="normal"|"t"` — the second-stage likelihood. `"t"` estimates a common
+  Student-t `nu` jointly with `(a, b[, g])` and returns it as `nu`; step one
+  stays Gaussian-QMLE per series (the standard two-step convention).
+- `forecast_horizon=h` — adds `correlation_forecast`/`covariance_forecast`
+  (`(h, k, k)`) and `variance_forecast` (`(h, k)`).
+
+`dcc_test(returns, lags=5)` runs the Engle-Sheppard (2001) constant-correlation
+test: GARCH(1,1) per series, joint standardization by the *symmetric* inverse
+square root of the constant correlation, then one pooled regression of the
+stacked off-diagonal outer products on a constant and `lags` of themselves;
+under H0 `stat` ~ χ²(`lags + 1`). The diagonal outer products are excluded on
+purpose so univariate GARCH misfit cannot masquerade as correlation dynamics.
 
 **How to read the output.** CCC returns the constant `correlation` matrix and
-`loglik`. DCC returns `a, b` (dynamics), `qbar` (targeted long-run covariance),
-`correlation_last` (the most recent conditional correlation), `loglik`, and
-`converged`. `a + b` near 1 means correlations move slowly and persistently.
+`loglik`. DCC returns `a, b, g` (dynamics; `g` is structurally 0.0 off-ADCC),
+`qbar` (the targeting matrix — Aielli's `S` under `"cdcc"`), `loglik`,
+`converged`, `nu` (Student-t only), `correlation` (the full in-sample path,
+`(T, k, k)` — `np.asarray(r["correlation"])`), and `correlation_last`
+(= `correlation[-1]`). `a + b` near 1 means correlations move slowly and
+persistently.
+
+**The timing convention (read before comparing packages).** `correlation[t]`
+is `R_t` *given information through t−1*: the recursion builds `Q_t` from
+`z_{t-1}` and `Q_{t-1}`, with `Q_0 = qbar` (so `correlation[0]` is exactly
+`corr(qbar)` — it has consumed no data). `correlation_last` is therefore the
+last **in-sample** conditional correlation — not stale, and not a forecast.
+The one-step-ahead `R_{T+1}` additionally uses the final residual `z_T`; it
+is `correlation_forecast[0]`, and it differs from `correlation_last`.
+
+**Forecasts.** `correlation_forecast[0]` (h = 1) is exact in the information
+set. For h ≥ 2 there is **no closed form** — the correlation normalization
+`Q → diag(Q)^{-1/2} Q diag(Q)^{-1/2}` is nonlinear, so `E[R] ≠ corr(E[Q])` —
+and the surface implements the standard Engle-Sheppard (2001) forward
+recursion on `Q`: `E[Q_{T+h}] = (1−a−b)·qbar + (a+b)·E[Q_{T+h−1}]`,
+normalized to a correlation each step. Every forecast matrix is a proper
+correlation matrix by construction, and the path converges geometrically
+(rate `a + b`) to the unconditional `corr(qbar)`. Under `"adcc"` the same
+mean recursion applies (in expectation the asymmetric news term cancels
+against its `−g·Nbar` targeting intercept); under `"cdcc"` `S` replaces
+`qbar` and the driver approximation is exact — only the final normalization
+is approximate. `covariance_forecast` scales by the analytic univariate
+variance forecasts (`E[DRD] ≈ E[D]E[R]E[D]`, also standard).
 
 **Failure modes.** A stage-one univariate GARCH fit can fail on a series with
 no ARCH effect (the error names the offending series); DCC on near-constant
-correlations collapses toward the CCC special case.
+correlations collapses toward the CCC special case; `"adcc"` on symmetric
+data estimates `g ≈ 0` (correct, not a bug); `dcc_test` with `lags` ≥ T is an
+insufficient-data error.
 
-**Validated against.** No external Python/R DCC reference in the venv; validated
-by the CCC special case, recovery of simulated DCC parameters, and
-positive-definiteness / variance-targeting properties (`fixtures/mgarch.json`).
+**Validated against.** No runnable third-party DCC reference exists in this
+project — grades are property-MC + internal nesting + literature formulas,
+with every number below measured, not assumed (seeded scripts, this machine):
 
-**References.** Bollerslev (1990, CCC); Engle (2002, DCC).
+- *Default-path continuity*: the 0.5.0 refactor was verified bit-identical
+  (`f64::to_bits` on every default CCC/DCC output of the fixture fit) against
+  the 0.4.0 build; a regression pin at 1e-7 guards it in CI.
+- *Nesting (exact)*: ADCC(g=0) ≡ DCC and cDCC(a=b=0) ≡ DCC(0,0) ≡ CCC at
+  1e-10 relative log-likelihood; forecast h=1 is bitwise the legacy exact
+  one-step; Student-t → Gaussian as `nu → ∞` (1e-4 at `nu = 1e6`).
+- *Recovery MC* (bivariate GARCH(1,1)+DCC DGP, T=2000, 50 reps): truth
+  `(a, b) = (0.04, 0.93)` → DCC `â = 0.042 (sd 0.009)`,
+  `b̂ = 0.921 (sd 0.024)`; cDCC on the same draws `â = 0.041 (0.009)`,
+  `b̂ = 0.921 (0.023)` — near-coincident, as theory predicts here. ADCC DGP
+  truth `(a, b, g) = (0.02, 0.90, 0.08)` → `â = 0.021 (0.012)`,
+  `b̂ = 0.893 (0.026)`, `ĝ = 0.082 (0.025)`; a symmetric DCC fit on those
+  asymmetric draws absorbs the leverage into `â = 0.054` — the bias ADCC
+  exists to remove. ADCC on *symmetric* draws (true g = 0): spurious
+  `ĝ = 0.010 (sd 0.014)` — small and boundary-hugging, as it should be.
+- *`dcc_test` size/power MC*: under a CCC null (ρ=0.5, T=1000, k=2, lags=5,
+  300 reps) rejection = **3.7%** at nominal 5%, **7.0%** at nominal 10% —
+  mildly conservative, consistent with Engle-Sheppard's own finite-sample
+  tables; under a DCC alternative (a=0.05, b=0.90, T=1000, 200 reps) power =
+  **69%** at 5%. On the fixture's 2400×3 DCC DGP it rejects at p < 1e-8.
+- *pip `mgarch` cross-check (attempted, outcome negative)*: the only pip DCC
+  package installs but is **unusable as a reference** — it crashes under
+  NumPy ≥ 1.25 (`np.matrix` indexing), and under NumPy 1.24 its optimizer
+  returns its starting values unchanged (we verified its own objective is
+  ~170 log-points better at tsecon's estimates than at its returned "fit");
+  its construction also deviates from Engle (2002) (targets the covariance
+  of raw returns, not standardized residuals). R's `rmgarch` is out of scope
+  for this pass. The honest grade stays: **no external golden**.
+
+**References.** Bollerslev (1990, CCC); Engle (2002, DCC); Engle & Sheppard
+(2001, the test and the forecast recursion); Aielli (2013, cDCC); Cappiello,
+Engle & Sheppard (2006, ADCC).
 
 The DGP below is chosen to make the CCC/DCC contrast visible: the true
 correlation *moves* — a calm regime (ρ = 0.2) followed by a crisis regime
@@ -329,6 +417,32 @@ that is true of *neither*. DCC estimates persistent dynamics (`a + b ≈ 0.999`,
 the near-unit persistence a one-time break masquerades as) and its most recent
 conditional correlation, 0.802, has tracked its way to the crisis regime's
 true ρ = 0.8.
+
+The 0.5.0 surface lets you *test* that choice and see the whole path:
+
+```python
+test = tsecon.dcc_test(R)                          # Engle-Sheppard (2001)
+print("ES stat:", round(test["stat"], 1), " df:", test["df"], " p:", test["p_value"])
+# ES stat: 131.7  df: 6  p: 5.76e-26                -> constant correlation is dead
+
+dcc = tsecon.dcc_garch(R, forecast_horizon=20)
+C = np.asarray(dcc["correlation"])                 # (2000, 2, 2) in-sample path
+print("calm-regime corr:", round(C[500, 0, 1], 3),
+      " crisis corr:", round(C[1999, 0, 1], 3))
+# calm-regime corr: 0.202  crisis corr: 0.802       -> the path tracks both regimes
+
+Rf = np.asarray(dcc["correlation_forecast"])
+print("R_{T+1}:", round(Rf[0, 0, 1], 3), " R_{T+20}:", round(Rf[19, 0, 1], 3))
+# R_{T+1}: 0.797  R_{T+20}: 0.794
+```
+
+Note the timing at the seam: `correlation_last` (0.802) is the last
+*in-sample* `R_T` — conditioned on information through T−1 — while the
+one-step forecast `R_{T+1}` (0.797) has also absorbed the final residual.
+They differ, and neither is stale. At `a + b ≈ 0.999` the forecast decays
+toward the unconditional 0.479 almost imperceptibly (0.794 by h = 20): with
+near-unit persistence, current correlation *is* the forecast at any horizon
+you would trade on.
 
 ---
 

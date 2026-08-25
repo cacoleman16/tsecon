@@ -5171,26 +5171,160 @@ fn ccc_garch<'py>(
 
 /// DCC-GARCH (Engle 2002): GARCH(1,1) per series with dynamic conditional
 /// correlations Q_t = (1-a-b)Qbar + a z z' + b Q_{t-1}. `returns` is `T x k`.
-/// Returns the DCC parameters (a, b), the targeted Qbar, the log-likelihood,
-/// convergence, and the final-period correlation matrix.
+///
+/// `variant` selects the correlation recursion: `"dcc"` (Engle 2002, the
+/// default), `"cdcc"` (Aielli 2013 — the corrected driver
+/// z*_t = diag(Q_t)^{1/2} z_t that makes correlation targeting consistent;
+/// `qbar` is then Aielli's S), or `"adcc"` (Cappiello-Engle-Sheppard 2006 —
+/// an extra `g`·n n' term with n_t = min(z_t, 0), so joint bad news moves
+/// correlations more; estimated under the sufficient constraint
+/// a + b + delta·g < 1). `dist` selects the second-stage likelihood:
+/// `"normal"` (Gaussian QMLE, the default) or `"t"` (standardized
+/// multivariate Student-t; the estimated degrees of freedom come back as
+/// `nu`). The default call (`variant="dcc"`, `dist="normal"`) is
+/// bit-identical to earlier releases; all new keys are additive.
+///
+/// Returns dict keys: `a`, `b`, `g` (0.0 unless `variant="adcc"`), `qbar`,
+/// `loglik`, `converged`, `variant`, `dist`, `correlation` (the full
+/// in-sample conditional correlation path, `(T, k, k)` as a nested list —
+/// `np.asarray(r["correlation"])` gives the 3-D array, `[t][i][j]` like
+/// `var_irf`), `correlation_last`, `nu` (only when `dist="t"`), and — when
+/// `forecast_horizon > 0` — `correlation_forecast` and
+/// `covariance_forecast` (`(horizon, k, k)` nested lists, entry `[h-1]` is
+/// the h-step-ahead matrix) plus `variance_forecast`
+/// (`(horizon, k)` per-series conditional variance forecasts).
+///
+/// TIMING CONVENTION (read before comparing R's). `correlation[t]` is
+/// `R_t`, the conditional correlation *given information through t-1*: the
+/// recursion builds `Q_t` from `z_{t-1}` and `Q_{t-1}` (with `Q_0 = Qbar`),
+/// the standard filter convention. `correlation_last` is simply the last
+/// in-sample matrix `correlation[-1]` = `R_{T-1}` (0-indexed) — it
+/// conditions on information through T-2 and is NOT stale and NOT a
+/// forecast. The one-step-ahead forecast `R_{T+1}` additionally uses the
+/// final residual `z_T`; it is `correlation_forecast[0]`, which therefore
+/// differs from `correlation_last`.
+///
+/// FORECAST CONVENTION. `correlation_forecast[0]` (h = 1) is exact in the
+/// information set: `Q_{T+1} = (1-a-b)Qbar + a z_T z_T' + b Q_T`,
+/// normalized. For h >= 2 there is no closed form (the correlation
+/// normalization is nonlinear), so the standard Engle-Sheppard (2001)
+/// forward recursion is used: `E[Q_{T+h}] = (1-a-b)Qbar +
+/// (a+b)E[Q_{T+h-1}]`, normalized to a correlation each step — an
+/// approximation (`E[R] != corr(E[Q])` exactly) that converges
+/// geometrically (rate a+b) to the unconditional `corr(Qbar)`.
+/// `covariance_forecast[h-1] = D R D` with `D` from the per-series
+/// analytic variance forecasts (the further standard approximation
+/// `E[DRD] ~= E[D]E[R]E[D]`). Under `"adcc"` the same mean recursion
+/// applies (the asymmetric term cancels against its targeting intercept
+/// in expectation); under `"cdcc"` S replaces Qbar.
 #[pyfunction]
+#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0))]
 fn dcc_garch<'py>(
     py: Python<'py>,
     returns: numpy::PyReadonlyArray2<'py, f64>,
+    variant: &str,
+    dist: &str,
+    forecast_horizon: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_mgarch::{CorrDist, DccVariant};
+    let v = match variant {
+        "dcc" => DccVariant::Dcc,
+        "cdcc" => DccVariant::Cdcc,
+        "adcc" => DccVariant::Adcc,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown variant {other:?}; expected \"dcc\" (Engle 2002), \
+                 \"cdcc\" (Aielli 2013 consistent targeting), or \"adcc\" \
+                 (Cappiello-Engle-Sheppard 2006 asymmetric)"
+            )))
+        }
+    };
+    let cd = match dist {
+        "normal" => CorrDist::Normal,
+        "t" => CorrDist::StudentT,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown dist {other:?}; expected \"normal\" or \"t\" \
+                 (second-stage correlation likelihood)"
+            )))
+        }
+    };
     let series = returns_to_series(&returns);
     let fit = tsecon_mgarch::DccGarch::new(garch11_spec())
+        .with_variant(v)
+        .with_dist(cd)
         .fit(&series)
         .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("a", fit.a)?;
     d.set_item("b", fit.b)?;
+    d.set_item("g", fit.g)?;
     d.set_item("qbar", mat_to_vec2_bayes(&fit.qbar))?;
     d.set_item("loglik", fit.loglik)?;
     d.set_item("converged", fit.converged)?;
+    d.set_item("variant", variant)?;
+    d.set_item("dist", dist)?;
+    if let Some(nu) = fit.nu {
+        d.set_item("nu", nu)?;
+    }
+    d.set_item(
+        "correlation",
+        fit.correlation_path
+            .iter()
+            .map(mat_to_vec2_bayes)
+            .collect::<Vec<_>>(),
+    )?;
     if let Some(last) = fit.correlation_path.last() {
         d.set_item("correlation_last", mat_to_vec2_bayes(last))?;
     }
+    if forecast_horizon > 0 {
+        let fc = fit.forecast(forecast_horizon).map_err(to_py)?;
+        d.set_item(
+            "correlation_forecast",
+            fc.correlation.iter().map(mat_to_vec2_bayes).collect::<Vec<_>>(),
+        )?;
+        d.set_item(
+            "covariance_forecast",
+            fc.covariance.iter().map(mat_to_vec2_bayes).collect::<Vec<_>>(),
+        )?;
+        d.set_item("variance_forecast", fc.variance)?;
+    }
+    Ok(d)
+}
+
+/// Engle-Sheppard (2001) test of constant conditional correlation — the
+/// CCC-vs-DCC diagnostic. `returns` is `T x k` (k >= 2); a GARCH(1,1) is
+/// fitted to each series (the same first stage `ccc_garch`/`dcc_garch`
+/// use), the residuals are jointly standardized by the *symmetric* inverse
+/// square root of the constant correlation matrix, and the stacked
+/// off-diagonal outer products are regressed on a constant and `lags` of
+/// themselves (one pooled regression across all pairs). Under H0 (constant
+/// correlation) all coefficients are zero and `stat` is asymptotically
+/// chi-squared with `df = lags + 1` degrees of freedom.
+///
+/// Returns dict keys: `stat` (the Wald statistic), `df`, `p_value` (small
+/// values reject constant correlation in favor of DCC-type dynamics),
+/// `lags`, `nobs`, and `n_stacked` (`(T - lags) * k(k-1)/2` pooled
+/// regression observations). The diagonal outer products are excluded on
+/// purpose, so univariate GARCH misfit does not masquerade as correlation
+/// dynamics.
+#[pyfunction]
+#[pyo3(signature = (returns, lags = 5))]
+fn dcc_test<'py>(
+    py: Python<'py>,
+    returns: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let series = returns_to_series(&returns);
+    let r = tsecon_mgarch::constant_correlation_test(&series, garch11_spec(), lags)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("df", r.df)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("lags", r.lags)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("n_stacked", r.n_stacked)?;
     Ok(d)
 }
 
@@ -9059,6 +9193,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(umidas, m)?)?;
     m.add_function(wrap_pyfunction!(ccc_garch, m)?)?;
     m.add_function(wrap_pyfunction!(dcc_garch, m)?)?;
+    m.add_function(wrap_pyfunction!(dcc_test, m)?)?;
     m.add_function(wrap_pyfunction!(realized_measures, m)?)?;
     m.add_function(wrap_pyfunction!(har_rv, m)?)?;
     m.add_function(wrap_pyfunction!(connectedness, m)?)?;
