@@ -8,6 +8,7 @@
 
 use core::fmt;
 
+use tsecon_bootstrap::BootstrapError;
 use tsecon_hac::HacError;
 use tsecon_stats::StatsError;
 
@@ -242,6 +243,49 @@ pub enum ForecastError {
         /// The dimension of the (failed) `Shat`.
         q: usize,
     },
+    /// The conformal calibration set is too small for the requested
+    /// miscoverage: the finite-sample-corrected quantile index
+    /// `ceil((m+1)(1-alpha))` exceeds the number of scores `m`, so no
+    /// finite interval can carry the guarantee at this level.
+    CalibrationTooSmall {
+        /// Which conformal computation was refused.
+        what: &'static str,
+        /// The number of calibration scores supplied.
+        n_calib: usize,
+        /// The per-tail miscoverage the quantile was requested at.
+        alpha: f64,
+        /// The minimum number of scores that supports this level.
+        needed: usize,
+    },
+    /// A conformal-method parameter violates its constraint (step size,
+    /// lag order, ensemble size, evaluation-window size, ...).
+    InvalidConformalParam {
+        /// Which parameter was rejected.
+        what: &'static str,
+        /// The offending value.
+        value: f64,
+        /// Human-readable statement of the violated constraint.
+        requirement: &'static str,
+    },
+    /// The lagged least-squares design of the AR base learner (used by
+    /// EnbPI's bootstrap ensemble and the `"ar"` base) is singular —
+    /// typically a constant series, or a bootstrap resample that collapsed
+    /// onto collinear rows.
+    SingularArDesign {
+        /// The autoregressive order of the design.
+        lags: usize,
+        /// The number of design rows in the failed fit.
+        n_rows: usize,
+    },
+    /// An error raised by the base point forecaster a conformal method
+    /// wraps, carried through with its original message.
+    BaseForecaster {
+        /// The base forecaster's own error message.
+        message: String,
+    },
+    /// An error propagated from the `tsecon-bootstrap` resampling engine
+    /// (used for EnbPI's bootstrap index draws).
+    Bootstrap(BootstrapError),
     /// An error propagated from the `tsecon-stats` distributions (e.g. the
     /// Student-t survival function used for DM p-values).
     Stats(StatsError),
@@ -491,6 +535,41 @@ impl fmt::Display for ForecastError {
                  test functions are collinear or constant across the \
                  evaluation window — drop redundant instruments"
             ),
+            ForecastError::CalibrationTooSmall {
+                what,
+                n_calib,
+                alpha,
+                needed,
+            } => write!(
+                f,
+                "{what}: {n_calib} calibration score(s) cannot support a \
+                 finite-sample-corrected quantile at miscoverage alpha = \
+                 {alpha}: the corrected index ceil((m+1)(1-alpha)) exceeds \
+                 m, so the honest interval would be infinite. Supply at \
+                 least {needed} calibration residuals (roughly (1-alpha)/\
+                 alpha), enlarge alpha, or shrink the horizon"
+            ),
+            ForecastError::InvalidConformalParam {
+                what,
+                value,
+                requirement,
+            } => write!(
+                f,
+                "conformal: {what} = {value} is invalid: requires {requirement}"
+            ),
+            ForecastError::SingularArDesign { lags, n_rows } => write!(
+                f,
+                "AR base learner: the lagged least-squares design with \
+                 {lags} lag(s) over {n_rows} row(s) is singular — the \
+                 series is (numerically) constant or the regressors are \
+                 collinear, so no AR fit exists. A constant series needs no \
+                 interval; otherwise reduce lags or supply more data"
+            ),
+            ForecastError::BaseForecaster { message } => write!(
+                f,
+                "conformal base forecaster failed: {message}"
+            ),
+            ForecastError::Bootstrap(e) => write!(f, "bootstrap error: {e}"),
             ForecastError::Stats(e) => write!(f, "distribution error: {e}"),
             ForecastError::Hac(e) => write!(f, "long-run-variance error: {e}"),
         }
@@ -502,6 +581,7 @@ impl std::error::Error for ForecastError {
         match self {
             ForecastError::Stats(e) => Some(e),
             ForecastError::Hac(e) => Some(e),
+            ForecastError::Bootstrap(e) => Some(e),
             _ => None,
         }
     }
@@ -510,6 +590,12 @@ impl std::error::Error for ForecastError {
 impl From<StatsError> for ForecastError {
     fn from(e: StatsError) -> Self {
         ForecastError::Stats(e)
+    }
+}
+
+impl From<BootstrapError> for ForecastError {
+    fn from(e: BootstrapError) -> Self {
+        ForecastError::Bootstrap(e)
     }
 }
 

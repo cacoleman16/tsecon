@@ -998,7 +998,9 @@ name = "tsecon-forecast"
 version = "0.5.0"
 dependencies = [
  "serde_json",
+ "tsecon-bootstrap",
  "tsecon-hac",
+ "tsecon-rng",
  "tsecon-stats",
 ]
 

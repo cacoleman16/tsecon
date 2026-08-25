@@ -8,6 +8,11 @@ description = "Forecast evaluation for the tsecon time-series econometrics libra
 
 [dependencies]
 tsecon-stats = { path = "../tsecon-stats" }
+# Conformal intervals (ROADMAP §5, one owner per capability): EnbPI's
+# bootstrap index draws come from the single resampling engine, seeded
+# through the library's Philox substream hierarchy.
+tsecon-rng = { path = "../tsecon-rng" }
+tsecon-bootstrap = { path = "../tsecon-bootstrap" }
 # The single HAC / long-run-variance engine (ROADMAP §5): the Clark-West and
 # Giacomini-White tests take their Bartlett long-run variances from here so
 # identical settings never produce different p-values across modules.
