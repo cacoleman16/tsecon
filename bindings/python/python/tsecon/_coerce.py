@@ -71,6 +71,10 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # Integer maturities in periods (months), not data: the ACM excess
     # returns pair maturity n with n - 1, so these must stay integers.
     "acm_term_premium": frozenset({"maturities"}),
+    # The (p, d, q) order of the "arima" conformal base: an integer spec,
+    # not data, shared by both conformal entry points.
+    "conformal_forecast": frozenset({"order"}),
+    "conformal_backtest": frozenset({"order"}),
 }
 
 _POSITIONAL = (
