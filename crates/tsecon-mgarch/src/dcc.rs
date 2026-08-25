@@ -160,67 +160,66 @@ impl DccGarch {
 fn fit_classic(stage: UnivariateStage) -> Result<DccFit, MgarchError> {
     let qbar = moment_matrix(&stage.z, stage.k);
 
-        // Step 2: maximize the DCC quasi-log-likelihood over (a, b). The
-        // objective is the *negative* full Gaussian log-likelihood, with an
-        // infinite wall on the infeasible region (a, b >= 0, a + b < 1) — the
-        // optimizer treats non-finite values as infeasible points.
-        let mut best_x = [STARTS[0][0], STARTS[0][1]];
-        let mut best_f = f64::INFINITY;
-        let mut converged = false;
-        let opts = NelderMeadOptions::default();
-        {
-            let stage_ref = &stage;
-            let qbar_ref = &qbar;
-            let mut objective = FnObjective::new(|x: &[f64]| {
-                let (a, b) = (x[0], x[1]);
-                if !a.is_finite() || !b.is_finite() || a < 0.0 || b < 0.0 || a + b > MAX_PERSISTENCE
-                {
-                    return f64::INFINITY;
-                }
-                match dcc_full_loglik(stage_ref, qbar_ref.as_ref(), a, b) {
-                    Ok(ll) if ll.is_finite() => -ll,
-                    _ => f64::INFINITY,
-                }
-            });
-            for start in STARTS {
-                let method = Method::NelderMead(opts);
-                let res = minimize(&mut objective, &start, &method)?;
-                if res.f < best_f {
-                    best_f = res.f;
-                    best_x = [res.x[0], res.x[1]];
-                    converged = res.converged;
-                }
+    // Step 2: maximize the DCC quasi-log-likelihood over (a, b). The
+    // objective is the *negative* full Gaussian log-likelihood, with an
+    // infinite wall on the infeasible region (a, b >= 0, a + b < 1) — the
+    // optimizer treats non-finite values as infeasible points.
+    let mut best_x = [STARTS[0][0], STARTS[0][1]];
+    let mut best_f = f64::INFINITY;
+    let mut converged = false;
+    let opts = NelderMeadOptions::default();
+    {
+        let stage_ref = &stage;
+        let qbar_ref = &qbar;
+        let mut objective = FnObjective::new(|x: &[f64]| {
+            let (a, b) = (x[0], x[1]);
+            if !a.is_finite() || !b.is_finite() || a < 0.0 || b < 0.0 || a + b > MAX_PERSISTENCE {
+                return f64::INFINITY;
+            }
+            match dcc_full_loglik(stage_ref, qbar_ref.as_ref(), a, b) {
+                Ok(ll) if ll.is_finite() => -ll,
+                _ => f64::INFINITY,
+            }
+        });
+        for start in STARTS {
+            let method = Method::NelderMead(opts);
+            let res = minimize(&mut objective, &start, &method)?;
+            if res.f < best_f {
+                best_f = res.f;
+                best_x = [res.x[0], res.x[1]];
+                converged = res.converged;
             }
         }
+    }
 
-        if !best_f.is_finite() {
-            return Err(MgarchError::Optim(tsecon_optim::OptimError::NonFinite {
-                what: "DCC step-2 objective (no feasible start converged)",
-            }));
-        }
+    if !best_f.is_finite() {
+        return Err(MgarchError::Optim(tsecon_optim::OptimError::NonFinite {
+            what: "DCC step-2 objective (no feasible start converged)",
+        }));
+    }
 
-        // Clamp tiny negative excursions the simplex may leave behind, then
-        // rebuild the fitted path at the optimum (propagating real errors).
-        let a = best_x[0].max(0.0);
-        let b = best_x[1].max(0.0);
-        let (correlation_path, q_forecast) = dcc_path(&stage, qbar.as_ref(), a, b)?;
-        let loglik = dcc_full_loglik(&stage, qbar.as_ref(), a, b)?;
+    // Clamp tiny negative excursions the simplex may leave behind, then
+    // rebuild the fitted path at the optimum (propagating real errors).
+    let a = best_x[0].max(0.0);
+    let b = best_x[1].max(0.0);
+    let (correlation_path, q_forecast) = dcc_path(&stage, qbar.as_ref(), a, b)?;
+    let loglik = dcc_full_loglik(&stage, qbar.as_ref(), a, b)?;
 
-        Ok(DccFit {
-            stage,
-            qbar,
-            a,
-            b,
-            g: 0.0,
-            nu: None,
-            variant: DccVariant::Dcc,
-            dist: CorrDist::Normal,
-            nbar: None,
-            loglik,
-            correlation_path,
-            q_forecast,
-            converged,
-        })
+    Ok(DccFit {
+        stage,
+        qbar,
+        a,
+        b,
+        g: 0.0,
+        nu: None,
+        variant: DccVariant::Dcc,
+        dist: CorrDist::Normal,
+        nbar: None,
+        loglik,
+        correlation_path,
+        q_forecast,
+        converged,
+    })
 }
 
 /// Step-2 estimation for every opt-in configuration (cDCC / ADCC and/or the
@@ -285,7 +284,11 @@ fn fit_general(
         let ln_det_d2_ref = &ln_det_d2;
         let mut objective = FnObjective::new(|x: &[f64]| {
             let (a, b) = (x[0], x[1]);
-            let g = if variant == DccVariant::Adcc { x[2] } else { 0.0 };
+            let g = if variant == DccVariant::Adcc {
+                x[2]
+            } else {
+                0.0
+            };
             let nu = if with_nu { x[n_dyn] } else { f64::NAN };
             if !a.is_finite() || !b.is_finite() || a < 0.0 || b < 0.0 {
                 return f64::INFINITY;
@@ -360,9 +363,7 @@ fn fit_general(
     )?;
     let loglik = match dist {
         CorrDist::Normal => gaussian_loglik(stage.k, &ln_det_d2, &eval),
-        CorrDist::StudentT => {
-            student_t_loglik(stage.k, &ln_det_d2, &eval, nu.unwrap_or(f64::NAN))
-        }
+        CorrDist::StudentT => student_t_loglik(stage.k, &ln_det_d2, &eval, nu.unwrap_or(f64::NAN)),
     };
     let correlation_path = eval.r_path.unwrap_or_default();
 

@@ -7,6 +7,10 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.0] - 2026-08-25
+
 ### Added — conformal forecast intervals
 
 - **`conformal_forecast`** — distribution-free conformal prediction
@@ -42,7 +46,6 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   with teaching errors for calibration sets too small for the level,
   singular AR designs, and degenerate parameters.
 
-## [0.5.0] - 2026-08-20
 
 ### Added
 

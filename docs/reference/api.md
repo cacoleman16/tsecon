@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**150 functions.**
+**151 functions.**
 
 ## diagnostics
 
@@ -1894,10 +1894,43 @@ CCC-GARCH (Bollerslev 1990); returns is T x k. Correlation + loglik.
 ### `dcc_garch`
 
 ```python
-def dcc_garch(returns: _ArrayLike) -> dict[str, Any]:
+def dcc_garch(
+    returns: _ArrayLike,
+    variant: str = ...,
+    dist: str = ...,
+    forecast_horizon: int = ...,
+) -> dict[str, Any]:
 ```
 
-DCC-GARCH (Engle 2002); a, b, qbar, loglik, last correlation matrix.
+DCC-GARCH (Engle 2002); returns is T x k. variant: "dcc" | "cdcc"
+    (Aielli 2013 consistent targeting) | "adcc" (Cappiello-Engle-Sheppard
+    2006 asymmetric); dist: "normal" | "t" (second-stage likelihood; "t"
+    adds nu). Keys: a, b, g, qbar, loglik, converged, variant, dist,
+    correlation ((T, k, k) nested list -- the in-sample conditional
+    correlation path), correlation_last, and with forecast_horizon > 0
+    correlation_forecast / covariance_forecast ((horizon, k, k)) and
+    variance_forecast ((horizon, k)).
+
+    Timing: correlation[t] = R_t conditions on information through t-1
+    (filter convention; Q_0 = Qbar). correlation_last = correlation[-1] is
+    the last IN-SAMPLE matrix, not a forecast; the one-step-ahead R_{T+1}
+    also uses the final residual z_T and is correlation_forecast[0].
+    h >= 2 forecasts use the Engle-Sheppard (2001) recursion on E[Q]
+    normalized each step (an approximation), converging to corr(qbar).
+    The default call is bit-identical to earlier releases.
+
+### `dcc_test`
+
+```python
+def dcc_test(returns: _ArrayLike, lags: int = ...) -> dict[str, Any]:
+```
+
+Engle-Sheppard (2001) test of constant conditional correlation
+    (CCC vs DCC); returns is T x k. GARCH(1,1) per series, joint
+    standardization by the symmetric inverse square root of the constant
+    correlation, pooled AR(lags) on the stacked off-diagonal outer
+    products. Keys: stat, df (= lags + 1), p_value (small rejects constant
+    correlation), lags, nobs, n_stacked.
 
 ## realized volatility / HAR
 

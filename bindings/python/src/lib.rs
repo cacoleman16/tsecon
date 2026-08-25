@@ -5773,11 +5773,17 @@ fn dcc_garch<'py>(
         let fc = fit.forecast(forecast_horizon).map_err(to_py)?;
         d.set_item(
             "correlation_forecast",
-            fc.correlation.iter().map(mat_to_vec2_bayes).collect::<Vec<_>>(),
+            fc.correlation
+                .iter()
+                .map(mat_to_vec2_bayes)
+                .collect::<Vec<_>>(),
         )?;
         d.set_item(
             "covariance_forecast",
-            fc.covariance.iter().map(mat_to_vec2_bayes).collect::<Vec<_>>(),
+            fc.covariance
+                .iter()
+                .map(mat_to_vec2_bayes)
+                .collect::<Vec<_>>(),
         )?;
         d.set_item("variance_forecast", fc.variance)?;
     }
@@ -5808,8 +5814,8 @@ fn dcc_test<'py>(
     lags: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let series = returns_to_series(&returns);
-    let r = tsecon_mgarch::constant_correlation_test(&series, garch11_spec(), lags)
-        .map_err(to_py)?;
+    let r =
+        tsecon_mgarch::constant_correlation_test(&series, garch11_spec(), lags).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("stat", r.stat)?;
     d.set_item("df", r.df)?;

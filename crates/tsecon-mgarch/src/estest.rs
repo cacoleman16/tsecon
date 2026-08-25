@@ -346,7 +346,10 @@ mod tests {
     fn bad_inputs_rejected() {
         let series = ccc_data(0xBAD_1A65, 300);
         let err = constant_correlation_test(&series, spec(), 0).unwrap_err();
-        assert!(matches!(err, MgarchError::InvalidParameter { name: "lags", .. }));
+        assert!(matches!(
+            err,
+            MgarchError::InvalidParameter { name: "lags", .. }
+        ));
     }
 
     /// Wald statistic cross-check against a from-scratch OLS on the same
