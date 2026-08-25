@@ -161,7 +161,11 @@ fn split_conformal_naive_base_recomputed_exactly() {
         for t in (n - h_max - m)..=(n - 1 - h_max) {
             scores.push(y[t + h] - y[t]); // naive: h-step residual vs y[t]
         }
-        assert_eq!(r.scores[h - 1], scores, "h={h} scores must be the naive residuals");
+        assert_eq!(
+            r.scores[h - 1],
+            scores,
+            "h={h} scores must be the naive residuals"
+        );
         // Corrected quantile of absolute scores, by hand.
         let mut abs: Vec<f64> = scores.iter().map(|s| s.abs()).collect();
         abs.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -292,8 +296,18 @@ fn split_conformal_teaching_errors() {
         ForecastError::CalibrationTooSmall { needed: 19, .. }
     ));
     // horizon = 0, bad alpha, NaN input, series too short.
-    assert!(split_conformal(&y, &SplitConformalOptions { horizon: 0, ..base }, naive_base).is_err());
-    assert!(split_conformal(&y, &SplitConformalOptions { alpha: 0.0, ..base }, naive_base).is_err());
+    assert!(split_conformal(
+        &y,
+        &SplitConformalOptions { horizon: 0, ..base },
+        naive_base
+    )
+    .is_err());
+    assert!(split_conformal(
+        &y,
+        &SplitConformalOptions { alpha: 0.0, ..base },
+        naive_base
+    )
+    .is_err());
     let mut bad = y.clone();
     bad[10] = f64::NAN;
     assert!(matches!(
@@ -555,7 +569,14 @@ fn aci_teaching_errors() {
         n_eval: 20,
     };
     assert!(matches!(
-        aci(&y, &AciOptions { gamma: -0.1, ..base }, naive_base),
+        aci(
+            &y,
+            &AciOptions {
+                gamma: -0.1,
+                ..base
+            },
+            naive_base
+        ),
         Err(ForecastError::InvalidConformalParam { what: "gamma", .. })
     ));
     assert!(matches!(

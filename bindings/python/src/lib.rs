@@ -6452,10 +6452,7 @@ fn conformal_forecast<'py>(
             d.set_item("n_calib", r.n_calib)?;
             d.set_item("q_lower", r.q_lower.into_pyarray(py))?;
             d.set_item("q_upper", r.q_upper.into_pyarray(py))?;
-            let scores = PyList::new(
-                py,
-                r.scores.into_iter().map(|s| s.into_pyarray(py)),
-            )?;
+            let scores = PyList::new(py, r.scores.into_iter().map(|s| s.into_pyarray(py)))?;
             d.set_item("scores", scores)?;
             d.set_item("finite_sample_level", r.finite_sample_level)?;
             d.set_item("mode", mode)?;
@@ -6511,9 +6508,7 @@ fn conformal_forecast<'py>(
             d.set_item("gamma", r.gamma)?;
             d.set_item("alpha_final", r.alpha_final.into_pyarray(py))?;
             let online = r.online;
-            let traj = online
-                .alpha_trajectory
-                .unwrap_or_default();
+            let traj = online.alpha_trajectory.unwrap_or_default();
             d.set_item(
                 "alpha_trajectory",
                 PyList::new(py, traj.into_iter().map(|t| t.into_pyarray(py)))?,

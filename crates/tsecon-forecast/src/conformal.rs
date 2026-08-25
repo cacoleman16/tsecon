@@ -441,8 +441,7 @@ where
     check_steps(opts.horizon)?;
     check_alpha(opts.alpha)?;
     check_calib(opts.calib, opts.alpha, opts.symmetric, WHAT)?;
-    let (_origins, resid, _fc) =
-        residual_grid(y, opts.horizon, opts.calib, WHAT, &mut forecaster)?;
+    let (_origins, resid, _fc) = residual_grid(y, opts.horizon, opts.calib, WHAT, &mut forecaster)?;
     let mean = forward_forecast(y, opts.horizon, &mut forecaster)?;
 
     let mut lower = Vec::with_capacity(opts.horizon);
@@ -727,11 +726,7 @@ pub struct AciForecast {
 /// As [`split_conformal_online`], plus a non-finite or negative `gamma` is
 /// [`ForecastError::InvalidConformalParam`] (`gamma = 0` is allowed and
 /// reduces ACI to rolling split conformal — useful as a control).
-pub fn aci<F>(
-    y: &[f64],
-    opts: &AciOptions,
-    mut forecaster: F,
-) -> Result<AciForecast, ForecastError>
+pub fn aci<F>(y: &[f64], opts: &AciOptions, mut forecaster: F) -> Result<AciForecast, ForecastError>
 where
     F: FnMut(&[f64], usize) -> Result<Vec<f64>, ForecastError>,
 {
@@ -749,7 +744,8 @@ where
         return Err(ForecastError::InvalidConformalParam {
             what: "n_eval",
             value: 0.0,
-            requirement: "n_eval >= 1 online origins (the alpha_t recursion needs a window to run over)",
+            requirement:
+                "n_eval >= 1 online origins (the alpha_t recursion needs a window to run over)",
         });
     }
     if opts.calib < opts.horizon - 1 {
@@ -1022,8 +1018,8 @@ fn fit_enbpi_ensemble(
 
     // Bootstrap index draws: one Philox substream per model, so results are
     // reproducible bit-for-bit regardless of evaluation order.
-    let mut streams =
-        Stream::substreams(opts.seed, opts.n_boot).map_err(tsecon_bootstrap::BootstrapError::from)?;
+    let mut streams = Stream::substreams(opts.seed, opts.n_boot)
+        .map_err(tsecon_bootstrap::BootstrapError::from)?;
     let mut coef = Vec::with_capacity(opts.n_boot);
     let mut in_bag = vec![vec![false; t_rows]; opts.n_boot];
     for (b, stream) in streams.iter_mut().enumerate() {
@@ -1031,7 +1027,11 @@ fn fit_enbpi_ensemble(
         for &i in &sample {
             in_bag[b][i] = true;
         }
-        coef.push(fit_ar_ols_rows(y, lags, &sample.iter().map(|&i| row_index(i)).collect::<Vec<_>>())?);
+        coef.push(fit_ar_ols_rows(
+            y,
+            lags,
+            &sample.iter().map(|&i| row_index(i)).collect::<Vec<_>>(),
+        )?);
     }
 
     // Leave-one-out residuals in time order.
@@ -1066,8 +1066,7 @@ fn fit_enbpi_ensemble(
         return Err(ForecastError::InvalidConformalParam {
             what: "n_boot",
             value: opts.n_boot as f64,
-            requirement:
-                "an ensemble large enough that some bootstrap sample excludes some row \
+            requirement: "an ensemble large enough that some bootstrap sample excludes some row \
                  (n_boot >= 20 makes exclusion failures vanishingly rare)",
         });
     }
@@ -1376,7 +1375,8 @@ pub fn ar_forecast(y: &[f64], lags: usize, steps: usize) -> Result<Vec<f64>, For
         return Err(ForecastError::InvalidConformalParam {
             what: "lags",
             value: 0.0,
-            requirement: "lags >= 1 (an AR(0) base would be the historical mean; use base \"mean\")",
+            requirement:
+                "lags >= 1 (an AR(0) base would be the historical mean; use base \"mean\")",
         });
     }
     // lags + 2 design rows for lags + 1 coefficients plus one residual df.

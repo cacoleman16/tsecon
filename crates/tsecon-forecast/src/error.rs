@@ -565,10 +565,9 @@ impl fmt::Display for ForecastError {
                  collinear, so no AR fit exists. A constant series needs no \
                  interval; otherwise reduce lags or supply more data"
             ),
-            ForecastError::BaseForecaster { message } => write!(
-                f,
-                "conformal base forecaster failed: {message}"
-            ),
+            ForecastError::BaseForecaster { message } => {
+                write!(f, "conformal base forecaster failed: {message}")
+            }
             ForecastError::Bootstrap(e) => write!(f, "bootstrap error: {e}"),
             ForecastError::Stats(e) => write!(f, "distribution error: {e}"),
             ForecastError::Hac(e) => write!(f, "long-run-variance error: {e}"),
