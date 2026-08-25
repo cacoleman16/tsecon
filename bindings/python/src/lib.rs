@@ -6280,6 +6280,11 @@ fn parse_conformal_order(order: Option<Vec<i64>>) -> PyResult<(usize, usize, usi
     }
 }
 
+/// The boxed base-forecaster closure the conformal entry points share:
+/// (training slice, horizon) -> point forecasts.
+type ConformalBaseFn =
+    Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, tsecon_forecast::ForecastError>>;
+
 /// Build the base point-forecaster closure shared by the conformal entry
 /// points. Every base sees only the training slice it is handed.
 fn conformal_base(
@@ -6287,14 +6292,14 @@ fn conformal_base(
     period: usize,
     lags: usize,
     order: (usize, usize, usize),
-) -> PyResult<Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, tsecon_forecast::ForecastError>>> {
+) -> PyResult<ConformalBaseFn> {
     use tsecon_forecast::{
         ar_forecast, drift, historical_mean, naive, seasonal_naive, theta_forecast, ForecastError,
     };
     let wrap = |e: tsecon_arima::ArimaError| ForecastError::BaseForecaster {
         message: e.to_string(),
     };
-    let f: Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, ForecastError>> = match base {
+    let f: ConformalBaseFn = match base {
         "theta" => Box::new(move |train, h| Ok(theta_forecast(train, period, h)?.forecast)),
         "naive" => Box::new(|train, h| Ok(naive(train, h, 0.95)?.mean)),
         "drift" => Box::new(|train, h| Ok(drift(train, h, 0.95)?.mean)),
