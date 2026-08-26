@@ -25,30 +25,28 @@ here, so that is what is labelled.
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1235 passed, 0 failed, 7 ignored** | `for c in <41 crates>; do cargo test -p $c; done`, summed |
-| — integration tests in `crates/*/tests/` | 1028 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 162 | |
-| — documentation tests | 45 | |
+| Rust tests (total) | **1622 passed, 0 failed, 9 ignored** | `cargo test --workspace`, result lines summed |
+| — integration tests in `crates/*/tests/` | 1351 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 217 | |
+| — documentation tests | 54 | |
 | Python binding tests | **1192 passed, 0 failed, 0 skipped** in 350 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
-| Golden fixtures | 84 JSON files, produced by 66 generator scripts | `fixtures/` |
+| Golden fixtures | 88 JSON files, produced by 69 generator scripts | `fixtures/` |
 | Public Python functions | 155, of which **152** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
 
-All 7 ignored tests are in `tsecon-var`, and each `#[ignore]` gives its reason:
-three stored-bit-pattern fingerprints that are platform-specific, three
-release-only Monte Carlo runs, and one timing test.
+Of the 9 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
+fingerprints that are platform-specific, three release-only Monte Carlo runs,
+and one timing test) and 2 are in `tsecon-panel` (the LP-DiD and SPJ
+release-only Monte Carlo runs); each `#[ignore]` states its reason.
 
-Of the 1028 Rust integration tests, **214 are golden tests** and **392 are
-property tests**. The goldens live in 47 files across 37 crates — `golden.rs` in
-each of those 37, plus `golden_bse.rs`, `engle_granger_golden.rs`,
-`advisors_golden.rs`, `phillips_golden.rs`, `unitroot_golden.rs`,
-`smooth_golden.rs`, `pmg_golden.rs`, `simultaneous_golden.rs`,
-`irf_bands_golden.rs` and `proxy_bands_golden.rs`. The property tests live in 41
-files across 35 crates — `properties.rs` in each of those 35, plus
-`advisors_properties.rs`, `phillips_properties.rs`, `unitroot_properties.rs`,
-`smooth_properties.rs`, `pmg_properties.rs` and `simultaneous_properties.rs`.
-The remainder are validation (111 tests in 11 `*validation*.rs` files),
-cross-check, and reproducibility suites described below.
+Of the 1351 Rust integration tests, **276 are golden tests** and **549 are
+property tests**. The goldens live in 64 `*golden*.rs` files across 39 crates
+(`golden.rs` in most, with additional per-surface files such as
+`engle_granger_golden.rs`, `irf_bands_golden.rs`, `proxy_bands_golden.rs`,
+`ou_golden.rs`, and `dcs_golden.rs`); the property tests live in 54
+`*propert*.rs` files across 38 crates. The remainder are validation (111 tests
+in 11 `*validation*.rs` files), cross-check, and reproducibility suites
+described below.
 
 ---
 
