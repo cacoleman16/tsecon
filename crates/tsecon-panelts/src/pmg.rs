@@ -105,10 +105,24 @@ use tsecon_linalg::faer::{Mat, Side};
 use crate::error::PanelTsError;
 use crate::mg::{validate_units, PanelUnit};
 
-/// Maximum number of back-substitution iterations before declaring failure.
-const MAX_ITER: usize = 1000;
-/// Convergence tolerance on the max-abs change in `theta` between iterations.
-const TOL: f64 = 1e-12;
+/// Default maximum number of back-substitution iterations before declaring
+/// failure ([`pmg`]; override through [`pmg_with`]).
+pub const DEFAULT_MAX_ITER: usize = 1000;
+/// Default *relative* convergence tolerance ([`pmg`]; override through
+/// [`pmg_with`]): the iteration stops when
+/// `|dtheta|_inf <= tol * (1 + |theta|_inf)`.
+///
+/// The rule is relative because the floating-point noise floor of the pooled
+/// Cholesky solve scales with the magnitude of `theta` and of the partialled
+/// regressors. With integrated (I(1)) regressors — the textbook PMG input —
+/// the cross-products in `A` and `b` are large enough that consecutive
+/// solves differ by more than any fixed absolute threshold near the fixed
+/// point, so an absolute `|dtheta|_inf < 1e-12` rule failed on well-behaved
+/// panels purely as a function of the regressors' scale (measured: 14/20
+/// seeds of a stable N = 10, T = 150 error-correction DGP with I(1) x, 0/20
+/// with the same DGP and I(0) x, 16/20 with the I(1) x multiplied by 100).
+/// The `1 +` term keeps the rule meaningful when `theta` is near zero.
+pub const DEFAULT_TOL: f64 = 1e-12;
 
 /// A fitted pooled-mean-group (PMG) estimate for an ARDL(1,1) panel.
 ///
@@ -295,6 +309,11 @@ fn pooled_system(
 /// speed `phi_bar`, the per-unit `phi_i`, the per-unit `sigma_i^2`, and the
 /// maximized log-likelihood.
 ///
+/// Convergence is declared when the max-abs update satisfies the *relative*
+/// rule `|dtheta|_inf <= DEFAULT_TOL * (1 + |theta|_inf)` (see
+/// [`DEFAULT_TOL`] for why the rule must be relative), within
+/// [`DEFAULT_MAX_ITER`] iterations. [`pmg_with`] exposes both knobs.
+///
 /// # Errors
 ///
 /// [`PanelTsError::TooFewUnits`] for `N < 2`; [`PanelTsError::NoRegressors`],
@@ -306,6 +325,39 @@ fn pooled_system(
 /// not positive definite; [`PanelTsError::PmgNotConverged`] if the iteration
 /// does not converge within the internal budget.
 pub fn pmg(units: &[PanelUnit]) -> Result<PooledMeanGroup, PanelTsError> {
+    pmg_with(units, DEFAULT_TOL, DEFAULT_MAX_ITER)
+}
+
+/// [`pmg`] with an explicit convergence tolerance and iteration budget.
+///
+/// `tol` is *relative*: the back-substitution stops when
+/// `|dtheta|_inf <= tol * (1 + |theta|_inf)` between consecutive iterates
+/// (`|.|_inf` the max-abs norm). [`DEFAULT_TOL`] documents why an absolute
+/// rule is scale-dependent and fails on integrated regressors. `max_iter`
+/// caps the number of back-substitution iterations.
+///
+/// # Errors
+///
+/// Everything [`pmg`] can return, plus
+/// [`PanelTsError::PmgInvalidOption`] when `tol` is not a strictly positive
+/// finite number or `max_iter` is zero.
+pub fn pmg_with(
+    units: &[PanelUnit],
+    tol: f64,
+    max_iter: usize,
+) -> Result<PooledMeanGroup, PanelTsError> {
+    if !(tol > 0.0 && tol.is_finite()) {
+        return Err(PanelTsError::PmgInvalidOption {
+            what: "tol must be a strictly positive finite number (it is a relative \
+                   tolerance on the max-abs update of theta; the default is 1e-12)",
+        });
+    }
+    if max_iter == 0 {
+        return Err(PanelTsError::PmgInvalidOption {
+            what: "max_iter must be at least 1 (the default budget is 1000 \
+                   back-substitution iterations)",
+        });
+    }
     let k = validate_units(units)?;
     let n = units.len();
 
@@ -321,7 +373,7 @@ pub fn pmg(units: &[PanelUnit]) -> Result<PooledMeanGroup, PanelTsError> {
     let mut iterations = 0;
     let mut converged = false;
 
-    for iter in 1..=MAX_ITER {
+    for iter in 1..=max_iter {
         let (phi_new, sigma2_new) = phi_sigma_given_theta(&prepared, &theta);
         let (a_mat, b_mat) = pooled_system(&prepared, &phi_new, &sigma2_new, k);
         let a_inv = a_mat
@@ -336,18 +388,30 @@ pub fn pmg(units: &[PanelUnit]) -> Result<PooledMeanGroup, PanelTsError> {
             .zip(theta.iter())
             .map(|(a, b)| (a - b).abs())
             .fold(0.0_f64, f64::max);
+        let theta_inf = theta_new
+            .iter()
+            .map(|v| v.abs())
+            .fold(0.0_f64, f64::max);
 
         theta = theta_new;
         iterations = iter;
 
-        if delta < TOL {
+        // Relative stopping rule: the update is below `tol` *relative to the
+        // size of theta itself* (plus 1, so a theta near zero is still held
+        // to an absolute `tol`). An absolute rule here sits below the float
+        // noise floor of the pooled Cholesky solve whenever the regressors
+        // are integrated or simply large — see `DEFAULT_TOL`.
+        if delta <= tol * (1.0 + theta_inf) {
             converged = true;
             break;
         }
     }
 
     if !converged {
-        return Err(PanelTsError::PmgNotConverged { iters: MAX_ITER });
+        return Err(PanelTsError::PmgNotConverged {
+            iters: max_iter,
+            tol,
+        });
     }
 
     // Compute phi / sigma2 at the converged theta so all reported quantities

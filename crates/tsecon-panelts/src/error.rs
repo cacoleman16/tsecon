@@ -86,6 +86,13 @@ pub enum PanelTsError {
     PmgNotConverged {
         /// The number of iterations attempted before giving up.
         iters: usize,
+        /// The relative tolerance the max-abs `theta` update was held to.
+        tol: f64,
+    },
+    /// A caller-supplied PMG option (`tol`, `max_iter`) was out of range.
+    PmgInvalidOption {
+        /// Which option, what it must satisfy, and its default.
+        what: &'static str,
     },
     /// An error propagated from the `tsecon-stats` distribution layer used for
     /// the mean-group p-values and confidence bands.
@@ -156,12 +163,17 @@ impl fmt::Display for PanelTsError {
                  across the panel, so the pooled long-run coefficient theta is \
                  not identified"
             ),
-            Self::PmgNotConverged { iters } => write!(
+            Self::PmgNotConverged { iters, tol } => write!(
                 f,
-                "the pooled-mean-group concentrated-likelihood iteration did not \
-                 converge within {iters} iterations; the panel may be too short \
-                 or too weakly cointegrated to pin the pooled long run"
+                "the pooled-mean-group back-substitution had not met its relative \
+                 tolerance ({tol:.1e} on the max-abs theta update) after {iters} \
+                 iteration(s) — the pooled long-run estimate was still moving. \
+                 Raise max_iter, or loosen tol if updates this small are \
+                 acceptable for your use; the last iterate is not returned \
+                 because it is not a verified fixed point of the concentrated \
+                 likelihood"
             ),
+            Self::PmgInvalidOption { what } => write!(f, "invalid PMG option: {what}"),
             Self::Stats(e) => write!(f, "distribution error: {e}"),
         }
     }

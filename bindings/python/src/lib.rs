@@ -2670,6 +2670,24 @@ fn mcmc_diagnostics<'py>(
 /// information (statsmodels `cov_type="approx"`). Both are `None` with
 /// `cov_ok=False` when the information matrix is too ill-conditioned to
 /// invert honestly, which is a refusal, not a failure of the fit.
+///
+/// **Convergence and boundary flags.** `converged` reports whether the
+/// optimizer terminated by its convergence test (the best point found is
+/// returned either way — with `converged=False` treat it with care).
+/// `boundary` flags, per parameter, membership of an AR or MA block whose
+/// fitted polynomial has a root within 0.1% of the unit circle (the same
+/// epsilon `auto_arima` uses for admissibility): at such a
+/// stationarity/invertibility boundary the observed information is
+/// singular in the constrained direction by construction, the sampling
+/// distribution is non-standard (an MA root at the unit circle is the
+/// classic over-differencing pile-up), and no classical standard error
+/// exists — those `bse` entries are NaN with `se_valid` False, and
+/// `boundary_note` (a string, else None) says which block and why.
+/// Interior parameters' `bse` still come from the *full-vector* observed
+/// information, which a boundary degrades: treat them as approximate.
+/// Reduced-Hessian interior standard errors over the free directions only
+/// (the garch treatment) are a documented follow-up. `se_valid` is all
+/// False when `cov_ok` is False.
 #[pyfunction]
 #[pyo3(signature = (y, p = 1, d = 0, q = 0, seasonal = None, constant = true,
                     forecast_steps = 0, conf_alpha = None, drift_uncertainty = false))]
@@ -2734,9 +2752,10 @@ fn arima_fit<'py>(
 
 /// A fitted `ArimaResults` as the `arima_fit` result dict (shared by
 /// `arima_fit` and `auto_arima`, so the selected model's keys are the
-/// same either way): params/param_names/loglik/aic/bic, the
-/// refusal-capable bse/param_cov/cov_ok(/cov_error), residuals, and —
-/// when `forecast_steps > 0` — forecast_mean/forecast_se plus the
+/// same either way): params/param_names/loglik/aic/bic, `converged`, the
+/// refusal-capable bse/param_cov/cov_ok(/cov_error) with the
+/// boundary-aware se_valid/boundary/boundary_note flags, residuals, and
+/// — when `forecast_steps > 0` — forecast_mean/forecast_se plus the
 /// conf_alpha bands.
 fn arima_results_dict<'py>(
     py: Python<'py>,
@@ -2751,26 +2770,59 @@ fn arima_results_dict<'py>(
     dct.set_item("loglik", r.loglik)?;
     dct.set_item("aic", r.aic)?;
     dct.set_item("bic", r.bic)?;
+    // The optimizer's convergence certificate (the crate has carried it
+    // since the first release; the binding used to drop it). `false` means
+    // the reported parameters are the best point found, not a certified
+    // optimum — treat everything downstream with care.
+    dct.set_item("converged", r.converged)?;
+    // Stationarity/invertibility boundary proximity (the garch round-7
+    // pattern): parameters in an AR/MA block whose fitted polynomial has a
+    // root within 0.1% of the unit circle have no classical standard
+    // error — the observed information is singular in that direction by
+    // construction — so their bse entries are NaN'd with se_valid false
+    // and boundary_note says why.
+    let boundary = r.boundary();
+    let any_boundary = boundary.iter().any(|&b| b);
     // Parameter covariance is a refusal-capable diagnostic: an information
     // matrix too ill-conditioned to invert honestly yields None rather than
     // confident nonsense, and must never take down an otherwise-valid fit.
     match r.param_cov() {
         Ok(pc) => {
             let k = pc.k();
-            dct.set_item("bse", pc.se().to_vec().into_pyarray(py))?;
+            let mut bse = pc.se().to_vec();
+            if any_boundary {
+                for (s, &b) in bse.iter_mut().zip(boundary.iter()) {
+                    if b {
+                        *s = f64::NAN;
+                    }
+                }
+            }
+            let se_valid: Vec<bool> = bse
+                .iter()
+                .zip(boundary.iter())
+                .map(|(s, &b)| !b && s.is_finite())
+                .collect();
+            dct.set_item("bse", bse.into_pyarray(py))?;
             dct.set_item(
                 "param_cov",
                 pc.cov().to_vec().into_pyarray(py).reshape([k, k])?,
             )?;
             dct.set_item("cov_ok", true)?;
+            dct.set_item("se_valid", se_valid.into_pyarray(py))?;
         }
         Err(e) => {
             dct.set_item("bse", py.None())?;
             dct.set_item("param_cov", py.None())?;
             dct.set_item("cov_ok", false)?;
             dct.set_item("cov_error", e.to_string())?;
+            dct.set_item(
+                "se_valid",
+                vec![false; r.params().len()].into_pyarray(py),
+            )?;
         }
     }
+    dct.set_item("boundary", boundary.into_pyarray(py))?;
+    dct.set_item("boundary_note", r.boundary_note())?;
     if forecast_steps > 0 {
         let fc = if drift_uncertainty {
             r.forecast_with(
@@ -2824,9 +2876,11 @@ fn arima_results_dict<'py>(
 /// ARIMAX yet).
 ///
 /// Returns the `arima_fit` result dict for the selected model (same
-/// keys: params, param_names, loglik, aic, bic, bse, param_cov, cov_ok,
-/// residuals, plus forecast keys when `forecast_steps > 0`) with the
-/// selection extras: `order` (p, d, q), `seasonal_order` (P, D, Q, s —
+/// keys: params, param_names, loglik, aic, bic, converged, bse,
+/// param_cov, cov_ok, se_valid, boundary, boundary_note, residuals, plus
+/// forecast keys when `forecast_steps > 0`; the boundary flags are False
+/// in practice here, since near-unit-root candidates are never selected)
+/// with the selection extras: `order` (p, d, q), `seasonal_order` (P, D, Q, s —
 /// all zero when non-seasonal), `constant`, `converged`, `ic`,
 /// `ic_value`, `aicc`, `stepwise`, `n_models`, `budget_exhausted`,
 /// `trace` (one dict per candidate tried: `order`, `seasonal_order`,
@@ -7563,6 +7617,17 @@ fn panel_mean_group<'py>(
 /// using exactly the observations that are present at the edge. Returns the
 /// edge `nowcast` (one level per series), the `edge_factor`, the Gaussian
 /// `loglik`, the `smoothed_factors` (`T x r`), and `n_factors`/`factor_order`.
+///
+/// With `method="mle"` the dict additionally carries `converged` and
+/// `iterations`: `converged` is the certificate of the optimizer stage
+/// whose point is reported (the BFGS polish's gradient-norm test when the
+/// polish improved on the Nelder-Mead optimum — the usual case — else the
+/// Nelder-Mead simplex-tolerance test), and `iterations` is the total
+/// across both stages. `converged=False` means the reported parameters
+/// are the best point found within the budget, not a certified optimum.
+/// The default `method="two_step"` runs no iterative optimizer (PCA +
+/// OLS + one Kalman pass are closed-form), so it carries neither key —
+/// there is no convergence certificate to report, honestly or otherwise.
 #[pyfunction]
 #[pyo3(signature = (data, n_factors = 1, factor_order = 2, method = "two_step"))]
 fn dfm_nowcast<'py>(
@@ -7616,6 +7681,13 @@ fn dfm_nowcast<'py>(
     d.set_item("smoothed_factors", factors)?;
     d.set_item("n_factors", nc.n_factors())?;
     d.set_item("factor_order", nc.factor_order())?;
+    // MLE only: the optimizer's convergence certificate and total
+    // iterations. The two-step route has no optimizer, so the keys are
+    // deliberately absent there rather than invented.
+    if let (Some(conv), Some(iters)) = (nc.mle_converged(), nc.mle_iterations()) {
+        d.set_item("converged", conv)?;
+        d.set_item("iterations", iters)?;
+    }
     Ok(d)
 }
 
@@ -7631,11 +7703,26 @@ fn dfm_nowcast<'py>(
 /// `phi_bar`, the per-unit speeds `phi`, per-unit innovation variances
 /// `sigma2`, the `loglik`, and iteration/shape info. Complements the
 /// mean-group and CCE-MG estimators: PMG pools the long run, they do not.
+///
+/// `tol` is the *relative* convergence tolerance of the concentrated-ML
+/// back-substitution: the iteration stops when the max-abs update of theta
+/// satisfies `|dtheta|_inf <= tol * (1 + |theta|_inf)`, within `max_iter`
+/// iterations. The rule is relative because the float noise floor of the
+/// pooled solve scales with the size of theta and of the regressors — an
+/// absolute rule at the same 1e-12 value hard-failed textbook I(1) panels
+/// as a pure function of scale (14/20 seeds of a stable N=10, T=150
+/// error-correction DGP with I(1) x; 0/20 with I(0) x; 16/20 with the
+/// same I(1) x scaled by 100). Non-convergence within `max_iter` raises
+/// (the last iterate is not a verified fixed point); raise `max_iter` or
+/// loosen `tol` if that happens on genuinely slow-mixing panels.
 #[pyfunction]
+#[pyo3(signature = (ys, xs, tol = 1e-12, max_iter = 1000))]
 fn panel_pmg<'py>(
     py: Python<'py>,
     ys: Vec<PyReadonlyArray1<'py, f64>>,
     xs: Vec<numpy::PyReadonlyArray2<'py, f64>>,
+    tol: f64,
+    max_iter: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     if ys.len() != xs.len() {
         return Err(PyValueError::new_err(format!(
@@ -7650,7 +7737,7 @@ fn panel_pmg<'py>(
         let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
         units.push(tsecon_panelts::PanelUnit::new(vec1(yi), cols));
     }
-    let r = tsecon_panelts::pmg(&units).map_err(to_py)?;
+    let r = tsecon_panelts::pmg_with(&units, tol, max_iter).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("theta", r.theta.clone().into_pyarray(py))?;
     d.set_item("theta_se", r.theta_se.clone().into_pyarray(py))?;
@@ -8574,7 +8661,14 @@ fn quantile_regression<'py>(
 /// `y` and `shock` (tsecon-lp design conventions; the impulse coefficient is
 /// design column 0). Matches statsmodels `QuantReg` per (tau, horizon) on
 /// the identical design at 1e-6; `se` is the Powell kernel sandwich.
-/// `taus` defaults to [0.1, 0.5, 0.9]. Returns `irf[tau][h]`, `se[tau][h]`.
+/// `taus` defaults to [0.1, 0.5, 0.9]. Returns `irf[tau][h]`, `se[tau][h]`,
+/// and `converged[tau][h]` — the per-fit IRLS convergence flag. A False
+/// entry means that (tau, horizon) fit hit the 1000-iteration IRLS cap
+/// before the max-abs coefficient change dropped to the shared 1e-6
+/// tolerance: its `irf`/`se` entries are the last iterate, not a verified
+/// check-loss minimum (statsmodels QuantReg warns in the same situation;
+/// here it is a per-fit flag), so do not quote that point of the IRF
+/// without refitting (fewer lags, less extreme tau, or more data).
 #[pyfunction]
 #[pyo3(signature = (y, shock, taus = None, horizons = 12, n_lag_controls = 4))]
 fn quantile_lp<'py>(
@@ -8600,6 +8694,9 @@ fn quantile_lp<'py>(
     )?;
     d.set_item("irf", r.irf)?;
     d.set_item("se", r.se)?;
+    // Per-fit IRLS convergence, same [tau][h] shape as irf/se (this flag
+    // was tracked by the shared engine all along; the binding dropped it).
+    d.set_item("converged", r.converged)?;
     Ok(d)
 }
 
@@ -8617,6 +8714,15 @@ fn quantile_lp<'py>(
 /// Matches statsmodels `QuantReg` per tau plus a numpy sort at 1e-6.
 /// `taus` must be strictly increasing; defaults to
 /// [0.05, 0.25, 0.5, 0.75, 0.95]. Requires `horizon >= 1`.
+///
+/// `converged` is the per-tau IRLS convergence flag (one bool per tau,
+/// aligned with `params`). A False entry means that tau's fit hit the
+/// 1000-iteration IRLS cap before the max-abs coefficient change dropped
+/// to the shared 1e-6 tolerance: its coefficients — and every fitted
+/// quantile, the rearrangement, and the `current` risk read built from
+/// them — are the last iterate, not a verified check-loss minimum
+/// (statsmodels QuantReg warns in the same situation). Do not quote that
+/// tau's risk read without refitting.
 #[pyfunction]
 #[pyo3(signature = (y, conditions, horizon = 1, taus = None, rearrange = true))]
 fn growth_at_risk<'py>(
@@ -8648,6 +8754,9 @@ fn growth_at_risk<'py>(
     d.set_item("fitted_raw", r.fitted_raw)?;
     d.set_item("crossing", r.crossing)?;
     d.set_item("current", r.current.into_pyarray(py))?;
+    // Per-tau IRLS convergence, aligned with params/bse (tracked by the
+    // shared engine all along; the binding dropped it).
+    d.set_item("converged", r.converged)?;
     Ok(d)
 }
 

@@ -69,6 +69,14 @@ pub struct GrowthAtRisk {
     /// The Newey-West lag truncation used for [`Self::bse`]: `horizon - 1`,
     /// the exact MA order the overlap induces in the check-loss score.
     pub hac_lags: usize,
+    /// Per-tau IRLS convergence flags (same indexing as [`Self::params`]).
+    /// `false` means that tau's fit hit the 1000-iteration IRLS cap before
+    /// the max-abs coefficient change dropped to the shared `1e-6`
+    /// tolerance: the reported coefficients (and every fitted quantile
+    /// built from them) are the last iterate, not a verified check-loss
+    /// minimum (statsmodels `QuantReg` warns in the same situation; here
+    /// it is reported per tau instead).
+    pub converged: Vec<bool>,
     /// Raw fitted conditional quantiles `x_t' beta_tau` at EVERY
     /// `t = 0..n-1` (not just the estimation sample), indexed
     /// `fitted_raw[tau_index][t]`.
@@ -198,6 +206,7 @@ pub fn growth_at_risk(
         bse,
         bse_powell: fits.iter().map(|f| f.bse.clone()).collect(),
         hac_lags,
+        converged: fits.iter().map(|f| f.converged).collect(),
         fitted_raw,
         fitted,
         crossing,

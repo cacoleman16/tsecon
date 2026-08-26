@@ -247,3 +247,30 @@ fn fit_mle_rejects_zero_factor_order() {
     let err = Nowcaster::fit_mle(y.as_ref(), 0);
     assert!(err.is_err());
 }
+
+#[test]
+fn fit_mle_reports_the_optimizer_certificate_and_two_step_does_not() {
+    // The MLE route surfaces the certificate of the stage whose point it
+    // reports (BFGS polish, or Nelder-Mead when the polish fails to
+    // improve) plus the total iteration count; the two-step route runs no
+    // iterative optimizer, so it honestly carries neither.
+    let nc = fitted_mle();
+    let conv = nc
+        .mle_converged()
+        .expect("an MLE fit exposes its convergence certificate");
+    let iters = nc
+        .mle_iterations()
+        .expect("an MLE fit exposes its iteration count");
+    println!("mle converged = {conv}, iterations = {iters}");
+    assert!(iters > 0, "the optimizer must have iterated at least once");
+    assert!(
+        conv,
+        "the fixture fit should carry a convergence certificate; if this \
+         starts failing, the budget in fit_mle_single_factor regressed"
+    );
+
+    let two = Nowcaster::fit_two_step(panel().as_ref(), 1, factor_order())
+        .expect("two-step fits the fixture panel");
+    assert_eq!(two.mle_converged(), None);
+    assert_eq!(two.mle_iterations(), None);
+}

@@ -58,7 +58,7 @@ pub mod pmg;
 pub use cce::cce_mean_group;
 pub use error::PanelTsError;
 pub use mg::{mean_group, MeanGroup, PanelUnit};
-pub use pmg::{pmg, PooledMeanGroup};
+pub use pmg::{pmg, pmg_with, PooledMeanGroup, DEFAULT_MAX_ITER, DEFAULT_TOL};
 
 // Re-export the OLS backend so downstream users see one `tsecon-hac` version
 // and can inspect the per-unit fits with the same types this crate consumes.
