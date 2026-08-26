@@ -345,7 +345,7 @@ fn purged_kfold_excludes_all_leaky_indices() {
         }
         assert!(tested.iter().all(|&t| t), "some index never tested");
 
-        let right = purge.max(embargo);
+        let right = purge + embargo;
         for s in &splits {
             let ts = *s.test.first().unwrap();
             let te = s.test.last().unwrap() + 1; // exclusive end
@@ -359,7 +359,8 @@ fn purged_kfold_excludes_all_leaky_indices() {
                         "train index {i} within purge {purge} before test start {ts}"
                     );
                 }
-                // Outside the right purge/embargo band [te, te + max(purge,embargo)).
+                // Outside the right purge-then-embargo band
+                // [te, te + purge + embargo) — the exclusions add (AFML ch. 7).
                 if i >= te {
                     assert!(
                         i - te >= right,
@@ -369,6 +370,83 @@ fn purged_kfold_excludes_all_leaky_indices() {
             }
         }
     }
+}
+
+/// Field fix (report item 11): the purged K-fold right-hand gap is
+/// `purge + embargo`, the additive AFML ch. 7 convention (the embargo is
+/// measured from the END of the purged window), not `max(purge, embargo)`.
+/// The measured gap — first training index after the test block minus the
+/// test block's exclusive end — must equal `purge + embargo` exactly on
+/// interior folds, and an embargo must never be absorbed by the purge.
+#[test]
+fn purged_kfold_right_gap_is_purge_plus_embargo() {
+    // (purge, embargo, expected right gap): the reporter's measured cases.
+    let cases = [
+        (21usize, 0usize, 21usize),
+        (0, 10, 10),
+        (21, 10, 31),
+        (21, 30, 51),
+    ];
+    let (n, k) = (300usize, 4usize); // blocks of 75: every gap below fits.
+    for &(purge, embargo, want) in &cases {
+        let splits = purged_kfold_splits(n, k, purge, embargo).unwrap();
+        for (b, s) in splits.iter().enumerate().take(k - 1) {
+            let te = s.test.last().unwrap() + 1;
+            let first_right = *s
+                .train
+                .iter()
+                .find(|&&i| i >= te)
+                .unwrap_or_else(|| panic!("fold {b}: no training index after the test block"));
+            assert_eq!(
+                first_right - te,
+                want,
+                "fold {b}: right gap for (purge={purge}, embargo={embargo})"
+            );
+            // The left gap stays purge-only (no left embargo).
+            let ts = *s.test.first().unwrap();
+            if ts > 0 {
+                let last_left = *s.train.iter().rev().find(|&&i| i < ts).unwrap();
+                assert_eq!(ts - last_left - 1, purge, "fold {b}: left gap moved");
+            }
+        }
+    }
+
+    // The absorbed-embargo regression: (21, 10) must differ from (21, 0).
+    let absorbed = purged_kfold_splits(n, k, 21, 0).unwrap();
+    let additive = purged_kfold_splits(n, k, 21, 10).unwrap();
+    assert_ne!(
+        absorbed, additive,
+        "embargo=10 was absorbed by purge=21 — the pre-fix defect"
+    );
+
+    // Edge: purge = 0 leaves the embargo as the whole right band.
+    let e_only = purged_kfold_splits(100, 5, 0, 10).unwrap();
+    for s in e_only.iter().take(4) {
+        let te = s.test.last().unwrap() + 1;
+        let first_right = *s.train.iter().find(|&&i| i >= te).unwrap();
+        assert_eq!(first_right - te, 10);
+        // With purge = 0 the training set touches the test block on the left.
+        let ts = *s.test.first().unwrap();
+        if ts > 0 {
+            assert!(s.train.contains(&(ts - 1)));
+        }
+    }
+
+    // Edge: the band pushing past n just erases the right-hand training
+    // block — no panic, no wraparound. Fold 0 of (n=50, k=5, purge=0,
+    // embargo=100) keeps nothing; the last fold is untouched on the right.
+    let past_end = purged_kfold_splits(50, 5, 0, 100).unwrap();
+    assert!(
+        past_end[0].train.is_empty(),
+        "right band should swallow all"
+    );
+    assert_eq!(past_end[4].train, (0..40).collect::<Vec<_>>());
+
+    // Edge: saturating arithmetic — a usize::MAX purge/embargo must not
+    // overflow (the pre-fix expression `test_end + purge.max(embargo)`
+    // panicked in debug builds here).
+    let huge = purged_kfold_splits(10, 2, usize::MAX, 1).unwrap();
+    assert!(huge.iter().all(|s| s.train.is_empty()));
 }
 
 /// Expanding-origin training sets are strictly nested prefixes and never

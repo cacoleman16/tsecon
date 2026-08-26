@@ -7,7 +7,49 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed — **BREAKING (behavioral)**: `cv_splits(scheme="purged_kfold")` embargo now ADDS to the purge
+
+- **Field report item 11.** The purged K-fold right-hand exclusion after
+  each test block was `max(purge, embargo)` (crate:
+  `tsecon_ml::purged_kfold_splits`; Python: `cv_splits`), so the embargo
+  was silently **absorbed** whenever it was no wider than the purge:
+  `(purge=21, embargo=10)` returned splits bit-identical to
+  `(purge=21, embargo=0)`, and `(purge=21, embargo=30)` opened a
+  measured post-test gap of 30 indices instead of 51. The exclusion is
+  now `purge + embargo`: measured right-hand gaps after the fix are
+  `(21, 0) → 21`, `(0, 10) → 10`, `(21, 10) → 31`, `(21, 30) → 51`
+  (before the fix: 21, 10, **21**, **30**). The left-hand gap is
+  unchanged (purge only — there is no left embargo), as are both
+  walk-forward schemes, which take no embargo at all (a nonzero
+  `embargo` still raises on `"expanding"`/`"rolling"`).
+- **Why additive is the correct convention.** The docstrings invoke
+  López de Prado (2018, *Advances in Financial Machine Learning*, ch. 7)
+  by name, and AFML defines the two exclusions sequentially: purging
+  removes the training observations whose *label windows* overlap the
+  test block, and the embargo then removes a *further* band of
+  observations "immediately following" the test set — AFML's own
+  `PurgedKFold` (Snippet 7.3) starts the right-hand training block at
+  `indices[maxT1Idx + mbrg:]`, where `maxT1Idx` is the position at which
+  the last test label *ends* (i.e., the end of the purged region) and
+  `mbrg` is the embargo width, so the embargo is measured **from the end
+  of the purged window** and the exclusions add. mlfinlab implements the
+  same semantics (each test interval's end is extended by the embargo
+  period *before* overlap purging), and this library's own guide
+  (`docs/guide/12-machine-learning.md`, the numpy
+  `purged_kfold_splits` demo) already taught the additive rule
+  `keep = (rows <= lo - h) | (rows >= hi + h + embargo)`. Under the old
+  `max` rule, any embargo ≤ purge did nothing — a leakage guard the user
+  asked for and did not get. No compatibility flag is provided: the
+  absorbed semantics were simply wrong relative to the convention the
+  documentation invokes.
+- Anyone who passed both a nonzero `purge` and a nonzero `embargo` to
+  `purged_kfold` will see slightly smaller training sets (up to
+  `min(purge, embargo)` extra excluded rows per fold) and should expect
+  CV scores to move accordingly. Pinned by measured-gap tests on both
+  the Rust core (`purged_kfold_right_gap_is_purge_plus_embargo`) and the
+  Python surface (`test_cv_splits.py`), including embargo bands running
+  past the end of the sample (the fold simply loses its right-hand
+  training block; the arithmetic saturates instead of overflowing).
 
 ## [0.5.0] - 2026-08-25
 

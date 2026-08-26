@@ -6151,9 +6151,13 @@ fn iv_gmm<'py>(
 /// - `"rolling"`: fixed-width rolling-origin CV; `train` is the window
 ///   width.
 /// - `"purged_kfold"`: López de Prado purged K-fold with a `purge` gap on
-///   both sides of each test fold and an `embargo` after it, to prevent
-///   train/test leakage from serial correlation (`k` folds; `train` is
-///   ignored).
+///   both sides of each test fold and an `embargo` after the purged window,
+///   to prevent train/test leakage from serial correlation (`k` folds;
+///   `train` is ignored). Following AFML ch. 7 (and mlfinlab), the embargo
+///   is measured from the END of the purged window, so the exclusions ADD:
+///   the right-hand gap after each test block is `purge + embargo`
+///   indices. (Releases up to 0.5.0 used `max(purge, embargo)`, silently
+///   absorbing any embargo no wider than the purge — see the CHANGELOG.)
 ///
 /// `purge` acts on EVERY scheme: it drops the last `purge` indices from the
 /// end of each training window, opening a gap before the test block.
