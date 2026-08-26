@@ -50,6 +50,37 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   Python surface (`test_cv_splits.py`), including embargo bands running
   past the end of the sample (the fold simply loses its right-hand
   training block; the arithmetic saturates instead of overflowing).
+### Added
+
+- **`markov_switching_ar` now returns the estimated AR coefficients** under
+  the new `ar` key — a length-`order` array `(phi_1, …, phi_p)` shared across
+  regimes (the binding fits Hamilton's common-AR specification, in which the
+  AR applies to deviations `y_t − mu_{S_t}`). Previously the binding
+  estimated the AR block internally but never surfaced it, so a fitted model
+  could not be reproduced or forecast from its own results dict. Backed by a
+  new public `MsarParams::ar()` accessor in `tsecon-regime` (block shape:
+  one block when shared, `k` when switching). The Hamilton (1989)
+  replication now compares tsecon's common AR(4) against the published
+  `(0.014, −0.058, −0.247, −0.213)` and against statsmodels on identical
+  data (measured max |diff|: 0.0048 vs published, 0.0043 vs statsmodels —
+  inside the documented EM-vs-exact-MLE budget; see
+  `docs/examples/replication-hamilton-markov.md`).
+
+### Fixed
+
+- **IVX localizing sequence now indexed by the regression sample size** `N =
+  n − 1`, per Kostakis-Magdalinos-Stamatogiannis (2015): `ivx` and
+  `ivx_multi` built the instrument with `Rz = 1 + cz/n^alpha` using the raw
+  series length `n` while every other ingredient (`sigma2_u`, the instrument
+  path, `nobs`) used `N`. Both call sites now use `N`, so `Rz` is very
+  slightly smaller (less persistent instrument). Measured effect on the
+  committed goldens: `beta_ivx` moves by 8.8e-6 relative (scalar, n = 500)
+  and 6.2e-6 / 5.6e-5 relative (two-predictor, n = 600); the scalar Wald by
+  3.4e-5 relative. The independent NumPy fixture generator
+  (`fixtures/generate_predreg_fixtures.py`) shared the raw-`n` convention —
+  it was fixed identically and `fixtures/predreg.json` regenerated; all
+  golden tolerances are unchanged (1e-9), and the Monte-Carlo
+  size/power/Bonferroni property suites pass unchanged.
 
 ## [0.5.0] - 2026-08-25
 

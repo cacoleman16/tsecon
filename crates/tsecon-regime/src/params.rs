@@ -203,6 +203,18 @@ impl MsarParams {
         &self.means
     }
 
+    /// The AR coefficients in the block shape accepted by [`new`](Self::new):
+    /// outer length `1` when the AR is shared across regimes
+    /// (`switching_ar = false`, the Hamilton 1989 specification) or `k` when
+    /// it switches, one block per regime; every block has length
+    /// [`order`](Self::order), coefficients ordered `phi_1 .. phi_p`.
+    pub fn ar(&self) -> Vec<Vec<f64>> {
+        let blocks = if self.switching_ar { self.k } else { 1 };
+        (0..blocks)
+            .map(|b| self.ar[b * self.order..(b + 1) * self.order].to_vec())
+            .collect()
+    }
+
     /// The AR coefficients for regime `regime` (the shared block when the
     /// AR is not switching).
     #[inline]

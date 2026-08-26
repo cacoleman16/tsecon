@@ -12,7 +12,8 @@
 //! ## The instrument (predetermination is the crux)
 //!
 //! ```text
-//! Rz  = 1 + cz / n^alpha            (defaults cz = -1, alpha = 0.95)
+//! N   = n - 1                       (the regression sample size)
+//! Rz  = 1 + cz / N^alpha            (defaults cz = -1, alpha = 0.95)
 //! Dx_k = x[k+1] - x[k]              (k = 0 .. n-2; carries innovation e_{k+1})
 //! z_0 = 0,  z_t = Rz * z_{t-1} + Dx_{t-1}
 //!      = sum_{k=0}^{t-1} Rz^{t-1-k} Dx_k
@@ -45,14 +46,17 @@ use crate::ols::ols_predictive;
 
 /// Configuration of the IVX self-generated instrument.
 ///
-/// The instrument persistence is `Rz = 1 + cz / n^alpha`. The KMS (2015)
-/// defaults are `cz = -1`, `alpha = 0.95`; `alpha` must lie in `(0, 1)` for
-/// the "mildly integrated" asymptotics to hold.
+/// The instrument persistence is `Rz = 1 + cz / N^alpha`, indexed by the
+/// regression sample size `N = n - 1` (KMS 2015 write the localizing
+/// sequence in the sample size of the predictive regression, not the raw
+/// series length). The KMS (2015) defaults are `cz = -1`, `alpha = 0.95`;
+/// `alpha` must lie in `(0, 1)` for the "mildly integrated" asymptotics to
+/// hold.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct IvxConfig {
-    /// The (negative) localizing constant `cz` in `Rz = 1 + cz / n^alpha`.
+    /// The (negative) localizing constant `cz` in `Rz = 1 + cz / N^alpha`.
     pub cz: f64,
-    /// The exponent `alpha in (0, 1)` in `Rz = 1 + cz / n^alpha`.
+    /// The exponent `alpha in (0, 1)` in `Rz = 1 + cz / N^alpha`.
     pub alpha: f64,
 }
 
@@ -70,7 +74,7 @@ impl IvxConfig {
         if !self.cz.is_finite() || self.cz >= 0.0 {
             return Err(PredRegError::InvalidArgument {
                 what: "IVX cz must be a finite negative constant \
-                       (Rz = 1 + cz/n^alpha sits just inside the unit circle)",
+                       (Rz = 1 + cz/N^alpha sits just inside the unit circle)",
             });
         }
         if !self.alpha.is_finite() || self.alpha <= 0.0 || self.alpha >= 1.0 {
@@ -81,7 +85,9 @@ impl IvxConfig {
         Ok(())
     }
 
-    /// The instrument persistence `Rz = 1 + cz / n^alpha` for sample size `n`.
+    /// The instrument persistence `Rz = 1 + cz / n^alpha` for a sample size
+    /// `n`. The estimators pass the regression sample size `N = len(x) - 1`
+    /// here, per KMS (2015) — not the raw series length.
     #[must_use]
     pub fn rz(&self, n: usize) -> f64 {
         1.0 + self.cz / (n as f64).powf(self.alpha)
@@ -114,7 +120,7 @@ pub struct IvxResult {
     pub pvalue: f64,
     /// The self-generated instrument path `z_t`, length `N = n - 1`.
     pub instrument: Vec<f64>,
-    /// The instrument persistence `Rz = 1 + cz / n^alpha`.
+    /// The instrument persistence `Rz = 1 + cz / N^alpha` (`N = n - 1`).
     pub rz: f64,
     /// The residual variance `sum u_hat^2 / N` used in the Wald normaliser.
     pub sigma2_u: f64,
@@ -138,7 +144,9 @@ pub fn ivx(r: &[f64], x: &[f64], config: IvxConfig) -> Result<IvxResult, PredReg
     let ols_fit = ols_predictive(r, x)?;
     let big_n = ols_fit.nobs;
 
-    let rz = config.rz(x.len());
+    // The localizing sequence is indexed by the regression sample size
+    // N = n - 1 (KMS 2015), matching sigma2_u and the instrument length.
+    let rz = config.rz(big_n);
     let z = instrument(x, rz);
 
     let abar = mean(a);
@@ -184,7 +192,8 @@ pub struct IvxMultiResult {
     pub wald: f64,
     /// The chi-square(`q`) p-value.
     pub pvalue: f64,
-    /// The instrument persistence `Rz = 1 + cz / n^alpha` (shared scalar).
+    /// The instrument persistence `Rz = 1 + cz / N^alpha` (shared scalar,
+    /// `N = n - 1`).
     pub rz: f64,
     /// The residual variance `sum u_hat^2 / N` used in the Wald normaliser.
     pub sigma2_u: f64,
@@ -266,8 +275,9 @@ pub fn ivx_multi(
     let ols_fit = tsecon_hac::ols(b, &design)?;
     let sigma2_u = ols_fit.residuals.iter().map(|e| e * e).sum::<f64>() / big_n as f64;
 
-    // Instruments (shared Rz).
-    let rz = config.rz(n);
+    // Instruments (shared Rz, indexed by the regression sample size
+    // N = n - 1 per KMS 2015 — same convention as the scalar path).
+    let rz = config.rz(big_n);
     let z_cols: Vec<Vec<f64>> = x_cols.iter().map(|c| instrument(c, rz)).collect();
 
     // A[i][j] = sum_t z_i (a_j - abar_j); c[i] = sum_t z_i (b - bbar);
@@ -357,7 +367,8 @@ pub struct IvxBonferroniResult {
     /// zero). Valid under arbitrary dependence between the predictors;
     /// conservative when they are strongly dependent.
     pub pvalue: f64,
-    /// The shared instrument persistence `Rz = 1 + cz / n^alpha`.
+    /// The shared instrument persistence `Rz = 1 + cz / N^alpha`
+    /// (`N = n - 1`).
     pub rz: f64,
     /// Number of predictors `q`.
     pub nregressors: usize,

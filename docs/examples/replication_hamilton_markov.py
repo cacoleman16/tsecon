@@ -23,16 +23,15 @@ WHAT THIS IS, AND IS NOT
 `tsecon.markov_switching_ar(..., switching_variance=False)` expresses
 Hamilton's exact specification: switching MEAN (not intercept - the AR applies
 to deviations `y_t - mu_{S_t}`, so lagged regimes enter the likelihood),
-common AR(4), common variance. Two honest caveats:
+common AR(4), common variance. One honest caveat:
 
 * tsecon fits by EM, whose transition M-step (expected counts) conditions on
   the stationary initial state distribution rather than re-differentiating it
   with respect to P; its fixed point therefore sits O(1/T) away from the exact
   MLE that statsmodels/E-views reach by quasi-Newton refinement. On this
   sample that is a gap of 0.006 log-likelihood points and <= 0.016 on any
-  parameter - visible in the third decimal, irrelevant to the economics.
-* the Python binding does not (yet) return the estimated common AR
-  coefficients, so phi_1..phi_4 are compared statsmodels-vs-published only.
+  parameter (the AR coefficients included) - visible in the third decimal,
+  irrelevant to the economics.
 """
 import csv
 from pathlib import Path
@@ -93,6 +92,7 @@ def fit_tsecon(y):
         "p_contraction_stay": trans[i_con, i_con],
         "p_expansion_stay": trans[i_exp, i_exp],
         "sigma2": r["variances"][0],
+        "ar": tuple(np.asarray(r["ar"])),  # common (phi_1..phi_4), regime-free
         "loglik": r["loglik"],
         "duration_contraction": durations[i_con],
         "duration_expansion": durations[i_exp],
@@ -188,13 +188,10 @@ def main():
         sm and sm["duration_expansion"], fmt="{:>11.2f}")
     row("E[contraction length] qtrs", None, ts["duration_contraction"],
         sm and sm["duration_contraction"], fmt="{:>11.2f}")
+    for i in range(4):
+        row(f"common AR phi_{i + 1}", PUBLISHED["ar"][i], ts["ar"][i],
+            sm and sm["ar"][i])
     row("log-likelihood", None, ts["loglik"], sm and sm["loglik"], fmt="{:>11.3f}")
-    print()
-    if sm is not None:
-        print("  common AR (statsmodels)   :",
-              np.round(sm["ar"], 4), " published ~", PUBLISHED["ar"])
-        print("  (tsecon estimates the same common AR internally but its Python")
-        print("   binding does not yet return the coefficients - see the doc page)")
 
     # --- NBER dating -------------------------------------------------------
     rule(78, "=")

@@ -104,8 +104,10 @@ def gen_predreg():
     #   Stambaugh bias-corrected: b_c = b_ols - (sigma_ue/sigma_ee)*(rho_ols_bias),
     #     with rho_ols_bias approx -(1+3 rho)/n (Kendall). We store the components.
     #   IVX (Kostakis-Magdalinos-Stamatogiannis 2015): instrument
-    #     z_t = sum_{j=1}^{t} Rz^{t-j} Delta x_j, Rz = 1 + cz/n^alpha, cz=-1,
-    #     alpha=0.95; beta_ivx = (sum z_t (r_{t+1}-rbar)) / (sum z_t (x_t-xbar)).
+    #     z_t = sum_{j=1}^{t} Rz^{t-j} Delta x_j, Rz = 1 + cz/N^alpha with
+    #     N = n-1 the regression sample size (KMS index the localizing
+    #     sequence by N), cz=-1, alpha=0.95;
+    #     beta_ivx = (sum z_t (r_{t+1}-rbar)) / (sum z_t (x_t-xbar)).
     rng = np.random.default_rng(71)
     n = 600
     rho = 0.98
@@ -123,9 +125,9 @@ def gen_predreg():
     xbar, rbar = xt.mean(), rt1.mean()
     b_ols = np.sum((xt - xbar) * (rt1 - rbar)) / np.sum((xt - xbar) ** 2)
 
-    # IVX instrument.
+    # IVX instrument (Rz indexed by the regression sample size N = n - 1).
     alpha, cz = 0.95, -1.0
-    Rz = 1.0 + cz / n ** alpha
+    Rz = 1.0 + cz / (n - 1) ** alpha
     dx = np.diff(x)  # Delta x_j, length n-1, aligned with xt index
     z = np.empty(len(xt))
     acc = 0.0
@@ -138,7 +140,8 @@ def gen_predreg():
         "_meta": {"numpy": np.__version__,
                   "note": "Predictive regression with persistent regressor. Formulas in "
                           "the generator docstring; IVX per Kostakis-Magdalinos-"
-                          "Stamatogiannis 2015 with cz=-1, alpha=0.95, Rz=1+cz/n^alpha."},
+                          "Stamatogiannis 2015 with cz=-1, alpha=0.95, "
+                          "Rz=1+cz/N^alpha, N=n-1."},
         "x": full(x), "r": full(r), "rho_true": rho,
         "ivx": {"cz": cz, "alpha": alpha, "Rz": float(Rz)},
         "beta_ols": float(b_ols), "beta_ivx": float(b_ivx),
