@@ -1803,9 +1803,12 @@ def markov_switching_ar(
 
 Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations.
 
-    smoothed_prob / filtered_prob are the full (n, k_regimes) probability
-    matrices, n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0
-    scalar path (= smoothed_prob[:, -1]).
+    ar is the estimated common AR block (phi_1, .., phi_p), a length-order
+    array shared across regimes (the binding fits Hamilton's common-AR
+    specification on deviations y_t - mu_{S_t}). smoothed_prob /
+    filtered_prob are the full (n, k_regimes) probability matrices,
+    n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0 scalar
+    path (= smoothed_prob[:, -1]).
 
 ### `setar`
 
