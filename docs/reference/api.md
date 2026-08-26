@@ -489,11 +489,18 @@ GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
 def var_fit(data: _ArrayLike, lags: int = ..., trend: str = ...) -> dict[str, Any]:
 ```
 
-Fit a VAR(p) by OLS; params, sigma_u, ICs, and stability.
+Fit a VAR(p) by OLS; params, sigma_u, ICs, residuals, and stability.
 
     Read `is_stable` for the stability verdict. `min_root`/`max_root` are the
     smallest/largest moduli of the reciprocal characteristic roots — stable iff
     `min_root > 1`, so `max_root` alone is not a verdict.
+
+    Keys: params, sigma_u, llf, aic, bic, hqic, resid ((T, k) nested list —
+    the OLS residuals over the effective sample, row t = observation lags+t),
+    fitted ((T, k) — the one-step fitted values, defined as
+    data[lags:] - resid, i.e. the OLS projection Z @ B; fitted + resid
+    reproduces data[lags:] exactly), nobs (T = len(data) - lags), df_resid
+    (T - m regressors per equation), max_root, min_root, is_stable.
 
 ### `var_irf`
 
@@ -668,6 +675,15 @@ def bvar_fit(
 ```
 
 Minnesota-NIW conjugate BVAR posterior + log marginal likelihood. scale_ar sets the lag order of the AR residual-variance scale regressions (4 = default; 1 = the GLP 2015 convention).
+
+    Keys: posterior_mean_coefs (Bbar, k x K with k = 1 + p*K), sigma_posterior_mean,
+    log_marginal_likelihood, and the full NIW posterior: omega_bar (k x k),
+    s_bar (K x K), v_bar. Convention: vec(B)|Sigma,Y ~ N(vec(Bbar),
+    Sigma (x) Obar) with column-stacked vec (B.flatten(order="F"); Kronecker
+    order np.kron(sigma, omega_bar)), Sigma|Y ~ InvWishart(s_bar, v_bar).
+    Marginal coefficient posterior sd (v_bar > K + 1):
+    sd = np.sqrt(np.outer(np.diag(omega_bar), np.diag(s_bar)) / (v_bar - K - 1)),
+    a (k, K) array aligned with posterior_mean_coefs.
 
 ### `bvar_irf_draws`
 
@@ -2032,7 +2048,14 @@ DCC-GARCH (Engle 2002); returns is T x k. variant: "dcc" | "cdcc"
     variant, dist, correlation ((T, k, k) nested list -- the in-sample
     conditional correlation path), correlation_last, sigma2 ((T, k)
     per-series conditional variance paths), covariance ((T, k, k)
-    in-sample H_t = D_t R_t D_t), and with forecast_horizon > 0
+    in-sample H_t = D_t R_t D_t), univariate (a list of k dicts -- the
+    full per-series stage-1 GARCH results with exactly garch_fit's keys,
+    bit-identical to garch_fit on that column under the same spec),
+    std_residuals ((T, k) -- the stacked stage-1 standardized residuals
+    z[t][i] = eps_{i,t} / sqrt(sigma2[t][i]) that drive the correlation
+    recursion), nu (dist="t" only), nbar (variant="adcc" only -- the
+    (k, k) asymmetric targeting matrix Nbar = mean of n_t n_t',
+    n_t = min(z_t, 0)), and with forecast_horizon > 0
     correlation_forecast / covariance_forecast ((horizon, k, k)) and
     variance_forecast ((horizon, k)).
 
@@ -2641,7 +2664,14 @@ Dynamic-factor-model nowcast; data is T x N with an optional NaN edge.
 
     method is "two_step" (Doz-Giannone-Reichlin 2011) or "mle" (exact
     one-step Gaussian MLE, single factor). Returns nowcast, edge_factor,
-    loglik, fit_loglik, smoothed_factors, n_factors, factor_order.
+    loglik, fit_loglik, smoothed_factors ((T, r)), n_factors, factor_order,
+    and the fitted model itself (both methods, same surface): loadings
+    ((N, r)), factor_ar ((r, r*p) stacked [A_1 | ... | A_p]), factor_cov
+    ((r, r)), idiosyncratic (length N), center / scale (length N training
+    moments; scale is all ones for "mle"). Mapping factors to series
+    levels is exact: nowcast == center + scale * (loadings @ edge_factor),
+    and center + scale * (F @ L.T) is the common-component fit of the
+    balanced panel.
 
 ### `dfm_news`
 
