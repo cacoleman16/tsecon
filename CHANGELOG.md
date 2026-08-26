@@ -7,7 +7,21 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **IVX localizing sequence now indexed by the regression sample size** `N =
+  n − 1`, per Kostakis-Magdalinos-Stamatogiannis (2015): `ivx` and
+  `ivx_multi` built the instrument with `Rz = 1 + cz/n^alpha` using the raw
+  series length `n` while every other ingredient (`sigma2_u`, the instrument
+  path, `nobs`) used `N`. Both call sites now use `N`, so `Rz` is very
+  slightly smaller (less persistent instrument). Measured effect on the
+  committed goldens: `beta_ivx` moves by 8.8e-6 relative (scalar, n = 500)
+  and 6.2e-6 / 5.6e-5 relative (two-predictor, n = 600); the scalar Wald by
+  3.4e-5 relative. The independent NumPy fixture generator
+  (`fixtures/generate_predreg_fixtures.py`) shared the raw-`n` convention —
+  it was fixed identically and `fixtures/predreg.json` regenerated; all
+  golden tolerances are unchanged (1e-9), and the Monte-Carlo
+  size/power/Bonferroni property suites pass unchanged.
 
 ## [0.5.0] - 2026-08-25
 

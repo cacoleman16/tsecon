@@ -65,8 +65,11 @@ first order its sampling variance is the OLS variance, so we report
 (3) IVX estimator (Kostakis, Magdalinos & Stamatogiannis 2015, RFS 28:1506-1553)
 ================================================================================
 Self-generated instrument, "mildly integrated" with persistence Rz just inside
-the unit circle:
-    Rz = 1 + cz / n^alpha          (defaults cz = -1, alpha = 0.95)
+the unit circle. The localizing sequence is indexed by the REGRESSION sample
+size N = n - 1 (KMS 2015 write it in the sample size of the predictive
+regression; an earlier revision of this generator shared the crate's raw-n
+convention, fixed together with the crate):
+    Rz = 1 + cz / N^alpha          (defaults cz = -1, alpha = 0.95; N = n - 1)
     Dx_k = x[k+1]-x[k]             (k = 0 .. n-2; carries innovation e_{k+1})
     z_t = sum_{k=0}^{t-1} Rz^{t-1-k} * Dx_k        (z_0 = 0)
         equivalently  z_0 = 0,  z_t = Rz*z_{t-1} + Dx_{t-1}
@@ -120,7 +123,7 @@ def ar1_series(n, rho, rng):
 def ivx_instrument(x, cz, alpha):
     n = len(x)
     N = n - 1
-    Rz = 1.0 + cz / n ** alpha
+    Rz = 1.0 + cz / N ** alpha  # indexed by the regression sample size N (KMS)
     dx = np.diff(x)  # dx[k] = x[k+1]-x[k]
     z = np.empty(N)
     acc = 0.0
