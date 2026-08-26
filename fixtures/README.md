@@ -20,7 +20,14 @@ venv) in one of two ways:
   committed `generate_lpdid_fixtures.R`, which runs the LP-DiD reference
   conventions through fixest (the engine of the authors' own example code)
   and cross-checks them against the generator's independent NumPy
-  reimplementation before anything is stored.
+  reimplementation before anything is stored. `bn_filters.json` similarly
+  requires R plus `$BNFILTER_R_DIR` pointing at a checkout of the
+  Kamber-Morley-Wong replication code (bnfiltering.com lineage, packaged at
+  `github.com/kletts/bnfilter` — sourced at generation time, **not vendored**:
+  its DESCRIPTION carries no license grant); its generator reference-runs the
+  authors' own `BN_Filter`/`select_delta`/`BN_Filter_stderr` and cross-checks
+  an independent NumPy reimplementation against the R output at 1e-9 before
+  anything is stored.
 - **Transformations of two public-domain reference series** loaded from
   statsmodels' bundled datasets:
   - the **Nile** annual river-flow series (`sm.datasets.nile`), a classic

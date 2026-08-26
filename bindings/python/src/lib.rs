@@ -1804,17 +1804,273 @@ fn cf_filter<'py>(
 }
 
 /// Hamilton (2018) regression filter — the modern HP alternative.
+///
+/// Regresses `y_{t}` on a constant and `p` lags of the series dated `h`
+/// periods back; `cycle` is the residual, `trend` the fitted value.
+/// Hamilton's recommended `(h, p)` by sampling frequency (the horizon
+/// spans two years, the lags one):
+///
+/// | frequency | h  | p  |
+/// |-----------|----|----|
+/// | quarterly |  8 |  4 |
+/// | monthly   | 24 | 12 |
+/// | annual    |  2 |  1 |
+///
+/// `method="random_walk"` gives the variant Hamilton recommends for
+/// short samples: `cycle = y_t - y_{t-h}`, `trend = y_{t-h}` — the
+/// population regression under a random-walk null, with no coefficients
+/// estimated (`p` is ignored and no `beta` is returned; `se` is
+/// refused).
+///
+/// `se="hac"` adds Newey-West standard errors on the regression
+/// coefficients through the library's shared HAC engine — the
+/// overlapping `h`-step-ahead residuals are serially correlated (MA of
+/// order `h-1`) *by construction*, so plain OLS standard errors are
+/// wrong for this regression; the default bandwidth is the h-overlap
+/// rule `maxlags = h` (covering the known MA(h-1) correlation with one
+/// lag of slack; generic plug-in rules can land *below* `h-1` here).
+/// `se="nonrobust"` gives the classical (wrong-for-this-regression)
+/// errors as a comparison point. `use_correction` applies the
+/// small-sample `n/(n-k)` factor (statsmodels `use_correction`; a
+/// default statsmodels `cov_type="HAC"` call has it off).
+///
+/// Returns `trend`, `cycle`, `first_index` (= h + p - 1 observations
+/// lost at the start; h for the random-walk variant), and — for the
+/// regression method — `beta` (`[intercept, b_1..b_p]`); requesting
+/// `se` adds `bse`, `tvalues`, `se_type`, `maxlags` (resolved; None for
+/// nonrobust), and `use_correction`. The decomposition and `beta` are
+/// bit-identical whether or not `se` is requested.
 #[pyfunction]
-#[pyo3(signature = (y, h = 8, p = 4))]
+#[pyo3(signature = (y, h = 8, p = 4, method = "regression", se = None, maxlags = None,
+                    use_correction = true))]
+#[allow(clippy::too_many_arguments)]
 fn hamilton_filter<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
     h: usize,
     p: usize,
+    method: &str,
+    se: Option<&str>,
+    maxlags: Option<usize>,
+    use_correction: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_filters::hamilton_filter(&vec1(&y), h, p).map_err(to_py)?;
+    match method {
+        "regression" => {}
+        "random_walk" => {
+            if se.is_some() || maxlags.is_some() {
+                return Err(PyValueError::new_err(
+                    "method='random_walk' estimates no regression coefficients \
+                     (cycle = y_t - y_{t-h} exactly), so there is nothing to compute \
+                     standard errors for; drop se/maxlags or use method='regression'",
+                ));
+            }
+            let dec = tsecon_filters::hamilton_filter_random_walk(&vec1(&y), h).map_err(to_py)?;
+            return decomposition_dict(py, &dec);
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown hamilton_filter method '{other}': expected 'regression' (the \
+                 Hamilton 2018 OLS filter) or 'random_walk' (cycle = y_t - y_{{t-h}})"
+            )));
+        }
+    }
+    let se_kind = match se {
+        None => {
+            if maxlags.is_some() {
+                return Err(PyValueError::new_err(
+                    "maxlags is a HAC bandwidth and requires se='hac'",
+                ));
+            }
+            None
+        }
+        Some("hac") => Some(tsecon_filters::HamiltonSe::Hac {
+            maxlags,
+            use_correction,
+        }),
+        Some("nonrobust") => Some(tsecon_filters::HamiltonSe::NonRobust),
+        Some(other) => {
+            return Err(PyValueError::new_err(format!(
+                "unknown se '{other}': expected 'hac' (Newey-West, the right choice for \
+                 the overlapping h-step residuals; default maxlags = h) or 'nonrobust' \
+                 (classical OLS errors, as a comparison point)"
+            )));
+        }
+    };
+    match se_kind {
+        None => {
+            let r = tsecon_filters::hamilton_filter(&vec1(&y), h, p).map_err(to_py)?;
+            let d = decomposition_dict(py, &r.decomposition)?;
+            d.set_item("beta", r.beta.clone().into_pyarray(py))?;
+            Ok(d)
+        }
+        Some(kind) => {
+            let (r, inf) =
+                tsecon_filters::hamilton_filter_with_se(&vec1(&y), h, p, kind).map_err(to_py)?;
+            let d = decomposition_dict(py, &r.decomposition)?;
+            d.set_item("beta", r.beta.clone().into_pyarray(py))?;
+            d.set_item("bse", inf.bse.into_pyarray(py))?;
+            d.set_item("tvalues", inf.tvalues.into_pyarray(py))?;
+            d.set_item(
+                "se_type",
+                match kind {
+                    tsecon_filters::HamiltonSe::NonRobust => "nonrobust",
+                    tsecon_filters::HamiltonSe::Hac { .. } => "hac",
+                },
+            )?;
+            d.set_item("maxlags", inf.maxlags)?;
+            d.set_item(
+                "use_correction",
+                matches!(
+                    kind,
+                    tsecon_filters::HamiltonSe::Hac {
+                        use_correction: true,
+                        ..
+                    }
+                ),
+            )?;
+            Ok(d)
+        }
+    }
+}
+
+/// Kamber-Morley-Wong (2018, REStat) Beveridge-Nelson filter: the BN
+/// output-gap estimator with the signal-to-noise ratio `delta` pinned.
+///
+/// Fits an AR(`p`) to the (optionally demeaned) first differences with
+/// the sum of AR coefficients fixed at `rho = 1 - 1/sqrt(delta)`
+/// (Bayesian ridge on the Dickey-Fuller form with the reference code's
+/// `N(0, 0.5/j^2)` shrinkage prior), and takes the BN cycle
+/// `-e1' F (I-F)^{-1} X_t` of that pinned model. `delta=None` selects
+/// the ratio by the paper's amplitude-to-noise criterion (first local
+/// maximum of `var(cycle)/mean(residual^2)` on the grid `d0, d0+dt,
+/// ...`); a float imposes it. `demean="sm"` subtracts the sample mean
+/// of the differences (the paper's baseline); `"nd"` leaves the drift
+/// in (their no-drift option). The paper's baseline for quarterly data
+/// is `p=12`.
+///
+/// This is the *pinned-delta* Beveridge-Nelson: the classic
+/// freely-estimated decomposition (`bn_decomposition`) typically finds
+/// a tiny, noisy cycle on drifting macro series; KMW's delta produces
+/// the large, persistent output gaps practitioners expect, from the
+/// same BN definition of trend.
+///
+/// Returns `trend`, `cycle` (aligned from observation 1;
+/// `first_index=1`; `trend` is `y - cycle`, so the pair reconstructs
+/// `y[1:]` to within a final rounding), `delta` (used or
+/// selected), `ar` (the implied AR coefficients, summing to rho),
+/// `cycle_se` (the reference code's fixed error band: 95% band is
+/// `cycle` ± 1.96·`cycle_se`), `amplitude_to_noise` (the selection
+/// criterion at `delta`), and `drift` (the mean removed, 0.0 for
+/// `"nd"`). Validated by reference runs of the authors' own R
+/// replication code (bnfiltering.com lineage) — see the diagnostics
+/// model card.
+#[pyfunction]
+#[pyo3(signature = (y, p = 12, delta = None, demean = "sm", d0 = 0.01, dt = 0.0005))]
+fn bn_filter<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    delta: Option<f64>,
+    demean: &str,
+    d0: f64,
+    dt: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let demean_flag = match demean {
+        "sm" => true,
+        "nd" => false,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown demean '{other}': expected 'sm' (subtract the sample mean of \
+                 the first differences — the KMW baseline) or 'nd' (no drift removal)"
+            )));
+        }
+    };
+    let delta_spec = match delta {
+        Some(d) => tsecon_filters::BnDelta::Fixed(d),
+        None => tsecon_filters::BnDelta::Auto { d0, dt },
+    };
+    let r = tsecon_filters::bn_filter(&vec1(&y), p, delta_spec, demean_flag).map_err(to_py)?;
     let d = decomposition_dict(py, &r.decomposition)?;
-    d.set_item("beta", r.beta.clone().into_pyarray(py))?;
+    d.set_item("delta", r.delta)?;
+    d.set_item("ar", r.ar.into_pyarray(py))?;
+    d.set_item("cycle_se", r.cycle_se)?;
+    d.set_item("amplitude_to_noise", r.amplitude_to_noise)?;
+    d.set_item("drift", r.drift)?;
+    Ok(d)
+}
+
+/// Classic Beveridge-Nelson (1981) trend-cycle decomposition from an
+/// ARIMA(p, 1, q).
+///
+/// The BN trend is the long-horizon conditional expectation net of
+/// deterministic growth — a random walk with drift driven by the
+/// series' own innovations, `Delta tau_t = mu + psi(1) eps_t`, with the
+/// **long-run multiplier** `psi(1) = theta(1)/phi(1) = (1 + sum theta)
+/// / (1 - sum phi)` (the permanent effect of a unit shock, equal to the
+/// cumulative impulse response). The cycle is the rest: `c_t = y_t -
+/// tau_t = -e1' F (I-F)^{-1} X_t` in the ARMA companion form (Morley
+/// 2002), with conditional (zero-presample) innovations, so the
+/// identities hold in finite samples, not just asymptotically:
+/// `trend + cycle` reconstructs `y[1:]` (to within a final rounding —
+/// trend is stored as `y - cycle`) and `diff(trend) == drift + psi(1) *
+/// innovations[1:]` at 1e-9.
+///
+/// By default the ARMA growth model is estimated by the library's own
+/// exact-MLE ARIMA fit (`ARIMA(p, 1, q)` with a constant; the drift is
+/// `mu = const/phi(1)`); the Morley-Nelson-Zivot (2003) US-GDP
+/// specification `p=2, q=2` is the default. Passing any of `ar`, `ma`,
+/// `drift` switches to the **fixed-coefficient path**: the
+/// decomposition is computed at exactly the coefficients you supply
+/// (`ar`/`ma` default to none, `drift` to 0.0; `p`/`q` are ignored) —
+/// for decomposing at published estimates.
+///
+/// Returns `trend`, `cycle`, `innovations`, `first_index` (= 1, lost to
+/// differencing), `long_run_multiplier`, `drift`, `ar`, `ma`, `mode`
+/// (`"fit"` or `"fixed"`), and for the fit path `sigma2`, `loglik`,
+/// `aic`, `bic`, `converged`. A fitted AR or MA polynomial numerically
+/// on the unit circle is refused with an error naming the cure (the BN
+/// objects are undefined/unreliable there), as are non-stationary /
+/// non-invertible fixed coefficients.
+#[pyfunction]
+#[pyo3(signature = (y, p = 2, q = 2, ar = None, ma = None, drift = None))]
+fn bn_decomposition<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    q: usize,
+    ar: Option<Vec<f64>>,
+    ma: Option<Vec<f64>>,
+    drift: Option<f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let fixed = ar.is_some() || ma.is_some() || drift.is_some();
+    let r = if fixed {
+        tsecon_arima::bn_from_arma(
+            &vec1(&y),
+            drift.unwrap_or(0.0),
+            &ar.unwrap_or_default(),
+            &ma.unwrap_or_default(),
+        )
+        .map_err(to_py)?
+    } else {
+        tsecon_arima::bn_decomposition(&vec1(&y), p, q).map_err(to_py)?
+    };
+    let d = PyDict::new(py);
+    d.set_item("trend", r.trend.into_pyarray(py))?;
+    d.set_item("cycle", r.cycle.into_pyarray(py))?;
+    d.set_item("innovations", r.innovations.into_pyarray(py))?;
+    d.set_item("first_index", r.lost_start)?;
+    d.set_item("long_run_multiplier", r.long_run_multiplier)?;
+    d.set_item("drift", r.drift)?;
+    d.set_item("ar", r.ar.into_pyarray(py))?;
+    d.set_item("ma", r.ma.into_pyarray(py))?;
+    d.set_item("mode", if fixed { "fixed" } else { "fit" })?;
+    if let Some(res) = &r.results {
+        d.set_item("sigma2", res.sigma2())?;
+        d.set_item("loglik", res.loglik)?;
+        d.set_item("aic", res.aic)?;
+        d.set_item("bic", res.bic)?;
+        d.set_item("converged", res.converged)?;
+    }
     Ok(d)
 }
 
@@ -10257,6 +10513,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bk_filter, m)?)?;
     m.add_function(wrap_pyfunction!(cf_filter, m)?)?;
     m.add_function(wrap_pyfunction!(hamilton_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(bn_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(bn_decomposition, m)?)?;
     m.add_function(wrap_pyfunction!(stl, m)?)?;
     m.add_function(wrap_pyfunction!(mstl, m)?)?;
     m.add_function(wrap_pyfunction!(seasonal_strength, m)?)?;
