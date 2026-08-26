@@ -25,9 +25,13 @@ dependence, covers negative dependence).
 - **`pseudo_obs(x)`** — columnwise average ranks scaled by `n + 1`
   (exactly scipy's `rankdata(method="average")/(n+1)`, ties included).
   Ranks see only order, so the output — and any copula fitted to it — is
-  **invariant to strictly monotone transforms of each margin**: fitting on
-  `x` or on `exp(x)` gives bit-identical results (property-tested). That
-  invariance *is* the point of the copula decomposition.
+  **invariant to strictly increasing transforms of each margin**: fitting
+  on `x` or on `exp(x)` gives bit-identical results (property-tested).
+  That invariance *is* the point of the copula decomposition. A strictly
+  *decreasing* transform is different: it reverses that margin's ranks
+  (`u -> 1 - u` when there are no ties) and flips the sign of the fitted
+  dependence — the textbook copula invariance (Sklar; McNeil-Frey-
+  Embrechts Prop. 7.7) is increasing-only.
 - **`copula_fit(u, family, method)`** — the dependence parameter(s):
   `rho` for the elliptical families (`nu` too, for the t), `theta` for
   the Archimedeans, with observed-information standard errors (MLE),
@@ -146,7 +150,7 @@ statsmodels 0.14.6 `StudentTCopula.dependence_tail` mis-computes the t
 formula through an operator-precedence slip (0.1438 where the true value
 is 0.2532 at `rho=0.5, nu=4`); the correct Demarta-McNeil form is what
 tsecon ships and pins. Recovery on simulated data from every family and
-the monotone-invariance/exchangeability bit-exactness claims are
+the increasing-margin-invariance/exchangeability bit-exactness claims are
 property-tested in Rust.
 
 ## References

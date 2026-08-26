@@ -12,6 +12,9 @@ description = "Multivariate (conditional-correlation) GARCH for the tsecon time-
 tsecon-linalg = { path = "../tsecon-linalg" }
 tsecon-garch = { path = "../tsecon-garch" }
 tsecon-optim = { path = "../tsecon-optim" }
+# chi-squared survival function (Engle-Sheppard constant-correlation test
+# p-values) and ln_gamma (Student-t second-stage likelihood).
+tsecon-stats = { path = "../tsecon-stats" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy

@@ -65,9 +65,16 @@ _EXEMPT: dict[str, frozenset[str]] = {
     "arima_fit": frozenset({"seasonal"}),
     # Candidate threshold delays d in y_{t-d}: integer lags, not data.
     "setar": frozenset({"delays"}),
+    # Seasonal periods and their LOESS windows: integer specs, not data.
+    # Coercing [24, 168] to float64 would make the boundary reject it.
+    "mstl": frozenset({"periods", "windows"}),
     # Integer maturities in periods (months), not data: the ACM excess
     # returns pair maturity n with n - 1, so these must stay integers.
     "acm_term_premium": frozenset({"maturities"}),
+    # The (p, d, q) order of the "arima" conformal base: an integer spec,
+    # not data, shared by both conformal entry points.
+    "conformal_forecast": frozenset({"order"}),
+    "conformal_backtest": frozenset({"order"}),
 }
 
 _POSITIONAL = (

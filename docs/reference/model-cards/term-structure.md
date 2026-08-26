@@ -138,7 +138,8 @@ risk compensation.
   `A`/`B`/`A_rn`/`B_rn`; plus diagnostics `var_rsquared`, `rx_rsquared`
   (high — the contemporaneous innovations absorb most return variation),
   `short_rate_rsquared`, and per-maturity `yield_rsquared` (should be ≈1 for
-  a smooth curve panel). A positive `term_premium` says investors are paid to
+  a smooth curve panel); plus the echoed inputs `maturities`, `n_factors`,
+  `periods_per_year`. A positive `term_premium` says investors are paid to
   hold duration; a negative one (post-2015 US data, per the published ACM
   series) says they pay for it.
 

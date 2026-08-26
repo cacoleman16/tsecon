@@ -514,6 +514,95 @@ fn dfgls<'py>(
     Ok(d)
 }
 
+/// Ng-Perron (2001) M unit-root tests (MZa, MZt, MSB, MPT; null: unit root).
+///
+/// GLS-detrends `y` through the same engine as `dfgls` (cbar = -7.0 for
+/// "c", -13.5 for "ct"), selects the ADF lag by the paper's MAIC on the
+/// detrended series (`lags=None` or `"maic"`; searching 0..=`max_lags`,
+/// default Schwert's ceil(12*(n/100)^(1/4)) capped at (n-1)/2 - 1) or uses
+/// a fixed integer `lags`, estimates the autoregressive spectral density
+/// at frequency zero `s2_ar = sigma2_e / (1 - b(1))^2`, and forms the four
+/// M statistics. All four reject the unit-root null when SMALL (below the
+/// critical value); MZt = MZa * MSB exactly. There are no p-values: no
+/// published response surface exists for the M tests, so compare each
+/// statistic against its own critical values (Ng-Perron 2001 Table 1,
+/// asymptotic, transcribed).
+///
+/// Returns dict keys: `mza`, `mzt`, `msb`, `mpt`, `used_lag`, `nobs`
+/// (= n - 1 - used_lag), `s2_ar`, `crit` ({"mza","mzt","msb","mpt"} each
+/// {"1%","5%","10%"}), `trend`. Prefer this battery over `dfgls` when a
+/// large negative MA root is suspected (over-differenced series) — MAIC
+/// is the standard remedy for the size distortion there. Caveat
+/// (Perron-Qu 2007): on data far from the null MAIC drives the lag to its
+/// maximum and power collapses; cap `max_lags` or fix `lags` there.
+#[pyfunction]
+#[pyo3(signature = (y, trend = "c", lags = None, max_lags = None))]
+fn ng_perron<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    trend: &str,
+    lags: Option<Bound<'py, pyo3::PyAny>>,
+    max_lags: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_diag::{DfglsTrend, NgPerronLagSelection as L};
+    let trend_spec = match trend {
+        "c" => DfglsTrend::Constant,
+        "ct" => DfglsTrend::ConstantTrend,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown trend {other:?}; expected \"c\" or \"ct\" (like DF-GLS, \
+                 the M tests have no no-deterministics case: with nothing to \
+                 estimate, use adf with regression=\"n\")"
+            )))
+        }
+    };
+    let selection = match &lags {
+        None => L::Maic(max_lags),
+        Some(v) => {
+            if let Ok(s) = v.extract::<String>() {
+                match s.as_str() {
+                    "maic" | "MAIC" => L::Maic(max_lags),
+                    other => {
+                        return Err(PyValueError::new_err(format!(
+                            "unknown lags {other:?}; expected None or \"maic\" \
+                             (Ng-Perron MAIC selection) or an integer fixed lag"
+                        )))
+                    }
+                }
+            } else {
+                L::Fixed(v.extract::<usize>().map_err(|_| {
+                    PyValueError::new_err("lags must be None, \"maic\", or a non-negative integer")
+                })?)
+            }
+        }
+    };
+    let r = tsecon_diag::ng_perron(&vec1(&y), trend_spec, selection).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("mza", r.mza)?;
+    d.set_item("mzt", r.mzt)?;
+    d.set_item("msb", r.msb)?;
+    d.set_item("mpt", r.mpt)?;
+    d.set_item("used_lag", r.used_lag)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("s2_ar", r.s2_ar)?;
+    let crit = PyDict::new(py);
+    for (name, cv) in [
+        ("mza", r.crit.mza),
+        ("mzt", r.crit.mzt),
+        ("msb", r.crit.msb),
+        ("mpt", r.crit.mpt),
+    ] {
+        let c = PyDict::new(py);
+        c.set_item("1%", cv.pct1)?;
+        c.set_item("5%", cv.pct5)?;
+        c.set_item("10%", cv.pct10)?;
+        crit.set_item(name, c)?;
+    }
+    d.set_item("crit", crit)?;
+    d.set_item("trend", trend)?;
+    Ok(d)
+}
+
 /// Phillips-Ouliaris residual cointegration test (null: no cointegration).
 ///
 /// `x` is a 2-D (T, m) matrix of the m stochastic regressors, used as-is
@@ -675,6 +764,68 @@ fn ndiffs_test(s: &str) -> PyResult<tsecon_diag::NdiffsTest> {
     }
 }
 
+/// The `ndiffs` result as a Python dict (shared by `ndiffs` and
+/// `auto_arima`, which returns the same evidence for its `d`).
+fn ndiffs_result_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_diag::NdiffsResult,
+) -> PyResult<Bound<'py, PyDict>> {
+    let steps = r
+        .steps
+        .iter()
+        .map(|s| {
+            let e = PyDict::new(py);
+            e.set_item("d", s.d)?;
+            e.set_item("n", s.n)?;
+            e.set_item("statistic", s.statistic)?;
+            e.set_item("p_value", s.p_value)?;
+            e.set_item("lags", s.lags)?;
+            e.set_item("needs_differencing", s.needs_differencing)?;
+            Ok(e)
+        })
+        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
+    let d = PyDict::new(py);
+    d.set_item("d", r.d)?;
+    d.set_item("test", r.test.code())?;
+    d.set_item("alpha", r.alpha)?;
+    d.set_item("max_d", r.max_d)?;
+    d.set_item("stop", format!("{:?}", r.stop))?;
+    d.set_item("steps", steps)?;
+    d.set_item("interpretation", &r.interpretation)?;
+    Ok(d)
+}
+
+/// The `nsdiffs` result as a Python dict (shared by `nsdiffs` and
+/// `auto_arima`, which returns the same evidence for its `D`).
+fn nsdiffs_result_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_diag::NsdiffsResult,
+) -> PyResult<Bound<'py, PyDict>> {
+    let steps = r
+        .steps
+        .iter()
+        .map(|s| {
+            let e = PyDict::new(py);
+            e.set_item("d", s.d)?;
+            e.set_item("n", s.n)?;
+            e.set_item("seasonal_strength", s.seasonal_strength)?;
+            e.set_item("trend_strength", s.trend_strength)?;
+            e.set_item("needs_differencing", s.needs_differencing)?;
+            Ok(e)
+        })
+        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
+    let d = PyDict::new(py);
+    d.set_item("d", r.d)?;
+    d.set_item("period", r.period)?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("alpha", r.alpha)?;
+    d.set_item("max_d", r.max_d)?;
+    d.set_item("stop", format!("{:?}", r.stop))?;
+    d.set_item("steps", steps)?;
+    d.set_item("interpretation", &r.interpretation)?;
+    Ok(d)
+}
+
 /// How many differences a series needs — with the evidence at every order.
 ///
 /// `test`: "kpss" (null: stationarity; the `forecast::ndiffs` default),
@@ -700,29 +851,7 @@ fn ndiffs<'py>(
     max_d: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_diag::ndiffs(&vec1(&y), ndiffs_test(test)?, alpha, max_d).map_err(to_py)?;
-    let steps = r
-        .steps
-        .iter()
-        .map(|s| {
-            let e = PyDict::new(py);
-            e.set_item("d", s.d)?;
-            e.set_item("n", s.n)?;
-            e.set_item("statistic", s.statistic)?;
-            e.set_item("p_value", s.p_value)?;
-            e.set_item("lags", s.lags)?;
-            e.set_item("needs_differencing", s.needs_differencing)?;
-            Ok(e)
-        })
-        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
-    let d = PyDict::new(py);
-    d.set_item("d", r.d)?;
-    d.set_item("test", r.test.code())?;
-    d.set_item("alpha", r.alpha)?;
-    d.set_item("max_d", r.max_d)?;
-    d.set_item("stop", format!("{:?}", r.stop))?;
-    d.set_item("steps", steps)?;
-    d.set_item("interpretation", &r.interpretation)?;
-    Ok(d)
+    ndiffs_result_dict(py, &r)
 }
 
 /// How many SEASONAL differences a series needs — the Hyndman-Khandakar
@@ -752,29 +881,7 @@ fn nsdiffs<'py>(
     max_d: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = tsecon_diag::nsdiffs(&vec1(&y), period, alpha, max_d).map_err(to_py)?;
-    let steps = r
-        .steps
-        .iter()
-        .map(|s| {
-            let e = PyDict::new(py);
-            e.set_item("d", s.d)?;
-            e.set_item("n", s.n)?;
-            e.set_item("seasonal_strength", s.seasonal_strength)?;
-            e.set_item("trend_strength", s.trend_strength)?;
-            e.set_item("needs_differencing", s.needs_differencing)?;
-            Ok(e)
-        })
-        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
-    let d = PyDict::new(py);
-    d.set_item("d", r.d)?;
-    d.set_item("period", r.period)?;
-    d.set_item("threshold", r.threshold)?;
-    d.set_item("alpha", r.alpha)?;
-    d.set_item("max_d", r.max_d)?;
-    d.set_item("stop", format!("{:?}", r.stop))?;
-    d.set_item("steps", steps)?;
-    d.set_item("interpretation", &r.interpretation)?;
-    Ok(d)
+    nsdiffs_result_dict(py, &r)
 }
 
 /// Variance-stabilizing Box-Cox lambda, with the objective at the optimum.
@@ -1813,6 +1920,138 @@ fn seasonal_strength<'py>(
     Ok(d)
 }
 
+/// A sequence of positive integers (a periods/windows argument), validated
+/// with a teaching error naming the argument.
+fn positive_int_seq(name: &str, v: &[i64], example: &str) -> PyResult<Vec<usize>> {
+    if let Some(&bad) = v.iter().find(|&&x| x < 1) {
+        return Err(PyValueError::new_err(format!(
+            "{name} must contain positive integers, got {bad} — {example}"
+        )));
+    }
+    Ok(v.iter().map(|&x| x as usize).collect())
+}
+
+/// MSTL — Multiple Seasonal-Trend decomposition using LOESS
+/// (Bandara-Hyndman-Bergmeir 2021): STL iterated over several seasonal
+/// periods, for series with more than one cycle (e.g. hourly data with
+/// daily and weekly seasonality, `periods=[24, 168]`). `periods` is
+/// always a sequence — a single period is `periods=[12]`.
+///
+/// Matches `statsmodels.tsa.seasonal.MSTL` elementwise at 1e-8 (observed
+/// <= ~5e-11): periods are sorted ascending; any period >= n/2 is dropped
+/// (statsmodels warns; here the drop is reported in `dropped_periods`);
+/// `windows` gives each period's seasonal LOESS window (odd, >= 3, paired
+/// with the same-index period; None uses the paper's rule 7 + 4*k for the
+/// k-th sorted period: 11, 15, 19, ...); `iterate` rounds (default 2,
+/// forced to 1 for a single period) cycle over the periods re-extracting
+/// each seasonal from the series deseasonalized of the others. The
+/// remaining STL keywords are forwarded to every per-period STL pass;
+/// trend and robustness weights come from the final pass. statsmodels'
+/// `lmbda` (Box-Cox) option is deliberately not implemented — transform
+/// `y` first if you need it. Unlike statsmodels, duplicate periods and
+/// `iterate=0` are refused with an error instead of misbehaving silently.
+///
+/// Returns dict keys: `seasonal` (a dict `{"seasonal_<period>": array}`,
+/// ascending periods; the components sum with trend and resid back to
+/// `y`), `trend`, `resid`, `weights` (all 1 unless the final pass ran
+/// outer robustness iterations), `periods` and `windows` (resolved:
+/// sorted, post-drop), `iterate` (rounds actually run),
+/// `dropped_periods`, and `seasonal_strength` (a dict of per-period
+/// Wang-Smith-Hyndman strengths `max(0, 1 - var(resid)/var(seasonal_k +
+/// resid))`, sample variances — or None for a constant input series,
+/// where the variance ratio would be float noise, matching the
+/// `seasonal_strength` function's refusal).
+#[pyfunction]
+#[pyo3(signature = (y, periods, windows = None, iterate = 2, trend = None,
+    low_pass = None, seasonal_deg = 1, trend_deg = 1, low_pass_deg = 1,
+    robust = false, seasonal_jump = 1, trend_jump = 1, low_pass_jump = 1,
+    inner_iter = None, outer_iter = None))]
+#[allow(clippy::too_many_arguments)]
+fn mstl<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    periods: Vec<i64>,
+    windows: Option<Vec<i64>>,
+    iterate: usize,
+    trend: Option<usize>,
+    low_pass: Option<usize>,
+    seasonal_deg: usize,
+    trend_deg: usize,
+    low_pass_deg: usize,
+    robust: bool,
+    seasonal_jump: usize,
+    trend_jump: usize,
+    low_pass_jump: usize,
+    inner_iter: Option<usize>,
+    outer_iter: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let periods = positive_int_seq(
+        "periods",
+        &periods,
+        "each period is the number of observations per seasonal cycle, e.g. \
+         periods=[24, 168] for hourly data with daily and weekly cycles",
+    )?;
+    let windows = windows
+        .map(|w| {
+            positive_int_seq(
+                "windows",
+                &w,
+                "each window is the (odd, >= 3) seasonal LOESS window for the \
+                 same-index period, e.g. windows=[11, 15]; or None for the \
+                 MSTL default rule",
+            )
+        })
+        .transpose()?;
+    let params = tsecon_filters::MstlParams {
+        windows,
+        iterate,
+        stl: tsecon_filters::StlParams {
+            trend,
+            low_pass,
+            seasonal_deg,
+            trend_deg,
+            low_pass_deg,
+            robust,
+            seasonal_jump,
+            trend_jump,
+            low_pass_jump,
+            inner_iter,
+            outer_iter,
+            ..Default::default()
+        },
+    };
+    let yv = vec1(&y);
+    let constant = yv.first().is_some_and(|&f| yv.iter().all(|&v| v == f));
+    let r = tsecon_filters::mstl(&yv, &periods, &params).map_err(to_py)?;
+    let strengths = tsecon_filters::mstl_seasonal_strengths(&r);
+    let d = PyDict::new(py);
+    let s = PyDict::new(py);
+    for (p, comp) in r.periods.iter().zip(r.seasonal) {
+        s.set_item(format!("seasonal_{p}"), comp.into_pyarray(py))?;
+    }
+    d.set_item("seasonal", s)?;
+    d.set_item("trend", r.trend.into_pyarray(py))?;
+    d.set_item("resid", r.resid.into_pyarray(py))?;
+    d.set_item("weights", r.weights.into_pyarray(py))?;
+    d.set_item("periods", r.periods.clone())?;
+    d.set_item("windows", r.windows)?;
+    d.set_item("iterate", r.iterate)?;
+    d.set_item("dropped_periods", r.dropped_periods)?;
+    if constant {
+        // A constant series has zero sample variance: the per-period
+        // strength ratio would be pure float noise (see seasonal_strength's
+        // ConstantSeries refusal), so no number is reported.
+        d.set_item("seasonal_strength", py.None())?;
+    } else {
+        let sd = PyDict::new(py);
+        for (p, v) in r.periods.iter().zip(strengths) {
+            sd.set_item(format!("seasonal_{p}"), v)?;
+        }
+        d.set_item("seasonal_strength", sd)?;
+    }
+    Ok(d)
+}
+
 /// Diebold-Mariano test of equal predictive accuracy with the
 /// Harvey-Leybourne-Newbold small-sample correction.
 #[pyfunction]
@@ -1875,7 +2114,15 @@ fn accuracy<'py>(
 }
 
 /// The Theta method (Assimakopoulos-Nikolopoulos 2000) — a stubbornly hard
-/// benchmark to beat. Matches statsmodels ThetaModel.
+/// benchmark to beat.
+///
+/// Matches statsmodels `ThetaModel(deseasonalize=True, use_test=False)`.
+/// statsmodels' DEFAULT additionally runs a seasonality pre-test
+/// (`use_test=True`) and skips deseasonalization when it fails, so on
+/// weakly- or non-seasonal data declared with `period > 1` the two
+/// defaults diverge; pass `use_test=False` on the statsmodels side to
+/// compare. `period=1` skips deseasonalization entirely and the pre-test
+/// difference vanishes.
 #[pyfunction]
 #[pyo3(signature = (y, steps, period = 1))]
 fn theta_forecast<'py>(
@@ -1905,6 +2152,14 @@ fn theta_forecast<'py>(
 /// `converged`, `conditional_volatility`, `std_residuals`, and
 /// `variance_forecast` when `forecast_horizon > 0`.
 ///
+/// **Filter timing** (matches `arch`): `conditional_volatility[t]` is the
+/// one-step-ahead volatility FOR period t, formed from information through
+/// t-1 — `sigma2_t` is built from `eps_{t-1}` and `sigma2_{t-1}`, so the
+/// entry at t is the model's prediction for t before seeing `y[t]`, not a
+/// smoothed estimate using it. The post-sample continuation of that same
+/// step is `variance_forecast` (first entry: the prediction for T+1 from
+/// information through T).
+///
 /// **Boundary fits.** When the QMLE lands on a constraint (`alpha` at its
 /// sign bound, persistence at 1 — an IGARCH fit), the observed
 /// information is singular in the constrained direction by construction
@@ -1917,6 +2172,16 @@ fn theta_forecast<'py>(
 /// direction instead. `converged` reports whether an optimizer stage
 /// terminated by its convergence criterion (the best point found is
 /// returned either way).
+///
+/// **Short noisy samples** (0.5): a gradient (L-BFGS) stage that starts
+/// within a finite-difference step of an active constraint — routine for
+/// `dist="t"` on a couple of hundred observations, where the polish lands
+/// on the persistence bound or a sign bound — cannot evaluate its starting
+/// gradient; the fit now falls back deterministically to the
+/// derivative-free (Nelder-Mead) stage instead of raising, and reports the
+/// boundary through the flags above. An optimizer *error* therefore
+/// signals genuinely degenerate input (a near-constant series, or a scale
+/// with no finite-likelihood starting value).
 ///
 /// When `forecast_horizon > 0`, `variance_forecast` is the analytic
 /// *point* path of conditional variances `E[sigma2_{T+m} | F_T]`,
@@ -2460,6 +2725,26 @@ fn arima_fit<'py>(
             .map_err(to_py)?;
     }
     let r = spec.fit(&vec1(&y)).map_err(to_py)?;
+    let dct = arima_results_dict(py, &r, forecast_steps, conf_alpha, drift_uncertainty)?;
+    // Always present, like cov_ok, so a caller can branch on it without
+    // knowing whether this particular call asked for a forecast.
+    dct.set_item("drift_uncertainty", drift_uncertainty)?;
+    Ok(dct)
+}
+
+/// A fitted `ArimaResults` as the `arima_fit` result dict (shared by
+/// `arima_fit` and `auto_arima`, so the selected model's keys are the
+/// same either way): params/param_names/loglik/aic/bic, the
+/// refusal-capable bse/param_cov/cov_ok(/cov_error), residuals, and —
+/// when `forecast_steps > 0` — forecast_mean/forecast_se plus the
+/// conf_alpha bands.
+fn arima_results_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_arima::ArimaResults,
+    forecast_steps: usize,
+    conf_alpha: Option<f64>,
+    drift_uncertainty: bool,
+) -> PyResult<Bound<'py, PyDict>> {
     let dct = PyDict::new(py);
     dct.set_item("params", r.params().to_vec().into_pyarray(py))?;
     dct.set_item("param_names", r.param_names().to_vec())?;
@@ -2486,9 +2771,6 @@ fn arima_fit<'py>(
             dct.set_item("cov_error", e.to_string())?;
         }
     }
-    // Always present, like cov_ok, so a caller can branch on it without
-    // knowing whether this particular call asked for a forecast.
-    dct.set_item("drift_uncertainty", drift_uncertainty)?;
     if forecast_steps > 0 {
         let fc = if drift_uncertainty {
             r.forecast_with(
@@ -2510,6 +2792,170 @@ fn arima_fit<'py>(
         dct.set_item("forecast_se", fc.se.into_pyarray(py))?;
     }
     dct.set_item("residuals", r.residuals().map_err(to_py)?.into_pyarray(py))?;
+    Ok(dct)
+}
+
+/// Automatic ARIMA order selection — Hyndman-Khandakar (2008), the
+/// `forecast::auto.arima` algorithm, on the exact-MLE engine behind
+/// `arima_fit`.
+///
+/// Three stages: `D` from the STL seasonal-strength rule (`nsdiffs`,
+/// seasonal searches only), then `d` from successive KPSS tests
+/// (`ndiffs`) on the seasonally differenced series, then a search over
+/// `(p, q, P, Q, constant)` minimizing `ic` at those FIXED differencing
+/// orders — information criteria are not comparable across differencing.
+/// `stepwise=True` (default) runs the Hyndman-Khandakar neighborhood
+/// search from the four standard starting models; `stepwise=False` fits
+/// the exhaustive grid subject to `max_order` (refused when the grid
+/// exceeds 512 fits — like R, `max_order` binds only the grid search).
+/// A constant is considered when `d + D <= 1` (mean or drift, R's
+/// allowmean/allowdrift defaults), never when `d + D >= 2`. Candidates
+/// whose fitted AR/MA roots sit within 0.1% of the unit circle are
+/// recorded but never selected; candidates that fail to fit steer the
+/// search instead of aborting it. Every candidate is fit by exact MLE
+/// (deterministic), so repeated calls give identical answers.
+///
+/// **Validation grade (honest):** candidate-level fits/AICc are pinned
+/// to statsmodels (`fixtures/auto_arima.json`); the selection loop
+/// itself is graded by Monte-Carlo order recovery (rates in the model
+/// card) and has NO gating third-party reference — R's auto.arima and
+/// pmdarima famously disagree with each other, so "parity" would pin an
+/// accident. No exogenous regressors in this slice (the engine has no
+/// ARIMAX yet).
+///
+/// Returns the `arima_fit` result dict for the selected model (same
+/// keys: params, param_names, loglik, aic, bic, bse, param_cov, cov_ok,
+/// residuals, plus forecast keys when `forecast_steps > 0`) with the
+/// selection extras: `order` (p, d, q), `seasonal_order` (P, D, Q, s —
+/// all zero when non-seasonal), `constant`, `converged`, `ic`,
+/// `ic_value`, `aicc`, `stepwise`, `n_models`, `budget_exhausted`,
+/// `trace` (one dict per candidate tried: `order`, `seasonal_order`,
+/// `constant`, `ic` — None when unavailable — `status`
+/// "ok" | "near_unit_root" | "ic_undefined" | "fit_failed", `error`),
+/// `d_test` / `D_test` (the full `ndiffs` / `nsdiffs` evidence dicts,
+/// None when fixed by the caller or not applicable), and
+/// `interpretation`. For drift-uncertainty forecast bands, refit the
+/// selected order with `arima_fit(..., drift_uncertainty=True)` — the
+/// option needs the constant to be a modeling choice, not a search
+/// outcome.
+#[pyfunction]
+#[pyo3(signature = (y, seasonal_period = 0, ic = "aicc", stepwise = true,
+                    max_p = 5, max_q = 5, max_P = 2, max_Q = 2, max_order = 5,
+                    max_d = 2, max_D = 1, d = None, D = None, alpha = 0.05,
+                    forecast_steps = 0, conf_alpha = None))]
+#[allow(non_snake_case, clippy::too_many_arguments)]
+fn auto_arima<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    seasonal_period: usize,
+    ic: &str,
+    stepwise: bool,
+    max_p: usize,
+    max_q: usize,
+    max_P: usize,
+    max_Q: usize,
+    max_order: usize,
+    max_d: usize,
+    max_D: usize,
+    d: Option<usize>,
+    D: Option<usize>,
+    alpha: f64,
+    forecast_steps: usize,
+    conf_alpha: Option<f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_arima::SelectionIc;
+    let ic = match ic {
+        "aicc" => SelectionIc::Aicc,
+        "aic" => SelectionIc::Aic,
+        "bic" => SelectionIc::Bic,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown ic {other:?}; expected \"aicc\" (the auto.arima default), \
+                 \"aic\", or \"bic\""
+            )))
+        }
+    };
+    if conf_alpha.is_some() && forecast_steps == 0 {
+        return Err(PyValueError::new_err(
+            "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
+        ));
+    }
+    let opts = tsecon_arima::AutoArimaOptions {
+        seasonal_period,
+        ic,
+        stepwise,
+        max_p,
+        max_q,
+        max_seasonal_p: max_P,
+        max_seasonal_q: max_Q,
+        max_order,
+        max_d,
+        max_seasonal_d: max_D,
+        fixed_d: d,
+        fixed_seasonal_d: D,
+        alpha,
+        max_models: 94,
+    };
+    let r = tsecon_arima::auto_arima(&vec1(&y), &opts).map_err(to_py)?;
+
+    let dct = arima_results_dict(py, &r.best, forecast_steps, conf_alpha, false)?;
+    let spec = r.best.spec;
+    dct.set_item("order", (spec.p(), spec.d(), spec.q()))?;
+    dct.set_item(
+        "seasonal_order",
+        (
+            spec.seasonal_p(),
+            spec.seasonal_d(),
+            spec.seasonal_q(),
+            spec.period(),
+        ),
+    )?;
+    dct.set_item("constant", spec.include_constant())?;
+    dct.set_item("converged", r.best.converged)?;
+    dct.set_item("ic", r.ic.code())?;
+    dct.set_item("ic_value", r.best_ic)?;
+    match SelectionIc::Aicc.evaluate(&r.best) {
+        Some(v) => dct.set_item("aicc", v)?,
+        None => dct.set_item("aicc", py.None())?,
+    }
+    dct.set_item("stepwise", r.stepwise)?;
+    dct.set_item("n_models", r.n_models)?;
+    dct.set_item("budget_exhausted", r.budget_exhausted)?;
+    let trace = r
+        .trace
+        .iter()
+        .map(|c| {
+            let e = PyDict::new(py);
+            e.set_item("order", (c.p, r.d, c.q))?;
+            // The search-level (D, s) are shared by every candidate; a
+            // non-seasonal search reports (P, D, Q, s) = (0, 0, 0, 0).
+            e.set_item(
+                "seasonal_order",
+                (c.seasonal_p, r.seasonal_d, c.seasonal_q, r.seasonal_period),
+            )?;
+            e.set_item("constant", c.constant)?;
+            match c.ic {
+                Some(v) => e.set_item("ic", v)?,
+                None => e.set_item("ic", py.None())?,
+            }
+            e.set_item("status", c.status.code())?;
+            match &c.error {
+                Some(msg) => e.set_item("error", msg)?,
+                None => e.set_item("error", py.None())?,
+            }
+            Ok(e)
+        })
+        .collect::<PyResult<Vec<Bound<'py, PyDict>>>>()?;
+    dct.set_item("trace", trace)?;
+    match &r.d_evidence {
+        Some(ev) => dct.set_item("d_test", ndiffs_result_dict(py, ev)?)?,
+        None => dct.set_item("d_test", py.None())?,
+    }
+    match &r.seasonal_d_evidence {
+        Some(ev) => dct.set_item("D_test", nsdiffs_result_dict(py, ev)?)?,
+        None => dct.set_item("D_test", py.None())?,
+    }
+    dct.set_item("interpretation", &r.interpretation)?;
     Ok(dct)
 }
 
@@ -4312,8 +4758,39 @@ fn panel_fe<'py>(
 /// 0.88 -> 0.80; the equivalence arrives by T ~ 240. At short T prefer
 /// `bias_correction="spj"`, whose SEs are recomputed for the corrected
 /// estimator.
+///
+/// BANDS (`band=`). `band=None` (the default) returns no band, exactly as
+/// before. `"pointwise"`, `"sidak"` and `"bonferroni"` add `lower`/`upper`
+/// over the horizons of this response (`K = horizon + 1`,
+/// `band_scope="horizon"`) at level `band_alpha`, together with
+/// `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used`
+/// and `cov_se_max_rel_diff` (always None here: the closed-form routes build
+/// no covariance; `band_n_sim`/`band_seed` come back 0 — no simulation ran).
+/// A `"pointwise"` band covers one horizon at a time and promises nothing
+/// about the path; `"sidak"` and `"bonferroni"` cover every horizon at once
+/// with probability `1 - band_alpha` (Montiel Olea & Plagborg-Møller,
+/// "Simultaneous confidence bands", are the reference for why a pointwise
+/// band read as a path statement fails).
+///
+/// `band="sup-t"` IS REFUSED HERE, with an error saying why: sup-t needs the
+/// covariance ACROSS horizons and tsecon estimates none for the panel LP
+/// (building it would need new cross-horizon machinery in the panel crate —
+/// a documented follow-up), so `panel_lp` gets the CLOSED-FORM simultaneous
+/// routes only, like `lp_iv`/`lp_multiplier`/`lp_state`. Never describe a
+/// band from this function as sup-t.
+///
+/// Joint coverage, measured (seeded MC, known-truth panel IRF `0.8*0.6^h`,
+/// K=9 horizons, Driscoll-Kraay, nominal 90%, 200 reps per cell; the
+/// N=24/T=160 cell is `test_simultaneous_bands.py`): the pointwise band
+/// contained the whole path in 30.5% of samples at N=24, T=160 and still
+/// only 42.5% at N=30, T=800 — multiplicity does not shrink with the
+/// sample — while Sidak/Bonferroni scored 76.5%/76.5% at T=160 rising to
+/// 88.0%/89.0% at T=800, where the per-horizon Driscoll-Kraay marginals
+/// sit on nominal. The union bounds fix multiplicity ONLY and inherit
+/// whatever the DK standard errors get wrong at short T (the documented
+/// short-T DK caveat).
 #[pyfunction]
-#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false, bias_correction = "none"))]
+#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
 #[allow(clippy::too_many_arguments)]
 fn panel_lp<'py>(
     py: Python<'py>,
@@ -4326,6 +4803,8 @@ fn panel_lp<'py>(
     cumulative: bool,
     jackknife: bool,
     bias_correction: &str,
+    band: Option<&str>,
+    band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_var::tsecon_linalg::faer::Mat;
     let o = outcome.as_array();
@@ -4348,6 +4827,16 @@ fn panel_lp<'py>(
         }
     };
     let r = tsecon_panel::panel_lp(&data, &vec1(&shock), &cfg).map_err(to_py)?;
+    // Closed-form band over the horizons of this one response. Same machinery
+    // and same refusal (`sup-t` needs a cross-horizon covariance nobody
+    // estimates here) as lp_iv / lp_multiplier / lp_state.
+    let fitted_band = match band {
+        None => None,
+        Some(b) => {
+            let bspec = lp_closed_form_spec(b, band_alpha, "panel_lp")?;
+            Some(tsecon_lp::closed_form_band(&r.irf, &r.se, bspec).map_err(to_py)?)
+        }
+    };
     let d = PyDict::new(py);
     d.set_item("irf", r.irf.into_pyarray(py))?;
     d.set_item("se", r.se.into_pyarray(py))?;
@@ -4370,6 +4859,9 @@ fn panel_lp<'py>(
             tsecon_panel::LpBiasCorrection::Spj => "spj",
         },
     )?;
+    if let Some(b) = fitted_band.as_ref() {
+        set_lp_band_items(py, &d, b, "")?;
+    }
     Ok(d)
 }
 
@@ -5171,26 +5663,166 @@ fn ccc_garch<'py>(
 
 /// DCC-GARCH (Engle 2002): GARCH(1,1) per series with dynamic conditional
 /// correlations Q_t = (1-a-b)Qbar + a z z' + b Q_{t-1}. `returns` is `T x k`.
-/// Returns the DCC parameters (a, b), the targeted Qbar, the log-likelihood,
-/// convergence, and the final-period correlation matrix.
+///
+/// `variant` selects the correlation recursion: `"dcc"` (Engle 2002, the
+/// default), `"cdcc"` (Aielli 2013 — the corrected driver
+/// z*_t = diag(Q_t)^{1/2} z_t that makes correlation targeting consistent;
+/// `qbar` is then Aielli's S), or `"adcc"` (Cappiello-Engle-Sheppard 2006 —
+/// an extra `g`·n n' term with n_t = min(z_t, 0), so joint bad news moves
+/// correlations more; estimated under the sufficient constraint
+/// a + b + delta·g < 1). `dist` selects the second-stage likelihood:
+/// `"normal"` (Gaussian QMLE, the default) or `"t"` (standardized
+/// multivariate Student-t; the estimated degrees of freedom come back as
+/// `nu`). The default call (`variant="dcc"`, `dist="normal"`) is
+/// bit-identical to earlier releases; all new keys are additive.
+///
+/// Returns dict keys: `a`, `b`, `g` (0.0 unless `variant="adcc"`), `qbar`,
+/// `loglik`, `converged`, `variant`, `dist`, `correlation` (the full
+/// in-sample conditional correlation path, `(T, k, k)` as a nested list —
+/// `np.asarray(r["correlation"])` gives the 3-D array, `[t][i][j]` like
+/// `var_irf`), `correlation_last`, `nu` (only when `dist="t"`), and — when
+/// `forecast_horizon > 0` — `correlation_forecast` and
+/// `covariance_forecast` (`(horizon, k, k)` nested lists, entry `[h-1]` is
+/// the h-step-ahead matrix) plus `variance_forecast`
+/// (`(horizon, k)` per-series conditional variance forecasts).
+///
+/// TIMING CONVENTION (read before comparing R's). `correlation[t]` is
+/// `R_t`, the conditional correlation *given information through t-1*: the
+/// recursion builds `Q_t` from `z_{t-1}` and `Q_{t-1}` (with `Q_0 = Qbar`),
+/// the standard filter convention. `correlation_last` is simply the last
+/// in-sample matrix `correlation[-1]` = `R_{T-1}` (0-indexed) — it
+/// conditions on information through T-2 and is NOT stale and NOT a
+/// forecast. The one-step-ahead forecast `R_{T+1}` additionally uses the
+/// final residual `z_T`; it is `correlation_forecast[0]`, which therefore
+/// differs from `correlation_last`.
+///
+/// FORECAST CONVENTION. `correlation_forecast[0]` (h = 1) is exact in the
+/// information set: `Q_{T+1} = (1-a-b)Qbar + a z_T z_T' + b Q_T`,
+/// normalized. For h >= 2 there is no closed form (the correlation
+/// normalization is nonlinear), so the standard Engle-Sheppard (2001)
+/// forward recursion is used: `E[Q_{T+h}] = (1-a-b)Qbar +
+/// (a+b)E[Q_{T+h-1}]`, normalized to a correlation each step — an
+/// approximation (`E[R] != corr(E[Q])` exactly) that converges
+/// geometrically (rate a+b) to the unconditional `corr(Qbar)`.
+/// `covariance_forecast[h-1] = D R D` with `D` from the per-series
+/// analytic variance forecasts (the further standard approximation
+/// `E[DRD] ~= E[D]E[R]E[D]`). Under `"adcc"` the same mean recursion
+/// applies (the asymmetric term cancels against its targeting intercept
+/// in expectation); under `"cdcc"` S replaces Qbar.
 #[pyfunction]
+#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0))]
 fn dcc_garch<'py>(
     py: Python<'py>,
     returns: numpy::PyReadonlyArray2<'py, f64>,
+    variant: &str,
+    dist: &str,
+    forecast_horizon: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_mgarch::{CorrDist, DccVariant};
+    let v = match variant {
+        "dcc" => DccVariant::Dcc,
+        "cdcc" => DccVariant::Cdcc,
+        "adcc" => DccVariant::Adcc,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown variant {other:?}; expected \"dcc\" (Engle 2002), \
+                 \"cdcc\" (Aielli 2013 consistent targeting), or \"adcc\" \
+                 (Cappiello-Engle-Sheppard 2006 asymmetric)"
+            )))
+        }
+    };
+    let cd = match dist {
+        "normal" => CorrDist::Normal,
+        "t" => CorrDist::StudentT,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown dist {other:?}; expected \"normal\" or \"t\" \
+                 (second-stage correlation likelihood)"
+            )))
+        }
+    };
     let series = returns_to_series(&returns);
     let fit = tsecon_mgarch::DccGarch::new(garch11_spec())
+        .with_variant(v)
+        .with_dist(cd)
         .fit(&series)
         .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("a", fit.a)?;
     d.set_item("b", fit.b)?;
+    d.set_item("g", fit.g)?;
     d.set_item("qbar", mat_to_vec2_bayes(&fit.qbar))?;
     d.set_item("loglik", fit.loglik)?;
     d.set_item("converged", fit.converged)?;
+    d.set_item("variant", variant)?;
+    d.set_item("dist", dist)?;
+    if let Some(nu) = fit.nu {
+        d.set_item("nu", nu)?;
+    }
+    d.set_item(
+        "correlation",
+        fit.correlation_path
+            .iter()
+            .map(mat_to_vec2_bayes)
+            .collect::<Vec<_>>(),
+    )?;
     if let Some(last) = fit.correlation_path.last() {
         d.set_item("correlation_last", mat_to_vec2_bayes(last))?;
     }
+    if forecast_horizon > 0 {
+        let fc = fit.forecast(forecast_horizon).map_err(to_py)?;
+        d.set_item(
+            "correlation_forecast",
+            fc.correlation
+                .iter()
+                .map(mat_to_vec2_bayes)
+                .collect::<Vec<_>>(),
+        )?;
+        d.set_item(
+            "covariance_forecast",
+            fc.covariance
+                .iter()
+                .map(mat_to_vec2_bayes)
+                .collect::<Vec<_>>(),
+        )?;
+        d.set_item("variance_forecast", fc.variance)?;
+    }
+    Ok(d)
+}
+
+/// Engle-Sheppard (2001) test of constant conditional correlation — the
+/// CCC-vs-DCC diagnostic. `returns` is `T x k` (k >= 2); a GARCH(1,1) is
+/// fitted to each series (the same first stage `ccc_garch`/`dcc_garch`
+/// use), the residuals are jointly standardized by the *symmetric* inverse
+/// square root of the constant correlation matrix, and the stacked
+/// off-diagonal outer products are regressed on a constant and `lags` of
+/// themselves (one pooled regression across all pairs). Under H0 (constant
+/// correlation) all coefficients are zero and `stat` is asymptotically
+/// chi-squared with `df = lags + 1` degrees of freedom.
+///
+/// Returns dict keys: `stat` (the Wald statistic), `df`, `p_value` (small
+/// values reject constant correlation in favor of DCC-type dynamics),
+/// `lags`, `nobs`, and `n_stacked` (`(T - lags) * k(k-1)/2` pooled
+/// regression observations). The diagonal outer products are excluded on
+/// purpose, so univariate GARCH misfit does not masquerade as correlation
+/// dynamics.
+#[pyfunction]
+#[pyo3(signature = (returns, lags = 5))]
+fn dcc_test<'py>(
+    py: Python<'py>,
+    returns: numpy::PyReadonlyArray2<'py, f64>,
+    lags: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let series = returns_to_series(&returns);
+    let r =
+        tsecon_mgarch::constant_correlation_test(&series, garch11_spec(), lags).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("df", r.df)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("lags", r.lags)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("n_stacked", r.n_stacked)?;
     Ok(d)
 }
 
@@ -5220,8 +5852,13 @@ fn realized_measures<'py>(
 /// HAR-RV heterogeneous autoregression of realized variance (Corsi 2009).
 ///
 /// Regresses `RV_t` on `[const, RV_{t-1}, RV_week, RV_month]`, where the
-/// weekly/monthly regressors are trailing averages known at `t-1`. The
-/// `variant` transforms the series first: `"level"`, `"log"`, or `"sqrt"`.
+/// weekly/monthly regressors are trailing averages known at `t-1` that
+/// **include the daily lag**, per Corsi's definition:
+/// `RV_week = mean(RV_{t-1} .. RV_{t-5})`,
+/// `RV_month = mean(RV_{t-1} .. RV_{t-22})`. (**Changed in 0.5**: through
+/// 0.4.0 the windows mistakenly excluded `RV_{t-1}` — coefficients on the
+/// same data shift.) The `variant` transforms the series first:
+/// `"level"`, `"log"`, or `"sqrt"`.
 /// Standard errors are Newey-West HAC with `hac_maxlags` lags; matches
 /// statsmodels OLS-HAC at 1e-8 when `use_correction` is matched.
 ///
@@ -5762,6 +6399,430 @@ fn backtest<'py>(
     d.set_item("forecasts", forecasts)?;
     d.set_item("targets", targets)?;
     d.set_item("accuracy", rows)?;
+    Ok(d)
+}
+
+/// Parse the `order=(p, d, q)` argument of the `"arima"` conformal base.
+fn parse_conformal_order(order: Option<Vec<i64>>) -> PyResult<(usize, usize, usize)> {
+    match order {
+        None => Ok((1, 0, 0)),
+        Some(v) => {
+            if v.len() != 3 || v.iter().any(|&x| x < 0) {
+                return Err(PyValueError::new_err(format!(
+                    "order must be three non-negative integers (p, d, q) for the \
+                     \"arima\" base, got {v:?}; e.g. order=(1, 0, 1). Seasonal \
+                     orders are not supported here — wrap arima_fit output \
+                     yourself or use base=\"theta\" for seasonal data"
+                )));
+            }
+            Ok((v[0] as usize, v[1] as usize, v[2] as usize))
+        }
+    }
+}
+
+/// The boxed base-forecaster closure the conformal entry points share:
+/// (training slice, horizon) -> point forecasts.
+type ConformalBaseFn =
+    Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, tsecon_forecast::ForecastError>>;
+
+/// Build the base point-forecaster closure shared by the conformal entry
+/// points. Every base sees only the training slice it is handed.
+fn conformal_base(
+    base: &str,
+    period: usize,
+    lags: usize,
+    order: (usize, usize, usize),
+) -> PyResult<ConformalBaseFn> {
+    use tsecon_forecast::{
+        ar_forecast, drift, historical_mean, naive, seasonal_naive, theta_forecast, ForecastError,
+    };
+    let wrap = |e: tsecon_arima::ArimaError| ForecastError::BaseForecaster {
+        message: e.to_string(),
+    };
+    let f: ConformalBaseFn = match base {
+        "theta" => Box::new(move |train, h| Ok(theta_forecast(train, period, h)?.forecast)),
+        "naive" => Box::new(|train, h| Ok(naive(train, h, 0.95)?.mean)),
+        "drift" => Box::new(|train, h| Ok(drift(train, h, 0.95)?.mean)),
+        "mean" => Box::new(|train, h| Ok(historical_mean(train, h, 0.95)?.mean)),
+        "seasonal_naive" => {
+            Box::new(move |train, h| Ok(seasonal_naive(train, period, h, 0.95)?.mean))
+        }
+        "ar" => Box::new(move |train, h| ar_forecast(train, lags, h)),
+        "arima" => {
+            let (p, d, q) = order;
+            Box::new(move |train, h| {
+                let spec = tsecon_arima::ArimaSpec::new(p, d, q)
+                    .map_err(wrap)?
+                    .with_constant(true);
+                let fit = spec.fit(train).map_err(wrap)?;
+                Ok(fit.forecast(h).map_err(wrap)?.mean)
+            })
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown base {other:?}; expected one of \"theta\", \"naive\", \
+                 \"drift\", \"mean\", \"seasonal_naive\", \"ar\", \"arima\""
+            )))
+        }
+    };
+    Ok(f)
+}
+
+/// Resolve `calib`/`n_eval` defaults against the series length: `calib`
+/// defaults to `n // 4` residuals and `n_eval` to `n // 5` origins.
+fn conformal_windows(n: usize, calib: Option<usize>, n_eval: Option<usize>) -> (usize, usize) {
+    (calib.unwrap_or(n / 4), n_eval.unwrap_or(n / 5))
+}
+
+fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
+    match (mode, method) {
+        ("symmetric", _) => Ok(true),
+        ("asymmetric", "split") => Ok(false),
+        ("asymmetric", "aci") => Err(PyValueError::new_err(
+            "mode=\"asymmetric\" is not available with method=\"aci\": the ACI \
+             recursion here scores misses against symmetric absolute-residual \
+             intervals (the level adapts instead of the shape). Use \
+             method=\"split\" for signed-residual asymmetric calibration.",
+        )),
+        ("asymmetric", "enbpi") => Err(PyValueError::new_err(
+            "mode=\"asymmetric\" is not how EnbPI expresses asymmetry: its \
+             published interval is the width-minimizing beta line search over \
+             signed-residual quantiles [q_beta, q_{1-alpha+beta}] — control it \
+             with optimize_beta=True (the default; False gives the symmetric \
+             absolute-residual variant of the authors' released code).",
+        )),
+        (other, _) => Err(PyValueError::new_err(format!(
+            "unknown mode {other:?}; expected \"symmetric\" or \"asymmetric\""
+        ))),
+    }
+}
+
+/// Distribution-free conformal prediction intervals around a point
+/// forecaster: split conformal, EnbPI, or adaptive conformal inference.
+///
+/// `method="split"` (the baseline): hold out the last `calib` forecast
+/// origins (expanding training windows, refit at every origin — the
+/// backtest engine's leakage discipline), record h-step-ahead residuals,
+/// and band the forward forecast with their finite-sample-corrected
+/// quantile, the `ceil((m+1)(1-alpha))`-th smallest score. `mode`
+/// `"symmetric"` uses absolute residuals; `"asymmetric"` calibrates the
+/// two tails separately on signed residuals at `alpha/2` each (the
+/// interval may exclude a biased base's point forecast — that is the
+/// point). Under exchangeable scores coverage is guaranteed `>= 1 - alpha`
+/// in finite samples; for dependent forecast residuals it is approximate,
+/// and the measured grades live in the model card.
+///
+/// `method="enbpi"` (Xu-Xie ICML 2021, Algorithm 1; journal version IEEE
+/// TPAMI 2023): a bootstrap ensemble of `n_boot` AR(`lags`) least-squares
+/// learners on the internally built lagged design (`base` must be `"ar"`),
+/// leave-one-out aggregated out-of-bag residuals, and the paper's
+/// width-minimizing `beta` line search over `[q_beta, q_{1-alpha+beta}]`
+/// (`optimize_beta=False` gives the symmetric absolute-residual variant of
+/// the authors' released code). Seeded and bit-reproducible via `seed`.
+/// Multi-step forecasts recurse the ensemble's own predictions into the
+/// lag vector (the paper's batch mode with s = horizon).
+///
+/// `method="aci"` (Gibbs-Candes NeurIPS 2021): split conformal run online
+/// over the last `n_eval` origins with the miscoverage level adapting as
+/// `alpha_{t+1} = alpha_t + gamma * (alpha - err_t)`; the forward interval
+/// uses the final adapted level, and the realized online diagnostics are
+/// returned. The default `gamma=0.005` is the step size used throughout
+/// the paper's experiments. When `alpha_t` collapses the interval is
+/// infinite (err 0); past 1 it is the degenerate point interval (err 1) —
+/// the paper's conventions.
+///
+/// `base` is the wrapped point forecaster for split/aci: `"theta"`,
+/// `"naive"`, `"drift"`, `"mean"`, `"seasonal_naive"` (with `period`),
+/// `"ar"` (least squares on `lags` lags), or `"arima"` (with
+/// `order=(p, d, q)`, constant included). `calib` defaults to `n // 4`
+/// residuals per horizon; `n_eval` (aci) defaults to `n // 5`.
+///
+/// Returns dict keys (all methods): `mean`, `lower`, `upper`, `level`
+/// (`1 - alpha`), `alpha`, `horizon`, `method`, `base`, `n_calib`.
+/// Split adds `q_lower`, `q_upper`, `scores` (the per-horizon signed
+/// calibration residuals), `finite_sample_level` (the exact exchangeable
+/// coverage `k/(m+1)` the correction targets), and `mode`. EnbPI adds
+/// `beta`, `residuals` (leave-one-out), `n_boot`, `lags`, `n_excluded`,
+/// and `optimize_beta`. ACI adds `gamma`, `alpha_final`,
+/// `alpha_trajectory`, `err`, `realized_coverage` (all per horizon over
+/// the online window), and `n_eval`.
+#[pyfunction]
+#[pyo3(signature = (y, horizon = 1, method = "split", base = "theta", alpha = 0.1,
+                    calib = None, mode = "symmetric", period = 1, gamma = 0.005,
+                    n_eval = None, lags = 1, n_boot = 25, seed = 0,
+                    optimize_beta = true, order = None))]
+#[allow(clippy::too_many_arguments)]
+fn conformal_forecast<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    horizon: usize,
+    method: &str,
+    base: &str,
+    alpha: f64,
+    calib: Option<usize>,
+    mode: &str,
+    period: usize,
+    gamma: f64,
+    n_eval: Option<usize>,
+    lags: usize,
+    n_boot: usize,
+    seed: u64,
+    optimize_beta: bool,
+    order: Option<Vec<i64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_forecast as fc;
+    let yv = vec1(&y);
+    let n = yv.len();
+    let (calib, n_eval) = conformal_windows(n, calib, n_eval);
+    let symmetric = parse_conformal_mode(mode, method)?;
+    let d = PyDict::new(py);
+    d.set_item("method", method)?;
+    d.set_item("horizon", horizon)?;
+    d.set_item("alpha", alpha)?;
+    match method {
+        "split" => {
+            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let opts = fc::SplitConformalOptions {
+                horizon,
+                alpha,
+                calib,
+                symmetric,
+            };
+            let r = fc::split_conformal(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?;
+            d.set_item("base", base)?;
+            d.set_item("mean", r.mean.into_pyarray(py))?;
+            d.set_item("lower", r.lower.into_pyarray(py))?;
+            d.set_item("upper", r.upper.into_pyarray(py))?;
+            d.set_item("level", r.level)?;
+            d.set_item("n_calib", r.n_calib)?;
+            d.set_item("q_lower", r.q_lower.into_pyarray(py))?;
+            d.set_item("q_upper", r.q_upper.into_pyarray(py))?;
+            let scores = PyList::new(py, r.scores.into_iter().map(|s| s.into_pyarray(py)))?;
+            d.set_item("scores", scores)?;
+            d.set_item("finite_sample_level", r.finite_sample_level)?;
+            d.set_item("mode", mode)?;
+        }
+        "enbpi" => {
+            if base != "ar" {
+                return Err(PyValueError::new_err(format!(
+                    "method=\"enbpi\" trains its own bootstrap ensemble of AR \
+                     least-squares learners on a lagged design, so base must be \
+                     \"ar\" (got {base:?}); choose the design with lags=... . \
+                     To wrap {base:?} itself, use method=\"split\" or \"aci\"."
+                )));
+            }
+            let opts = fc::EnbpiOptions {
+                horizon,
+                alpha,
+                lags,
+                n_boot,
+                seed,
+                optimize_beta,
+                n_beta: 21,
+            };
+            let r = fc::enbpi(&yv, &opts).map_err(to_py)?;
+            d.set_item("base", "ar")?;
+            d.set_item("mean", r.mean.into_pyarray(py))?;
+            d.set_item("lower", r.lower.into_pyarray(py))?;
+            d.set_item("upper", r.upper.into_pyarray(py))?;
+            d.set_item("level", r.level)?;
+            d.set_item("n_calib", r.n_calib)?;
+            d.set_item("beta", r.beta)?;
+            d.set_item("residuals", r.residuals.into_pyarray(py))?;
+            d.set_item("n_boot", r.n_boot)?;
+            d.set_item("lags", r.lags)?;
+            d.set_item("n_excluded", r.n_excluded)?;
+            d.set_item("optimize_beta", optimize_beta)?;
+        }
+        "aci" => {
+            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let opts = fc::AciOptions {
+                horizon,
+                alpha,
+                gamma,
+                calib,
+                n_eval,
+            };
+            let r = fc::aci(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?;
+            d.set_item("base", base)?;
+            d.set_item("mean", r.mean.into_pyarray(py))?;
+            d.set_item("lower", r.lower.into_pyarray(py))?;
+            d.set_item("upper", r.upper.into_pyarray(py))?;
+            d.set_item("level", r.level)?;
+            d.set_item("n_calib", r.n_calib)?;
+            d.set_item("gamma", r.gamma)?;
+            d.set_item("alpha_final", r.alpha_final.into_pyarray(py))?;
+            let online = r.online;
+            let traj = online.alpha_trajectory.unwrap_or_default();
+            d.set_item(
+                "alpha_trajectory",
+                PyList::new(py, traj.into_iter().map(|t| t.into_pyarray(py)))?,
+            )?;
+            d.set_item(
+                "err",
+                PyList::new(py, online.err.into_iter().map(|e| e.into_pyarray(py)))?,
+            )?;
+            d.set_item(
+                "realized_coverage",
+                online.realized_coverage.into_pyarray(py),
+            )?;
+            d.set_item("n_eval", n_eval)?;
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"split\", \"enbpi\", or \"aci\""
+            )))
+        }
+    }
+    Ok(d)
+}
+
+/// Online out-of-sample evaluation of conformal forecast intervals: form
+/// the interval at each of the last `n_eval` origins from information
+/// available *then*, score it against the realized target, and report the
+/// realized coverage — the honest way to grade what a conformal method
+/// actually delivers on a series (and the harness behind the model card's
+/// coverage tables).
+///
+/// `method="split"` recalibrates the trailing `calib` realized h-step
+/// residuals at every origin at the fixed level; `method="aci"` runs the
+/// Gibbs-Candes level recursion on top of the same trailing scores
+/// (`gamma`, default 0.005 from the paper); `method="enbpi"` is the
+/// published online algorithm — ensemble fit once on the pre-evaluation
+/// sample, residual window sliding forward by `batch` as labels are
+/// revealed (horizon must be 1; within a batch, lag values beyond the last
+/// reveal are plug-in ensemble predictions). `base`, `period`, `lags`,
+/// `order` as in `conformal_forecast`.
+///
+/// Returns dict keys: `origins`, `n_eval`, `horizon`, `level`, `alpha`,
+/// `method`, `base`, and per-horizon lists `mean`, `lower`, `upper`,
+/// `err` (missed-target indicators), plus `realized_coverage` (per
+/// horizon). ACI adds `alpha_trajectory`; EnbPI adds `batch`.
+#[pyfunction]
+#[pyo3(signature = (y, horizon = 1, method = "split", base = "theta", alpha = 0.1,
+                    calib = None, mode = "symmetric", period = 1, gamma = 0.005,
+                    n_eval = None, lags = 1, n_boot = 25, batch = 1, seed = 0,
+                    optimize_beta = true, order = None))]
+#[allow(clippy::too_many_arguments)]
+fn conformal_backtest<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    horizon: usize,
+    method: &str,
+    base: &str,
+    alpha: f64,
+    calib: Option<usize>,
+    mode: &str,
+    period: usize,
+    gamma: f64,
+    n_eval: Option<usize>,
+    lags: usize,
+    n_boot: usize,
+    batch: usize,
+    seed: u64,
+    optimize_beta: bool,
+    order: Option<Vec<i64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use tsecon_forecast as fc;
+    let yv = vec1(&y);
+    let n = yv.len();
+    let (calib, n_eval) = conformal_windows(n, calib, n_eval);
+    let symmetric = parse_conformal_mode(mode, method)?;
+    let online = match method {
+        "split" => {
+            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let opts = fc::SplitOnlineOptions {
+                horizon,
+                alpha,
+                calib,
+                n_eval,
+                symmetric,
+            };
+            fc::split_conformal_online(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?
+        }
+        "aci" => {
+            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let opts = fc::AciOptions {
+                horizon,
+                alpha,
+                gamma,
+                calib,
+                n_eval,
+            };
+            fc::aci(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?.online
+        }
+        "enbpi" => {
+            if base != "ar" {
+                return Err(PyValueError::new_err(format!(
+                    "method=\"enbpi\" trains its own AR least-squares ensemble; \
+                     base must be \"ar\" (got {base:?})"
+                )));
+            }
+            if horizon != 1 {
+                return Err(PyValueError::new_err(format!(
+                    "conformal_backtest(method=\"enbpi\") is the published online \
+                     algorithm, which is one-step-ahead with labels revealed once \
+                     per batch — horizon={horizon} is not defined here. Set \
+                     horizon=1 and batch=s for the paper's batch-of-s mode, or \
+                     use conformal_forecast(method=\"enbpi\", horizon=...) for a \
+                     multi-step forecast from the end of the sample."
+                )));
+            }
+            let opts = fc::EnbpiOptions {
+                horizon: 1,
+                alpha,
+                lags,
+                n_boot,
+                seed,
+                optimize_beta,
+                n_beta: 21,
+            };
+            fc::enbpi_online(&yv, &opts, n_eval, batch).map_err(to_py)?
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"split\", \"enbpi\", or \"aci\""
+            )))
+        }
+    };
+
+    let d = PyDict::new(py);
+    d.set_item("method", method)?;
+    d.set_item("base", if method == "enbpi" { "ar" } else { base })?;
+    d.set_item("horizon", online.horizon)?;
+    d.set_item("alpha", online.alpha)?;
+    d.set_item("level", online.level)?;
+    d.set_item("origins", online.origins)?;
+    d.set_item("n_eval", n_eval)?;
+    d.set_item(
+        "mean",
+        PyList::new(py, online.mean.into_iter().map(|v| v.into_pyarray(py)))?,
+    )?;
+    d.set_item(
+        "lower",
+        PyList::new(py, online.lower.into_iter().map(|v| v.into_pyarray(py)))?,
+    )?;
+    d.set_item(
+        "upper",
+        PyList::new(py, online.upper.into_iter().map(|v| v.into_pyarray(py)))?,
+    )?;
+    d.set_item(
+        "err",
+        PyList::new(py, online.err.into_iter().map(|v| v.into_pyarray(py)))?,
+    )?;
+    d.set_item(
+        "realized_coverage",
+        online.realized_coverage.into_pyarray(py),
+    )?;
+    if let Some(traj) = online.alpha_trajectory {
+        d.set_item(
+            "alpha_trajectory",
+            PyList::new(py, traj.into_iter().map(|t| t.into_pyarray(py)))?,
+        )?;
+    }
+    if method == "enbpi" {
+        d.set_item("batch", batch)?;
+    }
     Ok(d)
 }
 
@@ -6874,10 +7935,14 @@ fn predictive_regression<'py>(
 /// (Kostakis-Magdalinos-Stamatogiannis 2015).
 ///
 /// `xs` is a `T x k` matrix of persistent predictors; tests `H0: beta = 0`
-/// jointly. With the default `joint="chi2"` the statistic is the
-/// chi-square(`k`) Wald, whose validity is uniform over the predictors'
-/// persistence. Returns the IVX slope vector `beta_ivx`, the joint
+/// jointly. Returns the IVX slope vector `beta_ivx`, the joint
 /// `wald`/`pvalue`, the instrument decay `rz`, and shape info.
+///
+/// THE DEFAULT IS `joint="bonferroni"` (changed in 0.5.0), because the
+/// chi-square joint test's measured size is indefensible at the `k` values
+/// people actually use — see the caveat below. `joint="chi2"` remains
+/// available for the textbook chi-square(`k`) Wald, whose validity is
+/// uniform over the predictors' persistence but NOT over `k`.
 ///
 /// SIZE CAVEAT (measured): uniformity over persistence is NOT uniformity in
 /// `k`. At rho = 1, endogeneity -0.9, n = 250 the nominal-5% chi-square
@@ -6886,7 +7951,7 @@ fn predictive_regression<'py>(
 /// n^{-(1-alpha)/2}). `alpha = 0.5` restores convergence in n but still
 /// measures ~0.13 at k = 8, n = 250.
 ///
-/// `joint="bonferroni"` is the measured escape hatch: it runs the SCALAR
+/// `joint="bonferroni"` (the default) is the measured remedy: it runs the SCALAR
 /// IVX-Wald test (whose size holds uniformly over persistence, deep into the
 /// tail) on every predictor separately and rejects when the smallest scalar
 /// p-value falls below level/k (union-intersection). Measured size
@@ -6901,7 +7966,7 @@ fn predictive_regression<'py>(
 /// `wald_scalar` and `pvalue_scalar` (each column exactly
 /// `predictive_regression`'s ivx test for that predictor).
 #[pyfunction]
-#[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95, joint = "chi2"))]
+#[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95, joint = "bonferroni"))]
 fn ivx_test<'py>(
     py: Python<'py>,
     r: PyReadonlyArray1<'py, f64>,
@@ -7340,8 +8405,9 @@ fn afns_adjustment<'py>(
 /// a/beta/c (the excess-return regression), sigma2, lambda0, lambda1,
 /// delta0/delta1 (the short-rate equation), the price recursions A/B and
 /// A_rn/B_rn, fitted / risk_neutral / term_premium (T x M, annualized
-/// decimal, fitted = risk_neutral + term_premium), and the diagnostic
-/// var_rsquared, rx_rsquared, short_rate_rsquared, yield_rsquared.
+/// decimal, fitted = risk_neutral + term_premium), the diagnostic
+/// var_rsquared, rx_rsquared, short_rate_rsquared, yield_rsquared, and
+/// the echoed inputs maturities / n_factors / periods_per_year.
 ///
 /// Validated end-to-end against an independent NumPy transcription at 1e-8,
 /// with term-premium recovery on a known-price-of-risk affine DGP, and — on
@@ -8862,9 +9928,12 @@ fn copula_fit_dict<'py>(
 /// their average rank — exactly scipy `rankdata(method="average")/(n+1)`
 /// (golden-pinned, ties included). The `n + 1` denominator keeps every
 /// value strictly inside (0, 1), which the copula quantile transforms
-/// require. Ranks see only order, so any strictly monotone transform of a
-/// margin (logs, standardization, exp) leaves the output — and any copula
-/// fitted to it — bit-identical (property-tested). This is the one-line
+/// require. Ranks see only order, so any strictly INCREASING transform of
+/// a margin (logs, standardization, exp) leaves the output — and any
+/// copula fitted to it — bit-identical (property-tested). A strictly
+/// decreasing transform instead reverses that margin's ranks (`u -> 1 - u`
+/// when there are no ties), flipping the sign of the fitted dependence —
+/// the standard copula invariance is increasing-only. This is the one-line
 /// companion to `copula_fit`: `copula_fit(pseudo_obs(x))`. Accepts any
 /// number of columns (the transform is columnwise); `copula_fit` itself
 /// is bivariate in this slice.
@@ -8887,8 +9956,10 @@ fn pseudo_obs<'py>(
 ///
 /// `u` must lie strictly inside (0, 1): rank/PIT-transform the raw margins
 /// first — `pseudo_obs(x)` does it in one line, and the whole workflow is
-/// then invariant to monotone transforms of each margin (the point of the
-/// copula decomposition; property-tested). At least 20 pairs required.
+/// then invariant to strictly increasing transforms of each margin (the
+/// point of the copula decomposition; property-tested — a decreasing
+/// transform flips the sign of the dependence instead). At least 20 pairs
+/// required.
 ///
 /// `family`: "gaussian" (param `rho`), "t" (`rho`, `nu`), "clayton"
 /// (`theta` > 0, lower-tail), "gumbel" (`theta` >= 1, upper-tail), "frank"
@@ -9023,6 +10094,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cf_filter, m)?)?;
     m.add_function(wrap_pyfunction!(hamilton_filter, m)?)?;
     m.add_function(wrap_pyfunction!(stl, m)?)?;
+    m.add_function(wrap_pyfunction!(mstl, m)?)?;
     m.add_function(wrap_pyfunction!(seasonal_strength, m)?)?;
     m.add_function(wrap_pyfunction!(dm_test, m)?)?;
     m.add_function(wrap_pyfunction!(accuracy, m)?)?;
@@ -9032,6 +10104,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bvar_irf_draws, m)?)?;
     m.add_function(wrap_pyfunction!(mcmc_diagnostics, m)?)?;
     m.add_function(wrap_pyfunction!(arima_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(auto_arima, m)?)?;
     m.add_function(wrap_pyfunction!(lp, m)?)?;
     m.add_function(wrap_pyfunction!(lp_iv, m)?)?;
     m.add_function(wrap_pyfunction!(lp_multiplier, m)?)?;
@@ -9059,6 +10132,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(umidas, m)?)?;
     m.add_function(wrap_pyfunction!(ccc_garch, m)?)?;
     m.add_function(wrap_pyfunction!(dcc_garch, m)?)?;
+    m.add_function(wrap_pyfunction!(dcc_test, m)?)?;
     m.add_function(wrap_pyfunction!(realized_measures, m)?)?;
     m.add_function(wrap_pyfunction!(har_rv, m)?)?;
     m.add_function(wrap_pyfunction!(connectedness, m)?)?;
@@ -9066,6 +10140,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(nelson_siegel, m)?)?;
     m.add_function(wrap_pyfunction!(svensson, m)?)?;
     m.add_function(wrap_pyfunction!(backtest, m)?)?;
+    m.add_function(wrap_pyfunction!(conformal_forecast, m)?)?;
+    m.add_function(wrap_pyfunction!(conformal_backtest, m)?)?;
     m.add_function(wrap_pyfunction!(adaptive_lasso, m)?)?;
     m.add_function(wrap_pyfunction!(lasso_path, m)?)?;
     m.add_function(wrap_pyfunction!(cv_splits, m)?)?;
@@ -9115,6 +10191,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(smooth_lp, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_perron, m)?)?;
     m.add_function(wrap_pyfunction!(dfgls, m)?)?;
+    m.add_function(wrap_pyfunction!(ng_perron, m)?)?;
     m.add_function(wrap_pyfunction!(phillips_ouliaris, m)?)?;
     m.add_function(wrap_pyfunction!(zivot_andrews, m)?)?;
     m.add_function(wrap_pyfunction!(ndiffs, m)?)?;

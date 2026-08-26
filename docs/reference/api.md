@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**145 functions.**
+**151 functions.**
 
 ## diagnostics
 
@@ -119,6 +119,37 @@ DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996; null: unit root).
     ({"1%","5%","10%"}), `trend`. Statistic and selected lag match
     arch.unitroot.DFGLS (< 1e-10); p-values/critical values are arch's DF-GLS
     response surfaces (Sheppard's MacKinnon-style simulations, transcribed).
+
+### `ng_perron`
+
+```python
+def ng_perron(
+    y: _ArrayLike,
+    trend: str = ...,
+    lags: int | str | None = ...,
+    max_lags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Ng-Perron (2001) M unit-root tests (MZa, MZt, MSB, MPT; null: unit root).
+
+    GLS-detrends `y` through the same engine as `dfgls` (cbar = -7.0 for
+    "c", -13.5 for "ct"), selects the ADF lag by the paper's MAIC on the
+    detrended series (`lags=None` or `"maic"`, searching 0..=`max_lags`;
+    default Schwert's ceil(12*(n/100)^(1/4)) capped at (n-1)/2 - 1) or uses
+    a fixed integer `lags`, estimates the autoregressive spectral density at
+    frequency zero `s2_ar = sigma2_e / (1 - b(1))^2`, and forms the four M
+    statistics. All four reject the unit-root null when SMALL (below the
+    critical value); `mzt == mza * msb` exactly. No p-values: no published
+    response surface exists for the M tests, so compare each statistic
+    against its own critical values (Ng-Perron 2001 Table 1, asymptotic,
+    transcribed). Returns dict keys: `mza`, `mzt`, `msb`, `mpt`,
+    `used_lag`, `nobs` (= n - 1 - used_lag), `s2_ar`, `crit`
+    ({"mza","mzt","msb","mpt"} each {"1%","5%","10%"}), `trend`. Prefer
+    this battery over `dfgls` under a suspected large negative MA root;
+    caveat (Perron-Qu 2007): on data far from the null MAIC drives the lag
+    to its maximum and power collapses — cap `max_lags` or fix `lags`
+    there.
 
 ### `phillips_ouliaris`
 
@@ -369,6 +400,52 @@ Exact-MLE ARIMA(p,d,q) fit, with optional forecast + conf_alpha bands.
     Also returns bse / param_cov from the observed information, or None with
     cov_ok=False when that matrix is too ill-conditioned to invert honestly.
 
+### `auto_arima`
+
+```python
+def auto_arima(
+    y: _ArrayLike,
+    seasonal_period: int = ...,
+    ic: str = ...,
+    stepwise: bool = ...,
+    max_p: int = ...,
+    max_q: int = ...,
+    max_P: int = ...,
+    max_Q: int = ...,
+    max_order: int = ...,
+    max_d: int = ...,
+    max_D: int = ...,
+    d: int | None = ...,
+    D: int | None = ...,
+    alpha: float = ...,
+    forecast_steps: int = ...,
+    conf_alpha: float | None = ...,
+) -> dict[str, Any]:
+```
+
+Automatic ARIMA order selection (Hyndman-Khandakar 2008 stepwise).
+
+    D from the STL seasonal-strength rule (nsdiffs, when
+    seasonal_period >= 2), d from successive KPSS tests (ndiffs) on the
+    seasonally differenced series, then a stepwise search over
+    (p, q, P, Q, constant) minimizing `ic` ("aicc" default, "aic",
+    "bic") at those fixed differencing orders; stepwise=False fits the
+    exhaustive grid subject to max_order instead (like R, max_order
+    binds only the grid). Near-unit-root fits are recorded but never
+    selected; failed fits steer the search rather than aborting it.
+    Every candidate is fit by the exact-MLE engine behind arima_fit, so
+    the search is deterministic. No exogenous regressors in this slice.
+
+    Returns the arima_fit result dict for the selected model plus:
+    `order`, `seasonal_order`, `constant`, `converged`, `ic`,
+    `ic_value`, `aicc`, `stepwise`, `n_models`, `budget_exhausted`,
+    `trace` (every candidate tried, with its criterion and status),
+    `d_test` / `D_test` (the full ndiffs / nsdiffs evidence, None when
+    fixed or not applicable), and `interpretation`. Honest grading:
+    candidate fits are statsmodels-pinned; the selection loop itself is
+    graded by Monte-Carlo order recovery (rates in the model card), not
+    R/pmdarima parity.
+
 ## GARCH
 
 ### `garch_fit`
@@ -387,6 +464,11 @@ def garch_fit(
 ```
 
 GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
+
+    Filter timing (matches `arch`): conditional_volatility[t] is the
+    one-step-ahead volatility FOR period t, formed from information through
+    t-1 (sigma2_t is built from eps_{t-1} and sigma2_{t-1}); the post-sample
+    continuation of that step is `variance_forecast`.
 
     Boundary fits (a coefficient at its sign constraint, persistence at 1)
     carry per-parameter `se_valid`/`boundary` flags and a `boundary_note`:
@@ -727,6 +809,45 @@ STL seasonal-trend decomposition using LOESS (Cleveland et al. 1990).
     the outer loop runs), `period`, and `config` (the resolved windows,
     degrees, jumps, and inner/outer iteration counts).
 
+### `mstl`
+
+```python
+def mstl(
+    y: _ArrayLike,
+    periods: Sequence[int],
+    windows: Sequence[int] | None = ...,
+    iterate: int = ...,
+    trend: int | None = ...,
+    low_pass: int | None = ...,
+    seasonal_deg: int = ...,
+    trend_deg: int = ...,
+    low_pass_deg: int = ...,
+    robust: bool = ...,
+    seasonal_jump: int = ...,
+    trend_jump: int = ...,
+    low_pass_jump: int = ...,
+    inner_iter: int | None = ...,
+    outer_iter: int | None = ...,
+) -> dict[str, Any]:
+```
+
+MSTL — STL iterated over multiple seasonal periods
+    (Bandara-Hyndman-Bergmeir 2021), e.g. `periods=[24, 168]` for hourly
+    data with daily and weekly cycles.
+
+    Matches statsmodels.tsa.seasonal.MSTL elementwise at 1e-8: periods
+    sorted ascending, any period >= n/2 dropped (reported in
+    `dropped_periods`), per-period seasonal windows from `windows` (None:
+    the 7 + 4*k rule -> 11, 15, 19, ...), `iterate` refinement rounds
+    (default 2; 1 for a single period), remaining STL keywords forwarded
+    to every pass. statsmodels' Box-Cox `lmbda` option is not implemented
+    (pre-transform y instead); duplicate periods and iterate=0 are
+    refused. Returns `seasonal` (dict of per-period arrays keyed
+    "seasonal_<period>"), `trend`, `resid`, `weights` (from the final
+    pass), the resolved `periods`/`windows`, `iterate`,
+    `dropped_periods`, and per-period `seasonal_strength` (None for a
+    constant series).
+
 ### `seasonal_strength`
 
 ```python
@@ -771,6 +892,11 @@ def theta_forecast(y: _ArrayLike, steps: int, period: int = ...) -> _F64:
 ```
 
 The Theta method (Assimakopoulos-Nikolopoulos 2000).
+
+    Matches statsmodels `ThetaModel(deseasonalize=True, use_test=False)`;
+    statsmodels' default additionally pre-tests seasonality and skips
+    deseasonalization when the test fails, so the two defaults diverge on
+    weakly-seasonal data declared with `period > 1`.
 
 ## local projections
 
@@ -1459,6 +1585,8 @@ def panel_lp(
     cumulative: bool = ...,
     jackknife: bool = ...,
     bias_correction: str = ...,
+    band: str | None = ...,
+    band_alpha: float = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -1481,6 +1609,23 @@ Panel local projection of a common shock with fixed effects.
 
     Returns a dict with `irf`, `se`, `nobs` (each length horizon+1) and the
     stamped `se_type`, `cumulative`, `jackknife`, `bias_correction`.
+
+    **Bands.** `band=None` (default) returns no band. `"pointwise"`, `"sidak"`
+    and `"bonferroni"` add `lower`/`upper` over the horizons of this response
+    (`K = horizon + 1`, `band_scope="horizon"`) at level `band_alpha`, with
+    `critical_value`, `pointwise_critical_value`, `n_cells`, `n_cells_used`
+    and `cov_se_max_rel_diff` (always None here: no covariance is built;
+    `band_n_sim`/`band_seed` come back 0 — no simulation ran). A pointwise
+    band covers one horizon at a time; the closed-form simultaneous routes
+    cover every horizon at once at `1 - band_alpha` (Montiel Olea and
+    Plagborg-Møller's simultaneous-bands framework; joint coverage measured
+    in `test_simultaneous_bands.py` — see the panel model card).
+
+    `band="sup-t"` is **refused** with an error saying why: sup-t needs the
+    covariance ACROSS horizons and tsecon estimates none for the panel LP
+    (a cross-horizon panel covariance is a documented follow-up), so
+    `panel_lp` gets the closed-form routes only, like `lp_iv`,
+    `lp_multiplier` and `lp_state`. Never describe such a band as sup-t.
 
 ### `lp_did`
 
@@ -1749,10 +1894,43 @@ CCC-GARCH (Bollerslev 1990); returns is T x k. Correlation + loglik.
 ### `dcc_garch`
 
 ```python
-def dcc_garch(returns: _ArrayLike) -> dict[str, Any]:
+def dcc_garch(
+    returns: _ArrayLike,
+    variant: str = ...,
+    dist: str = ...,
+    forecast_horizon: int = ...,
+) -> dict[str, Any]:
 ```
 
-DCC-GARCH (Engle 2002); a, b, qbar, loglik, last correlation matrix.
+DCC-GARCH (Engle 2002); returns is T x k. variant: "dcc" | "cdcc"
+    (Aielli 2013 consistent targeting) | "adcc" (Cappiello-Engle-Sheppard
+    2006 asymmetric); dist: "normal" | "t" (second-stage likelihood; "t"
+    adds nu). Keys: a, b, g, qbar, loglik, converged, variant, dist,
+    correlation ((T, k, k) nested list -- the in-sample conditional
+    correlation path), correlation_last, and with forecast_horizon > 0
+    correlation_forecast / covariance_forecast ((horizon, k, k)) and
+    variance_forecast ((horizon, k)).
+
+    Timing: correlation[t] = R_t conditions on information through t-1
+    (filter convention; Q_0 = Qbar). correlation_last = correlation[-1] is
+    the last IN-SAMPLE matrix, not a forecast; the one-step-ahead R_{T+1}
+    also uses the final residual z_T and is correlation_forecast[0].
+    h >= 2 forecasts use the Engle-Sheppard (2001) recursion on E[Q]
+    normalized each step (an approximation), converging to corr(qbar).
+    The default call is bit-identical to earlier releases.
+
+### `dcc_test`
+
+```python
+def dcc_test(returns: _ArrayLike, lags: int = ...) -> dict[str, Any]:
+```
+
+Engle-Sheppard (2001) test of constant conditional correlation
+    (CCC vs DCC); returns is T x k. GARCH(1,1) per series, joint
+    standardization by the symmetric inverse square root of the constant
+    correlation, pooled AR(lags) on the stacked off-diagonal outer
+    products. Keys: stat, df (= lags + 1), p_value (small rejects constant
+    correlation), lags, nobs, n_stacked.
 
 ## realized volatility / HAR
 
@@ -1777,6 +1955,11 @@ def har_rv(
 ```
 
 HAR-RV (Corsi 2009): RV_t on [const, daily, weekly, monthly], HAC SEs.
+
+    The aggregates follow Corsi's definition and INCLUDE the daily lag:
+    weekly = mean(RV_{t-1}..RV_{t-5}), monthly = mean(RV_{t-1}..RV_{t-22}).
+    (Changed in 0.5: through 0.4.0 the windows mistakenly excluded RV_{t-1};
+    coefficients on the same data shift.)
 
     variant is "level", "log", or "sqrt". use_correction now defaults True
     (False through 0.2.0): bse/tvalues carry the finite-sample sqrt(n/(n-k))
@@ -1970,6 +2153,74 @@ Rolling/expanding pseudo-out-of-sample backtest.
     window is "expanding" or "rolling"; forecaster is one of naive, drift,
     mean, seasonal_naive, theta. Returns origins, per-horizon forecasts and
     targets, and a per-horizon accuracy table.
+
+## conformal forecast intervals
+
+### `conformal_forecast`
+
+```python
+def conformal_forecast(
+    y: _ArrayLike,
+    horizon: int = ...,
+    method: str = ...,
+    base: str = ...,
+    alpha: float = ...,
+    calib: int | None = ...,
+    mode: str = ...,
+    period: int = ...,
+    gamma: float = ...,
+    n_eval: int | None = ...,
+    lags: int = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    optimize_beta: bool = ...,
+    order: tuple[int, int, int] | None = ...,
+) -> dict[str, Any]:
+```
+
+Distribution-free conformal forecast intervals around a point forecaster.
+
+    method is "split" (finite-sample-corrected residual-quantile calibration
+    on held-out origins; mode "symmetric" or "asymmetric"), "enbpi" (Xu-Xie
+    2021 bootstrap-ensemble batch prediction intervals; base must be "ar"),
+    or "aci" (Gibbs-Candes 2021 adaptive conformal inference,
+    alpha_{t+1} = alpha_t + gamma (alpha - err_t), gamma default 0.005 from
+    the paper). base wraps "theta", "naive", "drift", "mean",
+    "seasonal_naive", "ar", or "arima" (order=(p, d, q)). calib defaults to
+    n // 4 residuals per horizon; n_eval (aci) to n // 5. Returns mean,
+    lower, upper, level, plus per-method calibration diagnostics (split:
+    q_lower/q_upper/scores/finite_sample_level; enbpi: beta/residuals;
+    aci: alpha_final/alpha_trajectory/err/realized_coverage).
+
+### `conformal_backtest`
+
+```python
+def conformal_backtest(
+    y: _ArrayLike,
+    horizon: int = ...,
+    method: str = ...,
+    base: str = ...,
+    alpha: float = ...,
+    calib: int | None = ...,
+    mode: str = ...,
+    period: int = ...,
+    gamma: float = ...,
+    n_eval: int | None = ...,
+    lags: int = ...,
+    n_boot: int = ...,
+    batch: int = ...,
+    seed: int = ...,
+    optimize_beta: bool = ...,
+    order: tuple[int, int, int] | None = ...,
+) -> dict[str, Any]:
+```
+
+Online out-of-sample evaluation of conformal intervals ("split",
+    "aci", or "enbpi") over the last n_eval origins: per-origin intervals
+    formed from information available then, miss indicators, and realized
+    coverage per horizon. ACI adds its alpha_t trajectory; EnbPI is the
+    published one-step online algorithm with the residual window sliding
+    by batch.
 
 ## nonlinear GMM (callback)
 
@@ -2302,16 +2553,18 @@ def ivx_test(
 Joint IVX predictability test for several persistent predictors (xs is T x k).
 
     Returns beta_ivx, the joint wald/pvalue, rz, nregressors, nobs. The
-    default joint="chi2" Wald's size degrades in k near a unit root (measured
-    0.28 at k=8, n=250, nominal 0.05) and n does not repair it (alpha=0.5
-    restores convergence but still ~0.13 at k=8, n=250).
-    joint="bonferroni" is the measured escape hatch: per-predictor scalar IVX
-    tests combined at level/k (size at or below nominal for every measured k;
-    power on par with a size-corrected chi-square test for sparse
-    alternatives). It adds wald_scalar/pvalue_scalar/joint keys, and its
-    `wald` is the LARGEST scalar statistic (chi-square(1) scale) with
-    `pvalue` already Bonferroni-adjusted — see the predictive-regressions
-    model card.
+    default is joint="bonferroni" (changed in 0.5; through 0.4.0 the default
+    was "chi2"): per-predictor scalar IVX tests combined at level/k, whose
+    measured size is at or below nominal for every measured k, with power on
+    par with a size-corrected chi-square test for sparse alternatives. It
+    adds wald_scalar/pvalue_scalar/joint keys, and its `wald` is the LARGEST
+    scalar statistic (chi-square(1) scale) with `pvalue` already
+    Bonferroni-adjusted. The flip is measured, not stylistic: the
+    joint="chi2" chi-square(k) Wald's size degrades in k near a unit root
+    (0.28 at k=8, n=250, nominal 0.05) and n does not repair it (alpha=0.5
+    restores convergence but still ~0.13 at k=8, n=250); chi2 stays
+    available for small k or rho safely below 1 — see the
+    predictive-regressions model card.
 
 ## recession probability
 
@@ -2487,7 +2740,8 @@ ACM regression-based term premium (Adrian-Crump-Moench 2013).
     needed). Returns factors, factor_loadings, mu/phi/sigma, rx_maturities,
     a/beta/c, sigma2, lambda0/lambda1, delta0/delta1, A/B, A_rn/B_rn,
     fitted / risk_neutral / term_premium (T x M, fitted = risk_neutral +
-    term_premium), and var/rx/short_rate/yield R-squareds. The premium's
+    term_premium), var/rx/short_rate/yield R-squareds, and the echoed
+    inputs maturities / n_factors / periods_per_year. The premium's
     LEVEL is estimation-sample sensitive; compare only across models fit on
     the same sample.
 
@@ -2789,9 +3043,12 @@ Pseudo-observations: the average-rank probability-scale transform.
     their average rank — exactly scipy `rankdata(method="average")/(n+1)`
     (golden-pinned, ties included). The `n + 1` denominator keeps every
     value strictly inside (0, 1), which the copula quantile transforms
-    require. Ranks see only order, so any strictly monotone transform of a
-    margin (logs, standardization, exp) leaves the output — and any copula
-    fitted to it — bit-identical (property-tested). This is the one-line
+    require. Ranks see only order, so any strictly INCREASING transform of
+    a margin (logs, standardization, exp) leaves the output — and any
+    copula fitted to it — bit-identical (property-tested). A strictly
+    decreasing transform instead reverses that margin's ranks (`u -> 1 - u`
+    when there are no ties), flipping the sign of the fitted dependence —
+    the standard copula invariance is increasing-only. This is the one-line
     companion to `copula_fit`: `copula_fit(pseudo_obs(x))`. Accepts any
     number of columns (the transform is columnwise); `copula_fit` itself
     is bivariate in this slice.
@@ -2810,8 +3067,10 @@ Fits a bivariate copula to (n, 2) probability-scale pseudo-observations.
 
     `u` must lie strictly inside (0, 1): rank/PIT-transform the raw margins
     first — `pseudo_obs(x)` does it in one line, and the whole workflow is
-    then invariant to monotone transforms of each margin (the point of the
-    copula decomposition; property-tested). At least 20 pairs required.
+    then invariant to strictly increasing transforms of each margin (the
+    point of the copula decomposition; property-tested — a decreasing
+    transform flips the sign of the dependence instead). At least 20 pairs
+    required.
 
     `family`: "gaussian" (param `rho`), "t" (`rho`, `nu`), "clayton"
     (`theta` > 0, lower-tail), "gumbel" (`theta` >= 1, upper-tail), "frank"

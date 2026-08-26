@@ -166,6 +166,12 @@ is the joint rate — see
 **References (bands).** Montiel Olea and Plagborg-Møller, *Simultaneous
 confidence bands: theory, implementation, and an application to SVARs*.
 
+**The panel sibling.** `panel_lp` (on the [panel card](panel.md)) takes the
+same `band=` selector with the closed forms only — sup-t is refused there for
+the same no-covariance reason as `lp_iv`, and its joint coverage is measured
+on its own seeded panel MC; see
+[its band section](panel.md#simultaneous-bands-over-the-horizons-panel_lp).
+
 ---
 
 ## `lp_iv` — instrumented local projections (LP-IV)

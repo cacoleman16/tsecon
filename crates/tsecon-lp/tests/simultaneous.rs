@@ -379,6 +379,63 @@ fn critical_values_are_ordered_pointwise_le_sup_t_le_sidak_le_bonferroni() {
 }
 
 #[test]
+fn under_an_independence_construction_sup_t_matches_sidak() {
+    // The third algebraic anchor (after "K = 1 collapses to pointwise" and
+    // "pointwise <= sup-t <= Sidak <= Bonferroni"): Sidak is EXACT for the
+    // maximum of independent |t|'s, so on an independence construction —
+    // the real LP path's variances with every cross-horizon covariance
+    // zeroed — the simulated sup-t quantile must reproduce the closed-form
+    // Sidak value to simulation noise, from BOTH sides. One-sided
+    // inequalities cannot catch a sup-t that is systematically too small;
+    // this does.
+    use tsecon_stats::simultaneous::{required_uniforms, sidak_critical_value, sup_t_from_cov};
+
+    let fx = load_fixture();
+    let y = f64s(&fx["y"]);
+    let e = f64s(&fx["e"]);
+    let cov = lp_irf_cov(&y, &e, LpSpec::new(12, 4)).expect("cov");
+    let k = cov.horizons.len();
+
+    // Independence construction: keep the diagonal (the pointwise
+    // variances), zero everything else.
+    let mut diag = vec![0.0_f64; k * k];
+    for i in 0..k {
+        diag[i * k + i] = cov.cov[i * k + i];
+    }
+
+    let n_sim = 200_000;
+    let mut uniforms = vec![0.0_f64; required_uniforms(k, n_sim)];
+    Stream::new(20_260_823).fill_uniform_f64(&mut uniforms);
+
+    for alpha in [0.10, 0.05] {
+        let sidak = sidak_critical_value(alpha, k).expect("sidak");
+        let supt_indep = sup_t_from_cov(&diag, k, alpha, &uniforms).expect("sup-t on diagonal");
+        let gap = (supt_indep - sidak).abs();
+        println!(
+            "alpha={alpha}, K={k}: sup-t under independence {supt_indep:.4} \
+             vs Sidak {sidak:.4} (gap {gap:.4})"
+        );
+        // Quantile Monte Carlo noise at n_sim = 200,000 is ~2e-3 here; 0.01
+        // is five standard errors.
+        assert!(
+            gap < 0.01,
+            "alpha={alpha}: sup-t on an independent family gave {supt_indep} \
+             but Sidak (exact under independence) is {sidak}"
+        );
+
+        // And on the REAL (positively correlated) covariance the sup-t value
+        // must sit strictly below Sidak — the whole point of building the
+        // cross-horizon matrix.
+        let supt_real = sup_t_from_cov(&cov.cov, k, alpha, &uniforms).expect("sup-t on real cov");
+        assert!(
+            supt_real < sidak - 0.05,
+            "alpha={alpha}: sup-t on the correlated LP path ({supt_real}) \
+             should beat Sidak ({sidak}) by a clear margin"
+        );
+    }
+}
+
+#[test]
 fn a_single_horizon_collapses_every_route_to_the_pointwise_band() {
     // K = 1 has no multiplicity to correct, so "simultaneous" must degrade to
     // the ordinary band. That makes it always safe to ask for a sup-t band.

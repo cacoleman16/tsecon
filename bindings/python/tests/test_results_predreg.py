@@ -330,12 +330,30 @@ def joint(data):
     return IVXTestResults.fit(r, xs, names=["dp", "tbill"]), r, xs
 
 
+@pytest.fixture(scope="module")
+def joint_chi2(data):
+    """The chi-square(k) joint branch — the pre-0.5.0 default, kept under
+    test for the properties that are specific to it (its summary label and
+    its unclamped p-value)."""
+    r, x = data
+    xs = np.column_stack([x, np.roll(x, 3)])
+    return IVXTestResults.fit(r, xs, names=["dp", "tbill"], joint="chi2")
+
+
 def test_joint_is_a_dict_with_the_original_keys(joint):
     res, r, xs = joint
     raw = tsecon.ivx_test(r, xs)
     assert isinstance(res, dict)
     assert set(res) == set(raw)
-    assert set(raw) == {"beta_ivx", "wald", "pvalue", "rz", "nobs", "nregressors"}
+    # The default is joint="bonferroni" (0.5.0), so the per-predictor keys
+    # ride along; the chi2 branch still carries exactly the historical set.
+    assert set(raw) == {
+        "beta_ivx", "wald", "pvalue", "rz", "nobs", "nregressors",
+        "wald_scalar", "pvalue_scalar", "joint",
+    }
+    assert set(tsecon.ivx_test(r, xs, joint="chi2")) == {
+        "beta_ivx", "wald", "pvalue", "rz", "nobs", "nregressors",
+    }
     assert res["wald"] == pytest.approx(raw["wald"])
     np.testing.assert_allclose(res["beta_ivx"], raw["beta_ivx"])
 
@@ -343,7 +361,9 @@ def test_joint_is_a_dict_with_the_original_keys(joint):
 def test_joint_json_and_pickle_round_trip(joint):
     res, _, _ = joint
     d = res.to_dict()
-    d["beta_ivx"] = d["beta_ivx"].tolist()
+    for k, v in list(d.items()):
+        if isinstance(v, np.ndarray):
+            d[k] = v.tolist()
     back = json.loads(json.dumps(d))
     assert back["nregressors"] == 2
 
@@ -353,8 +373,8 @@ def test_joint_json_and_pickle_round_trip(joint):
     assert unpickled.names() == ["dp", "tbill"]
 
 
-def test_joint_summary_content(joint):
-    res, _, _ = joint
+def test_joint_summary_content(joint_chi2):
+    res = joint_chi2
     s = res.summary()
     assert f"IVX p = {res['pvalue']:.4f}" in s
     assert f"Wald chi2(2) {res['wald']:.4f}" in s
@@ -379,8 +399,11 @@ def test_joint_names_default_to_x1_xk(data):
     assert "x1" in res.summary()
 
 
-def test_joint_significant_reads_the_pvalue(joint):
-    res, _, _ = joint
+def test_joint_significant_reads_the_pvalue(joint_chi2):
+    # Pinned to the chi2 branch: the Bonferroni joint p-value is
+    # min(1, k * min_j p_j), which clamps at exactly 1.0, and no level
+    # strictly below 1 can reject a p-value of 1.
+    res = joint_chi2
     p = res["pvalue"]
     assert res.significant(0.05) is (p < 0.05)
     assert res.significant(min(0.99, p + 0.01)) is True

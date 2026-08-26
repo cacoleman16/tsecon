@@ -42,6 +42,10 @@ use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_optim::{minimize, FnObjective, Method, NelderMeadOptions};
 
 use crate::ccc::scale_correlation;
+use crate::dynamics::{
+    adcc_delta, asymmetric_moment, eval_dynamics, gaussian_loglik, student_t_loglik, CorrDist,
+    DccVariant, DynParams,
+};
 use crate::error::MgarchError;
 use crate::stage::UnivariateStage;
 use crate::util::{cholesky, corr_from_cov, moment_matrix, quad_form};
@@ -56,22 +60,80 @@ const MAX_PERSISTENCE: f64 = 1.0 - 1e-6;
 /// recovery is not begged.
 const STARTS: [[f64; 2]; 3] = [[0.05, 0.90], [0.03, 0.94], [0.01, 0.97]];
 
+/// Nelder-Mead starting points `(a, b, g)` for the ADCC step-2 search. One
+/// start sits at `g = 0` (the DCC special case) so symmetric data can
+/// collapse the asymmetry cleanly.
+const ADCC_STARTS: [[f64; 3]; 4] = [
+    [0.03, 0.94, 0.02],
+    [0.05, 0.90, 0.05],
+    [0.01, 0.97, 0.00],
+    [0.03, 0.90, 0.10],
+];
+
+/// Admissible degrees-of-freedom window for the Student-t second stage.
+/// Below `NU_MIN` the standardized t's variance rescaling `nu - 2`
+/// degenerates; above `NU_MAX` the likelihood is Gaussian to machine
+/// precision and the surface is flat.
+const NU_MIN: f64 = 2.05;
+const NU_MAX: f64 = 1.0e4;
+
+/// Student-t starting values for `nu` appended to each dynamic start, plus
+/// one deliberately near-Gaussian start.
+const NU_STARTS: [f64; 2] = [8.0, 25.0];
+
 /// A DCC-GARCH model: a univariate [`GarchSpec`] applied to every series,
 /// with a scalar dynamic correlation on top.
+///
+/// The correlation recursion defaults to Engle (2002) DCC with a Gaussian
+/// second stage — the historical behavior, bit-identical to earlier
+/// releases. Opt into the corrected recursion of Aielli (2013) or the
+/// asymmetric recursion of Cappiello-Engle-Sheppard (2006) with
+/// [`DccGarch::with_variant`], and into a Student-t second-stage likelihood
+/// with [`DccGarch::with_dist`] (see [`crate::dynamics`] for the formulas
+/// and the consistency argument).
 #[derive(Debug, Clone, Copy)]
 pub struct DccGarch {
     spec: GarchSpec,
+    variant: DccVariant,
+    dist: CorrDist,
 }
 
 impl DccGarch {
-    /// A DCC model whose per-series volatilities follow `spec`.
+    /// A DCC model whose per-series volatilities follow `spec`
+    /// (variant [`DccVariant::Dcc`], distribution [`CorrDist::Normal`]).
     pub fn new(spec: GarchSpec) -> Self {
-        Self { spec }
+        Self {
+            spec,
+            variant: DccVariant::Dcc,
+            dist: CorrDist::Normal,
+        }
+    }
+
+    /// Selects the correlation recursion (DCC, cDCC, or ADCC).
+    pub fn with_variant(mut self, variant: DccVariant) -> Self {
+        self.variant = variant;
+        self
+    }
+
+    /// Selects the second-stage innovation distribution.
+    pub fn with_dist(mut self, dist: CorrDist) -> Self {
+        self.dist = dist;
+        self
     }
 
     /// The univariate specification applied to each series.
     pub fn spec(&self) -> &GarchSpec {
         &self.spec
+    }
+
+    /// The correlation recursion variant.
+    pub fn variant(&self) -> DccVariant {
+        self.variant
+    }
+
+    /// The second-stage innovation distribution.
+    pub fn dist(&self) -> CorrDist {
+        self.dist
     }
 
     /// Fits the model to `series` by two-step (Engle) estimation.
@@ -84,79 +146,276 @@ impl DccGarch {
     ///   path cannot be factorized.
     pub fn fit(&self, series: &[Vec<f64>]) -> Result<DccFit, MgarchError> {
         let stage = UnivariateStage::fit(series, self.spec)?;
-        let qbar = moment_matrix(&stage.z, stage.k);
-
-        // Step 2: maximize the DCC quasi-log-likelihood over (a, b). The
-        // objective is the *negative* full Gaussian log-likelihood, with an
-        // infinite wall on the infeasible region (a, b >= 0, a + b < 1) — the
-        // optimizer treats non-finite values as infeasible points.
-        let mut best_x = [STARTS[0][0], STARTS[0][1]];
-        let mut best_f = f64::INFINITY;
-        let mut converged = false;
-        let opts = NelderMeadOptions::default();
-        {
-            let stage_ref = &stage;
-            let qbar_ref = &qbar;
-            let mut objective = FnObjective::new(|x: &[f64]| {
-                let (a, b) = (x[0], x[1]);
-                if !a.is_finite() || !b.is_finite() || a < 0.0 || b < 0.0 || a + b > MAX_PERSISTENCE
-                {
-                    return f64::INFINITY;
-                }
-                match dcc_full_loglik(stage_ref, qbar_ref.as_ref(), a, b) {
-                    Ok(ll) if ll.is_finite() => -ll,
-                    _ => f64::INFINITY,
-                }
-            });
-            for start in STARTS {
-                let method = Method::NelderMead(opts);
-                let res = minimize(&mut objective, &start, &method)?;
-                if res.f < best_f {
-                    best_f = res.f;
-                    best_x = [res.x[0], res.x[1]];
-                    converged = res.converged;
-                }
-            }
+        if self.variant == DccVariant::Dcc && self.dist == CorrDist::Normal {
+            // The historical default path, kept verbatim (same starts, same
+            // objective arithmetic, same optimizer trajectory) so default
+            // results stay bit-identical release over release.
+            return fit_classic(stage);
         }
-
-        if !best_f.is_finite() {
-            return Err(MgarchError::Optim(tsecon_optim::OptimError::NonFinite {
-                what: "DCC step-2 objective (no feasible start converged)",
-            }));
-        }
-
-        // Clamp tiny negative excursions the simplex may leave behind, then
-        // rebuild the fitted path at the optimum (propagating real errors).
-        let a = best_x[0].max(0.0);
-        let b = best_x[1].max(0.0);
-        let (correlation_path, q_forecast) = dcc_path(&stage, qbar.as_ref(), a, b)?;
-        let loglik = dcc_full_loglik(&stage, qbar.as_ref(), a, b)?;
-
-        Ok(DccFit {
-            stage,
-            qbar,
-            a,
-            b,
-            loglik,
-            correlation_path,
-            q_forecast,
-            converged,
-        })
+        fit_general(stage, self.variant, self.dist)
     }
 }
 
-/// A fitted DCC-GARCH model.
+/// The pre-variant Engle (2002) DCC + Gaussian estimation path, unchanged.
+fn fit_classic(stage: UnivariateStage) -> Result<DccFit, MgarchError> {
+    let qbar = moment_matrix(&stage.z, stage.k);
+
+    // Step 2: maximize the DCC quasi-log-likelihood over (a, b). The
+    // objective is the *negative* full Gaussian log-likelihood, with an
+    // infinite wall on the infeasible region (a, b >= 0, a + b < 1) — the
+    // optimizer treats non-finite values as infeasible points.
+    let mut best_x = [STARTS[0][0], STARTS[0][1]];
+    let mut best_f = f64::INFINITY;
+    let mut converged = false;
+    let opts = NelderMeadOptions::default();
+    {
+        let stage_ref = &stage;
+        let qbar_ref = &qbar;
+        let mut objective = FnObjective::new(|x: &[f64]| {
+            let (a, b) = (x[0], x[1]);
+            if !a.is_finite() || !b.is_finite() || a < 0.0 || b < 0.0 || a + b > MAX_PERSISTENCE {
+                return f64::INFINITY;
+            }
+            match dcc_full_loglik(stage_ref, qbar_ref.as_ref(), a, b) {
+                Ok(ll) if ll.is_finite() => -ll,
+                _ => f64::INFINITY,
+            }
+        });
+        for start in STARTS {
+            let method = Method::NelderMead(opts);
+            let res = minimize(&mut objective, &start, &method)?;
+            if res.f < best_f {
+                best_f = res.f;
+                best_x = [res.x[0], res.x[1]];
+                converged = res.converged;
+            }
+        }
+    }
+
+    if !best_f.is_finite() {
+        return Err(MgarchError::Optim(tsecon_optim::OptimError::NonFinite {
+            what: "DCC step-2 objective (no feasible start converged)",
+        }));
+    }
+
+    // Clamp tiny negative excursions the simplex may leave behind, then
+    // rebuild the fitted path at the optimum (propagating real errors).
+    let a = best_x[0].max(0.0);
+    let b = best_x[1].max(0.0);
+    let (correlation_path, q_forecast) = dcc_path(&stage, qbar.as_ref(), a, b)?;
+    let loglik = dcc_full_loglik(&stage, qbar.as_ref(), a, b)?;
+
+    Ok(DccFit {
+        stage,
+        qbar,
+        a,
+        b,
+        g: 0.0,
+        nu: None,
+        variant: DccVariant::Dcc,
+        dist: CorrDist::Normal,
+        nbar: None,
+        loglik,
+        correlation_path,
+        q_forecast,
+        converged,
+    })
+}
+
+/// Step-2 estimation for every opt-in configuration (cDCC / ADCC and/or the
+/// Student-t second stage). Same multi-start Nelder-Mead architecture as the
+/// classic path, generalized to the parameter vector
+/// `[a, b (, g for ADCC) (, nu for Student-t)]`.
+fn fit_general(
+    stage: UnivariateStage,
+    variant: DccVariant,
+    dist: CorrDist,
+) -> Result<DccFit, MgarchError> {
+    let qbar = moment_matrix(&stage.z, stage.k);
+    let (nbar, delta) = match variant {
+        DccVariant::Adcc => {
+            let nbar = asymmetric_moment(&stage);
+            let delta = adcc_delta(qbar.as_ref(), nbar.as_ref())?;
+            (Some(nbar), delta)
+        }
+        _ => (None, 0.0),
+    };
+
+    // Precompute the per-t univariate log-determinant sum_i ln sigma2_{i,t}
+    // once (constant across step-2 evaluations).
+    let ln_det_d2: Vec<f64> = stage
+        .sigma2
+        .iter()
+        .map(|row| row.iter().map(|s2| s2.ln()).sum())
+        .collect();
+
+    let n_dyn = if variant == DccVariant::Adcc { 3 } else { 2 };
+    let with_nu = dist == CorrDist::StudentT;
+
+    // Assemble the start list.
+    let mut starts: Vec<Vec<f64>> = Vec::new();
+    let base: Vec<Vec<f64>> = if variant == DccVariant::Adcc {
+        ADCC_STARTS.iter().map(|s| s.to_vec()).collect()
+    } else {
+        STARTS.iter().map(|s| s.to_vec()).collect()
+    };
+    if with_nu {
+        for s in &base {
+            let mut x = s.clone();
+            x.push(NU_STARTS[0]);
+            starts.push(x);
+        }
+        // One deliberately near-Gaussian start from the middle base point.
+        let mut x = base[base.len() / 2].clone();
+        x.push(NU_STARTS[1]);
+        starts.push(x);
+    } else {
+        starts = base;
+    }
+
+    let mut best_x: Vec<f64> = starts[0].clone();
+    let mut best_f = f64::INFINITY;
+    let mut converged = false;
+    let opts = NelderMeadOptions::default();
+    {
+        let stage_ref = &stage;
+        let qbar_ref = &qbar;
+        let nbar_ref = nbar.as_ref();
+        let ln_det_d2_ref = &ln_det_d2;
+        let mut objective = FnObjective::new(|x: &[f64]| {
+            let (a, b) = (x[0], x[1]);
+            let g = if variant == DccVariant::Adcc {
+                x[2]
+            } else {
+                0.0
+            };
+            let nu = if with_nu { x[n_dyn] } else { f64::NAN };
+            if !a.is_finite() || !b.is_finite() || a < 0.0 || b < 0.0 {
+                return f64::INFINITY;
+            }
+            // Stationarity/positivity wall: a + b (+ delta g) < 1 keeps the
+            // recursion stationary and (for ADCC) the intercept PSD
+            // (Cappiello-Engle-Sheppard 2006 sufficient condition).
+            if !g.is_finite() || g < 0.0 || a + b + delta * g > MAX_PERSISTENCE {
+                return f64::INFINITY;
+            }
+            if variant == DccVariant::Adcc && g > MAX_PERSISTENCE {
+                return f64::INFINITY;
+            }
+            if with_nu && !(NU_MIN..=NU_MAX).contains(&nu) {
+                return f64::INFINITY;
+            }
+            let eval = match eval_dynamics(
+                stage_ref,
+                variant,
+                qbar_ref.as_ref(),
+                nbar_ref.map(|m| m.as_ref()),
+                DynParams { a, b, g },
+                false,
+            ) {
+                Ok(e) => e,
+                Err(_) => return f64::INFINITY,
+            };
+            let ll = match dist {
+                CorrDist::Normal => gaussian_loglik(stage_ref.k, ln_det_d2_ref, &eval),
+                CorrDist::StudentT => student_t_loglik(stage_ref.k, ln_det_d2_ref, &eval, nu),
+            };
+            if ll.is_finite() {
+                -ll
+            } else {
+                f64::INFINITY
+            }
+        });
+        for start in &starts {
+            let method = Method::NelderMead(opts);
+            let res = minimize(&mut objective, start, &method)?;
+            if res.f < best_f {
+                best_f = res.f;
+                best_x = res.x.clone();
+                converged = res.converged;
+            }
+        }
+    }
+
+    if !best_f.is_finite() {
+        return Err(MgarchError::Optim(tsecon_optim::OptimError::NonFinite {
+            what: "DCC step-2 objective (no feasible start converged)",
+        }));
+    }
+
+    // Clamp tiny negative excursions, then rebuild the path at the optimum.
+    let a = best_x[0].max(0.0);
+    let b = best_x[1].max(0.0);
+    let g = if variant == DccVariant::Adcc {
+        best_x[2].max(0.0)
+    } else {
+        0.0
+    };
+    let nu = with_nu.then(|| best_x[n_dyn].clamp(NU_MIN, NU_MAX));
+
+    let eval = eval_dynamics(
+        &stage,
+        variant,
+        qbar.as_ref(),
+        nbar.as_ref().map(|m| m.as_ref()),
+        DynParams { a, b, g },
+        true,
+    )?;
+    let loglik = match dist {
+        CorrDist::Normal => gaussian_loglik(stage.k, &ln_det_d2, &eval),
+        CorrDist::StudentT => student_t_loglik(stage.k, &ln_det_d2, &eval, nu.unwrap_or(f64::NAN)),
+    };
+    let correlation_path = eval.r_path.unwrap_or_default();
+
+    Ok(DccFit {
+        stage,
+        qbar: eval.target,
+        a,
+        b,
+        g,
+        nu,
+        variant,
+        dist,
+        nbar,
+        loglik,
+        correlation_path,
+        q_forecast: eval.q_next,
+        converged,
+    })
+}
+
+/// A fitted DCC-GARCH model (any [`DccVariant`], any [`CorrDist`]).
 #[derive(Debug, Clone)]
 pub struct DccFit {
     /// The fitted univariate stage.
     pub stage: UnivariateStage,
-    /// The correlation-targeting matrix `Qbar = (1/T) sum_t z_t z_t'`.
+    /// The correlation-targeting matrix: `Qbar = (1/T) sum_t z_t z_t'` for
+    /// DCC/ADCC; for cDCC this is Aielli's `S` — the correlation-normalized
+    /// sample second moment of the rescaled residuals
+    /// `z*_t = diag(Q_t)^{1/2} z_t` at the fitted `(a, b)`.
     pub qbar: Mat<f64>,
     /// The estimated news coefficient `a`.
     pub a: f64,
     /// The estimated persistence coefficient `b`.
     pub b: f64,
-    /// The full Gaussian log-likelihood at the two-step estimates.
+    /// The estimated asymmetric news coefficient `g` on
+    /// `n_{t-1} n_{t-1}'`, `n_t = min(z_t, 0)` (Cappiello-Engle-Sheppard
+    /// 2006). Exactly `0.0` for non-ADCC variants.
+    pub g: f64,
+    /// The estimated Student-t degrees of freedom of the second stage;
+    /// `None` under the Gaussian second stage.
+    pub nu: Option<f64>,
+    /// Which correlation recursion was estimated.
+    pub variant: DccVariant,
+    /// The second-stage innovation distribution.
+    pub dist: CorrDist,
+    /// The asymmetric targeting matrix `Nbar = (1/T) sum_t n_t n_t'`
+    /// (ADCC only; `None` otherwise).
+    pub nbar: Option<Mat<f64>>,
+    /// The full log-likelihood at the two-step estimates: Gaussian under
+    /// [`CorrDist::Normal`], standardized multivariate Student-t under
+    /// [`CorrDist::StudentT`] (step 1 remains whatever the univariate spec
+    /// used — the documented two-step convention).
     pub loglik: f64,
     /// The dynamic correlation path `R_t`, `t = 0..T` (length `T`).
     pub correlation_path: Vec<Mat<f64>>,
@@ -182,6 +441,12 @@ impl DccFit {
     /// The estimated persistence `a + b` of the correlation recursion.
     pub fn persistence(&self) -> f64 {
         self.a + self.b
+    }
+
+    /// The exact one-step-ahead auxiliary matrix `Q_{T+1}` (crate-internal:
+    /// the forecast recursion in [`crate::forecast`] starts here).
+    pub(crate) fn q_next(&self) -> MatRef<'_, f64> {
+        self.q_forecast.as_ref()
     }
 
     /// The conditional covariance `H_t = D_t R_t D_t` at time index `t`

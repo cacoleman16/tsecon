@@ -25,6 +25,11 @@
 //! * [`dfgls`] — DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996):
 //!   GLS detrending at the ERS local alternative, Perron-Qu (2007) lag
 //!   selection, and the arch DF-GLS response-surface p-values.
+//! * [`ng_perron`] — the Ng-Perron (2001) M unit-root tests (MZa, MZt,
+//!   MSB, MPT): the same GLS-detrending engine as [`dfgls`], MAIC lag
+//!   selection, the autoregressive spectral density at frequency zero,
+//!   and the transcribed Table 1 critical values (statistic-only — no
+//!   published p-value surface exists).
 //! * [`zivot_andrews`] — Zivot-Andrews (1992) unit-root test with one
 //!   endogenous break (intercept, trend, or both), minimum-t over trimmed
 //!   candidate break dates, with the simulated-table p-values of
@@ -53,6 +58,7 @@ mod dfgls;
 mod error;
 mod mackinnon;
 mod mackinnon_ext;
+mod ng_perron;
 mod normality;
 mod ols;
 mod phillips;
@@ -73,6 +79,9 @@ pub use dfgls::{dfgls, DfglsResult, DfglsTrend};
 pub use error::DiagError;
 pub use mackinnon::{mackinnon_crit, mackinnon_p, AdfCriticalValues};
 pub use mackinnon_ext::{mackinnon_coint_crit, mackinnon_coint_p};
+pub use ng_perron::{
+    ng_perron, ng_perron_crit, NgPerronCriticalValues, NgPerronLagSelection, NgPerronResult,
+};
 pub use normality::{jarque_bera, JarqueBeraResult};
 pub use phillips::{
     phillips_ouliaris, phillips_perron, PoResult, PoTestType, PoTrend, PpResult, PpTestType,

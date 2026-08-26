@@ -121,8 +121,10 @@ pub struct CopulaFit {
 /// `scipy.stats.rankdata(x, method="average") / (n + 1)`. This is the
 /// one-line companion to [`copula_fit`]: ranks depend only on order, so
 /// the result — and any copula fitted to it — is invariant to strictly
-/// monotone transforms of each margin (the point of the copula
-/// decomposition; property-tested).
+/// increasing transforms of each margin (the point of the copula
+/// decomposition; property-tested). A strictly decreasing transform
+/// reverses that margin's ranks (`u -> 1 - u` absent ties) and flips the
+/// sign of the fitted dependence instead.
 ///
 /// # Errors
 ///

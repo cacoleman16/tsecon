@@ -106,6 +106,8 @@ cluster covariances.
 | | `cumulative` | `False` | `True` for cumulative IRFs |
 | | `jackknife` | `False` | Dhaene-Jochmans half-panel (time-split) jackknife; corrects the **points only**, SEs stay the full-sample plug-in (measured: 95% coverage 0.880 → 0.804 at T=60 — see the [panel-LP cookbook](../../cookbook/panel-lp-standard-errors.md#gotchas)) |
 | | `bias_correction` | `"none"` | `"spj"` = Mei-Sheng-Shi split-panel jackknife: corrected points **and** the reference adjusted-score SEs; `"dj"` = alias for `jackknife=True`. Setting `jackknife=True` together with `"spj"` raises |
+| | `band` | `None` | `"pointwise"`, `"sidak"` or `"bonferroni"` adds a band over the horizons; `"sup-t"` is refused — see [the band section](#simultaneous-bands-over-the-horizons-panel_lp) |
+| | `band_alpha` | `0.1` | the band's own level (a 90% band); a band is not the same object as an `se` |
 | `lp_did` | `pre_window` / `post_window` | `4` / `8` | event window: horizons −pre..−2 (pre-trends) and 0..post; −1 is the omitted baseline |
 | | `absorbing` | `True` | treatment never reverses (raises on a reversal); `False` requires `nonabsorbing_lag` |
 | | `nonabsorbing_lag` | `0` | stabilization window L for non-absorbing treatments (units re-enter the control pool L quiet periods after a status change) |
@@ -123,10 +125,17 @@ cluster covariances.
 - **`panel_fe`** → `{"params", "bse", "tvalues", "se_type"}`, one entry per
   regressor. The stamped `se_type` tells you which covariance produced `bse`.
 - **`panel_lp`** → `{"irf", "se", "nobs"}`, each length `horizon+1`; plot `irf`
-  ±1.96·`se`. `irf[0]` is the impact response. The method metadata is stamped
+  ±1.96·`se` for the usual per-horizon read, and note that band is
+  **pointwise** — for a statement about the whole path, ask for a
+  [simultaneous band](#simultaneous-bands-over-the-horizons-panel_lp).
+  `irf[0]` is the impact response. The method metadata is stamped
   on the result — `se_type`, `cumulative`, `jackknife`, and
   `bias_correction` (`"none"` / `"dhaene_jochmans"` / `"spj"`) — so a saved
-  result records which estimator and covariance produced it.
+  result records which estimator and covariance produced it. With `band=`
+  set, the band keys (`lower`/`upper`, `critical_value`,
+  `pointwise_critical_value`, `band`, `band_alpha`, `band_scope`,
+  `n_cells`, `n_cells_used`) are added; without it the result is exactly
+  the historical three-plus-metadata dict.
 - **`lp_did`** → `{"horizons", "coef", "se", "nobs", "n_switchers"}` aligned
   per event-time horizon (−pre_window..post_window; the −1 row is the omitted
   baseline, stored as exact zeros), plus `pooled_post_att`/`pooled_post_se`/
@@ -228,6 +237,61 @@ short-T approximation (the same caveat this card and the cookbook attach to DK
 generally; see the [interval-coverage audit](../../examples/interval-coverage.md)
 for the full (N, T) table). From T=40 both sit in the high-0.80s/low-0.90s
 with the bias gone from SPJ.
+
+## Simultaneous bands over the horizons (`panel_lp`)
+
+A panel-LP impulse response is a *path*, and `irf ± z·se` is a **pointwise**
+band: it covers each horizon separately at the nominal rate and promises
+nothing about the path as a whole. `panel_lp(..., band=)` adds the same
+closed-form band selector as `lp_iv`/`lp_multiplier`/`lp_state` —
+`"pointwise"`, `"sidak"`, `"bonferroni"` at level `band_alpha`, default
+`band=None` returning exactly the historical result — with the band keys
+(`lower`/`upper`, `critical_value`, `pointwise_critical_value`,
+`band_scope="horizon"`, `n_cells = horizon+1`, `n_cells_used`) added only
+when a band is requested. The simultaneous-band framework is Montiel Olea
+and Plagborg-Møller's (see the
+[LP card's band section](local-projections.md#simultaneous-bands-over-the-horizons-lp)).
+
+**`band="sup-t"` is refused, with an error naming the reason.** Sup-t needs
+the covariance of the IRF *across horizons*, and tsecon estimates no such
+covariance for the panel LP (each horizon is its own within regression; a
+cross-horizon influence-function covariance under entity clustering /
+Driscoll-Kraay weighting is a documented follow-up in `tsecon-panel`). Šidák
+and Bonferroni need nothing but `K`, and are simply wider than a sup-t band
+would be. Never describe a band from `panel_lp` as sup-t.
+
+**Measured joint coverage** (seeded MC, seed 20260823, 200 reps per cell,
+known-truth DGP `y_{i,t} = α_i + Σ_j ψ_j s_{t-j} + ε_{i,t}` with an iid
+common shock, so the estimand is exactly `ψ_h = 0.8·0.6^h`; K = 9 horizons,
+two outcome/shock lag controls, Driscoll-Kraay `bandwidth=10`; nominal 90%;
+"joint" = the whole 9-horizon path inside the band at once; MC se ≈ 2–3.5pp;
+the N=24/T=160 cell runs in CI as
+`test_simultaneous_bands.py::test_panel_lp_joint_coverage_pointwise_fails_and_closed_forms_repair_it`):
+
+| design | pointwise, joint | Šidák | Bonferroni | pointwise marginals |
+|---|---|---|---|---|
+| N=24, T=160 | **0.305** | 0.765 | 0.765 | 0.815–0.880 |
+| N=30, T=400 | **0.405** | 0.840 | 0.845 | 0.845–0.920 |
+| N=30, T=800 | **0.425** | 0.880 | 0.890 | 0.840–0.905 |
+
+Read it the way the library reads all its band measurements. (1) The
+pointwise joint rate is not converging to 0.90 — quintupling T bought twelve
+points — because the failure is multiplicity, not consistency. (2) The union
+bounds fix multiplicity **only**: at T=160 they sit at 0.765 because the
+per-horizon Driscoll-Kraay standard errors themselves run a few points short
+at short T (the same documented DK caveat as everywhere else on this card),
+and they rise to ≈nominal exactly as the DK marginals do. A wider multiplier
+cannot repair a short standard error. (3) Šidák and Bonferroni are
+conservative on a smooth IRF path in principle (they ignore the positive
+cross-horizon correlation a sup-t band would exploit); the price at K=9,
+`alpha=0.10` is a multiplier of 2.5229/2.5392 against the pointwise 1.6449.
+
+**Validation status, stated honestly.** The critical values themselves are
+the same SciPy-pinned closed forms as every other band surface (see the
+[validation matrix](../validation-matrix.md)); the joint-coverage claim is
+graded **property-MC (joint coverage measured)** — there is no third-party
+reference for simultaneous local-projection bands in Python (statsmodels
+ships none), so there is nothing external to pin a golden against.
 
 ## LP-DiD (`lp_did`) — event-study DiD with clean controls
 
@@ -452,7 +516,11 @@ one stated caveat is that the SSC-only Stata ado itself could not be fetched
 in the build environment, so the pin is to the authors' published example
 code, not the packaged command. The statistical claims (unbiasedness,
 coverage, and the naive-contrast table above) are separately measured in the
-seeded Monte Carlo. `mean_group_var`, `panel_mean_group`
+seeded Monte Carlo. `panel_lp`'s closed-form simultaneous bands reuse the
+SciPy-pinned critical values shared by every band surface, and their joint
+coverage is property-MC measured (the seeded table in the band section
+above); no third-party reference for simultaneous LP bands exists in
+Python, so no golden is possible for that claim. `mean_group_var`, `panel_mean_group`
 (MG and CCE-MG), and `panel_pmg` are documented-formula goldens reproducing the
 Pesaran-Smith (1995), Pesaran (2006), and Pesaran-Shin-Smith (1999)
 estimating equations, and are additionally property-validated: on data with a

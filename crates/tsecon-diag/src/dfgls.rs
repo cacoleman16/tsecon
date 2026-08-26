@@ -13,8 +13,10 @@
 //!    — the ERS choices at which the local asymptotic power envelope is
 //!    tangent at 50% power — and regressing the quasi-differences on each
 //!    other. The detrended series is `y_t - z_t' beta_gls`. This engine is
-//!    a reusable crate-internal function: the Ng-Perron (2001) M-tests use
-//!    the identical detrending step and will call it when they land.
+//!    a reusable crate-internal function: the Ng-Perron (2001) M-tests
+//!    ([`crate::ng_perron`]) call it with the identical constants, so the
+//!    two tests share one detrending path (pinned bitwise in the
+//!    `ng_perron` tests).
 //!
 //! 2. **Lag selection** (Perron & Qu 2007, as implemented by arch): when
 //!    no fixed lag is given, the ADF lag length is chosen by AIC/BIC/t-stat
@@ -66,7 +68,9 @@ pub enum DfglsTrend {
 
 impl DfglsTrend {
     /// The ERS (1996) local-alternative constant for this specification.
-    fn cbar(self) -> f64 {
+    /// Crate-visible so the Ng-Perron (2001) M-tests detrend at the *same*
+    /// constants through the *same* engine ([`gls_detrend`]).
+    pub(crate) fn cbar(self) -> f64 {
         match self {
             DfglsTrend::Constant => -7.0,
             DfglsTrend::ConstantTrend => -13.5,
@@ -74,7 +78,8 @@ impl DfglsTrend {
     }
 
     /// Number of deterministic columns in the detrending regression.
-    fn ntrend(self) -> usize {
+    /// Crate-visible for the same reason as [`DfglsTrend::cbar`].
+    pub(crate) fn ntrend(self) -> usize {
         match self {
             DfglsTrend::Constant => 1,
             DfglsTrend::ConstantTrend => 2,
@@ -129,8 +134,9 @@ fn trend_columns(n: usize, ntrend: usize) -> Vec<Vec<f64>> {
 /// `y_t - z_t' beta`.
 ///
 /// Crate-internal on purpose: this is the shared GLS-detrending engine —
-/// the Ng-Perron (2001) M-tests use the identical step (same `cbar`
-/// choices) and will reuse it when they land.
+/// the Ng-Perron (2001) M-tests ([`crate::ng_perron`]) reuse it with the
+/// identical `cbar` choices, so their detrended series is bit-for-bit the
+/// DF-GLS one.
 ///
 /// # Errors
 ///

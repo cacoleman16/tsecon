@@ -9,6 +9,221 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 Nothing yet.
 
+## [0.5.0] - 2026-08-25
+
+### Added — conformal forecast intervals
+
+- **`conformal_forecast`** — distribution-free conformal prediction
+  intervals around an arbitrary point forecaster (`base` = theta, naive,
+  drift, mean, seasonal_naive, ar, or arima), three methods:
+  **split conformal** (residual-quantile calibration on held-out origins
+  with the finite-sample correction `ceil((m+1)(1−α))/m`, symmetric and
+  asymmetric signed-residual modes), **EnbPI** (Xu-Xie, ICML 2021
+  Algorithm 1 / IEEE TPAMI 2023: bootstrap-ensemble AR least-squares
+  learners on a lagged design, leave-one-out aggregated residuals, the
+  width-minimizing β line search, seeded through the library's Philox
+  substreams), and **ACI** (Gibbs-Candès, NeurIPS 2021: the online level
+  recursion `α_{t+1} = α_t + γ(α − err_t)`, γ default 0.005 from the
+  paper, with the paper's infinite/empty-interval conventions and
+  horizon-h update delays). Calibration reuses the backtest engine's
+  rectangular `(origin, horizon, target)` grid — expanding windows,
+  refit every origin — so calibration never sees the future by
+  construction (guarded by exact-recompute leakage tests).
+- **`conformal_backtest`** — the online evaluator: per-origin intervals
+  formed from information available at each origin, miss indicators, and
+  realized coverage; ACI reports its `alpha_trajectory`, EnbPI runs the
+  published sliding-residual-window batch mode. Grades in the model
+  card: split/EnbPI/ACI all cover ≈ 0.90 nominal on iid-noise AR and
+  GARCH-noise DGPs; under a variance shift ACI recovers post-shift
+  coverage where fixed-level split conformal degrades (measured numbers
+  in `docs/reference/model-cards/forecasting.md`), and the split
+  exactness anchor verifies the ≥ 1−α finite-sample guarantee at small
+  calibration sizes where the correction bites. A `mapie`
+  cross-implementation check pins the corrected quantile arithmetic
+  (non-gating).
+- Rust core in `tsecon-forecast::conformal` (`conformal_quantile`,
+  `split_conformal(_online)`, `enbpi(_online)`, `aci`, `ar_forecast`),
+  with teaching errors for calibration sets too small for the level,
+  singular AR designs, and degenerate parameters.
+
+
+### Added
+
+- **`panel_lp(..., band=, band_alpha=)`** — the closed-form simultaneous
+  bands (`"pointwise"`, `"sidak"`, `"bonferroni"`) over the horizons of the
+  panel local projection, completing the LP family's band surface with the
+  default (`band=None`) unchanged. Same contract as `lp_iv`/`lp_multiplier`/
+  `lp_state`: the extra keys (`lower`/`upper`, `critical_value`,
+  `pointwise_critical_value`, `band_scope`, `n_cells`, `n_cells_used`, …)
+  appear only when a band is requested, and `band="sup-t"` is **refused with
+  an error naming the reason** — no cross-horizon covariance is estimated
+  for the panel LP (building one is a documented follow-up in
+  `tsecon-panel`), so a sup-t number would be fabricated. Joint coverage of
+  the closed forms is measured on a seeded known-truth panel MC in
+  `test_simultaneous_bands.py` and quoted, with the honest pointwise
+  contrast, in the docstring and the panel model card.
+- **`tsecon-lp`: the independence algebraic anchor for sup-t** — a crate
+  test that zeroes the cross-horizon covariances of a real LP path and
+  checks the simulated sup-t critical value reproduces the closed-form
+  Šidák value from both sides (Šidák is exact under independence), closing
+  the one sanity check the sup-t release asserted only one-sidedly.
+- **`ng_perron`** — the Ng-Perron (2001) M unit-root tests (MZa, MZt, MSB,
+  MPT): the same GLS-detrending engine as `dfgls` (bitwise-pinned), the
+  paper's MAIC lag selection on the detrended series, and the
+  autoregressive spectral density estimator at frequency zero, with the
+  transcribed Table 1 asymptotic critical values (statistic-only — no
+  p-value surface exists for the M tests and none is fabricated). No
+  runnable independent implementation exists anywhere (statsmodels, arch,
+  and CRAN all lack the M tests — a canary test pins the absence), so the
+  validation is the ROADMAP's planned table+MC grade: seeded Monte-Carlo
+  size at the asymptotic critical values (lag-0 T=1000: 5% size measured
+  0.039–0.058 across all eight statistic/trend rows; MAIC T=250:
+  0.027–0.045, slightly conservative per the paper's own Table 2), power
+  ordering, the MAIC negative-MA mechanism (mean lag 0.9 i.i.d. vs 7.8
+  under MA(−0.8)), the exact MZt = MZa × MSB identity, and an independent
+  NumPy re-implementation re-pinned through the binding at 1e-9. The
+  Perron-Qu (2007) far-from-null power reversal is pinned as documented
+  behavior and taught in the model card.
+- **`mstl`** — Multiple Seasonal-Trend decomposition using LOESS
+  (Bandara-Hyndman-Bergmeir 2021): STL iterated over several seasonal
+  periods (e.g. `periods=[24, 168]` for hourly data with daily and weekly
+  cycles), matching `statsmodels.tsa.seasonal.MSTL`'s algorithm and
+  defaults — ascending period sort with paired windows (default rule
+  7 + 4·k → 11, 15, 19, …), the period ≥ n/2 drop rule (reported in
+  `dropped_periods`), `iterate=2` refinement rounds, and full forwarding
+  of the STL knobs to every pass. Returns per-period seasonal components
+  keyed `seasonal_<period>`, trend/resid/weights, the resolved
+  periods/windows, and per-period Wang-Smith-Hyndman
+  `seasonal_strength` (withheld as `None` on a constant series).
+  Box-Cox `lmbda` is deliberately not implemented (pre-transform
+  instead); empty/duplicate periods, `iterate=0`, and all-periods-dropped
+  are teaching refusals where statsmodels crashes or degrades silently.
+  Pinned **elementwise** against statsmodels 0.14.6 MSTL
+  (`fixtures/mstl.json`; components ≤ ~5e-11 observed at a 1e-8 gate),
+  with the degenerate single-period case additionally required to
+  reproduce tsecon's own `stl` bit-for-bit.
+- **`auto_arima`** — Hyndman-Khandakar (2008) automatic ARIMA order
+  selection, built as pure composition over shipped pieces: `d` from the
+  successive-KPSS `ndiffs` sequence, `D` from the seasonal-strength
+  `nsdiffs` rule, then the stepwise AICc search (AIC/BIC selectable;
+  `stepwise=False` exhaustive grid for small caps) over
+  `(p, q, P, Q, constant)` at fixed differencing orders, with R's default
+  caps (`max_p=max_q=5`, `max_P=max_Q=2`, `max_order=5`, 94-model
+  budget), near-unit-root admissibility guards (roots within 0.1% of the
+  unit circle are recorded but never selected), and every candidate fit
+  by the exact-MLE engine behind `arima_fit` — deterministic end to end.
+  Returns the fitted winner (same keys as `arima_fit`), the full search
+  trace (every candidate with its criterion and status), and the
+  `ndiffs`/`nsdiffs` evidence behind `d`/`D`. Graded honestly per the
+  roadmap: **MC order recovery** (seeded study in
+  `scripts/mc_auto_arima_recovery.py`, rates quoted in the model card)
+  plus candidate-level statsmodels pins (`fixtures/auto_arima.json`:
+
+### Fixed — reported from the field
+
+- **`garch_fit(dist="t")` no longer fails on ordinary short samples.** A
+  gradient stage started within a finite-difference step of the persistence
+  bound — a near-IGARCH point, routine for `dist="t"` on a couple of hundred
+  observations — could not evaluate its starting gradient and raised
+  `optimization failure: gradient at x0 contains NaN or infinity`. Measured
+  on a seeded GARCH(1,1)-t battery (ω=.05, α=.08, β=.90, ν=6, T=252, 40
+  seeds): **7/40 fits raised before, 0/40 after**. The optimizer now carries a
+  deterministic derivative-free fallback from the same starting point, so an
+  optimizer error from `garch_fit` again means genuinely degenerate input.
+- **`har_rv`'s weekly and monthly aggregates now match Corsi (2009).** The
+  windows excluded the daily lag — `mean(RV[t-6..t-2])` and
+  `mean(RV[t-23..t-2])` — while the module cited Corsi, whose aggregates
+  *include* `RV_{t-1}`: `mean(RV_{t-1}..RV_{t-5})` and
+  `mean(RV_{t-1}..RV_{t-22})`. The fixture was regenerated against the
+  corrected design (statsmodels OLS+HAC, unchanged method), so **`har_rv`
+  coefficients move**; the window definition is now pinned by its own
+  regression test.
+- **`markov_switching_ar`'s transition matrix orientation is documented.**
+  The returned matrix is *column*-stochastic — `P[i][j] = P(next = i |
+  current = j)`, matching statsmodels — so the forward step is `P @ p`.
+  Neither the docstring nor the card said so, leaving users to guess against
+  the row-stochastic textbook convention; a test now pins the claim. The
+  smoothed/filtered paragraph also gained an explicit warning that
+  `smoothed_prob` conditions on the full sample (Kim 1994) and must not be
+  used for real-time regime dating.
+- **`garch_fit`'s filter timing is stated.** `conditional_volatility[t]` is
+  the one-step-ahead volatility *for* period t formed from information
+  through t−1 (matching `arch`), and `variance_forecast` is the post-sample
+  continuation — documented rather than left to be inferred.
+
+### Changed — a default flipped on measured evidence
+
+- **`ivx_test`'s `joint` default is now `"bonferroni"`** (was `"chi2"`).
+  The library's own measurements make the old default indefensible: at
+  ρ = 1, endogeneity −0.9, n = 250, the nominal-5% chi-square joint test
+  rejects ~0.05 / 0.10 / 0.17 / **0.28** at k = 1/3/5/8, and n does not
+  repair it (still ~0.22 at k = 8, n = 256000). The union-intersection
+  alternative measures 0.011–0.050 across the same grid — never above
+  nominal — with power on par against a sparse alternative. Under the
+  roadmap's "the statistically-recommended choice is the default"
+  principle, the size-controlled test is now what you get by default;
+  `joint="chi2"` remains available and documented, and its golden tests
+  now pin that branch explicitly.
+
+### Fixed — audit round 8 (docs/roadmap/23-audit-round-8-findings.md)
+
+- **`theta_forecast`'s statsmodels claim is now qualified**: the docstring,
+  `.pyi`, and forecasting card say it matches
+  `ThetaModel(deseasonalize=True, use_test=False)` — statsmodels' *default*
+  additionally runs a seasonality pre-test and skips deseasonalization when
+  it fails, so the two defaults diverge on weakly-seasonal data declared
+  with `period > 1` (measured: 29/30 iid draws at `period=12`, worst 2.6%
+  relative). Was: an unqualified "Matches statsmodels ThetaModel."
+- **The copula invariance claim now says strictly *increasing*, not
+  "strictly monotone"**: a strictly decreasing margin transform reverses
+  that margin's ranks (`u -> 1 - u` absent ties) and flips the sign of the
+  fitted dependence — demonstrated and now property-tested in Rust and
+  Python (`pseudo_obs`/`copula_fit` docstrings, `.pyi`, the copulas card,
+  and the crate docs corrected).
+- **`acm_term_premium` documents its echoed-input keys**
+  (`maturities`/`n_factors`/`periods_per_year`, returned but previously
+  absent from the docstring and card key list), with a returned-keys
+  docstring tripwire test.
+
+  fixed-parameter loglik/AICc at 1e-8, free fits match-or-beat) and
+  exact internal-consistency invariants (refitting the reported orders
+  reproduces the reported criterion bit-for-bit; identical traces across
+  runs); the selection loop itself deliberately has **no gating
+  R/pmdarima parity** — a pmdarima cross-run is reported as a non-gating
+  note. No exogenous regressors in this slice (the engine has no ARIMAX
+  yet); no Box-Cox lambda argument (use `box_cox_lambda` first).
+### Added — the DCC build-out
+
+- **`dcc_garch` variants and second stage** — `variant="cdcc"` (Aielli 2013
+  corrected DCC: the `z*_t = diag(Q_t)^{1/2} z_t` driver that makes
+  correlation targeting consistent; `qbar` is then Aielli's exactly-unit-
+  diagonal `S`) and `variant="adcc"` (Cappiello-Engle-Sheppard 2006
+  asymmetric DCC: the `g·min(z,0)min(z,0)'` term under the CES positivity
+  constraint `a + b + δ·g < 1`), plus `dist="t"` (standardized multivariate
+  Student-t second stage, jointly estimated `nu`). The default call is
+  **bit-identical** to 0.4.0 — verified by `f64::to_bits` on every default
+  CCC/DCC fixture output across the refactor, pinned at 1e-7 in
+  `test_dcc_buildout.py`, and the ADCC(g=0) ≡ DCC / cDCC(0,0) ≡ CCC nesting
+  identities are asserted at 1e-10.
+- **`dcc_garch` in-sample correlation path and h-step forecasts** — new
+  `correlation` key (`(T, k, k)`: the full conditional correlation path,
+  with the timing convention now documented on the function: `R_t` conditions
+  on information through `t−1`, `correlation_last` is the last *in-sample*
+  matrix, and the one-step-ahead forecast additionally uses `z_T`), and
+  `forecast_horizon=h` returning `correlation_forecast`/`covariance_forecast`
+  (`(h, k, k)`) and `variance_forecast` by the Engle-Sheppard (2001)
+  `Q`-recursion convention — h=1 exact (bitwise equal to the legacy one-step)
+  and h ≥ 2 the documented `E[Q]` approximation converging geometrically to
+  `corr(qbar)`.
+- **`dcc_test`** — the Engle-Sheppard (2001) test of constant conditional
+  correlation (CCC vs DCC): symmetric-inverse-root joint standardization,
+  pooled AR on the stacked off-diagonal outer products, χ²(lags+1). Measured
+  MC: size 3.7% @ nominal 5% (CCC null, T=1000, 300 reps), power 69% @ 5%
+  (a=0.05, b=0.90, T=1000, 200 reps). No third-party implementation exists;
+  the statistic is pinned to an in-crate brute-force OLS transcription at
+  1e-8. (The pip `mgarch` package was attempted as a non-gating DCC cross
+  reference and found unusable — see the validation matrix.)
+
 ## [0.4.0] - 2026-08-18
 
 ### Added — the weak-proxy workstream

@@ -118,6 +118,89 @@ fn har_coefficients_sum_near_persistence() {
     assert!(coef_sum < 1.0, "persistent-but-stationary: coef sum < 1");
 }
 
+/// Regression pin of the HAR window definition itself (field report 0.5,
+/// finding 2): the Corsi (2009) weekly/monthly aggregates INCLUDE the
+/// daily lag — for target `t`, weekly = `mean(RV[t-5..t])` and monthly =
+/// `mean(RV[t-22..t])`, both running through `RV_{t-1}`. Through 0.4.0 the
+/// crate shifted both windows one day back (`mean(RV[t-6..t-1])` /
+/// `mean(RV[t-23..t-1])`), excluding the daily lag, while citing Corsi.
+///
+/// The pin is by construction, not by stored numbers: `har_rv` must equal
+/// an OLS on an independently built inclusive-window design to near
+/// machine precision, and must *differ* detectably from the same OLS on
+/// the excluding-window design (the two designs are verified to genuinely
+/// differ on this series first, so the inequality assertion has teeth).
+#[test]
+fn har_windows_include_the_daily_lag() {
+    use tsecon_hac::ols;
+
+    let mut rng = Rng::new(0xC0251);
+    let n = 220usize;
+    // Varied, strictly positive, deterministic realized-variance series.
+    let rv: Vec<f64> = (0..n)
+        .map(|_| (1.0 + 0.5 * rng.normal()).powi(2) + 0.05)
+        .collect();
+
+    let cfg = HarConfig {
+        use_correction: false,
+        ..HarConfig::default()
+    };
+    let fit = har_rv(&rv, &cfg).unwrap();
+
+    let first = cfg.start + 1;
+    let rows = n - first;
+    let mut y = Vec::with_capacity(rows);
+    let mut daily = Vec::with_capacity(rows);
+    let mut wk_inc = Vec::with_capacity(rows);
+    let mut mo_inc = Vec::with_capacity(rows);
+    let mut wk_exc = Vec::with_capacity(rows);
+    let mut mo_exc = Vec::with_capacity(rows);
+    for t in first..n {
+        y.push(rv[t]);
+        daily.push(rv[t - 1]);
+        wk_inc.push(rv[t - 5..t].iter().sum::<f64>() / 5.0);
+        mo_inc.push(rv[t - 22..t].iter().sum::<f64>() / 22.0);
+        wk_exc.push(rv[t - 6..t - 1].iter().sum::<f64>() / 5.0);
+        mo_exc.push(rv[t - 23..t - 1].iter().sum::<f64>() / 22.0);
+    }
+
+    // Including vs excluding RV_{t-1} gives detectably different weekly
+    // means on this series — the distinguishing power of the test.
+    let weekly_gap = wk_inc
+        .iter()
+        .zip(&wk_exc)
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0_f64, f64::max);
+    assert!(
+        weekly_gap > 0.05,
+        "constructed series does not distinguish the window conventions \
+         (max weekly gap {weekly_gap})"
+    );
+
+    let ones = vec![1.0; rows];
+    let inclusive = ols(&y, &[ones.clone(), daily.clone(), wk_inc, mo_inc]).unwrap();
+    let excluding = ols(&y, &[ones, daily, wk_exc, mo_exc]).unwrap();
+
+    for (i, (&a, &e)) in fit.params.iter().zip(&inclusive.params).enumerate() {
+        assert!(
+            (a - e).abs() <= 1e-10,
+            "param {i}: har_rv {a} vs inclusive-window OLS {e} — the HAR \
+             design no longer matches the Corsi windows"
+        );
+    }
+    let dist_to_old = fit
+        .params
+        .iter()
+        .zip(&excluding.params)
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0_f64, f64::max);
+    assert!(
+        dist_to_old > 1e-3,
+        "har_rv matches the pre-0.5 excluding-window design (max param \
+         distance {dist_to_old}) — the window regression has regressed"
+    );
+}
+
 /// The BNS ratio jump statistic flags a jump-injected day more strongly
 /// than the same continuous path without the jump.
 #[test]

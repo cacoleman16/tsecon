@@ -444,3 +444,23 @@ cd /home/user/tsecon/lab/laplace && $VENV -m pytest tests.py -q     # 7 passed
 All seeds are hard-coded in the scripts; `results/expNN.md` /
 `results/expNN.json` regenerate byte-comparable tables (up to the
 runtime footers).
+
+## 2026-08-25 — exp06: conformal interval wrappers, and what graduated
+
+Head-to-head of the three conformal wrappers now shipped publicly as
+`conformal_forecast`/`conformal_backtest` (split / EnbPI / ACI, all over the
+same AR base). Two measured settings (`experiments/results/exp06.md`):
+on GARCH(1,1)-t returns all three hold marginal 90% coverage (0.894–0.905)
+but only ACI passes the Kupiec independence screen at a 7% rejection rate
+(split 26%, EnbPI 33% — clustered violations, as expected for methods that
+do not condition on volatility); under a mid-window variance shift the
+fixed-level methods collapse (split 0.71, EnbPI 0.51 post-shift) while ACI
+at γ=0.05 holds 0.89. Frontier scan for the next lab cycle, with honest
+feasibility under the library's validation bar: **SPCI** (sequential
+predictive conformal — random-forest QRF on residuals; heavy dependency,
+property-MC only), **conformal PID** (Angelopoulos et al. 2023 — the control-
+theoretic extension of ACI; small surface, natural next step), **quantile
+conformal on GARCH-standardized residuals** (would fix the conditional-
+coverage weakness measured above; buildable on the existing garch engine),
+and **BSTS** (big surface; the SSM engine makes it feasible but it is a
+release-scale project, not a lab sketch).
