@@ -1627,7 +1627,9 @@ def cv_splits(
     indices from the end of every training window (all schemes; set it >=
     horizon - 1 for h-step-ahead labels). embargo excludes training rows
     after the test block, which only exist under "purged_kfold"; nonzero
-    embargo raises on "expanding"/"rolling"."""
+    embargo raises on "expanding"/"rolling". Under "purged_kfold" the
+    embargo is measured from the end of the purged window (Lopez de Prado
+    2018, ch. 7), so the right-hand gap is purge + embargo indices."""
 
 # ------------------------------------------------------ penalized ML (paths)
 def adaptive_lasso(

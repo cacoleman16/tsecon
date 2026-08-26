@@ -377,7 +377,7 @@ The remaining previews (`group_lasso`, `factor_forecast`) are still on the roadm
 
 - `"expanding"` — rolling-origin evaluation (POOS). The training window grows; the origin marches forward. This is the gold standard from the leakage section, because it simulates real forecasting exactly.
 - `"rolling"` — the same marching origin, but with a *fixed-length* training window (the distant past is dropped). Right when you believe old data is stale — a structural break, a regime change.
-- `"purged_kfold"` — contiguous blocked folds with a purge zone (delete training rows within `purge` of the test block, because their target windows overlap it) and an `embargo` buffer after it. Use it only when K-fold's *K-times-cheaper* budget matters for tuning; never shuffle.
+- `"purged_kfold"` — contiguous blocked folds with a purge zone (delete training rows within `purge` of the test block, because their target windows overlap it) and an `embargo` buffer after the purge zone (the exclusions add, as in the numpy demo above). Use it only when K-fold's *K-times-cheaper* budget matters for tuning; never shuffle.
 
 ```python
 import tsecon
@@ -402,13 +402,13 @@ rolling  (3 folds)
    train [4, 5, 6, 7, 8, 9, 10, 11]   test [12]
    train [8, 9, 10, 11, 12, 13, 14, 15]   test [16]
 purged_kfold  (4 folds)
-   train [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]   test [0, 1, 2, 3, 4]
-   train [0, 1, 2, 3, 11, 12, 13, 14, 15, 16, 17, 18, 19]   test [5, 6, 7, 8, 9]
-   train [0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19]   test [10, 11, 12, 13, 14]
+   train [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]   test [0, 1, 2, 3, 4]
+   train [0, 1, 2, 3, 12, 13, 14, 15, 16, 17, 18, 19]   test [5, 6, 7, 8, 9]
+   train [0, 1, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19]   test [10, 11, 12, 13, 14]
    train [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]   test [15, 16, 17, 18, 19]
 ```
 
-**Reading the output.** In `expanding`, every training set is a prefix — nothing after the test point is ever visible. In `rolling`, the window is exactly 8 rows and slides. In `purged_kfold`, look at the second fold: the test block is `[5..9]`, and the training set jumps from `3` to `11` — indices `4` and `10` have been *deleted*. That gap is the purge (rows whose one-step target lands inside the test block) plus the embargo (a buffer after it). Widen either with `horizon`, `purge`, and `embargo`; they should scale with how far ahead you forecast and how persistent your features are (López de Prado 2018).
+**Reading the output.** In `expanding`, every training set is a prefix — nothing after the test point is ever visible. In `rolling`, the window is exactly 8 rows and slides. In `purged_kfold`, look at the second fold: the test block is `[5..9]`, and the training set jumps from `3` to `12` — indices `4`, `10`, and `11` have been *deleted*. Index `4` is the left purge (its one-step target lands inside the test block), `10` is the right purge, and `11` is the embargo, which starts *where the purge ends*: following López de Prado (2018, ch. 7), the embargo is measured from the end of the purged window, so the right-hand gap is `purge + embargo` — here `1 + 1 = 2`. Widen either with `horizon`, `purge`, and `embargo`; they should scale with how far ahead you forecast and how persistent your features are.
 
 **Why ordinary k-fold leaks — measured.** The whole point of the purge is visible if you count how many test points have an immediate temporal neighbor sitting in the training set. Shuffled k-fold leaks on every single one:
 
@@ -439,7 +439,7 @@ purged_kfold  : 0/20 test points sit next to a training neighbor
 
 Twenty out of twenty versus zero. Every test point in the shuffled scheme is flanked by a training observation it is nearly a copy of — the neighbor leakage of the opening section, made countable. `cv_splits` removes it by construction.
 
-**Arguments and defaults.** `cv_splits(n, scheme="expanding", train=0, horizon=1, step=1, k=5, purge=0, embargo=0)`. For `expanding`/`rolling`, set `train` (the initial/fixed window) and `step` (how far the origin jumps between folds); `horizon` sets the test block length (use your true forecast horizon `h`). `purge` acts on **every** scheme: it deletes the last `purge` indices from the end of each training window, opening a gap just before the test block (it must stay smaller than `train`). For `purged_kfold`, set `k`, and set `purge`/`embargo` to at least `horizon - 1` so overlapping target windows are removed. `embargo` — an exclusion *after* the test block — only exists on `purged_kfold`: walk-forward training windows end before their test block by construction, so there is never a training row after the test set for an embargo to remove, and a nonzero `embargo` on `expanding`/`rolling` raises rather than being silently ignored. `step=1` gives one fold per observation — the exhaustive rolling origin — which is the most faithful but the most expensive.
+**Arguments and defaults.** `cv_splits(n, scheme="expanding", train=0, horizon=1, step=1, k=5, purge=0, embargo=0)`. For `expanding`/`rolling`, set `train` (the initial/fixed window) and `step` (how far the origin jumps between folds); `horizon` sets the test block length (use your true forecast horizon `h`). `purge` acts on **every** scheme: it deletes the last `purge` indices from the end of each training window, opening a gap just before the test block (it must stay smaller than `train`). For `purged_kfold`, set `k`, and set `purge`/`embargo` to at least `horizon - 1` so overlapping target windows are removed; the embargo is measured from the end of the purged window (López de Prado 2018, ch. 7), so the full right-hand exclusion after each test block is `purge + embargo` rows. `embargo` — an exclusion *after* the test block — only exists on `purged_kfold`: walk-forward training windows end before their test block by construction, so there is never a training row after the test set for an embargo to remove, and a nonzero `embargo` on `expanding`/`rolling` raises rather than being silently ignored. `step=1` gives one fold per observation — the exhaustive rolling origin — which is the most faithful but the most expensive.
 
 > **⚠ Common mistake.** Leaving `purge=0` when forecasting more than one step ahead — on *any* scheme. With `horizon=h`, a test row's target overlaps the target of every training row within `h-1` of it (the MA(h−1) overlap from the leakage section); you must set `purge >= h-1` or those shared shocks leak straight back in. Walk-forward ordering does **not** fix this by itself: in `expanding`/`rolling` the training window ends immediately before the test block, so the labels of its last `h-1` rows are built from the very innovations the test block is scored on. `purge` is how you remove them there too.
 
