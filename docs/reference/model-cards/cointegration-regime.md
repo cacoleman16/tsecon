@@ -138,7 +138,11 @@ so each **column** sums to 1 (matching statsmodels' `regime_transition`, *not*
 the row-stochastic textbook convention). The one-step forward propagation of a
 probability vector `p` over regimes is therefore `P @ p` — **not** `p @ P`;
 transposing by habit silently swaps the entry/exit probabilities. Also
-`means`, `variances` (per regime), `expected_durations` (average spell length
+`means`, `variances` (per regime), `ar` — the estimated AR coefficients
+`(phi_1, …, phi_p)`, a length-`order` array **shared across regimes** (the
+binding fits Hamilton's common-AR specification, in which the AR applies to
+deviations `y_t − mu_{S_t}`; with `means`, `transition`, and `variances` it
+reproduces and forecasts the fitted model) — `expected_durations` (average spell length
 in each regime — the persistence read, `1 / (1 - transition[i][i])`),
 `loglik`, `converged`, the full probability matrices `smoothed_prob`
 (Kim 1994, `P(S_t | Y_T)`) and `filtered_prob` (Hamilton filter,

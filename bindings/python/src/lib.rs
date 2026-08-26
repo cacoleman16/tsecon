@@ -5345,7 +5345,10 @@ fn engle_granger<'py>(
 /// Estimates a `k_regimes`-state MS-AR(`order`) with a common AR and
 /// (optionally) switching variances, starting from an internal
 /// quantile-based initialization. Returns the estimated transition matrix,
-/// per-regime means and variances, log-likelihood, the full `(n, k_regimes)`
+/// per-regime means and variances, the estimated AR coefficients `ar` — a
+/// length-`order` array `(phi_1, .., phi_p)`, shared across regimes (this
+/// binding always fits the Hamilton common-AR specification, applied to
+/// deviations `y_t - mu_{S_t}`) — log-likelihood, the full `(n, k_regimes)`
 /// smoothed (`smoothed_prob`, Kim 1994) and filtered (`filtered_prob`,
 /// Hamilton filter) regime-probability matrices where `n = len(y) - order`,
 /// the MAP regime path, and expected regime durations.
@@ -5408,6 +5411,12 @@ fn markov_switching_ar<'py>(
     let d = PyDict::new(py);
     d.set_item("transition", fit.params.transition_matrix())?;
     d.set_item("means", fit.params.means().to_vec())?;
+    // The estimated AR coefficients (phi_1, .., phi_p). This binding always
+    // fits the common-AR (Hamilton) specification, so the crate returns one
+    // shared block; emit it as a flat length-`order` array.
+    let ar_blocks = fit.params.ar();
+    debug_assert_eq!(ar_blocks.len(), 1, "binding fits switching_ar = false");
+    d.set_item("ar", ar_blocks[0].clone().into_pyarray(py))?;
     d.set_item("variances", fit.params.variances().to_vec())?;
     d.set_item("loglik", fit.loglik)?;
     d.set_item("iterations", fit.iterations)?;

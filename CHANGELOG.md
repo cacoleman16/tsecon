@@ -7,6 +7,22 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`markov_switching_ar` now returns the estimated AR coefficients** under
+  the new `ar` key — a length-`order` array `(phi_1, …, phi_p)` shared across
+  regimes (the binding fits Hamilton's common-AR specification, in which the
+  AR applies to deviations `y_t − mu_{S_t}`). Previously the binding
+  estimated the AR block internally but never surfaced it, so a fitted model
+  could not be reproduced or forecast from its own results dict. Backed by a
+  new public `MsarParams::ar()` accessor in `tsecon-regime` (block shape:
+  one block when shared, `k` when switching). The Hamilton (1989)
+  replication now compares tsecon's common AR(4) against the published
+  `(0.014, −0.058, −0.247, −0.213)` and against statsmodels on identical
+  data (measured max |diff|: 0.0048 vs published, 0.0043 vs statsmodels —
+  inside the documented EM-vs-exact-MLE budget; see
+  `docs/examples/replication-hamilton-markov.md`).
+
 ### Fixed
 
 - **IVX localizing sequence now indexed by the regression sample size** `N =

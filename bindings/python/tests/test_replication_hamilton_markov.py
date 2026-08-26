@@ -84,19 +84,29 @@ def test_smoothed_probabilities_recover_nber_dating(data, ts_fit):
         assert prob[s0:e0 + 1].max() > 0.9  # achieved minimum 0.936 (1960-61)
 
 
-def test_binding_does_not_expose_ar_coefficients():
-    """Pins the honest reporting gap on the docs page: the binding estimates
-    the common AR(4) internally but does not return it, so the doc's phi row
-    is statsmodels-vs-published only. When this assertion fails because an
-    AR key appeared, extend the replication (script, doc table, and this
-    test) to compare tsecon's AR coefficients against (0.014, -0.058,
-    -0.247, -0.213) - do not just delete the guard."""
+def test_binding_exposes_the_common_ar_block():
+    """Until this release the binding estimated the common AR(4) internally
+    but never returned it (a guard here pinned that gap and instructed its
+    own replacement). `ar` is the length-`order` common block, shared across
+    regimes and hence label-free - no regime reordering applies to it."""
     import tsecon
 
     y = ham.load_hamilton_gnp()["growth"]
     r = tsecon.markov_switching_ar(y, k_regimes=2, order=4,
                                    switching_variance=False, max_iter=10)
-    assert not any("ar" == k or k.startswith("ar_") for k in r)
+    ar = np.asarray(r["ar"])
+    assert ar.shape == (4,)
+    assert np.all(np.isfinite(ar))
+
+
+def test_tsecon_replicates_hamiltons_ar_coefficients(ts_fit):
+    """The comparison the retired guard demanded: tsecon's common AR(4)
+    against Hamilton (1989) Table I at the E-views/statsmodels re-estimation
+    precision (0.014, -0.058, -0.247, -0.213). Hamilton's phis are
+    notoriously optimizer-sensitive; the published-digit + EM-vs-MLE budget
+    (0.02) from the module docstring applies. Achieved max |diff| 0.0048
+    (phi_2), comfortably inside it."""
+    assert np.allclose(ts_fit["ar"], ham.PUBLISHED["ar"], atol=0.02)
 
 
 # ---------------------------------------------------------------- dual golden
@@ -130,6 +140,8 @@ def test_tsecon_matches_statsmodels_on_identical_data(ts_fit, sm_fit):
     assert ts_fit["p_expansion_stay"] == pytest.approx(
         sm_fit["p_expansion_stay"], abs=0.01)    # achieved 0.002
     assert ts_fit["sigma2"] == pytest.approx(sm_fit["sigma2"], abs=0.01)
+    # common AR(4): achieved max |diff| 0.0043, phi_2 (EM-vs-MLE gap only)
+    np.testing.assert_allclose(ts_fit["ar"], sm_fit["ar"], atol=0.02)
     assert ts_fit["loglik"] == pytest.approx(sm_fit["loglik"], abs=0.02)
     # smoothed recession paths: achieved max |diff| 0.033, corr 0.9998
     diff = np.max(np.abs(ts_fit["prob_contraction"] - sm_fit["prob_contraction"]))
