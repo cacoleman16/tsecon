@@ -7,6 +7,8 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-26
+
 ### Changed — **BREAKING (behavioral)**: `cv_splits(scheme="purged_kfold")` embargo now ADDS to the purge
 
 - **Field report item 11.** The purged K-fold right-hand exclusion after
