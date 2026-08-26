@@ -5,7 +5,7 @@
 //! (Spec -> fit() -> Results) arrives with the model crates.
 
 use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
@@ -7047,6 +7047,149 @@ fn lasso_path<'py>(
     Ok(d)
 }
 
+// ---------------------------------------------------------------------------
+// Python-callable point forecasters (backtest + conformal bases)
+// ---------------------------------------------------------------------------
+
+/// The `forecaster`/`base` argument shared by `backtest` and the conformal
+/// entry points: a built-in name (the pre-existing string surface, unchanged)
+/// or a Python callable `(train, horizon) -> array-like` driven through the
+/// engines' `(train_slice, horizon) -> Vec<f64>` closure shape.
+enum ForecasterArg<'py> {
+    /// A built-in forecaster name.
+    Name(String),
+    /// A Python callable bridged into the Rust closure.
+    Callable(Bound<'py, PyAny>),
+}
+
+impl<'py> ForecasterArg<'py> {
+    /// Parse the Python-side argument: `None` -> the built-in `default`, a
+    /// `str` -> `Name`, any callable -> `Callable`; anything else is a
+    /// teaching TypeError naming `param`.
+    fn parse(obj: Option<Bound<'py, PyAny>>, default: &str, param: &str) -> PyResult<Self> {
+        match obj {
+            None => Ok(ForecasterArg::Name(default.to_string())),
+            Some(o) => {
+                if let Ok(s) = o.extract::<String>() {
+                    Ok(ForecasterArg::Name(s))
+                } else if o.is_callable() {
+                    Ok(ForecasterArg::Callable(o))
+                } else {
+                    Err(PyTypeError::new_err(format!(
+                        "{param} must be a built-in forecaster name (str) or a \
+                         callable f(train, horizon) -> array-like of `horizon` \
+                         point forecasts; got an instance of {}",
+                        py_type_name(&o)
+                    )))
+                }
+            }
+        }
+    }
+}
+
+/// The type name of a Python object, for error messages.
+fn py_type_name(obj: &Bound<'_, PyAny>) -> String {
+    obj.get_type()
+        .name()
+        .map(|n| n.to_string())
+        .unwrap_or_else(|_| "<unknown type>".to_string())
+}
+
+/// A short display name for a Python forecaster callable in error messages
+/// and result dicts.
+fn py_callable_name(f: &Bound<'_, PyAny>) -> String {
+    f.getattr("__qualname__")
+        .or_else(|_| f.getattr("__name__"))
+        .ok()
+        .and_then(|n| n.extract::<String>().ok())
+        .unwrap_or_else(|| "<forecaster callable>".to_string())
+}
+
+/// The placeholder message carried by the crate error that ferries a stashed
+/// Python exception out of an engine; users see the re-raised PyErr instead.
+const PY_FORECASTER_FAILED: &str =
+    "Python forecaster callable failed; the binding re-raises the Python exception";
+
+/// Call a Python forecaster callable on one training window: hand it a fresh
+/// **read-only** float64 ndarray copy of the slice (the engine's leakage
+/// discipline — the callable only ever sees data through the origin) plus the
+/// number of steps requested, and coerce the return to exactly `h` finite
+/// point forecasts. Failures are teaching errors naming the callable, the
+/// origin, and the training window; a Python exception raised inside the
+/// callable is re-raised with that context, chaining the original as the
+/// `__cause__` (its traceback survives — the `gmm_nonlinear` re-raise
+/// pattern, plus context).
+fn call_py_forecaster(
+    callable: &Bound<'_, PyAny>,
+    train: &[f64],
+    h: usize,
+    origin: usize,
+    train_start: usize,
+    label: &str,
+) -> PyResult<Vec<f64>> {
+    let py = callable.py();
+    let name = py_callable_name(callable);
+    let at = format!(
+        "{label} origin {origin} (training window y[{train_start}..={origin}], {} observation(s); \
+         {h} step(s) requested)",
+        train.len()
+    );
+    let arr = PyArray1::from_slice(py, train);
+    // Mark the training array read-only before the callable sees it: the
+    // contract is look-don't-touch (it is a private copy either way, but a
+    // silent in-place edit would hide a bug in the callable).
+    let flags = PyDict::new(py);
+    flags.set_item("write", false)?;
+    arr.call_method("setflags", (), Some(&flags))?;
+    let ret = callable.call1((arr, h)).map_err(|cause| {
+        let err = PyRuntimeError::new_err(format!(
+            "forecaster callable {name} raised at {at}; the original exception \
+             is chained as the __cause__"
+        ));
+        err.set_cause(py, Some(cause));
+        err
+    })?;
+    let fc: Vec<f64> = ret.extract().map_err(|_| {
+        PyTypeError::new_err(format!(
+            "forecaster callable {name} returned an instance of {}, which does \
+             not coerce to a 1-D float sequence, at {at}; return an array-like \
+             of exactly {h} point forecast(s) for steps 1..={h} (a bare scalar \
+             is not accepted — return a length-1 sequence for one step)",
+            py_type_name(&ret)
+        ))
+    })?;
+    if fc.len() != h {
+        return Err(PyValueError::new_err(format!(
+            "forecaster callable {name} returned {} forecast(s) at {at}, but \
+             the engine asked for exactly {h} — one per step 1..={h}. (With \
+             refit_every > 1 a refit origin is asked for more steps than \
+             `horizon`, to roll its block forward.)",
+            fc.len()
+        )));
+    }
+    if let Some((i, &v)) = fc.iter().enumerate().find(|(_, v)| !v.is_finite()) {
+        return Err(PyValueError::new_err(format!(
+            "forecaster callable {name} returned a non-finite forecast ({v}) at \
+             step {} of {h} at {at}; every point forecast must be a finite float",
+            i + 1
+        )));
+    }
+    Ok(fc)
+}
+
+/// Prefer a Python exception stashed by the callable bridge (the true cause,
+/// carrying the original traceback) over the crate error that ferried it out
+/// of the engine.
+fn reraise_stashed<T, E: std::fmt::Display>(
+    result: Result<T, E>,
+    slot: &std::cell::RefCell<Option<PyErr>>,
+) -> PyResult<T> {
+    if let Some(e) = slot.borrow_mut().take() {
+        return Err(e);
+    }
+    result.map_err(to_py)
+}
+
 /// Pseudo-out-of-sample backtest over a rolling or expanding window.
 ///
 /// Re-estimates `forecaster` along the series and evaluates horizons
@@ -7054,13 +7197,38 @@ fn lasso_path<'py>(
 /// grows from `train` observations) or `"rolling"` (fixed width `train`).
 /// `refit_every` sets the refit cadence. Built-in forecasters: `"naive"`,
 /// `"drift"`, `"mean"`, `"seasonal_naive"`, `"theta"` (`period` is used by
-/// the seasonal ones). Returns the origin indices, per-horizon `forecasts`
+/// the seasonal ones); the default `None` means `"naive"`.
+///
+/// `forecaster` may instead be **any Python callable** — the hook that runs
+/// a real model (statsmodels, sklearn, anything) through this engine's
+/// leakage discipline. The contract: it is called as
+/// `forecaster(train, horizon)`, where `train` is a **read-only float64
+/// ndarray holding only the training window** for that refit origin `t`
+/// (expanding: `y[0..=t]`; rolling: the `train` most recent observations
+/// ending at `t` — the engine never hands the callable anything after the
+/// origin) and `horizon` is the number of steps requested; it must return
+/// an array-like of exactly `horizon` finite point forecasts for steps
+/// `1..=horizon` counted from the end of `train`. With `refit_every > 1`
+/// the callable runs only at refit origins and `horizon` grows to at most
+/// `refit_every - 1 + horizon`, so its multi-step path can be rolled
+/// forward across the block. Everything that must not peek at the future —
+/// scaling, tuning, transformation choice — belongs inside the callable,
+/// which only ever sees the training slice. A Python exception raised
+/// inside the callable aborts the backtest and is re-raised naming the
+/// failing origin and training window, with the original exception chained
+/// as the `__cause__`; wrong-length, non-coercible, or non-finite returns
+/// raise teaching errors naming the callable, origin, and window. The Rust
+/// engine loop is sequential either way (refit blocks in order, under the
+/// GIL), so a callable costs one Python call per refit origin and the
+/// string forecasters' speed and results are unchanged.
+///
+/// Returns the origin indices, per-horizon `forecasts`
 /// and `targets`, and an `accuracy` table (ME/MSE/RMSE/MAE/MdAE, plus
 /// MAPE/sMAPE/MASE/RMSSE where defined) whose scaled measures use the
 /// first training window at `insample_period` — never the test sample.
 #[pyfunction]
 #[pyo3(signature = (y, window = "expanding", train = 20, horizon = 1, refit_every = 1,
-                    forecaster = "naive", period = 1, insample_period = 1))]
+                    forecaster = None, period = 1, insample_period = 1))]
 #[allow(clippy::too_many_arguments)]
 fn backtest<'py>(
     py: Python<'py>,
@@ -7069,7 +7237,7 @@ fn backtest<'py>(
     train: usize,
     horizon: usize,
     refit_every: usize,
-    forecaster: &str,
+    forecaster: Option<Bound<'py, PyAny>>,
     period: usize,
     insample_period: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
@@ -7077,6 +7245,7 @@ fn backtest<'py>(
         backtest::Window, drift, historical_mean, naive, seasonal_naive, theta_forecast, Backtest,
         ForecastError,
     };
+    let forecaster = ForecasterArg::parse(forecaster, "naive", "forecaster")?;
     let win = match window {
         "expanding" => Window::Expanding { min_train: train },
         "rolling" => Window::Rolling { width: train },
@@ -7087,33 +7256,63 @@ fn backtest<'py>(
         }
     };
     let bt = Backtest::new(win, horizon, refit_every).map_err(to_py)?;
-    // Dispatch the forecaster string to a built-in point forecaster.
-    let fc = forecaster.to_string();
-    let point = |train: &[f64], h: usize| -> Result<Vec<f64>, ForecastError> {
-        match fc.as_str() {
-            "naive" => Ok(naive(train, h, 0.95)?.mean),
-            "drift" => Ok(drift(train, h, 0.95)?.mean),
-            "mean" => Ok(historical_mean(train, h, 0.95)?.mean),
-            "seasonal_naive" => Ok(seasonal_naive(train, period, h, 0.95)?.mean),
-            "theta" => Ok(theta_forecast(train, period, h)?.forecast),
-            // Unreachable: the forecaster name is validated before `run`.
-            _ => Err(ForecastError::NonFinite {
-                what: "forecaster",
-                index: 0,
-                value: f64::NAN,
-            }),
+    let res = match &forecaster {
+        ForecasterArg::Name(fc_name) => {
+            // Dispatch the forecaster string to a built-in point forecaster.
+            let fc = fc_name.clone();
+            let point = |train: &[f64], h: usize| -> Result<Vec<f64>, ForecastError> {
+                match fc.as_str() {
+                    "naive" => Ok(naive(train, h, 0.95)?.mean),
+                    "drift" => Ok(drift(train, h, 0.95)?.mean),
+                    "mean" => Ok(historical_mean(train, h, 0.95)?.mean),
+                    "seasonal_naive" => Ok(seasonal_naive(train, period, h, 0.95)?.mean),
+                    "theta" => Ok(theta_forecast(train, period, h)?.forecast),
+                    // Unreachable: the forecaster name is validated before `run`.
+                    _ => Err(ForecastError::NonFinite {
+                        what: "forecaster",
+                        index: 0,
+                        value: f64::NAN,
+                    }),
+                }
+            };
+            if !matches!(
+                fc_name.as_str(),
+                "naive" | "drift" | "mean" | "seasonal_naive" | "theta"
+            ) {
+                return Err(PyValueError::new_err(format!(
+                    "unknown forecaster {fc_name:?}; expected one of naive, drift, mean, \
+                     seasonal_naive, theta"
+                )));
+            }
+            bt.run(&vec1(&y), point).map_err(to_py)?
+        }
+        ForecasterArg::Callable(f) => {
+            // Bridge the Python callable into the same closure the string
+            // forecasters use. The crate engine (`Backtest::run`) is a plain
+            // sequential loop over refit blocks — no rayon — and this binding
+            // holds the GIL for its whole body, so each bridge call runs on
+            // the calling thread with no parallelism to lose.
+            let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
+            // First origin under both schemes is `train - 1`; the m-th
+            // closure call is at refit origin `t0 + m * refit_every`,
+            // mirroring the engine's refit-block walk.
+            let t0 = train - 1;
+            let mut call_idx = 0usize;
+            let bridge = |tr: &[f64], max_h: usize| -> Result<Vec<f64>, ForecastError> {
+                let t = t0 + call_idx * refit_every;
+                call_idx += 1;
+                let start = t + 1 - tr.len();
+                call_py_forecaster(f, tr, max_h, t, start, "backtest").map_err(|e| {
+                    *err_slot.borrow_mut() = Some(e);
+                    ForecastError::BaseForecaster {
+                        message: PY_FORECASTER_FAILED.to_string(),
+                    }
+                })
+            };
+            let r = bt.run(&vec1(&y), bridge);
+            reraise_stashed(r, &err_slot)?
         }
     };
-    if !matches!(
-        fc.as_str(),
-        "naive" | "drift" | "mean" | "seasonal_naive" | "theta"
-    ) {
-        return Err(PyValueError::new_err(format!(
-            "unknown forecaster {forecaster:?}; expected one of naive, drift, mean, \
-             seasonal_naive, theta"
-        )));
-    }
-    let res = bt.run(&vec1(&y), point).map_err(to_py)?;
 
     let mut forecasts = Vec::with_capacity(horizon);
     let mut targets = Vec::with_capacity(horizon);
@@ -7169,25 +7368,47 @@ fn parse_conformal_order(order: Option<Vec<i64>>) -> PyResult<(usize, usize, usi
 }
 
 /// The boxed base-forecaster closure the conformal entry points share:
-/// (training slice, horizon) -> point forecasts.
-type ConformalBaseFn =
-    Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, tsecon_forecast::ForecastError>>;
+/// (training slice, horizon) -> point forecasts. The lifetime lets a
+/// Python-callable base borrow the callable and the PyErr stash slot.
+type ConformalBaseFn<'a> =
+    Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, tsecon_forecast::ForecastError> + 'a>;
 
 /// Build the base point-forecaster closure shared by the conformal entry
-/// points. Every base sees only the training slice it is handed.
-fn conformal_base(
-    base: &str,
+/// points. Every base sees only the training slice it is handed; a
+/// Python-callable base goes through the same bridge as `backtest`
+/// (read-only float64 training window, teaching errors, the true PyErr
+/// stashed in `err_slot` for re-raise once the engine returns).
+fn conformal_base<'a>(
+    base: &'a ForecasterArg<'_>,
     period: usize,
     lags: usize,
     order: (usize, usize, usize),
-) -> PyResult<ConformalBaseFn> {
+    err_slot: &'a std::cell::RefCell<Option<PyErr>>,
+) -> PyResult<ConformalBaseFn<'a>> {
     use tsecon_forecast::{
         ar_forecast, drift, historical_mean, naive, seasonal_naive, theta_forecast, ForecastError,
     };
     let wrap = |e: tsecon_arima::ArimaError| ForecastError::BaseForecaster {
         message: e.to_string(),
     };
-    let f: ConformalBaseFn = match base {
+    let name = match base {
+        ForecasterArg::Name(n) => n.as_str(),
+        ForecasterArg::Callable(c) => {
+            return Ok(Box::new(move |train, h| {
+                // The conformal engines drive expanding windows anchored at
+                // index 0 (`residual_grid`) plus one forward call on the full
+                // sample, so the origin is always the last index of the slice.
+                let t = train.len() - 1;
+                call_py_forecaster(c, train, h, t, 0, "conformal base").map_err(|e| {
+                    *err_slot.borrow_mut() = Some(e);
+                    ForecastError::BaseForecaster {
+                        message: PY_FORECASTER_FAILED.to_string(),
+                    }
+                })
+            }));
+        }
+    };
+    let f: ConformalBaseFn<'a> = match name {
         "theta" => Box::new(move |train, h| Ok(theta_forecast(train, period, h)?.forecast)),
         "naive" => Box::new(|train, h| Ok(naive(train, h, 0.95)?.mean)),
         "drift" => Box::new(|train, h| Ok(drift(train, h, 0.95)?.mean)),
@@ -7279,10 +7500,19 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// infinite (err 0); past 1 it is the degenerate point interval (err 1) —
 /// the paper's conventions.
 ///
-/// `base` is the wrapped point forecaster for split/aci: `"theta"`,
-/// `"naive"`, `"drift"`, `"mean"`, `"seasonal_naive"` (with `period`),
-/// `"ar"` (least squares on `lags` lags), or `"arima"` (with
-/// `order=(p, d, q)`, constant included). `calib` defaults to `n // 4`
+/// `base` is the wrapped point forecaster for split/aci: `"theta"` (the
+/// default; `None` means `"theta"`), `"naive"`, `"drift"`, `"mean"`,
+/// `"seasonal_naive"` (with `period`), `"ar"` (least squares on `lags`
+/// lags), or `"arima"` (with `order=(p, d, q)`, constant included) — or
+/// **any Python callable** with the `backtest` contract
+/// `base(train, horizon) -> array-like of horizon point forecasts`, where
+/// `train` is a read-only float64 ndarray holding only the training window
+/// (the engines drive expanding windows anchored at the start of the
+/// sample, plus one forward call on the full sample). Exceptions and
+/// malformed returns get the same origin-naming treatment as in
+/// `backtest`, and the returned `base` key reports the callable's name as
+/// `"<callable NAME>"`. `method="enbpi"` trains its own AR ensemble and
+/// takes no callable base. `calib` defaults to `n // 4`
 /// residuals per horizon; `n_eval` (aci) defaults to `n // 5`.
 ///
 /// Returns dict keys (all methods): `mean`, `lower`, `upper`, `level`
@@ -7295,7 +7525,7 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// `alpha_trajectory`, `err`, `realized_coverage` (all per horizon over
 /// the online window), and `n_eval`.
 #[pyfunction]
-#[pyo3(signature = (y, horizon = 1, method = "split", base = "theta", alpha = 0.1,
+#[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
                     calib = None, mode = "symmetric", period = 1, gamma = 0.005,
                     n_eval = None, lags = 1, n_boot = 25, seed = 0,
                     optimize_beta = true, order = None))]
@@ -7305,7 +7535,7 @@ fn conformal_forecast<'py>(
     y: PyReadonlyArray1<'py, f64>,
     horizon: usize,
     method: &str,
-    base: &str,
+    base: Option<Bound<'py, PyAny>>,
     alpha: f64,
     calib: Option<usize>,
     mode: &str,
@@ -7319,6 +7549,12 @@ fn conformal_forecast<'py>(
     order: Option<Vec<i64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast as fc;
+    let base = ForecasterArg::parse(base, "theta", "base")?;
+    let base_label = match &base {
+        ForecasterArg::Name(n) => n.clone(),
+        ForecasterArg::Callable(c) => format!("<callable {}>", py_callable_name(c)),
+    };
+    let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
     let yv = vec1(&y);
     let n = yv.len();
     let (calib, n_eval) = conformal_windows(n, calib, n_eval);
@@ -7329,15 +7565,21 @@ fn conformal_forecast<'py>(
     d.set_item("alpha", alpha)?;
     match method {
         "split" => {
-            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let mut f = conformal_base(
+                &base,
+                period,
+                lags,
+                parse_conformal_order(order)?,
+                &err_slot,
+            )?;
             let opts = fc::SplitConformalOptions {
                 horizon,
                 alpha,
                 calib,
                 symmetric,
             };
-            let r = fc::split_conformal(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?;
-            d.set_item("base", base)?;
+            let r = reraise_stashed(fc::split_conformal(&yv, &opts, |t, h| f(t, h)), &err_slot)?;
+            d.set_item("base", &base_label)?;
             d.set_item("mean", r.mean.into_pyarray(py))?;
             d.set_item("lower", r.lower.into_pyarray(py))?;
             d.set_item("upper", r.upper.into_pyarray(py))?;
@@ -7351,12 +7593,12 @@ fn conformal_forecast<'py>(
             d.set_item("mode", mode)?;
         }
         "enbpi" => {
-            if base != "ar" {
+            if !matches!(&base, ForecasterArg::Name(n) if n == "ar") {
                 return Err(PyValueError::new_err(format!(
                     "method=\"enbpi\" trains its own bootstrap ensemble of AR \
                      least-squares learners on a lagged design, so base must be \
-                     \"ar\" (got {base:?}); choose the design with lags=... . \
-                     To wrap {base:?} itself, use method=\"split\" or \"aci\"."
+                     \"ar\" (got {base_label:?}); choose the design with lags=... . \
+                     To wrap {base_label:?} itself, use method=\"split\" or \"aci\"."
                 )));
             }
             let opts = fc::EnbpiOptions {
@@ -7383,7 +7625,13 @@ fn conformal_forecast<'py>(
             d.set_item("optimize_beta", optimize_beta)?;
         }
         "aci" => {
-            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let mut f = conformal_base(
+                &base,
+                period,
+                lags,
+                parse_conformal_order(order)?,
+                &err_slot,
+            )?;
             let opts = fc::AciOptions {
                 horizon,
                 alpha,
@@ -7391,8 +7639,8 @@ fn conformal_forecast<'py>(
                 calib,
                 n_eval,
             };
-            let r = fc::aci(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?;
-            d.set_item("base", base)?;
+            let r = reraise_stashed(fc::aci(&yv, &opts, |t, h| f(t, h)), &err_slot)?;
+            d.set_item("base", &base_label)?;
             d.set_item("mean", r.mean.into_pyarray(py))?;
             d.set_item("lower", r.lower.into_pyarray(py))?;
             d.set_item("upper", r.upper.into_pyarray(py))?;
@@ -7440,14 +7688,16 @@ fn conformal_forecast<'py>(
 /// sample, residual window sliding forward by `batch` as labels are
 /// revealed (horizon must be 1; within a batch, lag values beyond the last
 /// reveal are plug-in ensemble predictions). `base`, `period`, `lags`,
-/// `order` as in `conformal_forecast`.
+/// `order` as in `conformal_forecast` — including a Python callable
+/// `base(train, horizon)` for split/aci, with the same read-only
+/// training-window contract and teaching errors.
 ///
 /// Returns dict keys: `origins`, `n_eval`, `horizon`, `level`, `alpha`,
 /// `method`, `base`, and per-horizon lists `mean`, `lower`, `upper`,
 /// `err` (missed-target indicators), plus `realized_coverage` (per
 /// horizon). ACI adds `alpha_trajectory`; EnbPI adds `batch`.
 #[pyfunction]
-#[pyo3(signature = (y, horizon = 1, method = "split", base = "theta", alpha = 0.1,
+#[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
                     calib = None, mode = "symmetric", period = 1, gamma = 0.005,
                     n_eval = None, lags = 1, n_boot = 25, batch = 1, seed = 0,
                     optimize_beta = true, order = None))]
@@ -7457,7 +7707,7 @@ fn conformal_backtest<'py>(
     y: PyReadonlyArray1<'py, f64>,
     horizon: usize,
     method: &str,
-    base: &str,
+    base: Option<Bound<'py, PyAny>>,
     alpha: f64,
     calib: Option<usize>,
     mode: &str,
@@ -7472,13 +7722,25 @@ fn conformal_backtest<'py>(
     order: Option<Vec<i64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast as fc;
+    let base = ForecasterArg::parse(base, "theta", "base")?;
+    let base_label = match &base {
+        ForecasterArg::Name(n) => n.clone(),
+        ForecasterArg::Callable(c) => format!("<callable {}>", py_callable_name(c)),
+    };
+    let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
     let yv = vec1(&y);
     let n = yv.len();
     let (calib, n_eval) = conformal_windows(n, calib, n_eval);
     let symmetric = parse_conformal_mode(mode, method)?;
     let online = match method {
         "split" => {
-            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let mut f = conformal_base(
+                &base,
+                period,
+                lags,
+                parse_conformal_order(order)?,
+                &err_slot,
+            )?;
             let opts = fc::SplitOnlineOptions {
                 horizon,
                 alpha,
@@ -7486,10 +7748,19 @@ fn conformal_backtest<'py>(
                 n_eval,
                 symmetric,
             };
-            fc::split_conformal_online(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?
+            reraise_stashed(
+                fc::split_conformal_online(&yv, &opts, |t, h| f(t, h)),
+                &err_slot,
+            )?
         }
         "aci" => {
-            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let mut f = conformal_base(
+                &base,
+                period,
+                lags,
+                parse_conformal_order(order)?,
+                &err_slot,
+            )?;
             let opts = fc::AciOptions {
                 horizon,
                 alpha,
@@ -7497,13 +7768,13 @@ fn conformal_backtest<'py>(
                 calib,
                 n_eval,
             };
-            fc::aci(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?.online
+            reraise_stashed(fc::aci(&yv, &opts, |t, h| f(t, h)), &err_slot)?.online
         }
         "enbpi" => {
-            if base != "ar" {
+            if !matches!(&base, ForecasterArg::Name(n) if n == "ar") {
                 return Err(PyValueError::new_err(format!(
                     "method=\"enbpi\" trains its own AR least-squares ensemble; \
-                     base must be \"ar\" (got {base:?})"
+                     base must be \"ar\" (got {base_label:?})"
                 )));
             }
             if horizon != 1 {
@@ -7536,7 +7807,14 @@ fn conformal_backtest<'py>(
 
     let d = PyDict::new(py);
     d.set_item("method", method)?;
-    d.set_item("base", if method == "enbpi" { "ar" } else { base })?;
+    d.set_item(
+        "base",
+        if method == "enbpi" {
+            "ar"
+        } else {
+            base_label.as_str()
+        },
+    )?;
     d.set_item("horizon", online.horizon)?;
     d.set_item("alpha", online.alpha)?;
     d.set_item("level", online.level)?;

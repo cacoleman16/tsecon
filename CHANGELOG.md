@@ -52,6 +52,34 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   training block; the arithmetic saturates instead of overflowing).
 ### Added
 
+- **`backtest` (and the split/ACI conformal `base=`) now accept a Python
+  callable forecaster** — field report item 9: the binding previously
+  hardcoded five benchmark forecasters, so no real model could be evaluated
+  through the library's own leakage-safe engine. `forecaster=` (and
+  `base=` in `conformal_forecast`/`conformal_backtest`) take any callable
+  `f(train, horizon) -> array-like of horizon point forecasts`, called with
+  a **read-only float64 ndarray holding only the training window** for each
+  refit origin (expanding `y[0..=t]`, rolling the `train` most recent
+  observations through `t`; with `refit_every > 1` the callable is asked
+  for up to `refit_every - 1 + horizon` steps to roll its block forward).
+  Exceptions raised inside the callable re-raise naming the failing origin
+  and training window with the original chained as `__cause__`;
+  wrong-length / non-coercible / non-finite returns get teaching errors
+  naming the callable, step, origin, and window. EnbPI keeps its own AR
+  ensemble and refuses a callable base with a teaching error. The engine
+  loop is sequential in Rust for strings and callables alike (no
+  parallelism is lost; a callable costs one Python call per refit origin),
+  and the string paths are **bit-identical** to the previous build — pinned
+  float-hex-for-float-hex by the new self-snapshot fixture
+  `fixtures/backtest_string_snapshot.json`. Validated in
+  `test_backtest_callable.py`: spy-recorded training windows equal the
+  documented slices exactly; a perturbation test shows moving `y[k]` moves
+  no forecast whose origin precedes `k`; a Python `naive` is bit-identical
+  to `forecaster="naive"`; and statsmodels `AutoReg(lags=p, trend="c")`
+  reproduces the Rust `"ar"` conformal base at 1e-6 relative through both
+  conformal entry points. The `forecaster`/`base` defaults are now `None`
+  (meaning `"naive"`/`"theta"` — unchanged behavior); the conformal `base`
+  key reports a callable as `"<callable NAME>"`.
 - **`markov_switching_ar` now returns the estimated AR coefficients** under
   the new `ar` key — a length-`order` array `(phi_1, …, phi_p)` shared across
   regimes (the binding fits Hamilton's common-AR specification, in which the

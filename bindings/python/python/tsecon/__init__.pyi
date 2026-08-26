@@ -1867,14 +1867,22 @@ def backtest(
     train: int = ...,
     horizon: int = ...,
     refit_every: int = ...,
-    forecaster: str = ...,
+    forecaster: str | Callable[[_F64, int], _ArrayLike] | None = ...,
     period: int = ...,
     insample_period: int = ...,
 ) -> dict[str, Any]:
     """Rolling/expanding pseudo-out-of-sample backtest.
 
     window is "expanding" or "rolling"; forecaster is one of naive, drift,
-    mean, seasonal_naive, theta. Returns origins, per-horizon forecasts and
+    mean, seasonal_naive, theta (None means naive) — or any Python callable
+    f(train, horizon) -> array-like of exactly `horizon` finite point
+    forecasts, where train is a read-only float64 ndarray holding only the
+    training window for that origin (the engine's leakage discipline; with
+    refit_every > 1 the callable is asked for up to refit_every - 1 + horizon
+    steps at each refit origin). Exceptions raised inside the callable
+    re-raise naming the failing origin and window, with the original chained
+    as __cause__; wrong-length / non-finite returns raise teaching errors.
+    Returns origins, per-horizon forecasts and
     targets, and a per-horizon accuracy table."""
 
 # --------------------------------------------- conformal forecast intervals
@@ -1882,7 +1890,7 @@ def conformal_forecast(
     y: _ArrayLike,
     horizon: int = ...,
     method: str = ...,
-    base: str = ...,
+    base: str | Callable[[_F64, int], _ArrayLike] | None = ...,
     alpha: float = ...,
     calib: int | None = ...,
     mode: str = ...,
@@ -1902,8 +1910,11 @@ def conformal_forecast(
     2021 bootstrap-ensemble batch prediction intervals; base must be "ar"),
     or "aci" (Gibbs-Candes 2021 adaptive conformal inference,
     alpha_{t+1} = alpha_t + gamma (alpha - err_t), gamma default 0.005 from
-    the paper). base wraps "theta", "naive", "drift", "mean",
-    "seasonal_naive", "ar", or "arima" (order=(p, d, q)). calib defaults to
+    the paper). base wraps "theta" (None means "theta"), "naive", "drift",
+    "mean", "seasonal_naive", "ar", or "arima" (order=(p, d, q)) — or, for
+    split/aci, any Python callable base(train, horizon) -> array-like of
+    horizon point forecasts with the backtest contract (train is a read-only
+    float64 ndarray of the training window only). calib defaults to
     n // 4 residuals per horizon; n_eval (aci) to n // 5. Returns mean,
     lower, upper, level, plus per-method calibration diagnostics (split:
     q_lower/q_upper/scores/finite_sample_level; enbpi: beta/residuals;
@@ -1913,7 +1924,7 @@ def conformal_backtest(
     y: _ArrayLike,
     horizon: int = ...,
     method: str = ...,
-    base: str = ...,
+    base: str | Callable[[_F64, int], _ArrayLike] | None = ...,
     alpha: float = ...,
     calib: int | None = ...,
     mode: str = ...,
@@ -1930,9 +1941,10 @@ def conformal_backtest(
     """Online out-of-sample evaluation of conformal intervals ("split",
     "aci", or "enbpi") over the last n_eval origins: per-origin intervals
     formed from information available then, miss indicators, and realized
-    coverage per horizon. ACI adds its alpha_t trajectory; EnbPI is the
-    published one-step online algorithm with the residual window sliding
-    by batch."""
+    coverage per horizon. base as in conformal_forecast, including a Python
+    callable base(train, horizon) for split/aci. ACI adds its alpha_t
+    trajectory; EnbPI is the published one-step online algorithm with the
+    residual window sliding by batch."""
 
 # --------------------------------------------------- nonlinear GMM (callback)
 def gmm_nonlinear(
