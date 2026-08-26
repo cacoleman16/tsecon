@@ -370,3 +370,42 @@ fn overlapping_horizons_widen_the_growth_at_risk_standard_errors() {
         previous_ratio = if i == 0 { 0.0 } else { ratio };
     }
 }
+
+/// The IRLS convergence flag reaches the LP and GaR result types with the
+/// shape of the estimates it describes (`[tau][h]` for the LP, per tau
+/// for GaR), and is uniformly `true` on well-posed data. The engine
+/// (`QuantileFit::converged`) tracked this all along; the wrappers used
+/// to drop it on the floor.
+#[test]
+fn converged_flags_match_result_shapes_and_hold_on_well_posed_data() {
+    let mut s = Stream::new(20260826);
+    let n = 220;
+    let shock: Vec<f64> = (0..n).map(|_| gaussian(&mut s)).collect();
+    let mut y = vec![0.0_f64; n];
+    for t in 1..n {
+        y[t] = 0.5 * y[t - 1] + shock[t] + 0.3 * shock[t - 1] + 0.8 * gaussian(&mut s);
+    }
+    let q = quantile_lp(&y, &shock, &[0.1, 0.5, 0.9], 4, 2).expect("qlp ok");
+    assert_eq!(q.converged.len(), q.irf.len());
+    for (c, i) in q.converged.iter().zip(q.irf.iter()) {
+        assert_eq!(
+            c.len(),
+            i.len(),
+            "converged must mirror irf's [tau][h] shape"
+        );
+    }
+    assert!(
+        q.converged.iter().flatten().all(|&b| b),
+        "well-posed LP fits should all converge: {:?}",
+        q.converged
+    );
+
+    let (gy, gx) = gar_dgp(&mut s, 260);
+    let r = growth_at_risk(&gy, &[gx], 4, &[0.05, 0.5, 0.95], true).expect("gar ok");
+    assert_eq!(r.converged.len(), r.taus.len());
+    assert!(
+        r.converged.iter().all(|&b| b),
+        "well-posed GaR fits should all converge: {:?}",
+        r.converged
+    );
+}

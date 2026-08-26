@@ -130,6 +130,17 @@ data release that caused it.
   `z_t = Λf_t + e_t`, `f_t = A_1 f_{t−1} + … + A_p f_{t−p} + η_t`,
   `e ~ N(0, diag(idiosyncratic))`, `η ~ N(0, factor_cov)` is fully
   reproducible from the results dict alone.
+  differ whenever the panel actually has a ragged edge. With `method="mle"`
+  the dict additionally carries `converged` and `iterations`: `converged` is
+  the certificate of the optimizer stage whose point is reported (the BFGS
+  polish's gradient-norm test when the polish improves on the Nelder-Mead
+  optimum — the usual case — else Nelder-Mead's simplex-tolerance test), and
+  `iterations` is the total across both stages; `converged=False` means the
+  reported parameters are the best point found within the budget, not a
+  certified optimum. The default `method="two_step"` runs no iterative
+  optimizer (PCA + OLS + one Kalman pass are closed-form), so it carries
+  neither key — the absence is the honest statement that a convergence
+  certificate does not apply, not a gap.
 - **`dfm_news`** → `{"target_series", "target_period", "old_nowcast",
   "new_nowcast", "total_revision", "contributions"}`. `total_revision =
   new_nowcast − old_nowcast`, and `contributions` is a list of dicts

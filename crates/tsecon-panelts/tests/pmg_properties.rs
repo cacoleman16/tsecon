@@ -174,3 +174,113 @@ fn pmg_rejects_inconsistent_and_ragged() {
         Err(PanelTsError::RaggedUnit { unit: 1, .. })
     ));
 }
+
+// ------------------------------------------------------------------------
+// The I(1)-panel convergence repair (relative stopping rule + restart).
+//
+// The old ABSOLUTE stopping rule `|dtheta|_inf < 1e-12` hard-failed
+// textbook I(1) panels: measured over the 20-seed battery below, 14/20
+// failures with I(1) x, 0/20 with I(0) x, 16/20 with I(1) x scaled by
+// 100. Tracing the failures showed the mechanism: from the pinned
+// `theta = 0` start the back-substitution DIVERGES on those panels
+// (theta walks away from the fixed point at ~0.7 per iteration — by
+// iteration 260 it had reached -179 on seed 0), so no stopping
+// tolerance alone repairs them (a relative rule at 1e-9 still failed
+// 14-16/20). The shipped repair is two-part: the relative rule
+// `|dtheta|_inf <= tol * (1 + |theta|_inf)` (scale-free at the fixed
+// point) plus a deterministic rerun from the PSS unrestricted-ARDL
+// start when the theta = 0 pass fails. Measured post-fix: 0/60
+// failures, theta recovered near the true 1 on every panel.
+// ------------------------------------------------------------------------
+
+/// One panel of the battery DGP: `dy = -0.3 (y - x) + 0.2 dx + 0.1 eps`,
+/// with `x` a random walk (`i1`), white noise (`i0`), or a random walk
+/// scaled by 100 before `y` is built on it (`i1x100` — the scale lives in
+/// the data, not the coefficient). True common long run: theta = 1.
+fn battery_panel(seed: u64, kind: &str) -> Vec<PanelUnit> {
+    let (n, t) = (10usize, 150usize);
+    let mut s = Stream::new(seed);
+    (0..n)
+        .map(|_| {
+            let mut x = vec![0.0_f64; t];
+            let mut acc = 0.0_f64;
+            for xv in x.iter_mut() {
+                let e = gaussian(&mut s);
+                if kind == "i0" {
+                    *xv = e;
+                } else {
+                    acc += e;
+                    *xv = acc;
+                }
+            }
+            if kind == "i1x100" {
+                for xv in x.iter_mut() {
+                    *xv *= 100.0;
+                }
+            }
+            let mut y = vec![0.0_f64; t];
+            y[0] = x[0];
+            for tt in 1..t {
+                let dx = x[tt] - x[tt - 1];
+                let dy = -0.3 * (y[tt - 1] - x[tt - 1]) + 0.2 * dx + 0.1 * gaussian(&mut s);
+                y[tt] = y[tt - 1] + dy;
+            }
+            PanelUnit::new(y, vec![x])
+        })
+        .collect()
+}
+
+#[test]
+fn pmg_converges_on_integrated_regressors_at_every_scale() {
+    for kind in ["i1", "i0", "i1x100"] {
+        for seed in 0..20u64 {
+            let units = battery_panel(seed, kind);
+            let fit =
+                pmg(&units).unwrap_or_else(|e| panic!("PMG failed on {kind} seed {seed}: {e}"));
+            // The estimate is also *right*: the common long run is 1 at
+            // every data scale.
+            assert!(
+                (fit.theta[0] - 1.0).abs() < 0.2,
+                "{kind} seed {seed}: theta {} far from 1",
+                fit.theta[0]
+            );
+        }
+    }
+}
+
+#[test]
+fn pmg_with_validates_its_options() {
+    let units = battery_panel(0, "i0");
+    for bad in [0.0, -1e-9, f64::NAN, f64::INFINITY] {
+        assert!(
+            matches!(
+                tsecon_panelts::pmg_with(&units, bad, 1000),
+                Err(PanelTsError::PmgInvalidOption { .. })
+            ),
+            "tol {bad} should be rejected"
+        );
+    }
+    assert!(matches!(
+        tsecon_panelts::pmg_with(&units, 1e-12, 0),
+        Err(PanelTsError::PmgInvalidOption { .. })
+    ));
+}
+
+#[test]
+fn pmg_not_converged_stays_reachable_for_genuine_non_convergence() {
+    // One iteration cannot reach the fixed point from theta = 0 on real
+    // data, so the failure path (and its taught message) stays exercised.
+    let units = battery_panel(0, "i0");
+    let err = tsecon_panelts::pmg_with(&units, 1e-12, 1).expect_err("cannot converge in 1");
+    assert!(matches!(
+        err,
+        PanelTsError::PmgNotConverged { iters: 1, .. }
+    ));
+    let msg = err.to_string();
+    assert!(
+        msg.contains("relative tolerance") && msg.contains("max_iter"),
+        "non-convergence message should teach the knobs, got: {msg}"
+    );
+    // And the same panel converges under the default budget.
+    assert!(pmg(&units).is_ok());
+}

@@ -135,6 +135,36 @@ singular values and hands back a number regardless. Note that
 covariance cannot be formed rather than quietly falling back to the narrow
 bands.
 
+**Convergence and boundary flags (`converged`, `boundary`, `se_valid`,
+`boundary_note`).** `converged` is the optimizer's own certificate — the crate
+tracked it from the first release; the binding used to drop it. `False` means
+the reported parameters are the best point found, not a certified optimum:
+treat everything downstream (SEs, forecasts, criteria) with care.
+
+`boundary` closes a sharper trap, the GARCH card's round-7 pattern ported to
+ARIMA. A fit can land **on** the stationarity/invertibility boundary and
+*still* pass the `cov_ok` gate: the classic case is an over-differenced
+series — fit ARIMA(0,1,1) to white noise and exact MLE piles the MA root up
+at −1 (measured: 8 of 14 seeded white-noise fits landed within 1e-8 of
+θ = −1), where the full-vector observed information **still inverts** and
+hands back a finite, confident-looking `bse` of ~0.01–0.03 for `ma.L1` with
+`cov_ok=True`. No classical standard error exists there: the information is
+singular in the constrained direction by construction and the sampling
+distribution is a boundary pile-up, not a normal. `boundary` flags, per
+parameter, every AR/MA block whose fitted polynomial (regular directly,
+seasonal through the `1/s` power map) has a root with modulus below
+**1.001** — within 0.1% of the unit circle, the *same* epsilon `auto_arima`
+uses to exclude candidates from selection. Flagged parameters' `bse` entries
+are NaN with `se_valid=False`, and `boundary_note` names the block, the root
+modulus, and the diagnosis (an MA root at the unit circle ⇒ lower `d` by
+one). Honest limitation of this tier: **interior** parameters' `bse` still
+come from the *full-vector* observed information, which the boundary
+direction degrades — treat them as approximate. Reduced-Hessian standard
+errors over the free directions only (what `garch_fit` does) are a
+documented follow-up. `se_valid` is all-False whenever `cov_ok=False`.
+`auto_arima` shares this dict; since it never selects near-unit-root
+candidates, its `boundary` flags are False in practice.
+
 **Forecast intervals and the estimated drift (`drift_uncertainty`).** The
 default `forecast_se` reflects innovation and filtering uncertainty only, with
 the parameters treated as known — the statsmodels `get_forecast(...)`
@@ -419,8 +449,10 @@ do not abort it. The constant is considered when `d + D <= 1` (a mean at
 never when `d + D >= 2`.
 
 **How to read the output.** The `arima_fit` result dict for the winner (same
-keys: `params`, `bse`/`param_cov`/`cov_ok`, `residuals`, forecast keys when
-`forecast_steps > 0`) plus the selection layer: `order`, `seasonal_order`,
+keys: `params`, `converged`, `bse`/`param_cov`/`cov_ok`,
+`se_valid`/`boundary`/`boundary_note` (False/None in practice here — the
+search never selects near-unit-root candidates), `residuals`, forecast keys
+when `forecast_steps > 0`) plus the selection layer: `order`, `seasonal_order`,
 `constant`, `ic`/`ic_value`/`aicc`, `n_models`, `trace` — every candidate
 tried with its criterion and status — and `d_test`/`D_test`, the *full*
 `ndiffs`/`nsdiffs` evidence dicts behind the differencing choices (or `None`

@@ -77,6 +77,17 @@ pub(crate) struct MleFit {
     /// panel (the optimiser's initial objective). `llf(MLE) >= this` holds by
     /// construction.
     pub two_step_loglik: f64,
+    /// Whether the optimiser stage that produced the reported parameters
+    /// terminated by its own convergence test: the BFGS polish's
+    /// gradient-norm certificate when the polish's point is kept (the
+    /// usual case), or the Nelder-Mead simplex-tolerance certificate when
+    /// the polish failed to improve on the simplex optimum. `false` means
+    /// the reported parameters are the best point found within the
+    /// iteration budget, not a certified optimum.
+    pub converged: bool,
+    /// Total optimiser iterations across both stages (Nelder-Mead plus
+    /// the BFGS polish).
+    pub iterations: usize,
 }
 
 /// The negative Kalman log-likelihood as a function of the unconstrained
@@ -296,10 +307,17 @@ pub(crate) fn fit_mle_single_factor(
         },
     )?;
 
-    let (best_z, best_neg) = if polished.f <= nm.f {
-        (polished.x, polished.f)
+    // The convergence certificate belongs to the stage whose point is
+    // reported: the polish's gradient-norm test when it improved on (or
+    // matched) the simplex optimum, the simplex-tolerance test otherwise.
+    // Both optimizers return their best point either way; `converged`
+    // records whether that point carries a certificate, and `iterations`
+    // the total effort across both stages.
+    let iterations = nm.iterations + polished.iterations;
+    let (best_z, best_neg, converged) = if polished.f <= nm.f {
+        (polished.x, polished.f, polished.converged)
     } else {
-        (nm.x, nm.f)
+        (nm.x, nm.f, nm.converged)
     };
     if !best_neg.is_finite() {
         return Err(NowcastError::NonFinite {
@@ -319,5 +337,7 @@ pub(crate) fn fit_mle_single_factor(
         center,
         smoothing,
         two_step_loglik,
+        converged,
+        iterations,
     })
 }
