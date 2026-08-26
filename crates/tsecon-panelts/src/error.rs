@@ -166,12 +166,13 @@ impl fmt::Display for PanelTsError {
             Self::PmgNotConverged { iters, tol } => write!(
                 f,
                 "the pooled-mean-group back-substitution had not met its relative \
-                 tolerance ({tol:.1e} on the max-abs theta update) after {iters} \
-                 iteration(s) — the pooled long-run estimate was still moving. \
-                 Raise max_iter, or loosen tol if updates this small are \
-                 acceptable for your use; the last iterate is not returned \
-                 because it is not a verified fixed point of the concentrated \
-                 likelihood"
+                 tolerance ({tol:.1e} on the max-abs theta update) within {iters} \
+                 iteration(s) from either the pinned theta = 0 start or the \
+                 unrestricted-ARDL restart — the pooled long-run estimate was \
+                 still moving. Raise max_iter, or loosen tol if updates this \
+                 small are acceptable for your use; the last iterate is not \
+                 returned because it is not a verified fixed point of the \
+                 concentrated likelihood"
             ),
             Self::PmgInvalidOption { what } => write!(f, "invalid PMG option: {what}"),
             Self::Stats(e) => write!(f, "distribution error: {e}"),

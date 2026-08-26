@@ -50,7 +50,9 @@ fn over_differenced_ma_fit_flags_the_invertibility_boundary() {
     // The trap, pinned: the full-vector observed information does NOT
     // refuse at this boundary — it returns a finite se for ma.L1. That is
     // why the flags must exist (and why the binding NaNs the flagged se).
-    let pc = res.param_cov().expect("full-vector covariance still inverts");
+    let pc = res
+        .param_cov()
+        .expect("full-vector covariance still inverts");
     assert!(
         pc.se()[0].is_finite(),
         "if this starts refusing, the boundary flags are no longer the only \

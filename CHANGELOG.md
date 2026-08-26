@@ -7,7 +7,61 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed — convergence signaling (audit: four adversarially-verified defects)
+
+- **`panel_pmg` no longer hard-fails textbook I(1) panels.** Measured on
+  a stable N=10, T=150 error-correction DGP (20 seeds): 14/20 hard
+  failures with I(1) x, 0/20 with I(0) x, 16/20 with the same I(1) x
+  scaled ×100. Tracing the failures showed the mechanism: from the pinned
+  `θ = 0` start the PSS back-substitution *diverges* on those panels
+  (θ walks away from the fixed point at ~0.7 per iteration; a stopping
+  tolerance cannot repair that — a relative rule at 1e-9 still failed
+  14–16/20). Two-part fix: (1) the stopping rule is now *relative*,
+  `|dθ|_inf <= tol * (1 + |θ|_inf)`, with `tol=` and `max_iter=` exposed
+  as kwargs — an absolute rule can never be met when θ is large. The
+  default `tol=3e-13` is the historical absolute 1e-12's *measured
+  effective relative stringency* on the O(1)-θ panels it was validated
+  on: on the golden fixture (|θ|_inf = 1.506) the old rule stopped at
+  iteration 29 with relative updates rel₂₈ = 5.890e-13 and
+  rel₂₉ = 1.947e-13, so any default in [1.95e-13, 5.89e-13) keeps the
+  stopping iterate — and the golden — bit-identical; 3e-13 sits
+  mid-window, and the I(1) battery converges 0/20-failures at every
+  tolerance down to 1e-14, so it is nowhere near a noise floor.
+  (2) When and only when the `θ = 0` pass fails, the identical iteration
+  is rerun once from the Pesaran-Shin-Smith unrestricted-ARDL start
+  (their own recommended initialization — a consistent estimator, hence
+  inside the fixed point's basin). Measured post-fix: 0/20 failures on
+  all three variants, θ recovered near the true value on every panel,
+  and the `fixtures/pmg.json` golden is bit-identical (converging panels
+  never reach pass 2, and the stopping iterate is unchanged).
+  `PmgNotConverged` stays reachable for genuine non-convergence and its
+  message now teaches the knobs instead of blaming the data.
+- **`arima_fit` / `auto_arima` now emit `converged`** (the crate tracked
+  it all along; the binding dropped it) **and the garch-pattern boundary
+  flags**: per-parameter `boundary` marks AR/MA blocks whose fitted
+  polynomial has a root within 0.1% of the unit circle (`auto_arima`'s
+  admissibility epsilon), those `bse` entries are NaN'd with per-parameter
+  `se_valid`, and `boundary_note` teaches the diagnosis (an MA root at the
+  unit circle = over-differencing). Previously an over-differenced
+  ARIMA(0,1,1) piled up at θ = −1 and reported a finite, confident-looking
+  SE with `cov_ok=True`. Tier-1 honesty: interior `bse` still come from
+  the full-vector observed information (degraded at a boundary — the note
+  says so); reduced-Hessian interior SEs over the free directions are a
+  stated follow-up.
+- **`quantile_lp` and `growth_at_risk` now emit `converged`** — the IRLS
+  engine's per-fit flag (`[tau][h]`-shaped for the LP, per-tau for GaR),
+  previously dropped by both bindings while `quantile_regression` kept
+  its aggregate flag. A False entry is the 1000-iteration cap without the
+  1e-6 coefficient tolerance: the last iterate, not a verified check-loss
+  minimum. Not hypothetical — an ordinary AR(1)-plus-shock LP design
+  exhausts the cap at one (τ, h) cell (pinned in the tests; statsmodels
+  `QuantReg` emits a ConvergenceWarning on the identical design, which
+  the binding used to swallow).
+- **`dfm_nowcast(method="mle")` now emits `converged` and `iterations`**:
+  the certificate of the optimizer stage whose point is reported (BFGS
+  polish when it improves on the Nelder-Mead optimum, else Nelder-Mead)
+  and the total iterations across both stages. The default two-step route
+  runs no iterative optimizer and deliberately carries neither key.
 
 ## [0.5.0] - 2026-08-25
 

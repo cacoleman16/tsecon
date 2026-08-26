@@ -110,7 +110,17 @@ data release that caused it.
   pass's log-likelihood on the full ragged panel, while `fit_loglik` is the
   estimation pass's log-likelihood on the balanced sub-panel (the rows before
   the first ragged edge — both `method` routes estimate there), so the two
-  differ whenever the panel actually has a ragged edge.
+  differ whenever the panel actually has a ragged edge. With `method="mle"`
+  the dict additionally carries `converged` and `iterations`: `converged` is
+  the certificate of the optimizer stage whose point is reported (the BFGS
+  polish's gradient-norm test when the polish improves on the Nelder-Mead
+  optimum — the usual case — else Nelder-Mead's simplex-tolerance test), and
+  `iterations` is the total across both stages; `converged=False` means the
+  reported parameters are the best point found within the budget, not a
+  certified optimum. The default `method="two_step"` runs no iterative
+  optimizer (PCA + OLS + one Kalman pass are closed-form), so it carries
+  neither key — the absence is the honest statement that a convergence
+  certificate does not apply, not a gap.
 - **`dfm_news`** → `{"target_series", "target_period", "old_nowcast",
   "new_nowcast", "total_revision", "contributions"}`. `total_revision =
   new_nowcast − old_nowcast`, and `contributions` is a list of dicts

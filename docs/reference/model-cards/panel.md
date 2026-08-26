@@ -118,7 +118,8 @@ cluster covariances.
 | | `trend` | `"c"` | deterministic terms |
 | | `horizon` / `response` / `impulse` | `10` / `0` / `0` | IRF horizon and the response/shock variable indices |
 | `panel_mean_group` | `method` | `"mg"` | or `"cce"` (common-correlated-effects) |
-| `panel_pmg` | — | — | `ys`/`xs` per-unit level series and Tᵢ×k regressor matrices |
+| `panel_pmg` | `tol` | `3e-13` | *relative* stopping tolerance of the ML back-substitution: stop when `|dθ|_inf ≤ tol·(1+|θ|_inf)` — see [the convergence note](#panel_pmg-convergence-the-i1-repair) |
+| | `max_iter` | `1000` | iteration budget per pass (θ=0 start, then the unrestricted-ARDL restart) |
 
 ## How to read the output
 
@@ -460,6 +461,44 @@ Covariates / regression adjustment, the composition-effects correction
 not yet implemented; doubly-robust (AIPW) LP-DiD has no reference
 implementation anywhere and is out of scope until one exists to validate
 against.
+
+## `panel_pmg` convergence: the I(1) repair
+
+The PSS estimator is a fixed-point iteration (back-substitute between the
+pooled long-run GLS solve and the per-unit `φ_i`, `σ²_i`), and two defects
+used to make it hard-fail exactly the panels PMG exists for — cointegrated
+I(1) regressors. Measured on a stable error-correction DGP
+(`dy = −0.3(y − x) + 0.2 dx + 0.1 eps`, N=10, T=150, 20 seeds):
+**14/20 hard failures with I(1) x, 0/20 with I(0) x, 16/20 with the same
+I(1) x scaled ×100** — the same dynamics, only the scale moved.
+
+- **Divergence from the pinned start (the dominant failure).** The
+  iteration ran from `θ = 0`; the map is only *locally* convergent, and on
+  the failing panels θ walked monotonically **away** from the fixed point
+  at ~0.7 per iteration (to −179 by iteration 260 on one traced seed) — no
+  stopping tolerance can repair that (a relative rule at 1e-9 still failed
+  14–16/20). Fix: when and only when the `θ = 0` pass fails, the identical
+  iteration is rerun once from the Pesaran-Shin-Smith unrestricted-ARDL
+  start (per-unit unrestricted EC regressions pooled by one GLS solve —
+  the initialization PSS themselves recommend, and a consistent estimator,
+  hence inside the basin of attraction). Converging panels never reach the
+  restart, so previously-working fits are untouched to the bit.
+- **A scale-dependent stopping rule.** The old rule was *absolute*
+  (`|dθ|_inf < 1e-12`), unreachable whenever θ is large because solve
+  updates carry rounding noise of `|θ|·O(eps)`. The rule is now *relative*
+  (`|dθ|_inf ≤ tol·(1+|θ|_inf)`); the default `tol=3e-13` is the old
+  rule's measured effective relative stringency on the O(1)-θ panels it
+  was validated on (golden fixture: the old rule stopped at iteration 29
+  with relative updates 5.890e-13 → 1.947e-13 across that iterate, so any
+  default in [1.95e-13, 5.89e-13) keeps the golden **bit-identical**;
+  3e-13 sits mid-window, and the battery converges at every tolerance down
+  to 1e-14).
+
+Measured post-fix: **0/20 failures on all three variants**, θ within 0.2 of
+the true common long run on every panel. Genuine non-convergence (both
+starts exhaust `max_iter`) still raises, with a message that names `tol`
+and `max_iter` rather than blaming the data; the last iterate is not
+returned because it is not a verified fixed point.
 
 ## Failure modes
 

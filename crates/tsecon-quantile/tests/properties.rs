@@ -388,7 +388,11 @@ fn converged_flags_match_result_shapes_and_hold_on_well_posed_data() {
     let q = quantile_lp(&y, &shock, &[0.1, 0.5, 0.9], 4, 2).expect("qlp ok");
     assert_eq!(q.converged.len(), q.irf.len());
     for (c, i) in q.converged.iter().zip(q.irf.iter()) {
-        assert_eq!(c.len(), i.len(), "converged must mirror irf's [tau][h] shape");
+        assert_eq!(
+            c.len(),
+            i.len(),
+            "converged must mirror irf's [tau][h] shape"
+        );
     }
     assert!(
         q.converged.iter().flatten().all(|&b| b),

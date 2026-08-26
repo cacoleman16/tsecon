@@ -76,7 +76,11 @@
 //! ```
 //!
 //! Iterating "given `theta` -> `{phi_i, sigma_i^2}`; given those -> `theta`"
-//! is the PSS back-substitution and maximizes the concentrated likelihood. At
+//! is the PSS back-substitution and maximizes the concentrated likelihood.
+//! The iteration is only *locally* convergent: it runs first from the
+//! deterministic `theta = 0` start (pinned by the NumPy golden) and, if that
+//! start diverges — routine on integrated regressors, see [`pmg_with`] — it
+//! is rerun once from the PSS unrestricted-ARDL start. At
 //! the fixed point the long-run covariance is the inverse information block
 //!
 //! ```text
@@ -112,17 +116,35 @@ pub const DEFAULT_MAX_ITER: usize = 1000;
 /// [`pmg_with`]): the iteration stops when
 /// `|dtheta|_inf <= tol * (1 + |theta|_inf)`.
 ///
-/// The rule is relative because the floating-point noise floor of the pooled
-/// Cholesky solve scales with the magnitude of `theta` and of the partialled
-/// regressors. With integrated (I(1)) regressors — the textbook PMG input —
-/// the cross-products in `A` and `b` are large enough that consecutive
-/// solves differ by more than any fixed absolute threshold near the fixed
-/// point, so an absolute `|dtheta|_inf < 1e-12` rule failed on well-behaved
-/// panels purely as a function of the regressors' scale (measured: 14/20
-/// seeds of a stable N = 10, T = 150 error-correction DGP with I(1) x, 0/20
-/// with the same DGP and I(0) x, 16/20 with the I(1) x multiplied by 100).
-/// The `1 +` term keeps the rule meaningful when `theta` is near zero.
-pub const DEFAULT_TOL: f64 = 1e-12;
+/// The rule is relative because the floating-point noise floor of the
+/// pooled Cholesky solve scales with the magnitude of `theta`: an absolute
+/// `|dtheta|_inf < 1e-12` rule (the historical one) cannot be met at the
+/// fixed point whenever `theta` is large — updates carry rounding noise of
+/// `|theta| * O(eps)` and the iteration spins to exhaustion. The `1 +`
+/// term keeps the rule meaningful when `theta` is near zero.
+///
+/// **Where `3e-13` comes from (measured, not tuned).** The historical
+/// absolute `1e-12` was validated on panels with `|theta|_inf ~ 1.3-1.5`
+/// (the golden fixture and the property-test DGPs), where its *effective
+/// relative* stringency was `1e-12 / (1 + |theta|_inf) ~ 4e-13`; `3e-13`
+/// carries that same stringency over, now scale-free. On the golden fixture
+/// (`fixtures/pmg.json`, `|theta|_inf = 1.506`) the old rule stopped at
+/// iteration 29 with measured relative updates `rel_28 = 5.890e-13` and
+/// `rel_29 = 1.947e-13`, so any default in `[1.95e-13, 5.89e-13)` stops
+/// at the identical iterate and keeps the golden bit-identical — verified;
+/// `3e-13` sits mid-window (x1.5 above, x2 below). The I(1) battery
+/// (see [`pmg_with`]) converges 0/20-failures at every tolerance down to
+/// `1e-14`, so the default is nowhere near a noise floor.
+///
+/// The stopping rule is only half of the I(1)-panel repair: the measured
+/// hard failures on textbook integrated panels (14/20 seeds of a stable
+/// N = 10, T = 150 error-correction DGP with I(1) x; 0/20 with I(0) x;
+/// 16/20 with the I(1) x scaled by 100) were *divergence of the
+/// back-substitution from the pinned `theta = 0` start* — the map walked
+/// away from the fixed point at ~0.7 per iteration, which no tolerance can
+/// repair. See [`pmg_with`] for the deterministic unrestricted-ARDL
+/// restart that fixes those.
+pub const DEFAULT_TOL: f64 = 3e-13;
 
 /// A fitted pooled-mean-group (PMG) estimate for an ARDL(1,1) panel.
 ///
@@ -144,7 +166,10 @@ pub struct PooledMeanGroup {
     pub sigma2: Vec<f64>,
     /// Maximized concentrated log-likelihood at the converged estimates.
     pub loglik: f64,
-    /// Number of back-substitution iterations run to convergence.
+    /// Number of back-substitution iterations run to convergence — counted
+    /// within the pass that converged (the pinned `theta = 0` start, or
+    /// the unrestricted-ARDL restart when that start diverged; see
+    /// [`pmg_with`]).
     pub iterations: usize,
     /// Number of units `N`.
     pub n_units: usize,
@@ -297,6 +322,91 @@ fn pooled_system(
     (a_mat, b_mat)
 }
 
+/// Runs the PSS back-substitution from `theta0` until the relative stopping
+/// rule `|dtheta|_inf <= tol * (1 + |theta|_inf)` is met or `max_iter`
+/// iterations pass.
+///
+/// Returns `Ok(Some((theta, iterations)))` on convergence, `Ok(None)` on
+/// budget exhaustion, and an error only for a hard failure (a pooled
+/// cross-product that is not positive definite).
+fn iterate_from(
+    prepared: &[PreparedUnit],
+    theta0: Vec<f64>,
+    tol: f64,
+    max_iter: usize,
+) -> Result<Option<(Vec<f64>, usize)>, PanelTsError> {
+    let k = theta0.len();
+    let mut theta = theta0;
+    for iter in 1..=max_iter {
+        let (phi_new, sigma2_new) = phi_sigma_given_theta(prepared, &theta);
+        let (a_mat, b_mat) = pooled_system(prepared, &phi_new, &sigma2_new, k);
+        let a_inv = a_mat
+            .llt(Side::Lower)
+            .map_err(|_| PanelTsError::PmgSingularLongRun)?
+            .inverse();
+        let sol = &a_inv * &b_mat;
+        let theta_new: Vec<f64> = (0..k).map(|i| sol[(i, 0)]).collect();
+
+        let delta = theta_new
+            .iter()
+            .zip(theta.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f64, f64::max);
+        let theta_inf = theta_new.iter().map(|v| v.abs()).fold(0.0_f64, f64::max);
+
+        theta = theta_new;
+
+        // Relative stopping rule: the update is below `tol` *relative to the
+        // size of theta itself* (plus 1, so a theta near zero is still held
+        // to an absolute `tol`). An absolute rule here sits below the float
+        // noise floor of the pooled Cholesky solve whenever theta or the
+        // regressors are large — see `DEFAULT_TOL`.
+        if delta <= tol * (1.0 + theta_inf) {
+            return Ok(Some((theta, iter)));
+        }
+    }
+    Ok(None)
+}
+
+/// The Pesaran-Shin-Smith unrestricted-ARDL starting value for the pooled
+/// long run: per unit, the *unrestricted* error-correction regression
+/// `Δỹ_i on [ỹ_{i,-1}, X̃_{i,-1}]` (everything already partialled on the
+/// short-run block) gives `phi_i` (the `ỹ_{i,-1}` coefficient) and a
+/// residual variance `sigma_i^2 = RSS_i / T_i`; one pooled GLS solve
+/// `A theta = b` with those weights is then the starting `theta`. This is
+/// the initialization PSS themselves recommend (start from unit-by-unit
+/// unrestricted estimates), and — unlike `theta = 0` — it is a consistent
+/// estimator of the common long run, so it starts the back-substitution
+/// inside the fixed point's basin of attraction.
+///
+/// # Errors
+///
+/// Propagates a per-unit OLS failure (collinear `[ỹ_{-1}, X̃_{-1}]`) or a
+/// non-positive-definite pooled cross-product; the caller treats any error
+/// as "no restart available" rather than masking the primary diagnosis.
+fn unrestricted_start(prepared: &[PreparedUnit], k: usize) -> Result<Vec<f64>, PanelTsError> {
+    let mut phi = Vec::with_capacity(prepared.len());
+    let mut sigma2 = Vec::with_capacity(prepared.len());
+    for (i, u) in prepared.iter().enumerate() {
+        let mut cols: Vec<Vec<f64>> = Vec::with_capacity(1 + k);
+        cols.push(u.ylag.clone());
+        for col in &u.xlag {
+            cols.push(col.clone());
+        }
+        let fit = ols(&u.dy, &cols).map_err(|source| PanelTsError::Ols { unit: i, source })?;
+        let rss: f64 = fit.residuals.iter().map(|r| r * r).sum();
+        phi.push(fit.params[0]);
+        sigma2.push(rss / u.t as f64);
+    }
+    let (a_mat, b_mat) = pooled_system(prepared, &phi, &sigma2, k);
+    let a_inv = a_mat
+        .llt(Side::Lower)
+        .map_err(|_| PanelTsError::PmgSingularLongRun)?
+        .inverse();
+    let sol = &a_inv * &b_mat;
+    Ok((0..k).map(|i| sol[(i, 0)]).collect())
+}
+
 /// The Pesaran, Shin & Smith (1999) pooled-mean-group ARDL(1,1) estimator.
 ///
 /// Fits the error-correction ARDL(1,1) panel with a **common long-run
@@ -333,8 +443,21 @@ pub fn pmg(units: &[PanelUnit]) -> Result<PooledMeanGroup, PanelTsError> {
 /// `tol` is *relative*: the back-substitution stops when
 /// `|dtheta|_inf <= tol * (1 + |theta|_inf)` between consecutive iterates
 /// (`|.|_inf` the max-abs norm). [`DEFAULT_TOL`] documents why an absolute
-/// rule is scale-dependent and fails on integrated regressors. `max_iter`
-/// caps the number of back-substitution iterations.
+/// rule is scale-dependent. `max_iter` caps the iterations of each pass.
+///
+/// **Two-pass start.** The iteration first runs from the deterministic
+/// `theta = 0` start (pinned by the NumPy golden — every panel that
+/// converged under it before still walks the identical iterate sequence,
+/// bit for bit). The back-substitution is only locally convergent, and on
+/// integrated (I(1)) regressors — the textbook PMG input — `theta = 0` can
+/// sit outside the fixed point's basin of attraction (measured: 14/20
+/// seeds of a stable I(1) battery diverged from it at ~0.7 per iteration).
+/// When and only when that pass fails to converge, the identical iteration
+/// is rerun once from the PSS unrestricted-ARDL start
+/// (per-unit unrestricted error-correction regressions pooled by one GLS
+/// solve — the initialization Pesaran-Shin-Smith themselves recommend,
+/// and a consistent estimator of the long run, hence inside the basin).
+/// [`PooledMeanGroup::iterations`] counts the run that converged.
 ///
 /// # Errors
 ///
@@ -349,7 +472,7 @@ pub fn pmg_with(
     if !(tol > 0.0 && tol.is_finite()) {
         return Err(PanelTsError::PmgInvalidOption {
             what: "tol must be a strictly positive finite number (it is a relative \
-                   tolerance on the max-abs update of theta; the default is 1e-12)",
+                   tolerance on the max-abs update of theta; the default is 3e-13)",
         });
     }
     if max_iter == 0 {
@@ -367,52 +490,37 @@ pub fn pmg_with(
         .map(|(i, u)| prepare_unit(u, i, k))
         .collect::<Result<_, _>>()?;
 
-    // Deterministic start theta = 0 (identical in the NumPy golden), then
-    // iterate the PSS back-substitution to the concentrated-ML fixed point.
-    let mut theta = vec![0.0_f64; k];
-    let mut iterations = 0;
-    let mut converged = false;
-
-    for iter in 1..=max_iter {
-        let (phi_new, sigma2_new) = phi_sigma_given_theta(&prepared, &theta);
-        let (a_mat, b_mat) = pooled_system(&prepared, &phi_new, &sigma2_new, k);
-        let a_inv = a_mat
-            .llt(Side::Lower)
-            .map_err(|_| PanelTsError::PmgSingularLongRun)?
-            .inverse();
-        let sol = &a_inv * &b_mat;
-        let theta_new: Vec<f64> = (0..k).map(|i| sol[(i, 0)]).collect();
-
-        let delta = theta_new
-            .iter()
-            .zip(theta.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0_f64, f64::max);
-        let theta_inf = theta_new
-            .iter()
-            .map(|v| v.abs())
-            .fold(0.0_f64, f64::max);
-
-        theta = theta_new;
-        iterations = iter;
-
-        // Relative stopping rule: the update is below `tol` *relative to the
-        // size of theta itself* (plus 1, so a theta near zero is still held
-        // to an absolute `tol`). An absolute rule here sits below the float
-        // noise floor of the pooled Cholesky solve whenever the regressors
-        // are integrated or simply large — see `DEFAULT_TOL`.
-        if delta <= tol * (1.0 + theta_inf) {
-            converged = true;
-            break;
+    // Pass 1: the deterministic theta = 0 start (identical in the NumPy
+    // golden — every panel that converged under it before converges through
+    // the identical iterate sequence). The back-substitution is only
+    // *locally* convergent, and with integrated regressors theta = 0 can sit
+    // outside its basin of attraction: measured on a stable I(1)
+    // error-correction battery (N = 10, T = 150, 20 seeds), the map walked
+    // theta monotonically away from the fixed point at ~0.7 per iteration on
+    // 14/20 seeds, which no stopping tolerance can repair. Pass 2 reruns the
+    // identical iteration from the Pesaran-Shin-Smith unrestricted-ARDL
+    // start ([`unrestricted_start`]) — a consistent estimator that lands
+    // inside the basin — and is reached only when pass 1 fails, so it never
+    // perturbs a previously-converging fit.
+    let (theta, iterations) = match iterate_from(&prepared, vec![0.0_f64; k], tol, max_iter)? {
+        Some(hit) => hit,
+        None => {
+            let restart = unrestricted_start(&prepared, k)
+                .ok()
+                .map(|theta0| iterate_from(&prepared, theta0, tol, max_iter))
+                .transpose()?
+                .flatten();
+            match restart {
+                Some(hit) => hit,
+                None => {
+                    return Err(PanelTsError::PmgNotConverged {
+                        iters: max_iter,
+                        tol,
+                    })
+                }
+            }
         }
-    }
-
-    if !converged {
-        return Err(PanelTsError::PmgNotConverged {
-            iters: max_iter,
-            tol,
-        });
-    }
+    };
 
     // Compute phi / sigma2 at the converged theta so all reported quantities
     // are mutually consistent with it.

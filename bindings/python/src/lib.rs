@@ -2671,6 +2671,13 @@ fn mcmc_diagnostics<'py>(
 /// `cov_ok=False` when the information matrix is too ill-conditioned to
 /// invert honestly, which is a refusal, not a failure of the fit.
 ///
+/// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
+/// `converged`, `bse`, `param_cov`, `cov_ok` (plus `cov_error` on a
+/// refusal), `se_valid`, `boundary`, `boundary_note`, `residuals`,
+/// `drift_uncertainty`, and — when `forecast_steps > 0` —
+/// `forecast_mean` and `forecast_se`, plus `forecast_lower`,
+/// `forecast_upper`, and `conf_alpha` when a band level is passed.
+///
 /// **Convergence and boundary flags.** `converged` reports whether the
 /// optimizer terminated by its convergence test (the best point found is
 /// returned either way — with `converged=False` treat it with care).
@@ -2815,10 +2822,7 @@ fn arima_results_dict<'py>(
             dct.set_item("param_cov", py.None())?;
             dct.set_item("cov_ok", false)?;
             dct.set_item("cov_error", e.to_string())?;
-            dct.set_item(
-                "se_valid",
-                vec![false; r.params().len()].into_pyarray(py),
-            )?;
+            dct.set_item("se_valid", vec![false; r.params().len()].into_pyarray(py))?;
         }
     }
     dct.set_item("boundary", boundary.into_pyarray(py))?;
@@ -7704,19 +7708,26 @@ fn dfm_nowcast<'py>(
 /// `sigma2`, the `loglik`, and iteration/shape info. Complements the
 /// mean-group and CCE-MG estimators: PMG pools the long run, they do not.
 ///
-/// `tol` is the *relative* convergence tolerance of the concentrated-ML
-/// back-substitution: the iteration stops when the max-abs update of theta
-/// satisfies `|dtheta|_inf <= tol * (1 + |theta|_inf)`, within `max_iter`
-/// iterations. The rule is relative because the float noise floor of the
-/// pooled solve scales with the size of theta and of the regressors — an
-/// absolute rule at the same 1e-12 value hard-failed textbook I(1) panels
-/// as a pure function of scale (14/20 seeds of a stable N=10, T=150
-/// error-correction DGP with I(1) x; 0/20 with I(0) x; 16/20 with the
-/// same I(1) x scaled by 100). Non-convergence within `max_iter` raises
-/// (the last iterate is not a verified fixed point); raise `max_iter` or
-/// loosen `tol` if that happens on genuinely slow-mixing panels.
+/// `tol` (default 3e-13) is the *relative* convergence tolerance of the
+/// concentrated-ML back-substitution: the iteration stops when the max-abs
+/// update of theta satisfies `|dtheta|_inf <= tol * (1 + |theta|_inf)`,
+/// within `max_iter` iterations per pass. Relative, because the float
+/// noise floor of the pooled solve scales with the size of theta — the
+/// historical absolute 1e-12 rule can never be met when theta is large;
+/// 3e-13 is that same rule's measured effective relative stringency on the
+/// O(1)-theta panels it was validated on, carried over scale-free (the
+/// golden fixture stops at the identical iterate — bit-identical). The
+/// iteration runs from the deterministic theta = 0 start and, when that
+/// start diverges — measured on 14/20 seeds of a stable N=10, T=150
+/// error-correction DGP with I(1) x (0/20 with I(0) x; 16/20 with the
+/// same I(1) x scaled by 100), where theta walked away from the fixed
+/// point at ~0.7 per iteration, which no tolerance can repair — it is
+/// rerun once from the Pesaran-Shin-Smith unrestricted-ARDL start
+/// (post-fix: 0/20 failures on all three variants). Non-convergence from
+/// both starts raises (the last iterate is not a verified fixed point);
+/// raise `max_iter` or loosen `tol` on genuinely slow-mixing panels.
 #[pyfunction]
-#[pyo3(signature = (ys, xs, tol = 1e-12, max_iter = 1000))]
+#[pyo3(signature = (ys, xs, tol = 3e-13, max_iter = 1000))]
 fn panel_pmg<'py>(
     py: Python<'py>,
     ys: Vec<PyReadonlyArray1<'py, f64>>,
