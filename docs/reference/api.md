@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**151 functions.**
+**153 functions.**
 
 ## diagnostics
 
@@ -779,10 +779,71 @@ Christiano-Fitzgerald asymmetric band-pass filter.
 ### `hamilton_filter`
 
 ```python
-def hamilton_filter(y: _ArrayLike, h: int = ..., p: int = ...) -> dict[str, Any]:
+def hamilton_filter(
+    y: _ArrayLike,
+    h: int = ...,
+    p: int = ...,
+    method: str = ...,
+    se: str | None = ...,
+    maxlags: int | None = ...,
+    use_correction: bool = ...,
+) -> dict[str, Any]:
 ```
 
 Hamilton (2018) regression filter — the modern HP alternative.
+
+    Frequency defaults (h, p): quarterly (8, 4), monthly (24, 12), annual
+    (2, 1). `method="random_walk"` is the short-sample variant `cycle =
+    y_t - y_{t-h}` (no regression). `se="hac"` adds Newey-West standard
+    errors on `beta` via the shared HAC engine with the h-overlap default
+    `maxlags = h` (the overlapping h-step residuals are MA(h-1) by
+    construction); `se="nonrobust"` the classical comparison point.
+    Returns `trend`, `cycle`, `first_index`, `beta` (regression method),
+    plus `bse`, `tvalues`, `se_type`, `maxlags`, `use_correction` when
+    `se` is requested. Defaults are bit-identical to earlier releases.
+
+### `bn_filter`
+
+```python
+def bn_filter(
+    y: _ArrayLike,
+    p: int = ...,
+    delta: float | None = ...,
+    demean: str = ...,
+    d0: float = ...,
+    dt: float = ...,
+) -> dict[str, Any]:
+```
+
+Kamber-Morley-Wong (2018) BN filter: Beveridge-Nelson output gap
+    with the signal-to-noise ratio pinned (delta=None: their
+    amplitude-to-noise selection on the grid (d0, dt)); `demean` "sm"
+    (sample mean, the baseline) or "nd" (no drift removal). Returns
+    `trend`, `cycle`, `first_index` (=1), `delta`, `ar`, `cycle_se`,
+    `amplitude_to_noise`, `drift`. Reference-run-validated against the
+    authors' R replication code.
+
+### `bn_decomposition`
+
+```python
+def bn_decomposition(
+    y: _ArrayLike,
+    p: int = ...,
+    q: int = ...,
+    ar: _ArrayLike | None = ...,
+    ma: _ArrayLike | None = ...,
+    drift: float | None = ...,
+) -> dict[str, Any]:
+```
+
+Classic Beveridge-Nelson (1981) decomposition from an
+    ARIMA(p, 1, q) — fit by the library's exact MLE (default: the
+    Morley-Nelson-Zivot p=2, q=2), or at fixed coefficients when any of
+    `ar`/`ma`/`drift` is passed. Returns `trend`, `cycle`,
+    `innovations`, `first_index` (=1), `long_run_multiplier`
+    (psi(1) = theta(1)/phi(1)), `drift`, `ar`, `ma`, `mode`, and for
+    the fit path `sigma2`, `loglik`, `aic`, `bic`, `converged`;
+    trend + cycle reconstructs y[1:] to within a final rounding.
 
 ### `stl`
 
