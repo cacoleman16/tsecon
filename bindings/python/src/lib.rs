@@ -1106,13 +1106,30 @@ fn mat_to_vec2(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
         .collect()
 }
 
-/// Fit a VAR(p) by OLS and return estimates, fit statistics, and stability.
+/// Fit a VAR(p) by OLS and return estimates, fit statistics, residuals,
+/// and stability.
 ///
 /// Stability: read `is_stable` (bool). `min_root`/`max_root` are the smallest
 /// and largest moduli of the reciprocal characteristic roots — the system is
 /// stable iff `min_root > 1`, so `max_root` alone is NOT a verdict.
 ///
-/// Matches statsmodels `VAR(...).fit(lags, trend)` at 1e-8.
+/// Returns dict keys: `params` (the `(n_trend + k p) x k` stacked coefficient
+/// matrix, statsmodels layout — rows `[const, lag-1 var 1..k, ...]`, one
+/// column per equation), `sigma_u` (`k x k` residual covariance, divisor
+/// `T - m`), `llf`, `aic`, `bic`, `hqic`, `resid` (`(T, k)` nested list —
+/// the OLS residuals `U = Y - Z B`, where `Y = data[lags:]` after the `lags`
+/// presample rows are consumed; `np.asarray(r["resid"])` gives the array),
+/// `fitted` (`(T, k)` nested list — the in-sample one-step fitted values
+/// `Z B`, computed as `data[lags:] - resid` elementwise, which IS the OLS
+/// projection: the crate defines `resid = Y - Z B`, so `fitted + resid`
+/// reproduces `data[lags:]` exactly and row `t` of `fitted`/`resid` refers
+/// to observation `lags + t` of the input), `nobs` (the effective sample
+/// size `T = len(data) - lags` — the row count of `resid`/`fitted`),
+/// `df_resid` (residual degrees of freedom per equation, `T - m` with
+/// `m = n_trend + k*lags` regressors), `max_root`, `min_root`, `is_stable`.
+///
+/// Matches statsmodels `VAR(...).fit(lags, trend)` at 1e-8 (`resid` is
+/// statsmodels' `results.resid`; `fitted` is `results.fittedvalues`).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, trend = "c"))]
 fn var_fit<'py>(
@@ -1129,6 +1146,23 @@ fn var_fit<'py>(
     d.set_item("aic", r.aic)?;
     d.set_item("bic", r.bic)?;
     d.set_item("hqic", r.hqic)?;
+    // Residuals U = Y - Z B over the effective sample (rows lags..len). The
+    // fitted values are reconstructed as y - resid rather than re-running the
+    // matmul: the crate computes `resid = Y - Z B` elementwise, so this is
+    // the projection Z B up to one IEEE rounding per element and satisfies
+    // fitted + resid == data[lags:] by construction.
+    d.set_item("resid", mat_to_vec2(&r.resid))?;
+    let p = r.spec.lags;
+    let fitted: Vec<Vec<f64>> = (0..r.resid.nrows())
+        .map(|t| {
+            (0..r.resid.ncols())
+                .map(|j| r.endog[(p + t, j)] - r.resid[(t, j)])
+                .collect()
+        })
+        .collect();
+    d.set_item("fitted", fitted)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("df_resid", r.df_resid)?;
     // `roots_moduli` are the RECIPROCAL characteristic roots (the statsmodels
     // convention): the VAR is stable iff EVERY modulus exceeds 1, i.e. iff
     // `min_root > 1`. `max_root` is therefore the root FARTHEST from the unit
@@ -2391,6 +2425,40 @@ fn theta_forecast<'py>(
     Ok(r.forecast.into_pyarray(py))
 }
 
+/// Builds the results dict for one fitted univariate GARCH model — the
+/// single owner of `garch_fit`'s key surface (everything except the opt-in
+/// `variance_forecast`). Reused verbatim for the per-series stage-1 dicts
+/// of `dcc_garch`'s `univariate` list, so the two surfaces cannot drift:
+/// same keys, same conversions, bit-identical values for the same fit.
+fn garch_results_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_garch::GarchResults,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("params", r.params.clone().into_pyarray(py))?;
+    d.set_item("param_names", r.param_names.clone())?;
+    let named = PyDict::new(py);
+    for (name, value) in r.param_names.iter().zip(r.params.iter()) {
+        named.set_item(name, *value)?;
+    }
+    d.set_item("params_named", named)?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("aic", r.aic)?;
+    d.set_item("bic", r.bic)?;
+    d.set_item("se_mle", r.se_mle.clone().into_pyarray(py))?;
+    d.set_item("se_robust", r.se_robust.clone().into_pyarray(py))?;
+    d.set_item("se_valid", r.se_valid.clone().into_pyarray(py))?;
+    d.set_item("boundary", r.boundary.clone().into_pyarray(py))?;
+    d.set_item("boundary_note", r.boundary_note.clone())?;
+    d.set_item("converged", r.converged)?;
+    d.set_item(
+        "conditional_volatility",
+        r.conditional_volatility.clone().into_pyarray(py),
+    )?;
+    d.set_item("std_residuals", r.std_residuals.clone().into_pyarray(py))?;
+    Ok(d)
+}
+
 /// Fit a univariate volatility model by QMLE.
 ///
 /// `vol`: "garch", "gjr", or "egarch"; `mean`: "zero" or "constant";
@@ -2471,28 +2539,7 @@ fn garch_fit<'py>(
     let spec = parse_garch_spec(vol, mean, dist, p, o, q, "dist")?;
     let model = GarchModel::new(&vec1(&y), spec).map_err(to_py)?;
     let r = model.fit().map_err(to_py)?;
-    let d = PyDict::new(py);
-    d.set_item("params", r.params.clone().into_pyarray(py))?;
-    d.set_item("param_names", r.param_names.clone())?;
-    let named = PyDict::new(py);
-    for (name, value) in r.param_names.iter().zip(r.params.iter()) {
-        named.set_item(name, *value)?;
-    }
-    d.set_item("params_named", named)?;
-    d.set_item("loglik", r.loglik)?;
-    d.set_item("aic", r.aic)?;
-    d.set_item("bic", r.bic)?;
-    d.set_item("se_mle", r.se_mle.clone().into_pyarray(py))?;
-    d.set_item("se_robust", r.se_robust.clone().into_pyarray(py))?;
-    d.set_item("se_valid", r.se_valid.clone().into_pyarray(py))?;
-    d.set_item("boundary", r.boundary.clone().into_pyarray(py))?;
-    d.set_item("boundary_note", r.boundary_note.clone())?;
-    d.set_item("converged", r.converged)?;
-    d.set_item(
-        "conditional_volatility",
-        r.conditional_volatility.clone().into_pyarray(py),
-    )?;
-    d.set_item("std_residuals", r.std_residuals.clone().into_pyarray(py))?;
+    let d = garch_results_dict(py, &r)?;
     if forecast_horizon > 0 {
         d.set_item(
             "variance_forecast",
@@ -2512,10 +2559,31 @@ fn garch_fit<'py>(
 /// univariate AR regressions whose residual variances scale the prior
 /// (4 = the library default; 1 = the Giannone-Lenza-Primiceri 2015
 /// convention, their own `setpriors.m` — packages differ here and
-/// results are sensitive, see the Bayesian model card). Returns the
-/// posterior coefficient mean, posterior mean of Sigma, and the log
-/// marginal likelihood (the evidence — compare across lambda settings
-/// to tune tightness).
+/// results are sensitive, see the Bayesian model card).
+///
+/// Returns dict keys: `posterior_mean_coefs` (`Bbar`, `k x K` with
+/// `k = 1 + p*K` regressors — intercept row first, then lag blocks — and
+/// one column per equation), `sigma_posterior_mean` (`K x K`),
+/// `log_marginal_likelihood` (the evidence — compare across lambda
+/// settings to tune tightness), and the full NIW posterior:
+/// `omega_bar` (`k x k`), `s_bar` (`K x K`), `v_bar` (scalar).
+///
+/// THE NIW CONVENTION (exact). With `K` variables, the posterior is
+/// `vec(B) | Sigma, Y ~ N(vec(Bbar), Sigma (x) Obar)` and
+/// `Sigma | Y ~ InvWishart(Sbar, vbar)`, where `vec` stacks the COLUMNS
+/// of the `k x K` coefficient matrix (equation by equation —
+/// `B.flatten(order="F")` in numpy), so the Kronecker order is
+/// `np.kron(sigma, omega_bar)` (`Sigma (x) Obar`, NOT `Obar (x) Sigma`):
+/// the covariance between equations j and j' is `sigma[j, j'] * omega_bar`.
+/// Integrating Sigma out, the marginal posterior of each coefficient is a
+/// Student-t with `vbar - K + 1` degrees of freedom, and its posterior
+/// standard deviation (defined for `vbar > K + 1`) is, in numpy terms,
+/// exactly:
+///
+/// `sd = np.sqrt(np.outer(np.diag(omega_bar), np.diag(s_bar)) / (v_bar - K - 1))`
+///
+/// — a `(k, K)` array aligned entry-for-entry with `posterior_mean_coefs`.
+/// Worked example on the Bayesian model card (`docs/reference/model-cards/bayesian.md`).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, scale_ar = 4))]
 #[allow(clippy::too_many_arguments)]
@@ -2558,6 +2626,25 @@ fn bvar_fit<'py>(
             .collect::<Vec<_>>(),
     )?;
     d.set_item("log_marginal_likelihood", post.log_marginal_likelihood())?;
+    // The full NIW posterior, so uncertainty is computable from the results
+    // dict alone: vec(B)|Sigma,Y ~ N(vec(Bbar), Sigma ⊗ Obar) with
+    // column-stacked vec, Sigma|Y ~ IW(Sbar, vbar). See the docstring for
+    // the exact marginal-sd one-liner these keys support.
+    let ob = post.omega_bar();
+    d.set_item(
+        "omega_bar",
+        (0..ob.nrows())
+            .map(|i| (0..ob.ncols()).map(|j| ob[(i, j)]).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+    )?;
+    let sb = post.s_bar();
+    d.set_item(
+        "s_bar",
+        (0..sb.nrows())
+            .map(|i| (0..sb.ncols()).map(|j| sb[(i, j)]).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+    )?;
+    d.set_item("v_bar", post.v_bar())?;
     Ok(d)
 }
 
@@ -6102,7 +6189,22 @@ fn ccc_garch<'py>(
 /// per-series conditional variance paths of the univariate stage),
 /// `covariance` (`(T, k, k)` nested list — the in-sample conditional
 /// covariance path `H_t = D_t R_t D_t`, `D_t = diag(sigma_{i,t})`),
-/// `nu` (only when `dist="t"`), and — when
+/// `univariate` (a list of `k` dicts, input order — the full per-series
+/// stage-1 GARCH results with exactly `garch_fit`'s keys and conventions:
+/// `params`/`param_names`/`params_named`, `se_mle`/`se_robust`/`se_valid`,
+/// `boundary`/`boundary_note`, `loglik`/`aic`/`bic`, `converged`,
+/// `conditional_volatility`, per-series `std_residuals`; values are
+/// bit-identical to calling `garch_fit` on that column with the same
+/// spec), `std_residuals` (`(T, k)` nested list — the stacked stage-1
+/// standardized residuals `z[t][i] = eps_{i,t} / sqrt(sigma2[t][i])`, the
+/// driver of the correlation recursion; `eps` is the raw return under the
+/// default `mean="zero"`, the demeaned return under `mean="constant"`,
+/// and the timing is `sigma2`'s: entry `t` divides by the variance formed
+/// from information through t-1), `nu` (only when `dist="t"`), `nbar`
+/// (only when `variant="adcc"` — the `(k, k)` asymmetric targeting matrix
+/// `Nbar = (1/T) sum_t n_t n_t'`, `n_t = min(z_t, 0)`, which sets the CES
+/// stationarity bound via `delta = lambda_max(Qbar^{-1/2} Nbar
+/// Qbar^{-1/2})`), and — when
 /// `forecast_horizon > 0` — `correlation_forecast` and
 /// `covariance_forecast` (`(horizon, k, k)` nested lists, entry `[h-1]` is
 /// the h-step-ahead matrix) plus `variance_forecast`
@@ -6205,6 +6307,24 @@ fn dcc_garch<'py>(
         d.set_item("correlation_last", mat_to_vec2_bayes(last))?;
     }
     d.set_item("sigma2", fit.stage.sigma2.clone())?;
+    // The stage-1 remainder: the per-series GARCH results (garch_fit's
+    // exact dict per series — one shared builder, so the values are
+    // bit-identical to a direct garch_fit under the same spec), the
+    // stacked standardized residuals that drive the correlation
+    // recursion, and (ADCC) the asymmetric targeting matrix Nbar.
+    let univariate = pyo3::types::PyList::new(
+        py,
+        fit.stage
+            .univariate
+            .iter()
+            .map(|r| garch_results_dict(py, r))
+            .collect::<PyResult<Vec<_>>>()?,
+    )?;
+    d.set_item("univariate", univariate)?;
+    d.set_item("std_residuals", fit.stage.z.clone())?;
+    if let Some(nbar) = &fit.nbar {
+        d.set_item("nbar", mat_to_vec2_bayes(nbar))?;
+    }
     let mut cov = Vec::with_capacity(fit.nobs());
     for t in 0..fit.nobs() {
         cov.push(mat_to_vec2_bayes(
@@ -8020,9 +8140,41 @@ fn panel_mean_group<'py>(
 /// faster-arriving series (the ragged edge): the two-step model is
 /// estimated on the leading balanced block (rows before the first row with
 /// any missing value) and the Kalman filter then runs over the full panel,
-/// using exactly the observations that are present at the edge. Returns the
-/// edge `nowcast` (one level per series), the `edge_factor`, the Gaussian
-/// `loglik`, the `smoothed_factors` (`T x r`), and `n_factors`/`factor_order`.
+/// using exactly the observations that are present at the edge.
+///
+/// Returns dict keys: the edge `nowcast` (one level per series), the
+/// `edge_factor` (length `r`), the Gaussian `loglik` (full ragged panel),
+/// `fit_loglik` (balanced training block), the `smoothed_factors`
+/// (`(T, r)` nested list, training pass), `n_factors`/`factor_order`, and
+/// the full fitted model — both `method` routes return the same parameter
+/// surface:
+///
+/// * `loadings` (`(N, r)` nested list) — `Lambda`; row `i` is series `i`'s
+///   loadings on the `r` factors;
+/// * `factor_ar` (`(r, r*p)` nested list) — the stacked factor-VAR
+///   coefficients `[A_1 | ... | A_p]`: `factor_ar[i][k*r + j]` is the
+///   effect of factor `j` at lag `k+1` on factor `i`;
+/// * `factor_cov` (`(r, r)` nested list) — the factor-innovation
+///   covariance `Q` (fixed to 1 for identification on the `"mle"` route);
+/// * `idiosyncratic` (length `N`) — the idiosyncratic variances, the
+///   diagonal of the observation covariance `H`;
+/// * `center`/`scale` (length `N`) — the training-panel column means and
+///   standard deviations (ddof=0) the model standardizes with. On the
+///   `"mle"` route `scale` is all ones (the model is fit on the centred
+///   raw scale and the loadings carry the factor scale).
+///
+/// MAPPING FACTORS TO SERIES (exact). The parameters live on the
+/// standardized scale, so the model-implied level of series `i` at time
+/// `t` is `center[i] + scale[i] * (loadings[i] @ f_t)`; in particular
+/// `nowcast == center + scale * (np.asarray(loadings) @ edge_factor)`
+/// exactly — that is literally how the binding computes it — and
+/// `center + scale * (F @ L.T)` (with `F` the smoothed factors and `L`
+/// the loadings) is the common-component fit of the balanced panel, whose
+/// per-series standardized residual variance is what `idiosyncratic`
+/// estimates. State space: `z_t = Lambda f_t + e_t`, `e_t ~ N(0,
+/// diag(idiosyncratic))`; `f_t = A_1 f_{t-1} + ... + A_p f_{t-p} + eta_t`,
+/// `eta_t ~ N(0, factor_cov)` — with these six keys the fitted model is
+/// fully reproducible.
 #[pyfunction]
 #[pyo3(signature = (data, n_factors = 1, factor_order = 2, method = "two_step"))]
 fn dfm_nowcast<'py>(
@@ -8076,6 +8228,20 @@ fn dfm_nowcast<'py>(
     d.set_item("smoothed_factors", factors)?;
     d.set_item("n_factors", nc.n_factors())?;
     d.set_item("factor_order", nc.factor_order())?;
+    // The fitted model itself (both estimation routes return the same
+    // surface): loadings/factor_ar/factor_cov/idiosyncratic are the DFM
+    // parameters on the standardized scale, center/scale the training
+    // moments that map factor movements back onto series levels.
+    let params = nc.params();
+    d.set_item("loadings", mat_to_vec2(&params.loadings))?;
+    d.set_item("factor_ar", mat_to_vec2(&params.factor_ar))?;
+    d.set_item("factor_cov", mat_to_vec2(&params.factor_cov))?;
+    d.set_item(
+        "idiosyncratic",
+        params.idiosyncratic.clone().into_pyarray(py),
+    )?;
+    d.set_item("center", nc.center().to_vec().into_pyarray(py))?;
+    d.set_item("scale", nc.scale().to_vec().into_pyarray(py))?;
     Ok(d)
 }
 

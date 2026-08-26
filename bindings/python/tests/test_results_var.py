@@ -18,6 +18,12 @@ RAW_KEYS = {
     "aic",
     "bic",
     "hqic",
+    # 0.6: the residual surface (adversarial sweep — computed in Rust,
+    # previously never bound).
+    "resid",
+    "fitted",
+    "nobs",
+    "df_resid",
     "max_root",
     "min_root",
     "is_stable",
