@@ -228,3 +228,119 @@ fn jump_test_flags_injected_jump() {
         "jump raised the statistic on only {flagged_more}/{trials} draws"
     );
 }
+
+/// `theta = pi^2/4 + pi - 5` — kept in the tests as an independent
+/// transcription of the studentization constant.
+const THETA: f64 = core::f64::consts::PI * core::f64::consts::PI / 4.0
+    + core::f64::consts::PI
+    - 5.0;
+
+/// The unadjusted BNS-2004 form of the ratio statistic — the pre-0.6
+/// construction, rebuilt from the exported measures — for contrast with
+/// the Huang-Tauchen form the crate now computes.
+fn bns_2004_z(r: &[f64]) -> f64 {
+    let rv = realized_variance(r).unwrap();
+    let bv = bipower_variation(r).unwrap();
+    let tq = tripower_quarticity(r).unwrap();
+    let m = r.len() as f64;
+    m.sqrt() * ((rv - bv) / rv) / (THETA * (tq / (bv * bv)).max(1.0)).sqrt()
+}
+
+/// The Huang-Tauchen (2005) form, rebuilt independently from the exported
+/// BNS-2004 measures with the finite-sample `M/(M-1)` / `M/(M-2)` scalings.
+fn huang_tauchen_z(r: &[f64]) -> f64 {
+    let rv = realized_variance(r).unwrap();
+    let m = r.len() as f64;
+    let bv = bipower_variation(r).unwrap() * m / (m - 1.0);
+    let tq = tripower_quarticity(r).unwrap() * m / (m - 2.0);
+    m.sqrt() * ((rv - bv) / rv) / (THETA * (tq / (bv * bv)).max(1.0)).sqrt()
+}
+
+/// Regression pin of the round-9 finding: `bns_jump_ratio` is the Huang &
+/// Tauchen (2005) statistic — the finite-sample `M/(M-1)` factor on bipower
+/// variation and `M/(M-2)` on tripower quarticity applied INSIDE the test —
+/// not the unadjusted BNS-2004 assembly it computed through 0.5.0. The pin
+/// is by construction: the crate value must match an independent HT
+/// transcription to near machine precision and must *differ* detectably
+/// from the unadjusted form (verified to genuinely differ first, so the
+/// inequality has teeth).
+#[test]
+fn bns_ratio_is_the_huang_tauchen_adjusted_statistic() {
+    // The documented 7-return day from fixtures/realized.json.
+    let small = [0.5, -0.3, 0.8, -1.2, 0.1, 0.4, -0.6];
+    // And a seeded 78-bar (five-minute grid) day.
+    let mut rng = Rng::new(0x1778);
+    let day: Vec<f64> = (0..78).map(|_| 0.1 * rng.normal()).collect();
+
+    for r in [&small[..], &day[..]] {
+        let z = bns_jump_ratio(r).unwrap();
+        let z_ht = huang_tauchen_z(r);
+        let z_bns = bns_2004_z(r);
+        assert!(
+            (z - z_ht).abs() <= 1e-12,
+            "crate z {z} vs independent Huang-Tauchen transcription {z_ht}"
+        );
+        assert!(
+            (z_ht - z_bns).abs() > 0.05,
+            "the two constructions do not separate on this day \
+             (HT {z_ht} vs BNS-2004 {z_bns}) — the pin has no teeth"
+        );
+        assert!(
+            (z - z_bns).abs() > 0.05,
+            "crate z {z} matches the pre-0.6 unadjusted BNS-2004 assembly \
+             {z_bns} — the Huang-Tauchen adjustment has regressed"
+        );
+    }
+}
+
+/// The measured decision flip that motivated the 0.6 fix: on a seeded
+/// `M = 78` day with one modest (5-sigma-per-bar) jump, the unadjusted
+/// BNS-2004 assembly reads z = 1.689391118323 while the Huang-Tauchen
+/// statistic reads z = 1.564353999278 — the one-sided 5% call (1.645)
+/// flips. Pins both numbers so the shift stays measured.
+#[test]
+fn huang_tauchen_adjustment_flips_a_marginal_five_percent_call() {
+    let mut rng = Rng::new(0xBEEF);
+    let m = 78usize;
+    let mut r: Vec<f64> = (0..m).map(|_| 0.1 * rng.normal()).collect();
+    r[40] += 0.5; // one 5-sigma bar on a sigma = 0.1 grid
+
+    let z_new = bns_jump_ratio(&r).unwrap();
+    let z_old = bns_2004_z(&r);
+    assert!(
+        (z_old - 1.689391118323).abs() < 1e-9,
+        "unadjusted BNS-2004 z moved: {z_old}"
+    );
+    assert!(
+        (z_new - 1.564353999278).abs() < 1e-9,
+        "Huang-Tauchen z moved: {z_new}"
+    );
+    assert!(
+        z_old > 1.645 && z_new < 1.645,
+        "the marginal 5% decision no longer flips (old {z_old}, new {z_new})"
+    );
+}
+
+/// Seeded null-size Monte Carlo for the corrected statistic at `M = 78`
+/// (the five-minute US-equity grid): iid Gaussian days, one-sided 5% test
+/// at 1.645. Measured rejection rate 0.053 over 4000 reps (the number the
+/// realized-vol model card quotes); the asserted band is loose enough for
+/// the seeded draw, tight enough to catch a mis-sized statistic.
+#[test]
+fn null_size_near_nominal_at_m78() {
+    let mut rng = Rng::new(0x512E);
+    let reps = 4000usize;
+    let m = 78usize;
+    let mut rejections = 0usize;
+    for _ in 0..reps {
+        let r: Vec<f64> = (0..m).map(|_| 0.01 * rng.normal()).collect();
+        if bns_jump_ratio(&r).unwrap() > 1.645 {
+            rejections += 1;
+        }
+    }
+    let rate = rejections as f64 / reps as f64;
+    assert!(
+        (0.03..=0.08).contains(&rate),
+        "one-sided 5% null rejection rate {rate} out of band at M = 78"
+    );
+}

@@ -56,9 +56,14 @@ def test_tripower_quarticity_matches_documented_formula():
 
 # ------------------------------------------------------- BNS jump test
 def test_bns_jump_test_matches_documented_formula():
+    """The statistic is the Huang & Tauchen (2005) form: the finite-sample
+    n/(n-1) scaling on BV and n/(n-2) on TQ are applied inside the test
+    (through 0.5.0 the unadjusted BNS-2004 assembly was used while citing
+    Huang-Tauchen)."""
     r = np.array(RETURNS)
     n = len(r)
-    # Rebuild RV, BV, TQ exactly as the crate does.
+    # Rebuild RV, BV, TQ exactly as the crate's exported measures do
+    # (unadjusted BNS 2004)...
     rv = float(np.sum(r**2))
     bv = (math.pi / 2.0) * sum(abs(r[i]) * abs(r[i - 1]) for i in range(1, n))
     p = 4.0 / 3.0
@@ -71,15 +76,24 @@ def test_bns_jump_test_matches_documented_formula():
             for i in range(2, n)
         )
     )
+    # ...then apply the Huang-Tauchen finite-sample factors, as the jump
+    # test does internally.
+    bv_ht = bv * n / (n - 1)
+    tq_ht = tq * n / (n - 2)
     theta = math.pi**2 / 4.0 + math.pi - 5.0
-    # z = sqrt(n)(RV-BV)/RV / sqrt(theta * max(1, TQ/BV^2)); note the floor
-    # at 1 (TQ/BV^2 < 1 for this series, so the max is binding).
-    denom = math.sqrt(theta * max(1.0, tq / (bv * bv)))
-    expected = math.sqrt(n) * ((rv - bv) / rv) / denom
+    # z = sqrt(n)(RV-BV~)/RV / sqrt(theta * max(1, TQ~/BV~^2)); note the
+    # floor at 1 (TQ~/BV~^2 < 1 for this series, so the max is binding).
+    denom = math.sqrt(theta * max(1.0, tq_ht / (bv_ht * bv_ht)))
+    expected = math.sqrt(n) * ((rv - bv_ht) / rv) / denom
 
     res = tsecon.bns_jump_test(r)
     assert set(res) == {"ratio"}
     assert abs(res["ratio"] - expected) < 1e-12
+    # The unadjusted BNS-2004 assembly is a genuinely different number on
+    # this day — the pin above has teeth.
+    denom_04 = math.sqrt(theta * max(1.0, tq / (bv * bv)))
+    z_04 = math.sqrt(n) * ((rv - bv) / rv) / denom_04
+    assert abs(res["ratio"] - z_04) > 0.05
 
 
 # ------------------------------------------------------- range variance

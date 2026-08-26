@@ -68,6 +68,11 @@ pub fn realized_variance(r: &[f64]) -> Result<f64, RealizedError> {
 /// `BV` consistently estimates the continuous integrated variance `IV`
 /// alone, whereas [`realized_variance`] captures the full `QV`.
 ///
+/// This is the plain BNS-2004 quantity with no finite-sample scaling. The
+/// jump test [`crate::bns_jump_ratio`] applies the Huang & Tauchen (2005)
+/// `n/(n-1)` adjustment (for the `n - 1` products summed) internally when
+/// it assembles its statistic; the measure exported here is unadjusted.
+///
 /// # Errors
 ///
 /// [`RealizedError::TooFewObservations`] with fewer than two returns and
@@ -127,6 +132,11 @@ fn mu_four_thirds_inv_cubed() -> f64 {
 /// `int sigma^4(s) ds` (Barndorff-Nielsen & Shephard 2004); used to
 /// studentize the ratio jump test in [`crate::bns_jump_ratio`], since the
 /// non-robust [`realized_quarticity`] is itself inflated by jumps.
+///
+/// This is the plain BNS-2004 quantity with no finite-sample scaling. The
+/// jump test [`crate::bns_jump_ratio`] applies the Huang & Tauchen (2005)
+/// `n/(n-2)` adjustment (for the `n - 2` products summed) internally when
+/// it assembles its statistic; the measure exported here is unadjusted.
 ///
 /// # Errors
 ///

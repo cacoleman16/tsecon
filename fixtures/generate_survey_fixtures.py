@@ -145,7 +145,7 @@ def disagreement(panel, ddof):
 
 
 def build_cg_series(mean_forecast, actual, h):
-    """Documented-formula construction of the CG error/revision series.
+    """Documented-formula construction of the FIXED-HORIZON error/revision proxy.
 
     Fixed-horizon setup: mean_forecast[t] is the h-step-ahead forecast made at
     time t of the outcome actual[t+h].  For each usable t (with t-1 >= 0 and
@@ -153,6 +153,12 @@ def build_cg_series(mean_forecast, actual, h):
         error_t    = actual[t + h] - mean_forecast[t]
         revision_t = mean_forecast[t] - mean_forecast[t - 1]
     Aligned over t = 1 .. n-1-h (inclusive).
+
+    NOTE this revision differences forecasts of DIFFERENT targets
+    (F_t x_{t+h} - F_{t-1} x_{t+h-1}); the Coibion-Gorodnichenko (2015)
+    revision is fixed-event (same target, adjacent vintages) — see
+    build_cg_series_fixed_event.  The crate documents this builder as an
+    approximation kept for single-horizon data.
     """
     f = np.asarray(mean_forecast, float)
     y = np.asarray(actual, float)
@@ -163,6 +169,37 @@ def build_cg_series(mean_forecast, actual, h):
         revisions.append(float(f[t] - f[t - 1]))
     return {
         "mean_forecast": list(map(float, f)),
+        "actual": list(map(float, y)),
+        "h": int(h),
+        "errors": errors,
+        "revisions": revisions,
+    }
+
+
+def build_cg_series_fixed_event(forecast_h, forecast_h1, actual, h):
+    """Documented-formula construction of the CG (2015) FIXED-EVENT series.
+
+    forecast_h[t] is the h-step-ahead forecast made at t of actual[t+h];
+    forecast_h1[t] is the (h+1)-step-ahead forecast made at t of
+    actual[t+h+1], so forecast_h1[t-1] targets actual[t+h] — the SAME event
+    as forecast_h[t].  For each usable t (with t-1 >= 0 and t+h <= n-1):
+        error_t    = actual[t + h] - forecast_h[t]
+        revision_t = forecast_h[t] - forecast_h1[t - 1]
+    Aligned over t = 1 .. n-1-h (inclusive).  This is the paper's revision
+    F_t x_{t+h} - F_{t-1} x_{t+h}, for which beta/(1+beta) identifies the
+    sticky-information lambda.
+    """
+    f = np.asarray(forecast_h, float)
+    g = np.asarray(forecast_h1, float)
+    y = np.asarray(actual, float)
+    n = f.size
+    errors, revisions = [], []
+    for t in range(1, n - h):
+        errors.append(float(y[t + h] - f[t]))
+        revisions.append(float(f[t] - g[t - 1]))
+    return {
+        "forecast_h": list(map(float, f)),
+        "forecast_h1": list(map(float, g)),
         "actual": list(map(float, y)),
         "h": int(h),
         "errors": errors,
@@ -203,6 +240,16 @@ def main():
     actual = np.cumsum(rng.normal(0.05, 1.0, m))
     mean_fc = actual + rng.normal(0.0, 0.5, m)  # noisy forecasts of the level
     cg_build = build_cg_series(mean_fc, actual, h=2)
+
+    # (1c) The paper's fixed-event construction, from the h- and (h+1)-step
+    # forecast series.  A SEPARATE rng so the draws above (and every block
+    # already pinned by the golden tests) stay byte-identical.
+    rng_fe = np.random.default_rng(20260826)
+    m_fe = 60
+    actual_fe = np.cumsum(rng_fe.normal(0.05, 1.0, m_fe))
+    fc_h = actual_fe + rng_fe.normal(0.0, 0.5, m_fe)     # F_t x_{t+h}
+    fc_h1 = actual_fe + rng_fe.normal(0.0, 0.8, m_fe)    # F_t x_{t+h+1} (noisier: longer horizon)
+    cg_build_fe = build_cg_series_fixed_event(fc_h, fc_h1, actual_fe, h=2)
 
     # ------------------------------------------------------------------
     # (2) Efficiency / Mincer-Zarnowitz: error on the forecast; joint HAC Wald
@@ -253,6 +300,7 @@ def main():
         "cg": cg,
         "cg_alt": cg_alt,
         "cg_build": cg_build,
+        "cg_build_fixed_event": cg_build_fe,
         "efficiency": eff,
         "efficiency_multi": eff_multi,
         "disagreement_pop": disag_pop,
