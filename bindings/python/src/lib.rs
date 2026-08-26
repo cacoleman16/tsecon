@@ -5876,6 +5876,137 @@ fn engle_granger<'py>(
     Ok(d)
 }
 
+/// The `ou_fit` result as the library's dict grammar (shared with
+/// `spread_zscore`'s internal fit).
+fn ou_fit_dict<'py>(py: Python<'py>, r: &tsecon_coint::OuFit) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("kappa", r.kappa)?;
+    d.set_item("kappa_se", r.kappa_se)?;
+    d.set_item("mu", r.mu)?;
+    d.set_item("mu_se", r.mu_se)?;
+    d.set_item("sigma", r.sigma)?;
+    d.set_item("sigma_se", r.sigma_se)?;
+    d.set_item("half_life", r.half_life)?;
+    match r.half_life_ci {
+        Some((lo, hi)) => d.set_item("half_life_ci", (lo, hi))?,
+        None => d.set_item("half_life_ci", py.None())?,
+    }
+    d.set_item("level", r.ci_level)?;
+    match r.stationary_sd {
+        Some(sd) => d.set_item("stationary_sd", sd)?,
+        None => d.set_item("stationary_sd", py.None())?,
+    }
+    d.set_item("mean_reverting", r.mean_reverting)?;
+    d.set_item("phi", r.phi)?;
+    d.set_item("phi_se", r.phi_se)?;
+    d.set_item("c", r.c)?;
+    d.set_item("c_se", r.c_se)?;
+    d.set_item("eta2", r.eta2)?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("n_obs", r.n_obs)?;
+    d.set_item("dt", r.dt)?;
+    Ok(d)
+}
+
+/// Ornstein-Uhlenbeck mean-reversion fit for a spread, by the
+/// exact-discretization Gaussian MLE (a closed-form AR(1) mapping — no
+/// iterative optimizer).
+///
+/// For `dX = kappa (mu - X) dt + sigma dW` observed at step `dt`, the exact
+/// discretization is the AR(1) `X_{t+1} = c + phi X_t + eps`,
+/// `phi = exp(-kappa dt)`, `c = mu (1 - phi)`,
+/// `Var(eps) = eta2 = sigma^2 (1 - phi^2) / (2 kappa)`; the MLE
+/// (conditioning on the first observation) is the AR(1) OLS with variance
+/// `RSS/n` — exactly what statsmodels `AutoReg(x, lags=1).fit()` computes —
+/// mapped back through the bijection. Returns `kappa`, `mu`, `sigma` with
+/// delta-method standard errors `kappa_se`, `mu_se`, `sigma_se` from the
+/// AR(1) information; `half_life` (= ln 2 / kappa, the expected time for a
+/// deviation to halve) with `half_life_ci` at confidence `level` — the
+/// level-scale kappa interval `kappa +- z se` mapped through ln 2 / kappa,
+/// the construction the shipped Monte Carlo measured as covering closer to
+/// nominal than the log-scale alternative in every cell (see the model
+/// card); its upper endpoint is `inf` when the kappa interval crosses zero,
+/// i.e. when "no mean reversion" cannot be ruled out at `level`; the stationary
+/// standard deviation `stationary_sd` (= sigma / sqrt(2 kappa), the z-score
+/// denominator); the honest flag `mean_reverting`; the AR(1) discretization
+/// leg `phi`, `phi_se`, `c`, `c_se`, `eta2`, `loglik`; and `n_obs` (= T - 1
+/// transitions), `dt`.
+///
+/// A fit with `phi >= 1` (AR root at/over unity — a "spread" showing no
+/// mean reversion) is returned honestly rather than raised:
+/// `mean_reverting = False`, `half_life = inf`, and
+/// `half_life_ci = stationary_sd = None` (no stationary distribution
+/// exists, and Gaussian asymptotics fail at the unit root). Note the
+/// well-known finite-sample **upward bias** in `kappa`: roughly
+/// `4 / (n * dt)` — four over the sample's time *span* — for persistent
+/// spreads (Kendall 1954; Tang & Chen 2009); a longer span, not finer
+/// sampling, is what shrinks it.
+#[pyfunction]
+#[pyo3(signature = (x, dt = 1.0, level = 0.95))]
+fn ou_fit<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    dt: f64,
+    level: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let xv = vec1(&x);
+    let r = tsecon_coint::ou_fit(&xv, dt, level).map_err(to_py)?;
+    ou_fit_dict(py, &r)
+}
+
+/// Z-score of a spread against the stationary Ornstein-Uhlenbeck law
+/// `N(mu, sigma^2 / (2 kappa))` — the entry/exit signal of a
+/// mean-reversion strategy: `zscore = (x - mu) / stationary_sd` with
+/// `stationary_sd = sigma / sqrt(2 kappa)`.
+///
+/// Pass all three of `kappa`, `mu`, `sigma` (e.g. from a previous `ou_fit`,
+/// scoring new data against a frozen fit), or none of them, in which case
+/// they are fitted from `x` by `ou_fit(x, dt)` first. Passing only some is
+/// refused — a z-score against a half-specified law would silently mix
+/// fitted and asserted parameters. Returns `zscore`, the `kappa` / `mu` /
+/// `sigma` actually used, `stationary_sd`, and `fitted` (True when the
+/// parameters came from the internal fit; call `ou_fit` directly for their
+/// standard errors and the half-life). Refuses `kappa <= 0` — a
+/// non-mean-reverting process has no stationary distribution, so the
+/// z-score does not exist (if `ou_fit` reported `mean_reverting = False`,
+/// re-check the cointegrating relation before trading the spread).
+#[pyfunction]
+#[pyo3(signature = (x, kappa = None, mu = None, sigma = None, dt = 1.0))]
+fn spread_zscore<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    kappa: Option<f64>,
+    mu: Option<f64>,
+    sigma: Option<f64>,
+    dt: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let xv = vec1(&x);
+    let d = PyDict::new(py);
+    let (kappa, mu, sigma, fitted) = match (kappa, mu, sigma) {
+        (Some(k), Some(m), Some(s)) => (k, m, s, false),
+        (None, None, None) => {
+            let fit = tsecon_coint::ou_fit(&xv, dt, 0.95).map_err(to_py)?;
+            (fit.kappa, fit.mu, fit.sigma, true)
+        }
+        _ => {
+            return Err(PyValueError::new_err(
+                "spread_zscore: pass all three of kappa, mu, sigma (to score x against \
+                 a known/frozen OU law, e.g. a previous ou_fit) or none of them (to fit \
+                 them from x first); passing only some would silently mix fitted and \
+                 asserted parameters",
+            ))
+        }
+    };
+    let z = tsecon_coint::spread_zscore(&xv, kappa, mu, sigma).map_err(to_py)?;
+    d.set_item("zscore", z.into_pyarray(py))?;
+    d.set_item("kappa", kappa)?;
+    d.set_item("mu", mu)?;
+    d.set_item("sigma", sigma)?;
+    d.set_item("stationary_sd", sigma / (2.0 * kappa).sqrt())?;
+    d.set_item("fitted", fitted)?;
+    Ok(d)
+}
+
 /// Markov-switching autoregression (Hamilton 1989), fitted by EM.
 ///
 /// Estimates a `k_regimes`-state MS-AR(`order`) with a common AR and
@@ -11264,6 +11395,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(johansen, m)?)?;
     m.add_function(wrap_pyfunction!(vecm, m)?)?;
     m.add_function(wrap_pyfunction!(engle_granger, m)?)?;
+    m.add_function(wrap_pyfunction!(ou_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(spread_zscore, m)?)?;
     m.add_function(wrap_pyfunction!(markov_switching_ar, m)?)?;
     m.add_function(wrap_pyfunction!(setar, m)?)?;
     m.add_function(wrap_pyfunction!(setar_test, m)?)?;

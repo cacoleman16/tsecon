@@ -1552,6 +1552,45 @@ def vecm(
     ``deterministic="co"`` when the rank came from ``johansen``.
     """
 
+def ou_fit(x: _ArrayLike, dt: float = ..., level: float = ...) -> dict[str, Any]:
+    """Ornstein-Uhlenbeck mean-reversion fit for a spread (exact-discretization MLE).
+
+    ``dX = kappa (mu - X) dt + sigma dW`` observed at step ``dt`` is exactly
+    the AR(1) ``X_{t+1} = c + phi X_t + eps`` with ``phi = exp(-kappa dt)``;
+    the MLE is the closed-form AR(1) OLS (statsmodels ``AutoReg(x, lags=1)``)
+    mapped back — no optimizer. Returns ``kappa``/``mu``/``sigma`` with
+    delta-method ``kappa_se``/``mu_se``/``sigma_se``; ``half_life``
+    (= ln 2 / kappa) with ``half_life_ci`` at ``level`` — the level-scale
+    kappa interval mapped through ln 2 / kappa, with an ``inf`` upper
+    endpoint when the interval crosses zero (Monte-Carlo measured against
+    the log-scale alternative and shipped because it covers closer to
+    nominal in every cell; the cointegration model card has the table and
+    quantifies the well-known upward finite-sample kappa bias of roughly
+    4 / (sample time span)); ``stationary_sd`` (= sigma / sqrt(2 kappa));
+    ``mean_reverting``; the AR(1) leg ``phi``/``phi_se``/``c``/``c_se``/
+    ``eta2``/``loglik``; and ``n_obs``/``dt``. A fit with ``phi >= 1`` is
+    returned honestly: ``mean_reverting=False``, ``half_life=inf``,
+    ``half_life_ci=None``, ``stationary_sd=None``.
+    """
+
+def spread_zscore(
+    x: _ArrayLike,
+    kappa: float | None = ...,
+    mu: float | None = ...,
+    sigma: float | None = ...,
+    dt: float = ...,
+) -> dict[str, Any]:
+    """Z-score of a spread against the stationary OU law N(mu, sigma^2/(2 kappa)).
+
+    ``zscore = (x - mu) / stationary_sd``, ``stationary_sd = sigma /
+    sqrt(2 kappa)``. Pass all three of ``kappa``/``mu``/``sigma`` (a frozen
+    ``ou_fit``) or none (fitted from ``x`` at step ``dt``); partial
+    specification is refused. Returns ``zscore``, the ``kappa``/``mu``/
+    ``sigma`` used, ``stationary_sd``, ``fitted``. Refuses ``kappa <= 0``:
+    a non-mean-reverting process has no stationary distribution to score
+    against.
+    """
+
 # ------------------------------------------------------- regime switching
 def markov_switching_ar(
     y: _ArrayLike,
