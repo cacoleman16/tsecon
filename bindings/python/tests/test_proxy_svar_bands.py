@@ -454,3 +454,62 @@ def test_rf_knobs_never_no_op():
     with pytest.raises(ValueError, match="even"):
         tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4,
                              rf_method="second_order", rf_draws=31)
+
+
+# --------------------------------------------------------------------------- #
+# proxy_ar_sets — rf_method="second_order_bc" (roadmap note 21 follow-up)
+# --------------------------------------------------------------------------- #
+def test_second_order_bc_widens_beyond_second_order_and_keeps_boundedness():
+    """The bias-corrected centring exists to close second_order's residual
+    long-horizon gap from the conservative side: on a fitted persistent
+    system it must widen the long-horizon intervals beyond second_order at
+    the same seed, leave the boundedness statistic and the points
+    bit-identical (the centring enters v0 only), and still claim the
+    level."""
+    second = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=12,
+                                  rf_method="second_order")
+    bc = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=12,
+                              rf_method="second_order_bc")
+    assert bc["level"] == second["level"] == 0.95
+    assert bc["ar_bound_stat"] == second["ar_bound_stat"]
+    assert bc["ar_bounded_all"] == second["ar_bounded_all"]
+    wider = 0
+    for j in range(3):
+        cs, cb = second["cells"][12][j], bc["cells"][12][j]
+        assert cb["point"] == cs["point"]
+        if cs["kind"] == cb["kind"] == "interval":
+            if (cb["upper"] - cb["lower"]) > (cs["upper"] - cs["lower"]):
+                wider += 1
+    assert wider >= 2, "second_order_bc should widen the h=12 intervals here"
+    # h=0 is untouched: Psi_0 = I carries no estimated coefficients.
+    c0s, c0b = second["cells"][0][1], bc["cells"][0][1]
+    assert (c0b["lower"], c0b["upper"]) == (c0s["lower"], c0s["upper"])
+
+
+def test_second_order_bc_is_seeded_and_deterministic():
+    a = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=6,
+                             rf_method="second_order_bc", rf_draws=128,
+                             rf_seed=7)
+    b = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=6,
+                             rf_method="second_order_bc", rf_draws=128,
+                             rf_seed=7)
+    c = tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=6,
+                             rf_method="second_order_bc", rf_draws=128,
+                             rf_seed=8)
+    ca, cb, cc = a["cells"][6][1], b["cells"][6][1], c["cells"][6][1]
+    assert (ca["lower"], ca["upper"]) == (cb["lower"], cb["upper"])
+    assert (ca["lower"], ca["upper"]) != (cc["lower"], cc["upper"])
+
+
+def test_second_order_bc_rf_knobs_never_no_op():
+    """The same never-silently-ignore contract as second_order."""
+    with pytest.raises(ValueError, match="reduced_form_uncertainty"):
+        tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4,
+                             reduced_form_uncertainty=False,
+                             rf_method="second_order_bc")
+    # unknown method names all three options.
+    with pytest.raises(ValueError, match="second_order_bc"):
+        tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4, rf_method="mc")
+    with pytest.raises(ValueError, match="even"):
+        tsecon.proxy_ar_sets(DATA, PROXY, lags=2, horizon=4,
+                             rf_method="second_order_bc", rf_draws=31)

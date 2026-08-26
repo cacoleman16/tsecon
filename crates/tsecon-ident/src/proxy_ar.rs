@@ -1330,6 +1330,231 @@ pub fn psi_reduced_form_cov(
     Ok(out)
 }
 
+/// Pope (1990) closed-form first-order bias correction of least-squares VAR
+/// coefficients, with Kilian's (1998) stationarity shrinkage — the
+/// evaluation-point half of the `rf_method = "second_order_bc"` correction.
+///
+/// # What it computes
+///
+/// For the companion matrix `A` of the fitted VAR and its innovation
+/// covariance `Sigma_u`, Pope's first-order mean bias of the LS estimator is
+///
+/// ```text
+/// bias = -Sigma_c [ (I - A')^-1 + A'(I - A'^2)^-1
+///                   + sum_lambda lambda (I - lambda A')^-1 ] G0^-1 / T,
+/// ```
+///
+/// with `Sigma_c` the companion innovation covariance (`Sigma_u` in the top
+/// block), `G0` the companion stationary covariance (`G0 = A G0 A' +
+/// Sigma_c`), and the sum running over the eigenvalues of `A`. The
+/// eigenvalue sum is evaluated here through the identity
+/// `sum_lambda lambda (I - lambda A')^-1 = sum_{j>=0} tr(A^{j+1}) (A')^j`
+/// — a real, geometrically convergent series — so no complex arithmetic is
+/// needed. The corrected coefficients are `A_hat - bias`, shrunk toward
+/// `A_hat` in steps of 0.05 (Kilian 1998) until the corrected companion is
+/// stable.
+///
+/// # Contract
+///
+/// * `coefs` — the `p` fitted lag matrices, all `n x n`; `sigma_u` — the
+///   `n x n` residual covariance; `t_eff` — the effective sample the fit
+///   used (the bias is `O(1/T)` in it).
+/// * Deterministic; no randomness anywhere.
+/// * **Conservative no-ops, by design**: an already-unstable fit
+///   (spectral radius `>= 1`), a fit so close to the unit circle that the
+///   tail series does not converge within its budget, or a correction that
+///   cannot be shrunk into the stable region all return the input
+///   coefficients unchanged — exactly the fallbacks of the measured
+///   reference implementation
+///   (`docs/examples/coverage/experiments/proxy_ar_long_horizon.py`).
+///
+/// For the univariate AR(1) the formula collapses to the classical
+/// Marriott-Pope `E[a_hat] - a = -(1 + 3a)/T`, which the crate tests pin
+/// exactly.
+///
+/// # Errors
+///
+/// [`IdentError::Dimension`] / [`IdentError::NonFinite`] /
+/// [`IdentError::InvalidArgument`] on malformed inputs;
+/// [`IdentError::Linalg`] if the stationary covariance solve fails or the
+/// inverses come back non-finite (a singular `G0`).
+pub fn pope_bias_corrected_coefs(
+    coefs: &[Mat<f64>],
+    sigma_u: MatRef<'_, f64>,
+    t_eff: usize,
+) -> Result<Vec<Mat<f64>>, IdentError> {
+    use tsecon_linalg::faer::linalg::solvers::DenseSolveCore;
+    use tsecon_linalg::{solve_discrete_lyapunov, spectral_radius};
+
+    let p = coefs.len();
+    if p == 0 {
+        return Err(IdentError::InvalidArgument {
+            what: "pope_bias_corrected_coefs needs at least one lag matrix",
+        });
+    }
+    let n = coefs[0].nrows();
+    if n == 0 {
+        return Err(IdentError::InvalidArgument {
+            what: "pope_bias_corrected_coefs needs a nonempty system",
+        });
+    }
+    if t_eff == 0 {
+        return Err(IdentError::InvalidArgument {
+            what: "t_eff must be positive",
+        });
+    }
+    for m in coefs {
+        if m.nrows() != n || m.ncols() != n {
+            return Err(IdentError::Dimension {
+                what: "coefs matrices must all be n x n",
+                expected: n,
+                got: if m.nrows() != n { m.nrows() } else { m.ncols() },
+            });
+        }
+        for j in 0..n {
+            for i in 0..n {
+                if !m[(i, j)].is_finite() {
+                    return Err(IdentError::NonFinite { what: "coefs" });
+                }
+            }
+        }
+    }
+    if sigma_u.nrows() != n || sigma_u.ncols() != n {
+        return Err(IdentError::Dimension {
+            what: "sigma_u must be n x n",
+            expected: n,
+            got: sigma_u.nrows(),
+        });
+    }
+    for j in 0..n {
+        for i in 0..n {
+            if !sigma_u[(i, j)].is_finite() {
+                return Err(IdentError::NonFinite { what: "sigma_u" });
+            }
+        }
+    }
+
+    let kp = n * p;
+    // Companion A: top block rows are the lag matrices, subdiagonal identity.
+    let mut a = Mat::<f64>::zeros(kp, kp);
+    for (l, a_l) in coefs.iter().enumerate() {
+        for j in 0..n {
+            for i in 0..n {
+                a[(i, l * n + j)] = a_l[(i, j)];
+            }
+        }
+    }
+    for i in 0..n * (p - 1) {
+        a[(n + i, i)] = 1.0;
+    }
+    // No correction for an unstable fit (the reference implementation's rule).
+    if spectral_radius(a.as_ref()).map_err(IdentError::from)? >= 1.0 {
+        return Ok(coefs.to_vec());
+    }
+
+    let mut sigma_c = Mat::<f64>::zeros(kp, kp);
+    for j in 0..n {
+        for i in 0..n {
+            sigma_c[(i, j)] = sigma_u[(i, j)];
+        }
+    }
+    // G0 = A G0 A' + Sigma_c.
+    let g0 = solve_discrete_lyapunov(a.as_ref(), sigma_c.as_ref()).map_err(IdentError::from)?;
+    let g0_inv = g0.partial_piv_lu().inverse();
+    let at = a.transpose().to_owned();
+    let eye = Mat::<f64>::from_fn(kp, kp, |i, j| f64::from(u8::from(i == j)));
+    let i_minus_at = &eye - &at;
+    let i_minus_at2 = &eye - &at * &at;
+    let inv1 = i_minus_at.partial_piv_lu().inverse();
+    let inv2 = i_minus_at2.partial_piv_lu().inverse();
+    for m in [&g0_inv, &inv1, &inv2] {
+        for j in 0..kp {
+            for i in 0..kp {
+                if !m[(i, j)].is_finite() {
+                    return Err(IdentError::InvalidArgument {
+                        what: "pope_bias_corrected_coefs: a companion inverse is singular \
+                               (I - A' or the stationary covariance G0)",
+                    });
+                }
+            }
+        }
+    }
+
+    // sum_lambda lambda (I - lambda A')^-1 = sum_{j>=0} tr(A^{j+1}) (A')^j,
+    // summed until the terms fall below machine precision of the accumulator.
+    // The budget is generous (geometric decay at the spectral radius); a fit
+    // close enough to the unit circle to exhaust it gets no correction, the
+    // same conservative no-op as an unstable fit.
+    const MAX_SERIES_TERMS: usize = 200_000;
+    let mut s = Mat::<f64>::zeros(kp, kp);
+    let mut q = eye.clone(); // (A')^j, starting at j = 0
+    let mut converged = false;
+    for _ in 0..MAX_SERIES_TERMS {
+        let q_next = &q * &at; // (A')^{j+1}
+        let mut tr = 0.0;
+        for i in 0..kp {
+            tr += q_next[(i, i)]; // tr((A')^{j+1}) = tr(A^{j+1})
+        }
+        let mut term_max = 0.0f64;
+        let mut s_max = 0.0f64;
+        for j in 0..kp {
+            for i in 0..kp {
+                let t = tr * q[(i, j)];
+                s[(i, j)] += t;
+                term_max = term_max.max(t.abs());
+                s_max = s_max.max(s[(i, j)].abs());
+            }
+        }
+        if !term_max.is_finite() {
+            return Err(IdentError::NonFinite {
+                what: "pope_bias_corrected_coefs eigenvalue-sum series",
+            });
+        }
+        if term_max <= f64::EPSILON * s_max.max(f64::MIN_POSITIVE) {
+            converged = true;
+            break;
+        }
+        q = q_next;
+    }
+    if !converged {
+        return Ok(coefs.to_vec());
+    }
+
+    let core = &inv1 + &at * &inv2 + &s;
+    let scale = -1.0 / t_eff as f64;
+    let bias = Mat::<f64>::from_fn(kp, kp, |i, j| {
+        let mut acc = 0.0;
+        for r in 0..kp {
+            let mut inner = 0.0;
+            for c in 0..kp {
+                inner += core[(r, c)] * g0_inv[(c, j)];
+            }
+            acc += sigma_c[(i, r)] * inner;
+        }
+        scale * acc
+    });
+
+    // Kilian (1998) stationarity shrinkage: walk delta down from 1 in 0.05
+    // steps until A_hat - delta * bias is stable; if none is, no correction.
+    let mut delta = 1.0f64;
+    while delta > 0.0 {
+        let mut cand = a.clone();
+        for j in 0..kp {
+            for i in 0..n {
+                cand[(i, j)] = a[(i, j)] - delta * bias[(i, j)];
+            }
+        }
+        if spectral_radius(cand.as_ref()).map_err(IdentError::from)? < 1.0 {
+            let out: Vec<Mat<f64>> = (0..p)
+                .map(|l| Mat::from_fn(n, n, |i, j| cand[(i, l * n + j)]))
+                .collect();
+            return Ok(out);
+        }
+        delta -= 0.05;
+    }
+    Ok(coefs.to_vec())
+}
+
 /// Second-order (simulation-based) reduced-form correction
 /// `T_O * Cov(Psi_hat_h gamma)` — the [`ArReducedForm::psi_var`] input again,
 /// but with the coefficient uncertainty pushed through the **exact** nonlinear

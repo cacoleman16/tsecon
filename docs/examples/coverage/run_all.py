@@ -8,9 +8,9 @@
 
 WHAT THIS FILE ADDS
 -------------------
-The seven modules under this directory each measure the coverage of one
+The eight modules under this directory each measure the coverage of one
 family of intervals and print their own report. This runner executes all
-seven in one process and then answers the question none of them can answer
+eight in one process and then answers the question none of them can answer
 alone: across every interval `tsecon` ships, WHICH ONES KEEP THEIR PROMISE?
 
 Every number in the consolidated tables is harvested from the structured
@@ -77,7 +77,7 @@ responses:
                  a confidence interval).
 
 Reproducibility: every family seeds from the same master seed and prints it.
-The runner adds no randomness of its own, so `run_all.py` and the seven
+The runner adds no randomness of its own, so `run_all.py` and the eight
 `python <family>.py` invocations produce the same numbers. The runner exits
 non-zero if any family fails its own assertions, or if any probe below can no
 longer find the number it reports -- so a schema change is loud rather than
@@ -116,6 +116,11 @@ FAMILIES: list[tuple[str, str, str]] = [
     ("factor_midas", "Factor models and mixed frequency",
      "favar two-step bands / umidas; weighted_midas, dfm_nowcast, "
      "nelson_siegel ship no interval"),
+    ("proxy_garch_tail", "Proxy-SVAR inference, GARCH, growth-at-risk and "
+     "functional LP",
+     "proxy_svar_bands / proxy_ar_sets / growth_at_risk / garch_fit / flp / "
+     "flp_scenario; nongaussian_svar and the GARCH variance forecast ship "
+     "no interval"),
 ]
 
 KIND_NOTE = {
@@ -1029,6 +1034,218 @@ def probes_factor_midas() -> list[Probe]:
     ]
 
 
+def probes_proxy_garch_tail() -> list[Probe]:
+    ident = "../../reference/model-cards/structural-identification.md"
+    qcard = "../../reference/model-cards/quantile.md"
+    vol = "../../reference/model-cards/volatility.md"
+    fcard = "../../reference/model-cards/functional-shocks.md"
+    garch_pname = {0: "omega", 1: "alpha", 2: "beta"}
+
+    def row(exp, arm, h, design):
+        def f(R):
+            r = pick(R[exp]["rows"], arm=arm, h=h)
+            return float(r["cov95"]), float(r["mcse"]), design
+        return f
+
+    def worst(exp, prefix, design, pname=False):
+        def f(R):
+            rows = [r for r in R[exp]["rows"] if r["arm"].startswith(prefix)]
+            if not rows:
+                raise ProbeError(f"{exp}: no rows with arm prefix {prefix!r}")
+            r = min(rows, key=lambda r: r["cov95"])
+            where = (garch_pname[int(r["h"])] if pname
+                     else f"worst h ({int(r['h'])})")
+            return float(r["cov95"]), float(r["mcse"]), f"{design}, {where}"
+        return f
+
+    def wild_impact(R):
+        rows = [r for r in R["proxy_bands"]["rows"]
+                if r["arm"].startswith("wild hall") and r["h"] == 0]
+        if not rows:
+            raise ProbeError("proxy_bands: no wild impact rows")
+        r = min(rows, key=lambda r: r["cov95"])
+        return (float(r["cov95"]), float(r["mcse"]),
+                "impact: the identifying moment is frozen")
+
+    return [
+        Probe("proxy_garch_tail", "tsecon.growth_at_risk",
+              "bse (Newey-West at horizon-1 lags, the default)", "CI", 0.95,
+              "h=1 (nothing overlaps), median tau",
+              row("gar", "bse tau=0.50", 1, "tau=0.5, h=1, T=240"),
+              "the 5% tail at the default horizon's far end",
+              row("gar", "bse tau=0.05", 12, "tau=0.05, h=12, T=240"),
+              "APPROXIMATION",
+              "the Newey-West correction handles the overlap; the residual "
+              "tail miss is the Powell kernel density estimate, which "
+              "nothing you can pass fixes -- the card says quote the fitted "
+              "quantile path, not a tail coefficient interval, at h >= 8",
+              qcard),
+        Probe("proxy_garch_tail", "tsecon.growth_at_risk",
+              "bse_powell (uncorrected, kept for replication)", "CI", 0.95,
+              "h=1, where bse_powell == bse exactly (asserted)",
+              row("gar", "powell tau=0.50", 1, "tau=0.5, h=1, T=240"),
+              "median tau at h=12: the uncorrected overlap",
+              row("gar", "powell tau=0.50", 12, "tau=0.5, h=12, T=240"),
+              "ESTIMATOR",
+              "the plain Powell sandwich assumes a martingale-difference "
+              "score and the h-step overlap makes it an MA(h-1); use the "
+              "default `bse` -- bse_powell exists for statsmodels "
+              "replication and serially uncorrelated conditioners only",
+              qcard),
+        Probe("proxy_garch_tail", "tsecon.proxy_svar_bands",
+              'bands="moving_block" (the default), Hall', "CI", 0.90,
+              "impact, strong instrument",
+              row("proxy_bands", "mbb hall var1", 0,
+                  "impact (var 1), strong instrument, T=300"),
+              "long horizons",
+              worst("proxy_bands", "mbb hall", "T=300, worst (h, variable)"),
+              "APPROXIMATION",
+              "the long-horizon decay is inherited from the reduced-form "
+              "VAR bootstrap (no Kilian correction on the proxy path) -- "
+              "the card's documented cost. On this DGP the Efron band "
+              "covers better than Hall at h=12 (measured in the same run); "
+              "read both endpoints at long horizons",
+              ident),
+        Probe("proxy_garch_tail", "tsecon.proxy_svar_bands",
+              'bands="wild" (reproduction arm, labelled invalid)', "CI", 0.90,
+              "the valid moving-block arm at the same cell",
+              row("proxy_bands", "mbb hall var1", 0,
+                  "moving-block reference, impact (var 1)"),
+              "the wild arm itself", wild_impact,
+              "READING",
+              "not an interval at impact: the common-Rademacher draw leaves "
+              "the identifying moment bit-identical in every draw, so the "
+              "band carries no identification uncertainty at all. It exists "
+              "to reproduce published Mertens-Ravn / Gertler-Karadi bands "
+              "and says so (asymptotically_valid=False, asserted every run)",
+              ident),
+        Probe("proxy_garch_tail", "tsecon.proxy_ar_sets",
+              'rf_method="delta" (the default)', "CI", 0.95,
+              "short horizons",
+              row("proxy_ar", "card_var2 delta", 1, "card VAR(2) T=300, h=1"),
+              "the default horizon's far end, routine VAR(1)",
+              row("proxy_ar", "routine_var1 delta", 12,
+                  "routine VAR(1) T=250, h=12"),
+              "APPROXIMATION",
+              "the audit's one-sided long-horizon decline, reproduced in "
+              "this registry: the delta variance is evaluated at the "
+              "estimated coefficients and shrinks in exactly the "
+              "under-persistent draws that miss. Pass "
+              "rf_method=\"second_order\" when long horizons are the cells "
+              "you will read",
+              ident),
+        Probe("proxy_garch_tail", "tsecon.proxy_ar_sets",
+              'rf_method="second_order"', "CI", 0.95,
+              "the repaired cell (card VAR(2), h=12)",
+              row("proxy_ar", "card_var2 second_order", 12,
+                  "card VAR(2) T=300, h=12"),
+              "the honest residual (routine VAR(1), h=12)",
+              row("proxy_ar", "routine_var1 second_order", 12,
+                  "routine VAR(1) T=250, h=12"),
+              "APPROXIMATION",
+              "the shipped opt-in repair, measured in-registry: it recovers "
+              "most of the long-horizon gap at a ~1.45x h=12 width price "
+              "and still sits ~1-2pp short on the harder VAR(1) -- roadmap "
+              "note 21's recorded residual, which rf_method="
+              "\"second_order_bc\" closes from the conservative side",
+              ident),
+        Probe("proxy_garch_tail", "tsecon.proxy_ar_sets",
+              'rf_method="second_order_bc"', "CI", 0.95,
+              "the residual-gap cell (routine VAR(1), h=12)",
+              row("proxy_ar", "routine_var1 second_order_bc", 12,
+                  "routine VAR(1) T=250, h=12"),
+              "where second_order already reached nominal",
+              row("proxy_ar", "card_var2 second_order_bc", 12,
+                  "card VAR(2) T=300, h=12"),
+              "CONVENTION",
+              "the note-21 follow-up: the same seeded simulation centred at "
+              "Pope-bias-corrected coefficients. The only arm at-or-above "
+              "nominal at every horizon on both DGPs -- a conservative "
+              "floor, not a calibration: where second_order already reached "
+              "nominal it overshoots, at a ~1.8x h=12 width price. Choose "
+              "it when long-horizon under-coverage is the error you most "
+              "need to rule out",
+              ident),
+        Probe("proxy_garch_tail", "tsecon.nongaussian_svar",
+              "no interval is returned", "NONE", 0.95,
+              "point B, IRF and kurtosis diagnostics only", None,
+              "", None, "READING",
+              "no se/band key exists (the key set is verified every run). "
+              "Any band you draw around an ICA-identified IRF is your own "
+              "construction; note also that identification itself fails "
+              "under Gaussian shocks (read shock_kurtosis first)",
+              ident),
+        Probe("proxy_garch_tail", "tsecon.garch_fit",
+              "se_mle (inverse Hessian)", "CI", 0.95,
+              "Gaussian innovations, T=2000",
+              worst("garch", "normal T=2000 se_mle",
+                    "GARCH(1,1) normal z, T=2000", pname=True),
+              "t(5) innovations fit with dist=\"normal\" (QMLE)",
+              worst("garch", "t5 T=2000 se_mle",
+                    "GARCH(1,1) t(5) z, T=2000", pname=True),
+              "ESTIMATOR",
+              "the inverse Hessian is only valid when the innovation "
+              "distribution is correct; under fat tails it collapses while "
+              "se_robust holds. Quote se_robust unless you have a reason "
+              "to believe the distribution",
+              vol),
+        Probe("proxy_garch_tail", "tsecon.garch_fit",
+              "se_robust (Bollerslev-Wooldridge, QMLE)", "CI", 0.95,
+              "Gaussian innovations, T=2000",
+              worst("garch", "normal T=2000 se_robust",
+                    "GARCH(1,1) normal z, T=2000", pname=True),
+              "t(5) innovations fit with dist=\"normal\" (QMLE)",
+              worst("garch", "t5 T=2000 se_robust",
+                    "GARCH(1,1) t(5) z, T=2000", pname=True),
+              "APPROXIMATION",
+              "the sandwich these fat-tailed fits need: it holds most of "
+              "nominal where se_mle collapses, short by a few points in "
+              "finite samples. Boundary fits carry NaN standard errors "
+              "with se_valid=False rather than an invented number -- read "
+              "that flag before either se",
+              vol),
+        Probe("proxy_garch_tail", "tsecon.garch_fit",
+              "variance_forecast", "NONE", 0.95,
+              "analytic point path only; no interval is implied", None,
+              "", None, "READING",
+              "the docstring says it plainly ('none is implied') and the "
+              "key set is verified every run: no forecast se / interval / "
+              "quantile key exists. A GARCH variance-path interval needs "
+              "simulation, which is not yet exposed",
+              vol),
+        Probe("proxy_garch_tail", "tsecon.flp",
+              "per-element se on functional_pca scores", "CI", 0.95,
+              "externally supplied (true) scores, impact",
+              row("flp", "persistent true-scores k1", 0,
+                  "external scores, persistent curves, impact"),
+              "functional_pca scores, persistent curves",
+              worst("flp", "persistent est-scores",
+                    "estimated scores, persistent curves"),
+              "ESTIMATOR",
+              "the card's generated-regressor warning, priced: se "
+              "conditions on the scores, and functional_pca scores carry "
+              "O_p(T^-1/2) eigenfunction error the HAC sandwich cannot "
+              "see. External scores are exempt (measured at nominal); "
+              "report flp_scenario's w'beta contrasts, which are "
+              "algebraically immune",
+              fcard),
+        Probe("proxy_garch_tail", "tsecon.flp_scenario",
+              "w'beta scenario band", "CI", 0.95,
+              "in-span scenario, impact",
+              row("flp", "persistent scenario w'beta", 0,
+                  "in-span scenario, persistent curves, impact"),
+              "long horizons",
+              worst("flp", "persistent scenario w'beta",
+                    "in-span scenario, persistent curves"),
+              "APPROXIMATION",
+              "the documented reporting route, and the immunity is real: "
+              "at impact it covers at nominal on the same draws where the "
+              "per-element se collapses. The long-horizon decline is the "
+              "ordinary LP-HAC cost this page documents for lp(se=\"hac\")",
+              fcard),
+    ]
+
+
 PROBE_BUILDERS: dict[str, Callable[[], list[Probe]]] = {
     "regression_se": probes_regression_se,
     "irf_bands": probes_irf_bands,
@@ -1037,6 +1254,7 @@ PROBE_BUILDERS: dict[str, Callable[[], list[Probe]]] = {
     "bayes_and_sets": probes_bayes,
     "quantile_panel_lp": probes_quantile_panel,
     "factor_midas": probes_factor_midas,
+    "proxy_garch_tail": probes_proxy_garch_tail,
 }
 
 

@@ -64,14 +64,23 @@ exactly), so decimal returns and percent returns give the same model with
 `fit["omega"]` is a deliberate `KeyError`, and a `.get("omega")` guard
 silently yields a `None` that reads like a failed fit. (The results facade's
 `GARCHResults.params_named()` method returns the same mapping.) Trust **`se_robust`**
-(Bollerslev-Wooldridge) over `se_mle` unless you believe the density.
+(Bollerslev-Wooldridge) over `se_mle` unless you believe the density — and
+that advice now carries [measured numbers](../../examples/interval-coverage.md):
+on a GARCH(1,1) with standardized t(5) innovations fitted with
+`dist="normal"` (the QMLE case every fat-tailed return series is in), nominal
+95% intervals from `se_mle` cover **0.75** of the time at T=2000 (se/sd ≈
+0.54 on every parameter) while `se_robust` holds **0.91**; under Gaussian
+innovations both sit at nominal. The interval-coverage registry re-measures
+this every run.
 `conditional_volatility` is the filtered σ_t with the standard GARCH filter
 timing (matching `arch`): **`conditional_volatility[t]` is the one-step-ahead
 volatility FOR period t, formed from information through t−1** — σ²_t is built
 from ε_{t−1}, σ²_{t−1}, so the entry at t is what the model predicted for t
 before seeing r_t, not a smoothed estimate using r_t. The post-sample
 continuation of that step is `variance_forecast` (its first entry is the
-prediction for T+1 from information through T). `std_residuals` should look
+prediction for T+1 from information through T) — a **point** path: it carries
+no interval, and the registry verifies by a key-set tripwire that none is
+implied. `std_residuals` should look
 i.i.d. (re-run `arch_lm` on them).
 `alpha[1] + beta[1]` near 1 means shocks persist for a long time. Check
 `se_valid` before quoting a standard error, and `converged` before quoting

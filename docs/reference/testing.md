@@ -29,7 +29,7 @@ here, so that is what is labelled.
 | — integration tests in `crates/*/tests/` | 1028 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 162 | |
 | — documentation tests | 45 | |
-| Python binding tests | **1057 collected, 0 failed** in 405 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **1064 collected, 0 failed** in 405 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
 | Golden fixtures | 84 JSON files, produced by 66 generator scripts | `fixtures/` |
 | Public Python functions | 151, of which **147** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
@@ -226,7 +226,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-1057 tests in 81 files. 50 of the 84 fixture JSONs are reloaded here and checked
+1064 tests in 81 files. 50 of the 84 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -320,9 +320,9 @@ samples — and, where they do not, by how much and why.
 Full write-up: **[Interval coverage](../examples/interval-coverage.md)**.
 
 ```sh
-.venv/bin/python docs/examples/coverage/run_all.py            # 1904 s here
+.venv/bin/python docs/examples/coverage/run_all.py            # 2396 s here
 .venv/bin/python docs/examples/coverage/run_all.py --summary   # tables only
-.venv/bin/python docs/examples/coverage/run_all.py --quick      # ~3 min smoke run
+.venv/bin/python docs/examples/coverage/run_all.py --quick      # ~4 min smoke run
 ```
 
 This is a separate tier from Tier 5 rather than a section of it, because the
@@ -333,12 +333,12 @@ size and whether an *estimator* is consistent. Tier 6 asks whether an
 specific data-generating process — and it is the claim a reader is implicitly
 relying on every time they quote a standard error.
 
-Seven modules under
+Eight modules under
 [`docs/examples/coverage/`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage)
-re-estimate 50 interval-valued outputs across 28 functions on seeded draws from
-processes whose truth is known in closed form, and count containment. (50 rather
-than 28 because the option and the regime change the answer: `var_irf_bands`
-contributes six rows, `ols` five, `bai_perron` three.) Every coverage number
+re-estimate 63 interval-valued outputs across 35 functions on seeded draws from
+processes whose truth is known in closed form, and count containment. (63 rather
+than 35 because the option and the regime change the answer: `var_irf_bands`
+contributes six rows, `ols` five, `proxy_ar_sets` and `bai_perron` three each.) Every coverage number
 carries its own Monte Carlo standard error `sqrt(p(1−p)/reps)` so that 0.93 and
 0.95 can be told apart honestly, and `run_all.py` harvests the consolidated
 tables from the structured results the modules return — nothing is transcribed
@@ -360,11 +360,11 @@ degrades, as approximations do" from "this interval does not work". The headline
 
 | | count |
 |---|---|
-| frequentist intervals measured (CI + PRED) | 39 |
-| — off nominal **even in the favourable design** | **12** |
-| — at nominal when entitled, off under stress | 27 |
+| frequentist intervals measured (CI + PRED) | 50 |
+| — off nominal **even in the favourable design** | **14** |
+| — at nominal when entitled, off under stress | 36 |
 | objects that make no frequentist promise (Bayesian credible bands, set-identified bounds) — reported as labelled diagnostics | 7 |
-| surfaces that return no interval at all (`theta_forecast`/`backtest`, `weighted_midas`, `dfm_nowcast`, `nelson_siegel` — the last three verified by a per-run key-set tripwire) | 4 |
+| surfaces that return no interval at all (`theta_forecast`/`backtest`, `weighted_midas`, `dfm_nowcast`, `nelson_siegel`, `nongaussian_svar`, the GARCH `variance_forecast` — all but the first verified by a per-run key-set tripwire) | 6 |
 
 Three results are worth naming here rather than leaving on the page:
 
@@ -565,7 +565,7 @@ every one of them runs on every invocation of the command above:
 | `test_panel_fceval.py` | 6 | Panel estimators and the Clark-West / Giacomini-White forecast comparison tests; the 0.6.0 `bandwidth` contract — explicit bandwidth without `driscoll_kraay` raises, the Driscoll-Kraay path bit-identical omitted-vs-explicit-4.0. |
 | `test_pmg_news.py` | 3 | PMG panel estimator against its documented-formula golden; `dfm_news` against its exact adding-up identity. |
 | `test_predreg.py` | 2 | IVX / Stambaugh predictive-regression point estimates and Wald statistics (the *size* claim lives in the crate's MC property tests). |
-| `test_proxy_svar_bands.py` | 38 | Jentsch-Lunsford moving-block bands and the Anderson-Rubin sets. No external package computes either, so the Python layer pins what the binding must not lose: the `h = 0` cell of `norm_var` degenerate at `unit`, the six failure counters surfaced rather than dropped, the wild arm labelled `asymptotically_valid=False`, every AR set shape reachable and branch-able by `kind`, `unit`-equivariance, level nesting, the point estimate always a member of its own set, and `level is None` when reduced-form uncertainty is switched off. |
+| `test_proxy_svar_bands.py` | 45 | Jentsch-Lunsford moving-block bands and the Anderson-Rubin sets. No external package computes either, so the Python layer pins what the binding must not lose: the `h = 0` cell of `norm_var` degenerate at `unit`, the six failure counters surfaced rather than dropped, the wild arm labelled `asymptotically_valid=False`, every AR set shape reachable and branch-able by `kind`, `unit`-equivariance, level nesting, the point estimate always a member of its own set, and `level is None` when reduced-form uncertainty is switched off — plus the `rf_method="second_order_bc"` arm: seeded determinism, sets that widen on `second_order`'s (which widen on delta's), bit-identical boundedness, and the rf_draws/rf_seed knobs never silently ignored. |
 | `test_realized_extras.py` | 7 | Realized/tripower quarticity, BNS jump test, Parkinson & Garman-Klass range variances against documented closed forms. |
 | `test_results_arima.py` | 20 | `ARIMAResults` is *additive*: key-by-key dict equality against a raw `arima_fit` call, then the rendering. |
 | `test_results_dsge.py` | 26 | `DSGEResults` against the Cagan money-demand model, which has a closed-form saddle-path solution (`G = 1/(1−aρ)`, `P = ρ`, `Q = 1`). |
