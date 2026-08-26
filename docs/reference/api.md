@@ -400,6 +400,16 @@ Exact-MLE ARIMA(p,d,q) fit, with optional forecast + conf_alpha bands.
     Also returns bse / param_cov from the observed information, or None with
     cov_ok=False when that matrix is too ill-conditioned to invert honestly.
 
+    converged reports the optimizer's convergence certificate (False = best
+    point found, not a certified optimum). boundary flags, per parameter,
+    AR/MA blocks whose fitted polynomial has a root within 0.1% of the unit
+    circle (auto_arima's admissibility epsilon): no classical SE exists
+    there — those bse entries are NaN with se_valid False, and
+    boundary_note (str | None) explains (an MA root at the unit circle is
+    the classic over-differencing signature). Interior bse still come from
+    the full-vector observed information, which a boundary degrades — treat
+    as approximate; reduced-Hessian interior SEs are a stated follow-up.
+
 ### `auto_arima`
 
 ```python
@@ -2615,7 +2625,10 @@ Mean-group (Pesaran-Smith 1995) / CCE-MG (Pesaran 2006) panel estimator.
 
 ```python
 def panel_pmg(
-    ys: Sequence[_ArrayLike], xs: Sequence[_ArrayLike]
+    ys: Sequence[_ArrayLike],
+    xs: Sequence[_ArrayLike],
+    tol: float = ...,
+    max_iter: int = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -2624,6 +2637,21 @@ Pooled Mean Group ARDL(1,1) panel estimator (Pesaran-Shin-Smith 1999).
     Pools the long-run coefficient across units by ML; error-correction speed
     and short-run dynamics stay unit-specific. Returns theta, theta_se,
     phi_bar, phi, sigma2, loglik, iterations, n_units, k.
+
+    tol (default 3e-13) is the RELATIVE stopping tolerance of the
+    back-substitution: stop when |dtheta|_inf <= tol * (1 + |theta|_inf),
+    within max_iter (default 1000) iterations per pass. Relative because
+    the float noise floor of the pooled solve scales with |theta|; 3e-13
+    is the historical absolute 1e-12 rule's measured effective relative
+    stringency on the O(1)-theta panels it was validated on, so the
+    golden fixture stops at the identical iterate (bit-identical). The
+    iteration runs from the deterministic theta = 0 start and, when that
+    start diverges (routine on textbook I(1) panels — measured 14/20
+    seeds of a stable I(1) battery pre-fix, 0/20 post-fix), it is rerun
+    once from the Pesaran-Shin-Smith unrestricted-ARDL start.
+    Non-convergence from both starts raises (the last iterate is not a
+    verified fixed point); raise max_iter or loosen tol for genuinely
+    slow-mixing panels.
 
 ### `panel_unit_root`
 
@@ -2674,7 +2702,7 @@ Dynamic-factor-model nowcast; data is T x N with an optional NaN edge.
     moments; scale is all ones for "mle"). Mapping factors to series
     levels is exact: nowcast == center + scale * (loadings @ edge_factor),
     and center + scale * (F @ L.T) is the common-component fit of the
-    balanced panel.
+    balanced panel. Also,
 
 ### `dfm_news`
 
@@ -2968,7 +2996,10 @@ Quantile local projections: `irf[tau][h]` with Powell-sandwich `se[tau][h]`.
 
     Per horizon, `y_{t+h}` on `[shock_t, const, p lags of y and shock]` at
     each tau (tsecon-lp design conventions); matches statsmodels QuantReg on
-    the identical design.
+    the identical design. `converged[tau][h]` is the per-fit IRLS flag: a
+    False entry hit the 1000-iteration cap before the 1e-6 coefficient
+    tolerance, so that point of the IRF is the last iterate, not a verified
+    check-loss minimum — do not quote it without refitting.
 
 ### `growth_at_risk`
 
@@ -2991,7 +3022,11 @@ Growth-at-risk (Adrian-Boyarchenko-Giannone 2019).
     reports whether the raw fitted quantile paths crossed either way. `bse`
     carries the Newey-West overlap correction at `hac_lags = horizon - 1`
     lags; `bse_powell` is the uncorrected Powell sandwich (the statsmodels
-    `QuantReg` number), identical to `bse` at `horizon = 1`.
+    `QuantReg` number), identical to `bse` at `horizon = 1`. `converged` is
+    the per-tau IRLS flag (aligned with `params`): a False entry hit the
+    1000-iteration cap before the 1e-6 tolerance, so that tau's
+    coefficients — and the fitted quantiles and `current` risk read built
+    from them — are the last iterate, not a verified check-loss minimum.
 
 ## functional shocks (FVAR / FLP)
 
