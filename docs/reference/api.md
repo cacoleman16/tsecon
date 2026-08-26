@@ -467,7 +467,7 @@ def garch_fit(
     mean: str = ...,
     dist: str = ...,
     p: int = ...,
-    o: int = ...,
+    o: int | None = ...,
     q: int = ...,
     forecast_horizon: int = ...,
 ) -> dict[str, Any]:
@@ -484,6 +484,14 @@ GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
     fit["params_named"]["omega"] on the raw dict (fit["omega"] is a
     deliberate KeyError; the params/param_names parallel arrays stay the
     positional source of truth).
+
+    `o` is the asymmetry (threshold) order and only `vol="gjr"`/`"egarch"`
+    have an asymmetry term, so `o > 0` with `vol="garch"` raises instead of
+    being silently discarded — the porting trap this guards: in the `arch`
+    package, `arch_model(y, p=1, o=1, q=1)` silently switches the model to
+    GJR-GARCH, while tsecon keeps that model choice explicit (pass
+    `vol="gjr"`). `o=None` (default) means no asymmetry term under
+    `vol="garch"` and one asymmetry lag under `vol="gjr"`/`"egarch"`.
 
     Boundary fits (a coefficient at its sign constraint, persistence at 1)
     carry per-parameter `se_valid`/`boundary` flags and a `boundary_note`:
@@ -609,6 +617,15 @@ def var_fevd(
 ```
 
 Forecast-error variance decomposition [h][variable][shock].
+
+    Horizon-first — `fevd[h][i][j]` is the share of variable i's (h+1)-step
+    forecast-error variance attributed to shock j — the same axis order as
+    `var_irf` and `structural_fevd`, with `horizon` outer entries; each
+    `fevd[h][i]` sums to 1 across shocks. (Before 0.6.0 the emitted list was
+    variable-major, contradicting this docstring; at k == horizon the two
+    layouts silently alias.) statsmodels stores the same numbers
+    variable-major: `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))`
+    equals this output.
 
 ### `var_forecast`
 
@@ -1656,13 +1673,17 @@ def panel_fe(
     outcome: _ArrayLike,
     regressors: _ArrayLike,
     se_type: str = ...,
-    bandwidth: float = ...,
+    bandwidth: float | None = ...,
 ) -> dict[str, Any]:
 ```
 
 Fixed-effects panel OLS; `outcome` is N x T, `regressors` is k x N x T.
 
     `se_type`: "nonrobust", "cluster" (by entity), or "driscoll_kraay".
+    `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
+    `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
+    explicitly with any other `se_type` raises instead of being silently
+    absorbed — those estimators use no kernel.
 
 ### `panel_lp`
 
@@ -1673,7 +1694,7 @@ def panel_lp(
     horizon: int = ...,
     n_lag_controls: int = ...,
     se_type: str = ...,
-    bandwidth: float = ...,
+    bandwidth: float | None = ...,
     cumulative: bool = ...,
     jackknife: bool = ...,
     bias_correction: str = ...,
@@ -1683,6 +1704,11 @@ def panel_lp(
 ```
 
 Panel local projection of a common shock with fixed effects.
+
+    `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
+    `se_type="driscoll_kraay"` (the default se_type; 4.0 when omitted);
+    passing it explicitly with `se_type="cluster"`/`"nonrobust"` raises
+    instead of being silently absorbed.
 
     `outcome` is N x T; `shock` is length T. Fixed effects + lagged outcomes
     + short T carry Nickell bias (horizon-amplified); two half-panel
@@ -1816,6 +1842,9 @@ def periodogram(
 
 Periodogram PSD (freqs, psd); matches scipy.signal.periodogram.
 
+    Default `detrend="constant"` (mean removal) is SciPy's own default, so
+    default call matches default call; `"none"` / `"linear"` as in SciPy.
+
 ### `welch`
 
 ```python
@@ -1830,6 +1859,9 @@ def welch(
 ```
 
 Welch averaged-periodogram PSD; matches scipy.signal.welch.
+
+    Default `detrend="constant"` (per-segment mean removal) is SciPy's own
+    default, so default call matches default call.
 
 ### `coherence`
 
@@ -1846,6 +1878,9 @@ def coherence(
 ```
 
 Magnitude-squared coherence in [0,1]; matches scipy.signal.coherence.
+
+    Default `detrend="constant"` (per-segment mean removal) is SciPy's own
+    default, so default call matches default call.
 
 ## cointegration
 
