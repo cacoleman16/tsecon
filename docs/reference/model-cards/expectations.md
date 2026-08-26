@@ -28,11 +28,20 @@ information) — both maps give the same `beta/(1+beta)`.
 
 **Assumptions.** The error and revision are the *consensus* (mean across
 forecasters) series, aligned so that `error_t` is the outcome minus the
-forecast and `revision_t` is this period's forecast minus last period's, both
-for the same fixed horizon. Errors are serially correlated (overlapping
-forecasts) but stationary with summable autocovariances — that is exactly what
-the HAC covariance is there to handle. The implied-rigidity map assumes the
-sticky/noisy-information model that motivates the regression.
+forecast and `revision_t` is the CG **fixed-event** revision — this period's
+forecast of the target minus *last period's forecast of the same target*,
+`F_t x_{t+h} − F_{t−1} x_{t+h}` (adjacent vintages, one fixed outcome date).
+That is the revision the sticky/noisy-information maps are derived for, and
+it needs two horizons per vintage to build: the `h`-step forecast made at `t`
+and the `(h+1)`-step forecast made at `t−1` (e.g., in numpy,
+`revision = fc_h[1:] - fc_h1[:-1]`; the Rust crate ships this builder as
+`cg_series_fixed_event`). Differencing a single fixed-horizon series instead
+(`F_t x_{t+h} − F_{t−1} x_{t+h−1}`, forecasts of *different* targets) is only
+an approximation — see the failure modes below. Errors are serially
+correlated (overlapping forecasts) but stationary with summable
+autocovariances — that is exactly what the HAC covariance is there to handle.
+The implied-rigidity map assumes the sticky/noisy-information model that
+motivates the regression.
 
 **When to use (and when not).** Use it to test the full-information rational
 expectations null on consensus forecasts and to quantify underreaction. It is a
@@ -60,11 +69,22 @@ round it out. A significantly positive `slope` rejects FIRE toward
 underreaction; a slope indistinguishable from zero is consistent with full
 information.
 
-**Failure modes.** Reading `implied_rigidity` when the slope is negative (the
-formula still returns a number, but the sticky/noisy-information story does not
-apply); using individual rather than consensus forecasts and misinterpreting
-the sign; too small a `maxlags` for a long overlapping horizon, which
-understates the standard errors.
+**Failure modes.** Feeding a **fixed-horizon** revision
+(`F_t x_{t+h} − F_{t−1} x_{t+h−1}`, built by differencing one fixed-horizon
+forecast series) and reading the slope as the CG `beta`: the two forecasts
+target different dates, so this is not the paper's revision, and on an exact
+sticky-information DGP its slope does *not* recover `lambda/(1−lambda)` (in
+the crate's committed AR(1) test, true `beta = 1`: the fixed-event slope
+measures 1.013, the fixed-horizon slope 0.765 — plim `beta·(1+rho)/2`). The
+two coincide only when the target's forecast is horizon-free — a random walk,
+where `F_{t−1} x_{t+h} = F_{t−1} x_{t+h−1}` — and approximately for very
+persistent targets; if only one horizon is published, report the fixed-horizon
+slope as an approximation, not the CG estimand. Also: reading
+`implied_rigidity` when the slope is negative (the formula still returns a
+number, but the sticky/noisy-information story does not apply); using
+individual rather than consensus forecasts and misinterpreting the sign; too
+small a `maxlags` for a long overlapping horizon, which understates the
+standard errors.
 
 **Validated against.** statsmodels `OLS(...).fit(cov_type="HAC",
 cov_kwds={"maxlags": L, "use_correction": ...}, use_t=False)` — the same OLS-HAC

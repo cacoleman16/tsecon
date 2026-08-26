@@ -7,7 +7,49 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed — docs-vs-cited-paper defects (audit round 9)
+
+- **`bns_jump_test` is now the Huang-Tauchen (2005) statistic it always
+  cited.** Through 0.5.0 the ratio jump z-statistic was assembled from the
+  *unadjusted* BNS-2004 bipower variation and tripower quarticity, omitting
+  the finite-sample factors Huang & Tauchen's construction carries —
+  `M/(M-1)` on BV (for the `M-1` products summed) and `M/(M-2)` on TQ (for
+  the `M-2`) — while the docs claimed the HT "best sized in finite samples"
+  ratio form. The factors are now applied **inside** the statistic; the
+  exported `bipower_variation` / `tripower_quarticity` (and
+  `realized_measures`) values are unchanged, remaining the documented
+  BNS-2004 quantities. **Outputs move**: on a seeded `M = 78` day with one
+  modest (5-sigma-bar) jump, z shifts from **1.689 (unadjusted) to 1.564
+  (HT)** — straddling the one-sided 5% critical value 1.645, so marginal
+  jump calls can flip (pinned as a permanent regression test). The
+  adjustment shrinks with `M`: at `M = 78` the numerator's relative-jump
+  term drops by `BV/(77·RV)`. Null size of the corrected statistic,
+  measured: 0.053 at nominal one-sided 5% (`M = 78`, 4000 seeded Gaussian
+  reps, committed test). The Python `test_realized_extras` transcription and
+  the realized-vol model card / guide examples were re-derived against the
+  corrected statistic.
+- **The Coibion-Gorodnichenko revision builder now offers the paper's
+  fixed-event construction, and the old single-series path is documented as
+  the approximation it is.** CG (2015) define the revision as
+  `F_t x_{t+h} - F_{t-1} x_{t+h}` — two forecasts of the **same** target
+  from adjacent vintages — and it is for that revision that
+  `beta = lambda/(1-lambda)` and `implied_rigidity = beta/(1+beta) = lambda`
+  hold. `cg_series` instead differenced one fixed-horizon series,
+  `F_t x_{t+h} - F_{t-1} x_{t+h-1}` (targets differ), while the docs claimed
+  the paper's identification. New Rust builder **`cg_series_fixed_event`**
+  (`forecast_h`, `forecast_h1`, `actual`, `h`) constructs the fixed-event
+  pair; `cg_series` is kept for single-horizon data but re-documented as a
+  fixed-horizon **approximation** whose slope is not the CG estimand in
+  general (the two coincide for random-walk/horizon-free forecasts, where
+  `F_{t-1} x_{t+h} = F_{t-1} x_{t+h-1}`). Measured on an exact
+  sticky-information DGP (AR(1) fundamentals `rho = 0.5`, `lambda = 0.5`,
+  true `beta = 1`, T = 400k, committed test): the fixed-event slope recovers
+  **1.013** (implied rigidity 0.503 vs true 0.5, MC tolerance ±0.02); the
+  fixed-horizon slope converges to its distinct plim `beta·(1+rho)/2` —
+  measured **0.765**, implied "rigidity" 0.433. Golden fixture gains a
+  `cg_build_fixed_event` block (documented-formula construction; existing
+  blocks byte-identical); the expectations model card and forecasting guide
+  now state the fixed-event requirement and the fixed-horizon caveat.
 
 ## [0.5.0] - 2026-08-25
 

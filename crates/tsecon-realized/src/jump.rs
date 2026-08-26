@@ -11,24 +11,39 @@ use crate::measures::{bipower_variation, realized_variance, tripower_quarticity}
 /// & Tauchen 2005).
 const THETA: f64 = PI * PI / 4.0 + PI - 5.0;
 
-/// The BNS ratio jump statistic
+/// The BNS ratio jump statistic, in the Huang & Tauchen (2005) form
 ///
 /// ```text
-///                 sqrt(n) * (RV - BV) / RV
+///                 sqrt(M) * (RV - BV~) / RV
 ///   z  =  ---------------------------------------------
-///          sqrt( theta * max(1, TQ / BV^2) )
+///          sqrt( theta * max(1, TQ~ / BV~^2) )
 /// ```
 ///
-/// with `theta = pi^2/4 + pi - 5`, realized variance `RV`, bipower
-/// variation `BV`, and tripower quarticity `TQ`. Under the null of no
-/// jumps the relative jump `(RV - BV)/RV` is centred at zero and `z` is
-/// asymptotically standard normal; a jump inflates `RV` relative to the
-/// jump-robust `BV`, pushing `z` large and positive. This is the "ratio"
-/// (as opposed to difference or log) version, which Huang & Tauchen (2005)
-/// find best sized in finite samples; the `TQ / BV^2` studentization uses
-/// the jump-robust tripower quarticity so the denominator is not itself
-/// inflated by the jump being tested for, and is floored at 1 exactly as
-/// in that paper.
+/// with `theta = pi^2/4 + pi - 5`, realized variance `RV`, and the
+/// **finite-sample-adjusted** bipower variation and tripower quarticity
+///
+/// ```text
+///   BV~ = (M / (M - 1)) * BV,      TQ~ = (M / (M - 2)) * TQ,
+/// ```
+///
+/// which carry the Huang-Tauchen scalings for the `M - 1` (resp. `M - 2`)
+/// products actually summed. Under the null of no jumps the relative jump
+/// `(RV - BV~)/RV` is centred at zero and `z` is asymptotically standard
+/// normal; a jump inflates `RV` relative to the jump-robust `BV~`, pushing
+/// `z` large and positive. This is the "ratio" (as opposed to difference
+/// or log) version, which Huang & Tauchen (2005) find best sized in finite
+/// samples; the `TQ~ / BV~^2` studentization uses the jump-robust tripower
+/// quarticity so the denominator is not itself inflated by the jump being
+/// tested for, and is floored at 1 exactly as in that paper.
+///
+/// The exported [`bipower_variation`] and [`tripower_quarticity`] measures
+/// remain the plain Barndorff-Nielsen-Shephard (2004) quantities; the
+/// `M/(M-1)` and `M/(M-2)` factors are applied here, inside the test only.
+/// (Changed in 0.6: through 0.5.0 the statistic used the unadjusted BNS-2004
+/// `BV`/`TQ` while citing Huang-Tauchen; on marginal days the two z-values
+/// straddle a critical value — measured 1.689 (unadjusted) vs 1.564 (HT)
+/// around the one-sided 5% cutoff 1.645 on a seeded `M = 78` day with one
+/// modest jump, pinned in this crate's tests.)
 ///
 /// Returned as a raw z-score; compare against a normal critical value (e.g.
 /// `1.645` at the 5% one-sided level). No golden fixture pins this — it is
@@ -49,8 +64,15 @@ pub fn bns_jump_ratio(r: &[f64]) -> Result<f64, RealizedError> {
             what: "BNS ratio jump test",
         });
     }
-    let n = r.len() as f64;
-    let relative_jump = (rv - bv) / rv;
-    let denom = (THETA * (tq / (bv * bv)).max(1.0)).sqrt();
-    Ok(n.sqrt() * relative_jump / denom)
+    let m = r.len() as f64;
+    // Huang-Tauchen (2005) finite-sample adjustments: the bipower sum has
+    // M - 1 terms and the tripower sum M - 2, so the paper scales BV by
+    // M/(M-1) and TQ by M/(M-2) before assembling the statistic. Tripower
+    // quarticity has already enforced M >= 3, so both denominators are
+    // strictly positive.
+    let bv_ht = bv * m / (m - 1.0);
+    let tq_ht = tq * m / (m - 2.0);
+    let relative_jump = (rv - bv_ht) / rv;
+    let denom = (THETA * (tq_ht / (bv_ht * bv_ht)).max(1.0)).sqrt();
+    Ok(m.sqrt() * relative_jump / denom)
 }

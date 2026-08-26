@@ -2383,7 +2383,10 @@ Jump-robust tripower quarticity of integrated quarticity (BNS 2004).
 def bns_jump_test(returns: _ArrayLike) -> dict[str, float]:
 ```
 
-BNS ratio jump test (BNS 2004; Huang & Tauchen 2005); dict with 'ratio'.
+BNS ratio jump test in the Huang & Tauchen (2005) form; dict with 'ratio'.
+
+    The HT finite-sample M/(M-1) and M/(M-2) scalings on BV/TQ are applied
+    inside the statistic; the exported measures stay unadjusted BNS 2004.
 
 ### `realized_range`
 
