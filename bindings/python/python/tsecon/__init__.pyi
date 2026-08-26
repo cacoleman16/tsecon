@@ -346,6 +346,11 @@ def garch_fit(
     t-1 (sigma2_t is built from eps_{t-1} and sigma2_{t-1}); the post-sample
     continuation of that step is `variance_forecast`.
 
+    Named access: `params_named` is dict(zip(param_names, params)) — use
+    fit["params_named"]["omega"] on the raw dict (fit["omega"] is a
+    deliberate KeyError; the params/param_names parallel arrays stay the
+    positional source of truth).
+
     Boundary fits (a coefficient at its sign constraint, persistence at 1)
     carry per-parameter `se_valid`/`boundary` flags and a `boundary_note`:
     boundary parameters have NaN standard errors (no classical asymptotics
@@ -1483,35 +1488,86 @@ def umidas(
     """U-MIDAS: unrestricted mixed-frequency regression (hf_lags is nobs x K)."""
 
 # ---------------------------------------------------- multivariate GARCH
-def ccc_garch(returns: _ArrayLike) -> dict[str, Any]:
-    """CCC-GARCH (Bollerslev 1990); returns is T x k. Correlation + loglik."""
+def ccc_garch(
+    returns: _ArrayLike,
+    forecast_horizon: int = ...,
+    vol: str = ...,
+    mean: str = ...,
+    univariate_dist: str = ...,
+    p: int = ...,
+    o: int = ...,
+    q: int = ...,
+) -> dict[str, Any]:
+    """CCC-GARCH (Bollerslev 1990); returns is T x k, H_t = D_t R D_t with
+    a constant correlation R. The univariate stage defaults to the
+    historical zero-mean Normal GARCH(1,1) (default calls bit-identical)
+    and takes garch_fit's knobs: vol/mean/p/o/q plus univariate_dist
+    ("normal" | "t", the per-series innovation density — named apart from
+    dcc_garch's dist=, which is the second-stage correlation likelihood).
+
+    Keys: correlation (k x k), loglik, sigma2 ((T, k) per-series
+    conditional variance paths), covariance ((T, k, k) in-sample
+    H_t = D_t R D_t), and with forecast_horizon > 0 covariance_forecast
+    ((horizon, k, k)) and variance_forecast ((horizon, k)).
+
+    Timing (identical to dcc_garch): sigma2[t] — hence covariance[t] —
+    conditions on information through t-1 (the standard GARCH filter);
+    covariance[-1] is the last IN-SAMPLE matrix, and the one-step-ahead
+    H_{T+1} is covariance_forecast[0]. Because R is constant the forecast
+    is analytic and exact at every horizon (no DCC-style h >= 2
+    approximation), with the variance forecasts identical to each series'
+    own garch_fit forecast path."""
 
 def dcc_garch(
     returns: _ArrayLike,
     variant: str = ...,
     dist: str = ...,
     forecast_horizon: int = ...,
+    vol: str = ...,
+    mean: str = ...,
+    univariate_dist: str = ...,
+    p: int = ...,
+    o: int = ...,
+    q: int = ...,
 ) -> dict[str, Any]:
     """DCC-GARCH (Engle 2002); returns is T x k. variant: "dcc" | "cdcc"
     (Aielli 2013 consistent targeting) | "adcc" (Cappiello-Engle-Sheppard
     2006 asymmetric); dist: "normal" | "t" (second-stage likelihood; "t"
-    adds nu). Keys: a, b, g, qbar, loglik, converged, variant, dist,
-    correlation ((T, k, k) nested list -- the in-sample conditional
-    correlation path), correlation_last, and with forecast_horizon > 0
+    adds nu). The univariate first stage defaults to the historical
+    zero-mean Normal GARCH(1,1) and takes garch_fit's knobs: vol/mean/p/o/q
+    plus univariate_dist ("normal" | "t") — the per-series innovation
+    density, distinct from dist=, which configures the second-stage
+    correlation likelihood. Keys: a, b, g, qbar, loglik, converged,
+    variant, dist, correlation ((T, k, k) nested list -- the in-sample
+    conditional correlation path), correlation_last, sigma2 ((T, k)
+    per-series conditional variance paths), covariance ((T, k, k)
+    in-sample H_t = D_t R_t D_t), and with forecast_horizon > 0
     correlation_forecast / covariance_forecast ((horizon, k, k)) and
     variance_forecast ((horizon, k)).
 
     Timing: correlation[t] = R_t conditions on information through t-1
-    (filter convention; Q_0 = Qbar). correlation_last = correlation[-1] is
+    (filter convention; Q_0 = Qbar), and sigma2[t] / covariance[t] follow
+    the same convention. correlation_last = correlation[-1] is
     the last IN-SAMPLE matrix, not a forecast; the one-step-ahead R_{T+1}
     also uses the final residual z_T and is correlation_forecast[0].
     h >= 2 forecasts use the Engle-Sheppard (2001) recursion on E[Q]
     normalized each step (an approximation), converging to corr(qbar).
     The default call is bit-identical to earlier releases."""
 
-def dcc_test(returns: _ArrayLike, lags: int = ...) -> dict[str, Any]:
+def dcc_test(
+    returns: _ArrayLike,
+    lags: int = ...,
+    vol: str = ...,
+    mean: str = ...,
+    univariate_dist: str = ...,
+    p: int = ...,
+    o: int = ...,
+    q: int = ...,
+) -> dict[str, Any]:
     """Engle-Sheppard (2001) test of constant conditional correlation
-    (CCC vs DCC); returns is T x k. GARCH(1,1) per series, joint
+    (CCC vs DCC); returns is T x k. A univariate GARCH per series (the
+    same first stage ccc_garch/dcc_garch use — zero-mean Normal GARCH(1,1)
+    by default, configurable via vol/mean/univariate_dist/p/o/q), joint
     standardization by the symmetric inverse square root of the constant
     correlation, pooled AR(lags) on the stacked off-diagonal outer
     products. Keys: stat, df (= lags + 1), p_value (small rejects constant

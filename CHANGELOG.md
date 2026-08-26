@@ -81,6 +81,41 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   it was fixed identically and `fixtures/predreg.json` regenerated; all
   golden tolerances are unchanged (1e-9), and the Monte-Carlo
   size/power/Bonferroni property suites pass unchanged.
+### Added
+
+- **`ccc_garch(..., forecast_horizon=)` and the in-sample covariance
+  surface** — `ccc_garch` gains the forecast horizon it always had in the
+  Rust core: `covariance_forecast` (`(h, k, k)`) and `variance_forecast`
+  (`(h, k)`), analytic and *exact at every horizon* (Bollerslev 1990 — the
+  correlation never moves, so no DCC-style h ≥ 2 approximation enters), with
+  the variance forecasts identical to each series' own
+  `garch_fit(..., forecast_horizon=h)` path. Both `ccc_garch` and
+  `dcc_garch` now also return the in-sample conditional covariance path
+  `covariance` (`(T, k, k)`, `H_t = D_t R_t D_t`) and the per-series
+  conditional variance path `sigma2` (`(T, k)`), previously computed in
+  `tsecon-mgarch` but never exposed. `H_t` follows the documented `R_t`
+  filter timing (information through t−1 in both factors — stated
+  identically in both docstrings), and the factorization is asserted
+  *bitwise* against the returned correlation path and `sigma2` in the test
+  suite. All keys additive; default outputs verified bit-identical.
+- **Configurable univariate first stage for
+  `ccc_garch`/`dcc_garch`/`dcc_test`** — the first stage is no longer
+  hard-wired to a zero-mean Normal GARCH(1,1): the same
+  `vol`/`mean`/`p`/`o`/`q` kwargs as `garch_fit` thread through, plus
+  **`univariate_dist`** (`"normal"`|`"t"`), the per-series innovation
+  density — deliberately named apart from `dcc_garch`'s existing `dist=`,
+  which configures the *second-stage correlation likelihood* (the two mix
+  freely, and the teaching `ValueError` on a bad `univariate_dist` spells
+  the distinction out). Defaults unchanged and verified bit-identical
+  (in-process bitwise assertions plus a cross-build `f64`-bytes snapshot
+  against the 0.5.0 baseline).
+- **`garch_fit` returns `params_named`** — exactly
+  `dict(zip(param_names, params))`, in estimator order, on every fit path
+  (boundary and Student-t fits included). Closes the raw-dict named-access
+  trap (`fit["omega"]` is a `KeyError` and a `.get("omega")` guard reads
+  like a failed fit); the results facade's `GARCHResults.params_named()`
+  returns the same mapping. `gas_volatility` and `dcs_local_level` already
+  return flat named scalars and deliberately gain no such key.
 
 ## [0.5.0] - 2026-08-25
 
