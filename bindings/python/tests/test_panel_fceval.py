@@ -23,7 +23,10 @@ def test_panel_fe_matches_linearmodels():
     for key, se in [("nonrobust", "nonrobust"),
                     ("cluster_entity", "cluster"),
                     ("driscoll_kraay", "driscoll_kraay")]:
-        r = tsecon.panel_fe(outcome, regressors, se_type=se, bandwidth=4.0)
+        # bandwidth only accompanies driscoll_kraay: since 0.6.0 an explicit
+        # bandwidth under any other se_type raises instead of being absorbed.
+        kwargs = {"bandwidth": 4.0} if se == "driscoll_kraay" else {}
+        r = tsecon.panel_fe(outcome, regressors, se_type=se, **kwargs)
         blk = PANEL["panel_ols_fe_s0_s1_drop_t0"][key]
         want_params = [blk["params"]["s0"], blk["params"]["s1"]]
         want_bse = [blk["bse"]["s0"], blk["bse"]["s1"]]
@@ -76,3 +79,58 @@ def test_absorbed_regressor_raises_not_a_t_statistic():
         for se in ("cluster", "nonrobust", "driscoll_kraay"):
             with pytest.raises(ValueError, match="constant within"):
                 tsecon.panel_fe(outcome, regressors, se_type=se)
+
+
+# --------------------------------------------------------------------- #
+# 0.6.0: bandwidth can no longer be silently absorbed. It is the
+# Driscoll-Kraay kernel truncation, and panel_fe's DEFAULT se_type is
+# "cluster" -- so panel_fe(..., bandwidth=8) used to be a complete no-op.
+# --------------------------------------------------------------------- #
+def _small_panel():
+    rng = np.random.default_rng(20260826)
+    n_ent, n_per = 8, 24
+    x = rng.standard_normal((n_ent, n_per))
+    outcome = 0.7 * x + rng.standard_normal((n_ent, n_per))
+    shock = rng.standard_normal(n_per)
+    return outcome, np.stack([x]), shock
+
+
+def test_panel_fe_explicit_bandwidth_without_dk_raises_and_teaches():
+    outcome, regressors, _ = _small_panel()
+    # The historical trap exactly: default se_type ("cluster") + bandwidth.
+    with pytest.raises(ValueError, match="no effect") as exc:
+        tsecon.panel_fe(outcome, regressors, bandwidth=8.0)
+    msg = str(exc.value)
+    assert "panel_fe" in msg and "driscoll_kraay" in msg
+    for se in ("cluster", "nonrobust"):
+        with pytest.raises(ValueError, match="no effect"):
+            tsecon.panel_fe(outcome, regressors, se_type=se, bandwidth=8.0)
+
+
+def test_panel_lp_explicit_bandwidth_without_dk_raises_and_teaches():
+    outcome, _, shock = _small_panel()
+    for se in ("cluster", "nonrobust"):
+        with pytest.raises(ValueError, match="no effect") as exc:
+            tsecon.panel_lp(outcome, shock, horizon=2, n_lag_controls=1,
+                            se_type=se, bandwidth=8.0)
+        assert "panel_lp" in str(exc.value)
+
+
+def test_dk_bandwidth_paths_unchanged_bit_identical():
+    outcome, regressors, shock = _small_panel()
+    # Omitted bandwidth under driscoll_kraay is the historical default 4.0.
+    fe_default = tsecon.panel_fe(outcome, regressors, se_type="driscoll_kraay")
+    fe_explicit = tsecon.panel_fe(outcome, regressors, se_type="driscoll_kraay",
+                                  bandwidth=4.0)
+    np.testing.assert_array_equal(fe_default["params"], fe_explicit["params"])
+    np.testing.assert_array_equal(fe_default["bse"], fe_explicit["bse"])
+    lp_default = tsecon.panel_lp(outcome, shock, horizon=2, n_lag_controls=1)
+    lp_explicit = tsecon.panel_lp(outcome, shock, horizon=2, n_lag_controls=1,
+                                  se_type="driscoll_kraay", bandwidth=4.0)
+    np.testing.assert_array_equal(lp_default["irf"], lp_explicit["irf"])
+    np.testing.assert_array_equal(lp_default["se"], lp_explicit["se"])
+    # An explicit non-default bandwidth still acts (the SEs move).
+    fe_bw8 = tsecon.panel_fe(outcome, regressors, se_type="driscoll_kraay",
+                             bandwidth=8.0)
+    assert not np.array_equal(fe_default["bse"], fe_bw8["bse"])
+    np.testing.assert_array_equal(fe_default["params"], fe_bw8["params"])

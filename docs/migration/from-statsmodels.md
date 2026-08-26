@@ -49,9 +49,12 @@ Before the table, five conventions that will trip you up if you carry
 5. **Impulse responses are nested lists, indexed `[horizon][response][shock]`.**
    `tsecon.var_irf(...)[h][i][j]` is the response of variable `i` at horizon `h`
    to a shock in variable `j`. Horizon runs `0..=horizon`, so the outer length is
-   `horizon + 1`. The variance decomposition `var_fevd` uses a *different* axis
-   order — `[variable][horizon][shock]` — and its innermost slice sums to one
-   across shocks. Convert to a NumPy array and index deliberately.
+   `horizon + 1`. The variance decomposition `var_fevd` uses the same
+   horizon-first axis order — `[horizon][variable][shock]`, `horizon` outer
+   entries — and its innermost slice sums to one across shocks. Note the
+   statsmodels difference: `VARResults.fevd(h).decomp` stores the same numbers
+   *variable*-major, so transpose `(1, 0, 2)` to compare. Convert to a NumPy
+   array and index deliberately.
 
 ## The mapping table
 
@@ -108,7 +111,7 @@ constant column), not pre-computed residuals.
 | `ARIMA(y, order=(p,d,q)).fit()` | `arima_fit(y, p, d, q, constant=True, forecast_steps=0)` | Exact-MLE. Forecast bands via `conf_alpha=`. |
 | `SARIMAX(... seasonal_order=...)` | — | Seasonal terms: **roadmap**. `arima_fit` is non-seasonal ARIMA. |
 | `ExponentialSmoothing`, `ETSModel` | `theta_forecast(y, steps, period)` | Only the Theta method ships; general ETS is **roadmap**. |
-| `arch_model(r, vol="Garch", p, q).fit()` | `garch_fit(y, vol="garch", p=1, q=1, ...)` | Also `vol="egarch"` and GJR via `o=`. Robust SEs in `se_robust`. |
+| `arch_model(r, vol="Garch", p, q).fit()` | `garch_fit(y, vol="garch", p=1, q=1, ...)` | Also `vol="gjr"`/`"egarch"`. Note: `arch_model(..., o=1)` silently *becomes* GJR in `arch`; in tsecon you must say `vol="gjr"` — `o > 0` with `vol="garch"` raises (0.6.0). Robust SEs in `se_robust`. |
 | `arch_model(..., dist="StudentsT")` | `garch_fit(..., dist="studentst")` | Distribution string. |
 | *(score-driven / DCS)* | `gas_volatility(y, density="gaussian")` | GAS(1,1), Gaussian or `"student_t"`. No `statsmodels` analogue. |
 | `MarkovAutoregression(y, k_regimes, order)` | `markov_switching_ar(y, k_regimes=2, order=1, switching_variance=True)` | Hamilton (1989) EM. Returns regimes, transition, durations. |
@@ -122,7 +125,7 @@ constant column), not pre-computed residuals.
 | `VAR(df).fit(p)` | `var_fit(data, lags=p, trend="c")` | `data` is `T x k`. Dict: params, `sigma_u`, ICs, `max_root`. |
 | `res.irf(h).orth_irfs` | `var_irf(data, lags, horizon, orth=True)` | Nested list `[h][resp][shock]`. `orth=False` for non-orthogonalized. |
 | `res.irf(h).cum_effects` | `var_irf(..., cumulative=True)` | Running sums. |
-| `res.fevd(h).decomp` | `var_fevd(data, lags, horizon)` | `[variable][horizon][shock]`; note the axis order differs from IRFs. |
+| `res.fevd(h).decomp` | `var_fevd(data, lags, horizon)` | `[horizon][variable][shock]`, same axis order as the IRFs; statsmodels' `.decomp` is variable-major — transpose `(1, 0, 2)` to compare. |
 | `res.forecast_interval(y, h)` | `var_forecast(data, lags, steps, alpha=0.05)` | Dict `{"point", "lower", "upper"}`. |
 | `res.test_causality(caused, causing)` | `var_granger(data, caused, causing, lags)` | F-test; matches `statsmodels`' `test_causality`. Index lists, not names. |
 | `grangercausalitytests(...)` | `var_granger(...)` | Same test, VAR-based. |
@@ -234,7 +237,7 @@ print(round(fit["aic"], 3), round(fit["max_root"], 3))
 irf = tsecon.var_irf(data, lags=2, horizon=10, orth=True)   # .irf(10).orth_irfs
 resp = irf[5][0][1]          # horizon 5, response of var 0 to a shock in var 1
 fevd = tsecon.var_fevd(data, lags=2, horizon=10)            # .fevd(10)
-share = fevd[0][9][1]        # var 0, horizon 10, share explained by shock 1
+share = fevd[9][0][1]        # horizon 10, var 0, share explained by shock 1
 print(round(resp, 4), round(share, 4))
 ```
 

@@ -190,10 +190,12 @@ so each variable's shares sum to one at every horizon. Reading FEVDs is how you 
 
 ```python
 fevd = tsecon.var_fevd(data, lags=1, horizon=16)
-# One matrix per VARIABLE: fevd[i][h][j] = share of variable i's (h+1)-step
-# forecast-error variance attributed to shock j.  Rows sum to 1.
-fevd[1][0]      # output at h=1:  [0.01, 0.99, 0.00] — own shock dominates on impact
-fevd[1][15]     # output at h=16: [0.26, 0.73, 0.02] — demand grows to a quarter share
+# Horizon-first, like var_irf: fevd[h][i][j] = share of variable i's
+# (h+1)-step forecast-error variance attributed to shock j.  Rows sum to 1.
+# (statsmodels' .fevd().decomp holds the same numbers variable-major —
+# transpose (1, 0, 2) to compare.)
+fevd[0][1]      # output at h=1:  [0.01, 0.99, 0.00] — own shock dominates on impact
+fevd[15][1]     # output at h=16: [0.26, 0.73, 0.02] — demand grows to a quarter share
 ```
 
 ![Forecast-error variance decomposition: stacked shock shares by horizon for each variable](../examples/img/07-var-fevd.png)
@@ -391,7 +393,7 @@ Where research-grade practice currently stands, and where the [module roadmap](.
 
 - `tsecon.var_fit(data, lags=2, trend="c")` — equation-by-equation OLS estimation; returns `params` (rows: constant, then stacked lag coefficients; columns: equations), `sigma_u`, `llf`, `aic`/`bic`/`hqic`, and a characteristic-root stability summary
 - `tsecon.var_irf(data, lags=2, horizon=10, orth=True, trend="c")` — impulse responses, `irf[h][i][j]`; `orth=False` gives the raw MA coefficients $\Phi_h$
-- `tsecon.var_fevd(data, lags=2, horizon=10, trend="c")` — variance decompositions, one matrix per variable: `fevd[i][h][j]`
+- `tsecon.var_fevd(data, lags=2, horizon=10, trend="c")` — variance decompositions, horizon-first like the IRFs: `fevd[h][i][j]`
 - `tsecon.var_forecast(data, lags=2, steps=8, alpha=0.05, trend="c")` — iterated point forecasts with innovation-uncertainty intervals
 - `tsecon.var_granger(data, caused, causing, lags=2, trend="c")` — block F test, group-to-group
 - `tsecon.johansen(data, k_ar_diff=2)` — Johansen trace and maximum-eigenvalue rank tests, returning `trace_stat`/`max_eig_stat`, the `_90_95_99` critical-value tables, and the implied `rank_trace_5pct`/`rank_max_eig_5pct`

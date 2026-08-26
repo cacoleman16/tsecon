@@ -1611,7 +1611,13 @@ fn var_irf_bands<'py>(
 }
 
 /// Forecast-error variance decomposition: `fevd[h][i][j]` is the share of
-/// variable i's h-step forecast-error variance attributed to shock j.
+/// variable i's `(h+1)`-step forecast-error variance attributed to shock j
+/// — horizon-first, the same `[h][variable][shock]` axis order as `var_irf`
+/// and `structural_fevd`, with `horizon` outer entries.
+///
+/// Comparing against statsmodels: `VARResults.fevd(horizon).decomp` stores
+/// the SAME numbers variable-major (`[variable][horizon][shock]`), so
+/// `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))` equals this output.
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
 fn var_fevd<'py>(
@@ -1623,7 +1629,22 @@ fn var_fevd<'py>(
 ) -> PyResult<Bound<'py, pyo3::types::PyList>> {
     let r = var_results(&data, lags, trend)?;
     let fevd = r.fevd(horizon).map_err(to_py)?;
-    let out: Vec<Vec<Vec<f64>>> = fevd.decomp.iter().map(mat_to_vec2).collect();
+    // The core stores one `horizon x k` matrix per VARIABLE
+    // (`decomp[i][(h, j)]`, the statsmodels-internal layout the golden
+    // fixtures pin). Emit horizon-first `[h][variable][shock]` — the layout
+    // this function has always documented and the sibling convention
+    // (`var_irf`, `structural_fevd`). Before 0.6.0 the internal
+    // variable-major layout leaked through unchanged, contradicting the
+    // docstring; at k == horizon the two layouts silently alias.
+    let k = fevd.decomp.len();
+    let out: Vec<Vec<Vec<f64>>> = (0..horizon)
+        .map(|h| {
+            fevd.decomp
+                .iter()
+                .map(|m| (0..k).map(|j| m[(h, j)]).collect())
+                .collect()
+        })
+        .collect();
     pyo3::types::PyList::new(py, out.iter().cloned())
 }
 
@@ -2139,7 +2160,17 @@ fn theta_forecast<'py>(
 ///
 /// `vol`: "garch", "gjr", or "egarch"; `mean`: "zero" or "constant";
 /// `dist`: "normal" or "t". Conventions and results match the `arch`
-/// package (fixed-parameter logliks at machine precision). Returns both
+/// package (fixed-parameter logliks at machine precision) — with one
+/// deliberate exception: in `arch`, `arch_model(y, p=1, o=1, q=1)`
+/// silently *switches* the volatility process to GJR-GARCH, so a caller
+/// porting that call with `vol="garch"` would get a different model than
+/// they asked `arch` for. tsecon keeps the model choice explicit: `o` is
+/// the asymmetry order and only `vol="gjr"`/`"egarch"` have an asymmetry
+/// term, so passing `o > 0` with `vol="garch"` **raises** (pass
+/// `vol="gjr"` for the GJR model `o` implies, or drop `o` for symmetric
+/// GARCH) rather than being silently discarded. `o=None` (the default)
+/// means: no asymmetry term under `vol="garch"`, one asymmetry lag
+/// (`o=1`) under `vol="gjr"`/`"egarch"`. Returns both
 /// MLE and Bollerslev-Wooldridge robust standard errors. Estimation is
 /// scale-adaptive: the optimizer runs on an internally standardized
 /// series and maps the optimum back exactly, so rescaling the data
@@ -2189,7 +2220,7 @@ fn theta_forecast<'py>(
 /// is implied (forecast distributions for GARCH variance paths require
 /// simulation, which is not yet exposed).
 #[pyfunction]
-#[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = 1, q = 1, forecast_horizon = 0))]
+#[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = None, q = 1, forecast_horizon = 0))]
 #[allow(clippy::too_many_arguments)]
 fn garch_fit<'py>(
     py: Python<'py>,
@@ -2198,11 +2229,34 @@ fn garch_fit<'py>(
     mean: &str,
     dist: &str,
     p: usize,
-    o: usize,
+    o: Option<usize>,
     q: usize,
     forecast_horizon: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_garch::{DistSpec, GarchModel, GarchSpec, MeanSpec, VolSpec};
+    // `o` is meaningful only for the asymmetric volatility specs. Refuse
+    // rather than silently ignore (the same convention as cv_splits(embargo)
+    // and panel_fe(bandwidth)): accepting `o > 0` under vol="garch" would
+    // let an `arch` porter believe they fit the GJR model `arch_model(y,
+    // p=1, o=1, q=1)` builds, when the asymmetry term was dropped entirely.
+    // The sentinel default (None -> 0 for garch, 1 for gjr/egarch) keeps
+    // the old default calls working for every vol.
+    let o = match (vol, o) {
+        ("garch", Some(o_explicit)) if o_explicit > 0 => {
+            return Err(PyValueError::new_err(format!(
+                "o={o_explicit} has no effect under vol=\"garch\": o is the number of \
+                 asymmetry (threshold) lags and the symmetric GARCH(p, q) recursion \
+                 has no asymmetry term for it to parameterize, so it would be \
+                 silently discarded. Note the porting trap this guards: in the arch \
+                 package, arch_model(y, p=1, o=1, q=1) silently switches the model \
+                 to GJR-GARCH. Pass vol=\"gjr\" (or vol=\"egarch\") for a model with \
+                 an asymmetry term, or drop o (or set o=0) for symmetric GARCH."
+            )))
+        }
+        (_, Some(o_explicit)) => o_explicit,
+        ("garch", None) => 0,
+        (_, None) => 1,
+    };
     let spec = GarchSpec {
         mean: match mean {
             "zero" => MeanSpec::Zero,
@@ -4696,12 +4750,45 @@ fn hetero_svar<'py>(
     Ok(d)
 }
 
-fn panel_se(se_type: &str, bandwidth: f64) -> PyResult<tsecon_panel::PanelSeType> {
+/// The Driscoll-Kraay lag-truncation bandwidth used when the caller does
+/// not pass one (`bandwidth=None`): Bartlett weights over lags 1..=4, the
+/// same value the pre-0.6.0 signature carried as its literal default.
+const PANEL_DK_DEFAULT_BANDWIDTH: f64 = 4.0;
+
+fn panel_se(
+    caller: &str,
+    se_type: &str,
+    bandwidth: Option<f64>,
+) -> PyResult<tsecon_panel::PanelSeType> {
     use tsecon_panel::PanelSeType::*;
+    // `bandwidth` is the Driscoll-Kraay kernel truncation and acts ONLY
+    // under se_type="driscoll_kraay". An explicitly passed bandwidth under
+    // any other se_type is refused rather than silently absorbed (the same
+    // convention as cv_splits(embargo) and garch_fit(o)): accepting it
+    // would let a caller believe their standard errors carry a serial-
+    // correlation correction when nothing changed. The None sentinel is
+    // what distinguishes "user passed bandwidth" from "default".
     match se_type {
-        "nonrobust" => Ok(NonRobust),
-        "cluster" | "cluster_entity" => Ok(ClusterEntity),
-        "driscoll_kraay" | "dk" => Ok(DriscollKraay { bandwidth }),
+        "nonrobust" | "cluster" | "cluster_entity" => {
+            if let Some(bw) = bandwidth {
+                return Err(PyValueError::new_err(format!(
+                    "{caller}: bandwidth={bw} has no effect under se_type={se_type:?}: \
+                     bandwidth is the Driscoll-Kraay kernel truncation lag, and \
+                     {se_type} standard errors use no kernel, so there is nothing \
+                     for it to truncate and the argument would be silently \
+                     absorbed. Pass se_type=\"driscoll_kraay\" for the bandwidth \
+                     to act, or drop bandwidth to keep {se_type} standard errors."
+                )));
+            }
+            Ok(if se_type == "nonrobust" {
+                NonRobust
+            } else {
+                ClusterEntity
+            })
+        }
+        "driscoll_kraay" | "dk" => Ok(DriscollKraay {
+            bandwidth: bandwidth.unwrap_or(PANEL_DK_DEFAULT_BANDWIDTH),
+        }),
         other => Err(PyValueError::new_err(format!(
             "unknown se_type {other:?}; expected nonrobust/cluster/driscoll_kraay"
         ))),
@@ -4711,16 +4798,19 @@ fn panel_se(se_type: &str, bandwidth: f64) -> PyResult<tsecon_panel::PanelSeType
 /// Fixed-effects (within) panel OLS with panel-robust standard errors.
 ///
 /// `outcome` is `N x T`; `regressors` is `k x N x T`. `se_type`:
-/// "nonrobust", "cluster" (by entity), or "driscoll_kraay" (uses
-/// `bandwidth`). Matches linearmodels PanelOLS conventions.
+/// "nonrobust", "cluster" (by entity), or "driscoll_kraay".
+/// `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
+/// `se_type="driscoll_kraay"` (default when omitted there: 4.0); passing
+/// it explicitly with any other `se_type` **raises** instead of being
+/// silently absorbed. Matches linearmodels PanelOLS conventions.
 #[pyfunction]
-#[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = 4.0))]
+#[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = None))]
 fn panel_fe<'py>(
     py: Python<'py>,
     outcome: numpy::PyReadonlyArray2<'py, f64>,
     regressors: numpy::PyReadonlyArray3<'py, f64>,
     se_type: &str,
-    bandwidth: f64,
+    bandwidth: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_var::tsecon_linalg::faer::Mat;
     let o = outcome.as_array();
@@ -4733,7 +4823,7 @@ fn panel_fe<'py>(
     let data = tsecon_panel::PanelData::balanced(outcome_m, regs).map_err(to_py)?;
     let fit = tsecon_panel::panel_ols_fe(&data).map_err(to_py)?;
     let inf = fit
-        .inference(panel_se(se_type, bandwidth)?)
+        .inference(panel_se("panel_fe", se_type, bandwidth)?)
         .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("params", fit.params.clone().into_pyarray(py))?;
@@ -4750,6 +4840,12 @@ fn panel_fe<'py>(
 /// and the Mei-Sheng-Shi split-panel jackknife
 /// `bias_correction="spj"` (corrected points AND the reference
 /// adjusted-score cluster / Driscoll-Kraay SEs).
+///
+/// `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
+/// `se_type="driscoll_kraay"` (the default se_type; bandwidth defaults to
+/// 4.0 when omitted there). Passing bandwidth explicitly with
+/// `se_type="cluster"`/`"nonrobust"` **raises** instead of being silently
+/// absorbed — those estimators use no kernel.
 ///
 /// JACKKNIFE CAVEAT (measured): the DJ correction removes the O(1/T) bias
 /// but inflates the estimator's finite-sample variance while `se` is kept
@@ -4790,7 +4886,7 @@ fn panel_fe<'py>(
 /// whatever the DK standard errors get wrong at short T (the documented
 /// short-T DK caveat).
 #[pyfunction]
-#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
+#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = None, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
 #[allow(clippy::too_many_arguments)]
 fn panel_lp<'py>(
     py: Python<'py>,
@@ -4799,7 +4895,7 @@ fn panel_lp<'py>(
     horizon: usize,
     n_lag_controls: usize,
     se_type: &str,
-    bandwidth: f64,
+    bandwidth: Option<f64>,
     cumulative: bool,
     jackknife: bool,
     bias_correction: &str,
@@ -4810,8 +4906,11 @@ fn panel_lp<'py>(
     let o = outcome.as_array();
     let outcome_m = Mat::from_fn(o.nrows(), o.ncols(), |i, j| o[(i, j)]);
     let data = tsecon_panel::PanelData::balanced(outcome_m, vec![]).map_err(to_py)?;
-    let mut cfg =
-        tsecon_panel::PanelLpConfig::new(horizon, n_lag_controls, panel_se(se_type, bandwidth)?);
+    let mut cfg = tsecon_panel::PanelLpConfig::new(
+        horizon,
+        n_lag_controls,
+        panel_se("panel_lp", se_type, bandwidth)?,
+    );
     cfg.cumulative = cumulative;
     cfg.jackknife = jackknife;
     cfg.bias_correction = match bias_correction {
@@ -5115,9 +5214,13 @@ fn spectral_detrend(d: &str) -> PyResult<tsecon_spectral::Detrend> {
 }
 
 /// Periodogram power spectral density (one FFT). Matches
-/// `scipy.signal.periodogram` to ~1e-15. Returns `freqs` and `psd`.
+/// `scipy.signal.periodogram` to ~1e-15 — including the default
+/// `detrend="constant"` (mean removal), which is SciPy's own default, so
+/// default call matches default call. Pass `detrend="none"` for the raw
+/// (un-demeaned) periodogram, `"linear"` to remove a least-squares trend.
+/// Returns `freqs` and `psd`.
 #[pyfunction]
-#[pyo3(signature = (x, fs = 1.0, window = "boxcar", detrend = "none"))]
+#[pyo3(signature = (x, fs = 1.0, window = "boxcar", detrend = "constant"))]
 fn periodogram<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -5140,9 +5243,13 @@ fn periodogram<'py>(
 }
 
 /// Welch's averaged-periodogram PSD (periodic Hann, 50% overlap by
-/// default). Matches `scipy.signal.welch`. Returns `freqs` and `psd`.
+/// default). Matches `scipy.signal.welch` — including the default
+/// `detrend="constant"` (per-segment mean removal), which is SciPy's own
+/// default, so default call matches default call. Pass `detrend="none"`
+/// for no detrending, `"linear"` for per-segment trend removal.
+/// Returns `freqs` and `psd`.
 #[pyfunction]
-#[pyo3(signature = (x, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "none"))]
+#[pyo3(signature = (x, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "constant"))]
 fn welch<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -5169,9 +5276,12 @@ fn welch<'py>(
 }
 
 /// Magnitude-squared coherence between two series via Welch cross-spectra.
-/// Matches `scipy.signal.coherence`. Returns `freqs` and `coherence` in [0, 1].
+/// Matches `scipy.signal.coherence` — including the default
+/// `detrend="constant"` (per-segment mean removal), which is SciPy's own
+/// default, so default call matches default call.
+/// Returns `freqs` and `coherence` in [0, 1].
 #[pyfunction]
-#[pyo3(signature = (x, y, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "none"))]
+#[pyo3(signature = (x, y, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "constant"))]
 #[allow(clippy::too_many_arguments)]
 fn coherence<'py>(
     py: Python<'py>,

@@ -33,12 +33,16 @@ detrend     : "none" | "constant" (remove the mean) | "linear" (remove a line)
 ```
 
 Two contract notes that bite in practice. First, the **default `detrend` is
-`"none"`**, unlike SciPy's `"constant"` — a series with a nonzero mean or a
-trend will dump enormous power into the lowest-frequency bins and drown the
-cycles you are hunting, so pass `detrend="constant"` (or `"linear"`) whenever
-`x` is not already zero-mean/detrended. Second, only `"boxcar"` and `"hann"` are
-recognized windows; anything else (`"hamming"`, …) raises `ValueError` rather
-than being silently accepted.
+`"constant"`** (mean removal) — SciPy's own default, so a default tsecon call
+matches a default SciPy call. (Before 0.6.0 the default was `"none"` while the
+docs claimed SciPy parity: a series with mean 5 produced a default-vs-default
+Welch gap of 1678.1 at frequency 0. The default flipped to make reality match
+the documented parity — pass `detrend="none"` explicitly if you want the raw,
+un-demeaned transform.) A *linear trend* is still not removed by default:
+pass `detrend="linear"`, or the trend will dump enormous power into the
+lowest-frequency bins and drown the cycles you are hunting. Second, only
+`"boxcar"` and `"hann"` are recognized windows; anything else (`"hamming"`, …)
+raises `ValueError` rather than being silently accepted.
 
 ---
 
@@ -67,18 +71,19 @@ dominant periodicity — where is the peak, how sharp is it — and when you wan
 finest possible frequency grid from a short record and are willing to eyeball a
 spiky picture. Do **not** use the raw periodogram when you need a *quantitative,
 low-variance* PSD estimate (the height of any single ordinate is essentially
-one noisy draw): reach for `welch`. Do not run it on a series with a trend or
-nonzero mean without setting `detrend` — the leakage from the zero-frequency
-term will dominate everything.
+one noisy draw): reach for `welch`. Do not run it on a series with a *trend*
+without `detrend="linear"` — the default `"constant"` removes only the mean,
+and residual trend leakage from the zero-frequency term will dominate
+everything.
 
 **Key arguments and defaults (and why).** `fs=1.0` sets the sampling rate and
 hence the frequency units (with `fs=1`, `freqs` runs `0 … 0.5` in cycles per
 sample and Nyquist is `0.5`). `window="boxcar"` is no taper — SciPy's periodogram
 default, kept so leakage behaviour matches exactly; pass `window="hann"` to trade
-resolution for lower sidelobes. `detrend="none"` does nothing to the series; use
-`"constant"` to strip the mean or `"linear"` to strip a least-squares trend
-before the FFT. There is no segmenting knob — the periodogram is, by definition,
-one FFT over the entire input.
+resolution for lower sidelobes. `detrend="constant"` (default, SciPy's too)
+strips the mean before the FFT; `"linear"` strips a least-squares trend, and
+`"none"` leaves the series untouched. There is no segmenting knob — the
+periodogram is, by definition, one FFT over the entire input.
 
 **How to read the output.** A dict with two equal-length arrays: `freqs`
 (`0 … fs/2`, length `n//2 + 1`) and `psd` (the density, non-negative
@@ -87,8 +92,9 @@ cycle's frequency; `1/that` is its period. Do not over-interpret the *height* of
 a single ordinate — it is high-variance.
 
 **Failure modes.** Reading one PSD ordinate as a precise number — it is not, its
-sampling variance does not vanish with `n`. Forgetting to detrend, so a mean or
-trend swamps the low-frequency bins. Passing an unsupported window string
+sampling variance does not vanish with `n`. Forgetting `detrend="linear"` on a
+trending series (the default removes only the mean), so the trend swamps the
+low-frequency bins. Passing an unsupported window string
 (`ValueError: unknown window …; expected "boxcar" or "hann"`) or detrend
 (`ValueError: unknown detrend …`). Expecting the peak to sit *exactly* on the
 true frequency — it lands in the nearest FFT bin, `±fs/2n` away.
@@ -159,7 +165,8 @@ less noisy than the raw periodogram, or `nperseg > n` which raises. Setting it
 too small — a heavily smoothed spectrum that merges distinct peaks and
 underestimates a sharp line's height. Averaging over a series whose spectrum is
 non-stationary (the segments are not repeated looks at *one* spectrum). Omitting
-`detrend` on a trending series.
+`detrend="linear"` on a trending series (the default removes only each
+segment's mean).
 
 **Validated against.** `scipy.signal.welch(nperseg=128, detrend=False,
 scaling="density")`, golden fixture `fixtures/spectral.json`, checked in
@@ -258,8 +265,9 @@ series has a strong spectral peak means that peak is *private* to that series.
 **Failure modes.** Using too few segments (large `nperseg` relative to `n`), which
 biases coherence toward 1 — the single-segment limit is *identically* 1. Reading
 coherence as directional or causal (it is symmetric; phase carries the lead-lag).
-Feeding mismatched-length series (raises). Forgetting `detrend` when a shared
-trend would inflate low-frequency coherence spuriously.
+Feeding mismatched-length series (raises). Forgetting `detrend="linear"` when a
+shared *trend* would inflate low-frequency coherence spuriously (the default
+`"constant"` removes only each segment's mean).
 
 **Validated against.** `scipy.signal.coherence(nperseg=128, detrend=False)`,
 golden fixture `fixtures/spectral.json`, checked in
