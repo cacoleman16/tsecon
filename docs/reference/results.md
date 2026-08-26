@@ -127,6 +127,27 @@ pip install 'tsecon[plots]'
 | `IVXTestResults` | `ivx_test` | joint IVX test |
 | [`DSGEResults`](#dsgeresults) | `dsge_solve` | Blanchard-Kahn verdict, `.impulse_response()` |
 
+### Named parameters on the raw dict
+
+`GARCHResults.params_named()` has a raw-dict counterpart: `garch_fit` itself
+returns a `params_named` key — exactly `dict(zip(param_names, params))`, in
+estimator order — so named access does not require the facade:
+
+```python
+fit = tsecon.garch_fit(r)
+fit["params_named"]["omega"]     # named access on the plain dict
+fit["omega"]                     # deliberate KeyError — see below
+```
+
+The trap this closes: parameters live in the `params`/`param_names`
+*parallel arrays*, so `fit["omega"]` raises and the natural
+`fit.get("omega")` guard silently yields `None` — which downstream reads as
+a failed fit. `params_named` is additive (every existing key is untouched)
+and appears on every fit path, boundary fits and Student-*t* fits included.
+Estimators that already return flat named scalars (`gas_volatility`'s
+`omega`/`a`/`b`, `dcs_local_level`'s `kappa`/`scale`) have no parallel-array
+trap and deliberately gain no such key.
+
 ---
 
 ## `VARResults`

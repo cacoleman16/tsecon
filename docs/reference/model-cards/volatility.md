@@ -51,7 +51,12 @@ exactly), so decimal returns and percent returns give the same model with
 
 **How to read the output.** `params` are named by `param_names`
 (`omega, alpha[1], beta[1]`, with `mu` prepended under `mean="constant"` and
-`nu` appended for *t*). Trust **`se_robust`**
+`nu` appended for *t*), and `params_named` is the same estimates as a
+`{name: value}` dict — exactly `dict(zip(param_names, params))`. Use
+`fit["params_named"]["omega"]` for named access on the raw dict:
+`fit["omega"]` is a deliberate `KeyError`, and a `.get("omega")` guard
+silently yields a `None` that reads like a failed fit. (The results facade's
+`GARCHResults.params_named()` method returns the same mapping.) Trust **`se_robust`**
 (Bollerslev-Wooldridge) over `se_mle` unless you believe the density.
 `conditional_volatility` is the filtered σ_t with the standard GARCH filter
 timing (matching `arch`): **`conditional_volatility[t]` is the one-step-ahead
@@ -291,7 +296,22 @@ that. Use CCC for a fast, parsimonious baseline; use DCC when correlations
 plausibly rise together in stress (portfolio risk, contagion). Not for very
 large k without regularization.
 
-**Key arguments.** `ccc_garch` takes only `returns` (T×k). `dcc_garch` adds
+**Key arguments.** All three entry points share a configurable univariate
+first stage (0.5 build-out; every bare call is bit-identical to earlier
+releases): `vol`/`mean`/`p`/`o`/`q` with exactly `garch_fit`'s meanings and
+defaults (`"garch"`, `"zero"`, 1/1/1), plus **`univariate_dist`**
+(`"normal"`|`"t"`) — the per-series innovation density. It is deliberately
+*not* named `dist`, because `dcc_garch`'s existing `dist=` configures the
+**second-stage correlation likelihood**, a different object: `dist="t"`
+makes the *joint* standardized residuals Student-t in step two while step
+one stays whatever `univariate_dist` says (Normal QMLE by default — the
+standard two-step convention), and the two knobs mix freely (e.g.
+`vol="gjr", dist="t"`). `ccc_garch` additionally takes
+`forecast_horizon=h`, which adds `covariance_forecast` (`(h, k, k)`) and
+`variance_forecast` (`(h, k)`); because `R` is constant these are analytic
+and **exact at every horizon** (Bollerslev 1990) — no DCC-style h ≥ 2
+approximation — and the variance forecasts are identical to each series'
+own `garch_fit(..., forecast_horizon=h)` path. `dcc_garch` adds
 three opt-ins (the bare call is bit-identical to earlier releases):
 
 - `variant="dcc"|"cdcc"|"adcc"`. `"cdcc"` is Aielli's (2013) corrected DCC:
@@ -317,11 +337,14 @@ three opt-ins (the bare call is bit-identical to earlier releases):
   (`(h, k, k)`) and `variance_forecast` (`(h, k)`).
 
 `dcc_test(returns, lags=5)` runs the Engle-Sheppard (2001) constant-correlation
-test: GARCH(1,1) per series, joint standardization by the *symmetric* inverse
-square root of the constant correlation, then one pooled regression of the
-stacked off-diagonal outer products on a constant and `lags` of themselves;
-under H0 `stat` ~ χ²(`lags + 1`). The diagonal outer products are excluded on
-purpose so univariate GARCH misfit cannot masquerade as correlation dynamics.
+test: a univariate GARCH per series (GARCH(1,1) by default; the same
+`vol`/`mean`/`univariate_dist`/`p`/`o`/`q` kwargs as above, so the diagnostic
+can run under the exact first stage you intend to fit), joint standardization
+by the *symmetric* inverse square root of the constant correlation, then one
+pooled regression of the stacked off-diagonal outer products on a constant
+and `lags` of themselves; under H0 `stat` ~ χ²(`lags + 1`). The diagonal
+outer products are excluded on purpose so univariate GARCH misfit cannot
+masquerade as correlation dynamics.
 
 **How to read the output.** CCC returns the constant `correlation` matrix and
 `loglik`. DCC returns `a, b, g` (dynamics; `g` is structurally 0.0 off-ADCC),
@@ -329,15 +352,27 @@ purpose so univariate GARCH misfit cannot masquerade as correlation dynamics.
 `converged`, `nu` (Student-t only), `correlation` (the full in-sample path,
 `(T, k, k)` — `np.asarray(r["correlation"])`), and `correlation_last`
 (= `correlation[-1]`). `a + b` near 1 means correlations move slowly and
-persistently.
+persistently. **Both** CCC and DCC also return the pieces of `H_t` itself
+(0.5 build-out): `sigma2` (`(T, k)` — the per-series conditional variance
+paths, exactly each series' own `garch_fit` filter) and `covariance`
+(`(T, k, k)` — the in-sample conditional covariance path
+`H_t = D_t R_t D_t`, with `R_t` the constant `R` for CCC), satisfying the
+factorization *exactly* against the returned correlation path and
+`sigma2` — asserted bitwise in the test suite, so the two surfaces cannot
+drift apart.
 
 **The timing convention (read before comparing packages).** `correlation[t]`
 is `R_t` *given information through t−1*: the recursion builds `Q_t` from
 `z_{t-1}` and `Q_{t-1}`, with `Q_0 = qbar` (so `correlation[0]` is exactly
-`corr(qbar)` — it has consumed no data). `correlation_last` is therefore the
+`corr(qbar)` — it has consumed no data). `sigma2[t]` and
+`covariance[t] = H_t` follow the **same** convention — the univariate filter
+builds `sigma2_t` from `eps_{t−1}` and `sigma2_{t−1}` (the `arch`/`garch_fit`
+filter timing) — so `H_t` conditions on information through t−1 in both
+factors. `correlation_last` is therefore the
 last **in-sample** conditional correlation — not stale, and not a forecast.
 The one-step-ahead `R_{T+1}` additionally uses the final residual `z_T`; it
-is `correlation_forecast[0]`, and it differs from `correlation_last`.
+is `correlation_forecast[0]`, and it differs from `correlation_last`
+(likewise `covariance[-1]` differs from `covariance_forecast[0]`).
 
 **Forecasts.** `correlation_forecast[0]` (h = 1) is exact in the information
 set. For h ≥ 2 there is **no closed form** — the correlation normalization

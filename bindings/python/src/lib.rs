@@ -2147,10 +2147,11 @@ fn theta_forecast<'py>(
 /// coefficients unchanged — bit-exactly for power-of-two `c`) instead of
 /// changing it; decimal and percent returns give the same model.
 ///
-/// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
-/// `se_mle`, `se_robust`, `se_valid`, `boundary`, `boundary_note`,
-/// `converged`, `conditional_volatility`, `std_residuals`, and
-/// `variance_forecast` when `forecast_horizon > 0`.
+/// Returns dict keys: `params`, `param_names`, `params_named` (the
+/// `{name: value}` dict of the same estimates — see below), `loglik`,
+/// `aic`, `bic`, `se_mle`, `se_robust`, `se_valid`, `boundary`,
+/// `boundary_note`, `converged`, `conditional_volatility`,
+/// `std_residuals`, and `variance_forecast` when `forecast_horizon > 0`.
 ///
 /// **Filter timing** (matches `arch`): `conditional_volatility[t]` is the
 /// one-step-ahead volatility FOR period t, formed from information through
@@ -2188,6 +2189,14 @@ fn theta_forecast<'py>(
 /// m = 1..horizon — it carries no interval or coverage level, and none
 /// is implied (forecast distributions for GARCH variance paths require
 /// simulation, which is not yet exposed).
+///
+/// **Named access.** `params_named` is the same estimates as a
+/// `{name: value}` dict — exactly `dict(zip(param_names, params))`, in
+/// estimator order. Use `fit["params_named"]["omega"]` for named access
+/// on the raw dict: `fit["omega"]` is (deliberately) a `KeyError`, and a
+/// `.get("omega")` guard silently yields `None`/NaN that looks like a
+/// failed fit. The results facade's `GARCHResults.params_named()` method
+/// returns the same mapping.
 #[pyfunction]
 #[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = 1, q = 1, forecast_horizon = 0))]
 #[allow(clippy::too_many_arguments)]
@@ -2202,42 +2211,18 @@ fn garch_fit<'py>(
     q: usize,
     forecast_horizon: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    use tsecon_garch::{DistSpec, GarchModel, GarchSpec, MeanSpec, VolSpec};
-    let spec = GarchSpec {
-        mean: match mean {
-            "zero" => MeanSpec::Zero,
-            "constant" => MeanSpec::Constant,
-            other => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown mean {other:?}; expected zero/constant"
-                )))
-            }
-        },
-        vol: match vol {
-            "garch" => VolSpec::Garch { p, q },
-            "gjr" => VolSpec::Gjr { p, o, q },
-            "egarch" => VolSpec::Egarch { p, o, q },
-            other => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown vol {other:?}; expected garch/gjr/egarch"
-                )))
-            }
-        },
-        dist: match dist {
-            "normal" => DistSpec::Normal,
-            "t" => DistSpec::StudentT,
-            other => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown dist {other:?}; expected normal/t"
-                )))
-            }
-        },
-    };
+    use tsecon_garch::GarchModel;
+    let spec = parse_garch_spec(vol, mean, dist, p, o, q, "dist")?;
     let model = GarchModel::new(&vec1(&y), spec).map_err(to_py)?;
     let r = model.fit().map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("params", r.params.clone().into_pyarray(py))?;
     d.set_item("param_names", r.param_names.clone())?;
+    let named = PyDict::new(py);
+    for (name, value) in r.param_names.iter().zip(r.params.iter()) {
+        named.set_item(name, *value)?;
+    }
+    d.set_item("params_named", named)?;
     d.set_item("loglik", r.loglik)?;
     d.set_item("aic", r.aic)?;
     d.set_item("bic", r.bic)?;
@@ -5630,12 +5615,60 @@ fn umidas<'py>(
     Ok(d)
 }
 
-fn garch11_spec() -> tsecon_garch::GarchSpec {
-    tsecon_garch::GarchSpec {
-        mean: tsecon_garch::MeanSpec::Zero,
-        vol: tsecon_garch::VolSpec::Garch { p: 1, q: 1 },
-        dist: tsecon_garch::DistSpec::Normal,
-    }
+/// Parses the univariate GARCH specification strings shared by `garch_fit`
+/// and the multivariate first stages (`ccc_garch`/`dcc_garch`/`dcc_test`).
+///
+/// `dist_kw` names the distribution keyword in error messages: `"dist"` for
+/// `garch_fit`, `"univariate_dist"` for the multivariate entry points —
+/// where `dcc_garch`'s separate `dist=` selects the second-stage
+/// *correlation* likelihood, not the per-series innovation density.
+fn parse_garch_spec(
+    vol: &str,
+    mean: &str,
+    dist: &str,
+    p: usize,
+    o: usize,
+    q: usize,
+    dist_kw: &str,
+) -> PyResult<tsecon_garch::GarchSpec> {
+    use tsecon_garch::{DistSpec, GarchSpec, MeanSpec, VolSpec};
+    Ok(GarchSpec {
+        mean: match mean {
+            "zero" => MeanSpec::Zero,
+            "constant" => MeanSpec::Constant,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown mean {other:?}; expected zero/constant"
+                )))
+            }
+        },
+        vol: match vol {
+            "garch" => VolSpec::Garch { p, q },
+            "gjr" => VolSpec::Gjr { p, o, q },
+            "egarch" => VolSpec::Egarch { p, o, q },
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown vol {other:?}; expected garch/gjr/egarch"
+                )))
+            }
+        },
+        dist: match dist {
+            "normal" => DistSpec::Normal,
+            "t" => DistSpec::StudentT,
+            other => {
+                let note = if dist_kw == "dist" {
+                    ""
+                } else {
+                    " (univariate_dist is the per-series innovation density \
+                     of the first stage; dcc_garch's separate dist= selects \
+                     the second-stage correlation likelihood)"
+                };
+                return Err(PyValueError::new_err(format!(
+                    "unknown {dist_kw} {other:?}; expected normal/t{note}"
+                )));
+            }
+        },
+    })
 }
 
 fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
@@ -5643,21 +5676,91 @@ fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
     (0..a.ncols()).map(|j| a.column(j).to_vec()).collect()
 }
 
-/// CCC-GARCH (Bollerslev 1990): a GARCH(1,1) per series with a constant
-/// conditional correlation. `returns` is `T x k`. Returns the correlation
-/// matrix and the log-likelihood.
+/// CCC-GARCH (Bollerslev 1990): a univariate GARCH per series with a
+/// *constant* conditional correlation `R`, so `H_t = D_t R D_t` with
+/// `D_t = diag(sigma_{1,t}, ..., sigma_{k,t})`. `returns` is `T x k`.
+///
+/// The univariate stage defaults to the historical zero-mean Normal
+/// GARCH(1,1) — the default call is bit-identical to earlier releases —
+/// and is configurable with the same knobs as `garch_fit`: `vol`
+/// ("garch"/"gjr"/"egarch"), `mean` ("zero"/"constant"), `p`, `o`, `q`,
+/// and `univariate_dist` ("normal"/"t"), the per-series innovation
+/// density. The kwarg is named `univariate_dist` (not `dist`) on purpose,
+/// to stay distinct from `dcc_garch`'s `dist=`, which configures the
+/// second-stage correlation likelihood — a different object.
+///
+/// Returns dict keys: `correlation` (the constant `k x k` matrix `R`),
+/// `loglik`, `sigma2` (`(T, k)` nested list — the per-series conditional
+/// variance paths of the univariate stage), `covariance` (`(T, k, k)`
+/// nested list — the in-sample conditional covariance path
+/// `H_t = D_t R D_t`; `np.asarray(r["covariance"])` gives the 3-D array,
+/// `[t][i][j]` like `dcc_garch`'s `correlation`), and — when
+/// `forecast_horizon > 0` — `covariance_forecast` (`(horizon, k, k)`
+/// nested list, entry `[h-1]` the h-step-ahead matrix `H_{T+h}`) plus
+/// `variance_forecast` (`(horizon, k)` per-series analytic conditional
+/// variance forecasts, identical to each series' own
+/// `garch_fit(..., forecast_horizon=h)` path).
+///
+/// TIMING CONVENTION (identical to `dcc_garch`'s). `sigma2[t]` — and
+/// therefore `covariance[t] = H_t` — conditions on information through
+/// t-1: the univariate filter builds `sigma2_t` from `eps_{t-1}` and
+/// `sigma2_{t-1}` (the standard GARCH filter timing, matching `arch` and
+/// `garch_fit`), and `R` is constant. `covariance[-1]` is the last
+/// IN-SAMPLE matrix, not a forecast; the one-step-ahead `H_{T+1}` is
+/// `covariance_forecast[0]`.
+///
+/// FORECAST CONVENTION. Because `R` never moves, the CCC covariance
+/// forecast is analytic and exact at *every* horizon (Bollerslev 1990):
+/// `H_{T+m} = D_{T+m} R D_{T+m}` with `D_{T+m}` from the per-series
+/// analytic variance forecasts — no approximation enters at any h,
+/// unlike DCC's h >= 2 normalization approximation.
 #[pyfunction]
+#[pyo3(signature = (returns, forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[allow(clippy::too_many_arguments)]
 fn ccc_garch<'py>(
     py: Python<'py>,
     returns: numpy::PyReadonlyArray2<'py, f64>,
+    forecast_horizon: usize,
+    vol: &str,
+    mean: &str,
+    univariate_dist: &str,
+    p: usize,
+    o: usize,
+    q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let series = returns_to_series(&returns);
-    let fit = tsecon_mgarch::CccGarch::new(garch11_spec())
+    let fit = tsecon_mgarch::CccGarch::new(spec)
         .fit(&series)
         .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("correlation", mat_to_vec2_bayes(&fit.correlation))?;
     d.set_item("loglik", fit.loglik)?;
+    d.set_item("sigma2", fit.stage.sigma2.clone())?;
+    let mut cov = Vec::with_capacity(fit.nobs());
+    for t in 0..fit.nobs() {
+        cov.push(mat_to_vec2_bayes(
+            &fit.conditional_covariance(t).map_err(to_py)?,
+        ));
+    }
+    d.set_item("covariance", cov)?;
+    if forecast_horizon > 0 {
+        let fc = fit.forecast_covariance(forecast_horizon).map_err(to_py)?;
+        d.set_item(
+            "covariance_forecast",
+            fc.iter().map(mat_to_vec2_bayes).collect::<Vec<_>>(),
+        )?;
+        // Per-series analytic variance paths, re-shaped time-major to match
+        // dcc_garch's `variance_forecast` convention.
+        let mut var_paths = Vec::with_capacity(fit.k());
+        for res in &fit.stage.univariate {
+            var_paths.push(res.forecast_variance(forecast_horizon).map_err(to_py)?);
+        }
+        let variance: Vec<Vec<f64>> = (0..forecast_horizon)
+            .map(|m| var_paths.iter().map(|p| p[m]).collect())
+            .collect();
+        d.set_item("variance_forecast", variance)?;
+    }
     Ok(d)
 }
 
@@ -5676,11 +5779,25 @@ fn ccc_garch<'py>(
 /// `nu`). The default call (`variant="dcc"`, `dist="normal"`) is
 /// bit-identical to earlier releases; all new keys are additive.
 ///
+/// The univariate first stage defaults to the historical zero-mean Normal
+/// GARCH(1,1) and is configurable with the same knobs as `garch_fit`:
+/// `vol` ("garch"/"gjr"/"egarch"), `mean` ("zero"/"constant"), `p`, `o`,
+/// `q`, and `univariate_dist` ("normal"/"t"), the per-series innovation
+/// density. **`univariate_dist` and `dist` are different objects**: `dist`
+/// is the second-stage likelihood over the *standardized joint residuals*
+/// (the correlation dynamics), `univariate_dist` the per-series density of
+/// stage one — you can (and often should) mix them, e.g.
+/// `vol="gjr", dist="t"` with Normal-QMLE univariate stages.
+///
 /// Returns dict keys: `a`, `b`, `g` (0.0 unless `variant="adcc"`), `qbar`,
 /// `loglik`, `converged`, `variant`, `dist`, `correlation` (the full
 /// in-sample conditional correlation path, `(T, k, k)` as a nested list —
 /// `np.asarray(r["correlation"])` gives the 3-D array, `[t][i][j]` like
-/// `var_irf`), `correlation_last`, `nu` (only when `dist="t"`), and — when
+/// `var_irf`), `correlation_last`, `sigma2` (`(T, k)` nested list — the
+/// per-series conditional variance paths of the univariate stage),
+/// `covariance` (`(T, k, k)` nested list — the in-sample conditional
+/// covariance path `H_t = D_t R_t D_t`, `D_t = diag(sigma_{i,t})`),
+/// `nu` (only when `dist="t"`), and — when
 /// `forecast_horizon > 0` — `correlation_forecast` and
 /// `covariance_forecast` (`(horizon, k, k)` nested lists, entry `[h-1]` is
 /// the h-step-ahead matrix) plus `variance_forecast`
@@ -5689,12 +5806,17 @@ fn ccc_garch<'py>(
 /// TIMING CONVENTION (read before comparing R's). `correlation[t]` is
 /// `R_t`, the conditional correlation *given information through t-1*: the
 /// recursion builds `Q_t` from `z_{t-1}` and `Q_{t-1}` (with `Q_0 = Qbar`),
-/// the standard filter convention. `correlation_last` is simply the last
+/// the standard filter convention. `sigma2[t]` and
+/// `covariance[t] = H_t = D_t R_t D_t` follow the SAME convention — the
+/// univariate filter builds `sigma2_t` from `eps_{t-1}` and `sigma2_{t-1}`
+/// (matching `arch` and `garch_fit`), so `H_t` conditions on information
+/// through t-1 in both factors. `correlation_last` is simply the last
 /// in-sample matrix `correlation[-1]` = `R_{T-1}` (0-indexed) — it
 /// conditions on information through T-2 and is NOT stale and NOT a
 /// forecast. The one-step-ahead forecast `R_{T+1}` additionally uses the
 /// final residual `z_T`; it is `correlation_forecast[0]`, which therefore
-/// differs from `correlation_last`.
+/// differs from `correlation_last` (and `covariance[-1]` likewise differs
+/// from `covariance_forecast[0]`).
 ///
 /// FORECAST CONVENTION. `correlation_forecast[0]` (h = 1) is exact in the
 /// information set: `Q_{T+1} = (1-a-b)Qbar + a z_T z_T' + b Q_T`,
@@ -5710,15 +5832,23 @@ fn ccc_garch<'py>(
 /// applies (the asymmetric term cancels against its targeting intercept
 /// in expectation); under `"cdcc"` S replaces Qbar.
 #[pyfunction]
-#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0))]
+#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[allow(clippy::too_many_arguments)]
 fn dcc_garch<'py>(
     py: Python<'py>,
     returns: numpy::PyReadonlyArray2<'py, f64>,
     variant: &str,
     dist: &str,
     forecast_horizon: usize,
+    vol: &str,
+    mean: &str,
+    univariate_dist: &str,
+    p: usize,
+    o: usize,
+    q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_mgarch::{CorrDist, DccVariant};
+    let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let v = match variant {
         "dcc" => DccVariant::Dcc,
         "cdcc" => DccVariant::Cdcc,
@@ -5742,7 +5872,7 @@ fn dcc_garch<'py>(
         }
     };
     let series = returns_to_series(&returns);
-    let fit = tsecon_mgarch::DccGarch::new(garch11_spec())
+    let fit = tsecon_mgarch::DccGarch::new(spec)
         .with_variant(v)
         .with_dist(cd)
         .fit(&series)
@@ -5769,6 +5899,14 @@ fn dcc_garch<'py>(
     if let Some(last) = fit.correlation_path.last() {
         d.set_item("correlation_last", mat_to_vec2_bayes(last))?;
     }
+    d.set_item("sigma2", fit.stage.sigma2.clone())?;
+    let mut cov = Vec::with_capacity(fit.nobs());
+    for t in 0..fit.nobs() {
+        cov.push(mat_to_vec2_bayes(
+            &fit.conditional_covariance(t).map_err(to_py)?,
+        ));
+    }
+    d.set_item("covariance", cov)?;
     if forecast_horizon > 0 {
         let fc = fit.forecast(forecast_horizon).map_err(to_py)?;
         d.set_item(
@@ -5791,14 +5929,20 @@ fn dcc_garch<'py>(
 }
 
 /// Engle-Sheppard (2001) test of constant conditional correlation — the
-/// CCC-vs-DCC diagnostic. `returns` is `T x k` (k >= 2); a GARCH(1,1) is
-/// fitted to each series (the same first stage `ccc_garch`/`dcc_garch`
-/// use), the residuals are jointly standardized by the *symmetric* inverse
-/// square root of the constant correlation matrix, and the stacked
-/// off-diagonal outer products are regressed on a constant and `lags` of
-/// themselves (one pooled regression across all pairs). Under H0 (constant
-/// correlation) all coefficients are zero and `stat` is asymptotically
-/// chi-squared with `df = lags + 1` degrees of freedom.
+/// CCC-vs-DCC diagnostic. `returns` is `T x k` (k >= 2); a univariate
+/// GARCH is fitted to each series (the same first stage
+/// `ccc_garch`/`dcc_garch` use — zero-mean Normal GARCH(1,1) by default,
+/// configurable with the same `vol`/`mean`/`univariate_dist`/`p`/`o`/`q`
+/// kwargs so the diagnostic can run under the exact univariate spec you
+/// intend to fit), the residuals are jointly standardized by the
+/// *symmetric* inverse square root of the constant correlation matrix,
+/// and the stacked off-diagonal outer products are regressed on a
+/// constant and `lags` of themselves (one pooled regression across all
+/// pairs). Under H0 (constant correlation) all coefficients are zero and
+/// `stat` is asymptotically chi-squared with `df = lags + 1` degrees of
+/// freedom. `univariate_dist` is the per-series innovation density —
+/// named to match `dcc_garch`, whose separate `dist=` is the second-stage
+/// correlation likelihood (a different object, not part of this test).
 ///
 /// Returns dict keys: `stat` (the Wald statistic), `df`, `p_value` (small
 /// values reject constant correlation in favor of DCC-type dynamics),
@@ -5807,15 +5951,22 @@ fn dcc_garch<'py>(
 /// purpose, so univariate GARCH misfit does not masquerade as correlation
 /// dynamics.
 #[pyfunction]
-#[pyo3(signature = (returns, lags = 5))]
+#[pyo3(signature = (returns, lags = 5, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[allow(clippy::too_many_arguments)]
 fn dcc_test<'py>(
     py: Python<'py>,
     returns: numpy::PyReadonlyArray2<'py, f64>,
     lags: usize,
+    vol: &str,
+    mean: &str,
+    univariate_dist: &str,
+    p: usize,
+    o: usize,
+    q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let series = returns_to_series(&returns);
-    let r =
-        tsecon_mgarch::constant_correlation_test(&series, garch11_spec(), lags).map_err(to_py)?;
+    let r = tsecon_mgarch::constant_correlation_test(&series, spec, lags).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("stat", r.stat)?;
     d.set_item("df", r.df)?;
