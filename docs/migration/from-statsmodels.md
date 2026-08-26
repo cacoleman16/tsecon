@@ -126,8 +126,8 @@ constant column), not pre-computed residuals.
 | `res.forecast_interval(y, h)` | `var_forecast(data, lags, steps, alpha=0.05)` | Dict `{"point", "lower", "upper"}`. |
 | `res.test_causality(caused, causing)` | `var_granger(data, caused, causing, lags)` | F-test; matches `statsmodels`' `test_causality`. Index lists, not names. |
 | `grangercausalitytests(...)` | `var_granger(...)` | Same test, VAR-based. |
-| `coint_johansen(data, det, k_ar_diff)` | `johansen(data, k_ar_diff=1)` | Trace and max-eig stats + selected ranks at 5%. |
-| `VECM(data, k_ar_diff, coint_rank).fit()` | `vecm(data, k_ar_diff=1, coint_rank=1)` | ML estimation; `alpha`, `beta`, `gamma`, `sigma_u`, `llf`. |
+| `coint_johansen(data, det, k_ar_diff)` | `johansen(data, k_ar_diff=1)` | Trace and max-eig stats + selected ranks at 5% + `evec`. Fixed `det_order=0` (unrestricted constant) — the `vecm(..., deterministic="co")` case, not `vecm`'s `"n"` default. |
+| `VECM(data, k_ar_diff, coint_rank, deterministic).fit()` | `vecm(data, k_ar_diff=1, coint_rank=1, deterministic="n")` | ML estimation; `alpha`, `beta`, `gamma`, `det_coef`, `sigma_u`, `llf`. `deterministic="n"` (default) or `"co"`; `"ci"`/`"li"`/`"lo"`/seasons not implemented. Use `"co"` when the rank came from `johansen`. |
 | `coint(y0, y1)` (Engle-Granger) | — | Engle-Granger two-step: **roadmap**. Use `johansen`. |
 | `DynamicFactor`, `DynamicFactorMQ` | `dfm_nowcast(data, n_factors, factor_order)` | Two-step DGR (2011) nowcaster with a ragged edge; `factor_model` for static PCA factors + Bai-Ng selection. Full MLE mixed-frequency DFM: **roadmap**. |
 | `VARMAX` | — | **Roadmap.** |

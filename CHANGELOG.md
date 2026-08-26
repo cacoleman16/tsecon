@@ -157,6 +157,52 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   with a statsmodels absence canary: statsmodels ships neither a Hamilton
   filter nor any BN decomposition. New model-card section
   (diagnostics.md) and three validation-matrix rows with honest grades.
+### Added
+
+- **`vecm(..., deterministic=)`** (field item 12) — the VECM now accepts
+  the deterministic-terms case by name: `"n"` (default — no deterministic
+  terms, the historical behavior, unchanged) and `"co"` (an unrestricted
+  constant outside the cointegration relation, statsmodels
+  `deterministic="co"` — **the case `johansen`'s `det_order=0` convention
+  assumes**). Under `"co"` each short-run equation gains an intercept
+  (returned in the new `det_coef` key; `k x 0` under `"n"`) and the
+  reduced-rank step partials the constant out alongside the lagged
+  differences, so the estimated cointegrating space matches the Johansen
+  rank test's exactly. The restricted statsmodels cases
+  (`"ci"`/`"li"`/`"lo"`, seasons) are refused with an error naming what is
+  supported (a documented follow-up in ROADMAP build-later). Golden-pinned
+  against statsmodels `VECM` under both cases (α/β/Γ/`det_coef`/Σᵤ/llf at
+  1e-6) on seeded drifting cointegrated data
+  (`fixtures/vecm_deterministic.json`), plus the reconciliation the field
+  reporter asked for: `deterministic="co"`'s β spans the `johansen`
+  eigenvector direction at cosine 1 ± 1e-10, while the `"n"` default's β
+  diverges on drifting data (cosine ~0.63 on the pinned draw; the report
+  measured ~0.57) — pinned as documented behavior in both Rust and Python
+  regression tests. Rust core: `fit_vecm_det` + `VecmDeterministic`
+  (`fit_vecm` unchanged as the `"n"` case).
+- **`johansen` now returns `evec`** — the S₁₁-orthonormal eigenvector
+  matrix (k×k, columns in decreasing-eigenvalue order, sign-arbitrary),
+  so the cointegrating directions the test works with are inspectable and
+  directly comparable to a `vecm(..., deterministic="co")` fit; validated
+  against statsmodels `coint_johansen.evec` up to column sign.
+
+### Fixed
+
+- **`vecm` / `johansen` deterministic-case documentation** (field item 12,
+  the correctness trap): `vecm`'s docstring never said *which* statsmodels
+  deterministic case it fits while `johansen`'s documented `det_order=0`
+  (an unrestricted constant) — a caller reading the two against each other
+  on drifting log levels got cointegrating vectors a cosine of ~0.57 apart
+  with no warning. Both docstrings (and `.pyi` stubs, the model card, and
+  the statsmodels migration table) now name their exact case —
+  `vecm` defaults to statsmodels `deterministic="n"` (no deterministic
+  terms; verified live against statsmodels 0.14.6 at ~1e-13, with `"co"`,
+  `"ci"`, `"colo"`, `"cili"` all rejected at O(1)) and `johansen` is the
+  unrestricted-constant `det_order=0` — and each carries a cross-reference
+  warning that the other's case differs, naming `deterministic="co"` as
+  the matching fit. The model-card example now routes
+  `johansen -> vecm(..., deterministic="co")` instead of silently
+  demonstrating the trap.
 
 ## [0.5.0] - 2026-08-25
 
