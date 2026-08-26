@@ -39,13 +39,14 @@ def test_structural_fevd_rows_sum_to_one():
 
 def test_structural_fevd_recursive_matches_var_fevd():
     # default impact = lower Cholesky => must reproduce the recursive var_fevd.
-    # Layouts differ: structural_fevd is [h=0..H][var][shock] (H+1 entries),
-    # var_fevd is [var][h=0..H-1][shock]; align on the first H horizons.
+    # Both are [h][var][shock] since 0.6.0 (var_fevd used to leak a
+    # variable-major layout); only the horizon counts differ —
+    # structural_fevd has H+1 entries (h = 0..H), var_fevd has H — so align
+    # on the first H horizons with no transpose.
     H = 8
     got = np.asarray(tsecon.structural_fevd(DATA, lags=2, horizon=H)["fevd"])
     ref = np.asarray(tsecon.var_fevd(DATA, lags=2, horizon=H))
-    aligned = np.transpose(got[:H], (1, 0, 2))          # -> [var][h][shock]
-    assert np.allclose(aligned, ref, atol=1e-8)
+    assert np.allclose(got[:H], ref, atol=1e-8)
 
 
 # --------------------------------------------------------------------------- #

@@ -83,7 +83,8 @@ var_block = {
     "names": ["Demand", "Output", "Policy rate"],
     "orth": [[[round(v, 4) for v in row] for row in m] for m in tsecon.var_irf(vdata, lags=2, horizon=16, orth=True)],
     "nonorth": [[[round(v, 4) for v in row] for row in m] for m in tsecon.var_irf(vdata, lags=2, horizon=16, orth=False)],
-    "fevd_output": [[round(v, 4) for v in row] for row in np.array(tsecon.var_fevd(vdata, lags=2, horizon=16))[1]],
+    # var_fevd is [horizon][variable][shock] (0.6.0 layout); take variable 1 (output).
+    "fevd_output": [[round(v, 4) for v in row] for row in np.array(tsecon.var_fevd(vdata, lags=2, horizon=16))[:, 1, :]],
 }
 
 # 5 · Bayesian shrinkage: tightness dial

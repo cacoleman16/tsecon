@@ -42,9 +42,16 @@ below does). This is a real porting gotcha: the `arch` package defaults to a
 *constant* mean, so `arch_model(r).fit()` and `tsecon.garch_fit(r)` are not the
 same model unless `r` is already demeaned or you say `mean="constant"`.
 `dist="normal"` gives clean QMLE, switch to `dist="t"` when standardized
-residuals stay fat-tailed. `p=1, q=1` is the near-universal order; `o=1` turns
-on the asymmetry term for GJR/EGARCH. `forecast_horizon` returns the multi-step
-variance path. Units do not matter: estimation is scale-adaptive (the optimizer
+residuals stay fat-tailed. `p=1, q=1` is the near-universal order; `o` is the
+asymmetry order, and only GJR/EGARCH have an asymmetry term — its default is
+`None` (no asymmetry term under `vol="garch"`, one asymmetry lag under
+`vol="gjr"`/`"egarch"`), and passing `o > 0` with `vol="garch"` **raises**
+(0.6.0) instead of being silently discarded. That refusal guards a second
+`arch` porting gotcha: `arch_model(y, p=1, o=1, q=1)` silently *switches* the
+volatility process to GJR-GARCH, so before 0.6.0
+`tsecon.garch_fit(y, p=1, o=1, q=1)` and that `arch` call were different
+models with no warning — now tsecon insists you say `vol="gjr"` when you mean
+GJR. `forecast_horizon` returns the multi-step variance path. Units do not matter: estimation is scale-adaptive (the optimizer
 runs on an internally standardized series and the optimum is mapped back
 exactly), so decimal returns and percent returns give the same model with
 `omega` in the units of `y²` — no `rescale=` argument is needed or offered.

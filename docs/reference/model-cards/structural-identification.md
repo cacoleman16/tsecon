@@ -1243,8 +1243,10 @@ factor when `impact=None`).
 
 **Failure modes.** Passing an $A_0$ that does not satisfy $A_0 A_0' = \Sigma_u$
 (the row sums stay 1 by construction, but the shares are then meaningless);
-reading a recursive FEVD for a non-recursive shock; confusing the `[h][i][j]`
-layout (variable then shock) with `var_fevd`'s `[i][h][j]`.
+reading a recursive FEVD for a non-recursive shock; off-by-one horizon counts —
+`structural_fevd`'s `fevd` has `horizon + 1` outer entries (steps 0..horizon)
+where `var_fevd` has `horizon`; the axis order itself is no trap since 0.6.0:
+both are `[h][i][j]` (`var_fevd` was variable-major before then).
 
 **Validated against.** statsmodels `VARResults.fevd` and the independent
 `tsecon-var` `var_fevd`, an exact cross-implementation golden for the Cholesky

@@ -52,7 +52,7 @@ callable now.
 | `var y1 y2 y3, lags(1/p)` | `var_fit(data, lags=p, trend="c")` | `data` is `T x k`; `noconstant` → `trend="n"`, `trend` option → `trend="t"`. |
 | `irf create ..., step(h)` then `irf graph oirf` | `var_irf(data, lags, horizon=h, orth=True)` | Orthogonalized IRFs, nested list `[h][response][shock]`. |
 | `irf graph irf` (non-orthogonal) | `var_irf(..., orth=False)` | |
-| `irf table fevd` | `var_fevd(data, lags, horizon=h)` | `[variable][horizon][shock]`; sums to 1 across shocks. |
+| `irf table fevd` | `var_fevd(data, lags, horizon=h)` | `[horizon][variable][shock]`, horizon-first like the IRFs; sums to 1 across shocks. |
 | `irf ..., cumulative` | `var_irf(..., cumulative=True)` | |
 | `vargranger` | `var_granger(data, caused, causing, lags)` | F-test; pass integer column indices. |
 | `fcast compute, step(h)` | `var_forecast(data, lags, steps=h, alpha=0.05)` | `{"point", "lower", "upper"}`. |
@@ -82,7 +82,7 @@ callable now.
 |---|---|---|
 | `arima y, arima(p,d,q)` | `arima_fit(y, p, d, q, constant=True)` | Exact-MLE. Seasonal `arima(...)(P,D,Q)`: **roadmap**. |
 | `arch y, arch(1) garch(1)` | `garch_fit(y, vol="garch", p=1, q=1)` | Robust SEs in `se_robust` (Bollerslev-Wooldridge). |
-| `arch y, arch(1) garch(1) tarch(1)` (GJR) | `garch_fit(y, vol="garch", o=1)` | Asymmetry via `o=`. |
+| `arch y, arch(1) garch(1) tarch(1)` (GJR) | `garch_fit(y, vol="gjr", o=1)` | Asymmetry via `o=`, which requires `vol="gjr"`/`"egarch"` — `o > 0` with `vol="garch"` raises (0.6.0). |
 | `arch ..., earch(1) egarch(1)` | `garch_fit(y, vol="egarch")` | |
 | `arch ..., distribution(t)` | `garch_fit(y, dist="studentst")` | |
 | `mgarch dcc (y1 y2 y3), arch(1) garch(1)` | `dcc_garch(returns)` | Engle (2002) DCC; `returns` is `T x k`. |

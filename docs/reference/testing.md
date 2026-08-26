@@ -562,7 +562,7 @@ every one of them runs on every invocation of the command above:
 | `test_midas_mgarch.py` | 4 | MIDAS weighting/design and CCC/DCC multivariate GARCH against `midas.json`, `mgarch.json`. |
 | `test_ml_paths.py` | 3 | Adaptive LASSO oracle behavior and elastic-net path monotonicity with AIC/BIC selection on a sparse design. |
 | `test_new_crates.py` | 9 | GAS score-driven volatility, mean-group / CCE-MG panel, DFM nowcasting; `panel_mean_group` tight against its statsmodels golden, the other two structural. |
-| `test_panel_fceval.py` | 3 | Panel estimators and the Clark-West / Giacomini-White forecast comparison tests. |
+| `test_panel_fceval.py` | 6 | Panel estimators and the Clark-West / Giacomini-White forecast comparison tests; the 0.6.0 `bandwidth` contract — explicit bandwidth without `driscoll_kraay` raises, the Driscoll-Kraay path bit-identical omitted-vs-explicit-4.0. |
 | `test_pmg_news.py` | 3 | PMG panel estimator against its documented-formula golden; `dfm_news` against its exact adding-up identity. |
 | `test_predreg.py` | 2 | IVX / Stambaugh predictive-regression point estimates and Wald statistics (the *size* claim lives in the crate's MC property tests). |
 | `test_proxy_svar_bands.py` | 38 | Jentsch-Lunsford moving-block bands and the Anderson-Rubin sets. No external package computes either, so the Python layer pins what the binding must not lose: the `h = 0` cell of `norm_var` degenerate at `unit`, the six failure counters surfaced rather than dropped, the wild arm labelled `asymptotically_valid=False`, every AR set shape reachable and branch-able by `kind`, `unit`-equivariance, level nesting, the point estimate always a member of its own set, and `level is None` when reduced-form uncertainty is switched off. |
@@ -574,9 +574,9 @@ every one of them runs on every invocation of the command above:
 | `test_results_predreg.py` | 35 | Predictive-regression facade on the Stambaugh DGP it exists for (ρ = 0.99, corr = −0.9, **true β = 0**) — the case whose reporting the summary must get right. |
 | `test_results_var.py` | 16 | VAR facade: dict/list contracts, summary, IRF grid. |
 | `test_roadmap_gaps.py` | 6 | Recession probability, survey expectations, and long-memory GPH / local-Whittle bindings. |
-| `test_smoke.py` | 33 | End-to-end: the Rust core called from Python across the core surface, plus Philox bit-compatibility against the live NumPy. |
+| `test_smoke.py` | 34 | End-to-end: the Rust core called from Python across the core surface, plus Philox bit-compatibility against the live NumPy — including the `var_fevd` horizon-first layout at k ≠ horizon. |
 | `test_spectest_afns_dsge.py` | 18 | Specification tests (White/Breusch-Pagan, RESET, Chow, CUSUM), the AFNS yield adjustment, and `dsge_solve`. |
-| `test_spectral.py` | 3 | Periodogram / Welch / coherence against `scipy.signal` fixtures. |
+| `test_spectral.py` | 6 | Periodogram / Welch / coherence against `scipy.signal` fixtures, plus default-vs-default parity against live scipy on a mean-shifted series (the 0.6.0 `detrend="constant"` default). |
 | `test_stub_sync.py` | 3 | The structural guards: stub ↔ runtime surface, `py.typed` present, `api.md` not stale. |
 | `test_survey_longmemory_bindings.py` | 9 | `forecast_disagreement` on a ragged panel and `frac_integrate` as the exact inverse of `frac_diff`; every expected number hand-computed or built from a tiny in-test NumPy reference. |
 | `test_termstructure.py` | 3 | Nelson-Siegel (Diebold-Li) and Svensson curve fits against `termstructure.json`. |

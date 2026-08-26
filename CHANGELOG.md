@@ -344,6 +344,66 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   polish when it improves on the Nelder-Mead optimum, else Nelder-Mead)
   and the total iterations across both stages. The default two-step route
   runs no iterative optimizer and deliberately carries neither key.
+### Fixed — BREAKING (behavioral): the output/default now matches what the docs always claimed
+
+- **`var_fevd` now actually returns the `[h][variable][shock]` layout its
+  docstring, stub, and model card have always claimed.** The emitted list was
+  VARIABLE-major — `fevd[i][h][j]`, the Rust core's internal per-variable
+  storage (statsmodels' own `decomp` layout) leaking straight through — so at
+  k=3 variables and horizon=6 the shape was `(3, 6, 3)` where every piece of
+  documentation, and the sibling convention (`var_irf`, `structural_fevd`,
+  both `[h][var][shock]`), promised `(6, 3, 3)`. Worse, at `k == horizon` the
+  two layouts silently alias: same shape, transposed meaning, no error
+  anywhere. The emission is now horizon-first; the numbers themselves are
+  unchanged (`new[h][i][j] == old[i][h][j]`). **Migration:** code that indexed
+  `fevd[i][h]` reads `fevd[h][i]` now (or `np.transpose(old_code_array,
+  (1, 0, 2))` once). Comparing against statsmodels:
+  `VARResults.fevd(h).decomp` is variable-major — one `(1, 0, 2)` transpose
+  away, stated in the docstring. A k≠horizon shape test plus an
+  impact-share cross-check against `var_irf` now pin the axis meaning so the
+  layouts can never silently alias again; guide/migration examples were
+  re-run under the new indexing (printed values unchanged by construction).
+- **`periodogram` / `welch` / `coherence` now default `detrend="constant"`,
+  matching the `scipy.signal` parity their docstrings claim.** All three
+  documented "matches scipy.signal.…" while defaulting `detrend="none"`;
+  SciPy's default is `"constant"` (mean removal), so the two *default* calls
+  disagreed enormously on any non-zero-mean series — measured
+  default-vs-default Welch gap **1678.1 at frequency 0** on a mean-5 series.
+  The defaults flipped to SciPy's, so reality matches the documented parity;
+  a default-equals-SciPy-default parity test now pins each of the three on a
+  deliberately mean-shifted series. **Migration:** pass `detrend="none"`
+  explicitly to reproduce old default outputs (for the full-series boxcar
+  `periodogram`, only the frequency-0 ordinate moves; Welch/coherence demean
+  per segment, so low frequencies move generally). Golden fixtures pass
+  `detrend` explicitly and are byte-identical; `check_series`' periodogram
+  scan reads only positive frequencies and is unaffected.
+
+### Fixed — inert arguments now RAISE with teaching errors (the cv_splits convention)
+
+- **`garch_fit(o=…)` can no longer be silently discarded under
+  `vol="garch"`.** `o` is the asymmetry order and plain GARCH has no
+  asymmetry term, so `garch_fit(y, p=1, o=1, q=1)` fit a symmetric
+  GARCH(1,1) while looking exactly like the `arch` call
+  `arch_model(y, p=1, o=1, q=1)` — which silently *switches* to GJR-GARCH:
+  the precise porting trap the docstring's arch-parity paragraph exists to
+  prevent, now with the trap in the opposite direction removed. Explicit
+  `o > 0` with `vol="garch"` **raises**, naming the remedy (`vol="gjr"`, or
+  `vol="egarch"`; `o=0`/omitted for symmetric GARCH) — deliberately NOT an
+  auto-switch: tsecon keeps the model choice explicit. The default is now
+  the sentinel `o=None` (no asymmetry term under `vol="garch"`, one
+  asymmetry lag under `vol="gjr"`/`"egarch"`), so every previously-working
+  default call is bit-identical.
+- **`panel_fe`/`panel_lp` can no longer silently absorb `bandwidth`.**
+  `bandwidth` is the Driscoll-Kraay kernel truncation and acts ONLY under
+  `se_type="driscoll_kraay"` — and `panel_fe`'s default `se_type` is
+  `"cluster"`, so `panel_fe(..., bandwidth=8)` was a complete no-op that
+  looked like a serial-correlation correction. An explicitly passed
+  `bandwidth` with `se_type="cluster"`/`"nonrobust"` now **raises** in both
+  functions, saying why and naming the escape hatches. The default became
+  the sentinel `bandwidth=None` (the pyo3 signature could not otherwise
+  distinguish "passed the default value" from "omitted"), which under
+  `driscoll_kraay` resolves to the historical `4.0` — the Driscoll-Kraay
+  path is verified bit-identical, omitted-vs-explicit-4.0.
 
 ## [0.5.0] - 2026-08-25
 
