@@ -89,7 +89,7 @@ entry points.
 | `urca::ur.df(y, type="drift")` | `adf(y, regression="c")` | Or `tseries::adf.test`. Dict return with MacKinnon p-value. |
 | `urca::ur.kpss(y)` | `kpss(y, regression="c")` | Null is stationarity. |
 | `urca::ca.jo(data, type="trace", K=)` | `johansen(data, k_ar_diff=K-1)` | Trace + max-eig stats and selected ranks. |
-| `urca::cajorls`, `vars::vec2var` | `vecm(data, k_ar_diff, coint_rank)` | ML VECM: `alpha`, `beta`, `gamma`, `sigma_u`, `llf`. |
+| `urca::cajorls`, `vars::vec2var` | `vecm(data, k_ar_diff, coint_rank, deterministic)` | ML VECM: `alpha`, `beta`, `gamma`, `det_coef`, `sigma_u`, `llf`. `deterministic="n"` (default, no deterministic terms) or `"co"` (unrestricted constant — the case `johansen`/`ca.jo`'s constant convention assumes). |
 | `tseries::Box.test(y, type="Ljung-Box")` | `ljung_box(y, nlags)` | Box-Pierce also returned. |
 | `tseries::jarque.bera.test(y)` | `jarque_bera(y)` | |
 | `FinTS::ArchTest(y)` | `arch_lm(y, nlags)` | Engle's ARCH-LM. |
@@ -211,7 +211,9 @@ data = np.column_stack([trend + rng.standard_normal(200) for _ in range(3)])
 jo = tsecon.johansen(data, k_ar_diff=1)               # urca::ca.jo(data, type="trace")
 print(np.round(jo["trace_stat"], 2), jo["rank_trace_5pct"])
 
-vm = tsecon.vecm(data, k_ar_diff=1, coint_rank=1)     # cajorls / vec2var
+# deterministic="co" (unrestricted constant) matches the convention the rank
+# test above assumes; the "n" default is the no-deterministic model instead.
+vm = tsecon.vecm(data, k_ar_diff=1, coint_rank=1, deterministic="co")
 print(np.round(np.asarray(vm["beta"]).ravel(), 3))    # the cointegrating vector
 ```
 

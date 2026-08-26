@@ -1763,7 +1763,12 @@ Magnitude-squared coherence in [0,1]; matches scipy.signal.coherence.
 def johansen(data: _ArrayLike, k_ar_diff: int = ...) -> dict[str, Any]:
 ```
 
-Johansen cointegration test (data is T x k); trace + max-eig + rank.
+Johansen cointegration test (data is T x k); trace + max-eig + rank + evec.
+
+    Matches statsmodels ``coint_johansen(det_order=0)`` — the *unrestricted
+    constant* convention. Warning: ``vecm``'s default is ``deterministic="n"``
+    (no deterministic terms), a different case; fit the VECM this test ranks
+    with ``vecm(..., deterministic="co")``.
 
 ### `engle_granger`
 
@@ -1781,10 +1786,22 @@ Engle-Granger two-step cointegration test: stat + MacKinnon p-value/crit (statsm
 ### `vecm`
 
 ```python
-def vecm(data: _ArrayLike, k_ar_diff: int = ..., coint_rank: int = ...) -> dict[str, Any]:
+def vecm(
+    data: _ArrayLike,
+    k_ar_diff: int = ...,
+    coint_rank: int = ...,
+    deterministic: str = ...,
+) -> dict[str, Any]:
 ```
 
-VECM ML estimation: alpha, beta, gamma, sigma_u, llf (statsmodels-exact).
+VECM ML estimation: alpha, beta, gamma, det_coef, sigma_u, llf (statsmodels-exact).
+
+    ``deterministic``: ``"n"`` (default) — no deterministic terms, statsmodels
+    ``VECM(..., deterministic="n")``; ``"co"`` — unrestricted constant
+    (statsmodels ``"co"``, the case ``johansen``'s det_order=0 convention
+    assumes; the intercepts land in ``det_coef``). Warning: ``johansen``
+    assumes the unrestricted constant, NOT this default — pass
+    ``deterministic="co"`` when the rank came from ``johansen``.
 
 ## regime switching
 

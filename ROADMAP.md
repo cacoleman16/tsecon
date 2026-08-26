@@ -45,7 +45,7 @@ interval-coverage expansion (its agent modified the coverage page's guarded
 row-sync machinery mid-flight) and Beveridge-Nelson/Kamber-Morley-Wong
 trend-cycle (fixture generators only).
 
-**Build-later — valuable but weaker validation or larger surface:** STAR/LSTAR/ESTAR, threshold cointegration (Hansen-Seo) and threshold VAR, Hansen (1997/2000) threshold confidence sets for SETAR, JSZ canonical affine term structure, and distributed-lag climate-impact regressions. (LP-DiD, the copula tail-dependence coefficients, the joint-across-horizon LP bands, and the Ng-Perron M-tests, formerly on this list, have all shipped.)
+**Build-later — valuable but weaker validation or larger surface:** STAR/LSTAR/ESTAR, threshold cointegration (Hansen-Seo) and threshold VAR, Hansen (1997/2000) threshold confidence sets for SETAR, JSZ canonical affine term structure, distributed-lag climate-impact regressions, and the restricted VECM deterministic cases (`"ci"`/`"li"`/`"lo"` and seasonal dummies — `vecm` ships `"n"` and `"co"`; the restricted cases put deterministic terms *inside* the cointegration relation, widening `beta` and the normalization, and statsmodels is a runnable golden for each when built). (LP-DiD, the copula tail-dependence coefficients, the joint-across-horizon LP bands, and the Ng-Perron M-tests, formerly on this list, have all shipped.)
 
 **Deferred — no runnable reference or niche:** HEGY and Lee-Strazicich seasonal/two-break unit roots (R-only, location-dependent tables), X-13ARIMA-SEATS (needs the external Census binary), dynamic/time-varying copulas, and cointegrated energy-climate systems.
 

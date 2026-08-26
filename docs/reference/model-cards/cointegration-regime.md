@@ -32,21 +32,33 @@ VAR in levels).
 
 **Key arguments and defaults (and why).** `data` is T×k; `k_ar_diff` is the
 number of lagged differences (one less than the VAR level lag order — choose it
-as you would a VAR lag length).
+as you would a VAR lag length). The deterministic convention is fixed: an
+**unrestricted constant** in the data (statsmodels `coint_johansen`
+`det_order=0`). That is `vecm`'s `deterministic="co"` case, **not** `vecm`'s
+default `"n"` — fit the VECM this test ranks with `vecm(...,
+deterministic="co")`.
 
 **How to read the output.** `trace_stat` and `max_eig_stat` (one per null
 `r ≤ i`), each with critical values in `trace_crit_90_95_99` /
 `max_eig_crit_90_95_99` (columns are the 90/95/99% levels — take column 1 for
 the 5% test). `rank_trace_5pct` / `rank_max_eig_5pct` apply the sequential rule
-for you. `eig` are the ordered eigenvalues. Reject `r = 0` but not `r ≤ 1` ⇒
-rank 1.
+for you. `eig` are the ordered eigenvalues; `evec` (k×k, S₁₁-orthonormal
+columns, sign-arbitrary) holds the estimated cointegrating directions — the
+first `r` columns span the space a rank-`r` `vecm(..., deterministic="co")`
+fit estimates. Reject `r = 0` but not `r ≤ 1` ⇒ rank 1.
 
 **Failure modes.** Using the wrong deterministic convention silently shifts the
-critical values; testing series that are not actually I(1); the trace and
-max-eigenvalue tests can disagree at the margin — report both.
+critical values — and silently changes the estimated cointegrating vectors:
+pairing this test with `vecm`'s `deterministic="n"` default on drifting data
+gives betas that visibly disagree (the shipped regression fixture pins a
+cosine of ~0.63 between the two on one drifting draw). Testing series that are
+not actually I(1); the trace and max-eigenvalue tests can disagree at the
+margin — report both.
 
 **Validated against.** statsmodels `coint_johansen` (`det_order=0`,
-`k_ar_diff=2`), statistics and critical values (`fixtures/coint.json`).
+`k_ar_diff=2`), statistics and critical values (`fixtures/coint.json`);
+eigenvalues and eigenvectors on drifting cointegrated data
+(`fixtures/vecm_deterministic.json`).
 
 **References.** Johansen (1988, 1991); Engle & Granger (1987).
 
@@ -57,31 +69,59 @@ max-eigenvalue tests can disagree at the margin — report both.
 **What it estimates.** Given the rank `r`, the ML estimate of the VECM: the
 cointegrating vectors `beta` (the long-run equilibria — the "leashes"), the
 adjustment speeds `alpha` (how fast each equation corrects a disequilibrium),
-the short-run dynamics `gamma`, the residual covariance, and the log-likelihood.
+the short-run dynamics `gamma`, the deterministic coefficients `det_coef`, the
+residual covariance, and the log-likelihood.
 
 **Assumptions.** The rank `coint_rank` is correct (take it from `johansen`);
 Gaussian innovations for the ML/log-likelihood; the same deterministic
-convention as the rank test.
+convention as the rank test — which means `deterministic="co"` whenever the
+rank came from `johansen` (see below).
 
 **When to use.** After `johansen` returns `0 < r < k`. It keeps the levels
 information a differenced VAR discards, and `alpha`/`beta` are directly
 interpretable — which series bear the burden of adjustment back to equilibrium.
 
-**Key arguments.** `data` (T×k), `k_ar_diff`, `coint_rank` (from the Johansen
-test).
+**Key arguments and defaults (and why).** `data` (T×k), `k_ar_diff`,
+`coint_rank` (from the Johansen test), and `deterministic` naming the
+statsmodels VECM case:
+
+- `"n"` (default) — **no deterministic terms**, exactly statsmodels
+  `VECM(..., deterministic="n")`. The default is `"n"` only because that is
+  what this function has always computed — changing it would silently change
+  every existing caller's numbers.
+- `"co"` — an **unrestricted constant** outside the cointegration relation
+  (statsmodels `"co"`): each short-run equation gains an intercept (returned
+  in `det_coef`, k×1) and the reduced-rank step partials the constant out, so
+  the estimated cointegrating space is exactly the one `johansen`
+  (`det_order=0`) tests. **This is the case to use on drifting data and
+  whenever the rank came from `johansen`.**
+
+The restricted statsmodels cases (`"ci"`, `"li"`, `"lo"`, seasonal dummies)
+are not implemented; passing them raises an error naming the supported cases
+(a documented follow-up — see ROADMAP build-later).
 
 **How to read the output.** `beta` (k×r, each column a cointegrating vector —
 normalized on the first variable), `alpha` (k×r adjustment speeds; a large
 negative entry means that equation does most of the correcting, a near-zero
 entry means that variable is weakly exogenous), `gamma` (short-run lag
-coefficients), `sigma_u`, `llf`.
+coefficients), `det_coef` (k×n_det deterministic coefficients — empty for
+`"n"`, the short-run intercepts for `"co"`), `sigma_u`, `llf`.
 
-**Failure modes.** A wrong rank propagates everywhere; imposing cointegration on
-series that are not cointegrated fabricates a spurious equilibrium.
+**Failure modes.** A wrong rank propagates everywhere; imposing cointegration
+on series that are not cointegrated fabricates a spurious equilibrium; and the
+deterministic-case trap this card exists to flag: reading `vecm`'s `"n"`
+default against `johansen`'s unrestricted constant on drifting levels gives
+cointegrating vectors that genuinely disagree (the shipped fixture pins a
+beta cosine of ~0.63 between the two cases on one drifting draw — a field
+report measured ~0.57) — that is two different models, not noise. Match the
+cases before comparing.
 
 **Validated against.** statsmodels `VECM` (ML estimation; `k_ar_diff=2`,
 `coint_rank=1`, `deterministic="n"`) — `alpha`, `beta`, `gamma`, `sigma_u`,
-`llf` (`fixtures/coint.json`).
+`llf` (`fixtures/coint.json`); both deterministic cases (`"n"` and `"co"`:
+`alpha`, `beta`, `gamma`, `det_coef`, `sigma_u`, `llf`) plus the
+`"co"`-reconciles-with-`johansen` / `"n"`-diverges relationship on seeded
+drifting cointegrated data (`fixtures/vecm_deterministic.json`).
 
 **References.** Johansen (1995); Lütkepohl (2005, ch. 6–7).
 
@@ -101,9 +141,13 @@ crit5 = np.asarray(joh["trace_crit_90_95_99"])[:, 1]
 print("trace:", np.round(joh["trace_stat"], 1), " 5% crit:", np.round(crit5, 1),
       " -> rank", joh["rank_trace_5pct"])
 
-fit = tsecon.vecm(data, k_ar_diff=2, coint_rank=1)
+# The rank came from johansen (unrestricted constant, det_order=0), so fit
+# the matching deterministic case — "co" — not the "n" default: on drifting
+# data the two estimate visibly different cointegrating vectors.
+fit = tsecon.vecm(data, k_ar_diff=2, coint_rank=1, deterministic="co")
 print("beta :", np.round(np.asarray(fit["beta"])[:, 0], 3))   # ~[1, -1, 0]: y1 - y2
 print("alpha:", np.round(np.asarray(fit["alpha"])[:, 0], 3))
+print("const:", np.round(np.asarray(fit["det_coef"])[:, 0], 3))
 ```
 
 ---

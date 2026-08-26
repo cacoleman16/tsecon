@@ -73,7 +73,7 @@ callable now.
 | `wntestq y` | `ljung_box(y, nlags)` | Ljung-Box (and Box-Pierce). |
 | `estat archlm` | `arch_lm(resid, nlags)` | Engle's ARCH-LM. |
 | `vecrank y1 y2 y3` | `johansen(data, k_ar_diff)` | Trace + max-eig ranks. |
-| `vec y1 y2 y3, rank(r)` | `vecm(data, k_ar_diff, coint_rank=r)` | ML VECM: `alpha`, `beta`, `gamma`, `sigma_u`, `llf`. |
+| `vec y1 y2 y3, rank(r)` | `vecm(data, k_ar_diff, coint_rank=r, deterministic="co")` | ML VECM: `alpha`, `beta`, `gamma`, `det_coef`, `sigma_u`, `llf`. Stata's default `trend(constant)` is the unrestricted constant → `deterministic="co"`; tsecon's default `"n"` is `trend(none)`. |
 | `egranger` (user-written) | — | Engle-Granger two-step: **roadmap**; use `johansen`. |
 
 ### Univariate models and volatility

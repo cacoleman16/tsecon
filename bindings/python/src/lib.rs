@@ -5207,9 +5207,19 @@ fn data_to_faer(
 }
 
 /// Johansen cointegration test (Johansen 1991). `data` is T x k (rows are
-/// observations, oldest first). Returns eigenvalues, trace and
-/// max-eigenvalue statistics with their 90/95/99% critical values, and the
-/// selected rank at 5%. Matches statsmodels `coint_johansen` (det_order=0).
+/// observations, oldest first). Returns eigenvalues, the `S_11`-orthonormal
+/// eigenvectors `evec` (k x k; the first r columns span the estimated
+/// cointegrating space at rank r), trace and max-eigenvalue statistics with
+/// their 90/95/99% critical values, and the selected rank at 5%. Matches
+/// statsmodels `coint_johansen` (det_order=0) — the **unrestricted
+/// constant** convention (a constant in the data, outside the
+/// cointegration relation).
+///
+/// Deterministic-case warning: `vecm`'s default is `deterministic="n"`
+/// (no deterministic terms), a DIFFERENT case from this test's
+/// unrestricted constant — on drifting data the two estimate visibly
+/// different cointegrating vectors. To fit the VECM this test ranks, call
+/// `vecm(..., deterministic="co")`.
 #[pyfunction]
 #[pyo3(signature = (data, k_ar_diff = 1))]
 fn johansen<'py>(
@@ -5221,6 +5231,7 @@ fn johansen<'py>(
     let r = tsecon_coint::johansen(m.as_ref(), k_ar_diff).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("eig", r.eig.clone().into_pyarray(py))?;
+    d.set_item("evec", mat_to_vec2_bayes(&r.evec))?;
     d.set_item("trace_stat", r.trace_stat.clone().into_pyarray(py))?;
     d.set_item("max_eig_stat", r.max_eig_stat.clone().into_pyarray(py))?;
     let tc: Vec<Vec<f64>> = r.trace_crit.iter().map(|c| c.to_vec()).collect();
@@ -5239,23 +5250,52 @@ fn johansen<'py>(
 }
 
 /// VECM maximum-likelihood estimation at a given cointegrating rank
-/// (Johansen). Returns the loadings alpha, cointegrating vectors beta
-/// (normalized beta[:r,:r] = I), short-run Gamma, and the log-likelihood.
-/// Matches statsmodels VECM.
+/// (Johansen). Returns the loadings `alpha`, cointegrating vectors `beta`
+/// (normalized beta[:r,:r] = I), short-run `gamma`, the deterministic
+/// coefficients `det_coef`, the residual covariance `sigma_u`, and the
+/// log-likelihood `llf`.
+///
+/// `deterministic` names the statsmodels VECM case: `"n"` (default) — NO
+/// deterministic terms, matching statsmodels `VECM(...,
+/// deterministic="n")` exactly; `"co"` — an unrestricted constant outside
+/// the cointegration relation (each short-run equation gains an
+/// intercept, returned as the k x 1 `det_coef`), matching
+/// `deterministic="co"`. The restricted cases ("ci", "li", "lo",
+/// seasons) are not implemented and are rejected with an error.
+///
+/// Deterministic-case warning: `johansen` in this library assumes an
+/// unrestricted constant (statsmodels `coint_johansen` det_order=0) — the
+/// `"co"` case, NOT this function's `"n"` default. On drifting data the
+/// two cases estimate visibly different cointegrating vectors; fit with
+/// `deterministic="co"` when the rank came from `johansen`.
 #[pyfunction]
-#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1))]
+#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1, deterministic = "n"))]
 fn vecm<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
     k_ar_diff: usize,
     coint_rank: usize,
+    deterministic: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let det = match deterministic {
+        "n" => tsecon_coint::VecmDeterministic::None,
+        "co" => tsecon_coint::VecmDeterministic::Constant,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown deterministic {other:?}; expected \"n\" (no deterministic terms) \
+                 or \"co\" (unrestricted constant — the case johansen's det_order=0 \
+                 convention assumes). The statsmodels restricted cases \"ci\"/\"li\"/\"lo\" \
+                 and seasonal dummies are not implemented."
+            )))
+        }
+    };
     let m = data_to_faer(&data);
-    let r = tsecon_coint::fit_vecm(m.as_ref(), k_ar_diff, coint_rank).map_err(to_py)?;
+    let r = tsecon_coint::fit_vecm_det(m.as_ref(), k_ar_diff, coint_rank, det).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("alpha", mat_to_vec2_bayes(&r.alpha))?;
     d.set_item("beta", mat_to_vec2_bayes(&r.beta))?;
     d.set_item("gamma", mat_to_vec2_bayes(&r.gamma))?;
+    d.set_item("det_coef", mat_to_vec2_bayes(&r.det_coef))?;
     d.set_item("sigma_u", mat_to_vec2_bayes(&r.sigma_u))?;
     d.set_item("llf", r.llf)?;
     Ok(d)

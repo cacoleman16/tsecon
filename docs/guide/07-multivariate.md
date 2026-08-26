@@ -325,11 +325,14 @@ np.round(rank["trace_stat"], 1)                     # [134.0, 12.6, 0.6], tested
 np.round(np.array(rank["trace_crit_90_95_99"])[:, 1], 1)   # 5% crit: [29.8, 15.5, 3.8]
 rank["rank_trace_5pct"]                             # 1 — reject r=0, do NOT reject r<=1
 
-# VECM at the selected rank: alpha (adjustment speeds), beta (cointegrating vectors)
-vecm = tsecon.vecm(coint_data, k_ar_diff=2, coint_rank=1)
-np.round(np.array(vecm["beta"]).ravel(), 2)         # [1.0, -1.62, -2.02] — the leash, normalized
-np.round(np.array(vecm["alpha"]).ravel(), 3)        # [-0.267, 0.144, 0.234] — who corrects
-vecm["gamma"]                                       # short-run Gamma matrices; also sigma_u, llf
+# VECM at the selected rank: alpha (adjustment speeds), beta (cointegrating vectors).
+# deterministic="co" (unrestricted constant) is the case johansen assumes; the
+# default "n" (no deterministic terms) is a DIFFERENT model — on drifting data
+# the two estimate visibly different betas, so match the case to the rank test.
+vecm = tsecon.vecm(coint_data, k_ar_diff=2, coint_rank=1, deterministic="co")
+np.round(np.array(vecm["beta"]).ravel(), 2)         # [1.0, -1.61, -2.01] — the leash, normalized
+np.round(np.array(vecm["alpha"]).ravel(), 3)        # [-0.270, 0.142, 0.235] — who corrects
+vecm["gamma"]                                       # short-run Gamma; also det_coef, sigma_u, llf
 ```
 
 ## A few forces drive many series: dynamic factor models
@@ -394,8 +397,8 @@ Where research-grade practice currently stands, and where the [module roadmap](.
 - `tsecon.var_fevd(data, lags=2, horizon=10, trend="c")` — variance decompositions, one matrix per variable: `fevd[i][h][j]`
 - `tsecon.var_forecast(data, lags=2, steps=8, alpha=0.05, trend="c")` — iterated point forecasts with innovation-uncertainty intervals
 - `tsecon.var_granger(data, caused, causing, lags=2, trend="c")` — block F test, group-to-group
-- `tsecon.johansen(data, k_ar_diff=2)` — Johansen trace and maximum-eigenvalue rank tests, returning `trace_stat`/`max_eig_stat`, the `_90_95_99` critical-value tables, and the implied `rank_trace_5pct`/`rank_max_eig_5pct`
-- `tsecon.vecm(data, k_ar_diff=2, coint_rank=1)` — ML VECM estimation: `alpha`, `beta`, `gamma`, `sigma_u`, `llf` (statsmodels-exact)
+- `tsecon.johansen(data, k_ar_diff=2)` — Johansen trace and maximum-eigenvalue rank tests (unrestricted-constant convention, statsmodels `det_order=0`), returning `trace_stat`/`max_eig_stat`, the `_90_95_99` critical-value tables, the implied `rank_trace_5pct`/`rank_max_eig_5pct`, and the eigenvectors `evec`
+- `tsecon.vecm(data, k_ar_diff=2, coint_rank=1, deterministic="n")` — ML VECM estimation: `alpha`, `beta`, `gamma`, `det_coef`, `sigma_u`, `llf` (statsmodels-exact). `deterministic="n"` (no deterministic terms, the default) or `"co"` (unrestricted constant — the case `johansen` assumes; use it when the rank came from `johansen`)
 - Supporting cast used in this chapter: `check_stationarity`, `adf`, `kpss`, `ols`, `ljung_box`, `long_run_variance`
 
 **Built in Rust, awaiting Python bindings** (in the `tsecon-var` crate): common-sample lag-order selection (`select_order`, AIC/BIC/HQ/FPE with the Lütkepohl fixed-sample convention), companion-matrix and stability accessors (`companion`, `is_stable`, `roots_moduli`), and full multi-step forecast MSE matrices (`forecast_cov`).

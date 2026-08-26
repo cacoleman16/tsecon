@@ -7,7 +7,8 @@ mod common;
 use common::{as_endog, load_fixture};
 use tsecon_coint::tsecon_linalg::faer::Mat;
 use tsecon_coint::{
-    engle_granger, fit_vecm, johansen, EngleGrangerTrend, SignificanceLevel, VecmResult,
+    engle_granger, fit_vecm, johansen, EngleGrangerTrend, SignificanceLevel, VecmDeterministic,
+    VecmResult,
 };
 use tsecon_diag::AdfLagSelection;
 
@@ -110,9 +111,11 @@ fn vecm_to_var_round_trip_synthetic() {
         nobs: 100,
         k_ar_diff: 1,
         coint_rank: 1,
+        deterministic: VecmDeterministic::None,
         alpha: alpha.clone(),
         beta: beta.clone(),
         gamma: gamma.clone(),
+        det_coef: Mat::<f64>::zeros(2, 0),
         sigma_u: Mat::from_fn(2, 2, |i, j| if i == j { 1.0 } else { 0.0 }),
         eig: vec![0.3, 0.0],
         llf: 0.0,

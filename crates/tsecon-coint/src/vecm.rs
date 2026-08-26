@@ -2,27 +2,44 @@
 //! model at a fixed cointegration rank, and the mapping back to the level
 //! VAR companion form.
 //!
-//! The model (no deterministic terms, statsmodels `deterministic = "n"`) is
+//! The model is
 //!
 //! ```text
 //! Delta y_t = alpha beta' y_{t-1}
-//!           + sum_{i=1}^{k_ar_diff} Gamma_i Delta y_{t-i} + u_t,
+//!           + sum_{i=1}^{k_ar_diff} Gamma_i Delta y_{t-i} + C d_t + u_t,
 //! ```
 //!
 //! with `beta` (`k x r`) the cointegrating vectors, `alpha` (`k x r`) the
-//! error-correction loadings, and `Gamma_i` the short-run dynamics. The
+//! error-correction loadings, `Gamma_i` the short-run dynamics, and
+//! `C d_t` the deterministic terms chosen by [`VecmDeterministic`]:
+//! either none at all (statsmodels `deterministic = "n"`, the
+//! [`fit_vecm`] default) or an unrestricted constant outside the
+//! cointegration relation (statsmodels `deterministic = "co"` — the case
+//! [`crate::johansen`]'s `det_order = 0` convention assumes). The
 //! reduced-rank maximum-likelihood estimator (Johansen 1988; Lütkepohl
-//! 2005, section 7.2) partials the lagged differences out of `Delta y_t`
-//! and `y_{t-1}`, solves the canonical-correlation eigenproblem
+//! 2005, section 7.2) partials the lagged differences (and any
+//! deterministic terms) out of `Delta y_t` and `y_{t-1}`, solves the
+//! canonical-correlation eigenproblem
 //! [`crate::linalg::reduced_rank_eig`], takes the eigenvectors of the `r`
-//! largest eigenvalues as `beta`, and recovers `alpha`, `Gamma`, and the
-//! residual covariance by least squares.
+//! largest eigenvalues as `beta`, and recovers `alpha`, `Gamma`, the
+//! deterministic coefficients, and the residual covariance by least
+//! squares.
+//!
+//! The two deterministic cases answer *different models*: on drifting
+//! data the no-deterministic fit must absorb the drift and the mean of
+//! the equilibrium error into `alpha beta' y_{t-1}`, which rotates `beta`
+//! away from the constant-adjusted cointegrating space the Johansen rank
+//! test (`det_order = 0`) works in. Fit with
+//! [`VecmDeterministic::Constant`] when the rank came from
+//! [`crate::johansen`].
 //!
 //! `beta` is normalized exactly as statsmodels does — the leading `r x r`
 //! block is the identity (`beta[:r, :r] = I`), which fixes the otherwise
-//! arbitrary rotation of the cointegrating space. The golden fixture
-//! `fixtures/coint.json` (`vecm_rank1` block) arbitrates `alpha`, `beta`,
-//! `gamma`, and the log-likelihood.
+//! arbitrary rotation of the cointegrating space. The golden fixtures
+//! `fixtures/coint.json` (`vecm_rank1` block, `deterministic = "n"`) and
+//! `fixtures/vecm_deterministic.json` (both cases on drifting data)
+//! arbitrate `alpha`, `beta`, `gamma`, `det_coef`, and the
+//! log-likelihood.
 
 use tsecon_linalg::companion_from_var;
 use tsecon_linalg::faer::{Mat, MatRef};
@@ -32,10 +49,43 @@ use crate::linalg::{
     check_finite, inv_general, inv_spd, ln_det_spd, partial_out, reduced_rank_eig,
 };
 
+/// The deterministic-term specification of a VECM fit.
+///
+/// Named after the statsmodels `VECM(..., deterministic = ...)` string it
+/// reproduces. The two cases supported today are the two ends of the
+/// classic replication trap: no deterministic terms at all, and the
+/// unrestricted constant the Johansen rank test ([`crate::johansen`],
+/// statsmodels `coint_johansen(det_order = 0)`) assumes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VecmDeterministic {
+    /// No deterministic terms — statsmodels `deterministic = "n"`. The
+    /// historical (and current) default of [`fit_vecm`].
+    #[default]
+    None,
+    /// An unrestricted constant outside the cointegration relation —
+    /// statsmodels `deterministic = "co"`. The short-run equation gains
+    /// an intercept (returned in [`VecmResult::det_coef`]), and the
+    /// reduced-rank step partials the constant out alongside the lagged
+    /// differences, which makes the estimated cointegrating space match
+    /// the one [`crate::johansen`] (`det_order = 0`) tests.
+    Constant,
+}
+
+impl VecmDeterministic {
+    /// Number of deterministic regressors in the short-run equation.
+    fn n_det(self) -> usize {
+        match self {
+            VecmDeterministic::None => 0,
+            VecmDeterministic::Constant => 1,
+        }
+    }
+}
+
 /// Result of a rank-`r` Johansen maximum-likelihood VECM fit.
 ///
 /// Estimator conventions match statsmodels 0.14.6 `VECM(..., coint_rank =
-/// r, deterministic = "n").fit()` exactly.
+/// r, deterministic = d).fit()` exactly, for the supported `d`
+/// ([`VecmDeterministic`]).
 #[derive(Debug, Clone)]
 pub struct VecmResult {
     /// Number of series `k`.
@@ -47,6 +97,8 @@ pub struct VecmResult {
     pub k_ar_diff: usize,
     /// Cointegration rank `r`.
     pub coint_rank: usize,
+    /// The deterministic-term specification the model was fit under.
+    pub deterministic: VecmDeterministic,
     /// Error-correction loadings `alpha` (`k x r`).
     pub alpha: Mat<f64>,
     /// Cointegrating vectors `beta` (`k x r`), normalized so the leading
@@ -57,6 +109,11 @@ pub struct VecmResult {
     /// is the effect of `Delta` variable `var` at lag `i + 1` on equation
     /// `eq`.
     pub gamma: Mat<f64>,
+    /// Coefficients of the deterministic terms outside the cointegration
+    /// relation (statsmodels `det_coef`): `k x 0` under
+    /// [`VecmDeterministic::None`], the `k x 1` intercept of each
+    /// short-run equation under [`VecmDeterministic::Constant`].
+    pub det_coef: Mat<f64>,
     /// Maximum-likelihood residual covariance `U'U / T` (`k x k`).
     pub sigma_u: Mat<f64>,
     /// The Johansen eigenvalues `lambda_1 > ... > lambda_k` from the
@@ -103,7 +160,10 @@ impl VecmResult {
     /// with the obvious degeneracies when `k_ar_diff = 0` (`A_1 = I + Pi`).
     /// This is the utility the impulse-response layer consumes: feed the
     /// returned matrices to [`companion_from_var`] or to the VAR analysis
-    /// crate.
+    /// crate. Only the autoregressive part is returned: under
+    /// [`VecmDeterministic::Constant`] the VECM intercept carries over to
+    /// the level VAR unchanged (`nu = det_coef`) and does not enter the
+    /// `A_j`.
     pub fn var_coefs(&self) -> Vec<Mat<f64>> {
         let k = self.neqs;
         let p = self.k_ar_diff + 1;
@@ -147,7 +207,30 @@ impl VecmResult {
 
 /// Estimates the VECM at cointegration rank `coint_rank` by Johansen
 /// maximum likelihood, on `endog` (a `T x k` matrix, oldest row first)
-/// with `k_ar_diff` lagged differences and no deterministic terms.
+/// with `k_ar_diff` lagged differences and **no deterministic terms**
+/// (statsmodels `deterministic = "n"`).
+///
+/// This is [`fit_vecm_det`] with [`VecmDeterministic::None`], kept as the
+/// historical default. Note the Johansen rank test ([`crate::johansen`])
+/// assumes an unrestricted constant instead — to estimate the same model
+/// the test ranks, call [`fit_vecm_det`] with
+/// [`VecmDeterministic::Constant`].
+///
+/// # Errors
+///
+/// As [`fit_vecm_det`].
+pub fn fit_vecm(
+    endog: MatRef<'_, f64>,
+    k_ar_diff: usize,
+    coint_rank: usize,
+) -> Result<VecmResult, CointError> {
+    fit_vecm_det(endog, k_ar_diff, coint_rank, VecmDeterministic::None)
+}
+
+/// Estimates the VECM at cointegration rank `coint_rank` by Johansen
+/// maximum likelihood, on `endog` (a `T x k` matrix, oldest row first)
+/// with `k_ar_diff` lagged differences and the deterministic terms chosen
+/// by `deterministic`.
 ///
 /// # Errors
 ///
@@ -159,10 +242,11 @@ impl VecmResult {
 /// * [`CointError::NotPositiveDefinite`] / [`CointError::Singular`] /
 ///   [`CointError::Linalg`] on a degenerate design or a failed
 ///   factorization.
-pub fn fit_vecm(
+pub fn fit_vecm_det(
     endog: MatRef<'_, f64>,
     k_ar_diff: usize,
     coint_rank: usize,
+    deterministic: VecmDeterministic,
 ) -> Result<VecmResult, CointError> {
     let k = endog.ncols();
     if k == 0 {
@@ -193,9 +277,11 @@ pub fn fit_vecm(
     }
     let t = n - p;
     let n_short = k * k_ar_diff;
-    if t <= n_short + k {
+    let n_det = deterministic.n_det();
+    let n_reg = n_short + n_det;
+    if t <= n_reg + k {
         return Err(CointError::InsufficientObservations {
-            needed: n_short + k + 1,
+            needed: n_reg + k + 1,
             got: t,
             nobs: n,
             neqs: k,
@@ -203,11 +289,17 @@ pub fn fit_vecm(
         });
     }
 
-    // Sample matrices (statsmodels _endog_matrices, deterministic = "n"),
-    // in T x (.) layout. Effective row i corresponds to level index p + i.
+    // Sample matrices (statsmodels _endog_matrices), in T x (.) layout.
+    // Effective row i corresponds to level index p + i. The short-run
+    // regressor block stacks the lagged differences first and then the
+    // deterministic terms (a column of ones for the unrestricted
+    // constant), exactly as statsmodels stacks delta_x.
     let delta_y0 = Mat::from_fn(t, k, |i, j| endog[(p + i, j)] - endog[(p + i - 1, j)]);
     let y_lag1 = Mat::from_fn(t, k, |i, j| endog[(p + i - 1, j)]);
-    let delta_x = Mat::from_fn(t, n_short, |i, col| {
+    let delta_x = Mat::from_fn(t, n_reg, |i, col| {
+        if col >= n_short {
+            return 1.0; // the unrestricted constant
+        }
         let lag = col / k + 1; // 1 ..= k_ar_diff
         let var = col % k;
         endog[(p + i - lag, var)] - endog[(p + i - lag - 1, var)]
@@ -255,12 +347,12 @@ pub fn fit_vecm(
         &s01 * &beta * &bsb_inv
     };
 
-    // Pi = alpha beta'; Gamma from regressing the error-corrected
-    // differences on the lagged differences.
+    // Pi = alpha beta'; Gamma (and the deterministic coefficients) from
+    // regressing the error-corrected differences on the short-run block.
     let pi = &alpha * beta.transpose();
     // W = Delta y0 - y_lag1 Pi'  (T x k).
     let w = &delta_y0 - &y_lag1 * pi.transpose();
-    let gamma = if n_short == 0 {
+    let coef = if n_reg == 0 {
         Mat::<f64>::zeros(k, 0)
     } else {
         let dxtdx = delta_x.transpose() * &delta_x;
@@ -268,15 +360,19 @@ pub fn fit_vecm(
             dxtdx.as_ref(),
             "Delta X' Delta X, the short-run regressor cross-product",
         )?;
-        // gamma = W' Delta X (Delta X' Delta X)^{-1}  (k x n_short).
+        // coef = W' Delta X (Delta X' Delta X)^{-1}  (k x n_reg).
         &(w.transpose() * &delta_x) * &dxtdx_inv
     };
+    // Split as statsmodels does: lagged-difference columns first, then
+    // the deterministic terms.
+    let gamma = Mat::from_fn(k, n_short, |i, j| coef[(i, j)]);
+    let det_coef = Mat::from_fn(k, n_det, |i, j| coef[(i, n_short + j)]);
 
     // Full residuals and ML covariance.
-    let resid = if n_short == 0 {
+    let resid = if n_reg == 0 {
         w.clone()
     } else {
-        &w - &delta_x * gamma.transpose()
+        &w - &delta_x * coef.transpose()
     };
     let sigma_u = Mat::from_fn(k, k, |i, j| {
         dot_cols(resid.as_ref(), resid.as_ref(), i, j) / tf
@@ -303,9 +399,11 @@ pub fn fit_vecm(
         nobs: t,
         k_ar_diff,
         coint_rank: r,
+        deterministic,
         alpha,
         beta,
         gamma,
+        det_coef,
         sigma_u,
         eig,
         llf,
