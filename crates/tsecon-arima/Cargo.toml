@@ -23,3 +23,6 @@ tsecon-diag = { path = "../tsecon-diag" }
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
 # printed, not serde_json's default 1-ulp fast path.
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# The KMW bn_filter, for the classic-vs-pinned-delta amplitude contrast
+# property test (dev-only; the library dependency stays one-directional).
+tsecon-filters = { path = "../tsecon-filters" }

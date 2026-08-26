@@ -883,6 +883,7 @@ version = "0.5.0"
 dependencies = [
  "serde_json",
  "tsecon-diag",
+ "tsecon-filters",
  "tsecon-linalg",
  "tsecon-optim",
  "tsecon-ssm",
@@ -991,6 +992,7 @@ name = "tsecon-filters"
 version = "0.5.0"
 dependencies = [
  "serde_json",
+ "tsecon-hac",
 ]
 
 [[package]]

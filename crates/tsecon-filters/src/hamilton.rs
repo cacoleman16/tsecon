@@ -1,9 +1,11 @@
 //! Hamilton (2018) regression filter — the proposed replacement for the
-//! Hodrick-Prescott filter — and its random-walk special case.
+//! Hodrick-Prescott filter — its random-walk special case, and HAC
+//! inference on the regression coefficients.
 
 use crate::decomposition::{Alignment, Decomposition};
 use crate::error::{check_finite, FiltersError};
 use crate::hp::Frequency;
+use crate::lin::householder_lstsq;
 
 /// Result of the Hamilton (2018) regression filter: the OLS coefficients
 /// together with the trend (fitted values) / cycle (residuals)
@@ -176,71 +178,135 @@ pub fn hamilton_filter_random_walk(y: &[f64], h: usize) -> Result<Decomposition,
     })
 }
 
-/// Least squares `min_beta ||A beta - b||_2` by Householder QR without
-/// pivoting (Golub & Van Loan 2013, algorithm 5.2.1).
+/// Which standard errors [`hamilton_filter_with_se`] computes for the
+/// regression coefficients.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HamiltonSe {
+    /// Classical spherical-errors OLS covariance
+    /// (statsmodels `cov_type="nonrobust"`). **Wrong for this
+    /// regression** except as a comparison point: the residual
+    /// `v_{t}` is an `h`-step-ahead forecast error and is serially
+    /// correlated by construction (overlapping horizons make it MA of
+    /// order `h - 1` even under a correctly specified model), which
+    /// classical standard errors ignore.
+    NonRobust,
+    /// Newey-West (Bartlett-kernel) HAC sandwich covariance from the
+    /// shared `tsecon-hac` engine (statsmodels `cov_type="HAC"`).
+    Hac {
+        /// Lag truncation. `None` uses the **`h`-overlap default
+        /// `maxlags = h`**: the `h`-step-ahead forecast error is MA of
+        /// order `h - 1` under correct specification, so the bandwidth
+        /// must cover at least `h - 1` lags; `h` covers that with one
+        /// lag of slack against mild misspecification. (The generic
+        /// Newey-West `0.75 n^(1/3)`-style rules are built for unknown
+        /// mixing decay and can sit *below* `h - 1` here — for the
+        /// quarterly `h = 8` the rule of thumb gives 4 — cutting off
+        /// autocorrelation that is known to exist by construction.)
+        maxlags: Option<usize>,
+        /// Apply the small-sample `n/(n - k)` correction
+        /// (statsmodels `use_correction`). tsecon's Python surface
+        /// defaults this to `true` (the finite-sample recommendation);
+        /// a default statsmodels `cov_type="HAC"` call uses `false`.
+        use_correction: bool,
+    },
+}
+
+/// Coefficient inference for the Hamilton regression, produced by
+/// [`hamilton_filter_with_se`]. Slot `j` corresponds to `beta[j]` of the
+/// accompanying [`HamiltonResult`] (`[intercept, b_1, ..., b_p]`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct HamiltonInference {
+    /// Standard errors of the regression coefficients.
+    pub bse: Vec<f64>,
+    /// t-statistics `beta / bse`.
+    pub tvalues: Vec<f64>,
+    /// Full parameter covariance matrix, `(p+1) x (p+1)` row-major.
+    pub cov: Vec<f64>,
+    /// The lag truncation actually used (`None` for
+    /// [`HamiltonSe::NonRobust`]; the resolved `h`-overlap default when
+    /// `maxlags` was `None`).
+    pub maxlags: Option<usize>,
+}
+
+/// Hamilton (2018) regression filter with standard errors on the
+/// regression coefficients.
 ///
-/// `cols` holds the columns of `A` (each of length `m = b.len()`); the
-/// factorization overwrites them. Rank deficiency is detected by
-/// comparing each diagonal of `R` against a scaled tolerance
-/// `m * eps * max_j ||a_j||`.
-fn householder_lstsq(
-    mut cols: Vec<Vec<f64>>,
-    mut b: Vec<f64>,
-    what: &'static str,
-) -> Result<Vec<f64>, FiltersError> {
-    let k = cols.len();
-    let m = b.len();
-    debug_assert!(m >= k);
+/// The decomposition and `beta` are **bit-identical** to
+/// [`hamilton_filter`] — the filter itself is computed by exactly that
+/// function; only the inference is added. Standard errors come from the
+/// library's single HAC engine (`tsecon-hac`), whose OLS/HAC sandwich
+/// matches statsmodels `OLS(...).fit(cov_type=...)` to golden-fixture
+/// precision; the engine's own point estimates agree with the filter's
+/// Householder QR solve to well under the golden tolerance (the lag
+/// columns are highly collinear, so the two solvers differ at the
+/// ~1e-9-relative level on the intercept of a trending series; asserted
+/// in the crate tests at 5e-8).
+///
+/// Because the dependent variable is `y_{t+h}` observed at overlapping
+/// horizons, the regression residuals are serially correlated *by
+/// construction* (MA(`h - 1`) under correct specification), so
+/// [`HamiltonSe::Hac`] with the default `maxlags = h` is the
+/// recommended setting; [`HamiltonSe::NonRobust`] is provided as the
+/// comparison point Hamilton's own Table 2 makes (his standard errors
+/// are Newey-West as well).
+///
+/// # Errors
+///
+/// Everything [`hamilton_filter`] rejects, plus
+/// [`FiltersError::RankDeficient`] if the HAC engine finds the design
+/// collinear (it cannot be reached when the filter itself succeeded,
+/// short of pathological rounding).
+pub fn hamilton_filter_with_se(
+    y: &[f64],
+    h: usize,
+    p: usize,
+    se: HamiltonSe,
+) -> Result<(HamiltonResult, HamiltonInference), FiltersError> {
+    let result = hamilton_filter(y, h, p)?;
+    let lost = h + p - 1;
+    let n = y.len();
+    let m = n - lost;
 
-    let max_colnorm = cols
-        .iter()
-        .map(|c| c.iter().map(|v| v * v).sum::<f64>().sqrt())
-        .fold(0.0_f64, f64::max);
-    let tol = m as f64 * f64::EPSILON * max_colnorm;
-
-    let mut v = vec![0.0_f64; m];
-    for j in 0..k {
-        // Householder vector annihilating rows j+1.. of column j.
-        let norm = cols[j][j..].iter().map(|x| x * x).sum::<f64>().sqrt();
-        if norm <= tol {
-            return Err(FiltersError::RankDeficient { what });
-        }
-        let alpha = if cols[j][j] >= 0.0 { -norm } else { norm };
-        v[j] = cols[j][j] - alpha;
-        v[(j + 1)..m].copy_from_slice(&cols[j][(j + 1)..m]);
-        let vtv: f64 = v[j..].iter().map(|x| x * x).sum();
-        cols[j][j] = alpha; // R[j][j]
-        for x in &mut cols[j][(j + 1)..] {
-            *x = 0.0;
-        }
-        // Reflect the remaining columns and the right-hand side:
-        // c <- c - 2 v (v'c) / (v'v).
-        for col in cols.iter_mut().skip(j + 1) {
-            let dot: f64 = v[j..].iter().zip(&col[j..]).map(|(a, c)| a * c).sum();
-            let fac = 2.0 * dot / vtv;
-            for (ci, vi) in col[j..].iter_mut().zip(&v[j..]) {
-                *ci -= fac * vi;
-            }
-        }
-        let dot: f64 = v[j..].iter().zip(&b[j..]).map(|(a, c)| a * c).sum();
-        let fac = 2.0 * dot / vtv;
-        for (bi, vi) in b[j..].iter_mut().zip(&v[j..]) {
-            *bi -= fac * vi;
-        }
+    // The identical design hamilton_filter regressed on.
+    let mut x_cols: Vec<Vec<f64>> = Vec::with_capacity(p + 1);
+    x_cols.push(vec![1.0; m]);
+    for j in 0..p {
+        x_cols.push((lost..n).map(|t| y[t - h - j]).collect());
     }
+    let rhs: Vec<f64> = y[lost..].to_vec();
 
-    // Back substitution R beta = (Q'b)[..k]; R[i][j] = cols[j][i], j >= i.
-    let mut beta = vec![0.0_f64; k];
-    for i in (0..k).rev() {
-        let mut s = b[i];
-        for j in (i + 1)..k {
-            s -= cols[j][i] * beta[j];
+    let fit = tsecon_hac::ols(&rhs, &x_cols).map_err(|_| FiltersError::RankDeficient {
+        what: "hamilton_filter_with_se OLS (shared HAC engine)",
+    })?;
+    let (se_type, maxlags) = match se {
+        HamiltonSe::NonRobust => (tsecon_hac::SeType::NonRobust, None),
+        HamiltonSe::Hac {
+            maxlags,
+            use_correction,
+        } => {
+            let lags = maxlags.unwrap_or(h);
+            (
+                tsecon_hac::SeType::Hac {
+                    kernel: tsecon_hac::Kernel::Bartlett,
+                    bandwidth: lags as f64,
+                    use_correction,
+                },
+                Some(lags),
+            )
         }
-        let rii = cols[i][i];
-        if rii.abs() <= tol {
-            return Err(FiltersError::RankDeficient { what });
-        }
-        beta[i] = s / rii;
-    }
-    Ok(beta)
+    };
+    let inf = fit
+        .inference(se_type)
+        .map_err(|_| FiltersError::RankDeficient {
+            what: "hamilton_filter_with_se covariance (shared HAC engine)",
+        })?;
+    Ok((
+        result,
+        HamiltonInference {
+            bse: inf.bse,
+            tvalues: inf.tvalues,
+            cov: inf.cov,
+            maxlags,
+        },
+    ))
 }

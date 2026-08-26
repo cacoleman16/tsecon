@@ -222,7 +222,7 @@ def kmw_reference_run(y, p, delta_arg, demean_arg):
         series = Path(td) / "series.csv"
         out = Path(td) / "out.json"
         np.savetxt(series, np.asarray(y, float), fmt="%.17g")
-        subprocess.run(
+        proc = subprocess.run(
             [
                 "Rscript",
                 str(OUT / "generate_bn_filter_fixtures.R"),
@@ -232,9 +232,11 @@ def kmw_reference_run(y, p, delta_arg, demean_arg):
                 demean_arg,
                 str(out),
             ],
-            check=True,
             capture_output=True,
+            text=True,
         )
+        if proc.returncode != 0:
+            raise RuntimeError(f"Rscript failed:\n{proc.stdout}\n{proc.stderr}")
         return json.loads(out.read_text())
 
 
@@ -355,7 +357,7 @@ def main():
     mod = sm.tsa.SARIMAX(
         gdp, order=(2, 1, 2), trend="c", simple_differencing=True
     ).fit(disp=0)
-    par = mod.params
+    par = dict(zip(mod.model.param_names, np.asarray(mod.params)))
     ar_hat = [float(par["ar.L1"]), float(par["ar.L2"])]
     ma_hat = [float(par["ma.L1"]), float(par["ma.L2"])]
     mu_hat = float(par["intercept"]) / (1.0 - sum(ar_hat))

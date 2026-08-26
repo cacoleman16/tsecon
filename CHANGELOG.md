@@ -7,7 +7,47 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added — the trend-cycle / Beveridge-Nelson stream
+
+- **`hamilton_filter` extensions** (defaults bit-identical, asserted):
+  `method="random_walk"` — the short-sample variant Hamilton (2018)
+  recommends, `cycle = y_t − y_{t−h}` with no regression — and
+  `se="hac"`/`"nonrobust"` — standard errors on the regression
+  coefficients through the shared `tsecon-hac` engine
+  (`hamilton_filter_with_se` in the crate). The overlapping h-step
+  residuals are MA(h−1) by construction, so the HAC default bandwidth is
+  the h-overlap rule `maxlags = h` (documented: generic plug-in rules can
+  land below h−1 here); `bse`/`tvalues` pinned against statsmodels
+  `OLS(cov_type="HAC")` on the identical design (measured ≤ 6.8e-8, see
+  the validation matrix). Frequency-aware `(h, p)` table — quarterly
+  (8, 4), monthly (24, 12), annual (2, 1) — now in the docstring and card.
+- **`bn_decomposition`** — the classic Beveridge-Nelson (1981)
+  trend-cycle decomposition from an ARIMA(p, 1, q) fit by the library's
+  own exact MLE (default the Morley-Nelson-Zivot (2, 2)), or at fixed
+  coefficients via `ar`/`ma`/`drift`. Closed-form long-run multiplier
+  ψ(1) = θ(1)/φ(1) (pinned to statsmodels' cumulative
+  `arma_impulse_response`), random-walk-with-drift trend
+  Δτ = μ + ψ(1)ε (asserted observation-by-observation), companion-form
+  cycle (Morley 2002), exact ARIMA(0,1,1) textbook closed form, and
+  teaching refusals for unit-circle AR/MA fits (the MA-boundary pile-up
+  names the cure: lower q). Rust: `tsecon-arima::bn`.
+- **`bn_filter`** — the Kamber-Morley-Wong (2018, REStat) BN filter:
+  output-gap estimation from a demeaned AR(p) on growth with the
+  signal-to-noise ratio δ pinned by their amplitude-to-noise criterion
+  (first local max on the reference grid `d0=0.01, dt=0.0005`), the
+  reference code's Bayesian `N(0, 0.5/j²)` Dickey-Fuller shrinkage prior,
+  and its fixed cycle standard-error band. **Reference-run validated
+  against the authors' own R replication code** (bnfiltering.com lineage
+  via `kletts/bnfilter@8af7924`, run at fixture generation): Rust matches
+  the R runs at ≤ 2.9e-15 elementwise and selects the identical δ grid
+  point; the classic-vs-KMW amplitude contrast (37.6× cycle variance on
+  the fixture's simulated series) is asserted. Rust:
+  `tsecon-filters::bn_filter`.
+- New fixture `fixtures/bn_filters.json` (+ generators
+  `generate_bn_filters_fixtures.py` / `generate_bn_filter_fixtures.R`)
+  with a statsmodels absence canary: statsmodels ships neither a Hamilton
+  filter nor any BN decomposition. New model-card section
+  (diagnostics.md) and three validation-matrix rows with honest grades.
 
 ## [0.5.0] - 2026-08-25
 

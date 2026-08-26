@@ -174,7 +174,9 @@ tail-risk extensions built on the same check-loss estimator.
 | `hpfilter(y, lamb)` | `hp_filter(y, lamb=1600, one_sided=False)` | Returns `{"trend", "cycle", ...}`. |
 | `bkfilter(y, low, high, K)` | `bk_filter(y, low=6, high=32, k=12)` | Loses `k` obs each end; `first_index` tells you where the cycle starts. |
 | `cffilter(y, low, high, drift)` | `cf_filter(y, low=6, high=32, drift=True)` | Christiano-Fitzgerald. |
-| *(none)* | `hamilton_filter(y, h=8, p=4)` | Hamilton (2018) regression filter — the modern HP alternative. |
+| *(none)* | `hamilton_filter(y, h=8, p=4)` | Hamilton (2018) regression filter — the modern HP alternative; `method="random_walk"` for the short-sample variant, `se="hac"` for Newey-West coefficient errors. |
+| *(none)* | `bn_decomposition(y, p=2, q=2)` | Classic Beveridge-Nelson (1981) from an ARIMA(p,1,q); statsmodels has no BN decomposition. |
+| *(none)* | `bn_filter(y, p=12)` | Kamber-Morley-Wong (2018) BN filter — the pinned-signal-to-noise output gap. |
 | `scipy.signal.periodogram` | `periodogram(x, fs, window, detrend)` | Matches SciPy. |
 | `scipy.signal.welch` | `welch(x, nperseg, ...)` | Matches SciPy. |
 | `scipy.signal.coherence` | `coherence(x, y, nperseg, ...)` | Magnitude-squared coherence. |
