@@ -29,10 +29,10 @@ here, so that is what is labelled.
 | — integration tests in `crates/*/tests/` | 1028 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 162 | |
 | — documentation tests | 45 | |
-| Python binding tests | **1064 collected, 0 failed** in 405 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **1192 passed, 0 failed, 0 skipped** in 350 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
 | Golden fixtures | 84 JSON files, produced by 66 generator scripts | `fixtures/` |
-| Public Python functions | 151, of which **147** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
+| Public Python functions | 155, of which **152** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
 
 All 7 ignored tests are in `tsecon-var`, and each `#[ignore]` gives its reason:
 three stored-bit-pattern fingerprints that are platform-specific, three
@@ -247,8 +247,8 @@ cannot cover:
   direction too: a Python moment function that raises must propagate its
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
-- **Surface completeness — and the four functions it says are missing.** The
-  module exports 145 public callables. This is checked by running the check,
+- **Surface completeness — and the three functions it says are missing.** The
+  module exports 155 public callables. This is checked by running the check,
   not by asserting the answer, and the honest output is *not* empty:
 
   ```sh
@@ -258,21 +258,22 @@ cannot cover:
   txt = ''.join(p.read_text() for p in pathlib.Path('bindings/python/tests').glob('*.py'))
   print(len(fns), sorted(f for f in fns if not re.search(rf'tsecon\.{f}\s*\(', txt)))
   "
-  # 128 ['engle_granger', 'fvar_scenario', 'ndiffs', 'quantile_lp', 'summarize']
+  # 155 ['engle_granger', 'fvar_scenario', 'ndiffs']
   ```
 
-  One of those five is a false positive. `summarize` **is** exercised, in
-  `test_results_generic.py`, but reached through
-  `from tsecon.results import summarize` rather than the `tsecon.` prefix the
-  regex looks for. The other four are real: **`engle_granger`,
-  `fvar_scenario`, `ndiffs` and `quantile_lp` appear nowhere under
-  `bindings/python/tests/`** — not under any spelling, since `grep -r` on the
-  bare name returns nothing either. So 141 of 145 are exercised here, not 145.
+  All three are real: **`engle_granger`, `fvar_scenario` and `ndiffs` appear
+  nowhere under `bindings/python/tests/`** — not under any spelling, since
+  `grep -r` on the bare name returns nothing either. So 152 of 155 are
+  exercised here, not 155. (Two earlier members of this list have since
+  graduated: `quantile_lp` gained binding tests in the 0.6.0 coverage work,
+  and `summarize` — formerly a regex false positive reached only through
+  `from tsecon.results import summarize` — is now also called under the
+  `tsecon.` spelling.)
 
-  All four are golden-pinned on the Rust side —
+  All three are golden-pinned on the Rust side —
   `tsecon-coint/tests/engle_granger_golden.rs`,
-  `tsecon-funcshock/tests/golden.rs`, `tsecon-diag/tests/advisors_golden.rs`,
-  `tsecon-quantile/tests/golden.rs` — so the *estimator* is validated. What is
+  `tsecon-funcshock/tests/golden.rs`, `tsecon-diag/tests/advisors_golden.rs`
+  — so the *estimator* is validated. What is
   untested is the binding: the marshalling, the dict keys and the error
   propagation that are precisely what this tier exists to check, and precisely
   what a Rust golden structurally cannot see. Nothing in the suite fails because
