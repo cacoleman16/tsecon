@@ -104,13 +104,32 @@ data release that caused it.
   "iterations"}`. Check `converged`; read the estimated lag shape off
   `weights`.
 - **`dfm_nowcast`** → `{"nowcast", "edge_factor", "loglik", "fit_loglik",
-  "smoothed_factors", "n_factors", "factor_order"}`. `nowcast` is one value per
+  "smoothed_factors", "n_factors", "factor_order", "loadings", "factor_ar",
+  "factor_cov", "idiosyncratic", "center", "scale"}`. `nowcast` is one value per
   series at the ragged edge (in the series' own standardized-then-restored
   units); `smoothed_factors` is the factor path; `loglik` is the filtering
   pass's log-likelihood on the full ragged panel, while `fit_loglik` is the
   estimation pass's log-likelihood on the balanced sub-panel (the rows before
   the first ragged edge — both `method` routes estimate there), so the two
   differ whenever the panel actually has a ragged edge.
+
+  The last six keys (0.6 — previously computed in Rust but never bound) are
+  **the fitted model itself**, on both `method` routes: `loadings` (Λ, N×r),
+  `factor_ar` (r×rp, the stacked factor-VAR blocks `[A_1 | … | A_p]`),
+  `factor_cov` (Q, r×r; fixed to 1 on the `"mle"` route for identification),
+  `idiosyncratic` (length N — the diagonal of the observation covariance H),
+  and `center`/`scale` (length N — the training column means and ddof-0
+  standard deviations; `scale` is all ones on the `"mle"` route, which fits
+  the centred raw scale with the loadings carrying the factor scale). The
+  factor-to-series mapping is exact and pinned in the test suite:
+  `nowcast == center + scale * (loadings @ edge_factor)` (that is literally
+  how the binding computes it), and
+  `center + scale * (smoothed_factors @ loadings.T)` is the common-component
+  fit of the balanced panel — its per-series standardized residual variance
+  is what `idiosyncratic` estimates. With these keys the state space
+  `z_t = Λf_t + e_t`, `f_t = A_1 f_{t−1} + … + A_p f_{t−p} + η_t`,
+  `e ~ N(0, diag(idiosyncratic))`, `η ~ N(0, factor_cov)` is fully
+  reproducible from the results dict alone.
 - **`dfm_news`** → `{"target_series", "target_period", "old_nowcast",
   "new_nowcast", "total_revision", "contributions"}`. `total_revision =
   new_nowcast − old_nowcast`, and `contributions` is a list of dicts

@@ -72,6 +72,42 @@ residual variances, not from the AR scale rule.
 comparison score: fit at one hyperparameter setting is meaningful only *relative*
 to another, so use it to choose shrinkage, not as an absolute number.
 
+**Posterior uncertainty (0.6 — the full NIW posterior is returned).** The
+posterior was always computed in closed form; `bvar_fit` now returns all of it,
+so coefficient uncertainty needs no sampler: `omega_bar` (k×k, k = 1+pK),
+`s_bar` (K×K), and `v_bar` (scalar, `v0 + T_eff` with `v0 = K + 2` and
+`T_eff = T − p`). The convention, exactly:
+
+$$\operatorname{vec}(B) \mid \Sigma, Y \sim N\big(\operatorname{vec}(\bar B),\; \Sigma \otimes \bar\Omega\big), \qquad \Sigma \mid Y \sim \mathcal{IW}(\bar S, \bar v),$$
+
+with `vec` stacking the **columns** of the k×K coefficient matrix (equation by
+equation — `B.flatten(order="F")` in numpy), so the Kronecker order is
+`np.kron(sigma, omega_bar)`, *not* `np.kron(omega_bar, sigma)`: the covariance
+between the coefficient vectors of equations j and j′ is
+`sigma[j, j′] * omega_bar`. Integrating Σ out makes each coefficient's marginal
+posterior a Student-t with `v_bar − K + 1` degrees of freedom, mean
+`posterior_mean_coefs`, and standard deviation (defined for `v_bar > K + 1`):
+
+```python
+post = tsecon.bvar_fit(Y, lags=2)
+O, S = np.asarray(post["omega_bar"]), np.asarray(post["s_bar"])
+K = S.shape[0]
+sd = np.sqrt(np.outer(np.diag(O), np.diag(S)) / (post["v_bar"] - K - 1))
+# sd is (1+pK, K), aligned entry-for-entry with posterior_mean_coefs:
+B = np.asarray(post["posterior_mean_coefs"])
+t_stats = B / sd                       # shrinkage-aware "t-ratios"
+```
+
+Worked example: for a K=2, p=1 system with T=120, `T_eff = 119`, so
+`v_bar = 4 + 119 = 123` and the own-first-lag coefficient of equation 1 has
+posterior sd `sqrt(omega_bar[1, 1] * s_bar[0, 0] / 120)` (denominator
+`v_bar − K − 1`) — the same number a Monte Carlo
+over the NIW reproduces (the test suite draws 40,000 `(B, Σ)` pairs from the
+documented posterior with `scipy.stats.invwishart` and matches this formula
+per coefficient within 5% relative; `test_binding_gaps.py`). For joint bands
+on nonlinear functions (IRFs), still use `bvar_irf_draws` — the sd above is
+the *marginal* coefficient uncertainty.
+
 **Failure modes.** Over-shrinkage (`lambda1` too small) flattens dynamics toward
 the random-walk prior; under-shrinkage buys nothing over OLS; turning `lambda0`
 down expecting shrinkage pins only the intercept and leaves the dynamics

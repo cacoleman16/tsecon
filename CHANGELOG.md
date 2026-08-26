@@ -66,6 +66,49 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   inside the documented EM-vs-exact-MLE budget; see
   `docs/examples/replication-hamilton-markov.md`).
 
+- **Four "computed in Rust, never bound to Python" gaps closed** (adversarial
+  sweep; all keys additive, every pre-existing key bit-identical; pinned in
+  `bindings/python/tests/test_binding_gaps.py`):
+  - **`dfm_nowcast` returns the model it fitted**: new keys `loadings`
+    (N×r), `factor_ar` (r×rp, `[A_1 | … | A_p]`), `factor_cov` (r×r),
+    `idiosyncratic` (length N), `center`/`scale` (length N training
+    moments) — on **both** `method` routes (`"mle"`: `scale` all ones,
+    `factor_cov` fixed to 1). The factor-to-series mapping is documented
+    and pinned: `nowcast == center + scale * (loadings @ edge_factor)`
+    (1e-10), and `center + scale * (smoothed_factors @ loadings.T)` is the
+    common-component fit of the balanced panel. Previously the fitted DFM
+    could not be reproduced, mapped onto series, or inspected from Python
+    at all.
+  - **`bvar_fit` returns its posterior uncertainty**: new keys `omega_bar`
+    (k×k), `s_bar` (K×K), `v_bar` — the full conjugate NIW posterior
+    (`vec(B)|Σ,Y ~ N(vec(Bbar), Σ ⊗ Ωbar)` with *column-stacked* vec, i.e.
+    `np.kron(sigma, omega_bar)`; `Σ|Y ~ IW(Sbar, vbar)`). The docstring
+    carries the exact marginal coefficient posterior-sd one-liner
+    (`np.sqrt(np.outer(np.diag(omega_bar), np.diag(s_bar)) / (v_bar - K - 1))`),
+    the Bayesian model card a worked example, and a seeded 40,000-draw NIW
+    Monte Carlo validates the formula per coefficient within 5% relative.
+    Previously the posterior mean shipped with no uncertainty whatsoever.
+  - **`var_fit` returns its residual surface**: new keys `resid` ((T, k),
+    statsmodels `results.resid`), `fitted` ((T, k), defined as
+    `data[lags:] - resid` — the OLS projection `Z @ B`, so
+    `fitted + resid` reproduces `data[lags:]` exactly), `nobs`, and
+    `df_resid` (`sigma_u`'s divisor). Residual diagnostics (`ljung_box`,
+    `arch_lm`) now run on the model's own residuals instead of a user
+    re-derivation.
+  - **`dcc_garch` returns the stage-1 remainder**: new keys `univariate`
+    (list of k per-series dicts with exactly `garch_fit`'s keys — params,
+    param_names/params_named, **`se_mle`/`se_robust`**/se_valid,
+    boundary/boundary_note, loglik/aic/bic, converged,
+    conditional_volatility, std_residuals — built by the same shared
+    constructor as `garch_fit` and asserted **bit-identical** to it per
+    series under the same spec, default and non-default), `std_residuals`
+    ((T, k) — the stacked `z[t][i] = eps_{i,t}/sqrt(sigma2[t][i])` driving
+    the correlation recursion; bitwise `returns/np.sqrt(sigma2)` under the
+    default zero-mean spec), and `nbar` (`variant="adcc"` only — the (k, k)
+    asymmetric targeting matrix `Nbar = (1/T) Σ n_t n_t'`, `n_t = min(z_t, 0)`).
+    Previously the per-series GARCH estimates and their standard errors were
+    computed and discarded.
+
 ### Fixed
 
 - **IVX localizing sequence now indexed by the regression sample size** `N =

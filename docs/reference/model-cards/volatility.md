@@ -361,6 +361,34 @@ factorization *exactly* against the returned correlation path and
 `sigma2` — asserted bitwise in the test suite, so the two surfaces cannot
 drift apart.
 
+**The stage-1 remainder (0.6 — previously computed in Rust but never
+bound).** `dcc_garch` now also returns everything the two-step estimator's
+first stage produced:
+
+- `univariate` — a list of k dicts, input order, each **exactly
+  `garch_fit`'s results dict** for that series (same keys, same conventions:
+  `params`/`param_names`/`params_named`, `se_mle`/`se_robust`/`se_valid`,
+  `boundary`/`boundary_note`, `loglik`/`aic`/`bic`, `converged`,
+  `conditional_volatility`, per-series `std_residuals`). The binding builds
+  both surfaces with one shared constructor, and the test suite asserts the
+  values **bit-identical** to calling `garch_fit` on that column under the
+  same spec — including non-default stage specs (`mean="constant"` etc.),
+  which thread through the 0.5 univariate-stage knobs. Per-series parameter
+  *standard errors* were the headline gap: quoting stage-1 GARCH estimates
+  without them invited unqualified point readings.
+- `std_residuals` — the stacked `(T, k)` standardized residuals
+  `z[t][i] = eps_{i,t} / sqrt(sigma2[t][i])` that drive the correlation
+  recursion (`eps` is the raw return under the default `mean="zero"`, the
+  demeaned return under `mean="constant"`; the timing is `sigma2`'s own —
+  entry t divides by the variance formed from information through t−1, so
+  the identity `z == returns / np.sqrt(sigma2)` is bitwise under the
+  default spec, and is asserted so).
+- `nbar` — ADCC only: the `(k, k)` asymmetric targeting matrix
+  `Nbar = (1/T) Σ_t n_t n_t'`, `n_t = min(z_t, 0)`, the second moment that
+  sets the CES stationarity bound through
+  `δ = λ_max(Qbar^{-1/2} Nbar Qbar^{-1/2})` — reproducible from the returned
+  `std_residuals` (asserted at 1e-12).
+
 **The timing convention (read before comparing packages).** `correlation[t]`
 is `R_t` *given information through t−1*: the recursion builds `Q_t` from
 `z_{t-1}` and `Q_{t-1}`, with `Q_0 = qbar` (so `correlation[0]` is exactly

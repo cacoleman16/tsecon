@@ -46,7 +46,18 @@ stability block — **`is_stable`** (the verdict; read this one), `min_root`, an
 `VARResults.roots` convention), so stability requires the **smallest** inverse
 root to exceed 1 — equivalently all companion eigenvalues inside the unit
 circle. `max_root` is the root *farthest* from the unit circle and remains above
-1 even for an explosive system, so it is not a stability verdict on its own. `var_irf` returns `[h][response][shock]` (horizon 0..H). `var_fevd`
+1 even for an explosive system, so it is not a stability verdict on its own.
+`var_fit` also returns the residual surface (0.6 — previously computed in Rust
+but never bound): `resid` (`(T, k)` — the OLS residuals `U = Y − ZB` over the
+effective sample, row `t` belonging to observation `lags + t`; statsmodels
+`results.resid`), `fitted` (`(T, k)` — the one-step fitted values, *defined* as
+`data[lags:] − resid`, i.e. the OLS projection `Z @ B`, so
+`fitted + resid` reproduces `data[lags:]` exactly; statsmodels
+`results.fittedvalues`), `nobs` (`T = len(data) − lags`, the row count of
+`resid`/`fitted`), and `df_resid` (`T − m` with `m = n_trend + k·lags`
+regressors per equation — `sigma_u`'s divisor). Run your residual diagnostics
+on these directly: `tsecon.ljung_box(np.asarray(fit["resid"])[:, i], 10)`.
+`var_irf` returns `[h][response][shock]` (horizon 0..H). `var_fevd`
 returns `[h][variable][shock]`, each variable's shares summing to 1.
 `var_granger`: `statistic`, `p_value`, `df_num/df_den`. `var_forecast`:
 `point`, `lower`, `upper` (each steps×k) — **marginal** intervals, one cell at a
