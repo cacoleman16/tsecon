@@ -39,6 +39,17 @@ venv) in one of two ways:
   100× dlog growth rates, and fitted model outputs) are stored — no raw
   licensed dataset is redistributed.
 
+One fixture is deliberately **not** a third-party golden:
+`backtest_string_snapshot.json` (generator
+`generate_backtest_string_snapshot.py`) is a *self-snapshot* of the
+string-forecaster paths of `backtest`/`conformal_forecast`/
+`conformal_backtest`, captured — as `float.hex()` values, so the comparison
+is bitwise — from the build immediately before the Python-callable
+forecaster plumbing landed in 0.6.0-dev. Its job is regression, not
+validation: `test_backtest_callable.py` asserts the pre-existing string
+surfaces stayed bit-identical. Regenerate it only to re-baseline after an
+*intentional* behavioral change to those paths.
+
 The `*.csv` files are the exception, and are data rather than derived values:
 public datasets vendored **with attribution** for the replication pages
 (`ramey_zubairy.csv` — the authors' public replication archive;
