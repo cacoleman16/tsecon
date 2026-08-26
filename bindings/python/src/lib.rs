@@ -7902,10 +7902,13 @@ fn tripower_quarticity(returns: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
     tsecon_realized::tripower_quarticity(r).map_err(to_py)
 }
 
-/// Barndorff-Nielsen-Shephard ratio jump test (BNS 2004; Huang & Tauchen
-/// 2005). Returns a dict with `ratio`, the studentized relative-jump
-/// z-statistic; compare against a standard-normal critical value (larger =
-/// stronger evidence of a jump).
+/// Barndorff-Nielsen-Shephard ratio jump test in the Huang & Tauchen
+/// (2005) form: their finite-sample `M/(M-1)` and `M/(M-2)` scalings on
+/// bipower variation and tripower quarticity are applied inside the
+/// statistic (the exported `bipower_variation` / `tripower_quarticity`
+/// measures stay the unadjusted BNS-2004 quantities). Returns a dict with
+/// `ratio`, the studentized relative-jump z-statistic; compare against a
+/// standard-normal critical value (larger = stronger evidence of a jump).
 #[pyfunction]
 fn bns_jump_test<'py>(
     py: Python<'py>,

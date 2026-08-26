@@ -294,7 +294,7 @@ m["rv"], m["bipower"], m["jump"]                # 2.95, 2.749, 0.201  (RV = BV +
 
 tsecon.realized_quarticity(r)                   # 6.32  — non-robust RQ
 tsecon.tripower_quarticity(r)                   # 3.88  — jump-robust TQ
-tsecon.bns_jump_test(r)["ratio"]                # 0.231 z-score: no jump on this day
+tsecon.bns_jump_test(r)["ratio"]                # -0.295 z-score: no jump on this day
 ```
 
 The last three lines answer a sharper question: is the day's jump component *real* or just sampling noise in $RV - BV$? Answering it needs the sampling variability of that difference, which is governed by the **integrated quarticity** $\int \sigma^4(s)\,ds$. Two estimators of it, differing exactly as $RV$ and $BV$ differ on the variance:
@@ -304,9 +304,9 @@ The last three lines answer a sharper question: is the day's jump component *rea
 
 The **BNS ratio jump test** (Barndorff-Nielsen and Shephard 2004, in the ratio form Huang and Tauchen 2005 found best-sized) assembles these into a z-statistic:
 
-$$z_t = \frac{\sqrt{M}\,(RV_t - BV_t)/RV_t}{\sqrt{\theta \cdot \max\!\left(1,\ TQ_t / BV_t^2\right)}}, \qquad \theta = \frac{\pi^2}{4} + \pi - 5.$$
+$$z_t = \frac{\sqrt{M}\,(RV_t - \widetilde{BV}_t)/RV_t}{\sqrt{\theta \cdot \max\!\left(1,\ \widetilde{TQ}_t / \widetilde{BV}_t^2\right)}}, \qquad \theta = \frac{\pi^2}{4} + \pi - 5,$$
 
-Under the null of no jumps the relative jump $(RV-BV)/RV$ is centred at zero and $z_t$ is asymptotically standard normal; a jump inflates $RV$ relative to the jump-robust $BV$ and pushes $z_t$ large and positive. Compare against a one-sided normal critical value — $1.645$ at 5%. `bns_jump_test` returns it under the `"ratio"` key. Watch the two measures respond to a planted jump:
+where $\widetilde{BV}_t = \frac{M}{M-1} BV_t$ and $\widetilde{TQ}_t = \frac{M}{M-2} TQ_t$ carry Huang-Tauchen's finite-sample factors for the $M-1$ (resp. $M-2$) products those sums actually contain — `bns_jump_test` applies them internally, while `realized_measures` and `tripower_quarticity` keep reporting the plain BNS-2004 quantities. Under the null of no jumps the relative jump $(RV-\widetilde{BV})/RV$ is centred at zero and $z_t$ is asymptotically standard normal; a jump inflates $RV$ relative to the jump-robust $\widetilde{BV}$ and pushes $z_t$ large and positive. Compare against a one-sided normal critical value — $1.645$ at 5%. `bns_jump_test` returns it under the `"ratio"` key. Watch the two measures respond to a planted jump:
 
 ```python
 import numpy as np, tsecon
@@ -316,22 +316,22 @@ M = 78                                   # 5-minute bars in a 6.5-hour session
 sig = 0.5 / np.sqrt(M)                    # per-bar sd -> daily RV around 0.25
 day = sig * rng.standard_normal(M)        # a purely continuous day
 
-tsecon.bns_jump_test(day)["ratio"]        # -1.49  — below 1.645, no jump
+tsecon.bns_jump_test(day)["ratio"]        # -1.65  — below 1.645, no jump
 tsecon.realized_quarticity(day)           # 0.029  \  RQ ~ TQ when there
 tsecon.tripower_quarticity(day)           # 0.040  /  is no jump
 
 day[40] += 2.0                            # drop one 2.0 jump into a single bar
-tsecon.bns_jump_test(day)["ratio"]        # 10.25  — fires decisively
+tsecon.bns_jump_test(day)["ratio"]        # 10.23  — fires decisively
 m = tsecon.realized_measures(day)
 m["rv"], m["bipower"]                      # 4.27 vs 0.40: RV explodes, BV robust
-m["jump"]                                 # 3.87  — the jump contribution
+m["jump"]                                 # 3.86  — the jump contribution
 tsecon.realized_quarticity(day)           # 432.6  \  RQ detonated by the jump,
 tsecon.tripower_quarticity(day)           # 0.10   /  TQ barely moves
 ```
 
 The contrast is the whole lesson. One 2.0 jump takes $RV$ from 0.25-ish to 4.27 while $BV$ stays at 0.40; $RQ$ blows up by four orders of magnitude while the jump-robust $TQ$ is essentially unchanged. That robustness is exactly why the test studentizes with $TQ$ and not $RQ$.
 
-> **⚠ Common mistake.** Studentizing the jump test with realized quarticity instead of tripower quarticity. $RQ$ is inflated by the very jump you are testing for, which shrinks $z_t$ toward zero — you would systematically *miss* the largest jumps, the ones that matter. The `max(1, TQ/BV²)` flooring in the formula (Huang-Tauchen 2005) is a second small-sample guard; do not remove it. And `"ratio"` is a **z-score**, not a p-value — convert with a normal tail (`1 - Phi(z)`) if you want one.
+> **⚠ Common mistake.** Studentizing the jump test with realized quarticity instead of tripower quarticity. $RQ$ is inflated by the very jump you are testing for, which shrinks $z_t$ toward zero — you would systematically *miss* the largest jumps, the ones that matter. The `max(1, TQ̃/BṼ²)` flooring in the formula (Huang-Tauchen 2005) is a second small-sample guard alongside the M/(M−1) and M/(M−2) factors; do not remove it. And `"ratio"` is a **z-score**, not a p-value — convert with a normal tail (`1 - Phi(z)`) if you want one.
 
 ### Range-based variance from OHLC bars
 

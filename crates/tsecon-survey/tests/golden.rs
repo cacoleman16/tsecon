@@ -12,7 +12,9 @@
 //! reference arithmetic; it does not depend on this crate's own output.
 
 use serde_json::Value;
-use tsecon_survey::{cg_regression, cg_series, disagreement, efficiency_test, HacBandwidth};
+use tsecon_survey::{
+    cg_regression, cg_series, cg_series_fixed_event, disagreement, efficiency_test, HacBandwidth,
+};
 
 fn load() -> Value {
     let path = format!(
@@ -145,6 +147,28 @@ fn cg_series_matches_documented_alignment() {
     }
     for (t, (a, b)) in revisions.iter().zip(&exp_rev).enumerate() {
         close(*a, *b, TOL, &format!("revision_{t}"));
+    }
+}
+
+#[test]
+fn cg_series_fixed_event_matches_documented_alignment() {
+    let fx = load();
+    let node = &fx["cg_build_fixed_event"];
+    let forecast_h = f64s(&node["forecast_h"]);
+    let forecast_h1 = f64s(&node["forecast_h1"]);
+    let actual = f64s(&node["actual"]);
+    let h = node["h"].as_u64().expect("h") as usize;
+    let (errors, revisions) = cg_series_fixed_event(&forecast_h, &forecast_h1, &actual, h)
+        .expect("cg_series_fixed_event");
+    let exp_err = f64s(&node["errors"]);
+    let exp_rev = f64s(&node["revisions"]);
+    assert_eq!(errors.len(), exp_err.len(), "errors length");
+    assert_eq!(revisions.len(), exp_rev.len(), "revisions length");
+    for (t, (a, b)) in errors.iter().zip(&exp_err).enumerate() {
+        close(*a, *b, TOL, &format!("fixed-event error_{t}"));
+    }
+    for (t, (a, b)) in revisions.iter().zip(&exp_rev).enumerate() {
+        close(*a, *b, TOL, &format!("fixed-event revision_{t}"));
     }
 }
 

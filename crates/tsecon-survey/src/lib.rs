@@ -6,16 +6,20 @@
 //!
 //! ## Module map
 //!
-//! - [`cg_regression`] / [`CgRegression`] and [`cg_series`]: the
-//!   **Coibion-Gorodnichenko (2015)** information-rigidity regression of the
-//!   mean forecast ERROR on the mean forecast REVISION. The slope `beta`
-//!   measures information rigidity (`0` under full-information rational
-//!   expectations, positive under sticky/noisy information) and maps to the
-//!   implied degree of rigidity `beta / (1 + beta)`. Reports the intercept,
-//!   slope, HAC standard errors, t-statistics, normal p-values, centered
-//!   R-squared, and the implied rigidity. [`cg_series`] builds the aligned
-//!   error/revision pair from a fixed-horizon mean-forecast series and the
-//!   realized actual.
+//! - [`cg_regression`] / [`CgRegression`] with [`cg_series_fixed_event`] and
+//!   [`cg_series`]: the **Coibion-Gorodnichenko (2015)** information-rigidity
+//!   regression of the mean forecast ERROR on the mean forecast REVISION. The
+//!   slope `beta` measures information rigidity (`0` under full-information
+//!   rational expectations, positive under sticky/noisy information) and maps
+//!   to the implied degree of rigidity `beta / (1 + beta)`. Reports the
+//!   intercept, slope, HAC standard errors, t-statistics, normal p-values,
+//!   centered R-squared, and the implied rigidity.
+//!   [`cg_series_fixed_event`] builds the aligned error/revision pair in the
+//!   paper's fixed-event form (`F_t x_{t+h} - F_{t-1} x_{t+h}` — same target,
+//!   adjacent vintages — the revision the rigidity map is derived for) from
+//!   the `h`- and `(h+1)`-step forecast series; [`cg_series`] builds the
+//!   fixed-horizon approximation from a single forecast series (not the CG
+//!   estimand in general — see its docs).
 //! - [`disagreement`] / [`Disagreement`]: forecast **disagreement** — the
 //!   per-period cross-sectional dispersion (standard deviation, quartiles, and
 //!   inter-quartile range) of a (possibly ragged) forecaster panel, reproduced
@@ -69,7 +73,7 @@ mod disagreement;
 mod efficiency;
 mod error;
 
-pub use cg::{cg_regression, cg_series, CgRegression};
+pub use cg::{cg_regression, cg_series, cg_series_fixed_event, CgRegression};
 pub use common::HacBandwidth;
 pub use disagreement::{disagreement, Disagreement};
 pub use efficiency::{efficiency_test, EfficiencyTest};
