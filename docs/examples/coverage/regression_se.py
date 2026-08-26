@@ -77,8 +77,8 @@ Every design has a closed-form true coefficient vector.
               Over-identified by one degree of freedom, so the Hansen J test
               has a true null to be sized against.
 `HAR`         log RV follows the HAR recursion exactly:
-              h_t = c + b_d h_{t-1} + b_w mean(h[t-6:t-1])
-                      + b_m mean(h[t-23:t-1]) + e_t,
+              h_t = c + b_d h_{t-1} + b_w mean(h[t-5:t])
+                      + b_m mean(h[t-22:t]) + e_t,
               with (c, b_d, b_w, b_m) = (-0.20, 0.35, 0.35, 0.25). Feeding
               exp(h) to `har_rv(variant="log")` makes those four numbers the
               exact truth. The window conventions are verified against a
@@ -897,9 +897,10 @@ HAR_LAGS = (0, 5, 22)
 def har_paths(rng, reps, n, truth=HAR_TRUTH, sigma=HAR_SIGMA, het=False, burn=250):
     """(reps, n) draws of log-RV from the HAR recursion `har_rv` actually fits.
 
-    Windows match `crates/tsecon-realized/src/har.rs` exactly: the daily term
-    is h[t-1], the weekly term is mean(h[t-6:t-1]) and the monthly term is
-    mean(h[t-23:t-1]) (half-open, ending just before the daily lag).
+    Windows match `crates/tsecon-realized/src/har.rs` exactly (the Corsi
+    2009 aggregates, the 0.5.0 window fix): the daily term is h[t-1], the
+    weekly term is mean(h[t-5:t]) and the monthly term is mean(h[t-22:t])
+    (half-open, trailing means running through the daily lag).
     """
     c, b_d, b_w, b_m = truth
     total = n + burn
@@ -908,8 +909,8 @@ def har_paths(rng, reps, n, truth=HAR_TRUTH, sigma=HAR_SIGMA, het=False, burn=25
     z = rng.standard_normal((reps, total))
     for t in range(23, total):
         daily = h[:, t - 1]
-        weekly = h[:, t - 6:t - 1].mean(axis=1)
-        monthly = h[:, t - 23:t - 1].mean(axis=1)
+        weekly = h[:, t - 5:t].mean(axis=1)
+        monthly = h[:, t - 22:t].mean(axis=1)
         # `het=True` scales the innovation by a function of the PAST only, so
         # the conditional mean -- and therefore the truth -- is unchanged.
         scale = np.sqrt(0.5 + 0.5 * (daily - mu) ** 2) if het else 1.0
@@ -1249,14 +1250,15 @@ def structural_checks():
     n = 300
     rv = np.exp(0.3 * rng.standard_normal(n))
     h = np.log(rv)
-    # rebuild `har_rv`'s design by hand from the documented windows
+    # rebuild `har_rv`'s design by hand from the documented windows (the
+    # Corsi 2009 trailing means through the daily lag -- the 0.5.0 fix)
     rows = range(23, n)
     y = np.array([h[t] for t in rows])
     design = np.column_stack([
         np.ones(len(y)),
         np.array([h[t - 1] for t in rows]),
-        np.array([h[t - 6:t - 1].mean() for t in rows]),
-        np.array([h[t - 23:t - 1].mean() for t in rows]),
+        np.array([h[t - 5:t].mean() for t in rows]),
+        np.array([h[t - 22:t].mean() for t in rows]),
     ])
     hand = tsecon.ols(y, design, se_type="hac", maxlags=5, use_correction=False)
     lib = tsecon.har_rv(rv, variant="log", start=22, hac_maxlags=5,
@@ -1351,8 +1353,8 @@ def structural_checks():
 
 def report_structural(facts):
     header("0. structural checks -- exact facts the experiments rely on")
-    print(f"har_rv design matches a hand-built [const, h_(t-1), mean h[t-6:t-1],")
-    print(f"  mean h[t-23:t-1]] regression: max |param diff| = "
+    print(f"har_rv design matches a hand-built [const, h_(t-1), mean h[t-5:t],")
+    print(f"  mean h[t-22:t]] regression: max |param diff| = "
           f"{facts['har_design_params']:.2e}, max |bse diff| = "
           f"{facts['har_design_bse']:.2e}, nobs diff = {facts['har_nobs']}")
     print(f"hc1 / hc0 == sqrt(n/(n-k)) exactly: max deviation = "

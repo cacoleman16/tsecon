@@ -363,7 +363,11 @@ The Newey-West `bse` has no statsmodels counterpart; it is pinned to an
 independent numpy assembly of the same sandwich, and to an exact no-op at
 `horizon = 1`, in the crate's golden tests, with the coverage improvement
 above re-measured as a seeded property test
-(`crates/tsecon-quantile/tests/properties.rs`).
+(`crates/tsecon-quantile/tests/properties.rs`). The
+[interval-coverage registry](../../examples/interval-coverage.md) additionally
+re-measures both sandwiches every run on an exact Gaussian state-space design
+(T=240: `bse` 0.913 vs `bse_powell` 0.826 at the median by h=12; the tail at
+0.79 with the correction — the same two-mechanism split as this table).
 
 **References.** Adrian, Boyarchenko & Giannone (2019, *American Economic
 Review* 109:1263-1289); Chernozhukov, Fernandez-Val & Galichon (2010,
