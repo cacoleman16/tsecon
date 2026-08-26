@@ -153,7 +153,11 @@ other; asking for both raises.
   `tsecon.panel_fe` takes the same `outcome` plus `regressors` as `k × N × T`
   and offers the same `se_type` menu.
 - **`bandwidth`** sets the Driscoll-Kraay kernel width. Like any HAC bandwidth
-  it moves the answer; report it.
+  it moves the answer; report it. It acts *only* under
+  `se_type="driscoll_kraay"` — since 0.6.0 passing it explicitly with
+  `se_type="cluster"` or `"nonrobust"` raises instead of being silently
+  absorbed (cluster/nonrobust SEs use no kernel, so there is nothing for a
+  bandwidth to do).
 - **`jackknife=True`** applies the Dhaene-Jochmans half-panel correction for
   Nickell bias. It does what it says to the *point estimate* — the bias is
   essentially eliminated — but it also inflates the estimator's finite-sample

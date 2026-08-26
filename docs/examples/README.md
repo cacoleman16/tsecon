@@ -165,7 +165,7 @@ off impulse responses and variance decompositions.
 ```python
 r    = tsecon.var_fit(data, lags=2)                 # params, sigma_u, ICs, stability
 irf  = tsecon.var_irf(data, lags=2, horizon=16)     # [h][response][shock]
-fevd = tsecon.var_fevd(data, lags=2, horizon=16)
+fevd = tsecon.var_fevd(data, lags=2, horizon=16)   # [h][variable][shock]
 g    = tsecon.var_granger(data, caused=[0], causing=[1], lags=2)
 fc   = tsecon.var_forecast(data, lags=2, steps=8)   # point + intervals
 ```

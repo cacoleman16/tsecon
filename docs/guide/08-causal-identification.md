@@ -130,8 +130,8 @@ Because the true impact matrix is lower triangular and the ordering in the data 
 The companion decomposition question — *what share of each variable's forecast errors does each shock explain?* — is the forecast-error variance decomposition, also identified by the same Cholesky factor:
 
 ```python
-fevd = np.array(tsecon.var_fevd(y, lags=1, horizon=16))  # [variable][horizon][shock]
-print(np.round(fevd[:, 8, :], 2))   # shares at horizon 8; each row sums to 1
+fevd = np.array(tsecon.var_fevd(y, lags=1, horizon=16))  # [horizon][variable][shock]
+print(np.round(fevd[8], 2))         # shares at horizon 8; each row sums to 1
 ```
 
 ![Forecast-error variance decomposition](../examples/img/07-var-fevd.png)

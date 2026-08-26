@@ -52,7 +52,7 @@ callable now.
 | `vars::VAR(data, p, type="const")` | `var_fit(data, lags=p, trend="c")` | `data` is `T x k`. `type="none"/"trend"` → `trend="n"/"t"`. |
 | `vars::irf(v, n.ahead=h, ortho=TRUE)` | `var_irf(data, lags, horizon=h, orth=True)` | Nested list `[h][response][shock]`. |
 | `vars::irf(..., cumulative=TRUE)` | `var_irf(..., cumulative=True)` | Running sums. |
-| `vars::fevd(v, n.ahead=h)` | `var_fevd(data, lags, horizon=h)` | `[variable][horizon][shock]`; sums to 1 across shocks. |
+| `vars::fevd(v, n.ahead=h)` | `var_fevd(data, lags, horizon=h)` | `[horizon][variable][shock]`, horizon-first like the IRFs; sums to 1 across shocks. R's `vars::fevd` returns one per-variable matrix — variable-major, one transpose apart. |
 | `vars::causality(v, cause=)` | `var_granger(data, caused, causing, lags)` | F-test. Pass integer column indices. |
 | `predict(v, n.ahead=h)` | `var_forecast(data, lags, steps=h, alpha=0.05)` | `{"point", "lower", "upper"}`. |
 | `svars::id.chol(v)` | `var_irf(..., orth=True)` | Recursive/Cholesky = column order of `data`. |
@@ -118,7 +118,7 @@ entry points.
 | `forecast::thetaf(y, h)` | `theta_forecast(y, steps=h, period=)` | The Theta method. |
 | `forecast::accuracy(f, y)` | `accuracy(actual, forecast, insample=, period=)` | ME/RMSE/MAE/MAPE/sMAPE/MASE/RMSSE. |
 | `forecast::dm.test(e1, e2)` | `dm_test(e1, e2, h=1, loss="squared")` | HLN small-sample correction. |
-| `rugarch::ugarchfit(spec, y)` | `garch_fit(y, vol="garch"/"egarch", p, o, q, dist=)` | GJR via `o=`. `se_robust` = Bollerslev-Wooldridge. |
+| `rugarch::ugarchfit(spec, y)` | `garch_fit(y, vol="garch"/"gjr"/"egarch", p, o, q, dist=)` | GJR via `vol="gjr"` (`o` sets the asymmetry order there; `o > 0` with `vol="garch"` raises). `se_robust` = Bollerslev-Wooldridge. |
 | `rmgarch::dccfit(...)` | `dcc_garch(returns)` | Engle (2002) DCC; `returns` is `T x k`. |
 | `ccgarch`, constant-correlation | `ccc_garch(returns)` | Bollerslev (1990) CCC. |
 | `GAS::UniGASFit(...)` | `gas_volatility(y, density="gaussian"/"student_t")` | Creal-Koopman-Lucas score-driven volatility. |

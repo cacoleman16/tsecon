@@ -467,7 +467,7 @@ Honest open problems: distinguishing genuine long memory from structural breaks 
 - `jarque_bera(x)` — skewness/kurtosis normality test for the fat-tails fact and for standardized-residual checks
 - `acf(y, nlags=20)` — the autocorrelation function of squared returns is the clustering fingerprint
 - `ols(y, X, se_type="hac")` — estimates HAR-RV models correctly today, as in the example above
-- `garch_fit(y, vol="garch", mean="zero", dist="normal", p=1, o=1, q=1, forecast_horizon=0)` — GARCH/GJR/EGARCH QMLE with MLE and robust SEs; used in the workhorse example above
+- `garch_fit(y, vol="garch", mean="zero", dist="normal", p=1, o=None, q=1, forecast_horizon=0)` — GARCH/GJR/EGARCH QMLE with MLE and robust SEs; used in the workhorse example above. `o` (the asymmetry order) acts only under `vol="gjr"`/`"egarch"` — `o=None` means one asymmetry lag there and none for plain GARCH, and an explicit `o > 0` with `vol="garch"` raises rather than being silently discarded (in `arch`, `arch_model(y, p=1, o=1, q=1)` silently switches to GJR; tsecon makes you say `vol="gjr"`)
 - `gas_volatility(y, density="gaussian", horizon=0)` — score-driven (GAS) volatility with Gaussian or Student-t innovations, as in the score-driven section
 - `realized_measures`, `realized_quarticity`, `tripower_quarticity`, `bns_jump_test`, `realized_range`, `har_rv` — the realized-volatility toolkit demonstrated above
 - `dm_test(e1, e2, h=1, loss="squared")` and `accuracy(...)` — forecast-comparison machinery volatility horse races run on

@@ -47,7 +47,10 @@ stability block — **`is_stable`** (the verdict; read this one), `min_root`, an
 root to exceed 1 — equivalently all companion eigenvalues inside the unit
 circle. `max_root` is the root *farthest* from the unit circle and remains above
 1 even for an explosive system, so it is not a stability verdict on its own. `var_irf` returns `[h][response][shock]` (horizon 0..H). `var_fevd`
-returns `[h][variable][shock]`, each variable's shares summing to 1.
+returns `[h][variable][shock]`, each variable's shares summing to 1 — since
+0.6.0 the emitted list really is horizon-first as always documented (it used
+to leak the internal variable-major layout; statsmodels'
+`fevd(h).decomp` remains variable-major, one `(1, 0, 2)` transpose away).
 `var_granger`: `statistic`, `p_value`, `df_num/df_den`. `var_forecast`:
 `point`, `lower`, `upper` (each steps×k) — **marginal** intervals, one cell at a
 time, which is not what a fan chart is read as; see

@@ -99,10 +99,11 @@ cluster covariances.
 | Call | Argument | Default | Notes |
 |------|----------|---------|-------|
 | `panel_fe` | `se_type` | `"cluster"` | `"nonrobust"`, `"cluster"` (by entity), `"driscoll_kraay"` |
-| | `bandwidth` | `4.0` | Driscoll-Kraay kernel bandwidth |
+| | `bandwidth` | `None` | Driscoll-Kraay kernel truncation, `4.0` when omitted under `se_type="driscoll_kraay"` — the only `se_type` it acts on. Passing it explicitly with any other `se_type` **raises** (0.6.0; it used to be silently absorbed, so `panel_fe(..., bandwidth=8)` under the default `"cluster"` was a complete no-op) |
 | `panel_lp` | `horizon` | `8` | IRF horizons |
 | | `n_lag_controls` | `2` | lags of outcome/shock included as controls |
 | | `se_type` | `"driscoll_kraay"` | robust to cross-sectional dependence |
+| | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`, and an explicit bandwidth with `"cluster"`/`"nonrobust"` **raises** instead of being silently absorbed |
 | | `cumulative` | `False` | `True` for cumulative IRFs |
 | | `jackknife` | `False` | Dhaene-Jochmans half-panel (time-split) jackknife; corrects the **points only**, SEs stay the full-sample plug-in (measured: 95% coverage 0.880 → 0.804 at T=60 — see the [panel-LP cookbook](../../cookbook/panel-lp-standard-errors.md#gotchas)) |
 | | `bias_correction` | `"none"` | `"spj"` = Mei-Sheng-Shi split-panel jackknife: corrected points **and** the reference adjusted-score SEs; `"dj"` = alias for `jackknife=True`. Setting `jackknife=True` together with `"spj"` raises |
