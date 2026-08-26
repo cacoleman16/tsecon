@@ -1,11 +1,17 @@
 # Model card — Cointegration and regime switching
 
-`johansen` · `vecm` · `markov_switching_ar` · `setar` · `setar_test`
+`johansen` · `vecm` · `ou_fit` · `spread_zscore` · `markov_switching_ar` ·
+`setar` · `setar_test`
 
 Two ways the tidy linear-stationary world breaks. First, series can be
 individually nonstationary yet move together — share a long-run equilibrium
 (cointegration); differencing away the trends throws that equilibrium away, and
-the vector error-correction model keeps it. Second, the parameters themselves
+the vector error-correction model keeps it. Once a cointegrating spread is in
+hand, `ou_fit` / `spread_zscore` quantify what a trading workflow does with it
+— how fast it mean-reverts (half-life) and how far it sits from equilibrium
+(z-score); they live in this card, not the forecasting one, because the spread
+*is* the cointegrating residual and the estimator is the continuous-time twin
+of the error-correction speed `alpha`. Second, the parameters themselves
 can switch between regimes — either *unobserved* states governed by a hidden
 Markov chain (`markov_switching_ar`), or *observed* states triggered when a
 lagged value of the series itself crosses a threshold (`setar`, with
@@ -148,6 +154,146 @@ fit = tsecon.vecm(data, k_ar_diff=2, coint_rank=1, deterministic="co")
 print("beta :", np.round(np.asarray(fit["beta"])[:, 0], 3))   # ~[1, -1, 0]: y1 - y2
 print("alpha:", np.round(np.asarray(fit["alpha"])[:, 0], 3))
 print("const:", np.round(np.asarray(fit["det_coef"])[:, 0], 3))
+```
+
+---
+
+## `ou_fit` / `spread_zscore` — Ornstein-Uhlenbeck mean reversion for spreads
+
+**What it estimates.** The continuous-time mean-reversion law of a stationary
+spread — `dX = kappa (mu − X) dt + sigma dW` — by the **exact-discretization
+Gaussian MLE**: observed at step `dt`, an OU process is *exactly* the AR(1)
+`X_{t+1} = c + phi X_t + eps` with `phi = e^{−kappa dt}`, `c = mu(1 − phi)`,
+`Var(eps) = sigma²(1 − phi²)/(2 kappa)`, so the MLE is the closed-form AR(1)
+OLS (with variance `RSS/n`) mapped back through that bijection — no iterative
+optimizer, no convergence question. Delta-method standard errors for
+`(kappa, mu, sigma)` come from the AR(1) information (the formulas are written
+out in the crate docs, `tsecon-coint/src/ou.rs`). `spread_zscore` scores the
+spread against the stationary law `N(mu, sigma²/(2 kappa))` — the entry/exit
+signal of a pairs trade.
+
+**Assumptions.** The spread is a stationary Gaussian OU process sampled at a
+*fixed* step `dt` — in the pairs workflow that means cointegration has already
+been established (`engle_granger` / `johansen`; the estimator will *tell* you,
+via `mean_reverting = False`, when the "spread" you gave it does not revert,
+but it cannot tell you the hedge ratio was wrong). Constant `kappa`, `mu`,
+`sigma` over the sample; SEs are asymptotic (conditional MLE).
+
+**When to use (and when not).** Use on the residual of a cointegrating
+regression (or any spread you intend to trade) to get the half-life — the
+number that decides whether the reversion is tradable at your horizon — and
+the z-score bands. Not a test for cointegration (it conditions on
+stationarity rather than testing it); not for irregularly-sampled data
+(`dt` is fixed); and if all you want is the discrete AR(1), `arima_fit(x,
+order=(1,0,0))` is the direct tool — `ou_fit` buys the continuous-time
+parametrization (`kappa` per unit time, comparable across sampling
+frequencies) at the cost of requiring `0 < phi`.
+
+**Key arguments and defaults (and why).** `dt=1.0` quotes `kappa` and the
+half-life in observation units; pass `dt=1/252` (daily) or `1/12` (monthly) to
+quote them in years. `level=0.95` sets the half-life CI. `spread_zscore`
+takes all three of `kappa`/`mu`/`sigma` (score new data against a frozen fit)
+or none (fit-then-score); a partial set is refused rather than silently mixed.
+
+**How to read the output.** `kappa`/`mu`/`sigma` with `*_se`; `half_life =
+ln 2 / kappa` (expected time for a deviation to halve, in `dt` units);
+`half_life_ci`; `stationary_sd = sigma/sqrt(2 kappa)`; the honest flag
+`mean_reverting`; and the AR(1) leg (`phi`, `phi_se`, `c`, `c_se`, `eta2`,
+`loglik`, `n_obs`) so the discrete fit is never hidden behind the mapping.
+When `phi_hat >= 1` the result is **returned, not raised**: the AR(1) root at
+or over unity is how a non-cointegrated "spread" announces itself, so you get
+`mean_reverting=False`, `half_life=inf`, `half_life_ci=None`,
+`stationary_sd=None` — and `spread_zscore` refuses such a fit (no stationary
+distribution exists to score against). `phi_hat <= 0` (anti-persistent at
+this sampling interval — no real `kappa` exists) is the one genuine refusal.
+
+**The kappa bias — documented, not hidden.** The AR(1) slope is biased down
+(`E[phi_hat] − phi ≈ −(1+3phi)/n`, Kendall 1954), which maps to an **upward**
+bias in `kappa_hat` of roughly `(1+3phi)/(n phi dt) ≈ 4 / (time span)` for
+persistent spreads (Tang & Chen 2009; Yu 2012): five years of data biases
+`kappa_hat` up by ~0.8/year *regardless of sampling frequency* — only a longer
+span shrinks it. Measured on the shipped seeded Monte Carlo (2000 reps/cell,
+`docs/examples/coverage/experiments/ou_kappa_bias_coverage.py`, DGP `mu=0`,
+`sigma=0.2`), together with the coverage of the shipped 95% half-life CI and
+of the log-scale alternative:
+
+| cell | true kappa | bias (measured) | bias (≈4/span) | RMSE | CI coverage (shipped) | log-scale alt. |
+|---|---|---|---|---|---|---|
+| daily, 5y span | 5.0 | +0.82 | +0.80 | 1.84 | 0.939 | 0.892 |
+| daily, 5y span | 2.0 | +0.91 | +0.80 | 1.57 | 0.911 | 0.797 |
+| daily, 5y span | 0.5 | +1.08 | +0.80 | 1.50 | 0.820 | 0.527 |
+| daily, 5y span | 0.1 | +1.10 | +0.80 | 1.43 | 0.713 | 0.210 |
+| monthly, 20y span | 5.0 | +0.26 | +0.23 | 0.99 | 0.952 | 0.943 |
+| monthly, 20y span | 2.0 | +0.24 | +0.21 | 0.61 | 0.948 | 0.898 |
+| monthly, 20y span | 0.5 | +0.25 | +0.20 | 0.42 | 0.906 | 0.785 |
+| monthly, 20y span | 0.1 | +0.28 | +0.20 | 0.38 | 0.804 | 0.467 |
+
+**The half-life CI is level-scale — a measured choice.** `half_life_ci` maps
+the symmetric kappa interval `kappa_hat ± z·SE` through the monotone
+`ln2/kappa`; when that interval crosses zero the upper endpoint is reported as
+`inf` — the data cannot rule out *no mean reversion* at that confidence, and
+the interval says so instead of fabricating a finite bound. The a-priori
+argument favored a log-scale interval (positive by construction), and the
+table above is why it ships level-scale instead: `kappa_hat` centers *above*
+the truth, and a multiplicative interval around an upward-biased center never
+reaches down to a small true `kappa` (0.21 coverage at `kappa=0.1`), while the
+level interval — precisely by conceding the `inf` branch — covers closer to
+nominal in **every** cell. Neither attains nominal in the slow-reversion
+cells; that residual under-coverage is the bias itself, and the table is the
+honest statement of it. Read a wide or infinite `half_life_ci` as "this span
+does not identify the reversion speed", not as noise to be tuned away.
+
+**Failure modes.** Short spans with slow reversion: `kappa_hat` can exceed
+its truth several-fold (see `daily_weak` in the fixture: `kappa_hat = 5.7` on
+a true 0.3 in one year of daily data) — the CI's `inf` branch is the guard.
+Scoring `spread_zscore` with a `kappa` from a different `dt` convention than
+the data quietly rescales nothing (the z-score is `dt`-free once the
+parameters are consistent) but the *half-life* is only comparable across
+frequencies if `dt` was passed correctly. The stationary-law z-score uses
+`sigma/sqrt(2 kappa)`, not the sample standard deviation of the spread — on a
+finite sample of a slowly-reverting spread the two differ materially, and the
+sample sd underestimates the stationary sd.
+
+**Validated against.** Grade: **closed-form + statsmodels AR(1) golden +
+MC-measured kappa bias and CI coverage.** The AR(1) leg (`c`, `phi`, `eta2`,
+both SEs, loglik) is pinned to statsmodels `AutoReg(x, lags=1)` — the same
+estimator through an independent lstsq path — at 1e-10 in the Rust golden
+(`fixtures/ou.json`) and 1e-12 live in the Python suite (achieved ~1e-15);
+the closed-form mapping is asserted **bit-for-bit** against a
+summation-order-identical reimplementation in the crate test, and at 1e-10
+against the NumPy transcription in the fixture; `half_life·kappa = ln 2`,
+`e^{−kappa·dt} = phi`, and the stationary-variance identity are asserted at
+float round-off; the kappa bias and both CI constructions are MC-measured
+(table above, 2000 reps, seeded).
+
+**References.** Uhlenbeck & Ornstein (1930); Vasicek (1977); Kendall (1954,
+Biometrika 41); Tang & Chen (2009, J. Econometrics 149); Yu (2012, J.
+Econometrics 169).
+
+```python
+import numpy as np, tsecon
+rng = np.random.default_rng(7)
+# A cointegrated pair with a *persistent* spread: each price is a shared
+# random walk plus an AR(1) mispricing (phi = 0.93 daily -> the spread
+# mean-reverts with a half-life of about ln 2 / (252 ln(1/0.93)) ~ 10 days).
+common = np.cumsum(rng.standard_normal(1000))
+e1 = np.zeros(1000); e2 = np.zeros(1000)
+for t in range(1, 1000):
+    e1[t] = 0.93 * e1[t-1] + 0.3 * rng.standard_normal()
+    e2[t] = 0.93 * e2[t-1] + 0.3 * rng.standard_normal()
+y1, y2 = common + e1, common + e2
+
+eg = tsecon.engle_granger(np.column_stack([y1, y2]), trend="c")
+print(f"EG p = {eg['pvalue']:.4f}")            # cointegrated -> small
+spread = eg["resid"]                            # the tradable spread
+
+fit = tsecon.ou_fit(spread, dt=1/252)           # daily data, kappa per year
+print(f"kappa = {fit['kappa']:.1f}/yr  half-life = {fit['half_life']*252:.1f} days",
+      f" CI(days) = {tuple(round(v*252, 1) for v in fit['half_life_ci'])}")
+print(f"mean-reverting: {fit['mean_reverting']}")
+
+z = tsecon.spread_zscore(spread, dt=1/252)      # fit-then-score
+print("today's z:", round(z["zscore"][-1], 2))  # |z| > 2: stretched
 ```
 
 ---

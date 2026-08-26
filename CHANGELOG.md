@@ -52,6 +52,44 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   training block; the arithmetic saturates instead of overflowing).
 ### Added
 
+- **`ou_fit` / `spread_zscore` — Ornstein-Uhlenbeck mean-reversion utilities
+  for spreads** (field report item 8; requested by a downstream
+  statistical-arbitrage project). `ou_fit(x, dt=1.0, level=0.95)` is the
+  exact-discretization Gaussian MLE of `dX = kappa(mu − X)dt + sigma dW`: the
+  OU observed at step `dt` is exactly the AR(1)
+  `X_{t+1} = c + phi X_t + eps` (`phi = e^{−kappa dt}`), so the MLE is the
+  closed-form AR(1) OLS (variance `RSS/n`) mapped back — no optimizer.
+  Returns `kappa`/`mu`/`sigma` with delta-method SEs from the AR(1)
+  information, `half_life = ln 2 / kappa` with a `half_life_ci`, the
+  stationary sd, the AR(1) leg itself, and an honest `mean_reverting` flag:
+  `phi_hat >= 1` (a "spread" with no mean reversion) is *returned* —
+  `half_life = inf`, CI and stationary sd `None` — not raised, while
+  `phi_hat <= 0` (unattainable by any real `kappa`) is refused with a
+  teaching error. `spread_zscore` scores the spread against the stationary
+  law `N(mu, sigma²/(2 kappa))` (all three parameters frozen, or fitted from
+  `x`; partial sets and `kappa <= 0` refused — no stationary distribution
+  exists). Lives in `tsecon-coint` (`ou.rs`): the spread is the
+  cointegrating residual, and the workflow is
+  `engle_granger → ou_fit → spread_zscore`. Validation grade: **closed-form
+  + statsmodels AR(1) golden + MC-measured kappa bias and CI coverage** —
+  the AR(1) leg is pinned to statsmodels `AutoReg` (1e-10 fixture / 1e-12
+  live, achieved ~1e-15), the OU mapping is asserted bit-for-bit against a
+  summation-order-identical closed form, and a 2000-rep seeded Monte Carlo
+  (`docs/examples/coverage/experiments/ou_kappa_bias_coverage.py`) measures
+  the well-known upward `kappa_hat` bias (~4 / time-span; Kendall 1954,
+  Tang-Chen 2009 — documented in the model card, deliberately not corrected)
+  and the half-life CI coverage. The CI construction was *decided by that
+  measurement*: the a-priori favorite (log-scale, positive by construction)
+  under-covers badly around an upward-biased center (0.21 at `kappa=0.1`,
+  daily/5y), so the shipped interval is the level-scale kappa interval
+  mapped through `ln 2 / kappa`, with an `inf` upper endpoint when the
+  interval crosses zero ("no mean reversion cannot be ruled out") — closer
+  to nominal in every measured cell (e.g. 0.713 vs 0.210 in that stress
+  cell; 0.94–0.95 in healthy cells). Model card: cointegration-regime
+  (with the full bias/coverage table); fixture `fixtures/ou.json` includes
+  an explosive cell and a weakly-identified cell so the honest branches
+  stay pinned.
+
 - **`markov_switching_ar` now returns the estimated AR coefficients** under
   the new `ar` key — a length-`order` array `(phi_1, …, phi_p)` shared across
   regimes (the binding fits Hamilton's common-AR specification, in which the
