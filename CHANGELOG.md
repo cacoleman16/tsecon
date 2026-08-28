@@ -156,6 +156,102 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   sections with the full assumptions/failure-mode/validated-how
   treatment, and validation-matrix rows grading the evidence.
 
+### Fixed — inert arguments now RAISE with teaching errors (audit round 10; the `garch_fit(o=…)`/cv_splits convention)
+
+One consolidated sweep over the binding layer. Every argument below was
+accepted and silently ignored under the named mode; each now **raises** when
+passed *explicitly* where it cannot act, with a teaching error naming the
+mode/base that would use it. Where the kwarg was not already `Option`-typed
+the default became a `None` sentinel resolving to the historical value, so
+every previously-working default call is **bit-identical** (tested per
+surface).
+
+- **`ccc_garch`/`dcc_garch`/`dcc_test` `o=`** — the multivariate siblings
+  now honor `garch_fit`'s 0.6.0 guard their docstrings already claimed
+  ("the same knobs as `garch_fit`"): explicit `o > 0` under `vol="garch"`
+  raises the identical teaching error (one shared resolver so the four
+  surfaces cannot drift); `o=None` is the sentinel default (no asymmetry
+  term under `"garch"`, one lag under `"gjr"`/`"egarch"`).
+- **`conformal_forecast`/`conformal_backtest`** — `order` when the base is
+  not `"arima"` (callables included; it was parsed, validated, then
+  dropped), `lags` when the base is not `"ar"` (outside EnbPI's own AR
+  ensemble), `gamma` outside `method="aci"` (it is the ACI step size),
+  `n_boot`/`seed`/`optimize_beta` outside `method="enbpi"` (they
+  parameterize the EnbPI bootstrap ensemble), `calib` under
+  `method="enbpi"` (EnbPI calibrates on out-of-bag residuals, not a
+  held-out window), `conformal_forecast(n_eval=…)` under
+  `"split"`/`"enbpi"` (in that entry point it is the ACI online window
+  only — `conformal_backtest` keeps `n_eval` live for every method,
+  verified), and `conformal_backtest(batch=…)` under `"split"`/`"aci"`
+  (the EnbPI label-reveal cadence).
+- **`hamilton_filter`** — `maxlags` was refused under `se=None` but
+  silently swallowed under `se="nonrobust"` (the returned `maxlags` key
+  was even `None`); the guard now covers every non-HAC path with the same
+  message. `use_correction` (the HAC `n/(n-k)` factor) was inert
+  everywhere except `se="hac"` — including `method="random_walk"`, which
+  refused `se`/`maxlags` but let it through — and is now refused on all
+  non-HAC paths (sentinel `None` → `True` where HAC applies).
+- **`bn_filter(d0=…, dt=…)`** together with a fixed `delta=` — they lay
+  out the automatic-selection grid, which a fixed delta never builds
+  (sentinels resolving to 0.01/0.0005).
+- **`backtest(period=…)`** under `forecaster="naive"/"drift"/"mean"` and
+  any Python callable — `period` feeds only the seasonal built-ins
+  (`seasonal_naive`/`theta`), never a callable (which receives only
+  `(train, horizon)`), and it is NOT the MASE/RMSSE scale period (that is
+  `insample_period`, unchanged and still live everywhere — re-verified by
+  sweep before the refusal landed).
+- **`spread_zscore(dt=…)`** with a frozen `kappa`/`mu`/`sigma` triple —
+  `dt` only parameterizes the internal `ou_fit`, which never runs then.
+- **`threshold_vecm(n_grid_beta=…, beta_span=…)`** with `beta=` supplied —
+  the beta grid search never runs (the empty `beta_grid` was already
+  documented; the refusal-on-explicit completes the convention).
+- **`vecm(first_season=…)`** with `seasons=0` — no seasonal cycle exists
+  to phase. Also newly *documented* (docstring + stub): `first_season` is
+  taken **modulo** `seasons` (statsmodels-compatible), which was
+  previously silent.
+
+### Changed — inf proxy values are corruption, not missingness (proxy family)
+
+- **An infinite proxy value now RAISES across the proxy family**
+  (`proxy_svar`, `proxy_first_stage`, `proxy_svar_bands`,
+  `proxy_ar_sets`) instead of being silently dropped as if missing.
+  NaN remains the one documented missingness marker — NaN rows are dates
+  where the instrument is unavailable, dropped from the moments, with
+  `n_proxy` reporting the kept count (that convention is now documented on
+  `proxy_ar_sets` and `proxy_first_stage` too, not just `proxy_svar`).
+  ±inf is corruption (an overflow or a bad join/transform), and treating
+  it as missingness silently changed the estimation sample. **Behavior
+  change**: a call that previously succeeded with an inf proxy value now
+  raises a teaching error naming the aligned row and the convention.
+  An all-NaN proxy also now raises a teaching error naming the cause
+  (previously the bare count errors "n_proxy must be positive" /
+  "proxy overlap has fewer than 3 finite observations" surfaced instead).
+
+### Fixed — documentation (audit round 10)
+
+- **The MASE/RMSSE zero-scale error is honest about the cure.** It advised
+  "use a different period or an unscaled measure", but no `backtest`
+  parameter selects an unscaled measure; the message now names the real
+  remedies — a first training window that varies at the scale period
+  (lengthen/shift `train=`), a different `insample_period`, or a
+  non-constant `insample` in a direct `accuracy`/`mase` call.
+  Message-only; no computation changed.
+- **Documented returned keys that existed but were unlisted**: `ou_fit`'s
+  `level` (the echoed CI level of `half_life_ci`) and
+  `markov_switching_ar`'s `iterations` (alongside `converged`), in
+  docstring + stub + the cointegration-regime card.
+- **`bn_decomposition`'s stub** now carries the (previously help()-only)
+  note that `p`/`q` are ignored on the fixed-coefficient path.
+- **`hansen_seo_test`'s docstring** states the k > 2 contrast that was
+  documented only on the `threshold_vecm` side: the test's null beta is
+  the linear Johansen ML estimate (defined for any k), so k > 2 with an
+  estimated beta is accepted while `threshold_vecm`'s `beta=None` grid
+  *search* stays bivariate-only.
+- **The cointegration card's STAR sentence** "smooth data leaves
+  `gamma_at_boundary` False" is now scoped to the suite's pinned draw —
+  other smooth draws can legitimately pin γ at the bottom wall with the
+  flag True, which is the flag doing its job.
+
 ## [0.6.0] - 2026-08-26
 
 ### Changed — **BREAKING (behavioral)**: `cv_splits(scheme="purged_kfold")` embargo now ADDS to the purge

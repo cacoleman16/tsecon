@@ -1887,7 +1887,12 @@ fn cf_filter<'py>(
 /// `se="nonrobust"` gives the classical (wrong-for-this-regression)
 /// errors as a comparison point. `use_correction` applies the
 /// small-sample `n/(n-k)` factor (statsmodels `use_correction`; a
-/// default statsmodels `cov_type="HAC"` call has it off).
+/// default statsmodels `cov_type="HAC"` call has it off). Both `maxlags`
+/// and `use_correction` parameterize the HAC covariance only, so passing
+/// either explicitly under anything but `se="hac"` (`se=None`,
+/// `se="nonrobust"`, or `method="random_walk"`) **raises** rather than
+/// being silently ignored; `use_correction=None` (the default) means
+/// `True` where HAC applies.
 ///
 /// Returns `trend`, `cycle`, `first_index` (= h + p - 1 observations
 /// lost at the start; h for the random-walk variant), and — for the
@@ -1897,7 +1902,7 @@ fn cf_filter<'py>(
 /// bit-identical whether or not `se` is requested.
 #[pyfunction]
 #[pyo3(signature = (y, h = 8, p = 4, method = "regression", se = None, maxlags = None,
-                    use_correction = true))]
+                    use_correction = None))]
 #[allow(clippy::too_many_arguments)]
 fn hamilton_filter<'py>(
     py: Python<'py>,
@@ -1907,16 +1912,33 @@ fn hamilton_filter<'py>(
     method: &str,
     se: Option<&str>,
     maxlags: Option<usize>,
-    use_correction: bool,
+    use_correction: Option<bool>,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // `use_correction` is the HAC small-sample n/(n-k) factor and nothing
+    // else, so it can only act under se="hac": refuse it explicitly-passed
+    // anywhere else (audit round 10 — it was silently swallowed under
+    // se=None/"nonrobust" and method="random_walk"). The sentinel default
+    // (None -> true where HAC applies) keeps default calls bit-identical.
+    let refuse_use_correction = |where_: &str| -> PyResult<()> {
+        if use_correction.is_some() {
+            return Err(PyValueError::new_err(format!(
+                "use_correction was given but {where_} ignores it: use_correction \
+                 is the small-sample n/(n-k) factor of the HAC (Newey-West) \
+                 covariance, so it only acts under se='hac'; pass se='hac' or \
+                 drop use_correction"
+            )));
+        }
+        Ok(())
+    };
     match method {
         "regression" => {}
         "random_walk" => {
-            if se.is_some() || maxlags.is_some() {
+            if se.is_some() || maxlags.is_some() || use_correction.is_some() {
                 return Err(PyValueError::new_err(
                     "method='random_walk' estimates no regression coefficients \
                      (cycle = y_t - y_{t-h} exactly), so there is nothing to compute \
-                     standard errors for; drop se/maxlags or use method='regression'",
+                     standard errors for; drop se/maxlags/use_correction or use \
+                     method='regression'",
                 ));
             }
             let dec = tsecon_filters::hamilton_filter_random_walk(&vec1(&y), h).map_err(to_py)?;
@@ -1936,13 +1958,25 @@ fn hamilton_filter<'py>(
                     "maxlags is a HAC bandwidth and requires se='hac'",
                 ));
             }
+            refuse_use_correction("se=None (no standard errors requested)")?;
             None
         }
         Some("hac") => Some(tsecon_filters::HamiltonSe::Hac {
             maxlags,
-            use_correction,
+            use_correction: use_correction.unwrap_or(true),
         }),
-        Some("nonrobust") => Some(tsecon_filters::HamiltonSe::NonRobust),
+        Some("nonrobust") => {
+            // The same guard as the se=None arm: maxlags parameterizes only
+            // the HAC estimator (audit round 10 — it was refused under
+            // se=None but silently swallowed here).
+            if maxlags.is_some() {
+                return Err(PyValueError::new_err(
+                    "maxlags is a HAC bandwidth and requires se='hac'",
+                ));
+            }
+            refuse_use_correction("se='nonrobust' (classical OLS errors)")?;
+            Some(tsecon_filters::HamiltonSe::NonRobust)
+        }
         Some(other) => {
             return Err(PyValueError::new_err(format!(
                 "unknown se '{other}': expected 'hac' (Newey-West, the right choice for \
@@ -1998,7 +2032,10 @@ fn hamilton_filter<'py>(
 /// `-e1' F (I-F)^{-1} X_t` of that pinned model. `delta=None` selects
 /// the ratio by the paper's amplitude-to-noise criterion (first local
 /// maximum of `var(cycle)/mean(residual^2)` on the grid `d0, d0+dt,
-/// ...`); a float imposes it. `demean="sm"` subtracts the sample mean
+/// ...`); a float imposes it. `d0`/`dt` (defaults 0.01/0.0005 when
+/// `None`) parameterize only that selection grid, so passing either
+/// explicitly together with a fixed `delta=` **raises** rather than
+/// being silently ignored. `demean="sm"` subtracts the sample mean
 /// of the differences (the paper's baseline); `"nd"` leaves the drift
 /// in (their no-drift option). The paper's baseline for quarterly data
 /// is `p=12`.
@@ -2020,15 +2057,15 @@ fn hamilton_filter<'py>(
 /// replication code (bnfiltering.com lineage) — see the diagnostics
 /// model card.
 #[pyfunction]
-#[pyo3(signature = (y, p = 12, delta = None, demean = "sm", d0 = 0.01, dt = 0.0005))]
+#[pyo3(signature = (y, p = 12, delta = None, demean = "sm", d0 = None, dt = None))]
 fn bn_filter<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
     p: usize,
     delta: Option<f64>,
     demean: &str,
-    d0: f64,
-    dt: f64,
+    d0: Option<f64>,
+    dt: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let demean_flag = match demean {
         "sm" => true,
@@ -2041,8 +2078,25 @@ fn bn_filter<'py>(
         }
     };
     let delta_spec = match delta {
-        Some(d) => tsecon_filters::BnDelta::Fixed(d),
-        None => tsecon_filters::BnDelta::Auto { d0, dt },
+        Some(d) => {
+            // `d0`/`dt` only lay out the automatic-selection grid; under a
+            // fixed delta that grid is never built, so accepting them would
+            // be a silent no-op (audit round 10). The sentinel defaults
+            // (None -> 0.01/0.0005) keep default calls bit-identical.
+            if d0.is_some() || dt.is_some() {
+                return Err(PyValueError::new_err(
+                    "d0/dt were given but delta= fixes the signal-to-noise ratio, so \
+                     the automatic-selection grid (delta = d0, d0+dt, ...) they \
+                     parameterize is never built; drop d0/dt, or drop delta to let \
+                     the amplitude-to-noise criterion search that grid",
+                ));
+            }
+            tsecon_filters::BnDelta::Fixed(d)
+        }
+        None => tsecon_filters::BnDelta::Auto {
+            d0: d0.unwrap_or(0.01),
+            dt: dt.unwrap_or(0.0005),
+        },
     };
     let r = tsecon_filters::bn_filter(&vec1(&y), p, delta_spec, demean_flag).map_err(to_py)?;
     let d = decomposition_dict(py, &r.decomposition)?;
@@ -2480,6 +2534,35 @@ fn garch_results_dict<'py>(
     Ok(d)
 }
 
+/// Resolve the asymmetry order `o` against `vol` — the `garch_fit` sentinel
+/// convention, shared verbatim by its multivariate siblings
+/// (`ccc_garch`/`dcc_garch`/`dcc_test`, which advertise "the same knobs as
+/// garch_fit" and must honor the same 0.6.0 guard).
+///
+/// `o` is meaningful only for the asymmetric volatility specs. Refuse
+/// rather than silently ignore (the same convention as cv_splits(embargo)
+/// and panel_fe(bandwidth)): accepting `o > 0` under vol="garch" would
+/// let an `arch` porter believe they fit the GJR model `arch_model(y,
+/// p=1, o=1, q=1)` builds, when the asymmetry term was dropped entirely.
+/// The sentinel default (None -> 0 for garch, 1 for gjr/egarch) keeps
+/// the old default calls working for every vol, bit-identically.
+fn resolve_garch_o(vol: &str, o: Option<usize>) -> PyResult<usize> {
+    match (vol, o) {
+        ("garch", Some(o_explicit)) if o_explicit > 0 => Err(PyValueError::new_err(format!(
+            "o={o_explicit} has no effect under vol=\"garch\": o is the number of \
+             asymmetry (threshold) lags and the symmetric GARCH(p, q) recursion \
+             has no asymmetry term for it to parameterize, so it would be \
+             silently discarded. Note the porting trap this guards: in the arch \
+             package, arch_model(y, p=1, o=1, q=1) silently switches the model \
+             to GJR-GARCH. Pass vol=\"gjr\" (or vol=\"egarch\") for a model with \
+             an asymmetry term, or drop o (or set o=0) for symmetric GARCH."
+        ))),
+        (_, Some(o_explicit)) => Ok(o_explicit),
+        ("garch", None) => Ok(0),
+        (_, None) => Ok(1),
+    }
+}
+
 /// Fit a univariate volatility model by QMLE.
 ///
 /// `vol`: "garch", "gjr", or "egarch"; `mean`: "zero" or "constant";
@@ -2567,29 +2650,7 @@ fn garch_fit<'py>(
     forecast_horizon: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_garch::GarchModel;
-    // `o` is meaningful only for the asymmetric volatility specs. Refuse
-    // rather than silently ignore (the same convention as cv_splits(embargo)
-    // and panel_fe(bandwidth)): accepting `o > 0` under vol="garch" would
-    // let an `arch` porter believe they fit the GJR model `arch_model(y,
-    // p=1, o=1, q=1)` builds, when the asymmetry term was dropped entirely.
-    // The sentinel default (None -> 0 for garch, 1 for gjr/egarch) keeps
-    // the old default calls working for every vol.
-    let o = match (vol, o) {
-        ("garch", Some(o_explicit)) if o_explicit > 0 => {
-            return Err(PyValueError::new_err(format!(
-                "o={o_explicit} has no effect under vol=\"garch\": o is the number of \
-                 asymmetry (threshold) lags and the symmetric GARCH(p, q) recursion \
-                 has no asymmetry term for it to parameterize, so it would be \
-                 silently discarded. Note the porting trap this guards: in the arch \
-                 package, arch_model(y, p=1, o=1, q=1) silently switches the model \
-                 to GJR-GARCH. Pass vol=\"gjr\" (or vol=\"egarch\") for a model with \
-                 an asymmetry term, or drop o (or set o=0) for symmetric GARCH."
-            )))
-        }
-        (_, Some(o_explicit)) => o_explicit,
-        ("garch", None) => 0,
-        (_, None) => 1,
-    };
+    let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, dist, p, o, q, "dist")?;
     let model = GarchModel::new(&vec1(&y), spec).map_err(to_py)?;
     let r = model.fit().map_err(to_py)?;
@@ -4243,7 +4304,11 @@ fn max_share_svar<'py>(
 /// shock raises `norm_var` by `unit` on impact. `proxy` aligns to `data` rows
 /// (pass length n_obs -- the first `lags` presample rows are dropped -- or the
 /// residual length T directly); NaN entries outside the instrument's
-/// availability window are dropped from the moments and the first stage.
+/// availability window are dropped from the moments and the first stage
+/// (`n_proxy` reports the kept count). NaN is the ONLY missingness marker:
+/// an infinite proxy value is refused as corruption (0.7.0 -- it was
+/// previously dropped as if missing), and an all-NaN proxy is refused with
+/// the cause.
 ///
 /// Returns `irf` (horizon+1, n), `impact`/`relative_impact`/`cov_um` (n),
 /// `first_stage_f` (the HC1-robust F when `robust_f`, classical otherwise),
@@ -4275,22 +4340,9 @@ fn proxy_svar<'py>(
     let psi = r.ma_rep(horizon).map_err(to_py)?;
     let n_obs = data.as_array().nrows();
     let t = r.resid.nrows();
-
-    // Align the proxy to the residual sample: accept the full n_obs series
-    // (drop the first `lags` presample rows) or a series already of length T.
-    let pv = vec1(&proxy);
-    let proxy_aligned: Vec<f64> = if pv.len() == t {
-        pv
-    } else if pv.len() == n_obs {
-        pv[lags..].to_vec()
-    } else {
-        return Err(PyValueError::new_err(format!(
-            "proxy length {} must equal the number of observations {} or the residual sample length {}",
-            pv.len(),
-            n_obs,
-            t
-        )));
-    };
+    // The shared alignment + missingness contract (NaN = missing, inf
+    // refused, all-NaN refused) of the proxy family.
+    let proxy_aligned = align_proxy(vec1(&proxy), n_obs, lags, t)?;
 
     let res = tsecon_ident::proxy_svar(
         r.resid.as_ref(),
@@ -4380,6 +4432,14 @@ fn first_stage_dict<'py>(
 /// linear-IV weak-instrument literature (the field's standard practice for
 /// proxy SVARs); they gate trust in strong-instrument inference, they do
 /// not repair it.
+///
+/// Proxy missingness follows the family convention (`proxy_svar`'s): the
+/// proxy aligns to `data` rows (pass length n_obs -- the first `lags`
+/// presample rows are dropped -- or the residual length T directly), NaN
+/// rows are treated as dates where the instrument is unavailable and are
+/// dropped from the first-stage sample (`n_proxy` reports the kept count),
+/// and an infinite proxy value is refused as corruption (0.7.0 -- it was
+/// previously dropped as if missing).
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, norm_var = 0, trend = "c", variance = "hc1", hac_lags = None))]
 #[allow(clippy::too_many_arguments)]
@@ -4438,7 +4498,46 @@ fn proxy_first_stage<'py>(
 /// the first `lags` presample rows) or one already of length `T`. NaN marks
 /// unavailability and is never compacted away -- compacting would destroy the
 /// date alignment with the residuals, which is the whole identification.
+///
+/// The missingness contract is enforced here for the whole proxy family
+/// (`proxy_svar` / `proxy_first_stage` / `proxy_svar_bands` /
+/// `proxy_ar_sets`), on the aligned rows only: NaN is the one missingness
+/// marker (dropped from the moments, `n_proxy` reports the kept count),
+/// an infinity is CORRUPTION and refused (0.7.0 -- through 0.6.0 it was
+/// silently dropped as if missing), and an all-NaN aligned proxy is
+/// refused with the cause rather than a downstream count error.
 fn align_proxy(pv: Vec<f64>, n_obs: usize, lags: usize, t: usize) -> PyResult<Vec<f64>> {
+    let aligned = align_proxy_rows(pv, n_obs, lags, t)?;
+    if let Some(i) = aligned.iter().position(|v| v.is_infinite()) {
+        return Err(PyValueError::new_err(format!(
+            "proxy contains {} at aligned row {i} (0-based, on the residual \
+             sample): an infinite value is corruption (an overflow or a bad \
+             join/transform), not missingness, so it is refused rather than \
+             silently dropped as unavailable. NaN is the missingness marker -- \
+             NaN rows are treated as dates where the instrument is unavailable \
+             and dropped from the moments (n_proxy reports the kept count); \
+             repair the corrupted observation or set it to NaN explicitly if \
+             the instrument is genuinely unavailable there",
+            aligned[i]
+        )));
+    }
+    if aligned.iter().all(|v| v.is_nan()) {
+        return Err(PyValueError::new_err(
+            "every proxy value on the residual sample is NaN, so no observation \
+             remains to form the proxy moments: NaN marks dates where the \
+             instrument is unavailable (such rows are dropped and n_proxy \
+             reports the kept count), which here is every date. Supply real \
+             instrument values on dates overlapping the residual sample -- and \
+             if the proxy starts late because of the VAR's presample, remember \
+             the first `lags` rows of a full-length proxy are dropped in the \
+             alignment",
+        ));
+    }
+    Ok(aligned)
+}
+
+/// The shape-only leg of [`align_proxy`]: length checks and presample drop.
+fn align_proxy_rows(pv: Vec<f64>, n_obs: usize, lags: usize, t: usize) -> PyResult<Vec<f64>> {
     if pv.len() == t {
         Ok(pv)
     } else if pv.len() == n_obs {
@@ -4675,6 +4774,14 @@ fn proxy_svar_bands<'py>(
 /// Propagation is conservative under weak instruments (measured 0.991 at a
 /// nominal 0.95), because the extra variance turns exterior sets into the whole
 /// line. That is the correct direction to err.
+///
+/// Proxy missingness follows the family convention (`proxy_svar`'s): the
+/// proxy aligns to `data` rows (pass length n_obs -- the first `lags`
+/// presample rows are dropped -- or the residual length T directly), NaN
+/// rows are treated as dates where the instrument is unavailable and are
+/// dropped from the moments (`n_proxy` reports the kept count), and an
+/// infinite proxy value is refused as corruption (0.7.0 -- it was
+/// previously dropped as if missing).
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0,
                     trend = "c", alpha = 0.05, variance = "hc0", hac_lags = None,
@@ -5815,7 +5922,12 @@ fn johansen<'py>(
 /// `seasons` (default 0 = none) adds seasons-1 CENTERED seasonal dummies
 /// to the short-run equations (statsmodels `seasons=`; they sum to zero
 /// over a cycle, shifting the seasonal profile without moving the
-/// level); `first_season` is the 0-based season of `data`'s first row.
+/// level); `first_season` is the 0-based season of `data`'s first row,
+/// taken MODULO `seasons` (statsmodels-compatible: `first_season=5` with
+/// `seasons=4` is the same phase as `first_season=1`). With `seasons=0`
+/// there is no seasonal cycle to phase, so passing `first_season`
+/// explicitly then **raises** rather than being silently ignored (it
+/// defaults to 0 when `None`).
 ///
 /// Johansen det_order correspondence: statsmodels `coint_johansen`'s
 /// det_order -1 ↔ `"n"`, 0 ↔ `"co"`, 1 ↔ `"colo"` (the det_order=1
@@ -5827,7 +5939,7 @@ fn johansen<'py>(
 /// cointegrating vectors; fit with `deterministic="co"` when the rank
 /// came from `johansen`.
 #[pyfunction]
-#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1, deterministic = "n", seasons = 0, first_season = 0))]
+#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1, deterministic = "n", seasons = 0, first_season = None))]
 fn vecm<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
@@ -5835,8 +5947,22 @@ fn vecm<'py>(
     coint_rank: usize,
     deterministic: &str,
     seasons: usize,
-    first_season: usize,
+    first_season: Option<usize>,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // `first_season` phases the seasonal-dummy cycle; with seasons=0 no
+    // dummies exist and there is no cycle to phase, so accepting it would
+    // be a silent no-op (audit round 10). The sentinel default (None -> 0)
+    // keeps default calls bit-identical.
+    if seasons == 0 && first_season.is_some() {
+        return Err(PyValueError::new_err(
+            "first_season was given but seasons=0 requests no seasonal dummies, so \
+             there is no seasonal cycle for it to phase; pass seasons=s (adding \
+             s-1 centered seasonal dummies — first_season is then the 0-based \
+             season of data's first row, taken modulo seasons) or drop \
+             first_season",
+        ));
+    }
+    let first_season = first_season.unwrap_or(0);
     let det = tsecon_coint::VecmDeterministic::from_code(deterministic).ok_or_else(|| {
         PyValueError::new_err(format!(
             "unknown deterministic {deterministic:?}; expected one of the statsmodels \
@@ -5886,7 +6012,11 @@ fn vecm<'py>(
 /// first-order standard errors; for k > 2 pass `beta=` explicitly (e.g.
 /// the linear estimate from `vecm(..., coint_rank=1,
 /// deterministic="co")`). A supplied beta is normalized so beta[0] = 1 —
-/// order the series with the normalized one first.
+/// order the series with the normalized one first. With `beta=` supplied
+/// the beta grid search never runs (`beta_grid` is returned empty), so
+/// passing `n_grid_beta`/`beta_span` explicitly alongside it **raises**
+/// rather than being silently ignored (they default to 50/10.0 when
+/// `None`).
 ///
 /// Returns `beta`, `threshold`, per-regime coefficients
 /// (`params_low`/`params_high`, k x n_regressors) with EICKER-WHITE
@@ -5904,7 +6034,7 @@ fn vecm<'py>(
 /// test.
 #[pyfunction]
 #[pyo3(signature = (data, k_ar_diff = 1, trim = 0.05, n_grid_gamma = 300,
-                    n_grid_beta = 50, beta_span = 10.0, beta = None))]
+                    n_grid_beta = None, beta_span = None, beta = None))]
 #[allow(clippy::too_many_arguments)]
 fn threshold_vecm<'py>(
     py: Python<'py>,
@@ -5912,10 +6042,23 @@ fn threshold_vecm<'py>(
     k_ar_diff: usize,
     trim: f64,
     n_grid_gamma: usize,
-    n_grid_beta: usize,
-    beta_span: f64,
+    n_grid_beta: Option<usize>,
+    beta_span: Option<f64>,
     beta: Option<PyReadonlyArray1<'py, f64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // `n_grid_beta`/`beta_span` lay out the beta grid search, which only
+    // runs when beta is estimated; with `beta=` supplied the grid is never
+    // built (beta_grid comes back empty, as documented), so accepting them
+    // would be a silent no-op (audit round 10). The sentinel defaults
+    // (None -> 50 / 10.0) keep default calls bit-identical.
+    if beta.is_some() && (n_grid_beta.is_some() || beta_span.is_some()) {
+        return Err(PyValueError::new_err(
+            "n_grid_beta/beta_span were given but beta= fixes the cointegrating \
+             vector, so the beta grid search they parameterize never runs \
+             (beta_grid is returned empty); drop n_grid_beta/beta_span, or drop \
+             beta to estimate the vector by grid search (bivariate systems only)",
+        ));
+    }
     let m = data_to_faer(&data);
     let beta_vec = beta.as_ref().map(vec1);
     let r = tsecon_coint::threshold_vecm(
@@ -5923,8 +6066,8 @@ fn threshold_vecm<'py>(
         k_ar_diff,
         trim,
         n_grid_gamma,
-        n_grid_beta,
-        beta_span,
+        n_grid_beta.unwrap_or(50),
+        beta_span.unwrap_or(10.0),
         beta_vec.as_deref(),
     )
     .map_err(to_py)?;
@@ -5972,7 +6115,10 @@ fn threshold_vecm<'py>(
 /// any thread count. NOTE the method presumes the series ARE cointegrated
 /// under both hypotheses — it tests linear vs threshold adjustment, not
 /// cointegration vs none (test cointegration first: `johansen` /
-/// `engle_granger`).
+/// `engle_granger`). Unlike `threshold_vecm` — whose `beta=None` grid
+/// SEARCH is bivariate-only — the null beta here is the linear Johansen
+/// ML estimate, defined for any k, so k > 2 with an estimated (null)
+/// beta is accepted.
 ///
 /// Returns `stat`, `p_value`, `threshold` (the sup's location), `beta`
 /// (the vector used), `n_boot`, `nobs`, the candidate grid `thresholds`
@@ -6157,8 +6303,10 @@ fn ou_fit_dict<'py>(py: Python<'py>, r: &tsecon_coint::OuFit) -> PyResult<Bound<
 /// i.e. when "no mean reversion" cannot be ruled out at `level`; the stationary
 /// standard deviation `stationary_sd` (= sigma / sqrt(2 kappa), the z-score
 /// denominator); the honest flag `mean_reverting`; the AR(1) discretization
-/// leg `phi`, `phi_se`, `c`, `c_se`, `eta2`, `loglik`; and `n_obs` (= T - 1
-/// transitions), `dt`.
+/// leg `phi`, `phi_se`, `c`, `c_se`, `eta2`, `loglik`; and the echoed call
+/// inputs `n_obs` (= T - 1 transitions), `dt`, and `level` (the confidence
+/// level `half_life_ci` was built at, echoed back so a stored result dict
+/// stays self-describing).
 ///
 /// A fit with `phi >= 1` (AR root at/over unity — a "spread" showing no
 /// mean reversion) is returned honestly rather than raised:
@@ -6191,7 +6339,10 @@ fn ou_fit<'py>(
 /// scoring new data against a frozen fit), or none of them, in which case
 /// they are fitted from `x` by `ou_fit(x, dt)` first. Passing only some is
 /// refused — a z-score against a half-specified law would silently mix
-/// fitted and asserted parameters. Returns `zscore`, the `kappa` / `mu` /
+/// fitted and asserted parameters. `dt` (default 1.0 when `None`)
+/// parameterizes only that internal fit, so passing it explicitly with a
+/// frozen `kappa`/`mu`/`sigma` triple **raises** rather than being
+/// silently ignored. Returns `zscore`, the `kappa` / `mu` /
 /// `sigma` actually used, `stationary_sd`, and `fitted` (True when the
 /// parameters came from the internal fit; call `ou_fit` directly for their
 /// standard errors and the half-life). Refuses `kappa <= 0` — a
@@ -6199,21 +6350,36 @@ fn ou_fit<'py>(
 /// z-score does not exist (if `ou_fit` reported `mean_reverting = False`,
 /// re-check the cointegrating relation before trading the spread).
 #[pyfunction]
-#[pyo3(signature = (x, kappa = None, mu = None, sigma = None, dt = 1.0))]
+#[pyo3(signature = (x, kappa = None, mu = None, sigma = None, dt = None))]
 fn spread_zscore<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
     kappa: Option<f64>,
     mu: Option<f64>,
     sigma: Option<f64>,
-    dt: f64,
+    dt: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let xv = vec1(&x);
     let d = PyDict::new(py);
     let (kappa, mu, sigma, fitted) = match (kappa, mu, sigma) {
-        (Some(k), Some(m), Some(s)) => (k, m, s, false),
+        (Some(k), Some(m), Some(s)) => {
+            // `dt` only parameterizes the internal ou_fit(x, dt); with all
+            // three parameters frozen no fit runs and the z-score is
+            // dt-free, so accepting it would be a silent no-op (audit
+            // round 10). The sentinel default (None -> 1.0) keeps default
+            // calls bit-identical.
+            if dt.is_some() {
+                return Err(PyValueError::new_err(
+                    "dt was given but kappa/mu/sigma are all frozen, so the internal \
+                     ou_fit(x, dt) that dt parameterizes never runs (the z-score \
+                     against a frozen OU law does not involve the sampling step); \
+                     drop dt, or drop kappa/mu/sigma to fit them from x at step dt",
+                ));
+            }
+            (k, m, s, false)
+        }
         (None, None, None) => {
-            let fit = tsecon_coint::ou_fit(&xv, dt, 0.95).map_err(to_py)?;
+            let fit = tsecon_coint::ou_fit(&xv, dt.unwrap_or(1.0), 0.95).map_err(to_py)?;
             (fit.kappa, fit.mu, fit.sigma, true)
         }
         _ => {
@@ -6239,14 +6405,21 @@ fn spread_zscore<'py>(
 ///
 /// Estimates a `k_regimes`-state MS-AR(`order`) with a common AR and
 /// (optionally) switching variances, starting from an internal
-/// quantile-based initialization. Returns the estimated transition matrix,
-/// per-regime means and variances, the estimated AR coefficients `ar` — a
+/// quantile-based initialization. Returns the estimated `transition`
+/// matrix, per-regime `means` and `variances`, the estimated AR
+/// coefficients `ar` — a
 /// length-`order` array `(phi_1, .., phi_p)`, shared across regimes (this
 /// binding always fits the Hamilton common-AR specification, applied to
-/// deviations `y_t - mu_{S_t}`) — log-likelihood, the full `(n, k_regimes)`
+/// deviations `y_t - mu_{S_t}`) — the log-likelihood `loglik`, the full
+/// `(n, k_regimes)`
 /// smoothed (`smoothed_prob`, Kim 1994) and filtered (`filtered_prob`,
 /// Hamilton filter) regime-probability matrices where `n = len(y) - order`,
-/// the MAP regime path, and expected regime durations.
+/// the MAP regime path `regimes`, and the per-regime
+/// `expected_durations`. The EM run itself
+/// reports `converged` (whether the log-likelihood improvement fell below
+/// `tol`) and `iterations` (EM steps actually run — `converged = False`
+/// with `iterations == max_iter` means the cap bound, so raise `max_iter`
+/// or loosen `tol`).
 /// `smoothed_prob_last_regime` (= `smoothed_prob[:, -1]`) is kept for
 /// back-compatibility with 0.2.0, which returned only that column.
 #[pyfunction]
@@ -6987,7 +7160,11 @@ fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
 /// and `univariate_dist` ("normal"/"t"), the per-series innovation
 /// density. The kwarg is named `univariate_dist` (not `dist`) on purpose,
 /// to stay distinct from `dcc_garch`'s `dist=`, which configures the
-/// second-stage correlation likelihood — a different object.
+/// second-stage correlation likelihood — a different object. `o` follows
+/// `garch_fit`'s sentinel exactly: `None` (the default) means no asymmetry
+/// term under `vol="garch"` and one asymmetry lag under `"gjr"`/`"egarch"`,
+/// and an explicit `o > 0` under `vol="garch"` **raises** rather than being
+/// silently dropped (the same porting-trap guard).
 ///
 /// Returns dict keys: `correlation` (the constant `k x k` matrix `R`),
 /// `loglik`, `sigma2` (`(T, k)` nested list — the per-series conditional
@@ -7015,7 +7192,7 @@ fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
 /// analytic variance forecasts — no approximation enters at any h,
 /// unlike DCC's h >= 2 normalization approximation.
 #[pyfunction]
-#[pyo3(signature = (returns, forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[pyo3(signature = (returns, forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
 fn ccc_garch<'py>(
     py: Python<'py>,
@@ -7025,9 +7202,10 @@ fn ccc_garch<'py>(
     mean: &str,
     univariate_dist: &str,
     p: usize,
-    o: usize,
+    o: Option<usize>,
     q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let series = returns_to_series(&returns);
     let fit = tsecon_mgarch::CccGarch::new(spec)
@@ -7087,7 +7265,11 @@ fn ccc_garch<'py>(
 /// is the second-stage likelihood over the *standardized joint residuals*
 /// (the correlation dynamics), `univariate_dist` the per-series density of
 /// stage one — you can (and often should) mix them, e.g.
-/// `vol="gjr", dist="t"` with Normal-QMLE univariate stages.
+/// `vol="gjr", dist="t"` with Normal-QMLE univariate stages. `o` follows
+/// `garch_fit`'s sentinel exactly: `None` (the default) means no asymmetry
+/// term under `vol="garch"` and one asymmetry lag under `"gjr"`/`"egarch"`,
+/// and an explicit `o > 0` under `vol="garch"` **raises** rather than being
+/// silently dropped (the same porting-trap guard).
 ///
 /// Returns dict keys: `a`, `b`, `g` (0.0 unless `variant="adcc"`), `qbar`,
 /// `loglik`, `converged`, `variant`, `dist`, `correlation` (the full
@@ -7147,7 +7329,7 @@ fn ccc_garch<'py>(
 /// applies (the asymmetric term cancels against its targeting intercept
 /// in expectation); under `"cdcc"` S replaces Qbar.
 #[pyfunction]
-#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
 fn dcc_garch<'py>(
     py: Python<'py>,
@@ -7159,10 +7341,11 @@ fn dcc_garch<'py>(
     mean: &str,
     univariate_dist: &str,
     p: usize,
-    o: usize,
+    o: Option<usize>,
     q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_mgarch::{CorrDist, DccVariant};
+    let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let v = match variant {
         "dcc" => DccVariant::Dcc,
@@ -7267,7 +7450,9 @@ fn dcc_garch<'py>(
 /// `ccc_garch`/`dcc_garch` use — zero-mean Normal GARCH(1,1) by default,
 /// configurable with the same `vol`/`mean`/`univariate_dist`/`p`/`o`/`q`
 /// kwargs so the diagnostic can run under the exact univariate spec you
-/// intend to fit), the residuals are jointly standardized by the
+/// intend to fit; `o` follows `garch_fit`'s sentinel — `None` default,
+/// explicit `o > 0` under `vol="garch"` raises), the residuals are
+/// jointly standardized by the
 /// *symmetric* inverse square root of the constant correlation matrix,
 /// and the stacked off-diagonal outer products are regressed on a
 /// constant and `lags` of themselves (one pooled regression across all
@@ -7284,7 +7469,7 @@ fn dcc_garch<'py>(
 /// purpose, so univariate GARCH misfit does not masquerade as correlation
 /// dynamics.
 #[pyfunction]
-#[pyo3(signature = (returns, lags = 5, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[pyo3(signature = (returns, lags = 5, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
 fn dcc_test<'py>(
     py: Python<'py>,
@@ -7294,9 +7479,10 @@ fn dcc_test<'py>(
     mean: &str,
     univariate_dist: &str,
     p: usize,
-    o: usize,
+    o: Option<usize>,
     q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let series = returns_to_series(&returns);
     let r = tsecon_mgarch::constant_correlation_test(&series, spec, lags).map_err(to_py)?;
@@ -7937,7 +8123,11 @@ fn reraise_stashed<T, E: std::fmt::Display>(
 /// grows from `train` observations) or `"rolling"` (fixed width `train`).
 /// `refit_every` sets the refit cadence. Built-in forecasters: `"naive"`,
 /// `"drift"`, `"mean"`, `"seasonal_naive"`, `"theta"` (`period` is used by
-/// the seasonal ones); the default `None` means `"naive"`.
+/// the seasonal ones — `"seasonal_naive"`/`"theta"` only, defaulting to 1
+/// when `None`; passing it explicitly with any other forecaster,
+/// callables included, **raises** rather than being silently ignored —
+/// the MASE/RMSSE scale period is the separate `insample_period`); the
+/// default `None` means `"naive"`.
 ///
 /// `forecaster` may instead be **any Python callable** — the hook that runs
 /// a real model (statsmodels, sklearn, anything) through this engine's
@@ -7968,7 +8158,7 @@ fn reraise_stashed<T, E: std::fmt::Display>(
 /// first training window at `insample_period` — never the test sample.
 #[pyfunction]
 #[pyo3(signature = (y, window = "expanding", train = 20, horizon = 1, refit_every = 1,
-                    forecaster = None, period = 1, insample_period = 1))]
+                    forecaster = None, period = None, insample_period = 1))]
 #[allow(clippy::too_many_arguments)]
 fn backtest<'py>(
     py: Python<'py>,
@@ -7978,7 +8168,7 @@ fn backtest<'py>(
     horizon: usize,
     refit_every: usize,
     forecaster: Option<Bound<'py, PyAny>>,
-    period: usize,
+    period: Option<usize>,
     insample_period: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast::{
@@ -7986,6 +8176,43 @@ fn backtest<'py>(
         ForecastError,
     };
     let forecaster = ForecasterArg::parse(forecaster, "naive", "forecaster")?;
+    if let ForecasterArg::Name(fc_name) = &forecaster {
+        if !matches!(
+            fc_name.as_str(),
+            "naive" | "drift" | "mean" | "seasonal_naive" | "theta"
+        ) {
+            return Err(PyValueError::new_err(format!(
+                "unknown forecaster {fc_name:?}; expected one of naive, drift, mean, \
+                 seasonal_naive, theta"
+            )));
+        }
+    }
+    // `period` feeds only the seasonal built-ins ("seasonal_naive"/"theta");
+    // it never reaches a callable (which receives only (train, horizon)) and
+    // is NOT the MASE/RMSSE scale period — that is `insample_period`. Refuse
+    // it explicitly-passed where it cannot act (audit round 10); the
+    // sentinel default (None -> 1) keeps default calls bit-identical.
+    let period = match (&forecaster, period) {
+        (ForecasterArg::Name(n), Some(p)) if matches!(n.as_str(), "seasonal_naive" | "theta") => p,
+        (ForecasterArg::Name(n), Some(_)) => {
+            return Err(PyValueError::new_err(format!(
+                "period was given but forecaster={n:?} ignores it: period is the \
+                 seasonal cycle length of the \"seasonal_naive\" and \"theta\" \
+                 forecasters only (the MASE/RMSSE scale period is the separate \
+                 insample_period); pick a seasonal forecaster or drop period"
+            )))
+        }
+        (ForecasterArg::Callable(f), Some(_)) => {
+            return Err(PyValueError::new_err(format!(
+                "period was given but a forecaster callable ({}) never receives \
+                 it: the callable contract is forecaster(train, horizon), so \
+                 seasonality handling belongs inside the callable (the MASE/RMSSE \
+                 scale period is the separate insample_period); drop period",
+                py_callable_name(f)
+            )))
+        }
+        (_, None) => 1,
+    };
     let win = match window {
         "expanding" => Window::Expanding { min_train: train },
         "rolling" => Window::Rolling { width: train },
@@ -8007,7 +8234,8 @@ fn backtest<'py>(
                     "mean" => Ok(historical_mean(train, h, 0.95)?.mean),
                     "seasonal_naive" => Ok(seasonal_naive(train, period, h, 0.95)?.mean),
                     "theta" => Ok(theta_forecast(train, period, h)?.forecast),
-                    // Unreachable: the forecaster name is validated before `run`.
+                    // Unreachable: the forecaster name is validated above,
+                    // before the period guard.
                     _ => Err(ForecastError::NonFinite {
                         what: "forecaster",
                         index: 0,
@@ -8015,15 +8243,6 @@ fn backtest<'py>(
                     }),
                 }
             };
-            if !matches!(
-                fc_name.as_str(),
-                "naive" | "drift" | "mean" | "seasonal_naive" | "theta"
-            ) {
-                return Err(PyValueError::new_err(format!(
-                    "unknown forecaster {fc_name:?}; expected one of naive, drift, mean, \
-                     seasonal_naive, theta"
-                )));
-            }
             bt.run(&vec1(&y), point).map_err(to_py)?
         }
         ForecasterArg::Callable(f) => {
@@ -8183,6 +8402,76 @@ fn conformal_windows(n: usize, calib: Option<usize>, n_eval: Option<usize>) -> (
     (calib.unwrap_or(n / 4), n_eval.unwrap_or(n / 5))
 }
 
+/// Validate the conformal `method` name up front, so a typo'd method gets
+/// the unknown-method error rather than a misleading inert-kwarg refusal
+/// from the guard below.
+fn validate_conformal_method(method: &str) -> PyResult<()> {
+    match method {
+        "split" | "enbpi" | "aci" => Ok(()),
+        other => Err(PyValueError::new_err(format!(
+            "unknown method {other:?}; expected \"split\", \"enbpi\", or \"aci\""
+        ))),
+    }
+}
+
+/// The audit-round-10 inert-kwarg guard shared by the conformal entry
+/// points: each knob below parameterizes exactly one method (or one base),
+/// so accepting it anywhere else would be a silent no-op. Refuse it when
+/// passed explicitly, naming the method/base that would use it; the
+/// sentinel defaults (None) keep every default call bit-identical — the
+/// `garch_fit(o=...)` house convention.
+#[allow(clippy::too_many_arguments)]
+fn refuse_inert_conformal(
+    method: &str,
+    base: &ForecasterArg<'_>,
+    base_label: &str,
+    order: Option<&Vec<i64>>,
+    lags: Option<usize>,
+    gamma: Option<f64>,
+    n_boot: Option<usize>,
+    seed: Option<u64>,
+    optimize_beta: Option<bool>,
+) -> PyResult<()> {
+    let base_is = |name: &str| matches!(base, ForecasterArg::Name(n) if n == name);
+    if order.is_some() && !base_is("arima") {
+        return Err(PyValueError::new_err(format!(
+            "order was given but base {base_label:?} ignores it: order=(p, d, q) \
+             parameterizes only the \"arima\" base (callables included — a \
+             callable base receives only (train, horizon)); pass base=\"arima\" \
+             or drop order"
+        )));
+    }
+    if lags.is_some() && !base_is("ar") && method != "enbpi" {
+        return Err(PyValueError::new_err(format!(
+            "lags was given but base {base_label:?} ignores it: lags is the AR \
+             design order of the \"ar\" base (and of the AR ensemble that \
+             method=\"enbpi\" trains); pass base=\"ar\" or drop lags"
+        )));
+    }
+    if gamma.is_some() && method != "aci" {
+        return Err(PyValueError::new_err(format!(
+            "gamma was given but method={method:?} ignores it: gamma is the \
+             Gibbs-Candes step size of the ACI level recursion \
+             (alpha_{{t+1}} = alpha_t + gamma (alpha - err_t)), so it only acts \
+             under method=\"aci\"; pass method=\"aci\" or drop gamma"
+        )));
+    }
+    for (name, given) in [
+        ("n_boot", n_boot.is_some()),
+        ("seed", seed.is_some()),
+        ("optimize_beta", optimize_beta.is_some()),
+    ] {
+        if given && method != "enbpi" {
+            return Err(PyValueError::new_err(format!(
+                "{name} was given but method={method:?} ignores it: {name} \
+                 parameterizes the bootstrap AR ensemble that only \
+                 method=\"enbpi\" trains; pass method=\"enbpi\" or drop {name}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
     match (mode, method) {
         ("symmetric", _) => Ok(true),
@@ -8255,6 +8544,16 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// takes no callable base. `calib` defaults to `n // 4`
 /// residuals per horizon; `n_eval` (aci) defaults to `n // 5`.
 ///
+/// **Inert kwargs raise (0.7.0).** Each method-specific knob acts only
+/// under its own method/base, so passing one explicitly anywhere else is
+/// refused with a teaching error instead of being silently ignored
+/// (defaults are unchanged and bit-identical): `order` needs
+/// `base="arima"`; `lags` needs `base="ar"` (or EnbPI's ensemble);
+/// `gamma` needs `method="aci"`; `n_boot`/`seed`/`optimize_beta` need
+/// `method="enbpi"`; `n_eval` is ACI-only in THIS function
+/// (`conformal_backtest` uses it for every method); and `calib` never
+/// reaches EnbPI (out-of-bag calibration).
+///
 /// Returns dict keys (all methods): `mean`, `lower`, `upper`, `level`
 /// (`1 - alpha`), `alpha`, `horizon`, `method`, `base`, `n_calib`.
 /// Split adds `q_lower`, `q_upper`, `scores` (the per-horizon signed
@@ -8266,9 +8565,9 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// the online window), and `n_eval`.
 #[pyfunction]
 #[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
-                    calib = None, mode = "symmetric", period = 1, gamma = 0.005,
-                    n_eval = None, lags = 1, n_boot = 25, seed = 0,
-                    optimize_beta = true, order = None))]
+                    calib = None, mode = "symmetric", period = 1, gamma = None,
+                    n_eval = None, lags = None, n_boot = None, seed = None,
+                    optimize_beta = None, order = None))]
 #[allow(clippy::too_many_arguments)]
 fn conformal_forecast<'py>(
     py: Python<'py>,
@@ -8280,12 +8579,12 @@ fn conformal_forecast<'py>(
     calib: Option<usize>,
     mode: &str,
     period: usize,
-    gamma: f64,
+    gamma: Option<f64>,
     n_eval: Option<usize>,
-    lags: usize,
-    n_boot: usize,
-    seed: u64,
-    optimize_beta: bool,
+    lags: Option<usize>,
+    n_boot: Option<usize>,
+    seed: Option<u64>,
+    optimize_beta: Option<bool>,
     order: Option<Vec<i64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast as fc;
@@ -8294,6 +8593,43 @@ fn conformal_forecast<'py>(
         ForecasterArg::Name(n) => n.clone(),
         ForecasterArg::Callable(c) => format!("<callable {}>", py_callable_name(c)),
     };
+    validate_conformal_method(method)?;
+    refuse_inert_conformal(
+        method,
+        &base,
+        &base_label,
+        order.as_ref(),
+        lags,
+        gamma,
+        n_boot,
+        seed,
+        optimize_beta,
+    )?;
+    // Entry-point-specific inert kwargs (audit round 10): here `n_eval` is
+    // the ACI online window only (conformal_backtest uses it for every
+    // method), and `calib` never reaches EnbPI (its calibration set is the
+    // ensemble's out-of-bag residuals, not a held-out window).
+    if n_eval.is_some() && method != "aci" {
+        return Err(PyValueError::new_err(format!(
+            "n_eval was given but conformal_forecast(method={method:?}) ignores \
+             it: n_eval is the online evaluation window of the ACI recursion, \
+             used here only by method=\"aci\" (conformal_backtest, by contrast, \
+             evaluates every method over n_eval origins); pass method=\"aci\", \
+             use conformal_backtest, or drop n_eval"
+        )));
+    }
+    if calib.is_some() && method == "enbpi" {
+        return Err(PyValueError::new_err(
+            "calib was given but method=\"enbpi\" ignores it: EnbPI calibrates on \
+             the leave-one-out out-of-bag residuals of its bootstrap ensemble \
+             (n_calib reports their count), not on a held-out window; calib sizes \
+             the split/aci calibration window, so pass method=\"split\"/\"aci\" \
+             or drop calib",
+        ));
+    }
+    let (gamma, lags) = (gamma.unwrap_or(0.005), lags.unwrap_or(1));
+    let (n_boot, seed) = (n_boot.unwrap_or(25), seed.unwrap_or(0));
+    let optimize_beta = optimize_beta.unwrap_or(true);
     let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
     let yv = vec1(&y);
     let n = yv.len();
@@ -8432,15 +8768,20 @@ fn conformal_forecast<'py>(
 /// `base(train, horizon)` for split/aci, with the same read-only
 /// training-window contract and teaching errors.
 ///
+/// The same inert-kwarg refusals as `conformal_forecast` apply (0.7.0:
+/// `order`, `lags`, `gamma`, `n_boot`/`seed`/`optimize_beta`, EnbPI's
+/// `calib`), plus `batch`, which is EnbPI-only here; `n_eval` is live for
+/// every method in this function. Defaults stay bit-identical.
+///
 /// Returns dict keys: `origins`, `n_eval`, `horizon`, `level`, `alpha`,
 /// `method`, `base`, and per-horizon lists `mean`, `lower`, `upper`,
 /// `err` (missed-target indicators), plus `realized_coverage` (per
 /// horizon). ACI adds `alpha_trajectory`; EnbPI adds `batch`.
 #[pyfunction]
 #[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
-                    calib = None, mode = "symmetric", period = 1, gamma = 0.005,
-                    n_eval = None, lags = 1, n_boot = 25, batch = 1, seed = 0,
-                    optimize_beta = true, order = None))]
+                    calib = None, mode = "symmetric", period = 1, gamma = None,
+                    n_eval = None, lags = None, n_boot = None, batch = None, seed = None,
+                    optimize_beta = None, order = None))]
 #[allow(clippy::too_many_arguments)]
 fn conformal_backtest<'py>(
     py: Python<'py>,
@@ -8452,13 +8793,13 @@ fn conformal_backtest<'py>(
     calib: Option<usize>,
     mode: &str,
     period: usize,
-    gamma: f64,
+    gamma: Option<f64>,
     n_eval: Option<usize>,
-    lags: usize,
-    n_boot: usize,
-    batch: usize,
-    seed: u64,
-    optimize_beta: bool,
+    lags: Option<usize>,
+    n_boot: Option<usize>,
+    batch: Option<usize>,
+    seed: Option<u64>,
+    optimize_beta: Option<bool>,
     order: Option<Vec<i64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast as fc;
@@ -8467,6 +8808,40 @@ fn conformal_backtest<'py>(
         ForecasterArg::Name(n) => n.clone(),
         ForecasterArg::Callable(c) => format!("<callable {}>", py_callable_name(c)),
     };
+    validate_conformal_method(method)?;
+    refuse_inert_conformal(
+        method,
+        &base,
+        &base_label,
+        order.as_ref(),
+        lags,
+        gamma,
+        n_boot,
+        seed,
+        optimize_beta,
+    )?;
+    // Entry-point-specific inert kwargs (audit round 10): `batch` is the
+    // EnbPI label-reveal cadence only, and `calib` never reaches EnbPI
+    // (out-of-bag calibration). `n_eval` stays live for every method here.
+    if batch.is_some() && method != "enbpi" {
+        return Err(PyValueError::new_err(format!(
+            "batch was given but method={method:?} ignores it: batch is the \
+             label-reveal cadence of the published EnbPI online algorithm (the \
+             residual window slides forward by batch), so it only acts under \
+             method=\"enbpi\"; pass method=\"enbpi\" or drop batch"
+        )));
+    }
+    if calib.is_some() && method == "enbpi" {
+        return Err(PyValueError::new_err(
+            "calib was given but method=\"enbpi\" ignores it: EnbPI calibrates on \
+             the leave-one-out out-of-bag residuals of its bootstrap ensemble, \
+             not on a held-out window; calib sizes the split/aci calibration \
+             window, so pass method=\"split\"/\"aci\" or drop calib",
+        ));
+    }
+    let (gamma, lags) = (gamma.unwrap_or(0.005), lags.unwrap_or(1));
+    let (n_boot, seed) = (n_boot.unwrap_or(25), seed.unwrap_or(0));
+    let (batch, optimize_beta) = (batch.unwrap_or(1), optimize_beta.unwrap_or(true));
     let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
     let yv = vec1(&y);
     let n = yv.len();

@@ -232,9 +232,12 @@ or none (fit-then-score); a partial set is refused rather than silently mixed.
 
 **How to read the output.** `kappa`/`mu`/`sigma` with `*_se`; `half_life =
 ln 2 / kappa` (expected time for a deviation to halve, in `dt` units);
-`half_life_ci`; `stationary_sd = sigma/sqrt(2 kappa)`; the honest flag
-`mean_reverting`; and the AR(1) leg (`phi`, `phi_se`, `c`, `c_se`, `eta2`,
-`loglik`, `n_obs`) so the discrete fit is never hidden behind the mapping.
+`half_life_ci` at the requested confidence level; `stationary_sd =
+sigma/sqrt(2 kappa)`; the honest flag `mean_reverting`; the AR(1) leg
+(`phi`, `phi_se`, `c`, `c_se`, `eta2`, `loglik`, `n_obs`) so the discrete
+fit is never hidden behind the mapping; and the echoed call inputs `dt` and
+`level` (the confidence level `half_life_ci` was built at), so a stored
+result dict stays self-describing.
 When `phi_hat >= 1` the result is **returned, not raised**: the AR(1) root at
 or over unity is how a non-cointegrated "spread" announces itself, so you get
 `mean_reverting=False`, `half_life=inf`, `half_life_ci=None`,
@@ -369,7 +372,9 @@ binding fits Hamilton's common-AR specification, in which the AR applies to
 deviations `y_t − mu_{S_t}`; with `means`, `transition`, and `variances` it
 reproduces and forecasts the fitted model) — `expected_durations` (average spell length
 in each regime — the persistence read, `1 / (1 - transition[i][i])`),
-`loglik`, `converged`, the full probability matrices `smoothed_prob`
+`loglik`, `converged` with `iterations` (EM steps actually run —
+`converged=False` at `iterations == max_iter` means the cap bound, so raise
+`max_iter` or loosen `tol`), the full probability matrices `smoothed_prob`
 (Kim 1994, `P(S_t | Y_T)`) and `filtered_prob` (Hamilton filter,
 `P(S_t | Y_t)`) — each `(n, k_regimes)` with `n = len(y) - order`, rows
 summing to 1 — and the `regimes` series (the most-likely regime per period,
@@ -649,7 +654,10 @@ against the test's *own* split-OLS transcription (never against
 statistics, the concentrated fit equals the hard-threshold two-regime OLS to
 1e-7 and `se_valid` flips to False. The grid stage is exactly
 scale/location-equivariant by test; hard-threshold data trips
-`gamma_at_boundary = True`, smooth data leaves it False.
+`gamma_at_boundary = True`, and the suite's pinned smooth draw leaves it
+False (a fixture-draw-scoped fact, not a rule — another smooth draw can
+legitimately end at the γ wall with the flag True, which is the flag doing
+its job).
 
 **References.** Teräsvirta (1994, JASA); Luukkonen, Saikkonen & Teräsvirta
 (1988, Biometrika); van Dijk, Teräsvirta & Franses (2002, Econometric

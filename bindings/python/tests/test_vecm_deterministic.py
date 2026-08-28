@@ -298,3 +298,43 @@ def test_vecm_docstring_names_every_returned_key():
     keys = set(tsecon.vecm(TDATA, k_ar_diff=2, coint_rank=1, deterministic="cili").keys())
     missing = keys - tokens
     assert not missing, f"vecm.__doc__ does not name returned keys: {sorted(missing)}"
+
+
+# ---------------------------------------------------------------------------
+# Audit round 10: first_season is refused without seasons, and its modulo
+# wrap (statsmodels-compatible, previously undocumented) is pinned.
+
+def test_first_season_refused_when_seasons_zero():
+    """With seasons=0 there are no seasonal dummies, so first_season has no
+    cycle to phase; explicit use raises (it was a verified bit-identical
+    no-op before the fix), naming the cure."""
+    with pytest.raises(ValueError, match="first_season") as exc:
+        tsecon.vecm(DATA, k_ar_diff=K_AR_DIFF, coint_rank=RANK, first_season=2)
+    msg = str(exc.value)
+    assert "seasons=0" in msg and "modulo" in msg
+    # Sentinel resolution: omitted == the historical explicit 0, where the
+    # kwarg is legal (seasons=4).
+    se = VD["seasonal"]
+    sdata = np.array(se["data"]).T
+    kw = dict(k_ar_diff=se["k_ar_diff"], coint_rank=se["coint_rank"],
+              deterministic="co", seasons=4)
+    a = tsecon.vecm(sdata, **kw)
+    b = tsecon.vecm(sdata, **kw, first_season=0)
+    np.testing.assert_array_equal(np.asarray(a["det_coef"]), np.asarray(b["det_coef"]))
+    assert a["llf"] == b["llf"]
+
+
+def test_first_season_wraps_modulo_seasons_and_is_live():
+    """first_season is taken modulo seasons (the statsmodels convention,
+    now documented): 5 == 1 (mod 4) bit-for-bit, while 0 vs 1 genuinely
+    moves the seasonal phase."""
+    se = VD["seasonal"]
+    sdata = np.array(se["data"]).T
+    kw = dict(k_ar_diff=se["k_ar_diff"], coint_rank=se["coint_rank"],
+              deterministic="co", seasons=4)
+    w1 = tsecon.vecm(sdata, **kw, first_season=1)
+    w5 = tsecon.vecm(sdata, **kw, first_season=5)
+    np.testing.assert_array_equal(np.asarray(w1["det_coef"]), np.asarray(w5["det_coef"]))
+    assert w1["llf"] == w5["llf"]
+    w0 = tsecon.vecm(sdata, **kw, first_season=0)
+    assert not np.array_equal(np.asarray(w0["det_coef"]), np.asarray(w1["det_coef"]))

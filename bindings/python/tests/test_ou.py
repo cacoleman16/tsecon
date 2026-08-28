@@ -251,3 +251,35 @@ def test_docstrings_name_every_returned_key():
     zkeys = set(tsecon.spread_zscore(np.array(c["x"]), dt=c["dt"]).keys())
     zmissing = zkeys - tokens(tsecon.spread_zscore)
     assert not zmissing, f"spread_zscore.__doc__ misses: {sorted(zmissing)}"
+
+
+# --------------------------------------------------------------------------
+# Audit round 10: dt is refused when the OU law is frozen
+# --------------------------------------------------------------------------
+
+def test_spread_zscore_dt_refused_when_law_frozen():
+    """dt only parameterizes the internal ou_fit(x, dt); with kappa/mu/sigma
+    all frozen no fit runs and the z-score is dt-free (verified bit-identical
+    before the refusal landed), so explicit dt raises with the cure."""
+    c = CELLS[OU["zscore"]["cell"]]
+    x = np.array(c["x"])
+    with pytest.raises(ValueError, match="dt") as exc:
+        tsecon.spread_zscore(x, kappa=0.5, mu=0.0, sigma=1.0, dt=0.25)
+    msg = str(exc.value)
+    assert "frozen" in msg and "ou_fit" in msg
+    # Sentinel resolution: omitted dt == the historical explicit dt=1.0 on
+    # the fitted path.
+    a = tsecon.spread_zscore(x)
+    b = tsecon.spread_zscore(x, dt=1.0)
+    np.testing.assert_array_equal(a["zscore"], b["zscore"])
+    assert a["kappa"] == b["kappa"]
+    # dt stays live on the fitted path (kappa is quoted in 1/dt units).
+    d = tsecon.spread_zscore(x, dt=0.25)
+    assert d["kappa"] != a["kappa"]
+    # The z-score itself is dt-invariant on the fitted path (the law is
+    # refit in the new units), which is exactly why dt with a frozen law
+    # can never act.
+    np.testing.assert_allclose(d["zscore"], a["zscore"], rtol=1e-9)
+    # And the frozen path still works with dt omitted.
+    z = tsecon.spread_zscore(x, kappa=0.5, mu=0.0, sigma=1.0)
+    assert z["fitted"] is False

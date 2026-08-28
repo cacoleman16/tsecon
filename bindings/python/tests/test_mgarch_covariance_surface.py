@@ -176,8 +176,12 @@ def test_ccc_forecast_horizon_zero_returns_no_forecast_keys():
 
 def test_default_call_equals_explicit_univariate_defaults_bitwise():
     """The new kwargs at their defaults are the SAME computation — bitwise —
-    for all three entry points (the dispatch-does-not-perturb guarantee)."""
-    kw = dict(vol="garch", mean="zero", univariate_dist="normal", p=1, o=1, q=1)
+    for all three entry points (the dispatch-does-not-perturb guarantee).
+
+    `o` is passed as its sentinel default None (o=1 under vol="garch" is
+    refused since the audit-10 fix — the garch_fit guard now covers the
+    multivariate siblings; see test_o_refused_under_symmetric_garch)."""
+    kw = dict(vol="garch", mean="zero", univariate_dist="normal", p=1, o=None, q=1)
 
     c0, c1 = tsecon.ccc_garch(SUB), tsecon.ccc_garch(SUB, **kw)
     assert c0["loglik"] == c1["loglik"]
@@ -282,3 +286,45 @@ def test_ccc_garch_docstring_names_every_returned_key():
     # The H_t timing must be stated, identically to dcc_garch's convention.
     assert "TIMING CONVENTION" in flat
     assert "covariance_forecast[0]" in flat
+
+
+# --------------------------------------------------------------------------
+# Audit round 10: the garch_fit `o` guard covers the multivariate siblings
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda **kw: tsecon.ccc_garch(SUB, **kw),
+        lambda **kw: tsecon.dcc_garch(SUB, **kw),
+        lambda **kw: tsecon.dcc_test(SUB, lags=3, **kw),
+    ],
+    ids=["ccc_garch", "dcc_garch", "dcc_test"],
+)
+def test_o_refused_under_symmetric_garch(call):
+    """Explicit o > 0 under vol="garch" raises the garch_fit teaching error
+    (before the fix it was silently dropped by the spec parser — verified
+    bit-identical to the default call, i.e. a complete no-op)."""
+    with pytest.raises(ValueError, match=r"o=1 has no effect") as exc:
+        call(o=1)
+    msg = str(exc.value)
+    assert 'vol="gjr"' in msg and "arch_model" in msg  # names the remedy + trap
+
+
+def test_o_zero_explicit_equals_default_under_garch():
+    """o=0 says "no asymmetry term" out loud and stays legal under
+    vol="garch" — bit-identical to the sentinel default (garch_fit parity)."""
+    a = tsecon.dcc_test(SUB, lags=3)
+    b = tsecon.dcc_test(SUB, lags=3, o=0)
+    assert a["stat"] == b["stat"] and a["p_value"] == b["p_value"]
+
+
+def test_o_still_live_under_gjr_first_stage():
+    """Where o is documented to act (the asymmetric specs) it must still
+    change the fit: GJR(1, o, 1) first stages with o=1 vs o=2 differ."""
+    a = tsecon.dcc_test(SUB, lags=3, vol="gjr", o=1)
+    b = tsecon.dcc_test(SUB, lags=3, vol="gjr", o=2)
+    assert a["stat"] != b["stat"]
+    # And the sentinel default under gjr is o=1, exactly as documented.
+    d = tsecon.dcc_test(SUB, lags=3, vol="gjr")
+    assert d["stat"] == a["stat"] and d["p_value"] == a["p_value"]

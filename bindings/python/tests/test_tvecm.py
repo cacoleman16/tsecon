@@ -23,11 +23,16 @@ def _fit_kwargs(case):
         k_ar_diff=case["k_ar_diff"],
         trim=case["trim"],
         n_grid_gamma=case["n_grid_gamma"],
-        n_grid_beta=case["n_grid_beta"],
-        beta_span=case["beta_span"],
     )
     if case["beta_fixed"] is not None:
+        # With beta fixed the beta grid search never runs, and explicit
+        # n_grid_beta/beta_span are refused since the audit-10 fix (they
+        # were verified inert here first — same fixture values, same
+        # results with them omitted).
         kw["beta"] = case["beta_fixed"]
+    else:
+        kw["n_grid_beta"] = case["n_grid_beta"]
+        kw["beta_span"] = case["beta_span"]
     return kw
 
 
@@ -158,3 +163,37 @@ def test_docstrings_name_every_returned_key():
         tokens = set(re.findall(r"`([A-Za-z_][A-Za-z_0-9]*)`", fn.__doc__))
         missing = set(res.keys()) - tokens
         assert not missing, f"{fn.__name__} docstring misses {sorted(missing)}"
+
+
+# --------------------------------------------------------------------------
+# Audit round 10: the beta-grid kwargs are refused when beta is fixed
+# --------------------------------------------------------------------------
+
+def test_beta_grid_kwargs_refused_with_fixed_beta():
+    """n_grid_beta/beta_span size the beta grid search, which a supplied
+    beta= never runs (beta_grid comes back empty, as documented); explicit
+    use together raises (verified bit-identical no-ops before the fix)."""
+    y = np.array(TVECM["series"]["tv_strong"])
+    for kwargs in (dict(n_grid_beta=5), dict(beta_span=2.0),
+                   dict(n_grid_beta=5, beta_span=2.0)):
+        with pytest.raises(ValueError, match="n_grid_beta/beta_span") as exc:
+            tsecon.threshold_vecm(y, beta=[1.0, -1.0], **kwargs)
+        assert "grid search" in str(exc.value) and "beta_grid" in str(exc.value)
+    # The fixed-beta call still documents the never-ran search honestly.
+    r = tsecon.threshold_vecm(y, beta=[1.0, -1.0])
+    assert len(np.asarray(r["beta_grid"])) == 0
+
+
+def test_beta_grid_kwargs_sentinel_defaults_and_live_when_estimated():
+    y = np.array(TVECM["series"]["tv_strong"])
+    # Sentinel resolution: omitted == the historical explicit 50/10.0.
+    a = tsecon.threshold_vecm(y)
+    b = tsecon.threshold_vecm(y, n_grid_beta=50, beta_span=10.0)
+    assert a["threshold"] == b["threshold"] and a["llf"] == b["llf"]
+    np.testing.assert_array_equal(a["beta"], b["beta"])
+    np.testing.assert_array_equal(a["beta_grid"], b["beta_grid"])
+    # Live where documented: the grid size/span move the searched grid.
+    c = tsecon.threshold_vecm(y, n_grid_beta=7)
+    assert len(np.asarray(c["beta_grid"])) == 7 != len(np.asarray(a["beta_grid"]))
+    d = tsecon.threshold_vecm(y, beta_span=1.0)
+    assert not np.array_equal(np.asarray(d["beta_grid"]), np.asarray(a["beta_grid"]))

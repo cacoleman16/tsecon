@@ -295,3 +295,68 @@ def test_statsmodels_still_has_no_hamilton_or_bn(bn_fx):
     assert not any(
         "beveridge" in x.lower() or x.lower() == "bn" for x in dir(sm.tsa)
     )
+
+
+# --------------------------------------------------------------------------- #
+# Audit round 10: inert HAC/grid kwargs now raise
+# --------------------------------------------------------------------------- #
+def test_hamilton_maxlags_refused_under_every_non_hac_path(gdp):
+    """maxlags is a HAC bandwidth. It was refused under se=None but silently
+    swallowed under se="nonrobust" (the returned maxlags key was even None);
+    the same guard now covers both non-HAC paths, with the same message."""
+    with pytest.raises(ValueError, match="maxlags is a HAC bandwidth"):
+        tsecon.hamilton_filter(gdp, maxlags=8)
+    with pytest.raises(ValueError, match="maxlags is a HAC bandwidth"):
+        tsecon.hamilton_filter(gdp, se="nonrobust", maxlags=8)
+    # Still live where documented (already pinned above against statsmodels:
+    # test_hamilton_hac_matches_statsmodels's maxlags=4 arm).
+    r4 = tsecon.hamilton_filter(gdp, se="hac", maxlags=4)
+    r8 = tsecon.hamilton_filter(gdp, se="hac")
+    assert r4["maxlags"] == 4 and r8["maxlags"] == 8
+    assert not np.array_equal(r4["bse"], r8["bse"])
+
+
+def test_hamilton_use_correction_refused_where_inert(gdp):
+    """use_correction is the HAC n/(n-k) factor; explicit use under se=None,
+    se="nonrobust", or method="random_walk" raises instead of being
+    silently swallowed."""
+    for kwargs in (dict(), dict(se="nonrobust")):
+        with pytest.raises(ValueError, match="use_correction") as exc:
+            tsecon.hamilton_filter(gdp, use_correction=False, **kwargs)
+        assert "se='hac'" in str(exc.value)
+    with pytest.raises(ValueError, match="use_correction"):
+        tsecon.hamilton_filter(gdp, method="random_walk", use_correction=True)
+
+
+def test_hamilton_use_correction_sentinel_default_bit_identical(gdp):
+    """The sentinel (use_correction=None -> True where HAC applies) keeps
+    the default HAC call bit-identical to explicit True, and distinct from
+    False (the live check)."""
+    d = tsecon.hamilton_filter(gdp, se="hac")
+    t = tsecon.hamilton_filter(gdp, se="hac", use_correction=True)
+    f = tsecon.hamilton_filter(gdp, se="hac", use_correction=False)
+    np.testing.assert_array_equal(d["bse"], t["bse"])
+    assert d["use_correction"] is True
+    assert not np.array_equal(d["bse"], f["bse"])
+    # The decomposition itself never moves with the SE options.
+    np.testing.assert_array_equal(d["cycle"], f["cycle"])
+
+
+def test_kmw_grid_kwargs_refused_under_fixed_delta(gdp):
+    """d0/dt lay out the automatic-selection grid; a fixed delta= never
+    builds it, so explicit d0/dt raise (they were verified bit-identical
+    no-ops before the fix)."""
+    for kwargs in (dict(d0=0.5), dict(dt=0.1), dict(d0=0.5, dt=0.1)):
+        with pytest.raises(ValueError, match="d0/dt") as exc:
+            tsecon.bn_filter(gdp, delta=0.25, **kwargs)
+        assert "amplitude-to-noise" in str(exc.value)
+    # Sentinel defaults resolve to the historical grid: explicit 0.01/0.0005
+    # under auto-selection is bit-identical to the default call.
+    a = tsecon.bn_filter(gdp, p=8)
+    b = tsecon.bn_filter(gdp, p=8, d0=0.01, dt=0.0005)
+    assert a["delta"] == b["delta"]
+    np.testing.assert_array_equal(a["cycle"], b["cycle"])
+    # And d0/dt stay live under auto-selection: a coarser grid moves the
+    # selected delta off the fine grid's stopping point.
+    c = tsecon.bn_filter(gdp, p=8, d0=0.05, dt=0.05)
+    assert c["delta"] != a["delta"]

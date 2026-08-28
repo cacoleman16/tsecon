@@ -165,3 +165,76 @@ def test_nan_proxy_dropped_by_date_not_compacted():
     d2 = tsecon.proxy_first_stage(y, masked2, lags=2)
     assert d2["n_proxy"] == (len(proxy) - 2) - 148
     assert d2["effective_f"] != d["effective_f"]
+
+
+# ---------------------------------------------------------------------------
+# Audit round 10: the proxy missingness contract, enforced family-wide
+# ---------------------------------------------------------------------------
+
+def _proxy_family_calls(data):
+    return [
+        ("proxy_svar", lambda p: tsecon.proxy_svar(data, p)),
+        ("proxy_first_stage", lambda p: tsecon.proxy_first_stage(data, p)),
+        ("proxy_ar_sets", lambda p: tsecon.proxy_ar_sets(data, p)),
+        ("proxy_svar_bands", lambda p: tsecon.proxy_svar_bands(data, p, n_boot=20)),
+    ]
+
+
+def _proxy_dgp(seed=1234, t=200):
+    rng = np.random.default_rng(seed)
+    data = rng.standard_normal((t, 2))
+    proxy = 0.7 * np.diff(data[:, 0], prepend=0.0) + 0.3 * rng.standard_normal(t)
+    return data, proxy
+
+
+def test_infinite_proxy_values_refused_as_corruption_family_wide():
+    """Through 0.6.0 an inf proxy value was silently dropped as if missing
+    (verified bit-identical to the same call with NaN at that row); it is
+    corruption, not missingness, and now raises a teaching error naming the
+    aligned row and the NaN convention — on all four proxy surfaces."""
+    data, proxy = _proxy_dgp()
+    for sign in (np.inf, -np.inf):
+        bad = proxy.copy()
+        bad[7] = sign
+        for name, call in _proxy_family_calls(data):
+            with pytest.raises(ValueError, match="corruption") as exc:
+                call(bad)
+            msg = str(exc.value)
+            assert "NaN" in msg and "n_proxy" in msg, name
+    # A proxy already aligned to the residual sample (length T - lags) gets
+    # the same guard on its own row indexing.
+    with pytest.raises(ValueError, match="aligned row 3"):
+        short = proxy[2:].copy()
+        short[3] = np.inf
+        tsecon.proxy_first_stage(data, short)
+
+
+def test_nan_missingness_still_documented_and_live():
+    """NaN remains the missingness marker: NaN rows drop from the moments
+    and n_proxy reports the kept count — unchanged by the inf refusal."""
+    data, proxy = _proxy_dgp()
+    full = tsecon.proxy_first_stage(data, proxy)
+    holed = proxy.copy()
+    holed[5:10] = np.nan
+    r = tsecon.proxy_first_stage(data, holed)
+    assert r["n_proxy"] == full["n_proxy"] - 5
+    # And the docstrings of the two surfaces the audit flagged now carry
+    # the convention proxy_svar already documented.
+    for fn in (tsecon.proxy_ar_sets, tsecon.proxy_first_stage, tsecon.proxy_svar):
+        doc = fn.__doc__ or ""
+        assert "NaN" in doc and "n_proxy" in doc, fn.__name__
+        assert "corruption" in doc, fn.__name__
+
+
+def test_all_nan_proxy_gets_a_teaching_error_naming_the_cause():
+    """An all-NaN proxy used to surface as the bare downstream count errors
+    ("n_proxy must be positive" / "fewer than 3 finite observations"); the
+    binding now teaches the cause — every date marked unavailable — and the
+    presample alignment trap."""
+    data, _ = _proxy_dgp()
+    allnan = np.full(data.shape[0], np.nan)
+    for name, call in _proxy_family_calls(data):
+        with pytest.raises(ValueError, match="unavailable") as exc:
+            call(allnan)
+        msg = str(exc.value)
+        assert "every proxy value" in msg and "presample" in msg, name
