@@ -7,6 +7,41 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Smooth-transition autoregression (`star`, `star_eval`, `star_test`)** —
+  the STAR family (ROADMAP build-later item), in `tsecon-regime` beside
+  SETAR. `star` fits LSTAR (`G = 1/(1+exp(-γ(s-c)))`) or ESTAR
+  (`G = 1 - exp(-γ(s-c)²)`) with transition variable `s_t = y_{t-d}`
+  (single `delay` or a `delays` search) by concentrated NLS: a
+  `(γ, c)` grid — standardized γ log-spaced over [0.5, 100], `c` on
+  trimmed order statistics — then Nelder-Mead refinement, with
+  Gauss-Newton standard errors over all `2k + 2` parameters.
+  **Gamma convention**: raw γ (tsDyn's, no standardization) is reported
+  alongside Teräsvirta's `gamma_standardized` (`γ·sd(s)` / `γ·var(s)`);
+  the grid is standardized so the search is scale-equivariant. Honesty
+  flags: `converged`, `se_valid` (NaN SEs on a degenerate `J'J` instead
+  of fake curvature), and `gamma_at_boundary` (γ at the searchable
+  range's edge — numerically a step at the top, unidentified from `φ₂`
+  at the bottom; the garch boundary-flag precedent). `star_eval` scores
+  the concentrated fit at *fixed* `(γ, c)` (SSR/loglik cross-checks
+  robust to optimizer differences). `star_test` is the Teräsvirta
+  modeling-cycle battery: the LM3 linearity test
+  (Luukkonen-Saikkonen-Teräsvirta 1988) in χ² and small-sample F forms —
+  no bootstrap needed, the auxiliary regression is linear so the null is
+  standard, unlike `setar_test` — plus the H03/H02/H01 nested F sequence
+  choosing LSTAR vs. ESTAR and Teräsvirta's smallest-LM3-p delay
+  selection. Validation (graded honestly — R/tsDyn unreachable from the
+  build sandbox, CRAN egress denied): a NumPy/SciPy transcription golden
+  of every closed form at 1e-10 (`fixtures/star.json`); seeded MC size
+  (0.060/0.028 at 5%, T=200/500), power (0.81/0.91 at T=250), and
+  recovery (standardized-γ median 2.73 at T=500 vs. truth ≈ 2.9, with
+  the documented large-γ boundary fraction reported, never hidden); and
+  the LSTAR→SETAR limit property against the test's own split-OLS
+  transcription. Python: `star`, `star_eval`, `star_test` bindings,
+  `.pyi` stubs, `_coerce` exemptions for the integer `delays`; model-card
+  sections and a validation-matrix row.
+
 ## [0.6.0] - 2026-08-26
 
 ### Changed — **BREAKING (behavioral)**: `cv_splits(scheme="purged_kfold")` embargo now ADDS to the purge

@@ -6283,6 +6283,234 @@ fn setar_test<'py>(
     Ok(d)
 }
 
+fn star_model_of(name: &str) -> PyResult<tsecon_regime::StarModel> {
+    match name {
+        "lstar" | "LSTAR" => Ok(tsecon_regime::StarModel::Lstar),
+        "estar" | "ESTAR" => Ok(tsecon_regime::StarModel::Estar),
+        other => Err(PyValueError::new_err(format!(
+            "unknown STAR model {other:?}; expected \"lstar\" or \"estar\""
+        ))),
+    }
+}
+
+/// The shared `StarEval` payload (everything `star_eval` returns and
+/// `star` nests at its optimum).
+fn star_eval_into_dict<'py>(
+    py: Python<'py>,
+    d: &Bound<'py, PyDict>,
+    e: tsecon_regime::StarEval,
+) -> PyResult<()> {
+    d.set_item("params_linear", e.coefs_linear.into_pyarray(py))?;
+    d.set_item("params_nonlinear", e.coefs_nonlinear.into_pyarray(py))?;
+    d.set_item("bse_linear", e.se_linear.into_pyarray(py))?;
+    d.set_item("bse_nonlinear", e.se_nonlinear.into_pyarray(py))?;
+    d.set_item("se_gamma", e.se_gamma)?;
+    d.set_item("se_c", e.se_c)?;
+    d.set_item("se_valid", e.se_valid)?;
+    d.set_item("ssr", e.ssr)?;
+    d.set_item("sigma2", e.sigma2)?;
+    d.set_item("loglik", e.loglik)?;
+    d.set_item("aic", e.aic)?;
+    d.set_item("bic", e.bic)?;
+    d.set_item("nobs", e.nobs)?;
+    d.set_item("k", e.k)?;
+    d.set_item("transition", e.transition.into_pyarray(py))?;
+    Ok(())
+}
+
+/// Smooth-transition autoregression (STAR; Terasvirta 1994), logistic or
+/// exponential:
+/// `y_t = phi1'x_t + G(gamma, c; y_{t-delay}) * phi2'x_t + e_t`,
+/// `x_t = [1?, y_{t-1}, ..., y_{t-p}]`, with `G = 1/(1+exp(-gamma(s-c)))`
+/// (`model="lstar"`) or `G = 1 - exp(-gamma(s-c)^2)` (`model="estar"`).
+///
+/// **Gamma convention**: `gamma` is RAW — the value inside the transition
+/// function (R tsDyn's convention, no standardization);
+/// `gamma_standardized` is Terasvirta's scale-free `gamma * sd(s)` (LSTAR)
+/// / `gamma * var(s)` (ESTAR), population `sd` (`s_sd`) over the usable
+/// sample. Estimation is concentrated NLS: an `n_gamma x n_c` grid —
+/// standardized gamma log-spaced over [0.5, 100], `c` on order statistics
+/// of `s_t` between the `trim` and `1-trim` quantiles — then Nelder-Mead
+/// refinement of the best cell (standardized gamma boxed to [0.5, 1000]).
+/// `delays` (overriding `delay`) searches the delay jointly by refined SSR
+/// on the common sample `t >= max(p, max(delays))`.
+///
+/// Run `star_test` FIRST: fitting STAR to linear data happily "finds" a
+/// transition. Honesty flags: `converged` (Nelder-Mead verdict) and
+/// `gamma_at_boundary` — true when standardized gamma ends at the top
+/// (>= 100: numerically a hard threshold; the SSR surface is flat in
+/// gamma, so read gamma as a lower bound — Terasvirta's large-gamma
+/// advice) or pinned at the bottom wall (0.5: numerically linear in `s`,
+/// gamma and phi2 separately unidentified). Standard errors are
+/// Gauss-Newton over all `2k + 2` parameters; `se_valid=False` (NaN SEs)
+/// when `J'J` degenerates rather than inventing curvature.
+///
+/// Returns `model`, `gamma`, `gamma_standardized`, `c`, `delay`, `s_sd`,
+/// `converged`, `gamma_at_boundary`, the concentrated fit at the optimum
+/// (`params_linear` phi1, `params_nonlinear` phi2 — the high-regime sum
+/// is phi1+phi2 — `bse_linear`/`bse_nonlinear`/`se_gamma`/`se_c`/
+/// `se_valid`, `ssr`, `sigma2`, `loglik`, `aic`/`bic` with `m = 2k + 2`,
+/// `nobs`, `k`, the `transition` path G_t), and the grid surface
+/// (`grid_gamma` raw, `grid_c`, `ssr_grid` shaped (n_gamma, n_c) with NaN
+/// for singular cells, `best_cell`, `fevals`). Validated against an
+/// independent NumPy transcription (fixtures/star.json) plus seeded MC
+/// recovery; see `star_test` for the modeling-cycle battery.
+#[pyfunction]
+#[pyo3(signature = (y, p, model = "lstar", delay = 1, trim = 0.15, delays = None,
+                    constant = true, n_gamma = 25, n_c = 25))]
+#[allow(clippy::too_many_arguments)]
+fn star<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    model: &str,
+    delay: usize,
+    trim: f64,
+    delays: Option<Vec<usize>>,
+    constant: bool,
+    n_gamma: usize,
+    n_c: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = star_model_of(model)?;
+    let dl: Vec<usize> = delays.unwrap_or_else(|| vec![delay]);
+    let ys = vec1(&y);
+    let r = tsecon_regime::star(&ys, p, &dl, m, trim, constant, n_gamma, n_c).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("model", r.model.name())?;
+    d.set_item("gamma", r.gamma)?;
+    d.set_item("gamma_standardized", r.gamma_standardized)?;
+    d.set_item("c", r.c)?;
+    d.set_item("delay", r.delay)?;
+    d.set_item("s_sd", r.s_sd)?;
+    d.set_item("converged", r.converged)?;
+    d.set_item("gamma_at_boundary", r.gamma_at_boundary)?;
+    let n_c_actual = r.grid_c.len();
+    let n_gamma_actual = r.grid_gamma.len();
+    d.set_item("grid_gamma", r.grid_gamma.into_pyarray(py))?;
+    d.set_item("grid_c", r.grid_c.into_pyarray(py))?;
+    d.set_item(
+        "ssr_grid",
+        r.ssr_grid
+            .into_pyarray(py)
+            .reshape([n_gamma_actual, n_c_actual])?,
+    )?;
+    d.set_item("best_cell", (r.best_cell.0, r.best_cell.1))?;
+    d.set_item("fevals", r.fevals)?;
+    star_eval_into_dict(py, &d, r.eval)?;
+    Ok(d)
+}
+
+/// The concentrated STAR fit at FIXED transition parameters `(gamma, c)`
+/// (raw-gamma convention, as in `star`): OLS of `y_t` on
+/// `[x_t, G_t x_t]`, Gauss-Newton standard errors from the full
+/// `(2k+2)`-parameter Jacobian, and fit statistics — the fixed-parameter
+/// workhorse behind `star`, exposed so a published parameterization can
+/// be scored directly (SSR/log-likelihood comparison is robust to
+/// optimizer differences; parameter-level comparison is not).
+///
+/// Returns `params_linear` (phi1), `params_nonlinear` (phi2),
+/// `bse_linear`/`bse_nonlinear`/`se_gamma`/`se_c` (Gauss-Newton;
+/// NaN with `se_valid` False when `J'J` degenerates, e.g. at enormous
+/// gamma), `ssr`, `sigma2` (= SSR/(nobs - 2k - 2)), `loglik` (Gaussian,
+/// ML variance), `aic`/`bic` (`m = 2k + 2`), `nobs`, `k`, and the
+/// `transition` path `G(gamma, c; s_t)`. Validated against an independent
+/// NumPy transcription at fixed parameters (fixtures/star.json).
+#[pyfunction]
+#[pyo3(signature = (y, p, gamma, c, model = "lstar", delay = 1, constant = true))]
+#[allow(clippy::too_many_arguments)]
+fn star_eval<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    gamma: f64,
+    c: f64,
+    model: &str,
+    delay: usize,
+    constant: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = star_model_of(model)?;
+    let ys = vec1(&y);
+    let r = tsecon_regime::star_eval(&ys, p, delay, m, gamma, c, constant).map_err(to_py)?;
+    let d = PyDict::new(py);
+    star_eval_into_dict(py, &d, r)?;
+    Ok(d)
+}
+
+fn star_battery_into_dict<'py>(
+    py: Python<'py>,
+    t: &tsecon_regime::StarTest,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("delay", t.delay)?;
+    d.set_item("nobs", t.nobs)?;
+    d.set_item("q", t.q)?;
+    d.set_item("k0", t.k0)?;
+    d.set_item("lm3_stat", t.lm3_stat)?;
+    d.set_item("lm3_p_value", t.lm3_p_value)?;
+    d.set_item("lm3_f_stat", t.lm3_f_stat)?;
+    d.set_item("lm3_f_p_value", t.lm3_f_p_value)?;
+    d.set_item("h3_f_stat", t.h3_f_stat)?;
+    d.set_item("h3_p_value", t.h3_p_value)?;
+    d.set_item("h2_f_stat", t.h2_f_stat)?;
+    d.set_item("h2_p_value", t.h2_p_value)?;
+    d.set_item("h1_f_stat", t.h1_f_stat)?;
+    d.set_item("h1_p_value", t.h1_p_value)?;
+    d.set_item("ssr0", t.ssr0)?;
+    d.set_item("ssr1", t.ssr1)?;
+    d.set_item("ssr2", t.ssr2)?;
+    d.set_item("ssr3", t.ssr3)?;
+    d.set_item("suggested", t.suggested.name())?;
+    Ok(d)
+}
+
+/// The Terasvirta STAR modeling-cycle battery: the LM3 linearity test
+/// against a STAR alternative (Luukkonen-Saikkonen-Terasvirta 1988) and
+/// the H03/H02/H01 sequence choosing LSTAR vs ESTAR (Terasvirta 1994).
+///
+/// Auxiliary regression: `y_t` on `[w_t, x~ s_t, x~ s_t^2, x~ s_t^3]`,
+/// `w_t = (1, lags)`, `x~` the lag block, `s_t = y_{t-delay}` (both
+/// augmented with `y_{t-d}` when `d > p`). `lm3_stat` is the chi-squared
+/// form `n (SSR0 - SSR3)/SSR0` with `3q` df; `lm3_f_stat` the F form —
+/// recommended in small samples — with `(3q, n - k0 - 3q)` df. Unlike
+/// `setar_test`, the null distribution here IS standard (the auxiliary
+/// regression is linear, no Davies problem), so no bootstrap is needed.
+/// The H-sequence tests the cubic (`h3_*`), quadratic-given-no-cubic
+/// (`h2_*`), and linear-given-neither (`h1_*`) interaction blocks;
+/// `suggested` is "estar" iff the H02 p-value is strictly the smallest
+/// (only meaningful when LM3 rejects). `delays` (overriding `delay`)
+/// evaluates each candidate on its own usable sample and `best` indexes
+/// the battery with the smallest F-form LM3 p-value — Terasvirta's
+/// delay-selection rule; the top-level scalars are that battery's.
+///
+/// Returns (top level = the selected battery): `delay`, `nobs`, `q`,
+/// `k0`, `lm3_stat`, `lm3_p_value`, `lm3_f_stat`, `lm3_f_p_value`,
+/// `h3_f_stat`/`h3_p_value`, `h2_f_stat`/`h2_p_value`,
+/// `h1_f_stat`/`h1_p_value`, `ssr0`/`ssr1`/`ssr2`/`ssr3`, `suggested`;
+/// plus `best` and `tests` (one dict per candidate delay, same keys).
+/// Validated against an independent NumPy/SciPy transcription
+/// (fixtures/star.json) and by seeded MC size/power.
+#[pyfunction]
+#[pyo3(signature = (y, p, delay = 1, delays = None))]
+fn star_test<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    delay: usize,
+    delays: Option<Vec<usize>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dl: Vec<usize> = delays.unwrap_or_else(|| vec![delay]);
+    let ys = vec1(&y);
+    let r = tsecon_regime::star_test(&ys, p, &dl).map_err(to_py)?;
+    let d = star_battery_into_dict(py, &r.tests[r.best])?;
+    d.set_item("best", r.best)?;
+    let tests = PyList::empty(py);
+    for t in &r.tests {
+        tests.append(star_battery_into_dict(py, t)?)?;
+    }
+    d.set_item("tests", tests)?;
+    Ok(d)
+}
+
 /// MIDAS weight function (normalized to sum 1). `scheme`: "exp_almon"
 /// (uses theta1, theta2) or "beta" (uses theta1, theta2 as the two shape
 /// parameters). `k` is the number of high-frequency lags.
@@ -11437,6 +11665,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(markov_switching_ar, m)?)?;
     m.add_function(wrap_pyfunction!(setar, m)?)?;
     m.add_function(wrap_pyfunction!(setar_test, m)?)?;
+    m.add_function(wrap_pyfunction!(star, m)?)?;
+    m.add_function(wrap_pyfunction!(star_eval, m)?)?;
+    m.add_function(wrap_pyfunction!(star_test, m)?)?;
     m.add_function(wrap_pyfunction!(midas_weights, m)?)?;
     m.add_function(wrap_pyfunction!(umidas, m)?)?;
     m.add_function(wrap_pyfunction!(ccc_garch, m)?)?;

@@ -8,6 +8,8 @@ description = "Regime-switching time-series models for the tsecon econometrics l
 
 [dependencies]
 tsecon-bootstrap = { path = "../tsecon-bootstrap" }
+# STAR refinement: Nelder-Mead over (ln gamma, c) after the grid stage.
+tsecon-optim = { path = "../tsecon-optim" }
 tsecon-stats = { path = "../tsecon-stats" }
 
 [dev-dependencies]

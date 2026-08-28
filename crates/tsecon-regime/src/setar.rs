@@ -50,7 +50,8 @@ use tsecon_bootstrap::{par_replicate, WildWeights};
 
 /// Lower-triangular Cholesky factor of the symmetric positive-definite
 /// row-major `k x k` matrix `a`; `None` if a pivot is not strictly positive.
-fn cholesky(a: &[f64], k: usize) -> Option<Vec<f64>> {
+/// Shared with the STAR module (`star.rs`).
+pub(crate) fn cholesky(a: &[f64], k: usize) -> Option<Vec<f64>> {
     let mut l = vec![0.0_f64; k * k];
     for i in 0..k {
         for j in 0..=i {
@@ -72,7 +73,7 @@ fn cholesky(a: &[f64], k: usize) -> Option<Vec<f64>> {
 }
 
 /// Solve `L L' x = b` given the lower Cholesky factor `l`.
-fn chol_solve(l: &[f64], k: usize, b: &[f64]) -> Vec<f64> {
+pub(crate) fn chol_solve(l: &[f64], k: usize, b: &[f64]) -> Vec<f64> {
     let mut x = b.to_vec();
     for i in 0..k {
         for j in 0..i {
@@ -94,14 +95,14 @@ fn chol_solve(l: &[f64], k: usize, b: &[f64]) -> Vec<f64> {
 /// `sqrt(s^2 diag[(X'X)^{-1}])` with `s^2 = SSR / (n - k)`, the residual
 /// vector, and the SSR. Mirrors the QR helper of `tsecon-diag::phillips`
 /// (error growth proportional to `cond(X)`, not `cond(X)^2`).
-struct Ols {
-    params: Vec<f64>,
-    bse: Vec<f64>,
-    resid: Vec<f64>,
-    ssr: f64,
+pub(crate) struct Ols {
+    pub(crate) params: Vec<f64>,
+    pub(crate) bse: Vec<f64>,
+    pub(crate) resid: Vec<f64>,
+    pub(crate) ssr: f64,
 }
 
-fn ols_qr(cols: &[Vec<f64>], y: &[f64], what: &'static str) -> Result<Ols, RegimeError> {
+pub(crate) fn ols_qr(cols: &[Vec<f64>], y: &[f64], what: &'static str) -> Result<Ols, RegimeError> {
     let n = y.len();
     let k = cols.len();
     debug_assert!(cols.iter().all(|c| c.len() == n));
@@ -200,22 +201,28 @@ fn ols_qr(cols: &[Vec<f64>], y: &[f64], what: &'static str) -> Result<Ols, Regim
 // ------------------------------------------------------------- the design
 
 /// The usable-sample design for one delay: response, regressor columns, and
-/// threshold variable, all in time order.
-struct Design {
+/// threshold variable, all in time order. Shared with the STAR module.
+pub(crate) struct Design {
     /// Regressor columns (`k` columns of length `n`): `[1?, y_{t-1}, ...,
     /// y_{t-p}]`.
-    cols: Vec<Vec<f64>>,
+    pub(crate) cols: Vec<Vec<f64>>,
     /// Response `y_t`.
-    y: Vec<f64>,
+    pub(crate) y: Vec<f64>,
     /// Threshold variable `z_t = y_{t-d}`.
-    z: Vec<f64>,
-    n: usize,
-    k: usize,
+    pub(crate) z: Vec<f64>,
+    pub(crate) n: usize,
+    pub(crate) k: usize,
 }
 
 /// Build the design over the common usable sample `t = start .. T-1`
 /// (0-indexed; `start >= max(p, d)`).
-fn build_design(y: &[f64], p: usize, delay: usize, start: usize, constant: bool) -> Design {
+pub(crate) fn build_design(
+    y: &[f64],
+    p: usize,
+    delay: usize,
+    start: usize,
+    constant: bool,
+) -> Design {
     let t_total = y.len();
     let n = t_total - start;
     let k = p + usize::from(constant);
