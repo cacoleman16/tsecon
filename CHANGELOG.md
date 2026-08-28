@@ -7,6 +7,28 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The binding-suite surface gap is closed: all 155 public callables are now
+  exercised through `tsecon.<name>(…)`.** `test_exercise_gap.py` adds
+  binding-tier tests (marshalling, returned key sets, teaching-error
+  propagation, pandas coercion) for the last three functions
+  `docs/reference/testing.md` honestly listed as unexercised —
+  `engle_granger`, `fvar_scenario`, and `ndiffs`. Their numeric validation was
+  never in question (each is golden-pinned on the Rust side); what was
+  untested was exactly the layer a Rust golden cannot see. The testing page's
+  run-the-check-not-assert completeness probe now prints an empty list, and
+  the page keeps the check so the next unexercised export surfaces there.
+
+### Fixed
+
+- **`docs/reference/testing.md` measurement-provenance paragraph corrected**:
+  the suite-state counts are measured on Linux x86_64 (CPython 3.11, release
+  extension build) from a single `cargo test --workspace` run with result
+  lines summed — the paragraph previously claimed a macOS/Apple-silicon
+  environment and a 41-crate per-crate summation, contradicting the table
+  beneath it.
+
 ## [0.6.0] - 2026-08-26
 
 ### Changed — **BREAKING (behavioral)**: `cv_splits(scheme="purged_kfold")` embargo now ADDS to the purge

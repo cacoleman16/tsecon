@@ -16,12 +16,11 @@ around it.
 ## The state of the suite
 
 Every number in this section was produced by a command run on this working tree
-(macOS, Apple silicon, CPython 3.12, **release** build of the extension). One
-caveat about how, stated up front because it changes what the numbers mean: the
-Rust total is the **sum of 41 separate `cargo test -p <crate>` runs**, one per
-workspace crate other than the PyO3 binding — not a single workspace run. The
-two should agree, and on CI they do; but a summed figure is what was measured
-here, so that is what is labelled.
+(Linux x86_64, CPython 3.11, **release** build of the extension for the Python
+rows). The Rust total comes from a single `cargo test --workspace` run (dev
+profile), with the per-binary `test result:` lines summed; on macOS that same
+command needs the `--exclude tsecon-python` caveat described
+[below](#the---exclude-tsecon-python-caveat-macos).
 
 | Tier | Count | Command |
 |---|---|---|
@@ -32,7 +31,7 @@ here, so that is what is labelled.
 | Python binding tests | **1192 passed, 0 failed, 0 skipped** in 350 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
 | Golden fixtures | 88 JSON files, produced by 69 generator scripts | `fixtures/` |
-| Public Python functions | 155, of which **152** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
+| Public Python functions | 155, **all 155** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
 
 Of the 9 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
 fingerprints that are platform-specific, three release-only Monte Carlo runs,
@@ -245,9 +244,8 @@ cannot cover:
   direction too: a Python moment function that raises must propagate its
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
-- **Surface completeness — and the three functions it says are missing.** The
-  module exports 155 public callables. This is checked by running the check,
-  not by asserting the answer, and the honest output is *not* empty:
+- **Surface completeness.** The module exports 155 public callables. This is
+  checked by running the check, not by asserting the answer:
 
   ```sh
   .venv/bin/python -c "
@@ -256,27 +254,22 @@ cannot cover:
   txt = ''.join(p.read_text() for p in pathlib.Path('bindings/python/tests').glob('*.py'))
   print(len(fns), sorted(f for f in fns if not re.search(rf'tsecon\.{f}\s*\(', txt)))
   "
-  # 155 ['engle_granger', 'fvar_scenario', 'ndiffs']
+  # 155 []
   ```
 
-  All three are real: **`engle_granger`, `fvar_scenario` and `ndiffs` appear
-  nowhere under `bindings/python/tests/`** — not under any spelling, since
-  `grep -r` on the bare name returns nothing either. So 152 of 155 are
-  exercised here, not 155. (Two earlier members of this list have since
-  graduated: `quantile_lp` gained binding tests in the 0.6.0 coverage work,
-  and `summarize` — formerly a regex false positive reached only through
-  `from tsecon.results import summarize` — is now also called under the
-  `tsecon.` spelling.)
-
-  All three are golden-pinned on the Rust side —
+  The honest output of this check was not always empty, and the history is
+  worth keeping: the list stood at four names for several releases
+  (documented here each time), shrank to three when `quantile_lp` gained
+  binding tests in the 0.6.0 coverage work, and was closed in 0.7.0 by
+  `test_exercise_gap.py`, which exercises the last three
+  (`engle_granger`, `fvar_scenario`, `ndiffs`) at exactly the tier this
+  page said was missing: marshalling, returned key sets, and error
+  propagation — the things a Rust golden structurally cannot see. (Their
+  tight numeric pins still live in the crates' golden tests:
   `tsecon-coint/tests/engle_granger_golden.rs`,
-  `tsecon-funcshock/tests/golden.rs`, `tsecon-diag/tests/advisors_golden.rs`
-  — so the *estimator* is validated. What is
-  untested is the binding: the marshalling, the dict keys and the error
-  propagation that are precisely what this tier exists to check, and precisely
-  what a Rust golden structurally cannot see. Nothing in the suite fails because
-  of this today; it is listed again under
-  [what is not tested](#5-what-is-not-tested).
+  `tsecon-funcshock/tests/golden.rs`, `tsecon-diag/tests/advisors_golden.rs`.)
+  The check stays in this page so the next added function that ships without
+  a binding test shows up here rather than being asserted away.
 
 ### Tier 5 — Monte Carlo validation
 
