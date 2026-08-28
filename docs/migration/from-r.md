@@ -89,7 +89,7 @@ entry points.
 | `urca::ur.df(y, type="drift")` | `adf(y, regression="c")` | Or `tseries::adf.test`. Dict return with MacKinnon p-value. |
 | `urca::ur.kpss(y)` | `kpss(y, regression="c")` | Null is stationarity. |
 | `urca::ca.jo(data, type="trace", K=)` | `johansen(data, k_ar_diff=K-1)` | Trace + max-eig stats and selected ranks. |
-| `urca::cajorls`, `vars::vec2var` | `vecm(data, k_ar_diff, coint_rank, deterministic)` | ML VECM: `alpha`, `beta`, `gamma`, `det_coef`, `sigma_u`, `llf`. `deterministic="n"` (default, no deterministic terms) or `"co"` (unrestricted constant — the case `johansen`/`ca.jo`'s constant convention assumes). |
+| `urca::cajorls`, `vars::vec2var` | `vecm(data, k_ar_diff, coint_rank, deterministic, seasons)` | ML VECM: `alpha`, `beta`, `det_coef_coint`, `gamma`, `det_coef`, `sigma_u`, `llf`. `deterministic` covers all nine statsmodels cases — `"n"` (default), `"co"` (unrestricted constant — the case `johansen`/`ca.jo`'s constant convention assumes), the restricted `"ci"`/`"li"` (≈ `ca.jo` `ecdet="const"`/`"trend"`, whose coefficients come back as `det_coef_coint`), `"lo"`, and the combinations — plus centered seasonal dummies (`seasons=`, ≈ `ca.jo(season=)`). |
 | `tseries::Box.test(y, type="Ljung-Box")` | `ljung_box(y, nlags)` | Box-Pierce also returned. |
 | `tseries::jarque.bera.test(y)` | `jarque_bera(y)` | |
 | `FinTS::ArchTest(y)` | `arch_lm(y, nlags)` | Engle's ARCH-LM. |

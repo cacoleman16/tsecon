@@ -5784,49 +5784,84 @@ fn johansen<'py>(
 
 /// VECM maximum-likelihood estimation at a given cointegrating rank
 /// (Johansen). Returns the loadings `alpha`, cointegrating vectors `beta`
-/// (normalized beta[:r,:r] = I), short-run `gamma`, the deterministic
-/// coefficients `det_coef`, the residual covariance `sigma_u`, and the
-/// log-likelihood `llf`.
+/// (k x r, normalized so the widened matrix [beta; det_coef_coint] has
+/// beta[:r,:r] = I), the coefficients `det_coef_coint` of deterministic
+/// terms INSIDE the cointegration relation (n_coint x r — the extra rows
+/// the restricted cases add to the cointegrating matrix: constant row
+/// first, then trend row; statsmodels `VECMResults.det_coef_coint`),
+/// short-run `gamma`, the coefficients `det_coef` of deterministic terms
+/// in the short-run equations (k x n_det, statsmodels column order:
+/// constant, seasons-1 centered seasonal dummies, trend), the residual
+/// covariance `sigma_u`, and the log-likelihood `llf`.
 ///
-/// `deterministic` names the statsmodels VECM case: `"n"` (default) — NO
-/// deterministic terms, matching statsmodels `VECM(...,
-/// deterministic="n")` exactly; `"co"` — an unrestricted constant outside
-/// the cointegration relation (each short-run equation gains an
-/// intercept, returned as the k x 1 `det_coef`), matching
-/// `deterministic="co"`. The restricted cases ("ci", "li", "lo",
-/// seasons) are not implemented and are rejected with an error.
+/// `deterministic` names the statsmodels VECM case (all nine accepted):
+/// `"n"` (default) — no deterministic terms; `"co"` — unrestricted
+/// constant (each short-run equation gains an intercept); `"ci"` —
+/// constant restricted to the cointegration relation (the equilibrium
+/// error has a freely estimated mean but the data have no drift — the
+/// short-run equations get NO separate intercept); `"lo"` / `"li"` —
+/// linear trend outside / inside the relation (`"li"` = the equilibrium
+/// relation is trend-stationary); and the combinations `"colo"`,
+/// `"coli"`, `"cilo"`, `"cili"`. Johansen's five cases: I=`"n"`,
+/// II=`"ci"`, III=`"co"`, IV=`"coli"`, V=`"colo"`. Which to use: `"co"`
+/// for drifting data whose equilibrium error is mean-stationary (the
+/// usual case, and the one `johansen` ranks); `"ci"` when the data show
+/// no drift but the relation needs a nonzero mean; `"coli"` for
+/// trending data whose equilibrium relation is trend-stationary;
+/// `"colo"` when even the equilibrium error trends. statsmodels forbids
+/// `"co"`+`"ci"` and `"lo"`+`"li"` (same term on both sides) — so does
+/// this function.
 ///
-/// Deterministic-case warning: `johansen` in this library assumes an
-/// unrestricted constant (statsmodels `coint_johansen` det_order=0) — the
-/// `"co"` case, NOT this function's `"n"` default. On drifting data the
-/// two cases estimate visibly different cointegrating vectors; fit with
-/// `deterministic="co"` when the rank came from `johansen`.
+/// `seasons` (default 0 = none) adds seasons-1 CENTERED seasonal dummies
+/// to the short-run equations (statsmodels `seasons=`; they sum to zero
+/// over a cycle, shifting the seasonal profile without moving the
+/// level); `first_season` is the 0-based season of `data`'s first row.
+///
+/// Johansen det_order correspondence: statsmodels `coint_johansen`'s
+/// det_order -1 ↔ `"n"`, 0 ↔ `"co"`, 1 ↔ `"colo"` (the det_order=1
+/// pairing is asymptotic — coint_johansen detrends over the full sample,
+/// a slightly different finite-sample projection; det_order=0 ↔ `"co"`
+/// is exact). `johansen` in this library assumes an unrestricted
+/// constant (det_order=0) — the `"co"` case, NOT this function's `"n"`
+/// default. On drifting data the cases estimate visibly different
+/// cointegrating vectors; fit with `deterministic="co"` when the rank
+/// came from `johansen`.
 #[pyfunction]
-#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1, deterministic = "n"))]
+#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1, deterministic = "n", seasons = 0, first_season = 0))]
 fn vecm<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
     k_ar_diff: usize,
     coint_rank: usize,
     deterministic: &str,
+    seasons: usize,
+    first_season: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let det = match deterministic {
-        "n" => tsecon_coint::VecmDeterministic::None,
-        "co" => tsecon_coint::VecmDeterministic::Constant,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown deterministic {other:?}; expected \"n\" (no deterministic terms) \
-                 or \"co\" (unrestricted constant — the case johansen's det_order=0 \
-                 convention assumes). The statsmodels restricted cases \"ci\"/\"li\"/\"lo\" \
-                 and seasonal dummies are not implemented."
-            )))
-        }
-    };
+    let det = tsecon_coint::VecmDeterministic::from_code(deterministic).ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "unknown deterministic {deterministic:?}; expected one of the statsmodels \
+             cases \"n\" (none), \"co\"/\"ci\" (constant outside/inside the \
+             cointegration relation), \"lo\"/\"li\" (linear trend outside/inside), or \
+             the combinations \"colo\", \"coli\", \"cilo\", \"cili\". The same term \
+             cannot appear on both sides (no \"co\"+\"ci\", no \"lo\"+\"li\"), and \
+             seasonal dummies are requested via seasons=, not the deterministic string. \
+             Pass \"co\" when the rank came from johansen (its det_order=0 convention)."
+        ))
+    })?;
     let m = data_to_faer(&data);
-    let r = tsecon_coint::fit_vecm_det(m.as_ref(), k_ar_diff, coint_rank, det).map_err(to_py)?;
+    let r = tsecon_coint::fit_vecm_seasonal(
+        m.as_ref(),
+        k_ar_diff,
+        coint_rank,
+        det,
+        seasons,
+        first_season,
+    )
+    .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("alpha", mat_to_vec2_bayes(&r.alpha))?;
     d.set_item("beta", mat_to_vec2_bayes(&r.beta))?;
+    d.set_item("det_coef_coint", mat_to_vec2_bayes(&r.det_coef_coint))?;
     d.set_item("gamma", mat_to_vec2_bayes(&r.gamma))?;
     d.set_item("det_coef", mat_to_vec2_bayes(&r.det_coef))?;
     d.set_item("sigma_u", mat_to_vec2_bayes(&r.sigma_u))?;
