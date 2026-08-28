@@ -10,7 +10,8 @@ description = "Diagnostics for the tsecon time-series econometrics library: ACF/
 tsecon-stats = { path = "../tsecon-stats" }
 tsecon-hac = { path = "../tsecon-hac" }
 # STL + seasonal strength for the nsdiffs seasonal-differencing advisor.
-# One-directional: tsecon-filters has no dependencies, so no cycle.
+# One-directional: tsecon-filters depends only on tsecon-hac (which has no
+# dependencies), so no cycle.
 tsecon-filters = { path = "../tsecon-filters" }
 
 [dev-dependencies]

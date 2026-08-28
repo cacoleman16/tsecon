@@ -622,6 +622,8 @@ $$
 
 Under FIRE the revision the consensus just made carries no information about the error it is about to realize, so $\beta = 0$. A **positive** slope is the signature of *information rigidity*: forecasters underreact to news, so the direction they just revised predicts the error they are about to make. It is a beautiful test because the null does not care how the forecasts were made — it is a statement about the mean of one observable series. The estimator also reports the **implied rigidity** $\beta/(1+\beta)$, which under sticky-information reads as the fraction of forecasters who did not update this period, and under noisy-information as the Kalman-gain complement — the same number, two stories.
 
+One construction detail carries the identification: the revision in the paper is **fixed-event** — this vintage's forecast of a target minus *last vintage's forecast of the same target*, $F_t x_{t+h} - F_{t-1} x_{t+h}$, which takes two horizons per survey round to build (the $h$-step forecast made at $t$ and the $(h+1)$-step forecast made at $t-1$). Differencing a single fixed-horizon series, $F_t x_{t+h} - F_{t-1} x_{t+h-1}$, compares forecasts of *different* dates and is only an approximation whose slope is not the CG $\beta$ in general — the [expectations model card](../reference/model-cards/expectations.md) quantifies the bias on an exact sticky-information process.
+
 ```python
 rng = np.random.default_rng(0)
 n = 200

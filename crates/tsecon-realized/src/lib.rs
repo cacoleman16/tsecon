@@ -18,7 +18,9 @@
 //! - [`parkinson`] / [`garman_klass`] — range-based variance from OHLC bars
 //!   (Parkinson 1980; Garman & Klass 1980).
 //! - [`bns_jump_ratio`] — the studentized `(RV-BV)/RV` ratio jump
-//!   diagnostic (Barndorff-Nielsen & Shephard 2004; Huang & Tauchen 2005).
+//!   diagnostic in the Huang & Tauchen (2005) form, applying their
+//!   finite-sample `M/(M-1)` / `M/(M-2)` scalings to `BV` / `TQ` inside
+//!   the statistic (the exported measures stay unadjusted BNS 2004).
 //!
 //! ## HAR-RV (on a daily realized-variance series)
 //!

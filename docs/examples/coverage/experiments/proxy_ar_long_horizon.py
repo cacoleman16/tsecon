@@ -33,6 +33,14 @@ the method, not in the noise:
            coefficients instead of alpha_hat -- decoupling the variance from
            the downward-biased estimate without touching the estimate itself
            (candidate direction 2: decouple the variance from the estimate)
+  delta2bc the combination arm note 21's verdict named as the natural next
+           candidate for the residual ~2pp: the second-order propagation
+           (delta2) with the Gaussian coefficient draws CENTERED AT the
+           Pope-bias-corrected coefficients -- the convexity channel and the
+           evaluation-point channel at once. Like every other arm it changes
+           only psi_var (v0), so the boundedness statistic and the weak-IV
+           argument are untouched. (added 2026-08: the follow-up
+           investigation of the residual gap; verdict appended to note 21)
   floor    a variance floor tied to the estimate's own scale: the RELATIVE
            reduced-form variance rel_h^2 = psi_var[h]_ii / (Psi_hat_h gamma_hat)_i^2
            made monotone non-decreasing in h (error compounds with the
@@ -491,7 +499,7 @@ def fit_var_ols_batch(y, lags):
 # The experiment
 # ---------------------------------------------------------------------------
 
-ARMS = ["delta", "delta2", "bcvar", "floor", "boot-v", "boot-c"]
+ARMS = ["delta", "delta2", "bcvar", "delta2bc", "floor", "boot-v", "boot-c"]
 
 
 def run_dgp(name, spec, phi, seed, reps, horizon, level, boot_b, delta2_s, arms):
@@ -549,12 +557,28 @@ def run_dgp(name, spec, phi, seed, reps, horizon, level, boot_b, delta2_s, arms)
             t0 = time.perf_counter()
             pv = psi_var_delta2(rng, coefs, cov_alpha, gamma, t_o, horizon, delta2_s)
             producers["delta2"] = (pv, None, time.perf_counter() - t0)
-        if "bcvar" in arms:
+        if "bcvar" in arms or "delta2bc" in arms:
             t0 = time.perf_counter()
             coefs_bc = pope_bias_correct(coefs, sigma_u, t_o)
-            psi_bc = ma_from_coefs(list(coefs_bc), horizon)
-            pv = psi_reduced_form_cov(psi_bc, coefs_bc, cov_alpha, gamma, t_o)
-            producers["bcvar"] = (pv, None, time.perf_counter() - t0 + t_delta)
+            t_bc = time.perf_counter() - t0
+            if "bcvar" in arms:
+                t0 = time.perf_counter()
+                psi_bc = ma_from_coefs(list(coefs_bc), horizon)
+                pv = psi_reduced_form_cov(psi_bc, coefs_bc, cov_alpha, gamma,
+                                          t_o)
+                producers["bcvar"] = (pv, None,
+                                      time.perf_counter() - t0 + t_bc + t_delta)
+            if "delta2bc" in arms:
+                t0 = time.perf_counter()
+                # A dedicated substream: the arm was added after the note-21
+                # tables were published, and drawing from the shared `rng`
+                # here would shift the boot arms' streams and silently break
+                # the reproducibility of those published numbers.
+                rng_bc = np.random.default_rng(seed + 424242 + r)
+                pv = psi_var_delta2(rng_bc, coefs_bc, cov_alpha, gamma, t_o,
+                                    horizon, delta2_s)
+                producers["delta2bc"] = (pv, None,
+                                         time.perf_counter() - t0 + t_bc)
         if "floor" in arms:
             t0 = time.perf_counter()
             pv = psi_var_floor(pv_delta, psi, gamma)

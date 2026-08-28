@@ -97,14 +97,21 @@ def test_default_path_pinned_to_premerge_values():
 
 def test_default_keys_are_additive():
     """The 0.4.0 keys survive untouched; every new key is additive and the
-    opt-in keys stay absent from the default call."""
+    opt-in keys stay absent from the default call. (0.5.0 added
+    g/variant/dist/correlation; the 0.5 covariance build-out added the
+    in-sample sigma2/covariance paths; the 0.6 stage-1 build-out added the
+    per-series univariate results and the stacked std_residuals.)"""
     r = tsecon.dcc_garch(RETURNS)
     old = {"a", "b", "qbar", "loglik", "converged", "correlation_last"}
     assert old <= set(r.keys())
-    assert set(r.keys()) == old | {"g", "variant", "dist", "correlation"}
+    assert set(r.keys()) == old | {
+        "g", "variant", "dist", "correlation", "sigma2", "covariance",
+        "univariate", "std_residuals",
+    }
     assert r["g"] == 0.0            # structurally zero off-ADCC
     assert r["variant"] == "dcc" and r["dist"] == "normal"
     assert "nu" not in r            # Student-t only
+    assert "nbar" not in r          # ADCC only
     assert "correlation_forecast" not in r and "covariance_forecast" not in r
 
 

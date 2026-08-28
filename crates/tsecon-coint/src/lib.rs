@@ -14,13 +14,25 @@
 //!   exposes the eigenvalues, eigenvectors, both statistics, and sequential
 //!   rank selection ([`JohansenResult::rank_trace`],
 //!   [`JohansenResult::rank_max_eig`]).
-//! * [`fit_vecm`] — Johansen maximum-likelihood VECM estimation at a fixed
-//!   rank: the cointegrating vectors `beta` (normalized as statsmodels
-//!   does, `beta[:r, :r] = I`), the loadings `alpha`, the short-run
-//!   `Gamma` matrices, the residual covariance, and the log-likelihood.
-//!   [`VecmResult`] also maps the fit to the equivalent level VAR
-//!   ([`VecmResult::var_coefs`], [`VecmResult::companion`]) for downstream
-//!   impulse responses.
+//! * [`fit_vecm`] / [`fit_vecm_det`] — Johansen maximum-likelihood VECM
+//!   estimation at a fixed rank: the cointegrating vectors `beta`
+//!   (normalized as statsmodels does, `beta[:r, :r] = I`), the loadings
+//!   `alpha`, the short-run `Gamma` matrices, the deterministic
+//!   coefficients, the residual covariance, and the log-likelihood.
+//!   [`fit_vecm`] is the no-deterministic case (statsmodels
+//!   `deterministic = "n"`); [`fit_vecm_det`] also offers the
+//!   unrestricted constant ([`VecmDeterministic::Constant`], statsmodels
+//!   `"co"`) — the case that matches [`johansen`]'s `det_order = 0`
+//!   convention. [`VecmResult`] also maps the fit to the equivalent level
+//!   VAR ([`VecmResult::var_coefs`], [`VecmResult::companion`]) for
+//!   downstream impulse responses.
+//! * [`ou_fit`] / [`spread_zscore`] — Ornstein-Uhlenbeck mean-reversion
+//!   utilities for spreads: the exact-discretization Gaussian MLE (a
+//!   closed-form AR(1) mapping — kappa, mu, sigma with delta-method
+//!   standard errors, half-life with a Monte-Carlo-vetted confidence
+//!   interval, honest `mean_reverting = false` reporting at/over the
+//!   unit root) and the stationary-distribution z-score a pairs-trading
+//!   workflow scores entries with.
 //! * [`engle_granger`] — the Engle-Granger (1987) two-step residual-based
 //!   test, delegating the residual unit-root step to `tsecon-diag`'s ADF.
 //!
@@ -35,13 +47,15 @@ pub mod engle_granger;
 pub mod error;
 pub mod johansen;
 mod linalg;
+pub mod ou;
 pub mod vecm;
 
 pub use critvals::{critical_values, DetOrder};
 pub use engle_granger::{engle_granger, EngleGrangerResult, EngleGrangerTrend};
 pub use error::CointError;
 pub use johansen::{johansen, JohansenResult, SignificanceLevel};
-pub use vecm::{fit_vecm, VecmResult};
+pub use ou::{ou_fit, spread_zscore, OuFit};
+pub use vecm::{fit_vecm, fit_vecm_det, VecmDeterministic, VecmResult};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
 // backend) so downstream crates see one faer version.

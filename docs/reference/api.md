@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**151 functions.**
+**155 functions.**
 
 ## diagnostics
 
@@ -400,6 +400,16 @@ Exact-MLE ARIMA(p,d,q) fit, with optional forecast + conf_alpha bands.
     Also returns bse / param_cov from the observed information, or None with
     cov_ok=False when that matrix is too ill-conditioned to invert honestly.
 
+    converged reports the optimizer's convergence certificate (False = best
+    point found, not a certified optimum). boundary flags, per parameter,
+    AR/MA blocks whose fitted polynomial has a root within 0.1% of the unit
+    circle (auto_arima's admissibility epsilon): no classical SE exists
+    there — those bse entries are NaN with se_valid False, and
+    boundary_note (str | None) explains (an MA root at the unit circle is
+    the classic over-differencing signature). Interior bse still come from
+    the full-vector observed information, which a boundary degrades — treat
+    as approximate; reduced-Hessian interior SEs are a stated follow-up.
+
 ### `auto_arima`
 
 ```python
@@ -457,7 +467,7 @@ def garch_fit(
     mean: str = ...,
     dist: str = ...,
     p: int = ...,
-    o: int = ...,
+    o: int | None = ...,
     q: int = ...,
     forecast_horizon: int = ...,
 ) -> dict[str, Any]:
@@ -469,6 +479,19 @@ GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
     one-step-ahead volatility FOR period t, formed from information through
     t-1 (sigma2_t is built from eps_{t-1} and sigma2_{t-1}); the post-sample
     continuation of that step is `variance_forecast`.
+
+    Named access: `params_named` is dict(zip(param_names, params)) — use
+    fit["params_named"]["omega"] on the raw dict (fit["omega"] is a
+    deliberate KeyError; the params/param_names parallel arrays stay the
+    positional source of truth).
+
+    `o` is the asymmetry (threshold) order and only `vol="gjr"`/`"egarch"`
+    have an asymmetry term, so `o > 0` with `vol="garch"` raises instead of
+    being silently discarded — the porting trap this guards: in the `arch`
+    package, `arch_model(y, p=1, o=1, q=1)` silently switches the model to
+    GJR-GARCH, while tsecon keeps that model choice explicit (pass
+    `vol="gjr"`). `o=None` (default) means no asymmetry term under
+    `vol="garch"` and one asymmetry lag under `vol="gjr"`/`"egarch"`.
 
     Boundary fits (a coefficient at its sign constraint, persistence at 1)
     carry per-parameter `se_valid`/`boundary` flags and a `boundary_note`:
@@ -484,11 +507,18 @@ GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
 def var_fit(data: _ArrayLike, lags: int = ..., trend: str = ...) -> dict[str, Any]:
 ```
 
-Fit a VAR(p) by OLS; params, sigma_u, ICs, and stability.
+Fit a VAR(p) by OLS; params, sigma_u, ICs, residuals, and stability.
 
     Read `is_stable` for the stability verdict. `min_root`/`max_root` are the
     smallest/largest moduli of the reciprocal characteristic roots — stable iff
     `min_root > 1`, so `max_root` alone is not a verdict.
+
+    Keys: params, sigma_u, llf, aic, bic, hqic, resid ((T, k) nested list —
+    the OLS residuals over the effective sample, row t = observation lags+t),
+    fitted ((T, k) — the one-step fitted values, defined as
+    data[lags:] - resid, i.e. the OLS projection Z @ B; fitted + resid
+    reproduces data[lags:] exactly), nobs (T = len(data) - lags), df_resid
+    (T - m regressors per equation), max_root, min_root, is_stable.
 
 ### `var_irf`
 
@@ -588,6 +618,15 @@ def var_fevd(
 
 Forecast-error variance decomposition [h][variable][shock].
 
+    Horizon-first — `fevd[h][i][j]` is the share of variable i's (h+1)-step
+    forecast-error variance attributed to shock j — the same axis order as
+    `var_irf` and `structural_fevd`, with `horizon` outer entries; each
+    `fevd[h][i]` sums to 1 across shocks. (Before 0.6.0 the emitted list was
+    variable-major, contradicting this docstring; at k == horizon the two
+    layouts silently alias.) statsmodels stores the same numbers
+    variable-major: `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))`
+    equals this output.
+
 ### `var_forecast`
 
 ```python
@@ -663,6 +702,15 @@ def bvar_fit(
 ```
 
 Minnesota-NIW conjugate BVAR posterior + log marginal likelihood. scale_ar sets the lag order of the AR residual-variance scale regressions (4 = default; 1 = the GLP 2015 convention).
+
+    Keys: posterior_mean_coefs (Bbar, k x K with k = 1 + p*K), sigma_posterior_mean,
+    log_marginal_likelihood, and the full NIW posterior: omega_bar (k x k),
+    s_bar (K x K), v_bar. Convention: vec(B)|Sigma,Y ~ N(vec(Bbar),
+    Sigma (x) Obar) with column-stacked vec (B.flatten(order="F"); Kronecker
+    order np.kron(sigma, omega_bar)), Sigma|Y ~ InvWishart(s_bar, v_bar).
+    Marginal coefficient posterior sd (v_bar > K + 1):
+    sd = np.sqrt(np.outer(np.diag(omega_bar), np.diag(s_bar)) / (v_bar - K - 1)),
+    a (k, K) array aligned with posterior_mean_coefs.
 
 ### `bvar_irf_draws`
 
@@ -774,10 +822,71 @@ Christiano-Fitzgerald asymmetric band-pass filter.
 ### `hamilton_filter`
 
 ```python
-def hamilton_filter(y: _ArrayLike, h: int = ..., p: int = ...) -> dict[str, Any]:
+def hamilton_filter(
+    y: _ArrayLike,
+    h: int = ...,
+    p: int = ...,
+    method: str = ...,
+    se: str | None = ...,
+    maxlags: int | None = ...,
+    use_correction: bool = ...,
+) -> dict[str, Any]:
 ```
 
 Hamilton (2018) regression filter — the modern HP alternative.
+
+    Frequency defaults (h, p): quarterly (8, 4), monthly (24, 12), annual
+    (2, 1). `method="random_walk"` is the short-sample variant `cycle =
+    y_t - y_{t-h}` (no regression). `se="hac"` adds Newey-West standard
+    errors on `beta` via the shared HAC engine with the h-overlap default
+    `maxlags = h` (the overlapping h-step residuals are MA(h-1) by
+    construction); `se="nonrobust"` the classical comparison point.
+    Returns `trend`, `cycle`, `first_index`, `beta` (regression method),
+    plus `bse`, `tvalues`, `se_type`, `maxlags`, `use_correction` when
+    `se` is requested. Defaults are bit-identical to earlier releases.
+
+### `bn_filter`
+
+```python
+def bn_filter(
+    y: _ArrayLike,
+    p: int = ...,
+    delta: float | None = ...,
+    demean: str = ...,
+    d0: float = ...,
+    dt: float = ...,
+) -> dict[str, Any]:
+```
+
+Kamber-Morley-Wong (2018) BN filter: Beveridge-Nelson output gap
+    with the signal-to-noise ratio pinned (delta=None: their
+    amplitude-to-noise selection on the grid (d0, dt)); `demean` "sm"
+    (sample mean, the baseline) or "nd" (no drift removal). Returns
+    `trend`, `cycle`, `first_index` (=1), `delta`, `ar`, `cycle_se`,
+    `amplitude_to_noise`, `drift`. Reference-run-validated against the
+    authors' R replication code.
+
+### `bn_decomposition`
+
+```python
+def bn_decomposition(
+    y: _ArrayLike,
+    p: int = ...,
+    q: int = ...,
+    ar: _ArrayLike | None = ...,
+    ma: _ArrayLike | None = ...,
+    drift: float | None = ...,
+) -> dict[str, Any]:
+```
+
+Classic Beveridge-Nelson (1981) decomposition from an
+    ARIMA(p, 1, q) — fit by the library's exact MLE (default: the
+    Morley-Nelson-Zivot p=2, q=2), or at fixed coefficients when any of
+    `ar`/`ma`/`drift` is passed. Returns `trend`, `cycle`,
+    `innovations`, `first_index` (=1), `long_run_multiplier`
+    (psi(1) = theta(1)/phi(1)), `drift`, `ar`, `ma`, `mode`, and for
+    the fit path `sigma2`, `loglik`, `aic`, `bic`, `converged`;
+    trend + cycle reconstructs y[1:] to within a final rounding.
 
 ### `stl`
 
@@ -1422,6 +1531,14 @@ Weak-instrument-robust (Anderson-Rubin) confidence SETS for a proxy SVAR.
     at h=12; weak-instrument boundedness bit-identical). Default "delta" is
     unchanged.
 
+    rf_method="second_order_bc" centres the same seeded simulation at Pope
+    (1990) bias-corrected coefficients (Kilian stationarity shrinkage) --
+    measured at-or-above nominal at EVERY horizon on both DGPs (h=12: 0.982
+    card VAR(2) / 0.966 routine VAR(1)) at a further width price (median
+    ~1.8x the delta width at h=12). A conservative floor, not a calibration:
+    it overshoots where "second_order" already reaches nominal. Boundedness
+    is again bit-identical.
+
 ### `proxy_svar`
 
 ```python
@@ -1564,13 +1681,17 @@ def panel_fe(
     outcome: _ArrayLike,
     regressors: _ArrayLike,
     se_type: str = ...,
-    bandwidth: float = ...,
+    bandwidth: float | None = ...,
 ) -> dict[str, Any]:
 ```
 
 Fixed-effects panel OLS; `outcome` is N x T, `regressors` is k x N x T.
 
     `se_type`: "nonrobust", "cluster" (by entity), or "driscoll_kraay".
+    `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
+    `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
+    explicitly with any other `se_type` raises instead of being silently
+    absorbed — those estimators use no kernel.
 
 ### `panel_lp`
 
@@ -1581,7 +1702,7 @@ def panel_lp(
     horizon: int = ...,
     n_lag_controls: int = ...,
     se_type: str = ...,
-    bandwidth: float = ...,
+    bandwidth: float | None = ...,
     cumulative: bool = ...,
     jackknife: bool = ...,
     bias_correction: str = ...,
@@ -1591,6 +1712,11 @@ def panel_lp(
 ```
 
 Panel local projection of a common shock with fixed effects.
+
+    `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
+    `se_type="driscoll_kraay"` (the default se_type; 4.0 when omitted);
+    passing it explicitly with `se_type="cluster"`/`"nonrobust"` raises
+    instead of being silently absorbed.
 
     `outcome` is N x T; `shock` is length T. Fixed effects + lagged outcomes
     + short T carry Nickell bias (horizon-amplified); two half-panel
@@ -1724,6 +1850,9 @@ def periodogram(
 
 Periodogram PSD (freqs, psd); matches scipy.signal.periodogram.
 
+    Default `detrend="constant"` (mean removal) is SciPy's own default, so
+    default call matches default call; `"none"` / `"linear"` as in SciPy.
+
 ### `welch`
 
 ```python
@@ -1738,6 +1867,9 @@ def welch(
 ```
 
 Welch averaged-periodogram PSD; matches scipy.signal.welch.
+
+    Default `detrend="constant"` (per-segment mean removal) is SciPy's own
+    default, so default call matches default call.
 
 ### `coherence`
 
@@ -1755,6 +1887,9 @@ def coherence(
 
 Magnitude-squared coherence in [0,1]; matches scipy.signal.coherence.
 
+    Default `detrend="constant"` (per-segment mean removal) is SciPy's own
+    default, so default call matches default call.
+
 ## cointegration
 
 ### `johansen`
@@ -1763,7 +1898,12 @@ Magnitude-squared coherence in [0,1]; matches scipy.signal.coherence.
 def johansen(data: _ArrayLike, k_ar_diff: int = ...) -> dict[str, Any]:
 ```
 
-Johansen cointegration test (data is T x k); trace + max-eig + rank.
+Johansen cointegration test (data is T x k); trace + max-eig + rank + evec.
+
+    Matches statsmodels ``coint_johansen(det_order=0)`` — the *unrestricted
+    constant* convention. Warning: ``vecm``'s default is ``deterministic="n"``
+    (no deterministic terms), a different case; fit the VECM this test ranks
+    with ``vecm(..., deterministic="co")``.
 
 ### `engle_granger`
 
@@ -1781,10 +1921,69 @@ Engle-Granger two-step cointegration test: stat + MacKinnon p-value/crit (statsm
 ### `vecm`
 
 ```python
-def vecm(data: _ArrayLike, k_ar_diff: int = ..., coint_rank: int = ...) -> dict[str, Any]:
+def vecm(
+    data: _ArrayLike,
+    k_ar_diff: int = ...,
+    coint_rank: int = ...,
+    deterministic: str = ...,
+) -> dict[str, Any]:
 ```
 
-VECM ML estimation: alpha, beta, gamma, sigma_u, llf (statsmodels-exact).
+VECM ML estimation: alpha, beta, gamma, det_coef, sigma_u, llf (statsmodels-exact).
+
+    ``deterministic``: ``"n"`` (default) — no deterministic terms, statsmodels
+    ``VECM(..., deterministic="n")``; ``"co"`` — unrestricted constant
+    (statsmodels ``"co"``, the case ``johansen``'s det_order=0 convention
+    assumes; the intercepts land in ``det_coef``). Warning: ``johansen``
+    assumes the unrestricted constant, NOT this default — pass
+    ``deterministic="co"`` when the rank came from ``johansen``.
+
+### `ou_fit`
+
+```python
+def ou_fit(x: _ArrayLike, dt: float = ..., level: float = ...) -> dict[str, Any]:
+```
+
+Ornstein-Uhlenbeck mean-reversion fit for a spread (exact-discretization MLE).
+
+    ``dX = kappa (mu - X) dt + sigma dW`` observed at step ``dt`` is exactly
+    the AR(1) ``X_{t+1} = c + phi X_t + eps`` with ``phi = exp(-kappa dt)``;
+    the MLE is the closed-form AR(1) OLS (statsmodels ``AutoReg(x, lags=1)``)
+    mapped back — no optimizer. Returns ``kappa``/``mu``/``sigma`` with
+    delta-method ``kappa_se``/``mu_se``/``sigma_se``; ``half_life``
+    (= ln 2 / kappa) with ``half_life_ci`` at ``level`` — the level-scale
+    kappa interval mapped through ln 2 / kappa, with an ``inf`` upper
+    endpoint when the interval crosses zero (Monte-Carlo measured against
+    the log-scale alternative and shipped because it covers closer to
+    nominal in every cell; the cointegration model card has the table and
+    quantifies the well-known upward finite-sample kappa bias of roughly
+    4 / (sample time span)); ``stationary_sd`` (= sigma / sqrt(2 kappa));
+    ``mean_reverting``; the AR(1) leg ``phi``/``phi_se``/``c``/``c_se``/
+    ``eta2``/``loglik``; and ``n_obs``/``dt``. A fit with ``phi >= 1`` is
+    returned honestly: ``mean_reverting=False``, ``half_life=inf``,
+    ``half_life_ci=None``, ``stationary_sd=None``.
+
+### `spread_zscore`
+
+```python
+def spread_zscore(
+    x: _ArrayLike,
+    kappa: float | None = ...,
+    mu: float | None = ...,
+    sigma: float | None = ...,
+    dt: float = ...,
+) -> dict[str, Any]:
+```
+
+Z-score of a spread against the stationary OU law N(mu, sigma^2/(2 kappa)).
+
+    ``zscore = (x - mu) / stationary_sd``, ``stationary_sd = sigma /
+    sqrt(2 kappa)``. Pass all three of ``kappa``/``mu``/``sigma`` (a frozen
+    ``ou_fit``) or none (fitted from ``x`` at step ``dt``); partial
+    specification is refused. Returns ``zscore``, the ``kappa``/``mu``/
+    ``sigma`` used, ``stationary_sd``, ``fitted``. Refuses ``kappa <= 0``:
+    a non-mean-reverting process has no stationary distribution to score
+    against.
 
 ## regime switching
 
@@ -1803,9 +2002,12 @@ def markov_switching_ar(
 
 Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations.
 
-    smoothed_prob / filtered_prob are the full (n, k_regimes) probability
-    matrices, n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0
-    scalar path (= smoothed_prob[:, -1]).
+    ar is the estimated common AR block (phi_1, .., phi_p), a length-order
+    array shared across regimes (the binding fits Hamilton's common-AR
+    specification on deviations y_t - mu_{S_t}). smoothed_prob /
+    filtered_prob are the full (n, k_regimes) probability matrices,
+    n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0 scalar
+    path (= smoothed_prob[:, -1]).
 
 ### `setar`
 
@@ -1886,10 +2088,37 @@ U-MIDAS: unrestricted mixed-frequency regression (hf_lags is nobs x K).
 ### `ccc_garch`
 
 ```python
-def ccc_garch(returns: _ArrayLike) -> dict[str, Any]:
+def ccc_garch(
+    returns: _ArrayLike,
+    forecast_horizon: int = ...,
+    vol: str = ...,
+    mean: str = ...,
+    univariate_dist: str = ...,
+    p: int = ...,
+    o: int = ...,
+    q: int = ...,
+) -> dict[str, Any]:
 ```
 
-CCC-GARCH (Bollerslev 1990); returns is T x k. Correlation + loglik.
+CCC-GARCH (Bollerslev 1990); returns is T x k, H_t = D_t R D_t with
+    a constant correlation R. The univariate stage defaults to the
+    historical zero-mean Normal GARCH(1,1) (default calls bit-identical)
+    and takes garch_fit's knobs: vol/mean/p/o/q plus univariate_dist
+    ("normal" | "t", the per-series innovation density — named apart from
+    dcc_garch's dist=, which is the second-stage correlation likelihood).
+
+    Keys: correlation (k x k), loglik, sigma2 ((T, k) per-series
+    conditional variance paths), covariance ((T, k, k) in-sample
+    H_t = D_t R D_t), and with forecast_horizon > 0 covariance_forecast
+    ((horizon, k, k)) and variance_forecast ((horizon, k)).
+
+    Timing (identical to dcc_garch): sigma2[t] — hence covariance[t] —
+    conditions on information through t-1 (the standard GARCH filter);
+    covariance[-1] is the last IN-SAMPLE matrix, and the one-step-ahead
+    H_{T+1} is covariance_forecast[0]. Because R is constant the forecast
+    is analytic and exact at every horizon (no DCC-style h >= 2
+    approximation), with the variance forecasts identical to each series'
+    own garch_fit forecast path.
 
 ### `dcc_garch`
 
@@ -1899,20 +2128,40 @@ def dcc_garch(
     variant: str = ...,
     dist: str = ...,
     forecast_horizon: int = ...,
+    vol: str = ...,
+    mean: str = ...,
+    univariate_dist: str = ...,
+    p: int = ...,
+    o: int = ...,
+    q: int = ...,
 ) -> dict[str, Any]:
 ```
 
 DCC-GARCH (Engle 2002); returns is T x k. variant: "dcc" | "cdcc"
     (Aielli 2013 consistent targeting) | "adcc" (Cappiello-Engle-Sheppard
     2006 asymmetric); dist: "normal" | "t" (second-stage likelihood; "t"
-    adds nu). Keys: a, b, g, qbar, loglik, converged, variant, dist,
-    correlation ((T, k, k) nested list -- the in-sample conditional
-    correlation path), correlation_last, and with forecast_horizon > 0
+    adds nu). The univariate first stage defaults to the historical
+    zero-mean Normal GARCH(1,1) and takes garch_fit's knobs: vol/mean/p/o/q
+    plus univariate_dist ("normal" | "t") — the per-series innovation
+    density, distinct from dist=, which configures the second-stage
+    correlation likelihood. Keys: a, b, g, qbar, loglik, converged,
+    variant, dist, correlation ((T, k, k) nested list -- the in-sample
+    conditional correlation path), correlation_last, sigma2 ((T, k)
+    per-series conditional variance paths), covariance ((T, k, k)
+    in-sample H_t = D_t R_t D_t), univariate (a list of k dicts -- the
+    full per-series stage-1 GARCH results with exactly garch_fit's keys,
+    bit-identical to garch_fit on that column under the same spec),
+    std_residuals ((T, k) -- the stacked stage-1 standardized residuals
+    z[t][i] = eps_{i,t} / sqrt(sigma2[t][i]) that drive the correlation
+    recursion), nu (dist="t" only), nbar (variant="adcc" only -- the
+    (k, k) asymmetric targeting matrix Nbar = mean of n_t n_t',
+    n_t = min(z_t, 0)), and with forecast_horizon > 0
     correlation_forecast / covariance_forecast ((horizon, k, k)) and
     variance_forecast ((horizon, k)).
 
     Timing: correlation[t] = R_t conditions on information through t-1
-    (filter convention; Q_0 = Qbar). correlation_last = correlation[-1] is
+    (filter convention; Q_0 = Qbar), and sigma2[t] / covariance[t] follow
+    the same convention. correlation_last = correlation[-1] is
     the last IN-SAMPLE matrix, not a forecast; the one-step-ahead R_{T+1}
     also uses the final residual z_T and is correlation_forecast[0].
     h >= 2 forecasts use the Engle-Sheppard (2001) recursion on E[Q]
@@ -1922,11 +2171,22 @@ DCC-GARCH (Engle 2002); returns is T x k. variant: "dcc" | "cdcc"
 ### `dcc_test`
 
 ```python
-def dcc_test(returns: _ArrayLike, lags: int = ...) -> dict[str, Any]:
+def dcc_test(
+    returns: _ArrayLike,
+    lags: int = ...,
+    vol: str = ...,
+    mean: str = ...,
+    univariate_dist: str = ...,
+    p: int = ...,
+    o: int = ...,
+    q: int = ...,
+) -> dict[str, Any]:
 ```
 
 Engle-Sheppard (2001) test of constant conditional correlation
-    (CCC vs DCC); returns is T x k. GARCH(1,1) per series, joint
+    (CCC vs DCC); returns is T x k. A univariate GARCH per series (the
+    same first stage ccc_garch/dcc_garch use — zero-mean Normal GARCH(1,1)
+    by default, configurable via vol/mean/univariate_dist/p/o/q), joint
     standardization by the symmetric inverse square root of the constant
     correlation, pooled AR(lags) on the stacked off-diagonal outer
     products. Keys: stat, df (= lags + 1), p_value (small rejects constant
@@ -2091,7 +2351,9 @@ Leakage-safe CV split indices for sequential data.
     indices from the end of every training window (all schemes; set it >=
     horizon - 1 for h-step-ahead labels). embargo excludes training rows
     after the test block, which only exist under "purged_kfold"; nonzero
-    embargo raises on "expanding"/"rolling".
+    embargo raises on "expanding"/"rolling". Under "purged_kfold" the
+    embargo is measured from the end of the purged window (Lopez de Prado
+    2018, ch. 7), so the right-hand gap is purge + embargo indices.
 
 ## penalized ML (paths)
 
@@ -2142,7 +2404,7 @@ def backtest(
     train: int = ...,
     horizon: int = ...,
     refit_every: int = ...,
-    forecaster: str = ...,
+    forecaster: str | Callable[[_F64, int], _ArrayLike] | None = ...,
     period: int = ...,
     insample_period: int = ...,
 ) -> dict[str, Any]:
@@ -2151,7 +2413,15 @@ def backtest(
 Rolling/expanding pseudo-out-of-sample backtest.
 
     window is "expanding" or "rolling"; forecaster is one of naive, drift,
-    mean, seasonal_naive, theta. Returns origins, per-horizon forecasts and
+    mean, seasonal_naive, theta (None means naive) — or any Python callable
+    f(train, horizon) -> array-like of exactly `horizon` finite point
+    forecasts, where train is a read-only float64 ndarray holding only the
+    training window for that origin (the engine's leakage discipline; with
+    refit_every > 1 the callable is asked for up to refit_every - 1 + horizon
+    steps at each refit origin). Exceptions raised inside the callable
+    re-raise naming the failing origin and window, with the original chained
+    as __cause__; wrong-length / non-finite returns raise teaching errors.
+    Returns origins, per-horizon forecasts and
     targets, and a per-horizon accuracy table.
 
 ## conformal forecast intervals
@@ -2163,7 +2433,7 @@ def conformal_forecast(
     y: _ArrayLike,
     horizon: int = ...,
     method: str = ...,
-    base: str = ...,
+    base: str | Callable[[_F64, int], _ArrayLike] | None = ...,
     alpha: float = ...,
     calib: int | None = ...,
     mode: str = ...,
@@ -2185,8 +2455,11 @@ Distribution-free conformal forecast intervals around a point forecaster.
     2021 bootstrap-ensemble batch prediction intervals; base must be "ar"),
     or "aci" (Gibbs-Candes 2021 adaptive conformal inference,
     alpha_{t+1} = alpha_t + gamma (alpha - err_t), gamma default 0.005 from
-    the paper). base wraps "theta", "naive", "drift", "mean",
-    "seasonal_naive", "ar", or "arima" (order=(p, d, q)). calib defaults to
+    the paper). base wraps "theta" (None means "theta"), "naive", "drift",
+    "mean", "seasonal_naive", "ar", or "arima" (order=(p, d, q)) — or, for
+    split/aci, any Python callable base(train, horizon) -> array-like of
+    horizon point forecasts with the backtest contract (train is a read-only
+    float64 ndarray of the training window only). calib defaults to
     n // 4 residuals per horizon; n_eval (aci) to n // 5. Returns mean,
     lower, upper, level, plus per-method calibration diagnostics (split:
     q_lower/q_upper/scores/finite_sample_level; enbpi: beta/residuals;
@@ -2199,7 +2472,7 @@ def conformal_backtest(
     y: _ArrayLike,
     horizon: int = ...,
     method: str = ...,
-    base: str = ...,
+    base: str | Callable[[_F64, int], _ArrayLike] | None = ...,
     alpha: float = ...,
     calib: int | None = ...,
     mode: str = ...,
@@ -2218,9 +2491,10 @@ def conformal_backtest(
 Online out-of-sample evaluation of conformal intervals ("split",
     "aci", or "enbpi") over the last n_eval origins: per-origin intervals
     formed from information available then, miss indicators, and realized
-    coverage per horizon. ACI adds its alpha_t trajectory; EnbPI is the
-    published one-step online algorithm with the residual window sliding
-    by batch.
+    coverage per horizon. base as in conformal_forecast, including a Python
+    callable base(train, horizon) for split/aci. ACI adds its alpha_t
+    trajectory; EnbPI is the published one-step online algorithm with the
+    residual window sliding by batch.
 
 ## nonlinear GMM (callback)
 
@@ -2383,7 +2657,10 @@ Jump-robust tripower quarticity of integrated quarticity (BNS 2004).
 def bns_jump_test(returns: _ArrayLike) -> dict[str, float]:
 ```
 
-BNS ratio jump test (BNS 2004; Huang & Tauchen 2005); dict with 'ratio'.
+BNS ratio jump test in the Huang & Tauchen (2005) form; dict with 'ratio'.
+
+    The HT finite-sample M/(M-1) and M/(M-2) scalings on BV/TQ are applied
+    inside the statistic; the exported measures stay unadjusted BNS 2004.
 
 ### `realized_range`
 
@@ -2450,7 +2727,10 @@ Mean-group (Pesaran-Smith 1995) / CCE-MG (Pesaran 2006) panel estimator.
 
 ```python
 def panel_pmg(
-    ys: Sequence[_ArrayLike], xs: Sequence[_ArrayLike]
+    ys: Sequence[_ArrayLike],
+    xs: Sequence[_ArrayLike],
+    tol: float = ...,
+    max_iter: int = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -2459,6 +2739,21 @@ Pooled Mean Group ARDL(1,1) panel estimator (Pesaran-Shin-Smith 1999).
     Pools the long-run coefficient across units by ML; error-correction speed
     and short-run dynamics stay unit-specific. Returns theta, theta_se,
     phi_bar, phi, sigma2, loglik, iterations, n_units, k.
+
+    tol (default 3e-13) is the RELATIVE stopping tolerance of the
+    back-substitution: stop when |dtheta|_inf <= tol * (1 + |theta|_inf),
+    within max_iter (default 1000) iterations per pass. Relative because
+    the float noise floor of the pooled solve scales with |theta|; 3e-13
+    is the historical absolute 1e-12 rule's measured effective relative
+    stringency on the O(1)-theta panels it was validated on, so the
+    golden fixture stops at the identical iterate (bit-identical). The
+    iteration runs from the deterministic theta = 0 start and, when that
+    start diverges (routine on textbook I(1) panels — measured 14/20
+    seeds of a stable I(1) battery pre-fix, 0/20 post-fix), it is rerun
+    once from the Pesaran-Shin-Smith unrestricted-ARDL start.
+    Non-convergence from both starts raises (the last iterate is not a
+    verified fixed point); raise max_iter or loosen tol for genuinely
+    slow-mixing panels.
 
 ### `panel_unit_root`
 
@@ -2502,7 +2797,14 @@ Dynamic-factor-model nowcast; data is T x N with an optional NaN edge.
 
     method is "two_step" (Doz-Giannone-Reichlin 2011) or "mle" (exact
     one-step Gaussian MLE, single factor). Returns nowcast, edge_factor,
-    loglik, fit_loglik, smoothed_factors, n_factors, factor_order.
+    loglik, fit_loglik, smoothed_factors ((T, r)), n_factors, factor_order,
+    and the fitted model itself (both methods, same surface): loadings
+    ((N, r)), factor_ar ((r, r*p) stacked [A_1 | ... | A_p]), factor_cov
+    ((r, r)), idiosyncratic (length N), center / scale (length N training
+    moments; scale is all ones for "mle"). Mapping factors to series
+    levels is exact: nowcast == center + scale * (loadings @ edge_factor),
+    and center + scale * (F @ L.T) is the common-component fit of the
+    balanced panel. Also,
 
 ### `dfm_news`
 
@@ -2796,7 +3098,10 @@ Quantile local projections: `irf[tau][h]` with Powell-sandwich `se[tau][h]`.
 
     Per horizon, `y_{t+h}` on `[shock_t, const, p lags of y and shock]` at
     each tau (tsecon-lp design conventions); matches statsmodels QuantReg on
-    the identical design.
+    the identical design. `converged[tau][h]` is the per-fit IRLS flag: a
+    False entry hit the 1000-iteration cap before the 1e-6 coefficient
+    tolerance, so that point of the IRF is the last iterate, not a verified
+    check-loss minimum — do not quote it without refitting.
 
 ### `growth_at_risk`
 
@@ -2819,7 +3124,11 @@ Growth-at-risk (Adrian-Boyarchenko-Giannone 2019).
     reports whether the raw fitted quantile paths crossed either way. `bse`
     carries the Newey-West overlap correction at `hac_lags = horizon - 1`
     lags; `bse_powell` is the uncorrected Powell sandwich (the statsmodels
-    `QuantReg` number), identical to `bse` at `horizon = 1`.
+    `QuantReg` number), identical to `bse` at `horizon = 1`. `converged` is
+    the per-tau IRLS flag (aligned with `params`): a False entry hit the
+    1000-iteration cap before the 1e-6 tolerance, so that tau's
+    coefficients — and the fitted quantiles and `current` risk read built
+    from them — are the last iterate, not a verified check-loss minimum.
 
 ## functional shocks (FVAR / FLP)
 

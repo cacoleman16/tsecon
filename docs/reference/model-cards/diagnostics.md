@@ -3,7 +3,9 @@
 **Family:** `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`, `adf`, `kpss`,
 `check_stationarity` — plus the seasonal workflow: `stl`, `seasonal_strength`,
 `nsdiffs` (see the [dedicated section](#stl-decomposition-and-the-seasonal-workflow)
-at the end of this card)
+at the end of this card) and the trend-cycle workflow: `hamilton_filter`'s
+inference surface, `bn_decomposition`, `bn_filter` (see the
+[dedicated section](#trend-cycle-decomposition-the-hamilton-filters-inference-and-the-beveridge-nelson-family))
 
 The first hour with any series. Before you fit a model you need to know how
 persistent the data are, what lag structure they carry, and whether they must
@@ -506,4 +508,195 @@ periods: [24, 168] | windows: [11, 15] | dropped: []
 seasonal_24 strength: 0.991
 seasonal_168 strength: 0.997
 reconstructs y: True
+```
+
+## Trend-cycle decomposition: the Hamilton filter's inference and the Beveridge-Nelson family
+
+**Family:** `hamilton_filter` (extended: `method`, `se`), `bn_decomposition`,
+`bn_filter`
+
+Three ways to split a drifting macro series into trend and cycle, each with
+a different discipline on the trend. The Hamilton (2018) regression filter
+is the recommended replacement for HP filtering; the classic
+Beveridge-Nelson (1981) decomposition defines the trend as the long-horizon
+conditional expectation of an estimated ARIMA; the Kamber-Morley-Wong
+(2018) BN *filter* keeps the BN definition but pins the signal-to-noise
+ratio, which is what turns the classic BN's famously tiny cycle into an
+intuitive output gap. statsmodels ships **none of these** (no Hamilton
+filter, no BN decomposition in any form — the absence is pinned by a canary
+in `fixtures/bn_filters.json`), which shapes how each is validated below.
+
+### What they estimate
+
+- **`hamilton_filter(y, h, p, method="regression")`** — OLS of `y_t` on
+  `[1, y_{t-h}, …, y_{t-h-p+1}]`; `cycle` = residual, `trend` = fitted
+  value. `method="random_walk"` is the short-sample variant Hamilton
+  recommends when the regression sample is thin: `cycle = y_t − y_{t−h}`
+  (the population regression under a random-walk null; no coefficients).
+  Frequency-aware defaults (the horizon spans two years, the lags one):
+
+  | frequency | `h` | `p` |
+  |-----------|-----|-----|
+  | quarterly |  8  |  4  |
+  | monthly   | 24  | 12  |
+  | annual    |  2  |  1  |
+
+- **`hamilton_filter(..., se="hac")`** — Newey-West standard errors on the
+  regression coefficients, through the library's single HAC engine
+  (`tsecon-hac`). The residual `v_t` is an `h`-step-ahead forecast error
+  observed at overlapping horizons, so it is serially correlated **by
+  construction** — MA(`h−1`) under a correctly specified model — and
+  classical OLS standard errors are simply wrong for this regression
+  (Hamilton's own tables use Newey-West). The default bandwidth is the
+  **h-overlap rule `maxlags = h`**: it covers the known MA(`h−1`)
+  correlation with one lag of slack, where generic plug-in rules
+  (`0.75·n^{1/3}` ≈ 4 at n ≈ 200) can land *below* `h−1` and truncate
+  autocorrelation known to exist. `se="nonrobust"` is provided as the
+  comparison point.
+- **`bn_decomposition(y, p, q)`** — classic BN from `ARIMA(p, 1, q)` with
+  constant, fit by the library's exact MLE (default `p=2, q=2`, the
+  Morley-Nelson-Zivot 2003 US-GDP spec). The trend is the long-horizon
+  conditional expectation net of deterministic growth — algebraically a
+  **random walk with drift in the series' own innovations**,
+  `Δτ_t = μ + ψ(1)·ε_t`, where `ψ(1) = θ(1)/φ(1)` is the long-run
+  multiplier (the cumulative impulse response — the permanent effect of a
+  unit shock). Cycle: `c_t = y_t − τ_t = −e1′F(I−F)⁻¹X_t` in the ARMA
+  companion form (Morley 2002), with conditional (zero-presample)
+  innovations. Passing `ar`/`ma`/`drift` decomposes at fixed (e.g.
+  published) coefficients instead of fitting.
+- **`bn_filter(y, p, delta, demean)`** — Kamber-Morley-Wong: AR(`p`) on
+  demeaned growth with `Σφ` **fixed at `ρ = 1 − 1/√δ`** (a Bayesian ridge
+  on the Dickey-Fuller form with their `N(0, 0.5/j²)` shrinkage prior),
+  `δ` selected by the paper's amplitude-to-noise criterion (first local
+  maximum of `var(cycle)/mean(residual²)` on the grid `d0=0.01, dt=0.0005`)
+  or imposed. Baseline `p=12` for quarterly data; `cycle_se` is the
+  reference code's fixed error band (95% band `cycle ± 1.96·cycle_se`).
+
+### When to use which
+
+- **Hamilton** for a regression-based cycle with no model of the trend at
+  all — robust to the exact ARIMA form, loses `h+p−1` observations, and
+  produces a cycle whose interpretation ("what was not predictable two
+  years out") differs from a band-pass or BN gap.
+- **Classic BN** when you want the trend/cycle split *implied by the
+  series' own estimated dynamics*. Expect a small, choppy cycle on US-GDP-
+  like series — that is the honest answer of the freely estimated model
+  (Stock-Watson 1988; MNZ 2003), not a bug. The `long_run_multiplier` is
+  itself the economically interesting number (>1: shocks are amplified
+  into the trend; <1: partly transitory).
+- **KMW `bn_filter`** when you want an *output gap* — large, persistent,
+  intuitive — while keeping the BN definition of trend. The pinned δ is a
+  judgment (that trend shocks contribute a small share of forecast-error
+  variance); the amplitude-to-noise criterion makes it data-driven but it
+  remains a discipline imposed, not discovered. On the fixture's simulated
+  drifting series the KMW cycle variance is **37.6×** the classic BN's —
+  the paper's headline contrast, reproduced and asserted.
+
+### Failure modes
+
+- **`se=None` on the Hamilton regression is not neutral** — reading the
+  plain OLS `beta` t-statistics off a hand-rolled covariance understates
+  uncertainty badly at `h=8` (overlap correlation). Ask for `se="hac"`.
+- **`bn_decomposition` refuses unit-circle fits.** An MA root numerically
+  on the unit circle (the classic boundary pile-up, common when `q` is too
+  generous and AR/MA roots nearly cancel — the fixture's simulated series
+  does exactly this at `(2,2)`) makes the innovation recursion unreliable;
+  the error says to lower `q`. Likewise a nonstationary AR (`φ(1) ≈ 0`
+  after differencing usually means over-differencing).
+- **`bn_filter` needs `p ≥ 2` and `n ≥ 2p+3`**, and its automatic δ search
+  errors out (rather than walking forever) if the amplitude-to-noise
+  ratio never peaks — impose a fixed `delta` there.
+- **The KMW cycle depends on the demeaning choice.** `demean="sm"` (the
+  baseline) attributes the full-sample mean growth to trend; on samples
+  with a structural growth slowdown the authors' later work uses dynamic
+  demeaning (not implemented here — the 2018 baseline is).
+
+### Validated against (grades, with measured numbers)
+
+- **`bn_filter` — grade: reference-run (R).** Pinned against actual runs
+  of the authors' own replication code (bnfiltering.com lineage: Ben
+  Wong's MATLAB, R conversion by Luke Hartigan, updated by James Morley —
+  as packaged at `github.com/kletts/bnfilter@8af7924`, sourced at fixture
+  generation, not vendored) at the KMW-2018 baseline options
+  (`delta_select=1`, `ib=FALSE`, `d0=0.01`, `dt=0.0005`, fixed bands), on
+  100·log US real GDP and a seeded simulated series, four cases spanning
+  auto/fixed δ, sample-mean/no demeaning, `p ∈ {8, 12}`. Rust matches the
+  R runs elementwise at **≤ 2.9e-15** (cycle) / **≤ 1.6e-15** (AR), the
+  automatic δ lands on the identical grid point, and `cycle_se` /
+  amplitude-to-noise are pinned at 1e-8. The generator additionally
+  re-implements the whole procedure in NumPy and asserts agreement with R
+  at 1e-9 before writing, so the stored numbers are simultaneously a
+  reference run and a two-implementation cross-check. Honest caveats:
+  (a) the packaged code is the authors' current (2022–2025-refined)
+  lineage run at its 2018-baseline settings, not a bit-frozen 2017
+  snapshot — it includes the shrinkage prior the refined code applies on
+  all paths; (b) `kletts/bnfilter` is a re-packaging of the
+  bnfiltering.com code, not the authors' own repository. US-GDP auto δ
+  comes out 0.2295 on the macrodata sample (KMW report ≈ 0.24 on theirs).
+- **`bn_decomposition` — grade: documented-formula transcription with a
+  genuine statsmodels pin on ψ(1), plus exact identities.** statsmodels
+  has no BN decomposition, so trend/cycle/innovations are pinned against
+  an independent NumPy transcription of the Morley-2002 companion
+  computation (three cases: MNZ ARIMA(2,1,2) coefficients on GDP, fixed
+  ARMA(1,1) and AR(2) on the simulated series) — Rust matches at
+  **≤ 2.4e-16**. The number that *defines* the decomposition, ψ(1), IS
+  third-party checkable: it equals the cumulative sum of statsmodels'
+  `arma_impulse_response`, asserted at generation (< 1e-8) and re-pinned
+  in the crate and binding tests at 1e-7. The identities are asserted on
+  the library's own output: `trend + cycle` reconstructs `y[1:]` (≤ 1
+  ulp), `Δtrend = μ + ψ(1)·ε` at 1e-9, and ARIMA(0,1,1) reproduces the
+  textbook `c_t = −θε_t`, `ψ(1) = 1+θ` exactly. The fit path (library
+  MLE vs statsmodels MLE of the same spec) lands within **1.4e-4** on
+  ψ(1) and **6.8e-6** on the drift for the GDP ARIMA(2,1,2).
+- **`hamilton_filter` inference — grade: independent package
+  (statsmodels).** The filter is literally OLS, so its coefficient
+  inference is statsmodels territory even though the filter itself is
+  not: `OLS(...).fit(cov_type="HAC", cov_kwds={"maxlags": …,
+  "use_correction": …})` on the identical design pins `bse`/`tvalues`
+  for nonrobust and three HAC settings (including the `maxlags = h = 8`
+  default). Measured agreement **≤ 2.9e-8** (bse) / **≤ 6.8e-8**
+  (tvalues), pinned at 1e-6 — the design is raw *levels* of a trending
+  series, so the two solvers (statsmodels pinv vs `tsecon-hac` refined
+  Cholesky) agree to ~1e-8 here rather than the engine's 1e-10 on its
+  own calmer goldens. The decomposition and `beta` are asserted
+  **bit-identical** with and without `se` (the defaults-unchanged
+  guarantee), and `hamilton_filter(y)` still reproduces the original
+  `fixtures/filters.json` golden.
+
+### References
+
+- Hamilton, J. D. (2018). "Why You Should Never Use the Hodrick-Prescott
+  Filter." *Review of Economics and Statistics* 100(5), 831–843.
+- Beveridge, S. & Nelson, C. R. (1981). "A New Approach to Decomposition of
+  Economic Time Series into Permanent and Transitory Components…" *Journal
+  of Monetary Economics* 7(2), 151–174.
+- Morley, J. C. (2002). "A state-space approach to calculating the
+  Beveridge-Nelson decomposition." *Economics Letters* 75(1), 123–127.
+- Morley, J. C., Nelson, C. R. & Zivot, E. (2003). "Why Are the
+  Beveridge-Nelson and Unobserved-Components Decompositions of GDP So
+  Different?" *Review of Economics and Statistics* 85(2), 235–243.
+- Kamber, G., Morley, J. & Wong, B. (2018). "Intuitive and Reliable
+  Estimates of the Output Gap from a Beveridge-Nelson Filter." *Review of
+  Economics and Statistics* 100(3), 550–566. Replication code:
+  bnfiltering.com (R conversion by Luke Hartigan).
+- Newey, W. K. & West, K. D. (1987). "A Simple, Positive Semi-Definite,
+  Heteroskedasticity and Autocorrelation Consistent Covariance Matrix."
+  *Econometrica* 55(3), 703–708.
+
+### Runnable example
+
+```python
+import numpy as np, tsecon
+
+y = 100 * np.log(gdp)                      # quarterly log-level
+
+ham = tsecon.hamilton_filter(y, se="hac")  # h=8, p=4, NW maxlags=8
+print("beta_1 t-stat (HAC):", round(ham["tvalues"][1], 2))
+
+classic = tsecon.bn_decomposition(y)       # ARIMA(2,1,2)+c, exact MLE
+print("psi(1):", round(classic["long_run_multiplier"], 3))
+
+gap = tsecon.bn_filter(y)                  # KMW, p=12, auto delta
+print("delta:", gap["delta"], "gap sd:", round(np.std(gap['cycle']), 2),
+      "band:", round(1.96 * gap["cycle_se"], 2))
 ```

@@ -25,30 +25,28 @@ here, so that is what is labelled.
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1235 passed, 0 failed, 7 ignored** | `for c in <41 crates>; do cargo test -p $c; done`, summed |
-| — integration tests in `crates/*/tests/` | 1028 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 162 | |
-| — documentation tests | 45 | |
-| Python binding tests | **1057 collected, 0 failed** in 405 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Rust tests (total) | **1622 passed, 0 failed, 9 ignored** | `cargo test --workspace`, result lines summed |
+| — integration tests in `crates/*/tests/` | 1351 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 217 | |
+| — documentation tests | 54 | |
+| Python binding tests | **1192 passed, 0 failed, 0 skipped** in 350 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
-| Golden fixtures | 84 JSON files, produced by 66 generator scripts | `fixtures/` |
-| Public Python functions | 151, of which **147** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
+| Golden fixtures | 88 JSON files, produced by 69 generator scripts | `fixtures/` |
+| Public Python functions | 155, of which **152** are exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) names the gap |
 
-All 7 ignored tests are in `tsecon-var`, and each `#[ignore]` gives its reason:
-three stored-bit-pattern fingerprints that are platform-specific, three
-release-only Monte Carlo runs, and one timing test.
+Of the 9 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
+fingerprints that are platform-specific, three release-only Monte Carlo runs,
+and one timing test) and 2 are in `tsecon-panel` (the LP-DiD and SPJ
+release-only Monte Carlo runs); each `#[ignore]` states its reason.
 
-Of the 1028 Rust integration tests, **214 are golden tests** and **392 are
-property tests**. The goldens live in 47 files across 37 crates — `golden.rs` in
-each of those 37, plus `golden_bse.rs`, `engle_granger_golden.rs`,
-`advisors_golden.rs`, `phillips_golden.rs`, `unitroot_golden.rs`,
-`smooth_golden.rs`, `pmg_golden.rs`, `simultaneous_golden.rs`,
-`irf_bands_golden.rs` and `proxy_bands_golden.rs`. The property tests live in 41
-files across 35 crates — `properties.rs` in each of those 35, plus
-`advisors_properties.rs`, `phillips_properties.rs`, `unitroot_properties.rs`,
-`smooth_properties.rs`, `pmg_properties.rs` and `simultaneous_properties.rs`.
-The remainder are validation (111 tests in 11 `*validation*.rs` files),
-cross-check, and reproducibility suites described below.
+Of the 1351 Rust integration tests, **276 are golden tests** and **549 are
+property tests**. The goldens live in 64 `*golden*.rs` files across 39 crates
+(`golden.rs` in most, with additional per-surface files such as
+`engle_granger_golden.rs`, `irf_bands_golden.rs`, `proxy_bands_golden.rs`,
+`ou_golden.rs`, and `dcs_golden.rs`); the property tests live in 54
+`*propert*.rs` files across 38 crates. The remainder are validation (111 tests
+in 11 `*validation*.rs` files), cross-check, and reproducibility suites
+described below.
 
 ---
 
@@ -226,7 +224,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-1057 tests in 81 files. 50 of the 84 fixture JSONs are reloaded here and checked
+1064 tests in 81 files. 50 of the 84 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -247,8 +245,8 @@ cannot cover:
   direction too: a Python moment function that raises must propagate its
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
-- **Surface completeness — and the four functions it says are missing.** The
-  module exports 145 public callables. This is checked by running the check,
+- **Surface completeness — and the three functions it says are missing.** The
+  module exports 155 public callables. This is checked by running the check,
   not by asserting the answer, and the honest output is *not* empty:
 
   ```sh
@@ -258,21 +256,22 @@ cannot cover:
   txt = ''.join(p.read_text() for p in pathlib.Path('bindings/python/tests').glob('*.py'))
   print(len(fns), sorted(f for f in fns if not re.search(rf'tsecon\.{f}\s*\(', txt)))
   "
-  # 128 ['engle_granger', 'fvar_scenario', 'ndiffs', 'quantile_lp', 'summarize']
+  # 155 ['engle_granger', 'fvar_scenario', 'ndiffs']
   ```
 
-  One of those five is a false positive. `summarize` **is** exercised, in
-  `test_results_generic.py`, but reached through
-  `from tsecon.results import summarize` rather than the `tsecon.` prefix the
-  regex looks for. The other four are real: **`engle_granger`,
-  `fvar_scenario`, `ndiffs` and `quantile_lp` appear nowhere under
-  `bindings/python/tests/`** — not under any spelling, since `grep -r` on the
-  bare name returns nothing either. So 141 of 145 are exercised here, not 145.
+  All three are real: **`engle_granger`, `fvar_scenario` and `ndiffs` appear
+  nowhere under `bindings/python/tests/`** — not under any spelling, since
+  `grep -r` on the bare name returns nothing either. So 152 of 155 are
+  exercised here, not 155. (Two earlier members of this list have since
+  graduated: `quantile_lp` gained binding tests in the 0.6.0 coverage work,
+  and `summarize` — formerly a regex false positive reached only through
+  `from tsecon.results import summarize` — is now also called under the
+  `tsecon.` spelling.)
 
-  All four are golden-pinned on the Rust side —
+  All three are golden-pinned on the Rust side —
   `tsecon-coint/tests/engle_granger_golden.rs`,
-  `tsecon-funcshock/tests/golden.rs`, `tsecon-diag/tests/advisors_golden.rs`,
-  `tsecon-quantile/tests/golden.rs` — so the *estimator* is validated. What is
+  `tsecon-funcshock/tests/golden.rs`, `tsecon-diag/tests/advisors_golden.rs`
+  — so the *estimator* is validated. What is
   untested is the binding: the marshalling, the dict keys and the error
   propagation that are precisely what this tier exists to check, and precisely
   what a Rust golden structurally cannot see. Nothing in the suite fails because
@@ -320,9 +319,9 @@ samples — and, where they do not, by how much and why.
 Full write-up: **[Interval coverage](../examples/interval-coverage.md)**.
 
 ```sh
-.venv/bin/python docs/examples/coverage/run_all.py            # 1904 s here
+.venv/bin/python docs/examples/coverage/run_all.py            # 2396 s here
 .venv/bin/python docs/examples/coverage/run_all.py --summary   # tables only
-.venv/bin/python docs/examples/coverage/run_all.py --quick      # ~3 min smoke run
+.venv/bin/python docs/examples/coverage/run_all.py --quick      # ~4 min smoke run
 ```
 
 This is a separate tier from Tier 5 rather than a section of it, because the
@@ -333,12 +332,12 @@ size and whether an *estimator* is consistent. Tier 6 asks whether an
 specific data-generating process — and it is the claim a reader is implicitly
 relying on every time they quote a standard error.
 
-Seven modules under
+Eight modules under
 [`docs/examples/coverage/`](https://github.com/cacoleman16/tsecon/tree/main/docs/examples/coverage)
-re-estimate 50 interval-valued outputs across 28 functions on seeded draws from
-processes whose truth is known in closed form, and count containment. (50 rather
-than 28 because the option and the regime change the answer: `var_irf_bands`
-contributes six rows, `ols` five, `bai_perron` three.) Every coverage number
+re-estimate 63 interval-valued outputs across 35 functions on seeded draws from
+processes whose truth is known in closed form, and count containment. (63 rather
+than 35 because the option and the regime change the answer: `var_irf_bands`
+contributes six rows, `ols` five, `proxy_ar_sets` and `bai_perron` three each.) Every coverage number
 carries its own Monte Carlo standard error `sqrt(p(1−p)/reps)` so that 0.93 and
 0.95 can be told apart honestly, and `run_all.py` harvests the consolidated
 tables from the structured results the modules return — nothing is transcribed
@@ -360,11 +359,11 @@ degrades, as approximations do" from "this interval does not work". The headline
 
 | | count |
 |---|---|
-| frequentist intervals measured (CI + PRED) | 39 |
-| — off nominal **even in the favourable design** | **12** |
-| — at nominal when entitled, off under stress | 27 |
+| frequentist intervals measured (CI + PRED) | 50 |
+| — off nominal **even in the favourable design** | **14** |
+| — at nominal when entitled, off under stress | 36 |
 | objects that make no frequentist promise (Bayesian credible bands, set-identified bounds) — reported as labelled diagnostics | 7 |
-| surfaces that return no interval at all (`theta_forecast`/`backtest`, `weighted_midas`, `dfm_nowcast`, `nelson_siegel` — the last three verified by a per-run key-set tripwire) | 4 |
+| surfaces that return no interval at all (`theta_forecast`/`backtest`, `weighted_midas`, `dfm_nowcast`, `nelson_siegel`, `nongaussian_svar`, the GARCH `variance_forecast` — all but the first verified by a per-run key-set tripwire) | 6 |
 
 Three results are worth naming here rather than leaving on the page:
 
@@ -546,7 +545,7 @@ every one of them runs on every invocation of the command above:
 | `test_arima_seasonal.py` | 5 | Seasonal ARIMA through the Python surface: the airline model against `sarima.json` (fit parity, naming, output shape), seasonal-argument parsing/errors, and the closed-form seasonal random-walk forecast law. |
 | `test_backtest.py` | 4 | Pseudo-out-of-sample backtest engine; no external golden — the naive forecaster makes every quantity a closed form checked against NumPy. |
 | `test_coint_regime.py` | 4 | Johansen / Engle-Granger cointegration and Markov-switching AR against `coint.json` and `regime.json`; the full `(n, k)` smoothed/filtered probability matrices at `k = 3` (shapes, row sums, back-compat column). |
-| `test_cv_splits.py` | 12 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored — including the walk-forward purge gap (exact train-tail truncation, unmoved test blocks) and the embargo refusal on `expanding`/`rolling`. |
+| `test_cv_splits.py` | 18 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored — including the walk-forward purge gap (exact train-tail truncation, unmoved test blocks), the embargo refusal on `expanding`/`rolling`, and the purged-k-fold additive right gap (measured gap = `purge + embargo`, the AFML ch. 7 convention; the embargo is never absorbed by the purge). |
 | `test_replication_ramey_zubairy.py` | 3 | The RZ government-spending replication, offline against the committed panel: multiplier below one across horizons (with the first stage asserted strong inside it), and a guard that it is not the outcome-only cumulative trap. |
 | `test_replication_yield_curve.py` | 2 | The Estrella-Mishkin yield-curve recession probit, offline against the committed FRED snapshot: the spread coefficient stays significantly negative. |
 | `test_replication_uhlig.py` | 8 | The Uhlig (2005) sign-restricted monetary SVAR, offline against the committed panel: no price puzzle (deflator 84% quantile negative through month 60), the ambiguous GDP response (68% band straddles zero at months 6–60, within ±0.35%), the sampler's sign enforcement, seed stability, and bit-reproducibility. 300 draws with a fixed seed, vs the docs page's 2000. |
@@ -562,10 +561,10 @@ every one of them runs on every invocation of the command above:
 | `test_midas_mgarch.py` | 4 | MIDAS weighting/design and CCC/DCC multivariate GARCH against `midas.json`, `mgarch.json`. |
 | `test_ml_paths.py` | 3 | Adaptive LASSO oracle behavior and elastic-net path monotonicity with AIC/BIC selection on a sparse design. |
 | `test_new_crates.py` | 9 | GAS score-driven volatility, mean-group / CCE-MG panel, DFM nowcasting; `panel_mean_group` tight against its statsmodels golden, the other two structural. |
-| `test_panel_fceval.py` | 3 | Panel estimators and the Clark-West / Giacomini-White forecast comparison tests. |
+| `test_panel_fceval.py` | 6 | Panel estimators and the Clark-West / Giacomini-White forecast comparison tests; the 0.6.0 `bandwidth` contract — explicit bandwidth without `driscoll_kraay` raises, the Driscoll-Kraay path bit-identical omitted-vs-explicit-4.0. |
 | `test_pmg_news.py` | 3 | PMG panel estimator against its documented-formula golden; `dfm_news` against its exact adding-up identity. |
 | `test_predreg.py` | 2 | IVX / Stambaugh predictive-regression point estimates and Wald statistics (the *size* claim lives in the crate's MC property tests). |
-| `test_proxy_svar_bands.py` | 38 | Jentsch-Lunsford moving-block bands and the Anderson-Rubin sets. No external package computes either, so the Python layer pins what the binding must not lose: the `h = 0` cell of `norm_var` degenerate at `unit`, the six failure counters surfaced rather than dropped, the wild arm labelled `asymptotically_valid=False`, every AR set shape reachable and branch-able by `kind`, `unit`-equivariance, level nesting, the point estimate always a member of its own set, and `level is None` when reduced-form uncertainty is switched off. |
+| `test_proxy_svar_bands.py` | 45 | Jentsch-Lunsford moving-block bands and the Anderson-Rubin sets. No external package computes either, so the Python layer pins what the binding must not lose: the `h = 0` cell of `norm_var` degenerate at `unit`, the six failure counters surfaced rather than dropped, the wild arm labelled `asymptotically_valid=False`, every AR set shape reachable and branch-able by `kind`, `unit`-equivariance, level nesting, the point estimate always a member of its own set, and `level is None` when reduced-form uncertainty is switched off — plus the `rf_method="second_order_bc"` arm: seeded determinism, sets that widen on `second_order`'s (which widen on delta's), bit-identical boundedness, and the rf_draws/rf_seed knobs never silently ignored. |
 | `test_realized_extras.py` | 7 | Realized/tripower quarticity, BNS jump test, Parkinson & Garman-Klass range variances against documented closed forms. |
 | `test_results_arima.py` | 20 | `ARIMAResults` is *additive*: key-by-key dict equality against a raw `arima_fit` call, then the rendering. |
 | `test_results_dsge.py` | 26 | `DSGEResults` against the Cagan money-demand model, which has a closed-form saddle-path solution (`G = 1/(1−aρ)`, `P = ρ`, `Q = 1`). |
@@ -574,9 +573,9 @@ every one of them runs on every invocation of the command above:
 | `test_results_predreg.py` | 35 | Predictive-regression facade on the Stambaugh DGP it exists for (ρ = 0.99, corr = −0.9, **true β = 0**) — the case whose reporting the summary must get right. |
 | `test_results_var.py` | 16 | VAR facade: dict/list contracts, summary, IRF grid. |
 | `test_roadmap_gaps.py` | 6 | Recession probability, survey expectations, and long-memory GPH / local-Whittle bindings. |
-| `test_smoke.py` | 33 | End-to-end: the Rust core called from Python across the core surface, plus Philox bit-compatibility against the live NumPy. |
+| `test_smoke.py` | 34 | End-to-end: the Rust core called from Python across the core surface, plus Philox bit-compatibility against the live NumPy — including the `var_fevd` horizon-first layout at k ≠ horizon. |
 | `test_spectest_afns_dsge.py` | 18 | Specification tests (White/Breusch-Pagan, RESET, Chow, CUSUM), the AFNS yield adjustment, and `dsge_solve`. |
-| `test_spectral.py` | 3 | Periodogram / Welch / coherence against `scipy.signal` fixtures. |
+| `test_spectral.py` | 6 | Periodogram / Welch / coherence against `scipy.signal` fixtures, plus default-vs-default parity against live scipy on a mean-shifted series (the 0.6.0 `detrend="constant"` default). |
 | `test_stub_sync.py` | 3 | The structural guards: stub ↔ runtime surface, `py.typed` present, `api.md` not stale. |
 | `test_survey_longmemory_bindings.py` | 9 | `forecast_disagreement` on a ragged panel and `frac_integrate` as the exact inverse of `frac_diff`; every expected number hand-computed or built from a tiny in-test NumPy reference. |
 | `test_termstructure.py` | 3 | Nelson-Siegel (Diebold-Li) and Svensson curve fits against `termstructure.json`. |

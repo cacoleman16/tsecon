@@ -26,8 +26,9 @@
 //! * [`purged_kfold_splits`] — blocked K-fold with **purging** and an
 //!   **embargo** (Lopez de Prado 2018, *Advances in Financial Machine
 //!   Learning*, ch. 7): drop training observations whose label window can
-//!   overlap the test block (purge) and a further band immediately after it
-//!   (embargo, for forward serial correlation);
+//!   overlap the test block (purge) and a further band immediately after
+//!   the purged window (embargo, for forward serial correlation — the two
+//!   exclusions add);
 //!
 //! and a [`cv_select`] driver that scores an elastic-net `lambda` grid
 //! under a pluggable loss.
@@ -177,14 +178,24 @@ fn validate_origin(
 ///   `purge` — can overlap the test block, so keeping them would leak the
 ///   held-out data into training.
 /// * **Embargo** (`embargo` observations, right side only): additionally
-///   drop training indices in `[test_end, test_end + embargo)`. This kills
-///   the forward serial-correlation leak from test features into the
-///   immediately following training labels; there is no left embargo
-///   because information flows forward in time.
+///   drop training indices in `[test_end + purge, test_end + purge +
+///   embargo)`. Following AFML ch. 7 (and mlfinlab), the embargo is
+///   measured from the END of the purged window, not from the test block:
+///   purging removes the label-overlap leak, and the embargo then removes
+///   a *further* band for the forward serial-correlation leak from test
+///   features into the immediately following training labels — the two
+///   exclusions ADD. There is no left embargo because information flows
+///   forward in time.
 ///
 /// The right-hand exclusion therefore extends to
-/// `test_end + max(purge, embargo)`. Blocks are made as even as possible;
-/// the first `n % k` blocks get one extra index.
+/// `test_end + purge + embargo` (saturating; a band reaching past `n`
+/// simply leaves that fold with no right-hand training block). Blocks are
+/// made as even as possible; the first `n % k` blocks get one extra index.
+///
+/// Releases up to 0.5.0 used `test_end + max(purge, embargo)` instead, so
+/// an embargo no wider than the purge was silently absorbed —
+/// `(purge = 21, embargo = 10)` was bit-identical to `(21, 0)`. See the
+/// CHANGELOG.
 ///
 /// # Errors
 ///
@@ -225,8 +236,11 @@ pub fn purged_kfold_splits(
 
         // Left guard: [test_start - purge, test_start).
         let left_excl = test_start.saturating_sub(purge);
-        // Right guard: [test_end, test_end + max(purge, embargo)).
-        let right_excl_end = test_end + purge.max(embargo);
+        // Right guard: [test_end, test_end + purge + embargo) — the embargo
+        // starts where the purge ends (AFML ch. 7), so the bands add.
+        // Saturating: a band reaching past `n` just means this fold has no
+        // right-hand training block.
+        let right_excl_end = test_end.saturating_add(purge).saturating_add(embargo);
 
         let train: Vec<usize> = (0..n)
             .filter(|&i| {

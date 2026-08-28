@@ -98,3 +98,51 @@ def test_walk_forward_embargo_raises_instead_of_ignoring(scheme):
 def test_walk_forward_purge_consuming_the_window_errors(scheme):
     with pytest.raises(ValueError):
         tsecon.cv_splits(60, scheme=scheme, train=20, horizon=5, step=5, purge=20)
+
+
+# --------------------------------------------------------------------------
+# Field fix (0.5.0 report, item 11): under scheme="purged_kfold" the embargo
+# was ABSORBED by the purge — the right-hand exclusion was max(purge,
+# embargo), so (purge=21, embargo=10) was bit-identical to (21, 0). AFML
+# ch. 7 (Lopez de Prado 2018; mlfinlab likewise) measures the embargo from
+# the END of the purged window, so the exclusions add: the right-hand gap
+# is purge + embargo.
+# --------------------------------------------------------------------------
+
+def _right_gaps(splits):
+    """Measured gap after each test block: first training index past the
+    block minus the block's exclusive end (None when no index follows)."""
+    gaps = []
+    for s in splits:
+        te = max(s["test"]) + 1
+        after = [t for t in s["train"] if t >= te]
+        gaps.append(min(after) - te if after else None)
+    return gaps
+
+
+@pytest.mark.parametrize(
+    "purge,embargo,gap", [(21, 0, 21), (0, 10, 10), (21, 10, 31), (21, 30, 51)]
+)
+def test_purged_kfold_right_gap_is_purge_plus_embargo(purge, embargo, gap):
+    splits = tsecon.cv_splits(300, scheme="purged_kfold", k=4, purge=purge, embargo=embargo)
+    # Every fold with a right-hand training block shows the exact additive gap.
+    assert _right_gaps(splits)[:-1] == [gap] * 3
+    # The left gap stays purge-only: there is no left embargo.
+    for s in splits[1:]:
+        lo = min(s["test"])
+        before = [t for t in s["train"] if t < lo]
+        assert lo - max(before) - 1 == purge
+
+
+def test_purged_kfold_embargo_not_absorbed_by_purge():
+    # The pre-fix defect made these two calls bit-identical.
+    absorbed = tsecon.cv_splits(300, scheme="purged_kfold", k=4, purge=21, embargo=0)
+    additive = tsecon.cv_splits(300, scheme="purged_kfold", k=4, purge=21, embargo=10)
+    assert absorbed != additive
+
+
+def test_purged_kfold_embargo_reaching_past_the_sample_end():
+    # A right band past n erases the right-hand training block, nothing more.
+    splits = tsecon.cv_splits(50, scheme="purged_kfold", k=5, purge=0, embargo=100)
+    assert splits[0]["train"] == []
+    assert splits[-1]["train"] == list(range(40))

@@ -949,3 +949,293 @@ fn second_order_rejects_bad_draw_counts() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// POPE BIAS-CORRECTED SECOND ORDER (`rf_method = "second_order_bc"`) —
+// the residual-gap follow-up of roadmap note 21
+// ---------------------------------------------------------------------------
+
+use tsecon_ident::proxy_ar::pope_bias_corrected_coefs;
+
+/// Residual covariance of a fitted example, with the OLS divisor the binding
+/// uses (`t - (1 + n*lags)`).
+fn sigma_u_of(resid: &Mat<f64>) -> Mat<f64> {
+    let t_rows = resid.nrows();
+    let k = 1 + N * LAGS;
+    Mat::from_fn(N, N, |i, j| {
+        let mut s = 0.0;
+        for r in 0..t_rows {
+            s += resid[(r, i)] * resid[(r, j)];
+        }
+        s / (t_rows - k) as f64
+    })
+}
+
+/// For the univariate AR(1), Pope's formula collapses to the classical
+/// Marriott-Pope bias `E[a_hat] - a = -(1 + 3a)/T`, so the corrected
+/// coefficient is exactly `a + (1 + 3a)/T`. This pins the whole closed form
+/// (companion, G0, the eigenvalue-sum series) against an independent hand
+/// derivation, to near machine precision.
+#[test]
+fn pope_correction_matches_the_ar1_closed_form() -> Result<(), IdentError> {
+    let a = 0.5f64;
+    let t = 100usize;
+    let coefs = vec![Mat::from_fn(1, 1, |_, _| a)];
+    let sigma = Mat::from_fn(1, 1, |_, _| 1.0);
+    let out = pope_bias_corrected_coefs(&coefs, sigma.as_ref(), t)?;
+    let expected = a + (1.0 + 3.0 * a) / t as f64;
+    assert!(
+        (out[0][(0, 0)] - expected).abs() < 1e-12,
+        "AR(1) Pope correction: got {}, expected {expected}",
+        out[0][(0, 0)]
+    );
+    Ok(())
+}
+
+/// The 3-variable VAR(2) reference: the NumPy transcription in
+/// `docs/examples/coverage/experiments/proxy_ar_long_horizon.py`
+/// (`pope_bias_correct`, the measured `delta2bc` arm) run on this exact
+/// input produced these coefficients; the crate must agree to 1e-10.
+#[test]
+fn pope_correction_matches_the_numpy_reference() -> Result<(), IdentError> {
+    let a1 = [[0.48, 0.12, -0.03], [0.02, 0.37, 0.11], [0.09, -0.04, 0.28]];
+    let a2 = [[0.11, 0.01, 0.00], [-0.02, 0.08, 0.03], [0.00, 0.02, 0.12]];
+    let s = [[1.20, 0.30, 0.10], [0.30, 1.90, 0.40], [0.10, 0.40, 0.90]];
+    let expected_l0 = [
+        [
+            0.4873674980541821,
+            0.11979641761527027,
+            -0.029871552300962112,
+        ],
+        [
+            0.02036218108219367,
+            0.37723966749640464,
+            0.10997217863584435,
+        ],
+        [
+            0.08991330713898028,
+            -0.039903437579290366,
+            0.28755639973665265,
+        ],
+    ];
+    let expected_l1 = [
+        [
+            0.11840864571756221,
+            0.008057045588766545,
+            0.0013740259535399621,
+        ],
+        [
+            -0.017869226200229713,
+            0.08883668444391489,
+            0.02895973606680308,
+        ],
+        [
+            -0.0009000008145680175,
+            0.02102561539168191,
+            0.12958485970710262,
+        ],
+    ];
+    let coefs = vec![
+        Mat::from_fn(3, 3, |i, j| a1[i][j]),
+        Mat::from_fn(3, 3, |i, j| a2[i][j]),
+    ];
+    let sigma = Mat::from_fn(3, 3, |i, j| s[i][j]);
+    let out = pope_bias_corrected_coefs(&coefs, sigma.as_ref(), 300)?;
+    for (l, expected) in [expected_l0, expected_l1].iter().enumerate() {
+        for i in 0..3 {
+            for j in 0..3 {
+                assert!(
+                    (out[l][(i, j)] - expected[i][j]).abs() < 1e-10,
+                    "lag {l} cell ({i},{j}): got {}, reference {}",
+                    out[l][(i, j)],
+                    expected[i][j]
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Kilian's shrinkage: on a near-unit-root fit at a small sample, the raw
+/// Pope correction would push the companion explosive; the shrunk correction
+/// must land strictly inside the unit circle, and match the NumPy reference
+/// (which walks the same 0.05 grid).
+#[test]
+fn pope_correction_shrinks_to_stationarity_near_the_unit_circle() -> Result<(), IdentError> {
+    let a1 = [[0.97, 0.02, 0.00], [0.00, 0.95, 0.02], [0.01, 0.00, 0.93]];
+    let expected = [
+        [
+            0.994462868287585,
+            0.014395041960441661,
+            0.0011591393750323665,
+        ],
+        [
+            0.003425291397933116,
+            0.9777409825604537,
+            0.016060397841461623,
+        ],
+        [
+            0.007965829962444002,
+            0.0028998415621460344,
+            0.9605717719268161,
+        ],
+    ];
+    let coefs = vec![Mat::from_fn(3, 3, |i, j| a1[i][j])];
+    let sigma = Mat::from_fn(3, 3, |i, j| f64::from(u8::from(i == j)));
+    let out = pope_bias_corrected_coefs(&coefs, sigma.as_ref(), 40)?;
+    for i in 0..3 {
+        for j in 0..3 {
+            assert!(
+                (out[0][(i, j)] - expected[i][j]).abs() < 1e-10,
+                "cell ({i},{j}): got {}, reference {}",
+                out[0][(i, j)],
+                expected[i][j]
+            );
+        }
+    }
+    let rho = tsecon_linalg::spectral_radius(out[0].as_ref()).map_err(IdentError::from)?;
+    assert!(
+        rho < 1.0,
+        "shrunk correction must stay stationary; spectral radius {rho}"
+    );
+    Ok(())
+}
+
+/// An unstable fit gets NO correction — the documented conservative no-op —
+/// and the input comes back unchanged bit for bit.
+#[test]
+fn pope_correction_is_a_no_op_on_an_unstable_fit() -> Result<(), IdentError> {
+    let coefs = vec![Mat::from_fn(2, 2, |i, j| if i == j { 1.02 } else { 0.0 })];
+    let sigma = Mat::from_fn(2, 2, |i, j| f64::from(u8::from(i == j)));
+    let out = pope_bias_corrected_coefs(&coefs, sigma.as_ref(), 200)?;
+    for i in 0..2 {
+        for j in 0..2 {
+            assert_eq!(
+                out[0][(i, j)].to_bits(),
+                coefs[0][(i, j)].to_bits(),
+                "unstable fit must be returned unchanged"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The combination arm's mechanism, end to end on a fitted persistent
+/// system: centring the same seeded draws at the bias-corrected (more
+/// persistent) coefficients inflates the long-horizon variance beyond the
+/// plain second order — and the excess grows with the horizon. Deterministic
+/// given the seed.
+#[test]
+fn second_order_bc_exceeds_second_order_at_long_horizons() -> Result<(), IdentError> {
+    let (resid, proxy, coefs, cov_alpha, gamma) = fitted_example(0x5A1E_0025, 300);
+    let sigma_u = sigma_u_of(&resid);
+    let coefs_bc = pope_bias_corrected_coefs(&coefs, sigma_u.as_ref(), resid.nrows())?;
+    let horizon = 12;
+    let seed = 0xD5EE_D004;
+    let plain = psi_reduced_form_cov_mc(
+        horizon,
+        &coefs,
+        cov_alpha.as_ref(),
+        &gamma,
+        proxy.len(),
+        2048,
+        seed,
+    )?;
+    let bc = psi_reduced_form_cov_mc(
+        horizon,
+        &coefs_bc,
+        cov_alpha.as_ref(),
+        &gamma,
+        proxy.len(),
+        2048,
+        seed,
+    )?;
+    let ratio_at = |h: usize| {
+        let mut r = 0.0f64;
+        for i in 0..N {
+            r = r.max(bc[h][(i, i)] / plain[h][(i, i)]);
+        }
+        r
+    };
+    let late = ratio_at(12);
+    assert!(
+        late > 1.05,
+        "expected the bias-corrected centring to inflate the h=12 variance; max ratio {late:.4}"
+    );
+    assert!(
+        late > ratio_at(2),
+        "the bc excess must grow with the horizon: h=2 {:.4}, h=12 {late:.4}",
+        ratio_at(2)
+    );
+    Ok(())
+}
+
+/// Determinism of the corrected pipeline, and the boundedness invariance the
+/// binding relies on: swapping the psi_var for the bc variant leaves the
+/// bound statistic and the point estimates bit-identical (the correction
+/// enters `v0` only).
+#[test]
+fn second_order_bc_preserves_boundedness_and_points() -> Result<(), IdentError> {
+    let (resid, proxy, coefs, cov_alpha, gamma) = fitted_example(0x5A1E_0026, 300);
+    let sigma_u = sigma_u_of(&resid);
+    let coefs_bc = pope_bias_corrected_coefs(&coefs, sigma_u.as_ref(), resid.nrows())?;
+    let horizon = 12;
+    let psi = ma_rep(&coefs, horizon);
+    let pv_plain = psi_reduced_form_cov_mc(
+        horizon,
+        &coefs,
+        cov_alpha.as_ref(),
+        &gamma,
+        proxy.len(),
+        512,
+        0xD5EE_D005,
+    )?;
+    let pv_bc = psi_reduced_form_cov_mc(
+        horizon,
+        &coefs_bc,
+        cov_alpha.as_ref(),
+        &gamma,
+        proxy.len(),
+        512,
+        0xD5EE_D005,
+    )?;
+    let run = |pv: &Vec<Mat<f64>>| {
+        proxy_ar_sets(
+            resid.as_ref(),
+            &proxy,
+            &psi,
+            NORM_VAR,
+            UNIT,
+            ArVarianceSpec::with_reduced_form(
+                ArVariance::Hc0,
+                ArReducedForm {
+                    psi_var: pv,
+                    psi_gamma_cov: None,
+                },
+            ),
+            ArCritical::Chi2 { level: LEVEL },
+        )
+    };
+    let base = run(&pv_plain)?;
+    let second = run(&pv_bc)?;
+    assert_eq!(base.ar_bound_stat.to_bits(), second.ar_bound_stat.to_bits());
+    assert_eq!(base.ar_bounded_all, second.ar_bounded_all);
+    for i in 0..N {
+        let cb = &base.cells[horizon][i];
+        let cs = &second.cells[horizon][i];
+        assert_eq!(cb.point.to_bits(), cs.point.to_bits());
+    }
+    // Determinism: rebuilding the bc coefficients reproduces them bit for bit.
+    let coefs_bc2 = pope_bias_corrected_coefs(&coefs, sigma_u.as_ref(), resid.nrows())?;
+    for l in 0..LAGS {
+        for i in 0..N {
+            for j in 0..N {
+                assert_eq!(
+                    coefs_bc[l][(i, j)].to_bits(),
+                    coefs_bc2[l][(i, j)].to_bits()
+                );
+            }
+        }
+    }
+    Ok(())
+}

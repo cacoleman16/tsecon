@@ -29,7 +29,9 @@ beats another without a test that accounts for dependent forecast errors.
   lines," extrapolate, and recombine. It is equivalent to simple exponential
   smoothing with drift and is a notoriously strong benchmark.
 - **`backtest(y, ...)`** — walks an origin forward through the series, re-fits a
-  chosen forecaster on each training window, forecasts `horizon` steps ahead,
+  chosen forecaster — a built-in name or **your own Python callable** (see
+  [the callable contract](#bring-your-own-model--python-callable-forecasters))
+  — on each training window, forecasts `horizon` steps ahead,
   and tabulates accuracy by horizon. This is the correct way to estimate
   out-of-sample error; a single train/test split is not.
 - **`accuracy(actual, forecast)`** — the standard scale-dependent (RMSE, MAE),
@@ -112,7 +114,7 @@ beats another without a test that accounts for dependent forecast errors.
 | | `train` | `20` | initial (or fixed, if rolling) training length |
 | | `horizon` | `1` | steps forecast at each origin |
 | | `refit_every` | `1` | re-fit cadence (speed vs freshness) |
-| | `forecaster` | `"naive"` | `naive`, `drift`, `mean`, `seasonal_naive`, `theta` |
+| | `forecaster` | `"naive"` | `naive`, `drift`, `mean`, `seasonal_naive`, `theta` — or any Python callable `f(train, horizon)` (see the callable-contract section) |
 | | `period` | `1` | seasonal period for `seasonal_naive` / `theta` |
 | `accuracy` | `insample` | `None` | required for MASE / RMSSE |
 | | `period` | `1` | seasonal frequency of the scaling benchmark |
@@ -178,6 +180,109 @@ beats another without a test that accounts for dependent forecast errors.
   (Kupiec 1995); the verdict says so whenever fewer than five violations were
   expected. Prefer a longer window or a larger α (exact/Monte Carlo p-values
   per Dufour 2006 are scoped in Module 03).
+
+## Bring your own model — Python-callable forecasters
+
+`backtest(forecaster=...)` and the split/ACI conformal `base=` accept **any
+Python callable** alongside the built-in names, so a real model — statsmodels,
+sklearn, a hand-rolled ensemble — is evaluated by the library's own
+leakage-safe engine instead of by a hand-written loop that has to re-derive
+the alignment, refit, and no-peeking rules.
+
+**The contract.** The callable is invoked as `forecaster(train, horizon)`:
+
+- `train` is a **read-only float64 ndarray holding only the training window**
+  for the current forecast origin `t` — expanding: `y[0..=t]`; rolling: the
+  `train` most recent observations ending at `t`. The engine never hands the
+  callable an observation after the origin, and every forecast is scored
+  against targets strictly after the window that produced it. The leakage
+  discipline is the *engine's*, not the callable's — but everything else that
+  could peek at the future (scaling, hyperparameter tuning, transformation
+  choice) belongs *inside* the callable, where the training slice is all it
+  can see.
+- `horizon` is the number of steps requested: return an array-like of exactly
+  that many **finite** point forecasts for steps `1..=horizon` counted from
+  the end of `train` (a bare scalar is rejected — return a length-1 sequence
+  for one step). With `refit_every > 1` the callable runs only at refit
+  origins and is asked for up to `refit_every - 1 + horizon` steps, so its
+  one multi-step path covers the whole block (the documented refit contract).
+- A Python exception raised inside the callable aborts the run and is
+  **re-raised naming the failing origin and training window**, with the
+  original exception chained as `__cause__` (its type, message, and traceback
+  survive). Wrong-length, non-coercible, or non-finite returns raise teaching
+  errors naming the callable, the step, the origin, and the window.
+- The split/ACI conformal `base=` takes the same callable (the engines drive
+  expanding calibration windows plus one forward call on the full sample);
+  the result's `base` key then reports `"<callable NAME>"`. EnbPI trains its
+  own AR ensemble and refuses a callable base with a teaching error.
+
+**Performance, honestly.** The Rust engine drives origins sequentially (refit
+blocks in order, under the GIL) for string and callable forecasters alike —
+there is no parallel path to lose — so a callable costs one Python call, plus
+your model's fit, per refit origin. The built-in string forecasters are
+untouched and bit-identical to the pre-callable build (pinned by a float-hex
+snapshot test against `fixtures/backtest_string_snapshot.json`). For
+expensive models, `refit_every` trades refit freshness for speed without
+touching the alignment.
+
+**Worked example — a statsmodels model through the engine.**
+
+```python
+import numpy as np
+import tsecon
+from statsmodels.tsa.ar_model import AutoReg
+
+rng = np.random.default_rng(7)
+n = 160
+y = np.zeros(n)
+for t in range(2, n):
+    y[t] = 0.6 * y[t - 1] - 0.2 * y[t - 2] + rng.standard_normal()
+y += 10.0
+
+def ar2(train, horizon):
+    # Sees ONLY the training window; returns `horizon` steps ahead.
+    fit = AutoReg(np.asarray(train), lags=2, trend="c").fit()
+    return fit.predict(start=len(train), end=len(train) + horizon - 1)
+
+bt = tsecon.backtest(y, window="expanding", train=80, horizon=4,
+                     forecaster=ar2, refit_every=1)
+nv = tsecon.backtest(y, window="expanding", train=80, horizon=4)  # naive
+print("h=1 RMSE  AR(2):", round(bt["accuracy"][0]["rmse"], 3),
+      " naive:", round(nv["accuracy"][0]["rmse"], 3))
+
+# Same origins, so the h=1 error streams feed Diebold-Mariano directly.
+e_ar = np.asarray(bt["targets"][0]) - np.asarray(bt["forecasts"][0])
+e_nv = np.asarray(nv["targets"][0]) - np.asarray(nv["forecasts"][0])
+dm = tsecon.dm_test(e_ar, e_nv, h=1)
+print("DM (HLN) p:", round(dm["p_value"], 4))
+
+# Distribution-free intervals around the same model (split conformal).
+ci = tsecon.conformal_forecast(y, horizon=4, base=ar2, alpha=0.1)
+print("90%% split-conformal h=1 interval: [%.2f, %.2f]  (base: %s)"
+      % (ci["lower"][0], ci["upper"][0], ci["base"]))
+```
+
+Expected output:
+
+```
+h=1 RMSE  AR(2): 0.876  naive: 1.012
+DM (HLN) p: 0.0089
+90% split-conformal h=1 interval: [7.66, 10.56]  (base: <callable ar2>)
+```
+
+**Validated how.** In `test_backtest_callable.py`: a spy callable asserts
+every window it is handed is exactly the documented slice (both schemes, and
+the refit-block walk with its enlarged step requests), ending at the origin —
+strictly before every target it is scored against; a perturbation test pins
+the same claim without trusting the spy (perturbing `y[k]` moves **no**
+forecast whose origin precedes `k`, and `y[-1]` — never in any training
+window — moves none at all); a Python reimplementation of `naive` is
+**bit-identical** to `forecaster="naive"`; and statsmodels
+`AutoReg(lags=2, trend="c")` — the same OLS-AR-with-constant iterated
+multi-step spec as the Rust `"ar"` conformal base — reproduces the `"ar"`
+results through `conformal_forecast`/`conformal_backtest` at
+cross-implementation tolerance (1e-6 relative on the point path; the two
+sides solve least squares by different routes).
 
 ## Validated against
 
@@ -362,7 +467,9 @@ pins that perturbing the last observation can move only its own score.
 
 **Key arguments.** `method="split"` (default) with `base=` any of
 `"theta"`, `"naive"`, `"drift"`, `"mean"`, `"seasonal_naive"`, `"ar"`,
-`"arima"`; `alpha=0.1`; `calib=n//4` residuals per horizon. `method="enbpi"`
+`"arima"` — or, for split/ACI, any Python callable with the
+[backtest callable contract](#bring-your-own-model--python-callable-forecasters);
+`alpha=0.1`; `calib=n//4` residuals per horizon. `method="enbpi"`
 (AR base only, `n_boot`, `lags`, seeded and bit-reproducible). `method="aci"`
 (`gamma=0.005`, the paper's step size; raise it for faster adaptation —
 Setting B below shows why that matters).

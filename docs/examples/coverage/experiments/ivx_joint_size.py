@@ -114,9 +114,13 @@ def simulate_cell(rng, reps, n, k, rho, delta, design, beta=None):
 
 
 def build_instrument(x, cz, alpha):
-    """z (reps, N, k): z_0 = 0, z_t = Rz z_{t-1} + Dx_{t-1}."""
+    """z (reps, N, k): z_0 = 0, z_t = Rz z_{t-1} + Dx_{t-1}.
+
+    Rz is indexed by the regression sample size N = n - 1, matching the
+    crate (KMS 2015 write the localizing sequence in N).
+    """
     reps, n, k = x.shape
-    rz = 1.0 + cz / n ** alpha
+    rz = 1.0 + cz / (n - 1) ** alpha
     dx = x[:, 1:] - x[:, :-1]
     z = np.zeros((reps, n - 1, k))
     acc = np.zeros((reps, k))

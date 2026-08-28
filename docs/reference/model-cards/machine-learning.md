@@ -39,8 +39,11 @@ here is a fast Rust core and a validation scheme built for sequential data.
   expanding or rolling origins, or de Prado's purged k-fold with an embargo for
   overlapping-label problems. `purge` (a gap dropped from the end of every
   training window) acts on all three schemes; `embargo` (an exclusion *after*
-  the test block) only exists under `purged_kfold` and raises elsewhere. It
-  returns indices only; you do the fitting.
+  the test block) only exists under `purged_kfold` and raises elsewhere. Under
+  `purged_kfold` the embargo is measured from the end of the purged window
+  (AFML ch. 7), so the exclusions add: the right-hand gap after each test
+  block is `purge + embargo` indices. It returns indices only; you do the
+  fitting.
 
 ## Assumptions
 
@@ -58,7 +61,8 @@ here is a fast Rust core and a validation scheme built for sequential data.
   is standard but not exact under heavy correlation.
 - **`cv_splits` guarantees no forward leakage**: every test index is strictly
   later than its training block (expanding/rolling), and purged k-fold removes
-  `purge` observations around each test fold plus an `embargo` after it.
+  `purge` observations around each test fold plus a further `embargo` beyond
+  the right-hand purge (a total post-test gap of `purge + embargo`).
   Ordering alone does **not** remove *overlapping-label* leakage: with an
   `h`-step-ahead target the last `h - 1` training rows share target
   innovations with the test block even in walk-forward schemes, so set
@@ -100,7 +104,7 @@ here is a fast Rust core and a validation scheme built for sequential data.
 | | `horizon` | `1` | test-block length |
 | | `step` | `1` | origin increment |
 | | `purge` | `0` | gap dropped from the end of every training window (all schemes); must be < `train`; use `>= horizon - 1` for h-step labels |
-| | `k` / `embargo` | `5` / `0` | purged-k-fold fold count / post-test exclusion; nonzero `embargo` raises on `expanding`/`rolling` |
+| | `k` / `embargo` | `5` / `0` | purged-k-fold fold count / exclusion appended after the right-hand purge (post-test gap = `purge + embargo`); nonzero `embargo` raises on `expanding`/`rolling` |
 
 ## How to read the output
 

@@ -61,7 +61,14 @@
 //!   [`ArimaSpec::fit`] and the full search trace returned. Graded by
 //!   Monte-Carlo order recovery plus candidate-level statsmodels pins —
 //!   the selection loop itself deliberately has no R/pmdarima parity
-//!   gate (see the module docs of [`auto`]).
+//!   gate (see the module docs of [`auto`]);
+//! * [`bn_decomposition`] / [`bn_from_arma`] — the classic
+//!   Beveridge-Nelson (1981) trend-cycle decomposition from an
+//!   ARIMA(p, 1, q): closed-form long-run multiplier
+//!   `psi(1) = theta(1)/phi(1)`, random-walk-with-drift trend
+//!   `Delta tau_t = mu + psi(1) eps_t`, companion-form cycle (Morley
+//!   2002), with exact finite-sample identities (see the module docs of
+//!   [`bn`]).
 //!
 //! All fallible routines return [`ArimaError`]; nothing in this crate
 //! panics on user input.
@@ -70,6 +77,7 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod auto;
+pub mod bn;
 pub mod cov;
 mod diff;
 pub mod error;
@@ -81,6 +89,7 @@ pub mod ssm;
 pub use auto::{
     auto_arima, AutoArimaCandidate, AutoArimaOptions, AutoArimaResult, CandidateStatus, SelectionIc,
 };
+pub use bn::{bn_decomposition, bn_from_arma, BnDecomposition};
 pub use cov::ParamCov;
 pub use error::ArimaError;
 pub use results::{ArimaForecast, ArimaResults, EstimationMethod, ForecastOptions};

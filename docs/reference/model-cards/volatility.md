@@ -42,24 +42,45 @@ below does). This is a real porting gotcha: the `arch` package defaults to a
 *constant* mean, so `arch_model(r).fit()` and `tsecon.garch_fit(r)` are not the
 same model unless `r` is already demeaned or you say `mean="constant"`.
 `dist="normal"` gives clean QMLE, switch to `dist="t"` when standardized
-residuals stay fat-tailed. `p=1, q=1` is the near-universal order; `o=1` turns
-on the asymmetry term for GJR/EGARCH. `forecast_horizon` returns the multi-step
-variance path. Units do not matter: estimation is scale-adaptive (the optimizer
+residuals stay fat-tailed. `p=1, q=1` is the near-universal order; `o` is the
+asymmetry order, and only GJR/EGARCH have an asymmetry term — its default is
+`None` (no asymmetry term under `vol="garch"`, one asymmetry lag under
+`vol="gjr"`/`"egarch"`), and passing `o > 0` with `vol="garch"` **raises**
+(0.6.0) instead of being silently discarded. That refusal guards a second
+`arch` porting gotcha: `arch_model(y, p=1, o=1, q=1)` silently *switches* the
+volatility process to GJR-GARCH, so before 0.6.0
+`tsecon.garch_fit(y, p=1, o=1, q=1)` and that `arch` call were different
+models with no warning — now tsecon insists you say `vol="gjr"` when you mean
+GJR. `forecast_horizon` returns the multi-step variance path. Units do not matter: estimation is scale-adaptive (the optimizer
 runs on an internally standardized series and the optimum is mapped back
 exactly), so decimal returns and percent returns give the same model with
 `omega` in the units of `y²` — no `rescale=` argument is needed or offered.
 
 **How to read the output.** `params` are named by `param_names`
 (`omega, alpha[1], beta[1]`, with `mu` prepended under `mean="constant"` and
-`nu` appended for *t*). Trust **`se_robust`**
-(Bollerslev-Wooldridge) over `se_mle` unless you believe the density.
+`nu` appended for *t*), and `params_named` is the same estimates as a
+`{name: value}` dict — exactly `dict(zip(param_names, params))`. Use
+`fit["params_named"]["omega"]` for named access on the raw dict:
+`fit["omega"]` is a deliberate `KeyError`, and a `.get("omega")` guard
+silently yields a `None` that reads like a failed fit. (The results facade's
+`GARCHResults.params_named()` method returns the same mapping.) Trust **`se_robust`**
+(Bollerslev-Wooldridge) over `se_mle` unless you believe the density — and
+that advice now carries [measured numbers](../../examples/interval-coverage.md):
+on a GARCH(1,1) with standardized t(5) innovations fitted with
+`dist="normal"` (the QMLE case every fat-tailed return series is in), nominal
+95% intervals from `se_mle` cover **0.75** of the time at T=2000 (se/sd ≈
+0.54 on every parameter) while `se_robust` holds **0.91**; under Gaussian
+innovations both sit at nominal. The interval-coverage registry re-measures
+this every run.
 `conditional_volatility` is the filtered σ_t with the standard GARCH filter
 timing (matching `arch`): **`conditional_volatility[t]` is the one-step-ahead
 volatility FOR period t, formed from information through t−1** — σ²_t is built
 from ε_{t−1}, σ²_{t−1}, so the entry at t is what the model predicted for t
 before seeing r_t, not a smoothed estimate using r_t. The post-sample
 continuation of that step is `variance_forecast` (its first entry is the
-prediction for T+1 from information through T). `std_residuals` should look
+prediction for T+1 from information through T) — a **point** path: it carries
+no interval, and the registry verifies by a key-set tripwire that none is
+implied. `std_residuals` should look
 i.i.d. (re-run `arch_lm` on them).
 `alpha[1] + beta[1]` near 1 means shocks persist for a long time. Check
 `se_valid` before quoting a standard error, and `converged` before quoting
@@ -291,7 +312,22 @@ that. Use CCC for a fast, parsimonious baseline; use DCC when correlations
 plausibly rise together in stress (portfolio risk, contagion). Not for very
 large k without regularization.
 
-**Key arguments.** `ccc_garch` takes only `returns` (T×k). `dcc_garch` adds
+**Key arguments.** All three entry points share a configurable univariate
+first stage (0.5 build-out; every bare call is bit-identical to earlier
+releases): `vol`/`mean`/`p`/`o`/`q` with exactly `garch_fit`'s meanings and
+defaults (`"garch"`, `"zero"`, 1/1/1), plus **`univariate_dist`**
+(`"normal"`|`"t"`) — the per-series innovation density. It is deliberately
+*not* named `dist`, because `dcc_garch`'s existing `dist=` configures the
+**second-stage correlation likelihood**, a different object: `dist="t"`
+makes the *joint* standardized residuals Student-t in step two while step
+one stays whatever `univariate_dist` says (Normal QMLE by default — the
+standard two-step convention), and the two knobs mix freely (e.g.
+`vol="gjr", dist="t"`). `ccc_garch` additionally takes
+`forecast_horizon=h`, which adds `covariance_forecast` (`(h, k, k)`) and
+`variance_forecast` (`(h, k)`); because `R` is constant these are analytic
+and **exact at every horizon** (Bollerslev 1990) — no DCC-style h ≥ 2
+approximation — and the variance forecasts are identical to each series'
+own `garch_fit(..., forecast_horizon=h)` path. `dcc_garch` adds
 three opt-ins (the bare call is bit-identical to earlier releases):
 
 - `variant="dcc"|"cdcc"|"adcc"`. `"cdcc"` is Aielli's (2013) corrected DCC:
@@ -317,11 +353,14 @@ three opt-ins (the bare call is bit-identical to earlier releases):
   (`(h, k, k)`) and `variance_forecast` (`(h, k)`).
 
 `dcc_test(returns, lags=5)` runs the Engle-Sheppard (2001) constant-correlation
-test: GARCH(1,1) per series, joint standardization by the *symmetric* inverse
-square root of the constant correlation, then one pooled regression of the
-stacked off-diagonal outer products on a constant and `lags` of themselves;
-under H0 `stat` ~ χ²(`lags + 1`). The diagonal outer products are excluded on
-purpose so univariate GARCH misfit cannot masquerade as correlation dynamics.
+test: a univariate GARCH per series (GARCH(1,1) by default; the same
+`vol`/`mean`/`univariate_dist`/`p`/`o`/`q` kwargs as above, so the diagnostic
+can run under the exact first stage you intend to fit), joint standardization
+by the *symmetric* inverse square root of the constant correlation, then one
+pooled regression of the stacked off-diagonal outer products on a constant
+and `lags` of themselves; under H0 `stat` ~ χ²(`lags + 1`). The diagonal
+outer products are excluded on purpose so univariate GARCH misfit cannot
+masquerade as correlation dynamics.
 
 **How to read the output.** CCC returns the constant `correlation` matrix and
 `loglik`. DCC returns `a, b, g` (dynamics; `g` is structurally 0.0 off-ADCC),
@@ -329,15 +368,55 @@ purpose so univariate GARCH misfit cannot masquerade as correlation dynamics.
 `converged`, `nu` (Student-t only), `correlation` (the full in-sample path,
 `(T, k, k)` — `np.asarray(r["correlation"])`), and `correlation_last`
 (= `correlation[-1]`). `a + b` near 1 means correlations move slowly and
-persistently.
+persistently. **Both** CCC and DCC also return the pieces of `H_t` itself
+(0.5 build-out): `sigma2` (`(T, k)` — the per-series conditional variance
+paths, exactly each series' own `garch_fit` filter) and `covariance`
+(`(T, k, k)` — the in-sample conditional covariance path
+`H_t = D_t R_t D_t`, with `R_t` the constant `R` for CCC), satisfying the
+factorization *exactly* against the returned correlation path and
+`sigma2` — asserted bitwise in the test suite, so the two surfaces cannot
+drift apart.
+
+**The stage-1 remainder (0.6 — previously computed in Rust but never
+bound).** `dcc_garch` now also returns everything the two-step estimator's
+first stage produced:
+
+- `univariate` — a list of k dicts, input order, each **exactly
+  `garch_fit`'s results dict** for that series (same keys, same conventions:
+  `params`/`param_names`/`params_named`, `se_mle`/`se_robust`/`se_valid`,
+  `boundary`/`boundary_note`, `loglik`/`aic`/`bic`, `converged`,
+  `conditional_volatility`, per-series `std_residuals`). The binding builds
+  both surfaces with one shared constructor, and the test suite asserts the
+  values **bit-identical** to calling `garch_fit` on that column under the
+  same spec — including non-default stage specs (`mean="constant"` etc.),
+  which thread through the 0.5 univariate-stage knobs. Per-series parameter
+  *standard errors* were the headline gap: quoting stage-1 GARCH estimates
+  without them invited unqualified point readings.
+- `std_residuals` — the stacked `(T, k)` standardized residuals
+  `z[t][i] = eps_{i,t} / sqrt(sigma2[t][i])` that drive the correlation
+  recursion (`eps` is the raw return under the default `mean="zero"`, the
+  demeaned return under `mean="constant"`; the timing is `sigma2`'s own —
+  entry t divides by the variance formed from information through t−1, so
+  the identity `z == returns / np.sqrt(sigma2)` is bitwise under the
+  default spec, and is asserted so).
+- `nbar` — ADCC only: the `(k, k)` asymmetric targeting matrix
+  `Nbar = (1/T) Σ_t n_t n_t'`, `n_t = min(z_t, 0)`, the second moment that
+  sets the CES stationarity bound through
+  `δ = λ_max(Qbar^{-1/2} Nbar Qbar^{-1/2})` — reproducible from the returned
+  `std_residuals` (asserted at 1e-12).
 
 **The timing convention (read before comparing packages).** `correlation[t]`
 is `R_t` *given information through t−1*: the recursion builds `Q_t` from
 `z_{t-1}` and `Q_{t-1}`, with `Q_0 = qbar` (so `correlation[0]` is exactly
-`corr(qbar)` — it has consumed no data). `correlation_last` is therefore the
+`corr(qbar)` — it has consumed no data). `sigma2[t]` and
+`covariance[t] = H_t` follow the **same** convention — the univariate filter
+builds `sigma2_t` from `eps_{t−1}` and `sigma2_{t−1}` (the `arch`/`garch_fit`
+filter timing) — so `H_t` conditions on information through t−1 in both
+factors. `correlation_last` is therefore the
 last **in-sample** conditional correlation — not stale, and not a forecast.
 The one-step-ahead `R_{T+1}` additionally uses the final residual `z_T`; it
-is `correlation_forecast[0]`, and it differs from `correlation_last`.
+is `correlation_forecast[0]`, and it differs from `correlation_last`
+(likewise `covariance[-1]` differs from `covariance_forecast[0]`).
 
 **Forecasts.** `correlation_forecast[0]` (h = 1) is exact in the information
 set. For h ≥ 2 there is **no closed form** — the correlation normalization

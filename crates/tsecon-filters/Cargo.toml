@@ -4,9 +4,13 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Trend-cycle decomposition filters (Hodrick-Prescott, Baxter-King, Christiano-Fitzgerald, Hamilton) for the tsecon time-series econometrics library"
+description = "Trend-cycle decomposition filters (Hodrick-Prescott, Baxter-King, Christiano-Fitzgerald, Hamilton, Kamber-Morley-Wong BN filter) for the tsecon time-series econometrics library"
 
 [dependencies]
+# The library's single HAC engine (ROADMAP §5: one owner per capability) —
+# the Hamilton filter's coefficient standard errors are Newey-West.
+# One-directional: tsecon-hac has no dependencies, so no cycle.
+tsecon-hac = { path = "../tsecon-hac" }
 
 [dev-dependencies]
 # float_roundtrip: without it serde_json's fast float parser can be 1 ulp

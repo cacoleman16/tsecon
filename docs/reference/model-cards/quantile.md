@@ -167,7 +167,15 @@ constant is added internally here (lp design conventions), unlike
 quantile at horizon `h`, with `se[i][h]` alongside. Read *vertically*: the gap
 between the `tau=0.1` and `tau=0.9` paths at each horizon is the shock's
 effect on dispersion. Coinciding paths mean a pure location shift and `lp`
-would have sufficed.
+would have sufficed. `converged[i][h]` is the per-fit IRLS flag (the engine
+tracked it all along; the binding used to drop it): a `False` entry hit the
+1000-iteration cap before the shared 1e-6 coefficient tolerance, so that
+point of the fan is the last IRLS iterate, not a verified check-loss
+minimum — statsmodels `QuantReg` warns in the same situation. This is not a
+corner case: an ordinary AR(1)-plus-shock design at T=200 exhausts the cap
+at a median cell (the IRLS cycles between vertex solutions; pinned in the
+test suite). Do not quote an unconverged point; refit with fewer lag
+controls, a less extreme tau, or more data.
 
 **Failure modes.** All of `lp`'s (non-identified shock, too few lag controls)
 plus the quantile-specific ones: crossing between adjacent tau paths at some
@@ -271,7 +279,12 @@ the raw paths crossed anywhere, i.e. whether rearrangement actually did
 something. `current` is the risk read at the latest observation — the row of
 `fitted` at `t = T-1`, the number a policymaker would quote today. Note the
 timing: `fitted[:, t]` conditions on date-`t` information and describes
-`y_{t+horizon}`.
+`y_{t+horizon}`. `converged` is the per-tau IRLS flag, aligned with
+`params`: a `False` entry hit the 1000-iteration cap before the 1e-6
+coefficient tolerance, and that tau's coefficients — with every fitted
+quantile, the rearrangement, and the `current` read built on them — are the
+last iterate, not a verified check-loss minimum. Check it before quoting
+`current`.
 
 **Failure modes.** Reading `current` without checking what the conditions were
 at `T-1` (a benign read in calm conditions says nothing about the slope of
@@ -350,7 +363,11 @@ The Newey-West `bse` has no statsmodels counterpart; it is pinned to an
 independent numpy assembly of the same sandwich, and to an exact no-op at
 `horizon = 1`, in the crate's golden tests, with the coverage improvement
 above re-measured as a seeded property test
-(`crates/tsecon-quantile/tests/properties.rs`).
+(`crates/tsecon-quantile/tests/properties.rs`). The
+[interval-coverage registry](../../examples/interval-coverage.md) additionally
+re-measures both sandwiches every run on an exact Gaussian state-space design
+(T=240: `bse` 0.913 vs `bse_powell` 0.826 at the median by h=12; the tail at
+0.79 with the correction — the same two-mechanism split as this table).
 
 **References.** Adrian, Boyarchenko & Giannone (2019, *American Economic
 Review* 109:1263-1289); Chernozhukov, Fernandez-Val & Galichon (2010,

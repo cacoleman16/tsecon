@@ -31,8 +31,18 @@ available, range estimators recover much of the same signal.
   is the jump-robust counterpart, used to make the jump test robust to jumps in
   the variance-of-variance.
 - **`bns_jump_test(returns)`** — the Barndorff-Nielsen-Shephard ratio statistic
-  (with the Huang-Tauchen 2005 refinement): a standardized measure of the gap
-  between RV and BV; large positive values signal a jump occurred that day.
+  in the **Huang-Tauchen (2005) form**: a standardized measure of the gap
+  between RV and BV, with HT's finite-sample factors M/(M−1) on bipower
+  variation and M/(M−2) on tripower quarticity applied *inside* the statistic
+  (the exported `realized_measures`/`tripower_quarticity` values stay the
+  unadjusted BNS-2004 quantities). Large positive values signal a jump
+  occurred that day.
+  (Changed in 0.6: through 0.5.0 the statistic was assembled from the
+  unadjusted BNS-2004 BV/TQ while citing Huang-Tauchen; on marginal days the
+  difference flips the call — measured z = 1.689 unadjusted vs 1.564 HT on a
+  seeded M = 78 day with one modest jump, straddling the one-sided 5% cutoff
+  1.645. Null size of the corrected statistic: 0.053 at nominal 5%,
+  one-sided, M = 78, 4000 seeded Gaussian reps.)
 - **`har_rv(rv)`** — the Corsi (2009) Heterogeneous AutoRegressive model:
   regress RV_t on a constant and the **daily**, **weekly**, and **monthly**
   averages of past RV, with HAC standard errors. Its cascade of horizons
@@ -135,10 +145,13 @@ available, range estimators recover much of the same signal.
 `cov_type="HAC"` call) and at the library's own `use_correction=True` default
 against statsmodels with the correction switched on, each pinned in the
 fixture; `realized_measures`, `realized_quarticity`,
-`tripower_quarticity`, `bns_jump_test`, and `realized_range` reproduce the
-documented Barndorff-Nielsen-Shephard (2002, 2004), Huang-Tauchen (2005),
-Corsi (2009), Parkinson (1980), and Garman-Klass (1980) measure definitions.
-Golden values are pinned in
+`tripower_quarticity`, and `realized_range` reproduce the documented
+Barndorff-Nielsen-Shephard (2002, 2004), Corsi (2009), Parkinson (1980), and
+Garman-Klass (1980) measure definitions, and `bns_jump_test` matches an
+independent in-test transcription of the Huang-Tauchen (2005) statistic —
+including their finite-sample M/(M−1) and M/(M−2) factors — to 1e-12, with
+its null size measured at 0.053 (nominal 5%, one-sided, M = 78, 4000 seeded
+reps). Golden values are pinned in
 [`fixtures/realized.json`](../../../fixtures/realized.json).
 
 ## References
@@ -208,7 +221,11 @@ Expected output:
 ```
 RV: 6.34e-05  bipower: 7.53e-05  jump: 0.00e+00
 RQ: 3.21e-09  tripower (jump-robust): 7.25e-09
-BNS ratio, no jump: -1.877  with jump: 8.306
-HAR params [const, daily, weekly, monthly]: [-4.197  0.641  0.03  -0.112]  R^2: 0.419
+BNS ratio, no jump: -2.031  with jump: 8.267
+HAR params [const, daily, weekly, monthly]: [-4.215  0.627  0.06  -0.13 ]  R^2: 0.419
 Parkinson: 0.0284  Garman-Klass: 0.0353
 ```
+
+(The BNS line moved in 0.6 with the Huang-Tauchen finite-sample factors;
+the HAR line reflects the Corsi windows fixed in 0.5 — both re-run against
+the current library.)

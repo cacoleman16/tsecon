@@ -7,7 +7,514 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+## [0.6.0] - 2026-08-26
+
+### Changed — **BREAKING (behavioral)**: `cv_splits(scheme="purged_kfold")` embargo now ADDS to the purge
+
+- **Field report item 11.** The purged K-fold right-hand exclusion after
+  each test block was `max(purge, embargo)` (crate:
+  `tsecon_ml::purged_kfold_splits`; Python: `cv_splits`), so the embargo
+  was silently **absorbed** whenever it was no wider than the purge:
+  `(purge=21, embargo=10)` returned splits bit-identical to
+  `(purge=21, embargo=0)`, and `(purge=21, embargo=30)` opened a
+  measured post-test gap of 30 indices instead of 51. The exclusion is
+  now `purge + embargo`: measured right-hand gaps after the fix are
+  `(21, 0) → 21`, `(0, 10) → 10`, `(21, 10) → 31`, `(21, 30) → 51`
+  (before the fix: 21, 10, **21**, **30**). The left-hand gap is
+  unchanged (purge only — there is no left embargo), as are both
+  walk-forward schemes, which take no embargo at all (a nonzero
+  `embargo` still raises on `"expanding"`/`"rolling"`).
+- **Why additive is the correct convention.** The docstrings invoke
+  López de Prado (2018, *Advances in Financial Machine Learning*, ch. 7)
+  by name, and AFML defines the two exclusions sequentially: purging
+  removes the training observations whose *label windows* overlap the
+  test block, and the embargo then removes a *further* band of
+  observations "immediately following" the test set — AFML's own
+  `PurgedKFold` (Snippet 7.3) starts the right-hand training block at
+  `indices[maxT1Idx + mbrg:]`, where `maxT1Idx` is the position at which
+  the last test label *ends* (i.e., the end of the purged region) and
+  `mbrg` is the embargo width, so the embargo is measured **from the end
+  of the purged window** and the exclusions add. mlfinlab implements the
+  same semantics (each test interval's end is extended by the embargo
+  period *before* overlap purging), and this library's own guide
+  (`docs/guide/12-machine-learning.md`, the numpy
+  `purged_kfold_splits` demo) already taught the additive rule
+  `keep = (rows <= lo - h) | (rows >= hi + h + embargo)`. Under the old
+  `max` rule, any embargo ≤ purge did nothing — a leakage guard the user
+  asked for and did not get. No compatibility flag is provided: the
+  absorbed semantics were simply wrong relative to the convention the
+  documentation invokes.
+- Anyone who passed both a nonzero `purge` and a nonzero `embargo` to
+  `purged_kfold` will see slightly smaller training sets (up to
+  `min(purge, embargo)` extra excluded rows per fold) and should expect
+  CV scores to move accordingly. Pinned by measured-gap tests on both
+  the Rust core (`purged_kfold_right_gap_is_purge_plus_embargo`) and the
+  Python surface (`test_cv_splits.py`), including embargo bands running
+  past the end of the sample (the fold simply loses its right-hand
+  training block; the arithmetic saturates instead of overflowing).
+### Added
+
+- **`backtest` (and the split/ACI conformal `base=`) now accept a Python
+  callable forecaster** — field report item 9: the binding previously
+  hardcoded five benchmark forecasters, so no real model could be evaluated
+  through the library's own leakage-safe engine. `forecaster=` (and
+  `base=` in `conformal_forecast`/`conformal_backtest`) take any callable
+  `f(train, horizon) -> array-like of horizon point forecasts`, called with
+  a **read-only float64 ndarray holding only the training window** for each
+  refit origin (expanding `y[0..=t]`, rolling the `train` most recent
+  observations through `t`; with `refit_every > 1` the callable is asked
+  for up to `refit_every - 1 + horizon` steps to roll its block forward).
+  Exceptions raised inside the callable re-raise naming the failing origin
+  and training window with the original chained as `__cause__`;
+  wrong-length / non-coercible / non-finite returns get teaching errors
+  naming the callable, step, origin, and window. EnbPI keeps its own AR
+  ensemble and refuses a callable base with a teaching error. The engine
+  loop is sequential in Rust for strings and callables alike (no
+  parallelism is lost; a callable costs one Python call per refit origin),
+  and the string paths are **bit-identical** to the previous build — pinned
+  float-hex-for-float-hex by the new self-snapshot fixture
+  `fixtures/backtest_string_snapshot.json`. Validated in
+  `test_backtest_callable.py`: spy-recorded training windows equal the
+  documented slices exactly; a perturbation test shows moving `y[k]` moves
+  no forecast whose origin precedes `k`; a Python `naive` is bit-identical
+  to `forecaster="naive"`; and statsmodels `AutoReg(lags=p, trend="c")`
+  reproduces the Rust `"ar"` conformal base at 1e-6 relative through both
+  conformal entry points. The `forecaster`/`base` defaults are now `None`
+  (meaning `"naive"`/`"theta"` — unchanged behavior); the conformal `base`
+  key reports a callable as `"<callable NAME>"`.
+- **`ou_fit` / `spread_zscore` — Ornstein-Uhlenbeck mean-reversion utilities
+  for spreads** (field report item 8; requested by a downstream
+  statistical-arbitrage project). `ou_fit(x, dt=1.0, level=0.95)` is the
+  exact-discretization Gaussian MLE of `dX = kappa(mu − X)dt + sigma dW`: the
+  OU observed at step `dt` is exactly the AR(1)
+  `X_{t+1} = c + phi X_t + eps` (`phi = e^{−kappa dt}`), so the MLE is the
+  closed-form AR(1) OLS (variance `RSS/n`) mapped back — no optimizer.
+  Returns `kappa`/`mu`/`sigma` with delta-method SEs from the AR(1)
+  information, `half_life = ln 2 / kappa` with a `half_life_ci`, the
+  stationary sd, the AR(1) leg itself, and an honest `mean_reverting` flag:
+  `phi_hat >= 1` (a "spread" with no mean reversion) is *returned* —
+  `half_life = inf`, CI and stationary sd `None` — not raised, while
+  `phi_hat <= 0` (unattainable by any real `kappa`) is refused with a
+  teaching error. `spread_zscore` scores the spread against the stationary
+  law `N(mu, sigma²/(2 kappa))` (all three parameters frozen, or fitted from
+  `x`; partial sets and `kappa <= 0` refused — no stationary distribution
+  exists). Lives in `tsecon-coint` (`ou.rs`): the spread is the
+  cointegrating residual, and the workflow is
+  `engle_granger → ou_fit → spread_zscore`. Validation grade: **closed-form
+  + statsmodels AR(1) golden + MC-measured kappa bias and CI coverage** —
+  the AR(1) leg is pinned to statsmodels `AutoReg` (1e-10 fixture / 1e-12
+  live, achieved ~1e-15), the OU mapping is asserted bit-for-bit against a
+  summation-order-identical closed form, and a 2000-rep seeded Monte Carlo
+  (`docs/examples/coverage/experiments/ou_kappa_bias_coverage.py`) measures
+  the well-known upward `kappa_hat` bias (~4 / time-span; Kendall 1954,
+  Tang-Chen 2009 — documented in the model card, deliberately not corrected)
+  and the half-life CI coverage. The CI construction was *decided by that
+  measurement*: the a-priori favorite (log-scale, positive by construction)
+  under-covers badly around an upward-biased center (0.21 at `kappa=0.1`,
+  daily/5y), so the shipped interval is the level-scale kappa interval
+  mapped through `ln 2 / kappa`, with an `inf` upper endpoint when the
+  interval crosses zero ("no mean reversion cannot be ruled out") — closer
+  to nominal in every measured cell (e.g. 0.713 vs 0.210 in that stress
+  cell; 0.94–0.95 in healthy cells). Model card: cointegration-regime
+  (with the full bias/coverage table); fixture `fixtures/ou.json` includes
+  an explosive cell and a weakly-identified cell so the honest branches
+  stay pinned.
+
+- **`markov_switching_ar` now returns the estimated AR coefficients** under
+  the new `ar` key — a length-`order` array `(phi_1, …, phi_p)` shared across
+  regimes (the binding fits Hamilton's common-AR specification, in which the
+  AR applies to deviations `y_t − mu_{S_t}`). Previously the binding
+  estimated the AR block internally but never surfaced it, so a fitted model
+  could not be reproduced or forecast from its own results dict. Backed by a
+  new public `MsarParams::ar()` accessor in `tsecon-regime` (block shape:
+  one block when shared, `k` when switching). The Hamilton (1989)
+  replication now compares tsecon's common AR(4) against the published
+  `(0.014, −0.058, −0.247, −0.213)` and against statsmodels on identical
+  data (measured max |diff|: 0.0048 vs published, 0.0043 vs statsmodels —
+  inside the documented EM-vs-exact-MLE budget; see
+  `docs/examples/replication-hamilton-markov.md`).
+
+- **Four "computed in Rust, never bound to Python" gaps closed** (adversarial
+  sweep; all keys additive, every pre-existing key bit-identical; pinned in
+  `bindings/python/tests/test_binding_gaps.py`):
+  - **`dfm_nowcast` returns the model it fitted**: new keys `loadings`
+    (N×r), `factor_ar` (r×rp, `[A_1 | … | A_p]`), `factor_cov` (r×r),
+    `idiosyncratic` (length N), `center`/`scale` (length N training
+    moments) — on **both** `method` routes (`"mle"`: `scale` all ones,
+    `factor_cov` fixed to 1). The factor-to-series mapping is documented
+    and pinned: `nowcast == center + scale * (loadings @ edge_factor)`
+    (1e-10), and `center + scale * (smoothed_factors @ loadings.T)` is the
+    common-component fit of the balanced panel. Previously the fitted DFM
+    could not be reproduced, mapped onto series, or inspected from Python
+    at all.
+  - **`bvar_fit` returns its posterior uncertainty**: new keys `omega_bar`
+    (k×k), `s_bar` (K×K), `v_bar` — the full conjugate NIW posterior
+    (`vec(B)|Σ,Y ~ N(vec(Bbar), Σ ⊗ Ωbar)` with *column-stacked* vec, i.e.
+    `np.kron(sigma, omega_bar)`; `Σ|Y ~ IW(Sbar, vbar)`). The docstring
+    carries the exact marginal coefficient posterior-sd one-liner
+    (`np.sqrt(np.outer(np.diag(omega_bar), np.diag(s_bar)) / (v_bar - K - 1))`),
+    the Bayesian model card a worked example, and a seeded 40,000-draw NIW
+    Monte Carlo validates the formula per coefficient within 5% relative.
+    Previously the posterior mean shipped with no uncertainty whatsoever.
+  - **`var_fit` returns its residual surface**: new keys `resid` ((T, k),
+    statsmodels `results.resid`), `fitted` ((T, k), defined as
+    `data[lags:] - resid` — the OLS projection `Z @ B`, so
+    `fitted + resid` reproduces `data[lags:]` exactly), `nobs`, and
+    `df_resid` (`sigma_u`'s divisor). Residual diagnostics (`ljung_box`,
+    `arch_lm`) now run on the model's own residuals instead of a user
+    re-derivation.
+  - **`dcc_garch` returns the stage-1 remainder**: new keys `univariate`
+    (list of k per-series dicts with exactly `garch_fit`'s keys — params,
+    param_names/params_named, **`se_mle`/`se_robust`**/se_valid,
+    boundary/boundary_note, loglik/aic/bic, converged,
+    conditional_volatility, std_residuals — built by the same shared
+    constructor as `garch_fit` and asserted **bit-identical** to it per
+    series under the same spec, default and non-default), `std_residuals`
+    ((T, k) — the stacked `z[t][i] = eps_{i,t}/sqrt(sigma2[t][i])` driving
+    the correlation recursion; bitwise `returns/np.sqrt(sigma2)` under the
+    default zero-mean spec), and `nbar` (`variant="adcc"` only — the (k, k)
+    asymmetric targeting matrix `Nbar = (1/T) Σ n_t n_t'`, `n_t = min(z_t, 0)`).
+    Previously the per-series GARCH estimates and their standard errors were
+    computed and discarded.
+
+### Fixed
+
+- **IVX localizing sequence now indexed by the regression sample size** `N =
+  n − 1`, per Kostakis-Magdalinos-Stamatogiannis (2015): `ivx` and
+  `ivx_multi` built the instrument with `Rz = 1 + cz/n^alpha` using the raw
+  series length `n` while every other ingredient (`sigma2_u`, the instrument
+  path, `nobs`) used `N`. Both call sites now use `N`, so `Rz` is very
+  slightly smaller (less persistent instrument). Measured effect on the
+  committed goldens: `beta_ivx` moves by 8.8e-6 relative (scalar, n = 500)
+  and 6.2e-6 / 5.6e-5 relative (two-predictor, n = 600); the scalar Wald by
+  3.4e-5 relative. The independent NumPy fixture generator
+  (`fixtures/generate_predreg_fixtures.py`) shared the raw-`n` convention —
+  it was fixed identically and `fixtures/predreg.json` regenerated; all
+  golden tolerances are unchanged (1e-9), and the Monte-Carlo
+  size/power/Bonferroni property suites pass unchanged.
+### Added
+
+- **`ccc_garch(..., forecast_horizon=)` and the in-sample covariance
+  surface** — `ccc_garch` gains the forecast horizon it always had in the
+  Rust core: `covariance_forecast` (`(h, k, k)`) and `variance_forecast`
+  (`(h, k)`), analytic and *exact at every horizon* (Bollerslev 1990 — the
+  correlation never moves, so no DCC-style h ≥ 2 approximation enters), with
+  the variance forecasts identical to each series' own
+  `garch_fit(..., forecast_horizon=h)` path. Both `ccc_garch` and
+  `dcc_garch` now also return the in-sample conditional covariance path
+  `covariance` (`(T, k, k)`, `H_t = D_t R_t D_t`) and the per-series
+  conditional variance path `sigma2` (`(T, k)`), previously computed in
+  `tsecon-mgarch` but never exposed. `H_t` follows the documented `R_t`
+  filter timing (information through t−1 in both factors — stated
+  identically in both docstrings), and the factorization is asserted
+  *bitwise* against the returned correlation path and `sigma2` in the test
+  suite. All keys additive; default outputs verified bit-identical.
+- **Configurable univariate first stage for
+  `ccc_garch`/`dcc_garch`/`dcc_test`** — the first stage is no longer
+  hard-wired to a zero-mean Normal GARCH(1,1): the same
+  `vol`/`mean`/`p`/`o`/`q` kwargs as `garch_fit` thread through, plus
+  **`univariate_dist`** (`"normal"`|`"t"`), the per-series innovation
+  density — deliberately named apart from `dcc_garch`'s existing `dist=`,
+  which configures the *second-stage correlation likelihood* (the two mix
+  freely, and the teaching `ValueError` on a bad `univariate_dist` spells
+  the distinction out). Defaults unchanged and verified bit-identical
+  (in-process bitwise assertions plus a cross-build `f64`-bytes snapshot
+  against the 0.5.0 baseline).
+- **`garch_fit` returns `params_named`** — exactly
+  `dict(zip(param_names, params))`, in estimator order, on every fit path
+  (boundary and Student-t fits included). Closes the raw-dict named-access
+  trap (`fit["omega"]` is a `KeyError` and a `.get("omega")` guard reads
+  like a failed fit); the results facade's `GARCHResults.params_named()`
+  returns the same mapping. `gas_volatility` and `dcs_local_level` already
+  return flat named scalars and deliberately gain no such key.
+### Added — the trend-cycle / Beveridge-Nelson stream
+
+- **`hamilton_filter` extensions** (defaults bit-identical, asserted):
+  `method="random_walk"` — the short-sample variant Hamilton (2018)
+  recommends, `cycle = y_t − y_{t−h}` with no regression — and
+  `se="hac"`/`"nonrobust"` — standard errors on the regression
+  coefficients through the shared `tsecon-hac` engine
+  (`hamilton_filter_with_se` in the crate). The overlapping h-step
+  residuals are MA(h−1) by construction, so the HAC default bandwidth is
+  the h-overlap rule `maxlags = h` (documented: generic plug-in rules can
+  land below h−1 here); `bse`/`tvalues` pinned against statsmodels
+  `OLS(cov_type="HAC")` on the identical design (measured ≤ 6.8e-8, see
+  the validation matrix). Frequency-aware `(h, p)` table — quarterly
+  (8, 4), monthly (24, 12), annual (2, 1) — now in the docstring and card.
+- **`bn_decomposition`** — the classic Beveridge-Nelson (1981)
+  trend-cycle decomposition from an ARIMA(p, 1, q) fit by the library's
+  own exact MLE (default the Morley-Nelson-Zivot (2, 2)), or at fixed
+  coefficients via `ar`/`ma`/`drift`. Closed-form long-run multiplier
+  ψ(1) = θ(1)/φ(1) (pinned to statsmodels' cumulative
+  `arma_impulse_response`), random-walk-with-drift trend
+  Δτ = μ + ψ(1)ε (asserted observation-by-observation), companion-form
+  cycle (Morley 2002), exact ARIMA(0,1,1) textbook closed form, and
+  teaching refusals for unit-circle AR/MA fits (the MA-boundary pile-up
+  names the cure: lower q). Rust: `tsecon-arima::bn`.
+- **`bn_filter`** — the Kamber-Morley-Wong (2018, REStat) BN filter:
+  output-gap estimation from a demeaned AR(p) on growth with the
+  signal-to-noise ratio δ pinned by their amplitude-to-noise criterion
+  (first local max on the reference grid `d0=0.01, dt=0.0005`), the
+  reference code's Bayesian `N(0, 0.5/j²)` Dickey-Fuller shrinkage prior,
+  and its fixed cycle standard-error band. **Reference-run validated
+  against the authors' own R replication code** (bnfiltering.com lineage
+  via `kletts/bnfilter@8af7924`, run at fixture generation): Rust matches
+  the R runs at ≤ 2.9e-15 elementwise and selects the identical δ grid
+  point; the classic-vs-KMW amplitude contrast (37.6× cycle variance on
+  the fixture's simulated series) is asserted. Rust:
+  `tsecon-filters::bn_filter`.
+- New fixture `fixtures/bn_filters.json` (+ generators
+  `generate_bn_filters_fixtures.py` / `generate_bn_filter_fixtures.R`)
+  with a statsmodels absence canary: statsmodels ships neither a Hamilton
+  filter nor any BN decomposition. New model-card section
+  (diagnostics.md) and three validation-matrix rows with honest grades.
+### Added
+
+- **`vecm(..., deterministic=)`** (field item 12) — the VECM now accepts
+  the deterministic-terms case by name: `"n"` (default — no deterministic
+  terms, the historical behavior, unchanged) and `"co"` (an unrestricted
+  constant outside the cointegration relation, statsmodels
+  `deterministic="co"` — **the case `johansen`'s `det_order=0` convention
+  assumes**). Under `"co"` each short-run equation gains an intercept
+  (returned in the new `det_coef` key; `k x 0` under `"n"`) and the
+  reduced-rank step partials the constant out alongside the lagged
+  differences, so the estimated cointegrating space matches the Johansen
+  rank test's exactly. The restricted statsmodels cases
+  (`"ci"`/`"li"`/`"lo"`, seasons) are refused with an error naming what is
+  supported (a documented follow-up in ROADMAP build-later). Golden-pinned
+  against statsmodels `VECM` under both cases (α/β/Γ/`det_coef`/Σᵤ/llf at
+  1e-6) on seeded drifting cointegrated data
+  (`fixtures/vecm_deterministic.json`), plus the reconciliation the field
+  reporter asked for: `deterministic="co"`'s β spans the `johansen`
+  eigenvector direction at cosine 1 ± 1e-10, while the `"n"` default's β
+  diverges on drifting data (cosine ~0.63 on the pinned draw; the report
+  measured ~0.57) — pinned as documented behavior in both Rust and Python
+  regression tests. Rust core: `fit_vecm_det` + `VecmDeterministic`
+  (`fit_vecm` unchanged as the `"n"` case).
+- **`johansen` now returns `evec`** — the S₁₁-orthonormal eigenvector
+  matrix (k×k, columns in decreasing-eigenvalue order, sign-arbitrary),
+  so the cointegrating directions the test works with are inspectable and
+  directly comparable to a `vecm(..., deterministic="co")` fit; validated
+  against statsmodels `coint_johansen.evec` up to column sign.
+
+### Fixed
+
+- **`vecm` / `johansen` deterministic-case documentation** (field item 12,
+  the correctness trap): `vecm`'s docstring never said *which* statsmodels
+  deterministic case it fits while `johansen`'s documented `det_order=0`
+  (an unrestricted constant) — a caller reading the two against each other
+  on drifting log levels got cointegrating vectors a cosine of ~0.57 apart
+  with no warning. Both docstrings (and `.pyi` stubs, the model card, and
+  the statsmodels migration table) now name their exact case —
+  `vecm` defaults to statsmodels `deterministic="n"` (no deterministic
+  terms; verified live against statsmodels 0.14.6 at ~1e-13, with `"co"`,
+  `"ci"`, `"colo"`, `"cili"` all rejected at O(1)) and `johansen` is the
+  unrestricted-constant `det_order=0` — and each carries a cross-reference
+  warning that the other's case differs, naming `deterministic="co"` as
+  the matching fit. The model-card example now routes
+  `johansen -> vecm(..., deterministic="co")` instead of silently
+  demonstrating the trap.
+### Fixed — docs-vs-cited-paper defects (audit round 9)
+
+- **`bns_jump_test` is now the Huang-Tauchen (2005) statistic it always
+  cited.** Through 0.5.0 the ratio jump z-statistic was assembled from the
+  *unadjusted* BNS-2004 bipower variation and tripower quarticity, omitting
+  the finite-sample factors Huang & Tauchen's construction carries —
+  `M/(M-1)` on BV (for the `M-1` products summed) and `M/(M-2)` on TQ (for
+  the `M-2`) — while the docs claimed the HT "best sized in finite samples"
+  ratio form. The factors are now applied **inside** the statistic; the
+  exported `bipower_variation` / `tripower_quarticity` (and
+  `realized_measures`) values are unchanged, remaining the documented
+  BNS-2004 quantities. **Outputs move**: on a seeded `M = 78` day with one
+  modest (5-sigma-bar) jump, z shifts from **1.689 (unadjusted) to 1.564
+  (HT)** — straddling the one-sided 5% critical value 1.645, so marginal
+  jump calls can flip (pinned as a permanent regression test). The
+  adjustment shrinks with `M`: at `M = 78` the numerator's relative-jump
+  term drops by `BV/(77·RV)`. Null size of the corrected statistic,
+  measured: 0.053 at nominal one-sided 5% (`M = 78`, 4000 seeded Gaussian
+  reps, committed test). The Python `test_realized_extras` transcription and
+  the realized-vol model card / guide examples were re-derived against the
+  corrected statistic.
+- **The Coibion-Gorodnichenko revision builder now offers the paper's
+  fixed-event construction, and the old single-series path is documented as
+  the approximation it is.** CG (2015) define the revision as
+  `F_t x_{t+h} - F_{t-1} x_{t+h}` — two forecasts of the **same** target
+  from adjacent vintages — and it is for that revision that
+  `beta = lambda/(1-lambda)` and `implied_rigidity = beta/(1+beta) = lambda`
+  hold. `cg_series` instead differenced one fixed-horizon series,
+  `F_t x_{t+h} - F_{t-1} x_{t+h-1}` (targets differ), while the docs claimed
+  the paper's identification. New Rust builder **`cg_series_fixed_event`**
+  (`forecast_h`, `forecast_h1`, `actual`, `h`) constructs the fixed-event
+  pair; `cg_series` is kept for single-horizon data but re-documented as a
+  fixed-horizon **approximation** whose slope is not the CG estimand in
+  general (the two coincide for random-walk/horizon-free forecasts, where
+  `F_{t-1} x_{t+h} = F_{t-1} x_{t+h-1}`). Measured on an exact
+  sticky-information DGP (AR(1) fundamentals `rho = 0.5`, `lambda = 0.5`,
+  true `beta = 1`, T = 400k, committed test): the fixed-event slope recovers
+  **1.013** (implied rigidity 0.503 vs true 0.5, MC tolerance ±0.02); the
+  fixed-horizon slope converges to its distinct plim `beta·(1+rho)/2` —
+  measured **0.765**, implied "rigidity" 0.433. Golden fixture gains a
+  `cg_build_fixed_event` block (documented-formula construction; existing
+  blocks byte-identical); the expectations model card and forecasting guide
+  now state the fixed-event requirement and the fixed-horizon caveat.
+### Fixed — convergence signaling (audit: four adversarially-verified defects)
+
+- **`panel_pmg` no longer hard-fails textbook I(1) panels.** Measured on
+  a stable N=10, T=150 error-correction DGP (20 seeds): 14/20 hard
+  failures with I(1) x, 0/20 with I(0) x, 16/20 with the same I(1) x
+  scaled ×100. Tracing the failures showed the mechanism: from the pinned
+  `θ = 0` start the PSS back-substitution *diverges* on those panels
+  (θ walks away from the fixed point at ~0.7 per iteration; a stopping
+  tolerance cannot repair that — a relative rule at 1e-9 still failed
+  14–16/20). Two-part fix: (1) the stopping rule is now *relative*,
+  `|dθ|_inf <= tol * (1 + |θ|_inf)`, with `tol=` and `max_iter=` exposed
+  as kwargs — an absolute rule can never be met when θ is large. The
+  default `tol=3e-13` is the historical absolute 1e-12's *measured
+  effective relative stringency* on the O(1)-θ panels it was validated
+  on: on the golden fixture (|θ|_inf = 1.506) the old rule stopped at
+  iteration 29 with relative updates rel₂₈ = 5.890e-13 and
+  rel₂₉ = 1.947e-13, so any default in [1.95e-13, 5.89e-13) keeps the
+  stopping iterate — and the golden — bit-identical; 3e-13 sits
+  mid-window, and the I(1) battery converges 0/20-failures at every
+  tolerance down to 1e-14, so it is nowhere near a noise floor.
+  (2) When and only when the `θ = 0` pass fails, the identical iteration
+  is rerun once from the Pesaran-Shin-Smith unrestricted-ARDL start
+  (their own recommended initialization — a consistent estimator, hence
+  inside the fixed point's basin). Measured post-fix: 0/20 failures on
+  all three variants, θ recovered near the true value on every panel,
+  and the `fixtures/pmg.json` golden is bit-identical (converging panels
+  never reach pass 2, and the stopping iterate is unchanged).
+  `PmgNotConverged` stays reachable for genuine non-convergence and its
+  message now teaches the knobs instead of blaming the data.
+- **`arima_fit` / `auto_arima` now emit `converged`** (the crate tracked
+  it all along; the binding dropped it) **and the garch-pattern boundary
+  flags**: per-parameter `boundary` marks AR/MA blocks whose fitted
+  polynomial has a root within 0.1% of the unit circle (`auto_arima`'s
+  admissibility epsilon), those `bse` entries are NaN'd with per-parameter
+  `se_valid`, and `boundary_note` teaches the diagnosis (an MA root at the
+  unit circle = over-differencing). Previously an over-differenced
+  ARIMA(0,1,1) piled up at θ = −1 and reported a finite, confident-looking
+  SE with `cov_ok=True`. Tier-1 honesty: interior `bse` still come from
+  the full-vector observed information (degraded at a boundary — the note
+  says so); reduced-Hessian interior SEs over the free directions are a
+  stated follow-up.
+- **`quantile_lp` and `growth_at_risk` now emit `converged`** — the IRLS
+  engine's per-fit flag (`[tau][h]`-shaped for the LP, per-tau for GaR),
+  previously dropped by both bindings while `quantile_regression` kept
+  its aggregate flag. A False entry is the 1000-iteration cap without the
+  1e-6 coefficient tolerance: the last iterate, not a verified check-loss
+  minimum. Not hypothetical — an ordinary AR(1)-plus-shock LP design
+  exhausts the cap at one (τ, h) cell (pinned in the tests; statsmodels
+  `QuantReg` emits a ConvergenceWarning on the identical design, which
+  the binding used to swallow).
+- **`dfm_nowcast(method="mle")` now emits `converged` and `iterations`**:
+  the certificate of the optimizer stage whose point is reported (BFGS
+  polish when it improves on the Nelder-Mead optimum, else Nelder-Mead)
+  and the total iterations across both stages. The default two-step route
+  runs no iterative optimizer and deliberately carries neither key.
+### Fixed — BREAKING (behavioral): the output/default now matches what the docs always claimed
+
+- **`var_fevd` now actually returns the `[h][variable][shock]` layout its
+  docstring, stub, and model card have always claimed.** The emitted list was
+  VARIABLE-major — `fevd[i][h][j]`, the Rust core's internal per-variable
+  storage (statsmodels' own `decomp` layout) leaking straight through — so at
+  k=3 variables and horizon=6 the shape was `(3, 6, 3)` where every piece of
+  documentation, and the sibling convention (`var_irf`, `structural_fevd`,
+  both `[h][var][shock]`), promised `(6, 3, 3)`. Worse, at `k == horizon` the
+  two layouts silently alias: same shape, transposed meaning, no error
+  anywhere. The emission is now horizon-first; the numbers themselves are
+  unchanged (`new[h][i][j] == old[i][h][j]`). **Migration:** code that indexed
+  `fevd[i][h]` reads `fevd[h][i]` now (or `np.transpose(old_code_array,
+  (1, 0, 2))` once). Comparing against statsmodels:
+  `VARResults.fevd(h).decomp` is variable-major — one `(1, 0, 2)` transpose
+  away, stated in the docstring. A k≠horizon shape test plus an
+  impact-share cross-check against `var_irf` now pin the axis meaning so the
+  layouts can never silently alias again; guide/migration examples were
+  re-run under the new indexing (printed values unchanged by construction).
+- **`periodogram` / `welch` / `coherence` now default `detrend="constant"`,
+  matching the `scipy.signal` parity their docstrings claim.** All three
+  documented "matches scipy.signal.…" while defaulting `detrend="none"`;
+  SciPy's default is `"constant"` (mean removal), so the two *default* calls
+  disagreed enormously on any non-zero-mean series — measured
+  default-vs-default Welch gap **1678.1 at frequency 0** on a mean-5 series.
+  The defaults flipped to SciPy's, so reality matches the documented parity;
+  a default-equals-SciPy-default parity test now pins each of the three on a
+  deliberately mean-shifted series. **Migration:** pass `detrend="none"`
+  explicitly to reproduce old default outputs (for the full-series boxcar
+  `periodogram`, only the frequency-0 ordinate moves; Welch/coherence demean
+  per segment, so low frequencies move generally). Golden fixtures pass
+  `detrend` explicitly and are byte-identical; `check_series`' periodogram
+  scan reads only positive frequencies and is unaffected.
+
+### Fixed — inert arguments now RAISE with teaching errors (the cv_splits convention)
+
+- **`garch_fit(o=…)` can no longer be silently discarded under
+  `vol="garch"`.** `o` is the asymmetry order and plain GARCH has no
+  asymmetry term, so `garch_fit(y, p=1, o=1, q=1)` fit a symmetric
+  GARCH(1,1) while looking exactly like the `arch` call
+  `arch_model(y, p=1, o=1, q=1)` — which silently *switches* to GJR-GARCH:
+  the precise porting trap the docstring's arch-parity paragraph exists to
+  prevent, now with the trap in the opposite direction removed. Explicit
+  `o > 0` with `vol="garch"` **raises**, naming the remedy (`vol="gjr"`, or
+  `vol="egarch"`; `o=0`/omitted for symmetric GARCH) — deliberately NOT an
+  auto-switch: tsecon keeps the model choice explicit. The default is now
+  the sentinel `o=None` (no asymmetry term under `vol="garch"`, one
+  asymmetry lag under `vol="gjr"`/`"egarch"`), so every previously-working
+  default call is bit-identical.
+- **`panel_fe`/`panel_lp` can no longer silently absorb `bandwidth`.**
+  `bandwidth` is the Driscoll-Kraay kernel truncation and acts ONLY under
+  `se_type="driscoll_kraay"` — and `panel_fe`'s default `se_type` is
+  `"cluster"`, so `panel_fe(..., bandwidth=8)` was a complete no-op that
+  looked like a serial-correlation correction. An explicitly passed
+  `bandwidth` with `se_type="cluster"`/`"nonrobust"` now **raises** in both
+  functions, saying why and naming the escape hatches. The default became
+  the sentinel `bandwidth=None` (the pyo3 signature could not otherwise
+  distinguish "passed the default value" from "omitted"), which under
+  `driscoll_kraay` resolves to the historical `4.0` — the Driscoll-Kraay
+  path is verified bit-identical, omitted-vs-explicit-4.0.
+
+### Added
+
+- **`proxy_ar_sets(rf_method="second_order_bc")`** — the roadmap-note-21
+  follow-up on `second_order`'s residual ~2pp at `h=12`: the same seeded
+  second-order simulation with the coefficient draws centred at Pope (1990)
+  bias-corrected coefficients (Kilian stationarity shrinkage), implemented as
+  `tsecon_ident::proxy_ar::pope_bias_corrected_coefs`. Measured on the same
+  500 seeded replications as `second_order`: the only arm at-or-above nominal
+  at every horizon on both DGPs (`h=12`: 0.889 → 0.964 → **0.982** on the
+  card VAR(2); 0.830 → 0.932 → **0.966** on the routine VAR(1)), at a further
+  width price (median ~1.8x the delta width at `h=12`, vs ~1.45x) — a
+  conservative floor, not a calibration, and documented as such. Boundedness
+  is bit-identical across all three `rf_method`s; the default remains
+  `"delta"`. Crate tests pin the AR(1) closed form `-(1+3a)/T` exactly and
+  the experiment harness's NumPy transcription at 1e-10.
+
+### Measured
+
+- **The interval-coverage audit now measures the five families it previously
+  listed as unmeasured** — a new registry module
+  (`docs/examples/coverage/proxy_garch_tail.py`, 13 probes; the registry
+  grows 50 → 63) covering `growth_at_risk` (`bse` vs `bse_powell` on an
+  exact-truth overlap design), `proxy_svar_bands` (moving-block Hall/Efron
+  and the wild reproduction arm), `proxy_ar_sets` (all three `rf_method`s,
+  paired), `garch_fit` (`se_mle` vs `se_robust` under Gaussian and t(5)
+  QMLE), `flp`/`flp_scenario` (the generated-regressor warning, priced
+  against the external-score and `w'beta` exempt routes), plus verified
+  no-interval rows for `nongaussian_svar` and the GARCH `variance_forecast`
+  (key-set tripwires). Headline findings are on the
+  [interval-coverage page](docs/examples/interval-coverage.md).
+- **The registry's HAR family was re-transcribed to the 0.5.0 Corsi windows
+  and re-measured.** `regression_se.py`'s HAR DGP and hand-built reference
+  design still used the pre-0.5.0 windows (`mean(RV[t-6..t-2])` /
+  `mean(RV[t-23..t-2])`), so after the 0.5.0 window correction its "truth"
+  was misspecified against the shipped `har_rv` and the family failed its
+  own assertions (b_daily "coverage" fell to 0.35 — an artifact of the
+  stale transcription, not a `har_rv` defect; the design-match check
+  caught it at |Δparams| ≈ 0.13). The module now builds the inclusive
+  Corsi windows (`mean(RV[t-1..t-5])` / `mean(RV[t-1..t-22])`), matches
+  the shipped design again at ≤ 2e-16, and the re-measured page rows
+  moved by at most 0.7pp (e.g. the heteroskedastic-innovations constant
+  at maxlags=0: 0.910 → 0.917).
 
 ## [0.5.0] - 2026-08-25
 

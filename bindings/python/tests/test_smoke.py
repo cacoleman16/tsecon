@@ -270,8 +270,32 @@ def test_var_irf_fevd_match_statsmodels():
     irf = np.array(tsecon.var_irf(MACRO, lags=2, horizon=10, orth=True))
     np.testing.assert_allclose(irf, VARFX["irf_orth_h10"], atol=1e-10)
     fevd = np.array(tsecon.var_fevd(MACRO, lags=2, horizon=10))
-    np.testing.assert_allclose(fevd, VARFX["fevd_h10"], atol=1e-10)
+    # The fixture stores statsmodels' fevd(10).decomp verbatim, which is
+    # VARIABLE-major [variable][horizon][shock]; tsecon emits horizon-first
+    # [horizon][variable][shock] (the documented layout, same axis order as
+    # var_irf) — one transpose apart. The 0.6.0 fix; before it the
+    # variable-major internal layout leaked through.
+    np.testing.assert_allclose(
+        fevd, np.transpose(VARFX["fevd_h10"], (1, 0, 2)), atol=1e-10
+    )
     assert np.allclose(fevd.sum(axis=2), 1.0)
+
+
+def test_var_fevd_is_horizon_first_even_when_k_differs_from_horizon():
+    # Guard against the axes silently aliasing again: with k=3 variables and
+    # horizon=6 the two candidate layouts have DIFFERENT shapes, so this
+    # test cannot pass under a variable-major regression.
+    k, horizon = MACRO.shape[1], 6
+    assert k != horizon
+    fevd = np.array(tsecon.var_fevd(MACRO, lags=2, horizon=horizon))
+    assert fevd.shape == (horizon, k, k)
+    # Cross-check the axis MEANING, not just the shape: each fevd[h][i]
+    # must sum to 1 over shocks, and the first horizon must reproduce the
+    # squared normalized impact row of the orthogonalized IRF.
+    assert np.allclose(fevd.sum(axis=2), 1.0)
+    irf0 = np.array(tsecon.var_irf(MACRO, lags=2, horizon=horizon, orth=True))[0]
+    impact_shares = irf0**2 / (irf0**2).sum(axis=1, keepdims=True)
+    np.testing.assert_allclose(fevd[0], impact_shares, atol=1e-12)
 
 
 def test_var_forecast_and_granger():

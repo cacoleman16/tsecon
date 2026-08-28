@@ -298,6 +298,122 @@ impl ArimaResults {
         Ok(self.param_cov()?.se().to_vec())
     }
 
+    /// The lag-polynomial blocks whose fitted roots sit within the
+    /// documented epsilon of the unit circle: `(block name, min root
+    /// modulus, packed-parameter index range)`.
+    ///
+    /// Seasonal moduli are power-mapped by `1/s` exactly as in
+    /// [`crate::auto`]'s admissibility guard, so the check on the factor
+    /// polynomials is equivalent to checking the multiplied-out one.
+    fn boundary_blocks(&self) -> Vec<(&'static str, f64, core::ops::Range<usize>)> {
+        use crate::auto::{min_root_modulus, ROOT_ADMISSIBILITY_THRESHOLD};
+        let c = usize::from(self.spec.include_constant());
+        let p = self.spec.p();
+        let q = self.spec.q();
+        let sp = self.spec.seasonal_p();
+        let sq = self.spec.seasonal_q();
+        let s = self.spec.period().max(1) as f64;
+        let neg = |coefs: &[f64]| -> Vec<f64> { coefs.iter().map(|v| -v).collect() };
+
+        let mut out: Vec<(&'static str, f64, core::ops::Range<usize>)> = Vec::new();
+        let mut push =
+            |name: &'static str, modulus: Option<f64>, range: core::ops::Range<usize>, pw: f64| {
+                if let Some(m) = modulus {
+                    let m = m.powf(pw);
+                    if m < ROOT_ADMISSIBILITY_THRESHOLD {
+                        out.push((name, m, range));
+                    }
+                }
+            };
+        push(
+            "AR (stationarity)",
+            min_root_modulus(&neg(self.ar())),
+            c..c + p,
+            1.0,
+        );
+        push(
+            "MA (invertibility)",
+            min_root_modulus(self.ma()),
+            c + p..c + p + q,
+            1.0,
+        );
+        push(
+            "seasonal AR (stationarity)",
+            min_root_modulus(&neg(self.seasonal_ar())),
+            c + p + q..c + p + q + sp,
+            1.0 / s,
+        );
+        push(
+            "seasonal MA (invertibility)",
+            min_root_modulus(self.seasonal_ma()),
+            c + p + q + sp..c + p + q + sp + sq,
+            1.0 / s,
+        );
+        out
+    }
+
+    /// Per-parameter flags (packed order, aligned with
+    /// [`ArimaResults::param_names`]): `true` when the parameter belongs
+    /// to an AR or MA block whose fitted polynomial has a root within the
+    /// documented epsilon of the unit circle —
+    /// [`crate::auto::ROOT_ADMISSIBILITY_THRESHOLD`] (`1.001`, i.e.
+    /// within 0.1% of the boundary; the same rule `auto_arima` uses to
+    /// exclude candidates from selection). The constraint is on the
+    /// polynomial — a *direction* in parameter space, not a coordinate —
+    /// so every coefficient of a flagged block is flagged. The constant
+    /// and `sigma2` never trigger.
+    ///
+    /// At such a boundary the observed information is singular in the
+    /// constrained direction by construction, so no classical standard
+    /// error exists for the flagged parameters, and their sampling
+    /// distribution is non-standard (an MA root on the unit circle is
+    /// the classic over-differencing pile-up). This mirrors
+    /// `tsecon-garch`'s round-7 `boundary`/`se_valid` contract.
+    pub fn boundary(&self) -> Vec<bool> {
+        let mut flags = vec![false; self.params.len()];
+        for (_, _, range) in self.boundary_blocks() {
+            for f in &mut flags[range] {
+                *f = true;
+            }
+        }
+        flags
+    }
+
+    /// A teaching note describing the active stationarity/invertibility
+    /// boundaries behind [`ArimaResults::boundary`]; `None` when no block
+    /// is flagged.
+    pub fn boundary_note(&self) -> Option<String> {
+        let blocks = self.boundary_blocks();
+        if blocks.is_empty() {
+            return None;
+        }
+        let names = self.param_names();
+        let mut causes: Vec<String> = Vec::new();
+        let mut flagged: Vec<&str> = Vec::new();
+        for (name, m, range) in &blocks {
+            causes.push(format!(
+                "the {name} polynomial has a root of modulus {m:.6}, within 0.1% of \
+                 the unit circle"
+            ));
+            flagged.extend(names[range.clone()].iter().map(|n| n.as_str()));
+        }
+        Some(format!(
+            "Boundary fit: {causes}. Parameters in a boundary block ({flagged}) have \
+             no classical standard errors — the observed information is singular in \
+             the constrained direction by construction, and the estimator's sampling \
+             distribution there is non-standard (an MA root at the unit circle is the \
+             classic over-differencing pile-up). Their bse entries are NaN with \
+             se_valid false. Interior parameters' standard errors still come from the \
+             full-vector observed information, which is itself degraded by the \
+             boundary direction — treat them as approximate; reduced-Hessian standard \
+             errors over the free directions only (the tsecon-garch treatment) are a \
+             documented follow-up. If the flagged root is an MA root, the series is \
+             likely over-differenced: refit with d lowered by one.",
+            causes = causes.join("; "),
+            flagged = flagged.join(", ")
+        ))
+    }
+
     /// Standardized one-step prediction errors from the Kalman filter,
     ///
     /// ```text

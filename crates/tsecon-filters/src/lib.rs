@@ -18,7 +18,14 @@
 //! * [`hamilton_filter`] — Hamilton (2018) regression filter (the
 //!   recommended HP replacement), plus the
 //!   [`hamilton_filter_random_walk`] special case
-//!   (`cycle_t = y_t - y_{t-h}`);
+//!   (`cycle_t = y_t - y_{t-h}`) and [`hamilton_filter_with_se`], which
+//!   adds HAC (Newey-West) standard errors on the regression
+//!   coefficients through the shared `tsecon-hac` engine;
+//! * [`bn_filter`] — the Kamber-Morley-Wong (2018) Beveridge-Nelson
+//!   filter: BN output-gap estimation from an AR(`p`) on demeaned
+//!   growth with the signal-to-noise ratio pinned by the paper's
+//!   amplitude-to-noise criterion, reference-run-pinned against the
+//!   authors' replication code;
 //! * [`stl`] — STL seasonal-trend decomposition using LOESS (Cleveland et
 //!   al. 1990; the netlib Fortran semantics as preserved by statsmodels),
 //!   with the [`seasonal_strength`] Wang-Smith-Hyndman strength measures
@@ -33,9 +40,12 @@
 //! silent misalignment is the deadliest bug class in applied macro (see
 //! `docs/roadmap/00-architecture.md`).
 //!
-//! Accuracy: golden-value tests pin all four filters against
+//! Accuracy: golden-value tests pin the four classic filters against
 //! statsmodels 0.14.6 on the 100·log US real GDP series at `1e-8`
-//! (`fixtures/filters.json`).
+//! (`fixtures/filters.json`); the Hamilton HAC inference against
+//! statsmodels `OLS(cov_type="HAC")` and the KMW BN filter against
+//! reference runs of the authors' own R replication code
+//! (`fixtures/bn_filters.json`).
 //!
 //! ```
 //! use tsecon_filters::{hp_filter, ravn_uhlig_lambda, Frequency};
@@ -51,18 +61,22 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod bandpass;
+mod bn_filter;
 mod decomposition;
 mod error;
 mod hamilton;
 mod hp;
+mod lin;
 mod mstl;
 mod stl;
 
 pub use bandpass::{bk_filter, cf_filter};
+pub use bn_filter::{bn_filter, BnDelta, BnFilterResult};
 pub use decomposition::{Alignment, Decomposition};
 pub use error::FiltersError;
 pub use hamilton::{
-    hamilton_defaults, hamilton_filter, hamilton_filter_random_walk, HamiltonResult,
+    hamilton_defaults, hamilton_filter, hamilton_filter_random_walk, hamilton_filter_with_se,
+    HamiltonInference, HamiltonResult, HamiltonSe,
 };
 pub use hp::{hp_filter, hp_filter_one_sided, ravn_uhlig_lambda, Frequency};
 pub use mstl::{mstl, mstl_seasonal_strengths, MstlParams, MstlResult};

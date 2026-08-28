@@ -56,7 +56,9 @@ induced serial correlation, nor as a joint test of several predictors — reach
 for `ivx_test` there.
 
 **Key arguments and defaults (and why).** `cz = -1.0` and `alpha = 0.95` tune
-the IVX instrument, whose persistence is `Rz = 1 + cz / n^alpha`. `cz` must be a
+the IVX instrument, whose persistence is `Rz = 1 + cz / N^alpha` with
+`N = n - 1` the regression sample size (KMS 2015 index the localizing sequence
+by the sample size of the predictive regression). `cz` must be a
 finite **negative** constant so `Rz` sits just inside the unit circle; `alpha`
 must lie in the open interval `(0, 1)` so the instrument is *mildly* integrated —
 more persistent than any stationary process but strictly less than a unit root,

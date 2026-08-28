@@ -66,7 +66,7 @@ tsecon.check_stationarity(y)["recommendation"]   # -> "Difference"
 # Fit a VAR, read off impulse responses, decompose the variance
 data = rng.standard_normal((200, 3))
 irf  = tsecon.var_irf(data, lags=2, horizon=16)          # [h][response][shock]
-fevd = tsecon.var_fevd(data, lags=2, horizon=16)
+fevd = tsecon.var_fevd(data, lags=2, horizon=16)   # [h][variable][shock]
 
 # Robust SEs, exact-MLE ARIMA with a forecast fan, GARCH with robust SEs,
 # instrumented local projections, a fiscal multiplier, a Bayesian VAR...

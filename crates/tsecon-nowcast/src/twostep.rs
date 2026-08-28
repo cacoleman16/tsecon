@@ -61,6 +61,14 @@ pub struct Nowcaster {
     /// centred panel — the optimiser's initial objective, which the MLE
     /// log-likelihood cannot fall below. `None` for a two-step fit.
     two_step_reference_loglik: Option<f64>,
+    /// For an MLE fit, whether the optimiser stage that produced the
+    /// reported parameters terminated by its convergence test (see
+    /// [`Nowcaster::mle_converged`]). `None` for a two-step fit, which
+    /// runs no iterative optimiser and carries no such certificate.
+    mle_converged: Option<bool>,
+    /// For an MLE fit, total optimiser iterations across the Nelder-Mead
+    /// and BFGS stages. `None` for a two-step fit.
+    mle_iterations: Option<usize>,
 }
 
 impl Nowcaster {
@@ -167,6 +175,8 @@ impl Nowcaster {
             params,
             smoothing,
             two_step_reference_loglik: None,
+            mle_converged: None,
+            mle_iterations: None,
         })
     }
 
@@ -210,7 +220,36 @@ impl Nowcaster {
             params: fit.params,
             smoothing: fit.smoothing,
             two_step_reference_loglik: Some(fit.two_step_loglik),
+            mle_converged: Some(fit.converged),
+            mle_iterations: Some(fit.iterations),
         })
+    }
+
+    /// For an MLE fit ([`Self::fit_mle`]), whether the optimiser stage
+    /// that produced the reported parameters terminated by its own
+    /// convergence test — the BFGS polish's gradient-norm certificate
+    /// when the polish's point was kept (the usual case), the Nelder-Mead
+    /// simplex-tolerance certificate when the polish failed to improve.
+    /// `Some(false)` means the reported parameters are the best point
+    /// found within the iteration budget, not a certified optimum: treat
+    /// the fit (and anything downstream of its smoothed factor) with
+    /// care, or refit with a different `factor_order`.
+    ///
+    /// `None` for a two-step fit, which runs no iterative optimiser
+    /// (PCA + OLS + one Kalman pass are closed-form) and therefore has
+    /// no convergence certificate to report — absence of the flag is not
+    /// a defect of the two-step route, it is the honest statement that
+    /// the concept does not apply.
+    #[inline]
+    pub fn mle_converged(&self) -> Option<bool> {
+        self.mle_converged
+    }
+
+    /// For an MLE fit, the total optimiser iterations across both stages
+    /// (Nelder-Mead plus the BFGS polish); `None` for a two-step fit.
+    #[inline]
+    pub fn mle_iterations(&self) -> Option<usize> {
+        self.mle_iterations
     }
 
     /// For an MLE fit ([`Self::fit_mle`]), the log-likelihood of the two-step

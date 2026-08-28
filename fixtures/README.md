@@ -20,7 +20,14 @@ venv) in one of two ways:
   committed `generate_lpdid_fixtures.R`, which runs the LP-DiD reference
   conventions through fixest (the engine of the authors' own example code)
   and cross-checks them against the generator's independent NumPy
-  reimplementation before anything is stored.
+  reimplementation before anything is stored. `bn_filters.json` similarly
+  requires R plus `$BNFILTER_R_DIR` pointing at a checkout of the
+  Kamber-Morley-Wong replication code (bnfiltering.com lineage, packaged at
+  `github.com/kletts/bnfilter` — sourced at generation time, **not vendored**:
+  its DESCRIPTION carries no license grant); its generator reference-runs the
+  authors' own `BN_Filter`/`select_delta`/`BN_Filter_stderr` and cross-checks
+  an independent NumPy reimplementation against the R output at 1e-9 before
+  anything is stored.
 - **Transformations of two public-domain reference series** loaded from
   statsmodels' bundled datasets:
   - the **Nile** annual river-flow series (`sm.datasets.nile`), a classic
@@ -31,6 +38,17 @@ venv) in one of two ways:
   Only *statistics and transformations* of these (e.g. `100·log(realgdp)`,
   100× dlog growth rates, and fitted model outputs) are stored — no raw
   licensed dataset is redistributed.
+
+One fixture is deliberately **not** a third-party golden:
+`backtest_string_snapshot.json` (generator
+`generate_backtest_string_snapshot.py`) is a *self-snapshot* of the
+string-forecaster paths of `backtest`/`conformal_forecast`/
+`conformal_backtest`, captured — as `float.hex()` values, so the comparison
+is bitwise — from the build immediately before the Python-callable
+forecaster plumbing landed in 0.6.0-dev. Its job is regression, not
+validation: `test_backtest_callable.py` asserts the pre-existing string
+surfaces stayed bit-identical. Regenerate it only to re-baseline after an
+*intentional* behavioral change to those paths.
 
 The `*.csv` files are the exception, and are data rather than derived values:
 public datasets vendored **with attribution** for the replication pages

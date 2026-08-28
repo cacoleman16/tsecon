@@ -140,7 +140,12 @@ from `flp_scenario`'s weighted combinations, not from a raw score coefficient.
     two-step hazard the library discloses for FAVAR
     ([guide 7](../../guide/07-multivariate.md)) and dynamic Nelson-Siegel
     ([guide 15](../../guide/15-term-structure.md)); it applies here with the
-    eigenfunctions in the role of the factors/loadings.
+    eigenfunctions in the role of the factors/loadings. The
+    [interval-coverage registry](../../examples/interval-coverage.md) now
+    re-measures all three routes every run on a persistent closed-form-truth
+    design: nominal 95% per-element intervals on `functional_pca` scores
+    cover **0.42** at impact (se/sd 0.27) while external scores cover 0.95
+    and the `flp_scenario` contrast 0.93 on the same draws.
 
 **Failure modes.** Endogenous scores (the identification point above).
 Near-collinear scores — by FPCA construction in-sample scores are orthogonal,

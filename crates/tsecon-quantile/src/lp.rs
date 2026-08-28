@@ -26,6 +26,14 @@ pub struct QuantileLp {
     pub irf: Vec<Vec<f64>>,
     /// Powell-sandwich standard errors, indexed `se[tau_index][horizon]`.
     pub se: Vec<Vec<f64>>,
+    /// Per-fit IRLS convergence flags, indexed
+    /// `converged[tau_index][horizon]` (same shape as `irf`/`se`). `false`
+    /// means that (tau, horizon) fit hit the 1000-iteration IRLS cap
+    /// before the max-abs coefficient change dropped to the shared `1e-6`
+    /// tolerance: the reported coefficient is the last iterate, not a
+    /// verified check-loss minimum (statsmodels `QuantReg` warns in the
+    /// same situation; here it is reported per fit instead).
+    pub converged: Vec<Vec<bool>>,
 }
 
 /// Quantile local projections of `y` on `shock` at each tau, for horizons
@@ -67,6 +75,7 @@ pub fn quantile_lp(
     let k = 2 + 2 * p;
     let mut irf = vec![Vec::with_capacity(horizons + 1); taus.len()];
     let mut se = vec![Vec::with_capacity(horizons + 1); taus.len()];
+    let mut converged = vec![Vec::with_capacity(horizons + 1); taus.len()];
     for h in 0..=horizons {
         // Sample bookkeeping mirrors tsecon-lp::design::horizon_sample with
         // n_shock_lags = n_lag_controls: start = p, t runs to n - 1 - h.
@@ -94,6 +103,7 @@ pub fn quantile_lp(
             let fit = fit_one(&outcome, &cols, tau)?;
             irf[i].push(fit.params[0]);
             se[i].push(fit.bse[0]);
+            converged[i].push(fit.converged);
         }
     }
     Ok(QuantileLp {
@@ -101,5 +111,6 @@ pub fn quantile_lp(
         horizons: (0..=horizons).collect(),
         irf,
         se,
+        converged,
     })
 }

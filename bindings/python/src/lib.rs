@@ -5,7 +5,7 @@
 //! (Spec -> fit() -> Results) arrives with the model crates.
 
 use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
@@ -1106,13 +1106,30 @@ fn mat_to_vec2(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
         .collect()
 }
 
-/// Fit a VAR(p) by OLS and return estimates, fit statistics, and stability.
+/// Fit a VAR(p) by OLS and return estimates, fit statistics, residuals,
+/// and stability.
 ///
 /// Stability: read `is_stable` (bool). `min_root`/`max_root` are the smallest
 /// and largest moduli of the reciprocal characteristic roots — the system is
 /// stable iff `min_root > 1`, so `max_root` alone is NOT a verdict.
 ///
-/// Matches statsmodels `VAR(...).fit(lags, trend)` at 1e-8.
+/// Returns dict keys: `params` (the `(n_trend + k p) x k` stacked coefficient
+/// matrix, statsmodels layout — rows `[const, lag-1 var 1..k, ...]`, one
+/// column per equation), `sigma_u` (`k x k` residual covariance, divisor
+/// `T - m`), `llf`, `aic`, `bic`, `hqic`, `resid` (`(T, k)` nested list —
+/// the OLS residuals `U = Y - Z B`, where `Y = data[lags:]` after the `lags`
+/// presample rows are consumed; `np.asarray(r["resid"])` gives the array),
+/// `fitted` (`(T, k)` nested list — the in-sample one-step fitted values
+/// `Z B`, computed as `data[lags:] - resid` elementwise, which IS the OLS
+/// projection: the crate defines `resid = Y - Z B`, so `fitted + resid`
+/// reproduces `data[lags:]` exactly and row `t` of `fitted`/`resid` refers
+/// to observation `lags + t` of the input), `nobs` (the effective sample
+/// size `T = len(data) - lags` — the row count of `resid`/`fitted`),
+/// `df_resid` (residual degrees of freedom per equation, `T - m` with
+/// `m = n_trend + k*lags` regressors), `max_root`, `min_root`, `is_stable`.
+///
+/// Matches statsmodels `VAR(...).fit(lags, trend)` at 1e-8 (`resid` is
+/// statsmodels' `results.resid`; `fitted` is `results.fittedvalues`).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, trend = "c"))]
 fn var_fit<'py>(
@@ -1129,6 +1146,23 @@ fn var_fit<'py>(
     d.set_item("aic", r.aic)?;
     d.set_item("bic", r.bic)?;
     d.set_item("hqic", r.hqic)?;
+    // Residuals U = Y - Z B over the effective sample (rows lags..len). The
+    // fitted values are reconstructed as y - resid rather than re-running the
+    // matmul: the crate computes `resid = Y - Z B` elementwise, so this is
+    // the projection Z B up to one IEEE rounding per element and satisfies
+    // fitted + resid == data[lags:] by construction.
+    d.set_item("resid", mat_to_vec2(&r.resid))?;
+    let p = r.spec.lags;
+    let fitted: Vec<Vec<f64>> = (0..r.resid.nrows())
+        .map(|t| {
+            (0..r.resid.ncols())
+                .map(|j| r.endog[(p + t, j)] - r.resid[(t, j)])
+                .collect()
+        })
+        .collect();
+    d.set_item("fitted", fitted)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("df_resid", r.df_resid)?;
     // `roots_moduli` are the RECIPROCAL characteristic roots (the statsmodels
     // convention): the VAR is stable iff EVERY modulus exceeds 1, i.e. iff
     // `min_root > 1`. `max_root` is therefore the root FARTHEST from the unit
@@ -1611,7 +1645,13 @@ fn var_irf_bands<'py>(
 }
 
 /// Forecast-error variance decomposition: `fevd[h][i][j]` is the share of
-/// variable i's h-step forecast-error variance attributed to shock j.
+/// variable i's `(h+1)`-step forecast-error variance attributed to shock j
+/// — horizon-first, the same `[h][variable][shock]` axis order as `var_irf`
+/// and `structural_fevd`, with `horizon` outer entries.
+///
+/// Comparing against statsmodels: `VARResults.fevd(horizon).decomp` stores
+/// the SAME numbers variable-major (`[variable][horizon][shock]`), so
+/// `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))` equals this output.
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
 fn var_fevd<'py>(
@@ -1623,7 +1663,22 @@ fn var_fevd<'py>(
 ) -> PyResult<Bound<'py, pyo3::types::PyList>> {
     let r = var_results(&data, lags, trend)?;
     let fevd = r.fevd(horizon).map_err(to_py)?;
-    let out: Vec<Vec<Vec<f64>>> = fevd.decomp.iter().map(mat_to_vec2).collect();
+    // The core stores one `horizon x k` matrix per VARIABLE
+    // (`decomp[i][(h, j)]`, the statsmodels-internal layout the golden
+    // fixtures pin). Emit horizon-first `[h][variable][shock]` — the layout
+    // this function has always documented and the sibling convention
+    // (`var_irf`, `structural_fevd`). Before 0.6.0 the internal
+    // variable-major layout leaked through unchanged, contradicting the
+    // docstring; at k == horizon the two layouts silently alias.
+    let k = fevd.decomp.len();
+    let out: Vec<Vec<Vec<f64>>> = (0..horizon)
+        .map(|h| {
+            fevd.decomp
+                .iter()
+                .map(|m| (0..k).map(|j| m[(h, j)]).collect())
+                .collect()
+        })
+        .collect();
     pyo3::types::PyList::new(py, out.iter().cloned())
 }
 
@@ -1804,17 +1859,273 @@ fn cf_filter<'py>(
 }
 
 /// Hamilton (2018) regression filter — the modern HP alternative.
+///
+/// Regresses `y_{t}` on a constant and `p` lags of the series dated `h`
+/// periods back; `cycle` is the residual, `trend` the fitted value.
+/// Hamilton's recommended `(h, p)` by sampling frequency (the horizon
+/// spans two years, the lags one):
+///
+/// | frequency | h  | p  |
+/// |-----------|----|----|
+/// | quarterly |  8 |  4 |
+/// | monthly   | 24 | 12 |
+/// | annual    |  2 |  1 |
+///
+/// `method="random_walk"` gives the variant Hamilton recommends for
+/// short samples: `cycle = y_t - y_{t-h}`, `trend = y_{t-h}` — the
+/// population regression under a random-walk null, with no coefficients
+/// estimated (`p` is ignored and no `beta` is returned; `se` is
+/// refused).
+///
+/// `se="hac"` adds Newey-West standard errors on the regression
+/// coefficients through the library's shared HAC engine — the
+/// overlapping `h`-step-ahead residuals are serially correlated (MA of
+/// order `h-1`) *by construction*, so plain OLS standard errors are
+/// wrong for this regression; the default bandwidth is the h-overlap
+/// rule `maxlags = h` (covering the known MA(h-1) correlation with one
+/// lag of slack; generic plug-in rules can land *below* `h-1` here).
+/// `se="nonrobust"` gives the classical (wrong-for-this-regression)
+/// errors as a comparison point. `use_correction` applies the
+/// small-sample `n/(n-k)` factor (statsmodels `use_correction`; a
+/// default statsmodels `cov_type="HAC"` call has it off).
+///
+/// Returns `trend`, `cycle`, `first_index` (= h + p - 1 observations
+/// lost at the start; h for the random-walk variant), and — for the
+/// regression method — `beta` (`[intercept, b_1..b_p]`); requesting
+/// `se` adds `bse`, `tvalues`, `se_type`, `maxlags` (resolved; None for
+/// nonrobust), and `use_correction`. The decomposition and `beta` are
+/// bit-identical whether or not `se` is requested.
 #[pyfunction]
-#[pyo3(signature = (y, h = 8, p = 4))]
+#[pyo3(signature = (y, h = 8, p = 4, method = "regression", se = None, maxlags = None,
+                    use_correction = true))]
+#[allow(clippy::too_many_arguments)]
 fn hamilton_filter<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
     h: usize,
     p: usize,
+    method: &str,
+    se: Option<&str>,
+    maxlags: Option<usize>,
+    use_correction: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_filters::hamilton_filter(&vec1(&y), h, p).map_err(to_py)?;
+    match method {
+        "regression" => {}
+        "random_walk" => {
+            if se.is_some() || maxlags.is_some() {
+                return Err(PyValueError::new_err(
+                    "method='random_walk' estimates no regression coefficients \
+                     (cycle = y_t - y_{t-h} exactly), so there is nothing to compute \
+                     standard errors for; drop se/maxlags or use method='regression'",
+                ));
+            }
+            let dec = tsecon_filters::hamilton_filter_random_walk(&vec1(&y), h).map_err(to_py)?;
+            return decomposition_dict(py, &dec);
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown hamilton_filter method '{other}': expected 'regression' (the \
+                 Hamilton 2018 OLS filter) or 'random_walk' (cycle = y_t - y_{{t-h}})"
+            )));
+        }
+    }
+    let se_kind = match se {
+        None => {
+            if maxlags.is_some() {
+                return Err(PyValueError::new_err(
+                    "maxlags is a HAC bandwidth and requires se='hac'",
+                ));
+            }
+            None
+        }
+        Some("hac") => Some(tsecon_filters::HamiltonSe::Hac {
+            maxlags,
+            use_correction,
+        }),
+        Some("nonrobust") => Some(tsecon_filters::HamiltonSe::NonRobust),
+        Some(other) => {
+            return Err(PyValueError::new_err(format!(
+                "unknown se '{other}': expected 'hac' (Newey-West, the right choice for \
+                 the overlapping h-step residuals; default maxlags = h) or 'nonrobust' \
+                 (classical OLS errors, as a comparison point)"
+            )));
+        }
+    };
+    match se_kind {
+        None => {
+            let r = tsecon_filters::hamilton_filter(&vec1(&y), h, p).map_err(to_py)?;
+            let d = decomposition_dict(py, &r.decomposition)?;
+            d.set_item("beta", r.beta.clone().into_pyarray(py))?;
+            Ok(d)
+        }
+        Some(kind) => {
+            let (r, inf) =
+                tsecon_filters::hamilton_filter_with_se(&vec1(&y), h, p, kind).map_err(to_py)?;
+            let d = decomposition_dict(py, &r.decomposition)?;
+            d.set_item("beta", r.beta.clone().into_pyarray(py))?;
+            d.set_item("bse", inf.bse.into_pyarray(py))?;
+            d.set_item("tvalues", inf.tvalues.into_pyarray(py))?;
+            d.set_item(
+                "se_type",
+                match kind {
+                    tsecon_filters::HamiltonSe::NonRobust => "nonrobust",
+                    tsecon_filters::HamiltonSe::Hac { .. } => "hac",
+                },
+            )?;
+            d.set_item("maxlags", inf.maxlags)?;
+            d.set_item(
+                "use_correction",
+                matches!(
+                    kind,
+                    tsecon_filters::HamiltonSe::Hac {
+                        use_correction: true,
+                        ..
+                    }
+                ),
+            )?;
+            Ok(d)
+        }
+    }
+}
+
+/// Kamber-Morley-Wong (2018, REStat) Beveridge-Nelson filter: the BN
+/// output-gap estimator with the signal-to-noise ratio `delta` pinned.
+///
+/// Fits an AR(`p`) to the (optionally demeaned) first differences with
+/// the sum of AR coefficients fixed at `rho = 1 - 1/sqrt(delta)`
+/// (Bayesian ridge on the Dickey-Fuller form with the reference code's
+/// `N(0, 0.5/j^2)` shrinkage prior), and takes the BN cycle
+/// `-e1' F (I-F)^{-1} X_t` of that pinned model. `delta=None` selects
+/// the ratio by the paper's amplitude-to-noise criterion (first local
+/// maximum of `var(cycle)/mean(residual^2)` on the grid `d0, d0+dt,
+/// ...`); a float imposes it. `demean="sm"` subtracts the sample mean
+/// of the differences (the paper's baseline); `"nd"` leaves the drift
+/// in (their no-drift option). The paper's baseline for quarterly data
+/// is `p=12`.
+///
+/// This is the *pinned-delta* Beveridge-Nelson: the classic
+/// freely-estimated decomposition (`bn_decomposition`) typically finds
+/// a tiny, noisy cycle on drifting macro series; KMW's delta produces
+/// the large, persistent output gaps practitioners expect, from the
+/// same BN definition of trend.
+///
+/// Returns `trend`, `cycle` (aligned from observation 1;
+/// `first_index=1`; `trend` is `y - cycle`, so the pair reconstructs
+/// `y[1:]` to within a final rounding), `delta` (used or
+/// selected), `ar` (the implied AR coefficients, summing to rho),
+/// `cycle_se` (the reference code's fixed error band: 95% band is
+/// `cycle` ± 1.96·`cycle_se`), `amplitude_to_noise` (the selection
+/// criterion at `delta`), and `drift` (the mean removed, 0.0 for
+/// `"nd"`). Validated by reference runs of the authors' own R
+/// replication code (bnfiltering.com lineage) — see the diagnostics
+/// model card.
+#[pyfunction]
+#[pyo3(signature = (y, p = 12, delta = None, demean = "sm", d0 = 0.01, dt = 0.0005))]
+fn bn_filter<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    delta: Option<f64>,
+    demean: &str,
+    d0: f64,
+    dt: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let demean_flag = match demean {
+        "sm" => true,
+        "nd" => false,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown demean '{other}': expected 'sm' (subtract the sample mean of \
+                 the first differences — the KMW baseline) or 'nd' (no drift removal)"
+            )));
+        }
+    };
+    let delta_spec = match delta {
+        Some(d) => tsecon_filters::BnDelta::Fixed(d),
+        None => tsecon_filters::BnDelta::Auto { d0, dt },
+    };
+    let r = tsecon_filters::bn_filter(&vec1(&y), p, delta_spec, demean_flag).map_err(to_py)?;
     let d = decomposition_dict(py, &r.decomposition)?;
-    d.set_item("beta", r.beta.clone().into_pyarray(py))?;
+    d.set_item("delta", r.delta)?;
+    d.set_item("ar", r.ar.into_pyarray(py))?;
+    d.set_item("cycle_se", r.cycle_se)?;
+    d.set_item("amplitude_to_noise", r.amplitude_to_noise)?;
+    d.set_item("drift", r.drift)?;
+    Ok(d)
+}
+
+/// Classic Beveridge-Nelson (1981) trend-cycle decomposition from an
+/// ARIMA(p, 1, q).
+///
+/// The BN trend is the long-horizon conditional expectation net of
+/// deterministic growth — a random walk with drift driven by the
+/// series' own innovations, `Delta tau_t = mu + psi(1) eps_t`, with the
+/// **long-run multiplier** `psi(1) = theta(1)/phi(1) = (1 + sum theta)
+/// / (1 - sum phi)` (the permanent effect of a unit shock, equal to the
+/// cumulative impulse response). The cycle is the rest: `c_t = y_t -
+/// tau_t = -e1' F (I-F)^{-1} X_t` in the ARMA companion form (Morley
+/// 2002), with conditional (zero-presample) innovations, so the
+/// identities hold in finite samples, not just asymptotically:
+/// `trend + cycle` reconstructs `y[1:]` (to within a final rounding —
+/// trend is stored as `y - cycle`) and `diff(trend) == drift + psi(1) *
+/// innovations[1:]` at 1e-9.
+///
+/// By default the ARMA growth model is estimated by the library's own
+/// exact-MLE ARIMA fit (`ARIMA(p, 1, q)` with a constant; the drift is
+/// `mu = const/phi(1)`); the Morley-Nelson-Zivot (2003) US-GDP
+/// specification `p=2, q=2` is the default. Passing any of `ar`, `ma`,
+/// `drift` switches to the **fixed-coefficient path**: the
+/// decomposition is computed at exactly the coefficients you supply
+/// (`ar`/`ma` default to none, `drift` to 0.0; `p`/`q` are ignored) —
+/// for decomposing at published estimates.
+///
+/// Returns `trend`, `cycle`, `innovations`, `first_index` (= 1, lost to
+/// differencing), `long_run_multiplier`, `drift`, `ar`, `ma`, `mode`
+/// (`"fit"` or `"fixed"`), and for the fit path `sigma2`, `loglik`,
+/// `aic`, `bic`, `converged`. A fitted AR or MA polynomial numerically
+/// on the unit circle is refused with an error naming the cure (the BN
+/// objects are undefined/unreliable there), as are non-stationary /
+/// non-invertible fixed coefficients.
+#[pyfunction]
+#[pyo3(signature = (y, p = 2, q = 2, ar = None, ma = None, drift = None))]
+fn bn_decomposition<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    q: usize,
+    ar: Option<Vec<f64>>,
+    ma: Option<Vec<f64>>,
+    drift: Option<f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let fixed = ar.is_some() || ma.is_some() || drift.is_some();
+    let r = if fixed {
+        tsecon_arima::bn_from_arma(
+            &vec1(&y),
+            drift.unwrap_or(0.0),
+            &ar.unwrap_or_default(),
+            &ma.unwrap_or_default(),
+        )
+        .map_err(to_py)?
+    } else {
+        tsecon_arima::bn_decomposition(&vec1(&y), p, q).map_err(to_py)?
+    };
+    let d = PyDict::new(py);
+    d.set_item("trend", r.trend.into_pyarray(py))?;
+    d.set_item("cycle", r.cycle.into_pyarray(py))?;
+    d.set_item("innovations", r.innovations.into_pyarray(py))?;
+    d.set_item("first_index", r.lost_start)?;
+    d.set_item("long_run_multiplier", r.long_run_multiplier)?;
+    d.set_item("drift", r.drift)?;
+    d.set_item("ar", r.ar.into_pyarray(py))?;
+    d.set_item("ma", r.ma.into_pyarray(py))?;
+    d.set_item("mode", if fixed { "fixed" } else { "fit" })?;
+    if let Some(res) = &r.results {
+        d.set_item("sigma2", res.sigma2())?;
+        d.set_item("loglik", res.loglik)?;
+        d.set_item("aic", res.aic)?;
+        d.set_item("bic", res.bic)?;
+        d.set_item("converged", res.converged)?;
+    }
     Ok(d)
 }
 
@@ -2135,11 +2446,55 @@ fn theta_forecast<'py>(
     Ok(r.forecast.into_pyarray(py))
 }
 
+/// Builds the results dict for one fitted univariate GARCH model — the
+/// single owner of `garch_fit`'s key surface (everything except the opt-in
+/// `variance_forecast`). Reused verbatim for the per-series stage-1 dicts
+/// of `dcc_garch`'s `univariate` list, so the two surfaces cannot drift:
+/// same keys, same conversions, bit-identical values for the same fit.
+fn garch_results_dict<'py>(
+    py: Python<'py>,
+    r: &tsecon_garch::GarchResults,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("params", r.params.clone().into_pyarray(py))?;
+    d.set_item("param_names", r.param_names.clone())?;
+    let named = PyDict::new(py);
+    for (name, value) in r.param_names.iter().zip(r.params.iter()) {
+        named.set_item(name, *value)?;
+    }
+    d.set_item("params_named", named)?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("aic", r.aic)?;
+    d.set_item("bic", r.bic)?;
+    d.set_item("se_mle", r.se_mle.clone().into_pyarray(py))?;
+    d.set_item("se_robust", r.se_robust.clone().into_pyarray(py))?;
+    d.set_item("se_valid", r.se_valid.clone().into_pyarray(py))?;
+    d.set_item("boundary", r.boundary.clone().into_pyarray(py))?;
+    d.set_item("boundary_note", r.boundary_note.clone())?;
+    d.set_item("converged", r.converged)?;
+    d.set_item(
+        "conditional_volatility",
+        r.conditional_volatility.clone().into_pyarray(py),
+    )?;
+    d.set_item("std_residuals", r.std_residuals.clone().into_pyarray(py))?;
+    Ok(d)
+}
+
 /// Fit a univariate volatility model by QMLE.
 ///
 /// `vol`: "garch", "gjr", or "egarch"; `mean`: "zero" or "constant";
 /// `dist`: "normal" or "t". Conventions and results match the `arch`
-/// package (fixed-parameter logliks at machine precision). Returns both
+/// package (fixed-parameter logliks at machine precision) — with one
+/// deliberate exception: in `arch`, `arch_model(y, p=1, o=1, q=1)`
+/// silently *switches* the volatility process to GJR-GARCH, so a caller
+/// porting that call with `vol="garch"` would get a different model than
+/// they asked `arch` for. tsecon keeps the model choice explicit: `o` is
+/// the asymmetry order and only `vol="gjr"`/`"egarch"` have an asymmetry
+/// term, so passing `o > 0` with `vol="garch"` **raises** (pass
+/// `vol="gjr"` for the GJR model `o` implies, or drop `o` for symmetric
+/// GARCH) rather than being silently discarded. `o=None` (the default)
+/// means: no asymmetry term under `vol="garch"`, one asymmetry lag
+/// (`o=1`) under `vol="gjr"`/`"egarch"`. Returns both
 /// MLE and Bollerslev-Wooldridge robust standard errors. Estimation is
 /// scale-adaptive: the optimizer runs on an internally standardized
 /// series and maps the optimum back exactly, so rescaling the data
@@ -2147,10 +2502,11 @@ fn theta_forecast<'py>(
 /// coefficients unchanged — bit-exactly for power-of-two `c`) instead of
 /// changing it; decimal and percent returns give the same model.
 ///
-/// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
-/// `se_mle`, `se_robust`, `se_valid`, `boundary`, `boundary_note`,
-/// `converged`, `conditional_volatility`, `std_residuals`, and
-/// `variance_forecast` when `forecast_horizon > 0`.
+/// Returns dict keys: `params`, `param_names`, `params_named` (the
+/// `{name: value}` dict of the same estimates — see below), `loglik`,
+/// `aic`, `bic`, `se_mle`, `se_robust`, `se_valid`, `boundary`,
+/// `boundary_note`, `converged`, `conditional_volatility`,
+/// `std_residuals`, and `variance_forecast` when `forecast_horizon > 0`.
 ///
 /// **Filter timing** (matches `arch`): `conditional_volatility[t]` is the
 /// one-step-ahead volatility FOR period t, formed from information through
@@ -2188,8 +2544,16 @@ fn theta_forecast<'py>(
 /// m = 1..horizon — it carries no interval or coverage level, and none
 /// is implied (forecast distributions for GARCH variance paths require
 /// simulation, which is not yet exposed).
+///
+/// **Named access.** `params_named` is the same estimates as a
+/// `{name: value}` dict — exactly `dict(zip(param_names, params))`, in
+/// estimator order. Use `fit["params_named"]["omega"]` for named access
+/// on the raw dict: `fit["omega"]` is (deliberately) a `KeyError`, and a
+/// `.get("omega")` guard silently yields `None`/NaN that looks like a
+/// failed fit. The results facade's `GARCHResults.params_named()` method
+/// returns the same mapping.
 #[pyfunction]
-#[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = 1, q = 1, forecast_horizon = 0))]
+#[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = None, q = 1, forecast_horizon = 0))]
 #[allow(clippy::too_many_arguments)]
 fn garch_fit<'py>(
     py: Python<'py>,
@@ -2198,60 +2562,38 @@ fn garch_fit<'py>(
     mean: &str,
     dist: &str,
     p: usize,
-    o: usize,
+    o: Option<usize>,
     q: usize,
     forecast_horizon: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    use tsecon_garch::{DistSpec, GarchModel, GarchSpec, MeanSpec, VolSpec};
-    let spec = GarchSpec {
-        mean: match mean {
-            "zero" => MeanSpec::Zero,
-            "constant" => MeanSpec::Constant,
-            other => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown mean {other:?}; expected zero/constant"
-                )))
-            }
-        },
-        vol: match vol {
-            "garch" => VolSpec::Garch { p, q },
-            "gjr" => VolSpec::Gjr { p, o, q },
-            "egarch" => VolSpec::Egarch { p, o, q },
-            other => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown vol {other:?}; expected garch/gjr/egarch"
-                )))
-            }
-        },
-        dist: match dist {
-            "normal" => DistSpec::Normal,
-            "t" => DistSpec::StudentT,
-            other => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown dist {other:?}; expected normal/t"
-                )))
-            }
-        },
+    use tsecon_garch::GarchModel;
+    // `o` is meaningful only for the asymmetric volatility specs. Refuse
+    // rather than silently ignore (the same convention as cv_splits(embargo)
+    // and panel_fe(bandwidth)): accepting `o > 0` under vol="garch" would
+    // let an `arch` porter believe they fit the GJR model `arch_model(y,
+    // p=1, o=1, q=1)` builds, when the asymmetry term was dropped entirely.
+    // The sentinel default (None -> 0 for garch, 1 for gjr/egarch) keeps
+    // the old default calls working for every vol.
+    let o = match (vol, o) {
+        ("garch", Some(o_explicit)) if o_explicit > 0 => {
+            return Err(PyValueError::new_err(format!(
+                "o={o_explicit} has no effect under vol=\"garch\": o is the number of \
+                 asymmetry (threshold) lags and the symmetric GARCH(p, q) recursion \
+                 has no asymmetry term for it to parameterize, so it would be \
+                 silently discarded. Note the porting trap this guards: in the arch \
+                 package, arch_model(y, p=1, o=1, q=1) silently switches the model \
+                 to GJR-GARCH. Pass vol=\"gjr\" (or vol=\"egarch\") for a model with \
+                 an asymmetry term, or drop o (or set o=0) for symmetric GARCH."
+            )))
+        }
+        (_, Some(o_explicit)) => o_explicit,
+        ("garch", None) => 0,
+        (_, None) => 1,
     };
+    let spec = parse_garch_spec(vol, mean, dist, p, o, q, "dist")?;
     let model = GarchModel::new(&vec1(&y), spec).map_err(to_py)?;
     let r = model.fit().map_err(to_py)?;
-    let d = PyDict::new(py);
-    d.set_item("params", r.params.clone().into_pyarray(py))?;
-    d.set_item("param_names", r.param_names.clone())?;
-    d.set_item("loglik", r.loglik)?;
-    d.set_item("aic", r.aic)?;
-    d.set_item("bic", r.bic)?;
-    d.set_item("se_mle", r.se_mle.clone().into_pyarray(py))?;
-    d.set_item("se_robust", r.se_robust.clone().into_pyarray(py))?;
-    d.set_item("se_valid", r.se_valid.clone().into_pyarray(py))?;
-    d.set_item("boundary", r.boundary.clone().into_pyarray(py))?;
-    d.set_item("boundary_note", r.boundary_note.clone())?;
-    d.set_item("converged", r.converged)?;
-    d.set_item(
-        "conditional_volatility",
-        r.conditional_volatility.clone().into_pyarray(py),
-    )?;
-    d.set_item("std_residuals", r.std_residuals.clone().into_pyarray(py))?;
+    let d = garch_results_dict(py, &r)?;
     if forecast_horizon > 0 {
         d.set_item(
             "variance_forecast",
@@ -2271,10 +2613,31 @@ fn garch_fit<'py>(
 /// univariate AR regressions whose residual variances scale the prior
 /// (4 = the library default; 1 = the Giannone-Lenza-Primiceri 2015
 /// convention, their own `setpriors.m` — packages differ here and
-/// results are sensitive, see the Bayesian model card). Returns the
-/// posterior coefficient mean, posterior mean of Sigma, and the log
-/// marginal likelihood (the evidence — compare across lambda settings
-/// to tune tightness).
+/// results are sensitive, see the Bayesian model card).
+///
+/// Returns dict keys: `posterior_mean_coefs` (`Bbar`, `k x K` with
+/// `k = 1 + p*K` regressors — intercept row first, then lag blocks — and
+/// one column per equation), `sigma_posterior_mean` (`K x K`),
+/// `log_marginal_likelihood` (the evidence — compare across lambda
+/// settings to tune tightness), and the full NIW posterior:
+/// `omega_bar` (`k x k`), `s_bar` (`K x K`), `v_bar` (scalar).
+///
+/// THE NIW CONVENTION (exact). With `K` variables, the posterior is
+/// `vec(B) | Sigma, Y ~ N(vec(Bbar), Sigma (x) Obar)` and
+/// `Sigma | Y ~ InvWishart(Sbar, vbar)`, where `vec` stacks the COLUMNS
+/// of the `k x K` coefficient matrix (equation by equation —
+/// `B.flatten(order="F")` in numpy), so the Kronecker order is
+/// `np.kron(sigma, omega_bar)` (`Sigma (x) Obar`, NOT `Obar (x) Sigma`):
+/// the covariance between equations j and j' is `sigma[j, j'] * omega_bar`.
+/// Integrating Sigma out, the marginal posterior of each coefficient is a
+/// Student-t with `vbar - K + 1` degrees of freedom, and its posterior
+/// standard deviation (defined for `vbar > K + 1`) is, in numpy terms,
+/// exactly:
+///
+/// `sd = np.sqrt(np.outer(np.diag(omega_bar), np.diag(s_bar)) / (v_bar - K - 1))`
+///
+/// — a `(k, K)` array aligned entry-for-entry with `posterior_mean_coefs`.
+/// Worked example on the Bayesian model card (`docs/reference/model-cards/bayesian.md`).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, scale_ar = 4))]
 #[allow(clippy::too_many_arguments)]
@@ -2317,6 +2680,25 @@ fn bvar_fit<'py>(
             .collect::<Vec<_>>(),
     )?;
     d.set_item("log_marginal_likelihood", post.log_marginal_likelihood())?;
+    // The full NIW posterior, so uncertainty is computable from the results
+    // dict alone: vec(B)|Sigma,Y ~ N(vec(Bbar), Sigma ⊗ Obar) with
+    // column-stacked vec, Sigma|Y ~ IW(Sbar, vbar). See the docstring for
+    // the exact marginal-sd one-liner these keys support.
+    let ob = post.omega_bar();
+    d.set_item(
+        "omega_bar",
+        (0..ob.nrows())
+            .map(|i| (0..ob.ncols()).map(|j| ob[(i, j)]).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+    )?;
+    let sb = post.s_bar();
+    d.set_item(
+        "s_bar",
+        (0..sb.nrows())
+            .map(|i| (0..sb.ncols()).map(|j| sb[(i, j)]).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+    )?;
+    d.set_item("v_bar", post.v_bar())?;
     Ok(d)
 }
 
@@ -2670,6 +3052,31 @@ fn mcmc_diagnostics<'py>(
 /// information (statsmodels `cov_type="approx"`). Both are `None` with
 /// `cov_ok=False` when the information matrix is too ill-conditioned to
 /// invert honestly, which is a refusal, not a failure of the fit.
+///
+/// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
+/// `converged`, `bse`, `param_cov`, `cov_ok` (plus `cov_error` on a
+/// refusal), `se_valid`, `boundary`, `boundary_note`, `residuals`,
+/// `drift_uncertainty`, and — when `forecast_steps > 0` —
+/// `forecast_mean` and `forecast_se`, plus `forecast_lower`,
+/// `forecast_upper`, and `conf_alpha` when a band level is passed.
+///
+/// **Convergence and boundary flags.** `converged` reports whether the
+/// optimizer terminated by its convergence test (the best point found is
+/// returned either way — with `converged=False` treat it with care).
+/// `boundary` flags, per parameter, membership of an AR or MA block whose
+/// fitted polynomial has a root within 0.1% of the unit circle (the same
+/// epsilon `auto_arima` uses for admissibility): at such a
+/// stationarity/invertibility boundary the observed information is
+/// singular in the constrained direction by construction, the sampling
+/// distribution is non-standard (an MA root at the unit circle is the
+/// classic over-differencing pile-up), and no classical standard error
+/// exists — those `bse` entries are NaN with `se_valid` False, and
+/// `boundary_note` (a string, else None) says which block and why.
+/// Interior parameters' `bse` still come from the *full-vector* observed
+/// information, which a boundary degrades: treat them as approximate.
+/// Reduced-Hessian interior standard errors over the free directions only
+/// (the garch treatment) are a documented follow-up. `se_valid` is all
+/// False when `cov_ok` is False.
 #[pyfunction]
 #[pyo3(signature = (y, p = 1, d = 0, q = 0, seasonal = None, constant = true,
                     forecast_steps = 0, conf_alpha = None, drift_uncertainty = false))]
@@ -2734,9 +3141,10 @@ fn arima_fit<'py>(
 
 /// A fitted `ArimaResults` as the `arima_fit` result dict (shared by
 /// `arima_fit` and `auto_arima`, so the selected model's keys are the
-/// same either way): params/param_names/loglik/aic/bic, the
-/// refusal-capable bse/param_cov/cov_ok(/cov_error), residuals, and —
-/// when `forecast_steps > 0` — forecast_mean/forecast_se plus the
+/// same either way): params/param_names/loglik/aic/bic, `converged`, the
+/// refusal-capable bse/param_cov/cov_ok(/cov_error) with the
+/// boundary-aware se_valid/boundary/boundary_note flags, residuals, and
+/// — when `forecast_steps > 0` — forecast_mean/forecast_se plus the
 /// conf_alpha bands.
 fn arima_results_dict<'py>(
     py: Python<'py>,
@@ -2751,26 +3159,56 @@ fn arima_results_dict<'py>(
     dct.set_item("loglik", r.loglik)?;
     dct.set_item("aic", r.aic)?;
     dct.set_item("bic", r.bic)?;
+    // The optimizer's convergence certificate (the crate has carried it
+    // since the first release; the binding used to drop it). `false` means
+    // the reported parameters are the best point found, not a certified
+    // optimum — treat everything downstream with care.
+    dct.set_item("converged", r.converged)?;
+    // Stationarity/invertibility boundary proximity (the garch round-7
+    // pattern): parameters in an AR/MA block whose fitted polynomial has a
+    // root within 0.1% of the unit circle have no classical standard
+    // error — the observed information is singular in that direction by
+    // construction — so their bse entries are NaN'd with se_valid false
+    // and boundary_note says why.
+    let boundary = r.boundary();
+    let any_boundary = boundary.iter().any(|&b| b);
     // Parameter covariance is a refusal-capable diagnostic: an information
     // matrix too ill-conditioned to invert honestly yields None rather than
     // confident nonsense, and must never take down an otherwise-valid fit.
     match r.param_cov() {
         Ok(pc) => {
             let k = pc.k();
-            dct.set_item("bse", pc.se().to_vec().into_pyarray(py))?;
+            let mut bse = pc.se().to_vec();
+            if any_boundary {
+                for (s, &b) in bse.iter_mut().zip(boundary.iter()) {
+                    if b {
+                        *s = f64::NAN;
+                    }
+                }
+            }
+            let se_valid: Vec<bool> = bse
+                .iter()
+                .zip(boundary.iter())
+                .map(|(s, &b)| !b && s.is_finite())
+                .collect();
+            dct.set_item("bse", bse.into_pyarray(py))?;
             dct.set_item(
                 "param_cov",
                 pc.cov().to_vec().into_pyarray(py).reshape([k, k])?,
             )?;
             dct.set_item("cov_ok", true)?;
+            dct.set_item("se_valid", se_valid.into_pyarray(py))?;
         }
         Err(e) => {
             dct.set_item("bse", py.None())?;
             dct.set_item("param_cov", py.None())?;
             dct.set_item("cov_ok", false)?;
             dct.set_item("cov_error", e.to_string())?;
+            dct.set_item("se_valid", vec![false; r.params().len()].into_pyarray(py))?;
         }
     }
+    dct.set_item("boundary", boundary.into_pyarray(py))?;
+    dct.set_item("boundary_note", r.boundary_note())?;
     if forecast_steps > 0 {
         let fc = if drift_uncertainty {
             r.forecast_with(
@@ -2824,9 +3262,11 @@ fn arima_results_dict<'py>(
 /// ARIMAX yet).
 ///
 /// Returns the `arima_fit` result dict for the selected model (same
-/// keys: params, param_names, loglik, aic, bic, bse, param_cov, cov_ok,
-/// residuals, plus forecast keys when `forecast_steps > 0`) with the
-/// selection extras: `order` (p, d, q), `seasonal_order` (P, D, Q, s —
+/// keys: params, param_names, loglik, aic, bic, converged, bse,
+/// param_cov, cov_ok, se_valid, boundary, boundary_note, residuals, plus
+/// forecast keys when `forecast_steps > 0`; the boundary flags are False
+/// in practice here, since near-unit-root candidates are never selected)
+/// with the selection extras: `order` (p, d, q), `seasonal_order` (P, D, Q, s —
 /// all zero when non-seasonal), `constant`, `converged`, `ic`,
 /// `ic_value`, `aicc`, `stepwise`, `n_models`, `budget_exhausted`,
 /// `trace` (one dict per candidate tried: `order`, `seasonal_order`,
@@ -4216,6 +4656,22 @@ fn proxy_svar_bands<'py>(
 /// The default remains `"delta"`; pass `"second_order"` when the long
 /// horizons are the cells you will read.
 ///
+/// `rf_method="second_order_bc"` runs the same seeded simulation with the
+/// coefficient draws centred at Pope (1990) bias-corrected coefficients
+/// (Kilian stationarity shrinkage) instead of the raw least-squares fit --
+/// the convexity channel and the evaluation-point channel of the same
+/// long-horizon coupling at once. Measured on the same 500 seeded
+/// replications as "second_order": it is the only arm at or above nominal at
+/// EVERY horizon on both DGPs -- h=12 coverage 0.982 (card VAR(2), vs 0.964
+/// for "second_order") and 0.966 (routine VAR(1), vs 0.932, the residual gap
+/// "second_order" leaves) -- at a further width price (median ~1.8x the delta
+/// width at h=12, against ~1.45x). It buys a conservative floor, not a
+/// calibration: where "second_order" already reaches nominal it overshoots.
+/// Weak-instrument behaviour is again bit-identical (the correction enters
+/// v0 only). Prefer "second_order" for a best point-calibration estimate and
+/// "second_order_bc" when under-coverage at long horizons is the error you
+/// most need to rule out.
+///
 /// Propagation is conservative under weak instruments (measured 0.991 at a
 /// nominal 0.95), because the extra variance turns exterior sets into the whole
 /// line. That is the correct direction to err.
@@ -4243,8 +4699,8 @@ fn proxy_ar_sets<'py>(
     rf_seed: Option<u64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_ident::proxy_ar::{
-        proxy_ar_sets as ar_fn, psi_reduced_form_cov, psi_reduced_form_cov_mc, ArCritical,
-        ArReducedForm, ArVariance, ArVarianceSpec,
+        pope_bias_corrected_coefs, proxy_ar_sets as ar_fn, psi_reduced_form_cov,
+        psi_reduced_form_cov_mc, ArCritical, ArReducedForm, ArVariance, ArVarianceSpec,
     };
 
     let r = var_results(&data, lags, trend)?;
@@ -4318,8 +4774,8 @@ fn proxy_ar_sets<'py>(
     if rf_method == "delta" && (rf_draws.is_some() || rf_seed.is_some()) {
         return Err(PyValueError::new_err(
             "rf_draws/rf_seed were given but rf_method=\"delta\" ignores them: they \
-             parameterize the \"second_order\" simulation, so pass \
-             rf_method=\"second_order\" (or drop them)",
+             parameterize the \"second_order\"/\"second_order_bc\" simulation, so pass \
+             one of those rf_method values (or drop them)",
         ));
     }
     let psi_var = if reduced_form_uncertainty {
@@ -4336,12 +4792,33 @@ fn proxy_ar_sets<'py>(
                 rf_seed.unwrap_or(0),
             )
             .map_err(to_py)?,
+            "second_order_bc" => {
+                // The Pope bias is a property of the VAR least-squares fit,
+                // so it scales with the VAR effective sample (t), not the
+                // proxy overlap. On a full-overlap proxy the two coincide,
+                // which is the configuration the correction was measured on.
+                let coefs_bc =
+                    pope_bias_corrected_coefs(&r.coefs, r.sigma_u.as_ref(), t).map_err(to_py)?;
+                psi_reduced_form_cov_mc(
+                    horizon,
+                    &coefs_bc,
+                    cov_alpha.as_ref(),
+                    &gamma,
+                    n_proxy,
+                    rf_draws.unwrap_or(256),
+                    rf_seed.unwrap_or(0),
+                )
+                .map_err(to_py)?
+            }
             other => {
                 return Err(PyValueError::new_err(format!(
                     "unknown rf_method {other:?}; expected \"delta\" (the first-order \
-                     delta method, the default) or \"second_order\" (seeded exact \
+                     delta method, the default), \"second_order\" (seeded exact \
                      propagation of the coefficient uncertainty through the nonlinear \
-                     MA map -- the measured long-horizon repair)"
+                     MA map -- the measured long-horizon repair), or \
+                     \"second_order_bc\" (the same simulation centred at Pope-bias-\
+                     corrected coefficients -- uniformly conservative at long \
+                     horizons, at a further width price)"
                 )))
             }
         })
@@ -4696,12 +5173,45 @@ fn hetero_svar<'py>(
     Ok(d)
 }
 
-fn panel_se(se_type: &str, bandwidth: f64) -> PyResult<tsecon_panel::PanelSeType> {
+/// The Driscoll-Kraay lag-truncation bandwidth used when the caller does
+/// not pass one (`bandwidth=None`): Bartlett weights over lags 1..=4, the
+/// same value the pre-0.6.0 signature carried as its literal default.
+const PANEL_DK_DEFAULT_BANDWIDTH: f64 = 4.0;
+
+fn panel_se(
+    caller: &str,
+    se_type: &str,
+    bandwidth: Option<f64>,
+) -> PyResult<tsecon_panel::PanelSeType> {
     use tsecon_panel::PanelSeType::*;
+    // `bandwidth` is the Driscoll-Kraay kernel truncation and acts ONLY
+    // under se_type="driscoll_kraay". An explicitly passed bandwidth under
+    // any other se_type is refused rather than silently absorbed (the same
+    // convention as cv_splits(embargo) and garch_fit(o)): accepting it
+    // would let a caller believe their standard errors carry a serial-
+    // correlation correction when nothing changed. The None sentinel is
+    // what distinguishes "user passed bandwidth" from "default".
     match se_type {
-        "nonrobust" => Ok(NonRobust),
-        "cluster" | "cluster_entity" => Ok(ClusterEntity),
-        "driscoll_kraay" | "dk" => Ok(DriscollKraay { bandwidth }),
+        "nonrobust" | "cluster" | "cluster_entity" => {
+            if let Some(bw) = bandwidth {
+                return Err(PyValueError::new_err(format!(
+                    "{caller}: bandwidth={bw} has no effect under se_type={se_type:?}: \
+                     bandwidth is the Driscoll-Kraay kernel truncation lag, and \
+                     {se_type} standard errors use no kernel, so there is nothing \
+                     for it to truncate and the argument would be silently \
+                     absorbed. Pass se_type=\"driscoll_kraay\" for the bandwidth \
+                     to act, or drop bandwidth to keep {se_type} standard errors."
+                )));
+            }
+            Ok(if se_type == "nonrobust" {
+                NonRobust
+            } else {
+                ClusterEntity
+            })
+        }
+        "driscoll_kraay" | "dk" => Ok(DriscollKraay {
+            bandwidth: bandwidth.unwrap_or(PANEL_DK_DEFAULT_BANDWIDTH),
+        }),
         other => Err(PyValueError::new_err(format!(
             "unknown se_type {other:?}; expected nonrobust/cluster/driscoll_kraay"
         ))),
@@ -4711,16 +5221,19 @@ fn panel_se(se_type: &str, bandwidth: f64) -> PyResult<tsecon_panel::PanelSeType
 /// Fixed-effects (within) panel OLS with panel-robust standard errors.
 ///
 /// `outcome` is `N x T`; `regressors` is `k x N x T`. `se_type`:
-/// "nonrobust", "cluster" (by entity), or "driscoll_kraay" (uses
-/// `bandwidth`). Matches linearmodels PanelOLS conventions.
+/// "nonrobust", "cluster" (by entity), or "driscoll_kraay".
+/// `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
+/// `se_type="driscoll_kraay"` (default when omitted there: 4.0); passing
+/// it explicitly with any other `se_type` **raises** instead of being
+/// silently absorbed. Matches linearmodels PanelOLS conventions.
 #[pyfunction]
-#[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = 4.0))]
+#[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = None))]
 fn panel_fe<'py>(
     py: Python<'py>,
     outcome: numpy::PyReadonlyArray2<'py, f64>,
     regressors: numpy::PyReadonlyArray3<'py, f64>,
     se_type: &str,
-    bandwidth: f64,
+    bandwidth: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_var::tsecon_linalg::faer::Mat;
     let o = outcome.as_array();
@@ -4733,7 +5246,7 @@ fn panel_fe<'py>(
     let data = tsecon_panel::PanelData::balanced(outcome_m, regs).map_err(to_py)?;
     let fit = tsecon_panel::panel_ols_fe(&data).map_err(to_py)?;
     let inf = fit
-        .inference(panel_se(se_type, bandwidth)?)
+        .inference(panel_se("panel_fe", se_type, bandwidth)?)
         .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("params", fit.params.clone().into_pyarray(py))?;
@@ -4750,6 +5263,12 @@ fn panel_fe<'py>(
 /// and the Mei-Sheng-Shi split-panel jackknife
 /// `bias_correction="spj"` (corrected points AND the reference
 /// adjusted-score cluster / Driscoll-Kraay SEs).
+///
+/// `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
+/// `se_type="driscoll_kraay"` (the default se_type; bandwidth defaults to
+/// 4.0 when omitted there). Passing bandwidth explicitly with
+/// `se_type="cluster"`/`"nonrobust"` **raises** instead of being silently
+/// absorbed — those estimators use no kernel.
 ///
 /// JACKKNIFE CAVEAT (measured): the DJ correction removes the O(1/T) bias
 /// but inflates the estimator's finite-sample variance while `se` is kept
@@ -4790,7 +5309,7 @@ fn panel_fe<'py>(
 /// whatever the DK standard errors get wrong at short T (the documented
 /// short-T DK caveat).
 #[pyfunction]
-#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = 4.0, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
+#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = None, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
 #[allow(clippy::too_many_arguments)]
 fn panel_lp<'py>(
     py: Python<'py>,
@@ -4799,7 +5318,7 @@ fn panel_lp<'py>(
     horizon: usize,
     n_lag_controls: usize,
     se_type: &str,
-    bandwidth: f64,
+    bandwidth: Option<f64>,
     cumulative: bool,
     jackknife: bool,
     bias_correction: &str,
@@ -4810,8 +5329,11 @@ fn panel_lp<'py>(
     let o = outcome.as_array();
     let outcome_m = Mat::from_fn(o.nrows(), o.ncols(), |i, j| o[(i, j)]);
     let data = tsecon_panel::PanelData::balanced(outcome_m, vec![]).map_err(to_py)?;
-    let mut cfg =
-        tsecon_panel::PanelLpConfig::new(horizon, n_lag_controls, panel_se(se_type, bandwidth)?);
+    let mut cfg = tsecon_panel::PanelLpConfig::new(
+        horizon,
+        n_lag_controls,
+        panel_se("panel_lp", se_type, bandwidth)?,
+    );
     cfg.cumulative = cumulative;
     cfg.jackknife = jackknife;
     cfg.bias_correction = match bias_correction {
@@ -5115,9 +5637,13 @@ fn spectral_detrend(d: &str) -> PyResult<tsecon_spectral::Detrend> {
 }
 
 /// Periodogram power spectral density (one FFT). Matches
-/// `scipy.signal.periodogram` to ~1e-15. Returns `freqs` and `psd`.
+/// `scipy.signal.periodogram` to ~1e-15 — including the default
+/// `detrend="constant"` (mean removal), which is SciPy's own default, so
+/// default call matches default call. Pass `detrend="none"` for the raw
+/// (un-demeaned) periodogram, `"linear"` to remove a least-squares trend.
+/// Returns `freqs` and `psd`.
 #[pyfunction]
-#[pyo3(signature = (x, fs = 1.0, window = "boxcar", detrend = "none"))]
+#[pyo3(signature = (x, fs = 1.0, window = "boxcar", detrend = "constant"))]
 fn periodogram<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -5140,9 +5666,13 @@ fn periodogram<'py>(
 }
 
 /// Welch's averaged-periodogram PSD (periodic Hann, 50% overlap by
-/// default). Matches `scipy.signal.welch`. Returns `freqs` and `psd`.
+/// default). Matches `scipy.signal.welch` — including the default
+/// `detrend="constant"` (per-segment mean removal), which is SciPy's own
+/// default, so default call matches default call. Pass `detrend="none"`
+/// for no detrending, `"linear"` for per-segment trend removal.
+/// Returns `freqs` and `psd`.
 #[pyfunction]
-#[pyo3(signature = (x, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "none"))]
+#[pyo3(signature = (x, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "constant"))]
 fn welch<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -5169,9 +5699,12 @@ fn welch<'py>(
 }
 
 /// Magnitude-squared coherence between two series via Welch cross-spectra.
-/// Matches `scipy.signal.coherence`. Returns `freqs` and `coherence` in [0, 1].
+/// Matches `scipy.signal.coherence` — including the default
+/// `detrend="constant"` (per-segment mean removal), which is SciPy's own
+/// default, so default call matches default call.
+/// Returns `freqs` and `coherence` in [0, 1].
 #[pyfunction]
-#[pyo3(signature = (x, y, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "none"))]
+#[pyo3(signature = (x, y, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "constant"))]
 #[allow(clippy::too_many_arguments)]
 fn coherence<'py>(
     py: Python<'py>,
@@ -5207,9 +5740,19 @@ fn data_to_faer(
 }
 
 /// Johansen cointegration test (Johansen 1991). `data` is T x k (rows are
-/// observations, oldest first). Returns eigenvalues, trace and
-/// max-eigenvalue statistics with their 90/95/99% critical values, and the
-/// selected rank at 5%. Matches statsmodels `coint_johansen` (det_order=0).
+/// observations, oldest first). Returns eigenvalues, the `S_11`-orthonormal
+/// eigenvectors `evec` (k x k; the first r columns span the estimated
+/// cointegrating space at rank r), trace and max-eigenvalue statistics with
+/// their 90/95/99% critical values, and the selected rank at 5%. Matches
+/// statsmodels `coint_johansen` (det_order=0) — the **unrestricted
+/// constant** convention (a constant in the data, outside the
+/// cointegration relation).
+///
+/// Deterministic-case warning: `vecm`'s default is `deterministic="n"`
+/// (no deterministic terms), a DIFFERENT case from this test's
+/// unrestricted constant — on drifting data the two estimate visibly
+/// different cointegrating vectors. To fit the VECM this test ranks, call
+/// `vecm(..., deterministic="co")`.
 #[pyfunction]
 #[pyo3(signature = (data, k_ar_diff = 1))]
 fn johansen<'py>(
@@ -5221,6 +5764,7 @@ fn johansen<'py>(
     let r = tsecon_coint::johansen(m.as_ref(), k_ar_diff).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("eig", r.eig.clone().into_pyarray(py))?;
+    d.set_item("evec", mat_to_vec2_bayes(&r.evec))?;
     d.set_item("trace_stat", r.trace_stat.clone().into_pyarray(py))?;
     d.set_item("max_eig_stat", r.max_eig_stat.clone().into_pyarray(py))?;
     let tc: Vec<Vec<f64>> = r.trace_crit.iter().map(|c| c.to_vec()).collect();
@@ -5239,23 +5783,52 @@ fn johansen<'py>(
 }
 
 /// VECM maximum-likelihood estimation at a given cointegrating rank
-/// (Johansen). Returns the loadings alpha, cointegrating vectors beta
-/// (normalized beta[:r,:r] = I), short-run Gamma, and the log-likelihood.
-/// Matches statsmodels VECM.
+/// (Johansen). Returns the loadings `alpha`, cointegrating vectors `beta`
+/// (normalized beta[:r,:r] = I), short-run `gamma`, the deterministic
+/// coefficients `det_coef`, the residual covariance `sigma_u`, and the
+/// log-likelihood `llf`.
+///
+/// `deterministic` names the statsmodels VECM case: `"n"` (default) — NO
+/// deterministic terms, matching statsmodels `VECM(...,
+/// deterministic="n")` exactly; `"co"` — an unrestricted constant outside
+/// the cointegration relation (each short-run equation gains an
+/// intercept, returned as the k x 1 `det_coef`), matching
+/// `deterministic="co"`. The restricted cases ("ci", "li", "lo",
+/// seasons) are not implemented and are rejected with an error.
+///
+/// Deterministic-case warning: `johansen` in this library assumes an
+/// unrestricted constant (statsmodels `coint_johansen` det_order=0) — the
+/// `"co"` case, NOT this function's `"n"` default. On drifting data the
+/// two cases estimate visibly different cointegrating vectors; fit with
+/// `deterministic="co"` when the rank came from `johansen`.
 #[pyfunction]
-#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1))]
+#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1, deterministic = "n"))]
 fn vecm<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
     k_ar_diff: usize,
     coint_rank: usize,
+    deterministic: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let det = match deterministic {
+        "n" => tsecon_coint::VecmDeterministic::None,
+        "co" => tsecon_coint::VecmDeterministic::Constant,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown deterministic {other:?}; expected \"n\" (no deterministic terms) \
+                 or \"co\" (unrestricted constant — the case johansen's det_order=0 \
+                 convention assumes). The statsmodels restricted cases \"ci\"/\"li\"/\"lo\" \
+                 and seasonal dummies are not implemented."
+            )))
+        }
+    };
     let m = data_to_faer(&data);
-    let r = tsecon_coint::fit_vecm(m.as_ref(), k_ar_diff, coint_rank).map_err(to_py)?;
+    let r = tsecon_coint::fit_vecm_det(m.as_ref(), k_ar_diff, coint_rank, det).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("alpha", mat_to_vec2_bayes(&r.alpha))?;
     d.set_item("beta", mat_to_vec2_bayes(&r.beta))?;
     d.set_item("gamma", mat_to_vec2_bayes(&r.gamma))?;
+    d.set_item("det_coef", mat_to_vec2_bayes(&r.det_coef))?;
     d.set_item("sigma_u", mat_to_vec2_bayes(&r.sigma_u))?;
     d.set_item("llf", r.llf)?;
     Ok(d)
@@ -5340,12 +5913,146 @@ fn engle_granger<'py>(
     Ok(d)
 }
 
+/// The `ou_fit` result as the library's dict grammar (shared with
+/// `spread_zscore`'s internal fit).
+fn ou_fit_dict<'py>(py: Python<'py>, r: &tsecon_coint::OuFit) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("kappa", r.kappa)?;
+    d.set_item("kappa_se", r.kappa_se)?;
+    d.set_item("mu", r.mu)?;
+    d.set_item("mu_se", r.mu_se)?;
+    d.set_item("sigma", r.sigma)?;
+    d.set_item("sigma_se", r.sigma_se)?;
+    d.set_item("half_life", r.half_life)?;
+    match r.half_life_ci {
+        Some((lo, hi)) => d.set_item("half_life_ci", (lo, hi))?,
+        None => d.set_item("half_life_ci", py.None())?,
+    }
+    d.set_item("level", r.ci_level)?;
+    match r.stationary_sd {
+        Some(sd) => d.set_item("stationary_sd", sd)?,
+        None => d.set_item("stationary_sd", py.None())?,
+    }
+    d.set_item("mean_reverting", r.mean_reverting)?;
+    d.set_item("phi", r.phi)?;
+    d.set_item("phi_se", r.phi_se)?;
+    d.set_item("c", r.c)?;
+    d.set_item("c_se", r.c_se)?;
+    d.set_item("eta2", r.eta2)?;
+    d.set_item("loglik", r.loglik)?;
+    d.set_item("n_obs", r.n_obs)?;
+    d.set_item("dt", r.dt)?;
+    Ok(d)
+}
+
+/// Ornstein-Uhlenbeck mean-reversion fit for a spread, by the
+/// exact-discretization Gaussian MLE (a closed-form AR(1) mapping — no
+/// iterative optimizer).
+///
+/// For `dX = kappa (mu - X) dt + sigma dW` observed at step `dt`, the exact
+/// discretization is the AR(1) `X_{t+1} = c + phi X_t + eps`,
+/// `phi = exp(-kappa dt)`, `c = mu (1 - phi)`,
+/// `Var(eps) = eta2 = sigma^2 (1 - phi^2) / (2 kappa)`; the MLE
+/// (conditioning on the first observation) is the AR(1) OLS with variance
+/// `RSS/n` — exactly what statsmodels `AutoReg(x, lags=1).fit()` computes —
+/// mapped back through the bijection. Returns `kappa`, `mu`, `sigma` with
+/// delta-method standard errors `kappa_se`, `mu_se`, `sigma_se` from the
+/// AR(1) information; `half_life` (= ln 2 / kappa, the expected time for a
+/// deviation to halve) with `half_life_ci` at confidence `level` — the
+/// level-scale kappa interval `kappa +- z se` mapped through ln 2 / kappa,
+/// the construction the shipped Monte Carlo measured as covering closer to
+/// nominal than the log-scale alternative in every cell (see the model
+/// card); its upper endpoint is `inf` when the kappa interval crosses zero,
+/// i.e. when "no mean reversion" cannot be ruled out at `level`; the stationary
+/// standard deviation `stationary_sd` (= sigma / sqrt(2 kappa), the z-score
+/// denominator); the honest flag `mean_reverting`; the AR(1) discretization
+/// leg `phi`, `phi_se`, `c`, `c_se`, `eta2`, `loglik`; and `n_obs` (= T - 1
+/// transitions), `dt`.
+///
+/// A fit with `phi >= 1` (AR root at/over unity — a "spread" showing no
+/// mean reversion) is returned honestly rather than raised:
+/// `mean_reverting = False`, `half_life = inf`, and
+/// `half_life_ci = stationary_sd = None` (no stationary distribution
+/// exists, and Gaussian asymptotics fail at the unit root). Note the
+/// well-known finite-sample **upward bias** in `kappa`: roughly
+/// `4 / (n * dt)` — four over the sample's time *span* — for persistent
+/// spreads (Kendall 1954; Tang & Chen 2009); a longer span, not finer
+/// sampling, is what shrinks it.
+#[pyfunction]
+#[pyo3(signature = (x, dt = 1.0, level = 0.95))]
+fn ou_fit<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    dt: f64,
+    level: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let xv = vec1(&x);
+    let r = tsecon_coint::ou_fit(&xv, dt, level).map_err(to_py)?;
+    ou_fit_dict(py, &r)
+}
+
+/// Z-score of a spread against the stationary Ornstein-Uhlenbeck law
+/// `N(mu, sigma^2 / (2 kappa))` — the entry/exit signal of a
+/// mean-reversion strategy: `zscore = (x - mu) / stationary_sd` with
+/// `stationary_sd = sigma / sqrt(2 kappa)`.
+///
+/// Pass all three of `kappa`, `mu`, `sigma` (e.g. from a previous `ou_fit`,
+/// scoring new data against a frozen fit), or none of them, in which case
+/// they are fitted from `x` by `ou_fit(x, dt)` first. Passing only some is
+/// refused — a z-score against a half-specified law would silently mix
+/// fitted and asserted parameters. Returns `zscore`, the `kappa` / `mu` /
+/// `sigma` actually used, `stationary_sd`, and `fitted` (True when the
+/// parameters came from the internal fit; call `ou_fit` directly for their
+/// standard errors and the half-life). Refuses `kappa <= 0` — a
+/// non-mean-reverting process has no stationary distribution, so the
+/// z-score does not exist (if `ou_fit` reported `mean_reverting = False`,
+/// re-check the cointegrating relation before trading the spread).
+#[pyfunction]
+#[pyo3(signature = (x, kappa = None, mu = None, sigma = None, dt = 1.0))]
+fn spread_zscore<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    kappa: Option<f64>,
+    mu: Option<f64>,
+    sigma: Option<f64>,
+    dt: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let xv = vec1(&x);
+    let d = PyDict::new(py);
+    let (kappa, mu, sigma, fitted) = match (kappa, mu, sigma) {
+        (Some(k), Some(m), Some(s)) => (k, m, s, false),
+        (None, None, None) => {
+            let fit = tsecon_coint::ou_fit(&xv, dt, 0.95).map_err(to_py)?;
+            (fit.kappa, fit.mu, fit.sigma, true)
+        }
+        _ => {
+            return Err(PyValueError::new_err(
+                "spread_zscore: pass all three of kappa, mu, sigma (to score x against \
+                 a known/frozen OU law, e.g. a previous ou_fit) or none of them (to fit \
+                 them from x first); passing only some would silently mix fitted and \
+                 asserted parameters",
+            ))
+        }
+    };
+    let z = tsecon_coint::spread_zscore(&xv, kappa, mu, sigma).map_err(to_py)?;
+    d.set_item("zscore", z.into_pyarray(py))?;
+    d.set_item("kappa", kappa)?;
+    d.set_item("mu", mu)?;
+    d.set_item("sigma", sigma)?;
+    d.set_item("stationary_sd", sigma / (2.0 * kappa).sqrt())?;
+    d.set_item("fitted", fitted)?;
+    Ok(d)
+}
+
 /// Markov-switching autoregression (Hamilton 1989), fitted by EM.
 ///
 /// Estimates a `k_regimes`-state MS-AR(`order`) with a common AR and
 /// (optionally) switching variances, starting from an internal
 /// quantile-based initialization. Returns the estimated transition matrix,
-/// per-regime means and variances, log-likelihood, the full `(n, k_regimes)`
+/// per-regime means and variances, the estimated AR coefficients `ar` — a
+/// length-`order` array `(phi_1, .., phi_p)`, shared across regimes (this
+/// binding always fits the Hamilton common-AR specification, applied to
+/// deviations `y_t - mu_{S_t}`) — log-likelihood, the full `(n, k_regimes)`
 /// smoothed (`smoothed_prob`, Kim 1994) and filtered (`filtered_prob`,
 /// Hamilton filter) regime-probability matrices where `n = len(y) - order`,
 /// the MAP regime path, and expected regime durations.
@@ -5408,6 +6115,12 @@ fn markov_switching_ar<'py>(
     let d = PyDict::new(py);
     d.set_item("transition", fit.params.transition_matrix())?;
     d.set_item("means", fit.params.means().to_vec())?;
+    // The estimated AR coefficients (phi_1, .., phi_p). This binding always
+    // fits the common-AR (Hamilton) specification, so the crate returns one
+    // shared block; emit it as a flat length-`order` array.
+    let ar_blocks = fit.params.ar();
+    debug_assert_eq!(ar_blocks.len(), 1, "binding fits switching_ar = false");
+    d.set_item("ar", ar_blocks[0].clone().into_pyarray(py))?;
     d.set_item("variances", fit.params.variances().to_vec())?;
     d.set_item("loglik", fit.loglik)?;
     d.set_item("iterations", fit.iterations)?;
@@ -5630,12 +6343,60 @@ fn umidas<'py>(
     Ok(d)
 }
 
-fn garch11_spec() -> tsecon_garch::GarchSpec {
-    tsecon_garch::GarchSpec {
-        mean: tsecon_garch::MeanSpec::Zero,
-        vol: tsecon_garch::VolSpec::Garch { p: 1, q: 1 },
-        dist: tsecon_garch::DistSpec::Normal,
-    }
+/// Parses the univariate GARCH specification strings shared by `garch_fit`
+/// and the multivariate first stages (`ccc_garch`/`dcc_garch`/`dcc_test`).
+///
+/// `dist_kw` names the distribution keyword in error messages: `"dist"` for
+/// `garch_fit`, `"univariate_dist"` for the multivariate entry points —
+/// where `dcc_garch`'s separate `dist=` selects the second-stage
+/// *correlation* likelihood, not the per-series innovation density.
+fn parse_garch_spec(
+    vol: &str,
+    mean: &str,
+    dist: &str,
+    p: usize,
+    o: usize,
+    q: usize,
+    dist_kw: &str,
+) -> PyResult<tsecon_garch::GarchSpec> {
+    use tsecon_garch::{DistSpec, GarchSpec, MeanSpec, VolSpec};
+    Ok(GarchSpec {
+        mean: match mean {
+            "zero" => MeanSpec::Zero,
+            "constant" => MeanSpec::Constant,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown mean {other:?}; expected zero/constant"
+                )))
+            }
+        },
+        vol: match vol {
+            "garch" => VolSpec::Garch { p, q },
+            "gjr" => VolSpec::Gjr { p, o, q },
+            "egarch" => VolSpec::Egarch { p, o, q },
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown vol {other:?}; expected garch/gjr/egarch"
+                )))
+            }
+        },
+        dist: match dist {
+            "normal" => DistSpec::Normal,
+            "t" => DistSpec::StudentT,
+            other => {
+                let note = if dist_kw == "dist" {
+                    ""
+                } else {
+                    " (univariate_dist is the per-series innovation density \
+                     of the first stage; dcc_garch's separate dist= selects \
+                     the second-stage correlation likelihood)"
+                };
+                return Err(PyValueError::new_err(format!(
+                    "unknown {dist_kw} {other:?}; expected normal/t{note}"
+                )));
+            }
+        },
+    })
 }
 
 fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
@@ -5643,21 +6404,91 @@ fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
     (0..a.ncols()).map(|j| a.column(j).to_vec()).collect()
 }
 
-/// CCC-GARCH (Bollerslev 1990): a GARCH(1,1) per series with a constant
-/// conditional correlation. `returns` is `T x k`. Returns the correlation
-/// matrix and the log-likelihood.
+/// CCC-GARCH (Bollerslev 1990): a univariate GARCH per series with a
+/// *constant* conditional correlation `R`, so `H_t = D_t R D_t` with
+/// `D_t = diag(sigma_{1,t}, ..., sigma_{k,t})`. `returns` is `T x k`.
+///
+/// The univariate stage defaults to the historical zero-mean Normal
+/// GARCH(1,1) — the default call is bit-identical to earlier releases —
+/// and is configurable with the same knobs as `garch_fit`: `vol`
+/// ("garch"/"gjr"/"egarch"), `mean` ("zero"/"constant"), `p`, `o`, `q`,
+/// and `univariate_dist` ("normal"/"t"), the per-series innovation
+/// density. The kwarg is named `univariate_dist` (not `dist`) on purpose,
+/// to stay distinct from `dcc_garch`'s `dist=`, which configures the
+/// second-stage correlation likelihood — a different object.
+///
+/// Returns dict keys: `correlation` (the constant `k x k` matrix `R`),
+/// `loglik`, `sigma2` (`(T, k)` nested list — the per-series conditional
+/// variance paths of the univariate stage), `covariance` (`(T, k, k)`
+/// nested list — the in-sample conditional covariance path
+/// `H_t = D_t R D_t`; `np.asarray(r["covariance"])` gives the 3-D array,
+/// `[t][i][j]` like `dcc_garch`'s `correlation`), and — when
+/// `forecast_horizon > 0` — `covariance_forecast` (`(horizon, k, k)`
+/// nested list, entry `[h-1]` the h-step-ahead matrix `H_{T+h}`) plus
+/// `variance_forecast` (`(horizon, k)` per-series analytic conditional
+/// variance forecasts, identical to each series' own
+/// `garch_fit(..., forecast_horizon=h)` path).
+///
+/// TIMING CONVENTION (identical to `dcc_garch`'s). `sigma2[t]` — and
+/// therefore `covariance[t] = H_t` — conditions on information through
+/// t-1: the univariate filter builds `sigma2_t` from `eps_{t-1}` and
+/// `sigma2_{t-1}` (the standard GARCH filter timing, matching `arch` and
+/// `garch_fit`), and `R` is constant. `covariance[-1]` is the last
+/// IN-SAMPLE matrix, not a forecast; the one-step-ahead `H_{T+1}` is
+/// `covariance_forecast[0]`.
+///
+/// FORECAST CONVENTION. Because `R` never moves, the CCC covariance
+/// forecast is analytic and exact at *every* horizon (Bollerslev 1990):
+/// `H_{T+m} = D_{T+m} R D_{T+m}` with `D_{T+m}` from the per-series
+/// analytic variance forecasts — no approximation enters at any h,
+/// unlike DCC's h >= 2 normalization approximation.
 #[pyfunction]
+#[pyo3(signature = (returns, forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[allow(clippy::too_many_arguments)]
 fn ccc_garch<'py>(
     py: Python<'py>,
     returns: numpy::PyReadonlyArray2<'py, f64>,
+    forecast_horizon: usize,
+    vol: &str,
+    mean: &str,
+    univariate_dist: &str,
+    p: usize,
+    o: usize,
+    q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let series = returns_to_series(&returns);
-    let fit = tsecon_mgarch::CccGarch::new(garch11_spec())
+    let fit = tsecon_mgarch::CccGarch::new(spec)
         .fit(&series)
         .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("correlation", mat_to_vec2_bayes(&fit.correlation))?;
     d.set_item("loglik", fit.loglik)?;
+    d.set_item("sigma2", fit.stage.sigma2.clone())?;
+    let mut cov = Vec::with_capacity(fit.nobs());
+    for t in 0..fit.nobs() {
+        cov.push(mat_to_vec2_bayes(
+            &fit.conditional_covariance(t).map_err(to_py)?,
+        ));
+    }
+    d.set_item("covariance", cov)?;
+    if forecast_horizon > 0 {
+        let fc = fit.forecast_covariance(forecast_horizon).map_err(to_py)?;
+        d.set_item(
+            "covariance_forecast",
+            fc.iter().map(mat_to_vec2_bayes).collect::<Vec<_>>(),
+        )?;
+        // Per-series analytic variance paths, re-shaped time-major to match
+        // dcc_garch's `variance_forecast` convention.
+        let mut var_paths = Vec::with_capacity(fit.k());
+        for res in &fit.stage.univariate {
+            var_paths.push(res.forecast_variance(forecast_horizon).map_err(to_py)?);
+        }
+        let variance: Vec<Vec<f64>> = (0..forecast_horizon)
+            .map(|m| var_paths.iter().map(|p| p[m]).collect())
+            .collect();
+        d.set_item("variance_forecast", variance)?;
+    }
     Ok(d)
 }
 
@@ -5676,11 +6507,40 @@ fn ccc_garch<'py>(
 /// `nu`). The default call (`variant="dcc"`, `dist="normal"`) is
 /// bit-identical to earlier releases; all new keys are additive.
 ///
+/// The univariate first stage defaults to the historical zero-mean Normal
+/// GARCH(1,1) and is configurable with the same knobs as `garch_fit`:
+/// `vol` ("garch"/"gjr"/"egarch"), `mean` ("zero"/"constant"), `p`, `o`,
+/// `q`, and `univariate_dist` ("normal"/"t"), the per-series innovation
+/// density. **`univariate_dist` and `dist` are different objects**: `dist`
+/// is the second-stage likelihood over the *standardized joint residuals*
+/// (the correlation dynamics), `univariate_dist` the per-series density of
+/// stage one — you can (and often should) mix them, e.g.
+/// `vol="gjr", dist="t"` with Normal-QMLE univariate stages.
+///
 /// Returns dict keys: `a`, `b`, `g` (0.0 unless `variant="adcc"`), `qbar`,
 /// `loglik`, `converged`, `variant`, `dist`, `correlation` (the full
 /// in-sample conditional correlation path, `(T, k, k)` as a nested list —
 /// `np.asarray(r["correlation"])` gives the 3-D array, `[t][i][j]` like
-/// `var_irf`), `correlation_last`, `nu` (only when `dist="t"`), and — when
+/// `var_irf`), `correlation_last`, `sigma2` (`(T, k)` nested list — the
+/// per-series conditional variance paths of the univariate stage),
+/// `covariance` (`(T, k, k)` nested list — the in-sample conditional
+/// covariance path `H_t = D_t R_t D_t`, `D_t = diag(sigma_{i,t})`),
+/// `univariate` (a list of `k` dicts, input order — the full per-series
+/// stage-1 GARCH results with exactly `garch_fit`'s keys and conventions:
+/// `params`/`param_names`/`params_named`, `se_mle`/`se_robust`/`se_valid`,
+/// `boundary`/`boundary_note`, `loglik`/`aic`/`bic`, `converged`,
+/// `conditional_volatility`, per-series `std_residuals`; values are
+/// bit-identical to calling `garch_fit` on that column with the same
+/// spec), `std_residuals` (`(T, k)` nested list — the stacked stage-1
+/// standardized residuals `z[t][i] = eps_{i,t} / sqrt(sigma2[t][i])`, the
+/// driver of the correlation recursion; `eps` is the raw return under the
+/// default `mean="zero"`, the demeaned return under `mean="constant"`,
+/// and the timing is `sigma2`'s: entry `t` divides by the variance formed
+/// from information through t-1), `nu` (only when `dist="t"`), `nbar`
+/// (only when `variant="adcc"` — the `(k, k)` asymmetric targeting matrix
+/// `Nbar = (1/T) sum_t n_t n_t'`, `n_t = min(z_t, 0)`, which sets the CES
+/// stationarity bound via `delta = lambda_max(Qbar^{-1/2} Nbar
+/// Qbar^{-1/2})`), and — when
 /// `forecast_horizon > 0` — `correlation_forecast` and
 /// `covariance_forecast` (`(horizon, k, k)` nested lists, entry `[h-1]` is
 /// the h-step-ahead matrix) plus `variance_forecast`
@@ -5689,12 +6549,17 @@ fn ccc_garch<'py>(
 /// TIMING CONVENTION (read before comparing R's). `correlation[t]` is
 /// `R_t`, the conditional correlation *given information through t-1*: the
 /// recursion builds `Q_t` from `z_{t-1}` and `Q_{t-1}` (with `Q_0 = Qbar`),
-/// the standard filter convention. `correlation_last` is simply the last
+/// the standard filter convention. `sigma2[t]` and
+/// `covariance[t] = H_t = D_t R_t D_t` follow the SAME convention — the
+/// univariate filter builds `sigma2_t` from `eps_{t-1}` and `sigma2_{t-1}`
+/// (matching `arch` and `garch_fit`), so `H_t` conditions on information
+/// through t-1 in both factors. `correlation_last` is simply the last
 /// in-sample matrix `correlation[-1]` = `R_{T-1}` (0-indexed) — it
 /// conditions on information through T-2 and is NOT stale and NOT a
 /// forecast. The one-step-ahead forecast `R_{T+1}` additionally uses the
 /// final residual `z_T`; it is `correlation_forecast[0]`, which therefore
-/// differs from `correlation_last`.
+/// differs from `correlation_last` (and `covariance[-1]` likewise differs
+/// from `covariance_forecast[0]`).
 ///
 /// FORECAST CONVENTION. `correlation_forecast[0]` (h = 1) is exact in the
 /// information set: `Q_{T+1} = (1-a-b)Qbar + a z_T z_T' + b Q_T`,
@@ -5710,15 +6575,23 @@ fn ccc_garch<'py>(
 /// applies (the asymmetric term cancels against its targeting intercept
 /// in expectation); under `"cdcc"` S replaces Qbar.
 #[pyfunction]
-#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0))]
+#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[allow(clippy::too_many_arguments)]
 fn dcc_garch<'py>(
     py: Python<'py>,
     returns: numpy::PyReadonlyArray2<'py, f64>,
     variant: &str,
     dist: &str,
     forecast_horizon: usize,
+    vol: &str,
+    mean: &str,
+    univariate_dist: &str,
+    p: usize,
+    o: usize,
+    q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_mgarch::{CorrDist, DccVariant};
+    let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let v = match variant {
         "dcc" => DccVariant::Dcc,
         "cdcc" => DccVariant::Cdcc,
@@ -5742,7 +6615,7 @@ fn dcc_garch<'py>(
         }
     };
     let series = returns_to_series(&returns);
-    let fit = tsecon_mgarch::DccGarch::new(garch11_spec())
+    let fit = tsecon_mgarch::DccGarch::new(spec)
         .with_variant(v)
         .with_dist(cd)
         .fit(&series)
@@ -5769,6 +6642,32 @@ fn dcc_garch<'py>(
     if let Some(last) = fit.correlation_path.last() {
         d.set_item("correlation_last", mat_to_vec2_bayes(last))?;
     }
+    d.set_item("sigma2", fit.stage.sigma2.clone())?;
+    // The stage-1 remainder: the per-series GARCH results (garch_fit's
+    // exact dict per series — one shared builder, so the values are
+    // bit-identical to a direct garch_fit under the same spec), the
+    // stacked standardized residuals that drive the correlation
+    // recursion, and (ADCC) the asymmetric targeting matrix Nbar.
+    let univariate = pyo3::types::PyList::new(
+        py,
+        fit.stage
+            .univariate
+            .iter()
+            .map(|r| garch_results_dict(py, r))
+            .collect::<PyResult<Vec<_>>>()?,
+    )?;
+    d.set_item("univariate", univariate)?;
+    d.set_item("std_residuals", fit.stage.z.clone())?;
+    if let Some(nbar) = &fit.nbar {
+        d.set_item("nbar", mat_to_vec2_bayes(nbar))?;
+    }
+    let mut cov = Vec::with_capacity(fit.nobs());
+    for t in 0..fit.nobs() {
+        cov.push(mat_to_vec2_bayes(
+            &fit.conditional_covariance(t).map_err(to_py)?,
+        ));
+    }
+    d.set_item("covariance", cov)?;
     if forecast_horizon > 0 {
         let fc = fit.forecast(forecast_horizon).map_err(to_py)?;
         d.set_item(
@@ -5791,14 +6690,20 @@ fn dcc_garch<'py>(
 }
 
 /// Engle-Sheppard (2001) test of constant conditional correlation — the
-/// CCC-vs-DCC diagnostic. `returns` is `T x k` (k >= 2); a GARCH(1,1) is
-/// fitted to each series (the same first stage `ccc_garch`/`dcc_garch`
-/// use), the residuals are jointly standardized by the *symmetric* inverse
-/// square root of the constant correlation matrix, and the stacked
-/// off-diagonal outer products are regressed on a constant and `lags` of
-/// themselves (one pooled regression across all pairs). Under H0 (constant
-/// correlation) all coefficients are zero and `stat` is asymptotically
-/// chi-squared with `df = lags + 1` degrees of freedom.
+/// CCC-vs-DCC diagnostic. `returns` is `T x k` (k >= 2); a univariate
+/// GARCH is fitted to each series (the same first stage
+/// `ccc_garch`/`dcc_garch` use — zero-mean Normal GARCH(1,1) by default,
+/// configurable with the same `vol`/`mean`/`univariate_dist`/`p`/`o`/`q`
+/// kwargs so the diagnostic can run under the exact univariate spec you
+/// intend to fit), the residuals are jointly standardized by the
+/// *symmetric* inverse square root of the constant correlation matrix,
+/// and the stacked off-diagonal outer products are regressed on a
+/// constant and `lags` of themselves (one pooled regression across all
+/// pairs). Under H0 (constant correlation) all coefficients are zero and
+/// `stat` is asymptotically chi-squared with `df = lags + 1` degrees of
+/// freedom. `univariate_dist` is the per-series innovation density —
+/// named to match `dcc_garch`, whose separate `dist=` is the second-stage
+/// correlation likelihood (a different object, not part of this test).
 ///
 /// Returns dict keys: `stat` (the Wald statistic), `df`, `p_value` (small
 /// values reject constant correlation in favor of DCC-type dynamics),
@@ -5807,15 +6712,22 @@ fn dcc_garch<'py>(
 /// purpose, so univariate GARCH misfit does not masquerade as correlation
 /// dynamics.
 #[pyfunction]
-#[pyo3(signature = (returns, lags = 5))]
+#[pyo3(signature = (returns, lags = 5, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[allow(clippy::too_many_arguments)]
 fn dcc_test<'py>(
     py: Python<'py>,
     returns: numpy::PyReadonlyArray2<'py, f64>,
     lags: usize,
+    vol: &str,
+    mean: &str,
+    univariate_dist: &str,
+    p: usize,
+    o: usize,
+    q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let series = returns_to_series(&returns);
-    let r =
-        tsecon_mgarch::constant_correlation_test(&series, garch11_spec(), lags).map_err(to_py)?;
+    let r = tsecon_mgarch::constant_correlation_test(&series, spec, lags).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("stat", r.stat)?;
     d.set_item("df", r.df)?;
@@ -6151,9 +7063,13 @@ fn iv_gmm<'py>(
 /// - `"rolling"`: fixed-width rolling-origin CV; `train` is the window
 ///   width.
 /// - `"purged_kfold"`: López de Prado purged K-fold with a `purge` gap on
-///   both sides of each test fold and an `embargo` after it, to prevent
-///   train/test leakage from serial correlation (`k` folds; `train` is
-///   ignored).
+///   both sides of each test fold and an `embargo` after the purged window,
+///   to prevent train/test leakage from serial correlation (`k` folds;
+///   `train` is ignored). Following AFML ch. 7 (and mlfinlab), the embargo
+///   is measured from the END of the purged window, so the exclusions ADD:
+///   the right-hand gap after each test block is `purge + embargo`
+///   indices. (Releases up to 0.5.0 used `max(purge, embargo)`, silently
+///   absorbing any embargo no wider than the purge — see the CHANGELOG.)
 ///
 /// `purge` acts on EVERY scheme: it drops the last `purge` indices from the
 /// end of each training window, opening a gap before the test block.
@@ -6299,6 +7215,149 @@ fn lasso_path<'py>(
     Ok(d)
 }
 
+// ---------------------------------------------------------------------------
+// Python-callable point forecasters (backtest + conformal bases)
+// ---------------------------------------------------------------------------
+
+/// The `forecaster`/`base` argument shared by `backtest` and the conformal
+/// entry points: a built-in name (the pre-existing string surface, unchanged)
+/// or a Python callable `(train, horizon) -> array-like` driven through the
+/// engines' `(train_slice, horizon) -> Vec<f64>` closure shape.
+enum ForecasterArg<'py> {
+    /// A built-in forecaster name.
+    Name(String),
+    /// A Python callable bridged into the Rust closure.
+    Callable(Bound<'py, PyAny>),
+}
+
+impl<'py> ForecasterArg<'py> {
+    /// Parse the Python-side argument: `None` -> the built-in `default`, a
+    /// `str` -> `Name`, any callable -> `Callable`; anything else is a
+    /// teaching TypeError naming `param`.
+    fn parse(obj: Option<Bound<'py, PyAny>>, default: &str, param: &str) -> PyResult<Self> {
+        match obj {
+            None => Ok(ForecasterArg::Name(default.to_string())),
+            Some(o) => {
+                if let Ok(s) = o.extract::<String>() {
+                    Ok(ForecasterArg::Name(s))
+                } else if o.is_callable() {
+                    Ok(ForecasterArg::Callable(o))
+                } else {
+                    Err(PyTypeError::new_err(format!(
+                        "{param} must be a built-in forecaster name (str) or a \
+                         callable f(train, horizon) -> array-like of `horizon` \
+                         point forecasts; got an instance of {}",
+                        py_type_name(&o)
+                    )))
+                }
+            }
+        }
+    }
+}
+
+/// The type name of a Python object, for error messages.
+fn py_type_name(obj: &Bound<'_, PyAny>) -> String {
+    obj.get_type()
+        .name()
+        .map(|n| n.to_string())
+        .unwrap_or_else(|_| "<unknown type>".to_string())
+}
+
+/// A short display name for a Python forecaster callable in error messages
+/// and result dicts.
+fn py_callable_name(f: &Bound<'_, PyAny>) -> String {
+    f.getattr("__qualname__")
+        .or_else(|_| f.getattr("__name__"))
+        .ok()
+        .and_then(|n| n.extract::<String>().ok())
+        .unwrap_or_else(|| "<forecaster callable>".to_string())
+}
+
+/// The placeholder message carried by the crate error that ferries a stashed
+/// Python exception out of an engine; users see the re-raised PyErr instead.
+const PY_FORECASTER_FAILED: &str =
+    "Python forecaster callable failed; the binding re-raises the Python exception";
+
+/// Call a Python forecaster callable on one training window: hand it a fresh
+/// **read-only** float64 ndarray copy of the slice (the engine's leakage
+/// discipline — the callable only ever sees data through the origin) plus the
+/// number of steps requested, and coerce the return to exactly `h` finite
+/// point forecasts. Failures are teaching errors naming the callable, the
+/// origin, and the training window; a Python exception raised inside the
+/// callable is re-raised with that context, chaining the original as the
+/// `__cause__` (its traceback survives — the `gmm_nonlinear` re-raise
+/// pattern, plus context).
+fn call_py_forecaster(
+    callable: &Bound<'_, PyAny>,
+    train: &[f64],
+    h: usize,
+    origin: usize,
+    train_start: usize,
+    label: &str,
+) -> PyResult<Vec<f64>> {
+    let py = callable.py();
+    let name = py_callable_name(callable);
+    let at = format!(
+        "{label} origin {origin} (training window y[{train_start}..={origin}], {} observation(s); \
+         {h} step(s) requested)",
+        train.len()
+    );
+    let arr = PyArray1::from_slice(py, train);
+    // Mark the training array read-only before the callable sees it: the
+    // contract is look-don't-touch (it is a private copy either way, but a
+    // silent in-place edit would hide a bug in the callable).
+    let flags = PyDict::new(py);
+    flags.set_item("write", false)?;
+    arr.call_method("setflags", (), Some(&flags))?;
+    let ret = callable.call1((arr, h)).map_err(|cause| {
+        let err = PyRuntimeError::new_err(format!(
+            "forecaster callable {name} raised at {at}; the original exception \
+             is chained as the __cause__"
+        ));
+        err.set_cause(py, Some(cause));
+        err
+    })?;
+    let fc: Vec<f64> = ret.extract().map_err(|_| {
+        PyTypeError::new_err(format!(
+            "forecaster callable {name} returned an instance of {}, which does \
+             not coerce to a 1-D float sequence, at {at}; return an array-like \
+             of exactly {h} point forecast(s) for steps 1..={h} (a bare scalar \
+             is not accepted — return a length-1 sequence for one step)",
+            py_type_name(&ret)
+        ))
+    })?;
+    if fc.len() != h {
+        return Err(PyValueError::new_err(format!(
+            "forecaster callable {name} returned {} forecast(s) at {at}, but \
+             the engine asked for exactly {h} — one per step 1..={h}. (With \
+             refit_every > 1 a refit origin is asked for more steps than \
+             `horizon`, to roll its block forward.)",
+            fc.len()
+        )));
+    }
+    if let Some((i, &v)) = fc.iter().enumerate().find(|(_, v)| !v.is_finite()) {
+        return Err(PyValueError::new_err(format!(
+            "forecaster callable {name} returned a non-finite forecast ({v}) at \
+             step {} of {h} at {at}; every point forecast must be a finite float",
+            i + 1
+        )));
+    }
+    Ok(fc)
+}
+
+/// Prefer a Python exception stashed by the callable bridge (the true cause,
+/// carrying the original traceback) over the crate error that ferried it out
+/// of the engine.
+fn reraise_stashed<T, E: std::fmt::Display>(
+    result: Result<T, E>,
+    slot: &std::cell::RefCell<Option<PyErr>>,
+) -> PyResult<T> {
+    if let Some(e) = slot.borrow_mut().take() {
+        return Err(e);
+    }
+    result.map_err(to_py)
+}
+
 /// Pseudo-out-of-sample backtest over a rolling or expanding window.
 ///
 /// Re-estimates `forecaster` along the series and evaluates horizons
@@ -6306,13 +7365,38 @@ fn lasso_path<'py>(
 /// grows from `train` observations) or `"rolling"` (fixed width `train`).
 /// `refit_every` sets the refit cadence. Built-in forecasters: `"naive"`,
 /// `"drift"`, `"mean"`, `"seasonal_naive"`, `"theta"` (`period` is used by
-/// the seasonal ones). Returns the origin indices, per-horizon `forecasts`
+/// the seasonal ones); the default `None` means `"naive"`.
+///
+/// `forecaster` may instead be **any Python callable** — the hook that runs
+/// a real model (statsmodels, sklearn, anything) through this engine's
+/// leakage discipline. The contract: it is called as
+/// `forecaster(train, horizon)`, where `train` is a **read-only float64
+/// ndarray holding only the training window** for that refit origin `t`
+/// (expanding: `y[0..=t]`; rolling: the `train` most recent observations
+/// ending at `t` — the engine never hands the callable anything after the
+/// origin) and `horizon` is the number of steps requested; it must return
+/// an array-like of exactly `horizon` finite point forecasts for steps
+/// `1..=horizon` counted from the end of `train`. With `refit_every > 1`
+/// the callable runs only at refit origins and `horizon` grows to at most
+/// `refit_every - 1 + horizon`, so its multi-step path can be rolled
+/// forward across the block. Everything that must not peek at the future —
+/// scaling, tuning, transformation choice — belongs inside the callable,
+/// which only ever sees the training slice. A Python exception raised
+/// inside the callable aborts the backtest and is re-raised naming the
+/// failing origin and training window, with the original exception chained
+/// as the `__cause__`; wrong-length, non-coercible, or non-finite returns
+/// raise teaching errors naming the callable, origin, and window. The Rust
+/// engine loop is sequential either way (refit blocks in order, under the
+/// GIL), so a callable costs one Python call per refit origin and the
+/// string forecasters' speed and results are unchanged.
+///
+/// Returns the origin indices, per-horizon `forecasts`
 /// and `targets`, and an `accuracy` table (ME/MSE/RMSE/MAE/MdAE, plus
 /// MAPE/sMAPE/MASE/RMSSE where defined) whose scaled measures use the
 /// first training window at `insample_period` — never the test sample.
 #[pyfunction]
 #[pyo3(signature = (y, window = "expanding", train = 20, horizon = 1, refit_every = 1,
-                    forecaster = "naive", period = 1, insample_period = 1))]
+                    forecaster = None, period = 1, insample_period = 1))]
 #[allow(clippy::too_many_arguments)]
 fn backtest<'py>(
     py: Python<'py>,
@@ -6321,7 +7405,7 @@ fn backtest<'py>(
     train: usize,
     horizon: usize,
     refit_every: usize,
-    forecaster: &str,
+    forecaster: Option<Bound<'py, PyAny>>,
     period: usize,
     insample_period: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
@@ -6329,6 +7413,7 @@ fn backtest<'py>(
         backtest::Window, drift, historical_mean, naive, seasonal_naive, theta_forecast, Backtest,
         ForecastError,
     };
+    let forecaster = ForecasterArg::parse(forecaster, "naive", "forecaster")?;
     let win = match window {
         "expanding" => Window::Expanding { min_train: train },
         "rolling" => Window::Rolling { width: train },
@@ -6339,33 +7424,63 @@ fn backtest<'py>(
         }
     };
     let bt = Backtest::new(win, horizon, refit_every).map_err(to_py)?;
-    // Dispatch the forecaster string to a built-in point forecaster.
-    let fc = forecaster.to_string();
-    let point = |train: &[f64], h: usize| -> Result<Vec<f64>, ForecastError> {
-        match fc.as_str() {
-            "naive" => Ok(naive(train, h, 0.95)?.mean),
-            "drift" => Ok(drift(train, h, 0.95)?.mean),
-            "mean" => Ok(historical_mean(train, h, 0.95)?.mean),
-            "seasonal_naive" => Ok(seasonal_naive(train, period, h, 0.95)?.mean),
-            "theta" => Ok(theta_forecast(train, period, h)?.forecast),
-            // Unreachable: the forecaster name is validated before `run`.
-            _ => Err(ForecastError::NonFinite {
-                what: "forecaster",
-                index: 0,
-                value: f64::NAN,
-            }),
+    let res = match &forecaster {
+        ForecasterArg::Name(fc_name) => {
+            // Dispatch the forecaster string to a built-in point forecaster.
+            let fc = fc_name.clone();
+            let point = |train: &[f64], h: usize| -> Result<Vec<f64>, ForecastError> {
+                match fc.as_str() {
+                    "naive" => Ok(naive(train, h, 0.95)?.mean),
+                    "drift" => Ok(drift(train, h, 0.95)?.mean),
+                    "mean" => Ok(historical_mean(train, h, 0.95)?.mean),
+                    "seasonal_naive" => Ok(seasonal_naive(train, period, h, 0.95)?.mean),
+                    "theta" => Ok(theta_forecast(train, period, h)?.forecast),
+                    // Unreachable: the forecaster name is validated before `run`.
+                    _ => Err(ForecastError::NonFinite {
+                        what: "forecaster",
+                        index: 0,
+                        value: f64::NAN,
+                    }),
+                }
+            };
+            if !matches!(
+                fc_name.as_str(),
+                "naive" | "drift" | "mean" | "seasonal_naive" | "theta"
+            ) {
+                return Err(PyValueError::new_err(format!(
+                    "unknown forecaster {fc_name:?}; expected one of naive, drift, mean, \
+                     seasonal_naive, theta"
+                )));
+            }
+            bt.run(&vec1(&y), point).map_err(to_py)?
+        }
+        ForecasterArg::Callable(f) => {
+            // Bridge the Python callable into the same closure the string
+            // forecasters use. The crate engine (`Backtest::run`) is a plain
+            // sequential loop over refit blocks — no rayon — and this binding
+            // holds the GIL for its whole body, so each bridge call runs on
+            // the calling thread with no parallelism to lose.
+            let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
+            // First origin under both schemes is `train - 1`; the m-th
+            // closure call is at refit origin `t0 + m * refit_every`,
+            // mirroring the engine's refit-block walk.
+            let t0 = train - 1;
+            let mut call_idx = 0usize;
+            let bridge = |tr: &[f64], max_h: usize| -> Result<Vec<f64>, ForecastError> {
+                let t = t0 + call_idx * refit_every;
+                call_idx += 1;
+                let start = t + 1 - tr.len();
+                call_py_forecaster(f, tr, max_h, t, start, "backtest").map_err(|e| {
+                    *err_slot.borrow_mut() = Some(e);
+                    ForecastError::BaseForecaster {
+                        message: PY_FORECASTER_FAILED.to_string(),
+                    }
+                })
+            };
+            let r = bt.run(&vec1(&y), bridge);
+            reraise_stashed(r, &err_slot)?
         }
     };
-    if !matches!(
-        fc.as_str(),
-        "naive" | "drift" | "mean" | "seasonal_naive" | "theta"
-    ) {
-        return Err(PyValueError::new_err(format!(
-            "unknown forecaster {forecaster:?}; expected one of naive, drift, mean, \
-             seasonal_naive, theta"
-        )));
-    }
-    let res = bt.run(&vec1(&y), point).map_err(to_py)?;
 
     let mut forecasts = Vec::with_capacity(horizon);
     let mut targets = Vec::with_capacity(horizon);
@@ -6421,25 +7536,47 @@ fn parse_conformal_order(order: Option<Vec<i64>>) -> PyResult<(usize, usize, usi
 }
 
 /// The boxed base-forecaster closure the conformal entry points share:
-/// (training slice, horizon) -> point forecasts.
-type ConformalBaseFn =
-    Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, tsecon_forecast::ForecastError>>;
+/// (training slice, horizon) -> point forecasts. The lifetime lets a
+/// Python-callable base borrow the callable and the PyErr stash slot.
+type ConformalBaseFn<'a> =
+    Box<dyn FnMut(&[f64], usize) -> Result<Vec<f64>, tsecon_forecast::ForecastError> + 'a>;
 
 /// Build the base point-forecaster closure shared by the conformal entry
-/// points. Every base sees only the training slice it is handed.
-fn conformal_base(
-    base: &str,
+/// points. Every base sees only the training slice it is handed; a
+/// Python-callable base goes through the same bridge as `backtest`
+/// (read-only float64 training window, teaching errors, the true PyErr
+/// stashed in `err_slot` for re-raise once the engine returns).
+fn conformal_base<'a>(
+    base: &'a ForecasterArg<'_>,
     period: usize,
     lags: usize,
     order: (usize, usize, usize),
-) -> PyResult<ConformalBaseFn> {
+    err_slot: &'a std::cell::RefCell<Option<PyErr>>,
+) -> PyResult<ConformalBaseFn<'a>> {
     use tsecon_forecast::{
         ar_forecast, drift, historical_mean, naive, seasonal_naive, theta_forecast, ForecastError,
     };
     let wrap = |e: tsecon_arima::ArimaError| ForecastError::BaseForecaster {
         message: e.to_string(),
     };
-    let f: ConformalBaseFn = match base {
+    let name = match base {
+        ForecasterArg::Name(n) => n.as_str(),
+        ForecasterArg::Callable(c) => {
+            return Ok(Box::new(move |train, h| {
+                // The conformal engines drive expanding windows anchored at
+                // index 0 (`residual_grid`) plus one forward call on the full
+                // sample, so the origin is always the last index of the slice.
+                let t = train.len() - 1;
+                call_py_forecaster(c, train, h, t, 0, "conformal base").map_err(|e| {
+                    *err_slot.borrow_mut() = Some(e);
+                    ForecastError::BaseForecaster {
+                        message: PY_FORECASTER_FAILED.to_string(),
+                    }
+                })
+            }));
+        }
+    };
+    let f: ConformalBaseFn<'a> = match name {
         "theta" => Box::new(move |train, h| Ok(theta_forecast(train, period, h)?.forecast)),
         "naive" => Box::new(|train, h| Ok(naive(train, h, 0.95)?.mean)),
         "drift" => Box::new(|train, h| Ok(drift(train, h, 0.95)?.mean)),
@@ -6531,10 +7668,19 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// infinite (err 0); past 1 it is the degenerate point interval (err 1) —
 /// the paper's conventions.
 ///
-/// `base` is the wrapped point forecaster for split/aci: `"theta"`,
-/// `"naive"`, `"drift"`, `"mean"`, `"seasonal_naive"` (with `period`),
-/// `"ar"` (least squares on `lags` lags), or `"arima"` (with
-/// `order=(p, d, q)`, constant included). `calib` defaults to `n // 4`
+/// `base` is the wrapped point forecaster for split/aci: `"theta"` (the
+/// default; `None` means `"theta"`), `"naive"`, `"drift"`, `"mean"`,
+/// `"seasonal_naive"` (with `period`), `"ar"` (least squares on `lags`
+/// lags), or `"arima"` (with `order=(p, d, q)`, constant included) — or
+/// **any Python callable** with the `backtest` contract
+/// `base(train, horizon) -> array-like of horizon point forecasts`, where
+/// `train` is a read-only float64 ndarray holding only the training window
+/// (the engines drive expanding windows anchored at the start of the
+/// sample, plus one forward call on the full sample). Exceptions and
+/// malformed returns get the same origin-naming treatment as in
+/// `backtest`, and the returned `base` key reports the callable's name as
+/// `"<callable NAME>"`. `method="enbpi"` trains its own AR ensemble and
+/// takes no callable base. `calib` defaults to `n // 4`
 /// residuals per horizon; `n_eval` (aci) defaults to `n // 5`.
 ///
 /// Returns dict keys (all methods): `mean`, `lower`, `upper`, `level`
@@ -6547,7 +7693,7 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// `alpha_trajectory`, `err`, `realized_coverage` (all per horizon over
 /// the online window), and `n_eval`.
 #[pyfunction]
-#[pyo3(signature = (y, horizon = 1, method = "split", base = "theta", alpha = 0.1,
+#[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
                     calib = None, mode = "symmetric", period = 1, gamma = 0.005,
                     n_eval = None, lags = 1, n_boot = 25, seed = 0,
                     optimize_beta = true, order = None))]
@@ -6557,7 +7703,7 @@ fn conformal_forecast<'py>(
     y: PyReadonlyArray1<'py, f64>,
     horizon: usize,
     method: &str,
-    base: &str,
+    base: Option<Bound<'py, PyAny>>,
     alpha: f64,
     calib: Option<usize>,
     mode: &str,
@@ -6571,6 +7717,12 @@ fn conformal_forecast<'py>(
     order: Option<Vec<i64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast as fc;
+    let base = ForecasterArg::parse(base, "theta", "base")?;
+    let base_label = match &base {
+        ForecasterArg::Name(n) => n.clone(),
+        ForecasterArg::Callable(c) => format!("<callable {}>", py_callable_name(c)),
+    };
+    let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
     let yv = vec1(&y);
     let n = yv.len();
     let (calib, n_eval) = conformal_windows(n, calib, n_eval);
@@ -6581,15 +7733,21 @@ fn conformal_forecast<'py>(
     d.set_item("alpha", alpha)?;
     match method {
         "split" => {
-            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let mut f = conformal_base(
+                &base,
+                period,
+                lags,
+                parse_conformal_order(order)?,
+                &err_slot,
+            )?;
             let opts = fc::SplitConformalOptions {
                 horizon,
                 alpha,
                 calib,
                 symmetric,
             };
-            let r = fc::split_conformal(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?;
-            d.set_item("base", base)?;
+            let r = reraise_stashed(fc::split_conformal(&yv, &opts, |t, h| f(t, h)), &err_slot)?;
+            d.set_item("base", &base_label)?;
             d.set_item("mean", r.mean.into_pyarray(py))?;
             d.set_item("lower", r.lower.into_pyarray(py))?;
             d.set_item("upper", r.upper.into_pyarray(py))?;
@@ -6603,12 +7761,12 @@ fn conformal_forecast<'py>(
             d.set_item("mode", mode)?;
         }
         "enbpi" => {
-            if base != "ar" {
+            if !matches!(&base, ForecasterArg::Name(n) if n == "ar") {
                 return Err(PyValueError::new_err(format!(
                     "method=\"enbpi\" trains its own bootstrap ensemble of AR \
                      least-squares learners on a lagged design, so base must be \
-                     \"ar\" (got {base:?}); choose the design with lags=... . \
-                     To wrap {base:?} itself, use method=\"split\" or \"aci\"."
+                     \"ar\" (got {base_label:?}); choose the design with lags=... . \
+                     To wrap {base_label:?} itself, use method=\"split\" or \"aci\"."
                 )));
             }
             let opts = fc::EnbpiOptions {
@@ -6635,7 +7793,13 @@ fn conformal_forecast<'py>(
             d.set_item("optimize_beta", optimize_beta)?;
         }
         "aci" => {
-            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let mut f = conformal_base(
+                &base,
+                period,
+                lags,
+                parse_conformal_order(order)?,
+                &err_slot,
+            )?;
             let opts = fc::AciOptions {
                 horizon,
                 alpha,
@@ -6643,8 +7807,8 @@ fn conformal_forecast<'py>(
                 calib,
                 n_eval,
             };
-            let r = fc::aci(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?;
-            d.set_item("base", base)?;
+            let r = reraise_stashed(fc::aci(&yv, &opts, |t, h| f(t, h)), &err_slot)?;
+            d.set_item("base", &base_label)?;
             d.set_item("mean", r.mean.into_pyarray(py))?;
             d.set_item("lower", r.lower.into_pyarray(py))?;
             d.set_item("upper", r.upper.into_pyarray(py))?;
@@ -6692,14 +7856,16 @@ fn conformal_forecast<'py>(
 /// sample, residual window sliding forward by `batch` as labels are
 /// revealed (horizon must be 1; within a batch, lag values beyond the last
 /// reveal are plug-in ensemble predictions). `base`, `period`, `lags`,
-/// `order` as in `conformal_forecast`.
+/// `order` as in `conformal_forecast` — including a Python callable
+/// `base(train, horizon)` for split/aci, with the same read-only
+/// training-window contract and teaching errors.
 ///
 /// Returns dict keys: `origins`, `n_eval`, `horizon`, `level`, `alpha`,
 /// `method`, `base`, and per-horizon lists `mean`, `lower`, `upper`,
 /// `err` (missed-target indicators), plus `realized_coverage` (per
 /// horizon). ACI adds `alpha_trajectory`; EnbPI adds `batch`.
 #[pyfunction]
-#[pyo3(signature = (y, horizon = 1, method = "split", base = "theta", alpha = 0.1,
+#[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
                     calib = None, mode = "symmetric", period = 1, gamma = 0.005,
                     n_eval = None, lags = 1, n_boot = 25, batch = 1, seed = 0,
                     optimize_beta = true, order = None))]
@@ -6709,7 +7875,7 @@ fn conformal_backtest<'py>(
     y: PyReadonlyArray1<'py, f64>,
     horizon: usize,
     method: &str,
-    base: &str,
+    base: Option<Bound<'py, PyAny>>,
     alpha: f64,
     calib: Option<usize>,
     mode: &str,
@@ -6724,13 +7890,25 @@ fn conformal_backtest<'py>(
     order: Option<Vec<i64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast as fc;
+    let base = ForecasterArg::parse(base, "theta", "base")?;
+    let base_label = match &base {
+        ForecasterArg::Name(n) => n.clone(),
+        ForecasterArg::Callable(c) => format!("<callable {}>", py_callable_name(c)),
+    };
+    let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
     let yv = vec1(&y);
     let n = yv.len();
     let (calib, n_eval) = conformal_windows(n, calib, n_eval);
     let symmetric = parse_conformal_mode(mode, method)?;
     let online = match method {
         "split" => {
-            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let mut f = conformal_base(
+                &base,
+                period,
+                lags,
+                parse_conformal_order(order)?,
+                &err_slot,
+            )?;
             let opts = fc::SplitOnlineOptions {
                 horizon,
                 alpha,
@@ -6738,10 +7916,19 @@ fn conformal_backtest<'py>(
                 n_eval,
                 symmetric,
             };
-            fc::split_conformal_online(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?
+            reraise_stashed(
+                fc::split_conformal_online(&yv, &opts, |t, h| f(t, h)),
+                &err_slot,
+            )?
         }
         "aci" => {
-            let mut f = conformal_base(base, period, lags, parse_conformal_order(order)?)?;
+            let mut f = conformal_base(
+                &base,
+                period,
+                lags,
+                parse_conformal_order(order)?,
+                &err_slot,
+            )?;
             let opts = fc::AciOptions {
                 horizon,
                 alpha,
@@ -6749,13 +7936,13 @@ fn conformal_backtest<'py>(
                 calib,
                 n_eval,
             };
-            fc::aci(&yv, &opts, |t, h| f(t, h)).map_err(to_py)?.online
+            reraise_stashed(fc::aci(&yv, &opts, |t, h| f(t, h)), &err_slot)?.online
         }
         "enbpi" => {
-            if base != "ar" {
+            if !matches!(&base, ForecasterArg::Name(n) if n == "ar") {
                 return Err(PyValueError::new_err(format!(
                     "method=\"enbpi\" trains its own AR least-squares ensemble; \
-                     base must be \"ar\" (got {base:?})"
+                     base must be \"ar\" (got {base_label:?})"
                 )));
             }
             if horizon != 1 {
@@ -6788,7 +7975,14 @@ fn conformal_backtest<'py>(
 
     let d = PyDict::new(py);
     d.set_item("method", method)?;
-    d.set_item("base", if method == "enbpi" { "ar" } else { base })?;
+    d.set_item(
+        "base",
+        if method == "enbpi" {
+            "ar"
+        } else {
+            base_label.as_str()
+        },
+    )?;
     d.set_item("horizon", online.horizon)?;
     d.set_item("alpha", online.alpha)?;
     d.set_item("level", online.level)?;
@@ -7322,10 +8516,13 @@ fn tripower_quarticity(returns: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
     tsecon_realized::tripower_quarticity(r).map_err(to_py)
 }
 
-/// Barndorff-Nielsen-Shephard ratio jump test (BNS 2004; Huang & Tauchen
-/// 2005). Returns a dict with `ratio`, the studentized relative-jump
-/// z-statistic; compare against a standard-normal critical value (larger =
-/// stronger evidence of a jump).
+/// Barndorff-Nielsen-Shephard ratio jump test in the Huang & Tauchen
+/// (2005) form: their finite-sample `M/(M-1)` and `M/(M-2)` scalings on
+/// bipower variation and tripower quarticity are applied inside the
+/// statistic (the exported `bipower_variation` / `tripower_quarticity`
+/// measures stay the unadjusted BNS-2004 quantities). Returns a dict with
+/// `ratio`, the studentized relative-jump z-statistic; compare against a
+/// standard-normal critical value (larger = stronger evidence of a jump).
 #[pyfunction]
 fn bns_jump_test<'py>(
     py: Python<'py>,
@@ -7560,9 +8757,52 @@ fn panel_mean_group<'py>(
 /// faster-arriving series (the ragged edge): the two-step model is
 /// estimated on the leading balanced block (rows before the first row with
 /// any missing value) and the Kalman filter then runs over the full panel,
-/// using exactly the observations that are present at the edge. Returns the
-/// edge `nowcast` (one level per series), the `edge_factor`, the Gaussian
-/// `loglik`, the `smoothed_factors` (`T x r`), and `n_factors`/`factor_order`.
+/// using exactly the observations that are present at the edge.
+///
+/// Returns dict keys: the edge `nowcast` (one level per series), the
+/// `edge_factor` (length `r`), the Gaussian `loglik` (full ragged panel),
+/// `fit_loglik` (balanced training block), the `smoothed_factors`
+/// (`(T, r)` nested list, training pass), `n_factors`/`factor_order`, and
+/// the full fitted model — both `method` routes return the same parameter
+/// surface:
+///
+/// * `loadings` (`(N, r)` nested list) — `Lambda`; row `i` is series `i`'s
+///   loadings on the `r` factors;
+/// * `factor_ar` (`(r, r*p)` nested list) — the stacked factor-VAR
+///   coefficients `[A_1 | ... | A_p]`: `factor_ar[i][k*r + j]` is the
+///   effect of factor `j` at lag `k+1` on factor `i`;
+/// * `factor_cov` (`(r, r)` nested list) — the factor-innovation
+///   covariance `Q` (fixed to 1 for identification on the `"mle"` route);
+/// * `idiosyncratic` (length `N`) — the idiosyncratic variances, the
+///   diagonal of the observation covariance `H`;
+/// * `center`/`scale` (length `N`) — the training-panel column means and
+///   standard deviations (ddof=0) the model standardizes with. On the
+///   `"mle"` route `scale` is all ones (the model is fit on the centred
+///   raw scale and the loadings carry the factor scale).
+///
+/// MAPPING FACTORS TO SERIES (exact). The parameters live on the
+/// standardized scale, so the model-implied level of series `i` at time
+/// `t` is `center[i] + scale[i] * (loadings[i] @ f_t)`; in particular
+/// `nowcast == center + scale * (np.asarray(loadings) @ edge_factor)`
+/// exactly — that is literally how the binding computes it — and
+/// `center + scale * (F @ L.T)` (with `F` the smoothed factors and `L`
+/// the loadings) is the common-component fit of the balanced panel, whose
+/// per-series standardized residual variance is what `idiosyncratic`
+/// estimates. State space: `z_t = Lambda f_t + e_t`, `e_t ~ N(0,
+/// diag(idiosyncratic))`; `f_t = A_1 f_{t-1} + ... + A_p f_{t-p} + eta_t`,
+/// `eta_t ~ N(0, factor_cov)` — with these six keys the fitted model is
+/// fully reproducible.
+///
+/// With `method="mle"` the dict additionally carries `converged` and
+/// `iterations`: `converged` is the certificate of the optimizer stage
+/// whose point is reported (the BFGS polish's gradient-norm test when the
+/// polish improved on the Nelder-Mead optimum — the usual case — else the
+/// Nelder-Mead simplex-tolerance test), and `iterations` is the total
+/// across both stages. `converged=False` means the reported parameters
+/// are the best point found within the budget, not a certified optimum.
+/// The default `method="two_step"` runs no iterative optimizer (PCA +
+/// OLS + one Kalman pass are closed-form), so it carries neither key —
+/// there is no convergence certificate to report, honestly or otherwise.
 #[pyfunction]
 #[pyo3(signature = (data, n_factors = 1, factor_order = 2, method = "two_step"))]
 fn dfm_nowcast<'py>(
@@ -7616,6 +8856,27 @@ fn dfm_nowcast<'py>(
     d.set_item("smoothed_factors", factors)?;
     d.set_item("n_factors", nc.n_factors())?;
     d.set_item("factor_order", nc.factor_order())?;
+    // The fitted model itself (both estimation routes return the same
+    // surface): loadings/factor_ar/factor_cov/idiosyncratic are the DFM
+    // parameters on the standardized scale, center/scale the training
+    // moments that map factor movements back onto series levels.
+    let params = nc.params();
+    d.set_item("loadings", mat_to_vec2(&params.loadings))?;
+    d.set_item("factor_ar", mat_to_vec2(&params.factor_ar))?;
+    d.set_item("factor_cov", mat_to_vec2(&params.factor_cov))?;
+    d.set_item(
+        "idiosyncratic",
+        params.idiosyncratic.clone().into_pyarray(py),
+    )?;
+    d.set_item("center", nc.center().to_vec().into_pyarray(py))?;
+    d.set_item("scale", nc.scale().to_vec().into_pyarray(py))?;
+    // MLE only: the optimizer's convergence certificate and total
+    // iterations. The two-step route has no optimizer, so the keys are
+    // deliberately absent there rather than invented.
+    if let (Some(conv), Some(iters)) = (nc.mle_converged(), nc.mle_iterations()) {
+        d.set_item("converged", conv)?;
+        d.set_item("iterations", iters)?;
+    }
     Ok(d)
 }
 
@@ -7631,11 +8892,33 @@ fn dfm_nowcast<'py>(
 /// `phi_bar`, the per-unit speeds `phi`, per-unit innovation variances
 /// `sigma2`, the `loglik`, and iteration/shape info. Complements the
 /// mean-group and CCE-MG estimators: PMG pools the long run, they do not.
+///
+/// `tol` (default 3e-13) is the *relative* convergence tolerance of the
+/// concentrated-ML back-substitution: the iteration stops when the max-abs
+/// update of theta satisfies `|dtheta|_inf <= tol * (1 + |theta|_inf)`,
+/// within `max_iter` iterations per pass. Relative, because the float
+/// noise floor of the pooled solve scales with the size of theta — the
+/// historical absolute 1e-12 rule can never be met when theta is large;
+/// 3e-13 is that same rule's measured effective relative stringency on the
+/// O(1)-theta panels it was validated on, carried over scale-free (the
+/// golden fixture stops at the identical iterate — bit-identical). The
+/// iteration runs from the deterministic theta = 0 start and, when that
+/// start diverges — measured on 14/20 seeds of a stable N=10, T=150
+/// error-correction DGP with I(1) x (0/20 with I(0) x; 16/20 with the
+/// same I(1) x scaled by 100), where theta walked away from the fixed
+/// point at ~0.7 per iteration, which no tolerance can repair — it is
+/// rerun once from the Pesaran-Shin-Smith unrestricted-ARDL start
+/// (post-fix: 0/20 failures on all three variants). Non-convergence from
+/// both starts raises (the last iterate is not a verified fixed point);
+/// raise `max_iter` or loosen `tol` on genuinely slow-mixing panels.
 #[pyfunction]
+#[pyo3(signature = (ys, xs, tol = 3e-13, max_iter = 1000))]
 fn panel_pmg<'py>(
     py: Python<'py>,
     ys: Vec<PyReadonlyArray1<'py, f64>>,
     xs: Vec<numpy::PyReadonlyArray2<'py, f64>>,
+    tol: f64,
+    max_iter: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     if ys.len() != xs.len() {
         return Err(PyValueError::new_err(format!(
@@ -7650,7 +8933,7 @@ fn panel_pmg<'py>(
         let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
         units.push(tsecon_panelts::PanelUnit::new(vec1(yi), cols));
     }
-    let r = tsecon_panelts::pmg(&units).map_err(to_py)?;
+    let r = tsecon_panelts::pmg_with(&units, tol, max_iter).map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("theta", r.theta.clone().into_pyarray(py))?;
     d.set_item("theta_se", r.theta_se.clone().into_pyarray(py))?;
@@ -8574,7 +9857,14 @@ fn quantile_regression<'py>(
 /// `y` and `shock` (tsecon-lp design conventions; the impulse coefficient is
 /// design column 0). Matches statsmodels `QuantReg` per (tau, horizon) on
 /// the identical design at 1e-6; `se` is the Powell kernel sandwich.
-/// `taus` defaults to [0.1, 0.5, 0.9]. Returns `irf[tau][h]`, `se[tau][h]`.
+/// `taus` defaults to [0.1, 0.5, 0.9]. Returns `irf[tau][h]`, `se[tau][h]`,
+/// and `converged[tau][h]` — the per-fit IRLS convergence flag. A False
+/// entry means that (tau, horizon) fit hit the 1000-iteration IRLS cap
+/// before the max-abs coefficient change dropped to the shared 1e-6
+/// tolerance: its `irf`/`se` entries are the last iterate, not a verified
+/// check-loss minimum (statsmodels QuantReg warns in the same situation;
+/// here it is a per-fit flag), so do not quote that point of the IRF
+/// without refitting (fewer lags, less extreme tau, or more data).
 #[pyfunction]
 #[pyo3(signature = (y, shock, taus = None, horizons = 12, n_lag_controls = 4))]
 fn quantile_lp<'py>(
@@ -8600,6 +9890,9 @@ fn quantile_lp<'py>(
     )?;
     d.set_item("irf", r.irf)?;
     d.set_item("se", r.se)?;
+    // Per-fit IRLS convergence, same [tau][h] shape as irf/se (this flag
+    // was tracked by the shared engine all along; the binding dropped it).
+    d.set_item("converged", r.converged)?;
     Ok(d)
 }
 
@@ -8617,6 +9910,15 @@ fn quantile_lp<'py>(
 /// Matches statsmodels `QuantReg` per tau plus a numpy sort at 1e-6.
 /// `taus` must be strictly increasing; defaults to
 /// [0.05, 0.25, 0.5, 0.75, 0.95]. Requires `horizon >= 1`.
+///
+/// `converged` is the per-tau IRLS convergence flag (one bool per tau,
+/// aligned with `params`). A False entry means that tau's fit hit the
+/// 1000-iteration IRLS cap before the max-abs coefficient change dropped
+/// to the shared 1e-6 tolerance: its coefficients — and every fitted
+/// quantile, the rearrangement, and the `current` risk read built from
+/// them — are the last iterate, not a verified check-loss minimum
+/// (statsmodels QuantReg warns in the same situation). Do not quote that
+/// tau's risk read without refitting.
 #[pyfunction]
 #[pyo3(signature = (y, conditions, horizon = 1, taus = None, rearrange = true))]
 fn growth_at_risk<'py>(
@@ -8648,6 +9950,9 @@ fn growth_at_risk<'py>(
     d.set_item("fitted_raw", r.fitted_raw)?;
     d.set_item("crossing", r.crossing)?;
     d.set_item("current", r.current.into_pyarray(py))?;
+    // Per-tau IRLS convergence, aligned with params/bse (tracked by the
+    // shared engine all along; the binding dropped it).
+    d.set_item("converged", r.converged)?;
     Ok(d)
 }
 
@@ -10093,6 +11398,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bk_filter, m)?)?;
     m.add_function(wrap_pyfunction!(cf_filter, m)?)?;
     m.add_function(wrap_pyfunction!(hamilton_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(bn_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(bn_decomposition, m)?)?;
     m.add_function(wrap_pyfunction!(stl, m)?)?;
     m.add_function(wrap_pyfunction!(mstl, m)?)?;
     m.add_function(wrap_pyfunction!(seasonal_strength, m)?)?;
@@ -10125,6 +11432,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(johansen, m)?)?;
     m.add_function(wrap_pyfunction!(vecm, m)?)?;
     m.add_function(wrap_pyfunction!(engle_granger, m)?)?;
+    m.add_function(wrap_pyfunction!(ou_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(spread_zscore, m)?)?;
     m.add_function(wrap_pyfunction!(markov_switching_ar, m)?)?;
     m.add_function(wrap_pyfunction!(setar, m)?)?;
     m.add_function(wrap_pyfunction!(setar_test, m)?)?;

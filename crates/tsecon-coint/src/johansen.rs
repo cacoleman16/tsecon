@@ -136,7 +136,14 @@ impl JohansenResult {
 
 /// Runs the Johansen cointegration-rank test on `endog` (a `T x k` matrix,
 /// oldest row first, one column per series) with `k_ar_diff` lagged
-/// differences and a constant in the data (statsmodels `det_order = 0`).
+/// differences and a constant in the data (statsmodels `det_order = 0` —
+/// the *unrestricted constant* convention).
+///
+/// Deterministic-case warning: this convention matches a VECM fit with an
+/// unrestricted constant ([`crate::fit_vecm_det`] with
+/// [`crate::VecmDeterministic::Constant`], statsmodels `deterministic =
+/// "co"`), **not** [`crate::fit_vecm`]'s no-deterministic default — on
+/// drifting data the two estimate visibly different cointegrating spaces.
 ///
 /// # Errors
 ///

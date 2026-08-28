@@ -129,3 +129,31 @@ fn separated_regimes_classified_accurately() {
         "separated-regime classification accuracy {accuracy} should be >= 0.95"
     );
 }
+
+/// `MsarParams::ar` round-trips the block shape given to `new`: one block
+/// when the AR is shared across regimes, `k` blocks when it switches, each
+/// of length `order` — so callers (the Python binding among them) can report
+/// the estimated AR coefficients.
+#[test]
+fn ar_accessor_round_trips_the_block_shape() {
+    let shared = vec![vec![0.25, -0.1]];
+    let p = MsarParams::new(
+        vec![vec![0.7, 0.3], vec![0.3, 0.7]],
+        vec![-0.5, 0.5],
+        shared.clone(),
+        vec![1.0, 1.0],
+    )
+    .unwrap();
+    assert_eq!(p.ar(), shared);
+    assert_eq!(p.order(), 2);
+
+    let switching = vec![vec![0.4], vec![-0.2]];
+    let p = MsarParams::new(
+        vec![vec![0.8, 0.2], vec![0.2, 0.8]],
+        vec![-1.0, 1.0],
+        switching.clone(),
+        vec![0.5, 2.0],
+    )
+    .unwrap();
+    assert_eq!(p.ar(), switching);
+}

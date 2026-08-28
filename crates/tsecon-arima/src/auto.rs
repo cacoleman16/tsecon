@@ -334,7 +334,7 @@ impl fmt::Display for AutoArimaResult {
 /// coefficients below `1e-10` in magnitude are trimmed first: they only
 /// contribute roots of enormous modulus, which can never be the minimum,
 /// and their presence makes the monic normalization ill-conditioned.
-fn min_root_modulus(a: &[f64]) -> Option<f64> {
+pub(crate) fn min_root_modulus(a: &[f64]) -> Option<f64> {
     let mut n = a.len();
     while n > 0 && a[n - 1].abs() < 1e-10 {
         n -= 1;

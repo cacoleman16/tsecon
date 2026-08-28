@@ -101,6 +101,15 @@ fn pmg_matches_documented_formula_golden() {
     // log-likelihood is a sum of ~2600 log-variances; allow a slightly looser
     // (still far sub-ulp-per-term) absolute tolerance on the aggregate.
     assert_close(fit.loglik, loglik, 1e-6, "loglik");
+
+    // Stopping-iterate pin: the fixture converged from the theta = 0 start
+    // in exactly 29 iterations under the historical absolute rule, and the
+    // relative rule (plus the divergence restart, which a converging panel
+    // never reaches) must stop at the same iterate — that is what makes the
+    // fitted values bit-identical across the stopping-rule change. If a
+    // future tolerance tweak moves this, the goldens have silently moved
+    // with it: re-derive, don't just bump the number.
+    assert_eq!(fit.iterations, 29, "the fixture's stopping iterate moved");
 }
 
 #[test]

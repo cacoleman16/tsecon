@@ -334,7 +334,8 @@ def section_var():
         # FEVD as stacked areas for the output variable.
         fig, ax = plt.subplots(figsize=(ts.WIDTH_DOUBLE, 2.5))
         h = np.arange(1, 17)
-        shares = fevd[1]  # output's forecast-error variance: (horizon, shock)
+        # fevd is [horizon][variable][shock] (0.6.0 layout); slice variable 1.
+        shares = fevd[:, 1, :]  # output's forecast-error variance: (horizon, shock)
         ax.stackplot(h, shares.T * 100, colors=[ts.SEQ_BLUE[1], ts.SEQ_BLUE[3], ts.SEQ_BLUE[5]], lw=0)
         ax.set_xlim(1, 17.8)
         ax.set_ylim(0, 100)

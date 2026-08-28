@@ -133,3 +133,36 @@ def test_new_keys_present_for_every_family():
         assert np.asarray(r["boundary"]).dtype == np.bool_
         assert isinstance(r["converged"], bool)
         assert r["boundary_note"] is None or isinstance(r["boundary_note"], str)
+
+
+# --------------------------------------------------------------------- #
+# 0.6.0: o can no longer be silently discarded under vol="garch"
+# (the arch porting trap: arch_model(y, p=1, o=1, q=1) IS GJR there)
+# --------------------------------------------------------------------- #
+def test_o_with_vol_garch_raises_and_teaches():
+    y = _sim_garch(0.05, 0.08, 0.88, 400, 5)
+    with pytest.raises(ValueError, match=r'vol="gjr"') as exc:
+        tsecon.garch_fit(y, vol="garch", p=1, o=1, q=1)
+    msg = str(exc.value)
+    assert "no effect" in msg or "silently" in msg
+    assert "arch_model" in msg  # names the porting trap it guards
+    with pytest.raises(ValueError, match=r'vol="gjr"'):
+        tsecon.garch_fit(y, vol="garch", o=2)
+
+
+def test_o_zero_and_default_are_unchanged_for_garch():
+    y = _sim_garch(0.05, 0.08, 0.88, 400, 5)
+    default = tsecon.garch_fit(y, vol="garch", mean="zero", dist="normal")
+    explicit0 = tsecon.garch_fit(y, vol="garch", mean="zero", dist="normal", o=0)
+    np.testing.assert_array_equal(default["params"], explicit0["params"])
+    assert default["loglik"] == explicit0["loglik"]
+    assert list(default["param_names"]) == ["omega", "alpha[1]", "beta[1]"]
+
+
+def test_gjr_default_o_is_one_asymmetry_lag():
+    # The None sentinel keeps the old default (o=1) for the asymmetric vols.
+    y = _sim_garch(0.05, 0.08, 0.88, 400, 5)
+    default = tsecon.garch_fit(y, vol="gjr", mean="zero", dist="normal")
+    explicit1 = tsecon.garch_fit(y, vol="gjr", mean="zero", dist="normal", o=1)
+    np.testing.assert_array_equal(default["params"], explicit1["params"])
+    assert "gamma[1]" in list(default["param_names"])

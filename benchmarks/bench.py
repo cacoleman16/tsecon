@@ -484,8 +484,10 @@ def case_var_irf_fevd(rng, repeats) -> Case:
     _row(c, "orth IRF (11x2x2)", np.array(tsecon.var_irf(data, lags=2, horizon=10, orth=True,
                                                         trend="c")),
          ref.irf(10).orth_irfs, 1e-10)
-    _row(c, "FEVD (2x10x2)", np.array(tsecon.var_fevd(data, lags=2, horizon=10, trend="c")),
-         np.array(ref.fevd(10).decomp), 1e-10)
+    # tsecon is horizon-first [h][variable][shock] (0.6.0); statsmodels'
+    # decomp is variable-major — one transpose to compare.
+    _row(c, "FEVD (10x2x2)", np.array(tsecon.var_fevd(data, lags=2, horizon=10, trend="c")),
+         np.transpose(ref.fevd(10).decomp, (1, 0, 2)), 1e-10)
     c.timing = TimingRow(
         c.op,
         best_time(lambda: tsecon.var_irf(data, lags=2, horizon=10, orth=True, trend="c"), repeats),
@@ -575,14 +577,16 @@ def case_cf_filter(rng, repeats) -> Case:
 def case_periodogram(rng, repeats) -> Case:
     c = Case("Periodogram PSD (boxcar, n=4096)", "scipy.signal.periodogram")
     x = _ar1(rng, 4096, phi=0.7)
+    # Default vs default: since 0.6.0 tsecon's detrend default is
+    # "constant", matching scipy's own.
     ts = tsecon.periodogram(x, fs=1.0)
-    f, p = signal.periodogram(x, fs=1.0, window="boxcar", detrend=False)
+    f, p = signal.periodogram(x, fs=1.0, window="boxcar")
     _row(c, "freqs", ts["freqs"], f, 1e-15)
     _row(c, "psd", ts["psd"], p, 1e-12)
     c.timing = TimingRow(
         c.op,
         best_time(lambda: tsecon.periodogram(x, fs=1.0), repeats),
-        best_time(lambda: signal.periodogram(x, fs=1.0, window="boxcar", detrend=False), repeats),
+        best_time(lambda: signal.periodogram(x, fs=1.0, window="boxcar"), repeats),
         c.ref_name,
     )
     return c
@@ -591,14 +595,16 @@ def case_periodogram(rng, repeats) -> Case:
 def case_welch(rng, repeats) -> Case:
     c = Case("Welch PSD (Hann, nperseg=256, 50% overlap)", "scipy.signal.welch")
     x = _ar1(rng, 4096, phi=0.7)
+    # Default vs default: since 0.6.0 tsecon's detrend default is
+    # "constant", matching scipy's own.
     ts = tsecon.welch(x, nperseg=256, fs=1.0)
-    f, p = signal.welch(x, fs=1.0, nperseg=256, window="hann", detrend=False)
+    f, p = signal.welch(x, fs=1.0, nperseg=256, window="hann")
     _row(c, "freqs", ts["freqs"], f, 1e-15)
     _row(c, "psd", ts["psd"], p, 1e-12)
     c.timing = TimingRow(
         c.op,
         best_time(lambda: tsecon.welch(x, nperseg=256, fs=1.0), repeats),
-        best_time(lambda: signal.welch(x, fs=1.0, nperseg=256, window="hann", detrend=False),
+        best_time(lambda: signal.welch(x, fs=1.0, nperseg=256, window="hann"),
                   repeats),
         c.ref_name,
     )

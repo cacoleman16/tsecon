@@ -43,7 +43,7 @@ switching_ar=False)` fitted to the identical committed series.
 | E[expansion length] | ~10 qtrs | 10.2 | 10.4 |
 | E[contraction length] | ~4 qtrs | 4.2 | 4.1 |
 | log-likelihood | — | −181.269 | −181.263 |
-| common AR φ₁…φ₄ | 0.014, −0.058, −0.247, −0.213 | *(not exposed — see below)* | 0.0135, −0.0575, −0.2470, −0.2129 |
+| common AR φ₁…φ₄ | 0.014, −0.058, −0.247, −0.213 | 0.0147, −0.0532, −0.2459, −0.2120 | 0.0135, −0.0575, −0.2470, −0.2129 |
 
 Published values: p and q are Table I's printed digits (verified against the
 paper's Table I, p. 372); the means are the table's two-decimal headline;
@@ -122,11 +122,17 @@ corner of the sample). Tightening `tol` does not close the gap (the EM path is
 converged; it is the *estimator* that differs slightly), and no economic
 statement in the paper is sensitive to it.
 
-**AR coefficients are not exposed.** The Python binding estimates the common
-AR(4) internally — it must, to evaluate the likelihood — but does not return
-the coefficients, so the φ row above is statsmodels-vs-published only. The
-CI test pins this gap on purpose: when the binding starts returning the AR
-block, the guard fails and this replication should be extended to compare it.
+**AR coefficients.** The binding returns the estimated common AR(4) under the
+`ar` key (length-`order`, shared across regimes — it is the block Hamilton's
+likelihood applies to deviations `y_t − μ_{S_t}`), so the φ row above is a
+full three-way comparison. Measured: tsecon's φ sit within **0.0048** of the
+published values and **0.0043** of statsmodels' exact MLE on identical data
+(worst coefficient φ₂ in both cases) — the same EM-vs-MLE third-decimal gap
+as every other parameter. Hamilton's printed φ are notoriously
+optimizer-sensitive, so the CI tolerance stays at the module-wide 0.02
+budget rather than the achieved 0.005. (Through 0.5.0 the binding did not
+return the AR block and a CI guard pinned that gap; the guard has been
+flipped into this comparison, as its own docstring instructed.)
 
 **Published-digit precision.** Hamilton's own Table I was computed in 1989 by
 numerical maximization on the same series; the modern E-views/statsmodels MLE
