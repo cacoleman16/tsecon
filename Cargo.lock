@@ -926,9 +926,12 @@ dependencies = [
 name = "tsecon-coint"
 version = "0.6.0"
 dependencies = [
+ "rayon",
  "serde_json",
+ "tsecon-bootstrap",
  "tsecon-diag",
  "tsecon-linalg",
+ "tsecon-rng",
  "tsecon-stats",
 ]
 

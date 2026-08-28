@@ -45,13 +45,18 @@
 //! fits are assessed by log-likelihood improvement and approximate
 //! parameter recovery, not exact agreement with a single optimum.
 //!
-//! The crate also owns the library's *observed*-regime nonlinear model: the
-//! two-regime **self-exciting threshold autoregression** (SETAR) of Tong &
-//! Lim (1980) — [`setar`] (concentrated least squares over the trimmed
-//! order-statistic threshold grid, Hansen 1997/2000) and [`setar_test`]
-//! (the Hansen 1996 sup-F linearity test with a fixed-regressor wild
-//! bootstrap p-value; never a chi-squared tail — the Davies problem). See
-//! the `setar` module docs for the model, the algorithm, and the
+//! The crate also owns the library's *observed*-regime nonlinear models:
+//! the two-regime **self-exciting threshold autoregression** (SETAR) of
+//! Tong & Lim (1980) — [`setar`] (concentrated least squares over the
+//! trimmed order-statistic threshold grid, Hansen 1997/2000) and
+//! [`setar_test`] (the Hansen 1996 sup-F linearity test with a
+//! fixed-regressor wild bootstrap p-value; never a chi-squared tail — the
+//! Davies problem) — and its multivariate companion, the two-regime
+//! **threshold VAR**: [`threshold_var`] (per-regime OLS minimizing
+//! `ln det SigmaHat` over the same trimmed grid) and
+//! [`threshold_var_test`] (the robust sup-Wald linearity test in score
+//! form, bootstrapped the same fixed-regressor way). See the `setar` and
+//! `tvar` module docs for the models, the algorithms, and the
 //! reproducible-parallel-bootstrap contract.
 //!
 //! ```
@@ -80,6 +85,7 @@ mod params;
 mod results;
 mod setar;
 mod spec;
+mod tvar;
 
 pub use error::RegimeError;
 pub use model::MarkovSwitchingAr;
@@ -87,3 +93,4 @@ pub use params::MsarParams;
 pub use results::{classify, FilterResult, FitResult, SmoothResult};
 pub use setar::{setar, setar_test, SetarFit, SetarTest};
 pub use spec::MsarSpec;
+pub use tvar::{threshold_var, threshold_var_test, TvarFit, TvarTest};

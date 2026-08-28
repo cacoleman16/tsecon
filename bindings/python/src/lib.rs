@@ -5834,6 +5834,162 @@ fn vecm<'py>(
     Ok(d)
 }
 
+/// Hansen-Seo (2002) two-regime threshold VECM (threshold cointegration):
+/// the error-correction term `ect` w_{t-1} = beta' y_{t-1} drives the
+/// regime split at `threshold`, and estimation is the concentrated
+/// Gaussian MLE — grid search over (beta, gamma) with per-cell two-regime
+/// OLS minimizing ln det of the pooled residual covariance.
+///
+/// `data` is T x k (rows are observations, oldest first). Regressors per
+/// regime are [const, ect, lagged differences] (`n_regressors` = 2 +
+/// k*k_ar_diff); coefficient rows are equations. `trim` is Hansen-Seo's
+/// pi0 (min sample fraction per regime; each regime also keeps at least
+/// n_regressors + 1 rows). The gamma grid is at most `n_grid_gamma`
+/// evenly-spaced feasible order statistics of the ect. `beta=None`
+/// estimates the cointegrating vector — BIVARIATE ONLY, over `n_grid_beta`
+/// points spanning the linear Johansen ML estimate +/- `beta_span`
+/// first-order standard errors; for k > 2 pass `beta=` explicitly (e.g.
+/// the linear estimate from `vecm(..., coint_rank=1,
+/// deterministic="co")`). A supplied beta is normalized so beta[0] = 1 —
+/// order the series with the normalized one first.
+///
+/// Returns `beta`, `threshold`, per-regime coefficients
+/// (`params_low`/`params_high`, k x n_regressors) with EICKER-WHITE
+/// standard errors (`bse_low`/`bse_high` — the heteroskedasticity-robust
+/// form Hansen-Seo report, no dof correction), regime sizes
+/// (`n_low`/`n_high`/`nobs`/`frac_low`), the pooled ML covariance `sigma`
+/// with `log_det_sigma` (the grid criterion) and `llf`, the linear
+/// comparison (`llf_linear`, `beta_linear`), the searched `beta_grid`
+/// (empty when beta was fixed), the `ect` series itself (threshold it to
+/// recover the regimes), and `min_regime`/`neqs`/`n_regressors`/
+/// `k_ar_diff`. Validated against an independent NumPy transcription of
+/// the published algorithm (fixtures/tvecm.json; no third-party
+/// Hansen-Seo implementation was runnable — see the model card for the
+/// honest grade); see `hansen_seo_test` for the threshold-cointegration
+/// test.
+#[pyfunction]
+#[pyo3(signature = (data, k_ar_diff = 1, trim = 0.05, n_grid_gamma = 300,
+                    n_grid_beta = 50, beta_span = 10.0, beta = None))]
+#[allow(clippy::too_many_arguments)]
+fn threshold_vecm<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    k_ar_diff: usize,
+    trim: f64,
+    n_grid_gamma: usize,
+    n_grid_beta: usize,
+    beta_span: f64,
+    beta: Option<PyReadonlyArray1<'py, f64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = data_to_faer(&data);
+    let beta_vec = beta.as_ref().map(vec1);
+    let r = tsecon_coint::threshold_vecm(
+        m.as_ref(),
+        k_ar_diff,
+        trim,
+        n_grid_gamma,
+        n_grid_beta,
+        beta_span,
+        beta_vec.as_deref(),
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("beta", r.beta.into_pyarray(py))?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("params_low", r.coefs_low)?;
+    d.set_item("params_high", r.coefs_high)?;
+    d.set_item("bse_low", r.se_low)?;
+    d.set_item("bse_high", r.se_high)?;
+    d.set_item("n_low", r.n_low)?;
+    d.set_item("n_high", r.n_high)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("frac_low", r.frac_low)?;
+    d.set_item("sigma", r.sigma)?;
+    d.set_item("log_det_sigma", r.log_det_sigma)?;
+    d.set_item("llf", r.llf)?;
+    d.set_item("llf_linear", r.llf_linear)?;
+    d.set_item("beta_linear", r.beta_linear.into_pyarray(py))?;
+    d.set_item("beta_grid", r.beta_grid.into_pyarray(py))?;
+    d.set_item("ect", r.ect.into_pyarray(py))?;
+    d.set_item("min_regime", r.min_regime)?;
+    d.set_item("neqs", r.neqs)?;
+    d.set_item("n_regressors", r.n_regressors)?;
+    d.set_item("k_ar_diff", r.k_ar_diff)?;
+    Ok(d)
+}
+
+/// Hansen-Seo (2002) sup-LM test of LINEAR cointegration against
+/// two-regime THRESHOLD cointegration, p-valued by their fixed-regressor
+/// bootstrap (their Section 4; Hansen 1996).
+///
+/// The pointwise statistic is the coefficient-difference quadratic form
+/// with Eicker-White covariance, evaluated at the null (linear VECM)
+/// residuals with beta fixed at the null Johansen ML estimate (pass
+/// `beta=` for their known-cointegrating-vector variant), maximized over
+/// at most `n_grid` trimmed order statistics of the error-correction
+/// term. Under the null the threshold is an unidentified nuisance
+/// parameter (the Davies problem), so a chi-squared p-value is WRONG and
+/// never reported: each of the `n_boot` replications draws y*_t = u_t *
+/// eta_t (eta iid N(0,1)), re-residualizes on the same fixed regressors,
+/// and recomputes the same sup; `p_value` = (1 + #{LM* >= LM}) /
+/// (n_boot + 1). Replications run in parallel with one seeded RNG
+/// substream each, so the p-value is bit-identical for a given `seed` at
+/// any thread count. NOTE the method presumes the series ARE cointegrated
+/// under both hypotheses — it tests linear vs threshold adjustment, not
+/// cointegration vs none (test cointegration first: `johansen` /
+/// `engle_granger`).
+///
+/// Returns `stat`, `p_value`, `threshold` (the sup's location), `beta`
+/// (the vector used), `n_boot`, `nobs`, the candidate grid `thresholds`
+/// with the per-candidate `lm_path`, the bootstrap draws `boot_stats`,
+/// and `min_regime`/`neqs`/`n_regressors`/`k_ar_diff`. The statistic is
+/// validated against an independent NumPy transcription
+/// (fixtures/tvecm.json); the bootstrap null rejection rate is validated
+/// by seeded Monte Carlo (near-nominal size, mildly liberal in small
+/// samples — see the model card).
+#[pyfunction]
+#[pyo3(signature = (data, k_ar_diff = 1, trim = 0.05, n_grid = 300,
+                    n_boot = 499, seed = 0, beta = None))]
+#[allow(clippy::too_many_arguments)]
+fn hansen_seo_test<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    k_ar_diff: usize,
+    trim: f64,
+    n_grid: usize,
+    n_boot: usize,
+    seed: u64,
+    beta: Option<PyReadonlyArray1<'py, f64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = data_to_faer(&data);
+    let beta_vec = beta.as_ref().map(vec1);
+    let r = tsecon_coint::hansen_seo_test(
+        m.as_ref(),
+        k_ar_diff,
+        trim,
+        n_grid,
+        n_boot,
+        seed,
+        beta_vec.as_deref(),
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("beta", r.beta.into_pyarray(py))?;
+    d.set_item("n_boot", r.n_boot)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
+    d.set_item("lm_path", r.lm_path.into_pyarray(py))?;
+    d.set_item("boot_stats", r.boot_stats.into_pyarray(py))?;
+    d.set_item("min_regime", r.min_regime)?;
+    d.set_item("neqs", r.neqs)?;
+    d.set_item("n_regressors", r.n_regressors)?;
+    d.set_item("k_ar_diff", r.k_ar_diff)?;
+    Ok(d)
+}
+
 /// Engle-Granger two-step cointegration test (null: no cointegration).
 ///
 /// `data` is T x k (rows are observations, oldest first); column 0 is the
@@ -6280,6 +6436,159 @@ fn setar_test<'py>(
     d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
     d.set_item("f_path", r.f_path.into_pyarray(py))?;
     d.set_item("boot_stats", r.boot_stats.into_pyarray(py))?;
+    Ok(d)
+}
+
+/// Rows of a T x k array as `Vec<Vec<f64>>` for the threshold-VAR layer.
+fn data_to_rows(data: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
+    let a = data.as_array();
+    (0..a.nrows())
+        .map(|i| (0..a.ncols()).map(|j| a[(i, j)]).collect())
+        .collect()
+}
+
+/// Two-regime threshold VAR (the multivariate SETAR; Tong 1983; Tsay
+/// 1998; Lo-Zivot 2001), fitted by concentrated least squares / Gaussian
+/// MLE: `y_t = A1' x_t` if `z_t <= threshold` else `A2' x_t`, with
+/// `x_t = [1?, y_{t-1}, ..., y_{t-p}]` and threshold variable
+/// `z_t = y[threshold_index]_{t-delay}`.
+///
+/// `data` is T x k (rows are observations, oldest first). The threshold
+/// grid is the unique order statistics of `z` with a `trim` fraction kept
+/// in each regime (each regime also keeps at least `n_regressors` + 1
+/// rows, `n_regressors` = k*p + constant); the threshold (and, when
+/// `delays` is a list, the delay — all candidates then share the common
+/// sample `t >= max(p, max(delays))` so criteria are comparable; `delays`
+/// overrides `delay`) minimize `log_det_sigma`, the ln-determinant of the
+/// pooled residual covariance — the multivariate analogue of SETAR's
+/// pooled SSR.
+///
+/// Returns `threshold`/`delay`/`threshold_index`, per-regime coefficients
+/// (`params_low`/`params_high`, k x n_regressors, rows = equations,
+/// columns [const?, y_{t-1}.., y_{t-p}..]) with classical nonrobust SEs
+/// (`bse_low`/`bse_high`, per-regime per-equation s^2 = SSR/(n_r - m)),
+/// regime sizes (`n_low`/`n_high`/`nobs`), the pooled and per-regime ML
+/// covariances (`sigma`/`sigma_low`/`sigma_high`), `log_det_sigma`,
+/// `llf`, `aic`/`bic` (n ln det + penalty * q, q = 2*k*m + 1 counting the
+/// threshold), the full candidate grid (`thresholds`) with its criterion
+/// profile (`logdet_path`), and `min_regime`/`neqs`/`n_regressors`.
+/// Regime-dependent (generalized) impulse responses are deliberately NOT
+/// provided — see the model card. Validated against an independent NumPy
+/// transcription of the documented algorithm (fixtures/tvar.json); see
+/// `threshold_var_test` for the linearity test.
+#[pyfunction]
+#[pyo3(signature = (data, p, threshold_index = 0, delay = 1, trim = 0.10,
+                    delays = None, constant = true))]
+#[allow(clippy::too_many_arguments)]
+fn threshold_var<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    p: usize,
+    threshold_index: usize,
+    delay: usize,
+    trim: f64,
+    delays: Option<Vec<usize>>,
+    constant: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let rows = data_to_rows(&data);
+    let dl: Vec<usize> = delays.unwrap_or_else(|| vec![delay]);
+    let r = tsecon_regime::threshold_var(&rows, p, threshold_index, &dl, trim, constant)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("delay", r.delay)?;
+    d.set_item("threshold_index", r.threshold_index)?;
+    d.set_item("params_low", r.coefs_low)?;
+    d.set_item("params_high", r.coefs_high)?;
+    d.set_item("bse_low", r.se_low)?;
+    d.set_item("bse_high", r.se_high)?;
+    d.set_item("n_low", r.n_low)?;
+    d.set_item("n_high", r.n_high)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("sigma", r.sigma)?;
+    d.set_item("sigma_low", r.sigma_low)?;
+    d.set_item("sigma_high", r.sigma_high)?;
+    d.set_item("log_det_sigma", r.log_det_sigma)?;
+    d.set_item("llf", r.llf)?;
+    d.set_item("aic", r.aic)?;
+    d.set_item("bic", r.bic)?;
+    d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
+    d.set_item("logdet_path", r.logdet_path.into_pyarray(py))?;
+    d.set_item("min_regime", r.min_regime)?;
+    d.set_item("neqs", r.neqs)?;
+    d.set_item("n_regressors", r.n_regressors)?;
+    Ok(d)
+}
+
+/// Robust sup-Wald (score-form) test of a linear VAR(p) against the
+/// two-regime threshold VAR, p-valued by the Hansen (1996)
+/// fixed-regressor wild bootstrap.
+///
+/// The pointwise statistic is the coefficient-difference quadratic form
+/// with Eicker-White covariance evaluated at the null (linear VAR)
+/// residuals — the multivariate analogue of the Hansen-Seo (2002) sup-LM
+/// — maximized over at most `n_grid` trimmed order statistics of
+/// `z_t = y[threshold_index]_{t-delay}`. Under the null the threshold is
+/// an unidentified nuisance parameter (the Davies problem), so a
+/// chi-squared p-value is WRONG and never reported: each of the `n_boot`
+/// replications draws y*_t = u_t * eta_t (eta iid N(0,1)),
+/// re-residualizes on the same fixed regressors, and recomputes the same
+/// sup; `p_value` = (1 + #{W* >= W}) / (n_boot + 1) — seeded, parallel,
+/// bit-identical at any thread count. (R tsDyn's TVAR.LRtest is a
+/// DIFFERENT convention — sup-LR with a residual bootstrap; same
+/// question, non-comparable statistic values.)
+///
+/// Returns `stat`, `p_value`, `threshold` (the sup's location),
+/// `delay`/`threshold_index`, `n_boot`, `nobs`, the candidate grid
+/// (`thresholds`) with the per-candidate `wald_path`, the bootstrap draws
+/// (`boot_stats`), and `min_regime`/`neqs`/`n_regressors`. The statistic
+/// is validated against an independent NumPy transcription
+/// (fixtures/tvar.json); the bootstrap null rejection rate is validated
+/// by seeded Monte Carlo (near-nominal size, mildly liberal in small
+/// samples — see the model card).
+#[pyfunction]
+#[pyo3(signature = (data, p, threshold_index = 0, delay = 1, trim = 0.10,
+                    n_grid = 300, n_boot = 499, seed = 0, constant = true))]
+#[allow(clippy::too_many_arguments)]
+fn threshold_var_test<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    p: usize,
+    threshold_index: usize,
+    delay: usize,
+    trim: f64,
+    n_grid: usize,
+    n_boot: usize,
+    seed: u64,
+    constant: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let rows = data_to_rows(&data);
+    let r = tsecon_regime::threshold_var_test(
+        &rows,
+        p,
+        threshold_index,
+        delay,
+        trim,
+        constant,
+        n_grid,
+        n_boot,
+        seed,
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("delay", r.delay)?;
+    d.set_item("threshold_index", r.threshold_index)?;
+    d.set_item("n_boot", r.n_boot)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
+    d.set_item("wald_path", r.wald_path.into_pyarray(py))?;
+    d.set_item("boot_stats", r.boot_stats.into_pyarray(py))?;
+    d.set_item("min_regime", r.min_regime)?;
+    d.set_item("neqs", r.neqs)?;
+    d.set_item("n_regressors", r.n_regressors)?;
     Ok(d)
 }
 
@@ -11431,12 +11740,16 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(coherence, m)?)?;
     m.add_function(wrap_pyfunction!(johansen, m)?)?;
     m.add_function(wrap_pyfunction!(vecm, m)?)?;
+    m.add_function(wrap_pyfunction!(threshold_vecm, m)?)?;
+    m.add_function(wrap_pyfunction!(hansen_seo_test, m)?)?;
     m.add_function(wrap_pyfunction!(engle_granger, m)?)?;
     m.add_function(wrap_pyfunction!(ou_fit, m)?)?;
     m.add_function(wrap_pyfunction!(spread_zscore, m)?)?;
     m.add_function(wrap_pyfunction!(markov_switching_ar, m)?)?;
     m.add_function(wrap_pyfunction!(setar, m)?)?;
     m.add_function(wrap_pyfunction!(setar_test, m)?)?;
+    m.add_function(wrap_pyfunction!(threshold_var, m)?)?;
+    m.add_function(wrap_pyfunction!(threshold_var_test, m)?)?;
     m.add_function(wrap_pyfunction!(midas_weights, m)?)?;
     m.add_function(wrap_pyfunction!(umidas, m)?)?;
     m.add_function(wrap_pyfunction!(ccc_garch, m)?)?;

@@ -15,8 +15,19 @@ tsecon-stats = { path = "../tsecon-stats" }
 # Engle-Granger step 2 delegates the residual unit-root test to the
 # augmented Dickey-Fuller machinery already validated in tsecon-diag.
 tsecon-diag = { path = "../tsecon-diag" }
+# The Hansen-Seo threshold-cointegration test draws its fixed-regressor
+# bootstrap through the shared replication engine (par_replicate: one
+# SeedSequence-spawned Philox substream per replication), the same
+# contract tsecon-regime's Hansen-1996 setar_test uses. tsecon-bootstrap
+# does NOT depend on tsecon-coint, so there is no cycle.
+tsecon-bootstrap = { path = "../tsecon-bootstrap" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
 # printed, not serde_json's default 1-ulp fast path.
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# The threshold-VECM property tests simulate DGPs through the library RNG
+# and pin the bootstrap's any-thread-count determinism inside explicit
+# rayon pools.
+rayon = "1"
+tsecon-rng = { path = "../tsecon-rng" }

@@ -7,6 +7,63 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`threshold_vecm` + `hansen_seo_test` — Hansen-Seo (2002) threshold
+  cointegration** (ROADMAP build-later item). The two-regime threshold
+  VECM: the error-correction term `w_{t-1} = beta' y_{t-1}` drives the
+  regime split, estimated by the paper's concentrated Gaussian MLE — grid
+  search over `(beta, gamma)` with per-cell two-regime OLS minimizing
+  `ln det` of the pooled residual covariance, under the paper's `pi_0`
+  trimming (default `trim=0.05`, their suggestion; each regime also keeps
+  `m + 1` observations so both regressions are estimable). `beta` is
+  estimated on a bivariate grid centered on the linear Johansen ML
+  estimate (± `beta_span` first-order SEs) or supplied fixed (any k ≥ 2;
+  the (k−1)-dimensional grid is deliberately not searched and the error
+  says what to pass instead). `hansen_seo_test` is their sup-LM test of
+  linear vs threshold cointegration — Eicker-White coefficient-difference
+  quadratic form at the null residuals, `beta` fixed at the null estimate
+  — with the Section-4 **fixed-regressor bootstrap** p-value, seeded
+  through the library's Philox-substream `par_replicate` contract (the
+  same seeding as `setar_test`'s Hansen-1996 bootstrap): bit-identical at
+  any thread count, never a chi-squared tail (Davies problem). Home:
+  `tsecon-coint` (the regime variable *is* this crate's cointegration
+  machinery). Validation grade stated honestly in the model card and
+  fixture header: **independent NumPy transcription + seeded Monte
+  Carlo** — R installs in the container but CRAN is unreachable through
+  the egress proxy, so `tsDyn` could not arbitrate. Pinned at 1e-10
+  (fixed beta) / 1e-8 (estimated beta, eigensolver leg); measured null
+  size 0.100 → 0.065 at 5% for T = 150 → 400 (200 draws, B = 199, MC se
+  ≈ 0.02 — small-sample liberality documented as a failure mode);
+  recovery medians |γ̂−γ| = 0.025, |β̂₂−β₂| = 0.0046 at T = 300.
+- **`threshold_var` + `threshold_var_test` — two-regime threshold VAR**
+  (ROADMAP build-later item). The multivariate SETAR: the whole VAR(p)
+  coefficient matrix switches when the delay-`d` lag of a chosen series
+  crosses the threshold; per-regime OLS over the trimmed order-statistic
+  grid minimizing `ln det SigmaHat` (delay optionally grid-searched via
+  `delays=[...]` on the common sample, the `setar` convention;
+  `trim=0.10` default). The linearity test is the robust **sup-Wald in
+  score form** — the multivariate analogue of the Hansen-Seo sup-LM —
+  with the Hansen (1996) fixed-regressor wild-bootstrap p-value (same
+  reproducible-parallel seeding; R `tsDyn`'s `TVAR.LRtest` is a
+  different, non-comparable convention and the docs say so). Home:
+  `tsecon-regime`, next to `setar`, because it shares the concentrated
+  threshold-scan machinery and the bootstrap contract — deliberately not
+  `tsecon-var`, whose IRF/FEVD surface assumes a single linear regime.
+  **Scope honesty:** two regimes only; regime-dependent generalized
+  impulse responses (Koop-Pesaran-Potter) are named as deferred in the
+  model card rather than shipped half-right. Same honest validation
+  grade: NumPy-transcription golden at 1e-10 plus seeded MC (null size
+  0.100 → 0.085 at 5% for T = 150 → 400; threshold median |err| = 0.008
+  and coefficient |bias| ≤ 0.009 at T = 400, 200 reps each).
+- Python bindings `threshold_vecm`, `hansen_seo_test`, `threshold_var`,
+  `threshold_var_test` with `.pyi` stubs, teaching errors (trim/grid
+  bounds, k > 2 without beta, `beta[0] = 0`, short samples, constant
+  threshold series — each says what to do instead), a `_coerce` exemption
+  for `threshold_var(delays=...)` (integer lags, not data), model-card
+  sections with the full assumptions/failure-mode/validated-how
+  treatment, and validation-matrix rows grading the evidence.
+
 ## [0.6.0] - 2026-08-26
 
 ### Changed — **BREAKING (behavioral)**: `cv_splits(scheme="purged_kfold")` embargo now ADDS to the purge

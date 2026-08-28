@@ -35,6 +35,15 @@
 //!   workflow scores entries with.
 //! * [`engle_granger`] — the Engle-Granger (1987) two-step residual-based
 //!   test, delegating the residual unit-root step to `tsecon-diag`'s ADF.
+//! * [`threshold_vecm`] / [`hansen_seo_test`] — the Hansen-Seo (2002)
+//!   two-regime **threshold VECM** (threshold cointegration): concentrated
+//!   MLE by grid search over the cointegrating vector and the threshold on
+//!   the error-correction term, and the sup-LM test of linear against
+//!   threshold cointegration with a fixed-regressor bootstrap p-value
+//!   (never a chi-squared tail — the threshold is unidentified under the
+//!   null). See the `tvecm` module docs for the honest validation grade
+//!   (independent NumPy transcription plus seeded Monte Carlo — no
+//!   third-party reference implementation was runnable).
 //!
 //! All fallible routines return [`CointError`]; nothing in this crate
 //! panics on user input.
@@ -48,6 +57,7 @@ pub mod error;
 pub mod johansen;
 mod linalg;
 pub mod ou;
+pub mod tvecm;
 pub mod vecm;
 
 pub use critvals::{critical_values, DetOrder};
@@ -55,6 +65,7 @@ pub use engle_granger::{engle_granger, EngleGrangerResult, EngleGrangerTrend};
 pub use error::CointError;
 pub use johansen::{johansen, JohansenResult, SignificanceLevel};
 pub use ou::{ou_fit, spread_zscore, OuFit};
+pub use tvecm::{hansen_seo_test, threshold_vecm, HansenSeoTest, TvecmResult};
 pub use vecm::{fit_vecm, fit_vecm_det, VecmDeterministic, VecmResult};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
