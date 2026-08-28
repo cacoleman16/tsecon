@@ -80,7 +80,8 @@
 //! Terasvirta & Franses (2002), Econometric Reviews 21(1).
 
 use crate::error::RegimeError;
-use crate::setar::{build_design, chol_solve, cholesky, ols_qr, Design};
+use crate::linsolve::{chol_solve, cholesky};
+use crate::setar::{build_design, ols_qr, Design};
 use tsecon_optim::{minimize, FnObjective, Method, NelderMeadOptions};
 use tsecon_stats::chi2_sf;
 

@@ -68,6 +68,8 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # Candidate transition delays d in y_{t-d}: integer lags, not data.
     "star": frozenset({"delays"}),
     "star_test": frozenset({"delays"}),
+    # Same for the threshold VAR's candidate delays d in z_t = y_{tv,t-d}.
+    "threshold_var": frozenset({"delays"}),
     # Seasonal periods and their LOESS windows: integer specs, not data.
     # Coercing [24, 168] to float64 would make the boundary reject it.
     "mstl": frozenset({"periods", "windows"}),

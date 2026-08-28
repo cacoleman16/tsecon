@@ -44,51 +44,13 @@
 //! Econometrics 2(1); Hansen (2000), Econometrica 68(3).
 
 use crate::error::RegimeError;
+use crate::linsolve::{chol_solve, cholesky};
 use tsecon_bootstrap::{par_replicate, WildWeights};
 
 // ------------------------------------------------------------ small linalg
-
-/// Lower-triangular Cholesky factor of the symmetric positive-definite
-/// row-major `k x k` matrix `a`; `None` if a pivot is not strictly positive.
-/// Shared with the STAR module (`star.rs`).
-pub(crate) fn cholesky(a: &[f64], k: usize) -> Option<Vec<f64>> {
-    let mut l = vec![0.0_f64; k * k];
-    for i in 0..k {
-        for j in 0..=i {
-            let mut sum = a[i * k + j];
-            for m in 0..j {
-                sum -= l[i * k + m] * l[j * k + m];
-            }
-            if i == j {
-                if !(sum > 0.0 && sum.is_finite()) {
-                    return None;
-                }
-                l[i * k + i] = sum.sqrt();
-            } else {
-                l[i * k + j] = sum / l[j * k + j];
-            }
-        }
-    }
-    Some(l)
-}
-
-/// Solve `L L' x = b` given the lower Cholesky factor `l`.
-pub(crate) fn chol_solve(l: &[f64], k: usize, b: &[f64]) -> Vec<f64> {
-    let mut x = b.to_vec();
-    for i in 0..k {
-        for j in 0..i {
-            x[i] -= l[i * k + j] * x[j];
-        }
-        x[i] /= l[i * k + i];
-    }
-    for i in (0..k).rev() {
-        for j in (i + 1)..k {
-            x[i] -= l[j * k + i] * x[j];
-        }
-        x[i] /= l[i * k + i];
-    }
-    x
-}
+//
+// The row-major Cholesky pair the scan factors its Gram matrices with
+// lives in `crate::linsolve` (shared with the threshold VAR).
 
 /// Plain OLS `y = X b + e` by Householder QR (columns in `cols`), returning
 /// coefficients, classical nonrobust standard errors

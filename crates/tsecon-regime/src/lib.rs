@@ -52,8 +52,13 @@
 //!   trimmed order-statistic threshold grid, Hansen 1997/2000) and
 //!   [`setar_test`] (the Hansen 1996 sup-F linearity test with a
 //!   fixed-regressor wild bootstrap p-value; never a chi-squared tail —
-//!   the Davies problem). See the `setar` module docs for the model, the
-//!   algorithm, and the reproducible-parallel-bootstrap contract.
+//!   the Davies problem) — and its multivariate companion, the two-regime
+//!   **threshold VAR**: [`threshold_var`] (per-regime OLS minimizing
+//!   `ln det SigmaHat` over the same trimmed grid) and
+//!   [`threshold_var_test`] (the robust sup-Wald linearity test in score
+//!   form, bootstrapped the same fixed-regressor way). See the `setar` and
+//!   `tvar` module docs for the models, the algorithms, and the
+//!   reproducible-parallel-bootstrap contract.
 //! * the **smooth-transition autoregression** (STAR) of Terasvirta (1994)
 //!   with logistic ([`StarModel::Lstar`]) and exponential
 //!   ([`StarModel::Estar`]) transitions — [`star`] (concentrated NLS:
@@ -95,6 +100,7 @@ mod results;
 mod setar;
 mod spec;
 mod star;
+mod tvar;
 
 pub use error::RegimeError;
 pub use model::MarkovSwitchingAr;
@@ -105,3 +111,4 @@ pub use spec::MsarSpec;
 pub use star::{
     star, star_eval, star_test, StarEval, StarFit, StarModel, StarTest, StarTestResult,
 };
+pub use tvar::{threshold_var, threshold_var_test, TvarFit, TvarTest};

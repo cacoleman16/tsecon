@@ -1569,6 +1569,50 @@ def vecm(
     came from ``johansen`` (det_order -1/0/1 ↔ ``"n"``/``"co"``/``"colo"``).
     """
 
+def threshold_vecm(
+    data: _ArrayLike,
+    k_ar_diff: int = ...,
+    trim: float = ...,
+    n_grid_gamma: int = ...,
+    n_grid_beta: int = ...,
+    beta_span: float = ...,
+    beta: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Hansen-Seo (2002) two-regime threshold VECM (threshold
+    cointegration): the error-correction term w_{t-1} = beta' y_{t-1}
+    drives the regime split; estimation is the concentrated Gaussian MLE —
+    grid search over (beta, gamma) with per-cell two-regime OLS minimizing
+    ln det of the pooled residual covariance. ``trim`` is Hansen-Seo's pi0
+    (default 0.05, their suggestion). ``beta=None`` estimates the
+    cointegrating vector (BIVARIATE only, grid centered on the linear
+    Johansen estimate); for k > 2 pass ``beta=`` explicitly.
+
+    Keys: beta, threshold, params_low/params_high (k x n_regressors, rows
+    = equations, columns [const, ect, lagged diffs]) with EICKER-WHITE
+    bse_low/bse_high, n_low/n_high/nobs/frac_low, sigma, log_det_sigma,
+    llf, llf_linear, beta_linear, beta_grid, ect, min_regime, neqs,
+    n_regressors, k_ar_diff."""
+
+def hansen_seo_test(
+    data: _ArrayLike,
+    k_ar_diff: int = ...,
+    trim: float = ...,
+    n_grid: int = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    beta: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Hansen-Seo (2002) sup-LM test of linear vs two-regime THRESHOLD
+    cointegration, p-valued by their fixed-regressor bootstrap. beta is
+    fixed at the null (linear Johansen ML) estimate unless supplied. The
+    threshold is unidentified under the null (Davies problem), so NO
+    chi-squared p-value exists; p_value = (1 + #{LM* >= LM})/(n_boot + 1)
+    — seeded, parallel, bit-identical at any thread count. Presumes the
+    series ARE cointegrated (test that first: johansen/engle_granger).
+
+    Keys: stat, p_value, threshold, beta, n_boot, nobs, thresholds,
+    lm_path, boot_stats, min_regime, neqs, n_regressors, k_ar_diff."""
+
 def ou_fit(x: _ArrayLike, dt: float = ..., level: float = ...) -> dict[str, Any]:
     """Ornstein-Uhlenbeck mean-reversion fit for a spread (exact-discretization MLE).
 
@@ -1674,6 +1718,10 @@ def star(
     y: _ArrayLike,
     p: int,
     model: str = ...,
+def threshold_var(
+    data: _ArrayLike,
+    p: int,
+    threshold_index: int = ...,
     delay: int = ...,
     trim: float = ...,
     delays: Sequence[int] | None = ...,
@@ -1735,6 +1783,43 @@ def star_test(
     lm3_f_p_value, h3_f_stat, h3_p_value, h2_f_stat, h2_p_value,
     h1_f_stat, h1_p_value, ssr0, ssr1, ssr2, ssr3, suggested, best,
     tests."""
+) -> dict[str, Any]:
+    """Two-regime threshold VAR (the multivariate SETAR) by concentrated
+    least squares / Gaussian MLE: regime split by z_t =
+    y[threshold_index]_{t-delay} <= threshold; per-candidate two-regime
+    OLS minimizing ln det of the pooled residual covariance over the
+    trimmed order-statistic grid (`delays` as a list searches the delay
+    jointly on the common sample and overrides `delay`). Two regimes
+    only; regime-dependent generalized IRFs are deliberately not provided
+    (see the model card).
+
+    Keys: threshold, delay, threshold_index, params_low/params_high (k x
+    n_regressors, rows = equations, columns [const?, y_{t-1}..,
+    y_{t-p}..]) with classical bse_low/bse_high, n_low/n_high/nobs,
+    sigma/sigma_low/sigma_high, log_det_sigma, llf, aic/bic, thresholds,
+    logdet_path, min_regime, neqs, n_regressors."""
+
+def threshold_var_test(
+    data: _ArrayLike,
+    p: int,
+    threshold_index: int = ...,
+    delay: int = ...,
+    trim: float = ...,
+    n_grid: int = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    constant: bool = ...,
+) -> dict[str, Any]:
+    """Robust sup-Wald (score-form) linearity test of a linear VAR(p)
+    against the two-regime threshold VAR — the multivariate analogue of
+    the Hansen-Seo sup-LM — with a Hansen (1996) fixed-regressor wild
+    bootstrap p-value. The threshold is unidentified under the null
+    (Davies problem), so NO chi-squared p-value exists; p_value =
+    (1 + #{W* >= W})/(n_boot + 1) — seeded, parallel, bit-identical at
+    any thread count.
+
+    Keys: stat, p_value, threshold, delay, threshold_index, n_boot, nobs,
+    thresholds, wald_path, boot_stats, min_regime, neqs, n_regressors."""
 
 # ------------------------------------------------------------------ MIDAS
 def midas_weights(scheme: str, theta1: float, theta2: float, k: int) -> _F64:
