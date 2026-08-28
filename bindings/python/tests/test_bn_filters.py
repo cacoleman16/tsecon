@@ -283,7 +283,10 @@ def test_coercion_accepts_lists_and_float32(gdp):
 # --------------------------------------------------------------------------- #
 # statsmodels absence canary (the fixture pins it; re-check live)
 # --------------------------------------------------------------------------- #
-def test_statsmodels_still_has_no_hamilton_or_bn(bn_fx):
+def test_statsmodels_reference_canary(bn_fx):
+    # The fixture pins what was true AT GENERATION TIME (statsmodels 0.14.x,
+    # see _meta): no runnable Hamilton or BN reference existed, which is why
+    # those goldens are formula transcriptions. That provenance stays pinned:
     assert bn_fx["statsmodels_absence_canary"] == {
         "hamilton": True,
         "beveridge_nelson": True,
@@ -291,10 +294,35 @@ def test_statsmodels_still_has_no_hamilton_or_bn(bn_fx):
     sm = pytest.importorskip("statsmodels.api")
     import statsmodels.tsa.filters as smf
 
-    assert not any("hamilton" in x.lower() for x in dir(smf))
+    # BN decomposition: still no statsmodels implementation.
     assert not any(
         "beveridge" in x.lower() or x.lower() == "bn" for x in dir(sm.tsa)
     )
+
+    # Hamilton: the canary fired — statsmodels 0.15.0 added
+    # tsa.filters.api.hamilton_filter. When the installed version has it,
+    # the absence claim is retired IN FAVOR OF the thing the canary was
+    # waiting for: a live third-party cross-check (measured 4.2e-14 max
+    # abs on first contact; asserted at 1e-10). On older statsmodels the
+    # original absence assertion still holds.
+    if any("hamilton" in x.lower() for x in dir(smf)):
+        from statsmodels.tsa.filters.api import hamilton_filter as sm_ham
+
+        rng = np.random.default_rng(20260828)
+        y = np.cumsum(rng.standard_normal(300)) + 0.05 * np.arange(300)
+        ours = tsecon.hamilton_filter(y)  # defaults h=8, p=4
+        cycle_sm, trend_sm = sm_ham(y, 8, 4)
+        cycle_sm, trend_sm = np.asarray(cycle_sm), np.asarray(trend_sm)
+        valid = ~np.isnan(cycle_sm)
+        assert valid.sum() == len(ours["cycle"])
+        np.testing.assert_allclose(
+            np.asarray(ours["cycle"]), cycle_sm[valid], rtol=0, atol=1e-10
+        )
+        np.testing.assert_allclose(
+            np.asarray(ours["trend"]), trend_sm[valid], rtol=0, atol=1e-10
+        )
+    else:
+        assert not any("hamilton" in x.lower() for x in dir(smf))
 
 
 # --------------------------------------------------------------------------- #
