@@ -1718,10 +1718,6 @@ def star(
     y: _ArrayLike,
     p: int,
     model: str = ...,
-def threshold_var(
-    data: _ArrayLike,
-    p: int,
-    threshold_index: int = ...,
     delay: int = ...,
     trim: float = ...,
     delays: Sequence[int] | None = ...,
@@ -1783,6 +1779,14 @@ def star_test(
     lm3_f_p_value, h3_f_stat, h3_p_value, h2_f_stat, h2_p_value,
     h1_f_stat, h1_p_value, ssr0, ssr1, ssr2, ssr3, suggested, best,
     tests."""
+def threshold_var(
+    data: _ArrayLike,
+    p: int,
+    threshold_index: int = ...,
+    delay: int = ...,
+    trim: float = ...,
+    delays: Sequence[int] | None = ...,
+    constant: bool = ...,
 ) -> dict[str, Any]:
     """Two-regime threshold VAR (the multivariate SETAR) by concentrated
     least squares / Gaussian MLE: regime split by z_t =
