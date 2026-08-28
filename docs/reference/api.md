@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**161 functions.**
+**162 functions.**
 
 ## diagnostics
 
@@ -829,7 +829,7 @@ def hamilton_filter(
     method: str = ...,
     se: str | None = ...,
     maxlags: int | None = ...,
-    use_correction: bool = ...,
+    use_correction: bool | None = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -841,6 +841,9 @@ Hamilton (2018) regression filter — the modern HP alternative.
     errors on `beta` via the shared HAC engine with the h-overlap default
     `maxlags = h` (the overlapping h-step residuals are MA(h-1) by
     construction); `se="nonrobust"` the classical comparison point.
+    `maxlags` and `use_correction` parameterize the HAC covariance only,
+    so passing either explicitly under anything but `se="hac"` raises
+    (use_correction=None, the default, means True where HAC applies).
     Returns `trend`, `cycle`, `first_index`, `beta` (regression method),
     plus `bse`, `tvalues`, `se_type`, `maxlags`, `use_correction` when
     `se` is requested. Defaults are bit-identical to earlier releases.
@@ -853,14 +856,16 @@ def bn_filter(
     p: int = ...,
     delta: float | None = ...,
     demean: str = ...,
-    d0: float = ...,
-    dt: float = ...,
+    d0: float | None = ...,
+    dt: float | None = ...,
 ) -> dict[str, Any]:
 ```
 
 Kamber-Morley-Wong (2018) BN filter: Beveridge-Nelson output gap
     with the signal-to-noise ratio pinned (delta=None: their
-    amplitude-to-noise selection on the grid (d0, dt)); `demean` "sm"
+    amplitude-to-noise selection on the grid (d0, dt); d0/dt default to
+    0.01/0.0005 when None and parameterize only that grid, so passing
+    either explicitly with a fixed delta= raises); `demean` "sm"
     (sample mean, the baseline) or "nd" (no drift removal). Returns
     `trend`, `cycle`, `first_index` (=1), `delta`, `ar`, `cycle_se`,
     `amplitude_to_noise`, `drift`. Reference-run-validated against the
@@ -882,7 +887,9 @@ def bn_decomposition(
 Classic Beveridge-Nelson (1981) decomposition from an
     ARIMA(p, 1, q) — fit by the library's exact MLE (default: the
     Morley-Nelson-Zivot p=2, q=2), or at fixed coefficients when any of
-    `ar`/`ma`/`drift` is passed. Returns `trend`, `cycle`,
+    `ar`/`ma`/`drift` is passed (`p`/`q` are ignored on that
+    fixed-coefficient path — the decomposition is computed exactly at the
+    coefficients you supply). Returns `trend`, `cycle`,
     `innovations`, `first_index` (=1), `long_run_multiplier`
     (psi(1) = theta(1)/phi(1)), `drift`, `ar`, `ma`, `mode`, and for
     the fit path `sigma2`, `loglik`, `aic`, `bic`, `converged`;
@@ -1539,6 +1546,11 @@ Weak-instrument-robust (Anderson-Rubin) confidence SETS for a proxy SVAR.
     it overshoots where "second_order" already reaches nominal. Boundedness
     is again bit-identical.
 
+    Proxy missingness follows the family convention: NaN rows are treated as
+    dates where the instrument is unavailable and dropped from the moments
+    (`n_proxy` reports the kept count); an infinite proxy value is refused as
+    corruption (0.7.0 -- previously dropped as if missing).
+
 ### `proxy_svar`
 
 ```python
@@ -1559,7 +1571,9 @@ Proxy SVAR (external-instrument SVAR-IV): one shock from one instrument.
     The residual-instrument covariance identifies the target shock's impact
     column up to scale; the unit-effect normalization sets its impact on
     `norm_var` to `unit` (sign pinned). `proxy` aligns to `data` rows (NaN
-    outside the instrument window is dropped). Returns `irf` (horizon+1, n),
+    outside the instrument window is dropped, `n_proxy` counts the kept
+    rows; an infinite proxy value is refused as corruption — 0.7.0).
+    Returns `irf` (horizon+1, n),
     `impact`, `relative_impact`, `cov_um`, `first_stage_f` (HC1-robust when
     `robust_f`), `reliability` = Corr(m, u_norm)^2, `n_proxy`, the estimated
     `shock` (length T), and `first_stage`: the proxy_first_stage diagnostics
@@ -1600,6 +1614,12 @@ First-stage strength diagnostics: the Montiel Olea-Pflueger effective F.
     `weak_folklore` (F < 10, kept only because the literature reports it).
     When weak_mop_tau10 is True do not trust Wald-type bands
     (proxy_svar_bands); use proxy_ar_sets.
+
+    Proxy missingness follows the family convention: NaN rows are treated as
+    dates where the instrument is unavailable and dropped from the
+    first-stage sample (`n_proxy` reports the kept count); an infinite proxy
+    value is refused as corruption (0.7.0 -- previously dropped as if
+    missing).
 
 ### `nongaussian_svar`
 
@@ -1927,7 +1947,7 @@ def vecm(
     coint_rank: int = ...,
     deterministic: str = ...,
     seasons: int = ...,
-    first_season: int = ...,
+    first_season: int | None = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -1942,7 +1962,10 @@ VECM ML estimation: alpha, beta, det_coef_coint, gamma, det_coef, sigma_u, llf.
     (constant first, then trend; statsmodels ``VECMResults.det_coef_coint``);
     unrestricted terms land in ``det_coef`` (statsmodels column order:
     constant, seasons-1 centered seasonal dummies, trend). ``seasons``/
-    ``first_season``: statsmodels-style centered seasonal dummies. Warning:
+    ``first_season``: statsmodels-style centered seasonal dummies —
+    ``first_season`` (0-based season of the first row, default 0 when None)
+    is taken modulo ``seasons`` (statsmodels-compatible), and passing it
+    explicitly with ``seasons=0`` raises (no cycle to phase). Warning:
     ``johansen`` assumes the unrestricted constant (det_order=0), NOT this
     function's ``"n"`` default — pass ``deterministic="co"`` when the rank
     came from ``johansen`` (det_order -1/0/1 ↔ ``"n"``/``"co"``/``"colo"``).
@@ -1955,8 +1978,8 @@ def threshold_vecm(
     k_ar_diff: int = ...,
     trim: float = ...,
     n_grid_gamma: int = ...,
-    n_grid_beta: int = ...,
-    beta_span: float = ...,
+    n_grid_beta: int | None = ...,
+    beta_span: float | None = ...,
     beta: _ArrayLike | None = ...,
 ) -> dict[str, Any]:
 ```
@@ -1968,7 +1991,10 @@ Hansen-Seo (2002) two-regime threshold VECM (threshold
     ln det of the pooled residual covariance. ``trim`` is Hansen-Seo's pi0
     (default 0.05, their suggestion). ``beta=None`` estimates the
     cointegrating vector (BIVARIATE only, grid centered on the linear
-    Johansen estimate); for k > 2 pass ``beta=`` explicitly.
+    Johansen estimate); for k > 2 pass ``beta=`` explicitly. With ``beta=``
+    supplied the beta grid search never runs (``beta_grid`` comes back
+    empty), so passing ``n_grid_beta``/``beta_span`` explicitly alongside
+    it raises (they default to 50/10.0 when None).
 
     Keys: beta, threshold, params_low/params_high (k x n_regressors, rows
     = equations, columns [const, ect, lagged diffs]) with EICKER-WHITE
@@ -1997,6 +2023,9 @@ Hansen-Seo (2002) sup-LM test of linear vs two-regime THRESHOLD
     chi-squared p-value exists; p_value = (1 + #{LM* >= LM})/(n_boot + 1)
     — seeded, parallel, bit-identical at any thread count. Presumes the
     series ARE cointegrated (test that first: johansen/engle_granger).
+    Unlike threshold_vecm — whose beta=None grid SEARCH is bivariate-only
+    — the null beta here is the linear Johansen ML estimate, defined for
+    any k, so k > 2 with an estimated (null) beta is accepted.
 
     Keys: stat, p_value, threshold, beta, n_boot, nobs, thresholds,
     lm_path, boot_stats, min_regime, neqs, n_regressors, k_ar_diff.
@@ -2022,9 +2051,11 @@ Ornstein-Uhlenbeck mean-reversion fit for a spread (exact-discretization MLE).
     quantifies the well-known upward finite-sample kappa bias of roughly
     4 / (sample time span)); ``stationary_sd`` (= sigma / sqrt(2 kappa));
     ``mean_reverting``; the AR(1) leg ``phi``/``phi_se``/``c``/``c_se``/
-    ``eta2``/``loglik``; and ``n_obs``/``dt``. A fit with ``phi >= 1`` is
-    returned honestly: ``mean_reverting=False``, ``half_life=inf``,
-    ``half_life_ci=None``, ``stationary_sd=None``.
+    ``eta2``/``loglik``; and the echoed call inputs ``n_obs``/``dt``/
+    ``level`` (the confidence level ``half_life_ci`` was built at, echoed
+    back so a stored result dict stays self-describing). A fit with
+    ``phi >= 1`` is returned honestly: ``mean_reverting=False``,
+    ``half_life=inf``, ``half_life_ci=None``, ``stationary_sd=None``.
 
 ### `spread_zscore`
 
@@ -2034,7 +2065,7 @@ def spread_zscore(
     kappa: float | None = ...,
     mu: float | None = ...,
     sigma: float | None = ...,
-    dt: float = ...,
+    dt: float | None = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -2043,7 +2074,9 @@ Z-score of a spread against the stationary OU law N(mu, sigma^2/(2 kappa)).
     ``zscore = (x - mu) / stationary_sd``, ``stationary_sd = sigma /
     sqrt(2 kappa)``. Pass all three of ``kappa``/``mu``/``sigma`` (a frozen
     ``ou_fit``) or none (fitted from ``x`` at step ``dt``); partial
-    specification is refused. Returns ``zscore``, the ``kappa``/``mu``/
+    specification is refused, and ``dt`` (default 1.0 when None)
+    parameterizes only the internal fit, so passing it explicitly with a
+    frozen triple raises. Returns ``zscore``, the ``kappa``/``mu``/
     ``sigma`` used, ``stationary_sd``, ``fitted``. Refuses ``kappa <= 0``:
     a non-mean-reverting process has no stationary distribution to score
     against.
@@ -2070,7 +2103,9 @@ Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations.
     specification on deviations y_t - mu_{S_t}). smoothed_prob /
     filtered_prob are the full (n, k_regimes) probability matrices,
     n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0 scalar
-    path (= smoothed_prob[:, -1]).
+    path (= smoothed_prob[:, -1]). The EM run reports converged and
+    iterations (EM steps actually run — converged=False with
+    iterations == max_iter means the cap bound).
 
 ### `setar`
 
@@ -2133,10 +2168,6 @@ def star(
     y: _ArrayLike,
     p: int,
     model: str = ...,
-def threshold_var(
-    data: _ArrayLike,
-    p: int,
-    threshold_index: int = ...,
     delay: int = ...,
     trim: float = ...,
     delays: Sequence[int] | None = ...,
@@ -2211,6 +2242,35 @@ Terasvirta STAR modeling-cycle battery: LM3 linearity test against
     h1_f_stat, h1_p_value, ssr0, ssr1, ssr2, ssr3, suggested, best,
     tests.
 
+### `threshold_var`
+
+```python
+def threshold_var(
+    data: _ArrayLike,
+    p: int,
+    threshold_index: int = ...,
+    delay: int = ...,
+    trim: float = ...,
+    delays: Sequence[int] | None = ...,
+    constant: bool = ...,
+) -> dict[str, Any]:
+```
+
+Two-regime threshold VAR (the multivariate SETAR) by concentrated
+    least squares / Gaussian MLE: regime split by z_t =
+    y[threshold_index]_{t-delay} <= threshold; per-candidate two-regime
+    OLS minimizing ln det of the pooled residual covariance over the
+    trimmed order-statistic grid (`delays` as a list searches the delay
+    jointly on the common sample and overrides `delay`). Two regimes
+    only; regime-dependent generalized IRFs are deliberately not provided
+    (see the model card).
+
+    Keys: threshold, delay, threshold_index, params_low/params_high (k x
+    n_regressors, rows = equations, columns [const?, y_{t-1}..,
+    y_{t-p}..]) with classical bse_low/bse_high, n_low/n_high/nobs,
+    sigma/sigma_low/sigma_high, log_det_sigma, llf, aic/bic, thresholds,
+    logdet_path, min_regime, neqs, n_regressors.
+
 ### `threshold_var_test`
 
 ```python
@@ -2270,7 +2330,7 @@ def ccc_garch(
     mean: str = ...,
     univariate_dist: str = ...,
     p: int = ...,
-    o: int = ...,
+    o: int | None = ...,
     q: int = ...,
 ) -> dict[str, Any]:
 ```
@@ -2281,6 +2341,9 @@ CCC-GARCH (Bollerslev 1990); returns is T x k, H_t = D_t R D_t with
     and takes garch_fit's knobs: vol/mean/p/o/q plus univariate_dist
     ("normal" | "t", the per-series innovation density — named apart from
     dcc_garch's dist=, which is the second-stage correlation likelihood).
+    `o` follows garch_fit's sentinel: None (default) means no asymmetry
+    term under vol="garch" and one lag under "gjr"/"egarch"; explicit
+    o > 0 under vol="garch" raises instead of being silently dropped.
 
     Keys: correlation (k x k), loglik, sigma2 ((T, k) per-series
     conditional variance paths), covariance ((T, k, k) in-sample
@@ -2307,7 +2370,7 @@ def dcc_garch(
     mean: str = ...,
     univariate_dist: str = ...,
     p: int = ...,
-    o: int = ...,
+    o: int | None = ...,
     q: int = ...,
 ) -> dict[str, Any]:
 ```
@@ -2319,7 +2382,9 @@ DCC-GARCH (Engle 2002); returns is T x k. variant: "dcc" | "cdcc"
     zero-mean Normal GARCH(1,1) and takes garch_fit's knobs: vol/mean/p/o/q
     plus univariate_dist ("normal" | "t") — the per-series innovation
     density, distinct from dist=, which configures the second-stage
-    correlation likelihood. Keys: a, b, g, qbar, loglik, converged,
+    correlation likelihood; o follows garch_fit's sentinel (None default;
+    explicit o > 0 under vol="garch" raises). Keys: a, b, g, qbar, loglik,
+    converged,
     variant, dist, correlation ((T, k, k) nested list -- the in-sample
     conditional correlation path), correlation_last, sigma2 ((T, k)
     per-series conditional variance paths), covariance ((T, k, k)
@@ -2353,7 +2418,7 @@ def dcc_test(
     mean: str = ...,
     univariate_dist: str = ...,
     p: int = ...,
-    o: int = ...,
+    o: int | None = ...,
     q: int = ...,
 ) -> dict[str, Any]:
 ```
@@ -2361,7 +2426,9 @@ def dcc_test(
 Engle-Sheppard (2001) test of constant conditional correlation
     (CCC vs DCC); returns is T x k. A univariate GARCH per series (the
     same first stage ccc_garch/dcc_garch use — zero-mean Normal GARCH(1,1)
-    by default, configurable via vol/mean/univariate_dist/p/o/q), joint
+    by default, configurable via vol/mean/univariate_dist/p/o/q; o follows
+    garch_fit's sentinel — None default, explicit o > 0 under vol="garch"
+    raises), joint
     standardization by the symmetric inverse square root of the constant
     correlation, pooled AR(lags) on the stacked off-diagonal outer
     products. Keys: stat, df (= lags + 1), p_value (small rejects constant
@@ -2580,7 +2647,7 @@ def backtest(
     horizon: int = ...,
     refit_every: int = ...,
     forecaster: str | Callable[[_F64, int], _ArrayLike] | None = ...,
-    period: int = ...,
+    period: int | None = ...,
     insample_period: int = ...,
 ) -> dict[str, Any]:
 ```
@@ -2588,7 +2655,11 @@ def backtest(
 Rolling/expanding pseudo-out-of-sample backtest.
 
     window is "expanding" or "rolling"; forecaster is one of naive, drift,
-    mean, seasonal_naive, theta (None means naive) — or any Python callable
+    mean, seasonal_naive, theta (None means naive) — or any Python callable.
+    period (default 1 when None) is the seasonal cycle length of
+    seasonal_naive/theta only; passing it explicitly with any other
+    forecaster (callables included) raises — the MASE/RMSSE scale period
+    is the separate insample_period. forecaster may be any Python callable
     f(train, horizon) -> array-like of exactly `horizon` finite point
     forecasts, where train is a read-only float64 ndarray holding only the
     training window for that origin (the engine's leakage discipline; with
@@ -2613,12 +2684,12 @@ def conformal_forecast(
     calib: int | None = ...,
     mode: str = ...,
     period: int = ...,
-    gamma: float = ...,
+    gamma: float | None = ...,
     n_eval: int | None = ...,
-    lags: int = ...,
-    n_boot: int = ...,
-    seed: int = ...,
-    optimize_beta: bool = ...,
+    lags: int | None = ...,
+    n_boot: int | None = ...,
+    seed: int | None = ...,
+    optimize_beta: bool | None = ...,
     order: tuple[int, int, int] | None = ...,
 ) -> dict[str, Any]:
 ```
@@ -2635,7 +2706,12 @@ Distribution-free conformal forecast intervals around a point forecaster.
     split/aci, any Python callable base(train, horizon) -> array-like of
     horizon point forecasts with the backtest contract (train is a read-only
     float64 ndarray of the training window only). calib defaults to
-    n // 4 residuals per horizon; n_eval (aci) to n // 5. Returns mean,
+    n // 4 residuals per horizon; n_eval (aci) to n // 5. Inert kwargs
+    raise (0.7.0; defaults bit-identical): order needs base="arima"; lags
+    needs base="ar" (or EnbPI's ensemble); gamma needs method="aci";
+    n_boot/seed/optimize_beta need method="enbpi"; n_eval is ACI-only in
+    this function (conformal_backtest uses it for every method); calib
+    never reaches EnbPI. Returns mean,
     lower, upper, level, plus per-method calibration diagnostics (split:
     q_lower/q_upper/scores/finite_sample_level; enbpi: beta/residuals;
     aci: alpha_final/alpha_trajectory/err/realized_coverage).
@@ -2652,13 +2728,13 @@ def conformal_backtest(
     calib: int | None = ...,
     mode: str = ...,
     period: int = ...,
-    gamma: float = ...,
+    gamma: float | None = ...,
     n_eval: int | None = ...,
-    lags: int = ...,
-    n_boot: int = ...,
-    batch: int = ...,
-    seed: int = ...,
-    optimize_beta: bool = ...,
+    lags: int | None = ...,
+    n_boot: int | None = ...,
+    batch: int | None = ...,
+    seed: int | None = ...,
+    optimize_beta: bool | None = ...,
     order: tuple[int, int, int] | None = ...,
 ) -> dict[str, Any]:
 ```
@@ -2669,7 +2745,10 @@ Online out-of-sample evaluation of conformal intervals ("split",
     coverage per horizon. base as in conformal_forecast, including a Python
     callable base(train, horizon) for split/aci. ACI adds its alpha_t
     trajectory; EnbPI is the published one-step online algorithm with the
-    residual window sliding by batch.
+    residual window sliding by batch. The same inert-kwarg refusals as
+    conformal_forecast apply (order/lags/gamma/n_boot/seed/optimize_beta,
+    EnbPI's calib), plus batch, which is EnbPI-only; n_eval is live for
+    every method here. Defaults stay bit-identical.
 
 ## nonlinear GMM (callback)
 
