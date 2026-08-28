@@ -28,10 +28,10 @@ command needs the `--exclude tsecon-python` caveat described
 | — integration tests in `crates/*/tests/` | 1351 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 217 | |
 | — documentation tests | 54 | |
-| Python binding tests | **1192 passed, 0 failed, 0 skipped** in 350 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **1312 passed, 0 failed, 0 skipped** in 345 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
-| Golden fixtures | 88 JSON files, produced by 69 generator scripts | `fixtures/` |
-| Public Python functions | 155, **all 155** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
+| Golden fixtures | 91 JSON files, produced by 72 generator scripts | `fixtures/` |
+| Public Python functions | 162, **all 162** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
 
 Of the 9 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
 fingerprints that are platform-specific, three release-only Monte Carlo runs,
@@ -244,7 +244,7 @@ cannot cover:
   direction too: a Python moment function that raises must propagate its
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
-- **Surface completeness.** The module exports 155 public callables. This is
+- **Surface completeness.** The module exports 162 public callables. This is
   checked by running the check, not by asserting the answer:
 
   ```sh
@@ -254,7 +254,7 @@ cannot cover:
   txt = ''.join(p.read_text() for p in pathlib.Path('bindings/python/tests').glob('*.py'))
   print(len(fns), sorted(f for f in fns if not re.search(rf'tsecon\.{f}\s*\(', txt)))
   "
-  # 155 []
+  # 162 []
   ```
 
   The honest output of this check was not always empty, and the history is

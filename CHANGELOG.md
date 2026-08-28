@@ -7,6 +7,8 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-28
+
 ### Added
 
 - **The binding-suite surface gap is closed: all 155 public callables are now
@@ -99,6 +101,9 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
   lines summed — the paragraph previously claimed a macOS/Apple-silicon
   environment and a 41-crate per-crate summation, contradicting the table
   beneath it.
+
+### Added — the nonlinear-dynamics features
+
 - **`vecm` now supports every statsmodels deterministic case, plus
   seasonal dummies** — the ROADMAP build-later follow-up that finishes
   field-report item 12. 0.6.0 shipped `deterministic="n"|"co"` and
