@@ -623,6 +623,164 @@ fn degenerate_inputs_raise_teaching_errors() {
         star_eval(&y, 1, 1, StarModel::Lstar, 1.0, f64::NAN, true),
         Err(RegimeError::NonFinite { .. })
     ));
+
+    // A transition numerically constant over the sample (huge gamma, c
+    // far below every s_t: G = 1 everywhere) makes [x, Gx] collinear;
+    // the refusal must name the data property and a fix, not just the
+    // internal solver (audit round 10, finding 3d).
+    let ymin = y.iter().cloned().fold(f64::INFINITY, f64::min);
+    let err = star_eval(&y, 1, 1, StarModel::Lstar, 1e8, ymin - 100.0, true).unwrap_err();
+    assert!(matches!(err, RegimeError::Singular { .. }), "{err:?}");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("collinear") && msg.contains("numerically constant"),
+        "singular STAR OLS must name the collinear/constant design: {msg}"
+    );
+    assert!(
+        msg.contains("reduce p") || msg.contains("move (gamma, c)"),
+        "singular STAR OLS must offer a fix: {msg}"
+    );
+}
+
+/// Audit round 10, finding 1: `star_test` must refuse an empty series or
+/// a delay at/past the end of the sample with the same
+/// [`RegimeError::InsufficientData`] contract as every sibling estimator
+/// — before this fix, `build_design` ran first and the usable-row count
+/// wrapped (a capacity-overflow panic), and the `T - 1` / `T` boundary
+/// was miscategorized as a near-constant transition variable.
+#[test]
+fn star_test_refuses_out_of_sample_delays_as_insufficiency() {
+    let mut stream = Stream::new(7);
+    let t = 50usize;
+    let y = sim_ar1(&mut stream, t, 0.4);
+    let p = 2usize;
+
+    // Empty series.
+    assert!(matches!(
+        star_test(&[], p, &[1]),
+        Err(RegimeError::InsufficientData { .. })
+    ));
+
+    // delay = T - 1, T, T + 1, T + 50: all insufficiency, never the
+    // near-constant-transition category, never a panic.
+    for d in [t - 1, t, t + 1, t + 50] {
+        let err = star_test(&y, p, &[d]).unwrap_err();
+        match err {
+            RegimeError::InsufficientData { needed, got } => {
+                // q = p + 1 (d > p), k0 = 1 + q, rows = k0 + 3q + 1 = 14,
+                // measured from start = d.
+                assert_eq!(got, t, "delay {d}: got must be the supplied length");
+                assert_eq!(needed, d + 14, "delay {d}: sibling-contract minimum");
+            }
+            other => panic!("delay {d}: expected InsufficientData, got {other:?}"),
+        }
+        // The message keeps the shared teaching form.
+        let msg = star_test(&y, p, &[d]).unwrap_err().to_string();
+        assert!(
+            msg.contains("insufficient data") && msg.contains("required"),
+            "delay {d}: message lost the sibling form: {msg}"
+        );
+    }
+
+    // A delay list mixing a valid and an out-of-sample delay refuses too
+    // (each battery runs on its own usable sample).
+    assert!(matches!(
+        star_test(&y, p, &[1, t + 50]),
+        Err(RegimeError::InsufficientData { .. })
+    ));
+
+    // The estimator and fixed-parameter surfaces share the contract.
+    assert!(matches!(
+        star(&[], p, &[1], StarModel::Lstar, 0.15, true, 25, 25),
+        Err(RegimeError::InsufficientData { .. })
+    ));
+    assert!(matches!(
+        star(&y, p, &[1, t + 50], StarModel::Lstar, 0.15, true, 25, 25),
+        Err(RegimeError::InsufficientData { .. })
+    ));
+    assert!(matches!(
+        star_eval(&y, p, t + 50, StarModel::Lstar, 2.0, 0.0, true),
+        Err(RegimeError::InsufficientData { .. })
+    ));
+}
+
+// ---------------------------------------------- flag constructibility
+
+/// Deterministic LCG noise in [-0.5, 0.5) — self-contained so the flag
+/// constructions below are bit-reproducible.
+fn lcg_noise(seed: &mut u64) -> f64 {
+    *seed = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    ((*seed >> 11) as f64 / (1u64 << 53) as f64) - 0.5
+}
+
+/// Audit round 10, finding 4 (sweep C's OPEN item): the BOTTOM-wall
+/// `gamma_at_boundary` is reachable from data. A true LSTAR whose
+/// standardized gamma sits below the grid bottom (0.5) makes the in-box
+/// SSR decrease toward the wall; this construction pins the refinement
+/// there, inside the 1e-9-relative detection band.
+#[test]
+fn bottom_wall_gamma_boundary_is_constructible() {
+    let mut seed = 29u64;
+    let mut y = vec![0.3_f64];
+    for _ in 1..500 {
+        let prev = *y.last().unwrap();
+        let g = 1.0 / (1.0 + (-0.2 * prev).exp());
+        let v: f64 = 0.2 + 0.6 * prev + g * (-0.9 * prev - 0.4) + 0.02 * lcg_noise(&mut seed);
+        y.push(v.clamp(-50.0, 50.0));
+    }
+    let fit = star(&y, 1, &[1], StarModel::Lstar, 0.1, true, 25, 25).expect("fit runs");
+    assert_eq!(
+        fit.best_cell.0, 0,
+        "the best grid cell must sit in the bottom gamma row (got {:?})",
+        fit.best_cell
+    );
+    assert!(
+        fit.gamma_standardized <= 0.5 * (1.0 + 1e-9),
+        "refined standardized gamma {} left the bottom wall",
+        fit.gamma_standardized
+    );
+    assert!(
+        fit.gamma_at_boundary,
+        "bottom-wall fit did not set gamma_at_boundary (standardized gamma {})",
+        fit.gamma_standardized
+    );
+}
+
+/// Audit round 10, finding 4 (sweep C's OPEN item): `converged = false`
+/// is reachable from data. The Nelder-Mead refinement certifies an
+/// absolute f-spread of 1e-8; once the SSR magnitude exceeds the float
+/// resolution floor `f_tol / (4 eps)` (~1.1e7 — e.g. a series measured
+/// in "large" units), the optimizer honestly terminates
+/// ObjectiveResolution and reports `converged = false` rather than
+/// certifying a tolerance it could not verify.
+#[test]
+fn converged_false_is_constructible() {
+    let mut seed = 5u64;
+    let mut y = vec![0.3_f64];
+    for _ in 1..300 {
+        let prev = *y.last().unwrap();
+        let g = 1.0 / (1.0 + (-8.0 * prev).exp());
+        let v: f64 = 0.2 + 0.6 * prev + g * (-0.9 * prev - 0.4) + 0.3 * lcg_noise(&mut seed);
+        y.push(v.clamp(-50.0, 50.0));
+    }
+    // Sanity: in ordinary units the same series converges.
+    let base = star(&y, 1, &[1], StarModel::Lstar, 0.1, true, 25, 25).expect("fit runs");
+    assert!(base.converged, "base-scale fit unexpectedly unconverged");
+
+    let big: Vec<f64> = y.iter().map(|v| v * 1e6).collect();
+    let fit = star(&big, 1, &[1], StarModel::Lstar, 0.1, true, 25, 25).expect("fit runs");
+    assert!(
+        fit.eval.ssr > 1.1e7,
+        "construction lost its premise: SSR {} below the resolution floor",
+        fit.eval.ssr
+    );
+    assert!(
+        !fit.converged,
+        "SSR {} beyond the f_tol resolution floor must report converged = false",
+        fit.eval.ssr
+    );
 }
 
 // --------------------------------------------------------- delay search

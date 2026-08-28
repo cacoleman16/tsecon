@@ -305,6 +305,27 @@ def test_norm_var_h0_cell_is_never_empty_and_always_contains_unit(label, spec):
         assert _contains(c, unit)
 
 
+def test_lags0_with_reduced_form_uncertainty_names_lags_and_the_fix():
+    """Audit round 10, finding 3b: lags=0 with the (default)
+    reduced_form_uncertainty=True used to surface internal function names
+    ("psi_reduced_form_cov needs a nonempty gamma...") with no mention of
+    `lags` and no fix — while lags=0 IS supported with
+    reduced_form_uncertainty=False."""
+    for rf_method in ("delta", "second_order", "second_order_bc"):
+        kwargs = {} if rf_method == "delta" else {"rf_method": rf_method}
+        with pytest.raises(ValueError, match="lags=0") as exc:
+            tsecon.proxy_ar_sets(DATA, PROXY, lags=0, horizon=4, **kwargs)
+        msg = str(exc.value)
+        assert "reduced_form_uncertainty=False" in msg, msg
+        assert "psi_reduced_form_cov" not in msg, msg
+        assert "pope_bias_corrected_coefs" not in msg, msg
+    # The advertised alternative actually works.
+    r = tsecon.proxy_ar_sets(DATA, PROXY, lags=0, horizon=4,
+                             reduced_form_uncertainty=False)
+    assert r["level"] is None
+    assert r["reduced_form_uncertainty"] is False
+
+
 def test_level_is_a_number_only_when_reduced_form_uncertainty_is_propagated():
     """A set conditional on the estimated reduced form carries no honest
     1-alpha label, so `level` must be None there rather than a comforting

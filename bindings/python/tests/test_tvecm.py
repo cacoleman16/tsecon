@@ -146,6 +146,48 @@ def test_teaching_errors():
         tsecon.threshold_vecm(y[:8], beta=[1.0, -1.0])  # too short
 
 
+def test_grid_refusal_names_each_surfaces_own_kwarg():
+    """Audit round 10, finding 3c: hansen_seo_test's kwarg is `n_grid`,
+    threshold_vecm's is `n_grid_gamma` — each refusal must name its own."""
+    y = np.array(TVECM["series"]["tv_strong"])
+    with pytest.raises(ValueError, match=r"n_grid >= 2") as exc:
+        tsecon.hansen_seo_test(y, n_grid=1, n_boot=10)
+    assert "n_grid_gamma" not in str(exc.value)
+    with pytest.raises(ValueError, match=r"n_grid_gamma >= 2"):
+        tsecon.threshold_vecm(y, n_grid_gamma=0)
+
+
+def test_k3_beta_none_remedy_is_python_typable():
+    """Audit round 10, finding 3a: the k > 2 refusal must point at the
+    Python route (vecm(..., coint_rank=1, deterministic="co")), not the
+    Rust fit_vecm_det API no Python caller can type."""
+    y3 = np.array(TVECM["series"]["tv3"])
+    with pytest.raises(ValueError, match="bivariate") as exc:
+        tsecon.threshold_vecm(y3)
+    msg = str(exc.value)
+    assert 'vecm(' in msg and 'deterministic="co"' in msg, msg
+    assert "fit_vecm_det" not in msg, msg
+
+
+def test_insufficiency_message_is_exact_in_its_own_units():
+    """Audit round 10, finding 2: the refusal's stated minimum must match
+    the first-succeeding T (bisection-verified at the default
+    k_ar_diff=1, trim=0.05: T=11 refuses, T=12 fits with nobs=10)."""
+    y = np.array(TVECM["series"]["tv_strong"])
+    ok = tsecon.threshold_vecm(y[:12], beta=[1.0, -1.0])
+    assert ok["nobs"] == 10
+    with pytest.raises(ValueError) as exc:
+        tsecon.threshold_vecm(y[:11], beta=[1.0, -1.0])
+    msg = str(exc.value)
+    # 10 usable rows needed, 9 available, supply at least 12 input rows.
+    assert "at least 10 usable rows" in msg, msg
+    assert "Only 9 of the 11 rows" in msg, msg
+    assert "supply at least 12 input rows" in msg, msg
+    # The regressor count is the TVECM's own m = 2 + k*k_ar_diff, not the
+    # Johansen per-equation count.
+    assert "2 + k*k_ar_diff = 4" in msg, msg
+
+
 def test_docstrings_name_every_returned_key():
     import re
 

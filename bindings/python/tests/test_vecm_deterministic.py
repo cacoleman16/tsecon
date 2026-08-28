@@ -141,6 +141,21 @@ def test_vecm_seasons_one_rejected():
         tsecon.vecm(DATA, k_ar_diff=1, coint_rank=1, seasons=1)
 
 
+def test_vecm_seasons_near_t_insufficiency_charges_the_dummies():
+    """Audit round 10, finding 3h: with seasons ~ T the seasonal dummies
+    consume the degrees of freedom, so the insufficiency hint must account
+    for them (no "Try k_ar_diff <= 38" that pretends the dummies are free)
+    and the regressor-count sentence must include the dummy columns."""
+    t = DATA.shape[0]
+    with pytest.raises(ValueError) as exc:
+        tsecon.vecm(DATA, k_ar_diff=1, coint_rank=1, deterministic="co",
+                    seasons=t)
+    msg = str(exc.value)
+    assert "seasonal-dummy column(s)" in msg, msg
+    assert "reduce seasons" in msg, msg
+    assert "Try k_ar_diff <=" not in msg, msg
+
+
 def test_docstrings_name_the_deterministic_cases():
     """The docstring floor: vecm names its default case and johansen's
     convention; johansen names its constant and points at "co"."""

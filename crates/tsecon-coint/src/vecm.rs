@@ -445,16 +445,6 @@ pub fn fit_vecm_seasonal(
     check_finite(endog, "the data matrix")?;
     let n = endog.nrows();
     let p = k_ar_diff + 1;
-    if n <= p {
-        return Err(CointError::InsufficientObservations {
-            needed: k * k_ar_diff + k + 1,
-            got: 0,
-            nobs: n,
-            neqs: k,
-            k_ar_diff,
-        });
-    }
-    let t = n - p;
     let n_short = k * k_ar_diff;
     let (ci, co, li, lo) = deterministic.flags();
     let n_seas = seasons.saturating_sub(1);
@@ -467,6 +457,22 @@ pub fn fit_vecm_seasonal(
     let n_coint = ci as usize + li as usize;
     let n_reg = n_short + n_det;
     let kw = k + n_coint; // width of the (possibly widened) levels block
+                          // Non-seasonal deterministic columns, for the insufficiency message
+                          // (the seasonal dummies are reported separately so the hint can name
+                          // `seasons` as a lever).
+    let n_det_msg = co as usize + lo as usize + n_coint;
+    if n <= p {
+        return Err(CointError::InsufficientObservations {
+            needed: n_reg + kw + 1,
+            got: 0,
+            nobs: n,
+            neqs: k,
+            k_ar_diff,
+            n_det: n_det_msg,
+            n_seasonal: n_seas,
+        });
+    }
+    let t = n - p;
     if t <= n_reg + kw {
         return Err(CointError::InsufficientObservations {
             needed: n_reg + kw + 1,
@@ -474,6 +480,8 @@ pub fn fit_vecm_seasonal(
             nobs: n,
             neqs: k,
             k_ar_diff,
+            n_det: n_det_msg,
+            n_seasonal: n_seas,
         });
     }
 

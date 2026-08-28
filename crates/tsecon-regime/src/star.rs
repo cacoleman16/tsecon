@@ -489,7 +489,17 @@ fn eval_at(design: &Design, model: StarModel, gamma: f64, c: f64) -> Result<Star
     let k = design.k;
     let n = design.n;
     let cols = concentrated_cols(design, model, gamma, c);
-    let fit = ols_qr(&cols, &design.y, "the concentrated STAR OLS at (gamma, c)")?;
+    let fit = ols_qr(
+        &cols,
+        &design.y,
+        "the concentrated STAR OLS at (gamma, c): the design [x, G x] is \
+         collinear — either the lag columns themselves are linearly dependent \
+         (a (near-)constant series or a constant stretch over the usable \
+         sample) or the transition G(gamma, c; s_t) is numerically constant, \
+         making the two regimes' columns coincide. Check the series for \
+         constant segments, reduce p, or move (gamma, c) so the transition \
+         actually varies over the sample",
+    )?;
     let ssr = fit.ssr;
     if !(ssr > 0.0 && ssr.is_finite()) {
         return Err(RegimeError::NonFinite {
@@ -751,10 +761,16 @@ pub fn star(
             Some(b) => b,
             None => {
                 return Err(RegimeError::Singular {
-                    what: "every (gamma, c) grid cell's concentrated OLS \
-                           (the STAR design [x, Gx] is collinear at all \
-                           candidates — is the transition variable nearly \
-                           constant?)",
+                    what: "every (gamma, c) grid cell's concentrated OLS: the \
+                           STAR design [x, G x] is collinear at every candidate \
+                           — the lag columns are linearly dependent (a \
+                           (near-)constant series or a constant stretch over \
+                           the usable sample) or the transition variable \
+                           y_{t-d} barely varies, so G(gamma, c; s_t) is \
+                           numerically constant everywhere. Check the series \
+                           for constant segments, reduce p, or lower trim so \
+                           the c grid spans more of the transition variable's \
+                           range",
                 })
             }
         };
@@ -898,9 +914,25 @@ fn nested_f(ssr_r: f64, ssr_f: f64, r: usize, df2: usize) -> Result<(f64, f64), 
 /// One delay's battery on a prebuilt design (`xt~` = the lag columns of
 /// the null design, plus `s_t` itself when `d > p`).
 fn battery(y: &[f64], p: usize, delay: usize, start: usize) -> Result<StarTest, RegimeError> {
+    // Estimability FIRST, before any design construction: the full
+    // auxiliary regression has k0 + 3q columns (q = p, plus one when
+    // d > p appends y_{t-d} itself; k0 = 1 + q with the constant) and
+    // needs a residual degree of freedom. Checking before `build_design`
+    // keeps a delay past the sample (usable rows <= 0) on the same
+    // insufficient-data path as every sibling estimator instead of
+    // wrapping the row count.
+    let q = p + usize::from(delay > p);
+    let k0 = 1 + q;
+    let n = y.len().saturating_sub(start);
+    if n < k0 + 3 * q + 1 {
+        return Err(RegimeError::InsufficientData {
+            needed: start + k0 + 3 * q + 1,
+            got: y.len(),
+        });
+    }
+
     let design = build_design(y, p, delay, start, true);
     transition_scale(&design.z)?;
-    let n = design.n;
     let s = &design.z;
 
     // Null design w = [1, lags, (y_{t-d} if d > p)].
@@ -912,17 +944,8 @@ fn battery(y: &[f64], p: usize, delay: usize, start: usize) -> Result<StarTest, 
         w.push(s.clone());
         xtilde.push(s.clone());
     }
-    let q = xtilde.len();
-    let k0 = w.len();
-
-    // Estimability: the full auxiliary regression has k0 + 3q columns and
-    // needs a residual degree of freedom.
-    if n < k0 + 3 * q + 1 {
-        return Err(RegimeError::InsufficientData {
-            needed: start + k0 + 3 * q + 1,
-            got: y.len(),
-        });
-    }
+    debug_assert_eq!(q, xtilde.len());
+    debug_assert_eq!(k0, w.len());
 
     let block = |m: u32| -> Vec<Vec<f64>> {
         xtilde

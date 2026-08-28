@@ -22,6 +22,77 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ### Fixed
 
+- **SEVERE (audit round 10): `star_test` let a Rust panic escape to Python
+  for a delay at or past the end of the sample** — `star_test(y, p,
+  delays=[d])` with `d > T` (also an empty series, or `delays` mixing a
+  valid and an out-of-sample delay) computed the usable-row count
+  *before* its sufficiency check, wrapping the `usize` subtraction and
+  panicking on a multi-terabyte allocation (a pyo3 `PanicException`,
+  uncatchable by `except ValueError` and, in the worst case, a
+  capacity-overflow abort). The battery now runs the sibling estimators'
+  sufficiency check **before any design construction**, so every such
+  input raises the family's teaching `ValueError` (`insufficient data:
+  {got} observations, at least {needed} required`), and the `d = T-1`/`T`
+  boundary — previously miscategorized as "the transition variable is
+  (near-)constant" — now reports insufficiency too. `build_design` itself
+  gained a `debug_assert` plus saturating arithmetic so no future caller
+  can reintroduce the wrap. Regression tests cover the empty series and
+  `d = T-1, T, T+1, T+50` on both the Rust and Python surfaces.
+- **Audit round 10 teaching-error repairs** (each verified misdirecting or
+  leaking internals; where older tests pinned the wrong text, the pins
+  were updated to the corrected messages — a fix, not a weakening):
+  - `threshold_vecm`/`hansen_seo_test` insufficiency now uses its own
+    error variant whose minimum is **exact** in usable-row units
+    (bisection-verified: the largest refused `T` names the smallest
+    accepted `T`) and states the TVECM per-regime regressor count
+    `m = 2 + k*k_ar_diff` instead of the Johansen per-equation formula
+    (previously the T=11 refusal claimed "need at least 12 usable rows"
+    while T=12 succeeds with 10). The no-feasible-candidate case (heavy
+    ties in the error-correction term) now gets its own tie-specific
+    message rather than a mislabeled insufficiency.
+  - `threshold_vecm(k>2, beta=None)` from Python now recommends the
+    Python route (`vecm(..., coint_rank=1, deterministic="co")["beta"]`)
+    instead of the Rust `fit_vecm_det(.., Constant)` API; the crate-level
+    message keeps the Rust route for Rust callers.
+  - `proxy_ar_sets(lags=0, reduced_form_uncertainty=True)` now refuses up
+    front naming `lags` and the working alternative
+    (`reduced_form_uncertainty=False`) instead of leaking
+    `psi_reduced_form_cov`/`pope_bias_corrected_coefs` internals.
+  - `hansen_seo_test(n_grid=0)` names its own kwarg `n_grid`;
+    `threshold_vecm` keeps `n_grid_gamma` — each surface names its own
+    parameter.
+  - `star`/`star_eval` all-cells/fixed-point singular OLS now names the
+    data property (collinear or (near-)constant lag design, or a
+    numerically constant transition) and a fix, instead of only "the
+    concentrated STAR OLS at (gamma, c)".
+  - `bn_filter` on a linear ramp (e.g. `np.arange`) now says the **first
+    differences** are constant (the growth process the filter models),
+    not "the series is constant"; the zero-innovation-variance path got
+    the same differences-first wording (new self-describing
+    `FiltersError::Degenerate` variant).
+  - `ou_fit`/`spread_zscore` NaN refusals no longer reuse the
+    cointegration-crate text ("would corrupt every eigenvalue and test
+    statistic"); a new `CointError::NonFiniteSeries` variant names the
+    index and the AR(1)/z-score consequence.
+  - `spread_zscore(kappa=inf)` (and `sigma=inf`) is refused for the
+    finiteness requirement it actually enforces, not "requires
+    kappa > 0" (which `inf` satisfies).
+  - `vecm(seasons≈T)` insufficiency now charges the seasonal dummies:
+    the regressor-count sentence includes the deterministic and
+    seasonal-dummy columns and the `Try k_ar_diff <= …` hint subtracts
+    them before inverting the bound (previously it suggested a
+    `k_ar_diff` that could never help), offering `reduce seasons` as a
+    lever.
+- **Audit round 10, STAR honesty-flag constructibility (sweep C's OPEN
+  item) resolved: both flags are reachable from data**, and regression
+  tests now construct each. `converged = False` fires via the
+  Nelder-Mead ObjectiveResolution termination whenever the SSR magnitude
+  exceeds the absolute `f_tol` resolution floor (~1.1e7 — e.g. a series
+  measured in large units); the bottom-wall `gamma_at_boundary` fires on
+  a true LSTAR whose standardized γ sits below the grid bottom (a
+  deterministic construction pins the refinement at the wall inside the
+  1e-9-relative detection band). Neither is a dead flag; no code change
+  was required.
 - **`docs/reference/testing.md` measurement-provenance paragraph corrected**:
   the suite-state counts are measured on Linux x86_64 (CPython 3.11, release
   extension build) from a single `cargo test --workspace` run with result

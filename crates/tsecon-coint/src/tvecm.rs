@@ -284,12 +284,17 @@ impl Scan {
             }
         }
         if feas_gamma.is_empty() {
-            return Err(CointError::InsufficientObservations {
-                needed: 2 * min_regime,
-                got: n,
-                nobs: n,
-                neqs: design.k,
-                k_ar_diff: (m - 2) / design.k,
+            // The pre-check guarantees n >= 2 * min_regime, so an empty
+            // candidate set means tie groups: observations sharing a w
+            // value join the low regime together, and every tie-group
+            // boundary falls outside the trimmed regime-size window.
+            return Err(CointError::InvalidArgument {
+                what: "no feasible threshold candidate survives the trimming: the \
+                       error-correction term w_{t-1} takes too few distinct values, \
+                       so every tie-group boundary leaves one regime below its \
+                       minimum size max(m + 1, ceil(trim * n)) (observations with \
+                       equal w always split to the same regime) — lower trim, or \
+                       check the series for heavy rounding/discreteness",
             });
         }
         let keep = even_indices(feas_nlow.len(), n_grid);
@@ -603,11 +608,29 @@ fn lm_path(
 
 // ------------------------------------------------------------- validation
 
+/// The smallest usable-row count above `n_failed` that satisfies the
+/// Hansen-Seo trimming requirement `n >= 2 * max(m + 1, ceil(trim * n))`
+/// — the exact minimum the insufficiency message may claim (`ceil(trim *
+/// n)` grows with `n`, so feasibility is not monotone and the bound is
+/// found by scanning upward from the failure point). Terminates because
+/// `2 * ceil(trim * n) < n + 2` once `n > 2 / (1 - 2 trim)`.
+fn min_usable_rows(m: usize, trim: f64, n_failed: usize) -> usize {
+    let mut n = (n_failed + 1).max(2 * (m + 1));
+    loop {
+        let min_regime = (m + 1).max((trim * n as f64).ceil() as usize);
+        if n >= 2 * min_regime {
+            return n;
+        }
+        n += 1;
+    }
+}
+
 fn validate_common(
     endog: MatRef<'_, f64>,
     k_ar_diff: usize,
     trim: f64,
     n_grid: usize,
+    n_grid_requirement: &'static str,
 ) -> Result<(), CointError> {
     let k = endog.ncols();
     if k < 2 {
@@ -629,8 +652,7 @@ fn validate_common(
     }
     if n_grid < 2 {
         return Err(CointError::InvalidArgument {
-            what: "the gamma grid needs at least 2 points (n_grid_gamma >= 2; \
-                   Hansen-Seo used 300)",
+            what: n_grid_requirement,
         });
     }
     let t = endog.nrows();
@@ -639,12 +661,13 @@ fn validate_common(
     let n = t.saturating_sub(p);
     let min_regime = (m + 1).max((trim * n as f64).ceil() as usize);
     if n < 2 * min_regime {
-        return Err(CointError::InsufficientObservations {
-            needed: p + 2 * min_regime,
+        return Err(CointError::ThresholdInsufficientObservations {
+            needed: min_usable_rows(m, trim, n),
             got: n,
             nobs: t,
             neqs: k,
             k_ar_diff,
+            n_regressors: m,
         });
     }
     Ok(())
@@ -905,8 +928,8 @@ pub struct HansenSeoTest {
 ///   `k > 2` (pass the cointegrating vector — the `(k-1)`-dimensional
 ///   grid is not searched);
 /// * [`CointError::NonFinite`] for NaN/infinite data or `beta`;
-/// * [`CointError::InsufficientObservations`] when the usable sample
-///   cannot hold two trimmed regimes;
+/// * [`CointError::ThresholdInsufficientObservations`] when the usable
+///   sample cannot hold two trimmed regimes;
 /// * [`CointError::Singular`] / [`CointError::NotPositiveDefinite`] on
 ///   degenerate designs (collinear series or regime segments).
 #[allow(clippy::too_many_arguments)]
@@ -919,7 +942,14 @@ pub fn threshold_vecm(
     beta_span: f64,
     beta: Option<&[f64]>,
 ) -> Result<TvecmResult, CointError> {
-    validate_common(endog, k_ar_diff, trim, n_grid_gamma)?;
+    validate_common(
+        endog,
+        k_ar_diff,
+        trim,
+        n_grid_gamma,
+        "the gamma grid needs at least 2 points (n_grid_gamma >= 2; \
+         Hansen-Seo used 300)",
+    )?;
     let k = endog.ncols();
 
     // The beta candidates and the linear anchor.
@@ -1196,7 +1226,14 @@ pub fn hansen_seo_test(
     seed: u64,
     beta: Option<&[f64]>,
 ) -> Result<HansenSeoTest, CointError> {
-    validate_common(endog, k_ar_diff, trim, n_grid)?;
+    validate_common(
+        endog,
+        k_ar_diff,
+        trim,
+        n_grid,
+        "the gamma grid needs at least 2 points (n_grid >= 2; Hansen-Seo \
+         used 300)",
+    )?;
     if n_boot == 0 {
         return Err(CointError::InvalidArgument {
             what: "n_boot must be >= 1: the sup-LM null distribution is \

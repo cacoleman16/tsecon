@@ -268,6 +268,19 @@ def test_kmw_error_surfaces(gdp):
         tsecon.bn_filter(bad)
 
 
+def test_kmw_ramp_refusal_names_the_constant_differences():
+    """Audit round 10, finding 3e: bn_filter(np.arange(...)) used to say
+    "the series is constant" — a linear ramp is not constant; its FIRST
+    DIFFERENCES are, and the refusal must say so."""
+    for series in (np.arange(60.0), np.full(60, 3.0), 5.0 - 0.25 * np.arange(60.0)):
+        with pytest.raises(ValueError, match="first differences") as exc:
+            tsecon.bn_filter(series, p=4, delta=0.2)
+        msg = str(exc.value)
+        assert "constant" in msg, msg
+        # The old misdiagnosis must be gone for the ramp.
+        assert "regressor matrix is numerically rank deficient" not in msg, msg
+
+
 def test_coercion_accepts_lists_and_float32(gdp):
     r64 = tsecon.bn_filter(gdp, p=4, delta=0.25)
     r32 = tsecon.bn_filter(gdp.astype(np.float32), p=4, delta=0.25)

@@ -281,16 +281,30 @@ fn refusals() {
     assert!(ou_fit(&ok, f64::NAN, 0.95).is_err());
     assert!(ou_fit(&ok, 1.0, 0.0).is_err());
     assert!(ou_fit(&ok, 1.0, 1.0).is_err());
-    // non-finite data, with the index named
+    // non-finite data, with the index named and an OU-appropriate
+    // consequence — not the multivariate-cointegration eigenvalue text
+    // (audit round 10, finding 3f; the variant moved to NonFiniteSeries
+    // so the AR(1) surfaces carry their own teaching).
     let mut bad = ok;
     bad[3] = f64::NAN;
-    assert!(matches!(
-        ou_fit(&bad, 1.0, 0.95),
-        Err(CointError::NonFinite {
-            at: Some((3, 0)),
-            ..
-        })
-    ));
+    let err = ou_fit(&bad, 1.0, 0.95).unwrap_err();
+    assert!(matches!(err, CointError::NonFiniteSeries { index: 3, .. }));
+    let msg = err.to_string();
+    assert!(msg.contains("index 3"), "index must be named: {msg}");
+    assert!(
+        msg.contains("AR(1)"),
+        "consequence must be the AR(1) fit: {msg}"
+    );
+    assert!(
+        !msg.contains("eigenvalue"),
+        "the cointegration-crate NaN text is wrong for an AR(1) fit: {msg}"
+    );
+    let zerr = spread_zscore(&bad, 1.0, 0.0, 1.0).unwrap_err();
+    assert!(matches!(zerr, CointError::NonFiniteSeries { index: 3, .. }));
+    assert!(
+        !zerr.to_string().contains("eigenvalue"),
+        "spread_zscore NaN text must be OU-appropriate: {zerr}"
+    );
     // constant series: the lagged regressor has zero variance
     assert!(matches!(
         ou_fit(&[2.0; 16], 1.0, 0.95),
@@ -321,6 +335,26 @@ fn refusals() {
     assert!(spread_zscore(&ok, 1.0, f64::NAN, 1.0).is_err());
     assert!(spread_zscore(&ok, 1.0, 0.0, 0.0).is_err());
     assert!(spread_zscore(&[], 1.0, 0.0, 1.0).is_err());
+    // a NON-FINITE kappa/sigma is refused for finiteness, not sign
+    // (audit round 10, finding 3g: "requires kappa > 0" misdescribed
+    // kappa = inf, which satisfies that inequality)
+    for bad_kappa in [f64::INFINITY, f64::NAN] {
+        let err = spread_zscore(&ok, bad_kappa, 0.0, 1.0).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("finite kappa"),
+            "kappa = {bad_kappa} must be refused for finiteness: {msg}"
+        );
+        assert!(
+            !msg.contains("kappa <= 0"),
+            "kappa = {bad_kappa} is not a sign violation: {msg}"
+        );
+    }
+    let err = spread_zscore(&ok, 1.0, 0.0, f64::INFINITY).unwrap_err();
+    assert!(
+        err.to_string().contains("finite sigma"),
+        "sigma = inf must be refused for finiteness: {err}"
+    );
 }
 
 /// Estimating on a simulated path with known parameters recovers them

@@ -186,7 +186,15 @@ pub(crate) fn build_design(
     constant: bool,
 ) -> Design {
     let t_total = y.len();
-    let n = t_total - start;
+    // Every caller must have already refused start >= t_total (their
+    // insufficient-data checks); this guards the usize subtraction against
+    // a future caller reintroducing the wrap (audit round 10, finding 1).
+    debug_assert!(
+        start < t_total,
+        "build_design: start ({start}) must be below the series length ({t_total}); \
+         callers must run their sufficiency check first"
+    );
+    let n = t_total.saturating_sub(start);
     let k = p + usize::from(constant);
     let mut cols: Vec<Vec<f64>> = Vec::with_capacity(k);
     if constant {
@@ -195,7 +203,7 @@ pub(crate) fn build_design(
     for lag in 1..=p {
         cols.push((start..t_total).map(|t| y[t - lag]).collect());
     }
-    let resp: Vec<f64> = y[start..].to_vec();
+    let resp: Vec<f64> = y.get(start..).unwrap_or(&[]).to_vec();
     let z: Vec<f64> = (start..t_total).map(|t| y[t - delay]).collect();
     Design {
         cols,
