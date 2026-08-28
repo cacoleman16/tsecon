@@ -75,8 +75,10 @@ eigenvalues and eigenvectors on drifting cointegrated data
 **What it estimates.** Given the rank `r`, the ML estimate of the VECM: the
 cointegrating vectors `beta` (the long-run equilibria — the "leashes"), the
 adjustment speeds `alpha` (how fast each equation corrects a disequilibrium),
-the short-run dynamics `gamma`, the deterministic coefficients `det_coef`, the
-residual covariance, and the log-likelihood.
+the short-run dynamics `gamma`, the deterministic coefficients — `det_coef`
+for terms in the short-run equations, `det_coef_coint` for terms restricted
+to the cointegration relation — the residual covariance, and the
+log-likelihood.
 
 **Assumptions.** The rank `coint_rank` is correct (take it from `johansen`);
 Gaussian innovations for the ML/log-likelihood; the same deterministic
@@ -88,30 +90,43 @@ information a differenced VAR discards, and `alpha`/`beta` are directly
 interpretable — which series bear the burden of adjustment back to equilibrium.
 
 **Key arguments and defaults (and why).** `data` (T×k), `k_ar_diff`,
-`coint_rank` (from the Johansen test), and `deterministic` naming the
-statsmodels VECM case:
+`coint_rank` (from the Johansen test), `deterministic` naming the
+statsmodels VECM case (all nine accepted), and `seasons`/`first_season`
+(statsmodels-style centered seasonal dummies, `0` = none).
 
-- `"n"` (default) — **no deterministic terms**, exactly statsmodels
-  `VECM(..., deterministic="n")`. The default is `"n"` only because that is
-  what this function has always computed — changing it would silently change
-  every existing caller's numbers.
-- `"co"` — an **unrestricted constant** outside the cointegration relation
-  (statsmodels `"co"`): each short-run equation gains an intercept (returned
-  in `det_coef`, k×1) and the reduced-rank step partials the constant out, so
-  the estimated cointegrating space is exactly the one `johansen`
-  (`det_order=0`) tests. **This is the case to use on drifting data and
-  whenever the rank came from `johansen`.**
+Deterministic-case guidance — "restricted" means *inside the cointegration
+relation*: the term is appended to the lagged-levels block, so the
+reduced-rank step estimates a **widened** cointegrating matrix and its extra
+rows come back as `det_coef_coint` (statsmodels' own split); unrestricted
+terms live in the short-run equations (`det_coef`):
 
-The restricted statsmodels cases (`"ci"`, `"li"`, `"lo"`, seasonal dummies)
-are not implemented; passing them raises an error naming the supported cases
-(a documented follow-up — see ROADMAP build-later).
+| `deterministic` | Johansen case | Model it answers | Use when |
+|---|---|---|---|
+| `"n"` (default) | I | no deterministic terms at all | means/drifts truly zero (rare); the default only because it is what this function has always computed |
+| `"ci"` | II | equilibrium error has a free mean; **no drift** in the data | non-drifting levels whose equilibrium is not mean-zero |
+| `"co"` | III | unrestricted constant: drifting data, mean-stationary equilibrium error | **drifting data, and whenever the rank came from `johansen` (`det_order=0`)** |
+| `"coli"` | IV | drift + a linear trend *inside* the relation | trending data whose equilibrium relation is trend-stationary |
+| `"colo"` | V | unrestricted constant + trend | even the equilibrium error trends; the analogue of `coint_johansen(det_order=1)` |
+| `"lo"`, `"li"`, `"cilo"`, `"cili"` | — | the remaining statsmodels-valid combinations | complete the grid; statsmodels forbids the same term on both sides (`"co"`+`"ci"`, `"lo"`+`"li"`) and so does `vecm` |
+
+`seasons=s` adds `s-1` **centered** seasonal dummies to the short-run
+equations (they sum to zero over a cycle, shifting the seasonal profile
+without moving the level, so they combine with every case above);
+`first_season` is the 0-based season of the first row.
 
 **How to read the output.** `beta` (k×r, each column a cointegrating vector —
-normalized on the first variable), `alpha` (k×r adjustment speeds; a large
-negative entry means that equation does most of the correcting, a near-zero
-entry means that variable is weakly exogenous), `gamma` (short-run lag
-coefficients), `det_coef` (k×n_det deterministic coefficients — empty for
-`"n"`, the short-run intercepts for `"co"`), `sigma_u`, `llf`.
+normalized on the first variable(s): the widened matrix
+`[beta; det_coef_coint]` has the identity as its leading r×r block),
+`det_coef_coint` (n_coint×r — the restricted deterministic rows of the
+widened cointegrating matrix, constant row first then trend row; column `j`
+completes cointegrating relation `j`: the equilibrium error is
+`beta[:,j]'y + det_coef_coint[:,j]'[1; t]`; empty unless `"ci"`/`"li"` is in
+the case), `alpha` (k×r adjustment speeds; a large negative entry means that
+equation does most of the correcting, a near-zero entry means that variable
+is weakly exogenous), `gamma` (short-run lag coefficients), `det_coef`
+(k×n_det unrestricted deterministic coefficients, statsmodels column order:
+constant, `seasons-1` seasonal dummies, trend — empty for `"n"`), `sigma_u`,
+`llf`.
 
 **Failure modes.** A wrong rank propagates everywhere; imposing cointegration
 on series that are not cointegrated fabricates a spurious equilibrium; and the
@@ -124,10 +139,20 @@ cases before comparing.
 
 **Validated against.** statsmodels `VECM` (ML estimation; `k_ar_diff=2`,
 `coint_rank=1`, `deterministic="n"`) — `alpha`, `beta`, `gamma`, `sigma_u`,
-`llf` (`fixtures/coint.json`); both deterministic cases (`"n"` and `"co"`:
-`alpha`, `beta`, `gamma`, `det_coef`, `sigma_u`, `llf`) plus the
+`llf` (`fixtures/coint.json`); **every deterministic case** on
+`fixtures/vecm_deterministic.json` — `"n"` and `"co"` plus the
 `"co"`-reconciles-with-`johansen` / `"n"`-diverges relationship on seeded
-drifting cointegrated data (`fixtures/vecm_deterministic.json`).
+drifting data, all nine cases (`alpha`, `beta`, `det_coef_coint`, `gamma`,
+`det_coef`, `sigma_u`, `llf` at 1e-6; measured deviations ≤ ~1e-11) on
+seeded *trending* data where the case choice visibly moves `beta` (the
+cross-case β cosines are pinned), and two `seasons=4` fits (including a
+nonzero `first_season`) on a seeded quarterly pair. The `"colo"` ↔
+`coint_johansen(det_order=1)` correspondence is pinned as *asymptotic* (β
+cosine ~1−6e-9 on the trending draw — statsmodels' `det_order=1` detrends
+over the full sample, a different finite-sample projection), unlike the
+exact `"co"` ↔ `det_order=0` identity. The pre-existing `"n"`/`"co"` paths
+are additionally pinned **bit-identical** to their 0.6.0 output
+(`crates/tsecon-coint/tests/vecm_bit_identity.rs`).
 
 **References.** Johansen (1995); Lütkepohl (2005, ch. 6–7).
 
