@@ -1926,17 +1926,26 @@ def vecm(
     k_ar_diff: int = ...,
     coint_rank: int = ...,
     deterministic: str = ...,
+    seasons: int = ...,
+    first_season: int = ...,
 ) -> dict[str, Any]:
 ```
 
-VECM ML estimation: alpha, beta, gamma, det_coef, sigma_u, llf (statsmodels-exact).
+VECM ML estimation: alpha, beta, det_coef_coint, gamma, det_coef, sigma_u, llf.
 
-    ``deterministic``: ``"n"`` (default) — no deterministic terms, statsmodels
-    ``VECM(..., deterministic="n")``; ``"co"`` — unrestricted constant
-    (statsmodels ``"co"``, the case ``johansen``'s det_order=0 convention
-    assumes; the intercepts land in ``det_coef``). Warning: ``johansen``
-    assumes the unrestricted constant, NOT this default — pass
-    ``deterministic="co"`` when the rank came from ``johansen``.
+    ``deterministic`` names the statsmodels VECM case (all nine accepted):
+    ``"n"`` (default) — no deterministic terms; ``"co"``/``"ci"`` — constant
+    outside/inside the cointegration relation; ``"lo"``/``"li"`` — linear
+    trend outside/inside; combinations ``"colo"``/``"coli"``/``"cilo"``/
+    ``"cili"``. Restricted (inside) terms widen the cointegrating matrix —
+    their coefficients are returned as the rows of ``det_coef_coint``
+    (constant first, then trend; statsmodels ``VECMResults.det_coef_coint``);
+    unrestricted terms land in ``det_coef`` (statsmodels column order:
+    constant, seasons-1 centered seasonal dummies, trend). ``seasons``/
+    ``first_season``: statsmodels-style centered seasonal dummies. Warning:
+    ``johansen`` assumes the unrestricted constant (det_order=0), NOT this
+    function's ``"n"`` default — pass ``deterministic="co"`` when the rank
+    came from ``johansen`` (det_order -1/0/1 ↔ ``"n"``/``"co"``/``"colo"``).
 
 ### `ou_fit`
 
