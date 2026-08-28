@@ -66,6 +66,18 @@ pub enum FiltersError {
         /// Name of the diagnostic that rejected the series.
         what: &'static str,
     },
+    /// The series is degenerate for the requested filter in a way the
+    /// message itself states fully — e.g. constant *first differences*
+    /// (an exact linear ramp) for the Beveridge-Nelson filter, whose AR
+    /// stage models the changes of the series, not its level. Unlike
+    /// [`FiltersError::RankDeficient`] and
+    /// [`FiltersError::ConstantSeries`], no generic explanation is
+    /// appended: `what` carries the data property, its consequence, and
+    /// the remedy.
+    Degenerate {
+        /// Complete description of the degeneracy and what to do.
+        what: &'static str,
+    },
 }
 
 impl fmt::Display for FiltersError {
@@ -115,6 +127,7 @@ impl fmt::Display for FiltersError {
                  decomposition's float-noise variances is implementation noise, not \
                  a measurement. A constant series has no seasonality to measure."
             ),
+            FiltersError::Degenerate { what } => write!(f, "{what}"),
         }
     }
 }

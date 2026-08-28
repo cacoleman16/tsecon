@@ -174,6 +174,33 @@ def test_ou_fit_refusals_teach():
         tsecon.ou_fit(alt)
 
 
+def test_nan_refusal_text_is_ou_appropriate():
+    """Audit round 10, finding 3f: the NaN refusal used to reuse the
+    cointegration-crate text ("would corrupt every eigenvalue and test
+    statistic") — irrelevant for an AR(1) fit. It must name the index and
+    the AR(1) consequence instead."""
+    bad = np.array([0.1, np.nan, 0.3, 0.2, 0.1])
+    with pytest.raises(ValueError, match="index 1") as exc:
+        tsecon.ou_fit(bad)
+    msg = str(exc.value)
+    assert "eigenvalue" not in msg, msg
+    assert "AR(1)" in msg, msg
+    with pytest.raises(ValueError, match="index 1") as exc:
+        tsecon.spread_zscore(bad, kappa=1.0, mu=0.0, sigma=1.0)
+    assert "eigenvalue" not in str(exc.value), str(exc.value)
+
+
+def test_zscore_infinite_kappa_refused_for_finiteness():
+    """Audit round 10, finding 3g: kappa=inf satisfies "kappa > 0", so the
+    refusal must state the finiteness requirement it actually enforces."""
+    x = np.array(CELLS["daily_fast"]["x"])
+    for bad in (np.inf, np.nan):
+        with pytest.raises(ValueError, match="finite kappa"):
+            tsecon.spread_zscore(x, kappa=bad, mu=0.0, sigma=1.0)
+    with pytest.raises(ValueError, match="finite sigma"):
+        tsecon.spread_zscore(x, kappa=1.0, mu=0.0, sigma=np.inf)
+
+
 def test_weak_cell_ci_upper_is_inf():
     """daily_weak: kappa_hat > 0 but its level-scale interval crosses zero,
     so the shipped half-life CI honestly reports an infinite upper bound."""

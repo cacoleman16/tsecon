@@ -219,14 +219,14 @@ impl OuFit {
     }
 }
 
-/// First non-finite entry of `x`, as a `NonFinite` error at `(index, 0)`.
+/// First non-finite entry of `x`, as a [`CointError::NonFiniteSeries`]
+/// whose `what` carries the OU-appropriate consequence and remedy (the
+/// located `NonFinite` variant explains a *cointegration-eigenvalue*
+/// consequence that does not apply to an AR(1) fit).
 fn check_series_finite(x: &[f64], what: &'static str) -> Result<(), CointError> {
     for (i, v) in x.iter().enumerate() {
         if !v.is_finite() {
-            return Err(CointError::NonFinite {
-                what,
-                at: Some((i, 0)),
-            });
+            return Err(CointError::NonFiniteSeries { what, index: i });
         }
     }
     Ok(())
@@ -259,7 +259,12 @@ fn check_series_finite(x: &[f64], what: &'static str) -> Result<(), CointError> 
 /// is returned honestly with `mean_reverting = false`,
 /// `half_life = +inf`, and `half_life_ci = stationary_sd = None`.
 pub fn ou_fit(x: &[f64], dt: f64, level: f64) -> Result<OuFit, CointError> {
-    check_series_finite(x, "x")?;
+    check_series_finite(
+        x,
+        "the spread series x: the OU fit is an AR(1) regression of x_{t+1} on \
+         (1, x_t), so one gap invalidates both transitions it enters — drop or \
+         impute missing values first (pandas: s.dropna() or s.interpolate())",
+    )?;
     if x.len() < 4 {
         return Err(CointError::InvalidArgument {
             what: "ou_fit needs at least 4 observations (3 transitions): the AR(1) \
@@ -432,13 +437,26 @@ pub fn ou_fit(x: &[f64], dt: f64, level: f64) -> Result<OuFit, CointError> {
 /// convenience gap. Non-finite `x`/parameters and `sigma <= 0` are
 /// refused likewise.
 pub fn spread_zscore(x: &[f64], kappa: f64, mu: f64, sigma: f64) -> Result<Vec<f64>, CointError> {
-    check_series_finite(x, "x")?;
+    check_series_finite(
+        x,
+        "the spread series x: the z-score (x_t - mu) / stationary_sd is undefined \
+         at a missing value — drop or impute it first (pandas: s.dropna() or \
+         s.interpolate())",
+    )?;
     if x.is_empty() {
         return Err(CointError::InvalidArgument {
             what: "spread_zscore needs at least one observation",
         });
     }
-    if !kappa.is_finite() || kappa <= 0.0 {
+    if !kappa.is_finite() {
+        return Err(CointError::InvalidArgument {
+            what: "spread_zscore requires a finite kappa: the mean-reversion speed \
+                   sets the stationary standard deviation sigma / sqrt(2 kappa), \
+                   and NaN or infinity gives no stationary distribution to score \
+                   against — pass the kappa from ou_fit",
+        });
+    }
+    if kappa <= 0.0 {
         return Err(CointError::InvalidArgument {
             what: "spread_zscore requires kappa > 0: a process with kappa <= 0 does \
                    not mean-revert and has no stationary distribution, so the \
@@ -453,7 +471,13 @@ pub fn spread_zscore(x: &[f64], kappa: f64, mu: f64, sigma: f64) -> Result<Vec<f
             what: "spread_zscore requires a finite mu (the long-run mean)",
         });
     }
-    if !sigma.is_finite() || sigma <= 0.0 {
+    if !sigma.is_finite() {
+        return Err(CointError::InvalidArgument {
+            what: "spread_zscore requires a finite sigma (the diffusion scale): NaN \
+                   or infinity gives no stationary distribution to score against",
+        });
+    }
+    if sigma <= 0.0 {
         return Err(CointError::InvalidArgument {
             what: "spread_zscore requires sigma > 0 (the diffusion scale)",
         });

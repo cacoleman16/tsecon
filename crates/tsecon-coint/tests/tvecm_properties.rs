@@ -303,11 +303,14 @@ fn degenerate_inputs_raise_teaching_errors() {
         Err(CointError::NonFinite { .. })
     ));
 
-    // Too short for two trimmed regimes.
+    // Too short for two trimmed regimes (audit round 10, finding 2: the
+    // refusal moved to its own variant so the message can state the
+    // TVECM's requirement — two trimmed regimes of m = 2 + k*k_ar_diff
+    // regressors each — in consistent usable-row units).
     let short = Mat::from_fn(10, 2, |i, j| y[(i, j)]);
     assert!(matches!(
         threshold_vecm(short.as_ref(), 1, 0.05, 300, 1, 0.0, Some(&[1.0, -1.0])),
-        Err(CointError::InsufficientObservations { .. })
+        Err(CointError::ThresholdInsufficientObservations { .. })
     ));
 
     // n_boot = 0.
@@ -315,6 +318,99 @@ fn degenerate_inputs_raise_teaching_errors() {
         hansen_seo_test(y.as_ref(), 1, 0.05, 300, 0, 0, None),
         Err(CointError::InvalidArgument { .. })
     ));
+
+    // Each surface's grid-size refusal names its own kwarg (audit round
+    // 10, finding 3c): hansen_seo_test's is `n_grid`, threshold_vecm's
+    // is `n_grid_gamma`.
+    let e = hansen_seo_test(y.as_ref(), 1, 0.05, 1, 10, 0, None).unwrap_err();
+    let msg = e.to_string();
+    assert!(
+        msg.contains("n_grid >= 2") && !msg.contains("n_grid_gamma"),
+        "hansen_seo_test grid refusal must name n_grid: {msg}"
+    );
+    let e = threshold_vecm(y.as_ref(), 1, 0.05, 1, 1, 0.0, None).unwrap_err();
+    let msg = e.to_string();
+    assert!(
+        msg.contains("n_grid_gamma >= 2"),
+        "threshold_vecm grid refusal must name n_grid_gamma: {msg}"
+    );
+}
+
+/// Audit round 10, finding 2: the minimum-T claim of the insufficiency
+/// message must be exact in its own units. Bisection check: for several
+/// `(k_ar_diff, trim)` cells, the largest refused `T` names a minimum
+/// consistent with the smallest accepted `T` (its "supply at least N
+/// input rows" is exactly that `T`), and its usable-row `needed`/`got`
+/// are in the same units.
+#[test]
+fn insufficiency_minimum_is_exact_at_the_boundary() {
+    let mut stream = Stream::new(4242);
+    let long = sim_linear(&mut stream, 200);
+    for (k_ar_diff, trim) in [
+        (1usize, 0.05_f64),
+        (0, 0.05),
+        (2, 0.05),
+        (1, 0.3),
+        (1, 0.45),
+    ] {
+        let p = k_ar_diff + 1;
+        // Find the smallest accepted T by scanning upward.
+        let mut first_ok = None;
+        for t in (p + 1)..150 {
+            let m = Mat::from_fn(t, 2, |i, j| long[(i, j)]);
+            if threshold_vecm(m.as_ref(), k_ar_diff, trim, 300, 1, 0.0, Some(&[1.0, -1.0])).is_ok()
+            {
+                first_ok = Some(t);
+                break;
+            }
+        }
+        let first_ok = first_ok.expect("some T under 150 must fit");
+        let t_refused = first_ok - 1;
+        let m = Mat::from_fn(t_refused, 2, |i, j| long[(i, j)]);
+        let err = threshold_vecm(m.as_ref(), k_ar_diff, trim, 300, 1, 0.0, Some(&[1.0, -1.0]))
+            .unwrap_err();
+        match err {
+            CointError::ThresholdInsufficientObservations {
+                needed,
+                got,
+                nobs,
+                neqs,
+                k_ar_diff: kad,
+                n_regressors,
+            } => {
+                assert_eq!(nobs, t_refused);
+                assert_eq!(got, t_refused - p, "got must be usable rows");
+                assert_eq!(neqs, 2);
+                assert_eq!(kad, k_ar_diff);
+                assert_eq!(n_regressors, 2 + 2 * k_ar_diff);
+                assert_eq!(
+                    needed + p,
+                    first_ok,
+                    "cell (k_ar_diff={k_ar_diff}, trim={trim}): the claimed minimum \
+                     ({needed} usable + {p} presample) must equal the smallest \
+                     accepted T ({first_ok})"
+                );
+                let msg = CointError::ThresholdInsufficientObservations {
+                    needed,
+                    got,
+                    nobs,
+                    neqs,
+                    k_ar_diff: kad,
+                    n_regressors,
+                }
+                .to_string();
+                assert!(
+                    msg.contains(&format!("supply at least {first_ok} input rows")),
+                    "message must name the first-succeeding T exactly: {msg}"
+                );
+                assert!(
+                    msg.contains(&format!("2 + k*k_ar_diff = {n_regressors}")),
+                    "message must state the TVECM regressor count: {msg}"
+                );
+            }
+            other => panic!("expected ThresholdInsufficientObservations, got {other:?}"),
+        }
+    }
 }
 
 // ---------------------------------------------------------- determinism

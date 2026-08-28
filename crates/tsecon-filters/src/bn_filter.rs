@@ -142,9 +142,13 @@ pub struct BnFilterResult {
 ///   observations (the unpadded AR(`p`)-with-constant behind the cycle
 ///   standard error needs `T - p > p + 1` difference observations);
 /// * [`FiltersError::NonFiniteInput`] — NaN/inf in `y`;
-/// * [`FiltersError::RankDeficient`] — a degenerate (e.g. constant)
-///   series makes one of the regressions singular, or the automatic
-///   grid search fails to find a local maximum within the safety cap.
+/// * [`FiltersError::Degenerate`] — the first differences are constant
+///   (a linear ramp or flat line: the growth process the filter models
+///   has zero variance), or the AR fit to the differences leaves zero
+///   residual variance (an exactly deterministic `Delta y`);
+/// * [`FiltersError::RankDeficient`] — a regression inside the filter is
+///   singular, or the automatic grid search fails to find a local
+///   maximum within the safety cap.
 pub fn bn_filter(
     y: &[f64],
     p: usize,
@@ -176,6 +180,21 @@ pub fn bn_filter(
 
     // Demeaned first differences.
     let dy: Vec<f64> = y.windows(2).map(|w| w[1] - w[0]).collect();
+    if dy.iter().all(|&v| v == dy[0]) {
+        // Say what is actually constant: for a linear ramp (np.arange) or a
+        // flat line it is the FIRST DIFFERENCES, and the BN filter models
+        // variation in Delta y, not in the level (audit round 10: the old
+        // refusal called a ramp "constant").
+        return Err(FiltersError::Degenerate {
+            what: "bn_filter: the first differences of the series are constant (the \
+                   series is an exact linear ramp or a flat line), so the growth \
+                   process the filter models has zero variance and no trend/cycle \
+                   split exists. The BN decomposition works on the *changes* \
+                   Delta y, which must have a stochastic component — check that \
+                   the right column was passed (a time index or a deterministic \
+                   trend often looks like this)",
+        });
+    }
     let drift = if demean {
         dy.iter().sum::<f64>() / dy.len() as f64
     } else {
@@ -345,9 +364,12 @@ fn bn_filter_at_delta(x: &[f64], p: usize, delta: f64) -> Result<BnCore, Filters
     }
     let sig2_ols = ssr_u / ((t_len - p) as f64);
     if sig2_ols <= 0.0 || !sig2_ols.is_finite() {
-        return Err(FiltersError::RankDeficient {
-            what: "bn_filter innovation variance (zero residual variance — is the \
-                   series a perfect AR(p)?)",
+        return Err(FiltersError::Degenerate {
+            what: "bn_filter: the AR(p) fit to the first differences has zero \
+                   residual variance — Delta y follows an exact deterministic \
+                   recursion, so the innovation variance behind the trend/cycle \
+                   split is undefined; the BN filter needs a stochastic growth \
+                   component in the differences",
         });
     }
 

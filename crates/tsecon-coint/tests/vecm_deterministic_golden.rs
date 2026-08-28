@@ -424,6 +424,95 @@ fn vecm_seasonal_delegation_and_seasons_one_refusal() {
     );
 }
 
+/// Audit round 10, finding 3h: when `seasons` is large enough that the
+/// dummies alone exhaust the degrees of freedom, the insufficiency
+/// message must charge them for it — the regressor-count sentence and the
+/// hint both account for the seasonal columns instead of blaming
+/// `k_ar_diff` alone.
+#[test]
+fn vecm_seasonal_insufficiency_accounts_for_dummy_columns() {
+    let fx = load_fixture("vecm_deterministic.json");
+    let endog = as_endog(&fx["seasonal"]["data"]);
+    let t = endog.nrows();
+    let k = endog.ncols();
+
+    // seasons ~ T: the seasons - 1 dummies leave no residual df.
+    let err = fit_vecm_seasonal(endog.as_ref(), 1, 1, VecmDeterministic::Constant, t, 0)
+        .expect_err("seasons ~ T must refuse");
+    match err {
+        CointError::InsufficientObservations {
+            n_det, n_seasonal, ..
+        } => {
+            assert_eq!(n_seasonal, t - 1, "seasonal column count");
+            assert_eq!(n_det, 1, "the unrestricted constant");
+        }
+        other => panic!("expected InsufficientObservations, got {other:?}"),
+    }
+    let msg = fit_vecm_seasonal(endog.as_ref(), 1, 1, VecmDeterministic::Constant, t, 0)
+        .expect_err("seasons ~ T must refuse")
+        .to_string();
+    assert!(
+        msg.contains("seasonal-dummy column(s)"),
+        "message must name the seasonal dummies: {msg}"
+    );
+    assert!(
+        !msg.contains("Try k_ar_diff <="),
+        "no k_ar_diff can rescue a dummy-exhausted sample: {msg}"
+    );
+    assert!(
+        msg.contains("reduce seasons"),
+        "message must offer the seasons lever: {msg}"
+    );
+    // The regressor-count sentence sums lags (k_ar_diff = 1) + levels +
+    // deterministic + seasonal columns.
+    let per_eq = k + k + 1 + (t - 1);
+    assert!(
+        msg.contains(&format!("= {per_eq} in total")),
+        "per-equation count must include the dummy columns: {msg}"
+    );
+
+    // The hint's k_ar_diff bound stays exact WITH seasonal columns: on a
+    // truncated sample with quarterly dummies, the claimed d_max fits
+    // and d_max + 1 refuses. The bound inverts
+    // n >= d*(k+1) + k + n_det + n_seasonal + 2 (n_det = 1 for "co",
+    // n_seasonal = 3).
+    let small_t = 8 * (k + 1) + k; // roomy enough for a d_max >= 1
+    let small = Mat::from_fn(small_t, k, |i, j| endog[(i, j)]);
+    let d_max = (small_t - k - 2 - 1 - 3) / (k + 1);
+    let too_big = d_max + 1 + 2; // clearly refused
+    let err = fit_vecm_seasonal(
+        small.as_ref(),
+        too_big,
+        1,
+        VecmDeterministic::Constant,
+        4,
+        0,
+    )
+    .expect_err("oversized k_ar_diff with quarterly dummies must refuse")
+    .to_string();
+    assert!(
+        err.contains(&format!("Try k_ar_diff <= {d_max}")),
+        "hint must subtract the dummy columns before inverting (d_max = {d_max}): {err}"
+    );
+    assert!(
+        fit_vecm_seasonal(small.as_ref(), d_max, 1, VecmDeterministic::Constant, 4, 0).is_ok(),
+        "the hinted k_ar_diff = {d_max} must actually fit"
+    );
+    assert!(
+        fit_vecm_seasonal(
+            small.as_ref(),
+            d_max + 1,
+            1,
+            VecmDeterministic::Constant,
+            4,
+            0
+        )
+        .is_err(),
+        "k_ar_diff = {} must still refuse",
+        d_max + 1
+    );
+}
+
 /// The statsmodels-string round trip covers all nine cases, and
 /// unparseable strings — including the statsmodels conflicts and legacy
 /// aliases — return `None`.

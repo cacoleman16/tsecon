@@ -4885,6 +4885,19 @@ fn proxy_ar_sets<'py>(
              one of those rf_method values (or drop them)",
         ));
     }
+    // lags=0 leaves nothing for the reduced-form propagation to act on; the
+    // crate-level refusals name internal functions and never `lags` (audit
+    // round 10, finding 3b), so refuse here with the caller's own knobs.
+    if reduced_form_uncertainty && lags == 0 {
+        return Err(PyValueError::new_err(
+            "reduced_form_uncertainty=True cannot act when lags=0: a VAR(0) has \
+             no lag coefficients, so there is no reduced-form (coefficient) \
+             uncertainty to propagate through the MA map. Either pass \
+             reduced_form_uncertainty=False (lags=0 is supported there — the \
+             sets are then conditional on the reduced form and `level` is None) \
+             or fit with lags >= 1",
+        ));
+    }
     let psi_var = if reduced_form_uncertainty {
         Some(match rf_method {
             "delta" => psi_reduced_form_cov(&psi, &r.coefs, cov_alpha.as_ref(), &gamma, n_proxy)
@@ -6061,6 +6074,20 @@ fn threshold_vecm<'py>(
     }
     let m = data_to_faer(&data);
     let beta_vec = beta.as_ref().map(vec1);
+    // Python-correct remedy for the k > 2 refusal: the crate-level message
+    // names the Rust route (fit_vecm_det), which no Python caller can type
+    // (audit round 10, finding 3a).
+    if beta_vec.is_none() && m.ncols() > 2 {
+        return Err(PyValueError::new_err(format!(
+            "estimating beta by grid search is supported for bivariate systems \
+             only (the Hansen-Seo grid is one-dimensional) and this system has \
+             k = {} series: pass beta= explicitly — e.g. the linear estimate \
+             np.asarray(vecm(data, k_ar_diff={}, coint_rank=1, \
+             deterministic=\"co\")[\"beta\"])[:, 0]",
+            m.ncols(),
+            k_ar_diff,
+        )));
+    }
     let r = tsecon_coint::threshold_vecm(
         m.as_ref(),
         k_ar_diff,

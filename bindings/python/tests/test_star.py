@@ -175,6 +175,35 @@ def test_teaching_errors():
         tsecon.star(flat, p=1)
 
 
+def test_out_of_sample_delay_is_a_teaching_error_not_a_panic():
+    """Audit round 10, finding 1 (SEVERE): star_test with an empty series
+    or a delay at/past the end of the sample used to escape as a Rust
+    panic (pyo3 PanicException, uncatchable by `except ValueError`), and
+    the T-1/T boundary was miscategorized as a near-constant transition
+    variable. All must raise the sibling estimators' "insufficient data"
+    ValueError."""
+    rng = np.random.default_rng(3)
+    T = 50
+    y = rng.standard_normal(T)
+
+    with pytest.raises(ValueError, match="insufficient data"):
+        tsecon.star_test(np.array([]), p=2)
+    for d in (T - 1, T, T + 1, T + 50):
+        with pytest.raises(ValueError, match="insufficient data"):
+            tsecon.star_test(y, p=2, delays=[d])
+    with pytest.raises(ValueError, match="insufficient data"):
+        tsecon.star_test(y, p=2, delays=[1, T + 50])
+
+    # star and star_eval share the contract (they already refused; pinned
+    # so the family stays aligned).
+    with pytest.raises(ValueError, match="insufficient data"):
+        tsecon.star(np.array([]), p=2)
+    with pytest.raises(ValueError, match="insufficient data"):
+        tsecon.star(y, p=2, delays=[1, T + 50])
+    with pytest.raises(ValueError, match="insufficient data"):
+        tsecon.star_eval(y, p=2, gamma=2.0, c=0.0, delay=T + 50)
+
+
 def test_delays_search_and_battery_agree_on_lstar_d2():
     y = np.array(STAR["series"]["lstar_d2"])
     t = tsecon.star_test(y, p=1, delays=[1, 2, 3])

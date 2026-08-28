@@ -173,6 +173,8 @@ pub fn johansen(endog: MatRef<'_, f64>, k_ar_diff: usize) -> Result<JohansenResu
             nobs: n,
             neqs: k,
             k_ar_diff,
+            n_det: 0,
+            n_seasonal: 0,
         });
     }
     let t = n - 1 - k_ar_diff;
@@ -185,6 +187,8 @@ pub fn johansen(endog: MatRef<'_, f64>, k_ar_diff: usize) -> Result<JohansenResu
             nobs: n,
             neqs: k,
             k_ar_diff,
+            n_det: 0,
+            n_seasonal: 0,
         });
     }
 
