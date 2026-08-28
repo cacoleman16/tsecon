@@ -1,10 +1,8 @@
 # Model card — Cointegration and regime switching
 
-`johansen` · `vecm` · `ou_fit` · `spread_zscore` · `markov_switching_ar` ·
-`setar` · `setar_test` · `star` · `star_eval` · `star_test`
 `johansen` · `vecm` · `threshold_vecm` · `hansen_seo_test` · `ou_fit` ·
 `spread_zscore` · `markov_switching_ar` · `setar` · `setar_test` ·
-`threshold_var` · `threshold_var_test`
+`star` · `star_eval` · `star_test` · `threshold_var` · `threshold_var_test`
 
 Two ways the tidy linear-stationary world breaks. First, series can be
 individually nonstationary yet move together — share a long-run equilibrium
@@ -18,18 +16,16 @@ of the error-correction speed `alpha`. Second, the parameters themselves
 can switch between regimes — either *unobserved* states governed by a hidden
 Markov chain (`markov_switching_ar`), or *observed* states triggered when a
 lagged value of the series itself crosses a threshold — abruptly (`setar`,
-with `setar_test` deciding whether a threshold exists at all) or smoothly
-(`star`, the smooth-transition family, with `star_test` running the
-Terasvirta modeling cycle: is there nonlinearity at all, and is it logistic
-or exponential?).
-lagged value of the series itself crosses a threshold (`setar`, with
-`setar_test` deciding whether a threshold exists at all; `threshold_var` /
-`threshold_var_test` are the same story for a *system* of series). The two
-breaks meet in **threshold cointegration** (`threshold_vecm` /
-`hansen_seo_test`): the long-run equilibrium exists, but the *correction
-toward it* switches regimes when the equilibrium error itself crosses a
-threshold — arbitrage that only kicks in once the spread is wide enough to
-cover transaction costs.
+with `setar_test` deciding whether a threshold exists at all;
+`threshold_var` / `threshold_var_test` are the same story for a *system*
+of series) or smoothly (`star`, the smooth-transition family, with
+`star_test` running the Terasvirta modeling cycle: is there nonlinearity
+at all, and is it logistic or exponential?). The two breaks meet in
+**threshold cointegration** (`threshold_vecm` / `hansen_seo_test`): the
+long-run equilibrium exists, but the *correction toward it* switches
+regimes when the equilibrium error itself crosses a threshold — arbitrage
+that only kicks in once the spread is wide enough to cover transaction
+costs.
 
 ---
 
@@ -716,8 +712,37 @@ random-walk-band DGP; **selection given rejection** — ESTAR chosen 98% of the
 time on the ESTAR DGP, LSTAR 55% on the LSTAR DGP (the known asymmetry of the
 sequence: strong even terms appear in both families).
 
+```python
+import numpy as np, tsecon
+rng = np.random.default_rng(2)
+# Simulate an LSTAR: smooth mean-reversion flip around 0.
+y = np.zeros(500)
+for t in range(1, 500):
+    G = 1.0 / (1.0 + np.exp(-2.0 * y[t-1]))
+    y[t] = 1.0 + 0.6*y[t-1] + G*(-2.0 - 0.4*y[t-1]) + rng.standard_normal()
+
+# The Teräsvirta cycle: linearity -> family -> fit -> flags.
+battery = tsecon.star_test(y, p=1, delays=[1, 2])
+print(f"LM3-F p = {battery['lm3_f_p_value']:.4f} at d = {battery['delay']}, "
+      f"suggested: {battery['suggested']}")
+
+if battery["lm3_f_p_value"] < 0.05:
+    fit = tsecon.star(y, p=1, model=battery["suggested"], delay=battery["delay"])
+    print("gamma (raw):", round(fit["gamma"], 2),
+          " standardized:", round(fit["gamma_standardized"], 1),
+          " c:", round(fit["c"], 2))
+    print("G=0 regime:", np.round(fit["params_linear"], 2),
+          " G=1 regime:", np.round(fit["params_linear"] + fit["params_nonlinear"], 2))
+    if fit["gamma_at_boundary"]:
+        print("gamma at boundary: transition is numerically a step -> "
+              "compare with tsecon.setar")
+```
+
 **References.** Luukkonen, Saikkonen & Teräsvirta (1988); Teräsvirta (1994);
 Escribano & Jordá (2001) for an alternative selection rule (not implemented).
+
+---
+
 ## `threshold_vecm` — Hansen-Seo (2002) threshold cointegration
 
 **What it estimates.** A two-regime threshold VECM: the series share one
@@ -858,27 +883,6 @@ with p ≤ 0.01. Determinism at any thread count is asserted by test.
 ```python
 import numpy as np, tsecon
 rng = np.random.default_rng(2)
-# Simulate an LSTAR: smooth mean-reversion flip around 0.
-y = np.zeros(500)
-for t in range(1, 500):
-    G = 1.0 / (1.0 + np.exp(-2.0 * y[t-1]))
-    y[t] = 1.0 + 0.6*y[t-1] + G*(-2.0 - 0.4*y[t-1]) + rng.standard_normal()
-
-# The Teräsvirta cycle: linearity -> family -> fit -> flags.
-battery = tsecon.star_test(y, p=1, delays=[1, 2])
-print(f"LM3-F p = {battery['lm3_f_p_value']:.4f} at d = {battery['delay']}, "
-      f"suggested: {battery['suggested']}")
-
-if battery["lm3_f_p_value"] < 0.05:
-    fit = tsecon.star(y, p=1, model=battery["suggested"], delay=battery["delay"])
-    print("gamma (raw):", round(fit["gamma"], 2),
-          " standardized:", round(fit["gamma_standardized"], 1),
-          " c:", round(fit["c"], 2))
-    print("G=0 regime:", np.round(fit["params_linear"], 2),
-          " G=1 regime:", np.round(fit["params_linear"] + fit["params_nonlinear"], 2))
-    if fit["gamma_at_boundary"]:
-        print("gamma at boundary: transition is numerically a step -> "
-              "compare with tsecon.setar")
 # Spread corrects only when |spread| is pushed past the threshold band.
 T = 400
 w = np.zeros(T)                      # equilibrium error (two-regime TAR)
