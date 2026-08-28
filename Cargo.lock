@@ -1279,6 +1279,7 @@ dependencies = [
  "rayon",
  "serde_json",
  "tsecon-bootstrap",
+ "tsecon-optim",
  "tsecon-rng",
  "tsecon-stats",
 ]

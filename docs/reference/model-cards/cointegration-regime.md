@@ -1,7 +1,7 @@
 # Model card — Cointegration and regime switching
 
 `johansen` · `vecm` · `ou_fit` · `spread_zscore` · `markov_switching_ar` ·
-`setar` · `setar_test`
+`setar` · `setar_test` · `star` · `star_eval` · `star_test`
 
 Two ways the tidy linear-stationary world breaks. First, series can be
 individually nonstationary yet move together — share a long-run equilibrium
@@ -14,8 +14,11 @@ hand, `ou_fit` / `spread_zscore` quantify what a trading workflow does with it
 of the error-correction speed `alpha`. Second, the parameters themselves
 can switch between regimes — either *unobserved* states governed by a hidden
 Markov chain (`markov_switching_ar`), or *observed* states triggered when a
-lagged value of the series itself crosses a threshold (`setar`, with
-`setar_test` deciding whether a threshold exists at all).
+lagged value of the series itself crosses a threshold — abruptly (`setar`,
+with `setar_test` deciding whether a threshold exists at all) or smoothly
+(`star`, the smooth-transition family, with `star_test` running the
+Terasvirta modeling cycle: is there nonlinearity at all, and is it logistic
+or exponential?).
 
 ---
 
@@ -527,4 +530,206 @@ if lin["p_value"] < 0.05:
     print("threshold:", round(fit["threshold"], 3), " delay:", fit["delay"])
     print("low  regime:", np.round(fit["params_low"], 2), " n =", fit["n_low"])
     print("high regime:", np.round(fit["params_high"], 2), " n =", fit["n_high"])
+```
+
+---
+
+## `star` — smooth-transition autoregression (LSTAR / ESTAR)
+
+**What it estimates.** A two-regime STAR(p) (Teräsvirta 1994): an AR(p) whose
+coefficients move *smoothly* between two extremes as the observed lagged value
+`s_t = y_{t−d}` crosses a location `c`,
+
+```
+y_t = φ₁'x_t + G(γ, c; s_t)·φ₂'x_t + ε_t,   x_t = (1, y_{t−1}, …, y_{t−p})',
+```
+
+with `G = 1/(1+exp(−γ(s−c)))` (`model="lstar"`: regimes differ by the *level*
+of `s_t` — expansions vs. recessions) or `G = 1 − exp(−γ(s−c)²)`
+(`model="estar"`: regimes differ by the *distance* from `c`, symmetric — the
+classic real-exchange-rate / transaction-band shape). SETAR is the `γ → ∞`
+limit of LSTAR. Estimation is concentrated NLS: for fixed `(γ, c)` the model
+is OLS in `(φ₁, φ₂)`, so a grid over `(γ, c)` locates the basin and
+Nelder-Mead refines the best cell; `star_eval` exposes the same concentrated
+fit at *fixed* `(γ, c)` for scoring a published parameterization
+(SSR/log-likelihood comparison is robust to optimizer differences;
+parameter-level comparison is not — the auto_arima precedent).
+
+**Gamma-scaling convention (read this before comparing packages).** The
+reported `gamma` is **raw** — the value inside the transition function — which
+is R `tsDyn::lstar`'s convention (its sigmoid is
+`plogis(s, location=th, scale=1/gamma)`, no standardization). Teräsvirta
+(1994) instead standardizes the exponent by `sd(s)` (LSTAR) or `var(s)`
+(ESTAR) so that γ is scale-free; that value is reported as
+`gamma_standardized` (= `gamma·s_sd` for LSTAR, `gamma·s_sd²` for ESTAR,
+population sd over the usable sample). The internal grid is built in
+*standardized* units — log-spaced over [0.5, 100] — so the search is
+scale-equivariant, then mapped back to raw γ.
+
+**Assumptions.** Two extreme regimes with a *smooth, monotone (LSTAR) or
+symmetric (ESTAR)* transition on a lagged own value; iid errors for the
+Gauss-Newton SEs; `s_t` must actually vary (a near-constant transition
+variable is refused) and visit both sides of `c` (trimming of the `c` grid
+enforces this mechanically).
+
+**When to use (and when not).** Use when theory says adjustment is gradual —
+aggregation over heterogeneous agents, adjustment costs, transaction bands —
+and the regime trigger is an observed lag. Prefer `setar` when the switch is
+genuinely abrupt (and note the SSR surface often *prefers* the abrupt limit in
+small samples: see `gamma_at_boundary` below). Not for unobserved-state
+switching (`markov_switching_ar`) and not before `star_test` — the STAR fit on
+linear data will happily report a transition.
+
+**Key arguments and defaults (and why).** `p`; `model="lstar"`; `delay=1`,
+or `delays=[1, 2, 3]` to search the delay by refined SSR on the common sample
+`t ≥ max(p, max(delays))`; `trim=0.15` (the `c` grid spans the 15%–85% order
+statistics of `s_t`); `constant=True`; `n_gamma=25`, `n_c=25` (the grid —
+625 concentrated OLS fits — is cheap and the refinement polishes the best
+cell, so finer grids buy little).
+
+**How to read the output.** `gamma`, `gamma_standardized`, `c`, `delay`;
+`params_linear` (φ₁ — the `G = 0` regime) and `params_nonlinear` (φ₂ — the
+*difference*; the `G = 1` regime is φ₁+φ₂) with Gauss-Newton `bse_linear` /
+`bse_nonlinear` / `se_gamma` / `se_c` over all 2k+2 parameters
+(`se_valid=False` with NaN SEs when `J'J` degenerates — typically at huge γ,
+where the SSR surface carries no curvature in γ; conditional-on-(γ,c) OLS SEs
+would *understate* uncertainty, so the library reports the honest NaN
+instead); `transition` (the fitted `G_t` path — plot it: a path stuck at 0/1
+is a threshold model in disguise); the grid surface (`grid_gamma`, `grid_c`,
+`ssr_grid`, `best_cell`) — a flat valley in the γ direction is the visual of
+weak γ identification; `converged` (Nelder-Mead verdict) and
+**`gamma_at_boundary`** — True when standardized γ ends at the top (≥ 100:
+numerically a hard threshold; read γ as a *lower bound*, the Teräsvirta
+large-γ advice, and consider `setar`) or pinned at the bottom wall (0.5:
+numerically linear in `s`; γ and φ₂ are separately unidentified — only their
+product is — so read γ as an *upper bound* and take the φ₂ block with a grain
+of salt).
+
+**Failure modes.** γ is the notoriously hard parameter: its likelihood is
+flat for large values (accurate estimation needs many observations *near*
+`c` — Teräsvirta 1994), so estimates routinely run to a bound; that is what
+the flag is for, and it mirrors tsDyn's routine "gamma reached its bound"
+warning rather than pretending precision. On boundary draws the φ₂ block is
+attenuated (the step approximation mixes transition-zone observations), so
+mean bias/RMSE tables over MC replications look alarming while medians over
+identified fits are clean — see the numbers below. `c` and γ trade off when
+the transition is smooth, spreading `c`. ESTAR at large γ *and* ESTAR at
+tiny γ both degenerate (to inner/outer indicators and to quadratic drift);
+the same flag covers both edges.
+
+**Validated against.** No third-party STAR is reachable from the test
+environment (R/tsDyn needs CRAN, which the sandbox egress policy denies —
+r-base installed but tsDyn's dependency tree is unbuildable offline;
+statsmodels has no STAR), so the golden is an *independent NumPy/SciPy
+transcription of the published closed forms* (`fixtures/star.json`, generator
+header states the grading honestly): the concentrated OLS at fixed `(γ, c)`
+with Gauss-Newton SEs, log-likelihood and ICs, the transition path, and the
+full `(γ, c)` grid surface (including the c-grid order-statistic and γ-scaling
+conventions) pinned at 1e-10 over six eval cases and three grid cases (LSTAR
+and ESTAR, with and without constant, `d > p`). The Nelder-Mead refinement is
+deliberately *not* pinned (optimizer-dependent); properties assert refined
+SSR ≤ grid SSR and `star_eval(fit) == fit`. Statistical correctness by seeded
+MC (`star_properties.rs`, 200 reps of the LSTAR DGP φ₁=(1, 0.6),
+φ₂=(−2, −0.4), γ_std ≈ 2.9, c = 0): **medians over identified
+(non-boundary) fits** at T = 250: (−0.07, +0.00, −0.26, +0.29) over 103/200
+fits; at T = 500: (+0.04, +0.00, −0.28, +0.04) over 143/200; `c` median error
+−0.06 (T=250) / −0.01 (T=500) with median |c| 0.46 / 0.32; **standardized γ
+median 35.9 [IQR 2.3, 1000] at T = 250 collapsing to 2.73 [IQR 1.6, 24.7] at
+T = 500 (truth ≈ 2.9)** — γ at a boundary in 97/200 resp. 57/200 fits;
+convergence 199/200 resp. 200/200. The **LSTAR → SETAR limit** is asserted
+against the test's *own* split-OLS transcription (never against
+`tsecon.setar` — no circularity): at γ = 10⁶ with `c` between two order
+statistics, the concentrated fit equals the hard-threshold two-regime OLS to
+1e-7 and `se_valid` flips to False. The grid stage is exactly
+scale/location-equivariant by test; hard-threshold data trips
+`gamma_at_boundary = True`, smooth data leaves it False.
+
+**References.** Teräsvirta (1994, JASA); Luukkonen, Saikkonen & Teräsvirta
+(1988, Biometrika); van Dijk, Teräsvirta & Franses (2002, Econometric
+Reviews); Franses & van Dijk (2000), ch. 3.
+
+---
+
+## `star_test` — Teräsvirta modeling-cycle battery (LM3 + H-sequence)
+
+**What it estimates.** The two specification questions of the STAR modeling
+cycle, both answered by *closed-form auxiliary regressions* (unlike
+`setar_test`, no bootstrap is needed — the auxiliary regression is linear, so
+there is no Davies problem and the null distributions are standard):
+
+1. **Is there STAR-type nonlinearity at all?** The LM3 test
+   (Luukkonen-Saikkonen-Teräsvirta 1988): regress `y_t` on
+   `[w_t, x̃s_t, x̃s_t², x̃s_t³]` (`w` the null AR design, `x̃` the lag block,
+   both augmented with `y_{t−d}` when `d > p` — Teräsvirta's redefinition) and
+   test the 3q interaction coefficients. `lm3_stat` is the χ² form
+   `n(SSR0−SSR3)/SSR0` (df = 3q); `lm3_f_stat` the **F form, recommended in
+   small samples** (the χ² form over-rejects; the F form holds size).
+2. **LSTAR or ESTAR?** The nested H-sequence: H03 (`s³` block = 0), H02
+   (`s²` | no cubic), H01 (`s` | neither). Decision rule: `suggested="estar"`
+   iff the H02 p-value is strictly the smallest — the even terms carry ESTAR's
+   symmetric transition; odd terms carry LSTAR's. Only meaningful when LM3
+   rejects.
+
+`delays` runs the battery per candidate delay (each on its own usable sample)
+and `best` marks the smallest F-form LM3 p-value — Teräsvirta's rule for
+choosing `d`.
+
+**When to use (and when not).** Always before `star`, and as the cheap
+first-line nonlinearity screen even when `setar` is the goal (LM3 has power
+against threshold alternatives too). The H-sequence is a heuristic: it
+misfires in appreciable finite-sample fractions (see the numbers), so treat
+`suggested` as a tiebreak, not a verdict — when in doubt fit both and compare
+`aic`/out-of-sample.
+
+**How to read the output.** Top level = the selected delay's battery:
+`lm3_f_stat`/`lm3_f_p_value` (use these; the χ² pair is reported for
+completeness), `h1_*`/`h2_*`/`h3_*`, the SSR ladder `ssr0..ssr3`, `q`, `k0`,
+`suggested`; plus `tests` (all candidate delays) and `best`.
+
+**Failure modes.** Heteroskedastic errors inflate LM-type linearity tests
+(GARCH masquerades as STAR — check `arch_test` first); the cubic block's `y³`
+terms are heavy-tailed in small samples (the F form is the mitigation); low
+power when the tested `d` is wrong (search `delays`); the H-sequence's
+LSTAR/ESTAR split is fragile when both even and odd terms are strong.
+
+**Validated against.** Transcription golden: every statistic, p-value, SSR,
+and the suggested-model verdict pinned at 1e-10 against the independent
+NumPy/SciPy implementation over five case families including `d > p`
+augmentation and delay selection (`fixtures/star.json`). Statistical
+properties by seeded MC (400 reps): **size** of the F form under an AR(1)
+null — 0.060 at the 5% level (MC se 0.011) and 0.100 at 10% at T = 200;
+0.028 / 0.065 at T = 500 (slightly conservative, the documented small-sample
+behavior of the F form; mean null p-value 0.51/0.53); **power** at T = 250 —
+0.81 (se 0.02) against the LSTAR DGP above, 0.91 against an ESTAR
+random-walk-band DGP; **selection given rejection** — ESTAR chosen 98% of the
+time on the ESTAR DGP, LSTAR 55% on the LSTAR DGP (the known asymmetry of the
+sequence: strong even terms appear in both families).
+
+**References.** Luukkonen, Saikkonen & Teräsvirta (1988); Teräsvirta (1994);
+Escribano & Jordá (2001) for an alternative selection rule (not implemented).
+
+```python
+import numpy as np, tsecon
+rng = np.random.default_rng(2)
+# Simulate an LSTAR: smooth mean-reversion flip around 0.
+y = np.zeros(500)
+for t in range(1, 500):
+    G = 1.0 / (1.0 + np.exp(-2.0 * y[t-1]))
+    y[t] = 1.0 + 0.6*y[t-1] + G*(-2.0 - 0.4*y[t-1]) + rng.standard_normal()
+
+# The Teräsvirta cycle: linearity -> family -> fit -> flags.
+battery = tsecon.star_test(y, p=1, delays=[1, 2])
+print(f"LM3-F p = {battery['lm3_f_p_value']:.4f} at d = {battery['delay']}, "
+      f"suggested: {battery['suggested']}")
+
+if battery["lm3_f_p_value"] < 0.05:
+    fit = tsecon.star(y, p=1, model=battery["suggested"], delay=battery["delay"])
+    print("gamma (raw):", round(fit["gamma"], 2),
+          " standardized:", round(fit["gamma_standardized"], 1),
+          " c:", round(fit["c"], 2))
+    print("G=0 regime:", np.round(fit["params_linear"], 2),
+          " G=1 regime:", np.round(fit["params_linear"] + fit["params_nonlinear"], 2))
+    if fit["gamma_at_boundary"]:
+        print("gamma at boundary: transition is numerically a step -> "
+              "compare with tsecon.setar")
 ```

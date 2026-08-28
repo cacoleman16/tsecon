@@ -1670,6 +1670,72 @@ def setar_test(
     Keys: stat, p_value, threshold, delay, n_boot, nobs, ssr_linear,
     ssr_setar, thresholds, f_path, boot_stats."""
 
+def star(
+    y: _ArrayLike,
+    p: int,
+    model: str = ...,
+    delay: int = ...,
+    trim: float = ...,
+    delays: Sequence[int] | None = ...,
+    constant: bool = ...,
+    n_gamma: int = ...,
+    n_c: int = ...,
+) -> dict[str, Any]:
+    """Smooth-transition AR (Terasvirta 1994): y_t = phi1'x_t +
+    G(gamma, c; y_{t-delay}) phi2'x_t + e_t, model "lstar"
+    (G = 1/(1+exp(-gamma(s-c)))) or "estar" (G = 1 - exp(-gamma(s-c)^2)).
+    gamma is RAW (tsDyn convention); gamma_standardized is Terasvirta's
+    gamma*sd(s) (lstar) / gamma*var(s) (estar). Concentrated NLS:
+    (gamma, c) grid (standardized gamma log-spaced [0.5, 100]; c on
+    trimmed order statistics) + Nelder-Mead refinement. Run star_test
+    first — STAR on linear data happily "finds" a transition.
+
+    Keys: model, gamma, gamma_standardized, c, delay, s_sd, converged,
+    gamma_at_boundary (standardized gamma at the searchable range's edge:
+    read gamma as a bound, not a point estimate), params_linear,
+    params_nonlinear (high-regime coefficients are the sum), bse_linear,
+    bse_nonlinear, se_gamma, se_c, se_valid (Gauss-Newton; NaN + False on
+    a degenerate J'J), ssr, sigma2, loglik, aic, bic, nobs, k, transition,
+    grid_gamma, grid_c, ssr_grid (n_gamma x n_c), best_cell, fevals."""
+
+def star_eval(
+    y: _ArrayLike,
+    p: int,
+    gamma: float,
+    c: float,
+    model: str = ...,
+    delay: int = ...,
+    constant: bool = ...,
+) -> dict[str, Any]:
+    """Concentrated STAR fit at FIXED (gamma, c) (raw gamma, as in star):
+    OLS of y_t on [x_t, G_t x_t] with Gauss-Newton SEs — for scoring a
+    published parameterization (SSR/loglik comparison is robust to
+    optimizer differences).
+
+    Keys: params_linear, params_nonlinear, bse_linear, bse_nonlinear,
+    se_gamma, se_c, se_valid, ssr, sigma2, loglik, aic, bic, nobs, k,
+    transition."""
+
+def star_test(
+    y: _ArrayLike,
+    p: int,
+    delay: int = ...,
+    delays: Sequence[int] | None = ...,
+) -> dict[str, Any]:
+    """Terasvirta STAR modeling-cycle battery: LM3 linearity test against
+    STAR (Luukkonen-Saikkonen-Terasvirta 1988; chi-squared form lm3_stat
+    with 3q df and small-sample F form lm3_f_stat — no bootstrap needed,
+    the auxiliary regression is linear so the null is standard, unlike
+    setar_test) plus the H03/H02/H01 sequence: suggested = "estar" iff
+    the H02 p-value is strictly smallest. `delays` evaluates each
+    candidate delay; best indexes the smallest F-form LM3 p-value and the
+    top-level scalars are that battery's.
+
+    Keys: delay, nobs, q, k0, lm3_stat, lm3_p_value, lm3_f_stat,
+    lm3_f_p_value, h3_f_stat, h3_p_value, h2_f_stat, h2_p_value,
+    h1_f_stat, h1_p_value, ssr0, ssr1, ssr2, ssr3, suggested, best,
+    tests."""
+
 # ------------------------------------------------------------------ MIDAS
 def midas_weights(scheme: str, theta1: float, theta2: float, k: int) -> _F64:
     """MIDAS weights (sum to 1); scheme "exp_almon" or "beta"."""

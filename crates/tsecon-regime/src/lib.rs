@@ -45,14 +45,28 @@
 //! fits are assessed by log-likelihood improvement and approximate
 //! parameter recovery, not exact agreement with a single optimum.
 //!
-//! The crate also owns the library's *observed*-regime nonlinear model: the
-//! two-regime **self-exciting threshold autoregression** (SETAR) of Tong &
-//! Lim (1980) — [`setar`] (concentrated least squares over the trimmed
-//! order-statistic threshold grid, Hansen 1997/2000) and [`setar_test`]
-//! (the Hansen 1996 sup-F linearity test with a fixed-regressor wild
-//! bootstrap p-value; never a chi-squared tail — the Davies problem). See
-//! the `setar` module docs for the model, the algorithm, and the
-//! reproducible-parallel-bootstrap contract.
+//! The crate also owns the library's *observed*-regime nonlinear models:
+//!
+//! * the two-regime **self-exciting threshold autoregression** (SETAR) of
+//!   Tong & Lim (1980) — [`setar`] (concentrated least squares over the
+//!   trimmed order-statistic threshold grid, Hansen 1997/2000) and
+//!   [`setar_test`] (the Hansen 1996 sup-F linearity test with a
+//!   fixed-regressor wild bootstrap p-value; never a chi-squared tail —
+//!   the Davies problem). See the `setar` module docs for the model, the
+//!   algorithm, and the reproducible-parallel-bootstrap contract.
+//! * the **smooth-transition autoregression** (STAR) of Terasvirta (1994)
+//!   with logistic ([`StarModel::Lstar`]) and exponential
+//!   ([`StarModel::Estar`]) transitions — [`star`] (concentrated NLS:
+//!   `(gamma, c)` grid + Nelder-Mead refinement, with `converged` /
+//!   `gamma_at_boundary` honesty flags), [`star_eval`] (the concentrated
+//!   fit at fixed transition parameters), and [`star_test`] (the
+//!   Luukkonen-Saikkonen-Terasvirta 1988 LM3 linearity test in
+//!   chi-squared and small-sample F forms plus the Terasvirta H03/H02/H01
+//!   sequence choosing LSTAR vs. ESTAR — closed-form auxiliary
+//!   regressions with standard null distributions, unlike the SETAR
+//!   sup-F). See the `star` module docs for the gamma-scaling convention
+//!   (raw tsDyn-style gamma; the Terasvirta-standardized value is
+//!   reported alongside) and the grid.
 //!
 //! ```
 //! use tsecon_regime::{MarkovSwitchingAr, MsarParams, MsarSpec};
@@ -80,6 +94,7 @@ mod params;
 mod results;
 mod setar;
 mod spec;
+mod star;
 
 pub use error::RegimeError;
 pub use model::MarkovSwitchingAr;
@@ -87,3 +102,6 @@ pub use params::MsarParams;
 pub use results::{classify, FilterResult, FitResult, SmoothResult};
 pub use setar::{setar, setar_test, SetarFit, SetarTest};
 pub use spec::MsarSpec;
+pub use star::{
+    star, star_eval, star_test, StarEval, StarFit, StarModel, StarTest, StarTestResult,
+};
