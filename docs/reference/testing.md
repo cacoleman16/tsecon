@@ -24,8 +24,8 @@ command needs the `--exclude tsecon-python` caveat described
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1622 passed, 0 failed, 9 ignored** | `cargo test --workspace`, result lines summed |
-| — integration tests in `crates/*/tests/` | 1351 | |
+| Rust tests (total) | **1664 passed, 0 failed, 9 ignored** | `cargo test --workspace`, result lines summed |
+| — integration tests in `crates/*/tests/` | 1393 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 217 | |
 | — documentation tests | 54 | |
 | Python binding tests | **1312 passed, 0 failed, 0 skipped** in 345 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
@@ -38,11 +38,11 @@ fingerprints that are platform-specific, three release-only Monte Carlo runs,
 and one timing test) and 2 are in `tsecon-panel` (the LP-DiD and SPJ
 release-only Monte Carlo runs); each `#[ignore]` states its reason.
 
-Of the 1351 Rust integration tests, **276 are golden tests** and **549 are
-property tests**. The goldens live in 64 `*golden*.rs` files across 39 crates
+Of the 1393 Rust integration tests, **290 are golden tests** and **575 are
+property tests**. The goldens live in 67 `*golden*.rs` files across 39 crates
 (`golden.rs` in most, with additional per-surface files such as
 `engle_granger_golden.rs`, `irf_bands_golden.rs`, `proxy_bands_golden.rs`,
-`ou_golden.rs`, and `dcs_golden.rs`); the property tests live in 54
+`ou_golden.rs`, and `star_golden.rs`); the property tests live in 57
 `*propert*.rs` files across 38 crates. The remainder are validation (111 tests
 in 11 `*validation*.rs` files), cross-check, and reproducibility suites
 described below.
