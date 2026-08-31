@@ -231,7 +231,7 @@ $$
 
 where $k$ counts estimated parameters. Lower is better. BIC's toll grows with $T$, so it selects smaller models and recovers the true order asymptotically if one exists; AIC aims instead at forecast accuracy and tolerates mild overfitting. AICc (Hurvich and Tsai, 1989) is AIC with a small-sample correction and is the right default for the sample sizes macroeconomists actually have.
 
-**Auto-ARIMA** — the Hyndman-Khandakar (2008) algorithm behind R's `forecast::auto.arima`, and the single most used function in applied forecasting — automates the whole Box-Jenkins loop with one crucial piece of discipline: it chooses the differencing orders $d$ and $D$ *first*, using unit-root and seasonal-strength tests, and only then runs a stepwise AICc search over $(p, q, P, Q)$ within fixed differencing. The order of operations is not a detail. Differencing changes the data, and **information criteria are not comparable across different $d$** — an AIC computed on levels and one computed on differences are likelihoods of different datasets.
+**Auto-ARIMA** — the Hyndman-Khandakar (2008) algorithm behind R's `forecast::auto.arima`, and the single most used function in applied forecasting — automates the whole Box-Jenkins loop with one crucial piece of discipline: it chooses the differencing orders $d$ and $D$ *first*, using unit-root and seasonal-strength tests, and only then runs a stepwise AICc search over $(p, q, P, Q)$ within fixed differencing. The order of operations is not a detail. Differencing changes the data, and **information criteria are not comparable across different $d$** — an AIC computed on levels and one computed on differences are likelihoods of different datasets. `tsecon.auto_arima(y, seasonal_period=..., ic="aicc")` runs exactly that sequence on the exact-MLE engine above, and hands back not just the fit but the chosen `order`/`seasonal_order`, the differencing tests that fixed $d$ and $D$ (`d_test`, `D_test`), and the `trace` of every candidate scored — so the search is auditable rather than a black box.
 
 The dangers of the automatic philosophy deserve equal billing:
 
@@ -239,7 +239,7 @@ The dangers of the automatic philosophy deserve equal billing:
 - **Selection uncertainty vanishes from the output.** The standard errors of the chosen model pretend the specification was known in advance. After a data-driven search, they are too small.
 - **The residual check is still your job.** A selected model whose residuals fail `ljung_box` (with the df correction) or show ARCH effects (`tsecon.arch_lm`) is a rejected model, whatever its AICc rank.
 
-> **⚠ Common mistake.** Ranking models with different differencing orders by AIC. Select $d$ with `check_stationarity` (or KPSS sequences, as Hyndman-Khandakar do), then compare information criteria only among models sharing that $d$.
+> **⚠ Common mistake.** Ranking models with different differencing orders by AIC. Select $d$ with `check_stationarity` (or the KPSS sequence itself, `tsecon.ndiffs`, which is what Hyndman-Khandakar and `auto_arima` use; `tsecon.nsdiffs` is its seasonal counterpart), then compare information criteria only among models sharing that $d$.
 
 ## Exponential smoothing: a family, not a hack
 
@@ -343,7 +343,7 @@ y_t = \mu_{s_t} + \phi_1 (y_{t-1} - \mu_{s_{t-1}}) + \cdots + \varepsilon_t,
 \qquad P(s_t = j \mid s_{t-1} = i) = p_{ij}.
 $$
 
-Each regime has its own mean (and possibly variance and dynamics); the economy switches stochastically between them, and the model infers *from the data alone* the probability of being in each regime at each date. Hamilton's original application fit two regimes to postwar US GNP growth and found mean growth of roughly $1.2\%$ per quarter in one regime and $-0.4\%$ in the other, with both regimes persistent — and the smoothed probability of the low regime reproduced the NBER's recession dates almost exactly, without ever being shown them. That figure is one of the most famous in time series econometrics, and reproducing Hamilton's published estimates is the validation gate for tsecon's implementation.
+Each regime has its own mean (and possibly variance and dynamics); the economy switches stochastically between them, and the model infers *from the data alone* the probability of being in each regime at each date. Hamilton's original application fit two regimes to postwar US GNP growth and found mean growth of roughly $1.2\%$ per quarter in one regime and $-0.4\%$ in the other, with both regimes persistent — and the smoothed probability of the low regime reproduced the NBER's recession dates almost exactly, without ever being shown them. That figure is one of the most famous in time series econometrics, and reproducing Hamilton's published estimates was the validation gate for `tsecon.markov_switching_ar` — a gate it now passes on Hamilton's own GNP series, means and transition probabilities and recession chronology together ([replication](../examples/replication-hamilton-markov.md)).
 
 **Threshold AR (SETAR)** (Tong and Lim, 1980) makes the trigger observable: the model switches when a lagged value of the series itself crosses a threshold $\tau$:
 
@@ -363,7 +363,37 @@ When do you actually need these?
 - **Reach for SETAR/STAR** when you can name the observable trigger — "dynamics change when the spread goes negative," "mean reversion kicks in when the real exchange rate deviates enough." The threshold estimate is interpretable in economic units.
 - **Stay linear** when you have short samples or forecasting is the only goal. Nonlinear models need many visits to *each* regime to estimate it; with 150 quarterly observations and two recessions, the recession regime rests on a handful of data points, and the forecast gains over a good ARMA are often negligible.
 
-These families are estimation minefields — multimodal likelihoods requiring multistart optimization, unbounded likelihoods as a regime variance heads to zero, off-by-one traps in the regime smoother — which is why the roadmap treats "reliability where statsmodels is fragile" as the feature.
+All three ship: `tsecon.markov_switching_ar` for the latent-regime case, `tsecon.setar` with `tsecon.setar_test` for the hard threshold, and `tsecon.star` with `tsecon.star_test` for the smooth one — plus `tsecon.star_eval`, which scores a *published* $(\gamma, c)$ directly, because comparing SSRs across implementations is robust to optimizer differences and comparing parameters is not. Here is the workflow in the order the mistake box below insists on — test, then fit:
+
+```python
+rng = np.random.default_rng(0)
+n = 600
+y = np.zeros(n)
+e = rng.standard_normal(n)
+for t in range(1, n):                    # SETAR(1): persistent below 0, transient above
+    c, phi = (1.0, 0.6) if y[t-1] <= 0.0 else (-1.0, 0.2)
+    y[t] = c + phi * y[t-1] + e[t]
+
+lin = tsecon.setar_test(y, p=1, n_boot=499, seed=0)   # test BEFORE you fit
+print(f"sup-F = {lin['stat']:.1f}   bootstrap p = {lin['p_value']:.3f}")
+
+fit = tsecon.setar(y, p=1)
+print(f"threshold = {fit['threshold']:.3f}  (delay {fit['delay']}, "
+      f"{fit['n_low']}/{fit['n_high']} obs per regime)")
+print("low  regime (c, phi):", np.round(fit["params_low"], 3))
+print("high regime (c, phi):", np.round(fit["params_high"], 3))
+```
+
+```text
+sup-F = 204.8   bootstrap p = 0.002
+threshold = 0.000  (delay 1, 336/263 obs per regime)
+low  regime (c, phi): [0.877 0.488]
+high regime (c, phi): [-0.965  0.119]
+```
+
+Read the threshold against the coefficients under it. The threshold lands on the truth to three decimals, because a threshold is *superconsistent* — it is pinned down faster than the coefficients on either side of it. Those coefficients, at $T = 600$ with roughly 300 observations per regime, are recognizable but loose (0.49 against a true 0.6 below, 0.12 against 0.2 above): the "stay linear on short samples" bullet above, made concrete. And the p-value is a bootstrap p-value, not a $\chi^2$ tail — the library refuses to compute the latter, for the reason the box below gives.
+
+These families are estimation minefields — multimodal likelihoods requiring multistart optimization, unbounded likelihoods as a regime variance heads to zero, off-by-one traps in the regime smoother — which is why "reliability where statsmodels is fragile" is treated as the feature rather than the fine print. The visible form of that is honesty flags on every fit: `star` returns `converged`, `se_valid`, and `gamma_at_boundary`, which fires when the estimated transition speed runs to the top of its grid (numerically a hard threshold, and a signal to read $\gamma$ as a lower bound) or pins at the bottom (numerically linear, with $\gamma$ and the second regime's coefficients separately unidentified). A flat likelihood in $\gamma$ is a real property of these models; the fit says so instead of printing a confident number.
 
 > **⚠ Common mistake.** Testing "linear vs. threshold" (or "one regime vs. two") with a standard likelihood-ratio test and $\chi^2$ critical values. Under the null of linearity the threshold $\tau$ (or the transition matrix) is *unidentified* — the Davies problem — and the LR statistic is not $\chi^2$. Valid inference needs sup-type tests with simulated or bootstrapped critical values (Hansen, 1996). Every naive $\chi^2$ p-value in this territory overstates the evidence for nonlinearity.
 
@@ -451,9 +481,9 @@ Read the ACF column top to bottom: the memory series is still correlated at $+0.
 
 **Long memory beyond the stationary window.** The [previous section](#long-memory-when-d-refuses-to-be-an-integer) covers the stationary case ($0 < d < 0.5$) and its shipped estimators; the research edge lies just outside it. Estimating $d$ when the series is *non*stationary ($d \ge 0.5$) breaks GPH and ordinary local Whittle, and needs the exact local Whittle estimator (Shimotsu and Phillips, 2005), valid across the stationary boundary. Full ARFIMA(p, d, q) maximum likelihood via Sowell's (1992) exact autocovariances jointly estimates $d$ with the ARMA parameters but is numerically delicate as $d \to 0.5$. And the genuinely open problem is identification: **long memory and structural breaks are nearly observationally equivalent** (Diebold and Inoue, 2001) — a short-memory process with occasional mean shifts reproduces every classic long-memory signature, hyperbolic ACF decay included — so a significant $\hat d$ is never on its own proof of long memory rather than a wandering mean, and distinguishing the two on realistic sample sizes remains unsolved in general.
 
-**Elsewhere on the research edge.** Score-driven (GAS/DCS) models (Creal, Koopman and Lucas, 2013) make parameters time-varying through the score of the likelihood, giving robust filters that automatically discount outliers. Bayesian TVP models with global-local shrinkage priors (Bitto and Frühwirth-Schnatter, 2019) let the data decide *which* coefficients drift — the current standard in empirical macro. Testing for the *number* of Markov regimes is finally practical via Carrasco, Hu and Ploberger (2014). Mixed causal-noncausal AR models (Lanne and Saikkonen, 2011; Gouriéroux and Zakoïan, 2017) use roots *inside* the unit circle, identified through non-Gaussianity, to capture bubble episodes that explode and collapse. And an ecosystem-wide embarrassment remains open: default prediction intervals nearly everywhere ignore parameter and selection uncertainty and are systematically too narrow — dramatically so near unit roots and for $T < 100$; bootstrap and conformal methods are the frontier fixes.
+**Elsewhere on the research edge.** Score-driven (GAS/DCS) models (Creal, Koopman and Lucas, 2013) make parameters time-varying through the score of the likelihood, giving robust filters that automatically discount outliers — the corner of this list that has since crossed into the library, as `dcs_local_level` (a robust cousin of this chapter's local level, listed below) and `gas_volatility` (score-driven volatility, chapter 6). Bayesian TVP models with global-local shrinkage priors (Bitto and Frühwirth-Schnatter, 2019) let the data decide *which* coefficients drift — the current standard in empirical macro. Testing for the *number* of Markov regimes is finally practical via Carrasco, Hu and Ploberger (2014). Mixed causal-noncausal AR models (Lanne and Saikkonen, 2011; Gouriéroux and Zakoïan, 2017) use roots *inside* the unit circle, identified through non-Gaussianity, to capture bubble episodes that explode and collapse. And an ecosystem-wide embarrassment remains open: default prediction intervals nearly everywhere ignore parameter and selection uncertainty and are systematically too narrow — dramatically so near unit roots and for $T < 100$; bootstrap and conformal methods are the frontier fixes, and the distribution-free half of that repair ships here as `conformal_forecast`/`conformal_backtest` (split, EnbPI, and adaptive conformal inference).
 
-The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tiers: the full ARMA/SARIMA/regARIMA stack, ETS taxonomy, and auto-ARIMA as core; SETAR/STAR, Markov-switching, structural breaks (Bai-Perron), and the GPH/HAR long-memory entry points as standard; Sowell ARFIMA, ELW, score-driven models, and shrinkage TVP as advanced and frontier tiers — each gated on reproducing published numbers (Hamilton's GNP estimates, the airline model, the Nile variances) rather than matching another package's defaults.
+The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tiers, and the first two of them have largely landed: the ARMA/SARIMA stack and auto-ARIMA from the core tier, and SETAR/STAR, Markov-switching, Bai-Perron breaks, the GPH and local-Whittle long-memory entry points, and the score-driven filters from the standard and advanced ones, all ship today. What the tiers still hold is what the roadmap list below names — regARIMA and the ETS taxonomy, fitted unobserved components, Sowell ARFIMA and the exact local Whittle, shrinkage TVP — each gated on reproducing published numbers (Hamilton's GNP estimates, the airline model, the Nile variances) rather than matching another package's defaults, which is the bar the shipped half was held to.
 
 ## Which method when
 
@@ -463,13 +493,15 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 | ACF cuts off sharply; shocks visibly transient | MA(q) or ARMA(1,1) | Finite shock memory is what MA terms are for |
 | Trending level series (GDP, prices) | ARIMA with d chosen by `check_stationarity` | Difference first; unit-root tests, not AIC, pick d |
 | Monthly/quarterly data with stable seasonality | SARIMA — start at the airline model (0,1,1)(0,1,1)ₛ | Four parameters cover a remarkable share of seasonal economic series |
-| Many series to forecast automatically | auto-ARIMA or AutoETS, then residual checks | Disciplined search beats hand-tuning at scale — but never skip diagnostics |
-| Trend + seasonal forecasting, fast and robust | ETS / Theta (`theta_forecast`) | M3-competition-grade accuracy at trivial cost |
+| Many series to forecast automatically | `auto_arima` (AutoETS is roadmap), then residual checks | Disciplined search beats hand-tuning at scale — but never skip diagnostics |
+| Trend + seasonal forecasting, fast and robust | Theta (`theta_forecast`); the ETS taxonomy is roadmap | M3-competition-grade accuracy at trivial cost |
 | Noisy measurements of an underlying level; gaps in the data | Local level/trend via `local_level_smooth` | Kalman filter handles missing data exactly, with honest uncertainty |
 | Small sample, persistence near a unit root | Exact MLE, never CSS or Yule-Walker | Initial conditions carry real information; moment methods bias toward stationarity |
-| Asymmetric dynamics with a latent phase (recessions) | Markov-switching AR | Infers regime probabilities from the data; the probabilities are the deliverable |
-| Dynamics change at a nameable observable trigger | SETAR/STAR | Interpretable threshold in economic units; test linearity properly first |
-| Autocorrelations decay too slowly for ARMA but the series reverts | ARFIMA / local Whittle estimate of d | Fractional d is the honest middle ground between I(0) and I(1) — but rule out breaks |
+| Asymmetric dynamics with a latent phase (recessions) | `markov_switching_ar` | Infers regime probabilities from the data; the probabilities are the deliverable |
+| Dynamics change at a nameable observable trigger | `setar` (hard switch) or `star` (smooth), after `setar_test`/`star_test` | Interpretable threshold in economic units; test linearity properly first |
+| The mean shifts at unknown dates rather than switching back and forth | `bai_perron` | Breaks are one-way regime changes; estimating their dates beats dummying by eye |
+| Autocorrelations decay too slowly for ARMA but the series reverts | `long_memory_d`, then `frac_diff` | Fractional d is the honest middle ground between I(0) and I(1) — but rule out breaks |
+| A few contaminated observations are dragging the level around | `dcs_local_level` | A bounded score discounts outliers where the Kalman gain would chase them |
 
 ## What tsecon implements today
 
@@ -477,9 +509,16 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 
 - `ar_loglik(y, coeffs, sigma2, intercept=0.0)` — exact Gaussian AR(p) log-likelihood via the state-space form with stationary initialization; the exact-MLE kernel this chapter's estimation section is built on
 - `local_level_smooth(y, sigma2_eps, sigma2_eta)` — exact-diffuse Kalman filter and smoother for the local level model; NaNs handled natively as missing data
-- `arima_fit(y, p, d, q, constant=False, forecast_steps=0, conf_alpha=None)` — exact-MLE ARIMA(p,d,q): params, log-likelihood, AIC/BIC, residuals, and multi-step forecasts with correctly integrated-back intervals
+- `arima_fit(y, p, d, q, seasonal=None, constant=True, forecast_steps=0, conf_alpha=None)` — exact-MLE ARIMA(p,d,q) and, through `seasonal=(P, D, Q, s)`, SARIMA: params, log-likelihood, AIC/BIC, residuals, and multi-step forecasts with correctly integrated-back intervals. Note the default: a constant is fitted, which for $d \ge 1$ is a *drift* — pass `constant=False` when you do not want one
+- `auto_arima(y, seasonal_period=0, ic="aicc", stepwise=True, ...)` — the Hyndman-Khandakar (2008) search on that same exact-MLE engine, in the order this chapter insists on: `D` by the seasonal-strength rule, `d` by successive KPSS tests, then a stepwise (or exhaustive) walk over $(p, q, P, Q)$ at fixed differencing
+- `markov_switching_ar(y, k_regimes=2, order=1, switching_variance=True)` — Hamilton (1989) MS-AR by EM: the transition matrix, per-regime means and variances, expected durations, and the full filtered (Hamilton) and smoothed (Kim 1994) regime-probability paths. `filtered_prob` is the real-time object; `smoothed_prob` conditions on the whole sample, so it dates recessions in hindsight and must not be read as a live call
+- `setar(y, p, delay=1, trim=0.15)` and `setar_test(y, p, delay=1, trim=0.15, n_boot=499)` — two-regime SETAR by concentrated least squares (Tong-Lim 1980; Hansen 1997), and the Hansen (1996) sup-F linearity test p-valued by the fixed-regressor wild bootstrap, because the Davies problem flagged in the regimes section above makes a naive $\chi^2$ p-value wrong
+- `star(y, p, model="lstar"|"estar", delay=1)`, `star_eval(y, p, gamma, c, ...)`, `star_test(y, p, delay=1)` — smooth-transition AR by concentrated NLS over a standardized-γ grid, the fixed-$(\gamma, c)$ scorer, and the Teräsvirta (1994) modeling cycle: the LM3 linearity test plus the H03/H02/H01 sequence that picks LSTAR against ESTAR
+- `bai_perron(y, x, max_breaks=5, trim=0.15)` — multiple structural breaks: the global partitions by dynamic programming, the number of breaks by sequential supF(ℓ+1|ℓ), per-regime OLS, and Bai (1997) break-date confidence intervals (with `sup_f_test` for the single-break screen)
+- `long_memory_d(x, m=None, method="gph"|"local_whittle")` — the two semiparametric estimators of $d$ from the long-memory section, with `frac_diff`/`frac_integrate` for fractional differencing and its exact inverse; this is the code that section runs
+- `dcs_local_level(y, density="t"|"laplace"|"gaussian")` — the score-driven robust local level (Harvey 2013; Harvey-Luati 2014): an outlier-resistant cousin of the Kalman local level above, with the Gaussian case exactly the steady-state Kalman filter, so the nested control is checkable
 - Identification and diagnostics used throughout the chapter: `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`
-- Differencing decisions: `adf`, `kpss`, `check_stationarity`
+- Differencing decisions: `adf`, `kpss`, `check_stationarity`, plus the order advisors `ndiffs` (the KPSS sequence auto-ARIMA uses for $d$) and `nsdiffs` (seasonal strength for $D$)
 - The exponential-smoothing family's benchmark: `theta_forecast`, with `accuracy` and `dm_test` for honest evaluation
 
 **Built in Rust, partly awaiting Python bindings** (`tsecon-arima` crate):
@@ -489,10 +528,10 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 **Roadmap** ([docs/roadmap/02-univariate.md](../roadmap/02-univariate.md)):
 
 - Regression with ARMA errors (regARIMA); Hannan-Rissanen starts and the Monahan reparameterization as public API
-- The full ETS taxonomy with AutoETS selection; auto-ARIMA (Hyndman-Khandakar)
+- The full ETS taxonomy with AutoETS selection
 - Fitted unobserved-components models (local level/trend with estimated variances, cycles, stochastic seasonals), validated on the Nile and UK-seatbelt canon
-- Markov-switching AR validated against Hamilton (1989); SETAR/STAR with proper sup-test linearity inference; Bai-Perron structural breaks
-- ARFIMA (Sowell exact MLE), GPH and exact local Whittle estimators of d
+- ARFIMA (Sowell exact MLE); the exact local Whittle estimator (Shimotsu-Phillips 2005), which stays valid across the $d \ge 0.5$ boundary where GPH and ordinary local Whittle break
+- Hansen (1997, 2000) confidence sets for the SETAR threshold, and a test for the *number* of Markov regimes (Carrasco-Hu-Ploberger 2014) — the two inference gaps left open by the regime models that now ship above
 
 ## Further reading
 

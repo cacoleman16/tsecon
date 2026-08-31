@@ -220,7 +220,7 @@ number that decides whether the reversion is tradable at your horizon — and
 the z-score bands. Not a test for cointegration (it conditions on
 stationarity rather than testing it); not for irregularly-sampled data
 (`dt` is fixed); and if all you want is the discrete AR(1), `arima_fit(x,
-order=(1,0,0))` is the direct tool — `ou_fit` buys the continuous-time
+p=1, d=0, q=0)` is the direct tool — `ou_fit` buys the continuous-time
 parametrization (`kappa` per unit time, comparable across sampling
 frequencies) at the cost of requiring `0 < phi`.
 
@@ -702,7 +702,7 @@ completeness), `h1_*`/`h2_*`/`h3_*`, the SSR ladder `ssr0..ssr3`, `q`, `k0`,
 `suggested`; plus `tests` (all candidate delays) and `best`.
 
 **Failure modes.** Heteroskedastic errors inflate LM-type linearity tests
-(GARCH masquerades as STAR — check `arch_test` first); the cubic block's `y³`
+(GARCH masquerades as STAR — check `arch_lm` first); the cubic block's `y³`
 terms are heavy-tailed in small samples (the F form is the mitigation); low
 power when the tested `d` is wrong (search `delays`); the H-sequence's
 LSTAR/ESTAR split is fragile when both even and odd terms are strong.
@@ -719,6 +719,9 @@ behavior of the F form; mean null p-value 0.51/0.53); **power** at T = 250 —
 random-walk-band DGP; **selection given rejection** — ESTAR chosen 98% of the
 time on the ESTAR DGP, LSTAR 55% on the LSTAR DGP (the known asymmetry of the
 sequence: strong even terms appear in both families).
+
+**References.** Luukkonen, Saikkonen & Teräsvirta (1988); Teräsvirta (1994);
+Escribano & Jordá (2001) for an alternative selection rule (not implemented).
 
 ```python
 import numpy as np, tsecon
@@ -745,9 +748,6 @@ if battery["lm3_f_p_value"] < 0.05:
         print("gamma at boundary: transition is numerically a step -> "
               "compare with tsecon.setar")
 ```
-
-**References.** Luukkonen, Saikkonen & Teräsvirta (1988); Teräsvirta (1994);
-Escribano & Jordá (2001) for an alternative selection rule (not implemented).
 
 ---
 

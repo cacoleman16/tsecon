@@ -27,8 +27,8 @@ install and see how much is on the shelf:
 
 ```python
 import tsecon
-print(tsecon.__version__)                                       # 0.2.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 128
+print(tsecon.__version__)                                       # 0.7.0
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 162
           if not n.startswith("_")))
 ```
 
@@ -38,8 +38,8 @@ builds from the source distribution, which needs a
 contributors build from a checkout with [maturin](https://www.maturin.rs/):
 
 ```sh
-maturin build --release                       # writes target/wheels/tsecon-0.2.0-*.whl
-pip install target/wheels/tsecon-0.2.0-*.whl  # installs the `tsecon` package
+maturin build --release -m bindings/python/Cargo.toml   # writes target/wheels/tsecon-0.7.0-*.whl
+pip install target/wheels/tsecon-0.7.0-*.whl            # installs the `tsecon` package
 ```
 
 ---
@@ -47,7 +47,7 @@ pip install target/wheels/tsecon-0.2.0-*.whl  # installs the `tsecon` package
 ## Hello, impulse response
 
 The repository ships golden fixtures in [`fixtures/`](../fixtures/) — the same
-data the library is validated against. One of them, `var.json`, holds 100
+data the library is validated against. One of them, `var.json`, holds 202
 quarters of (100×dlog) GDP, consumption, and investment growth. Run this from
 the repository root:
 
@@ -80,14 +80,16 @@ The `fit` object carries the rest of the story: `fit["params"]`, `fit["aic"]`
 characteristic roots, so a stable VAR keeps them all outside the unit circle;
 `fit["min_root"] > 1` is the equivalent numeric check, while `fit["max_root"]`
 is the root farthest from the circle and is not a verdict on its own.) From
-here, `tsecon.var_fevd`, `tsecon.var_forecast`, and `tsecon.var_granger` take
-the same `(data, lags)` arguments.
+here, `tsecon.var_fevd` and `tsecon.var_forecast` take the same `(data, lags)`
+arguments; `tsecon.var_granger` needs the hypothesis too — `var_granger(y,
+caused, causing, lags=2)`, each of `caused`/`causing` a sequence of column
+indices.
 
 ---
 
 ## The API at a glance
 
-The 128 functions, grouped by the task they serve. Every one is a plain
+The 162 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -107,7 +109,11 @@ and docstrings live in
 | `phillips_perron` | Phillips-Perron semiparametric unit-root test (ADF alternative) |
 | `phillips_ouliaris` | Phillips-Ouliaris residual cointegration test |
 | `engle_granger` | Engle-Granger two-step cointegration test (matches statsmodels `coint`) |
+| `dfgls` | DF-GLS: the GLS-detrended Elliott-Rothenberg-Stock unit-root test |
+| `ng_perron` | Ng-Perron M unit-root tests (MZa, MZt, MSB, MPT) with MAIC lag choice |
+| `zivot_andrews` | Unit-root test against one endogenous structural break |
 | `ndiffs` | How many differences a series needs, with the evidence at every order |
+| `nsdiffs` | How many *seasonal* differences a series needs (Hyndman-Khandakar) |
 | `box_cox_lambda` | Variance-stabilizing Box-Cox lambda (MLE or Guerrero) |
 | `check_stationarity` | The ADF + KPSS confirmatory workflow, with a recommendation |
 | `check_series` | One-call diagnostic battery: runs the test families, suggests models with evidence |
@@ -125,12 +131,19 @@ and docstrings live in
 | Function | What it does |
 |---|---|
 | `arima_fit` | Exact-MLE ARIMA(p,d,q) with optional forecast bands |
+| `auto_arima` | Automatic ARIMA order selection (Hyndman-Khandakar stepwise) |
 | `ar_loglik` | Exact Gaussian AR(p) log-likelihood at fixed parameters |
 | `local_level_smooth` | Local-level Kalman filter + smoother (handles missing data) |
+| `dcs_local_level` | Score-driven robust local level (Harvey-Luati) |
 | `hp_filter` | Hodrick-Prescott trend/cycle decomposition |
 | `bk_filter` | Baxter-King band-pass filter |
 | `cf_filter` | Christiano-Fitzgerald band-pass filter |
 | `hamilton_filter` | Hamilton's regression-based HP alternative |
+| `bn_filter` | Kamber-Morley-Wong BN filter: output gap at a pinned signal-to-noise ratio |
+| `bn_decomposition` | Classic Beveridge-Nelson trend/cycle from an ARIMA(p,1,q) |
+| `stl` | STL seasonal-trend decomposition by loess (Cleveland et al. 1990) |
+| `mstl` | MSTL — STL iterated over several seasonal periods |
+| `seasonal_strength` | Wang-Smith-Hyndman seasonal and trend strength from an STL fit |
 | `markov_switching_ar` | Regime-switching AR fitted by EM (Hamilton 1989) |
 
 ### Volatility
@@ -141,12 +154,26 @@ and docstrings live in
 | `gas_volatility` | GAS(1,1) score-driven volatility |
 | `ccc_garch` | Constant-conditional-correlation multivariate GARCH |
 | `dcc_garch` | Dynamic-conditional-correlation multivariate GARCH |
+| `dcc_test` | Engle-Sheppard test of constant conditional correlation (CCC vs DCC) |
 | `realized_measures` | Realized variance, bipower variation, and jump component |
 | `har_rv` | Corsi HAR-RV regression with HAC standard errors |
 | `realized_quarticity` | Realized quarticity (the sampling variance of RV) |
 | `tripower_quarticity` | Jump-robust integrated quarticity |
 | `bns_jump_test` | Barndorff-Nielsen-Shephard ratio jump test |
 | `realized_range` | Parkinson / Garman-Klass range variance from OHLC bars |
+
+### Tail risk, dependence, and spreads
+
+| Function | What it does |
+|---|---|
+| `gpd_fit` | Peaks-over-threshold GPD tail fit with McNeil-Frey VaR / ES |
+| `gev_fit` | GEV block-maxima fit with return levels |
+| `var_backtest` | VaR backtests: Kupiec, Christoffersen, and the Engle-Manganelli DQ test |
+| `pseudo_obs` | Pseudo-observations: the average-rank probability-scale transform |
+| `copula_fit` | Fit a bivariate copula to probability-scale pseudo-observations |
+| `copula_select` | Rank copula families by AIC/BIC, with a teaching verdict |
+| `ou_fit` | Ornstein-Uhlenbeck mean-reversion fit for a spread (exact-discretization MLE) |
+| `spread_zscore` | Z-score of a spread against its stationary OU law |
 
 ### Multivariate and structural
 
@@ -165,6 +192,7 @@ and docstrings live in
 | `proxy_svar` | Proxy SVAR / external-instrument identification (SVAR-IV) |
 | `proxy_svar_bands` | Proxy-SVAR IRF bands (Jentsch-Lunsford moving-block bootstrap) |
 | `proxy_ar_sets` | Weak-instrument-robust (Anderson-Rubin) confidence *sets* for a proxy-SVAR IRF |
+| `proxy_first_stage` | Proxy strength: the Montiel Olea-Pflueger effective F |
 | `hetero_svar` | SVAR identification through heteroskedasticity (Rigobon) |
 | `nongaussian_svar` | Non-Gaussian / independent-component SVAR identification (ICA; fails if Gaussian) |
 | `structural_fevd` | FEVD for an arbitrary structural impact matrix A0 (any scheme) |
@@ -178,6 +206,20 @@ and docstrings live in
 | `connectedness` | Diebold-Yilmaz spillover / connectedness measures |
 | `factor_model` | PCA factor model with Bai-Ng factor selection |
 
+### Threshold and smooth-transition models
+
+| Function | What it does |
+|---|---|
+| `setar` | Two-regime SETAR(p) by concentrated least squares (Tong-Lim; Hansen 1997) |
+| `setar_test` | Hansen sup-F linearity test against a SETAR, bootstrap p-value |
+| `threshold_var` | Two-regime threshold VAR — the multivariate SETAR |
+| `threshold_var_test` | Sup-Wald linearity test of a linear VAR against the threshold VAR |
+| `threshold_vecm` | Hansen-Seo two-regime threshold VECM (threshold cointegration) |
+| `hansen_seo_test` | Hansen-Seo sup-LM test: linear versus threshold cointegration |
+| `star` | Smooth-transition AR — LSTAR / ESTAR by concentrated NLS (Teräsvirta) |
+| `star_eval` | Score a STAR fit at fixed `(gamma, c)` — for a published parameterization |
+| `star_test` | Teräsvirta LM3 linearity test plus the H03/H02/H01 modeling cycle |
+
 ### Local projections
 
 | Function | What it does |
@@ -187,6 +229,7 @@ and docstrings live in
 | `lp_multiplier` | Integral multiplier (Ramey-Zubairy): cumulated outcome on cumulated impulse, instrumented |
 | `lp_state` | State-dependent (interacted) local projections (Ramey-Zubairy) |
 | `smooth_lp` | Smooth local projections: B-spline-penalized IRFs (Barnichon-Brownlees) |
+| `lp_did` | LP-DiD event-study difference-in-differences (Dube-Girardi-Jordà-Taylor) |
 
 ### Functional shocks (FVAR / FLP)
 
@@ -204,6 +247,8 @@ and docstrings live in
 | `theta_forecast` | The Theta method (Assimakopoulos-Nikolopoulos) |
 | `accuracy` | Forecast accuracy measures (RMSE, MAE, MAPE, MASE, RMSSE…) |
 | `backtest` | Rolling / expanding pseudo-out-of-sample backtest |
+| `conformal_forecast` | Distribution-free conformal forecast intervals (split / EnbPI / ACI) |
+| `conformal_backtest` | Online out-of-sample coverage evaluation of those intervals |
 | `dm_test` | Diebold-Mariano equal-accuracy test (HLN-corrected) |
 | `cw_test` | Clark-West test for nested models |
 | `gw_test` | Giacomini-White test of equal predictive ability |
@@ -260,6 +305,7 @@ and docstrings live in
 | `svensson` | Svensson four-factor yield-curve fit |
 | `dynamic_ns` | Dynamic Nelson-Siegel factors + one-step forecast |
 | `afns_adjustment` | Arbitrage-free (AFNS) yield adjustment (Christensen-Diebold-Rudebusch) |
+| `acm_term_premium` | Adrian-Crump-Moench regression-based term premium |
 
 ### Specification & stability tests
 
@@ -353,7 +399,7 @@ The point worth internalising: **it is still a dict.** Adopting this layer break
 nothing, because it only *adds* methods to the object you already had.
 
 ```python
-print(fit["aic"])                              # -0.2983183237427347
+print(fit["aic"])                              # -0.29831832374273115
 print(isinstance(fit, dict))                   # True
 print(set(fit) == set(tsecon.var_fit(y, 2)))   # True — identical keys
 ```

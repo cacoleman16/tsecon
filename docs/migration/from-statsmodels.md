@@ -8,9 +8,9 @@
 If you write empirical time series in Python today, you almost certainly write
 `statsmodels`. tsecon is not a drop-in replacement — it deliberately makes
 different choices — but most of the `statsmodels.tsa` surface has a direct
-counterpart here, and the parts that do not (local projections, sign-restricted
-SVARs, BVARs, nowcasting) are exactly the reasons to reach for tsecon. This page
-gets you across.
+counterpart here, and the parts that do not (LP-IV and state-dependent local
+projections, sign-restricted SVARs, BVARs, threshold and smooth-transition
+models) are exactly the reasons to reach for tsecon. This page gets you across.
 
 ## Five differences to internalize first
 
@@ -21,15 +21,21 @@ Before the table, five conventions that will trip you up if you carry
    gives you a fitted `Results` object you interrogate with attributes and
    methods (`res.params`, `res.summary()`, `res.irf(10)`). tsecon gives you a
    plain `dict` (or a NumPy array, or a nested list). You read `fit["params"]`,
-   not `fit.params`. There is no `.summary()` yet — you format output yourself.
-   This keeps the boundary between the Rust core and Python thin and the return
-   values trivially serializable.
+   not `fit.params`. This keeps the boundary between the Rust core and Python
+   thin and the return values trivially serializable. Formatted output is
+   opt-in rather than absent: `tsecon.summarize(fit)` renders any result as an
+   aligned report, and the [`tsecon.results`](../reference/results.md) layer
+   adds richer per-family objects with `.summary()` and `.plot_*()`. All of
+   them are `dict` *subclasses*, so `fit["params"]`, `json`, and `pickle` keep
+   working either way.
 
-2. **You pass NumPy arrays, not DataFrames.** tsecon has no pandas dependency and
-   no notion of a date index. A VAR takes a `T x k` float array; a panel takes
-   raw arrays in a documented shape. Column *order* is therefore load-bearing —
-   it is your Cholesky ordering, your variable labels, everything. Keep your own
-   column-name list alongside the array.
+2. **You pass arrays, and any index is dropped.** tsecon has no pandas
+   dependency and no notion of a date index. A `DataFrame`/`Series` goes
+   straight in — every estimator coerces any `.to_numpy` array-like to float64
+   at the boundary — but only its *values* survive: a VAR sees a `T x k` float
+   array, a panel raw arrays in a documented shape. Column *order* is therefore
+   load-bearing — it is your Cholesky ordering, your variable labels,
+   everything. Keep your own column-name list alongside the array.
 
 3. **No automatic intercept.** `tsecon.ols(y, x, ...)` regresses `y` on the
    columns of `x` *exactly as given*. Like `statsmodels`' `OLS` (which also
@@ -44,7 +50,8 @@ Before the table, five conventions that will trip you up if you carry
    the HAC bandwidth. Panels add `"cluster"` and `"driscoll_kraay"`. Local
    projections use `se=` with `"lag_augmented"` (the default, per Montiel
    Olea–Plagborg-Møller 2021) or `"hac"`. The method chosen is stamped back into
-   the result (`res["se_type"]`).
+   the result: `res["se_type"]` wherever the argument is `se_type=`,
+   `res["se_method"]` for the `se=` local projections (`lp`, `lp_state`).
 
 5. **Impulse responses are nested lists, indexed `[horizon][response][shock]`.**
    `tsecon.var_irf(...)[h][i][j]` is the response of variable `i` at horizon `h`
@@ -76,8 +83,9 @@ else is a shipped function you can call now.
 | `jarque_bera(x)` | `jarque_bera(x)` | Dict with `statistic`, `p_value`, `skewness`, `kurtosis`, `n`. |
 | `het_arch(resid)` | `arch_lm(resid, nlags=...)` | Engle's ARCH-LM test. |
 | `q_stat(...)` | use `ljung_box` | Box-Pierce is the `bp_stat`/`bp_pvalue` keys. |
-| `adfuller` (PP variant), `PhillipsPerron` | — | Phillips-Perron: **roadmap**. |
-| `range_unit_root_test`, `zivot_andrews` | — | **Roadmap.** |
+| *(none; `arch.unitroot.PhillipsPerron`)* | `phillips_perron(y, regression="c", test_type="tau", lags=None)` | Z-tau (default) or Z-alpha with MacKinnon p-values; both come back as `ztau`/`zalpha`. Alongside it `dfgls` (Elliott-Rothenberg-Stock) and `ng_perron` — neither has a `statsmodels` analogue. |
+| `zivot_andrews(y, regression=, trim=)` | `zivot_andrews(y, regression="c", trim=0.15, autolag=..., lags=None)` | Single-break unit-root test; matches `statsmodels`. Dict `stat`, `pvalue`, `crit`, `break_index`. |
+| `range_unit_root_test`, `leybourne` | — | **Roadmap.** |
 
 ### Regression with dependent-data standard errors
 
@@ -101,7 +109,7 @@ constant column), not pre-computed residuals.
 | `linear_reset(res, power=[2,3])` | `reset_test(y, x, max_power=3)` | Ramsey RESET functional-form F-test; fitted powers `2..=max_power` of ŷ. |
 | `breaks_cusumolsresid(resid)` | `cusum_test(y, x)` | Brown-Durbin-Evans recursive-residual CUSUM; returns the `path` and 5% `bound_lower`/`bound_upper`. (`statsmodels`' test is the OLS-residual variant.) |
 | *(no direct Chow test)* | `chow_test(y, x, split=k)` | Structural-break F-test at a *known* 0-indexed split `k`. |
-| *(only `breaks_cusumolsresid`)* | `bai_perron(y, x, max_breaks=m, trim=0.15)` | Bai-Perron multiple breaks (global DP partitions + sequential supF selection). **No `statsmodels` analogue.** |
+| *(only the `breaks_cusumolsresid`/`breaks_hansen` stability tests)* | `bai_perron(y, x, max_breaks=m, trim=0.15)` | Bai-Perron multiple breaks (global DP partitions + sequential supF selection). **No `statsmodels` analogue.** |
 | — | `sup_f_test(y, x, trim=0.15)` | Andrews sup-F (Quandt) *unknown*-break test, Hansen (1997) p-value. **No `statsmodels` analogue.** |
 
 ### Univariate models and volatility
@@ -109,7 +117,7 @@ constant column), not pre-computed residuals.
 | statsmodels / arch | tsecon | Notes |
 |---|---|---|
 | `ARIMA(y, order=(p,d,q)).fit()` | `arima_fit(y, p, d, q, constant=True, forecast_steps=0)` | Exact-MLE. Forecast bands via `conf_alpha=`. |
-| `SARIMAX(... seasonal_order=...)` | — | Seasonal terms: **roadmap**. `arima_fit` is non-seasonal ARIMA. |
+| `SARIMAX(..., seasonal_order=(P,D,Q,s))` | `arima_fit(y, p, d, q, seasonal=(P, D, Q, s))` | Multiplicative SARIMA by exact MLE, statsmodels-style parameter names (`ma.L1`, `ma.S.L12`). Note the kwarg is `seasonal=` and takes the 4-tuple, not `seasonal_order=`. Exogenous regressors — the *X* of SARIMAX — are **roadmap**. `auto_arima` does Hyndman-Khandakar order selection on the same engine. |
 | `ExponentialSmoothing`, `ETSModel` | `theta_forecast(y, steps, period)` | Only the Theta method ships; general ETS is **roadmap**. |
 | `arch_model(r, vol="Garch", p, q).fit()` | `garch_fit(y, vol="garch", p=1, q=1, ...)` | Also `vol="gjr"`/`"egarch"`. Note: `arch_model(..., o=1)` silently *becomes* GJR in `arch`; in tsecon you must say `vol="gjr"` — `o > 0` with `vol="garch"` raises (0.6.0). Robust SEs in `se_robust`. |
 | `arch_model(..., dist="StudentsT")` | `garch_fit(..., dist="studentst")` | Distribution string. |
@@ -125,36 +133,40 @@ constant column), not pre-computed residuals.
 | `VAR(df).fit(p)` | `var_fit(data, lags=p, trend="c")` | `data` is `T x k`. Dict: params, `sigma_u`, ICs, `max_root`. |
 | `res.irf(h).orth_irfs` | `var_irf(data, lags, horizon, orth=True)` | Nested list `[h][resp][shock]`. `orth=False` for non-orthogonalized. |
 | `res.irf(h).cum_effects` | `var_irf(..., cumulative=True)` | Running sums. |
+| `res.irf(h).stderr()`, `.errband_mc()` | `var_irf_bands(data, lags, horizon, method="asymptotic")` | Lütkepohl delta-method SEs, or `method="bootstrap"` for a Kilian residual bootstrap with optional bias correction. Returns `point`/`se`/`lower`/`upper` in the `var_irf` layout; `lower`/`upper` are pointwise unless you ask for `band="sup-t"`/`"sidak"`/`"bonferroni"`. |
 | `res.fevd(h).decomp` | `var_fevd(data, lags, horizon)` | `[horizon][variable][shock]`, same axis order as the IRFs; statsmodels' `.decomp` is variable-major — transpose `(1, 0, 2)` to compare. |
 | `res.forecast_interval(y, h)` | `var_forecast(data, lags, steps, alpha=0.05)` | Dict `{"point", "lower", "upper"}`. |
 | `res.test_causality(caused, causing)` | `var_granger(data, caused, causing, lags)` | F-test; matches `statsmodels`' `test_causality`. Index lists, not names. |
 | `grangercausalitytests(...)` | `var_granger(...)` | Same test, VAR-based. |
 | `coint_johansen(data, det, k_ar_diff)` | `johansen(data, k_ar_diff=1)` | Trace and max-eig stats + selected ranks at 5% + `evec`. Fixed `det_order=0` (unrestricted constant) — the `vecm(..., deterministic="co")` case, not `vecm`'s `"n"` default. |
-| `VECM(data, k_ar_diff, coint_rank, deterministic, seasons, first_season).fit()` | `vecm(data, k_ar_diff=1, coint_rank=1, deterministic="n", seasons=0, first_season=0)` | ML estimation; `alpha`, `beta`, `det_coef_coint`, `gamma`, `det_coef`, `sigma_u`, `llf`. All nine `deterministic` cases (`"n"`/`"co"`/`"ci"`/`"lo"`/`"li"`/`"colo"`/`"coli"`/`"cilo"`/`"cili"`) plus centered seasonal dummies, statsmodels-exact — restricted terms come back as `det_coef_coint` (the widened-beta rows), matching `VECMResults`' split. Use `"co"` when the rank came from `johansen`. |
-| `coint(y0, y1)` (Engle-Granger) | — | Engle-Granger two-step: **roadmap**. Use `johansen`. |
-| `DynamicFactor`, `DynamicFactorMQ` | `dfm_nowcast(data, n_factors, factor_order)` | Two-step DGR (2011) nowcaster with a ragged edge; `factor_model` for static PCA factors + Bai-Ng selection. Full MLE mixed-frequency DFM: **roadmap**. |
+| `VECM(data, k_ar_diff, coint_rank, deterministic, seasons, first_season).fit()` | `vecm(data, k_ar_diff=1, coint_rank=1, deterministic="n", seasons=0)` | ML estimation; `alpha`, `beta`, `det_coef_coint`, `gamma`, `det_coef`, `sigma_u`, `llf`. All nine `deterministic` cases (`"n"`/`"co"`/`"ci"`/`"lo"`/`"li"`/`"colo"`/`"coli"`/`"cilo"`/`"cili"`) plus centered seasonal dummies, statsmodels-exact — restricted terms come back as `det_coef_coint` (the widened-beta rows), matching `VECMResults`' split. Use `"co"` when the rank came from `johansen`. `first_season` defaults to `None` (resolving to 0) and is taken modulo `seasons`; unlike statsmodels' inert `first_season=0`, passing it explicitly under `seasons=0` raises (0.7.0) — pass it only with `seasons > 0`. |
+| `coint(y0, y1)` (Engle-Granger) | `engle_granger(data, trend="c", autolag=..., maxlag=None)` | Two-step residual test; `data` is `T x k` with the dependent column first. Dict `stat`, `pvalue`, `crit`, `coint_coefs`, `resid`, `used_lag`. `phillips_ouliaris(y, x)` for the Zt/Za variant. |
+| `DynamicFactor`, `DynamicFactorMQ` | `dfm_nowcast(data, n_factors, factor_order, method="two_step")` | Two-step DGR (2011) nowcaster with a ragged edge, or `method="mle"` for the exact one-step Gaussian MLE; `dfm_news` for the Bańbura-Modugno news decomposition and `factor_model` for static PCA factors + Bai-Ng selection. The *mixed-frequency* state space behind `DynamicFactorMQ`: **roadmap**. |
 | `VARMAX` | — | **Roadmap.** |
 
 Structural identification beyond Cholesky is where tsecon pulls ahead of
-`statsmodels`, which offers only the recursive ordering:
+`statsmodels`, whose `SVAR` stops at short-run A/B matrices:
 
 | statsmodels | tsecon | Notes |
 |---|---|---|
-| *(recursive only)* | `var_irf(..., orth=True)` | Cholesky IRFs = the column order of `data`. |
+| *(recursive)* | `var_irf(..., orth=True)` | Cholesky IRFs = the column order of `data`. |
 | — | `sign_restricted_svar(data, restrictions, ...)` | Sign-restricted Bayesian SVAR with identified-set bands. **No `statsmodels` analogue.** |
 | — | `bvar_fit`, `bvar_irf_draws` | Minnesota-NIW BVAR + posterior IRF draws for credible bands. |
 | — | `favar(panel, policy, ...)` | Two-step FAVAR (Bernanke-Boivin-Eliasz 2005). |
 | — | `connectedness(data, ...)` | Diebold-Yilmaz spillover tables from a VAR's GFEVD. |
-| SVAR short/long-run (A/B, Blanchard-Quah) | — | Explicit A/B and long-run restrictions: **roadmap**. |
+| `SVAR(endog, svar_type="A"/"B"/"AB")` | `long_run_svar(data, lags, horizon, restrictions=None)` | Blanchard-Quah long-run zeros in closed form — `statsmodels`' `SVAR` has no long-run option. Alongside it `max_share_svar`, `proxy_svar`, `hetero_svar`, `nongaussian_svar`, `narrative_svar`, `zero_sign_svar`, plus `structural_fevd` and `historical_decomposition`. Explicit short-run A/B matrices, the one thing `SVAR` does do: **roadmap**. |
 
-### Local projections — tsecon's headline addition
+### Local projections — tsecon's deepest lead
 
-`statsmodels` has no local-projection module at all; this is one of the main
-reasons to adopt tsecon.
+`statsmodels` 0.15.0 added a single-equation `LocalProjections` (one shock
+index, Newey-West bands, `.conf_int()`/`.cumulative_effects()`). tsecon ships
+the whole family around it — lag-augmented inference by default, LP-IV,
+state-dependent regimes, panels, smooth LP, quantile LP — and that depth is
+still one of the main reasons to adopt tsecon.
 
 | statsmodels | tsecon | Notes |
 |---|---|---|
-| — | `lp(y, shock, horizons=12, se="lag_augmented")` | Jordà (2005) LP IRFs, lag-augmented inference by default. |
+| `LocalProjections(endog, shock_idx, lags, horizons).fit()` | `lp(y, shock, horizons=12, se="lag_augmented")` | Jordà (2005) LP IRFs. `statsmodels` is HAC-only; tsecon defaults to lag-augmented inference and offers `se="hac"` for the old behaviour. Also `smooth_lp` (Barnichon-Brownlees) and `lp_multiplier`. |
 | — | `lp_iv(y, impulse, instrument, horizons=8)` | LP-IV with a first-stage F diagnostic. |
 | — | `lp_state(y, shock, state_indicator, ...)` | State-dependent (Ramey-Zubairy 2018) per-regime IRFs. |
 | — | `panel_lp(outcome, shock, ...)` | Panel local projection with fixed effects. |
@@ -177,16 +189,18 @@ tail-risk extensions built on the same check-loss estimator.
 | `hpfilter(y, lamb)` | `hp_filter(y, lamb=1600, one_sided=False)` | Returns `{"trend", "cycle", ...}`. |
 | `bkfilter(y, low, high, K)` | `bk_filter(y, low=6, high=32, k=12)` | Loses `k` obs each end; `first_index` tells you where the cycle starts. |
 | `cffilter(y, low, high, drift)` | `cf_filter(y, low=6, high=32, drift=True)` | Christiano-Fitzgerald. |
-| *(none)* | `hamilton_filter(y, h=8, p=4)` | Hamilton (2018) regression filter — the modern HP alternative; `method="random_walk"` for the short-sample variant, `se="hac"` for Newey-West coefficient errors. |
+| `hamilton_filter(x, h, p)` *(new in 0.15.0)* | `hamilton_filter(y, h=8, p=4)` | Hamilton (2018) regression filter — the modern HP alternative; cross-checked against the new statsmodels function at 4.2e-14. tsecon adds `method="random_walk"` for the short-sample variant and `se="hac"` for Newey-West coefficient errors, neither of which `statsmodels` has; it returns `first_index` where statsmodels pads with `NaN`. |
 | *(none)* | `bn_decomposition(y, p=2, q=2)` | Classic Beveridge-Nelson (1981) from an ARIMA(p,1,q); statsmodels has no BN decomposition. |
 | *(none)* | `bn_filter(y, p=12)` | Kamber-Morley-Wong (2018) BN filter — the pinned-signal-to-noise output gap. |
 | `scipy.signal.periodogram` | `periodogram(x, fs, window, detrend)` | Matches SciPy. |
 | `scipy.signal.welch` | `welch(x, nperseg, ...)` | Matches SciPy. |
 | `scipy.signal.coherence` | `coherence(x, y, nperseg, ...)` | Magnitude-squared coherence. |
-| `seasonal_decompose`, `STL` | — | **Roadmap.** |
+| `STL(y, period).fit()`, `MSTL(y, periods).fit()` | `stl(y, period, seasonal=7, robust=False, ...)`, `mstl(y, periods)` | Cleveland et al. (1990) loess semantics, pinned elementwise to statsmodels; `seasonal_strength` and the `nsdiffs` advisor sit on top. Classical `seasonal_decompose`: **roadmap**. |
 
 For forecast comparison, tsecon ships a fuller battery than `statsmodels.tsa`:
-`dm_test` (Diebold-Mariano with the Harvey-Leybourne-Newbold correction),
+`dm_test` (Diebold-Mariano with the Harvey-Leybourne-Newbold correction — the
+one with a statsmodels counterpart since 0.15.0, `diebold_mariano_test`, though
+that one takes forecasts where `dm_test` takes the two error series),
 `cw_test` (Clark-West, nested models), `gw_test` (Giacomini-White), `accuracy`
 (ME/RMSE/MAE/MAPE/sMAPE/MASE/RMSSE), and a rolling/expanding `backtest` engine.
 
@@ -275,7 +289,9 @@ y = np.zeros(n)
 for t in range(1, n):
     y[t] = 0.5 * y[t-1] + 0.8 * shock[t] + rng.standard_normal()
 
-out = tsecon.lp(y, shock, horizons=12, se="lag_augmented")   # no statsmodels analogue
+out = tsecon.lp(y, shock, horizons=12, se="lag_augmented")
+# statsmodels 0.15.0: LocalProjections(np.column_stack([shock, y]),
+#                                      shock_idx=0, horizons=12).fit()  — HAC only
 print(np.round(out["irf"][:3], 3), np.round(out["se"][:3], 3))
 ```
 
@@ -284,24 +300,35 @@ print(np.round(out["irf"][:3], 3), np.round(out["se"][:3], 3))
 Be direct about the gaps so you can plan around them. As of this writing the
 following common `statsmodels.tsa` capabilities are **roadmap**, not shipped:
 
-- **Seasonal ARIMA / SARIMAX** seasonal orders (non-seasonal `arima_fit` ships).
+- **Exogenous regressors in ARIMA** — the *X* of SARIMAX, and `VARX` on the
+  system side. `arima_fit` ships multiplicative SARIMA via
+  `seasonal=(P, D, Q, s)` but takes no `exog`.
 - **ExponentialSmoothing / ETS** beyond the Theta method.
-- **Phillips-Perron, Zivot-Andrews, Elliott-Rothenberg-Stock** unit-root tests.
-- **STL / seasonal_decompose** classical decomposition.
-- **VARMAX / VARMA**, and the **Engle-Granger** two-step cointegration test.
-- **Explicit SVAR restrictions** (short-run A/B, long-run / Blanchard-Quah);
-  tsecon ships Cholesky (`var_irf(orth=True)`) and sign restrictions
-  (`sign_restricted_svar`) instead.
+- **Classical `seasonal_decompose`** additive/multiplicative decomposition;
+  `stl` and `mstl` ship.
+- **VARMAX / VARMA**, and `ARDL`/`UECM`.
+- **Explicit short-run A/B SVAR restrictions** — the one identification scheme
+  `SVAR` offers that tsecon does not. tsecon ships Cholesky
+  (`var_irf(orth=True)`), long-run / Blanchard-Quah (`long_run_svar`),
+  max-share (`max_share_svar`), proxy/IV (`proxy_svar`), heteroskedasticity
+  (`hetero_svar`), non-Gaussian (`nongaussian_svar`), narrative
+  (`narrative_svar`) and sign / zero-sign (`sign_restricted_svar`,
+  `zero_sign_svar`) instead.
 - **Custom state-space models** (`MLEModel`, `UnobservedComponents`); only the
   local-level filter and the internal DFM state space ship.
-- **Frequentist VAR IRF confidence bands.** `var_irf` returns point responses;
-  for bands use the Bayesian `bvar_irf_draws` or `sign_restricted_svar`.
+- **Mixed-frequency dynamic factor models** (`DynamicFactorMQ`). `dfm_nowcast`
+  does two-step or one-step-MLE nowcasting on a single-frequency ragged-edge
+  panel, and `dfm_news` the Bańbura-Modugno news decomposition, but the
+  mixed-frequency state space is roadmap; `umidas`/`weighted_midas` cover the
+  mixed-frequency regression case today.
+- **`range_unit_root_test` and the Leybourne-McCabe** stationarity test.
 
 Where tsecon *leads* `statsmodels.tsa` — and why the switch is often worth it —
-is the modern macro-structural toolkit: local projections (`lp`/`lp_iv`/
-`lp_state`/`panel_lp`), Bayesian VARs (`bvar_fit`/`bvar_irf_draws`),
-sign-restricted SVARs (`sign_restricted_svar`), FAVAR (`favar`), nowcasting
-(`dfm_nowcast`/`dfm_news`), MIDAS mixed frequency (`umidas`/`weighted_midas`),
+is the modern macro-structural toolkit: the local-projection family beyond the
+plain estimator (`lp_iv`/`lp_state`/`panel_lp`/`smooth_lp`), Bayesian VARs
+(`bvar_fit`/`bvar_irf_draws`), sign-restricted SVARs (`sign_restricted_svar`),
+FAVAR (`favar`), nonlinear dynamics (`setar`/`star`/`threshold_var`/
+`threshold_vecm`), MIDAS mixed frequency (`umidas`/`weighted_midas`),
 IV-GMM (`iv_gmm`), heterogeneous panels (`panel_mean_group`/`panel_pmg`),
 conditional-quantile Growth-at-Risk (`growth_at_risk`/`quantile_lp`),
 Bai-Perron multiple-break estimation (`bai_perron`/`sup_f_test`), and a Rust core

@@ -11,14 +11,17 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ### Added
 
-- **The binding-suite surface gap is closed: all 155 public callables are now
+- **The binding-suite surface gap is closed: all 162 public callables are now
   exercised through `tsecon.<name>(…)`.** `test_exercise_gap.py` adds
   binding-tier tests (marshalling, returned key sets, teaching-error
   propagation, pandas coercion) for the last three functions
   `docs/reference/testing.md` honestly listed as unexercised —
   `engle_granger`, `fvar_scenario`, and `ndiffs`. Their numeric validation was
   never in question (each is golden-pinned on the Rust side); what was
-  untested was exactly the layer a Rust golden cannot see. The testing page's
+  untested was exactly the layer a Rust golden cannot see. The seven callables
+  the nonlinear-dynamics slices add further down this section arrived with
+  their binding tests already written, so the surface closed at 162, not at
+  the 155 it stood at when that work landed. The testing page's
   run-the-check-not-assert completeness probe now prints an empty list, and
   the page keeps the check so the next unexercised export surfaces there.
 
@@ -302,6 +305,26 @@ surface).
   An all-NaN proxy also now raises a teaching error naming the cause
   (previously the bare count errors "n_proxy must be positive" /
   "proxy overlap has fewer than 3 finite observations" surfaced instead).
+
+### Changed — the statsmodels absence canary fired: `hamilton_filter` gains a third-party leg
+
+- **statsmodels 0.15.0 added `tsa.filters.api.hamilton_filter`, and the
+  absence canary that existed for exactly that moment now runs a live
+  cross-check instead.** The canary in `test_bn_filters.py` is
+  version-gated: where the installed statsmodels has the filter, our full
+  cycle/trend decomposition is compared against it live — **measured
+  4.2e-14 max abs on first contact, asserted at 1e-10** — and on older
+  statsmodels the original absence assertion still holds. The fixture keeps
+  its generation-time provenance (statsmodels 0.14.x, no reference — which
+  is why those goldens are formula transcriptions), and the **BN** absence
+  is still asserted live: statsmodels ships no Beveridge-Nelson
+  decomposition in any form. `generate_bn_filters_fixtures.py` gained a
+  do-not-regenerate-under-a-newer-statsmodels note, and the
+  `hamilton_filter` row of the
+  [validation matrix](docs/reference/validation-matrix.md) records the new
+  leg. No library behavior changed — this is a validation-grade upgrade:
+  `hamilton_filter`'s decomposition now has an independent-package check it
+  could not have had when it shipped.
 
 ### Fixed — documentation (audit round 10)
 
@@ -946,6 +969,13 @@ surface).
   roadmap: **MC order recovery** (seeded study in
   `scripts/mc_auto_arima_recovery.py`, rates quoted in the model card)
   plus candidate-level statsmodels pins (`fixtures/auto_arima.json`:
+  fixed-parameter loglik/AICc at 1e-8, free fits match-or-beat) and
+  exact internal-consistency invariants (refitting the reported orders
+  reproduces the reported criterion bit-for-bit; identical traces across
+  runs); the selection loop itself deliberately has **no gating
+  R/pmdarima parity** — a pmdarima cross-run is reported as a non-gating
+  note. No exogenous regressors in this slice (the engine has no ARIMAX
+  yet); no Box-Cox lambda argument (use `box_cox_lambda` first).
 
 ### Fixed — reported from the field
 
@@ -1013,13 +1043,6 @@ surface).
   absent from the docstring and card key list), with a returned-keys
   docstring tripwire test.
 
-  fixed-parameter loglik/AICc at 1e-8, free fits match-or-beat) and
-  exact internal-consistency invariants (refitting the reported orders
-  reproduces the reported criterion bit-for-bit; identical traces across
-  runs); the selection loop itself deliberately has **no gating
-  R/pmdarima parity** — a pmdarima cross-run is reported as a non-gating
-  note. No exogenous regressors in this slice (the engine has no ARIMAX
-  yet); no Box-Cox lambda argument (use `box_cox_lambda` first).
 ### Added — the DCC build-out
 
 - **`dcc_garch` variants and second stage** — `variant="cdcc"` (Aielli 2013
