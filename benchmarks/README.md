@@ -346,7 +346,7 @@ TIMINGS  (best of 20; release build)
 ```
 
 **We publish the losses.** All three QMLE volatility fits are still *slower*
-than `arch`: GARCH(1,1) at `0.41x`, GJR at `0.43x`, and EGARCH at `0.10x`.
+than `arch`: GARCH(1,1) at `0.41x`, GJR at `0.44x`, and EGARCH at `0.10x`.
 
 GARCH and GJR used to be worse — `0.23x` and `0.16x`. They improved by **1.8×
 and 2.8×** when the estimation-time likelihood was made allocation-free and

@@ -20,7 +20,7 @@ Every number in this section was produced by a command run on this working tree
 rows). The Rust total comes from a single `cargo test --workspace` run (dev
 profile), with the per-binary `test result:` lines summed; on macOS that same
 command needs the `--exclude tsecon-python` caveat described
-[below](#the---exclude-tsecon-python-caveat-macos).
+[below](#the-exclude-tsecon-python-caveat-macos).
 
 | Tier | Count | Command |
 |---|---|---|
@@ -34,18 +34,34 @@ command needs the `--exclude tsecon-python` caveat described
 | Public Python functions | 162, **all 162** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
 
 Of the 9 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
-fingerprints that are platform-specific, three release-only Monte Carlo runs,
-and one timing test) and 2 are in `tsecon-panel` (the LP-DiD and SPJ
-release-only Monte Carlo runs); each `#[ignore]` states its reason.
+fingerprints that are platform-specific, two release-only Monte Carlo runs, one
+timing test, and one that emits a fixture snapshot) and 2 are in `tsecon-panel`
+(the LP-DiD and SPJ release-only Monte Carlo runs); each `#[ignore]` states its
+reason.
 
-Of the 1393 Rust integration tests, **290 are golden tests** and **575 are
-property tests**. The goldens live in 67 `*golden*.rs` files across 39 crates
-(`golden.rs` in most, with additional per-surface files such as
-`engle_granger_golden.rs`, `irf_bands_golden.rs`, `proxy_bands_golden.rs`,
-`ou_golden.rs`, and `star_golden.rs`); the property tests live in 57
-`*propert*.rs` files across 38 crates. The remainder are validation (111 tests
-in 11 `*validation*.rs` files), cross-check, and reproducibility suites
-described below.
+Of the 1402 integration tests — the 1393 that pass plus the 9 `#[ignore]`d —
+**290 are golden tests** and **586 are property tests**. The goldens live in
+67 `*golden*.rs` files across 39 crates (`golden.rs` in most, with additional
+per-surface files such as `engle_granger_golden.rs`, `irf_bands_golden.rs`,
+`proxy_bands_golden.rs`, `ou_golden.rs`, and `star_golden.rs`); the property
+tests live in 57 `*propert*.rs` files across 38 crates. The remainder are
+validation (111 tests in 11 `*validation*.rs` files), cross-check, and
+reproducibility suites described below.
+
+Those three splits are counted **statically**, and the reason is a trap worth
+naming: `cargo test --workspace` runs its test binaries in parallel, so their
+stdout interleaves, and reading a split out of the log by pairing each
+`Running tests/…` line with the next `test result:` line silently misattributes
+tests between binaries. An earlier revision of this page published a property
+count derived exactly that way and was wrong by 11. Count them the way you can
+reproduce instead:
+
+```sh
+for kind in golden propert validation; do
+  printf '%-11s %s\n' "$kind" \
+    "$(grep -c '#\[test\]' crates/*/tests/*${kind}*.rs | awk -F: '{s+=$NF} END {print s}')"
+done
+```
 
 ---
 
@@ -65,7 +81,7 @@ is one of exactly three things:
    coverage, consistency, parameter recovery).
 
 The [validation matrix](validation-matrix.md) says which of the three each
-method family gets, row by row: **52 estimator-family rows**, plus 14 more
+method family gets, row by row: **77 estimator-family rows**, plus 18 more
 covering the foundational numerics. It grades each row rather than averaging
 over them, and several rows are explicitly **mixed** — where they are, the row
 grades each leg separately and gives each its own tolerance.
@@ -100,15 +116,31 @@ mechanism is how they are reconciled.
 ### Generators must not import `tsecon`
 
 A reference that called the code it is supposed to validate would be circular
-and worthless. The rule is mechanically checkable, and the tree honors it:
+and worthless. The rule is mechanically checkable, and the tree honors it with
+exactly one declared exception:
 
 ```sh
 $ grep -l "import tsecon" fixtures/*.py
-$          # no output — no generator imports the library under test
+fixtures/generate_backtest_string_snapshot.py
+fixtures/generate_ou_fixtures.py
 ```
 
-Every generator computes its numbers from an independent library or from a
-formula written out in its own docstring. Two representative examples:
+Two hits, and only one of them is an import. `generate_ou_fixtures.py` matches
+on a docstring line that reads "This generator deliberately does NOT import
+tsecon"; an AST walk over `fixtures/*.py` finds exactly one real `import
+tsecon`, in
+[`generate_backtest_string_snapshot.py`](../../fixtures/generate_backtest_string_snapshot.py),
+and that file declares itself in its own first paragraph: not a validation
+golden but a *self*-snapshot, captured from the build immediately **before** the
+callable-forecaster plumbing landed in 0.6.0, so that
+`test_backtest_callable.py` can assert float-hex for float-hex that the
+pre-existing string-forecaster paths came through that change bit-identical.
+Its purpose is regression, not validation, and it claims no independence — the
+string paths it snapshots are validated elsewhere, by the closed forms
+`test_backtest.py` checks against NumPy.
+
+Every other generator computes its numbers from an independent library or from
+a formula written out in its own docstring. Two representative examples:
 
 - [`generate_panel_fixtures.py`](../../fixtures/generate_panel_fixtures.py) —
   *independent package*. Simulates a balanced `N=30, T=120` panel with entity
@@ -143,7 +175,7 @@ the values are reproducible. See
 **What it proves:** the arithmetic agrees with a named reference on a specific
 dataset, to a stated tolerance.
 
-214 tests across 37 crates load `fixtures/*.json` and assert the crate
+290 tests across 39 crates load `fixtures/*.json` and assert the crate
 reproduces the stored reference values. Tolerances are the *asserted* bounds in
 the test source and are frequently far tighter than the spec floor — 1e-12
 relative for diagnostics, 1e-8 for VAR parameters and IRFs, bit-exact for the
@@ -160,8 +192,9 @@ quantity is a valid test statistic. That is Tier 5.
 ### Tier 2 — Rust property tests
 
 **What it proves:** invariants that must hold for *every* input, not just the
-fixture's. 392 tests across 35 crates. These are hand-written with seeded
-generators, and they fall into recognizable families:
+fixture's. These are the property tests counted above, spread across 38 crates
+and hand-written with seeded generators, and they fall into recognizable
+families:
 
 | Invariant family | Real example |
 |---|---|
@@ -186,7 +219,7 @@ coincidental at one dataset.
 **What it proves:** every guard returns a *typed, informative* error rather
 than panicking, producing `NaN`, or silently returning garbage.
 
-Nine dedicated tests carry names like `error_paths`,
+Ten dedicated tests carry names like `error_paths`,
 `errors_display_teaching_messages`, `error_paths_teach`, and
 `guardrails_teach_on_degenerate_inputs`, alongside 11 `*validation*.rs` files
 holding 111 tests between them — among them
@@ -223,7 +256,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-1064 tests in 81 files. 50 of the 84 fixture JSONs are reloaded here and checked
+1312 tests in 93 files. 58 of the 91 fixture JSONs are reloaded here and checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -235,10 +268,10 @@ cannot cover:
   `test_coint_regime.py`, `test_favar.py`, `test_midas_mgarch.py` and
   `test_mean_group_var.py` all take that path.
 - **Dict keys and shapes.** Estimators return Python dicts; the `Results`
-  facades (nine `test_results_*.py` files, 212 tests) assert key by key that the
+  facades (nine `test_results_*.py` files, 213 tests) assert key by key that the
   object *is* the dict the raw function has always returned, with rendering
   added on top and nothing removed.
-- **Error propagation.** 67 `pytest.raises` assertions check that a Rust
+- **Error propagation.** 337 `pytest.raises` assertions check that a Rust
   `Err(...)` surfaces as a Python `ValueError`/`RuntimeError` with a message
   you can act on, rather than an abort. `test_gmm_nonlinear.py` goes the other
   direction too: a Python moment function that raises must propagate its
@@ -464,14 +497,39 @@ the sign-restricted monetary policy SVAR, on the paper's own monthly dataset
 commodity prices, nonborrowed reserves not positive; funds rate not negative,
 months 0–5). Both published findings reproduce — **no price puzzle** (the
 deflator's 84% quantile is negative at every horizon through month 60) and the
-**ambiguous output response** (the 68% band on real GDP straddles zero at
-months 6–60, staying within the ±0.2% magnitude the paper's text states). The
-first replication of a *set-identified* result: the target is a published
-shape of uncertainty, not a point. Guarded offline by
-`test_replication_uhlig.py`.
+**ambiguous output response** (the 68% band on real GDP straddles zero at every
+month 6–60, its edges running −0.14% to +0.22% at the docs page's 2000 draws,
+against the "up to 0.2 percent" the paper's text states). The first replication
+of a *set-identified* result: the target is a published shape of uncertainty,
+not a point. Guarded offline by `test_replication_uhlig.py`, which re-runs it at
+300 seeded draws and asserts the looser **±0.35%** bound quoted in the file
+table below — deliberately generous, so seed-to-seed drift cannot flip the
+finding, while still refusing a band that is degenerate or unbounded.
 
-All three pages state scope explicitly: they reproduce the economic result —
-the sign, significance and magnitude of the published finding — not a
+**Five more replications ship with the same discipline**, each with its own docs
+page, its own committed dataset and its own offline guard test: Bai & Perron
+(2003) on the US ex-post real interest rate — the paper's own application
+([page](../examples/replication-bai-perron-realint.md),
+`realint_bai_perron.csv`, `test_replication_bai_perron.py`); Gertler & Karadi
+(2015) high-frequency proxy-SVAR on the paper's own AEJ replication dataset
+([page](../examples/replication-gertler-karadi.md), `gertler_karadi.csv`,
+`test_replication_gk.py`); Giannone-Lenza-Primiceri (2015) hierarchical-BVAR
+prior selection ([page](../examples/replication-glp-prior-selection.md)) — the
+*design* replication runs on a public macrodata-derived stand-in panel
+(`glp_smallvar.csv`, `test_replication_glp.py`) and the Figure-1 *point*
+replication on GLP's own committed panel (`glp_sw_panel.csv`,
+`test_replication_glp_point.py`), a distinction that page states plainly;
+Hamilton (1989) Markov-switching GNP on the author's own series
+([page](../examples/replication-hamilton-markov.md), `hamilton_gnp.csv`,
+`test_replication_hamilton_markov.py`); and Hansen (1999) SETAR on the Wolf
+sunspot numbers ([page](../examples/replication-setar-sunspots.md),
+`sunspots_tong.csv`, `test_replication_setar_sunspots.py`). Each page carries
+its own measured-vs-published table; across the eight replications the nine
+guard-test files (`bindings/python/tests/test_replication_*.py`) collect **51
+tests, all passing** on this tree.
+
+All eight pages state their scope explicitly: they reproduce the economic
+result — the sign, significance and magnitude of the published finding — not a
 line-by-line port of the authors' code or their exact inference conventions.
 
 ### Tier 9 — Benchmarks (parity first)
@@ -488,17 +546,24 @@ Full write-up:
 ```
 
 The script **exits non-zero if any parity check fails**, so it doubles as a
-cross-library correctness gate. Four operations are covered
-(`adf`/`adfuller`, `var_fit`/statsmodels `VAR`, `ols`+HAC/statsmodels HAC,
-`garch_fit`/`arch.arch_model`), and the parity matrix is the deliverable — it
+cross-library correctness gate. 25 operations are covered — the unit-root and
+stationarity tests, the serial-correlation and residual diagnostics, OLS with
+Newey-West HAC standard errors, VAR with its IRF/FEVD/Granger, Johansen, the
+three filters, the two spectra, ridge/elastic-net, and the three QMLE
+volatility fits — checked against statsmodels, `arch`, `scipy.signal` and
+scikit-learn. The parity matrix (65 metrics, all PASS) is the deliverable: it
 is machine-independent, unlike every timing number.
 
 The harness also auto-detects debug builds and refuses to let their timings be
-read as speed claims. The published example run is a case study in why: on a
-debug build the estimates are *identical to machine precision* and tsecon is
-**slower on 4 of 4 operations**; on a release wheel it is faster on 3 of 4, and
-the fourth (GARCH QMLE, ~4× slower than `arch`) is published as a loss rather
-than dropped.
+read as speed claims. The published example run is a case study in why: the
+parity table is identical on either build, and the timings are not. On a
+release wheel tsecon is faster on 22 of the 25 operations, and the three it
+loses are published as losses rather than dropped — GARCH at `0.41x`, GJR at
+`0.44x`, EGARCH at `0.10x`, each against `arch`. `benchmarks/README.md`
+deliberately publishes *no* debug timing table, on the stated grounds that one
+would only get quoted; for scale, an earlier four-case version of the suite ran
+3–21× faster than statsmodels in release and 2–6× **slower** in debug, with
+identical parity.
 
 ### Tier 10 — The structural guards
 
@@ -528,15 +593,16 @@ library with lying documentation.
 
 ## 3 · The Python test files
 
-38 of the 52 files in
+38 of the 93 files in
 [`bindings/python/tests/`](../../bindings/python/tests), with collected test
-counts. The 14 not listed here are a gap in *this table*, not in the suite —
-every one of them runs on every invocation of the command above:
+counts. The table has not kept pace with the directory, and the 55 files not
+listed here are a gap in *this table*, not in the suite — every one of them
+runs on every invocation of the command above:
 
 | File | Tests | What it covers |
 |---|---:|---|
 | `test_arima_seasonal.py` | 5 | Seasonal ARIMA through the Python surface: the airline model against `sarima.json` (fit parity, naming, output shape), seasonal-argument parsing/errors, and the closed-form seasonal random-walk forecast law. |
-| `test_backtest.py` | 4 | Pseudo-out-of-sample backtest engine; no external golden — the naive forecaster makes every quantity a closed form checked against NumPy. |
+| `test_backtest.py` | 7 | Pseudo-out-of-sample backtest engine; no external golden — the naive forecaster makes every quantity a closed form checked against NumPy. |
 | `test_coint_regime.py` | 4 | Johansen / Engle-Granger cointegration and Markov-switching AR against `coint.json` and `regime.json`; the full `(n, k)` smoothed/filtered probability matrices at `k = 3` (shapes, row sums, back-compat column). |
 | `test_cv_splits.py` | 18 | Leakage-safe CV split geometry: no test index at or before a train index; purge/embargo gaps honored — including the walk-forward purge gap (exact train-tail truncation, unmoved test blocks), the embargo refusal on `expanding`/`rolling`, and the purged-k-fold additive right gap (measured gap = `purge + embargo`, the AFML ch. 7 convention; the embargo is never absorbed by the purge). |
 | `test_replication_ramey_zubairy.py` | 3 | The RZ government-spending replication, offline against the committed panel: multiplier below one across horizons (with the first stage asserted strong inside it), and a guard that it is not the outcome-only cumulative trap. |
@@ -546,7 +612,7 @@ every one of them runs on every invocation of the command above:
 | `test_dynamic_ns.py` | 4 | Dynamic Nelson-Siegel (Diebold-Li 2006) two-step fit; row-100 cross-sectional golden anchors the per-date fit exactly. |
 | `test_favar.py` | 4 | Two-step FAVAR (Bernanke-Boivin-Eliasz 2005): step-1 factors must match the NumPy PCA golden up to a joint sign flip; assembly and IRFs checked structurally. |
 | `test_gmm.py` | 2 | IV-GMM two-step robust fit against a `linearmodels` `IVGMM` golden. |
-| `test_gmm_nonlinear.py` | 3 | Nonlinear GMM with the moment function written **in Python** and called back into from Rust; exactly-identified mean/variance system has a closed form. Also pins exception propagation Python → Rust → Python. |
+| `test_gmm_nonlinear.py` | 6 | Nonlinear GMM with the moment function written **in Python** and called back into from Rust; exactly-identified mean/variance system has a closed form. Also pins exception propagation Python → Rust → Python. |
 | `test_intervals.py` | 12 | Interval API audit: every band must equal mean ± z·se at the *requested* coverage, with the multipliers pinned to `scipy.stats.norm.ppf` values (1.9600, 1.6449, 0.9945). |
 | `test_lp_ml.py` | 7 | Local projections and penalized regression against the same statsmodels / `linearmodels` / sklearn fixtures the crates use. |
 | `test_lp_state.py` | 4 | State-dependent (interacted) LP, Ramey-Zubairy 2018. No golden exists, so it mirrors the crate property test: a 2× state-1 impact must be recovered and separate significantly from state 0. |
@@ -554,19 +620,19 @@ every one of them runs on every invocation of the command above:
 | `test_midas_mgarch.py` | 4 | MIDAS weighting/design and CCC/DCC multivariate GARCH against `midas.json`, `mgarch.json`. |
 | `test_ml_paths.py` | 3 | Adaptive LASSO oracle behavior and elastic-net path monotonicity with AIC/BIC selection on a sparse design. |
 | `test_new_crates.py` | 9 | GAS score-driven volatility, mean-group / CCE-MG panel, DFM nowcasting; `panel_mean_group` tight against its statsmodels golden, the other two structural. |
-| `test_panel_fceval.py` | 6 | Panel estimators and the Clark-West / Giacomini-White forecast comparison tests; the 0.6.0 `bandwidth` contract — explicit bandwidth without `driscoll_kraay` raises, the Driscoll-Kraay path bit-identical omitted-vs-explicit-4.0. |
+| `test_panel_fceval.py` | 7 | Panel estimators and the Clark-West / Giacomini-White forecast comparison tests; the 0.6.0 `bandwidth` contract — explicit bandwidth without `driscoll_kraay` raises, the Driscoll-Kraay path bit-identical omitted-vs-explicit-4.0. |
 | `test_pmg_news.py` | 3 | PMG panel estimator against its documented-formula golden; `dfm_news` against its exact adding-up identity. |
-| `test_predreg.py` | 2 | IVX / Stambaugh predictive-regression point estimates and Wald statistics (the *size* claim lives in the crate's MC property tests). |
-| `test_proxy_svar_bands.py` | 45 | Jentsch-Lunsford moving-block bands and the Anderson-Rubin sets. No external package computes either, so the Python layer pins what the binding must not lose: the `h = 0` cell of `norm_var` degenerate at `unit`, the six failure counters surfaced rather than dropped, the wild arm labelled `asymptotically_valid=False`, every AR set shape reachable and branch-able by `kind`, `unit`-equivariance, level nesting, the point estimate always a member of its own set, and `level is None` when reduced-form uncertainty is switched off — plus the `rf_method="second_order_bc"` arm: seeded determinism, sets that widen on `second_order`'s (which widen on delta's), bit-identical boundedness, and the rf_draws/rf_seed knobs never silently ignored. |
+| `test_predreg.py` | 6 | IVX / Stambaugh predictive-regression point estimates and Wald statistics (the *size* claim lives in the crate's MC property tests). |
+| `test_proxy_svar_bands.py` | 46 | Jentsch-Lunsford moving-block bands and the Anderson-Rubin sets. No external package computes either, so the Python layer pins what the binding must not lose: the `h = 0` cell of `norm_var` degenerate at `unit`, the six failure counters surfaced rather than dropped, the wild arm labelled `asymptotically_valid=False`, every AR set shape reachable and branch-able by `kind`, `unit`-equivariance, level nesting, the point estimate always a member of its own set, and `level is None` when reduced-form uncertainty is switched off — plus the `rf_method="second_order_bc"` arm: seeded determinism, sets that widen on `second_order`'s (which widen on delta's), bit-identical boundedness, and the rf_draws/rf_seed knobs never silently ignored. |
 | `test_realized_extras.py` | 7 | Realized/tripower quarticity, BNS jump test, Parkinson & Garman-Klass range variances against documented closed forms. |
 | `test_results_arima.py` | 20 | `ARIMAResults` is *additive*: key-by-key dict equality against a raw `arima_fit` call, then the rendering. |
 | `test_results_dsge.py` | 26 | `DSGEResults` against the Cagan money-demand model, which has a closed-form saddle-path solution (`G = 1/(1−aρ)`, `P = ρ`, `Q = 1`). |
 | `test_results_garch.py` | 22 | `GARCHResults` backward compatibility — every original `garch_fit` key must survive untouched. |
 | `test_results_lp.py` | 29 | LP results facade: dict/list contracts, summary, IRF grid, round-trip through `to_dict()`. |
-| `test_results_predreg.py` | 35 | Predictive-regression facade on the Stambaugh DGP it exists for (ρ = 0.99, corr = −0.9, **true β = 0**) — the case whose reporting the summary must get right. |
+| `test_results_predreg.py` | 36 | Predictive-regression facade on the Stambaugh DGP it exists for (ρ = 0.99, corr = −0.9, **true β = 0**) — the case whose reporting the summary must get right. |
 | `test_results_var.py` | 16 | VAR facade: dict/list contracts, summary, IRF grid. |
 | `test_roadmap_gaps.py` | 6 | Recession probability, survey expectations, and long-memory GPH / local-Whittle bindings. |
-| `test_smoke.py` | 34 | End-to-end: the Rust core called from Python across the core surface, plus Philox bit-compatibility against the live NumPy — including the `var_fevd` horizon-first layout at k ≠ horizon. |
+| `test_smoke.py` | 35 | End-to-end: the Rust core called from Python across the core surface, plus Philox bit-compatibility against the live NumPy — including the `var_fevd` horizon-first layout at k ≠ horizon. |
 | `test_spectest_afns_dsge.py` | 18 | Specification tests (White/Breusch-Pagan, RESET, Chow, CUSUM), the AFNS yield adjustment, and `dsge_solve`. |
 | `test_spectral.py` | 6 | Periodogram / Welch / coherence against `scipy.signal` fixtures, plus default-vs-default parity against live scipy on a mean-shifted series (the 0.6.0 `detrend="constant"` default). |
 | `test_stub_sync.py` | 3 | The structural guards: stub ↔ runtime surface, `py.typed` present, `api.md` not stale. |
@@ -637,7 +703,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 1561 passed, 0 failed
+# 1664 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
@@ -645,18 +711,21 @@ grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", 
 `maturin develop` installs a **debug** build of the Rust core: unoptimised,
 full symbols, and on this machine 43.4 MB against a release build's 6.0 MB. It
 is correct but slow, and it makes the Python suite and the Monte Carlo scripts
-feel much heavier than they are. For a sense of scale, the same GARCH(1,1)
-QMLE fit in the benchmark harness takes **544.9 ms debug** and **33.8 ms
-release** — a ~16× gap on exactly the optimiser-heavy path the fitting tests
-spend their time in.
+feel much heavier than they are. For a sense of scale, one measured pair on the
+same machine and build put the same GARCH(1,1) QMLE fit at **544.9 ms debug**
+against **33.8 ms release** — a ~16× gap on exactly the optimiser-heavy path
+the fitting tests spend their time in. (The release side has come down further
+since, to the 19.4 ms in `benchmarks/README.md`'s published run, after the
+likelihood was made allocation-free and given an analytic gradient. The debug
+*multiple* is the point here, not either absolute.)
 
 ```sh
 maturin develop --release -m bindings/python/Cargo.toml
 ```
 
-With a release extension installed, the full Python suite runs in a few
-seconds and `docs/examples/monte_carlo.py` in **3.0 s** on this machine. Do
-not quote any timing taken against a debug build.
+With a release extension installed, the full Python suite runs in the 345 s in
+the table above and `docs/examples/monte_carlo.py` in **3.0 s** on this
+machine. Do not quote any timing taken against a debug build.
 
 ---
 
@@ -693,24 +762,31 @@ discover.
   a standard error around 0.005. The property-test bands are set deliberately
   wide for this reason (IVX size is accepted in 0.05 ± 0.02, LP coverage in
   [0.85, 0.99]); they catch a broken estimator, not a third-decimal drift.
-- **The interval-coverage suite is not in CI.** Tier 6 takes ~30 minutes for a
+- **The interval-coverage suite is not in CI.** Tier 6 takes ~40 minutes for a
   full run, so it is currently a local and pre-release gate rather than a
   per-push one. Every module already asserts its own qualitative findings and
   exits non-zero, and `run_all.py` additionally exits non-zero if a returned
   results schema moves under one of its probes, so it is CI-ready — it is not
   wired in yet, and until it is, an interval losing coverage will not fail a
   push the way a test losing its size will.
-- **Interval coverage is measured for 50 surfaces, not all of them.** The
-  [audit page](../examples/interval-coverage.md#what-is-not-measured) lists what
-  is left: `growth_at_risk`, `proxy_svar`, `nongaussian_svar`, GARCH forecast
-  intervals, and `flp`/`flp_scenario` (two of those carry measured coverage on
-  their model cards rather than in the audit registry). `quantile_lp`, panel LP
-  with Driscoll-Kraay and SPJ standard errors, `favar`'s two-step bands,
-  U-MIDAS, and `lp(cumulative=...)` were measured in the round that added the
-  `quantile_panel_lp` and `factor_midas` families; `weighted_midas`,
-  `dfm_nowcast` and `nelson_siegel` are verified every run to ship no interval
-  at all. And coverage is measured at one nominal level for most surfaces —
-  where it *is* swept, the shortfall is not linear in α.
+- **Interval coverage is measured for 50 frequentist surfaces, not for every
+  object the library returns.** The
+  [audit page](../examples/interval-coverage.md#what-is-not-measured) keeps the
+  running list, and most of what used to be on it is now closed: the
+  `proxy_garch_tail` round added `growth_at_risk`, `proxy_svar_bands`, all three
+  `proxy_ar_sets` reduced-form methods, `garch_fit`'s two standard errors and
+  `flp`/`flp_scenario`, and the `quantile_panel_lp`/`factor_midas` round added
+  `quantile_lp`, panel LP with Driscoll-Kraay and SPJ standard errors, `favar`'s
+  two-step bands, U-MIDAS and `lp(cumulative=...)`. Much of the remainder is
+  *nothing to measure*: `proxy_svar` is point-estimate only by design (it routes
+  inference to `proxy_svar_bands`/`proxy_ar_sets`), and `nongaussian_svar`, the
+  GARCH `variance_forecast`, `weighted_midas`, `dfm_nowcast` and `nelson_siegel`
+  return no interval — verified every run by a key-set tripwire rather than
+  assumed. The real gaps: `svensson` and `dynamic_ns` are interval-free but
+  carry no tripwire, no weak-instrument-robust set is exposed for `iv_gmm` or
+  `lp_iv`, and coverage is measured at one nominal level for every surface but
+  `var_irf_bands` and `var_forecast` — where it *is* swept, the shortfall is not
+  linear in α.
 
 **Coverage gaps.**
 
@@ -724,37 +800,49 @@ discover.
   no fuzzing.
 - **The `tsecon-python` binding crate has no Rust tests.** Everything about the
   PyO3 layer is covered from the Python side only.
-- **dtype and layout coercion is under-tested.** Non-contiguous (transposed)
-  input is exercised, and Python lists are exercised via the GMM callback, but
-  nothing in the suite passes `float32`, Fortran-ordered, or masked arrays to
-  assert the coercion behavior. If you feed a non-`float64` array, you are
-  outside what the tests pin.
+- **Masked arrays are the remaining dtype/layout hole.** `float32`,
+  Fortran-ordered and non-contiguous input all carry assertions now:
+  [`test_coerce.py`](../../bindings/python/tests/test_coerce.py) pins the
+  zero-copy hot path, the `float32` → `float64` upcast, the `asfortranarray`
+  and strided-slice repacks, and the conservative rule that leaves integer and
+  bool arrays alone; transposed input reaches the estimators through the
+  marshalling tests in [Tier 4](#tier-4-python-binding-tests), and Python lists
+  through the GMM callback. Nothing in the suite passes a `numpy.ma` masked
+  array, so if you feed one you are outside what the tests pin.
 - **No network is exercised, by design.** The library ships no data loaders and
-  makes no external requests, so there is nothing to test on that front. The two
-  published-result replications run against small public datasets committed to
-  the repo (`fixtures/ramey_zubairy.csv`, `fixtures/yield_curve_recession.csv`),
-  so they are reproduced offline and cannot break on a provider's URL change.
-- **Benchmarks compare 25 of 128 functions.** The parity gate covers the unit-root
+  makes no external requests, so there is nothing to test on that front. All
+  eight Tier 8 replications run against small public datasets committed to the
+  repo (`ramey_zubairy.csv`, `yield_curve_recession.csv`, `uhlig2005.csv`,
+  `realint_bai_perron.csv`, `gertler_karadi.csv`, `glp_smallvar.csv`,
+  `glp_sw_panel.csv`, `hamilton_gnp.csv`, `sunspots_tong.csv`, all under
+  `fixtures/`), so every one of them is reproduced offline and cannot break on
+  a provider's URL change.
+- **Benchmarks compare 25 of 162 functions.** The parity gate covers the unit-root
   tests, the diagnostics, VAR and its IRF/FEVD/Granger, Johansen, the filters,
   the spectra, ridge/elastic-net, and the GARCH family — a broad spot check, not a
   library-wide cross-library audit — that job belongs to the fixtures.
 
 **CI scope.**
 
-- **CI jobs.** Four run on every push: the Rust workspace
+- **CI jobs.** Five run on every push: the Rust workspace
   (`fmt` + `clippy -D warnings` + `cargo test --workspace`); the Python wheel
-  built and installed on Ubuntu/macOS/Windows; a `mypy --strict` stub check; and
-  an **evidence** job that runs both Monte Carlo suites and the cross-library
-  parity gate against a release wheel. `docs.yml` adds `mkdocs build --strict`.
+  built and installed on Ubuntu/macOS/Windows; a `mypy --strict` stub check; an
+  **evidence** job that runs both Monte Carlo suites and the cross-library
+  parity gate against a release wheel; and an **abi3** job that builds one wheel
+  on 3.12 and then installs and tests that same wheel on 3.9 and 3.13.
+  `docs.yml` adds `mkdocs build --strict`.
   Because the Monte Carlo scripts are seeded and assert their own expectations,
   a *statistical* regression — a test losing its size, an interval losing
   coverage — fails the build rather than quietly rotting in the docs. The
   benchmark harness gates on cross-library **agreement** only; timings are
   reported but never fail CI, since a shared runner cannot measure them
   reliably.
-- **Only CPython 3.12 is exercised in CI**, though the wheel is `abi3-py39` and
-  the package declares `requires-python = ">=3.9"`. Older interpreters are
-  supported by the ABI contract, not by a test run.
+- **CI exercises CPython 3.9, 3.12 and 3.13 — not every version in between.**
+  The wheel is `abi3-py39` and the package declares
+  `requires-python = ">=3.9"`; the `abi3` job builds one wheel and runs the
+  suite against it on the oldest and newest supported interpreters, which is
+  exactly what the ABI contract claims. 3.10 and 3.11 are supported by that
+  contract, not by a test run.
 
 ---
 
@@ -784,8 +872,11 @@ make-work, and the error *types* are already asserted by the validation tier.
 **Python** (`coverage.py`, branch coverage, over the pure-Python package only —
 the compiled `_core` is Rust and is not measurable by coverage.py, so it is
 excluded rather than counted as a phantom gap): the `results/*` modules measured
-89–100%; `datasets.py` was the weakest at 71%, since only the `local_path=`
-parse path had tests and the whole download/cache/digest round-trip did not.
+89–100%. The weakest module in that pass was `datasets.py` at 71% — only the
+`local_path=` parse path had tests, and the whole download/cache/digest
+round-trip did not. It is no longer in the package: the data-fetching loaders
+were deleted rather than tested, which is why the section above can say the
+library makes no external requests.
 
 ### What it actually found
 

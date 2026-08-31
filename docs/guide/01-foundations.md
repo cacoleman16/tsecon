@@ -276,11 +276,11 @@ $$
 y^{(\lambda)} = \begin{cases} \dfrac{y^{\lambda} - 1}{\lambda}, & \lambda \neq 0, \\ \log y, & \lambda = 0, \end{cases}
 $$
 
-which nests no transformation ($\lambda = 1$), the log ($\lambda = 0$), and everything between — a square-root-like $\lambda = 0.5$ often suits count-flavored data whose variance grows with the level but slower than proportionally. The parameter $\lambda$ can be chosen automatically to stabilize variance (Guerrero 1993 is the standard method, on tsecon's roadmap). Two practical warnings: the transform needs strictly positive data (zeros require a shift, applied honestly and documented), and forecasts made on the transformed scale must be back-transformed with a bias adjustment — naively inverting gives the forecast *median*, not the mean.
+which nests no transformation ($\lambda = 1$), the log ($\lambda = 0$), and everything between — a square-root-like $\lambda = 0.5$ often suits count-flavored data whose variance grows with the level but slower than proportionally. The parameter $\lambda$ can be chosen automatically to stabilize variance, and `tsecon.box_cox_lambda` ships both standard routes: Guerrero's (1993) grouped coefficient-of-variation criterion (`method="guerrero"`, the R `forecast` default) and the Box and Cox profile likelihood (`method="mle"`). The worked example at the end of this chapter runs it. Two practical warnings: the transform needs strictly positive data (zeros require a shift, applied honestly and documented), and forecasts made on the transformed scale must be back-transformed with a bias adjustment — naively inverting gives the forecast *median*, not the mean.
 
 **Choosing among them** is a diagnosis, not a ritual. Variance growing with the level → log (or Box-Cox). Unit root → difference. Deterministic trend with stationary deviations → detrend instead. Often the answer is a pipeline: log, then difference, then model.
 
-> ⚠ **Common mistake:** over-differencing. Differencing a series that was *already* stationary — or differencing when detrending was the right call — does not just waste a data point. It injects artificial negative autocorrelation (the ACF of an over-differenced series shows a telltale spike near $-0.5$ at lag 1) and strictly destroys information, making forecasts worse. Differencing is medicine for a diagnosed unit root, not a vitamin taken for general health. Let `check_stationarity` (and, later in the guide, the `ndiffs` advisor) prescribe the dose.
+> ⚠ **Common mistake:** over-differencing. Differencing a series that was *already* stationary — or differencing when detrending was the right call — does not just waste a data point. It injects artificial negative autocorrelation (the ACF of an over-differenced series shows a telltale spike near $-0.5$ at lag 1) and strictly destroys information, making forecasts worse. Differencing is medicine for a diagnosed unit root, not a vitamin taken for general health. Let `check_stationarity` — or `tsecon.ndiffs`, the sequential differencing advisor demonstrated at the end of this chapter — prescribe the dose.
 
 ## Frequency and seasonality: the vocabulary
 
@@ -298,13 +298,13 @@ Most published macro series arrive **seasonally adjusted (SA)** — the statisti
 
 Everything above is settled science; here is where the settled part ends.
 
-**The unit-root question is less binary than this chapter made it.** Near-unit-root processes ($\phi = 0.98$, say) are, in finite samples, nearly indistinguishable from exact unit roots — Cochrane (1991) sharpened this into a near-observational-equivalence result: for any unit-root process there is a stationary one (and vice versa) that no test can tell apart at any given sample size. Modern practice therefore treats the ADF/KPSS verdict as a *modeling decision* rather than revealed truth, and the research frontier has moved toward procedures that hedge: the union-of-rejections strategies of Harvey, Leybourne, and Taylor combine tests across specifications, and inference methods robust to the $I(0)/I(1)$ divide sidestep the pretest entirely. Structural breaks compound the problem — Perron (1989) showed one break can make a stationary series test as $I(1)$ — which is why break-robust unit-root testing (Zivot-Andrews and successors) is a live subfield.
+**The unit-root question is less binary than this chapter made it.** Near-unit-root processes ($\phi = 0.98$, say) are, in finite samples, nearly indistinguishable from exact unit roots — Cochrane (1991) sharpened this into a near-observational-equivalence result: for any unit-root process there is a stationary one (and vice versa) that no test can tell apart at any given sample size. Modern practice therefore treats the ADF/KPSS verdict as a *modeling decision* rather than revealed truth, and the research frontier has moved toward procedures that hedge: the union-of-rejections strategies of Harvey, Leybourne, and Taylor combine tests across specifications, and inference methods robust to the $I(0)/I(1)$ divide sidestep the pretest entirely. Structural breaks compound the problem — Perron (1989) showed one break can make a stationary series test as $I(1)$ — which is why break-robust unit-root testing (Zivot-Andrews and successors) is a live subfield; the Zivot-Andrews test itself is a call, `tsecon.zivot_andrews`.
 
-**Between $I(0)$ and $I(1)$ lies a continuum.** Fractionally integrated ("long memory") processes, introduced by Granger and Joyeux (1980) and Hosking (1981), have autocorrelations that decay hyperbolically rather than geometrically — too slow for ARMA, too fast for a unit root. Realized volatility in finance is the canonical example. Estimating the memory parameter $d$ (local Whittle methods, Shimotsu-Phillips exact variants) and distinguishing true long memory from spurious long memory caused by breaks (Qu's test) are active topics, and Python tooling here is nearly nonexistent — a gap the library's roadmap explicitly targets.
+**Between $I(0)$ and $I(1)$ lies a continuum.** Fractionally integrated ("long memory") processes, introduced by Granger and Joyeux (1980) and Hosking (1981), have autocorrelations that decay hyperbolically rather than geometrically — too slow for ARMA, too fast for a unit root. Realized volatility in finance is the canonical example. Estimating the memory parameter $d$ and distinguishing true long memory from spurious long memory caused by breaks (Qu's test) are active topics, and Python tooling is thin — neither statsmodels 0.15 nor `arch` 8.0 estimates $d$ at all. tsecon ships the two standard estimators as `tsecon.long_memory_d` (Geweke-Porter-Hudak log-periodogram regression and Robinson's local Whittle), plus `frac_diff`/`frac_integrate` for the transform itself; the Shimotsu-Phillips exact-local-Whittle variant and Qu's break-versus-memory test are still open.
 
 **Stationarity itself is being relaxed.** Locally stationary processes (Dahlhaus 1997) allow the DGP's parameters to drift smoothly, formalizing the intuition that the economy of 1960 and the economy of 2020 are not literally the same machine while preserving enough structure for inference. Tests for second-order stationarity (Priestley-Subba Rao; Nason's wavelet-based test) ask the data whether the constancy assumed all chapter actually holds.
 
-On the library side, this chapter's scope sits inside [Module 01](../roadmap/01-diagnostics-exploration.md). The module's flagship, the `check_series()` one-call diagnostic battery, is **shipped**: the codified unit-root decision logic with an evidence table rather than a bare verdict, ending in recommendations that route to concrete calls (see its [model card](../reference/model-cards/check-series.md)). Still on the roadmap: the full unit-root family (DF-GLS, Ng-Perron M-tests, break-robust variants) and seasonal unit roots (HEGY — a genuine dead zone in Python today). The honest open problems: no test resolves near-observational equivalence (only more data or more assumptions do); the multiple-testing problem in diagnostic batteries is usually ignored in practice (`check_series` shows the test families and the expected-false-alarm arithmetic rather than silently correcting); and the deterministic-terms choice in unit-root testing (constant? trend?) remains an under-acknowledged researcher degree of freedom.
+On the library side, this chapter's scope sits inside [Module 01](../roadmap/01-diagnostics-exploration.md). The module's flagship, the `check_series()` one-call diagnostic battery, is **shipped**: the codified unit-root decision logic with an evidence table rather than a bare verdict, ending in recommendations that route to concrete calls (see its [model card](../reference/model-cards/check-series.md)). The rest of the unit-root family has landed alongside it: `dfgls` (Elliott-Rothenberg-Stock GLS detrending), `ng_perron` (the four M-tests with MAIC lag selection), and `zivot_andrews` (one endogenous break) are all callable, as are the `ndiffs`/`nsdiffs` differencing advisors and `box_cox_lambda`. Still on the roadmap: Lee-Strazicich two-break unit roots and the seasonal unit roots (HEGY and Canova-Hansen — a genuine dead zone in Python today). The honest open problems: no test resolves near-observational equivalence (only more data or more assumptions do); the multiple-testing problem in diagnostic batteries is usually ignored in practice (`check_series` shows the test families and the expected-false-alarm arithmetic rather than silently correcting); and the deterministic-terms choice in unit-root testing (constant? trend?) remains an under-acknowledged researcher degree of freedom.
 
 ## Which method when
 
@@ -317,9 +317,12 @@ On the library side, this chapter's scope sits inside [Module 01](../roadmap/01-
 | Positive series whose swings grow with its level | `np.log` before modeling | Converts proportional variation to additive; exponential growth to linear trend |
 | Confirmed unit root | `np.diff` (on logs, for growth rates) | Differencing removes the unit root; log-difference ≈ growth rate |
 | Trend with stationary deviations around it | Detrend (regress on time), don't difference | Differencing a trend-stationary series over-differences and distorts dynamics |
-| Neither log nor level obviously right | Box-Cox (roadmap: automatic Guerrero λ) | Nests both and everything between; data-driven λ |
+| Neither log nor level obviously right | `tsecon.box_cox_lambda` (`method="guerrero"` or `"mle"`) | Nests both and everything between; data-driven λ |
+| How many differences, decided by rule not by eye | `tsecon.ndiffs` (seasonal: `tsecon.nsdiffs`) | The Hyndman-Khandakar sequential rule, with the test evidence at every order |
+| ADF is inconclusive and the sample is short | `tsecon.dfgls`, `tsecon.ng_perron` | GLS detrending buys power near the null; the M-tests fix ADF's size under a negative MA root |
+| Unit-root verdict on a series with an obvious level shift | `tsecon.zivot_andrews` | One endogenous break inside the test; plain ADF reads a broken mean as a unit root |
 | Two trending levels look related | Stop — test for cointegration (later chapter) | Levels-on-levels regression of $I(1)$ series is spurious by default |
-| Seasonal pattern in NSA data | Seasonal difference $\Delta_s$ or dummies; Module 01 SA tools | Match the treatment to deterministic vs. stochastic seasonality |
+| Seasonal pattern in NSA data | `tsecon.seasonal_strength`/`tsecon.nsdiffs` to decide, then `tsecon.stl`/`tsecon.mstl` or dummies | Match the treatment to deterministic vs. stochastic seasonality |
 
 ## What tsecon implements today
 
@@ -332,15 +335,30 @@ On the library side, this chapter's scope sits inside [Module 01](../roadmap/01-
 - `tsecon.kpss(y, regression="c", nlags=None)` — KPSS with automatic (Hobijn-Franses-Ooms) bandwidth
 - `tsecon.ljung_box(y, nlags=10)` — white-noise portmanteau test, Ljung-Box and Box-Pierce variants
 - `tsecon.check_series(data, seasonal_period=None, alpha=0.05)` — the flagship one-call diagnostic battery: this chapter's tests (and chapter 2's) run in order, on the right scale, ending in recommendations that route to concrete calls — see the [model card](../reference/model-cards/check-series.md)
+- `tsecon.box_cox_lambda(y, method="guerrero"|"mle", bounds=..., period=2)` — the variance-stabilizing λ, with the objective at the optimum and an `at_bound` flag; strictly positive data required
+- `tsecon.ndiffs(y, test="kpss"|"adf"|"pp", alpha=0.05, max_d=2)` — the Hyndman-Khandakar sequential differencing advisor, returning `d` plus the per-order test evidence in `steps`
+- `tsecon.nsdiffs(y, period, max_d=1)` — the seasonal counterpart, the `forecast::nsdiffs(test="seas")` seasonal-strength rule over the shipped `tsecon.stl`
+- `tsecon.dfgls(y, regression="c"|"ct")` — DF-GLS (Elliott-Rothenberg-Stock 1996), matching `arch.unitroot.DFGLS` to 1e-10
+- `tsecon.ng_perron(y, regression="c"|"ct")` — the four Ng-Perron (2001) M-tests with MAIC lag selection; critical values only, because no published p-value surface exists
+- `tsecon.zivot_andrews(y, regression="c"|"t"|"ct", trim=0.15)` — unit root against stationarity around one endogenous break, matching statsmodels' `zivot_andrews`
 
 **Built in Rust awaiting bindings:** nothing in this chapter's scope — the foundations layer is fully exposed to Python today.
 
-**Roadmap** ([Module 01 — Diagnostics, Exploration, Filters, and Seasonal Adjustment](../roadmap/01-diagnostics-exploration.md)): Box-Cox with automatic λ selection (Guerrero and MLE), the `ndiffs`/`nsdiffs` differencing advisors, DF-GLS and the Ng-Perron M-tests, break-robust unit-root tests (Zivot-Andrews, Lee-Strazicich), seasonal unit roots (HEGY, Canova-Hansen), and macro data utilities (growth rates, annualization, rebasing). *Roadmap preview — this API lands with Module 01:*
+The λ-and-differences pair from the transformations section, run end to end on a positive, exponentially growing series — the shape logs were invented for:
 
 ```python
-lam = tsecon.box_cox_lambda(y, method="guerrero")   # automatic variance-stabilizing λ
-d   = tsecon.ndiffs(y)                              # how many differences to stationarity
+gdp = 1000.0 * np.exp(0.006 * np.arange(n) + 0.03 * walk)   # positive, proportional noise
+
+bc = tsecon.box_cox_lambda(gdp, method="guerrero")   # automatic variance-stabilizing λ
+print(round(bc["lambda"], 2))                        # -0.12 — essentially the log (λ = 0)
+
+nd = tsecon.ndiffs(np.log(gdp))                      # how many differences to stationarity
+print(nd["d"], nd["stop"])                           # 1 Stationary
 ```
+
+Guerrero lands within a rounding error of $\lambda = 0$, which is the data agreeing with the rule of practice this chapter gave you — log a positive series that spans a large range — and `ndiffs` then says the logged series needs exactly one difference, the log-difference growth rate. Both answers carry their evidence: `bc["objective"]`/`bc["at_bound"]` for the optimum, `nd["steps"]` for the KPSS statistic and p-value at every order tried.
+
+**Roadmap** ([Module 01 — Diagnostics, Exploration, Filters, and Seasonal Adjustment](../roadmap/01-diagnostics-exploration.md)): Lee-Strazicich two-break unit roots, seasonal unit roots (HEGY, Canova-Hansen), and macro data utilities (growth rates, annualization, rebasing).
 
 ## Further reading
 

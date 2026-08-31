@@ -267,7 +267,7 @@ $$
 
 Here is a day in the life of such a model, in plain words. At 8:30 on the first Friday of the month, payroll employment for last month is released. The model already had an expectation for that number — the Kalman filter's one-step-ahead prediction, formed from every other series' comovement with the factors. The release either confirms it or surprises it. The surprise (and only the surprise) propagates: the filter updates the factor estimate for last month, the factor VAR carries the update forward into the current months, and the triangle weights translate the revised monthly path into a revised quarterly GDP nowcast — all in one linear pass, seconds after the release. The same machinery runs identically whether the release fills a hole in the middle of the panel or extends its ragged bottom edge.
 
-The full DFM facade is roadmap material, but its load-bearing mechanism — a Kalman smoother bridging missing data with honestly widening uncertainty — is in the library today. Here it is on a local-level model with a 25-period hole punched in the observations:
+The panel version of this is `tsecon.dfm_nowcast`, two sections down, with `tsecon.dfm_news` for the release-attribution half. Start smaller: its load-bearing mechanism is a Kalman smoother bridging missing data with honestly widening uncertainty, and that is easiest to see on one series. Here it is on a local-level model with a 25-period hole punched in the observations:
 
 ```python
 rng = np.random.default_rng(5)
@@ -288,7 +288,7 @@ Read the figure as a miniature nowcast: inside the gap the smoother's estimate i
 
 ## The two-step DFM nowcast in practice: `dfm_nowcast`
 
-The section above demonstrated the load-bearing mechanism — a Kalman smoother bridging missing data — on a one-series local-level toy, and called the full panel DFM "roadmap material". The first real member of that facade now ships: `dfm_nowcast` runs the classic **two-step** dynamic-factor nowcaster of Doz, Giannone, and Reichlin (2011) over a whole ragged-edge panel, the estimator behind Giannone, Reichlin, and Small (2008).
+The section above demonstrated the load-bearing mechanism — a Kalman smoother bridging missing data — on a one-series local-level toy. Here is the panel version: `dfm_nowcast` runs the classic **two-step** dynamic-factor nowcaster of Doz, Giannone, and Reichlin (2011) over a whole ragged-edge panel, the estimator behind Giannone, Reichlin, and Small (2008).
 
 "Two-step" names the estimation shortcut. Rather than the full EM iteration of Banbura and Modugno (2014), the two-step estimator does the cheap thing and it works: (1) extract the common factors and loadings by principal components on a balanced block of the panel; (2) fit a factor VAR of order $p$ to those factors; then (3) plug the resulting state-space system into a *single* Kalman filter/smoother pass over the entire panel. Doz, Giannone, and Reichlin proved this two-step estimator is consistent as both dimensions grow, and it is an order of magnitude faster than EM — the reason it remains the workhorse for large-panel nowcasts where speed at each vintage matters.
 
@@ -343,7 +343,7 @@ smoothed_factors shape: (148, 1)  |corr| with true factor: 0.993
 
 How to read the output. `nowcast` is the model's reconstruction of *every* series at the final period — one level per column. Two of those columns (`nowcast[2] = -1.01` and `nowcast[4] = -0.91`) are genuine holes filled by the model, because series 2 and 4 had not reported their last months; the rest are the model-implied edge values for series that *did* report. Every entry is the corresponding loading times the shared `edge_factor` of $-1.985$ (up to standardization and idiosyncratic noise), which is exactly the "smoothed factor at the final month, projected through the loadings, *is* the nowcast" statement from the section above, now concrete. The `smoothed_factors` array holds the full factor path over the *balanced estimation block* (148 rows here — the panel's 150 rows minus the two-row ragged tail); its near-perfect correlation with the simulated factor ($0.993$) confirms the two-step extraction recovered the latent driver. `loglik` is the Gaussian log-likelihood of the filtered panel, and `n_factors` / `factor_order` echo back the model dimensions for logging.
 
-When to reach for it. `dfm_nowcast` is the right first tool for a genuine mixed-*panel* nowcast: a dozen-plus indicators, ragged edge, one shared cycle to read off. It supersedes running a separate bridge or MIDAS per indicator once the panel is wide, because it pools all the comovement into the factor and fills every hole from one estimated system. Prefer the full EM/block-DFM facade (roadmap — with the Mariano-Murasawa quarterly-to-monthly aggregation and Banbura-Modugno news decomposition) when missingness is heavy and interior — not just a tail edge — or when you need the "why did the nowcast move?" attribution; the two-step estimator is the fast, robust default that the more elaborate machinery is measured against.
+When to reach for it. `dfm_nowcast` is the right first tool for a genuine mixed-*panel* nowcast: a dozen-plus indicators, ragged edge, one shared cycle to read off. It supersedes running a separate bridge or MIDAS per indicator once the panel is wide, because it pools all the comovement into the factor and fills every hole from one estimated system. The "why did the nowcast move?" attribution does not require the elaborate machinery: `dfm_news`, the next section, runs the Banbura-Modugno decomposition off this same two-step fit. What is still roadmap is the full EM/block-DFM facade — Mariano-Murasawa quarterly-to-monthly aggregation, NY-Fed-style block loadings, EM under arbitrary missingness — which you want when missingness is heavy and *interior* rather than a tail edge; the two-step estimator is the fast, robust default that the more elaborate machinery is measured against.
 
 > **⚠ Common mistake** — Interspersing `NaN` in the *interior* of the panel and expecting the two-step estimator to shrug it off. The training block is defined as the leading rows before the *first* row with any missing value, so a hole in the middle of an otherwise-complete series truncates the estimation sample to everything above it — silently throwing away data and, if the hole is early, leaving too few rows to fit the factor VAR. The two-step design assumes missingness lives at the ragged bottom edge (publication lags), which is the real-world case; genuinely interior gaps are the EM estimator's job. Also remember the factor's *sign* is not identified — a nowcast with the factor and all loadings flipped is the same model, which is why the diagnostic above takes the absolute correlation.
 
@@ -366,6 +366,37 @@ Two subtleties keep this honest. If the model's parameters were *re-estimated* b
 
 > **⚠ Common mistake** — Computing "news" by re-running a re-estimated model and calling the whole difference in nowcasts the impact of the week's data. Part of that difference is parameter drift, not news. If the bars do not sum to the revision, or you cannot say which part is the remainder, the decomposition is decoration rather than accounting.
 
+This is `tsecon.dfm_news`, and it takes the mistake box seriously: it fits the two-step DFM *once*, on the balanced block of the **old** vintage, and holds those parameters fixed across both vintages — so the identity above holds exactly and there is no parameter-drift remainder to smear. You hand it two panels of the same shape, the newer one revealing additional ragged-edge cells. Continuing the panel from the section above, suppose three more series have since printed their last month:
+
+```python
+new_v = panel                      # this morning's vintage (as fitted above)
+old_v = new_v.copy()               # last week's: three more cells still unreleased
+old_v[-1, 0] = np.nan
+old_v[-1, 1] = np.nan
+old_v[-1, 3] = np.nan
+
+nw = tsecon.dfm_news(old_v, new_v, target_series=4, n_factors=1, factor_order=2)
+print("old nowcast:", round(nw["old_nowcast"], 3),
+      " new:", round(nw["new_nowcast"], 3),
+      " revision:", round(nw["total_revision"], 3))
+for c in sorted(nw["contributions"], key=lambda c: -abs(c["contribution"])):
+    print(f"  series {c['series']} @ t={c['period']}: "
+          f"news {c['news']:+.3f} x weight {c['weight']:+.3f} = {c['contribution']:+.3f}")
+print("bars sum to:", round(sum(c["contribution"] for c in nw["contributions"]), 6))
+```
+
+```
+old nowcast: -0.849  new: -0.914  revision: -0.066
+  series 3 @ t=149: news -0.265 x weight +0.159 = -0.042
+  series 1 @ t=149: news -0.077 x weight +0.193 = -0.015
+  series 0 @ t=149: news -0.051 x weight +0.176 = -0.009
+bars sum to: -0.065677
+```
+
+Series 4 is the target because it is the genuine hole — two months behind, so its "nowcast" is entirely model-implied, the GDP-shaped case. Every row is the algebra of the display equation made literal: `contribution = weight * news`, the three bars sum to the total revision to the last digit printed, and the weights rank the releases by how much this model actually listens to them (series 3's larger loading buys it the largest weight, so its $-0.265$ surprise does most of the work). A release that prints at expectation contributes zero regardless of its headline — that is the `news` column being zero, not the `weight`.
+
+> **⚠ Common mistake** — Passing non-nested vintages. `dfm_news` is a *new-release* decomposition, not a *data-revision* one: the new vintage must be a superset of the old, every previously observed cell still present and unchanged. It does not smear a revised past value across the bars — it refuses, with `ValueError: a cell observed in the old vintage is missing or changed in the new vintage`. That is the second subtlety above enforced rather than documented; split the release effect from the revision effect yourself, in two calls.
+
 ## Mixed-frequency VARs, briefly
 
 The DFM compresses the panel into a few factors. A **mixed-frequency VAR** keeps every variable's own dynamics and cross-effects — the right tool when you care about the *joint* system (how GDP, inflation, and financial conditions interact) and not only the GDP nowcast. Two architectures dominate:
@@ -387,9 +418,9 @@ Three rules carry most of the weight:
 
 1. **No leakage.** Anything fit on the full sample before the loop — a standardization, a factor extraction, a tuned hyperparameter, a variable selection — quietly hands the model future information.
 2. **Declare your "actuals."** Is truth the first release or the latest vintage? Model rankings flip with this choice, so it must be explicit, not defaulted.
-3. **Use the right test.** Most nowcast comparisons pit an indicator model against a *nested* benchmark (an AR or a mean), which invalidates the standard Diebold-Mariano test; Clark and West (2007) is the appropriate default there, with small-sample corrections because evaluation windows are short.
+3. **Use the right test.** Most nowcast comparisons pit an indicator model against a *nested* benchmark (an AR or a mean), which invalidates the standard Diebold-Mariano test; Clark and West (2007) is the appropriate default there, and it ships as `tsecon.cw_test` — one-sided, with the null that the small nested model is as good. Reach for `dm_test` only when the two models are genuinely non-nested, as in the loop below.
 
-A minimal pseudo real-time loop, with everything re-estimated inside each origin, runs today (continuing the bridge example's data):
+A minimal pseudo real-time loop, with everything re-estimated inside each origin, runs today (continuing the bridge example's data). Written out by hand, because the point is to see rule 1 enforced line by line — `tsecon.backtest` drives the same expanding-window discipline for you and takes a Python callable, which is the shorter route once you trust the loop:
 
 ```python
 e_bridge, e_rw = [], []
@@ -429,40 +460,44 @@ The research edge of nowcasting is mostly about making the core architecture hon
 - **Drifting trend growth and stochastic volatility.** Antolin-Diaz, Drechsel, and Petrella (2017) showed that letting long-run growth drift materially improves nowcasts (and avoids systematic bias when trend growth slows); stochastic volatility does the same for density nowcasts.
 - **Higher frequency.** Weekly and daily activity indexes — the Aruoba-Diebold-Scotti index (2009) and the Weekly Economic Index (Lewis, Mertens, Stock, and Trivedi 2022) — push the same state-space architecture to frequencies where the calendar itself (52/53-week years, trading days) becomes the hard engineering problem.
 - **High-dimensional and ML nowcasting.** The sg-LASSO MIDAS of Babii, Ghysels, and Striaukas (2022) handles hundreds of daily predictors with structured sparsity; tree ensembles and neural nets are competitive in nonlinear episodes but demand the same vintage discipline, and interpretability is the open front — there is no accepted analog of Kalman news decomposition for ML nowcasts (Shapley-value attributions over release sets are the emerging candidate).
-- **Distributional nowcasting.** Growth-at-Risk — nowcasting the tails, not the mean, of the GDP distribution (Adams, Adrian, Boyarchenko, and Giannone 2021) — via quantile MIDAS and quantile factor models.
+- **Distributional nowcasting.** Growth-at-Risk — nowcasting the tails, not the mean, of the GDP distribution (Adams, Adrian, Boyarchenko, and Giannone 2021) — via quantile MIDAS and quantile factor models. The single-frequency half of this is behind you already: `growth_at_risk` fits the Adrian-Boyarchenko-Giannone conditional quantiles at every observation, with the Chernozhukov-Fernández-Val-Galichon rearrangement and a crossing report (Chapter 5), and `quantile_lp` gives the dynamic version (Chapter 9). The *mixed-frequency* members — quantile MIDAS, quantile factor models — are the frontier part.
 
-The library's roadmap ([Module 08](../roadmap/08-nowcasting-mixed-frequency.md)) treats this whole stack as its headline differentiator: no maintained end-to-end nowcasting system exists in Python today (statsmodels' `DynamicFactorMQ` covers only the monthly-quarterly DFM, without vintages, calendars, or a backtesting harness), and every central-bank shop rebuilds the plumbing from scratch. The stated validation bar is concrete: reproduce the NY Fed replication code's nowcast paths to three-plus decimals, match `DynamicFactorMQ` likelihoods and `news()` output, match the Schorfheide-Song replication and R's `midasr` coefficient-for-coefficient — and beat the reference implementations on speed by an order of magnitude. Honest open problems remain: news-vs-noise revision modeling is fragile to identify (Jacobs and van Norden 2011), evaluation windows are short enough that test power is a real constraint, and alternative-data indicators are silently revised in ways that invalidate naive backtests.
+The library's roadmap ([Module 08](../roadmap/08-nowcasting-mixed-frequency.md)) treats this whole stack as its headline differentiator, and the first courses are laid: `dfm_nowcast`, `dfm_news`, `umidas` and `weighted_midas` ship, so the panel nowcast and its release attribution are callable today. What still has no maintained home in Python — tsecon's included — is the *end-to-end* system around them: statsmodels 0.15 gives you `DynamicFactorMQ` (with a `news()` method of its own) but no vintage store, no release calendar, and no pseudo-real-time harness wired to either, and every central-bank shop rebuilds that plumbing from scratch. The stated validation bar for the rest is concrete: reproduce the NY Fed replication code's nowcast paths to three-plus decimals, match `DynamicFactorMQ` likelihoods and `news()` output, match the Schorfheide-Song replication and R's `midasr` coefficient-for-coefficient — and beat the reference implementations on speed by an order of magnitude. What ships today is graded more modestly and says so: `dfm_nowcast`'s Kalman step is pinned against statsmodels `DynamicFactor` at fixed parameters (the two-step *estimates* are property-tested, not reference-matched), and `dfm_news` against an independent NumPy Kalman/RTS implementation of Banbura-Modugno. Honest open problems remain: news-vs-noise revision modeling is fragile to identify (Jacobs and van Norden 2011), evaluation windows are short enough that test power is a real constraint, and alternative-data indicators are silently revised in ways that invalidate naive backtests.
 
 ## Which method when
 
 | Situation | Reach for | Because |
 |---|---|---|
-| A few monthly indicators, need something defensible this week | Bridge equations, pooled across indicators | Transparent, robust, and pooling beats picking a winner (Kuzin et al. 2013) |
-| Monthly indicators, quarterly target ($m = 3$) | U-MIDAS | With few lags, unrestricted OLS dominates restricted weights (Foroni et al. 2015) |
-| Daily/weekly indicators, quarterly target ($m$ large) | Restricted MIDAS (exp-Almon or beta weights) | Hundreds of lags need a parsimonious weight curve to avoid parameter explosion |
-| Persistent target, want dynamics done right | ADL-MIDAS | AR terms are not optional for macro series; plain MIDAS is a straw man |
-| Mid-quarter update using this quarter's own months | MIDAS with leads, calendar-driven | Within-quarter data are the point of nowcasting; the calendar prevents off-by-one leaks |
-| Large mixed panel, ragged edge, institutional nowcast | Mixed-frequency DFM (NY Fed architecture) | Kalman filter consumes the staircase natively; one model, whole panel |
-| "Why did the nowcast move today?" | News decomposition | Exact, additive attribution of revisions to releases (Banbura-Modugno 2014) |
-| Joint dynamics and density nowcasts across frequencies | MF-VAR (Schorfheide-Song) | Keeps every variable's dynamics; Bayesian shrinkage handles the dimension |
-| Need a monthly path for a quarterly-only series | Chow-Lin / Denton-Cholette disaggregation | Constraint-exact distribution, not an ad hoc interpolation |
-| Claiming your model beats the benchmark | Pseudo real-time harness + Clark-West | Revised-data backtests flatter you; nested comparisons invalidate plain DM |
+| A few monthly indicators, need something defensible this week | Bridge equations by hand — `theta_forecast` to complete the indicator, `ols(se_type="hac")` for the bridge — pooled across indicators | Transparent, robust, and pooling beats picking a winner (Kuzin et al. 2013) |
+| Monthly indicators, quarterly target ($m = 3$) | `umidas` | With few lags, unrestricted OLS dominates restricted weights (Foroni et al. 2015) |
+| Daily/weekly indicators, quarterly target ($m$ large) | `weighted_midas` with `scheme="exp_almon"` or `"beta"` | Hundreds of lags need a parsimonious weight curve to avoid parameter explosion |
+| Persistent target, want dynamics done right | ADL-MIDAS — **roadmap**; add the target's own lags to `umidas`'s design yourself in the meantime | AR terms are not optional for macro series; plain MIDAS is a straw man |
+| Mid-quarter update using this quarter's own months | MIDAS with leads, calendar-driven — **roadmap** (the library ships no release calendar) | Within-quarter data are the point of nowcasting; the calendar prevents off-by-one leaks |
+| Large mixed panel, ragged edge, institutional nowcast | `dfm_nowcast(panel, n_factors, factor_order)` | Kalman filter consumes the staircase natively; one model, whole panel |
+| "Why did the nowcast move today?" | `dfm_news(old_vintage, new_vintage)` | Exact, additive attribution of revisions to releases (Banbura-Modugno 2014); the bars sum to the revision |
+| Joint dynamics and density nowcasts across frequencies | MF-VAR (Schorfheide-Song) — **roadmap**; `var_fit` and friends cover the single-frequency case | Keeps every variable's dynamics; Bayesian shrinkage handles the dimension |
+| Need a monthly path for a quarterly-only series | Chow-Lin / Denton-Cholette disaggregation — **roadmap** | Constraint-exact distribution, not an ad hoc interpolation |
+| Claiming your model beats the benchmark | `backtest` (it takes a Python callable, so your nowcast function goes straight in), then `cw_test` | Revised-data backtests flatter you; nested comparisons invalidate plain DM, which is what `cw_test` repairs |
 
 ## What tsecon implements today
 
 **Available now in Python** (`import tsecon`):
 
+- `dfm_nowcast(data, n_factors, factor_order, method="two_step"|"mle")` — the Doz-Giannone-Reichlin two-step dynamic-factor nowcaster over a ragged-edge panel (or the one-step MLE route), returning the edge `nowcast`, the `edge_factor`, `smoothed_factors`, and the full reproducible parameter surface (`loadings`, `factor_ar`, `factor_cov`, `idiosyncratic`, `center`, `scale`)
+- `dfm_news(old_vintage, new_vintage, target_series=…)` — the Banbura-Modugno revision decomposition off that same fit: per-datapoint `{series, period, actual, forecast, news, weight, contribution}` whose contributions sum exactly to `total_revision`
+- `umidas(y, hf_lags, se_type="hac")` and `weighted_midas(y, hf_lags, scheme="exp_almon"|"beta")` — unrestricted MIDAS by OLS and the two-parameter restricted-weight fit by NLS, with `midas_weights(scheme, theta1, theta2, k)` for the weight curve itself
 - `local_level_smooth(y, sigma2_eps, sigma2_eta)` — the exact-diffuse Kalman filter/smoother with native NaN handling: the core mechanism of every state-space nowcaster, demonstrated above bridging a 25-period gap
 - `ar_loglik(y, coeffs, sigma2, intercept)` — the exact state-space likelihood kernel
-- `ols(y, X, se_type="hac")` — bridge equations, U-MIDAS, and Almon-MIDAS via the design-matrix transform, with honest standard errors
+- `ols(y, X, se_type="hac")` — bridge equations and hand-rolled Almon-MIDAS via the design-matrix transform, with honest standard errors
 - `theta_forecast(y, steps, period)` — indicator completion for bridge equations
-- `accuracy(actual, forecast, insample=...)`, `dm_test(e1, e2, h, loss)` — the evaluation layer for pseudo real-time loops
+- `backtest(y, forecaster=…)` — the rolling/expanding pseudo-out-of-sample engine, which accepts a plain Python callable, so a whole nowcast pipeline can be graded under its leakage discipline
+- `accuracy(actual, forecast, insample=...)`, `dm_test(e1, e2, h, loss)`, `cw_test(...)` — the evaluation layer for pseudo real-time loops, Clark-West included for the nested comparisons that plain DM cannot handle
 - `var_fit`, `var_forecast`, `var_irf`, `var_fevd`, `var_granger` — single-frequency VAR machinery
 - `hp_filter(y, one_sided=True)` — the real-time (one-sided) trend variant, relevant whenever a "current trend" enters a nowcast
 
 **Built in Rust, awaiting Python bindings:** the general linear-Gaussian state-space engine behind `local_level_smooth` (the `tsecon-ssm` crate) — arbitrary state-space models, exact diffuse initialization, filtering and smoothing with missing data handled by construction. This is the foundation the entire nowcasting stack builds on.
 
-**Roadmap** ([Module 08 — Nowcasting and Mixed Frequency](../roadmap/08-nowcasting-mixed-frequency.md)): the release-calendar and vintage layer, bridge-equation suites with pooling, the full MIDAS family (exponential Almon, beta, ADL-MIDAS, leads, Bayesian and quantile variants), the mixed-frequency DFM facade with block loadings and news decomposition, Schorfheide-Song and stacked MF-VARs, Chow-Lin/Denton-Cholette temporal disaggregation, and the leakage-proof pseudo real-time evaluation harness.
+**Roadmap** ([Module 08 — Nowcasting and Mixed Frequency](../roadmap/08-nowcasting-mixed-frequency.md)): the release-calendar and vintage layer, bridge-equation suites with pooling, the rest of the MIDAS family (ADL-MIDAS, leads, Bayesian and quantile variants — the unrestricted, exponential-Almon and beta members ship as `umidas`/`weighted_midas`), the EM/block-loading DFM facade for heavy interior missingness (the two-step nowcast and its news decomposition ship as `dfm_nowcast`/`dfm_news`), Schorfheide-Song and stacked MF-VARs, Chow-Lin/Denton-Cholette temporal disaggregation, and the leakage-proof pseudo real-time evaluation harness — the general-purpose `backtest` engine covers the single-series case today, but nothing yet automates vintage replay.
 
 ## Further reading
 

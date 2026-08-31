@@ -99,9 +99,17 @@ and a clean series gets an explicit `no_red_flags` entry restating it, so a
   defeat cutoff logic by construction.
 - **Seasonality is evidence, not a test.** Without `seasonal_period` you get
   an argmax-periodogram `detected_period` heuristic; with it you get ACF and
-  periodogram evidence but no HEGY/Canova-Hansen test — and tsecon ships no
-  seasonal ARIMA and no X-13 (roadmap), which the recommendation states
-  plainly.
+  periodogram evidence but no HEGY/Canova-Hansen seasonal *unit-root* test.
+  That gap is real, and so is the absence of X-13. Seasonal *modeling* is not
+  a gap any more: `arima_fit(y, p, d, q, seasonal=(P, D, Q, s))` fits the
+  multiplicative SARIMA (validated against `SARIMAX(...,
+  simple_differencing=True)` on the airline model, `fixtures/sarima.json`),
+  `auto_arima` selects `(P, D, Q)` by the Hyndman-Khandakar rules, and
+  `stl`/`mstl`/`seasonal_strength`/`nsdiffs` cover decomposition and the
+  seasonal differencing decision. The battery's own `seasonality`
+  recommendation string has **not** caught up — it still describes seasonal
+  ARIMA as roadmap and routes you to differencing upstream by hand. Read that
+  sentence as stale and call `arima_fit(..., seasonal=…)` directly.
 - **One dataset, no question.** The battery cannot know whether the series is
   an outcome or a future regressor, what the loss function is, or which
   regimes matter. It screens; it does not decide.

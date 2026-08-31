@@ -30,7 +30,7 @@ beats another without a test that accounts for dependent forecast errors.
   smoothing with drift and is a notoriously strong benchmark.
 - **`backtest(y, ...)`** — walks an origin forward through the series, re-fits a
   chosen forecaster — a built-in name or **your own Python callable** (see
-  [the callable contract](#bring-your-own-model--python-callable-forecasters))
+  [the callable contract](#bring-your-own-model-python-callable-forecasters))
   — on each training window, forecasts `horizon` steps ahead,
   and tabulates accuracy by horizon. This is the correct way to estimate
   out-of-sample error; a single train/test split is not.
@@ -468,7 +468,7 @@ pins that perturbing the last observation can move only its own score.
 **Key arguments.** `method="split"` (default) with `base=` any of
 `"theta"`, `"naive"`, `"drift"`, `"mean"`, `"seasonal_naive"`, `"ar"`,
 `"arima"` — or, for split/ACI, any Python callable with the
-[backtest callable contract](#bring-your-own-model--python-callable-forecasters);
+[backtest callable contract](#bring-your-own-model-python-callable-forecasters);
 `alpha=0.1`; `calib=n//4` residuals per horizon. `method="enbpi"`
 (AR base only, `n_boot`, `lags`, seeded and bit-reproducible). `method="aci"`
 (`gamma=0.005`, the paper's step size; raise it for faster adaptation —

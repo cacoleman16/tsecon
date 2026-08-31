@@ -470,7 +470,7 @@ print(f"IVX  : beta={fit['ivx']['beta_ivx']:+.4f}  Wald={fit['ivx']['wald']:.2f}
       f"p={fit['ivx']['pvalue']:.3f}")
 
 # OLS  : beta=+0.0123  t=+1.06
-# IVX  : beta=+0.0108  Wald=0.85  p=0.358
+# IVX  : beta=+0.0108  Wald=0.84  p=0.358
 ```
 
 A single draw only illustrates the machinery; the *claim* is about repeated sampling, and it is exactly a size claim of the kind the coverage experiment above taught you to check. Simulate a true null ($\beta = 0$) across a ladder of persistence and count how often each test rejects at the nominal 5%:

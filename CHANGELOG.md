@@ -609,8 +609,11 @@ surface).
   `tsecon-filters::bn_filter`.
 - New fixture `fixtures/bn_filters.json` (+ generators
   `generate_bn_filters_fixtures.py` / `generate_bn_filter_fixtures.R`)
-  with a statsmodels absence canary: statsmodels ships neither a Hamilton
-  filter nor any BN decomposition. New model-card section
+  with a statsmodels absence canary: as of statsmodels 0.14.x it shipped
+  neither a Hamilton filter nor any BN decomposition. (The canary did its
+  job: statsmodels 0.15.0 added `tsa.filters.api.hamilton_filter`, and
+  0.7.0 replaced the Hamilton half of this absence claim with a live
+  cross-check. The BN half is still true and still asserted.) New model-card section
   (diagnostics.md) and three validation-matrix rows with honest grades.
 ### Added
 
