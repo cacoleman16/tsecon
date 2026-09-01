@@ -7,6 +7,11 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+
+- Add a cookbook recipe for comparing VAR lag orders on a common effective
+  sample and resolving AIC/BIC/HQIC disagreement by analysis goal.
+
 ## [0.6.0] - 2026-08-26
 
 ### Changed — **BREAKING (behavioral)**: `cv_splits(scheme="purged_kfold")` embargo now ADDS to the purge
