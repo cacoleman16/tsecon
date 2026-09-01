@@ -137,9 +137,10 @@ were exercised and **pasted a fabricated proof output**.
 
 ### 7. Intervals nobody has measured
 
-`docs/examples/interval-coverage.md` measures 40 interval-valued surfaces. The
-library has 128 callables. Its own "What is not measured" section is honest
-about the gap.
+`docs/examples/interval-coverage.md` measures 63 interval-valued outputs across
+35 functions. The library has 162 callables. Its own "What is not measured"
+section is honest about the gap. (Written when the page measured 40 surfaces
+against a 128-callable library; the gap it names is smaller now, not closed.)
 
 **Method that works.** Enumerate every function returning something
 interval-like (`lower`/`upper`/`se`/`bse`/`conf`/`band`/`ci`/`bounds`), cross
