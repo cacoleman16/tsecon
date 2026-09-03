@@ -80,6 +80,9 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # not data, shared by both conformal entry points.
     "conformal_forecast": frozenset({"order"}),
     "conformal_backtest": frozenset({"order"}),
+    # Integer group labels, one per column of x: coercing them to float64
+    # would make the boundary reject a plain [0, 0, 1, 1] partition.
+    "group_lasso": frozenset({"groups"}),
 }
 
 _POSITIONAL = (

@@ -10,6 +10,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 mod ml_kernel;
+mod ml_structured;
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -12510,5 +12511,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(copula_fit, m)?)?;
     m.add_function(wrap_pyfunction!(copula_select, m)?)?;
     ml_kernel::register(m)?;
+    ml_structured::register(m)?;
     Ok(())
 }

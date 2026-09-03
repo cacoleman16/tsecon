@@ -15,6 +15,11 @@ tsecon-linalg = { path = "../tsecon-linalg" }
 # Seeded Philox streams for the random-Fourier-feature draws of
 # `kernel_ridge` (same seed, bit-identical features on every platform).
 tsecon-rng = { path = "../tsecon-rng" }
+# The single HAC / OLS engine of the workspace: post-double-selection
+# inference (`pds_lasso`) takes its Newey-West (Bartlett) sandwich standard
+# errors and the `newey_west_maxlags` rule from here rather than
+# reimplementing them (ROADMAP §5: one owner per capability).
+tsecon-hac = { path = "../tsecon-hac" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern

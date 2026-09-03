@@ -603,10 +603,17 @@ fn kernel_regression_teaching_errors_name_the_argument_and_fix() {
         &kreg(ll, BandwidthSpec::LooCv),
     )
     .unwrap_err();
-    assert_eq!(e, MlError::InsufficientData { needed: 4, got: 3 });
+    assert_eq!(
+        e,
+        MlError::InsufficientData {
+            needed: 4,
+            got: 3,
+            what: "kernel_regression"
+        }
+    );
     assert_eq!(
         e.to_string(),
-        "insufficient data: 3 observations, at least 4 required"
+        "insufficient data: 3 observations, at least 4 required (kernel_regression)"
     );
     // Empty input never panics.
     let empty = Mat::<f64>::zeros(0, 1);

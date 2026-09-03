@@ -1129,6 +1129,7 @@ name = "tsecon-ml"
 version = "0.7.0"
 dependencies = [
  "serde_json",
+ "tsecon-hac",
  "tsecon-linalg",
  "tsecon-rng",
 ]

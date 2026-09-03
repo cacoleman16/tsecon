@@ -533,6 +533,7 @@ fn build_design(
         return Err(MlError::InsufficientData {
             needed,
             got: x.nrows(),
+            what: "kernel_regression",
         });
     }
     let (n, k) = check_xy(x, y)?;
@@ -968,7 +969,14 @@ mod tests {
         };
         let e = kernel_regression(x.as_ref(), &y, None, &opts).unwrap_err();
         // k + 1 = 3 remaining rows after dropping 2*1 + 1 = 3: needed 6.
-        assert_eq!(e, MlError::InsufficientData { needed: 6, got: 4 });
+        assert_eq!(
+            e,
+            MlError::InsufficientData {
+                needed: 6,
+                got: 4,
+                what: "kernel_regression"
+            }
+        );
         // n = 6 succeeds.
         let x6 = Mat::from_fn(6, 2, |i, j| (i * i + 2 * j) as f64 * 0.3);
         let y6 = vec![0.0, 1.0, 0.5, 0.25, 0.7, 0.1];
