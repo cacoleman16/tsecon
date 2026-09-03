@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**162 functions.**
+**164 functions.**
 
 ## diagnostics
 
@@ -3683,4 +3683,128 @@ Fits several copula families to the same (n, 2) pseudo-observations
     extra parameter is not earning its keep by BIC), what the winner
     implies for tail dependence, and what was skipped and why. Keys:
     fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
+
+## kernel methods
+
+### `kernel_ridge`
+
+```python
+def kernel_ridge(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    alpha: float = ...,
+    kernel: str = ...,
+    gamma: float | None = ...,
+    degree: float = ...,
+    coef0: float = ...,
+    x_test: _ArrayLike | None = ...,
+    rff_features: int | None = ...,
+    seed: int = ...,
+) -> dict[str, Any]:
+```
+
+Kernel ridge regression: exact dual solve, or the Rahimi-Recht
+    random-Fourier-feature approximation of the rbf kernel.
+
+    Minimizes `sum_i (y_i - f(x_i))^2 + alpha * ||f||_H^2` over the RKHS of
+    the kernel — scikit-learn's `KernelRidge` objective (no `1/n`, no
+    intercept: center `y` if the kernel does not model a level). The exact
+    solution is `(K + alpha I) a = y` by Cholesky. `x` is `(n, k)` (or 1-D
+    for one regressor). Kernels in scikit-learn's exact parameterization:
+    `kernel="rbf"` `exp(-gamma ||x-y||^2)`, `"laplacian"`
+    `exp(-gamma ||x-y||_1)`, `"polynomial"` `(gamma <x,y> + coef0)^degree`,
+    `"linear"` `<x,y>`. `gamma=None` resolves to `1 / n_features`
+    (scikit-learn's default); the linear kernel has no gamma and refuses
+    one. `degree`/`coef0` act on the polynomial kernel only and are refused
+    at non-default values elsewhere (nothing is silently ignored).
+
+    `rff_features=D` switches to the random-Fourier-feature primal
+    approximation (Rahimi & Recht 2007): `z(x) = sqrt(2/D) cos(Wx + b)`
+    with `W ~ N(0, 2 gamma I)`, `b ~ U[0, 2 pi)` drawn from a Philox stream
+    keyed by `seed` (same seed, bit-identical features), then ridge on `z`
+    — `O(n D^2)` instead of `O(n^3)`, converging to the exact fit as `D`
+    grows. rbf only; `seed` is refused in exact mode. `x_test` (`(m, k)`)
+    adds `predicted`. `alpha=0` is the interpolating fit and is refused
+    when `K` is not positive definite (scikit-learn silently falls back to
+    least squares there; tsecon raises and names `alpha`).
+
+    Keys: `dual_coef` (exact mode; the `a` of `f(x) = sum_i a_i k(x, x_i)`,
+    scikit-learn's `dual_coef_`) or `coef` (RFF mode; the `D` primal
+    weights), `fitted`, `predicted` (only when `x_test` is given),
+    `kernel`, `gamma` (resolved; None for linear), `n_rff_features` (None
+    in exact mode).
+
+    Validated against scikit-learn 1.9.0 `KernelRidge` — `dual_coef_`,
+    `predict(X)` and `predict(X_test)` for all four kernels at 1e-8
+    (independent package). The RFF approximation is a Monte-Carlo object
+    and is property-tested (seeded determinism; error against the exact
+    fit falling with `D`), not golden-pinned.
+
+### `kernel_regression`
+
+```python
+def kernel_regression(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    bandwidth: float | Sequence[float] | _ArrayLike | None = ...,
+    kind: str = ...,
+    kernel: str = ...,
+    bandwidth_method: str = ...,
+    block: int | None = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+```
+
+Nadaraya-Watson or local-linear kernel regression of `y` on `x`
+    (`(n, k)`, `k <= 3`, or 1-D for one regressor) with a product Gaussian
+    kernel, at a fixed or cross-validated bandwidth.
+
+    Conventions are statsmodels `KernelReg(reg_type="lc" | "ll",
+    var_type="c"*k)` exactly: `kind="nadaraya_watson"` is the local
+    constant `sum_i K_h(x_i - x) y_i / sum_i K_h(x_i - x)`;
+    `kind="local_linear"` (default — no boundary bias) is the intercept of
+    the kernel-weighted least squares of `y` on `[1, x_i - x]`, solved
+    through the pseudoinverse as statsmodels does. `kernel`: `"gaussian"`
+    only (the one statsmodels validates against; compact-support kernels
+    are deferred). The bandwidth is the kernel's standard deviation per
+    column, in the column's units.
+
+    `bandwidth_method="fixed"` (default) uses `bandwidth` (a positive
+    scalar broadcast to every column, or one value per column) as given.
+    `"loo_cv"` minimizes the leave-one-out least-squares criterion
+    `n^-1 sum_i (y_i - g_{-i}(x_i))^2` (statsmodels `cv_loo`).
+    `"block_cv"` minimizes the leave-block-out criterion (Chu & Marron
+    1991): predicting `y_i` drops the `2*block + 1` observations with
+    `|j - i| <= block` (default `block = ceil(n^(1/3))`), so serially
+    correlated neighbours never vote on their own errors — leave-one-out
+    undersmooths badly under autocorrelated errors, and this is the method
+    to use for time-series regressors. Selection is a 21-point log grid
+    on a common multiple of the Scott reference `1.06 sd(x_j) n^(-1/(4+k))`
+    over `[0.05, 20]`, golden-section refinement, then per-column
+    coordinate refinement for `k >= 2`; deterministic, and not statsmodels'
+    Nelder-Mead path (the criterion value at any bandwidth matches
+    statsmodels at 1e-10; the search reaches a criterion no worse than
+    fmin's). Under the CV methods `bandwidth` must be omitted and under
+    `"fixed"`/`"loo_cv"` `block` must be omitted — a conflicting argument
+    raises rather than being ignored.
+
+    Keys: `fitted` (at the training rows), `predicted` (only when `x_test`
+    is given; NaN where every training weight underflows), `bandwidth`
+    (resolved, one per column), `bandwidth_method`, `block` (resolved
+    half-width under `"block_cv"`, else None), `cv_criterion` (the
+    leave-one-out criterion under `"fixed"`/`"loo_cv"`, the leave-block-out
+    criterion under `"block_cv"`, at the reported bandwidth), `effective_df`
+    (`tr(S)` of the linear smoother: from `k+1` (local linear) or `1`
+    (Nadaraya-Watson) at huge bandwidths up to `n` at tiny ones), `kind`,
+    `kernel`, `bandwidth_at_boundary` (True when a selected bandwidth sits
+    on a wall of the search range — the criterion was still falling, so
+    the reported value is the search's limit, not an interior optimum;
+    typically a target with no detectable signal), and
+    `n_criterion_evaluations` (0 under `"fixed"`).
+
+    Validated against statsmodels 0.15.0 `KernelReg.fit()` at fixed
+    bandwidths (`k = 1, 2`, both estimators) at 1e-8 and `cv_loo` at 1e-10
+    (independent package); the leave-block-out criterion and
+    `effective_df` are documented-formula transcriptions (no package
+    computes them) pinned at 1e-10.
 

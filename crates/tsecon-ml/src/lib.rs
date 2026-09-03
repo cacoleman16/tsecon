@@ -51,6 +51,8 @@
 pub mod coordinate_descent;
 pub mod cv;
 pub mod error;
+pub mod kernel_regression;
+pub mod kernel_ridge;
 pub mod path;
 pub mod ridge;
 pub mod standardize;
@@ -64,6 +66,13 @@ pub use cv::{
     CvResult, Loss, Split,
 };
 pub use error::MlError;
+pub use kernel_regression::{
+    cv_criterion, kernel_regression, BandwidthSpec, KernelRegressionFit, KernelRegressionOptions,
+    RegressionKernel, RegressionKind,
+};
+pub use kernel_ridge::{
+    kernel_matrix, kernel_ridge, KernelRidgeFit, KernelRidgeOptions, KernelType,
+};
 pub use path::{regularization_path, PathOptions, RegPath};
 pub use ridge::ridge;
 pub use standardize::{Scaler, TargetCenterer};

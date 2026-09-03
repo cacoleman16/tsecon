@@ -45,6 +45,29 @@ pub enum MlError {
         /// Description of the computation that needed the decomposition.
         what: &'static str,
     },
+    /// Fewer observations than the estimator can be computed from (the
+    /// kernel-regression local fits after the cross-validation exclusion
+    /// window is removed).
+    InsufficientData {
+        /// The smallest sample the estimator can be computed from.
+        needed: usize,
+        /// The number of observations received.
+        got: usize,
+    },
+    /// A domain violation whose message must carry runtime values (an
+    /// offending column index, the value received, the accepted names).
+    /// Displayed with the same `invalid argument:` prefix as
+    /// [`MlError::InvalidArgument`].
+    InvalidValue {
+        /// Description of the violation, naming the argument and the fix.
+        what: String,
+    },
+    /// A matrix that must be symmetric positive definite (the kernel ridge
+    /// system `K + alpha I`) failed its Cholesky factorization.
+    NotPositiveDefinite {
+        /// Description of the matrix and what to change.
+        what: String,
+    },
     /// The coordinate-descent solver did not reach its coefficient-change
     /// tolerance within its iteration budget. The last iterate is discarded
     /// rather than returned silently as if converged.
@@ -72,6 +95,14 @@ impl fmt::Display for MlError {
                 write!(f, "non-finite value (NaN or infinity) in {what}")
             }
             Self::InvalidArgument { what } => write!(f, "invalid argument: {what}"),
+            Self::InsufficientData { needed, got } => write!(
+                f,
+                "insufficient data: {got} observations, at least {needed} required"
+            ),
+            Self::InvalidValue { what } => write!(f, "invalid argument: {what}"),
+            Self::NotPositiveDefinite { what } => {
+                write!(f, "not positive definite: {what}")
+            }
             Self::DecompositionFailed { what } => {
                 write!(f, "dense decomposition failed to converge in {what}")
             }

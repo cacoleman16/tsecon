@@ -1130,6 +1130,7 @@ version = "0.7.0"
 dependencies = [
  "serde_json",
  "tsecon-linalg",
+ "tsecon-rng",
 ]
 
 [[package]]
