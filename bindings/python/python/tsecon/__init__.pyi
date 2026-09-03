@@ -2895,3 +2895,101 @@ def copula_select(
     implies for tail dependence, and what was skipped and why. Keys:
     fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
     """
+
+# ------------------------------- structured penalties and post-selection
+def group_lasso(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    groups: npt.NDArray[np.integer] | Sequence[int],
+    alpha: float,
+    l1_ratio: float = ...,
+    group_weights: str | _ArrayLike | None = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Group LASSO (Yuan-Lin 2006) / sparse-group LASSO (Simon et al. 2013)
+    by block coordinate descent with exact per-block Lipschitz constants.
+
+    Objective: (1/(2n))||y - Xb||^2 + alpha*[(1 - l1_ratio)*sum_g w_g
+    ||b_g||_2 + l1_ratio*||b||_1] — the crate's `lasso` scaling, so
+    `l1_ratio=1` IS `lasso(x, y, alpha)`. No intercept, no standardization
+    inside: center `y`, standardize `x`. `groups` is one integer label per
+    column (any integers, contiguous or not; integer arrays are passed
+    through untouched). `group_weights`: "sqrt_size" (default, w_g =
+    sqrt(|g|)), "none" (w_g = 1), or one positive weight per distinct label
+    in ascending label order. `tol` is the dimensionless coefficient-change
+    rule shared with `lasso` and also bounds the KKT residual relative to
+    max_j |x_j'y|/n; `max_iter` caps the block sweeps.
+
+    Returns `coef`, `n_iter`, `converged` (True only when the sweep rule AND
+    the KKT certificate are met; when False the last iterate is returned —
+    read `kkt_violation`), `active_groups` (labels with a nonzero block),
+    `active_set` (nonzero column indices), `objective`, `kkt_violation`
+    (largest subgradient KKT residual at `coef` — a readable optimality
+    certificate for this convex problem), `max_rel_change`, and `alpha_max`
+    (smallest alpha with the all-zero solution).
+
+    Validation: independent KKT certificate <= 1e-8 on every fixture case
+    (~2e-13 achieved) plus cross-package agreement with skglm at 1e-8
+    (~1.5e-12 achieved); reductions to `lasso` at 1e-8.
+    """
+
+def post_lasso(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    alpha: float,
+    l1_ratio: float = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Post-LASSO OLS refit (Belloni-Chernozhukov 2013): LASSO / elastic net
+    with `elastic_net`'s objective, then OLS on the selected columns to
+    remove the shrinkage bias. No intercept, no standardization inside.
+
+    Returns `support` (selected indices), `coef_lasso` (first stage),
+    `coef_ols` (the refit, zeros off-support; minimum-norm least squares on
+    the support), `n_selected`, `rss`.
+
+    NO standard errors, deliberately: OLS standard errors after a
+    data-driven selection are invalid (the selection event depends on the
+    same sample). For inference on a target coefficient use `pds_lasso`.
+
+    Validation: refit pinned to scikit-learn LinearRegression
+    (fit_intercept=False) on the scikit-learn Lasso/ElasticNet support at
+    1e-10 (~8e-15 achieved).
+    """
+
+def pds_lasso(
+    y: _ArrayLike,
+    d: _ArrayLike,
+    x: _ArrayLike,
+    alpha: float | str | None = ...,
+    hac_lags: int | None = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Post-double-selection LASSO (Belloni-Chernozhukov-Hansen 2014) for
+    the coefficient on a treatment `d` with high-dimensional controls `x`,
+    with Newey-West (Bartlett) HAC inference from the shared HAC engine.
+
+    LASSO `y` on `x` and `d` on `x`, take the union of supports, OLS `y` on
+    [d, x_union]; the treatment is never penalized. Center `y` and `d`,
+    standardize `x` (no intercept, nothing standardized inside). `alpha`:
+    a float applied to both LASSOs, or "bic" (default) — the per-equation
+    BIC pick along `lasso_path`'s default grid. `hac_lags`: None (default)
+    = the Newey-West rule floor(4 (n/100)^(2/9)); a positive integer = that
+    Bartlett lag truncation; 0 = classical spherical-errors standard errors.
+    HAC covariance carries n/(n-k) (statsmodels HAC with
+    use_correction=True); `p_value`/`conf_int` use the standard normal in
+    both modes (statsmodels use_t=False).
+
+    Returns `coef`, `se`, `t_stat`, `p_value`, `conf_int` (95% (lo, hi)),
+    `support_y`, `support_d`, `union_support`, `n_controls_selected`,
+    `alpha_y`, `alpha_d`, `hac_lags_resolved`.
+
+    Validation: Monte-Carlo grade for coverage (R hdm / Stata pdslasso not
+    runnable here) — the seeded design in structured_properties.rs measures
+    the PDS interval's coverage against the single-selection interval's
+    undercoverage, numbers on the model card; exact leg against statsmodels
+    HAC / nonrobust OLS on the selected union at 1e-8 (~1e-14 achieved).
+    """

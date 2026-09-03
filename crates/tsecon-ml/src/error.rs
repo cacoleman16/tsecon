@@ -2,6 +2,8 @@
 
 use core::fmt;
 
+use tsecon_hac::HacError;
+
 /// Errors returned by the penalized-regression solvers and the
 /// time-series cross-validation machinery in `tsecon-ml`.
 ///
@@ -54,6 +56,30 @@ pub enum MlError {
         /// Largest absolute coefficient change in the final sweep.
         max_change: f64,
     },
+    /// Too few observations for the requested computation — a post-selection
+    /// OLS refit (`post_lasso`, `pds_lasso`) needs strictly more rows than
+    /// regressors, or no residual degrees of freedom remain. The message
+    /// follows the library-wide wording (`insufficient data: {got}
+    /// observations, at least {needed} required`).
+    InsufficientData {
+        /// Number of observations supplied.
+        got: usize,
+        /// Minimum number of observations required.
+        needed: usize,
+        /// Which computation ran out of rows.
+        what: &'static str,
+    },
+    /// An error raised by the shared HAC / OLS engine (`tsecon-hac`) while
+    /// computing post-double-selection inference — a singular
+    /// `[d, X_union]` design, a non-finite input it found first, or a
+    /// covariance breakdown. Wrapped so callers see one error type.
+    Hac(HacError),
+}
+
+impl From<HacError> for MlError {
+    fn from(e: HacError) -> Self {
+        Self::Hac(e)
+    }
 }
 
 impl fmt::Display for MlError {
@@ -83,6 +109,11 @@ impl fmt::Display for MlError {
                 "coordinate descent did not converge after {iterations} sweeps \
                  (last max coefficient change {max_change:e})"
             ),
+            Self::InsufficientData { got, needed, what } => write!(
+                f,
+                "insufficient data: {got} observations, at least {needed} required ({what})"
+            ),
+            Self::Hac(e) => write!(f, "HAC/OLS engine: {e}"),
         }
     }
 }

@@ -12,6 +12,11 @@ description = "Penalized regression (ridge via SVD; LASSO / elastic net / adapti
 # features = ["std"]); this crate uses its thin SVD for the ridge
 # closed form and the ordinary-least-squares adaptive-LASSO weights.
 tsecon-linalg = { path = "../tsecon-linalg" }
+# The single HAC / OLS engine of the workspace: post-double-selection
+# inference (`pds_lasso`) takes its Newey-West (Bartlett) sandwich standard
+# errors and the `newey_west_maxlags` rule from here rather than
+# reimplementing them (ROADMAP §5: one owner per capability).
+tsecon-hac = { path = "../tsecon-hac" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern

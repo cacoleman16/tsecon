@@ -183,14 +183,20 @@ def test_signature_drift_falls_back_to_conservative_behaviour():
 def test_exempt_set_covers_every_integer_rust_parameter():
     """Re-derive the exempt set from the Rust source so it cannot go stale.
 
-    Any new ``Vec<usize>`` / ``Vec<i64>`` parameter added to a binding must be
-    added to ``_EXEMPT`` as well, otherwise the wrapper would float64-ify a
-    label array. Skipped when running against an installed wheel.
+    Any new ``Vec<usize>`` / ``Vec<i64>`` parameter added to a binding — in
+    ``lib.rs`` or in any per-slice ``src/*.rs`` module — must be added to
+    ``_EXEMPT`` as well, otherwise the wrapper would float64-ify a label
+    array. Skipped when running against an installed wheel.
     """
-    lib_rs = Path(__file__).parents[1] / "src" / "lib.rs"
-    if not lib_rs.exists():  # pragma: no cover - source-tree only
+    src_dir = Path(__file__).parents[1] / "src"
+    rs_files = sorted(src_dir.glob("*.rs")) if src_dir.exists() else []
+    if not rs_files:  # pragma: no cover - source-tree only
         pytest.skip("Rust source not available")
-    src = lib_rs.read_text(encoding="utf-8").splitlines()
+    # Every binding file, not just lib.rs: the per-slice modules
+    # (`ml_structured.rs`, ...) register their own pyfunctions.
+    src = []
+    for rs in rs_files:
+        src.extend(rs.read_text(encoding="utf-8").splitlines())
 
     fn_re = re.compile(r"^\s*(?:pub\s+)?fn\s+([a-z_0-9]+)\s*[<(]")
     int_param_re = re.compile(
@@ -212,7 +218,7 @@ def test_exempt_set_covers_every_integer_rust_parameter():
     assert found, "integer-parameter scan matched nothing - regex is stale"
     expected = {k: set(v) for k, v in _EXEMPT.items()}
     assert found == expected, (
-        "integer parameters in lib.rs disagree with _coerce._EXEMPT: "
+        "integer parameters in src/*.rs disagree with _coerce._EXEMPT: "
         f"rust={found} exempt={expected}"
     )
 
