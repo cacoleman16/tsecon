@@ -52,11 +52,13 @@ pub mod boosting;
 pub mod coordinate_descent;
 pub mod cv;
 pub mod error;
+pub mod esn;
 pub mod forest;
 pub mod group_lasso;
 pub mod importance;
 pub mod kernel_regression;
 pub mod kernel_ridge;
+pub mod mlp;
 pub mod path;
 pub mod pds;
 pub mod post_lasso;
@@ -75,6 +77,10 @@ pub use cv::{
     CvResult, Loss, Split,
 };
 pub use error::MlError;
+pub use esn::{
+    echo_state_network, esn_readout, esn_states, esn_states_from, scale_to_spectral_radius,
+    spectral_radius, EsnFit, EsnOptions,
+};
 pub use forest::{
     random_forest, resample_indices, ForestFit, ForestOptions, Importance, MaxFeatures, Resampling,
 };
@@ -85,6 +91,10 @@ pub use kernel_regression::{
 };
 pub use kernel_ridge::{
     kernel_matrix, kernel_ridge, KernelRidgeFit, KernelRidgeOptions, KernelType,
+};
+pub use mlp::{
+    mlp_forward, mlp_loss, mlp_loss_gradient, mlp_regression, Activation, MlpFit, MlpOptions,
+    MlpWeights, Solver,
 };
 pub use path::{regularization_path, PathOptions, RegPath};
 pub use pds::{pds_lasso, PdsAlpha, PdsFit};

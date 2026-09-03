@@ -24,6 +24,12 @@ tsecon-hac = { path = "../tsecon-hac" }
 # identical at any thread count) and rayon for the tree-parallel fit, the
 # same pairing tsecon-bootstrap uses for its replication driver.
 rayon = "1"
+# Seeded Philox streams (NumPy-compatible SeedSequence substreams) drive the
+# MLP weight initialization, mini-batch shuffles, and the echo-state
+# reservoir draws: every neural fit is a pure function of its `seed`.
+# The optional `solver = "lbfgs"` of the MLP reuses the crate-wide L-BFGS
+# (strong-Wolfe line search) rather than carrying a second quasi-Newton.
+tsecon-optim = { path = "../tsecon-optim" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern

@@ -8,6 +8,7 @@ use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
+mod ml_neural;
 
 mod ml_convex;
 mod ml_kernel;
@@ -12700,5 +12701,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ml_structured::register(m)?;
     ml_trees::register(m)?;
     ml_convex::register(m)?;
+    ml_neural::register(m)?;
     Ok(())
 }

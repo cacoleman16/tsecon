@@ -96,6 +96,23 @@ pub enum MlError {
         /// The sample size it must not exceed.
         n: usize,
     },
+    /// A string option (an activation or solver name) was not one of the
+    /// accepted values. The message lists them.
+    UnknownChoice {
+        /// Name of the option.
+        what: &'static str,
+        /// The value that was passed.
+        got: String,
+        /// The accepted values, rendered for the message.
+        accepted: &'static str,
+    },
+    /// Neural training produced a non-finite loss (the weights blew up).
+    Diverged {
+        /// Zero-based index of the ensemble member that diverged.
+        member: usize,
+        /// Epoch (or L-BFGS iteration count) at which it was detected.
+        epoch: usize,
+    },
     /// An error raised by the shared HAC / OLS engine (`tsecon-hac`) while
     /// computing post-double-selection inference — a singular
     /// `[d, X_union]` design, a non-finite input it found first, or a
@@ -153,6 +170,16 @@ impl fmt::Display for MlError {
                 f,
                 "{what}={block_length} is outside 1..={n}: a block cannot be empty \
                  or longer than the {n}-row sample"
+            ),
+            Self::UnknownChoice {
+                what,
+                got,
+                accepted,
+            } => write!(f, "unknown {what} {got:?}; expected one of {accepted}"),
+            Self::Diverged { member, epoch } => write!(
+                f,
+                "training diverged (non-finite loss) in ensemble member {member} at \
+                 epoch {epoch}; lower learning_rate, raise alpha, or standardize the inputs"
             ),
         }
     }

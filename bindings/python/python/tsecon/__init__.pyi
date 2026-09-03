@@ -3378,3 +3378,149 @@ def boosting(
     nonincreasing, the small-step limit is OLS on the selected support,
     AIC recovers a sparse truth's support.
     """
+
+# ---- Neural (MLP, echo state network)
+def mlp_regression(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    hidden: Sequence[int] | int | None = ...,
+    activation: str = ...,
+    alpha: float = ...,
+    solver: str = ...,
+    learning_rate: float | None = ...,
+    batch_size: int | None = ...,
+    max_epochs: int = ...,
+    validation_fraction: float = ...,
+    patience: int | None = ...,
+    n_seeds: int = ...,
+    seed: int = ...,
+    standardize: bool = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Feed-forward neural regressor (one or two hidden layers) with a seed
+    ensemble, early stopping on a TEMPORAL validation split, and
+    scikit-learn MLPRegressor's exact objective — the "NN" of the macro
+    forecasting horse races, and tsecon's only native neural net (no
+    framework dependency; torch / foundation-model adapters are out of
+    core by scope ruling).
+
+    `hidden`: tuple or list of layer widths, default `(16,)`; an int is
+    one layer; at most two layers by design. `activation`: "tanh"
+    (default), "relu", "logistic". `alpha` (1e-4): L2 penalty on the
+    weights, sklearn scale — the objective is
+    `(1/(2n)) sum (y - f(x))^2 + (alpha/(2n)) sum_l ||W_l||_F^2`,
+    intercepts unpenalized. `solver`: "adam" (default; sklearn's
+    constants; `learning_rate` None -> 1e-3; `batch_size` None -> one
+    full-batch step per epoch, an int -> seeded shuffled mini-batches;
+    `max_epochs` 500; early stopping with `patience` None -> 20 epochs
+    without a relative-1e-4 improvement of the validation loss, best
+    epoch's weights kept) or "lbfgs" (tsecon's L-BFGS on the full
+    objective with the analytic gradient, `max_epochs` capping its
+    iterations; passing `learning_rate`, `batch_size`, or `patience`
+    explicitly under lbfgs RAISES — they cannot apply — so leave them
+    None). `validation_fraction` (0.2; 0 disables early stopping; at most
+    0.5): the LAST `floor(validation_fraction * n)` rows are held out —
+    never a random split. `standardize` (True): the scaler for `x` and
+    `y` is fit on the TRAINING rows only and replayed on the validation
+    rows and on `x_test`. `n_seeds` (5) members from independent Philox
+    substreams of `seed` (0) are averaged. `x_test`: optional
+    `(n_test, p)` rows to predict.
+
+    Returns `fitted` (ensemble mean on every row of `x`, original y
+    scale), `predicted` / `member_predictions` (ensemble mean and the
+    `(n_seeds, n_test)` array on `x_test`; None without it),
+    `train_loss_path` / `validation_loss_path` (lists of per-member
+    per-epoch arrays; two entries — initial and final — under lbfgs; the
+    validation path is empty when validation_fraction=0), `best_epoch`
+    and `converged` (per member; True = early stopping fired / L-BFGS
+    converged, False = ran out of max_epochs), `n_parameters`, `weights`
+    (per member `{"coefs": [...], "intercepts": [...]}` in sklearn's
+    fan_in x fan_out layout, standardized scale), `n_train`,
+    `n_validation`, `x_mean`, `x_scale`, `y_mean`, `y_scale` (the
+    training-row scaler; identity when standardize=False), `solver`,
+    `activation`. Keys: fitted, predicted, member_predictions,
+    train_loss_path, validation_loss_path, best_epoch, converged,
+    n_parameters, weights, n_train, n_validation, x_mean, x_scale,
+    y_mean, y_scale, solver, activation.
+
+    Validated against scikit-learn 1.9.0 MLPRegressor (independent
+    package, fixtures/neural.json): forward pass = sklearn predict at its
+    fitted weights (1e-12), objective (1e-10), analytic gradient =
+    sklearn's own backprop (1e-10) and a central finite difference (1e-6
+    relative), gradient norm at sklearn's converged weights (1e-8). The
+    optimizer trajectory is deliberately not pinned. Estimator grade:
+    property / Monte Carlo — recovers y_t = sin(2 y_{t-1}) + e_t out of
+    sample (R^2 0.94 mini-batch Adam, 0.95 lbfgs, 0.80 all-defaults; 0.75
+    linear), the ensemble beats the mean member in every replication
+    (Jensen) and the median member in a majority (7/10 Rust draws, 10/10
+    NumPy draws) on a documented overfitting DGP, early stopping fires on
+    an easy problem and cannot at max_epochs=1. Reproducibility: single-threaded Rust, every draw a
+    pure function of `seed` — bit-identical on the same build; across
+    platforms only the last ulp of libm tanh/exp can differ, so the
+    cross-platform promise is statistical (seed-ensemble)
+    reproducibility. Errors name the array with NaN/inf (x, y, x_test),
+    list the accepted activation/solver names, name the two-layer limit,
+    and report `insufficient data: {got} observations, at least {needed}
+    required` with the validation split counted.
+    """
+
+def echo_state_network(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    reservoir_size: int = ...,
+    spectral_radius: float = ...,
+    leak_rate: float = ...,
+    input_scaling: float = ...,
+    sparsity: float = ...,
+    washout: int = ...,
+    ridge_alpha: float = ...,
+    seed: int = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Echo state network (reservoir computing; Jaeger 2001; Lukosevicius
+    2012): a fixed sparse random recurrent reservoir, a leaky-integrator
+    tanh state recursion, and a ridge-trained linear readout.
+
+    `reservoir_size` (200) units; `spectral_radius` (0.9) the reservoir
+    matrix is rescaled to (leading-eigenvalue modulus from a dense
+    eigenvalue decomposition; values above 1 accepted); `leak_rate` a in
+    (0, 1] (1.0 = plain ESN): `s_t = (1 - a) s_{t-1} + a tanh(W s_{t-1} +
+    W_in u_t)`, `s_0 = 0`, no reservoir bias; `input_scaling` (1.0):
+    W_in uniform on [-input_scaling, input_scaling]; `sparsity` (0.1):
+    the CONNECTIVITY, i.e. the fraction of nonzero reservoir entries
+    (standard normal values); `washout` (50): leading rows discarded
+    before the readout fit; `ridge_alpha` (1e-6): readout penalty,
+    minimizing `||y - Z b||^2 + ridge_alpha ||b||^2` on
+    Z_t = [1, u_t, s_t] (scikit-learn Ridge(fit_intercept=False) scale;
+    the constant column is penalized like every coefficient, Lukosevicius
+    eq. 9); `seed` (0); `x_test`: optional `(n_test, p)` rows treated as
+    the CONTINUATION of `x` (states carry on from the last training
+    state; no washout re-applied).
+
+    Returns `fitted` (readout on the rows that entered the fit, length
+    n - washout), `predicted` (on x_test, else None), `readout`
+    (coefficients on [1, u, s], length 1 + p + reservoir_size),
+    `spectral_radius_achieved` (recomputed on the scaled matrix),
+    `reservoir_size`, `n_washout`, `n_train` (n - washout). Keys: fitted,
+    predicted, readout, spectral_radius_achieved, reservoir_size,
+    n_washout, n_train.
+
+    Validation (fixtures/neural.json): the state recursion on an explicit
+    small reservoir is pinned at 1e-12 against a NumPy transcription that
+    reservoirpy 0.4.2's Reservoir (same explicit W / Win / lr) reproduced
+    exactly at generation time — a third-party pin of the mechanics; the
+    readout at 1e-10 against the closed-form ridge, cross-checked there
+    against scikit-learn Ridge; the spectral radius against
+    numpy.linalg.eigvals (1e-6). Estimator grade: property — NARMA-10
+    out-of-sample NRMSE 0.32 (mean over four data seeds) with
+    input_scaling=0.3 and otherwise default settings on 1000 training
+    rows, 0.19 with reservoir_size=400 on 2000 rows (the all-defaults
+    call averages 0.43: input_scaling=1 over-drives tanh for NARMA's u in
+    [0, 0.5]); achieved radius within 1e-6 of the target; same seed
+    bit-identical, different seeds differ. Reproducibility:
+    single-threaded, every draw a pure function of `seed`; last-ulp
+    libm/eigenvalue differences across platforms. Errors name the array
+    with NaN/inf (x, y, x_test); `washout >= n` names the fix; fewer than
+    two rows after the washout reports `insufficient data: {got}
+    observations, at least {needed} required` with the washout counted.
+    """
