@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays and dictionaries — no framework objects. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**162 functions.**
+**164 functions.**
 
 ## diagnostics
 
@@ -3683,4 +3683,147 @@ Fits several copula families to the same (n, 2) pseudo-observations
     extra parameter is not earning its keep by BIC), what the winner
     implies for tail dependence, and what was skipped and why. Keys:
     fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
+
+## Trees and forests
+
+### `regression_tree`
+
+```python
+def regression_tree(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    max_depth: int | None = ...,
+    min_samples_leaf: int = ...,
+    min_samples_split: int = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+```
+
+CART regression tree (Breiman et al. 1984) with scikit-learn's
+    best-split conventions.
+
+    Reproduces scikit-learn 1.9.0 `DecisionTreeRegressor(criterion=
+    "squared_error", splitter="best", max_features=None)` — an
+    independent-package golden (fixtures/trees.json): test predictions
+    at 1e-12, `n_leaves`/`depth` exact, `feature_importances_` at 1e-10,
+    the sorted (feature, threshold) multiset at 1e-12. Exact matching is
+    possible because the fixture proves every stored case tie-free (the
+    same tree under five sklearn `random_state` values): sklearn breaks an
+    exact tie between two features by its private RNG's visit order, this
+    tree by the lowest feature index, and only two-row nodes make such
+    ties likely. sklearn works in float32, this tree in float64.
+
+    Conventions: squared-error criterion; threshold = midpoint of the two
+    adjacent sorted distinct values (values within 1e-7 count as one); a
+    split leaves at least `min_samples_leaf` rows on both sides; a node
+    with fewer than `min_samples_split` rows, at `max_depth` (None =
+    unbounded), or pure is a leaf; leaves predict the training mean.
+
+    Returns `fitted` (n, leaf mean per training row), `predicted` (rows of
+    `x_test`, or None), `n_nodes`, `n_leaves`, `depth` (root = 0),
+    `feature_importance` (impurity-based, normalized to one; zeros if the
+    tree never split), and `splits` (list of [feature, threshold] pairs
+    sorted by (feature, threshold)). Keys: fitted, predicted, n_nodes,
+    n_leaves, depth, feature_importance, splits.
+
+    Raises ValueError for NaN/inf (naming the array), an `x_test` column
+    mismatch, `min_samples_leaf < 1`, `min_samples_split < 2`, and
+    `insufficient data: {got} observations, at least {needed} required`
+    when n < max(min_samples_split, 2 * min_samples_leaf).
+
+### `random_forest`
+
+```python
+def random_forest(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    n_trees: int = ...,
+    max_features: str | int = ...,
+    max_depth: int | None = ...,
+    min_samples_leaf: int = ...,
+    bootstrap: str = ...,
+    block_length: int | None = ...,
+    seed: int = ...,
+    x_test: _ArrayLike | None = ...,
+    quantiles: Sequence[float] | None = ...,
+    importance: str = ...,
+    importance_groups: Sequence[int] | None = ...,
+    permutation_block: int | None = ...,
+    n_permutations: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Random forest for regression (Breiman 2001) with time-series-aware
+    resampling, out-of-bag error, quantile regression forests (Meinshausen
+    2006), and grouped block-permutation importance.
+
+    Each tree is the CART tree of `regression_tree` grown on a row resample
+    (drawn rows act as multiplicity weights; rows never drawn are the
+    tree's out-of-bag rows), visiting `max_features` random columns per
+    node; the forest averages the trees. Validation grade (honest): the
+    deterministic tree is golden-pinned to scikit-learn 1.9.0 and
+    `random_forest(bootstrap="none", max_features="all", n_trees=1,
+    min_samples_leaf=1)` reproduces `regression_tree` bit-for-bit, which is
+    how the forest inherits that golden; the full forest's randomness is
+    tsecon's own Philox stream (one SeedSequence substream per tree, so it
+    is bit-identical at any thread count; same `seed` same forest,
+    different `seed` different forest) and is validated by seeded
+    Monte-Carlo property tests whose measured numbers the model card
+    quotes (Friedman #1 out-of-sample R^2, autocorrelation preserved by
+    block resampling, out-of-bag optimism, quantile-band coverage,
+    importance recovery).
+
+    `n_trees` (default 500); `max_features` in {"sqrt", "third" (default;
+    max(1, p // 3)), "all", or an int in 1..=p}; `max_depth` (None =
+    unbounded); `min_samples_leaf` (default 5); `bootstrap` in {"iid"
+    (default, Efron), "block" (Künsch moving block), "stationary"
+    (Politis-Romano, geometric blocks of mean `block_length`), "none"
+    (every tree sees every row; no out-of-bag rows)} — `block_length` is
+    required for "block"/"stationary" and refused for "iid"/"none"; `seed`
+    (default 0); `x_test` (m, p) rows to predict; `quantiles` (strictly
+    inside (0, 1), strictly increasing; requires `x_test`) turns on the
+    quantile regression forest; `importance` in {"none" (default),
+    "impurity", "block_permutation"}; `importance_groups` (one integer
+    label per column — give all lags of one variable one label so they
+    are permuted and credited as one unit; needs `importance` != "none";
+    a label vector, not data — pass a list of ints); `permutation_block`
+    (rows per permuted block; None = ceil(n ** (1/3)); 1 = single-row) and
+    `n_permutations` (None = 10) act only under
+    importance="block_permutation" and are refused elsewhere.
+
+    Returns `fitted` (n, in-sample forest prediction), `predicted` (m or
+    None), `oob_prediction` (n; NaN where a row was never out-of-bag; None
+    under bootstrap="none"), `oob_mse` (over rows with an out-of-bag
+    prediction; None under bootstrap="none"), `importance` (per unit;
+    impurity sums to one, block_permutation is the mean out-of-bag MSE
+    increase in units of y^2, may be negative; None under "none"),
+    `importance_groups_resolved` (the unit label each `importance` entry
+    refers to), `quantile_predictions` ((m, len(quantiles)), never
+    crossing; None without `quantiles`), `n_trees`, `max_features_resolved`.
+    Keys: fitted, predicted, oob_prediction, oob_mse, importance,
+    importance_groups_resolved, quantile_predictions, n_trees,
+    max_features_resolved.
+
+    Gotchas, measured and quoted on the model card. (1) OUT-OF-BAG ERROR IS
+    OPTIMISTIC ON TIME SERIES: an out-of-bag row's temporal neighbours are
+    in-bag in the trees that score it and, with persistent predictors and
+    autocorrelated errors, carry its error — the property suite measures
+    OOB/POOS MSE ratios of about 0.70 under AR(0.9) errors vs about 0.84 under iid
+    errors on the same persistent design; report pseudo-out-of-sample
+    metrics and prefer bootstrap="block"/"stationary". (2) A PERSISTENT
+    IRRELEVANT PREDICTOR'S IMPORTANCE IS INFLATED when the relevant
+    predictors are persistent too (the forest uses it as a time proxy);
+    grouping the lags of a variable keeps permuted rows dynamically
+    possible and stops dilution across collinear lags, but block
+    permutation does NOT remove that inflation — for a row-wise forest
+    scored row-wise, single-row and block permutation give the same mean
+    importance; compare against a control instead. (3) Impurity
+    importance favours columns with many distinct values.
+
+    Raises ValueError for NaN/inf (naming the array), `insufficient data:
+    {got} observations, at least {needed} required` when n < 2 *
+    min_samples_leaf, unknown string options (listing the accepted
+    values), malformed `quantiles` (naming the fix), `importance_groups`
+    of the wrong length (naming both lengths), a block length outside
+    1..=n, and every inert-kwarg combination above.
 

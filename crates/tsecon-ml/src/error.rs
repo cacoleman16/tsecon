@@ -54,6 +54,26 @@ pub enum MlError {
         /// Largest absolute coefficient change in the final sweep.
         max_change: f64,
     },
+    /// Too few observations for the requested configuration (e.g. a tree
+    /// that could never split because `n < 2 * min_samples_leaf`). Uses the
+    /// house wording shared by the other estimator crates.
+    InsufficientData {
+        /// Observations received.
+        got: usize,
+        /// Smallest number that would be accepted.
+        needed: usize,
+    },
+    /// A block length (block-bootstrap resampling or block permutation)
+    /// outside `1..=n`.
+    InvalidBlockLength {
+        /// Name of the offending argument (`block_length`,
+        /// `permutation_block`).
+        what: &'static str,
+        /// The block length received.
+        block_length: usize,
+        /// The sample size it must not exceed.
+        n: usize,
+    },
 }
 
 impl fmt::Display for MlError {
@@ -82,6 +102,19 @@ impl fmt::Display for MlError {
                 f,
                 "coordinate descent did not converge after {iterations} sweeps \
                  (last max coefficient change {max_change:e})"
+            ),
+            Self::InsufficientData { got, needed } => write!(
+                f,
+                "insufficient data: {got} observations, at least {needed} required"
+            ),
+            Self::InvalidBlockLength {
+                what,
+                block_length,
+                n,
+            } => write!(
+                f,
+                "{what}={block_length} is outside 1..={n}: a block cannot be empty \
+                 or longer than the {n}-row sample"
             ),
         }
     }

@@ -12,6 +12,11 @@ description = "Penalized regression (ridge via SVD; LASSO / elastic net / adapti
 # features = ["std"]); this crate uses its thin SVD for the ridge
 # closed form and the ordinary-least-squares adaptive-LASSO weights.
 tsecon-linalg = { path = "../tsecon-linalg" }
+# Random forests: one SeedSequence-spawned Philox substream per tree (bit-
+# identical at any thread count) and rayon for the tree-parallel fit, the
+# same pairing tsecon-bootstrap uses for its replication driver.
+rayon = "1"
+tsecon-rng = { path = "../tsecon-rng" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern
