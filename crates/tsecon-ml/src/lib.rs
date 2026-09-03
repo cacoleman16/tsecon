@@ -51,7 +51,9 @@
 pub mod coordinate_descent;
 pub mod cv;
 pub mod error;
+pub mod forest;
 pub mod group_lasso;
+pub mod importance;
 pub mod kernel_regression;
 pub mod kernel_ridge;
 pub mod path;
@@ -59,6 +61,7 @@ pub mod pds;
 pub mod post_lasso;
 pub mod ridge;
 pub mod standardize;
+pub mod tree;
 mod util;
 
 pub use coordinate_descent::{
@@ -69,6 +72,9 @@ pub use cv::{
     CvResult, Loss, Split,
 };
 pub use error::MlError;
+pub use forest::{
+    random_forest, resample_indices, ForestFit, ForestOptions, Importance, MaxFeatures, Resampling,
+};
 pub use group_lasso::{group_lasso, group_lasso_alpha_max, GroupLassoFit, GroupWeights};
 pub use kernel_regression::{
     cv_criterion, kernel_regression, BandwidthSpec, KernelRegressionFit, KernelRegressionOptions,
@@ -82,6 +88,7 @@ pub use pds::{pds_lasso, PdsAlpha, PdsFit};
 pub use post_lasso::{post_lasso, PostLassoFit};
 pub use ridge::ridge;
 pub use standardize::{Scaler, TargetCenterer};
+pub use tree::{regression_tree, RegressionTree, TreeFit, TreeOptions};
 
 // Re-export the dense backend (through tsecon-linalg) so callers, tests,
 // and doctests construct `Mat`/`MatRef` inputs against one faer version.

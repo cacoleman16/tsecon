@@ -85,6 +85,17 @@ pub enum MlError {
         /// Which computation ran out of rows.
         what: &'static str,
     },
+    /// A block length (block-bootstrap resampling or block permutation)
+    /// outside `1..=n`.
+    InvalidBlockLength {
+        /// Name of the offending argument (`block_length`,
+        /// `permutation_block`).
+        what: &'static str,
+        /// The block length received.
+        block_length: usize,
+        /// The sample size it must not exceed.
+        n: usize,
+    },
     /// An error raised by the shared HAC / OLS engine (`tsecon-hac`) while
     /// computing post-double-selection inference — a singular
     /// `[d, X_union]` design, a non-finite input it found first, or a
@@ -134,6 +145,15 @@ impl fmt::Display for MlError {
                 "insufficient data: {got} observations, at least {needed} required ({what})"
             ),
             Self::Hac(e) => write!(f, "HAC/OLS engine: {e}"),
+            Self::InvalidBlockLength {
+                what,
+                block_length,
+                n,
+            } => write!(
+                f,
+                "{what}={block_length} is outside 1..={n}: a block cannot be empty \
+                 or longer than the {n}-row sample"
+            ),
         }
     }
 }

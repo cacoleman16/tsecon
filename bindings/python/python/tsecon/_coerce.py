@@ -83,6 +83,9 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # Integer group labels, one per column of x: coercing them to float64
     # would make the boundary reject a plain [0, 0, 1, 1] partition.
     "group_lasso": frozenset({"groups"}),
+    # Integer group label per feature (all lags of one variable share a
+    # label): an importance unit, not data.
+    "random_forest": frozenset({"importance_groups"}),
 }
 
 _POSITIONAL = (

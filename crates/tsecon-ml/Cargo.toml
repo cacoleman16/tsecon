@@ -20,6 +20,10 @@ tsecon-rng = { path = "../tsecon-rng" }
 # errors and the `newey_west_maxlags` rule from here rather than
 # reimplementing them (ROADMAP §5: one owner per capability).
 tsecon-hac = { path = "../tsecon-hac" }
+# Random forests: one SeedSequence-spawned Philox substream per tree (bit-
+# identical at any thread count) and rayon for the tree-parallel fit, the
+# same pairing tsecon-bootstrap uses for its replication driver.
+rayon = "1"
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern
