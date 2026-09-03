@@ -9,6 +9,7 @@ use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
+mod ml_convex;
 mod ml_kernel;
 mod ml_structured;
 mod ml_trees;
@@ -12514,5 +12515,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ml_kernel::register(m)?;
     ml_structured::register(m)?;
     ml_trees::register(m)?;
+    ml_convex::register(m)?;
     Ok(())
 }
