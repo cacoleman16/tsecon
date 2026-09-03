@@ -2895,3 +2895,91 @@ def copula_select(
     implies for tail dependence, and what was skipped and why. Keys:
     fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
     """
+
+# ---------------------------------------- Trend filtering and boosting
+def l1_trend_filter(
+    y: _ArrayLike,
+    lam: float,
+    order: int = ...,
+    penalty: str = ...,
+    tol: float | None = ...,
+    max_iter: int | None = ...,
+) -> dict[str, Any]:
+    """L1 trend filtering (Kim, Koh & Boyd 2009) — a piecewise-linear trend
+    with data-chosen knots — or, with `penalty="l2"`, the Hodrick-Prescott
+    filter on the same objective.
+
+    Minimizes over the trend `x`, with `D` the `order`-th difference
+    operator: `penalty="l1"`: `(1/2)||y - x||^2 + lam * ||D x||_1` (most
+    `order`-th differences exactly zero — `order=2` a piecewise-linear
+    trend whose kinks are the `knots`, `order=1` piecewise-constant, the
+    fused LASSO on the level); `penalty="l2"`: `(1/2)||y - x||^2 +
+    (lam/2) * ||D x||^2`, which for `order=2` is exactly `hp_filter(y,
+    lam)` (same minimizer, same `lam`; 1600 quarterly), solved in closed
+    form. Scan an L1 `lam` downward from `lam_max`, the value at which the
+    trend collapses to the least-squares polynomial of degree `order - 1`.
+
+    Solver: Kim-Koh-Boyd primal-dual interior point on the banded dual
+    (O(n) per step, no n×n matrices) plus an exact active-set polish.
+    `tol` is the relative duality gap at which it stops (`duality_gap <=
+    tol * objective`), `max_iter` the Newton-step budget; both act only
+    under `penalty="l1"`, and passing either explicitly under `"l2"` — a
+    closed-form solve with nothing to iterate — raises rather than being
+    ignored (`None`, the default, means 1e-8 / 10000 where they apply).
+
+    Returns `trend`, `cycle` (`y - trend`), `knots` (indices into the
+    `order`-th differences where `|(D trend)_i|` exceeds `max(1e-6 *
+    max|D y|, 1e-12 * max|y|)`; under `"l2"` nearly every index),
+    `n_knots`, `duality_gap` (the certificate — an upper bound on
+    `objective - optimum`), `objective`, `converged` (`duality_gap <= tol *
+    objective`; always True on the closed-form paths), `n_iter` (0 on
+    closed-form paths), and `lam_max`. Keys: trend, cycle, knots, n_knots,
+    duality_gap, objective, converged, n_iter, lam_max.
+
+    Validation: an independent KKT / duality-gap certificate re-derived
+    in the tests for every fixture case (relative gap <= 1e-8 asserted),
+    cvxpy + Clarabel third-party trends at 1e-8, the `lam -> 0` and
+    `lam >= lam_max` limits, and the `hp_filter` identity at 1e-10.
+    """
+
+def boosting(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    learning_rate: float = ...,
+    n_steps: int = ...,
+    stop: str = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Componentwise L2 boosting with single-column least-squares base
+    learners (Buhlmann & Yu 2003; Buhlmann 2006 — the R mboost `glmboost`
+    engine): a slow-learning variable selector read as sequential ARDL
+    building.
+
+    From `F_0 = 0` (no intercept — pass a centered `y` and centered,
+    typically standardized, columns), each step regresses the current
+    residual on every column separately, picks the column with the
+    smallest residual sum of squares (ties to the smallest index), and
+    adds `learning_rate` times that fit. Seedless and deterministic.
+    `learning_rate` in (0, 1] (0.1 conventional; 1.0 unshrunk greedy);
+    `n_steps >= 1`. The boosting operator `B_m = B_{m-1} + nu H_j (I -
+    B_{m-1})` is tracked exactly in a rank-m factored form — no n×n matrix
+    — and its trace is the degrees of freedom in Buhlmann's (2006)
+    corrected AIC, `log(RSS_m/n) + (1 + df_m/n)/(1 - (df_m+2)/n)` (`+inf`
+    where `df_m + 2 >= n`). `stop="aic"` reports the AIC-minimizing step,
+    `stop="none"` the last; the paths are returned either way.
+
+    Returns `coef` (length p, at the reported step), `coef_path` (n_steps
+    × p; row m is the model after m + 1 iterations), `selected` (column
+    chosen at each step), `rss_path`, `df_path`, `aic_path`, `best_step`
+    (0-based index into the path arrays), `fitted` (`x @ coef`), and
+    `predicted` (`x_test @ coef`, or None). Keys: coef, coef_path,
+    selected, rss_path, df_path, aic_path, best_step, fitted, predicted.
+
+    Validation (graded honestly): a transcription of the published
+    algorithm into dense NumPy — the operator formed explicitly, so the
+    trace is exact by construction — pins `coef_path`, `selected`,
+    `df_path`, `aic_path` at 1e-12; R mboost is not runnable in the build
+    environment, so this is not a third-party run. Properties: RSS
+    nonincreasing, the small-step limit is OLS on the selected support,
+    AIC recovers a sparse truth's support.
+    """

@@ -48,14 +48,17 @@
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod boosting;
 pub mod coordinate_descent;
 pub mod cv;
 pub mod error;
 pub mod path;
 pub mod ridge;
 pub mod standardize;
+pub mod trend_filter;
 mod util;
 
+pub use boosting::{boosting, BoostStop, BoostingFit, BoostingOptions};
 pub use coordinate_descent::{
     adaptive_lasso, elastic_net, lasso, CoordDescentOptions, PenalizedFit,
 };
@@ -67,6 +70,7 @@ pub use error::MlError;
 pub use path::{regularization_path, PathOptions, RegPath};
 pub use ridge::ridge;
 pub use standardize::{Scaler, TargetCenterer};
+pub use trend_filter::{l1_trend_filter, Penalty, TrendFilterFit, TrendFilterOptions};
 
 // Re-export the dense backend (through tsecon-linalg) so callers, tests,
 // and doctests construct `Mat`/`MatRef` inputs against one faer version.

@@ -54,6 +54,15 @@ pub enum MlError {
         /// Largest absolute coefficient change in the final sweep.
         max_change: f64,
     },
+    /// Too few observations for the requested estimator (the trend filter
+    /// needs at least `order + 1` points so one penalized difference
+    /// exists; boosting needs three so the corrected AIC is defined).
+    InsufficientData {
+        /// Smallest sample size the call would accept.
+        needed: usize,
+        /// Sample size received.
+        got: usize,
+    },
 }
 
 impl fmt::Display for MlError {
@@ -82,6 +91,10 @@ impl fmt::Display for MlError {
                 f,
                 "coordinate descent did not converge after {iterations} sweeps \
                  (last max coefficient change {max_change:e})"
+            ),
+            Self::InsufficientData { needed, got } => write!(
+                f,
+                "insufficient data: {got} observations, at least {needed} required"
             ),
         }
     }
