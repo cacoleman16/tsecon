@@ -249,7 +249,12 @@ def philox_uniforms(seed: int, n: int) -> _F64:
 def local_level_smooth(
     y: _ArrayLike, sigma2_eps: float, sigma2_eta: float
 ) -> dict[str, Any]:
-    """Exact-diffuse local-level Kalman filter + smoother (NaN = missing)."""
+    """Exact-diffuse local-level Kalman filter + smoother (NaN = missing).
+
+    Keys: `loglik`, `filtered_state`/`filtered_state_var`,
+    `smoothed_state`/`smoothed_state_var` (each length n), and `d_diffuse`
+    (the number of initial observations spent in the exact-diffuse period).
+    """
 
 def ar_loglik(
     y: _ArrayLike, coeffs: Sequence[float], sigma2: float, intercept: float = ...
@@ -374,6 +379,11 @@ def garch_fit(
     boundary parameters have NaN standard errors (no classical asymptotics
     exist there), interior parameters keep finite ones. `converged` reports
     the optimizer's own verdict.
+
+    EGARCH has no closed-form multi-step variance forecast: with
+    `vol="egarch"` only `forecast_horizon` 0 or 1 is accepted, and
+    `forecast_horizon >= 2` raises a teaching ValueError (GARCH and GJR
+    forecast analytically at every horizon).
     """
 
 # --------------------------------------------------------------- VAR
@@ -616,17 +626,24 @@ def mcmc_diagnostics(chains: _ArrayLike) -> dict[str, float]:
 
 # ------------------------------------------------------------- filters
 def hp_filter(y: _ArrayLike, lamb: float = ..., one_sided: bool = ...) -> dict[str, Any]:
-    """Hodrick-Prescott filter (O(n)); `one_sided=True` for the real-time variant."""
+    """Hodrick-Prescott filter (O(n)); `one_sided=True` for the real-time variant.
+
+    Keys: `trend`, `cycle` (= y - trend), `first_index` (0: full sample)."""
 
 def bk_filter(
     y: _ArrayLike, low: float = ..., high: float = ..., k: int = ...
 ) -> dict[str, Any]:
-    """Baxter-King band-pass filter (loses k observations at each end)."""
+    """Baxter-King band-pass filter (loses k observations at each end).
+
+    Keys: `cycle` (length n - 2k) and `first_index` (= k); no trend is
+    returned."""
 
 def cf_filter(
     y: _ArrayLike, low: float = ..., high: float = ..., drift: bool = ...
 ) -> dict[str, Any]:
-    """Christiano-Fitzgerald asymmetric band-pass filter."""
+    """Christiano-Fitzgerald asymmetric band-pass filter (full sample).
+
+    Keys: `trend`, `cycle`, `first_index` (0: full sample)."""
 
 def hamilton_filter(
     y: _ArrayLike,
@@ -910,7 +927,12 @@ def elastic_net(
     tol: float = ...,
     max_iter: int = ...,
 ) -> dict[str, Any]:
-    """Elastic-net via coordinate descent; scikit-learn objective."""
+    """Elastic-net via coordinate descent; scikit-learn objective.
+
+    Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update
+    in the final sweep, in coefficient units) and `max_rel_change` (that
+    update scaled as max_j |Δb_j|·‖x_j‖/‖y‖ — the scale-free quantity the
+    stopping rule compares with `tol`)."""
 
 def lasso(
     x: _ArrayLike,
@@ -919,7 +941,11 @@ def lasso(
     tol: float = ...,
     max_iter: int = ...,
 ) -> dict[str, Any]:
-    """Lasso (elastic net with l1_ratio = 1.0)."""
+    """Lasso (elastic net with l1_ratio = 1.0).
+
+    Keys: `coef`, `n_iter`, `max_change` and `max_rel_change` (as in
+    `elastic_net`: the scale-free update the stopping rule compares with
+    `tol`)."""
 
 # --------------------------------------------------- structural identification
 def sign_restricted_svar(
@@ -961,7 +987,8 @@ def zero_sign_svar(
     shock) `quantiles` at `probs=[0.05,0.16,0.50,0.84,0.95]` (ARW-2018 importance-
     weighted when `weighted=True`), the weight-invariant identified-set envelope
     (`set_min`/`set_max`), per-accepted-draw `weights` (normalized to sum to 1) and
-        their effective sample size `ess`, and the acceptance `diagnostics`. With
+    their effective sample size `ess`, the acceptance `diagnostics`, and
+    `arw_weighted` (whether the ARW weights were applied to `quantiles`). With
     strict-upper-triangle impact zeros and no sign restrictions the rotation at
     every draw is pinned to Q=I, so each posterior draw's structural IRF equals
     that draw's recursive Cholesky IRF (a per-draw identity checked to ~1e-10 in
@@ -1228,7 +1255,8 @@ def proxy_ar_sets(
     repair (h=12 coverage 0.889 -> 0.964 on the card's VAR(2) at T=300, 0.830
     -> 0.932 on a routine VAR(1) at T=250; median width ~1.15x at h=8, ~1.45x
     at h=12; weak-instrument boundedness bit-identical). Default "delta" is
-    unchanged.
+    unchanged. `rf_seed=None` (the default) means seed 0 — reproducible, not
+    fresh entropy — and `rf_draws=None` means 256 draws.
 
     rf_method="second_order_bc" centres the same seeded simulation at Pope
     (1990) bias-corrected coefficients (Kilian stationarity shrinkage) --
@@ -1264,7 +1292,7 @@ def proxy_svar(
     Returns `irf` (horizon+1, n),
     `impact`, `relative_impact`, `cov_um`, `first_stage_f` (HC1-robust when
     `robust_f`), `reliability` = Corr(m, u_norm)^2, `n_proxy`, the estimated
-    `shock` (length T), and `first_stage`: the proxy_first_stage diagnostics
+    `shock` (length T - lags, the residual sample), and `first_stage`: the proxy_first_stage diagnostics
     dict (the MOP effective F with its tau-based critical values --
     mop_cv_tau10 = 23.11 is the conventional bar, not the folklore 10).
     Point estimate only; see proxy_svar_bands for moving-block bands
@@ -1562,7 +1590,12 @@ def engle_granger(
     autolag: str | None = ...,
     maxlag: int | None = ...,
 ) -> dict[str, Any]:
-    """Engle-Granger two-step cointegration test: stat + MacKinnon p-value/crit (statsmodels `coint`)."""
+    """Engle-Granger two-step cointegration test: stat + MacKinnon p-value/crit (statsmodels `coint`).
+
+    `data` is T x k, column 0 the regressand. Keys: `stat`, `pvalue`, `crit`,
+    `coint_coefs` (step-1 coefficients, deterministics first), `resid`
+    (length `nobs`), `used_lag`/`adf_nobs` (the residual ADF's lag and
+    sample), `n_vars`, `nobs`."""
 
 def vecm(
     data: _ArrayLike,
@@ -1901,7 +1934,8 @@ def ccc_garch(
     H_{T+1} is covariance_forecast[0]. Because R is constant the forecast
     is analytic and exact at every horizon (no DCC-style h >= 2
     approximation), with the variance forecasts identical to each series'
-    own garch_fit forecast path."""
+    own garch_fit forecast path. The univariate stage inherits garch_fit's
+    EGARCH limit: vol="egarch" with forecast_horizon >= 2 raises."""
 
 def dcc_garch(
     returns: _ArrayLike,
@@ -1946,7 +1980,9 @@ def dcc_garch(
     also uses the final residual z_T and is correlation_forecast[0].
     h >= 2 forecasts use the Engle-Sheppard (2001) recursion on E[Q]
     normalized each step (an approximation), converging to corr(qbar).
-    The default call is bit-identical to earlier releases."""
+    The univariate stage inherits garch_fit's EGARCH limit: vol="egarch"
+    with forecast_horizon >= 2 raises. The default call is bit-identical to
+    earlier releases."""
 
 def dcc_test(
     returns: _ArrayLike,
@@ -2006,8 +2042,9 @@ def factor_model(
 ) -> dict[str, Any]:
     """PCA factor model (T x N) + Bai-Ng (2002) factor selection.
 
-    factors, loadings, eigenvalues, icp1/icp2/pcp1/pcp2 and Ahn-Horenstein
-    eigenvalue-ratio (er) factor counts."""
+    factors, loadings, eigenvalues, icp1/icp2/pcp1/pcp2 and the
+    Ahn-Horenstein eigenvalue-ratio factor count `er` with the ratios
+    `er_ratios` (length kmax) it was read from."""
 
 # ------------------------------------------------------------ term structure
 def nelson_siegel(
@@ -2078,7 +2115,9 @@ def cv_splits(
     """Leakage-safe CV split indices for sequential data.
 
     scheme is "expanding", "rolling", or "purged_kfold". Returns a list of
-    {"train": [...], "test": [...]} index dicts. purge drops the last purge
+    {"train": [...], "test": [...]} index dicts. `train` defaults to 0, which
+    the two walk-forward schemes refuse as an empty first window — pass it
+    explicitly there ("purged_kfold" ignores it). purge drops the last purge
     indices from the end of every training window (all schemes; set it >=
     horizon - 1 for h-step-ahead labels). embargo excludes training rows
     after the test block, which only exist under "purged_kfold"; nonzero
@@ -2098,7 +2137,9 @@ def adaptive_lasso(
 ) -> dict[str, Any]:
     """Adaptive LASSO (Zou 2006): oracle-property weighted-L1 penalty.
 
-    coef, n_iter, max_change."""
+    Keys: `coef`, `n_iter`, `max_change` and `max_rel_change` (as in
+    `elastic_net`: the scale-free update the stopping rule compares with
+    `tol`)."""
 
 def lasso_path(
     x: _ArrayLike,
@@ -2172,7 +2213,9 @@ def conformal_forecast(
     split/aci, any Python callable base(train, horizon) -> array-like of
     horizon point forecasts with the backtest contract (train is a read-only
     float64 ndarray of the training window only). calib defaults to
-    n // 4 residuals per horizon; n_eval (aci) to n // 5. Inert kwargs
+    n // 4 residuals per horizon; n_eval (aci) to n // 5. `seed=None` (the
+    default) is NOT fresh entropy — under "enbpi" it means seed 0, so two
+    default calls are bit-identical (`n_boot=None` means 25). Inert kwargs
     raise (0.7.0; defaults bit-identical): order needs base="arima"; lags
     needs base="ar" (or EnbPI's ensemble); gamma needs method="aci";
     n_boot/seed/optimize_beta need method="enbpi"; n_eval is ACI-only in
@@ -2206,7 +2249,8 @@ def conformal_backtest(
     coverage per horizon. base as in conformal_forecast, including a Python
     callable base(train, horizon) for split/aci. ACI adds its alpha_t
     trajectory; EnbPI is the published one-step online algorithm with the
-    residual window sliding by batch. The same inert-kwarg refusals as
+    residual window sliding by batch. `seed=None` (the default) means seed 0
+    under "enbpi", not fresh entropy (`n_boot=None` means 25). The same inert-kwarg refusals as
     conformal_forecast apply (order/lags/gamma/n_boot/seed/optimize_beta,
     EnbPI's calib), plus batch, which is EnbPI-only; n_eval is live for
     every method here. Defaults stay bit-identical."""
@@ -2342,8 +2386,9 @@ def gas_volatility(
     """GAS(1,1) score-driven volatility (Creal-Koopman-Lucas 2013).
 
     density is "gaussian" or "student_t". Returns omega/a/b (+ nu),
-    variance, std_resid, loglik, aic, bic, next_variance, and (horizon>0) a
-    forecast."""
+    variance, std_resid, loglik, aic, bic, next_variance, `converged` and
+    `iterations` (the optimizer's certificate and step count), and
+    (horizon>0) a forecast."""
 
 def dcs_local_level(y: _ArrayLike, density: str = ...) -> dict[str, Any]:
     """DCS robust local level mu_{t+1} = mu_t + kappa*u_t (Harvey-Luati 2014).
@@ -2423,7 +2468,8 @@ def dfm_nowcast(
 
     method is "two_step" (Doz-Giannone-Reichlin 2011) or "mle" (exact
     one-step Gaussian MLE, single factor). Returns nowcast, edge_factor,
-    loglik, fit_loglik, smoothed_factors ((T, r)), n_factors, factor_order,
+    loglik, fit_loglik, smoothed_factors ((T_b, r): one row per BALANCED-panel
+    observation, i.e. T minus the ragged-edge rows), n_factors, factor_order,
     and the fitted model itself (both methods, same surface): loadings
     ((N, r)), factor_ar ((r, r*p) stacked [A_1 | ... | A_p]), factor_cov
     ((r, r)), idiosyncratic (length N), center / scale (length N training
@@ -2496,7 +2542,9 @@ def cg_regression(
 ) -> dict[str, Any]:
     """Coibion-Gorodnichenko (2015) information-rigidity regression (OLS-HAC).
 
-    Returns intercept/slope with HAC se/t/p, r_squared, implied_rigidity.
+    Returns `intercept` and `slope` with HAC `se_intercept`/`se_slope`, the
+    slope's `t_slope`/`p_slope`, `r_squared`, `implied_rigidity`, and the
+    echoed `maxlags`/`nobs`.
     use_correction defaults True (the n/(n-k) HAC scaling); statsmodels
     cov_type="HAC" defaults it off -- match it when comparing."""
 

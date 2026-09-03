@@ -98,7 +98,7 @@ fn ljung_box<'py>(
     Ok(d)
 }
 
-/// Jarque-Bera normality test.
+/// Jarque-Bera normality test. Keys: `statistic`, `p_value`, `skewness`, `kurtosis` (raw, not excess — 3 is Gaussian), `n`.
 #[pyfunction]
 fn jarque_bera<'py>(
     py: Python<'py>,
@@ -208,6 +208,9 @@ fn optimal_block_length<'py>(
 /// Returns loglik plus filtered/smoothed level and variances; matches
 /// statsmodels `UnobservedComponents(..., use_exact_diffuse=True)` at
 /// fixed params (validated ~1e-11).
+/// Keys: `loglik`, `filtered_state`/`filtered_state_var` (the filtered level
+/// and its variance), `smoothed_state`/`smoothed_state_var`, and `d_diffuse`
+/// (the number of initial observations spent in the exact-diffuse period).
 #[pyfunction]
 fn local_level_smooth<'py>(
     py: Python<'py>,
@@ -1817,6 +1820,7 @@ fn decomposition_dict<'py>(
 
 /// Hodrick-Prescott filter (O(n) pentadiagonal solve). `one_sided=True`
 /// gives the real-time variant. Matches statsmodels `hpfilter` at 1e-8.
+/// Keys: `trend`, `cycle` (= y - trend) and `first_index` (0: full sample).
 #[pyfunction]
 #[pyo3(signature = (y, lamb = 1600.0, one_sided = false))]
 fn hp_filter<'py>(
@@ -1836,6 +1840,7 @@ fn hp_filter<'py>(
 
 /// Baxter-King band-pass filter (loses `k` observations at each end —
 /// `first_index` reports the alignment).
+/// Keys: `cycle` (length n - 2k) and `first_index` (= k); no trend is returned.
 #[pyfunction]
 #[pyo3(signature = (y, low = 6.0, high = 32.0, k = 12))]
 fn bk_filter<'py>(
@@ -1849,7 +1854,7 @@ fn bk_filter<'py>(
     decomposition_dict(py, &dec)
 }
 
-/// Christiano-Fitzgerald asymmetric band-pass filter (full sample).
+/// Christiano-Fitzgerald asymmetric band-pass filter (full sample). Keys: `trend`, `cycle` and `first_index` (0: full sample).
 #[pyfunction]
 #[pyo3(signature = (y, low = 6.0, high = 32.0, drift = true))]
 fn cf_filter<'py>(
@@ -2640,6 +2645,10 @@ fn resolve_garch_o(vol: &str, o: Option<usize>) -> PyResult<usize> {
 /// `.get("omega")` guard silently yields `None`/NaN that looks like a
 /// failed fit. The results facade's `GARCHResults.params_named()` method
 /// returns the same mapping.
+/// EGARCH has no closed-form multi-step variance forecast: with `vol="egarch"`
+/// only `forecast_horizon` 0 or 1 is accepted, and `forecast_horizon >= 2`
+/// raises a teaching ValueError (simulation-based EGARCH forecasts are not
+/// shipped; GARCH and GJR forecast analytically at every horizon).
 #[pyfunction]
 #[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = None, q = 1, forecast_horizon = 0))]
 #[allow(clippy::too_many_arguments)]
@@ -3877,6 +3886,10 @@ fn ridge<'py>(
 /// (1/2n)||y-Xb||^2 + alpha*l1_ratio*||b||_1 + (alpha/2)(1-l1_ratio)||b||^2,
 /// matching scikit-learn. `l1_ratio=1.0` is the lasso. Returns coefficients,
 /// iterations, and the final max coefficient change.
+/// Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update in
+/// the final sweep, in coefficient units) and `max_rel_change` (that update
+/// scaled as max_j |Δb_j|·‖x_j‖/‖y‖ — the scale-free quantity the stopping rule
+/// compares with `tol`, so `max_rel_change <= tol` on a converged return).
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha, l1_ratio = 0.5, tol = 1e-8, max_iter = 100000))]
 fn elastic_net<'py>(
@@ -3903,7 +3916,7 @@ fn elastic_net<'py>(
     Ok(d)
 }
 
-/// Lasso regression (elastic net with l1_ratio = 1.0).
+/// Lasso regression (elastic net with l1_ratio = 1.0). Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update in the final sweep) and `max_rel_change` (that update scaled as max_j |Δb_j|·‖x_j‖/‖y‖, the scale-free quantity compared with `tol`).
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha, tol = 1e-8, max_iter = 100000))]
 fn lasso<'py>(
@@ -4008,10 +4021,12 @@ fn sign_restricted_svar<'py>(
 /// tuples imposing Theta_h[(variable,shock)] = 0 exactly (horizon 0 = impact).
 /// At least one list must be non-empty. Returns per-(horizon, variable, shock)
 /// `set_min`/`set_max` (weight-invariant identified-set envelope) and
-/// ARW-weighted `quantiles` at probs=[0.05,0.16,0.50,0.84,0.95], plus per-draw
+/// ARW-weighted `quantiles` at the echoed `probs` (= [0.05, 0.16, 0.50, 0.84, 0.95]), plus per-draw
 /// `weights` (normalized), `ess`, and acceptance `diagnostics`. With
 /// strict-upper-triangle impact zeros and no signs it reproduces
 /// `var_irf(orth=True)` deterministically.
+/// `arw_weighted` echoes whether the ARW importance weights were applied to
+/// `quantiles` (the `weighted` flag as resolved).
 #[pyfunction]
 #[pyo3(signature = (data, sign_restrictions, zero_restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, weighted = true))]
 #[allow(clippy::too_many_arguments)]
@@ -4445,6 +4460,9 @@ fn first_stage_dict<'py>(
 /// dropped from the first-stage sample (`n_proxy` reports the kept count),
 /// and an infinite proxy value is refused as corruption (0.7.0 -- it was
 /// previously dropped as if missing).
+/// Keys: `beta`, `se`, `effective_f`, `f_classical`, `f_hc1`, `reliability`,
+/// `n_proxy`, `hac_lags`, `mop_cv_tau5`/`mop_cv_tau10`/`mop_cv_tau20`/
+/// `mop_cv_tau30`, `tau_bound`, `weak_mop_tau10`, `weak_folklore`.
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, norm_var = 0, trend = "c", variance = "hc1", hac_lags = None))]
 #[allow(clippy::too_many_arguments)]
@@ -4787,6 +4805,9 @@ fn proxy_svar_bands<'py>(
 /// dropped from the moments (`n_proxy` reports the kept count), and an
 /// infinite proxy value is refused as corruption (0.7.0 -- it was
 /// previously dropped as if missing).
+/// `rf_seed=None` (the default) is NOT fresh entropy: under
+/// `rf_method="second_order"`/`"second_order_bc"` it means seed 0, so two
+/// default calls are bit-identical; `rf_draws=None` means 256 draws.
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0,
                     trend = "c", alpha = 0.05, variance = "hc0", hac_lags = None,
@@ -5030,6 +5051,10 @@ fn proxy_ar_sets<'py>(
 /// ordered by `order_by` ("kurtosis"|"colnorm") and signed max-abs-positive;
 /// both are CONVENTIONS. STATISTICAL identification: it FAILS if the shocks are
 /// Gaussian, and a `shock_kurtosis` near zero flags a weakly identified column.
+/// Keys: `impact` (B, [var][shock]), `irf` ([horizon+1][var][shock]),
+/// `rotation` (Q, [whitened][shock]), `shock_kurtosis` (identified order),
+/// `converged`, `n_iter`, and `order` (raw FastICA index per identified
+/// position).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", contrast = "logcosh", max_iter = 200, tol = 1e-8, order_by = "kurtosis"))]
 #[allow(clippy::too_many_arguments)]
@@ -5118,6 +5143,23 @@ fn nongaussian_svar<'py>(
 /// impact matrix B (up to column sign/order) from the two within-regime
 /// reduced-form residual covariances via a generalized eigendecomposition;
 /// point-identified iff the variance ratios are pairwise distinct.
+/// `data` is (T, n); `regime_labels` is an array-like of length T with EXACTLY
+/// two distinct integer values (labels align to observations; the first `lags`
+/// are dropped to match residuals). `base_regime` is the label normalized to
+/// Lambda=I (default: the smaller label); the other regime's shock-variance
+/// ratios are reported. `sign_normalization`: "max" (largest-|entry| per B
+/// column made positive; default) or "diag" (B[j,j] >= 0).
+///
+/// Returns a dict with `B` (n x n impact matrix = Theta_0, columns in
+/// ascending variance-ratio order), `variance_ratios` (the n generalized
+/// eigenvalues, ascending), `structural_irf` ([h][i][j] = Theta_h = Psi_h B),
+/// `min_ratio_gap` and `ratio_dist_from_unity` (identification margins),
+/// `identified` (bool heuristic), `covariance_equality` (Bartlett-corrected
+/// Box's M: statistic/dof/pvalue/distinct_regimes), `sigma_regime1`,
+/// `sigma_regime2`, `regime1_label`, `regime2_label`, `regime_sizes`,
+/// `n_vars`, `horizon`, `lags`, `sign_convention`. Standard errors on
+/// B/Theta_h are not provided in this closed-form build; the >2-regime and
+/// Markov-switching/GARCH variants are deferred.
 #[pyfunction]
 #[pyo3(signature = (data, regime_labels, lags = 2, horizon = 12, trend = "c", base_regime = None, sign_normalization = "max"))]
 #[allow(clippy::too_many_arguments)]
@@ -5433,6 +5475,9 @@ fn panel_fe<'py>(
 /// sit on nominal. The union bounds fix multiplicity ONLY and inherit
 /// whatever the DK standard errors get wrong at short T (the documented
 /// short-T DK caveat).
+/// Keys: `irf`, `se`, `nobs` (each length horizon+1), the stamped `se_type`,
+/// `cumulative`, `jackknife`, `bias_correction`, and the band keys when `band`
+/// is set.
 #[pyfunction]
 #[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = None, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
 #[allow(clippy::too_many_arguments)]
@@ -5674,6 +5719,12 @@ fn gw_test<'py>(
 /// a return series; without, it must be a pre-computed 0/1 violation
 /// sequence. Pass `input="hits"` to combine a pre-computed hit sequence
 /// WITH the VaR forecasts so the DQ regression keeps its VaR regressor.
+/// Keys: `lr_uc`/`p_uc` (Kupiec), `lr_ind`/`p_ind` and `lr_cc`/`p_cc`
+/// (Christoffersen), `dq_stat`/`p_dq`/`dq_df`/`dq_lags`/`dq_includes_var`/
+/// `dq_var_dropped` (Engle-Manganelli DQ), `n`, `n_violations`,
+/// `expected_violations`, `hit_rate`, the transition cells
+/// `n00`/`n01`/`n10`/`n11` with `pi01`/`pi11`, the echoed `alpha`, and a
+/// teaching `verdict` string.
 #[pyfunction]
 #[pyo3(signature = (returns_or_hits, var_forecasts = None, alpha = 0.05, dq_lags = 4, input = "auto"))]
 fn var_backtest<'py>(
@@ -5878,6 +5929,9 @@ fn data_to_faer(
 /// unrestricted constant — on drifting data the two estimate visibly
 /// different cointegrating vectors. To fit the VECM this test ranks, call
 /// `vecm(..., deterministic="co")`.
+/// Keys: `eig`, `evec` (columns = cointegrating vectors), `trace_stat`,
+/// `max_eig_stat`, `trace_crit_90_95_99`, `max_eig_crit_90_95_99`,
+/// `rank_trace_5pct`, `rank_max_eig_5pct`.
 #[pyfunction]
 #[pyo3(signature = (data, k_ar_diff = 1))]
 fn johansen<'py>(
@@ -6218,6 +6272,10 @@ fn hansen_seo_test<'py>(
 /// MacKinnon 1994 tables stop there, where statsmodels raises IndexError);
 /// `crit` is None for trend="n" or k > 12 (no published 2010 surface).
 /// Small p-values are evidence FOR cointegration.
+/// Keys: `stat`, `pvalue`, `crit`, `coint_coefs` (the step-1 coefficients —
+/// deterministics from `trend` first, then the regressor columns), `resid`
+/// (length `nobs`), `used_lag` and `adf_nobs` (the residual ADF's lag and
+/// sample), `n_vars`, `nobs`.
 #[pyfunction]
 #[pyo3(signature = (data, trend = "c", autolag = Some("aic"), maxlag = None))]
 fn engle_granger<'py>(
@@ -6581,6 +6639,9 @@ fn markov_switching_ar<'py>(
 /// *reported*, not what is optimized). Validated against an independent
 /// NumPy transcription of the published algorithm (fixtures/setar.json);
 /// see `setar_test` for the linearity test.
+/// Keys: `threshold`, `delay`, `params_low`/`params_high`, `bse_low`/`bse_high`,
+/// `n_low`/`n_high`/`nobs`, `ssr`, `sigma2`, `sigma2_low`/`sigma2_high`,
+/// `aic`/`bic`, `ic`/`ic_used`, `min_regime`, `k`, `thresholds`, `ssr_path`.
 #[pyfunction]
 #[pyo3(signature = (y, p, delay = 1, trim = 0.15, delays = None, ic = "aic", constant = true))]
 #[allow(clippy::too_many_arguments)]
@@ -7223,6 +7284,10 @@ fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
 /// `H_{T+m} = D_{T+m} R D_{T+m}` with `D_{T+m}` from the per-series
 /// analytic variance forecasts — no approximation enters at any h,
 /// unlike DCC's h >= 2 normalization approximation.
+/// The univariate stage inherits `garch_fit`'s EGARCH limit: `vol="egarch"`
+/// accepts `forecast_horizon` 0 or 1 only and raises a teaching ValueError at
+/// 2 or more (no closed-form multi-step EGARCH variance forecast exists and
+/// the simulation route is not shipped).
 #[pyfunction]
 #[pyo3(signature = (returns, forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
@@ -7360,6 +7425,10 @@ fn ccc_garch<'py>(
 /// `E[DRD] ~= E[D]E[R]E[D]`). Under `"adcc"` the same mean recursion
 /// applies (the asymmetric term cancels against its targeting intercept
 /// in expectation); under `"cdcc"` S replaces Qbar.
+/// The univariate stage inherits `garch_fit`'s EGARCH limit: `vol="egarch"`
+/// accepts `forecast_horizon` 0 or 1 only and raises a teaching ValueError at
+/// 2 or more (no closed-form multi-step EGARCH variance forecast exists and
+/// the simulation route is not shipped).
 #[pyfunction]
 #[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
@@ -7615,6 +7684,9 @@ fn har_rv<'py>(
 /// (system-wide spillover index), directional `to_others`/`from_others`,
 /// `net`, and the antisymmetric `pairwise_net` matrix — all in percent.
 /// Matches the documented GFEVD golden to ~1e-13.
+/// Keys: `total`, `to_others`, `from_others`, `net`, `pairwise_net` (k x k), and
+/// `gfevd` (the k x k row-normalized generalized FEVD share matrix at `horizon`
+/// the indices are built from).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
 fn connectedness<'py>(
@@ -7643,6 +7715,8 @@ fn connectedness<'py>(
 /// (N x r), and the full `eigenvalues` vector. Also runs the Bai-Ng (2002)
 /// information criteria up to `kmax` and returns the selected factor counts
 /// (`icp1`/`icp2`/`pcp1`/`pcp2`). Matches numpy PCA to 1e-6 (up to sign).
+/// Also returns the Ahn-Horenstein (2013) eigenvalue-ratio factor count `er`
+/// and the ratios `er_ratios` (length `kmax`) it was read from.
 #[pyfunction]
 #[pyo3(signature = (data, n_factors = 2, kmax = 8))]
 fn factor_model<'py>(
@@ -7725,6 +7799,9 @@ fn factor_model<'py>(
 /// F of 10.5. Entries are keyed by `regressor`; a regressor that is exogenous,
 /// has no excluded instruments, or is reproduced exactly by the instruments
 /// gets no entry, and a missing entry is not a failed fit.
+/// Keys: `params`, `bse`, `cov`, `residuals`, `nobs`, `nmoments`, `nparams`,
+/// `steps` (GMM steps actually run), `hac_bandwidth`, `first_stage`, and — over-
+/// identified only — the Hansen `j_stat`/`j_dof`/`j_pval`.
 #[pyfunction]
 #[pyo3(signature = (x, z, y, method = "2step", weight = "robust", bandwidth = None,
                     tol = 1e-8, max_iter = 100))]
@@ -7855,7 +7932,7 @@ fn iv_gmm<'py>(
 /// - `"purged_kfold"`: López de Prado purged K-fold with a `purge` gap on
 ///   both sides of each test fold and an `embargo` after the purged window,
 ///   to prevent train/test leakage from serial correlation (`k` folds;
-///   `train` is ignored). Following AFML ch. 7 (and mlfinlab), the embargo
+///   `train` is ignored — and note `train` defaults to 0, which the two walk-forward schemes REFUSE as an empty first window, so pass it explicitly there). Following AFML ch. 7 (and mlfinlab), the embargo
 ///   is measured from the END of the purged window, so the exclusions ADD:
 ///   the right-hand gap after each test block is `purge + embargo`
 ///   indices. (Releases up to 0.5.0 used `max(purge, embargo)`, silently
@@ -7935,6 +8012,10 @@ fn cv_splits<'py>(
 /// L1/L2 (elastic-net weighting of the penalty), `gamma > 0` controls how
 /// hard small OLS coefficients are penalized. Returns the coefficients and
 /// convergence info.
+/// Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update in
+/// the final sweep, in coefficient units) and `max_rel_change` (that update
+/// scaled as max_j |Δb_j|·‖x_j‖/‖y‖ — the scale-free quantity the stopping rule
+/// compares with `tol`, so `max_rel_change <= tol` on a converged return).
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha, l1_ratio = 1.0, gamma = 1.0, tol = 1e-7, max_iter = 100000))]
 #[allow(clippy::too_many_arguments)]
@@ -8595,6 +8676,10 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// and `optimize_beta`. ACI adds `gamma`, `alpha_final`,
 /// `alpha_trajectory`, `err`, `realized_coverage` (all per horizon over
 /// the online window), and `n_eval`.
+/// `seed=None` (the default) is NOT fresh entropy: under `method="enbpi"` it
+/// runs the bootstrap ensemble with seed 0, so two default calls are
+/// bit-identical; pass an explicit `seed` for a different ensemble draw
+/// (`n_boot=None` likewise means 25).
 #[pyfunction]
 #[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
                     calib = None, mode = "symmetric", period = 1, gamma = None,
@@ -8809,6 +8894,10 @@ fn conformal_forecast<'py>(
 /// `method`, `base`, and per-horizon lists `mean`, `lower`, `upper`,
 /// `err` (missed-target indicators), plus `realized_coverage` (per
 /// horizon). ACI adds `alpha_trajectory`; EnbPI adds `batch`.
+/// `seed=None` (the default) is NOT fresh entropy: under `method="enbpi"` it
+/// runs the bootstrap ensemble with seed 0, so two default calls are
+/// bit-identical; pass an explicit `seed` for a different ensemble draw
+/// (`n_boot=None` likewise means 25).
 #[pyfunction]
 #[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
                     calib = None, mode = "symmetric", period = 1, gamma = None,
@@ -9563,6 +9652,8 @@ fn realized_range(
 /// filtered conditional `variance` path, `std_resid`, `loglik`, `aic`,
 /// `bic`, the one-step-ahead `next_variance`, convergence info, and — if
 /// `horizon > 0` — an `h`-step variance `forecast`.
+/// The convergence info is `converged` (the optimizer's certificate) and
+/// `iterations`.
 #[pyfunction]
 #[pyo3(signature = (y, density = "gaussian", horizon = 0))]
 fn gas_volatility<'py>(
@@ -9741,7 +9832,7 @@ fn panel_mean_group<'py>(
 /// Returns dict keys: the edge `nowcast` (one level per series), the
 /// `edge_factor` (length `r`), the Gaussian `loglik` (full ragged panel),
 /// `fit_loglik` (balanced training block), the `smoothed_factors`
-/// (`(T, r)` nested list, training pass), `n_factors`/`factor_order`, and
+/// (`(T_b, r)` nested list — one row per BALANCED-panel observation, i.e. T minus the ragged-edge rows; training pass), `n_factors`/`factor_order`, and
 /// the full fitted model — both `method` routes return the same parameter
 /// surface:
 ///
@@ -9890,6 +9981,8 @@ fn dfm_nowcast<'py>(
 /// (post-fix: 0/20 failures on all three variants). Non-convergence from
 /// both starts raises (the last iterate is not a verified fixed point);
 /// raise `max_iter` or loosen `tol` on genuinely slow-mixing panels.
+/// Keys: `theta`, `theta_se`, `phi_bar`, `phi`, `sigma2`, `loglik`, `iterations`,
+/// `n_units`, `k`.
 #[pyfunction]
 #[pyo3(signature = (ys, xs, tol = 3e-13, max_iter = 1000))]
 fn panel_pmg<'py>(
@@ -9936,6 +10029,10 @@ fn panel_pmg<'py>(
 /// "t-stat". `regression` is "c" (default), "ct", or "n" ("n" is invalid for
 /// "ips"). `lrv_kernel`/`lrv_bandwidth` configure the LLC long-run variance.
 /// Conventions match plm::purtest (validated to plm, and for "fisher" to statsmodels).
+/// Keys: `statistic`, `p_value`, `per_unit_tstat`/`per_unit_pvalue`/
+/// `per_unit_lags`/`per_unit_nobs`, `n_units`, `regression`, `test`, plus the
+/// test-specific extras: ips -> `t_bar`; llc -> `delta_hat`, `t_delta`, `s_n`,
+/// `t_bar_periods`; fisher -> `maddala_wu`, `choi_z`, `choi_z_pvalue`.
 #[pyfunction]
 #[pyo3(signature = (data, test = "ips", lags = None, regression = "c", max_lags = None, lrv_kernel = "bartlett", lrv_bandwidth = None))]
 #[allow(clippy::too_many_arguments)]
@@ -10227,6 +10324,8 @@ fn predictive_regression<'py>(
 /// min(1, k * min_j p_j), and two extra keys report the per-predictor tests:
 /// `wald_scalar` and `pvalue_scalar` (each column exactly
 /// `predictive_regression`'s ivx test for that predictor).
+/// Keys: `beta_ivx`, `wald`, `pvalue`, `rz`, `nregressors`, `nobs`, and — under
+/// the default `joint="bonferroni"` — `wald_scalar`, `pvalue_scalar`, `joint`.
 #[pyfunction]
 #[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95, joint = "bonferroni"))]
 fn ivx_test<'py>(
@@ -10344,8 +10443,8 @@ fn recession_probit<'py>(
 /// comparing across libraries). The `slope` measures information rigidity — 0 under
 /// full-information rational expectations, positive under sticky/noisy
 /// information — and maps to `implied_rigidity = slope/(1+slope)`. Returns
-/// `intercept`/`slope` with HAC `se`/`t`/`p`, `r_squared`, `implied_rigidity`,
-/// and `maxlags`/`nobs`.
+/// `intercept` and `slope` with HAC `se_intercept`/`se_slope`, the slope's
+/// `t_slope`/`p_slope`, `r_squared`, `implied_rigidity`, and `maxlags`/`nobs`.
 #[pyfunction]
 #[pyo3(signature = (errors, revisions, maxlags = None, use_correction = true))]
 fn cg_regression<'py>(
@@ -10775,6 +10874,8 @@ fn dsge_solve<'py>(
 /// IRLS stopping tolerance) and `bse`/`bandwidth`/`sparsity` at 1e-6
 /// relative. Include the constant column in `x` yourself (statsmodels exog
 /// convention). `taus` defaults to [0.05, 0.25, 0.5, 0.75, 0.95].
+/// Keys: `taus`, `params`, `bse`, `tvalues`, `iterations`, `bandwidth`,
+/// `sparsity` (all per tau), and a single `converged` bool over all taus.
 #[pyfunction]
 #[pyo3(signature = (y, x, taus = None, se = "robust"))]
 fn quantile_regression<'py>(
@@ -10965,6 +11066,8 @@ fn flp_covs_nested(covs: &[Vec<f64>], k: usize) -> Vec<Vec<Vec<f64>>> {
 /// eigenfunction's largest-|.| entry is positive.
 ///
 /// Matches numpy.linalg.eigh of the same covariance at 1e-10.
+/// Keys: `mean_curve` (length M), `eigenfunctions` (K x M), `scores` (T x K),
+/// `eigenvalues`, `explained`, `total_variance`.
 #[pyfunction]
 #[pyo3(signature = (curves, n_factors = 3))]
 fn functional_pca<'py>(
@@ -10999,6 +11102,8 @@ fn functional_pca<'py>(
 /// Matches statsmodels OLS(...).fit(cov_type="HAC", cov_kwds={"maxlags": L,
 /// "use_correction": True}) per horizon at 1e-8 (statsmodels defaults the
 /// correction off; this function always applies it).
+/// Keys: `horizons`, `n_factors`, `betas` ((H+1) x K), `covs` ((H+1) x K x K
+/// joint HAC covariances), `se` ((H+1) x K), `nobs` (per horizon).
 #[pyfunction]
 #[pyo3(signature = (y, scores, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 fn flp<'py>(
@@ -11050,6 +11155,8 @@ fn flp<'py>(
 ///
 /// Matches the numpy/statsmodels composition (eigh + OLS-HAC + closed form)
 /// at 1e-8.
+/// Keys: `horizons`, `weights` (w = phi'delta, length K), `response`, `se`,
+/// `betas` ((H+1) x K), `explained`.
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 #[allow(clippy::too_many_arguments)] // py + 7 user args; the composite scenario call genuinely needs them
@@ -11102,6 +11209,9 @@ fn flp_scenario<'py>(
 ///
 /// Matches statsmodels VAR(...).fit(lags, trend="c") + orth_ma_rep + scipy
 /// triangular solve at 1e-8.
+/// Keys: `horizons`, `weights` (w = phi'delta, length K), `response_outcome`,
+/// `responses` ((H+1) x (K+1), scores first then outcome),
+/// `implied_outcome_innovation`.
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, lags = 2, horizon = 10))]
 fn fvar_scenario<'py>(
@@ -11276,6 +11386,9 @@ fn bai_perron<'py>(
 /// R strucchange `Fstats`/`sctest` at 1e-8; p-value 1e-10 against the
 /// transcribed surface). Returns the full `f_path` over `dates` plus the
 /// argmax `break_date`.
+/// Keys: `stat`, `p_value`, `break_date`, `f_path` (one F per candidate date),
+/// `dates` (the trimmed candidate dates `f_path` is indexed by), and `h` (the
+/// trimming width in observations at each end).
 #[pyfunction]
 #[pyo3(signature = (y, x, trim = 0.15))]
 fn sup_f_test<'py>(
@@ -11359,6 +11472,9 @@ fn sup_f_test<'py>(
 /// here is centred on a shrunk estimator.
 ///
 /// Method: Montiel Olea and Plagborg-Møller.
+/// Keys: `horizons`, `irf`, `se`, `lambda_used`, `cv_grid`, `cv_scores` (both
+/// empty when `lam` is a fixed float), `theta`, `irf_raw`, `se_raw`, plus the
+/// band keys above when `band` is set.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -11622,6 +11738,28 @@ fn parse_narrative_restrictions(
 
 /// Historical decomposition (Kilian & Lütkepohl 2017, ch.4): per-(time, variable,
 /// shock) structural-shock contributions.
+/// Splits each variable into a deterministic/initial-condition `baseline` plus the
+/// cumulated contribution `hd[time][variable][shock]` of each structural shock,
+/// obeying the exact adding-up identity y = baseline + sum_j hd (validated to ~1e-10
+/// against a NumPy reference). `times` are 0-based effective-sample indices
+/// (= data_row - lags).
+///
+/// identification="cholesky" (default): a point decomposition at the OLS VAR with
+/// Q=I; returns `times`, `baseline` [T_eff][n], `hd` [T_eff][n][n] indexed
+/// [time][variable][shock], and the structural `shocks` [T_eff][n].
+/// identification="sign": the importance-weighted SET decomposition over sign- (and
+/// optionally narrative-) restricted rotations; returns `times`, `baseline`
+/// (posterior-mean), `probs`, `hd_quantiles` [T_eff][n][n][len(probs)] (weighted
+/// type-7), the weight-free identified-set envelope `hd_set_min`/`hd_set_max`,
+/// per-draw `weights`, and `diagnostics`.
+///
+/// `narrative_restrictions` (sign mode) is a list of dicts with 0-based effective
+/// indices:
+///   {"type":"shock_sign","shock":int,"period":int,"sign":"+"|"-"}
+///   {"type":"contribution","variable":int,"shock":int,"start":int,"end":int,
+///    "rule":"most"|"least","strong":bool}
+///   {"type":"contribution_sign","variable":int,"shock":int,"start":int,"end":int,
+///    "sign":"+"|"-"}
 #[pyfunction]
 #[pyo3(signature = (data, restrictions = vec![], lags = 2, horizon = None, identification = "cholesky",
                     n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2,
@@ -11796,6 +11934,15 @@ fn historical_decomposition<'py>(
 
 /// Narrative sign-restricted Bayesian SVAR (Antolín-Díaz & Rubio-Ramírez 2018).
 /// Superset of sign_restricted_svar; narrative None + weights all 1 reproduces it.
+/// Augments traditional sign restrictions with restrictions on named historical
+/// episodes — shock signs and "most/least important contributor" statements (see
+/// `historical_decomposition` for the `narrative_restrictions` dict schema) —
+/// imposed by importance-reweighting the accepted rotations with weight = 1/P̂(N|S).
+/// Returns per-(horizon, variable, shock) `quantiles` (weighted type-7) at
+/// the echoed `probs` (= [0.05, 0.16, 0.50, 0.84, 0.95]), the weight-free identified-set envelope
+/// `set_min`/`set_max`, per-draw `weights` (mean 1), and `diagnostics` (with `ess`,
+/// `narrative_acceptance_rate`, `min_ptilde`). With no narrative restrictions every
+/// weight is 1 and it reproduces `sign_restricted_svar` bit-for-bit.
 #[pyfunction]
 #[pyo3(signature = (data, sign_restrictions = vec![], narrative_restrictions = None, lags = 2,
                     horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, n_weight_draws = 200))]
@@ -11894,6 +12041,21 @@ fn narrative_svar<'py>(
 
 /// Fry-Pagan (2011) median-target SVAR: the single accepted sign-restricted
 /// draw whose structural IRFs are jointly closest to the pointwise median.
+/// Sign restrictions set-identify a *set* of structural models; the pointwise
+/// median band mixes responses from mutually inconsistent draws and is not
+/// itself a model. This returns instead the single accepted, sign-normalized
+/// draw whose structural IRFs jointly minimize the Fry-Pagan criterion -- the
+/// sum, over the target cells, of squared deviations from the pointwise median,
+/// each standardized by that cell's across-draw dispersion. `restrictions` are
+/// (variable, shock, horizon, sign) tuples with sign in {"+", "-"}; `target` is
+/// "restricted" (response cells of the sign-restricted shocks; default) or
+/// "all". Returns the coherent `median_target_irf` [horizon+1][n][n], the
+/// incoherent pointwise `median_irf` (for comparison), the selected `mt_index`
+/// (0-based into the accepted set), its `mt_statistic`, `n_accepted`, and the
+/// acceptance `diagnostics`. Reproducible at a fixed `seed` (substream
+/// contract). The selected draw is a descriptive summary -- one interior point
+/// of the identified set, dependent on the informative Haar prior -- not a
+/// prior-free point estimate.
 #[pyfunction]
 #[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, target = "restricted"))]
 #[allow(clippy::too_many_arguments)]
@@ -11990,6 +12152,22 @@ fn fry_pagan_svar<'py>(
 
 /// Giacomini-Kitagawa (2021) prior-robust identified-set bounds for a sign-
 /// restricted SVAR on the Minnesota-NIW posterior.
+/// `restrictions` are (variable, shock, horizon, sign) tuples with sign in
+/// {"+", "-"}. For each restricted shock, the per-draw identified set of the
+/// structural IRF is computed exactly over the admissible rotation set and
+/// summarized over the reduced-form posterior, removing the informative-Haar-
+/// prior artifact that pointwise `sign_restricted_svar` bands carry. Returns
+/// per (horizon, variable, shock): `set_lower_mean`/`set_upper_mean` (posterior-
+/// mean identified-set edges), `robust_ci_lower`/`robust_ci_upper` (the level-
+/// `alpha` robust credible region), and `lower_quantiles`/`upper_quantiles` at
+/// the echoed `probs` (= [0.05, 0.16, 0.50, 0.84, 0.95]). Unrestricted shocks are NaN in every one
+/// of those arrays; `restricted_shocks` lists the valid shock indices, `alpha`
+/// is echoed, and `diagnostics` reports `empty_set_rate` (the share of draws
+/// whose restrictions were mutually infeasible). Exact for a single restricted
+/// shock (Gafarov-Meier-Montiel-Olea 2018 closed form); with multiple
+/// jointly-restricted shocks each bound is that shock's marginal identified
+/// set — a conservative outer approximation of the joint set, since the
+/// cross-shock orthogonality coupling is not imposed.
 #[pyfunction]
 #[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, seed = 0, lambda1 = 0.2, alpha = 0.10))]
 #[allow(clippy::too_many_arguments)]
@@ -12086,6 +12264,9 @@ fn robust_svar_bounds<'py>(
 /// threshold: `1 - p < n_exceed / n`) in the units of `y` — fit losses
 /// (`-returns` or `abs(returns)`) to read them as risk numbers; `es` is
 /// NaN where `xi >= 1`. At least 10 exceedances are required.
+/// Keys: `threshold`, `threshold_quantile`, `n`, `n_exceed`, `exceed_rate`,
+/// `xi`, `beta`, `se_xi`, `se_beta`, `se_valid`, `loglik`, `converged`,
+/// `p_tail`, `var`, `es`.
 #[pyfunction]
 #[pyo3(signature = (y, threshold = None, quantile = 0.90, p_tail = None))]
 fn gpd_fit<'py>(
@@ -12129,6 +12310,9 @@ fn gpd_fit<'py>(
 /// are the `1 - 1/T` GEV quantiles at each `return_periods` entry
 /// (default [10, 50, 100] blocks; each `T > 1`). At least 10 maxima are
 /// required.
+/// Keys: `xi`, `mu`, `sigma`, `se_xi`, `se_mu`, `se_sigma`, `se_valid`,
+/// `loglik`, `converged`, `n_maxima`, `block_size`, `return_periods`,
+/// `return_levels`.
 #[pyfunction]
 #[pyo3(signature = (y, block_size = None, return_periods = None))]
 fn gev_fit<'py>(

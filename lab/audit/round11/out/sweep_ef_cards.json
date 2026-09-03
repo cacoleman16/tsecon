@@ -1,0 +1,150 @@
+{
+ "defaults": [
+  {
+   "card": "diagnostics.md",
+   "line": 89,
+   "fn": "adf",
+   "arg": "autolag",
+   "card_default": "aic",
+   "runtime": "Ellipsis"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 260,
+   "fn": "check_stationarity",
+   "arg": "seasonal",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 261,
+   "fn": "check_stationarity",
+   "arg": "trend",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 262,
+   "fn": "check_stationarity",
+   "arg": "low_pass",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 263,
+   "fn": "check_stationarity",
+   "arg": "seasonal_deg",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 263,
+   "fn": "check_stationarity",
+   "arg": "trend_deg",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 263,
+   "fn": "check_stationarity",
+   "arg": "low_pass_deg",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 264,
+   "fn": "check_stationarity",
+   "arg": "robust",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 266,
+   "fn": "check_stationarity",
+   "arg": "inner_iter",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 266,
+   "fn": "check_stationarity",
+   "arg": "outer_iter",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 411,
+   "fn": "check_stationarity",
+   "arg": "periods",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 412,
+   "fn": "check_stationarity",
+   "arg": "windows",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 413,
+   "fn": "check_stationarity",
+   "arg": "iterate",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "diagnostics.md",
+   "line": 414,
+   "fn": "check_stationarity",
+   "arg": "STL kwargs",
+   "issue": "unknown argument"
+  },
+  {
+   "card": "forecasting.md",
+   "line": 117,
+   "fn": "backtest",
+   "arg": "forecaster",
+   "card_default": "naive",
+   "runtime": null
+  },
+  {
+   "card": "forecasting.md",
+   "line": 118,
+   "fn": "backtest",
+   "arg": "period",
+   "card_default": 1,
+   "runtime": null
+  }
+ ],
+ "keys": [
+  {
+   "card": "machine-learning.md",
+   "fn": "adaptive_lasso",
+   "omitted": [
+    "max_rel_change"
+   ]
+  },
+  {
+   "card": "panel.md",
+   "fn": "panel_lp",
+   "omitted": [
+    "bias_correction",
+    "cumulative",
+    "jackknife",
+    "se_type"
+   ]
+  },
+  {
+   "card": "panel.md",
+   "fn": "lp_did",
+   "omitted": [
+    "absorbing",
+    "never_treated_only",
+    "nonabsorbing_lag",
+    "pooled",
+    "reweight",
+    "se_type"
+   ]
+  }
+ ]
+}
