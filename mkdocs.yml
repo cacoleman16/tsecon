@@ -130,6 +130,8 @@ nav:
           - Machine learning: reference/model-cards/machine-learning.md
           - ML — kernel methods: reference/model-cards/ml-kernel.md
           - ML — structured penalties & post-selection: reference/model-cards/ml-structured.md
+          - ML — trees & forests: reference/model-cards/ml-trees.md
+          - ML — trend filtering & boosting: reference/model-cards/ml-convex.md
           - Panel: reference/model-cards/panel.md
           - Panel unit-root tests: reference/model-cards/panel-unit-root.md
           - Nowcasting & MIDAS: reference/model-cards/nowcasting-midas.md

@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-arima"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-diag",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-bayes"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-linalg",
@@ -904,7 +904,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-bootstrap"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "rayon",
  "serde_json",
@@ -913,7 +913,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-breaks"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -924,7 +924,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-coint"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "rayon",
  "serde_json",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-connect"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-linalg",
@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-copula"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-optim",
@@ -955,7 +955,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-diag"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-filters",
@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-dsge"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-linalg",
@@ -975,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-evt"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-optim",
@@ -983,7 +983,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-favar"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-linalg",
@@ -992,7 +992,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-filters"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1000,7 +1000,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-forecast"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-bootstrap",
@@ -1011,7 +1011,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-funcshock"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1022,7 +1022,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-garch"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-optim",
@@ -1031,7 +1031,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-gas"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-bootstrap",
@@ -1043,7 +1043,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-gmm"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1055,14 +1055,14 @@ dependencies = [
 
 [[package]]
 name = "tsecon-hac"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "tsecon-ident"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-bayes",
@@ -1073,7 +1073,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-linalg"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "faer",
  "serde_json",
@@ -1081,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-longmemory"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-lp"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1105,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-mgarch"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-garch",
@@ -1116,7 +1116,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-midas"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-ml"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "rayon",
  "serde_json",
@@ -1137,7 +1137,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-nowcast"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-favar",
@@ -1151,11 +1151,11 @@ dependencies = [
 
 [[package]]
 name = "tsecon-optim"
-version = "0.7.0"
+version = "0.8.0"
 
 [[package]]
 name = "tsecon-panel"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1167,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-panelroot"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-diag",
@@ -1178,7 +1178,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-panelts"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1189,7 +1189,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-predreg"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1200,7 +1200,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-python"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "numpy",
  "pyo3",
@@ -1249,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-quantile"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1260,7 +1260,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-realized"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-recession"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-linalg",
@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-regime"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "rayon",
  "serde_json",
@@ -1292,14 +1292,14 @@ dependencies = [
 
 [[package]]
 name = "tsecon-rng"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "tsecon-spectest"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1310,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-spectral"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "rustfft",
  "serde_json",
@@ -1318,7 +1318,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-ssm"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-linalg",
@@ -1326,14 +1326,14 @@ dependencies = [
 
 [[package]]
 name = "tsecon-stats"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "tsecon-survey"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1344,7 +1344,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-termstructure"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-hac",
@@ -1354,7 +1354,7 @@ dependencies = [
 
 [[package]]
 name = "tsecon-var"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "tsecon-bootstrap",

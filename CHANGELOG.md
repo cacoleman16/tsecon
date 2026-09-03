@@ -7,6 +7,363 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-03
+
+The machine-learning wave (roadmap Module 10, Tier 2 plus the one native
+neural entry), and audit round 11. Every estimator below ships with the
+grade it actually earned: kernel ridge, kernel regression, the regression
+tree, post-LASSO and the exact leg of post-double-selection are pinned to
+scikit-learn / statsmodels; group LASSO and L1 trend filtering carry a
+convex-optimality certificate the test re-derives independently, cross-
+checked against skglm and cvxpy/Clarabel; the forest, the seed-ensembled
+MLP, the echo state network, PDS coverage and boosting are property /
+Monte-Carlo or transcription grade and say so. Deep-learning adapters and
+gradient-boosted-tree wrappers stay out of core by the module's scope
+ruling; there is no reinforcement-learning surface because nothing in the
+econometric workflow is a control problem.
+
+### Added
+
+- **`kernel_ridge`** — kernel ridge regression with scikit-learn's exact
+  conventions: the dual Cholesky solve `(K + alpha I) a = y` (no `1/n`, no
+  intercept — the `Ridge` scale) for the rbf `exp(-gamma ||x-y||^2)`,
+  laplacian `exp(-gamma ||x-y||_1)`, polynomial `(gamma <x,y> + coef0)^degree`
+  and linear kernels, `gamma=None -> 1/n_features`, `x_test` predictions, and
+  `rff_features=D` for the Rahimi-Recht (2007) random-Fourier-feature primal
+  approximation of the rbf kernel (`z(x) = sqrt(2/D) cos(Wx + b)`, drawn from
+  a Philox stream keyed by `seed`; `O(n D^2)` instead of `O(n^3)`). Returns
+  `dual_coef` (exact) or `coef` (RFF), `fitted`, `predicted` (only with
+  `x_test`), `kernel`, the resolved `gamma`, `n_rff_features`. **Validated
+  against scikit-learn 1.9.0 `KernelRidge`** — `dual_coef_`, `predict(X)`,
+  `predict(X_test)` for two parameterizations of each kernel, asserted at
+  1e-8, achieved 2.2e-12 (independent package). The RFF mode is honestly
+  *not* golden-pinned (it is a seeded Monte-Carlo approximation): property
+  tests pin bit-identical output under the same seed, different output
+  under different seeds, and RMSE against the exact fit falling
+  0.307 → 0.049 → 0.016 at `D = 20, 200, 2000`. Where scikit-learn silently
+  falls back to a least-squares solve when `K + alpha I` is singular
+  (`alpha=0` with duplicate rows), tsecon refuses and names `alpha`.
+- **`kernel_regression`** — Nadaraya-Watson (`kind="nadaraya_watson"`) and
+  local-linear (`"local_linear"`, the default) nonparametric regression with a
+  product Gaussian kernel for one to three regressors, matching statsmodels
+  `KernelReg(reg_type="lc"|"ll", var_type="c"*k)` exactly (the local-linear
+  fit goes through the pseudoinverse with NumPy's `1e-15` cutoff, as
+  statsmodels' does). Bandwidths: `bandwidth_method="fixed"` (scalar or
+  per-column), `"loo_cv"` (statsmodels' leave-one-out least-squares
+  criterion), and **`"block_cv"` — the leave-block-out criterion of Chu &
+  Marron (1991) / Hart & Vieu (1990)** that drops the `2*block + 1`
+  observations around `i` when predicting `y_i` (default
+  `block = ceil(n^(1/3))`), the dependence-aware selector the roadmap calls
+  for: on an AR(1)-error design (`rho = 0.9`, `n = 200`) leave-one-out drives
+  the bandwidth to the search's lower wall on every seed while block-CV
+  selects a 10–400× wider one on 10/10 seeds. Selection is a deterministic
+  21-point log grid on a common multiple of the Scott reference, golden-
+  section refinement, and per-column coordinate polishing for `k >= 2` — it
+  reaches a criterion no worse than statsmodels' Nelder-Mead `fmin` on all
+  four fixture cases without chasing its path. Returns `fitted`,
+  `predicted` (only with `x_test`), the resolved per-column `bandwidth`,
+  `bandwidth_method`, `block`, `cv_criterion` (statsmodels' `cv_loo` value
+  under `"fixed"`/`"loo_cv"`), `effective_df` (`tr(S)` of the linear
+  smoother: `k+1` or `1` at huge bandwidths, `n` at tiny ones), `kind`,
+  `kernel`, the honesty flag `bandwidth_at_boundary` (a selected bandwidth
+  on a wall of the search range — proven to fire on pure noise), and
+  `n_criterion_evaluations`. **Validated against statsmodels 0.15.0
+  `KernelReg`** — `fit()` at the training rows and at `x_test` for twelve
+  fixed-bandwidth cases (`k = 1, 2`, both estimators) asserted at 1e-8,
+  achieved 6.7e-15; `cv_loo(bw, func)` asserted at 1e-10, achieved 3.0e-15
+  (independent package). The leave-block-out criterion and `effective_df`
+  have no package reference and are graded honestly as documented-formula
+  transcriptions (NumPy in the generator; they reproduce `cv_loo` at `l = 0`
+  and `fit()` at 1e-12), pinned at 1e-10, achieved 2.7e-15 / 3.6e-15.
+  **Measured speed at `n = 2000`** (local linear, `k = 1`, fixed bandwidth,
+  this environment): a local-linear fit at a fixed bandwidth takes 0.16 s against statsmodels' 0.59 s `fit()` (3.6×) and already includes the LOO criterion that statsmodels' `cv_loo` needs a further 0.97 s for (5.9×); the full leave-one-out bandwidth search reaches statsmodels' `bw="cv_ls"` optimum (`h = 0.1793`, identical criterion) in 6.5 s against 22.0 s (3.4×); at `k = 2` the search takes 48 s against 59 s (1.2×, same optimum). Both implementations are bound by the same four million kernel evaluations per criterion pass, so this is a constant-factor win, not an order of magnitude — stated as measured; the exact `kernel_ridge` solve at `n = 2000` takes 0.48 s against scikit-learn's 13.8 s in this environment (a LAPACK-backend effect, agreement 2e-14). The leave-block-out criterion has no statsmodels counterpart at any speed.
+- Teaching errors throughout, following the round-10 sentinel convention:
+  NaN/inf refused naming `x`, `y` or `x_test`; the house
+  `insufficient data: {got} observations, at least {needed} required` with
+  the exact minimum (`k + 2 + 2*block` for local linear); unknown
+  `kernel`/`kind`/`bandwidth_method` strings list the accepted values; a
+  non-positive bandwidth names the column and the fix; `bandwidth` passed
+  with a CV method, `block` with `"fixed"`/`"loo_cv"`, `block=0`, `gamma`
+  with the linear kernel, `rff_features` with a non-rbf kernel, a non-zero
+  `seed` in exact mode, and non-default `degree`/`coef0` with a
+  non-polynomial kernel all **raise** naming the argument and the mode that
+  would use it — nothing is silently ignored. `x` and `x_test` accept a 1-D
+  array for a single regressor. New crate surface in `tsecon-ml`:
+  `kernel_ridge`, `kernel_matrix`, `kernel_regression`, `cv_criterion`,
+  with `MlError::InsufficientData`, `MlError::InvalidValue` and
+  `MlError::NotPositiveDefinite`. Model card:
+  [`ml-kernel.md`](docs/reference/model-cards/ml-kernel.md); fixture
+  `fixtures/kernel.json`.
+
+- **`group_lasso` — group LASSO (Yuan & Lin 2006) and sparse-group LASSO
+  (Simon, Friedman, Hastie & Tibshirani 2013) with a readable optimality
+  certificate.** Block coordinate descent on
+  `(1/(2n))||y - Xb||^2 + alpha*[(1 - l1_ratio)*sum_g w_g||b_g||_2 +
+  l1_ratio*||b||_1]` — the crate's `lasso` scaling, so `l1_ratio=1` *is*
+  `lasso` and `alpha` stays on scikit-learn's scale. Each block is solved
+  by proximal gradient with the exact per-block Lipschitz constant
+  `lambda_max(X_g'X_g)/n` and Simon et al.'s group-zero test, the trap the
+  roadmap names (a wrong constant or prox order "converges smoothly to the
+  wrong answer"), and `converged` is gated on the subgradient KKT residual
+  the fit returns as `kkt_violation` — a self-certificate that is rigorous
+  for this convex problem. `groups` takes any integer labels, contiguous
+  or not (integer arrays pass through coercion untouched);
+  `group_weights` is `"sqrt_size"` (Yuan-Lin), `"none"`, or a per-group
+  array. Returns `coef`, `n_iter`, `converged`, `active_groups`,
+  `active_set`, `objective`, `kkt_violation`, `max_rel_change`,
+  `alpha_max`. Validation: an **independent** KKT evaluation on every
+  fixture case asserted ≤ 1e-8 and achieved 2.3e-13 (primary grade); cross-
+  package agreement with **skglm 0.5** (`GroupLasso`, `WeightedL1GroupL2`
+  + `GroupBCD`, same 1/(2n) objective, ten cases over two designs and three
+  weight conventions) asserted 1e-8 and achieved 1.5e-12, bounded by
+  skglm's own recorded KKT residual (5.7e-13); reductions to `lasso`
+  (`l1_ratio=1`; singleton groups; weighted singletons ≡ rescaled `lasso`)
+  at 1e-8, achieved ~1e-13; `alpha_max` at 1e-12; scale equivariance over
+  sixteen decades at both shipped tolerances; the `converged=False` flag
+  proven to fire with an honestly larger residual.
+- **`post_lasso` — post-LASSO OLS (Belloni & Chernozhukov 2013), with no
+  standard errors by design.** LASSO / elastic net on `elastic_net`'s
+  objective, then the minimum-norm OLS refit on the selected columns.
+  Returns `support`, `coef_lasso`, `coef_ols`, `n_selected`, `rss`. The
+  docstring and card say why nothing resembling a standard error is
+  returned (the selection event depends on the same sample; naive OLS
+  standard errors after selection are invalid) and route inference to
+  `pds_lasso`. Refit pinned to scikit-learn
+  `LinearRegression(fit_intercept=False)` on the scikit-learn support at
+  1e-10, achieved 8.4e-15; support exact.
+- **`pds_lasso` — post-double-selection (Belloni, Chernozhukov & Hansen
+  2014) for a treatment coefficient among high-dimensional controls, with
+  Newey-West HAC inference from the shared HAC engine.** LASSO of `y` on
+  `x` and of `d` on `x` (`alpha="bic"` = the per-equation BIC pick along
+  `lasso_path`'s grid, or one float), union of supports, OLS of `y` on
+  `[d, x_union]` with Bartlett HAC (`hac_lags=None` → the Newey-West rule
+  `floor(4 (n/100)^(2/9))`; `0` → classical standard errors); the HAC
+  covariance carries `n/(n-k)` and `p_value`/`conf_int` use the normal
+  (statsmodels `use_correction=True`, `use_t=False`). Returns `coef`,
+  `se`, `t_stat`, `p_value`, `conf_int`, `support_y`, `support_d`,
+  `union_support`, `n_controls_selected`, `alpha_y`, `alpha_d`,
+  `hac_lags_resolved`. Exact leg pinned to statsmodels HAC / nonrobust OLS
+  on the forced-full and BIC-selected unions at 1e-8 relative, achieved
+  9.8e-15 (`p_value` 1e-12). **Coverage is Monte-Carlo grade** — R `hdm`
+  and Stata `pdslasso` are not runnable in the reference environment — and
+  the failure it exists to fix is measured rather than asserted: on the
+  seeded design (n = 400, p = 40 AR(1) controls, AR(1) errors ρ = 0.3, four
+  confounders loading γ = ±1 on `d` and β = ±0.15 on `y`, 300 replications)
+  the single-selection interval covers **0.003** at a nominal 0.95
+  while PDS covers **0.950**, within Monte-Carlo noise of the
+  infeasible oracle (**0.953**). A second, more persistent cell
+  (n = 200, ρ = 0.5) shows the HAC engine's own small-sample shortfall —
+  oracle **0.930**, PDS **0.903**, single **0.153** — so
+  the card can separate what selection costs from what Newey-West costs.
+  (The two 300-replication cells are an `#[ignore]`d release-mode test;
+  the always-on cell — n = 200, p = 16, 80 replications — asserts the
+  same ordering on every `cargo test`: PDS 0.938, oracle 0.963, single
+  selection 0.075.)
+- New teaching errors on the slice: NaN/inf refused naming the array
+  (`x`, `y`, `d`); `groups` length mismatches name the expected and
+  received sizes; `l1_ratio` outside `[0, 1]`; unknown `group_weights` /
+  `alpha` strings list the accepted values; custom weights of the wrong
+  length or not positive; negative `hac_lags` names the three valid
+  choices; the house insufficiency wording (`insufficient data: {got}
+  observations, at least {needed} required`) when a refit has no residual
+  degrees of freedom; a singular `[d, X_union]` design surfaces the HAC
+  engine's error rather than a panic. `MlError` gains `InsufficientData`
+  and `Hac(HacError)`; `tsecon-ml` now depends on `tsecon-hac`.
+- `_coerce._EXEMPT` gains `group_lasso: {groups}`, and the integer-
+  parameter audit in `test_coerce.py` now scans every `src/*.rs` binding
+  file rather than `lib.rs` alone.
+
+- **Regression trees and random forests, native Rust (`regression_tree`,
+  `random_forest`; roadmap Module 10, Tier 2 "Trees, forests, and
+  boosting", "Interpretation", and Tier 3 "Quantile regression forests").**
+  `regression_tree` is CART with scikit-learn's best-split conventions —
+  midpoint thresholds, the 1e-7 tie window, `min_samples_leaf` on both
+  sides, leaves at the training mean, impurity-based importance — and is
+  **golden-pinned to scikit-learn 1.9.0 `DecisionTreeRegressor`** on eight
+  `(max_depth, min_samples_leaf, min_samples_split)` settings: predictions
+  at 1e-12 (achieved 1.1e-14), `n_nodes`/`n_leaves`/`depth` exact,
+  `feature_importances_` at 1e-10 (achieved 3.3e-14), the sorted split
+  multiset with thresholds at 1e-12 (achieved 0). Exact matching is
+  possible because the fixture generator proves every stored case tie-free
+  by refitting under five sklearn `random_state` values (sklearn breaks an
+  exact tie by its private RNG's feature-visit order); the two candidate
+  settings that exercised a tie-break are recorded in the fixture rather
+  than silently dropped. `random_forest` grows those trees on iid,
+  moving-block (Künsch) or stationary (Politis-Romano) row resamples —
+  `block_length` required for the block schemes and refused for
+  `"iid"`/`"none"` — with `max_features` in {"sqrt", "third", "all", int},
+  one Philox substream per tree so the fit is bit-identical at any rayon
+  thread count (asserted at 1/3/8 threads), out-of-bag predictions and
+  MSE, Meinshausen (2006) quantile regression forests (`quantiles=`), and
+  impurity or grouped block-permutation importance (`importance_groups`
+  names the unit each column belongs to; `permutation_block` shuffles
+  contiguous row blocks). `random_forest(bootstrap="none",
+  max_features="all", n_trees=1)` reproduces `regression_tree`
+  bit-for-bit, which is how the forest inherits the golden; the full
+  forest is **property / Monte-Carlo grade**, measured and asserted with
+  margins: Friedman #1 out-of-sample R² 0.79 (bar 0.70); block and
+  stationary resampling keep an AR(0.9) series' lag-1 autocorrelation at
+  0.84 where iid resampling leaves −0.01; **out-of-bag error is optimistic
+  on time series** — on the same forest with persistent predictors the
+  OOB/POOS MSE ratio is 0.84 under iid errors and 0.70 under AR(0.9)
+  errors (the trap the roadmap names; the card says to report
+  pseudo-out-of-sample metrics); the q10-q90 quantile band covers 0.88 of
+  iid test targets for a nominal 0.80 (conservative, as Meinshausen
+  reports for small leaves) and quantiles never cross; importance
+  recovers the five relevant Friedman columns under both schemes. The
+  default call (`n_trees=500`, n=500, p=10) takes about 0.3 s.
+  **Honest downgrade, stated on the card:** the roadmap's claim that block
+  permutation gives a persistent irrelevant predictor a *smaller*
+  importance than single-row permutation does not hold for a row-wise
+  forest scored with a row-wise loss — the mean importance depends only
+  on which row each permuted value comes from, and both permutations
+  pair a row with an essentially uniform other row. Measured: an
+  irrelevant AR(0.95) unit scores about zero (-0.02) when the relevant
+  predictors are iid but 0.11 when they are persistent (the forest uses it as a time
+  proxy), and grouped single-row (0.114) vs grouped block (0.108)
+  permutation agree within noise, so the test asserts the inflation and
+  the agreement, not the ordering; what grouping *does* fix — per-lag
+  permutation diluting a variable's importance across collinear lags
+  (0.093 vs 0.114) — is measured too. Teaching errors: NaN/inf refused
+  naming the array; `insufficient data: {got} observations, at least
+  {needed} required`; unknown string options list the accepted values;
+  `quantiles` outside (0, 1) or unsorted name the fix;
+  `importance_groups` of the wrong length names both lengths; the
+  inert-kwarg sentinels (`block_length`, `importance_groups`,
+  `permutation_block`, `n_permutations`) refuse where they would do
+  nothing. Rust: `tsecon_ml::{regression_tree, random_forest,
+  resample_indices, TreeOptions, ForestOptions, MaxFeatures, Resampling,
+  Importance}`; new `MlError::InsufficientData` / `InvalidBlockLength`.
+  Fixture `fixtures/trees.json`; card
+  `docs/reference/model-cards/ml-trees.md`.
+
+- **L1 trend filtering (`l1_trend_filter`)** — Kim, Koh & Boyd's (2009)
+  piecewise-linear trend with data-chosen knots (roadmap Module 10, Tier
+  2), in `tsecon-ml`. Minimizes `(1/2)‖y − x‖² + lam·‖D x‖₁` with `D` the
+  `order`-th difference operator: `order=2` gives a piecewise-linear
+  trend whose kinks are the `knots`, `order=1` a piecewise-constant one
+  (the fused LASSO on the level). `penalty="l2"` swaps in the squared
+  penalty `(lam/2)‖D x‖²`, which for `order=2` **is** the Hodrick-Prescott
+  filter under HP's own `lam` — a cross-surface identity the suite asserts
+  against `hp_filter` at 1e-10. Solver: Kim-Koh-Boyd's primal-dual
+  interior-point method on the **banded dual** — every Newton step is an
+  O(n) banded `LDLᵀ` factorization, no n×n matrix anywhere — followed by
+  an exact active-set polish that zeros the inactive differences to
+  rounding; the closed-form limits `lam = 0` (the data) and `lam ≥
+  lam_max = ‖(DDᵀ)⁻¹Dy‖_∞` (the least-squares polynomial of degree
+  `order − 1`) are returned directly, and `lam_max` is a returned key.
+  Every fit carries a **certificate**: `duality_gap` is the primal
+  objective at the returned trend minus a dual-feasible dual objective,
+  so `objective − optimum ≤ duality_gap` by weak duality; `converged` is
+  `duality_gap ≤ tol·objective`, and a starved budget or a `tol` below
+  the certificate's floating-point floor (~1e-11 relative; a stall
+  detector ends the loop in ~40 iterations instead of burning the
+  budget) returns `converged=False` with the honest gap. Validation,
+  graded per leg: the tests re-derive the KKT certificate for the
+  crate's own trend from scratch on 14 fixture cases and assert a
+  relative gap ≤ 1e-8 (achieved ≤ 3.3e-10; 1e-15 on order-1 cases);
+  **cvxpy 1.9.2 + Clarabel 0.11.1** third-party trends converged at 1e-14 agree at
+  1e-8 (achieved 1.4e-10); `lam_max` and the polynomial limit at 1e-10 /
+  1e-8 (achieved 1.4e-10); the L2 form against the dense closed form at
+  1e-10 (achieved 1.7e-12). `tol` / `max_iter` are inert under
+  `penalty="l2"` (a closed-form solve) and follow the sentinel
+  convention: explicitly passed there raises naming the kwarg; the
+  default call is bit-identical; both are live under `"l1"`. Wall time
+  (release wheel): 0.12 s at `n = 10000` (49 interior-point iterations),
+  4 ms for the L2 form — the O(n) structure is asserted by test.
+- **Componentwise L2 boosting (`boosting`)** — Bühlmann & Yu (2003) /
+  Bühlmann (2006), the R mboost `glmboost` engine (roadmap Module 10,
+  Tier 2 "boosted ARDL"), in `tsecon-ml`. Single-column least-squares
+  base learners, greedy RSS selection (ties to the smallest index, no
+  randomness anywhere — the `selected` sequence is a deterministic,
+  seedless function of the inputs), `learning_rate` × the LS fit added
+  per step from `F_0 = 0` (no intercept: pass a centered `y` and centered
+  columns, as everywhere in the crate). The boosting operator `B_m =
+  B_{m−1} + ν H_j (I − B_{m−1})` is tracked **exactly** in a rank-`m`
+  factored form — no n×n matrix — and its trace feeds Bühlmann's (2006)
+  corrected AIC `log(RSS_m/n) + (1 + df_m/n)/(1 − (df_m + 2)/n)`;
+  `stop="aic"` reports the minimizing step, `stop="none"` the last, with
+  `coef_path`, `selected`, `rss_path`, `df_path`, `aic_path`, `best_step`,
+  `fitted`, and `predicted` (from `x_test`) returned either way.
+  Validation, graded honestly as a **transcription**: an independent
+  dense NumPy transcription of the published algorithm with the operator
+  formed explicitly (so the trace is exact by construction) pins
+  `coef_path`, `df_path`, and `aic_path` at 1e-12 (achieved 6.7e-16 /
+  2.7e-15 / 1.6e-15) and `selected` / `best_step` exactly on five cases;
+  R mboost is not runnable in the build environment, so this is not a
+  third-party run and the card says so. Properties: RSS nonincreasing,
+  the small-step limit reproduces OLS on the selected support at 3.3e-14,
+  AIC stopping recovers a sparse truth's support (0.09 s at `n = 500,
+  p = 50, 500 steps`, release wheel), and every teaching
+  error (NaN naming the array, `insufficient data: {got} observations, at
+  least 3 required`, `learning_rate` outside (0, 1], unknown `stop`
+  listing the accepted values, `x_test` column mismatch) is pinned from
+  Python.
+
+<!-- NEURAL-SLICE-BULLETS -->
+
+### Fixed — audit round 11 (documentation contract, seed contract, complexity ledger)
+
+Four new class sweeps over all 162 pre-wave callables — result-object contract (summarize / JSON / pickle / documented keys), signature-vs-stub-vs-docstring drift, complexity cliffs at T = 200 / 800 / 3200, and the seed contract across process restarts — 133 candidates, 67 refuted, 14 confirmed and fixed (0 severe, 6 moderate, 8 low), 8 recorded OPEN in [the findings doc](docs/roadmap/26-audit-round-11-findings.md). The clean bills matter as much: no panic anywhere, 162/162 deterministic, 21/21 seed parameters bit-identical across a process restart, summarize/JSON/pickle clean on every result, and zero signature-vs-stub drift.
+
+- **Five structural-identification functions' `help()` text carried none of
+  their return contract** — `robust_svar_bounds`, `fry_pagan_svar`,
+  `hetero_svar`, `historical_decomposition`, `narrative_svar` had one- or
+  two-line runtime docstrings while the stub carried the full key list; on
+  the binding surface `robust_svar_bounds` named none of its ten keys and
+  its NaN-for-unrestricted-shocks convention existed only in the stub. The
+  runtime docstrings now carry the contract; a regression test asserts
+  every returned key is named in `fn.__doc__`.
+- **`gpd_fit` / `gev_fit` runtime docstrings gained the stub's `Keys:`
+  line** (7 and 6 returned keys were unnamed at `help()`).
+- **Twenty-two further runtime docstrings now name every returned key the
+  stub already named** (`adaptive_lasso`, `check_series`, `connectedness`,
+  `factor_model`, `flp`, `flp_scenario`, `functional_pca`, `fvar_scenario`,
+  `iv_gmm`, `ivx_test`, `jarque_bera`, `johansen`, `nongaussian_svar`,
+  `panel_lp`, `panel_pmg`, `panel_unit_root`, `proxy_first_stage`,
+  `quantile_regression`, `setar`, `smooth_lp`, `sup_f_test`,
+  `var_backtest`); `proxy_first_stage`'s `mop_cv_tau20`/`mop_cv_tau30`
+  were named on no surface before.
+- **`max_rel_change` is documented** on `lasso`, `elastic_net` and
+  `adaptive_lasso` (docstring + stub): the scale-free
+  `max_j |Δb_j|·‖x_j‖/‖y‖` the stopping rule compares with `tol`, returned
+  since the convergence fix but named nowhere.
+- **`local_level_smooth`'s six keys, the HP/Baxter-King/Christiano-
+  Fitzgerald filters' `trend`/`cycle`/`first_index`, and the unnamed keys
+  of `engle_granger`, `factor_model` (`er_ratios`), `gas_volatility`
+  (`converged`/`iterations`) and `zero_sign_svar` (`arw_weighted`)** are
+  now named in docstring and stub.
+- **`cg_regression`'s docstring named `se`/`t`/`p`, which are not keys**;
+  it now names the real ones (`se_intercept`/`se_slope`, `t_slope`,
+  `p_slope`).
+- **`seed=None` is documented as seed 0, not fresh entropy**, on
+  `conformal_forecast`/`conformal_backtest` (`seed`, EnbPI) and
+  `proxy_ar_sets` (`rf_seed`); measured `None ≡ 0 ≠ 1` on all three and
+  pinned. `n_boot=None` (25) and `rf_draws=None` (256) are stated too.
+- **The EGARCH multi-step forecast refusal is documented and clean.**
+  `vol="egarch"` accepts `forecast_horizon` 0 or 1 only in `garch_fit`,
+  `ccc_garch` and `dcc_garch` (no closed-form multi-step EGARCH forecast
+  exists; the simulation route is not shipped) — previously the stub
+  promised `covariance_forecast` for any `forecast_horizon > 0` and the
+  refusal read `... require simulation (TODO(phase0)) ...`. The message now
+  states the limit and the remedies (`forecast_horizon=1`, or
+  `vol="garch"`/`"gjr"`); the three docstrings, the stub and the
+  volatility card state it; a test pins horizon 1 working, horizon 2
+  raising, and no internal marker in the text.
+- **The forecasting card's `backtest` table** showed `period` defaulting
+  to `1` (an explicit `period` raises for non-seasonal forecasters since
+  0.7.0) and `forecaster` to `"naive"` (the default is `None`); both rows
+  now show the signature defaults and the `period` row names the refusal
+  and `insample_period`.
+- **The panel card's `panel_lp` / `lp_did` key lists** include the stamped
+  settings keys the docstrings document.
+- **Two imprecise shape claims**: `dfm_nowcast.smoothed_factors` has one
+  row per balanced-panel observation (T minus the ragged-edge rows), not
+  "(T, r)"; `proxy_svar.shock` has T − lags rows, not "length T" (stub).
+- **`cv_splits`' docstring and stub say `train` defaults to 0, which the
+  walk-forward schemes refuse** (the ML card already did) — a default call
+  `cv_splits(n)` always raised without either surface saying why.
+
 ## [0.7.0] - 2026-08-28
 
 ### Added
