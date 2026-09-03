@@ -1,0 +1,1895 @@
+{
+ "accuracy": {
+  "identical": false,
+  "len_runtime": 39,
+  "len_stub": 63,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "mae",
+   "mape",
+   "mase",
+   "me",
+   "rmse",
+   "rmsse",
+   "smape"
+  ]
+ },
+ "acf": {
+  "identical": false,
+  "len_runtime": 123,
+  "len_stub": 55,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "acf"
+  ],
+  "keys_in_neither": [
+   "bartlett_se"
+  ]
+ },
+ "acm_term_premium": {
+  "identical": false,
+  "len_runtime": 1989,
+  "len_stub": 1288,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "rx_rsquared",
+   "short_rate_rsquared",
+   "var_rsquared",
+   "yield_rsquared"
+  ],
+  "keys_in_neither": []
+ },
+ "adaptive_lasso": {
+  "identical": false,
+  "len_runtime": 373,
+  "len_stub": 89,
+  "keys_stub_only": [
+   "coef",
+   "max_change",
+   "n_iter"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "max_rel_change"
+  ]
+ },
+ "adf": {
+  "identical": false,
+  "len_runtime": 240,
+  "len_stub": 53,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "crit",
+   "nobs",
+   "p_value",
+   "statistic",
+   "used_lag"
+  ]
+ },
+ "afns_adjustment": {
+  "identical": false,
+  "len_runtime": 273,
+  "len_stub": 105,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "ar_loglik": {
+  "identical": false,
+  "len_runtime": 206,
+  "len_stub": 62,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "arch_lm": {
+  "identical": false,
+  "len_runtime": 57,
+  "len_stub": 56,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "df",
+   "nobs",
+   "p_value",
+   "statistic"
+  ]
+ },
+ "arima_fit": {
+  "identical": false,
+  "len_runtime": 3911,
+  "len_stub": 1514,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "aic",
+   "bic",
+   "forecast_lower",
+   "forecast_mean",
+   "forecast_se",
+   "forecast_upper",
+   "loglik",
+   "param_names",
+   "params",
+   "residuals"
+  ],
+  "keys_in_neither": []
+ },
+ "auto_arima": {
+  "identical": false,
+  "len_runtime": 2596,
+  "len_stub": 1240,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "boundary",
+   "boundary_note",
+   "bse",
+   "cov_ok",
+   "loglik",
+   "param_cov",
+   "param_names",
+   "params",
+   "residuals",
+   "se_valid"
+  ],
+  "keys_in_neither": []
+ },
+ "backtest": {
+  "identical": false,
+  "len_runtime": 2470,
+  "len_stub": 1036,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "n_origins"
+  ]
+ },
+ "bai_perron": {
+  "identical": false,
+  "len_runtime": 672,
+  "len_stub": 221,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "break_dates",
+   "break_dates_by_m",
+   "bse",
+   "ci_lower_90",
+   "ci_lower_95",
+   "ci_scale",
+   "ci_upper_90",
+   "ci_upper_95",
+   "h",
+   "n_breaks",
+   "params",
+   "regime_ends",
+   "regime_ssr",
+   "regime_starts",
+   "ssr_path",
+   "sup_f_crit",
+   "sup_f_seq"
+  ]
+ },
+ "bk_filter": {
+  "identical": false,
+  "len_runtime": 104,
+  "len_stub": 64,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "first_index"
+  ],
+  "keys_in_neither": [
+   "cycle"
+  ]
+ },
+ "bn_decomposition": {
+  "identical": false,
+  "len_runtime": 1755,
+  "len_stub": 605,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "bn_filter": {
+  "identical": false,
+  "len_runtime": 1839,
+  "len_stub": 541,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "bns_jump_test": {
+  "identical": false,
+  "len_runtime": 479,
+  "len_stub": 215,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "bootstrap_indices": {
+  "identical": false,
+  "len_runtime": 224,
+  "len_stub": 62,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "box_cox_lambda": {
+  "identical": false,
+  "len_runtime": 1253,
+  "len_stub": 73,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "at_bound",
+   "interpretation",
+   "loglik_at_one",
+   "loglik_at_zero",
+   "lower",
+   "lr_vs_one",
+   "lr_vs_zero",
+   "method",
+   "n",
+   "period",
+   "upper"
+  ],
+  "keys_in_neither": []
+ },
+ "bvar_fit": {
+  "identical": false,
+  "len_runtime": 1778,
+  "len_stub": 722,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "bvar_hierarchical": {
+  "identical": false,
+  "len_runtime": 1770,
+  "len_stub": 484,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "converged",
+   "grid_lambda1",
+   "grid_log_ml",
+   "lambda1_fixed_log_ml",
+   "lambda3_opt",
+   "log_marginal_likelihood",
+   "log_posterior",
+   "n_evals",
+   "posterior_mean_coefs",
+   "sigma_posterior_mean"
+  ]
+ },
+ "bvar_irf_draws": {
+  "identical": false,
+  "len_runtime": 594,
+  "len_stub": 75,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "bvar_ssvs": {
+  "identical": false,
+  "len_runtime": 1585,
+  "len_stub": 370,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "coef_mean",
+   "diagnostics",
+   "inclusion_prob",
+   "irf_draws",
+   "sigma_mean"
+  ],
+  "keys_in_neither": []
+ },
+ "ccc_garch": {
+  "identical": false,
+  "len_runtime": 2422,
+  "len_stub": 1281,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "cf_filter": {
+  "identical": false,
+  "len_runtime": 64,
+  "len_stub": 50,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "cycle",
+   "first_index",
+   "trend"
+  ]
+ },
+ "cg_regression": {
+  "identical": false,
+  "len_runtime": 704,
+  "len_stub": 268,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "maxlags",
+   "nobs"
+  ],
+  "keys_in_neither": [
+   "p_slope",
+   "se_intercept",
+   "se_slope",
+   "t_slope"
+  ]
+ },
+ "check_series": {
+  "identical": false,
+  "len_runtime": 743,
+  "len_stub": 960,
+  "keys_stub_only": [
+   "descriptives",
+   "outliers",
+   "seasonality"
+  ],
+  "keys_runtime_only": [
+   "kind"
+  ],
+  "keys_in_neither": [
+   "analysis_scale",
+   "arch_effects",
+   "breaks",
+   "long_memory",
+   "multiple_testing",
+   "normality",
+   "serial_correlation",
+   "stationarity",
+   "tests_run"
+  ]
+ },
+ "check_stationarity": {
+  "identical": false,
+  "len_runtime": 170,
+  "len_stub": 68,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "interpretation"
+  ],
+  "keys_in_neither": [
+   "adf_p_value",
+   "adf_statistic",
+   "alpha",
+   "kpss_p_value",
+   "kpss_statistic"
+  ]
+ },
+ "chow_test": {
+  "identical": false,
+  "len_runtime": 218,
+  "len_stub": 68,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "df_den",
+   "df_num",
+   "fstat",
+   "pvalue",
+   "ssr1",
+   "ssr2",
+   "ssr_pooled"
+  ]
+ },
+ "coherence": {
+  "identical": false,
+  "len_runtime": 288,
+  "len_stub": 187,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "freqs"
+  ],
+  "keys_in_neither": []
+ },
+ "conformal_backtest": {
+  "identical": false,
+  "len_runtime": 1601,
+  "len_stub": 665,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "alpha",
+   "err",
+   "level",
+   "lower",
+   "mean",
+   "realized_coverage",
+   "upper"
+  ],
+  "keys_in_neither": []
+ },
+ "conformal_forecast": {
+  "identical": false,
+  "len_runtime": 4005,
+  "len_stub": 1335,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "n_calib"
+  ],
+  "keys_in_neither": []
+ },
+ "connectedness": {
+  "identical": false,
+  "len_runtime": 376,
+  "len_stub": 131,
+  "keys_stub_only": [
+   "gfevd"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "copula_fit": {
+  "identical": true,
+  "len_runtime": 1847,
+  "len_stub": 1847,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "copula_select": {
+  "identical": true,
+  "len_runtime": 852,
+  "len_stub": 852,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "cusum_test": {
+  "identical": false,
+  "len_runtime": 269,
+  "len_stub": 84,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "bound_lower",
+   "bound_upper"
+  ],
+  "keys_in_neither": [
+   "sigma"
+  ]
+ },
+ "cv_splits": {
+  "identical": false,
+  "len_runtime": 1608,
+  "len_stub": 601,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "cw_test": {
+  "identical": false,
+  "len_runtime": 142,
+  "len_stub": 59,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "cw_stat",
+   "mean_adj_diff",
+   "p_value"
+  ]
+ },
+ "dcc_garch": {
+  "identical": false,
+  "len_runtime": 5304,
+  "len_stub": 1943,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "dcc_test": {
+  "identical": false,
+  "len_runtime": 1453,
+  "len_stub": 596,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "dcs_local_level": {
+  "identical": false,
+  "len_runtime": 1697,
+  "len_stub": 497,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "kappa_se",
+   "nu_se",
+   "scale_se"
+  ]
+ },
+ "dfgls": {
+  "identical": false,
+  "len_runtime": 980,
+  "len_stub": 965,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "dfm_news": {
+  "identical": false,
+  "len_runtime": 688,
+  "len_stub": 278,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "target_period",
+   "target_series"
+  ],
+  "keys_in_neither": []
+ },
+ "dfm_nowcast": {
+  "identical": false,
+  "len_runtime": 3112,
+  "len_stub": 707,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "dm_test": {
+  "identical": false,
+  "len_runtime": 108,
+  "len_stub": 66,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "dm_stat",
+   "hln_stat",
+   "mean_loss_diff",
+   "p_value"
+  ]
+ },
+ "dsge_solve": {
+  "identical": false,
+  "len_runtime": 449,
+  "len_stub": 156,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "dynamic_ns": {
+  "identical": false,
+  "len_runtime": 718,
+  "len_stub": 201,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "elastic_net": {
+  "identical": false,
+  "len_runtime": 254,
+  "len_stub": 59,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ]
+ },
+ "engle_granger": {
+  "identical": false,
+  "len_runtime": 873,
+  "len_stub": 95,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "pvalue"
+  ],
+  "keys_in_neither": [
+   "adf_nobs",
+   "coint_coefs",
+   "n_vars",
+   "nobs",
+   "resid",
+   "used_lag"
+  ]
+ },
+ "factor_model": {
+  "identical": false,
+  "len_runtime": 420,
+  "len_stub": 166,
+  "keys_stub_only": [
+   "er"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "er_ratios"
+  ]
+ },
+ "favar": {
+  "identical": false,
+  "len_runtime": 866,
+  "len_stub": 204,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "flp": {
+  "identical": false,
+  "len_runtime": 963,
+  "len_stub": 419,
+  "keys_stub_only": [
+   "betas",
+   "horizons",
+   "n_factors",
+   "nobs"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "flp_scenario": {
+  "identical": false,
+  "len_runtime": 438,
+  "len_stub": 177,
+  "keys_stub_only": [
+   "betas",
+   "explained",
+   "horizons",
+   "se"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "forecast_disagreement": {
+  "identical": false,
+  "len_runtime": 353,
+  "len_stub": 86,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "counts",
+   "p25",
+   "p50",
+   "p75"
+  ],
+  "keys_in_neither": []
+ },
+ "forecast_efficiency": {
+  "identical": false,
+  "len_runtime": 519,
+  "len_stub": 178,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "bse",
+   "params",
+   "pvalues",
+   "r_squared",
+   "tvalues",
+   "wald",
+   "wald_df",
+   "wald_pvalue"
+  ],
+  "keys_in_neither": []
+ },
+ "frac_diff": {
+  "identical": false,
+  "len_runtime": 210,
+  "len_stub": 59,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "frac_integrate": {
+  "identical": false,
+  "len_runtime": 69,
+  "len_stub": 58,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "fry_pagan_svar": {
+  "identical": false,
+  "len_runtime": 144,
+  "len_stub": 1152,
+  "keys_stub_only": [
+   "diagnostics",
+   "median_irf",
+   "median_target_irf",
+   "mt_index",
+   "mt_statistic",
+   "n_accepted"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "functional_pca": {
+  "identical": false,
+  "len_runtime": 384,
+  "len_stub": 215,
+  "keys_stub_only": [
+   "mean_curve",
+   "total_variance"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "fvar_scenario": {
+  "identical": false,
+  "len_runtime": 716,
+  "len_stub": 326,
+  "keys_stub_only": [
+   "horizons",
+   "implied_outcome_innovation",
+   "response_outcome"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "garch_fit": {
+  "identical": false,
+  "len_runtime": 4134,
+  "len_stub": 1350,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "aic",
+   "bic",
+   "loglik",
+   "se_mle",
+   "se_robust",
+   "std_residuals"
+  ],
+  "keys_in_neither": []
+ },
+ "gas_volatility": {
+  "identical": false,
+  "len_runtime": 592,
+  "len_stub": 206,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "converged",
+   "iterations"
+  ]
+ },
+ "gev_fit": {
+  "identical": false,
+  "len_runtime": 717,
+  "len_stub": 844,
+  "keys_stub_only": [
+   "converged",
+   "loglik",
+   "n_maxima",
+   "se_mu",
+   "se_sigma",
+   "se_xi"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "gmm_nonlinear": {
+  "identical": false,
+  "len_runtime": 819,
+  "len_stub": 584,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "gpd_fit": {
+  "identical": false,
+  "len_runtime": 875,
+  "len_stub": 1010,
+  "keys_stub_only": [
+   "beta",
+   "converged",
+   "exceed_rate",
+   "loglik",
+   "se_beta",
+   "se_xi",
+   "threshold_quantile"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "growth_at_risk": {
+  "identical": false,
+  "len_runtime": 1431,
+  "len_stub": 889,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "fitted_raw"
+  ]
+ },
+ "gw_test": {
+  "identical": false,
+  "len_runtime": 125,
+  "len_stub": 63,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "df",
+   "gw_stat",
+   "p_value"
+  ]
+ },
+ "hamilton_filter": {
+  "identical": false,
+  "len_runtime": 2053,
+  "len_stub": 869,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "hansen_seo_test": {
+  "identical": false,
+  "len_runtime": 1892,
+  "len_stub": 796,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "har_rv": {
+  "identical": false,
+  "len_runtime": 1133,
+  "len_stub": 603,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "params",
+   "rsquared"
+  ],
+  "keys_in_neither": [
+   "nobs"
+  ]
+ },
+ "hetero_svar": {
+  "identical": false,
+  "len_runtime": 347,
+  "len_stub": 1383,
+  "keys_stub_only": [
+   "covariance_equality",
+   "horizon",
+   "lags",
+   "min_ratio_gap",
+   "n_vars",
+   "ratio_dist_from_unity",
+   "regime1_label",
+   "regime2_label",
+   "regime_sizes",
+   "sigma_regime1",
+   "sigma_regime2",
+   "sign_convention",
+   "structural_irf",
+   "variance_ratios"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "heteroskedasticity_test": {
+  "identical": false,
+  "len_runtime": 279,
+  "len_stub": 86,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "df",
+   "pvalue",
+   "statistic"
+  ],
+  "keys_in_neither": [
+   "f_pvalue",
+   "fstat"
+  ]
+ },
+ "historical_decomposition": {
+  "identical": false,
+  "len_runtime": 117,
+  "len_stub": 1335,
+  "keys_stub_only": [
+   "baseline",
+   "hd",
+   "shocks",
+   "times"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "hp_filter": {
+  "identical": false,
+  "len_runtime": 137,
+  "len_stub": 75,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "cycle",
+   "first_index",
+   "trend"
+  ]
+ },
+ "iv_gmm": {
+  "identical": false,
+  "len_runtime": 2949,
+  "len_stub": 1493,
+  "keys_stub_only": [
+   "nmoments",
+   "nobs",
+   "nparams",
+   "steps"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "ivx_test": {
+  "identical": false,
+  "len_runtime": 1987,
+  "len_stub": 923,
+  "keys_stub_only": [
+   "nobs",
+   "nregressors"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "jarque_bera": {
+  "identical": false,
+  "len_runtime": 27,
+  "len_stub": 71,
+  "keys_stub_only": [
+   "kurtosis",
+   "n",
+   "p_value",
+   "skewness",
+   "statistic"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "johansen": {
+  "identical": false,
+  "len_runtime": 799,
+  "len_stub": 335,
+  "keys_stub_only": [
+   "eig"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "max_eig_crit_90_95_99",
+   "max_eig_stat",
+   "rank_max_eig_5pct",
+   "rank_trace_5pct",
+   "trace_crit_90_95_99",
+   "trace_stat"
+  ]
+ },
+ "kpss": {
+  "identical": false,
+  "len_runtime": 261,
+  "len_stub": 42,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "lags",
+   "p_value",
+   "statistic"
+  ]
+ },
+ "lasso": {
+  "identical": false,
+  "len_runtime": 51,
+  "len_stub": 40,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ]
+ },
+ "lasso_path": {
+  "identical": false,
+  "len_runtime": 503,
+  "len_stub": 110,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "ljung_box": {
+  "identical": true,
+  "len_runtime": 62,
+  "len_stub": 62,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "bp_pvalue",
+   "bp_stat",
+   "lb_pvalue",
+   "lb_stat"
+  ]
+ },
+ "local_level_smooth": {
+  "identical": false,
+  "len_runtime": 295,
+  "len_stub": 67,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "loglik"
+  ],
+  "keys_in_neither": [
+   "d_diffuse",
+   "filtered_state",
+   "filtered_state_var",
+   "smoothed_state",
+   "smoothed_state_var"
+  ]
+ },
+ "long_memory_d": {
+  "identical": false,
+  "len_runtime": 725,
+  "len_stub": 456,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "long_run_svar": {
+  "identical": false,
+  "len_runtime": 265,
+  "len_stub": 440,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "long_run_variance": {
+  "identical": false,
+  "len_runtime": 188,
+  "len_stub": 59,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "lp": {
+  "identical": false,
+  "len_runtime": 3597,
+  "len_stub": 2315,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "irf"
+  ],
+  "keys_in_neither": []
+ },
+ "lp_did": {
+  "identical": false,
+  "len_runtime": 1670,
+  "len_stub": 1059,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "lp_iv": {
+  "identical": false,
+  "len_runtime": 1644,
+  "len_stub": 1156,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "irf",
+   "se"
+  ],
+  "keys_in_neither": [
+   "first_stage_f"
+  ]
+ },
+ "lp_multiplier": {
+  "identical": false,
+  "len_runtime": 2079,
+  "len_stub": 1054,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "cumulative_impulse",
+   "cumulative_outcome",
+   "first_stage_f"
+  ],
+  "keys_in_neither": [
+   "nobs_per_h"
+  ]
+ },
+ "lp_state": {
+  "identical": false,
+  "len_runtime": 1986,
+  "len_stub": 1412,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "irf_state0",
+   "irf_state1",
+   "se_state0",
+   "se_state1"
+  ],
+  "keys_in_neither": []
+ },
+ "markov_switching_ar": {
+  "identical": false,
+  "len_runtime": 1154,
+  "len_stub": 568,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "expected_durations",
+   "loglik",
+   "transition",
+   "variances"
+  ],
+  "keys_in_neither": []
+ },
+ "max_share_svar": {
+  "identical": false,
+  "len_runtime": 994,
+  "len_stub": 779,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "mcmc_diagnostics": {
+  "identical": false,
+  "len_runtime": 163,
+  "len_stub": 60,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "ess_bulk",
+   "ess_tail",
+   "rhat"
+  ]
+ },
+ "mean_group_var": {
+  "identical": false,
+  "len_runtime": 952,
+  "len_stub": 75,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "coefs",
+   "coefs_se",
+   "intercept",
+   "intercept_se",
+   "irf_path",
+   "irf_path_se",
+   "lags",
+   "n_entities",
+   "neqs",
+   "orth_irfs",
+   "orth_irfs_se"
+  ],
+  "keys_in_neither": []
+ },
+ "midas_weights": {
+  "identical": false,
+  "len_runtime": 191,
+  "len_stub": 55,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "mstl": {
+  "identical": false,
+  "len_runtime": 1831,
+  "len_stub": 879,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "narrative_svar": {
+  "identical": false,
+  "len_runtime": 156,
+  "len_stub": 764,
+  "keys_stub_only": [
+   "diagnostics",
+   "probs",
+   "quantiles",
+   "set_max",
+   "set_min"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "ndiffs": {
+  "identical": false,
+  "len_runtime": 803,
+  "len_stub": 70,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "alpha",
+   "d",
+   "interpretation",
+   "max_d",
+   "steps",
+   "stop"
+  ],
+  "keys_in_neither": []
+ },
+ "nelson_siegel": {
+  "identical": false,
+  "len_runtime": 464,
+  "len_stub": 156,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "ng_perron": {
+  "identical": false,
+  "len_runtime": 1264,
+  "len_stub": 1170,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "nongaussian_svar": {
+  "identical": false,
+  "len_runtime": 869,
+  "len_stub": 1186,
+  "keys_stub_only": [
+   "converged",
+   "irf",
+   "n_iter",
+   "order"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "nsdiffs": {
+  "identical": false,
+  "len_runtime": 950,
+  "len_stub": 355,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "ols": {
+  "identical": false,
+  "len_runtime": 1648,
+  "len_stub": 473,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "bse",
+   "se_type"
+  ],
+  "keys_in_neither": [
+   "params",
+   "tvalues"
+  ]
+ },
+ "optimal_block_length": {
+  "identical": false,
+  "len_runtime": 166,
+  "len_stub": 67,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "ou_fit": {
+  "identical": false,
+  "len_runtime": 2091,
+  "len_stub": 1307,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "pacf": {
+  "identical": false,
+  "len_runtime": 91,
+  "len_stub": 60,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "panel_fe": {
+  "identical": false,
+  "len_runtime": 454,
+  "len_stub": 384,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "bse",
+   "params",
+   "tvalues"
+  ]
+ },
+ "panel_lp": {
+  "identical": false,
+  "len_runtime": 2996,
+  "len_stub": 2409,
+  "keys_stub_only": [
+   "irf",
+   "nobs"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "panel_mean_group": {
+  "identical": false,
+  "len_runtime": 656,
+  "len_stub": 217,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "panel_pmg": {
+  "identical": false,
+  "len_runtime": 1901,
+  "len_stub": 1148,
+  "keys_stub_only": [
+   "n_units"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "panel_unit_root": {
+  "identical": false,
+  "len_runtime": 647,
+  "len_stub": 614,
+  "keys_stub_only": [
+   "n_units",
+   "p_value",
+   "per_unit_tstat",
+   "statistic",
+   "t_bar"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "per_unit_lags",
+   "per_unit_nobs",
+   "per_unit_pvalue"
+  ]
+ },
+ "periodogram": {
+  "identical": false,
+  "len_runtime": 351,
+  "len_stub": 204,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "phillips_ouliaris": {
+  "identical": false,
+  "len_runtime": 534,
+  "len_stub": 80,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "crit",
+   "pvalue"
+  ],
+  "keys_in_neither": [
+   "lags",
+   "n_vars",
+   "nobs",
+   "stat"
+  ]
+ },
+ "phillips_perron": {
+  "identical": false,
+  "len_runtime": 275,
+  "len_stub": 71,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "lags"
+  ],
+  "keys_in_neither": [
+   "crit",
+   "nobs",
+   "pvalue",
+   "stat",
+   "zalpha",
+   "ztau"
+  ]
+ },
+ "philox_uniforms": {
+  "identical": false,
+  "len_runtime": 118,
+  "len_stub": 61,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "predictive_regression": {
+  "identical": false,
+  "len_runtime": 949,
+  "len_stub": 187,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "nobs"
+  ],
+  "keys_in_neither": []
+ },
+ "proxy_ar_sets": {
+  "identical": false,
+  "len_runtime": 4405,
+  "len_stub": 2114,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "cells"
+  ],
+  "keys_in_neither": [
+   "ar_bound_stat",
+   "ar_bounded_all",
+   "critical_value",
+   "first_stage_f",
+   "impact"
+  ]
+ },
+ "proxy_first_stage": {
+  "identical": false,
+  "len_runtime": 1826,
+  "len_stub": 1281,
+  "keys_stub_only": [
+   "beta",
+   "effective_f",
+   "f_classical",
+   "f_hc1",
+   "mop_cv_tau5",
+   "reliability",
+   "se"
+  ],
+  "keys_runtime_only": [
+   "mop_cv_tau10"
+  ],
+  "keys_in_neither": [
+   "mop_cv_tau20",
+   "mop_cv_tau30"
+  ]
+ },
+ "proxy_svar": {
+  "identical": false,
+  "len_runtime": 1626,
+  "len_stub": 974,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "proxy_svar_bands": {
+  "identical": false,
+  "len_runtime": 1896,
+  "len_stub": 849,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "alpha",
+   "failure_warning"
+  ],
+  "keys_in_neither": [
+   "block_length",
+   "first_stage_f_draws",
+   "gamma_norm_draws",
+   "method",
+   "n_boot",
+   "n_proxy",
+   "n_used",
+   "point",
+   "point_first_stage_f",
+   "point_gamma_norm",
+   "point_reliability",
+   "reliability_draws",
+   "rho_draws",
+   "se"
+  ]
+ },
+ "pseudo_obs": {
+  "identical": true,
+  "len_runtime": 922,
+  "len_stub": 922,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "quantile_lp": {
+  "identical": false,
+  "len_runtime": 904,
+  "len_stub": 485,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "taus"
+  ],
+  "keys_in_neither": [
+   "horizons"
+  ]
+ },
+ "quantile_regression": {
+  "identical": false,
+  "len_runtime": 471,
+  "len_stub": 384,
+  "keys_stub_only": [
+   "converged",
+   "iterations",
+   "tvalues"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "realized_measures": {
+  "identical": false,
+  "len_runtime": 338,
+  "len_stub": 68,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "rv"
+  ],
+  "keys_in_neither": []
+ },
+ "realized_quarticity": {
+  "identical": false,
+  "len_runtime": 258,
+  "len_stub": 50,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "realized_range": {
+  "identical": false,
+  "len_runtime": 286,
+  "len_stub": 71,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "recession_probit": {
+  "identical": false,
+  "len_runtime": 576,
+  "len_stub": 209,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "reset_test": {
+  "identical": false,
+  "len_runtime": 143,
+  "len_stub": 48,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "df_den",
+   "df_num",
+   "fstat",
+   "pvalue"
+  ]
+ },
+ "ridge": {
+  "identical": false,
+  "len_runtime": 166,
+  "len_stub": 63,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "robust_svar_bounds": {
+  "identical": false,
+  "len_runtime": 120,
+  "len_stub": 1189,
+  "keys_stub_only": [
+   "alpha",
+   "diagnostics",
+   "lower_quantiles",
+   "probs",
+   "restricted_shocks",
+   "robust_ci_lower",
+   "robust_ci_upper",
+   "set_lower_mean",
+   "set_upper_mean",
+   "upper_quantiles"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "seasonal_strength": {
+  "identical": false,
+  "len_runtime": 418,
+  "len_stub": 237,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "setar": {
+  "identical": false,
+  "len_runtime": 1421,
+  "len_stub": 911,
+  "keys_stub_only": [
+   "ic_used",
+   "min_regime",
+   "n_high",
+   "n_low",
+   "sigma2_high",
+   "sigma2_low"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "setar_test": {
+  "identical": false,
+  "len_runtime": 1216,
+  "len_stub": 556,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "sign_restricted_svar": {
+  "identical": false,
+  "len_runtime": 507,
+  "len_stub": 321,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "smooth_lp": {
+  "identical": false,
+  "len_runtime": 3074,
+  "len_stub": 2164,
+  "keys_stub_only": [
+   "cv_scores",
+   "lambda_used"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "spread_zscore": {
+  "identical": false,
+  "len_runtime": 1170,
+  "len_stub": 619,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "star": {
+  "identical": false,
+  "len_runtime": 2203,
+  "len_stub": 972,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "star_eval": {
+  "identical": false,
+  "len_runtime": 898,
+  "len_stub": 364,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "star_test": {
+  "identical": false,
+  "len_runtime": 1565,
+  "len_stub": 701,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "stl": {
+  "identical": false,
+  "len_runtime": 912,
+  "len_stub": 460,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "structural_fevd": {
+  "identical": false,
+  "len_runtime": 737,
+  "len_stub": 598,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "summarize": {
+  "identical": false,
+  "len_runtime": 326,
+  "len_stub": 437,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "b"
+  ]
+ },
+ "sup_f_test": {
+  "identical": false,
+  "len_runtime": 533,
+  "len_stub": 160,
+  "keys_stub_only": [
+   "p_value",
+   "stat"
+  ],
+  "keys_runtime_only": [
+   "h"
+  ],
+  "keys_in_neither": []
+ },
+ "svensson": {
+  "identical": false,
+  "len_runtime": 244,
+  "len_stub": 65,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "factors",
+   "lambda1",
+   "lambda2",
+   "rsquared"
+  ],
+  "keys_in_neither": [
+   "residuals"
+  ]
+ },
+ "theta_forecast": {
+  "identical": false,
+  "len_runtime": 511,
+  "len_stub": 307,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "threshold_var": {
+  "identical": false,
+  "len_runtime": 1724,
+  "len_stub": 782,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "threshold_var_test": {
+  "identical": false,
+  "len_runtime": 1471,
+  "len_stub": 544,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "threshold_vecm": {
+  "identical": false,
+  "len_runtime": 2190,
+  "len_stub": 1011,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "tripower_quarticity": {
+  "identical": false,
+  "len_runtime": 237,
+  "len_stub": 68,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "umidas": {
+  "identical": false,
+  "len_runtime": 210,
+  "len_stub": 71,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "params"
+  ],
+  "keys_in_neither": [
+   "bse",
+   "rsquared"
+  ]
+ },
+ "var_backtest": {
+  "identical": false,
+  "len_runtime": 759,
+  "len_stub": 739,
+  "keys_stub_only": [
+   "verdict"
+  ],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "dq_df",
+   "dq_includes_var",
+   "dq_lags",
+   "dq_stat",
+   "dq_var_dropped",
+   "expected_violations",
+   "hit_rate",
+   "lr_cc",
+   "lr_ind",
+   "lr_uc",
+   "n",
+   "n00",
+   "n01",
+   "n10",
+   "n11",
+   "n_violations",
+   "p_cc",
+   "p_dq",
+   "p_ind",
+   "p_uc",
+   "pi01",
+   "pi11"
+  ]
+ },
+ "var_fevd": {
+  "identical": false,
+  "len_runtime": 479,
+  "len_stub": 562,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "var_fit": {
+  "identical": false,
+  "len_runtime": 1422,
+  "len_stub": 676,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "var_forecast": {
+  "identical": false,
+  "len_runtime": 2313,
+  "len_stub": 1567,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "var_granger": {
+  "identical": false,
+  "len_runtime": 137,
+  "len_stub": 62,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "df_den",
+   "df_num",
+   "p_value",
+   "statistic"
+  ]
+ },
+ "var_irf": {
+  "identical": false,
+  "len_runtime": 304,
+  "len_stub": 143,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "var_irf_bands": {
+  "identical": false,
+  "len_runtime": 3490,
+  "len_stub": 2907,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "vecm": {
+  "identical": false,
+  "len_runtime": 2915,
+  "len_stub": 1195,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ },
+ "weighted_midas": {
+  "identical": false,
+  "len_runtime": 928,
+  "len_stub": 89,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "converged",
+   "fitted",
+   "intercept",
+   "iterations",
+   "residuals",
+   "rsquared",
+   "scheme",
+   "slope",
+   "ssr",
+   "weight_params"
+  ],
+  "keys_in_neither": []
+ },
+ "welch": {
+  "identical": false,
+  "len_runtime": 353,
+  "len_stub": 177,
+  "keys_stub_only": [],
+  "keys_runtime_only": [
+   "freqs",
+   "psd"
+  ],
+  "keys_in_neither": []
+ },
+ "zero_sign_svar": {
+  "identical": false,
+  "len_runtime": 841,
+  "len_stub": 1215,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": [
+   "arw_weighted"
+  ]
+ },
+ "zivot_andrews": {
+  "identical": false,
+  "len_runtime": 1399,
+  "len_stub": 1055,
+  "keys_stub_only": [],
+  "keys_runtime_only": [],
+  "keys_in_neither": []
+ }
+}

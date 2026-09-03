@@ -114,8 +114,8 @@ beats another without a test that accounts for dependent forecast errors.
 | | `train` | `20` | initial (or fixed, if rolling) training length |
 | | `horizon` | `1` | steps forecast at each origin |
 | | `refit_every` | `1` | re-fit cadence (speed vs freshness) |
-| | `forecaster` | `"naive"` | `naive`, `drift`, `mean`, `seasonal_naive`, `theta` — or any Python callable `f(train, horizon)` (see the callable-contract section) |
-| | `period` | `1` | seasonal period for `seasonal_naive` / `theta` |
+| | `forecaster` | `None` (→ `naive`) | `naive`, `drift`, `mean`, `seasonal_naive`, `theta` — or any Python callable `f(train, horizon)` (see the callable-contract section) |
+| | `period` | `None` (→ 1) | seasonal period of `seasonal_naive` / `theta` **only**: passing it explicitly with any other forecaster (callables included) raises (0.7.0); the MASE/RMSSE scale period is the separate `insample_period` |
 | `accuracy` | `insample` | `None` | required for MASE / RMSSE |
 | | `period` | `1` | seasonal frequency of the scaling benchmark |
 | `dm_test` | `h` | `1` | forecast horizon; sets the HAC lag to h−1 |

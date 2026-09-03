@@ -1300,6 +1300,15 @@ def check_series(
     it would decide the confirmatory quadrant by the clamp rather than the
     data. ``seasonal_period`` must be an integer >= 2 with at least two
     full cycles in sample.
+
+    Keys (univariate): ``kind``, ``n``, ``alpha``, ``analysis_scale``,
+    ``descriptives``, ``outliers``, ``stationarity``, ``serial_correlation``,
+    ``arch_effects``, ``normality``, ``breaks``, ``long_memory``,
+    ``seasonality``, ``multiple_testing``, ``tests_run``,
+    ``recommendations``. Keys (multivariate): ``kind``, ``n``, ``k``,
+    ``alpha``, ``per_series``, ``integration_summary``, ``cointegration``,
+    ``var_lag_selection``, ``stability``, ``multiple_testing``,
+    ``tests_run``, ``recommendations``.
     """
     alpha = _validate_alpha(alpha)
     arr = _validate(data)

@@ -1,0 +1,23 @@
+{
+ "nondeterministic": [],
+ "historical_decomposition.seed": {
+  "extra": {
+   "identification": "sign",
+   "restrictions": [
+    [
+     0,
+     0,
+     0,
+     "+"
+    ]
+   ],
+   "n_draws": 40,
+   "n_weight_draws": 20
+  },
+  "same_seed_identical": true,
+  "different_seed_differs": true,
+  "subprocess_identical": true,
+  "none_accepted": false,
+  "none_error": "TypeError: 'NoneType' object cannot be interpreted as an integer"
+ }
+}
