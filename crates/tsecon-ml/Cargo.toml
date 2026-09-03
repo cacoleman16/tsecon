@@ -12,6 +12,13 @@ description = "Penalized regression (ridge via SVD; LASSO / elastic net / adapti
 # features = ["std"]); this crate uses its thin SVD for the ridge
 # closed form and the ordinary-least-squares adaptive-LASSO weights.
 tsecon-linalg = { path = "../tsecon-linalg" }
+# Seeded Philox streams (NumPy-compatible SeedSequence substreams) drive the
+# MLP weight initialization, mini-batch shuffles, and the echo-state
+# reservoir draws: every neural fit is a pure function of its `seed`.
+tsecon-rng = { path = "../tsecon-rng" }
+# The optional `solver = "lbfgs"` of the MLP reuses the crate-wide L-BFGS
+# (strong-Wolfe line search) rather than carrying a second quasi-Newton.
+tsecon-optim = { path = "../tsecon-optim" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern

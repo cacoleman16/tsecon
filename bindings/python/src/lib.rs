@@ -8,6 +8,7 @@ use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
+mod ml_neural;
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -12507,5 +12508,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pseudo_obs, m)?)?;
     m.add_function(wrap_pyfunction!(copula_fit, m)?)?;
     m.add_function(wrap_pyfunction!(copula_select, m)?)?;
+    ml_neural::register(m)?;
     Ok(())
 }

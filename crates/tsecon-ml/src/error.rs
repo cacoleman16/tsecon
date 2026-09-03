@@ -54,6 +54,40 @@ pub enum MlError {
         /// Largest absolute coefficient change in the final sweep.
         max_change: f64,
     },
+    /// Too few observations for the requested fit. For the neural
+    /// estimators the minimum counts the rows a temporal validation split
+    /// or a reservoir washout removes before any training happens.
+    InsufficientData {
+        /// Minimum number of observations required.
+        needed: usize,
+        /// Number of observations supplied.
+        got: usize,
+    },
+    /// A string option (an activation or solver name) was not one of the
+    /// accepted values. The message lists them.
+    UnknownChoice {
+        /// Name of the option.
+        what: &'static str,
+        /// The value that was passed.
+        got: String,
+        /// The accepted values, rendered for the message.
+        accepted: &'static str,
+    },
+    /// A configuration value was outside its domain, where the message
+    /// needs the offending number (or the fix) spelled out — an empty or
+    /// too-deep `hidden`, a `washout` that leaves no training rows, an
+    /// argument passed explicitly where the chosen solver cannot use it.
+    InvalidValue {
+        /// Full description, naming the argument and the fix.
+        what: String,
+    },
+    /// Neural training produced a non-finite loss (the weights blew up).
+    Diverged {
+        /// Zero-based index of the ensemble member that diverged.
+        member: usize,
+        /// Epoch (or L-BFGS iteration count) at which it was detected.
+        epoch: usize,
+    },
 }
 
 impl fmt::Display for MlError {
@@ -82,6 +116,21 @@ impl fmt::Display for MlError {
                 f,
                 "coordinate descent did not converge after {iterations} sweeps \
                  (last max coefficient change {max_change:e})"
+            ),
+            Self::InsufficientData { needed, got } => write!(
+                f,
+                "insufficient data: {got} observations, at least {needed} required"
+            ),
+            Self::UnknownChoice {
+                what,
+                got,
+                accepted,
+            } => write!(f, "unknown {what} {got:?}; expected one of {accepted}"),
+            Self::InvalidValue { what } => write!(f, "invalid argument: {what}"),
+            Self::Diverged { member, epoch } => write!(
+                f,
+                "training diverged (non-finite loss) in ensemble member {member} at \
+                 epoch {epoch}; lower learning_rate, raise alpha, or standardize the inputs"
             ),
         }
     }

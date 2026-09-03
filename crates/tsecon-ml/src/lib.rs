@@ -51,6 +51,8 @@
 pub mod coordinate_descent;
 pub mod cv;
 pub mod error;
+pub mod esn;
+pub mod mlp;
 pub mod path;
 pub mod ridge;
 pub mod standardize;
@@ -64,6 +66,14 @@ pub use cv::{
     CvResult, Loss, Split,
 };
 pub use error::MlError;
+pub use esn::{
+    echo_state_network, esn_readout, esn_states, esn_states_from, scale_to_spectral_radius,
+    spectral_radius, EsnFit, EsnOptions,
+};
+pub use mlp::{
+    mlp_forward, mlp_loss, mlp_loss_gradient, mlp_regression, Activation, MlpFit, MlpOptions,
+    MlpWeights, Solver,
+};
 pub use path::{regularization_path, PathOptions, RegPath};
 pub use ridge::ridge;
 pub use standardize::{Scaler, TargetCenterer};
