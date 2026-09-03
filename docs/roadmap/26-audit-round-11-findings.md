@@ -551,3 +551,38 @@ text.
    from type annotations before one true hit; reporting them as candidates
    would have buried the round. They were excluded from the totals and
    said so here.
+
+## Integrator notes from the 0.8.0 wave merge
+
+Recorded here because round 10's two merge-corruption findings were the
+same class, and this wave produced three more instances of it plus one new
+class. All were caught before push by compile errors, `ast.parse`, or the
+push itself — none reached the branch.
+
+1. **Keep-both resolution of an append-point hunk still interleaves.**
+   Five worktrees each appended to the same three files. Git factors a
+   line both sides share *after* the append (the `};` closing a multi-line
+   `pub use`, the `"""` closing the last stub docstring) out of the hunk as
+   context, so a keep-both resolution emits side A, side B, then the one
+   shared closer — leaving A unterminated. Seen twice in
+   `crates/tsecon-ml/src/lib.rs` (compile error) and once in the stub (a
+   `SyntaxError` the stub-sync test cannot see, since it only regexes
+   `def` names). Rule applied: after any keep-both, re-read the whole
+   block; rebuild a pure-append file as `ours + theirs[len(base):]` and
+   parse it, never merge it.
+2. **Parallel slices each add the same error variant.** Four slices added
+   an `InsufficientData` variant to `MlError` with three different field
+   shapes; git merged them into duplicates that compiled only until the
+   second slice. Unified to one `{got, needed, what}` variant with the
+   library-wide message prefix and a parenthesized computation name; the
+   four slices' exact-message pins were updated to the unified wording.
+   Rule: shared enums are integrator-owned; slices propose variants in
+   their report.
+3. **A hunk cut through a `match` arm.** Appending new `Display` arms after
+   the HEAD side of a conflict hunk put them inside an arm whose closing
+   `),` was shared context. Same rule as (1).
+4. **`git commit-tree` does not sign.** Rewriting a slice's commit trailer
+   through `commit-tree` produced an unsigned commit that the repository's
+   signed-commits rule rejected at push (`GH013`) — the only rejection of
+   the wave. Rebuilt with `commit-tree -S`, trees byte-identical. Rule:
+   any history rewrite here goes through a signing path.
