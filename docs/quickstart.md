@@ -27,7 +27,7 @@ install and see how much is on the shelf:
 
 ```python
 import tsecon
-print(tsecon.__version__)                                       # 0.7.0
+print(tsecon.__version__)                                       # 0.8.0
 print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 162
           if not n.startswith("_")))
 ```
@@ -38,8 +38,8 @@ builds from the source distribution, which needs a
 contributors build from a checkout with [maturin](https://www.maturin.rs/):
 
 ```sh
-maturin build --release -m bindings/python/Cargo.toml   # writes target/wheels/tsecon-0.7.0-*.whl
-pip install target/wheels/tsecon-0.7.0-*.whl            # installs the `tsecon` package
+maturin build --release -m bindings/python/Cargo.toml   # writes target/wheels/tsecon-0.8.0-*.whl
+pip install target/wheels/tsecon-0.8.0-*.whl            # installs the `tsecon` package
 ```
 
 ---

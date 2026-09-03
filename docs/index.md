@@ -52,7 +52,7 @@ pip install tsecon
 
 ## What's inside
 
-162 functions callable from Python today, spanning diagnostics, unit-root and
+173 functions callable from Python today, spanning diagnostics, unit-root and
 specification tests; STL / MSTL seasonal decomposition and automatic ARIMA order
 selection; ARIMA, GARCH, and GAS score-driven volatility; VAR / SVAR with
 sign-restricted identification, FAVAR, and Diebold-Yilmaz connectedness;

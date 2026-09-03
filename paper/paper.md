@@ -18,7 +18,7 @@ affiliations:
     index: 1
 date: 17 July 2026
 # Draft — before JOSS submission, confirm author metadata (ORCID, affiliation)
-# and reset `date` to the submission date: the paper describes 0.7.0, whose
+# and reset `date` to the submission date: the paper describes 0.8.0, whose
 # measured test and count figures were taken on 30 August 2026, so the current
 # placeholder predates the artifact it documents.
 bibliography: paper.bib
@@ -37,7 +37,7 @@ Python and NumPy; the estimation kernels (state-space filtering, bootstrap and
 posterior resampling, sign-restriction rotation sampling, spectral transforms,
 optimization) are implemented in Rust and exposed through `PyO3` and built into
 portable wheels with `maturin` [@pyo3; @maturin]. The release described here,
-**0.7.0**, exposes **162 functions** organized as a task-oriented facade over
+**0.8.0**, exposes **173 functions** organized as a task-oriented facade over
 **43 Rust crates**, and NumPy is the only required runtime dependency.
 
 The design goal is not another forecasting toolkit but a maintained, fast, and
@@ -114,7 +114,7 @@ comfortable default rather than an overnight job.
 
 # Functionality
 
-The 162 functions span the applied workflow end to end:
+The 173 functions span the applied workflow end to end:
 
 - **Diagnostics and exploration**: `acf`, `pacf`, `ljung_box`, `jarque_bera`,
   `arch_lm`; the unit-root battery (`adf`, `kpss`, `dfgls`, `phillips_perron`,
@@ -188,11 +188,11 @@ cluster in the panels).
 `tsecon`'s central engineering discipline is that no estimator is included
 without a named golden validation target — a published table, a reference
 implementation, a documented closed form, or a Monte-Carlo size/power check.
-The Rust core carries a large unit and integration suite of **1610 passing
-`#[test]` cases** (1393 integration tests in `crates/*/tests/`, 217 unit tests
-in `src/`); with 54 documentation tests the workspace total is 1664 passing
-Rust tests, with 9 explicitly ignored. The Python layer adds a conformance
-suite of 1312 tests across 93 files whose fixtures are gated against
+The Rust core carries a large unit and integration suite of **1721 passing
+`#[test]` cases** (1479 integration tests in `crates/*/tests/`, 242 unit tests
+in `src/`); with 54 documentation tests the workspace total is 1775 passing
+Rust tests, with 10 explicitly ignored. The Python layer adds a conformance
+suite of 1526 tests across 99 files whose fixtures are gated against
 `statsmodels`, `arch`, `linearmodels`, `scikit-learn`, SciPy, and `ArviZ`. The
 replication fixtures *are* the integration test suite.
 
