@@ -380,8 +380,16 @@ function and parameter).
   horizons** (round 6): coverage 0.80–0.89 at the default `horizon=12`
   depending on the DGP, one-sided misses, fading in T. Documented on every
   surface; a re-engineered long-horizon correction is the open item.
+  *(Closed as written — repository audit, September 2026: the correction
+  shipped opt-in as `rf_method="second_order"` in 0.3.0 and
+  `"second_order_bc"` in 0.6.0, measured every run by the coverage registry;
+  the default is still `"delta"`, and that flip is the remaining decision —
+  ledger row N21-03.)*
 - **`ivx_test`'s joint Wald size in k** (rounds 3–4): documented everywhere
   in 0.3.0; a size-restoring joint test is the open item.
+  *(Closed — repository audit, September 2026: `joint="bonferroni"` shipped
+  in 0.3.0 and became the default in 0.5.0; the chi-square route keeps its
+  size defect by design and is pinned by a k=5 regression test.)*
 - **`flp`'s per-element `se` for estimated scores** (rounds 3–4): documented
   in 0.3.0; a generated-regressor correction (or bootstrap route) is the
   open item.

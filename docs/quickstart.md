@@ -28,7 +28,7 @@ install and see how much is on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.8.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 162
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 173
           if not n.startswith("_")))
 ```
 
@@ -89,7 +89,7 @@ indices.
 
 ## The API at a glance
 
-The 162 functions, grouped by the task they serve. Every one is a plain
+The 173 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -294,6 +294,17 @@ and docstrings live in
 | `adaptive_lasso` | Adaptive LASSO with oracle-property weights (Zou) |
 | `lasso_path` | Elastic-net regularization path with AIC/BIC selection |
 | `cv_splits` | Leakage-safe CV splits (expanding / rolling / purged k-fold) |
+| `kernel_ridge` | Kernel ridge regression (rbf / laplacian / polynomial / linear), with a random-Fourier-feature mode |
+| `kernel_regression` | Nadaraya-Watson and local-linear regression with a leave-block-out bandwidth selector |
+| `group_lasso` | Group and sparse-group LASSO with a KKT optimality certificate |
+| `post_lasso` | Post-LASSO OLS refit on the selected support (no standard errors, by design) |
+| `pds_lasso` | Post-double-selection treatment coefficient with Newey-West HAC inference |
+| `regression_tree` | CART regression tree (scikit-learn split conventions) |
+| `random_forest` | Random forest with iid / block / stationary resampling, quantile forests, grouped block-permutation importance |
+| `boosting` | Componentwise L2 boosting with corrected-AIC stopping |
+| `l1_trend_filter` | L1 trend filtering: a piecewise-linear trend with data-chosen knots |
+| `mlp_regression` | Feed-forward neural regressor: seed ensemble, temporal early stopping |
+| `echo_state_network` | Echo state network (reservoir computing) with a ridge readout |
 | `iv_gmm` | Linear IV-GMM with robust or HAC weighting and a Hansen J test |
 | `gmm_nonlinear` | Nonlinear GMM over a Python moment function |
 

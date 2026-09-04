@@ -2,7 +2,7 @@
 target-*/
 __pycache__/
 *.pyc
-.venv/
+.venv*/
 # Python wheel/sdist build output — ANCHORED to the build dir so it does not
 # also match Rust source module directories named `dist` (e.g.
 # crates/tsecon-stats/src/dist/, which is real source that must be committed).
@@ -23,3 +23,24 @@ htmlcov/
 
 # Local scratch logs from integration runs
 *.log
+
+# Tool caches and editor state (never tracked; listed so `git status` stays quiet)
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.ipynb_checkpoints/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Repository-audit raw probe dumps: multi-hundred-kilobyte machine output that
+# the sweep scripts under lab/audit/repo/ regenerate. The text summaries next
+# to them are committed; these are not.
+lab/audit/repo/*/out/*.xml
+lab/audit/repo/claims/out/sweep_names.json
+lab/audit/repo/claims/out/sweep_exec.json
+lab/audit/repo/tests/out/assertion_scan.json
+lab/audit/repo/api/out/conventions.json
+lab/audit/repo/api/out/clusters.json
+lab/audit/repo/security/out/*.jsonl

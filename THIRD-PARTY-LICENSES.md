@@ -3,9 +3,12 @@
 `tsecon`'s compiled wheel statically links the Rust crates listed below. All
 are permissive (MIT / Apache-2.0 / BSD / Zlib / Unicode-3.0) — there is no
 copyleft (GPL/LGPL/AGPL/MPL) anywhere in the dependency tree. This file is the
-license inventory; the full verbatim copyright notices for each crate are
-reproduced in released wheels (generated with `cargo about` at release time,
-per the packaging plan in docs/roadmap/14-packaging-distribution.md).
+license inventory. The verbatim licence text and copyright notice of every
+crate statically linked into the extension are in
+`bindings/python/THIRD-PARTY-NOTICES.md`, generated with `cargo about`
+(`scripts/gen_third_party_notices.sh`, gated by `about.toml`, checked in CI)
+and shipped in every wheel and sdist through `license-files`. Wheels 0.1.0
+through 0.6.0 predate that file and carry only tsecon's own licences.
 
 Generated from `cargo metadata` — 97 third-party packages.
 

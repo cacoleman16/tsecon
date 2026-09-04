@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+publish.workspace = true
 description = "Panel time series econometrics for the tsecon library: balanced fixed-effects (within) panel OLS with nonrobust, entity-clustered (Arellano 1987), and Driscoll-Kraay (1998) covariances matching linearmodels PanelOLS conventions, panel local projections (Jorda 2005) with Ramey-Zubairy cumulative multipliers and two half-panel Nickell-bias corrections — the Dhaene-Jochmans (2015) jackknife and the Mei-Sheng-Shi (2026) split-panel jackknife with its adjusted-score standard errors — LP-DiD, the Dube-Girardi-Jorda-Taylor (2025) local-projections difference-in-differences with clean controls, equally-weighted-ATT reweighting, pooled ATTs, and non-absorbing treatments, and the Pesaran-Smith (1995) mean-group panel VAR"
 
 [dependencies]

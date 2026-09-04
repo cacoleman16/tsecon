@@ -1,0 +1,91 @@
+public callables: 173
+strongest assertion per callable: {'reference': 157, 'numeric': 13, 'structural': 3}
+
+== callables with only smoke coverage (best in none/raises/structural) ==
+  box_cox_lambda               n_tests=  1 best=structural test_coerce.py::test_tuple_options_are_not_treated_as_data
+  fvar_scenario                n_tests=  2 best=structural test_exercise_gap.py::TestFvarScenario::test_keys_and_shapes; test_exercise_gap.py::TestFvarScenario::test_error_propagates_with_actionable_message
+  summarize                    n_tests=  2 best=structural test_auto_arima.py::test_summarize_wraps_the_result; test_var_backtest.py::test_verdict_is_summarizable
+
+== callables with numeric-but-no-reference coverage (property / sign / bound only) ==
+  bootstrap_indices            n_tests=  1 test_smoke.py::test_bootstrap_indices_deterministic_and_in_range
+  cv_splits                    n_tests= 12 test_audit_round11.py::test_cv_splits_default_train_is_documented_as_refused; test_cv_splits.py::test_expanding_origin_no_leakage; test_cv_splits.py::test_rolling_origin_fixed_width
+  dfm_news                     n_tests=  1 test_pmg_news.py::test_dfm_news_adds_up_exactly
+  engle_granger                n_tests=  4 test_exercise_gap.py::TestEngleGranger::test_keys_and_marshalling_on_cointegrated_pair; test_exercise_gap.py::TestEngleGranger::test_independent_walks_do_not_reject; test_exercise_gap.py::TestEngleGranger::test_pandas_input_coerced
+  fry_pagan_svar               n_tests=  1 test_ident_tranche2b.py::test_fry_pagan_returns_median_target_draw
+  gas_volatility               n_tests=  4 test_new_crates.py::test_gas_gaussian_fit_is_sane; test_new_crates.py::test_gas_student_t_estimates_dof; test_new_crates.py::test_gas_rejects_unknown_density
+  ndiffs                       n_tests=  4 test_exercise_gap.py::TestNdiffs::test_random_walk_needs_a_difference; test_exercise_gap.py::TestNdiffs::test_white_noise_needs_none; test_exercise_gap.py::TestNdiffs::test_max_d_caps_the_answer
+  optimal_block_length         n_tests=  1 test_smoke.py::test_optimal_block_length_on_nile
+  phillips_ouliaris            n_tests=  1 test_ident_tranche1.py::test_phillips_ouliaris_contract
+  quantile_lp                  n_tests=  1 test_convergence_flags.py::test_quantile_lp_emits_per_fit_converged_and_reports_real_exhaustion
+  robust_svar_bounds           n_tests=  1 test_ident_tranche2b.py::test_robust_bounds_contain_sign_restricted_band
+  svensson                     n_tests=  1 test_termstructure.py::test_svensson_nests_nelson_siegel
+  tripower_quarticity          n_tests=  1 test_realized_extras.py::test_tripower_quarticity_matches_documented_formula
+
+== thinnest coverage (n_tests <= 2), any strength ==
+  accuracy                     n_tests=1 best=reference
+  adaptive_lasso               n_tests=1 best=reference
+  ar_loglik                    n_tests=1 best=reference
+  arch_lm                      n_tests=1 best=reference
+  bk_filter                    n_tests=1 best=reference
+  bns_jump_test                n_tests=1 best=reference
+  bootstrap_indices            n_tests=1 best=numeric
+  box_cox_lambda               n_tests=1 best=structural
+  cf_filter                    n_tests=1 best=reference
+  chow_test                    n_tests=1 best=reference
+  connectedness                n_tests=1 best=reference
+  cusum_test                   n_tests=1 best=reference
+  cw_test                      n_tests=1 best=reference
+  dfm_news                     n_tests=1 best=numeric
+  dm_test                      n_tests=1 best=reference
+  elastic_net                  n_tests=1 best=reference
+  factor_model                 n_tests=1 best=reference
+  flp                          n_tests=1 best=reference
+  flp_scenario                 n_tests=1 best=reference
+  forecast_efficiency          n_tests=1 best=reference
+  fry_pagan_svar               n_tests=1 best=numeric
+  gw_test                      n_tests=1 best=reference
+  har_rv                       n_tests=1 best=reference
+  jarque_bera                  n_tests=1 best=reference
+  kpss                         n_tests=1 best=reference
+  long_run_variance            n_tests=1 best=reference
+  max_share_svar               n_tests=1 best=reference
+  mcmc_diagnostics             n_tests=1 best=reference
+  midas_weights                n_tests=1 best=reference
+  optimal_block_length         n_tests=1 best=numeric
+  phillips_ouliaris            n_tests=1 best=numeric
+  philox_uniforms              n_tests=1 best=reference
+  quantile_lp                  n_tests=1 best=numeric
+  quantile_regression          n_tests=1 best=reference
+  realized_measures            n_tests=1 best=reference
+  realized_quarticity          n_tests=1 best=reference
+  reset_test                   n_tests=1 best=reference
+  ridge                        n_tests=1 best=reference
+  robust_svar_bounds           n_tests=1 best=numeric
+  svensson                     n_tests=1 best=numeric
+  theta_forecast               n_tests=1 best=reference
+  tripower_quarticity          n_tests=1 best=numeric
+  umidas                       n_tests=1 best=reference
+  afns_adjustment              n_tests=2 best=reference
+  cg_regression                n_tests=2 best=reference
+  check_stationarity           n_tests=2 best=reference
+  coherence                    n_tests=2 best=reference
+  dsge_solve                   n_tests=2 best=reference
+  functional_pca               n_tests=2 best=reference
+  fvar_scenario                n_tests=2 best=structural
+  heteroskedasticity_test      n_tests=2 best=reference
+  historical_decomposition     n_tests=2 best=reference
+  hp_filter                    n_tests=2 best=reference
+  lasso                        n_tests=2 best=reference
+  lasso_path                   n_tests=2 best=reference
+  local_level_smooth           n_tests=2 best=reference
+  long_memory_d                n_tests=2 best=reference
+  narrative_svar               n_tests=2 best=reference
+  nsdiffs                      n_tests=2 best=reference
+  pacf                         n_tests=2 best=reference
+  panel_mean_group             n_tests=2 best=reference
+  periodogram                  n_tests=2 best=reference
+  phillips_perron              n_tests=2 best=reference
+  seasonal_strength            n_tests=2 best=reference
+  structural_fevd              n_tests=2 best=reference
+  summarize                    n_tests=2 best=structural
+  welch                        n_tests=2 best=reference

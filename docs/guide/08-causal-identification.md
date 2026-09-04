@@ -337,7 +337,7 @@ print("funds-rate own-shock share of that swing:", round(contrib[t, 2, 2] / gap,
 ```
 
 ```
-adding-up max|y - baseline - sum_j hd|: 3.1086244689504383e-15
+adding-up max|y - baseline - sum_j hd|: 3.552713678800501e-15
 t=299: ffr +4.383, baseline +0.030; recursive contributions [+0.891 -0.001 +3.464]
 funds-rate own-shock share of that swing: 0.796
 ```
@@ -365,6 +365,7 @@ accepted 226  narrative rate 0.113  ess 159.4  min_ptilde 0.02
 h=0: plain -0.640 (w 1.230) | narrative -0.374 (w 0.804)
 h=2: plain -0.221 (w 0.466) | narrative -0.161 (w 0.292)
 h=4: plain -0.076 (w 0.178) | narrative -0.067 (w 0.129)
+no narrative == sign_restricted_svar: True
 ```
 
 The episode statement bites hard: only 11% of the sign-admissible rotations also make the monetary shock the dominant driver of that quarter's funds-rate swing, the smallest $\hat{P}$ (0.02) marks a draw earning a large importance weight, and the effective sample falls to 159 of 226. The reweighting both narrows the output band (1.23 → 0.80 on impact) and shifts its median toward zero — episode knowledge doing real work. **Watch the ESS**: a narrative that collapses it to a handful of draws is fighting the posterior, not sharpening it. With no narrative restriction the function is `sign_restricted_svar` bit-for-bit, so it is a safe drop-in. (This is narrative identification in the AD&RR *sign-restriction* sense; the distinct sense — a measured narrative *series* used as an instrument — is [its own section below](#narrative-identification-reading-the-record).)

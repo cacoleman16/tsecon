@@ -346,6 +346,8 @@ MC-recovery grading is the declared fallback where no reference runs.
 
 ### 1. DCS robust local level — PROPOSE for next iteration (strongest case)
 
+*(Shipped in 0.3.0 as `dcs_local_level` — repository audit, September 2026.)*
+
 - **Evidence**: exp03 — no clean-data tax, −22/−31% RMSE under 5/10%
   contamination, mechanism understood (gain collapse vs bounded score),
   nested-Gaussian equivalence held on every seed.
@@ -367,6 +369,8 @@ MC-recovery grading is the declared fallback where no reference runs.
   roadmap assigns auto.arima. Difficulty M.
 
 ### 2. VaR backtest battery (Kupiec / Christoffersen / DQ) — PROPOSE (a need this study surfaced)
+
+*(Shipped in 0.3.0 as `var_backtest` — repository audit, September 2026.)*
 
 - Not lab code, but the study had to *hand-roll Kupiec* in
   `experiments/common.py` to evaluate exp04, and Module 03's roadmap
@@ -410,7 +414,9 @@ MC-recovery grading is the declared fallback where no reference runs.
   contract (ROADMAP §3) already plans "trends, seasonal dummies, Fourier
   terms, holidays" builders; prophet_lite's Fourier block is exactly
   that, with a trivial closed-form golden. Difficulty S.
-- **Salvage (b): exact L1 trend filter.** The FWL + coordinate-descent
+- **Salvage (b): exact L1 trend filter.** *(Shipped in 0.8.0 as
+  `l1_trend_filter`, Kim-Koh-Boyd on the banded dual with a duality-gap
+  certificate — repository audit, September 2026.)* The FWL + coordinate-descent
   lasso trend solver is an exact 1-D trend-filtering engine (Kim-Koh-
   Boyd 2009 family, adjacent to the shipped `hp_filter` and
   `bai_perron`), and it validates *exactly* against scikit-learn `Lasso`

@@ -59,8 +59,12 @@ lines = [
     "# API reference",
     "",
     "The complete callable surface of `tsecon`, generated from the type stub "
-    "(`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns plain NumPy arrays "
-    "and dictionaries — no framework objects. For the *why* and *when* of each "
+    "(`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, "
+    "a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are "
+    "float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, "
+    "multivariate-GARCH, panel and term-structure families (and the top-level results of "
+    "`var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` "
+    "converts them; the docstring says which. For the *why* and *when* of each "
     "method, see the [model cards](README.md) and the "
     "[guide](../guide/README.md).",
     "",

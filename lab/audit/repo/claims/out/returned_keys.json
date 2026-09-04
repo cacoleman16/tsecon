@@ -1,0 +1,4126 @@
+{
+ "accuracy": {
+  "params": [
+   "actual",
+   "forecast",
+   "insample",
+   "period"
+  ],
+  "top": [
+   "mae",
+   "mape",
+   "mase",
+   "me",
+   "rmse",
+   "rmsse",
+   "smape"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "acf": {
+  "params": [
+   "y",
+   "nlags",
+   "adjusted"
+  ],
+  "top": [
+   "acf",
+   "bartlett_se"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "acm_term_premium": {
+  "params": [
+   "yields",
+   "maturities",
+   "n_factors",
+   "periods_per_year"
+  ],
+  "top": [
+   "A",
+   "A_rn",
+   "B",
+   "B_rn",
+   "a",
+   "beta",
+   "c",
+   "delta0",
+   "delta1",
+   "factor_loadings",
+   "factors",
+   "fitted",
+   "lambda0",
+   "lambda1",
+   "maturities",
+   "mu",
+   "n_factors",
+   "periods_per_year",
+   "phi",
+   "risk_neutral",
+   "rx_maturities",
+   "rx_rsquared",
+   "short_rate_rsquared",
+   "sigma",
+   "sigma2",
+   "term_premium",
+   "var_rsquared",
+   "yield_rsquared"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "adaptive_lasso": {
+  "params": [
+   "x",
+   "y",
+   "alpha",
+   "l1_ratio",
+   "gamma",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "adf": {
+  "params": [
+   "y",
+   "regression",
+   "autolag",
+   "maxlag"
+  ],
+  "top": [
+   "crit",
+   "nobs",
+   "p_value",
+   "statistic",
+   "used_lag"
+  ],
+  "nested": [
+   "1%",
+   "10%",
+   "5%"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "afns_adjustment": {
+  "params": [
+   "maturities",
+   "sigma",
+   "decay"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "ar_loglik": {
+  "params": [
+   "y",
+   "coeffs",
+   "sigma2",
+   "intercept"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "float"
+ },
+ "arch_lm": {
+  "params": [
+   "resid",
+   "nlags"
+  ],
+  "top": [
+   "df",
+   "nobs",
+   "p_value",
+   "statistic"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "arima_fit": {
+  "params": [
+   "y",
+   "p",
+   "d",
+   "q",
+   "seasonal",
+   "constant",
+   "forecast_steps",
+   "conf_alpha",
+   "drift_uncertainty"
+  ],
+  "top": [
+   "aic",
+   "bic",
+   "boundary",
+   "boundary_note",
+   "bse",
+   "conf_alpha",
+   "converged",
+   "cov_ok",
+   "drift_uncertainty",
+   "forecast_lower",
+   "forecast_mean",
+   "forecast_se",
+   "forecast_upper",
+   "loglik",
+   "param_cov",
+   "param_names",
+   "params",
+   "residuals",
+   "se_valid"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "auto_arima": {
+  "params": [
+   "y",
+   "seasonal_period",
+   "ic",
+   "stepwise",
+   "max_p",
+   "max_q",
+   "max_P",
+   "max_Q",
+   "max_order",
+   "max_d",
+   "max_D",
+   "d",
+   "D",
+   "alpha",
+   "forecast_steps",
+   "conf_alpha"
+  ],
+  "top": [
+   "D_test",
+   "aic",
+   "aicc",
+   "bic",
+   "boundary",
+   "boundary_note",
+   "bse",
+   "budget_exhausted",
+   "constant",
+   "converged",
+   "cov_ok",
+   "d_test",
+   "ic",
+   "ic_value",
+   "interpretation",
+   "loglik",
+   "n_models",
+   "order",
+   "param_cov",
+   "param_names",
+   "params",
+   "residuals",
+   "se_valid",
+   "seasonal_order",
+   "stepwise",
+   "trace"
+  ],
+  "nested": [
+   "alpha",
+   "d",
+   "error",
+   "max_d",
+   "status",
+   "steps",
+   "stop",
+   "test"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "backtest": {
+  "params": [
+   "y",
+   "window",
+   "train",
+   "horizon",
+   "refit_every",
+   "forecaster",
+   "period",
+   "insample_period"
+  ],
+  "top": [
+   "accuracy",
+   "forecasts",
+   "horizon",
+   "n_origins",
+   "origins",
+   "targets"
+  ],
+  "nested": [
+   "mae",
+   "mape",
+   "mase",
+   "mdae",
+   "me",
+   "mse",
+   "name",
+   "rmse",
+   "rmsse",
+   "smape"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "bai_perron": {
+  "params": [
+   "y",
+   "x",
+   "max_breaks",
+   "trim"
+  ],
+  "top": [
+   "break_dates",
+   "break_dates_by_m",
+   "bse",
+   "ci_lower_90",
+   "ci_lower_95",
+   "ci_scale",
+   "ci_upper_90",
+   "ci_upper_95",
+   "h",
+   "n_breaks",
+   "params",
+   "regime_ends",
+   "regime_ssr",
+   "regime_starts",
+   "ssr_path",
+   "sup_f_crit",
+   "sup_f_seq"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "bk_filter": {
+  "params": [
+   "y",
+   "low",
+   "high",
+   "k"
+  ],
+  "top": [
+   "cycle",
+   "first_index"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "bn_decomposition": {
+  "params": [
+   "y",
+   "p",
+   "q",
+   "ar",
+   "ma",
+   "drift"
+  ],
+  "top": [
+   "aic",
+   "ar",
+   "bic",
+   "converged",
+   "cycle",
+   "drift",
+   "first_index",
+   "innovations",
+   "loglik",
+   "long_run_multiplier",
+   "ma",
+   "mode",
+   "sigma2",
+   "trend"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "bn_filter": {
+  "params": [
+   "y",
+   "p",
+   "delta",
+   "demean",
+   "d0",
+   "dt"
+  ],
+  "top": [
+   "amplitude_to_noise",
+   "ar",
+   "cycle",
+   "cycle_se",
+   "delta",
+   "drift",
+   "first_index",
+   "trend"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "bns_jump_test": {
+  "params": [
+   "returns"
+  ],
+  "top": [
+   "ratio"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "boosting": {
+  "params": [
+   "x",
+   "y",
+   "learning_rate",
+   "n_steps",
+   "stop",
+   "x_test"
+  ],
+  "top": [
+   "aic_path",
+   "best_step",
+   "coef",
+   "coef_path",
+   "df_path",
+   "fitted",
+   "predicted",
+   "rss_path",
+   "selected"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "bootstrap_indices": {
+  "params": [
+   "n",
+   "scheme",
+   "seed",
+   "block_length",
+   "p"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "box_cox_lambda": {
+  "params": [
+   "y",
+   "method",
+   "bounds",
+   "period"
+  ],
+  "top": [
+   "at_bound",
+   "interpretation",
+   "lambda",
+   "loglik_at_one",
+   "loglik_at_zero",
+   "lower",
+   "lr_vs_one",
+   "lr_vs_zero",
+   "method",
+   "n",
+   "objective",
+   "period",
+   "upper"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "bvar_fit": {
+  "params": [
+   "data",
+   "lags",
+   "lambda0",
+   "lambda1",
+   "lambda3",
+   "delta",
+   "scale_ar"
+  ],
+  "top": [
+   "log_marginal_likelihood",
+   "omega_bar",
+   "posterior_mean_coefs",
+   "s_bar",
+   "sigma_posterior_mean",
+   "v_bar"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "bvar_hierarchical": {
+  "params": [
+   "data",
+   "lags",
+   "delta",
+   "lambda0",
+   "lambda3",
+   "lambda1_init",
+   "lambda1_lo",
+   "lambda1_hi",
+   "optimize",
+   "hyperprior",
+   "n_grid",
+   "max_iter",
+   "tol",
+   "scale_ar"
+  ],
+  "top": [
+   "converged",
+   "grid_lambda1",
+   "grid_log_ml",
+   "lambda1_fixed_log_ml",
+   "lambda1_opt",
+   "lambda3_opt",
+   "log_marginal_likelihood",
+   "log_posterior",
+   "n_evals",
+   "posterior_mean_coefs",
+   "sigma_posterior_mean"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "bvar_irf_draws": {
+  "params": [
+   "data",
+   "lags",
+   "horizon",
+   "n_draws",
+   "seed",
+   "lambda0",
+   "lambda1",
+   "lambda3",
+   "delta",
+   "cumulative",
+   "scale_ar"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "list"
+ },
+ "bvar_ssvs": {
+  "params": [
+   "data",
+   "lags",
+   "n_draws",
+   "burn",
+   "seed",
+   "c0",
+   "c1",
+   "prior_inclusion",
+   "ssvs_cov",
+   "kappa0",
+   "kappa1",
+   "prior_inclusion_cov",
+   "gamma_a",
+   "gamma_b",
+   "horizon",
+   "thin",
+   "n_chains"
+  ],
+  "top": [
+   "coef_mean",
+   "diagnostics",
+   "inclusion_prob",
+   "irf_draws",
+   "sigma_mean"
+  ],
+  "nested": [
+   "burn",
+   "log_marginal_likelihood_median",
+   "mean_model_size",
+   "n_draws_kept",
+   "thin"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "ccc_garch": {
+  "params": [
+   "returns",
+   "forecast_horizon",
+   "vol",
+   "mean",
+   "univariate_dist",
+   "p",
+   "o",
+   "q"
+  ],
+  "top": [
+   "correlation",
+   "covariance",
+   "covariance_forecast",
+   "loglik",
+   "sigma2",
+   "variance_forecast"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "cf_filter": {
+  "params": [
+   "y",
+   "low",
+   "high",
+   "drift"
+  ],
+  "top": [
+   "cycle",
+   "first_index",
+   "trend"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "cg_regression": {
+  "params": [
+   "errors",
+   "revisions",
+   "maxlags",
+   "use_correction"
+  ],
+  "top": [
+   "implied_rigidity",
+   "intercept",
+   "maxlags",
+   "nobs",
+   "p_slope",
+   "r_squared",
+   "se_intercept",
+   "se_slope",
+   "slope",
+   "t_slope"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "check_series": {
+  "params": [
+   "data",
+   "seasonal_period",
+   "lags",
+   "alpha",
+   "max_breaks",
+   "trim"
+  ],
+  "top": [
+   "alpha",
+   "analysis_scale",
+   "arch_effects",
+   "breaks",
+   "descriptives",
+   "kind",
+   "long_memory",
+   "multiple_testing",
+   "n",
+   "normality",
+   "outliers",
+   "recommendations",
+   "seasonality",
+   "serial_correlation",
+   "stationarity",
+   "tests_run"
+  ],
+  "nested": [
+   "acf",
+   "acf_at_seasonal_lags",
+   "adf_p_value",
+   "adf_statistic",
+   "bai_perron",
+   "band_note",
+   "caveat",
+   "computed_on",
+   "conf_band",
+   "count",
+   "design",
+   "detected_period",
+   "df",
+   "evidence",
+   "excess_kurtosis",
+   "expected_false_rejections",
+   "finding",
+   "functions",
+   "gph",
+   "gph_on_differences",
+   "indices",
+   "interpretation",
+   "joint_interpretation",
+   "kpss_p_value",
+   "kpss_statistic",
+   "ljung_box",
+   "max",
+   "mean",
+   "method",
+   "min",
+   "n_tests",
+   "n_true_null",
+   "name",
+   "nobs",
+   "note",
+   "p_value",
+   "pacf",
+   "periodogram_ordinate",
+   "pvalue",
+   "quadrant",
+   "rationale",
+   "recommendation",
+   "rejected",
+   "scale",
+   "sd",
+   "seasonal_period",
+   "significant_acf_lags",
+   "significant_pacf_lags",
+   "skew",
+   "skewness",
+   "skipped_reason",
+   "statistic",
+   "suggested_arma_orders",
+   "suggestion",
+   "sup_f",
+   "topic"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "check_stationarity": {
+  "params": [
+   "y",
+   "alpha"
+  ],
+  "top": [
+   "adf_p_value",
+   "adf_statistic",
+   "alpha",
+   "interpretation",
+   "kpss_p_value",
+   "kpss_statistic",
+   "quadrant",
+   "recommendation"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "chow_test": {
+  "params": [
+   "y",
+   "x",
+   "split"
+  ],
+  "top": [
+   "df_den",
+   "df_num",
+   "fstat",
+   "pvalue",
+   "ssr1",
+   "ssr2",
+   "ssr_pooled"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "coherence": {
+  "params": [
+   "x",
+   "y",
+   "nperseg",
+   "fs",
+   "noverlap",
+   "window",
+   "detrend"
+  ],
+  "top": [
+   "coherence",
+   "freqs"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "conformal_backtest": {
+  "params": [
+   "y",
+   "horizon",
+   "method",
+   "base",
+   "alpha",
+   "calib",
+   "mode",
+   "period",
+   "gamma",
+   "n_eval",
+   "lags",
+   "n_boot",
+   "batch",
+   "seed",
+   "optimize_beta",
+   "order"
+  ],
+  "top": [
+   "alpha",
+   "base",
+   "err",
+   "horizon",
+   "level",
+   "lower",
+   "mean",
+   "method",
+   "n_eval",
+   "origins",
+   "realized_coverage",
+   "upper"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "conformal_forecast": {
+  "params": [
+   "y",
+   "horizon",
+   "method",
+   "base",
+   "alpha",
+   "calib",
+   "mode",
+   "period",
+   "gamma",
+   "n_eval",
+   "lags",
+   "n_boot",
+   "seed",
+   "optimize_beta",
+   "order"
+  ],
+  "top": [
+   "alpha",
+   "base",
+   "finite_sample_level",
+   "horizon",
+   "level",
+   "lower",
+   "mean",
+   "method",
+   "mode",
+   "n_calib",
+   "q_lower",
+   "q_upper",
+   "scores",
+   "upper"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "connectedness": {
+  "params": [
+   "data",
+   "lags",
+   "horizon",
+   "trend"
+  ],
+  "top": [
+   "from_others",
+   "gfevd",
+   "net",
+   "pairwise_net",
+   "to_others",
+   "total"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "copula_fit": {
+  "params": [
+   "u",
+   "family",
+   "method"
+  ],
+  "top": [
+   "aic",
+   "bic",
+   "converged",
+   "family",
+   "loglik",
+   "method",
+   "n",
+   "param_names",
+   "params",
+   "rho",
+   "se",
+   "se_rho",
+   "se_valid",
+   "tail_lower",
+   "tail_upper",
+   "tau",
+   "tau_implied"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "copula_select": {
+  "params": [
+   "u",
+   "families",
+   "method"
+  ],
+  "top": [
+   "best_aic",
+   "best_bic",
+   "fits",
+   "ranking_aic",
+   "ranking_bic",
+   "skipped",
+   "verdict"
+  ],
+  "nested": [
+   "frank",
+   "gaussian"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "cusum_test": {
+  "params": [
+   "y",
+   "x"
+  ],
+  "top": [
+   "bound_lower",
+   "bound_upper",
+   "path",
+   "sigma"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "cv_splits": {
+  "params": [
+   "n",
+   "scheme",
+   "train",
+   "horizon",
+   "step",
+   "k",
+   "purge",
+   "embargo"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "list"
+ },
+ "cw_test": {
+  "params": [
+   "e_small",
+   "e_large",
+   "yhat_small",
+   "yhat_large",
+   "lrv_lags"
+  ],
+  "top": [
+   "cw_stat",
+   "mean_adj_diff",
+   "p_value"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "dcc_garch": {
+  "params": [
+   "returns",
+   "variant",
+   "dist",
+   "forecast_horizon",
+   "vol",
+   "mean",
+   "univariate_dist",
+   "p",
+   "o",
+   "q"
+  ],
+  "top": [
+   "a",
+   "b",
+   "converged",
+   "correlation",
+   "correlation_forecast",
+   "correlation_last",
+   "covariance",
+   "covariance_forecast",
+   "dist",
+   "g",
+   "loglik",
+   "qbar",
+   "sigma2",
+   "std_residuals",
+   "univariate",
+   "variance_forecast",
+   "variant"
+  ],
+  "nested": [
+   "aic",
+   "bic",
+   "boundary",
+   "boundary_note",
+   "conditional_volatility",
+   "param_names",
+   "params",
+   "params_named",
+   "se_mle",
+   "se_robust",
+   "se_valid"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "dcc_test": {
+  "params": [
+   "returns",
+   "lags",
+   "vol",
+   "mean",
+   "univariate_dist",
+   "p",
+   "o",
+   "q"
+  ],
+  "top": [
+   "df",
+   "lags",
+   "n_stacked",
+   "nobs",
+   "p_value",
+   "stat"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "dcs_local_level": {
+  "params": [
+   "y",
+   "density"
+  ],
+  "top": [
+   "aic",
+   "bic",
+   "converged",
+   "density",
+   "iterations",
+   "kappa",
+   "kappa_se",
+   "level",
+   "loglik",
+   "n_obs",
+   "next_level",
+   "nu",
+   "nu_se",
+   "resid",
+   "scale",
+   "scale_se"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "dfgls": {
+  "params": [
+   "y",
+   "regression",
+   "lags",
+   "max_lags",
+   "method"
+  ],
+  "top": [
+   "crit",
+   "nobs",
+   "p_value",
+   "statistic",
+   "trend",
+   "used_lag"
+  ],
+  "nested": [
+   "1%",
+   "10%",
+   "5%"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "dfm_news": {
+  "params": [
+   "old_vintage",
+   "new_vintage",
+   "target_series",
+   "target_period",
+   "n_factors",
+   "factor_order"
+  ],
+  "top": [
+   "contributions",
+   "new_nowcast",
+   "old_nowcast",
+   "target_period",
+   "target_series",
+   "total_revision"
+  ],
+  "nested": [
+   "actual",
+   "contribution",
+   "forecast",
+   "news",
+   "period",
+   "series",
+   "weight"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "dfm_nowcast": {
+  "params": [
+   "data",
+   "n_factors",
+   "factor_order",
+   "method"
+  ],
+  "top": [
+   "center",
+   "edge_factor",
+   "factor_ar",
+   "factor_cov",
+   "factor_order",
+   "fit_loglik",
+   "idiosyncratic",
+   "loadings",
+   "loglik",
+   "n_factors",
+   "nowcast",
+   "scale",
+   "smoothed_factors"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "dm_test": {
+  "params": [
+   "e1",
+   "e2",
+   "h",
+   "loss"
+  ],
+  "top": [
+   "dm_stat",
+   "hln_stat",
+   "mean_loss_diff",
+   "p_value"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "dsge_solve": {
+  "params": [
+   "a",
+   "b",
+   "c",
+   "n_predetermined"
+  ],
+  "top": [
+   "eigenvalue_moduli",
+   "g",
+   "p",
+   "q",
+   "verdict"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "dynamic_ns": {
+  "params": [
+   "panel",
+   "maturities",
+   "decay"
+  ],
+  "top": [
+   "curvature",
+   "factors",
+   "forecast",
+   "lambda",
+   "level",
+   "maturities",
+   "rsquared",
+   "slope"
+  ],
+  "nested": [
+   "ar1_intercept",
+   "ar1_phi",
+   "yields"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "echo_state_network": {
+  "params": [
+   "x",
+   "y",
+   "reservoir_size",
+   "spectral_radius",
+   "leak_rate",
+   "input_scaling",
+   "sparsity",
+   "washout",
+   "ridge_alpha",
+   "seed",
+   "x_test"
+  ],
+  "top": [
+   "fitted",
+   "n_train",
+   "n_washout",
+   "predicted",
+   "readout",
+   "reservoir_size",
+   "spectral_radius_achieved"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "elastic_net": {
+  "params": [
+   "x",
+   "y",
+   "alpha",
+   "l1_ratio",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "engle_granger": {
+  "params": [
+   "data",
+   "trend",
+   "autolag",
+   "maxlag"
+  ],
+  "top": [
+   "adf_nobs",
+   "coint_coefs",
+   "crit",
+   "n_vars",
+   "nobs",
+   "pvalue",
+   "resid",
+   "stat",
+   "used_lag"
+  ],
+  "nested": [
+   "1%",
+   "10%",
+   "5%"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "factor_model": {
+  "params": [
+   "data",
+   "n_factors",
+   "kmax"
+  ],
+  "top": [
+   "eigenvalues",
+   "er",
+   "er_ratios",
+   "factors",
+   "icp1",
+   "icp2",
+   "loadings",
+   "pcp1",
+   "pcp2"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "favar": {
+  "params": [
+   "panel",
+   "policy",
+   "n_factors",
+   "lags",
+   "trend",
+   "slow_indices",
+   "horizon",
+   "orth"
+  ],
+  "top": [
+   "factors",
+   "irf_panel",
+   "irf_policy",
+   "n_endog",
+   "n_factors",
+   "params",
+   "policy_index",
+   "sigma_u"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "flp": {
+  "params": [
+   "y",
+   "scores",
+   "horizons",
+   "n_lag_controls",
+   "hac_maxlags"
+  ],
+  "top": [
+   "betas",
+   "covs",
+   "horizons",
+   "n_factors",
+   "nobs",
+   "se"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "flp_scenario": {
+  "params": [
+   "y",
+   "curves",
+   "delta",
+   "n_factors",
+   "horizons",
+   "n_lag_controls",
+   "hac_maxlags"
+  ],
+  "top": [
+   "betas",
+   "explained",
+   "horizons",
+   "response",
+   "se",
+   "weights"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "forecast_disagreement": {
+  "params": [
+   "panel",
+   "ddof"
+  ],
+  "top": [
+   "counts",
+   "iqr",
+   "p25",
+   "p50",
+   "p75",
+   "std"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "forecast_efficiency": {
+  "params": [
+   "errors",
+   "regressors",
+   "maxlags",
+   "use_correction"
+  ],
+  "top": [
+   "bse",
+   "params",
+   "pvalues",
+   "r_squared",
+   "tvalues",
+   "wald",
+   "wald_df",
+   "wald_pvalue"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "frac_diff": {
+  "params": [
+   "x",
+   "d"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "frac_integrate": {
+  "params": [
+   "x",
+   "d"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "fry_pagan_svar": {
+  "params": [
+   "data",
+   "restrictions",
+   "lags",
+   "horizon",
+   "n_draws",
+   "max_tries",
+   "seed",
+   "lambda1",
+   "target"
+  ],
+  "top": [
+   "diagnostics",
+   "median_irf",
+   "median_target_irf",
+   "mt_index",
+   "mt_statistic",
+   "n_accepted"
+  ],
+  "nested": [
+   "acceptance_rate",
+   "accepted",
+   "posterior_draws_used",
+   "rotations_tried"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "functional_pca": {
+  "params": [
+   "curves",
+   "n_factors"
+  ],
+  "top": [
+   "eigenfunctions",
+   "eigenvalues",
+   "explained",
+   "mean_curve",
+   "scores",
+   "total_variance"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "fvar_scenario": {
+  "params": [
+   "y",
+   "curves",
+   "delta",
+   "n_factors",
+   "lags",
+   "horizon"
+  ],
+  "top": [
+   "horizons",
+   "implied_outcome_innovation",
+   "response_outcome",
+   "responses",
+   "weights"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "garch_fit": {
+  "params": [
+   "y",
+   "vol",
+   "mean",
+   "dist",
+   "p",
+   "o",
+   "q",
+   "forecast_horizon"
+  ],
+  "top": [
+   "aic",
+   "bic",
+   "boundary",
+   "boundary_note",
+   "conditional_volatility",
+   "converged",
+   "loglik",
+   "param_names",
+   "params",
+   "params_named",
+   "se_mle",
+   "se_robust",
+   "se_valid",
+   "std_residuals",
+   "variance_forecast"
+  ],
+  "nested": [
+   "alpha[1]",
+   "beta[1]",
+   "omega"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "gas_volatility": {
+  "params": [
+   "y",
+   "density",
+   "horizon"
+  ],
+  "top": [
+   "a",
+   "aic",
+   "b",
+   "bic",
+   "converged",
+   "forecast",
+   "iterations",
+   "loglik",
+   "next_variance",
+   "omega",
+   "std_resid",
+   "variance"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "gev_fit": {
+  "params": [
+   "y",
+   "block_size",
+   "return_periods"
+  ],
+  "top": [
+   "block_size",
+   "converged",
+   "loglik",
+   "mu",
+   "n_maxima",
+   "return_levels",
+   "return_periods",
+   "se_mu",
+   "se_sigma",
+   "se_valid",
+   "se_xi",
+   "sigma",
+   "xi"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "gmm_nonlinear": {
+  "params": [
+   "moments_fn",
+   "initial",
+   "weight"
+  ],
+  "top": [
+   "converged",
+   "fevals",
+   "gbar",
+   "iterations",
+   "nmoments",
+   "nparams",
+   "objective",
+   "params"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "gpd_fit": {
+  "params": [
+   "y",
+   "threshold",
+   "quantile",
+   "p_tail"
+  ],
+  "top": [
+   "beta",
+   "converged",
+   "es",
+   "exceed_rate",
+   "loglik",
+   "n",
+   "n_exceed",
+   "p_tail",
+   "se_beta",
+   "se_valid",
+   "se_xi",
+   "threshold",
+   "threshold_quantile",
+   "var",
+   "xi"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "group_lasso": {
+  "params": [
+   "x",
+   "y",
+   "groups",
+   "alpha",
+   "l1_ratio",
+   "group_weights",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "active_groups",
+   "active_set",
+   "alpha_max",
+   "coef",
+   "converged",
+   "kkt_violation",
+   "max_rel_change",
+   "n_iter",
+   "objective"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "growth_at_risk": {
+  "params": [
+   "y",
+   "conditions",
+   "horizon",
+   "taus",
+   "rearrange"
+  ],
+  "top": [
+   "bse",
+   "bse_powell",
+   "converged",
+   "crossing",
+   "current",
+   "fitted",
+   "fitted_raw",
+   "hac_lags",
+   "horizon",
+   "params",
+   "taus"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "gw_test": {
+  "params": [
+   "loss1",
+   "loss2",
+   "lrv_lags"
+  ],
+  "top": [
+   "df",
+   "gw_stat",
+   "p_value"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "hamilton_filter": {
+  "params": [
+   "y",
+   "h",
+   "p",
+   "method",
+   "se",
+   "maxlags",
+   "use_correction"
+  ],
+  "top": [
+   "beta",
+   "cycle",
+   "first_index",
+   "trend"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "hansen_seo_test": {
+  "params": [
+   "data",
+   "k_ar_diff",
+   "trim",
+   "n_grid",
+   "n_boot",
+   "seed",
+   "beta"
+  ],
+  "top": [
+   "beta",
+   "boot_stats",
+   "k_ar_diff",
+   "lm_path",
+   "min_regime",
+   "n_boot",
+   "n_regressors",
+   "neqs",
+   "nobs",
+   "p_value",
+   "stat",
+   "threshold",
+   "thresholds"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "har_rv": {
+  "params": [
+   "rv",
+   "start",
+   "variant",
+   "hac_maxlags",
+   "use_correction"
+  ],
+  "top": [
+   "bse",
+   "nobs",
+   "params",
+   "rsquared",
+   "tvalues"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "hetero_svar": {
+  "params": [
+   "data",
+   "regime_labels",
+   "lags",
+   "horizon",
+   "trend",
+   "base_regime",
+   "sign_normalization"
+  ],
+  "top": [
+   "B",
+   "covariance_equality",
+   "horizon",
+   "identified",
+   "lags",
+   "min_ratio_gap",
+   "n_vars",
+   "ratio_dist_from_unity",
+   "regime1_label",
+   "regime2_label",
+   "regime_sizes",
+   "sigma_regime1",
+   "sigma_regime2",
+   "sign_convention",
+   "structural_irf",
+   "variance_ratios"
+  ],
+  "nested": [
+   "distinct_regimes",
+   "dof",
+   "pvalue",
+   "statistic"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "heteroskedasticity_test": {
+  "params": [
+   "y",
+   "x",
+   "test"
+  ],
+  "top": [
+   "df",
+   "f_pvalue",
+   "fstat",
+   "pvalue",
+   "statistic"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "historical_decomposition": {
+  "params": [
+   "data",
+   "restrictions",
+   "lags",
+   "horizon",
+   "identification",
+   "n_draws",
+   "max_tries",
+   "seed",
+   "lambda1",
+   "narrative_restrictions",
+   "n_weight_draws"
+  ],
+  "top": [
+   "baseline",
+   "hd",
+   "shocks",
+   "times"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "hp_filter": {
+  "params": [
+   "y",
+   "lamb",
+   "one_sided"
+  ],
+  "top": [
+   "cycle",
+   "first_index",
+   "trend"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "iv_gmm": {
+  "params": [
+   "x",
+   "z",
+   "y",
+   "method",
+   "weight",
+   "bandwidth",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "bse",
+   "cov",
+   "first_stage",
+   "hac_bandwidth",
+   "j_dof",
+   "j_pval",
+   "j_stat",
+   "nmoments",
+   "nobs",
+   "nparams",
+   "params",
+   "residuals",
+   "steps"
+  ],
+  "nested": [
+   "dof_den",
+   "dof_num",
+   "fstat",
+   "pval",
+   "regressor"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "ivx_test": {
+  "params": [
+   "r",
+   "xs",
+   "cz",
+   "alpha",
+   "joint"
+  ],
+  "top": [
+   "beta_ivx",
+   "joint",
+   "nobs",
+   "nregressors",
+   "pvalue",
+   "pvalue_scalar",
+   "rz",
+   "wald",
+   "wald_scalar"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "jarque_bera": {
+  "params": [
+   "x"
+  ],
+  "top": [
+   "kurtosis",
+   "n",
+   "p_value",
+   "skewness",
+   "statistic"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "johansen": {
+  "params": [
+   "data",
+   "k_ar_diff"
+  ],
+  "top": [
+   "eig",
+   "evec",
+   "max_eig_crit_90_95_99",
+   "max_eig_stat",
+   "rank_max_eig_5pct",
+   "rank_trace_5pct",
+   "trace_crit_90_95_99",
+   "trace_stat"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "kernel_regression": {
+  "params": [
+   "x",
+   "y",
+   "bandwidth",
+   "kind",
+   "kernel",
+   "bandwidth_method",
+   "block",
+   "x_test"
+  ],
+  "top": [
+   "bandwidth",
+   "bandwidth_at_boundary",
+   "bandwidth_method",
+   "block",
+   "cv_criterion",
+   "effective_df",
+   "fitted",
+   "kernel",
+   "kind",
+   "n_criterion_evaluations",
+   "predicted"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "kernel_ridge": {
+  "params": [
+   "x",
+   "y",
+   "alpha",
+   "kernel",
+   "gamma",
+   "degree",
+   "coef0",
+   "x_test",
+   "rff_features",
+   "seed"
+  ],
+  "top": [
+   "dual_coef",
+   "fitted",
+   "gamma",
+   "kernel",
+   "n_rff_features",
+   "predicted"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "kpss": {
+  "params": [
+   "y",
+   "regression",
+   "nlags"
+  ],
+  "top": [
+   "lags",
+   "p_value",
+   "statistic"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "l1_trend_filter": {
+  "params": [
+   "y",
+   "lam",
+   "order",
+   "penalty",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "converged",
+   "cycle",
+   "duality_gap",
+   "knots",
+   "lam_max",
+   "n_iter",
+   "n_knots",
+   "objective",
+   "trend"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "lasso": {
+  "params": [
+   "x",
+   "y",
+   "alpha",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "lasso_path": {
+  "params": [
+   "x",
+   "y",
+   "l1_ratio",
+   "n_lambdas",
+   "eps",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "aic",
+   "aic_best",
+   "bic",
+   "bic_best",
+   "coefs",
+   "df",
+   "lambdas",
+   "rss"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "ljung_box": {
+  "params": [
+   "y",
+   "nlags"
+  ],
+  "top": [
+   "bp_pvalue",
+   "bp_stat",
+   "lags",
+   "lb_pvalue",
+   "lb_stat"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "local_level_smooth": {
+  "params": [
+   "y",
+   "sigma2_eps",
+   "sigma2_eta"
+  ],
+  "top": [
+   "d_diffuse",
+   "filtered_state",
+   "filtered_state_var",
+   "loglik",
+   "smoothed_state",
+   "smoothed_state_var"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "long_memory_d": {
+  "params": [
+   "x",
+   "m",
+   "method"
+  ],
+  "top": [
+   "d",
+   "m",
+   "se",
+   "se_asymptotic",
+   "se_regression"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "long_run_svar": {
+  "params": [
+   "data",
+   "lags",
+   "horizon",
+   "trend",
+   "restrictions",
+   "normalize"
+  ],
+  "top": [
+   "cumulative_irf",
+   "fevd",
+   "impact",
+   "irf",
+   "long_run",
+   "long_run_multiplier"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "long_run_variance": {
+  "params": [
+   "x",
+   "kernel",
+   "bandwidth"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "float"
+ },
+ "lp": {
+  "params": [
+   "y",
+   "shock",
+   "horizons",
+   "n_lag_controls",
+   "se",
+   "maxlags",
+   "cumulative",
+   "band",
+   "band_alpha",
+   "band_seed",
+   "band_n_sim"
+  ],
+  "top": [
+   "horizons",
+   "irf",
+   "se",
+   "se_method"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "lp_did": {
+  "params": [
+   "outcome",
+   "treatment",
+   "pre_window",
+   "post_window",
+   "absorbing",
+   "nonabsorbing_lag",
+   "reweight",
+   "pooled",
+   "never_treated_only"
+  ],
+  "top": [
+   "absorbing",
+   "coef",
+   "horizons",
+   "n_switchers",
+   "never_treated_only",
+   "nobs",
+   "nonabsorbing_lag",
+   "pooled",
+   "reweight",
+   "se",
+   "se_type"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "lp_iv": {
+  "params": [
+   "y",
+   "impulse",
+   "instrument",
+   "horizons",
+   "n_lag_controls",
+   "cumulative",
+   "band",
+   "band_alpha"
+  ],
+  "top": [
+   "first_stage_f",
+   "horizons",
+   "irf",
+   "se"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "lp_multiplier": {
+  "params": [
+   "y",
+   "impulse",
+   "instrument",
+   "horizons",
+   "n_lag_controls",
+   "maxlags",
+   "band",
+   "band_alpha"
+  ],
+  "top": [
+   "cumulative_impulse",
+   "cumulative_outcome",
+   "first_stage_f",
+   "horizons",
+   "multiplier",
+   "nobs_per_h",
+   "se"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "lp_state": {
+  "params": [
+   "y",
+   "shock",
+   "state_indicator",
+   "horizons",
+   "n_lag_controls",
+   "se",
+   "maxlags",
+   "cumulative",
+   "band",
+   "band_alpha"
+  ],
+  "top": [
+   "horizons",
+   "irf_state0",
+   "irf_state1",
+   "se_method",
+   "se_state0",
+   "se_state1"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "markov_switching_ar": {
+  "params": [
+   "y",
+   "k_regimes",
+   "order",
+   "switching_variance",
+   "max_iter",
+   "tol"
+  ],
+  "top": [
+   "ar",
+   "converged",
+   "expected_durations",
+   "filtered_prob",
+   "iterations",
+   "loglik",
+   "means",
+   "regimes",
+   "smoothed_prob",
+   "smoothed_prob_last_regime",
+   "transition",
+   "variances"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "max_share_svar": {
+  "params": [
+   "data",
+   "lags",
+   "target",
+   "h0",
+   "h1",
+   "horizon",
+   "trend",
+   "exclude_impact",
+   "weighting",
+   "sign"
+  ],
+  "top": [
+   "eigenvalues",
+   "fev_share",
+   "impact",
+   "irf",
+   "q",
+   "share_window"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "mcmc_diagnostics": {
+  "params": [
+   "chains"
+  ],
+  "top": [
+   "ess_bulk",
+   "ess_tail",
+   "rhat"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "mean_group_var": {
+  "params": [
+   "entities",
+   "lags",
+   "trend",
+   "horizon",
+   "response",
+   "impulse"
+  ],
+  "top": [
+   "coefs",
+   "coefs_se",
+   "intercept",
+   "intercept_se",
+   "irf_path",
+   "irf_path_se",
+   "lags",
+   "n_entities",
+   "neqs",
+   "orth_irfs",
+   "orth_irfs_se"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "midas_weights": {
+  "params": [
+   "scheme",
+   "theta1",
+   "theta2",
+   "k"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "mlp_regression": {
+  "params": [
+   "x",
+   "y",
+   "hidden",
+   "activation",
+   "alpha",
+   "solver",
+   "learning_rate",
+   "batch_size",
+   "max_epochs",
+   "validation_fraction",
+   "patience",
+   "n_seeds",
+   "seed",
+   "standardize",
+   "x_test"
+  ],
+  "top": [
+   "activation",
+   "best_epoch",
+   "converged",
+   "fitted",
+   "member_predictions",
+   "n_parameters",
+   "n_train",
+   "n_validation",
+   "predicted",
+   "solver",
+   "train_loss_path",
+   "validation_loss_path",
+   "weights",
+   "x_mean",
+   "x_scale",
+   "y_mean",
+   "y_scale"
+  ],
+  "nested": [
+   "coefs",
+   "intercepts"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "mstl": {
+  "params": [
+   "y",
+   "periods",
+   "windows",
+   "iterate",
+   "trend",
+   "low_pass",
+   "seasonal_deg",
+   "trend_deg",
+   "low_pass_deg",
+   "robust",
+   "seasonal_jump",
+   "trend_jump",
+   "low_pass_jump",
+   "inner_iter",
+   "outer_iter"
+  ],
+  "top": [
+   "dropped_periods",
+   "iterate",
+   "periods",
+   "resid",
+   "seasonal",
+   "seasonal_strength",
+   "trend",
+   "weights",
+   "windows"
+  ],
+  "nested": [
+   "seasonal_12",
+   "seasonal_4"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "narrative_svar": {
+  "params": [
+   "data",
+   "sign_restrictions",
+   "narrative_restrictions",
+   "lags",
+   "horizon",
+   "n_draws",
+   "max_tries",
+   "seed",
+   "lambda1",
+   "n_weight_draws"
+  ],
+  "top": [
+   "diagnostics",
+   "probs",
+   "quantiles",
+   "set_max",
+   "set_min",
+   "weights"
+  ],
+  "nested": [
+   "acceptance_rate",
+   "accepted",
+   "ess",
+   "mean_weight",
+   "min_ptilde",
+   "narrative_acceptance_rate",
+   "narrative_accepted",
+   "posterior_draws_used",
+   "rotations_tried"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "ndiffs": {
+  "params": [
+   "y",
+   "test",
+   "alpha",
+   "max_d"
+  ],
+  "top": [
+   "alpha",
+   "d",
+   "interpretation",
+   "max_d",
+   "steps",
+   "stop",
+   "test"
+  ],
+  "nested": [
+   "lags",
+   "n",
+   "needs_differencing",
+   "p_value",
+   "statistic"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "nelson_siegel": {
+  "params": [
+   "maturities",
+   "yields",
+   "decay",
+   "optimal_lambda"
+  ],
+  "top": [
+   "curvature",
+   "factors",
+   "lambda",
+   "level",
+   "residuals",
+   "rsquared",
+   "slope"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "ng_perron": {
+  "params": [
+   "y",
+   "trend",
+   "lags",
+   "max_lags"
+  ],
+  "top": [
+   "crit",
+   "mpt",
+   "msb",
+   "mza",
+   "mzt",
+   "nobs",
+   "s2_ar",
+   "trend",
+   "used_lag"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "nongaussian_svar": {
+  "params": [
+   "data",
+   "lags",
+   "horizon",
+   "trend",
+   "contrast",
+   "max_iter",
+   "tol",
+   "order_by"
+  ],
+  "top": [
+   "converged",
+   "impact",
+   "irf",
+   "n_iter",
+   "order",
+   "rotation",
+   "shock_kurtosis"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "nsdiffs": {
+  "params": [
+   "y",
+   "period",
+   "alpha",
+   "max_d"
+  ],
+  "top": [
+   "alpha",
+   "d",
+   "interpretation",
+   "max_d",
+   "period",
+   "steps",
+   "stop",
+   "threshold"
+  ],
+  "nested": [
+   "n",
+   "needs_differencing",
+   "seasonal_strength",
+   "trend_strength"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "ols": {
+  "params": [
+   "y",
+   "x",
+   "se_type",
+   "maxlags",
+   "use_correction"
+  ],
+  "top": [
+   "bse",
+   "params",
+   "se_type",
+   "tvalues"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "optimal_block_length": {
+  "params": [
+   "y"
+  ],
+  "top": [
+   "circular",
+   "stationary"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "ou_fit": {
+  "params": [
+   "x",
+   "dt",
+   "level"
+  ],
+  "top": [
+   "c",
+   "c_se",
+   "dt",
+   "eta2",
+   "half_life",
+   "half_life_ci",
+   "kappa",
+   "kappa_se",
+   "level",
+   "loglik",
+   "mean_reverting",
+   "mu",
+   "mu_se",
+   "n_obs",
+   "phi",
+   "phi_se",
+   "sigma",
+   "sigma_se",
+   "stationary_sd"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "pacf": {
+  "params": [
+   "y",
+   "nlags",
+   "method"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "panel_fe": {
+  "params": [
+   "outcome",
+   "regressors",
+   "se_type",
+   "bandwidth"
+  ],
+  "top": [
+   "bse",
+   "params",
+   "se_type",
+   "tvalues"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "panel_lp": {
+  "params": [
+   "outcome",
+   "shock",
+   "horizon",
+   "n_lag_controls",
+   "se_type",
+   "bandwidth",
+   "cumulative",
+   "jackknife",
+   "bias_correction",
+   "band",
+   "band_alpha"
+  ],
+  "top": [
+   "bias_correction",
+   "cumulative",
+   "irf",
+   "jackknife",
+   "nobs",
+   "se",
+   "se_type"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "panel_mean_group": {
+  "params": [
+   "ys",
+   "xs",
+   "method"
+  ],
+  "top": [
+   "coef",
+   "coef_per_unit",
+   "k",
+   "n_units",
+   "se",
+   "tstat"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "panel_pmg": {
+  "params": [
+   "ys",
+   "xs",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "iterations",
+   "k",
+   "loglik",
+   "n_units",
+   "phi",
+   "phi_bar",
+   "sigma2",
+   "theta",
+   "theta_se"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "panel_unit_root": {
+  "params": [
+   "data",
+   "test",
+   "lags",
+   "regression",
+   "max_lags",
+   "lrv_kernel",
+   "lrv_bandwidth"
+  ],
+  "top": [
+   "n_units",
+   "p_value",
+   "per_unit_lags",
+   "per_unit_nobs",
+   "per_unit_pvalue",
+   "per_unit_tstat",
+   "regression",
+   "statistic",
+   "t_bar",
+   "test"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "pds_lasso": {
+  "params": [
+   "y",
+   "d",
+   "x",
+   "alpha",
+   "hac_lags",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "alpha_d",
+   "alpha_y",
+   "coef",
+   "conf_int",
+   "hac_lags_resolved",
+   "n_controls_selected",
+   "p_value",
+   "se",
+   "support_d",
+   "support_y",
+   "t_stat",
+   "union_support"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "periodogram": {
+  "params": [
+   "x",
+   "fs",
+   "window",
+   "detrend"
+  ],
+  "top": [
+   "freqs",
+   "psd"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "phillips_ouliaris": {
+  "params": [
+   "y",
+   "x",
+   "trend",
+   "test_type",
+   "bandwidth"
+  ],
+  "top": [
+   "crit",
+   "lags",
+   "n_vars",
+   "nobs",
+   "pvalue",
+   "stat"
+  ],
+  "nested": [
+   "1%",
+   "10%",
+   "5%"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "phillips_perron": {
+  "params": [
+   "y",
+   "regression",
+   "test_type",
+   "lags"
+  ],
+  "top": [
+   "crit",
+   "lags",
+   "nobs",
+   "pvalue",
+   "stat",
+   "zalpha",
+   "ztau"
+  ],
+  "nested": [
+   "1%",
+   "10%",
+   "5%"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "philox_uniforms": {
+  "params": [
+   "seed",
+   "n"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "post_lasso": {
+  "params": [
+   "x",
+   "y",
+   "alpha",
+   "l1_ratio",
+   "tol",
+   "max_iter"
+  ],
+  "top": [
+   "coef_lasso",
+   "coef_ols",
+   "n_selected",
+   "rss",
+   "support"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "predictive_regression": {
+  "params": [
+   "r",
+   "x",
+   "cz",
+   "alpha"
+  ],
+  "top": [
+   "ivx",
+   "nobs",
+   "ols",
+   "stambaugh"
+  ],
+  "nested": [
+   "alpha",
+   "beta",
+   "beta_corrected",
+   "beta_ivx",
+   "beta_ols",
+   "bias_term",
+   "pvalue",
+   "rho_ols",
+   "rz",
+   "se",
+   "tstat",
+   "wald"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "proxy_ar_sets": {
+  "params": [
+   "data",
+   "proxy",
+   "lags",
+   "horizon",
+   "norm_var",
+   "unit",
+   "trend",
+   "alpha",
+   "variance",
+   "hac_lags",
+   "reduced_form_uncertainty",
+   "rf_method",
+   "rf_draws",
+   "rf_seed"
+  ],
+  "top": [
+   "ar_bound_stat",
+   "ar_bounded_all",
+   "cells",
+   "critical_value",
+   "first_stage_f",
+   "impact",
+   "level",
+   "n_proxy",
+   "reduced_form_uncertainty"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "proxy_first_stage": {
+  "params": [
+   "data",
+   "proxy",
+   "lags",
+   "norm_var",
+   "trend",
+   "variance",
+   "hac_lags"
+  ],
+  "top": [
+   "beta",
+   "effective_f",
+   "f_classical",
+   "f_hc1",
+   "hac_lags",
+   "mop_cv_tau10",
+   "mop_cv_tau20",
+   "mop_cv_tau30",
+   "mop_cv_tau5",
+   "n_proxy",
+   "reliability",
+   "se",
+   "tau_bound",
+   "weak_folklore",
+   "weak_mop_tau10"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "proxy_svar": {
+  "params": [
+   "data",
+   "proxy",
+   "lags",
+   "horizon",
+   "norm_var",
+   "unit",
+   "trend",
+   "robust_f"
+  ],
+  "top": [
+   "cov_um",
+   "first_stage",
+   "first_stage_f",
+   "impact",
+   "irf",
+   "n_proxy",
+   "relative_impact",
+   "reliability",
+   "shock"
+  ],
+  "nested": [
+   "beta",
+   "effective_f",
+   "f_classical",
+   "f_hc1",
+   "hac_lags",
+   "mop_cv_tau10",
+   "mop_cv_tau20",
+   "mop_cv_tau30",
+   "mop_cv_tau5",
+   "se",
+   "tau_bound",
+   "weak_folklore",
+   "weak_mop_tau10"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "proxy_svar_bands": {
+  "params": [
+   "data",
+   "proxy",
+   "lags",
+   "horizon",
+   "norm_var",
+   "unit",
+   "trend",
+   "alpha",
+   "n_boot",
+   "seed",
+   "bands",
+   "block_length",
+   "robust_f"
+  ],
+  "top": [
+   "alpha",
+   "asymptotically_valid",
+   "block_length",
+   "failure_warning",
+   "failures",
+   "first_stage_f_draws",
+   "gamma_norm_draws",
+   "lower",
+   "lower_efron",
+   "method",
+   "n_boot",
+   "n_failed",
+   "n_proxy",
+   "n_used",
+   "point",
+   "point_first_stage_f",
+   "point_gamma_norm",
+   "point_reliability",
+   "reliability_draws",
+   "rho_draws",
+   "se",
+   "upper",
+   "upper_efron",
+   "validity_note"
+  ],
+  "nested": [
+   "identification_failed",
+   "near_zero_gamma_norm",
+   "non_finite",
+   "refit_failed",
+   "too_few_proxy_obs",
+   "zero_proxy_variance"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "pseudo_obs": {
+  "params": [
+   "x"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "quantile_lp": {
+  "params": [
+   "y",
+   "shock",
+   "taus",
+   "horizons",
+   "n_lag_controls"
+  ],
+  "top": [
+   "converged",
+   "horizons",
+   "irf",
+   "se",
+   "taus"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "quantile_regression": {
+  "params": [
+   "y",
+   "x",
+   "taus",
+   "se"
+  ],
+  "top": [
+   "bandwidth",
+   "bse",
+   "converged",
+   "iterations",
+   "params",
+   "sparsity",
+   "taus",
+   "tvalues"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "random_forest": {
+  "params": [
+   "x",
+   "y",
+   "n_trees",
+   "max_features",
+   "max_depth",
+   "min_samples_leaf",
+   "bootstrap",
+   "block_length",
+   "seed",
+   "x_test",
+   "quantiles",
+   "importance",
+   "importance_groups",
+   "permutation_block",
+   "n_permutations"
+  ],
+  "top": [
+   "fitted",
+   "importance",
+   "importance_groups_resolved",
+   "max_features_resolved",
+   "n_trees",
+   "oob_mse",
+   "oob_prediction",
+   "predicted",
+   "quantile_predictions"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "realized_measures": {
+  "params": [
+   "returns"
+  ],
+  "top": [
+   "bipower",
+   "jump",
+   "rv"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "realized_quarticity": {
+  "params": [
+   "returns"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "float"
+ },
+ "realized_range": {
+  "params": [
+   "high",
+   "low",
+   "method",
+   "open",
+   "close"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "float"
+ },
+ "recession_probit": {
+  "params": [
+   "y",
+   "x",
+   "link",
+   "dynamic"
+  ],
+  "top": [
+   "bse",
+   "converged",
+   "loglik",
+   "params",
+   "probabilities",
+   "pseudo_r2",
+   "zstats"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "regression_tree": {
+  "params": [
+   "x",
+   "y",
+   "max_depth",
+   "min_samples_leaf",
+   "min_samples_split",
+   "x_test"
+  ],
+  "top": [
+   "depth",
+   "feature_importance",
+   "fitted",
+   "n_leaves",
+   "n_nodes",
+   "predicted",
+   "splits"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "reset_test": {
+  "params": [
+   "y",
+   "x",
+   "max_power"
+  ],
+  "top": [
+   "df_den",
+   "df_num",
+   "fstat",
+   "pvalue"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "ridge": {
+  "params": [
+   "x",
+   "y",
+   "alpha"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "robust_svar_bounds": {
+  "params": [
+   "data",
+   "restrictions",
+   "lags",
+   "horizon",
+   "n_draws",
+   "seed",
+   "lambda1",
+   "alpha"
+  ],
+  "top": [
+   "alpha",
+   "diagnostics",
+   "lower_quantiles",
+   "probs",
+   "restricted_shocks",
+   "robust_ci_lower",
+   "robust_ci_upper",
+   "set_lower_mean",
+   "set_upper_mean",
+   "upper_quantiles"
+  ],
+  "nested": [
+   "empty_set_rate",
+   "nonempty_draws",
+   "posterior_draws_used"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "seasonal_strength": {
+  "params": [
+   "y",
+   "period"
+  ],
+  "top": [
+   "period",
+   "seasonal_strength",
+   "trend_strength"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "setar": {
+  "params": [
+   "y",
+   "p",
+   "delay",
+   "trim",
+   "delays",
+   "ic",
+   "constant"
+  ],
+  "top": [
+   "aic",
+   "bic",
+   "bse_high",
+   "bse_low",
+   "delay",
+   "ic",
+   "ic_used",
+   "k",
+   "min_regime",
+   "n_high",
+   "n_low",
+   "nobs",
+   "params_high",
+   "params_low",
+   "sigma2",
+   "sigma2_high",
+   "sigma2_low",
+   "ssr",
+   "ssr_path",
+   "threshold",
+   "thresholds"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "setar_test": {
+  "params": [
+   "y",
+   "p",
+   "delay",
+   "trim",
+   "n_boot",
+   "seed"
+  ],
+  "top": [
+   "boot_stats",
+   "delay",
+   "f_path",
+   "n_boot",
+   "nobs",
+   "p_value",
+   "ssr_linear",
+   "ssr_setar",
+   "stat",
+   "threshold",
+   "thresholds"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "sign_restricted_svar": {
+  "params": [
+   "data",
+   "restrictions",
+   "lags",
+   "horizon",
+   "n_draws",
+   "max_tries",
+   "seed",
+   "lambda1"
+  ],
+  "top": [
+   "diagnostics",
+   "probs",
+   "quantiles",
+   "set_max",
+   "set_min"
+  ],
+  "nested": [
+   "acceptance_rate",
+   "accepted",
+   "posterior_draws_used",
+   "rotations_tried"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "smooth_lp": {
+  "params": [
+   "y",
+   "shock",
+   "horizons",
+   "n_lag_controls",
+   "lam",
+   "degree",
+   "n_basis",
+   "penalty_order",
+   "lambda_grid",
+   "n_folds",
+   "hac_maxlags",
+   "band",
+   "band_alpha",
+   "band_seed",
+   "band_n_sim"
+  ],
+  "top": [
+   "cv_grid",
+   "cv_scores",
+   "horizons",
+   "irf",
+   "irf_raw",
+   "lambda_used",
+   "se",
+   "se_raw",
+   "theta"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "spread_zscore": {
+  "params": [
+   "x",
+   "kappa",
+   "mu",
+   "sigma",
+   "dt"
+  ],
+  "top": [
+   "fitted",
+   "kappa",
+   "mu",
+   "sigma",
+   "stationary_sd",
+   "zscore"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "star": {
+  "params": [
+   "y",
+   "p",
+   "model",
+   "delay",
+   "trim",
+   "delays",
+   "constant",
+   "n_gamma",
+   "n_c"
+  ],
+  "top": [
+   "aic",
+   "best_cell",
+   "bic",
+   "bse_linear",
+   "bse_nonlinear",
+   "c",
+   "converged",
+   "delay",
+   "fevals",
+   "gamma",
+   "gamma_at_boundary",
+   "gamma_standardized",
+   "grid_c",
+   "grid_gamma",
+   "k",
+   "loglik",
+   "model",
+   "nobs",
+   "params_linear",
+   "params_nonlinear",
+   "s_sd",
+   "se_c",
+   "se_gamma",
+   "se_valid",
+   "sigma2",
+   "ssr",
+   "ssr_grid",
+   "transition"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "star_eval": {
+  "params": [
+   "y",
+   "p",
+   "gamma",
+   "c",
+   "model",
+   "delay",
+   "constant"
+  ],
+  "top": [
+   "aic",
+   "bic",
+   "bse_linear",
+   "bse_nonlinear",
+   "k",
+   "loglik",
+   "nobs",
+   "params_linear",
+   "params_nonlinear",
+   "se_c",
+   "se_gamma",
+   "se_valid",
+   "sigma2",
+   "ssr",
+   "transition"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "star_test": {
+  "params": [
+   "y",
+   "p",
+   "delay",
+   "delays"
+  ],
+  "top": [
+   "best",
+   "delay",
+   "h1_f_stat",
+   "h1_p_value",
+   "h2_f_stat",
+   "h2_p_value",
+   "h3_f_stat",
+   "h3_p_value",
+   "k0",
+   "lm3_f_p_value",
+   "lm3_f_stat",
+   "lm3_p_value",
+   "lm3_stat",
+   "nobs",
+   "q",
+   "ssr0",
+   "ssr1",
+   "ssr2",
+   "ssr3",
+   "suggested",
+   "tests"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "stl": {
+  "params": [
+   "y",
+   "period",
+   "seasonal",
+   "trend",
+   "low_pass",
+   "seasonal_deg",
+   "trend_deg",
+   "low_pass_deg",
+   "robust",
+   "seasonal_jump",
+   "trend_jump",
+   "low_pass_jump",
+   "inner_iter",
+   "outer_iter"
+  ],
+  "top": [
+   "config",
+   "period",
+   "resid",
+   "seasonal",
+   "trend",
+   "weights"
+  ],
+  "nested": [
+   "inner_iter",
+   "low_pass",
+   "low_pass_deg",
+   "low_pass_jump",
+   "outer_iter",
+   "robust",
+   "seasonal_deg",
+   "seasonal_jump",
+   "trend_deg",
+   "trend_jump"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "structural_fevd": {
+  "params": [
+   "data",
+   "lags",
+   "horizon",
+   "trend",
+   "impact",
+   "sigma"
+  ],
+  "top": [
+   "fevd",
+   "impact"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "summarize": {
+  "params": [
+   "obj",
+   "title",
+   "wrap"
+  ],
+  "top": [
+   "a",
+   "b"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "Result"
+ },
+ "sup_f_test": {
+  "params": [
+   "y",
+   "x",
+   "trim"
+  ],
+  "top": [
+   "break_date",
+   "dates",
+   "f_path",
+   "h",
+   "p_value",
+   "stat"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "svensson": {
+  "params": [
+   "maturities",
+   "yields",
+   "lambda1",
+   "lambda2"
+  ],
+  "top": [
+   "factors",
+   "lambda1",
+   "lambda2",
+   "residuals",
+   "rsquared"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "theta_forecast": {
+  "params": [
+   "y",
+   "steps",
+   "period"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "ndarray"
+ },
+ "threshold_var": {
+  "params": [
+   "data",
+   "p",
+   "threshold_index",
+   "delay",
+   "trim",
+   "delays",
+   "constant"
+  ],
+  "top": [
+   "aic",
+   "bic",
+   "bse_high",
+   "bse_low",
+   "delay",
+   "llf",
+   "log_det_sigma",
+   "logdet_path",
+   "min_regime",
+   "n_high",
+   "n_low",
+   "n_regressors",
+   "neqs",
+   "nobs",
+   "params_high",
+   "params_low",
+   "sigma",
+   "sigma_high",
+   "sigma_low",
+   "threshold",
+   "threshold_index",
+   "thresholds"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "threshold_var_test": {
+  "params": [
+   "data",
+   "p",
+   "threshold_index",
+   "delay",
+   "trim",
+   "n_grid",
+   "n_boot",
+   "seed",
+   "constant"
+  ],
+  "top": [
+   "boot_stats",
+   "delay",
+   "min_regime",
+   "n_boot",
+   "n_regressors",
+   "neqs",
+   "nobs",
+   "p_value",
+   "stat",
+   "threshold",
+   "threshold_index",
+   "thresholds",
+   "wald_path"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "threshold_vecm": {
+  "params": [
+   "data",
+   "k_ar_diff",
+   "trim",
+   "n_grid_gamma",
+   "n_grid_beta",
+   "beta_span",
+   "beta"
+  ],
+  "top": [
+   "beta",
+   "beta_grid",
+   "beta_linear",
+   "bse_high",
+   "bse_low",
+   "ect",
+   "frac_low",
+   "k_ar_diff",
+   "llf",
+   "llf_linear",
+   "log_det_sigma",
+   "min_regime",
+   "n_high",
+   "n_low",
+   "n_regressors",
+   "neqs",
+   "nobs",
+   "params_high",
+   "params_low",
+   "sigma",
+   "threshold"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "tripower_quarticity": {
+  "params": [
+   "returns"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "float"
+ },
+ "umidas": {
+  "params": [
+   "y",
+   "hf_lags",
+   "se_type",
+   "maxlags"
+  ],
+  "top": [
+   "bse",
+   "params",
+   "rsquared"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "var_backtest": {
+  "params": [
+   "returns_or_hits",
+   "var_forecasts",
+   "alpha",
+   "dq_lags",
+   "input"
+  ],
+  "top": [
+   "alpha",
+   "dq_df",
+   "dq_includes_var",
+   "dq_lags",
+   "dq_stat",
+   "dq_var_dropped",
+   "expected_violations",
+   "hit_rate",
+   "lr_cc",
+   "lr_ind",
+   "lr_uc",
+   "n",
+   "n00",
+   "n01",
+   "n10",
+   "n11",
+   "n_violations",
+   "p_cc",
+   "p_dq",
+   "p_ind",
+   "p_uc",
+   "pi01",
+   "pi11",
+   "verdict"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "var_fevd": {
+  "params": [
+   "data",
+   "lags",
+   "horizon",
+   "trend"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "list"
+ },
+ "var_fit": {
+  "params": [
+   "data",
+   "lags",
+   "trend"
+  ],
+  "top": [
+   "aic",
+   "bic",
+   "df_resid",
+   "fitted",
+   "hqic",
+   "is_stable",
+   "llf",
+   "max_root",
+   "min_root",
+   "nobs",
+   "params",
+   "resid",
+   "sigma_u"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "var_forecast": {
+  "params": [
+   "data",
+   "lags",
+   "steps",
+   "alpha",
+   "trend",
+   "band",
+   "band_scope",
+   "band_seed",
+   "band_n_sim"
+  ],
+  "top": [
+   "band",
+   "lower",
+   "point",
+   "upper"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "var_granger": {
+  "params": [
+   "data",
+   "caused",
+   "causing",
+   "lags",
+   "trend"
+  ],
+  "top": [
+   "df_den",
+   "df_num",
+   "p_value",
+   "statistic"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "var_irf": {
+  "params": [
+   "data",
+   "lags",
+   "horizon",
+   "orth",
+   "trend",
+   "cumulative"
+  ],
+  "top": [],
+  "nested": [],
+  "error": null,
+  "type": "list"
+ },
+ "var_irf_bands": {
+  "params": [
+   "data",
+   "lags",
+   "horizon",
+   "orth",
+   "method",
+   "alpha",
+   "cumulative",
+   "n_boot",
+   "seed",
+   "trend",
+   "bias_correct",
+   "band",
+   "band_scope",
+   "band_seed",
+   "band_n_sim"
+  ],
+  "top": [
+   "alpha",
+   "band",
+   "bias_correct",
+   "lower",
+   "method",
+   "n_boot",
+   "point",
+   "se",
+   "upper"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "vecm": {
+  "params": [
+   "data",
+   "k_ar_diff",
+   "coint_rank",
+   "deterministic",
+   "seasons",
+   "first_season"
+  ],
+  "top": [
+   "alpha",
+   "beta",
+   "det_coef",
+   "det_coef_coint",
+   "gamma",
+   "llf",
+   "sigma_u"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "weighted_midas": {
+  "params": [
+   "y",
+   "hf_lags",
+   "scheme",
+   "weight_start"
+  ],
+  "top": [
+   "converged",
+   "fitted",
+   "intercept",
+   "iterations",
+   "residuals",
+   "rsquared",
+   "scheme",
+   "slope",
+   "ssr",
+   "weight_params",
+   "weights"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "welch": {
+  "params": [
+   "x",
+   "nperseg",
+   "fs",
+   "noverlap",
+   "window",
+   "detrend"
+  ],
+  "top": [
+   "freqs",
+   "psd"
+  ],
+  "nested": [],
+  "error": null,
+  "type": "dict"
+ },
+ "zero_sign_svar": {
+  "params": [
+   "data",
+   "sign_restrictions",
+   "zero_restrictions",
+   "lags",
+   "horizon",
+   "n_draws",
+   "max_tries",
+   "seed",
+   "lambda1",
+   "weighted"
+  ],
+  "top": [
+   "arw_weighted",
+   "diagnostics",
+   "ess",
+   "probs",
+   "quantiles",
+   "set_max",
+   "set_min",
+   "weights"
+  ],
+  "nested": [
+   "acceptance_rate",
+   "accepted",
+   "posterior_draws_used",
+   "rotations_tried"
+  ],
+  "error": null,
+  "type": "dict"
+ },
+ "zivot_andrews": {
+  "params": [
+   "y",
+   "regression",
+   "trim",
+   "max_lags",
+   "autolag",
+   "lags"
+  ],
+  "top": [
+   "break_index",
+   "crit",
+   "lags",
+   "nobs",
+   "pvalue",
+   "regression",
+   "stat",
+   "trim"
+  ],
+  "nested": [
+   "1%",
+   "10%",
+   "5%"
+  ],
+  "error": null,
+  "type": "dict"
+ }
+}

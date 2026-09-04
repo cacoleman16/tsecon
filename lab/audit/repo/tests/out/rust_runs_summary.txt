@@ -1,0 +1,8 @@
+tsecon-ml run 1 rc=0 wall=25s
+tsecon-ml run 2 rc=0 wall=26s
+tsecon-var run 1 rc=0 wall=10s
+tsecon-var run 2 rc=0 wall=10s
+ignored tsecon-ml::pds_coverage_full_measurement rc=0 wall=36s
+ignored tsecon-var::mc_irf_simultaneous_coverage rc=0 wall=221s
+ignored tsecon-var::mc_forecast_simultaneous_coverage rc=0 wall=205s
+ignored tsecon-var::cost_of_the_sup_t_route_at_the_production_default rc=0 wall=2s

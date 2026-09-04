@@ -1,0 +1,122 @@
+test functions scanned: 1118 in 99 files
+  none         1
+  weak-only    110
+  raises-only  143
+  numeric      864
+
+== tests with NO assertion of any kind (cannot fail except via exception) ==
+  test_check_series.py:420  test_reports_are_json_serializable   calls=
+
+== tests whose only assertions are structural (shape / key / type / finite / not-None) ==
+  test_audit_round11.py:254  test_stub_and_runtime_docs_both_name_the_penalized_keys   n_weak=2 calls=
+  test_audit_round11.py:333  test_dfm_nowcast_smoothed_factors_rows_are_the_balanced_panel   n_weak=2 calls=dfm_nowcast
+  test_audit_round11.py:341  test_proxy_svar_shock_length_is_the_residual_sample   n_weak=2 calls=proxy_svar
+  test_audit_round11.py:366  test_forecasting_card_backtest_defaults_match_the_signature   n_weak=5 calls=
+  test_audit_round11.py:379  test_panel_card_lists_the_stamped_keys   n_weak=2 calls=
+  test_auto_arima.py:246  test_summarize_wraps_the_result   n_weak=1 calls=auto_arima,summarize
+  test_check_series.py:274  test_break_report_carries_the_homogeneous_ci_caveat   n_weak=1 calls=
+  test_check_series.py:349  test_cointegrated_stability_note_points_at_the_vecm_route   n_weak=2 calls=
+  test_check_series.py:388  test_per_series_entries_are_compact   n_weak=2 calls=
+  test_check_series.py:398  test_every_recommended_function_exists   n_weak=1 calls=
+  test_check_series.py:490  test_pure_trend_emits_no_trend_artifact_recommendations   n_weak=2 calls=
+  test_check_series.py:552  test_collinear_panel_reports_instead_of_crashing   n_weak=3 calls=
+  test_check_series.py:572  test_gph_near_one_reads_as_consistent_with_the_unit_root   n_weak=1 calls=
+  test_check_series.py:577  test_univariate_top_level_keys_snapshot   n_weak=1 calls=
+  test_check_series.py:586  test_multivariate_top_level_keys_snapshot   n_weak=1 calls=
+  test_check_series.py:607  test_clean_series_with_seasonal_period_keeps_no_red_flags   n_weak=2 calls=check_series
+  test_check_series.py:649  test_multivariate_lags_zero_names_the_cap_not_dof   n_weak=1 calls=check_series
+  test_coerce.py:53  test_coerce_conservative_leaves_non_float_arrays_untouched   n_weak=1 calls=
+  test_coerce.py:71  test_coerce_data_leaves_zero_d_integer_arrays_alone   n_weak=3 calls=var_fit
+  test_coerce.py:80  test_coerce_data_leaves_complex_object_datetime_alone   n_weak=1 calls=
+  test_coerce.py:91  test_coerce_leaves_specs_callables_scalars_untouched   n_weak=3 calls=
+  test_coerce.py:124  test_exempt_positions_resolve_to_the_documented_slots   n_weak=3 calls=
+  test_coerce.py:155  test_signature_drift_falls_back_to_conservative_behaviour   n_weak=5 calls=
+  test_coerce.py:229  test_dataframe_accepted_end_to_end   n_weak=2 calls=adf,var_fit
+  test_coerce.py:236  test_offdtype_and_noncontiguous_accepted   n_weak=3 calls=adf,var_fit
+  test_coerce.py:254  test_integer_series_accepted_end_to_end   n_weak=2 calls=adf
+  test_coerce.py:275  test_integer_arrays_convert_for_keyword_arguments_too   n_weak=1 calls=var_fit
+  test_coerce.py:284  test_hetero_svar_regime_labels_stay_integer   n_weak=5 calls=hetero_svar
+  test_coerce.py:297  test_exempt_parameters_pass_pandas_through_untouched   n_weak=2 calls=hetero_svar,var_granger
+  test_coerce.py:309  test_var_granger_index_arrays_stay_integer   n_weak=2 calls=var_granger
+  test_coerce.py:368  test_restriction_spec_lists_reach_the_estimator   n_weak=1 calls=long_run_svar
+  test_coerce.py:374  test_ragged_panel_lists_pass_through   n_weak=1 calls=panel_pmg
+  test_coerce.py:395  test_outputs_are_unchanged_by_wrapping   n_weak=1 calls=var_irf
+  test_coerce.py:405  test_flat_numeric_sequences_are_accepted_as_data   n_weak=2 calls=adf
+  test_coerce.py:411  test_tuple_options_are_not_treated_as_data   n_weak=2 calls=box_cox_lambda
+  test_coerce.py:420  test_restriction_specs_are_never_converted   n_weak=3 calls=long_run_svar
+  test_coerce.py:503  test_negative_float_parameters_are_untouched   n_weak=1 calls=bvar_fit
+  test_convergence_flags.py:245  test_dfm_nowcast_two_step_carries_no_optimizer_keys   n_weak=2 calls=dfm_nowcast
+  test_coverage_fixes.py:178  test_robust_reports_no_bandwidth   n_weak=2 calls=iv_gmm
+  test_dcc_buildout.py:186  test_forecast_horizon_zero_returns_no_forecast_keys   n_weak=3 calls=dcc_garch
+  test_docstring_keys.py:90  test_theta_forecast_docstring_qualifies_the_statsmodels_match   n_weak=2 calls=
+  test_exercise_gap.py:92  TestFvarScenario::test_keys_and_shapes   n_weak=6 calls=fvar_scenario
+  test_garch_boundary.py:121  test_new_keys_present_for_every_family   n_weak=5 calls=garch_fit
+  test_ident_tranche2a.py:94  test_bvar_ssvs_large_T_does_not_crash   n_weak=1 calls=bvar_ssvs
+  test_ident_tranche2b.py:65  test_historical_decomposition_shocks_shape   n_weak=1 calls=historical_decomposition
+  test_intervals.py:94  test_arima_conf_alpha_default_none_adds_no_bands   n_weak=2 calls=arima_fit
+  test_lp_audit_fixes.py:164  test_closed_form_routes_return_none_for_the_gap   n_weak=3 calls=lp,lp_state
+  test_lpdid.py:91  test_pooled_keys_present_when_requested   n_weak=1 calls=
+  test_mgarch_covariance_surface.py:167  test_ccc_forecast_horizon_zero_returns_no_forecast_keys   n_weak=2 calls=ccc_garch
+  test_neural.py:133  test_mlp_without_x_test_returns_none_predictions   n_weak=2 calls=mlp_regression
+  test_neural.py:474  test_docstrings_and_stub_document_every_key   n_weak=3 calls=
+  test_new_crates.py:112  test_dfm_nowcast_handles_ragged_edge   n_weak=2 calls=dfm_nowcast
+  test_params_named.py:92  test_gas_and_dcs_keep_flat_named_keys_and_need_no_params_named   n_weak=6 calls=dcs_local_level,gas_volatility
+  test_replication_hamilton_markov.py:87  test_binding_exposes_the_common_ar_block   n_weak=2 calls=markov_switching_ar
+  test_replication_uhlig.py:50  test_restrictions_are_uhligs_benchmark_set   n_weak=5 calls=
+  test_results_arima.py:57  test_is_a_dict   n_weak=2 calls=
+  test_results_arima.py:72  test_indexing_and_unpacking_still_work   n_weak=4 calls=
+  test_results_arima.py:210  test_plot_forecast_full_history_and_explicit_y   n_weak=1 calls=
+  test_results_arima.py:274  test_nobs_falls_back_to_residuals_when_series_absent   n_weak=3 calls=
+  test_results_check.py:93  test_data_is_an_attribute_not_a_dict_key   n_weak=4 calls=
+  test_results_check.py:131  test_univariate_summary_header_descriptives_and_sections   n_weak=7 calls=
+  test_results_check.py:169  test_univariate_summary_lists_every_recommendation   n_weak=5 calls=
+  test_results_check.py:223  test_multivariate_summary_lists_every_recommendation   n_weak=3 calls=
+  test_results_check.py:233  test_johansen_skip_reason_is_reported_for_a_stationary_panel   n_weak=2 calls=
+  test_results_dsge.py:78  test_is_a_dict   n_weak=2 calls=
+  test_results_dsge.py:138  test_summary_headline_is_the_verdict   n_weak=4 calls=
+  test_results_dsge.py:147  test_summary_splits_the_eigenvalues_with_counts   n_weak=4 calls=
+  test_results_dsge.py:155  test_summary_prints_the_three_matrices   n_weak=7 calls=
+  test_results_dsge.py:166  test_summary_dimensions_line   n_weak=4 calls=
+  test_results_dsge.py:209  test_is_determinate   n_weak=2 calls=
+  test_results_edge_cases.py:110  test_var_picks_up_dataframe_column_names   n_weak=4 calls=
+  test_results_edge_cases.py:125  test_var_ignores_column_names_of_the_wrong_length   n_weak=2 calls=
+  test_results_edge_cases.py:162  test_var_trend_n_has_no_deterministic_rows   n_weak=1 calls=
+  test_results_edge_cases.py:183  test_var_summary_blocks_wide_systems_without_dropping_equations   n_weak=1 calls=
+  test_results_edge_cases.py:382  test_dsge_summary_says_none_when_a_side_of_the_unit_circle_is_empty   n_weak=3 calls=
+  test_results_edge_cases.py:424  test_persistence_is_none_when_the_names_carry_no_alpha_beta_pair   n_weak=4 calls=
+  test_results_edge_cases.py:498  test_lp_summary_renders_without_optional_metadata   n_weak=4 calls=
+  test_results_edge_cases.py:518  test_lp_summary_labels_an_unrecognised_se_kind_verbatim   n_weak=1 calls=
+  test_results_garch.py:83  test_forecast_key_still_appears_when_requested   n_weak=2 calls=
+  test_results_garch.py:110  test_summary_names_the_model_and_the_robust_ses   n_weak=6 calls=
+  test_results_garch.py:120  test_summary_shows_fit_statistics_with_the_real_numbers   n_weak=4 calls=
+  test_results_garch.py:128  test_summary_param_block_carries_coef_robust_se_and_t   n_weak=5 calls=
+  test_results_garch.py:139  test_summary_persistence_line   n_weak=2 calls=
+  test_results_garch.py:195  test_plot_diagnostics_has_two_panels   n_weak=3 calls=
+  test_results_garch.py:285  test_ambiguous_asymmetric_model_omits_persistence   n_weak=3 calls=
+  test_results_generic.py:19  test_summarize_wraps_a_plain_dict   n_weak=4 calls=adf
+  test_results_generic.py:30  test_summarize_renders_scalars_matrices_and_nested_dicts   n_weak=3 calls=adf,var_fit
+  test_results_generic.py:50  test_bespoke_object_passes_through_unchanged   n_weak=2 calls=
+  test_results_generic.py:56  test_summarize_is_idempotent   n_weak=1 calls=adf
+  test_results_generic.py:61  test_wrap_generic_forces_structural_dump   n_weak=2 calls=
+  test_results_generic.py:68  test_summarize_handles_nondict_returns   n_weak=1 calls=var_irf
+  test_results_lp.py:51  test_is_a_dict   n_weak=1 calls=
+  test_results_lp.py:73  test_to_dict_is_a_plain_dict   n_weak=2 calls=
+  test_results_lp.py:102  test_summary_is_a_str_naming_the_estimator   n_weak=3 calls=
+  test_results_lp.py:112  test_summary_cites_lag_augmented_inference   n_weak=1 calls=
+  test_results_lp.py:141  test_summary_reports_the_peak   n_weak=1 calls=
+  test_results_lp.py:150  test_summary_level_argument_changes_the_band_label   n_weak=1 calls=
+  test_results_predreg.py:63  test_is_a_dict   n_weak=1 calls=
+  test_results_predreg.py:120  test_summary_shows_all_three_estimators_with_their_numbers   n_weak=7 calls=
+  test_results_predreg.py:133  test_summary_headlines_the_ivx_pvalue   n_weak=2 calls=
+  test_results_predreg.py:140  test_summary_reports_diagnostics   n_weak=4 calls=
+  test_results_predreg.py:148  test_summary_uses_the_predictor_name   n_weak=1 calls=
+  test_results_predreg.py:184  test_summary_closing_line_reflects_the_ivx_verdict   n_weak=2 calls=
+  test_results_predreg.py:297  test_conf_int_excludes_zero_iff_significant   n_weak=1 calls=
+  test_results_var.py:181  test_stable_property_mirrors_is_stable   n_weak=1 calls=
+  test_simultaneous_bands.py:159  test_closed_form_lp_surfaces_default_to_no_band   n_weak=3 calls=lp_iv,lp_multiplier,lp_state
+  test_smoke.py:367  test_garch_gjr_asymmetry_detected   n_weak=2 calls=garch_fit
+  test_survey_longmemory_bindings.py:36  test_forecast_disagreement_returns_expected_keys   n_weak=1 calls=forecast_disagreement
+  test_var_backtest.py:127  test_verdict_is_summarizable   n_weak=2 calls=summarize,var_backtest
+  test_vecm_deterministic.py:159  test_docstrings_name_the_deterministic_cases   n_weak=9 calls=
+
+== duplicated test bodies (0 groups) ==

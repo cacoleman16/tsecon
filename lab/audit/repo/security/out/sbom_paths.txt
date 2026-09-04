@@ -1,0 +1,47 @@
+CycloneDX 1.5 SBOM emitted by maturin 1.15.0 into the wheel's .dist-info/sboms/: 133 components, 160726 bytes
+occurrences of the absolute local build path: 244
+distinct path+file:// purls (the workspace path-dependencies, each carrying the build machine's absolute path):
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/bindings/python
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-arima
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-bayes
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-bootstrap
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-breaks
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-coint
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-connect
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-copula
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-diag
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-dsge
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-evt
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-favar
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-filters
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-forecast
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-funcshock
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-garch
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-gas
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-gmm
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-hac
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-ident
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-linalg
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-longmemory
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-lp
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-mgarch
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-midas
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-ml
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-nowcast
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-optim
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-panel
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-panelroot
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-panelts
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-predreg
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-quantile
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-realized
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-recession
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-regime
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-rng
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-spectest
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-spectral
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-ssm
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-stats
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-survey
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-termstructure
+  path+file:///home/user/tsecon/.claude/worktrees/au-security/crates/tsecon-var

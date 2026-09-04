@@ -17,7 +17,7 @@ preserved exactly; adopting them is additive.
 
 ## [Testing & validation](testing.md)
 
-The single map of how the library is tested: nine tiers from Rust goldens to a
+The single map of how the library is tested: ten tiers from Rust goldens to a
 published-result replication, what each can and cannot prove, the commands to
 run them, and an honest list of what is *not* covered. Start here if you are
 deciding whether to trust a number this library produced.
@@ -52,9 +52,14 @@ method fits your problem and how to trust its output.
 | [Local projections](model-cards/local-projections.md) | `lp`, `lp_iv`, `lp_multiplier`, `lp_state`, `smooth_lp` |
 | [Bayesian](model-cards/bayesian.md) | `bvar_fit`, `bvar_hierarchical`, `bvar_ssvs`, `bvar_irf_draws`, `mcmc_diagnostics` |
 | [GMM](model-cards/gmm.md) | `iv_gmm`, `gmm_nonlinear` |
-| [Cointegration & regimes](model-cards/cointegration-regime.md) | `johansen`, `vecm`, `markov_switching_ar` |
+| [Cointegration & regimes](model-cards/cointegration-regime.md) | `johansen`, `vecm`, `ou_fit`, `spread_zscore`, `markov_switching_ar`, `setar`, `setar_test`, `star`, `star_eval`, `star_test`, `threshold_vecm`, `hansen_seo_test`, `threshold_var`, `threshold_var_test` |
 | [Forecasting](model-cards/forecasting.md) | `backtest`, `dm_test`, `cw_test`, `gw_test`, `theta_forecast`, `accuracy` |
 | [Machine learning](model-cards/machine-learning.md) | `ridge`, `lasso`, `elastic_net`, `adaptive_lasso`, `lasso_path`, `cv_splits` |
+| [Structured penalties & post-selection](model-cards/ml-structured.md) | `group_lasso`, `post_lasso`, `pds_lasso` |
+| [Kernel methods](model-cards/ml-kernel.md) | `kernel_ridge`, `kernel_regression` |
+| [Regression trees & random forests](model-cards/ml-trees.md) | `regression_tree`, `random_forest` |
+| [L1 trend filtering & boosting](model-cards/ml-convex.md) | `l1_trend_filter`, `boosting` |
+| [Neural regressors](model-cards/ml-neural.md) | `mlp_regression`, `echo_state_network` |
 | [Panel](model-cards/panel.md) | `panel_fe`, `panel_lp`, `mean_group_var`, `panel_mean_group`, `panel_pmg` |
 | [Panel unit-root tests](model-cards/panel-unit-root.md) | `panel_unit_root` (LLC, IPS, Fisher/Maddala-Wu-Choi) |
 | [Nowcasting & MIDAS](model-cards/nowcasting-midas.md) | `dfm_nowcast`, `dfm_news`, `midas_weights`, `umidas`, `weighted_midas` |
@@ -70,3 +75,4 @@ method fits your problem and how to trust its output.
 | [Quantile regression & growth-at-risk](model-cards/quantile.md) | `quantile_regression`, `quantile_lp`, `growth_at_risk` |
 | [Functional shocks (FVAR/FLP)](model-cards/functional-shocks.md) | `functional_pca`, `flp`, `flp_scenario`, `fvar_scenario` |
 | [Structural breaks](model-cards/structural-breaks.md) | `bai_perron`, `sup_f_test` |
+| [Static copulas](model-cards/copulas.md) | `pseudo_obs`, `copula_fit`, `copula_select` |

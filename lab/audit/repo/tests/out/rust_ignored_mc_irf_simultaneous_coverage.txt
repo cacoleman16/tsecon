@@ -1,0 +1,85 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running unittests src/lib.rs (target-wt/release/deps/tsecon_var-65bef488064e7f09)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/golden.rs (target-wt/release/deps/golden-1e7bf9cf4bdbb51d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/irf_bands_golden.rs (target-wt/release/deps/irf_bands_golden-98bcf3ee043a4d8f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/irf_bootstrap_props.rs (target-wt/release/deps/irf_bootstrap_props-ff674d626232ddad)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/pointwise_bitwise_baseline.rs (target-wt/release/deps/pointwise_bitwise_baseline-d9f7646ca133f7dc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/properties.rs (target-wt/release/deps/properties-eee36c3a8ca3d64a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/proxy_bands_golden.rs (target-wt/release/deps/proxy_bands_golden-24717bfd1308e22b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/proxy_bands_props.rs (target-wt/release/deps/proxy_bands_props-a51d1cbc7aaeb10a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.00s
+
+     Running tests/simultaneous_bands.rs (target-wt/release/deps/simultaneous_bands-781bac8554c6202c)
+
+running 1 test
+test mc_irf_simultaneous_coverage has been running for over 60 seconds
+
+=== simultaneous IRF coverage, T = 500, h = 0..12, nominal 90% ===
+DGP: VAR(1), A = [[.70,.10],[.15,.50]], Sigma = [[1,.4],[.4,2]], root 0.758
+3000 replications, orthogonalized, sup-t over horizons (K = 13, n_sim = 50000)
+pointwise multiplier z = 1.6449
+
+  cell (resp,shock)   mean c    pointwise joint    sup-t joint
+  (0,0)               2.0501     73.6% ± 0.8       84.9% ± 0.7
+  (0,1)               1.9347     75.9% ± 0.8       83.5% ± 0.7
+  (1,0)               2.0717     70.4% ± 0.8       84.8% ± 0.7   <- the audit's cell
+  (1,1)               2.1535     65.6% ± 0.9       82.7% ± 0.7
+
+  audit reference, (1,0) cell at T=500: pointwise joint 72.2% ± 1.0 (nominal 90%)
+  measured here:                        pointwise joint 70.4%, sup-t joint 84.8%
+
+  Why sup-t lands at 84.8% and not 90%: the pointwise band it is built from does
+  not cover 90% marginally either. Marginal coverage of the (1,0) cell runs 88.7% at
+  h=0 and 85.2% at h=12, worst horizon 85.2%. The delta-method standard error is
+  too small at long horizons in finite samples. A sup-t band fixes multiplicity and
+  inherits everything else; the residual 5.2pp is that inheritance, not a defect in
+  the simultaneous construction. Closing it needs a better standard error, not a
+  bigger multiplier.
+test mc_irf_simultaneous_coverage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 220.85s
+
+   Doc-tests tsecon_var
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

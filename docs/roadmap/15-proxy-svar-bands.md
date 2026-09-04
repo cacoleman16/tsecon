@@ -2,6 +2,16 @@
 
 > **Status: specification only. Not yet implemented.**
 >
+> **Closed in 0.3.0** (repository audit, September 2026): both surfaces this
+> spec designs shipped — `proxy_svar_bands` (sections A/B: the Jentsch-Lunsford
+> moving-block bootstrap with Hall and Efron bands, plus the labelled wild
+> reproduction arm) and `proxy_ar_sets` (section C: the Anderson-Rubin sets) —
+> see CHANGELOG 0.3.0 "Added — proxy-SVAR inference" and the
+> structural-identification model card. The banner above is kept as written;
+> the spec is retained as the design record. What is still open from the
+> "Flagged uncertain" lists is tracked in
+> `docs/roadmap/27-repo-audit-2026-09/ledger.md` (rows S15-U1..U6).
+>
 > An internal planning spec, excluded from the published site like everything
 > else in `docs/roadmap/`. It records the reasoning behind the queued
 > `proxy_svar` band work; it is **not** a claim that the library implements any

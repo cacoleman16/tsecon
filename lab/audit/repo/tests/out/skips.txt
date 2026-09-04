@@ -1,0 +1,94 @@
+== Python skip-family sites: 77 ==
+  skip          test_audit_round11.py:362                           docs tree not present in this checkout
+  importorskip  test_auto_arima.py:220  statsmodels.api            [importable]
+  importorskip  test_backtest_callable.py:192  statsmodels                [importable]
+  importorskip  test_bn_filters.py:307  statsmodels.api            [importable]
+  importorskip  test_coerce.py:112  pandas                     [importable]
+  importorskip  test_coerce.py:230  pandas                     [importable]
+  importorskip  test_coerce.py:301  pandas                     [importable]
+  importorskip  test_coerce.py:433  pandas                     [importable]
+  importorskip  test_coerce.py:444  pandas                     [importable]
+  skip          test_coerce.py:194                           Rust source not available
+  importorskip  test_conformal.py:361  mapie                      [importable]
+  importorskip  test_conformal.py:362  sklearn                    [importable]
+  importorskip  test_convex.py:214  pandas                     [importable]
+  importorskip  test_convex.py:328  pandas                     [importable]
+  importorskip  test_coverage_fixes.py:66  statsmodels.api            [importable]
+  skip          test_coverage_page_sync.py:32                           docs tree not present in this checkout
+  importorskip  test_dfgls.py:51  arch.unitroot              [importable]
+  importorskip  test_exercise_gap.py:65  pandas                     [importable]
+  skip          test_garch_boundary.py:85                           this draw was not attracted to the persistence bound
+  skip          test_garch_boundary.py:110                           this draw was not attracted to a boundary
+  importorskip  test_ident_tranche1.py:33  arch.unitroot              [importable]
+  importorskip  test_ident_tranche2a.py:57  statsmodels.tsa.stattools   [importable]
+  importorskip  test_kernel.py:126  pandas                     [importable]
+  importorskip  test_kernel.py:313  pandas                     [importable]
+  importorskip  test_neural.py:263  pandas                     [importable]
+  importorskip  test_neural.py:405  pandas                     [importable]
+  importorskip  test_ng_perron.py:252  statsmodels.tsa.stattools   [importable]
+  importorskip  test_ng_perron.py:253  arch.unitroot              [importable]
+  importorskip  test_nongaussian_svar.py:72  sklearn.decomposition      [importable]
+  importorskip  test_ou.py:47  statsmodels.tsa.ar_model   [importable]
+  importorskip  test_ou.py:256  pandas                     [importable]
+  skip          test_proxy_svar_bands.py:361                           no exterior AR set arose in the scanned designs
+  importorskip  test_replication_bai_perron.py:34  replication_bai_perron_realint   [NOT importable (ModuleNotFoundError)]
+  importorskip  test_replication_gk.py:37  replication_gertler_karadi   [NOT importable (ModuleNotFoundError)]
+  importorskip  test_replication_gk.py:38  tsecon                     [importable]
+  importorskip  test_replication_glp.py:26  replication_glp_prior_selection   [NOT importable (ModuleNotFoundError)]
+  importorskip  test_replication_glp.py:27  tsecon                     [importable]
+  importorskip  test_replication_glp_point.py:37  tsecon                     [importable]
+  importorskip  test_replication_hamilton_markov.py:31  replication_hamilton_markov   [NOT importable (ModuleNotFoundError)]
+  importorskip  test_replication_hamilton_markov.py:113  statsmodels                [importable]
+  importorskip  test_replication_ramey_zubairy.py:17  replication_ramey_zubairy   [NOT importable (ModuleNotFoundError)]
+  importorskip  test_replication_setar_sunspots.py:29  replication_setar_sunspots   [NOT importable (ModuleNotFoundError)]
+  importorskip  test_replication_setar_sunspots.py:51  statsmodels.api            [importable]
+  importorskip  test_replication_uhlig.py:23  replication_uhlig_monetary   [NOT importable (ModuleNotFoundError)]
+  importorskip  test_replication_yield_curve.py:18  replication_yield_curve_recession   [NOT importable (ModuleNotFoundError)]
+  importorskip  test_results_arima.py:21  matplotlib                 [importable]
+  importorskip  test_results_check.py:244  matplotlib                 [importable]
+  importorskip  test_results_check.py:289  matplotlib                 [importable]
+  importorskip  test_results_check.py:312  matplotlib                 [importable]
+  importorskip  test_results_dsge.py:272  matplotlib                 [importable]
+  importorskip  test_results_dsge.py:318  matplotlib.pyplot          [importable]
+  importorskip  test_results_edge_cases.py:113  pandas                     [importable]
+  importorskip  test_results_edge_cases.py:128  pandas                     [importable]
+  importorskip  test_results_edge_cases.py:151  pandas                     [importable]
+  importorskip  test_results_edge_cases.py:231  matplotlib                 [importable]
+  importorskip  test_results_edge_cases.py:336  matplotlib                 [importable]
+  importorskip  test_results_edge_cases.py:469  matplotlib                 [importable]
+  importorskip  test_results_edge_cases.py:540  matplotlib                 [importable]
+  importorskip  test_results_edge_cases.py:557  matplotlib                 [importable]
+  importorskip  test_results_garch.py:163  matplotlib                 [importable]
+  importorskip  test_results_lp.py:15  matplotlib                 [importable]
+  importorskip  test_results_predreg.py:200  matplotlib                 [importable]
+  importorskip  test_results_predreg.py:215  matplotlib                 [importable]
+  importorskip  test_results_predreg.py:228  matplotlib                 [importable]
+  importorskip  test_results_predreg.py:422  matplotlib                 [importable]
+  importorskip  test_results_var.py:248  matplotlib                 [importable]
+  importorskip  test_structured.py:169  pandas                     [importable]
+  importorskip  test_structured.py:244  pandas                     [importable]
+  importorskip  test_structured.py:309  pandas                     [importable]
+  skip          test_stub_sync.py:58                           docs tree not present in this checkout
+  importorskip  test_trees.py:193  pandas                     [importable]
+  skip          test_trees.py:86                           the forest fixes min_samples_split at 2
+  importorskip  test_tvar.py:115  pandas                     [importable]
+  importorskip  test_tvecm.py:120  pandas                     [importable]
+  importorskip  test_var_irf_bands.py:92  statsmodels.tsa.api        [importable]
+  skipif        test_zivot_andrews.py:28  FX is None               fixtures/zivot_andrews.json not present in this checkout
+  importorskip  test_zivot_andrews.py:71  statsmodels.tsa.stattools   [importable]
+
+== Rust #[ignore] sites: 14 ==
+  crates/tsecon-ml/tests/structured_properties.rs:739  pds_coverage_full_measurement  -- 600-replication measurement; run with --release --ignored
+  crates/tsecon-panel/tests/lpdid_properties.rs:177  lp_did_recovers_the_true_att_with_nominal_coverage  -- Monte Carlo: run in release with --ignored --nocapture
+  crates/tsecon-panel/tests/spj_properties.rs:140  spj_cuts_nickell_bias_and_restores_coverage_where_fe_undercovers  -- Monte Carlo: run in release with --ignored --nocapture
+  crates/tsecon-panel/tests/spj_properties.rs:262  ?  -- (comment) Always-on Monte Carlo smoke for the headline claim (the full study is
+  crates/tsecon-var/tests/pointwise_bitwise_baseline.rs:15  ?  -- (comment) !
+  crates/tsecon-var/tests/pointwise_bitwise_baseline.rs:28  ?  -- (comment) !
+  crates/tsecon-var/tests/pointwise_bitwise_baseline.rs:168  asymptotic_standard_errors_are_bit_identical  -- stored f64 bit patterns are platform-specific; run with --ignored on the capture machine
+  crates/tsecon-var/tests/pointwise_bitwise_baseline.rs:180  forecast_interval_is_bit_identical  -- stored f64 bit patterns are platform-specific; run with --ignored on the capture machine
+  crates/tsecon-var/tests/pointwise_bitwise_baseline.rs:194  bootstrap_percentile_bands_are_bit_identical  -- stored f64 bit patterns are platform-specific; run with --ignored on the capture machine
+  crates/tsecon-var/tests/simultaneous_bands.rs:10  ?  -- (comment) !
+  crates/tsecon-var/tests/simultaneous_bands.rs:957  mc_irf_simultaneous_coverage  -- Monte Carlo: run in release with --ignored --nocapture
+  crates/tsecon-var/tests/simultaneous_bands.rs:1117  mc_forecast_simultaneous_coverage  -- Monte Carlo: run in release with --ignored --nocapture
+  crates/tsecon-var/tests/simultaneous_bands.rs:1451  cost_of_the_sup_t_route_at_the_production_default  -- timing: run in release with --ignored --nocapture
+  crates/tsecon-var/tests/irf_bootstrap_props.rs:215  emit_snapshot  -- emits the fixture snapshot; run manually with --nocapture

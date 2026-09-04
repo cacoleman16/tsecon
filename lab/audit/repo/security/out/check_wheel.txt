@@ -1,0 +1,35 @@
+bindings/python/dist/tsecon-0.8.0-cp39-abi3-manylinux_2_39_x86_64.whl: 23 members, 18.2 MB uncompressed
+    tsecon/__init__.py (3014 B)
+    tsecon/__init__.pyi (165916 B)
+    tsecon/_coerce.py (20735 B)
+    tsecon/_core.abi3.so (17654248 B)
+    tsecon/_inspect.py (56911 B)
+    tsecon/py.typed (0 B)
+    tsecon/results/__init__.py (1659 B)
+    tsecon/results/_arima.py (11460 B)
+    tsecon/results/_base.py (3780 B)
+    tsecon/results/_check.py (21505 B)
+    tsecon/results/_dsge.py (12344 B)
+    tsecon/results/_garch.py (12294 B)
+    tsecon/results/_generic.py (6952 B)
+    tsecon/results/_lp.py (7723 B)
+    tsecon/results/_plotting.py (2314 B)
+    tsecon/results/_predreg.py (17566 B)
+    tsecon/results/_var.py (19511 B)
+    tsecon-0.8.0.dist-info/METADATA (8642 B)
+    tsecon-0.8.0.dist-info/WHEEL (107 B)
+    tsecon-0.8.0.dist-info/licenses/LICENSE-APACHE (10847 B)
+    tsecon-0.8.0.dist-info/licenses/LICENSE-MIT (1070 B)
+    tsecon-0.8.0.dist-info/sboms/tsecon-python.cyclonedx.json (160740 B)
+    tsecon-0.8.0.dist-info/RECORD (1877 B)
+extension modules: ['tsecon/_core.abi3.so']
+dist-info members: ['tsecon-0.8.0.dist-info/METADATA', 'tsecon-0.8.0.dist-info/RECORD', 'tsecon-0.8.0.dist-info/WHEEL', 'tsecon-0.8.0.dist-info/licenses/LICENSE-APACHE', 'tsecon-0.8.0.dist-info/licenses/LICENSE-MIT']
+UNEXPECTED members: ['tsecon-0.8.0.dist-info/sboms/tsecon-python.cyclonedx.json']
+SUSPICIOUS members (tests/fixtures/pyc/...): none
+METADATA License: ['MIT OR Apache-2.0']; License-File: ['LICENSE-MIT', 'LICENSE-APACHE']
+METADATA Requires-Dist: ['numpy>=1.22', "matplotlib>=3.6 ; extra == 'all'", "polars>=0.20 ; extra == 'all'", "matplotlib>=3.6 ; extra == 'plots'", "polars>=0.20 ; extra == 'polars'"]
+METADATA Requires-Python: ['>=3.9']
+dual license texts shipped: MIT=True Apache=True
+third-party license notices in wheel: NONE
+missing expected package files: none
+VERDICT: see above

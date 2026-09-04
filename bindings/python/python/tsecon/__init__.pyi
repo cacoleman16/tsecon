@@ -23,19 +23,38 @@ _ArrayLike = npt.NDArray[np.float64]
 
 # ----------------------------------------------------------- diagnostics
 def acf(y: _ArrayLike, nlags: int = ..., adjusted: bool = ...) -> dict[str, _F64]:
-    """Autocorrelation function with Bartlett standard errors."""
+    """Autocorrelation function with Bartlett standard errors.
+
+    Returned keys: `acf`, `bartlett_se`.
+
+    Further arguments, with defaults: `nlags` (20), `adjusted` (False).
+    """
 
 def pacf(y: _ArrayLike, nlags: int = ..., method: str = ...) -> _F64:
-    """Partial autocorrelation function; `method` is "yw" or "ols"."""
+    """Partial autocorrelation function; `method` is "yw" or "ols".
+
+    Further arguments, with defaults: `nlags` (20).
+    """
 
 def ljung_box(y: _ArrayLike, nlags: int = ...) -> dict[str, _F64]:
-    """Ljung-Box and Box-Pierce portmanteau tests for lags 1..=nlags."""
+    """Ljung-Box and Box-Pierce portmanteau tests for lags 1..=nlags.
+
+    Returned keys: `bp_pvalue`, `bp_stat`, `lags`, `lb_pvalue`, `lb_stat`.
+    """
 
 def jarque_bera(x: _ArrayLike) -> dict[str, float]:
-    """Jarque-Bera normality test (statistic, p_value, skewness, kurtosis, n)."""
+    """Jarque-Bera normality test (statistic, p_value, skewness, kurtosis, n).
+
+    Returned keys: `kurtosis`, `n`, `p_value`, `skewness`, `statistic`.
+    """
 
 def arch_lm(resid: _ArrayLike, nlags: int = ...) -> dict[str, float]:
-    """Engle's ARCH-LM test for conditional heteroskedasticity."""
+    """Engle's ARCH-LM test for conditional heteroskedasticity.
+
+    Returned keys: `df`, `nobs`, `p_value`, `statistic`.
+
+    Further arguments, with defaults: `nlags` (4).
+    """
 
 # --------------------------------------------------- unit roots / workflow
 def adf(
@@ -44,15 +63,32 @@ def adf(
     autolag: str | None = ...,
     maxlag: int | None = ...,
 ) -> dict[str, Any]:
-    """Augmented Dickey-Fuller test with MacKinnon p-values."""
+    """Augmented Dickey-Fuller test with MacKinnon p-values.
+
+    Returned keys: `crit`, `nobs`, `p_value`, `statistic`, `used_lag`.
+
+    Further arguments, with defaults: `regression` ("c"), `maxlag` (None).
+    """
 
 def kpss(
     y: _ArrayLike, regression: str = ..., nlags: str | int | None = ...
 ) -> dict[str, Any]:
-    """KPSS stationarity test (null: stationary)."""
+    """KPSS stationarity test (null: stationary).
+
+    Returned keys: `lags`, `p_value`, `statistic`.
+
+    Further arguments, with defaults: `regression` ("c"), `nlags` (None).
+    """
 
 def check_stationarity(y: _ArrayLike, alpha: float = ...) -> dict[str, Any]:
-    """The ADF + KPSS confirmatory-quadrant workflow with a recommendation."""
+    """The ADF + KPSS confirmatory-quadrant workflow with a recommendation.
+
+    Returned keys: `adf_p_value`, `adf_statistic`, `alpha`,
+    `interpretation`, `kpss_p_value`, `kpss_statistic`, `quadrant`,
+    `recommendation`.
+
+    Further arguments, with defaults: `alpha` (0.05).
+    """
 
 def phillips_perron(
     y: _ArrayLike,
@@ -60,7 +96,14 @@ def phillips_perron(
     test_type: str = ...,
     lags: int | None = ...,
 ) -> dict[str, Any]:
-    """Phillips-Perron unit-root test (Z-tau/Z-alpha) with MacKinnon p-values."""
+    """Phillips-Perron unit-root test (Z-tau/Z-alpha) with MacKinnon p-values.
+
+    Returned keys: `crit`, `lags`, `nobs`, `pvalue`, `stat`, `zalpha`,
+    `ztau`.
+
+    Further arguments, with defaults: `regression` ("c"), `test_type`
+    ("tau"), `lags` (None).
+    """
 
 def dfgls(
     y: _ArrayLike,
@@ -118,7 +161,13 @@ def phillips_ouliaris(
     test_type: str = ...,
     bandwidth: int | None = ...,
 ) -> dict[str, Any]:
-    """Phillips-Ouliaris residual cointegration test (Zt/Za) with MacKinnon N-surfaces."""
+    """Phillips-Ouliaris residual cointegration test (Zt/Za) with MacKinnon N-surfaces.
+
+    Returned keys: `crit`, `lags`, `n_vars`, `nobs`, `pvalue`, `stat`.
+
+    Further arguments, with defaults: `trend` ("c"), `test_type` ("Zt"),
+    `bandwidth` (None).
+    """
 
 def zivot_andrews(
     y: _ArrayLike,
@@ -149,7 +198,13 @@ def zivot_andrews(
 def ndiffs(
     y: _ArrayLike, test: str = ..., alpha: float = ..., max_d: int = ...
 ) -> dict[str, Any]:
-    """How many differences a series needs, with the per-order test evidence."""
+    """How many differences a series needs, with the per-order test evidence.
+
+    Returned keys: `alpha`, `d`, `interpretation`, `max_d`, `steps`, `stop`,
+    `test`.
+
+    Further arguments, with defaults: `alpha` (0.05), `max_d` (2).
+    """
 
 def nsdiffs(
     y: _ArrayLike, period: int, alpha: float = ..., max_d: int = ...
@@ -169,7 +224,14 @@ def box_cox_lambda(
     bounds: tuple[float, float] = ...,
     period: int | None = ...,
 ) -> dict[str, Any]:
-    """Variance-stabilising Box-Cox lambda (MLE or Guerrero) with its objective."""
+    """Variance-stabilising Box-Cox lambda (MLE or Guerrero) with its objective.
+
+    Returned keys: `at_bound`, `interpretation`, `lambda`, `loglik_at_one`,
+    `loglik_at_zero`, `lower`, `lr_vs_one`, `lr_vs_zero`, `method`, `n`,
+    `objective`, `period`, `upper`.
+
+    Further arguments, with defaults: `method` ("mle"), `period` (None).
+    """
 
 def check_series(
     data: npt.ArrayLike,
@@ -193,7 +255,15 @@ def check_series(
     min(10, n//5)), the VAR lag-search cap for 2D input (default 8). `alpha`
     must lie in (0.01, 0.10] — the compiled KPSS p-value is clamped to that
     range. `seasonal_period` must be an integer >= 2 with at least two full
-    cycles in sample."""
+    cycles in sample.
+
+    Returned keys: `alpha`, `analysis_scale`, `arch_effects`, `breaks`,
+    `descriptives`, `kind`, `long_memory`, `multiple_testing`, `n`,
+    `normality`, `outliers`, `recommendations`, `seasonality`,
+    `serial_correlation`, `stationarity`, `tests_run`.
+
+    Further arguments, with defaults: `max_breaks` (5), `trim` (0.15).
+    """
 
 def summarize(obj: Any, *, title: str | None = ..., wrap: str = ...) -> Any:
     """Render any tsecon output as a readable results object (opt-in).
@@ -209,7 +279,11 @@ def summarize(obj: Any, *, title: str | None = ..., wrap: str = ...) -> Any:
 def long_run_variance(
     x: _ArrayLike, kernel: str = ..., bandwidth: float | None = ...
 ) -> float:
-    """Kernel long-run variance of a series (demeaned internally)."""
+    """Kernel long-run variance of a series (demeaned internally).
+
+    Further arguments, with defaults: `kernel` ("bartlett"), `bandwidth`
+    (None).
+    """
 
 def ols(
     y: _ArrayLike,
@@ -227,6 +301,10 @@ def ols(
     HAC matches statsmodels cov_type="HAC" when use_correction is matched;
     the DEFAULTS differ deliberately (tsecon True, statsmodels False), so
     pass use_correction=False to reproduce a default statsmodels call.
+
+    Returned keys: `bse`, `params`, `se_type`, `tvalues`.
+
+    Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
     """
 
 # -------------------------------------------------------------- bootstrap
@@ -237,10 +315,17 @@ def bootstrap_indices(
     block_length: int | None = ...,
     p: float | None = ...,
 ) -> npt.NDArray[np.uint64]:
-    """Bootstrap resampling indices (iid/moving/circular/stationary)."""
+    """Bootstrap resampling indices (iid/moving/circular/stationary).
+
+    Further arguments, with defaults: `scheme` ("stationary"), `seed` (0),
+    `block_length` (None), `p` (None).
+    """
 
 def optimal_block_length(y: _ArrayLike) -> dict[str, float]:
-    """Politis-White (2004) automatic block length (stationary, circular)."""
+    """Politis-White (2004) automatic block length (stationary, circular).
+
+    Returned keys: `circular`, `stationary`.
+    """
 
 def philox_uniforms(seed: int, n: int) -> _F64:
     """Uniform draws from the Philox stream; bit-identical to NumPy."""
@@ -259,7 +344,15 @@ def local_level_smooth(
 def ar_loglik(
     y: _ArrayLike, coeffs: Sequence[float], sigma2: float, intercept: float = ...
 ) -> float:
-    """Exact Gaussian log-likelihood of an AR(p) at fixed parameters."""
+    """Exact Gaussian log-likelihood of an AR(p) at fixed parameters.
+
+    Further arguments, with defaults: `intercept` (0.0).
+
+    NaN entries in `y` are treated as missing observations: the Kalman
+    filter skips their update and the log-likelihood sums the remaining
+    innovations (with `coeffs=[0]` it equals the log-likelihood of the
+    series with those entries deleted). Infinite entries are rejected.
+    """
 
 # ---------------------------------------------------------------- ARIMA
 def arima_fit(
@@ -299,6 +392,13 @@ def arima_fit(
     the classic over-differencing signature). Interior bse still come from
     the full-vector observed information, which a boundary degrades — treat
     as approximate; reduced-Hessian interior SEs are a stated follow-up.
+
+    Returned keys: `aic`, `bic`, `boundary`, `boundary_note`, `bse`,
+    `conf_alpha`, `converged`, `cov_ok`, `drift_uncertainty`,
+    `forecast_lower`, `forecast_mean`, `forecast_se`, `forecast_upper`,
+    `loglik`, `param_cov`, `param_names`, `params`, `residuals`, `se_valid`.
+
+    Further arguments, with defaults: `forecast_steps` (0).
     """
 
 def auto_arima(
@@ -341,6 +441,16 @@ def auto_arima(
     candidate fits are statsmodels-pinned; the selection loop itself is
     graded by Monte-Carlo order recovery (rates in the model card), not
     R/pmdarima parity.
+
+    Returned keys: `D_test`, `aic`, `aicc`, `bic`, `boundary`,
+    `boundary_note`, `bse`, `budget_exhausted`, `constant`, `converged`,
+    `cov_ok`, `d_test`, `ic`, `ic_value`, `interpretation`, `loglik`,
+    `n_models`, `order`, `param_cov`, `param_names`, `params`, `residuals`,
+    `se_valid`, `seasonal_order`, `stepwise`, `trace`.
+
+    Further arguments, with defaults: `max_p` (5), `max_q` (5), `max_P` (2),
+    `max_Q` (2), `max_d` (2), `max_D` (1), `alpha` (0.05), `forecast_steps`
+    (0), `conf_alpha` (None).
     """
 
 # -------------------------------------------------------------- GARCH
@@ -384,6 +494,13 @@ def garch_fit(
     `vol="egarch"` only `forecast_horizon` 0 or 1 is accepted, and
     `forecast_horizon >= 2` raises a teaching ValueError (GARCH and GJR
     forecast analytically at every horizon).
+
+    Returned keys: `aic`, `bic`, `boundary`, `boundary_note`,
+    `conditional_volatility`, `converged`, `loglik`, `param_names`,
+    `params`, `params_named`, `se_mle`, `se_robust`, `se_valid`,
+    `std_residuals`, `variance_forecast`.
+
+    Further arguments, with defaults: `mean` ("zero"), `dist` ("normal").
     """
 
 # --------------------------------------------------------------- VAR
@@ -400,6 +517,8 @@ def var_fit(data: _ArrayLike, lags: int = ..., trend: str = ...) -> dict[str, An
     data[lags:] - resid, i.e. the OLS projection Z @ B; fitted + resid
     reproduces data[lags:] exactly), nobs (T = len(data) - lags), df_resid
     (T - m regressors per equation), max_root, min_root, is_stable.
+
+    Further arguments, with defaults: `trend` ("c").
     """
 
 def var_irf(
@@ -413,6 +532,9 @@ def var_irf(
     """Impulse responses [h][response][shock]; `cumulative` gives running sums.
 
     Point path only. For frequentist confidence bands use `var_irf_bands`.
+
+    Further arguments, with defaults: `lags` (2), `horizon` (10), `orth`
+    (True), `trend` ("c").
     """
 
 def var_irf_bands(
@@ -480,6 +602,8 @@ def var_irf_bands(
     bootstrap replications, so `seed` alone reproduces it (use `n_boot` ≥ 999);
     Šidák and Bonferroni are closed forms in K and need neither. Method:
     Montiel Olea and Plagborg-Møller.
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c").
     """
 
 def var_fevd(
@@ -495,6 +619,8 @@ def var_fevd(
     layouts silently alias.) statsmodels stores the same numbers
     variable-major: `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))`
     equals this output.
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c").
     """
 
 def var_forecast(
@@ -535,6 +661,8 @@ def var_forecast(
     `band_seed`/`band_n_sim` drive the Gaussian simulation behind `"sup-t"`, so
     that band is a pure function of `band_seed`; the closed forms use neither.
     Method: Montiel Olea and Plagborg-Møller.
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c").
     """
 
 def var_granger(
@@ -544,7 +672,12 @@ def var_granger(
     lags: int = ...,
     trend: str = ...,
 ) -> dict[str, Any]:
-    """Granger-causality F test (matches statsmodels test_causality)."""
+    """Granger-causality F test (matches statsmodels test_causality).
+
+    Returned keys: `df_den`, `df_num`, `p_value`, `statistic`.
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c").
+    """
 
 # --------------------------------------------------------- Bayesian VAR
 def bvar_fit(
@@ -565,7 +698,11 @@ def bvar_fit(
     order np.kron(sigma, omega_bar)), Sigma|Y ~ InvWishart(s_bar, v_bar).
     Marginal coefficient posterior sd (v_bar > K + 1):
     sd = np.sqrt(np.outer(np.diag(omega_bar), np.diag(s_bar)) / (v_bar - K - 1)),
-    a (k, K) array aligned with posterior_mean_coefs."""
+    a (k, K) array aligned with posterior_mean_coefs.
+
+    Further arguments, with defaults: `lags` (2), `lambda0` (100.0),
+    `lambda1` (0.2), `lambda3` (1.0), `delta` (0.0).
+    """
 
 def bvar_irf_draws(
     data: _ArrayLike,
@@ -580,7 +717,12 @@ def bvar_irf_draws(
     cumulative: bool = ...,
     scale_ar: int = ...,
 ) -> list[list[list[list[float]]]]:
-    """Posterior Cholesky-IRF draws [draw][h][variable][shock] for credible bands."""
+    """Posterior Cholesky-IRF draws [draw][h][variable][shock] for credible bands.
+
+    Further arguments, with defaults: `lags` (2), `horizon` (16), `n_draws`
+    (500), `seed` (0), `lambda0` (100.0), `lambda1` (0.2), `lambda3` (1.0),
+    `delta` (0.0), `cumulative` (False), `scale_ar` (4).
+    """
 
 def bvar_hierarchical(
     data: _ArrayLike,
@@ -598,7 +740,18 @@ def bvar_hierarchical(
     tol: float = ...,
     scale_ar: int = ...,
 ) -> dict[str, Any]:
-    """Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015). Default hyperprior="glp" (MAP-II under the GLP Gamma hyperprior) — pure ML-II (hyperprior="none") collapses lambda1 to the search-box floor on ~a fifth to a quarter of in-model datasets (audit round 6); a lambda1_opt at the box bottom is a red flag, not a selection. scale_ar=1 switches the prior's residual-scale regressions to GLP's own AR(1) convention (default 4)."""
+    """Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likelihood (Giannone-Lenza-Primiceri 2015). Default hyperprior="glp" (MAP-II under the GLP Gamma hyperprior) — pure ML-II (hyperprior="none") collapses lambda1 to the search-box floor on ~a fifth to a quarter of in-model datasets (audit round 6); a lambda1_opt at the box bottom is a red flag, not a selection. scale_ar=1 switches the prior's residual-scale regressions to GLP's own AR(1) convention (default 4).
+
+    Returned keys: `converged`, `grid_lambda1`, `grid_log_ml`,
+    `lambda1_fixed_log_ml`, `lambda1_opt`, `lambda3_opt`,
+    `log_marginal_likelihood`, `log_posterior`, `n_evals`,
+    `posterior_mean_coefs`, `sigma_posterior_mean`.
+
+    Further arguments, with defaults: `lags` (2), `delta` (0.0), `lambda0`
+    (100.0), `lambda3` (1.0), `lambda1_init` (0.2), `lambda1_lo` (0.0001),
+    `lambda1_hi` (10.0), `optimize` ("lambda1"), `n_grid` (25), `max_iter`
+    (200), `tol` (1e-08).
+    """
 
 def bvar_ssvs(
     data: _ArrayLike,
@@ -619,16 +772,31 @@ def bvar_ssvs(
     thin: int = ...,
     n_chains: int = ...,
 ) -> dict[str, Any]:
-    """SSVS-BVAR (George-Sun-Ni 2008): spike-and-slab stochastic-search selection of VAR (and error-precision) restrictions by Gibbs; posterior inclusion probabilities, coef/Sigma means, and orthogonalized IRF draws. Default hyperpriors are unit-adaptive (None = scale by the per-equation OLS residual variance); explicit gamma_b/kappa0/kappa1 floats pin absolute prior scales."""
+    """SSVS-BVAR (George-Sun-Ni 2008): spike-and-slab stochastic-search selection of VAR (and error-precision) restrictions by Gibbs; posterior inclusion probabilities, coef/Sigma means, and orthogonalized IRF draws. Default hyperpriors are unit-adaptive (None = scale by the per-equation OLS residual variance); explicit gamma_b/kappa0/kappa1 floats pin absolute prior scales.
+
+    Returned keys: `coef_mean`, `diagnostics`, `inclusion_prob`,
+    `irf_draws`, `sigma_mean`.
+
+    Further arguments, with defaults: `lags` (2), `n_draws` (10000), `burn`
+    (2000), `seed` (0), `c0` (0.1), `c1` (10.0), `prior_inclusion` (0.5),
+    `ssvs_cov` (False), `prior_inclusion_cov` (0.5), `gamma_a` (0.01),
+    `horizon` (16), `thin` (1), `n_chains` (1).
+    """
 
 def mcmc_diagnostics(chains: _ArrayLike) -> dict[str, float]:
-    """Rank-normalized split R-hat and bulk/tail ESS (ArviZ-exact)."""
+    """Rank-normalized split R-hat and bulk/tail ESS (ArviZ-exact).
+
+    Returned keys: `ess_bulk`, `ess_tail`, `rhat`.
+    """
 
 # ------------------------------------------------------------- filters
 def hp_filter(y: _ArrayLike, lamb: float = ..., one_sided: bool = ...) -> dict[str, Any]:
     """Hodrick-Prescott filter (O(n)); `one_sided=True` for the real-time variant.
 
-    Keys: `trend`, `cycle` (= y - trend), `first_index` (0: full sample)."""
+    Keys: `trend`, `cycle` (= y - trend), `first_index` (0: full sample).
+
+    Further arguments, with defaults: `lamb` (1600.0).
+    """
 
 def bk_filter(
     y: _ArrayLike, low: float = ..., high: float = ..., k: int = ...
@@ -636,14 +804,21 @@ def bk_filter(
     """Baxter-King band-pass filter (loses k observations at each end).
 
     Keys: `cycle` (length n - 2k) and `first_index` (= k); no trend is
-    returned."""
+    returned.
+
+    Further arguments, with defaults: `low` (6.0), `high` (32.0).
+    """
 
 def cf_filter(
     y: _ArrayLike, low: float = ..., high: float = ..., drift: bool = ...
 ) -> dict[str, Any]:
     """Christiano-Fitzgerald asymmetric band-pass filter (full sample).
 
-    Keys: `trend`, `cycle`, `first_index` (0: full sample)."""
+    Keys: `trend`, `cycle`, `first_index` (0: full sample).
+
+    Further arguments, with defaults: `low` (6.0), `high` (32.0), `drift`
+    (True).
+    """
 
 def hamilton_filter(
     y: _ArrayLike,
@@ -686,7 +861,10 @@ def bn_filter(
     (sample mean, the baseline) or "nd" (no drift removal). Returns
     `trend`, `cycle`, `first_index` (=1), `delta`, `ar`, `cycle_se`,
     `amplitude_to_noise`, `drift`. Reference-run-validated against the
-    authors' R replication code."""
+    authors' R replication code.
+
+    Further arguments, with defaults: `p` (12).
+    """
 
 def bn_decomposition(
     y: _ArrayLike,
@@ -731,6 +909,11 @@ def stl(
     trend + resid), `weights` (bisquare robustness weights; all 1 unless
     the outer loop runs), `period`, and `config` (the resolved windows,
     degrees, jumps, and inner/outer iteration counts).
+
+    Further arguments, with defaults: `low_pass` (None), `seasonal_deg` (1),
+    `trend_deg` (1), `low_pass_deg` (1), `robust` (False), `seasonal_jump`
+    (1), `trend_jump` (1), `low_pass_jump` (1), `inner_iter` (None),
+    `outer_iter` (None).
     """
 
 def mstl(
@@ -766,6 +949,11 @@ def mstl(
     pass), the resolved `periods`/`windows`, `iterate`,
     `dropped_periods`, and per-period `seasonal_strength` (None for a
     constant series).
+
+    Further arguments, with defaults: `low_pass` (None), `seasonal_deg` (1),
+    `trend_deg` (1), `low_pass_deg` (1), `robust` (False), `seasonal_jump`
+    (1), `trend_jump` (1), `low_pass_jump` (1), `inner_iter` (None),
+    `outer_iter` (None).
     """
 
 def seasonal_strength(y: _ArrayLike, period: int) -> dict[str, Any]:
@@ -780,7 +968,12 @@ def seasonal_strength(y: _ArrayLike, period: int) -> dict[str, Any]:
 def dm_test(
     e1: _ArrayLike, e2: _ArrayLike, h: int = ..., loss: str = ...
 ) -> dict[str, float]:
-    """Diebold-Mariano test with the Harvey-Leybourne-Newbold correction."""
+    """Diebold-Mariano test with the Harvey-Leybourne-Newbold correction.
+
+    Returned keys: `dm_stat`, `hln_stat`, `mean_loss_diff`, `p_value`.
+
+    Further arguments, with defaults: `h` (1), `loss` ("squared").
+    """
 
 def accuracy(
     actual: _ArrayLike,
@@ -788,7 +981,12 @@ def accuracy(
     insample: _ArrayLike | None = ...,
     period: int = ...,
 ) -> dict[str, float]:
-    """Forecast accuracy measures (ME/RMSE/MAE/MAPE/sMAPE/MASE/RMSSE)."""
+    """Forecast accuracy measures (ME/RMSE/MAE/MAPE/sMAPE/MASE/RMSSE).
+
+    Returned keys: `mae`, `mape`, `mase`, `me`, `rmse`, `rmsse`, `smape`.
+
+    Further arguments, with defaults: `insample` (None), `period` (1).
+    """
 
 def theta_forecast(y: _ArrayLike, steps: int, period: int = ...) -> _F64:
     """The Theta method (Assimakopoulos-Nikolopoulos 2000).
@@ -852,6 +1050,11 @@ def lp(
     seed; the closed forms use neither. Measured at K=13, alpha=0.10: pointwise
     1.6449, sup-t 2.20–2.65 depending on persistence, Šidák 2.6490, Bonferroni
     2.6653. Method: Montiel Olea and Plagborg-Møller.
+
+    Returned keys: `horizons`, `irf`, `se`, `se_method`.
+
+    Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
+    (None).
     """
 
 def lp_iv(
@@ -884,6 +1087,11 @@ def lp_iv(
     only. Šidák and Bonferroni need nothing but K, are valid under arbitrary
     dependence, and are simply wider than a sup-t band would be — never describe
     a band from this function as sup-t. For sup-t use `lp` or `smooth_lp`.
+
+    Returned keys: `first_stage_f`, `horizons`, `irf`, `se`.
+
+    Further arguments, with defaults: `n_lag_controls` (4), `band_alpha`
+    (0.1).
     """
 
 def lp_multiplier(
@@ -913,6 +1121,12 @@ def lp_multiplier(
     `band="sup-t"` is **refused**: no cross-horizon covariance is estimated for
     the multiplier path, so this function (like `lp_iv` and `lp_state`) gets the
     closed-form routes only. Do not call such a band sup-t.
+
+    Returned keys: `cumulative_impulse`, `cumulative_outcome`,
+    `first_stage_f`, `horizons`, `multiplier`, `nobs_per_h`, `se`.
+
+    Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
+    (None), `band_alpha` (0.1).
     """
 
 # -------------------------------------------------- penalized regression
@@ -932,7 +1146,10 @@ def elastic_net(
     Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update
     in the final sweep, in coefficient units) and `max_rel_change` (that
     update scaled as max_j |Δb_j|·‖x_j‖/‖y‖ — the scale-free quantity the
-    stopping rule compares with `tol`)."""
+    stopping rule compares with `tol`).
+
+    Further arguments, with defaults: `l1_ratio` (0.5), `max_iter` (100000).
+    """
 
 def lasso(
     x: _ArrayLike,
@@ -945,7 +1162,10 @@ def lasso(
 
     Keys: `coef`, `n_iter`, `max_change` and `max_rel_change` (as in
     `elastic_net`: the scale-free update the stopping rule compares with
-    `tol`)."""
+    `tol`).
+
+    Further arguments, with defaults: `max_iter` (100000).
+    """
 
 # --------------------------------------------------- structural identification
 def sign_restricted_svar(
@@ -964,6 +1184,12 @@ def sign_restricted_svar(
     {"+", "-"}. Returns per-(horizon, variable, shock) `quantiles` at
     `probs=[0.05,0.16,0.50,0.84,0.95]`, the identified-set envelope
     (`set_min`/`set_max`), and `diagnostics`.
+
+    Further arguments, with defaults: `lags` (2), `n_draws` (500),
+    `max_tries` (400), `seed` (0), `lambda1` (0.2).
+
+    Returned keys: `diagnostics`, `probs`, `quantiles`, `set_max`,
+    `set_min`.
     """
 
 def zero_sign_svar(
@@ -996,6 +1222,12 @@ def zero_sign_svar(
     recursive-Cholesky posterior, and the reported `set_min`/`set_max` span
     reflects posterior (not identified-set) uncertainty since the rotation is
     fixed. The ARW weight is exactly 1 for impact-only zero patterns.
+
+    Further arguments, with defaults: `lags` (2), `n_draws` (500),
+    `max_tries` (400), `seed` (0), `lambda1` (0.2).
+
+    Returned keys: `arw_weighted`, `diagnostics`, `ess`, `probs`,
+    `quantiles`, `set_max`, `set_min`, `weights`.
     """
 
 def structural_fevd(
@@ -1016,6 +1248,8 @@ def structural_fevd(
     scaling; the FEVD shares are invariant to it (it only rescales the reported
     `impact`). Returns `fevd` [horizon+1][variable][shock] (each row sums to 1)
     and `impact` [n][n] (the A0 used).
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c").
     """
 
 def historical_decomposition(
@@ -1055,6 +1289,13 @@ def historical_decomposition(
        "rule":"most"|"least","strong":bool}
       {"type":"contribution_sign","variable":int,"shock":int,"start":int,"end":int,
        "sign":"+"|"-"}
+
+    Further arguments, with defaults: `horizon` (None), `n_draws` (500),
+    `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
+
+    `restrictions` (default: none; used under identification="sign") is the
+    `sign_restricted_svar` list of `(variable, shock, horizon, sign)` tuples
+    with `sign` in {"+", "-"}.
     """
 
 def narrative_svar(
@@ -1080,6 +1321,15 @@ def narrative_svar(
     `set_min`/`set_max`, per-draw `weights` (mean 1), and `diagnostics` (with `ess`,
     `narrative_acceptance_rate`, `min_ptilde`). With no narrative restrictions every
     weight is 1 and it reproduces `sign_restricted_svar` bit-for-bit.
+
+    Further arguments, with defaults: `lags` (2), `n_draws` (500),
+    `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
+
+    `sign_restrictions` (default: none) is the `sign_restricted_svar` list
+    of `(variable, shock, horizon, sign)` tuples with `sign` in {"+", "-"}.
+
+    Returned keys: `diagnostics`, `probs`, `quantiles`, `set_max`,
+    `set_min`, `weights`.
     """
 
 def fry_pagan_svar(
@@ -1110,6 +1360,9 @@ def fry_pagan_svar(
     contract). The selected draw is a descriptive summary -- one interior point
     of the identified set, dependent on the informative Haar prior -- not a
     prior-free point estimate.
+
+    Further arguments, with defaults: `lags` (2), `n_draws` (500),
+    `max_tries` (400), `lambda1` (0.2).
     """
 
 def robust_svar_bounds(
@@ -1139,6 +1392,13 @@ def robust_svar_bounds(
     2018 closed form); with multiple jointly-restricted shocks each bound is that
     shock's marginal identified set — a conservative outer approximation of the
     joint set, since the cross-shock orthogonality coupling is not imposed.
+
+    Further arguments, with defaults: `lags` (2), `n_draws` (500), `seed`
+    (0), `lambda1` (0.2).
+
+    Returned keys: `alpha`, `diagnostics`, `lower_quantiles`, `probs`,
+    `restricted_shocks`, `robust_ci_lower`, `robust_ci_upper`,
+    `set_lower_mean`, `set_upper_mean`, `upper_quantiles`.
     """
 
 def long_run_svar(
@@ -1156,6 +1416,8 @@ def long_run_svar(
     default) or "impact" (positive B diagonal). Returns `impact` (B),
     `long_run` (LR = C(1) B), `long_run_multiplier` (C(1)), `irf`
     [horizon+1][i][j], `cumulative_irf`, and `fevd`. Point estimate, no RNG.
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c").
     """
 
 def max_share_svar(
@@ -1182,6 +1444,8 @@ def max_share_svar(
     Returns `irf` [horizon+1][k], `impact` [k], `q` [k], `share_window` (float),
     `fev_share` [horizon+1], and `eigenvalues` (ascending; length k, or k-1 when
     `exclude_impact`).
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c").
     """
 
 def proxy_svar_bands(
@@ -1214,6 +1478,17 @@ def proxy_svar_bands(
     Bands are pointwise, not joint. Failed draws are counted by reason in
     `failures`, never dropped; a nonzero n_failed means the instrument may be
     too weak for a Wald band -- see proxy_ar_sets.
+
+    Returned keys: `alpha`, `asymptotically_valid`, `block_length`,
+    `failure_warning`, `failures`, `first_stage_f_draws`,
+    `gamma_norm_draws`, `lower`, `lower_efron`, `method`, `n_boot`,
+    `n_failed`, `n_proxy`, `n_used`, `point`, `point_first_stage_f`,
+    `point_gamma_norm`, `point_reliability`, `reliability_draws`,
+    `rho_draws`, `se`, `upper`, `upper_efron`, `validity_note`.
+
+    Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
+    ("c"), `alpha` (0.1), `n_boot` (2000), `seed` (0), `block_length`
+    (None), `robust_f` (True).
     """
 
 def proxy_ar_sets(
@@ -1270,6 +1545,13 @@ def proxy_ar_sets(
     dates where the instrument is unavailable and dropped from the moments
     (`n_proxy` reports the kept count); an infinite proxy value is refused as
     corruption (0.7.0 -- previously dropped as if missing).
+
+    Returned keys: `ar_bound_stat`, `ar_bounded_all`, `cells`,
+    `critical_value`, `first_stage_f`, `impact`, `level`, `n_proxy`,
+    `reduced_form_uncertainty`.
+
+    Further arguments, with defaults: `lags` (2), `norm_var` (0), `unit`
+    (1.0), `trend` ("c"), `variance` ("hc0"), `hac_lags` (None).
     """
 
 def proxy_svar(
@@ -1298,6 +1580,8 @@ def proxy_svar(
     Point estimate only; see proxy_svar_bands for moving-block bands
     (strong instrument) and proxy_ar_sets for weak-IV-robust sets (use when
     first_stage["weak_mop_tau10"] is True).
+
+    Further arguments, with defaults: `trend` ("c").
     """
 
 def proxy_first_stage(
@@ -1332,6 +1616,14 @@ def proxy_first_stage(
     first-stage sample (`n_proxy` reports the kept count); an infinite proxy
     value is refused as corruption (0.7.0 -- previously dropped as if
     missing).
+
+    Returned keys: `beta`, `effective_f`, `f_classical`, `f_hc1`,
+    `hac_lags`, `mop_cv_tau10`, `mop_cv_tau20`, `mop_cv_tau30`,
+    `mop_cv_tau5`, `n_proxy`, `reliability`, `se`, `tau_bound`,
+    `weak_folklore`, `weak_mop_tau10`.
+
+    Further arguments, with defaults: `lags` (2), `norm_var` (0), `trend`
+    ("c").
     """
 
 def nongaussian_svar(
@@ -1361,6 +1653,9 @@ def nongaussian_svar(
     `rotation` (Q, [whitened][shock]), `shock_kurtosis` [k] (identified order),
     `converged` (bool), `n_iter` (int), and `order` [k] (raw FastICA index per
     identified position).
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c"), `max_iter`
+    (200), `tol` (1e-08).
     """
 
 def hetero_svar(
@@ -1395,6 +1690,8 @@ def hetero_svar(
     carry no economic labels. Standard errors on B/Theta_h are not provided in
     this closed-form build. The >2-regime and Markov-switching/GARCH variants
     are deferred.
+
+    Further arguments, with defaults: `trend` ("c").
     """
 
 # ------------------------------------------------------------------ panel
@@ -1411,6 +1708,8 @@ def panel_fe(
     `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
     explicitly with any other `se_type` raises instead of being silently
     absorbed — those estimators use no kernel.
+
+    Returned keys: `bse`, `params`, `se_type`, `tvalues`.
     """
 
 def panel_lp(
@@ -1467,6 +1766,8 @@ def panel_lp(
     (a cross-horizon panel covariance is a documented follow-up), so
     `panel_lp` gets the closed-form routes only, like `lp_iv`,
     `lp_multiplier` and `lp_state`. Never describe such a band as sup-t.
+
+    Further arguments, with defaults: `n_lag_controls` (2).
     """
 
 def lp_did(
@@ -1509,10 +1810,20 @@ def cw_test(
     yhat_large: _ArrayLike,
     lrv_lags: int = ...,
 ) -> dict[str, float]:
-    """Clark-West test for nested-model equal predictive accuracy."""
+    """Clark-West test for nested-model equal predictive accuracy.
+
+    Returned keys: `cw_stat`, `mean_adj_diff`, `p_value`.
+
+    Further arguments, with defaults: `lrv_lags` (0).
+    """
 
 def gw_test(loss1: _ArrayLike, loss2: _ArrayLike, lrv_lags: int = ...) -> dict[str, Any]:
-    """Giacomini-White unconditional test of equal predictive ability."""
+    """Giacomini-White unconditional test of equal predictive ability.
+
+    Returned keys: `df`, `gw_stat`, `p_value`.
+
+    Further arguments, with defaults: `lrv_lags` (0).
+    """
 
 def var_backtest(
     returns_or_hits: _ArrayLike,
@@ -1533,6 +1844,13 @@ def var_backtest(
     combines pre-computed hits WITH VaR forecasts so the DQ regression
     keeps its VaR regressor). Returns the three statistics with p-values,
     the violation counts/transition cells, and a teaching `verdict`.
+
+    Returned keys: `alpha`, `dq_df`, `dq_includes_var`, `dq_lags`,
+    `dq_stat`, `dq_var_dropped`, `expected_violations`, `hit_rate`, `lr_cc`,
+    `lr_ind`, `lr_uc`, `n`, `n00`, `n01`, `n10`, `n11`, `n_violations`,
+    `p_cc`, `p_dq`, `p_ind`, `p_uc`, `pi01`, `pi11`, `verdict`.
+
+    Further arguments, with defaults: `dq_lags` (4).
     """
 
 # ------------------------------------------------------ spectral analysis
@@ -1543,6 +1861,10 @@ def periodogram(
 
     Default `detrend="constant"` (mean removal) is SciPy's own default, so
     default call matches default call; `"none"` / `"linear"` as in SciPy.
+
+    Further arguments, with defaults: `fs` (1.0), `window` ("boxcar").
+
+    Returned keys: `freqs`, `psd`.
     """
 
 def welch(
@@ -1557,6 +1879,11 @@ def welch(
 
     Default `detrend="constant"` (per-segment mean removal) is SciPy's own
     default, so default call matches default call.
+
+    Returned keys: `freqs`, `psd`.
+
+    Further arguments, with defaults: `nperseg` (256), `fs` (1.0),
+    `noverlap` (None), `window` ("hann").
     """
 
 def coherence(
@@ -1572,6 +1899,11 @@ def coherence(
 
     Default `detrend="constant"` (per-segment mean removal) is SciPy's own
     default, so default call matches default call.
+
+    Returned keys: `coherence`, `freqs`.
+
+    Further arguments, with defaults: `nperseg` (256), `fs` (1.0),
+    `noverlap` (None), `window` ("hann").
     """
 
 # ---------------------------------------------------------- cointegration
@@ -1582,6 +1914,12 @@ def johansen(data: _ArrayLike, k_ar_diff: int = ...) -> dict[str, Any]:
     constant* convention. Warning: ``vecm``'s default is ``deterministic="n"``
     (no deterministic terms), a different case; fit the VECM this test ranks
     with ``vecm(..., deterministic="co")``.
+
+    Returned keys: `eig`, `evec`, `max_eig_crit_90_95_99`, `max_eig_stat`,
+    `rank_max_eig_5pct`, `rank_trace_5pct`, `trace_crit_90_95_99`,
+    `trace_stat`.
+
+    Further arguments, with defaults: `k_ar_diff` (1).
     """
 
 def engle_granger(
@@ -1595,7 +1933,10 @@ def engle_granger(
     `data` is T x k, column 0 the regressand. Keys: `stat`, `pvalue`, `crit`,
     `coint_coefs` (step-1 coefficients, deterministics first), `resid`
     (length `nobs`), `used_lag`/`adf_nobs` (the residual ADF's lag and
-    sample), `n_vars`, `nobs`."""
+    sample), `n_vars`, `nobs`.
+
+    Further arguments, with defaults: `trend` ("c"), `maxlag` (None).
+    """
 
 def vecm(
     data: _ArrayLike,
@@ -1623,6 +1964,11 @@ def vecm(
     ``johansen`` assumes the unrestricted constant (det_order=0), NOT this
     function's ``"n"`` default — pass ``deterministic="co"`` when the rank
     came from ``johansen`` (det_order -1/0/1 ↔ ``"n"``/``"co"``/``"colo"``).
+
+    Further arguments, with defaults: `k_ar_diff` (1), `coint_rank` (1).
+
+    Returned keys: `alpha`, `beta`, `det_coef`, `det_coef_coint`, `gamma`,
+    `llf`, `sigma_u`.
     """
 
 def threshold_vecm(
@@ -1650,7 +1996,10 @@ def threshold_vecm(
     = equations, columns [const, ect, lagged diffs]) with EICKER-WHITE
     bse_low/bse_high, n_low/n_high/nobs/frac_low, sigma, log_det_sigma,
     llf, llf_linear, beta_linear, beta_grid, ect, min_regime, neqs,
-    n_regressors, k_ar_diff."""
+    n_regressors, k_ar_diff.
+
+    Further arguments, with defaults: `n_grid_gamma` (300).
+    """
 
 def hansen_seo_test(
     data: _ArrayLike,
@@ -1673,7 +2022,11 @@ def hansen_seo_test(
     any k, so k > 2 with an estimated (null) beta is accepted.
 
     Keys: stat, p_value, threshold, beta, n_boot, nobs, thresholds,
-    lm_path, boot_stats, min_regime, neqs, n_regressors, k_ar_diff."""
+    lm_path, boot_stats, min_regime, neqs, n_regressors, k_ar_diff.
+
+    Further arguments, with defaults: `trim` (0.05), `n_grid` (300), `seed`
+    (0).
+    """
 
 def ou_fit(x: _ArrayLike, dt: float = ..., level: float = ...) -> dict[str, Any]:
     """Ornstein-Uhlenbeck mean-reversion fit for a spread (exact-discretization MLE).
@@ -1736,7 +2089,15 @@ def markov_switching_ar(
     n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0 scalar
     path (= smoothed_prob[:, -1]). The EM run reports converged and
     iterations (EM steps actually run — converged=False with
-    iterations == max_iter means the cap bound)."""
+    iterations == max_iter means the cap bound).
+
+    Returned keys: `ar`, `converged`, `expected_durations`, `filtered_prob`,
+    `iterations`, `loglik`, `means`, `regimes`, `smoothed_prob`,
+    `smoothed_prob_last_regime`, `transition`, `variances`.
+
+    Further arguments, with defaults: `switching_variance` (True), `tol`
+    (1e-06).
+    """
 
 def setar(
     y: _ArrayLike,
@@ -1761,7 +2122,10 @@ def setar(
     selects which criterion is *reported* — with p fixed the SSR ranking and
     the IC ranking coincide), min_regime, k, and the candidate grid
     thresholds with its ssr_path. Validated against an independent NumPy
-    transcription of the published algorithm (fixtures/setar.json)."""
+    transcription of the published algorithm (fixtures/setar.json).
+
+    Further arguments, with defaults: `trim` (0.15).
+    """
 
 def setar_test(
     y: _ArrayLike,
@@ -1780,7 +2144,10 @@ def setar_test(
     bit-identical at any thread count.
 
     Keys: stat, p_value, threshold, delay, n_boot, nobs, ssr_linear,
-    ssr_setar, thresholds, f_path, boot_stats."""
+    ssr_setar, thresholds, f_path, boot_stats.
+
+    Further arguments, with defaults: `trim` (0.15), `seed` (0).
+    """
 
 def star(
     y: _ArrayLike,
@@ -1808,7 +2175,11 @@ def star(
     params_nonlinear (high-regime coefficients are the sum), bse_linear,
     bse_nonlinear, se_gamma, se_c, se_valid (Gauss-Newton; NaN + False on
     a degenerate J'J), ssr, sigma2, loglik, aic, bic, nobs, k, transition,
-    grid_gamma, grid_c, ssr_grid (n_gamma x n_c), best_cell, fevals."""
+    grid_gamma, grid_c, ssr_grid (n_gamma x n_c), best_cell, fevals.
+
+    Further arguments, with defaults: `trim` (0.15), `delays` (None),
+    `constant` (True).
+    """
 
 def star_eval(
     y: _ArrayLike,
@@ -1826,7 +2197,11 @@ def star_eval(
 
     Keys: params_linear, params_nonlinear, bse_linear, bse_nonlinear,
     se_gamma, se_c, se_valid, ssr, sigma2, loglik, aic, bic, nobs, k,
-    transition."""
+    transition.
+
+    Further arguments, with defaults: `model` ("lstar"), `delay` (1),
+    `constant` (True).
+    """
 
 def star_test(
     y: _ArrayLike,
@@ -1846,7 +2221,8 @@ def star_test(
     Keys: delay, nobs, q, k0, lm3_stat, lm3_p_value, lm3_f_stat,
     lm3_f_p_value, h3_f_stat, h3_p_value, h2_f_stat, h2_p_value,
     h1_f_stat, h1_p_value, ssr0, ssr1, ssr2, ssr3, suggested, best,
-    tests."""
+    tests.
+    """
 def threshold_var(
     data: _ArrayLike,
     p: int,
@@ -1869,7 +2245,10 @@ def threshold_var(
     n_regressors, rows = equations, columns [const?, y_{t-1}..,
     y_{t-p}..]) with classical bse_low/bse_high, n_low/n_high/nobs,
     sigma/sigma_low/sigma_high, log_det_sigma, llf, aic/bic, thresholds,
-    logdet_path, min_regime, neqs, n_regressors."""
+    logdet_path, min_regime, neqs, n_regressors.
+
+    Further arguments, with defaults: `trim` (0.1), `constant` (True).
+    """
 
 def threshold_var_test(
     data: _ArrayLike,
@@ -1891,7 +2270,11 @@ def threshold_var_test(
     any thread count.
 
     Keys: stat, p_value, threshold, delay, threshold_index, n_boot, nobs,
-    thresholds, wald_path, boot_stats, min_regime, neqs, n_regressors."""
+    thresholds, wald_path, boot_stats, min_regime, neqs, n_regressors.
+
+    Further arguments, with defaults: `trim` (0.1), `n_grid` (300), `seed`
+    (0), `constant` (True).
+    """
 
 # ------------------------------------------------------------------ MIDAS
 def midas_weights(scheme: str, theta1: float, theta2: float, k: int) -> _F64:
@@ -1900,7 +2283,12 @@ def midas_weights(scheme: str, theta1: float, theta2: float, k: int) -> _F64:
 def umidas(
     y: _ArrayLike, hf_lags: _ArrayLike, se_type: str = ..., maxlags: int | None = ...
 ) -> dict[str, Any]:
-    """U-MIDAS: unrestricted mixed-frequency regression (hf_lags is nobs x K)."""
+    """U-MIDAS: unrestricted mixed-frequency regression (hf_lags is nobs x K).
+
+    Returned keys: `bse`, `params`, `rsquared`.
+
+    Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
+    """
 
 # ---------------------------------------------------- multivariate GARCH
 def ccc_garch(
@@ -1935,7 +2323,8 @@ def ccc_garch(
     is analytic and exact at every horizon (no DCC-style h >= 2
     approximation), with the variance forecasts identical to each series'
     own garch_fit forecast path. The univariate stage inherits garch_fit's
-    EGARCH limit: vol="egarch" with forecast_horizon >= 2 raises."""
+    EGARCH limit: vol="egarch" with forecast_horizon >= 2 raises.
+    """
 
 def dcc_garch(
     returns: _ArrayLike,
@@ -1982,7 +2371,8 @@ def dcc_garch(
     normalized each step (an approximation), converging to corr(qbar).
     The univariate stage inherits garch_fit's EGARCH limit: vol="egarch"
     with forecast_horizon >= 2 raises. The default call is bit-identical to
-    earlier releases."""
+    earlier releases.
+    """
 
 def dcc_test(
     returns: _ArrayLike,
@@ -2003,11 +2393,15 @@ def dcc_test(
     standardization by the symmetric inverse square root of the constant
     correlation, pooled AR(lags) on the stacked off-diagonal outer
     products. Keys: stat, df (= lags + 1), p_value (small rejects constant
-    correlation), lags, nobs, n_stacked."""
+    correlation), lags, nobs, n_stacked.
+    """
 
 # ------------------------------------------------ realized volatility / HAR
 def realized_measures(returns: _ArrayLike) -> dict[str, float]:
-    """Realized variance, bipower variation, and jump component (BNS 2004)."""
+    """Realized variance, bipower variation, and jump component (BNS 2004).
+
+    Returned keys: `bipower`, `jump`, `rv`.
+    """
 
 def har_rv(
     rv: _ArrayLike,
@@ -2026,7 +2420,12 @@ def har_rv(
     variant is "level", "log", or "sqrt". use_correction now defaults True
     (False through 0.2.0): bse/tvalues carry the finite-sample sqrt(n/(n-k))
     factor by default. statsmodels cov_type="HAC" defaults the correction
-    off -- pass use_correction=False to match it (and the old numbers)."""
+    off -- pass use_correction=False to match it (and the old numbers).
+
+    Returned keys: `bse`, `nobs`, `params`, `rsquared`, `tvalues`.
+
+    Further arguments, with defaults: `start` (22), `hac_maxlags` (5).
+    """
 
 # ------------------------------------------------------------ connectedness
 def connectedness(
@@ -2034,7 +2433,14 @@ def connectedness(
 ) -> dict[str, Any]:
     """Diebold-Yilmaz connectedness (percent) from a VAR's GFEVD.
 
-    total, to_others, from_others, net, gfevd, pairwise_net (data is T x k)."""
+    total, to_others, from_others, net, gfevd, pairwise_net (data is T x k).
+
+    Further arguments, with defaults: `lags` (2), `horizon` (10), `trend`
+    ("c").
+
+    Returned keys: `from_others`, `gfevd`, `net`, `pairwise_net`,
+    `to_others`, `total`.
+    """
 
 # ----------------------------------------------------------- factor model
 def factor_model(
@@ -2044,7 +2450,13 @@ def factor_model(
 
     factors, loadings, eigenvalues, icp1/icp2/pcp1/pcp2 and the
     Ahn-Horenstein eigenvalue-ratio factor count `er` with the ratios
-    `er_ratios` (length kmax) it was read from."""
+    `er_ratios` (length kmax) it was read from.
+
+    Further arguments, with defaults: `n_factors` (2).
+
+    Returned keys: `eigenvalues`, `er`, `er_ratios`, `factors`, `icp1`,
+    `icp2`, `loadings`, `pcp1`, `pcp2`.
+    """
 
 # ------------------------------------------------------------ term structure
 def nelson_siegel(
@@ -2056,12 +2468,19 @@ def nelson_siegel(
     """Nelson-Siegel yield-curve fit (Diebold-Li 2006).
 
     level/slope/curvature factors, lambda, residuals, rsquared.
-    optimal_lambda=True estimates the decay by NLS."""
+    optimal_lambda=True estimates the decay by NLS.
+
+    Returned keys: `curvature`, `factors`, `lambda`, `level`, `residuals`,
+    `rsquared`, `slope`.
+    """
 
 def svensson(
     maturities: _ArrayLike, yields: _ArrayLike, lambda1: float, lambda2: float
 ) -> dict[str, Any]:
-    """Svensson (1994) four-factor yield-curve fit; nests Nelson-Siegel."""
+    """Svensson (1994) four-factor yield-curve fit; nests Nelson-Siegel.
+
+    Returned keys: `factors`, `lambda1`, `lambda2`, `residuals`, `rsquared`.
+    """
 
 # ------------------------------------------------------------- GMM / IV-GMM
 def iv_gmm(
@@ -2099,7 +2518,14 @@ def iv_gmm(
     method is "2sls", "2step", or "iterated"; weight is "robust" or "hac".
     Z must include the exogenous regressor columns. Returns params, bse, cov,
     residuals, nobs, nmoments, nparams, steps, hac_bandwidth, first_stage,
-    and (over-identified) the Hansen j_stat/j_dof/j_pval."""
+    and (over-identified) the Hansen j_stat/j_dof/j_pval.
+
+    Further arguments, with defaults: `tol` (1e-08), `max_iter` (100).
+
+    Returned keys: `bse`, `cov`, `first_stage`, `hac_bandwidth`, `j_dof`,
+    `j_pval`, `j_stat`, `nmoments`, `nobs`, `nparams`, `params`,
+    `residuals`, `steps`.
+    """
 
 # ------------------------------------------------ leakage-safe time-series CV
 def cv_splits(
@@ -2123,7 +2549,10 @@ def cv_splits(
     after the test block, which only exist under "purged_kfold"; nonzero
     embargo raises on "expanding"/"rolling". Under "purged_kfold" the
     embargo is measured from the end of the purged window (Lopez de Prado
-    2018, ch. 7), so the right-hand gap is purge + embargo indices."""
+    2018, ch. 7), so the right-hand gap is purge + embargo indices.
+
+    Further arguments, with defaults: `k` (5).
+    """
 
 # ------------------------------------------------------ penalized ML (paths)
 def adaptive_lasso(
@@ -2139,7 +2568,11 @@ def adaptive_lasso(
 
     Keys: `coef`, `n_iter`, `max_change` and `max_rel_change` (as in
     `elastic_net`: the scale-free update the stopping rule compares with
-    `tol`)."""
+    `tol`).
+
+    Further arguments, with defaults: `l1_ratio` (1.0), `gamma` (1.0),
+    `max_iter` (100000).
+    """
 
 def lasso_path(
     x: _ArrayLike,
@@ -2152,7 +2585,14 @@ def lasso_path(
 ) -> dict[str, Any]:
     """Elastic-net regularization path with AIC/BIC selection.
 
-    lambdas, coefs, rss, df, aic, bic, aic_best, bic_best."""
+    lambdas, coefs, rss, df, aic, bic, aic_best, bic_best.
+
+    Further arguments, with defaults: `l1_ratio` (1.0), `n_lambdas` (100),
+    `eps` (0.001), `tol` (1e-07), `max_iter` (100000).
+
+    Returned keys: `aic`, `aic_best`, `bic`, `bic_best`, `coefs`, `df`,
+    `lambdas`, `rss`.
+    """
 
 # ------------------------------------------------------- forecast backtest
 def backtest(
@@ -2181,7 +2621,11 @@ def backtest(
     re-raise naming the failing origin and window, with the original chained
     as __cause__; wrong-length / non-finite returns raise teaching errors.
     Returns origins, per-horizon forecasts and
-    targets, and a per-horizon accuracy table."""
+    targets, and a per-horizon accuracy table.
+
+    Returned keys: `accuracy`, `forecasts`, `horizon`, `n_origins`,
+    `origins`, `targets`.
+    """
 
 # --------------------------------------------- conformal forecast intervals
 def conformal_forecast(
@@ -2223,7 +2667,14 @@ def conformal_forecast(
     never reaches EnbPI. Returns mean,
     lower, upper, level, plus per-method calibration diagnostics (split:
     q_lower/q_upper/scores/finite_sample_level; enbpi: beta/residuals;
-    aci: alpha_final/alpha_trajectory/err/realized_coverage)."""
+    aci: alpha_final/alpha_trajectory/err/realized_coverage).
+
+    Returned keys: `alpha`, `base`, `finite_sample_level`, `horizon`,
+    `level`, `lower`, `mean`, `method`, `mode`, `n_calib`, `q_lower`,
+    `q_upper`, `scores`, `upper`.
+
+    Further arguments, with defaults: `period` (1).
+    """
 
 def conformal_backtest(
     y: _ArrayLike,
@@ -2253,7 +2704,14 @@ def conformal_backtest(
     under "enbpi", not fresh entropy (`n_boot=None` means 25). The same inert-kwarg refusals as
     conformal_forecast apply (order/lags/gamma/n_boot/seed/optimize_beta,
     EnbPI's calib), plus batch, which is EnbPI-only; n_eval is live for
-    every method here. Defaults stay bit-identical."""
+    every method here. Defaults stay bit-identical.
+
+    Returned keys: `alpha`, `base`, `err`, `horizon`, `level`, `lower`,
+    `mean`, `method`, `n_eval`, `origins`, `realized_coverage`, `upper`.
+
+    Further arguments, with defaults: `alpha` (0.1), `mode` ("symmetric"),
+    `period` (1).
+    """
 
 # --------------------------------------------------- nonlinear GMM (callback)
 def gmm_nonlinear(
@@ -2269,7 +2727,11 @@ def gmm_nonlinear(
     for a single moment condition (reshape with g.reshape(-1, 1)); a 1-D return
     raises a TypeError naming moments_fn. weight is the flattened m*m
     weighting matrix (row-major) or None for the identity. Returns params,
-    objective, gbar, converged, iterations, fevals, nmoments, nparams."""
+    objective, gbar, converged, iterations, fevals, nmoments, nparams.
+
+    Returned keys: `converged`, `fevals`, `gbar`, `iterations`, `nmoments`,
+    `nparams`, `objective`, `params`.
+    """
 
 # ------------------------------------------------------------ weighted MIDAS
 def weighted_midas(
@@ -2278,7 +2740,15 @@ def weighted_midas(
     scheme: str = ...,
     weight_start: tuple[float, float] | None = ...,
 ) -> dict[str, Any]:
-    """Weighted MIDAS by NLS (Ghysels et al. 2007); exp_almon/beta weights, hf_lags is nobs x K."""
+    """Weighted MIDAS by NLS (Ghysels et al. 2007); exp_almon/beta weights, hf_lags is nobs x K.
+
+    Returned keys: `converged`, `fitted`, `intercept`, `iterations`,
+    `residuals`, `rsquared`, `scheme`, `slope`, `ssr`, `weight_params`,
+    `weights`.
+
+    Further arguments, with defaults: `scheme` ("exp_almon"), `weight_start`
+    (None).
+    """
 
 # ---------------------------------------------------- state-dependent LP
 def lp_state(
@@ -2319,6 +2789,12 @@ def lp_state(
     the interacted regressions, so `lp_state` (like `lp_iv` and `lp_multiplier`)
     gets the closed-form simultaneous routes only. Report such a band as Šidák
     or Bonferroni, never as sup-t.
+
+    Returned keys: `horizons`, `irf_state0`, `irf_state1`, `se_method`,
+    `se_state0`, `se_state1`.
+
+    Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
+    (None), `band_alpha` (0.1).
     """
 
 # ------------------------------------------------------ mean-group panel VAR
@@ -2330,7 +2806,15 @@ def mean_group_var(
     response: int = ...,
     impulse: int = ...,
 ) -> dict[str, Any]:
-    """Pesaran-Smith (1995) mean-group panel VAR over per-entity T_i x k matrices."""
+    """Pesaran-Smith (1995) mean-group panel VAR over per-entity T_i x k matrices.
+
+    Returned keys: `coefs`, `coefs_se`, `intercept`, `intercept_se`,
+    `irf_path`, `irf_path_se`, `lags`, `n_entities`, `neqs`, `orth_irfs`,
+    `orth_irfs_se`.
+
+    Further arguments, with defaults: `lags` (1), `trend` ("c"), `horizon`
+    (10), `response` (0), `impulse` (0).
+    """
 
 # ------------------------------------------------------ dynamic Nelson-Siegel
 def dynamic_ns(
@@ -2339,7 +2823,13 @@ def dynamic_ns(
     """Dynamic Nelson-Siegel factors + one-step forecast (Diebold-Li 2006).
 
     panel is T x n_maturities. Returns maturities, lambda, factors (T x 3),
-    rsquared, level/slope/curvature series, and a forecast dict."""
+    rsquared, level/slope/curvature series, and a forecast dict.
+
+    Further arguments, with defaults: `decay` (0.0609).
+
+    Returned keys: `curvature`, `factors`, `forecast`, `lambda`, `level`,
+    `maturities`, `rsquared`, `slope`.
+    """
 
 # ------------------------------------------------------------------- FAVAR
 def favar(
@@ -2355,7 +2845,14 @@ def favar(
     """Two-step factor-augmented VAR (Bernanke-Boivin-Eliasz 2005).
 
     factors (T x r), params, sigma_u, n_factors, n_endog, policy_index, and
-    the recursive policy-shock IRFs irf_panel (N x horizon+1) / irf_policy."""
+    the recursive policy-shock IRFs irf_panel (N x horizon+1) / irf_policy.
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c"),
+    `slow_indices` (None), `orth` (True).
+
+    Returned keys: `factors`, `irf_panel`, `irf_policy`, `n_endog`,
+    `n_factors`, `params`, `policy_index`, `sigma_u`.
+    """
 
 # ---------------------------------------------- realized-volatility extras
 def realized_quarticity(returns: _ArrayLike) -> float:
@@ -2368,7 +2865,10 @@ def bns_jump_test(returns: _ArrayLike) -> dict[str, float]:
     """BNS ratio jump test in the Huang & Tauchen (2005) form; dict with 'ratio'.
 
     The HT finite-sample M/(M-1) and M/(M-2) scalings on BV/TQ are applied
-    inside the statistic; the exported measures stay unadjusted BNS 2004."""
+    inside the statistic; the exported measures stay unadjusted BNS 2004.
+
+    Returned keys: `ratio`.
+    """
 
 def realized_range(
     high: _ArrayLike,
@@ -2377,7 +2877,10 @@ def realized_range(
     open: _ArrayLike | None = ...,
     close: _ArrayLike | None = ...,
 ) -> float:
-    """Range variance from OHLC bars; method is "parkinson" or "garman_klass"."""
+    """Range variance from OHLC bars; method is "parkinson" or "garman_klass".
+
+    Further arguments, with defaults: `open` (None), `close` (None).
+    """
 
 # ------------------------------------------- score-driven models (GAS/DCS)
 def gas_volatility(
@@ -2388,7 +2891,12 @@ def gas_volatility(
     density is "gaussian" or "student_t". Returns omega/a/b (+ nu),
     variance, std_resid, loglik, aic, bic, next_variance, `converged` and
     `iterations` (the optimizer's certificate and step count), and
-    (horizon>0) a forecast."""
+    (horizon>0) a forecast.
+
+    Returned keys: `a`, `aic`, `b`, `bic`, `converged`, `forecast`,
+    `iterations`, `loglik`, `next_variance`, `omega`, `std_resid`,
+    `variance`.
+    """
 
 def dcs_local_level(y: _ArrayLike, density: str = ...) -> dict[str, Any]:
     """DCS robust local level mu_{t+1} = mu_t + kappa*u_t (Harvey-Luati 2014).
@@ -2399,7 +2907,12 @@ def dcs_local_level(y: _ArrayLike, density: str = ...) -> dict[str, Any]:
     kappa = steady-state gain). Returns kappa/scale (+ nu) with
     observed-information *_se, the one-step-predicted level path, resid,
     next_level, loglik, aic, bic, honest converged, iterations, n_obs,
-    density."""
+    density.
+
+    Returned keys: `aic`, `bic`, `converged`, `density`, `iterations`,
+    `kappa`, `kappa_se`, `level`, `loglik`, `n_obs`, `next_level`, `nu`,
+    `nu_se`, `resid`, `scale`, `scale_se`.
+    """
 
 # ------------------------------------------------- heterogeneous panel (MG)
 def panel_mean_group(
@@ -2408,7 +2921,10 @@ def panel_mean_group(
     """Mean-group (Pesaran-Smith 1995) / CCE-MG (Pesaran 2006) panel estimator.
 
     method is "mg" or "cce". ys/xs are per-unit response vectors and T_i x k
-    regressor matrices. Returns coef, se, tstat, coef_per_unit, n_units, k."""
+    regressor matrices. Returns coef, se, tstat, coef_per_unit, n_units, k.
+
+    Returned keys: `coef`, `coef_per_unit`, `k`, `n_units`, `se`, `tstat`.
+    """
 
 def panel_pmg(
     ys: Sequence[_ArrayLike],
@@ -2435,7 +2951,11 @@ def panel_pmg(
     once from the Pesaran-Shin-Smith unrestricted-ARDL start.
     Non-convergence from both starts raises (the last iterate is not a
     verified fixed point); raise max_iter or loosen tol for genuinely
-    slow-mixing panels."""
+    slow-mixing panels.
+
+    Returned keys: `iterations`, `k`, `loglik`, `n_units`, `phi`, `phi_bar`,
+    `sigma2`, `theta`, `theta_se`.
+    """
 
 def panel_unit_root(
     data: _ArrayLike | Sequence[_ArrayLike],
@@ -2455,7 +2975,15 @@ def panel_unit_root(
     lag), or "aic"/"bic"/"t-stat". Returns statistic, p_value,
     per_unit_tstat/pvalue/lags/nobs, n_units, regression, plus test-specific
     extras: ips -> t_bar; llc -> delta_hat, t_delta, s_n, t_bar_periods;
-    fisher -> maddala_wu, choi_z, choi_z_pvalue."""
+    fisher -> maddala_wu, choi_z, choi_z_pvalue.
+
+    Returned keys: `n_units`, `p_value`, `per_unit_lags`, `per_unit_nobs`,
+    `per_unit_pvalue`, `per_unit_tstat`, `regression`, `statistic`, `t_bar`,
+    `test`.
+
+    Further arguments, with defaults: `max_lags` (None), `lrv_kernel`
+    ("bartlett"), `lrv_bandwidth` (None).
+    """
 
 # -------------------------------------------------------- DFM nowcasting
 def dfm_nowcast(
@@ -2476,7 +3004,12 @@ def dfm_nowcast(
     moments; scale is all ones for "mle"). Mapping factors to series
     levels is exact: nowcast == center + scale * (loadings @ edge_factor),
     and center + scale * (F @ L.T) is the common-component fit of the
-    balanced panel. Also, """
+    balanced panel. Also,
+
+    Returned keys: `center`, `edge_factor`, `factor_ar`, `factor_cov`,
+    `factor_order`, `fit_loglik`, `idiosyncratic`, `loadings`, `loglik`,
+    `n_factors`, `nowcast`, `scale`, `smoothed_factors`.
+    """
 
 def dfm_news(
     old_vintage: _ArrayLike,
@@ -2490,7 +3023,14 @@ def dfm_news(
 
     Splits the target-series nowcast revision between two data vintages into
     per-datapoint contributions (weight*news). Returns old_nowcast,
-    new_nowcast, total_revision, and contributions (a list of dicts)."""
+    new_nowcast, total_revision, and contributions (a list of dicts).
+
+    Returned keys: `contributions`, `new_nowcast`, `old_nowcast`,
+    `target_period`, `target_series`, `total_revision`.
+
+    Further arguments, with defaults: `target_series` (0), `target_period`
+    (None), `n_factors` (1), `factor_order` (2).
+    """
 
 # ----------------------------------------------- predictive regressions / IVX
 def predictive_regression(
@@ -2499,7 +3039,12 @@ def predictive_regression(
     """Predictive regression with a persistent regressor.
 
     Returns ols, stambaugh (bias-corrected), and ivx (Kostakis-Magdalinos-
-    Stamatogiannis 2015, Wald test valid uniformly over persistence)."""
+    Stamatogiannis 2015, Wald test valid uniformly over persistence).
+
+    Returned keys: `ivx`, `nobs`, `ols`, `stambaugh`.
+
+    Further arguments, with defaults: `alpha` (0.95).
+    """
 
 def ivx_test(
     r: _ArrayLike,
@@ -2522,7 +3067,16 @@ def ivx_test(
     (0.28 at k=8, n=250, nominal 0.05) and n does not repair it (alpha=0.5
     restores convergence but still ~0.13 at k=8, n=250); chi2 stays
     available for small k or rho safely below 1 — see the
-    predictive-regressions model card."""
+    predictive-regressions model card.
+
+    `cz` (-1.0) and `alpha` (0.95) tune the IVX instrument's persistence
+    `rho_z = 1 + cz / n^alpha` (Kostakis-Magdalinos-Stamatogiannis 2015),
+    exactly as in `predictive_regression`; `alpha` here is not a
+    significance level (no level is passed; `pvalue` is returned).
+
+    Returned keys: `beta_ivx`, `joint`, `nobs`, `nregressors`, `pvalue`,
+    `pvalue_scalar`, `rz`, `wald`, `wald_scalar`.
+    """
 
 # ------------------------------------------------- recession probability
 def recession_probit(
@@ -2531,7 +3085,11 @@ def recession_probit(
     """Probit/logit of a binary recession indicator (Kauppi-Saikkonen dynamic option).
 
     link is "probit" or "logit". Returns params, bse, zstats, probabilities,
-    loglik, pseudo_r2, converged (and rho for dynamic=True)."""
+    loglik, pseudo_r2, converged (and rho for dynamic=True).
+
+    Returned keys: `bse`, `converged`, `loglik`, `params`, `probabilities`,
+    `pseudo_r2`, `zstats`.
+    """
 
 # ------------------------------------------------------ survey expectations
 def cg_regression(
@@ -2557,12 +3115,23 @@ def forecast_efficiency(
     """Mincer-Zarnowitz forecast-efficiency Wald test (OLS-HAC); regressors is T x k.
 
     use_correction defaults True (the n/(n-k) HAC scaling); statsmodels
-    cov_type="HAC" defaults it off."""
+    cov_type="HAC" defaults it off.
+
+    Returned keys: `bse`, `params`, `pvalues`, `r_squared`, `tvalues`,
+    `wald`, `wald_df`, `wald_pvalue`.
+
+    Further arguments, with defaults: `maxlags` (None).
+    """
 
 def forecast_disagreement(
     panel: Sequence[_ArrayLike], ddof: int = ...
 ) -> dict[str, Any]:
-    """Forecast-disagreement measures (per-period std/quartiles/iqr) from a forecaster panel."""
+    """Forecast-disagreement measures (per-period std/quartiles/iqr) from a forecaster panel.
+
+    Returned keys: `counts`, `iqr`, `p25`, `p50`, `p75`, `std`.
+
+    Further arguments, with defaults: `ddof` (1).
+    """
 
 # --------------------------------------------------------- long memory
 def frac_diff(x: _ArrayLike, d: float) -> _F64:
@@ -2582,28 +3151,48 @@ def long_memory_d(
     (pi/sqrt(24m) for GPH, 1/(2*sqrt(m)) for local Whittle), kept for reference
     -- at the default bandwidth it is materially too NARROW, measured about 25%
     at n=512.
+
+    Returned keys: `d`, `m`, `se`, `se_asymptotic`, `se_regression`.
     """
 
 # ---------------------------------------------------- specification tests
 def heteroskedasticity_test(
     y: _ArrayLike, x: _ArrayLike, test: str = ...
 ) -> dict[str, Any]:
-    """Heteroskedasticity test (test="white" or "breusch_pagan"); x is T x k with a constant."""
+    """Heteroskedasticity test (test="white" or "breusch_pagan"); x is T x k with a constant.
+
+    Returned keys: `df`, `f_pvalue`, `fstat`, `pvalue`, `statistic`.
+    """
 
 def reset_test(y: _ArrayLike, x: _ArrayLike, max_power: int = ...) -> dict[str, Any]:
-    """Ramsey RESET functional-form F-test; x is T x k."""
+    """Ramsey RESET functional-form F-test; x is T x k.
+
+    Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`.
+
+    Further arguments, with defaults: `max_power` (3).
+    """
 
 def chow_test(y: _ArrayLike, x: _ArrayLike, split: int) -> dict[str, Any]:
-    """Chow structural-break F-test at a known 0-indexed split; x is T x k."""
+    """Chow structural-break F-test at a known 0-indexed split; x is T x k.
+
+    Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`, `ssr1`, `ssr2`,
+    `ssr_pooled`.
+    """
 
 def cusum_test(y: _ArrayLike, x: _ArrayLike) -> dict[str, Any]:
-    """CUSUM parameter-stability test (Brown-Durbin-Evans); returns the path and 5% bounds."""
+    """CUSUM parameter-stability test (Brown-Durbin-Evans); returns the path and 5% bounds.
+
+    Returned keys: `bound_lower`, `bound_upper`, `path`, `sigma`.
+    """
 
 # ---------------------------------------------------- arbitrage-free NS
 def afns_adjustment(
     maturities: _ArrayLike, sigma: _ArrayLike, decay: float = ...
 ) -> _F64:
-    """Arbitrage-free Nelson-Siegel yield adjustment (Christensen-Diebold-Rudebusch 2011); sigma has 3 elements."""
+    """Arbitrage-free Nelson-Siegel yield adjustment (Christensen-Diebold-Rudebusch 2011); sigma has 3 elements.
+
+    Further arguments, with defaults: `decay` (0.0609).
+    """
 
 # ---------------------------------------------------- ACM term premium
 def acm_term_premium(
@@ -2633,7 +3222,14 @@ def acm_term_premium(
     term_premium), var/rx/short_rate/yield R-squareds, and the echoed
     inputs maturities / n_factors / periods_per_year. The premium's
     LEVEL is estimation-sample sensitive; compare only across models fit on
-    the same sample."""
+    the same sample.
+
+    Returned keys: `A`, `A_rn`, `B`, `B_rn`, `a`, `beta`, `c`, `delta0`,
+    `delta1`, `factor_loadings`, `factors`, `fitted`, `lambda0`, `lambda1`,
+    `maturities`, `mu`, `n_factors`, `periods_per_year`, `phi`,
+    `risk_neutral`, `rx_maturities`, `rx_rsquared`, `short_rate_rsquared`,
+    `sigma`, `sigma2`, `term_premium`, `var_rsquared`, `yield_rsquared`.
+    """
 
 # ------------------------------------------------------------ DSGE-lite
 def dsge_solve(
@@ -2641,7 +3237,10 @@ def dsge_solve(
 ) -> dict[str, Any]:
     """Blanchard-Kahn solution of a linear RE model A E[y_{t+1}] = B y_t + C z.
 
-    Returns the decision rule g, the law of motion p/q, eigenvalue_moduli, and verdict."""
+    Returns the decision rule g, the law of motion p/q, eigenvalue_moduli, and verdict.
+
+    Returned keys: `eigenvalue_moduli`, `g`, `p`, `q`, `verdict`.
+    """
 
 # -------------------------------------------------- quantile & growth-at-risk
 def quantile_regression(
@@ -2657,6 +3256,9 @@ def quantile_regression(
     flavor). Include the constant column in `x`. Returns per-tau `params`,
     `bse`, `tvalues`, `iterations`, `bandwidth`, `sparsity`, plus a single
     `converged` bool over all taus.
+
+    Returned keys: `bandwidth`, `bse`, `converged`, `iterations`, `params`,
+    `sparsity`, `taus`, `tvalues`.
     """
 
 def quantile_lp(
@@ -2674,6 +3276,11 @@ def quantile_lp(
     False entry hit the 1000-iteration cap before the 1e-6 coefficient
     tolerance, so that point of the IRF is the last iterate, not a verified
     check-loss minimum — do not quote it without refitting.
+
+    Returned keys: `converged`, `horizons`, `irf`, `se`, `taus`.
+
+    Further arguments, with defaults: `taus` (None), `horizons` (12),
+    `n_lag_controls` (4).
     """
 
 def growth_at_risk(
@@ -2697,6 +3304,9 @@ def growth_at_risk(
     1000-iteration cap before the 1e-6 tolerance, so that tau's
     coefficients — and the fitted quantiles and `current` risk read built
     from them — are the last iterate, not a verified check-loss minimum.
+
+    Returned keys: `bse`, `bse_powell`, `converged`, `crossing`, `current`,
+    `fitted`, `fitted_raw`, `hac_lags`, `horizon`, `params`, `taus`.
     """
 
 # -------------------------------------------------- functional shocks (FVAR/FLP)
@@ -2706,7 +3316,13 @@ def functional_pca(curves: _ArrayLike, n_factors: int = ...) -> dict[str, Any]:
 
     Returns mean_curve, eigenfunctions (K x M), scores (T x K), eigenvalues,
     explained, total_variance. Sign: each eigenfunction's largest-|.| entry
-    is positive."""
+    is positive.
+
+    Further arguments, with defaults: `n_factors` (3).
+
+    Returned keys: `eigenfunctions`, `eigenvalues`, `explained`,
+    `mean_curve`, `scores`, `total_variance`.
+    """
 
 def flp(
     y: _ArrayLike,
@@ -2721,7 +3337,12 @@ def flp(
     Returns horizons, n_factors, betas ((H+1) x K), covs (joint (H+1) x K x K),
     se, nobs. Per-element se conditions on the scores: inconsistent for
     functional_pca-estimated scores (generated regressors) — flp_scenario's
-    w'beta contrasts are immune; see the functional-shocks model card."""
+    w'beta contrasts are immune; see the functional-shocks model card.
+
+    Further arguments, with defaults: `hac_maxlags` (None).
+
+    Returned keys: `betas`, `covs`, `horizons`, `n_factors`, `nobs`, `se`.
+    """
 
 def flp_scenario(
     y: _ArrayLike,
@@ -2735,7 +3356,14 @@ def flp_scenario(
     """IRF of y to a whole-curve scenario delta (length M): FPCA, joint FLP,
     then response w'beta_h with se sqrt(w' Cov_h w).
 
-    Returns horizons, weights, response, se, betas, explained."""
+    Returns horizons, weights, response, se, betas, explained.
+
+    Further arguments, with defaults: `n_factors` (3), `n_lag_controls` (2),
+    `hac_maxlags` (None).
+
+    Returned keys: `betas`, `explained`, `horizons`, `response`, `se`,
+    `weights`.
+    """
 
 def fvar_scenario(
     y: _ArrayLike,
@@ -2750,17 +3378,37 @@ def fvar_scenario(
     structural shock zero (impact response of y is a modeling assumption).
 
     Returns horizons, weights, response_outcome, responses ((H+1) x (K+1),
-    scores first then outcome), implied_outcome_innovation."""
+    scores first then outcome), implied_outcome_innovation.
+
+    Further arguments, with defaults: `n_factors` (3), `lags` (2), `horizon`
+    (10).
+
+    Returned keys: `horizons`, `implied_outcome_innovation`,
+    `response_outcome`, `responses`, `weights`.
+    """
 
 # -------------------------------------------------- structural breaks
 # ------------------------------------------------ structural breaks
 def bai_perron(
     y: _ArrayLike, x: _ArrayLike, max_breaks: int = ..., trim: float = ...
 ) -> dict[str, Any]:
-    """Bai-Perron multiple breaks: DP global partitions, sequential supF(l+1|l) selection at 5%, per-regime OLS, and Bai (1997) break-date confidence intervals; x is T x q with all coefficients switching (include your constant)."""
+    """Bai-Perron multiple breaks: DP global partitions, sequential supF(l+1|l) selection at 5%, per-regime OLS, and Bai (1997) break-date confidence intervals; x is T x q with all coefficients switching (include your constant).
+
+    Returned keys: `break_dates`, `break_dates_by_m`, `bse`, `ci_lower_90`,
+    `ci_lower_95`, `ci_scale`, `ci_upper_90`, `ci_upper_95`, `h`,
+    `n_breaks`, `params`, `regime_ends`, `regime_ssr`, `regime_starts`,
+    `ssr_path`, `sup_f_crit`, `sup_f_seq`.
+
+    Further arguments, with defaults: `max_breaks` (5), `trim` (0.15).
+    """
 
 def sup_f_test(y: _ArrayLike, x: _ArrayLike, trim: float = ...) -> dict[str, Any]:
-    """Andrews sup-F (Quandt) unknown-break test with Hansen (1997) approximate p-value; returns stat, p_value, break_date, and the full f_path over the trimmed dates."""
+    """Andrews sup-F (Quandt) unknown-break test with Hansen (1997) approximate p-value; returns stat, p_value, break_date, and the full f_path over the trimmed dates.
+
+    Returned keys: `break_date`, `dates`, `f_path`, `h`, `p_value`, `stat`.
+
+    Further arguments, with defaults: `trim` (0.15).
+    """
 
 # -------------------------------------------------- smooth local projections
 def smooth_lp(
@@ -2815,6 +3463,9 @@ def smooth_lp(
     still applies and is not a band problem: `se` conditions on `lam` and
     ignores the penalty's shrinkage bias, so any band here is centred on a
     shrunk estimator. Method: Montiel Olea and Plagborg-Møller.
+
+    Further arguments, with defaults: `n_lag_controls` (4), `degree` (3),
+    `n_basis` (None), `n_folds` (5), `hac_maxlags` (None).
     """
 
 # ------------------------------------------------------ extreme value theory
@@ -3120,6 +3771,9 @@ def post_lasso(
     Validation: refit pinned to scikit-learn LinearRegression
     (fit_intercept=False) on the scikit-learn Lasso/ElasticNet support at
     1e-10 (~8e-15 achieved).
+
+    Further arguments, with defaults: `l1_ratio` (1.0), `tol` (1e-08),
+    `max_iter` (100000).
     """
 
 def pds_lasso(
@@ -3155,6 +3809,8 @@ def pds_lasso(
     the PDS interval's coverage against the single-selection interval's
     undercoverage, numbers on the model card; exact leg against statsmodels
     HAC / nonrobust OLS on the selected union at 1e-8 (~1e-14 achieved).
+
+    Further arguments, with defaults: `tol` (1e-08), `max_iter` (100000).
     """
 
 # ---------------------------------------------------------- Trees and forests

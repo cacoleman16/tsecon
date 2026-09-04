@@ -1,0 +1,142 @@
+test adaptive_lasso_sparser_on_true_zeros ... ok
+test alpha_max_is_the_zero_boundary ... ok
+test block_and_stationary_resampling_preserve_lag_one_autocorrelation ... ok
+test block_cv_default_block_is_cube_root_of_n_and_criteria_nest ... ok
+test block_cv_selects_wider_bandwidths_than_loo_under_ar1_errors ... ok
+test boosting_aic_recovers_the_sparse_support ... ok
+test boosting_is_deterministic ... ok
+test boosting_n500_p50_is_fast ... ok
+test boosting_rss_path_is_nonincreasing ... ok
+test boosting_small_rate_many_steps_approaches_ols_on_selected_columns ... ok
+test boosting_teaching_errors ... ok
+test boundary_flag_fires_on_a_signal_free_target_and_not_on_a_clear_one ... ok
+test converged_false_fires_and_is_honest ... ok
+test coordinate_descent_is_equivariant_in_the_target_scale ... ok
+test coordinate_descent_is_scale_equivariant ... ok
+test crates/tsecon-ml/src/standardize.rs - standardize (line 18) ... ok
+test cv_selection_agrees_with_ic_on_iid_data ... ok
+test default_call_timing_at_n500_p10 ... ok
+test effective_df_runs_between_its_documented_limits ... ok
+test esn::tests::scaling_hits_the_target_on_a_diagonal_matrix ... ok
+test esn::tests::washout_rules_name_the_fix_or_the_count ... ok
+test esn_narma10_out_of_sample_nrmse_below_bar ... ok
+test esn_prediction_continues_the_state_recursion ... ok
+test esn_seed_contract_and_spectral_radius_targets ... ok
+test esn_teaching_errors ... ok
+test exact_krr_solves_the_dual_system_and_reproduces_itself_on_x_test ... ok
+test fixture_meta_names_the_references ... ok
+test fixture_meta_states_the_grades ... ok
+test forest::tests::max_features_resolution ... ok
+test forest::tests::quantile_checks_name_the_fix ... ok
+test forest::tests::resample_schemes_have_length_n_and_in_range_indices ... ok
+test forest_single_tree_bridge_holds_under_ties ... ok
+test friedman_out_of_sample_r2_clears_the_bar ... ok
+test golden_boosting_matches_dense_transcription ... ok
+test golden_elastic_net ... ok
+test golden_esn_readout_matches_closed_form ... ok
+test golden_esn_spectral_radius_matches_numpy_eigvals ... ok
+test golden_esn_states_match_transcription ... ok
+test golden_forest_single_tree_bridge_is_bit_identical ... ok
+test golden_kernel_regression_matches_statsmodels_at_fixed_bandwidths ... ok
+test golden_kernel_ridge_matches_sklearn ... ok
+test golden_l1_trend_filter_certificate ... ok
+test golden_l1_trend_filter_lam_max_and_polynomial_limit ... ok
+test golden_l1_trend_filter_matches_clarabel ... ok
+test golden_l2_penalty_matches_dense_closed_form ... ok
+test golden_lasso ... ok
+test golden_mlp_forward_matches_sklearn_predict ... ok
+test golden_mlp_gradient_matches_central_difference ... ok
+test golden_mlp_gradient_matches_sklearn_backprop ... ok
+test golden_mlp_gradient_norm_at_sklearn_solution ... ok
+test golden_mlp_loss_matches_sklearn_objective ... ok
+test golden_regression_tree_matches_sklearn ... ok
+test golden_ridge ... ok
+test group_lasso_alpha_max_matches_fixture_and_zeroes_the_fit ... ok
+test group_lasso_is_scale_equivariant ... ok
+test group_lasso_kkt_certificate_on_every_fixture_case ... ok
+test group_lasso_matches_skglm_and_sklearn ... ok
+test importance::tests::block_permutation_is_a_permutation_with_intact_blocks ... ok
+test importance::tests::groups_resolve_sorted_distinct_labels ... ok
+test importance::tests::single_row_block_is_a_plain_permutation_and_full_block_is_identity ... ok
+test importance_recovers_the_relevant_variables_of_friedman ... ok
+test kernel_regression::tests::insufficient_data_names_the_exact_minimum ... ok
+test kernel_regression::tests::jacobi_pinv_matches_a_direct_solve_on_a_definite_matrix ... ok
+test kernel_regression::tests::jacobi_pinv_truncates_a_rank_deficient_matrix ... ok
+test kernel_regression_teaching_errors_name_the_argument_and_fix ... ok
+test kernel_ridge::tests::inert_arguments_are_refused ... ok
+test kernel_ridge::tests::linear_kernel_ridge_equals_primal_ridge_fit ... ok
+test kernel_ridge::tests::unknown_kernel_lists_accepted_names ... ok
+test kernel_ridge_teaching_errors_name_the_argument ... ok
+test krr_refuses_a_singular_system_instead_of_falling_back ... ok
+test l1_ratio_one_reproduces_lasso ... ok
+test linear_kernel_ridge_equals_primal_ridge_for_n_gt_p ... ok
+test mlp::tests::flat_roundtrip_matches_sklearn_layout ... ok
+test mlp::tests::hidden_limits_are_taught ... ok
+test mlp::tests::required_n_is_the_smallest_feasible_sample ... ok
+test mlp_default_call_on_nonlinear_ar1_is_reported ... ok
+test mlp_early_stopping_fires_on_easy_problem_and_not_at_one_epoch ... ok
+test mlp_ensemble_beats_median_member_out_of_sample ... ok
+test mlp_recovers_nonlinear_ar1_adam ... ok
+test mlp_recovers_nonlinear_ar1_lbfgs ... ok
+test mlp_scaler_is_fit_on_training_rows_only ... ok
+test mlp_seed_contract_and_sentinel_defaults ... ok
+test mlp_sentinels_and_teaching_errors ... ok
+test oob_error_is_optimistic_under_persistent_predictors_with_ar_errors ... ok
+test oob_prediction_is_nan_only_where_never_out_of_bag ... ok
+test origin_splits_are_ordered_and_nested ... ok
+test origin_splits_purge_gap_is_exact ... ok
+test pds::tests::erfc_matches_reference_points ... ok
+test pds_coverage_full_measurement ... ignored, 600-replication measurement; run with --release --ignored
+test pds_covers_where_single_selection_does_not ... ok
+test pds_lasso_inference_matches_statsmodels ... ok
+test persistent_irrelevant_predictor_importance_measured_under_naive_and_block_permutation ... ok
+test post_lasso_refit_matches_sklearn_linear_regression ... ok
+test post_lasso_refit_satisfies_the_normal_equations ... ok
+test predictions_at_the_training_rows_reproduce_the_fitted_values ... ok
+test purged_kfold_excludes_all_leaky_indices ... ok
+test purged_kfold_right_gap_is_purge_plus_embargo ... ok
+test quantile_forest_band_covers_and_never_crosses ... ok
+test regularization_path_is_scale_equivariant ... ok
+test regularization_path_starts_empty_and_selects_signal ... ok
+test relabeling_and_permuting_columns_is_invariant ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 
+test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; 
+test rff_error_against_exact_krr_falls_with_the_feature_count ... ok
+test rff_is_deterministic_in_the_seed_and_differs_across_seeds ... ok
+test ridge_shrinks_with_alpha ... ok
+test same_seed_is_bit_identical_and_different_seed_differs ... ok
+test scaler_fits_on_train_and_replays_on_test ... ok
+test selected_bandwidth_is_a_local_minimum_of_its_criterion ... ok
+test selected_bandwidth_is_no_worse_than_statsmodels_fmin_optimum ... ok
+test singleton_groups_reproduce_lasso ... ok
+test teaching_errors_fire_with_the_promised_wording ... ok
+test teaching_errors_name_the_argument_and_the_fix ... ok
+test thread_count_does_not_change_the_forest ... ok
+test tree::tests::constant_target_is_a_single_leaf ... ok
+test tree::tests::insufficient_data_uses_house_wording ... ok
+test tree::tests::stump_splits_at_the_midpoint_and_predicts_side_means ... ok
+test tree::tests::x_test_column_mismatch_names_both_counts ... ok
+test trend_filter::tests::banded_solve_matches_dense_elimination ... ok
+test trend_filter::tests::difference_operators_are_adjoint ... ok
+test trend_filter::tests::stencils_and_gram_match_the_closed_forms ... ok
+test trend_filter_converged_flag_fires_on_a_starved_budget ... ok
+test trend_filter_is_exactly_piecewise_off_the_knots ... ok
+test trend_filter_is_scale_equivariant ... ok
+test trend_filter_l2_matches_a_dense_solve ... ok
+test trend_filter_lam_max_is_the_knot_threshold ... ok
+test trend_filter_lam_to_zero_returns_the_data ... ok
+test trend_filter_n_10000_is_fast ... ok
+test trend_filter_teaching_errors ... ok
+test wide_bandwidth_limits_are_the_global_constant_and_ols_fits ... ok

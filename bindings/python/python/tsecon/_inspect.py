@@ -122,8 +122,10 @@ def _validate(data):
             f"check_series needs complete data: found {nan_count} NaN value(s), "
             f"the first at index {first}. The unit-root, portmanteau, and break "
             f"tests in this battery have no missing-value handling, so gaps "
-            f"would silently corrupt every p-value. Impute or trim the gaps "
-            f"first (state-space/Kalman imputation is on the Module 01 roadmap)."
+            f"would silently corrupt every p-value. Trim the gaps, or impute "
+            f"them first — local_level_smooth accepts NaN and returns the "
+            f"Kalman-smoothed level through the gaps; check_series itself "
+            f"never imputes."
         )
     n = int(arr.shape[0])
     if n < 20:
@@ -1309,6 +1311,8 @@ def check_series(
     ``alpha``, ``per_series``, ``integration_summary``, ``cointegration``,
     ``var_lag_selection``, ``stability``, ``multiple_testing``,
     ``tests_run``, ``recommendations``.
+
+    Further arguments, with defaults: `max_breaks` (5), `trim` (0.15).
     """
     alpha = _validate_alpha(alpha)
     arr = _validate(data)

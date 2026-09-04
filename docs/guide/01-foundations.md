@@ -339,7 +339,7 @@ On the library side, this chapter's scope sits inside [Module 01](../roadmap/01-
 - `tsecon.ndiffs(y, test="kpss"|"adf"|"pp", alpha=0.05, max_d=2)` — the Hyndman-Khandakar sequential differencing advisor, returning `d` plus the per-order test evidence in `steps`
 - `tsecon.nsdiffs(y, period, max_d=1)` — the seasonal counterpart, the `forecast::nsdiffs(test="seas")` seasonal-strength rule over the shipped `tsecon.stl`
 - `tsecon.dfgls(y, regression="c"|"ct")` — DF-GLS (Elliott-Rothenberg-Stock 1996), matching `arch.unitroot.DFGLS` to 1e-10
-- `tsecon.ng_perron(y, regression="c"|"ct")` — the four Ng-Perron (2001) M-tests with MAIC lag selection; critical values only, because no published p-value surface exists
+- `tsecon.ng_perron(y, trend="c"|"ct")` — the four Ng-Perron (2001) M-tests with MAIC lag selection; critical values only, because no published p-value surface exists
 - `tsecon.zivot_andrews(y, regression="c"|"t"|"ct", trim=0.15)` — unit root against stationarity around one endogenous break, matching statsmodels' `zivot_andrews`
 
 **Built in Rust awaiting bindings:** nothing in this chapter's scope — the foundations layer is fully exposed to Python today.

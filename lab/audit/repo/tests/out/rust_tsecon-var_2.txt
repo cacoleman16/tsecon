@@ -1,0 +1,149 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running unittests src/lib.rs (target-wt/release/deps/tsecon_var-65bef488064e7f09)
+
+running 10 tests
+test irf_bootstrap::tests::center_columns_zeroes_the_means ... ok
+test irf_bootstrap::tests::percentile_matches_numpy_linear ... ok
+test irf_bootstrap::tests::simulate_recursive_reproduces_original_from_own_residuals ... ok
+test proxy_bands::tests::block_length_follows_the_rule_and_the_clamp ... ok
+test proxy_bands::tests::explicit_starts_match_the_shared_engine ... ok
+test proxy_bands::tests::failure_total_sums_every_reason ... ok
+test proxy_bands::tests::indices_from_starts_truncate_to_t ... ok
+test proxy_bands::tests::percentile_matches_numpy_linear ... ok
+test proxy_bands::tests::position_centering_zeroes_each_within_block_position ... ok
+test proxy_bands::tests::wild_common_draw_leaves_the_cross_moment_bit_identical ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/golden.rs (target-wt/release/deps/golden-1e7bf9cf4bdbb51d)
+
+running 7 tests
+test golden_estimation ... ok
+test golden_fevd ... ok
+test golden_forecast_interval ... ok
+test golden_granger_causality ... ok
+test golden_irf ... ok
+test golden_lag_selection ... ok
+test golden_stability_roots ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/irf_bands_golden.rs (target-wt/release/deps/irf_bands_golden-98bcf3ee043a4d8f)
+
+running 5 tests
+test golden_cum_stderr_nonorth ... ok
+test golden_cum_stderr_orth ... ok
+test golden_point_matches_statsmodels ... ok
+test golden_stderr_nonorth ... ok
+test golden_stderr_orth ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/irf_bootstrap_props.rs (target-wt/release/deps/irf_bootstrap_props-ff674d626232ddad)
+
+running 9 tests
+test emit_snapshot ... ignored, emits the fixture snapshot; run manually with --nocapture
+test bands_bracket_point_and_are_well_formed ... ok
+test bootstrap_se_within_factor_of_asymptotic ... ok
+test rejects_invalid_arguments ... ok
+test point_matches_statsmodels_orth_irf ... ok
+test bias_correction_shifts_point_and_brackets ... ok
+test snapshot_matches_stored ... ok
+test same_seed_is_bit_identical ... ok
+test mc_coverage_short_horizon ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.54s
+
+     Running tests/pointwise_bitwise_baseline.rs (target-wt/release/deps/pointwise_bitwise_baseline-d9f7646ca133f7dc)
+
+running 5 tests
+test asymptotic_standard_errors_are_bit_identical ... ignored, stored f64 bit patterns are platform-specific; run with --ignored on the capture machine
+test bootstrap_percentile_bands_are_bit_identical ... ignored, stored f64 bit patterns are platform-specific; run with --ignored on the capture machine
+test forecast_interval_is_bit_identical ... ignored, stored f64 bit patterns are platform-specific; run with --ignored on the capture machine
+test requesting_a_simultaneous_band_does_not_move_the_bootstrap_pointwise_output ... ok
+test requesting_a_simultaneous_band_does_not_move_the_forecast_marginal_interval ... ok
+
+test result: ok. 2 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/properties.rs (target-wt/release/deps/properties-eee36c3a8ca3d64a)
+
+running 8 tests
+test error_paths ... ok
+test ma_rep_at_horizon_zero_is_the_identity_alone ... ok
+test ma_rep_of_diagonal_var1_is_diagonal_powers ... ok
+test ma_rep_rejects_malformed_coefficient_matrices ... ok
+test fevd_rows_sum_to_one ... ok
+test residuals_orthogonal_to_regressors ... ok
+test simulated_stable_var1_round_trips ... ok
+test var0_ma_rep_is_identity_then_zeros ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/proxy_bands_golden.rs (target-wt/release/deps/proxy_bands_golden-24717bfd1308e22b)
+
+running 7 tests
+test golden_bands_match_the_numpy_transcription ... ok
+test golden_gamma_norm_draws_match_draw_by_draw ... ok
+test golden_impact_cell_of_norm_var_is_degenerate ... ok
+test golden_failure_accounting_matches ... ok
+test golden_position_centering_terms_match ... ok
+test golden_records_the_frozen_wild_moment ... ok
+test golden_rho_draws_match_draw_by_draw ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/proxy_bands_props.rs (target-wt/release/deps/proxy_bands_props-a51d1cbc7aaeb10a)
+
+running 18 tests
+test bands_are_structurally_sound ... ok
+test bands_are_bit_reproducible_from_the_seed ... ok
+test blocks_come_from_the_overlapping_candidates_and_never_wrap ... ok
+test guards_fire ... ok
+test failed_draws_are_counted_and_reported ... ok
+test block_length_sensitivity_moves_smoothly ... ok
+test block_length_sensitivity_uses_common_random_numbers ... ok
+test hall_and_efron_intervals_differ ... ok
+test joint_blocking_preserves_the_identifying_moment ... ok
+test non_finite_draws_are_counted_and_kept_out_of_the_quantiles ... ok
+test proxy_alignment_conventions_agree_and_nans_are_not_compacted ... ok
+test per_draw_normalization_makes_the_impact_cell_degenerate ... ok
+test rho_draws_are_the_per_draw_ratio_and_are_normalized_exactly ... ok
+test the_seeded_path_draws_moving_blocks_not_circular_ones ... ok
+test wild_rademacher_freezes_the_identifying_moment ... ok
+test sign_flipped_draws_are_retained ... ok
+test wild_bands_are_labelled_and_too_short ... ok
+test monte_carlo_coverage_is_near_nominal_and_the_wild_arm_collapses_at_impact ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.71s
+
+     Running tests/simultaneous_bands.rs (target-wt/release/deps/simultaneous_bands-781bac8554c6202c)
+
+running 19 tests
+test cost_of_the_sup_t_route_at_the_production_default ... ignored, timing: run in release with --ignored --nocapture
+test cells_pinned_by_construction_are_excluded_and_stay_zero_width ... ok
+test error_paths ... ok
+test mc_forecast_simultaneous_coverage ... ignored, Monte Carlo: run in release with --ignored --nocapture
+test mc_irf_simultaneous_coverage ... ignored, Monte Carlo: run in release with --ignored --nocapture
+test a_single_cell_family_collapses_to_the_pointwise_band ... ok
+test mc_smoke_the_bands_run_and_cover_on_random_samples ... ok
+test the_bootstrap_percentile_band_is_untouched_by_the_simultaneous_band ... ok
+test the_bootstrap_sup_t_band_contains_the_symmetric_pointwise_band ... ok
+test the_joint_covariance_diagonal_reproduces_the_pointwise_standard_errors ... ok
+test the_joint_forecast_error_covariance_is_consistent_and_strongly_correlated ... ok
+test the_pointwise_forecast_band_is_reproduced_exactly ... ok
+test both_bands_share_the_same_point_estimate ... ok
+test sup_t_is_tighter_than_the_closed_forms_on_an_irf_path ... ok
+test the_sup_t_multiplier_tracks_how_dependent_the_cells_actually_are ... ok
+test the_simultaneous_forecast_band_contains_the_marginal_one ... ok
+test the_sup_t_band_is_reproducible_from_its_seed ... ok
+test widening_the_scope_widens_the_band ... ok
+test simultaneous_band_contains_the_pointwise_band_cell_by_cell ... ok
+
+test result: ok. 16 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 5.87s
+
+   Doc-tests tsecon_var
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

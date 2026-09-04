@@ -24,23 +24,31 @@ on:
 permissions:
   contents: read
 
+# Pages deploys must land in push order; a cancelled deploy can leave the
+# site half-updated, so never cancel-in-progress here.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
       - name: Regenerate the API reference from the type stub
         run: python docs/gen_api_reference.py
       - name: Install docs dependencies
-        run: pip install -r docs/requirements.txt
+        run: python -m pip install -r docs/requirements.txt
       - name: Build the site (strict — fails on a broken link or nav entry)
         run: mkdocs build --strict
       - name: Upload the built site for the deploy job
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: site
 
@@ -58,4 +66,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

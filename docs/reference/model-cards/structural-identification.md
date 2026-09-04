@@ -1297,9 +1297,10 @@ fevd = np.asarray(sf["fevd"])          # [h][variable][shock]
 print("row sums at h=12 (each variable's shares):", np.round(fevd[12].sum(axis=1), 12))
 print("ffr (variable 2) FEVD at h = 0, 4, 12:\n", np.round(fevd[[0, 4, 12], 2, :], 4))
 
-# impact=None reproduces var_fevd exactly (aligning the two array layouts)
-vf = np.asarray(tsecon.var_fevd(data, lags=2, horizon=12))     # [variable][step][shock]
-print("matches var_fevd:", np.allclose(np.transpose(fevd, (1, 0, 2))[:, :12, :], vf))
+# impact=None reproduces var_fevd exactly (both are [h][variable][shock];
+# var_fevd's steps run 1..horizon, structural_fevd's rows 0..horizon)
+vf = np.asarray(tsecon.var_fevd(data, lags=2, horizon=12))     # [step][variable][shock]
+print("matches var_fevd:", np.allclose(fevd[:12], vf))
 
 # feed a rotated A0 = P @ Q: the total MSE is invariant, only the split moves
 Q, _ = np.linalg.qr(rng.standard_normal((3, 3)))
@@ -1590,6 +1591,7 @@ restricted_shocks: [2]  empty_set_rate: 0.0
 h=0 output<-policy  set-mean [-0.9062, +0.0000]  90% robust CI [-0.9716, +0.0000]
 h=2 output<-policy  set-mean [-0.1559, +0.0341]  90% robust CI [-0.2329, +0.0978]
 h=4 output<-policy  set-mean [-0.0376, +0.0203]  90% robust CI [-0.0750, +0.0590]
+unrestricted shock 0 is NaN: True
 ```
 
 The impact bound's *upper* edge is exactly zero — the sign restriction
@@ -1711,7 +1713,7 @@ h=4: plain median -0.0127 (width 0.0814) | narrative -0.0089 (width 0.0742)
 narrative=None reproduces sign_restricted_svar: True
 ```
 
-The narrative binds: only a third of the sign-passing rotations (`rate` 0.326)
+The narrative binds: only a third of the sign-passing rotations (`narrative_acceptance_rate` 0.326)
 also make the policy shock the dominant driver of the funds rate in that episode,
 and the smallest $\hat{P}$ (0.124) marks a draw whose slice is narrow enough to
 earn an eightfold weight. The reweighting both shifts the output-on-impact median

@@ -14,8 +14,8 @@ authors:
 repository-code: "https://github.com/cacoleman16/tsecon"
 url: "https://github.com/cacoleman16/tsecon"
 license: "MIT OR Apache-2.0"
-version: 0.7.0
-date-released: 2026-08-28
+version: 0.8.0
+date-released: 2026-09-03
 keywords:
   - time series
   - econometrics
