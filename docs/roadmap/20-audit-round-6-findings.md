@@ -120,6 +120,11 @@ docstring, card table commentary, and failure modes now carry the h=12 numbers
 and the one-sided mechanism. **Open:** the underlying estimate-correlated
 propagated variance at long horizons is a real inference problem; a
 re-engineered long-horizon correction (or a joint band) is future work.
+*(Closed as written — repository audit, September 2026:
+`rf_method="second_order"` (0.3.0) and `"second_order_bc"` (0.6.0) are the
+re-engineered corrections, measured on this finding's own DGPs — 0.889 →
+0.964 → 0.982 at h=12 on the card VAR(2) — see
+`21-long-horizon-and-joint-inference.md`; the default remains `"delta"`.)*
 
 ## 9 — The seasonal-strength rule saturates below ~4 cycles, flagging pure noise
 

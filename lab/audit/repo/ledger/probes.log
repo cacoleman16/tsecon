@@ -1,0 +1,61 @@
+[P01] INFO   wheel identity -- tsecon 0.8.0, 173 public callables
+[P02] CLOSED spec-15 'not yet implemented' banner: proxy_svar_bands/proxy_ar_sets exist -- proxy_svar_bands=True proxy_ar_sets=True
+[P03] CLOSED rounds 3-4 #4: ivx_test joint default flipped to bonferroni; scalar keys present -- default joint='bonferroni'; keys=['beta_ivx', 'joint', 'nobs', 'nregressors', 'pvalue', 'pvalue_scalar', 'rz', 'wald', 'wald_scalar']
+[P04] CLOSED round 6 #8 / note 21: proxy_ar_sets rf_method menu incl. second_order_bc; default still delta -- default rf_method='delta'; docstring names second_order/second_order_bc=True
+[P05] CLOSED rounds 3-4 #3a: growth_at_risk returns bse_powell -- keys=['bse', 'bse_powell', 'converged', 'crossing', 'current', 'fitted', 'fitted_raw', 'hac_lags', 'horizon', 'params', 'taus']
+[P06] CLOSED rounds 3-4 #3b + field item 2: markov_switching_ar returns (n,k) smoothed_prob, filtered_prob, ar -- smoothed_prob shape=(239, 2); has filtered_prob=True; has ar=True
+[P07] CLOSED rounds 3-4 #3c: lp(se='hac', band='sup-t') returns cov_se_max_rel_diff -- cov_se_max_rel_diff=0.09011817585855876
+[P08] CLOSED round 2 #3 / rounds 3-4 #1: panel_fe refuses an entity-constant regressor (k=2) -- ValueError: within (fixed-effects) OLS: a regressor is constant within every entity, so the fixed effects absorb it and no within variation remains to identify its coeffici
+[P09] CLOSED round 2 #1: lp(cumulative='both') defaults to HAC; lag_augmented pairing refused -- default se_type='hac'; explicit lag_augmented refused=True (ValueError: se="lag_augmented" is statistically invalid with cumulative="both" a)
+[P10] CLOSED round 2 (cv_splits inert purge/embargo) + field item 11: purged_kfold additive; expanding refuses purge -- purged_kfold right gap (purge=21,embargo=10)=32 vs (21,0)=22 (additive: +10); expanding: purge=5 shortens the first train window by 5 (acts), embargo refused=True (act-or-raise)
+[P11] CLOSED round 6 #3: seasonal_strength refuses a constant series -- ValueError: seasonal_strength: the series is constant (zero sample variance), so a variance-ratio strength measure is undefined — the ratio of the decomposition's float-noi
+[P12] CLOSED round 6 #1: bvar_hierarchical default hyperprior is 'glp' -- default hyperprior='glp'
+[P13] CLOSED round 7 F1 + field 16 + round 9: garch_fit boundary flags, converged, params_named; explicit o under vol='garch' refused -- missing=[]; o=1 under garch refused=True
+[P14] CLOSED round 9: arima_fit reports converged + boundary/se_valid/boundary_note -- missing=[]
+[P15] OPEN   coverage page rec. #5: quantile_regression per-tau converged flag (still a single bool?) -- converged=True (ndim 0)
+[P16] OPEN   lab/REPORT failure mode 1: dm_test has no long-run-variance kernel option -- signature=['e1', 'e2', 'h', 'loss']
+[P17] CLOSED rounds 3-4 incidental: iv_gmm positional order (x, z, y) is documented up front (keyword-only NOT adopted) -- first three params=['x', 'z', 'y']; doc leads with order=True
+[P18] OPEN   round 8 residue: theta_forecast still returns a bare array (alpha/b0 unexposed) -- type=ndarray
+[P19] OPEN   round 2 residue: recession_probit(link='banana', dynamic=True) silently accepted? -- returned dict
+[P20] OPEN   round 11 OPEN 1: inspect.signature renders defaults as Ellipsis -- Ellipsis defaults: ['adf.autolag', 'zivot_andrews.autolag', 'engle_granger.autolag', 'box_cox_lambda.bounds', 'historical_decomposition.restrictions', 'narrative_svar.sign_restrictions', 'predictive_regression.cz', 'ivx_test.cz']
+[P21] OPEN   round 11 OPEN 2: check_stationarity docstring names adf_statistic/kpss_p_value/alpha -- returned keys not in __doc__: ['adf_statistic', 'adf_p_value', 'kpss_statistic', 'kpss_p_value', 'alpha']
+[P22] OPEN   round 10 OPEN: conformal_forecast(method='enbpi') with base omitted refuses -- refuses with base omitted=True: ValueError: method="enbpi" trains its own bootstrap ensemble of AR least-squares learners on a lagged design, 
+[P23] OPEN   round 6 #9: nsdiffs carries no minimum-cycles advisory key (n=24, period 12 noise) -- keys=['alpha', 'd', 'interpretation', 'max_d', 'period', 'steps', 'stop', 'threshold']; advisory-like keys=[]
+[P24] OPEN   brief 'still open': lp_iv / lp_multiplier / lp_state / panel_lp refuse band='sup-t' -- sup-t refused: {'lp_iv': True, 'lp_state': True, 'panel_lp': True, 'lp_multiplier': True}
+[P25] OPEN   rounds 3-4 #2: flp docstring discloses generated-regressor SEs (correction not built) -- docstring discloses=True; correction kwarg present=False; params=['y', 'scores', 'horizons', 'n_lag_controls', 'hac_maxlags']
+[P26] OPEN   ROADMAP §0: smooth_fixed still unbound -- hasattr(tsecon,'smooth_fixed')=False
+[P27] CLOSED round 9: var_fevd is horizon-first -- shape=(7, 3, 3)
+[P28] CLOSED round 9: dfm_nowcast loadings / bvar_fit omega_bar / var_fit resid are returned -- {'dfm.loadings': True, 'bvar.omega_bar': True, 'var.resid': True}
+[P29] OPEN   0.3.0 'not in this release' / SI card: long_run/max_share/hetero/nongaussian SVAR still point-only -- band-like kwargs: {'long_run_svar': [], 'max_share_svar': [], 'hetero_svar': [], 'nongaussian_svar': []}
+[P30] OPEN   quantile card: quantile_lp still has no HAC/overlap-aware SE option -- params=['y', 'shock', 'taus', 'horizons', 'n_lag_controls']
+[P31] INFO   0.2.0/0.3.0 'not in this release': no Anderson-Rubin set for iv_gmm/lp_iv; no AP/CD/KP statistics -- callable hits=['proxy_ar_sets']; iv_gmm AR/CD/KP keys=[]; iv_gmm params=['x', 'z', 'y', 'method', 'weight', 'bandwidth', 'tol', 'max_iter']
+[P32] INFO   var-svar card: zero_sign_svar with a horizon>=1 zero and weighted=True (exact ARW weight unimplemented) -- zero_sign_svar params=['data', 'sign_restrictions', 'zero_restrictions', 'lags', 'horizon', 'n_draws', 'max_tries', 'seed', 'lambda1', 'weighted']; crate zero.rs documents 'no ARW weight exists' for non-impact zeros (swap point)
+[P33] CLOSED round 1: iv_gmm(weight='hac', bandwidth=0.0) refuses; hac_bandwidth returned -- bandwidth=0 refused=True; hac_bandwidth=4.0
+[P34] CLOSED round 1: ols se_type hc2/hc3 exist -- hc2 bse[0]=0.09209 hc3 bse[0]=0.09296
+[P35] CLOSED round 1: var_irf_bands(bias_correct=True) on the asymptotic default refuses -- ValueError: bias_correct=True has no effect with method="asymptotic": Kilian's correction re-centres bootstrap draws, and the delta-method arm draws none. Pass method="boot
+[P36] CLOSED round 11 L1: lasso returns max_rel_change and names it in __doc__ -- key=True; doc=True
+[P37] CLOSED round 11 M1/M2/M6: every returned key of gpd_fit / robust_svar_bounds / cg_regression is named in __doc__ -- {'gpd_fit': [], 'cg_regression': [], 'robust_svar_bounds_doc_len': 1299}
+[P38] CLOSED rounds 3-4 #5: long_memory_d.__doc__ names se_asymptotic; predictive_regression.__doc__ names rho_ols -- long_memory_d se_asymptotic=True; predictive_regression rho_ols=True
+[P39] CLOSED round 2 #8: engle_granger on a (1,k) sample raises ValueError, not PanicException -- ValueError: the Engle-Granger step-1 regression needs strictly more rows than design columns (the deterministic terms plus the k - 1 regressor series); supply more observat
+[P40] CLOSED round 10 severe: star_test(delay=T+1) raises a catchable ValueError -- ValueError: insufficient data: 240 observations, at least 255 required
+[P41] OPEN   round 11 M3: EGARCH multi-step forecast refused cleanly (simulation route still unshipped) -- horizon=2 refused=True, message clean=True: ValueError: unsupported forecast: EGARCH variance forecasts are analytic only at horizon = 1 (a mult
+[P42] CLOSED field item 12 / 0.7.0: vecm(deterministic='ci') and seasons supported -- keys=['alpha', 'beta', 'det_coef', 'det_coef_coint', 'gamma', 'llf', 'sigma_u']...
+[P43] CLOSED round 11 M4: conformal_forecast seed=None documented as seed 0 -- docstring mentions seed None->0=True
+[P44] CLOSED round 10 sweep B: hamilton_filter(maxlags=…, se='nonrobust') refuses -- ValueError: maxlags is a HAC bandwidth and requires se='hac'
+[P45] INFO   validation-matrix named follow-up: mapie TimeSeriesRegressor (enbpi/aci) is importable in the audit venv -- mapie 1.5.0; TimeSeriesRegressor(estimator: 'Optional[RegressorMixin]' = None, method: 'str' = 'enbpi', cv: 'Optional[Union[int, str, BaseCrossValidator]]' = None, n_jobs: 'Optional[int]' = No -- reference exists, cross-check still not run
+[P46] OPEN   panel card: lp_did has no covariates / composition / pmd / IV kwargs -- params=['outcome', 'treatment', 'pre_window', 'post_window', 'absorbing', 'nonabsorbing_lag', 'reweight', 'pooled', 'never_treated_only']
+[P47] OPEN   copulas card: d>2 refused (deferred) -- 3-column u refused=True: ValueError: copulas are bivariate in this slice: u must have exactly 2 columns (got 3); d > 2 for th
+[P48] OPEN   coint-regime card: no regime-dependent GIRF for threshold_var -- girf-like callables=[]
+[P49] INFO   spec-15 uncertain #2/#4: proxy_svar_bands ships Hall+Efron; block_length rule; k>1 proxies -- keys=['alpha', 'asymptotically_valid', 'block_length', 'failure_warning', 'failures', 'first_stage_f_draws', 'gamma_norm_draws', 'lower', 'lower_efron', 'method', 'n_boot', 'n_failed', 'n_proxy', 'n_used', 'point', 'point_first_stage_f', 'point_gamma_norm', 'point_reliability', 'reliability_draws', 'rho_draws', 'se', 'upper', 'upper_efron', 'validity_note']; block_length=20; two-column proxy refused=True (TypeError: proxy_svar_bands: an array argument is the wrong shape or type (got a)
+[P50] INFO   coverage page: nongaussian_svar and garch variance_forecast ship no interval (key-set tripwire) -- nongaussian_svar interval-like keys=[] (ships no interval, by design; the coverage page tripwires it)
+[P51] CLOSED 0.3.0 'not in this release': SARIMA seasonal orders shipped -- arima_fit has seasonal kwarg=True
+[P52] CLOSED round 10 OPEN 2: bn_decomposition documents that p/q are ignored on the fixed path -- docstring says p/q ignored on fixed path=True
+[P53] INFO   round 8 R2/R3: recession_probit stub says link is probit or logit with no dynamic caveat -- runtime __doc__ mentions 'probit only'=True; 'ignored'=False
+[P54] INFO   lab/REPORT graduation: l1_trend_filter (salvage b) shipped; no Fourier-terms builder (salvage a); no dynamic_quantile (AL-GAS) -- {'l1_trend_filter': True, 'fourier_terms': False, 'dynamic_quantile': False, 'dcs_local_level': True, 'var_backtest': True}
+[P55] OPEN   round 11 OPEN 5-8 (performance, defaults @T=3200): arima_fit / historical_decomposition / mcmc_diagnostics timings -- arima_fit 3.56s; historical_decomposition 0.490s; mcmc_diagnostics 0.057s (one machine; the round-11 numbers were 6.10 / 0.43 / 0.09)
+[P56] INFO   brief lens-7 target 'adl_midas': no such callable; the MIDAS surface is midas_weights/umidas/weighted_midas -- midas callables=['midas_weights', 'umidas', 'weighted_midas']
+[P57] CLOSED round 2 #6 / 0.3.0: panel_lp has bias_correction with 'spj' -- bias_correction kwarg=True; spj documented=True
+[P58] CLOSED round 9: panel_fe/panel_lp refuse bandwidth under cluster SEs; spectral detrend default 'constant' -- bandwidth under cluster refused=True; welch detrend default='constant'
+
+probes attempted: 58, reached: 58
+verdicts: {'INFO': 9, 'CLOSED': 31, 'OPEN': 18}

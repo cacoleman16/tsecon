@@ -235,6 +235,11 @@ Default flips (making `second_order` and/or `bonferroni`-at-large-k the
 defaults) are deliberate future decisions for an audit round that can weigh
 the width/power prices against the size gains on fresh seeds.
 
+*(Repository audit, September 2026: the IVX half was decided — `ivx_test`'s
+`joint` default became `"bonferroni"` in 0.5.0 on these measurements. The
+`proxy_ar_sets` default is still `"delta"`; that decision is ledger row
+N21-03 in `docs/roadmap/_repo_audit/ledger.md`.)*
+
 ## Reproducing
 
 Both harnesses are seeded end to end, validate their transcriptions against
