@@ -68,8 +68,11 @@ def _find_versions(obj, path="", out=None):
                 out[LIBS[kl]] = (v["version"], f"{path}.{k}.version".lstrip("."))
             elif kl in {"versions", "reference_versions", "library_versions"} and isinstance(v, dict):
                 _find_versions(v, f"{path}.{k}", out)
-            elif isinstance(v, (dict, list)):
+            elif isinstance(v, (dict, list, str)):
                 _find_versions(v, f"{path}.{k}", out)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            _find_versions(v, f"{path}[{i}]", out)
     elif isinstance(obj, str):
         # free-text "statsmodels 0.14.4" / "statsmodels==0.14.4" / "statsmodels==0.14.4"
         for m in re.finditer(r"\b(numpy|scipy|statsmodels|arch|linearmodels|scikit-learn|sklearn|skglm|mapie|arviz|cvxpy|clarabel)\s*(?:==|=|v|\s)\s*(\d+\.\d+(?:\.\d+)?)", obj, re.I):

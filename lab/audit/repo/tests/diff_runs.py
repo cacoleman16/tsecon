@@ -76,7 +76,9 @@ def captured_stdout(label):
         if m:
             cur = m.group(1)
             continue
-        if line.startswith("PASSED ") or line.startswith("FAILED ") or line.startswith("SKIPPED ") or line.startswith("=") and "short test summary" in line:
+        if line.startswith("PASSED ") or line.startswith("FAILED ") or line.startswith("SKIPPED ") or (
+            line.startswith("=") and ("short test summary" in line or "slowest" in line or "warnings summary" in line)
+        ):
             cur = None
             continue
         if cur is not None and not line.startswith("-" * 10):

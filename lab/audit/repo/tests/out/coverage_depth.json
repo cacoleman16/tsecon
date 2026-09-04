@@ -1,0 +1,6855 @@
+[
+ {
+  "name": "accuracy",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_accuracy_measures",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "acf",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_intervals.py",
+    "test_acf_bartlett_se_are_ses_not_bands",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_acf_matches_statsmodels_fixture",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_noncontiguous_1d_input_accepted",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "acm_term_premium",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "reference": 5,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_acm.py",
+    "test_acm_golden_matches_numpy_pipeline",
+    "reference"
+   ],
+   [
+    "test_acm.py",
+    "test_acm_recovers_the_true_term_premium_of_the_affine_dgp",
+    "reference"
+   ],
+   [
+    "test_acm.py",
+    "test_acm_tracks_the_published_ny_fed_series",
+    "reference"
+   ],
+   [
+    "test_acm.py",
+    "test_acm_default_arguments_are_the_acm_baseline",
+    "reference"
+   ],
+   [
+    "test_acm.py",
+    "test_acm_rejects_degenerate_inputs",
+    "raises"
+   ],
+   [
+    "test_acm.py",
+    "test_acm_docstring_names_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "adaptive_lasso",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_ml_paths.py",
+    "test_adaptive_lasso_recovers_support",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "adf",
+  "n_tests": 11,
+  "best": "reference",
+  "counts": {
+   "structural": 7,
+   "numeric": 3,
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_dataframe_accepted_end_to_end",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_offdtype_and_noncontiguous_accepted",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_integer_series_accepted_end_to_end",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_flat_numeric_sequences_are_accepted_as_data",
+    "structural"
+   ],
+   [
+    "test_results_generic.py",
+    "test_summarize_wraps_a_plain_dict",
+    "structural"
+   ],
+   [
+    "test_results_generic.py",
+    "test_summarize_renders_scalars_matrices_and_nested_dicts",
+    "structural"
+   ],
+   [
+    "test_results_generic.py",
+    "test_dict_contract_preserved",
+    "numeric"
+   ],
+   [
+    "test_results_generic.py",
+    "test_summarize_is_idempotent",
+    "structural"
+   ],
+   [
+    "test_results_generic.py",
+    "test_repr_is_the_summary",
+    "numeric"
+   ],
+   [
+    "test_smoke.py",
+    "test_adf_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_noncontiguous_1d_input_accepted",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "afns_adjustment",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_spectest_afns_dsge.py",
+    "test_afns_adjustment",
+    "reference"
+   ],
+   [
+    "test_spectest_afns_dsge.py",
+    "test_afns_adjustment_requires_three_factor_vols",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "ar_loglik",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_ar_loglik_matches_sarimax",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "arch_lm",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_arch_lm_matches_statsmodels_fixture",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "arima_fit",
+  "n_tests": 24,
+  "best": "reference",
+  "counts": {
+   "reference": 12,
+   "raises": 5,
+   "numeric": 6,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_arima_seasonal.py",
+    "test_airline_model_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_arima_seasonal.py",
+    "test_seasonal_accepts_list_and_none",
+    "reference"
+   ],
+   [
+    "test_arima_seasonal.py",
+    "test_seasonal_argument_errors_teach",
+    "raises"
+   ],
+   [
+    "test_arima_seasonal.py",
+    "test_seasonal_random_walk_forecast_law",
+    "reference"
+   ],
+   [
+    "test_arima_seasonal.py",
+    "test_quarterly_sar_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_auto_arima.py",
+    "test_deterministic_and_trace_refit_consistent",
+    "reference"
+   ],
+   [
+    "test_auto_arima.py",
+    "test_result_keys_are_a_superset_of_arima_fit",
+    "numeric"
+   ],
+   [
+    "test_coerce.py",
+    "test_negative_seasonal_order_keeps_its_bespoke_teaching_error",
+    "raises"
+   ],
+   [
+    "test_convergence_flags.py",
+    "test_arima_over_differenced_ma_boundary_is_flagged",
+    "numeric"
+   ],
+   [
+    "test_convergence_flags.py",
+    "test_arima_interior_fit_flags_clean_and_converged",
+    "numeric"
+   ],
+   [
+    "test_convergence_flags.py",
+    "test_arima_fit_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_default_forecast_se_is_unchanged_and_still_sigma_root_h",
+    "reference"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_drift_uncertainty_widens_the_band",
+    "reference"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_drift_corrected_se_matches_the_closed_form",
+    "reference"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_drift_uncertainty_requires_a_forecast",
+    "raises"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_drift_uncertainty_requires_a_constant",
+    "raises"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_arima_reports_parameter_standard_errors",
+    "numeric"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_param_cov_contract_holds_across_specifications",
+    "numeric"
+   ],
+   [
+    "test_intervals.py",
+    "test_arima_conf_alpha_round_trip",
+    "reference"
+   ],
+   [
+    "test_intervals.py",
+    "test_arima_conf_alpha_coverage_is_configurable",
+    "reference"
+   ],
+   [
+    "test_intervals.py",
+    "test_arima_conf_alpha_default_none_adds_no_bands",
+    "structural"
+   ],
+   [
+    "test_intervals.py",
+    "test_arima_conf_alpha_validation",
+    "raises"
+   ],
+   [
+    "test_smoke.py",
+    "test_arima_fit_beats_statsmodels_on_nile",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_arima_d1_random_walk_law",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "auto_arima",
+  "n_tests": 9,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "numeric": 5,
+   "raises": 1,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_auto_arima.py",
+    "test_deterministic_and_trace_refit_consistent",
+    "reference"
+   ],
+   [
+    "test_auto_arima.py",
+    "test_result_keys_are_a_superset_of_arima_fit",
+    "numeric"
+   ],
+   [
+    "test_auto_arima.py",
+    "test_d_selection_on_a_random_walk_with_evidence",
+    "numeric"
+   ],
+   [
+    "test_auto_arima.py",
+    "test_ic_variants_and_bic_prefers_smaller",
+    "numeric"
+   ],
+   [
+    "test_auto_arima.py",
+    "test_error_surfaces_teach",
+    "raises"
+   ],
+   [
+    "test_auto_arima.py",
+    "test_recovery_small_mc_nonseasonal",
+    "numeric"
+   ],
+   [
+    "test_auto_arima.py",
+    "test_seasonal_co2_monthly_selects_a_seasonal_model",
+    "reference"
+   ],
+   [
+    "test_auto_arima.py",
+    "test_summarize_wraps_the_result",
+    "structural"
+   ],
+   [
+    "test_convergence_flags.py",
+    "test_auto_arima_shares_the_new_keys",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "backtest",
+  "n_tests": 21,
+  "best": "reference",
+  "counts": {
+   "reference": 9,
+   "numeric": 4,
+   "raises": 8
+  },
+  "tests": [
+   [
+    "test_backtest.py",
+    "test_naive_expanding_backtest_semantics",
+    "reference"
+   ],
+   [
+    "test_backtest.py",
+    "test_rolling_window_and_multi_horizon",
+    "numeric"
+   ],
+   [
+    "test_backtest.py",
+    "test_theta_forecaster_runs",
+    "numeric"
+   ],
+   [
+    "test_backtest.py",
+    "test_unknown_forecaster_and_window_error",
+    "raises"
+   ],
+   [
+    "test_backtest.py",
+    "test_period_refused_for_nonseasonal_forecasters_and_callables",
+    "raises"
+   ],
+   [
+    "test_backtest.py",
+    "test_period_sentinel_default_bit_identical_and_live_where_seasonal",
+    "reference"
+   ],
+   [
+    "test_backtest.py",
+    "test_constant_first_window_mase_error_names_the_real_cure",
+    "reference"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_spy_callable_sees_only_training_slices_expanding",
+    "reference"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_spy_callable_sees_only_training_slices_rolling",
+    "reference"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_spy_callable_refit_block_walk_and_requested_steps",
+    "reference"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_perturbing_an_observation_cannot_move_earlier_origin_forecasts",
+    "reference"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_python_naive_bit_identical_to_string_naive",
+    "reference"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_default_forecaster_is_naive",
+    "numeric"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_autoreg_callable_matches_manual_rolling_origin_loop",
+    "numeric"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_callable_exception_reraises_with_origin_and_window_context",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_callable_exception_names_rolling_window",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_wrong_length_return_teaching_error_names_origin",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_non_finite_return_teaching_error_names_step_and_origin",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_scalar_return_teaching_error",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_non_string_non_callable_forecaster_is_type_error",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_backtest_string_paths_bit_identical_to_pre_callable_snapshot",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "bai_perron",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 3
+  },
+  "tests": [
+   [
+    "test_frontier.py",
+    "test_bai_perron_matches_the_bruteforce_fixture",
+    "reference"
+   ],
+   [
+    "test_frontier.py",
+    "test_bai_perron_selects_zero_breaks_on_stable_data",
+    "reference"
+   ],
+   [
+    "test_frontier.py",
+    "test_bai_perron_recovers_fresh_mean_shifts",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "bk_filter",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_filters_match_statsmodels",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "bn_decomposition",
+  "n_tests": 7,
+  "best": "reference",
+  "counts": {
+   "reference": 6,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_bn_filters.py",
+    "test_bn_fixed_coefficients_golden",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_bn_identities_hold_exactly",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_bn_ima11_textbook_closed_form",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_bn_fit_path_on_gdp",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_bn_error_surfaces",
+    "raises"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_kmw_large_gap_vs_classic_tiny_cycle",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_coercion_accepts_lists_and_float32",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "bn_filter",
+  "n_tests": 7,
+  "best": "reference",
+  "counts": {
+   "reference": 5,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_bn_filters.py",
+    "test_kmw_reference_run_golden",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_kmw_ar_sums_to_rho",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_kmw_large_gap_vs_classic_tiny_cycle",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_kmw_error_surfaces",
+    "raises"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_kmw_ramp_refusal_names_the_constant_differences",
+    "raises"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_coercion_accepts_lists_and_float32",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_kmw_grid_kwargs_refused_under_fixed_delta",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "bns_jump_test",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_realized_extras.py",
+    "test_bns_jump_test_matches_documented_formula",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "boosting",
+  "n_tests": 7,
+  "best": "reference",
+  "counts": {
+   "reference": 5,
+   "raises": 1,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_convex.py",
+    "test_boosting_keys_and_marshalling",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_boosting_matches_dense_transcription",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_boosting_properties_through_python",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_boosting_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_convex.py",
+    "test_boosting_pandas_coercion",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_docstrings_name_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_convex.py",
+    "test_wall_time_report",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "bootstrap_indices",
+  "n_tests": 1,
+  "best": "numeric",
+  "counts": {
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_bootstrap_indices_deterministic_and_in_range",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "box_cox_lambda",
+  "n_tests": 1,
+  "best": "structural",
+  "counts": {
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_tuple_options_are_not_treated_as_data",
+    "structural"
+   ]
+  ]
+ },
+ {
+  "name": "bvar_fit",
+  "n_tests": 8,
+  "best": "reference",
+  "counts": {
+   "reference": 6,
+   "numeric": 1,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_binding_gaps.py",
+    "test_bvar_posterior_dimensions_and_dof",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_bvar_marginal_sd_formula_matches_niw_monte_carlo",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_bvar_fit_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_coerce.py",
+    "test_negative_float_parameters_are_untouched",
+    "structural"
+   ],
+   [
+    "test_replication_glp.py",
+    "test_selection_dominates_fixed_references",
+    "reference"
+   ],
+   [
+    "test_replication_glp.py",
+    "test_grid_certificate_and_refit_consistency",
+    "reference"
+   ],
+   [
+    "test_replication_glp.py",
+    "test_scale_ar_default_is_bit_identical_to_scale_ar4",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_bvar_posterior_matches_analytic_fixture",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "bvar_hierarchical",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "numeric": 1,
+   "reference": 4
+  },
+  "tests": [
+   [
+    "test_ident_tranche1.py",
+    "test_bvar_hierarchical_optimizes_lambda",
+    "numeric"
+   ],
+   [
+    "test_replication_glp.py",
+    "test_grid_certificate_and_refit_consistency",
+    "reference"
+   ],
+   [
+    "test_replication_glp_point.py",
+    "test_small_var_mode_matches_published_figure1",
+    "reference"
+   ],
+   [
+    "test_replication_glp_point.py",
+    "test_medium_var_mode_matches_published_figure1",
+    "reference"
+   ],
+   [
+    "test_replication_glp_point.py",
+    "test_the_convention_is_the_gap",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "bvar_irf_draws",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 4
+  },
+  "tests": [
+   [
+    "test_intervals.py",
+    "test_bvar_irf_draws_quantile_bands_scale_with_coverage",
+    "reference"
+   ],
+   [
+    "test_intervals.py",
+    "test_bvar_irf_draws_cumulative_bands_not_summed",
+    "reference"
+   ],
+   [
+    "test_replication_glp.py",
+    "test_scale_ar_default_is_bit_identical_to_scale_ar4",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_bvar_irf_draws_reproducible_and_shaped",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "bvar_ssvs",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_ident_tranche2a.py",
+    "test_bvar_ssvs_contract_and_reproducibility",
+    "reference"
+   ],
+   [
+    "test_ident_tranche2a.py",
+    "test_bvar_ssvs_large_T_does_not_crash",
+    "structural"
+   ],
+   [
+    "test_ident_tranche2a.py",
+    "test_bvar_ssvs_default_prior_is_scale_invariant",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "ccc_garch",
+  "n_tests": 14,
+  "best": "reference",
+  "counts": {
+   "numeric": 4,
+   "reference": 6,
+   "structural": 1,
+   "raises": 3
+  },
+  "tests": [
+   [
+    "test_dcc_buildout.py",
+    "test_default_path_pinned_to_premerge_values",
+    "numeric"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_ccc_default_keys_and_shapes",
+    "numeric"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_sigma2_is_the_perseries_garch_filter_and_shared_across_fits",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_ccc_covariance_identity_h_eq_drd",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_covariance_timing_last_insample_is_not_the_forecast",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_ccc_forecast_shapes_h1_exactness_and_analytic_identity",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_ccc_forecast_horizon_zero_returns_no_forecast_keys",
+    "structural"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_default_call_equals_explicit_univariate_defaults_bitwise",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_student_t_univariate_stage_and_constant_mean_run",
+    "numeric"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_unknown_vol_teaches_choices",
+    "raises"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_unknown_univariate_dist_teaches_the_two_dist_kwargs_apart",
+    "raises"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_ccc_garch_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_o_refused_under_symmetric_garch",
+    "raises"
+   ],
+   [
+    "test_midas_mgarch.py",
+    "test_ccc_garch_runs",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "cf_filter",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_filters_match_statsmodels",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "cg_regression",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_roadmap_gaps.py",
+    "test_cg_regression_matches_statsmodels_hac",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_hac_use_correction_defaults_on_and_differs_from_statsmodels_default",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "check_series",
+  "n_tests": 57,
+  "best": "reference",
+  "counts": {
+   "numeric": 40,
+   "structural": 10,
+   "raises": 4,
+   "reference": 3
+  },
+  "tests": [
+   [
+    "test_check_series.py",
+    "test_white_noise_gets_the_clean_series_entry",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_white_noise_quadrant_and_analysis_scale",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_multiple_testing_arithmetic_is_shown_not_applied",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_random_walk_differences_downstream_analysis",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_random_walk_unit_root_recommendation_echoes_the_evidence",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_random_walk_flags_the_persistent_regressor_hazard",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_random_walk_long_memory_reads_d_against_the_unit_root",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_ar1_suggested_orders_are_sane",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_ar1_arma_recommendation_is_hedged_and_routes_to_arima_fit",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_garch_dgp_fires_the_arch_recommendation",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_garch_fat_tails_escalate_to_t_innovations",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_broken_mean_fires_the_break_recommendation",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_broken_mean_dates_are_recovered",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_break_report_carries_the_homogeneous_ci_caveat",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_fractional_series_fires_the_long_memory_recommendation",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_seasonal_evidence_is_reported_at_the_given_period",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_seasonal_recommendation_is_honest_about_the_gap",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_lags_argument_controls_the_ljung_box_horizon",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_outlier_screen_flags_an_injected_spike",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_cointegrated_pair_routes_to_vecm",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_cointegrated_stability_note_points_at_the_vecm_route",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_stationary_var3_routes_to_var_fit_with_a_small_lag",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_var3_offers_connectedness_for_spillover_questions",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_multivariate_always_mentions_local_projections",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_mixed_integration_pair_gets_a_warning",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_wide_panel_gets_the_dimensionality_note",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_per_series_entries_are_compact",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_nan_input_raises_a_teaching_error_with_the_count",
+    "raises"
+   ],
+   [
+    "test_check_series.py",
+    "test_3d_input_raises",
+    "raises"
+   ],
+   [
+    "test_check_series.py",
+    "test_too_short_raises_with_a_teaching_message",
+    "raises"
+   ],
+   [
+    "test_check_series.py",
+    "test_plain_python_list_input_works",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_single_column_squeezes_to_univariate",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_family_sizes_hold_on_white_noise",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_conflict_quadrant_detrends_the_analysis_object",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_pure_trend_emits_no_trend_artifact_recommendations",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_alpha_outside_the_kpss_clamp_raises_a_teaching_error",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_short_even_lengths_do_not_crash_the_pacf",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_even_length_differences_do_not_crash_the_pacf",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_inconclusive_quadrant_hedges_the_persistence_finding",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_unit_root_quadrant_keeps_the_flat_persistence_finding",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_undetermined_johansen_rank_is_not_reported_as_rank_zero",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_collinear_panel_reports_instead_of_crashing",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_gph_far_below_one_is_not_called_consistent_with_a_unit_root",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_gph_near_one_reads_as_consistent_with_the_unit_root",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_univariate_top_level_keys_snapshot",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_multivariate_top_level_keys_snapshot",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_seasonal_period_is_validated",
+    "raises"
+   ],
+   [
+    "test_check_series.py",
+    "test_clean_series_with_seasonal_period_keeps_no_red_flags",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_arch_suggestion_names_the_differenced_object_on_i1_series",
+    "reference"
+   ],
+   [
+    "test_check_series.py",
+    "test_vecm_k_ar_diff_matches_the_stated_rule",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_johansen_states_its_deterministic_case",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_multivariate_lags_zero_names_the_cap_not_dof",
+    "structural"
+   ],
+   [
+    "test_check_series.py",
+    "test_outlier_spike_is_cross_referenced_in_the_normality_caveat",
+    "numeric"
+   ],
+   [
+    "test_results_check.py",
+    "test_is_a_dict_matching_raw_check_series_exactly",
+    "reference"
+   ],
+   [
+    "test_results_check.py",
+    "test_multivariate_dict_contract",
+    "reference"
+   ],
+   [
+    "test_results_check.py",
+    "test_module_constructor_and_exports",
+    "numeric"
+   ],
+   [
+    "test_results_check.py",
+    "test_plot_needs_the_original_data",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "check_stationarity",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_check_stationarity_quadrants",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_noncontiguous_1d_input_accepted",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "chow_test",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_spectest_afns_dsge.py",
+    "test_chow",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "coherence",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_spectral.py",
+    "test_coherence_matches_scipy",
+    "reference"
+   ],
+   [
+    "test_spectral.py",
+    "test_coherence_default_matches_scipy_default",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "conformal_backtest",
+  "n_tests": 10,
+  "best": "reference",
+  "counts": {
+   "numeric": 3,
+   "reference": 4,
+   "raises": 3
+  },
+  "tests": [
+   [
+    "test_audit_round11.py",
+    "test_conformal_seed_none_is_seed_zero_and_documented",
+    "numeric"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_autoreg_callable_reproduces_rust_ar_base_in_conformal_backtest",
+    "reference"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_enbpi_rejects_callable_base",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_conformal_string_paths_bit_identical_to_pre_callable_snapshot",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_aci_tracks_nominal_under_shift_where_split_degrades",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_enbpi_online_backtest_slides_and_scores",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_error_surfaces_teach",
+    "raises"
+   ],
+   [
+    "test_conformal.py",
+    "test_inert_conformal_entry_specific_refusals",
+    "raises"
+   ],
+   [
+    "test_conformal.py",
+    "test_conformal_defaults_bit_identical_to_explicit_sentinel_resolution",
+    "numeric"
+   ],
+   [
+    "test_conformal.py",
+    "test_conformal_kwargs_still_live_where_documented",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "conformal_forecast",
+  "n_tests": 20,
+  "best": "reference",
+  "counts": {
+   "numeric": 3,
+   "reference": 12,
+   "raises": 5
+  },
+  "tests": [
+   [
+    "test_audit_round11.py",
+    "test_conformal_seed_none_is_seed_zero_and_documented",
+    "numeric"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_autoreg_callable_reproduces_rust_ar_base_in_conformal_forecast",
+    "reference"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_non_string_non_callable_forecaster_is_type_error",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_conformal_callable_windows_are_prefixes_plus_one_forward_call",
+    "reference"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_conformal_callable_exception_context_and_cause",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_enbpi_rejects_callable_base",
+    "raises"
+   ],
+   [
+    "test_backtest_callable.py",
+    "test_conformal_string_paths_bit_identical_to_pre_callable_snapshot",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_split_symmetric_recomputed_exactly_from_naive_base",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_split_asymmetric_tail_order_statistics",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_leakage_guard_future_perturbation_moves_only_its_own_score",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_split_guarantee_anchor_small_calibration",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_marginal_coverage_ar1_iid_noise",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_marginal_coverage_garch_noise",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_aci_trajectory_matches_published_recursion",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_enbpi_reproducible_and_diagnosed",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_error_surfaces_teach",
+    "raises"
+   ],
+   [
+    "test_conformal.py",
+    "test_theta_and_arima_bases_run",
+    "reference"
+   ],
+   [
+    "test_conformal.py",
+    "test_inert_conformal_entry_specific_refusals",
+    "raises"
+   ],
+   [
+    "test_conformal.py",
+    "test_conformal_defaults_bit_identical_to_explicit_sentinel_resolution",
+    "numeric"
+   ],
+   [
+    "test_conformal.py",
+    "test_conformal_kwargs_still_live_where_documented",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "connectedness",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_depth.py",
+    "test_connectedness_matches_gfevd_golden",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "copula_fit",
+  "n_tests": 7,
+  "best": "reference",
+  "counts": {
+   "reference": 4,
+   "numeric": 2,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_copula.py",
+    "test_pseudo_obs_is_increasing_invariant_and_fit_identical",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_pseudo_obs_decreasing_transform_flips_dependence",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_copula_fit_matches_reference",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_t_tail_dependence_uses_correct_form_not_statsmodels_bug",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_fit_defaults_and_keys",
+    "numeric"
+   ],
+   [
+    "test_copula.py",
+    "test_errors_teach",
+    "raises"
+   ],
+   [
+    "test_copula.py",
+    "test_docstrings_name_every_returned_key",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "copula_select",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "reference": 3,
+   "raises": 1,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_copula.py",
+    "test_copula_select_crowns_the_generator_winner",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_select_defaults_and_keys",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_select_skips_positive_only_families_on_negative_dependence",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_errors_teach",
+    "raises"
+   ],
+   [
+    "test_copula.py",
+    "test_docstrings_name_every_returned_key",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "cusum_test",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_spectest_afns_dsge.py",
+    "test_cusum",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "cv_splits",
+  "n_tests": 12,
+  "best": "numeric",
+  "counts": {
+   "raises": 4,
+   "numeric": 8
+  },
+  "tests": [
+   [
+    "test_audit_round11.py",
+    "test_cv_splits_default_train_is_documented_as_refused",
+    "raises"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_expanding_origin_no_leakage",
+    "numeric"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_rolling_origin_fixed_width",
+    "numeric"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_purged_kfold_gaps",
+    "numeric"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_unknown_scheme_errors",
+    "raises"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_walk_forward_purge_opens_the_documented_gap",
+    "numeric"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_walk_forward_purge_leakage_property",
+    "numeric"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_walk_forward_embargo_raises_instead_of_ignoring",
+    "raises"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_walk_forward_purge_consuming_the_window_errors",
+    "raises"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_purged_kfold_right_gap_is_purge_plus_embargo",
+    "numeric"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_purged_kfold_embargo_not_absorbed_by_purge",
+    "numeric"
+   ],
+   [
+    "test_cv_splits.py",
+    "test_purged_kfold_embargo_reaching_past_the_sample_end",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "cw_test",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_panel_fceval.py",
+    "test_cw_and_gw_match_fixture",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "dcc_garch",
+  "n_tests": 27,
+  "best": "reference",
+  "counts": {
+   "reference": 15,
+   "numeric": 5,
+   "structural": 1,
+   "raises": 6
+  },
+  "tests": [
+   [
+    "test_binding_gaps.py",
+    "test_dcc_stage1_matches_direct_garch_fit_bitwise",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dcc_stage1_threads_nondefault_univariate_spec",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dcc_std_residuals_are_returns_over_sigma_bitwise",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dcc_nbar_only_under_adcc_and_is_the_documented_moment",
+    "reference"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_default_call_equals_explicit_defaults_bitwise",
+    "reference"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_default_path_pinned_to_premerge_values",
+    "numeric"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_default_keys_are_additive",
+    "numeric"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_correlation_path_shape_and_timing_convention",
+    "reference"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_forecast_shapes_h1_exactness_and_convergence",
+    "reference"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_forecast_horizon_zero_returns_no_forecast_keys",
+    "structural"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_cdcc_runs_and_stays_near_dcc_on_symmetric_dgp",
+    "reference"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_adcc_nests_dcc",
+    "numeric"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_student_t_second_stage",
+    "numeric"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_unknown_variant_names_the_choices",
+    "raises"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_unknown_dist_names_the_choices",
+    "raises"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_single_series_rejected",
+    "raises"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_dcc_garch_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_sigma2_is_the_perseries_garch_filter_and_shared_across_fits",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_dcc_covariance_identity_vs_returned_correlation_path",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_covariance_timing_last_insample_is_not_the_forecast",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_default_call_equals_explicit_univariate_defaults_bitwise",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_gjr_univariate_stage_runs_and_changes_the_fitted_variances",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_univariate_and_second_stage_dist_are_independent_knobs",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_unknown_vol_teaches_choices",
+    "raises"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_unknown_univariate_dist_teaches_the_two_dist_kwargs_apart",
+    "raises"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_o_refused_under_symmetric_garch",
+    "raises"
+   ],
+   [
+    "test_midas_mgarch.py",
+    "test_dcc_garch_recovers_persistence",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "dcc_test",
+  "n_tests": 13,
+  "best": "reference",
+  "counts": {
+   "numeric": 7,
+   "raises": 5,
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_dcc_buildout.py",
+    "test_dcc_test_rejects_on_dcc_fixture",
+    "numeric"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_dcc_test_sane_on_seeded_ccc_null",
+    "numeric"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_dcc_test_default_lags_is_five",
+    "numeric"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_single_series_rejected",
+    "raises"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_dcc_test_zero_lags_rejected",
+    "raises"
+   ],
+   [
+    "test_dcc_buildout.py",
+    "test_dcc_test_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_default_call_equals_explicit_univariate_defaults_bitwise",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_student_t_univariate_stage_and_constant_mean_run",
+    "numeric"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_unknown_mean_teaches_choices",
+    "raises"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_unknown_univariate_dist_teaches_the_two_dist_kwargs_apart",
+    "raises"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_o_refused_under_symmetric_garch",
+    "raises"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_o_zero_explicit_equals_default_under_garch",
+    "numeric"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_o_still_live_under_gjr_first_stage",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "dcs_local_level",
+  "n_tests": 11,
+  "best": "reference",
+  "counts": {
+   "reference": 6,
+   "raises": 4,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_dcs_local_level.py",
+    "test_gaussian_fit_repins_scipy_mle",
+    "reference"
+   ],
+   [
+    "test_dcs_local_level.py",
+    "test_t_beats_gaussian_on_contaminated_fixture_series",
+    "reference"
+   ],
+   [
+    "test_dcs_local_level.py",
+    "test_t_nests_gaussian_on_clean_data_with_honest_flag",
+    "reference"
+   ],
+   [
+    "test_dcs_local_level.py",
+    "test_laplace_sign_filter_is_sane",
+    "reference"
+   ],
+   [
+    "test_dcs_local_level.py",
+    "test_rejects_unknown_density",
+    "raises"
+   ],
+   [
+    "test_dcs_local_level.py",
+    "test_refuses_constant_series",
+    "raises"
+   ],
+   [
+    "test_dcs_local_level.py",
+    "test_refuses_short_series",
+    "raises"
+   ],
+   [
+    "test_dcs_local_level.py",
+    "test_refuses_nan",
+    "raises"
+   ],
+   [
+    "test_dcs_scale.py",
+    "test_power_of_two_rescaling_maps_the_fit_bit_exactly",
+    "reference"
+   ],
+   [
+    "test_dcs_scale.py",
+    "test_decade_rescaling_maps_the_smooth_fits_within_1e6",
+    "reference"
+   ],
+   [
+    "test_params_named.py",
+    "test_gas_and_dcs_keep_flat_named_keys_and_need_no_params_named",
+    "structural"
+   ]
+  ]
+ },
+ {
+  "name": "dfgls",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "reference": 5
+  },
+  "tests": [
+   [
+    "test_dfgls.py",
+    "test_dfgls_matches_arch_fixture",
+    "reference"
+   ],
+   [
+    "test_dfgls.py",
+    "test_dfgls_live_parity_with_arch_if_available",
+    "reference"
+   ],
+   [
+    "test_dfgls.py",
+    "test_dfgls_contract_and_errors",
+    "reference"
+   ],
+   [
+    "test_dfgls.py",
+    "test_dfgls_rejects_noise_not_walk",
+    "reference"
+   ],
+   [
+    "test_ng_perron.py",
+    "test_shared_detrending_with_dfgls_through_the_boundary",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "dfm_news",
+  "n_tests": 1,
+  "best": "numeric",
+  "counts": {
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_pmg_news.py",
+    "test_dfm_news_adds_up_exactly",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "dfm_nowcast",
+  "n_tests": 12,
+  "best": "reference",
+  "counts": {
+   "structural": 3,
+   "reference": 6,
+   "numeric": 2,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_audit_round11.py",
+    "test_dfm_nowcast_smoothed_factors_rows_are_the_balanced_panel",
+    "structural"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dfm_two_step_param_shapes",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dfm_nowcast_is_loadings_dot_edge_factor",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dfm_common_component_reconstructs_balanced_fitted_values",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dfm_mle_returns_same_param_surface",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dfm_nowcast_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_convergence_flags.py",
+    "test_dfm_nowcast_mle_reports_converged_and_iterations",
+    "numeric"
+   ],
+   [
+    "test_convergence_flags.py",
+    "test_dfm_nowcast_two_step_carries_no_optimizer_keys",
+    "structural"
+   ],
+   [
+    "test_new_crates.py",
+    "test_dfm_nowcast_balanced_panel",
+    "reference"
+   ],
+   [
+    "test_new_crates.py",
+    "test_dfm_nowcast_handles_ragged_edge",
+    "structural"
+   ],
+   [
+    "test_new_crates.py",
+    "test_dfm_nowcast_mle_fits",
+    "reference"
+   ],
+   [
+    "test_new_crates.py",
+    "test_dfm_mle_rejects_multiple_factors",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "dm_test",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_dm_and_theta_match_fixtures",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "dsge_solve",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_spectest_afns_dsge.py",
+    "test_dsge_cagan_saddle_path",
+    "reference"
+   ],
+   [
+    "test_spectest_afns_dsge.py",
+    "test_dsge_singular_lead_matrix_is_reported",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "dynamic_ns",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 4
+  },
+  "tests": [
+   [
+    "test_dynamic_ns.py",
+    "test_dynamic_ns_shapes_and_lambda",
+    "reference"
+   ],
+   [
+    "test_dynamic_ns.py",
+    "test_dynamic_ns_matches_single_date_golden",
+    "reference"
+   ],
+   [
+    "test_dynamic_ns.py",
+    "test_dynamic_ns_level_tracks_long_yield_and_reconstructs",
+    "reference"
+   ],
+   [
+    "test_dynamic_ns.py",
+    "test_dynamic_ns_one_step_forecast",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "echo_state_network",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "numeric": 2,
+   "reference": 2,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_neural.py",
+    "test_esn_keys_shapes_and_radius",
+    "numeric"
+   ],
+   [
+    "test_neural.py",
+    "test_esn_narma10_nrmse_bars",
+    "reference"
+   ],
+   [
+    "test_neural.py",
+    "test_esn_seed_contract_and_pandas",
+    "reference"
+   ],
+   [
+    "test_neural.py",
+    "test_esn_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_neural.py",
+    "test_esn_default_call_wall_clock_budget",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "elastic_net",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_lp_ml.py",
+    "test_ridge_lasso_elasticnet_match_sklearn",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "engle_granger",
+  "n_tests": 4,
+  "best": "numeric",
+  "counts": {
+   "numeric": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_exercise_gap.py",
+    "TestEngleGranger::test_keys_and_marshalling_on_cointegrated_pair",
+    "numeric"
+   ],
+   [
+    "test_exercise_gap.py",
+    "TestEngleGranger::test_independent_walks_do_not_reject",
+    "numeric"
+   ],
+   [
+    "test_exercise_gap.py",
+    "TestEngleGranger::test_pandas_input_coerced",
+    "numeric"
+   ],
+   [
+    "test_exercise_gap.py",
+    "TestEngleGranger::test_shape_refusal_teaches_the_fix",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "factor_model",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_depth.py",
+    "test_factor_model_matches_pca",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "favar",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "reference": 6
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_favar_slow_indices_stay_integer",
+    "reference"
+   ],
+   [
+    "test_coerce.py",
+    "test_integer_data_still_converts_in_the_same_call_as_integer_labels",
+    "reference"
+   ],
+   [
+    "test_favar.py",
+    "test_favar_factors_match_pca",
+    "reference"
+   ],
+   [
+    "test_favar.py",
+    "test_favar_var_summary_shapes",
+    "reference"
+   ],
+   [
+    "test_favar.py",
+    "test_favar_policy_shock_irfs",
+    "reference"
+   ],
+   [
+    "test_favar.py",
+    "test_favar_slow_fast_rotation",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "flp",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_frontier.py",
+    "test_flp_scenario_reconstruction_identity",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "flp_scenario",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_frontier.py",
+    "test_flp_scenario_reconstruction_identity",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "forecast_disagreement",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "structural": 1,
+   "reference": 2,
+   "numeric": 3
+  },
+  "tests": [
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_forecast_disagreement_returns_expected_keys",
+    "structural"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_forecast_disagreement_std_ddof0_vs_ddof1_hand_values",
+    "reference"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_forecast_disagreement_quartiles_iqr_counts_hand_values",
+    "reference"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_forecast_disagreement_empty_panel_raises",
+    "numeric"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_forecast_disagreement_empty_cross_section_raises",
+    "numeric"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_forecast_disagreement_ddof_not_smaller_than_count_raises",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "forecast_efficiency",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_roadmap_gaps.py",
+    "test_forecast_efficiency_matches_statsmodels_hac",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "frac_diff",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 3
+  },
+  "tests": [
+   [
+    "test_roadmap_gaps.py",
+    "test_frac_diff_matches_golden",
+    "reference"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_frac_integrate_inverts_frac_diff_roundtrip",
+    "reference"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_frac_integrate_equals_frac_diff_with_negated_d",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "frac_integrate",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "numeric": 2,
+   "reference": 3
+  },
+  "tests": [
+   [
+    "test_check_series.py",
+    "test_fractional_series_fires_the_long_memory_recommendation",
+    "numeric"
+   ],
+   [
+    "test_check_series.py",
+    "test_gph_far_below_one_is_not_called_consistent_with_a_unit_root",
+    "numeric"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_frac_integrate_inverts_frac_diff_roundtrip",
+    "reference"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_frac_integrate_matches_binomial_reference_golden",
+    "reference"
+   ],
+   [
+    "test_survey_longmemory_bindings.py",
+    "test_frac_integrate_equals_frac_diff_with_negated_d",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "fry_pagan_svar",
+  "n_tests": 1,
+  "best": "numeric",
+  "counts": {
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_ident_tranche2b.py",
+    "test_fry_pagan_returns_median_target_draw",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "functional_pca",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_frontier.py",
+    "test_functional_pca_matches_numpy_eigh",
+    "reference"
+   ],
+   [
+    "test_frontier.py",
+    "test_flp_scenario_reconstruction_identity",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "fvar_scenario",
+  "n_tests": 2,
+  "best": "structural",
+  "counts": {
+   "structural": 1,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_exercise_gap.py",
+    "TestFvarScenario::test_keys_and_shapes",
+    "structural"
+   ],
+   [
+    "test_exercise_gap.py",
+    "TestFvarScenario::test_error_propagates_with_actionable_message",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "garch_fit",
+  "n_tests": 27,
+  "best": "reference",
+  "counts": {
+   "numeric": 7,
+   "reference": 15,
+   "raises": 3,
+   "structural": 2
+  },
+  "tests": [
+   [
+    "test_audit_round11.py",
+    "test_egarch_multistep_forecast_refusal_is_documented_and_clean",
+    "numeric"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dcc_stage1_matches_direct_garch_fit_bitwise",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_dcc_stage1_threads_nondefault_univariate_spec",
+    "reference"
+   ],
+   [
+    "test_coerce.py",
+    "test_negative_integer_arguments_raise_teaching_valueerrors",
+    "raises"
+   ],
+   [
+    "test_coerce.py",
+    "test_negative_integer_error_names_the_function",
+    "raises"
+   ],
+   [
+    "test_docstring_keys.py",
+    "test_garch_fit_docstring_names_every_returned_key",
+    "reference"
+   ],
+   [
+    "test_garch_boundary.py",
+    "test_alpha_at_sign_bound_is_flagged_with_interior_ses",
+    "numeric"
+   ],
+   [
+    "test_garch_boundary.py",
+    "test_no_silent_nan_over_boundary_attracted_battery",
+    "numeric"
+   ],
+   [
+    "test_garch_boundary.py",
+    "test_igarch_boundary_flags_coefficients_and_names_igarch",
+    "numeric"
+   ],
+   [
+    "test_garch_boundary.py",
+    "test_interior_fit_flags_are_clean_and_converged",
+    "numeric"
+   ],
+   [
+    "test_garch_boundary.py",
+    "test_new_keys_present_for_every_family",
+    "structural"
+   ],
+   [
+    "test_garch_boundary.py",
+    "test_o_with_vol_garch_raises_and_teaches",
+    "raises"
+   ],
+   [
+    "test_garch_boundary.py",
+    "test_o_zero_and_default_are_unchanged_for_garch",
+    "reference"
+   ],
+   [
+    "test_garch_boundary.py",
+    "test_gjr_default_o_is_one_asymmetry_lag",
+    "reference"
+   ],
+   [
+    "test_garch_scale.py",
+    "test_power_of_two_rescaling_maps_the_fit_bit_exactly",
+    "reference"
+   ],
+   [
+    "test_garch_scale.py",
+    "test_decade_rescaling_maps_the_fit_within_1e6",
+    "reference"
+   ],
+   [
+    "test_garch_scale.py",
+    "test_decimal_returns_fit_like_percent_returns",
+    "numeric"
+   ],
+   [
+    "test_intervals.py",
+    "test_garch_variance_forecast_is_point_path_only",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_sigma2_is_the_perseries_garch_filter_and_shared_across_fits",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_ccc_forecast_shapes_h1_exactness_and_analytic_identity",
+    "reference"
+   ],
+   [
+    "test_mgarch_covariance_surface.py",
+    "test_gjr_univariate_stage_runs_and_changes_the_fitted_variances",
+    "reference"
+   ],
+   [
+    "test_params_named.py",
+    "test_params_named_matches_parallel_arrays_default",
+    "reference"
+   ],
+   [
+    "test_params_named.py",
+    "test_params_named_on_t_constant_mean_and_gjr",
+    "reference"
+   ],
+   [
+    "test_params_named.py",
+    "test_params_named_present_on_boundary_fit",
+    "numeric"
+   ],
+   [
+    "test_params_named.py",
+    "test_params_named_present_with_forecast_horizon",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_garch_fit_matches_arch_package",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_garch_gjr_asymmetry_detected",
+    "structural"
+   ]
+  ]
+ },
+ {
+  "name": "gas_volatility",
+  "n_tests": 4,
+  "best": "numeric",
+  "counts": {
+   "numeric": 2,
+   "raises": 1,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_new_crates.py",
+    "test_gas_gaussian_fit_is_sane",
+    "numeric"
+   ],
+   [
+    "test_new_crates.py",
+    "test_gas_student_t_estimates_dof",
+    "numeric"
+   ],
+   [
+    "test_new_crates.py",
+    "test_gas_rejects_unknown_density",
+    "raises"
+   ],
+   [
+    "test_params_named.py",
+    "test_gas_and_dcs_keep_flat_named_keys_and_need_no_params_named",
+    "structural"
+   ]
+  ]
+ },
+ {
+  "name": "gev_fit",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_evt.py",
+    "test_gev_fit_matches_scipy",
+    "reference"
+   ],
+   [
+    "test_evt.py",
+    "test_gev_defaults_and_keys",
+    "reference"
+   ],
+   [
+    "test_evt.py",
+    "test_gev_errors_teach",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "gmm_nonlinear",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "reference": 4,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_gmm_nonlinear.py",
+    "test_nonlinear_gmm_recovers_mean_and_variance",
+    "reference"
+   ],
+   [
+    "test_gmm_nonlinear.py",
+    "test_nonlinear_gmm_explicit_identity_weight_matches_default",
+    "reference"
+   ],
+   [
+    "test_gmm_nonlinear.py",
+    "test_nonlinear_gmm_propagates_callback_error",
+    "raises"
+   ],
+   [
+    "test_gmm_nonlinear.py",
+    "test_one_d_moment_return_blames_moments_fn_not_initial",
+    "reference"
+   ],
+   [
+    "test_gmm_nonlinear.py",
+    "test_scalar_and_ragged_moment_returns_blame_moments_fn",
+    "raises"
+   ],
+   [
+    "test_gmm_nonlinear.py",
+    "test_moment_return_dtype_is_coerced_like_data_arguments",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "gpd_fit",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_evt.py",
+    "test_gpd_fit_matches_scipy",
+    "reference"
+   ],
+   [
+    "test_evt.py",
+    "test_gpd_defaults_and_keys",
+    "reference"
+   ],
+   [
+    "test_evt.py",
+    "test_gpd_errors_teach",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "group_lasso",
+  "n_tests": 9,
+  "best": "reference",
+  "counts": {
+   "reference": 5,
+   "numeric": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_structured.py",
+    "test_group_lasso_matches_reference_and_kkt_certificate",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_group_lasso_default_tolerance_certificate",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_group_lasso_reductions_to_lasso",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_group_lasso_alpha_max_zeroes_the_fit",
+    "numeric"
+   ],
+   [
+    "test_structured.py",
+    "test_group_lasso_converged_flag_fires",
+    "numeric"
+   ],
+   [
+    "test_structured.py",
+    "test_group_lasso_custom_weights_and_group_weight_strings",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_group_lasso_pandas_and_integer_groups_survive_coercion",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_group_lasso_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_structured.py",
+    "test_docstrings_name_every_returned_key",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "growth_at_risk",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 4
+  },
+  "tests": [
+   [
+    "test_convergence_flags.py",
+    "test_growth_at_risk_emits_per_tau_converged",
+    "reference"
+   ],
+   [
+    "test_frontier.py",
+    "test_growth_at_risk_orders_quantiles_and_reports_crossing",
+    "reference"
+   ],
+   [
+    "test_frontier.py",
+    "test_growth_at_risk_returns_bse_powell",
+    "reference"
+   ],
+   [
+    "test_frontier.py",
+    "test_growth_at_risk_bse_powell_matches_the_statsmodels_fixture",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "gw_test",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_panel_fceval.py",
+    "test_cw_and_gw_match_fixture",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "hamilton_filter",
+  "n_tests": 11,
+  "best": "reference",
+  "counts": {
+   "reference": 9,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_bn_filters.py",
+    "test_hamilton_defaults_bit_identical_across_new_surfaces",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_hamilton_hac_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_hamilton_random_walk_is_the_h_difference_exactly",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_hamilton_rw_equivalence_on_a_pure_random_walk",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_hamilton_error_surfaces",
+    "raises"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_coercion_accepts_lists_and_float32",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_statsmodels_reference_canary",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_hamilton_maxlags_refused_under_every_non_hac_path",
+    "reference"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_hamilton_use_correction_refused_where_inert",
+    "raises"
+   ],
+   [
+    "test_bn_filters.py",
+    "test_hamilton_use_correction_sentinel_default_bit_identical",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_filters_match_statsmodels",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "hansen_seo_test",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "reference": 3,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_tvecm.py",
+    "test_hansen_seo_statistic_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_tvecm.py",
+    "test_bootstrap_is_seed_deterministic_and_verdicts_split",
+    "reference"
+   ],
+   [
+    "test_tvecm.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_tvecm.py",
+    "test_grid_refusal_names_each_surfaces_own_kwarg",
+    "raises"
+   ],
+   [
+    "test_tvecm.py",
+    "test_docstrings_name_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "har_rv",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_depth.py",
+    "test_har_rv_matches_statsmodels_hac",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "hetero_svar",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "structural": 2,
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_hetero_svar_regime_labels_stay_integer",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_exempt_parameters_pass_pandas_through_untouched",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_integer_data_still_converts_in_the_same_call_as_integer_labels",
+    "reference"
+   ],
+   [
+    "test_ident_tranche1.py",
+    "test_hetero_svar_identifies_on_distinct_regimes",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "heteroskedasticity_test",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_spectest_afns_dsge.py",
+    "test_white_and_breusch_pagan",
+    "reference"
+   ],
+   [
+    "test_spectest_afns_dsge.py",
+    "test_heteroskedasticity_test_rejects_unknown",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "historical_decomposition",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_ident_tranche2b.py",
+    "test_historical_decomposition_adds_up",
+    "reference"
+   ],
+   [
+    "test_ident_tranche2b.py",
+    "test_historical_decomposition_shocks_shape",
+    "structural"
+   ]
+  ]
+ },
+ {
+  "name": "hp_filter",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_convex.py",
+    "test_l2_penalty_is_the_hp_filter",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_filters_match_statsmodels",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "iv_gmm",
+  "n_tests": 13,
+  "best": "reference",
+  "counts": {
+   "reference": 4,
+   "numeric": 6,
+   "structural": 1,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_coverage_fixes.py",
+    "test_hac_weighting_is_not_identical_to_robust",
+    "reference"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_hac_bandwidth_is_reported_and_follows_the_newey_west_rule",
+    "numeric"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_robust_reports_no_bandwidth",
+    "structural"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_explicit_bandwidth_is_honoured_and_reported",
+    "reference"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_explicit_zero_bandwidth_raises_and_explains_that_it_is_white",
+    "raises"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_two_stage_least_squares_refuses_a_weight_argument",
+    "raises"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_iterated_gmm_also_resolves_the_automatic_bandwidth",
+    "numeric"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_first_stage_present_for_an_endogenous_regressor",
+    "numeric"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_first_stage_is_empty_for_a_fully_exogenous_model",
+    "numeric"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_exact_linear_combination_yields_no_entry_not_a_fabricated_f",
+    "numeric"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_first_stage_entries_must_be_looked_up_by_regressor",
+    "numeric"
+   ],
+   [
+    "test_gmm.py",
+    "test_iv_gmm_two_step_robust_matches_linearmodels",
+    "reference"
+   ],
+   [
+    "test_gmm.py",
+    "test_exactly_identified_gmm_equals_2sls",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "ivx_test",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "reference": 3,
+   "numeric": 2,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_predreg.py",
+    "test_multi_ivx_joint_test_matches_golden",
+    "reference"
+   ],
+   [
+    "test_predreg.py",
+    "test_ivx_test_bonferroni_is_the_scalar_tests_combined",
+    "reference"
+   ],
+   [
+    "test_predreg.py",
+    "test_ivx_test_default_is_bonferroni",
+    "numeric"
+   ],
+   [
+    "test_predreg.py",
+    "test_ivx_test_bonferroni_specializes_to_scalar_at_k1",
+    "numeric"
+   ],
+   [
+    "test_predreg.py",
+    "test_ivx_test_unknown_joint_raises_with_both_options_named",
+    "raises"
+   ],
+   [
+    "test_results_predreg.py",
+    "test_joint_is_a_dict_with_the_original_keys",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "jarque_bera",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_jarque_bera_matches_statsmodels_fixture",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "johansen",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 3
+  },
+  "tests": [
+   [
+    "test_coint_regime.py",
+    "test_johansen_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_co_reconciles_with_johansen_and_n_diverges",
+    "reference"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_johansen_evec_matches_statsmodels_up_to_sign",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "kernel_regression",
+  "n_tests": 10,
+  "best": "reference",
+  "counts": {
+   "reference": 8,
+   "numeric": 1,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_kernel.py",
+    "test_kernel_regression_matches_statsmodels_at_fixed_bandwidth",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_scalar_bandwidth_broadcasts_and_1d_x_is_accepted",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_loo_cv_selection_is_no_worse_than_statsmodels_fmin",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_block_cv_default_block_and_transcribed_criterion",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_block_cv_selects_a_wider_bandwidth_under_ar1_errors",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_boundary_flag_fires_on_pure_noise",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_effective_df_limits",
+    "numeric"
+   ],
+   [
+    "test_kernel.py",
+    "test_kernel_regression_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_kernel.py",
+    "test_kernel_regression_pandas_coercion",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_docstrings_name_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "kernel_ridge",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "reference": 5,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_kernel.py",
+    "test_kernel_ridge_matches_sklearn",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_kernel_ridge_predicted_only_with_x_test_and_1d_x",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_kernel_ridge_rff_keys_determinism_and_convergence",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_kernel_ridge_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_kernel.py",
+    "test_kernel_ridge_pandas_coercion",
+    "reference"
+   ],
+   [
+    "test_kernel.py",
+    "test_docstrings_name_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "kpss",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_kpss_matches_statsmodels",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "l1_trend_filter",
+  "n_tests": 11,
+  "best": "reference",
+  "counts": {
+   "reference": 9,
+   "raises": 1,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_convex.py",
+    "test_l1_trend_filter_keys_and_marshalling",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_l1_certificate_and_lam_max_through_python",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_l1_matches_clarabel_through_python",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_l1_polynomial_limit",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_l1_lam_zero_and_vanishing_lam_return_the_data",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_l2_penalty_is_the_hp_filter",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_l2_inert_kwargs_follow_the_sentinel_convention",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_l1_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_convex.py",
+    "test_l1_pandas_coercion",
+    "reference"
+   ],
+   [
+    "test_convex.py",
+    "test_docstrings_name_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_convex.py",
+    "test_wall_time_report",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "lasso",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_lp_ml.py",
+    "test_ridge_lasso_elasticnet_match_sklearn",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_group_lasso_reductions_to_lasso",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "lasso_path",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_ml_paths.py",
+    "test_lasso_path_structure_and_selection",
+    "reference"
+   ],
+   [
+    "test_ml_paths.py",
+    "test_lasso_path_rejects_ridge_only",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "ljung_box",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "numeric": 1,
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_binding_gaps.py",
+    "test_ljung_box_runs_on_returned_residual_column",
+    "numeric"
+   ],
+   [
+    "test_smoke.py",
+    "test_ljung_box_matches_statsmodels_fixture",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_arima_fit_beats_statsmodels_on_nile",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "local_level_smooth",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_local_level_matches_statsmodels_exact_diffuse",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_local_level_with_missing_data",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "long_memory_d",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "numeric": 1,
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_docstring_keys.py",
+    "test_long_memory_d_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_roadmap_gaps.py",
+    "test_long_memory_d_gph_and_whittle_match_golden",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "long_run_svar",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "structural": 2,
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_restriction_spec_lists_reach_the_estimator",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_restriction_specs_are_never_converted",
+    "structural"
+   ],
+   [
+    "test_ident_tranche1.py",
+    "test_long_run_svar_identities",
+    "reference"
+   ],
+   [
+    "test_ident_tranche1.py",
+    "test_long_run_svar_matches_numpy_closed_form",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "long_run_variance",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_long_run_variance_matches_fixture",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "lp",
+  "n_tests": 27,
+  "best": "reference",
+  "counts": {
+   "raises": 5,
+   "reference": 15,
+   "numeric": 6,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_negative_integer_arguments_raise_teaching_valueerrors",
+    "raises"
+   ],
+   [
+    "test_frontier.py",
+    "test_smooth_lp_lambda_zero_reproduces_raw_lp",
+    "reference"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_lp_both_default_resolves_to_hac_and_stamps_se_method",
+    "reference"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_lp_default_se_is_unchanged_outside_both_mode",
+    "reference"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_lp_both_with_explicit_lag_augmented_raises_and_teaches",
+    "raises"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_lp_both_bands_ride_on_hac_ses",
+    "numeric"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_hac_sup_t_band_reports_the_cov_se_gap",
+    "reference"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_lag_augmented_sup_t_gap_is_machine_noise",
+    "numeric"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_closed_form_routes_return_none_for_the_gap",
+    "structural"
+   ],
+   [
+    "test_lp_ml.py",
+    "test_lp_hac_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_lp_ml.py",
+    "test_lp_lag_augmented_covers_true_irf",
+    "reference"
+   ],
+   [
+    "test_lp_ml.py",
+    "test_lp_cumulative_differs_from_level",
+    "reference"
+   ],
+   [
+    "test_lp_multiplier.py",
+    "test_legacy_cumulative_true_is_unchanged",
+    "reference"
+   ],
+   [
+    "test_lp_multiplier.py",
+    "test_cumulative_both_mode_differs_from_outcome_mode",
+    "reference"
+   ],
+   [
+    "test_lp_multiplier.py",
+    "test_bad_cumulative_spelling_is_rejected",
+    "raises"
+   ],
+   [
+    "test_results_lp.py",
+    "test_fit_passes_kwargs_through_to_tsecon_lp",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_lp_default_returns_no_band_and_the_same_estimates",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_lp_simultaneous_contains_pointwise",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_lp_critical_values_exceed_z_and_order_as_expected",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_lp_critical_value_increases_with_k",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_at_k_equals_one_simultaneous_coincides_with_pointwise",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_lp_reports_scope_k_and_seed_provenance",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_lp_sup_t_is_a_pure_function_of_the_seed",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_closed_form_routes_need_no_seed",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_unknown_band_raises_on_the_lp_surfaces",
+    "raises"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_band_alpha_is_validated",
+    "raises"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_sup_t_spellings_are_equivalent_and_echo_canonically",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "lp_did",
+  "n_tests": 12,
+  "best": "reference",
+  "counts": {
+   "reference": 5,
+   "structural": 1,
+   "raises": 6
+  },
+  "tests": [
+   [
+    "test_lpdid.py",
+    "test_lp_did_matches_the_fixest_reference_run",
+    "reference"
+   ],
+   [
+    "test_lpdid.py",
+    "test_baseline_row_is_exact_zero_and_samples_shrink",
+    "reference"
+   ],
+   [
+    "test_lpdid.py",
+    "test_metadata_is_stamped",
+    "reference"
+   ],
+   [
+    "test_lpdid.py",
+    "test_pooled_keys_present_when_requested",
+    "structural"
+   ],
+   [
+    "test_lpdid.py",
+    "test_reversal_under_absorbing_raises_and_nonabsorbing_accepts",
+    "raises"
+   ],
+   [
+    "test_lpdid.py",
+    "test_never_treated_only_without_never_treated_units_raises",
+    "raises"
+   ],
+   [
+    "test_lpdid.py",
+    "test_window_exceeding_the_panel_raises",
+    "raises"
+   ],
+   [
+    "test_lpdid.py",
+    "test_non_binary_treatment_raises",
+    "raises"
+   ],
+   [
+    "test_lpdid.py",
+    "test_mode_lag_consistency_raises",
+    "raises"
+   ],
+   [
+    "test_lpdid.py",
+    "test_no_switchers_raises",
+    "raises"
+   ],
+   [
+    "test_lpdid.py",
+    "test_integer_treatment_is_coerced",
+    "reference"
+   ],
+   [
+    "test_lpdid.py",
+    "test_docstring_names_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "lp_iv",
+  "n_tests": 8,
+  "best": "reference",
+  "counts": {
+   "reference": 4,
+   "raises": 1,
+   "numeric": 2,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_lp_ml.py",
+    "test_lp_iv_matches_linearmodels",
+    "reference"
+   ],
+   [
+    "test_lp_multiplier.py",
+    "test_outcome_only_cumulation_is_not_a_multiplier",
+    "reference"
+   ],
+   [
+    "test_lp_multiplier.py",
+    "test_legacy_cumulative_true_is_unchanged",
+    "reference"
+   ],
+   [
+    "test_lp_multiplier.py",
+    "test_cumulative_both_mode_differs_from_outcome_mode",
+    "reference"
+   ],
+   [
+    "test_lp_multiplier.py",
+    "test_bad_cumulative_spelling_is_rejected",
+    "raises"
+   ],
+   [
+    "test_replication_ramey_zubairy.py",
+    "test_multiplier_is_not_the_outcome_only_trap",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_closed_form_lp_surfaces_default_to_no_band",
+    "structural"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_sup_t_is_refused_where_no_cross_horizon_covariance_exists",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "lp_multiplier",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "numeric": 3,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_lp_multiplier.py",
+    "test_outcome_only_cumulation_is_not_a_multiplier",
+    "reference"
+   ],
+   [
+    "test_lp_multiplier.py",
+    "test_multiplier_equals_ratio_of_cumulative_reduced_forms",
+    "numeric"
+   ],
+   [
+    "test_lp_multiplier.py",
+    "test_multiplier_se_and_first_stage_f_are_reported",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_closed_form_lp_surfaces_default_to_no_band",
+    "structural"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_sup_t_is_refused_where_no_cross_horizon_covariance_exists",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "lp_state",
+  "n_tests": 9,
+  "best": "reference",
+  "counts": {
+   "numeric": 3,
+   "structural": 2,
+   "reference": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_lp_audit_fixes.py",
+    "test_lp_state_shares_the_both_mode_fix",
+    "numeric"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_closed_form_routes_return_none_for_the_gap",
+    "structural"
+   ],
+   [
+    "test_lp_state.py",
+    "test_lp_state_high_regime_impact_is_larger",
+    "reference"
+   ],
+   [
+    "test_lp_state.py",
+    "test_lp_state_shapes_and_keys",
+    "reference"
+   ],
+   [
+    "test_lp_state.py",
+    "test_lp_state_hac_se_path_runs",
+    "reference"
+   ],
+   [
+    "test_lp_state.py",
+    "test_lp_state_rejects_non_binary_indicator",
+    "raises"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_closed_form_lp_surfaces_default_to_no_band",
+    "structural"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_lp_state_bands_each_regime_separately",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_sup_t_is_refused_where_no_cross_horizon_covariance_exists",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "markov_switching_ar",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "numeric": 1,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_coint_regime.py",
+    "test_markov_switching_recovers_regimes",
+    "reference"
+   ],
+   [
+    "test_coint_regime.py",
+    "test_markov_switching_returns_full_probability_matrices",
+    "reference"
+   ],
+   [
+    "test_docstring_keys.py",
+    "test_markov_switching_ar_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_replication_hamilton_markov.py",
+    "test_binding_exposes_the_common_ar_block",
+    "structural"
+   ]
+  ]
+ },
+ {
+  "name": "max_share_svar",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_ident_tranche1.py",
+    "test_max_share_svar_properties",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "mcmc_diagnostics",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_mcmc_diagnostics_match_arviz",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "mean_group_var",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "numeric": 2,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_mean_group_var.py",
+    "test_mean_group_equals_average_of_unit_vars",
+    "reference"
+   ],
+   [
+    "test_mean_group_var.py",
+    "test_shapes_and_metadata",
+    "numeric"
+   ],
+   [
+    "test_mean_group_var.py",
+    "test_irf_path_matches_selected_pair",
+    "reference"
+   ],
+   [
+    "test_mean_group_var.py",
+    "test_accepts_unequal_time_dimensions",
+    "numeric"
+   ],
+   [
+    "test_mean_group_var.py",
+    "test_requires_at_least_two_entities",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "midas_weights",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_midas_mgarch.py",
+    "test_midas_weights_match_fixture",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "mlp_regression",
+  "n_tests": 12,
+  "best": "reference",
+  "counts": {
+   "reference": 7,
+   "structural": 1,
+   "numeric": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_neural.py",
+    "test_mlp_keys_shapes_and_weight_layout_reproduce_fitted",
+    "reference"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_without_x_test_returns_none_predictions",
+    "structural"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_hidden_accepts_tuple_list_and_int_arrays",
+    "numeric"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_hidden_int_is_one_layer_and_bad_values_teach",
+    "numeric"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_teaching_errors_name_arrays_choices_and_counts",
+    "raises"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_lbfgs_sentinels_refuse_epoch_arguments_and_defaults_are_identical",
+    "reference"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_seed_contract_and_leakage_safe_scaler",
+    "reference"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_pandas_coercion_matches_numpy",
+    "reference"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_recovers_nonlinear_ar1_out_of_sample_both_solvers",
+    "reference"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_ensemble_beats_mean_member_always_and_median_member_mostly",
+    "reference"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_early_stopping_fires_on_easy_problem_and_not_at_one_epoch",
+    "numeric"
+   ],
+   [
+    "test_neural.py",
+    "test_mlp_default_call_wall_clock_budget",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "mstl",
+  "n_tests": 8,
+  "best": "reference",
+  "counts": {
+   "reference": 7,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_mstl.py",
+    "test_mstl_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_mstl.py",
+    "test_single_period_mstl_equals_own_stl_bitwise",
+    "reference"
+   ],
+   [
+    "test_mstl.py",
+    "test_components_sum_to_y_and_shapes",
+    "reference"
+   ],
+   [
+    "test_mstl.py",
+    "test_period_order_and_input_types_do_not_matter",
+    "reference"
+   ],
+   [
+    "test_mstl.py",
+    "test_period_at_half_n_is_dropped_like_statsmodels",
+    "reference"
+   ],
+   [
+    "test_mstl.py",
+    "test_per_period_seasonal_strength_matches_formula",
+    "reference"
+   ],
+   [
+    "test_mstl.py",
+    "test_constant_series_decomposes_but_reports_no_strength",
+    "reference"
+   ],
+   [
+    "test_mstl.py",
+    "test_mstl_errors_teach",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "narrative_svar",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_ident_tranche2b.py",
+    "test_narrative_reduces_to_sign_restricted_when_no_events",
+    "reference"
+   ],
+   [
+    "test_ident_tranche2b.py",
+    "test_narrative_reproducible",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "ndiffs",
+  "n_tests": 4,
+  "best": "numeric",
+  "counts": {
+   "numeric": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_exercise_gap.py",
+    "TestNdiffs::test_random_walk_needs_a_difference",
+    "numeric"
+   ],
+   [
+    "test_exercise_gap.py",
+    "TestNdiffs::test_white_noise_needs_none",
+    "numeric"
+   ],
+   [
+    "test_exercise_gap.py",
+    "TestNdiffs::test_max_d_caps_the_answer",
+    "numeric"
+   ],
+   [
+    "test_exercise_gap.py",
+    "TestNdiffs::test_unknown_test_raises_teaching_error",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "nelson_siegel",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "numeric": 2
+  },
+  "tests": [
+   [
+    "test_termstructure.py",
+    "test_nelson_siegel_matches_ols_golden",
+    "reference"
+   ],
+   [
+    "test_termstructure.py",
+    "test_nelson_siegel_optimal_lambda_improves_fit",
+    "numeric"
+   ],
+   [
+    "test_termstructure.py",
+    "test_svensson_nests_nelson_siegel",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "ng_perron",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "numeric": 4,
+   "reference": 1,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_ng_perron.py",
+    "test_matches_independent_numpy_reference",
+    "numeric"
+   ],
+   [
+    "test_ng_perron.py",
+    "test_mzt_identity_through_the_boundary",
+    "numeric"
+   ],
+   [
+    "test_ng_perron.py",
+    "test_shared_detrending_with_dfgls_through_the_boundary",
+    "reference"
+   ],
+   [
+    "test_ng_perron.py",
+    "test_table1_critical_values_and_contract",
+    "numeric"
+   ],
+   [
+    "test_ng_perron.py",
+    "test_verdicts_walk_vs_stationary",
+    "numeric"
+   ],
+   [
+    "test_ng_perron.py",
+    "test_errors_teach",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "nongaussian_svar",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "reference": 4,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_nongaussian_svar.py",
+    "test_contract_and_covariance_identity",
+    "reference"
+   ],
+   [
+    "test_nongaussian_svar.py",
+    "test_recovers_known_B_up_to_sign_permutation",
+    "numeric"
+   ],
+   [
+    "test_nongaussian_svar.py",
+    "test_reproducible",
+    "reference"
+   ],
+   [
+    "test_nongaussian_svar.py",
+    "test_agrees_with_sklearn_fastica",
+    "reference"
+   ],
+   [
+    "test_nongaussian_svar.py",
+    "test_gaussian_data_fails_honestly",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "nsdiffs",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_stl.py",
+    "test_nsdiffs_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_stl.py",
+    "test_nsdiffs_errors_teach",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "ols",
+  "n_tests": 8,
+  "best": "reference",
+  "counts": {
+   "numeric": 2,
+   "reference": 4,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_coverage_fixes.py",
+    "test_ols_accepts_hc2_and_hc3",
+    "numeric"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_hc2_and_hc3_match_statsmodels",
+    "reference"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_hc_ladder_is_ordered_by_leverage_weight",
+    "numeric"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_leverage_correction_is_not_hc1_by_another_name",
+    "reference"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_unknown_se_type_message_now_lists_hc2_and_hc3",
+    "raises"
+   ],
+   [
+    "test_coverage_fixes.py",
+    "test_unit_leverage_is_refused_not_reported_as_a_huge_se",
+    "raises"
+   ],
+   [
+    "test_smoke.py",
+    "test_ols_hac_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_hac_use_correction_defaults_on_and_differs_from_statsmodels_default",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "optimal_block_length",
+  "n_tests": 1,
+  "best": "numeric",
+  "counts": {
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_optimal_block_length_on_nile",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "ou_fit",
+  "n_tests": 12,
+  "best": "reference",
+  "counts": {
+   "numeric": 6,
+   "reference": 4,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_docstring_keys.py",
+    "test_ou_fit_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_ou.py",
+    "test_ar1_leg_matches_live_statsmodels_autoreg",
+    "reference"
+   ],
+   [
+    "test_ou.py",
+    "test_ou_mapping_matches_fixture",
+    "numeric"
+   ],
+   [
+    "test_ou.py",
+    "test_ou_mapping_closed_form_identities",
+    "reference"
+   ],
+   [
+    "test_ou.py",
+    "test_spread_zscore_golden_and_paths",
+    "reference"
+   ],
+   [
+    "test_ou.py",
+    "test_explosive_reported_not_raised",
+    "numeric"
+   ],
+   [
+    "test_ou.py",
+    "test_ou_fit_refusals_teach",
+    "raises"
+   ],
+   [
+    "test_ou.py",
+    "test_nan_refusal_text_is_ou_appropriate",
+    "raises"
+   ],
+   [
+    "test_ou.py",
+    "test_weak_cell_ci_upper_is_inf",
+    "numeric"
+   ],
+   [
+    "test_ou.py",
+    "test_mc_kappa_bias_and_shipped_ci_coverage_smoke",
+    "reference"
+   ],
+   [
+    "test_ou.py",
+    "test_coercion_pandas_and_list",
+    "numeric"
+   ],
+   [
+    "test_ou.py",
+    "test_docstrings_name_every_returned_key",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "pacf",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_pacf_matches_statsmodels_fixture",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_error_messages_teach",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "panel_fe",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_panel_fceval.py",
+    "test_panel_fe_matches_linearmodels",
+    "reference"
+   ],
+   [
+    "test_panel_fceval.py",
+    "test_absorbed_regressor_raises_not_a_t_statistic",
+    "raises"
+   ],
+   [
+    "test_panel_fceval.py",
+    "test_panel_fe_explicit_bandwidth_without_dk_raises_and_teaches",
+    "raises"
+   ],
+   [
+    "test_panel_fceval.py",
+    "test_dk_bandwidth_paths_unchanged_bit_identical",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "panel_lp",
+  "n_tests": 15,
+  "best": "reference",
+  "counts": {
+   "reference": 10,
+   "raises": 4,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_panel_fceval.py",
+    "test_panel_lp_recovers_known_irf",
+    "reference"
+   ],
+   [
+    "test_panel_fceval.py",
+    "test_panel_lp_explicit_bandwidth_without_dk_raises_and_teaches",
+    "raises"
+   ],
+   [
+    "test_panel_fceval.py",
+    "test_dk_bandwidth_paths_unchanged_bit_identical",
+    "reference"
+   ],
+   [
+    "test_panel_spj.py",
+    "test_spj_matches_the_transcription_fixture",
+    "reference"
+   ],
+   [
+    "test_panel_spj.py",
+    "test_spj_metadata_is_stamped",
+    "reference"
+   ],
+   [
+    "test_panel_spj.py",
+    "test_dj_alias_and_flag_agree_and_conflict_raises",
+    "reference"
+   ],
+   [
+    "test_panel_spj.py",
+    "test_spj_corrects_toward_the_truth_on_the_fixture_panel",
+    "reference"
+   ],
+   [
+    "test_panel_spj.py",
+    "test_spj_refusals_teach",
+    "raises"
+   ],
+   [
+    "test_panel_spj.py",
+    "test_uncorrected_route_is_untouched",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_panel_lp_default_returns_no_band_and_the_same_estimates",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_panel_lp_simultaneous_contains_pointwise_and_edges_are_c_times_se",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_unknown_band_raises_on_the_lp_surfaces",
+    "raises"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_band_alpha_is_validated",
+    "raises"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_sup_t_is_refused_where_no_cross_horizon_covariance_exists",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_panel_lp_joint_coverage_pointwise_fails_and_closed_forms_repair_it",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "panel_mean_group",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_new_crates.py",
+    "test_mean_group_matches_golden",
+    "reference"
+   ],
+   [
+    "test_new_crates.py",
+    "test_cce_mean_group_matches_golden_and_beats_mg",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "panel_pmg",
+  "n_tests": 7,
+  "best": "reference",
+  "counts": {
+   "structural": 1,
+   "numeric": 2,
+   "reference": 4
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_ragged_panel_lists_pass_through",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_ragged_panel_elements_are_coerced_but_the_list_is_kept",
+    "numeric"
+   ],
+   [
+    "test_convergence_flags.py",
+    "test_pmg_battery_converges_at_every_scale",
+    "numeric"
+   ],
+   [
+    "test_convergence_flags.py",
+    "test_pmg_golden_unmoved_and_stops_at_the_same_iterate",
+    "reference"
+   ],
+   [
+    "test_convergence_flags.py",
+    "test_pmg_tol_and_max_iter_kwargs",
+    "reference"
+   ],
+   [
+    "test_pmg_news.py",
+    "test_pmg_matches_golden",
+    "reference"
+   ],
+   [
+    "test_pmg_news.py",
+    "test_pmg_pools_the_long_run_near_truth",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "panel_unit_root",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "numeric": 3,
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_ident_tranche2a.py",
+    "test_panel_unit_root_contract",
+    "numeric"
+   ],
+   [
+    "test_ident_tranche2a.py",
+    "test_panel_unit_root_rejects_stationary_holds_unit_root",
+    "numeric"
+   ],
+   [
+    "test_ident_tranche2a.py",
+    "test_panel_fisher_matches_statsmodels_combination",
+    "reference"
+   ],
+   [
+    "test_ident_tranche2a.py",
+    "test_panel_unit_root_accepts_list_of_uneven_series",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "pds_lasso",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "numeric": 2
+  },
+  "tests": [
+   [
+    "test_structured.py",
+    "test_pds_lasso_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_pds_lasso_defaults_and_alpha_forms",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_pds_lasso_pandas_and_teaching_errors",
+    "numeric"
+   ],
+   [
+    "test_structured.py",
+    "test_docstrings_name_every_returned_key",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "periodogram",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_spectral.py",
+    "test_periodogram_matches_scipy",
+    "reference"
+   ],
+   [
+    "test_spectral.py",
+    "test_periodogram_default_matches_scipy_default",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "phillips_ouliaris",
+  "n_tests": 1,
+  "best": "numeric",
+  "counts": {
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_ident_tranche1.py",
+    "test_phillips_ouliaris_contract",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "phillips_perron",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_ident_tranche1.py",
+    "test_phillips_perron_matches_arch",
+    "reference"
+   ],
+   [
+    "test_ident_tranche1.py",
+    "test_phillips_perron_rejects_stationary_holds_unit_root",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "philox_uniforms",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_philox_bit_compatible_with_numpy",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "post_lasso",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "numeric": 2
+  },
+  "tests": [
+   [
+    "test_structured.py",
+    "test_post_lasso_matches_sklearn",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_post_lasso_has_no_standard_errors_by_design",
+    "numeric"
+   ],
+   [
+    "test_structured.py",
+    "test_post_lasso_pandas_and_errors",
+    "reference"
+   ],
+   [
+    "test_structured.py",
+    "test_docstrings_name_every_returned_key",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "predictive_regression",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "numeric": 2,
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_docstring_keys.py",
+    "test_predictive_regression_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_predreg.py",
+    "test_scalar_predictive_regression_matches_golden",
+    "reference"
+   ],
+   [
+    "test_predreg.py",
+    "test_ivx_test_bonferroni_is_the_scalar_tests_combined",
+    "reference"
+   ],
+   [
+    "test_predreg.py",
+    "test_ivx_test_bonferroni_specializes_to_scalar_at_k1",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "proxy_ar_sets",
+  "n_tests": 18,
+  "best": "reference",
+  "counts": {
+   "numeric": 12,
+   "raises": 5,
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_audit_round11.py",
+    "test_proxy_ar_sets_rf_seed_none_is_seed_zero_and_documented",
+    "numeric"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_infinite_proxy_values_refused_as_corruption_family_wide",
+    "raises"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_all_nan_proxy_gets_a_teaching_error_naming_the_cause",
+    "raises"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_every_cell_kind_is_a_documented_string",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_norm_var_h0_cell_is_a_point_at_exactly_unit",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_norm_var_h0_cell_is_never_empty_and_always_contains_unit",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_lags0_with_reduced_form_uncertainty_names_lags_and_the_fix",
+    "raises"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_level_is_a_number_only_when_reduced_form_uncertainty_is_propagated",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_exterior_set_is_two_rays_not_an_interval",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_point_estimate_is_always_a_member_of_its_own_set",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_hac_lags_without_hac_variance_raises",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_second_order_rf_widens_long_horizons_and_keeps_boundedness",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_second_order_rf_is_seeded_and_deterministic",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_rf_knobs_never_no_op",
+    "raises"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_second_order_bc_widens_beyond_second_order_and_keeps_boundedness",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_second_order_bc_is_seeded_and_deterministic",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_second_order_bc_rf_knobs_never_no_op",
+    "raises"
+   ],
+   [
+    "test_replication_gk.py",
+    "test_post84_identification_weakens_and_output_effects_dissolve",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "proxy_first_stage",
+  "n_tests": 9,
+  "best": "reference",
+  "counts": {
+   "reference": 1,
+   "numeric": 6,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_proxy_first_stage.py",
+    "test_golden_fixture_reproduces_through_the_binding",
+    "reference"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_mop_critical_values_are_the_published_table",
+    "numeric"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_proxy_svar_stamps_the_same_diagnostics",
+    "numeric"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_strong_and_weak_land_on_the_right_side_of_the_bar",
+    "numeric"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_variance_choices_and_guards",
+    "numeric"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_nan_proxy_dropped_by_date_not_compacted",
+    "numeric"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_infinite_proxy_values_refused_as_corruption_family_wide",
+    "raises"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_nan_missingness_still_documented_and_live",
+    "numeric"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_all_nan_proxy_gets_a_teaching_error_naming_the_cause",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "proxy_svar",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "structural": 1,
+   "numeric": 2,
+   "raises": 2,
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_audit_round11.py",
+    "test_proxy_svar_shock_length_is_the_residual_sample",
+    "structural"
+   ],
+   [
+    "test_ident_tranche1.py",
+    "test_proxy_svar_contract",
+    "numeric"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_proxy_svar_stamps_the_same_diagnostics",
+    "numeric"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_infinite_proxy_values_refused_as_corruption_family_wide",
+    "raises"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_all_nan_proxy_gets_a_teaching_error_naming_the_cause",
+    "raises"
+   ],
+   [
+    "test_replication_gk.py",
+    "test_post84_identification_weakens_and_output_effects_dissolve",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "proxy_svar_bands",
+  "n_tests": 15,
+  "best": "reference",
+  "counts": {
+   "raises": 3,
+   "numeric": 4,
+   "reference": 8
+  },
+  "tests": [
+   [
+    "test_proxy_first_stage.py",
+    "test_infinite_proxy_values_refused_as_corruption_family_wide",
+    "raises"
+   ],
+   [
+    "test_proxy_first_stage.py",
+    "test_all_nan_proxy_gets_a_teaching_error_naming_the_cause",
+    "raises"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_h0_norm_var_band_is_exactly_degenerate_at_unit",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_band_shapes_and_diagnostics_contract",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_hall_and_efron_are_both_returned_and_differ",
+    "reference"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_wild_bootstrap_flags_itself_as_not_asymptotically_valid",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_moving_block_is_asymptotically_valid_and_mbb_is_an_alias",
+    "reference"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_unknown_bands_value_names_both_accepted_values",
+    "raises"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_same_seed_reproduces_bands_bit_for_bit",
+    "reference"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_different_seed_gives_different_bands",
+    "reference"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_failure_counters_are_complete_and_account_for_every_draw",
+    "numeric"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_draw_diagnostics_align_and_rho_is_normalized_in_every_draw",
+    "reference"
+   ],
+   [
+    "test_proxy_svar_bands.py",
+    "test_nan_prefix_proxy_is_dropped_by_date_not_compacted",
+    "reference"
+   ],
+   [
+    "test_replication_gk.py",
+    "test_wild_reproduces_gk_but_valid_mbb_undoes_ip_significance",
+    "reference"
+   ],
+   [
+    "test_replication_gk.py",
+    "test_seeded_bands_are_bit_reproducible",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "pseudo_obs",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 4
+  },
+  "tests": [
+   [
+    "test_copula.py",
+    "test_pseudo_obs_matches_scipy_rankdata_with_ties",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_pseudo_obs_is_increasing_invariant_and_fit_identical",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_pseudo_obs_decreasing_transform_flips_dependence",
+    "reference"
+   ],
+   [
+    "test_copula.py",
+    "test_real_data_case_reproduces_pseudo_obs_exactly",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "quantile_lp",
+  "n_tests": 1,
+  "best": "numeric",
+  "counts": {
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_convergence_flags.py",
+    "test_quantile_lp_emits_per_fit_converged_and_reports_real_exhaustion",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "quantile_regression",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_frontier.py",
+    "test_quantile_regression_matches_statsmodels",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "random_forest",
+  "n_tests": 10,
+  "best": "reference",
+  "counts": {
+   "reference": 6,
+   "numeric": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_trees.py",
+    "test_forest_single_tree_bridge_reproduces_the_tree",
+    "reference"
+   ],
+   [
+    "test_trees.py",
+    "test_forest_keys_shapes_and_defaults",
+    "reference"
+   ],
+   [
+    "test_trees.py",
+    "test_same_seed_bit_identical_different_seed_differs",
+    "reference"
+   ],
+   [
+    "test_trees.py",
+    "test_one_tree_leaves_in_bag_rows_without_oob_prediction",
+    "numeric"
+   ],
+   [
+    "test_trees.py",
+    "test_block_bootstraps_run_and_max_features_variants",
+    "numeric"
+   ],
+   [
+    "test_trees.py",
+    "test_importance_modes_and_groups",
+    "reference"
+   ],
+   [
+    "test_trees.py",
+    "test_pandas_inputs_are_coerced",
+    "reference"
+   ],
+   [
+    "test_trees.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_trees.py",
+    "test_inert_kwargs_are_refused_and_live_where_documented",
+    "reference"
+   ],
+   [
+    "test_trees.py",
+    "test_docstrings_name_every_returned_key_and_the_gotchas",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "realized_measures",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_depth.py",
+    "test_realized_measures_match_bns",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "realized_quarticity",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_realized_extras.py",
+    "test_realized_quarticity_matches_documented_formula",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "realized_range",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_realized_extras.py",
+    "test_realized_range_parkinson_closed_form",
+    "reference"
+   ],
+   [
+    "test_realized_extras.py",
+    "test_realized_range_garman_klass_closed_form",
+    "reference"
+   ],
+   [
+    "test_realized_extras.py",
+    "test_realized_range_rejects_unknown_method",
+    "raises"
+   ],
+   [
+    "test_realized_extras.py",
+    "test_realized_range_garman_klass_requires_open_close",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "recession_probit",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "numeric": 1,
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_zero_one_integer_dummy_accepted_by_recession_probit",
+    "numeric"
+   ],
+   [
+    "test_roadmap_gaps.py",
+    "test_recession_probit_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_roadmap_gaps.py",
+    "test_recession_logit_matches_statsmodels",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "regression_tree",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "reference": 3,
+   "raises": 1,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_trees.py",
+    "test_regression_tree_matches_sklearn_fixture",
+    "reference"
+   ],
+   [
+    "test_trees.py",
+    "test_forest_single_tree_bridge_reproduces_the_tree",
+    "reference"
+   ],
+   [
+    "test_trees.py",
+    "test_pandas_inputs_are_coerced",
+    "reference"
+   ],
+   [
+    "test_trees.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_trees.py",
+    "test_docstrings_name_every_returned_key_and_the_gotchas",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "reset_test",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_spectest_afns_dsge.py",
+    "test_reset",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "ridge",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_lp_ml.py",
+    "test_ridge_lasso_elasticnet_match_sklearn",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "robust_svar_bounds",
+  "n_tests": 1,
+  "best": "numeric",
+  "counts": {
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_ident_tranche2b.py",
+    "test_robust_bounds_contain_sign_restricted_band",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "seasonal_strength",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_stl.py",
+    "test_seasonal_strength_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_stl.py",
+    "test_seasonal_strength_refuses_constant_series",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "setar",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "numeric": 1,
+   "reference": 2,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_replication_setar_sunspots.py",
+    "test_delay_2_also_wins_an_unrestricted_delay_search",
+    "numeric"
+   ],
+   [
+    "test_setar.py",
+    "test_setar_fit_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_setar.py",
+    "test_ic_selects_the_reported_criterion",
+    "reference"
+   ],
+   [
+    "test_setar.py",
+    "test_degenerate_inputs_raise",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "setar_test",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_setar.py",
+    "test_setar_supf_statistic_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_setar.py",
+    "test_bootstrap_is_seeded_and_deterministic",
+    "reference"
+   ],
+   [
+    "test_setar.py",
+    "test_verdicts_threshold_vs_linear",
+    "reference"
+   ],
+   [
+    "test_setar.py",
+    "test_degenerate_inputs_raise",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "sign_restricted_svar",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 3,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_ident_tranche2b.py",
+    "test_narrative_reduces_to_sign_restricted_when_no_events",
+    "reference"
+   ],
+   [
+    "test_ident_tranche2b.py",
+    "test_robust_bounds_contain_sign_restricted_band",
+    "numeric"
+   ],
+   [
+    "test_lp_ml.py",
+    "test_sign_restricted_svar_runs_and_diagnoses",
+    "reference"
+   ],
+   [
+    "test_lp_ml.py",
+    "test_sign_restricted_svar_reproducible",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "smooth_lp",
+  "n_tests": 8,
+  "best": "reference",
+  "counts": {
+   "reference": 6,
+   "numeric": 2
+  },
+  "tests": [
+   [
+    "test_frontier.py",
+    "test_smooth_lp_matches_the_scipy_numpy_golden",
+    "reference"
+   ],
+   [
+    "test_frontier.py",
+    "test_smooth_lp_lambda_zero_reproduces_raw_lp",
+    "reference"
+   ],
+   [
+    "test_frontier.py",
+    "test_smooth_lp_large_lambda_flattens_curvature",
+    "reference"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_smooth_lp_sup_t_reports_the_gap_too",
+    "numeric"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_default_cv_lambda_selection_is_scale_invariant",
+    "reference"
+   ],
+   [
+    "test_lp_audit_fixes.py",
+    "test_explicit_lambda_grid_stays_absolute",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_smooth_lp_default_returns_no_band_and_the_same_estimates",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_smooth_lp_does_offer_sup_t",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "spread_zscore",
+  "n_tests": 8,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "raises": 4,
+   "numeric": 2
+  },
+  "tests": [
+   [
+    "test_ou.py",
+    "test_spread_zscore_golden_and_paths",
+    "reference"
+   ],
+   [
+    "test_ou.py",
+    "test_zscore_refuses_non_mean_reverting",
+    "raises"
+   ],
+   [
+    "test_ou.py",
+    "test_zscore_refuses_partial_parameters",
+    "raises"
+   ],
+   [
+    "test_ou.py",
+    "test_nan_refusal_text_is_ou_appropriate",
+    "raises"
+   ],
+   [
+    "test_ou.py",
+    "test_zscore_infinite_kappa_refused_for_finiteness",
+    "raises"
+   ],
+   [
+    "test_ou.py",
+    "test_coercion_pandas_and_list",
+    "numeric"
+   ],
+   [
+    "test_ou.py",
+    "test_docstrings_name_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_ou.py",
+    "test_spread_zscore_dt_refused_when_law_frozen",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "star",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "reference": 4,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_star.py",
+    "test_star_grid_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_star.py",
+    "test_flags_boundary_on_hard_threshold_and_interior_on_smooth",
+    "reference"
+   ],
+   [
+    "test_star.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_star.py",
+    "test_out_of_sample_delay_is_a_teaching_error_not_a_panic",
+    "raises"
+   ],
+   [
+    "test_star.py",
+    "test_delays_search_and_battery_agree_on_lstar_d2",
+    "reference"
+   ],
+   [
+    "test_star.py",
+    "test_docstrings_name_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "star_eval",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "reference": 4,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_star.py",
+    "test_star_eval_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_star.py",
+    "test_star_grid_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_star.py",
+    "test_star_eval_step_limit_reports_invalid_ses",
+    "reference"
+   ],
+   [
+    "test_star.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_star.py",
+    "test_out_of_sample_delay_is_a_teaching_error_not_a_panic",
+    "raises"
+   ],
+   [
+    "test_star.py",
+    "test_docstrings_name_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "star_test",
+  "n_tests": 5,
+  "best": "reference",
+  "counts": {
+   "reference": 3,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_star.py",
+    "test_star_test_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_star.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_star.py",
+    "test_out_of_sample_delay_is_a_teaching_error_not_a_panic",
+    "raises"
+   ],
+   [
+    "test_star.py",
+    "test_delays_search_and_battery_agree_on_lstar_d2",
+    "reference"
+   ],
+   [
+    "test_star.py",
+    "test_docstrings_name_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "stl",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "raises": 2,
+   "reference": 4
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_negative_integer_arguments_raise_teaching_valueerrors",
+    "raises"
+   ],
+   [
+    "test_mstl.py",
+    "test_single_period_mstl_equals_own_stl_bitwise",
+    "reference"
+   ],
+   [
+    "test_stl.py",
+    "test_stl_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_stl.py",
+    "test_stl_reconstruction_and_defaults",
+    "reference"
+   ],
+   [
+    "test_stl.py",
+    "test_stl_pandas_and_list_inputs_coerce",
+    "reference"
+   ],
+   [
+    "test_stl.py",
+    "test_stl_errors_teach",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "structural_fevd",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_ident_tranche2b.py",
+    "test_structural_fevd_rows_sum_to_one",
+    "reference"
+   ],
+   [
+    "test_ident_tranche2b.py",
+    "test_structural_fevd_recursive_matches_var_fevd",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "summarize",
+  "n_tests": 2,
+  "best": "structural",
+  "counts": {
+   "structural": 2
+  },
+  "tests": [
+   [
+    "test_auto_arima.py",
+    "test_summarize_wraps_the_result",
+    "structural"
+   ],
+   [
+    "test_var_backtest.py",
+    "test_verdict_is_summarizable",
+    "structural"
+   ]
+  ]
+ },
+ {
+  "name": "sup_f_test",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_frontier.py",
+    "test_sup_f_detects_and_locates_a_break",
+    "reference"
+   ],
+   [
+    "test_frontier.py",
+    "test_sup_f_null_is_not_rejected_wildly",
+    "numeric"
+   ],
+   [
+    "test_replication_bai_perron.py",
+    "test_supf_test_agrees_with_first_sequential_stage",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "svensson",
+  "n_tests": 1,
+  "best": "numeric",
+  "counts": {
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_termstructure.py",
+    "test_svensson_nests_nelson_siegel",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "theta_forecast",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_smoke.py",
+    "test_dm_and_theta_match_fixtures",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "threshold_var",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "reference": 5,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_tvar.py",
+    "test_tvar_fit_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_tvar.py",
+    "test_delay_search_picks_the_true_delay",
+    "reference"
+   ],
+   [
+    "test_tvar.py",
+    "test_refit_criterion_is_scan_minimum_and_split_is_consistent",
+    "reference"
+   ],
+   [
+    "test_tvar.py",
+    "test_pandas_input_accepted",
+    "reference"
+   ],
+   [
+    "test_tvar.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_tvar.py",
+    "test_docstrings_name_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "threshold_var_test",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_tvar.py",
+    "test_tvar_supwald_statistic_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_tvar.py",
+    "test_bootstrap_is_seed_deterministic_and_verdicts_split",
+    "reference"
+   ],
+   [
+    "test_tvar.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_tvar.py",
+    "test_docstrings_name_every_returned_key",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "threshold_vecm",
+  "n_tests": 10,
+  "best": "reference",
+  "counts": {
+   "reference": 6,
+   "raises": 4
+  },
+  "tests": [
+   [
+    "test_tvecm.py",
+    "test_tvecm_fit_matches_fixture",
+    "reference"
+   ],
+   [
+    "test_tvecm.py",
+    "test_two_regime_fit_nests_the_linear_fit",
+    "reference"
+   ],
+   [
+    "test_tvecm.py",
+    "test_pandas_input_accepted",
+    "reference"
+   ],
+   [
+    "test_tvecm.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_tvecm.py",
+    "test_grid_refusal_names_each_surfaces_own_kwarg",
+    "raises"
+   ],
+   [
+    "test_tvecm.py",
+    "test_k3_beta_none_remedy_is_python_typable",
+    "raises"
+   ],
+   [
+    "test_tvecm.py",
+    "test_insufficiency_message_is_exact_in_its_own_units",
+    "reference"
+   ],
+   [
+    "test_tvecm.py",
+    "test_docstrings_name_every_returned_key",
+    "reference"
+   ],
+   [
+    "test_tvecm.py",
+    "test_beta_grid_kwargs_refused_with_fixed_beta",
+    "raises"
+   ],
+   [
+    "test_tvecm.py",
+    "test_beta_grid_kwargs_sentinel_defaults_and_live_when_estimated",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "tripower_quarticity",
+  "n_tests": 1,
+  "best": "numeric",
+  "counts": {
+   "numeric": 1
+  },
+  "tests": [
+   [
+    "test_realized_extras.py",
+    "test_tripower_quarticity_matches_documented_formula",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "umidas",
+  "n_tests": 1,
+  "best": "reference",
+  "counts": {
+   "reference": 1
+  },
+  "tests": [
+   [
+    "test_midas_mgarch.py",
+    "test_umidas_matches_ols",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "var_backtest",
+  "n_tests": 8,
+  "best": "reference",
+  "counts": {
+   "numeric": 5,
+   "reference": 1,
+   "raises": 1,
+   "structural": 1
+  },
+  "tests": [
+   [
+    "test_var_backtest.py",
+    "test_hit_case_matches_fixture",
+    "numeric"
+   ],
+   [
+    "test_var_backtest.py",
+    "test_return_case_and_sign_convention",
+    "numeric"
+   ],
+   [
+    "test_var_backtest.py",
+    "test_kupiec_recomputed_from_scratch_with_scipy",
+    "reference"
+   ],
+   [
+    "test_var_backtest.py",
+    "test_jorion_published_example",
+    "numeric"
+   ],
+   [
+    "test_var_backtest.py",
+    "test_hits_with_var_forecasts_keeps_dq_var_regressor",
+    "numeric"
+   ],
+   [
+    "test_var_backtest.py",
+    "test_constant_var_is_dropped_with_honest_df",
+    "numeric"
+   ],
+   [
+    "test_var_backtest.py",
+    "test_errors_teach",
+    "raises"
+   ],
+   [
+    "test_var_backtest.py",
+    "test_verdict_is_summarizable",
+    "structural"
+   ]
+  ]
+ },
+ {
+  "name": "var_fevd",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 3
+  },
+  "tests": [
+   [
+    "test_ident_tranche2b.py",
+    "test_structural_fevd_recursive_matches_var_fevd",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_var_irf_fevd_match_statsmodels",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_var_fevd_is_horizon_first_even_when_k_differs_from_horizon",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "var_fit",
+  "n_tests": 23,
+  "best": "reference",
+  "counts": {
+   "reference": 11,
+   "numeric": 5,
+   "structural": 5,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_binding_gaps.py",
+    "test_var_resid_fitted_shapes_and_exact_reconstruction",
+    "reference"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_var_resid_trend_n_counts",
+    "numeric"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_ljung_box_runs_on_returned_residual_column",
+    "numeric"
+   ],
+   [
+    "test_binding_gaps.py",
+    "test_var_fit_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_coerce.py",
+    "test_coerce_data_leaves_zero_d_integer_arrays_alone",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_dataframe_accepted_end_to_end",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_offdtype_and_noncontiguous_accepted",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_integer_data_matrix_accepted_end_to_end",
+    "reference"
+   ],
+   [
+    "test_coerce.py",
+    "test_integer_arrays_convert_for_keyword_arguments_too",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_wrong_rank_raises_a_teaching_error",
+    "raises"
+   ],
+   [
+    "test_coerce.py",
+    "test_negative_integer_arguments_raise_teaching_valueerrors",
+    "raises"
+   ],
+   [
+    "test_ident_tranche1.py",
+    "test_long_run_svar_identities",
+    "reference"
+   ],
+   [
+    "test_ident_tranche1.py",
+    "test_long_run_svar_matches_numpy_closed_form",
+    "reference"
+   ],
+   [
+    "test_ident_tranche1.py",
+    "test_proxy_svar_contract",
+    "numeric"
+   ],
+   [
+    "test_mean_group_var.py",
+    "test_mean_group_equals_average_of_unit_vars",
+    "reference"
+   ],
+   [
+    "test_nongaussian_svar.py",
+    "test_contract_and_covariance_identity",
+    "reference"
+   ],
+   [
+    "test_nongaussian_svar.py",
+    "test_agrees_with_sklearn_fastica",
+    "reference"
+   ],
+   [
+    "test_results_generic.py",
+    "test_summarize_renders_scalars_matrices_and_nested_dicts",
+    "structural"
+   ],
+   [
+    "test_results_var.py",
+    "test_is_a_dict_with_every_original_key_unchanged",
+    "reference"
+   ],
+   [
+    "test_results_var.py",
+    "test_results_irf_convenience_uses_the_fitted_data",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_facade_and_module_supt_defaults_agree",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_var_fit_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_var_stability_verdict_is_not_max_root",
+    "numeric"
+   ]
+  ]
+ },
+ {
+  "name": "var_forecast",
+  "n_tests": 11,
+  "best": "reference",
+  "counts": {
+   "reference": 5,
+   "raises": 3,
+   "numeric": 3
+  },
+  "tests": [
+   [
+    "test_intervals.py",
+    "test_var_forecast_endpoints_are_mean_pm_z_se_at_requested_alpha",
+    "reference"
+   ],
+   [
+    "test_intervals.py",
+    "test_var_forecast_bands_symmetric_and_widths_ordered",
+    "reference"
+   ],
+   [
+    "test_intervals.py",
+    "test_var_forecast_rejects_invalid_alpha",
+    "raises"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_forecast_default_is_untouched",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_forecast_simultaneous_contains_marginal",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_forecast_scope_all_is_wider_than_scope_horizon",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_forecast_reports_scope_k_and_cells_used",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_sup_t_routes_are_reproducible_from_their_seeds",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_unknown_band_raises_naming_every_accepted_value",
+    "raises"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_unknown_band_scope_raises_even_at_the_pointwise_default",
+    "raises"
+   ],
+   [
+    "test_smoke.py",
+    "test_var_forecast_and_granger",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "var_granger",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "structural": 2,
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_exempt_parameters_pass_pandas_through_untouched",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_var_granger_index_arrays_stay_integer",
+    "structural"
+   ],
+   [
+    "test_coerce.py",
+    "test_integer_data_still_converts_in_the_same_call_as_integer_labels",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_var_forecast_and_granger",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "var_irf",
+  "n_tests": 10,
+  "best": "reference",
+  "counts": {
+   "structural": 2,
+   "reference": 8
+  },
+  "tests": [
+   [
+    "test_coerce.py",
+    "test_outputs_are_unchanged_by_wrapping",
+    "structural"
+   ],
+   [
+    "test_ident_tranche2a.py",
+    "test_zero_sign_recursive_special_case_recovers_cholesky_structure",
+    "reference"
+   ],
+   [
+    "test_intervals.py",
+    "test_var_irf_cumulative_is_running_sum",
+    "reference"
+   ],
+   [
+    "test_mean_group_var.py",
+    "test_mean_group_equals_average_of_unit_vars",
+    "reference"
+   ],
+   [
+    "test_results_generic.py",
+    "test_summarize_handles_nondict_returns",
+    "structural"
+   ],
+   [
+    "test_results_var.py",
+    "test_irf_array_matches_the_raw_nested_list",
+    "reference"
+   ],
+   [
+    "test_results_var.py",
+    "test_results_irf_convenience_uses_the_fitted_data",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_var_irf_fevd_match_statsmodels",
+    "reference"
+   ],
+   [
+    "test_smoke.py",
+    "test_var_fevd_is_horizon_first_even_when_k_differs_from_horizon",
+    "reference"
+   ],
+   [
+    "test_var_irf_bands.py",
+    "test_point_equals_var_irf_exactly",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "var_irf_bands",
+  "n_tests": 17,
+  "best": "reference",
+  "counts": {
+   "reference": 11,
+   "numeric": 4,
+   "raises": 2
+  },
+  "tests": [
+   [
+    "test_simultaneous_bands.py",
+    "test_var_irf_bands_default_is_untouched_pointwise",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_irf_bands_simultaneous_leaves_the_pointwise_arrays_alone",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_irf_simultaneous_contains_pointwise_cell_by_cell",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_bootstrap_simultaneous_contains_the_symmetric_band_not_the_percentiles",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_irf_critical_value_grows_with_the_declared_scope",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_irf_reports_scope_k_and_cells_used",
+    "numeric"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_var_sup_t_routes_are_reproducible_from_their_seeds",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_bootstrap_sup_t_is_reproducible_from_the_bootstrap_seed_alone",
+    "reference"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_unknown_band_raises_naming_every_accepted_value",
+    "raises"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_unknown_band_scope_raises_even_at_the_pointwise_default",
+    "raises"
+   ],
+   [
+    "test_simultaneous_bands.py",
+    "test_facade_and_module_supt_defaults_agree",
+    "reference"
+   ],
+   [
+    "test_var_irf_bands.py",
+    "test_asymptotic_contract_and_band_arithmetic",
+    "reference"
+   ],
+   [
+    "test_var_irf_bands.py",
+    "test_point_equals_var_irf_exactly",
+    "reference"
+   ],
+   [
+    "test_var_irf_bands.py",
+    "test_alpha_widens_bands",
+    "numeric"
+   ],
+   [
+    "test_var_irf_bands.py",
+    "test_bootstrap_is_reproducible_and_brackets_point",
+    "reference"
+   ],
+   [
+    "test_var_irf_bands.py",
+    "test_bootstrap_different_seed_differs",
+    "reference"
+   ],
+   [
+    "test_var_irf_bands.py",
+    "test_asymptotic_se_matches_statsmodels",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "vecm",
+  "n_tests": 16,
+  "best": "reference",
+  "counts": {
+   "reference": 8,
+   "raises": 3,
+   "numeric": 5
+  },
+  "tests": [
+   [
+    "test_coint_regime.py",
+    "test_vecm_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_default_is_deterministic_n",
+    "reference"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_co_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_co_reconciles_with_johansen_and_n_diverges",
+    "reference"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_unknown_deterministic_rejected",
+    "raises"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_seasons_one_rejected",
+    "raises"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_seasons_near_t_insufficiency_charges_the_dummies",
+    "raises"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_every_deterministic_case_matches_statsmodels",
+    "numeric"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_restricted_split_shapes",
+    "numeric"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_seasonal_matches_statsmodels",
+    "reference"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_first_season_changes_the_answer",
+    "reference"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_trending_case_choice_moves_beta",
+    "numeric"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_dict_round_trip_and_summarize",
+    "numeric"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_vecm_docstring_names_every_returned_key",
+    "numeric"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_first_season_refused_when_seasons_zero",
+    "reference"
+   ],
+   [
+    "test_vecm_deterministic.py",
+    "test_first_season_wraps_modulo_seasons_and_is_live",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "weighted_midas",
+  "n_tests": 4,
+  "best": "reference",
+  "counts": {
+   "reference": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_weighted_midas.py",
+    "test_weighted_midas_recovers_exp_almon_dgp",
+    "reference"
+   ],
+   [
+    "test_weighted_midas.py",
+    "test_weighted_midas_fixture_self_consistent",
+    "reference"
+   ],
+   [
+    "test_weighted_midas.py",
+    "test_weighted_midas_beta_scheme_and_start_override",
+    "reference"
+   ],
+   [
+    "test_weighted_midas.py",
+    "test_weighted_midas_rejects_unknown_scheme",
+    "raises"
+   ]
+  ]
+ },
+ {
+  "name": "welch",
+  "n_tests": 2,
+  "best": "reference",
+  "counts": {
+   "reference": 2
+  },
+  "tests": [
+   [
+    "test_spectral.py",
+    "test_welch_matches_scipy",
+    "reference"
+   ],
+   [
+    "test_spectral.py",
+    "test_welch_default_matches_scipy_default",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "zero_sign_svar",
+  "n_tests": 3,
+  "best": "reference",
+  "counts": {
+   "reference": 3
+  },
+  "tests": [
+   [
+    "test_ident_tranche2a.py",
+    "test_zero_sign_recursive_special_case_recovers_cholesky_structure",
+    "reference"
+   ],
+   [
+    "test_ident_tranche2a.py",
+    "test_zero_sign_reproducible",
+    "reference"
+   ],
+   [
+    "test_ident_tranche2a.py",
+    "test_zero_sign_with_signs_runs",
+    "reference"
+   ]
+  ]
+ },
+ {
+  "name": "zivot_andrews",
+  "n_tests": 6,
+  "best": "reference",
+  "counts": {
+   "reference": 2,
+   "numeric": 3,
+   "raises": 1
+  },
+  "tests": [
+   [
+    "test_zivot_andrews.py",
+    "test_fixture_cases_re_pin",
+    "reference"
+   ],
+   [
+    "test_zivot_andrews.py",
+    "test_live_parity_vs_statsmodels",
+    "reference"
+   ],
+   [
+    "test_zivot_andrews.py",
+    "test_engineered_break_is_localized",
+    "numeric"
+   ],
+   [
+    "test_zivot_andrews.py",
+    "test_break_index_respects_trim_window",
+    "numeric"
+   ],
+   [
+    "test_zivot_andrews.py",
+    "test_teaching_errors",
+    "raises"
+   ],
+   [
+    "test_zivot_andrews.py",
+    "test_fixed_lag_and_bic_paths_run",
+    "numeric"
+   ]
+  ]
+ }
+]
