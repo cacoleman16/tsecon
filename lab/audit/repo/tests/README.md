@@ -15,6 +15,8 @@ the release extension built into `.venv-wt`.
 | `skips_scan.py` | every `pytest.skip` / `importorskip` / `skipif` / `xfail` and Rust `#[ignore]` with its reason |
 | `fixture_meta_drift.py` | recorded reference-library versions in every fixture JSON vs the installed venv; generator parse / import / run-doc check |
 | `coverage_depth.py` | per public callable: distinct tests calling it and the strongest assertion kind |
+| `tolerance_headroom.py` | achieved error behind the 14 Python re-checks that are looser than the matrix |
+| `mc_trim_probe.py` | per-replication replay of the 241-s auto_arima Monte-Carlo test (evidence for the trim proposal) |
 | `ci_sim/sitecustomize.py` | import blocker reproducing CI's numpy+scipy-only python job (`PYTHONPATH=lab/audit/repo/tests/ci_sim`) |
 
 Outputs land in `out/` (committed: the text summaries and the run logs).

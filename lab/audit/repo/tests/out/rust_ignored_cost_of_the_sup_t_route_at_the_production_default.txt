@@ -50,28 +50,15 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; fin
      Running tests/simultaneous_bands.rs (target-wt/release/deps/simultaneous_bands-781bac8554c6202c)
 
 running 1 test
-test mc_forecast_simultaneous_coverage has been running for over 60 seconds
 
-=== simultaneous forecast coverage, T = 100, 12 horizons x 2 series ===
-DGP: VAR(1), A = [[.70,.15],[.10,.60]], Sigma = [[1,.4],[.4,1]], nominal 95%
-6000 replications, sup-t over all horizons and series (K = 24, n_sim = 50000)
-multiplier: pointwise z = 1.9600, sup-t mean c = 2.9837
+=== sup-t cost, k = 3, horizon = 12, n_sim = 100000 (release) ===
+  scope horizon   K =   13  families =  9     318.5 ms
+  scope shock     K =   39  families =  3     696.1 ms
+  scope all       K =  117  families =  1     936.7 ms
+  forecast, scope all, K = 36: 109.3 ms
+test cost_of_the_sup_t_route_at_the_production_default ... ok
 
-  marginal (per cell):  pointwise  93.3%   sup-t  99.3%
-  JOINT (all cells):    pointwise  41.2% ± 0.6   sup-t  90.5% ± 0.4
-
-  audit reference at T=100: marginal 94.4%, joint 40.9% ± 0.6 (nominal 95%)
-
-  Why sup-t lands at 90.5% and not 95%: the marginal band it is built from covers
-  93.3%, not 95%, because var_forecast is a plug-in interval — it evaluates the
-  textbook Gaussian formula at the estimated coefficients and ignores the sampling
-  error in them. A 1.7pp marginal shortfall compounds over K = 24 cells. Conditional
-  on the coefficients the sup-t band's joint coverage is exact by construction; the
-  residual 4.4pp is the price of not knowing the coefficients, and it is the same
-  price the marginal band already pays.
-test mc_forecast_simultaneous_coverage ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 204.43s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 2.06s
 
    Doc-tests tsecon_var
 

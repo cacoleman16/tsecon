@@ -1,0 +1,43 @@
+truth (1, 0, 0) rep  0: selected (2, 0, 1)  within-one=True  n_models=21  8.6s
+truth (1, 0, 0) rep  1: selected (1, 0, 0)  within-one=True  n_models=13  3.8s
+truth (1, 0, 0) rep  2: selected (1, 0, 0)  within-one=True  n_models=13  3.6s
+truth (1, 0, 0) rep  3: selected (2, 0, 0)  within-one=True  n_models=16  5.9s
+truth (1, 0, 0) rep  4: selected (1, 0, 0)  within-one=True  n_models=13  4.6s
+truth (1, 0, 0) rep  5: selected (1, 1, 1)  within-one=False  n_models=23  16.3s
+truth (1, 0, 0) rep  6: selected (1, 0, 0)  within-one=True  n_models=13  3.8s
+truth (1, 0, 0) rep  7: selected (3, 0, 2)  within-one=False  n_models=15  10.9s
+truth (1, 0, 0) rep  8: selected (1, 0, 0)  within-one=True  n_models=13  3.4s
+truth (1, 0, 0) rep  9: selected (1, 0, 0)  within-one=True  n_models=9  2.4s
+truth (1, 0, 0) rep 10: selected (1, 0, 0)  within-one=True  n_models=13  3.2s
+truth (1, 0, 0) rep 11: selected (1, 0, 0)  within-one=True  n_models=9  2.3s
+truth (1, 0, 0): within-one 5/6 at reps=6 (bar 3), 10/12 at reps=12 (bar 6)
+
+truth (0, 0, 1) rep  0: selected (1, 0, 1)  within-one=True  n_models=20  6.7s
+truth (0, 0, 1) rep  1: selected (0, 0, 1)  within-one=True  n_models=13  3.3s
+truth (0, 0, 1) rep  2: selected (0, 0, 1)  within-one=True  n_models=13  4.3s
+truth (0, 0, 1) rep  3: selected (0, 0, 1)  within-one=True  n_models=13  4.3s
+truth (0, 0, 1) rep  4: selected (0, 0, 2)  within-one=True  n_models=17  7.9s
+truth (0, 0, 1) rep  5: selected (0, 0, 1)  within-one=True  n_models=13  3.7s
+truth (0, 0, 1) rep  6: selected (0, 0, 1)  within-one=True  n_models=13  4.2s
+truth (0, 0, 1) rep  7: selected (1, 0, 1)  within-one=True  n_models=20  9.2s
+truth (0, 0, 1) rep  8: selected (0, 0, 1)  within-one=True  n_models=13  3.6s
+truth (0, 0, 1) rep  9: selected (0, 0, 1)  within-one=True  n_models=9  2.5s
+truth (0, 0, 1) rep 10: selected (2, 0, 2)  within-one=False  n_models=22  17.0s
+truth (0, 0, 1) rep 11: selected (0, 0, 1)  within-one=True  n_models=9  2.4s
+truth (0, 0, 1): within-one 6/6 at reps=6 (bar 3), 11/12 at reps=12 (bar 6)
+
+truth (1, 0, 1) rep  0: selected (1, 0, 1)  within-one=True  n_models=24  10.2s
+truth (1, 0, 1) rep  1: selected (1, 0, 1)  within-one=True  n_models=18  5.3s
+truth (1, 0, 1) rep  2: selected (1, 0, 1)  within-one=True  n_models=18  5.4s
+truth (1, 0, 1) rep  3: selected (1, 0, 1)  within-one=True  n_models=18  5.2s
+truth (1, 0, 1) rep  4: selected (1, 0, 1)  within-one=True  n_models=18  6.4s
+truth (1, 0, 1) rep  5: selected (1, 0, 1)  within-one=True  n_models=18  6.0s
+truth (1, 0, 1) rep  6: selected (1, 0, 1)  within-one=True  n_models=18  5.6s
+truth (1, 0, 1) rep  7: selected (2, 0, 2)  within-one=True  n_models=14  7.5s
+truth (1, 0, 1) rep  8: selected (1, 0, 1)  within-one=True  n_models=18  5.4s
+truth (1, 0, 1) rep  9: selected (1, 0, 1)  within-one=True  n_models=11  3.5s
+truth (1, 0, 1) rep 10: selected (1, 0, 1)  within-one=True  n_models=18  5.5s
+truth (1, 0, 1) rep 11: selected (1, 0, 1)  within-one=True  n_models=11  3.5s
+truth (1, 0, 1): within-one 6/6 at reps=6 (bar 3), 12/12 at reps=12 (bar 6)
+
+total 208s
