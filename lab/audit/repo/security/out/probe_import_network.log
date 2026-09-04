@@ -1,0 +1,6 @@
+tsecon 0.8.0 at /home/user/tsecon/.claude/worktrees/au-security/bindings/python/python/tsecon/__init__.py
+socket entry points invoked during import + 5 calls: 0 []
+env vars read by numpy import (attributed to numpy): ['NPY_PROMOTION_STATE', 'NUMPY_MADVISE_HUGEPAGE', 'OPENBLAS_MAIN_FREE']
+env vars read by `import tsecon`: []
+env vars read during the 5 calls: []
+tsecon module files: ['__init__.py', '__init__.pyi', '__pycache__', '_coerce.py', '_core.abi3.so', '_inspect.py', 'py.typed', 'results']
