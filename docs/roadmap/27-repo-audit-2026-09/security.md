@@ -155,7 +155,14 @@ changed; every other `BaseException` (`KeyboardInterrupt`, `SystemExit`,
 any other panic) passes through untouched, pinned by
 `test_other_base_exceptions_pass_through_the_wrapper_unchanged`. Pins:
 `test_product_capacity_overflow_is_a_value_error_not_a_panic`,
-`test_refused_allocation_below_the_line_is_a_value_error_with_the_size`.
+`test_refused_allocation_below_the_line_is_a_value_error_with_the_size`,
+`test_a_panic_that_is_not_about_allocation_passes_through` — driven with a
+synthetic panic of the recorded shapes, not the real calls. The integrator's
+first push pinned the real `bvar_fit(lags=2**31)` and `lags=2**40` calls,
+and the macOS CI wheel job was killed at exit 137: macOS commits a 144 GiB
+request lazily and the process dies while the design is filled, where
+Linux refuses it up front. That is S3 in the wild, and the reason the pins
+cannot depend on the allocator.
 
 **Residual (proposal).** The rebuild couples the wrapper to three panic
 message shapes (see L6). The Rust-side hardening is to give the BVAR/SVAR

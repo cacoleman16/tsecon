@@ -21,7 +21,7 @@ page is the roll-up, the integrator's decisions, and the open list.
 | Claims versus reality | [claims](27-repo-audit-2026-09/claims.md) | 25 (2 / 9 / 14) | all 25 |
 | Test-suite health | [tests](27-repo-audit-2026-09/tests.md) | 8 (0 / 3 / 5) | none needed (no stale skip, no fixture typo) |
 | API consistency | [api](27-repo-audit-2026-09/api.md) | 15 (0 / 5 / 10) | 5 (docstring and stub surfaces, with tripwire tests) |
-| Security review | [security](27-repo-audit-2026-09/security.md) | 14 (3 / 5 / 6) | 2 of the 3 severe: the huge-count refusal and the allocation-panic rebuild, with 16 pinned tests |
+| Security review | [security](27-repo-audit-2026-09/security.md) | 14 (3 / 5 / 6) | 2 of the 3 severe: the huge-count refusal and the allocation-panic rebuild, with 17 pinned tests |
 | Open-findings ledger | [ledger](27-repo-audit-2026-09/ledger.md) | 275 items reconciled: 98 fixed, **104 open**, 25 superseded, 45 n/a, 3 unverified | 7 silently-closed items annotated in their source pages |
 
 ## What the audit established

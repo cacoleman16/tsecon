@@ -52,7 +52,7 @@ previous rounds recorded (275 items: 98 fixed, 104 open, 25 superseded).
   `echo_state_network(reservoir_size=2**31)`) is rebuilt into a
   `ValueError` naming the argument and the size, the panic chained as
   `__cause__`. Before: 113 `PanicException` escapes across 67 callables;
-  after: 0 over 4,596 adversarial cells. Sixteen pinned tests.
+  after: 0 over 4,596 adversarial cells. Seventeen pinned tests.
 - **Hygiene**: `.gitignore` gaps closed (`.venv*/`, tool caches, editor
   state); six force-added round-11 logs untracked; the seven audit items
   that were fixed without their record being updated are annotated in

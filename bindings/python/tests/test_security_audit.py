@@ -23,6 +23,12 @@ point every wrapper passes through (``tsecon._coerce._call``):
 
 The remaining pins guard the repository's stated boundaries: ``import tsecon``
 opens no socket and reads no environment variable of its own.
+
+The pre-flight pins are real calls (they never reach Rust). The rebuild pins
+use a synthetic panic: the real calls behind them ask for 144 GiB or 72 TiB,
+which Linux's allocator refuses up front but macOS commits lazily, killing
+the process — that is finding S3, still open, and not something a test may
+depend on.
 """
 from __future__ import annotations
 
@@ -94,26 +100,67 @@ def test_absurd_count_is_catchable_by_except_exception():
 
 
 # --------------------------------------------------------------------------- #
-# the residual product-overflow panic: rebuilt into a ValueError
+# the residual allocation-sizing panic: rebuilt into a ValueError
 # --------------------------------------------------------------------------- #
+# These pins drive the seal's rebuild half with a synthetic panic rather than
+# a real call. The real calls the sweep recorded (`bvar_fit(lags=2**31)`, a
+# 144 GiB design; `bvar_fit(lags=2**40)`, 72 TiB) reach the rebuild only where
+# the allocator refuses up front — Linux does, and the seal turns the refusal
+# into the ValueError below — but macOS commits the request lazily and the
+# process is killed while the design is being filled (the CI runner reproduced
+# exactly that: exit 137). That platform gap is finding S3, still open, and a
+# test must not depend on it. The seal keys on the exception's type name and
+# message, so a BaseException subclass of the same name is the real thing as
+# far as `_coerce._call` is concerned.
+
+
+class PanicException(BaseException):
+    """Stand-in for `pyo3_runtime.PanicException` (also a BaseException)."""
+
+
+def _compiled_stand_in(name, message):
+    def fn(y, lags=1):
+        raise PanicException(message)
+
+    fn.__name__ = name
+    return fn
+
+
 def test_product_capacity_overflow_is_a_value_error_not_a_panic():
-    """`bvar_fit(lags=2**31)` sizes a design of lags x k x T entries — the
-    product overflows isize before any allocation, and the panic used to
-    escape. 2**31 is below the pre-flight line, so this exercises the rebuild
-    path; the message names the suspect argument and keeps the panic as the
-    chained cause."""
+    """`Vec::with_capacity` on a product of moderate counts that overflows
+    isize panics with "capacity overflow" before any allocation; the rebuild
+    names the suspect argument and keeps the panic as the chained cause."""
+    from tsecon import _coerce
+
+    fn = _compiled_stand_in("bvar_fit", "capacity overflow")
     with pytest.raises(ValueError, match=r"lags=2147483648") as info:
-        tsecon.bvar_fit(_var3(), lags=2**31)
+        _coerce._call(fn, (_var3(),), {"lags": 2**31})
     assert "could not be sized or allocated" in str(info.value)
     assert type(info.value.__cause__).__name__ == "PanicException"
 
 
 def test_refused_allocation_below_the_line_is_a_value_error_with_the_size():
-    """`bvar_fit(lags=2**40)` asks the allocator for a 72 TiB design before
-    any sufficiency check runs; the refusal used to escape as an `AllocError`
-    unwrap panic. Rebuilt with the requested size in the message."""
-    with pytest.raises(ValueError, match=r"lags=1099511627776.*GiB was requested"):
-        tsecon.bvar_fit(_var3(), lags=2**40)
+    """When the allocator refuses and faer's fallible allocation is unwrapped,
+    the panic carries the byte count; the rebuild reports it in GiB."""
+    from tsecon import _coerce
+
+    fn = _compiled_stand_in(
+        "bvar_fit",
+        "called `Result::unwrap()` on an `Err` value: AllocError { layout: "
+        "Layout { size: 79164837200064, align: 8 } }",
+    )
+    with pytest.raises(ValueError, match=r"lags=1099511627776.*73,728 GiB was requested"):
+        _coerce._call(fn, (_var3(),), {"lags": 2**40})
+
+
+def test_a_panic_that_is_not_about_allocation_passes_through():
+    """Only the three allocation-sizing shapes are rebuilt; any other panic
+    stays a BaseException, because it may have touched state."""
+    from tsecon import _coerce
+
+    fn = _compiled_stand_in("var_fit", "index out of bounds: the len is 3 but the index is 7")
+    with pytest.raises(PanicException):
+        _coerce._call(fn, (_var3(),), {"lags": 2})
 
 
 # --------------------------------------------------------------------------- #
