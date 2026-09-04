@@ -272,7 +272,7 @@ cannot cover:
   facades (nine `test_results_*.py` files, 213 tests) assert key by key that the
   object *is* the dict the raw function has always returned, with rendering
   added on top and nothing removed.
-- **Error propagation.** 475 `pytest.raises` assertions check that a Rust
+- **Error propagation.** 484 `pytest.raises` assertions check that a Rust
   `Err(...)` surfaces as a Python `ValueError`/`RuntimeError` with a message
   you can act on, rather than an abort. `test_gmm_nonlinear.py` goes the other
   direction too: a Python moment function that raises must propagate its
@@ -594,9 +594,9 @@ library with lying documentation.
 
 ## 3 · The Python test files
 
-38 of the 99 files in
+38 of the 101 files in
 [`bindings/python/tests/`](../../bindings/python/tests), with collected test
-counts. The table has not kept pace with the directory, and the 61 files not
+counts. The table has not kept pace with the directory, and the 63 files not
 listed here are a gap in *this table*, not in the suite — every one of them
 runs on every invocation of the command above:
 
