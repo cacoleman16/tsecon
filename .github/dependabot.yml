@@ -1,0 +1,62 @@
+# Dependabot: keep the three dependency surfaces current on one weekly cadence.
+#
+#   cargo           — Cargo.lock for the 43-crate workspace + bindings/python
+#                     (workspace root; Cargo.lock lives here)
+#   pip             — bindings/python/pyproject.toml (runtime floor + build
+#                     backend) and docs/requirements.txt (site build)
+#   github-actions  — every `uses:` in .github/workflows/*.yml
+#
+# Minor and patch bumps are grouped into ONE pull request per ecosystem per
+# week so the review load is one PR, not one per crate. Major bumps stay
+# separate because they are the ones that can change behaviour (a faer or
+# pyo3 major is a real migration, not a rubber stamp). Once the actions are
+# pinned to commit SHAs (proposed in docs/roadmap/_repo_audit/supply.md),
+# Dependabot updates the SHA and the trailing version comment together.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-patch:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "deps(cargo)"
+    labels: [dependencies, rust]
+
+  - package-ecosystem: pip
+    directories:
+      - /bindings/python
+      - /docs
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    groups:
+      pip-minor-patch:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "deps(pip)"
+    labels: [dependencies, python]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "deps(actions)"
+    labels: [dependencies, ci]
