@@ -34,6 +34,10 @@ fn vec1(a: &PyReadonlyArray1<'_, f64>) -> Vec<f64> {
 /// Autocorrelation function with Bartlett standard errors.
 ///
 /// Matches statsmodels `acf` conventions exactly (validated at 1e-12).
+///
+/// Returned keys: `acf`, `bartlett_se`.
+///
+/// Further arguments, with defaults: `nlags` (20), `adjusted` (False).
 #[pyfunction]
 #[pyo3(signature = (y, nlags = 20, adjusted = false))]
 fn acf<'py>(
@@ -52,6 +56,8 @@ fn acf<'py>(
 /// Partial autocorrelation function.
 ///
 /// `method`: "yw" (Yule-Walker, statsmodels 'ywm') or "ols".
+///
+/// Further arguments, with defaults: `nlags` (20).
 #[pyfunction]
 #[pyo3(signature = (y, nlags = 20, method = "yw"))]
 fn pacf<'py>(
@@ -75,6 +81,8 @@ fn pacf<'py>(
 }
 
 /// Ljung-Box and Box-Pierce portmanteau tests for lags 1..=nlags.
+///
+/// Returned keys: `bp_pvalue`, `bp_stat`, `lags`, `lb_pvalue`, `lb_stat`.
 #[pyfunction]
 #[pyo3(signature = (y, nlags = 10))]
 fn ljung_box<'py>(
@@ -116,6 +124,10 @@ fn jarque_bera<'py>(
 }
 
 /// Engle's ARCH-LM test (statsmodels `het_arch` convention).
+///
+/// Returned keys: `df`, `nobs`, `p_value`, `statistic`.
+///
+/// Further arguments, with defaults: `nlags` (4).
 #[pyfunction]
 #[pyo3(signature = (resid, nlags = 4))]
 fn arch_lm<'py>(
@@ -191,6 +203,8 @@ fn bootstrap_indices<'py>(
 /// Politis-White (2004) automatic block length with the Patton-Politis-White
 /// (2009) correction. Returns optimal lengths for the stationary and
 /// circular block bootstraps.
+///
+/// Returned keys: `circular`, `stationary`.
 #[pyfunction]
 fn optimal_block_length<'py>(
     py: Python<'py>,
@@ -261,6 +275,11 @@ fn local_level_smooth<'py>(
 /// Gaussian log-likelihood of an AR(p) model with intercept at fixed
 /// parameters, evaluated exactly via the state-space form with stationary
 /// initialization (matches statsmodels SARIMAX `trend='c'` conventions).
+///
+/// NaN entries in `y` are treated as missing observations: the Kalman filter
+/// skips their update and the log-likelihood sums the remaining innovations
+/// (with `coeffs=[0]` it equals the log-likelihood of the series with those
+/// entries deleted). Infinite entries are rejected.
 #[pyfunction]
 #[pyo3(signature = (y, coeffs, sigma2, intercept = 0.0))]
 fn ar_loglik(
@@ -294,6 +313,8 @@ fn adf_regression(s: &str) -> PyResult<tsecon_diag::AdfRegression> {
 /// `regression`: "n", "c" (default), "ct". `autolag`: "aic" (default),
 /// "bic", "t-stat", or None to use `maxlag` as a fixed lag.
 /// Matches statsmodels `adfuller` (validated at 1e-8).
+///
+/// Returned keys: `crit`, `nobs`, `p_value`, `statistic`, `used_lag`.
 #[pyfunction]
 #[pyo3(signature = (y, regression = "c", autolag = Some("aic"), maxlag = None))]
 fn adf<'py>(
@@ -336,6 +357,8 @@ fn adf<'py>(
 /// `regression`: "c" (level-stationary, default) or "ct" (trend-stationary).
 /// `nlags`: "auto" (Hobijn-Franses-Ooms, default), "legacy", or an integer.
 /// P-value is interpolated and bounded to [0.01, 0.10], statsmodels-style.
+///
+/// Returned keys: `lags`, `p_value`, `statistic`.
 #[pyfunction]
 #[pyo3(signature = (y, regression = "c", nlags = None))]
 fn kpss<'py>(
@@ -383,6 +406,11 @@ fn kpss<'py>(
 /// The stationarity decision workflow: ADF and KPSS run together and
 /// classified into the confirmatory quadrant, with a teaching
 /// interpretation and a concrete recommendation.
+///
+/// Returned keys: `adf_p_value`, `adf_statistic`, `alpha`, `interpretation`,
+/// `kpss_p_value`, `kpss_statistic`, `quadrant`, `recommendation`.
+///
+/// Further arguments, with defaults: `alpha` (0.05).
 #[pyfunction]
 #[pyo3(signature = (y, alpha = 0.05))]
 fn check_stationarity<'py>(
@@ -420,6 +448,8 @@ fn po_trend(s: &str) -> PyResult<tsecon_diag::PoTrend> {
 /// `regression`: "n", "c" (default), "ct". `test_type`: "tau" (Z-tau,
 /// default) or "rho" (Z-alpha). `lags`: Bartlett LRV bandwidth; None uses
 /// ceil(12*(n/100)^(1/4)). Matches arch.unitroot.PhillipsPerron (< 1e-10).
+///
+/// Returned keys: `crit`, `lags`, `nobs`, `pvalue`, `stat`, `zalpha`, `ztau`.
 #[pyfunction]
 #[pyo3(signature = (y, regression = "c", test_type = "tau", lags = None))]
 fn phillips_perron<'py>(
@@ -621,6 +651,8 @@ fn ng_perron<'py>(
 /// Newey-West rule floor(4*((T-1)/100)^(2/9)). Za is statistic-only
 /// (pvalue None/crit None). Zt p-value/crit use the MacKinnon N-surfaces
 /// (statsmodels `coint` route). N = 1 + m.
+///
+/// Returned keys: `crit`, `lags`, `n_vars`, `nobs`, `pvalue`, `stat`.
 #[pyfunction]
 #[pyo3(signature = (y, x, trend = "c", test_type = "Zt", bandwidth = None))]
 fn phillips_ouliaris<'py>(
@@ -990,6 +1022,8 @@ fn hac_kernel(s: &str) -> PyResult<tsecon_hac::Kernel> {
 ///
 /// `bandwidth=None` uses the Newey-West rule-of-thumb maxlags
 /// floor(4*(n/100)^(2/9)) for Bartlett/Parzen, matching common practice.
+///
+/// Further arguments, with defaults: `kernel` ("bartlett").
 #[pyfunction]
 #[pyo3(signature = (x, kernel = "bartlett", bandwidth = None))]
 fn long_run_variance(
@@ -1034,6 +1068,8 @@ fn long_run_variance(
 /// `hc2`/`hc3` match statsmodels `cov_type="HC2"`/`"HC3"` while `1 - h_t`
 /// stays clear of machine noise; a point with leverage numerically equal to
 /// 1 is refused rather than returned as a near-infinite standard error.
+///
+/// Returned keys: `bse`, `params`, `se_type`, `tvalues`.
 #[pyfunction]
 #[pyo3(signature = (y, x, se_type = "hac", maxlags = None, use_correction = true))]
 fn ols<'py>(
@@ -1193,6 +1229,9 @@ fn var_fit<'py>(
 ///
 /// This returns the point path only. For frequentist confidence bands
 /// (delta-method or bootstrap) use `var_irf_bands`.
+///
+/// Further arguments, with defaults: `lags` (2), `trend` ("c"), `cumulative`
+/// (False).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, orth = true, trend = "c", cumulative = false))]
 fn var_irf<'py>(
@@ -1446,6 +1485,8 @@ fn set_lp_band_items<'py>(
 ///
 /// Method: Montiel Olea and Plagborg-Møller, simultaneous confidence bands for
 /// SVARs.
+///
+/// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (
     data,
@@ -1661,6 +1702,8 @@ fn var_irf_bands<'py>(
 /// Comparing against statsmodels: `VARResults.fevd(horizon).decomp` stores
 /// the SAME numbers variable-major (`[variable][horizon][shock]`), so
 /// `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))` equals this output.
+///
+/// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
 fn var_fevd<'py>(
@@ -1731,6 +1774,8 @@ fn var_fevd<'py>(
 /// `band_seed`/`band_n_sim` drive the Gaussian simulation behind `"sup-t"`, so
 /// that band is a pure function of `band_seed`; Šidák and Bonferroni are closed
 /// forms in K and use neither. Method: Montiel Olea and Plagborg-Møller.
+///
+/// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (
     data,
@@ -1786,6 +1831,10 @@ fn var_forecast<'py>(
 
 /// Granger-causality F test: do the `causing` variables help predict the
 /// `caused` variables? Matches statsmodels `test_causality(kind="f")`.
+///
+/// Returned keys: `df_den`, `df_num`, `p_value`, `statistic`.
+///
+/// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, caused, causing, lags = 2, trend = "c"))]
 fn var_granger<'py>(
@@ -1822,6 +1871,8 @@ fn decomposition_dict<'py>(
 /// Hodrick-Prescott filter (O(n) pentadiagonal solve). `one_sided=True`
 /// gives the real-time variant. Matches statsmodels `hpfilter` at 1e-8.
 /// Keys: `trend`, `cycle` (= y - trend) and `first_index` (0: full sample).
+///
+/// Further arguments, with defaults: `lamb` (1600.0).
 #[pyfunction]
 #[pyo3(signature = (y, lamb = 1600.0, one_sided = false))]
 fn hp_filter<'py>(
@@ -1842,6 +1893,8 @@ fn hp_filter<'py>(
 /// Baxter-King band-pass filter (loses `k` observations at each end —
 /// `first_index` reports the alignment).
 /// Keys: `cycle` (length n - 2k) and `first_index` (= k); no trend is returned.
+///
+/// Further arguments, with defaults: `low` (6.0), `high` (32.0).
 #[pyfunction]
 #[pyo3(signature = (y, low = 6.0, high = 32.0, k = 12))]
 fn bk_filter<'py>(
@@ -1856,6 +1909,9 @@ fn bk_filter<'py>(
 }
 
 /// Christiano-Fitzgerald asymmetric band-pass filter (full sample). Keys: `trend`, `cycle` and `first_index` (0: full sample).
+///
+/// Further arguments, with defaults: `low` (6.0), `high` (32.0), `drift`
+/// (True).
 #[pyfunction]
 #[pyo3(signature = (y, low = 6.0, high = 32.0, drift = true))]
 fn cf_filter<'py>(
@@ -2067,6 +2123,9 @@ fn hamilton_filter<'py>(
 /// `"nd"`). Validated by reference runs of the authors' own R
 /// replication code (bnfiltering.com lineage) — see the diagnostics
 /// model card.
+///
+/// Returned keys: `amplitude_to_noise`, `ar`, `cycle`, `cycle_se`, `delta`,
+/// `drift`, `first_index`, `trend`.
 #[pyfunction]
 #[pyo3(signature = (y, p = 12, delta = None, demean = "sm", d0 = None, dt = None))]
 fn bn_filter<'py>(
@@ -2210,6 +2269,10 @@ fn bn_decomposition<'py>(
 /// + resid`), `weights` (bisquare robustness weights, all 1 when
 /// `outer_iter = 0`), `period`, and `config` (the fully-resolved windows,
 /// degrees, jumps, and iteration counts actually used).
+///
+/// Further arguments, with defaults: `seasonal_deg` (1), `trend_deg` (1),
+/// `low_pass_deg` (1), `seasonal_jump` (1), `trend_jump` (1), `low_pass_jump`
+/// (1).
 #[pyfunction]
 #[pyo3(signature = (y, period, seasonal = 7, trend = None, low_pass = None,
     seasonal_deg = 1, trend_deg = 1, low_pass_deg = 1, robust = false,
@@ -2337,6 +2400,11 @@ fn positive_int_seq(name: &str, v: &[i64], example: &str) -> PyResult<Vec<usize>
 /// resid))`, sample variances — or None for a constant input series,
 /// where the variance ratio would be float noise, matching the
 /// `seasonal_strength` function's refusal).
+///
+/// Further arguments, with defaults: `low_pass` (None), `seasonal_deg` (1),
+/// `trend_deg` (1), `low_pass_deg` (1), `robust` (False), `seasonal_jump`
+/// (1), `trend_jump` (1), `low_pass_jump` (1), `inner_iter` (None),
+/// `outer_iter` (None).
 #[pyfunction]
 #[pyo3(signature = (y, periods, windows = None, iterate = 2, trend = None,
     low_pass = None, seasonal_deg = 1, trend_deg = 1, low_pass_deg = 1,
@@ -2430,6 +2498,10 @@ fn mstl<'py>(
 
 /// Diebold-Mariano test of equal predictive accuracy with the
 /// Harvey-Leybourne-Newbold small-sample correction.
+///
+/// Returned keys: `dm_stat`, `hln_stat`, `mean_loss_diff`, `p_value`.
+///
+/// Further arguments, with defaults: `h` (1), `loss` ("squared").
 #[pyfunction]
 #[pyo3(signature = (e1, e2, h = 1, loss = "squared"))]
 fn dm_test<'py>(
@@ -2458,6 +2530,10 @@ fn dm_test<'py>(
 }
 
 /// Forecast accuracy measures in one call.
+///
+/// Returned keys: `mae`, `mape`, `mase`, `me`, `rmse`, `rmsse`, `smape`.
+///
+/// Further arguments, with defaults: `insample` (None), `period` (1).
 #[pyfunction]
 #[pyo3(signature = (actual, forecast, insample = None, period = 1))]
 fn accuracy<'py>(
@@ -2714,6 +2790,9 @@ fn garch_fit<'py>(
 ///
 /// — a `(k, K)` array aligned entry-for-entry with `posterior_mean_coefs`.
 /// Worked example on the Bayesian model card (`docs/reference/model-cards/bayesian.md`).
+///
+/// Further arguments, with defaults: `lags` (2), `lambda0` (100.0), `lambda1`
+/// (0.2), `lambda3` (1.0).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, scale_ar = 4))]
 #[allow(clippy::too_many_arguments)]
@@ -2790,6 +2869,10 @@ fn bvar_fit<'py>(
 ///
 /// `scale_ar` selects the prior's residual-scale convention exactly as
 /// in `bvar_fit` (4 = default; 1 = the GLP 2015 convention).
+///
+/// Further arguments, with defaults: `lags` (2), `n_draws` (500), `seed` (0),
+/// `lambda0` (100.0), `lambda1` (0.2), `lambda3` (1.0), `delta` (0.0),
+/// `cumulative` (False).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 16, n_draws = 500, seed = 0, lambda0 = 100.0, lambda1 = 0.2, lambda3 = 1.0, delta = 0.0, cumulative = false, scale_ar = 4))]
 #[allow(clippy::too_many_arguments)]
@@ -2878,6 +2961,15 @@ fn mat_to_vec2_bayes(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f
 /// Returns the selected lambdas, the log marginal likelihood and log
 /// posterior, the posterior coefficient/Sigma means, the pre-scan ML
 /// profile, and the fixed-lambda reference the optimum dominates.
+///
+/// Returned keys: `converged`, `grid_lambda1`, `grid_log_ml`,
+/// `lambda1_fixed_log_ml`, `lambda1_opt`, `lambda3_opt`,
+/// `log_marginal_likelihood`, `log_posterior`, `n_evals`,
+/// `posterior_mean_coefs`, `sigma_posterior_mean`.
+///
+/// Further arguments, with defaults: `lags` (2), `delta` (0.0), `lambda0`
+/// (100.0), `lambda1_init` (0.2), `lambda1_lo` (0.0001), `lambda1_hi` (10.0),
+/// `n_grid` (25), `max_iter` (200), `tol` (1e-08).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, delta = 0.0, lambda0 = 100.0, lambda3 = 1.0, lambda1_init = 0.2, lambda1_lo = 1e-4, lambda1_hi = 10.0, optimize = "lambda1", hyperprior = "glp", n_grid = 25, max_iter = 200, tol = 1e-8, scale_ar = 4))]
 #[allow(clippy::too_many_arguments)]
@@ -2983,6 +3075,10 @@ fn bvar_hierarchical<'py>(
 /// [draw][h][variable][shock] for credible bands, the off-diagonal precision
 /// inclusion probabilities `inclusion_prob_cov` (only when `ssvs_cov`), and a
 /// `diagnostics` dict.
+///
+/// Further arguments, with defaults: `lags` (2), `n_draws` (10000), `burn`
+/// (2000), `seed` (0), `prior_inclusion` (0.5), `prior_inclusion_cov` (0.5),
+/// `horizon` (16), `thin` (1), `n_chains` (1).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, n_draws = 10000, burn = 2000, seed = 0, c0 = 0.1, c1 = 10.0, prior_inclusion = 0.5, ssvs_cov = false, kappa0 = None, kappa1 = None, prior_inclusion_cov = 0.5, gamma_a = 0.01, gamma_b = None, horizon = 16, thin = 1, n_chains = 1))]
 #[allow(clippy::too_many_arguments)]
@@ -3062,6 +3158,8 @@ fn bvar_ssvs<'py>(
 /// MCMC convergence diagnostics (Vehtari et al. 2021, ArviZ-exact):
 /// rank-normalized split R-hat and bulk/tail effective sample sizes.
 /// `chains` is (n_chains, n_draws).
+///
+/// Returned keys: `ess_bulk`, `ess_tail`, `rhat`.
 #[pyfunction]
 fn mcmc_diagnostics<'py>(
     py: Python<'py>,
@@ -3354,6 +3452,16 @@ fn arima_results_dict<'py>(
 /// selected order with `arima_fit(..., drift_uncertainty=True)` — the
 /// option needs the constant to be a modeling choice, not a search
 /// outcome.
+///
+/// Further arguments, with defaults: `seasonal_period` (0), `max_p` (5),
+/// `max_q` (5), `max_P` (2), `max_Q` (2), `max_d` (2), `max_D` (1), `alpha`
+/// (0.05), `conf_alpha` (None).
+///
+/// Returned keys: `D_test`, `aic`, `aicc`, `bic`, `boundary`,
+/// `boundary_note`, `bse`, `budget_exhausted`, `constant`, `converged`,
+/// `cov_ok`, `d_test`, `ic`, `ic_value`, `interpretation`, `loglik`,
+/// `n_models`, `order`, `param_cov`, `param_names`, `params`, `residuals`,
+/// `se_valid`, `seasonal_order`, `stepwise`, `trace`.
 #[pyfunction]
 #[pyo3(signature = (y, seasonal_period = 0, ic = "aicc", stepwise = true,
                     max_p = 5, max_q = 5, max_P = 2, max_Q = 2, max_order = 5,
@@ -3615,6 +3723,8 @@ fn resolve_lp_se(se: Option<&str>, cumulation: tsecon_lp::Cumulation) -> PyResul
 /// 2.20-2.65 depending on persistence, Šidák 2.6490, Bonferroni 2.6653.
 ///
 /// Method: Montiel Olea and Plagborg-Møller.
+///
+/// Returned keys: `horizons`, `irf`, `se`, `se_method`.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -3709,6 +3819,11 @@ fn lp<'py>(
 /// arbitrary dependence across horizons, and are simply wider than a sup-t band
 /// would be — never describe a band from this function as sup-t. For sup-t use
 /// `tsecon.lp` or `tsecon.smooth_lp`, which do build the covariance.
+///
+/// Returned keys: `first_stage_f`, `horizons`, `irf`, `se`.
+///
+/// Further arguments, with defaults: `n_lag_controls` (4), `band_alpha`
+/// (0.1).
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -3799,6 +3914,11 @@ fn lp_iv<'py>(
 /// `lp_iv` and `lp_state`) gets the CLOSED-FORM simultaneous routes only. A
 /// Šidák or Bonferroni band here is valid under arbitrary dependence across
 /// horizons and wider than sup-t would be — do not call it sup-t.
+///
+/// Returned keys: `cumulative_impulse`, `cumulative_outcome`,
+/// `first_stage_f`, `horizons`, `multiplier`, `nobs_per_h`, `se`.
+///
+/// Further arguments, with defaults: `maxlags` (None), `band_alpha` (0.1).
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -3891,6 +4011,8 @@ fn ridge<'py>(
 /// the final sweep, in coefficient units) and `max_rel_change` (that update
 /// scaled as max_j |Δb_j|·‖x_j‖/‖y‖ — the scale-free quantity the stopping rule
 /// compares with `tol`, so `max_rel_change <= tol` on a converged return).
+///
+/// Further arguments, with defaults: `max_iter` (100000).
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha, l1_ratio = 0.5, tol = 1e-8, max_iter = 100000))]
 fn elastic_net<'py>(
@@ -3918,6 +4040,8 @@ fn elastic_net<'py>(
 }
 
 /// Lasso regression (elastic net with l1_ratio = 1.0). Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update in the final sweep) and `max_rel_change` (that update scaled as max_j |Δb_j|·‖x_j‖/‖y‖, the scale-free quantity compared with `tol`).
+///
+/// Further arguments, with defaults: `max_iter` (100000).
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha, tol = 1e-8, max_iter = 100000))]
 fn lasso<'py>(
@@ -3940,6 +4064,11 @@ fn lasso<'py>(
 /// `probs = [0.05, 0.16, 0.50, 0.84, 0.95]` (median + 68/90% credible bands),
 /// plus the mandatory acceptance `diagnostics` — in set-identified settings
 /// the diagnostics are the inference.
+///
+/// Further arguments, with defaults: `lags` (2), `n_draws` (500), `max_tries`
+/// (400), `seed` (0), `lambda1` (0.2).
+///
+/// Returned keys: `diagnostics`, `probs`, `quantiles`, `set_max`, `set_min`.
 #[pyfunction]
 #[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2))]
 #[allow(clippy::too_many_arguments)]
@@ -4028,6 +4157,9 @@ fn sign_restricted_svar<'py>(
 /// `var_irf(orth=True)` deterministically.
 /// `arw_weighted` echoes whether the ARW importance weights were applied to
 /// `quantiles` (the `weighted` flag as resolved).
+///
+/// Further arguments, with defaults: `lags` (2), `n_draws` (500), `max_tries`
+/// (400), `seed` (0), `lambda1` (0.2).
 #[pyfunction]
 #[pyo3(signature = (data, sign_restrictions, zero_restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, weighted = true))]
 #[allow(clippy::too_many_arguments)]
@@ -4134,6 +4266,9 @@ fn zero_sign_svar<'py>(
 ///
 /// Returns `impact` (B), `long_run` (LR), `irf`, `cumulative_irf`, `fevd`,
 /// and `long_run_multiplier` (C(1)). Point estimates, no RNG.
+///
+/// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
+/// ("c"), `restrictions` (None), `normalize` ("long_run").
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", restrictions = None, normalize = "long_run"))]
 fn long_run_svar<'py>(
@@ -4230,6 +4365,8 @@ fn long_run_svar<'py>(
 /// Keys: `irf` [horizon+1][k], `impact` [k], `q` [k], `share_window` (float),
 /// `fev_share` [horizon+1], `eigenvalues` (ascending; length k, or k-1 when
 /// `exclude_impact`).
+///
+/// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (
     data,
@@ -4343,6 +4480,8 @@ fn max_share_svar<'py>(
 /// `first_stage["weak_mop_tau10"]` is False, or `proxy_ar_sets`
 /// (weak-instrument-robust Anderson-Rubin sets) when it is True -- both
 /// ship in this module.
+///
+/// Further arguments, with defaults: `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0, trend = "c", robust_f = true))]
 #[allow(clippy::too_many_arguments)]
@@ -4464,6 +4603,8 @@ fn first_stage_dict<'py>(
 /// Keys: `beta`, `se`, `effective_f`, `f_classical`, `f_hc1`, `reliability`,
 /// `n_proxy`, `hac_lags`, `mop_cv_tau5`/`mop_cv_tau10`/`mop_cv_tau20`/
 /// `mop_cv_tau30`, `tau_bound`, `weak_mop_tau10`, `weak_folklore`.
+///
+/// Further arguments, with defaults: `norm_var` (0), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, norm_var = 0, trend = "c", variance = "hc1", hac_lags = None))]
 #[allow(clippy::too_many_arguments)]
@@ -4620,6 +4761,17 @@ fn align_proxy_rows(pv: Vec<f64>, n_obs: usize, lags: usize, t: usize) -> PyResu
 /// too weak for a Wald-type band; prefer `proxy_ar_sets`.
 ///
 /// These are strong-instrument asymptotics.
+///
+/// Returned keys: `alpha`, `asymptotically_valid`, `block_length`,
+/// `failure_warning`, `failures`, `first_stage_f_draws`, `gamma_norm_draws`,
+/// `lower`, `lower_efron`, `method`, `n_boot`, `n_failed`, `n_proxy`,
+/// `n_used`, `point`, `point_first_stage_f`, `point_gamma_norm`,
+/// `point_reliability`, `reliability_draws`, `rho_draws`, `se`, `upper`,
+/// `upper_efron`, `validity_note`.
+///
+/// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
+/// ("c"), `n_boot` (2000), `seed` (0), `block_length` (None), `robust_f`
+/// (True).
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0,
                     trend = "c", alpha = 0.10, n_boot = 2000, seed = 0,
@@ -4809,6 +4961,13 @@ fn proxy_svar_bands<'py>(
 /// `rf_seed=None` (the default) is NOT fresh entropy: under
 /// `rf_method="second_order"`/`"second_order_bc"` it means seed 0, so two
 /// default calls are bit-identical; `rf_draws=None` means 256 draws.
+///
+/// Returned keys: `ar_bound_stat`, `ar_bounded_all`, `cells`,
+/// `critical_value`, `first_stage_f`, `impact`, `level`, `n_proxy`,
+/// `reduced_form_uncertainty`.
+///
+/// Further arguments, with defaults: `norm_var` (0), `unit` (1.0), `trend`
+/// ("c"), `hac_lags` (None).
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0,
                     trend = "c", alpha = 0.05, variance = "hc0", hac_lags = None,
@@ -5056,6 +5215,9 @@ fn proxy_ar_sets<'py>(
 /// `rotation` (Q, [whitened][shock]), `shock_kurtosis` (identified order),
 /// `converged`, `n_iter`, and `order` (raw FastICA index per identified
 /// position).
+///
+/// Further arguments, with defaults: `lags` (2), `trend` ("c"), `max_iter`
+/// (200), `tol` (1e-08).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", contrast = "logcosh", max_iter = 200, tol = 1e-8, order_by = "kurtosis"))]
 #[allow(clippy::too_many_arguments)]
@@ -5161,6 +5323,8 @@ fn nongaussian_svar<'py>(
 /// `n_vars`, `horizon`, `lags`, `sign_convention`. Standard errors on
 /// B/Theta_h are not provided in this closed-form build; the >2-regime and
 /// Markov-switching/GARCH variants are deferred.
+///
+/// Further arguments, with defaults: `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, regime_labels, lags = 2, horizon = 12, trend = "c", base_regime = None, sign_normalization = "max"))]
 #[allow(clippy::too_many_arguments)]
@@ -5394,6 +5558,8 @@ fn panel_se(
 /// `se_type="driscoll_kraay"` (default when omitted there: 4.0); passing
 /// it explicitly with any other `se_type` **raises** instead of being
 /// silently absorbed. Matches linearmodels PanelOLS conventions.
+///
+/// Returned keys: `bse`, `params`, `se_type`, `tvalues`.
 #[pyfunction]
 #[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = None))]
 fn panel_fe<'py>(
@@ -5479,6 +5645,8 @@ fn panel_fe<'py>(
 /// Keys: `irf`, `se`, `nobs` (each length horizon+1), the stamped `se_type`,
 /// `cumulative`, `jackknife`, `bias_correction`, and the band keys when `band`
 /// is set.
+///
+/// Further arguments, with defaults: `n_lag_controls` (2).
 #[pyfunction]
 #[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = None, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
 #[allow(clippy::too_many_arguments)]
@@ -5663,6 +5831,10 @@ fn lp_did<'py>(
 
 /// Clark-West test for nested-model equal predictive accuracy (Clark-West
 /// 2007). One-sided; the null is that the small (nested) model is as good.
+///
+/// Returned keys: `cw_stat`, `mean_adj_diff`, `p_value`.
+///
+/// Further arguments, with defaults: `lrv_lags` (0).
 #[pyfunction]
 #[pyo3(signature = (e_small, e_large, yhat_small, yhat_large, lrv_lags = 0))]
 fn cw_test<'py>(
@@ -5690,6 +5862,10 @@ fn cw_test<'py>(
 
 /// Giacomini-White unconditional test of equal predictive ability
 /// (Giacomini-White 2006), chi-squared(1) on a loss differential.
+///
+/// Returned keys: `df`, `gw_stat`, `p_value`.
+///
+/// Further arguments, with defaults: `lrv_lags` (0).
 #[pyfunction]
 #[pyo3(signature = (loss1, loss2, lrv_lags = 0))]
 fn gw_test<'py>(
@@ -5819,6 +5995,8 @@ fn spectral_detrend(d: &str) -> PyResult<tsecon_spectral::Detrend> {
 /// default call matches default call. Pass `detrend="none"` for the raw
 /// (un-demeaned) periodogram, `"linear"` to remove a least-squares trend.
 /// Returns `freqs` and `psd`.
+///
+/// Further arguments, with defaults: `fs` (1.0), `window` ("boxcar").
 #[pyfunction]
 #[pyo3(signature = (x, fs = 1.0, window = "boxcar", detrend = "constant"))]
 fn periodogram<'py>(
@@ -5848,6 +6026,9 @@ fn periodogram<'py>(
 /// default, so default call matches default call. Pass `detrend="none"`
 /// for no detrending, `"linear"` for per-segment trend removal.
 /// Returns `freqs` and `psd`.
+///
+/// Further arguments, with defaults: `nperseg` (256), `fs` (1.0), `noverlap`
+/// (None), `window` ("hann").
 #[pyfunction]
 #[pyo3(signature = (x, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "constant"))]
 fn welch<'py>(
@@ -5880,6 +6061,9 @@ fn welch<'py>(
 /// `detrend="constant"` (per-segment mean removal), which is SciPy's own
 /// default, so default call matches default call.
 /// Returns `freqs` and `coherence` in [0, 1].
+///
+/// Further arguments, with defaults: `nperseg` (256), `fs` (1.0), `noverlap`
+/// (None), `window` ("hann").
 #[pyfunction]
 #[pyo3(signature = (x, y, nperseg = 256, fs = 1.0, noverlap = None, window = "hann", detrend = "constant"))]
 #[allow(clippy::too_many_arguments)]
@@ -5933,6 +6117,8 @@ fn data_to_faer(
 /// Keys: `eig`, `evec` (columns = cointegrating vectors), `trace_stat`,
 /// `max_eig_stat`, `trace_crit_90_95_99`, `max_eig_crit_90_95_99`,
 /// `rank_trace_5pct`, `rank_max_eig_5pct`.
+///
+/// Further arguments, with defaults: `k_ar_diff` (1).
 #[pyfunction]
 #[pyo3(signature = (data, k_ar_diff = 1))]
 fn johansen<'py>(
@@ -6011,6 +6197,8 @@ fn johansen<'py>(
 /// default. On drifting data the cases estimate visibly different
 /// cointegrating vectors; fit with `deterministic="co"` when the rank
 /// came from `johansen`.
+///
+/// Further arguments, with defaults: `k_ar_diff` (1), `coint_rank` (1).
 #[pyfunction]
 #[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1, deterministic = "n", seasons = 0, first_season = None))]
 fn vecm<'py>(
@@ -6215,6 +6403,8 @@ fn threshold_vecm<'py>(
 /// (fixtures/tvecm.json); the bootstrap null rejection rate is validated
 /// by seeded Monte Carlo (near-nominal size, mildly liberal in small
 /// samples — see the model card).
+///
+/// Further arguments, with defaults: `trim` (0.05).
 #[pyfunction]
 #[pyo3(signature = (data, k_ar_diff = 1, trim = 0.05, n_grid = 300,
                     n_boot = 499, seed = 0, beta = None))]
@@ -6513,6 +6703,8 @@ fn spread_zscore<'py>(
 /// or loosen `tol`).
 /// `smoothed_prob_last_regime` (= `smoothed_prob[:, -1]`) is kept for
 /// back-compatibility with 0.2.0, which returned only that column.
+///
+/// Further arguments, with defaults: `switching_variance` (True).
 #[pyfunction]
 #[pyo3(signature = (y, k_regimes = 2, order = 1, switching_variance = true, max_iter = 500, tol = 1e-6))]
 fn markov_switching_ar<'py>(
@@ -6713,6 +6905,11 @@ fn setar<'py>(
 /// The statistic is validated against an independent NumPy transcription
 /// (fixtures/setar.json); the bootstrap null rejection rate is validated by
 /// seeded Monte Carlo (~nominal size on linear data).
+///
+/// Further arguments, with defaults: `trim` (0.15).
+///
+/// Returned keys: `boot_stats`, `delay`, `f_path`, `n_boot`, `nobs`,
+/// `p_value`, `ssr_linear`, `ssr_setar`, `stat`, `threshold`, `thresholds`.
 #[pyfunction]
 #[pyo3(signature = (y, p, delay = 1, trim = 0.15, n_boot = 499, seed = 0))]
 fn setar_test<'py>(
@@ -6813,6 +7010,8 @@ fn star_eval_into_dict<'py>(
 /// for singular cells, `best_cell`, `fevals`). Validated against an
 /// independent NumPy transcription (fixtures/star.json) plus seeded MC
 /// recovery; see `star_test` for the modeling-cycle battery.
+///
+/// Further arguments, with defaults: `constant` (True).
 #[pyfunction]
 #[pyo3(signature = (y, p, model = "lstar", delay = 1, trim = 0.15, delays = None,
                     constant = true, n_gamma = 25, n_c = 25))]
@@ -6873,6 +7072,9 @@ fn star<'py>(
 /// ML variance), `aic`/`bic` (`m = 2k + 2`), `nobs`, `k`, and the
 /// `transition` path `G(gamma, c; s_t)`. Validated against an independent
 /// NumPy transcription at fixed parameters (fixtures/star.json).
+///
+/// Further arguments, with defaults: `model` ("lstar"), `delay` (1),
+/// `constant` (True).
 #[pyfunction]
 #[pyo3(signature = (y, p, gamma, c, model = "lstar", delay = 1, constant = true))]
 #[allow(clippy::too_many_arguments)]
@@ -7076,6 +7278,9 @@ fn threshold_var<'py>(
 /// (fixtures/tvar.json); the bootstrap null rejection rate is validated
 /// by seeded Monte Carlo (near-nominal size, mildly liberal in small
 /// samples — see the model card).
+///
+/// Further arguments, with defaults: `trim` (0.1), `seed` (0), `constant`
+/// (True).
 #[pyfunction]
 #[pyo3(signature = (data, p, threshold_index = 0, delay = 1, trim = 0.10,
                     n_grid = 300, n_boot = 499, seed = 0, constant = true))]
@@ -7150,6 +7355,10 @@ fn midas_weights<'py>(
 /// U-MIDAS: unrestricted mixed-frequency regression (= OLS of `y` on a
 /// constant plus the `hf_lags` columns). `hf_lags` is `nobs x K` (each
 /// column a high-frequency lag). Returns params, HAC standard errors, and R².
+///
+/// Returned keys: `bse`, `params`, `rsquared`.
+///
+/// Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
 #[pyfunction]
 #[pyo3(signature = (y, hf_lags, se_type = "hac", maxlags = None))]
 fn umidas<'py>(
@@ -7604,6 +7813,8 @@ fn dcc_test<'py>(
 /// jump-robust integrated-variance estimator of Barndorff-Nielsen &
 /// Shephard 2004), and the truncated jump component (`jump = max(rv -
 /// bipower, 0)`). Validated against the documented BNS formulas at 1e-12.
+///
+/// Returned keys: `bipower`, `jump`, `rv`.
 #[pyfunction]
 fn realized_measures<'py>(
     py: Python<'py>,
@@ -7641,6 +7852,10 @@ fn realized_measures<'py>(
 /// and `rsquared` are unchanged. statsmodels `cov_type="HAC"` defaults the
 /// correction off — pass `use_correction=False` to reproduce a default
 /// statsmodels call (and the pre-change numbers).
+///
+/// Returned keys: `bse`, `nobs`, `params`, `rsquared`, `tvalues`.
+///
+/// Further arguments, with defaults: `start` (22).
 #[pyfunction]
 #[pyo3(signature = (rv, start = 22, variant = "level", hac_maxlags = 5, use_correction = true))]
 fn har_rv<'py>(
@@ -7803,6 +8018,8 @@ fn factor_model<'py>(
 /// Keys: `params`, `bse`, `cov`, `residuals`, `nobs`, `nmoments`, `nparams`,
 /// `steps` (GMM steps actually run), `hac_bandwidth`, `first_stage`, and — over-
 /// identified only — the Hansen `j_stat`/`j_dof`/`j_pval`.
+///
+/// Further arguments, with defaults: `tol` (1e-08), `max_iter` (100).
 #[pyfunction]
 #[pyo3(signature = (x, z, y, method = "2step", weight = "robust", bandwidth = None,
                     tol = 1e-8, max_iter = 100))]
@@ -8017,6 +8234,8 @@ fn cv_splits<'py>(
 /// the final sweep, in coefficient units) and `max_rel_change` (that update
 /// scaled as max_j |Δb_j|·‖x_j‖/‖y‖ — the scale-free quantity the stopping rule
 /// compares with `tol`, so `max_rel_change <= tol` on a converged return).
+///
+/// Further arguments, with defaults: `max_iter` (100000).
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha, l1_ratio = 1.0, gamma = 1.0, tol = 1e-7, max_iter = 100000))]
 #[allow(clippy::too_many_arguments)]
@@ -8054,6 +8273,8 @@ fn adaptive_lasso<'py>(
 /// `rss`, degrees of freedom `df` (nonzero count), the `aic`/`bic` along the
 /// path, and the `aic_best`/`bic_best` indices selecting the minimizing
 /// lambda.
+///
+/// Further arguments, with defaults: `tol` (1e-07), `max_iter` (100000).
 #[pyfunction]
 #[pyo3(signature = (x, y, l1_ratio = 1.0, n_lambdas = 100, eps = 1e-3, tol = 1e-7, max_iter = 100000))]
 #[allow(clippy::too_many_arguments)]
@@ -8270,6 +8491,9 @@ fn reraise_stashed<T, E: std::fmt::Display>(
 /// and `targets`, and an `accuracy` table (ME/MSE/RMSE/MAE/MdAE, plus
 /// MAPE/sMAPE/MASE/RMSSE where defined) whose scaled measures use the
 /// first training window at `insample_period` — never the test sample.
+///
+/// Returned keys: `accuracy`, `forecasts`, `horizon`, `n_origins`, `origins`,
+/// `targets`.
 #[pyfunction]
 #[pyo3(signature = (y, window = "expanding", train = 20, horizon = 1, refit_every = 1,
                     forecaster = None, period = None, insample_period = 1))]
@@ -8899,6 +9123,8 @@ fn conformal_forecast<'py>(
 /// runs the bootstrap ensemble with seed 0, so two default calls are
 /// bit-identical; pass an explicit `seed` for a different ensemble draw
 /// (`n_boot=None` likewise means 25).
+///
+/// Further arguments, with defaults: `mode` ("symmetric").
 #[pyfunction]
 #[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
                     calib = None, mode = "symmetric", period = 1, gamma = None,
@@ -9097,6 +9323,9 @@ fn conformal_backtest<'py>(
 /// value and the decay is estimated by NLS (profiling the linear factors
 /// out). Returns `factors`, the fitted `lambda`, `residuals`, and centered
 /// `rsquared` (matches statsmodels' constant-included R^2 to 1e-8).
+///
+/// Returned keys: `curvature`, `factors`, `lambda`, `level`, `residuals`,
+/// `rsquared`, `slope`.
 #[pyfunction]
 #[pyo3(signature = (maturities, yields, decay = 0.0609, optimal_lambda = false))]
 fn nelson_siegel<'py>(
@@ -9130,6 +9359,8 @@ fn nelson_siegel<'py>(
 /// The Nelson-Siegel extension with a second curvature term at decay
 /// `lambda2`; cross-sectional OLS at fixed `lambda1`, `lambda2` returns
 /// the four `factors` and centered `rsquared`. Nests Nelson-Siegel.
+///
+/// Returned keys: `factors`, `lambda1`, `lambda2`, `residuals`, `rsquared`.
 #[pyfunction]
 fn svensson<'py>(
     py: Python<'py>,
@@ -9306,6 +9537,9 @@ fn weighted_midas<'py>(
 /// covariance is estimated for the interacted regressions, so `lp_state` (like
 /// `lp_iv` and `lp_multiplier`) gets the CLOSED-FORM simultaneous routes only.
 /// Report such a band as Šidák or Bonferroni, never as sup-t.
+///
+/// Further arguments, with defaults: `n_lag_controls` (4), `band_alpha`
+/// (0.1).
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -9507,6 +9741,8 @@ fn dynamic_ns<'py>(
 /// factor-VAR `params` and `sigma_u`, `n_factors`, `n_endog`, `policy_index`,
 /// and the recursive policy-shock IRFs `irf_panel` (`N x (horizon + 1)`) and
 /// `irf_policy`.
+///
+/// Further arguments, with defaults: `orth` (True).
 #[pyfunction]
 #[pyo3(signature = (panel, policy, n_factors = 2, lags = 2, trend = "c",
                     slow_indices = None, horizon = 20, orth = true))]
@@ -9727,6 +9963,10 @@ fn gas_volatility<'py>(
 /// piecewise in `kappa` (every residual sign flip is a kink): the fit
 /// certifies the best kink basin found, and before standardization the
 /// basin could depend on the units of `y`.
+///
+/// Returned keys: `aic`, `bic`, `converged`, `density`, `iterations`,
+/// `kappa`, `kappa_se`, `level`, `loglik`, `n_obs`, `next_level`, `nu`,
+/// `nu_se`, `resid`, `scale`, `scale_se`.
 #[pyfunction]
 #[pyo3(signature = (y, density = "t"))]
 fn dcs_local_level<'py>(
@@ -10034,6 +10274,8 @@ fn panel_pmg<'py>(
 /// `per_unit_lags`/`per_unit_nobs`, `n_units`, `regression`, `test`, plus the
 /// test-specific extras: ips -> `t_bar`; llc -> `delta_hat`, `t_delta`, `s_n`,
 /// `t_bar_periods`; fisher -> `maddala_wu`, `choi_z`, `choi_z_pvalue`.
+///
+/// Further arguments, with defaults: `max_lags` (None).
 #[pyfunction]
 #[pyo3(signature = (data, test = "ips", lags = None, regression = "c", max_lags = None, lrv_kernel = "bartlett", lrv_bandwidth = None))]
 #[allow(clippy::too_many_arguments)]
@@ -10174,6 +10416,8 @@ fn panel_unit_root<'py>(
 /// and `contributions` — a list of `{series, period, actual, forecast,
 /// news, weight, contribution}` where `contribution = weight * news` and
 /// the contributions sum exactly to the total revision.
+///
+/// Further arguments, with defaults: `n_factors` (1), `factor_order` (2).
 #[pyfunction]
 #[pyo3(signature = (old_vintage, new_vintage, target_series = 0, target_period = None,
                     n_factors = 1, factor_order = 2))]
@@ -10327,6 +10571,11 @@ fn predictive_regression<'py>(
 /// `predictive_regression`'s ivx test for that predictor).
 /// Keys: `beta_ivx`, `wald`, `pvalue`, `rz`, `nregressors`, `nobs`, and — under
 /// the default `joint="bonferroni"` — `wald_scalar`, `pvalue_scalar`, `joint`.
+///
+/// `cz` (-1.0) and `alpha` (0.95) tune the IVX instrument's persistence
+/// `rho_z = 1 + cz / n^alpha` (Kostakis-Magdalinos-Stamatogiannis 2015),
+/// exactly as in `predictive_regression`; `alpha` here is not a significance
+/// level (no level is passed; `pvalue` is returned).
 #[pyfunction]
 #[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95, joint = "bonferroni"))]
 fn ivx_test<'py>(
@@ -10484,6 +10733,8 @@ fn cg_regression<'py>(
 /// `r_squared`, and the `wald`/`wald_df`/`wald_pvalue`.
 /// `use_correction=True` (the default) applies the finite-sample
 /// `n/(n - k)` HAC scaling; statsmodels `cov_type="HAC"` defaults it off.
+///
+/// Further arguments, with defaults: `maxlags` (None).
 #[pyfunction]
 #[pyo3(signature = (errors, regressors, maxlags = None, use_correction = true))]
 fn forecast_efficiency<'py>(
@@ -10624,6 +10875,8 @@ fn frac_integrate<'py>(
 /// design; include a constant column). `test`: `"white"` (White 1980, the
 /// squares-and-cross-products auxiliary) or `"breusch_pagan"` (Koenker
 /// studentized). Returns the LM `statistic`/`df`/`pvalue` and the F-form.
+///
+/// Returned keys: `df`, `f_pvalue`, `fstat`, `pvalue`, `statistic`.
 #[pyfunction]
 #[pyo3(signature = (y, x, test = "white"))]
 fn heteroskedasticity_test<'py>(
@@ -10655,6 +10908,8 @@ fn heteroskedasticity_test<'py>(
 
 /// Ramsey RESET functional-form test: F-test of powers of the fitted values
 /// (`yhat^2 .. yhat^max_power`) added to the OLS of `y` on `x` (`T x k`).
+///
+/// Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`.
 #[pyfunction]
 #[pyo3(signature = (y, x, max_power = 3))]
 fn reset_test<'py>(
@@ -10677,6 +10932,9 @@ fn reset_test<'py>(
 /// Chow structural-break test at a known 0-indexed `split`: F-test that the
 /// regression of `y` on `x` (`T x k`) has the same coefficients before and
 /// after `split`. Returns the F stat, dfs, p-value, and the sub-sample SSRs.
+///
+/// Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`, `ssr1`, `ssr2`,
+/// `ssr_pooled`.
 #[pyfunction]
 fn chow_test<'py>(
     py: Python<'py>,
@@ -10702,6 +10960,8 @@ fn chow_test<'py>(
 /// residuals of the OLS of `y` on `x` (`T x k`). Returns the standardized
 /// `path` and the 5% significance `bound_upper`/`bound_lower` lines: the
 /// coefficients are unstable if the path crosses a bound.
+///
+/// Returned keys: `bound_lower`, `bound_upper`, `path`, `sigma`.
 #[pyfunction]
 fn cusum_test<'py>(
     py: Python<'py>,
@@ -10776,6 +11036,12 @@ fn afns_adjustment<'py>(
 /// the 1961-2014 GSW panel — against the NY Fed's published ACM 10-year term
 /// premium (correlation 0.985, RMSE 0.31pp; the level is estimation-sample
 /// sensitive, so compare premia only across models fit on the same sample).
+///
+/// Returned keys: `A`, `A_rn`, `B`, `B_rn`, `a`, `beta`, `c`, `delta0`,
+/// `delta1`, `factor_loadings`, `factors`, `fitted`, `lambda0`, `lambda1`,
+/// `maturities`, `mu`, `n_factors`, `periods_per_year`, `phi`,
+/// `risk_neutral`, `rx_maturities`, `rx_rsquared`, `short_rate_rsquared`,
+/// `sigma`, `sigma2`, `term_premium`, `var_rsquared`, `yield_rsquared`.
 #[pyfunction]
 #[pyo3(signature = (yields, maturities, n_factors = 5, periods_per_year = 12.0))]
 fn acm_term_premium<'py>(
@@ -10877,6 +11143,8 @@ fn dsge_solve<'py>(
 /// convention). `taus` defaults to [0.05, 0.25, 0.5, 0.75, 0.95].
 /// Keys: `taus`, `params`, `bse`, `tvalues`, `iterations`, `bandwidth`,
 /// `sparsity` (all per tau), and a single `converged` bool over all taus.
+///
+/// Further arguments, with defaults: `se` ("robust").
 #[pyfunction]
 #[pyo3(signature = (y, x, taus = None, se = "robust"))]
 fn quantile_regression<'py>(
@@ -10946,6 +11214,10 @@ fn quantile_regression<'py>(
 /// check-loss minimum (statsmodels QuantReg warns in the same situation;
 /// here it is a per-fit flag), so do not quote that point of the IRF
 /// without refitting (fewer lags, less extreme tau, or more data).
+///
+/// Returned keys: `converged`, `horizons`, `irf`, `se`, `taus`.
+///
+/// Further arguments, with defaults: `horizons` (12).
 #[pyfunction]
 #[pyo3(signature = (y, shock, taus = None, horizons = 12, n_lag_controls = 4))]
 fn quantile_lp<'py>(
@@ -11000,6 +11272,9 @@ fn quantile_lp<'py>(
 /// them — are the last iterate, not a verified check-loss minimum
 /// (statsmodels QuantReg warns in the same situation). Do not quote that
 /// tau's risk read without refitting.
+///
+/// Returned keys: `bse`, `bse_powell`, `converged`, `crossing`, `current`,
+/// `fitted`, `fitted_raw`, `hac_lags`, `horizon`, `params`, `taus`.
 #[pyfunction]
 #[pyo3(signature = (y, conditions, horizon = 1, taus = None, rearrange = true))]
 fn growth_at_risk<'py>(
@@ -11158,6 +11433,9 @@ fn flp<'py>(
 /// at 1e-8.
 /// Keys: `horizons`, `weights` (w = phi'delta, length K), `response`, `se`,
 /// `betas` ((H+1) x K), `explained`.
+///
+/// Further arguments, with defaults: `n_factors` (3), `n_lag_controls` (2),
+/// `hac_maxlags` (None).
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 #[allow(clippy::too_many_arguments)] // py + 7 user args; the composite scenario call genuinely needs them
@@ -11213,6 +11491,8 @@ fn flp_scenario<'py>(
 /// Keys: `horizons`, `weights` (w = phi'delta, length K), `response_outcome`,
 /// `responses` ((H+1) x (K+1), scores first then outcome),
 /// `implied_outcome_innovation`.
+///
+/// Further arguments, with defaults: `n_factors` (3), `horizon` (10).
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, lags = 2, horizon = 10))]
 fn fvar_scenario<'py>(
@@ -11263,6 +11543,13 @@ fn fvar_scenario<'py>(
 /// against exact brute-force enumeration + numpy segment OLS at 1e-8
 /// (dates exact); CIs assume homogeneous regressor moments and error
 /// variance across regimes.
+///
+/// Returned keys: `break_dates`, `break_dates_by_m`, `bse`, `ci_lower_90`,
+/// `ci_lower_95`, `ci_scale`, `ci_upper_90`, `ci_upper_95`, `h`, `n_breaks`,
+/// `params`, `regime_ends`, `regime_ssr`, `regime_starts`, `ssr_path`,
+/// `sup_f_crit`, `sup_f_seq`.
+///
+/// Further arguments, with defaults: `max_breaks` (5).
 #[pyfunction]
 #[pyo3(signature = (y, x, max_breaks = 5, trim = 0.15))]
 fn bai_perron<'py>(
@@ -11476,6 +11763,8 @@ fn sup_f_test<'py>(
 /// Keys: `horizons`, `irf`, `se`, `lambda_used`, `cv_grid`, `cv_scores` (both
 /// empty when `lam` is a fixed float), `theta`, `irf_raw`, `se_raw`, plus the
 /// band keys above when `band` is set.
+///
+/// Further arguments, with defaults: `degree` (3), `n_basis` (None).
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -11600,6 +11889,8 @@ fn smooth_lp<'py>(
 ///
 /// Returns `fevd` [horizon+1][variable][shock] (each row sums to 1) and the
 /// `impact` [n][n] A0 used.
+///
+/// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c", impact = None, sigma = "dfadj"))]
 fn structural_fevd<'py>(
@@ -11761,6 +12052,13 @@ fn parse_narrative_restrictions(
 ///    "rule":"most"|"least","strong":bool}
 ///   {"type":"contribution_sign","variable":int,"shock":int,"start":int,"end":int,
 ///    "sign":"+"|"-"}
+///
+/// Further arguments, with defaults: `horizon` (None), `n_draws` (500),
+/// `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
+///
+/// `restrictions` (default: none; used under identification="sign") is the
+/// `sign_restricted_svar` list of `(variable, shock, horizon, sign)` tuples
+/// with `sign` in {"+", "-"}.
 #[pyfunction]
 #[pyo3(signature = (data, restrictions = vec![], lags = 2, horizon = None, identification = "cholesky",
                     n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2,
@@ -11944,6 +12242,12 @@ fn historical_decomposition<'py>(
 /// `set_min`/`set_max`, per-draw `weights` (mean 1), and `diagnostics` (with `ess`,
 /// `narrative_acceptance_rate`, `min_ptilde`). With no narrative restrictions every
 /// weight is 1 and it reproduces `sign_restricted_svar` bit-for-bit.
+///
+/// Further arguments, with defaults: `lags` (2), `n_draws` (500), `max_tries`
+/// (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
+///
+/// `sign_restrictions` (default: none) is the `sign_restricted_svar` list of
+/// `(variable, shock, horizon, sign)` tuples with `sign` in {"+", "-"}.
 #[pyfunction]
 #[pyo3(signature = (data, sign_restrictions = vec![], narrative_restrictions = None, lags = 2,
                     horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, n_weight_draws = 200))]
@@ -12057,6 +12361,9 @@ fn narrative_svar<'py>(
 /// contract). The selected draw is a descriptive summary -- one interior point
 /// of the identified set, dependent on the informative Haar prior -- not a
 /// prior-free point estimate.
+///
+/// Further arguments, with defaults: `lags` (2), `n_draws` (500), `max_tries`
+/// (400), `lambda1` (0.2).
 #[pyfunction]
 #[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, target = "restricted"))]
 #[allow(clippy::too_many_arguments)]
@@ -12169,6 +12476,9 @@ fn fry_pagan_svar<'py>(
 /// jointly-restricted shocks each bound is that shock's marginal identified
 /// set — a conservative outer approximation of the joint set, since the
 /// cross-shock orthogonality coupling is not imposed.
+///
+/// Further arguments, with defaults: `lags` (2), `n_draws` (500), `seed` (0),
+/// `lambda1` (0.2).
 #[pyfunction]
 #[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, seed = 0, lambda1 = 0.2, alpha = 0.10))]
 #[allow(clippy::too_many_arguments)]
@@ -12453,6 +12763,10 @@ fn pseudo_obs<'py>(
 /// nu, theta, se, se_rho, se_nu, se_theta, se_valid, loglik, aic, bic,
 /// tau, tau_implied, tail_lower, tail_upper, converged (rho/nu/theta and
 /// their se_* appear per family).
+///
+/// Returned keys: `aic`, `bic`, `converged`, `family`, `loglik`, `method`,
+/// `n`, `param_names`, `params`, `rho`, `se`, `se_rho`, `se_valid`,
+/// `tail_lower`, `tail_upper`, `tau`, `tau_implied`.
 #[pyfunction]
 #[pyo3(signature = (u, family = "gaussian", method = "mle"))]
 fn copula_fit<'py>(
@@ -12482,6 +12796,9 @@ fn copula_fit<'py>(
 /// extra parameter is not earning its keep by BIC), what the winner
 /// implies for tail dependence, and what was skipped and why. Keys:
 /// fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
+///
+/// Returned keys: `best_aic`, `best_bic`, `fits`, `ranking_aic`,
+/// `ranking_bic`, `skipped`, `verdict`.
 #[pyfunction]
 #[pyo3(signature = (u, families = None, method = "mle"))]
 fn copula_select<'py>(
