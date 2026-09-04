@@ -30,21 +30,22 @@ command needs the `--exclude tsecon-python` caveat described
 | — documentation tests | 54 | |
 | Python binding tests | **1526 passed, 0 failed, 1 skipped** in 474 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
-| Golden fixtures | 91 JSON files, produced by 72 generator scripts | `fixtures/` |
+| Golden fixtures | 96 JSON files, produced by 77 Python generator scripts (plus two R scripts) | `fixtures/` |
 | Public Python functions | 173, **all 173** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
 
-Of the 9 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
+Of the 10 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
 fingerprints that are platform-specific, two release-only Monte Carlo runs, one
-timing test, and one that emits a fixture snapshot) and 2 are in `tsecon-panel`
-(the LP-DiD and SPJ release-only Monte Carlo runs); each `#[ignore]` states its
-reason.
+timing test, and one that emits a fixture snapshot), 2 are in `tsecon-panel`
+(the LP-DiD and SPJ release-only Monte Carlo runs), and 1 is in `tsecon-ml`
+(the 600-replication post-double-selection coverage measurement); each
+`#[ignore]` states its reason.
 
 Of the 1489 integration tests — the 1479 that pass plus the 10 `#[ignore]`d —
 **316 are golden tests** and **647 are property tests**. The goldens live in
-67 `*golden*.rs` files across 39 crates (`golden.rs` in most, with additional
+72 `*golden*.rs` files across 39 crates (`golden.rs` in most, with additional
 per-surface files such as `engle_granger_golden.rs`, `irf_bands_golden.rs`,
 `proxy_bands_golden.rs`, `ou_golden.rs`, and `star_golden.rs`); the property
-tests live in 57 `*propert*.rs` files across 38 crates. The remainder are
+tests live in 62 `*propert*.rs` files across 38 crates. The remainder are
 validation (111 tests in 11 `*validation*.rs` files), cross-check, and
 reproducibility suites described below.
 
@@ -81,7 +82,7 @@ is one of exactly three things:
    coverage, consistency, parameter recovery).
 
 The [validation matrix](validation-matrix.md) says which of the three each
-method family gets, row by row: **77 estimator-family rows**, plus 18 more
+method family gets, row by row: **88 estimator-family rows**, plus 18 more
 covering the foundational numerics. It grades each row rather than averaging
 over them, and several rows are explicitly **mixed** — where they are, the row
 grades each leg separately and gives each its own tolerance.
@@ -256,7 +257,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-1526 tests in 99 files. 53 of the 96 fixture JSONs are named by file in the tests and reloaded there (the count is `grep` for a `*.json` literal per test file; the 58-of-91 an earlier revision printed used a broader, unrecorded rule and is not comparable), checked
+1526 tests in 99 files. 63 of the 96 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -271,7 +272,7 @@ cannot cover:
   facades (nine `test_results_*.py` files, 213 tests) assert key by key that the
   object *is* the dict the raw function has always returned, with rendering
   added on top and nothing removed.
-- **Error propagation.** 337 `pytest.raises` assertions check that a Rust
+- **Error propagation.** 475 `pytest.raises` assertions check that a Rust
   `Err(...)` surfaces as a Python `ValueError`/`RuntimeError` with a message
   you can act on, rather than an abort. `test_gmm_nonlinear.py` goes the other
   direction too: a Python moment function that raises must propagate its
@@ -595,7 +596,7 @@ library with lying documentation.
 
 38 of the 99 files in
 [`bindings/python/tests/`](../../bindings/python/tests), with collected test
-counts. The table has not kept pace with the directory, and the 55 files not
+counts. The table has not kept pace with the directory, and the 61 files not
 listed here are a gap in *this table*, not in the suite — every one of them
 runs on every invocation of the command above:
 

@@ -388,14 +388,14 @@ d = json.load(open("fixtures/realized.json"))
 rv = np.array(d["rv_series"])            # 600 daily realized variances
 
 fit = tsecon.har_rv(rv)                   # OLS on [const, RV_d, RV_w, RV_m], HAC SEs
-fit["params"]                            # [0.635, 0.169, 0.179, 0.398]  const, d, w, m
-fit["tvalues"]                           # [3.17, 4.52, 2.12, 3.63] — all three horizons load
+fit["params"]                            # [0.638, 0.114, 0.174, 0.457]  const, d, w, m
+fit["tvalues"]                           # [3.17, 3.08, 1.86, 4.33] — daily and monthly load; weekly is borderline
 fit["rsquared"], fit["nobs"]             # 0.144, 577
 
 tsecon.har_rv(rv, variant="log")["rsquared"]   # 0.289 — logs fit RV's skew far better
 ```
 
-All three horizon coefficients are individually significant — the signature HAR result that recent, medium, and long memory each carry information. The `variant` argument (`"level"`, `"log"`, or `"sqrt"`) transforms the RV series *before* forming the regressors; because $RV$ is strongly right-skewed, `"log"` and `"sqrt"` usually fit better (here $R^2$ nearly doubles, 0.14 → 0.29) and are what Corsi (2009) actually recommends.
+The daily and monthly coefficients are individually significant and the weekly one is borderline (t = 1.86 on 577 days) — the signature HAR shape, in which recent and long memory each carry information while the middle horizon is the hardest to pin down in a sample this size. (An earlier revision of this page quoted `[0.169, 0.179, 0.398]` with a weekly t of 2.12; those numbers predate the 0.5.0 correction of the HAR windows to Corsi's inclusive `t-1..t-5` / `t-1..t-22` definition.) The `variant` argument (`"level"`, `"log"`, or `"sqrt"`) transforms the RV series *before* forming the regressors; because $RV$ is strongly right-skewed, `"log"` and `"sqrt"` usually fit better (here $R^2$ nearly doubles, 0.14 → 0.29) and are what Corsi (2009) actually recommends.
 
 > **⚠ Common mistake.** Fitting `variant="log"` and then reporting $\exp(\hat{RV})$ as the variance forecast. The exponential of a forecast of $\ln RV$ is *not* a forecast of $RV$ — by Jensen's inequality it is biased low by roughly $\exp(\tfrac12 \hat\sigma^2_u)$, the log-normal correction. (The `use_correction` flag toggles the analogous small-sample $n/(n-k)$ HAC adjustment on the standard errors — a separate knob, defaulting to `True` like every other HAC surface in the library; statsmodels `cov_type="HAC"` defaults it *off*, so pass `use_correction=False` to match a default statsmodels call. Don't confuse the two corrections.) Choose the variant on out-of-sample QLIKE, and back-transform its point forecast explicitly.
 

@@ -10,7 +10,7 @@ data but can also *render* themselves — a `.summary()` an economist can read, 
 
 ## `tsecon.summarize` — a readable view of any result
 
-Six families (VAR, LP, GARCH, ARIMA, predictive-regression, DSGE) have
+Seven families (VAR, LP, GARCH, ARIMA, predictive-regression, DSGE, check_series) have
 hand-written summaries. For everything else, `tsecon.summarize(result)` renders
 *any* returned dict as an aligned, honest report — scalars in a key/value block,
 small matrices as shaped tables, large arrays summarized by shape and range,
