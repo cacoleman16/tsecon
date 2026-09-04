@@ -1,0 +1,27 @@
+# cargo-about configuration: the licence gate for the compiled wheel.
+#
+# `cargo about generate` walks the crates statically linked into
+# `tsecon._core` (bindings/python/Cargo.toml, normal dependencies only) and
+# renders their licence texts and copyright notices through about.hbs into
+# bindings/python/THIRD-PARTY-NOTICES.md, which pyproject.toml lists under
+# `license-files` so the notices travel with every wheel and sdist. A crate
+# under any licence not in `accepted` fails the run — that is the copyleft
+# gate THIRD-PARTY-LICENSES.md describes.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+]
+# Only what the wheel links: no dev-dependencies, no build-only crates'
+# transitive dev graph. Build scripts and proc-macros still appear because
+# they are part of the build graph cargo resolves for the target.
+ignore-dev-dependencies = true
+# tsecon's own crates (publish = false) are not third parties.
+private = { ignore = true }
+ignore-build-dependencies = false
+ignore-transitive-dependencies = false

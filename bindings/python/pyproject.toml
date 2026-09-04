@@ -11,7 +11,10 @@ description = "High-performance time series econometrics: a Rust core with a Pyt
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"
-license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+# THIRD-PARTY-NOTICES.md carries the licence text and copyright notice of
+# every crate statically linked into the extension; regenerate it with
+# scripts/gen_third_party_notices.sh whenever Cargo.lock changes (CI checks).
+license-files = ["LICENSE-MIT", "LICENSE-APACHE", "THIRD-PARTY-NOTICES.md"]
 authors = [{ name = "Chase Coleman", email = "chasecoleman93@gmail.com" }]
 keywords = [
     "time series", "econometrics", "forecasting", "VAR", "SVAR", "BVAR",
