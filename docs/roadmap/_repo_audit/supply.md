@@ -18,7 +18,7 @@ in the session scratchpad and are not committed.
 | Area | What was done |
 |---|---|
 | Rust dependencies | `cargo install cargo-audit --locked` (v0.22.x) and `cargo audit -f Cargo.lock`; `cargo tree --workspace --duplicates`; `cargo tree --workspace -e no-dev --prefix none \| sort -u`; `cargo tree -i <crate> --target all` for every crate that looked odd; `cargo metadata --format-version 1` for licences and `rust_version`; the crates.io API (`/api/v1/crates/<name>`, 94 distinct names, 1 request/s) for newest version, yank status and last-release date of every third-party package; a read of the `numpy` 0.29.0 crate source (`src/npyffi/{array,numpyconfig}.rs`) for its runtime NumPy checks. |
-| Python packaging | `bindings/python/pyproject.toml`, `bindings/python/Cargo.toml`, the pure-Python layer's NumPy usage (`grep -ohE '\bnp\.[A-Za-z_.]+'`), the published 0.6.0 wheel and sdist downloaded from PyPI and listed, the PyPI provenance endpoint, and `pip-audit 2.10.1 -r` over the exact unpinned set the workflows install (resolved fresh, as CI would). |
+| Python packaging | `bindings/python/pyproject.toml`, `bindings/python/Cargo.toml`, the pure-Python layer's NumPy usage (`grep -ohE '\bnp\.[A-Za-z_.]+'`), the published 0.6.0 wheel and sdist downloaded from PyPI and listed, the PyPI provenance endpoint, a 0.8.0 wheel built from this tree with `maturin build --release --locked` and run under `numpy==1.26.4` on Python 3.11, and `pip-audit 2.10.1 -r` over the exact unpinned set the workflows install (resolved fresh, as CI would). |
 | GitHub Actions | Every `uses:` in the three workflows resolved with `git ls-remote` to the commit it points at today; every `permissions:` block; a grep for `pull_request_target`, `secrets.`, and `${{ github.event.* }}` inside `run:`; the concurrency groups; the cache surfaces; PR #18 via the GitHub API (`get`, `get_files`, `get_check_runs`). The proxy refused `/environments`, `/actions/permissions*`, `/branches/main/protection` and `/rulesets`, so environment protection and the fork-approval setting are recorded under **Open**. |
 | Licence inventory | `THIRD-PARTY-LICENSES.md` reconciled row-by-row against `cargo metadata` (name, version, licence string); every licence expression tokenised and checked against the permissive set; the wheel's `.dist-info/licenses/` compared with what the inventory says ships. |
 | Dependabot | None existed. `.github/dependabot.yml` written and committed (cargo, pip for `bindings/python` and `docs`, github-actions; weekly; minor+patch grouped). This is the only change applied; workflow edits are proposed as diffs below. |
@@ -36,6 +36,7 @@ in the session scratchpad and are not committed.
 | Crates whose latest release is > 2 years old | 14 (all small, "finished" crates: rawpointer, same-file, interpol, strength_reduce, reborrow, byteorder, defer, transpose, walkdir, heck, num-traits, paste, primal-check, version_check) |
 | Direct deps behind newest | `pyo3` 0.29.0 vs 0.29.2 (patch); the other four are at newest |
 | `cargo audit` | cargo-audit 0.22.2, advisory DB of 1,239 entries, 141 lockfile crates scanned: **0 vulnerabilities**, 1 warning (`paste 1.0.15` unmaintained, RUSTSEC-2024-0436 — build-time proc-macro via faer → gemm) |
+| Local wheel under NumPy 1.x | `tsecon-0.8.0` built from this tree (`--locked`, maturin 1.15.0), installed with `numpy==1.26.4` on Python 3.11: **1388 passed, 67 skipped, 0 failed** |
 | `pip-audit` over CI's install set | 60 packages resolved (numpy 2.4.6, scipy 1.17.1, pytest 9.1.1, statsmodels 0.15.0, arch 8.0.0, scikit-learn 1.9.0, mypy 2.3.1, matplotlib 3.11.1, pandas 3.0.5, mkdocs-material 9.7.7, maturin 1.15.0, polars 1.44.1, …): **0 known vulnerabilities** |
 | Licence inventory | 97/97 rows match `cargo metadata` exactly; 0 missing, 0 extra, 0 licence-string mismatches; 0 copyleft tokens |
 | Actions | 10 distinct actions, 37 `uses:` sites, **0 pinned to a commit SHA** (8 mutable tags, 2 branches) |
@@ -59,7 +60,7 @@ in the session scratchpad and are not committed.
   tsecon-0.6.0.dist-info/sboms/tsecon-python.cyclonedx.json   (119 components, licence *ids* only)
   ```
 
-  No `THIRD-PARTY-*`, no per-crate notice. The `.so` is 16.3 MB and links every crate in the no-dev graph.
+  No `THIRD-PARTY-*`, no per-crate notice. The `.so` is 16.3 MB and links every crate in the no-dev graph. A 0.8.0 wheel built from this tree during the audit (maturin 1.15.0) has the identical `licenses/` set — the gap is in the current tree, not only in the published release.
 - Of the 71 crates linked or built on the host, **29 are licensed MIT only** (no Apache alternative): dyn-stack, dyn-stack-macros, equator ×2, equator-macro ×2, faer, faer-traits, gemm, gemm-c32, gemm-c64, gemm-common, gemm-f32, gemm-f64, interpol, libm, nano-gemm ×7, private-gemm-x86, pulp, pulp-wasm-simd-flag, qd, raw-cpuid, reborrow. MIT's one condition is that "the above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software"; Apache-2.0 §4(c)/(d) carries the equivalent retain-notices condition for the other 42.
 
 **Refutation attempted.** Does the SBOM satisfy the condition? No — CycloneDX carries SPDX identifiers, not the copyright lines or the licence text. Does the sdist? It ships the crate *sources* only as tsecon's own workspace (571 `crates/` entries); third-party sources are fetched at build time, so the sdist is clean but the binary wheel is not. Is the .so "substantial portions"? faer/gemm/pulp are the entire linear-algebra core; yes.
@@ -80,7 +81,7 @@ in the session scratchpad and are not committed.
    ```yaml
    - name: Generate third-party notices
      run: |
-       cargo install cargo-about --locked --version 0.7.1
+       cargo install cargo-about --locked --version 0.9.2
        cargo about generate --manifest-path bindings/python/Cargo.toml \
          --format json -o /dev/null   # fails on an unknown licence
        cargo about generate --manifest-path bindings/python/Cargo.toml \
@@ -150,7 +151,7 @@ in the session scratchpad and are not committed.
 
 **Evidence.** `ci.yml:62` (`pip pytest numpy scipy`), `:92` (`pip mypy numpy`), `:127` (`pip numpy scipy statsmodels arch scikit-learn`), `:146` (`matplotlib pandas`), `:212`; `release.yml:54`; `docs.yml:38` via `docs/requirements.txt` (`mkdocs-material>=9.5`, deployed with `pages: write` + `id-token: write`). `pip-audit -r` over that set today: 60 packages, 0 vulnerabilities, resolved to numpy 2.4.6 / scipy 1.17.1 / statsmodels 0.15.0 / arch 8.0.0 / scikit-learn 1.9.0 / pandas 3.0.5.
 
-**Refutation attempted.** The parity gate *should* track the newest references, one could argue — but then a reference library's behaviour change (statsmodels 0.15 changed several defaults) fails tsecon's build with no tsecon change, and the failure is indistinguishable from a regression. A pinned set with Dependabot bumps turns "statsmodels changed" into a reviewable PR.
+**Refutation attempted.** The parity gate *should* track the newest references, one could argue — but then any behaviour change in a reference library (a new statsmodels, arch or scikit-learn release altering a default or a numerical path) fails tsecon's build with no tsecon change, and the failure is indistinguishable from a regression. A pinned set with Dependabot bumps turns "statsmodels changed" into a reviewable PR.
 
 **Impact.** Non-reproducible CI (a red build on an untouched branch), and a wider supply-chain surface than necessary in the two jobs that hold `id-token: write` (docs deploy) or produce the release artifact (M1).
 
@@ -185,7 +186,7 @@ Controls that hold regardless of approval: no `pull_request_target` anywhere; `G
 
 **Evidence.**
 
-- `pyproject.toml:42` `numpy>=1.22`; the binding compiles against `numpy 0.29.0` whose runtime checks (`numpy-0.29.0/src/npyffi/array.rs:94-116`, `numpyconfig.rs:6-9`) reject a NumPy whose ABI is *newer* than 2.0 or whose C-API feature version is *older* than `0xc` (NumPy 1.15). NumPy 1.22 reports `0xf`: **a 1.22 wheel would import.** The pure-Python layer uses 39 distinct `np.*` names, all present since NumPy ≤1.17 (`asarray`, `ascontiguousarray`, `flatnonzero`, `column_stack`, `linalg.lstsq`, `errstate`, …); no `copy=` keyword, no `np.exceptions`, no 2.0-only names. So the floor is *probably* honest — but every CI job installs the newest NumPy (2.4.6 on 3.12/3.13; 2.0.2 on the 3.9 abi3 leg), so no 1.x NumPy has ever run the suite. A release wheel was built locally from this tree to import it under a NumPy 1.x, but the box was shared with six sibling audit builds and the build had not finished inside the budget; see Open.
+- `pyproject.toml:42` `numpy>=1.22`; the binding compiles against `numpy 0.29.0` whose runtime checks (`numpy-0.29.0/src/npyffi/array.rs:94-116`, `numpyconfig.rs:6-9`) reject a NumPy whose ABI is *newer* than 2.0 or whose C-API feature version is *older* than `0xc` (NumPy 1.15). NumPy 1.22 reports `0xf`: **a 1.22 wheel would import.** The pure-Python layer uses 39 distinct `np.*` names, all present since NumPy ≤1.17 (`asarray`, `ascontiguousarray`, `flatnonzero`, `column_stack`, `linalg.lstsq`, `errstate`, …); no `copy=` keyword, no `np.exceptions`, no 2.0-only names. So the floor is *probably* honest — but every CI job installs the newest NumPy (2.4.6 on 3.12/3.13; 2.0.2 on the 3.9 abi3 leg), so no 1.x NumPy has ever run the suite. **Empirical check:** a release wheel built from this tree (`maturin build --release --locked`, maturin 1.15.0, `tsecon-0.8.0-cp39-abi3-manylinux_2_39_x86_64.whl`) installed into a fresh venv with `numpy==1.26.4` / `scipy==1.11.4` on Python 3.11.15: `import tsecon` succeeds, `arima_fit` runs, and `pytest bindings/python/tests -q` → **1388 passed, 67 skipped, 0 failed** (5 min 49 s). The extension is genuinely NumPy-1.x compatible; the 1.22 floor itself is untested only because 1.22 has no Python ≥3.11 wheels — it needs the 3.9 CI leg.
 - `Cargo.toml:18` `rust-version = "1.85"`; CI builds only on 1.97.1 (`ci.yml:27,48,83,114,191`, `rust-toolchain.toml:8`). `cargo metadata` `rust_version` over all 97 packages: none above 1.85, and `generativity 1.2.1` is *exactly* 1.85 — one Dependabot minor bump away from a silently false MSRV.
 
 **Impact.** A user on NumPy 1.2x or a packager on Rust 1.85 is the first to find out. Hygiene.
@@ -616,7 +617,7 @@ Committed on this branch. Three ecosystems (`cargo` at `/`, `pip` at `/bindings/
 ## Open
 
 - **Environment protection on `pypi` and `github-pages`, the fork-approval setting, branch protection/rulesets**: the session proxy refuses `/repos/…/environments`, `/actions/permissions*`, `/branches/main/protection` and `/rulesets`. Whether `pypi` requires a reviewer (which is what makes the `workflow_dispatch`-on-a-tag path in L3 safe) must be confirmed in Settings → Environments by a maintainer.
-- **Empirical NumPy 1.x run**: not completed. The source-level answer (compiled floor = NumPy C-API 0xc / 1.15; Python layer uses pre-1.17 names only) says a 1.22 wheel imports; a `maturin build --release --locked` from this tree was started to confirm it under NumPy 1.26.4 on Python 3.11 (1.22 itself has no 3.11 wheels, so 1.22 must be checked on the 3.9 leg in CI), and had not completed when this file was written.
+- **Empirical NumPy 1.x run**: done for NumPy 1.26.4 on Python 3.11 (1388 passed / 67 skipped / 0 failed, see L2). Still open: NumPy **1.22.x specifically**, which only installs on Python ≤3.10 — the proposed `numpy==1.22.4` row on the 3.9 abi3 leg is the way to close it.
 - **`cargo deny`** (licence allow-list + source restriction + advisories in one gate) was not installed or run; the `about.toml`/`audit.yml` proposals cover the same ground in two tools, and `cargo deny` would be the single-tool replacement.
 - **Hash-pinned requirements** (`pip-compile --generate-hashes`) were not produced; the `==` file is the prerequisite.
 - **`actions/checkout` v5 / `setup-python` v6** exist; the diffs pin the majors the repository already uses (v4/v5) rather than bundling a major bump into a security change. Dependabot will offer the majors separately.
