@@ -162,7 +162,14 @@ The 173 functions span the applied workflow end to end:
   [@barnichon2019].
 - **Machine learning for econometrics**: penalized regression (`ridge`,
   `lasso`, `elastic_net`, `adaptive_lasso`, `lasso_path`) with leakage-safe
-  time-series cross-validation (`cv_splits`).
+  time-series cross-validation (`cv_splits`); and, new in 0.8.0, kernel ridge
+  and nonparametric regression with a dependence-aware bandwidth selector
+  (`kernel_ridge`, `kernel_regression`), group and sparse-group LASSO with
+  post-selection inference (`group_lasso`, `post_lasso`, `pds_lasso`),
+  regression trees and random forests with block resampling
+  (`regression_tree`, `random_forest`), L1 trend filtering and componentwise
+  boosting (`l1_trend_filter`, `boosting`), and a seed-ensembled feed-forward
+  regressor and echo state network (`mlp_regression`, `echo_state_network`).
 - **Panel, term structure, and structural-economic models**: the mean-group /
   CCE-MG / PMG panel trio (`panel_mean_group`, `panel_pmg`), panel local
   projections (`panel_lp`); the Nelson–Siegel / Svensson yield curve
@@ -174,7 +181,7 @@ The 173 functions span the applied workflow end to end:
   Blanchard–Kahn saddle-path solution [@blanchardkahn1980].
 
 Robust inference is served by a single library-wide HAC implementation that
-eighteen of the crates consume, so the same kernel and the same automatic
+nineteen of the crates consume, so the same kernel and the same automatic
 bandwidth rule stand behind `ols(se_type="hac")`, `lp(se="hac")`,
 `hamilton_filter(se="hac")`, `umidas`, and the panel estimators alike, and
 identical settings cannot yield different p-values in different modules. The

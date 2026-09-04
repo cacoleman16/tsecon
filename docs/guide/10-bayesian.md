@@ -287,12 +287,12 @@ print("short sample: selected lambda1 =", round(hs["lambda1_opt"], 4),
 ```
 
 ```
-selected lambda1: 0.1942  log-ML at optimum: -861.5642
+selected lambda1: 0.1944  log-ML at optimum: -861.5642
 log-ML at the conventional lambda1 = 0.2: -861.5704
-short sample: selected lambda1 = 0.3058  log-ML gain over fixed 0.2 = 3.564
+short sample: selected lambda1 = 0.3032  log-ML gain over fixed 0.2 = 3.563
 ```
 
-On the long fixture sample the evidence is nearly flat in `lambda1`: the ML-II optimum (0.194) sits a whisker from the folklore 0.2 and barely improves the marginal likelihood — the data have little to say about the dial. On the short, persistent 4-variable sample the picture flips: the data pull the tightness up to 0.31 and buy a 3.6-log-point improvement, exactly the regime where letting the evidence set the dial matters. Pass `optimize="lambda1+lambda3"` to also tune the lag-decay rate, or `hyperprior="glp"` for the GLP Gamma hyperprior (MAP-II rather than pure ML-II); the fully sampled hierarchical posterior with credible bands on `lambda` remains a [Module 05](../roadmap/05-bayesian.md) roadmap item.
+On the long fixture sample the evidence is nearly flat in `lambda1`: the ML-II optimum (0.194) sits a whisker from the folklore 0.2 and barely improves the marginal likelihood — the data have little to say about the dial. On the short, persistent 4-variable sample the picture flips: the data pull the tightness up to 0.30 and buy a 3.6-log-point improvement, exactly the regime where letting the evidence set the dial matters. Pass `optimize="lambda1+lambda3"` to also tune the lag-decay rate, or `hyperprior="glp"` for the GLP Gamma hyperprior (MAP-II rather than pure ML-II); the fully sampled hierarchical posterior with credible bands on `lambda` remains a [Module 05](../roadmap/05-bayesian.md) roadmap item.
 
 **Spike-and-slab selection: let the data zero out coefficients.** Shrinkage
 pulls *every* coefficient toward the prior by a common dial; **stochastic search

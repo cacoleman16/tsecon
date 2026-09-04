@@ -167,9 +167,9 @@ Two independent kinds of evidence, both reproducible:
   root where the OLS t-test rejects 28% of the time; HAC restores CI coverage;
   the AR(1) estimator is consistent with the textbook finite-sample bias.
 - **[Benchmarks](benchmarks/)** — a parity-first harness: estimates must match a
-  reference *before* anything is timed. On a release build, ADF is ~13× and
-  VAR(2) ~24× faster than statsmodels — and GARCH QMLE is ~4× *slower* than
-  `arch`, which we publish too.
+  reference *before* anything is timed. On a release build, ADF is ~11× and
+  VAR(2) ~21× faster than statsmodels — and GARCH(1,1) QMLE runs at 0.41× the
+  speed of `arch` (about 2.4× *slower*), which we publish too.
 
 ## Contributing
 

@@ -4,7 +4,7 @@ Correctness is the contract. Where a reference value can exist, nothing lands in
 `tsecon` without a **golden fixture** it has to reproduce to a stated tolerance
 — a JSON file of reference values (in [`fixtures/`](../../fixtures/README.md))
 that the Rust crate tests must hit on every run, and that the Python binding
-tests reload for 58 of the 91 files. This page is the map: for each method
+tests reload for 63 of the 96 files. This page is the map: for each method
 family it names the *reference* the golden is measured against, the fixture
 file, the test that enforces the match, and the tolerance it is held to.
 
@@ -242,7 +242,7 @@ Two things this table makes visible that a single pinned list hid:
 The goldens gate the **Rust** crate tests directly; that is the guarantee that
 holds for every fixture. The **Python** layer is a partial second pass, not a
 mirror: the binding suite in
-[`bindings/python/tests/`](../../bindings/python/tests) reloads **58 of the 91**
+[`bindings/python/tests/`](../../bindings/python/tests) reloads **63 of the 96**
 fixture files. The other **33 are never opened from Python**: `advisors`,
 `arima_bse`, `auto_arima`, `bvar_hierarchical`, `distributions`, `engle_granger`,
 `fry_pagan_svar`, `gmm_first_stage`, `hc_robust`, `hetero_svar`,

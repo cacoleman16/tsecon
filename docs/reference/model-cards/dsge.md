@@ -111,8 +111,9 @@ structural — it falls out of `E_t[z_{t+1}] = 0`, not out of a parameter choice
 - **`eigenvalue_moduli`** — a NumPy array of the moduli `|λ|` of the reduced-form
   `M`, sorted ascending. Entries below `1` are the stable roots (they become the
   eigenvalues of `P`); entries above `1` are the unstable roots the jumps must
-  neutralize. Eyeball where the array crosses `1`: the count above the line is
-  `n_unstable`, and it should equal your jump count.
+  neutralize. Eyeball where the array crosses `1`: the count above the line is the
+  number of unstable roots the `verdict` string reports, and it should equal
+  your jump count.
 - **`g`** — nested Python lists, the policy matrix `G` (`n_jump × n_predetermined`).
   Row `i` gives how jump `i` loads on each predetermined variable:
   `jump_t = G·predetermined_t`.

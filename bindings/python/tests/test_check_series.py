@@ -431,6 +431,26 @@ def test_nan_input_raises_a_teaching_error_with_the_count():
         tsecon.check_series(y)
 
 
+def test_nan_refusal_routes_to_the_shipped_imputer_not_a_roadmap():
+    """The NaN refusal must name a route that exists today.
+
+    Until 0.8.0 the message said state-space/Kalman imputation was "on the
+    Module 01 roadmap" while `local_level_smooth` had accepted NaN gaps and
+    returned the smoothed level through them all along — a denial of a shipped
+    capability (audit round 12, claims sweep). Pin the route, and pin that the
+    route works on exactly the input check_series refuses.
+    """
+    y = np.random.default_rng(0).standard_normal(100)
+    y[[7, 40, 41]] = np.nan
+    with pytest.raises(ValueError, match="local_level_smooth") as info:
+        tsecon.check_series(y)
+    assert "roadmap" not in str(info.value)
+    smoothed = tsecon.local_level_smooth(y, 1.0, 0.5)
+    for key, value in smoothed.items():
+        if hasattr(value, "__len__"):
+            assert np.isfinite(np.asarray(value, dtype=float)).all(), key
+
+
 def test_3d_input_raises():
     with pytest.raises(ValueError, match="3D"):
         tsecon.check_series(np.zeros((4, 4, 4)))

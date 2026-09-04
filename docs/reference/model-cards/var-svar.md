@@ -222,7 +222,7 @@ print("bootstrap h=1 band",
 ```
 
 ```
-keys: ['alpha', 'band', 'lower', 'method', 'n_boot', 'point', 'se', 'upper']  n_boot: None
+keys: ['alpha', 'band', 'bias_correct', 'lower', 'method', 'n_boot', 'point', 'se', 'upper']  n_boot: None
  h   point      se     [ lower ,  upper ]
  0  +0.2963  0.0105  [+0.2790, +0.3136]
  1  +0.1584  0.0160  [+0.1321, +0.1847]

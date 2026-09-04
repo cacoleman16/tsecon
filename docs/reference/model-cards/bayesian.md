@@ -236,16 +236,16 @@ print("short sample (k=4, n=60, p=3): selected lambda1 =", round(hs["lambda1_opt
 ```
 
 ```
-selected lambda1: 0.1942  log-ML at optimum: -861.5642
+selected lambda1: 0.1944  log-ML at optimum: -861.5642
 log-ML at the conventional lambda1 = 0.2: -861.5704
-converged: True  evaluations: 81
-short sample (k=4, n=60, p=3): selected lambda1 = 0.3058  log-ML gain over fixed 0.2 = 3.564
+converged: True  evaluations: 82
+short sample (k=4, n=60, p=3): selected lambda1 = 0.3032  log-ML gain over fixed 0.2 = 3.563
 ```
 
 On the long fixture sample the evidence is nearly flat: the ML-II optimum (0.194)
 sits a whisker from the conventional 0.2 and barely improves the marginal
 likelihood. On the short, persistent 4-variable sample the story changes — the
-data pull the tightness up to 0.31 and buy a 3.6-log-point improvement, exactly
+data pull the tightness up to 0.30 and buy a 3.6-log-point improvement, exactly
 the regime where letting the data set the dial matters.
 
 ---
