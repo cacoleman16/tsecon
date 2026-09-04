@@ -1,0 +1,1538 @@
+{
+ "acm_term_premium": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "yields",
+    "shape": [
+     200,
+     12
+    ]
+   }
+  ]
+ },
+ "adaptive_lasso": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "bai_perron": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     1
+    ]
+   }
+  ]
+ },
+ "boosting": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     4
+    ]
+   }
+  ]
+ },
+ "bvar_fit": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "bvar_hierarchical": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "bvar_irf_draws": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "bvar_ssvs": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "ccc_garch": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(T, k)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "returns",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "chow_test": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "connectedness": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "copula_fit": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(n, 2)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "u",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "copula_select": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(n, 2)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "u",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "cusum_test": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "dcc_garch": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(T, k)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "returns",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "dcc_test": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "returns",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "dfm_news": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": true,
+  "doc_snippets": [
+   "ragged"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "old_vintage",
+    "shape": [
+     200,
+     8
+    ]
+   },
+   {
+    "kind": "ndarray",
+    "param": "new_vintage",
+    "shape": [
+     200,
+     8
+    ]
+   }
+  ]
+ },
+ "dfm_nowcast": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": true,
+  "doc_snippets": [
+   "ragged"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     8
+    ]
+   }
+  ]
+ },
+ "dsge_solve": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "a",
+    "shape": [
+     2,
+     2
+    ]
+   },
+   {
+    "kind": "ndarray",
+    "param": "b",
+    "shape": [
+     2,
+     2
+    ]
+   },
+   {
+    "kind": "ndarray",
+    "param": "c",
+    "shape": [
+     2,
+     1
+    ]
+   }
+  ]
+ },
+ "dynamic_ns": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "panel",
+    "shape": [
+     200,
+     12
+    ]
+   }
+  ]
+ },
+ "echo_state_network": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "elastic_net": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "engle_granger": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "factor_model": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     8
+    ]
+   }
+  ]
+ },
+ "favar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "panel",
+    "shape": [
+     200,
+     8
+    ]
+   }
+  ]
+ },
+ "flp": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "scores",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "flp_scenario": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "curves",
+    "shape": [
+     200,
+     6
+    ]
+   }
+  ]
+ },
+ "forecast_disagreement": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": true,
+  "doc_snippets": [
+   "ragged"
+  ],
+  "inputs": [
+   {
+    "kind": "list-of-arrays",
+    "param": "panel",
+    "shape": [
+     10,
+     [
+      5
+     ]
+    ]
+   }
+  ]
+ },
+ "forecast_efficiency": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "regressors",
+    "shape": [
+     200,
+     1
+    ]
+   }
+  ]
+ },
+ "fry_pagan_svar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "functional_pca": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "curves",
+    "shape": [
+     200,
+     6
+    ]
+   }
+  ]
+ },
+ "fvar_scenario": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "curves",
+    "shape": [
+     200,
+     6
+    ]
+   }
+  ]
+ },
+ "group_lasso": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(n, p)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     4
+    ]
+   }
+  ]
+ },
+ "growth_at_risk": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "conditions",
+    "shape": [
+     200,
+     1
+    ]
+   }
+  ]
+ },
+ "hansen_seo_test": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "hetero_svar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(T, n)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "heteroskedasticity_test": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "historical_decomposition": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "iv_gmm": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     2
+    ]
+   },
+   {
+    "kind": "ndarray",
+    "param": "z",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "ivx_test": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "xs",
+    "shape": [
+     199,
+     2
+    ]
+   }
+  ]
+ },
+ "johansen": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "kernel_ridge": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "lasso": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "lasso_path": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "long_run_svar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "lp_did": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "outcome",
+    "shape": [
+     12,
+     200
+    ]
+   },
+   {
+    "kind": "ndarray",
+    "param": "treatment",
+    "shape": [
+     12,
+     200
+    ]
+   }
+  ]
+ },
+ "max_share_svar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "mcmc_diagnostics": {
+  "doc_says_N_T": true,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(n_chains, n_draws)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "chains",
+    "shape": [
+     4,
+     200
+    ]
+   }
+  ]
+ },
+ "mean_group_var": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "list-of-arrays",
+    "param": "entities",
+    "shape": [
+     4,
+     [
+      200,
+      2
+     ]
+    ]
+   }
+  ]
+ },
+ "mlp_regression": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "narrative_svar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "nongaussian_svar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "ols": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "panel_fe": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "outcome",
+    "shape": [
+     6,
+     200
+    ]
+   },
+   {
+    "kind": "ndarray",
+    "param": "regressors",
+    "shape": [
+     2,
+     6,
+     200
+    ]
+   }
+  ]
+ },
+ "panel_lp": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "outcome",
+    "shape": [
+     6,
+     200
+    ]
+   }
+  ]
+ },
+ "panel_mean_group": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "list-of-arrays",
+    "param": "ys",
+    "shape": [
+     5,
+     [
+      200
+     ]
+    ]
+   },
+   {
+    "kind": "list-of-arrays",
+    "param": "xs",
+    "shape": [
+     5,
+     [
+      200,
+      2
+     ]
+    ]
+   }
+  ]
+ },
+ "panel_pmg": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "list-of-arrays",
+    "param": "ys",
+    "shape": [
+     5,
+     [
+      200
+     ]
+    ]
+   },
+   {
+    "kind": "list-of-arrays",
+    "param": "xs",
+    "shape": [
+     5,
+     [
+      200,
+      1
+     ]
+    ]
+   }
+  ]
+ },
+ "panel_unit_root": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     5,
+     200
+    ]
+   }
+  ]
+ },
+ "pds_lasso": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(n, p)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     5
+    ]
+   }
+  ]
+ },
+ "phillips_ouliaris": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(T, m)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     1
+    ]
+   }
+  ]
+ },
+ "post_lasso": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(n, p)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     4
+    ]
+   }
+  ]
+ },
+ "proxy_ar_sets": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "proxy_first_stage": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "proxy_svar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "proxy_svar_bands": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "pseudo_obs": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "quantile_regression": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "random_forest": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(n, p)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "recession_probit": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "regression_tree": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(n, p)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "reset_test": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "ridge": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "robust_svar_bounds": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "sign_restricted_svar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "structural_fevd": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "sup_f_test": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "x",
+    "shape": [
+     200,
+     1
+    ]
+   }
+  ]
+ },
+ "threshold_var": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "threshold_var_test": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "threshold_vecm": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "umidas": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "hf_lags",
+    "shape": [
+     200,
+     6
+    ]
+   }
+  ]
+ },
+ "var_fevd": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "var_fit": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": true,
+  "doc_says_list": false,
+  "doc_snippets": [
+   "(T, k)"
+  ],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "var_forecast": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "var_granger": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "var_irf": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "var_irf_bands": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ },
+ "vecm": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     2
+    ]
+   }
+  ]
+ },
+ "weighted_midas": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "hf_lags",
+    "shape": [
+     200,
+     6
+    ]
+   }
+  ]
+ },
+ "zero_sign_svar": {
+  "doc_says_N_T": false,
+  "doc_says_T_k": false,
+  "doc_says_list": false,
+  "doc_snippets": [],
+  "inputs": [
+   {
+    "kind": "ndarray",
+    "param": "data",
+    "shape": [
+     200,
+     3
+    ]
+   }
+  ]
+ }
+}
