@@ -1,0 +1,2205 @@
+{
+ "fixtures": [
+  {
+   "file": "acm.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "advisors.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "arch": {
+     "recorded": "8.0.0",
+     "installed": "8.0.0",
+     "where": "arch",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "afns.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "arima.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "arima_bse.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "auto_arima.json",
+   "prov_key": "meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "backtest_string_snapshot.json",
+   "prov_key": "_note",
+   "versions": {}
+  },
+  {
+   "file": "bn_filters.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "bvar_hierarchical.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "bvar_niw.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "coint.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "connect.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "convergence.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "arviz": {
+     "recorded": "1.2.0",
+     "installed": null,
+     "where": "arviz",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "convex.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    },
+    "cvxpy": {
+     "recorded": "1.9.2",
+     "installed": null,
+     "where": "cvxpy",
+     "same": false
+    },
+    "clarabel": {
+     "recorded": "0.11.1",
+     "installed": null,
+     "where": "clarabel",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "dfgls.json",
+   "prov_key": "_meta",
+   "versions": {
+    "arch": {
+     "recorded": "8.0.0",
+     "installed": "8.0.0",
+     "where": ".reference (text)",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "diagnostics.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "distributions.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "engle_granger.json",
+   "prov_key": "_source",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": " (text)",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "favar.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "filters.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "forecast.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "forecast_eval2.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "fry_pagan_svar.json",
+   "prov_key": null,
+   "versions": {}
+  },
+  {
+   "file": "garch.json",
+   "prov_key": "_meta",
+   "versions": {
+    "arch": {
+     "recorded": "8.0.0",
+     "installed": "8.0.0",
+     "where": "arch",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "gmm.json",
+   "prov_key": "_meta",
+   "versions": {
+    "linearmodels": {
+     "recorded": "7.0",
+     "installed": "7.0",
+     "where": "linearmodels",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "gmm_first_stage.json",
+   "prov_key": "_meta",
+   "versions": {
+    "linearmodels": {
+     "recorded": "7.0",
+     "installed": "7.0",
+     "where": "linearmodels",
+     "same": true
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "hac.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "hc_robust.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "hetero_svar.json",
+   "prov_key": "_meta",
+   "versions": {}
+  },
+  {
+   "file": "historical_decomposition_chol.json",
+   "prov_key": null,
+   "versions": {}
+  },
+  {
+   "file": "kernel.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    },
+    "scikit-learn": {
+     "recorded": "1.9.0",
+     "installed": "1.9.0",
+     "where": "scikit_learn",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.15.0",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "linalg.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "long_run_svar.json",
+   "prov_key": null,
+   "versions": {}
+  },
+  {
+   "file": "longmemory.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "lp.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "linearmodels": {
+     "recorded": "7.0",
+     "installed": "7.0",
+     "where": "linearmodels",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "lpdid.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "max_share_svar.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "mgarch.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "midas.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "ml.json",
+   "prov_key": "_meta",
+   "versions": {
+    "scikit-learn": {
+     "recorded": "1.9.0",
+     "installed": "1.9.0",
+     "where": "sklearn",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "mstl.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "neural.json",
+   "prov_key": "_meta",
+   "versions": {
+    "scikit-learn": {
+     "recorded": "1.9.0",
+     "installed": "1.9.0",
+     "where": "sklearn",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "nongaussian_svar.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "nowcast_mle.json",
+   "prov_key": "_doc",
+   "versions": {}
+  },
+  {
+   "file": "nowcast_news.json",
+   "prov_key": "_doc",
+   "versions": {}
+  },
+  {
+   "file": "ou.json",
+   "prov_key": "meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "panel.json",
+   "prov_key": "_meta",
+   "versions": {
+    "linearmodels": {
+     "recorded": "7.0",
+     "installed": "7.0",
+     "where": "linearmodels",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "panel_spj.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "phillips.json",
+   "prov_key": "_meta",
+   "versions": {}
+  },
+  {
+   "file": "philox.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "pmg.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "predreg.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "proxy_ar.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "proxy_first_stage.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "proxy_svar.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "proxy_svar_bands.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "realized.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "regime.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "robust_svar_bounds.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "sarima.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "setar.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "simultaneous.json",
+   "prov_key": "meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "smoothlp.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "spectral.json",
+   "prov_key": "_meta",
+   "versions": {
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "ssm.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "ssvs.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "star.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "stl.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "structural_fevd.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "structured.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    },
+    "scikit-learn": {
+     "recorded": "1.9.0",
+     "installed": "1.9.0",
+     "where": "sklearn",
+     "same": true
+    },
+    "skglm": {
+     "recorded": "0.5",
+     "installed": null,
+     "where": "skglm",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "termstructure.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "trees.json",
+   "prov_key": "_meta",
+   "versions": {
+    "scikit-learn": {
+     "recorded": "1.9.0",
+     "installed": "1.9.0",
+     "where": "sklearn",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "tsecon-breaks.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "tsecon-copula.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "tsecon-dcs.json",
+   "prov_key": "meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "tsecon-dsge.json",
+   "prov_key": "_doc",
+   "versions": {}
+  },
+  {
+   "file": "tsecon-evt.json",
+   "prov_key": "_meta",
+   "versions": {
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "tsecon-funcshock.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "tsecon-gas.json",
+   "prov_key": null,
+   "versions": {}
+  },
+  {
+   "file": "tsecon-nowcast.json",
+   "prov_key": "_doc",
+   "versions": {}
+  },
+  {
+   "file": "tsecon-panelroot.json",
+   "prov_key": "meta",
+   "versions": {}
+  },
+  {
+   "file": "tsecon-panelts.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "tsecon-quantile.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "tsecon-recession.json",
+   "prov_key": "_doc",
+   "versions": {}
+  },
+  {
+   "file": "tsecon-spectest.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "tsecon-survey.json",
+   "prov_key": "_meta",
+   "versions": {}
+  },
+  {
+   "file": "tvar.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "tvecm.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "unitroot.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "var.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "1.26.4",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.17.1",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": true
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "var_backtest.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "var_irf_bands.json",
+   "prov_key": "_meta",
+   "versions": {}
+  },
+  {
+   "file": "var_irf_bootstrap.json",
+   "prov_key": "_meta",
+   "versions": {
+    "numpy": {
+     "recorded": "2.5.1",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": false
+    },
+    "scipy": {
+     "recorded": "1.18.0",
+     "installed": "1.17.1",
+     "where": "scipy",
+     "same": false
+    },
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    }
+   }
+  },
+  {
+   "file": "vecm_deterministic.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": "statsmodels",
+     "same": false
+    },
+    "numpy": {
+     "recorded": "2.4.6",
+     "installed": "2.4.6",
+     "where": "numpy",
+     "same": true
+    }
+   }
+  },
+  {
+   "file": "zero_sign_svar.json",
+   "prov_key": null,
+   "versions": {}
+  },
+  {
+   "file": "zivot_andrews.json",
+   "prov_key": "_meta",
+   "versions": {
+    "statsmodels": {
+     "recorded": "0.14.6",
+     "installed": "0.15.0",
+     "where": ".reference (text)",
+     "same": false
+    },
+    "arch": {
+     "recorded": "8.0.0",
+     "installed": "8.0.0",
+     "where": ".reference (text)",
+     "same": true
+    }
+   }
+  }
+ ],
+ "generators": [
+  {
+   "file": "generate_acm_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_advisors_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_afns_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_arima_bse_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_auto_arima_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_backtest_string_snapshot.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": true
+  },
+  {
+   "file": "generate_bayes_fixtures.py",
+   "parses": true,
+   "missing_imports": [
+    "arviz (ModuleNotFoundError)"
+   ],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_bn_filters_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": true,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_bvar_hierarchical_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_convex_fixtures.py",
+   "parses": true,
+   "missing_imports": [
+    "clarabel (ModuleNotFoundError)",
+    "cvxpy (ModuleNotFoundError)"
+   ],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_depth_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_dfgls_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_engle_granger_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_ext_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_fry_pagan_svar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_garch_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_gmm_first_stage_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_hc_robust_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_hetero_svar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_historical_decomposition_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_kernel_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_long_run_svar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_longmemory_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_lpdid_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": true,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_max_share_svar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_mstl_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_neural_fixtures.py",
+   "parses": true,
+   "missing_imports": [
+    "reservoirpy (ModuleNotFoundError)"
+   ],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_nongaussian_svar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_nowcast_mle_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_nowcast_news_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_ou_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_panel_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_panel_spj_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": true,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_phase2_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_phase34_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_phillips_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_pmg_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_predreg_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_proxy_ar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_proxy_first_stage_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_proxy_svar_bands_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_proxy_svar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_robust_bounds_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_sarima_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_setar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_simultaneous_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_smoothlp_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_spectral_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_ssvs_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_star_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_stl_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_structural_fevd_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_structured_fixtures.py",
+   "parses": true,
+   "missing_imports": [
+    "skglm (ModuleNotFoundError)"
+   ],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_survey_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_trees_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-breaks_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": true,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-copula_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-dcs_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-dsge_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-evt_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-funcshock_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-gas_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-nowcast_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-panelroot_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": true,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-panelts_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-quantile_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-recession_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tsecon-spectest_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tvar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": true,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_tvecm_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": true,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_var_backtest_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_var_irf_bands_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_var_irf_bootstrap_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_vecm_deterministic_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_zero_sign_svar_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": false,
+   "mentions_R": false,
+   "imports_tsecon": false
+  },
+  {
+   "file": "generate_zivot_andrews_fixtures.py",
+   "parses": true,
+   "missing_imports": [],
+   "run_doc": true,
+   "mentions_R": false,
+   "imports_tsecon": false
+  }
+ ]
+}

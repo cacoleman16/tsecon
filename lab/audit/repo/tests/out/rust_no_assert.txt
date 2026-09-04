@@ -1,0 +1,6 @@
+#[test] fns scanned: 1724
+== no assert / ? / unwrap / expect at all: 1 ==
+  crates/tsecon-rng/src/lib.rs:54  all_types_are_send_sync_clone
+== only .unwrap()/.expect() (does-not-error smoke tests): 2 ==
+  crates/tsecon-var/tests/simultaneous_bands.rs:1452  cost_of_the_sup_t_route_at_the_production_default
+  crates/tsecon-var/tests/irf_bootstrap_props.rs:216  emit_snapshot

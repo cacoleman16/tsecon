@@ -1,0 +1,188 @@
+== installed reference versions ==
+  MAPIE          1.5.0
+  arch           8.0.0
+  arviz          None
+  clarabel       None
+  cvxpy          None
+  linearmodels   7.0
+  numpy          2.4.6
+  pandas         3.0.5
+  scikit-learn   1.9.0
+  scipy          1.17.1
+  skglm          None
+  statsmodels    0.15.0
+
+== fixtures: 96 json files ==
+  no provenance block at all: 5  ['fry_pagan_svar.json', 'historical_decomposition_chol.json', 'long_run_svar.json', 'tsecon-gas.json', 'zero_sign_svar.json']
+  provenance block but no library version recorded: 11  ['backtest_string_snapshot.json', 'hetero_svar.json', 'nowcast_mle.json', 'nowcast_news.json', 'phillips.json', 'tsecon-dsge.json', 'tsecon-nowcast.json', 'tsecon-panelroot.json', 'tsecon-recession.json', 'tsecon-survey.json', 'var_irf_bands.json']
+
+== per-fixture recorded vs installed (only libraries recorded) ==
+  acm.json                                 [_meta]  numpy 2.4.6 = 2.4.6
+  advisors.json                            [_meta]  arch 8.0.0 = 8.0.0; numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  afns.json                                [_meta]  numpy 2.5.1 != 2.4.6
+  arima.json                               [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  arima_bse.json                           [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  auto_arima.json                          [meta]  numpy 2.4.6 = 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  bn_filters.json                          [_meta]  numpy 2.4.6 = 2.4.6; statsmodels 0.14.6 != 0.15.0
+  bvar_hierarchical.json                   [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1
+  bvar_niw.json                            [_meta]  numpy 2.5.1 != 2.4.6
+  coint.json                               [_meta]  numpy 2.5.1 != 2.4.6; statsmodels 0.14.6 != 0.15.0
+  connect.json                             [_meta]  numpy 2.5.1 != 2.4.6
+  convergence.json                         [_meta]  arviz 1.2.0 != None; numpy 2.5.1 != 2.4.6
+  convex.json                              [_meta]  clarabel 0.11.1 != None; cvxpy 1.9.2 != None; numpy 2.4.6 = 2.4.6
+  dfgls.json                               [_meta]  arch 8.0.0 = 8.0.0
+  diagnostics.json                         [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  distributions.json                       [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  engle_granger.json                       [_source]  statsmodels 0.14.6 != 0.15.0
+  favar.json                               [_meta]  numpy 2.5.1 != 2.4.6
+  filters.json                             [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  forecast.json                            [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  forecast_eval2.json                      [_meta]  numpy 2.5.1 != 2.4.6
+  garch.json                               [_meta]  arch 8.0.0 = 8.0.0; numpy 2.5.1 != 2.4.6
+  gmm.json                                 [_meta]  linearmodels 7.0 = 7.0; numpy 2.5.1 != 2.4.6
+  gmm_first_stage.json                     [_meta]  linearmodels 7.0 = 7.0; numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1
+  hac.json                                 [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  hc_robust.json                           [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  kernel.json                              [_meta]  numpy 2.4.6 = 2.4.6; scikit-learn 1.9.0 = 1.9.0; statsmodels 0.15.0 = 0.15.0
+  linalg.json                              [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  longmemory.json                          [_meta]  numpy 2.5.1 != 2.4.6
+  lp.json                                  [_meta]  linearmodels 7.0 = 7.0; numpy 2.5.1 != 2.4.6; statsmodels 0.14.6 != 0.15.0
+  lpdid.json                               [_meta]  numpy 2.4.6 = 2.4.6
+  max_share_svar.json                      [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1
+  mgarch.json                              [_meta]  numpy 2.5.1 != 2.4.6
+  midas.json                               [_meta]  numpy 2.5.1 != 2.4.6; statsmodels 0.14.6 != 0.15.0
+  ml.json                                  [_meta]  numpy 2.5.1 != 2.4.6; scikit-learn 1.9.0 = 1.9.0
+  mstl.json                                [_meta]  statsmodels 0.14.6 != 0.15.0
+  neural.json                              [_meta]  numpy 2.4.6 = 2.4.6; scikit-learn 1.9.0 = 1.9.0; scipy 1.17.1 = 1.17.1
+  nongaussian_svar.json                    [_meta]  numpy 2.5.1 != 2.4.6
+  ou.json                                  [meta]  numpy 2.4.6 = 2.4.6; statsmodels 0.14.6 != 0.15.0
+  panel.json                               [_meta]  linearmodels 7.0 = 7.0; numpy 2.5.1 != 2.4.6
+  panel_spj.json                           [_meta]  numpy 2.4.6 = 2.4.6
+  philox.json                              [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  pmg.json                                 [_meta]  numpy 2.5.1 != 2.4.6
+  predreg.json                             [_meta]  numpy 2.4.6 = 2.4.6
+  proxy_ar.json                            [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  proxy_first_stage.json                   [_meta]  numpy 2.4.6 = 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  proxy_svar.json                          [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  proxy_svar_bands.json                    [_meta]  numpy 2.5.1 != 2.4.6; statsmodels 0.14.6 != 0.15.0
+  realized.json                            [_meta]  numpy 2.4.6 = 2.4.6; statsmodels 0.14.6 != 0.15.0
+  regime.json                              [_meta]  numpy 2.5.1 != 2.4.6; statsmodels 0.14.6 != 0.15.0
+  robust_svar_bounds.json                  [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1
+  sarima.json                              [_meta]  numpy 2.4.6 = 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  setar.json                               [_meta]  numpy 2.4.6 = 2.4.6
+  simultaneous.json                        [meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1
+  smoothlp.json                            [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  spectral.json                            [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1
+  ssm.json                                 [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  ssvs.json                                [_meta]  numpy 2.4.6 = 2.4.6
+  star.json                                [_meta]  numpy 2.4.6 = 2.4.6; scipy 1.17.1 = 1.17.1
+  stl.json                                 [_meta]  statsmodels 0.14.6 != 0.15.0
+  structural_fevd.json                     [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  structured.json                          [_meta]  numpy 2.4.6 = 2.4.6; scikit-learn 1.9.0 = 1.9.0; skglm 0.5 != None
+  termstructure.json                       [_meta]  numpy 2.5.1 != 2.4.6
+  trees.json                               [_meta]  numpy 2.4.6 = 2.4.6; scikit-learn 1.9.0 = 1.9.0
+  tsecon-breaks.json                       [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1
+  tsecon-copula.json                       [_meta]  numpy 2.4.6 = 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  tsecon-dcs.json                          [meta]  numpy 2.4.6 = 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  tsecon-evt.json                          [_meta]  numpy 2.4.6 = 2.4.6; scipy 1.17.1 = 1.17.1
+  tsecon-funcshock.json                    [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  tsecon-panelts.json                      [_meta]  numpy 2.5.1 != 2.4.6; statsmodels 0.14.6 != 0.15.0
+  tsecon-quantile.json                     [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  tsecon-spectest.json                     [_meta]  statsmodels 0.14.6 != 0.15.0
+  tvar.json                                [_meta]  numpy 2.4.6 = 2.4.6
+  tvecm.json                               [_meta]  numpy 2.4.6 = 2.4.6
+  unitroot.json                            [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  var.json                                 [_meta]  numpy 1.26.4 != 2.4.6; scipy 1.17.1 = 1.17.1; statsmodels 0.14.6 != 0.15.0
+  var_backtest.json                        [_meta]  numpy 2.4.6 = 2.4.6
+  var_irf_bootstrap.json                   [_meta]  numpy 2.5.1 != 2.4.6; scipy 1.18.0 != 1.17.1; statsmodels 0.14.6 != 0.15.0
+  vecm_deterministic.json                  [_meta]  numpy 2.4.6 = 2.4.6; statsmodels 0.14.6 != 0.15.0
+  zivot_andrews.json                       [_meta]  arch 8.0.0 = 8.0.0; statsmodels 0.14.6 != 0.15.0
+
+== drift summary (lib, recorded, installed) -> n fixtures ==
+  arviz          1.2.0      -> None        1
+  clarabel       0.11.1     -> None        1
+  cvxpy          1.9.2      -> None        1
+  numpy          1.26.4     -> 2.4.6       12
+  numpy          2.5.1      -> 2.4.6       37
+  scipy          1.18.0     -> 1.17.1      16
+  skglm          0.5        -> None        1
+  statsmodels    0.14.6     -> 0.15.0      41
+
+== generators: 77 ==
+  generate_acm_fixtures.py                             ok
+  generate_advisors_fixtures.py                        ok
+  generate_afns_fixtures.py                            ok
+  generate_arima_bse_fixtures.py                       ok
+  generate_auto_arima_fixtures.py                      ok
+  generate_backtest_string_snapshot.py                 imports tsecon
+  generate_bayes_fixtures.py                           missing imports: arviz (ModuleNotFoundError)
+  generate_bn_filters_fixtures.py                      R-dependent
+  generate_bvar_hierarchical_fixtures.py               ok
+  generate_convex_fixtures.py                          missing imports: clarabel (ModuleNotFoundError), cvxpy (ModuleNotFoundError)
+  generate_depth_fixtures.py                           ok
+  generate_dfgls_fixtures.py                           ok
+  generate_engle_granger_fixtures.py                   ok
+  generate_ext_fixtures.py                             ok
+  generate_fixtures.py                                 ok
+  generate_fry_pagan_svar_fixtures.py                  no run instructions in docstring/header
+  generate_garch_fixtures.py                           ok
+  generate_gmm_first_stage_fixtures.py                 ok
+  generate_hc_robust_fixtures.py                       ok
+  generate_hetero_svar_fixtures.py                     no run instructions in docstring/header
+  generate_historical_decomposition_fixtures.py        no run instructions in docstring/header
+  generate_kernel_fixtures.py                          ok
+  generate_long_run_svar_fixtures.py                   no run instructions in docstring/header
+  generate_longmemory_fixtures.py                      ok
+  generate_lpdid_fixtures.py                           R-dependent
+  generate_max_share_svar_fixtures.py                  ok
+  generate_mstl_fixtures.py                            ok
+  generate_neural_fixtures.py                          missing imports: reservoirpy (ModuleNotFoundError)
+  generate_nongaussian_svar_fixtures.py                ok
+  generate_nowcast_mle_fixtures.py                     no run instructions in docstring/header
+  generate_nowcast_news_fixtures.py                    no run instructions in docstring/header
+  generate_ou_fixtures.py                              ok
+  generate_panel_fixtures.py                           ok
+  generate_panel_spj_fixtures.py                       R-dependent
+  generate_phase2_fixtures.py                          ok
+  generate_phase34_fixtures.py                         ok
+  generate_phillips_fixtures.py                        ok
+  generate_pmg_fixtures.py                             ok
+  generate_predreg_fixtures.py                         ok
+  generate_proxy_ar_fixtures.py                        ok
+  generate_proxy_first_stage_fixtures.py               ok
+  generate_proxy_svar_bands_fixtures.py                ok
+  generate_proxy_svar_fixtures.py                      ok
+  generate_robust_bounds_fixtures.py                   ok
+  generate_sarima_fixtures.py                          ok
+  generate_setar_fixtures.py                           ok
+  generate_simultaneous_fixtures.py                    ok
+  generate_smoothlp_fixtures.py                        ok
+  generate_spectral_fixtures.py                        no run instructions in docstring/header
+  generate_ssvs_fixtures.py                            ok
+  generate_star_fixtures.py                            ok
+  generate_stl_fixtures.py                             ok
+  generate_structural_fevd_fixtures.py                 ok
+  generate_structured_fixtures.py                      missing imports: skglm (ModuleNotFoundError)
+  generate_survey_fixtures.py                          ok
+  generate_trees_fixtures.py                           ok
+  generate_tsecon-breaks_fixtures.py                   R-dependent
+  generate_tsecon-copula_fixtures.py                   ok
+  generate_tsecon-dcs_fixtures.py                      ok
+  generate_tsecon-dsge_fixtures.py                     no run instructions in docstring/header
+  generate_tsecon-evt_fixtures.py                      ok
+  generate_tsecon-funcshock_fixtures.py                ok
+  generate_tsecon-gas_fixtures.py                      no run instructions in docstring/header
+  generate_tsecon-nowcast_fixtures.py                  no run instructions in docstring/header
+  generate_tsecon-panelroot_fixtures.py                R-dependent
+  generate_tsecon-panelts_fixtures.py                  ok
+  generate_tsecon-quantile_fixtures.py                 ok
+  generate_tsecon-recession_fixtures.py                ok
+  generate_tsecon-spectest_fixtures.py                 ok
+  generate_tvar_fixtures.py                            R-dependent
+  generate_tvecm_fixtures.py                           R-dependent
+  generate_var_backtest_fixtures.py                    ok
+  generate_var_irf_bands_fixtures.py                   no run instructions in docstring/header
+  generate_var_irf_bootstrap_fixtures.py               ok
+  generate_vecm_deterministic_fixtures.py              ok
+  generate_zero_sign_svar_fixtures.py                  no run instructions in docstring/header
+  generate_zivot_andrews_fixtures.py                   ok

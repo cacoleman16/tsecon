@@ -1,0 +1,126 @@
+run_a: 1527 tests, sum of test times 395.9 s
+
+== 20 slowest tests ==
+    241.4 s  tests.test_auto_arima::test_recovery_small_mc_nonseasonal
+     43.8 s  tests.test_auto_arima::test_seasonal_co2_monthly_selects_a_seasonal_model
+     23.4 s  tests.test_conformal::test_conformal_kwargs_still_live_where_documented
+      8.8 s  tests.test_auto_arima::test_deterministic_and_trace_refit_consistent
+      7.7 s  tests.test_neural::test_mlp_ensemble_beats_mean_member_always_and_median_member_mostly
+      5.2 s  tests.test_auto_arima::test_ic_variants_and_bic_prefers_smaller
+      2.3 s  tests.test_convergence_flags::test_dfm_nowcast_mle_reports_converged_and_iterations
+      2.2 s  tests.test_auto_arima::test_result_keys_are_a_superset_of_arima_fit
+      2.0 s  tests.test_simultaneous_bands::test_panel_lp_joint_coverage_pointwise_fails_and_closed_forms_repair_it
+      1.9 s  tests.test_conformal::test_theta_and_arima_bases_run
+      1.8 s  tests.test_auto_arima::test_d_selection_on_a_random_walk_with_evidence
+      1.8 s  tests.test_mgarch_covariance_surface::test_univariate_and_second_stage_dist_are_independent_knobs
+      1.7 s  tests.test_replication_hamilton_markov::test_statsmodels_reaches_the_eviews_benchmark
+      1.6 s  tests.test_audit_round11::test_egarch_multistep_forecast_refusal_is_documented_and_clean
+      1.6 s  tests.test_dcc_buildout::test_student_t_second_stage
+      1.6 s  tests.test_convergence_flags::test_auto_arima_shares_the_new_keys
+      1.5 s  tests.test_copula::test_copula_fit_matches_reference[t_rho05_nu4-t-mle]
+      1.5 s  tests.test_copula::test_copula_select_crowns_the_generator_winner[t_rho05_nu4]
+      1.5 s  tests.test_copula::test_t_tail_dependence_uses_correct_form_not_statsmodels_bug
+      1.4 s  tests.test_dcc_buildout::test_dcc_garch_docstring_names_every_returned_key
+
+== per-file wall time (sum of test times) ==
+    304.5 s     8 tests  test_auto_arima.py
+     26.3 s    34 tests  test_conformal.py
+     10.3 s    22 tests  test_neural.py
+      9.4 s    18 tests  test_dcc_buildout.py
+      7.4 s    71 tests  test_copula.py
+      4.9 s    13 tests  test_convergence_flags.py
+      3.8 s    20 tests  test_mgarch_covariance_surface.py
+      3.0 s    58 tests  test_simultaneous_bands.py
+      2.0 s    16 tests  test_binding_gaps.py
+      2.0 s     7 tests  test_replication_hamilton_markov.py
+      1.8 s    12 tests  test_intervals.py
+      1.7 s    51 tests  test_audit_round11.py
+      1.6 s     5 tests  test_arima_seasonal.py
+      1.2 s    20 tests  test_results_arima.py
+      1.1 s     8 tests  test_replication_uhlig.py
+      1.0 s    39 tests  test_results_edge_cases.py
+      1.0 s     9 tests  test_new_crates.py
+      1.0 s    26 tests  test_bn_filters.py
+      0.8 s     6 tests  test_replication_gk.py
+      0.8 s     4 tests  test_midas_mgarch.py
+      0.8 s    16 tests  test_results_check.py
+      0.5 s    13 tests  test_ident_tranche2a.py
+      0.5 s    22 tests  test_results_garch.py
+      0.5 s     5 tests  test_nongaussian_svar.py
+      0.4 s    18 tests  test_tvecm.py
+      0.4 s    17 tests  test_mstl.py
+      0.4 s    29 tests  test_results_lp.py
+      0.4 s    35 tests  test_smoke.py
+      0.4 s     9 tests  test_garch_boundary.py
+      0.4 s    11 tests  test_lp_audit_fixes.py
+      0.3 s    24 tests  test_coverage_fixes.py
+      0.3 s    16 tests  test_results_var.py
+      0.3 s    20 tests  test_dfgls.py
+      0.3 s    49 tests  test_convex.py
+      0.3 s    58 tests  test_check_series.py
+      0.3 s    36 tests  test_kernel.py
+      0.3 s    36 tests  test_results_predreg.py
+      0.2 s    14 tests  test_tvar.py
+      0.2 s     6 tests  test_params_named.py
+      0.2 s     6 tests  test_replication_setar_sunspots.py
+      0.2 s    20 tests  test_backtest_callable.py
+      0.2 s    46 tests  test_proxy_svar_bands.py
+      0.2 s     6 tests  test_gmm_nonlinear.py
+      0.2 s     2 tests  test_dcs_scale.py
+      0.2 s    27 tests  test_trees.py
+      0.2 s     3 tests  test_replication_ramey_zubairy.py
+      0.1 s    30 tests  test_structured.py
+      0.1 s     3 tests  test_garch_scale.py
+      0.1 s    10 tests  test_dcs_local_level.py
+      0.1 s    37 tests  test_coerce.py
+      0.1 s    26 tests  test_results_dsge.py
+      0.1 s     6 tests  test_lp_multiplier.py
+      0.1 s    18 tests  test_frontier.py
+      0.1 s     8 tests  test_replication_glp.py
+      0.1 s    20 tests  test_star.py
+      0.1 s     4 tests  test_replication_glp_point.py
+      0.1 s     8 tests  test_zivot_andrews.py
+      0.1 s     7 tests  test_var_irf_bands.py
+      0.1 s     1 tests  test_coverage_page_sync.py
+      0.1 s    34 tests  test_stl.py
+      0.1 s     4 tests  test_coint_regime.py
+      0.0 s     7 tests  test_acm.py
+      0.0 s    14 tests  test_setar.py
+      0.0 s     8 tests  test_ident_tranche2b.py
+      0.0 s    21 tests  test_ou.py
+      0.0 s     3 tests  test_stub_sync.py
+      0.0 s     3 tests  test_pmg_news.py
+      0.0 s    13 tests  test_evt.py
+      0.0 s    16 tests  test_ng_perron.py
+      0.0 s    25 tests  test_vecm_deterministic.py
+      0.0 s     9 tests  test_proxy_first_stage.py
+      0.0 s     7 tests  test_lp_ml.py
+      0.0 s    10 tests  test_ident_tranche1.py
+      0.0 s     6 tests  test_docstring_keys.py
+      0.0 s     8 tests  test_panel_spj.py
+      0.0 s     4 tests  test_lp_state.py
+      0.0 s     7 tests  test_panel_fceval.py
+      0.0 s    17 tests  test_lpdid.py
+      0.0 s    18 tests  test_cv_splits.py
+      0.0 s     5 tests  test_mean_group_var.py
+      0.0 s     6 tests  test_predreg.py
+      0.0 s     4 tests  test_favar.py
+      0.0 s     4 tests  test_weighted_midas.py
+      0.0 s     7 tests  test_backtest.py
+      0.0 s     9 tests  test_results_generic.py
+      0.0 s     9 tests  test_survey_longmemory_bindings.py
+      0.0 s     4 tests  test_depth.py
+      0.0 s     4 tests  test_dynamic_ns.py
+      0.0 s     4 tests  TestEngleGranger.py
+      0.0 s    18 tests  test_spectest_afns_dsge.py
+      0.0 s     6 tests  test_spectral.py
+      0.0 s     2 tests  test_replication_yield_curve.py
+      0.0 s     2 tests  TestFvarScenario.py
+      0.0 s     2 tests  test_gmm.py
+      0.0 s     3 tests  test_ml_paths.py
+      0.0 s     7 tests  test_replication_bai_perron.py
+      0.0 s     6 tests  test_roadmap_gaps.py
+      0.0 s     8 tests  test_var_backtest.py
+      0.0 s     4 tests  TestNdiffs.py
+      0.0 s     7 tests  test_realized_extras.py
+      0.0 s     3 tests  test_termstructure.py

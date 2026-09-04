@@ -1,0 +1,88 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running unittests src/lib.rs (target-wt/release/deps/tsecon_ml-a588fd2e7398d954)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.00s
+
+     Running tests/convex_golden.rs (target-wt/release/deps/convex_golden-7833afe9de497665)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/convex_properties.rs (target-wt/release/deps/convex_properties-b19b43670acc8cc5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/golden.rs (target-wt/release/deps/golden-2ac57741478b96d1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/kernel_golden.rs (target-wt/release/deps/kernel_golden-8fb94f2fd5eea355)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/kernel_properties.rs (target-wt/release/deps/kernel_properties-119d5f54b94b31c0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/neural_golden.rs (target-wt/release/deps/neural_golden-807fff8a286315b0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/neural_properties.rs (target-wt/release/deps/neural_properties-8cd7c32f50ddd93f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+     Running tests/properties.rs (target-wt/release/deps/properties-08f9ffc5a6684e10)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+     Running tests/structured_golden.rs (target-wt/release/deps/structured_golden-ca766b968d7990e1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/structured_properties.rs (target-wt/release/deps/structured_properties-04de4ee0b0c439db)
+
+running 1 test
+PDS coverage cell A rho_e=0.3 n=400: pds=0.950 single=0.003 oracle=0.953 (MC se 0.013, mean |union| 10.6, reps 300)
+PDS coverage cell B rho_e=0.5 n=200: pds=0.903 single=0.153 oracle=0.930 (MC se 0.013, mean |union| 13.7, reps 300)
+test pds_coverage_full_measurement ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 35.71s
+
+     Running tests/trees_golden.rs (target-wt/release/deps/trees_golden-fa32105bdf4d4928)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/trees_properties.rs (target-wt/release/deps/trees_properties-f5f46838d037af8e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+   Doc-tests tsecon_ml
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

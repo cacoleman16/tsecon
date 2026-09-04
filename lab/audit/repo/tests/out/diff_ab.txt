@@ -1,0 +1,13 @@
+test ids across runs: 1527
+  run_a: 1527 tests  {'passed': 1526, 'skipped': 1}
+  run_b: 1527 tests  {'passed': 1526, 'skipped': 1}
+
+== outcome differences ==
+  (0 differences)
+
+== non-passing tests in any run ==
+  run_a: skipped  tests.test_trees::test_forest_single_tree_bridge_reproduces_the_tree[depth3_leaf1_split30]
+  run_b: skipped  tests.test_trees::test_forest_single_tree_bridge_reproduces_the_tree[depth3_leaf1_split30]
+
+== captured-stdout differences between runs (numbers only; timings masked) ==
+  (0 tests with differing captured stdout)

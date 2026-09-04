@@ -1,0 +1,142 @@
+matrix rows parsed: 106; rows with a fixture: 88
+
+== per test file: fixtures loaded, loosest literal in file, loosest documented in matrix row ==
+  test_acm.py                                  acm.json                        file-loosest atol=1e-08 @ L71       matrix-loosest 0.97  [ACM term premium — `acm_term_premium`]
+  test_arima_seasonal.py                       sarima.json                     (no matrix row names this fixture)  file-loosest rtol=0.005 @ L50
+  test_backtest_callable.py                    backtest_string_snapshot.json   (no matrix row names this fixture)  file-loosest 
+  test_bn_filters.py                           bn_filters.json                 file-loosest lt=0.25 @ L169         matrix-loosest 1e-06  [Hamilton filter inference — `hamilton_filter(se=…)]  <-- LOOSER than documented
+  test_bn_filters.py                           bn_filters.json                 file-loosest lt=0.25 @ L169         matrix-loosest 1e-07  [Beveridge-Nelson decomposition — `bn_decomposition]  <-- LOOSER than documented
+  test_bn_filters.py                           bn_filters.json                 file-loosest lt=0.25 @ L169         matrix-loosest 1e-08  [BN filter — `bn_filter` (Kamber-Morley-Wong 2018 o]  <-- LOOSER than documented
+  test_bn_filters.py                           filters.json                    file-loosest lt=0.25 @ L169         matrix-loosest 1e-08  [Filters — HP / Baxter-King / Christiano-Fitzgerald]  <-- LOOSER than documented
+  test_coerce.py                               favar.json                      file-loosest                        matrix-loosest 1e-06  [FAVAR / factor extraction — `favar`]
+  test_coint_regime.py                         coint.json                      file-loosest atol=0.4 @ L45         matrix-loosest 1e-06  [Cointegration — `johansen`, `vecm`]  <-- LOOSER than documented
+  test_coint_regime.py                         regime.json                     file-loosest atol=0.4 @ L45         matrix-loosest 0.03  [Markov-switching AR — `markov_switching_ar`]  <-- LOOSER than documented
+  test_convergence_flags.py                    pmg.json                        file-loosest atol=1e-07 @ L82       matrix-loosest 1e-06  [Pooled mean group (PMG) — `panel_pmg`]
+  test_convex.py                               convex.json                     file-loosest atol=1e-08 @ L106      matrix-loosest 1e-08  [L1 trend filtering — `l1_trend_filter` (`penalty="]
+  test_convex.py                               convex.json                     file-loosest atol=1e-08 @ L106      matrix-loosest 1e-10  [Componentwise L2 boosting — `boosting`]  <-- LOOSER than documented
+  test_copula.py                               tsecon-copula.json              file-loosest lt=0.05 @ L174         matrix-loosest 0.0001  [Static copulas — `pseudo_obs`, `copula_fit`, `copu]  <-- LOOSER than documented
+  test_dcc_buildout.py                         mgarch.json                     file-loosest lt=1.0 @ L229          matrix-loosest 1e-07  [Multivariate GARCH — `ccc_garch`, `dcc_garch` (inc]  <-- LOOSER than documented
+  test_dcs_local_level.py                      tsecon-dcs.json                 file-loosest lt=0.6 @ L109          matrix-loosest 0.033  [DCS robust local level — `dcs_local_level`]  <-- LOOSER than documented
+  test_depth.py                                connect.json                    file-loosest atol=1e-05 @ L89       matrix-loosest 1e-06  [Connectedness (Diebold-Yilmaz) — `connectedness`]  <-- LOOSER than documented
+  test_depth.py                                favar.json                      file-loosest atol=1e-05 @ L89       matrix-loosest 1e-06  [FAVAR / factor extraction — `favar`]  <-- LOOSER than documented
+  test_depth.py                                realized.json                   file-loosest atol=1e-05 @ L89       matrix-loosest 1e-08  [Realized volatility — `har_rv`, and the RV / bipow]  <-- LOOSER than documented
+  test_dfgls.py                                dfgls.json                      file-loosest lt=0.01 @ L98          matrix-loosest 1e-08  [DF-GLS — `dfgls`]  <-- LOOSER than documented
+  test_dynamic_ns.py                           termstructure.json              file-loosest atol=1e-08 @ L54       matrix-loosest 1e-08  [Term structure — `nelson_siegel` (`dynamic_ns` is ]
+  test_evt.py                                  tsecon-evt.json                 file-loosest rtol=0.0001 @ L47      matrix-loosest 0.0001  [EVT tails — `gpd_fit`, `gev_fit`]
+  test_favar.py                                favar.json                      file-loosest atol=0.0001 @ L44      matrix-loosest 1e-06  [FAVAR / factor extraction — `favar`]  <-- LOOSER than documented
+  test_frontier.py                             smoothlp.json                   file-loosest rtol=1e-06 @ L96       matrix-loosest 1e-08  [Smooth local projections — `smooth_lp`]  <-- LOOSER than documented
+  test_frontier.py                             tsecon-breaks.json              file-loosest rtol=1e-06 @ L96       matrix-loosest 1e-08  [Structural breaks — `bai_perron`, `sup_f_test`]  <-- LOOSER than documented
+  test_frontier.py                             tsecon-funcshock.json           file-loosest rtol=1e-06 @ L96       matrix-loosest 1e-08  [Functional shocks (FVAR/FLP) — `functional_pca`, `]  <-- LOOSER than documented
+  test_frontier.py                             tsecon-quantile.json            file-loosest rtol=1e-06 @ L96       matrix-loosest 1e-06  [Quantile regression & growth-at-risk — `quantile_r]
+  test_gmm.py                                  gmm.json                        file-loosest lt=0.0001 @ L39        matrix-loosest 1e-06  [GMM / IV-GMM — `iv_gmm` (`gmm_nonlinear` is **not*]  <-- LOOSER than documented
+  test_intervals.py                            bvar_niw.json                   file-loosest atol=1e-06 @ L168      matrix-loosest 1e-09  [Bayesian BVAR (conjugate NIW) — `bvar_fit` (`bvar_]  <-- LOOSER than documented
+  test_intervals.py                            diagnostics.json                file-loosest atol=1e-06 @ L168      matrix-loosest 1e-08  [Diagnostics — `acf`, `pacf`, `ljung_box`, `jarque_]  <-- LOOSER than documented
+  test_intervals.py                            garch.json                      file-loosest atol=1e-06 @ L168      matrix-loosest 0.1  [Volatility (GARCH) — `garch_fit`]
+  test_intervals.py                            garch.json                      file-loosest atol=1e-06 @ L168      matrix-loosest 7.8e-07  [GARCH boundary/scale conventions (round 7)]  <-- LOOSER than documented
+  test_intervals.py                            var.json                        file-loosest atol=1e-06 @ L168      matrix-loosest 1e-06  [VAR / SVAR — `var_fit`, `var_irf`, `var_fevd`, `va]
+  test_kernel.py                               kernel.json                     file-loosest atol=1e-08 @ L46       matrix-loosest 1e-08  [Kernel ridge regression — `kernel_ridge` (exact mo]
+  test_lp_ml.py                                bvar_niw.json                   file-loosest rtol=0.05 @ L50        matrix-loosest 1e-09  [Bayesian BVAR (conjugate NIW) — `bvar_fit` (`bvar_]  <-- LOOSER than documented
+  test_lp_ml.py                                lp.json                         file-loosest rtol=0.05 @ L50        matrix-loosest 1e-06  [Local projections — `lp`, `lp_iv` (`lp_state` is *]  <-- LOOSER than documented
+  test_lp_ml.py                                ml.json                         file-loosest rtol=0.05 @ L50        matrix-loosest 1e-06  [Machine learning — `ridge`, `lasso`, `elastic_net`]  <-- LOOSER than documented
+  test_lpdid.py                                lpdid.json                      file-loosest rel=1e-10 @ L65        matrix-loosest 1e-10  [LP-DiD — `lp_did`]
+  test_mgarch_covariance_surface.py            mgarch.json                     file-loosest rtol=1e-06 @ L210      matrix-loosest 1e-07  [Multivariate GARCH — `ccc_garch`, `dcc_garch` (inc]  <-- LOOSER than documented
+  test_midas_mgarch.py                         mgarch.json                     file-loosest lt=0.06 @ L49          matrix-loosest 1e-07  [Multivariate GARCH — `ccc_garch`, `dcc_garch` (inc]  <-- LOOSER than documented
+  test_midas_mgarch.py                         midas.json                      file-loosest lt=0.06 @ L49          matrix-loosest 1e-08  [MIDAS — `midas_weights`, `umidas` (`weighted_midas]  <-- LOOSER than documented
+  test_mstl.py                                 mstl.json                       file-loosest lt=1.0 @ L149          matrix-loosest 1e-08  [MSTL multiple-seasonal decomposition — `mstl`]  <-- LOOSER than documented
+  test_neural.py                               neural.json                     file-loosest lt=1e-12 @ L468        matrix-loosest 1e-06  [Neural — `mlp_regression` (mechanics golden-pinned]
+  test_neural.py                               neural.json                     file-loosest lt=1e-12 @ L468        matrix-loosest 1e-06  [Neural — `echo_state_network` (mechanics pinned; t]
+  test_new_crates.py                           tsecon-panelts.json             file-loosest atol=1e-09 @ L68       matrix-loosest 0.05  [Heterogeneous panel MG / CCE-MG — `panel_mean_grou]
+  test_ou.py                                   ou.json                         file-loosest rtol=1e-09 @ L309      matrix-loosest 1e-10  [OU spread utilities — `ou_fit`, `spread_zscore`]  <-- LOOSER than documented
+  test_panel_fceval.py                         forecast_eval2.json             file-loosest lt=0.1 @ L46           matrix-loosest 1e-06  [Forecasting metrics & tests — `dm_test`, `cw_test`]  <-- LOOSER than documented
+  test_panel_fceval.py                         panel.json                      file-loosest lt=0.1 @ L46           matrix-loosest 1e-06  [Panel FE — `panel_fe` (`panel_lp` is **not** golde]  <-- LOOSER than documented
+  test_panel_spj.py                            panel_spj.json                  file-loosest rel=1e-10 @ L51        matrix-loosest 0.82  [Panel LP split-panel jackknife — `panel_lp(bias_co]
+  test_pmg_news.py                             pmg.json                        file-loosest atol=0.1 @ L43         matrix-loosest 1e-06  [Pooled mean group (PMG) — `panel_pmg`]  <-- LOOSER than documented
+  test_predreg.py                              predreg.json                    file-loosest lt=0.001 @ L43         matrix-loosest 1e-08  [Predictive regressions & IVX — `predictive_regress]  <-- LOOSER than documented
+  test_proxy_first_stage.py                    proxy_first_stage.json          file-loosest rel=1e-05 @ L90        matrix-loosest 1e-06  [Weak-proxy first stage — `proxy_first_stage`]  <-- LOOSER than documented
+  test_realized_extras.py                      realized.json                   file-loosest lt=1e-12 @ L35         matrix-loosest 1e-08  [Realized volatility — `har_rv`, and the RV / bipow]
+  test_roadmap_gaps.py                         longmemory.json                 file-loosest lt=0.0001 @ L33        matrix-loosest 1e-06  [Long memory — `frac_diff`, `frac_integrate`, `long]  <-- LOOSER than documented
+  test_roadmap_gaps.py                         tsecon-recession.json           file-loosest lt=0.0001 @ L33        matrix-loosest 1e-06  [Recession probability — `recession_probit`]  <-- LOOSER than documented
+  test_roadmap_gaps.py                         tsecon-survey.json              file-loosest lt=0.0001 @ L33        matrix-loosest 0.02  [Survey expectations — `cg_regression`, `forecast_e]
+  test_setar.py                                setar.json                      file-loosest lt=1.0 @ L68           matrix-loosest 1e-10  [SETAR — `setar`, `setar_test`]  <-- LOOSER than documented
+  test_smoke.py                                arima.json                      file-loosest lt=30.0 @ L89          matrix-loosest 0.0001  [ARIMA / SARIMAX]  <-- LOOSER than documented
+  test_smoke.py                                bvar_niw.json                   file-loosest lt=30.0 @ L89          matrix-loosest 1e-09  [Bayesian BVAR (conjugate NIW) — `bvar_fit` (`bvar_]  <-- LOOSER than documented
+  test_smoke.py                                convergence.json                file-loosest lt=30.0 @ L89          matrix-loosest 1e-09  [MCMC diagnostics — `mcmc_diagnostics`]  <-- LOOSER than documented
+  test_smoke.py                                diagnostics.json                file-loosest lt=30.0 @ L89          matrix-loosest 1e-08  [Diagnostics — `acf`, `pacf`, `ljung_box`, `jarque_]  <-- LOOSER than documented
+  test_smoke.py                                filters.json                    file-loosest lt=30.0 @ L89          matrix-loosest 1e-08  [Filters — HP / Baxter-King / Christiano-Fitzgerald]  <-- LOOSER than documented
+  test_smoke.py                                forecast.json                   file-loosest lt=30.0 @ L89          matrix-loosest 1e-06  [Forecasting metrics & tests — `dm_test`, `cw_test`]  <-- LOOSER than documented
+  test_smoke.py                                garch.json                      file-loosest lt=30.0 @ L89          matrix-loosest 0.1  [Volatility (GARCH) — `garch_fit`]  <-- LOOSER than documented
+  test_smoke.py                                garch.json                      file-loosest lt=30.0 @ L89          matrix-loosest 7.8e-07  [GARCH boundary/scale conventions (round 7)]  <-- LOOSER than documented
+  test_smoke.py                                hac.json                        file-loosest lt=30.0 @ L89          matrix-loosest 1e-10  [HAC / long-run variance — Newey-West, EWC]  <-- LOOSER than documented
+  test_smoke.py                                ssm.json                        file-loosest lt=30.0 @ L89          matrix-loosest 1e-06  [State-space / Kalman filter & smoother]  <-- LOOSER than documented
+  test_smoke.py                                unitroot.json                   file-loosest lt=30.0 @ L89          matrix-loosest 1e-06  [Unit root & stationarity — `adf`, `kpss` (`check_s]  <-- LOOSER than documented
+  test_smoke.py                                var.json                        file-loosest lt=30.0 @ L89          matrix-loosest 1e-06  [VAR / SVAR — `var_fit`, `var_irf`, `var_fevd`, `va]  <-- LOOSER than documented
+  test_spectest_afns_dsge.py                   afns.json                       file-loosest rtol=1e-09 @ L133      matrix-loosest 1e-10  [Arbitrage-free Nelson-Siegel — `afns_adjustment`]  <-- LOOSER than documented
+  test_spectest_afns_dsge.py                   tsecon-spectest.json            file-loosest rtol=1e-09 @ L133      matrix-loosest 1e-08  [Specification & diagnostic tests — `heteroskedasti]
+  test_spectral.py                             spectral.json                   file-loosest rtol=1e-08 @ L16       matrix-loosest 1e-08  [Spectral analysis — periodogram / Welch / coherenc]
+  test_star.py                                 star.json                       file-loosest rtol=1e-10 @ L71       matrix-loosest 1e-10  [STAR — `star`, `star_eval`, `star_test` (LSTAR/EST]
+  test_stl.py                                  stl.json                        file-loosest atol=1e-08 @ L41       matrix-loosest 1e-08  [STL + seasonal workflow — `stl`, `seasonal_strengt]
+  test_structured.py                           structured.json                 file-loosest atol=1e-06 @ L229      matrix-loosest 1e-06  [Post-LASSO OLS — `post_lasso` (**no standard error]
+  test_structured.py                           structured.json                 file-loosest atol=1e-06 @ L229      matrix-loosest 0.95  [Post-double-selection — `pds_lasso`]
+  test_termstructure.py                        termstructure.json              file-loosest atol=1e-08 @ L22       matrix-loosest 1e-08  [Term structure — `nelson_siegel` (`dynamic_ns` is ]
+  test_trees.py                                trees.json                      file-loosest atol=1e-10 @ L62       matrix-loosest 1e-10  [Regression tree — `regression_tree`]
+  test_tvar.py                                 tvar.json                       (no matrix row names this fixture)  file-loosest lt=1.0 @ L77
+  test_tvecm.py                                tvecm.json                      (no matrix row names this fixture)  file-loosest lt=1.0 @ L95
+  test_var_backtest.py                         var_backtest.json               file-loosest                        matrix-loosest 0.0001  [VaR backtests — `var_backtest` (Kupiec, Christoffe]
+  test_vecm_deterministic.py                   vecm_deterministic.json         file-loosest lt=1.0 @ L288          matrix-loosest 1e-06  [Cointegration — `johansen`, `vecm`]  <-- LOOSER than documented
+  test_weighted_midas.py                       midas.json                      file-loosest rel=0.25 @ L100        matrix-loosest 1e-08  [MIDAS — `midas_weights`, `umidas` (`weighted_midas]  <-- LOOSER than documented
+  test_zivot_andrews.py                        zivot_andrews.json              file-loosest rel=1e-08 @ L56        matrix-loosest 1e-08  [Zivot-Andrews one-break unit root — `zivot_andrews]
+
+== candidates: 53 (each to be read by hand) ==
+  test_bn_filters.py  bn_filters.json  file lt=0.25 @ L169  vs matrix 1e-06  (Hamilton filter inference — `hamilton_filter(se=…)` HAC/nonrobust stan)
+  test_bn_filters.py  bn_filters.json  file lt=0.25 @ L169  vs matrix 1e-07  (Beveridge-Nelson decomposition — `bn_decomposition` (classic ARMA BN))
+  test_bn_filters.py  bn_filters.json  file lt=0.25 @ L169  vs matrix 1e-08  (BN filter — `bn_filter` (Kamber-Morley-Wong 2018 output gap))
+  test_bn_filters.py  filters.json  file lt=0.25 @ L169  vs matrix 1e-08  (Filters — HP / Baxter-King / Christiano-Fitzgerald / Hamilton)
+  test_coint_regime.py  coint.json  file atol=0.4 @ L45  vs matrix 1e-06  (Cointegration — `johansen`, `vecm`)
+  test_coint_regime.py  regime.json  file atol=0.4 @ L45  vs matrix 0.03  (Markov-switching AR — `markov_switching_ar`)
+  test_convex.py  convex.json  file atol=1e-08 @ L106  vs matrix 1e-10  (Componentwise L2 boosting — `boosting`)
+  test_copula.py  tsecon-copula.json  file lt=0.05 @ L174  vs matrix 0.0001  (Static copulas — `pseudo_obs`, `copula_fit`, `copula_select`)
+  test_dcc_buildout.py  mgarch.json  file lt=1.0 @ L229  vs matrix 1e-07  (Multivariate GARCH — `ccc_garch`, `dcc_garch` (incl. `variant="cdcc"/")
+  test_dcs_local_level.py  tsecon-dcs.json  file lt=0.6 @ L109  vs matrix 0.033  (DCS robust local level — `dcs_local_level`)
+  test_depth.py  connect.json  file atol=1e-05 @ L89  vs matrix 1e-06  (Connectedness (Diebold-Yilmaz) — `connectedness`)
+  test_depth.py  favar.json  file atol=1e-05 @ L89  vs matrix 1e-06  (FAVAR / factor extraction — `favar`)
+  test_depth.py  realized.json  file atol=1e-05 @ L89  vs matrix 1e-08  (Realized volatility — `har_rv`, and the RV / bipower legs of `realized)
+  test_dfgls.py  dfgls.json  file lt=0.01 @ L98  vs matrix 1e-08  (DF-GLS — `dfgls`)
+  test_favar.py  favar.json  file atol=0.0001 @ L44  vs matrix 1e-06  (FAVAR / factor extraction — `favar`)
+  test_frontier.py  smoothlp.json  file rtol=1e-06 @ L96  vs matrix 1e-08  (Smooth local projections — `smooth_lp`)
+  test_frontier.py  tsecon-breaks.json  file rtol=1e-06 @ L96  vs matrix 1e-08  (Structural breaks — `bai_perron`, `sup_f_test`)
+  test_frontier.py  tsecon-funcshock.json  file rtol=1e-06 @ L96  vs matrix 1e-08  (Functional shocks (FVAR/FLP) — `functional_pca`, `flp`, `flp_scenario`)
+  test_gmm.py  gmm.json  file lt=0.0001 @ L39  vs matrix 1e-06  (GMM / IV-GMM — `iv_gmm` (`gmm_nonlinear` is **not** golden-pinned))
+  test_intervals.py  bvar_niw.json  file atol=1e-06 @ L168  vs matrix 1e-09  (Bayesian BVAR (conjugate NIW) — `bvar_fit` (`bvar_irf_draws` is **not*)
+  test_intervals.py  diagnostics.json  file atol=1e-06 @ L168  vs matrix 1e-08  (Diagnostics — `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`)
+  test_intervals.py  garch.json  file atol=1e-06 @ L168  vs matrix 7.8e-07  (GARCH boundary/scale conventions (round 7))
+  test_lp_ml.py  bvar_niw.json  file rtol=0.05 @ L50  vs matrix 1e-09  (Bayesian BVAR (conjugate NIW) — `bvar_fit` (`bvar_irf_draws` is **not*)
+  test_lp_ml.py  lp.json  file rtol=0.05 @ L50  vs matrix 1e-06  (Local projections — `lp`, `lp_iv` (`lp_state` is **not** golden-pinned)
+  test_lp_ml.py  ml.json  file rtol=0.05 @ L50  vs matrix 1e-06  (Machine learning — `ridge`, `lasso`, `elastic_net` (`adaptive_lasso`, )
+  test_mgarch_covariance_surface.py  mgarch.json  file rtol=1e-06 @ L210  vs matrix 1e-07  (Multivariate GARCH — `ccc_garch`, `dcc_garch` (incl. `variant="cdcc"/")
+  test_midas_mgarch.py  mgarch.json  file lt=0.06 @ L49  vs matrix 1e-07  (Multivariate GARCH — `ccc_garch`, `dcc_garch` (incl. `variant="cdcc"/")
+  test_midas_mgarch.py  midas.json  file lt=0.06 @ L49  vs matrix 1e-08  (MIDAS — `midas_weights`, `umidas` (`weighted_midas` is **not** golden-)
+  test_mstl.py  mstl.json  file lt=1.0 @ L149  vs matrix 1e-08  (MSTL multiple-seasonal decomposition — `mstl`)
+  test_ou.py  ou.json  file rtol=1e-09 @ L309  vs matrix 1e-10  (OU spread utilities — `ou_fit`, `spread_zscore`)
+  test_panel_fceval.py  forecast_eval2.json  file lt=0.1 @ L46  vs matrix 1e-06  (Forecasting metrics & tests — `dm_test`, `cw_test`, `gw_test`, `theta_)
+  test_panel_fceval.py  panel.json  file lt=0.1 @ L46  vs matrix 1e-06  (Panel FE — `panel_fe` (`panel_lp` is **not** golden-pinned))
+  test_pmg_news.py  pmg.json  file atol=0.1 @ L43  vs matrix 1e-06  (Pooled mean group (PMG) — `panel_pmg`)
+  test_predreg.py  predreg.json  file lt=0.001 @ L43  vs matrix 1e-08  (Predictive regressions & IVX — `predictive_regression`, `ivx_test`)
+  test_proxy_first_stage.py  proxy_first_stage.json  file rel=1e-05 @ L90  vs matrix 1e-06  (Weak-proxy first stage — `proxy_first_stage`)
+  test_roadmap_gaps.py  longmemory.json  file lt=0.0001 @ L33  vs matrix 1e-06  (Long memory — `frac_diff`, `frac_integrate`, `long_memory_d`)
+  test_roadmap_gaps.py  tsecon-recession.json  file lt=0.0001 @ L33  vs matrix 1e-06  (Recession probability — `recession_probit`)
+  test_setar.py  setar.json  file lt=1.0 @ L68  vs matrix 1e-10  (SETAR — `setar`, `setar_test`)
+  test_smoke.py  arima.json  file lt=30.0 @ L89  vs matrix 0.0001  (ARIMA / SARIMAX)
+  test_smoke.py  bvar_niw.json  file lt=30.0 @ L89  vs matrix 1e-09  (Bayesian BVAR (conjugate NIW) — `bvar_fit` (`bvar_irf_draws` is **not*)
+  test_smoke.py  convergence.json  file lt=30.0 @ L89  vs matrix 1e-09  (MCMC diagnostics — `mcmc_diagnostics`)
+  test_smoke.py  diagnostics.json  file lt=30.0 @ L89  vs matrix 1e-08  (Diagnostics — `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`)
+  test_smoke.py  filters.json  file lt=30.0 @ L89  vs matrix 1e-08  (Filters — HP / Baxter-King / Christiano-Fitzgerald / Hamilton)
+  test_smoke.py  forecast.json  file lt=30.0 @ L89  vs matrix 1e-06  (Forecasting metrics & tests — `dm_test`, `cw_test`, `gw_test`, `theta_)
+  test_smoke.py  garch.json  file lt=30.0 @ L89  vs matrix 0.1  (Volatility (GARCH) — `garch_fit`)
+  test_smoke.py  garch.json  file lt=30.0 @ L89  vs matrix 7.8e-07  (GARCH boundary/scale conventions (round 7))
+  test_smoke.py  hac.json  file lt=30.0 @ L89  vs matrix 1e-10  (HAC / long-run variance — Newey-West, EWC)
+  test_smoke.py  ssm.json  file lt=30.0 @ L89  vs matrix 1e-06  (State-space / Kalman filter & smoother)
+  test_smoke.py  unitroot.json  file lt=30.0 @ L89  vs matrix 1e-06  (Unit root & stationarity — `adf`, `kpss` (`check_stationarity`'s verdi)
+  test_smoke.py  var.json  file lt=30.0 @ L89  vs matrix 1e-06  (VAR / SVAR — `var_fit`, `var_irf`, `var_fevd`, `var_granger`, `var_for)
+  test_spectest_afns_dsge.py  afns.json  file rtol=1e-09 @ L133  vs matrix 1e-10  (Arbitrage-free Nelson-Siegel — `afns_adjustment`)
+  test_vecm_deterministic.py  vecm_deterministic.json  file lt=1.0 @ L288  vs matrix 1e-06  (Cointegration — `johansen`, `vecm`)
+  test_weighted_midas.py  midas.json  file rel=0.25 @ L100  vs matrix 1e-08  (MIDAS — `midas_weights`, `umidas` (`weighted_midas` is **not** golden-)
