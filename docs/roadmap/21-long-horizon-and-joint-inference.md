@@ -238,7 +238,7 @@ the width/power prices against the size gains on fresh seeds.
 *(Repository audit, September 2026: the IVX half was decided — `ivx_test`'s
 `joint` default became `"bonferroni"` in 0.5.0 on these measurements. The
 `proxy_ar_sets` default is still `"delta"`; that decision is ledger row
-N21-03 in `docs/roadmap/_repo_audit/ledger.md`.)*
+N21-03 in `docs/roadmap/27-repo-audit-2026-09/ledger.md`.)*
 
 ## Reproducing
 

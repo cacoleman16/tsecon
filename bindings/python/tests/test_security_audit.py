@@ -1,4 +1,4 @@
-"""Repo-audit security sweep regression pins (docs/roadmap/_repo_audit/security.md).
+"""Repo-audit security sweep regression pins (docs/roadmap/27-repo-audit-2026-09/security.md).
 
 The adversarial-input matrix (lab/audit/repo/security/sweep_adversarial.py)
 drove every public callable with corrupted arguments in a memory-capped child

@@ -1,7 +1,7 @@
 # Repo audit — claims-versus-reality probes
 
 Probe scripts for the claims sweep of the whole-repository audit
-(`docs/roadmap/_repo_audit/claims.md`). All run from the repository root
+(`docs/roadmap/27-repo-audit-2026-09/claims.md`). All run from the repository root
 with the release extension built into the sweep's venv.
 
 | script | what it checks |

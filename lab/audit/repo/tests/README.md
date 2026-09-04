@@ -1,7 +1,7 @@
 # Repo audit — test-suite health probes
 
 Probe scripts for the test-suite sweep of the whole-repository audit
-(`docs/roadmap/_repo_audit/tests.md`). All run from the worktree root with
+(`docs/roadmap/27-repo-audit-2026-09/tests.md`). All run from the worktree root with
 the release extension built into `.venv-wt`.
 
 | script | what it measures |

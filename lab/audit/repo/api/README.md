@@ -1,7 +1,7 @@
 # Repo audit — API-consistency probes
 
 Probe scripts for the API sweep of the whole-repository audit
-(`docs/roadmap/_repo_audit/api.md`). All run from the repository root with
+(`docs/roadmap/27-repo-audit-2026-09/api.md`). All run from the repository root with
 the release extension built into the sweep's venv.
 
 | script | what it produces |

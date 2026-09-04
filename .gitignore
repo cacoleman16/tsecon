@@ -43,3 +43,4 @@ lab/audit/repo/claims/out/sweep_exec.json
 lab/audit/repo/tests/out/assertion_scan.json
 lab/audit/repo/api/out/conventions.json
 lab/audit/repo/api/out/clusters.json
+lab/audit/repo/security/out/*.jsonl

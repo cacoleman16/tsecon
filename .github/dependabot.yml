@@ -9,8 +9,8 @@
 # Minor and patch bumps are grouped into ONE pull request per ecosystem per
 # week so the review load is one PR, not one per crate. Major bumps stay
 # separate because they are the ones that can change behaviour (a faer or
-# pyo3 major is a real migration, not a rubber stamp). Once the actions are
-# pinned to commit SHAs (proposed in docs/roadmap/_repo_audit/supply.md),
+# pyo3 major is a real migration, not a rubber stamp). The actions are
+# pinned to commit SHAs (docs/roadmap/27-repo-audit-2026-09/supply.md), and
 # Dependabot updates the SHA and the trailing version comment together.
 version: 2
 updates:

@@ -10,7 +10,7 @@
 > structural-identification model card. The banner above is kept as written;
 > the spec is retained as the design record. What is still open from the
 > "Flagged uncertain" lists is tracked in
-> `docs/roadmap/_repo_audit/ledger.md` (rows S15-U1..U6).
+> `docs/roadmap/27-repo-audit-2026-09/ledger.md` (rows S15-U1..U6).
 >
 > An internal planning spec, excluded from the published site like everything
 > else in `docs/roadmap/`. It records the reasoning behind the queued

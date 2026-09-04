@@ -472,7 +472,7 @@ Proposed policy — **a memory budget, not per-parameter caps**:
 - **T = 10⁵ rebuilds were not re-run post-fix** (the seal does not touch
   them); the T = 10⁶ rebuild of the first pass was dropped after 30
   callables because it only added wall time (results for those 30 are in
-  `out/sweep_adversarial_pass1.log`).
+  `out/sweep_adversarial_pass1.txt`).
 - **Not attempted:** fuzzing the string-typed parameters beyond one bogus
   value (`"abc"` where a float goes was a `TypeError` in all 96 cells; the
   `scheme=`/`kind=`/`method=` string parameters were covered by round 11's

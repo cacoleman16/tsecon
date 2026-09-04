@@ -1,6 +1,6 @@
 # Ledger probes (repository audit, September 2026)
 
-Closure probes for `docs/roadmap/_repo_audit/ledger.md` — one probe per
+Closure probes for `docs/roadmap/27-repo-audit-2026-09/ledger.md` — one probe per
 ledger claim that is cheap to prove on the wheel (a refusal now fires, a
 kwarg or key now exists, a default was flipped, or a recorded gap is still
 there).

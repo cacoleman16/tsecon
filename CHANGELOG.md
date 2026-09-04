@@ -7,6 +7,69 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+The first audit of the repository as a whole rather than of the estimator
+surface ([findings](docs/roadmap/27-repo-audit-2026-09.md)): seven parallel
+sweeps over the supply chain and CI, hygiene, every documented claim, the
+test suite itself, API consistency across all 173 callables, the security
+of the Python boundary, and a ledger reconciling every finding the eleven
+previous rounds recorded (275 items: 98 fixed, 104 open, 25 superseded).
+
+### Fixed
+
+- **The wheel now ships the third-party licence notices it always claimed
+  to carry.** `THIRD-PARTY-LICENSES.md` said the verbatim copyright
+  notices were generated with `cargo about` at release time; no such step
+  existed, and 29 of the statically linked crates are MIT-only.
+  `bindings/python/THIRD-PARTY-NOTICES.md` is now generated from
+  `Cargo.lock` (`scripts/gen_third_party_notices.sh`, gated by
+  `about.toml`), listed in `license-files`, and checked for staleness in
+  CI. Wheels 0.1.0–0.6.0 predate it.
+- **Release pipeline**: the wheel is uploaded before the smoke test
+  pip-installs unpinned packages, so nothing installed there can rewrite
+  the artifact PyPI attests; the macOS arm64 wheel is smoke-tested too;
+  overlapping releases are refused.
+- **Documentation drift** (25 items, claims sweep): guide chapter 12 no
+  longer denies the 0.8.0 machine-learning wave; the chapter-6 HAR-RV
+  example carries 0.8.0 numbers and the conclusion they support (weekly
+  volatility is not individually significant at 5%); the structural-FEVD
+  card example runs again under the 0.6.0 `var_fevd` layout; quickstart,
+  model-card index, `CITATION.cff`, testing counts, README benchmark
+  ratios, ROADMAP §0 and the paper's counts corrected; two phantom
+  keyword/key names removed; the NaN refusal in `_inspect` now points at
+  `local_level_smooth`, which imputes gaps today, instead of a roadmap.
+- **API documentation** (api sweep): every dict-returning function now
+  names its returned keys on both `help()` and the stub (33 named none),
+  every option parameter is listed with its default (204 were unnamed in
+  `help()`), `ar_loglik`'s NaN-as-missing behaviour is documented and
+  tested, and the API reference states that matrix values are nested
+  lists, not arrays; a parametrized tripwire test keeps both surfaces
+  complete.
+- **No integer argument can crash the interpreter with an uncatchable
+  panic any more** (security sweep): a count at or beyond 2^48 is refused
+  with a `ValueError` before the call reaches the compiled core (seeds
+  exempt, any 64-bit seed is accepted), and an allocation-sizing panic
+  from a product overflow (`bvar_fit(lags=2**31)`,
+  `echo_state_network(reservoir_size=2**31)`) is rebuilt into a
+  `ValueError` naming the argument and the size, the panic chained as
+  `__cause__`. Before: 113 `PanicException` escapes across 67 callables;
+  after: 0 over 4,596 adversarial cells. Sixteen pinned tests.
+- **Hygiene**: `.gitignore` gaps closed (`.venv*/`, tool caches, editor
+  state); six force-added round-11 logs untracked; the seven audit items
+  that were fixed without their record being updated are annotated in
+  their source pages.
+
+### Added
+
+- **Supply-chain gates**: every GitHub Action pinned to a commit SHA with
+  Dependabot (`.github/dependabot.yml`) keeping cargo, pip and actions
+  current; `maturin-version`, `rust-toolchain` and `--locked` on every
+  build; `persist-credentials: false` on every checkout; a new `Audit`
+  workflow running `cargo audit --deny warnings` and `pip-audit --strict`
+  on manifest changes, weekly, and on demand.
+- Every workspace crate declares `publish = false`: the wheel is the
+  product, the crates are not published to crates.io.
+- The sweeps' probe scripts and summaries under `lab/audit/repo/`.
+
 ## [0.8.0] - 2026-09-03
 
 The machine-learning wave (roadmap Module 10, Tier 2 plus the one native

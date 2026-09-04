@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Recompute every count the repository states about itself, with the repo's own
 # rules (docs/reference/testing.md names them). Prints name=value lines; the
-# ledger in docs/roadmap/_repo_audit/claims.md quotes them.
+# ledger in docs/roadmap/27-repo-audit-2026-09/claims.md quotes them.
 #
 # Run from the repository root:  bash lab/audit/repo/claims/sweep_counts.sh
 set -u

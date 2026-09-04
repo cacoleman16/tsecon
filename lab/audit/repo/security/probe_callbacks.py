@@ -24,7 +24,7 @@ For each, the questions the brief asks:
 
 Every probe prints one line ``PROBE <name>: <verdict> — <evidence>``; the
 script exits 0 regardless (it is a recorder, not a gate). Findings are
-classified by hand in ``docs/roadmap/_repo_audit/security.md``.
+classified by hand in ``docs/roadmap/27-repo-audit-2026-09/security.md``.
 """
 from __future__ import annotations
 
