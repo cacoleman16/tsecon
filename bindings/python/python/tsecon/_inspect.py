@@ -1309,6 +1309,8 @@ def check_series(
     ``alpha``, ``per_series``, ``integration_summary``, ``cointegration``,
     ``var_lag_selection``, ``stability``, ``multiple_testing``,
     ``tests_run``, ``recommendations``.
+
+    Further arguments, with defaults: `max_breaks` (5), `trim` (0.15).
     """
     alpha = _validate_alpha(alpha)
     arr = _validate(data)

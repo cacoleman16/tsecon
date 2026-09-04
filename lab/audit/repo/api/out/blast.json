@@ -1,0 +1,1262 @@
+{
+ "alpha": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 4,
+   "mentions": 168
+  },
+  "docs": {
+   "files": 40,
+   "mentions": 276
+  },
+  "examples+notebooks": {
+   "files": 20,
+   "mentions": 123
+  },
+  "functions_as_key": 11,
+  "functions_as_param": 24,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 28,
+   "mentions": 238
+  }
+ },
+ "band_alpha": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 25
+  },
+  "docs": {
+   "files": 3,
+   "mentions": 8
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 6,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 1,
+   "mentions": 6
+  }
+ },
+ "band_seed": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 22
+  },
+  "docs": {
+   "files": 2,
+   "mentions": 7
+  },
+  "examples+notebooks": {
+   "files": 2,
+   "mentions": 4
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 4,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 1,
+   "mentions": 17
+  }
+ },
+ "beta": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 67
+  },
+  "docs": {
+   "files": 37,
+   "mentions": 228
+  },
+  "examples+notebooks": {
+   "files": 12,
+   "mentions": 74
+  },
+  "functions_as_key": 7,
+  "functions_as_param": 2,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 25,
+   "mentions": 149
+  }
+ },
+ "bse": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 37
+  },
+  "docs": {
+   "files": 26,
+   "mentions": 109
+  },
+  "examples+notebooks": {
+   "files": 9,
+   "mentions": 59
+  },
+  "functions_as_key": 12,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 12,
+   "mentions": 63
+  }
+ },
+ "coef": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 4,
+   "mentions": 25
+  },
+  "docs": {
+   "files": 12,
+   "mentions": 50
+  },
+  "examples+notebooks": {
+   "files": 3,
+   "mentions": 9
+  },
+  "functions_as_key": 8,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 9,
+   "mentions": 59
+  }
+ },
+ "coefs": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 2,
+   "mentions": 17
+  },
+  "docs": {
+   "files": 10,
+   "mentions": 21
+  },
+  "examples+notebooks": {
+   "files": 3,
+   "mentions": 56
+  },
+  "functions_as_key": 2,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 3,
+   "mentions": 15
+  }
+ },
+ "conf_alpha": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 18
+  },
+  "docs": {
+   "files": 4,
+   "mentions": 10
+  },
+  "examples+notebooks": {
+   "files": 1,
+   "mentions": 4
+  },
+  "functions_as_key": 1,
+  "functions_as_param": 2,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 5,
+   "mentions": 16
+  }
+ },
+ "conf_int": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 2,
+   "mentions": 6
+  },
+  "docs": {
+   "files": 4,
+   "mentions": 7
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 1,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 4,
+   "mentions": 17
+  }
+ },
+ "forecast_horizon": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 22
+  },
+  "docs": {
+   "files": 5,
+   "mentions": 13
+  },
+  "examples+notebooks": {
+   "files": 3,
+   "mentions": 4
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 3,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 8,
+   "mentions": 27
+  }
+ },
+ "forecast_steps": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 20
+  },
+  "docs": {
+   "files": 5,
+   "mentions": 17
+  },
+  "examples+notebooks": {
+   "files": 2,
+   "mentions": 5
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 2,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 8,
+   "mentions": 29
+  }
+ },
+ "h": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 3,
+   "mentions": 226
+  },
+  "docs": {
+   "files": 52,
+   "mentions": 1018
+  },
+  "examples+notebooks": {
+   "files": 28,
+   "mentions": 949
+  },
+  "functions_as_key": 2,
+  "functions_as_param": 2,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 34,
+   "mentions": 224
+  }
+ },
+ "hac_lags": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 2,
+   "mentions": 29
+  },
+  "docs": {
+   "files": 4,
+   "mentions": 10
+  },
+  "examples+notebooks": {
+   "files": 1,
+   "mentions": 1
+  },
+  "functions_as_key": 2,
+  "functions_as_param": 3,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 4,
+   "mentions": 27
+  }
+ },
+ "hac_maxlags": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 15
+  },
+  "docs": {
+   "files": 4,
+   "mentions": 5
+  },
+  "examples+notebooks": {
+   "files": 1,
+   "mentions": 2
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 4,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 1,
+   "mentions": 1
+  }
+ },
+ "horizon": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 278
+  },
+  "docs": {
+   "files": 46,
+   "mentions": 645
+  },
+  "examples+notebooks": {
+   "files": 27,
+   "mentions": 496
+  },
+  "functions_as_key": 5,
+  "functions_as_param": 30,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 41,
+   "mentions": 326
+  }
+ },
+ "horizons": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 84
+  },
+  "docs": {
+   "files": 36,
+   "mentions": 232
+  },
+  "examples+notebooks": {
+   "files": 18,
+   "mentions": 189
+  },
+  "functions_as_key": 10,
+  "functions_as_param": 8,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 22,
+   "mentions": 136
+  }
+ },
+ "iterations": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 3,
+   "mentions": 27
+  },
+  "docs": {
+   "files": 12,
+   "mentions": 21
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 7,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 4,
+   "mentions": 11
+  }
+ },
+ "level": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 4,
+   "mentions": 80
+  },
+  "docs": {
+   "files": 55,
+   "mentions": 375
+  },
+  "examples+notebooks": {
+   "files": 22,
+   "mentions": 124
+  },
+  "functions_as_key": 7,
+  "functions_as_param": 1,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 35,
+   "mentions": 101
+  }
+ },
+ "llf": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 8
+  },
+  "docs": {
+   "files": 8,
+   "mentions": 21
+  },
+  "examples+notebooks": {
+   "files": 1,
+   "mentions": 1
+  },
+  "functions_as_key": 4,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 8,
+   "mentions": 25
+  }
+ },
+ "loglik": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 43
+  },
+  "docs": {
+   "files": 13,
+   "mentions": 46
+  },
+  "examples+notebooks": {
+   "files": 1,
+   "mentions": 3
+  },
+  "functions_as_key": 19,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 21,
+   "mentions": 66
+  }
+ },
+ "lower": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 41
+  },
+  "docs": {
+   "files": 35,
+   "mentions": 128
+  },
+  "examples+notebooks": {
+   "files": 24,
+   "mentions": 109
+  },
+  "functions_as_key": 6,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 23,
+   "mentions": 110
+  }
+ },
+ "lrv_lags": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 6
+  },
+  "docs": {
+   "files": 2,
+   "mentions": 4
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 2,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 1,
+   "mentions": 3
+  }
+ },
+ "max_lags": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 28
+  },
+  "docs": {
+   "files": 3,
+   "mentions": 17
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 4,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 3,
+   "mentions": 16
+  }
+ },
+ "maxlag": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 17
+  },
+  "docs": {
+   "files": 5,
+   "mentions": 7
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 2,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 3,
+   "mentions": 4
+  }
+ },
+ "maxlags": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 2,
+   "mentions": 50
+  },
+  "docs": {
+   "files": 15,
+   "mentions": 51
+  },
+  "examples+notebooks": {
+   "files": 4,
+   "mentions": 30
+  },
+  "functions_as_key": 1,
+  "functions_as_param": 8,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 5,
+   "mentions": 29
+  }
+ },
+ "n_boot": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 53
+  },
+  "docs": {
+   "files": 12,
+   "mentions": 38
+  },
+  "examples+notebooks": {
+   "files": 8,
+   "mentions": 33
+  },
+  "functions_as_key": 5,
+  "functions_as_param": 7,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 11,
+   "mentions": 57
+  }
+ },
+ "n_draws": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 26
+  },
+  "docs": {
+   "files": 10,
+   "mentions": 42
+  },
+  "examples+notebooks": {
+   "files": 5,
+   "mentions": 42
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 8,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 9,
+   "mentions": 31
+  }
+ },
+ "n_iter": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 3,
+   "mentions": 11
+  },
+  "docs": {
+   "files": 5,
+   "mentions": 11
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 6,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 4,
+   "mentions": 14
+  }
+ },
+ "nlags": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 19
+  },
+  "docs": {
+   "files": 11,
+   "mentions": 64
+  },
+  "examples+notebooks": {
+   "files": 4,
+   "mentions": 11
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 5,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 3,
+   "mentions": 11
+  }
+ },
+ "p_value": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 2,
+   "mentions": 38
+  },
+  "docs": {
+   "files": 25,
+   "mentions": 92
+  },
+  "examples+notebooks": {
+   "files": 5,
+   "mentions": 11
+  },
+  "functions_as_key": 16,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 17,
+   "mentions": 53
+  }
+ },
+ "params": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 73
+  },
+  "docs": {
+   "files": 39,
+   "mentions": 160
+  },
+  "examples+notebooks": {
+   "files": 12,
+   "mentions": 44
+  },
+  "functions_as_key": 17,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 34,
+   "mentions": 136
+  }
+ },
+ "pvalue": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 25
+  },
+  "docs": {
+   "files": 14,
+   "mentions": 54
+  },
+  "examples+notebooks": {
+   "files": 1,
+   "mentions": 1
+  },
+  "functions_as_key": 8,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 10,
+   "mentions": 47
+  }
+ },
+ "r_squared": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 4
+  },
+  "docs": {
+   "files": 1,
+   "mentions": 2
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 2,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 0,
+   "mentions": 0
+  }
+ },
+ "resid": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 46
+  },
+  "docs": {
+   "files": 13,
+   "mentions": 44
+  },
+  "examples+notebooks": {
+   "files": 4,
+   "mentions": 20
+  },
+  "functions_as_key": 5,
+  "functions_as_param": 1,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 10,
+   "mentions": 48
+  }
+ },
+ "residuals": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 46
+  },
+  "docs": {
+   "files": 40,
+   "mentions": 166
+  },
+  "examples+notebooks": {
+   "files": 12,
+   "mentions": 33
+  },
+  "functions_as_key": 6,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 10,
+   "mentions": 21
+  }
+ },
+ "rsquared": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 11
+  },
+  "docs": {
+   "files": 8,
+   "mentions": 29
+  },
+  "examples+notebooks": {
+   "files": 1,
+   "mentions": 1
+  },
+  "functions_as_key": 6,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 5,
+   "mentions": 14
+  }
+ },
+ "se": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 2,
+   "mentions": 134
+  },
+  "docs": {
+   "files": 40,
+   "mentions": 401
+  },
+  "examples+notebooks": {
+   "files": 22,
+   "mentions": 356
+  },
+  "functions_as_key": 16,
+  "functions_as_param": 4,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 31,
+   "mentions": 213
+  }
+ },
+ "seed": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 4,
+   "mentions": 107
+  },
+  "docs": {
+   "files": 32,
+   "mentions": 156
+  },
+  "examples+notebooks": {
+   "files": 25,
+   "mentions": 125
+  },
+  "functions_as_key": 0,
+  "functions_as_param": 21,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 51,
+   "mentions": 355
+  }
+ },
+ "stat": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 36
+  },
+  "docs": {
+   "files": 27,
+   "mentions": 109
+  },
+  "examples+notebooks": {
+   "files": 4,
+   "mentions": 5
+  },
+  "functions_as_key": 9,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 21,
+   "mentions": 41
+  }
+ },
+ "statistic": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 45
+  },
+  "docs": {
+   "files": 42,
+   "mentions": 229
+  },
+  "examples+notebooks": {
+   "files": 8,
+   "mentions": 28
+  },
+  "functions_as_key": 8,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 20,
+   "mentions": 42
+  }
+ },
+ "steps": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 2,
+   "mentions": 28
+  },
+  "docs": {
+   "files": 26,
+   "mentions": 66
+  },
+  "examples+notebooks": {
+   "files": 2,
+   "mentions": 12
+  },
+  "functions_as_key": 3,
+  "functions_as_param": 2,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 14,
+   "mentions": 46
+  }
+ },
+ "t_stat": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 3
+  },
+  "docs": {
+   "files": 2,
+   "mentions": 3
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 1,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 1,
+   "mentions": 3
+  }
+ },
+ "tstat": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 4
+  },
+  "docs": {
+   "files": 6,
+   "mentions": 16
+  },
+  "examples+notebooks": {
+   "files": 4,
+   "mentions": 8
+  },
+  "functions_as_key": 1,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 5,
+   "mentions": 12
+  }
+ },
+ "tvalues": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 1,
+   "mentions": 11
+  },
+  "docs": {
+   "files": 13,
+   "mentions": 18
+  },
+  "examples+notebooks": {
+   "files": 0,
+   "mentions": 0
+  },
+  "functions_as_key": 5,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 2,
+   "mentions": 3
+  }
+ },
+ "upper": {
+  "api.md": {
+   "files": 0,
+   "mentions": 0
+  },
+  "bindings": {
+   "files": 2,
+   "mentions": 40
+  },
+  "docs": {
+   "files": 25,
+   "mentions": 89
+  },
+  "examples+notebooks": {
+   "files": 20,
+   "mentions": 105
+  },
+  "functions_as_key": 6,
+  "functions_as_param": 0,
+  "stub": {
+   "files": 0,
+   "mentions": 0
+  },
+  "tests": {
+   "files": 13,
+   "mentions": 86
+  }
+ }
+}
