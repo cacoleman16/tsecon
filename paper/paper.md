@@ -199,7 +199,7 @@ The Rust core carries a large unit and integration suite of **1721 passing
 `#[test]` cases** (1479 integration tests in `crates/*/tests/`, 242 unit tests
 in `src/`); with 54 documentation tests the workspace total is 1775 passing
 Rust tests, with 10 explicitly ignored. The Python layer adds a conformance
-suite of 1526 tests across 99 files whose fixtures are gated against
+suite of 1576 tests across 101 files whose fixtures are gated against
 `statsmodels`, `arch`, `linearmodels`, `scikit-learn`, SciPy, and `ArviZ`. The
 replication fixtures *are* the integration test suite.
 

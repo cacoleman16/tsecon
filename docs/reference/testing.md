@@ -28,7 +28,7 @@ command needs the `--exclude tsecon-python` caveat described
 | — integration tests in `crates/*/tests/` | 1479 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 242 | |
 | — documentation tests | 54 | |
-| Python binding tests | **1526 passed, 0 failed, 1 skipped** in 474 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **1576 passed, 0 failed, 1 skipped** in 335 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
 | Golden fixtures | 96 JSON files, produced by 77 Python generator scripts (plus two R scripts) | `fixtures/` |
 | Public Python functions | 173, **all 173** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
@@ -257,7 +257,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-1526 tests in 99 files. 63 of the 96 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
+1576 tests in 101 files. 63 of the 96 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -724,7 +724,7 @@ likelihood was made allocation-free and given an analytic gradient. The debug
 maturin develop --release -m bindings/python/Cargo.toml
 ```
 
-With a release extension installed, the full Python suite runs in the 474 s in
+With a release extension installed, the full Python suite runs in the 335 s in
 the table above and `docs/examples/monte_carlo.py` in **3.0 s** on this
 machine. Do not quote any timing taken against a debug build.
 
