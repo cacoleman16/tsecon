@@ -1,0 +1,52 @@
+tsecon 0.8.0
+PROBE gmm/baseline: returned normally — keys=['converged', 'fevals', 'gbar', 'iterations', 'nmoments', 'nparams']
+PROBE gmm/raise-custom: Custom [as expected] — boom
+PROBE gmm/raise-after-5-calls: Custom [as expected] — boom after 5
+PROBE gmm/raise-after-5-calls/extra-calls: callback invoked 402 times total — (how many more after the first raise?)
+PROBE gmm/return-1d: TypeError [as expected] — gmm_nonlinear: moments_fn must return a 2-D matrix of per-observation moment contributions, shaped (n_obs, n_moments) — one row per observation, one column per 
+PROBE gmm/return-none: TypeError [as expected] — gmm_nonlinear: moments_fn must return a 2-D matrix of per-observation moment contributions, shaped (n_obs, n_moments) — one row per observation, one column per 
+PROBE gmm/return-string: TypeError [as expected] — gmm_nonlinear: moments_fn must return a 2-D matrix of per-observation moment contributions, shaped (n_obs, n_moments) — one row per observation, one column per 
+PROBE gmm/return-ragged: TypeError (cause=ValueError) [as expected] — gmm_nonlinear: moments_fn must return a 2-D matrix of per-observation moment contributions, shaped (n_obs, n_moments) — one row per observation, one column per 
+PROBE gmm/return-empty: ValueError [as expected] — empty input: moment matrix (no observations); supply at least one observation and one column
+PROBE gmm/return-zero-cols: ValueError [as expected] — empty input: moment matrix (no moment conditions); supply at least one observation and one column
+PROBE gmm/return-nan: ValueError — optimizer error: input `objective on the initial simplex` contains NaN or infinity
+PROBE gmm/return-inf: ValueError — optimizer error: input `objective on the initial simplex` contains NaN or infinity
+PROBE gmm/return-huge: ValueError — optimizer error: input `objective on the initial simplex` contains NaN or infinity
+PROBE gmm/shape-changes-between-calls: ValueError [as expected] — inconsistent moment function output: the moment matrix changed shape during the search; the moment function must return an (n_obs x n_moments) matrix with the s
+PROBE gmm/mutate-theta: returned normally — keys=['converged', 'fevals', 'gbar', 'iterations', 'nmoments', 'nparams']
+PROBE gmm/reentrant-nested-gmm: returned normally — keys=['converged', 'fevals', 'gbar', 'iterations', 'nmoments', 'nparams']
+PROBE gmm/tsecon-from-another-thread-inside-callback: returned normally — keys=['converged', 'fevals', 'gbar', 'iterations', 'nmoments', 'nparams']
+PROBE gmm/keyboardinterrupt: base-exception KeyboardInterrupt propagated — KeyboardInterrupt()
+PROBE gmm/systemexit: base-exception SystemExit propagated — SystemExit(3)
+PROBE gmm/non-callable: TypeError [as expected] — 'int' object is not callable
+PROBE gmm/initial-empty: ValueError [as expected] — empty input: initial parameter vector; supply at least one observation and one column
+PROBE gmm/initial-nan: ValueError — optimizer error: input `x0` contains NaN or infinity
+PROBE gmm/weight-wrong-size: ValueError [as expected] — dimension mismatch: nonlinear GMM weight matrix (must be m x m) (expected 4, got 3)
+PROBE backtest/baseline: returned normally — keys=['accuracy', 'forecasts', 'horizon', 'n_origins', 'origins', 'targets']
+PROBE backtest/raise-custom: RuntimeError (cause=Custom) [as expected] — forecaster callable backtest_probes.<locals>.raises raised at backtest origin 59 (training window y[0..=59], 60 observation(s); 2 step(s) requested); the origin
+PROBE backtest/keyboardinterrupt: RuntimeError (cause=KeyboardInterrupt) — forecaster callable backtest_probes.<locals>.kbi raised at backtest origin 59 (training window y[0..=59], 60 observation(s); 2 step(s) requested); the original 
+PROBE backtest/systemexit: RuntimeError (cause=SystemExit) — forecaster callable backtest_probes.<locals>.sysexit raised at backtest origin 59 (training window y[0..=59], 60 observation(s); 2 step(s) requested); the origi
+PROBE backtest/return-scalar: TypeError [as expected] — forecaster callable backtest_probes.<locals>.<lambda>.<locals>.<lambda> returned an instance of float, which does not coerce to a 1-D float sequence, at backtes
+PROBE backtest/return-wrong-len: ValueError [as expected] — forecaster callable backtest_probes.<locals>.<lambda>.<locals>.<lambda> returned 3 forecast(s) at backtest origin 59 (training window y[0..=59], 60 observation(
+PROBE backtest/return-none: TypeError [as expected] — forecaster callable backtest_probes.<locals>.<lambda>.<locals>.<lambda> returned an instance of NoneType, which does not coerce to a 1-D float sequence, at back
+PROBE backtest/return-string: TypeError [as expected] — forecaster callable backtest_probes.<locals>.<lambda>.<locals>.<lambda> returned an instance of str, which does not coerce to a 1-D float sequence, at backtest 
+PROBE backtest/return-nan: ValueError [as expected] — forecaster callable backtest_probes.<locals>.<lambda>.<locals>.<lambda> returned a non-finite forecast (NaN) at step 1 of 2 at backtest origin 59 (training wind
+PROBE backtest/return-inf: ValueError [as expected] — forecaster callable backtest_probes.<locals>.<lambda>.<locals>.<lambda> returned a non-finite forecast (inf) at step 1 of 2 at backtest origin 59 (training wind
+PROBE backtest/return-2d: TypeError [as expected] — forecaster callable backtest_probes.<locals>.<lambda>.<locals>.<lambda> returned an instance of ndarray, which does not coerce to a 1-D float sequence, at backt
+PROBE backtest/return-huge: returned normally — keys=['accuracy', 'forecasts', 'horizon', 'n_origins', 'origins', 'targets']
+PROBE backtest/mutate-train (read-only contract): RuntimeError (cause=ValueError) [as expected] — forecaster callable backtest_probes.<locals>.mutates raised at backtest origin 59 (training window y[0..=59], 60 observation(s); 2 step(s) requested); the origi
+PROBE backtest/callable-sees: 59 calls; first (60, 2, False, '<f8'), last (118, 2, False, '<f8') — (len, h, writeable, dtype)
+PROBE backtest/reentrant-arima_fit: returned normally — keys=['accuracy', 'forecasts', 'horizon', 'n_origins', 'origins', 'targets']
+PROBE backtest/recursive-backtest-in-forecaster: returned normally — keys=['accuracy', 'forecasts', 'horizon', 'n_origins', 'origins', 'targets']
+PROBE backtest/tsecon-from-another-thread-inside-callback: returned normally — keys=['accuracy', 'forecasts', 'horizon', 'n_origins', 'origins', 'targets']
+PROBE backtest/forecaster-int: TypeError [as expected] — forecaster must be a built-in forecaster name (str) or a callable f(train, horizon) -> array-like of `horizon` point forecasts; got an instance of int
+PROBE backtest/forecaster-object-with-__call__: returned normally — keys=['accuracy', 'forecasts', 'horizon', 'n_origins', 'origins', 'targets']
+PROBE conformal_forecast/baseline: returned normally — keys=['alpha', 'base', 'finite_sample_level', 'horizon', 'level', 'lower']
+PROBE conformal_forecast/raise-custom: RuntimeError (cause=Custom) [as expected] — forecaster callable backtest_probes.<locals>.raises raised at conformal base origin 88 (training window y[0..=88], 89 observation(s); 2 step(s) requested); the 
+PROBE conformal_forecast/return-nan: ValueError [as expected] — forecaster callable backtest_probes.<locals>.<lambda>.<locals>.<lambda> returned a non-finite forecast (NaN) at step 1 of 2 at conformal base origin 88 (trainin
+PROBE conformal_forecast/return-wrong-len: ValueError [as expected] — forecaster callable backtest_probes.<locals>.<lambda>.<locals>.<lambda> returned 3 forecast(s) at conformal base origin 88 (training window y[0..=88], 89 observ
+PROBE conformal_forecast/keyboardinterrupt: RuntimeError (cause=KeyboardInterrupt) — forecaster callable backtest_probes.<locals>.kbi raised at conformal base origin 88 (training window y[0..=88], 89 observation(s); 2 step(s) requested); the ori
+PROBE conformal_backtest/baseline: returned normally — keys=['alpha', 'base', 'err', 'horizon', 'level', 'lower']
+PROBE conformal_backtest/raise-custom: RuntimeError (cause=Custom) [as expected] — forecaster callable backtest_probes.<locals>.raises raised at conformal base origin 83 (training window y[0..=83], 84 observation(s); 2 step(s) requested); the 
+PROBE conformal_backtest/mutate-train: RuntimeError (cause=ValueError) [as expected] — forecaster callable backtest_probes.<locals>.mutates raised at conformal base origin 83 (training window y[0..=83], 84 observation(s); 2 step(s) requested); the
+PROBE gil/long-call: GIL HELD for the whole compiled call — counter thread ran at 0.3% of its idle rate during a 4.2s setar_test(n_boot=98158)
