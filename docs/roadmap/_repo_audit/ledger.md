@@ -34,7 +34,7 @@ sources.
 routes, named in the `evidence` column: (i) a CHANGELOG bullet or commit; (ii)
 a grep of the tree (`crates/`, `bindings/`, `docs/`); (iii) a probe on the
 freshly built wheel (`lab/audit/repo/ledger/probes.py`, log in
-`lab/audit/repo/ledger/probes.log`, probe ids `P01`–`P58`). Where none was
+`lab/audit/repo/ledger/probes_run.txt`, probe ids `P01`–`P58`). Where none was
 possible the row says `UNVERIFIED` and why. The wheel was built in this
 worktree (`maturin develop --release`, own `CARGO_TARGET_DIR`) from `19d308e`.
 

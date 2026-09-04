@@ -13,7 +13,7 @@ probe with a verdict:
 
 Run from the repository root with the audit venv:
 
-    .venv-wt/bin/python lab/audit/repo/ledger/probes.py > lab/audit/repo/ledger/probes.log
+    .venv-wt/bin/python lab/audit/repo/ledger/probes.py > lab/audit/repo/ledger/probes_run.txt
 
 Read-only: no file under the repository is modified.
 """

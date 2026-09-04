@@ -33,3 +33,13 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+
+# Repository-audit raw probe dumps: multi-hundred-kilobyte machine output that
+# the sweep scripts under lab/audit/repo/ regenerate. The text summaries next
+# to them are committed; these are not.
+lab/audit/repo/*/out/*.xml
+lab/audit/repo/claims/out/sweep_names.json
+lab/audit/repo/claims/out/sweep_exec.json
+lab/audit/repo/tests/out/assertion_scan.json
+lab/audit/repo/api/out/conventions.json
+lab/audit/repo/api/out/clusters.json
