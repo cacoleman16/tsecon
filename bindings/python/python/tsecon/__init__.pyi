@@ -249,7 +249,12 @@ def philox_uniforms(seed: int, n: int) -> _F64:
 def local_level_smooth(
     y: _ArrayLike, sigma2_eps: float, sigma2_eta: float
 ) -> dict[str, Any]:
-    """Exact-diffuse local-level Kalman filter + smoother (NaN = missing)."""
+    """Exact-diffuse local-level Kalman filter + smoother (NaN = missing).
+
+    Keys: `loglik`, `filtered_state`/`filtered_state_var`,
+    `smoothed_state`/`smoothed_state_var` (each length n), and `d_diffuse`
+    (the number of initial observations spent in the exact-diffuse period).
+    """
 
 def ar_loglik(
     y: _ArrayLike, coeffs: Sequence[float], sigma2: float, intercept: float = ...
@@ -374,6 +379,11 @@ def garch_fit(
     boundary parameters have NaN standard errors (no classical asymptotics
     exist there), interior parameters keep finite ones. `converged` reports
     the optimizer's own verdict.
+
+    EGARCH has no closed-form multi-step variance forecast: with
+    `vol="egarch"` only `forecast_horizon` 0 or 1 is accepted, and
+    `forecast_horizon >= 2` raises a teaching ValueError (GARCH and GJR
+    forecast analytically at every horizon).
     """
 
 # --------------------------------------------------------------- VAR
@@ -616,17 +626,24 @@ def mcmc_diagnostics(chains: _ArrayLike) -> dict[str, float]:
 
 # ------------------------------------------------------------- filters
 def hp_filter(y: _ArrayLike, lamb: float = ..., one_sided: bool = ...) -> dict[str, Any]:
-    """Hodrick-Prescott filter (O(n)); `one_sided=True` for the real-time variant."""
+    """Hodrick-Prescott filter (O(n)); `one_sided=True` for the real-time variant.
+
+    Keys: `trend`, `cycle` (= y - trend), `first_index` (0: full sample)."""
 
 def bk_filter(
     y: _ArrayLike, low: float = ..., high: float = ..., k: int = ...
 ) -> dict[str, Any]:
-    """Baxter-King band-pass filter (loses k observations at each end)."""
+    """Baxter-King band-pass filter (loses k observations at each end).
+
+    Keys: `cycle` (length n - 2k) and `first_index` (= k); no trend is
+    returned."""
 
 def cf_filter(
     y: _ArrayLike, low: float = ..., high: float = ..., drift: bool = ...
 ) -> dict[str, Any]:
-    """Christiano-Fitzgerald asymmetric band-pass filter."""
+    """Christiano-Fitzgerald asymmetric band-pass filter (full sample).
+
+    Keys: `trend`, `cycle`, `first_index` (0: full sample)."""
 
 def hamilton_filter(
     y: _ArrayLike,
@@ -635,7 +652,7 @@ def hamilton_filter(
     method: str = ...,
     se: str | None = ...,
     maxlags: int | None = ...,
-    use_correction: bool = ...,
+    use_correction: bool | None = ...,
 ) -> dict[str, Any]:
     """Hamilton (2018) regression filter — the modern HP alternative.
 
@@ -645,6 +662,9 @@ def hamilton_filter(
     errors on `beta` via the shared HAC engine with the h-overlap default
     `maxlags = h` (the overlapping h-step residuals are MA(h-1) by
     construction); `se="nonrobust"` the classical comparison point.
+    `maxlags` and `use_correction` parameterize the HAC covariance only,
+    so passing either explicitly under anything but `se="hac"` raises
+    (use_correction=None, the default, means True where HAC applies).
     Returns `trend`, `cycle`, `first_index`, `beta` (regression method),
     plus `bse`, `tvalues`, `se_type`, `maxlags`, `use_correction` when
     `se` is requested. Defaults are bit-identical to earlier releases.
@@ -655,12 +675,14 @@ def bn_filter(
     p: int = ...,
     delta: float | None = ...,
     demean: str = ...,
-    d0: float = ...,
-    dt: float = ...,
+    d0: float | None = ...,
+    dt: float | None = ...,
 ) -> dict[str, Any]:
     """Kamber-Morley-Wong (2018) BN filter: Beveridge-Nelson output gap
     with the signal-to-noise ratio pinned (delta=None: their
-    amplitude-to-noise selection on the grid (d0, dt)); `demean` "sm"
+    amplitude-to-noise selection on the grid (d0, dt); d0/dt default to
+    0.01/0.0005 when None and parameterize only that grid, so passing
+    either explicitly with a fixed delta= raises); `demean` "sm"
     (sample mean, the baseline) or "nd" (no drift removal). Returns
     `trend`, `cycle`, `first_index` (=1), `delta`, `ar`, `cycle_se`,
     `amplitude_to_noise`, `drift`. Reference-run-validated against the
@@ -677,7 +699,9 @@ def bn_decomposition(
     """Classic Beveridge-Nelson (1981) decomposition from an
     ARIMA(p, 1, q) — fit by the library's exact MLE (default: the
     Morley-Nelson-Zivot p=2, q=2), or at fixed coefficients when any of
-    `ar`/`ma`/`drift` is passed. Returns `trend`, `cycle`,
+    `ar`/`ma`/`drift` is passed (`p`/`q` are ignored on that
+    fixed-coefficient path — the decomposition is computed exactly at the
+    coefficients you supply). Returns `trend`, `cycle`,
     `innovations`, `first_index` (=1), `long_run_multiplier`
     (psi(1) = theta(1)/phi(1)), `drift`, `ar`, `ma`, `mode`, and for
     the fit path `sigma2`, `loglik`, `aic`, `bic`, `converged`;
@@ -903,7 +927,12 @@ def elastic_net(
     tol: float = ...,
     max_iter: int = ...,
 ) -> dict[str, Any]:
-    """Elastic-net via coordinate descent; scikit-learn objective."""
+    """Elastic-net via coordinate descent; scikit-learn objective.
+
+    Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update
+    in the final sweep, in coefficient units) and `max_rel_change` (that
+    update scaled as max_j |Δb_j|·‖x_j‖/‖y‖ — the scale-free quantity the
+    stopping rule compares with `tol`)."""
 
 def lasso(
     x: _ArrayLike,
@@ -912,7 +941,11 @@ def lasso(
     tol: float = ...,
     max_iter: int = ...,
 ) -> dict[str, Any]:
-    """Lasso (elastic net with l1_ratio = 1.0)."""
+    """Lasso (elastic net with l1_ratio = 1.0).
+
+    Keys: `coef`, `n_iter`, `max_change` and `max_rel_change` (as in
+    `elastic_net`: the scale-free update the stopping rule compares with
+    `tol`)."""
 
 # --------------------------------------------------- structural identification
 def sign_restricted_svar(
@@ -954,7 +987,8 @@ def zero_sign_svar(
     shock) `quantiles` at `probs=[0.05,0.16,0.50,0.84,0.95]` (ARW-2018 importance-
     weighted when `weighted=True`), the weight-invariant identified-set envelope
     (`set_min`/`set_max`), per-accepted-draw `weights` (normalized to sum to 1) and
-        their effective sample size `ess`, and the acceptance `diagnostics`. With
+    their effective sample size `ess`, the acceptance `diagnostics`, and
+    `arw_weighted` (whether the ARW weights were applied to `quantiles`). With
     strict-upper-triangle impact zeros and no sign restrictions the rotation at
     every draw is pinned to Q=I, so each posterior draw's structural IRF equals
     that draw's recursive Cholesky IRF (a per-draw identity checked to ~1e-10 in
@@ -1221,7 +1255,8 @@ def proxy_ar_sets(
     repair (h=12 coverage 0.889 -> 0.964 on the card's VAR(2) at T=300, 0.830
     -> 0.932 on a routine VAR(1) at T=250; median width ~1.15x at h=8, ~1.45x
     at h=12; weak-instrument boundedness bit-identical). Default "delta" is
-    unchanged.
+    unchanged. `rf_seed=None` (the default) means seed 0 — reproducible, not
+    fresh entropy — and `rf_draws=None` means 256 draws.
 
     rf_method="second_order_bc" centres the same seeded simulation at Pope
     (1990) bias-corrected coefficients (Kilian stationarity shrinkage) --
@@ -1230,6 +1265,11 @@ def proxy_ar_sets(
     ~1.8x the delta width at h=12). A conservative floor, not a calibration:
     it overshoots where "second_order" already reaches nominal. Boundedness
     is again bit-identical.
+
+    Proxy missingness follows the family convention: NaN rows are treated as
+    dates where the instrument is unavailable and dropped from the moments
+    (`n_proxy` reports the kept count); an infinite proxy value is refused as
+    corruption (0.7.0 -- previously dropped as if missing).
     """
 
 def proxy_svar(
@@ -1247,10 +1287,12 @@ def proxy_svar(
     The residual-instrument covariance identifies the target shock's impact
     column up to scale; the unit-effect normalization sets its impact on
     `norm_var` to `unit` (sign pinned). `proxy` aligns to `data` rows (NaN
-    outside the instrument window is dropped). Returns `irf` (horizon+1, n),
+    outside the instrument window is dropped, `n_proxy` counts the kept
+    rows; an infinite proxy value is refused as corruption — 0.7.0).
+    Returns `irf` (horizon+1, n),
     `impact`, `relative_impact`, `cov_um`, `first_stage_f` (HC1-robust when
     `robust_f`), `reliability` = Corr(m, u_norm)^2, `n_proxy`, the estimated
-    `shock` (length T), and `first_stage`: the proxy_first_stage diagnostics
+    `shock` (length T - lags, the residual sample), and `first_stage`: the proxy_first_stage diagnostics
     dict (the MOP effective F with its tau-based critical values --
     mop_cv_tau10 = 23.11 is the conventional bar, not the folklore 10).
     Point estimate only; see proxy_svar_bands for moving-block bands
@@ -1284,6 +1326,12 @@ def proxy_first_stage(
     `weak_folklore` (F < 10, kept only because the literature reports it).
     When weak_mop_tau10 is True do not trust Wald-type bands
     (proxy_svar_bands); use proxy_ar_sets.
+
+    Proxy missingness follows the family convention: NaN rows are treated as
+    dates where the instrument is unavailable and dropped from the
+    first-stage sample (`n_proxy` reports the kept count); an infinite proxy
+    value is refused as corruption (0.7.0 -- previously dropped as if
+    missing).
     """
 
 def nongaussian_svar(
@@ -1542,23 +1590,90 @@ def engle_granger(
     autolag: str | None = ...,
     maxlag: int | None = ...,
 ) -> dict[str, Any]:
-    """Engle-Granger two-step cointegration test: stat + MacKinnon p-value/crit (statsmodels `coint`)."""
+    """Engle-Granger two-step cointegration test: stat + MacKinnon p-value/crit (statsmodels `coint`).
+
+    `data` is T x k, column 0 the regressand. Keys: `stat`, `pvalue`, `crit`,
+    `coint_coefs` (step-1 coefficients, deterministics first), `resid`
+    (length `nobs`), `used_lag`/`adf_nobs` (the residual ADF's lag and
+    sample), `n_vars`, `nobs`."""
 
 def vecm(
     data: _ArrayLike,
     k_ar_diff: int = ...,
     coint_rank: int = ...,
     deterministic: str = ...,
+    seasons: int = ...,
+    first_season: int | None = ...,
 ) -> dict[str, Any]:
-    """VECM ML estimation: alpha, beta, gamma, det_coef, sigma_u, llf (statsmodels-exact).
+    """VECM ML estimation: alpha, beta, det_coef_coint, gamma, det_coef, sigma_u, llf.
 
-    ``deterministic``: ``"n"`` (default) — no deterministic terms, statsmodels
-    ``VECM(..., deterministic="n")``; ``"co"`` — unrestricted constant
-    (statsmodels ``"co"``, the case ``johansen``'s det_order=0 convention
-    assumes; the intercepts land in ``det_coef``). Warning: ``johansen``
-    assumes the unrestricted constant, NOT this default — pass
-    ``deterministic="co"`` when the rank came from ``johansen``.
+    ``deterministic`` names the statsmodels VECM case (all nine accepted):
+    ``"n"`` (default) — no deterministic terms; ``"co"``/``"ci"`` — constant
+    outside/inside the cointegration relation; ``"lo"``/``"li"`` — linear
+    trend outside/inside; combinations ``"colo"``/``"coli"``/``"cilo"``/
+    ``"cili"``. Restricted (inside) terms widen the cointegrating matrix —
+    their coefficients are returned as the rows of ``det_coef_coint``
+    (constant first, then trend; statsmodels ``VECMResults.det_coef_coint``);
+    unrestricted terms land in ``det_coef`` (statsmodels column order:
+    constant, seasons-1 centered seasonal dummies, trend). ``seasons``/
+    ``first_season``: statsmodels-style centered seasonal dummies —
+    ``first_season`` (0-based season of the first row, default 0 when None)
+    is taken modulo ``seasons`` (statsmodels-compatible), and passing it
+    explicitly with ``seasons=0`` raises (no cycle to phase). Warning:
+    ``johansen`` assumes the unrestricted constant (det_order=0), NOT this
+    function's ``"n"`` default — pass ``deterministic="co"`` when the rank
+    came from ``johansen`` (det_order -1/0/1 ↔ ``"n"``/``"co"``/``"colo"``).
     """
+
+def threshold_vecm(
+    data: _ArrayLike,
+    k_ar_diff: int = ...,
+    trim: float = ...,
+    n_grid_gamma: int = ...,
+    n_grid_beta: int | None = ...,
+    beta_span: float | None = ...,
+    beta: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Hansen-Seo (2002) two-regime threshold VECM (threshold
+    cointegration): the error-correction term w_{t-1} = beta' y_{t-1}
+    drives the regime split; estimation is the concentrated Gaussian MLE —
+    grid search over (beta, gamma) with per-cell two-regime OLS minimizing
+    ln det of the pooled residual covariance. ``trim`` is Hansen-Seo's pi0
+    (default 0.05, their suggestion). ``beta=None`` estimates the
+    cointegrating vector (BIVARIATE only, grid centered on the linear
+    Johansen estimate); for k > 2 pass ``beta=`` explicitly. With ``beta=``
+    supplied the beta grid search never runs (``beta_grid`` comes back
+    empty), so passing ``n_grid_beta``/``beta_span`` explicitly alongside
+    it raises (they default to 50/10.0 when None).
+
+    Keys: beta, threshold, params_low/params_high (k x n_regressors, rows
+    = equations, columns [const, ect, lagged diffs]) with EICKER-WHITE
+    bse_low/bse_high, n_low/n_high/nobs/frac_low, sigma, log_det_sigma,
+    llf, llf_linear, beta_linear, beta_grid, ect, min_regime, neqs,
+    n_regressors, k_ar_diff."""
+
+def hansen_seo_test(
+    data: _ArrayLike,
+    k_ar_diff: int = ...,
+    trim: float = ...,
+    n_grid: int = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    beta: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Hansen-Seo (2002) sup-LM test of linear vs two-regime THRESHOLD
+    cointegration, p-valued by their fixed-regressor bootstrap. beta is
+    fixed at the null (linear Johansen ML) estimate unless supplied. The
+    threshold is unidentified under the null (Davies problem), so NO
+    chi-squared p-value exists; p_value = (1 + #{LM* >= LM})/(n_boot + 1)
+    — seeded, parallel, bit-identical at any thread count. Presumes the
+    series ARE cointegrated (test that first: johansen/engle_granger).
+    Unlike threshold_vecm — whose beta=None grid SEARCH is bivariate-only
+    — the null beta here is the linear Johansen ML estimate, defined for
+    any k, so k > 2 with an estimated (null) beta is accepted.
+
+    Keys: stat, p_value, threshold, beta, n_boot, nobs, thresholds,
+    lm_path, boot_stats, min_regime, neqs, n_regressors, k_ar_diff."""
 
 def ou_fit(x: _ArrayLike, dt: float = ..., level: float = ...) -> dict[str, Any]:
     """Ornstein-Uhlenbeck mean-reversion fit for a spread (exact-discretization MLE).
@@ -1576,9 +1691,11 @@ def ou_fit(x: _ArrayLike, dt: float = ..., level: float = ...) -> dict[str, Any]
     quantifies the well-known upward finite-sample kappa bias of roughly
     4 / (sample time span)); ``stationary_sd`` (= sigma / sqrt(2 kappa));
     ``mean_reverting``; the AR(1) leg ``phi``/``phi_se``/``c``/``c_se``/
-    ``eta2``/``loglik``; and ``n_obs``/``dt``. A fit with ``phi >= 1`` is
-    returned honestly: ``mean_reverting=False``, ``half_life=inf``,
-    ``half_life_ci=None``, ``stationary_sd=None``.
+    ``eta2``/``loglik``; and the echoed call inputs ``n_obs``/``dt``/
+    ``level`` (the confidence level ``half_life_ci`` was built at, echoed
+    back so a stored result dict stays self-describing). A fit with
+    ``phi >= 1`` is returned honestly: ``mean_reverting=False``,
+    ``half_life=inf``, ``half_life_ci=None``, ``stationary_sd=None``.
     """
 
 def spread_zscore(
@@ -1586,14 +1703,16 @@ def spread_zscore(
     kappa: float | None = ...,
     mu: float | None = ...,
     sigma: float | None = ...,
-    dt: float = ...,
+    dt: float | None = ...,
 ) -> dict[str, Any]:
     """Z-score of a spread against the stationary OU law N(mu, sigma^2/(2 kappa)).
 
     ``zscore = (x - mu) / stationary_sd``, ``stationary_sd = sigma /
     sqrt(2 kappa)``. Pass all three of ``kappa``/``mu``/``sigma`` (a frozen
     ``ou_fit``) or none (fitted from ``x`` at step ``dt``); partial
-    specification is refused. Returns ``zscore``, the ``kappa``/``mu``/
+    specification is refused, and ``dt`` (default 1.0 when None)
+    parameterizes only the internal fit, so passing it explicitly with a
+    frozen triple raises. Returns ``zscore``, the ``kappa``/``mu``/
     ``sigma`` used, ``stationary_sd``, ``fitted``. Refuses ``kappa <= 0``:
     a non-mean-reverting process has no stationary distribution to score
     against.
@@ -1615,7 +1734,9 @@ def markov_switching_ar(
     specification on deviations y_t - mu_{S_t}). smoothed_prob /
     filtered_prob are the full (n, k_regimes) probability matrices,
     n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0 scalar
-    path (= smoothed_prob[:, -1])."""
+    path (= smoothed_prob[:, -1]). The EM run reports converged and
+    iterations (EM steps actually run — converged=False with
+    iterations == max_iter means the cap bound)."""
 
 def setar(
     y: _ArrayLike,
@@ -1661,6 +1782,117 @@ def setar_test(
     Keys: stat, p_value, threshold, delay, n_boot, nobs, ssr_linear,
     ssr_setar, thresholds, f_path, boot_stats."""
 
+def star(
+    y: _ArrayLike,
+    p: int,
+    model: str = ...,
+    delay: int = ...,
+    trim: float = ...,
+    delays: Sequence[int] | None = ...,
+    constant: bool = ...,
+    n_gamma: int = ...,
+    n_c: int = ...,
+) -> dict[str, Any]:
+    """Smooth-transition AR (Terasvirta 1994): y_t = phi1'x_t +
+    G(gamma, c; y_{t-delay}) phi2'x_t + e_t, model "lstar"
+    (G = 1/(1+exp(-gamma(s-c)))) or "estar" (G = 1 - exp(-gamma(s-c)^2)).
+    gamma is RAW (tsDyn convention); gamma_standardized is Terasvirta's
+    gamma*sd(s) (lstar) / gamma*var(s) (estar). Concentrated NLS:
+    (gamma, c) grid (standardized gamma log-spaced [0.5, 100]; c on
+    trimmed order statistics) + Nelder-Mead refinement. Run star_test
+    first — STAR on linear data happily "finds" a transition.
+
+    Keys: model, gamma, gamma_standardized, c, delay, s_sd, converged,
+    gamma_at_boundary (standardized gamma at the searchable range's edge:
+    read gamma as a bound, not a point estimate), params_linear,
+    params_nonlinear (high-regime coefficients are the sum), bse_linear,
+    bse_nonlinear, se_gamma, se_c, se_valid (Gauss-Newton; NaN + False on
+    a degenerate J'J), ssr, sigma2, loglik, aic, bic, nobs, k, transition,
+    grid_gamma, grid_c, ssr_grid (n_gamma x n_c), best_cell, fevals."""
+
+def star_eval(
+    y: _ArrayLike,
+    p: int,
+    gamma: float,
+    c: float,
+    model: str = ...,
+    delay: int = ...,
+    constant: bool = ...,
+) -> dict[str, Any]:
+    """Concentrated STAR fit at FIXED (gamma, c) (raw gamma, as in star):
+    OLS of y_t on [x_t, G_t x_t] with Gauss-Newton SEs — for scoring a
+    published parameterization (SSR/loglik comparison is robust to
+    optimizer differences).
+
+    Keys: params_linear, params_nonlinear, bse_linear, bse_nonlinear,
+    se_gamma, se_c, se_valid, ssr, sigma2, loglik, aic, bic, nobs, k,
+    transition."""
+
+def star_test(
+    y: _ArrayLike,
+    p: int,
+    delay: int = ...,
+    delays: Sequence[int] | None = ...,
+) -> dict[str, Any]:
+    """Terasvirta STAR modeling-cycle battery: LM3 linearity test against
+    STAR (Luukkonen-Saikkonen-Terasvirta 1988; chi-squared form lm3_stat
+    with 3q df and small-sample F form lm3_f_stat — no bootstrap needed,
+    the auxiliary regression is linear so the null is standard, unlike
+    setar_test) plus the H03/H02/H01 sequence: suggested = "estar" iff
+    the H02 p-value is strictly smallest. `delays` evaluates each
+    candidate delay; best indexes the smallest F-form LM3 p-value and the
+    top-level scalars are that battery's.
+
+    Keys: delay, nobs, q, k0, lm3_stat, lm3_p_value, lm3_f_stat,
+    lm3_f_p_value, h3_f_stat, h3_p_value, h2_f_stat, h2_p_value,
+    h1_f_stat, h1_p_value, ssr0, ssr1, ssr2, ssr3, suggested, best,
+    tests."""
+def threshold_var(
+    data: _ArrayLike,
+    p: int,
+    threshold_index: int = ...,
+    delay: int = ...,
+    trim: float = ...,
+    delays: Sequence[int] | None = ...,
+    constant: bool = ...,
+) -> dict[str, Any]:
+    """Two-regime threshold VAR (the multivariate SETAR) by concentrated
+    least squares / Gaussian MLE: regime split by z_t =
+    y[threshold_index]_{t-delay} <= threshold; per-candidate two-regime
+    OLS minimizing ln det of the pooled residual covariance over the
+    trimmed order-statistic grid (`delays` as a list searches the delay
+    jointly on the common sample and overrides `delay`). Two regimes
+    only; regime-dependent generalized IRFs are deliberately not provided
+    (see the model card).
+
+    Keys: threshold, delay, threshold_index, params_low/params_high (k x
+    n_regressors, rows = equations, columns [const?, y_{t-1}..,
+    y_{t-p}..]) with classical bse_low/bse_high, n_low/n_high/nobs,
+    sigma/sigma_low/sigma_high, log_det_sigma, llf, aic/bic, thresholds,
+    logdet_path, min_regime, neqs, n_regressors."""
+
+def threshold_var_test(
+    data: _ArrayLike,
+    p: int,
+    threshold_index: int = ...,
+    delay: int = ...,
+    trim: float = ...,
+    n_grid: int = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    constant: bool = ...,
+) -> dict[str, Any]:
+    """Robust sup-Wald (score-form) linearity test of a linear VAR(p)
+    against the two-regime threshold VAR — the multivariate analogue of
+    the Hansen-Seo sup-LM — with a Hansen (1996) fixed-regressor wild
+    bootstrap p-value. The threshold is unidentified under the null
+    (Davies problem), so NO chi-squared p-value exists; p_value =
+    (1 + #{W* >= W})/(n_boot + 1) — seeded, parallel, bit-identical at
+    any thread count.
+
+    Keys: stat, p_value, threshold, delay, threshold_index, n_boot, nobs,
+    thresholds, wald_path, boot_stats, min_regime, neqs, n_regressors."""
+
 # ------------------------------------------------------------------ MIDAS
 def midas_weights(scheme: str, theta1: float, theta2: float, k: int) -> _F64:
     """MIDAS weights (sum to 1); scheme "exp_almon" or "beta"."""
@@ -1678,7 +1910,7 @@ def ccc_garch(
     mean: str = ...,
     univariate_dist: str = ...,
     p: int = ...,
-    o: int = ...,
+    o: int | None = ...,
     q: int = ...,
 ) -> dict[str, Any]:
     """CCC-GARCH (Bollerslev 1990); returns is T x k, H_t = D_t R D_t with
@@ -1687,6 +1919,9 @@ def ccc_garch(
     and takes garch_fit's knobs: vol/mean/p/o/q plus univariate_dist
     ("normal" | "t", the per-series innovation density — named apart from
     dcc_garch's dist=, which is the second-stage correlation likelihood).
+    `o` follows garch_fit's sentinel: None (default) means no asymmetry
+    term under vol="garch" and one lag under "gjr"/"egarch"; explicit
+    o > 0 under vol="garch" raises instead of being silently dropped.
 
     Keys: correlation (k x k), loglik, sigma2 ((T, k) per-series
     conditional variance paths), covariance ((T, k, k) in-sample
@@ -1699,7 +1934,8 @@ def ccc_garch(
     H_{T+1} is covariance_forecast[0]. Because R is constant the forecast
     is analytic and exact at every horizon (no DCC-style h >= 2
     approximation), with the variance forecasts identical to each series'
-    own garch_fit forecast path."""
+    own garch_fit forecast path. The univariate stage inherits garch_fit's
+    EGARCH limit: vol="egarch" with forecast_horizon >= 2 raises."""
 
 def dcc_garch(
     returns: _ArrayLike,
@@ -1710,7 +1946,7 @@ def dcc_garch(
     mean: str = ...,
     univariate_dist: str = ...,
     p: int = ...,
-    o: int = ...,
+    o: int | None = ...,
     q: int = ...,
 ) -> dict[str, Any]:
     """DCC-GARCH (Engle 2002); returns is T x k. variant: "dcc" | "cdcc"
@@ -1720,7 +1956,9 @@ def dcc_garch(
     zero-mean Normal GARCH(1,1) and takes garch_fit's knobs: vol/mean/p/o/q
     plus univariate_dist ("normal" | "t") — the per-series innovation
     density, distinct from dist=, which configures the second-stage
-    correlation likelihood. Keys: a, b, g, qbar, loglik, converged,
+    correlation likelihood; o follows garch_fit's sentinel (None default;
+    explicit o > 0 under vol="garch" raises). Keys: a, b, g, qbar, loglik,
+    converged,
     variant, dist, correlation ((T, k, k) nested list -- the in-sample
     conditional correlation path), correlation_last, sigma2 ((T, k)
     per-series conditional variance paths), covariance ((T, k, k)
@@ -1742,7 +1980,9 @@ def dcc_garch(
     also uses the final residual z_T and is correlation_forecast[0].
     h >= 2 forecasts use the Engle-Sheppard (2001) recursion on E[Q]
     normalized each step (an approximation), converging to corr(qbar).
-    The default call is bit-identical to earlier releases."""
+    The univariate stage inherits garch_fit's EGARCH limit: vol="egarch"
+    with forecast_horizon >= 2 raises. The default call is bit-identical to
+    earlier releases."""
 
 def dcc_test(
     returns: _ArrayLike,
@@ -1751,13 +1991,15 @@ def dcc_test(
     mean: str = ...,
     univariate_dist: str = ...,
     p: int = ...,
-    o: int = ...,
+    o: int | None = ...,
     q: int = ...,
 ) -> dict[str, Any]:
     """Engle-Sheppard (2001) test of constant conditional correlation
     (CCC vs DCC); returns is T x k. A univariate GARCH per series (the
     same first stage ccc_garch/dcc_garch use — zero-mean Normal GARCH(1,1)
-    by default, configurable via vol/mean/univariate_dist/p/o/q), joint
+    by default, configurable via vol/mean/univariate_dist/p/o/q; o follows
+    garch_fit's sentinel — None default, explicit o > 0 under vol="garch"
+    raises), joint
     standardization by the symmetric inverse square root of the constant
     correlation, pooled AR(lags) on the stacked off-diagonal outer
     products. Keys: stat, df (= lags + 1), p_value (small rejects constant
@@ -1800,8 +2042,9 @@ def factor_model(
 ) -> dict[str, Any]:
     """PCA factor model (T x N) + Bai-Ng (2002) factor selection.
 
-    factors, loadings, eigenvalues, icp1/icp2/pcp1/pcp2 and Ahn-Horenstein
-    eigenvalue-ratio (er) factor counts."""
+    factors, loadings, eigenvalues, icp1/icp2/pcp1/pcp2 and the
+    Ahn-Horenstein eigenvalue-ratio factor count `er` with the ratios
+    `er_ratios` (length kmax) it was read from."""
 
 # ------------------------------------------------------------ term structure
 def nelson_siegel(
@@ -1872,7 +2115,9 @@ def cv_splits(
     """Leakage-safe CV split indices for sequential data.
 
     scheme is "expanding", "rolling", or "purged_kfold". Returns a list of
-    {"train": [...], "test": [...]} index dicts. purge drops the last purge
+    {"train": [...], "test": [...]} index dicts. `train` defaults to 0, which
+    the two walk-forward schemes refuse as an empty first window — pass it
+    explicitly there ("purged_kfold" ignores it). purge drops the last purge
     indices from the end of every training window (all schemes; set it >=
     horizon - 1 for h-step-ahead labels). embargo excludes training rows
     after the test block, which only exist under "purged_kfold"; nonzero
@@ -1892,7 +2137,9 @@ def adaptive_lasso(
 ) -> dict[str, Any]:
     """Adaptive LASSO (Zou 2006): oracle-property weighted-L1 penalty.
 
-    coef, n_iter, max_change."""
+    Keys: `coef`, `n_iter`, `max_change` and `max_rel_change` (as in
+    `elastic_net`: the scale-free update the stopping rule compares with
+    `tol`)."""
 
 def lasso_path(
     x: _ArrayLike,
@@ -1915,13 +2162,17 @@ def backtest(
     horizon: int = ...,
     refit_every: int = ...,
     forecaster: str | Callable[[_F64, int], _ArrayLike] | None = ...,
-    period: int = ...,
+    period: int | None = ...,
     insample_period: int = ...,
 ) -> dict[str, Any]:
     """Rolling/expanding pseudo-out-of-sample backtest.
 
     window is "expanding" or "rolling"; forecaster is one of naive, drift,
-    mean, seasonal_naive, theta (None means naive) — or any Python callable
+    mean, seasonal_naive, theta (None means naive) — or any Python callable.
+    period (default 1 when None) is the seasonal cycle length of
+    seasonal_naive/theta only; passing it explicitly with any other
+    forecaster (callables included) raises — the MASE/RMSSE scale period
+    is the separate insample_period. forecaster may be any Python callable
     f(train, horizon) -> array-like of exactly `horizon` finite point
     forecasts, where train is a read-only float64 ndarray holding only the
     training window for that origin (the engine's leakage discipline; with
@@ -1942,12 +2193,12 @@ def conformal_forecast(
     calib: int | None = ...,
     mode: str = ...,
     period: int = ...,
-    gamma: float = ...,
+    gamma: float | None = ...,
     n_eval: int | None = ...,
-    lags: int = ...,
-    n_boot: int = ...,
-    seed: int = ...,
-    optimize_beta: bool = ...,
+    lags: int | None = ...,
+    n_boot: int | None = ...,
+    seed: int | None = ...,
+    optimize_beta: bool | None = ...,
     order: tuple[int, int, int] | None = ...,
 ) -> dict[str, Any]:
     """Distribution-free conformal forecast intervals around a point forecaster.
@@ -1962,7 +2213,14 @@ def conformal_forecast(
     split/aci, any Python callable base(train, horizon) -> array-like of
     horizon point forecasts with the backtest contract (train is a read-only
     float64 ndarray of the training window only). calib defaults to
-    n // 4 residuals per horizon; n_eval (aci) to n // 5. Returns mean,
+    n // 4 residuals per horizon; n_eval (aci) to n // 5. `seed=None` (the
+    default) is NOT fresh entropy — under "enbpi" it means seed 0, so two
+    default calls are bit-identical (`n_boot=None` means 25). Inert kwargs
+    raise (0.7.0; defaults bit-identical): order needs base="arima"; lags
+    needs base="ar" (or EnbPI's ensemble); gamma needs method="aci";
+    n_boot/seed/optimize_beta need method="enbpi"; n_eval is ACI-only in
+    this function (conformal_backtest uses it for every method); calib
+    never reaches EnbPI. Returns mean,
     lower, upper, level, plus per-method calibration diagnostics (split:
     q_lower/q_upper/scores/finite_sample_level; enbpi: beta/residuals;
     aci: alpha_final/alpha_trajectory/err/realized_coverage)."""
@@ -1976,13 +2234,13 @@ def conformal_backtest(
     calib: int | None = ...,
     mode: str = ...,
     period: int = ...,
-    gamma: float = ...,
+    gamma: float | None = ...,
     n_eval: int | None = ...,
-    lags: int = ...,
-    n_boot: int = ...,
-    batch: int = ...,
-    seed: int = ...,
-    optimize_beta: bool = ...,
+    lags: int | None = ...,
+    n_boot: int | None = ...,
+    batch: int | None = ...,
+    seed: int | None = ...,
+    optimize_beta: bool | None = ...,
     order: tuple[int, int, int] | None = ...,
 ) -> dict[str, Any]:
     """Online out-of-sample evaluation of conformal intervals ("split",
@@ -1991,7 +2249,11 @@ def conformal_backtest(
     coverage per horizon. base as in conformal_forecast, including a Python
     callable base(train, horizon) for split/aci. ACI adds its alpha_t
     trajectory; EnbPI is the published one-step online algorithm with the
-    residual window sliding by batch."""
+    residual window sliding by batch. `seed=None` (the default) means seed 0
+    under "enbpi", not fresh entropy (`n_boot=None` means 25). The same inert-kwarg refusals as
+    conformal_forecast apply (order/lags/gamma/n_boot/seed/optimize_beta,
+    EnbPI's calib), plus batch, which is EnbPI-only; n_eval is live for
+    every method here. Defaults stay bit-identical."""
 
 # --------------------------------------------------- nonlinear GMM (callback)
 def gmm_nonlinear(
@@ -2124,8 +2386,9 @@ def gas_volatility(
     """GAS(1,1) score-driven volatility (Creal-Koopman-Lucas 2013).
 
     density is "gaussian" or "student_t". Returns omega/a/b (+ nu),
-    variance, std_resid, loglik, aic, bic, next_variance, and (horizon>0) a
-    forecast."""
+    variance, std_resid, loglik, aic, bic, next_variance, `converged` and
+    `iterations` (the optimizer's certificate and step count), and
+    (horizon>0) a forecast."""
 
 def dcs_local_level(y: _ArrayLike, density: str = ...) -> dict[str, Any]:
     """DCS robust local level mu_{t+1} = mu_t + kappa*u_t (Harvey-Luati 2014).
@@ -2205,7 +2468,8 @@ def dfm_nowcast(
 
     method is "two_step" (Doz-Giannone-Reichlin 2011) or "mle" (exact
     one-step Gaussian MLE, single factor). Returns nowcast, edge_factor,
-    loglik, fit_loglik, smoothed_factors ((T, r)), n_factors, factor_order,
+    loglik, fit_loglik, smoothed_factors ((T_b, r): one row per BALANCED-panel
+    observation, i.e. T minus the ragged-edge rows), n_factors, factor_order,
     and the fitted model itself (both methods, same surface): loadings
     ((N, r)), factor_ar ((r, r*p) stacked [A_1 | ... | A_p]), factor_cov
     ((r, r)), idiosyncratic (length N), center / scale (length N training
@@ -2278,7 +2542,9 @@ def cg_regression(
 ) -> dict[str, Any]:
     """Coibion-Gorodnichenko (2015) information-rigidity regression (OLS-HAC).
 
-    Returns intercept/slope with HAC se/t/p, r_squared, implied_rigidity.
+    Returns `intercept` and `slope` with HAC `se_intercept`/`se_slope`, the
+    slope's `t_slope`/`p_slope`, `r_squared`, `implied_rigidity`, and the
+    echoed `maxlags`/`nobs`.
     use_correction defaults True (the n/(n-k) HAC scaling); statsmodels
     cov_type="HAC" defaults it off -- match it when comparing."""
 
@@ -2676,4 +2942,585 @@ def copula_select(
     extra parameter is not earning its keep by BIC), what the winner
     implies for tail dependence, and what was skipped and why. Keys:
     fits, skipped, best_aic, best_bic, ranking_aic, ranking_bic, verdict.
+    """
+
+# ---------------------------------------------------------- kernel methods
+def kernel_ridge(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    alpha: float = ...,
+    kernel: str = ...,
+    gamma: float | None = ...,
+    degree: float = ...,
+    coef0: float = ...,
+    x_test: _ArrayLike | None = ...,
+    rff_features: int | None = ...,
+    seed: int = ...,
+) -> dict[str, Any]:
+    """Kernel ridge regression: exact dual solve, or the Rahimi-Recht
+    random-Fourier-feature approximation of the rbf kernel.
+
+    Minimizes `sum_i (y_i - f(x_i))^2 + alpha * ||f||_H^2` over the RKHS of
+    the kernel — scikit-learn's `KernelRidge` objective (no `1/n`, no
+    intercept: center `y` if the kernel does not model a level). The exact
+    solution is `(K + alpha I) a = y` by Cholesky. `x` is `(n, k)` (or 1-D
+    for one regressor). Kernels in scikit-learn's exact parameterization:
+    `kernel="rbf"` `exp(-gamma ||x-y||^2)`, `"laplacian"`
+    `exp(-gamma ||x-y||_1)`, `"polynomial"` `(gamma <x,y> + coef0)^degree`,
+    `"linear"` `<x,y>`. `gamma=None` resolves to `1 / n_features`
+    (scikit-learn's default); the linear kernel has no gamma and refuses
+    one. `degree`/`coef0` act on the polynomial kernel only and are refused
+    at non-default values elsewhere (nothing is silently ignored).
+
+    `rff_features=D` switches to the random-Fourier-feature primal
+    approximation (Rahimi & Recht 2007): `z(x) = sqrt(2/D) cos(Wx + b)`
+    with `W ~ N(0, 2 gamma I)`, `b ~ U[0, 2 pi)` drawn from a Philox stream
+    keyed by `seed` (same seed, bit-identical features), then ridge on `z`
+    — `O(n D^2)` instead of `O(n^3)`, converging to the exact fit as `D`
+    grows. rbf only; `seed` is refused in exact mode. `x_test` (`(m, k)`)
+    adds `predicted`. `alpha=0` is the interpolating fit and is refused
+    when `K` is not positive definite (scikit-learn silently falls back to
+    least squares there; tsecon raises and names `alpha`).
+
+    Keys: `dual_coef` (exact mode; the `a` of `f(x) = sum_i a_i k(x, x_i)`,
+    scikit-learn's `dual_coef_`) or `coef` (RFF mode; the `D` primal
+    weights), `fitted`, `predicted` (only when `x_test` is given),
+    `kernel`, `gamma` (resolved; None for linear), `n_rff_features` (None
+    in exact mode).
+
+    Validated against scikit-learn 1.9.0 `KernelRidge` — `dual_coef_`,
+    `predict(X)` and `predict(X_test)` for all four kernels at 1e-8
+    (independent package). The RFF approximation is a Monte-Carlo object
+    and is property-tested (seeded determinism; error against the exact
+    fit falling with `D`), not golden-pinned.
+    """
+
+def kernel_regression(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    bandwidth: float | Sequence[float] | _ArrayLike | None = ...,
+    kind: str = ...,
+    kernel: str = ...,
+    bandwidth_method: str = ...,
+    block: int | None = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Nadaraya-Watson or local-linear kernel regression of `y` on `x`
+    (`(n, k)`, `k <= 3`, or 1-D for one regressor) with a product Gaussian
+    kernel, at a fixed or cross-validated bandwidth.
+
+    Conventions are statsmodels `KernelReg(reg_type="lc" | "ll",
+    var_type="c"*k)` exactly: `kind="nadaraya_watson"` is the local
+    constant `sum_i K_h(x_i - x) y_i / sum_i K_h(x_i - x)`;
+    `kind="local_linear"` (default — no boundary bias) is the intercept of
+    the kernel-weighted least squares of `y` on `[1, x_i - x]`, solved
+    through the pseudoinverse as statsmodels does. `kernel`: `"gaussian"`
+    only (the one statsmodels validates against; compact-support kernels
+    are deferred). The bandwidth is the kernel's standard deviation per
+    column, in the column's units.
+
+    `bandwidth_method="fixed"` (default) uses `bandwidth` (a positive
+    scalar broadcast to every column, or one value per column) as given.
+    `"loo_cv"` minimizes the leave-one-out least-squares criterion
+    `n^-1 sum_i (y_i - g_{-i}(x_i))^2` (statsmodels `cv_loo`).
+    `"block_cv"` minimizes the leave-block-out criterion (Chu & Marron
+    1991): predicting `y_i` drops the `2*block + 1` observations with
+    `|j - i| <= block` (default `block = ceil(n^(1/3))`), so serially
+    correlated neighbours never vote on their own errors — leave-one-out
+    undersmooths badly under autocorrelated errors, and this is the method
+    to use for time-series regressors. Selection is a 21-point log grid
+    on a common multiple of the Scott reference `1.06 sd(x_j) n^(-1/(4+k))`
+    over `[0.05, 20]`, golden-section refinement, then per-column
+    coordinate refinement for `k >= 2`; deterministic, and not statsmodels'
+    Nelder-Mead path (the criterion value at any bandwidth matches
+    statsmodels at 1e-10; the search reaches a criterion no worse than
+    fmin's). Under the CV methods `bandwidth` must be omitted and under
+    `"fixed"`/`"loo_cv"` `block` must be omitted — a conflicting argument
+    raises rather than being ignored.
+
+    Keys: `fitted` (at the training rows), `predicted` (only when `x_test`
+    is given; NaN where every training weight underflows), `bandwidth`
+    (resolved, one per column), `bandwidth_method`, `block` (resolved
+    half-width under `"block_cv"`, else None), `cv_criterion` (the
+    leave-one-out criterion under `"fixed"`/`"loo_cv"`, the leave-block-out
+    criterion under `"block_cv"`, at the reported bandwidth), `effective_df`
+    (`tr(S)` of the linear smoother: from `k+1` (local linear) or `1`
+    (Nadaraya-Watson) at huge bandwidths up to `n` at tiny ones), `kind`,
+    `kernel`, `bandwidth_at_boundary` (True when a selected bandwidth sits
+    on a wall of the search range — the criterion was still falling, so
+    the reported value is the search's limit, not an interior optimum;
+    typically a target with no detectable signal), and
+    `n_criterion_evaluations` (0 under `"fixed"`).
+
+    Validated against statsmodels 0.15.0 `KernelReg.fit()` at fixed
+    bandwidths (`k = 1, 2`, both estimators) at 1e-8 and `cv_loo` at 1e-10
+    (independent package); the leave-block-out criterion and
+    `effective_df` are documented-formula transcriptions (no package
+    computes them) pinned at 1e-10.
+    """
+
+# ------------------------------- structured penalties and post-selection
+def group_lasso(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    groups: npt.NDArray[np.integer] | Sequence[int],
+    alpha: float,
+    l1_ratio: float = ...,
+    group_weights: str | _ArrayLike | None = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Group LASSO (Yuan-Lin 2006) / sparse-group LASSO (Simon et al. 2013)
+    by block coordinate descent with exact per-block Lipschitz constants.
+
+    Objective: (1/(2n))||y - Xb||^2 + alpha*[(1 - l1_ratio)*sum_g w_g
+    ||b_g||_2 + l1_ratio*||b||_1] — the crate's `lasso` scaling, so
+    `l1_ratio=1` IS `lasso(x, y, alpha)`. No intercept, no standardization
+    inside: center `y`, standardize `x`. `groups` is one integer label per
+    column (any integers, contiguous or not; integer arrays are passed
+    through untouched). `group_weights`: "sqrt_size" (default, w_g =
+    sqrt(|g|)), "none" (w_g = 1), or one positive weight per distinct label
+    in ascending label order. `tol` is the dimensionless coefficient-change
+    rule shared with `lasso` and also bounds the KKT residual relative to
+    max_j |x_j'y|/n; `max_iter` caps the block sweeps.
+
+    Returns `coef`, `n_iter`, `converged` (True only when the sweep rule AND
+    the KKT certificate are met; when False the last iterate is returned —
+    read `kkt_violation`), `active_groups` (labels with a nonzero block),
+    `active_set` (nonzero column indices), `objective`, `kkt_violation`
+    (largest subgradient KKT residual at `coef` — a readable optimality
+    certificate for this convex problem), `max_rel_change`, and `alpha_max`
+    (smallest alpha with the all-zero solution).
+
+    Validation: independent KKT certificate <= 1e-8 on every fixture case
+    (~2e-13 achieved) plus cross-package agreement with skglm at 1e-8
+    (~1.5e-12 achieved); reductions to `lasso` at 1e-8.
+    """
+
+def post_lasso(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    alpha: float,
+    l1_ratio: float = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Post-LASSO OLS refit (Belloni-Chernozhukov 2013): LASSO / elastic net
+    with `elastic_net`'s objective, then OLS on the selected columns to
+    remove the shrinkage bias. No intercept, no standardization inside.
+
+    Returns `support` (selected indices), `coef_lasso` (first stage),
+    `coef_ols` (the refit, zeros off-support; minimum-norm least squares on
+    the support), `n_selected`, `rss`.
+
+    NO standard errors, deliberately: OLS standard errors after a
+    data-driven selection are invalid (the selection event depends on the
+    same sample). For inference on a target coefficient use `pds_lasso`.
+
+    Validation: refit pinned to scikit-learn LinearRegression
+    (fit_intercept=False) on the scikit-learn Lasso/ElasticNet support at
+    1e-10 (~8e-15 achieved).
+    """
+
+def pds_lasso(
+    y: _ArrayLike,
+    d: _ArrayLike,
+    x: _ArrayLike,
+    alpha: float | str | None = ...,
+    hac_lags: int | None = ...,
+    tol: float = ...,
+    max_iter: int = ...,
+) -> dict[str, Any]:
+    """Post-double-selection LASSO (Belloni-Chernozhukov-Hansen 2014) for
+    the coefficient on a treatment `d` with high-dimensional controls `x`,
+    with Newey-West (Bartlett) HAC inference from the shared HAC engine.
+
+    LASSO `y` on `x` and `d` on `x`, take the union of supports, OLS `y` on
+    [d, x_union]; the treatment is never penalized. Center `y` and `d`,
+    standardize `x` (no intercept, nothing standardized inside). `alpha`:
+    a float applied to both LASSOs, or "bic" (default) — the per-equation
+    BIC pick along `lasso_path`'s default grid. `hac_lags`: None (default)
+    = the Newey-West rule floor(4 (n/100)^(2/9)); a positive integer = that
+    Bartlett lag truncation; 0 = classical spherical-errors standard errors.
+    HAC covariance carries n/(n-k) (statsmodels HAC with
+    use_correction=True); `p_value`/`conf_int` use the standard normal in
+    both modes (statsmodels use_t=False).
+
+    Returns `coef`, `se`, `t_stat`, `p_value`, `conf_int` (95% (lo, hi)),
+    `support_y`, `support_d`, `union_support`, `n_controls_selected`,
+    `alpha_y`, `alpha_d`, `hac_lags_resolved`.
+
+    Validation: Monte-Carlo grade for coverage (R hdm / Stata pdslasso not
+    runnable here) — the seeded design in structured_properties.rs measures
+    the PDS interval's coverage against the single-selection interval's
+    undercoverage, numbers on the model card; exact leg against statsmodels
+    HAC / nonrobust OLS on the selected union at 1e-8 (~1e-14 achieved).
+    """
+
+# ---------------------------------------------------------- Trees and forests
+def regression_tree(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    max_depth: int | None = ...,
+    min_samples_leaf: int = ...,
+    min_samples_split: int = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """CART regression tree (Breiman et al. 1984) with scikit-learn's
+    best-split conventions.
+
+    Reproduces scikit-learn 1.9.0 `DecisionTreeRegressor(criterion=
+    "squared_error", splitter="best", max_features=None)` — an
+    independent-package golden (fixtures/trees.json): test predictions
+    at 1e-12, `n_leaves`/`depth` exact, `feature_importances_` at 1e-10,
+    the sorted (feature, threshold) multiset at 1e-12. Exact matching is
+    possible because the fixture proves every stored case tie-free (the
+    same tree under five sklearn `random_state` values): sklearn breaks an
+    exact tie between two features by its private RNG's visit order, this
+    tree by the lowest feature index, and only two-row nodes make such
+    ties likely. sklearn works in float32, this tree in float64.
+
+    Conventions: squared-error criterion; threshold = midpoint of the two
+    adjacent sorted distinct values (values within 1e-7 count as one); a
+    split leaves at least `min_samples_leaf` rows on both sides; a node
+    with fewer than `min_samples_split` rows, at `max_depth` (None =
+    unbounded), or pure is a leaf; leaves predict the training mean.
+
+    Returns `fitted` (n, leaf mean per training row), `predicted` (rows of
+    `x_test`, or None), `n_nodes`, `n_leaves`, `depth` (root = 0),
+    `feature_importance` (impurity-based, normalized to one; zeros if the
+    tree never split), and `splits` (list of [feature, threshold] pairs
+    sorted by (feature, threshold)). Keys: fitted, predicted, n_nodes,
+    n_leaves, depth, feature_importance, splits.
+
+    Raises ValueError for NaN/inf (naming the array), an `x_test` column
+    mismatch, `min_samples_leaf < 1`, `min_samples_split < 2`, and
+    `insufficient data: {got} observations, at least {needed} required`
+    when n < max(min_samples_split, 2 * min_samples_leaf).
+    """
+
+def random_forest(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    n_trees: int = ...,
+    max_features: str | int = ...,
+    max_depth: int | None = ...,
+    min_samples_leaf: int = ...,
+    bootstrap: str = ...,
+    block_length: int | None = ...,
+    seed: int = ...,
+    x_test: _ArrayLike | None = ...,
+    quantiles: Sequence[float] | None = ...,
+    importance: str = ...,
+    importance_groups: Sequence[int] | None = ...,
+    permutation_block: int | None = ...,
+    n_permutations: int | None = ...,
+) -> dict[str, Any]:
+    """Random forest for regression (Breiman 2001) with time-series-aware
+    resampling, out-of-bag error, quantile regression forests (Meinshausen
+    2006), and grouped block-permutation importance.
+
+    Each tree is the CART tree of `regression_tree` grown on a row resample
+    (drawn rows act as multiplicity weights; rows never drawn are the
+    tree's out-of-bag rows), visiting `max_features` random columns per
+    node; the forest averages the trees. Validation grade (honest): the
+    deterministic tree is golden-pinned to scikit-learn 1.9.0 and
+    `random_forest(bootstrap="none", max_features="all", n_trees=1,
+    min_samples_leaf=1)` reproduces `regression_tree` bit-for-bit, which is
+    how the forest inherits that golden; the full forest's randomness is
+    tsecon's own Philox stream (one SeedSequence substream per tree, so it
+    is bit-identical at any thread count; same `seed` same forest,
+    different `seed` different forest) and is validated by seeded
+    Monte-Carlo property tests whose measured numbers the model card
+    quotes (Friedman #1 out-of-sample R^2, autocorrelation preserved by
+    block resampling, out-of-bag optimism, quantile-band coverage,
+    importance recovery).
+
+    `n_trees` (default 500); `max_features` in {"sqrt", "third" (default;
+    max(1, p // 3)), "all", or an int in 1..=p}; `max_depth` (None =
+    unbounded); `min_samples_leaf` (default 5); `bootstrap` in {"iid"
+    (default, Efron), "block" (Künsch moving block), "stationary"
+    (Politis-Romano, geometric blocks of mean `block_length`), "none"
+    (every tree sees every row; no out-of-bag rows)} — `block_length` is
+    required for "block"/"stationary" and refused for "iid"/"none"; `seed`
+    (default 0); `x_test` (m, p) rows to predict; `quantiles` (strictly
+    inside (0, 1), strictly increasing; requires `x_test`) turns on the
+    quantile regression forest; `importance` in {"none" (default),
+    "impurity", "block_permutation"}; `importance_groups` (one integer
+    label per column — give all lags of one variable one label so they
+    are permuted and credited as one unit; needs `importance` != "none";
+    a label vector, not data — pass a list of ints); `permutation_block`
+    (rows per permuted block; None = ceil(n ** (1/3)); 1 = single-row) and
+    `n_permutations` (None = 10) act only under
+    importance="block_permutation" and are refused elsewhere.
+
+    Returns `fitted` (n, in-sample forest prediction), `predicted` (m or
+    None), `oob_prediction` (n; NaN where a row was never out-of-bag; None
+    under bootstrap="none"), `oob_mse` (over rows with an out-of-bag
+    prediction; None under bootstrap="none"), `importance` (per unit;
+    impurity sums to one, block_permutation is the mean out-of-bag MSE
+    increase in units of y^2, may be negative; None under "none"),
+    `importance_groups_resolved` (the unit label each `importance` entry
+    refers to), `quantile_predictions` ((m, len(quantiles)), never
+    crossing; None without `quantiles`), `n_trees`, `max_features_resolved`.
+    Keys: fitted, predicted, oob_prediction, oob_mse, importance,
+    importance_groups_resolved, quantile_predictions, n_trees,
+    max_features_resolved.
+
+    Gotchas, measured and quoted on the model card. (1) OUT-OF-BAG ERROR IS
+    OPTIMISTIC ON TIME SERIES: an out-of-bag row's temporal neighbours are
+    in-bag in the trees that score it and, with persistent predictors and
+    autocorrelated errors, carry its error — the property suite measures
+    OOB/POOS MSE ratios of about 0.70 under AR(0.9) errors vs about 0.84 under iid
+    errors on the same persistent design; report pseudo-out-of-sample
+    metrics and prefer bootstrap="block"/"stationary". (2) A PERSISTENT
+    IRRELEVANT PREDICTOR'S IMPORTANCE IS INFLATED when the relevant
+    predictors are persistent too (the forest uses it as a time proxy);
+    grouping the lags of a variable keeps permuted rows dynamically
+    possible and stops dilution across collinear lags, but block
+    permutation does NOT remove that inflation — for a row-wise forest
+    scored row-wise, single-row and block permutation give the same mean
+    importance; compare against a control instead. (3) Impurity
+    importance favours columns with many distinct values.
+
+    Raises ValueError for NaN/inf (naming the array), `insufficient data:
+    {got} observations, at least {needed} required` when n < 2 *
+    min_samples_leaf, unknown string options (listing the accepted
+    values), malformed `quantiles` (naming the fix), `importance_groups`
+    of the wrong length (naming both lengths), a block length outside
+    1..=n, and every inert-kwarg combination above.
+    """
+
+# ---------------------------------------- Trend filtering and boosting
+def l1_trend_filter(
+    y: _ArrayLike,
+    lam: float,
+    order: int = ...,
+    penalty: str = ...,
+    tol: float | None = ...,
+    max_iter: int | None = ...,
+) -> dict[str, Any]:
+    """L1 trend filtering (Kim, Koh & Boyd 2009) — a piecewise-linear trend
+    with data-chosen knots — or, with `penalty="l2"`, the Hodrick-Prescott
+    filter on the same objective.
+
+    Minimizes over the trend `x`, with `D` the `order`-th difference
+    operator: `penalty="l1"`: `(1/2)||y - x||^2 + lam * ||D x||_1` (most
+    `order`-th differences exactly zero — `order=2` a piecewise-linear
+    trend whose kinks are the `knots`, `order=1` piecewise-constant, the
+    fused LASSO on the level); `penalty="l2"`: `(1/2)||y - x||^2 +
+    (lam/2) * ||D x||^2`, which for `order=2` is exactly `hp_filter(y,
+    lam)` (same minimizer, same `lam`; 1600 quarterly), solved in closed
+    form. Scan an L1 `lam` downward from `lam_max`, the value at which the
+    trend collapses to the least-squares polynomial of degree `order - 1`.
+
+    Solver: Kim-Koh-Boyd primal-dual interior point on the banded dual
+    (O(n) per step, no n×n matrices) plus an exact active-set polish.
+    `tol` is the relative duality gap at which it stops (`duality_gap <=
+    tol * objective`), `max_iter` the Newton-step budget; both act only
+    under `penalty="l1"`, and passing either explicitly under `"l2"` — a
+    closed-form solve with nothing to iterate — raises rather than being
+    ignored (`None`, the default, means 1e-8 / 10000 where they apply).
+
+    Returns `trend`, `cycle` (`y - trend`), `knots` (indices into the
+    `order`-th differences where `|(D trend)_i|` exceeds `max(1e-6 *
+    max|D y|, 1e-12 * max|y|)`; under `"l2"` nearly every index),
+    `n_knots`, `duality_gap` (the certificate — an upper bound on
+    `objective - optimum`), `objective`, `converged` (`duality_gap <= tol *
+    objective`; always True on the closed-form paths), `n_iter` (0 on
+    closed-form paths), and `lam_max`. Keys: trend, cycle, knots, n_knots,
+    duality_gap, objective, converged, n_iter, lam_max.
+
+    Validation: an independent KKT / duality-gap certificate re-derived
+    in the tests for every fixture case (relative gap <= 1e-8 asserted),
+    cvxpy + Clarabel third-party trends at 1e-8, the `lam -> 0` and
+    `lam >= lam_max` limits, and the `hp_filter` identity at 1e-10.
+    """
+
+def boosting(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    learning_rate: float = ...,
+    n_steps: int = ...,
+    stop: str = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Componentwise L2 boosting with single-column least-squares base
+    learners (Buhlmann & Yu 2003; Buhlmann 2006 — the R mboost `glmboost`
+    engine): a slow-learning variable selector read as sequential ARDL
+    building.
+
+    From `F_0 = 0` (no intercept — pass a centered `y` and centered,
+    typically standardized, columns), each step regresses the current
+    residual on every column separately, picks the column with the
+    smallest residual sum of squares (ties to the smallest index), and
+    adds `learning_rate` times that fit. Seedless and deterministic.
+    `learning_rate` in (0, 1] (0.1 conventional; 1.0 unshrunk greedy);
+    `n_steps >= 1`. The boosting operator `B_m = B_{m-1} + nu H_j (I -
+    B_{m-1})` is tracked exactly in a rank-m factored form — no n×n matrix
+    — and its trace is the degrees of freedom in Buhlmann's (2006)
+    corrected AIC, `log(RSS_m/n) + (1 + df_m/n)/(1 - (df_m+2)/n)` (`+inf`
+    where `df_m + 2 >= n`). `stop="aic"` reports the AIC-minimizing step,
+    `stop="none"` the last; the paths are returned either way.
+
+    Returns `coef` (length p, at the reported step), `coef_path` (n_steps
+    × p; row m is the model after m + 1 iterations), `selected` (column
+    chosen at each step), `rss_path`, `df_path`, `aic_path`, `best_step`
+    (0-based index into the path arrays), `fitted` (`x @ coef`), and
+    `predicted` (`x_test @ coef`, or None). Keys: coef, coef_path,
+    selected, rss_path, df_path, aic_path, best_step, fitted, predicted.
+
+    Validation (graded honestly): a transcription of the published
+    algorithm into dense NumPy — the operator formed explicitly, so the
+    trace is exact by construction — pins `coef_path`, `selected`,
+    `df_path`, `aic_path` at 1e-12; R mboost is not runnable in the build
+    environment, so this is not a third-party run. Properties: RSS
+    nonincreasing, the small-step limit is OLS on the selected support,
+    AIC recovers a sparse truth's support.
+    """
+
+# ---- Neural (MLP, echo state network)
+def mlp_regression(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    hidden: Sequence[int] | int | None = ...,
+    activation: str = ...,
+    alpha: float = ...,
+    solver: str = ...,
+    learning_rate: float | None = ...,
+    batch_size: int | None = ...,
+    max_epochs: int = ...,
+    validation_fraction: float = ...,
+    patience: int | None = ...,
+    n_seeds: int = ...,
+    seed: int = ...,
+    standardize: bool = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Feed-forward neural regressor (one or two hidden layers) with a seed
+    ensemble, early stopping on a TEMPORAL validation split, and
+    scikit-learn MLPRegressor's exact objective — the "NN" of the macro
+    forecasting horse races, and tsecon's only native neural net (no
+    framework dependency; torch / foundation-model adapters are out of
+    core by scope ruling).
+
+    `hidden`: tuple or list of layer widths, default `(16,)`; an int is
+    one layer; at most two layers by design. `activation`: "tanh"
+    (default), "relu", "logistic". `alpha` (1e-4): L2 penalty on the
+    weights, sklearn scale — the objective is
+    `(1/(2n)) sum (y - f(x))^2 + (alpha/(2n)) sum_l ||W_l||_F^2`,
+    intercepts unpenalized. `solver`: "adam" (default; sklearn's
+    constants; `learning_rate` None -> 1e-3; `batch_size` None -> one
+    full-batch step per epoch, an int -> seeded shuffled mini-batches;
+    `max_epochs` 500; early stopping with `patience` None -> 20 epochs
+    without a relative-1e-4 improvement of the validation loss, best
+    epoch's weights kept) or "lbfgs" (tsecon's L-BFGS on the full
+    objective with the analytic gradient, `max_epochs` capping its
+    iterations; passing `learning_rate`, `batch_size`, or `patience`
+    explicitly under lbfgs RAISES — they cannot apply — so leave them
+    None). `validation_fraction` (0.2; 0 disables early stopping; at most
+    0.5): the LAST `floor(validation_fraction * n)` rows are held out —
+    never a random split. `standardize` (True): the scaler for `x` and
+    `y` is fit on the TRAINING rows only and replayed on the validation
+    rows and on `x_test`. `n_seeds` (5) members from independent Philox
+    substreams of `seed` (0) are averaged. `x_test`: optional
+    `(n_test, p)` rows to predict.
+
+    Returns `fitted` (ensemble mean on every row of `x`, original y
+    scale), `predicted` / `member_predictions` (ensemble mean and the
+    `(n_seeds, n_test)` array on `x_test`; None without it),
+    `train_loss_path` / `validation_loss_path` (lists of per-member
+    per-epoch arrays; two entries — initial and final — under lbfgs; the
+    validation path is empty when validation_fraction=0), `best_epoch`
+    and `converged` (per member; True = early stopping fired / L-BFGS
+    converged, False = ran out of max_epochs), `n_parameters`, `weights`
+    (per member `{"coefs": [...], "intercepts": [...]}` in sklearn's
+    fan_in x fan_out layout, standardized scale), `n_train`,
+    `n_validation`, `x_mean`, `x_scale`, `y_mean`, `y_scale` (the
+    training-row scaler; identity when standardize=False), `solver`,
+    `activation`. Keys: fitted, predicted, member_predictions,
+    train_loss_path, validation_loss_path, best_epoch, converged,
+    n_parameters, weights, n_train, n_validation, x_mean, x_scale,
+    y_mean, y_scale, solver, activation.
+
+    Validated against scikit-learn 1.9.0 MLPRegressor (independent
+    package, fixtures/neural.json): forward pass = sklearn predict at its
+    fitted weights (1e-12), objective (1e-10), analytic gradient =
+    sklearn's own backprop (1e-10) and a central finite difference (1e-6
+    relative), gradient norm at sklearn's converged weights (1e-8). The
+    optimizer trajectory is deliberately not pinned. Estimator grade:
+    property / Monte Carlo — recovers y_t = sin(2 y_{t-1}) + e_t out of
+    sample (R^2 0.94 mini-batch Adam, 0.95 lbfgs, 0.80 all-defaults; 0.75
+    linear), the ensemble beats the mean member in every replication
+    (Jensen) and the median member in a majority (7/10 Rust draws, 10/10
+    NumPy draws) on a documented overfitting DGP, early stopping fires on
+    an easy problem and cannot at max_epochs=1. Reproducibility: single-threaded Rust, every draw a
+    pure function of `seed` — bit-identical on the same build; across
+    platforms only the last ulp of libm tanh/exp can differ, so the
+    cross-platform promise is statistical (seed-ensemble)
+    reproducibility. Errors name the array with NaN/inf (x, y, x_test),
+    list the accepted activation/solver names, name the two-layer limit,
+    and report `insufficient data: {got} observations, at least {needed}
+    required` with the validation split counted.
+    """
+
+def echo_state_network(
+    x: _ArrayLike,
+    y: _ArrayLike,
+    reservoir_size: int = ...,
+    spectral_radius: float = ...,
+    leak_rate: float = ...,
+    input_scaling: float = ...,
+    sparsity: float = ...,
+    washout: int = ...,
+    ridge_alpha: float = ...,
+    seed: int = ...,
+    x_test: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Echo state network (reservoir computing; Jaeger 2001; Lukosevicius
+    2012): a fixed sparse random recurrent reservoir, a leaky-integrator
+    tanh state recursion, and a ridge-trained linear readout.
+
+    `reservoir_size` (200) units; `spectral_radius` (0.9) the reservoir
+    matrix is rescaled to (leading-eigenvalue modulus from a dense
+    eigenvalue decomposition; values above 1 accepted); `leak_rate` a in
+    (0, 1] (1.0 = plain ESN): `s_t = (1 - a) s_{t-1} + a tanh(W s_{t-1} +
+    W_in u_t)`, `s_0 = 0`, no reservoir bias; `input_scaling` (1.0):
+    W_in uniform on [-input_scaling, input_scaling]; `sparsity` (0.1):
+    the CONNECTIVITY, i.e. the fraction of nonzero reservoir entries
+    (standard normal values); `washout` (50): leading rows discarded
+    before the readout fit; `ridge_alpha` (1e-6): readout penalty,
+    minimizing `||y - Z b||^2 + ridge_alpha ||b||^2` on
+    Z_t = [1, u_t, s_t] (scikit-learn Ridge(fit_intercept=False) scale;
+    the constant column is penalized like every coefficient, Lukosevicius
+    eq. 9); `seed` (0); `x_test`: optional `(n_test, p)` rows treated as
+    the CONTINUATION of `x` (states carry on from the last training
+    state; no washout re-applied).
+
+    Returns `fitted` (readout on the rows that entered the fit, length
+    n - washout), `predicted` (on x_test, else None), `readout`
+    (coefficients on [1, u, s], length 1 + p + reservoir_size),
+    `spectral_radius_achieved` (recomputed on the scaled matrix),
+    `reservoir_size`, `n_washout`, `n_train` (n - washout). Keys: fitted,
+    predicted, readout, spectral_radius_achieved, reservoir_size,
+    n_washout, n_train.
+
+    Validation (fixtures/neural.json): the state recursion on an explicit
+    small reservoir is pinned at 1e-12 against a NumPy transcription that
+    reservoirpy 0.4.2's Reservoir (same explicit W / Win / lr) reproduced
+    exactly at generation time — a third-party pin of the mechanics; the
+    readout at 1e-10 against the closed-form ridge, cross-checked there
+    against scikit-learn Ridge; the spectral radius against
+    numpy.linalg.eigvals (1e-6). Estimator grade: property — NARMA-10
+    out-of-sample NRMSE 0.32 (mean over four data seeds) with
+    input_scaling=0.3 and otherwise default settings on 1000 training
+    rows, 0.19 with reservoir_size=400 on 2000 rows (the all-defaults
+    call averages 0.43: input_scaling=1 over-drives tanh for NARMA's u in
+    [0, 0.5]); achieved radius within 1e-6 of the target; same seed
+    bit-identical, different seeds differ. Reproducibility:
+    single-threaded, every draw a pure function of `seed`; last-ulp
+    libm/eigenvalue differences across platforms. Errors name the array
+    with NaN/inf (x, y, x_test); `washout >= n` names the fix; fewer than
+    two rows after the washout reports `insufficient data: {got}
+    observations, at least {needed} required` with the washout counted.
     """

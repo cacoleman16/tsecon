@@ -8,6 +8,12 @@ use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
+mod ml_neural;
+
+mod ml_convex;
+mod ml_kernel;
+mod ml_structured;
+mod ml_trees;
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -93,7 +99,7 @@ fn ljung_box<'py>(
     Ok(d)
 }
 
-/// Jarque-Bera normality test.
+/// Jarque-Bera normality test. Keys: `statistic`, `p_value`, `skewness`, `kurtosis` (raw, not excess — 3 is Gaussian), `n`.
 #[pyfunction]
 fn jarque_bera<'py>(
     py: Python<'py>,
@@ -203,6 +209,9 @@ fn optimal_block_length<'py>(
 /// Returns loglik plus filtered/smoothed level and variances; matches
 /// statsmodels `UnobservedComponents(..., use_exact_diffuse=True)` at
 /// fixed params (validated ~1e-11).
+/// Keys: `loglik`, `filtered_state`/`filtered_state_var` (the filtered level
+/// and its variance), `smoothed_state`/`smoothed_state_var`, and `d_diffuse`
+/// (the number of initial observations spent in the exact-diffuse period).
 #[pyfunction]
 fn local_level_smooth<'py>(
     py: Python<'py>,
@@ -1812,6 +1821,7 @@ fn decomposition_dict<'py>(
 
 /// Hodrick-Prescott filter (O(n) pentadiagonal solve). `one_sided=True`
 /// gives the real-time variant. Matches statsmodels `hpfilter` at 1e-8.
+/// Keys: `trend`, `cycle` (= y - trend) and `first_index` (0: full sample).
 #[pyfunction]
 #[pyo3(signature = (y, lamb = 1600.0, one_sided = false))]
 fn hp_filter<'py>(
@@ -1831,6 +1841,7 @@ fn hp_filter<'py>(
 
 /// Baxter-King band-pass filter (loses `k` observations at each end —
 /// `first_index` reports the alignment).
+/// Keys: `cycle` (length n - 2k) and `first_index` (= k); no trend is returned.
 #[pyfunction]
 #[pyo3(signature = (y, low = 6.0, high = 32.0, k = 12))]
 fn bk_filter<'py>(
@@ -1844,7 +1855,7 @@ fn bk_filter<'py>(
     decomposition_dict(py, &dec)
 }
 
-/// Christiano-Fitzgerald asymmetric band-pass filter (full sample).
+/// Christiano-Fitzgerald asymmetric band-pass filter (full sample). Keys: `trend`, `cycle` and `first_index` (0: full sample).
 #[pyfunction]
 #[pyo3(signature = (y, low = 6.0, high = 32.0, drift = true))]
 fn cf_filter<'py>(
@@ -1887,7 +1898,12 @@ fn cf_filter<'py>(
 /// `se="nonrobust"` gives the classical (wrong-for-this-regression)
 /// errors as a comparison point. `use_correction` applies the
 /// small-sample `n/(n-k)` factor (statsmodels `use_correction`; a
-/// default statsmodels `cov_type="HAC"` call has it off).
+/// default statsmodels `cov_type="HAC"` call has it off). Both `maxlags`
+/// and `use_correction` parameterize the HAC covariance only, so passing
+/// either explicitly under anything but `se="hac"` (`se=None`,
+/// `se="nonrobust"`, or `method="random_walk"`) **raises** rather than
+/// being silently ignored; `use_correction=None` (the default) means
+/// `True` where HAC applies.
 ///
 /// Returns `trend`, `cycle`, `first_index` (= h + p - 1 observations
 /// lost at the start; h for the random-walk variant), and — for the
@@ -1897,7 +1913,7 @@ fn cf_filter<'py>(
 /// bit-identical whether or not `se` is requested.
 #[pyfunction]
 #[pyo3(signature = (y, h = 8, p = 4, method = "regression", se = None, maxlags = None,
-                    use_correction = true))]
+                    use_correction = None))]
 #[allow(clippy::too_many_arguments)]
 fn hamilton_filter<'py>(
     py: Python<'py>,
@@ -1907,16 +1923,33 @@ fn hamilton_filter<'py>(
     method: &str,
     se: Option<&str>,
     maxlags: Option<usize>,
-    use_correction: bool,
+    use_correction: Option<bool>,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // `use_correction` is the HAC small-sample n/(n-k) factor and nothing
+    // else, so it can only act under se="hac": refuse it explicitly-passed
+    // anywhere else (audit round 10 — it was silently swallowed under
+    // se=None/"nonrobust" and method="random_walk"). The sentinel default
+    // (None -> true where HAC applies) keeps default calls bit-identical.
+    let refuse_use_correction = |where_: &str| -> PyResult<()> {
+        if use_correction.is_some() {
+            return Err(PyValueError::new_err(format!(
+                "use_correction was given but {where_} ignores it: use_correction \
+                 is the small-sample n/(n-k) factor of the HAC (Newey-West) \
+                 covariance, so it only acts under se='hac'; pass se='hac' or \
+                 drop use_correction"
+            )));
+        }
+        Ok(())
+    };
     match method {
         "regression" => {}
         "random_walk" => {
-            if se.is_some() || maxlags.is_some() {
+            if se.is_some() || maxlags.is_some() || use_correction.is_some() {
                 return Err(PyValueError::new_err(
                     "method='random_walk' estimates no regression coefficients \
                      (cycle = y_t - y_{t-h} exactly), so there is nothing to compute \
-                     standard errors for; drop se/maxlags or use method='regression'",
+                     standard errors for; drop se/maxlags/use_correction or use \
+                     method='regression'",
                 ));
             }
             let dec = tsecon_filters::hamilton_filter_random_walk(&vec1(&y), h).map_err(to_py)?;
@@ -1936,13 +1969,25 @@ fn hamilton_filter<'py>(
                     "maxlags is a HAC bandwidth and requires se='hac'",
                 ));
             }
+            refuse_use_correction("se=None (no standard errors requested)")?;
             None
         }
         Some("hac") => Some(tsecon_filters::HamiltonSe::Hac {
             maxlags,
-            use_correction,
+            use_correction: use_correction.unwrap_or(true),
         }),
-        Some("nonrobust") => Some(tsecon_filters::HamiltonSe::NonRobust),
+        Some("nonrobust") => {
+            // The same guard as the se=None arm: maxlags parameterizes only
+            // the HAC estimator (audit round 10 — it was refused under
+            // se=None but silently swallowed here).
+            if maxlags.is_some() {
+                return Err(PyValueError::new_err(
+                    "maxlags is a HAC bandwidth and requires se='hac'",
+                ));
+            }
+            refuse_use_correction("se='nonrobust' (classical OLS errors)")?;
+            Some(tsecon_filters::HamiltonSe::NonRobust)
+        }
         Some(other) => {
             return Err(PyValueError::new_err(format!(
                 "unknown se '{other}': expected 'hac' (Newey-West, the right choice for \
@@ -1998,7 +2043,10 @@ fn hamilton_filter<'py>(
 /// `-e1' F (I-F)^{-1} X_t` of that pinned model. `delta=None` selects
 /// the ratio by the paper's amplitude-to-noise criterion (first local
 /// maximum of `var(cycle)/mean(residual^2)` on the grid `d0, d0+dt,
-/// ...`); a float imposes it. `demean="sm"` subtracts the sample mean
+/// ...`); a float imposes it. `d0`/`dt` (defaults 0.01/0.0005 when
+/// `None`) parameterize only that selection grid, so passing either
+/// explicitly together with a fixed `delta=` **raises** rather than
+/// being silently ignored. `demean="sm"` subtracts the sample mean
 /// of the differences (the paper's baseline); `"nd"` leaves the drift
 /// in (their no-drift option). The paper's baseline for quarterly data
 /// is `p=12`.
@@ -2020,15 +2068,15 @@ fn hamilton_filter<'py>(
 /// replication code (bnfiltering.com lineage) — see the diagnostics
 /// model card.
 #[pyfunction]
-#[pyo3(signature = (y, p = 12, delta = None, demean = "sm", d0 = 0.01, dt = 0.0005))]
+#[pyo3(signature = (y, p = 12, delta = None, demean = "sm", d0 = None, dt = None))]
 fn bn_filter<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
     p: usize,
     delta: Option<f64>,
     demean: &str,
-    d0: f64,
-    dt: f64,
+    d0: Option<f64>,
+    dt: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let demean_flag = match demean {
         "sm" => true,
@@ -2041,8 +2089,25 @@ fn bn_filter<'py>(
         }
     };
     let delta_spec = match delta {
-        Some(d) => tsecon_filters::BnDelta::Fixed(d),
-        None => tsecon_filters::BnDelta::Auto { d0, dt },
+        Some(d) => {
+            // `d0`/`dt` only lay out the automatic-selection grid; under a
+            // fixed delta that grid is never built, so accepting them would
+            // be a silent no-op (audit round 10). The sentinel defaults
+            // (None -> 0.01/0.0005) keep default calls bit-identical.
+            if d0.is_some() || dt.is_some() {
+                return Err(PyValueError::new_err(
+                    "d0/dt were given but delta= fixes the signal-to-noise ratio, so \
+                     the automatic-selection grid (delta = d0, d0+dt, ...) they \
+                     parameterize is never built; drop d0/dt, or drop delta to let \
+                     the amplitude-to-noise criterion search that grid",
+                ));
+            }
+            tsecon_filters::BnDelta::Fixed(d)
+        }
+        None => tsecon_filters::BnDelta::Auto {
+            d0: d0.unwrap_or(0.01),
+            dt: dt.unwrap_or(0.0005),
+        },
     };
     let r = tsecon_filters::bn_filter(&vec1(&y), p, delta_spec, demean_flag).map_err(to_py)?;
     let d = decomposition_dict(py, &r.decomposition)?;
@@ -2480,6 +2545,35 @@ fn garch_results_dict<'py>(
     Ok(d)
 }
 
+/// Resolve the asymmetry order `o` against `vol` — the `garch_fit` sentinel
+/// convention, shared verbatim by its multivariate siblings
+/// (`ccc_garch`/`dcc_garch`/`dcc_test`, which advertise "the same knobs as
+/// garch_fit" and must honor the same 0.6.0 guard).
+///
+/// `o` is meaningful only for the asymmetric volatility specs. Refuse
+/// rather than silently ignore (the same convention as cv_splits(embargo)
+/// and panel_fe(bandwidth)): accepting `o > 0` under vol="garch" would
+/// let an `arch` porter believe they fit the GJR model `arch_model(y,
+/// p=1, o=1, q=1)` builds, when the asymmetry term was dropped entirely.
+/// The sentinel default (None -> 0 for garch, 1 for gjr/egarch) keeps
+/// the old default calls working for every vol, bit-identically.
+fn resolve_garch_o(vol: &str, o: Option<usize>) -> PyResult<usize> {
+    match (vol, o) {
+        ("garch", Some(o_explicit)) if o_explicit > 0 => Err(PyValueError::new_err(format!(
+            "o={o_explicit} has no effect under vol=\"garch\": o is the number of \
+             asymmetry (threshold) lags and the symmetric GARCH(p, q) recursion \
+             has no asymmetry term for it to parameterize, so it would be \
+             silently discarded. Note the porting trap this guards: in the arch \
+             package, arch_model(y, p=1, o=1, q=1) silently switches the model \
+             to GJR-GARCH. Pass vol=\"gjr\" (or vol=\"egarch\") for a model with \
+             an asymmetry term, or drop o (or set o=0) for symmetric GARCH."
+        ))),
+        (_, Some(o_explicit)) => Ok(o_explicit),
+        ("garch", None) => Ok(0),
+        (_, None) => Ok(1),
+    }
+}
+
 /// Fit a univariate volatility model by QMLE.
 ///
 /// `vol`: "garch", "gjr", or "egarch"; `mean`: "zero" or "constant";
@@ -2552,6 +2646,10 @@ fn garch_results_dict<'py>(
 /// `.get("omega")` guard silently yields `None`/NaN that looks like a
 /// failed fit. The results facade's `GARCHResults.params_named()` method
 /// returns the same mapping.
+/// EGARCH has no closed-form multi-step variance forecast: with `vol="egarch"`
+/// only `forecast_horizon` 0 or 1 is accepted, and `forecast_horizon >= 2`
+/// raises a teaching ValueError (simulation-based EGARCH forecasts are not
+/// shipped; GARCH and GJR forecast analytically at every horizon).
 #[pyfunction]
 #[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = None, q = 1, forecast_horizon = 0))]
 #[allow(clippy::too_many_arguments)]
@@ -2567,29 +2665,7 @@ fn garch_fit<'py>(
     forecast_horizon: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_garch::GarchModel;
-    // `o` is meaningful only for the asymmetric volatility specs. Refuse
-    // rather than silently ignore (the same convention as cv_splits(embargo)
-    // and panel_fe(bandwidth)): accepting `o > 0` under vol="garch" would
-    // let an `arch` porter believe they fit the GJR model `arch_model(y,
-    // p=1, o=1, q=1)` builds, when the asymmetry term was dropped entirely.
-    // The sentinel default (None -> 0 for garch, 1 for gjr/egarch) keeps
-    // the old default calls working for every vol.
-    let o = match (vol, o) {
-        ("garch", Some(o_explicit)) if o_explicit > 0 => {
-            return Err(PyValueError::new_err(format!(
-                "o={o_explicit} has no effect under vol=\"garch\": o is the number of \
-                 asymmetry (threshold) lags and the symmetric GARCH(p, q) recursion \
-                 has no asymmetry term for it to parameterize, so it would be \
-                 silently discarded. Note the porting trap this guards: in the arch \
-                 package, arch_model(y, p=1, o=1, q=1) silently switches the model \
-                 to GJR-GARCH. Pass vol=\"gjr\" (or vol=\"egarch\") for a model with \
-                 an asymmetry term, or drop o (or set o=0) for symmetric GARCH."
-            )))
-        }
-        (_, Some(o_explicit)) => o_explicit,
-        ("garch", None) => 0,
-        (_, None) => 1,
-    };
+    let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, dist, p, o, q, "dist")?;
     let model = GarchModel::new(&vec1(&y), spec).map_err(to_py)?;
     let r = model.fit().map_err(to_py)?;
@@ -3811,6 +3887,10 @@ fn ridge<'py>(
 /// (1/2n)||y-Xb||^2 + alpha*l1_ratio*||b||_1 + (alpha/2)(1-l1_ratio)||b||^2,
 /// matching scikit-learn. `l1_ratio=1.0` is the lasso. Returns coefficients,
 /// iterations, and the final max coefficient change.
+/// Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update in
+/// the final sweep, in coefficient units) and `max_rel_change` (that update
+/// scaled as max_j |Δb_j|·‖x_j‖/‖y‖ — the scale-free quantity the stopping rule
+/// compares with `tol`, so `max_rel_change <= tol` on a converged return).
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha, l1_ratio = 0.5, tol = 1e-8, max_iter = 100000))]
 fn elastic_net<'py>(
@@ -3837,7 +3917,7 @@ fn elastic_net<'py>(
     Ok(d)
 }
 
-/// Lasso regression (elastic net with l1_ratio = 1.0).
+/// Lasso regression (elastic net with l1_ratio = 1.0). Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update in the final sweep) and `max_rel_change` (that update scaled as max_j |Δb_j|·‖x_j‖/‖y‖, the scale-free quantity compared with `tol`).
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha, tol = 1e-8, max_iter = 100000))]
 fn lasso<'py>(
@@ -3942,10 +4022,12 @@ fn sign_restricted_svar<'py>(
 /// tuples imposing Theta_h[(variable,shock)] = 0 exactly (horizon 0 = impact).
 /// At least one list must be non-empty. Returns per-(horizon, variable, shock)
 /// `set_min`/`set_max` (weight-invariant identified-set envelope) and
-/// ARW-weighted `quantiles` at probs=[0.05,0.16,0.50,0.84,0.95], plus per-draw
+/// ARW-weighted `quantiles` at the echoed `probs` (= [0.05, 0.16, 0.50, 0.84, 0.95]), plus per-draw
 /// `weights` (normalized), `ess`, and acceptance `diagnostics`. With
 /// strict-upper-triangle impact zeros and no signs it reproduces
 /// `var_irf(orth=True)` deterministically.
+/// `arw_weighted` echoes whether the ARW importance weights were applied to
+/// `quantiles` (the `weighted` flag as resolved).
 #[pyfunction]
 #[pyo3(signature = (data, sign_restrictions, zero_restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, weighted = true))]
 #[allow(clippy::too_many_arguments)]
@@ -4243,7 +4325,11 @@ fn max_share_svar<'py>(
 /// shock raises `norm_var` by `unit` on impact. `proxy` aligns to `data` rows
 /// (pass length n_obs -- the first `lags` presample rows are dropped -- or the
 /// residual length T directly); NaN entries outside the instrument's
-/// availability window are dropped from the moments and the first stage.
+/// availability window are dropped from the moments and the first stage
+/// (`n_proxy` reports the kept count). NaN is the ONLY missingness marker:
+/// an infinite proxy value is refused as corruption (0.7.0 -- it was
+/// previously dropped as if missing), and an all-NaN proxy is refused with
+/// the cause.
 ///
 /// Returns `irf` (horizon+1, n), `impact`/`relative_impact`/`cov_um` (n),
 /// `first_stage_f` (the HC1-robust F when `robust_f`, classical otherwise),
@@ -4275,22 +4361,9 @@ fn proxy_svar<'py>(
     let psi = r.ma_rep(horizon).map_err(to_py)?;
     let n_obs = data.as_array().nrows();
     let t = r.resid.nrows();
-
-    // Align the proxy to the residual sample: accept the full n_obs series
-    // (drop the first `lags` presample rows) or a series already of length T.
-    let pv = vec1(&proxy);
-    let proxy_aligned: Vec<f64> = if pv.len() == t {
-        pv
-    } else if pv.len() == n_obs {
-        pv[lags..].to_vec()
-    } else {
-        return Err(PyValueError::new_err(format!(
-            "proxy length {} must equal the number of observations {} or the residual sample length {}",
-            pv.len(),
-            n_obs,
-            t
-        )));
-    };
+    // The shared alignment + missingness contract (NaN = missing, inf
+    // refused, all-NaN refused) of the proxy family.
+    let proxy_aligned = align_proxy(vec1(&proxy), n_obs, lags, t)?;
 
     let res = tsecon_ident::proxy_svar(
         r.resid.as_ref(),
@@ -4380,6 +4453,17 @@ fn first_stage_dict<'py>(
 /// linear-IV weak-instrument literature (the field's standard practice for
 /// proxy SVARs); they gate trust in strong-instrument inference, they do
 /// not repair it.
+///
+/// Proxy missingness follows the family convention (`proxy_svar`'s): the
+/// proxy aligns to `data` rows (pass length n_obs -- the first `lags`
+/// presample rows are dropped -- or the residual length T directly), NaN
+/// rows are treated as dates where the instrument is unavailable and are
+/// dropped from the first-stage sample (`n_proxy` reports the kept count),
+/// and an infinite proxy value is refused as corruption (0.7.0 -- it was
+/// previously dropped as if missing).
+/// Keys: `beta`, `se`, `effective_f`, `f_classical`, `f_hc1`, `reliability`,
+/// `n_proxy`, `hac_lags`, `mop_cv_tau5`/`mop_cv_tau10`/`mop_cv_tau20`/
+/// `mop_cv_tau30`, `tau_bound`, `weak_mop_tau10`, `weak_folklore`.
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, norm_var = 0, trend = "c", variance = "hc1", hac_lags = None))]
 #[allow(clippy::too_many_arguments)]
@@ -4438,7 +4522,46 @@ fn proxy_first_stage<'py>(
 /// the first `lags` presample rows) or one already of length `T`. NaN marks
 /// unavailability and is never compacted away -- compacting would destroy the
 /// date alignment with the residuals, which is the whole identification.
+///
+/// The missingness contract is enforced here for the whole proxy family
+/// (`proxy_svar` / `proxy_first_stage` / `proxy_svar_bands` /
+/// `proxy_ar_sets`), on the aligned rows only: NaN is the one missingness
+/// marker (dropped from the moments, `n_proxy` reports the kept count),
+/// an infinity is CORRUPTION and refused (0.7.0 -- through 0.6.0 it was
+/// silently dropped as if missing), and an all-NaN aligned proxy is
+/// refused with the cause rather than a downstream count error.
 fn align_proxy(pv: Vec<f64>, n_obs: usize, lags: usize, t: usize) -> PyResult<Vec<f64>> {
+    let aligned = align_proxy_rows(pv, n_obs, lags, t)?;
+    if let Some(i) = aligned.iter().position(|v| v.is_infinite()) {
+        return Err(PyValueError::new_err(format!(
+            "proxy contains {} at aligned row {i} (0-based, on the residual \
+             sample): an infinite value is corruption (an overflow or a bad \
+             join/transform), not missingness, so it is refused rather than \
+             silently dropped as unavailable. NaN is the missingness marker -- \
+             NaN rows are treated as dates where the instrument is unavailable \
+             and dropped from the moments (n_proxy reports the kept count); \
+             repair the corrupted observation or set it to NaN explicitly if \
+             the instrument is genuinely unavailable there",
+            aligned[i]
+        )));
+    }
+    if aligned.iter().all(|v| v.is_nan()) {
+        return Err(PyValueError::new_err(
+            "every proxy value on the residual sample is NaN, so no observation \
+             remains to form the proxy moments: NaN marks dates where the \
+             instrument is unavailable (such rows are dropped and n_proxy \
+             reports the kept count), which here is every date. Supply real \
+             instrument values on dates overlapping the residual sample -- and \
+             if the proxy starts late because of the VAR's presample, remember \
+             the first `lags` rows of a full-length proxy are dropped in the \
+             alignment",
+        ));
+    }
+    Ok(aligned)
+}
+
+/// The shape-only leg of [`align_proxy`]: length checks and presample drop.
+fn align_proxy_rows(pv: Vec<f64>, n_obs: usize, lags: usize, t: usize) -> PyResult<Vec<f64>> {
     if pv.len() == t {
         Ok(pv)
     } else if pv.len() == n_obs {
@@ -4675,6 +4798,17 @@ fn proxy_svar_bands<'py>(
 /// Propagation is conservative under weak instruments (measured 0.991 at a
 /// nominal 0.95), because the extra variance turns exterior sets into the whole
 /// line. That is the correct direction to err.
+///
+/// Proxy missingness follows the family convention (`proxy_svar`'s): the
+/// proxy aligns to `data` rows (pass length n_obs -- the first `lags`
+/// presample rows are dropped -- or the residual length T directly), NaN
+/// rows are treated as dates where the instrument is unavailable and are
+/// dropped from the moments (`n_proxy` reports the kept count), and an
+/// infinite proxy value is refused as corruption (0.7.0 -- it was
+/// previously dropped as if missing).
+/// `rf_seed=None` (the default) is NOT fresh entropy: under
+/// `rf_method="second_order"`/`"second_order_bc"` it means seed 0, so two
+/// default calls are bit-identical; `rf_draws=None` means 256 draws.
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0,
                     trend = "c", alpha = 0.05, variance = "hc0", hac_lags = None,
@@ -4776,6 +4910,19 @@ fn proxy_ar_sets<'py>(
             "rf_draws/rf_seed were given but rf_method=\"delta\" ignores them: they \
              parameterize the \"second_order\"/\"second_order_bc\" simulation, so pass \
              one of those rf_method values (or drop them)",
+        ));
+    }
+    // lags=0 leaves nothing for the reduced-form propagation to act on; the
+    // crate-level refusals name internal functions and never `lags` (audit
+    // round 10, finding 3b), so refuse here with the caller's own knobs.
+    if reduced_form_uncertainty && lags == 0 {
+        return Err(PyValueError::new_err(
+            "reduced_form_uncertainty=True cannot act when lags=0: a VAR(0) has \
+             no lag coefficients, so there is no reduced-form (coefficient) \
+             uncertainty to propagate through the MA map. Either pass \
+             reduced_form_uncertainty=False (lags=0 is supported there — the \
+             sets are then conditional on the reduced form and `level` is None) \
+             or fit with lags >= 1",
         ));
     }
     let psi_var = if reduced_form_uncertainty {
@@ -4905,6 +5052,10 @@ fn proxy_ar_sets<'py>(
 /// ordered by `order_by` ("kurtosis"|"colnorm") and signed max-abs-positive;
 /// both are CONVENTIONS. STATISTICAL identification: it FAILS if the shocks are
 /// Gaussian, and a `shock_kurtosis` near zero flags a weakly identified column.
+/// Keys: `impact` (B, [var][shock]), `irf` ([horizon+1][var][shock]),
+/// `rotation` (Q, [whitened][shock]), `shock_kurtosis` (identified order),
+/// `converged`, `n_iter`, and `order` (raw FastICA index per identified
+/// position).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", contrast = "logcosh", max_iter = 200, tol = 1e-8, order_by = "kurtosis"))]
 #[allow(clippy::too_many_arguments)]
@@ -4993,6 +5144,23 @@ fn nongaussian_svar<'py>(
 /// impact matrix B (up to column sign/order) from the two within-regime
 /// reduced-form residual covariances via a generalized eigendecomposition;
 /// point-identified iff the variance ratios are pairwise distinct.
+/// `data` is (T, n); `regime_labels` is an array-like of length T with EXACTLY
+/// two distinct integer values (labels align to observations; the first `lags`
+/// are dropped to match residuals). `base_regime` is the label normalized to
+/// Lambda=I (default: the smaller label); the other regime's shock-variance
+/// ratios are reported. `sign_normalization`: "max" (largest-|entry| per B
+/// column made positive; default) or "diag" (B[j,j] >= 0).
+///
+/// Returns a dict with `B` (n x n impact matrix = Theta_0, columns in
+/// ascending variance-ratio order), `variance_ratios` (the n generalized
+/// eigenvalues, ascending), `structural_irf` ([h][i][j] = Theta_h = Psi_h B),
+/// `min_ratio_gap` and `ratio_dist_from_unity` (identification margins),
+/// `identified` (bool heuristic), `covariance_equality` (Bartlett-corrected
+/// Box's M: statistic/dof/pvalue/distinct_regimes), `sigma_regime1`,
+/// `sigma_regime2`, `regime1_label`, `regime2_label`, `regime_sizes`,
+/// `n_vars`, `horizon`, `lags`, `sign_convention`. Standard errors on
+/// B/Theta_h are not provided in this closed-form build; the >2-regime and
+/// Markov-switching/GARCH variants are deferred.
 #[pyfunction]
 #[pyo3(signature = (data, regime_labels, lags = 2, horizon = 12, trend = "c", base_regime = None, sign_normalization = "max"))]
 #[allow(clippy::too_many_arguments)]
@@ -5308,6 +5476,9 @@ fn panel_fe<'py>(
 /// sit on nominal. The union bounds fix multiplicity ONLY and inherit
 /// whatever the DK standard errors get wrong at short T (the documented
 /// short-T DK caveat).
+/// Keys: `irf`, `se`, `nobs` (each length horizon+1), the stamped `se_type`,
+/// `cumulative`, `jackknife`, `bias_correction`, and the band keys when `band`
+/// is set.
 #[pyfunction]
 #[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = None, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
 #[allow(clippy::too_many_arguments)]
@@ -5549,6 +5720,12 @@ fn gw_test<'py>(
 /// a return series; without, it must be a pre-computed 0/1 violation
 /// sequence. Pass `input="hits"` to combine a pre-computed hit sequence
 /// WITH the VaR forecasts so the DQ regression keeps its VaR regressor.
+/// Keys: `lr_uc`/`p_uc` (Kupiec), `lr_ind`/`p_ind` and `lr_cc`/`p_cc`
+/// (Christoffersen), `dq_stat`/`p_dq`/`dq_df`/`dq_lags`/`dq_includes_var`/
+/// `dq_var_dropped` (Engle-Manganelli DQ), `n`, `n_violations`,
+/// `expected_violations`, `hit_rate`, the transition cells
+/// `n00`/`n01`/`n10`/`n11` with `pi01`/`pi11`, the echoed `alpha`, and a
+/// teaching `verdict` string.
 #[pyfunction]
 #[pyo3(signature = (returns_or_hits, var_forecasts = None, alpha = 0.05, dq_lags = 4, input = "auto"))]
 fn var_backtest<'py>(
@@ -5753,6 +5930,9 @@ fn data_to_faer(
 /// unrestricted constant — on drifting data the two estimate visibly
 /// different cointegrating vectors. To fit the VECM this test ranks, call
 /// `vecm(..., deterministic="co")`.
+/// Keys: `eig`, `evec` (columns = cointegrating vectors), `trace_stat`,
+/// `max_eig_stat`, `trace_crit_90_95_99`, `max_eig_crit_90_95_99`,
+/// `rank_trace_5pct`, `rank_max_eig_5pct`.
 #[pyfunction]
 #[pyo3(signature = (data, k_ar_diff = 1))]
 fn johansen<'py>(
@@ -5784,53 +5964,297 @@ fn johansen<'py>(
 
 /// VECM maximum-likelihood estimation at a given cointegrating rank
 /// (Johansen). Returns the loadings `alpha`, cointegrating vectors `beta`
-/// (normalized beta[:r,:r] = I), short-run `gamma`, the deterministic
-/// coefficients `det_coef`, the residual covariance `sigma_u`, and the
-/// log-likelihood `llf`.
+/// (k x r, normalized so the widened matrix [beta; det_coef_coint] has
+/// beta[:r,:r] = I), the coefficients `det_coef_coint` of deterministic
+/// terms INSIDE the cointegration relation (n_coint x r — the extra rows
+/// the restricted cases add to the cointegrating matrix: constant row
+/// first, then trend row; statsmodels `VECMResults.det_coef_coint`),
+/// short-run `gamma`, the coefficients `det_coef` of deterministic terms
+/// in the short-run equations (k x n_det, statsmodels column order:
+/// constant, seasons-1 centered seasonal dummies, trend), the residual
+/// covariance `sigma_u`, and the log-likelihood `llf`.
 ///
-/// `deterministic` names the statsmodels VECM case: `"n"` (default) — NO
-/// deterministic terms, matching statsmodels `VECM(...,
-/// deterministic="n")` exactly; `"co"` — an unrestricted constant outside
-/// the cointegration relation (each short-run equation gains an
-/// intercept, returned as the k x 1 `det_coef`), matching
-/// `deterministic="co"`. The restricted cases ("ci", "li", "lo",
-/// seasons) are not implemented and are rejected with an error.
+/// `deterministic` names the statsmodels VECM case (all nine accepted):
+/// `"n"` (default) — no deterministic terms; `"co"` — unrestricted
+/// constant (each short-run equation gains an intercept); `"ci"` —
+/// constant restricted to the cointegration relation (the equilibrium
+/// error has a freely estimated mean but the data have no drift — the
+/// short-run equations get NO separate intercept); `"lo"` / `"li"` —
+/// linear trend outside / inside the relation (`"li"` = the equilibrium
+/// relation is trend-stationary); and the combinations `"colo"`,
+/// `"coli"`, `"cilo"`, `"cili"`. Johansen's five cases: I=`"n"`,
+/// II=`"ci"`, III=`"co"`, IV=`"coli"`, V=`"colo"`. Which to use: `"co"`
+/// for drifting data whose equilibrium error is mean-stationary (the
+/// usual case, and the one `johansen` ranks); `"ci"` when the data show
+/// no drift but the relation needs a nonzero mean; `"coli"` for
+/// trending data whose equilibrium relation is trend-stationary;
+/// `"colo"` when even the equilibrium error trends. statsmodels forbids
+/// `"co"`+`"ci"` and `"lo"`+`"li"` (same term on both sides) — so does
+/// this function.
 ///
-/// Deterministic-case warning: `johansen` in this library assumes an
-/// unrestricted constant (statsmodels `coint_johansen` det_order=0) — the
-/// `"co"` case, NOT this function's `"n"` default. On drifting data the
-/// two cases estimate visibly different cointegrating vectors; fit with
-/// `deterministic="co"` when the rank came from `johansen`.
+/// `seasons` (default 0 = none) adds seasons-1 CENTERED seasonal dummies
+/// to the short-run equations (statsmodels `seasons=`; they sum to zero
+/// over a cycle, shifting the seasonal profile without moving the
+/// level); `first_season` is the 0-based season of `data`'s first row,
+/// taken MODULO `seasons` (statsmodels-compatible: `first_season=5` with
+/// `seasons=4` is the same phase as `first_season=1`). With `seasons=0`
+/// there is no seasonal cycle to phase, so passing `first_season`
+/// explicitly then **raises** rather than being silently ignored (it
+/// defaults to 0 when `None`).
+///
+/// Johansen det_order correspondence: statsmodels `coint_johansen`'s
+/// det_order -1 ↔ `"n"`, 0 ↔ `"co"`, 1 ↔ `"colo"` (the det_order=1
+/// pairing is asymptotic — coint_johansen detrends over the full sample,
+/// a slightly different finite-sample projection; det_order=0 ↔ `"co"`
+/// is exact). `johansen` in this library assumes an unrestricted
+/// constant (det_order=0) — the `"co"` case, NOT this function's `"n"`
+/// default. On drifting data the cases estimate visibly different
+/// cointegrating vectors; fit with `deterministic="co"` when the rank
+/// came from `johansen`.
 #[pyfunction]
-#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1, deterministic = "n"))]
+#[pyo3(signature = (data, k_ar_diff = 1, coint_rank = 1, deterministic = "n", seasons = 0, first_season = None))]
 fn vecm<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
     k_ar_diff: usize,
     coint_rank: usize,
     deterministic: &str,
+    seasons: usize,
+    first_season: Option<usize>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let det = match deterministic {
-        "n" => tsecon_coint::VecmDeterministic::None,
-        "co" => tsecon_coint::VecmDeterministic::Constant,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown deterministic {other:?}; expected \"n\" (no deterministic terms) \
-                 or \"co\" (unrestricted constant — the case johansen's det_order=0 \
-                 convention assumes). The statsmodels restricted cases \"ci\"/\"li\"/\"lo\" \
-                 and seasonal dummies are not implemented."
-            )))
-        }
-    };
+    // `first_season` phases the seasonal-dummy cycle; with seasons=0 no
+    // dummies exist and there is no cycle to phase, so accepting it would
+    // be a silent no-op (audit round 10). The sentinel default (None -> 0)
+    // keeps default calls bit-identical.
+    if seasons == 0 && first_season.is_some() {
+        return Err(PyValueError::new_err(
+            "first_season was given but seasons=0 requests no seasonal dummies, so \
+             there is no seasonal cycle for it to phase; pass seasons=s (adding \
+             s-1 centered seasonal dummies — first_season is then the 0-based \
+             season of data's first row, taken modulo seasons) or drop \
+             first_season",
+        ));
+    }
+    let first_season = first_season.unwrap_or(0);
+    let det = tsecon_coint::VecmDeterministic::from_code(deterministic).ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "unknown deterministic {deterministic:?}; expected one of the statsmodels \
+             cases \"n\" (none), \"co\"/\"ci\" (constant outside/inside the \
+             cointegration relation), \"lo\"/\"li\" (linear trend outside/inside), or \
+             the combinations \"colo\", \"coli\", \"cilo\", \"cili\". The same term \
+             cannot appear on both sides (no \"co\"+\"ci\", no \"lo\"+\"li\"), and \
+             seasonal dummies are requested via seasons=, not the deterministic string. \
+             Pass \"co\" when the rank came from johansen (its det_order=0 convention)."
+        ))
+    })?;
     let m = data_to_faer(&data);
-    let r = tsecon_coint::fit_vecm_det(m.as_ref(), k_ar_diff, coint_rank, det).map_err(to_py)?;
+    let r = tsecon_coint::fit_vecm_seasonal(
+        m.as_ref(),
+        k_ar_diff,
+        coint_rank,
+        det,
+        seasons,
+        first_season,
+    )
+    .map_err(to_py)?;
     let d = PyDict::new(py);
     d.set_item("alpha", mat_to_vec2_bayes(&r.alpha))?;
     d.set_item("beta", mat_to_vec2_bayes(&r.beta))?;
+    d.set_item("det_coef_coint", mat_to_vec2_bayes(&r.det_coef_coint))?;
     d.set_item("gamma", mat_to_vec2_bayes(&r.gamma))?;
     d.set_item("det_coef", mat_to_vec2_bayes(&r.det_coef))?;
     d.set_item("sigma_u", mat_to_vec2_bayes(&r.sigma_u))?;
     d.set_item("llf", r.llf)?;
+    Ok(d)
+}
+
+/// Hansen-Seo (2002) two-regime threshold VECM (threshold cointegration):
+/// the error-correction term `ect` w_{t-1} = beta' y_{t-1} drives the
+/// regime split at `threshold`, and estimation is the concentrated
+/// Gaussian MLE — grid search over (beta, gamma) with per-cell two-regime
+/// OLS minimizing ln det of the pooled residual covariance.
+///
+/// `data` is T x k (rows are observations, oldest first). Regressors per
+/// regime are [const, ect, lagged differences] (`n_regressors` = 2 +
+/// k*k_ar_diff); coefficient rows are equations. `trim` is Hansen-Seo's
+/// pi0 (min sample fraction per regime; each regime also keeps at least
+/// n_regressors + 1 rows). The gamma grid is at most `n_grid_gamma`
+/// evenly-spaced feasible order statistics of the ect. `beta=None`
+/// estimates the cointegrating vector — BIVARIATE ONLY, over `n_grid_beta`
+/// points spanning the linear Johansen ML estimate +/- `beta_span`
+/// first-order standard errors; for k > 2 pass `beta=` explicitly (e.g.
+/// the linear estimate from `vecm(..., coint_rank=1,
+/// deterministic="co")`). A supplied beta is normalized so beta[0] = 1 —
+/// order the series with the normalized one first. With `beta=` supplied
+/// the beta grid search never runs (`beta_grid` is returned empty), so
+/// passing `n_grid_beta`/`beta_span` explicitly alongside it **raises**
+/// rather than being silently ignored (they default to 50/10.0 when
+/// `None`).
+///
+/// Returns `beta`, `threshold`, per-regime coefficients
+/// (`params_low`/`params_high`, k x n_regressors) with EICKER-WHITE
+/// standard errors (`bse_low`/`bse_high` — the heteroskedasticity-robust
+/// form Hansen-Seo report, no dof correction), regime sizes
+/// (`n_low`/`n_high`/`nobs`/`frac_low`), the pooled ML covariance `sigma`
+/// with `log_det_sigma` (the grid criterion) and `llf`, the linear
+/// comparison (`llf_linear`, `beta_linear`), the searched `beta_grid`
+/// (empty when beta was fixed), the `ect` series itself (threshold it to
+/// recover the regimes), and `min_regime`/`neqs`/`n_regressors`/
+/// `k_ar_diff`. Validated against an independent NumPy transcription of
+/// the published algorithm (fixtures/tvecm.json; no third-party
+/// Hansen-Seo implementation was runnable — see the model card for the
+/// honest grade); see `hansen_seo_test` for the threshold-cointegration
+/// test.
+#[pyfunction]
+#[pyo3(signature = (data, k_ar_diff = 1, trim = 0.05, n_grid_gamma = 300,
+                    n_grid_beta = None, beta_span = None, beta = None))]
+#[allow(clippy::too_many_arguments)]
+fn threshold_vecm<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    k_ar_diff: usize,
+    trim: f64,
+    n_grid_gamma: usize,
+    n_grid_beta: Option<usize>,
+    beta_span: Option<f64>,
+    beta: Option<PyReadonlyArray1<'py, f64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    // `n_grid_beta`/`beta_span` lay out the beta grid search, which only
+    // runs when beta is estimated; with `beta=` supplied the grid is never
+    // built (beta_grid comes back empty, as documented), so accepting them
+    // would be a silent no-op (audit round 10). The sentinel defaults
+    // (None -> 50 / 10.0) keep default calls bit-identical.
+    if beta.is_some() && (n_grid_beta.is_some() || beta_span.is_some()) {
+        return Err(PyValueError::new_err(
+            "n_grid_beta/beta_span were given but beta= fixes the cointegrating \
+             vector, so the beta grid search they parameterize never runs \
+             (beta_grid is returned empty); drop n_grid_beta/beta_span, or drop \
+             beta to estimate the vector by grid search (bivariate systems only)",
+        ));
+    }
+    let m = data_to_faer(&data);
+    let beta_vec = beta.as_ref().map(vec1);
+    // Python-correct remedy for the k > 2 refusal: the crate-level message
+    // names the Rust route (fit_vecm_det), which no Python caller can type
+    // (audit round 10, finding 3a).
+    if beta_vec.is_none() && m.ncols() > 2 {
+        return Err(PyValueError::new_err(format!(
+            "estimating beta by grid search is supported for bivariate systems \
+             only (the Hansen-Seo grid is one-dimensional) and this system has \
+             k = {} series: pass beta= explicitly — e.g. the linear estimate \
+             np.asarray(vecm(data, k_ar_diff={}, coint_rank=1, \
+             deterministic=\"co\")[\"beta\"])[:, 0]",
+            m.ncols(),
+            k_ar_diff,
+        )));
+    }
+    let r = tsecon_coint::threshold_vecm(
+        m.as_ref(),
+        k_ar_diff,
+        trim,
+        n_grid_gamma,
+        n_grid_beta.unwrap_or(50),
+        beta_span.unwrap_or(10.0),
+        beta_vec.as_deref(),
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("beta", r.beta.into_pyarray(py))?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("params_low", r.coefs_low)?;
+    d.set_item("params_high", r.coefs_high)?;
+    d.set_item("bse_low", r.se_low)?;
+    d.set_item("bse_high", r.se_high)?;
+    d.set_item("n_low", r.n_low)?;
+    d.set_item("n_high", r.n_high)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("frac_low", r.frac_low)?;
+    d.set_item("sigma", r.sigma)?;
+    d.set_item("log_det_sigma", r.log_det_sigma)?;
+    d.set_item("llf", r.llf)?;
+    d.set_item("llf_linear", r.llf_linear)?;
+    d.set_item("beta_linear", r.beta_linear.into_pyarray(py))?;
+    d.set_item("beta_grid", r.beta_grid.into_pyarray(py))?;
+    d.set_item("ect", r.ect.into_pyarray(py))?;
+    d.set_item("min_regime", r.min_regime)?;
+    d.set_item("neqs", r.neqs)?;
+    d.set_item("n_regressors", r.n_regressors)?;
+    d.set_item("k_ar_diff", r.k_ar_diff)?;
+    Ok(d)
+}
+
+/// Hansen-Seo (2002) sup-LM test of LINEAR cointegration against
+/// two-regime THRESHOLD cointegration, p-valued by their fixed-regressor
+/// bootstrap (their Section 4; Hansen 1996).
+///
+/// The pointwise statistic is the coefficient-difference quadratic form
+/// with Eicker-White covariance, evaluated at the null (linear VECM)
+/// residuals with beta fixed at the null Johansen ML estimate (pass
+/// `beta=` for their known-cointegrating-vector variant), maximized over
+/// at most `n_grid` trimmed order statistics of the error-correction
+/// term. Under the null the threshold is an unidentified nuisance
+/// parameter (the Davies problem), so a chi-squared p-value is WRONG and
+/// never reported: each of the `n_boot` replications draws y*_t = u_t *
+/// eta_t (eta iid N(0,1)), re-residualizes on the same fixed regressors,
+/// and recomputes the same sup; `p_value` = (1 + #{LM* >= LM}) /
+/// (n_boot + 1). Replications run in parallel with one seeded RNG
+/// substream each, so the p-value is bit-identical for a given `seed` at
+/// any thread count. NOTE the method presumes the series ARE cointegrated
+/// under both hypotheses — it tests linear vs threshold adjustment, not
+/// cointegration vs none (test cointegration first: `johansen` /
+/// `engle_granger`). Unlike `threshold_vecm` — whose `beta=None` grid
+/// SEARCH is bivariate-only — the null beta here is the linear Johansen
+/// ML estimate, defined for any k, so k > 2 with an estimated (null)
+/// beta is accepted.
+///
+/// Returns `stat`, `p_value`, `threshold` (the sup's location), `beta`
+/// (the vector used), `n_boot`, `nobs`, the candidate grid `thresholds`
+/// with the per-candidate `lm_path`, the bootstrap draws `boot_stats`,
+/// and `min_regime`/`neqs`/`n_regressors`/`k_ar_diff`. The statistic is
+/// validated against an independent NumPy transcription
+/// (fixtures/tvecm.json); the bootstrap null rejection rate is validated
+/// by seeded Monte Carlo (near-nominal size, mildly liberal in small
+/// samples — see the model card).
+#[pyfunction]
+#[pyo3(signature = (data, k_ar_diff = 1, trim = 0.05, n_grid = 300,
+                    n_boot = 499, seed = 0, beta = None))]
+#[allow(clippy::too_many_arguments)]
+fn hansen_seo_test<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    k_ar_diff: usize,
+    trim: f64,
+    n_grid: usize,
+    n_boot: usize,
+    seed: u64,
+    beta: Option<PyReadonlyArray1<'py, f64>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = data_to_faer(&data);
+    let beta_vec = beta.as_ref().map(vec1);
+    let r = tsecon_coint::hansen_seo_test(
+        m.as_ref(),
+        k_ar_diff,
+        trim,
+        n_grid,
+        n_boot,
+        seed,
+        beta_vec.as_deref(),
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("beta", r.beta.into_pyarray(py))?;
+    d.set_item("n_boot", r.n_boot)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
+    d.set_item("lm_path", r.lm_path.into_pyarray(py))?;
+    d.set_item("boot_stats", r.boot_stats.into_pyarray(py))?;
+    d.set_item("min_regime", r.min_regime)?;
+    d.set_item("neqs", r.neqs)?;
+    d.set_item("n_regressors", r.n_regressors)?;
+    d.set_item("k_ar_diff", r.k_ar_diff)?;
     Ok(d)
 }
 
@@ -5849,6 +6273,10 @@ fn vecm<'py>(
 /// MacKinnon 1994 tables stop there, where statsmodels raises IndexError);
 /// `crit` is None for trend="n" or k > 12 (no published 2010 surface).
 /// Small p-values are evidence FOR cointegration.
+/// Keys: `stat`, `pvalue`, `crit`, `coint_coefs` (the step-1 coefficients —
+/// deterministics from `trend` first, then the regressor columns), `resid`
+/// (length `nobs`), `used_lag` and `adf_nobs` (the residual ADF's lag and
+/// sample), `n_vars`, `nobs`.
 #[pyfunction]
 #[pyo3(signature = (data, trend = "c", autolag = Some("aic"), maxlag = None))]
 fn engle_granger<'py>(
@@ -5966,8 +6394,10 @@ fn ou_fit_dict<'py>(py: Python<'py>, r: &tsecon_coint::OuFit) -> PyResult<Bound<
 /// i.e. when "no mean reversion" cannot be ruled out at `level`; the stationary
 /// standard deviation `stationary_sd` (= sigma / sqrt(2 kappa), the z-score
 /// denominator); the honest flag `mean_reverting`; the AR(1) discretization
-/// leg `phi`, `phi_se`, `c`, `c_se`, `eta2`, `loglik`; and `n_obs` (= T - 1
-/// transitions), `dt`.
+/// leg `phi`, `phi_se`, `c`, `c_se`, `eta2`, `loglik`; and the echoed call
+/// inputs `n_obs` (= T - 1 transitions), `dt`, and `level` (the confidence
+/// level `half_life_ci` was built at, echoed back so a stored result dict
+/// stays self-describing).
 ///
 /// A fit with `phi >= 1` (AR root at/over unity — a "spread" showing no
 /// mean reversion) is returned honestly rather than raised:
@@ -6000,7 +6430,10 @@ fn ou_fit<'py>(
 /// scoring new data against a frozen fit), or none of them, in which case
 /// they are fitted from `x` by `ou_fit(x, dt)` first. Passing only some is
 /// refused — a z-score against a half-specified law would silently mix
-/// fitted and asserted parameters. Returns `zscore`, the `kappa` / `mu` /
+/// fitted and asserted parameters. `dt` (default 1.0 when `None`)
+/// parameterizes only that internal fit, so passing it explicitly with a
+/// frozen `kappa`/`mu`/`sigma` triple **raises** rather than being
+/// silently ignored. Returns `zscore`, the `kappa` / `mu` /
 /// `sigma` actually used, `stationary_sd`, and `fitted` (True when the
 /// parameters came from the internal fit; call `ou_fit` directly for their
 /// standard errors and the half-life). Refuses `kappa <= 0` — a
@@ -6008,21 +6441,36 @@ fn ou_fit<'py>(
 /// z-score does not exist (if `ou_fit` reported `mean_reverting = False`,
 /// re-check the cointegrating relation before trading the spread).
 #[pyfunction]
-#[pyo3(signature = (x, kappa = None, mu = None, sigma = None, dt = 1.0))]
+#[pyo3(signature = (x, kappa = None, mu = None, sigma = None, dt = None))]
 fn spread_zscore<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
     kappa: Option<f64>,
     mu: Option<f64>,
     sigma: Option<f64>,
-    dt: f64,
+    dt: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let xv = vec1(&x);
     let d = PyDict::new(py);
     let (kappa, mu, sigma, fitted) = match (kappa, mu, sigma) {
-        (Some(k), Some(m), Some(s)) => (k, m, s, false),
+        (Some(k), Some(m), Some(s)) => {
+            // `dt` only parameterizes the internal ou_fit(x, dt); with all
+            // three parameters frozen no fit runs and the z-score is
+            // dt-free, so accepting it would be a silent no-op (audit
+            // round 10). The sentinel default (None -> 1.0) keeps default
+            // calls bit-identical.
+            if dt.is_some() {
+                return Err(PyValueError::new_err(
+                    "dt was given but kappa/mu/sigma are all frozen, so the internal \
+                     ou_fit(x, dt) that dt parameterizes never runs (the z-score \
+                     against a frozen OU law does not involve the sampling step); \
+                     drop dt, or drop kappa/mu/sigma to fit them from x at step dt",
+                ));
+            }
+            (k, m, s, false)
+        }
         (None, None, None) => {
-            let fit = tsecon_coint::ou_fit(&xv, dt, 0.95).map_err(to_py)?;
+            let fit = tsecon_coint::ou_fit(&xv, dt.unwrap_or(1.0), 0.95).map_err(to_py)?;
             (fit.kappa, fit.mu, fit.sigma, true)
         }
         _ => {
@@ -6048,14 +6496,21 @@ fn spread_zscore<'py>(
 ///
 /// Estimates a `k_regimes`-state MS-AR(`order`) with a common AR and
 /// (optionally) switching variances, starting from an internal
-/// quantile-based initialization. Returns the estimated transition matrix,
-/// per-regime means and variances, the estimated AR coefficients `ar` — a
+/// quantile-based initialization. Returns the estimated `transition`
+/// matrix, per-regime `means` and `variances`, the estimated AR
+/// coefficients `ar` — a
 /// length-`order` array `(phi_1, .., phi_p)`, shared across regimes (this
 /// binding always fits the Hamilton common-AR specification, applied to
-/// deviations `y_t - mu_{S_t}`) — log-likelihood, the full `(n, k_regimes)`
+/// deviations `y_t - mu_{S_t}`) — the log-likelihood `loglik`, the full
+/// `(n, k_regimes)`
 /// smoothed (`smoothed_prob`, Kim 1994) and filtered (`filtered_prob`,
 /// Hamilton filter) regime-probability matrices where `n = len(y) - order`,
-/// the MAP regime path, and expected regime durations.
+/// the MAP regime path `regimes`, and the per-regime
+/// `expected_durations`. The EM run itself
+/// reports `converged` (whether the log-likelihood improvement fell below
+/// `tol`) and `iterations` (EM steps actually run — `converged = False`
+/// with `iterations == max_iter` means the cap bound, so raise `max_iter`
+/// or loosen `tol`).
 /// `smoothed_prob_last_regime` (= `smoothed_prob[:, -1]`) is kept for
 /// back-compatibility with 0.2.0, which returned only that column.
 #[pyfunction]
@@ -6185,6 +6640,9 @@ fn markov_switching_ar<'py>(
 /// *reported*, not what is optimized). Validated against an independent
 /// NumPy transcription of the published algorithm (fixtures/setar.json);
 /// see `setar_test` for the linearity test.
+/// Keys: `threshold`, `delay`, `params_low`/`params_high`, `bse_low`/`bse_high`,
+/// `n_low`/`n_high`/`nobs`, `ssr`, `sigma2`, `sigma2_low`/`sigma2_high`,
+/// `aic`/`bic`, `ic`/`ic_used`, `min_regime`, `k`, `thresholds`, `ssr_path`.
 #[pyfunction]
 #[pyo3(signature = (y, p, delay = 1, trim = 0.15, delays = None, ic = "aic", constant = true))]
 #[allow(clippy::too_many_arguments)]
@@ -6280,6 +6738,387 @@ fn setar_test<'py>(
     d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
     d.set_item("f_path", r.f_path.into_pyarray(py))?;
     d.set_item("boot_stats", r.boot_stats.into_pyarray(py))?;
+    Ok(d)
+}
+
+fn star_model_of(name: &str) -> PyResult<tsecon_regime::StarModel> {
+    match name {
+        "lstar" | "LSTAR" => Ok(tsecon_regime::StarModel::Lstar),
+        "estar" | "ESTAR" => Ok(tsecon_regime::StarModel::Estar),
+        other => Err(PyValueError::new_err(format!(
+            "unknown STAR model {other:?}; expected \"lstar\" or \"estar\""
+        ))),
+    }
+}
+
+/// The shared `StarEval` payload (everything `star_eval` returns and
+/// `star` nests at its optimum).
+fn star_eval_into_dict<'py>(
+    py: Python<'py>,
+    d: &Bound<'py, PyDict>,
+    e: tsecon_regime::StarEval,
+) -> PyResult<()> {
+    d.set_item("params_linear", e.coefs_linear.into_pyarray(py))?;
+    d.set_item("params_nonlinear", e.coefs_nonlinear.into_pyarray(py))?;
+    d.set_item("bse_linear", e.se_linear.into_pyarray(py))?;
+    d.set_item("bse_nonlinear", e.se_nonlinear.into_pyarray(py))?;
+    d.set_item("se_gamma", e.se_gamma)?;
+    d.set_item("se_c", e.se_c)?;
+    d.set_item("se_valid", e.se_valid)?;
+    d.set_item("ssr", e.ssr)?;
+    d.set_item("sigma2", e.sigma2)?;
+    d.set_item("loglik", e.loglik)?;
+    d.set_item("aic", e.aic)?;
+    d.set_item("bic", e.bic)?;
+    d.set_item("nobs", e.nobs)?;
+    d.set_item("k", e.k)?;
+    d.set_item("transition", e.transition.into_pyarray(py))?;
+    Ok(())
+}
+
+/// Smooth-transition autoregression (STAR; Terasvirta 1994), logistic or
+/// exponential:
+/// `y_t = phi1'x_t + G(gamma, c; y_{t-delay}) * phi2'x_t + e_t`,
+/// `x_t = [1?, y_{t-1}, ..., y_{t-p}]`, with `G = 1/(1+exp(-gamma(s-c)))`
+/// (`model="lstar"`) or `G = 1 - exp(-gamma(s-c)^2)` (`model="estar"`).
+///
+/// **Gamma convention**: `gamma` is RAW — the value inside the transition
+/// function (R tsDyn's convention, no standardization);
+/// `gamma_standardized` is Terasvirta's scale-free `gamma * sd(s)` (LSTAR)
+/// / `gamma * var(s)` (ESTAR), population `sd` (`s_sd`) over the usable
+/// sample. Estimation is concentrated NLS: an `n_gamma x n_c` grid —
+/// standardized gamma log-spaced over [0.5, 100], `c` on order statistics
+/// of `s_t` between the `trim` and `1-trim` quantiles — then Nelder-Mead
+/// refinement of the best cell (standardized gamma boxed to [0.5, 1000]).
+/// `delays` (overriding `delay`) searches the delay jointly by refined SSR
+/// on the common sample `t >= max(p, max(delays))`.
+///
+/// Run `star_test` FIRST: fitting STAR to linear data happily "finds" a
+/// transition. Honesty flags: `converged` (Nelder-Mead verdict) and
+/// `gamma_at_boundary` — true when standardized gamma ends at the top
+/// (>= 100: numerically a hard threshold; the SSR surface is flat in
+/// gamma, so read gamma as a lower bound — Terasvirta's large-gamma
+/// advice) or pinned at the bottom wall (0.5: numerically linear in `s`,
+/// gamma and phi2 separately unidentified). Standard errors are
+/// Gauss-Newton over all `2k + 2` parameters; `se_valid=False` (NaN SEs)
+/// when `J'J` degenerates rather than inventing curvature.
+///
+/// Returns `model`, `gamma`, `gamma_standardized`, `c`, `delay`, `s_sd`,
+/// `converged`, `gamma_at_boundary`, the concentrated fit at the optimum
+/// (`params_linear` phi1, `params_nonlinear` phi2 — the high-regime sum
+/// is phi1+phi2 — `bse_linear`/`bse_nonlinear`/`se_gamma`/`se_c`/
+/// `se_valid`, `ssr`, `sigma2`, `loglik`, `aic`/`bic` with `m = 2k + 2`,
+/// `nobs`, `k`, the `transition` path G_t), and the grid surface
+/// (`grid_gamma` raw, `grid_c`, `ssr_grid` shaped (n_gamma, n_c) with NaN
+/// for singular cells, `best_cell`, `fevals`). Validated against an
+/// independent NumPy transcription (fixtures/star.json) plus seeded MC
+/// recovery; see `star_test` for the modeling-cycle battery.
+#[pyfunction]
+#[pyo3(signature = (y, p, model = "lstar", delay = 1, trim = 0.15, delays = None,
+                    constant = true, n_gamma = 25, n_c = 25))]
+#[allow(clippy::too_many_arguments)]
+fn star<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    model: &str,
+    delay: usize,
+    trim: f64,
+    delays: Option<Vec<usize>>,
+    constant: bool,
+    n_gamma: usize,
+    n_c: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = star_model_of(model)?;
+    let dl: Vec<usize> = delays.unwrap_or_else(|| vec![delay]);
+    let ys = vec1(&y);
+    let r = tsecon_regime::star(&ys, p, &dl, m, trim, constant, n_gamma, n_c).map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("model", r.model.name())?;
+    d.set_item("gamma", r.gamma)?;
+    d.set_item("gamma_standardized", r.gamma_standardized)?;
+    d.set_item("c", r.c)?;
+    d.set_item("delay", r.delay)?;
+    d.set_item("s_sd", r.s_sd)?;
+    d.set_item("converged", r.converged)?;
+    d.set_item("gamma_at_boundary", r.gamma_at_boundary)?;
+    let n_c_actual = r.grid_c.len();
+    let n_gamma_actual = r.grid_gamma.len();
+    d.set_item("grid_gamma", r.grid_gamma.into_pyarray(py))?;
+    d.set_item("grid_c", r.grid_c.into_pyarray(py))?;
+    d.set_item(
+        "ssr_grid",
+        r.ssr_grid
+            .into_pyarray(py)
+            .reshape([n_gamma_actual, n_c_actual])?,
+    )?;
+    d.set_item("best_cell", (r.best_cell.0, r.best_cell.1))?;
+    d.set_item("fevals", r.fevals)?;
+    star_eval_into_dict(py, &d, r.eval)?;
+    Ok(d)
+}
+
+/// The concentrated STAR fit at FIXED transition parameters `(gamma, c)`
+/// (raw-gamma convention, as in `star`): OLS of `y_t` on
+/// `[x_t, G_t x_t]`, Gauss-Newton standard errors from the full
+/// `(2k+2)`-parameter Jacobian, and fit statistics — the fixed-parameter
+/// workhorse behind `star`, exposed so a published parameterization can
+/// be scored directly (SSR/log-likelihood comparison is robust to
+/// optimizer differences; parameter-level comparison is not).
+///
+/// Returns `params_linear` (phi1), `params_nonlinear` (phi2),
+/// `bse_linear`/`bse_nonlinear`/`se_gamma`/`se_c` (Gauss-Newton;
+/// NaN with `se_valid` False when `J'J` degenerates, e.g. at enormous
+/// gamma), `ssr`, `sigma2` (= SSR/(nobs - 2k - 2)), `loglik` (Gaussian,
+/// ML variance), `aic`/`bic` (`m = 2k + 2`), `nobs`, `k`, and the
+/// `transition` path `G(gamma, c; s_t)`. Validated against an independent
+/// NumPy transcription at fixed parameters (fixtures/star.json).
+#[pyfunction]
+#[pyo3(signature = (y, p, gamma, c, model = "lstar", delay = 1, constant = true))]
+#[allow(clippy::too_many_arguments)]
+fn star_eval<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    gamma: f64,
+    c: f64,
+    model: &str,
+    delay: usize,
+    constant: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let m = star_model_of(model)?;
+    let ys = vec1(&y);
+    let r = tsecon_regime::star_eval(&ys, p, delay, m, gamma, c, constant).map_err(to_py)?;
+    let d = PyDict::new(py);
+    star_eval_into_dict(py, &d, r)?;
+    Ok(d)
+}
+
+fn star_battery_into_dict<'py>(
+    py: Python<'py>,
+    t: &tsecon_regime::StarTest,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("delay", t.delay)?;
+    d.set_item("nobs", t.nobs)?;
+    d.set_item("q", t.q)?;
+    d.set_item("k0", t.k0)?;
+    d.set_item("lm3_stat", t.lm3_stat)?;
+    d.set_item("lm3_p_value", t.lm3_p_value)?;
+    d.set_item("lm3_f_stat", t.lm3_f_stat)?;
+    d.set_item("lm3_f_p_value", t.lm3_f_p_value)?;
+    d.set_item("h3_f_stat", t.h3_f_stat)?;
+    d.set_item("h3_p_value", t.h3_p_value)?;
+    d.set_item("h2_f_stat", t.h2_f_stat)?;
+    d.set_item("h2_p_value", t.h2_p_value)?;
+    d.set_item("h1_f_stat", t.h1_f_stat)?;
+    d.set_item("h1_p_value", t.h1_p_value)?;
+    d.set_item("ssr0", t.ssr0)?;
+    d.set_item("ssr1", t.ssr1)?;
+    d.set_item("ssr2", t.ssr2)?;
+    d.set_item("ssr3", t.ssr3)?;
+    d.set_item("suggested", t.suggested.name())?;
+    Ok(d)
+}
+
+/// The Terasvirta STAR modeling-cycle battery: the LM3 linearity test
+/// against a STAR alternative (Luukkonen-Saikkonen-Terasvirta 1988) and
+/// the H03/H02/H01 sequence choosing LSTAR vs ESTAR (Terasvirta 1994).
+///
+/// Auxiliary regression: `y_t` on `[w_t, x~ s_t, x~ s_t^2, x~ s_t^3]`,
+/// `w_t = (1, lags)`, `x~` the lag block, `s_t = y_{t-delay}` (both
+/// augmented with `y_{t-d}` when `d > p`). `lm3_stat` is the chi-squared
+/// form `n (SSR0 - SSR3)/SSR0` with `3q` df; `lm3_f_stat` the F form —
+/// recommended in small samples — with `(3q, n - k0 - 3q)` df. Unlike
+/// `setar_test`, the null distribution here IS standard (the auxiliary
+/// regression is linear, no Davies problem), so no bootstrap is needed.
+/// The H-sequence tests the cubic (`h3_*`), quadratic-given-no-cubic
+/// (`h2_*`), and linear-given-neither (`h1_*`) interaction blocks;
+/// `suggested` is "estar" iff the H02 p-value is strictly the smallest
+/// (only meaningful when LM3 rejects). `delays` (overriding `delay`)
+/// evaluates each candidate on its own usable sample and `best` indexes
+/// the battery with the smallest F-form LM3 p-value — Terasvirta's
+/// delay-selection rule; the top-level scalars are that battery's.
+///
+/// Returns (top level = the selected battery): `delay`, `nobs`, `q`,
+/// `k0`, `lm3_stat`, `lm3_p_value`, `lm3_f_stat`, `lm3_f_p_value`,
+/// `h3_f_stat`/`h3_p_value`, `h2_f_stat`/`h2_p_value`,
+/// `h1_f_stat`/`h1_p_value`, `ssr0`/`ssr1`/`ssr2`/`ssr3`, `suggested`;
+/// plus `best` and `tests` (one dict per candidate delay, same keys).
+/// Validated against an independent NumPy/SciPy transcription
+/// (fixtures/star.json) and by seeded MC size/power.
+#[pyfunction]
+#[pyo3(signature = (y, p, delay = 1, delays = None))]
+fn star_test<'py>(
+    py: Python<'py>,
+    y: PyReadonlyArray1<'py, f64>,
+    p: usize,
+    delay: usize,
+    delays: Option<Vec<usize>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dl: Vec<usize> = delays.unwrap_or_else(|| vec![delay]);
+    let ys = vec1(&y);
+    let r = tsecon_regime::star_test(&ys, p, &dl).map_err(to_py)?;
+    let d = star_battery_into_dict(py, &r.tests[r.best])?;
+    d.set_item("best", r.best)?;
+    let tests = PyList::empty(py);
+    for t in &r.tests {
+        tests.append(star_battery_into_dict(py, t)?)?;
+    }
+    d.set_item("tests", tests)?;
+    Ok(d)
+}
+
+/// Rows of a T x k array as `Vec<Vec<f64>>` for the threshold-VAR layer.
+fn data_to_rows(data: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
+    let a = data.as_array();
+    (0..a.nrows())
+        .map(|i| (0..a.ncols()).map(|j| a[(i, j)]).collect())
+        .collect()
+}
+
+/// Two-regime threshold VAR (the multivariate SETAR; Tong 1983; Tsay
+/// 1998; Lo-Zivot 2001), fitted by concentrated least squares / Gaussian
+/// MLE: `y_t = A1' x_t` if `z_t <= threshold` else `A2' x_t`, with
+/// `x_t = [1?, y_{t-1}, ..., y_{t-p}]` and threshold variable
+/// `z_t = y[threshold_index]_{t-delay}`.
+///
+/// `data` is T x k (rows are observations, oldest first). The threshold
+/// grid is the unique order statistics of `z` with a `trim` fraction kept
+/// in each regime (each regime also keeps at least `n_regressors` + 1
+/// rows, `n_regressors` = k*p + constant); the threshold (and, when
+/// `delays` is a list, the delay — all candidates then share the common
+/// sample `t >= max(p, max(delays))` so criteria are comparable; `delays`
+/// overrides `delay`) minimize `log_det_sigma`, the ln-determinant of the
+/// pooled residual covariance — the multivariate analogue of SETAR's
+/// pooled SSR.
+///
+/// Returns `threshold`/`delay`/`threshold_index`, per-regime coefficients
+/// (`params_low`/`params_high`, k x n_regressors, rows = equations,
+/// columns [const?, y_{t-1}.., y_{t-p}..]) with classical nonrobust SEs
+/// (`bse_low`/`bse_high`, per-regime per-equation s^2 = SSR/(n_r - m)),
+/// regime sizes (`n_low`/`n_high`/`nobs`), the pooled and per-regime ML
+/// covariances (`sigma`/`sigma_low`/`sigma_high`), `log_det_sigma`,
+/// `llf`, `aic`/`bic` (n ln det + penalty * q, q = 2*k*m + 1 counting the
+/// threshold), the full candidate grid (`thresholds`) with its criterion
+/// profile (`logdet_path`), and `min_regime`/`neqs`/`n_regressors`.
+/// Regime-dependent (generalized) impulse responses are deliberately NOT
+/// provided — see the model card. Validated against an independent NumPy
+/// transcription of the documented algorithm (fixtures/tvar.json); see
+/// `threshold_var_test` for the linearity test.
+#[pyfunction]
+#[pyo3(signature = (data, p, threshold_index = 0, delay = 1, trim = 0.10,
+                    delays = None, constant = true))]
+#[allow(clippy::too_many_arguments)]
+fn threshold_var<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    p: usize,
+    threshold_index: usize,
+    delay: usize,
+    trim: f64,
+    delays: Option<Vec<usize>>,
+    constant: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let rows = data_to_rows(&data);
+    let dl: Vec<usize> = delays.unwrap_or_else(|| vec![delay]);
+    let r = tsecon_regime::threshold_var(&rows, p, threshold_index, &dl, trim, constant)
+        .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("delay", r.delay)?;
+    d.set_item("threshold_index", r.threshold_index)?;
+    d.set_item("params_low", r.coefs_low)?;
+    d.set_item("params_high", r.coefs_high)?;
+    d.set_item("bse_low", r.se_low)?;
+    d.set_item("bse_high", r.se_high)?;
+    d.set_item("n_low", r.n_low)?;
+    d.set_item("n_high", r.n_high)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("sigma", r.sigma)?;
+    d.set_item("sigma_low", r.sigma_low)?;
+    d.set_item("sigma_high", r.sigma_high)?;
+    d.set_item("log_det_sigma", r.log_det_sigma)?;
+    d.set_item("llf", r.llf)?;
+    d.set_item("aic", r.aic)?;
+    d.set_item("bic", r.bic)?;
+    d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
+    d.set_item("logdet_path", r.logdet_path.into_pyarray(py))?;
+    d.set_item("min_regime", r.min_regime)?;
+    d.set_item("neqs", r.neqs)?;
+    d.set_item("n_regressors", r.n_regressors)?;
+    Ok(d)
+}
+
+/// Robust sup-Wald (score-form) test of a linear VAR(p) against the
+/// two-regime threshold VAR, p-valued by the Hansen (1996)
+/// fixed-regressor wild bootstrap.
+///
+/// The pointwise statistic is the coefficient-difference quadratic form
+/// with Eicker-White covariance evaluated at the null (linear VAR)
+/// residuals — the multivariate analogue of the Hansen-Seo (2002) sup-LM
+/// — maximized over at most `n_grid` trimmed order statistics of
+/// `z_t = y[threshold_index]_{t-delay}`. Under the null the threshold is
+/// an unidentified nuisance parameter (the Davies problem), so a
+/// chi-squared p-value is WRONG and never reported: each of the `n_boot`
+/// replications draws y*_t = u_t * eta_t (eta iid N(0,1)),
+/// re-residualizes on the same fixed regressors, and recomputes the same
+/// sup; `p_value` = (1 + #{W* >= W}) / (n_boot + 1) — seeded, parallel,
+/// bit-identical at any thread count. (R tsDyn's TVAR.LRtest is a
+/// DIFFERENT convention — sup-LR with a residual bootstrap; same
+/// question, non-comparable statistic values.)
+///
+/// Returns `stat`, `p_value`, `threshold` (the sup's location),
+/// `delay`/`threshold_index`, `n_boot`, `nobs`, the candidate grid
+/// (`thresholds`) with the per-candidate `wald_path`, the bootstrap draws
+/// (`boot_stats`), and `min_regime`/`neqs`/`n_regressors`. The statistic
+/// is validated against an independent NumPy transcription
+/// (fixtures/tvar.json); the bootstrap null rejection rate is validated
+/// by seeded Monte Carlo (near-nominal size, mildly liberal in small
+/// samples — see the model card).
+#[pyfunction]
+#[pyo3(signature = (data, p, threshold_index = 0, delay = 1, trim = 0.10,
+                    n_grid = 300, n_boot = 499, seed = 0, constant = true))]
+#[allow(clippy::too_many_arguments)]
+fn threshold_var_test<'py>(
+    py: Python<'py>,
+    data: numpy::PyReadonlyArray2<'py, f64>,
+    p: usize,
+    threshold_index: usize,
+    delay: usize,
+    trim: f64,
+    n_grid: usize,
+    n_boot: usize,
+    seed: u64,
+    constant: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let rows = data_to_rows(&data);
+    let r = tsecon_regime::threshold_var_test(
+        &rows,
+        p,
+        threshold_index,
+        delay,
+        trim,
+        constant,
+        n_grid,
+        n_boot,
+        seed,
+    )
+    .map_err(to_py)?;
+    let d = PyDict::new(py);
+    d.set_item("stat", r.stat)?;
+    d.set_item("p_value", r.p_value)?;
+    d.set_item("threshold", r.threshold)?;
+    d.set_item("delay", r.delay)?;
+    d.set_item("threshold_index", r.threshold_index)?;
+    d.set_item("n_boot", r.n_boot)?;
+    d.set_item("nobs", r.nobs)?;
+    d.set_item("thresholds", r.thresholds.into_pyarray(py))?;
+    d.set_item("wald_path", r.wald_path.into_pyarray(py))?;
+    d.set_item("boot_stats", r.boot_stats.into_pyarray(py))?;
+    d.set_item("min_regime", r.min_regime)?;
+    d.set_item("neqs", r.neqs)?;
+    d.set_item("n_regressors", r.n_regressors)?;
     Ok(d)
 }
 
@@ -6415,7 +7254,11 @@ fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
 /// and `univariate_dist` ("normal"/"t"), the per-series innovation
 /// density. The kwarg is named `univariate_dist` (not `dist`) on purpose,
 /// to stay distinct from `dcc_garch`'s `dist=`, which configures the
-/// second-stage correlation likelihood — a different object.
+/// second-stage correlation likelihood — a different object. `o` follows
+/// `garch_fit`'s sentinel exactly: `None` (the default) means no asymmetry
+/// term under `vol="garch"` and one asymmetry lag under `"gjr"`/`"egarch"`,
+/// and an explicit `o > 0` under `vol="garch"` **raises** rather than being
+/// silently dropped (the same porting-trap guard).
 ///
 /// Returns dict keys: `correlation` (the constant `k x k` matrix `R`),
 /// `loglik`, `sigma2` (`(T, k)` nested list — the per-series conditional
@@ -6442,8 +7285,12 @@ fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
 /// `H_{T+m} = D_{T+m} R D_{T+m}` with `D_{T+m}` from the per-series
 /// analytic variance forecasts — no approximation enters at any h,
 /// unlike DCC's h >= 2 normalization approximation.
+/// The univariate stage inherits `garch_fit`'s EGARCH limit: `vol="egarch"`
+/// accepts `forecast_horizon` 0 or 1 only and raises a teaching ValueError at
+/// 2 or more (no closed-form multi-step EGARCH variance forecast exists and
+/// the simulation route is not shipped).
 #[pyfunction]
-#[pyo3(signature = (returns, forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[pyo3(signature = (returns, forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
 fn ccc_garch<'py>(
     py: Python<'py>,
@@ -6453,9 +7300,10 @@ fn ccc_garch<'py>(
     mean: &str,
     univariate_dist: &str,
     p: usize,
-    o: usize,
+    o: Option<usize>,
     q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let series = returns_to_series(&returns);
     let fit = tsecon_mgarch::CccGarch::new(spec)
@@ -6515,7 +7363,11 @@ fn ccc_garch<'py>(
 /// is the second-stage likelihood over the *standardized joint residuals*
 /// (the correlation dynamics), `univariate_dist` the per-series density of
 /// stage one — you can (and often should) mix them, e.g.
-/// `vol="gjr", dist="t"` with Normal-QMLE univariate stages.
+/// `vol="gjr", dist="t"` with Normal-QMLE univariate stages. `o` follows
+/// `garch_fit`'s sentinel exactly: `None` (the default) means no asymmetry
+/// term under `vol="garch"` and one asymmetry lag under `"gjr"`/`"egarch"`,
+/// and an explicit `o > 0` under `vol="garch"` **raises** rather than being
+/// silently dropped (the same porting-trap guard).
 ///
 /// Returns dict keys: `a`, `b`, `g` (0.0 unless `variant="adcc"`), `qbar`,
 /// `loglik`, `converged`, `variant`, `dist`, `correlation` (the full
@@ -6574,8 +7426,12 @@ fn ccc_garch<'py>(
 /// `E[DRD] ~= E[D]E[R]E[D]`). Under `"adcc"` the same mean recursion
 /// applies (the asymmetric term cancels against its targeting intercept
 /// in expectation); under `"cdcc"` S replaces Qbar.
+/// The univariate stage inherits `garch_fit`'s EGARCH limit: `vol="egarch"`
+/// accepts `forecast_horizon` 0 or 1 only and raises a teaching ValueError at
+/// 2 or more (no closed-form multi-step EGARCH variance forecast exists and
+/// the simulation route is not shipped).
 #[pyfunction]
-#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
 fn dcc_garch<'py>(
     py: Python<'py>,
@@ -6587,10 +7443,11 @@ fn dcc_garch<'py>(
     mean: &str,
     univariate_dist: &str,
     p: usize,
-    o: usize,
+    o: Option<usize>,
     q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_mgarch::{CorrDist, DccVariant};
+    let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let v = match variant {
         "dcc" => DccVariant::Dcc,
@@ -6695,7 +7552,9 @@ fn dcc_garch<'py>(
 /// `ccc_garch`/`dcc_garch` use — zero-mean Normal GARCH(1,1) by default,
 /// configurable with the same `vol`/`mean`/`univariate_dist`/`p`/`o`/`q`
 /// kwargs so the diagnostic can run under the exact univariate spec you
-/// intend to fit), the residuals are jointly standardized by the
+/// intend to fit; `o` follows `garch_fit`'s sentinel — `None` default,
+/// explicit `o > 0` under `vol="garch"` raises), the residuals are
+/// jointly standardized by the
 /// *symmetric* inverse square root of the constant correlation matrix,
 /// and the stacked off-diagonal outer products are regressed on a
 /// constant and `lags` of themselves (one pooled regression across all
@@ -6712,7 +7571,7 @@ fn dcc_garch<'py>(
 /// purpose, so univariate GARCH misfit does not masquerade as correlation
 /// dynamics.
 #[pyfunction]
-#[pyo3(signature = (returns, lags = 5, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = 1, q = 1))]
+#[pyo3(signature = (returns, lags = 5, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
 fn dcc_test<'py>(
     py: Python<'py>,
@@ -6722,9 +7581,10 @@ fn dcc_test<'py>(
     mean: &str,
     univariate_dist: &str,
     p: usize,
-    o: usize,
+    o: Option<usize>,
     q: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
     let series = returns_to_series(&returns);
     let r = tsecon_mgarch::constant_correlation_test(&series, spec, lags).map_err(to_py)?;
@@ -6825,6 +7685,9 @@ fn har_rv<'py>(
 /// (system-wide spillover index), directional `to_others`/`from_others`,
 /// `net`, and the antisymmetric `pairwise_net` matrix — all in percent.
 /// Matches the documented GFEVD golden to ~1e-13.
+/// Keys: `total`, `to_others`, `from_others`, `net`, `pairwise_net` (k x k), and
+/// `gfevd` (the k x k row-normalized generalized FEVD share matrix at `horizon`
+/// the indices are built from).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
 fn connectedness<'py>(
@@ -6853,6 +7716,8 @@ fn connectedness<'py>(
 /// (N x r), and the full `eigenvalues` vector. Also runs the Bai-Ng (2002)
 /// information criteria up to `kmax` and returns the selected factor counts
 /// (`icp1`/`icp2`/`pcp1`/`pcp2`). Matches numpy PCA to 1e-6 (up to sign).
+/// Also returns the Ahn-Horenstein (2013) eigenvalue-ratio factor count `er`
+/// and the ratios `er_ratios` (length `kmax`) it was read from.
 #[pyfunction]
 #[pyo3(signature = (data, n_factors = 2, kmax = 8))]
 fn factor_model<'py>(
@@ -6935,6 +7800,9 @@ fn factor_model<'py>(
 /// F of 10.5. Entries are keyed by `regressor`; a regressor that is exogenous,
 /// has no excluded instruments, or is reproduced exactly by the instruments
 /// gets no entry, and a missing entry is not a failed fit.
+/// Keys: `params`, `bse`, `cov`, `residuals`, `nobs`, `nmoments`, `nparams`,
+/// `steps` (GMM steps actually run), `hac_bandwidth`, `first_stage`, and — over-
+/// identified only — the Hansen `j_stat`/`j_dof`/`j_pval`.
 #[pyfunction]
 #[pyo3(signature = (x, z, y, method = "2step", weight = "robust", bandwidth = None,
                     tol = 1e-8, max_iter = 100))]
@@ -7065,7 +7933,7 @@ fn iv_gmm<'py>(
 /// - `"purged_kfold"`: López de Prado purged K-fold with a `purge` gap on
 ///   both sides of each test fold and an `embargo` after the purged window,
 ///   to prevent train/test leakage from serial correlation (`k` folds;
-///   `train` is ignored). Following AFML ch. 7 (and mlfinlab), the embargo
+///   `train` is ignored — and note `train` defaults to 0, which the two walk-forward schemes REFUSE as an empty first window, so pass it explicitly there). Following AFML ch. 7 (and mlfinlab), the embargo
 ///   is measured from the END of the purged window, so the exclusions ADD:
 ///   the right-hand gap after each test block is `purge + embargo`
 ///   indices. (Releases up to 0.5.0 used `max(purge, embargo)`, silently
@@ -7145,6 +8013,10 @@ fn cv_splits<'py>(
 /// L1/L2 (elastic-net weighting of the penalty), `gamma > 0` controls how
 /// hard small OLS coefficients are penalized. Returns the coefficients and
 /// convergence info.
+/// Keys: `coef`, `n_iter`, `max_change` (largest absolute coefficient update in
+/// the final sweep, in coefficient units) and `max_rel_change` (that update
+/// scaled as max_j |Δb_j|·‖x_j‖/‖y‖ — the scale-free quantity the stopping rule
+/// compares with `tol`, so `max_rel_change <= tol` on a converged return).
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha, l1_ratio = 1.0, gamma = 1.0, tol = 1e-7, max_iter = 100000))]
 #[allow(clippy::too_many_arguments)]
@@ -7365,7 +8237,11 @@ fn reraise_stashed<T, E: std::fmt::Display>(
 /// grows from `train` observations) or `"rolling"` (fixed width `train`).
 /// `refit_every` sets the refit cadence. Built-in forecasters: `"naive"`,
 /// `"drift"`, `"mean"`, `"seasonal_naive"`, `"theta"` (`period` is used by
-/// the seasonal ones); the default `None` means `"naive"`.
+/// the seasonal ones — `"seasonal_naive"`/`"theta"` only, defaulting to 1
+/// when `None`; passing it explicitly with any other forecaster,
+/// callables included, **raises** rather than being silently ignored —
+/// the MASE/RMSSE scale period is the separate `insample_period`); the
+/// default `None` means `"naive"`.
 ///
 /// `forecaster` may instead be **any Python callable** — the hook that runs
 /// a real model (statsmodels, sklearn, anything) through this engine's
@@ -7396,7 +8272,7 @@ fn reraise_stashed<T, E: std::fmt::Display>(
 /// first training window at `insample_period` — never the test sample.
 #[pyfunction]
 #[pyo3(signature = (y, window = "expanding", train = 20, horizon = 1, refit_every = 1,
-                    forecaster = None, period = 1, insample_period = 1))]
+                    forecaster = None, period = None, insample_period = 1))]
 #[allow(clippy::too_many_arguments)]
 fn backtest<'py>(
     py: Python<'py>,
@@ -7406,7 +8282,7 @@ fn backtest<'py>(
     horizon: usize,
     refit_every: usize,
     forecaster: Option<Bound<'py, PyAny>>,
-    period: usize,
+    period: Option<usize>,
     insample_period: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast::{
@@ -7414,6 +8290,43 @@ fn backtest<'py>(
         ForecastError,
     };
     let forecaster = ForecasterArg::parse(forecaster, "naive", "forecaster")?;
+    if let ForecasterArg::Name(fc_name) = &forecaster {
+        if !matches!(
+            fc_name.as_str(),
+            "naive" | "drift" | "mean" | "seasonal_naive" | "theta"
+        ) {
+            return Err(PyValueError::new_err(format!(
+                "unknown forecaster {fc_name:?}; expected one of naive, drift, mean, \
+                 seasonal_naive, theta"
+            )));
+        }
+    }
+    // `period` feeds only the seasonal built-ins ("seasonal_naive"/"theta");
+    // it never reaches a callable (which receives only (train, horizon)) and
+    // is NOT the MASE/RMSSE scale period — that is `insample_period`. Refuse
+    // it explicitly-passed where it cannot act (audit round 10); the
+    // sentinel default (None -> 1) keeps default calls bit-identical.
+    let period = match (&forecaster, period) {
+        (ForecasterArg::Name(n), Some(p)) if matches!(n.as_str(), "seasonal_naive" | "theta") => p,
+        (ForecasterArg::Name(n), Some(_)) => {
+            return Err(PyValueError::new_err(format!(
+                "period was given but forecaster={n:?} ignores it: period is the \
+                 seasonal cycle length of the \"seasonal_naive\" and \"theta\" \
+                 forecasters only (the MASE/RMSSE scale period is the separate \
+                 insample_period); pick a seasonal forecaster or drop period"
+            )))
+        }
+        (ForecasterArg::Callable(f), Some(_)) => {
+            return Err(PyValueError::new_err(format!(
+                "period was given but a forecaster callable ({}) never receives \
+                 it: the callable contract is forecaster(train, horizon), so \
+                 seasonality handling belongs inside the callable (the MASE/RMSSE \
+                 scale period is the separate insample_period); drop period",
+                py_callable_name(f)
+            )))
+        }
+        (_, None) => 1,
+    };
     let win = match window {
         "expanding" => Window::Expanding { min_train: train },
         "rolling" => Window::Rolling { width: train },
@@ -7435,7 +8348,8 @@ fn backtest<'py>(
                     "mean" => Ok(historical_mean(train, h, 0.95)?.mean),
                     "seasonal_naive" => Ok(seasonal_naive(train, period, h, 0.95)?.mean),
                     "theta" => Ok(theta_forecast(train, period, h)?.forecast),
-                    // Unreachable: the forecaster name is validated before `run`.
+                    // Unreachable: the forecaster name is validated above,
+                    // before the period guard.
                     _ => Err(ForecastError::NonFinite {
                         what: "forecaster",
                         index: 0,
@@ -7443,15 +8357,6 @@ fn backtest<'py>(
                     }),
                 }
             };
-            if !matches!(
-                fc_name.as_str(),
-                "naive" | "drift" | "mean" | "seasonal_naive" | "theta"
-            ) {
-                return Err(PyValueError::new_err(format!(
-                    "unknown forecaster {fc_name:?}; expected one of naive, drift, mean, \
-                     seasonal_naive, theta"
-                )));
-            }
             bt.run(&vec1(&y), point).map_err(to_py)?
         }
         ForecasterArg::Callable(f) => {
@@ -7611,6 +8516,76 @@ fn conformal_windows(n: usize, calib: Option<usize>, n_eval: Option<usize>) -> (
     (calib.unwrap_or(n / 4), n_eval.unwrap_or(n / 5))
 }
 
+/// Validate the conformal `method` name up front, so a typo'd method gets
+/// the unknown-method error rather than a misleading inert-kwarg refusal
+/// from the guard below.
+fn validate_conformal_method(method: &str) -> PyResult<()> {
+    match method {
+        "split" | "enbpi" | "aci" => Ok(()),
+        other => Err(PyValueError::new_err(format!(
+            "unknown method {other:?}; expected \"split\", \"enbpi\", or \"aci\""
+        ))),
+    }
+}
+
+/// The audit-round-10 inert-kwarg guard shared by the conformal entry
+/// points: each knob below parameterizes exactly one method (or one base),
+/// so accepting it anywhere else would be a silent no-op. Refuse it when
+/// passed explicitly, naming the method/base that would use it; the
+/// sentinel defaults (None) keep every default call bit-identical — the
+/// `garch_fit(o=...)` house convention.
+#[allow(clippy::too_many_arguments)]
+fn refuse_inert_conformal(
+    method: &str,
+    base: &ForecasterArg<'_>,
+    base_label: &str,
+    order: Option<&Vec<i64>>,
+    lags: Option<usize>,
+    gamma: Option<f64>,
+    n_boot: Option<usize>,
+    seed: Option<u64>,
+    optimize_beta: Option<bool>,
+) -> PyResult<()> {
+    let base_is = |name: &str| matches!(base, ForecasterArg::Name(n) if n == name);
+    if order.is_some() && !base_is("arima") {
+        return Err(PyValueError::new_err(format!(
+            "order was given but base {base_label:?} ignores it: order=(p, d, q) \
+             parameterizes only the \"arima\" base (callables included — a \
+             callable base receives only (train, horizon)); pass base=\"arima\" \
+             or drop order"
+        )));
+    }
+    if lags.is_some() && !base_is("ar") && method != "enbpi" {
+        return Err(PyValueError::new_err(format!(
+            "lags was given but base {base_label:?} ignores it: lags is the AR \
+             design order of the \"ar\" base (and of the AR ensemble that \
+             method=\"enbpi\" trains); pass base=\"ar\" or drop lags"
+        )));
+    }
+    if gamma.is_some() && method != "aci" {
+        return Err(PyValueError::new_err(format!(
+            "gamma was given but method={method:?} ignores it: gamma is the \
+             Gibbs-Candes step size of the ACI level recursion \
+             (alpha_{{t+1}} = alpha_t + gamma (alpha - err_t)), so it only acts \
+             under method=\"aci\"; pass method=\"aci\" or drop gamma"
+        )));
+    }
+    for (name, given) in [
+        ("n_boot", n_boot.is_some()),
+        ("seed", seed.is_some()),
+        ("optimize_beta", optimize_beta.is_some()),
+    ] {
+        if given && method != "enbpi" {
+            return Err(PyValueError::new_err(format!(
+                "{name} was given but method={method:?} ignores it: {name} \
+                 parameterizes the bootstrap AR ensemble that only \
+                 method=\"enbpi\" trains; pass method=\"enbpi\" or drop {name}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
     match (mode, method) {
         ("symmetric", _) => Ok(true),
@@ -7683,6 +8658,16 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// takes no callable base. `calib` defaults to `n // 4`
 /// residuals per horizon; `n_eval` (aci) defaults to `n // 5`.
 ///
+/// **Inert kwargs raise (0.7.0).** Each method-specific knob acts only
+/// under its own method/base, so passing one explicitly anywhere else is
+/// refused with a teaching error instead of being silently ignored
+/// (defaults are unchanged and bit-identical): `order` needs
+/// `base="arima"`; `lags` needs `base="ar"` (or EnbPI's ensemble);
+/// `gamma` needs `method="aci"`; `n_boot`/`seed`/`optimize_beta` need
+/// `method="enbpi"`; `n_eval` is ACI-only in THIS function
+/// (`conformal_backtest` uses it for every method); and `calib` never
+/// reaches EnbPI (out-of-bag calibration).
+///
 /// Returns dict keys (all methods): `mean`, `lower`, `upper`, `level`
 /// (`1 - alpha`), `alpha`, `horizon`, `method`, `base`, `n_calib`.
 /// Split adds `q_lower`, `q_upper`, `scores` (the per-horizon signed
@@ -7692,11 +8677,15 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// and `optimize_beta`. ACI adds `gamma`, `alpha_final`,
 /// `alpha_trajectory`, `err`, `realized_coverage` (all per horizon over
 /// the online window), and `n_eval`.
+/// `seed=None` (the default) is NOT fresh entropy: under `method="enbpi"` it
+/// runs the bootstrap ensemble with seed 0, so two default calls are
+/// bit-identical; pass an explicit `seed` for a different ensemble draw
+/// (`n_boot=None` likewise means 25).
 #[pyfunction]
 #[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
-                    calib = None, mode = "symmetric", period = 1, gamma = 0.005,
-                    n_eval = None, lags = 1, n_boot = 25, seed = 0,
-                    optimize_beta = true, order = None))]
+                    calib = None, mode = "symmetric", period = 1, gamma = None,
+                    n_eval = None, lags = None, n_boot = None, seed = None,
+                    optimize_beta = None, order = None))]
 #[allow(clippy::too_many_arguments)]
 fn conformal_forecast<'py>(
     py: Python<'py>,
@@ -7708,12 +8697,12 @@ fn conformal_forecast<'py>(
     calib: Option<usize>,
     mode: &str,
     period: usize,
-    gamma: f64,
+    gamma: Option<f64>,
     n_eval: Option<usize>,
-    lags: usize,
-    n_boot: usize,
-    seed: u64,
-    optimize_beta: bool,
+    lags: Option<usize>,
+    n_boot: Option<usize>,
+    seed: Option<u64>,
+    optimize_beta: Option<bool>,
     order: Option<Vec<i64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast as fc;
@@ -7722,6 +8711,43 @@ fn conformal_forecast<'py>(
         ForecasterArg::Name(n) => n.clone(),
         ForecasterArg::Callable(c) => format!("<callable {}>", py_callable_name(c)),
     };
+    validate_conformal_method(method)?;
+    refuse_inert_conformal(
+        method,
+        &base,
+        &base_label,
+        order.as_ref(),
+        lags,
+        gamma,
+        n_boot,
+        seed,
+        optimize_beta,
+    )?;
+    // Entry-point-specific inert kwargs (audit round 10): here `n_eval` is
+    // the ACI online window only (conformal_backtest uses it for every
+    // method), and `calib` never reaches EnbPI (its calibration set is the
+    // ensemble's out-of-bag residuals, not a held-out window).
+    if n_eval.is_some() && method != "aci" {
+        return Err(PyValueError::new_err(format!(
+            "n_eval was given but conformal_forecast(method={method:?}) ignores \
+             it: n_eval is the online evaluation window of the ACI recursion, \
+             used here only by method=\"aci\" (conformal_backtest, by contrast, \
+             evaluates every method over n_eval origins); pass method=\"aci\", \
+             use conformal_backtest, or drop n_eval"
+        )));
+    }
+    if calib.is_some() && method == "enbpi" {
+        return Err(PyValueError::new_err(
+            "calib was given but method=\"enbpi\" ignores it: EnbPI calibrates on \
+             the leave-one-out out-of-bag residuals of its bootstrap ensemble \
+             (n_calib reports their count), not on a held-out window; calib sizes \
+             the split/aci calibration window, so pass method=\"split\"/\"aci\" \
+             or drop calib",
+        ));
+    }
+    let (gamma, lags) = (gamma.unwrap_or(0.005), lags.unwrap_or(1));
+    let (n_boot, seed) = (n_boot.unwrap_or(25), seed.unwrap_or(0));
+    let optimize_beta = optimize_beta.unwrap_or(true);
     let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
     let yv = vec1(&y);
     let n = yv.len();
@@ -7860,15 +8886,24 @@ fn conformal_forecast<'py>(
 /// `base(train, horizon)` for split/aci, with the same read-only
 /// training-window contract and teaching errors.
 ///
+/// The same inert-kwarg refusals as `conformal_forecast` apply (0.7.0:
+/// `order`, `lags`, `gamma`, `n_boot`/`seed`/`optimize_beta`, EnbPI's
+/// `calib`), plus `batch`, which is EnbPI-only here; `n_eval` is live for
+/// every method in this function. Defaults stay bit-identical.
+///
 /// Returns dict keys: `origins`, `n_eval`, `horizon`, `level`, `alpha`,
 /// `method`, `base`, and per-horizon lists `mean`, `lower`, `upper`,
 /// `err` (missed-target indicators), plus `realized_coverage` (per
 /// horizon). ACI adds `alpha_trajectory`; EnbPI adds `batch`.
+/// `seed=None` (the default) is NOT fresh entropy: under `method="enbpi"` it
+/// runs the bootstrap ensemble with seed 0, so two default calls are
+/// bit-identical; pass an explicit `seed` for a different ensemble draw
+/// (`n_boot=None` likewise means 25).
 #[pyfunction]
 #[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
-                    calib = None, mode = "symmetric", period = 1, gamma = 0.005,
-                    n_eval = None, lags = 1, n_boot = 25, batch = 1, seed = 0,
-                    optimize_beta = true, order = None))]
+                    calib = None, mode = "symmetric", period = 1, gamma = None,
+                    n_eval = None, lags = None, n_boot = None, batch = None, seed = None,
+                    optimize_beta = None, order = None))]
 #[allow(clippy::too_many_arguments)]
 fn conformal_backtest<'py>(
     py: Python<'py>,
@@ -7880,13 +8915,13 @@ fn conformal_backtest<'py>(
     calib: Option<usize>,
     mode: &str,
     period: usize,
-    gamma: f64,
+    gamma: Option<f64>,
     n_eval: Option<usize>,
-    lags: usize,
-    n_boot: usize,
-    batch: usize,
-    seed: u64,
-    optimize_beta: bool,
+    lags: Option<usize>,
+    n_boot: Option<usize>,
+    batch: Option<usize>,
+    seed: Option<u64>,
+    optimize_beta: Option<bool>,
     order: Option<Vec<i64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_forecast as fc;
@@ -7895,6 +8930,40 @@ fn conformal_backtest<'py>(
         ForecasterArg::Name(n) => n.clone(),
         ForecasterArg::Callable(c) => format!("<callable {}>", py_callable_name(c)),
     };
+    validate_conformal_method(method)?;
+    refuse_inert_conformal(
+        method,
+        &base,
+        &base_label,
+        order.as_ref(),
+        lags,
+        gamma,
+        n_boot,
+        seed,
+        optimize_beta,
+    )?;
+    // Entry-point-specific inert kwargs (audit round 10): `batch` is the
+    // EnbPI label-reveal cadence only, and `calib` never reaches EnbPI
+    // (out-of-bag calibration). `n_eval` stays live for every method here.
+    if batch.is_some() && method != "enbpi" {
+        return Err(PyValueError::new_err(format!(
+            "batch was given but method={method:?} ignores it: batch is the \
+             label-reveal cadence of the published EnbPI online algorithm (the \
+             residual window slides forward by batch), so it only acts under \
+             method=\"enbpi\"; pass method=\"enbpi\" or drop batch"
+        )));
+    }
+    if calib.is_some() && method == "enbpi" {
+        return Err(PyValueError::new_err(
+            "calib was given but method=\"enbpi\" ignores it: EnbPI calibrates on \
+             the leave-one-out out-of-bag residuals of its bootstrap ensemble, \
+             not on a held-out window; calib sizes the split/aci calibration \
+             window, so pass method=\"split\"/\"aci\" or drop calib",
+        ));
+    }
+    let (gamma, lags) = (gamma.unwrap_or(0.005), lags.unwrap_or(1));
+    let (n_boot, seed) = (n_boot.unwrap_or(25), seed.unwrap_or(0));
+    let (batch, optimize_beta) = (batch.unwrap_or(1), optimize_beta.unwrap_or(true));
     let err_slot: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
     let yv = vec1(&y);
     let n = yv.len();
@@ -8584,6 +9653,8 @@ fn realized_range(
 /// filtered conditional `variance` path, `std_resid`, `loglik`, `aic`,
 /// `bic`, the one-step-ahead `next_variance`, convergence info, and — if
 /// `horizon > 0` — an `h`-step variance `forecast`.
+/// The convergence info is `converged` (the optimizer's certificate) and
+/// `iterations`.
 #[pyfunction]
 #[pyo3(signature = (y, density = "gaussian", horizon = 0))]
 fn gas_volatility<'py>(
@@ -8762,7 +9833,7 @@ fn panel_mean_group<'py>(
 /// Returns dict keys: the edge `nowcast` (one level per series), the
 /// `edge_factor` (length `r`), the Gaussian `loglik` (full ragged panel),
 /// `fit_loglik` (balanced training block), the `smoothed_factors`
-/// (`(T, r)` nested list, training pass), `n_factors`/`factor_order`, and
+/// (`(T_b, r)` nested list — one row per BALANCED-panel observation, i.e. T minus the ragged-edge rows; training pass), `n_factors`/`factor_order`, and
 /// the full fitted model — both `method` routes return the same parameter
 /// surface:
 ///
@@ -8911,6 +9982,8 @@ fn dfm_nowcast<'py>(
 /// (post-fix: 0/20 failures on all three variants). Non-convergence from
 /// both starts raises (the last iterate is not a verified fixed point);
 /// raise `max_iter` or loosen `tol` on genuinely slow-mixing panels.
+/// Keys: `theta`, `theta_se`, `phi_bar`, `phi`, `sigma2`, `loglik`, `iterations`,
+/// `n_units`, `k`.
 #[pyfunction]
 #[pyo3(signature = (ys, xs, tol = 3e-13, max_iter = 1000))]
 fn panel_pmg<'py>(
@@ -8957,6 +10030,10 @@ fn panel_pmg<'py>(
 /// "t-stat". `regression` is "c" (default), "ct", or "n" ("n" is invalid for
 /// "ips"). `lrv_kernel`/`lrv_bandwidth` configure the LLC long-run variance.
 /// Conventions match plm::purtest (validated to plm, and for "fisher" to statsmodels).
+/// Keys: `statistic`, `p_value`, `per_unit_tstat`/`per_unit_pvalue`/
+/// `per_unit_lags`/`per_unit_nobs`, `n_units`, `regression`, `test`, plus the
+/// test-specific extras: ips -> `t_bar`; llc -> `delta_hat`, `t_delta`, `s_n`,
+/// `t_bar_periods`; fisher -> `maddala_wu`, `choi_z`, `choi_z_pvalue`.
 #[pyfunction]
 #[pyo3(signature = (data, test = "ips", lags = None, regression = "c", max_lags = None, lrv_kernel = "bartlett", lrv_bandwidth = None))]
 #[allow(clippy::too_many_arguments)]
@@ -9248,6 +10325,8 @@ fn predictive_regression<'py>(
 /// min(1, k * min_j p_j), and two extra keys report the per-predictor tests:
 /// `wald_scalar` and `pvalue_scalar` (each column exactly
 /// `predictive_regression`'s ivx test for that predictor).
+/// Keys: `beta_ivx`, `wald`, `pvalue`, `rz`, `nregressors`, `nobs`, and — under
+/// the default `joint="bonferroni"` — `wald_scalar`, `pvalue_scalar`, `joint`.
 #[pyfunction]
 #[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95, joint = "bonferroni"))]
 fn ivx_test<'py>(
@@ -9365,8 +10444,8 @@ fn recession_probit<'py>(
 /// comparing across libraries). The `slope` measures information rigidity — 0 under
 /// full-information rational expectations, positive under sticky/noisy
 /// information — and maps to `implied_rigidity = slope/(1+slope)`. Returns
-/// `intercept`/`slope` with HAC `se`/`t`/`p`, `r_squared`, `implied_rigidity`,
-/// and `maxlags`/`nobs`.
+/// `intercept` and `slope` with HAC `se_intercept`/`se_slope`, the slope's
+/// `t_slope`/`p_slope`, `r_squared`, `implied_rigidity`, and `maxlags`/`nobs`.
 #[pyfunction]
 #[pyo3(signature = (errors, revisions, maxlags = None, use_correction = true))]
 fn cg_regression<'py>(
@@ -9796,6 +10875,8 @@ fn dsge_solve<'py>(
 /// IRLS stopping tolerance) and `bse`/`bandwidth`/`sparsity` at 1e-6
 /// relative. Include the constant column in `x` yourself (statsmodels exog
 /// convention). `taus` defaults to [0.05, 0.25, 0.5, 0.75, 0.95].
+/// Keys: `taus`, `params`, `bse`, `tvalues`, `iterations`, `bandwidth`,
+/// `sparsity` (all per tau), and a single `converged` bool over all taus.
 #[pyfunction]
 #[pyo3(signature = (y, x, taus = None, se = "robust"))]
 fn quantile_regression<'py>(
@@ -9986,6 +11067,8 @@ fn flp_covs_nested(covs: &[Vec<f64>], k: usize) -> Vec<Vec<Vec<f64>>> {
 /// eigenfunction's largest-|.| entry is positive.
 ///
 /// Matches numpy.linalg.eigh of the same covariance at 1e-10.
+/// Keys: `mean_curve` (length M), `eigenfunctions` (K x M), `scores` (T x K),
+/// `eigenvalues`, `explained`, `total_variance`.
 #[pyfunction]
 #[pyo3(signature = (curves, n_factors = 3))]
 fn functional_pca<'py>(
@@ -10020,6 +11103,8 @@ fn functional_pca<'py>(
 /// Matches statsmodels OLS(...).fit(cov_type="HAC", cov_kwds={"maxlags": L,
 /// "use_correction": True}) per horizon at 1e-8 (statsmodels defaults the
 /// correction off; this function always applies it).
+/// Keys: `horizons`, `n_factors`, `betas` ((H+1) x K), `covs` ((H+1) x K x K
+/// joint HAC covariances), `se` ((H+1) x K), `nobs` (per horizon).
 #[pyfunction]
 #[pyo3(signature = (y, scores, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 fn flp<'py>(
@@ -10071,6 +11156,8 @@ fn flp<'py>(
 ///
 /// Matches the numpy/statsmodels composition (eigh + OLS-HAC + closed form)
 /// at 1e-8.
+/// Keys: `horizons`, `weights` (w = phi'delta, length K), `response`, `se`,
+/// `betas` ((H+1) x K), `explained`.
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 #[allow(clippy::too_many_arguments)] // py + 7 user args; the composite scenario call genuinely needs them
@@ -10123,6 +11210,9 @@ fn flp_scenario<'py>(
 ///
 /// Matches statsmodels VAR(...).fit(lags, trend="c") + orth_ma_rep + scipy
 /// triangular solve at 1e-8.
+/// Keys: `horizons`, `weights` (w = phi'delta, length K), `response_outcome`,
+/// `responses` ((H+1) x (K+1), scores first then outcome),
+/// `implied_outcome_innovation`.
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, lags = 2, horizon = 10))]
 fn fvar_scenario<'py>(
@@ -10297,6 +11387,9 @@ fn bai_perron<'py>(
 /// R strucchange `Fstats`/`sctest` at 1e-8; p-value 1e-10 against the
 /// transcribed surface). Returns the full `f_path` over `dates` plus the
 /// argmax `break_date`.
+/// Keys: `stat`, `p_value`, `break_date`, `f_path` (one F per candidate date),
+/// `dates` (the trimmed candidate dates `f_path` is indexed by), and `h` (the
+/// trimming width in observations at each end).
 #[pyfunction]
 #[pyo3(signature = (y, x, trim = 0.15))]
 fn sup_f_test<'py>(
@@ -10380,6 +11473,9 @@ fn sup_f_test<'py>(
 /// here is centred on a shrunk estimator.
 ///
 /// Method: Montiel Olea and Plagborg-Møller.
+/// Keys: `horizons`, `irf`, `se`, `lambda_used`, `cv_grid`, `cv_scores` (both
+/// empty when `lam` is a fixed float), `theta`, `irf_raw`, `se_raw`, plus the
+/// band keys above when `band` is set.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -10643,6 +11739,28 @@ fn parse_narrative_restrictions(
 
 /// Historical decomposition (Kilian & Lütkepohl 2017, ch.4): per-(time, variable,
 /// shock) structural-shock contributions.
+/// Splits each variable into a deterministic/initial-condition `baseline` plus the
+/// cumulated contribution `hd[time][variable][shock]` of each structural shock,
+/// obeying the exact adding-up identity y = baseline + sum_j hd (validated to ~1e-10
+/// against a NumPy reference). `times` are 0-based effective-sample indices
+/// (= data_row - lags).
+///
+/// identification="cholesky" (default): a point decomposition at the OLS VAR with
+/// Q=I; returns `times`, `baseline` [T_eff][n], `hd` [T_eff][n][n] indexed
+/// [time][variable][shock], and the structural `shocks` [T_eff][n].
+/// identification="sign": the importance-weighted SET decomposition over sign- (and
+/// optionally narrative-) restricted rotations; returns `times`, `baseline`
+/// (posterior-mean), `probs`, `hd_quantiles` [T_eff][n][n][len(probs)] (weighted
+/// type-7), the weight-free identified-set envelope `hd_set_min`/`hd_set_max`,
+/// per-draw `weights`, and `diagnostics`.
+///
+/// `narrative_restrictions` (sign mode) is a list of dicts with 0-based effective
+/// indices:
+///   {"type":"shock_sign","shock":int,"period":int,"sign":"+"|"-"}
+///   {"type":"contribution","variable":int,"shock":int,"start":int,"end":int,
+///    "rule":"most"|"least","strong":bool}
+///   {"type":"contribution_sign","variable":int,"shock":int,"start":int,"end":int,
+///    "sign":"+"|"-"}
 #[pyfunction]
 #[pyo3(signature = (data, restrictions = vec![], lags = 2, horizon = None, identification = "cholesky",
                     n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2,
@@ -10817,6 +11935,15 @@ fn historical_decomposition<'py>(
 
 /// Narrative sign-restricted Bayesian SVAR (Antolín-Díaz & Rubio-Ramírez 2018).
 /// Superset of sign_restricted_svar; narrative None + weights all 1 reproduces it.
+/// Augments traditional sign restrictions with restrictions on named historical
+/// episodes — shock signs and "most/least important contributor" statements (see
+/// `historical_decomposition` for the `narrative_restrictions` dict schema) —
+/// imposed by importance-reweighting the accepted rotations with weight = 1/P̂(N|S).
+/// Returns per-(horizon, variable, shock) `quantiles` (weighted type-7) at
+/// the echoed `probs` (= [0.05, 0.16, 0.50, 0.84, 0.95]), the weight-free identified-set envelope
+/// `set_min`/`set_max`, per-draw `weights` (mean 1), and `diagnostics` (with `ess`,
+/// `narrative_acceptance_rate`, `min_ptilde`). With no narrative restrictions every
+/// weight is 1 and it reproduces `sign_restricted_svar` bit-for-bit.
 #[pyfunction]
 #[pyo3(signature = (data, sign_restrictions = vec![], narrative_restrictions = None, lags = 2,
                     horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, n_weight_draws = 200))]
@@ -10915,6 +12042,21 @@ fn narrative_svar<'py>(
 
 /// Fry-Pagan (2011) median-target SVAR: the single accepted sign-restricted
 /// draw whose structural IRFs are jointly closest to the pointwise median.
+/// Sign restrictions set-identify a *set* of structural models; the pointwise
+/// median band mixes responses from mutually inconsistent draws and is not
+/// itself a model. This returns instead the single accepted, sign-normalized
+/// draw whose structural IRFs jointly minimize the Fry-Pagan criterion -- the
+/// sum, over the target cells, of squared deviations from the pointwise median,
+/// each standardized by that cell's across-draw dispersion. `restrictions` are
+/// (variable, shock, horizon, sign) tuples with sign in {"+", "-"}; `target` is
+/// "restricted" (response cells of the sign-restricted shocks; default) or
+/// "all". Returns the coherent `median_target_irf` [horizon+1][n][n], the
+/// incoherent pointwise `median_irf` (for comparison), the selected `mt_index`
+/// (0-based into the accepted set), its `mt_statistic`, `n_accepted`, and the
+/// acceptance `diagnostics`. Reproducible at a fixed `seed` (substream
+/// contract). The selected draw is a descriptive summary -- one interior point
+/// of the identified set, dependent on the informative Haar prior -- not a
+/// prior-free point estimate.
 #[pyfunction]
 #[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, target = "restricted"))]
 #[allow(clippy::too_many_arguments)]
@@ -11011,6 +12153,22 @@ fn fry_pagan_svar<'py>(
 
 /// Giacomini-Kitagawa (2021) prior-robust identified-set bounds for a sign-
 /// restricted SVAR on the Minnesota-NIW posterior.
+/// `restrictions` are (variable, shock, horizon, sign) tuples with sign in
+/// {"+", "-"}. For each restricted shock, the per-draw identified set of the
+/// structural IRF is computed exactly over the admissible rotation set and
+/// summarized over the reduced-form posterior, removing the informative-Haar-
+/// prior artifact that pointwise `sign_restricted_svar` bands carry. Returns
+/// per (horizon, variable, shock): `set_lower_mean`/`set_upper_mean` (posterior-
+/// mean identified-set edges), `robust_ci_lower`/`robust_ci_upper` (the level-
+/// `alpha` robust credible region), and `lower_quantiles`/`upper_quantiles` at
+/// the echoed `probs` (= [0.05, 0.16, 0.50, 0.84, 0.95]). Unrestricted shocks are NaN in every one
+/// of those arrays; `restricted_shocks` lists the valid shock indices, `alpha`
+/// is echoed, and `diagnostics` reports `empty_set_rate` (the share of draws
+/// whose restrictions were mutually infeasible). Exact for a single restricted
+/// shock (Gafarov-Meier-Montiel-Olea 2018 closed form); with multiple
+/// jointly-restricted shocks each bound is that shock's marginal identified
+/// set — a conservative outer approximation of the joint set, since the
+/// cross-shock orthogonality coupling is not imposed.
 #[pyfunction]
 #[pyo3(signature = (data, restrictions, lags = 2, horizon = 12, n_draws = 500, seed = 0, lambda1 = 0.2, alpha = 0.10))]
 #[allow(clippy::too_many_arguments)]
@@ -11107,6 +12265,9 @@ fn robust_svar_bounds<'py>(
 /// threshold: `1 - p < n_exceed / n`) in the units of `y` — fit losses
 /// (`-returns` or `abs(returns)`) to read them as risk numbers; `es` is
 /// NaN where `xi >= 1`. At least 10 exceedances are required.
+/// Keys: `threshold`, `threshold_quantile`, `n`, `n_exceed`, `exceed_rate`,
+/// `xi`, `beta`, `se_xi`, `se_beta`, `se_valid`, `loglik`, `converged`,
+/// `p_tail`, `var`, `es`.
 #[pyfunction]
 #[pyo3(signature = (y, threshold = None, quantile = 0.90, p_tail = None))]
 fn gpd_fit<'py>(
@@ -11150,6 +12311,9 @@ fn gpd_fit<'py>(
 /// are the `1 - 1/T` GEV quantiles at each `return_periods` entry
 /// (default [10, 50, 100] blocks; each `T > 1`). At least 10 maxima are
 /// required.
+/// Keys: `xi`, `mu`, `sigma`, `se_xi`, `se_mu`, `se_sigma`, `se_valid`,
+/// `loglik`, `converged`, `n_maxima`, `block_size`, `return_periods`,
+/// `return_levels`.
 #[pyfunction]
 #[pyo3(signature = (y, block_size = None, return_periods = None))]
 fn gev_fit<'py>(
@@ -11431,12 +12595,19 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(coherence, m)?)?;
     m.add_function(wrap_pyfunction!(johansen, m)?)?;
     m.add_function(wrap_pyfunction!(vecm, m)?)?;
+    m.add_function(wrap_pyfunction!(threshold_vecm, m)?)?;
+    m.add_function(wrap_pyfunction!(hansen_seo_test, m)?)?;
     m.add_function(wrap_pyfunction!(engle_granger, m)?)?;
     m.add_function(wrap_pyfunction!(ou_fit, m)?)?;
     m.add_function(wrap_pyfunction!(spread_zscore, m)?)?;
     m.add_function(wrap_pyfunction!(markov_switching_ar, m)?)?;
     m.add_function(wrap_pyfunction!(setar, m)?)?;
     m.add_function(wrap_pyfunction!(setar_test, m)?)?;
+    m.add_function(wrap_pyfunction!(star, m)?)?;
+    m.add_function(wrap_pyfunction!(star_eval, m)?)?;
+    m.add_function(wrap_pyfunction!(star_test, m)?)?;
+    m.add_function(wrap_pyfunction!(threshold_var, m)?)?;
+    m.add_function(wrap_pyfunction!(threshold_var_test, m)?)?;
     m.add_function(wrap_pyfunction!(midas_weights, m)?)?;
     m.add_function(wrap_pyfunction!(umidas, m)?)?;
     m.add_function(wrap_pyfunction!(ccc_garch, m)?)?;
@@ -11526,5 +12697,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pseudo_obs, m)?)?;
     m.add_function(wrap_pyfunction!(copula_fit, m)?)?;
     m.add_function(wrap_pyfunction!(copula_select, m)?)?;
+    ml_kernel::register(m)?;
+    ml_structured::register(m)?;
+    ml_trees::register(m)?;
+    ml_convex::register(m)?;
+    ml_neural::register(m)?;
     Ok(())
 }

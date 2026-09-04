@@ -311,13 +311,22 @@ def main():
     # ---- canary: statsmodels ships neither estimator ----------------------
     import statsmodels.tsa.filters as smf
 
+    # PROVENANCE NOTE: this fixture was generated under statsmodels 0.14.x,
+    # when neither a Hamilton nor a BN implementation existed there (that is
+    # why the goldens below are formula transcriptions). statsmodels 0.15.0
+    # added tsa.filters.api.hamilton_filter — the canary fired — and the
+    # live cross-check against it now lives in
+    # bindings/python/tests/test_bn_filters.py (version-gated). Regenerate
+    # this fixture ONLY under the statsmodels version pinned in _meta: a
+    # newer version re-estimates the gdp ARIMA(2,1,2) block and would churn
+    # the committed goldens.
     absent = {
         "hamilton": not any("hamilton" in x.lower() for x in dir(smf)),
         "beveridge_nelson": not any(
             "beveridge" in x.lower() or x.lower() == "bn" for x in dir(sm.tsa)
         ),
     }
-    assert all(absent.values()), absent
+    assert absent["beveridge_nelson"], absent
 
     # ---- hamilton_hac -----------------------------------------------------
     h, p = 8, 4

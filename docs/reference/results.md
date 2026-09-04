@@ -120,12 +120,14 @@ pip install 'tsecon[plots]'
 |---|---|---|
 | [`VARResults`](#varresults) | `var_fit` | coefficient matrix, stability verdict, `.irf()` |
 | `IRFArray` | `var_irf` | a `list` subclass — `.response(i, j)`, `.plot()` grid |
+| `CoefficientFrame` | `var_fit` params | `VARResults.coefficient_frame()` — labelled `.rows`/`.columns`/`.values`, `.to_pandas()` |
 | `LPResults` | `lp` | per-horizon table, `.conf_int()`, `.peak()`, `.plot_irf()` |
 | `GARCHResults` | `garch_fit` | robust SEs, `.persistence()`, `.plot_volatility()` |
 | `ARIMAResults` | `arima_fit` | `.forecast_frame()`, fan-chart `.plot_forecast()` |
 | [`PredictiveRegressionResults`](#predictiveregressionresults) | `predictive_regression` | three estimators side by side |
 | `IVXTestResults` | `ivx_test` | joint IVX test |
 | [`DSGEResults`](#dsgeresults) | `dsge_solve` | Blanchard-Kahn verdict, `.impulse_response()` |
+| `CheckSeriesResults` | `check_series` | the whole diagnostic battery — `.summary()`, `.plot_diagnostics()` |
 
 ### Named parameters on the raw dict
 

@@ -824,13 +824,14 @@ def _univariate_recommendations(
                     "acf_at_seasonal_lags": se_fam["acf_at_seasonal_lags"],
                     "periodogram_ordinate": se_fam["periodogram_ordinate"],
                 },
-                "Plain speech: tsecon ships no seasonal ARIMA and no X-13 — "
-                "both are roadmap, and that gap is real. Today, either add "
-                "explicit seasonal-lag terms (regress on lag-s terms / seasonal "
-                "dummies, or arima_fit on the seasonally differenced series you "
-                "construct upstream) or deseasonalize upstream (e.g. X-13/STL "
-                "elsewhere) before modeling here.",
-                ["acf", "periodogram", "arima_fit"],
+                "Plain speech: model it directly with "
+                "arima_fit(..., seasonal=(P, D, Q, s)), letting nsdiffs pick D "
+                "first; or decompose with mstl (multiple periods) or stl (one) "
+                "and model the seasonally adjusted series. The one real gap is "
+                "X-13ARIMA-SEATS, which needs the external Census binary and so "
+                "stays out of scope — deseasonalize elsewhere if you need X-13 "
+                "specifically.",
+                ["acf", "periodogram", "nsdiffs", "arima_fit", "mstl", "stl"],
                 "Compare the seasonal-lag ACF against the white-noise band "
                 "before investing in seasonal structure; a periodogram spike "
                 "alone can be a harmonic of a lower frequency.",
@@ -1299,6 +1300,15 @@ def check_series(
     it would decide the confirmatory quadrant by the clamp rather than the
     data. ``seasonal_period`` must be an integer >= 2 with at least two
     full cycles in sample.
+
+    Keys (univariate): ``kind``, ``n``, ``alpha``, ``analysis_scale``,
+    ``descriptives``, ``outliers``, ``stationarity``, ``serial_correlation``,
+    ``arch_effects``, ``normality``, ``breaks``, ``long_memory``,
+    ``seasonality``, ``multiple_testing``, ``tests_run``,
+    ``recommendations``. Keys (multivariate): ``kind``, ``n``, ``k``,
+    ``alpha``, ``per_series``, ``integration_summary``, ``cointegration``,
+    ``var_lag_selection``, ``stability``, ``multiple_testing``,
+    ``tests_run``, ``recommendations``.
     """
     alpha = _validate_alpha(alpha)
     arr = _validate(data)

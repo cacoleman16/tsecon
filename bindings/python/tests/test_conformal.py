@@ -382,3 +382,122 @@ def test_mapie_split_quantile_cross_check():
     assert mapie_halfwidth == pytest.approx(ours, rel=1e-12), (
         f"MAPIE half-width {mapie_halfwidth} vs tsecon corrected quantile {ours}"
     )
+
+
+# ----------------------------------- audit round 10: inert kwargs now raise
+
+def _bits(x):
+    """Recursive bit-comparison key for a conformal result dict."""
+    if isinstance(x, dict):
+        return {k: _bits(v) for k, v in sorted(x.items())}
+    if isinstance(x, (list, tuple)):
+        return [_bits(v) for v in x]
+    if isinstance(x, np.ndarray):
+        return x.tobytes()
+    return x
+
+
+@pytest.mark.parametrize("entry", [tsecon.conformal_forecast, tsecon.conformal_backtest],
+                         ids=["forecast", "backtest"])
+@pytest.mark.parametrize(
+    "kwargs, kw_name, needle",
+    [
+        (dict(order=(2, 1, 1)), "order", "arima"),                       # base defaults to theta
+        (dict(lags=4), "lags", '"ar"'),                                  # lags is the "ar" design
+        (dict(gamma=0.9), "gamma", '"aci"'),                             # ACI step size
+        (dict(n_boot=7), "n_boot", '"enbpi"'),
+        (dict(seed=9), "seed", '"enbpi"'),
+        (dict(optimize_beta=False), "optimize_beta", '"enbpi"'),
+        (dict(method="enbpi", base="ar", calib=30), "calib", "out-of-bag"),
+    ],
+)
+def test_inert_conformal_kwargs_refused_with_teaching_errors(entry, kwargs, kw_name, needle):
+    """Each method/base-specific knob raises when passed explicitly where it
+    cannot act, naming the mode that would use it (before the fix each was
+    verified bit-identical to the default call - a silent no-op)."""
+    rng = np.random.default_rng(41)
+    y = ar1(rng, 120)
+    with pytest.raises(ValueError, match=kw_name) as exc:
+        entry(y, **kwargs)
+    assert needle in str(exc.value)
+
+
+def test_inert_conformal_entry_specific_refusals():
+    rng = np.random.default_rng(43)
+    y = ar1(rng, 120)
+    # conformal_forecast: n_eval is the ACI online window ONLY there.
+    with pytest.raises(ValueError, match="n_eval") as exc:
+        tsecon.conformal_forecast(y, n_eval=17)
+    assert "aci" in str(exc.value) and "conformal_backtest" in str(exc.value)
+    with pytest.raises(ValueError, match="n_eval"):
+        tsecon.conformal_forecast(y, method="enbpi", base="ar", n_eval=17)
+    # conformal_backtest: batch is the EnbPI reveal cadence only.
+    for method in ("split", "aci"):
+        with pytest.raises(ValueError, match="batch") as exc:
+            tsecon.conformal_backtest(y, method=method, batch=5)
+        assert "enbpi" in str(exc.value)
+    # order/lags refused for a CALLABLE base too (the finding names callables).
+    with pytest.raises(ValueError, match="order"):
+        tsecon.conformal_forecast(y, base=lambda t, h: [t[-1]] * h, order=(1, 0, 0))
+    with pytest.raises(ValueError, match="lags"):
+        tsecon.conformal_forecast(y, base=lambda t, h: [t[-1]] * h, lags=3)
+    # A typo'd method still gets the unknown-method error, not a misleading
+    # inert-kwarg refusal.
+    with pytest.raises(ValueError, match="unknown method"):
+        tsecon.conformal_forecast(y, method="enpbi", seed=1)
+
+
+def test_conformal_defaults_bit_identical_to_explicit_sentinel_resolution():
+    """Default calls are the SAME computation as before the sentinel change:
+    passing the historical default values where they are legal reproduces
+    the default call bit-for-bit, per method."""
+    rng = np.random.default_rng(47)
+    y = ar1(rng, 160)
+    # split: calib may be passed anywhere it was live before.
+    a = tsecon.conformal_forecast(y, horizon=2)
+    b = tsecon.conformal_forecast(y, horizon=2, calib=len(y) // 4)
+    assert _bits(a) == _bits(b)
+    # aci: gamma/n_eval at their documented defaults.
+    a = tsecon.conformal_forecast(y, method="aci")
+    b = tsecon.conformal_forecast(y, method="aci", gamma=0.005, n_eval=len(y) // 5)
+    assert _bits(a) == _bits(b)
+    # enbpi: the ensemble knobs at their documented defaults.
+    a = tsecon.conformal_forecast(y, method="enbpi", base="ar")
+    b = tsecon.conformal_forecast(
+        y, method="enbpi", base="ar", lags=1, n_boot=25, seed=0, optimize_beta=True
+    )
+    assert _bits(a) == _bits(b)
+    # backtest enbpi: batch=1 is the sentinel resolution.
+    a = tsecon.conformal_backtest(y, method="enbpi", base="ar")
+    b = tsecon.conformal_backtest(y, method="enbpi", base="ar", batch=1)
+    assert _bits(a) == _bits(b)
+
+
+def test_conformal_kwargs_still_live_where_documented():
+    """The refused-elsewhere knobs must still CHANGE output in their home
+    mode (a guard that refuses everywhere would be a regression)."""
+    rng = np.random.default_rng(53)
+    y = ar1(rng, 160)
+    assert _bits(tsecon.conformal_forecast(y, base="arima", order=(1, 0, 0))) != \
+        _bits(tsecon.conformal_forecast(y, base="arima", order=(2, 1, 1)))
+    assert _bits(tsecon.conformal_forecast(y, base="ar", lags=1)) != \
+        _bits(tsecon.conformal_forecast(y, base="ar", lags=4))
+    assert _bits(tsecon.conformal_forecast(y, method="aci", gamma=0.005)) != \
+        _bits(tsecon.conformal_forecast(y, method="aci", gamma=0.1))
+    kw = dict(method="enbpi", base="ar")
+    assert _bits(tsecon.conformal_forecast(y, **kw, seed=0)) != \
+        _bits(tsecon.conformal_forecast(y, **kw, seed=1))
+    assert _bits(tsecon.conformal_forecast(y, **kw, n_boot=10)) != \
+        _bits(tsecon.conformal_forecast(y, **kw, n_boot=30))
+    assert _bits(tsecon.conformal_forecast(y, **kw, optimize_beta=True)) != \
+        _bits(tsecon.conformal_forecast(y, **kw, optimize_beta=False))
+    # backtest: n_eval live for EVERY method (the asymmetry with
+    # conformal_forecast that scopes the n_eval refusal to that entry).
+    for mkw in (dict(method="split"), dict(method="aci"), dict(method="enbpi", base="ar")):
+        assert _bits(tsecon.conformal_backtest(y, n_eval=20, **mkw)) != \
+            _bits(tsecon.conformal_backtest(y, n_eval=25, **mkw))
+    assert _bits(tsecon.conformal_backtest(y, method="enbpi", base="ar", batch=1)) != \
+        _bits(tsecon.conformal_backtest(y, method="enbpi", base="ar", batch=8))
+    # forecast enbpi: calib is refused, but n_calib still reports the
+    # out-of-bag count - the key the refusal message points at.
+    assert "n_calib" in tsecon.conformal_forecast(y, method="enbpi", base="ar")

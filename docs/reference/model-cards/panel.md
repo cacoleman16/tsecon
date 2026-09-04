@@ -126,7 +126,7 @@ cluster covariances.
 
 - **`panel_fe`** → `{"params", "bse", "tvalues", "se_type"}`, one entry per
   regressor. The stamped `se_type` tells you which covariance produced `bse`.
-- **`panel_lp`** → `{"irf", "se", "nobs"}`, each length `horizon+1`; plot `irf`
+- **`panel_lp`** → `{"irf", "se", "nobs", "se_type", "cumulative", "jackknife", "bias_correction"}` — the first three each length `horizon+1`, the last four the resolved settings stamped on the result (`band=` adds the band keys); plot `irf`
   ±1.96·`se` for the usual per-horizon read, and note that band is
   **pointwise** — for a statement about the whole path, ask for a
   [simultaneous band](#simultaneous-bands-over-the-horizons-panel_lp).
@@ -138,7 +138,7 @@ cluster covariances.
   `pointwise_critical_value`, `band`, `band_alpha`, `band_scope`,
   `n_cells`, `n_cells_used`) are added; without it the result is exactly
   the historical three-plus-metadata dict.
-- **`lp_did`** → `{"horizons", "coef", "se", "nobs", "n_switchers"}` aligned
+- **`lp_did`** → `{"horizons", "coef", "se", "nobs", "n_switchers", "absorbing", "nonabsorbing_lag", "reweight", "pooled", "never_treated_only", "se_type"}` (the last six are the resolved settings stamped on the result; `pooled=True` adds the `pooled_post_*`/`pooled_pre_*` keys) aligned
   per event-time horizon (−pre_window..post_window; the −1 row is the omitted
   baseline, stored as exact zeros), plus `pooled_post_att`/`pooled_post_se`/
   `pooled_post_nobs`/`pooled_post_n_switchers` (and the `pooled_pre_*` four)

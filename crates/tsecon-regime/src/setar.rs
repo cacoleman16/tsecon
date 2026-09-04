@@ -44,64 +44,27 @@
 //! Econometrics 2(1); Hansen (2000), Econometrica 68(3).
 
 use crate::error::RegimeError;
+use crate::linsolve::{chol_solve, cholesky};
 use tsecon_bootstrap::{par_replicate, WildWeights};
 
 // ------------------------------------------------------------ small linalg
-
-/// Lower-triangular Cholesky factor of the symmetric positive-definite
-/// row-major `k x k` matrix `a`; `None` if a pivot is not strictly positive.
-fn cholesky(a: &[f64], k: usize) -> Option<Vec<f64>> {
-    let mut l = vec![0.0_f64; k * k];
-    for i in 0..k {
-        for j in 0..=i {
-            let mut sum = a[i * k + j];
-            for m in 0..j {
-                sum -= l[i * k + m] * l[j * k + m];
-            }
-            if i == j {
-                if !(sum > 0.0 && sum.is_finite()) {
-                    return None;
-                }
-                l[i * k + i] = sum.sqrt();
-            } else {
-                l[i * k + j] = sum / l[j * k + j];
-            }
-        }
-    }
-    Some(l)
-}
-
-/// Solve `L L' x = b` given the lower Cholesky factor `l`.
-fn chol_solve(l: &[f64], k: usize, b: &[f64]) -> Vec<f64> {
-    let mut x = b.to_vec();
-    for i in 0..k {
-        for j in 0..i {
-            x[i] -= l[i * k + j] * x[j];
-        }
-        x[i] /= l[i * k + i];
-    }
-    for i in (0..k).rev() {
-        for j in (i + 1)..k {
-            x[i] -= l[j * k + i] * x[j];
-        }
-        x[i] /= l[i * k + i];
-    }
-    x
-}
+//
+// The row-major Cholesky pair the scan factors its Gram matrices with
+// lives in `crate::linsolve` (shared with the threshold VAR).
 
 /// Plain OLS `y = X b + e` by Householder QR (columns in `cols`), returning
 /// coefficients, classical nonrobust standard errors
 /// `sqrt(s^2 diag[(X'X)^{-1}])` with `s^2 = SSR / (n - k)`, the residual
 /// vector, and the SSR. Mirrors the QR helper of `tsecon-diag::phillips`
 /// (error growth proportional to `cond(X)`, not `cond(X)^2`).
-struct Ols {
-    params: Vec<f64>,
-    bse: Vec<f64>,
-    resid: Vec<f64>,
-    ssr: f64,
+pub(crate) struct Ols {
+    pub(crate) params: Vec<f64>,
+    pub(crate) bse: Vec<f64>,
+    pub(crate) resid: Vec<f64>,
+    pub(crate) ssr: f64,
 }
 
-fn ols_qr(cols: &[Vec<f64>], y: &[f64], what: &'static str) -> Result<Ols, RegimeError> {
+pub(crate) fn ols_qr(cols: &[Vec<f64>], y: &[f64], what: &'static str) -> Result<Ols, RegimeError> {
     let n = y.len();
     let k = cols.len();
     debug_assert!(cols.iter().all(|c| c.len() == n));
@@ -200,24 +163,38 @@ fn ols_qr(cols: &[Vec<f64>], y: &[f64], what: &'static str) -> Result<Ols, Regim
 // ------------------------------------------------------------- the design
 
 /// The usable-sample design for one delay: response, regressor columns, and
-/// threshold variable, all in time order.
-struct Design {
+/// threshold variable, all in time order. Shared with the STAR module.
+pub(crate) struct Design {
     /// Regressor columns (`k` columns of length `n`): `[1?, y_{t-1}, ...,
     /// y_{t-p}]`.
-    cols: Vec<Vec<f64>>,
+    pub(crate) cols: Vec<Vec<f64>>,
     /// Response `y_t`.
-    y: Vec<f64>,
+    pub(crate) y: Vec<f64>,
     /// Threshold variable `z_t = y_{t-d}`.
-    z: Vec<f64>,
-    n: usize,
-    k: usize,
+    pub(crate) z: Vec<f64>,
+    pub(crate) n: usize,
+    pub(crate) k: usize,
 }
 
 /// Build the design over the common usable sample `t = start .. T-1`
 /// (0-indexed; `start >= max(p, d)`).
-fn build_design(y: &[f64], p: usize, delay: usize, start: usize, constant: bool) -> Design {
+pub(crate) fn build_design(
+    y: &[f64],
+    p: usize,
+    delay: usize,
+    start: usize,
+    constant: bool,
+) -> Design {
     let t_total = y.len();
-    let n = t_total - start;
+    // Every caller must have already refused start >= t_total (their
+    // insufficient-data checks); this guards the usize subtraction against
+    // a future caller reintroducing the wrap (audit round 10, finding 1).
+    debug_assert!(
+        start < t_total,
+        "build_design: start ({start}) must be below the series length ({t_total}); \
+         callers must run their sufficiency check first"
+    );
+    let n = t_total.saturating_sub(start);
     let k = p + usize::from(constant);
     let mut cols: Vec<Vec<f64>> = Vec::with_capacity(k);
     if constant {
@@ -226,7 +203,7 @@ fn build_design(y: &[f64], p: usize, delay: usize, start: usize, constant: bool)
     for lag in 1..=p {
         cols.push((start..t_total).map(|t| y[t - lag]).collect());
     }
-    let resp: Vec<f64> = y[start..].to_vec();
+    let resp: Vec<f64> = y.get(start..).unwrap_or(&[]).to_vec();
     let z: Vec<f64> = (start..t_total).map(|t| y[t - delay]).collect();
     Design {
         cols,

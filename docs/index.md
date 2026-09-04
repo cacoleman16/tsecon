@@ -52,14 +52,17 @@ pip install tsecon
 
 ## What's inside
 
-128 functions callable from Python today, spanning diagnostics, unit-root and
-specification tests; ARIMA, GARCH, and GAS score-driven volatility; VAR / SVAR with
-sign-restricted identification, FAVAR, and Diebold-Yilmaz connectedness; local
-projections (including state-dependent and LP-IV); Bayesian VARs; GMM / IV-GMM
-and IVX predictive regressions; the heterogeneous-panel trio (mean-group,
-CCE-MG, PMG); DFM nowcasting with a ragged edge and a news decomposition;
-MIDAS; realized volatility; the Nelson-Siegel term structure; forecast
-backtesting; and leakage-safe machine learning.
+173 functions callable from Python today, spanning diagnostics, unit-root and
+specification tests; STL / MSTL seasonal decomposition and automatic ARIMA order
+selection; ARIMA, GARCH, and GAS score-driven volatility; VAR / SVAR with
+sign-restricted identification, FAVAR, and Diebold-Yilmaz connectedness;
+threshold and smooth-transition dynamics (SETAR, STAR, threshold VAR, threshold
+VECM); local projections (including state-dependent, LP-IV, and LP-DiD);
+Bayesian VARs; GMM / IV-GMM and IVX predictive regressions; the
+heterogeneous-panel trio (mean-group, CCE-MG, PMG); DFM nowcasting with a ragged
+edge and a news decomposition; MIDAS; realized volatility; extreme-value tails
+and copulas; the Nelson-Siegel term structure; conformal forecast intervals;
+forecast backtesting; and leakage-safe machine learning.
 
 Every estimator returns a plain `dict`, and
 [`tsecon.results`](reference/results.md) adds an **opt-in** layer of `dict`

@@ -14,18 +14,23 @@
 //!   exposes the eigenvalues, eigenvectors, both statistics, and sequential
 //!   rank selection ([`JohansenResult::rank_trace`],
 //!   [`JohansenResult::rank_max_eig`]).
-//! * [`fit_vecm`] / [`fit_vecm_det`] — Johansen maximum-likelihood VECM
-//!   estimation at a fixed rank: the cointegrating vectors `beta`
-//!   (normalized as statsmodels does, `beta[:r, :r] = I`), the loadings
-//!   `alpha`, the short-run `Gamma` matrices, the deterministic
-//!   coefficients, the residual covariance, and the log-likelihood.
-//!   [`fit_vecm`] is the no-deterministic case (statsmodels
-//!   `deterministic = "n"`); [`fit_vecm_det`] also offers the
-//!   unrestricted constant ([`VecmDeterministic::Constant`], statsmodels
-//!   `"co"`) — the case that matches [`johansen`]'s `det_order = 0`
-//!   convention. [`VecmResult`] also maps the fit to the equivalent level
-//!   VAR ([`VecmResult::var_coefs`], [`VecmResult::companion`]) for
-//!   downstream impulse responses.
+//! * [`fit_vecm`] / [`fit_vecm_det`] / [`fit_vecm_seasonal`] — Johansen
+//!   maximum-likelihood VECM estimation at a fixed rank: the
+//!   cointegrating vectors `beta` (normalized as statsmodels does,
+//!   `beta[:r, :r] = I`), the loadings `alpha`, the short-run `Gamma`
+//!   matrices, the deterministic coefficients, the residual covariance,
+//!   and the log-likelihood. [`fit_vecm`] is the no-deterministic case
+//!   (statsmodels `deterministic = "n"`); [`fit_vecm_det`] covers every
+//!   statsmodels deterministic case ([`VecmDeterministic`]: `"n"`,
+//!   `"co"`, `"ci"`, `"lo"`, `"li"` and the four valid combinations —
+//!   the restricted `ci`/`li` terms widen the cointegrating matrix,
+//!   returned split as `beta` + `det_coef_coint` exactly as statsmodels
+//!   splits them); [`fit_vecm_seasonal`] adds centered seasonal dummies
+//!   (statsmodels `seasons=`/`first_season=`).
+//!   [`VecmDeterministic::Constant`] (`"co"`) is the case that matches
+//!   [`johansen`]'s `det_order = 0` convention. [`VecmResult`] also maps
+//!   the fit to the equivalent level VAR ([`VecmResult::var_coefs`],
+//!   [`VecmResult::companion`]) for downstream impulse responses.
 //! * [`ou_fit`] / [`spread_zscore`] — Ornstein-Uhlenbeck mean-reversion
 //!   utilities for spreads: the exact-discretization Gaussian MLE (a
 //!   closed-form AR(1) mapping — kappa, mu, sigma with delta-method
@@ -35,6 +40,15 @@
 //!   workflow scores entries with.
 //! * [`engle_granger`] — the Engle-Granger (1987) two-step residual-based
 //!   test, delegating the residual unit-root step to `tsecon-diag`'s ADF.
+//! * [`threshold_vecm`] / [`hansen_seo_test`] — the Hansen-Seo (2002)
+//!   two-regime **threshold VECM** (threshold cointegration): concentrated
+//!   MLE by grid search over the cointegrating vector and the threshold on
+//!   the error-correction term, and the sup-LM test of linear against
+//!   threshold cointegration with a fixed-regressor bootstrap p-value
+//!   (never a chi-squared tail — the threshold is unidentified under the
+//!   null). See the `tvecm` module docs for the honest validation grade
+//!   (independent NumPy transcription plus seeded Monte Carlo — no
+//!   third-party reference implementation was runnable).
 //!
 //! All fallible routines return [`CointError`]; nothing in this crate
 //! panics on user input.
@@ -48,6 +62,7 @@ pub mod error;
 pub mod johansen;
 mod linalg;
 pub mod ou;
+pub mod tvecm;
 pub mod vecm;
 
 pub use critvals::{critical_values, DetOrder};
@@ -55,7 +70,8 @@ pub use engle_granger::{engle_granger, EngleGrangerResult, EngleGrangerTrend};
 pub use error::CointError;
 pub use johansen::{johansen, JohansenResult, SignificanceLevel};
 pub use ou::{ou_fit, spread_zscore, OuFit};
-pub use vecm::{fit_vecm, fit_vecm_det, VecmDeterministic, VecmResult};
+pub use tvecm::{hansen_seo_test, threshold_vecm, HansenSeoTest, TvecmResult};
+pub use vecm::{fit_vecm, fit_vecm_det, fit_vecm_seasonal, VecmDeterministic, VecmResult};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
 // backend) so downstream crates see one faer version.

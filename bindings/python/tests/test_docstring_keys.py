@@ -98,3 +98,43 @@ def test_theta_forecast_docstring_qualifies_the_statsmodels_match():
     assert "use_test=False" in doc
     # The unqualified sentence must not stand alone as the whole claim.
     assert "Matches statsmodels ThetaModel." not in doc
+
+
+def test_ou_fit_docstring_names_every_returned_key():
+    """Audit round 10: the returned `level` key (the echoed CI level of
+    `half_life_ci`) existed since 0.6.0 but was undocumented. The full
+    key-vs-docstring diff now gates ou_fit like the functions above."""
+    rng = np.random.default_rng(8)
+    x = np.empty(300)
+    prev = 0.0
+    for t in range(300):
+        prev = 0.9 * prev + 0.1 * rng.standard_normal()
+        x[t] = prev
+    out = tsecon.ou_fit(x, dt=0.5, level=0.9)
+    assert out["level"] == 0.9 and out["dt"] == 0.5  # the echoes themselves
+    tokens = _doc_tokens(tsecon.ou_fit)
+    missing = set(out.keys()) - tokens
+    assert not missing, f"ou_fit.__doc__ does not name returned keys: {sorted(missing)}"
+
+
+def test_markov_switching_ar_docstring_names_every_returned_key():
+    """Audit round 10: `iterations` (EM steps run) was returned but
+    undocumented; it now gates alongside `converged` with the full diff."""
+    rng = np.random.default_rng(9)
+    n = 240
+    y = np.empty(n)
+    state = 0
+    prev = 0.0
+    for t in range(n):
+        if rng.random() < 0.05:
+            state = 1 - state
+        mu = (-1.0, 1.5)[state]
+        prev = mu + 0.3 * (prev - mu) + 0.5 * rng.standard_normal()
+        y[t] = prev
+    out = tsecon.markov_switching_ar(y, max_iter=200)
+    assert isinstance(out["iterations"], int) and out["iterations"] >= 1
+    tokens = _doc_tokens(tsecon.markov_switching_ar)
+    missing = set(out.keys()) - tokens
+    assert not missing, (
+        f"markov_switching_ar.__doc__ does not name returned keys: {sorted(missing)}"
+    )

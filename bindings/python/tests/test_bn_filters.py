@@ -268,6 +268,19 @@ def test_kmw_error_surfaces(gdp):
         tsecon.bn_filter(bad)
 
 
+def test_kmw_ramp_refusal_names_the_constant_differences():
+    """Audit round 10, finding 3e: bn_filter(np.arange(...)) used to say
+    "the series is constant" — a linear ramp is not constant; its FIRST
+    DIFFERENCES are, and the refusal must say so."""
+    for series in (np.arange(60.0), np.full(60, 3.0), 5.0 - 0.25 * np.arange(60.0)):
+        with pytest.raises(ValueError, match="first differences") as exc:
+            tsecon.bn_filter(series, p=4, delta=0.2)
+        msg = str(exc.value)
+        assert "constant" in msg, msg
+        # The old misdiagnosis must be gone for the ramp.
+        assert "regressor matrix is numerically rank deficient" not in msg, msg
+
+
 def test_coercion_accepts_lists_and_float32(gdp):
     r64 = tsecon.bn_filter(gdp, p=4, delta=0.25)
     r32 = tsecon.bn_filter(gdp.astype(np.float32), p=4, delta=0.25)
@@ -283,7 +296,10 @@ def test_coercion_accepts_lists_and_float32(gdp):
 # --------------------------------------------------------------------------- #
 # statsmodels absence canary (the fixture pins it; re-check live)
 # --------------------------------------------------------------------------- #
-def test_statsmodels_still_has_no_hamilton_or_bn(bn_fx):
+def test_statsmodels_reference_canary(bn_fx):
+    # The fixture pins what was true AT GENERATION TIME (statsmodels 0.14.x,
+    # see _meta): no runnable Hamilton or BN reference existed, which is why
+    # those goldens are formula transcriptions. That provenance stays pinned:
     assert bn_fx["statsmodels_absence_canary"] == {
         "hamilton": True,
         "beveridge_nelson": True,
@@ -291,7 +307,97 @@ def test_statsmodels_still_has_no_hamilton_or_bn(bn_fx):
     sm = pytest.importorskip("statsmodels.api")
     import statsmodels.tsa.filters as smf
 
-    assert not any("hamilton" in x.lower() for x in dir(smf))
+    # BN decomposition: still no statsmodels implementation.
     assert not any(
         "beveridge" in x.lower() or x.lower() == "bn" for x in dir(sm.tsa)
     )
+
+    # Hamilton: the canary fired — statsmodels 0.15.0 added
+    # tsa.filters.api.hamilton_filter. When the installed version has it,
+    # the absence claim is retired IN FAVOR OF the thing the canary was
+    # waiting for: a live third-party cross-check (measured 4.2e-14 max
+    # abs on first contact; asserted at 1e-10). On older statsmodels the
+    # original absence assertion still holds.
+    if any("hamilton" in x.lower() for x in dir(smf)):
+        from statsmodels.tsa.filters.api import hamilton_filter as sm_ham
+
+        rng = np.random.default_rng(20260828)
+        y = np.cumsum(rng.standard_normal(300)) + 0.05 * np.arange(300)
+        ours = tsecon.hamilton_filter(y)  # defaults h=8, p=4
+        cycle_sm, trend_sm = sm_ham(y, 8, 4)
+        cycle_sm, trend_sm = np.asarray(cycle_sm), np.asarray(trend_sm)
+        valid = ~np.isnan(cycle_sm)
+        assert valid.sum() == len(ours["cycle"])
+        np.testing.assert_allclose(
+            np.asarray(ours["cycle"]), cycle_sm[valid], rtol=0, atol=1e-10
+        )
+        np.testing.assert_allclose(
+            np.asarray(ours["trend"]), trend_sm[valid], rtol=0, atol=1e-10
+        )
+    else:
+        assert not any("hamilton" in x.lower() for x in dir(smf))
+
+
+# --------------------------------------------------------------------------- #
+# Audit round 10: inert HAC/grid kwargs now raise
+# --------------------------------------------------------------------------- #
+def test_hamilton_maxlags_refused_under_every_non_hac_path(gdp):
+    """maxlags is a HAC bandwidth. It was refused under se=None but silently
+    swallowed under se="nonrobust" (the returned maxlags key was even None);
+    the same guard now covers both non-HAC paths, with the same message."""
+    with pytest.raises(ValueError, match="maxlags is a HAC bandwidth"):
+        tsecon.hamilton_filter(gdp, maxlags=8)
+    with pytest.raises(ValueError, match="maxlags is a HAC bandwidth"):
+        tsecon.hamilton_filter(gdp, se="nonrobust", maxlags=8)
+    # Still live where documented (already pinned above against statsmodels:
+    # test_hamilton_hac_matches_statsmodels's maxlags=4 arm).
+    r4 = tsecon.hamilton_filter(gdp, se="hac", maxlags=4)
+    r8 = tsecon.hamilton_filter(gdp, se="hac")
+    assert r4["maxlags"] == 4 and r8["maxlags"] == 8
+    assert not np.array_equal(r4["bse"], r8["bse"])
+
+
+def test_hamilton_use_correction_refused_where_inert(gdp):
+    """use_correction is the HAC n/(n-k) factor; explicit use under se=None,
+    se="nonrobust", or method="random_walk" raises instead of being
+    silently swallowed."""
+    for kwargs in (dict(), dict(se="nonrobust")):
+        with pytest.raises(ValueError, match="use_correction") as exc:
+            tsecon.hamilton_filter(gdp, use_correction=False, **kwargs)
+        assert "se='hac'" in str(exc.value)
+    with pytest.raises(ValueError, match="use_correction"):
+        tsecon.hamilton_filter(gdp, method="random_walk", use_correction=True)
+
+
+def test_hamilton_use_correction_sentinel_default_bit_identical(gdp):
+    """The sentinel (use_correction=None -> True where HAC applies) keeps
+    the default HAC call bit-identical to explicit True, and distinct from
+    False (the live check)."""
+    d = tsecon.hamilton_filter(gdp, se="hac")
+    t = tsecon.hamilton_filter(gdp, se="hac", use_correction=True)
+    f = tsecon.hamilton_filter(gdp, se="hac", use_correction=False)
+    np.testing.assert_array_equal(d["bse"], t["bse"])
+    assert d["use_correction"] is True
+    assert not np.array_equal(d["bse"], f["bse"])
+    # The decomposition itself never moves with the SE options.
+    np.testing.assert_array_equal(d["cycle"], f["cycle"])
+
+
+def test_kmw_grid_kwargs_refused_under_fixed_delta(gdp):
+    """d0/dt lay out the automatic-selection grid; a fixed delta= never
+    builds it, so explicit d0/dt raise (they were verified bit-identical
+    no-ops before the fix)."""
+    for kwargs in (dict(d0=0.5), dict(dt=0.1), dict(d0=0.5, dt=0.1)):
+        with pytest.raises(ValueError, match="d0/dt") as exc:
+            tsecon.bn_filter(gdp, delta=0.25, **kwargs)
+        assert "amplitude-to-noise" in str(exc.value)
+    # Sentinel defaults resolve to the historical grid: explicit 0.01/0.0005
+    # under auto-selection is bit-identical to the default call.
+    a = tsecon.bn_filter(gdp, p=8)
+    b = tsecon.bn_filter(gdp, p=8, d0=0.01, dt=0.0005)
+    assert a["delta"] == b["delta"]
+    np.testing.assert_array_equal(a["cycle"], b["cycle"])
+    # And d0/dt stay live under auto-selection: a coarser grid moves the
+    # selected delta off the fine grid's stopping point.
+    c = tsecon.bn_filter(gdp, p=8, d0=0.05, dt=0.05)
+    assert c["delta"] != a["delta"]

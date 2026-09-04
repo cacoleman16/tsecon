@@ -2,6 +2,8 @@
 
 use core::fmt;
 
+use tsecon_hac::HacError;
+
 /// Errors returned by the penalized-regression solvers and the
 /// time-series cross-validation machinery in `tsecon-ml`.
 ///
@@ -45,6 +47,20 @@ pub enum MlError {
         /// Description of the computation that needed the decomposition.
         what: &'static str,
     },
+    /// A domain violation whose message must carry runtime values (an
+    /// offending column index, the value received, the accepted names).
+    /// Displayed with the same `invalid argument:` prefix as
+    /// [`MlError::InvalidArgument`].
+    InvalidValue {
+        /// Description of the violation, naming the argument and the fix.
+        what: String,
+    },
+    /// A matrix that must be symmetric positive definite (the kernel ridge
+    /// system `K + alpha I`) failed its Cholesky factorization.
+    NotPositiveDefinite {
+        /// Description of the matrix and what to change.
+        what: String,
+    },
     /// The coordinate-descent solver did not reach its coefficient-change
     /// tolerance within its iteration budget. The last iterate is discarded
     /// rather than returned silently as if converged.
@@ -54,6 +70,60 @@ pub enum MlError {
         /// Largest absolute coefficient change in the final sweep.
         max_change: f64,
     },
+    /// Too few observations for the requested computation — a post-selection
+    /// OLS refit (`post_lasso`, `pds_lasso`) needs strictly more rows than
+    /// regressors, no residual degrees of freedom remain, or the
+    /// kernel-regression local fits have too few rows once the
+    /// cross-validation exclusion window is removed. The message
+    /// follows the library-wide wording (`insufficient data: {got}
+    /// observations, at least {needed} required`).
+    InsufficientData {
+        /// Number of observations supplied.
+        got: usize,
+        /// Minimum number of observations required.
+        needed: usize,
+        /// Which computation ran out of rows.
+        what: &'static str,
+    },
+    /// A block length (block-bootstrap resampling or block permutation)
+    /// outside `1..=n`.
+    InvalidBlockLength {
+        /// Name of the offending argument (`block_length`,
+        /// `permutation_block`).
+        what: &'static str,
+        /// The block length received.
+        block_length: usize,
+        /// The sample size it must not exceed.
+        n: usize,
+    },
+    /// A string option (an activation or solver name) was not one of the
+    /// accepted values. The message lists them.
+    UnknownChoice {
+        /// Name of the option.
+        what: &'static str,
+        /// The value that was passed.
+        got: String,
+        /// The accepted values, rendered for the message.
+        accepted: &'static str,
+    },
+    /// Neural training produced a non-finite loss (the weights blew up).
+    Diverged {
+        /// Zero-based index of the ensemble member that diverged.
+        member: usize,
+        /// Epoch (or L-BFGS iteration count) at which it was detected.
+        epoch: usize,
+    },
+    /// An error raised by the shared HAC / OLS engine (`tsecon-hac`) while
+    /// computing post-double-selection inference — a singular
+    /// `[d, X_union]` design, a non-finite input it found first, or a
+    /// covariance breakdown. Wrapped so callers see one error type.
+    Hac(HacError),
+}
+
+impl From<HacError> for MlError {
+    fn from(e: HacError) -> Self {
+        Self::Hac(e)
+    }
 }
 
 impl fmt::Display for MlError {
@@ -72,6 +142,10 @@ impl fmt::Display for MlError {
                 write!(f, "non-finite value (NaN or infinity) in {what}")
             }
             Self::InvalidArgument { what } => write!(f, "invalid argument: {what}"),
+            Self::InvalidValue { what } => write!(f, "invalid argument: {what}"),
+            Self::NotPositiveDefinite { what } => {
+                write!(f, "not positive definite: {what}")
+            }
             Self::DecompositionFailed { what } => {
                 write!(f, "dense decomposition failed to converge in {what}")
             }
@@ -82,6 +156,30 @@ impl fmt::Display for MlError {
                 f,
                 "coordinate descent did not converge after {iterations} sweeps \
                  (last max coefficient change {max_change:e})"
+            ),
+            Self::InsufficientData { got, needed, what } => write!(
+                f,
+                "insufficient data: {got} observations, at least {needed} required ({what})"
+            ),
+            Self::Hac(e) => write!(f, "HAC/OLS engine: {e}"),
+            Self::InvalidBlockLength {
+                what,
+                block_length,
+                n,
+            } => write!(
+                f,
+                "{what}={block_length} is outside 1..={n}: a block cannot be empty \
+                 or longer than the {n}-row sample"
+            ),
+            Self::UnknownChoice {
+                what,
+                got,
+                accepted,
+            } => write!(f, "unknown {what} {got:?}; expected one of {accepted}"),
+            Self::Diverged { member, epoch } => write!(
+                f,
+                "training diverged (non-finite loss) in ensemble member {member} at \
+                 epoch {epoch}; lower learning_rate, raise alpha, or standardize the inputs"
             ),
         }
     }

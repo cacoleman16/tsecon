@@ -11,6 +11,7 @@
 - Why naive benchmarks are scandalously hard to beat, and what fifty years of forecasting competitions proved.
 - How to score forecasts without fooling yourself — MAPE's failure modes, why MASE exists, and what pinball loss and CRPS measure.
 - How to test whether an accuracy difference is real (Diebold-Mariano with the HLN correction), when that test is invalid, and what to run instead — `cw_test` for nested models, `gw_test` for forecasting *methods* — and why averaging forecasts usually beats picking one.
+- How to put an honest interval around a point forecast without assuming a distribution — split conformal, ACI, and EnbPI — and how to grade the interval you get.
 - Growth-at-risk: why policy institutions forecast the *downside* of the growth distribution, and how financial conditions move the left tail more than the center.
 
 ## The idea
@@ -105,7 +106,7 @@ Two origin schemes dominate practice:
 - **Expanding** (recursive): the training window grows — origin $t$ uses observations $1$ through $t$. Uses all available data; the natural choice when parameters are stable.
 - **Rolling**: the training window has fixed width — origin $t$ uses observations $t-R+1$ through $t$. Throws away old data deliberately; the natural choice when you suspect the world changes and old observations mislead.
 
-The choice is not cosmetic. It changes how parameter-estimation error behaves as the sample grows, which changes which comparison test downstream is valid — a point we return to in the frontier section. tsecon's roadmap makes the backtest object record its scheme so tests can check it; today, you write the loop yourself:
+The choice is not cosmetic. It changes how parameter-estimation error behaves as the sample grows, which changes which comparison test downstream is valid — a point we return to in the frontier section. `tsecon.backtest` runs both schemes for you and is introduced later in this chapter; write the loop by hand once first, because the bookkeeping it hides is exactly what you need to be able to see:
 
 ```python
 rng = np.random.default_rng(7)                    # quarterly series: trend + season + AR noise
@@ -131,7 +132,7 @@ print(np.sqrt(np.mean(e_theta**2)), np.sqrt(np.mean(e_naive**2)))   # OOS RMSEs
 
 Everything the model needs — transformations, seasonal adjustment, scaling, hyperparameter choices — must be recomputed inside each training window. Preprocessing on the full sample before the loop is the single most common backtesting bug, and it is silent: the backtest runs, the numbers look great, and the model quietly knows the future through a detrending line or a standard deviation computed on data it should not have seen.
 
-> ⚠ **Common mistake.** Full-sample leakage. Detrending, deseasonalizing, or standardizing the whole series once and then backtesting on the transformed data gives every training window information from the evaluation period. The roadmap's backtesting engine is designed so preprocessing *cannot* run outside the training window; until it lands, treat every line above your backtest loop with suspicion.
+> ⚠ **Common mistake.** Full-sample leakage. Detrending, deseasonalizing, or standardizing the whole series once and then backtesting on the transformed data gives every training window information from the evaluation period. In a hand-rolled loop like the one above, treat every line before the loop with suspicion. `tsecon.backtest` closes the hole structurally: a user-supplied forecaster is a callable that is *only ever handed its own training slice*, so a transformation written inside it cannot see the evaluation period even if you want it to.
 
 ## The benchmark zoo
 
@@ -154,8 +155,8 @@ noise = np.zeros(n + h)
 e = rng.standard_normal(n + h)
 for i in range(1, n + h):
     noise[i] = 0.6 * noise[i - 1] + 1.5 * e[i]
-y = 50 + 0.3 * t_idx + season + noise
-train, test = y[:n], y[n:]
+y_zoo = 50 + 0.3 * t_idx + season + noise    # a second draw; `y` above stays the backtest series
+train, test = y_zoo[:n], y_zoo[n:]
 
 fc_theta  = tsecon.theta_forecast(train, steps=h, period=4)   # the M3 winner
 fc_naive  = np.full(h, train[-1])
@@ -365,12 +366,31 @@ tsecon.backtest(
     y,                       # the series (1-D)
     window="expanding",      # "expanding" (recursive) or "rolling" (fixed width)
     train=20,                # first training window (min_train if expanding, width if rolling)
-    horizon=1,              # evaluate horizons 1..=horizon at every origin
+    horizon=1,               # evaluate horizons 1..=horizon at every origin
     refit_every=1,           # re-estimate the forecaster every k origins (1 = every origin)
-    forecaster="naive",     # naive | drift | mean | seasonal_naive | theta
-    period=1,                # seasonal period for the seasonal forecasters
+    forecaster=None,         # None ("naive") | drift | mean | seasonal_naive | theta | a callable
+    period=None,             # seasonal period — "seasonal_naive"/"theta" ONLY; see below
     insample_period=1,       # seasonal period for the MASE/RMSSE scaling denominator
 )
+```
+
+Those are the real defaults, and one of them bites: `period` belongs to the two seasonal forecasters alone. Pass it alongside `forecaster="naive"` (or a callable) and the call **raises** rather than silently ignoring it, because a silently-ignored seasonal period is the kind of argument slip that produces a wrong-looking benchmark table you cannot explain. The MASE/RMSSE scaling season is the separate `insample_period`, which is always live.
+
+`forecaster` also accepts **any Python callable** — the hook for running a real model (statsmodels, scikit-learn, your own estimator) through this engine's leakage discipline. The contract is `forecaster(train, horizon) -> horizon point forecasts`, where `train` is a read-only float64 array holding *only* that origin's training window; the engine never hands it anything after the origin, so every transformation, scaling, and hyperparameter choice written inside the closure is structurally prevented from peeking:
+
+```python
+def ar2(train, horizon):                       # a two-lag least-squares forecaster
+    X = np.column_stack([np.ones(len(train) - 2), train[1:-1], train[:-2]])
+    b = tsecon.ols(train[2:], X)["params"]
+    hist, out = list(train), []
+    for _ in range(horizon):
+        out.append(b[0] + b[1] * hist[-1] + b[2] * hist[-2])
+        hist.append(out[-1])
+    return out
+
+bt_ar2 = tsecon.backtest(y, window="expanding", train=80, horizon=4,
+                         forecaster=ar2, insample_period=4)
+bt_ar2["accuracy"][0]["mase"]                  # 1.21 — the table below puts theta at 0.85 here
 ```
 
 The return dict carries `origins` (the origin indices $t$ actually evaluated), `n_origins`, `horizon`, `forecasts` and `targets` (each a list of `horizon` arrays, one row per horizon $h$, aligned so that `targets[h-1][i] - forecasts[h-1][i]` is the error at origin `origins[i]` for step $h$), and `accuracy` — one row per horizon with `me`, `mse`, `rmse`, `mae`, `mdae`, and `mape`/`smape`/`mase`/`rmsse` wherever a denominator makes them well-defined.
@@ -427,8 +447,9 @@ The five forecasters that populate the benchmark floor — `naive`, `drift`, `me
 ```python
 print(f"{'forecaster':15s}  RMSE(h=1)  MASE(h=1)")
 for fc in ["naive", "drift", "mean", "seasonal_naive", "theta"]:
+    seasonal = {"period": 4} if fc in ("seasonal_naive", "theta") else {}   # period is theirs alone
     bt = tsecon.backtest(y, window="expanding", train=80, horizon=4,
-                         forecaster=fc, period=4, insample_period=4)
+                         forecaster=fc, insample_period=4, **seasonal)
     h1 = bt["accuracy"][0]
     print(f"{fc:15s}   {h1['rmse']:6.2f}    {h1['mase']:6.2f}")
 # naive             6.74      3.36
@@ -438,7 +459,7 @@ for fc in ["naive", "drift", "mean", "seasonal_naive", "theta"]:
 # theta             2.01      0.85
 ```
 
-The ranking is a compressed lesson in why the benchmark you pick matters. On a trending, seasonal series the historical `mean` is a disaster (MASE 9.42 — it forecasts a flat line through data that is climbing), `naive` and `drift` are mediocre because they ignore the season, `seasonal_naive` is respectable (MASE ≈ 1, by construction near the scaling benchmark), and only `theta` clears the bar with room to spare. Swap in a random walk with no drift and the ranking inverts — which is the whole point of always reporting against a *panel* of benchmarks rather than a single favorite.
+The ranking is a compressed lesson in why the benchmark you pick matters. On a trending, seasonal series the historical `mean` is a disaster (MASE 9.42 — it forecasts a flat line through data that is climbing), `naive` and `drift` are mediocre because they ignore the season, `seasonal_naive` is respectable (MASE ≈ 1, by construction near the scaling benchmark), and only `theta` clears the bar with room to spare. Swap in a random walk with no drift and the ranking inverts — which is the whole point of always reporting against a *panel* of benchmarks rather than a single favorite. Note the `seasonal` guard in the loop: `period` is only accepted by `seasonal_naive` and `theta`, so a loop that passes it to all five raises on the first iteration rather than quietly mis-scoring the non-seasonal three.
 
 ### From the backtest straight into Diebold-Mariano
 
@@ -467,7 +488,45 @@ This is the rigorous version of the pooled DM snippet from the Diebold-Mariano s
 
 > ⚠ **Common mistake.** Comparing two backtests run under *different* schemes or training windows and then subtracting their error streams. Change `window` or `train` and the surviving origins change, the two `origins` lists no longer match, and the differenced series is nonsense even though the arithmetic runs. Assert equal `origins` before differencing — as above — every single time.
 
-A few caveats to carry. The built-in forecasters are point forecasters, so `backtest` scores point accuracy only; interval and density evaluation (PITs, CRPS, the interval score) arrive with the typed forecast objects still on the roadmap. The MASE and RMSSE denominators are computed once, from the first training window at `insample_period`, never from the test sample — the correct, leakage-free convention, but it means the scaling reflects the earliest window's seasonality. The engine refuses degenerate designs loudly rather than returning a short or empty track record: ask for a horizon so long that no origin has all its targets in sample and it raises a `ValueError` that names the exact index arithmetic and tells you to lengthen the series, shrink the window, or shorten the horizon. And the leakage guarantee here is structural only because the forecaster is a trusted built-in that sees a single training slice; when the roadmap opens the engine to user-supplied models, every transformation, scaling, and hyperparameter choice must live *inside* that closure — the same discipline the manual-loop warning demanded, now the engine's contract (Tashman 2000).
+A few caveats to carry. `backtest` scores point accuracy only — the built-in forecasters are point forecasters, and a callable returns points — so density scoring (PITs, CRPS, the interval score) is still roadmap; distribution-free *intervals* around any of these forecasters are not, and are the next section. The MASE and RMSSE denominators are computed once, from the first training window at `insample_period`, never from the test sample — the correct, leakage-free convention, but it means the scaling reflects the earliest window's seasonality. The engine refuses degenerate designs loudly rather than returning a short or empty track record: ask for a horizon so long that no origin has all its targets in sample and it raises a `ValueError` that names the exact index arithmetic and tells you to lengthen the series, shrink the window, or shorten the horizon. And the leakage guarantee is structural for the callable hook too, precisely because the closure only ever receives its own training slice: every transformation, scaling, and hyperparameter choice must live *inside* it — the same discipline the manual-loop warning demanded, now the engine's contract (Tashman 2000). A callable that raises aborts the backtest and is re-raised naming the failing origin and window, so a bad model does not quietly produce a short track record.
+
+## Distribution-free intervals: conformal prediction
+
+Everything above scored *points*. The moment you want an interval, you owe the reader a distributional assumption — Gaussian errors, a fitted density, a bootstrap — and on economic data those assumptions are exactly what fails in the tail. **Conformal prediction** buys an interval without one: run your forecaster over a calibration stretch, collect its realized $h$-step residuals, and band the forward forecast with an order statistic of those residuals. Under exchangeability the coverage guarantee is finite-sample and assumption-free (Vovk et al. 2005). Time series are not exchangeable, so the guarantee is approximate rather than exact here — which is a reason to *measure* the coverage, not a reason to skip the method.
+
+`conformal_forecast` ships all three of the standard variants, wrapped around any of the `backtest` forecasters (or your own callable):
+
+```python
+split = tsecon.conformal_forecast(y, horizon=4, alpha=0.1, base="theta", period=4, calib=40)
+print(np.round(split["lower"], 2), np.round(split["upper"], 2))
+# [99.8  92.46 97.7  88.42] [106.88  98.91 105.61  95.5 ]
+print(split["level"], round(split["finite_sample_level"], 4), split["n_calib"])
+# 0.9 0.9024 40   <- the (m+1)(1-alpha)/m order statistic, not the plain 90th percentile
+
+aci = tsecon.conformal_forecast(y, horizon=1, alpha=0.1, base="theta", period=4,
+                                method="aci", calib=40, n_eval=40)
+enb = tsecon.conformal_forecast(y, horizon=1, alpha=0.1, method="enbpi",
+                                base="ar", lags=4, n_boot=30, seed=0)
+print(np.round(aci["alpha_final"], 3), np.round(enb["lower"], 2), np.round(enb["upper"], 2))
+# [0.1] [96.4] [102.83]
+```
+
+- `method="split"` is the baseline: hold out the last `calib` origins under the backtest engine's own leakage discipline, then band the forward forecast with the finite-sample-corrected quantile of the absolute residuals — the $\lceil (m+1)(1-\alpha) \rceil$-th smallest, which is why `finite_sample_level` reads 0.9024 rather than 0.90 at $m = 40$. (`mode="asymmetric"` calibrates the two tails separately, and may then exclude a biased base's point forecast — that is the point.)
+- `method="aci"` is adaptive conformal inference (Gibbs and Candès 2021): the working miscoverage level is nudged after every hit or miss, $\alpha_{t+1} = \alpha_t + \gamma(\alpha - \mathrm{err}_t)$, so long-run coverage survives distribution shift. Here it wandered between 0.093 and 0.104 over the 40 evaluation origins (`alpha_trajectory`) and landed back at 0.10: this series is stable, so the adaptation had nothing to repair. On a series with drift it is the whole point.
+- `method="enbpi"` (Xu and Xie 2021) builds the interval from a bootstrap ensemble's out-of-bag residuals with no sample splitting at all, and is seeded and bit-reproducible.
+
+The honest companion is `conformal_backtest`, which forms the interval at each of the last `n_eval` origins *from information available then* and reports what coverage the method actually delivered:
+
+```python
+cb = tsecon.conformal_backtest(y, horizon=1, alpha=0.1, base="theta", period=4,
+                               calib=40, n_eval=40)
+print(cb["realized_coverage"], int(np.sum(cb["err"][0])))
+# [0.9] 4     <- 36 of 40 intervals covered, against a promised 0.90
+```
+
+That is the number to publish. A conformal interval is only as good as its realized coverage on *your* series, and the gap between the nominal level and the measured one is the honest measure of how far from exchangeable your data is.
+
+> ⚠ **Common mistake.** Reading the split-conformal guarantee as if it held on time series. It is a theorem about exchangeable scores; forecast residuals from a persistent, drifting series are not exchangeable, and the coverage you get is empirical, not guaranteed. Run `conformal_backtest` before you quote a level — and if realized coverage sags, reach for `method="aci"`, which is built for exactly that failure.
 
 ## Forecasting an event, not a level: recession probabilities
 
@@ -579,14 +638,14 @@ gar = tsecon.growth_at_risk(y, f.reshape(-1, 1), horizon=4)   # conditions is T 
 for i, tau in enumerate(gar["taus"]):                          # default taus: 5/25/50/75/95
     print(f"tau={tau}: conditions coeff {gar['params'][i][1]:+.3f}  (se {gar['bse'][i][1]:.3f})")
 
-# tau=0.05: conditions coeff -0.829  (se 0.221)
-# tau=0.25: conditions coeff -0.417  (se 0.117)
-# tau=0.5: conditions coeff -0.324  (se 0.105)
-# tau=0.75: conditions coeff -0.311  (se 0.119)
-# tau=0.95: conditions coeff -0.362  (se 0.085)
+# tau=0.05: conditions coeff -0.829  (se 0.258)
+# tau=0.25: conditions coeff -0.417  (se 0.133)
+# tau=0.5: conditions coeff -0.324  (se 0.103)
+# tau=0.75: conditions coeff -0.311  (se 0.134)
+# tau=0.95: conditions coeff -0.362  (se 0.103)
 ```
 
-The coefficient ladder *is* the ABG finding: a one-point tightening of conditions lowers median four-quarter growth by about 0.3, but lowers the 5th percentile by 0.83 — two and a half times as much, and the gap is many standard errors wide. Financial stress is not a forecast of lower growth so much as a forecast of *fatter downside risk*.
+The coefficient ladder *is* the ABG finding: a one-point tightening of conditions lowers median four-quarter growth by about 0.3, but lowers the 5th percentile by 0.83 — two and a half times as much, and about two standard errors of the 5th-percentile coefficient away from the median's. Financial stress is not a forecast of lower growth so much as a forecast of *fatter downside risk*.
 
 Reading the output like a policy economist:
 
@@ -688,7 +747,7 @@ Three threads define the research edge of forecast evaluation.
 
 **The scheme decides the test.** The DM test treats forecasts as primitives, but most forecasts come from *estimated* models, and estimation error contaminates the loss differential. West (1996) worked out the asymptotics when the null concerns population-level predictive ability: the correction depends on the ratio of evaluation to training sample sizes and on the origin scheme (recursive schemes let estimation error die away; fixed rolling windows keep it alive forever). Giacomini and White (2006) flipped the question — test the forecasting *method*, estimation window and all, in which case fixed-width rolling windows are not a nuisance but a requirement. Almost no software anywhere enforces the scheme-test match, which means published DM tests on nested, recursively estimated models — statistics whose asymptotics simply do not apply — are routine. Making the backtest object carry its scheme, and having tests refuse invalid combinations, is a central design commitment of [Module 09](../roadmap/09-forecasting-evaluation.md).
 
-**Conformal prediction.** A distribution-free answer to interval forecasting: compute your model's recent absolute residuals on a calibration window, take their 95th percentile $q$, and report $\hat{y} \pm q$. Under exchangeability this has a finite-sample coverage *guarantee* with no distributional assumptions (Vovk et al. 2005) — but time series are not exchangeable, so the guarantee formally fails exactly where economists need it. The active frontier repairs it online: adaptive conformal inference (Gibbs and Candès 2021) nudges the working miscoverage level after every hit or miss, restoring long-run coverage under arbitrary distribution shift; EnbPI (Xu and Xie 2021) builds intervals from bootstrap-ensemble residuals without sample splitting; conformalized quantile regression (Romano, Patterson and Candès 2019) handles heteroskedastic series. These sit in Module 09's Tier 2–4 rows as the library's model-agnostic uncertainty layer.
+**Conformal prediction.** A distribution-free answer to interval forecasting: compute your model's recent absolute residuals on a calibration window, take their 95th percentile $q$, and report $\hat{y} \pm q$. Under exchangeability this has a finite-sample coverage *guarantee* with no distributional assumptions (Vovk et al. 2005) — but time series are not exchangeable, so the guarantee formally fails exactly where economists need it. The repairs are online: adaptive conformal inference (Gibbs and Candès 2021) nudges the working miscoverage level after every hit or miss, restoring long-run coverage under arbitrary distribution shift; EnbPI (Xu and Xie 2021) builds intervals from bootstrap-ensemble residuals without sample splitting; conformalized quantile regression (Romano, Patterson and Candès 2019) handles heteroskedastic series. Split, ACI and EnbPI all ship — `conformal_forecast` and `conformal_backtest`, run in [the conformal section above](#distribution-free-intervals-conformal-prediction) — and are the library's model-agnostic uncertainty layer. CQR is the piece still outstanding, along with conformal coverage bounds that degrade gracefully with the drift rather than merely being measured after the fact.
 
 **Honesty at scale and through time.** Quaedvlieg (2021) replaced $H$ separate per-horizon DM tests with joint multi-horizon comparisons controlling family-wise error across horizons. Giacomini and Rossi (2010) asked *when* rather than *whether* one model wins — a rolling DM statistic against sup-type bands that detects the breakdowns that full-sample averages wash out (predictability in macro is episodic; averaging over the Great Moderation and 2008 tells you little about either). Croushore and Stark (2001) showed model rankings can flip depending on which *vintage* of the data you evaluate against — GDP is revised for years, and a model evaluated against today's data saw numbers no real-time forecaster had. And anytime-valid e-value tests (Henzi and Ziegel 2022) let a dashboard ask "is the new model better yet?" every week without the repeated-testing penalty of classical p-values. All are roadmap items; none has a maintained open-source home today, which is much of the reason this module exists.
 
@@ -711,8 +770,9 @@ The honest open problems: evaluation under structural instability is unsolved in
 | Testing whether published forecasts are rational | `cg_regression`, `forecast_efficiency` | CG slope $=0$ under FIRE (positive $=$ underreaction); Mincer-Zarnowitz tests unbiasedness |
 | Measuring dispersion across a forecaster panel | `forecast_disagreement` | Cross-sectional spread — the empirical proxy for belief dispersion and information rigidity |
 | Several plausible models, none dominant | Equal-weight average | The combination puzzle: 1/N beats estimated weights out of sample |
-| Judging interval or density forecasts | Coverage counts now; PITs, CRPS, Berkowitz (roadmap) | Point measures cannot see whether the promised probabilities were kept |
-| Valid intervals without a trusted distributional model | Conformal prediction (roadmap) | Distribution-free calibration-window quantiles; adaptive variants handle drift |
+| Judging interval or density forecasts | `conformal_backtest` for realized coverage now; PITs, CRPS, Berkowitz (roadmap) | Point measures cannot see whether the promised probabilities were kept |
+| Valid intervals without a trusted distributional model | `conformal_forecast` (`method="split"`, `"aci"`, or `"enbpi"`) | Distribution-free calibration-window quantiles; ACI adapts the level under drift |
+| Running a real model (statsmodels, sklearn) through an honest backtest | `backtest(forecaster=<callable>)` | The callable only ever sees its own training slice, so preprocessing cannot leak |
 | Suspecting the winner changed over time | Giacomini-Rossi fluctuation test (roadmap) | Full-sample averages hide episodic breakdowns in relative performance |
 
 ## What tsecon implements today
@@ -728,15 +788,18 @@ The honest open problems: evaluation under structural instability is unsolved in
 - `recession_probit(y, x, link="probit", dynamic=False)` — static probit/logit and the Kauppi-Saikkonen dynamic probit for a 0/1 recession indicator; returns the fitted `probabilities`, coefficient `zstats`, and McFadden `pseudo_r2`. See the [recession model card](../reference/model-cards/recession.md).
 - `growth_at_risk(y, conditions, horizon=1, taus=..., rearrange=True)` — the ABG conditional-quantile workflow: per-tau `params`/`bse`, the fitted quantile fan at every observation (`fitted`, CFG-rearranged; `fitted_raw` unsorted; `crossing` flag), and `current`, the risk read at the latest observation. `conditions` is T x k. See the [quantile model card](../reference/model-cards/quantile.md).
 - `cg_regression(error, revision)` and `forecast_efficiency(error, regressors)` — the Coibion-Gorodnichenko information-rigidity and Mincer-Zarnowitz rationality regressions (OLS with a Newey-West HAC covariance for the overlapping errors), plus `forecast_disagreement(panel)` for cross-forecaster dispersion. See the [expectations model card](../reference/model-cards/expectations.md).
+- `backtest(y, window=..., train=..., horizon=..., refit_every=..., forecaster=..., period=..., insample_period=...)` — the rolling/expanding POOS engine: origin bookkeeping, refit cadence, a rectangular origins-by-horizons grid, and a per-horizon accuracy table. `forecaster` is one of `naive`/`drift`/`mean`/`seasonal_naive`/`theta` **or any Python callable** `f(train, horizon)` that sees only its own training window.
+- `conformal_forecast(y, horizon=..., method="split"|"aci"|"enbpi", base=..., alpha=0.1, calib=..., mode=...)` — distribution-free intervals around any of those forecasters (or a callable `base`): split conformal with the finite-sample-corrected quantile, Gibbs-Candès adaptive conformal inference, and the seeded Xu-Xie EnbPI ensemble.
+- `conformal_backtest(...)` — the same three methods run online over the last `n_eval` origins, returning `realized_coverage` and the per-origin miss indicators: the honest grade for an interval method on *your* series.
 - Supporting cast from earlier chapters: `ols(..., se_type="hac", maxlags=...)` for evaluation regressions with overlapping errors, and `long_run_variance` — the same machinery inside the DM denominator.
 
 **Built in Rust, awaiting Python bindings** (in the `tsecon-forecast` crate):
 
-- The benchmark zoo with correct analytic prediction intervals: `naive`, `seasonal_naive`, `drift`, `historical_mean`.
-- `mse` and `mdae` as standalone measures.
+- The benchmark zoo with correct analytic prediction intervals: `naive`, `seasonal_naive`, `drift`, `historical_mean`. Their *point* forecasts are reachable today through `backtest(forecaster=...)`; what is still unbound is the standalone form with analytic intervals.
+- `mse` and `mdae` as standalone measures — they appear in `backtest`'s accuracy table but not in `accuracy()`.
 - `ForecastComparison` — a one-call report combining the full accuracy table, all pairwise HLN-corrected DM tests, and a plain-language interpretation naming the winner and the next methodological step.
 
-**Roadmap** ([Module 09 — Forecasting and Evaluation](../roadmap/09-forecasting-evaluation.md)): the unified backtesting engine with fixed/rolling/expanding schemes and scheme-aware test routing; typed forecast objects (point/interval/density/path); CRPS, log score, and the interval score; the *conditional* Giacomini-White test and automatic scheme-aware routing of nested comparisons to `cw_test`; SPA and the Model Confidence Set; PIT histograms and the Berkowitz and Knüppel calibration tests; the full combination stack from Bates-Granger to online expert aggregation; conformal prediction (split, ACI, EnbPI); fan charts and conditional forecasting; hierarchical reconciliation; and the M4 reproduction harness that pins the whole stack to published competition numbers.
+**Roadmap** ([Module 09 — Forecasting and Evaluation](../roadmap/09-forecasting-evaluation.md)): scheme-aware test routing on top of the shipped backtest engine; typed forecast objects (point/interval/density/path); CRPS, log score, and the interval score; the *conditional* Giacomini-White test and automatic routing of nested comparisons to `cw_test`; SPA and the Model Confidence Set; PIT histograms and the Berkowitz and Knüppel calibration tests; the full combination stack from Bates-Granger to online expert aggregation; conformalized quantile regression; fan charts and conditional forecasting; hierarchical reconciliation; and the M4 reproduction harness that pins the whole stack to published competition numbers.
 
 ## Further reading
 

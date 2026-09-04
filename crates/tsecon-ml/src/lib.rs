@@ -48,14 +48,27 @@
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod boosting;
 pub mod coordinate_descent;
 pub mod cv;
 pub mod error;
+pub mod esn;
+pub mod forest;
+pub mod group_lasso;
+pub mod importance;
+pub mod kernel_regression;
+pub mod kernel_ridge;
+pub mod mlp;
 pub mod path;
+pub mod pds;
+pub mod post_lasso;
 pub mod ridge;
 pub mod standardize;
+pub mod tree;
+pub mod trend_filter;
 mod util;
 
+pub use boosting::{boosting, BoostStop, BoostingFit, BoostingOptions};
 pub use coordinate_descent::{
     adaptive_lasso, elastic_net, lasso, CoordDescentOptions, PenalizedFit,
 };
@@ -64,9 +77,32 @@ pub use cv::{
     CvResult, Loss, Split,
 };
 pub use error::MlError;
+pub use esn::{
+    echo_state_network, esn_readout, esn_states, esn_states_from, scale_to_spectral_radius,
+    spectral_radius, EsnFit, EsnOptions,
+};
+pub use forest::{
+    random_forest, resample_indices, ForestFit, ForestOptions, Importance, MaxFeatures, Resampling,
+};
+pub use group_lasso::{group_lasso, group_lasso_alpha_max, GroupLassoFit, GroupWeights};
+pub use kernel_regression::{
+    cv_criterion, kernel_regression, BandwidthSpec, KernelRegressionFit, KernelRegressionOptions,
+    RegressionKernel, RegressionKind,
+};
+pub use kernel_ridge::{
+    kernel_matrix, kernel_ridge, KernelRidgeFit, KernelRidgeOptions, KernelType,
+};
+pub use mlp::{
+    mlp_forward, mlp_loss, mlp_loss_gradient, mlp_regression, Activation, MlpFit, MlpOptions,
+    MlpWeights, Solver,
+};
 pub use path::{regularization_path, PathOptions, RegPath};
+pub use pds::{pds_lasso, PdsAlpha, PdsFit};
+pub use post_lasso::{post_lasso, PostLassoFit};
 pub use ridge::ridge;
 pub use standardize::{Scaler, TargetCenterer};
+pub use tree::{regression_tree, RegressionTree, TreeFit, TreeOptions};
+pub use trend_filter::{l1_trend_filter, Penalty, TrendFilterFit, TrendFilterOptions};
 
 // Re-export the dense backend (through tsecon-linalg) so callers, tests,
 // and doctests construct `Mat`/`MatRef` inputs against one faer version.

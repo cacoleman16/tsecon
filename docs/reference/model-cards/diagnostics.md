@@ -522,9 +522,17 @@ Beveridge-Nelson (1981) decomposition defines the trend as the long-horizon
 conditional expectation of an estimated ARIMA; the Kamber-Morley-Wong
 (2018) BN *filter* keeps the BN definition but pins the signal-to-noise
 ratio, which is what turns the classic BN's famously tiny cycle into an
-intuitive output gap. statsmodels ships **none of these** (no Hamilton
-filter, no BN decomposition in any form — the absence is pinned by a canary
-in `fixtures/bn_filters.json`), which shapes how each is validated below.
+intuitive output gap. When these fixtures were generated statsmodels shipped
+**none of these** — which is why the `hamilton_filter` and `bn_decomposition`
+goldens below are formula transcriptions rather than reference runs — and the
+absence is pinned by a canary in `fixtures/bn_filters.json`. That canary has
+since fired on one half: **statsmodels 0.15.0 added
+`tsa.filters.api.hamilton_filter`** (the decomposition only — no standard
+errors, no `method="random_walk"`), so the canary test now runs a live,
+version-gated cross-check of our full cycle/trend decomposition against it —
+**measured max abs 4.2e-14** on first contact, asserted at 1e-10.
+**statsmodels still ships no BN decomposition in any form** (re-verified live
+by the same test), which shapes how the BN pair is validated below.
 
 ### What they estimate
 
@@ -648,10 +656,15 @@ in `fixtures/bn_filters.json`), which shapes how each is validated below.
   textbook `c_t = −θε_t`, `ψ(1) = 1+θ` exactly. The fit path (library
   MLE vs statsmodels MLE of the same spec) lands within **1.4e-4** on
   ψ(1) and **6.8e-6** on the drift for the GDP ARIMA(2,1,2).
-- **`hamilton_filter` inference — grade: independent package
-  (statsmodels).** The filter is literally OLS, so its coefficient
-  inference is statsmodels territory even though the filter itself is
-  not: `OLS(...).fit(cov_type="HAC", cov_kwds={"maxlags": …,
+- **`hamilton_filter` — grade: independent package (statsmodels), now on
+  both legs.** Since statsmodels 0.15.0 the *decomposition* has a
+  third-party reference it could not have had when it shipped: the
+  version-gated canary test pins our `cycle`/`trend` against
+  `tsa.filters.api.hamilton_filter` at **≤ 4.2e-14** max abs (asserted
+  1e-10). The *inference* surface still has no counterpart to compare
+  against — statsmodels' filter returns cycle/trend only — but the filter
+  is literally OLS, so its coefficient inference is statsmodels territory
+  anyway: `OLS(...).fit(cov_type="HAC", cov_kwds={"maxlags": …,
   "use_correction": …})` on the identical design pins `bse`/`tvalues`
   for nonrobust and three HAC settings (including the `maxlags = h = 8`
   default). Measured agreement **≤ 2.9e-8** (bse) / **≤ 6.8e-8**
@@ -686,17 +699,49 @@ in `fixtures/bn_filters.json`), which shapes how each is validated below.
 ### Runnable example
 
 ```python
-import numpy as np, tsecon
+import numpy as np
+import tsecon
 
-y = 100 * np.log(gdp)                      # quarterly log-level
+# A synthetic quarterly log-level series, built as the ARIMA(2,1,2)+drift that
+# bn_decomposition fits by default: phi = (0.6, -0.2), theta = (0.3, 0.1), so
+# the true long-run multiplier is psi(1) = theta(1)/phi(1) = 1.4/0.6 = 2.33.
+n = 240
+e = np.random.default_rng(11).standard_normal(n)
+dy = np.zeros(n)
+for t in range(2, n):
+    dy[t] = (0.8 + 0.6 * dy[t - 1] - 0.2 * dy[t - 2]
+             + e[t] + 0.3 * e[t - 1] + 0.1 * e[t - 2])
+y = 700.0 + np.cumsum(dy)                  # quarterly log-level, 100*log units
 
 ham = tsecon.hamilton_filter(y, se="hac")  # h=8, p=4, NW maxlags=8
 print("beta_1 t-stat (HAC):", round(ham["tvalues"][1], 2))
 
 classic = tsecon.bn_decomposition(y)       # ARIMA(2,1,2)+c, exact MLE
-print("psi(1):", round(classic["long_run_multiplier"], 3))
+print("psi(1):", round(classic["long_run_multiplier"], 2), " (truth 2.33)",
+      "| cycle sd:", round(np.std(classic["cycle"]), 2))
 
 gap = tsecon.bn_filter(y)                  # KMW, p=12, auto delta
-print("delta:", gap["delta"], "gap sd:", round(np.std(gap['cycle']), 2),
-      "band:", round(1.96 * gap["cycle_se"], 2))
+print("delta:", round(gap["delta"], 3),
+      "| gap sd:", round(np.std(gap["cycle"]), 2),
+      "| band:", round(1.96 * gap["cycle_se"], 2))
 ```
+
+Expected output:
+
+```
+beta_1 t-stat (HAC): 4.58
+psi(1): 2.38  (truth 2.33) | cycle sd: 1.35
+delta: 0.504 | gap sd: 2.24 | band: 2.68
+```
+
+Read the three lines together. The Hamilton regression finds a real `y_{t−8}`
+coefficient, and the HAC bandwidth is what keeps that t-statistic honest under
+the overlapping-horizon residual — the same fit reports t = 5.26 with
+`se="nonrobust"`, which is the number you should not quote. The classic BN
+decomposition recovers the DGP's long-run multiplier (2.38 against a truth of
+2.33), and that `psi(1) > 1` is exactly why its cycle is the small one: sd 1.35
+against the BN *filter*'s 2.24 on the same series, the famous BN "tiny cycle"
+reproduced on data whose ψ(1) we know. The KMW filter pins the signal-to-noise
+ratio rather than inheriting it (`delta = 0.504` from the automatic search) and
+returns a gap with a standard error, so the ±2.68 band is the one number the
+classic decomposition cannot give you.

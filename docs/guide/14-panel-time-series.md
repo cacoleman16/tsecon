@@ -323,6 +323,7 @@ whole caveat, and it is not a footnote:
 | Few entities (< ~30) | `panel_fe` + wild cluster bootstrap | Asymptotic clustered SE is too small with few clusters |
 | Impulse response to a shock felt by all entities | `panel_lp` with Driscoll-Kraay SE | Pools the same experiment across units for tight IRF bands |
 | Panel LP over long horizons in a short panel | `panel_lp(..., bias_correction="spj")` | Nickell bias grows like $O(h/T)$; the Mei-Sheng-Shi split-panel jackknife corrects points *and* SEs (`jackknife=True` is the points-only Dhaene-Jochmans variant) |
+| Units adopt a policy at *different* dates (staggered treatment) | `lp_did` (chapter 9) | Not a common shock at all — the clean-control rule replaces `panel_lp`'s pooled design and avoids TWFE negative weights |
 | Each entity has its own dynamics, and enough $T$ to fit them | `mean_group_var` | Pooling heterogeneous dynamics is *inconsistent*, not just inefficient |
 | Heterogeneous *static* slopes, no common factor | `panel_mean_group(method="mg")` | Averages per-unit slopes; dispersion SE across units |
 | Common unobserved factor drives both $y$ and $x$ | `panel_mean_group(method="cce")` | Cross-section averages span the factor space and purge the bias |

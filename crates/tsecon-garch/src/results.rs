@@ -208,8 +208,11 @@ impl GarchResults {
             VolSpec::Egarch { .. } => {
                 if horizon > 1 {
                     return Err(GarchError::UnsupportedForecast {
-                        what: "EGARCH multi-step forecasts require simulation \
-                               (TODO(phase0)); only horizon = 1 is analytic",
+                        what: "EGARCH variance forecasts are analytic only at \
+                               horizon = 1 (a multi-step EGARCH forecast needs \
+                               simulation, which this release does not ship): \
+                               pass forecast_horizon=1, or use vol=\"garch\"/\"gjr\" \
+                               for an analytic multi-step path",
                     });
                 }
                 let norm_const = (2.0 / core::f64::consts::PI).sqrt();

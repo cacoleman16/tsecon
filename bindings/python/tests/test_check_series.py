@@ -292,9 +292,31 @@ def test_seasonal_evidence_is_reported_at_the_given_period():
 
 
 def test_seasonal_recommendation_is_honest_about_the_gap():
+    """The seasonality advice must name the real gap and route to what ships.
+
+    This test used to pin the words "no seasonal ARIMA" and "roadmap", and it
+    kept passing for three releases after `arima_fit(seasonal=…)` shipped — the
+    advisor was telling users a shipped feature did not exist, and the test was
+    holding that falsehood in place. The honest invariant is not a phrase, it is
+    the pair of properties below: the one genuine gap is still named, and every
+    function the recommendation routes to actually exists.
+    """
     rec = rec_by_topic(seasonal_report(), "seasonality")
-    assert "no seasonal ARIMA" in rec["suggestion"]
-    assert "roadmap" in rec["suggestion"]
+
+    # The real gap, and the reason it is out of scope rather than merely absent.
+    assert "X-13" in rec["suggestion"]
+
+    # It must NOT deny capabilities that ship.
+    assert "no seasonal ARIMA" not in rec["suggestion"]
+
+    # Everything it routes to is real and callable, so this cannot rot again.
+    assert rec["functions"], "the recommendation must route somewhere"
+    for name in rec["functions"]:
+        assert hasattr(tsecon, name), f"routes to a nonexistent function: {name}"
+
+    # And the headline route is the seasonal fit itself.
+    assert "arima_fit" in rec["functions"]
+    assert "seasonal=" in rec["suggestion"]
 
 
 def test_lags_argument_controls_the_ljung_box_horizon():

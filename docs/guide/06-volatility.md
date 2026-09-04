@@ -206,7 +206,9 @@ $$\mathrm{ES}^{\alpha}_{t+1} = E\left[ L_{t+1} \mid L_{t+1} > \mathrm{VaR}^{\alp
 
 VaR answers "how bad is a bad day"; ES answers "how bad is a bad day *once it has arrived*." ES is subadditive (diversification cannot increase it) where VaR can fail to be, and it sees tail shape beyond the quantile — which is why the Basel Committee moved market-risk capital from 1% VaR to 2.5% ES. For a normal innovation the mean-zero formulas are $\mathrm{VaR}^\alpha = -\sigma q_\alpha$ and $\mathrm{ES}^\alpha = \sigma \phi(q_\alpha)/\alpha$ with $\phi$ the standard normal density; Student-t and skew-t versions need the distribution's partial expectations.
 
-The parametric route is not the only one, and for the far tail it is often not the best. **Filtered historical simulation** (Barone-Adesi, Giannopoulos, and Vosper 1999) drops the distributional assumption: take the empirical distribution of the model's own standardized residuals $\hat z_t$, read the quantile off it, and scale by the forecast $\hat\sigma_{t+1}$ — the volatility model does the time-variation, the data do the tail shape. For quantiles deeper than the data can support directly (0.1% with a few years of history), **extreme value theory** fits a generalized Pareto distribution to the largest standardized residuals and extrapolates the tail parametrically — the McNeil and Frey (2000) two-step that remains the standard prescription for far-tail VaR and ES. Both pipelines sit on the roadmap's risk layer; FHS additionally needs only the bootstrap machinery tsecon already ships.
+The parametric route is not the only one, and for the far tail it is often not the best. **Filtered historical simulation** (Barone-Adesi, Giannopoulos, and Vosper 1999) drops the distributional assumption: take the empirical distribution of the model's own standardized residuals $\hat z_t$, read the quantile off it, and scale by the forecast $\hat\sigma_{t+1}$ — the volatility model does the time-variation, the data do the tail shape. For quantiles deeper than the data can support directly (0.1% with a few years of history), **extreme value theory** fits a generalized Pareto distribution to the largest standardized residuals and extrapolates the tail parametrically — the McNeil and Frey (2000) two-step that remains the standard prescription for far-tail VaR and ES. The EVT half ships: `tsecon.gpd_fit` is exactly that peaks-over-threshold step, returning the tail index `xi`, the scale `beta`, and the McNeil-Frey `var`/`es` at each requested `p_tail` (feed it *losses* — `-returns` — so the numbers read as risk); `tsecon.gev_fit` is the block-maxima counterpart with return levels. FHS is the piece still on the roadmap's risk layer, and it needs only the bootstrap machinery tsecon already ships.
+
+Two contracts the model card insists on and this section will not paper over: `gpd_fit` needs at least ten exceedances, so every `p_tail` you ask for must sit beyond the threshold ($1 - p < n_{\text{exceed}}/n$); and both fits report `se_valid=False` rather than a confident interval when $\hat\xi \le -0.5$, the Smith (1985) irregular region where observed-information standard errors stop meaning anything.
 
 A risk model is validated by **backtesting**: compare the stream of VaR forecasts against realized losses and examine the **hit sequence** $I_t = \mathbf{1}[L_t > \mathrm{VaR}^\alpha_t]$. If the model is right, two things must hold:
 
@@ -225,7 +227,21 @@ hits.mean()                          # 0.0072 — 18 hits in 2500 days vs 25 exp
 int(hits[:-1] @ hits[1:])            # 0 consecutive-hit pairs: no clustering
 ```
 
-Eighteen hits against twenty-five expected looks like a shortfall, but the binomial standard deviation is $\sqrt{2500 \times 0.01 \times 0.99} \approx 5$, so the gap is well inside sampling noise — a Kupiec test would not reject, and that calibration judgment is exactly what the test formalizes. With a *fitted* model the same code runs on `fit["conditional_volatility"]`, and a t or FHS quantile replaces the hardcoded normal one.
+Eighteen hits against twenty-five expected looks like a shortfall, but the binomial standard deviation is $\sqrt{2500 \times 0.01 \times 0.99} \approx 5$, so the gap is well inside sampling noise. That calibration judgment is exactly what the tests formalize, and you do not have to hand-roll them: `var_backtest` runs the whole battery — Kupiec, Christoffersen independence and conditional coverage, and the Engle-Manganelli (2004) dynamic-quantile regression, which is the sharpest of the four because it tests the hits against lagged hits *and* the VaR level itself.
+
+```python
+var_ret = np.sqrt(sigma2) * q01          # VaR on the RETURN scale: negative for small alpha
+bt = tsecon.var_backtest(r, var_ret, alpha=0.01)
+
+bt["n_violations"], bt["expected_violations"]   # 18, 25.0
+bt["lr_uc"], bt["p_uc"]                          # 2.194, 0.139 — Kupiec does not reject
+bt["lr_ind"], bt["p_ind"]                        # 0.261, 0.609 — no hit clustering
+bt["lr_cc"], bt["p_cc"]                          # 2.455, 0.293 — joint conditional coverage
+bt["dq_stat"], bt["p_dq"]                        # 2.354, 0.884 — Engle-Manganelli DQ
+print(bt["verdict"])                             # the same reading, in a sentence
+```
+
+The sign convention is fixed once and is the thing to get right: returns and `var_forecasts` live on the same (return) scale, `var_forecasts[t]` is the $\alpha$-quantile of the conditional return distribution — *negative* for small $\alpha$ — and a violation is `return < VaR`. Pass a pre-computed 0/1 hit sequence instead and the battery still runs, but the DQ test loses its VaR regressor unless you pass the forecasts alongside it with `input="hits"`. With a *fitted* model the same code runs on `fit["conditional_volatility"]`, and a t or GPD tail quantile replaces the hardcoded normal one.
 
 > **⚠ Common mistake.** Trusting asymptotic backtest p-values on short windows. A 1% VaR over 250 trading days — the regulatory standard — expects 2.5 violations; the $\chi^2$ approximation to the LR statistic is poor with counts that small, and the tests have little power regardless. Use exact binomial or Monte Carlo p-values (Dufour 2006), and treat a "pass" on one year of data as weak evidence, not validation. And check the sign convention *first*: backtesting the wrong tail produces beautiful-looking results that mean nothing.
 
@@ -427,19 +443,65 @@ Reading the output: `omega`, `a`, `b` (and `nu` for the *t*) are the parameters;
 
 > **⚠ Common mistake.** Reaching for GAS-*gaussian* expecting it to beat GARCH. It cannot — it *is* GARCH(1,1) rewritten. The payoff lives entirely in the non-Gaussian score: use `density="student_t"` (or a future skew density) precisely when standardized residuals are still fat-tailed after a GARCH fit *and* you suspect the extremes are outliers you would rather not let dominate the variance forecast. Two further cautions: on genuinely Gaussian data $\hat\nu$ drifts to a huge value (the *t* nesting the normal) and the `converged` flag can read `False` even at a good optimum, because a persistence $b$ near one flattens the likelihood surface — read the parameters and log-likelihood, not the flag alone. And this GAS(1,1) is symmetric: it has no leverage term, so for equity indices pair it with, or prefer, the asymmetric models above (skew and leverage extensions such as Beta-Skew-*t*-EGARCH are on the roadmap's score-driven track).
 
+## Many assets at once: CCC and DCC
+
+A portfolio does not have a variance; it has a covariance *matrix*, and the diagonal is the easy part. Everything above filters one series at a time, and stacking $k$ univariate GARCH fits gives you $k$ volatility paths and nothing about how they move together — which is precisely the quantity a risk number for a book of positions depends on. The two-step family that solved this is the most-used multivariate volatility machinery in existence, and it splits the problem exactly where the difficulty is: model each asset's *variance* univariately, then model the *correlation* of the standardized residuals.
+
+**CCC** (Bollerslev 1990) takes the simplest possible second step: the correlation matrix is constant, $H_t = D_t R D_t$ with $D_t = \mathrm{diag}(\sigma_{1,t},\dots,\sigma_{k,t})$. All the time variation in covariance comes from the volatilities. That is a real model, not a straw man — it is often hard to beat at short horizons — but it makes an assumption you can test.
+
+**DCC** (Engle 2002) lets the correlation move, with a scalar GARCH-like recursion on the standardized residuals $z_t$:
+
+$$Q_t = (1 - a - b)\,\bar{Q} + a\, z_{t-1} z_{t-1}' + b\, Q_{t-1},$$
+
+with $R_t$ the correlation matrix implied by $Q_t$. Two parameters buy time-varying correlation for a system of any size, which is the whole reason DCC took over.
+
+`ccc_garch`, `dcc_garch`, and the `dcc_test` diagnostic between them are one call each. On two series built with a correlation that genuinely oscillates:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(19)
+n = 2000
+rho = 0.3 + 0.4 * np.sin(np.arange(n) / 300.0)      # the correlation MOVES, from -0.1 to 0.7
+s2 = np.zeros((n, 2)); e = np.zeros((n, 2)); s2[0] = 0.05 / (1 - 0.95)
+for t in range(n):
+    if t:
+        s2[t] = 0.05 + 0.10 * e[t - 1] ** 2 + 0.85 * s2[t - 1]
+    z1, z2 = rng.standard_normal(2)
+    z = np.array([z1, rho[t] * z1 + np.sqrt(1 - rho[t] ** 2) * z2])
+    e[t] = np.sqrt(s2[t]) * z
+
+ccc = tsecon.ccc_garch(e)
+np.asarray(ccc["correlation"])[0, 1]         # 0.305 — one number for a correlation that ranged -0.1..0.7
+
+dt = tsecon.dcc_test(e)                       # Engle-Sheppard (2001): H0 is CONSTANT correlation
+dt["stat"], dt["df"], dt["p_value"]           # 53.93, 6, 7.6e-10 — constant correlation rejected
+
+d = tsecon.dcc_garch(e, variant="cdcc")       # Aielli's corrected recursion
+d["a"], d["b"]                                # 0.0145, 0.9851
+c = np.asarray(d["correlation"])[:, 0, 1]     # the filtered correlation path, T x k x k
+c.min(), c.max()                              # -0.18, 0.74 — it tracks the truth's -0.1..0.7
+```
+
+Read the three results as one argument. CCC compresses a correlation that swings across most of the unit interval into the single number 0.305 — the *average*, which is right on average and wrong almost every day. `dcc_test` says so formally: its null is constant conditional correlation, and at $p \approx 10^{-9}$ that null is dead. And cDCC then recovers the path, with a persistence $b$ of 0.985 that says correlation, like volatility, has a long memory.
+
+Three knobs matter more than the rest. `variant` selects the correlation recursion: `"dcc"` (Engle 2002), `"cdcc"` (Aielli 2013 — the corrected driver that makes correlation targeting *consistent*, which is why it is the one to prefer), or `"adcc"` (Cappiello-Engle-Sheppard 2006, which adds an asymmetry term so joint bad news moves correlations more). `dist` sets the second-stage likelihood (`"normal"` QMLE or a multivariate `"t"`), and is a different object from `univariate_dist`, the per-series innovation density of stage one — the two are named apart on purpose. And the univariate stage takes the same `vol`/`mean`/`p`/`o`/`q` knobs as `garch_fit`, so the leverage models of the asymmetry section carry straight into the margins. Covariance forecasts come back from `forecast_horizon`. The full contract is in the [volatility model card](../reference/model-cards/volatility.md).
+
+> **⚠ Common mistake.** Reporting t-statistics on $a$ and $b$ from a two-step DCC fit. The second stage takes the first stage's estimates as if they were known, so any standard error that ignores the first-stage estimation error is wrong — Engle and Sheppard (2001) worked out the correct stacked inference and essentially no shipped software implements it, tsecon included. That is why `dcc_garch` returns parameters, likelihoods, and paths but *no* standard errors: an honest omission beats a confident wrong number. Judge the fit by the likelihood, the filtered path, and `dcc_test`.
+
 ## The frontier
 
-**Multivariate volatility.** Portfolios need conditional *covariance* matrices, and the workhorse is DCC — dynamic conditional correlation (Engle 2002): fit univariate GARCH to each asset, standardize, then drive a correlation matrix with a scalar GARCH-like recursion on the standardized residuals. It is the most-used multivariate volatility model in existence, and also a minefield the state of the art keeps repairing: the correlation-targeting estimator in original DCC is inconsistent (Aielli 2013 — his cDCC is the recommended fix), and the ubiquitous two-step standard errors that ignore first-stage estimation error are wrong (Engle and Sheppard 2001 give the correct stacked inference, essentially unavailable in shipped software). At the research edge, composite pairwise likelihoods (Pakel, Shephard, Sheppard, and Engle 2021) and nonlinear-shrinkage targeting (Engle, Ledoit, and Wolf 2019) push DCC to thousands of assets — the state of practice at quantitative funds, currently living only in author MATLAB code. All of this is the multivariate track of tsecon's Module 03.
+**Multivariate volatility at scale.** The two-step family in the section above stops being straightforward when $k$ stops being small. At the research edge, composite pairwise likelihoods (Pakel, Shephard, Sheppard, and Engle 2021) and nonlinear-shrinkage targeting (Engle, Ledoit, and Wolf 2019) push DCC to thousands of assets — the state of practice at quantitative funds, currently living only in author MATLAB code. Neither those, nor BEKK's full-matrix parameterization, nor the correct stacked two-step standard errors, ships here yet; they are the rest of the multivariate track of tsecon's Module 03.
 
 **Stochastic volatility.** GARCH makes $\sigma_t^2$ a deterministic function of past data; **SV** models give volatility its own random innovations — a latent AR(1) in log-volatility. That one change makes the likelihood an intractable integral, estimated by MCMC via the mixture sampler of Kim, Shephard, and Chib (1998) with the Omori et al. (2007) refinement, or by particle filters for models with leverage and jumps. SV fits often beat GARCH in likelihood terms and are the natural building block inside macro models (time-varying-parameter VARs with SV are the modern standard in empirical macro — see the Bayesian chapter). The practical cost is computational, which is exactly the margin a parallel Rust MCMC core attacks.
 
 **Volatility and the macroeconomy.** Daily GARCH dynamics say nothing about *why* the long-run level of volatility drifts across decades. Component models split the variance into a slow-moving trend and a mean-reverting cycle (Engle and Lee 1999), and GARCH-MIDAS (Engle, Ghysels, and Sohn 2013) goes further: the long-run component is driven directly by low-frequency macro variables — inflation, industrial-production growth — through MIDAS weights, making "does the business cycle drive market volatility?" an estimable question rather than a stylized claim. This branch is where volatility modeling meets the macro half of this guide.
 
-**Score-driven models.** GAS models (Creal, Koopman, and Lucas 2013) update the variance by the scaled *score* of the conditional likelihood. With Student-t errors this yields Beta-t-EGARCH (Harvey 2013): a huge return is partially discounted as a fat-tail draw rather than fully fed into tomorrow's variance, giving robustness to outliers that plain GARCH lacks.
+**Score-driven models.** The variance-form GAS(1,1) of Creal, Koopman, and Lucas (2013) is the section above, shipped as `gas_volatility` with Gaussian and Student-t scores. What the frontier still holds is the rest of the family: Harvey's (2013) Beta-t-EGARCH in its log-variance form, its skew and leverage extensions (Beta-Skew-t-EGARCH), and score-driven dynamics for objects other than the variance — correlations, quantiles, degrees of freedom.
 
 **Rough volatility.** Gatheral, Jaisson, and Rosenbaum (2018) argue log-RV behaves like fractional Brownian motion with Hurst exponent near 0.1 — far rougher than standard models imply — and that a simple forecasting rule exploiting this is strikingly accurate. It connects volatility econometrics to option-pricing models and is an active, contested research area (measurement noise in RV biases roughness estimates — how much of the roughness is real remains debated).
 
-**Tail-risk evaluation.** ES is not *elicitable* on its own — no loss function is minimized in expectation by the true ES (Gneiting 2011) — but Fissler and Ziegel (2016) proved (VaR, ES) is *jointly* elicitable, enabling honest ES model comparison via joint scoring, and Patton, Ziegel, and Chen (2019) and Taylor (2019) built dynamic models that filter VaR and ES directly by minimizing those scores. This is the frontier of risk forecasting and is absent from all mainstream libraries; it anchors the roadmap's backtesting layer alongside the modern ES backtests (Acerbi and Szekely 2014; Nolde and Ziegel 2017; Bayer and Dimitriadis 2022).
+**Tail-risk evaluation.** ES is not *elicitable* on its own — no loss function is minimized in expectation by the true ES (Gneiting 2011) — but Fissler and Ziegel (2016) proved (VaR, ES) is *jointly* elicitable, enabling honest ES model comparison via joint scoring, and Patton, Ziegel, and Chen (2019) and Taylor (2019) built dynamic models that filter VaR and ES directly by minimizing those scores. This is the frontier of risk forecasting and is absent from all mainstream libraries. The *VaR* half of the backtesting layer ships — `var_backtest` runs Kupiec, Christoffersen, and Engle-Manganelli, as above; what the roadmap still owes is the ES half: the modern ES backtests (Acerbi and Szekely 2014; Nolde and Ziegel 2017; Bayer and Dimitriadis 2022) and Fissler-Ziegel joint scoring.
 
 Honest open problems: distinguishing genuine long memory from structural breaks in volatility (they mimic each other almost perfectly in-sample and imply different forecasts); persistence estimates biased toward one by unmodeled breaks; boundary inference when $\alpha \approx 0$; and the roughness-vs-noise identification problem in high-frequency data.
 
@@ -453,9 +515,11 @@ Honest open problems: distinguishing genuine long memory from structural breaks 
 | Estimates keep hitting positivity constraints | EGARCH | Log-variance recursion needs no parameter constraints |
 | Persistence estimate ≈ 1 and the sample spans crises | Component or Markov-switching GARCH (roadmap) | Unmodeled level breaks masquerade as unit-root persistence |
 | Intraday data available | Realized variance + HAR; Realized GARCH (roadmap) | Measuring beats filtering; HAR is OLS-simple and hard to beat |
-| Regulatory or desk-level VaR/ES | GARCH + t or FHS/EVT tails, then Kupiec + Christoffersen | Parametric normal tails underpredict 1% losses; unbacktested VaR is a number, not a model |
+| Regulatory or desk-level VaR/ES | `garch_fit(dist="t")`, then `var_backtest` | Parametric normal tails underpredict 1% losses; unbacktested VaR is a number, not a model |
+| A tail quantile deeper than the sample supports (0.1%) | `gpd_fit` on losses (block maxima: `gev_fit`) | The McNeil-Frey peaks-over-threshold step extrapolates the tail instead of guessing it |
 | Multi-day risk horizon | Sum the forecast variance term structure, or simulate | The square-root-of-time rule is wrong whenever volatility is mean-reverting |
-| Portfolio covariances, a few to hundreds of assets | DCC/cDCC (roadmap) | Univariate GARCH margins + parsimonious correlation dynamics scale |
+| Portfolio covariances, a few to hundreds of assets | `dcc_garch(variant="cdcc")`; `ccc_garch` as the constant-correlation baseline | Univariate GARCH margins + parsimonious correlation dynamics scale |
+| Is a constant correlation good enough? | `dcc_test` (Engle-Sheppard; H0 = constant correlation) | CCC is cheaper and often competitive — test it rather than assuming either way |
 | Comparing two volatility forecasts | QLIKE or MSE loss + `dm_test` with HAC | Only proxy-robust losses rank correctly against noisy volatility proxies |
 
 ## What tsecon implements today
@@ -470,6 +534,9 @@ Honest open problems: distinguishing genuine long memory from structural breaks 
 - `garch_fit(y, vol="garch", mean="zero", dist="normal", p=1, o=None, q=1, forecast_horizon=0)` — GARCH/GJR/EGARCH QMLE with MLE and robust SEs; used in the workhorse example above. `o` (the asymmetry order) acts only under `vol="gjr"`/`"egarch"` — `o=None` means one asymmetry lag there and none for plain GARCH, and an explicit `o > 0` with `vol="garch"` raises rather than being silently discarded (in `arch`, `arch_model(y, p=1, o=1, q=1)` silently switches to GJR; tsecon makes you say `vol="gjr"`)
 - `gas_volatility(y, density="gaussian", horizon=0)` — score-driven (GAS) volatility with Gaussian or Student-t innovations, as in the score-driven section
 - `realized_measures`, `realized_quarticity`, `tripower_quarticity`, `bns_jump_test`, `realized_range`, `har_rv` — the realized-volatility toolkit demonstrated above
+- `ccc_garch(returns, ...)`, `dcc_garch(returns, variant="dcc"|"cdcc"|"adcc", dist="normal"|"t", forecast_horizon=0)`, `dcc_test(returns, lags=...)` — the multivariate two-step family and the Engle-Sheppard constant-correlation diagnostic, as in the CCC/DCC section. Parameters, likelihoods, filtered correlation and covariance paths, and covariance forecasts; deliberately **no standard errors**, because correct two-step inference is not implemented
+- `var_backtest(returns, var_forecasts, alpha=0.05, dq_lags=4)` — the VaR battery: Kupiec unconditional coverage, Christoffersen independence and conditional coverage, and the Engle-Manganelli dynamic-quantile test, plus a plain-language `verdict`
+- `gpd_fit(y, threshold=None, quantile=..., p_tail=[...])` and `gev_fit(y, block_size=None, return_periods=[...])` — the EVT tail fits: peaks-over-threshold with McNeil-Frey VaR/ES, and block maxima with return levels; both certify their standard errors with `se_valid`
 - `dm_test(e1, e2, h=1, loss="squared")` and `accuracy(...)` — forecast-comparison machinery volatility horse races run on
 - `bootstrap_indices`, `philox_uniforms` — the reproducible resampling/RNG substrate that filtered historical simulation will consume
 
@@ -481,7 +548,7 @@ Honest open problems: distinguishing genuine long memory from structural breaks 
 - Conditional-volatility paths, standardized residuals, information criteria, and analytic multi-step variance forecasts for GARCH/GJR (EGARCH multi-step awaits the simulation engine)
 - Cross-package parity with the `arch` package pinned by golden fixtures (`fixtures/garch.json`): log-likelihoods to 1e-8 relative, conditional volatilities to 1e-6, robust SEs to 5e-3
 
-**Roadmap** ([docs/roadmap/03-volatility.md](../roadmap/03-volatility.md)): the asymmetric and long-memory families (TGARCH, APARCH, FIGARCH), component and GARCH-MIDAS models, the skew-t/GED innovation zoo with exact partial moments, the VaR/ES layer with the full backtesting battery (Kupiec, Christoffersen, ES backtests, Fissler-Ziegel joint scoring), realized-measure construction and Realized GARCH/HEAVY, HAR extensions, DCC/cDCC/BEKK with correct two-step inference, stochastic volatility by MCMC and particle methods, and score-driven (GAS) models.
+**Roadmap** ([docs/roadmap/03-volatility.md](../roadmap/03-volatility.md)): the remaining asymmetric and long-memory families (TGARCH, APARCH, FIGARCH), component and GARCH-MIDAS models, the skew-t/GED innovation zoo with exact partial moments, filtered historical simulation, the ES half of the risk layer (ES backtests and Fissler-Ziegel joint scoring, on top of the shipped `var_backtest`), Realized GARCH/HEAVY and the HAR extensions (HAR-J, SHAR, HARQ), BEKK and the correct stacked two-step inference for the DCC family, stochastic volatility by MCMC and particle methods, and the rest of the score-driven family (Beta-t-EGARCH and its skew/leverage extensions, on top of the shipped `gas_volatility`).
 
 ## Further reading
 

@@ -341,8 +341,15 @@ impl fmt::Display for ForecastError {
                 f,
                 "{what}: the in-sample seasonal-naive error at period \
                  {period} is exactly zero (the training series repeats \
-                 every {period} observations), so the scaled error divides \
-                 by zero; use a different period or an unscaled measure"
+                 every {period} observations — constant, for period 1), so \
+                 the scaled error divides by zero. No parameter of this \
+                 call selects an unscaled measure instead; the cure is a \
+                 training sample that varies at that period — in a backtest \
+                 the FIRST training window sets this scale, so lengthen or \
+                 shift it (train=) past the constant/periodic stretch (or \
+                 change insample_period); in a direct mase/rmsse call pass \
+                 a non-constant insample, or compute the unscaled MAE/RMSE \
+                 yourself"
             ),
             ForecastError::InvalidPeriod {
                 what,

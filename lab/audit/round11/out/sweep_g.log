@@ -1,0 +1,163 @@
+accuracy                     0.000   0.000   0.000  slope= 0.06  dflt3200=  0.000
+acf                          0.000   0.000   0.000  slope= 0.19  dflt3200=  0.005
+acm_term_premium             0.002   0.011   0.038  slope= 1.02  dflt3200=  0.053
+adaptive_lasso               0.001   0.001   0.001  slope= 0.21  dflt3200=  0.001
+adf                          0.001   0.009   0.084  slope= 1.67  dflt3200=  0.073  retime_slope=1.49  FLAGS: superlinear slope 1.67 (expected ~1)
+afns_adjustment              0.000   0.000   0.000  slope= 0.09  dflt3200=  0.000  retime_slope=0.06  FLAGS: non-monotone
+ar_loglik                    0.001   0.006   0.010  slope=  0.9  dflt3200=  0.011
+arch_lm                      0.000   0.000   0.001  slope= 0.36  dflt3200=  0.000
+arima_fit                    0.274   1.128   5.393  slope= 1.08  dflt3200=  6.100  FLAGS: 5.4s at T=3200 (canonical kwargs); 6.1s at T=3200 with DEFAULT arguments
+auto_arima                   4.960  17.346  70.021  slope= 0.95  dflt3200= 62.403  FLAGS: 70.0s at T=3200 (canonical kwargs); 62.4s at T=3200 with DEFAULT arguments
+backtest                     0.000   0.001   0.012  slope= 1.25  dflt3200=  0.019
+bai_perron                   0.001   0.006   0.136  slope= 1.94  dflt3200=  0.182
+bk_filter                    0.000   0.000   0.000  slope= 0.14  dflt3200=  0.005
+bn_decomposition             0.783   4.584  19.865  slope= 1.17  dflt3200= 13.025  FLAGS: 19.9s at T=3200 (canonical kwargs); 13.0s at T=3200 with DEFAULT arguments
+bn_filter                    0.030   0.083   0.279  slope=  0.8  dflt3200=  0.333
+bns_jump_test                0.000   0.000   0.001  slope= 0.21  dflt3200=  0.001
+bootstrap_indices            0.000   0.004   0.000  slope= 0.07  dflt3200=   -     retime_slope=0.07  FLAGS: non-monotone
+box_cox_lambda               0.001   0.001   0.004  slope= 0.74  dflt3200=  0.004
+bvar_fit                     0.001   0.001   0.001  slope= 0.34  dflt3200=  0.001
+bvar_hierarchical            0.004   0.013   0.040  slope= 0.85  dflt3200=  0.049
+bvar_irf_draws               0.006   0.002   0.003  slope=-0.28  dflt3200=  0.035  retime_slope=-0.27  FLAGS: non-monotone
+bvar_ssvs                    0.010   0.014   0.028  slope= 0.37  dflt3200=  1.527
+ccc_garch                    0.012   0.043   0.144  slope=  0.9  dflt3200=  0.121
+cf_filter                    0.000   0.002   0.059  slope= 1.87  dflt3200=  0.037  retime_slope=1.72  FLAGS: superlinear slope 1.87 (expected ~1)
+cg_regression                0.000   0.000   0.001  slope= 0.23  dflt3200=  0.001
+check_series                 0.015   0.017   0.093  slope= 0.65  dflt3200=  0.065
+check_stationarity           0.001   0.005   0.074  slope= 1.63  dflt3200=  0.051  retime_slope=1.52  FLAGS: superlinear slope 1.63 (expected ~1)
+chow_test                    0.000   0.004   0.001  slope= 0.37  dflt3200=  0.001  retime_slope=0.31  FLAGS: non-monotone
+coherence                    0.000   0.000   0.001  slope= 0.14  dflt3200=  0.001
+conformal_backtest           0.007   0.056   0.649  slope= 1.62  dflt3200=  1.009
+conformal_forecast           0.003   0.056   0.630  slope= 1.95  dflt3200=  0.619
+connectedness                0.001   0.001   0.002  slope=  0.3  dflt3200=  0.002
+copula_fit                   0.003   0.012   0.075  slope= 1.23  dflt3200=  0.075
+copula_select                0.005   0.026   0.183  slope= 1.27  dflt3200= 23.104  FLAGS: 23.1s at T=3200 with DEFAULT arguments
+cusum_test                   0.001   0.005   0.008  slope= 0.83  dflt3200=  0.004
+cv_splits                    0.000   0.016   0.309  slope= 2.51  dflt3200=   -     retime_slope=2.35  FLAGS: superlinear slope 2.51 (expected ~1)
+cw_test                      0.000   0.000   0.000  slope= 0.07  dflt3200=  0.001  retime_slope=0.20  FLAGS: non-monotone
+dcc_garch                    0.051   0.200   0.798  slope= 0.99  dflt3200=  0.776
+dcc_test                     0.007   0.038   0.103  slope= 0.95  dflt3200=  0.110
+dcs_local_level              0.025   0.042   0.189  slope= 0.72  dflt3200=  0.173
+dfgls                        0.001   0.004   0.048  slope= 1.53  dflt3200=  0.035
+dfm_news                     0.013   0.058   0.228  slope= 1.03  dflt3200=  0.292
+dfm_nowcast                  0.005   0.018   0.076  slope= 0.99  dflt3200=  0.114
+dm_test                      0.000   0.000   0.000  slope= 0.06  dflt3200=  0.000
+dsge_solve                   0.000   0.000   0.000  slope= 0.03  dflt3200=  0.000
+dynamic_ns                   0.001   0.002   0.016  slope= 0.95  dflt3200=  0.015
+elastic_net                  0.000   0.000   0.001  slope= 0.22  dflt3200=  0.001
+engle_granger                0.001   0.009   0.040  slope= 1.32  dflt3200=  0.056
+factor_model                 0.001   0.001   0.008  slope= 0.77  dflt3200=   -   
+favar                        0.001   0.002   0.007  slope= 0.69  dflt3200=  0.009
+flp                          0.001   0.001   0.003  slope= 0.55  dflt3200=  0.014
+flp_scenario                 0.001   0.001   0.004  slope= 0.63  dflt3200=  0.013
+forecast_disagreement        0.001   0.000   0.001  slope= 0.11  dflt3200=  0.000
+forecast_efficiency          0.001   0.001   0.001  slope= 0.16  dflt3200=  0.001
+frac_diff                    0.000   0.001   0.007  slope= 1.01  dflt3200=  0.012
+frac_integrate               0.000   0.003   0.007  slope= 1.12  dflt3200=  0.007
+fry_pagan_svar               0.002   0.002   0.003  slope= 0.18  dflt3200=  0.028
+functional_pca               0.001   0.001   0.004  slope= 0.65  dflt3200=  0.008
+fvar_scenario                0.001   0.001   0.007  slope= 0.82  dflt3200=  0.003
+garch_fit                    0.004   0.015   0.058  slope= 1.01  dflt3200=  0.064
+gas_volatility               0.003   0.010   0.051  slope= 1.05  dflt3200=  0.041
+gev_fit                      0.006   0.002   0.002  slope=-0.43  dflt3200=  0.128  retime_slope=0.07  FLAGS: non-monotone
+gmm_nonlinear                0.036   0.159   0.663  slope= 1.06  dflt3200=  0.625
+gpd_fit                      0.001   0.001   0.006  slope= 0.87  dflt3200=  0.002
+growth_at_risk               0.007   0.040   0.031  slope= 0.52  dflt3200=  0.066  retime_slope=0.81  FLAGS: non-monotone
+gw_test                      0.000   0.000   0.000  slope=-0.09  dflt3200=  0.000
+hamilton_filter              0.000   0.000   0.001  slope= 0.18  dflt3200=  0.001
+hansen_seo_test              0.018   0.023   0.071  slope=  0.5  dflt3200=  1.338
+har_rv                       0.000   0.001   0.005  slope= 0.93  dflt3200=  0.001
+hetero_svar                  0.001   0.001   0.002  slope=  0.4  dflt3200=  0.002
+heteroskedasticity_test      0.000   0.000   0.003  slope= 0.84  dflt3200=  0.001
+historical_decomposition     0.003   0.014   0.423  slope= 1.85  dflt3200=  0.434  retime_slope=1.96  FLAGS: superlinear slope 1.85 (expected ~1)
+hp_filter                    0.000   0.000   0.000  slope= 0.27  dflt3200=  0.001
+iv_gmm                       0.001   0.001   0.001  slope= 0.33  dflt3200=  0.006
+ivx_test                     0.001   0.001   0.001  slope= 0.24  dflt3200=  0.001
+jarque_bera                  0.000   0.000   0.000  slope= 0.07  dflt3200=  0.000  retime_slope=0.07  FLAGS: non-monotone
+johansen                     0.001   0.001   0.001  slope= 0.11  dflt3200=  0.001
+kpss                         0.000   0.000   0.000  slope=  0.2  dflt3200=  0.000
+lasso                        0.000   0.000   0.001  slope= 0.17  dflt3200=  0.001
+lasso_path                   0.001   0.001   0.003  slope=  0.6  dflt3200=  0.013
+ljung_box                    0.000   0.000   0.000  slope= 0.06  dflt3200=  0.000
+local_level_smooth           0.001   0.003   0.026  slope= 1.08  dflt3200=  0.013
+long_memory_d                0.001   0.001   0.001  slope=-0.07  dflt3200=  0.001
+long_run_svar                0.001   0.001   0.002  slope= 0.35  dflt3200=  0.002
+long_run_variance            0.000   0.000   0.000  slope= 0.07  dflt3200=  0.000
+lp                           0.001   0.002   0.005  slope=  0.7  dflt3200=  0.014
+lp_did                       0.001   0.003   0.011  slope=  1.0  dflt3200=  0.022
+lp_iv                        0.004   0.014   0.047  slope= 0.88  dflt3200=  0.068
+lp_multiplier                0.009   0.033   0.126  slope= 0.93  dflt3200=  0.682
+lp_state                     0.002   0.009   0.018  slope= 0.84  dflt3200=  0.063
+markov_switching_ar          0.011   0.019   0.060  slope= 0.62  dflt3200=  0.053
+max_share_svar               0.001   0.001   0.002  slope= 0.34  dflt3200=  0.002
+mcmc_diagnostics             0.001   0.007   0.090  slope= 1.66  dflt3200=  0.091  retime_slope=1.68  FLAGS: superlinear slope 1.66 (expected ~1)
+mean_group_var               0.001   0.001   0.003  slope= 0.44  dflt3200=  0.003
+midas_weights                0.000   0.000   0.000  slope= 0.11  dflt3200=  0.000
+mstl                         0.002   0.006   0.021  slope= 0.92  dflt3200=  0.020
+narrative_svar               0.002   0.003   0.003  slope= 0.14  dflt3200=   -   
+ndiffs                       0.000   0.000   0.001  slope= 0.18  dflt3200=  0.001
+nelson_siegel                0.000   0.000   0.000  slope= 0.14  dflt3200=  0.000
+ng_perron                    0.001   0.004   0.040  slope= 1.46  dflt3200=  0.038
+nongaussian_svar             0.001   0.002   0.005  slope= 0.57  dflt3200=  0.005
+nsdiffs                      0.001   0.002   0.007  slope= 0.62  dflt3200=  0.007
+ols                          0.000   0.001   0.001  slope= 0.43  dflt3200=  0.001
+optimal_block_length         0.000   0.001   0.001  slope= 0.19  dflt3200=  0.001
+ou_fit                       0.000   0.000   0.000  slope= 0.01  dflt3200=  0.000  retime_slope=-0.02  FLAGS: non-monotone
+pacf                         0.000   0.000   0.000  slope= 0.12  dflt3200=  0.001
+panel_fe                     0.001   0.001   0.004  slope= 0.56  dflt3200=  0.004
+panel_lp                     0.003   0.010   0.052  slope= 1.03  dflt3200=  0.061
+panel_mean_group             0.000   0.001   0.001  slope=  0.4  dflt3200=  0.001
+panel_pmg                    0.005   0.001   0.007  slope= 0.15  dflt3200=  0.003  retime_slope=0.50  FLAGS: non-monotone
+panel_unit_root              0.000   0.001   0.001  slope= 0.23  dflt3200=  0.216
+periodogram                  0.001   0.001   0.001  slope= 0.12  dflt3200=  0.001
+phillips_ouliaris            0.000   0.000   0.001  slope= 0.21  dflt3200=  0.001
+phillips_perron              0.000   0.001   0.001  slope= 0.16  dflt3200=  0.001
+philox_uniforms              0.000   0.000   0.000  slope= 0.17  dflt3200=  0.000
+predictive_regression        0.000   0.000   0.001  slope= 0.41  dflt3200=  0.001
+proxy_ar_sets                0.001   0.001   0.002  slope= 0.37  dflt3200=  0.002
+proxy_first_stage            0.001   0.001   0.002  slope= 0.24  dflt3200=  0.002
+proxy_svar                   0.001   0.001   0.002  slope= 0.23  dflt3200=  0.002
+proxy_svar_bands             0.006   0.010   0.045  slope= 0.74  dflt3200=  1.272
+pseudo_obs                   0.000   0.000   0.001  slope= 0.31  dflt3200=  0.005
+quantile_lp                  0.066   0.441   0.918  slope= 0.95  dflt3200=  4.203
+quantile_regression          0.003   0.006   0.062  slope= 1.06  dflt3200=  0.081
+realized_measures            0.000   0.000   0.000  slope= 0.14  dflt3200=  0.000
+realized_quarticity          0.000   0.000   0.000  slope= 0.12  dflt3200=  0.000
+realized_range               0.000   0.000    -     slope= None  dflt3200=   -     FLAGS: incomplete: T=3200:ERROR: ValueError: Parkinson range variance: OHLC bar 2889 is inconsistent (high and low must be strictly positive); check the bar ordering (open, high, low, close) and that prices are strictly positive
+recession_probit             0.001   0.001   0.004  slope= 0.66  dflt3200=  0.005
+reset_test                   0.000   0.000   0.001  slope= 0.41  dflt3200=  0.001
+ridge                        0.001   0.001   0.001  slope= 0.16  dflt3200=  0.001
+robust_svar_bounds           0.003   0.003   0.004  slope= 0.09  dflt3200=  0.056
+seasonal_strength            0.001   0.001   0.004  slope= 0.66  dflt3200=  0.004
+setar                        0.000   0.001   0.002  slope= 0.56  dflt3200=  0.002
+setar_test                   0.002   0.008   0.028  slope= 0.89  dflt3200=  0.105
+sign_restricted_svar         0.001   0.002   0.003  slope= 0.19  dflt3200=  0.020
+smooth_lp                    0.010   0.039   0.165  slope= 1.02  dflt3200=  0.722
+spread_zscore                0.000   0.000   0.000  slope= 0.16  dflt3200=  0.000
+star                         0.003   0.011   0.044  slope= 0.98  dflt3200=  0.136
+star_eval                    0.000   0.000   0.001  slope= 0.38  dflt3200=  0.001
+star_test                    0.000   0.000   0.001  slope= 0.45  dflt3200=  0.001
+stl                          0.001   0.001   0.004  slope=  0.6  dflt3200=  0.004
+structural_fevd              0.001   0.001   0.002  slope= 0.35  dflt3200=  0.001
+summarize                    0.000   0.000   0.000  slope= 0.04  dflt3200=  0.000  retime_slope=-0.35  FLAGS: non-monotone
+sup_f_test                   0.000   0.000   0.000  slope= 0.12  dflt3200=  0.000
+svensson                     0.000   0.000   0.000  slope= 0.01  dflt3200=  0.000  retime_slope=0.06  FLAGS: non-monotone
+theta_forecast               0.000   0.001   0.001  slope=  0.5  dflt3200=  0.001
+threshold_var                0.001   0.002   0.009  slope=  0.9  dflt3200=  0.009
+threshold_var_test           0.015   0.033   0.103  slope= 0.69  dflt3200=  1.541
+threshold_vecm               0.002   0.004   0.012  slope= 0.63  dflt3200=  0.080
+tripower_quarticity          0.000   0.000   0.001  slope= 0.21  dflt3200=  0.005
+umidas                       0.000   0.001   0.003  slope=  0.7  dflt3200=  0.007
+var_backtest                 0.000   0.001   0.001  slope= 0.27  dflt3200=   -   
+var_fevd                     0.001   0.001   0.002  slope= 0.29  dflt3200=  0.001
+var_fit                      0.001   0.002   0.006  slope= 0.63  dflt3200=  0.005
+var_forecast                 0.001   0.001   0.002  slope= 0.24  dflt3200=  0.002
+var_granger                  0.001   0.001   0.002  slope= 0.36  dflt3200=  0.002
+var_irf                      0.001   0.001   0.002  slope= 0.34  dflt3200=  0.002
+var_irf_bands                0.001   0.001   0.002  slope= 0.24  dflt3200=  0.002
+vecm                         0.001   0.001   0.001  slope= 0.29  dflt3200=  0.001
+weighted_midas               0.002   0.009   0.029  slope= 0.91  dflt3200=  0.033
+welch                        0.001   0.000   0.001  slope=  0.0  dflt3200=  0.001
+zero_sign_svar               0.002   0.002   0.003  slope= 0.17  dflt3200=  0.029
+zivot_andrews                0.002   0.027   0.351  slope= 1.87  dflt3200=  0.305
+realized_range               0.000   0.000   0.004  slope= 1.01  dflt3200=  0.000

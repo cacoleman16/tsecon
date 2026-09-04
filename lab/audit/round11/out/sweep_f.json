@@ -1,0 +1,11626 @@
+{
+ "accuracy": {
+  "runtime": [
+   [
+    "actual",
+    "pos",
+    false
+   ],
+   [
+    "forecast",
+    "pos",
+    false
+   ],
+   [
+    "insample",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "actual",
+    "pos",
+    false
+   ],
+   [
+    "forecast",
+    "pos",
+    false
+   ],
+   [
+    "insample",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "acf": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ],
+   [
+    "adjusted",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ],
+   [
+    "adjusted",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "acm_term_premium": {
+  "runtime": [
+   [
+    "yields",
+    "pos",
+    false
+   ],
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "periods_per_year",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "yields",
+    "pos",
+    false
+   ],
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "periods_per_year",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "adaptive_lasso": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    false
+   ],
+   [
+    "l1_ratio",
+    "pos",
+    true
+   ],
+   [
+    "gamma",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    false
+   ],
+   [
+    "l1_ratio",
+    "pos",
+    true
+   ],
+   [
+    "gamma",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "adf": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "autolag",
+    "pos",
+    true
+   ],
+   [
+    "maxlag",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "autolag",
+    "pos",
+    true
+   ],
+   [
+    "maxlag",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "autolag",
+    "aic",
+    "Ellipsis",
+    "`autolag`: \"aic\" (default)"
+   ],
+   [
+    "autolag",
+    "aic",
+    "Ellipsis",
+    "`autolag`: \"aic\" (default)"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "regression=c": "ok",
+   "regression=n": "ok"
+  }
+ },
+ "afns_adjustment": {
+  "runtime": [
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "sigma",
+    "pos",
+    false
+   ],
+   [
+    "decay",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "sigma",
+    "pos",
+    false
+   ],
+   [
+    "decay",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "ar_loglik": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "coeffs",
+    "pos",
+    false
+   ],
+   [
+    "sigma2",
+    "pos",
+    false
+   ],
+   [
+    "intercept",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "coeffs",
+    "pos",
+    false
+   ],
+   [
+    "sigma2",
+    "pos",
+    false
+   ],
+   [
+    "intercept",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "arch_lm": {
+  "runtime": [
+   [
+    "resid",
+    "pos",
+    false
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "resid",
+    "pos",
+    false
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "arima_fit": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "d",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ],
+   [
+    "seasonal",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ],
+   [
+    "forecast_steps",
+    "pos",
+    true
+   ],
+   [
+    "conf_alpha",
+    "pos",
+    true
+   ],
+   [
+    "drift_uncertainty",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "d",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ],
+   [
+    "seasonal",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ],
+   [
+    "forecast_steps",
+    "pos",
+    true
+   ],
+   [
+    "conf_alpha",
+    "pos",
+    true
+   ],
+   [
+    "drift_uncertainty",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "auto_arima": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "seasonal_period",
+    "pos",
+    true
+   ],
+   [
+    "ic",
+    "pos",
+    true
+   ],
+   [
+    "stepwise",
+    "pos",
+    true
+   ],
+   [
+    "max_p",
+    "pos",
+    true
+   ],
+   [
+    "max_q",
+    "pos",
+    true
+   ],
+   [
+    "max_P",
+    "pos",
+    true
+   ],
+   [
+    "max_Q",
+    "pos",
+    true
+   ],
+   [
+    "max_order",
+    "pos",
+    true
+   ],
+   [
+    "max_d",
+    "pos",
+    true
+   ],
+   [
+    "max_D",
+    "pos",
+    true
+   ],
+   [
+    "d",
+    "pos",
+    true
+   ],
+   [
+    "D",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "forecast_steps",
+    "pos",
+    true
+   ],
+   [
+    "conf_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "seasonal_period",
+    "pos",
+    true
+   ],
+   [
+    "ic",
+    "pos",
+    true
+   ],
+   [
+    "stepwise",
+    "pos",
+    true
+   ],
+   [
+    "max_p",
+    "pos",
+    true
+   ],
+   [
+    "max_q",
+    "pos",
+    true
+   ],
+   [
+    "max_P",
+    "pos",
+    true
+   ],
+   [
+    "max_Q",
+    "pos",
+    true
+   ],
+   [
+    "max_order",
+    "pos",
+    true
+   ],
+   [
+    "max_d",
+    "pos",
+    true
+   ],
+   [
+    "max_D",
+    "pos",
+    true
+   ],
+   [
+    "d",
+    "pos",
+    true
+   ],
+   [
+    "D",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "forecast_steps",
+    "pos",
+    true
+   ],
+   [
+    "conf_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "backtest": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "window",
+    "pos",
+    true
+   ],
+   [
+    "train",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "refit_every",
+    "pos",
+    true
+   ],
+   [
+    "forecaster",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ],
+   [
+    "insample_period",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "window",
+    "pos",
+    true
+   ],
+   [
+    "train",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "refit_every",
+    "pos",
+    true
+   ],
+   [
+    "forecaster",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ],
+   [
+    "insample_period",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "bai_perron": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "max_breaks",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "max_breaks",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "bk_filter": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "low",
+    "pos",
+    true
+   ],
+   [
+    "high",
+    "pos",
+    true
+   ],
+   [
+    "k",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "low",
+    "pos",
+    true
+   ],
+   [
+    "high",
+    "pos",
+    true
+   ],
+   [
+    "k",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "bn_decomposition": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ],
+   [
+    "ar",
+    "pos",
+    true
+   ],
+   [
+    "ma",
+    "pos",
+    true
+   ],
+   [
+    "drift",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ],
+   [
+    "ar",
+    "pos",
+    true
+   ],
+   [
+    "ma",
+    "pos",
+    true
+   ],
+   [
+    "drift",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "bn_filter": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "delta",
+    "pos",
+    true
+   ],
+   [
+    "demean",
+    "pos",
+    true
+   ],
+   [
+    "d0",
+    "pos",
+    true
+   ],
+   [
+    "dt",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "delta",
+    "pos",
+    true
+   ],
+   [
+    "demean",
+    "pos",
+    true
+   ],
+   [
+    "d0",
+    "pos",
+    true
+   ],
+   [
+    "dt",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "dt",
+    0.01,
+    null,
+    "`dt` (defaults 0.01"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "bns_jump_test": {
+  "runtime": [
+   [
+    "returns",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "returns",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "bootstrap_indices": {
+  "runtime": [
+   [
+    "n",
+    "pos",
+    false
+   ],
+   [
+    "scheme",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "block_length",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "n",
+    "pos",
+    false
+   ],
+   [
+    "scheme",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "block_length",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "scheme=circular": "ValueError: scheme \"circular\" requires block_length",
+   "scheme=iid": "ok",
+   "scheme=moving": "ValueError: scheme \"moving\" requires block_length"
+  }
+ },
+ "box_cox_lambda": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "bounds",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "bounds",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "bvar_fit": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "lambda0",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "lambda3",
+    "pos",
+    true
+   ],
+   [
+    "delta",
+    "pos",
+    true
+   ],
+   [
+    "scale_ar",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "lambda0",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "lambda3",
+    "pos",
+    true
+   ],
+   [
+    "delta",
+    "pos",
+    true
+   ],
+   [
+    "scale_ar",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "bvar_hierarchical": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "delta",
+    "pos",
+    true
+   ],
+   [
+    "lambda0",
+    "pos",
+    true
+   ],
+   [
+    "lambda3",
+    "pos",
+    true
+   ],
+   [
+    "lambda1_init",
+    "pos",
+    true
+   ],
+   [
+    "lambda1_lo",
+    "pos",
+    true
+   ],
+   [
+    "lambda1_hi",
+    "pos",
+    true
+   ],
+   [
+    "optimize",
+    "pos",
+    true
+   ],
+   [
+    "hyperprior",
+    "pos",
+    true
+   ],
+   [
+    "n_grid",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "scale_ar",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "delta",
+    "pos",
+    true
+   ],
+   [
+    "lambda0",
+    "pos",
+    true
+   ],
+   [
+    "lambda3",
+    "pos",
+    true
+   ],
+   [
+    "lambda1_init",
+    "pos",
+    true
+   ],
+   [
+    "lambda1_lo",
+    "pos",
+    true
+   ],
+   [
+    "lambda1_hi",
+    "pos",
+    true
+   ],
+   [
+    "optimize",
+    "pos",
+    true
+   ],
+   [
+    "hyperprior",
+    "pos",
+    true
+   ],
+   [
+    "n_grid",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "scale_ar",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "bvar_irf_draws": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda0",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "lambda3",
+    "pos",
+    true
+   ],
+   [
+    "delta",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "scale_ar",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda0",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "lambda3",
+    "pos",
+    true
+   ],
+   [
+    "delta",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "scale_ar",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "bvar_ssvs": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "burn",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "c0",
+    "pos",
+    true
+   ],
+   [
+    "c1",
+    "pos",
+    true
+   ],
+   [
+    "prior_inclusion",
+    "pos",
+    true
+   ],
+   [
+    "ssvs_cov",
+    "pos",
+    true
+   ],
+   [
+    "kappa0",
+    "pos",
+    true
+   ],
+   [
+    "kappa1",
+    "pos",
+    true
+   ],
+   [
+    "prior_inclusion_cov",
+    "pos",
+    true
+   ],
+   [
+    "gamma_a",
+    "pos",
+    true
+   ],
+   [
+    "gamma_b",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "thin",
+    "pos",
+    true
+   ],
+   [
+    "n_chains",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "burn",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "c0",
+    "pos",
+    true
+   ],
+   [
+    "c1",
+    "pos",
+    true
+   ],
+   [
+    "prior_inclusion",
+    "pos",
+    true
+   ],
+   [
+    "ssvs_cov",
+    "pos",
+    true
+   ],
+   [
+    "kappa0",
+    "pos",
+    true
+   ],
+   [
+    "kappa1",
+    "pos",
+    true
+   ],
+   [
+    "prior_inclusion_cov",
+    "pos",
+    true
+   ],
+   [
+    "gamma_a",
+    "pos",
+    true
+   ],
+   [
+    "gamma_b",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "thin",
+    "pos",
+    true
+   ],
+   [
+    "n_chains",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "ccc_garch": {
+  "runtime": [
+   [
+    "returns",
+    "pos",
+    false
+   ],
+   [
+    "forecast_horizon",
+    "pos",
+    true
+   ],
+   [
+    "vol",
+    "pos",
+    true
+   ],
+   [
+    "mean",
+    "pos",
+    true
+   ],
+   [
+    "univariate_dist",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "o",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "returns",
+    "pos",
+    false
+   ],
+   [
+    "forecast_horizon",
+    "pos",
+    true
+   ],
+   [
+    "vol",
+    "pos",
+    true
+   ],
+   [
+    "mean",
+    "pos",
+    true
+   ],
+   [
+    "univariate_dist",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "o",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "vol=egarch": "ValueError: univariate GARCH failure on series 0: unsupported forecast: EGARCH multi-step forecasts require simulation (TODO(phase0)); only horizon = 1 is analytic",
+   "vol=garch": "ok",
+   "vol=gjr": "ok",
+   "mean=constant": "ok",
+   "mean=zero": "ok",
+   "univariate_dist=normal": "ok",
+   "univariate_dist=t": "ok"
+  }
+ },
+ "cf_filter": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "low",
+    "pos",
+    true
+   ],
+   [
+    "high",
+    "pos",
+    true
+   ],
+   [
+    "drift",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "low",
+    "pos",
+    true
+   ],
+   [
+    "high",
+    "pos",
+    true
+   ],
+   [
+    "drift",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "cg_regression": {
+  "runtime": [
+   [
+    "errors",
+    "pos",
+    false
+   ],
+   [
+    "revisions",
+    "pos",
+    false
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "errors",
+    "pos",
+    false
+   ],
+   [
+    "revisions",
+    "pos",
+    false
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool"
+   ]
+  },
+  "value_probes": {}
+ },
+ "check_series": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "seasonal_period",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "max_breaks",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "seasonal_period",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "max_breaks",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "check_stationarity": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "chow_test": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "split",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "split",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "coherence": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "nperseg",
+    "pos",
+    true
+   ],
+   [
+    "fs",
+    "pos",
+    true
+   ],
+   [
+    "noverlap",
+    "pos",
+    true
+   ],
+   [
+    "window",
+    "pos",
+    true
+   ],
+   [
+    "detrend",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "nperseg",
+    "pos",
+    true
+   ],
+   [
+    "fs",
+    "pos",
+    true
+   ],
+   [
+    "noverlap",
+    "pos",
+    true
+   ],
+   [
+    "window",
+    "pos",
+    true
+   ],
+   [
+    "detrend",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "conformal_backtest": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "base",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "calib",
+    "pos",
+    true
+   ],
+   [
+    "mode",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ],
+   [
+    "gamma",
+    "pos",
+    true
+   ],
+   [
+    "n_eval",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "batch",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "optimize_beta",
+    "pos",
+    true
+   ],
+   [
+    "order",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "base",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "calib",
+    "pos",
+    true
+   ],
+   [
+    "mode",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ],
+   [
+    "gamma",
+    "pos",
+    true
+   ],
+   [
+    "n_eval",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "batch",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "optimize_beta",
+    "pos",
+    true
+   ],
+   [
+    "order",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "gamma",
+    0.005,
+    null,
+    "`gamma`, default 0.005"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "conformal_forecast": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "base",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "calib",
+    "pos",
+    true
+   ],
+   [
+    "mode",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ],
+   [
+    "gamma",
+    "pos",
+    true
+   ],
+   [
+    "n_eval",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "optimize_beta",
+    "pos",
+    true
+   ],
+   [
+    "order",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "base",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "calib",
+    "pos",
+    true
+   ],
+   [
+    "mode",
+    "pos",
+    true
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ],
+   [
+    "gamma",
+    "pos",
+    true
+   ],
+   [
+    "n_eval",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "optimize_beta",
+    "pos",
+    true
+   ],
+   [
+    "order",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "connectedness": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "copula_fit": {
+  "runtime": [
+   [
+    "u",
+    "pos",
+    false
+   ],
+   [
+    "family",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "u",
+    "pos",
+    false
+   ],
+   [
+    "family",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "copula_select": {
+  "runtime": [
+   [
+    "u",
+    "pos",
+    false
+   ],
+   [
+    "families",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "u",
+    "pos",
+    false
+   ],
+   [
+    "families",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "cusum_test": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "cv_splits": {
+  "runtime": [
+   [
+    "n",
+    "pos",
+    false
+   ],
+   [
+    "scheme",
+    "pos",
+    true
+   ],
+   [
+    "train",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "step",
+    "pos",
+    true
+   ],
+   [
+    "k",
+    "pos",
+    true
+   ],
+   [
+    "purge",
+    "pos",
+    true
+   ],
+   [
+    "embargo",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "n",
+    "pos",
+    false
+   ],
+   [
+    "scheme",
+    "pos",
+    true
+   ],
+   [
+    "train",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "step",
+    "pos",
+    true
+   ],
+   [
+    "k",
+    "pos",
+    true
+   ],
+   [
+    "purge",
+    "pos",
+    true
+   ],
+   [
+    "embargo",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "cw_test": {
+  "runtime": [
+   [
+    "e_small",
+    "pos",
+    false
+   ],
+   [
+    "e_large",
+    "pos",
+    false
+   ],
+   [
+    "yhat_small",
+    "pos",
+    false
+   ],
+   [
+    "yhat_large",
+    "pos",
+    false
+   ],
+   [
+    "lrv_lags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "e_small",
+    "pos",
+    false
+   ],
+   [
+    "e_large",
+    "pos",
+    false
+   ],
+   [
+    "yhat_small",
+    "pos",
+    false
+   ],
+   [
+    "yhat_large",
+    "pos",
+    false
+   ],
+   [
+    "lrv_lags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "dcc_garch": {
+  "runtime": [
+   [
+    "returns",
+    "pos",
+    false
+   ],
+   [
+    "variant",
+    "pos",
+    true
+   ],
+   [
+    "dist",
+    "pos",
+    true
+   ],
+   [
+    "forecast_horizon",
+    "pos",
+    true
+   ],
+   [
+    "vol",
+    "pos",
+    true
+   ],
+   [
+    "mean",
+    "pos",
+    true
+   ],
+   [
+    "univariate_dist",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "o",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "returns",
+    "pos",
+    false
+   ],
+   [
+    "variant",
+    "pos",
+    true
+   ],
+   [
+    "dist",
+    "pos",
+    true
+   ],
+   [
+    "forecast_horizon",
+    "pos",
+    true
+   ],
+   [
+    "vol",
+    "pos",
+    true
+   ],
+   [
+    "mean",
+    "pos",
+    true
+   ],
+   [
+    "univariate_dist",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "o",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "vol=egarch": "ValueError: univariate GARCH failure on series 0: unsupported forecast: EGARCH multi-step forecasts require simulation (TODO(phase0)); only horizon = 1 is analytic",
+   "vol=garch": "ok",
+   "vol=gjr": "ok",
+   "mean=constant": "ok",
+   "mean=zero": "ok",
+   "univariate_dist=normal": "ok",
+   "univariate_dist=t": "ok"
+  }
+ },
+ "dcc_test": {
+  "runtime": [
+   [
+    "returns",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "vol",
+    "pos",
+    true
+   ],
+   [
+    "mean",
+    "pos",
+    true
+   ],
+   [
+    "univariate_dist",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "o",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "returns",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "vol",
+    "pos",
+    true
+   ],
+   [
+    "mean",
+    "pos",
+    true
+   ],
+   [
+    "univariate_dist",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "o",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "dcs_local_level": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "density",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "density",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "dfgls": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "max_lags",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "max_lags",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "dfm_news": {
+  "runtime": [
+   [
+    "old_vintage",
+    "pos",
+    false
+   ],
+   [
+    "new_vintage",
+    "pos",
+    false
+   ],
+   [
+    "target_series",
+    "pos",
+    true
+   ],
+   [
+    "target_period",
+    "pos",
+    true
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "factor_order",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "old_vintage",
+    "pos",
+    false
+   ],
+   [
+    "new_vintage",
+    "pos",
+    false
+   ],
+   [
+    "target_series",
+    "pos",
+    true
+   ],
+   [
+    "target_period",
+    "pos",
+    true
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "factor_order",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "dfm_nowcast": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "factor_order",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "factor_order",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "dm_test": {
+  "runtime": [
+   [
+    "e1",
+    "pos",
+    false
+   ],
+   [
+    "e2",
+    "pos",
+    false
+   ],
+   [
+    "h",
+    "pos",
+    true
+   ],
+   [
+    "loss",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "e1",
+    "pos",
+    false
+   ],
+   [
+    "e2",
+    "pos",
+    false
+   ],
+   [
+    "h",
+    "pos",
+    true
+   ],
+   [
+    "loss",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "dsge_solve": {
+  "runtime": [
+   [
+    "a",
+    "pos",
+    false
+   ],
+   [
+    "b",
+    "pos",
+    false
+   ],
+   [
+    "c",
+    "pos",
+    false
+   ],
+   [
+    "n_predetermined",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "a",
+    "pos",
+    false
+   ],
+   [
+    "b",
+    "pos",
+    false
+   ],
+   [
+    "c",
+    "pos",
+    false
+   ],
+   [
+    "n_predetermined",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "dynamic_ns": {
+  "runtime": [
+   [
+    "panel",
+    "pos",
+    false
+   ],
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "decay",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "panel",
+    "pos",
+    false
+   ],
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "decay",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "elastic_net": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    false
+   ],
+   [
+    "l1_ratio",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    false
+   ],
+   [
+    "l1_ratio",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "engle_granger": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "autolag",
+    "pos",
+    true
+   ],
+   [
+    "maxlag",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "autolag",
+    "pos",
+    true
+   ],
+   [
+    "maxlag",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "maxlag",
+    "aic",
+    null,
+    "`maxlag` are the residual-ADF lag rule: \"aic\" (default)"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "trend=c": "ok",
+   "trend=n": "ok"
+  }
+ },
+ "factor_model": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "kmax",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "kmax",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "favar": {
+  "runtime": [
+   [
+    "panel",
+    "pos",
+    false
+   ],
+   [
+    "policy",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "slow_indices",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "orth",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "panel",
+    "pos",
+    false
+   ],
+   [
+    "policy",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "slow_indices",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "orth",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "flp": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "scores",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "hac_maxlags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "scores",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "hac_maxlags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "flp_scenario": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "curves",
+    "pos",
+    false
+   ],
+   [
+    "delta",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "hac_maxlags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "curves",
+    "pos",
+    false
+   ],
+   [
+    "delta",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "hac_maxlags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "forecast_disagreement": {
+  "runtime": [
+   [
+    "panel",
+    "pos",
+    false
+   ],
+   [
+    "ddof",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "panel",
+    "pos",
+    false
+   ],
+   [
+    "ddof",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "forecast_efficiency": {
+  "runtime": [
+   [
+    "errors",
+    "pos",
+    false
+   ],
+   [
+    "regressors",
+    "pos",
+    false
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "errors",
+    "pos",
+    false
+   ],
+   [
+    "regressors",
+    "pos",
+    false
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool"
+   ]
+  },
+  "value_probes": {}
+ },
+ "frac_diff": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "d",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "d",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "frac_integrate": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "d",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "d",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "fry_pagan_svar": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "restrictions",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "target",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "restrictions",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "target",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "functional_pca": {
+  "runtime": [
+   [
+    "curves",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "curves",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "fvar_scenario": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "curves",
+    "pos",
+    false
+   ],
+   [
+    "delta",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "curves",
+    "pos",
+    false
+   ],
+   [
+    "delta",
+    "pos",
+    false
+   ],
+   [
+    "n_factors",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "garch_fit": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "vol",
+    "pos",
+    true
+   ],
+   [
+    "mean",
+    "pos",
+    true
+   ],
+   [
+    "dist",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "o",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ],
+   [
+    "forecast_horizon",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "vol",
+    "pos",
+    true
+   ],
+   [
+    "mean",
+    "pos",
+    true
+   ],
+   [
+    "dist",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "o",
+    "pos",
+    true
+   ],
+   [
+    "q",
+    "pos",
+    true
+   ],
+   [
+    "forecast_horizon",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "vol=garch": "ok",
+   "vol=gjr": "ok",
+   "mean=constant": "ok",
+   "mean=zero": "ok",
+   "dist=normal": "ok",
+   "dist=t": "ok"
+  }
+ },
+ "gas_volatility": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "density",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "density",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "gev_fit": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "block_size",
+    "pos",
+    true
+   ],
+   [
+    "return_periods",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "block_size",
+    "pos",
+    true
+   ],
+   [
+    "return_periods",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None"
+   ]
+  },
+  "value_probes": {}
+ },
+ "gmm_nonlinear": {
+  "runtime": [
+   [
+    "moments_fn",
+    "pos",
+    false
+   ],
+   [
+    "initial",
+    "pos",
+    false
+   ],
+   [
+    "weight",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "moments_fn",
+    "pos",
+    false
+   ],
+   [
+    "initial",
+    "pos",
+    false
+   ],
+   [
+    "weight",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None"
+   ]
+  },
+  "value_probes": {}
+ },
+ "gpd_fit": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "threshold",
+    "pos",
+    true
+   ],
+   [
+    "quantile",
+    "pos",
+    true
+   ],
+   [
+    "p_tail",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "threshold",
+    "pos",
+    true
+   ],
+   [
+    "quantile",
+    "pos",
+    true
+   ],
+   [
+    "p_tail",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "growth_at_risk": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "conditions",
+    "pos",
+    false
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "taus",
+    "pos",
+    true
+   ],
+   [
+    "rearrange",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "conditions",
+    "pos",
+    false
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "taus",
+    "pos",
+    true
+   ],
+   [
+    "rearrange",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "gw_test": {
+  "runtime": [
+   [
+    "loss1",
+    "pos",
+    false
+   ],
+   [
+    "loss2",
+    "pos",
+    false
+   ],
+   [
+    "lrv_lags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "loss1",
+    "pos",
+    false
+   ],
+   [
+    "loss2",
+    "pos",
+    false
+   ],
+   [
+    "lrv_lags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "hamilton_filter": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "h",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "se",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "h",
+    "pos",
+    true
+   ],
+   [
+    "p",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "se",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "hansen_seo_test": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "k_ar_diff",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "n_grid",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "beta",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "k_ar_diff",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "n_grid",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "beta",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "har_rv": {
+  "runtime": [
+   [
+    "rv",
+    "pos",
+    false
+   ],
+   [
+    "start",
+    "pos",
+    true
+   ],
+   [
+    "variant",
+    "pos",
+    true
+   ],
+   [
+    "hac_maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "rv",
+    "pos",
+    false
+   ],
+   [
+    "start",
+    "pos",
+    true
+   ],
+   [
+    "variant",
+    "pos",
+    true
+   ],
+   [
+    "hac_maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "use_correction",
+    false,
+    true,
+    "use_correction=False` to reproduce a default"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "hetero_svar": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "regime_labels",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "base_regime",
+    "pos",
+    true
+   ],
+   [
+    "sign_normalization",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "regime_labels",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "base_regime",
+    "pos",
+    true
+   ],
+   [
+    "sign_normalization",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "heteroskedasticity_test": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "test",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "test",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "historical_decomposition": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "restrictions",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "identification",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "narrative_restrictions",
+    "pos",
+    true
+   ],
+   [
+    "n_weight_draws",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "restrictions",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "identification",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "narrative_restrictions",
+    "pos",
+    true
+   ],
+   [
+    "n_weight_draws",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "hp_filter": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "lamb",
+    "pos",
+    true
+   ],
+   [
+    "one_sided",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "lamb",
+    "pos",
+    true
+   ],
+   [
+    "one_sided",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "iv_gmm": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "z",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "weight",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "z",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "weight",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "ivx_test": {
+  "runtime": [
+   [
+    "r",
+    "pos",
+    false
+   ],
+   [
+    "xs",
+    "pos",
+    false
+   ],
+   [
+    "cz",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "joint",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "r",
+    "pos",
+    false
+   ],
+   [
+    "xs",
+    "pos",
+    false
+   ],
+   [
+    "cz",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "joint",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "jarque_bera": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "johansen": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "k_ar_diff",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "k_ar_diff",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "kpss": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "nlags",
+    "auto",
+    null,
+    "`nlags`: \"auto\" (Hobijn-Franses-Ooms, default)"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "lasso": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    false
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    false
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "lasso_path": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "l1_ratio",
+    "pos",
+    true
+   ],
+   [
+    "n_lambdas",
+    "pos",
+    true
+   ],
+   [
+    "eps",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "l1_ratio",
+    "pos",
+    true
+   ],
+   [
+    "n_lambdas",
+    "pos",
+    true
+   ],
+   [
+    "eps",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "ljung_box": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "local_level_smooth": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "sigma2_eps",
+    "pos",
+    false
+   ],
+   [
+    "sigma2_eta",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "sigma2_eps",
+    "pos",
+    false
+   ],
+   [
+    "sigma2_eta",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "long_memory_d": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "m",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "m",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "long_run_svar": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "restrictions",
+    "pos",
+    true
+   ],
+   [
+    "normalize",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "restrictions",
+    "pos",
+    true
+   ],
+   [
+    "normalize",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "long_run_variance": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "kernel",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "kernel",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "lp": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "se",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ],
+   [
+    "band_seed",
+    "pos",
+    true
+   ],
+   [
+    "band_n_sim",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "se",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ],
+   [
+    "band_seed",
+    "pos",
+    true
+   ],
+   [
+    "band_n_sim",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "lp_did": {
+  "runtime": [
+   [
+    "outcome",
+    "pos",
+    false
+   ],
+   [
+    "treatment",
+    "pos",
+    false
+   ],
+   [
+    "pre_window",
+    "pos",
+    true
+   ],
+   [
+    "post_window",
+    "pos",
+    true
+   ],
+   [
+    "absorbing",
+    "pos",
+    true
+   ],
+   [
+    "nonabsorbing_lag",
+    "pos",
+    true
+   ],
+   [
+    "reweight",
+    "pos",
+    true
+   ],
+   [
+    "pooled",
+    "pos",
+    true
+   ],
+   [
+    "never_treated_only",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "outcome",
+    "pos",
+    false
+   ],
+   [
+    "treatment",
+    "pos",
+    false
+   ],
+   [
+    "pre_window",
+    "pos",
+    true
+   ],
+   [
+    "post_window",
+    "pos",
+    true
+   ],
+   [
+    "absorbing",
+    "pos",
+    true
+   ],
+   [
+    "nonabsorbing_lag",
+    "pos",
+    true
+   ],
+   [
+    "reweight",
+    "pos",
+    true
+   ],
+   [
+    "pooled",
+    "pos",
+    true
+   ],
+   [
+    "never_treated_only",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "lp_iv": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "impulse",
+    "pos",
+    false
+   ],
+   [
+    "instrument",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "impulse",
+    "pos",
+    false
+   ],
+   [
+    "instrument",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "lp_multiplier": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "impulse",
+    "pos",
+    false
+   ],
+   [
+    "instrument",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "impulse",
+    "pos",
+    false
+   ],
+   [
+    "instrument",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "lp_state": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "state_indicator",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "se",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "state_indicator",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "se",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "markov_switching_ar": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "k_regimes",
+    "pos",
+    true
+   ],
+   [
+    "order",
+    "pos",
+    true
+   ],
+   [
+    "switching_variance",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "k_regimes",
+    "pos",
+    true
+   ],
+   [
+    "order",
+    "pos",
+    true
+   ],
+   [
+    "switching_variance",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "max_share_svar": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "target",
+    "pos",
+    true
+   ],
+   [
+    "h0",
+    "pos",
+    true
+   ],
+   [
+    "h1",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "exclude_impact",
+    "pos",
+    true
+   ],
+   [
+    "weighting",
+    "pos",
+    true
+   ],
+   [
+    "sign",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "target",
+    "pos",
+    true
+   ],
+   [
+    "h0",
+    "pos",
+    true
+   ],
+   [
+    "h1",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "exclude_impact",
+    "pos",
+    true
+   ],
+   [
+    "weighting",
+    "pos",
+    true
+   ],
+   [
+    "sign",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "sign=cumsum": "ok",
+   "sign=impact": "ok",
+   "sign=none": "ok"
+  }
+ },
+ "mcmc_diagnostics": {
+  "runtime": [
+   [
+    "chains",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "chains",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "mean_group_var": {
+  "runtime": [
+   [
+    "entities",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "response",
+    "pos",
+    true
+   ],
+   [
+    "impulse",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "entities",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "response",
+    "pos",
+    true
+   ],
+   [
+    "impulse",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "midas_weights": {
+  "runtime": [
+   [
+    "scheme",
+    "pos",
+    false
+   ],
+   [
+    "theta1",
+    "pos",
+    false
+   ],
+   [
+    "theta2",
+    "pos",
+    false
+   ],
+   [
+    "k",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "scheme",
+    "pos",
+    false
+   ],
+   [
+    "theta1",
+    "pos",
+    false
+   ],
+   [
+    "theta2",
+    "pos",
+    false
+   ],
+   [
+    "k",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "mstl": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "periods",
+    "pos",
+    false
+   ],
+   [
+    "windows",
+    "pos",
+    true
+   ],
+   [
+    "iterate",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "low_pass",
+    "pos",
+    true
+   ],
+   [
+    "seasonal_deg",
+    "pos",
+    true
+   ],
+   [
+    "trend_deg",
+    "pos",
+    true
+   ],
+   [
+    "low_pass_deg",
+    "pos",
+    true
+   ],
+   [
+    "robust",
+    "pos",
+    true
+   ],
+   [
+    "seasonal_jump",
+    "pos",
+    true
+   ],
+   [
+    "trend_jump",
+    "pos",
+    true
+   ],
+   [
+    "low_pass_jump",
+    "pos",
+    true
+   ],
+   [
+    "inner_iter",
+    "pos",
+    true
+   ],
+   [
+    "outer_iter",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "periods",
+    "pos",
+    false
+   ],
+   [
+    "windows",
+    "pos",
+    true
+   ],
+   [
+    "iterate",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "low_pass",
+    "pos",
+    true
+   ],
+   [
+    "seasonal_deg",
+    "pos",
+    true
+   ],
+   [
+    "trend_deg",
+    "pos",
+    true
+   ],
+   [
+    "low_pass_deg",
+    "pos",
+    true
+   ],
+   [
+    "robust",
+    "pos",
+    true
+   ],
+   [
+    "seasonal_jump",
+    "pos",
+    true
+   ],
+   [
+    "trend_jump",
+    "pos",
+    true
+   ],
+   [
+    "low_pass_jump",
+    "pos",
+    true
+   ],
+   [
+    "inner_iter",
+    "pos",
+    true
+   ],
+   [
+    "outer_iter",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "narrative_svar": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "sign_restrictions",
+    "pos",
+    true
+   ],
+   [
+    "narrative_restrictions",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "n_weight_draws",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "sign_restrictions",
+    "pos",
+    true
+   ],
+   [
+    "narrative_restrictions",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "n_weight_draws",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "ndiffs": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "test",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "max_d",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "test",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "max_d",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "nelson_siegel": {
+  "runtime": [
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "yields",
+    "pos",
+    false
+   ],
+   [
+    "decay",
+    "pos",
+    true
+   ],
+   [
+    "optimal_lambda",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "yields",
+    "pos",
+    false
+   ],
+   [
+    "decay",
+    "pos",
+    true
+   ],
+   [
+    "optimal_lambda",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "ng_perron": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "max_lags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "max_lags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "nongaussian_svar": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "contrast",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "order_by",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "contrast",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "order_by",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "order_by=colnorm": "ok",
+   "order_by=kurtosis": "ok"
+  }
+ },
+ "nsdiffs": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "period",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "max_d",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "period",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "max_d",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "__doc__": [
+    "test"
+   ],
+   "api.md": [
+    "float",
+    "int"
+   ],
+   "diagnostics.md": [
+    "test"
+   ]
+  },
+  "value_probes": {}
+ },
+ "ols": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "se_type",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "se_type",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ],
+   [
+    "use_correction",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "use_correction",
+    false,
+    true,
+    "use_correction=False` to reproduce a default"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "se_type=hc0": "ok",
+   "se_type=hc1": "ok",
+   "se_type=hc2": "ok",
+   "se_type=hc3": "ok",
+   "se_type=nonrobust": "ok"
+  }
+ },
+ "optimal_block_length": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "ou_fit": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "dt",
+    "pos",
+    true
+   ],
+   [
+    "level",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "dt",
+    "pos",
+    true
+   ],
+   [
+    "level",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "pacf": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "nlags",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "panel_fe": {
+  "runtime": [
+   [
+    "outcome",
+    "pos",
+    false
+   ],
+   [
+    "regressors",
+    "pos",
+    false
+   ],
+   [
+    "se_type",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "outcome",
+    "pos",
+    false
+   ],
+   [
+    "regressors",
+    "pos",
+    false
+   ],
+   [
+    "se_type",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "se_type=cluster": "ok",
+   "se_type=nonrobust": "ok"
+  }
+ },
+ "panel_lp": {
+  "runtime": [
+   [
+    "outcome",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "se_type",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "jackknife",
+    "pos",
+    true
+   ],
+   [
+    "bias_correction",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "outcome",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "se_type",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "jackknife",
+    "pos",
+    true
+   ],
+   [
+    "bias_correction",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "bandwidth",
+    4.0,
+    null,
+    "bandwidth defaults to 4.0"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "panel_mean_group": {
+  "runtime": [
+   [
+    "ys",
+    "pos",
+    false
+   ],
+   [
+    "xs",
+    "pos",
+    false
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "ys",
+    "pos",
+    false
+   ],
+   [
+    "xs",
+    "pos",
+    false
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "panel_pmg": {
+  "runtime": [
+   [
+    "ys",
+    "pos",
+    false
+   ],
+   [
+    "xs",
+    "pos",
+    false
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "ys",
+    "pos",
+    false
+   ],
+   [
+    "xs",
+    "pos",
+    false
+   ],
+   [
+    "tol",
+    "pos",
+    true
+   ],
+   [
+    "max_iter",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "panel_unit_root": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "test",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "max_lags",
+    "pos",
+    true
+   ],
+   [
+    "lrv_kernel",
+    "pos",
+    true
+   ],
+   [
+    "lrv_bandwidth",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "test",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "max_lags",
+    "pos",
+    true
+   ],
+   [
+    "lrv_kernel",
+    "pos",
+    true
+   ],
+   [
+    "lrv_bandwidth",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "periodogram": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "fs",
+    "pos",
+    true
+   ],
+   [
+    "window",
+    "pos",
+    true
+   ],
+   [
+    "detrend",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "fs",
+    "pos",
+    true
+   ],
+   [
+    "window",
+    "pos",
+    true
+   ],
+   [
+    "detrend",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "str"
+   ],
+   "spectral.md": [
+    "scaling"
+   ]
+  },
+  "value_probes": {}
+ },
+ "phillips_ouliaris": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "test_type",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "test_type",
+    "pos",
+    true
+   ],
+   [
+    "bandwidth",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "trend=c": "ok",
+   "trend=n": "ok"
+  }
+ },
+ "phillips_perron": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "test_type",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "test_type",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {
+   "regression=c": "ok",
+   "regression=n": "ok"
+  }
+ },
+ "philox_uniforms": {
+  "runtime": [
+   [
+    "seed",
+    "pos",
+    false
+   ],
+   [
+    "n",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "seed",
+    "pos",
+    false
+   ],
+   [
+    "n",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "predictive_regression": {
+  "runtime": [
+   [
+    "r",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "cz",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "r",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "cz",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "alpha",
+    -1,
+    0.95,
+    "`alpha` tune the IVX instrument (defaults -1"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "proxy_ar_sets": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "proxy",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "norm_var",
+    "pos",
+    true
+   ],
+   [
+    "unit",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "variance",
+    "pos",
+    true
+   ],
+   [
+    "hac_lags",
+    "pos",
+    true
+   ],
+   [
+    "reduced_form_uncertainty",
+    "pos",
+    true
+   ],
+   [
+    "rf_method",
+    "pos",
+    true
+   ],
+   [
+    "rf_draws",
+    "pos",
+    true
+   ],
+   [
+    "rf_seed",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "proxy",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "norm_var",
+    "pos",
+    true
+   ],
+   [
+    "unit",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "variance",
+    "pos",
+    true
+   ],
+   [
+    "hac_lags",
+    "pos",
+    true
+   ],
+   [
+    "reduced_form_uncertainty",
+    "pos",
+    true
+   ],
+   [
+    "rf_method",
+    "pos",
+    true
+   ],
+   [
+    "rf_draws",
+    "pos",
+    true
+   ],
+   [
+    "rf_seed",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "proxy_first_stage": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "proxy",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "norm_var",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "variance",
+    "pos",
+    true
+   ],
+   [
+    "hac_lags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "proxy",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "norm_var",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "variance",
+    "pos",
+    true
+   ],
+   [
+    "hac_lags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "proxy_svar": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "proxy",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "norm_var",
+    "pos",
+    true
+   ],
+   [
+    "unit",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "robust_f",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "proxy",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "norm_var",
+    "pos",
+    true
+   ],
+   [
+    "unit",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "robust_f",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "proxy_svar_bands": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "proxy",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "norm_var",
+    "pos",
+    true
+   ],
+   [
+    "unit",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "bands",
+    "pos",
+    true
+   ],
+   [
+    "block_length",
+    "pos",
+    true
+   ],
+   [
+    "robust_f",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "proxy",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "norm_var",
+    "pos",
+    true
+   ],
+   [
+    "unit",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "bands",
+    "pos",
+    true
+   ],
+   [
+    "block_length",
+    "pos",
+    true
+   ],
+   [
+    "robust_f",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "pseudo_obs": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "quantile_lp": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "taus",
+    "pos",
+    true
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "taus",
+    "pos",
+    true
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "quantile_regression": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "taus",
+    "pos",
+    true
+   ],
+   [
+    "se",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "taus",
+    "pos",
+    true
+   ],
+   [
+    "se",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "realized_measures": {
+  "runtime": [
+   [
+    "returns",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "returns",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "realized_quarticity": {
+  "runtime": [
+   [
+    "returns",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "returns",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "realized_range": {
+  "runtime": [
+   [
+    "high",
+    "pos",
+    false
+   ],
+   [
+    "low",
+    "pos",
+    false
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "open",
+    "pos",
+    true
+   ],
+   [
+    "close",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "high",
+    "pos",
+    false
+   ],
+   [
+    "low",
+    "pos",
+    false
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "open",
+    "pos",
+    true
+   ],
+   [
+    "close",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "recession_probit": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "link",
+    "pos",
+    true
+   ],
+   [
+    "dynamic",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "link",
+    "pos",
+    true
+   ],
+   [
+    "dynamic",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "reset_test": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "max_power",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "max_power",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "ridge": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "alpha",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "robust_svar_bounds": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "restrictions",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "restrictions",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "seasonal_strength": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "period",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "period",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "setar": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "delays",
+    "pos",
+    true
+   ],
+   [
+    "ic",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "delays",
+    "pos",
+    true
+   ],
+   [
+    "ic",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "setar_test": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "sign_restricted_svar": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "restrictions",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "restrictions",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "smooth_lp": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "lam",
+    "pos",
+    true
+   ],
+   [
+    "degree",
+    "pos",
+    true
+   ],
+   [
+    "n_basis",
+    "pos",
+    true
+   ],
+   [
+    "penalty_order",
+    "pos",
+    true
+   ],
+   [
+    "lambda_grid",
+    "pos",
+    true
+   ],
+   [
+    "n_folds",
+    "pos",
+    true
+   ],
+   [
+    "hac_maxlags",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ],
+   [
+    "band_seed",
+    "pos",
+    true
+   ],
+   [
+    "band_n_sim",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "shock",
+    "pos",
+    false
+   ],
+   [
+    "horizons",
+    "pos",
+    true
+   ],
+   [
+    "n_lag_controls",
+    "pos",
+    true
+   ],
+   [
+    "lam",
+    "pos",
+    true
+   ],
+   [
+    "degree",
+    "pos",
+    true
+   ],
+   [
+    "n_basis",
+    "pos",
+    true
+   ],
+   [
+    "penalty_order",
+    "pos",
+    true
+   ],
+   [
+    "lambda_grid",
+    "pos",
+    true
+   ],
+   [
+    "n_folds",
+    "pos",
+    true
+   ],
+   [
+    "hac_maxlags",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_alpha",
+    "pos",
+    true
+   ],
+   [
+    "band_seed",
+    "pos",
+    true
+   ],
+   [
+    "band_n_sim",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "spread_zscore": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "kappa",
+    "pos",
+    true
+   ],
+   [
+    "mu",
+    "pos",
+    true
+   ],
+   [
+    "sigma",
+    "pos",
+    true
+   ],
+   [
+    "dt",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "kappa",
+    "pos",
+    true
+   ],
+   [
+    "mu",
+    "pos",
+    true
+   ],
+   [
+    "sigma",
+    "pos",
+    true
+   ],
+   [
+    "dt",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "dt",
+    1.0,
+    null,
+    "`dt` (default 1.0"
+   ],
+   [
+    "dt",
+    1.0,
+    null,
+    "`dt` (default 1.0"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None"
+   ]
+  },
+  "value_probes": {}
+ },
+ "star": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "model",
+    "pos",
+    true
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "delays",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ],
+   [
+    "n_gamma",
+    "pos",
+    true
+   ],
+   [
+    "n_c",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "model",
+    "pos",
+    true
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "delays",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ],
+   [
+    "n_gamma",
+    "pos",
+    true
+   ],
+   [
+    "n_c",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "star_eval": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "gamma",
+    "pos",
+    false
+   ],
+   [
+    "c",
+    "pos",
+    false
+   ],
+   [
+    "model",
+    "pos",
+    true
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "gamma",
+    "pos",
+    false
+   ],
+   [
+    "c",
+    "pos",
+    false
+   ],
+   [
+    "model",
+    "pos",
+    true
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "star_test": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "delays",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "delays",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "stl": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "period",
+    "pos",
+    false
+   ],
+   [
+    "seasonal",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "low_pass",
+    "pos",
+    true
+   ],
+   [
+    "seasonal_deg",
+    "pos",
+    true
+   ],
+   [
+    "trend_deg",
+    "pos",
+    true
+   ],
+   [
+    "low_pass_deg",
+    "pos",
+    true
+   ],
+   [
+    "robust",
+    "pos",
+    true
+   ],
+   [
+    "seasonal_jump",
+    "pos",
+    true
+   ],
+   [
+    "trend_jump",
+    "pos",
+    true
+   ],
+   [
+    "low_pass_jump",
+    "pos",
+    true
+   ],
+   [
+    "inner_iter",
+    "pos",
+    true
+   ],
+   [
+    "outer_iter",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "period",
+    "pos",
+    false
+   ],
+   [
+    "seasonal",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "low_pass",
+    "pos",
+    true
+   ],
+   [
+    "seasonal_deg",
+    "pos",
+    true
+   ],
+   [
+    "trend_deg",
+    "pos",
+    true
+   ],
+   [
+    "low_pass_deg",
+    "pos",
+    true
+   ],
+   [
+    "robust",
+    "pos",
+    true
+   ],
+   [
+    "seasonal_jump",
+    "pos",
+    true
+   ],
+   [
+    "trend_jump",
+    "pos",
+    true
+   ],
+   [
+    "low_pass_jump",
+    "pos",
+    true
+   ],
+   [
+    "inner_iter",
+    "pos",
+    true
+   ],
+   [
+    "outer_iter",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "outer_iter",
+    2,
+    null,
+    "`outer_iter` default to 2"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "structural_fevd": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "impact",
+    "pos",
+    true
+   ],
+   [
+    "sigma",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "impact",
+    "pos",
+    true
+   ],
+   [
+    "sigma",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "summarize": {
+  "runtime": [
+   [
+    "obj",
+    "pos",
+    false
+   ],
+   [
+    "title",
+    "kw",
+    true
+   ],
+   [
+    "wrap",
+    "kw",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "obj",
+    "pos",
+    false
+   ],
+   [
+    "title",
+    "kw",
+    true
+   ],
+   [
+    "wrap",
+    "kw",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "sup_f_test": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float"
+   ]
+  },
+  "value_probes": {}
+ },
+ "svensson": {
+  "runtime": [
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "yields",
+    "pos",
+    false
+   ],
+   [
+    "lambda1",
+    "pos",
+    false
+   ],
+   [
+    "lambda2",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "maturities",
+    "pos",
+    false
+   ],
+   [
+    "yields",
+    "pos",
+    false
+   ],
+   [
+    "lambda1",
+    "pos",
+    false
+   ],
+   [
+    "lambda2",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "theta_forecast": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "steps",
+    "pos",
+    false
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "steps",
+    "pos",
+    false
+   ],
+   [
+    "period",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "threshold_var": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "threshold_index",
+    "pos",
+    true
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "delays",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "threshold_index",
+    "pos",
+    true
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "delays",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "bool",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "threshold_var_test": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "threshold_index",
+    "pos",
+    true
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "n_grid",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "p",
+    "pos",
+    false
+   ],
+   [
+    "threshold_index",
+    "pos",
+    true
+   ],
+   [
+    "delay",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "n_grid",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "constant",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "threshold_vecm": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "k_ar_diff",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "n_grid_gamma",
+    "pos",
+    true
+   ],
+   [
+    "n_grid_beta",
+    "pos",
+    true
+   ],
+   [
+    "beta_span",
+    "pos",
+    true
+   ],
+   [
+    "beta",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "k_ar_diff",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "n_grid_gamma",
+    "pos",
+    true
+   ],
+   [
+    "n_grid_beta",
+    "pos",
+    true
+   ],
+   [
+    "beta_span",
+    "pos",
+    true
+   ],
+   [
+    "beta",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "beta_span",
+    50,
+    null,
+    "`beta_span` explicitly alongside it **raises** rather than being silently ignored (they default to 5"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "tripower_quarticity": {
+  "runtime": [
+   [
+    "returns",
+    "pos",
+    false
+   ]
+  ],
+  "stub": [
+   [
+    "returns",
+    "pos",
+    false
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {},
+  "value_probes": {}
+ },
+ "umidas": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "hf_lags",
+    "pos",
+    false
+   ],
+   [
+    "se_type",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "hf_lags",
+    "pos",
+    false
+   ],
+   [
+    "se_type",
+    "pos",
+    true
+   ],
+   [
+    "maxlags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "var_backtest": {
+  "runtime": [
+   [
+    "returns_or_hits",
+    "pos",
+    false
+   ],
+   [
+    "var_forecasts",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "dq_lags",
+    "pos",
+    true
+   ],
+   [
+    "input",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "returns_or_hits",
+    "pos",
+    false
+   ],
+   [
+    "var_forecasts",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "dq_lags",
+    "pos",
+    true
+   ],
+   [
+    "input",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "var_fevd": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "var_fit": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "var_forecast": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "steps",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_scope",
+    "pos",
+    true
+   ],
+   [
+    "band_seed",
+    "pos",
+    true
+   ],
+   [
+    "band_n_sim",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "steps",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_scope",
+    "pos",
+    true
+   ],
+   [
+    "band_seed",
+    "pos",
+    true
+   ],
+   [
+    "band_n_sim",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "var_granger": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "caused",
+    "pos",
+    false
+   ],
+   [
+    "causing",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "caused",
+    "pos",
+    false
+   ],
+   [
+    "causing",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "var_irf": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "orth",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "orth",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "var_irf_bands": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "orth",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "bias_correct",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_scope",
+    "pos",
+    true
+   ],
+   [
+    "band_seed",
+    "pos",
+    true
+   ],
+   [
+    "band_n_sim",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "orth",
+    "pos",
+    true
+   ],
+   [
+    "method",
+    "pos",
+    true
+   ],
+   [
+    "alpha",
+    "pos",
+    true
+   ],
+   [
+    "cumulative",
+    "pos",
+    true
+   ],
+   [
+    "n_boot",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "trend",
+    "pos",
+    true
+   ],
+   [
+    "bias_correct",
+    "pos",
+    true
+   ],
+   [
+    "band",
+    "pos",
+    true
+   ],
+   [
+    "band_scope",
+    "pos",
+    true
+   ],
+   [
+    "band_seed",
+    "pos",
+    true
+   ],
+   [
+    "band_n_sim",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "float",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "vecm": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "k_ar_diff",
+    "pos",
+    true
+   ],
+   [
+    "coint_rank",
+    "pos",
+    true
+   ],
+   [
+    "deterministic",
+    "pos",
+    true
+   ],
+   [
+    "seasons",
+    "pos",
+    true
+   ],
+   [
+    "first_season",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "k_ar_diff",
+    "pos",
+    true
+   ],
+   [
+    "coint_rank",
+    "pos",
+    true
+   ],
+   [
+    "deterministic",
+    "pos",
+    true
+   ],
+   [
+    "seasons",
+    "pos",
+    true
+   ],
+   [
+    "first_season",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "first_season",
+    0,
+    null,
+    "`first_season` explicitly then **raises** rather than being silently ignored (it defaults to 0"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "int",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "weighted_midas": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "hf_lags",
+    "pos",
+    false
+   ],
+   [
+    "scheme",
+    "pos",
+    true
+   ],
+   [
+    "weight_start",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "hf_lags",
+    "pos",
+    false
+   ],
+   [
+    "scheme",
+    "pos",
+    true
+   ],
+   [
+    "weight_start",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ },
+ "welch": {
+  "runtime": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "nperseg",
+    "pos",
+    true
+   ],
+   [
+    "fs",
+    "pos",
+    true
+   ],
+   [
+    "noverlap",
+    "pos",
+    true
+   ],
+   [
+    "window",
+    "pos",
+    true
+   ],
+   [
+    "detrend",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "x",
+    "pos",
+    false
+   ],
+   [
+    "nperseg",
+    "pos",
+    true
+   ],
+   [
+    "fs",
+    "pos",
+    true
+   ],
+   [
+    "noverlap",
+    "pos",
+    true
+   ],
+   [
+    "window",
+    "pos",
+    true
+   ],
+   [
+    "detrend",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "int",
+    "str"
+   ],
+   "spectral.md": [
+    "scaling"
+   ]
+  },
+  "value_probes": {}
+ },
+ "zero_sign_svar": {
+  "runtime": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "sign_restrictions",
+    "pos",
+    false
+   ],
+   [
+    "zero_restrictions",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "weighted",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "data",
+    "pos",
+    false
+   ],
+   [
+    "sign_restrictions",
+    "pos",
+    false
+   ],
+   [
+    "zero_restrictions",
+    "pos",
+    false
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ],
+   [
+    "horizon",
+    "pos",
+    true
+   ],
+   [
+    "n_draws",
+    "pos",
+    true
+   ],
+   [
+    "max_tries",
+    "pos",
+    true
+   ],
+   [
+    "seed",
+    "pos",
+    true
+   ],
+   [
+    "lambda1",
+    "pos",
+    true
+   ],
+   [
+    "weighted",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [],
+  "unknown_kwargs": {
+   "api.md": [
+    "bool",
+    "float",
+    "int"
+   ]
+  },
+  "value_probes": {}
+ },
+ "zivot_andrews": {
+  "runtime": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "max_lags",
+    "pos",
+    true
+   ],
+   [
+    "autolag",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ]
+  ],
+  "stub": [
+   [
+    "y",
+    "pos",
+    false
+   ],
+   [
+    "regression",
+    "pos",
+    true
+   ],
+   [
+    "trim",
+    "pos",
+    true
+   ],
+   [
+    "max_lags",
+    "pos",
+    true
+   ],
+   [
+    "autolag",
+    "pos",
+    true
+   ],
+   [
+    "lags",
+    "pos",
+    true
+   ]
+  ],
+  "doc_default_mismatch": [
+   [
+    "autolag",
+    "aic",
+    "Ellipsis",
+    "`autolag` \"aic\" (default)"
+   ],
+   [
+    "autolag",
+    "aic",
+    "Ellipsis",
+    "`autolag` \"aic\" (default)"
+   ]
+  ],
+  "unknown_kwargs": {
+   "api.md": [
+    "None",
+    "float",
+    "str"
+   ]
+  },
+  "value_probes": {}
+ }
+}

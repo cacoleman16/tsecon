@@ -11,8 +11,8 @@ Stata's time-series suite is polished, consistent, and command-driven: you
 turnkey feel for a programmable one — you assemble arrays, call a function, and
 get back a `dict` you can compute on. The reasons to make the trade are the
 methods Stata does not have (local projections, sign-restricted SVARs, Bayesian
-VARs beyond `bayes:`, nowcasting) and a compiled core built for simulation. This
-page is the phrasebook.
+VARs beyond `bayes:`, nowcasting, threshold and smooth-transition models) and a
+compiled core built for simulation. This page is the phrasebook.
 
 ## What changes when you cross over
 
@@ -58,9 +58,10 @@ callable now.
 | `fcast compute, step(h)` | `var_forecast(data, lags, steps=h, alpha=0.05)` | `{"point", "lower", "upper"}`. |
 | `varstable` | read `var_fit(...)["is_stable"]` | Stable iff `is_stable` (equivalently `min_root > 1`; these are *reciprocal* roots, so `max_root` is not a verdict). |
 | `varsoc` (lag-order selection) | compare `var_fit(...)["aic"/"bic"/"hqic"]` | No single command; loop over `lags`. |
-| `svar ..., aeq() beq()` (short-run A/B) | — | Explicit A/B restrictions: **roadmap**. Use Cholesky (`var_irf`) or sign restrictions. |
-| `svar ..., lreq()` (long-run) | — | Long-run / Blanchard-Quah: **roadmap**. |
+| `svar ..., aeq() beq()` (short-run A/B) | — | Explicit A/B restrictions: **roadmap**. Use Cholesky (`var_irf`), sign restrictions, or `zero_sign_svar` for zero-*and*-sign set identification. |
+| `svar ..., lreq()` (long-run) | `long_run_svar(data, lags, horizon, restrictions=None)` | Blanchard-Quah long-run zeros in closed form: `impact`, `long_run`, `irf`, `cumulative_irf`, `fevd`, `long_run_multiplier`. Point estimates, no RNG. |
 | *(sign restrictions — not in core Stata)* | `sign_restricted_svar(data, restrictions, ...)` | Sign-restricted Bayesian SVAR + identified-set bands. |
+| *(statistical identification — not in Stata)* | `hetero_svar(data, regime_labels, ...)`, `nongaussian_svar(data, lags, ...)` | Identification through heteroskedasticity (Rigobon 2003, two known variance regimes) and through non-Gaussianity (FastICA on the residuals alone). Also `proxy_svar`, `narrative_svar`, `max_share_svar`, `fry_pagan_svar`. |
 | `bayes: var ...` | `bvar_fit`, `bvar_irf_draws` | Minnesota-NIW BVAR + posterior IRF draws. |
 
 ### Cointegration and unit roots
@@ -69,18 +70,21 @@ callable now.
 |---|---|---|
 | `dfuller y, lags(k)` | `adf(y, regression="c", maxlag=k)` | Dict with MacKinnon p-value. `trend` → `regression="ct"`. |
 | `kpss y` | `kpss(y, regression="c")` | Null is stationarity. |
-| `pperron y` | — | Phillips-Perron: **roadmap**. |
+| `pperron y` | `phillips_perron(y, regression="c", test_type="tau")` | Semiparametric unit-root test; `test_type="rho"` is Z-alpha. Matches `arch.unitroot.PhillipsPerron` to 1e-10. |
+| `dfgls y` | `dfgls(y, regression="c", method="aic")` | Elliott-Rothenberg-Stock GLS-detrended ADF. `ng_perron(y, trend=)` adds the Ng-Perron M tests on the same engine (statistic-only — no p-value surface exists, so none is invented). |
 | `wntestq y` | `ljung_box(y, nlags)` | Ljung-Box (and Box-Pierce). |
 | `estat archlm` | `arch_lm(resid, nlags)` | Engle's ARCH-LM. |
 | `vecrank y1 y2 y3` | `johansen(data, k_ar_diff)` | Trace + max-eig ranks. |
 | `vec y1 y2 y3, rank(r)` | `vecm(data, k_ar_diff, coint_rank=r, deterministic="co")` | ML VECM: `alpha`, `beta`, `gamma`, `det_coef`, `sigma_u`, `llf`. Stata's default `trend(constant)` is the unrestricted constant → `deterministic="co"`; tsecon's default `"n"` is `trend(none)`. |
-| `egranger` (user-written) | — | Engle-Granger two-step: **roadmap**; use `johansen`. |
+| `egranger` (user-written) | `engle_granger(data, trend="c", autolag="aic")` | Engle-Granger two-step: column 0 of `data` is the regressand, columns 1.. its regressors, deterministics come from `trend` (do not add a constant column). Statistic and p-value match `statsmodels.tsa.stattools.coint` at 1e-10 / 1e-9; the step-1 coefficients and residuals come back too. The Phillips-Ouliaris residual test is `phillips_ouliaris(y, x, trend="c", test_type="Zt")`. |
 
 ### Univariate models and volatility
 
 | Stata | tsecon | Notes |
 |---|---|---|
-| `arima y, arima(p,d,q)` | `arima_fit(y, p, d, q, constant=True)` | Exact-MLE. Seasonal `arima(...)(P,D,Q)`: **roadmap**. |
+| `arima y, arima(p,d,q)` | `arima_fit(y, p, d, q, constant=True)` | Exact-MLE. |
+| `arima y, arima(p,d,q) sarima(P,D,Q,s)` | `arima_fit(y, p, d, q, seasonal=(P, D, Q, s))` | Multiplicative seasonal ARIMA on the same exact-MLE engine; the airline model is `arima_fit(np.log(air), p=0, d=1, q=1, seasonal=(0, 1, 1, 12), constant=False)`. Seasonal parameters are named statsmodels-style (`ar.S.L12`, `ma.S.L12`). |
+| *(automatic order selection — no native command)* | `auto_arima(y, seasonal_period=, ic="aicc", stepwise=True)` | The Hyndman-Khandakar (2008) `auto.arima` algorithm on the `arima_fit` engine: `nsdiffs` for `D`, `ndiffs` for `d`, then a stepwise (or, with `stepwise=False`, exhaustive) order search at those fixed differencing orders. |
 | `arch y, arch(1) garch(1)` | `garch_fit(y, vol="garch", p=1, q=1)` | Robust SEs in `se_robust` (Bollerslev-Wooldridge). |
 | `arch y, arch(1) garch(1) tarch(1)` (GJR) | `garch_fit(y, vol="gjr", o=1)` | Asymmetry via `o=`, which requires `vol="gjr"`/`"egarch"` — `o > 0` with `vol="garch"` raises (0.6.0). |
 | `arch ..., earch(1) egarch(1)` | `garch_fit(y, vol="egarch")` | |
@@ -90,6 +94,32 @@ callable now.
 | `mswitch ar y, states(k)` | `markov_switching_ar(y, k_regimes=k, order=1, switching_variance=)` | Hamilton EM; regimes, transition, durations. |
 | `mswitch dr y` (dynamic regression) | `markov_switching_ar(..., order=0)` | Switching-mean model. |
 | *(score-driven — not in Stata)* | `gas_volatility(y, density=)` | GAS(1,1), Gaussian or Student-t. |
+
+### Threshold and smooth-transition models
+
+Stata's nonlinear time-series menu stops at `mswitch` and the `threshold`
+regression command. The self-exciting and multivariate threshold family — the R
+`tsDyn` territory — is where tsecon goes furthest past it; the VAR, VECM and
+STAR blocks are new in 0.7.0.
+
+| Stata | tsecon | Notes |
+|---|---|---|
+| `threshold y x, ...` (threshold *regression*) | `setar(y, p, delay=, delays=)`, `setar_test(y, p, n_boot=, seed=)` | Stata's `threshold` splits a regression on an exogenous threshold variable; `setar` is the *self-exciting* threshold AR (Tong-Lim 1980), split on `y_{t-delay}` and fitted by concentrated LS. `setar_test` is Hansen's (1996) sup-F linearity test — bootstrap p-value only, because the threshold is an unidentified nuisance parameter under the null and a chi-squared p-value would be wrong. |
+| *(smooth transition — no native command)* | `star(y, p, model="lstar"/"estar")`, `star_eval(...)`, `star_test(y, p)` | LSTAR/ESTAR by concentrated NLS (Terasvirta 1994); `star_test` is the LM3 linearity test plus the H03/H02/H01 sequence that picks between them. `gamma` is the raw transition slope, `gamma_standardized` the scale-free one; `converged`/`gamma_at_boundary`/`se_valid` report honestly when the surface is flat. |
+| *(threshold VAR — no native command)* | `threshold_var(data, p, threshold_index=, delay=)`, `threshold_var_test(...)` | Two-regime threshold VAR by concentrated LS on `log_det_sigma`, with a robust score-form sup-Wald test bootstrapped à la Hansen (1996). |
+| *(threshold cointegration — no native command)* | `threshold_vecm(data, k_ar_diff, beta=None)`, `hansen_seo_test(...)` | Hansen-Seo (2002): the error-correction term drives the regime split, estimation is the concentrated Gaussian MLE over a `(beta, gamma)` grid, and `hansen_seo_test` is their sup-LM test of linear against threshold cointegration. `beta=None` estimates the cointegrating vector, bivariate only. |
+
+**How this block is graded.** R's `tsDyn` — the only package implementing these
+estimators — could not be installed in the fixture container (CRAN unreachable
+through its egress proxy), so **no third-party reference run exists for any row
+above**. They are carried by closed forms transcribed from the published papers
+and pinned at 1e-10 against an independent NumPy implementation (1e-8 for the
+estimated-`beta` threshold-VECM cases, where an eigensolver is in the path), plus
+seeded Monte-Carlo size, power and recovery: threshold-VECM null size 0.100 at
+`T=150` falling to 0.065 at `T=400`, threshold-VAR 0.100 → 0.085 over the same
+range, STAR LM3-F size 0.060/0.028 at `T=200/500`. The `tsDyn` reference run is
+named follow-up work. Do not read these rows as "validated against R" — the
+per-function grades are in the [validation matrix](../reference/validation-matrix.md).
 
 ### Quantile regression and Growth-at-Risk
 
@@ -127,7 +157,8 @@ outcome, as noted above.
 | `xtmg y x, cce` (Eberhardt CCEMG) | `panel_mean_group(ys, xs, method="cce")` | Common-correlated-effects mean group. |
 | Panel VAR (`pvar`, user-written) | `mean_group_var(entities, lags, horizon)` | Mean-group panel VAR over per-entity `T_i x k` matrices. |
 | Panel LP (user-written `lp`) | `panel_lp(outcome, shock, ...)` | Panel local projection with fixed effects. |
-| `xtunitroot ips/llc` | — | Panel unit-root tests: **roadmap**. |
+| `xtunitroot ips/llc/fisher` | `panel_unit_root(data, test="ips"/"llc"/"fisher")` | Levin-Lin-Chu, Im-Pesaran-Shin and the Fisher-type (Maddala-Wu / Choi) combinations. `data` is a balanced `N x T` array (a row per unit) or a list of per-unit series — unbalanced is fine for `"ips"`/`"fisher"`. Conventions follow `plm::purtest`. |
+| *(short-`T` LP bias correction — no native command)* | `panel_lp(..., bias_correction="spj")` | Split-panel jackknife for the panel-LP bias; Monte-Carlo measured at a 15x bias cut and coverage 0.74 → 0.82 at `T=20`, which is an improvement and still short of nominal — documented, not smoothed over. |
 
 ### GMM and IV
 
@@ -148,10 +179,11 @@ outcome, as noted above.
 | `tsfilter bk cyc = y` | `bk_filter(y, low=6, high=32, k=12)` | |
 | `tsfilter cf cyc = y` | `cf_filter(y, low=6, high=32, drift=True)` | |
 | *(Hamilton filter — not in Stata)* | `hamilton_filter(y, h=8, p=4)` | Hamilton (2018) regression filter. |
+| *(STL — no native command)* | `stl(y, period, ...)`, `mstl(y, periods)` | Cleveland et al. (1990) seasonal-trend decomposition and the multi-seasonal MSTL iteration, both pinned elementwise to statsmodels at 1e-8; `seasonal_strength`, `ndiffs` and `nsdiffs` sit on top. |
 | `psdensity`, `pergram` | `periodogram(x)`, `welch(x)`, `coherence(x, y)` | Match SciPy's spectral estimators. |
 | `newey y x, lag(L)` | `ols(y, Xc, se_type="hac", maxlags=L)` | Prepend your own constant column `Xc`. |
 | *(DM test — user-written `dmariano`)* | `dm_test(e1, e2, h, loss)` | With HLN correction; also `cw_test`, `gw_test`. |
-| `dfactor` (state-space DFM) | `dfm_nowcast(data, n_factors, factor_order)` | Two-step nowcaster with a ragged edge; `factor_model` for static PCA factors. Full MLE `dfactor`: **roadmap**. |
+| `dfactor` (state-space DFM) | `dfm_nowcast(data, n_factors, factor_order, method="two_step"/"mle")` | `"two_step"` (default) is the Doz-Giannone-Reichlin nowcaster with a ragged edge and no iterative optimizer. `"mle"` fits the same state space by exact Gaussian likelihood — the `dfactor` estimand — and reports `converged`/`iterations` so a budget-limited fit says so. `factor_model` gives static PCA factors with the Bai-Ng criteria. |
 | *(MIDAS — user-written `midasreg`)* | `weighted_midas(y, hf, scheme=)`, `umidas(y, hf)` | Restricted and unrestricted mixed-frequency regressions. |
 
 ### Realized volatility and term structure
@@ -258,25 +290,32 @@ print(np.round(gar["current"], 3))                     # 5% / 50% / 95% four-qua
 
 Being direct about the gaps, the following are **roadmap**, not shipped:
 
-- **Explicit SVAR restrictions** — `svar`'s short-run (A/B) and long-run
-  (`lreq`) identification. tsecon offers Cholesky (`var_irf(orth=True)`) and
-  sign restrictions (`sign_restricted_svar`).
-- **Phillips-Perron** (`pperron`) and **panel unit-root tests** (`xtunitroot`).
-- **Seasonal ARIMA** (`arima ...(P,D,Q)`) and general **`ucm`** unobserved-components models.
-- **Engle-Granger** (`egranger`) two-step cointegration; use `johansen`.
+- **Explicit short-run SVAR restrictions** — `svar`'s `aeq()`/`beq()` A/B
+  system. Everything else on that menu ships: Cholesky (`var_irf(orth=True)`),
+  long-run (`long_run_svar`), sign (`sign_restricted_svar`), zero-and-sign
+  (`zero_sign_svar`), narrative, proxy and max-share.
+- **`ucm` and general `sspace`** — user-specified unobserved-components and
+  state-space models. `local_level_smooth` and `dcs_local_level` are the shipped
+  state-space pieces; `dfm_nowcast` covers the factor case.
 - **Formatted `esttab`/`irf table` output** — you format results from the
   returned dicts yourself. (The individual `estat` diagnostics *do* ship —
   `hettest`, `ovtest`, `sbknown`, `sbsingle`, `sbcusum` map to functions; see
   the specification-tests table.)
-- **Full MLE `dfactor`**; the shipped nowcaster is the two-step DGR estimator.
+
+Five items that used to sit on this list have shipped and now appear in the
+tables above: `pperron` → `phillips_perron`, `xtunitroot` → `panel_unit_root`,
+seasonal `arima` → `arima_fit(seasonal=(P, D, Q, s))`, `egranger` →
+`engle_granger`, and the full-MLE `dfactor` estimand →
+`dfm_nowcast(..., method="mle")`.
 
 Where tsecon pays you back is the frontier Stata reaches only through
 user-written `.ado` files or not at all: local projections
 (`lp`/`lp_iv`/`lp_state`/`panel_lp`, plus smooth and quantile variants),
 sign-restricted and Bayesian VARs, FAVAR, Diebold-Yilmaz connectedness,
-realized-volatility measures, DFM nowcasting, and conditional-quantile
-Growth-at-Risk — all under one calling grammar, on a core fast enough to
-bootstrap by default.
+realized-volatility measures, DFM nowcasting, conditional-quantile
+Growth-at-Risk, and the threshold/smooth-transition family (`setar`, `star`,
+`threshold_var`, `threshold_vecm` and their linearity tests) — all under one
+calling grammar, on a core fast enough to bootstrap by default.
 
 See also the [statsmodels](from-statsmodels.md) and [R](from-r.md) guides, and
 the cross-package [Rosetta glossary](rosetta.md).

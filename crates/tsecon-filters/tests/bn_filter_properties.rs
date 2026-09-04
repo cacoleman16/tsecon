@@ -174,11 +174,26 @@ fn rejects_invalid_delta_and_grid() {
 
 #[test]
 fn rejects_constant_series() {
+    // Constant series and exact linear ramps share the same degeneracy:
+    // constant FIRST DIFFERENCES. The refusal must say so (audit round
+    // 10, finding 3e: the old message called a ramp "constant") — pinned
+    // to the Degenerate variant whose text names the differences.
     let y = vec![3.0; 60];
-    assert!(matches!(
-        bn_filter(&y, 4, BnDelta::Fixed(0.2), true),
-        Err(FiltersError::RankDeficient { .. })
-    ));
+    let err = bn_filter(&y, 4, BnDelta::Fixed(0.2), true).unwrap_err();
+    assert!(matches!(err, FiltersError::Degenerate { .. }));
+    assert!(err.to_string().contains("first differences"));
+
+    // np.arange-style ramp: differences constant at 1, series not constant.
+    let ramp: Vec<f64> = (0..60).map(|i| i as f64).collect();
+    for demean in [true, false] {
+        let err = bn_filter(&ramp, 4, BnDelta::Fixed(0.2), demean).unwrap_err();
+        assert!(matches!(err, FiltersError::Degenerate { .. }));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("first differences") && msg.contains("constant"),
+            "ramp refusal must name the constant differences: {msg}"
+        );
+    }
 }
 
 #[test]

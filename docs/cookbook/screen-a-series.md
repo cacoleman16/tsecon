@@ -76,13 +76,15 @@ for i, rec in enumerate(rep["recommendations"], 1):     # the ordered to-do list
    -> Start from arima_fit(y, p=1, d=1, q=0) and compare AIC/BIC over a small order grid — the ACF/PACF cutoff heuristics are starting points, not a verdict.
    functions: arima_fit, acf, pacf
 4. [seasonality] seasonal evidence reported at period 12
-   -> Plain speech: tsecon ships no seasonal ARIMA and no X-13 — both are roadmap, and that gap is real. Today, either add explicit seasonal-lag terms (regress on lag-s terms / seasonal dummies, or arima_fit on the seasonally differenced series you construct upstream) or deseasonalize upstream (e.g. X-13/STL elsewhere) before modeling here.
-   functions: acf, periodogram, arima_fit
+   -> Plain speech: model it directly with arima_fit(..., seasonal=(P, D, Q, s)), letting nsdiffs pick D first; or decompose with mstl (multiple periods) or stl (one) and model the seasonally adjusted series. The one real gap is X-13ARIMA-SEATS, which needs the external Census binary and so stays out of scope — deseasonalize elsewhere if you need X-13 specifically.
+   functions: acf, periodogram, nsdiffs, arima_fit, mstl, stl
 ```
 
 All four findings are real properties of the simulated series, and note that
-recommendation 4 tells you what the library *cannot* do. That is deliberate: a
-battery that only advertises its own coverage is not a screening report.
+recommendation 4 names the one thing the library *cannot* do — X-13ARIMA-SEATS,
+which needs the external Census binary — while routing you to what it can. That
+is deliberate: a battery that only advertises its own coverage is not a
+screening report.
 
 ## Gotchas
 

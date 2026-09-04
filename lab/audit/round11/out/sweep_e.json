@@ -1,0 +1,7788 @@
+{
+ "accuracy": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 11,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "mae",
+   "mape",
+   "mase",
+   "me",
+   "rmse",
+   "rmsse",
+   "smape"
+  ],
+  "undocumented_keys": [
+   "mae",
+   "mape",
+   "mase",
+   "me",
+   "rmse",
+   "rmsse",
+   "smape"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md",
+   "gmm.md",
+   "machine-learning.md",
+   "panel-unit-root.md"
+  ],
+  "shapes": {}
+ },
+ "acf": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 10,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "acf",
+   "bartlett_se"
+  ],
+  "undocumented_keys": [
+   "bartlett_se"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "diagnostics.md"
+  ],
+  "shapes": {
+   "$.acf": [
+    21
+   ],
+   "$.bartlett_se": [
+    21
+   ]
+  }
+ },
+ "acm_term_premium": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 74,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "A",
+   "A_rn",
+   "B",
+   "B_rn",
+   "a",
+   "beta",
+   "c",
+   "delta0",
+   "delta1",
+   "factor_loadings",
+   "factors",
+   "fitted",
+   "lambda0",
+   "lambda1",
+   "maturities",
+   "mu",
+   "n_factors",
+   "periods_per_year",
+   "phi",
+   "risk_neutral",
+   "rx_maturities",
+   "rx_rsquared",
+   "short_rate_rsquared",
+   "sigma",
+   "sigma2",
+   "term_premium",
+   "var_rsquared",
+   "yield_rsquared"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "term-structure.md"
+  ],
+  "shapes": {
+   "$.maturities": [
+    12
+   ],
+   "$.factors": [
+    200,
+    3
+   ],
+   "$.factor_loadings": [
+    12,
+    3
+   ],
+   "$.mu": [
+    3
+   ],
+   "$.phi": [
+    3,
+    3
+   ],
+   "$.sigma": [
+    3,
+    3
+   ],
+   "$.rx_maturities": [
+    11
+   ],
+   "$.a": [
+    11
+   ],
+   "$.beta": [
+    11,
+    3
+   ],
+   "$.c": [
+    11,
+    3
+   ],
+   "$.lambda0": [
+    3
+   ],
+   "$.lambda1": [
+    3,
+    3
+   ],
+   "$.delta1": [
+    3
+   ],
+   "$.A": [
+    12
+   ],
+   "$.B": [
+    12,
+    3
+   ],
+   "$.A_rn": [
+    12
+   ],
+   "$.B_rn": [
+    12,
+    3
+   ],
+   "$.fitted": [
+    200,
+    12
+   ],
+   "$.risk_neutral": [
+    200,
+    12
+   ],
+   "$.term_premium": [
+    200,
+    12
+   ],
+   "$.var_rsquared": [
+    3
+   ],
+   "$.rx_rsquared": [
+    11
+   ],
+   "$.yield_rsquared": [
+    12
+   ]
+  }
+ },
+ "adaptive_lasso": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 9,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ],
+  "undocumented_keys": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "machine-learning.md"
+  ],
+  "shapes": {
+   "$.coef": [
+    3
+   ]
+  }
+ },
+ "adf": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 13,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "crit",
+   "nobs",
+   "p_value",
+   "statistic",
+   "used_lag"
+  ],
+  "undocumented_keys": [
+   "crit",
+   "nobs",
+   "p_value",
+   "statistic",
+   "used_lag"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "cointegration-regime.md",
+   "diagnostics.md",
+   "panel-unit-root.md",
+   "unit-root-cointegration-tests.md"
+  ],
+  "shapes": {}
+ },
+ "afns_adjustment": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "afns.md",
+   "term-structure.md"
+  ],
+  "shapes": {
+   "$": [
+    8
+   ]
+  }
+ },
+ "ar_loglik": {
+  "called": true,
+  "type": "float",
+  "summarize_ok": true,
+  "summarize_lines": 5,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "arima.md"
+  ],
+  "shapes": {}
+ },
+ "arch_lm": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 8,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "df",
+   "nobs",
+   "p_value",
+   "statistic"
+  ],
+  "undocumented_keys": [
+   "df",
+   "nobs",
+   "p_value",
+   "statistic"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "arima.md",
+   "check-series.md",
+   "cointegration-regime.md",
+   "diagnostics.md",
+   "volatility.md"
+  ],
+  "shapes": {}
+ },
+ "arima_fit": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 39,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "aic",
+   "bic",
+   "boundary",
+   "boundary_note",
+   "bse",
+   "conf_alpha",
+   "converged",
+   "cov_ok",
+   "drift_uncertainty",
+   "forecast_lower",
+   "forecast_mean",
+   "forecast_se",
+   "forecast_upper",
+   "loglik",
+   "param_cov",
+   "param_names",
+   "params",
+   "residuals",
+   "se_valid"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "cov_error"
+  ],
+  "cards": [
+   "arima.md",
+   "check-series.md",
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.params": [
+    3
+   ],
+   "$.bse": [
+    3
+   ],
+   "$.param_cov": [
+    3,
+    3
+   ],
+   "$.se_valid": [
+    3
+   ],
+   "$.boundary": [
+    3
+   ],
+   "$.forecast_lower": [
+    3
+   ],
+   "$.forecast_upper": [
+    3
+   ],
+   "$.forecast_mean": [
+    3
+   ],
+   "$.forecast_se": [
+    3
+   ],
+   "$.residuals": [
+    200
+   ]
+  }
+ },
+ "auto_arima": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 52,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "D_test",
+   "aic",
+   "aicc",
+   "bic",
+   "boundary",
+   "boundary_note",
+   "bse",
+   "budget_exhausted",
+   "constant",
+   "converged",
+   "cov_ok",
+   "d_test",
+   "ic",
+   "ic_value",
+   "interpretation",
+   "loglik",
+   "n_models",
+   "order",
+   "param_cov",
+   "param_names",
+   "params",
+   "residuals",
+   "se_valid",
+   "seasonal_order",
+   "stepwise",
+   "trace"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "arima_fit",
+   "error",
+   "fit_failed",
+   "ic_undefined",
+   "ndiffs",
+   "near_unit_root",
+   "nsdiffs",
+   "status"
+  ],
+  "cards": [
+   "arima.md",
+   "check-series.md",
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.params": [
+    2
+   ],
+   "$.bse": [
+    2
+   ],
+   "$.param_cov": [
+    2,
+    2
+   ],
+   "$.se_valid": [
+    2
+   ],
+   "$.boundary": [
+    2
+   ],
+   "$.residuals": [
+    200
+   ],
+   "$.order": [
+    3
+   ],
+   "$.seasonal_order": [
+    4
+   ],
+   "$.trace[0].order": [
+    3
+   ],
+   "$.trace[0].seasonal_order": [
+    4
+   ],
+   "$.trace[1].order": [
+    3
+   ],
+   "$.trace[1].seasonal_order": [
+    4
+   ],
+   "$.trace[2].order": [
+    3
+   ],
+   "$.trace[2].seasonal_order": [
+    4
+   ],
+   "$.trace[3].order": [
+    3
+   ],
+   "$.trace[3].seasonal_order": [
+    4
+   ],
+   "$.trace[4].order": [
+    3
+   ],
+   "$.trace[4].seasonal_order": [
+    4
+   ],
+   "$.trace[5].order": [
+    3
+   ],
+   "$.trace[5].seasonal_order": [
+    4
+   ],
+   "$.trace[6].order": [
+    3
+   ],
+   "$.trace[6].seasonal_order": [
+    4
+   ],
+   "$.trace[7].order": [
+    3
+   ],
+   "$.trace[7].seasonal_order": [
+    4
+   ],
+   "$.trace[8].order": [
+    3
+   ],
+   "$.trace[8].seasonal_order": [
+    4
+   ],
+   "$.trace[9].order": [
+    3
+   ],
+   "$.trace[9].seasonal_order": [
+    4
+   ],
+   "$.trace[10].order": [
+    3
+   ],
+   "$.trace[10].seasonal_order": [
+    4
+   ],
+   "$.trace[11].order": [
+    3
+   ],
+   "$.trace[11].seasonal_order": [
+    4
+   ],
+   "$.trace[12].order": [
+    3
+   ],
+   "$.trace[12].seasonal_order": [
+    4
+   ]
+  }
+ },
+ "backtest": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 15,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "accuracy",
+   "forecasts",
+   "horizon",
+   "n_origins",
+   "origins",
+   "targets"
+  ],
+  "undocumented_keys": [
+   "n_origins"
+  ],
+  "phantom_candidates": [
+   "insample_period"
+  ],
+  "cards": [
+   "forecasting.md"
+  ],
+  "shapes": {
+   "$.origins": [
+    99
+   ],
+   "$.forecasts": [
+    2,
+    99
+   ],
+   "$.targets": [
+    2,
+    99
+   ]
+  }
+ },
+ "bai_perron": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 42,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "break_dates",
+   "break_dates_by_m",
+   "bse",
+   "ci_lower_90",
+   "ci_lower_95",
+   "ci_scale",
+   "ci_upper_90",
+   "ci_upper_95",
+   "h",
+   "n_breaks",
+   "params",
+   "regime_ends",
+   "regime_ssr",
+   "regime_starts",
+   "ssr_path",
+   "sup_f_crit",
+   "sup_f_seq"
+  ],
+  "undocumented_keys": [
+   "break_dates",
+   "break_dates_by_m",
+   "bse",
+   "ci_lower_90",
+   "ci_lower_95",
+   "ci_scale",
+   "ci_upper_90",
+   "ci_upper_95",
+   "h",
+   "n_breaks",
+   "params",
+   "regime_ends",
+   "regime_ssr",
+   "regime_starts",
+   "ssr_path",
+   "sup_f_crit",
+   "sup_f_seq"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "structural-breaks.md",
+   "unit-root-cointegration-tests.md"
+  ],
+  "shapes": {
+   "$.break_dates": [
+    1
+   ],
+   "$.sup_f_seq": [
+    2
+   ],
+   "$.sup_f_crit": [
+    2
+   ],
+   "$.ssr_path": [
+    3
+   ],
+   "$.break_dates_by_m[0]": [
+    1
+   ],
+   "$.break_dates_by_m[1]": [
+    2
+   ],
+   "$.regime_starts": [
+    2
+   ],
+   "$.regime_ends": [
+    2
+   ],
+   "$.params": [
+    2,
+    1
+   ],
+   "$.bse": [
+    2,
+    1
+   ],
+   "$.regime_ssr": [
+    2
+   ],
+   "$.ci_lower_90": [
+    1
+   ],
+   "$.ci_upper_90": [
+    1
+   ],
+   "$.ci_lower_95": [
+    1
+   ],
+   "$.ci_upper_95": [
+    1
+   ],
+   "$.ci_scale": [
+    1
+   ]
+  }
+ },
+ "bk_filter": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 8,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "cycle",
+   "first_index"
+  ],
+  "undocumented_keys": [
+   "cycle"
+  ],
+  "phantom_candidates": [],
+  "cards": [],
+  "shapes": {
+   "$.cycle": [
+    176
+   ]
+  }
+ },
+ "bn_decomposition": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 26,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "aic",
+   "ar",
+   "bic",
+   "converged",
+   "cycle",
+   "drift",
+   "first_index",
+   "innovations",
+   "loglik",
+   "long_run_multiplier",
+   "ma",
+   "mode",
+   "sigma2",
+   "trend"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "diagnostics.md"
+  ],
+  "shapes": {
+   "$.trend": [
+    199
+   ],
+   "$.cycle": [
+    199
+   ],
+   "$.innovations": [
+    199
+   ],
+   "$.ar": [
+    2
+   ],
+   "$.ma": [
+    2
+   ]
+  }
+ },
+ "bn_filter": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 18,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "amplitude_to_noise",
+   "ar",
+   "cycle",
+   "cycle_se",
+   "delta",
+   "drift",
+   "first_index",
+   "trend"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "diagnostics.md"
+  ],
+  "shapes": {
+   "$.trend": [
+    199
+   ],
+   "$.cycle": [
+    199
+   ],
+   "$.ar": [
+    12
+   ]
+  }
+ },
+ "bns_jump_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 5,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "ratio"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "realized-vol.md"
+  ],
+  "shapes": {}
+ },
+ "bootstrap_indices": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [],
+  "shapes": {
+   "$": [
+    200
+   ]
+  }
+ },
+ "box_cox_lambda": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 17,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "at_bound",
+   "interpretation",
+   "lambda",
+   "loglik_at_one",
+   "loglik_at_zero",
+   "lower",
+   "lr_vs_one",
+   "lr_vs_zero",
+   "method",
+   "n",
+   "objective",
+   "period",
+   "upper"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "arima.md",
+   "diagnostics.md"
+  ],
+  "shapes": {}
+ },
+ "bvar_fit": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 38,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "log_marginal_likelihood",
+   "omega_bar",
+   "posterior_mean_coefs",
+   "s_bar",
+   "sigma_posterior_mean",
+   "v_bar"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "Bbar"
+  ],
+  "cards": [
+   "bayesian.md"
+  ],
+  "shapes": {
+   "$.posterior_mean_coefs": [
+    7,
+    3
+   ],
+   "$.sigma_posterior_mean": [
+    3,
+    3
+   ],
+   "$.omega_bar": [
+    7,
+    7
+   ],
+   "$.s_bar": [
+    3,
+    3
+   ]
+  }
+ },
+ "bvar_hierarchical": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 33,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "converged",
+   "grid_lambda1",
+   "grid_log_ml",
+   "lambda1_fixed_log_ml",
+   "lambda1_opt",
+   "lambda3_opt",
+   "log_marginal_likelihood",
+   "log_posterior",
+   "n_evals",
+   "posterior_mean_coefs",
+   "sigma_posterior_mean"
+  ],
+  "undocumented_keys": [
+   "converged",
+   "grid_lambda1",
+   "grid_log_ml",
+   "lambda1_fixed_log_ml",
+   "lambda3_opt",
+   "log_marginal_likelihood",
+   "log_posterior",
+   "n_evals",
+   "posterior_mean_coefs",
+   "sigma_posterior_mean"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "bayesian.md"
+  ],
+  "shapes": {
+   "$.posterior_mean_coefs": [
+    7,
+    3
+   ],
+   "$.sigma_posterior_mean": [
+    3,
+    3
+   ],
+   "$.grid_lambda1": [
+    25
+   ],
+   "$.grid_log_ml": [
+    25
+   ]
+  }
+ },
+ "bvar_irf_draws": {
+  "called": true,
+  "type": "list",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "bayesian.md"
+  ],
+  "shapes": {
+   "$": [
+    30,
+    7,
+    3,
+    3
+   ]
+  }
+ },
+ "bvar_ssvs": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 39,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "coef_mean",
+   "diagnostics",
+   "inclusion_prob",
+   "irf_draws",
+   "sigma_mean"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "inclusion_prob_cov",
+   "posterior_mean_coefs",
+   "ssvs_cov"
+  ],
+  "cards": [
+   "bayesian.md"
+  ],
+  "shapes": {
+   "$.inclusion_prob": [
+    7,
+    3
+   ],
+   "$.coef_mean": [
+    7,
+    3
+   ],
+   "$.sigma_mean": [
+    3,
+    3
+   ],
+   "$.irf_draws": [
+    150,
+    7,
+    3,
+    3
+   ]
+  }
+ },
+ "ccc_garch": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 21,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "correlation",
+   "covariance",
+   "covariance_forecast",
+   "loglik",
+   "sigma2",
+   "variance_forecast"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "R",
+   "dcc_garch",
+   "forecast_horizon"
+  ],
+  "cards": [
+   "volatility.md"
+  ],
+  "shapes": {
+   "$.correlation": [
+    2,
+    2
+   ],
+   "$.sigma2": [
+    200,
+    2
+   ],
+   "$.covariance": [
+    200,
+    2,
+    2
+   ],
+   "$.covariance_forecast": [
+    2,
+    2,
+    2
+   ],
+   "$.variance_forecast": [
+    2,
+    2
+   ]
+  }
+ },
+ "cf_filter": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 11,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "cycle",
+   "first_index",
+   "trend"
+  ],
+  "undocumented_keys": [
+   "cycle",
+   "first_index",
+   "trend"
+  ],
+  "phantom_candidates": [],
+  "cards": [],
+  "shapes": {
+   "$.trend": [
+    200
+   ],
+   "$.cycle": [
+    200
+   ]
+  }
+ },
+ "cg_regression": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 14,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "implied_rigidity",
+   "intercept",
+   "maxlags",
+   "nobs",
+   "p_slope",
+   "r_squared",
+   "se_intercept",
+   "se_slope",
+   "slope",
+   "t_slope"
+  ],
+  "undocumented_keys": [
+   "p_slope",
+   "se_intercept",
+   "se_slope",
+   "t_slope"
+  ],
+  "phantom_candidates": [
+   "p",
+   "se",
+   "t"
+  ],
+  "cards": [
+   "expectations.md"
+  ],
+  "shapes": {}
+ },
+ "check_series": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 95,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "alpha",
+   "analysis_scale",
+   "arch_effects",
+   "breaks",
+   "descriptives",
+   "kind",
+   "long_memory",
+   "multiple_testing",
+   "n",
+   "normality",
+   "outliers",
+   "recommendations",
+   "seasonality",
+   "serial_correlation",
+   "stationarity",
+   "tests_run"
+  ],
+  "undocumented_keys": [
+   "analysis_scale",
+   "arch_effects",
+   "breaks",
+   "descriptives",
+   "long_memory",
+   "multiple_testing",
+   "normality",
+   "outliers",
+   "seasonality",
+   "serial_correlation",
+   "stationarity",
+   "tests_run"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "diagnostics.md"
+  ],
+  "shapes": {
+   "$.outliers.indices": [
+    0
+   ],
+   "$.serial_correlation.ljung_box.lags": [
+    10
+   ],
+   "$.serial_correlation.ljung_box.lb_stat": [
+    10
+   ],
+   "$.serial_correlation.ljung_box.lb_pvalue": [
+    10
+   ],
+   "$.serial_correlation.acf": [
+    20
+   ],
+   "$.serial_correlation.pacf": [
+    20
+   ],
+   "$.serial_correlation.significant_acf_lags": [
+    7
+   ],
+   "$.serial_correlation.significant_pacf_lags": [
+    3
+   ],
+   "$.recommendations[0].evidence.significant_acf_lags": [
+    7
+   ],
+   "$.recommendations[0].evidence.significant_pacf_lags": [
+    3
+   ]
+  }
+ },
+ "check_stationarity": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 12,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "adf_p_value",
+   "adf_statistic",
+   "alpha",
+   "interpretation",
+   "kpss_p_value",
+   "kpss_statistic",
+   "quadrant",
+   "recommendation"
+  ],
+  "undocumented_keys": [
+   "adf_p_value",
+   "adf_statistic",
+   "alpha",
+   "kpss_p_value",
+   "kpss_statistic"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "arima.md",
+   "check-series.md",
+   "cointegration-regime.md",
+   "diagnostics.md",
+   "panel-unit-root.md",
+   "unit-root-cointegration-tests.md"
+  ],
+  "shapes": {}
+ },
+ "chow_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 11,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "df_den",
+   "df_num",
+   "fstat",
+   "pvalue",
+   "ssr1",
+   "ssr2",
+   "ssr_pooled"
+  ],
+  "undocumented_keys": [
+   "df_den",
+   "df_num",
+   "fstat",
+   "pvalue",
+   "ssr1",
+   "ssr2",
+   "ssr_pooled"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "specification-tests.md",
+   "structural-breaks.md"
+  ],
+  "shapes": {}
+ },
+ "coherence": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 10,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "coherence",
+   "freqs"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "spectral.md"
+  ],
+  "shapes": {
+   "$.freqs": [
+    33
+   ],
+   "$.coherence": [
+    33
+   ]
+  }
+ },
+ "conformal_backtest": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 23,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "alpha",
+   "base",
+   "err",
+   "horizon",
+   "level",
+   "lower",
+   "mean",
+   "method",
+   "n_eval",
+   "origins",
+   "realized_coverage",
+   "upper"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md"
+  ],
+  "shapes": {
+   "$.origins": [
+    10
+   ],
+   "$.mean": [
+    2,
+    10
+   ],
+   "$.lower": [
+    2,
+    10
+   ],
+   "$.upper": [
+    2,
+    10
+   ],
+   "$.err": [
+    2,
+    10
+   ],
+   "$.realized_coverage": [
+    2
+   ]
+  }
+ },
+ "conformal_forecast": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 24,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "alpha",
+   "base",
+   "finite_sample_level",
+   "horizon",
+   "level",
+   "lower",
+   "mean",
+   "method",
+   "mode",
+   "n_calib",
+   "q_lower",
+   "q_upper",
+   "scores",
+   "upper"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md"
+  ],
+  "shapes": {
+   "$.mean": [
+    2
+   ],
+   "$.lower": [
+    2
+   ],
+   "$.upper": [
+    2
+   ],
+   "$.q_lower": [
+    2
+   ],
+   "$.q_upper": [
+    2
+   ],
+   "$.scores": [
+    2,
+    50
+   ]
+  }
+ },
+ "connectedness": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 23,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "from_others",
+   "gfevd",
+   "net",
+   "pairwise_net",
+   "to_others",
+   "total"
+  ],
+  "undocumented_keys": [
+   "gfevd"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.to_others": [
+    3
+   ],
+   "$.from_others": [
+    3
+   ],
+   "$.net": [
+    3
+   ],
+   "$.gfevd": [
+    3,
+    3
+   ],
+   "$.pairwise_net": [
+    3,
+    3
+   ]
+  }
+ },
+ "copula_fit": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 24,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "aic",
+   "bic",
+   "converged",
+   "family",
+   "loglik",
+   "method",
+   "n",
+   "param_names",
+   "params",
+   "rho",
+   "se",
+   "se_rho",
+   "se_valid",
+   "tail_lower",
+   "tail_upper",
+   "tau",
+   "tau_implied"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "nu",
+   "se_",
+   "se_nu",
+   "se_theta",
+   "theta"
+  ],
+  "cards": [
+   "copulas.md"
+  ],
+  "shapes": {
+   "$.params": [
+    1
+   ],
+   "$.se": [
+    1
+   ]
+  }
+ },
+ "copula_select": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 17,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "best_aic",
+   "best_bic",
+   "fits",
+   "ranking_aic",
+   "ranking_bic",
+   "skipped",
+   "verdict"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "copulas.md"
+  ],
+  "shapes": {
+   "$.fits.gaussian.params": [
+    1
+   ],
+   "$.fits.gaussian.se": [
+    1
+   ],
+   "$.fits.frank.params": [
+    1
+   ],
+   "$.fits.frank.se": [
+    1
+   ]
+  }
+ },
+ "cusum_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 14,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bound_lower",
+   "bound_upper",
+   "path",
+   "sigma"
+  ],
+  "undocumented_keys": [
+   "sigma"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "specification-tests.md",
+   "structural-breaks.md"
+  ],
+  "shapes": {
+   "$.path": [
+    197
+   ],
+   "$.bound_upper": [
+    197
+   ],
+   "$.bound_lower": [
+    197
+   ]
+  }
+ },
+ "cv_splits": {
+  "called": true,
+  "type": "list",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "machine-learning.md"
+  ],
+  "shapes": {
+   "$[0].train": [
+    100
+   ],
+   "$[0].test": [
+    1
+   ],
+   "$[1].train": [
+    101
+   ],
+   "$[1].test": [
+    1
+   ],
+   "$[2].train": [
+    102
+   ],
+   "$[2].test": [
+    1
+   ],
+   "$[3].train": [
+    103
+   ],
+   "$[3].test": [
+    1
+   ],
+   "$[4].train": [
+    104
+   ],
+   "$[4].test": [
+    1
+   ],
+   "$[5].train": [
+    105
+   ],
+   "$[5].test": [
+    1
+   ],
+   "$[6].train": [
+    106
+   ],
+   "$[6].test": [
+    1
+   ],
+   "$[7].train": [
+    107
+   ],
+   "$[7].test": [
+    1
+   ],
+   "$[8].train": [
+    108
+   ],
+   "$[8].test": [
+    1
+   ],
+   "$[9].train": [
+    109
+   ],
+   "$[9].test": [
+    1
+   ],
+   "$[10].train": [
+    110
+   ],
+   "$[10].test": [
+    1
+   ],
+   "$[11].train": [
+    111
+   ],
+   "$[11].test": [
+    1
+   ],
+   "$[12].train": [
+    112
+   ],
+   "$[12].test": [
+    1
+   ],
+   "$[13].train": [
+    113
+   ],
+   "$[13].test": [
+    1
+   ],
+   "$[14].train": [
+    114
+   ],
+   "$[14].test": [
+    1
+   ],
+   "$[15].train": [
+    115
+   ],
+   "$[15].test": [
+    1
+   ],
+   "$[16].train": [
+    116
+   ],
+   "$[16].test": [
+    1
+   ],
+   "$[17].train": [
+    117
+   ],
+   "$[17].test": [
+    1
+   ],
+   "$[18].train": [
+    118
+   ],
+   "$[18].test": [
+    1
+   ],
+   "$[19].train": [
+    119
+   ],
+   "$[19].test": [
+    1
+   ],
+   "$[20].train": [
+    120
+   ],
+   "$[20].test": [
+    1
+   ],
+   "$[21].train": [
+    121
+   ],
+   "$[21].test": [
+    1
+   ],
+   "$[22].train": [
+    122
+   ],
+   "$[22].test": [
+    1
+   ],
+   "$[23].train": [
+    123
+   ],
+   "$[23].test": [
+    1
+   ],
+   "$[24].train": [
+    124
+   ],
+   "$[24].test": [
+    1
+   ],
+   "$[25].train": [
+    125
+   ],
+   "$[25].test": [
+    1
+   ],
+   "$[26].train": [
+    126
+   ],
+   "$[26].test": [
+    1
+   ],
+   "$[27].train": [
+    127
+   ],
+   "$[27].test": [
+    1
+   ],
+   "$[28].train": [
+    128
+   ],
+   "$[28].test": [
+    1
+   ],
+   "$[29].train": [
+    129
+   ],
+   "$[29].test": [
+    1
+   ],
+   "$[30].train": [
+    130
+   ],
+   "$[30].test": [
+    1
+   ],
+   "$[31].train": [
+    131
+   ],
+   "$[31].test": [
+    1
+   ],
+   "$[32].train": [
+    132
+   ],
+   "$[32].test": [
+    1
+   ],
+   "$[33].train": [
+    133
+   ],
+   "$[33].test": [
+    1
+   ],
+   "$[34].train": [
+    134
+   ],
+   "$[34].test": [
+    1
+   ],
+   "$[35].train": [
+    135
+   ],
+   "$[35].test": [
+    1
+   ],
+   "$[36].train": [
+    136
+   ],
+   "$[36].test": [
+    1
+   ],
+   "$[37].train": [
+    137
+   ],
+   "$[37].test": [
+    1
+   ],
+   "$[38].train": [
+    138
+   ],
+   "$[38].test": [
+    1
+   ],
+   "$[39].train": [
+    139
+   ],
+   "$[39].test": [
+    1
+   ],
+   "$[40].train": [
+    140
+   ],
+   "$[40].test": [
+    1
+   ],
+   "$[41].train": [
+    141
+   ],
+   "$[41].test": [
+    1
+   ],
+   "$[42].train": [
+    142
+   ],
+   "$[42].test": [
+    1
+   ],
+   "$[43].train": [
+    143
+   ],
+   "$[43].test": [
+    1
+   ],
+   "$[44].train": [
+    144
+   ],
+   "$[44].test": [
+    1
+   ],
+   "$[45].train": [
+    145
+   ],
+   "$[45].test": [
+    1
+   ],
+   "$[46].train": [
+    146
+   ],
+   "$[46].test": [
+    1
+   ],
+   "$[47].train": [
+    147
+   ],
+   "$[47].test": [
+    1
+   ],
+   "$[48].train": [
+    148
+   ],
+   "$[48].test": [
+    1
+   ],
+   "$[49].train": [
+    149
+   ],
+   "$[49].test": [
+    1
+   ],
+   "$[50].train": [
+    150
+   ],
+   "$[50].test": [
+    1
+   ],
+   "$[51].train": [
+    151
+   ],
+   "$[51].test": [
+    1
+   ],
+   "$[52].train": [
+    152
+   ],
+   "$[52].test": [
+    1
+   ],
+   "$[53].train": [
+    153
+   ],
+   "$[53].test": [
+    1
+   ],
+   "$[54].train": [
+    154
+   ],
+   "$[54].test": [
+    1
+   ],
+   "$[55].train": [
+    155
+   ],
+   "$[55].test": [
+    1
+   ],
+   "$[56].train": [
+    156
+   ],
+   "$[56].test": [
+    1
+   ],
+   "$[57].train": [
+    157
+   ],
+   "$[57].test": [
+    1
+   ],
+   "$[58].train": [
+    158
+   ],
+   "$[58].test": [
+    1
+   ],
+   "$[59].train": [
+    159
+   ],
+   "$[59].test": [
+    1
+   ],
+   "$[60].train": [
+    160
+   ],
+   "$[60].test": [
+    1
+   ],
+   "$[61].train": [
+    161
+   ],
+   "$[61].test": [
+    1
+   ],
+   "$[62].train": [
+    162
+   ],
+   "$[62].test": [
+    1
+   ],
+   "$[63].train": [
+    163
+   ],
+   "$[63].test": [
+    1
+   ],
+   "$[64].train": [
+    164
+   ],
+   "$[64].test": [
+    1
+   ],
+   "$[65].train": [
+    165
+   ],
+   "$[65].test": [
+    1
+   ],
+   "$[66].train": [
+    166
+   ],
+   "$[66].test": [
+    1
+   ],
+   "$[67].train": [
+    167
+   ],
+   "$[67].test": [
+    1
+   ],
+   "$[68].train": [
+    168
+   ],
+   "$[68].test": [
+    1
+   ],
+   "$[69].train": [
+    169
+   ],
+   "$[69].test": [
+    1
+   ],
+   "$[70].train": [
+    170
+   ],
+   "$[70].test": [
+    1
+   ],
+   "$[71].train": [
+    171
+   ],
+   "$[71].test": [
+    1
+   ],
+   "$[72].train": [
+    172
+   ],
+   "$[72].test": [
+    1
+   ],
+   "$[73].train": [
+    173
+   ],
+   "$[73].test": [
+    1
+   ],
+   "$[74].train": [
+    174
+   ],
+   "$[74].test": [
+    1
+   ],
+   "$[75].train": [
+    175
+   ],
+   "$[75].test": [
+    1
+   ],
+   "$[76].train": [
+    176
+   ],
+   "$[76].test": [
+    1
+   ],
+   "$[77].train": [
+    177
+   ],
+   "$[77].test": [
+    1
+   ],
+   "$[78].train": [
+    178
+   ],
+   "$[78].test": [
+    1
+   ],
+   "$[79].train": [
+    179
+   ],
+   "$[79].test": [
+    1
+   ],
+   "$[80].train": [
+    180
+   ],
+   "$[80].test": [
+    1
+   ],
+   "$[81].train": [
+    181
+   ],
+   "$[81].test": [
+    1
+   ],
+   "$[82].train": [
+    182
+   ],
+   "$[82].test": [
+    1
+   ],
+   "$[83].train": [
+    183
+   ],
+   "$[83].test": [
+    1
+   ],
+   "$[84].train": [
+    184
+   ],
+   "$[84].test": [
+    1
+   ],
+   "$[85].train": [
+    185
+   ],
+   "$[85].test": [
+    1
+   ],
+   "$[86].train": [
+    186
+   ],
+   "$[86].test": [
+    1
+   ],
+   "$[87].train": [
+    187
+   ],
+   "$[87].test": [
+    1
+   ],
+   "$[88].train": [
+    188
+   ],
+   "$[88].test": [
+    1
+   ],
+   "$[89].train": [
+    189
+   ],
+   "$[89].test": [
+    1
+   ],
+   "$[90].train": [
+    190
+   ],
+   "$[90].test": [
+    1
+   ],
+   "$[91].train": [
+    191
+   ],
+   "$[91].test": [
+    1
+   ],
+   "$[92].train": [
+    192
+   ],
+   "$[92].test": [
+    1
+   ],
+   "$[93].train": [
+    193
+   ],
+   "$[93].test": [
+    1
+   ],
+   "$[94].train": [
+    194
+   ],
+   "$[94].test": [
+    1
+   ],
+   "$[95].train": [
+    195
+   ],
+   "$[95].test": [
+    1
+   ],
+   "$[96].train": [
+    196
+   ],
+   "$[96].test": [
+    1
+   ],
+   "$[97].train": [
+    197
+   ],
+   "$[97].test": [
+    1
+   ],
+   "$[98].train": [
+    198
+   ],
+   "$[98].test": [
+    1
+   ],
+   "$[99].train": [
+    199
+   ],
+   "$[99].test": [
+    1
+   ]
+  }
+ },
+ "cw_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "cw_stat",
+   "mean_adj_diff",
+   "p_value"
+  ],
+  "undocumented_keys": [
+   "cw_stat",
+   "mean_adj_diff",
+   "p_value"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md"
+  ],
+  "shapes": {}
+ },
+ "dcc_garch": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 40,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "a",
+   "b",
+   "converged",
+   "correlation",
+   "correlation_forecast",
+   "correlation_last",
+   "covariance",
+   "covariance_forecast",
+   "dist",
+   "g",
+   "loglik",
+   "qbar",
+   "sigma2",
+   "std_residuals",
+   "univariate",
+   "variance_forecast",
+   "variant"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "aic",
+   "bic",
+   "boundary",
+   "boundary_note",
+   "conditional_volatility",
+   "eps",
+   "eps_",
+   "garch_fit",
+   "k",
+   "n_t",
+   "nbar",
+   "nu",
+   "param_names",
+   "params",
+   "params_named",
+   "se_mle",
+   "se_robust",
+   "se_valid",
+   "sigma_",
+   "sum_t",
+   "t",
+   "var_irf",
+   "z_t"
+  ],
+  "cards": [
+   "volatility.md"
+  ],
+  "shapes": {
+   "$.qbar": [
+    2,
+    2
+   ],
+   "$.correlation": [
+    200,
+    2,
+    2
+   ],
+   "$.correlation_last": [
+    2,
+    2
+   ],
+   "$.sigma2": [
+    200,
+    2
+   ],
+   "$.univariate[0].params": [
+    3
+   ],
+   "$.univariate[0].se_mle": [
+    3
+   ],
+   "$.univariate[0].se_robust": [
+    3
+   ],
+   "$.univariate[0].se_valid": [
+    3
+   ],
+   "$.univariate[0].boundary": [
+    3
+   ],
+   "$.univariate[0].conditional_volatility": [
+    200
+   ],
+   "$.univariate[0].std_residuals": [
+    200
+   ],
+   "$.univariate[1].params": [
+    3
+   ],
+   "$.univariate[1].se_mle": [
+    3
+   ],
+   "$.univariate[1].se_robust": [
+    3
+   ],
+   "$.univariate[1].se_valid": [
+    3
+   ],
+   "$.univariate[1].boundary": [
+    3
+   ],
+   "$.univariate[1].conditional_volatility": [
+    200
+   ],
+   "$.univariate[1].std_residuals": [
+    200
+   ],
+   "$.std_residuals": [
+    200,
+    2
+   ],
+   "$.covariance": [
+    200,
+    2,
+    2
+   ],
+   "$.correlation_forecast": [
+    2,
+    2,
+    2
+   ],
+   "$.covariance_forecast": [
+    2,
+    2,
+    2
+   ],
+   "$.variance_forecast": [
+    2,
+    2
+   ]
+  }
+ },
+ "dcc_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 10,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "df",
+   "lags",
+   "n_stacked",
+   "nobs",
+   "p_value",
+   "stat"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "volatility.md"
+  ],
+  "shapes": {}
+ },
+ "dcs_local_level": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 24,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [
+   [
+    "$.nu_se",
+    "nan"
+   ]
+  ],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "aic",
+   "bic",
+   "converged",
+   "density",
+   "iterations",
+   "kappa",
+   "kappa_se",
+   "level",
+   "loglik",
+   "n_obs",
+   "next_level",
+   "nu",
+   "nu_se",
+   "resid",
+   "scale",
+   "scale_se"
+  ],
+  "undocumented_keys": [
+   "kappa_se",
+   "nu_se",
+   "scale_se"
+  ],
+  "phantom_candidates": [
+   "False"
+  ],
+  "cards": [
+   "volatility.md"
+  ],
+  "shapes": {
+   "$.level": [
+    200
+   ],
+   "$.resid": [
+    200
+   ]
+  }
+ },
+ "dfgls": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 14,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "crit",
+   "nobs",
+   "p_value",
+   "statistic",
+   "trend",
+   "used_lag"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "unit-root-cointegration-tests.md"
+  ],
+  "shapes": {}
+ },
+ "dfm_news": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 11,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "contributions",
+   "new_nowcast",
+   "old_nowcast",
+   "target_period",
+   "target_series",
+   "total_revision"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "nowcasting-midas.md"
+  ],
+  "shapes": {}
+ },
+ "dfm_nowcast": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 39,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "center",
+   "edge_factor",
+   "factor_ar",
+   "factor_cov",
+   "factor_order",
+   "fit_loglik",
+   "idiosyncratic",
+   "loadings",
+   "loglik",
+   "n_factors",
+   "nowcast",
+   "scale",
+   "smoothed_factors"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "Lambda",
+   "i",
+   "method",
+   "r"
+  ],
+  "cards": [
+   "nowcasting-midas.md"
+  ],
+  "shapes": {
+   "$.nowcast": [
+    8
+   ],
+   "$.edge_factor": [
+    1
+   ],
+   "$.smoothed_factors": [
+    199,
+    1
+   ],
+   "$.loadings": [
+    8,
+    1
+   ],
+   "$.factor_ar": [
+    1,
+    2
+   ],
+   "$.factor_cov": [
+    1,
+    1
+   ],
+   "$.idiosyncratic": [
+    8
+   ],
+   "$.center": [
+    8
+   ],
+   "$.scale": [
+    8
+   ]
+  }
+ },
+ "dm_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 8,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "dm_stat",
+   "hln_stat",
+   "mean_loss_diff",
+   "p_value"
+  ],
+  "undocumented_keys": [
+   "dm_stat",
+   "hln_stat",
+   "mean_loss_diff",
+   "p_value"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md"
+  ],
+  "shapes": {}
+ },
+ "dsge_solve": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 19,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "eigenvalue_moduli",
+   "g",
+   "p",
+   "q",
+   "verdict"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "predetermined_"
+  ],
+  "cards": [
+   "dsge.md"
+  ],
+  "shapes": {
+   "$.g": [
+    1,
+    1
+   ],
+   "$.p": [
+    1,
+    1
+   ],
+   "$.q": [
+    1,
+    1
+   ],
+   "$.eigenvalue_moduli": [
+    2
+   ]
+  }
+ },
+ "dynamic_ns": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 29,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "curvature",
+   "factors",
+   "forecast",
+   "lambda",
+   "level",
+   "maturities",
+   "rsquared",
+   "slope"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "ar1_intercept",
+   "ar1_phi",
+   "yields"
+  ],
+  "cards": [
+   "term-structure.md"
+  ],
+  "shapes": {
+   "$.maturities": [
+    12
+   ],
+   "$.factors": [
+    200,
+    3
+   ],
+   "$.rsquared": [
+    200
+   ],
+   "$.level": [
+    200
+   ],
+   "$.slope": [
+    200
+   ],
+   "$.curvature": [
+    200
+   ],
+   "$.forecast.factors": [
+    3
+   ],
+   "$.forecast.yields": [
+    12
+   ],
+   "$.forecast.ar1_intercept": [
+    3
+   ],
+   "$.forecast.ar1_phi": [
+    3
+   ]
+  }
+ },
+ "elastic_net": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 9,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ],
+  "undocumented_keys": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "machine-learning.md"
+  ],
+  "shapes": {
+   "$.coef": [
+    3
+   ]
+  }
+ },
+ "engle_granger": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 20,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "adf_nobs",
+   "coint_coefs",
+   "crit",
+   "n_vars",
+   "nobs",
+   "pvalue",
+   "resid",
+   "stat",
+   "used_lag"
+  ],
+  "undocumented_keys": [
+   "adf_nobs",
+   "coint_coefs",
+   "n_vars",
+   "nobs",
+   "resid",
+   "used_lag"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.coint_coefs": [
+    2
+   ],
+   "$.resid": [
+    200
+   ]
+  }
+ },
+ "factor_model": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 26,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "eigenvalues",
+   "er",
+   "er_ratios",
+   "factors",
+   "icp1",
+   "icp2",
+   "loadings",
+   "pcp1",
+   "pcp2"
+  ],
+  "undocumented_keys": [
+   "er",
+   "er_ratios"
+  ],
+  "phantom_candidates": [],
+  "cards": [],
+  "shapes": {
+   "$.factors": [
+    200,
+    2
+   ],
+   "$.loadings": [
+    8,
+    2
+   ],
+   "$.eigenvalues": [
+    8
+   ],
+   "$.er_ratios": [
+    4
+   ]
+  }
+ },
+ "favar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 38,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "factors",
+   "irf_panel",
+   "irf_policy",
+   "n_endog",
+   "n_factors",
+   "params",
+   "policy_index",
+   "sigma_u"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.factors": [
+    200,
+    2
+   ],
+   "$.params": [
+    7,
+    3
+   ],
+   "$.sigma_u": [
+    3,
+    3
+   ],
+   "$.irf_panel": [
+    8,
+    7
+   ],
+   "$.irf_policy": [
+    7
+   ]
+  }
+ },
+ "flp": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 27,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "betas",
+   "covs",
+   "horizons",
+   "n_factors",
+   "nobs",
+   "se"
+  ],
+  "undocumented_keys": [
+   "betas",
+   "horizons",
+   "n_factors",
+   "nobs"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "functional-shocks.md"
+  ],
+  "shapes": {
+   "$.horizons": [
+    5
+   ],
+   "$.betas": [
+    5,
+    2
+   ],
+   "$.covs": [
+    5,
+    2,
+    2
+   ],
+   "$.se": [
+    5,
+    2
+   ],
+   "$.nobs": [
+    5
+   ]
+  }
+ },
+ "flp_scenario": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 22,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "betas",
+   "explained",
+   "horizons",
+   "response",
+   "se",
+   "weights"
+  ],
+  "undocumented_keys": [
+   "betas",
+   "explained",
+   "horizons",
+   "se"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "functional-shocks.md"
+  ],
+  "shapes": {
+   "$.horizons": [
+    5
+   ],
+   "$.weights": [
+    2
+   ],
+   "$.response": [
+    5
+   ],
+   "$.se": [
+    5
+   ],
+   "$.betas": [
+    5,
+    2
+   ],
+   "$.explained": [
+    2
+   ]
+  }
+ },
+ "forecast_disagreement": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 22,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "counts",
+   "iqr",
+   "p25",
+   "p50",
+   "p75",
+   "std"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "ddof"
+  ],
+  "cards": [
+   "expectations.md"
+  ],
+  "shapes": {
+   "$.std": [
+    10
+   ],
+   "$.p25": [
+    10
+   ],
+   "$.p50": [
+    10
+   ],
+   "$.p75": [
+    10
+   ],
+   "$.iqr": [
+    10
+   ],
+   "$.counts": [
+    10
+   ]
+  }
+ },
+ "forecast_efficiency": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 16,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bse",
+   "params",
+   "pvalues",
+   "r_squared",
+   "tvalues",
+   "wald",
+   "wald_df",
+   "wald_pvalue"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "expectations.md"
+  ],
+  "shapes": {
+   "$.params": [
+    2
+   ],
+   "$.bse": [
+    2
+   ],
+   "$.tvalues": [
+    2
+   ],
+   "$.pvalues": [
+    2
+   ]
+  }
+ },
+ "frac_diff": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "long-memory.md"
+  ],
+  "shapes": {
+   "$": [
+    200
+   ]
+  }
+ },
+ "frac_integrate": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "long-memory.md"
+  ],
+  "shapes": {
+   "$": [
+    200
+   ]
+  }
+ },
+ "fry_pagan_svar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 17,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "diagnostics",
+   "median_irf",
+   "median_target_irf",
+   "mt_index",
+   "mt_statistic",
+   "n_accepted"
+  ],
+  "undocumented_keys": [
+   "diagnostics",
+   "median_irf",
+   "median_target_irf",
+   "mt_index",
+   "mt_statistic",
+   "n_accepted"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.median_target_irf": [
+    7,
+    3,
+    3
+   ],
+   "$.median_irf": [
+    7,
+    3,
+    3
+   ]
+  }
+ },
+ "functional_pca": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 18,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "eigenfunctions",
+   "eigenvalues",
+   "explained",
+   "mean_curve",
+   "scores",
+   "total_variance"
+  ],
+  "undocumented_keys": [
+   "mean_curve",
+   "total_variance"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "functional-shocks.md"
+  ],
+  "shapes": {
+   "$.mean_curve": [
+    6
+   ],
+   "$.eigenfunctions": [
+    2,
+    6
+   ],
+   "$.scores": [
+    200,
+    2
+   ],
+   "$.eigenvalues": [
+    2
+   ],
+   "$.explained": [
+    2
+   ]
+  }
+ },
+ "fvar_scenario": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 19,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "horizons",
+   "implied_outcome_innovation",
+   "response_outcome",
+   "responses",
+   "weights"
+  ],
+  "undocumented_keys": [
+   "horizons",
+   "implied_outcome_innovation",
+   "response_outcome"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "functional-shocks.md"
+  ],
+  "shapes": {
+   "$.horizons": [
+    5
+   ],
+   "$.weights": [
+    2
+   ],
+   "$.response_outcome": [
+    5
+   ],
+   "$.responses": [
+    5,
+    3
+   ]
+  }
+ },
+ "garch_fit": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 34,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [
+   [
+    "$.se_mle",
+    "array(3,) nan=1 inf=0"
+   ],
+   [
+    "$.se_robust",
+    "array(3,) nan=1 inf=0"
+   ]
+  ],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "aic",
+   "bic",
+   "boundary",
+   "boundary_note",
+   "conditional_volatility",
+   "converged",
+   "loglik",
+   "param_names",
+   "params",
+   "params_named",
+   "se_mle",
+   "se_robust",
+   "se_valid",
+   "std_residuals",
+   "variance_forecast"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "arima.md",
+   "forecasting.md",
+   "volatility.md"
+  ],
+  "shapes": {
+   "$.params": [
+    3
+   ],
+   "$.se_mle": [
+    3
+   ],
+   "$.se_robust": [
+    3
+   ],
+   "$.se_valid": [
+    3
+   ],
+   "$.boundary": [
+    3
+   ],
+   "$.conditional_volatility": [
+    200
+   ],
+   "$.std_residuals": [
+    200
+   ],
+   "$.variance_forecast": [
+    3
+   ]
+  }
+ },
+ "gas_volatility": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 21,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "a",
+   "aic",
+   "b",
+   "bic",
+   "converged",
+   "forecast",
+   "iterations",
+   "loglik",
+   "next_variance",
+   "omega",
+   "std_resid",
+   "variance"
+  ],
+  "undocumented_keys": [
+   "converged",
+   "iterations"
+  ],
+  "phantom_candidates": [
+   "h",
+   "nu"
+  ],
+  "cards": [
+   "volatility.md"
+  ],
+  "shapes": {
+   "$.variance": [
+    200
+   ],
+   "$.std_resid": [
+    200
+   ],
+   "$.forecast": [
+    3
+   ]
+  }
+ },
+ "gev_fit": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 19,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "block_size",
+   "converged",
+   "loglik",
+   "mu",
+   "n_maxima",
+   "return_levels",
+   "return_periods",
+   "se_mu",
+   "se_sigma",
+   "se_valid",
+   "se_xi",
+   "sigma",
+   "xi"
+  ],
+  "undocumented_keys": [
+   "converged",
+   "loglik",
+   "n_maxima",
+   "se_mu",
+   "se_sigma",
+   "se_xi"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "volatility.md"
+  ],
+  "shapes": {
+   "$.return_periods": [
+    3
+   ],
+   "$.return_levels": [
+    3
+   ]
+  }
+ },
+ "gmm_nonlinear": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 14,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "converged",
+   "fevals",
+   "gbar",
+   "iterations",
+   "nmoments",
+   "nparams",
+   "objective",
+   "params"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "gmm.md"
+  ],
+  "shapes": {
+   "$.params": [
+    2
+   ],
+   "$.gbar": [
+    2
+   ]
+  }
+ },
+ "gpd_fit": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 22,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "beta",
+   "converged",
+   "es",
+   "exceed_rate",
+   "loglik",
+   "n",
+   "n_exceed",
+   "p_tail",
+   "se_beta",
+   "se_valid",
+   "se_xi",
+   "threshold",
+   "threshold_quantile",
+   "var",
+   "xi"
+  ],
+  "undocumented_keys": [
+   "beta",
+   "converged",
+   "exceed_rate",
+   "loglik",
+   "se_beta",
+   "se_xi",
+   "threshold_quantile"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md",
+   "volatility.md"
+  ],
+  "shapes": {
+   "$.p_tail": [
+    3
+   ],
+   "$.var": [
+    3
+   ],
+   "$.es": [
+    3
+   ]
+  }
+ },
+ "growth_at_risk": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 35,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bse",
+   "bse_powell",
+   "converged",
+   "crossing",
+   "current",
+   "fitted",
+   "fitted_raw",
+   "hac_lags",
+   "horizon",
+   "params",
+   "taus"
+  ],
+  "undocumented_keys": [
+   "fitted_raw"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md",
+   "quantile.md"
+  ],
+  "shapes": {
+   "$.taus": [
+    3
+   ],
+   "$.params": [
+    3,
+    3
+   ],
+   "$.bse": [
+    3,
+    3
+   ],
+   "$.bse_powell": [
+    3,
+    3
+   ],
+   "$.fitted": [
+    3,
+    200
+   ],
+   "$.fitted_raw": [
+    3,
+    200
+   ],
+   "$.current": [
+    3
+   ],
+   "$.converged": [
+    3
+   ]
+  }
+ },
+ "gw_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "df",
+   "gw_stat",
+   "p_value"
+  ],
+  "undocumented_keys": [
+   "df",
+   "gw_stat",
+   "p_value"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md"
+  ],
+  "shapes": {}
+ },
+ "hamilton_filter": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 13,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "beta",
+   "cycle",
+   "first_index",
+   "trend"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "b_1",
+   "bse",
+   "maxlags",
+   "se",
+   "se_type",
+   "tvalues",
+   "use_correction"
+  ],
+  "cards": [
+   "diagnostics.md"
+  ],
+  "shapes": {
+   "$.trend": [
+    189
+   ],
+   "$.cycle": [
+    189
+   ],
+   "$.beta": [
+    5
+   ]
+  }
+ },
+ "hansen_seo_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 24,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "beta",
+   "boot_stats",
+   "k_ar_diff",
+   "lm_path",
+   "min_regime",
+   "n_boot",
+   "n_regressors",
+   "neqs",
+   "nobs",
+   "p_value",
+   "stat",
+   "threshold",
+   "thresholds"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.beta": [
+    2
+   ],
+   "$.thresholds": [
+    30
+   ],
+   "$.lm_path": [
+    30
+   ],
+   "$.boot_stats": [
+    49
+   ]
+  }
+ },
+ "har_rv": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 12,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bse",
+   "nobs",
+   "params",
+   "rsquared",
+   "tvalues"
+  ],
+  "undocumented_keys": [
+   "nobs"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "realized-vol.md",
+   "volatility.md"
+  ],
+  "shapes": {
+   "$.params": [
+    4
+   ],
+   "$.bse": [
+    4
+   ],
+   "$.tvalues": [
+    4
+   ]
+  }
+ },
+ "hetero_svar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 44,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "B",
+   "covariance_equality",
+   "horizon",
+   "identified",
+   "lags",
+   "min_ratio_gap",
+   "n_vars",
+   "ratio_dist_from_unity",
+   "regime1_label",
+   "regime2_label",
+   "regime_sizes",
+   "sigma_regime1",
+   "sigma_regime2",
+   "sign_convention",
+   "structural_irf",
+   "variance_ratios"
+  ],
+  "undocumented_keys": [
+   "covariance_equality",
+   "horizon",
+   "lags",
+   "min_ratio_gap",
+   "n_vars",
+   "ratio_dist_from_unity",
+   "regime1_label",
+   "regime2_label",
+   "regime_sizes",
+   "sigma_regime1",
+   "sigma_regime2",
+   "sign_convention",
+   "structural_irf",
+   "variance_ratios"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.B": [
+    3,
+    3
+   ],
+   "$.variance_ratios": [
+    3
+   ],
+   "$.structural_irf": [
+    7,
+    3,
+    3
+   ],
+   "$.ratio_dist_from_unity": [
+    3
+   ],
+   "$.sigma_regime1": [
+    3,
+    3
+   ],
+   "$.sigma_regime2": [
+    3,
+    3
+   ],
+   "$.regime_sizes": [
+    2
+   ]
+  }
+ },
+ "heteroskedasticity_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 9,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "df",
+   "f_pvalue",
+   "fstat",
+   "pvalue",
+   "statistic"
+  ],
+  "undocumented_keys": [
+   "f_pvalue",
+   "fstat"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "specification-tests.md"
+  ],
+  "shapes": {}
+ },
+ "historical_decomposition": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 13,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "baseline",
+   "hd",
+   "shocks",
+   "times"
+  ],
+  "undocumented_keys": [
+   "baseline",
+   "hd",
+   "shocks",
+   "times"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.times": [
+    198
+   ],
+   "$.baseline": [
+    198,
+    3
+   ],
+   "$.hd": [
+    198,
+    3,
+    3
+   ],
+   "$.shocks": [
+    198,
+    3
+   ]
+  }
+ },
+ "hp_filter": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 11,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "cycle",
+   "first_index",
+   "trend"
+  ],
+  "undocumented_keys": [
+   "cycle",
+   "first_index",
+   "trend"
+  ],
+  "phantom_candidates": [],
+  "cards": [],
+  "shapes": {
+   "$.trend": [
+    200
+   ],
+   "$.cycle": [
+    200
+   ]
+  }
+ },
+ "iv_gmm": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 26,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bse",
+   "cov",
+   "first_stage",
+   "hac_bandwidth",
+   "j_dof",
+   "j_pval",
+   "j_stat",
+   "nmoments",
+   "nobs",
+   "nparams",
+   "params",
+   "residuals",
+   "steps"
+  ],
+  "undocumented_keys": [
+   "nmoments",
+   "nobs",
+   "nparams",
+   "steps"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "gmm.md",
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.params": [
+    2
+   ],
+   "$.bse": [
+    2
+   ],
+   "$.cov": [
+    2,
+    2
+   ],
+   "$.residuals": [
+    200
+   ]
+  }
+ },
+ "ivx_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 16,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "beta_ivx",
+   "joint",
+   "nobs",
+   "nregressors",
+   "pvalue",
+   "pvalue_scalar",
+   "rz",
+   "wald",
+   "wald_scalar"
+  ],
+  "undocumented_keys": [
+   "nobs",
+   "nregressors"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "predictive-regressions.md"
+  ],
+  "shapes": {
+   "$.beta_ivx": [
+    2
+   ],
+   "$.wald_scalar": [
+    2
+   ],
+   "$.pvalue_scalar": [
+    2
+   ]
+  }
+ },
+ "jarque_bera": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 9,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "kurtosis",
+   "n",
+   "p_value",
+   "skewness",
+   "statistic"
+  ],
+  "undocumented_keys": [
+   "kurtosis",
+   "n",
+   "p_value",
+   "skewness",
+   "statistic"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "diagnostics.md"
+  ],
+  "shapes": {}
+ },
+ "johansen": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 27,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "eig",
+   "evec",
+   "max_eig_crit_90_95_99",
+   "max_eig_stat",
+   "rank_max_eig_5pct",
+   "rank_trace_5pct",
+   "trace_crit_90_95_99",
+   "trace_stat"
+  ],
+  "undocumented_keys": [
+   "eig",
+   "max_eig_crit_90_95_99",
+   "max_eig_stat",
+   "rank_max_eig_5pct",
+   "rank_trace_5pct",
+   "trace_crit_90_95_99",
+   "trace_stat"
+  ],
+  "phantom_candidates": [
+   "S_11"
+  ],
+  "cards": [
+   "check-series.md",
+   "cointegration-regime.md",
+   "unit-root-cointegration-tests.md",
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.eig": [
+    2
+   ],
+   "$.evec": [
+    2,
+    2
+   ],
+   "$.trace_stat": [
+    2
+   ],
+   "$.max_eig_stat": [
+    2
+   ],
+   "$.trace_crit_90_95_99": [
+    2,
+    3
+   ],
+   "$.max_eig_crit_90_95_99": [
+    2,
+    3
+   ]
+  }
+ },
+ "kpss": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "lags",
+   "p_value",
+   "statistic"
+  ],
+  "undocumented_keys": [
+   "lags",
+   "p_value",
+   "statistic"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "cointegration-regime.md",
+   "diagnostics.md",
+   "unit-root-cointegration-tests.md"
+  ],
+  "shapes": {}
+ },
+ "lasso": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 9,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ],
+  "undocumented_keys": [
+   "coef",
+   "max_change",
+   "max_rel_change",
+   "n_iter"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "machine-learning.md"
+  ],
+  "shapes": {
+   "$.coef": [
+    3
+   ]
+  }
+ },
+ "lasso_path": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 23,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "aic",
+   "aic_best",
+   "bic",
+   "bic_best",
+   "coefs",
+   "df",
+   "lambdas",
+   "rss"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "machine-learning.md"
+  ],
+  "shapes": {
+   "$.lambdas": [
+    20
+   ],
+   "$.coefs": [
+    20,
+    3
+   ],
+   "$.rss": [
+    20
+   ],
+   "$.df": [
+    20
+   ],
+   "$.aic": [
+    20
+   ],
+   "$.bic": [
+    20
+   ]
+  }
+ },
+ "ljung_box": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 19,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bp_pvalue",
+   "bp_stat",
+   "lags",
+   "lb_pvalue",
+   "lb_stat"
+  ],
+  "undocumented_keys": [
+   "bp_pvalue",
+   "bp_stat",
+   "lb_pvalue",
+   "lb_stat"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "arima.md",
+   "check-series.md",
+   "diagnostics.md",
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.lags": [
+    10
+   ],
+   "$.lb_stat": [
+    10
+   ],
+   "$.lb_pvalue": [
+    10
+   ],
+   "$.bp_stat": [
+    10
+   ],
+   "$.bp_pvalue": [
+    10
+   ]
+  }
+ },
+ "local_level_smooth": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 18,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "d_diffuse",
+   "filtered_state",
+   "filtered_state_var",
+   "loglik",
+   "smoothed_state",
+   "smoothed_state_var"
+  ],
+  "undocumented_keys": [
+   "d_diffuse",
+   "filtered_state",
+   "filtered_state_var",
+   "smoothed_state",
+   "smoothed_state_var"
+  ],
+  "phantom_candidates": [
+   "use_exact_diffuse"
+  ],
+  "cards": [
+   "arima.md",
+   "volatility.md"
+  ],
+  "shapes": {
+   "$.filtered_state": [
+    200
+   ],
+   "$.filtered_state_var": [
+    200
+   ],
+   "$.smoothed_state": [
+    200
+   ],
+   "$.smoothed_state_var": [
+    200
+   ]
+  }
+ },
+ "long_memory_d": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 9,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "d",
+   "m",
+   "se",
+   "se_asymptotic",
+   "se_regression"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "long-memory.md"
+  ],
+  "shapes": {}
+ },
+ "long_run_svar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 28,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "cumulative_irf",
+   "fevd",
+   "impact",
+   "irf",
+   "long_run",
+   "long_run_multiplier"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.impact": [
+    3,
+    3
+   ],
+   "$.long_run": [
+    3,
+    3
+   ],
+   "$.long_run_multiplier": [
+    3,
+    3
+   ],
+   "$.irf": [
+    7,
+    3,
+    3
+   ],
+   "$.cumulative_irf": [
+    7,
+    3,
+    3
+   ],
+   "$.fevd": [
+    7,
+    3,
+    3
+   ]
+  }
+ },
+ "long_run_variance": {
+  "called": true,
+  "type": "float",
+  "summarize_ok": true,
+  "summarize_lines": 5,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [],
+  "shapes": {}
+ },
+ "lp": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 11,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "horizons",
+   "irf",
+   "se",
+   "se_method"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "local-projections.md",
+   "panel.md",
+   "quantile.md"
+  ],
+  "shapes": {
+   "$.horizons": [
+    7
+   ],
+   "$.irf": [
+    7
+   ],
+   "$.se": [
+    7
+   ]
+  }
+ },
+ "lp_did": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 20,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "absorbing",
+   "coef",
+   "horizons",
+   "n_switchers",
+   "never_treated_only",
+   "nobs",
+   "nonabsorbing_lag",
+   "pooled",
+   "reweight",
+   "se",
+   "se_type"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "pooled_post_att",
+   "pooled_post_n_switchers",
+   "pooled_post_nobs",
+   "pooled_post_se",
+   "pooled_pre_att",
+   "pooled_pre_n_switchers",
+   "pooled_pre_nobs",
+   "pooled_pre_se",
+   "pre_window"
+  ],
+  "cards": [
+   "local-projections.md",
+   "panel.md"
+  ],
+  "shapes": {
+   "$.horizons": [
+    6
+   ],
+   "$.coef": [
+    6
+   ],
+   "$.se": [
+    6
+   ],
+   "$.nobs": [
+    6
+   ],
+   "$.n_switchers": [
+    6
+   ]
+  }
+ },
+ "lp_iv": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 12,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "first_stage_f",
+   "horizons",
+   "irf",
+   "se"
+  ],
+  "undocumented_keys": [
+   "first_stage_f"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "local-projections.md",
+   "panel.md"
+  ],
+  "shapes": {
+   "$.horizons": [
+    7
+   ],
+   "$.irf": [
+    7
+   ],
+   "$.se": [
+    7
+   ],
+   "$.first_stage_f": [
+    7
+   ]
+  }
+ },
+ "lp_multiplier": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 18,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "cumulative_impulse",
+   "cumulative_outcome",
+   "first_stage_f",
+   "horizons",
+   "multiplier",
+   "nobs_per_h",
+   "se"
+  ],
+  "undocumented_keys": [
+   "nobs_per_h"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "local-projections.md",
+   "panel.md"
+  ],
+  "shapes": {
+   "$.horizons": [
+    7
+   ],
+   "$.multiplier": [
+    7
+   ],
+   "$.se": [
+    7
+   ],
+   "$.first_stage_f": [
+    7
+   ],
+   "$.cumulative_outcome": [
+    7
+   ],
+   "$.cumulative_impulse": [
+    7
+   ],
+   "$.nobs_per_h": [
+    7
+   ]
+  }
+ },
+ "lp_state": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 15,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "horizons",
+   "irf_state0",
+   "irf_state1",
+   "se_method",
+   "se_state0",
+   "se_state1"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "local-projections.md",
+   "panel.md"
+  ],
+  "shapes": {
+   "$.horizons": [
+    7
+   ],
+   "$.irf_state1": [
+    7
+   ],
+   "$.se_state1": [
+    7
+   ],
+   "$.irf_state0": [
+    7
+   ],
+   "$.se_state0": [
+    7
+   ]
+  }
+ },
+ "markov_switching_ar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 30,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "ar",
+   "converged",
+   "expected_durations",
+   "filtered_prob",
+   "iterations",
+   "loglik",
+   "means",
+   "regimes",
+   "smoothed_prob",
+   "smoothed_prob_last_regime",
+   "transition",
+   "variances"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "k_regimes",
+   "mu_",
+   "order",
+   "phi_1",
+   "phi_p"
+  ],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.transition": [
+    2,
+    2
+   ],
+   "$.means": [
+    2
+   ],
+   "$.ar": [
+    1
+   ],
+   "$.variances": [
+    2
+   ],
+   "$.expected_durations": [
+    2
+   ],
+   "$.smoothed_prob": [
+    199,
+    2
+   ],
+   "$.filtered_prob": [
+    199,
+    2
+   ],
+   "$.smoothed_prob_last_regime": [
+    199
+   ],
+   "$.regimes": [
+    199
+   ]
+  }
+ },
+ "max_share_svar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 26,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "eigenvalues",
+   "fev_share",
+   "impact",
+   "irf",
+   "q",
+   "share_window"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "exclude_impact"
+  ],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.irf": [
+    9,
+    3
+   ],
+   "$.impact": [
+    3
+   ],
+   "$.q": [
+    3
+   ],
+   "$.fev_share": [
+    9
+   ],
+   "$.eigenvalues": [
+    3
+   ]
+  }
+ },
+ "mcmc_diagnostics": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "ess_bulk",
+   "ess_tail",
+   "rhat"
+  ],
+  "undocumented_keys": [
+   "ess_bulk",
+   "ess_tail",
+   "rhat"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "bayesian.md"
+  ],
+  "shapes": {}
+ },
+ "mean_group_var": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 23,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "coefs",
+   "coefs_se",
+   "intercept",
+   "intercept_se",
+   "irf_path",
+   "irf_path_se",
+   "lags",
+   "n_entities",
+   "neqs",
+   "orth_irfs",
+   "orth_irfs_se"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "impulse",
+   "mg_irf_path",
+   "response"
+  ],
+  "cards": [
+   "panel.md"
+  ],
+  "shapes": {
+   "$.intercept": [
+    2
+   ],
+   "$.intercept_se": [
+    2
+   ],
+   "$.coefs": [
+    1,
+    2,
+    2
+   ],
+   "$.coefs_se": [
+    1,
+    2,
+    2
+   ],
+   "$.orth_irfs": [
+    7,
+    2,
+    2
+   ],
+   "$.orth_irfs_se": [
+    7,
+    2,
+    2
+   ],
+   "$.irf_path": [
+    7
+   ],
+   "$.irf_path_se": [
+    7
+   ]
+  }
+ },
+ "midas_weights": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "nowcasting-midas.md"
+  ],
+  "shapes": {
+   "$": [
+    6
+   ]
+  }
+ },
+ "mstl": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 94,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "dropped_periods",
+   "iterate",
+   "periods",
+   "resid",
+   "seasonal",
+   "seasonal_strength",
+   "trend",
+   "weights",
+   "windows"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "seasonal_",
+   "seasonal_k",
+   "y"
+  ],
+  "cards": [
+   "check-series.md",
+   "diagnostics.md"
+  ],
+  "shapes": {
+   "$.seasonal.seasonal_4": [
+    200
+   ],
+   "$.seasonal.seasonal_12": [
+    200
+   ],
+   "$.trend": [
+    200
+   ],
+   "$.resid": [
+    200
+   ],
+   "$.weights": [
+    200
+   ],
+   "$.periods": [
+    2
+   ],
+   "$.windows": [
+    2
+   ],
+   "$.dropped_periods": [
+    0
+   ]
+  }
+ },
+ "narrative_svar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 26,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "diagnostics",
+   "probs",
+   "quantiles",
+   "set_max",
+   "set_min",
+   "weights"
+  ],
+  "undocumented_keys": [
+   "diagnostics",
+   "probs",
+   "quantiles",
+   "set_max",
+   "set_min"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.probs": [
+    5
+   ],
+   "$.quantiles": [
+    7,
+    3,
+    3,
+    5
+   ],
+   "$.set_min": [
+    7,
+    3,
+    3
+   ],
+   "$.set_max": [
+    7,
+    3,
+    3
+   ],
+   "$.weights": [
+    40
+   ]
+  }
+ },
+ "ndiffs": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 12,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "alpha",
+   "d",
+   "interpretation",
+   "max_d",
+   "steps",
+   "stop",
+   "test"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "lags",
+   "n",
+   "needs_differencing",
+   "p_value",
+   "statistic"
+  ],
+  "cards": [
+   "arima.md",
+   "diagnostics.md"
+  ],
+  "shapes": {}
+ },
+ "nelson_siegel": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 13,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "curvature",
+   "factors",
+   "lambda",
+   "level",
+   "residuals",
+   "rsquared",
+   "slope"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "afns.md",
+   "term-structure.md"
+  ],
+  "shapes": {
+   "$.factors": [
+    3
+   ],
+   "$.residuals": [
+    8
+   ]
+  }
+ },
+ "ng_perron": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 18,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "crit",
+   "mpt",
+   "msb",
+   "mza",
+   "mzt",
+   "nobs",
+   "s2_ar",
+   "trend",
+   "used_lag"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "unit-root-cointegration-tests.md"
+  ],
+  "shapes": {}
+ },
+ "nongaussian_svar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 24,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "converged",
+   "impact",
+   "irf",
+   "n_iter",
+   "order",
+   "rotation",
+   "shock_kurtosis"
+  ],
+  "undocumented_keys": [
+   "converged",
+   "irf",
+   "n_iter",
+   "order"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.impact": [
+    3,
+    3
+   ],
+   "$.irf": [
+    7,
+    3,
+    3
+   ],
+   "$.rotation": [
+    3,
+    3
+   ],
+   "$.shock_kurtosis": [
+    3
+   ],
+   "$.order": [
+    3
+   ]
+  }
+ },
+ "nsdiffs": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 13,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "alpha",
+   "d",
+   "interpretation",
+   "max_d",
+   "period",
+   "steps",
+   "stop",
+   "threshold"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "n",
+   "needs_differencing",
+   "seasonal_strength",
+   "trend_strength"
+  ],
+  "cards": [
+   "arima.md",
+   "check-series.md",
+   "diagnostics.md"
+  ],
+  "shapes": {}
+ },
+ "ols": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 11,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "bse",
+   "params",
+   "se_type",
+   "tvalues"
+  ],
+  "undocumented_keys": [
+   "params",
+   "tvalues"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "diagnostics.md",
+   "gmm.md",
+   "predictive-regressions.md"
+  ],
+  "shapes": {
+   "$.params": [
+    3
+   ],
+   "$.bse": [
+    3
+   ],
+   "$.tvalues": [
+    3
+   ]
+  }
+ },
+ "optimal_block_length": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "circular",
+   "stationary"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [],
+  "shapes": {}
+ },
+ "ou_fit": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 24,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "c",
+   "c_se",
+   "dt",
+   "eta2",
+   "half_life",
+   "half_life_ci",
+   "kappa",
+   "kappa_se",
+   "level",
+   "loglik",
+   "mean_reverting",
+   "mu",
+   "mu_se",
+   "n_obs",
+   "phi",
+   "phi_se",
+   "sigma",
+   "sigma_se",
+   "stationary_sd"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "inf"
+  ],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.half_life_ci": [
+    2
+   ]
+  }
+ },
+ "pacf": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "diagnostics.md"
+  ],
+  "shapes": {
+   "$": [
+    21
+   ]
+  }
+ },
+ "panel_fe": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 11,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bse",
+   "params",
+   "se_type",
+   "tvalues"
+  ],
+  "undocumented_keys": [
+   "bse",
+   "params",
+   "tvalues"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "panel.md"
+  ],
+  "shapes": {
+   "$.params": [
+    2
+   ],
+   "$.bse": [
+    2
+   ],
+   "$.tvalues": [
+    2
+   ]
+  }
+ },
+ "panel_lp": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 14,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bias_correction",
+   "cumulative",
+   "irf",
+   "jackknife",
+   "nobs",
+   "se",
+   "se_type"
+  ],
+  "undocumented_keys": [
+   "irf",
+   "nobs"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "local-projections.md",
+   "panel.md"
+  ],
+  "shapes": {
+   "$.irf": [
+    7
+   ],
+   "$.se": [
+    7
+   ],
+   "$.nobs": [
+    7
+   ]
+  }
+ },
+ "panel_mean_group": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 20,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "coef",
+   "coef_per_unit",
+   "k",
+   "n_units",
+   "se",
+   "tstat"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "panel.md"
+  ],
+  "shapes": {
+   "$.coef": [
+    2
+   ],
+   "$.se": [
+    2
+   ],
+   "$.tstat": [
+    2
+   ],
+   "$.coef_per_unit": [
+    5,
+    2
+   ]
+  }
+ },
+ "panel_pmg": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 17,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "iterations",
+   "k",
+   "loglik",
+   "n_units",
+   "phi",
+   "phi_bar",
+   "sigma2",
+   "theta",
+   "theta_se"
+  ],
+  "undocumented_keys": [
+   "n_units"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "panel.md"
+  ],
+  "shapes": {
+   "$.theta": [
+    1
+   ],
+   "$.theta_se": [
+    1
+   ],
+   "$.phi": [
+    5
+   ],
+   "$.sigma2": [
+    5
+   ]
+  }
+ },
+ "panel_unit_root": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 18,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "n_units",
+   "p_value",
+   "per_unit_lags",
+   "per_unit_nobs",
+   "per_unit_pvalue",
+   "per_unit_tstat",
+   "regression",
+   "statistic",
+   "t_bar",
+   "test"
+  ],
+  "undocumented_keys": [
+   "n_units",
+   "p_value",
+   "per_unit_lags",
+   "per_unit_nobs",
+   "per_unit_pvalue",
+   "per_unit_tstat",
+   "statistic",
+   "t_bar"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "panel-unit-root.md"
+  ],
+  "shapes": {
+   "$.per_unit_tstat": [
+    5
+   ],
+   "$.per_unit_pvalue": [
+    5
+   ],
+   "$.per_unit_lags": [
+    5
+   ],
+   "$.per_unit_nobs": [
+    5
+   ]
+  }
+ },
+ "periodogram": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 10,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "freqs",
+   "psd"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "long-memory.md",
+   "spectral.md"
+  ],
+  "shapes": {
+   "$.freqs": [
+    101
+   ],
+   "$.psd": [
+    101
+   ]
+  }
+ },
+ "phillips_ouliaris": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 14,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "crit",
+   "lags",
+   "n_vars",
+   "nobs",
+   "pvalue",
+   "stat"
+  ],
+  "undocumented_keys": [
+   "lags",
+   "n_vars",
+   "nobs",
+   "stat"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "unit-root-cointegration-tests.md"
+  ],
+  "shapes": {}
+ },
+ "phillips_perron": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 15,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "crit",
+   "lags",
+   "nobs",
+   "pvalue",
+   "stat",
+   "zalpha",
+   "ztau"
+  ],
+  "undocumented_keys": [
+   "crit",
+   "nobs",
+   "pvalue",
+   "stat",
+   "zalpha",
+   "ztau"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "unit-root-cointegration-tests.md"
+  ],
+  "shapes": {}
+ },
+ "philox_uniforms": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [],
+  "shapes": {
+   "$": [
+    200
+   ]
+  }
+ },
+ "predictive_regression": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 24,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "ivx",
+   "nobs",
+   "ols",
+   "stambaugh"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "alpha",
+   "beta",
+   "beta_corrected",
+   "beta_ivx",
+   "beta_ols",
+   "bias_term",
+   "pvalue",
+   "rho_ols",
+   "rz",
+   "se",
+   "tstat",
+   "u",
+   "u_",
+   "wald",
+   "x",
+   "x_t"
+  ],
+  "cards": [
+   "check-series.md",
+   "predictive-regressions.md"
+  ],
+  "shapes": {}
+ },
+ "proxy_ar_sets": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 15,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "ar_bound_stat",
+   "ar_bounded_all",
+   "cells",
+   "critical_value",
+   "first_stage_f",
+   "impact",
+   "level",
+   "n_proxy",
+   "reduced_form_uncertainty"
+  ],
+  "undocumented_keys": [
+   "ar_bound_stat",
+   "ar_bounded_all",
+   "critical_value",
+   "first_stage_f",
+   "impact"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.impact": [
+    3
+   ]
+  }
+ },
+ "proxy_first_stage": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 19,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "beta",
+   "effective_f",
+   "f_classical",
+   "f_hc1",
+   "hac_lags",
+   "mop_cv_tau10",
+   "mop_cv_tau20",
+   "mop_cv_tau30",
+   "mop_cv_tau5",
+   "n_proxy",
+   "reliability",
+   "se",
+   "tau_bound",
+   "weak_folklore",
+   "weak_mop_tau10"
+  ],
+  "undocumented_keys": [
+   "beta",
+   "effective_f",
+   "f_classical",
+   "f_hc1",
+   "mop_cv_tau20",
+   "mop_cv_tau30",
+   "mop_cv_tau5",
+   "reliability",
+   "se"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {}
+ },
+ "proxy_svar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 43,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "cov_um",
+   "first_stage",
+   "first_stage_f",
+   "impact",
+   "irf",
+   "n_proxy",
+   "relative_impact",
+   "reliability",
+   "shock"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "mop_cv_tau10",
+   "proxy_first_stage",
+   "robust_f",
+   "tau_bound",
+   "u_norm"
+  ],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.irf": [
+    7,
+    3
+   ],
+   "$.impact": [
+    3
+   ],
+   "$.relative_impact": [
+    3
+   ],
+   "$.cov_um": [
+    3
+   ],
+   "$.shock": [
+    198
+   ]
+  }
+ },
+ "proxy_svar_bands": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 96,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "alpha",
+   "asymptotically_valid",
+   "block_length",
+   "failure_warning",
+   "failures",
+   "first_stage_f_draws",
+   "gamma_norm_draws",
+   "lower",
+   "lower_efron",
+   "method",
+   "n_boot",
+   "n_failed",
+   "n_proxy",
+   "n_used",
+   "point",
+   "point_first_stage_f",
+   "point_gamma_norm",
+   "point_reliability",
+   "reliability_draws",
+   "rho_draws",
+   "se",
+   "upper",
+   "upper_efron",
+   "validity_note"
+  ],
+  "undocumented_keys": [
+   "block_length",
+   "first_stage_f_draws",
+   "gamma_norm_draws",
+   "method",
+   "n_boot",
+   "n_proxy",
+   "n_used",
+   "point",
+   "point_first_stage_f",
+   "point_gamma_norm",
+   "point_reliability",
+   "reliability_draws",
+   "rho_draws",
+   "se"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.point": [
+    7,
+    3
+   ],
+   "$.lower": [
+    7,
+    3
+   ],
+   "$.upper": [
+    7,
+    3
+   ],
+   "$.lower_efron": [
+    7,
+    3
+   ],
+   "$.upper_efron": [
+    7,
+    3
+   ],
+   "$.se": [
+    7,
+    3
+   ],
+   "$.gamma_norm_draws": [
+    49
+   ],
+   "$.first_stage_f_draws": [
+    49
+   ],
+   "$.reliability_draws": [
+    49
+   ],
+   "$.rho_draws": [
+    49,
+    3
+   ]
+  }
+ },
+ "pseudo_obs": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "copulas.md"
+  ],
+  "shapes": {
+   "$": [
+    200,
+    2
+   ]
+  }
+ },
+ "quantile_lp": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 26,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "converged",
+   "horizons",
+   "irf",
+   "se",
+   "taus"
+  ],
+  "undocumented_keys": [
+   "horizons"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "quantile.md"
+  ],
+  "shapes": {
+   "$.taus": [
+    3
+   ],
+   "$.horizons": [
+    4
+   ],
+   "$.irf": [
+    3,
+    4
+   ],
+   "$.se": [
+    3,
+    4
+   ],
+   "$.converged": [
+    3,
+    4
+   ]
+  }
+ },
+ "quantile_regression": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 31,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bandwidth",
+   "bse",
+   "converged",
+   "iterations",
+   "params",
+   "sparsity",
+   "taus",
+   "tvalues"
+  ],
+  "undocumented_keys": [
+   "converged",
+   "iterations",
+   "tvalues"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md",
+   "quantile.md"
+  ],
+  "shapes": {
+   "$.taus": [
+    3
+   ],
+   "$.params": [
+    3,
+    3
+   ],
+   "$.bse": [
+    3,
+    3
+   ],
+   "$.tvalues": [
+    3,
+    3
+   ],
+   "$.iterations": [
+    3
+   ],
+   "$.bandwidth": [
+    3
+   ],
+   "$.sparsity": [
+    3
+   ]
+  }
+ },
+ "realized_measures": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bipower",
+   "jump",
+   "rv"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "realized-vol.md"
+  ],
+  "shapes": {}
+ },
+ "realized_quarticity": {
+  "called": true,
+  "type": "float",
+  "summarize_ok": true,
+  "summarize_lines": 5,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "realized-vol.md"
+  ],
+  "shapes": {}
+ },
+ "realized_range": {
+  "called": true,
+  "type": "float",
+  "summarize_ok": true,
+  "summarize_lines": 5,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "realized-vol.md"
+  ],
+  "shapes": {}
+ },
+ "recession_probit": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 16,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bse",
+   "converged",
+   "loglik",
+   "params",
+   "probabilities",
+   "pseudo_r2",
+   "zstats"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "rho"
+  ],
+  "cards": [
+   "recession.md"
+  ],
+  "shapes": {
+   "$.params": [
+    2
+   ],
+   "$.bse": [
+    2
+   ],
+   "$.zstats": [
+    2
+   ],
+   "$.probabilities": [
+    200
+   ]
+  }
+ },
+ "reset_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 8,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "df_den",
+   "df_num",
+   "fstat",
+   "pvalue"
+  ],
+  "undocumented_keys": [
+   "df_den",
+   "df_num",
+   "fstat",
+   "pvalue"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "specification-tests.md"
+  ],
+  "shapes": {}
+ },
+ "ridge": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "diagnostics.md",
+   "machine-learning.md",
+   "volatility.md"
+  ],
+  "shapes": {
+   "$": [
+    3
+   ]
+  }
+ },
+ "robust_svar_bounds": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 26,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [
+   [
+    "$.set_lower_mean",
+    "array(7, 3, 3) nan=42 inf=0"
+   ],
+   [
+    "$.set_upper_mean",
+    "array(7, 3, 3) nan=42 inf=0"
+   ],
+   [
+    "$.robust_ci_lower",
+    "array(7, 3, 3) nan=42 inf=0"
+   ],
+   [
+    "$.robust_ci_upper",
+    "array(7, 3, 3) nan=42 inf=0"
+   ],
+   [
+    "$.lower_quantiles",
+    "array(7, 3, 3, 5) nan=210 inf=0"
+   ],
+   [
+    "$.upper_quantiles",
+    "array(7, 3, 3, 5) nan=210 inf=0"
+   ]
+  ],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "alpha",
+   "diagnostics",
+   "lower_quantiles",
+   "probs",
+   "restricted_shocks",
+   "robust_ci_lower",
+   "robust_ci_upper",
+   "set_lower_mean",
+   "set_upper_mean",
+   "upper_quantiles"
+  ],
+  "undocumented_keys": [
+   "alpha",
+   "diagnostics",
+   "lower_quantiles",
+   "probs",
+   "restricted_shocks",
+   "robust_ci_lower",
+   "robust_ci_upper",
+   "set_lower_mean",
+   "set_upper_mean",
+   "upper_quantiles"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.set_lower_mean": [
+    7,
+    3,
+    3
+   ],
+   "$.set_upper_mean": [
+    7,
+    3,
+    3
+   ],
+   "$.robust_ci_lower": [
+    7,
+    3,
+    3
+   ],
+   "$.robust_ci_upper": [
+    7,
+    3,
+    3
+   ],
+   "$.lower_quantiles": [
+    7,
+    3,
+    3,
+    5
+   ],
+   "$.upper_quantiles": [
+    7,
+    3,
+    3,
+    5
+   ],
+   "$.probs": [
+    5
+   ],
+   "$.restricted_shocks": [
+    1
+   ]
+  }
+ },
+ "seasonal_strength": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "period",
+   "seasonal_strength",
+   "trend_strength"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "diagnostics.md"
+  ],
+  "shapes": {}
+ },
+ "setar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 33,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "aic",
+   "bic",
+   "bse_high",
+   "bse_low",
+   "delay",
+   "ic",
+   "ic_used",
+   "k",
+   "min_regime",
+   "n_high",
+   "n_low",
+   "nobs",
+   "params_high",
+   "params_low",
+   "sigma2",
+   "sigma2_high",
+   "sigma2_low",
+   "ssr",
+   "ssr_path",
+   "threshold",
+   "thresholds"
+  ],
+  "undocumented_keys": [
+   "ic_used",
+   "min_regime",
+   "n_high",
+   "n_low",
+   "sigma2_high",
+   "sigma2_low"
+  ],
+  "phantom_candidates": [
+   "n_j",
+   "p"
+  ],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.params_low": [
+    2
+   ],
+   "$.params_high": [
+    2
+   ],
+   "$.bse_low": [
+    2
+   ],
+   "$.bse_high": [
+    2
+   ],
+   "$.thresholds": [
+    140
+   ],
+   "$.ssr_path": [
+    140
+   ]
+  }
+ },
+ "setar_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 21,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "boot_stats",
+   "delay",
+   "f_path",
+   "n_boot",
+   "nobs",
+   "p_value",
+   "ssr_linear",
+   "ssr_setar",
+   "stat",
+   "threshold",
+   "thresholds"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.thresholds": [
+    140
+   ],
+   "$.f_path": [
+    140
+   ],
+   "$.boot_stats": [
+    49
+   ]
+  }
+ },
+ "sign_restricted_svar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 18,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "diagnostics",
+   "probs",
+   "quantiles",
+   "set_max",
+   "set_min"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "bayesian.md",
+   "structural-identification.md",
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.probs": [
+    5
+   ],
+   "$.quantiles": [
+    7,
+    3,
+    3,
+    5
+   ],
+   "$.set_min": [
+    7,
+    3,
+    3
+   ],
+   "$.set_max": [
+    7,
+    3,
+    3
+   ]
+  }
+ },
+ "smooth_lp": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 21,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "cv_grid",
+   "cv_scores",
+   "horizons",
+   "irf",
+   "irf_raw",
+   "lambda_used",
+   "se",
+   "se_raw",
+   "theta"
+  ],
+  "undocumented_keys": [
+   "cv_scores",
+   "lambda_used"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "local-projections.md"
+  ],
+  "shapes": {
+   "$.horizons": [
+    7
+   ],
+   "$.irf": [
+    7
+   ],
+   "$.se": [
+    7
+   ],
+   "$.cv_grid": [
+    0
+   ],
+   "$.cv_scores": [
+    0
+   ],
+   "$.theta": [
+    7
+   ],
+   "$.irf_raw": [
+    7
+   ],
+   "$.se_raw": [
+    7
+   ]
+  }
+ },
+ "spread_zscore": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 12,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "fitted",
+   "kappa",
+   "mu",
+   "sigma",
+   "stationary_sd",
+   "zscore"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "ou_fit"
+  ],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.zscore": [
+    200
+   ]
+  }
+ },
+ "star": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 51,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "aic",
+   "best_cell",
+   "bic",
+   "bse_linear",
+   "bse_nonlinear",
+   "c",
+   "converged",
+   "delay",
+   "fevals",
+   "gamma",
+   "gamma_at_boundary",
+   "gamma_standardized",
+   "grid_c",
+   "grid_gamma",
+   "k",
+   "loglik",
+   "model",
+   "nobs",
+   "params_linear",
+   "params_nonlinear",
+   "s_sd",
+   "se_c",
+   "se_gamma",
+   "se_valid",
+   "sigma2",
+   "ssr",
+   "ssr_grid",
+   "transition"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "n_c",
+   "n_gamma"
+  ],
+  "cards": [
+   "cointegration-regime.md",
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.grid_gamma": [
+    8
+   ],
+   "$.grid_c": [
+    8
+   ],
+   "$.ssr_grid": [
+    8,
+    8
+   ],
+   "$.best_cell": [
+    2
+   ],
+   "$.params_linear": [
+    2
+   ],
+   "$.params_nonlinear": [
+    2
+   ],
+   "$.bse_linear": [
+    2
+   ],
+   "$.bse_nonlinear": [
+    2
+   ],
+   "$.transition": [
+    199
+   ]
+  }
+ },
+ "star_eval": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 25,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": true,
+  "keys": [
+   "aic",
+   "bic",
+   "bse_linear",
+   "bse_nonlinear",
+   "k",
+   "loglik",
+   "nobs",
+   "params_linear",
+   "params_nonlinear",
+   "se_c",
+   "se_gamma",
+   "se_valid",
+   "sigma2",
+   "ssr",
+   "transition"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.params_linear": [
+    2
+   ],
+   "$.params_nonlinear": [
+    2
+   ],
+   "$.bse_linear": [
+    2
+   ],
+   "$.bse_nonlinear": [
+    2
+   ],
+   "$.transition": [
+    199
+   ]
+  }
+ },
+ "star_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 26,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "best",
+   "delay",
+   "h1_f_stat",
+   "h1_p_value",
+   "h2_f_stat",
+   "h2_p_value",
+   "h3_f_stat",
+   "h3_p_value",
+   "k0",
+   "lm3_f_p_value",
+   "lm3_f_stat",
+   "lm3_p_value",
+   "lm3_stat",
+   "nobs",
+   "q",
+   "ssr0",
+   "ssr1",
+   "ssr2",
+   "ssr3",
+   "suggested",
+   "tests"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {}
+ },
+ "stl": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 32,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "config",
+   "period",
+   "resid",
+   "seasonal",
+   "trend",
+   "weights"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "diagnostics.md"
+  ],
+  "shapes": {
+   "$.seasonal": [
+    200
+   ],
+   "$.trend": [
+    200
+   ],
+   "$.resid": [
+    200
+   ],
+   "$.weights": [
+    200
+   ]
+  }
+ },
+ "structural_fevd": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 12,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "fevd",
+   "impact"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md"
+  ],
+  "shapes": {
+   "$.fevd": [
+    7,
+    3,
+    3
+   ],
+   "$.impact": [
+    3,
+    3
+   ]
+  }
+ },
+ "summarize": {
+  "called": true,
+  "type": "Result",
+  "summarize_ok": true,
+  "summarize_lines": 7,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "a",
+   "b"
+  ],
+  "undocumented_keys": [
+   "b"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md"
+  ],
+  "shapes": {
+   "$.b": [
+    3
+   ]
+  }
+ },
+ "sup_f_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 14,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "break_date",
+   "dates",
+   "f_path",
+   "h",
+   "p_value",
+   "stat"
+  ],
+  "undocumented_keys": [
+   "p_value",
+   "stat"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "check-series.md",
+   "structural-breaks.md"
+  ],
+  "shapes": {
+   "$.dates": [
+    141
+   ],
+   "$.f_path": [
+    141
+   ]
+  }
+ },
+ "svensson": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 11,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "factors",
+   "lambda1",
+   "lambda2",
+   "residuals",
+   "rsquared"
+  ],
+  "undocumented_keys": [
+   "residuals"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "term-structure.md"
+  ],
+  "shapes": {
+   "$.factors": [
+    4
+   ],
+   "$.residuals": [
+    8
+   ]
+  }
+ },
+ "theta_forecast": {
+  "called": true,
+  "type": "ndarray",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md"
+  ],
+  "shapes": {
+   "$": [
+    4
+   ]
+  }
+ },
+ "threshold_var": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 58,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "aic",
+   "bic",
+   "bse_high",
+   "bse_low",
+   "delay",
+   "llf",
+   "log_det_sigma",
+   "logdet_path",
+   "min_regime",
+   "n_high",
+   "n_low",
+   "n_regressors",
+   "neqs",
+   "nobs",
+   "params_high",
+   "params_low",
+   "sigma",
+   "sigma_high",
+   "sigma_low",
+   "threshold",
+   "threshold_index",
+   "thresholds"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "n_r",
+   "y_"
+  ],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.params_low": [
+    2,
+    3
+   ],
+   "$.params_high": [
+    2,
+    3
+   ],
+   "$.bse_low": [
+    2,
+    3
+   ],
+   "$.bse_high": [
+    2,
+    3
+   ],
+   "$.sigma": [
+    2,
+    2
+   ],
+   "$.sigma_low": [
+    2,
+    2
+   ],
+   "$.sigma_high": [
+    2,
+    2
+   ],
+   "$.thresholds": [
+    160
+   ],
+   "$.logdet_path": [
+    160
+   ]
+  }
+ },
+ "threshold_var_test": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 23,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "boot_stats",
+   "delay",
+   "min_regime",
+   "n_boot",
+   "n_regressors",
+   "neqs",
+   "nobs",
+   "p_value",
+   "stat",
+   "threshold",
+   "threshold_index",
+   "thresholds",
+   "wald_path"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.thresholds": [
+    30
+   ],
+   "$.wald_path": [
+    30
+   ],
+   "$.boot_stats": [
+    49
+   ]
+  }
+ },
+ "threshold_vecm": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 51,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "beta",
+   "beta_grid",
+   "beta_linear",
+   "bse_high",
+   "bse_low",
+   "ect",
+   "frac_low",
+   "k_ar_diff",
+   "llf",
+   "llf_linear",
+   "log_det_sigma",
+   "min_regime",
+   "n_high",
+   "n_low",
+   "n_regressors",
+   "neqs",
+   "nobs",
+   "params_high",
+   "params_low",
+   "sigma",
+   "threshold"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "cointegration-regime.md"
+  ],
+  "shapes": {
+   "$.beta": [
+    2
+   ],
+   "$.params_low": [
+    2,
+    4
+   ],
+   "$.params_high": [
+    2,
+    4
+   ],
+   "$.bse_low": [
+    2,
+    4
+   ],
+   "$.bse_high": [
+    2,
+    4
+   ],
+   "$.sigma": [
+    2,
+    2
+   ],
+   "$.beta_linear": [
+    2
+   ],
+   "$.beta_grid": [
+    10
+   ],
+   "$.ect": [
+    198
+   ]
+  }
+ },
+ "tripower_quarticity": {
+  "called": true,
+  "type": "float",
+  "summarize_ok": true,
+  "summarize_lines": 5,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "realized-vol.md"
+  ],
+  "shapes": {}
+ },
+ "umidas": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 9,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "bse",
+   "params",
+   "rsquared"
+  ],
+  "undocumented_keys": [
+   "bse",
+   "rsquared"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "nowcasting-midas.md"
+  ],
+  "shapes": {
+   "$.params": [
+    7
+   ],
+   "$.bse": [
+    7
+   ]
+  }
+ },
+ "var_backtest": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 28,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "alpha",
+   "dq_df",
+   "dq_includes_var",
+   "dq_lags",
+   "dq_stat",
+   "dq_var_dropped",
+   "expected_violations",
+   "hit_rate",
+   "lr_cc",
+   "lr_ind",
+   "lr_uc",
+   "n",
+   "n00",
+   "n01",
+   "n10",
+   "n11",
+   "n_violations",
+   "p_cc",
+   "p_dq",
+   "p_ind",
+   "p_uc",
+   "pi01",
+   "pi11",
+   "verdict"
+  ],
+  "undocumented_keys": [
+   "dq_df",
+   "dq_includes_var",
+   "dq_lags",
+   "dq_stat",
+   "dq_var_dropped",
+   "expected_violations",
+   "hit_rate",
+   "lr_cc",
+   "lr_ind",
+   "lr_uc",
+   "n",
+   "n00",
+   "n01",
+   "n10",
+   "n11",
+   "n_violations",
+   "p_cc",
+   "p_dq",
+   "p_ind",
+   "p_uc",
+   "pi01",
+   "pi11",
+   "verdict"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "forecasting.md"
+  ],
+  "shapes": {}
+ },
+ "var_fevd": {
+  "called": true,
+  "type": "list",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "structural-identification.md",
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$": [
+    6,
+    3,
+    3
+   ]
+  }
+ },
+ "var_fit": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 33,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "aic",
+   "bic",
+   "df_resid",
+   "fitted",
+   "hqic",
+   "is_stable",
+   "llf",
+   "max_root",
+   "min_root",
+   "nobs",
+   "params",
+   "resid",
+   "sigma_u"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "lags",
+   "n_trend",
+   "t"
+  ],
+  "cards": [
+   "bayesian.md",
+   "check-series.md",
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.params": [
+    7,
+    3
+   ],
+   "$.sigma_u": [
+    3,
+    3
+   ],
+   "$.resid": [
+    198,
+    3
+   ],
+   "$.fitted": [
+    198,
+    3
+   ]
+  }
+ },
+ "var_forecast": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 26,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "band",
+   "lower",
+   "point",
+   "upper"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.point": [
+    4,
+    3
+   ],
+   "$.lower": [
+    4,
+    3
+   ],
+   "$.upper": [
+    4,
+    3
+   ]
+  }
+ },
+ "var_granger": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 8,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "df_den",
+   "df_num",
+   "p_value",
+   "statistic"
+  ],
+  "undocumented_keys": [
+   "df_den",
+   "df_num",
+   "p_value",
+   "statistic"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "var-svar.md"
+  ],
+  "shapes": {}
+ },
+ "var_irf": {
+  "called": true,
+  "type": "list",
+  "summarize_ok": true,
+  "summarize_lines": 6,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "cointegration-regime.md",
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$": [
+    7,
+    3,
+    3
+   ]
+  }
+ },
+ "var_irf_bands": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 17,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "alpha",
+   "band",
+   "bias_correct",
+   "lower",
+   "method",
+   "n_boot",
+   "point",
+   "se",
+   "upper"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "None",
+   "var_irf"
+  ],
+  "cards": [
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.point": [
+    7,
+    3,
+    3
+   ],
+   "$.se": [
+    7,
+    3,
+    3
+   ],
+   "$.lower": [
+    7,
+    3,
+    3
+   ],
+   "$.upper": [
+    7,
+    3,
+    3
+   ]
+  }
+ },
+ "vecm": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 29,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "alpha",
+   "beta",
+   "det_coef",
+   "det_coef_coint",
+   "gamma",
+   "llf",
+   "sigma_u"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [
+   "n_coint",
+   "n_det"
+  ],
+  "cards": [
+   "check-series.md",
+   "cointegration-regime.md",
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.alpha": [
+    2,
+    1
+   ],
+   "$.beta": [
+    2,
+    1
+   ],
+   "$.det_coef_coint": [
+    0
+   ],
+   "$.gamma": [
+    2,
+    2
+   ],
+   "$.det_coef": [
+    2,
+    0
+   ],
+   "$.sigma_u": [
+    2,
+    2
+   ]
+  }
+ },
+ "weighted_midas": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 21,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "converged",
+   "fitted",
+   "intercept",
+   "iterations",
+   "residuals",
+   "rsquared",
+   "scheme",
+   "slope",
+   "ssr",
+   "weight_params",
+   "weights"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "nowcasting-midas.md"
+  ],
+  "shapes": {
+   "$.weight_params": [
+    2
+   ],
+   "$.weights": [
+    6
+   ],
+   "$.fitted": [
+    200
+   ],
+   "$.residuals": [
+    200
+   ]
+  }
+ },
+ "welch": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 10,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "freqs",
+   "psd"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "spectral.md"
+  ],
+  "shapes": {
+   "$.freqs": [
+    33
+   ],
+   "$.psd": [
+    33
+   ]
+  }
+ },
+ "zero_sign_svar": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 23,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "arw_weighted",
+   "diagnostics",
+   "ess",
+   "probs",
+   "quantiles",
+   "set_max",
+   "set_min",
+   "weights"
+  ],
+  "undocumented_keys": [
+   "arw_weighted"
+  ],
+  "phantom_candidates": [],
+  "cards": [
+   "var-svar.md"
+  ],
+  "shapes": {
+   "$.probs": [
+    5
+   ],
+   "$.quantiles": [
+    7,
+    3,
+    3,
+    5
+   ],
+   "$.set_min": [
+    7,
+    3,
+    3
+   ],
+   "$.set_max": [
+    7,
+    3,
+    3
+   ],
+   "$.weights": [
+    40
+   ]
+  }
+ },
+ "zivot_andrews": {
+  "called": true,
+  "type": "dict",
+  "summarize_ok": true,
+  "summarize_lines": 16,
+  "json_ok": true,
+  "json_faithful": true,
+  "pickle_ok": true,
+  "pickle_faithful": true,
+  "nonfinite": [],
+  "doc_mentions_nonfinite": false,
+  "keys": [
+   "break_index",
+   "crit",
+   "lags",
+   "nobs",
+   "pvalue",
+   "regression",
+   "stat",
+   "trim"
+  ],
+  "undocumented_keys": [],
+  "phantom_candidates": [],
+  "cards": [
+   "unit-root-cointegration-tests.md"
+  ],
+  "shapes": {}
+ }
+}

@@ -584,7 +584,7 @@ fn forecasts_converge_to_unconditional_variance() {
     assert_rel_close(f[599], uncond, 1e-5, "long-horizon GJR forecast");
     assert!(f.iter().all(|&v| v > 0.0 && v.is_finite()));
 
-    // EGARCH: one-step analytic, multi-step unsupported (TODO(phase0)).
+    // EGARCH: one-step analytic, multi-step unsupported (needs simulation, not shipped).
     let spec = GarchSpec {
         mean: MeanSpec::Zero,
         vol: VolSpec::Egarch { p: 1, o: 1, q: 1 },

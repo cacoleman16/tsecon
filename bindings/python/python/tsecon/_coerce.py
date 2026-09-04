@@ -65,6 +65,11 @@ _EXEMPT: dict[str, frozenset[str]] = {
     "arima_fit": frozenset({"seasonal"}),
     # Candidate threshold delays d in y_{t-d}: integer lags, not data.
     "setar": frozenset({"delays"}),
+    # Candidate transition delays d in y_{t-d}: integer lags, not data.
+    "star": frozenset({"delays"}),
+    "star_test": frozenset({"delays"}),
+    # Same for the threshold VAR's candidate delays d in z_t = y_{tv,t-d}.
+    "threshold_var": frozenset({"delays"}),
     # Seasonal periods and their LOESS windows: integer specs, not data.
     # Coercing [24, 168] to float64 would make the boundary reject it.
     "mstl": frozenset({"periods", "windows"}),
@@ -75,6 +80,12 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # not data, shared by both conformal entry points.
     "conformal_forecast": frozenset({"order"}),
     "conformal_backtest": frozenset({"order"}),
+    # Integer group labels, one per column of x: coercing them to float64
+    # would make the boundary reject a plain [0, 0, 1, 1] partition.
+    "group_lasso": frozenset({"groups"}),
+    # Integer group label per feature (all lags of one variable share a
+    # label): an importance unit, not data.
+    "random_forest": frozenset({"importance_groups"}),
 }
 
 _POSITIONAL = (

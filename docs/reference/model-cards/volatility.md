@@ -51,7 +51,7 @@ asymmetry order, and only GJR/EGARCH have an asymmetry term — its default is
 volatility process to GJR-GARCH, so before 0.6.0
 `tsecon.garch_fit(y, p=1, o=1, q=1)` and that `arch` call were different
 models with no warning — now tsecon insists you say `vol="gjr"` when you mean
-GJR. `forecast_horizon` returns the multi-step variance path. Units do not matter: estimation is scale-adaptive (the optimizer
+GJR. `forecast_horizon` returns the multi-step variance path for GARCH and GJR; EGARCH has no closed-form multi-step forecast, so `vol="egarch"` accepts `forecast_horizon` 0 or 1 only and raises at 2 or more (the same limit reaches `ccc_garch`/`dcc_garch` through their univariate stage). Units do not matter: estimation is scale-adaptive (the optimizer
 runs on an internally standardized series and the optimum is mapped back
 exactly), so decimal returns and percent returns give the same model with
 `omega` in the units of `y²` — no `rescale=` argument is needed or offered.
