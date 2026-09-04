@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import re
 import types
 
 import numpy as np
@@ -381,9 +382,123 @@ def _negative_int_error(fn, args, kwargs, original: OverflowError) -> ValueError
     )
 
 
+# A count argument of 2**48 or more asks for at least 2 PiB of f64 — beyond
+# any addressable memory — and the compiled core reacts to it in one of two
+# ways, neither of them an exception a user can catch (repo audit, security
+# sweep): a `Vec::with_capacity(n)` whose byte size overflows `isize` panics
+# with "capacity overflow", which pyo3 surfaces as
+# ``pyo3_runtime.PanicException`` — a ``BaseException`` that
+# ``except Exception`` does not catch — and a merely enormous allocation is
+# attempted for real (a 2**31-element index vector is 16 GB) and aborts the
+# process when the allocator refuses. The pre-flight below refuses the
+# impossible band before the call reaches Rust; the residual panic (a product
+# of two moderate counts overflowing — a lag length of 2**31 in a squared
+# design) is rebuilt into a ``ValueError`` afterwards. Seeds are exempt: every
+# ``*seed`` parameter is a u64 for which any 64-bit value is legitimate.
+_ABSURD_COUNT = 2**48
+# The allocation-sizing panics, lower-cased: `Vec::with_capacity` says
+# "capacity overflow"; faer's fallible matrix allocation, unwrapped, says
+# "called `Result::unwrap()` on an `Err` value: CapacityOverflow" when the
+# byte size overflows and "...: AllocError { layout: Layout { size: N, ... } }"
+# when the allocator refused N bytes. All three fire before any state is
+# written.
+_ALLOC_PANIC_HINTS = ("capacity overflow", "capacityoverflow", "allocerror")
+
+
+def _is_seed_name(name: str) -> bool:
+    return name == "seed" or name.endswith("_seed")
+
+
+def _is_huge_int(v: object) -> bool:
+    return isinstance(v, (int, np.integer)) and not isinstance(v, bool) and v >= _ABSURD_COUNT
+
+
+def _labeled_ints(fn, args, kwargs):
+    """``(label, value)`` for every argument, positional ones named through
+    the compiled signature when it resolves (else by position)."""
+    try:
+        names = list(inspect.signature(fn).parameters)
+    except (ValueError, TypeError):
+        names = []
+    return [
+        *(((names[i] if i < len(names) else f"argument {i}"), a) for i, a in enumerate(args)),
+        *kwargs.items(),
+    ]
+
+
+def _huge_int_offenders(fn, args, kwargs) -> list[str]:
+    """``name=value`` for every count argument at or beyond ``_ABSURD_COUNT``
+    (seeds excluded); shallow lists/tuples of integers are scanned too."""
+    found: list[str] = []
+    for label, v in _labeled_ints(fn, args, kwargs):
+        if _is_seed_name(label):
+            continue
+        if _is_huge_int(v):
+            found.append(f"{label}={v}")
+        elif isinstance(v, (list, tuple)) and any(_is_huge_int(e) for e in v):
+            found.append(f"{label}={v!r}")
+    return found
+
+
+def _absurd_count_error(fn, offenders: list[str]) -> ValueError:
+    what = " and ".join(offenders)
+    verb = "are" if len(offenders) > 1 else "is"
+    return ValueError(
+        f"{fn.__name__}: {what} {verb} at or beyond 2**48 — a count that large "
+        f"cannot be allocated on any machine (2**48 double-precision values is "
+        f"2 PiB), so the call cannot mean what it says. Every integer parameter "
+        f"here counts something — a lag length, order, horizon, window, "
+        f"iteration cap, or draw count — so pass a value that fits the data. "
+        f"(Seeds are exempt: any 64-bit seed is accepted.)"
+    )
+
+
+def _is_alloc_panic(exc: BaseException) -> bool:
+    if type(exc).__name__ != "PanicException":
+        return False
+    text = str(exc).lower()
+    return any(h in text for h in _ALLOC_PANIC_HINTS)
+
+
+def _capacity_overflow_error(fn, args, kwargs, original: BaseException) -> ValueError:
+    """Rebuild a Rust allocation-sizing panic into a teaching ValueError.
+
+    The panic fires inside the allocator's size check (or on its refusal),
+    before any memory is written or any state changed, so nothing compiled is
+    left inconsistent; what remains is to name the count arguments large
+    enough to have overflowed a product (a lag length or horizon in the
+    millions squared or multiplied by the series length) and, when the
+    allocator reported the byte count it refused, to say how big the request
+    was.
+    """
+    suspects = [
+        f"{label}={v}"
+        for label, v in _labeled_ints(fn, args, kwargs)
+        if not _is_seed_name(label)
+        and isinstance(v, (int, np.integer))
+        and not isinstance(v, bool)
+        and v >= 2**16
+    ]
+    if suspects:
+        subject = f"the working set implied by {' and '.join(suspects)}"
+    else:
+        subject = "the working set implied by the arguments"
+    size = re.search(r"size: (\d+)", str(original))
+    how_big = f" — a single array of {int(size.group(1)) / 2**30:,.0f} GiB was requested" if size else ""
+    return ValueError(
+        f"{fn.__name__}: {subject} could not be sized or allocated{how_big}. "
+        f"Every integer parameter here counts something — a lag length, "
+        f"order, horizon, window, iteration cap, or draw count — so pass "
+        f"values that fit the data (and the machine). Original error: {original}"
+    )
+
+
 def _call(fn, args, kwargs):
     """Invoke the compiled function, upgrading rank errors to teaching errors."""
     args, kwargs = _guard_callbacks(fn, args, kwargs)
+    offenders = _huge_int_offenders(fn, args, kwargs)
+    if offenders:
+        raise _absurd_count_error(fn, offenders)
     try:
         return fn(*args, **kwargs)
     except TypeError as exc:  # noqa: PERF203 - only on the error path
@@ -393,6 +508,13 @@ def _call(fn, args, kwargs):
     except OverflowError as exc:
         if _NEGATIVE_INT_HINT in str(exc):
             raise _negative_int_error(fn, args, kwargs, exc) from exc
+        raise
+    except BaseException as exc:
+        # Only the allocation-size panic is rebuilt; every other BaseException
+        # (KeyboardInterrupt, SystemExit, any other panic) passes through
+        # unchanged — a panic that touched state must stay loud.
+        if _is_alloc_panic(exc):
+            raise _capacity_overflow_error(fn, args, kwargs, exc) from exc
         raise
 
 
