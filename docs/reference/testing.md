@@ -24,10 +24,10 @@ command needs the `--exclude tsecon-python` caveat described
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1775 passed, 0 failed, 10 ignored** | `cargo test --workspace`, result lines summed |
-| — integration tests in `crates/*/tests/` | 1479 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 242 | |
-| — documentation tests | 54 | |
+| Rust tests (total) | **1839 passed, 0 failed, 10 ignored** | `cargo test --workspace`, result lines summed |
+| — integration tests in `crates/*/tests/` | 1538 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 245 | |
+| — documentation tests | 56 | |
 | Python binding tests | **1705 passed, 0 failed, 1 skipped** in 374 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
 | Golden fixtures | 100 JSON files, produced by 81 Python generator scripts (plus two R scripts) | `fixtures/` |
@@ -40,7 +40,7 @@ timing test, and one that emits a fixture snapshot), 2 are in `tsecon-panel`
 (the 600-replication post-double-selection coverage measurement); each
 `#[ignore]` states its reason.
 
-Of the 1489 integration tests — the 1479 that pass plus the 10 `#[ignore]`d —
+Of the 1548 integration tests — the 1538 that pass plus the 10 `#[ignore]`d —
 **334 are golden tests** and **688 are property tests**. The goldens live in
 77 `*golden*.rs` files across 39 crates (`golden.rs` in most, with additional
 per-surface files such as `engle_granger_golden.rs`, `irf_bands_golden.rs`,
@@ -709,7 +709,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 1775 passed, 0 failed
+# 1839 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
