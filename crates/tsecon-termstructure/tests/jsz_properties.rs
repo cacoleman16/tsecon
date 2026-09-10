@@ -21,6 +21,9 @@ use tsecon_termstructure::{fit_jsz, jsz_loadings, jsz_loglik, JszFit, TermStruct
 
 type Matrix = Vec<Vec<f64>>;
 
+/// Starts used throughout (the binding's default).
+const STARTS: usize = 5;
+
 fn mat_mul(a: &[Vec<f64>], b: &[Vec<f64>]) -> Matrix {
     let (r, inner, c) = (a.len(), b.len(), b[0].len());
     let mut out = vec![vec![0.0; c]; r];
@@ -258,7 +261,7 @@ fn jsz_recovers_a_simulated_canonical_model_with_the_true_portfolios() {
     let d = baseline_dgp();
     let (y, tr) = simulate(&d, 400, 20260910);
     let start = std::time::Instant::now();
-    let fit = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&d.w)).expect("fit");
+    let fit = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&d.w), STARTS, 0).expect("fit");
     let secs = start.elapsed().as_secs_f64();
     eprintln!(
         "fit: {secs:.2}s, converged {}, iters {}, lambda {:?}, k_inf {:.3e}, sigma_e {:.3e}, llf {:.3}",
@@ -291,7 +294,7 @@ fn jsz_recovers_a_simulated_canonical_model_with_the_true_portfolios() {
 fn jsz_default_principal_component_portfolios_recover_the_model_too() {
     let d = baseline_dgp();
     let (y, _) = simulate(&d, 400, 7);
-    let fit = fit_jsz(&y, &d.mats, 3, d.ppy, None).expect("fit");
+    let fit = fit_jsz(&y, &d.mats, 3, d.ppy, None, STARTS, 0).expect("fit");
     assert!(fit.converged);
     // The PCA rows are orthonormal and priced exactly.
     for i in 0..3 {
@@ -321,8 +324,8 @@ fn jsz_is_invariant_to_the_basis_of_the_portfolio_space() {
         vec![0.4, 0.3, 3.0],
     ];
     let w2 = mat_mul(&g, &d.w);
-    let f1 = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&d.w)).expect("fit 1");
-    let f2 = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&w2)).expect("fit 2");
+    let f1 = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&d.w), STARTS, 0).expect("fit 1");
+    let f2 = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&w2), STARTS, 0).expect("fit 2");
     assert!(f1.converged && f2.converged);
     let tol = 1e-8;
     assert!(
@@ -367,11 +370,12 @@ fn jsz_is_invariant_to_the_basis_of_the_portfolio_space() {
 }
 
 #[test]
+#[allow(clippy::needless_range_loop)]
 fn jsz_prices_the_portfolios_exactly_and_the_decomposition_is_exact() {
     let d = baseline_dgp();
     let (y, _) = simulate(&d, 200, 3);
     for w in [None, Some(d.w.as_slice())] {
-        let fit = fit_jsz(&y, &d.mats, 3, d.ppy, w).expect("fit");
+        let fit = fit_jsz(&y, &d.mats, 3, d.ppy, w, STARTS, 0).expect("fit");
         let scale = y
             .iter()
             .flat_map(|r| r.iter().map(|v| v.abs()))
@@ -413,19 +417,20 @@ fn jsz_prices_the_portfolios_exactly_and_the_decomposition_is_exact() {
 fn jsz_is_deterministic() {
     let d = baseline_dgp();
     let (y, _) = simulate(&d, 150, 5);
-    let a = fit_jsz(&y, &d.mats, 3, d.ppy, None).expect("fit");
-    let b = fit_jsz(&y, &d.mats, 3, d.ppy, None).expect("fit");
+    let a = fit_jsz(&y, &d.mats, 3, d.ppy, None, STARTS, 0).expect("fit");
+    let b = fit_jsz(&y, &d.mats, 3, d.ppy, None, STARTS, 0).expect("fit");
     assert_eq!(a, b);
 }
 
 #[test]
+#[allow(clippy::needless_range_loop)]
 fn jsz_maximized_likelihood_is_a_local_maximum_in_every_parameter() {
     // The self-checking property: `jsz_loglik` at the fit's own parameters
     // reproduces `llf`, and moving any Q parameter, sigma_e, or an entry of
     // Sigma_P away from the optimum lowers the likelihood.
     let d = baseline_dgp();
     let (y, _) = simulate(&d, 300, 17);
-    let fit = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&d.w)).expect("fit");
+    let fit = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&d.w), STARTS, 0).expect("fit");
     assert!(fit.converged);
     let at = |lam: &[f64], k: f64, sig: &[Vec<f64>], se: f64| -> f64 {
         jsz_loglik(&y, &d.mats, 3, d.ppy, Some(&d.w), lam, k, sig, se).expect("loglik")
@@ -513,7 +518,7 @@ fn jsz_handles_a_unit_root_level_factor() {
     let mut d = baseline_dgp();
     d.lambda = vec![1.0, 0.95, 0.85];
     let (y, _) = simulate(&d, 300, 23);
-    let fit = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&d.w)).expect("fit");
+    let fit = fit_jsz(&y, &d.mats, 3, d.ppy, Some(&d.w), STARTS, 0).expect("fit");
     assert!(fit.lambda_q.iter().all(|v| v.is_finite()));
     assert!(
         (fit.lambda_q[0] - 1.0).abs() < 1e-3,
@@ -525,6 +530,7 @@ fn jsz_handles_a_unit_root_level_factor() {
 }
 
 #[test]
+#[allow(clippy::needless_range_loop)]
 fn jsz_loadings_jordan_block_matches_the_closed_form_derivative() {
     // K1 = diag(1) (+) [[rho, 1], [0, rho]]: (iota' K1^j)_3 = j rho^{j-1} + rho^j,
     // so b[n][2] = (1/n) sum_{j<n} (j rho^{j-1} + rho^j), and
@@ -577,53 +583,54 @@ fn jsz_rejects_invalid_inputs_with_teaching_errors() {
                mats: &[usize],
                n: usize,
                ppy: f64,
-               w: Option<&[Vec<f64>]>|
-     -> Result<JszFit, TermStructureError> { fit_jsz(y, mats, n, ppy, w) };
+               w: Option<&[Vec<f64>]>,
+               starts: usize|
+     -> Result<JszFit, TermStructureError> { fit_jsz(y, mats, n, ppy, w, starts, 0) };
     // Maturities: empty, zero, unsorted, duplicated.
     assert!(matches!(
-        fit(&y, &[], 3, 12.0, None),
+        fit(&y, &[], 3, 12.0, None, STARTS),
         Err(TermStructureError::EmptyMaturities)
     ));
     let mut zero = mats.clone();
     zero[0] = 0;
     assert!(matches!(
-        fit(&y, &zero, 3, 12.0, None),
+        fit(&y, &zero, 3, 12.0, None, STARTS),
         Err(TermStructureError::InvalidMaturity { index: 0, .. })
     ));
     let mut unsorted = mats.clone();
     unsorted.swap(2, 3);
     assert!(matches!(
-        fit(&y, &unsorted, 3, 12.0, None),
+        fit(&y, &unsorted, 3, 12.0, None, STARTS),
         Err(TermStructureError::MaturitiesNotAscending { index: 3 })
     ));
     let mut dup = mats.clone();
     dup[4] = dup[3];
     assert!(matches!(
-        fit(&y, &dup, 3, 12.0, None),
+        fit(&y, &dup, 3, 12.0, None, STARTS),
         Err(TermStructureError::MaturitiesNotAscending { index: 4 })
     ));
     // Factor count.
     assert!(matches!(
-        fit(&y, &mats, 0, 12.0, None),
+        fit(&y, &mats, 0, 12.0, None, STARTS),
         Err(TermStructureError::InvalidFactorCount { requested: 0, .. })
     ));
-    let err = fit(&y, &mats, m, 12.0, None).unwrap_err();
+    let err = fit(&y, &mats, m, 12.0, None, STARTS).unwrap_err();
     assert!(
         matches!(err, TermStructureError::InvalidFactorCount { requested, max } if requested == m && max == m - 1)
     );
     assert!(err.to_string().contains("n_factors"));
     // periods_per_year.
     assert!(matches!(
-        fit(&y, &mats, 3, 0.0, None),
+        fit(&y, &mats, 3, 0.0, None, STARTS),
         Err(TermStructureError::InvalidPeriodsPerYear { .. })
     ));
     assert!(matches!(
-        fit(&y, &mats, 3, f64::NAN, None),
+        fit(&y, &mats, 3, f64::NAN, None, STARTS),
         Err(TermStructureError::InvalidPeriodsPerYear { .. })
     ));
     // Too short.
     let short: Matrix = y[..8].to_vec();
-    let err = fit(&short, &mats, 3, 12.0, None).unwrap_err();
+    let err = fit(&short, &mats, 3, 12.0, None, STARTS).unwrap_err();
     assert!(matches!(
         err,
         TermStructureError::PanelTooShort {
@@ -637,18 +644,18 @@ fn jsz_rejects_invalid_inputs_with_teaching_errors() {
     let mut ragged = y.clone();
     ragged[3].pop();
     assert!(matches!(
-        fit(&ragged, &mats, 3, 12.0, None),
+        fit(&ragged, &mats, 3, 12.0, None, STARTS),
         Err(TermStructureError::DimensionMismatch { .. })
     ));
     let mut nan = y.clone();
     nan[5][2] = f64::NAN;
-    let err = fit(&nan, &mats, 3, 12.0, None).unwrap_err();
+    let err = fit(&nan, &mats, 3, 12.0, None, STARTS).unwrap_err();
     assert!(matches!(err, TermStructureError::NonFinite { index, .. } if index == 5 * m + 2));
     assert!(err.to_string().contains("non-finite"));
     // Portfolio weights: wrong rows, wrong columns, non-finite, rank-deficient.
     let d = baseline_dgp();
     let two_rows: Matrix = d.w[..2].to_vec();
-    let err = fit(&y, &mats, 3, 12.0, Some(&two_rows)).unwrap_err();
+    let err = fit(&y, &mats, 3, 12.0, Some(&two_rows), STARTS).unwrap_err();
     assert!(matches!(
         err,
         TermStructureError::InvalidWeights { rows: 2, .. }
@@ -657,23 +664,49 @@ fn jsz_rejects_invalid_inputs_with_teaching_errors() {
     let mut short_cols = d.w.clone();
     short_cols[1].pop();
     assert!(matches!(
-        fit(&y, &mats, 3, 12.0, Some(&short_cols)),
+        fit(&y, &mats, 3, 12.0, Some(&short_cols), STARTS),
         Err(TermStructureError::InvalidWeights { .. })
     ));
     let mut inf_w = d.w.clone();
     inf_w[0][0] = f64::INFINITY;
     assert!(matches!(
-        fit(&y, &mats, 3, 12.0, Some(&inf_w)),
+        fit(&y, &mats, 3, 12.0, Some(&inf_w), STARTS),
         Err(TermStructureError::InvalidWeights { .. })
     ));
     let mut dependent = d.w.clone();
     dependent[2] = d.w[0].iter().zip(&d.w[1]).map(|(a, b)| a + b).collect();
-    let err = fit(&y, &mats, 3, 12.0, Some(&dependent)).unwrap_err();
+    let err = fit(&y, &mats, 3, 12.0, Some(&dependent), STARTS).unwrap_err();
     assert!(matches!(err, TermStructureError::InvalidWeights { .. }));
     assert!(err.to_string().contains("linearly dependent"));
+    // Start count and maturity caps (allocation guards).
+    let err = fit(&y, &mats, 3, 12.0, None, 0).unwrap_err();
+    assert!(matches!(
+        err,
+        TermStructureError::InvalidStartCount { requested: 0, .. }
+    ));
+    assert!(err.to_string().contains("n_starts = 0"));
+    assert!(matches!(
+        fit(&y, &mats, 3, 12.0, None, 1_000_001),
+        Err(TermStructureError::InvalidStartCount { .. })
+    ));
+    let mut huge = mats.clone();
+    huge[m - 1] = 10_000_000_000;
+    let err = fit(&y, &huge, 3, 12.0, None, 1).unwrap_err();
+    assert!(matches!(
+        err,
+        TermStructureError::MaturityTooLarge {
+            value: 10_000_000_000,
+            ..
+        }
+    ));
+    assert!(err.to_string().contains("exceeds the supported maximum"));
+    assert!(matches!(
+        jsz_loadings(&[0.9, 0.8, 0.7], 0.0, &vec![vec![0.0; 3]; 3], &huge, 1.0),
+        Err(TermStructureError::MaturityTooLarge { .. })
+    ));
     // Constant panel: no portfolio variation.
     let flat: Matrix = vec![vec![0.05; m]; 40];
-    assert!(fit(&flat, &mats, 3, 12.0, None).is_err());
+    assert!(fit(&flat, &mats, 3, 12.0, None, STARTS).is_err());
 
     // jsz_loadings refusals.
     let zero3 = vec![vec![0.0; 3]; 3];

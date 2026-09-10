@@ -136,7 +136,7 @@ pub use afns::{afns_yield_adjustment, fit_afns, AfnsFit};
 pub use dynamic::{ar1_fit, fit_dynamic_ns, Ar1, DynamicNsFit, DynamicNsForecast};
 pub use error::TermStructureError;
 pub use fit::{fit_nelson_siegel, NsFit};
-pub use jsz::{fit_jsz, jsz_loadings, jsz_loglik, JszFit, JszLoadings};
+pub use jsz::{fit_jsz, jsz_loadings, jsz_loglik, JszFit, JszLoadings, MAX_MATURITY, MAX_STARTS};
 pub use loadings::{nelson_siegel_forward_loadings, nelson_siegel_loadings, svensson_loadings};
 pub use optlambda::fit_nelson_siegel_optimal_lambda;
 pub use svensson::{fit_svensson, SvenssonFit};

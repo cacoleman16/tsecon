@@ -4180,3 +4180,101 @@ def echo_state_network(
     two rows after the washout reports `insufficient data: {got}
     observations, at least {needed} required` with the washout counted.
     """
+
+# ---------------------------------------- JSZ affine term structure
+def jsz_fit(
+    yields: _ArrayLike,
+    maturities: Sequence[int],
+    n_factors: int = ...,
+    periods_per_year: float = ...,
+    w: _ArrayLike | None = ...,
+    n_starts: int = ...,
+    seed: int | None = ...,
+) -> dict[str, Any]:
+    """JSZ canonical Gaussian affine term-structure model (Joslin-Singleton-Zhu
+    2011) by maximum likelihood.
+
+    Risk-neutral dynamics in the JSZ canonical form — ordered eigenvalues
+    `lambda_q` (per period), one drift `k_inf_q`, short rate `r = iota'X` —
+    rotated onto `n_factors` yield portfolios `P_t = w y_t` (default `w`:
+    the first principal-component loadings of the panel) that are priced
+    WITHOUT error, the remaining `M - n_factors` yield directions with iid
+    error `sigma_e`. The P-measure VAR(1) of the portfolios is concentrated
+    out by OLS (exactly statsmodels `VAR(1)`), `k_inf_q` and `sigma_e` are
+    profiled analytically, and the numerical search runs over `lambda_q`
+    and the Cholesky factor of `sigma` only, from JSZ's recommended start
+    (the OLS eigenvalues) plus `n_starts - 1` seeded perturbations, the best
+    basin polished by BFGS then Nelder-Mead. The fit depends on `w` only
+    through its row space (any basis of the same portfolio space gives the
+    same `llf`, `fitted`, `lambda_q`, `k_inf_q`, `sigma_e`).
+
+    UNITS: `yields` is `T x M` ANNUALIZED continuously-compounded zero-coupon
+    log yields in DECIMAL (0.05, not 5.0); `maturities` are strictly
+    ascending integer PERIODS (months for monthly data; 1 need not be
+    present); `periods_per_year` (12.0) converts to the per-period quantities
+    the recursions price. `n_factors` (3); `w` (None: PCA loadings, an
+    `n_factors x M` array otherwise); `n_starts` (5); `seed` (0) seeds the
+    perturbed starts through `tsecon_rng` and may only be passed when
+    `n_starts > 1` (with a single start it would be inert, so it raises).
+
+    Returns `lambda_q`, `k_inf_q` (per period), `sigma` (MLE innovation
+    covariance of the portfolio VAR, annualized units), `sigma_e`
+    (annualized), the OLS P-measure VAR `mu_p`, `phi_p` with statsmodels-
+    convention standard errors `mu_p_se`, `phi_p_se` and `sigma_ols`
+    (`sigma_u_mle`), the risk-neutral VAR in the portfolio rotation `k0_q_p`,
+    `k1_q_p`, the ACM-unit market prices of risk `lambda0 = mu_p - k0_q_p`,
+    `lambda1 = phi_p - k1_q_p`, loadings in the portfolio rotation `a_p`,
+    `b_p` (`fitted = a_p + b_p P`) and for the literal canonical latent state
+    `a_x`, `b_x`, the `fitted` yields (`T x M`), `risk_neutral` yields (the
+    recursion under the P-measure VAR, the acm_term_premium convention),
+    `term_premium = fitted - risk_neutral`, `rmse` per maturity, the
+    portfolios `factors` (`T x n_factors`) and weights `w`, `llf` (the log-
+    likelihood of the yield panel, basis-invariant), `converged`, `n_iter`,
+    and the echoed `maturities`, `n_factors`, `periods_per_year`, `n_starts`,
+    `seed`. No standard errors are reported for the Q parameters: a
+    numerical Hessian of a profile likelihood near a unit root is not an
+    honest asymptotic covariance; the P-VAR standard errors show where the
+    market-price-of-risk imprecision actually lives.
+
+    Validation (fixtures/jsz.json): the Riccati recursions against a
+    documented-formula NumPy transcription at 1e-12; the portfolio VAR(1)
+    against statsmodels at 1e-9; the likelihood against the documented
+    formula at 1e-7 absolute (~1e-11 relative); the MLE against a SciPy
+    multi-start optimum (cross-optimizer, lambda_q within 1e-5) on a
+    simulated canonical model — recovering lambda_q to 9e-5, k_inf_q to
+    1.3%, sigma_e to 0.3% at T = 500 — and on the real 1990-2007 GSW panel;
+    the AFNS special case lambda_q = (1, e^-lam, e^-lam) spans the Nelson-
+    Siegel loadings exactly and its convexity intercept converges at first
+    order in the period length to the CDR (2011) closed form of
+    afns_adjustment (gap 9.8e-6 at monthly, 6.1e-7 at 1/192 year).
+
+    Returned keys: `a_p`, `a_x`, `b_p`, `b_x`, `converged`, `factors`,
+    `fitted`, `k0_q_p`, `k1_q_p`, `k_inf_q`, `lambda0`, `lambda1`,
+    `lambda_q`, `llf`, `maturities`, `mu_p`, `mu_p_se`, `n_factors`,
+    `n_iter`, `n_starts`, `periods_per_year`, `phi_p`, `phi_p_se`,
+    `risk_neutral`, `rmse`, `seed`, `sigma`, `sigma_e`, `sigma_ols`,
+    `term_premium`, `w`.
+    """
+
+def jsz_loadings(
+    lambda_q: _ArrayLike,
+    k_inf_q: float,
+    sigma_x: _ArrayLike,
+    maturities: Sequence[int],
+    periods_per_year: float = ...,
+) -> dict[str, Any]:
+    """The JSZ canonical bond-loading recursions at given parameters.
+
+    Evaluates `A_{n+1} = A_n + K0' B_n + 1/2 B_n' sigma_x B_n`, `B_{n+1} =
+    K1' B_n - iota` from `A_0 = B_0 = 0` for the literal canonical form
+    `K0 = (k_inf_q, 0, ..)'`, `K1 = J(lambda_q)` (diagonal; a Jordan block
+    with a 1 on the superdiagonal wherever two consecutive eigenvalues are
+    exactly equal — the AFNS pattern `(1, rho, rho)`), and returns the
+    per-maturity yield coefficients `a_x = -A_n/n * periods_per_year` and
+    `b_x = -B_n'/n` so that `y(n) = a_x + b_x X`. `lambda_q` must be ordered
+    non-increasing (per period); `sigma_x` is the per-period `N x N` state
+    innovation covariance in the canonical basis; `periods_per_year` (1.0)
+    only rescales the intercept.
+
+    Returned keys: `a_x`, `b_x`, `k0_q`, `k1_q`, `maturities`.
+    """

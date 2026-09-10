@@ -152,7 +152,8 @@ use crate::error::TermStructureError;
 use crate::fit::map_ols_err;
 use tsecon_hac::{ols, SeType};
 use tsecon_linalg::faer::Mat;
-use tsecon_optim::{minimize, FnObjective, Method, NelderMeadOptions, OptimizeResult};
+use tsecon_optim::{minimize, BfgsOptions, FnObjective, Method, NelderMeadOptions, OptimizeResult};
+use tsecon_rng::Stream;
 
 /// Row-major dense matrix.
 type Matrix = Vec<Vec<f64>>;
@@ -304,7 +305,15 @@ fn quad_form(m: &[Vec<f64>], v: &[f64]) -> f64 {
 // Validation
 // ---------------------------------------------------------------------------
 
-/// Strictly ascending positive integer maturities.
+/// The largest supported maturity in periods (the recursion table has one
+/// row per period): 120 000 periods is 10 000 years of monthly data.
+pub const MAX_MATURITY: usize = 120_000;
+
+/// The largest supported number of starts of the likelihood search.
+pub const MAX_STARTS: usize = 1_000;
+
+/// Strictly ascending positive integer maturities, bounded by
+/// [`MAX_MATURITY`].
 fn check_maturities(maturities: &[usize]) -> Result<(), TermStructureError> {
     if maturities.is_empty() {
         return Err(TermStructureError::EmptyMaturities);
@@ -314,6 +323,13 @@ fn check_maturities(maturities: &[usize]) -> Result<(), TermStructureError> {
             return Err(TermStructureError::InvalidMaturity {
                 index: i,
                 value: 0.0,
+            });
+        }
+        if m > MAX_MATURITY {
+            return Err(TermStructureError::MaturityTooLarge {
+                index: i,
+                value: m,
+                max: MAX_MATURITY,
             });
         }
         if i > 0 && m <= maturities[i - 1] {
@@ -1143,6 +1159,23 @@ fn starting_lambda(phi: &[Vec<f64>]) -> Result<Vec<f64>, TermStructureError> {
     Ok(lam)
 }
 
+/// A perturbed starting point for start `k >= 1`: the covariance block is
+/// kept, `lambda_1` is shifted by `U(-0.02, 0.03)` (clamped to `[-0.5,
+/// 1.02]`) and every gap is redrawn from `U(0.01, 0.12)` — a spread of
+/// eigenvalue patterns around the JSZ start that covers the typical
+/// monthly/quarterly `Q` spectra without depending on the OLS gaps (which
+/// collapse to `1e-3` whenever the OLS feedback matrix has a complex pair).
+fn perturbed_start(theta0: &[f64], n: usize, stream: &mut Stream) -> Vec<f64> {
+    let mut th = theta0.to_vec();
+    let u = stream.uniform_f64();
+    th[0] = (theta0[0] + (0.05 * u - 0.02)).clamp(-0.5, 1.02);
+    for item in th.iter_mut().take(n).skip(1) {
+        let g = 0.01 + 0.11 * stream.uniform_f64();
+        *item = g.ln();
+    }
+    th
+}
+
 /// The generic affine recursion in the portfolio rotation (per-period
 /// units): `A_{n+1} = A_n + k0' B_n + 1/2 B_n' Sigma B_n - rho0`,
 /// `B_{n+1} = k1' B_n - rho1`, returning the per-maturity yield
@@ -1204,6 +1237,21 @@ fn rotated_yield_coefficients(
 /// - `periods_per_year`: 12 for monthly, 4 for quarterly.
 /// - `w`: optional `N x M` portfolio weights; `None` selects the first `N`
 ///   principal-component loadings of the panel.
+/// - `n_starts`: starting points for the likelihood search (the Python
+///   binding's default is 5). Start 0 is JSZ's recommendation — the
+///   eigenvalues of the OLS feedback matrix, ordered and separated by at
+///   least `1e-3`, with the OLS residual covariance; starts `1..n_starts`
+///   keep the covariance and redraw the eigenvalue pattern (`lambda_1`
+///   shifted by `U(-0.02, 0.03)`, gaps `U(0.01, 0.12)`) from substream `k`
+///   of [`tsecon_rng::Stream::substreams`]`(seed, n_starts)`. Each start
+///   runs a quasi-Newton search to a loose tolerance; the best basin is then
+///   polished to full precision. On a real panel whose P-feedback matrix has
+///   a complex eigenvalue pair the JSZ start sits at a near-tie of two
+///   `lambda^Q`, and a single start can end in a local optimum some 200
+///   log-likelihood points below the best mode (the 1990-2007 GSW panel of
+///   the fixture does exactly this) — the extra starts are cheap insurance.
+/// - `seed`: the seed of the perturbed starts; the fit is a deterministic
+///   function of `(inputs, n_starts, seed)`.
 ///
 /// # Errors
 ///
@@ -1215,7 +1263,10 @@ fn rotated_yield_coefficients(
 /// [`TermStructureError::DimensionMismatch`] (a ragged panel row),
 /// [`TermStructureError::NonFinite`] (NaN/inf yields),
 /// [`TermStructureError::InvalidWeights`] (a malformed or rank-deficient
-/// `w`), [`TermStructureError::SingularDesign`] (a degenerate panel — e.g.
+/// `w`), [`TermStructureError::InvalidStartCount`] (`n_starts = 0` or above
+/// [`MAX_STARTS`]), [`TermStructureError::MaturityTooLarge`] (a maturity above
+/// [`MAX_MATURITY`] periods),
+/// [`TermStructureError::SingularDesign`] (a degenerate panel — e.g.
 /// constant yields — whose portfolios carry no variation), and
 /// [`TermStructureError::OptimizationFailed`] if the likelihood cannot be
 /// evaluated at the starting point.
@@ -1244,7 +1295,7 @@ fn rotated_yield_coefficients(
 ///     })
 ///     .collect();
 ///
-/// let fit = fit_jsz(&yields, &maturities, 2, 12.0, None).unwrap();
+/// let fit = fit_jsz(&yields, &maturities, 2, 12.0, None, 3, 0).unwrap();
 /// assert_eq!(fit.lambda_q.len(), 2);
 /// assert!(fit.lambda_q[0] >= fit.lambda_q[1]);
 /// // The two portfolios are priced exactly: W * fitted = W * observed.
@@ -1264,8 +1315,16 @@ pub fn fit_jsz(
     n_factors: usize,
     periods_per_year: f64,
     w: Option<&[Vec<f64>]>,
+    n_starts: usize,
+    seed: u64,
 ) -> Result<JszFit, TermStructureError> {
     let (t, m) = check_panel(yields, maturities, n_factors, periods_per_year)?;
+    if n_starts == 0 || n_starts > MAX_STARTS {
+        return Err(TermStructureError::InvalidStartCount {
+            requested: n_starts,
+            max: MAX_STARTS,
+        });
+    }
     let n = n_factors;
     let ppy = periods_per_year;
     let w_user = resolve_weights(yields, n, m, w)?;
@@ -1307,12 +1366,46 @@ pub fn fit_jsz(
             None => f64::INFINITY,
         }
     });
-    let stage1: Option<OptimizeResult> = minimize(&mut objective, &theta0, &Method::bfgs())
+    // --- stage A: a loose quasi-Newton run from every start ----------------------
+    let mut streams =
+        Stream::substreams(seed, n_starts).map_err(|_| TermStructureError::OptimizationFailed {
+            reason: "the seeded substreams for the perturbed starts could not be \
+                     created",
+        })?;
+    let loose = Method::Bfgs(BfgsOptions {
+        grad_tol: 1e-4,
+        max_iter: Some(300),
+        ..BfgsOptions::default()
+    });
+    let mut n_iter = 0usize;
+    let mut best_a: Option<OptimizeResult> = None;
+    for (k, stream) in streams.iter_mut().enumerate() {
+        let start = if k == 0 {
+            theta0.clone()
+        } else {
+            perturbed_start(&theta0, n, stream)
+        };
+        if let Ok(r) = minimize(&mut objective, &start, &loose) {
+            if r.f.is_finite() {
+                n_iter += r.iterations;
+                if best_a.as_ref().is_none_or(|b| r.f < b.f) {
+                    best_a = Some(r);
+                }
+            }
+        }
+    }
+    let best_a = best_a.ok_or(TermStructureError::OptimizationFailed {
+        reason: "no starting point of the JSZ likelihood search produced a finite \
+                 objective",
+    })?;
+
+    // --- stage B: polish the best basin (tight BFGS, then Nelder-Mead) --------
+    let stage1: Option<OptimizeResult> = minimize(&mut objective, &best_a.x, &Method::bfgs())
         .ok()
         .filter(|r| r.f.is_finite());
     let polish_from: Vec<f64> = stage1
         .as_ref()
-        .map_or(theta0.as_slice(), |r| r.x.as_slice())
+        .map_or(best_a.x.as_slice(), |r| r.x.as_slice())
         .to_vec();
     let nm = Method::NelderMead(NelderMeadOptions {
         restarts: 1,
@@ -1321,25 +1414,14 @@ pub fn fit_jsz(
     let stage2: Option<OptimizeResult> = minimize(&mut objective, &polish_from, &nm)
         .ok()
         .filter(|r| r.f.is_finite());
-    let n_iter =
+    n_iter +=
         stage1.as_ref().map_or(0, |r| r.iterations) + stage2.as_ref().map_or(0, |r| r.iterations);
-    let best = match (stage1, stage2) {
-        (Some(a), Some(b)) => {
-            if b.f <= a.f {
-                b
-            } else {
-                a
-            }
+    let mut best = best_a;
+    for candidate in [stage1, stage2].into_iter().flatten() {
+        if candidate.f <= best.f {
+            best = candidate;
         }
-        (Some(a), None) => a,
-        (None, Some(b)) => b,
-        (None, None) => {
-            return Err(TermStructureError::OptimizationFailed {
-                reason: "neither the quasi-Newton search nor the simplex polish \
-                         produced a finite JSZ likelihood",
-            })
-        }
-    };
+    }
     let converged = best.converged;
     let (lambda_q, sigma_c) = unpack(&best.x, n, scale);
     let ev =

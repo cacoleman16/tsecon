@@ -162,6 +162,29 @@ pub enum TermStructureError {
         /// The number of columns expected (`n_maturities`) or found.
         cols: usize,
     },
+    /// The JSZ likelihood search was asked for `0` starts or more than the
+    /// supported maximum. At least one start (the JSZ recommendation: the
+    /// OLS eigenvalues) is needed; further starts are seeded perturbations
+    /// of it that guard against the surface's local optima, and more than a
+    /// few hundred buy nothing.
+    InvalidStartCount {
+        /// The requested number of starts.
+        requested: usize,
+        /// The largest supported number of starts.
+        max: usize,
+    },
+    /// A maturity exceeds the largest supported number of periods. The
+    /// Riccati recursions are tabulated at every integer period up to the
+    /// longest maturity, so an absurd maturity would be an absurd allocation
+    /// rather than a curve.
+    MaturityTooLarge {
+        /// Zero-based index of the offending maturity.
+        index: usize,
+        /// The offending maturity (periods).
+        value: usize,
+        /// The largest supported maturity (periods).
+        max: usize,
+    },
 }
 
 impl fmt::Display for TermStructureError {
@@ -278,6 +301,22 @@ impl fmt::Display for TermStructureError {
                  but lambda_q[{index}] exceeds lambda_q[{prev}]; sort them in \
                  descending order",
                 prev = index.saturating_sub(1)
+            ),
+            TermStructureError::InvalidStartCount { requested, max } => write!(
+                f,
+                "n_starts = {requested} is invalid: the JSZ likelihood search needs \
+                 between 1 and {max} starting points (start 0 is JSZ's \
+                 recommendation, the eigenvalues of the OLS feedback matrix; \
+                 starts 1.. are seeded perturbations of it that guard against \
+                 local optima — the default is 5)"
+            ),
+            TermStructureError::MaturityTooLarge { index, value, max } => write!(
+                f,
+                "maturity[{index}] = {value} periods exceeds the supported maximum \
+                 of {max}: the affine recursions are tabulated at every integer \
+                 period up to the longest maturity, so express maturities in \
+                 periods of the data's frequency (months for monthly data: 120 \
+                 for ten years)"
             ),
             TermStructureError::InvalidWeights { reason, rows, cols } => write!(
                 f,

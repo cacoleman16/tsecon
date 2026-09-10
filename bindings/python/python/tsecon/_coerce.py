@@ -87,6 +87,10 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # Integer group label per feature (all lags of one variable share a
     # label): an importance unit, not data.
     "random_forest": frozenset({"importance_groups"}),
+    # Integer maturities in periods (months), not data: the JSZ affine
+    # recursions are tabulated at every integer period up to the longest.
+    "jsz_fit": frozenset({"maturities"}),
+    "jsz_loadings": frozenset({"maturities"}),
 }
 
 _POSITIONAL = (
