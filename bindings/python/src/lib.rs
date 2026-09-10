@@ -16,6 +16,7 @@ mod ml_structured;
 mod ml_trees;
 mod panel_dl;
 mod regime_ci;
+mod termstructure_jsz;
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -13022,6 +13023,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ml_convex::register(m)?;
     regime_ci::register(m)?;
     panel_dl::register(m)?;
+    termstructure_jsz::register(m)?;
     ml_neural::register(m)?;
     Ok(())
 }

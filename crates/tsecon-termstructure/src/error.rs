@@ -132,6 +132,59 @@ pub enum TermStructureError {
         /// The offending value.
         value: f64,
     },
+    /// A JSZ risk-neutral eigenvalue `lambda_q[i]` was non-finite. The
+    /// canonical form (Joslin-Singleton-Zhu 2011) needs `N` finite real
+    /// Q-eigenvalues; typical monthly values sit in `(0.5, 1]`.
+    InvalidQEigenvalue {
+        /// Zero-based index into `lambda_q`.
+        index: usize,
+        /// The offending value.
+        value: f64,
+    },
+    /// The JSZ Q-eigenvalues were not in non-increasing order. The canonical
+    /// form orders them `lambda_1 >= lambda_2 >= ... >= lambda_N` (equal
+    /// neighbours form a Jordan block), and `k_inf_q` is the drift attached
+    /// to the first — the most persistent — one, so the ordering is part of
+    /// the parameterization, not a cosmetic choice.
+    QEigenvaluesNotOrdered {
+        /// Zero-based index of the first entry that exceeds its predecessor.
+        index: usize,
+    },
+    /// The portfolio-weight matrix `w` supplied to the JSZ fit was unusable:
+    /// wrong shape, non-finite, or rank-deficient (its rows must span an
+    /// `n_factors`-dimensional space of yield portfolios).
+    InvalidWeights {
+        /// What was wrong with the matrix.
+        reason: &'static str,
+        /// The number of rows expected (`n_factors`) or found, depending on
+        /// `reason`.
+        rows: usize,
+        /// The number of columns expected (`n_maturities`) or found.
+        cols: usize,
+    },
+    /// The JSZ likelihood search was asked for `0` starts or more than the
+    /// supported maximum. At least one start (the JSZ recommendation: the
+    /// OLS eigenvalues) is needed; further starts are seeded perturbations
+    /// of it that guard against the surface's local optima, and more than a
+    /// few hundred buy nothing.
+    InvalidStartCount {
+        /// The requested number of starts.
+        requested: usize,
+        /// The largest supported number of starts.
+        max: usize,
+    },
+    /// A maturity exceeds the largest supported number of periods. The
+    /// Riccati recursions are tabulated at every integer period up to the
+    /// longest maturity, so an absurd maturity would be an absurd allocation
+    /// rather than a curve.
+    MaturityTooLarge {
+        /// Zero-based index of the offending maturity.
+        index: usize,
+        /// The offending maturity (periods).
+        value: usize,
+        /// The largest supported maturity (periods).
+        max: usize,
+    },
 }
 
 impl fmt::Display for TermStructureError {
@@ -233,6 +286,45 @@ impl fmt::Display for TermStructureError {
                  positive, finite number of compounding periods per year (12 \
                  for monthly maturities, 4 for quarterly) so annualized yields \
                  convert to the per-period log yields the recursions price"
+            ),
+            TermStructureError::InvalidQEigenvalue { index, value } => write!(
+                f,
+                "lambda_q[{index}] = {value} is invalid: the JSZ canonical form \
+                 needs finite real risk-neutral eigenvalues (per period; \
+                 monthly estimates typically lie in (0.5, 1], the first near 1)"
+            ),
+            TermStructureError::QEigenvaluesNotOrdered { index } => write!(
+                f,
+                "lambda_q must be ordered lambda_1 >= lambda_2 >= ... (the JSZ \
+                 canonical form attaches k_inf_q to the first, most persistent \
+                 eigenvalue and turns equal neighbours into a Jordan block), \
+                 but lambda_q[{index}] exceeds lambda_q[{prev}]; sort them in \
+                 descending order",
+                prev = index.saturating_sub(1)
+            ),
+            TermStructureError::InvalidStartCount { requested, max } => write!(
+                f,
+                "n_starts = {requested} is invalid: the JSZ likelihood search needs \
+                 between 1 and {max} starting points (start 0 is JSZ's \
+                 recommendation, the eigenvalues of the OLS feedback matrix; \
+                 starts 1.. are seeded perturbations of it that guard against \
+                 local optima — the default is 5)"
+            ),
+            TermStructureError::MaturityTooLarge { index, value, max } => write!(
+                f,
+                "maturity[{index}] = {value} periods exceeds the supported maximum \
+                 of {max}: the affine recursions are tabulated at every integer \
+                 period up to the longest maturity, so express maturities in \
+                 periods of the data's frequency (months for monthly data: 120 \
+                 for ten years)"
+            ),
+            TermStructureError::InvalidWeights { reason, rows, cols } => write!(
+                f,
+                "portfolio weights w are unusable ({reason}; rows = {rows}, \
+                 cols = {cols}): w must be an n_factors x n_maturities matrix \
+                 of finite entries whose rows are linearly independent, so that \
+                 P_t = w y_t spans n_factors yield portfolios; pass None for \
+                 the default principal-component loadings"
             ),
         }
     }

@@ -20,6 +20,10 @@ tsecon-linalg = { path = "../tsecon-linalg" }
 # estimate the Nelson-Siegel decay parameter lambda by nonlinear least
 # squares (Nelder-Mead over the concentrated curve-fit SSR).
 tsecon-optim = { path = "../tsecon-optim" }
+# Seeded, platform-independent substreams for the perturbed starting values
+# of the JSZ multi-start likelihood search (start k draws from substream k of
+# `Stream::substreams(seed, n_starts)`, so the fit is bit-reproducible).
+tsecon-rng = { path = "../tsecon-rng" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy

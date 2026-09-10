@@ -1351,6 +1351,7 @@ dependencies = [
  "tsecon-hac",
  "tsecon-linalg",
  "tsecon-optim",
+ "tsecon-rng",
 ]
 
 [[package]]

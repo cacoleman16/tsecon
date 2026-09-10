@@ -1,6 +1,6 @@
 # Model card — The term structure of interest rates
 
-**Family:** `nelson_siegel`, `svensson`, `dynamic_ns`, `acm_term_premium`
+**Family:** `nelson_siegel`, `svensson`, `dynamic_ns`, `acm_term_premium`, `jsz_fit`, `jsz_loadings`
 
 Fitting, forecasting, and decomposing the yield curve. A cross-section of
 yields at many maturities is summarized by a handful of interpretable factors —
@@ -18,15 +18,24 @@ standard the NY Fed's published ACM series is built on.
 | `svensson` | Four-factor extension with a second hump |
 | `dynamic_ns` | Time series of NS factors + one-step curve forecast |
 | `acm_term_premium` | Regression-based affine model: fitted vs risk-neutral yields, term premium |
+| `jsz_fit` | Maximum-likelihood canonical affine model (Joslin-Singleton-Zhu): Q-eigenvalues, concentrated P-VAR, the same decomposition |
+| `jsz_loadings` | The JSZ canonical bond-loading recursions at given parameters |
 
-**AFNS or ACM?** The [arbitrage-free Nelson-Siegel](afns.md)
+**AFNS, ACM or JSZ?** The [arbitrage-free Nelson-Siegel](afns.md)
 (`afns_adjustment`) *restricts* the loadings to the Nelson-Siegel shapes and
 adds a closed-form convexity term — reach for it when you want one curve
 fitted or interpolated consistently with no-arbitrage. ACM leaves the
 loadings free (estimated principal components) and prices the *time series*
-of bond returns — reach for it when the object of interest is the **term
-premium**, the decomposition of a long yield into expected short rates and
-risk compensation.
+of bond returns by regression — reach for it when the object of interest is
+the **term premium** and you want it without an optimizer. JSZ (`jsz_fit`)
+is the **maximum-likelihood** Gaussian affine model in its canonical form:
+the risk-neutral dynamics carry only `N` ordered eigenvalues and one drift,
+the loadings are *implied* by no-arbitrage (not estimated as principal
+components), and the physical VAR is concentrated out by OLS. Reach for it
+when you want the likelihood-based model the literature's replication code
+passes around, the AFNS restriction tested rather than imposed, or the same
+fitted / risk-neutral / term-premium decomposition as ACM from an estimator
+that prices the cross-section exactly.
 
 ## What it estimates
 
@@ -57,6 +66,35 @@ risk compensation.
   λ = 0 (**risk-neutral** yields, the expected-short-rate component) — and
   the **term premium** is their difference at every date and maturity.
 
+- **`jsz_fit(yields, maturities)`** — the Joslin-Singleton-Zhu (2011)
+  canonical Gaussian dynamic term-structure model by maximum likelihood.
+  A latent state `X_t` (`N` factors) follows, under the risk-neutral
+  measure, `X_{t+1} = K0^Q + K1^Q X_t + Σ_X ε` with the **canonical**
+  normalization `K0^Q = (k_∞^Q, 0, …, 0)'`, `K1^Q = J(λ^Q)` (the real Jordan
+  form of the ordered eigenvalues `λ_1 ≥ … ≥ λ_N`; equal neighbours form a
+  Jordan block) and short rate `r_t = ι'X_t`; bond prices follow the
+  Riccati recursions `A_{n+1} = A_n + K0^Q'B_n + ½B_n'Σ_X B_n`,
+  `B_{n+1} = K1^Q'B_n − ι`, yields `y_t^{(n)} = −(A_n + B_n'X_t)/n`. The
+  state is rotated onto `N` observed portfolios `P_t = W y_t` (the first `N`
+  principal-component loadings by default, or any full-row-rank `w`) that
+  are priced **without error**; the remaining `M − N` yield directions carry
+  iid error `σ_e`. JSZ's insight is that the likelihood then *factors*:
+  `f(y_t | y_{t−1}) = f^P(P_t | P_{t−1}) × f^Q(y_t | P_t)`, and the P-measure
+  VAR(1) `(μ_P, Φ_P)` appears only in the first factor, whose maximizer is
+  OLS for **any** `Σ_P` — so it is concentrated out exactly (bit-for-bit
+  statsmodels `VAR(1)`). `k_∞^Q` and `σ_e` are profiled analytically, and the
+  numerical search runs only over `λ^Q` and the Cholesky factor of `Σ_P`,
+  from JSZ's recommended start (the eigenvalues of the OLS feedback matrix)
+  plus seeded perturbations. The same recursion run with `(μ_P, Φ_P)` in
+  place of the Q dynamics gives the **risk-neutral** yields, and
+  `term_premium = fitted − risk_neutral` — exactly `acm_term_premium`'s
+  convention, so the two premia are directly comparable.
+- **`jsz_loadings(lambda_q, k_inf_q, sigma_x, maturities)`** — the
+  recursions above at given parameters in the literal canonical form (a
+  Jordan block wherever two consecutive `λ^Q` are exactly equal), returning
+  the per-maturity yield coefficients `a_x`, `b_x`. The AFNS loadings are the
+  special case `λ^Q = (1, e^{−λ}, e^{−λ})`.
+
 ## Assumptions
 
 - **The curve is smooth and low-dimensional.** Nelson-Siegel imposes exactly
@@ -83,6 +121,16 @@ risk compensation.
   with `n − 1` present for every excess-return maturity `n`. It assumes the
   factor VAR(1) is stationary, prices of risk are affine in the factors, and
   return pricing errors are homoskedastic (the pooled σ² of the paper).
+- **`jsz_fit` shares the unit contract** (annualized decimal yields, integer
+  periods) but does not need the one-period maturity. It assumes Gaussian
+  dynamics with real, ordered Q-eigenvalues (the JSZ canonical form; complex
+  Q-eigenvalues are not supported — the P-feedback matrix may have them),
+  that the `N` portfolios are priced *exactly* (the choice of the portfolio
+  *space* is an assumption; the basis within it is a normalization the fit
+  is invariant to), and iid homoskedastic pricing errors on the other
+  `M − N` directions. Nothing constrains `λ_1 < 1`: the recursions are
+  evaluated by recurrence, so a unit or slightly explosive Q level factor
+  is estimated and reported rather than clipped.
 
 ## When to use
 
@@ -103,6 +151,17 @@ risk compensation.
   the tool for fitting a single day's curve (use `nelson_siegel`/`svensson`)
   or for a no-arbitrage *cross-sectional* fit (use
   [`afns_adjustment`](afns.md)).
+- **`jsz_fit`** — when you want the *maximum-likelihood* affine model:
+  loadings implied by no-arbitrage rather than estimated as principal
+  components, the Q-eigenvalues themselves (the persistence of the level
+  factor under Q is the number JSZ, Bauer-Rudebusch-Wu and the shadow-rate
+  literature argue about), a likelihood value for model comparison (`llf`),
+  or a term premium from an estimator that prices the cross-section exactly.
+  Use `jsz_loadings` to evaluate the canonical recursions at parameters of
+  your own — e.g. the AFNS eigenvalue pattern — without fitting anything.
+  Not the tool when the P-dynamics are the point (they are the OLS VAR of
+  the portfolios, exactly as in ACM) or when you want standard errors on
+  the Q parameters (see the failure modes).
 
 ## Key arguments and defaults
 
@@ -114,6 +173,12 @@ risk compensation.
 | `dynamic_ns` | `decay` | `0.0609` | fixed λ used for every per-date fit |
 | `acm_term_premium` | `n_factors` | `5` | ACM's baseline: five principal components of the yield panel |
 | | `periods_per_year` | `12.0` | monthly maturities; use 4 for quarterly. Converts annualized yields to the per-period log yields the recursions price |
+| `jsz_fit` | `n_factors` | `3` | JSZ's baseline; the number of exactly-priced portfolios, `1 ≤ N < M` |
+| | `periods_per_year` | `12.0` | as for ACM; `lambda_q`/`k_inf_q` are reported per period |
+| | `w` | `None` | portfolio weights (`N × M`); `None` = first `N` PCA loadings. Only the row space matters |
+| | `n_starts` | `5` | start 0 is JSZ's recommendation (OLS eigenvalues + OLS covariance); starts 1.. redraw the eigenvalue pattern. On the 1990-2007 GSW panel the surface has three basins and the JSZ start alone lands in the worst (llf 8747 vs 8934) |
+| | `seed` | `0` | seeds the perturbed starts (`tsecon_rng`); raises if passed with `n_starts=1`, where it would be inert |
+| `jsz_loadings` | `periods_per_year` | `1.0` | only rescales the intercept `a_x`; parameters stay per period |
 
 ## How to read the output
 
@@ -142,6 +207,25 @@ risk compensation.
   `periods_per_year`. A positive `term_premium` says investors are paid to
   hold duration; a negative one (post-2015 US data, per the published ACM
   series) says they pay for it.
+- **`jsz_fit`** → the Q parameters `lambda_q` (ordered, per period; `λ_1`
+  near 1 is the persistent level factor — on monthly GSW 1990-2007 it is
+  0.9965, a 16-year half-life) and `k_inf_q`; `sigma` (the MLE innovation
+  covariance of the portfolio VAR) and `sigma_e` (the pricing-error standard
+  deviation of the non-portfolio directions; 2.7bp on that panel); the OLS
+  P-VAR `mu_p`, `phi_p` with statsmodels-convention `mu_p_se`, `phi_p_se`
+  and `sigma_ols` (`sigma_u_mle`); the Q-VAR in the portfolio rotation
+  `k0_q_p`, `k1_q_p` and the ACM-unit prices of risk `lambda0 = mu_p −
+  k0_q_p`, `lambda1 = phi_p − k1_q_p`; loadings `a_p`, `b_p`
+  (`fitted = a_p + b_p P`, with `w b_p = I`, `w a_p = 0`) and, for the
+  literal canonical latent state, `a_x`, `b_x`; the decomposition `fitted`,
+  `risk_neutral`, `term_premium` (`T × M`, exact) and `rmse` per maturity;
+  `factors` (`P_t`) and `w`; `llf` (basis-invariant; equals the JSZ
+  replication code's `llkP + llkQ` for an orthonormal `w`), `converged`,
+  `n_iter`; the echoed `maturities`, `n_factors`, `periods_per_year`,
+  `n_starts`, `seed`. **No standard errors for the Q parameters** — see
+  below.
+- **`jsz_loadings`** → `a_x`, `b_x` (per maturity), `k0_q`, `k1_q` (the
+  literal `J(λ^Q)`, showing the Jordan blocks), `maturities`.
 
 ## Failure modes
 
@@ -173,6 +257,32 @@ risk compensation.
 - **Too few excess-return maturities.** `λ₀`/`λ₁` come from a cross-sectional
   regression on β (N×K), so you need strictly more return maturities than
   factors — with `n_factors=5`, at least six `(n−1, n)` pairs in the grid.
+- **Reading `jsz_fit`'s prices of risk as precise.** The likelihood is *flat*
+  in the market prices of risk: `lambda_q` and `k_inf_q` are pinned by the
+  cross-section (hundreds of pricing equations per date — recovered to
+  ~1e-4 in simulation), but `mu_p`/`phi_p` come from a `T`-observation VAR
+  of very persistent factors, and `lambda0`/`lambda1` (and the *level* of the
+  term premium) inherit that imprecision. That is why `mu_p_se`/`phi_p_se`
+  are reported. No standard errors are reported for the Q parameters: a
+  numerical Hessian of the profile likelihood at a near-unit-root optimum is
+  not an honest asymptotic covariance, and a precise-looking number that is
+  not would be worse than none.
+- **A single start on real data.** The JSZ start (OLS eigenvalues) sits at a
+  near-tie of two eigenvalues whenever the P-feedback matrix has a complex
+  pair — on GSW 1990-2007 that start alone ends in a local optimum 186
+  log-likelihood points below the best of three basins. Keep `n_starts ≥ 5`
+  (the default); compare `llf` across seeds if in doubt.
+- **The near-unit-root level factor.** `λ_1` sits at 0.9965 (monthly) on
+  1990-2007 GSW; the recursions handle `λ_1 = 1` and above exactly, and the
+  profile of `k_inf_q` stays identified there (it becomes the drift of a
+  unit-root level), but the *long-run Q mean* `k_inf/(1−λ_1)` is not a number
+  to quote. An estimate of `λ_1` above 1 means explosive risk-neutral
+  dynamics — a statement about the sample, reported rather than hidden.
+- **Different portfolio spaces are different models.** Two bases of the same
+  space (`w` and `G w`) give identical results; portfolios spanning a
+  different space (say three specific yields instead of three PCs) change
+  which yields are priced exactly and give a different — usually very
+  close — fit.
 
 ## Validated against
 
@@ -207,6 +317,61 @@ tsecon):
   before 1982). A level/shape validation with vintage caveats, not a
   bit-exact golden.
 
+`jsz_fit` / `jsz_loadings` are validated in four blocks
+([`fixtures/jsz.json`](../../../fixtures/jsz.json), produced by
+[`fixtures/generate_jsz_fixtures.py`](../../../fixtures/generate_jsz_fixtures.py),
+which never calls tsecon; Rust tests
+[`jsz_golden.rs`](../../../crates/tsecon-termstructure/tests/jsz_golden.rs)
+and [`jsz_properties.rs`](../../../crates/tsecon-termstructure/tests/jsz_properties.rs)):
+
+- **Documented-formula golden of the recursions** — `jsz_loadings`
+  reproduces a NumPy transcription of the Riccati recursions at 1e-12 on
+  four stated parameter sets (distinct eigenvalues, the AFNS Jordan block,
+  `N = 2`, `N = 4` with an interior tie), and the Jordan-block column against
+  its closed form `(1/n) Σ_{j<n} (j ρ^{j−1} + ρ^j)` at 1e-12.
+- **The AFNS special case, pinned to the crate's own closed form** — at
+  `λ^Q = (1, e^{−λΔ}, e^{−λΔ})` the JSZ yield loadings span the Nelson-Siegel
+  loadings *exactly* (a stored 3×3 rotation, residual ≤ 1.6e-14 at every
+  period length), and the discrete convexity intercept converges to the
+  independent Christensen-Diebold-Rudebusch closed form of
+  `afns_adjustment` at **first order in the period length**: max gap
+  9.8e-6 at Δ = 1/12, 2.5e-6 at 1/48, 6.1e-7 at 1/192 (ratios 0.2504,
+  0.2501). Discrete-time JSZ and continuous-time AFNS differ by a Riemann
+  sum, so an exact pin would be wrong; the measured rate is the honest one.
+- **Independent-package golden of the concentrated step** — `mu_p`,
+  `phi_p`, their standard errors and `sigma_ols` reproduce statsmodels
+  `VAR(1)` at 1e-9 on the simulated panel and on GSW.
+- **Documented-formula golden of the likelihood** — `jsz_loglik` (Rust)
+  reproduces the transcribed `llk_P + llk_Q + Jacobian` at the true
+  parameters, in a non-orthonormal basis of the same portfolio space (the
+  invariance formula asserted in the generator), and at a second stated
+  point, at 1e-7 absolute on values of order 3e4.
+- **Simulation recovery and a cross-optimizer target** — on a simulated
+  canonical model (`T = 500`, 10 maturities, 3 factors, portfolios priced
+  exactly, `σ_e = 0.2bp` elsewhere) the MLE recovers `λ^Q` to **8.7e-5** (max
+  abs error), `k_∞^Q` to **1.2%**, `σ_e` to **0.3%**, and `Σ_P` to 13.6%
+  (max-entry relative — the same 13.6% the OLS covariance is off by:
+  sampling error at `T = 500`, not estimation). The Rust MLE and a SciPy
+  multi-start MLE on the same likelihood agree to 1e-5 in `λ^Q`, 1e-3 in
+  `k_∞^Q`, 1e-4 in `σ_e`; the Rust property suite adds an independent Rust-
+  simulated DGP (`λ^Q` within 1.8e-4 at `σ_e = 0.1bp`), invariance to the
+  basis of the portfolio space (llf within 1.1e-11, `λ^Q` 1.6e-10, fitted
+  yields < 1e-8; `Σ_P`, the flattest direction, 2.1e-7), exact pricing of
+  the portfolios, determinism, and local optimality of the maximized
+  likelihood in every parameter direction through `jsz_loglik`.
+- **Real data** — the GSW zero-coupon panel 1990-01..2007-12 (JSZ's own
+  window; 216 months, maturities 6m-10y, three PCA portfolios): the PCA
+  weights pinned to NumPy (1e-10), the VAR to statsmodels (1e-9), the MLE
+  to SciPy's multi-start optimum (`λ^Q` 1e-5), and the illustration numbers
+  reproduced: `λ^Q = (0.9965, 0.9624, 0.9092)`, `k_∞^Q = 3.27e-5`/month,
+  `σ_e = 2.69bp`, RMSE 1.35-2.86bp per maturity, mean 10-year term premium
+  **2.30pp** (0.18-4.84pp; 4.10pp in Jan 1990, 1.11pp in Dec 2007). The
+  surface is multimodal there — three basins at llf 8933.8 / 8917.2 /
+  8747.4, the JSZ start alone in the last — which the seeded multi-start
+  is for. There is no published JSZ estimate on exactly this panel to pin
+  to, so the real-data leg is an *illustration with a cross-optimizer
+  check*, not a literature golden.
+
 ## References
 
 - Nelson, C. & Siegel, A. (1987). "Parsimonious Modeling of Yield Curves."
@@ -223,6 +388,11 @@ tsecon):
   Premia" data page.)
 - Gürkaynak, R., Sack, B. & Wright, J. (2007). "The U.S. Treasury Yield
   Curve: 1961 to the Present." *J. Monetary Economics* 54(8).
+- Joslin, S., Singleton, K. J. & Zhu, H. (2011). "A New Perspective on
+  Gaussian Dynamic Term Structure Models." *Review of Financial Studies*
+  24(3), 926-970.
+- Dai, Q. & Singleton, K. J. (2000). "Specification Analysis of Affine Term
+  Structure Models." *J. Finance* 55(5).
 
 See the guide: [The Term Structure of Interest Rates](../../guide/15-term-structure.md).
 
@@ -307,4 +477,53 @@ Expected output:
 lambda0: [-0.151  0.423  0.337]
 mean 5y premium (%): 1.29  yield R^2 at 5y: 1.0
 decomposition exact: True
+```
+
+### JSZ canonical affine term structure
+
+```python
+import numpy as np
+import tsecon
+
+# A simulated monthly panel from a known JSZ canonical model: three
+# orthonormal portfolios follow a VAR(1), yields are their exact affine
+# prices plus a 1bp error orthogonal to the portfolios. (Use your own panel.)
+mats = [1, 3, 6, 12, 24, 36, 60, 84, 120]
+zero = np.zeros((3, 3))
+lam_true, kinf_true = np.array([0.995, 0.96, 0.85]), 2e-5
+b_x = np.asarray(tsecon.jsz_loadings(lam_true, 0.0, zero, mats, periods_per_year=12.0)["b_x"])
+raw = np.array([np.ones(9), np.array(mats) / 120.0, np.array(mats) / 24.0 * np.exp(-np.array(mats) / 24.0)])
+w, _ = np.linalg.qr(raw.T); w = w.T                      # orthonormal rows
+d_inv = np.linalg.inv(w @ b_x)
+chol = np.array([[0.0022, 0, 0], [0.0006, 0.0012, 0], [-0.0002, 0.0003, 0.0008]])
+sigma_x = d_inv @ (chol @ chol.T / 144.0) @ d_inv.T
+a_x = np.asarray(tsecon.jsz_loadings(lam_true, kinf_true, sigma_x, mats, periods_per_year=12.0)["a_x"])
+b_p, a_p = b_x @ d_inv, a_x - b_x @ d_inv @ (w @ a_x)
+mu, phi = np.array([0.0025, 0.0004, -0.0001]), np.array([[0.98, 0.01, -0.01], [0.005, 0.93, 0.02], [0, -0.01, 0.85]])
+rng = np.random.default_rng(3)
+p = np.linalg.solve(np.eye(3) - phi, mu)
+rows = []
+for t in range(400):
+    p = mu + phi @ p + chol @ rng.standard_normal(3)
+    e = 1e-4 * rng.standard_normal(9)
+    rows.append(a_p + b_p @ p + e - w.T @ (w @ e))
+y = np.array(rows)
+
+fit = tsecon.jsz_fit(y, mats, n_factors=3, periods_per_year=12.0)
+print("lambda_q:", np.round(fit["lambda_q"], 4), " true:", lam_true)
+print("k_inf_q: %.2e  (true %.2e)   sigma_e: %.1f bp   converged: %s" %
+      (fit["k_inf_q"], kinf_true, fit["sigma_e"] * 1e4, fit["converged"]))
+tp = np.asarray(fit["term_premium"])
+print("mean 10y term premium (pp): %.2f   llf: %.1f" % (tp[:, -1].mean() * 100, fit["llf"]))
+print("phi_p eigenvalues:", np.round(np.sort(np.linalg.eigvals(fit["phi_p"]).real)[::-1], 3),
+      " vs Q:", np.round(fit["lambda_q"], 3))
+```
+
+Expected output:
+
+```
+lambda_q: [0.995  0.96   0.8496]  true: [0.995 0.96  0.85 ]
+k_inf_q: 1.99e-05  (true 2.00e-05)   sigma_e: 1.0 bp   converged: True
+mean 10y term premium (pp): 1.64   llf: 24978.5
+phi_p eigenvalues: [0.979 0.903 0.903]  vs Q: [0.995 0.96  0.85 ]
 ```
