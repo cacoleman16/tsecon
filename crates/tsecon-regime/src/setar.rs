@@ -219,8 +219,10 @@ pub(crate) fn build_design(
 /// The precomputed threshold scan for one design: sorted order, feasible
 /// candidate grid, and per-candidate Cholesky factors of the two regime
 /// Gram matrices (which depend only on `X` and the split — not on the
-/// response — so the bootstrap reuses them across replications).
-struct Scan {
+/// response — so the bootstrap reuses them across replications). Shared
+/// with the threshold-confidence-set module (`setar_ci`), which runs the
+/// same scan on a user-supplied sample-splitting design.
+pub(crate) struct Scan {
     n: usize,
     k: usize,
     /// Row indices sorted by ascending threshold-variable value.
@@ -228,7 +230,7 @@ struct Scan {
     /// Low-regime size `#{z <= gamma}` per candidate (ascending).
     cand_nlow: Vec<usize>,
     /// Candidate threshold values (the trimmed unique order statistics).
-    cand_gamma: Vec<f64>,
+    pub(crate) cand_gamma: Vec<f64>,
     /// Cholesky factor of the low-regime `X'X` per candidate.
     chol_low: Vec<Vec<f64>>,
     /// Cholesky factor of the high-regime `X'X` per candidate.
@@ -240,17 +242,17 @@ struct Scan {
 }
 
 /// The SSR profile of one response vector over a scan's candidate grid.
-struct Profile {
+pub(crate) struct Profile {
     /// SSR of the linear (single-regime) fit.
     ssr_linear: f64,
     /// Pooled two-regime SSR per candidate, aligned with `cand_gamma`.
-    ssr_path: Vec<f64>,
+    pub(crate) ssr_path: Vec<f64>,
     /// Index of the first candidate attaining the minimum pooled SSR.
-    best: usize,
+    pub(crate) best: usize,
 }
 
 impl Scan {
-    fn build(design: &Design, trim: f64) -> Result<Scan, RegimeError> {
+    pub(crate) fn build(design: &Design, trim: f64) -> Result<Scan, RegimeError> {
         let n = design.n;
         let k = design.k;
 
@@ -355,7 +357,7 @@ impl Scan {
     /// SSR profile of the response `yb` (length `n`, time order) over the
     /// candidate grid, plus the linear-fit SSR — one `O(n k + G k^2)` pass
     /// using the prefactored per-candidate Gram matrices.
-    fn profile(&self, design: &Design, yb: &[f64]) -> Profile {
+    pub(crate) fn profile(&self, design: &Design, yb: &[f64]) -> Profile {
         let k = self.k;
         let mut xty_total = vec![0.0_f64; k];
         let mut yty_total = 0.0_f64;
