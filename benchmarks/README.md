@@ -11,6 +11,8 @@ The deliverable here is the **parity matrix**, not a speedup number.
 python benchmarks/bench.py            # full run
 python benchmarks/bench.py --quick    # fast smoke run (fewer repeats)
 python benchmarks/bench.py --repeats 50
+python benchmarks/bench.py --json benchmarks/results/latest.json   # + machine-readable results
+python benchmarks/render_dashboard.py                              # -> docs/reference/speed.md
 ```
 
 The script exits `0` **iff** every parity check passes, so it doubles as a
@@ -23,6 +25,26 @@ exactly which cases were dropped, and the win count reports out of the reduced
 total (`20/23` instead of `22/25`). A gate that quietly covers less while still
 exiting `0` is worse than one that fails outright. CI installs every reference,
 so that path should never be exercised there.
+
+## The JSON output and the speed dashboard
+
+`--json PATH` writes everything the terminal report contains — every parity
+row with its measured `max|diff|` and tolerance, every timing pair — plus the
+provenance the honesty rules demand: CPU model (from `/proc/cpuinfo` on Linux),
+core count, the tsecon/numpy/scipy/statsmodels/arch/scikit-learn versions, the
+detected build mode and how it was detected, the repeat count, and the date.
+The committed [`results/latest.json`](results/latest.json) is one such run on a
+**release** build in the Linux CI-style container; `render_dashboard.py` turns
+it into the public page [`docs/reference/speed.md`](../docs/reference/speed.md)
+with the parity matrix first and the timings after it, under the machine and
+build caveats. `render_dashboard.py --check` exits non-zero when the page is
+stale relative to the JSON, so the two cannot silently diverge. Nothing on that
+page is typed by hand.
+
+The example run reproduced later in this README was captured on a different
+machine (macOS, Apple silicon) and is kept as the worked explanation of how to
+read the output; the dashboard is the run to quote, because its JSON is
+committed next to it.
 
 ## What it does, in order
 

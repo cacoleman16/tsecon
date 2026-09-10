@@ -555,6 +555,11 @@ volatility fits — checked against statsmodels, `arch`, `scipy.signal` and
 scikit-learn. The parity matrix (65 metrics, all PASS) is the deliverable: it
 is machine-independent, unlike every timing number.
 
+The harness's `--json` output is rendered into the [speed dashboard](speed.md)
+(parity matrix first, then the timings with their machine and build) by
+`benchmarks/render_dashboard.py`; the committed `benchmarks/results/latest.json`
+is the run behind that page.
+
 The harness also auto-detects debug builds and refuses to let their timings be
 read as speed claims. The published example run is a case study in why: the
 parity table is identical on either build, and the timings are not. On a

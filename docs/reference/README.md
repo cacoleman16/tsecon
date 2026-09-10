@@ -31,6 +31,14 @@ Correctness, made auditable. Its runtime companion is the
 [Monte Carlo suite](../examples/monte-carlo.md), which verifies the statistical
 *properties* (size, coverage, consistency) that a fixture match cannot.
 
+## [Speed dashboard](speed.md)
+
+The benchmark harness's output as a page: the cross-library **parity matrix**
+first (every operation tsecon and statsmodels/`arch`/SciPy/scikit-learn both
+compute, with the measured disagreement and the asserted tolerance), then the
+timings with the machine and build that produced them, then the commands that
+regenerate it. Rendered from a committed JSON, never typed by hand.
+
 ## Model cards
 
 One card per method family, each with the same anatomy: **what it estimates ·
