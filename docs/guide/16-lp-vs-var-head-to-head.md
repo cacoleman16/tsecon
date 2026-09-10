@@ -121,7 +121,7 @@ Estimand: response of y to a unit x shock. VAR IRFs are Cholesky (x first)
 divided by the x impact for bias/SD/RMSE; var_irf_bands cover the one-SD
 response, which equals the unit response here because sd(x) = 1.
 True IRF: 1.000 2.000 2.460 2.610 2.587 2.470 2.309 2.129 1.947 1.771 1.605 1.451 1.310 1.181 1.065 0.959 0.864 0.778 0.700 0.630 0.567
-Monte Carlo time: 109.6 s (219 ms per replication)
+Monte Carlo time: 108.0 s (216 ms per replication)
 ```
 
 **Bias**, the mean estimate minus the truth, at selected horizons and averaged in absolute value over all 21:
@@ -214,7 +214,7 @@ The two lag-length knobs (`lags` in `var_irf`, `n_lag_controls` in `lp`) are the
 
 ## Provenance and the verbatim output
 
-Build and versions, from the script's own banner: tsecon 0.8.0 on a **release** build of the extension (the banner matches the installed `_core` extension's exact file size against `<target>/release/lib_core.so`), Python 3.11.15, numpy 2.4.6, scipy 1.17.1, Linux x86_64 on an Intel Xeon @ 2.80 GHz with 4 cores. The whole script — both parts, 500 replications — ran in 110.2 s of wall-clock time, 219 ms per replication. The command:
+Build and versions, from the script's own banner: tsecon 0.9.0 on a **release** build of the extension (the banner matches the installed `_core` extension's exact file size against `<target>/release/lib_core.so`), Python 3.11.15, numpy 2.4.6, scipy 1.17.1, Linux x86_64 on an Intel Xeon @ 2.80 GHz with 4 cores. The whole script — both parts, 500 replications — ran in 108.5 s of wall-clock time, 216 ms per replication. The command:
 
 ```sh
 .venv/bin/python docs/examples/lp_vs_var_head_to_head.py     # ~2 min on a release build
@@ -230,11 +230,11 @@ The seed is fixed inside the script (`20260910`), so re-running it reproduces ev
 ------------------------------------------------------------------------------
 PROVENANCE
 ------------------------------------------------------------------------------
-  date          : 2026-09-10 08:23:22 UTC
+  date          : 2026-09-10 11:00:34 UTC
   python        : 3.11.15 (CPython)
   platform      : Linux-6.18.44-fc-v24-x86_64-with-glibc2.39  cpu_count=4
   cpu model     : Intel(R) Xeon(R) Processor @ 2.80GHz
-  tsecon        : 0.8.0   build: release (== <target>/release/lib_core.so, 17.7 MB)
+  tsecon        : 0.9.0   build: release (== <target>/release/lib_core.so, 18.3 MB)
   numpy / scipy : 2.4.6 / 1.17.1
 
 ------------------------------------------------------------------------------
@@ -302,7 +302,7 @@ Estimand: response of y to a unit x shock. VAR IRFs are Cholesky (x first)
 divided by the x impact for bias/SD/RMSE; var_irf_bands cover the one-SD
 response, which equals the unit response here because sd(x) = 1.
 True IRF: 1.000 2.000 2.460 2.610 2.587 2.470 2.309 2.129 1.947 1.771 1.605 1.451 1.310 1.181 1.065 0.959 0.864 0.778 0.700 0.630 0.567
-Monte Carlo time: 109.6 s (219 ms per replication)
+Monte Carlo time: 108.0 s (216 ms per replication)
 
 BIAS  (mean estimate - truth)
   estimator              h=0     h=1     h=2     h=4     h=8    h=12    h=16    h=20  mean|.|
@@ -373,7 +373,7 @@ COVERAGE of nominal 95% pointwise bands (share of replications containing the tr
   Monte Carlo SE of a 0.95 coverage estimate with 500 replications: 0.010
   smooth_lp lambda_used: median 3.53e+03, IQR [336, 1e+06]; max |irf_raw - lp(se='hac') irf| over all replications: 0.0e+00
 
-Total wall-clock: 110.2 s
+Total wall-clock: 108.5 s
 ```
 
 </details>
