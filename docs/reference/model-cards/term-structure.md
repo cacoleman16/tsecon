@@ -522,5 +522,8 @@ print("phi_p eigenvalues:", np.round(np.sort(np.linalg.eigvals(fit["phi_p"]).rea
 Expected output:
 
 ```
-JSZ_EXAMPLE_OUTPUT
+lambda_q: [0.995  0.96   0.8496]  true: [0.995 0.96  0.85 ]
+k_inf_q: 1.99e-05  (true 2.00e-05)   sigma_e: 1.0 bp   converged: True
+mean 10y term premium (pp): 1.64   llf: 24978.5
+phi_p eigenvalues: [0.979 0.903 0.903]  vs Q: [0.995 0.96  0.85 ]
 ```
