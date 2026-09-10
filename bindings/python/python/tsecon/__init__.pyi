@@ -4267,6 +4267,8 @@ def setar_threshold_ci(
     `pvalue_at_threshold`, `slope_level`, `slope_region_level`,
     `slope_region_low`, `slope_region_high`, `slope_n_region`,
     `slope_ci_low`, `slope_ci_high`.
+    """
+
 # ---- Distributed-lag panel regressions (climate-impact specification)
 
 def panel_distributed_lag(
@@ -4331,6 +4333,8 @@ def panel_distributed_lag(
     NumPy transcription at 1e-10; the cumulative-effect interval's coverage
     is measured in seeded Monte Carlo and quoted on the panel model card.
     The `lags=0`, `time_effects=False` call is bit-identical to `panel_fe`.
+    """
+
 # ---------------------------------------- JSZ affine term structure
 def jsz_fit(
     yields: _ArrayLike,

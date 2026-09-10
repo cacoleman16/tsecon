@@ -5015,20 +5015,6 @@ Hansen (1997/2000) likelihood-ratio confidence set for the threshold
     `pvalue_at_threshold`, `slope_level`, `slope_region_level`,
     `slope_region_low`, `slope_region_high`, `slope_n_region`,
     `slope_ci_low`, `slope_ci_high`.
-# ---- Distributed-lag panel regressions (climate-impact specification)
-
-def panel_distributed_lag(
-    outcome: _ArrayLike,
-    regressors: _ArrayLike,
-    lags: int,
-    powers: int = ...,
-    entity_effects: bool = ...,
-    time_effects: bool = ...,
-    entity_trends: bool = ...,
-    se_type: str = ...,
-    bandwidth: float | None = ...,
-    eval_points: _ArrayLike | None = ...,
-) -> dict[str, Any]:
 
 ## Distributed-lag panel regressions (climate-impact specification)
 
@@ -5099,16 +5085,6 @@ Distributed-lag panel regression — the climate-impact specification of
     NumPy transcription at 1e-10; the cumulative-effect interval's coverage
     is measured in seeded Monte Carlo and quoted on the panel model card.
     The `lags=0`, `time_effects=False` call is bit-identical to `panel_fe`.
-# ---------------------------------------- JSZ affine term structure
-def jsz_fit(
-    yields: _ArrayLike,
-    maturities: Sequence[int],
-    n_factors: int = ...,
-    periods_per_year: float = ...,
-    w: _ArrayLike | None = ...,
-    n_starts: int = ...,
-    seed: int | None = ...,
-) -> dict[str, Any]:
 
 ## JSZ affine term structure
 

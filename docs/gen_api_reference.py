@@ -6,6 +6,7 @@ generated from it rather than hand-maintained.
 
     .venv/bin/python docs/gen_api_reference.py
 """
+import ast
 import re
 from pathlib import Path
 
@@ -13,7 +14,16 @@ REPO = Path(__file__).parents[1]
 PYI = REPO / "bindings" / "python" / "python" / "tsecon" / "__init__.pyi"
 OUT = REPO / "docs" / "reference" / "api.md"
 
-text = PYI.read_text(encoding="utf-8").splitlines()
+_source = PYI.read_text(encoding="utf-8")
+# The walk below is regex-based and would happily paste the next function's
+# signature into the previous function's prose if a docstring were left
+# unterminated (audit round 13 found exactly that after a slice merge); refuse
+# a stub that is not valid Python before generating anything from it.
+try:
+    ast.parse(_source)
+except SyntaxError as exc:
+    raise SystemExit(f"{PYI}:{exc.lineno}: the stub does not parse ({exc.msg}); fix it before regenerating api.md")
+text = _source.splitlines()
 
 # Walk the stub, tracking the most recent "# ---- section ----" comment as a
 # group heading, and collect (section, signature, docstring) per def.
