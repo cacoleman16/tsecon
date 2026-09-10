@@ -1186,7 +1186,8 @@ are *arguments* now), `shock="orthogonal"`; `horizon=20`; `n_draws=500` with
 ratio 4.02 between 32 and 512 draws against a 8192-draw reference, theory 4);
 `seed=0`; `regime="all"` (the per-regime averages come back anyway);
 `histories=None` (all windows — the engine is fast enough that subsampling is
-a choice, not a necessity); `bands=(0.16, 0.84)`.
+a choice, not a necessity; an int at or above the number of selected windows
+uses all of them, reported in `n_histories`); `bands=(0.16, 0.84)`.
 
 **How to read the output.** `girf[h][variable]` is the average over the used
 histories; `lower`/`upper` are the `bands` quantiles **across histories** —

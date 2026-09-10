@@ -5124,7 +5124,8 @@ JSZ canonical Gaussian affine term-structure model (Joslin-Singleton-Zhu
     ascending integer PERIODS (months for monthly data; 1 need not be
     present); `periods_per_year` (12.0) converts to the per-period quantities
     the recursions price. `n_factors` (3); `w` (None: PCA loadings, an
-    `n_factors x M` array otherwise); `n_starts` (5); `seed` (0) seeds the
+    `n_factors x M` array otherwise); `n_starts` (5); `seed` (None, meaning seed 0 — not fresh entropy; the returned
+    `seed` key is the value used) seeds the
     perturbed starts through `tsecon_rng` and may only be passed when
     `n_starts > 1` (with a single start it would be inert, so it raises).
 
@@ -5227,7 +5228,10 @@ Generalized impulse responses (Koop-Pesaran-Potter 1996) of a linear
     set, needing an even `n_draws`). In a linear model the paired
     difference is Psi_h delta for every draw and history, so the result
     carries no Monte Carlo noise and does not depend on `n_draws` or
-    `seed`; `mc_se`/`draw_sd` are exactly zero (NaN with a single draw).
+    `seed` beyond rounding; `mc_se`/`draw_sd` are zero to rounding (below
+    1e-15), and `mc_se` is NaN below two effective draws — at the default
+    `n_draws=2` with `antithetic=True` there is exactly one, so `mc_se` is
+    NaN there (pass `n_draws=4` or `antithetic=False` for a finite value).
 
     `shock`: "orthogonal" — `size` standard deviations of the `shock_var`-th
     Cholesky-orthogonalized innovation in the variable ordering, so
@@ -5256,7 +5260,9 @@ Generalized impulse responses (Koop-Pesaran-Potter 1996) of a linear
     Further arguments, with defaults: `shock_var` (0), `size` (1.0),
     `shock` ("orthogonal"), `horizon` (10), `n_draws` (2), `seed` (0),
     `trend` ("c"), `antithetic` (True), `histories` (None = every lag
-    window; an int draws a seeded subsample), `bands` ((0.16, 0.84)).
+    window; an int draws a seeded subsample of that many — a count at or
+    above the number of available windows uses all of them, reported in
+    `n_histories`), `bands` ((0.16, 0.84)).
 
 ### `threshold_var_girf`
 
@@ -5343,6 +5349,8 @@ Regime-dependent generalized impulse responses (Koop-Pesaran-Potter
     `trim` (0.1), `delays` (None; a list searches the delay and overrides
     `delay`), `constant` (True), `shock_var` (0), `size` (1.0), `shock`
     ("orthogonal"), `horizon` (20), `n_draws` (500), `seed` (0), `regime`
-    ("all"), `histories` (None = every selected window), `bands`
+    ("all"), `histories` (None = every selected window; an int draws a
+    seeded subsample of that many — a count at or above the number of
+    selected windows uses all of them, reported in `n_histories`), `bands`
     ((0.16, 0.84)), `antithetic` (True).
 

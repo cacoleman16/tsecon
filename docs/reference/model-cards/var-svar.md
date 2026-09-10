@@ -260,7 +260,9 @@ statsmodels `VARResults.irf(orth=True)`, column `shock_var`, times `size` — to
 reproduces the **Pesaran-Shin (1998) closed form**
 `Ψ_h Σ e_j / √σ_jj · size` (transcribed in NumPy in
 `fixtures/generate_girf_fixtures.py`, with `Σ` the df-adjusted `sigma_u`) to
-1e-12; the across-history band has zero width and `draw_sd` is exactly zero.
+1e-12; the across-history band has zero width and `draw_sd` is zero to
+rounding (`mc_se` is NaN at the default `n_draws=2` with `antithetic=True`,
+which is one effective draw).
 Both are pinned in `girf_golden.rs` and re-pinned through Python in
 `test_girf.py`, which also asserts the `var_irf` identity directly.
 
@@ -276,7 +278,8 @@ use `var_irf_bands` for estimation uncertainty.
 allowed; a linear response just scales); `shock="orthogonal"|"generalized"`;
 `horizon=10`; `n_draws=2` with `antithetic=True` (immaterial for a linear
 model, kept for signature parity with the TVAR call); `seed=0`; `trend="c"`;
-`histories=None` (every window); `bands=(0.16, 0.84)`.
+`histories=None` (every window; an int at or above the number of windows
+uses all of them, reported in `n_histories`); `bands=(0.16, 0.84)`.
 
 **How to read the output.** `girf[h][variable]`, `lower`/`upper`,
 `per_history`, `mc_se`, `draw_sd`, `draw_lower`/`draw_upper`, `n_histories`,

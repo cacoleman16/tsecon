@@ -60,8 +60,11 @@ fn set_common<'py>(d: &Bound<'py, PyDict>, g: &tsecon_var::Girf) -> PyResult<()>
 /// pairs when set, which needs an even `n_draws`). In a linear model the
 /// paired difference is `Psi_h delta` for every draw and every history,
 /// so the result carries no Monte Carlo noise and does not depend on
-/// `n_draws` or `seed`; `mc_se`/`draw_sd` are exactly zero (NaN with a
-/// single draw).
+/// `n_draws` or `seed` beyond rounding; `mc_se`/`draw_sd` are zero to
+/// rounding (below 1e-15), and `mc_se` is NaN below two effective draws —
+/// at the default `n_draws=2` with `antithetic=True` there is exactly one,
+/// so `mc_se` is NaN there (pass `n_draws=4` or `antithetic=False` for a
+/// finite value).
 ///
 /// `shock`: `"orthogonal"` — `size` standard deviations of the
 /// `shock_var`-th Cholesky-orthogonalized innovation in the variable
@@ -93,8 +96,9 @@ fn set_common<'py>(d: &Bound<'py, PyDict>, g: &tsecon_var::Girf) -> PyResult<()>
 /// Further arguments, with defaults: `shock_var` (0), `size` (1.0),
 /// `shock` ("orthogonal"), `horizon` (10), `n_draws` (2), `seed` (0),
 /// `trend` ("c"), `antithetic` (True), `histories` (None = every lag
-/// window; an int draws a seeded subsample of that many), `bands`
-/// ((0.16, 0.84)).
+/// window; an int draws a seeded subsample of that many — a count at or
+/// above the number of available windows uses all of them, reported in
+/// `n_histories`), `bands` ((0.16, 0.84)).
 #[pyfunction]
 #[pyo3(signature = (data, p, shock_var = 0, size = 1.0, shock = "orthogonal", horizon = 10,
                     n_draws = 2, seed = 0, trend = "c", antithetic = true, histories = None,
@@ -196,7 +200,9 @@ fn var_girf<'py>(
 /// `trim` (0.1), `delays` (None; a list searches the delay and overrides
 /// `delay`), `constant` (True), `shock_var` (0), `size` (1.0), `shock`
 /// ("orthogonal"), `horizon` (20), `n_draws` (500), `seed` (0), `regime`
-/// ("all"), `histories` (None = every selected window), `bands`
+/// ("all"), `histories` (None = every selected window; an int draws a seeded
+/// subsample of that many — a count at or above the number of selected
+/// windows uses all of them, reported in `n_histories`), `bands`
 /// ((0.16, 0.84)), `antithetic` (True).
 #[pyfunction]
 #[pyo3(signature = (data, p, threshold_index = 0, delay = 1, trim = 0.10, delays = None,

@@ -177,7 +177,7 @@ that prices the cross-section exactly.
 | | `periods_per_year` | `12.0` | as for ACM; `lambda_q`/`k_inf_q` are reported per period |
 | | `w` | `None` | portfolio weights (`N × M`); `None` = first `N` PCA loadings. Only the row space matters |
 | | `n_starts` | `5` | start 0 is JSZ's recommendation (OLS eigenvalues + OLS covariance); starts 1.. redraw the eigenvalue pattern. On the 1990-2007 GSW panel the surface has three basins and the JSZ start alone lands in the worst (llf 8747 vs 8934) |
-| | `seed` | `0` | seeds the perturbed starts (`tsecon_rng`); raises if passed with `n_starts=1`, where it would be inert |
+| | `seed` | `None` (→ 0) | seeds the perturbed starts (`tsecon_rng`); `None` means seed 0, not fresh entropy (the returned `seed` key is the value used); raises if passed with `n_starts=1`, where it would be inert |
 | `jsz_loadings` | `periods_per_year` | `1.0` | only rescales the intercept `a_x`; parameters stay per period |
 
 ## How to read the output

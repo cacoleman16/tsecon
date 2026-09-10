@@ -43,10 +43,12 @@ use crate::{mat_to_vec2, to_faer, to_py, vec1};
 /// Further arguments, with defaults: `n_factors` (3), `periods_per_year`
 /// (12.0), `w` (None: PCA loadings; otherwise an `n_factors x M` array of
 /// portfolio weights with linearly independent rows), `n_starts` (5, at
-/// most 1000), `seed` (0; seeds the perturbed starts through `tsecon_rng`,
-/// so the fit is a deterministic function of the inputs, `n_starts` and
-/// `seed`). `seed` acts only when `n_starts > 1`, so passing it explicitly
-/// with `n_starts=1` RAISES rather than being silently ignored.
+/// most 1000), `seed` (None, which means seed 0 — NOT fresh entropy: two
+/// unseeded calls are identical; the returned `seed` key is the value used,
+/// so 0 for None). It seeds the perturbed starts through `tsecon_rng`, so
+/// the fit is a deterministic function of the inputs, `n_starts` and
+/// `seed`; it acts only when `n_starts > 1`, so passing it explicitly with
+/// `n_starts=1` RAISES rather than being silently ignored.
 ///
 /// Returns the Q parameters `lambda_q`, `k_inf_q`; `sigma` (the maximum-
 /// likelihood innovation covariance of the portfolio VAR) and `sigma_e`;

@@ -234,6 +234,28 @@ def _exempt_positions(fn, exempt: frozenset[str]) -> frozenset[int] | None:
 # useless, and one of the most common first-run errors (passing df["col"] where a
 # 2-D panel is wanted, or a column matrix where a series is wanted).
 _RANK_HINT = "is not an instance of"
+# The same downcast text is what PyO3 emits for EVERY failed extraction —
+# `constant=1` (an int where a bool goes) renders as "'int' object is not an
+# instance of 'bool'", `trend=None` as "'None' is not an instance of 'str'" —
+# and rebuilding those as a rank error told the user their (correct) array had
+# the wrong shape (audit round 13). Only the `ndarray` downcast is a rank
+# problem; every other failed extraction names the offending argument instead.
+_INSTANCE_RE = re.compile(r"^'(?P<got>[^']+)'(?: object)? is not an instance of '(?P<want>[^']+)'$")
+# PyO3's integer and float extraction failures carry no argument name either:
+# "'float' object cannot be interpreted as an integer", "must be real number,
+# not str". Same rebuild, same cached signature.
+_INTEGER_RE = re.compile(r"^'(?P<got>[^']+)' object cannot be interpreted as an integer$")
+_REAL_RE = re.compile(r"^must be real number, not (?P<got>\w+)$")
+# A one-element list where a count or a float goes is coerced to a float64
+# array first (a flat numeric list is data everywhere else), and PyO3 then
+# asks NumPy for a scalar: "only integer scalar arrays can be converted to a
+# scalar index" / "only 0-dimensional arrays can be converted to Python
+# scalars". The offender is the array-valued argument whose default is a
+# scalar.
+_NUMPY_SCALAR_RE = re.compile(
+    r"^only (?:integer scalar arrays can be converted to a scalar index"
+    r"|0-dimensional arrays can be converted to Python scalars)"
+)
 
 # PyO3 reports a negative Python int passed to an unsigned Rust parameter
 # (`lags=-1`, `outer_iter=-1`, a negative seed, ...) as a raw
@@ -321,11 +343,13 @@ def _guard_callbacks(fn, args, kwargs):
     return args, kwargs
 
 
-def _rank_error(fn_name: str, args, kwargs, original: TypeError) -> TypeError:
+def _rank_error(fn, args, kwargs, original: TypeError) -> TypeError:
     """Rebuild an array-argument TypeError into one that says what to do."""
+    fn_name = fn if isinstance(fn, str) else fn.__name__
+    names = _param_names(fn) if not isinstance(fn, str) else []
     described = []
     for label, v in [
-        *((f"arg{i}", a) for i, a in enumerate(args)),
+        *(((names[i] if i < len(names) else f"arg{i}"), a) for i, a in enumerate(args)),
         *((k, v) for k, v in kwargs.items()),
     ]:
         if isinstance(v, np.ndarray):
@@ -440,6 +464,28 @@ def _param_names(fn) -> list[str]:
     return names
 
 
+_PARAM_DEFAULTS: dict[object, dict[str, object]] = {}
+
+
+def _param_defaults(fn) -> dict[str, object]:
+    """Signature defaults per parameter name, resolved once per function (error
+    path only): the default's Python type is the hint that tells `constant=1`
+    (an int where the bool default lives) from `p=1` (an int where an int
+    default lives)."""
+    d = _PARAM_DEFAULTS.get(fn)
+    if d is None:
+        try:
+            d = {
+                p.name: p.default
+                for p in inspect.signature(fn).parameters.values()
+                if p.default is not p.empty
+            }
+        except (ValueError, TypeError):
+            d = {}
+        _PARAM_DEFAULTS[fn] = d
+    return d
+
+
 def _labeled_ints(fn, args, kwargs):
     """``(label, value)`` for every argument, positional ones named through
     the compiled signature when it resolves (else by position)."""
@@ -527,6 +573,102 @@ def _capacity_overflow_error(fn, args, kwargs, original: BaseException) -> Value
     )
 
 
+_GOT_PHRASE = {
+    "ndarray": "an array (a one-element list passed here is converted to an array)",
+}
+_WANT_PHRASE = {
+    "bool": "a Python bool (True or False — 0/1 are not accepted as flags)",
+    "str": "a string option",
+    "tuple": "a tuple (a list is not accepted where a fixed-arity option goes)",
+    "integer": "an integer — a count such as a lag length, order, horizon, window, or draw count",
+    "real number": "a real number",
+}
+
+
+def _type_name(v: object) -> set[str]:
+    t = type(v)
+    names = {t.__name__, f"{t.__module__}.{t.__name__}"}
+    if v is None:
+        names |= {"None", "NoneType"}
+    return names
+
+
+def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
+    """``name=value`` for the arguments whose type PyO3 complained about.
+
+    Several arguments may share the complained-about type (`p=1` and
+    `constant=1` are both ints), so the ones whose signature DEFAULT has a
+    different type (a bool default handed an int, a str default handed None)
+    are preferred; only when none stands out are all matches named."""
+    defaults = _param_defaults(fn)
+    labeled = _labeled_ints(fn, args, kwargs)
+    if got == "ndarray":
+        # A scalar slot handed a short list: the wrapper made it an array and
+        # the boundary asked for a scalar. The data arrays are never the
+        # offender here, so only small arrays are candidates, one-element
+        # ones first.
+        arrays = [(label, v) for label, v in labeled if isinstance(v, np.ndarray)]
+        pool = [(label, v) for label, v in arrays if v.size <= 8] or arrays
+        chosen = [(label, v) for label, v in pool if v.size == 1] or pool
+        return [f"{label}={_short_repr(v)}" for label, v in chosen]
+    matches: list[tuple[str, object, bool]] = []
+    for label, v in labeled:
+        hit = got in _type_name(v) or (
+            isinstance(v, (list, tuple)) and any(got in _type_name(e) for e in v)
+        )
+        if not hit:
+            continue
+        d = defaults.get(label, inspect.Parameter.empty)
+        strong = d is not inspect.Parameter.empty and d is not None and type(d) is not type(v)
+        matches.append((label, v, strong))
+    chosen = [m for m in matches if m[2]] or matches
+    return [f"{label}={_short_repr(v)}" for label, v, _ in chosen]
+
+
+def _short_repr(v: object) -> str:
+    if isinstance(v, np.ndarray) and v.size > 8:
+        return f"array(shape={v.shape})"
+    if isinstance(v, (list, tuple)) and len(v) > 8:
+        return f"{type(v).__name__} of {len(v)}"
+    return repr(v)
+
+
+def _wrong_type_error(fn, args, kwargs, got: str, want: str, original: TypeError) -> TypeError:
+    """Rebuild a PyO3 extraction failure into a TypeError naming the argument."""
+    offenders = _wrong_type_offenders(fn, args, kwargs, got)
+    what = " and ".join(offenders) if offenders else f"an argument of type {got}"
+    verb = "are" if len(offenders) > 1 else "is"
+    phrase = _WANT_PHRASE.get(want, f"a {want}")
+    got_phrase = _GOT_PHRASE.get(got, f"of type {got}")
+    return TypeError(
+        f"{fn.__name__}: {what} {verb} {got_phrase}, but this parameter takes "
+        f"{phrase}. Original error: {original}"
+    )
+
+
+def _rebuild_type_error(fn, args, kwargs, exc: TypeError) -> TypeError | None:
+    """The teaching rebuild for a TypeError raised at the compiled boundary, or
+    ``None`` when the message is not one of PyO3's extraction shapes."""
+    text = str(exc)
+    m = _INSTANCE_RE.match(text)
+    if m is not None:
+        if m.group("want") == "ndarray":
+            return _rank_error(fn, args, kwargs, exc)
+        return _wrong_type_error(fn, args, kwargs, m.group("got"), m.group("want"), exc)
+    m = _INTEGER_RE.match(text)
+    if m is not None:
+        return _wrong_type_error(fn, args, kwargs, m.group("got"), "integer", exc)
+    m = _REAL_RE.match(text)
+    if m is not None:
+        return _wrong_type_error(fn, args, kwargs, m.group("got"), "real number", exc)
+    if _NUMPY_SCALAR_RE.match(text):
+        want = "integer" if "scalar index" in text else "real number"
+        return _wrong_type_error(fn, args, kwargs, "ndarray", want, exc)
+    if _RANK_HINT in text:
+        return _rank_error(fn, args, kwargs, exc)
+    return None
+
+
 def _call(fn, args, kwargs):
     """Invoke the compiled function, upgrading rank errors to teaching errors."""
     args, kwargs = _guard_callbacks(fn, args, kwargs)
@@ -536,8 +678,9 @@ def _call(fn, args, kwargs):
     try:
         return fn(*args, **kwargs)
     except TypeError as exc:  # noqa: PERF203 - only on the error path
-        if _RANK_HINT in str(exc):
-            raise _rank_error(fn.__name__, args, kwargs, exc) from exc
+        rebuilt = _rebuild_type_error(fn, args, kwargs, exc)
+        if rebuilt is not None:
+            raise rebuilt from exc
         raise
     except OverflowError as exc:
         if _NEGATIVE_INT_HINT in str(exc):
