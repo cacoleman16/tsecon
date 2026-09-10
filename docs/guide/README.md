@@ -38,6 +38,7 @@ method when** (a decision table) → further reading (the founding papers).
 | 13 | [Nonlinear Dynamics: Regimes, Thresholds, and State-Dependent Responses](13-nonlinear-dynamics.md) | When linearity fails: threshold, smooth-transition and Markov-switching systems, generalized impulse responses, and state-dependent local projections |
 | 14 | [Panel Time Series](14-panel-time-series.md) | Heterogeneous panels: fixed effects, the mean-group and common-correlated-effects estimators, and panel local projections and VARs |
 | 15 | [The Term Structure of Interest Rates](15-term-structure.md) | Fitting and forecasting the yield curve: Nelson-Siegel, Svensson, and the dynamic Nelson-Siegel |
+| 16 | [LP versus VAR, Head to Head](16-lp-vs-var-head-to-head.md) | One estimand, two estimators: where the finite-sample estimates coincide exactly, the bias-variance trade-off measured on a seeded Monte Carlo, and the decision rule the library recommends |
 
 Worked, figure-rich examples for many of these methods live in the
 [gallery](../examples/README.md); the library's full technical plans live in
@@ -65,7 +66,8 @@ the sequence most PhD courses spread across two semesters — capped by 13,
 where the linearity assumption everything else shares is finally relaxed.
 Add 14 when your shock is felt by many countries or firms at once: it
 carries the panel versions of 9's estimators, staggered-adoption designs
-included.
+included. When the choice between 7's VAR and 9's LP is the question itself,
+16 settles it with measured numbers rather than a preference.
 
 **The risk path** — volatility and tails are your job:
 1 → 2 → 3 → 6, then 5 for evaluating VaR forecasts like any other forecast.

@@ -107,6 +107,7 @@ nav:
       - 13. Nonlinear Dynamics: guide/13-nonlinear-dynamics.md
       - 14. Panel Time Series: guide/14-panel-time-series.md
       - 15. Term Structure: guide/15-term-structure.md
+      - 16. LP versus VAR, head to head: guide/16-lp-vs-var-head-to-head.md
   - Reference:
       - Overview: reference/README.md
       - API reference: reference/api.md

@@ -127,6 +127,8 @@ For a look at what the VAR comparator produces on a richer three-variable system
 
 ![VAR impulse responses from the gallery](../examples/img/06-var-irf.png)
 
+[Chapter 16](16-lp-vs-var-head-to-head.md) takes this comparison head to head with measured numbers: where the two finite-sample estimates coincide *exactly* (and where the popular claim that they do is wrong), the LPW bias-variance trade-off reproduced on a seeded Monte Carlo, and the decision rule that follows.
+
 The practical upshot of the equivalence result: **fit both and overlay them.** When LP and VAR IRFs from the same specification diverge, that divergence is information — usually a sign the VAR's lag length is too short — not a reason to pick your favorite. The roadmap module makes this dual reporting a single call.
 
 > **⚠ Common mistake — treating LP/VAR divergence as one method being "broken."** They are two estimators of one estimand. Divergence at long horizons is the expected signature of VAR extrapolation bias meeting LP noise, and its *pattern* is a useful specification diagnostic. Reporting only whichever line looks better is the field's version of p-hacking.

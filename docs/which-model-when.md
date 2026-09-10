@@ -58,7 +58,7 @@ A compact index. Find your row, jump to the section.
 | Sign-restriction bounds with the Haar-prior artifact removed | `robust_svar_bounds` (Giacomini-Kitagawa) | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
 | Shrink a sign-identified set with knowledge of a historical episode | `narrative_svar` (Antolín-Díaz-Rubio-Ramírez) | [2](#2f-and-now-i-want-to-decompose-narrate-or-prior-robustify-the-shock) |
 | A Bayesian VAR that selects which coefficients are non-zero | `bvar_ssvs` (spike-and-slab SSVS) | [2](#2-i-want-an-impulse-response) |
-| Impulse response from one equation, no full VAR to commit to | `lp`; instrumented `lp_iv`; state-dependent `lp_state` | [2](#2-i-want-an-impulse-response) |
+| Impulse response from one equation, no full VAR to commit to | `lp`; instrumented `lp_iv`; state-dependent `lp_state` — LP or VAR? [chapter 16](guide/16-lp-vs-var-head-to-head.md) measures it | [2](#2-i-want-an-impulse-response) |
 | Quarterly target, monthly indicators, a ragged data edge | `dfm_nowcast` | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
 | A handful of high-frequency lags to compress into a target | `weighted_midas` (large ratio) / `umidas` (small ratio) | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
 | Volatility with fat tails or occasional jumps | `gas_volatility(density="student_t")` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
@@ -307,6 +307,16 @@ dynamic effect on *one* outcome, without committing to the cross-equation
 dynamics a VAR imposes. Local projections run one regression per horizon and
 read the IRF straight off the shock coefficient — robust to misspecified
 dynamics, and the modern default since Jordà (2005).
+
+**LP or VAR?** They estimate the *same* impulse response (Plagborg-Møller &
+Wolf 2021); the choice is a bias-variance one, and it is measured rather than
+argued in [chapter 16 — LP versus VAR, head to head](guide/16-lp-vs-var-head-to-head.md):
+where the two finite-sample estimates coincide exactly, how bias, SD, RMSE and
+band coverage compare on a seeded Monte Carlo, and the rule this library
+recommends — fit both; take the lag-augmented LP as the point path and bands at
+horizons short relative to the sample; overlay a generously lagged VAR for the
+long horizons, where the LP's variance is the binding cost; and read a
+divergence between the two as a lag-length diagnostic, not a verdict.
 
 ```python
 d = json.load(open("fixtures/lp.json"))
