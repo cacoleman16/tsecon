@@ -14,8 +14,8 @@ mod ml_convex;
 mod ml_kernel;
 mod ml_structured;
 mod ml_trees;
-mod regime_ci;
 mod panel_dl;
+mod regime_ci;
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
