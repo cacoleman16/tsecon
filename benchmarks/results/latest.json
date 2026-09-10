@@ -1,0 +1,752 @@
+{
+  "schema": 1,
+  "generated_at": "2026-09-10T08:28:28+0000",
+  "machine": {
+    "platform": "Linux-6.18.44-fc-v24-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "cpu_model": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cpu_count": 4,
+    "python": "3.11.15",
+    "python_implementation": "CPython"
+  },
+  "versions": {
+    "tsecon": "0.8.0",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "statsmodels": "0.15.0",
+    "arch": "8.0.0",
+    "scikit-learn": "1.9.0"
+  },
+  "build": {
+    "mode": "release",
+    "detail": "<repo>/bindings/python/python/tsecon/_core.abi3.so (17.7 MB) == <target>/release/lib_core.so"
+  },
+  "repeats": 20,
+  "sklearn_available": true,
+  "n_cases": 25,
+  "n_parity_metrics": 65,
+  "all_parity_passed": true,
+  "call_overhead": {
+    "op": "KPSS test (regression='c', auto lags)",
+    "wrapped_s": 0.0001376380000692734,
+    "raw_core_s": 1.0074999863718404e-05,
+    "overhead_s": 0.000127563000205555
+  },
+  "cases": [
+    {
+      "op": "ADF test (regression='c', fixed lag=4)",
+      "reference": "statsmodels.tsa.stattools.adfuller",
+      "note": "",
+      "parity": [
+        {
+          "metric": "statistic",
+          "max_abs_diff": 2.220446049250313e-16,
+          "tol": 1e-06,
+          "passed": true
+        },
+        {
+          "metric": "p_value",
+          "max_abs_diff": 1.1102230246251565e-16,
+          "tol": 1e-06,
+          "passed": true
+        },
+        {
+          "metric": "crit values",
+          "max_abs_diff": 0.0,
+          "tol": 1e-06,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00020783800005119701,
+        "reference_s": 0.0005623929998819222,
+        "ratio_ref_over_tsecon": 2.7059199941463405,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "VAR(2) coefficients (2 vars, trend='c')",
+      "reference": "statsmodels.tsa.api.VAR",
+      "note": "",
+      "parity": [
+        {
+          "metric": "coef matrix (5x2)",
+          "max_abs_diff": 6.106226635438361e-16,
+          "tol": 1e-08,
+          "passed": true
+        },
+        {
+          "metric": "log-likelihood",
+          "max_abs_diff": 1.1368683772161603e-13,
+          "tol": 1e-06,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.0004997300000013638,
+        "reference_s": 0.001644235999947341,
+        "ratio_ref_over_tsecon": 3.290248734202177,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "OLS + HAC (Newey-West) SEs (maxlags=4, corrected)",
+      "reference": "statsmodels OLS cov_type='HAC'",
+      "note": "",
+      "parity": [
+        {
+          "metric": "params",
+          "max_abs_diff": 3.1086244689504383e-15,
+          "tol": 1e-08,
+          "passed": true
+        },
+        {
+          "metric": "HAC bse",
+          "max_abs_diff": 2.0816681711721685e-16,
+          "tol": 1e-08,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00021003500000915665,
+        "reference_s": 0.00021817099991494615,
+        "ratio_ref_over_tsecon": 1.0387364006257758,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "GARCH(1,1) QMLE (constant mean, normal)",
+      "reference": "arch.arch_model",
+      "note": "QMLE optimisers differ; parity is asserted at optimiser tolerance (loglik rtol 1e-5, params atol 1e-3), not machine precision.",
+      "parity": [
+        {
+          "metric": "log-likelihood (rtol 1e-5)",
+          "max_abs_diff": 1.4580291463062167e-07,
+          "tol": 0.05286300111361702,
+          "passed": true
+        },
+        {
+          "metric": "params (atol 1e-3)",
+          "max_abs_diff": 7.838369661727906e-06,
+          "tol": 0.001,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.05039444499993806,
+        "reference_s": 0.023613878999867666,
+        "ratio_ref_over_tsecon": 0.4685809914147619,
+        "repeats": 3
+      }
+    },
+    {
+      "op": "GJR-GARCH(1,1,1) QMLE (constant mean, normal)",
+      "reference": "arch.arch_model (o=1)",
+      "note": "Leverage-term QMLE; two different optimisers, so parity is at optimiser tolerance (loglik rtol 1e-5, params atol 1e-3), not machine precision.",
+      "parity": [
+        {
+          "metric": "log-likelihood (rtol 1e-5)",
+          "max_abs_diff": 2.459273673593998e-09,
+          "tol": 0.03786197667315881,
+          "passed": true
+        },
+        {
+          "metric": "params (atol 1e-3)",
+          "max_abs_diff": 1.5319358340482037e-06,
+          "tol": 0.001,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.04978690200005076,
+        "reference_s": 0.032449120000137555,
+        "ratio_ref_over_tsecon": 0.651760175800946,
+        "repeats": 3
+      }
+    },
+    {
+      "op": "EGARCH(1,1,1) QMLE (constant mean, normal)",
+      "reference": "arch.arch_model (vol='EGARCH')",
+      "note": "Same parameterisation (mu, omega, alpha, gamma, beta) on both sides; parity at optimiser tolerance (loglik rtol 1e-5, params atol 1e-3).",
+      "parity": [
+        {
+          "metric": "log-likelihood (rtol 1e-5)",
+          "max_abs_diff": 3.026525519089773e-08,
+          "tol": 0.02152854734972556,
+          "passed": true
+        },
+        {
+          "metric": "params (atol 1e-3)",
+          "max_abs_diff": 1.4919280773573185e-05,
+          "tol": 0.001,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.1014358560000801,
+        "reference_s": 0.015980135000063456,
+        "ratio_ref_over_tsecon": 0.1575393123320302,
+        "repeats": 3
+      }
+    },
+    {
+      "op": "KPSS test (regression='c', auto lags)",
+      "reference": "statsmodels.tsa.stattools.kpss",
+      "note": "p-value is interpolated and clipped to [0.01, 0.10] by BOTH sides (Kwiatkowski table); parity is on the clipped value.",
+      "parity": [
+        {
+          "metric": "statistic",
+          "max_abs_diff": 5.551115123125783e-17,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "p_value (clipped)",
+          "max_abs_diff": 0.0,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "auto lags",
+          "max_abs_diff": 0.0,
+          "tol": 0.0,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00014166500000101223,
+        "reference_s": 6.73929998811218e-05,
+        "ratio_ref_over_tsecon": 0.4757208899914605,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "ACF (20 lags) + Bartlett SEs",
+      "reference": "statsmodels.tsa.stattools.acf",
+      "note": "",
+      "parity": [
+        {
+          "metric": "acf (adjusted=False)",
+          "max_abs_diff": 4.440892098500626e-16,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "Bartlett SE",
+          "max_abs_diff": 4.163336342344337e-17,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "acf (adjusted=True)",
+          "max_abs_diff": 3.3306690738754696e-16,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00017428099999960978,
+        "reference_s": 7.050399995023326e-05,
+        "ratio_ref_over_tsecon": 0.40454208978827944,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "PACF (15 lags, Yule-Walker + OLS)",
+      "reference": "statsmodels.tsa.stattools.pacf",
+      "note": "tsecon method='yw' is statsmodels method='ywm' (Yule-Walker, no mean adjustment).",
+      "parity": [
+        {
+          "metric": "pacf (yw / ywm)",
+          "max_abs_diff": 1.0894063429134349e-15,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "pacf (ols)",
+          "max_abs_diff": 2.6020852139652106e-15,
+          "tol": 1e-10,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00015840500009289826,
+        "reference_s": 0.0010552960000040912,
+        "ratio_ref_over_tsecon": 6.662011927560379,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Ljung-Box + Box-Pierce (lags 1..10)",
+      "reference": "statsmodels.stats.diagnostic.acorr_ljungbox",
+      "note": "",
+      "parity": [
+        {
+          "metric": "lb_stat",
+          "max_abs_diff": 6.217248937900877e-15,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "lb_pvalue",
+          "max_abs_diff": 4.246603069191224e-15,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "bp_stat",
+          "max_abs_diff": 3.552713678800501e-15,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "bp_pvalue",
+          "max_abs_diff": 4.3021142204224816e-15,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.0001321560000633326,
+        "reference_s": 0.00032465599997522077,
+        "ratio_ref_over_tsecon": 2.456611881561466,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Jarque-Bera normality test",
+      "reference": "statsmodels.stats.stattools.jarque_bera",
+      "note": "",
+      "parity": [
+        {
+          "metric": "statistic",
+          "max_abs_diff": 4.263256414560601e-14,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "p_value",
+          "max_abs_diff": 2.1102029214662066e-29,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "skewness",
+          "max_abs_diff": 8.326672684688674e-16,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "kurtosis",
+          "max_abs_diff": 8.881784197001252e-16,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 9.091800006899575e-05,
+        "reference_s": 0.0008094289999007742,
+        "ratio_ref_over_tsecon": 8.90284651319338,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Engle ARCH-LM test (4 lags)",
+      "reference": "statsmodels.stats.diagnostic.het_arch",
+      "note": "",
+      "parity": [
+        {
+          "metric": "LM statistic",
+          "max_abs_diff": 7.069900220812997e-13,
+          "tol": 1e-09,
+          "passed": true
+        },
+        {
+          "metric": "LM p_value",
+          "max_abs_diff": 1.2001510896197942e-13,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.0001733789999889268,
+        "reference_s": 0.0005693549999250536,
+        "ratio_ref_over_tsecon": 3.2838752095779564,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "White heteroskedasticity test",
+      "reference": "statsmodels.stats.diagnostic.het_white",
+      "note": "",
+      "parity": [
+        {
+          "metric": "LM statistic",
+          "max_abs_diff": 3.552713678800501e-13,
+          "tol": 1e-09,
+          "passed": true
+        },
+        {
+          "metric": "LM p_value",
+          "max_abs_diff": 7.258083023486961e-15,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "F statistic",
+          "max_abs_diff": 7.105427357601002e-14,
+          "tol": 1e-09,
+          "passed": true
+        },
+        {
+          "metric": "F p_value",
+          "max_abs_diff": 5.5164206536062466e-15,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00017738099995767698,
+        "reference_s": 0.0007794589998866286,
+        "ratio_ref_over_tsecon": 4.394264324096759,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Breusch-Pagan test (Koenker studentised)",
+      "reference": "statsmodels.stats.diagnostic.het_breuschpagan",
+      "note": "",
+      "parity": [
+        {
+          "metric": "LM statistic",
+          "max_abs_diff": 0.0,
+          "tol": 1e-09,
+          "passed": true
+        },
+        {
+          "metric": "LM p_value",
+          "max_abs_diff": 1.3877787807814457e-17,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "F statistic",
+          "max_abs_diff": 2.6645352591003757e-15,
+          "tol": 1e-09,
+          "passed": true
+        },
+        {
+          "metric": "F p_value",
+          "max_abs_diff": 6.7307270867900115e-15,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00015161600003921194,
+        "reference_s": 0.0006454490001033264,
+        "ratio_ref_over_tsecon": 4.257129853949426,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Ramsey RESET (powers of yhat up to 3)",
+      "reference": "statsmodels.stats.diagnostic.linear_reset",
+      "note": "",
+      "parity": [
+        {
+          "metric": "F statistic",
+          "max_abs_diff": 1.8118839761882555e-13,
+          "tol": 1e-09,
+          "passed": true
+        },
+        {
+          "metric": "p_value",
+          "max_abs_diff": 2.0405899192610377e-13,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "df (num, den)",
+          "max_abs_diff": 0.0,
+          "tol": 0.0,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00017229800005225115,
+        "reference_s": 0.0008393240000259539,
+        "ratio_ref_over_tsecon": 4.871350797870086,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Johansen cointegration (3 vars, k_ar_diff=1)",
+      "reference": "statsmodels.tsa.vector_ar.vecm.coint_johansen",
+      "note": "",
+      "parity": [
+        {
+          "metric": "eigenvalues",
+          "max_abs_diff": 9.886536034287019e-14,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "trace stat",
+          "max_abs_diff": 6.369305083353538e-11,
+          "tol": 1e-08,
+          "passed": true
+        },
+        {
+          "metric": "max-eig stat",
+          "max_abs_diff": 6.372147254296578e-11,
+          "tol": 1e-08,
+          "passed": true
+        },
+        {
+          "metric": "trace crit (90/95/99)",
+          "max_abs_diff": 0.0,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "max-eig crit",
+          "max_abs_diff": 0.0,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00024124099991240655,
+        "reference_s": 0.0011162380001223937,
+        "ratio_ref_over_tsecon": 4.627065882365329,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "VAR(2) orthogonalised IRF + FEVD (h=10)",
+      "reference": "statsmodels VARResults.irf/.fevd",
+      "note": "",
+      "parity": [
+        {
+          "metric": "orth IRF (11x2x2)",
+          "max_abs_diff": 1.6653345369377348e-16,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "FEVD (10x2x2)",
+          "max_abs_diff": 4.440892098500626e-16,
+          "tol": 1e-10,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.0003103609999470791,
+        "reference_s": 0.0021354350001274724,
+        "ratio_ref_over_tsecon": 6.88048756284325,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "VAR(2) Granger causality F-test",
+      "reference": "statsmodels VARResults.test_causality(kind='f')",
+      "note": "",
+      "parity": [
+        {
+          "metric": "F statistic",
+          "max_abs_diff": 9.769962616701378e-15,
+          "tol": 1e-10,
+          "passed": true
+        },
+        {
+          "metric": "p_value",
+          "max_abs_diff": 3.8272336688738307e-17,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "df (num, den)",
+          "max_abs_diff": 0.0,
+          "tol": 0.0,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00028575800001817697,
+        "reference_s": 0.0024949329999799374,
+        "ratio_ref_over_tsecon": 8.730929667135253,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "HP filter (lambda=1600, two-sided)",
+      "reference": "statsmodels.tsa.filters.hp_filter.hpfilter",
+      "note": "",
+      "parity": [
+        {
+          "metric": "trend",
+          "max_abs_diff": 5.409006575973763e-12,
+          "tol": 1e-08,
+          "passed": true
+        },
+        {
+          "metric": "cycle",
+          "max_abs_diff": 5.409006575973763e-12,
+          "tol": 1e-08,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00018642500003807072,
+        "reference_s": 0.0011095209999893996,
+        "ratio_ref_over_tsecon": 5.95156765328051,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Baxter-King band-pass (low=6, high=32, k=12)",
+      "reference": "statsmodels.tsa.filters.bk_filter.bkfilter",
+      "note": "bkfilter drops k observations at each end; tsecon returns the same trimmed series plus `first_index` = k, so the two align element-wise.",
+      "parity": [
+        {
+          "metric": "first_index (== K)",
+          "max_abs_diff": 0.0,
+          "tol": 0.0,
+          "passed": true
+        },
+        {
+          "metric": "cycle",
+          "max_abs_diff": 1.2212453270876722e-15,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00017136099995695986,
+        "reference_s": 0.00011051399997086264,
+        "ratio_ref_over_tsecon": 0.644919205645509,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Christiano-Fitzgerald band-pass (low=6, high=32)",
+      "reference": "statsmodels.tsa.filters.cf_filter.cffilter",
+      "note": "",
+      "parity": [
+        {
+          "metric": "cycle",
+          "max_abs_diff": 2.55351295663786e-15,
+          "tol": 1e-12,
+          "passed": true
+        },
+        {
+          "metric": "trend",
+          "max_abs_diff": 3.552713678800501e-15,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.0006004869999287621,
+        "reference_s": 0.009372148000011293,
+        "ratio_ref_over_tsecon": 15.607578517308692,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Periodogram PSD (boxcar, n=4096)",
+      "reference": "scipy.signal.periodogram",
+      "note": "",
+      "parity": [
+        {
+          "metric": "freqs",
+          "max_abs_diff": 0.0,
+          "tol": 1e-15,
+          "passed": true
+        },
+        {
+          "metric": "psd",
+          "max_abs_diff": 4.263256414560601e-14,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00028522000002340064,
+        "reference_s": 0.0004825620001156494,
+        "ratio_ref_over_tsecon": 1.691893976846147,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Welch PSD (Hann, nperseg=256, 50% overlap)",
+      "reference": "scipy.signal.welch",
+      "note": "",
+      "parity": [
+        {
+          "metric": "freqs",
+          "max_abs_diff": 0.0,
+          "tol": 1e-15,
+          "passed": true
+        },
+        {
+          "metric": "psd",
+          "max_abs_diff": 1.0658141036401503e-14,
+          "tol": 1e-12,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00025882499994622776,
+        "reference_s": 0.0009815129999424244,
+        "ratio_ref_over_tsecon": 3.792187772225785,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Ridge regression (alpha=1.0, no intercept)",
+      "reference": "sklearn.linear_model.Ridge",
+      "note": "",
+      "parity": [
+        {
+          "metric": "coef",
+          "max_abs_diff": 2.6645352591003757e-15,
+          "tol": 1e-10,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.0002416970000922447,
+        "reference_s": 0.0006220849998044287,
+        "ratio_ref_over_tsecon": 2.5738217667865437,
+        "repeats": 20
+      }
+    },
+    {
+      "op": "Elastic net / lasso (coordinate descent)",
+      "reference": "sklearn.linear_model.ElasticNet",
+      "note": "Both minimise (1/2n)||y-Xb||^2 + a*l1*||b||_1 + (a/2)(1-l1)||b||^2. Tolerance reflects coordinate-descent stopping rules, not a formula difference.",
+      "parity": [
+        {
+          "metric": "coef (l1_ratio=1.0)",
+          "max_abs_diff": 3.086420008457935e-13,
+          "tol": 1e-08,
+          "passed": true
+        },
+        {
+          "metric": "coef (l1_ratio=0.5)",
+          "max_abs_diff": 2.1871393585115584e-12,
+          "tol": 1e-08,
+          "passed": true
+        }
+      ],
+      "timing": {
+        "tsecon_s": 0.00026044199989883055,
+        "reference_s": 0.0004649269999390526,
+        "ratio_ref_over_tsecon": 1.7851460214545076,
+        "repeats": 20
+      }
+    }
+  ]
+}

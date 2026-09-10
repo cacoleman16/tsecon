@@ -18,13 +18,19 @@ compute, it does two things, **in this order**:
    than a `--release` wheel, so debug timings must never be quoted as
    headline speed numbers.
 
-Run:  python benchmarks/bench.py [--repeats N] [--quick]
+Run:  python benchmarks/bench.py [--repeats N] [--quick] [--json PATH]
+
+`--json PATH` additionally writes the parity rows, the timings and the
+provenance (CPU model, core count, library versions, build mode, date) as
+one JSON document. `benchmarks/render_dashboard.py` turns that file into
+the public speed dashboard at docs/reference/speed.md -- parity first.
 
 Exit code 0 iff every parity check passed.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import sys
@@ -97,11 +103,17 @@ def detect_build_mode() -> tuple[str, str]:
         return "unknown", "no compiled extension found next to tsecon"
 
     so_size = os.path.getsize(so_path)
-    # Locate the repo's target/ dir relative to this file, if we are in-tree.
+    # Locate the cargo target dir(s): $CARGO_TARGET_DIR when set (shared build
+    # dirs, worktrees), then the repo's own target/ relative to this file.
     here = os.path.dirname(os.path.abspath(__file__))
     repo = os.path.dirname(here)
-    dbg = os.path.join(repo, "target", "debug", "libtsecon.dylib")
-    rel = os.path.join(repo, "target", "release", "libtsecon.dylib")
+    target_dirs = []
+    if os.environ.get("CARGO_TARGET_DIR"):
+        target_dirs.append(os.environ["CARGO_TARGET_DIR"])
+    target_dirs.append(os.path.join(repo, "target"))
+    # The binding crate's cdylib is `lib_core` (module `tsecon._core`); older
+    # trees named it `libtsecon`. Linux builds .so, macOS .dylib.
+    artifact_names = ("lib_core.so", "lib_core.dylib", "libtsecon.so", "libtsecon.dylib")
     # Report the extension's location relative to the repo (or to $HOME) rather
     # than as an absolute path: this output gets pasted into benchmarks/README.md,
     # and an absolute path would publish the runner's home directory / username.
@@ -110,15 +122,35 @@ def detect_build_mode() -> tuple[str, str]:
     else:
         shown = so_path.replace(os.path.expanduser("~"), "~", 1)
     detail = f"{shown} ({so_size / 1e6:.1f} MB)"
-    if os.path.exists(dbg) and os.path.getsize(dbg) == so_size:
-        return "debug", detail + " == target/debug/libtsecon.dylib"
-    if os.path.exists(rel) and os.path.getsize(rel) == so_size:
-        return "release", detail + " == target/release/libtsecon.dylib"
-    # Fall back to a coarse size heuristic. tsecon's debug artifact is ~40+ MB
-    # of unoptimised code and symbols; a release build is a couple of MB.
-    if so_size > 12_000_000:
+    # An exact size match against an on-disk cargo artifact is the only
+    # reliable verdict: it identifies the profile the installed extension was
+    # copied from.
+    for profile in ("debug", "release"):
+        for tdir in target_dirs:
+            for name in artifact_names:
+                cand = os.path.join(tdir, profile, name)
+                if os.path.exists(cand) and os.path.getsize(cand) == so_size:
+                    return profile, detail + f" == <target>/{profile}/{name}"
+    # Fall back to a coarse size heuristic, calibrated on the macOS artifacts
+    # (debug ~43 MB, release ~6 MB). An unstripped Linux release .so can sit in
+    # the teens of MB, so the fallback is labelled as the guess it is.
+    if so_size > 25_000_000:
         return "debug", detail + " (size heuristic: large -> likely debug)"
-    return "release", detail + " (size heuristic: small -> likely release)"
+    if so_size < 12_000_000:
+        return "release", detail + " (size heuristic: small -> likely release)"
+    return "unknown", detail + " (size heuristic inconclusive; set CARGO_TARGET_DIR)"
+
+
+def cpu_model() -> str:
+    """Best-effort CPU model string: /proc/cpuinfo on Linux, else platform."""
+    try:
+        with open("/proc/cpuinfo") as fh:
+            for line in fh:
+                if line.lower().startswith("model name"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return platform.processor() or "unknown"
 
 
 # --------------------------------------------------------------------------
@@ -777,6 +809,29 @@ def case_egarch(rng, repeats) -> Case:
 # --------------------------------------------------------------------------
 # Reporting.
 # --------------------------------------------------------------------------
+def measure_call_overhead(rng, repeats) -> dict | None:
+    """Fixed per-call cost of the Python wrapper layer, measured, not guessed.
+
+    Times the public `tsecon.kpss` and the raw extension entry point
+    `tsecon._core.kpss` on the same array. The difference is the wrapper's
+    argument validation/coercion -- a constant per call that dominates the
+    rows whose compute is far below a millisecond, and is therefore part of
+    the honest reading of every sub-millisecond ratio.
+    """
+    core = getattr(tsecon, "_core", None)
+    if core is None or not hasattr(core, "kpss"):
+        return None
+    y = _ar1(rng, 500)
+    wrapped = best_time(lambda: tsecon.kpss(y, regression="c"), repeats)
+    raw = best_time(lambda: core.kpss(y, regression="c"), repeats)
+    return {
+        "op": "KPSS test (regression='c', auto lags)",
+        "wrapped_s": float(wrapped),
+        "raw_core_s": float(raw),
+        "overhead_s": float(wrapped - raw),
+    }
+
+
 def hr(char="-", width=94):
     print(char * width)
 
@@ -789,6 +844,7 @@ def print_env(build_mode, build_detail):
     print(f"  python           : {platform.python_version()} ({platform.python_implementation()})")
     print(f"  platform         : {platform.platform()}")
     print(f"  machine          : {platform.machine()}  cpu_count={os.cpu_count()}")
+    print(f"  cpu model        : {cpu_model()}")
     print(f"  tsecon           : {getattr(tsecon, '__version__', 'unknown')}")
     print(f"  numpy            : {np.__version__}")
     print(f"  scipy            : {scipy.__version__}")
@@ -831,7 +887,7 @@ def print_parity(cases):
     return all_pass
 
 
-def print_timings(cases, build_mode, repeats):
+def print_timings(cases, build_mode, repeats, overhead=None):
     label = "DEBUG BUILD, INDICATIVE ONLY -- NOT A SPEED CLAIM" if build_mode == "debug" \
         else f"{build_mode} build"
     hr("=")
@@ -858,6 +914,83 @@ def print_timings(cases, build_mode, repeats):
         print("  Reminder: this is a DEBUG build. A slower result is expected and does")
         print("  NOT reflect release performance. Re-run against a --release wheel.")
     print("  Honesty note: we publish this ratio for EVERY op, wins and losses alike.")
+    if overhead is not None:
+        print(f"  Python wrapper overhead ({overhead['op']}): wrapped tsecon.kpss "
+              f"{overhead['wrapped_s'] * 1e3:.3f} ms vs raw tsecon._core.kpss "
+              f"{overhead['raw_core_s'] * 1e3:.3f} ms")
+        print(f"  -> a fixed ~{overhead['overhead_s'] * 1e3:.3f} ms per call on this machine; "
+              "it dominates the sub-millisecond rows.")
+
+
+def results_to_dict(cases, build_mode, build_detail, repeats, overhead=None) -> dict:
+    """Everything the printed report contains, as one JSON-serialisable dict.
+
+    Parity rows come first in the document, as they do on the terminal: the
+    dashboard renderer (`render_dashboard.py`) keeps that order.
+    """
+    all_pass = bool(all(p.passed for c in cases for p in c.parity))
+    return {
+        "schema": 1,
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "machine": {
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "cpu_model": cpu_model(),
+            "cpu_count": os.cpu_count(),
+            "python": platform.python_version(),
+            "python_implementation": platform.python_implementation(),
+        },
+        "versions": {
+            "tsecon": getattr(tsecon, "__version__", "unknown"),
+            "numpy": np.__version__,
+            "scipy": scipy.__version__,
+            "statsmodels": statsmodels.__version__,
+            "arch": arch.__version__,
+            "scikit-learn": sklearn.__version__ if HAVE_SKLEARN else None,
+        },
+        "build": {"mode": build_mode, "detail": build_detail},
+        "repeats": repeats,
+        "sklearn_available": HAVE_SKLEARN,
+        "n_cases": len(cases),
+        "n_parity_metrics": sum(len(c.parity) for c in cases),
+        "all_parity_passed": all_pass,
+        "call_overhead": overhead,
+        "cases": [
+            {
+                "op": c.op,
+                "reference": c.ref_name,
+                "note": c.note,
+                "parity": [
+                    {
+                        "metric": p.metric,
+                        # Cast: some rows carry numpy scalars, which json refuses.
+                        "max_abs_diff": float(p.max_abs_diff),
+                        "tol": float(p.tol),
+                        "passed": bool(p.passed),
+                    }
+                    for p in c.parity
+                ],
+                "timing": None
+                if c.timing is None
+                else {
+                    "tsecon_s": float(c.timing.tsecon_s),
+                    "reference_s": float(c.timing.ref_s),
+                    "ratio_ref_over_tsecon": float(c.timing.speedup),
+                    # GARCH-family fits cap their repeats at 3 (see main()).
+                    "repeats": min(repeats, 3) if "QMLE" in c.op else repeats,
+                },
+            }
+            for c in cases
+        ],
+    }
+
+
+def write_json(path: str, doc: dict) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+    print(f"  wrote {path}")
 
 
 def main() -> int:
@@ -866,6 +999,9 @@ def main() -> int:
                     help="timing repeats per op (min is reported); default 20")
     ap.add_argument("--quick", action="store_true",
                     help="fewer repeats for a fast smoke run")
+    ap.add_argument("--json", metavar="PATH", default=None,
+                    help="also write parity rows, timings and provenance "
+                         "(CPU, versions, build mode, date) as JSON to PATH")
     args = ap.parse_args()
     repeats = 3 if args.quick else args.repeats
 
@@ -918,9 +1054,12 @@ def main() -> int:
         print("  the complete parity matrix.")
         hr("!")
 
+    overhead = measure_call_overhead(rng, repeats)
     ok = print_parity(cases)
-    print_timings(cases, build_mode, repeats)
+    print_timings(cases, build_mode, repeats, overhead)
     hr("=")
+    if args.json:
+        write_json(args.json, results_to_dict(cases, build_mode, build_detail, repeats, overhead))
 
     if not ok:
         print("FAIL: at least one parity check did not meet tolerance. Exit 1.")
