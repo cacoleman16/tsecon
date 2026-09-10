@@ -5,17 +5,50 @@ All notable changes to this project are documented here. The format follows
 pre-1.0 policy in [ROADMAP.md](ROADMAP.md) (minor = breaking allowed, patch =
 fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.9.0] - 2026-09-10
 
-The first audit of the repository as a whole rather than of the estimator
-surface ([findings](docs/roadmap/27-repo-audit-2026-09.md)): seven parallel
+The build-later block of the roadmap, cleared: the four estimators whose
+references were weaker or whose surfaces were larger than the build-next
+bar — each shipped at the grade it earned, with its coverage or its exact
+reduction measured rather than asserted — plus the first head-to-head
+explainer chapter and a public speed dashboard rendered from measured runs.
+The same release carries the first audit of the repository as a whole
+rather than of the estimator surface
+([findings](docs/roadmap/27-repo-audit-2026-09.md)): seven parallel
 sweeps over the supply chain and CI, hygiene, every documented claim, the
-test suite itself, API consistency across all 173 callables, the security
+test suite itself, API consistency across all 173 pre-wave callables, the security
 of the Python boundary, and a ledger reconciling every finding the eleven
 previous rounds recorded (275 items: 98 fixed, 104 open, 25 superseded).
+The callable count moves from 173 to 179.
+
+### Added
+
+- `setar_threshold_ci` — Hansen (1997/2000) likelihood-ratio confidence sets for the SETAR threshold, on exactly the `setar` fit (grid, SSR profile and estimate bit-identical): the closed-form critical value `−2 ln(1 − √level)` (Hansen 2000 Table 1 reproduced), the set returned as possibly disjoint `intervals` with `is_connected` and its convex hull, the p-value `1 − (1 − e^{−LR/2})²` at a `null_threshold`, Hansen's η² heteroskedasticity scaling (`het_robust=True`, his programs' quadratic-regression convention; refused with a teaching error when unidentified), and the conservative slope-interval union over an 80% threshold region (`slope_level`). Closed forms pinned at 1e-14 and the construction at 1e-10 against an independent NumPy transcription (`fixtures/setar_ci.json`; no third-party threshold-CI code runs in the fixture container); coverage **measured** over 500 seeded replications per cell — 95% sets cover the true threshold 0.93–0.98 of the time at n = 100–500 on a Hansen-(2000)-style threshold regression and a SETAR(2), at or above nominal except the small-effect n = 100 cell, and the η² correction is identified in 468/500 replications (mean 0.617 vs true 0.607) with 0.938 conditional coverage on a heteroskedastic design. Rust also gains `tsecon_regime::threshold_regression_ci`, the same construction on a user-supplied sample-splitting design (Hansen 2000's estimator; Rust only).
+- The **Koop-Pesaran-Potter generalized impulse-response engine** (`tsecon_var::girf`: a `GirfModel` trait and one `girf` routine with common random numbers, antithetic pairs, a Philox substream per (history, draw) so results are bit-identical at any thread count and across processes, history-conditional paths, the KPP across-history distribution and Monte-Carlo errors), with two consumers. `var_girf` runs the engine on a linear VAR and is how it is validated: with a single draw it reproduces `var_irf(orth=True)` (statsmodels) and the Pesaran-Shin (1998) generalized-IRF closed form at 1e-12 at every horizon (`fixtures/girf.json`). `threshold_var_girf` gives the two-regime threshold VAR the regime-dependent impulse responses its model card had declared deferred: simulated from the sample's own lag windows with regime selection, a seeded history subsample, orthogonal or generalized shocks of any size and sign, and regime-specific coefficients and covariances along every path; pinned at 1e-10 against an independent NumPy transcription that reproduces the engine's random streams, reduced to the linear closed form at 1e-12 when both regimes are equal, and its nonlinearity *measured* on a k = 3 TVAR at T = 600 (sign asymmetry t = 37, size non-proportionality t = 11.5, regime dependence t = 60; the 1/√n convergence ratio 4.02; antithetic variates buy no variance on a threshold model — ratio 1.00 — and the docs say so). The showcase (600 observations, 3 variables, 200 histories × 500 draws × 20 horizons) runs in 0.23 s. Point estimates only: bootstrap-over-refits bands and the tsDyn/Balke reference runs are named follow-ups.
+- `jsz_fit`: the Joslin-Singleton-Zhu (2011) canonical Gaussian affine term-structure model by maximum likelihood — Q-dynamics with only the ordered eigenvalues `lambda_q` and one drift `k_inf_q`, rotation onto `N` exactly-priced yield portfolios (PCA loadings or user `w`), the P-measure VAR concentrated out by OLS (statsmodels `VAR(1)` at 1e-9), `k_inf_q` and `sigma_e` profiled analytically, a seeded multi-start BFGS/Nelder-Mead search over `(lambda_q, chol Sigma_P)` only; returns the fitted / risk-neutral / term-premium decomposition in exactly `acm_term_premium`'s convention. Fit invariant to the basis of the portfolio space (llf 1e-11, `lambda_q` 1.6e-10). Recursions golden-pinned at 1e-12, likelihood at 1e-7 absolute, MLE cross-checked against a SciPy multi-start optimum (`lambda_q` 1e-5) with measured recovery (`lambda_q` 8.7e-5, `k_inf_q` 1.2%, `sigma_e` 0.3% at T = 500), and the AFNS special case `lambda_q = (1, e^-lam, e^-lam)` shown to span the Nelson-Siegel loadings exactly and to converge at first order in the period length to the CDR closed form of `afns_adjustment` (`fixtures/jsz.json`); illustrated on the Gürkaynak-Sack-Wright 1990–2007 panel, where the likelihood is multimodal (three basins) and the multi-start is what finds the best one. Q-parameter standard errors are deliberately not claimed (profile likelihood near a unit root). `jsz_loadings` exposes the canonical Riccati recursions at given parameters (Jordan blocks at tied eigenvalues). Rust: `tsecon_termstructure::{fit_jsz, jsz_loadings, jsz_loglik}`.
+- `panel_distributed_lag`: distributed-lag panel regressions — the Dell-Jones-Olken (2012) / Burke-Hsiang-Miguel (2015) climate-impact specification — with `L` lags of each regressor (and of its square for the quadratic response), entity and time effects and optional entity-specific trends, returning the cumulative long-run effect with a delta-method standard error and 95% interval and, for the quadratic response, the marginal effect at chosen points and the turning point with their standard errors. Pinned at 1e-10 against linearmodels `PanelOLS` for nine cases × three covariances (`fixtures/panel_dl.json`); cumulative-effect interval coverage measured at 0.928/0.938 (entity cluster, N = 50/200) and 0.886/0.924 (Driscoll-Kraay, T = 50/200) in seeded Monte Carlo; illustrated on the Dell-Jones-Olken panel (`docs/examples/panel_distributed_lag_djo.py`). Rust also gains `tsecon_panel::panel_ols_fe_with` / `FixedEffects`: the within estimator sweeps out time effects and entity-specific linear trends (exact closed-form projections on a balanced panel) with linearmodels' degrees-of-freedom conventions; `panel_ols_fe` is unchanged and bit-identical.
+- Guide chapter 16, *LP versus VAR, Head to Head*: the Plagborg-Møller & Wolf (2021) equivalence stated precisely and checked numerically (matched-controls LP equals the recursive VAR at h = 0 to 1e-15 and at no other horizon; `lp` as shipped coincides at none, and its h = 0 gap does not vanish with T when the impulse has its own dynamics), the Li, Plagborg-Møller & Wolf (2024) bias-variance trade-off measured on a seeded Monte Carlo (500 replications, T = 240, h = 0–20: LP(4) and VAR(4) tie in RMSE through h = 2, the VAR's variance advantage opens at long horizons, VAR(1) wins RMSE at h = 8–18 while its band covers 0.154 at h = 4, LP bias ≈ −0.23 at h = 20 for every lag length), and the decision rule linked from `which-model-when.md`; every number printed by `docs/examples/lp_vs_var_head_to_head.py`.
+- Public speed dashboard `docs/reference/speed.md`, rendered by `benchmarks/render_dashboard.py` from the committed `benchmarks/results/latest.json` (parity matrix first — 65/65 PASS — then timings with CPU/build/version provenance, then a reproduce block; `--check` fails when stale, `--readme` regenerates the README benchmark bullet), and `benchmarks/bench.py --json PATH` for the machine-readable run, which now also measures the Python wrapper's per-call overhead.
+- **Supply-chain gates**: every GitHub Action pinned to a commit SHA with
+  Dependabot (`.github/dependabot.yml`) keeping cargo, pip and actions
+  current; `maturin-version`, `rust-toolchain` and `--locked` on every
+  build; `persist-credentials: false` on every checkout; a new `Audit`
+  workflow running `cargo audit --deny warnings` and `pip-audit --strict`
+  on manifest changes, weekly, and on demand.
+- Every workspace crate declares `publish = false`: the wheel is the
+  product, the crates are not published to crates.io.
+- The sweeps' probe scripts and summaries under `lab/audit/repo/`.
+
+### Changed
+
+- `tsecon-regime` now depends on `tsecon-var` (the GIRF engine) and `tsecon-var` on `rayon`; the TVAR docs no longer call GIRFs deferred.
+- `PanelError` gains `DegreesOfFreedomAbsorbed` (Rust only; `panel_fe`'s Python surface and messages are unchanged).
+- `bench.py` build-mode detection honours `$CARGO_TARGET_DIR` and matches the Linux `lib_core.so` artifact by exact size; the README benchmark summary now carries the numbers of the committed Linux release run and links the dashboard (the earlier ~11×/~21×/0.41× figures were from the macOS run kept in `benchmarks/README.md`).
+- `which-model-when.md`, guide chapters 8, 9, 13 and 14, the guide index and the reference index link the new chapter, the dashboard and the new estimators.
 
 ### Fixed
 
+- **Every wrapped call paid ~0.1 ms for nothing.** The 2^48 count pre-flight added by the repository audit called `inspect.signature` on the compiled builtin on every call, and on a PyO3 builtin that re-tokenizes and re-parses `__text_signature__` each time; the speed dashboard measured it as a fixed 0.128 ms tax (`kpss` 0.010 ms raw, 0.115 ms wrapped — every sub-millisecond estimator "lost" to statsmodels while its core was 5× faster). Names are now resolved once per function and only when an offender has to be named: overhead 0.0006 ms after, the seal unchanged, pinned by a call-counting test.
 - **The wheel now ships the third-party licence notices it always claimed
   to carry.** `THIRD-PARTY-LICENSES.md` said the verbatim copyright
   notices were generated with `cargo about` at release time; no such step
@@ -57,18 +90,6 @@ previous rounds recorded (275 items: 98 fixed, 104 open, 25 superseded).
   state); six force-added round-11 logs untracked; the seven audit items
   that were fixed without their record being updated are annotated in
   their source pages.
-
-### Added
-
-- **Supply-chain gates**: every GitHub Action pinned to a commit SHA with
-  Dependabot (`.github/dependabot.yml`) keeping cargo, pip and actions
-  current; `maturin-version`, `rust-toolchain` and `--locked` on every
-  build; `persist-credentials: false` on every checkout; a new `Audit`
-  workflow running `cargo audit --deny warnings` and `pip-audit --strict`
-  on manifest changes, weekly, and on demand.
-- Every workspace crate declares `publish = false`: the wheel is the
-  product, the crates are not published to crates.io.
-- The sweeps' probe scripts and summaries under `lab/audit/repo/`.
 
 ## [0.8.0] - 2026-09-03
 

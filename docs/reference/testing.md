@@ -30,8 +30,8 @@ command needs the `--exclude tsecon-python` caveat described
 | — documentation tests | 54 | |
 | Python binding tests | **1576 passed, 0 failed, 1 skipped** in 335 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
-| Golden fixtures | 96 JSON files, produced by 77 Python generator scripts (plus two R scripts) | `fixtures/` |
-| Public Python functions | 173, **all 173** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
+| Golden fixtures | 100 JSON files, produced by 81 Python generator scripts (plus two R scripts) | `fixtures/` |
+| Public Python functions | 179, **all 179** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
 
 Of the 10 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
 fingerprints that are platform-specific, two release-only Monte Carlo runs, one
@@ -41,11 +41,11 @@ timing test, and one that emits a fixture snapshot), 2 are in `tsecon-panel`
 `#[ignore]` states its reason.
 
 Of the 1489 integration tests — the 1479 that pass plus the 10 `#[ignore]`d —
-**316 are golden tests** and **647 are property tests**. The goldens live in
-72 `*golden*.rs` files across 39 crates (`golden.rs` in most, with additional
+**334 are golden tests** and **688 are property tests**. The goldens live in
+77 `*golden*.rs` files across 39 crates (`golden.rs` in most, with additional
 per-surface files such as `engle_granger_golden.rs`, `irf_bands_golden.rs`,
 `proxy_bands_golden.rs`, `ou_golden.rs`, and `star_golden.rs`); the property
-tests live in 62 `*propert*.rs` files across 38 crates. The remainder are
+tests live in 67 `*propert*.rs` files across 38 crates. The remainder are
 validation (111 tests in 11 `*validation*.rs` files), cross-check, and
 reproducibility suites described below.
 
@@ -257,7 +257,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-1576 tests in 101 files. 63 of the 96 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
+1576 tests in 101 files. 67 of the 100 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -278,7 +278,7 @@ cannot cover:
   direction too: a Python moment function that raises must propagate its
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
-- **Surface completeness.** The module exports 173 public callables. This is
+- **Surface completeness.** The module exports 179 public callables. This is
   checked by running the check, not by asserting the answer:
 
   ```sh
@@ -288,7 +288,7 @@ cannot cover:
   txt = ''.join(p.read_text() for p in pathlib.Path('bindings/python/tests').glob('*.py'))
   print(len(fns), sorted(f for f in fns if not re.search(rf'tsecon\.{f}\s*\(', txt)))
   "
-  # 173 []
+  # 179 []
   ```
 
   The honest output of this check was not always empty, and the history is
@@ -599,9 +599,9 @@ library with lying documentation.
 
 ## 3 · The Python test files
 
-38 of the 101 files in
+38 of the 105 files in
 [`bindings/python/tests/`](../../bindings/python/tests), with collected test
-counts. The table has not kept pace with the directory, and the 63 files not
+counts. The table has not kept pace with the directory, and the 67 files not
 listed here are a gap in *this table*, not in the suite — every one of them
 runs on every invocation of the command above:
 
@@ -823,7 +823,7 @@ discover.
   `glp_sw_panel.csv`, `hamilton_gnp.csv`, `sunspots_tong.csv`, all under
   `fixtures/`), so every one of them is reproduced offline and cannot break on
   a provider's URL change.
-- **Benchmarks compare 25 of 173 functions.** The parity gate covers the unit-root
+- **Benchmarks compare 25 of 179 functions.** The parity gate covers the unit-root
   tests, the diagnostics, VAR and its IRF/FEVD/Granger, Johansen, the filters,
   the spectra, ridge/elastic-net, and the GARCH family — a broad spot check, not a
   library-wide cross-library audit — that job belongs to the fixtures.
