@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, multivariate-GARCH, panel and term-structure families (and the top-level results of `var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` converts them; the docstring says which. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**173 functions.**
+**175 functions.**
 
 ## diagnostics
 
@@ -4923,4 +4923,157 @@ Echo state network (reservoir computing; Jaeger 2001; Lukosevicius
     with NaN/inf (x, y, x_test); `washout >= n` names the fix; fewer than
     two rows after the washout reports `insufficient data: {got}
     observations, at least {needed} required` with the washout counted.
+
+## Generalized impulse responses (Koop-Pesaran-Potter)
+
+### `var_girf`
+
+```python
+def var_girf(
+    data: _ArrayLike,
+    p: int,
+    shock_var: int = ...,
+    size: float = ...,
+    shock: str = ...,
+    horizon: int = ...,
+    n_draws: int = ...,
+    seed: int = ...,
+    trend: str = ...,
+    antithetic: bool = ...,
+    histories: int | None = ...,
+    bands: tuple[float, float] = ...,
+) -> dict[str, Any]:
+```
+
+Generalized impulse responses (Koop-Pesaran-Potter 1996) of a linear
+    VAR(p) by simulation — the engine's exact reduction to the closed-form
+    impulse responses, so nonlinear GIRFs can be checked against a linear
+    benchmark on the same footing.
+
+    For every lag window of `data` (or a seeded subsample of `histories`
+    of them) and every future-innovation draw, the fitted VAR is simulated
+    forward twice with the same innovations — once with the shock added to
+    the impact-period innovation, once without — and the paired difference
+    is averaged (common random numbers; `antithetic` (+z, -z) pairs when
+    set, needing an even `n_draws`). In a linear model the paired
+    difference is Psi_h delta for every draw and history, so the result
+    carries no Monte Carlo noise and does not depend on `n_draws` or
+    `seed`; `mc_se`/`draw_sd` are exactly zero (NaN with a single draw).
+
+    `shock`: "orthogonal" — `size` standard deviations of the `shock_var`-th
+    Cholesky-orthogonalized innovation in the variable ordering, so
+    `girf[h]` equals `var_irf(orth=True)[h][:, shock_var] * size` to 1e-12;
+    "generalized" — the Pesaran-Shin (1998) shock (innovation `shock_var`
+    moved by `size` standard deviations, the others by their conditional
+    expectation; no ordering), so `girf[h]` equals
+    Phi_h Sigma e_j / sqrt(sigma_jj) * size with Sigma the df-adjusted
+    residual covariance. `size` may be negative.
+
+    Keys: `girf` ([h][variable], h = 0..horizon, mean over histories),
+    `lower`/`upper` (the `bands` quantiles across histories — zero width
+    here), `per_history` ([history][h][variable]), `mc_se` (Monte Carlo
+    standard error of `girf`), `draw_sd` (across-draw spread of one
+    realized paired difference), `draw_lower`/`draw_upper` (mean over
+    histories of the per-history across-draw `bands` quantiles),
+    `n_histories`, `n_draws`, `n_effective_draws` (n_draws / 2 under
+    antithetic), `horizon`, `shock` (echo), `shock_var`, `shock_size_used`
+    (impact-period innovation to `shock_var` in raw units: size * P[j, j]
+    orthogonal, size * sqrt(sigma_jj) generalized), `shock_vector` (the
+    full raw innovation added at impact).
+
+    Validation: statsmodels VARResults.irf(orth=True) and the Pesaran-Shin
+    closed form, both at 1e-12 with a single draw (fixtures/girf.json).
+
+    Further arguments, with defaults: `shock_var` (0), `size` (1.0),
+    `shock` ("orthogonal"), `horizon` (10), `n_draws` (2), `seed` (0),
+    `trend` ("c"), `antithetic` (True), `histories` (None = every lag
+    window; an int draws a seeded subsample), `bands` ((0.16, 0.84)).
+
+### `threshold_var_girf`
+
+```python
+def threshold_var_girf(
+    data: _ArrayLike,
+    p: int,
+    threshold_index: int = ...,
+    delay: int = ...,
+    trim: float = ...,
+    delays: Sequence[int] | None = ...,
+    constant: bool = ...,
+    shock_var: int = ...,
+    size: float = ...,
+    shock: str = ...,
+    horizon: int = ...,
+    n_draws: int = ...,
+    seed: int = ...,
+    regime: str = ...,
+    histories: int | None = ...,
+    bands: tuple[float, float] = ...,
+    antithetic: bool = ...,
+) -> dict[str, Any]:
+```
+
+Regime-dependent generalized impulse responses (Koop-Pesaran-Potter
+    1996) of the two-regime threshold VAR: fits `threshold_var` with the
+    same `p`/`threshold_index`/`delay`|`delays`/`trim`/`constant`, then
+    simulates the fitted nonlinear system forward from the sample's actual
+    lag windows, regime-switching period by period.
+
+    Histories are every lag window t >= max(p, delay) of `data` (the shock
+    hits period t; its regime is decided by data[t - delay, threshold_index]
+    <= threshold), in time order; `regime`="low"/"high" keeps only the
+    windows whose shock-date regime is that one, and `histories`=m a
+    seeded subsample of m of the selected windows. For each history and
+    each of `n_draws` future-innovation draws the model is simulated twice
+    with the same standard-normal draws — the shocked path adds the shock
+    at impact — and the paired difference is averaged. At every period
+    each path reads its own regime from its own simulated window and
+    scales the common draw by the Cholesky factor of THAT regime's ML
+    residual covariance (sigma_low/sigma_high), so a path that crosses the
+    threshold switches both coefficients and innovation covariance (Balke
+    2000's regime-by-regime draws; R tsDyn's GIRF pools residuals because
+    its TVAR fits one covariance). The impact shock is scaled by the
+    covariance of the regime the history is in at the shock date:
+    "orthogonal" — `size` standard deviations of the `shock_var`-th
+    Cholesky-orthogonalized innovation of that regime; "generalized" — the
+    Pesaran-Shin shock of that regime; the raw impact therefore differs
+    across regimes when their covariances do (see `shock_size_used`).
+    `antithetic` uses (+z, -z) pairs (even `n_draws`); the Monte Carlo
+    standard error is computed from the pair means.
+
+    Keys: `girf` ([h][variable], mean over the used histories),
+    `lower`/`upper` (the `bands` quantiles across the used histories — the
+    KPP history-conditional distribution), `per_history`
+    ([history][h][variable]), `mc_se` (Monte Carlo standard error of
+    `girf`, histories fixed; NaN below two effective draws), `draw_sd`
+    (across-draw spread of one realized paired difference),
+    `draw_lower`/`draw_upper` (mean over histories of the per-history
+    across-draw `bands` quantiles), `girf_low_regime`/`girf_high_regime`
+    (means over the used histories of each regime; None when the selection
+    holds none of that regime), `history_regimes` (0 low / 1 high per used
+    history), `history_times` (the shock date t of each), `n_histories`,
+    `n_low_histories`, `n_high_histories`, `n_draws`, `n_effective_draws`,
+    `horizon`, `shock` (echo), `shock_var`, `shock_size_used` ([low, high]
+    impact-period innovation to `shock_var` in raw units), `shock_vector`
+    ([regime][variable] raw innovation added at impact), `regime` (echo),
+    `threshold`, `delay`, `threshold_index`.
+
+    Reproducible: one Philox substream per (history, draw) spawned from
+    `seed`, bit-identical at any thread count and across processes.
+    Validation (honest grade): the engine's linear reduction is pinned at
+    1e-12 against statsmodels and the Pesaran-Shin closed form
+    (`var_girf`); the regime-switching simulation is pinned at 1e-10
+    against an independent NumPy transcription of the documented engine
+    reproducing its random streams (fixtures/girf.json); sign asymmetry,
+    size non-proportionality, regime dependence, 1/sqrt(n_draws)
+    convergence and antithetic variance reduction are measured by seeded
+    Monte Carlo property tests (see the model card). No third-party TVAR
+    GIRF runs in the build container.
+
+    Further arguments, with defaults: `threshold_index` (0), `delay` (1),
+    `trim` (0.1), `delays` (None; a list searches the delay and overrides
+    `delay`), `constant` (True), `shock_var` (0), `size` (1.0), `shock`
+    ("orthogonal"), `horizon` (20), `n_draws` (500), `seed` (0), `regime`
+    ("all"), `histories` (None = every selected window), `bands`
+    ((0.16, 0.84)), `antithetic` (True).
 

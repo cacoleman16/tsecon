@@ -56,9 +56,12 @@
 //!   **threshold VAR**: [`threshold_var`] (per-regime OLS minimizing
 //!   `ln det SigmaHat` over the same trimmed grid) and
 //!   [`threshold_var_test`] (the robust sup-Wald linearity test in score
-//!   form, bootstrapped the same fixed-regressor way). See the `setar` and
-//!   `tvar` module docs for the models, the algorithms, and the
-//!   reproducible-parallel-bootstrap contract.
+//!   form, bootstrapped the same fixed-regressor way), with its
+//!   regime-dependent **generalized impulse responses** [`tvar_girf`] /
+//!   [`threshold_var_girf`] (Koop-Pesaran-Potter 1996, through the shared
+//!   `tsecon-var` simulation engine). See the `setar`, `tvar` and
+//!   `tvar_girf` module docs for the models, the algorithms, and the
+//!   reproducible-parallel contract.
 //! * the **smooth-transition autoregression** (STAR) of Terasvirta (1994)
 //!   with logistic ([`StarModel::Lstar`]) and exponential
 //!   ([`StarModel::Estar`]) transitions — [`star`] (concentrated NLS:
@@ -101,6 +104,7 @@ mod setar;
 mod spec;
 mod star;
 mod tvar;
+mod tvar_girf;
 
 pub use error::RegimeError;
 pub use model::MarkovSwitchingAr;
@@ -112,3 +116,6 @@ pub use star::{
     star, star_eval, star_test, StarEval, StarFit, StarModel, StarTest, StarTestResult,
 };
 pub use tvar::{threshold_var, threshold_var_test, TvarFit, TvarTest};
+pub use tvar_girf::{
+    threshold_var_girf, tvar_girf, GirfRegime, TvarGirf, TvarGirfOptions, TvarModel,
+};

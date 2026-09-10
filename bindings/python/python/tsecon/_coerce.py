@@ -71,6 +71,8 @@ _EXEMPT: dict[str, frozenset[str]] = {
     "star_test": frozenset({"delays"}),
     # Same for the threshold VAR's candidate delays d in z_t = y_{tv,t-d}.
     "threshold_var": frozenset({"delays"}),
+    # The TVAR GIRF fits the same threshold VAR first, same candidate delays.
+    "threshold_var_girf": frozenset({"delays"}),
     # Seasonal periods and their LOESS windows: integer specs, not data.
     # Coercing [24, 168] to float64 would make the boundary reject it.
     "mstl": frozenset({"periods", "windows"}),

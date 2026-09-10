@@ -555,8 +555,9 @@ fn summarize(draws: &[Cube], horizon: usize, k: usize, alpha: f64) -> (Cube, Cub
 
 /// Linear-interpolated percentile of an ascending slice, matching NumPy's
 /// default `numpy.percentile(..., method="linear")`: position `q (n - 1)`,
-/// interpolating between the two bracketing order statistics.
-fn percentile_sorted(sorted: &[f64], q: f64) -> f64 {
+/// interpolating between the two bracketing order statistics. Shared with
+/// the GIRF engine's across-history and across-draw bands.
+pub(crate) fn percentile_sorted(sorted: &[f64], q: f64) -> f64 {
     let n = sorted.len();
     if n == 1 {
         return sorted[0];
