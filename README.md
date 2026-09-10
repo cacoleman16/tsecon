@@ -169,13 +169,11 @@ Two independent kinds of evidence, both reproducible:
 - **[Benchmarks](benchmarks/)** — a parity-first harness: estimates must match a
   reference *before* anything is timed. All 65 parity metrics across 25
   operations pass. On a release build in the Linux CI-style container
-  (Intel(R) Xeon(R) Processor @ 2.80GHz, 4 cores) tsecon is faster on 19 of 25 operations —
-  ADF 2.7×, VAR(2) 3.3×, Jarque-Bera 8.9× and the Christiano-Fitzgerald
-  filter 15.6× the speed of statsmodels — and slower on 6, which we publish
-  too: GARCH(1,1) QMLE at 0.47× the speed of `arch` (about 2× *slower*), EGARCH at
-  0.16×, and the
-  sub-millisecond ACF, KPSS and Baxter-King band-pass calls (0.40×, 0.48×, 0.64×),
-  where the Python wrapper's fixed ~0.13 ms per-call cost dominates.
+  (Intel(R) Xeon(R) Processor @ 2.80GHz, 4 cores) tsecon is faster on 22 of 25 operations —
+  ADF 14.3×, VAR(2) 6.8×, Jarque-Bera 122.6× and the Christiano-Fitzgerald
+  filter 22.8× the speed of statsmodels — and slower on 3, which we publish
+  too: GARCH(1,1) QMLE at 0.46× the speed of `arch` (about 2× *slower*), EGARCH at
+  0.15×.
   The parity matrix and every timing live on the
   [speed dashboard](docs/reference/speed.md), rendered from the
   committed [`benchmarks/results/latest.json`](benchmarks/results/latest.json).

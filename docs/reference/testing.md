@@ -563,9 +563,11 @@ is the run behind that page.
 The harness also auto-detects debug builds and refuses to let their timings be
 read as speed claims. The published example run is a case study in why: the
 parity table is identical on either build, and the timings are not. On a
-release wheel tsecon is faster on 22 of the 25 operations, and the three it
-loses are published as losses rather than dropped — GARCH at `0.41x`, GJR at
-`0.44x`, EGARCH at `0.10x`, each against `arch`. `benchmarks/README.md`
+release build tsecon is faster on 22 of the 25 operations, and the three it
+loses are published as losses rather than dropped — GARCH at `0.46x`, GJR at
+`0.60x`, EGARCH at `0.15x`, each against `arch` (the committed Linux run
+behind the [speed dashboard](speed.md); the macOS run in `benchmarks/README.md`
+had them at `0.41x`/`0.44x`/`0.10x`). `benchmarks/README.md`
 deliberately publishes *no* debug timing table, on the stated grounds that one
 would only get quoted; for scale, an earlier four-case version of the suite ran
 3–21× faster than statsmodels in release and 2–6× **slower** in debug, with

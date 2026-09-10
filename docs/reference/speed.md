@@ -14,9 +14,9 @@ single-machine numbers and are labelled with the build that produced them.
 | | |
 |---|---|
 | **Parity** | **65/65 metrics across 25 operations: ALL PASS** |
-| Faster than the reference | 19/25 timed operations (RELEASE build) |
-| Slower than the reference | 6/25 — published below, not dropped |
-| Measured | 2026-09-10, tsecon 0.8.0, Intel(R) Xeon(R) Processor @ 2.80GHz (4 cores) |
+| Faster than the reference | 22/25 timed operations (RELEASE build) |
+| Slower than the reference | 3/25 — published below, not dropped |
+| Measured | 2026-09-10, tsecon 0.9.0, Intel(R) Xeon(R) Processor @ 2.80GHz (4 cores) |
 
 ---
 
@@ -115,43 +115,43 @@ Tolerance notes recorded by the harness:
 
 Read the caveats before the numbers:
 
-- **Build:** `RELEASE` — detected via `<repo>/bindings/python/python/tsecon/_core.abi3.so (17.7 MB) == <target>/release/lib_core.so`.
+- **Build:** `RELEASE` — detected via `<repo>/bindings/python/python/tsecon/_core.abi3.so (18.3 MB) == <target>/release/lib_core.so`.
 - **Machine:** Intel(R) Xeon(R) Processor @ 2.80GHz, 4 cores, Linux-6.18.44-fc-v24-x86_64-with-glibc2.39 (x86_64); Python 3.11.15 (CPython).
-- **Versions:** tsecon 0.8.0, numpy 2.4.6, scipy 1.17.1, statsmodels 0.15.0, arch 8.0.0, scikit-learn 1.9.0.
+- **Versions:** tsecon 0.9.0, numpy 2.4.6, scipy 1.17.1, statsmodels 0.15.0, arch 8.0.0, scikit-learn 1.9.0.
 - **Method:** best (minimum) of 20 wall-clock runs after a warm-up, on the harness's small synthetic inputs; the three QMLE volatility fits use at most 3 repeats. `ratio` is reference time / tsecon time, so values above 1 mean tsecon was faster. Order-of-magnitude information only.
-- **Date:** 2026-09-10T08:28:28+0000.
-- **Per-call overhead:** the public `tsecon.kpss` took 0.138 ms against 0.010 ms for the raw extension entry point `tsecon._core.kpss` on the same array — a fixed ~0.128 ms of Python-side argument validation per call. It is included in every tsecon timing below and dominates the rows whose compute is far below a millisecond; the ratios on those rows measure that wrapper, not the Rust core.
+- **Date:** 2026-09-10T10:10:28+0000.
+- **Per-call overhead:** the public `tsecon.kpss` took 0.014 ms against 0.011 ms for the raw extension entry point `tsecon._core.kpss` on the same array — a fixed ~0.003 ms of Python-side argument validation per call. It is included in every tsecon timing below and dominates the rows whose compute is far below a millisecond; the ratios on those rows measure that wrapper, not the Rust core.
 
 | Operation | Reference | tsecon (ms) | reference (ms) | ratio | |
 |---|---|---:|---:|---:|---|
-| ADF test (regression='c', fixed lag=4) | `statsmodels.tsa.stattools.adfuller` | 0.208 | 0.562 | 2.71x | faster |
-| VAR(2) coefficients (2 vars, trend='c') | `statsmodels.tsa.api.VAR` | 0.500 | 1.644 | 3.29x | faster |
-| OLS + HAC (Newey-West) SEs (maxlags=4, corrected) | `statsmodels OLS cov_type='HAC'` | 0.210 | 0.218 | 1.04x | faster |
-| GARCH(1,1) QMLE (constant mean, normal) | `arch.arch_model` | 50.394 | 23.614 | 0.47x | **SLOWER** |
-| GJR-GARCH(1,1,1) QMLE (constant mean, normal) | `arch.arch_model (o=1)` | 49.787 | 32.449 | 0.65x | **SLOWER** |
-| EGARCH(1,1,1) QMLE (constant mean, normal) | `arch.arch_model (vol='EGARCH')` | 101.436 | 15.980 | 0.16x | **SLOWER** |
-| KPSS test (regression='c', auto lags) | `statsmodels.tsa.stattools.kpss` | 0.142 | 0.067 | 0.48x | **SLOWER** |
-| ACF (20 lags) + Bartlett SEs | `statsmodels.tsa.stattools.acf` | 0.174 | 0.071 | 0.40x | **SLOWER** |
-| PACF (15 lags, Yule-Walker + OLS) | `statsmodels.tsa.stattools.pacf` | 0.158 | 1.055 | 6.66x | faster |
-| Ljung-Box + Box-Pierce (lags 1..10) | `statsmodels.stats.diagnostic.acorr_ljungbox` | 0.132 | 0.325 | 2.46x | faster |
-| Jarque-Bera normality test | `statsmodels.stats.stattools.jarque_bera` | 0.091 | 0.809 | 8.90x | faster |
-| Engle ARCH-LM test (4 lags) | `statsmodels.stats.diagnostic.het_arch` | 0.173 | 0.569 | 3.28x | faster |
-| White heteroskedasticity test | `statsmodels.stats.diagnostic.het_white` | 0.177 | 0.779 | 4.39x | faster |
-| Breusch-Pagan test (Koenker studentised) | `statsmodels.stats.diagnostic.het_breuschpagan` | 0.152 | 0.645 | 4.26x | faster |
-| Ramsey RESET (powers of yhat up to 3) | `statsmodels.stats.diagnostic.linear_reset` | 0.172 | 0.839 | 4.87x | faster |
-| Johansen cointegration (3 vars, k_ar_diff=1) | `statsmodels.tsa.vector_ar.vecm.coint_johansen` | 0.241 | 1.116 | 4.63x | faster |
-| VAR(2) orthogonalised IRF + FEVD (h=10) | `statsmodels VARResults.irf/.fevd` | 0.310 | 2.135 | 6.88x | faster |
-| VAR(2) Granger causality F-test | `statsmodels VARResults.test_causality(kind='f')` | 0.286 | 2.495 | 8.73x | faster |
-| HP filter (lambda=1600, two-sided) | `statsmodels.tsa.filters.hp_filter.hpfilter` | 0.186 | 1.110 | 5.95x | faster |
-| Baxter-King band-pass (low=6, high=32, k=12) | `statsmodels.tsa.filters.bk_filter.bkfilter` | 0.171 | 0.111 | 0.64x | **SLOWER** |
-| Christiano-Fitzgerald band-pass (low=6, high=32) | `statsmodels.tsa.filters.cf_filter.cffilter` | 0.600 | 9.372 | 15.61x | faster |
-| Periodogram PSD (boxcar, n=4096) | `scipy.signal.periodogram` | 0.285 | 0.483 | 1.69x | faster |
-| Welch PSD (Hann, nperseg=256, 50% overlap) | `scipy.signal.welch` | 0.259 | 0.982 | 3.79x | faster |
-| Ridge regression (alpha=1.0, no intercept) | `sklearn.linear_model.Ridge` | 0.242 | 0.622 | 2.57x | faster |
-| Elastic net / lasso (coordinate descent) | `sklearn.linear_model.ElasticNet` | 0.260 | 0.465 | 1.79x | faster |
+| ADF test (regression='c', fixed lag=4) | `statsmodels.tsa.stattools.adfuller` | 0.036 | 0.523 | 14.34x | faster |
+| VAR(2) coefficients (2 vars, trend='c') | `statsmodels.tsa.api.VAR` | 0.253 | 1.710 | 6.76x | faster |
+| OLS + HAC (Newey-West) SEs (maxlags=4, corrected) | `statsmodels OLS cov_type='HAC'` | 0.041 | 0.261 | 6.40x | faster |
+| GARCH(1,1) QMLE (constant mean, normal) | `arch.arch_model` | 52.503 | 24.191 | 0.46x | **SLOWER** |
+| GJR-GARCH(1,1,1) QMLE (constant mean, normal) | `arch.arch_model (o=1)` | 49.408 | 29.732 | 0.60x | **SLOWER** |
+| EGARCH(1,1,1) QMLE (constant mean, normal) | `arch.arch_model (vol='EGARCH')` | 101.159 | 15.678 | 0.15x | **SLOWER** |
+| KPSS test (regression='c', auto lags) | `statsmodels.tsa.stattools.kpss` | 0.014 | 0.066 | 4.89x | faster |
+| ACF (20 lags) + Bartlett SEs | `statsmodels.tsa.stattools.acf` | 0.034 | 0.070 | 2.04x | faster |
+| PACF (15 lags, Yule-Walker + OLS) | `statsmodels.tsa.stattools.pacf` | 0.032 | 1.071 | 33.91x | faster |
+| Ljung-Box + Box-Pierce (lags 1..10) | `statsmodels.stats.diagnostic.acorr_ljungbox` | 0.014 | 0.322 | 22.50x | faster |
+| Jarque-Bera normality test | `statsmodels.stats.stattools.jarque_bera` | 0.007 | 0.799 | 122.59x | faster |
+| Engle ARCH-LM test (4 lags) | `statsmodels.stats.diagnostic.het_arch` | 0.040 | 0.732 | 18.34x | faster |
+| White heteroskedasticity test | `statsmodels.stats.diagnostic.het_white` | 0.038 | 0.756 | 20.04x | faster |
+| Breusch-Pagan test (Koenker studentised) | `statsmodels.stats.diagnostic.het_breuschpagan` | 0.031 | 0.663 | 21.33x | faster |
+| Ramsey RESET (powers of yhat up to 3) | `statsmodels.stats.diagnostic.linear_reset` | 0.036 | 0.881 | 24.74x | faster |
+| Johansen cointegration (3 vars, k_ar_diff=1) | `statsmodels.tsa.vector_ar.vecm.coint_johansen` | 0.070 | 1.117 | 15.93x | faster |
+| VAR(2) orthogonalised IRF + FEVD (h=10) | `statsmodels VARResults.irf/.fevd` | 0.071 | 2.137 | 30.11x | faster |
+| VAR(2) Granger causality F-test | `statsmodels VARResults.test_causality(kind='f')` | 0.058 | 2.391 | 41.37x | faster |
+| HP filter (lambda=1600, two-sided) | `statsmodels.tsa.filters.hp_filter.hpfilter` | 0.035 | 1.083 | 31.04x | faster |
+| Baxter-King band-pass (low=6, high=32, k=12) | `statsmodels.tsa.filters.bk_filter.bkfilter` | 0.018 | 0.110 | 6.10x | faster |
+| Christiano-Fitzgerald band-pass (low=6, high=32) | `statsmodels.tsa.filters.cf_filter.cffilter` | 0.419 | 9.537 | 22.77x | faster |
+| Periodogram PSD (boxcar, n=4096) | `scipy.signal.periodogram` | 0.100 | 0.496 | 4.98x | faster |
+| Welch PSD (Hann, nperseg=256, 50% overlap) | `scipy.signal.welch` | 0.051 | 0.964 | 18.93x | faster |
+| Ridge regression (alpha=1.0, no intercept) | `sklearn.linear_model.Ridge` | 0.071 | 0.599 | 8.42x | faster |
+| Elastic net / lasso (coordinate descent) | `sklearn.linear_model.ElasticNet` | 0.070 | 0.445 | 6.38x | faster |
 
-tsecon was faster on **19 of 25** timed operations in this run.
-The losses are published with the wins: GARCH(1,1) QMLE (constant mean, normal) at 0.47x, GJR-GARCH(1,1,1) QMLE (constant mean, normal) at 0.65x, EGARCH(1,1,1) QMLE (constant mean, normal) at 0.16x, KPSS test (regression='c', auto lags) at 0.48x, ACF (20 lags) + Bartlett SEs at 0.40x, Baxter-King band-pass (low=6, high=32, k=12) at 0.64x. The harness README explains what was measured and deliberately *not* done about each of them.
+tsecon was faster on **22 of 25** timed operations in this run.
+The losses are published with the wins: GARCH(1,1) QMLE (constant mean, normal) at 0.46x, GJR-GARCH(1,1,1) QMLE (constant mean, normal) at 0.60x, EGARCH(1,1,1) QMLE (constant mean, normal) at 0.15x. The harness README explains what was measured and deliberately *not* done about each of them.
 
 ---
 
