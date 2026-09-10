@@ -404,7 +404,7 @@ JSON records the release build.)
   default (M3), the `histories` clamp (L2) and the `mc_se` wording (L3)
   with `test_audit_round13.py`; the five tripwires plus the four slice
   files (`test_setar_ci`, `test_girf`, `test_jsz`, `test_panel_dl`):
-  247 passed. No Rust code changed — doc comments in the binding crate
+  246 passed. No Rust code changed — doc comments in the binding crate
   only, rebuilt with `maturin develop --release`; `cargo fmt --all
   --check` and `cargo clippy -p tsecon-python --all-targets -- -D
   warnings` clean; `docs/gen_api_reference.py` byte-identical to the
