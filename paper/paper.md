@@ -138,13 +138,18 @@ The 179 functions span the applied workflow end to end:
   `engle_granger`, `phillips_ouliaris`); factor models and `favar`; and
   Diebold–Yilmaz `connectedness`.
 - **Nonlinear and regime dynamics**: threshold autoregressions (`setar`,
-  `setar_test`); smooth-transition LSTAR/ESTAR models by concentrated
+  `setar_test`) with Hansen's likelihood-ratio confidence set for the
+  threshold (`setar_threshold_ci`) [@hansen2000]; smooth-transition LSTAR/ESTAR models by concentrated
   nonlinear least squares with the Teräsvirta modeling cycle (`star`,
   `star_eval`, `star_test`) [@terasvirta1994]; and the multivariate threshold
   pair — a two-regime threshold VAR with a robust sup-Wald test
   (`threshold_var`, `threshold_var_test`) and Hansen–Seo threshold
   cointegration with a fixed-regressor-bootstrap sup-LM test
-  (`threshold_vecm`, `hansen_seo_test`) [@hansenseo2002].
+  (`threshold_vecm`, `hansen_seo_test`) [@hansenseo2002]; and, new in
+  0.9.0, the Koop–Pesaran–Potter generalized impulse-response engine
+  [@koop1996] — `var_girf` on the linear VAR, where it reproduces the
+  Cholesky and Pesaran–Shin responses exactly, and `threshold_var_girf` for
+  the regime-dependent responses of the threshold VAR.
 - **Forecast evaluation**: `dm_test`, `cw_test`, `gw_test`, `theta_forecast`,
   a leakage-checked rolling/expanding `backtest` engine, and distribution-free
   prediction intervals by split, EnbPI, and adaptive conformal inference
@@ -172,9 +177,13 @@ The 179 functions span the applied workflow end to end:
   regressor and echo state network (`mlp_regression`, `echo_state_network`).
 - **Panel, term structure, and structural-economic models**: the mean-group /
   CCE-MG / PMG panel trio (`panel_mean_group`, `panel_pmg`), panel local
-  projections (`panel_lp`); the Nelson–Siegel / Svensson yield curve
-  (`nelson_siegel`, `svensson`, `dynamic_ns`) and its arbitrage-free adjustment
-  (`afns_adjustment`) [@christensen2011]; GMM/IV-GMM (`iv_gmm`,
+  projections (`panel_lp`), and the distributed-lag panel regression of the
+  climate-impact literature (`panel_distributed_lag`) [@dell2012; @burke2015];
+  the Nelson–Siegel / Svensson yield curve
+  (`nelson_siegel`, `svensson`, `dynamic_ns`), its arbitrage-free adjustment
+  (`afns_adjustment`) [@christensen2011], and the Joslin–Singleton–Zhu
+  canonical affine term-structure model (`jsz_fit`, `jsz_loadings`)
+  [@joslin2011]; GMM/IV-GMM (`iv_gmm`,
   `gmm_nonlinear`); survey-expectations tools (`cg_regression`,
   `forecast_efficiency`); recession-probability models (`recession_probit`);
   and a linear rational-expectations solver (`dsge_solve`) that returns the
@@ -199,7 +208,7 @@ The Rust core carries a large unit and integration suite of **1721 passing
 `#[test]` cases** (1479 integration tests in `crates/*/tests/`, 242 unit tests
 in `src/`); with 54 documentation tests the workspace total is 1775 passing
 Rust tests, with 10 explicitly ignored. The Python layer adds a conformance
-suite of 1576 tests across 101 files whose fixtures are gated against
+suite of 1705 tests across 105 files whose fixtures are gated against
 `statsmodels`, `arch`, `linearmodels`, `scikit-learn`, SciPy, and `ArviZ`. The
 replication fixtures *are* the integration test suite.
 

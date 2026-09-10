@@ -100,7 +100,7 @@ The **[Quickstart](docs/quickstart.md)** and the symptom-driven
 
 ## Documentation
 
-- **[The Guide](docs/guide/README.md)** — a free 15-chapter course in time
+- **[The Guide](docs/guide/README.md)** — a free 16-chapter course in time
   series econometrics, beginner to research-grade, mirroring the library.
 - **[Which model when?](docs/which-model-when.md)** — start from your problem,
   get routed to the right function.
