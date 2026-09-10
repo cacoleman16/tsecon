@@ -132,6 +132,36 @@ pub enum TermStructureError {
         /// The offending value.
         value: f64,
     },
+    /// A JSZ risk-neutral eigenvalue `lambda_q[i]` was non-finite. The
+    /// canonical form (Joslin-Singleton-Zhu 2011) needs `N` finite real
+    /// Q-eigenvalues; typical monthly values sit in `(0.5, 1]`.
+    InvalidQEigenvalue {
+        /// Zero-based index into `lambda_q`.
+        index: usize,
+        /// The offending value.
+        value: f64,
+    },
+    /// The JSZ Q-eigenvalues were not in non-increasing order. The canonical
+    /// form orders them `lambda_1 >= lambda_2 >= ... >= lambda_N` (equal
+    /// neighbours form a Jordan block), and `k_inf_q` is the drift attached
+    /// to the first — the most persistent — one, so the ordering is part of
+    /// the parameterization, not a cosmetic choice.
+    QEigenvaluesNotOrdered {
+        /// Zero-based index of the first entry that exceeds its predecessor.
+        index: usize,
+    },
+    /// The portfolio-weight matrix `w` supplied to the JSZ fit was unusable:
+    /// wrong shape, non-finite, or rank-deficient (its rows must span an
+    /// `n_factors`-dimensional space of yield portfolios).
+    InvalidWeights {
+        /// What was wrong with the matrix.
+        reason: &'static str,
+        /// The number of rows expected (`n_factors`) or found, depending on
+        /// `reason`.
+        rows: usize,
+        /// The number of columns expected (`n_maturities`) or found.
+        cols: usize,
+    },
 }
 
 impl fmt::Display for TermStructureError {
@@ -233,6 +263,29 @@ impl fmt::Display for TermStructureError {
                  positive, finite number of compounding periods per year (12 \
                  for monthly maturities, 4 for quarterly) so annualized yields \
                  convert to the per-period log yields the recursions price"
+            ),
+            TermStructureError::InvalidQEigenvalue { index, value } => write!(
+                f,
+                "lambda_q[{index}] = {value} is invalid: the JSZ canonical form \
+                 needs finite real risk-neutral eigenvalues (per period; \
+                 monthly estimates typically lie in (0.5, 1], the first near 1)"
+            ),
+            TermStructureError::QEigenvaluesNotOrdered { index } => write!(
+                f,
+                "lambda_q must be ordered lambda_1 >= lambda_2 >= ... (the JSZ \
+                 canonical form attaches k_inf_q to the first, most persistent \
+                 eigenvalue and turns equal neighbours into a Jordan block), \
+                 but lambda_q[{index}] exceeds lambda_q[{prev}]; sort them in \
+                 descending order",
+                prev = index.saturating_sub(1)
+            ),
+            TermStructureError::InvalidWeights { reason, rows, cols } => write!(
+                f,
+                "portfolio weights w are unusable ({reason}; rows = {rows}, \
+                 cols = {cols}): w must be an n_factors x n_maturities matrix \
+                 of finite entries whose rows are linearly independent, so that \
+                 P_t = w y_t spans n_factors yield portfolios; pass None for \
+                 the default principal-component loadings"
             ),
         }
     }

@@ -62,6 +62,16 @@
 //!   arbitrage-free, ACM prices the *time series* of returns to split long
 //!   yields into expectations and risk compensation — see the [`acm`] module
 //!   docs for the exact recursions and when to use which.
+//! - [`fit_jsz`] / [`jsz_loadings`] / [`jsz_loglik`] — the **JSZ canonical
+//!   Gaussian affine term-structure model** (Joslin-Singleton-Zhu 2011)
+//!   estimated by maximum likelihood: the risk-neutral dynamics carry only
+//!   the ordered eigenvalues `lambda^Q` and one drift `k_inf^Q`, the
+//!   physical VAR of `N` observed yield portfolios is concentrated out by
+//!   OLS, and the numerical search runs only over the `Q` parameters and
+//!   the innovation covariance. Nests the AFNS loadings at
+//!   `lambda^Q = (1, e^{-lambda}, e^{-lambda})` and reports the same
+//!   fitted / risk-neutral / term-premium decomposition as ACM — see the
+//!   [`jsz`] module docs.
 //!
 //! ```
 //! use tsecon_termstructure::{fit_nelson_siegel, nelson_siegel_loadings};
@@ -104,6 +114,9 @@
 //! - Christensen, J. H. E., Diebold, F. X., & Rudebusch, G. D. (2011). "The
 //!   affine arbitrage-free class of Nelson-Siegel term structure models."
 //!   *Journal of Econometrics*, 164(1), 4-20.
+//! - Joslin, S., Singleton, K. J., & Zhu, H. (2011). "A New Perspective on
+//!   Gaussian Dynamic Term Structure Models." *Review of Financial Studies*,
+//!   24(3), 926-970.
 
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -113,6 +126,7 @@ mod afns;
 mod dynamic;
 mod error;
 mod fit;
+pub mod jsz;
 mod loadings;
 mod optlambda;
 mod svensson;
@@ -122,6 +136,7 @@ pub use afns::{afns_yield_adjustment, fit_afns, AfnsFit};
 pub use dynamic::{ar1_fit, fit_dynamic_ns, Ar1, DynamicNsFit, DynamicNsForecast};
 pub use error::TermStructureError;
 pub use fit::{fit_nelson_siegel, NsFit};
+pub use jsz::{fit_jsz, jsz_loadings, jsz_loglik, JszFit, JszLoadings};
 pub use loadings::{nelson_siegel_forward_loadings, nelson_siegel_loadings, svensson_loadings};
 pub use optlambda::fit_nelson_siegel_optimal_lambda;
 pub use svensson::{fit_svensson, SvenssonFit};
