@@ -121,12 +121,38 @@ def test_one_element_list_where_a_scalar_goes_names_the_argument(call, offender,
     """The wrapper turns a flat numeric list into an array (data everywhere
     else); the boundary then fails in NumPy's words ("only integer scalar
     arrays can be converted to a scalar index"). The data array must never
-    be the one blamed."""
-    with pytest.raises(TypeError) as info:
-        call()
-    msg = str(info.value)
-    assert offender in msg and want in msg and "one-element list" in msg, msg
+    be the one blamed.
+
+    NumPy before 2.4 still *converts* a one-element float array to a Python
+    float (with a DeprecationWarning since 1.25), so on those versions the
+    ``trim=[0.5]`` call reaches the compiled validator as ``trim=0.5`` and is
+    refused there, by name; the CI wheel job on Python 3.9 runs such a
+    NumPy. Either way the refusal names ``trim``, never the data array.
+    """
+    if want == "real number" and _one_element_float_converts():
+        with pytest.raises(ValueError, match=r"trim = 0\.5") as info:
+            call()
+        msg = str(info.value)
+    else:
+        with pytest.raises(TypeError) as info:
+            call()
+        msg = str(info.value)
+        assert offender in msg and want in msg and "one-element list" in msg, msg
     assert "shape=(200" not in msg and "data=" not in msg and "y=" not in msg, msg
+
+
+def _one_element_float_converts() -> bool:
+    """True when this NumPy turns ``array([0.5])`` into ``0.5`` (deprecated
+    since 1.25, an error from 2.4)."""
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        try:
+            float(np.array([0.5]))
+        except TypeError:
+            return False
+    return True
 
 
 def test_rank_error_names_the_array_parameter_not_its_position():
