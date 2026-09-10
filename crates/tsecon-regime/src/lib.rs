@@ -52,7 +52,13 @@
 //!   trimmed order-statistic threshold grid, Hansen 1997/2000) and
 //!   [`setar_test`] (the Hansen 1996 sup-F linearity test with a
 //!   fixed-regressor wild bootstrap p-value; never a chi-squared tail —
-//!   the Davies problem) — and its multivariate companion, the two-regime
+//!   the Davies problem), with [`setar_threshold_ci`] — the Hansen
+//!   (1997/2000) likelihood-ratio confidence set for the threshold
+//!   (closed-form critical values, the `eta^2` heteroskedasticity scaling,
+//!   possibly disjoint intervals, and the conservative slope-interval
+//!   union; [`threshold_regression_ci`] is the same construction on a
+//!   user-supplied sample-splitting design) — and its multivariate
+//!   companion, the two-regime
 //!   **threshold VAR**: [`threshold_var`] (per-regime OLS minimizing
 //!   `ln det SigmaHat` over the same trimmed grid) and
 //!   [`threshold_var_test`] (the robust sup-Wald linearity test in score
@@ -98,6 +104,7 @@ mod model;
 mod params;
 mod results;
 mod setar;
+mod setar_ci;
 mod spec;
 mod star;
 mod tvar;
@@ -107,6 +114,10 @@ pub use model::MarkovSwitchingAr;
 pub use params::MsarParams;
 pub use results::{classify, FilterResult, FitResult, SmoothResult};
 pub use setar::{setar, setar_test, SetarFit, SetarTest};
+pub use setar_ci::{
+    hansen_lr_critical_value, hansen_lr_pvalue, setar_threshold_ci, threshold_regression_ci,
+    SlopeCi, ThresholdCi, ThresholdCiOptions,
+};
 pub use spec::MsarSpec;
 pub use star::{
     star, star_eval, star_test, StarEval, StarFit, StarModel, StarTest, StarTestResult,

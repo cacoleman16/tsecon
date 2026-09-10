@@ -60,7 +60,7 @@ method fits your problem and how to trust its output.
 | [Local projections](model-cards/local-projections.md) | `lp`, `lp_iv`, `lp_multiplier`, `lp_state`, `smooth_lp` |
 | [Bayesian](model-cards/bayesian.md) | `bvar_fit`, `bvar_hierarchical`, `bvar_ssvs`, `bvar_irf_draws`, `mcmc_diagnostics` |
 | [GMM](model-cards/gmm.md) | `iv_gmm`, `gmm_nonlinear` |
-| [Cointegration & regimes](model-cards/cointegration-regime.md) | `johansen`, `vecm`, `ou_fit`, `spread_zscore`, `markov_switching_ar`, `setar`, `setar_test`, `star`, `star_eval`, `star_test`, `threshold_vecm`, `hansen_seo_test`, `threshold_var`, `threshold_var_test` |
+| [Cointegration & regimes](model-cards/cointegration-regime.md) | `johansen`, `vecm`, `ou_fit`, `spread_zscore`, `markov_switching_ar`, `setar`, `setar_test`, `setar_threshold_ci`, `star`, `star_eval`, `star_test`, `threshold_vecm`, `hansen_seo_test`, `threshold_var`, `threshold_var_test` |
 | [Forecasting](model-cards/forecasting.md) | `backtest`, `dm_test`, `cw_test`, `gw_test`, `theta_forecast`, `accuracy` |
 | [Machine learning](model-cards/machine-learning.md) | `ridge`, `lasso`, `elastic_net`, `adaptive_lasso`, `lasso_path`, `cv_splits` |
 | [Structured penalties & post-selection](model-cards/ml-structured.md) | `group_lasso`, `post_lasso`, `pds_lasso` |

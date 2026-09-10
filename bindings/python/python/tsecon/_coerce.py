@@ -66,6 +66,9 @@ _EXEMPT: dict[str, frozenset[str]] = {
     "arima_fit": frozenset({"seasonal"}),
     # Candidate threshold delays d in y_{t-d}: integer lags, not data.
     "setar": frozenset({"delays"}),
+    # The threshold confidence set refits the same SETAR: same integer
+    # candidate delays.
+    "setar_threshold_ci": frozenset({"delays"}),
     # Candidate transition delays d in y_{t-d}: integer lags, not data.
     "star": frozenset({"delays"}),
     "star_test": frozenset({"delays"}),

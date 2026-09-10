@@ -546,6 +546,163 @@ if lin["p_value"] < 0.05:
 
 ---
 
+## `setar_threshold_ci` — Hansen (1997/2000) threshold confidence set
+
+**What it estimates.** A confidence set for the SETAR threshold `γ` by
+inverting Hansen's likelihood-ratio statistic over the candidate grid. The fit
+underneath is *exactly* `setar`'s (same grid, trimming, delay convention —
+`threshold`, `thresholds` and `ssr_path` are bit-identical); on top of it the
+profile `LR_n(γ) = n·(S(γ) − S_min)/S_min` is compared with the closed-form
+critical value `c = −2·ln(1 − √level)` — the `level` quantile of
+`P(ξ ≤ x) = (1 − e^{−x/2})²`, Hansen (2000) Table 1: 4.50 / 5.94 / 7.35 /
+10.59 at 80 / 90 / 95 / 99% — and the set is `{γ : LR_n(γ) ≤ η²·c}`. It
+always contains the estimate (LR = 0 there), is typically **asymmetric**, and
+can be **disjoint** when the SSR profile has several near-minimal valleys, so
+it is returned as a list of closed `intervals` (grid endpoints, as Hansen's own
+programs report), with `is_connected` and the convex hull `ci_low`/`ci_high` —
+never silently collapsed to one interval. This is the "threshold inference"
+the roadmap row asked for: the reported SEs of `setar` are for the regression
+coefficients, and the threshold's sampling distribution is nonstandard.
+
+**Assumptions.** Hansen's (2000) "small threshold effect" frame — the regime
+difference shrinks with the sample so that the LR limit is free of nuisance
+parameters; with a *fixed* effect the set is asymptotically **conservative**
+(covers at least nominally). Homoskedastic errors for the plain set;
+`het_robust=True` applies the §3.4 scale
+`η² = E[e²(x'δ)² | q = γ] / (σ² E[(x'δ)² | q = γ])`, estimated as Hansen's
+programs do — regress `(x'δ̂)²` and `ê²(x'δ̂)²` on a quadratic in the
+threshold variable `y_{t−d}` (with intercept), ratio of the fitted values at
+`γ̂`, divided by `σ̂² = S_min/n`. A threshold effect must exist for `η²` to be
+identified: with `δ̂ ≈ 0` the quadratic fit can be *negative* at `γ̂`, and the
+library refuses with a teaching error instead of reporting a negative scale.
+
+**When to use (and when not).** After `setar_test` has rejected linearity and
+`setar` has an estimate: report the *set*, not `γ̂` alone — its width (and its
+possible fragmentation) is the honest statement of how well the threshold is
+identified; a flat SSR valley gives a wide or disjoint set. Use
+`null_threshold=γ₀` to test a specific economic threshold (the p-value
+`pvalue_at_threshold = 1 − (1 − e^{−LR/2})²` is the test inversion at that
+point; LR is a step function, so `γ₀` is evaluated at the largest candidate
+`≤ γ₀`, reported as `null_threshold_used`). Use `slope_level=0.95` for the
+§3.3 **conservative slope intervals**: the union, over every candidate in the
+`slope_region_level` threshold set (default 0.80, Hansen's applied
+convention), of the conventional per-regime intervals `b_j(γ) ± z·se_j(γ)`
+(classical per-regime SEs as `setar` reports, or HC0 under `het_robust`) —
+returned as `slope_ci_low`/`slope_ci_high`, each `[[low regime], [high
+regime]]`. Not for STAR (no threshold to invert on) or for Markov switching;
+not a substitute for `setar_test` — on linear data the set is simply most of
+the grid (the fixture's linear AR(1) case returns seven intervals covering
+87 of 140 candidates).
+
+**Key arguments and defaults (and why).** `p`, `delay=1`/`delays`,
+`trim=0.15`, `constant=True` exactly as `setar` (the set must sit on the
+reported fit); `level=0.95`; `het_robust=False` (the correction is noisy —
+see below — so it is opt-in, as in Hansen's programs); `slope_level=None`
+(slope unions cost one refit per candidate in the region);
+`slope_region_level=None` (0.80 when slope intervals are requested; passing it
+*without* `slope_level` raises, since it would be inert); `null_threshold=None`
+(must lie inside `[thresholds[0], thresholds[-1]]` — outside the trimmed grid
+the implied split violates the trimming and LR is undefined).
+
+**How to read the output.** `lr_stat` over `thresholds` (plot it against the
+horizontal line `lr_crit_scaled` — the set is where the profile dips below);
+`intervals`, `n_intervals`, `is_connected`, `ci_low`/`ci_high`, `in_set`,
+`n_in_set`; `lr_crit` (closed form) and `lr_crit_scaled = eta2·lr_crit`;
+`eta2` (exactly 1 unless `het_robust`); `null_threshold_used`, `lr_at_null`,
+`pvalue_at_threshold`; the slope block (`slope_region_low/high`,
+`slope_n_region`, `slope_ci_low/high`). A set of one or two candidates on a
+strongly separated SETAR is normal (the threshold is superconsistent, rate
+`n`); a set spanning much of the grid says the split is weakly identified.
+
+**Failure modes.** Small threshold effects in short samples under-cover
+slightly (measured below); `η̂²` by the quadratic-regression convention is
+noisy and occasionally unidentified (measured below); the reported interval
+endpoints are grid values, so the set as a subset of the real line extends
+each run up to (not including) the next candidate — `null_threshold` is the
+exact evaluation; delay search (`delays`) is conditioned on, not accounted
+for, in the set.
+
+**Validated against.** No third-party threshold-CI implementation runs in the
+fixture container (Hansen's site is unreachable from the build container; no R
+`tsDyn`), so the golden (`fixtures/setar_ci.json`) is graded honestly as
+*documented formula* for the closed forms — critical values and p-values
+pinned at 1e-14, Table 1 reproduced to the printed decimals — and as a
+*cross-implementation transcription* for the rest: an independent NumPy
+implementation of the LR profile, the `η²` regressions, the interval/hull
+construction, the null-threshold inversion and the slope unions, pinned at
+1e-10 over seven cases (a two-candidate set, a seven-interval set on linear
+data, a three-interval set under delay search, `η² = 0.35` on a
+heteroskedastic SETAR, slope unions with classical and HC0 SEs). The fit is
+asserted bit-identical to `setar`, and the general `threshold_regression_ci`
+(Rust) fed the SETAR design by hand reproduces the wrapper bit for bit.
+
+**Coverage is measured, not assumed** (`setar_ci_properties.rs`, 500 seeded
+replications per cell, the true threshold covered iff `LR_n(γ₀) ≤ η²·c`):
+
+| design | n | 90% set | 95% set |
+|---|---|---|---|
+| threshold regression after Hansen (2000, §5), effect 0.5 | 100 | 0.886 | 0.930 |
+| | 250 | 0.926 | 0.948 |
+| | 500 | 0.946 | 0.976 |
+| threshold regression after Hansen (2000, §5), effect 1.0 | 100 | 0.950 | 0.972 |
+| | 250 | 0.964 | 0.980 |
+| | 500 | 0.956 | 0.978 |
+| SETAR(2): `1.0 + 0.5y₋₁ + 0.2y₋₂` below 0, `−1.0 + 0.3y₋₁ − 0.2y₋₂` above | 100 | 0.960 | 0.976 |
+| | 250 | 0.964 | 0.982 |
+| | 500 | 0.966 | 0.984 |
+
+The threshold-regression design is `y = θ₁'x·1{q ≤ 2} + θ₂'x·1{q > 2} + e`,
+`x = (1, z)`, `z ~ N(0,1)`, `q ~ N(2,1)`, `θ₁ = 0`, `θ₂ = (δ, δ)`, `e ~
+N(0,1)`, run through the Rust `threshold_regression_ci` (the same
+construction on a user-supplied split; the paper's own estimator). Read
+against Hansen's theory: at or above nominal everywhere except the
+small-effect `n = 100` cell (0.886 at 90%, one MC standard error below), and
+increasingly conservative as the effect grows or the sample lengthens — what
+"asymptotically conservative for a fixed effect" predicts. **The
+heteroskedasticity correction**, on the same design with `e = ε·exp((q−2)/2)`
+(variance 1 at `γ₀` against a pooled `e^{1/2}`, so the true `η² = 0.607`),
+`n = 250`, effect 1.0: the plain set over-covers (0.992 / 0.998); `η̂²` is
+identified in 468 of 500 replications with mean 0.617 but interdecile range
+0.31–0.90; the corrected set then covers 0.915 / 0.938 conditional on
+identification (0.856 / 0.878 if the 32 refusals are counted as misses) — a
+few points under nominal, the price of the noisy scale estimate, which is why
+`het_robust` is opt-in and documented as such. Structural properties are
+asserted outright: the set contains `γ̂` with `LR = 0` exactly, sets nest in
+the level, and the profile, membership, `η²` and p-value are invariant to
+affine transformations of `y` (interval endpoints map affinely).
+
+**Not reproduced.** Hansen's (1997) US unemployment application could not be
+obtained here — his site and FRED are both blocked from the build container —
+so no published application is replicated; nothing about it is quoted.
+
+**References.** Hansen (1997, *SNDE* 2(1)); Hansen (2000, *Econometrica*
+68(3)); Chan (1993, *Annals of Statistics* 21(1)).
+
+```python
+import numpy as np, tsecon
+rng = np.random.default_rng(1)
+y = np.zeros(400)
+for t in range(1, 400):
+    if y[t-1] <= 0.0:
+        y[t] = 1.0 + 0.6 * y[t-1] + rng.standard_normal()
+    else:
+        y[t] = -1.0 + 0.2 * y[t-1] + rng.standard_normal()
+
+ci = tsecon.setar_threshold_ci(y, p=1, delay=1, level=0.95,
+                               slope_level=0.95, null_threshold=0.0)
+print("threshold:", round(ci["threshold"], 3), " 95% set:",
+      [[round(a, 3), round(b, 3)] for a, b in ci["intervals"]],
+      " connected:", ci["is_connected"])
+print("p-value of gamma_0 = 0:", round(ci["pvalue_at_threshold"], 3))
+print("conservative 95% CIs, low regime: ",
+      np.round(ci["slope_ci_low"][0], 2), np.round(ci["slope_ci_high"][0], 2))
+# The heteroskedasticity-robust set (Hansen 2000, section 3.4):
+robust = tsecon.setar_threshold_ci(y, p=1, het_robust=True)
+print("eta^2:", round(robust["eta2"], 3), " set:", robust["intervals"])
+```
+
+---
+
 ## `star` — smooth-transition autoregression (LSTAR / ESTAR)
 
 **What it estimates.** A two-regime STAR(p) (Teräsvirta 1994): an AR(p) whose
