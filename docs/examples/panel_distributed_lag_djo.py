@@ -7,7 +7,8 @@ The AEA data archive and the authors' Stanford/MIT hosts are unreachable
 through the build container's proxy; the file was fetched from a public
 GitHub course mirror (ewibbels/ps750, Week5_Geography) whose variable list
 is byte-for-byte DJO's. Pass a local path as the first argument to use your
-own copy; nothing is committed to the repository.
+own copy; otherwise the file is cached in the system temporary directory,
+never inside the repository — nothing is committed.
 
     .venv/bin/python docs/examples/panel_distributed_lag_djo.py [climate_panel.dta]
 
@@ -28,6 +29,7 @@ Table 3 uses up to 10 lags), and the BHM quadratic form at L = 0 and L = 3
 with the marginal effect at 10 / 20 / 30 degrees and the turning point.
 """
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -41,7 +43,7 @@ WINDOW = (1971, 2003)
 
 def load(path: Path | None) -> pd.DataFrame:
     if path is None:
-        path = Path(__file__).with_name("climate_panel.dta")
+        path = Path(tempfile.gettempdir()) / "tsecon_djo_climate_panel.dta"
         if not path.exists():
             urllib.request.urlretrieve(URL, path)
     d = pd.read_stata(path)[["fips60_06", "year", "wtem", "gdpLCU"]].copy()
