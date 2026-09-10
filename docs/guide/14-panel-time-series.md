@@ -77,6 +77,43 @@ Second — and this is the seam the rest of the chapter pulls on — look at the
 
 > **⚠ Common mistake — clustering with too few clusters.** The cluster-robust standard error is a large-*number-of-clusters* approximation: its theory leans on $N$ (the count of entities) being large, not $T$. With a panel of 6 countries or 10 industries, the clustered SE is itself badly estimated and typically *too small* — the opposite of the reassurance you reached for it to get. Below roughly 30–40 clusters, use the wild cluster bootstrap (Cameron, Gelbach and Miller 2008) instead of trusting the asymptotic clustered SE, and never read a clustered $t$-statistic from a handful of clusters as if it were standard-normal. Driscoll-Kraay has the mirror-image requirement: it leans on large $T$, so it is the wrong tool for a short, wide panel.
 
+### Climate-impact regressions: distributed lags of weather
+
+The fixed-effects regression has one specialisation so common that it deserves its own callable. In the climate-economy literature — Dell, Jones and Olken (2012), Burke, Hsiang and Miguel (2015) — the regressor is *weather* (a country-year temperature, say), which is as close to strictly exogenous as economics gets, and the question is not the contemporaneous coefficient but the **cumulative effect** of a permanent change once its lags have played out:
+
+$$
+y_{it} = \sum_{l=0}^{L} \beta_l\, x_{i,t-l} \;\Big[+ \sum_{l=0}^{L} \gamma_l\, x^2_{i,t-l}\Big] + \alpha_i + \delta_t + \varepsilon_{it}, \qquad B = \sum_l \beta_l .
+$$
+
+The two-way effects do a lot of work here: $\alpha_i$ removes each country's climate (a hot country is compared with itself in hotter and cooler years, never with a cold one), and $\delta_t$ removes global shocks and global warming itself. If $\beta_0$ is negative but $B \approx 0$, a hot year lowers the *level* of output and it recovers; if $B$ stays negative, the hot year lowers the *growth path* — the DJO distinction. The quadratic form is BHM's: the marginal effect of the cumulative response, $B_1 + 2B_2 x$, changes sign at the turning point $x^* = -B_1/(2B_2)$, the temperature at which output peaks. `tsecon.panel_distributed_lag` builds the lag design (dropping the first $L$ periods of each entity so the panel stays balanced), sweeps out the effects with the same within machinery as `panel_fe`, and returns the cumulative effect, the marginal effects and the turning point with delta-method standard errors from the full covariance:
+
+```python
+import numpy as np, tsecon
+
+# A seeded country-year panel with a known quadratic response: growth peaks at 20 degrees.
+rng = np.random.default_rng(14)
+N, T = 40, 45
+mu = rng.normal(20.0, 5.0, N)                       # each country's climate
+temp = mu[:, None] + rng.standard_normal((N, T))    # weather = climate + shocks
+growth = (rng.normal(0.0, 1.0, N)[:, None] + rng.normal(0.0, 0.5, T)[None, :]
+          + 0.30 * temp - 0.0075 * temp ** 2 + rng.standard_normal((N, T)))
+
+r = tsecon.panel_distributed_lag(growth, temp[None], lags=2, powers=2,
+                                 se_type="cluster", eval_points=[10.0, 20.0, 30.0])
+(b1, b2), (s1, s2) = r["cumulative_effect"][0], r["cumulative_se"][0]
+print(f"cumulative B1 = {b1:.4f} ({s1:.4f})   B2 = {b2:.4f} ({s2:.4f})")
+print(f"turning point = {r['turning_point'][0]:.2f} ({r['turning_point_se'][0]:.2f}) degrees")
+for x, m, se in zip(r["eval_points"][0], r["marginal_effect"][0], r["marginal_se"][0]):
+    print(f"marginal effect at {x:4.1f} degrees: {m:+.4f} ({se:.4f})")
+# cumulative B1 = 0.3179 (0.1159)   B2 = -0.0074 (0.0026)
+# turning point = 21.60 (2.69) degrees
+# marginal effect at 10.0 degrees: +0.1707 (0.0688)
+# marginal effect at 20.0 degrees: +0.0236 (0.0395)
+# marginal effect at 30.0 degrees: -0.1235 (0.0624)
+```
+
+(The printed numbers are pinned by `test_guide_chapter_example_numbers` in `bindings/python/tests/test_panel_dl.py`.) The truth of this DGP is $dy/dx = 0.30 - 0.015\,x$ with a peak at 20 degrees, and every estimate sits within one standard error of it — with three lag terms of a regressor whose true coefficients beyond $l = 0$ are zero, the cumulative sum is what recovers the impact, at the price of the wider interval that summing three noisy coefficients costs (compare `lags=0` on the same panel). Three cautions travel with the callable. The regressor must be strictly exogenous and the design has **no lagged dependent variable** (a lagged outcome would reintroduce the Nickell bias of the next section); the panel must be **balanced**, so an unbalanced country-year file has to be trimmed to a common window first — and the trimmed sample is a different population, which the committed DJO script [`docs/examples/panel_distributed_lag_djo.py`](../examples/panel_distributed_lag_djo.py) shows on the real Dell-Jones-Olken data; and the interval is only as good as its covariance: on seeded panels the 95% interval on $B$ covered 0.93–0.94 under entity clustering ($N = 50$–$200$) and 0.89–0.92 under Driscoll-Kraay ($T = 50$–$200$) — the measured table is on the [panel model card](../reference/model-cards/panel.md#distributed-lag-panel-regressions-panel_distributed_lag).
+
 ## Panel local projections
 
 Chapter 9 built the impulse response one regression per horizon, for a single time series. The panel version keeps that skeleton and pools it across entities — and it is the engine behind the Jordà-Schularick-Taylor macrohistory program, where "what happens after a credit boom?" is answered by projecting many countries' outcomes onto a common event, quarter by quarter across the horizon.
@@ -340,6 +377,7 @@ whole caveat, and it is not a footnote:
 **Available now in Python** — everything this chapter's four runnable examples call, plus the frontier's pooled mean group:
 
 - `tsecon.panel_fe(outcome, regressors, se_type="cluster", bandwidth=4.0)` — fixed-effects panel OLS with `outcome` shaped $N \times T$ and `regressors` shaped $k \times N \times T$; `se_type` is `"nonrobust"`, `"cluster"` (by entity), or `"driscoll_kraay"`, and `bandwidth` is the Driscoll-Kraay HAC lag length. Returns `params`, `bse`, `tvalues`, `se_type`.
+- `tsecon.panel_distributed_lag(outcome, regressors, lags, powers=1, entity_effects=True, time_effects=True, entity_trends=False, se_type="cluster", bandwidth=None, eval_points=None)` — the distributed-lag climate-impact regression (Dell-Jones-Olken 2012, Burke-Hsiang-Miguel 2015): `lags` lags of each $N \times T$ regressor (and of its square under `powers=2`) with entity and time effects and optional entity trends, returning the per-lag coefficients, the `cumulative_effect` with its delta-method `cumulative_se` and 95% interval, and under `powers=2` the `marginal_effect` at `eval_points` and the `turning_point` of the cumulative response, each with a standard error. `lags=0, time_effects=False` is `panel_fe` bit for bit.
 - `tsecon.panel_lp(outcome, shock, horizon=8, n_lag_controls=2, se_type="driscoll_kraay", bandwidth=4.0, cumulative=False, jackknife=False, bias_correction="none", band=None, band_alpha=0.1)` — panel local projection of a common `shock` (length $T$) on an $N \times T$ outcome with entity fixed effects; `cumulative` returns the summed multiplier, `jackknife` applies the Dhaene-Jochmans half-panel correction (points only), and `bias_correction="spj"` the Mei-Sheng-Shi split-panel jackknife (points and SEs). Returns `irf`, `se`, `nobs`, plus the stamped `se_type`/`cumulative`/`jackknife`/`bias_correction`; `band="sidak"`/`"bonferroni"` adds a closed-form simultaneous band over the horizons (`band="sup-t"` is refused — no cross-horizon covariance is estimated for the panel LP).
 - `tsecon.mean_group_var(entities, lags=1, trend="c", horizon=10, response=0, impulse=0)` — Pesaran-Smith mean-group panel VAR over a *list* of per-entity $T_i \times k$ matrices (the $T_i$ may differ). Returns averaged `intercept`, `coefs`, and orthogonalized `orth_irfs` with dispersion-based `*_se`, plus the selected `irf_path`/`irf_path_se` for one `(response, impulse)` pair.
 - `tsecon.panel_mean_group(ys, xs, method="mg")` — mean-group (`"mg"`) and CCE-MG (`"cce"`) for a heterogeneous panel, taking per-unit response vectors `ys` and $T_i \times k$ regressor matrices `xs`. Returns `coef`, `se`, `tstat`, the per-unit slope matrix `coef_per_unit`, `n_units`, and `k`. Validated to $\sim$1e-10 against a statsmodels per-unit-OLS golden (see `fixtures/tsecon-panelts.json`).
@@ -358,6 +396,9 @@ These lean on machinery from earlier chapters you can reach for directly: `tseco
 
 - **Pesaran, M. H. and R. Smith (1995), "Estimating Long-Run Relationships from Dynamic Heterogeneous Panels," *Journal of Econometrics*.** The result that pooling heterogeneous dynamics is inconsistent, and the mean-group estimator that answers it — the foundation under both `mean_group_var` and `panel_mean_group`.
 - **Pesaran, M. H. (2006), "Estimation and Inference in Large Heterogeneous Panels with a Multifactor Error Structure," *Econometrica*.** The common correlated effects estimator: the cross-section-average trick that purges an unobserved common factor without ever estimating it. The chapter's climax in one paper.
+- **Dell, M., B. F. Jones and B. A. Olken (2012), "Temperature Shocks and Economic Growth: Evidence from the Last Half Century," *American Economic Journal: Macroeconomics*.** The distributed-lag panel regression of growth on temperature with country and year effects, and the level-versus-growth reading of the cumulative effect — the template for `panel_distributed_lag`.
+- **Burke, M., S. M. Hsiang and E. Miguel (2015), "Global non-linear effect of temperature on economic production," *Nature*.** The quadratic response, its turning point, and the entity-trend and Driscoll-Kraay robustness checks that `powers=2`, `entity_trends` and `se_type="driscoll_kraay"` reproduce.
+- **Hsiang, S. (2016), "Climate Econometrics," *Annual Review of Resource Economics*.** The survey of what weather-panel regressions identify and what they assume — read it before interpreting a cumulative effect as an effect of climate.
 - **Driscoll, J. C. and A. C. Kraay (1998), "Consistent Covariance Matrix Estimation with Spatially Dependent Panel Data," *Review of Economics and Statistics*.** The standard error that is robust to both serial and cross-sectional dependence — `panel_fe`'s and `panel_lp`'s macro-panel default.
 - **Nickell, S. (1981), "Biases in Dynamic Models with Fixed Effects," *Econometrica*.** Why fixed effects and a lagged dependent variable do not mix in short panels — the bias that grows with the horizon in panel LP.
 - **Jordà, Ò., M. Schularick and A. M. Taylor (2013), "When Credit Bites Back," *Journal of Money, Credit and Banking*.** The panel-local-projection macrohistory program — what follows credit booms across 14 countries and 140 years — and the template for `panel_lp` in practice.

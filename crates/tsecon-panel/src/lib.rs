@@ -38,6 +38,15 @@
 //!   per-entity VARs via `tsecon-var`, cross-entity averages of
 //!   coefficients and Cholesky-orthogonalized IRFs, with dispersion-based
 //!   standard errors `sd / sqrt(N)`.
+//! * [`panel_distributed_lag`] — distributed-lag panel regressions, the
+//!   climate-impact specification of Dell-Jones-Olken (2012) and
+//!   Burke-Hsiang-Miguel (2015): `L` lags of each regressor (and of its
+//!   square for a nonlinear response) with entity effects, time effects
+//!   and optional entity-specific trends via [`panel_ols_fe_with`]'s
+//!   [`FixedEffects`] menu, returning the cumulative (long-run) effect
+//!   with its delta-method standard error, and for the quadratic
+//!   response the marginal effect at chosen points and the turning point
+//!   of the cumulative response (see `distributed_lag.rs`).
 //!
 //! ## Nickell bias (read before running dynamic panels with short T)
 //!
@@ -57,6 +66,7 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod data;
+pub mod distributed_lag;
 pub mod error;
 pub mod fe;
 pub mod lp;
@@ -64,8 +74,11 @@ pub mod lpdid;
 pub mod mean_group;
 
 pub use data::PanelData;
+pub use distributed_lag::{panel_distributed_lag, DistributedLagConfig, DistributedLagResult};
 pub use error::PanelError;
-pub use fe::{panel_ols_fe, FePanelOls, PanelInference, PanelSeType};
+pub use fe::{
+    panel_ols_fe, panel_ols_fe_with, FePanelOls, FixedEffects, PanelInference, PanelSeType,
+};
 pub use lp::{panel_lp, LpBiasCorrection, PanelLpConfig, PanelLpResult};
 pub use lpdid::{lp_did, LpDidConfig, LpDidPooled, LpDidResult};
 pub use mean_group::{mean_group_var, mg_irf_path, MeanGroupVar};

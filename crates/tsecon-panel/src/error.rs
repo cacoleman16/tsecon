@@ -52,6 +52,19 @@ pub enum PanelError {
         /// Number of entities `N` (absorbed fixed effects).
         n_entities: usize,
     },
+    /// The within estimator with a general [`crate::FixedEffects`] menu
+    /// (time effects, entity trends) has no residual degrees of freedom:
+    /// it needs `nobs > k + n_absorbed`, where `n_absorbed` counts every
+    /// absorbed effect and trend slope.
+    DegreesOfFreedomAbsorbed {
+        /// Total stacked observations `nobs = N * T`.
+        n: usize,
+        /// Number of slope regressors `k`.
+        k: usize,
+        /// Number of absorbed parameters (entity effects, time effects,
+        /// entity-trend slopes).
+        n_absorbed: usize,
+    },
     /// The sample (or a sub-sample such as a jackknife half-panel) is too
     /// short for the requested horizons/lags.
     InsufficientObservations {
@@ -109,6 +122,14 @@ impl fmt::Display for PanelError {
                  N = {n_entities} absorbed entity means leaves no residual \
                  degrees of freedom (requires n > k + N); supply more \
                  periods or drop regressors"
+            ),
+            PanelError::DegreesOfFreedomAbsorbed { n, k, n_absorbed } => write!(
+                f,
+                "n = {n} stacked observations with k = {k} regressors and \
+                 {n_absorbed} absorbed fixed-effect parameters (entity effects, \
+                 time effects and entity-trend slopes) leaves no residual \
+                 degrees of freedom (requires n > k + n_absorbed); supply more \
+                 periods or entities, or drop effects/regressors"
             ),
             PanelError::InsufficientObservations { what, needed, got } => write!(
                 f,

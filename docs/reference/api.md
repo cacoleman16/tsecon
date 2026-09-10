@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, multivariate-GARCH, panel and term-structure families (and the top-level results of `var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` converts them; the docstring says which. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**174 functions.**
+**175 functions.**
 
 ## diagnostics
 
@@ -5015,4 +5015,88 @@ Hansen (1997/2000) likelihood-ratio confidence set for the threshold
     `pvalue_at_threshold`, `slope_level`, `slope_region_level`,
     `slope_region_low`, `slope_region_high`, `slope_n_region`,
     `slope_ci_low`, `slope_ci_high`.
+# ---- Distributed-lag panel regressions (climate-impact specification)
+
+def panel_distributed_lag(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    lags: int,
+    powers: int = ...,
+    entity_effects: bool = ...,
+    time_effects: bool = ...,
+    entity_trends: bool = ...,
+    se_type: str = ...,
+    bandwidth: float | None = ...,
+    eval_points: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+
+## Distributed-lag panel regressions (climate-impact specification)
+
+### `panel_distributed_lag`
+
+```python
+def panel_distributed_lag(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    lags: int,
+    powers: int = ...,
+    entity_effects: bool = ...,
+    time_effects: bool = ...,
+    entity_trends: bool = ...,
+    se_type: str = ...,
+    bandwidth: float | None = ...,
+    eval_points: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+```
+
+Distributed-lag panel regression — the climate-impact specification of
+    Dell-Jones-Olken (2012) and Burke-Hsiang-Miguel (2015):
+
+        y_it = sum_{l=0..L} beta_l x_{i,t-l} [+ sum_l gamma_l x^2_{i,t-l}]
+               + alpha_i + delta_t [+ g_i t] + e_it
+
+    `outcome` is N x T; `regressors` is k x N x T (weather variables:
+    strictly exogenous, no lagged outcome — a lagged dependent variable
+    would put Nickell bias back into the within estimator; use `panel_lp`
+    with a bias correction for dynamic panels). `lags` is L: lags 0..L of
+    every regressor enter and the first L periods of each entity are
+    dropped so the panel stays balanced (unbalanced panels and NaN are
+    refused). `powers=1` is the linear response, `powers=2` adds the lags
+    of the square (the BHM quadratic response). `entity_effects` (True),
+    `time_effects` (True) and `entity_trends` (False; requires entity
+    effects) choose the fixed effects; at least one effect is required.
+    `se_type` is "nonrobust", "cluster" (by entity — the DJO default) or
+    "driscoll_kraay" (the BHM robustness choice; needs a long T).
+    `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
+    `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
+    explicitly with any other `se_type` raises instead of being silently
+    absorbed. `eval_points` (1-D, default None) are the points at which the
+    marginal effect of the cumulative quadratic response is evaluated for
+    every regressor; it acts ONLY under `powers=2` (None there means each
+    regressor's pooled sample mean) and passing it under `powers=1` raises
+    — the linear cumulative response has one constant marginal effect,
+    `cumulative_effect` itself.
+
+    Design columns are ordered regressor-major, then power, then lag
+    (`names` lists them, e.g. `x0_L0`, `x0_L1`, `x0^2_L0`, ...). Returned
+    keys: `params`, `names`, `bse`, `tvalues`, `cov` (K x K nested lists),
+    `lag_effects` and `lag_se` (`[regressor][power-1][lag]`),
+    `cumulative_effect`, `cumulative_se` (delta method, `sqrt(1' V 1)`),
+    `cumulative_ci_low`, `cumulative_ci_high` (normal 95%,
+    `[regressor][power-1]`), and under `powers=2` `eval_points`,
+    `marginal_effect`, `marginal_se` (`[regressor][point]`; the marginal
+    effect `B_1 + 2 B_2 x` of the cumulative response), `turning_point`,
+    `turning_point_se` (`[regressor]`; `-B_1/(2 B_2)`, NaN when `B_2` is
+    exactly zero) — all five are None under `powers=1`; plus `nobs`
+    (`N (T - L)`), `n_entities`, `n_periods_used` (`T - L`), `lags`,
+    `powers`, `df_resid`, `se_type`, `entity_effects`, `time_effects`,
+    `entity_trends`.
+
+    Validation (fixtures/panel_dl.json): nine cases x three covariance
+    estimators pinned at 1e-10 against linearmodels PanelOLS (slopes, SEs,
+    t-statistics, full covariance; the trends variant via explicit entity x
+    trend regressors), the delta-method quantities against the documented
+    NumPy transcription at 1e-10; the cumulative-effect interval's coverage
+    is measured in seeded Monte Carlo and quoted on the panel model card.
+    The `lags=0`, `time_effects=False` call is bit-identical to `panel_fe`.
 
