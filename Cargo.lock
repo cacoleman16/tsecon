@@ -1289,6 +1289,7 @@ dependencies = [
  "tsecon-optim",
  "tsecon-rng",
  "tsecon-stats",
+ "tsecon-var",
 ]
 
 [[package]]
@@ -1358,6 +1359,7 @@ dependencies = [
 name = "tsecon-var"
 version = "0.8.0"
 dependencies = [
+ "rayon",
  "serde_json",
  "tsecon-bootstrap",
  "tsecon-ident",

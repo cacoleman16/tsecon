@@ -55,12 +55,12 @@ method fits your problem and how to trust its output.
 | [ARIMA](model-cards/arima.md) | `arima_fit`, `ar_loglik` |
 | [Spectral analysis](model-cards/spectral.md) | `periodogram`, `welch`, `coherence` |
 | [Volatility](model-cards/volatility.md) | `garch_fit`, `gas_volatility`, `dcs_local_level`, `ccc_garch`, `dcc_garch` |
-| [VAR / SVAR](model-cards/var-svar.md) | `var_fit`, `var_irf`, `var_irf_bands`, `var_fevd`, `var_granger`, `var_forecast`, `sign_restricted_svar`, `zero_sign_svar`, `favar`, `connectedness` |
+| [VAR / SVAR](model-cards/var-svar.md) | `var_fit`, `var_irf`, `var_irf_bands`, `var_fevd`, `var_granger`, `var_forecast`, `sign_restricted_svar`, `zero_sign_svar`, `favar`, `connectedness`, `var_girf` |
 | [Structural identification (advanced)](model-cards/structural-identification.md) | `long_run_svar`, `max_share_svar`, `proxy_svar`, `hetero_svar` |
 | [Local projections](model-cards/local-projections.md) | `lp`, `lp_iv`, `lp_multiplier`, `lp_state`, `smooth_lp` |
 | [Bayesian](model-cards/bayesian.md) | `bvar_fit`, `bvar_hierarchical`, `bvar_ssvs`, `bvar_irf_draws`, `mcmc_diagnostics` |
 | [GMM](model-cards/gmm.md) | `iv_gmm`, `gmm_nonlinear` |
-| [Cointegration & regimes](model-cards/cointegration-regime.md) | `johansen`, `vecm`, `ou_fit`, `spread_zscore`, `markov_switching_ar`, `setar`, `setar_test`, `setar_threshold_ci`, `star`, `star_eval`, `star_test`, `threshold_vecm`, `hansen_seo_test`, `threshold_var`, `threshold_var_test` |
+| [Cointegration & regimes](model-cards/cointegration-regime.md) | `johansen`, `vecm`, `ou_fit`, `spread_zscore`, `markov_switching_ar`, `setar`, `setar_test`, `setar_threshold_ci`, `star`, `star_eval`, `star_test`, `threshold_vecm`, `hansen_seo_test`, `threshold_var`, `threshold_var_test`, `threshold_var_girf` |
 | [Forecasting](model-cards/forecasting.md) | `backtest`, `dm_test`, `cw_test`, `gw_test`, `theta_forecast`, `accuracy` |
 | [Machine learning](model-cards/machine-learning.md) | `ridge`, `lasso`, `elastic_net`, `adaptive_lasso`, `lasso_path`, `cv_splits` |
 | [Structured penalties & post-selection](model-cards/ml-structured.md) | `group_lasso`, `post_lasso`, `pds_lasso` |

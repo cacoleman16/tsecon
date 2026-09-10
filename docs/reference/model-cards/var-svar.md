@@ -1,8 +1,8 @@
 # Model card — VAR and structural VAR
 
-`var_fit` · `var_irf` · `var_irf_bands` · `var_fevd` · `var_granger` ·
-`var_forecast` · `sign_restricted_svar` · `zero_sign_svar` · `favar` ·
-`connectedness`
+`var_fit` · `var_irf` · `var_irf_bands` · `var_girf` · `var_fevd` ·
+`var_granger` · `var_forecast` · `sign_restricted_svar` · `zero_sign_svar` ·
+`favar` · `connectedness`
 
 The vector autoregression treats a handful of series as one system: every
 variable is regressed on the recent past of every variable. From that one
@@ -238,6 +238,71 @@ bootstrap h=1 band [+0.1269, +0.1816]  vs asymptotic [+0.1321, +0.1847]
 
 The impact response is a clean 0.30 with a band well clear of zero; by $h=5$
 the band straddles zero — the response is no longer distinguishable from noise.
+
+### Generalized impulse responses — `var_girf`
+
+**What it computes.** The Koop-Pesaran-Potter (1996) *simulated* generalized
+impulse response of the fitted linear VAR: from every lag window of the sample
+(or a seeded subsample of `histories` of them) the VAR is simulated forward
+twice with the same future innovations, with and without a shock added to the
+impact-period innovation, and the paired differences are averaged. It is the
+library's shared GIRF engine (`tsecon_var::girf`, the one `threshold_var_girf`
+runs on) pointed at a model where the answer is known in closed form — which
+is exactly why it exists: a nonlinear model's GIRF can be compared with the
+linear benchmark computed *by the same simulator*, and the simulator's
+correctness is checked against textbook formulas rather than against itself.
+
+**The two exact goldens.** With common random numbers the paired difference of
+a linear model is `Ψ_h δ` for every draw and every history, so nothing here is
+Monte Carlo: `shock="orthogonal"` reproduces **`var_irf(orth=True)`** —
+statsmodels `VARResults.irf(orth=True)`, column `shock_var`, times `size` — to
+**1e-12** at every horizon with a single draw, and `shock="generalized"`
+reproduces the **Pesaran-Shin (1998) closed form**
+`Ψ_h Σ e_j / √σ_jj · size` (transcribed in NumPy in
+`fixtures/generate_girf_fixtures.py`, with `Σ` the df-adjusted `sigma_u`) to
+1e-12; the across-history band has zero width and `draw_sd` is exactly zero.
+Both are pinned in `girf_golden.rs` and re-pinned through Python in
+`test_girf.py`, which also asserts the `var_irf` identity directly.
+
+**When to use (and when not).** As the linear comparator for
+`threshold_var_girf` (same shock conventions, same `[h][variable]` layout,
+same engine), and for the *generalized* (Pesaran-Shin) impulse response —
+the ordering-free alternative to a Cholesky IRF that reads "a typical shock to
+variable `j`, letting the others move as they usually do", widely used in GVAR
+work. Not for bands: it returns the point path (with zero simulation noise);
+use `var_irf_bands` for estimation uncertainty.
+
+**Key arguments and defaults.** `p`; `shock_var=0`; `size=1.0` (negative
+allowed; a linear response just scales); `shock="orthogonal"|"generalized"`;
+`horizon=10`; `n_draws=2` with `antithetic=True` (immaterial for a linear
+model, kept for signature parity with the TVAR call); `seed=0`; `trend="c"`;
+`histories=None` (every window); `bands=(0.16, 0.84)`.
+
+**How to read the output.** `girf[h][variable]`, `lower`/`upper`,
+`per_history`, `mc_se`, `draw_sd`, `draw_lower`/`draw_upper`, `n_histories`,
+`n_draws`, `n_effective_draws`, `shock_size_used` (the raw impact innovation to
+`shock_var`: `size·P_jj` orthogonal, `size·√σ_jj` generalized) and
+`shock_vector` — the same keys `threshold_var_girf` returns, so the two can be
+compared field for field.
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+k, n = 3, 400
+A = np.array([[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.5]])
+Y = np.zeros((n, k))
+for t in range(1, n):
+    Y[t] = A @ Y[t - 1] + 0.3 * rng.standard_normal(k)
+
+irf = np.asarray(tsecon.var_irf(Y, lags=2, horizon=8, orth=True))        # [h][resp][shock]
+g = tsecon.var_girf(Y, p=2, shock_var=1, shock="orthogonal", horizon=8)  # simulated
+print(np.abs(np.asarray(g["girf"]) - irf[:, :, 1]).max() < 1e-12)       # True
+print(np.asarray(g["upper"]).shape, g["n_histories"])                     # (9, 3) 398
+```
+
+**References.** Koop, Pesaran & Potter (1996, JoE 74); Pesaran & Shin (1998,
+Economics Letters 58).
 The bootstrap band at $h=1$ lands within a whisker of the delta-method band, the
 reassurance you want when the asymptotics are the thing being trusted.
 

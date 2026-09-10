@@ -11,9 +11,9 @@
 //! `tsecon-var`'s analysis surface (IRFs, FEVDs, forecasts) assumes a
 //! single linear regime and would silently mislead if pointed at a
 //! per-regime fit — regime-dependent *generalized* impulse responses
-//! (Koop-Pesaran-Potter 1996) are the honest tool there and are
-//! deliberately **not** shipped with this estimator (deferred; see the
-//! model card).
+//! (Koop-Pesaran-Potter 1996) are the honest tool there, and
+//! [`crate::tvar_girf`] simulates them from a fit through the shared
+//! `tsecon-var` GIRF engine.
 //!
 //! The model (Tong 1983; Tsay 1998; Lo & Zivot 2001):
 //!

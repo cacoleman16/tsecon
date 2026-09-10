@@ -25,6 +25,11 @@ tsecon-stats = { path = "../tsecon-stats" }
 tsecon-ident = { path = "../tsecon-ident" }
 tsecon-bootstrap = { path = "../tsecon-bootstrap" }
 tsecon-rng = { path = "../tsecon-rng" }
+# The Koop-Pesaran-Potter GIRF engine in `src/girf.rs` parallelizes over
+# conditioning histories with rayon (one SeedSequence-spawned substream
+# tree per history, reductions in history order, so the result is
+# bit-identical at any thread count — the `tsecon-ml` forest pattern).
+rayon = "1"
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy

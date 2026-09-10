@@ -12,6 +12,10 @@ tsecon-bootstrap = { path = "../tsecon-bootstrap" }
 # STAR refinement: Nelder-Mead over (ln gamma, c) after the grid stage.
 tsecon-optim = { path = "../tsecon-optim" }
 tsecon-stats = { path = "../tsecon-stats" }
+# The Koop-Pesaran-Potter GIRF engine (`tsecon_var::girf`) that
+# `src/tvar_girf.rs` adapts the fitted threshold VAR to. tsecon-var does NOT
+# depend on tsecon-regime, so there is no cycle.
+tsecon-var = { path = "../tsecon-var" }
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy

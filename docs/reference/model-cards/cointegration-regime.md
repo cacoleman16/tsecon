@@ -1093,11 +1093,10 @@ observable — output growth above/below a stall speed, spreads in/out of a
 stress band — when you want per-regime coefficient matrices you can read. Not
 for unobserved regimes (Markov-switching), not for smooth transitions, and
 not before `threshold_var_test` says a threshold exists. **Scope honesty:**
-two regimes only, and **no regime-dependent (generalized) impulse responses**
-— GIRFs à la Koop-Pesaran-Potter (1996) require simulating the fitted
-nonlinear system over shock/history distributions and are *deferred*; pointing
-the linear `var_irf` machinery at one regime's matrices would answer a
-question nobody asked, so the library declines to.
+two regimes only. Impulse responses of a TVAR are *generalized* ones —
+`threshold_var_girf` below simulates them à la Koop-Pesaran-Potter (1996);
+pointing the linear `var_irf` machinery at one regime's matrices would answer
+a question nobody asked, so the library does not.
 
 **Key arguments and defaults (and why).** `p` (lags per regime — remember each
 regime spends `m = k·p + 1` coefficients *per equation*); `threshold_index=0`,
@@ -1139,6 +1138,109 @@ asserted).
 
 **References.** Tong (1983); Tsay (1998, JASA); Lo & Zivot (2001,
 Macroeconomic Dynamics); Hubrich & Teräsvirta (2013, survey).
+
+### Generalized impulse responses — `threshold_var_girf`
+
+**What it computes.** The Koop-Pesaran-Potter (1996) generalized impulse
+response of the fitted TVAR,
+`GIRF(h, δ, ω_{t−1}) = E[y_{t+h} | u_t + δ, ω_{t−1}] − E[y_{t+h} | ω_{t−1}]`,
+by simulation: for each conditioning **history** `ω_{t−1}` (an actual lag
+window of the sample) and each of `n_draws` future-innovation draws, the
+fitted nonlinear system is simulated forward twice with the *same* draws —
+once with the shock added to the impact-period innovation, once without — and
+the paired difference is averaged. Every period, each simulated path reads its
+own regime from its own window (the threshold variable at the fitted delay)
+and uses that regime's coefficients *and* that regime's ML residual covariance
+to scale the common standard-normal draw, so a path that crosses `γ` switches
+both. This is the shared `tsecon-var` GIRF engine (`tsecon_var::girf`) applied
+to the TVAR; `var_girf` is the same engine on a linear VAR.
+
+**Conventions (all pinned by the fixture).** *Histories*: every window
+`t ≥ max(p, d)`, in time order; `regime="low"|"high"` keeps the windows whose
+shock-date regime (`y_{threshold_index, t−d} ≤ γ`) is that one; `histories=m`
+draws a seeded subsample of `m` of them. *Shock*: `"orthogonal"` — `size`
+standard deviations of the `shock_var`-th Cholesky-orthogonalized innovation
+of the regime the history is in at the shock date; `"generalized"` — the
+Pesaran-Shin (1998) shock of that regime, `size·Σ_s e_j / √σ_jj`, no ordering
+assumption. Because the impact shock is scaled by the *shock-date regime's*
+covariance, a "one-standard-deviation shock" has a different raw size in the
+two regimes when their covariances differ — `shock_size_used` reports both,
+and a regime comparison on a volatility-switching fit should be read with
+that in mind. *Innovations along the path* come from the covariance of the
+regime the path is in (Balke 2000's regime-by-regime draws; R `tsDyn`'s `GIRF`
+pools residuals because its `TVAR` fits one covariance — its exact scheme is
+stated from its documentation, CRAN being unreachable from the build
+container). *Common random numbers*: the two paths share every draw including
+the impact period's, so the shock enters as a perturbation `u_t + δ` — in a
+linear model this makes the paired difference `Ψ_h δ` exactly, for every draw;
+in a nonlinear one it differs from the "innovation set to δ" reading of KPP by
+the averaging over the impact-period draw. *Antithetic* `(+z, −z)` pairs
+(`antithetic=True`, even `n_draws`); the Monte Carlo standard error uses the
+pair means.
+
+**Key arguments and defaults (and why).** The fit's own `p`, `threshold_index`,
+`delay`/`delays`, `trim`, `constant`; `shock_var=0`, `size=1.0` (negative for
+an adverse shock — simulate the sizes and signs you want to talk about, they
+are *arguments* now), `shock="orthogonal"`; `horizon=20`; `n_draws=500` with
+`antithetic=True` (the Monte Carlo error falls like `1/√n_draws` — measured
+ratio 4.02 between 32 and 512 draws against a 8192-draw reference, theory 4);
+`seed=0`; `regime="all"` (the per-regime averages come back anyway);
+`histories=None` (all windows — the engine is fast enough that subsampling is
+a choice, not a necessity); `bands=(0.16, 0.84)`.
+
+**How to read the output.** `girf[h][variable]` is the average over the used
+histories; `lower`/`upper` are the `bands` quantiles **across histories** —
+the KPP history-conditional distribution, and the honest measure of how much
+the answer depends on where the economy stood (a wide band with a small
+`mc_se` is a finding, not noise); `girf_low_regime`/`girf_high_regime` split
+the same histories by shock-date regime; `per_history` keeps every
+history-conditional path; `mc_se` is the simulation error of `girf`
+(histories fixed); `draw_sd` and `draw_lower`/`draw_upper` describe the spread
+of a *single realized* response across future-innovation draws. Estimation
+uncertainty (the threshold, coefficients and covariances are estimated) is
+**not** in any of these — bootstrap-over-refits bands are the roadmap's
+next step, not something this call fakes.
+
+**Failure modes.** A regime with an explosive root makes the simulated paths
+overflow (refused with a teaching error — check `threshold_var`'s per-regime
+matrices); a regime visited by a handful of windows gives a regime average
+over a handful of histories (`n_low_histories`/`n_high_histories` say so); the
+antithetic option **does not buy variance here** — measured ratio 1.000 on the
+fitted TVAR and 0.953 on a toy threshold model, because the paired difference
+in a threshold model is dominated by regime-crossing events, which are close
+to even functions of the innovation, so the odd component the pairs cancel is
+small; it stays available (it is the classic KPP device and costs nothing) but
+more draws are what shrink `mc_se`.
+
+**Validated how (honest grade).** Three layers, none a third-party TVAR GIRF
+(no `tsDyn` in the container). (1) **Exact linear reduction**: with both
+regimes set equal the TVAR GIRF equals `Ψ_h P e_j` (and the Pesaran-Shin form)
+from `tsecon_var::ma_rep` at **1e-12** for every history, and the
+across-history band collapses (`tvar_girf_properties.rs`); the engine itself
+reproduces statsmodels `VARResults.irf(orth=True)` and the Pesaran-Shin closed
+form at 1e-12 on the linear VAR (`fixtures/girf.json`, `var_girf`). (2) The
+**regime-switching simulation** is pinned at **1e-10** against an independent
+NumPy transcription of the documented engine that reproduces its Philox
+streams through NumPy's own `SeedSequence`/`Philox`/`Generator.random`
+(`generate_girf_fixtures.py`: four cases — orthogonal/generalized, ±sizes,
+`regime="all"|"low"|"high"`, a seeded subsample — pinning `girf`, the bands,
+every per-history path, `mc_se`, `draw_sd`, the regime averages, regimes and
+dates). (3) **Measured nonlinearity** on a strongly asymmetric k = 3 TVAR(1)
+DGP at T = 600 (`tvar_girf_properties.rs`, 400 antithetic draws, 120
+histories; `t` = the difference over its Monte Carlo standard error): peak
+|GIRF(+1)| **0.690**; sign asymmetry max |GIRF(+1) + GIRF(−1)| = **0.149**
+(t = 37); size non-proportionality max |GIRF(2) − 2·GIRF(1)| = **0.040**
+(t = 11.5); regime dependence max |low − high| = **0.111** (t = 60; 340 low,
+259 high histories). Bit-identical at 1 vs 4 rayon threads and across two
+fresh processes with the same seed (asserted). **Speed (indicative,
+single machine, 4 threads):** T = 600, k = 3, 200 histories × 500 antithetic
+draws × horizon 20 (4.2M simulated periods) runs in **0.23 s** in the Rust
+release build and **0.63 s** end to end through Python including the fit —
+the "hours in an interpreted loop" of chapter 13, in well under a second.
+
+**References.** Koop, Pesaran & Potter (1996, JoE 74); Pesaran & Shin (1998,
+Economics Letters 58); Balke (2000, REStat 82); Kilian & Lütkepohl (2017),
+ch. 18.
 
 ---
 

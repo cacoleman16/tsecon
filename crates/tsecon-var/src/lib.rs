@@ -24,7 +24,12 @@
 //! * [`VarResults::fevd`] — forecast-error variance decomposition;
 //! * [`VarResults::forecast`] / [`VarResults::forecast_interval`] —
 //!   iterated point forecasts with asymptotic (innovation-uncertainty
-//!   only) intervals.
+//!   only) intervals;
+//! * [`girf`] / [`GirfModel`] — the Koop-Pesaran-Potter (1996) generalized
+//!   impulse-response simulation engine shared by every nonlinear model
+//!   (common random numbers, antithetic pairs, Philox substreams per
+//!   history and draw), with [`LinearVarModel`] / [`var_girf`] as its
+//!   exact linear reduction.
 //!
 //! The results object deliberately exposes `sigma_u`, `coefs`, `resid`,
 //! `params`, and `zz_inv` as public fields so the structural
@@ -44,6 +49,7 @@ pub mod error;
 mod estimate;
 pub mod fevd;
 pub mod forecast;
+pub mod girf;
 pub mod irf;
 pub mod irf_asymptotic;
 pub mod irf_bootstrap;
@@ -56,6 +62,10 @@ pub use causality::CausalityTest;
 pub use error::VarError;
 pub use fevd::Fevd;
 pub use forecast::ForecastInterval;
+pub use girf::{
+    girf, sample_histories, subsample_indices, var_girf, Girf, GirfModel, GirfOptions, GirfShock,
+    LinearVarModel,
+};
 pub use irf::{ma_rep, Irf};
 pub use irf_asymptotic::irf_asymptotic_se;
 pub use irf_bootstrap::{bootstrap_irf_bands, IrfBands};
