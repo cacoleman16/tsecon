@@ -214,11 +214,12 @@ pub fn panel_distributed_lag(
     }
     let (n_ent, t_len) = (data.n_entities(), data.n_periods());
     let lags = cfg.lags;
-    if t_len < lags + 2 {
+    // Saturating: `lags` near `usize::MAX` must refuse, not overflow.
+    if lags > t_len.saturating_sub(2) {
         return Err(PanelError::InsufficientObservations {
             what: "distributed-lag design: dropping the first L lag periods of every \
                    entity must leave at least two periods",
-            needed: lags + 2,
+            needed: lags.saturating_add(2),
             got: t_len,
         });
     }

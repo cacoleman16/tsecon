@@ -172,10 +172,10 @@ fn every_case_matches_linearmodels_panelols() {
                     1e-300,
                     &format!("{name}/{key} t {a}"),
                 );
-                for b in 0..k {
+                for (b, want) in cov[a].iter().enumerate() {
                     assert_close(
                         res.cov[(a, b)],
-                        cov[a][b],
+                        *want,
                         RTOL,
                         cov_scale,
                         &format!("{name}/{key} cov[{a},{b}]"),

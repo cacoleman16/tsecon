@@ -1,7 +1,7 @@
 # Model card — Panel time series
 
-**Family:** `panel_fe`, `panel_lp`, `lp_did`, `mean_group_var`,
-`panel_mean_group`, `panel_pmg`
+**Family:** `panel_fe`, `panel_distributed_lag`, `panel_lp`, `lp_did`,
+`mean_group_var`, `panel_mean_group`, `panel_pmg`
 
 Many entities, each observed over time. The methods here span the two ends of
 the panel spectrum: **pooled** estimators that assume a common slope and
@@ -16,6 +16,7 @@ cluster covariances.
 | Function | Slope assumption | Delivers |
 |----------|------------------|----------|
 | `panel_fe` | common | Fixed-effects OLS with robust SEs |
+| `panel_distributed_lag` | common | Distributed-lag (climate-impact) regression: cumulative effect, turning point |
 | `panel_lp` | common | Panel local-projection IRF of a common shock |
 | `lp_did` | ATT (VW or EW) | LP-DiD event-study DiD with clean controls |
 | `mean_group_var` | heterogeneous | Mean-group panel VAR + orthogonalized IRFs |
@@ -28,6 +29,13 @@ cluster covariances.
   entity means are swept out and a common slope vector is estimated by OLS,
   with clustered or Driscoll-Kraay standard errors. `outcome` is N×T;
   `regressors` is k×N×T.
+- **`panel_distributed_lag(outcome, regressors, lags)`** — the distributed-lag
+  panel regression of the climate-impact literature: `L` lags of each
+  regressor (and of its square under `powers=2`) with entity and time effects
+  and optional entity trends, read off as the **cumulative effect** Σ_l β_l
+  with a delta-method SE and interval and, for the quadratic response, the
+  marginal effect at chosen points and the turning point of the cumulative
+  response. See the [dedicated section below](#distributed-lag-panel-regressions-panel_distributed_lag).
 - **`panel_lp(outcome, shock)`** — a panel local projection: at each horizon h,
   regress the h-step-ahead outcome on a **common** shock with entity fixed
   effects, tracing a dynamic causal response averaged across units.
@@ -100,6 +108,13 @@ cluster covariances.
 |------|----------|---------|-------|
 | `panel_fe` | `se_type` | `"cluster"` | `"nonrobust"`, `"cluster"` (by entity), `"driscoll_kraay"` |
 | | `bandwidth` | `None` | Driscoll-Kraay kernel truncation, `4.0` when omitted under `se_type="driscoll_kraay"` — the only `se_type` it acts on. Passing it explicitly with any other `se_type` **raises** (0.6.0; it used to be silently absorbed, so `panel_fe(..., bandwidth=8)` under the default `"cluster"` was a complete no-op) |
+| `panel_distributed_lag` | `lags` | required | `L`; lags `0..L` of every regressor enter and the first `L` periods of each entity are dropped (the panel stays balanced) |
+| | `powers` | `1` | `2` adds the lags of `x²` — the Burke-Hsiang-Miguel quadratic response |
+| | `entity_effects` / `time_effects` | `True` / `True` | the DJO/BHM two-way design; at least one effect is required |
+| | `entity_trends` | `False` | entity-specific linear trends (BHM's robustness spec); requires `entity_effects=True` |
+| | `se_type` | `"cluster"` | by entity — the DJO default; `"driscoll_kraay"` for cross-sectionally dependent weather (needs a long `T`); `"nonrobust"` |
+| | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`; explicit under any other `se_type` **raises** |
+| | `eval_points` | `None` | points at which the marginal effect of the cumulative quadratic response is evaluated; acts only under `powers=2` (`None` there = each regressor's pooled mean) and **raises** under `powers=1` |
 | `panel_lp` | `horizon` | `8` | IRF horizons |
 | | `n_lag_controls` | `2` | lags of outcome/shock included as controls |
 | | `se_type` | `"driscoll_kraay"` | robust to cross-sectional dependence |
@@ -294,6 +309,160 @@ the same SciPy-pinned closed forms as every other band surface (see the
 graded **property-MC (joint coverage measured)** — there is no third-party
 reference for simultaneous local-projection bands in Python (statsmodels
 ships none), so there is nothing external to pin a golden against.
+
+## Distributed-lag panel regressions (`panel_distributed_lag`)
+
+The workhorse of the climate-economy literature — Dell, Jones & Olken (2012),
+Burke, Hsiang & Miguel (2015), reviewed in Hsiang (2016) — is a fixed-effects
+regression of an outcome on the current and lagged values of a weather
+variable:
+
+$$
+y_{it} = \sum_{l=0}^{L} \beta_l\, x_{i,t-l} \;\Big[+ \sum_{l=0}^{L} \gamma_l\, x^2_{i,t-l}\Big]
+\;+\; \alpha_i + \delta_t \;[+\; g_i\, t] \;+\; \varepsilon_{it}.
+$$
+
+The individual lag coefficients are rarely the object of interest. The
+**cumulative effect** $B = \sum_l \beta_l$ is: it is the long-run impact of a
+permanent one-unit change in $x$ once $L$ periods have elapsed, and the
+contrast between $\beta_0$ (a level effect that reverses) and $B$ (a growth
+effect that persists) is the DJO test of whether temperature affects the level
+or the growth rate of output. Under the quadratic response the same logic
+gives the **marginal effect of the cumulative response** at a point $x$,
+$B_1 + 2B_2 x$, and its **turning point** $x^* = -B_1/(2B_2)$ — the BHM
+"optimal temperature" around 13 °C — with delta-method standard errors from the
+joint covariance of the lag coefficients (the gradient of $x^*$ is
+$-1/(2B_2)$ in every power-1 lag and $B_1/(2B_2^2)$ in every power-2 lag).
+
+### What it assumes, and when not to use it
+
+- **Strict exogeneity of the regressor.** Weather is the canonical case: it is
+  not caused by output, and its lags are not caused by past output shocks.
+  The design deliberately has **no lagged dependent variable** — putting one
+  in `regressors` would reintroduce Nickell (1981) bias into a short-$T$
+  within estimator (the [section above](#nickell-bias-and-the-two-half-panel-corrections-panel_lp)
+  explains the mechanism); use `panel_lp` with a bias correction for dynamic
+  panels. Distributed lags of a strictly exogenous regressor carry no such
+  bias.
+- **A balanced panel.** The lag design drops the first $L$ periods of every
+  entity and requires every remaining cell; unbalanced panels are refused at
+  the data boundary, as everywhere in the panel crate (the observation-mask
+  design is a documented `TODO(phase0)`). Trim to a common window or drop
+  entities with gaps first — and say so, because the balanced subsample is a
+  different population than the full panel (the DJO example below loses
+  half of the country-years that way).
+- **A common lag polynomial.** The within estimator pools $\beta_l$ across
+  entities; DJO's rich-poor split is a hand-built interaction (pass
+  `temperature × poor` as a second regressor).
+- **Inference.** Clustering by entity (the DJO default) is a large-$N$
+  approximation that ignores cross-sectional dependence; weather is
+  spatially correlated, so with few entities or a strong regional component
+  prefer `se_type="driscoll_kraay"`, which is robust to it but is a large-$T$
+  approximation — the measured coverage below shows the price at $T = 50$.
+  The 95% intervals use the normal critical value 1.959964.
+- **Time effects absorb any regressor common to every entity** (a global
+  temperature series, a year trend): such a column is refused as absorbed,
+  not returned with a spurious coefficient.
+
+### What is returned
+
+`params`, `names` (columns ordered regressor-major, then power, then lag:
+`x0_L0`, `x0_L1`, …, `x0^2_L0`, …), `bse`, `tvalues`, the full `cov`;
+`lag_effects` / `lag_se` indexed `[regressor][power-1][lag]`;
+`cumulative_effect`, `cumulative_se` ($\sqrt{\mathbf{1}'V\mathbf{1}}$),
+`cumulative_ci_low`, `cumulative_ci_high` indexed `[regressor][power-1]`; under
+`powers=2` the `eval_points` used, `marginal_effect` and `marginal_se`
+(`[regressor][point]`), `turning_point` and `turning_point_se`
+(`[regressor]`; NaN when $B_2$ is exactly zero) — `None` under `powers=1`;
+and `nobs` ($N(T-L)$), `n_entities`, `n_periods_used` ($T-L$), `lags`,
+`powers`, `df_resid`, `se_type` and the three effect flags. The call
+`panel_distributed_lag(y, x, lags=0, time_effects=False)` is bit-identical to
+`panel_fe(y, x)`.
+
+### Validation and its honest grade
+
+- **Independent-package golden** (`fixtures/panel_dl.json`,
+  `generate_panel_dl_fixtures.py`): nine cases — linear responses at
+  $L = 0, 1, 2, 3$ under two-way, entity-only and time-only effects, entity
+  trends with and without time effects, two regressors, and the quadratic
+  response with explicit and default evaluation points — each pinned at
+  **1e-10 relative** against linearmodels 7.0 `PanelOLS` on the explicitly
+  lagged design for slopes, standard errors, t-statistics and the full
+  covariance under `cov_type` `"unadjusted"`, `"clustered"` (entity) and
+  `"kernel"` (Bartlett, bandwidth 4); `nobs` and `df_resid` exact. The trends
+  variant is pinned via explicit entity × trend regressors ($N-1$ columns when
+  time effects are present — the common trend already lies in their span).
+  The inputs are stored at full double precision, so unlike `panel.json` the
+  ceiling is the estimator, not the fixture (worst measured relative error
+  is reported by `test_panel_dl.py`).
+- **Documented-formula golden**: the cumulative effect, its delta-method SE
+  and interval, the marginal effects and the turning point against the NumPy
+  transcription in the generator's docstring at 1e-10 — a check that the
+  delta method is the documented one, *not* an independent authority for it
+  (no Python package reports these objects).
+- **Property-MC, coverage measured** (`panel_dl_properties.rs`, seed
+  20260910, 500 replications per cell, $L = 2$, true long-run impact 0.70,
+  two-way effects, nominal 95%):
+
+  | covariance | cell | coverage | mean estimate | mean SE |
+  |---|---|---|---|---|
+  | cluster (entity) | $N = 50$, $T = 30$ | 0.928 | 0.7000 | 0.0642 |
+  | cluster (entity) | $N = 200$, $T = 30$ | 0.938 | 0.6998 | 0.0327 |
+  | Driscoll-Kraay (bw 4) | $N = 25$, $T = 50$ | 0.886 | 0.7020 | 0.0611 |
+  | Driscoll-Kraay (bw 4) | $N = 25$, $T = 200$ | 0.924 | 0.6978 | 0.0335 |
+
+  The clustered cells use AR(1) errors with entity-specific scales and no
+  cross-sectional dependence; the Driscoll-Kraay cells add a common AR(1)
+  weather component with heterogeneous loadings and a common AR(1) error
+  factor with heterogeneous loadings (so the time effects absorb only the
+  mean loading). Read honestly: the estimator is unbiased in every cell, the
+  clustered interval runs 1–2 points short of nominal (the usual
+  finite-cluster shortfall, shrinking with $N$), and Driscoll-Kraay is
+  6 points short at $T = 50$ — the short-$T$ kernel caveat — recovering to
+  0.92 at $T = 200$. Same seed, bit-identical output; entity relabelling and
+  (at $L = 0$) period relabelling leave the fit unchanged to 1e-10.
+- **Real data** — see the DJO example below.
+
+### Worked example — the Dell-Jones-Olken panel
+
+DJO's replication panel (`climate_panel.dta`, the AEJ:Macro data archive;
+fetched in the build container from a public course mirror on GitHub because
+the AEA and Stanford hosts are unreachable through its proxy) has
+population-weighted temperature `wtem` and WDI GDP `gdpLCU` for 1950–2006.
+The committed script
+[`docs/examples/panel_distributed_lag_djo.py`](../../examples/panel_distributed_lag_djo.py)
+builds growth as $100\,\Delta\log(\text{GDP})$, keeps the countries observed
+in every year of 1971–2003 (a **balanced subsample** of the DJO panel — DJO
+use the full unbalanced panel with region × year and poor × year effects, so
+these are not their published coefficients) and runs the linear DJO
+specification and the BHM quadratic one with country and year effects and
+country-clustered standard errors. Its measured output (growth in percentage
+points per °C; standard errors in parentheses):
+
+```text
+balanced subsample: N = 100 countries, T = 33 years (1971-2003), 3300 country-years of 5758 with growth and temperature in the file
+temperature: mean 19.67 C, sd 7.01; growth: mean 1.28, sd 5.63
+linear  L=0: beta_0 = -0.380 (0.228)  cumulative = -0.380 (0.228)  95% [-0.826, +0.066]  nobs = 3300
+linear  L=3: beta_0 = -0.301 (0.250)  cumulative = -0.412 (0.383)  95% [-1.162, +0.338]  nobs = 3000
+quadratic L=0: B1 = +0.081 (0.348)  B2 = -0.0146 (0.0127)  turning point = 2.8 C (10.0)  marginal: 10C -0.212 (0.201), 20C -0.505 (0.299), 30C -0.798 (0.517)
+quadratic L=3: B1 = -0.913 (0.540)  B2 = +0.0163 (0.0184)  turning point = 28.0 C (20.8)  marginal: 10C -0.587 (0.326), 20C -0.261 (0.440), 30C +0.065 (0.743)
+```
+
+Read it the way the callable is meant to be read. The linear contemporaneous
+effect of a 1 °C warmer year is −0.38 growth points with a country-clustered
+standard error of 0.23 — the sign and rough size of the DJO pooled effect,
+though not their estimate, because the sample and the effects differ as
+described above. Adding three lags moves the *cumulative* effect to −0.41
+(0.38): the lags do not reverse the impact, which is the DJO
+"growth-not-level" reading, but on 100 countries the interval on the sum of
+four coefficients comfortably includes zero. The quadratic form is where the
+balanced subsample and the plain two-way design run out of information: the
+turning point is 2.8 °C with a delta-method standard error of 10 °C at
+$L = 0$ and undefined in any useful sense at $L = 3$ (28 °C ± 21). BHM's
+13 °C optimum is estimated on 166 countries with country trends and a much
+richer control set; a two-way design on a third of the country-years cannot
+pin the curvature, and the honest output says so through `turning_point_se`
+rather than through a point estimate alone.
 
 ## LP-DiD (`lp_did`) — event-study DiD with clean controls
 
@@ -534,6 +703,11 @@ returned because it is not a verified fixed point.
 
 `panel_fe` matches `linearmodels` `PanelOLS` for the within estimator under
 nonrobust, cluster-by-entity, and Driscoll-Kraay (Bartlett kernel) covariances.
+`panel_distributed_lag` (and the two-way / entity-trend menu it added to the
+within estimator) is pinned at 1e-10 against `PanelOLS` on the explicitly
+lagged design for nine cases × three covariances, its delta-method objects
+against the documented transcription, and its interval coverage is measured
+(the table in [its section](#distributed-lag-panel-regressions-panel_distributed_lag)).
 `panel_lp` is a documented-formula golden built on the same within-plus-DK
 machinery with a known simulated IRF. The `bias_correction="spj"` route is a
 **transcription golden + Monte Carlo**, stated honestly: the method's
@@ -567,6 +741,7 @@ estimating equations, and are additionally property-validated: on data with a
 known common long run, PMG recovers it and pools far more tightly than a free
 mean-group of per-unit long runs. Fixtures:
 [`fixtures/panel.json`](../../../fixtures/panel.json),
+[`fixtures/panel_dl.json`](../../../fixtures/panel_dl.json),
 [`fixtures/panel_spj.json`](../../../fixtures/panel_spj.json),
 [`fixtures/lpdid.json`](../../../fixtures/lpdid.json),
 [`fixtures/tsecon-panelts.json`](../../../fixtures/tsecon-panelts.json),
@@ -598,6 +773,13 @@ mean-group of per-unit long runs. Fixtures:
   implementations: the authors' example code at
   github.com/danielegirardi/lpdid, the Stata `lpdid` package (SSC), and the
   R port at github.com/alexCardazzi/lpdid.
+- Dell, M., Jones, B. F. & Olken, B. A. (2012). "Temperature Shocks and
+  Economic Growth: Evidence from the Last Half Century." *AEJ: Macroeconomics*
+  4(3).
+- Burke, M., Hsiang, S. M. & Miguel, E. (2015). "Global non-linear effect of
+  temperature on economic production." *Nature* 527.
+- Hsiang, S. (2016). "Climate Econometrics." *Annual Review of Resource
+  Economics* 8.
 - Goodman-Bacon, A. (2021). "Difference-in-differences with variation in
   treatment timing." *J. Econometrics* 225.
 - de Chaisemartin, C. & D'Haultfœuille, X. (2020). "Two-Way Fixed Effects

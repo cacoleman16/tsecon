@@ -60,7 +60,7 @@ method fits your problem and how to trust its output.
 | [Regression trees & random forests](model-cards/ml-trees.md) | `regression_tree`, `random_forest` |
 | [L1 trend filtering & boosting](model-cards/ml-convex.md) | `l1_trend_filter`, `boosting` |
 | [Neural regressors](model-cards/ml-neural.md) | `mlp_regression`, `echo_state_network` |
-| [Panel](model-cards/panel.md) | `panel_fe`, `panel_lp`, `mean_group_var`, `panel_mean_group`, `panel_pmg` |
+| [Panel](model-cards/panel.md) | `panel_fe`, `panel_distributed_lag`, `panel_lp`, `mean_group_var`, `panel_mean_group`, `panel_pmg` |
 | [Panel unit-root tests](model-cards/panel-unit-root.md) | `panel_unit_root` (LLC, IPS, Fisher/Maddala-Wu-Choi) |
 | [Nowcasting & MIDAS](model-cards/nowcasting-midas.md) | `dfm_nowcast`, `dfm_news`, `midas_weights`, `umidas`, `weighted_midas` |
 | [Term structure](model-cards/term-structure.md) | `nelson_siegel`, `svensson`, `dynamic_ns`, `acm_term_premium` |
