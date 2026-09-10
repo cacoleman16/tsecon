@@ -413,22 +413,47 @@ def _is_huge_int(v: object) -> bool:
     return isinstance(v, (int, np.integer)) and not isinstance(v, bool) and v >= _ABSURD_COUNT
 
 
+# Parameter names per compiled function, resolved once: ``inspect.signature``
+# on a PyO3 builtin re-tokenizes and re-parses ``__text_signature__`` on every
+# call (~0.1 ms — more than most sub-millisecond estimators cost), which the
+# speed dashboard measured as a fixed per-call tax on every wrapped function.
+_PARAM_NAMES: dict[object, list[str]] = {}
+
+
+def _param_names(fn) -> list[str]:
+    names = _PARAM_NAMES.get(fn)
+    if names is None:
+        try:
+            names = list(inspect.signature(fn).parameters)
+        except (ValueError, TypeError):
+            names = []
+        _PARAM_NAMES[fn] = names
+    return names
+
+
 def _labeled_ints(fn, args, kwargs):
     """``(label, value)`` for every argument, positional ones named through
     the compiled signature when it resolves (else by position)."""
-    try:
-        names = list(inspect.signature(fn).parameters)
-    except (ValueError, TypeError):
-        names = []
+    names = _param_names(fn)
     return [
         *(((names[i] if i < len(names) else f"argument {i}"), a) for i, a in enumerate(args)),
         *kwargs.items(),
     ]
 
 
+def _has_huge_int(v: object) -> bool:
+    return _is_huge_int(v) or (isinstance(v, (list, tuple)) and any(_is_huge_int(e) for e in v))
+
+
 def _huge_int_offenders(fn, args, kwargs) -> list[str]:
     """``name=value`` for every count argument at or beyond ``_ABSURD_COUNT``
     (seeds excluded); shallow lists/tuples of integers are scanned too."""
+    # Fast path: no argument is absurd, so no label is needed. Labels are
+    # resolved only to name an offender in the error message.
+    if not any(_has_huge_int(v) for v in args) and not any(
+        _has_huge_int(v) for v in kwargs.values()
+    ):
+        return []
     found: list[str] = []
     for label, v in _labeled_ints(fn, args, kwargs):
         if _is_seed_name(label):

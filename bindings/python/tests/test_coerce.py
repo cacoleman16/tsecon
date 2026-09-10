@@ -507,3 +507,37 @@ def test_negative_float_parameters_are_untouched():
     data = np.column_stack([y, 0.5 * y + np.random.default_rng(3).standard_normal(180)])
     out = tsecon.bvar_fit(data, lags=1, delta=-1)
     assert "log_marginal_likelihood" in out
+
+
+def test_count_preflight_resolves_the_compiled_signature_once(monkeypatch):
+    """The 2**48 pre-flight must not re-parse ``__text_signature__`` per call.
+
+    ``inspect.signature`` on a PyO3 builtin tokenizes and parses the text
+    signature every time (~0.1 ms), which the speed dashboard measured as a
+    fixed tax on every wrapped call — a sub-millisecond estimator such as
+    ``kpss`` ran 10x slower wrapped than raw. Names are now resolved once per
+    function and only when an offender has to be named.
+    """
+    import inspect as _inspect
+
+    from tsecon import _coerce
+
+    calls = []
+    real = _inspect.signature
+
+    def counting(fn, *a, **k):
+        calls.append(fn)
+        return real(fn, *a, **k)
+
+    monkeypatch.setattr(_coerce.inspect, "signature", counting)
+    y = np.random.default_rng(0).standard_normal(200)
+    for _ in range(5):
+        tsecon.kpss(y)
+        tsecon.acf(y, 10)
+    assert calls == [], f"signature re-parsed on the fast path: {len(calls)} calls"
+    # The slow path still names the offender through the (cached) signature.
+    with pytest.raises(ValueError, match=r"nlags=281474976710656"):
+        tsecon.acf(y, 2**48)
+    with pytest.raises(ValueError, match=r"nlags=281474976710656"):
+        tsecon.acf(y, 2**48)
+    assert len(calls) <= 1, "the compiled signature must be cached after its first resolution"
