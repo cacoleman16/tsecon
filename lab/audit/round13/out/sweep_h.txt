@@ -1,0 +1,12 @@
+determinism: 6/6 bit-identical twice in-process; non-deterministic: []
+[var_girf.seed] different seed differs: $.girf: bits differ (max|d|=1.249e-16)
+[var_girf.seed] seed=None refused: TypeError: 'NoneType' object cannot be interpreted as an integer
+[threshold_var_girf.seed] different seed differs: $.girf: bits differ (max|d|=5.533e-03)
+[threshold_var_girf.seed] seed=None refused: TypeError: 'NoneType' object cannot be interpreted as an integer
+[jsz_fit.seed] different seed differs: $.lambda_q: bits differ (max|d|=3.885e-08)
+[jsz_fit.seed] seed=None ACCEPTED: documented=True deterministic=True equals seed=0: True echoed as 0
+[threshold_var_girf] histories=40: seed 1 vs 2 history_times identical=False (n_histories 40); histories=10**6 -> n_histories=199 (clamp)
+[var_girf] histories=10**6 -> n_histories=198 (clamp; T-p=198)
+[jsz_fit] RAYON_NUM_THREADS 1 vs 4: bit-identical (no promise)
+[threshold_var_girf] RAYON_NUM_THREADS 1 vs 4: bit-identical (promised)
+[var_girf] RAYON_NUM_THREADS 1 vs 4: bit-identical (promised)

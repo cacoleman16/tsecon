@@ -1,0 +1,21 @@
+[setar_threshold_ci] returned keys NOT named in card: ['k', 'nobs', 'slope_region_high']
+[setar_threshold_ci] 29 keys; summarize=54 lines; json=True pickle=True nonfinite=0 shapes_checked=5
+[var_girf] non-finite (documented): [('$.mc_se', 'array(7, 3) nan=21 inf=0')]
+[var_girf] phantom candidates in __doc__ (named in a returns sentence, not returned): ['bands']
+[var_girf] 16 keys; summarize=85 lines; json=True pickle=True nonfinite=1 shapes_checked=9
+[threshold_var_girf] returned keys NOT named in card: ['history_regimes', 'history_times', 'n_effective_draws', 'n_histories', 'shock_vector', 'threshold']
+[threshold_var_girf] phantom candidates in __doc__ (named in a returns sentence, not returned): ['None', 'bands', 't']
+[threshold_var_girf] 26 keys; summarize=121 lines; json=True pickle=True nonfinite=0 shapes_checked=14
+[jsz_fit] phantom candidates in __doc__ (named in a returns sentence, not returned): ['acm_term_premium', 'sigma_u_mle']
+[jsz_fit] phantom candidates in stub (named in a returns sentence, not returned): ['sigma_u_mle']
+[jsz_fit] phantom candidates in card (named in a returns sentence, not returned): ['A', 'A_rn', 'B', 'B_rn', 'P_t', 'a', 'acm_term_premium', 'ar1_intercept', 'ar1_phi', 'beta', 'c', 'curvature', 'delta0', 'delta1', 'dynamic_ns', 'factor_loadings', 'forecast', 'jsz_loadings', 'k0_q', 'k1_q', 'lambda', 'level', 'mu', 'nelson_siegel', 'optimal_lambda', 'phi', 'rsquared', 'rx_maturities', 'rx_rsquared', 'short_rate_rsquared', 'sigma2', 'sigma_u_mle', 'slope', 'svensson', 'var_rsquared', 'yield_rsquared', 'yields']
+[jsz_fit] 31 keys; summarize=85 lines; json=True pickle=True nonfinite=0 shapes_checked=21
+[jsz_loadings] phantom candidates in card (named in a returns sentence, not returned): ['A', 'A_rn', 'B', 'B_rn', 'P_t', 'a', 'a_p', 'acm_term_premium', 'ar1_intercept', 'ar1_phi', 'b_p', 'beta', 'c', 'converged', 'curvature', 'delta0', 'delta1', 'dynamic_ns', 'factor_loadings', 'factors', 'fitted', 'forecast', 'jsz_loadings', 'k0_q_p', 'k1_q_p', 'k_inf_q', 'lambda', 'lambda0', 'lambda1', 'lambda_q', 'level', 'llf', 'mu', 'mu_p', 'mu_p_se', 'n_factors', 'n_iter', 'n_starts', 'nelson_siegel', 'optimal_lambda', 'periods_per_year', 'phi', 'phi_p', 'phi_p_se', 'risk_neutral', 'rmse', 'rsquared', 'rx_maturities', 'rx_rsquared', 'seed', 'short_rate_rsquared', 'sigma', 'sigma2', 'sigma_e', 'sigma_ols', 'sigma_u_mle', 'slope', 'svensson', 'term_premium', 'var_rsquared', 'w', 'yield_rsquared', 'yields']
+[jsz_loadings] 5 keys; summarize=26 lines; json=True pickle=True nonfinite=0 shapes_checked=5
+[panel_distributed_lag] returned keys NOT named in card: ['entity_effects', 'entity_trends']
+[panel_distributed_lag] phantom candidates in __doc__ (named in a returns sentence, not returned): ['B_2']
+[panel_distributed_lag] phantom candidates in stub (named in a returns sentence, not returned): ['B_2']
+[panel_distributed_lag] phantom candidates in card (named in a returns sentence, not returned): ['None', 'x0_L0', 'x0_L1']
+[panel_distributed_lag] 26 keys; summarize=65 lines; json=True pickle=True nonfinite=0 shapes_checked=15
+
+REACHED 6/6; candidates raised: 3

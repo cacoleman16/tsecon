@@ -1,0 +1,445 @@
+6 callables, 673 cells, 4 GB cap per child
+
+cells: 673; outcomes: {'refusal': 519, 'ok': 154}
+
+== offenders (panic/crash/abort/hang/memerr): 0
+
+== other exceptions: 0
+
+== refusals whose message does not name the parameter: 280
+  setar_threshold_ci y:empty: ValueError: insufficient data: 0 observations, at least 7 required
+  setar_threshold_ci y:one_row: ValueError: invalid model specification: the series is constant: a threshold autoregression needs variation in the thresho
+  setar_threshold_ci y:rank_down: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got no array arguments). Estimators that mod
+  setar_threshold_ci y:rank_up: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(1, 200)). Estimators that mo
+  setar_threshold_ci y:bool_array: ValueError: singular linear system: a low-regime design X'X at a threshold candidate (a near-constant segment of the serie
+  setar_threshold_ci y:str: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got no array arguments). Estimators that mod
+  setar_threshold_ci y:none: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got no array arguments). Estimators that mod
+  setar_threshold_ci y:scalar: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got no array arguments). Estimators that mod
+  setar_threshold_ci p:2^31: ValueError: insufficient data: 200 observations, at least 6442450948 required
+  setar_threshold_ci p:2^47: ValueError: insufficient data: 200 observations, at least 422212465065988 required
+  setar_threshold_ci p:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  setar_threshold_ci p:str: TypeError: 'str' object cannot be interpreted as an integer
+  setar_threshold_ci p:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  setar_threshold_ci p:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  setar_threshold_ci delay:2^31: ValueError: insufficient data: 200 observations, at least 2147483654 required
+  setar_threshold_ci delay:2^47: ValueError: insufficient data: 200 observations, at least 140737488355334 required
+  setar_threshold_ci delay:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  setar_threshold_ci delay:str: TypeError: 'str' object cannot be interpreted as an integer
+  setar_threshold_ci delay:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  setar_threshold_ci delay:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  setar_threshold_ci trim:str: TypeError: must be real number, not str
+  setar_threshold_ci trim:none: TypeError: must be real number, not NoneType
+  setar_threshold_ci trim:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  setar_threshold_ci delays:[0]: ValueError: invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{t-delay})
+  setar_threshold_ci delays:[2^31]: ValueError: insufficient data: 200 observations, at least 2147483654 required
+  setar_threshold_ci delays:[2^47]: ValueError: insufficient data: 200 observations, at least 140737488355334 required
+  setar_threshold_ci delays:[1.5]: TypeError: 'float' object cannot be interpreted as an integer
+  setar_threshold_ci delays:str: TypeError: Can't extract `str` to `Vec`
+  setar_threshold_ci delays:float_array: TypeError: 'numpy.float64' object cannot be interpreted as an integer
+  setar_threshold_ci delays:nested: TypeError: 'list' object cannot be interpreted as an integer
+  setar_threshold_ci delays:5: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci constant:2: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci constant:0: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci constant:str: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci constant:none: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci constant:1.5: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci level:str: TypeError: must be real number, not str
+  setar_threshold_ci level:none: TypeError: must be real number, not NoneType
+  setar_threshold_ci level:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  setar_threshold_ci het_robust:2: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci het_robust:0: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci het_robust:str: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci het_robust:none: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci het_robust:1.5: TypeError: setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  setar_threshold_ci slope_level:str: TypeError: must be real number, not str
+  setar_threshold_ci slope_level:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  setar_threshold_ci slope_region_level:str: TypeError: must be real number, not str
+  setar_threshold_ci slope_region_level:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  setar_threshold_ci null_threshold:str: TypeError: must be real number, not str
+  setar_threshold_ci null_threshold:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  var_girf data:empty: ValueError: VAR(2) on k=3 series needs at least 10 rows but got 0: lagging consumes 2 rows and each equation then has n_tr
+  var_girf data:one_row: ValueError: VAR(2) on k=3 series needs at least 10 rows but got 1: lagging consumes 2 rows and each equation then has n_tr
+  var_girf data:rank_down: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that model a system
+  var_girf data:rank_up: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(1, 200, 3)). Estimators that model a s
+  var_girf data:nested_list: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: list of 200). Estimators that model a system
+  var_girf data:transposed: ValueError: VAR(2) on k=200 series needs at least 404 rows but got 3: lagging consumes 2 rows and each equation then has n
+  var_girf data:str: TypeError: var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that model a syste
+  var_girf data:none: TypeError: var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that model a syste
+  var_girf data:scalar: TypeError: var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that model a syste
+  var_girf p:2^31: ValueError: VAR(2147483648) on k=3 series needs at least 8589934594 rows but got 200: lagging consumes 2147483648 rows and
+  var_girf p:2^47: ValueError: VAR(140737488355328) on k=3 series needs at least 562949953421314 rows but got 200: lagging consumes 140737488
+  var_girf p:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  var_girf p:str: TypeError: 'str' object cannot be interpreted as an integer
+  var_girf p:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  var_girf p:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  var_girf shock_var:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  var_girf shock_var:str: TypeError: 'str' object cannot be interpreted as an integer
+  var_girf shock_var:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  var_girf shock_var:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  var_girf size:str: TypeError: must be real number, not str
+  var_girf size:none: TypeError: must be real number, not NoneType
+  var_girf size:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  var_girf shock:int: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst
+  var_girf shock:none: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst
+  var_girf horizon:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  var_girf horizon:str: TypeError: 'str' object cannot be interpreted as an integer
+  var_girf horizon:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  var_girf horizon:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  var_girf n_draws:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  var_girf n_draws:str: TypeError: 'str' object cannot be interpreted as an integer
+  var_girf n_draws:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  var_girf n_draws:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  var_girf seed:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  var_girf seed:str: TypeError: 'str' object cannot be interpreted as an integer
+  var_girf seed:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  var_girf seed:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  var_girf trend:int: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst
+  var_girf trend:none: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst
+  var_girf antithetic:2: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst
+  var_girf antithetic:0: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst
+  var_girf antithetic:str: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst
+  var_girf antithetic:none: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst
+  var_girf antithetic:1.5: TypeError: var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst
+  var_girf histories:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  var_girf histories:str: TypeError: 'str' object cannot be interpreted as an integer
+  var_girf histories:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  threshold_var_girf data:one_row: ValueError: invalid model specification: the threshold series is constant: a threshold VAR needs variation in the threshol
+  threshold_var_girf data:rank_down: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode
+  threshold_var_girf data:rank_up: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(1, 200, 2)). Estimators that
+  threshold_var_girf data:short_cols: ValueError: invalid model specification: a threshold VAR needs at least two series (pass a 2-D array shaped (n_obs, n_seri
+  threshold_var_girf data:nested_list: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: list of 200). Estimators that mode
+  threshold_var_girf data:bool_array: ValueError: singular linear system: a low-regime VAR design X'X at a threshold candidate (a collinear regime segment — rai
+  threshold_var_girf data:str: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that mod
+  threshold_var_girf data:none: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that mod
+  threshold_var_girf data:scalar: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that mod
+  threshold_var_girf p:2^31: ValueError: insufficient data: 200 observations, at least 10737418244 required
+  threshold_var_girf p:2^47: ValueError: insufficient data: 200 observations, at least 703687441776644 required
+  threshold_var_girf p:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  threshold_var_girf p:str: TypeError: 'str' object cannot be interpreted as an integer
+  threshold_var_girf p:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  threshold_var_girf p:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  threshold_var_girf threshold_index:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  threshold_var_girf threshold_index:str: TypeError: 'str' object cannot be interpreted as an integer
+  threshold_var_girf threshold_index:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  threshold_var_girf threshold_index:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  threshold_var_girf delay:2^31: ValueError: insufficient data: 200 observations, at least 2147483656 required
+  threshold_var_girf delay:2^47: ValueError: insufficient data: 200 observations, at least 140737488355336 required
+  threshold_var_girf delay:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  threshold_var_girf delay:str: TypeError: 'str' object cannot be interpreted as an integer
+  threshold_var_girf delay:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  threshold_var_girf delay:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  threshold_var_girf trim:str: TypeError: must be real number, not str
+  threshold_var_girf trim:none: TypeError: must be real number, not NoneType
+  threshold_var_girf trim:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  threshold_var_girf delays:[0]: ValueError: invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{threshold_inde
+  threshold_var_girf delays:[2^31]: ValueError: insufficient data: 200 observations, at least 2147483656 required
+  threshold_var_girf delays:[2^47]: ValueError: insufficient data: 200 observations, at least 140737488355336 required
+  threshold_var_girf delays:[1.5]: TypeError: 'float' object cannot be interpreted as an integer
+  threshold_var_girf delays:str: TypeError: Can't extract `str` to `Vec`
+  threshold_var_girf delays:float_array: TypeError: 'numpy.float64' object cannot be interpreted as an integer
+  threshold_var_girf delays:nested: TypeError: 'list' object cannot be interpreted as an integer
+  threshold_var_girf delays:5: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf constant:2: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf constant:0: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf constant:str: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf constant:none: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf constant:1.5: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf shock_var:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  threshold_var_girf shock_var:str: TypeError: 'str' object cannot be interpreted as an integer
+  threshold_var_girf shock_var:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  threshold_var_girf shock_var:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  threshold_var_girf size:str: TypeError: must be real number, not str
+  threshold_var_girf size:none: TypeError: must be real number, not NoneType
+  threshold_var_girf size:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  threshold_var_girf shock:int: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf shock:none: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf horizon:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  threshold_var_girf horizon:str: TypeError: 'str' object cannot be interpreted as an integer
+  threshold_var_girf horizon:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  threshold_var_girf horizon:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  threshold_var_girf n_draws:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  threshold_var_girf n_draws:str: TypeError: 'str' object cannot be interpreted as an integer
+  threshold_var_girf n_draws:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  threshold_var_girf n_draws:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  threshold_var_girf seed:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  threshold_var_girf seed:str: TypeError: 'str' object cannot be interpreted as an integer
+  threshold_var_girf seed:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  threshold_var_girf seed:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  threshold_var_girf regime:int: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf regime:none: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf histories:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  threshold_var_girf histories:str: TypeError: 'str' object cannot be interpreted as an integer
+  threshold_var_girf histories:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  threshold_var_girf antithetic:2: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf antithetic:0: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf antithetic:str: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf antithetic:none: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  threshold_var_girf antithetic:1.5: TypeError: threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo
+  jsz_fit yields:nan_all: ValueError: JSZ yield panel: contains a non-finite value (NaN) at index 0; clean or impute NaN/inf observations before fit
+  jsz_fit yields:nan_one: ValueError: JSZ yield panel: contains a non-finite value (NaN) at index 1200; clean or impute NaN/inf observations before 
+  jsz_fit yields:inf_one: ValueError: JSZ yield panel: contains a non-finite value (inf) at index 1200; clean or impute NaN/inf observations before 
+  jsz_fit yields:empty: ValueError: JSZ yield panel (the portfolio VAR(1) needs residual degrees of freedom): the panel has 0 dates but needs at l
+  jsz_fit yields:one_row: ValueError: JSZ yield panel (the portfolio VAR(1) needs residual degrees of freedom): the panel has 1 dates but needs at l
+  jsz_fit yields:rank_down: TypeError: jsz_fit: an array argument is the wrong shape or type (got arg0: array(200,); arg1: list of 12). Estimators th
+  jsz_fit yields:rank_up: TypeError: jsz_fit: an array argument is the wrong shape or type (got arg0: array(1, 200, 12); arg1: list of 12). Estimat
+  jsz_fit yields:nested_list: TypeError: jsz_fit: an array argument is the wrong shape or type (got arg0: list of 200; arg1: list of 12). Estimators th
+  jsz_fit yields:int_array: ValueError: JSZ portfolio VAR(1): the loading columns are numerically collinear, so the cross-sectional least-squares prob
+  jsz_fit yields:bool_array: ValueError: JSZ portfolio VAR(1): the loading columns are numerically collinear, so the cross-sectional least-squares prob
+  jsz_fit yields:str: TypeError: jsz_fit: an array argument is the wrong shape or type (got arg1: list of 12). Estimators that model a system w
+  jsz_fit yields:none: TypeError: jsz_fit: an array argument is the wrong shape or type (got arg1: list of 12). Estimators that model a system w
+  jsz_fit yields:scalar: TypeError: jsz_fit: an array argument is the wrong shape or type (got arg1: list of 12). Estimators that model a system w
+  jsz_fit maturities:[1.5]: TypeError: 'float' object cannot be interpreted as an integer
+  jsz_fit maturities:str: TypeError: Can't extract `str` to `Vec`
+  jsz_fit maturities:float_array: TypeError: 'numpy.float64' object cannot be interpreted as an integer
+  jsz_fit maturities:nested: TypeError: 'list' object cannot be interpreted as an integer
+  jsz_fit maturities:none: TypeError: jsz_fit: an array argument is the wrong shape or type (got arg0: array(200, 12)). Estimators that model a syst
+  jsz_fit maturities:5: TypeError: jsz_fit: an array argument is the wrong shape or type (got arg0: array(200, 12)). Estimators that model a syst
+  jsz_fit n_factors:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  jsz_fit n_factors:str: TypeError: 'str' object cannot be interpreted as an integer
+  jsz_fit n_factors:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  jsz_fit n_factors:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  jsz_fit periods_per_year:1e300: ValueError: lambda estimation failed (the JSZ likelihood could not be evaluated at the starting values (OLS eigenvalues an
+  jsz_fit periods_per_year:1e-300: ValueError: lambda estimation failed (the JSZ likelihood could not be evaluated at the starting values (OLS eigenvalues an
+  jsz_fit periods_per_year:str: TypeError: must be real number, not str
+  jsz_fit periods_per_year:none: TypeError: must be real number, not NoneType
+  jsz_fit periods_per_year:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  jsz_fit w:str: TypeError: jsz_fit: an array argument is the wrong shape or type (got arg0: array(200, 12); arg1: list of 12). Estimators
+  jsz_fit n_starts:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  jsz_fit n_starts:str: TypeError: 'str' object cannot be interpreted as an integer
+  jsz_fit n_starts:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  jsz_fit n_starts:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  jsz_fit seed:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  jsz_fit seed:str: TypeError: 'str' object cannot be interpreted as an integer
+  jsz_fit seed:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  jsz_loadings lambda_q:one_row: ValueError: JSZ sigma_x (must be n_factors x n_factors): expected length 1 but got 3; the yields must be index-aligned wit
+  jsz_loadings lambda_q:rank_down: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg2: array(3, 3); arg3: list of 7). Estimator
+  jsz_loadings lambda_q:rank_up: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg0: array(1, 3); arg2: array(3, 3); arg3: li
+  jsz_loadings lambda_q:short_rows: ValueError: JSZ sigma_x (must be n_factors x n_factors): expected length 2 but got 3; the yields must be index-aligned wit
+  jsz_loadings lambda_q:str: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg2: array(3, 3); arg3: list of 7). Estimator
+  jsz_loadings lambda_q:none: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg2: array(3, 3); arg3: list of 7). Estimator
+  jsz_loadings lambda_q:scalar: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg2: array(3, 3); arg3: list of 7). Estimator
+  jsz_loadings k_inf_q:str: TypeError: must be real number, not str
+  jsz_loadings k_inf_q:none: TypeError: must be real number, not NoneType
+  jsz_loadings k_inf_q:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  jsz_loadings sigma_x:rank_down: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: array(3,); arg3: list o
+  jsz_loadings sigma_x:rank_up: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: array(1, 3, 3); arg3: l
+  jsz_loadings sigma_x:nested_list: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: list of 3; arg3: list o
+  jsz_loadings sigma_x:str: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg3: list of 7). Estimators 
+  jsz_loadings sigma_x:none: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg3: list of 7). Estimators 
+  jsz_loadings sigma_x:scalar: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg3: list of 7). Estimators 
+  jsz_loadings maturities:[1.5]: TypeError: 'float' object cannot be interpreted as an integer
+  jsz_loadings maturities:str: TypeError: Can't extract `str` to `Vec`
+  jsz_loadings maturities:float_array: TypeError: 'numpy.float64' object cannot be interpreted as an integer
+  jsz_loadings maturities:nested: TypeError: 'list' object cannot be interpreted as an integer
+  jsz_loadings maturities:none: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: array(3, 3)). Estimator
+  jsz_loadings maturities:5: TypeError: jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: array(3, 3)). Estimator
+  jsz_loadings periods_per_year:str: TypeError: must be real number, not str
+  jsz_loadings periods_per_year:none: TypeError: must be real number, not NoneType
+  jsz_loadings periods_per_year:list: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  panel_distributed_lag outcome:rank_down: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6,); arg1: array(1, 6, 20
+  panel_distributed_lag outcome:rank_up: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(1, 6, 200); arg1: array(1
+  panel_distributed_lag outcome:nested_list: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: list of 6; arg1: array(1, 6, 20
+  panel_distributed_lag outcome:str: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg1: array(1, 6, 200); eval_points: 
+  panel_distributed_lag outcome:none: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg1: array(1, 6, 200); eval_points: 
+  panel_distributed_lag outcome:scalar: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg1: array(1, 6, 200); eval_points: 
+  panel_distributed_lag regressors:nan_all: ValueError: regressor panel: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values si
+  panel_distributed_lag regressors:nan_one: ValueError: regressor panel: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values si
+  panel_distributed_lag regressors:inf_one: ValueError: regressor panel: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values si
+  panel_distributed_lag regressors:zero_cols: ValueError: dimension mismatch: regressor period dimension must match the outcome's (expected 200, got 0)
+  panel_distributed_lag regressors:rank_down: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag regressors:rank_up: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 1
+  panel_distributed_lag regressors:short_cols: ValueError: dimension mismatch: regressor period dimension must match the outcome's (expected 200, got 199)
+  panel_distributed_lag regressors:short_mid: ValueError: dimension mismatch: regressor entity dimension must match the outcome's (expected 6, got 5)
+  panel_distributed_lag regressors:nested_list: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: list of 1;
+  panel_distributed_lag regressors:bool_array: ValueError: within (fixed-effects) OLS: the requested effects absorb a regressor entirely (constant within every entity, c
+  panel_distributed_lag regressors:transposed: ValueError: dimension mismatch: regressor period dimension must match the outcome's (expected 200, got 1)
+  panel_distributed_lag regressors:str: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); eval_points: arr
+  panel_distributed_lag regressors:none: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); eval_points: arr
+  panel_distributed_lag regressors:scalar: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); eval_points: arr
+  panel_distributed_lag lags:2^31: ValueError: distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: need
+  panel_distributed_lag lags:2^47: ValueError: distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: need
+  panel_distributed_lag lags:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  panel_distributed_lag lags:str: TypeError: 'str' object cannot be interpreted as an integer
+  panel_distributed_lag lags:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  panel_distributed_lag lags:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  panel_distributed_lag powers:1.5: TypeError: 'float' object cannot be interpreted as an integer
+  panel_distributed_lag powers:str: TypeError: 'str' object cannot be interpreted as an integer
+  panel_distributed_lag powers:none: TypeError: 'NoneType' object cannot be interpreted as an integer
+  panel_distributed_lag powers:list: TypeError: only integer scalar arrays can be converted to a scalar index
+  panel_distributed_lag entity_effects:2: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag entity_effects:0: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag entity_effects:str: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag entity_effects:none: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag entity_effects:1.5: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag time_effects:2: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag time_effects:0: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag time_effects:str: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag time_effects:none: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag time_effects:1.5: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag entity_trends:2: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag entity_trends:0: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag entity_trends:str: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag entity_trends:none: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag entity_trends:1.5: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag se_type:int: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag se_type:none: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag bandwidth:str@dk: TypeError: must be real number, not str
+  panel_distributed_lag bandwidth:list@dk: TypeError: only 0-dimensional arrays can be converted to Python scalars
+  panel_distributed_lag eval_points:str: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+  panel_distributed_lag eval_points:scalar: TypeError: panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6
+
+== normal returns on a corrupted argument: 154 (nonfinite count, seconds)
+  setar_threshold_ci y:short_rows: nonfinite=0 t=0.001
+  setar_threshold_ci y:nested_list: nonfinite=0 t=0.001
+  setar_threshold_ci y:int_array: nonfinite=0 t=0.0
+  setar_threshold_ci y:dup_row: nonfinite=0 t=0.001
+  setar_threshold_ci p:1: nonfinite=0 t=0.001
+  setar_threshold_ci p:2: nonfinite=0 t=0.001
+  setar_threshold_ci p:True: nonfinite=0 t=0.001
+  setar_threshold_ci delay:1: nonfinite=0 t=0.001
+  setar_threshold_ci delay:2: nonfinite=0 t=0.001
+  setar_threshold_ci delay:True: nonfinite=0 t=0.001
+  setar_threshold_ci trim:1e-300: nonfinite=0 t=0.001
+  setar_threshold_ci delays:[True]: nonfinite=0 t=0.001
+  setar_threshold_ci delays:int_array: nonfinite=0 t=0.001
+  setar_threshold_ci delays:none: nonfinite=0 t=0.001
+  setar_threshold_ci level:1e-300: nonfinite=0 t=0.001
+  setar_threshold_ci slope_level:1e-300: nonfinite=0 t=0.001
+  setar_threshold_ci slope_level:none: nonfinite=7 t=0.0
+  setar_threshold_ci slope_region_level:1e-300: nonfinite=0 t=0.0
+  setar_threshold_ci slope_region_level:none: nonfinite=0 t=0.001
+  setar_threshold_ci null_threshold:neg1: nonfinite=0 t=0.001
+  setar_threshold_ci null_threshold:zero: nonfinite=0 t=0.001
+  setar_threshold_ci null_threshold:1e-300: nonfinite=0 t=0.001
+  setar_threshold_ci null_threshold:none: nonfinite=3 t=0.001
+  var_girf data:short_rows: nonfinite=21 t=0.003
+  var_girf data:short_cols: nonfinite=14 t=0.002
+  var_girf data:int_array: nonfinite=21 t=0.002
+  var_girf data:bool_array: nonfinite=21 t=0.003
+  var_girf data:dup_row: nonfinite=21 t=0.002
+  var_girf p:1: nonfinite=21 t=0.002
+  var_girf p:2: nonfinite=21 t=0.002
+  var_girf p:True: nonfinite=21 t=0.002
+  var_girf shock_var:0: nonfinite=21 t=0.002
+  var_girf shock_var:1: nonfinite=21 t=0.002
+  var_girf shock_var:2: nonfinite=21 t=0.002
+  var_girf shock_var:True: nonfinite=21 t=0.002
+  var_girf size:neg1: nonfinite=21 t=0.002
+  var_girf size:zero: nonfinite=21 t=0.002
+  var_girf size:1e300: nonfinite=21 t=0.002
+  var_girf size:1e-300: nonfinite=21 t=0.002
+  var_girf size:int: nonfinite=21 t=0.002
+  var_girf size:True: nonfinite=21 t=0.002
+  var_girf horizon:0: nonfinite=3 t=0.001
+  var_girf horizon:1: nonfinite=6 t=0.002
+  var_girf horizon:2: nonfinite=9 t=0.003
+  var_girf horizon:True: nonfinite=6 t=0.007
+  var_girf n_draws:2: nonfinite=21 t=0.006
+  var_girf seed:0: nonfinite=21 t=0.004
+  var_girf seed:1: nonfinite=21 t=0.005
+  var_girf seed:2: nonfinite=21 t=0.003
+  var_girf seed:2^31: nonfinite=21 t=0.005
+  var_girf seed:2^47: nonfinite=21 t=0.003
+  var_girf seed:2^63: nonfinite=21 t=0.003
+  var_girf seed:True: nonfinite=21 t=0.002
+  var_girf histories:1: nonfinite=21 t=0.0
+  var_girf histories:2: nonfinite=21 t=0.0
+  var_girf histories:2^31: nonfinite=21 t=0.002
+  var_girf histories:2^47: nonfinite=21 t=0.002
+  var_girf histories:True: nonfinite=21 t=0.0
+  var_girf histories:none: nonfinite=21 t=0.002
+  threshold_var_girf data:short_rows: nonfinite=0 t=0.006
+  threshold_var_girf data:int_array: nonfinite=0 t=0.003
+  threshold_var_girf data:dup_row: nonfinite=0 t=0.004
+  threshold_var_girf p:1: nonfinite=0 t=0.003
+  threshold_var_girf p:2: nonfinite=0 t=0.004
+  threshold_var_girf p:True: nonfinite=0 t=0.004
+  threshold_var_girf threshold_index:0: nonfinite=0 t=0.003
+  threshold_var_girf threshold_index:1: nonfinite=0 t=0.003
+  threshold_var_girf threshold_index:True: nonfinite=0 t=0.004
+  threshold_var_girf delay:1: nonfinite=0 t=0.016
+  threshold_var_girf delay:2: nonfinite=0 t=0.006
+  threshold_var_girf delay:True: nonfinite=0 t=0.008
+  threshold_var_girf trim:1e-300: nonfinite=0 t=0.009
+  threshold_var_girf delays:[True]: nonfinite=0 t=0.004
+  threshold_var_girf delays:int_array: nonfinite=0 t=0.004
+  threshold_var_girf delays:none: nonfinite=0 t=0.004
+  threshold_var_girf shock_var:0: nonfinite=0 t=0.004
+  threshold_var_girf shock_var:1: nonfinite=0 t=0.004
+  threshold_var_girf shock_var:True: nonfinite=0 t=0.004
+  threshold_var_girf size:neg1: nonfinite=0 t=0.005
+  threshold_var_girf size:zero: nonfinite=0 t=0.003
+  threshold_var_girf size:1e300: nonfinite=27 t=0.003
+  threshold_var_girf size:1e-300: nonfinite=0 t=0.003
+  threshold_var_girf size:int: nonfinite=0 t=0.003
+  threshold_var_girf size:True: nonfinite=0 t=0.004
+  threshold_var_girf horizon:0: nonfinite=0 t=0.002
+  threshold_var_girf horizon:1: nonfinite=0 t=0.002
+  threshold_var_girf horizon:2: nonfinite=0 t=0.002
+  threshold_var_girf horizon:True: nonfinite=0 t=0.002
+  threshold_var_girf n_draws:2: nonfinite=14 t=0.002
+  threshold_var_girf seed:0: nonfinite=0 t=0.004
+  threshold_var_girf seed:1: nonfinite=0 t=0.004
+  threshold_var_girf seed:2: nonfinite=0 t=0.004
+  threshold_var_girf seed:2^31: nonfinite=0 t=0.003
+  threshold_var_girf seed:2^47: nonfinite=0 t=0.004
+  threshold_var_girf seed:2^63: nonfinite=0 t=0.003
+  threshold_var_girf seed:True: nonfinite=0 t=0.004
+  threshold_var_girf histories:1: nonfinite=1 t=0.001
+  threshold_var_girf histories:2: nonfinite=0 t=0.001
+  threshold_var_girf histories:2^31: nonfinite=0 t=0.004
+  threshold_var_girf histories:2^47: nonfinite=0 t=0.004
+  threshold_var_girf histories:True: nonfinite=1 t=0.001
+  threshold_var_girf histories:none: nonfinite=0 t=0.004
+  jsz_fit yields:short_rows: nonfinite=0 t=0.079
+  jsz_fit yields:dup_row: nonfinite=0 t=0.082
+  jsz_fit n_factors:1: nonfinite=0 t=0.006
+  jsz_fit n_factors:2: nonfinite=0 t=0.031
+  jsz_fit n_factors:True: nonfinite=0 t=0.006
+  jsz_fit periods_per_year:int: nonfinite=0 t=0.078
+  jsz_fit periods_per_year:True: nonfinite=0 t=0.107
+  jsz_fit w:int_array: nonfinite=0 t=0.073
+  jsz_fit w:valid: nonfinite=0 t=0.072
+  jsz_fit n_starts:2: nonfinite=0 t=0.079
+  jsz_fit seed:0: nonfinite=0 t=0.08
+  jsz_fit seed:1: nonfinite=0 t=0.132
+  jsz_fit seed:2: nonfinite=0 t=0.08
+  jsz_fit seed:2^31: nonfinite=0 t=0.084
+  jsz_fit seed:2^47: nonfinite=0 t=0.085
+  jsz_fit seed:2^63: nonfinite=0 t=0.081
+  jsz_fit seed:True: nonfinite=0 t=0.084
+  jsz_fit seed:none: nonfinite=0 t=0.08
+  jsz_loadings lambda_q:nested_list: nonfinite=0 t=0.0
+  jsz_loadings lambda_q:int_array: nonfinite=0 t=0.0
+  jsz_loadings lambda_q:bool_array: nonfinite=0 t=0.0
+  jsz_loadings k_inf_q:neg1: nonfinite=0 t=0.0
+  jsz_loadings k_inf_q:zero: nonfinite=0 t=0.0
+  jsz_loadings k_inf_q:1e300: nonfinite=0 t=0.0
+  jsz_loadings k_inf_q:1e-300: nonfinite=0 t=0.0
+  jsz_loadings k_inf_q:int: nonfinite=0 t=0.0
+  jsz_loadings k_inf_q:True: nonfinite=0 t=0.0
+  jsz_loadings sigma_x:int_array: nonfinite=0 t=0.0
+  jsz_loadings sigma_x:bool_array: nonfinite=0 t=0.0
+  jsz_loadings sigma_x:transposed: nonfinite=0 t=0.0
+  jsz_loadings sigma_x:dup_row: nonfinite=0 t=0.0
+  jsz_loadings maturities:[True]: nonfinite=0 t=0.0
+  jsz_loadings maturities:int_array: nonfinite=0 t=0.0
+  jsz_loadings maturities:one_short: nonfinite=0 t=0.0
+  jsz_loadings maturities:one_long: nonfinite=0 t=0.0
+  jsz_loadings periods_per_year:1e300: nonfinite=0 t=0.0
+  jsz_loadings periods_per_year:1e-300: nonfinite=0 t=0.0
+  jsz_loadings periods_per_year:int: nonfinite=0 t=0.0
+  jsz_loadings periods_per_year:True: nonfinite=0 t=0.0
+  panel_distributed_lag outcome:int_array: nonfinite=0 t=0.001
+  panel_distributed_lag outcome:bool_array: nonfinite=0 t=0.0
+  panel_distributed_lag outcome:dup_row: nonfinite=0 t=0.0
+  panel_distributed_lag regressors:one_row: nonfinite=0 t=0.0
+  panel_distributed_lag regressors:int_array: nonfinite=0 t=0.0
+  panel_distributed_lag regressors:dup_row: nonfinite=0 t=0.0
+  panel_distributed_lag lags:0: nonfinite=0 t=0.0
+  panel_distributed_lag lags:1: nonfinite=0 t=0.0
+  panel_distributed_lag lags:2: nonfinite=0 t=0.001
+  panel_distributed_lag lags:True: nonfinite=0 t=0.0
+  panel_distributed_lag powers:2: nonfinite=0 t=0.0
+  panel_distributed_lag bandwidth:none@dk: nonfinite=0 t=0.0
+  panel_distributed_lag eval_points:int_list: nonfinite=0 t=0.0

@@ -1,0 +1,251 @@
+==============================================================================================
+tsecon benchmark harness -- environment & provenance
+==============================================================================================
+  timestamp        : 2026-09-10 10:48:49 UTC
+  python           : 3.11.15 (CPython)
+  platform         : Linux-6.18.44-fc-v24-x86_64-with-glibc2.39
+  machine          : x86_64  cpu_count=4
+  cpu model        : Intel(R) Xeon(R) Processor @ 2.80GHz
+  tsecon           : 0.9.0
+  numpy            : 2.4.6
+  scipy            : 1.17.1
+  statsmodels      : 0.15.0
+  arch             : 8.0.0
+  scikit-learn     : 1.9.0
+  tsecon build     : UNKNOWN
+    detected via   : <repo>/bindings/python/python/tsecon/_core.abi3.so (18.3 MB) (size heuristic inconclusive; set CARGO_TARGET_DIR)
+/home/user/tsecon/benchmarks/bench.py:253: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  ref = adfuller(y, maxlag=4, regression="c", autolag=None)  # (stat, p, usedlag, nobs, crit, icbest)
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:264: FutureWarning: adfuller currently returns a plain tuple whose length depends on the store and autolag arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an ADFullerResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: adfuller(y, maxlag=4, regression="c", autolag=None), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: FutureWarning: kpss currently returns a plain tuple whose length and layout depends on the store argument (and which silently drops `lags` when store=True). In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning a KPSSResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:381: InterpolationWarning: The test statistic is outside of the range of p-values available in the look-up table. The actual p-value is greater than the p-value returned.
+  best_time(lambda: sm_kpss(y, regression="c", nlags="auto"), repeats),
+/home/user/tsecon/benchmarks/bench.py:391: FutureWarning: acf currently returns a plain tuple whose length depends on the qstat and alpha arguments. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an AcfResult. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  ref, ci = sm_acf(y, nlags=20, adjusted=False, fft=True, alpha=0.05)
+/home/user/tsecon/.venv/lib/python3.11/site-packages/statsmodels/stats/diagnostic.py:997: FutureWarning: acorr_lm currently returns a plain tuple whose length depends on the store argument. In release 0.16 or after July 2027, whichever is later, the default behavior will switch to always returning an LMTestResult NamedTuple. Set result_object=True to switch now, or result_object=False to keep the current behavior and silence this warning.
+  return acorr_lm(
+==============================================================================================
+PARITY MATRIX  (the deliverable -- machine-independent, must all PASS)
+==============================================================================================
+  operation                                         metric                       max|diff|       tol  ok
+----------------------------------------------------------------------------------------------
+  ADF test (regression='c', fixed lag=4)            statistic                     2.22e-16     1e-06  PASS
+                                                    p_value                       1.11e-16     1e-06  PASS
+                                                    crit values                   0.00e+00     1e-06  PASS
+                                                    vs statsmodels.tsa.stattools.adfuller
+  VAR(2) coefficients (2 vars, trend='c')           coef matrix (5x2)             6.11e-16     1e-08  PASS
+                                                    log-likelihood                1.14e-13     1e-06  PASS
+                                                    vs statsmodels.tsa.api.VAR
+  OLS + HAC (Newey-West) SEs (maxlags=4, corrected) params                        3.11e-15     1e-08  PASS
+                                                    HAC bse                       2.08e-16     1e-08  PASS
+                                                    vs statsmodels OLS cov_type='HAC'
+  GARCH(1,1) QMLE (constant mean, normal)           log-likelihood (rtol 1e-5)    1.46e-07     5e-02  PASS
+                                                    params (atol 1e-3)            7.84e-06     1e-03  PASS
+                                                    vs arch.arch_model
+                                                    note: QMLE optimisers differ; parity is asserted at optimiser tolerance (loglik rtol 1e-5, params atol 1e-3), not machine precision.
+  GJR-GARCH(1,1,1) QMLE (constant mean, normal)     log-likelihood (rtol 1e-5)    2.46e-09     4e-02  PASS
+                                                    params (atol 1e-3)            1.53e-06     1e-03  PASS
+                                                    vs arch.arch_model (o=1)
+                                                    note: Leverage-term QMLE; two different optimisers, so parity is at optimiser tolerance (loglik rtol 1e-5, params atol 1e-3), not machine precision.
+  EGARCH(1,1,1) QMLE (constant mean, normal)        log-likelihood (rtol 1e-5)    3.03e-08     2e-02  PASS
+                                                    params (atol 1e-3)            1.49e-05     1e-03  PASS
+                                                    vs arch.arch_model (vol='EGARCH')
+                                                    note: Same parameterisation (mu, omega, alpha, gamma, beta) on both sides; parity at optimiser tolerance (loglik rtol 1e-5, params atol 1e-3).
+  KPSS test (regression='c', auto lags)             statistic                     5.55e-17     1e-10  PASS
+                                                    p_value (clipped)             0.00e+00     1e-10  PASS
+                                                    auto lags                     0.00e+00     0e+00  PASS
+                                                    vs statsmodels.tsa.stattools.kpss
+                                                    note: p-value is interpolated and clipped to [0.01, 0.10] by BOTH sides (Kwiatkowski table); parity is on the clipped value.
+  ACF (20 lags) + Bartlett SEs                      acf (adjusted=False)          4.44e-16     1e-12  PASS
+                                                    Bartlett SE                   4.16e-17     1e-12  PASS
+                                                    acf (adjusted=True)           3.33e-16     1e-12  PASS
+                                                    vs statsmodels.tsa.stattools.acf
+  PACF (15 lags, Yule-Walker + OLS)                 pacf (yw / ywm)               1.09e-15     1e-10  PASS
+                                                    pacf (ols)                    2.60e-15     1e-10  PASS
+                                                    vs statsmodels.tsa.stattools.pacf
+                                                    note: tsecon method='yw' is statsmodels method='ywm' (Yule-Walker, no mean adjustment).
+  Ljung-Box + Box-Pierce (lags 1..10)               lb_stat                       6.22e-15     1e-10  PASS
+                                                    lb_pvalue                     4.25e-15     1e-12  PASS
+                                                    bp_stat                       3.55e-15     1e-10  PASS
+                                                    bp_pvalue                     4.30e-15     1e-12  PASS
+                                                    vs statsmodels.stats.diagnostic.acorr_ljungbox
+  Jarque-Bera normality test                        statistic                     4.26e-14     1e-10  PASS
+                                                    p_value                       2.11e-29     1e-12  PASS
+                                                    skewness                      8.33e-16     1e-12  PASS
+                                                    kurtosis                      8.88e-16     1e-12  PASS
+                                                    vs statsmodels.stats.stattools.jarque_bera
+  Engle ARCH-LM test (4 lags)                       LM statistic                  7.07e-13     1e-09  PASS
+                                                    LM p_value                    1.20e-13     1e-12  PASS
+                                                    vs statsmodels.stats.diagnostic.het_arch
+  White heteroskedasticity test                     LM statistic                  3.55e-13     1e-09  PASS
+                                                    LM p_value                    7.26e-15     1e-12  PASS
+                                                    F statistic                   7.11e-14     1e-09  PASS
+                                                    F p_value                     5.52e-15     1e-12  PASS
+                                                    vs statsmodels.stats.diagnostic.het_white
+  Breusch-Pagan test (Koenker studentised)          LM statistic                  0.00e+00     1e-09  PASS
+                                                    LM p_value                    1.39e-17     1e-12  PASS
+                                                    F statistic                   2.66e-15     1e-09  PASS
+                                                    F p_value                     6.73e-15     1e-12  PASS
+                                                    vs statsmodels.stats.diagnostic.het_breuschpagan
+  Ramsey RESET (powers of yhat up to 3)             F statistic                   1.81e-13     1e-09  PASS
+                                                    p_value                       2.04e-13     1e-10  PASS
+                                                    df (num, den)                 0.00e+00     0e+00  PASS
+                                                    vs statsmodels.stats.diagnostic.linear_reset
+  Johansen cointegration (3 vars, k_ar_diff=1)      eigenvalues                   9.89e-14     1e-10  PASS
+                                                    trace stat                    6.37e-11     1e-08  PASS
+                                                    max-eig stat                  6.37e-11     1e-08  PASS
+                                                    trace crit (90/95/99)         0.00e+00     1e-12  PASS
+                                                    max-eig crit                  0.00e+00     1e-12  PASS
+                                                    vs statsmodels.tsa.vector_ar.vecm.coint_johansen
+  VAR(2) orthogonalised IRF + FEVD (h=10)           orth IRF (11x2x2)             1.67e-16     1e-10  PASS
+                                                    FEVD (10x2x2)                 4.44e-16     1e-10  PASS
+                                                    vs statsmodels VARResults.irf/.fevd
+  VAR(2) Granger causality F-test                   F statistic                   9.77e-15     1e-10  PASS
+                                                    p_value                       3.83e-17     1e-12  PASS
+                                                    df (num, den)                 0.00e+00     0e+00  PASS
+                                                    vs statsmodels VARResults.test_causality(kind='f')
+  HP filter (lambda=1600, two-sided)                trend                         5.41e-12     1e-08  PASS
+                                                    cycle                         5.41e-12     1e-08  PASS
+                                                    vs statsmodels.tsa.filters.hp_filter.hpfilter
+  Baxter-King band-pass (low=6, high=32, k=12)      first_index (== K)            0.00e+00     0e+00  PASS
+                                                    cycle                         1.22e-15     1e-12  PASS
+                                                    vs statsmodels.tsa.filters.bk_filter.bkfilter
+                                                    note: bkfilter drops k observations at each end; tsecon returns the same trimmed series plus `first_index` = k, so the two align element-wise.
+  Christiano-Fitzgerald band-pass (low=6, high=32)  cycle                         2.55e-15     1e-12  PASS
+                                                    trend                         3.55e-15     1e-12  PASS
+                                                    vs statsmodels.tsa.filters.cf_filter.cffilter
+  Periodogram PSD (boxcar, n=4096)                  freqs                         0.00e+00     1e-15  PASS
+                                                    psd                           4.26e-14     1e-12  PASS
+                                                    vs scipy.signal.periodogram
+  Welch PSD (Hann, nperseg=256, 50% overlap)        freqs                         0.00e+00     1e-15  PASS
+                                                    psd                           1.07e-14     1e-12  PASS
+                                                    vs scipy.signal.welch
+  Ridge regression (alpha=1.0, no intercept)        coef                          2.66e-15     1e-10  PASS
+                                                    vs sklearn.linear_model.Ridge
+  Elastic net / lasso (coordinate descent)          coef (l1_ratio=1.0)           3.09e-13     1e-08  PASS
+                                                    coef (l1_ratio=0.5)           2.19e-12     1e-08  PASS
+                                                    vs sklearn.linear_model.ElasticNet
+                                                    note: Both minimise (1/2n)||y-Xb||^2 + a*l1*||b||_1 + (a/2)(1-l1)||b||^2. Tolerance reflects coordinate-descent stopping rules, not a formula difference.
+----------------------------------------------------------------------------------------------
+  RESULT: ALL PARITY CHECKS PASSED
+==============================================================================================
+TIMINGS  (best of 20; unknown build)
+==============================================================================================
+  operation                                               tsecon   reference     ratio
+                                                            (ms)        (ms)    ref/ts
+----------------------------------------------------------------------------------------------
+  ADF test (regression='c', fixed lag=4)                   0.036       0.585    16.44x  faster
+  VAR(2) coefficients (2 vars, trend='c')                  0.243       1.620     6.67x  faster
+  OLS + HAC (Newey-West) SEs (maxlags=4, corrected)        0.043       0.225     5.28x  faster
+  GARCH(1,1) QMLE (constant mean, normal)                 51.487      27.592     0.54x  SLOWER
+  GJR-GARCH(1,1,1) QMLE (constant mean, normal)           49.781      31.194     0.63x  SLOWER
+  EGARCH(1,1,1) QMLE (constant mean, normal)             103.008      18.476     0.18x  SLOWER
+  KPSS test (regression='c', auto lags)                    0.014       0.074     5.49x  faster
+  ACF (20 lags) + Bartlett SEs                             0.034       0.073     2.14x  faster
+  PACF (15 lags, Yule-Walker + OLS)                        0.031       1.071    34.11x  faster
+  Ljung-Box + Box-Pierce (lags 1..10)                      0.014       0.353    24.78x  faster
+  Jarque-Bera normality test                               0.011       0.841    74.63x  faster
+  Engle ARCH-LM test (4 lags)                              0.029       0.535    18.63x  faster
+  White heteroskedasticity test                            0.037       0.846    22.59x  faster
+  Breusch-Pagan test (Koenker studentised)                 0.031       0.663    21.47x  faster
+  Ramsey RESET (powers of yhat up to 3)                    0.034       0.869    25.59x  faster
+  Johansen cointegration (3 vars, k_ar_diff=1)             0.107       1.028     9.64x  faster
+  VAR(2) orthogonalised IRF + FEVD (h=10)                  0.059       2.203    37.05x  faster
+  VAR(2) Granger causality F-test                          0.058       2.442    42.44x  faster
+  HP filter (lambda=1600, two-sided)                       0.042       1.099    26.18x  faster
+  Baxter-King band-pass (low=6, high=32, k=12)             0.018       0.110     6.20x  faster
+  Christiano-Fitzgerald band-pass (low=6, high=32)         0.426       9.546    22.41x  faster
+  Periodogram PSD (boxcar, n=4096)                         0.097       0.495     5.08x  faster
+  Welch PSD (Hann, nperseg=256, 50% overlap)               0.053       0.931    17.54x  faster
+  Ridge regression (alpha=1.0, no intercept)               0.074       0.621     8.40x  faster
+  Elastic net / lasso (coordinate descent)                 0.068       0.479     7.07x  faster
+----------------------------------------------------------------------------------------------
+  tsecon faster on 22/25 ops here.
+  Honesty note: we publish this ratio for EVERY op, wins and losses alike.
+  Python wrapper overhead (KPSS test (regression='c', auto lags)): wrapped tsecon.kpss 0.013 ms vs raw tsecon._core.kpss 0.011 ms
+  -> a fixed ~0.003 ms per call on this machine; it dominates the sub-millisecond rows.
+==============================================================================================
+  wrote /tmp/claude-0/-home-user-tsecon/c4599d6c-2216-5201-8dcc-5e9e7f7d82a0/scratchpad/r13/latest.json
+OK: all parity checks passed. (Timings are indicative; see build-mode banner.)

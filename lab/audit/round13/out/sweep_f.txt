@@ -1,0 +1,34 @@
+(a) signature vs stub: 179/179 agree on names, order and has-default
+[var_girf] (a) runtime default renders as Ellipsis for ['bands'] (round-11 OPEN-1 class)
+[threshold_var_girf] (a) runtime default renders as Ellipsis for ['bands'] (round-11 OPEN-1 class)
+[setar_threshold_ci] (b) __doc__ says `slope_region_level` default 0.8; runtime None <- '`slope_region_level` threshold set (default 0.80'
+[setar_threshold_ci] (b) __doc__ says `slope_region_level` default 0.8; runtime None <- '`slope_region_level` threshold set (default 0.80'
+[setar_threshold_ci] (b) stub says `slope_region_level` default 0.8; runtime None <- '`slope_region_level` threshold set (default 0.80'
+[setar_threshold_ci] (b) stub says `slope_region_level` default 0.8; runtime None <- '`slope_region_level` threshold set (default 0.80'
+[setar_threshold_ci] (b) card says `slope_region_level` default 0.8; runtime None <- '`slope_region_level` threshold set (default 0.80'
+[setar_threshold_ci] (b) card says `slope_region_level` default 0.8; runtime None <- '`slope_region_level` threshold set (default 0.80'
+[var_girf] (b) __doc__ says `bands` default (0.16, 0.84); runtime Ellipsis <- '`bands` ((0.16, 0.84))'
+[var_girf] (b) stub says `bands` default (0.16, 0.84); runtime Ellipsis <- '`bands` ((0.16, 0.84))'
+[threshold_var_girf] (b) __doc__ says `bands` default (0.16, 0.84); runtime Ellipsis <- '`bands` ((0.16, 0.84))'
+[threshold_var_girf] (b) stub says `bands` default (0.16, 0.84); runtime Ellipsis <- '`bands` ((0.16, 0.84))'
+[jsz_fit] (b) __doc__ says `seed` default 0; runtime None <- '`seed` (0;'
+[jsz_fit] (b) stub says `seed` default 0; runtime None <- '`seed` (0)'
+[jsz_fit] (b) term-structure.md table: `seed` default 0; runtime None
+[jsz_fit] (b) guide bullet says seed=0; runtime default None
+[setar_threshold_ci] (c) 3 call snippets scanned
+[var_girf] (c) 3 call snippets scanned
+[threshold_var_girf] (c) 4 call snippets scanned
+[jsz_fit] (c) 3 call snippets scanned
+[jsz_loadings] (c) 3 call snippets scanned
+[panel_distributed_lag] (c) 4 call snippets scanned
+[setar_threshold_ci] (d) 0 listed values probed: {}
+[var_girf] (d) 3 listed values probed: {'trend=c': 'ok', 'shock=generalized': 'ok', 'shock=orthogonal': 'ok'}
+[threshold_var_girf] (d) 2 listed values probed: {'shock=orthogonal': 'ok', 'regime=all': 'ok'}
+[jsz_fit] (d) 0 listed values probed: {}
+[jsz_loadings] (d) 0 listed values probed: {}
+[panel_distributed_lag] (d) 3 listed values probed: {'se_type=cluster': 'ok', 'se_type=driscoll_kraay': 'ok', 'se_type=nonrobust': 'ok'}
+[var_girf] (e) documented no-op `n_draws`: max|d girf| = 2.8e-17 (promise: identical)
+[var_girf] (e) documented no-op `seed`: max|d girf| = 8.3e-17 (promise: identical)
+[var_girf] (e) documented no-op `antithetic`: max|d girf| = 6.9e-17 (promise: identical)
+
+candidates raised: 14

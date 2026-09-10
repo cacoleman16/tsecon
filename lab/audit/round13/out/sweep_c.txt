@@ -1,0 +1,33 @@
+(a) pinned binding tests: rc=0 in 1s — 10 passed in 1.22s
+    threshold_var_girf showcase (T=600, k=3, 200 histories x 500 antithetic draws x horizon 20, fit included): 0.113 s
+    worst relative error vs linearmodels (params, bse): 7.24e-14
+(b) term-structure card JSZ example: rc=0 in 0.5s; printed == expected block: True
+(b) cointegration card setar_threshold_ci example: rc=0 in 0.1s; output:
+      threshold: 0.0  95% set: [[0.0, 0.0]]  connected: True
+      p-value of gamma_0 = 0: 1.0
+      conservative 95% CIs, low regime:  [0.72 0.36] [1.12 0.67]
+      eta^2: 0.922  set: [[0.0, 0.0]]
+(b) var-svar card var_girf example: rc=0; printed ['True', '(9, 3) 398'] (card comments: True / (9, 3) 398)
+(d) lp_vs_var_head_to_head.py: rc=0 in 107s; verbatim block 148 lines, 1 content lines not reproduced verbatim
+    MISSING:   date          : 2026-09-10 08:23:22 UTC
+    script banner version ['0.9.0']; chapter says: ['0.8.0']
+(e) rust_props.txt present: 63 lines; test results: [('ok', '8', '0'), ('ok', '9', '0'), ('ok', '7', '0'), ('ok', '8', '0'), ('ok', '9', '0'), ('ok', '7', '0')]
+    OK : panel cluster N=50 0.928
+    OK : panel cluster N=200 0.938
+    OK : panel dk T=50 0.886
+    OK : panel dk T=200 0.924
+    NOT FOUND: panel mean se 0.0642/0.0327/0.0611/0.0335
+    OK : setar_ci 0.886/0.930 (n=100, d=0.5)
+    OK : setar_ci 0.946/0.976
+    OK : setar_ci setar2 0.966/0.984
+    OK : setar_ci eta2 468/500 mean 0.617
+    OK : setar_ci corrected 0.915/0.938
+    OK : tvar sign asymmetry 0.149 t=37
+    OK : tvar size 0.040 t=11.5
+    OK : tvar regime 0.111 t=60
+    OK : tvar ratio 4.02
+    OK : tvar antithetic 1.000
+    OK : var girf ratio 4.58
+    OK : var girf antithetic 0.953
+    NOT FOUND: jsz gaps 9.80e-6 / ratios 0.2504 0.2501
+(f) DJO script: urllib download present=True; header states the network fetch and the temp-dir cache: True; card says fetched from a mirror: True

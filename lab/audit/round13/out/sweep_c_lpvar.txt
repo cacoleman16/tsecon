@@ -1,0 +1,148 @@
+
+------------------------------------------------------------------------------
+PROVENANCE
+------------------------------------------------------------------------------
+  date          : 2026-09-10 10:40:34 UTC
+  python        : 3.11.15 (CPython)
+  platform      : Linux-6.18.44-fc-v24-x86_64-with-glibc2.39  cpu_count=4
+  cpu model     : Intel(R) Xeon(R) Processor @ 2.80GHz
+  tsecon        : 0.9.0   build: unknown (_core.abi3.so, 18.3 MB; no cargo artifact of that size found)
+  numpy / scipy : 2.4.6 / 1.17.1
+
+------------------------------------------------------------------------------
+PART 1 -- Plagborg-Moller & Wolf (2021): where is the finite-sample identity?
+------------------------------------------------------------------------------
+DGP: bivariate Gaussian VAR(2), shock variable x ordered first, T=400, horizons 0..12, seed=20260910
+VAR(2) IRF = Cholesky response of y to the x shock, divided by the x impact
+            (one-SD shock -> unit shock, the LP normalisation).
+lp(y, x, n_lag_controls=2) controls: constant, 2 own-lags of y, and on the
+            lag-augmented path h lags of x; on the HAC path no x lags.
+matched LP: constant, x_t, 2 lags of x AND 2 lags of y (tsecon.ols).
+
+[x has its own AR dynamics]  var_fit is_stable=True  min_root=1.489
+   h     VAR(2)  lp lag-aug     lp hac    matched  |VAR-lagaug|  |VAR-hac|  |VAR-matched|
+   0   0.514865    0.558012   0.558012   0.514865      4.31e-02   4.31e-02       2.11e-15
+   1   0.667378    0.665306   0.715191   0.669839      2.07e-03   4.78e-02       2.46e-03
+   2   0.533931    0.543530   0.572043   0.543530      9.60e-03   3.81e-02       9.60e-03
+   3   0.349863    0.307702   0.330219   0.304655      4.22e-02   1.96e-02       4.52e-02
+   4   0.213444    0.232117   0.220656   0.226679      1.87e-02   7.21e-03       1.32e-02
+   5   0.132457    0.152647   0.130262   0.153214      2.02e-02   2.20e-03       2.08e-02
+   6   0.086593    0.052244   0.071994   0.066872      3.43e-02   1.46e-02       1.97e-02
+   7   0.058813    0.057614   0.061325   0.057800      1.20e-03   2.51e-03       1.01e-03
+   8   0.040322    0.056688   0.050385   0.027818      1.64e-02   1.01e-02       1.25e-02
+   9   0.027438    0.080453   0.061500   0.056462      5.30e-02   3.41e-02       2.90e-02
+  10   0.018480    0.065972   0.064210   0.054210      4.75e-02   4.57e-02       3.57e-02
+  11   0.012375    0.057669   0.067258   0.053895      4.53e-02   5.49e-02       4.15e-02
+  12   0.008279    0.108406   0.116483   0.112833      1.00e-01   1.08e-01       1.05e-01
+  horizons where VAR(2) == lp lag-augmented to 1e-12: NONE
+  horizons where VAR(2) == lp hac to 1e-12: NONE
+  horizons where VAR(2) == matched-controls LP to 1e-12: [0]
+
+[x is white noise (innovation-like)]  var_fit is_stable=True  min_root=2.344
+   h     VAR(2)  lp lag-aug     lp hac    matched  |VAR-lagaug|  |VAR-hac|  |VAR-matched|
+   0   0.507213    0.492431   0.492431   0.507213      1.48e-02   1.48e-02       3.33e-16
+   1   0.621153    0.621171   0.611203   0.623697      1.74e-05   9.95e-03       2.54e-03
+   2   0.330462    0.332568   0.331594   0.332568      2.11e-03   1.13e-03       2.11e-03
+   3   0.042365    0.039441   0.053867   0.047709      2.92e-03   1.15e-02       5.34e-03
+   4  -0.043486   -0.077855  -0.069213  -0.078723      3.44e-02   2.57e-02       3.52e-02
+   5  -0.029515   -0.097902  -0.098635  -0.103148      6.84e-02   6.91e-02       7.36e-02
+   6  -0.007019   -0.099395  -0.106797  -0.100339      9.24e-02   9.98e-02       9.33e-02
+   7   0.001739    0.057323   0.029002   0.040614      5.56e-02   2.73e-02       3.89e-02
+   8   0.002160    0.060744   0.036557   0.045155      5.86e-02   3.44e-02       4.30e-02
+   9   0.000796    0.055237   0.051545   0.050643      5.44e-02   5.07e-02       4.98e-02
+  10   0.000017    0.000736  -0.014363  -0.017712      7.19e-04   1.44e-02       1.77e-02
+  11  -0.000136   -0.086598  -0.105074  -0.101409      8.65e-02   1.05e-01       1.01e-01
+  12  -0.000073    0.080388   0.063904   0.069248      8.05e-02   6.40e-02       6.93e-02
+  horizons where VAR(2) == lp lag-augmented to 1e-12: NONE
+  horizons where VAR(2) == lp hac to 1e-12: NONE
+  horizons where VAR(2) == matched-controls LP to 1e-12: [0]
+
+How each gap scales with T (max over the stated horizons, one draw per T):
+       T | persistent x: lagaug h=0  matched h=0  matched h>=1 | white-noise x: lagaug h=0  matched h>=1
+     200 |                 8.47e-02     1.11e-16      1.88e-01 |                  3.07e-02      1.49e-01
+     800 |                 3.68e-02     7.77e-16      5.29e-02 |                  1.21e-02      2.83e-02
+    3200 |                 5.06e-02     2.11e-15      2.83e-02 |                  4.77e-03      4.46e-02
+   12800 |                 5.01e-02     4.88e-15      1.34e-02 |                  4.20e-03      1.73e-02
+
+------------------------------------------------------------------------------
+PART 2 -- Li, Plagborg-Moller & Wolf (2024): the bias-variance trade-off, measured
+------------------------------------------------------------------------------
+DGP: y_t = 1.5 y_(t-1) -0.54 y_(t-2) + 1.0 x_t + 0.5 x_(t-1) + e_t + 0.6 e_(t-1),
+     x_t ~ iid N(0,1) observed shock, e_t ~ iid N(0,1); AR roots 0.9 and 0.6.
+T=240, horizons 0..20, 500 replications, seed=20260910, nominal 95% pointwise bands.
+Estimand: response of y to a unit x shock. VAR IRFs are Cholesky (x first)
+divided by the x impact for bias/SD/RMSE; var_irf_bands cover the one-SD
+response, which equals the unit response here because sd(x) = 1.
+True IRF: 1.000 2.000 2.460 2.610 2.587 2.470 2.309 2.129 1.947 1.771 1.605 1.451 1.310 1.181 1.065 0.959 0.864 0.778 0.700 0.630 0.567
+Monte Carlo time: 105.4 s (211 ms per replication)
+
+BIAS  (mean estimate - truth)
+  estimator              h=0     h=1     h=2     h=4     h=8    h=12    h=16    h=20  mean|.|
+  VAR(1)               0.007   0.010  -0.514  -0.768  -0.366   0.068   0.340   0.487    0.354
+  VAR(4)               0.002  -0.007  -0.023  -0.058  -0.052  -0.188  -0.273  -0.265    0.140
+  VAR(12)              0.004  -0.005  -0.022  -0.066  -0.098  -0.147  -0.183  -0.217    0.120
+  LP(1) lag-aug        0.004   0.006   0.000  -0.033  -0.081  -0.159  -0.216  -0.235    0.122
+  LP(4) lag-aug        0.002  -0.005  -0.020  -0.063  -0.104  -0.167  -0.218  -0.234    0.133
+  LP(12) lag-aug       0.004  -0.004  -0.019  -0.069  -0.112  -0.176  -0.233  -0.244    0.141
+  LP(4) HAC            0.002  -0.005  -0.021  -0.061  -0.108  -0.166  -0.191  -0.184    0.121
+  smooth LP(4) cv      0.734   0.014  -0.249  -0.292  -0.133  -0.105  -0.148  -0.218    0.192
+
+SD    (standard deviation across replications)
+  estimator              h=0     h=1     h=2     h=4     h=8    h=12    h=16    h=20     mean
+  VAR(1)               0.116   0.233   0.259   0.242   0.227   0.230   0.238   0.245    0.231
+  VAR(4)               0.067   0.170   0.268   0.429   0.518   0.524   0.490   0.407    0.438
+  VAR(12)              0.071   0.180   0.288   0.468   0.691   0.726   0.637   0.519    0.558
+  LP(1) lag-aug        0.132   0.222   0.314   0.467   0.695   0.761   0.829   0.825    0.643
+  LP(4) lag-aug        0.067   0.170   0.269   0.437   0.684   0.745   0.821   0.816    0.623
+  LP(12) lag-aug       0.069   0.175   0.281   0.464   0.704   0.768   0.835   0.821    0.639
+  LP(4) HAC            0.067   0.168   0.265   0.429   0.650   0.709   0.749   0.722    0.584
+  smooth LP(4) cv      0.510   0.268   0.302   0.489   0.598   0.665   0.716   0.759    0.598
+
+RMSE  (sqrt of bias^2 + SD^2)
+  estimator              h=0     h=1     h=2     h=4     h=8    h=12    h=16    h=20     mean
+  VAR(1)               0.116   0.233   0.575   0.805   0.431   0.240   0.415   0.545    0.445
+  VAR(4)               0.067   0.169   0.269   0.433   0.520   0.556   0.561   0.485    0.468
+  VAR(12)              0.071   0.180   0.288   0.472   0.697   0.740   0.662   0.562    0.573
+  LP(1) lag-aug        0.132   0.222   0.314   0.468   0.700   0.776   0.856   0.857    0.656
+  LP(4) lag-aug        0.067   0.170   0.269   0.441   0.692   0.763   0.848   0.848    0.637
+  LP(12) lag-aug       0.069   0.175   0.281   0.469   0.712   0.787   0.866   0.856    0.655
+  LP(4) HAC            0.067   0.168   0.266   0.433   0.658   0.727   0.772   0.745    0.596
+  smooth LP(4) cv      0.894   0.268   0.391   0.569   0.612   0.673   0.731   0.789    0.643
+
+RMSE winner by horizon (lowest RMSE among the eight estimators):
+  h= 0: LP(4) lag-aug      RMSE=0.067   (LP(4) lag-aug 0.067, VAR(4) 0.067, VAR(12) 0.071)
+  h= 1: LP(4) HAC          RMSE=0.168   (LP(4) lag-aug 0.170, VAR(4) 0.169, VAR(12) 0.180)
+  h= 2: LP(4) HAC          RMSE=0.266   (LP(4) lag-aug 0.269, VAR(4) 0.269, VAR(12) 0.288)
+  h= 3: LP(4) HAC          RMSE=0.354   (LP(4) lag-aug 0.358, VAR(4) 0.355, VAR(12) 0.386)
+  h= 4: VAR(4)             RMSE=0.433   (LP(4) lag-aug 0.441, VAR(4) 0.433, VAR(12) 0.472)
+  h= 5: VAR(4)             RMSE=0.485   (LP(4) lag-aug 0.517, VAR(4) 0.485, VAR(12) 0.545)
+  h= 6: VAR(4)             RMSE=0.507   (LP(4) lag-aug 0.586, VAR(4) 0.507, VAR(12) 0.611)
+  h= 7: VAR(4)             RMSE=0.514   (LP(4) lag-aug 0.651, VAR(4) 0.514, VAR(12) 0.663)
+  h= 8: VAR(1)             RMSE=0.431   (LP(4) lag-aug 0.692, VAR(4) 0.520, VAR(12) 0.697)
+  h= 9: VAR(1)             RMSE=0.333   (LP(4) lag-aug 0.719, VAR(4) 0.527, VAR(12) 0.715)
+  h=10: VAR(1)             RMSE=0.261   (LP(4) lag-aug 0.738, VAR(4) 0.537, VAR(12) 0.725)
+  h=11: VAR(1)             RMSE=0.230   (LP(4) lag-aug 0.749, VAR(4) 0.547, VAR(12) 0.730)
+  h=12: VAR(1)             RMSE=0.240   (LP(4) lag-aug 0.763, VAR(4) 0.556, VAR(12) 0.740)
+  h=13: VAR(1)             RMSE=0.277   (LP(4) lag-aug 0.791, VAR(4) 0.564, VAR(12) 0.743)
+  h=14: VAR(1)             RMSE=0.323   (LP(4) lag-aug 0.816, VAR(4) 0.568, VAR(12) 0.725)
+  h=15: VAR(1)             RMSE=0.371   (LP(4) lag-aug 0.828, VAR(4) 0.567, VAR(12) 0.696)
+  h=16: VAR(1)             RMSE=0.415   (LP(4) lag-aug 0.848, VAR(4) 0.561, VAR(12) 0.662)
+  h=17: VAR(1)             RMSE=0.455   (LP(4) lag-aug 0.849, VAR(4) 0.549, VAR(12) 0.630)
+  h=18: VAR(1)             RMSE=0.490   (LP(4) lag-aug 0.840, VAR(4) 0.531, VAR(12) 0.603)
+  h=19: VAR(4)             RMSE=0.510   (LP(4) lag-aug 0.839, VAR(4) 0.510, VAR(12) 0.581)
+  h=20: VAR(4)             RMSE=0.485   (LP(4) lag-aug 0.848, VAR(4) 0.485, VAR(12) 0.562)
+
+COVERAGE of nominal 95% pointwise bands (share of replications containing the truth)
+  band                         h=0     h=1     h=2     h=4     h=8    h=12    h=16    h=20     mean
+  VAR(1) asymptotic          0.946   0.872   0.400   0.154   0.678   0.980   0.954   0.888    0.736
+  VAR(4) asymptotic          0.948   0.942   0.950   0.936   0.926   0.866   0.830   0.768    0.884
+  VAR(12) asymptotic         0.942   0.922   0.930   0.936   0.912   0.912   0.920   0.916    0.921
+  LP(1) lag-aug HC1          0.958   0.946   0.954   0.936   0.916   0.904   0.908   0.922    0.919
+  LP(4) lag-aug HC1          0.948   0.950   0.954   0.942   0.910   0.908   0.888   0.926    0.919
+  LP(12) lag-aug HC1         0.940   0.932   0.946   0.938   0.914   0.896   0.882   0.928    0.914
+  LP(4) HAC                  0.946   0.938   0.934   0.924   0.884   0.874   0.856   0.870    0.888
+  smooth LP(4) se|lambda     0.144   0.884   0.808   0.714   0.810   0.842   0.844   0.856    0.783
+  Monte Carlo SE of a 0.95 coverage estimate with 500 replications: 0.010
+  smooth_lp lambda_used: median 3.53e+03, IQR [336, 1e+06]; max |irf_raw - lp(se='hac') irf| over all replications: 0.0e+00
+
+Total wall-clock: 105.9 s

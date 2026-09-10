@@ -1,0 +1,3 @@
+use_tsecon.py:3: note: Revealed type is "def (data: numpy.ndarray[tuple[Any, ...], numpy.dtype[numpy.float64]], p: int, shock_var: int =, size: float =, shock: str =, horizon: int =, n_draws: int =, seed: int =, trend: str =, antithetic: bool =, histories: int | None =, bands: tuple[float, float] =) -> dict[str, Any]"
+use_tsecon.py:4: note: Revealed type is "def (y: numpy.ndarray[tuple[Any, ...], numpy.dtype[numpy.float64]], regression: str =, autolag: str | None =, maxlag: int | None =) -> dict[str, Any]"
+Success: no issues found in 1 source file

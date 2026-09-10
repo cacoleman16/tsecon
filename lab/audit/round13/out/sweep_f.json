@@ -1,0 +1,226 @@
+{
+ "a": {
+  "setar_threshold_ci": {
+   "delay": "1",
+   "trim": "0.15",
+   "delays": "None",
+   "constant": "True",
+   "level": "0.95",
+   "het_robust": "False",
+   "slope_level": "None",
+   "slope_region_level": "None",
+   "null_threshold": "None"
+  },
+  "var_girf": {
+   "shock_var": "0",
+   "size": "1.0",
+   "shock": "'orthogonal'",
+   "horizon": "10",
+   "n_draws": "2",
+   "seed": "0",
+   "trend": "'c'",
+   "antithetic": "True",
+   "histories": "None",
+   "bands": "Ellipsis"
+  },
+  "threshold_var_girf": {
+   "threshold_index": "0",
+   "delay": "1",
+   "trim": "0.1",
+   "delays": "None",
+   "constant": "True",
+   "shock_var": "0",
+   "size": "1.0",
+   "shock": "'orthogonal'",
+   "horizon": "20",
+   "n_draws": "500",
+   "seed": "0",
+   "regime": "'all'",
+   "histories": "None",
+   "bands": "Ellipsis",
+   "antithetic": "True"
+  },
+  "jsz_fit": {
+   "n_factors": "3",
+   "periods_per_year": "12.0",
+   "w": "None",
+   "n_starts": "5",
+   "seed": "None"
+  },
+  "jsz_loadings": {
+   "periods_per_year": "1.0"
+  },
+  "panel_distributed_lag": {
+   "powers": "1",
+   "entity_effects": "True",
+   "time_effects": "True",
+   "entity_trends": "False",
+   "se_type": "'cluster'",
+   "bandwidth": "None",
+   "eval_points": "None"
+  }
+ },
+ "b": {
+  "setar_threshold_ci": [
+   [
+    "__doc__",
+    "slope_region_level",
+    0.8,
+    "None"
+   ],
+   [
+    "__doc__",
+    "slope_region_level",
+    0.8,
+    "None"
+   ],
+   [
+    "stub",
+    "slope_region_level",
+    0.8,
+    "None"
+   ],
+   [
+    "stub",
+    "slope_region_level",
+    0.8,
+    "None"
+   ],
+   [
+    "card",
+    "slope_region_level",
+    0.8,
+    "None"
+   ],
+   [
+    "card",
+    "slope_region_level",
+    0.8,
+    "None"
+   ]
+  ],
+  "var_girf": [
+   [
+    "__doc__",
+    "bands",
+    [
+     0.16,
+     0.84
+    ],
+    "Ellipsis"
+   ],
+   [
+    "stub",
+    "bands",
+    [
+     0.16,
+     0.84
+    ],
+    "Ellipsis"
+   ]
+  ],
+  "threshold_var_girf": [
+   [
+    "__doc__",
+    "bands",
+    [
+     0.16,
+     0.84
+    ],
+    "Ellipsis"
+   ],
+   [
+    "stub",
+    "bands",
+    [
+     0.16,
+     0.84
+    ],
+    "Ellipsis"
+   ]
+  ],
+  "jsz_fit": [
+   [
+    "__doc__",
+    "seed",
+    0,
+    "None"
+   ],
+   [
+    "stub",
+    "seed",
+    0,
+    "None"
+   ],
+   [
+    "card-table",
+    "seed",
+    0,
+    "None"
+   ],
+   [
+    "guide-bullet",
+    "seed",
+    "0",
+    "None"
+   ]
+  ],
+  "jsz_loadings": [],
+  "panel_distributed_lag": []
+ },
+ "c": {
+  "setar_threshold_ci": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "var_girf": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "threshold_var_girf": {
+   "snippets": 4,
+   "unknown": {}
+  },
+  "jsz_fit": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "jsz_loadings": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "panel_distributed_lag": {
+   "snippets": 4,
+   "unknown": {}
+  }
+ },
+ "d": {
+  "setar_threshold_ci": {},
+  "var_girf": {
+   "trend=c": "ok",
+   "shock=generalized": "ok",
+   "shock=orthogonal": "ok"
+  },
+  "threshold_var_girf": {
+   "shock=orthogonal": "ok",
+   "regime=all": "ok"
+  },
+  "jsz_fit": {},
+  "jsz_loadings": {},
+  "panel_distributed_lag": {
+   "se_type=cluster": "ok",
+   "se_type=driscoll_kraay": "ok",
+   "se_type=nonrobust": "ok"
+  }
+ },
+ "e": {
+  "setar_threshold_ci:slope_region_level without slope_level": "raises: slope_region_level was given but slope_level is None: the region level only sets which threshold con",
+  "jsz_fit:seed with n_starts=1": "raises: seed was given but n_starts=1 ignores it: with a single start the search runs only from JSZ's recomm",
+  "panel_distributed_lag:bandwidth under se_type=cluster": "raises: panel_distributed_lag: bandwidth=4 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-",
+  "panel_distributed_lag:bandwidth under se_type=nonrobust": "raises: panel_distributed_lag: bandwidth=4 has no effect under se_type=\"nonrobust\": bandwidth is the Driscol",
+  "panel_distributed_lag:eval_points under powers=1": "raises: eval_points was given but powers=1 ignores it: the marginal effect of a linear cumulative response i",
+  "var_girf:n_draws": "documented no-op; max|d girf|=2.8e-17",
+  "var_girf:seed": "documented no-op; max|d girf|=8.3e-17",
+  "var_girf:antithetic": "documented no-op; max|d girf|=6.9e-17"
+ }
+}

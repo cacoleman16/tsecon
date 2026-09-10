@@ -1,0 +1,63 @@
+=== cargo test -p tsecon-panel --test panel_dl_properties -- --nocapture
+
+running 8 tests
+dk N=25 T=50 : coverage 0.886 mean 0.7020 mean se 0.0611
+dk N=25 T=200: coverage 0.924 mean 0.6978 mean se 0.0335
+.......cluster N=50  T=30: coverage 0.928 mean 0.7000 mean se 0.0642
+cluster N=200 T=30: coverage 0.938 mean 0.6998 mean se 0.0327
+.
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 50.29s
+
+exit=0
+=== cargo test -p tsecon-regime --test setar_ci_properties -- --nocapture
+
+running 9 tests
+..Hansen-design coverage (delta = 0.5, n = 100, 500 reps): 90% set 0.886, 95% set 0.930
+SETAR(2) coverage (n = 100, 500 reps): 90% set 0.960, 95% set 0.976
+Hansen-design coverage (delta = 0.5, n = 250, 500 reps): 90% set 0.926, 95% set 0.948
+SETAR(2) coverage (n = 250, 500 reps): 90% set 0.964, 95% set 0.982
+Hansen-design coverage (delta = 0.5, n = 500, 500 reps): 90% set 0.946, 95% set 0.976
+Hansen-design coverage (delta = 1, n = 100, 500 reps): 90% set 0.950, 95% set 0.972
+Hansen-design coverage (delta = 1, n = 250, 500 reps): 90% set 0.964, 95% set 0.980
+SETAR(2) coverage (n = 500, 500 reps): 90% set 0.966, 95% set 0.984
+...Hansen-design coverage (delta = 1, n = 500, 500 reps): 90% set 0.956, 95% set 0.978
+...heteroskedastic design (n = 250, delta = 1, 500 reps, true eta^2 = 0.607): plain 90%/95% = 0.992/0.998; het_robust identified in 468 reps, eta^2 mean 0.617 (deciles 0.306 / 0.629 / 0.901); robust 90%/95% = 0.915/0.938 conditional on identification, 0.856/0.878 counting refusals as misses
+.
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.30s
+
+exit=0
+=== cargo test -p tsecon-var --test girf_properties -- --nocapture
+
+running 7 tests
+girf MC convergence (toy TVAR, 16 histories): rms error n=32 1.3700e-2, n=128 6.4667e-3, n=512 2.9907e-3; ratio 32/512 = 4.58 (1/sqrt(n) predicts 4)
+......girf antithetic variance ratio (toy TVAR, 64 draws, 80 seeds, h = 1..8): 0.953 (1 = no reduction)
+.
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.77s
+
+exit=0
+=== cargo test -p tsecon-regime --test tvar_girf_properties -- --nocapture
+
+running 8 tests
+..tvar girf MC convergence (30 histories, antithetic): rms error n=32 8.7892e-3, n=128 3.9684e-3, n=512 2.1852e-3; ratio 32/512 = 4.02 (1/sqrt(n) predicts 4)
+...tvar girf speed: T = 600, k = 3, 200 histories x 500 antithetic draws x horizon 20 (2 paths, 4.2M simulated periods): fit 0.012 s, girf 1.356 s on 4 rayon threads
+.tvar girf asymmetry (k = 3, T = 600, 400 antithetic draws, 120 histories): peak |GIRF(+1)| = 0.6905; sign: max|GIRF(+1)+GIRF(-1)| = 0.1493 (max t = 37.4); size: max|GIRF(2)-2GIRF(1)| = 0.0403 (max t = 11.5); regime: max|low-high| = 0.1111 (max t = 60.2; 340 low, 259 high histories)
+.tvar girf antithetic variance ratio (64 draws, 20 histories, 60 seeds, h = 1..12): 1.000 (1 = no reduction)
+.
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.81s
+
+exit=0
+=== cargo test -p tsecon-termstructure --test jsz_properties -- --nocapture
+
+running 9 tests
+......fit: 8.38s, converged true, iters 1746, lambda [0.9950085985524636, 0.9599001390181999, 0.8501837052511232], k_inf 1.995e-5, sigma_e 1.026e-5, llf 30437.526
+...
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.80s
+
+exit=0
+=== cargo test -p tsecon-termstructure --test jsz_golden -- --nocapture
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.58s
+
+exit=0

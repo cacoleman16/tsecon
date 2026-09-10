@@ -1,0 +1,8 @@
+ast.parse(stub): SyntaxError line 4284: invalid character '—' (U+2014)
+triple-quote tokens: 358; unterminated docstrings: 2
+  docstring opened at line 4199 still open at line 4270: '# ---- Distributed-lag panel regressions (climate-impact specification'
+  docstring opened at line 4199 still open at line 4272: 'def panel_distributed_lag('
+api.md:5018: stub source leaked into prose: '# ---- Distributed-lag panel regressions (climate-impact specification)'
+api.md:5020: stub source leaked into prose: 'def panel_distributed_lag('
+api.md:5102: stub source leaked into prose: '# ---------------------------------------- JSZ affine term structure'
+api.md:5103: stub source leaked into prose: 'def jsz_fit('

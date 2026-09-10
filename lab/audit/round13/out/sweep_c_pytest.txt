@@ -1,0 +1,6 @@
+..
+threshold_var_girf showcase (T=600, k=3, 200 histories x 500 antithetic draws x horizon 20, fit included): 0.113 s
+..
+worst relative error vs linearmodels (params, bse): 7.24e-14
+......
+10 passed in 1.22s

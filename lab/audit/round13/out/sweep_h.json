@@ -1,0 +1,40 @@
+{
+ "nondeterministic": [],
+ "var_girf.seed": {
+  "config": {
+   "horizon": 6
+  },
+  "same_seed_identical": true,
+  "different_seed_differs": true,
+  "subprocess_identical": true,
+  "none_accepted": false,
+  "none_error": "TypeError: 'NoneType' object cannot be interpreted as an integer"
+ },
+ "threshold_var_girf.seed": {
+  "config": {
+   "horizon": 6,
+   "n_draws": 20
+  },
+  "same_seed_identical": true,
+  "different_seed_differs": true,
+  "subprocess_identical": true,
+  "none_accepted": false,
+  "none_error": "TypeError: 'NoneType' object cannot be interpreted as an integer"
+ },
+ "jsz_fit.seed": {
+  "config": {
+   "n_starts": 2
+  },
+  "same_seed_identical": true,
+  "different_seed_differs": true,
+  "subprocess_identical": true,
+  "none_accepted": true,
+  "none_documented": true,
+  "none_equals_seed0": true,
+  "none_deterministic": true,
+  "none_echo": 0
+ },
+ "jsz_fit.threads": true,
+ "threshold_var_girf.threads": true,
+ "var_girf.threads": true
+}

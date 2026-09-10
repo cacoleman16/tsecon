@@ -1,0 +1,120 @@
+function                    T=200    T=800   T=3200  slope  dflt@3200  flags
+setar_threshold_ci          0.001    0.003    0.044   1.38     0.002  superlinear slope 1.38 (retime slope 1.34)
+var_girf                    0.003    0.022    0.027   0.86     0.030  
+threshold_var_girf          0.012    0.013    0.041   0.44     1.291  
+jsz_fit                     0.082    0.406    1.195   0.97     2.002  
+jsz_loadings                0.000    0.000    0.001   0.12     0.001  
+panel_distributed_lag       0.001    0.002    0.007   0.77     0.004  
+
+== caps: counts just under the seal, in the allocation band, and at the documented cap (child: 4 GB RLIMIT_AS, 60 s)
+  setar_threshold_ci     p=2^47                 refusal      t=    0.0 rss+=     0.2MB  setar_threshold_ci() got multiple values for argument 'p'
+  setar_threshold_ci     p=2^31                 refusal      t=    0.0 rss+=     0.0MB  setar_threshold_ci() got multiple values for argument 'p'
+  setar_threshold_ci     p=1e6                  refusal      t=    0.0 rss+=     0.0MB  setar_threshold_ci() got multiple values for argument 'p'
+  setar_threshold_ci     delay=2^47             refusal      t=    0.0 rss+=     0.4MB  insufficient data: 200 observations, at least 140737488355334 required
+  setar_threshold_ci     delay=2^31             refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 2147483654 required
+  setar_threshold_ci     delay=1e6              refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 1000006 required
+  setar_threshold_ci     delays=2^47            refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 140737488355334 required
+  setar_threshold_ci     delays=2^31            refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 2147483654 required
+  setar_threshold_ci     delays=1e6             refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 1000006 required
+  (setar_threshold_ci: 9 cells in 0 s)
+  var_girf               p=2^47                 refusal      t=    0.0 rss+=     0.1MB  var_girf() got multiple values for argument 'p'
+  var_girf               p=2^31                 refusal      t=    0.0 rss+=     0.0MB  var_girf() got multiple values for argument 'p'
+  var_girf               p=1e6                  refusal      t=    0.0 rss+=     0.0MB  var_girf() got multiple values for argument 'p'
+  var_girf               shock_var=2^47         refusal      t=    0.0 rss+=     1.6MB  invalid shock_var = 140737488355328: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)
+  var_girf               shock_var=2^31         refusal      t=    0.0 rss+=     0.0MB  invalid shock_var = 2147483648: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)
+  var_girf               shock_var=1e6          refusal      t=    0.0 rss+=     0.0MB  invalid shock_var = 1000000: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)
+  var_girf               horizon=2^47           refusal      t=    0.0 rss+=     0.0MB  invalid horizon = 140737488355328: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)
+  var_girf               horizon=2^31           refusal      t=    0.0 rss+=     0.0MB  invalid horizon = 2147483648: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)
+  var_girf               horizon=1e6            ALLOC-ABORT  t=      - rss+=       -MB  rc=-6 bytes=24000024
+  var_girf               horizon=cap+1          refusal      t=  0.001 rss+=     1.7MB  invalid horizon = 1000001: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)
+  var_girf               horizon=cap            ALLOC-ABORT  t=      - rss+=       -MB  rc=-6 bytes=7168
+  var_girf               horizon=2e5            ALLOC-ABORT  t=      - rss+=       -MB  rc=-6 bytes=4800024
+  var_girf               n_draws=2^47           refusal      t=  0.001 rss+=     1.6MB  n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizon, or the number of histories
+  var_girf               n_draws=2^31           refusal      t=    0.0 rss+=     0.0MB  n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizon, or the number of histories
+  var_girf               n_draws=1e6            HANG         t=      - rss+=       -MB  
+  var_girf               n_draws=2^27           refusal      t=    0.0 rss+=     1.6MB  n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizon, or the number of histories
+  var_girf               n_draws=2^26           CRASH        t=      - rss+=       -MB  rc=-6
+  var_girf               n_draws=2^24           ALLOC-ABORT  t=      - rss+=       -MB  rc=-6 bytes=2818572288
+  var_girf               histories=2^47         ok           t=  0.003 rss+=     2.6MB  
+  var_girf               histories=2^31         ok           t=  0.002 rss+=     0.4MB  
+  var_girf               histories=1e6          ok           t=  0.002 rss+=     0.0MB  
+  (var_girf: 21 cells in 82 s)
+  threshold_var_girf     p=2^47                 refusal      t=    0.0 rss+=     0.0MB  threshold_var_girf() got multiple values for argument 'p'
+  threshold_var_girf     p=2^31                 refusal      t=    0.0 rss+=     0.0MB  threshold_var_girf() got multiple values for argument 'p'
+  threshold_var_girf     p=1e6                  refusal      t=    0.0 rss+=     0.0MB  threshold_var_girf() got multiple values for argument 'p'
+  threshold_var_girf     threshold_index=2^47   refusal      t=    0.0 rss+=     0.6MB  invalid parameter threshold_index = 140737488355328: requires threshold_index < n_series (it selects which series' lag drives the regime split)
+  threshold_var_girf     threshold_index=2^31   refusal      t=    0.0 rss+=     0.0MB  invalid parameter threshold_index = 2147483648: requires threshold_index < n_series (it selects which series' lag drives the regime split)
+  threshold_var_girf     threshold_index=1e6    refusal      t=    0.0 rss+=     0.0MB  invalid parameter threshold_index = 1000000: requires threshold_index < n_series (it selects which series' lag drives the regime split)
+  threshold_var_girf     delay=2^47             refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 140737488355336 required
+  threshold_var_girf     delay=2^31             refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 2147483656 required
+  threshold_var_girf     delay=1e6              refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 1000008 required
+  threshold_var_girf     delays=2^47            refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 140737488355336 required
+  threshold_var_girf     delays=2^31            refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 2147483656 required
+  threshold_var_girf     delays=1e6             refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 1000008 required
+  threshold_var_girf     shock_var=2^47         refusal      t=    0.0 rss+=     0.2MB  invalid parameter shock_var = 140737488355328: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)
+  threshold_var_girf     shock_var=2^31         refusal      t=    0.0 rss+=     0.0MB  invalid parameter shock_var = 2147483648: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)
+  threshold_var_girf     shock_var=1e6          refusal      t=    0.0 rss+=     0.0MB  invalid parameter shock_var = 1000000: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)
+  threshold_var_girf     horizon=2^47           refusal      t=    0.0 rss+=     0.0MB  invalid parameter horizon = 140737488355328: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)
+  threshold_var_girf     horizon=2^31           refusal      t=    0.0 rss+=     0.0MB  invalid parameter horizon = 2147483648: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)
+  threshold_var_girf     horizon=1e6            HANG         t=      - rss+=       -MB  
+  threshold_var_girf     horizon=cap+1          refusal      t=  0.001 rss+=     0.9MB  invalid parameter horizon = 1000001: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)
+  threshold_var_girf     horizon=2e5            HANG         t=      - rss+=       -MB  
+  threshold_var_girf     n_draws=2^47           refusal      t=  0.001 rss+=     1.2MB  invalid model specification: n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizo
+  threshold_var_girf     n_draws=2^31           refusal      t=  0.001 rss+=     0.0MB  invalid model specification: n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizo
+  threshold_var_girf     n_draws=1e6            HANG         t=      - rss+=       -MB  
+  threshold_var_girf     n_draws=2^27           ALLOC-ABORT  t=      - rss+=       -MB  rc=-6 bytes=48318382084831838208
+  threshold_var_girf     n_draws=2^24           ALLOC-ABORT  t=      - rss+=       -MB  rc=-6 bytes=1879048192
+  threshold_var_girf     histories=2^47         ok           t=  0.005 rss+=     1.8MB  
+  threshold_var_girf     histories=2^31         ok           t=  0.004 rss+=     0.1MB  
+  threshold_var_girf     histories=1e6          ok           t=  0.004 rss+=     0.1MB  
+  (threshold_var_girf: 28 cells in 184 s)
+  jsz_fit                n_factors=2^47         refusal      t=    0.0 rss+=     0.4MB  n_factors = 140737488355328 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 11 (strictly fewer facto
+  jsz_fit                n_factors=2^31         refusal      t=    0.0 rss+=     0.0MB  n_factors = 2147483648 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 11 (strictly fewer factors th
+  jsz_fit                n_factors=1e6          refusal      t=    0.0 rss+=     0.0MB  n_factors = 1000000 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 11 (strictly fewer factors than 
+  jsz_fit                n_starts=2^47          refusal      t=    0.0 rss+=     0.0MB  n_starts = 140737488355328 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenv
+  jsz_fit                n_starts=2^31          refusal      t=    0.0 rss+=     0.0MB  n_starts = 2147483648 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues
+  jsz_fit                n_starts=1e6           refusal      t=    0.0 rss+=     0.0MB  n_starts = 1000000 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues of
+  jsz_fit                n_starts=cap+1         refusal      t=    0.0 rss+=     0.0MB  n_starts = 1001 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues of th
+  jsz_fit                n_starts=cap           ok           t= 16.773 rss+=     2.7MB  
+  jsz_fit                maturities=2^47        refusal      t=    0.0 rss+=     0.0MB  jsz_fit() got multiple values for argument 'maturities'
+  jsz_fit                maturities=2^31        refusal      t=    0.0 rss+=     0.0MB  jsz_fit() got multiple values for argument 'maturities'
+  jsz_fit                maturities=1e6         refusal      t=    0.0 rss+=     0.0MB  jsz_fit() got multiple values for argument 'maturities'
+  jsz_fit                maturities=cap+1       refusal      t=    0.0 rss+=     0.0MB  jsz_fit() got multiple values for argument 'maturities'
+  jsz_fit                maturities=cap         refusal      t=    0.0 rss+=     0.0MB  jsz_fit() got multiple values for argument 'maturities'
+  (jsz_fit: 13 cells in 17 s)
+  jsz_loadings           maturities=2^47        refusal      t=    0.0 rss+=     0.0MB  jsz_loadings() got multiple values for argument 'maturities'
+  jsz_loadings           maturities=2^31        refusal      t=    0.0 rss+=     0.0MB  jsz_loadings() got multiple values for argument 'maturities'
+  jsz_loadings           maturities=1e6         refusal      t=    0.0 rss+=     0.0MB  jsz_loadings() got multiple values for argument 'maturities'
+  jsz_loadings           maturities=cap+1       refusal      t=    0.0 rss+=     0.0MB  jsz_loadings() got multiple values for argument 'maturities'
+  jsz_loadings           maturities=cap         refusal      t=    0.0 rss+=     0.0MB  jsz_loadings() got multiple values for argument 'maturities'
+  (jsz_loadings: 5 cells in 0 s)
+  panel_distributed_lag  lags=2^47              refusal      t=    0.0 rss+=     0.6MB  distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: needs at least 140737488355330 usable observ
+  panel_distributed_lag  lags=2^31              refusal      t=    0.0 rss+=     0.0MB  distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: needs at least 2147483650 usable observation
+  panel_distributed_lag  lags=1e6               refusal      t=    0.0 rss+=     0.0MB  distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: needs at least 1000002 usable observations, 
+  panel_distributed_lag  powers=2^47            refusal      t=    0.0 rss+=     0.0MB  powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 140737488355328
+  panel_distributed_lag  powers=2^31            refusal      t=    0.0 rss+=     0.0MB  powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 2147483648
+  panel_distributed_lag  powers=1e6             refusal      t=    0.0 rss+=     0.0MB  powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 1000000
+  (panel_distributed_lag: 6 cells in 0 s)
+
+== caps re-run: `p` mutated in its positional slot (the first pass passed it as a keyword and collided with the canonical positional)
+  setar_threshold_ci     p=2^47                 refusal      t=    0.0 rss+=     0.6MB  insufficient data: 200 observations, at least 422212465065988 required
+  setar_threshold_ci     p=2^31                 refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 6442450948 required
+  setar_threshold_ci     p=1e6                  refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 3000004 required
+  var_girf               p=2^47                 refusal      t=    0.0 rss+=     0.4MB  VAR(140737488355328) on k=3 series needs at least 562949953421314 rows but got 200: lagging consumes 140737488355328 rows and each equation then has n
+  var_girf               p=2^31                 refusal      t=    0.0 rss+=     0.0MB  VAR(2147483648) on k=3 series needs at least 8589934594 rows but got 200: lagging consumes 2147483648 rows and each equation then has n_trend + k*lags
+  var_girf               p=1e6                  refusal      t=    0.0 rss+=     0.0MB  VAR(1000000) on k=3 series needs at least 4000002 rows but got 200: lagging consumes 1000000 rows and each equation then has n_trend + k*lags = 300000
+  threshold_var_girf     p=2^47                 refusal      t=    0.0 rss+=     0.6MB  insufficient data: 200 observations, at least 703687441776644 required
+  threshold_var_girf     p=2^31                 refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 10737418244 required
+  threshold_var_girf     p=1e6                  refusal      t=    0.0 rss+=     0.0MB  insufficient data: 200 observations, at least 5000004 required
+
+== caps re-run: `maturities` mutated in its positional slot (same collision as `p` in the first pass)
+  jsz_fit                maturities=2^47        refusal      t=    0.0 rss+=     0.5MB  maturity[11] = 140737488355328 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the 
+  jsz_fit                maturities=2^31        refusal      t=    0.0 rss+=     0.0MB  maturity[11] = 2147483648 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longe
+  jsz_fit                maturities=1e6         refusal      t=    0.0 rss+=     0.0MB  maturity[11] = 1000000 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longest 
+  jsz_fit                maturities=cap+1       refusal      t=    0.0 rss+=     0.0MB  maturity[11] = 120001 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longest m
+  jsz_fit                maturities=cap         ok           t= 54.972 rss+=    18.8MB  
+  jsz_loadings           maturities=2^47        refusal      t=    0.0 rss+=     0.4MB  maturity[1] = 140737488355328 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the l
+  jsz_loadings           maturities=2^31        refusal      t=    0.0 rss+=     0.0MB  maturity[1] = 2147483648 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longes
+  jsz_loadings           maturities=1e6         refusal      t=    0.0 rss+=     0.0MB  maturity[1] = 1000000 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longest m
+  jsz_loadings           maturities=cap+1       refusal      t=    0.0 rss+=     0.0MB  maturity[1] = 120001 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longest ma
+  jsz_loadings           maturities=cap         ok           t=  0.012 rss+=     8.4MB  

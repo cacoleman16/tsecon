@@ -1,0 +1,674 @@
+{
+ "setar_threshold_ci": {
+  "keys": [
+   "ci_high",
+   "ci_low",
+   "delay",
+   "eta2",
+   "het_robust",
+   "in_set",
+   "intervals",
+   "is_connected",
+   "k",
+   "level",
+   "lr_at_null",
+   "lr_crit",
+   "lr_crit_scaled",
+   "lr_stat",
+   "n_in_set",
+   "n_intervals",
+   "nobs",
+   "null_threshold_used",
+   "pvalue_at_threshold",
+   "slope_ci_high",
+   "slope_ci_low",
+   "slope_level",
+   "slope_n_region",
+   "slope_region_high",
+   "slope_region_level",
+   "slope_region_low",
+   "ssr_path",
+   "threshold",
+   "thresholds"
+  ],
+  "summarize_lines": 54,
+  "json": true,
+  "pickle": true,
+  "nonfinite": [],
+  "keys_unnamed": {
+   "__doc__": [],
+   "stub": [],
+   "card": [
+    "k",
+    "nobs",
+    "slope_region_high"
+   ]
+  },
+  "phantom_candidates": {
+   "__doc__": [],
+   "stub": [],
+   "card": []
+  },
+  "shape_mismatch": {},
+  "shapes_checked": 5,
+  "shapes": {
+   "thresholds": [
+    140
+   ],
+   "ssr_path": [
+    140
+   ],
+   "lr_stat": [
+    140
+   ],
+   "in_set": [
+    140
+   ],
+   "intervals": [
+    3,
+    2
+   ],
+   "slope_ci_low": [
+    2,
+    2
+   ],
+   "slope_ci_high": [
+    2,
+    2
+   ]
+  }
+ },
+ "var_girf": {
+  "keys": [
+   "draw_lower",
+   "draw_sd",
+   "draw_upper",
+   "girf",
+   "horizon",
+   "lower",
+   "mc_se",
+   "n_draws",
+   "n_effective_draws",
+   "n_histories",
+   "per_history",
+   "shock",
+   "shock_size_used",
+   "shock_var",
+   "shock_vector",
+   "upper"
+  ],
+  "summarize_lines": 85,
+  "json": true,
+  "pickle": true,
+  "nonfinite": [
+   [
+    "$.mc_se",
+    "array(7, 3) nan=21 inf=0"
+   ]
+  ],
+  "keys_unnamed": {
+   "__doc__": [],
+   "stub": [],
+   "card": []
+  },
+  "phantom_candidates": {
+   "__doc__": [
+    "bands"
+   ],
+   "stub": [],
+   "card": []
+  },
+  "shape_mismatch": {},
+  "shapes_checked": 9,
+  "shapes": {
+   "girf": [
+    7,
+    3
+   ],
+   "lower": [
+    7,
+    3
+   ],
+   "upper": [
+    7,
+    3
+   ],
+   "per_history": [
+    198,
+    7,
+    3
+   ],
+   "mc_se": [
+    7,
+    3
+   ],
+   "draw_sd": [
+    7,
+    3
+   ],
+   "draw_lower": [
+    7,
+    3
+   ],
+   "draw_upper": [
+    7,
+    3
+   ],
+   "shock_vector": [
+    3
+   ]
+  }
+ },
+ "threshold_var_girf": {
+  "keys": [
+   "delay",
+   "draw_lower",
+   "draw_sd",
+   "draw_upper",
+   "girf",
+   "girf_high_regime",
+   "girf_low_regime",
+   "history_regimes",
+   "history_times",
+   "horizon",
+   "lower",
+   "mc_se",
+   "n_draws",
+   "n_effective_draws",
+   "n_high_histories",
+   "n_histories",
+   "n_low_histories",
+   "per_history",
+   "regime",
+   "shock",
+   "shock_size_used",
+   "shock_var",
+   "shock_vector",
+   "threshold",
+   "threshold_index",
+   "upper"
+  ],
+  "summarize_lines": 121,
+  "json": true,
+  "pickle": true,
+  "nonfinite": [],
+  "keys_unnamed": {
+   "__doc__": [],
+   "stub": [],
+   "card": [
+    "history_regimes",
+    "history_times",
+    "n_effective_draws",
+    "n_histories",
+    "shock_vector",
+    "threshold"
+   ]
+  },
+  "phantom_candidates": {
+   "__doc__": [
+    "None",
+    "bands",
+    "t"
+   ],
+   "stub": [],
+   "card": []
+  },
+  "shape_mismatch": {},
+  "shapes_checked": 14,
+  "shapes": {
+   "girf": [
+    7,
+    2
+   ],
+   "lower": [
+    7,
+    2
+   ],
+   "upper": [
+    7,
+    2
+   ],
+   "per_history": [
+    199,
+    7,
+    2
+   ],
+   "mc_se": [
+    7,
+    2
+   ],
+   "draw_sd": [
+    7,
+    2
+   ],
+   "draw_lower": [
+    7,
+    2
+   ],
+   "draw_upper": [
+    7,
+    2
+   ],
+   "girf_low_regime": [
+    7,
+    2
+   ],
+   "girf_high_regime": [
+    7,
+    2
+   ],
+   "history_regimes": [
+    199
+   ],
+   "history_times": [
+    199
+   ],
+   "shock_size_used": [
+    2
+   ],
+   "shock_vector": [
+    2,
+    2
+   ]
+  }
+ },
+ "jsz_fit": {
+  "keys": [
+   "a_p",
+   "a_x",
+   "b_p",
+   "b_x",
+   "converged",
+   "factors",
+   "fitted",
+   "k0_q_p",
+   "k1_q_p",
+   "k_inf_q",
+   "lambda0",
+   "lambda1",
+   "lambda_q",
+   "llf",
+   "maturities",
+   "mu_p",
+   "mu_p_se",
+   "n_factors",
+   "n_iter",
+   "n_starts",
+   "periods_per_year",
+   "phi_p",
+   "phi_p_se",
+   "risk_neutral",
+   "rmse",
+   "seed",
+   "sigma",
+   "sigma_e",
+   "sigma_ols",
+   "term_premium",
+   "w"
+  ],
+  "summarize_lines": 85,
+  "json": true,
+  "pickle": true,
+  "nonfinite": [],
+  "keys_unnamed": {
+   "__doc__": [],
+   "stub": [],
+   "card": []
+  },
+  "phantom_candidates": {
+   "__doc__": [
+    "acm_term_premium",
+    "sigma_u_mle"
+   ],
+   "stub": [
+    "sigma_u_mle"
+   ],
+   "card": [
+    "A",
+    "A_rn",
+    "B",
+    "B_rn",
+    "P_t",
+    "a",
+    "acm_term_premium",
+    "ar1_intercept",
+    "ar1_phi",
+    "beta",
+    "c",
+    "curvature",
+    "delta0",
+    "delta1",
+    "dynamic_ns",
+    "factor_loadings",
+    "forecast",
+    "jsz_loadings",
+    "k0_q",
+    "k1_q",
+    "lambda",
+    "level",
+    "mu",
+    "nelson_siegel",
+    "optimal_lambda",
+    "phi",
+    "rsquared",
+    "rx_maturities",
+    "rx_rsquared",
+    "short_rate_rsquared",
+    "sigma2",
+    "sigma_u_mle",
+    "slope",
+    "svensson",
+    "var_rsquared",
+    "yield_rsquared",
+    "yields"
+   ]
+  },
+  "shape_mismatch": {},
+  "shapes_checked": 21,
+  "shapes": {
+   "maturities": [
+    12
+   ],
+   "w": [
+    3,
+    12
+   ],
+   "factors": [
+    200,
+    3
+   ],
+   "lambda_q": [
+    3
+   ],
+   "sigma": [
+    3,
+    3
+   ],
+   "mu_p": [
+    3
+   ],
+   "phi_p": [
+    3,
+    3
+   ],
+   "mu_p_se": [
+    3
+   ],
+   "phi_p_se": [
+    3,
+    3
+   ],
+   "sigma_ols": [
+    3,
+    3
+   ],
+   "k0_q_p": [
+    3
+   ],
+   "k1_q_p": [
+    3,
+    3
+   ],
+   "lambda0": [
+    3
+   ],
+   "lambda1": [
+    3,
+    3
+   ],
+   "a_p": [
+    12
+   ],
+   "b_p": [
+    12,
+    3
+   ],
+   "a_x": [
+    12
+   ],
+   "b_x": [
+    12,
+    3
+   ],
+   "fitted": [
+    200,
+    12
+   ],
+   "risk_neutral": [
+    200,
+    12
+   ],
+   "term_premium": [
+    200,
+    12
+   ],
+   "rmse": [
+    12
+   ]
+  }
+ },
+ "jsz_loadings": {
+  "keys": [
+   "a_x",
+   "b_x",
+   "k0_q",
+   "k1_q",
+   "maturities"
+  ],
+  "summarize_lines": 26,
+  "json": true,
+  "pickle": true,
+  "nonfinite": [],
+  "keys_unnamed": {
+   "__doc__": [],
+   "stub": [],
+   "card": []
+  },
+  "phantom_candidates": {
+   "__doc__": [],
+   "stub": [],
+   "card": [
+    "A",
+    "A_rn",
+    "B",
+    "B_rn",
+    "P_t",
+    "a",
+    "a_p",
+    "acm_term_premium",
+    "ar1_intercept",
+    "ar1_phi",
+    "b_p",
+    "beta",
+    "c",
+    "converged",
+    "curvature",
+    "delta0",
+    "delta1",
+    "dynamic_ns",
+    "factor_loadings",
+    "factors",
+    "fitted",
+    "forecast",
+    "jsz_loadings",
+    "k0_q_p",
+    "k1_q_p",
+    "k_inf_q",
+    "lambda",
+    "lambda0",
+    "lambda1",
+    "lambda_q",
+    "level",
+    "llf",
+    "mu",
+    "mu_p",
+    "mu_p_se",
+    "n_factors",
+    "n_iter",
+    "n_starts",
+    "nelson_siegel",
+    "optimal_lambda",
+    "periods_per_year",
+    "phi",
+    "phi_p",
+    "phi_p_se",
+    "risk_neutral",
+    "rmse",
+    "rsquared",
+    "rx_maturities",
+    "rx_rsquared",
+    "seed",
+    "short_rate_rsquared",
+    "sigma",
+    "sigma2",
+    "sigma_e",
+    "sigma_ols",
+    "sigma_u_mle",
+    "slope",
+    "svensson",
+    "term_premium",
+    "var_rsquared",
+    "w",
+    "yield_rsquared",
+    "yields"
+   ]
+  },
+  "shape_mismatch": {},
+  "shapes_checked": 5,
+  "shapes": {
+   "maturities": [
+    7
+   ],
+   "a_x": [
+    7
+   ],
+   "b_x": [
+    7,
+    3
+   ],
+   "k0_q": [
+    3
+   ],
+   "k1_q": [
+    3,
+    3
+   ]
+  }
+ },
+ "panel_distributed_lag": {
+  "keys": [
+   "bse",
+   "cov",
+   "cumulative_ci_high",
+   "cumulative_ci_low",
+   "cumulative_effect",
+   "cumulative_se",
+   "df_resid",
+   "entity_effects",
+   "entity_trends",
+   "eval_points",
+   "lag_effects",
+   "lag_se",
+   "lags",
+   "marginal_effect",
+   "marginal_se",
+   "n_entities",
+   "n_periods_used",
+   "names",
+   "nobs",
+   "params",
+   "powers",
+   "se_type",
+   "time_effects",
+   "turning_point",
+   "turning_point_se",
+   "tvalues"
+  ],
+  "summarize_lines": 65,
+  "json": true,
+  "pickle": true,
+  "nonfinite": [],
+  "keys_unnamed": {
+   "__doc__": [],
+   "stub": [],
+   "card": [
+    "entity_effects",
+    "entity_trends"
+   ]
+  },
+  "phantom_candidates": {
+   "__doc__": [
+    "B_2"
+   ],
+   "stub": [
+    "B_2"
+   ],
+   "card": [
+    "None",
+    "x0_L0",
+    "x0_L1"
+   ]
+  },
+  "shape_mismatch": {},
+  "shapes_checked": 15,
+  "shapes": {
+   "params": [
+    4
+   ],
+   "bse": [
+    4
+   ],
+   "tvalues": [
+    4
+   ],
+   "cov": [
+    4,
+    4
+   ],
+   "lag_effects": [
+    1,
+    2,
+    2
+   ],
+   "lag_se": [
+    1,
+    2,
+    2
+   ],
+   "cumulative_effect": [
+    1,
+    2
+   ],
+   "cumulative_se": [
+    1,
+    2
+   ],
+   "cumulative_ci_low": [
+    1,
+    2
+   ],
+   "cumulative_ci_high": [
+    1,
+    2
+   ],
+   "eval_points": [
+    1,
+    3
+   ],
+   "marginal_effect": [
+    1,
+    3
+   ],
+   "marginal_se": [
+    1,
+    3
+   ],
+   "turning_point": [
+    1
+   ],
+   "turning_point_se": [
+    1
+   ]
+  }
+ }
+}

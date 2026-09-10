@@ -1,0 +1,5244 @@
+{
+"setar_threshold_ci": [
+{
+"id": "y:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the input series y (SETAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the input series y (SETAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the input series y (SETAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 0 observations, at least 7 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: the series is constant: a threshold autoregression needs variation in the thresho",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got no array arguments). Estimators that mod",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(1, 200)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:short_rows",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "y:nested_list",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "y:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:bool_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "singular linear system: a low-regime design X'X at a threshold candidate (a near-constant segment of the serie",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "y:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got no array arguments). Estimators that mod",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got no array arguments). Estimators that mod",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got no array arguments). Estimators that mod",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: SETAR requires p >= 1 (the model is an autoregression; with p = 0 there is no lag",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: p=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, wind",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 6442450948 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 422212465065988 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: p=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on an",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{t-delay})",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delay:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: delay=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, ",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 2147483654 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 140737488355334 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: delay=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delay:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = NaN: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics exc",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = inf: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics exc",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = -inf: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics ex",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = -1: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics excl",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 0: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics exclu",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "trim:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 3: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics exclu",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 1: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics exclu",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[0]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{t-delay})",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[-1]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: delays=[-1] is negative, but this parameter counts something \u2014 a lag length, order, horizo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^31]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 2147483654 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^47]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 140737488355334 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^63]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: delays=[9223372036854775808] is at or beyond 2**48 \u2014 a count that large cannot be allocate",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: delays must contain at least one candidate delay",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[1.5]",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[True]",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delays:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "Can't extract `str` to `Vec`",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delays:float_array",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'numpy.float64' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:nested",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'list' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delays:5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = NaN: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = -inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities ar",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = -1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = 0: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are r",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = 100000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "level:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = 3: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are r",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = 1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are r",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = NaN: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infiniti",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infiniti",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = -inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = -1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinitie",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = 0: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = 100000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = 3: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = 1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:none",
+"outcome": "ok",
+"nonfinite": 7,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = NaN: requires 0 < level < 1 (a confidence level such as 0.95; NaN and i",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and i",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = -inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = -1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and in",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = 0: requires 0 < level < 1 (a confidence level such as 0.95; NaN and inf",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = 10000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = 3: requires 0 < level < 1 (a confidence level such as 0.95; NaN and inf",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = 1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and inf",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in null_threshold (the null value gamma_0 must be a finite number inside th",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in null_threshold (the null value gamma_0 must be a finite number inside th",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in null_threshold (the null value gamma_0 must be a finite number inside th",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:neg1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:zero",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter null_threshold = 100000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter null_threshold = 3: requires a value inside the trimmed candidate grid [thresholds[0], thres",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter null_threshold = 1: requires a value inside the trimmed candidate grid [thresholds[0], thres",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:none",
+"outcome": "ok",
+"nonfinite": 3,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"var_girf": [
+{
+"id": "data:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or inf) in the data matrix at row 0, column 0: the VAR estimator has no missing-value ha",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or inf) in the data matrix at row 100, column 0: the VAR estimator has no missing-value ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or inf) in the data matrix at row 100, column 0: the VAR estimator has no missing-value ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "VAR(2) on k=3 series needs at least 10 rows but got 0: lagging consumes 2 rows and each equation then has n_tr",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "VAR(2) on k=3 series needs at least 10 rows but got 1: lagging consumes 2 rows and each equation then has n_tr",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "the data matrix has no columns; pass a 2-D array shaped (n_obs, n_series) with observations in rows, oldest fi",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that model a system",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(1, 200, 3)). Estimators that model a s",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:short_rows",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "data:short_cols",
+"outcome": "ok",
+"nonfinite": 14,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "data:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: list of 200). Estimators that model a system",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:int_array",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "data:bool_array",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "data:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "VAR(2) on k=200 series needs at least 404 rows but got 3: lagging consumes 2 rows and each equation then has n",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:dup_row",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "data:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that model a syste",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that model a syste",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that model a syste",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "a VAR(0) has no dynamics to simulate, so its generalized impulse response is the impact shock alone; refit wit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "p:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "p:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: p=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iterat",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "VAR(2147483648) on k=3 series needs at least 8589934594 rows but got 200: lagging consumes 2147483648 rows and",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "VAR(140737488355328) on k=3 series needs at least 562949953421314 rows but got 200: lagging consumes 140737488",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: p=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "p:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:0",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.1
+},
+{
+"id": "shock_var:1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: shock_var=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid shock_var = 2147483648: requires shock_var < n_series (the 0-based index of the variable whose innovat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid shock_var = 140737488355328: requires shock_var < n_series (the 0-based index of the variable whose in",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: shock_var=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid size = NaN: requires a finite shock size in standard deviations of the innovation (negative for an adv",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid size = inf: requires a finite shock size in standard deviations of the innovation (negative for an adv",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid size = -inf: requires a finite shock size in standard deviations of the innovation (negative for an ad",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:neg1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:zero",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:1e300",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:1e-300",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:int",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown shock \"abc\"; expected \"orthogonal\" (size standard deviations of the shock_var-th Cholesky-orthogonaliz",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown shock \"\"; expected \"orthogonal\" (size standard deviations of the shock_var-th Cholesky-orthogonalized ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:0",
+"outcome": "ok",
+"nonfinite": 3,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:1",
+"outcome": "ok",
+"nonfinite": 6,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2",
+"outcome": "ok",
+"nonfinite": 9,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: horizon=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, ",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid horizon = 2147483648: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 i",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid horizon = 140737488355328: requires horizon <= 1_000_000 (responses are simulated period by period; 20",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: horizon=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any ma",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:True",
+"outcome": "ok",
+"nonfinite": 6,
+"seconds": 0.007,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid n_draws = 0: requires n_draws >= 1 (future-innovation draws per history; a linear model needs 1, a non",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid n_draws = 1: requires an even n_draws when antithetic = true (draws come in (+z, -z) pairs); pass an e",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.006,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: n_draws=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, ",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws,",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws,",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: n_draws=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any ma",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid n_draws = 1: requires an even n_draws when antithetic = true (draws come in (+z, -z) pairs); pass an e",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:0",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "seed:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: seed=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, ite",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^31",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^47",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^63",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "seed:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trend:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown trend \"abc\"; expected \"c\" or \"n\"",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trend:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown trend \"\"; expected \"c\" or \"n\"",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trend:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trend:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got arg0: array(200, 3)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "histories must be >= 1 (the number of lag windows to condition on) or None for every window in the sample",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: histories=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^31",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^47",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: histories=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:none",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "histories:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"threshold_var_girf": [
+{
+"id": "data:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the data matrix (the TVAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the data matrix (the TVAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the data matrix (the TVAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 0 observations, at least 1 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: the threshold series is constant: a threshold VAR needs variation in the threshol",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 0 observations, at least 1 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200,)). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(1, 200, 2)). Estimators that",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:short_rows",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.006,
+"rss_mb": 0.0
+},
+{
+"id": "data:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: a threshold VAR needs at least two series (pass a 2-D array shaped (n_obs, n_seri",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: list of 200). Estimators that mode",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "data:bool_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "singular linear system: a low-regime VAR design X'X at a threshold candidate (a collinear regime segment \u2014 rai",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 2 observations, at least 405 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "data:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that mod",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that mod",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got no array arguments). Estimators that mod",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: the TVAR requires p >= 1 (the model is a vector autoregression; with p = 0 there ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "p:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "p:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: p=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, wind",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 10737418244 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 703687441776644 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: p=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on an",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "p:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:2",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter threshold_index = 2: requires threshold_index < n_series (it selects which series' lag drive",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: threshold_index=-1 is negative, but this parameter counts something \u2014 a lag length, order,",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter threshold_index = 2147483648: requires threshold_index < n_series (it selects which series' ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter threshold_index = 140737488355328: requires threshold_index < n_series (it selects which ser",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: threshold_index=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be a",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{threshold_inde",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.016,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.006,
+"rss_mb": 0.0
+},
+{
+"id": "delay:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: delay=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, ",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 2147483656 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 140737488355336 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: delay=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.008,
+"rss_mb": 0.0
+},
+{
+"id": "delay:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = NaN: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = inf: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = -inf: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = -1: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 0: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.009,
+"rss_mb": 0.0
+},
+{
+"id": "trim:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 3: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 1: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[0]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{threshold_inde",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[-1]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: delays=[-1] is negative, but this parameter counts something \u2014 a lag length, order, horizo",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^31]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 2147483656 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^47]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data: 200 observations, at least 140737488355336 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^63]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: delays=[9223372036854775808] is at or beyond 2**48 \u2014 a count that large cannot be allocate",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: delays must contain at least one candidate delay",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[1.5]",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[True]",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "delays:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "Can't extract `str` to `Vec`",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "delays:float_array",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'numpy.float64' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:nested",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'list' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "delays:5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter shock_var = 2: requires shock_var < n_series (the 0-based index of the variable whose innova",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: shock_var=-1 is negative, but this parameter counts something \u2014 a lag length, order, horiz",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter shock_var = 2147483648: requires shock_var < n_series (the 0-based index of the variable who",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter shock_var = 140737488355328: requires shock_var < n_series (the 0-based index of the variabl",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: shock_var=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter size = NaN: requires a finite shock size in standard deviations of the innovation (negative ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter size = inf: requires a finite shock size in standard deviations of the innovation (negative ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter size = -inf: requires a finite shock size in standard deviations of the innovation (negative",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:neg1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "size:zero",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "size:1e300",
+"outcome": "ok",
+"nonfinite": 27,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "size:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "size:int",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "size:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "size:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown shock \"abc\"; expected \"orthogonal\" (size standard deviations of the shock_var-th Cholesky-orthogonaliz",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown shock \"\"; expected \"orthogonal\" (size standard deviations of the shock_var-th Cholesky-orthogonalized ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: horizon=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter horizon = 2147483648: requires horizon <= 1_000_000 (responses are simulated period by perio",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter horizon = 140737488355328: requires horizon <= 1_000_000 (responses are simulated period by ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: horizon=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter n_draws = 0: requires n_draws >= 1 (future-innovation draws per history; a linear model need",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter n_draws = 1: requires an even n_draws when antithetic = true (draws come in (+z, -z) pairs);",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2",
+"outcome": "ok",
+"nonfinite": 14,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: n_draws=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: n_draws=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter n_draws = 1: requires an even n_draws when antithetic = true (draws come in (+z, -z) pairs);",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "seed:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: seed=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, w",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^31",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^47",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^63",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "seed:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regime:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown regime \"abc\"; expected \"all\" (every lag window; the per-regime averages come back as girf_low_regime/g",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regime:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown regime \"\"; expected \"all\" (every lag window; the per-regime averages come back as girf_low_regime/girf",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regime:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regime:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter histories = 0: requires histories >= 1 (the number of lag windows to condition on) or None f",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:1",
+"outcome": "ok",
+"nonfinite": 1,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "histories:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: histories=-1 is negative, but this parameter counts something \u2014 a lag length, order, horiz",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^31",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^47",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: histories=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:True",
+"outcome": "ok",
+"nonfinite": 1,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "histories:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "histories:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got arg0: array(200, 2)). Estimators that mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"jsz_fit": [
+{
+"id": "yields:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel: contains a non-finite value (NaN) at index 0; clean or impute NaN/inf observations before fit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel: contains a non-finite value (NaN) at index 1200; clean or impute NaN/inf observations before ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel: contains a non-finite value (inf) at index 1200; clean or impute NaN/inf observations before ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel (the portfolio VAR(1) needs residual degrees of freedom): the panel has 0 dates but needs at l",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel (the portfolio VAR(1) needs residual degrees of freedom): the panel has 1 dates but needs at l",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel row vs maturities: expected length 12 but got 0; the yields must be index-aligned with the mat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg0: array(200,); arg1: list of 12). Estimators th",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg0: array(1, 200, 12); arg1: list of 12). Estimat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:short_rows",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.079,
+"rss_mb": 0.0
+},
+{
+"id": "yields:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel row vs maturities: expected length 12 but got 11; the yields must be index-aligned with the ma",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg0: list of 200; arg1: list of 12). Estimators th",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:int_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ portfolio VAR(1): the loading columns are numerically collinear, so the cross-sectional least-squares prob",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:bool_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ portfolio VAR(1): the loading columns are numerically collinear, so the cross-sectional least-squares prob",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel row vs maturities: expected length 12 but got 200; the yields must be index-aligned with the m",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.082,
+"rss_mb": 0.0
+},
+{
+"id": "yields:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg1: list of 12). Estimators that model a system w",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg1: list of 12). Estimators that model a system w",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg1: list of 12). Estimators that model a system w",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[0]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 0 is invalid: Nelson-Siegel loadings require strictly positive, finite maturities",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[-1]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: maturities=[-1] is negative, but this parameter counts something \u2014 a lag length, order, horizon, wind",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^31]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 2147483648 periods exceeds the supported maximum of 120000: the affine recursions are tabulated ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^47]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 140737488355328 periods exceeds the supported maximum of 120000: the affine recursions are tabul",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^63]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: maturities=[9223372036854775808] is at or beyond 2**48 \u2014 a count that large cannot be allocated on an",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "the maturity grid is empty; supply the maturities (in the same time units as lambda, e.g. months for the Diebo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[1.5]",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[True]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 3 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "Can't extract `str` to `Vec`",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:int_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 3 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:float_array",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'numpy.float64' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:nested",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'list' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg0: array(200, 12)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg0: array(200, 12)). Estimators that model a syst",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:one_short",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel row vs maturities: expected length 11 but got 12; the yields must be index-aligned with the ma",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:one_long",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ yield panel row vs maturities: expected length 13 but got 12; the yields must be index-aligned with the ma",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 0 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.006,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.031,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: n_factors=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window,",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 2147483648 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 140737488355328 is invalid: the pricing factors are principal components of the yield panel, so 1 ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: n_factors=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any m",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.006,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = NaN is invalid: it must be a strictly positive, finite number of compounding periods per ye",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = inf is invalid: it must be a strictly positive, finite number of compounding periods per ye",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = -inf is invalid: it must be a strictly positive, finite number of compounding periods per y",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = -1 is invalid: it must be a strictly positive, finite number of compounding periods per yea",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = 0 is invalid: it must be a strictly positive, finite number of compounding periods per year",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda estimation failed (the JSZ likelihood could not be evaluated at the starting values (OLS eigenvalues an",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:1e-300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda estimation failed (the JSZ likelihood could not be evaluated at the starting values (OLS eigenvalues an",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:int",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.078,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.107,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (a non-finite entry; rows = 3, cols = 12): w must be an n_factors x n_maturit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:rows_short",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (wrong number of rows (expected n_factors); rows = 2, cols = 12): w must be a",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:cols_short",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (wrong number of columns (expected n_maturities); rows = 3, cols = 11): w mus",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (wrong number of rows (expected n_factors); rows = 12, cols = 12): w must be ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:rank_deficient",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (the rows of w are linearly dependent (rank-deficient); rows = 3, cols = 12):",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg0: array(200, 12); arg1: list of 12; w: array(12",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:zeros",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (the rows of w are linearly dependent (rank-deficient); rows = 3, cols = 12):",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg0: array(200, 12); arg1: list of 12; w: list of ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got arg0: array(200, 12); arg1: list of 12). Estimators",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.073,
+"rss_mb": 0.0
+},
+{
+"id": "w:valid",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.072,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_starts = 0 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "seed was given but n_starts=1 ignores it: with a single start the search runs only from JSZ's recommended star",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.079,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: n_starts=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, ",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_starts = 2147483648 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_starts = 140737488355328 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (sta",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: n_starts=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any ma",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "seed was given but n_starts=1 ignores it: with a single start the search runs only from JSZ's recommended star",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.08,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.132,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.08,
+"rss_mb": 0.0
+},
+{
+"id": "seed:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: seed=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iter",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^31",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.084,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^47",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.085,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^63",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.081,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.084,
+"rss_mb": 0.0
+},
+{
+"id": "seed:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.08,
+"rss_mb": 0.0
+},
+{
+"id": "seed:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"jsz_loadings": [
+{
+"id": "lambda_q:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q[0] = NaN is invalid: the JSZ canonical form needs finite real risk-neutral eigenvalues (per period; m",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q[1] = NaN is invalid: the JSZ canonical form needs finite real risk-neutral eigenvalues (per period; m",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q[1] = inf is invalid: the JSZ canonical form needs finite real risk-neutral eigenvalues (per period; m",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q[0] = NaN is invalid: the JSZ canonical form needs finite real risk-neutral eigenvalues (per period; m",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): expected length 1 but got 3; the yields must be index-aligned wit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg2: array(3, 3); arg3: list of 7). Estimator",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg0: array(1, 3); arg2: array(3, 3); arg3: li",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:short_rows",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): expected length 2 but got 3; the yields must be index-aligned wit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:nested_list",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:bool_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:dup_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q must be ordered lambda_1 >= lambda_2 >= ... (the JSZ canonical form attaches k_inf_q to the first, mo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg2: array(3, 3); arg3: list of 7). Estimator",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg2: array(3, 3); arg3: list of 7). Estimator",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg2: array(3, 3); arg3: list of 7). Estimator",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "k_inf_q: contains a non-finite value (NaN) at index 0; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "k_inf_q: contains a non-finite value (inf) at index 0; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "k_inf_q: contains a non-finite value (-inf) at index 0; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:neg1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:zero",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:1e300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:int",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): contains a non-finite value (NaN) at index 0; clean or impute NaN",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): contains a non-finite value (NaN) at index 4; clean or impute NaN",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): contains a non-finite value (inf) at index 4; clean or impute NaN",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): expected length 3 but got 0; the yields must be index-aligned wit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): expected length 3 but got 1; the yields must be index-aligned wit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): expected length 3 but got 0; the yields must be index-aligned wit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: array(3,); arg3: list o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: array(1, 3, 3); arg3: l",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:short_rows",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): expected length 3 but got 2; the yields must be index-aligned wit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "JSZ sigma_x (must be n_factors x n_factors): expected length 3 but got 2; the yields must be index-aligned wit",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: list of 3; arg3: list o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:bool_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:transposed",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg3: list of 7). Estimators ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg3: list of 7). Estimators ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg3: list of 7). Estimators ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[0]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 0 is invalid: Nelson-Siegel loadings require strictly positive, finite maturities",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[-1]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_loadings: maturities=[-1] is negative, but this parameter counts something \u2014 a lag length, order, horizon,",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^31]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 2147483648 periods exceeds the supported maximum of 120000: the affine recursions are tabulated ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^47]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 140737488355328 periods exceeds the supported maximum of 120000: the affine recursions are tabul",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^63]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_loadings: maturities=[9223372036854775808] is at or beyond 2**48 \u2014 a count that large cannot be allocated ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "the maturity grid is empty; supply the maturities (in the same time units as lambda, e.g. months for the Diebo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[1.5]",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[True]",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "Can't extract `str` to `Vec`",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:float_array",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'numpy.float64' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:nested",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'list' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: array(3, 3)). Estimator",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got arg0: array(3,); arg2: array(3, 3)). Estimator",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:one_short",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:one_long",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = NaN is invalid: it must be a strictly positive, finite number of compounding periods per ye",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = inf is invalid: it must be a strictly positive, finite number of compounding periods per ye",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = -inf is invalid: it must be a strictly positive, finite number of compounding periods per y",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = -1 is invalid: it must be a strictly positive, finite number of compounding periods per yea",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = 0 is invalid: it must be a strictly positive, finite number of compounding periods per year",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:1e300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:int",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"panel_distributed_lag": [
+{
+"id": "outcome:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "outcome panel: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values sile",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "outcome panel: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values sile",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "outcome panel: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values sile",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: the outcome panel must have at least one entity and one period",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressor entity dimension must match the outcome's (expected 1, got 6)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: the outcome panel must have at least one entity and one period",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6,); arg1: array(1, 6, 20",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(1, 6, 200); arg1: array(1",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:short_rows",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressor entity dimension must match the outcome's (expected 5, got 6)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressor period dimension must match the outcome's (expected 199, got 200)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: list of 6; arg1: array(1, 6, 20",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:bool_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressor entity dimension must match the outcome's (expected 200, got 6)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg1: array(1, 6, 200); eval_points: ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg1: array(1, 6, 200); eval_points: ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg1: array(1, 6, 200); eval_points: ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "regressor panel: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values si",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "regressor panel: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values si",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "regressor panel: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values si",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: the panel has no regressors; a distributed-lag regression needs at least one regressor to la",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:one_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressor period dimension must match the outcome's (expected 200, got 0)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 1",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:short_rows",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: the panel has no regressors; a distributed-lag regression needs at least one regressor to la",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressor period dimension must match the outcome's (expected 200, got 199)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:short_mid",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressor entity dimension must match the outcome's (expected 6, got 5)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: list of 1;",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:bool_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "within (fixed-effects) OLS: the requested effects absorb a regressor entirely (constant within every entity, c",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressor period dimension must match the outcome's (expected 200, got 1)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); eval_points: arr",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); eval_points: arr",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); eval_points: arr",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "lags:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lags must be a non-negative integer (the number of lags L of each regressor; 0 is the contemporaneous regressi",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: need",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: need",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: lags=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "lags:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "eval_points was given but powers=1 ignores it: the marginal effect of a linear cumulative response is the cons",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: powers=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "eval_points was given but powers=1 ignores it: the marginal effect of a linear cumulative response is the cons",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "se_type:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown se_type \"abc\"; expected nonrobust/cluster/driscoll_kraay",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "se_type:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown se_type \"\"; expected nonrobust/cluster/driscoll_kraay",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "se_type:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "se_type:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:nan@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=NaN has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay ke",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:inf@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=inf has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay ke",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:-inf@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=-inf has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay k",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:neg1@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=-1 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay ker",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:zero@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=0 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kern",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:1e300@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=10000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:1e-300@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=0.000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:int@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=3 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kern",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:True@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=1 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kern",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:str@dk",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:none@dk",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:list@dk",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "eval_points: contains a non-finite value (NaN or infinity); panel estimators do not skip missing values silent",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: eval_points is empty; pass at least one point at which to evaluate the marginal effect, or o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:int_list",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:2d",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got arg0: array(6, 200); arg1: array(1, 6",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+]
+}

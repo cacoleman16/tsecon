@@ -1,0 +1,2 @@
+ast.parse(stub): OK
+triple-quote tokens: 360; unterminated docstrings: 0

@@ -1,0 +1,781 @@
+{
+ "timing": {
+  "setar_threshold_ci": {
+   "canonical": {
+    "200": {
+     "t": 0.0009575650001352187,
+     "status": "ok"
+    },
+    "800": {
+     "t": 0.0029418670001177816,
+     "status": "ok"
+    },
+    "3200": {
+     "t": 0.044207070000993554,
+     "status": "ok"
+    }
+   },
+   "flags": [
+    "superlinear slope 1.38"
+   ],
+   "slope": 1.3821907213641038,
+   "defaults_3200": {
+    "t": 0.0015948010004649404,
+    "status": "ok"
+   },
+   "retime": [
+    0.0009561650003888644,
+    0.003889534998961608,
+    0.03902869100056705
+   ],
+   "slope_retime": 1.3377829170490385
+  },
+  "var_girf": {
+   "canonical": {
+    "200": {
+     "t": 0.002541556999858585,
+     "status": "ok"
+    },
+    "800": {
+     "t": 0.021723829000620754,
+     "status": "ok"
+    },
+    "3200": {
+     "t": 0.02747056200132647,
+     "status": "ok"
+    }
+   },
+   "flags": [],
+   "slope": 0.8585254835082872,
+   "defaults_3200": {
+    "t": 0.029592147999210283,
+    "status": "ok"
+   }
+  },
+  "threshold_var_girf": {
+   "canonical": {
+    "200": {
+     "t": 0.012105148000046029,
+     "status": "ok"
+    },
+    "800": {
+     "t": 0.013449162001052173,
+     "status": "ok"
+    },
+    "3200": {
+     "t": 0.04078276600012032,
+     "status": "ok"
+    }
+   },
+   "flags": [],
+   "slope": 0.4380847270281037,
+   "defaults_3200": {
+    "t": 1.2908268419996602,
+    "status": "ok"
+   }
+  },
+  "jsz_fit": {
+   "canonical": {
+    "200": {
+     "t": 0.08227882699975453,
+     "status": "ok"
+    },
+    "800": {
+     "t": 0.4061257970006409,
+     "status": "ok"
+    },
+    "3200": {
+     "t": 1.194952141999238,
+     "status": "ok"
+    }
+   },
+   "flags": [],
+   "slope": 0.9650719506584763,
+   "defaults_3200": {
+    "t": 2.0019154870005877,
+    "status": "ok"
+   }
+  },
+  "jsz_loadings": {
+   "canonical": {
+    "200": {
+     "t": 0.00048540300122112967,
+     "status": "ok"
+    },
+    "800": {
+     "t": 0.00048417700054415036,
+     "status": "ok"
+    },
+    "3200": {
+     "t": 0.0006769800002075499,
+     "status": "ok"
+    }
+   },
+   "flags": [],
+   "slope": 0.11998254618789478,
+   "defaults_3200": {
+    "t": 0.0007450980010617059,
+    "status": "ok"
+   }
+  },
+  "panel_distributed_lag": {
+   "canonical": {
+    "200": {
+     "t": 0.0008590639990870841,
+     "status": "ok"
+    },
+    "800": {
+     "t": 0.0018127390012523392,
+     "status": "ok"
+    },
+    "3200": {
+     "t": 0.007173543001044891,
+     "status": "ok"
+    }
+   },
+   "flags": [],
+   "slope": 0.7654620800921917,
+   "defaults_3200": {
+    "t": 0.004381736000141245,
+    "status": "ok"
+   }
+  }
+ },
+ "caps": {
+  "setar_threshold_ci": [
+   {
+    "id": "p=2^47",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "setar_threshold_ci() got multiple values for argument 'p'",
+    "seconds": 0.0,
+    "rss_mb": 0.2
+   },
+   {
+    "id": "p=2^31",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "setar_threshold_ci() got multiple values for argument 'p'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "p=1e6",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "setar_threshold_ci() got multiple values for argument 'p'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delay=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 140737488355334 required",
+    "seconds": 0.0,
+    "rss_mb": 0.4
+   },
+   {
+    "id": "delay=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 2147483654 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delay=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 1000006 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delays=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 140737488355334 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delays=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 2147483654 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delays=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 1000006 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "var_girf": [
+   {
+    "id": "p=2^47",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "var_girf() got multiple values for argument 'p'",
+    "seconds": 0.0,
+    "rss_mb": 0.1
+   },
+   {
+    "id": "p=2^31",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "var_girf() got multiple values for argument 'p'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "p=1e6",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "var_girf() got multiple values for argument 'p'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "shock_var=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid shock_var = 140737488355328: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+    "seconds": 0.0,
+    "rss_mb": 1.6
+   },
+   {
+    "id": "shock_var=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid shock_var = 2147483648: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "shock_var=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid shock_var = 1000000: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid horizon = 140737488355328: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid horizon = 2147483648: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=1e6",
+    "outcome": "ALLOC-ABORT",
+    "detail": "rc=-6 bytes=24000024",
+    "stderr_tail": "memory allocation of 24000024 bytes failed\nstack backtrace:\nmemory allocation of 24000024 bytes failed\nskipping backtrace printing to avoid potential recursion\n"
+   },
+   {
+    "id": "horizon=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid horizon = 1000001: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+    "seconds": 0.001,
+    "rss_mb": 1.7
+   },
+   {
+    "id": "horizon=cap",
+    "outcome": "ALLOC-ABORT",
+    "detail": "rc=-6 bytes=7168",
+    "stderr_tail": "memory allocation of 24000024 bytes failed\nstack backtrace:\nmemory allocation of 7168 bytes failed\nskipping backtrace printing to avoid potential recursion\n"
+   },
+   {
+    "id": "horizon=2e5",
+    "outcome": "ALLOC-ABORT",
+    "detail": "rc=-6 bytes=4800024",
+    "stderr_tail": "memory allocation of 4800024 bytes failed\nstack backtrace:\nnote: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.\n"
+   },
+   {
+    "id": "n_draws=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizon, or the number of histories",
+    "seconds": 0.001,
+    "rss_mb": 1.6
+   },
+   {
+    "id": "n_draws=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizon, or the number of histories",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_draws=1e6",
+    "outcome": "HANG",
+    "deadline": 60.0
+   },
+   {
+    "id": "n_draws=2^27",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizon, or the number of histories",
+    "seconds": 0.0,
+    "rss_mb": 1.6
+   },
+   {
+    "id": "n_draws=2^26",
+    "outcome": "CRASH",
+    "detail": "rc=-6",
+    "stderr_tail": ":Result<tsecon_var::girf::HistoryOut, tsecon_var::error::VarError>>> as rayon_core::job::Job>::execute\n  15: <rayon_core::registry::WorkerThread>::wait_until_cold\n  16: <rayon_core::registry::ThreadBuilder>::run\nnote: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.\n"
+   },
+   {
+    "id": "n_draws=2^24",
+    "outcome": "ALLOC-ABORT",
+    "detail": "rc=-6 bytes=2818572288",
+    "stderr_tail": "_var::girf::HistoryOut, tsecon_var::error::VarError>>> as rayon_core::job::Job>::execute\n  14: <rayon_core::registry::WorkerThread>::wait_until_cold\n  15: <rayon_core::registry::ThreadBuilder>::run\nmemory allocation of 2818572288 bytes failed\nskipping backtrace printing to avoid potential recursion\n"
+   },
+   {
+    "id": "histories=2^47",
+    "outcome": "ok",
+    "nonfinite": 21,
+    "seconds": 0.003,
+    "rss_mb": 2.6
+   },
+   {
+    "id": "histories=2^31",
+    "outcome": "ok",
+    "nonfinite": 21,
+    "seconds": 0.002,
+    "rss_mb": 0.4
+   },
+   {
+    "id": "histories=1e6",
+    "outcome": "ok",
+    "nonfinite": 21,
+    "seconds": 0.002,
+    "rss_mb": 0.0
+   }
+  ],
+  "threshold_var_girf": [
+   {
+    "id": "p=2^47",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "threshold_var_girf() got multiple values for argument 'p'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "p=2^31",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "threshold_var_girf() got multiple values for argument 'p'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "p=1e6",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "threshold_var_girf() got multiple values for argument 'p'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "threshold_index=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid parameter threshold_index = 140737488355328: requires threshold_index < n_series (it selects which series' lag drives the regime split)",
+    "seconds": 0.0,
+    "rss_mb": 0.6
+   },
+   {
+    "id": "threshold_index=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid parameter threshold_index = 2147483648: requires threshold_index < n_series (it selects which series' lag drives the regime split)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "threshold_index=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid parameter threshold_index = 1000000: requires threshold_index < n_series (it selects which series' lag drives the regime split)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delay=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 140737488355336 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delay=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 2147483656 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delay=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 1000008 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delays=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 140737488355336 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delays=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 2147483656 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "delays=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "insufficient data: 200 observations, at least 1000008 required",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "shock_var=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid parameter shock_var = 140737488355328: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+    "seconds": 0.0,
+    "rss_mb": 0.2
+   },
+   {
+    "id": "shock_var=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid parameter shock_var = 2147483648: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "shock_var=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid parameter shock_var = 1000000: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid parameter horizon = 140737488355328: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid parameter horizon = 2147483648: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=1e6",
+    "outcome": "HANG",
+    "deadline": 60.0
+   },
+   {
+    "id": "horizon=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid parameter horizon = 1000001: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+    "seconds": 0.001,
+    "rss_mb": 0.9
+   },
+   {
+    "id": "horizon=2e5",
+    "outcome": "HANG",
+    "deadline": 60.0
+   },
+   {
+    "id": "n_draws=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid model specification: n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizon, or the number of histories",
+    "seconds": 0.001,
+    "rss_mb": 1.2
+   },
+   {
+    "id": "n_draws=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid model specification: n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must stay below 2^31 values; reduce n_draws, the horizon, or the number of histories",
+    "seconds": 0.001,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_draws=1e6",
+    "outcome": "HANG",
+    "deadline": 60.0
+   },
+   {
+    "id": "n_draws=2^27",
+    "outcome": "ALLOC-ABORT",
+    "detail": "rc=-6 bytes=48318382084831838208",
+    "stderr_tail": "memory allocation of memory allocation of 48318382084831838208 bytes failed\n bytes failed\nskipping backtrace printing to avoid potential recursion\nstack backtrace:\n"
+   },
+   {
+    "id": "n_draws=2^24",
+    "outcome": "ALLOC-ABORT",
+    "detail": "rc=-6 bytes=1879048192",
+    "stderr_tail": "var::girf::HistoryOut, tsecon_var::error::VarError>>)> as rayon_core::job::Job>::execute\n  15: <rayon_core::registry::WorkerThread>::wait_until_cold\n  16: <rayon_core::registry::ThreadBuilder>::run\nmemory allocation of 1879048192 bytes failed\nskipping backtrace printing to avoid potential recursion\n"
+   },
+   {
+    "id": "histories=2^47",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 0.005,
+    "rss_mb": 1.8
+   },
+   {
+    "id": "histories=2^31",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 0.004,
+    "rss_mb": 0.1
+   },
+   {
+    "id": "histories=1e6",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 0.004,
+    "rss_mb": 0.1
+   }
+  ],
+  "jsz_fit": [
+   {
+    "id": "n_factors=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_factors = 140737488355328 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 11 (strictly fewer factors than maturities) is required; ACM's baseline uses five",
+    "seconds": 0.0,
+    "rss_mb": 0.4
+   },
+   {
+    "id": "n_factors=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_factors = 2147483648 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 11 (strictly fewer factors than maturities) is required; ACM's baseline uses five",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_factors=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_factors = 1000000 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 11 (strictly fewer factors than maturities) is required; ACM's baseline uses five",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_starts = 140737488355328 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues of the OLS feedback matrix; starts 1.. are seeded perturbations of it that guard against local optima \u2014 the default is 5)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_starts = 2147483648 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues of the OLS feedback matrix; starts 1.. are seeded perturbations of it that guard against local optima \u2014 the default is 5)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_starts = 1000000 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues of the OLS feedback matrix; starts 1.. are seeded perturbations of it that guard against local optima \u2014 the default is 5)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_starts = 1001 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues of the OLS feedback matrix; starts 1.. are seeded perturbations of it that guard against local optima \u2014 the default is 5)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=cap",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 16.773,
+    "rss_mb": 2.7
+   },
+   {
+    "id": "maturities=2^47",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_fit() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "maturities=2^31",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_fit() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "maturities=1e6",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_fit() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "maturities=cap+1",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_fit() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "maturities=cap",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_fit() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "jsz_loadings": [
+   {
+    "id": "maturities=2^47",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_loadings() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "maturities=2^31",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_loadings() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "maturities=1e6",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_loadings() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "maturities=cap+1",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_loadings() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "maturities=cap",
+    "outcome": "refusal",
+    "exc": "TypeError",
+    "msg": "jsz_loadings() got multiple values for argument 'maturities'",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "panel_distributed_lag": [
+   {
+    "id": "lags=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: needs at least 140737488355330 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.6
+   },
+   {
+    "id": "lags=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: needs at least 2147483650 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "lags=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "distributed-lag design: dropping the first L lag periods of every entity must leave at least two periods: needs at least 1000002 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "powers=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 140737488355328",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "powers=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 2147483648",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "powers=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 1000000",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ]
+ }
+}
