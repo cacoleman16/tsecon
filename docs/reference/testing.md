@@ -28,7 +28,7 @@ command needs the `--exclude tsecon-python` caveat described
 | — integration tests in `crates/*/tests/` | 1538 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 245 | |
 | — documentation tests | 56 | |
-| Python binding tests | **1705 passed, 0 failed, 1 skipped** in 374 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **1727 passed, 0 failed, 1 skipped** in 366 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
 | Golden fixtures | 100 JSON files, produced by 81 Python generator scripts (plus two R scripts) | `fixtures/` |
 | Public Python functions | 179, **all 179** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
@@ -257,7 +257,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-1705 tests in 105 files. 67 of the 100 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
+1727 tests in 106 files. 67 of the 100 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -272,7 +272,7 @@ cannot cover:
   facades (nine `test_results_*.py` files, 213 tests) assert key by key that the
   object *is* the dict the raw function has always returned, with rendering
   added on top and nothing removed.
-- **Error propagation.** 546 `pytest.raises` assertions check that a Rust
+- **Error propagation.** 556 `pytest.raises` assertions check that a Rust
   `Err(...)` surfaces as a Python `ValueError`/`RuntimeError` with a message
   you can act on, rather than an abort. `test_gmm_nonlinear.py` goes the other
   direction too: a Python moment function that raises must propagate its
@@ -601,9 +601,9 @@ library with lying documentation.
 
 ## 3 · The Python test files
 
-38 of the 105 files in
+38 of the 106 files in
 [`bindings/python/tests/`](../../bindings/python/tests), with collected test
-counts. The table has not kept pace with the directory, and the 67 files not
+counts. The table has not kept pace with the directory, and the 68 files not
 listed here are a gap in *this table*, not in the suite — every one of them
 runs on every invocation of the command above:
 

@@ -19,7 +19,7 @@ sweeps over the supply chain and CI, hygiene, every documented claim, the
 test suite itself, API consistency across all 173 pre-wave callables, the security
 of the Python boundary, and a ledger reconciling every finding the eleven
 previous rounds recorded (275 items: 98 fixed, 104 open, 25 superseded).
-The callable count moves from 173 to 179.
+Audit round 13 swept the six new callables and the changed count pre-flight before release (211 candidates, 181 refuted, 6 confirmed and fixed, 0 severe); the callable count moves from 173 to 179.
 
 ### Added
 
@@ -39,6 +39,8 @@ The callable count moves from 173 to 179.
   product, the crates are not published to crates.io.
 - The sweeps' probe scripts and summaries under `lab/audit/repo/`.
 
+- `lab/audit/round13/` — the round's registry (all 179 callables reached), the E/F/G/H/S/C sweep scripts with their committed summaries, and `bindings/python/tests/test_audit_round13.py` (21 pins).
+
 ### Changed
 
 - `tsecon-regime` now depends on `tsecon-var` (the GIRF engine) and `tsecon-var` on `rayon`; the TVAR docs no longer call GIRFs deferred.
@@ -48,6 +50,11 @@ The callable count moves from 173 to 179.
 
 ### Fixed
 
+- The shipped type stub (`__init__.pyi`) did not parse: the `setar_threshold_ci` and `panel_distributed_lag` entries appended by parallel slices lost their closing triple quote in the merge, so `ast.parse` raised `SyntaxError` at line 4284 and mypy reported "errors prevented further checking" for any file importing tsecon, while the regex-based `api.md` generator pasted the next entry's signature into the previous entry's prose. The closers are back, `api.md` is regenerated, `gen_api_reference.py` refuses a stub that does not parse, and `test_stub_parses_as_python` runs `ast.parse` on the stub in CI (audit round 13, M1).
+- The coercion wrapper rebuilt every failed PyO3 extraction as a rank error, so a wrong-typed option — `constant=1`, `antithetic=2`, `trend=None`, `adf(y, 3)` — raised "an array argument is the wrong shape or type (got arg0: array(200, 3)) … want a 2-D array", blaming the user's correct array. Only the `ndarray` downcast is a rank error now (and it names the array by its parameter, `got data: array(200,)`); every other extraction failure names the offending argument: `setar: constant=1 is of type int, but this parameter takes a Python bool …`, `adf: maxlag=1.5 is of type float, but this parameter takes an integer …`, `setar: trim='abc' … takes a real number`, `var_girf: histories=array([1.]) is an array (a one-element list passed here is converted to an array) …`. Measured on the round's 673-cell malformed-input matrix: unnamed refusals 280 → 83 (the residue is Rust-side sufficiency text), 0 panics before and after (round 13, M2 + L1).
+- `jsz_fit`: `help()`, the stub, the term-structure card's argument table and the guide-15 bullet stated the `seed` default as `0` while the signature default is `None`, and `None` silently meant seed 0. All four surfaces now say `None` means seed 0 (not fresh entropy) and that the returned `seed` key is the value used (round 13, M3).
+- `var_girf` / `threshold_var_girf`: `histories` at or above the number of available windows uses all of them (reported in `n_histories`) — a clamp no surface stated; the docstrings, stub and both cards now do (round 13, L2).
+- `var_girf`: the docstring promised `mc_se`/`draw_sd` "exactly zero (NaN with a single draw)"; at the default `n_draws=2` with `antithetic=True` there is one effective draw, so `mc_se` is NaN on every default call, and otherwise both are zero to rounding (≤ 1e-15). Reworded on the three surfaces (round 13, L3).
 - **Every wrapped call paid ~0.1 ms for nothing.** The 2^48 count pre-flight added by the repository audit called `inspect.signature` on the compiled builtin on every call, and on a PyO3 builtin that re-tokenizes and re-parses `__text_signature__` each time; the speed dashboard measured it as a fixed 0.128 ms tax (`kpss` 0.010 ms raw, 0.115 ms wrapped — every sub-millisecond estimator "lost" to statsmodels while its core was 5× faster). Names are now resolved once per function and only when an offender has to be named: overhead 0.0006 ms after, the seal unchanged, pinned by a call-counting test.
 - **The wheel now ships the third-party licence notices it always claimed
   to carry.** `THIRD-PARTY-LICENSES.md` said the verbatim copyright
