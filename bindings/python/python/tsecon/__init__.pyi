@@ -4585,3 +4585,192 @@ def threshold_var_girf(
     selected windows uses all of them, reported in `n_histories`), `bands`
     ((0.16, 0.84)), `antithetic` (True).
     """
+
+# ---- Cointegrating regressions (FM-OLS / DOLS / CCR)
+
+def fmols(
+    y: _ArrayLike,
+    x: _ArrayLike,
+    trend: str = ...,
+    kernel: str = ...,
+    bandwidth: float | None = ...,
+    bandwidth_rule: str | None = ...,
+    force_int: bool = ...,
+    df_adjust: bool = ...,
+    diff: bool | None = ...,
+    x_trend: str | None = ...,
+) -> dict[str, Any]:
+    """Phillips-Hansen (1990) fully modified OLS (FM-OLS) of one cointegrating
+    vector, with asymptotically valid (mixed-normal) inference.
+
+    `y` is the regressand (length T), `x` the (T, k) matrix of I(1)
+    regressors (do NOT add your own constant: deterministics come from
+    `trend`). The static OLS `y = x'beta + d'delta + e` is super-consistent
+    but its t-statistics are invalid — serial correlation in `e` and
+    correlation between `e` and the regressor innovations `dx` leave a
+    second-order bias and a nuisance-parameter limit. FM-OLS corrects the
+    regressand for endogeneity (`y+ = y - omega_12 Omega_22^-1 eta_2`) and
+    subtracts the serial-correlation bias `lambda+_12` from the moment
+    equations, using the kernel long-run covariance of the residual system
+    `eta = (OLS residual, detrended dx)`; the corrected estimator has
+    covariance `omega_1.2 (Z'Z)^-1` and standard-normal t-statistics.
+
+    `trend`: "n", "c" (default), "ct", "ctt" (constant, trend, quadratic
+    trend; the trend runs 1..T). `kernel`: "bartlett" (default), "parzen",
+    "quadratic-spectral". `bandwidth`: an explicit kernel bandwidth (>= 0;
+    Bartlett/Parzen weight lag j by k(j/(bandwidth+1)) for j <=
+    floor(bandwidth), quadratic spectral by k(j/bandwidth)), or None
+    (default) to select it by `bandwidth_rule`: "newey-west" (default;
+    arch's rule — the Newey-West 1994 plug-in on the unit-weighted sum of
+    the residual system with ceil(4 (T/100)^rate) pilot lags) or
+    "andrews" (the Andrews 1991 AR(1) parametric plug-in on the same
+    series). Passing `bandwidth_rule` together with an explicit `bandwidth`
+    RAISES (the rule would be inert). `force_int` (default True, as arch)
+    ceils the bandwidth — automatic or explicit; the automatic one is also
+    capped at T - 1. `df_adjust` (default False) scales the covariance by
+    (T-1)/(T-1-k). `x_trend` (default None = `trend`; must carry at least
+    the terms of `trend`) sets the deterministics the regressors are
+    detrended with before differencing; `diff` (default False) removes the
+    trend from the differences instead of the levels and RAISES when the
+    effective x_trend has no trend term (it would be inert).
+
+    Keys: `estimator`, `params` (x columns first, then the deterministics —
+    see `param_names`), `se`, `tvalues`, `pvalues` (two-sided normal),
+    `cov`, `param_names`, `resid` (length `nobs` = T, the full sample),
+    `nobs`, `n_x`, `n_det`, `trend`, `x_trend`, `kernel`, `bandwidth` (the
+    one actually used), `bandwidth_rule` (None when explicit), `force_int`,
+    `diff`, `df_adjust`, `long_run_variance` (`omega_1.2`, df-scaled),
+    `omega` / `lambda` / `sigma` (the (1+k)x(1+k) long-run, one-sided
+    long-run and short-run covariances of the residual system, nested
+    lists), `n_lags` (positive lags the window covered), `rsquared`,
+    `rsquared_adj`, `ols_params` and `ols_se` (the plain static OLS for
+    comparison — its SEs are NOT valid for inference).
+
+    Validation: arch 8.0 `FullyModifiedOLS` at 1e-10 across every trend,
+    kernel and option (fixtures/fmols.json); t-statistic size and
+    super-consistency measured by seeded Monte Carlo (model card).
+
+    Further arguments, with defaults: `trend` ("c"), `kernel` ("bartlett"),
+    `bandwidth` (None), `bandwidth_rule` (None: "newey-west"), `force_int`
+    (True), `df_adjust` (False), `diff` (None: False), `x_trend` (None:
+    `trend`).
+    """
+
+def ccr(
+    y: _ArrayLike,
+    x: _ArrayLike,
+    trend: str = ...,
+    kernel: str = ...,
+    bandwidth: float | None = ...,
+    bandwidth_rule: str | None = ...,
+    force_int: bool = ...,
+    df_adjust: bool = ...,
+    diff: bool | None = ...,
+    x_trend: str | None = ...,
+) -> dict[str, Any]:
+    """Park (1992) canonical cointegrating regression (CCR) of one
+    cointegrating vector, with asymptotically valid inference.
+
+    Same inputs, options and keys as `fmols`. Where FM-OLS corrects the
+    regressand and the moment equations, CCR transforms the DATA: with
+    `Sigma`, `Lambda`, `Omega` the short-run, one-sided and two-sided
+    long-run covariances of the residual system `eta` and `beta_ols` the
+    static OLS coefficients, `x* = x - (Sigma^-1 Lambda_2)'eta` and `y* =
+    y - (Sigma^-1 Lambda_2 beta_ols + kappa)'eta` with `kappa = (0,
+    Omega_22^-1 omega_21)`, and `params` is the OLS of `y*` on `[x*, d]`
+    over t = 2..T, with covariance `omega_1.2 (Z*'Z*)^-1`. Asymptotically
+    equivalent to FM-OLS; the two differ in finite samples.
+
+    `df_adjust` scales the covariance by (T-1)/(T-1-k) as documented —
+    arch 8.0's `CanonicalCointegratingReg.fit` scales only `omega_11`
+    (an operator-precedence slip); everything else is arch-exact.
+
+    Keys: `estimator`, `params`, `se`, `tvalues`, `pvalues`, `cov`,
+    `param_names`, `resid`, `nobs`, `n_x`, `n_det`, `trend`, `x_trend`,
+    `kernel`, `bandwidth`, `bandwidth_rule`, `force_int`, `diff`,
+    `df_adjust`, `long_run_variance`, `omega`, `lambda`, `sigma`, `n_lags`,
+    `rsquared`, `rsquared_adj`, `ols_params`, `ols_se`.
+
+    Validation: arch 8.0 `CanonicalCointegratingReg` at 1e-10
+    (fixtures/fmols.json), the `df_adjust` scaling as documented.
+
+    Further arguments, with defaults: `trend` ("c"), `kernel` ("bartlett"),
+    `bandwidth` (None), `bandwidth_rule` (None: "newey-west"), `force_int`
+    (True), `df_adjust` (False), `diff` (None: False), `x_trend` (None:
+    `trend`).
+    """
+
+def dols(
+    y: _ArrayLike,
+    x: _ArrayLike,
+    trend: str = ...,
+    lags: int | None = ...,
+    leads: int | None = ...,
+    ic: str | None = ...,
+    common: bool | None = ...,
+    max_lag: int | None = ...,
+    max_lead: int | None = ...,
+    cov_type: str = ...,
+    kernel: str = ...,
+    bandwidth: float | None = ...,
+    bandwidth_rule: str | None = ...,
+    force_int: bool = ...,
+    df_adjust: bool = ...,
+) -> dict[str, Any]:
+    """Stock-Watson (1993) / Saikkonen (1991) dynamic OLS (DOLS) of one
+    cointegrating vector: the static regression augmented with `lags` lags
+    and `leads` leads of the regressor differences (the contemporaneous
+    difference is always included), so the augmented error is orthogonal
+    to the regressor innovations and OLS on the augmented design is
+    asymptotically mixed normal.
+
+    `y` (length T) and `x` (T, k) as for `fmols`; `trend` as there. The
+    regression runs over the T - 1 - lags - leads rows every term is
+    defined on, design `[x, deterministics, dx_{t-lags}, ..., dx_t, ...,
+    dx_{t+leads}]` (k columns per block; the trend runs 1..nobs over that
+    sample). `lags` / `leads` (default None) fix the counts; when either is
+    None it is chosen by minimising `ic` — "bic" (default), "aic" or
+    "hqic": `ln(RSS/nobs) + n_params c/nobs` — over 0..`max_lag` /
+    0..`max_lead` (default None = ceil(12 (T/100)^(1/4))) on the COMMON
+    sample of the largest candidate (ties to the smaller lag, then lead),
+    the chosen model then refit on its own sample; `common` (default None
+    = False) restricts the search to lags == leads. The sentinel rule:
+    `ic` passed with both `lags` and `leads` fixed RAISES, `max_lag` passed
+    with `lags` fixed RAISES, `max_lead` with `leads` RAISES, and `common`
+    with both fixed RAISES (each would be inert). A search whose largest
+    candidate has no residual degrees of freedom is refused (arch runs it
+    underdetermined).
+
+    `cov_type`: "unadjusted" (default) — `sigma2_HAC (Z'Z/n)^-1 / n` with
+    `sigma2_HAC` the kernel long-run variance of the residuals; "robust" —
+    the kernel-HAC sandwich `(Z'Z/n)^-1 S_HAC (Z'Z/n)^-1 / n` on the scores.
+    `kernel`, `bandwidth`, `bandwidth_rule` and `force_int` (default False,
+    arch's DOLS default) as for `fmols`, the automatic bandwidth chosen on
+    the residuals ("unadjusted") or the scores ("robust"); `df_adjust`
+    (default False) scales the covariance by nobs/(nobs - n_params).
+
+    Keys: `params` (the cointegrating vector: x columns then the
+    deterministics — `param_names`), `se`, `tvalues`, `pvalues`, `cov`,
+    `param_names`, `full_params` / `full_se` / `full_cov` /
+    `full_param_names` (every coefficient incl. the difference blocks),
+    `resid` (length `nobs`), `nobs` (the augmented regression's rows),
+    `n_total` (T), `n_x`, `n_det`, `n_params`, `trend`, `lags`, `leads`,
+    `selected` (False when both were fixed), `ic`, `ic_value` (the
+    minimised criterion; NaN when both were fixed), `max_lag` / `max_lead`
+    (the caps the search used), `common`, `cov_type`, `kernel`,
+    `bandwidth`, `bandwidth_rule`, `force_int`, `df_adjust`,
+    `long_run_variance` (kernel LRV of the residuals at `bandwidth`,
+    df-scaled — the `sigma2_HAC` of the unadjusted covariance),
+    `rsquared`, `rsquared_adj`, `ols_params`, `ols_se` (the plain static
+    OLS on the full sample — SEs NOT valid for inference).
+
+    Validation: arch 8.0 `DynamicOLS` at 1e-10 across every trend, both
+    covariance types, the three criteria, fixed/searched/common/capped
+    leads and lags (fixtures/fmols.json).
+
+    Further arguments, with defaults: `trend` ("c"), `lags` (None), `leads`
+    (None), `ic` (None: "bic"), `common` (None: False), `max_lag` (None),
+    `max_lead` (None), `cov_type` ("unadjusted"), `kernel` ("bartlett"),
+    `bandwidth` (None), `bandwidth_rule` (None: "newey-west"), `force_int`
+    (False), `df_adjust` (False).
+    """

@@ -547,8 +547,9 @@ fn underdetermined_dols_search_is_refused_with_the_caps_named() {
         assert!(matches!(err, CointError::InvalidSpec { .. }), "{err:?}");
         let msg = err.to_string();
         for name in case["must_name"].as_array().expect("must_name") {
-            let name = name.as_str().expect("name");
-            assert!(msg.contains(name), "message must name {name}: {msg}");
+            // `max_lag = 11` exactly, not a prefix of another word (`max_lags`).
+            let name = format!("{} = ", name.as_str().expect("name"));
+            assert!(msg.contains(&name), "message must name {name}: {msg}");
         }
         assert!(
             msg.contains(&format!("{}", case["rows"].as_u64().expect("rows"))),
@@ -720,7 +721,10 @@ fn every_refusal_names_its_parameter() {
         },
     )
     .unwrap_err();
-    assert!(err.to_string().contains("max_lag = Some(1)"), "{err}");
+    assert!(
+        err.to_string().contains("max_lag = 1 and max_lead = 2"),
+        "{err}"
+    );
 
     // DOLS: fixed lags/leads too large for T.
     let err = dols(

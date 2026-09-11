@@ -362,11 +362,13 @@ pub fn dols(y: &[f64], x: MatRef<'_, f64>, opts: &DolsOptions) -> Result<DolsRes
             }
         }
         if opts.max_lag != opts.max_lead {
+            let show = |v: Option<usize>| v.map_or("None".to_string(), |c| c.to_string());
             return Err(CointError::InvalidSpec {
                 what: format!(
-                    "common = true requires max_lag == max_lead but max_lag = {:?} and \
-                     max_lead = {:?} were given; pass the same cap for both (or neither)",
-                    opts.max_lag, opts.max_lead
+                    "common = true requires max_lag == max_lead but max_lag = {} and \
+                     max_lead = {} were given; pass the same cap for both (or neither)",
+                    show(opts.max_lag),
+                    show(opts.max_lead)
                 ),
             });
         }
@@ -384,28 +386,32 @@ pub fn dols(y: &[f64], x: MatRef<'_, f64>, opts: &DolsOptions) -> Result<DolsRes
     };
     let both_fixed = opts.lags.is_some() && opts.leads.is_some();
 
-    // The largest candidate must leave residual degrees of freedom.
-    let n_params_max = kx + n_det + kx * (max_lag + max_lead + 1);
-    let rows_max = n.checked_sub(1 + max_lag + max_lead).unwrap_or(0);
+    // The largest candidate must leave residual degrees of freedom
+    // (saturating: the counts are user input and may be absurd).
+    let n_blocks_max = max_lag.saturating_add(max_lead).saturating_add(1);
+    let n_params_max = (kx + n_det).saturating_add(kx.saturating_mul(n_blocks_max));
+    let rows_max = n.saturating_sub(n_blocks_max);
     if rows_max <= n_params_max {
-        let describe = |name: &str, fixed: Option<usize>, cap: Option<usize>, used: usize| match (
-            fixed, cap,
-        ) {
-            (Some(v), _) => format!("{name} = {v}"),
-            (None, Some(c)) => format!("max_{name} = {c}"),
-            (None, None) => format!("max_{name} = {used} (the default ceil(12 (T/100)^(1/4)))"),
-        };
+        let describe =
+            |name: &str, cap_name: &str, fixed: Option<usize>, cap: Option<usize>, used: usize| {
+                match (fixed, cap) {
+                    (Some(v), _) => format!("{name} = {v}"),
+                    (None, Some(c)) => format!("{cap_name} = {c}"),
+                    (None, None) => {
+                        format!("{cap_name} = {used} (the default ceil(12 (T/100)^(1/4)))")
+                    }
+                }
+            };
         return Err(CointError::InvalidSpec {
             what: format!(
                 "the dynamic OLS design is too large for T = {n} observations: with {} and \
                  {} the largest regression keeps T - 1 - {max_lag} - {max_lead} = {rows_max} \
                  row(s) for k_x + n_det + k_x (lags + leads + 1) = {kx} + {n_det} + {kx} x \
-                 {} = {n_params_max} regressors, which leaves no residual degrees of \
-                 freedom; fix or cap the lags/leads lower, drop regressors, or supply a \
-                 longer sample",
-                describe("lags", opts.lags, opts.max_lag, max_lag),
-                describe("leads", opts.leads, opts.max_lead, max_lead),
-                max_lag + max_lead + 1
+                 {n_blocks_max} = {n_params_max} regressors, which leaves no residual \
+                 degrees of freedom; fix or cap the lags/leads lower, drop regressors, or \
+                 supply a longer sample",
+                describe("lags", "max_lag", opts.lags, opts.max_lag, max_lag),
+                describe("leads", "max_lead", opts.leads, opts.max_lead, max_lead)
             ),
         });
     }
