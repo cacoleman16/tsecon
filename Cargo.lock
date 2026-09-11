@@ -1002,6 +1002,7 @@ dependencies = [
 name = "tsecon-forecast"
 version = "0.9.0"
 dependencies = [
+ "rayon",
  "serde_json",
  "tsecon-bootstrap",
  "tsecon-hac",

@@ -1,0 +1,678 @@
+//! Seeded Monte Carlo properties and guardrails for the multiple-comparison
+//! tests: `spa_test` / `stepm_test` (Reality Check / SPA / StepM) and
+//! `model_confidence_set` (MCS).
+//!
+//! What the goldens cannot prove is measured here with a stated seed:
+//!
+//! * the SIZE of the SPA test under equal predictive ability (every model
+//!   as good as the benchmark, the least favourable configuration), on iid
+//!   and AR(1) loss differentials, with the automatic block length;
+//! * its POWER against a dominated benchmark;
+//! * the COVERAGE of the MCS — the set of best models is contained in the
+//!   90% set at least 90% of the time (Hansen-Lunde-Nason 2011, Theorem 1),
+//!   for both statistics;
+//!
+//! plus the reproducibility contract (bit-identical at any rayon thread
+//! count; the seeded path equals an explicit replay of its substreams), the
+//! structural identities (p-value bracketing, nested sets, StepM subsets),
+//! and the teaching refusals, each naming its parameter.
+//!
+//! Every measured rate is printed (`cargo test -- --nocapture`) and quoted
+//! in the forecasting model card.
+
+use tsecon_bootstrap::indices;
+use tsecon_forecast::{
+    model_confidence_set, model_confidence_set_with_indices, spa_test, spa_test_with_indices,
+    stepm_test, ForecastError, McsMethod, McsOptions, ResampleScheme, SpaOptions, StepmOptions,
+};
+use tsecon_rng::Stream;
+
+/// Standard normals from a Philox stream (Box-Muller).
+struct Gauss(Stream);
+
+impl Gauss {
+    fn new(seed: u64) -> Self {
+        Gauss(Stream::new(seed))
+    }
+    fn normal(&mut self) -> f64 {
+        let u1 = (1.0 - self.0.uniform_f64()).max(1e-300);
+        let u2 = self.0.uniform_f64();
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
+    fn ar1(&mut self, n: usize, rho: f64) -> Vec<f64> {
+        let mut x = Vec::with_capacity(n);
+        let mut prev = 0.0;
+        let s = (1.0 - rho * rho).sqrt();
+        for _ in 0..n {
+            prev = rho * prev + s * self.normal();
+            x.push(prev);
+        }
+        x
+    }
+}
+
+/// Squared-error loss columns: errors share an AR(1) common component
+/// (`common`) plus an idiosyncratic AR(1) part scaled per model, shifted by
+/// `bias` — the fixture generator's design.
+fn loss_panel(g: &mut Gauss, n: usize, scales: &[f64], bias: &[f64], rho: f64) -> Vec<Vec<f64>> {
+    let u = g.ar1(n, rho);
+    scales
+        .iter()
+        .zip(bias)
+        .map(|(&s, &b)| {
+            let v = g.ar1(n, rho);
+            u.iter()
+                .zip(&v)
+                .map(|(&uu, &vv)| {
+                    let e = 0.7 * uu + s * vv + b;
+                    e * e
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn spa_opts(
+    block_size: Option<usize>,
+    reps: usize,
+    scheme: ResampleScheme,
+    seed: u64,
+) -> SpaOptions {
+    SpaOptions {
+        block_size,
+        reps,
+        scheme,
+        studentize: true,
+        nested: false,
+        seed,
+    }
+}
+
+fn with_threads<T>(k: usize, f: impl FnOnce() -> T + Send) -> T
+where
+    T: Send,
+{
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(k)
+        .build()
+        .expect("pool")
+        .install(f)
+}
+
+// ---------------------------------------------------------------- determinism
+
+#[test]
+fn spa_is_bit_identical_at_any_thread_count_and_seed_sensitive() {
+    let mut g = Gauss::new(1);
+    let cols = loss_panel(&mut g, 120, &[1.0, 0.9, 1.1, 1.0], &[0.0; 4], 0.4);
+    let (bench, models) = (cols[0].clone(), cols[1..].to_vec());
+    for scheme in [
+        ResampleScheme::Stationary,
+        ResampleScheme::CircularBlock,
+        ResampleScheme::MovingBlock,
+    ] {
+        let o = spa_opts(Some(6), 2500, scheme, 77);
+        let base = spa_test(&bench, &models, &o).unwrap();
+        for k in [1, 2, 3, 4] {
+            let r = with_threads(k, || spa_test(&bench, &models, &o).unwrap());
+            assert_eq!(r, base, "{scheme:?}: {k} threads");
+            let s = with_threads(k, || {
+                stepm_test(
+                    &bench,
+                    &models,
+                    &StepmOptions {
+                        size: 0.05,
+                        spa: o.clone(),
+                    },
+                )
+                .unwrap()
+            });
+            assert_eq!(s.spa, base, "{scheme:?}: StepM's SPA at {k} threads");
+        }
+        let other = spa_test(
+            &bench,
+            &models,
+            &SpaOptions {
+                seed: 78,
+                ..o.clone()
+            },
+        )
+        .unwrap();
+        assert_ne!(
+            other.boot_consistent, base.boot_consistent,
+            "{scheme:?}: seed must matter"
+        );
+        assert_eq!(other.mean_loss_diff, base.mean_loss_diff);
+    }
+}
+
+#[test]
+fn mcs_is_bit_identical_at_any_thread_count() {
+    let mut g = Gauss::new(2);
+    let losses = loss_panel(
+        &mut g,
+        100,
+        &[0.9, 0.9, 1.1, 1.3],
+        &[0.0, 0.0, 0.3, 0.6],
+        0.3,
+    );
+    for method in [McsMethod::Range, McsMethod::Max] {
+        let o = McsOptions {
+            size: 0.10,
+            method,
+            block_size: Some(5),
+            reps: 2500,
+            scheme: ResampleScheme::Stationary,
+            seed: 5,
+        };
+        let base = model_confidence_set(&losses, &o).unwrap();
+        for k in [1, 2, 3, 4] {
+            let r = with_threads(k, || model_confidence_set(&losses, &o).unwrap());
+            assert_eq!(r, base, "{method:?}: {k} threads");
+        }
+    }
+}
+
+#[test]
+fn seeded_path_equals_an_explicit_replay_of_its_substreams() {
+    // The documented contract: replication b resamples with substream b of
+    // SeedSequence(seed) through tsecon_bootstrap::indices.
+    let mut g = Gauss::new(3);
+    let cols = loss_panel(&mut g, 90, &[1.0, 0.8, 1.2], &[0.0; 3], 0.5);
+    let (bench, models) = (cols[0].clone(), cols[1..].to_vec());
+    let n = 90;
+    for (scheme, block) in [
+        (
+            ResampleScheme::Stationary,
+            tsecon_bootstrap::BlockScheme::Stationary { p: 0.25 },
+        ),
+        (
+            ResampleScheme::CircularBlock,
+            tsecon_bootstrap::BlockScheme::CircularBlock { block_length: 4 },
+        ),
+        (
+            ResampleScheme::MovingBlock,
+            tsecon_bootstrap::BlockScheme::MovingBlock { block_length: 4 },
+        ),
+    ] {
+        let reps = 1500; // more than one 1024-substream chunk
+        let replay: Vec<Vec<usize>> = Stream::substreams(11, reps)
+            .unwrap()
+            .iter_mut()
+            .map(|s| indices(block, n, s).unwrap())
+            .collect();
+        for nested in [false, true] {
+            let o = SpaOptions {
+                nested,
+                ..spa_opts(Some(4), reps, scheme, 11)
+            };
+            let seeded = spa_test(&bench, &models, &o).unwrap();
+            let explicit = spa_test_with_indices(&bench, &models, &replay, &o).unwrap();
+            assert_eq!(seeded, explicit, "{scheme:?} nested={nested}");
+        }
+        for method in [McsMethod::Range, McsMethod::Max] {
+            let o = McsOptions {
+                size: 0.1,
+                method,
+                block_size: Some(4),
+                reps,
+                scheme,
+                seed: 11,
+            };
+            let seeded = model_confidence_set(&cols, &o).unwrap();
+            let explicit = model_confidence_set_with_indices(&cols, &replay, &o).unwrap();
+            assert_eq!(seeded, explicit, "{scheme:?} {method:?}");
+        }
+    }
+}
+
+// ---------------------------------------------------------- structural facts
+
+#[test]
+fn spa_pvalues_bracket_and_stepm_is_a_subset_of_the_winners() {
+    let mut g = Gauss::new(4);
+    for trial in 0..20 {
+        let cols = loss_panel(
+            &mut g,
+            80,
+            &[1.0, 0.8, 1.0, 1.2, 1.5],
+            &[0.0, 0.0, 0.2, 0.0, 0.5],
+            0.3,
+        );
+        let (bench, models) = (cols[0].clone(), cols[1..].to_vec());
+        for studentize in [true, false] {
+            let o = SpaOptions {
+                studentize,
+                ..spa_opts(Some(4), 400, ResampleScheme::Stationary, trial)
+            };
+            let r = spa_test(&bench, &models, &o).unwrap();
+            assert!(r.p_value_lower <= r.p_value_consistent, "trial {trial}");
+            assert!(r.p_value_consistent <= r.p_value_upper, "trial {trial}");
+            assert!((0.0..=1.0).contains(&r.p_value_upper));
+            assert_eq!(r.boot_consistent.len(), 400);
+            assert!(r.crit_lower[0] <= r.crit_lower[1] && r.crit_lower[1] <= r.crit_lower[2]);
+            assert!(r.statistic.is_finite());
+            assert_eq!(r.crit_levels, [0.90, 0.95, 0.99]);
+            // Re-centred models are exactly those not significantly worse.
+            for k in 0..4 {
+                if r.mean_loss_diff[k] >= 0.0 {
+                    assert!(r.recentered[k]);
+                }
+            }
+            let s = stepm_test(
+                &bench,
+                &models,
+                &StepmOptions {
+                    size: 0.10,
+                    spa: o.clone(),
+                },
+            )
+            .unwrap();
+            assert_eq!(s.spa, r);
+            for &k in &s.superior_models {
+                assert!(
+                    r.mean_loss_diff[k] > 0.0,
+                    "a superior model beats the benchmark on average"
+                );
+            }
+            let mut sorted = s.superior_models.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            assert_eq!(sorted, s.superior_models);
+            assert_eq!(s.steps.len(), s.step_crit_values.len());
+            let union: usize = s.steps.iter().map(Vec::len).sum();
+            assert_eq!(union, s.superior_models.len());
+            // Later steps face a (weakly) lower bar: fewer models in the max.
+            for w in s.step_crit_values.windows(2) {
+                assert!(w[1] <= w[0] + 1e-12);
+            }
+        }
+    }
+}
+
+#[test]
+fn mcs_sets_are_nested_in_size_and_partition_the_models() {
+    let mut g = Gauss::new(5);
+    for trial in 0..15 {
+        let losses = loss_panel(
+            &mut g,
+            100,
+            &[0.9, 0.9, 1.0, 1.2, 1.5],
+            &[0.0, 0.0, 0.3, 0.5, 0.9],
+            0.3,
+        );
+        for method in [McsMethod::Range, McsMethod::Max] {
+            let mut sets = Vec::new();
+            for size in [0.01, 0.05, 0.10, 0.25, 0.50] {
+                let o = McsOptions {
+                    size,
+                    method,
+                    block_size: None,
+                    reps: 400,
+                    scheme: ResampleScheme::Stationary,
+                    seed: trial,
+                };
+                let r = model_confidence_set(&losses, &o).unwrap();
+                assert!(r.block_size_auto);
+                assert!(r.block_size >= 1 && r.block_size < 100);
+                let mut all = r.included.clone();
+                all.extend(&r.excluded);
+                all.sort_unstable();
+                assert_eq!(all, (0..5).collect::<Vec<_>>());
+                assert!(!r.included.is_empty());
+                assert_eq!(r.elimination_order.len(), 5);
+                assert_eq!(r.step_p_values.last(), Some(&1.0));
+                assert!(r.mcs_p_values.iter().all(|p| (0.0..=1.0).contains(p)));
+                // Same seed, same bootstrap: the p-values do not depend on size.
+                sets.push((r.included.clone(), r.mcs_p_values.clone()));
+            }
+            for w in sets.windows(2) {
+                assert_eq!(w[0].1, w[1].1, "{method:?}: p-values independent of size");
+                // Larger size => (weakly) smaller set.
+                assert!(
+                    w[1].0.iter().all(|k| w[0].0.contains(k)),
+                    "{method:?}: nested sets"
+                );
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------- Monte Carlo
+
+/// Rejection frequencies of the consistent SPA p-value under H0 (all models
+/// exactly as good as the benchmark), plus the CDF of the p-value at a few
+/// points: uniform-ish means each within 3 MC standard errors of nominal.
+fn spa_size_study(rho: f64, block_size: Option<usize>, seed0: u64, mc: usize) -> Vec<f64> {
+    let levels = [0.05, 0.10, 0.25, 0.50];
+    let mut hits = vec![0usize; levels.len()];
+    for r in 0..mc {
+        let mut g = Gauss::new(seed0 + r as u64);
+        let cols = loss_panel(&mut g, 200, &[1.0; 6], &[0.0; 6], rho);
+        let (bench, models) = (cols[0].clone(), cols[1..].to_vec());
+        let o = spa_opts(block_size, 300, ResampleScheme::Stationary, 1000 + r as u64);
+        let res = spa_test(&bench, &models, &o).unwrap();
+        for (h, &l) in hits.iter_mut().zip(&levels) {
+            if res.p_value_consistent <= l {
+                *h += 1;
+            }
+        }
+    }
+    hits.iter().map(|&h| h as f64 / mc as f64).collect()
+}
+
+#[test]
+fn spa_size_under_equal_predictive_ability_is_near_nominal() {
+    let mc = 400;
+    let levels = [0.05, 0.10, 0.25, 0.50];
+    for (label, rho, block) in [
+        ("iid, block_size=None", 0.0, None),
+        ("AR(0.5), block_size=None", 0.5, None),
+        ("AR(0.5), block_size=8", 0.5, Some(8)),
+    ] {
+        let rates = spa_size_study(rho, block, 2026, mc);
+        println!("SPA size study ({label}, n=200, m=5, B=300, {mc} MC reps): P(p_consistent <= alpha) at alpha = {levels:?} -> {rates:?}");
+        for (rate, &alpha) in rates.iter().zip(&levels) {
+            let se = (alpha * (1.0 - alpha) / mc as f64).sqrt();
+            assert!(
+                (rate - alpha).abs() <= 3.0 * se + 0.005,
+                "{label}: rejection rate {rate} at alpha {alpha} is more than 3 se ({se:.3}) from nominal"
+            );
+        }
+    }
+}
+
+#[test]
+fn spa_has_power_against_a_dominated_benchmark() {
+    let mc = 200;
+    let mut rejections_c = 0;
+    let mut rejections_u = 0;
+    let mut best_is_model0 = 0;
+    for r in 0..mc {
+        let mut g = Gauss::new(5000 + r as u64);
+        // The benchmark's errors are the largest; model 0 is clearly better.
+        let cols = loss_panel(&mut g, 200, &[1.0, 0.6, 1.0, 1.0], &[0.0; 4], 0.3);
+        let (bench, models) = (cols[0].clone(), cols[1..].to_vec());
+        let o = spa_opts(None, 300, ResampleScheme::Stationary, 7000 + r as u64);
+        let res = spa_test(&bench, &models, &o).unwrap();
+        if res.p_value_consistent <= 0.05 {
+            rejections_c += 1;
+        }
+        if res.p_value_upper <= 0.05 {
+            rejections_u += 1;
+        }
+        if res.best_model == 0 {
+            best_is_model0 += 1;
+        }
+    }
+    let power_c = rejections_c as f64 / mc as f64;
+    let power_u = rejections_u as f64 / mc as f64;
+    println!("SPA power study (n=200, one model with 0.6x error scale, {mc} MC reps): reject at 5%: consistent {power_c}, upper {power_u}; best_model identified {}", best_is_model0 as f64 / mc as f64);
+    assert!(power_c >= 0.90, "consistent power {power_c}");
+    assert!(power_u >= 0.85, "upper (Reality Check) power {power_u}");
+    assert!(best_is_model0 as f64 / mc as f64 >= 0.95);
+}
+
+#[test]
+fn mcs_covers_the_set_of_best_models_at_least_1_minus_size_of_the_time() {
+    let mc = 300;
+    for method in [McsMethod::Range, McsMethod::Max] {
+        let mut both_best_in = 0;
+        let mut model0_in = 0;
+        let mut worst_out = 0;
+        let mut set_sizes = 0usize;
+        for r in 0..mc {
+            let mut g = Gauss::new(9000 + r as u64);
+            // Models 0 and 1 are equally best; 2 is slightly worse; 3 is bad.
+            let losses = loss_panel(
+                &mut g,
+                150,
+                &[0.8, 0.8, 1.0, 1.2],
+                &[0.0, 0.0, 0.3, 1.0],
+                0.3,
+            );
+            let o = McsOptions {
+                size: 0.10,
+                method,
+                block_size: None,
+                reps: 300,
+                scheme: ResampleScheme::Stationary,
+                seed: 100 + r as u64,
+            };
+            let res = model_confidence_set(&losses, &o).unwrap();
+            if res.included.contains(&0) && res.included.contains(&1) {
+                both_best_in += 1;
+            }
+            if res.included.contains(&0) {
+                model0_in += 1;
+            }
+            if !res.included.contains(&3) {
+                worst_out += 1;
+            }
+            set_sizes += res.included.len();
+        }
+        let cov = both_best_in as f64 / mc as f64;
+        let cov0 = model0_in as f64 / mc as f64;
+        let power = worst_out as f64 / mc as f64;
+        println!(
+            "MCS coverage study ({method:?}, n=150, m=4, two equally-best models, size=0.10, B=300, {mc} MC reps): P(both best in set) = {cov}, P(model 0 in set) = {cov0}, P(dominated model excluded) = {power}, mean set size {:.2}",
+            set_sizes as f64 / mc as f64
+        );
+        let se = (0.1 * 0.9 / mc as f64).sqrt();
+        assert!(cov >= 0.90 - 3.0 * se, "{method:?}: coverage {cov}");
+        assert!(cov0 >= 0.90 - 3.0 * se);
+        assert!(
+            power >= 0.90,
+            "{method:?}: the dominated model survives too often ({power})"
+        );
+    }
+}
+
+// ------------------------------------------------------------------ refusals
+
+fn err_msg<T: std::fmt::Debug>(r: Result<T, ForecastError>) -> String {
+    match r {
+        Ok(v) => panic!("expected a refusal, got {v:?}"),
+        Err(e) => e.to_string(),
+    }
+}
+
+#[test]
+fn spa_refusals_name_the_parameter() {
+    let mut g = Gauss::new(6);
+    let cols = loss_panel(&mut g, 40, &[1.0, 0.9, 1.1], &[0.0; 3], 0.0);
+    let (bench, models) = (cols[0].clone(), cols[1..].to_vec());
+    let o = spa_opts(Some(4), 50, ResampleScheme::Stationary, 0);
+
+    let m = err_msg(spa_test(&bench[..2], &[models[0][..2].to_vec()], &o));
+    assert!(
+        m.contains("benchmark_losses") && m.contains("at least 3"),
+        "{m}"
+    );
+
+    let m = err_msg(spa_test(&bench, &[], &o));
+    assert!(
+        m.contains("model_losses") && m.contains("at least one"),
+        "{m}"
+    );
+
+    let ragged = vec![models[0].clone(), models[1][..30].to_vec()];
+    let m = err_msg(spa_test(&bench, &ragged, &o));
+    assert!(
+        m.contains("model_losses") && m.contains("column 1") && m.contains("30"),
+        "{m}"
+    );
+
+    let mut nan = models.clone();
+    nan[1][7] = f64::NAN;
+    let m = err_msg(spa_test(&bench, &nan, &o));
+    assert!(
+        m.contains("model_losses") && m.contains("period 7") && m.contains("column 1"),
+        "{m}"
+    );
+    let mut bnan = bench.clone();
+    bnan[3] = f64::INFINITY;
+    let m = err_msg(spa_test(&bnan, &models, &o));
+    assert!(
+        m.contains("benchmark_losses") && m.contains("period 3"),
+        "{m}"
+    );
+
+    let m = err_msg(spa_test(
+        &bench,
+        &models,
+        &SpaOptions {
+            reps: 0,
+            ..o.clone()
+        },
+    ));
+    assert!(m.contains("reps = 0"), "{m}");
+
+    for bad in [0usize, 40, 41] {
+        let m = err_msg(spa_test(
+            &bench,
+            &models,
+            &SpaOptions {
+                block_size: Some(bad),
+                ..o.clone()
+            },
+        ));
+        assert!(
+            m.contains(&format!("block_size = {bad}")) && m.contains("n = 40"),
+            "{m}"
+        );
+    }
+
+    // A model identical to the benchmark: constant (zero) loss differential.
+    let same = vec![bench.clone(), models[0].clone()];
+    let m = err_msg(spa_test(&bench, &same, &o));
+    assert!(m.contains("loss column 0") && m.contains("constant"), "{m}");
+
+    // Automatic block length needs enough data.
+    let m = err_msg(spa_test(
+        &bench[..8],
+        &[models[0][..8].to_vec()],
+        &SpaOptions {
+            block_size: None,
+            ..o.clone()
+        },
+    ));
+    assert!(
+        m.contains("block_size = None") && m.contains("Politis-White"),
+        "{m}"
+    );
+
+    // Explicit resamples: wrong length, out-of-range index, none at all.
+    let good: Vec<usize> = (0..40).collect();
+    let m = err_msg(spa_test_with_indices(
+        &bench,
+        &models,
+        &[good.clone(), good[..39].to_vec()],
+        &o,
+    ));
+    assert!(m.contains("resamples[1]") && m.contains("39"), "{m}");
+    let mut oob = good.clone();
+    oob[5] = 40;
+    let m = err_msg(spa_test_with_indices(&bench, &models, &[oob], &o));
+    assert!(
+        m.contains("resamples[0]") && m.contains("position 5"),
+        "{m}"
+    );
+    let m = err_msg(spa_test_with_indices(&bench, &models, &[], &o));
+    assert!(m.contains("resamples = 0"), "{m}");
+
+    // StepM size.
+    for bad in [0.0, 1.0, -0.1, f64::NAN] {
+        let m = err_msg(stepm_test(
+            &bench,
+            &models,
+            &StepmOptions {
+                size: bad,
+                spa: o.clone(),
+            },
+        ));
+        assert!(m.contains("size = ") && m.contains("0 < size < 1"), "{m}");
+    }
+}
+
+#[test]
+fn mcs_refusals_name_the_parameter() {
+    let mut g = Gauss::new(7);
+    let losses = loss_panel(&mut g, 40, &[1.0, 0.9, 1.1], &[0.0; 3], 0.0);
+    let o = McsOptions {
+        size: 0.1,
+        method: McsMethod::Range,
+        block_size: Some(4),
+        reps: 50,
+        scheme: ResampleScheme::Stationary,
+        seed: 0,
+    };
+    let m = err_msg(model_confidence_set(&losses[..1], &o));
+    assert!(
+        m.contains("losses = 1 column(s)") && m.contains("at least two"),
+        "{m}"
+    );
+    let m = err_msg(model_confidence_set(&[vec![1.0], vec![2.0]], &o));
+    assert!(m.contains("losses = 1 period(s)"), "{m}");
+    let ragged = vec![losses[0].clone(), losses[1][..10].to_vec()];
+    let m = err_msg(model_confidence_set(&ragged, &o));
+    assert!(
+        m.contains("losses") && m.contains("column 1") && m.contains("10"),
+        "{m}"
+    );
+    for bad in [0.0, 1.0, 2.0] {
+        let m = err_msg(model_confidence_set(
+            &losses,
+            &McsOptions {
+                size: bad,
+                ..o.clone()
+            },
+        ));
+        assert!(m.contains(&format!("size = {bad}")), "{m}");
+    }
+    let m = err_msg(model_confidence_set(
+        &losses,
+        &McsOptions {
+            reps: 0,
+            ..o.clone()
+        },
+    ));
+    assert!(m.contains("reps = 0"), "{m}");
+    let m = err_msg(model_confidence_set(
+        &losses,
+        &McsOptions {
+            block_size: Some(40),
+            ..o.clone()
+        },
+    ));
+    assert!(m.contains("block_size = 40"), "{m}");
+    // Identical columns: zero pairwise bootstrap variance (range) / zero
+    // standard deviation (max, with two models).
+    let dup = vec![losses[0].clone(), losses[1].clone(), losses[1].clone()];
+    let m = err_msg(model_confidence_set(&dup, &o));
+    assert!(
+        m.contains("models 1 and 2") && m.contains("identical"),
+        "{m}"
+    );
+    let dup2 = vec![losses[1].clone(), losses[1].clone()];
+    let m = err_msg(model_confidence_set(
+        &dup2,
+        &McsOptions {
+            method: McsMethod::Max,
+            ..o.clone()
+        },
+    ));
+    assert!(
+        m.contains("standard deviation") && m.contains("model 0"),
+        "{m}"
+    );
+    let mut nan = losses.clone();
+    nan[2][4] = f64::NAN;
+    let m = err_msg(model_confidence_set(&nan, &o));
+    assert!(
+        m.contains("losses") && m.contains("period 4 of column 2"),
+        "{m}"
+    );
+    let m = err_msg(model_confidence_set_with_indices(&losses, &[], &o));
+    assert!(m.contains("resamples = 0"), "{m}");
+}
