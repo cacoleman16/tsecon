@@ -59,6 +59,9 @@ VAR-Toolbox mirror;
 `yield_curve_recession.csv` — FRED series GS10/TB3MS/USREC;
 `sunspots_tong.csv` — the public-domain annual Wolf sunspot numbers
 1700–1988, via `statsmodels.datasets.sunspots`;
+`macrodata_bq.csv` — US real GDP and the unemployment rate 1959Q1–2009Q3
+(US-government statistics, public domain) extracted verbatim from the bundled
+`statsmodels.datasets.macrodata` for the Blanchard-Quah page;
 `glp_sw_panel.csv` — the Stock-Watson (2008) US quarterly panel exactly as
 Giannone-Lenza-Primiceri (2015)'s own replication code consumes it, vendored
 from the public FRBNY-DSGE/BrookingsPC2020 GitHub mirror of their web
