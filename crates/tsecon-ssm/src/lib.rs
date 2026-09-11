@@ -32,11 +32,19 @@
 //!   Joseph-form covariance update, kept as an independent cross-check
 //!   path;
 //! * [`smooth_univariate`] — the Durbin-Koopman backward state smoother
-//!   in univariate form, exact through the diffuse period.
+//!   in univariate form, exact through the diffuse period;
+//! * [`unobserved_components`] ([`uc`]) — Harvey's structural
+//!   time-series models (level / trend / dummy and trigonometric seasonal
+//!   / stochastic cycle / regressors) by exact-diffuse maximum likelihood;
+//! * [`tvp_regression`] ([`tvp`]) — regression with random-walk
+//!   coefficients on the same machinery, with the pile-up (zero state
+//!   variance) check.
 //!
-//! System matrices are time-invariant in this pass but are stored behind
-//! the [`SystemMatrix`] accessor enum so time-varying support can be
-//! added without an API break. All fallible routines return
+//! The design matrix `Z` may be constant or per-period
+//! ([`SystemMatrix::Varying`], the TVP regression's `Z_t = x_t'`); the
+//! other system matrices are time-invariant in this pass and are stored
+//! behind the same [`SystemMatrix`] accessor enum so time-varying support
+//! can be added without an API break. All fallible routines return
 //! [`SsmError`]; nothing in this crate panics on user input.
 //!
 //! Numerical conventions (tolerances, likelihood constants, filtered /
@@ -47,13 +55,18 @@
 mod dense;
 pub mod error;
 pub mod filter;
+mod mle;
 pub mod model;
 pub mod smoother;
+pub mod tvp;
+pub mod uc;
 
 pub use error::SsmError;
 pub use filter::{filter_matrix, filter_univariate, FilterOutput, MatrixFilterOutput};
 pub use model::{InitialState, Initialization, LinearGaussianSSM, SsmBuilder, SystemMatrix};
 pub use smoother::{smooth_univariate, SmootherOutput};
+pub use tvp::{tvp_regression, TvpFit, TvpOptions};
+pub use uc::{unobserved_components, FreqSeasonalSpec, TrendSpec, UcComponent, UcFit, UcOptions, UcSpec};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
 // backend) so downstream crates see one faer version.

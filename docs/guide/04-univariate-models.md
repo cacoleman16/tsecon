@@ -328,7 +328,19 @@ band = 1.96 * np.sqrt(r["smoothed_state_var"])   # honest: wider inside the gap
 
 ![Kalman smoother bridging a 25-period gap](../examples/img/05-kalman.png)
 
-The figure shows exactly what the theory promises: the smoother bridges the gap with a sensible path, the 95% band balloons precisely where information is missing, and the true latent path — which the model never saw inside the gap — stays within the band. Estimating the two variances (rather than fixing them, as here) is one numerical optimization of the exact likelihood away; that fitted local-level API, validated against the canonical Nile-river results of Durbin and Koopman (2012), is part of Module 02.
+The figure shows exactly what the theory promises: the smoother bridges the gap with a sensible path, the 95% band balloons precisely where information is missing, and the true latent path — which the model never saw inside the gap — stays within the band. Estimating the two variances (rather than fixing them, as here) is one numerical optimization of the exact likelihood away, and that is what `unobserved_components` does — for the local level and for the whole of Harvey's structural family assembled from the same blocks:
+
+```python
+fit = tsecon.unobserved_components(y)                     # local level, variances by exact-diffuse MLE
+fit["params"], fit["se"]                                  # sigma2.irregular, sigma2.level
+fit["level"], fit["level_var"]                            # smoothed level and its variance
+bsm = tsecon.unobserved_components(y, level="lltrend", seasonal=12,
+                                    cycle=True, damped_cycle=True, stochastic_cycle=True,
+                                    exog=x, forecast_steps=12, forecast_exog=x_future)
+bsm["at_boundary"]                                        # which variances piled up at zero
+```
+
+`level` names the trend block in statsmodels' vocabulary (`"llevel"`, `"lltrend"`, `"strend"`, `"rwdrift"`, `"dtrend"`, ...), `seasonal=s` adds Harvey's dummy seasonal, `freq_seasonal=[p]` the trigonometric one, `cycle=True` the stochastic cycle, and every state starts exactly diffuse. On the Nile data the fitted variances reproduce the numbers Durbin and Koopman print (15099 and 1469.1); on the UK seat-belt data the basic structural model of Harvey and Durbin (1986) puts the slope and seasonal variances at zero — the **pile-up** of Shephard and Harvey (1990), reported as a flag with a NaN standard error rather than as a tiny estimate — and finds the law's effect as a regression coefficient with a standard error. The same machinery with the *regression coefficients* as random-walk states is `tvp_regression(y, x)`: a time-varying-parameter regression whose zero-state-variance limit is recursive least squares, with the pile-up check on every coefficient variance. Fixed-parameter log-likelihoods, states, variances and forecasts are pinned to statsmodels at 1e-8; the model card holds the grades.
 
 > **⚠ Common mistake.** Handling a missing observation by treating it as "observed with value 0" or by zero-weighting it. Both are wrong: the correct treatment is to *skip the measurement update entirely* and count only observed terms in the likelihood. A related implementation trap: initializing a nonstationary state (a random-walk level has no stationary distribution) with a "big number" variance approximation instead of the exact diffuse initialization — the likelihood constants come out wrong and cross-package comparisons silently break. tsecon uses exact diffuse initialization throughout.
 
@@ -495,7 +507,8 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 | Monthly/quarterly data with stable seasonality | SARIMA — start at the airline model (0,1,1)(0,1,1)ₛ | Four parameters cover a remarkable share of seasonal economic series |
 | Many series to forecast automatically | `auto_arima` (AutoETS is roadmap), then residual checks | Disciplined search beats hand-tuning at scale — but never skip diagnostics |
 | Trend + seasonal forecasting, fast and robust | Theta (`theta_forecast`); the ETS taxonomy is roadmap | M3-competition-grade accuracy at trivial cost |
-| Noisy measurements of an underlying level; gaps in the data | Local level/trend via `local_level_smooth` | Kalman filter handles missing data exactly, with honest uncertainty |
+| Noisy measurements of an underlying level; gaps in the data | Local level/trend via `unobserved_components` (`local_level_smooth` at fixed variances) | Kalman filter handles missing data exactly, with honest uncertainty; the variances are estimated, and a variance that piles up at zero is flagged |
+| Trend + seasonal + cycle decomposition, an intervention effect, or a regression whose coefficients drift | `unobserved_components(level=..., seasonal=..., cycle=..., exog=...)`, `tvp_regression` | Harvey's structural models and the TVP regression on one exact-diffuse Kalman engine, validated against statsmodels |
 | Small sample, persistence near a unit root | Exact MLE, never CSS or Yule-Walker | Initial conditions carry real information; moment methods bias toward stationarity |
 | Asymmetric dynamics with a latent phase (recessions) | `markov_switching_ar` | Infers regime probabilities from the data; the probabilities are the deliverable |
 | Dynamics change at a nameable observable trigger | `setar` (hard switch) or `star` (smooth), after `setar_test`/`star_test` | Interpretable threshold in economic units; test linearity properly first |
@@ -509,6 +522,8 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 
 - `ar_loglik(y, coeffs, sigma2, intercept=0.0)` — exact Gaussian AR(p) log-likelihood via the state-space form with stationary initialization; the exact-MLE kernel this chapter's estimation section is built on
 - `local_level_smooth(y, sigma2_eps, sigma2_eta)` — exact-diffuse Kalman filter and smoother for the local level model; NaNs handled natively as missing data
+- `unobserved_components(y, level="llevel", seasonal=None, freq_seasonal=None, cycle=False, exog=None, forecast_steps=0, ...)` — Harvey's structural models by exact-diffuse MLE: every statsmodels level/trend specification, dummy and trigonometric seasonals, the (damped) stochastic cycle, regressors, missing data, smoothed and filtered components with variances, forecasts with variances, and the pile-up flag on every variance
+- `tvp_regression(y, x, constant=True)` — regression with random-walk coefficients on the same Kalman machinery: filtered and smoothed coefficient paths with variances, the observation and state variances by MLE, and the pile-up check (its zero-variance limit is recursive least squares)
 - `arima_fit(y, p, d, q, seasonal=None, constant=True, forecast_steps=0, conf_alpha=None)` — exact-MLE ARIMA(p,d,q) and, through `seasonal=(P, D, Q, s)`, SARIMA: params, log-likelihood, AIC/BIC, residuals, and multi-step forecasts with correctly integrated-back intervals. Note the default: a constant is fitted, which for $d \ge 1$ is a *drift* — pass `constant=False` when you do not want one
 - `auto_arima(y, seasonal_period=0, ic="aicc", stepwise=True, ...)` — the Hyndman-Khandakar (2008) search on that same exact-MLE engine, in the order this chapter insists on: `D` by the seasonal-strength rule, `d` by successive KPSS tests, then a stepwise (or exhaustive) walk over $(p, q, P, Q)$ at fixed differencing
 - `markov_switching_ar(y, k_regimes=2, order=1, switching_variance=True)` — Hamilton (1989) MS-AR by EM: the transition matrix, per-regime means and variances, expected durations, and the full filtered (Hamilton) and smoothed (Kim 1994) regime-probability paths. `filtered_prob` is the real-time object; `smoothed_prob` conditions on the whole sample, so it dates recessions in hindsight and must not be read as a live call
@@ -529,7 +544,7 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 
 - Regression with ARMA errors (regARIMA); Hannan-Rissanen starts and the Monahan reparameterization as public API
 - The full ETS taxonomy with AutoETS selection
-- Fitted unobserved-components models (local level/trend with estimated variances, cycles, stochastic seasonals), validated on the Nile and UK-seatbelt canon
+- A stationary (Lyapunov) initialization option for the cycle states of `unobserved_components` (statsmodels' exact-diffuse convention is followed today), the autoregressive component, and `mle_regression=False` regressors as diffuse states
 - ARFIMA (Sowell exact MLE); the exact local Whittle estimator (Shimotsu-Phillips 2005), which stays valid across the $d \ge 0.5$ boundary where GPH and ordinary local Whittle break
 - Hansen (1997, 2000) confidence sets for the SETAR threshold, and a test for the *number* of Markov regimes (Carrasco-Hu-Ploberger 2014) — the two inference gaps left open by the regime models that now ship above
 

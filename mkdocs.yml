@@ -151,6 +151,7 @@ nav:
           - Functional shocks (FVAR/FLP): reference/model-cards/functional-shocks.md
           - Structural breaks: reference/model-cards/structural-breaks.md
           - Copulas: reference/model-cards/copulas.md
+          - Structural models (unobserved components) & TVP regression: reference/model-cards/unobserved-components.md
   - Migration:
       - From statsmodels: migration/from-statsmodels.md
       - From R: migration/from-r.md

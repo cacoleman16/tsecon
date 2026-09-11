@@ -4585,3 +4585,155 @@ def threshold_var_girf(
     selected windows uses all of them, reported in `n_histories`), `bands`
     ((0.16, 0.84)), `antithetic` (True).
     """
+
+
+# ---- structural time-series models (unobserved components) and TVP regression
+def unobserved_components(
+    y: np.ndarray,
+    level: str = "llevel",
+    seasonal: int | None = None,
+    stochastic_seasonal: bool | None = None,
+    freq_seasonal: list[float] | None = None,
+    freq_seasonal_harmonics: list[int] | None = None,
+    stochastic_freq_seasonal: list[bool] | None = None,
+    cycle: bool = False,
+    damped_cycle: bool | None = None,
+    stochastic_cycle: bool | None = None,
+    cycle_period_bounds: list[float] | None = None,
+    exog: np.ndarray | None = None,
+    forecast_steps: int = 0,
+    forecast_exog: np.ndarray | None = None,
+    fixed_params: list[float] | None = None,
+    n_starts: int = 3,
+) -> dict[str, Any]:
+    """Harvey's structural time-series ("unobserved components") models by
+    exact-diffuse maximum likelihood — level/trend, dummy and trigonometric
+    seasonals, a (damped) stochastic cycle, and regressors:
+
+        y_t = mu_t + gamma_t + c_t + beta' x_t + eps_t
+
+    with every state initialized exactly diffuse (Koopman 1997), NaN in `y`
+    treated as missing, and the components assembled exactly as statsmodels'
+    `UnobservedComponents(..., use_exact_diffuse=True)` enumerates them (the
+    log-likelihoods are directly comparable).
+
+    `level` picks the level/trend block by its statsmodels name (long or
+    short form): "irregular"/"ntrend", "fixed intercept", "deterministic
+    constant"/"dconstant", "local level"/"llevel" (default), "random
+    walk"/"rwalk", "fixed slope", "deterministic trend"/"dtrend", "local
+    linear deterministic trend"/"lldtrend", "random walk with
+    drift"/"rwdrift", "local linear trend"/"lltrend", "smooth
+    trend"/"strend", "random trend"/"rtrend". `seasonal=s` adds an
+    `s-1`-state dummy seasonal (`stochastic_seasonal`, default True, gives
+    it a variance; False makes it fixed dummies). `freq_seasonal=[p, ...]`
+    adds trigonometric seasonals with `freq_seasonal_harmonics` harmonics
+    each (default `floor(p/2)`) and `stochastic_freq_seasonal` flags
+    (default True each). `cycle=True` adds the stochastic cycle:
+    `damped_cycle` (default False) estimates a damping in (0, 1),
+    `stochastic_cycle` (default False) gives it a variance, and
+    `cycle_period_bounds=[min, max]` (default [2, inf]) confines its
+    frequency to `(2 pi/max, 2 pi/min)`. `exog` (T x k) enters with
+    time-invariant coefficients estimated jointly (statsmodels
+    `mle_regression=True`); `forecast_steps=h` returns h-step forecasts and
+    needs `forecast_exog` (h x k) when `exog` is given. `fixed_params`
+    (statsmodels order: `sigma2.irregular`, the state variances in
+    component order, `frequency.cycle`, `damping.cycle`, `beta.x1`...)
+    evaluates the model there instead of estimating. `n_starts` (default 3)
+    is the deterministic start ladder.
+
+    Options that act only under a component RAISE when passed without it:
+    `stochastic_seasonal` without `seasonal`; `freq_seasonal_harmonics` /
+    `stochastic_freq_seasonal` without `freq_seasonal`; `damped_cycle` /
+    `stochastic_cycle` / `cycle_period_bounds` without `cycle=True`;
+    `forecast_exog` without `exog` or without `forecast_steps`.
+
+    Estimation: BFGS + Nelder-Mead on the exact prediction-error
+    log-likelihood in statsmodels' square-root/logistic working space,
+    scale-adaptive (y standardized, mapped back exactly). A variance whose
+    estimate cannot be told from zero (zeroing it costs < 1e-4
+    log-likelihood — the pile-up) is flagged in `at_boundary` with a NaN
+    standard error; `se` are observed-information (numerical Hessian).
+    `aic`/`bic` use statsmodels' `k_params + k_diffuse` degrees of freedom.
+    The component keys without a prefix are the SMOOTHED (two-sided) paths;
+    `filtered_*` are the one-sided ones. Variances inside the diffuse period
+    are the finite part; `std_resid` is NaN there and at missing periods.
+
+    Validation (honest grade): fixed-parameter log-likelihood, filtered and
+    smoothed states and variances, residuals, forecasts and forecast
+    variances pinned at 1e-8 against statsmodels for 26 component
+    combinations and NaN-inserted series (fixtures/uc.json); the MLE pinned
+    to the better of statsmodels' own fit and a SciPy re-optimization of the
+    identical criterion (two optimizers); the Durbin-Koopman (2012) Nile
+    local level reproduced to the book's printed precision; the
+    Harvey-Durbin (1986) UK seat-belt BSM on the vendored Seatbelts data at
+    the statsmodels optimum, with its slope and seasonal variance pile-ups
+    flagged; parameter recovery, forecast-interval coverage and scale
+    invariance measured by seeded Monte Carlo (see the model card).
+
+    Returned keys: `trend_specification`, `param_names`, `params`, `se`,
+    `at_boundary`, `loglik`, `aic`, `bic`, `nobs`, `nobs_observed`,
+    `nobs_diffuse`, `k_states`, `k_diffuse`, `k_params`, `estimated`,
+    `converged`, `n_iter`, `n_fevals`, `state_names`, `filtered_state`,
+    `filtered_state_var`, `smoothed_state`, `smoothed_state_var` (nested
+    lists, nobs x k_states), `level`, `level_var`, `filtered_level`,
+    `filtered_level_var`, `slope`, `slope_var`, `filtered_slope`,
+    `filtered_slope_var`, `seasonal`, `seasonal_var`, `filtered_seasonal`,
+    `filtered_seasonal_var`, `cycle`, `cycle_var`, `filtered_cycle`,
+    `filtered_cycle_var` (None when the component is absent),
+    `freq_seasonal`, `freq_seasonal_var`, `filtered_freq_seasonal`,
+    `filtered_freq_seasonal_var` (lists with one array per block), `fitted`,
+    `resid`, `std_resid`, `forecast`, `forecast_var`.
+    """
+
+
+def tvp_regression(
+    y: np.ndarray,
+    x: np.ndarray,
+    constant: bool = True,
+    fixed_params: list[float] | None = None,
+    n_starts: int = 3,
+) -> dict[str, Any]:
+    """Regression with random-walk (time-varying) coefficients by
+    exact-diffuse maximum likelihood, with the pile-up check:
+
+        y_t = x_t' beta_t + eps_t,   beta_{t+1} = beta_t + eta_t,
+        eps_t ~ N(0, sigma2_eps),    eta_t ~ N(0, diag(sigma2_beta)),
+        beta_1 diffuse.
+
+    `x` is T x k (`constant=True`, the default, prepends a random-walk
+    intercept). NaN in `y` is a missing period; `x` must be finite. The
+    observation variance and the k coefficient-innovation variances are
+    estimated by BFGS + Nelder-Mead on the exact prediction-error
+    log-likelihood (square-root working space, scale-adaptive, `n_starts`
+    deterministic starts, default 3); `fixed_params=[sigma2_eps,
+    sigma2_beta_1, ..., sigma2_beta_k]` evaluates the filter there instead —
+    with every state variance 0 it is recursive least squares (statsmodels
+    `RecursiveLS`), the expanding-window OLS path.
+
+    The pile-up problem (Shephard-Harvey 1990; Stock-Watson 1998): a
+    random-walk-coefficient variance whose MLE cannot be told from zero
+    (zeroing it costs < 1e-4 log-likelihood) is flagged in `pile_up` (and
+    `at_boundary`) and gets a NaN standard error, so a coefficient the data
+    cannot show moving is not reported as moving by a tiny amount. `se` are
+    observed-information (numerical Hessian); `aic`/`bic` use statsmodels'
+    `k_params + k_diffuse` degrees of freedom; `std_resid` is NaN inside the
+    diffuse period (the first k informative observations) and at missing
+    periods.
+
+    Validation (honest grade): fixed-parameter log-likelihood, filtered and
+    smoothed coefficient paths and variances, residuals pinned at 1e-8
+    against a statsmodels `MLEModel` transcription of the documented
+    state-space form and against `RecursiveLS` in the zero-variance limit
+    (its filtered coefficients and concentrated log-likelihood); the MLE
+    pinned to the better of statsmodels' fit and a SciPy re-optimization of
+    the same criterion (two optimizers) with the true-zero variance's
+    pile-up flagged; the pile-up frequency on constant versus moving
+    coefficients measured by seeded Monte Carlo (model card).
+
+    Returned keys: `coef_names`, `k`, `param_names`, `params`, `se`,
+    `at_boundary`, `sigma2_eps`, `sigma2_beta`, `pile_up`, `loglik`, `aic`,
+    `bic`, `nobs`, `nobs_observed`, `nobs_diffuse`, `k_params`, `estimated`,
+    `converged`, `n_iter`, `n_fevals`, `beta_filtered`, `beta_filtered_var`,
+    `beta_smoothed`, `beta_smoothed_var` (nested lists, nobs x k), `fitted`,
+    `resid`, `std_resid`.
+    """
