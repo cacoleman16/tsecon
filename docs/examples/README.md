@@ -1,6 +1,6 @@
 # The tsecon gallery — every method, worked
 
-Eight pages leave synthetic data behind and target **published numbers on
+Nine pages leave synthetic data behind and target **published results on
 vendored public data**, each pinned in CI: the
 [Ramey-Zubairy multiplier](replication-ramey-zubairy.md), the
 [Estrella-Mishkin yield-curve probit](replication-yield-curve-recession.md),
@@ -8,7 +8,9 @@ vendored public data**, each pinned in CI: the
 [Uhlig's sign-restricted monetary SVAR](replication-uhlig-monetary.md),
 [the Gertler-Karadi proxy-SVAR monetary VAR](replication-gertler-karadi.md),
 [Bai-Perron's real-interest-rate breaks](replication-bai-perron-realint.md),
-[Hansen's sunspot SETAR](replication-setar-sunspots.md), and the
+[Hansen's sunspot SETAR](replication-setar-sunspots.md),
+[Blanchard-Quah's supply and demand disturbances](replication-blanchard-quah.md)
+(a design replication at figure resolution, with figures), and the
 [GLP prior-selection design](replication-glp-prior-selection.md).
 
 Each remaining section: what the method is, **when you reach for it**, runnable

@@ -166,6 +166,7 @@ nav:
       - Bai-Perron real-interest-rate breaks (2003): examples/replication-bai-perron-realint.md
       - Hansen sunspot SETAR (1999): examples/replication-setar-sunspots.md
       - GLP prior selection (2015): examples/replication-glp-prior-selection.md
+      - Blanchard-Quah supply and demand disturbances (1989): examples/replication-blanchard-quah.md
   - Monte Carlo:
       - Validation suite: examples/monte-carlo.md
       - Interval coverage: examples/interval-coverage.md

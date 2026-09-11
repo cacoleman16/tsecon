@@ -114,6 +114,25 @@ golden ([`long_run_svar.json`](../../../fixtures/long_run_svar.json),
 [`long_run.rs`](../../../crates/tsecon-ident/tests/long_run.rs)). See the
 [validation matrix](../validation-matrix.md).
 
+**Replication.** The [Blanchard-Quah replication page](../../examples/replication-blanchard-quah.md)
+runs the paper's design — output growth demeaned around the 1974Q1 break,
+detrended unemployment, VAR(8) — on the bundled 1959–2009 statsmodels
+`macrodata`, a **design replication at figure-reading resolution** (the
+paper's 1948–1987 GNP vintage is unreachable, so no numerical parity with its
+tables is claimed), and reproduces the published shapes: a hump-shaped,
+vanishing demand effect on output (+1.10 at h = 3, −0.004 at h = 40), a
+permanent supply effect (+0.48), a mirror-image unemployment response
+(−0.19 on impact, −0.55 trough), supply raising unemployment on impact
+(+0.14), and demand's 89–97% share of short-horizon output variance — each
+pinned to a stated band, with seeded residual-bootstrap bands and the
+historical decomposition built in the script from shipped primitives, by
+[`test_replication_blanchard_quah.py`](../../../bindings/python/tests/test_replication_blanchard_quah.py)
+on [`fixtures/macrodata_bq.csv`](../../../fixtures/macrodata_bq.csv); the
+identification is dual-checked there against a NumPy transcription of the
+closed form on a statsmodels VAR fit (2e-13). The page's sensitivity table
+is the Faust-Leeper warning made concrete: drop the break in mean growth and
+demand's share of output variance collapses from 97% to about 40%.
+
 **References.** Blanchard & Quah (1989); Faust & Leeper (1997); Pfaff (2008,
 `vars`).
 
