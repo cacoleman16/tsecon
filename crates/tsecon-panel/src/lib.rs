@@ -7,9 +7,12 @@
 //! `linearmodels.panel.PanelOLS` (version 7.0; the golden fixture
 //! `fixtures/panel.json` arbitrates):
 //!
-//! * [`PanelData`] — balanced-panel container (`N x T` outcome and
-//!   regressor matrices; unbalanced panels are `// TODO(phase0)`, see
-//!   `data.rs` for the planned mask design);
+//! * [`PanelData`] — the panel container (`N x T` outcome and regressor
+//!   matrices) with an optional observation mask for unbalanced panels
+//!   ([`PanelData::unbalanced`]: entities entering late, leaving early,
+//!   internal gaps — the within projections, lag designs and covariances
+//!   skip the unobserved cells; validated against `PanelOLS` on the
+//!   Arellano-Bond `EmplUK` panel in `fixtures/panel_unbalanced.json`);
 //! * [`panel_ols_fe`] / [`FePanelOls::inference`] — the within (entity-
 //!   demeaned) estimator with the correct `nobs - k - N` degrees of
 //!   freedom and a [`PanelSeType`] menu: nonrobust, clustered by entity

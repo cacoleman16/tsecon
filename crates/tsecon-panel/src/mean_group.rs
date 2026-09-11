@@ -82,13 +82,19 @@ pub struct MeanGroupVar {
 ///
 /// `entities` holds one `T_i x k` data matrix per entity (observations
 /// in rows, oldest first); the time dimensions may differ but the `k`
-/// variables must match.
+/// variables must match. That ragged list is how an unbalanced panel is
+/// passed here — entities entering late or leaving early simply have
+/// shorter matrices. Internal gaps cannot be masked: a VAR's lags must be
+/// contiguous, so a NaN inside an entity's matrix is refused with the
+/// entity named (trim each entity to a contiguous span first).
 ///
 /// # Errors
 ///
 /// * [`PanelError::InsufficientObservations`] with fewer than 2 entities
 ///   (the dispersion standard error needs `N >= 2`);
 /// * [`PanelError::Dimension`] if entities disagree on `k`;
+/// * [`PanelError::NonFiniteEntity`] if an entity's matrix holds a NaN
+///   or infinity;
 /// * [`PanelError::EntityVar`] if any per-entity fit or IRF fails
 ///   (too few rows, collinearity, non-PD residual covariance), naming
 ///   the entity.
@@ -107,13 +113,20 @@ pub fn mean_group_var(
         });
     }
     let neqs = entities[0].ncols();
-    for e in entities {
+    for (entity, e) in entities.iter().enumerate() {
         if e.ncols() != neqs {
             return Err(PanelError::Dimension {
-                what: "every entity must observe the same variables",
+                what: "entities: every entity must observe the same variables (columns)",
                 expected: neqs,
                 got: e.ncols(),
             });
+        }
+        for j in 0..e.ncols() {
+            for i in 0..e.nrows() {
+                if !e[(i, j)].is_finite() {
+                    return Err(PanelError::NonFiniteEntity { entity });
+                }
+            }
         }
     }
 
