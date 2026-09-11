@@ -1,2 +1,2 @@
 # Documentation site build dependencies (not runtime deps of tsecon).
-mkdocs-material>=9.5
+mkdocs-material>=9.7.7
