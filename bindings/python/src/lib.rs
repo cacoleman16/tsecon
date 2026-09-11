@@ -10,6 +10,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 mod ml_neural;
 
+mod ets;
 mod girf;
 mod ml_convex;
 mod ml_kernel;
@@ -13027,5 +13028,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     termstructure_jsz::register(m)?;
     ml_neural::register(m)?;
     girf::register(m)?;
+    ets::register(m)?;
     Ok(())
 }

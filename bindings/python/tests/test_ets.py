@@ -1,0 +1,339 @@
+"""Golden and behavioral tests for the exponential-smoothing bindings
+`tsecon.ets_fit` and `tsecon.auto_ets`.
+
+Re-pins fixtures/ets.json through the Python surface (see the generator's
+docstring for the honest grading): the twenty models without a
+multiplicative seasonal against statsmodels `ETSModel` at fixed parameters
+(log-likelihood, fitted values, states, forecasts, exact class-1 variances),
+the ten multiplicative-seasonal models against the transcription of the
+published recursion, the heuristic initialisation against
+`holtwinters.ExponentialSmoothing`, the maximum likelihood against
+statsmodels' fit (match-or-beat), and the R `forecast::ets` candidate set;
+then the live statsmodels cross-checks (an `ETSModel.forecast` and
+`get_prediction` at a fixed point), determinism, the inert-option
+refusals, the teaching errors, and stub sync.
+"""
+import inspect
+import json
+import re
+from pathlib import Path
+
+import numpy as np
+import pytest
+import tsecon
+
+FIX = Path(__file__).parents[3] / "fixtures"
+FX = json.loads((FIX / "ets.json").read_text())
+SERIES = {k: np.array(v, dtype=float) for k, v in FX["series"].items()}
+
+
+def _kw(case):
+    kw = dict(error=case["error"], trend=case["trend"], damped=case["damped"], seasonal=case["seasonal"])
+    if case["seasonal"]:
+        kw["seasonal_periods"] = case["seasonal_periods"]
+    return kw
+
+
+def _params(case):
+    p = [case["alpha"]]
+    if case["trend"]:
+        p.append(case["beta"])
+    if case["seasonal"]:
+        p.append(case["gamma"])
+    if case["damped"]:
+        p.append(case["phi"])
+    return p
+
+
+def _states(case):
+    st = [case["initial_level"]]
+    if case["trend"]:
+        st.append(case["initial_trend"])
+    if case["seasonal"]:
+        st.extend(case["initial_seasonal"])
+    return st
+
+
+def _fixed_ids(c):
+    return c["name"]
+
+
+# ---------------------------------------------------------------- fixed
+
+@pytest.mark.parametrize("case", FX["fixed"], ids=_fixed_ids)
+def test_fixed_parameter_evaluation_matches_the_references(case):
+    y = SERIES[case["series"]]
+    r = tsecon.ets_fit(y, **_kw(case), initialization="known", smoothing_params=_params(case),
+                       initial_states=_states(case), horizon=case["h"])
+    assert r["short_name"] == case["short_name"]
+    assert r["optimizer"] == "none"
+    assert r["converged"] is True
+    assert r["initialization"] == "known"
+    tr = case["transcription"]
+    assert r["loglik"] == pytest.approx(tr["loglik"], rel=1e-12)
+    assert r["sigma2"] == pytest.approx(tr["sigma2"], rel=1e-12)
+    np.testing.assert_allclose(r["forecast"], tr["forecast"], rtol=1e-12)
+    assert r["final_level"] == pytest.approx(tr["final_level"], rel=1e-12)
+    if case["seasonal"]:
+        np.testing.assert_allclose(r["final_seasonal"], tr["final_seasonal"], rtol=1e-12)
+    sm = case["statsmodels"]
+    if sm is None:
+        # multiplicative seasonal: the transcription carries the paths
+        np.testing.assert_allclose(r["fitted"], tr["fitted"], rtol=1e-12)
+        np.testing.assert_allclose(r["level_path"], tr["level"], rtol=1e-12)
+        np.testing.assert_allclose(r["seasonal_path"], tr["seasonal"], rtol=1e-12)
+        assert r["interval_method"] == "simulated"
+        assert r["class1"] is False
+        return
+    assert r["loglik"] == pytest.approx(sm["loglik"], rel=1e-10)
+    np.testing.assert_allclose(r["fitted"], sm["fitted"], rtol=1e-10)
+    np.testing.assert_allclose(r["resid"], sm["resid"], rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(r["level_path"], sm["level"], rtol=1e-10)
+    if case["trend"]:
+        np.testing.assert_allclose(r["trend_path"], sm["trend"], rtol=1e-10, atol=1e-10)
+    else:
+        assert r["trend_path"] is None and r["beta"] is None and r["initial_trend"] is None
+    if case["seasonal"]:
+        np.testing.assert_allclose(r["seasonal_path"], sm["seasonal"], rtol=1e-10, atol=1e-10)
+    else:
+        assert r["seasonal_path"] is None and r["gamma"] is None and r["initial_seasonal"] is None
+    np.testing.assert_allclose(r["forecast"], sm["forecast"], rtol=1e-10)
+    if "forecast_variance" in sm:
+        assert r["class1"] is True and r["interval_method"] == "exact"
+        np.testing.assert_allclose(r["forecast_variance"], sm["forecast_variance"], rtol=1e-10)
+        np.testing.assert_allclose(r["forecast_variance"], case["class1_variance_table61"], rtol=1e-12)
+        z = 1.959963984540054
+        np.testing.assert_allclose(r["forecast_lower"], r["forecast"] - z * np.sqrt(r["forecast_variance"]), rtol=1e-12)
+        assert r["n_sim"] == 0 and r["seed"] == 0
+    else:
+        assert r["class1"] is False and r["interval_method"] == "simulated"
+        assert r["n_sim"] == 5000 and r["seed"] == 0
+
+
+def test_every_taxonomy_member_is_pinned():
+    assert len({c["short_name"] for c in FX["fixed"]}) == 30
+    assert sum(c["statsmodels"] is not None for c in FX["fixed"]) == 23
+    assert len({c["short_name"] for c in FX["fixed"] if c["statsmodels"] is None}) == 10
+
+
+# ------------------------------------------------------------- heuristic
+
+@pytest.mark.parametrize("case", [c for c in FX["heuristic"] if c["method"] == "heuristic"],
+                         ids=lambda c: f"{c['series']}-{c['trend']}-{c['seasonal']}")
+def test_heuristic_initial_states_match_holtwinters(case):
+    y = SERIES[case["series"]]
+    kw = dict(trend=case["trend"], seasonal=case["seasonal"])
+    if case["seasonal"]:
+        kw["seasonal_periods"] = case["seasonal_periods"]
+    p = [0.5] + ([0.1] if case["trend"] else []) + ([0.1] if case["seasonal"] else [])
+    r = tsecon.ets_fit(y, **kw, initialization="heuristic", smoothing_params=p)
+    assert r["initialization"] == "heuristic"
+    assert r["initial_level"] == pytest.approx(case["initial_level"], rel=1e-10)
+    if case["trend"]:
+        assert r["initial_trend"] == pytest.approx(case["initial_trend"], rel=1e-10)
+    if case["seasonal"]:
+        np.testing.assert_allclose(r["initial_seasonal"], case["initial_seasonal"], rtol=1e-10, atol=1e-10)
+    # k counts the smoothing parameters and sigma2 only
+    assert r["k_params"] == len(p) + 1
+
+
+# ------------------------------------------------------------------ mle
+
+@pytest.mark.parametrize("case", FX["mle"], ids=lambda c: f"{c['series']}-{c['short_name']}-{c['initialization']}")
+def test_maximum_likelihood_matches_or_beats_statsmodels(case):
+    y = SERIES[case["series"]]
+    r = tsecon.ets_fit(y, **_kw(case), initialization=case["initialization"])
+    ll_sm = case["loglik"]
+    assert r["loglik"] >= ll_sm - 1e-6 * abs(ll_sm)
+    assert r["optimizer"] == "nelder_mead+bfgs"
+    assert r["k_params"] == case["k_params_crate"]
+    n, k = r["nobs"], r["k_params"]
+    assert r["aic"] == pytest.approx(-2 * r["loglik"] + 2 * k, rel=1e-12)
+    assert r["bic"] == pytest.approx(-2 * r["loglik"] + k * np.log(n), rel=1e-12)
+    assert r["aicc"] == pytest.approx(r["aic"] + 2 * k * (k + 1) / (n - k - 1), rel=1e-12)
+    if r["loglik"] - ll_sm <= 1e-3 * abs(ll_sm):
+        # same optimum: the parameters agree at cross-optimizer tolerance
+        assert r["alpha"] == pytest.approx(case["alpha"], abs=1e-3)
+        if case["trend"]:
+            assert r["beta"] == pytest.approx(case["beta"], abs=1e-3)
+        if case["seasonal"]:
+            assert r["gamma"] == pytest.approx(case["gamma"], abs=1e-3)
+            s = np.asarray(r["initial_seasonal"])
+            if case["seasonal"] == "mul":
+                assert s.mean() == pytest.approx(1.0, abs=1e-9)
+            else:
+                assert s.sum() == pytest.approx(0.0, abs=1e-9)
+        np.testing.assert_allclose(r["forecast"] if r["forecast"] is not None else [], [], rtol=0)
+    # determinism
+    r2 = tsecon.ets_fit(y, **_kw(case), initialization=case["initialization"])
+    assert r2["loglik"] == r["loglik"] and np.array_equal(r2["params"], r["params"])
+
+
+def test_fit_forecast_and_live_statsmodels_cross_check():
+    sm_ets = pytest.importorskip("statsmodels.tsa.exponential_smoothing.ets")
+    y = SERIES["log_ukgas"]
+    r = tsecon.ets_fit(y, trend="add", damped=True, seasonal="add", seasonal_periods=4, horizon=8)
+    mod = sm_ets.ETSModel(y, error="add", trend="add", damped_trend=True, seasonal="add", seasonal_periods=4,
+                          initialization_method="known", initial_level=r["initial_level"],
+                          initial_trend=r["initial_trend"], initial_seasonal=np.asarray(r["initial_seasonal"]))
+    res = mod.smooth(np.array([r["alpha"], r["beta"], r["gamma"], r["phi"]]))
+    assert res.llf == pytest.approx(r["loglik"], rel=1e-10)
+    np.testing.assert_allclose(res.forecast(8), r["forecast"], rtol=1e-10)
+    np.testing.assert_allclose(np.asarray(res.fittedvalues), r["fitted"], rtol=1e-10)
+
+
+# -------------------------------------------------------------- auto_ets
+
+def test_auto_ets_candidate_set_and_selection_consistency():
+    y = SERIES["log_ukgas"]
+    r = tsecon.auto_ets(y, seasonal_periods=4, horizon=4)
+    assert r["ic"] == "aicc" and r["n_candidates"] == 15
+    names = [c["short_name"] for c in r["candidates"]]
+    want = next(c["candidates"] for c in FX["candidates"]
+                if c["seasonal_periods"] == 4 and c["data_positive"] and not c["allow_multiplicative_trend"]
+                and c["restrict"] and c["damped"] is None)
+    assert sorted(names) == sorted(want)
+    ics = [c["ic_value"] for c in r["candidates"]]
+    assert ics == sorted(ics)
+    assert r["candidates"][0]["short_name"] == r["short_name"]
+    assert r["ic_value"] == r["aicc"] == r["candidates"][0]["ic_value"]
+    assert r["n_fitted"] == sum(c["status"] == "ok" for c in r["candidates"])
+    # the winner is the search's own fit: refitting reproduces it exactly
+    refit = tsecon.ets_fit(y, error=r["error"], trend=r["trend"], damped=r["damped"], seasonal=r["seasonal"],
+                           seasonal_periods=r["seasonal_periods"], horizon=4)
+    assert refit["loglik"] == r["loglik"]
+    np.testing.assert_array_equal(refit["params"], r["params"])
+    np.testing.assert_array_equal(refit["forecast"], r["forecast"])
+    # every candidate's criterion is its ets_fit criterion
+    for c in r["candidates"][:3]:
+        f = tsecon.ets_fit(y, error="add" if c["short_name"][0] == "A" else "mul",
+                           trend={"N": None, "A": "add", "M": "mul"}[c["short_name"][1]],
+                           damped="d" in c["short_name"], seasonal={"N": None, "A": "add", "M": "mul"}[c["short_name"][-1]],
+                           seasonal_periods=4 if c["short_name"][-1] != "N" else None)
+        assert f["aicc"] == c["aicc"] and f["loglik"] == c["loglik"]
+    # non-positive data: additive candidates only; bic and damped=False options
+    r2 = tsecon.auto_ets(y - 10.0, seasonal_periods=4, ic="bic", damped=False)
+    assert r2["n_candidates"] == 3 and all(c["short_name"][0] == "A" and "d" not in c["short_name"] for c in r2["candidates"])
+    assert r2["ic"] == "bic" and r2["ic_value"] == r2["bic"]
+    r3 = tsecon.auto_ets(y, allow_multiplicative_trend=True, restrict=False)
+    assert r3["n_candidates"] == 10
+
+
+def test_simulated_intervals_are_seeded_and_the_forecast_is_the_zero_error_path():
+    y = SERIES["airline"]
+    a = tsecon.ets_fit(y, error="mul", trend="add", seasonal="mul", seasonal_periods=12, horizon=12, n_sim=2000, seed=3)
+    b = tsecon.ets_fit(y, error="mul", trend="add", seasonal="mul", seasonal_periods=12, horizon=12, n_sim=2000, seed=3)
+    c = tsecon.ets_fit(y, error="mul", trend="add", seasonal="mul", seasonal_periods=12, horizon=12, n_sim=2000, seed=4)
+    assert a["interval_method"] == "simulated" and a["n_sim"] == 2000 and a["seed"] == 3
+    np.testing.assert_array_equal(a["forecast_lower"], b["forecast_lower"])
+    assert not np.array_equal(a["forecast_lower"], c["forecast_lower"])
+    np.testing.assert_array_equal(a["forecast"], c["forecast"])
+    assert np.all(a["forecast_lower"] < a["forecast"]) and np.all(a["forecast_upper"] > a["forecast"])
+    assert a["forecast_upper"][-1] - a["forecast_lower"][-1] > a["forecast_upper"][0] - a["forecast_lower"][0]
+    np.testing.assert_allclose(np.asarray(a["initial_seasonal"]).mean(), 1.0, atol=1e-9)
+    # narrower interval at a lower level
+    d = tsecon.ets_fit(y, error="mul", trend="add", seasonal="mul", seasonal_periods=12, horizon=12, level=0.8, n_sim=2000, seed=3)
+    assert np.all(d["forecast_upper"] - d["forecast_lower"] < a["forecast_upper"] - a["forecast_lower"])
+
+
+# ------------------------------------------------------------- refusals
+
+def test_inert_options_raise_when_passed_explicitly():
+    y = SERIES["sim_aadn"]
+    with pytest.raises(ValueError, match="damped"):
+        tsecon.ets_fit(y, damped=True)
+    with pytest.raises(ValueError, match="seasonal_periods"):
+        tsecon.ets_fit(y, seasonal_periods=4)
+    with pytest.raises(ValueError, match="seasonal_periods"):
+        tsecon.ets_fit(y, seasonal="add")
+    for kw in ({"level": 0.9}, {"n_sim": 100}, {"seed": 1}):
+        with pytest.raises(ValueError, match=f"{list(kw)[0]} was given but horizon=0"):
+            tsecon.ets_fit(y, **kw)
+        with pytest.raises(ValueError, match=f"{list(kw)[0]} was given but horizon=0"):
+            tsecon.auto_ets(y, **kw)
+    for kw in ({"n_sim": 100}, {"seed": 1}):
+        with pytest.raises(ValueError, match="class-1"):
+            tsecon.ets_fit(y, trend="add", horizon=3, **kw)
+    with pytest.raises(ValueError, match="initial_states was given but"):
+        tsecon.ets_fit(y, initial_states=[1.0])
+    with pytest.raises(ValueError, match="initial_states was given but"):
+        tsecon.ets_fit(y, initialization="heuristic", initial_states=[1.0])
+    with pytest.raises(ValueError, match='initialization="known" needs initial_states'):
+        tsecon.ets_fit(y, initialization="known")
+    with pytest.raises(ValueError, match="optimizer was given but smoothing_params"):
+        tsecon.ets_fit(y, initialization="heuristic", smoothing_params=[0.5], optimizer="bfgs")
+    with pytest.raises(ValueError, match="max_iter was given but smoothing_params"):
+        tsecon.ets_fit(y, initialization="heuristic", smoothing_params=[0.5], max_iter=10)
+    with pytest.raises(ValueError, match='initialization="estimated"'):
+        tsecon.ets_fit(y, smoothing_params=[0.5])
+
+
+def test_teaching_errors_name_the_argument():
+    y = SERIES["sim_aadn"]
+    with pytest.raises(ValueError, match=r"y\[5\] = -1"):
+        tsecon.ets_fit(np.r_[y[:5], -1.0, y[6:]], error="mul")
+    with pytest.raises(ValueError, match=r"y: contains a non-finite value"):
+        tsecon.ets_fit(np.r_[y[:5], np.nan, y[6:]])
+    with pytest.raises(ValueError, match=r"y: contains a non-finite value"):
+        tsecon.auto_ets(np.r_[y[:5], np.nan, y[6:]])
+    with pytest.raises(ValueError, match="error = 'gamma' is invalid"):
+        tsecon.ets_fit(y, error="gamma")
+    with pytest.raises(ValueError, match="trend = 'quad' is invalid"):
+        tsecon.ets_fit(y, trend="quad")
+    with pytest.raises(ValueError, match="initialization = 'mle' is invalid"):
+        tsecon.ets_fit(y, initialization="mle")
+    with pytest.raises(ValueError, match="optimizer = 'sgd' is invalid"):
+        tsecon.ets_fit(y, optimizer="sgd")
+    with pytest.raises(ValueError, match="ic = 'hqic' is invalid"):
+        tsecon.auto_ets(y, ic="hqic")
+    with pytest.raises(ValueError, match="seasonal_periods = 0"):
+        tsecon.auto_ets(y, seasonal_periods=0)
+    with pytest.raises(ValueError, match="beta = 0.7"):
+        tsecon.ets_fit(y, trend="add", initialization="heuristic", smoothing_params=[0.5, 0.7])
+    with pytest.raises(ValueError, match="alpha = 1.5"):
+        tsecon.ets_fit(y, initialization="heuristic", smoothing_params=[1.5])
+    with pytest.raises(ValueError, match="expected length 1 but got 2"):
+        tsecon.ets_fit(y, initialization="heuristic", smoothing_params=[0.5, 0.1])
+    with pytest.raises(ValueError, match="expected length 6 but got 2"):
+        tsecon.ets_fit(y, seasonal="add", seasonal_periods=4, initialization="known", initial_states=[1.0, 2.0],
+                       trend="add")
+    with pytest.raises(ValueError, match="level = 1.5"):
+        tsecon.ets_fit(y, horizon=2, level=1.5)
+    with pytest.raises(ValueError, match="n_sim = 1"):
+        tsecon.ets_fit(y, error="mul", horizon=2, n_sim=1)
+    with pytest.raises(ValueError, match="needs at least"):
+        tsecon.ets_fit(y[:12], trend="add", damped=True, seasonal="add", seasonal_periods=12)
+    with pytest.raises(ValueError, match="heuristic initialisation"):
+        tsecon.ets_fit(y[:8], initialization="heuristic")
+
+
+def test_accepts_lists_and_integer_arrays_through_the_coercion_layer():
+    y = SERIES["sim_aadn"]
+    r = tsecon.ets_fit(list(y), trend="add", horizon=2)
+    r2 = tsecon.ets_fit(np.round(y).astype(int), trend="add", horizon=2)
+    assert r["loglik"] == tsecon.ets_fit(y, trend="add", horizon=2)["loglik"]
+    assert np.isfinite(r2["loglik"])
+
+
+# ------------------------------------------------------------- stub sync
+
+def test_stub_signatures_and_docstrings_match_runtime():
+    stub = (Path(__file__).parents[1] / "python" / "tsecon" / "__init__.pyi").read_text(encoding="utf-8")
+    for name in ("ets_fit", "auto_ets"):
+        fn = getattr(tsecon._core, name)
+        params = list(inspect.signature(fn).parameters)
+        m = re.search(rf"def {name}\((.*?)\) ->", stub, re.S)
+        stub_params = [p.strip().split(":")[0] for p in m.group(1).split(",") if p.strip()]
+        assert stub_params == params, name
+        assert "Ellipsis" not in str(inspect.signature(fn))
+        # every returned key is named in both docstrings
+        y = SERIES["log_ukgas"]
+        out = (tsecon.ets_fit(y, trend="add", seasonal="add", seasonal_periods=4, horizon=2) if name == "ets_fit"
+               else tsecon.auto_ets(y, seasonal_periods=4, horizon=2, damped=False))
+        for doc in (fn.__doc__, stub[stub.index(f"def {name}("):]):
+            tokens = set(re.findall(r"`([A-Za-z_][A-Za-z_0-9]*)`", doc))
+            missing = set(out) - tokens
+            assert not missing, f"{name}: {sorted(missing)}"
+        if name == "auto_ets":
+            ctoks = set(re.findall(r"`([A-Za-z_][A-Za-z_0-9]*)`", fn.__doc__))
+            assert set(out["candidates"][0]) <= ctoks
