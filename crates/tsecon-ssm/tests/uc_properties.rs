@@ -913,6 +913,47 @@ fn refusals_name_the_offending_argument() {
             )),
             "observed (non-NaN) values",
         ),
+        // Counts that are products of user integers: these must refuse
+        // BEFORE anything is allocated, not abort the allocator. The
+        // Python wrapper only rejects counts at or above 2^48.
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.seasonal = Some(1_000_000)),
+                &UcOptions::default(),
+            )),
+            "seasonal = 1000000 with 40 observations",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.freq_seasonal = vec![FreqSeasonalSpec::new(1e7)]),
+                &UcOptions::default(),
+            )),
+            "freq_seasonal[0].period = 10000000 with 40 observations",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &UcSpec::default(),
+                &UcOptions {
+                    forecast_steps: 1_000_000_000_000,
+                    ..UcOptions::default()
+                },
+            )),
+            "forecast_steps = 1000000000000: at most 100000",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &UcSpec::default(),
+                &UcOptions {
+                    n_starts: 1 << 40,
+                    ..UcOptions::default()
+                },
+            )),
+            "at most 64 starting values",
+        ),
     ];
     for (m, needle) in &cases {
         assert!(m.contains(needle), "message {m:?} does not name {needle:?}");
@@ -1004,6 +1045,17 @@ fn refusals_name_the_offending_argument() {
                 },
             )),
             "n_starts = 0",
+        ),
+        (
+            tmsg(tvp_regression(
+                &y,
+                &x,
+                &TvpOptions {
+                    n_starts: 1 << 40,
+                    ..TvpOptions::default()
+                },
+            )),
+            "at most 64 starting values",
         ),
     ];
     for (m, needle) in &tcases {

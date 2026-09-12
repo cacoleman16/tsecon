@@ -291,6 +291,15 @@ pub fn tvp_regression(y: &[f64], x: &[Vec<f64>], opts: &TvpOptions) -> Result<Tv
             "n_starts = 0: the search needs at least one starting value".to_string(),
         ));
     }
+    if opts.n_starts > crate::uc::MAX_STARTS {
+        return Err(invalid(format!(
+            "n_starts = {}: at most {} starting values are accepted (the deterministic \
+             ladder has five distinct rungs and then repeats, so more starts cost time \
+             without covering new ground)",
+            opts.n_starts,
+            crate::uc::MAX_STARTS
+        )));
+    }
 
     let observed: Vec<f64> = y.iter().copied().filter(|v| v.is_finite()).collect();
     let s = variance(&observed).sqrt();

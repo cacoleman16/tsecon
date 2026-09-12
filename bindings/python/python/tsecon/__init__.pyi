@@ -4646,7 +4646,11 @@ def unobserved_components(
     (statsmodels order: `sigma2.irregular`, the state variances in
     component order, `frequency.cycle`, `damping.cycle`, `beta.x1`...)
     evaluates the model there instead of estimating. `n_starts` (default 3)
-    is the deterministic start ladder.
+    is the deterministic start ladder. Counts that size an allocation are
+    bounded and refuse rather than abort: `seasonal` and each
+    `freq_seasonal` period at most `len(y)` (they cost states, and a period
+    the sample never completes is not identified), `forecast_steps` at most
+    100000, `n_starts` at most 64.
 
     Options that act only under a component RAISE when passed without it:
     `stochastic_seasonal` without `seasonal`; `freq_seasonal_harmonics` /
@@ -4725,7 +4729,7 @@ def tvp_regression(
     observation variance and the k coefficient-innovation variances are
     estimated by BFGS + Nelder-Mead on the exact prediction-error
     log-likelihood (square-root working space, scale-adaptive, `n_starts`
-    deterministic starts, default 3); `fixed_params=[sigma2_eps,
+    deterministic starts, default 3, at most 64); `fixed_params=[sigma2_eps,
     sigma2_beta_1, ..., sigma2_beta_k]` evaluates the filter there instead —
     with every state variance 0 it is recursive least squares (statsmodels
     `RecursiveLS`), the expanding-window OLS path.

@@ -397,6 +397,24 @@ def test_teaching_errors_name_the_argument():
         tsecon.unobserved_components(y, seasonal=-4)
 
 
+def test_counts_that_size_an_allocation_are_refused_not_aborted():
+    """The wrapper only refuses integer counts at or above 2**48; everything
+    below has to be caught in Rust, before the allocation. Each of these
+    aborted the allocator or allocated a state per unit of a user integer
+    before the bounds were added."""
+    y = np.asarray(UC["sim"]["y"], float)
+    with pytest.raises(ValueError, match="seasonal = 10000000 with 120 observations"):
+        tsecon.unobserved_components(y, seasonal=10 ** 7)
+    with pytest.raises(ValueError, match=r"freq_seasonal\[0\]\.period = 10000000 with 120 observations"):
+        tsecon.unobserved_components(y, freq_seasonal=[1e7])
+    with pytest.raises(ValueError, match="forecast_steps = 1000000000000: at most 100000"):
+        tsecon.unobserved_components(y, forecast_steps=10 ** 12)
+    with pytest.raises(ValueError, match="at most 64 starting values"):
+        tsecon.unobserved_components(y, n_starts=2 ** 40)
+    with pytest.raises(ValueError, match="at most 64 starting values"):
+        tsecon.tvp_regression(y, np.asarray(UC["sim"]["x"], float), n_starts=2 ** 40)
+
+
 # ------------------------------------------------------------ behaviour
 def test_determinism_and_scale_invariance():
     y = np.asarray(UC["sim"]["y"], float)

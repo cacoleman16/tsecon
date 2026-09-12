@@ -410,6 +410,24 @@ struct Layout {
     state_names: Vec<String>,
 }
 
+/// Largest accepted `forecast_steps`.
+///
+/// The forecast loop is `O(forecast_steps * k_states^2)` and allocates two
+/// vectors of that length, so an unchecked horizon coming in from Python
+/// as a plain integer is an allocator abort waiting to happen (the wrapper
+/// only refuses counts at or above `2^48`). A hundred thousand periods is
+/// several centuries of monthly data and far past the point where the
+/// forecast variance carries information; anything larger is a mistake,
+/// and the refusal says so.
+pub const MAX_FORECAST_STEPS: usize = 100_000;
+
+/// Largest accepted `n_starts`.
+///
+/// The deterministic start ladder has five distinct rungs and repeats, so
+/// more than a handful of starts buys nothing; the cap is what keeps a
+/// mistyped count from allocating a start vector per unit of `usize`.
+pub const MAX_STARTS: usize = 64;
+
 fn invalid(message: String) -> SsmError {
     SsmError::InvalidSpec { message }
 }
@@ -453,12 +471,31 @@ impl Layout {
                      None for no seasonal component)"
                 )));
             }
+            // Also the memory bound: the dummy seasonal costs `s - 1`
+            // states, so an unchecked period is an allocation the size of
+            // a user-supplied integer.
+            if s > n {
+                return Err(invalid(format!(
+                    "seasonal = {s} with {n} observations: the dummy-seasonal period must \
+                     not exceed the sample length (it costs s - 1 states, and a period \
+                     the sample never completes is not identified)"
+                )));
+            }
         }
         for (i, f) in spec.freq_seasonal.iter().enumerate() {
             if !(f.period.is_finite() && f.period >= 2.0) {
                 return Err(invalid(format!(
                     "freq_seasonal[{i}].period = {}: a trigonometric seasonal period must be \
                      a finite number >= 2",
+                    f.period
+                )));
+            }
+            if f.period > n as f64 {
+                return Err(invalid(format!(
+                    "freq_seasonal[{i}].period = {} with {n} observations: a trigonometric \
+                     seasonal period must not exceed the sample length (it costs up to \
+                     2 floor(period / 2) states, and a period the sample never completes \
+                     is not identified)",
                     f.period
                 )));
             }
@@ -979,6 +1016,14 @@ pub fn unobserved_components(
         )));
     }
     let h = opts.forecast_steps;
+    if h > MAX_FORECAST_STEPS {
+        return Err(invalid(format!(
+            "forecast_steps = {h}: at most {MAX_FORECAST_STEPS} forecast periods are \
+             accepted (the horizon costs O(forecast_steps * k_states^2) work and two \
+             buffers of that length, and a forecast this far out carries no information \
+             about y)"
+        )));
+    }
     if !opts.forecast_exog.is_empty() {
         if h == 0 {
             return Err(invalid(
@@ -1046,6 +1091,14 @@ pub fn unobserved_components(
         return Err(invalid(
             "n_starts = 0: the search needs at least one starting value".to_string(),
         ));
+    }
+    if opts.n_starts > MAX_STARTS {
+        return Err(invalid(format!(
+            "n_starts = {}: at most {MAX_STARTS} starting values are accepted (the \
+             deterministic ladder has five distinct rungs and then repeats, so more \
+             starts cost time without covering new ground)",
+            opts.n_starts
+        )));
     }
     // Scale-adaptive search: standardize y and the regressors, estimate,
     // map back exactly, then evaluate on the original data.
