@@ -44,9 +44,9 @@ enumerates them (Harvey 1989, ch. 2; Durbin & Koopman 2012, ch. 3):
   `sigma2.freq_seasonal_p(h)` (or deterministic);
 - **stochastic cycle** `c_t` (`cycle=True`): the rotation by the cycle
   frequency `lambda` — a free parameter confined to `(2 pi/max, 2 pi/min)`
-  by `cycle_period_bounds=[min, max]` — scaled by a damping `rho in (0, 1)`
-  when `damped_cycle=True`, with a common disturbance variance when
-  `stochastic_cycle=True`;
+  by `cycle_period_bounds=[min, max]`, default `[2, len(y)]` — scaled by a
+  damping `rho in (0, 1)` when `damped_cycle=True`, with a common
+  disturbance variance when `stochastic_cycle=True`;
 - **regressors** `exog` (T x k) with time-invariant coefficients `beta.x1,
   ...` estimated jointly by MLE (statsmodels `mle_regression=True`).
 
@@ -85,16 +85,31 @@ local level is the "hello world" of the family and the safe default for a
 noisy level; add `"lltrend"` when the series drifts, `"strend"` when you
 want a smooth trend (the HP-filter-like case). `stochastic_seasonal=True`,
 `stochastic_cycle=False`, `damped_cycle=False` follow statsmodels so a
-spec written for it fits here unchanged. `cycle_period_bounds=[2, inf]`
-(the frequency in `(0, pi)`) is the no-information default; passing the
-plausible period range (e.g. `[6, 32]` quarters for a business cycle) both
-identifies the cycle and keeps the optimizer off the seasonal frequencies.
-`n_starts=3` runs the start ladder (the heuristic start, then the state
-variances scaled by 0.1 and 10; for a cycle, the periodogram peak first,
-then the bound midpoint and quarter points) — the cycle likelihood is
-multimodal in the frequency, and on the fixture's cycle case statsmodels'
-own single-start L-BFGS stops 6.4 log-likelihood points below the optimum
-this ladder reaches. `fixed_params=` evaluates the model at given
+spec written for it fits here unchanged. **`cycle_period_bounds` defaults
+to `[2, len(y)]`, and this is a deliberate divergence from statsmodels**,
+which leaves the upper period at infinity when the series carries no
+frequency information. Under exact-diffuse initialization the
+log-likelihood of a stochastic cycle *diverges* as the frequency goes to
+zero: at `lambda = 0` the second cycle state is unobservable and stays
+diffuse for free, but at a small `lambda > 0` it is weakly observable
+through `rho sin lambda`, so its diffuse direction resolves with
+`F_inf ~ (rho sin lambda)^2` and contributes `-(ln 2 pi + ln F_inf)/2`,
+which grows without bound. Measured in
+`crates/tsecon-ssm/tests/uc_properties.rs`: on a seeded local-level series
+the same model at `lambda = 1e-2, 1e-4, 1e-6` scores −188.15, −183.55,
+−162.53 — 25 log-likelihood points of pure singularity, and a free
+optimizer walks straight into it and reports a "cycle" of period `10^6`.
+statsmodels does not meet the singularity because its diffuse tolerance is
+an absolute `1e-10` on `F_inf`, which clips it. A cycle longer than the
+sample is not identified by the sample in any case, so the sample length is
+the honest bound; pass the plausible period range (e.g. `[6, 32]` quarters
+for a business cycle) to identify the cycle properly and keep the optimizer
+off the seasonal frequencies. `n_starts=3` runs the start ladder (the
+heuristic start, then the state variances scaled by 0.1 and 10; for a
+cycle, the periodogram peak first, then the bound midpoint and quarter
+points) — the cycle likelihood is multimodal in the frequency, and the
+periodogram start is what finds the right mode. `fixed_params=` evaluates
+the model at given
 parameters (statsmodels' order, listed in `param_names`) — the
 fixed-parameter goldens, and the way to run a Durbin-Koopman example at the
 book's values. Options that act only under a component **raise** when
@@ -104,7 +119,14 @@ passed without it (`stochastic_seasonal` without `seasonal`, the
 `forecast_exog` without `exog` or `forecast_steps`).
 
 **How to read the output.** `params`/`se`/`param_names` are the MLE with
-observed-information standard errors; `at_boundary[i]` is the pile-up flag
+observed-information standard errors — *conditional* on the flagged
+parameters sitting exactly at their boundary, i.e. the information matrix
+is inverted over the free parameters only. statsmodels' `cov_type="approx"`
+inverts the full matrix instead; the two coincide exactly when nothing is
+flagged and differ by definition when something is (on the seat-belt model
+below its full Hessian is indefinite — its own `bse` for `sigma2.trend`
+comes back NaN — and its `sigma2.level` standard error is 26 times smaller
+than the conditional one). `at_boundary[i]` is the pile-up flag
 — setting that variance to exactly zero (everything else at the estimate)
 lowers the log-likelihood by less than 1e-4, so the data cannot tell the
 estimate from zero, and its `se` is NaN because a boundary has no
@@ -130,10 +152,13 @@ right response is to accept the deterministic component, not to read the
 tiny estimate. Unidentified combinations (a dummy seasonal *and* a
 trigonometric seasonal of the same period; a cycle whose period range
 overlaps a seasonal frequency) give flat likelihood directions, a
-non-converged flag or NaN standard errors. A forecast is refused when the
-diffuse period has not ended by the last observation (the forecast variance
-would be infinite). A constant series is refused (the likelihood is
-unbounded as the variances go to zero).
+non-converged flag or NaN standard errors. A constant series is refused
+(the likelihood is unbounded as the variances go to zero), as is a
+specification with no stochastic component at all, and a sample with fewer
+than `k_states + 2` observed values. A forecast whose variance is still
+diffuse — infinite — at the forecast origin is refused rather than
+returned; the sample-size check makes that hard to reach, and it is a
+guard, not a routine outcome.
 
 **Validated against.** statsmodels `UnobservedComponents(...,
 use_exact_diffuse=True)` — an independent package — at *fixed parameters*:
@@ -146,12 +171,36 @@ one, two and three harmonics and with two blocks, undamped/damped and
 deterministic/stochastic cycles, regressors, and the combinations of them)
 on a seeded simulated series and on three NaN-inserted variants, all at
 **1e-8 relative** (`fixtures/uc.json`,
-`crates/tsecon-ssm/tests/uc_golden.rs`). The MLE is pinned to the **better
+`crates/tsecon-ssm/tests/uc_golden.rs`) — with one measured exception,
+stated rather than papered over. The exact-diffuse *smoother* is the
+ill-conditioned part of this family, and only inside the diffuse period:
+on the eight-diffuse-state combination (smooth trend + two harmonics +
+damped stochastic cycle + two regressors) statsmodels' own univariate and
+conventional smoothers disagree with **each other** by up to 4.5e-3
+relative on the smoothed state variances there, while their filters agree
+to 2.9e-11. The fixture records that internal spread per case
+(`smoother_spread`, computed by the generator) and the tests use it as the
+tolerance for smoothed variances over the diffuse period and the two rows
+after it: tsecon must be at least as close to the reference as the
+reference is to itself. On 19 of the 26 combinations the two reference
+paths agree bit for bit and the tolerance is exactly 1e-8; the largest
+tsecon-vs-statsmodels gap anywhere in that window is 8.8e-4 on the same
+eight-state case (against its 4.5e-3 reference spread), and every smoothed
+variance from `nobs_diffuse + 3` onwards holds 1e-8. Filtered variances,
+means, residuals, forecasts, log-likelihood and AIC/BIC are at 1e-8
+throughout. The MLE is pinned to the **better
 of two optimizers** — statsmodels' own `fit` and a SciPy Nelder-Mead +
 L-BFGS-B re-optimization of the identical criterion — on six cases: the
 Rust optimum is never below the better reference by more than 1e-5, and at
-a shared interior optimum the parameters agree to 2e-3 and the standard
-errors to 2e-2 of statsmodels' complex-step `cov_type="approx"`. The Nile
+a shared interior optimum the parameters agree to 2e-3, the pile-up flags
+agree exactly with an independent implementation of the same documented
+criterion in the fixture generator, and the standard errors agree to 2e-2
+with statsmodels' own complex-step Hessian inverted over the non-boundary
+parameters (`se_conditional` in the fixture; the full-Hessian
+`cov_type="approx"` numbers are recorded beside it so the difference stays
+visible). On the bounded cycle case the two reference optimizers land
+0.0031 log-likelihood apart (statsmodels −232.2477, SciPy −232.2446) and
+the Rust fit reaches the better of them. The Nile
 local level reproduces Durbin & Koopman (2012, §2.2) as printed —
 15098.5 / 1469.18 against their 15099 / 1469.1. The Harvey-Durbin (1986)
 basic structural model on the UK `Seatbelts` data (`log(drivers)` on a

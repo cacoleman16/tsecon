@@ -25,7 +25,11 @@
 //! * **stochastic cycle** (`c_t`): `[c_{t+1}, c*_{t+1}]' = rho R(lambda)
 //!   [c_t, c*_t]' + kappa_t` with `R` the rotation by the cycle frequency
 //!   `lambda` and `rho` the damping (1 when undamped), the two disturbances
-//!   sharing one variance (zero variance = deterministic cycle);
+//!   sharing one variance (zero variance = deterministic cycle). The
+//!   frequency is confined to `(2 pi / max, 2 pi / min)` by
+//!   `cycle_period_bounds`, whose default upper period is the **sample
+//!   length**: see [`UcSpec::cycle_period_bounds`] for why an unbounded
+//!   period is not a safe default under exact-diffuse initialization;
 //! * **regressors** with time-invariant coefficients `beta`, estimated
 //!   jointly by MLE (statsmodels `mle_regression=True`).
 //!
@@ -67,7 +71,7 @@
 
 use tsecon_linalg::faer::Mat;
 
-use crate::dense::{dot, frob_sq, mat_vec, sandwich};
+use crate::dense::{dot, mat_vec, sandwich};
 use crate::error::SsmError;
 use crate::filter::TOLERANCE_RANK;
 use crate::mle::{maximize, ols, variance, ParamKind, ParamSpec};
@@ -126,9 +130,7 @@ impl TrendSpec {
             "random walk" | "rwalk" => Self::RandomWalk,
             "fixed slope" => Self::FixedSlope,
             "deterministic trend" | "dtrend" => Self::DeterministicTrend,
-            "local linear deterministic trend" | "lldtrend" => {
-                Self::LocalLinearDeterministicTrend
-            }
+            "local linear deterministic trend" | "lldtrend" => Self::LocalLinearDeterministicTrend,
             "random walk with drift" | "rwdrift" => Self::RandomWalkWithDrift,
             "local linear trend" | "lltrend" => Self::LocalLinearTrend,
             "smooth trend" | "strend" => Self::SmoothTrend,
@@ -227,7 +229,16 @@ pub struct UcSpec {
     /// Whether the cycle has a disturbance variance.
     pub stochastic_cycle: bool,
     /// `(min, max)` cycle period bounds; the frequency is confined to
-    /// `(2 pi / max, 2 pi / min)`. `max` may be infinite.
+    /// `(2 pi / max, 2 pi / min)`.
+    ///
+    /// An infinite `max` means **the sample length**, not an unbounded
+    /// period. Under exact-diffuse initialization the log-likelihood of a
+    /// stochastic cycle diverges as `lambda -> 0+`: the cycle's second
+    /// state becomes weakly observable, its diffuse direction resolves
+    /// with `F_inf ~ (rho sin lambda)^2`, and the diffuse contribution
+    /// `-(ln 2 pi + ln F_inf) / 2` grows without bound. An optimizer given
+    /// `(0, pi)` walks into that singularity; a cycle longer than the
+    /// sample is not identified anyway.
     pub cycle_period_bounds: (f64, f64),
     /// Regressor columns, each of length `n`.
     pub exog: Vec<Vec<f64>>,
@@ -464,15 +475,40 @@ impl Layout {
         if spec.cycle && (!(pmin >= 2.0) || !pmin.is_finite() || !(pmax > pmin)) {
             return Err(invalid(format!(
                 "cycle_period_bounds = ({pmin}, {pmax}): need 2 <= min < max (max may be \
-                 infinite); the cycle frequency is confined to (2 pi / max, 2 pi / min)"
+                 infinite, meaning the sample length); the cycle frequency is confined \
+                 to (2 pi / max, 2 pi / min)"
+            )));
+        }
+        // An infinite upper period bound means the sample length, NOT an
+        // unbounded period. The reason is not taste: with exact-diffuse
+        // initialization the log-likelihood of a stochastic cycle is
+        // unbounded above as the frequency goes to zero. At `lambda = 0`
+        // the cycle's second state is unobservable and simply stays
+        // diffuse (it costs nothing, exactly like the Nyquist harmonic);
+        // at a small `lambda > 0` it is *weakly* observable, so its
+        // diffuse direction does resolve, and it resolves with
+        // `F_inf ~ (rho sin lambda)^2 -> 0`, contributing
+        // `-(ln 2 pi + ln F_inf) / 2 -> +infinity`. An optimizer let loose
+        // on `(0, pi)` walks into that singularity and reports a "cycle"
+        // of period 10^6 with a log-likelihood a dozen points above any
+        // genuine optimum. A cycle longer than the sample is not
+        // identified by the sample in any case. statsmodels leaves the
+        // bound at infinity when the series carries no frequency
+        // information (`structural.py`, `cycle_period_bounds=(2, inf)`)
+        // and does not meet the singularity because its diffuse tolerance
+        // is an absolute `1e-10` on `F_inf`, which quietly clips it;
+        // `uc_properties.rs` pins the divergence with numbers.
+        let pmax = if pmax.is_finite() { pmax } else { n as f64 };
+        if spec.cycle && !(pmax > pmin) {
+            return Err(invalid(format!(
+                "cycle_period_bounds = ({pmin}, inf) with {n} observations: an infinite \
+                 upper period bound means the sample length, so the admissible band is \
+                 empty (a cycle longer than the sample is not identified); pass a finite \
+                 cycle_period_bounds with min < {n} or a longer series"
             )));
         }
         let freq_bounds = (
-            if pmax.is_finite() {
-                2.0 * std::f64::consts::PI / pmax
-            } else {
-                0.0
-            },
+            2.0 * std::f64::consts::PI / pmax,
             2.0 * std::f64::consts::PI / pmin,
         );
         for (j, col) in spec.exog.iter().enumerate() {
@@ -816,6 +852,10 @@ impl Layout {
         let (lo, hi) = self.freq_bounds;
         let pgram_freq = periodogram_peak(&detrended, lo, hi).unwrap_or(0.5 * (lo + hi));
         let ladder = [1.0, 0.1, 10.0, 0.01, 100.0];
+        // Cycle starts: the periodogram peak first (the frequency
+        // likelihood is multimodal, and the midpoint of the admissible
+        // band alone lands on a local optimum), then the band's middle
+        // and quarter points.
         let freq_pos = [f64::NAN, 0.5, 0.25, 0.75, f64::NAN];
         let damp = [0.9, 0.5, 0.95, 0.7, 0.9];
         let mut starts = Vec::with_capacity(n_starts);
@@ -914,7 +954,9 @@ pub fn unobserved_components(
 ) -> Result<UcFit, SsmError> {
     let n = y.len();
     if n == 0 {
-        return Err(invalid("y is empty; pass at least one observation".to_string()));
+        return Err(invalid(
+            "y is empty; pass at least one observation".to_string(),
+        ));
     }
     if y.iter().any(|v| v.is_infinite()) {
         return Err(invalid(
@@ -982,7 +1024,17 @@ pub fn unobserved_components(
             .map(|(s, &v)| s.kind == ParamKind::Variance && v == 0.0)
             .collect();
         let se = vec![f64::NAN; layout.k_params()];
-        return evaluate(&layout, y, fixed, opts, false, true, (0, 0), se, at_boundary);
+        return evaluate(
+            &layout,
+            y,
+            fixed,
+            opts,
+            false,
+            true,
+            (0, 0),
+            se,
+            at_boundary,
+        );
     }
 
     if opts.n_starts == 0 {
@@ -1125,16 +1177,6 @@ fn evaluate(
     let mut forecast = Vec::with_capacity(h);
     let mut forecast_var = Vec::with_capacity(h);
     if h > 0 {
-        // The same washout test the filter applies: P_inf is a rank
-        // indicator that ends at roundoff, not at exact zero.
-        if frob_sq(fo.predicted_diffuse_state_cov[n].as_ref()) > TOLERANCE_RANK {
-            return Err(invalid(format!(
-                "forecast_steps = {h}: the diffuse initialization has not resolved by the \
-                 end of the sample (nobs_diffuse = {} of {n} periods), so the forecast \
-                 variance is infinite; supply more observations or drop the forecast",
-                fo.d_diffuse
-            )));
-        }
         let tr = model.t().at(n);
         let z = model.z().at(n);
         let zrow: Vec<f64> = (0..m).map(|j| z[(0, j)]).collect();
@@ -1142,7 +1184,25 @@ fn evaluate(
         let rqr = model.rqr(n)?;
         let mut a = fo.predicted_state[n].clone();
         let mut p = fo.predicted_state_cov[n].clone();
+        // The diffuse part is carried through the horizon too: a state the
+        // observation never loads on (the sine state of a harmonic at
+        // frequency pi, say) keeps a diffuse prior forever without making
+        // the forecast infinite, so the test is on Z P_inf Z' along the
+        // horizon — the same washout tolerance the filter uses, P_inf
+        // being a rank indicator that ends at roundoff, not at exact zero.
+        let mut p_inf = fo.predicted_diffuse_state_cov[n].clone();
         for step in 0..h {
+            if dot(&zrow, &mat_vec(p_inf.as_ref(), &zrow)) > TOLERANCE_RANK {
+                return Err(invalid(format!(
+                    "forecast_steps = {h}: at horizon {} the forecast still carries a \
+                     diffuse (infinite) variance — the diffuse initialization of the \
+                     states the observation loads on has not resolved by the end of the \
+                     sample (nobs_diffuse = {} of {n} periods); supply more observations \
+                     or drop the forecast",
+                    step + 1,
+                    fo.d_diffuse
+                )));
+            }
             let mut xb = 0.0;
             for (j, col) in opts.forecast_exog.iter().enumerate() {
                 xb += params[layout.idx_beta + j] * col[step];
@@ -1153,6 +1213,7 @@ fn evaluate(
             let mut pn = sandwich(tr, p.as_ref());
             pn += &rqr;
             p = pn;
+            p_inf = sandwich(tr, p_inf.as_ref());
         }
     }
 

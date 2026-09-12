@@ -66,7 +66,9 @@ pub use filter::{filter_matrix, filter_univariate, FilterOutput, MatrixFilterOut
 pub use model::{InitialState, Initialization, LinearGaussianSSM, SsmBuilder, SystemMatrix};
 pub use smoother::{smooth_univariate, SmootherOutput};
 pub use tvp::{tvp_regression, TvpFit, TvpOptions};
-pub use uc::{unobserved_components, FreqSeasonalSpec, TrendSpec, UcComponent, UcFit, UcOptions, UcSpec};
+pub use uc::{
+    unobserved_components, FreqSeasonalSpec, TrendSpec, UcComponent, UcFit, UcOptions, UcSpec,
+};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
 // backend) so downstream crates see one faer version.

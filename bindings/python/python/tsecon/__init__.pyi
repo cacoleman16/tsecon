@@ -4631,8 +4631,15 @@ def unobserved_components(
     (default True each). `cycle=True` adds the stochastic cycle:
     `damped_cycle` (default False) estimates a damping in (0, 1),
     `stochastic_cycle` (default False) gives it a variance, and
-    `cycle_period_bounds=[min, max]` (default [2, inf]) confines its
-    frequency to `(2 pi/max, 2 pi/min)`. `exog` (T x k) enters with
+    `cycle_period_bounds=[min, max]` confines its frequency to
+    `(2 pi/max, 2 pi/min)`. Its default is `[2, len(y)]`, and an infinite
+    `max` is read the same way: under exact-diffuse initialization the
+    log-likelihood of a stochastic cycle DIVERGES as the frequency goes to
+    zero (the second cycle state becomes weakly observable and its diffuse
+    resolution contributes `-ln(lambda)`), so an unbounded period is not a
+    safe search region — and a cycle longer than the sample is not
+    identified in any case. statsmodels leaves that bound at infinity.
+    `exog` (T x k) enters with
     time-invariant coefficients estimated jointly (statsmodels
     `mle_regression=True`); `forecast_steps=h` returns h-step forecasts and
     needs `forecast_exog` (h x k) when `exog` is given. `fixed_params`
@@ -4652,23 +4659,36 @@ def unobserved_components(
     scale-adaptive (y standardized, mapped back exactly). A variance whose
     estimate cannot be told from zero (zeroing it costs < 1e-4
     log-likelihood — the pile-up) is flagged in `at_boundary` with a NaN
-    standard error; `se` are observed-information (numerical Hessian).
+    standard error; `se` are observed-information (numerical Hessian)
+    CONDITIONAL on the flagged parameters sitting exactly at their boundary,
+    i.e. the information matrix is inverted over the free parameters only.
+    statsmodels' `cov_type="approx"` inverts the full matrix instead,
+    including the boundary directions where it is indefinite, so the two
+    agree exactly when nothing is flagged and differ by definition when
+    something is.
     `aic`/`bic` use statsmodels' `k_params + k_diffuse` degrees of freedom.
     The component keys without a prefix are the SMOOTHED (two-sided) paths;
     `filtered_*` are the one-sided ones. Variances inside the diffuse period
     are the finite part; `std_resid` is NaN there and at missing periods.
 
-    Validation (honest grade): fixed-parameter log-likelihood, filtered and
-    smoothed states and variances, residuals, forecasts and forecast
+    Validation (honest grade): fixed-parameter log-likelihood, filtered
+    states and variances, smoothed states, residuals, forecasts and forecast
     variances pinned at 1e-8 against statsmodels for 26 component
-    combinations and NaN-inserted series (fixtures/uc.json); the MLE pinned
+    combinations and NaN-inserted series (fixtures/uc.json); the SMOOTHED
+    variances at 1e-8 too, except inside the diffuse period of the hardest
+    combinations, where the exact-diffuse smoother is ill-conditioned and
+    the tolerance is the distance between statsmodels' own two smoother
+    implementations (up to 4.5e-3 there, against filters that agree to
+    2.9e-11); the MLE pinned
     to the better of statsmodels' own fit and a SciPy re-optimization of the
     identical criterion (two optimizers); the Durbin-Koopman (2012) Nile
     local level reproduced to the book's printed precision; the
-    Harvey-Durbin (1986) UK seat-belt BSM on the vendored Seatbelts data at
-    the statsmodels optimum, with its slope and seasonal variance pile-ups
-    flagged; parameter recovery, forecast-interval coverage and scale
-    invariance measured by seeded Monte Carlo (see the model card).
+    Harvey-Durbin (1986) UK seat-belt BSM re-estimated to that same optimum,
+    with its slope and seasonal variance pile-ups flagged (the series is
+    fetched from Rdatasets when the fixture is generated and never
+    redistributed, so only its derived optimum is stored); parameter
+    recovery, forecast-interval coverage and scale invariance measured by
+    seeded Monte Carlo (see the model card).
 
     Returned keys: `trend_specification`, `param_names`, `params`, `se`,
     `at_boundary`, `loglik`, `aic`, `bic`, `nobs`, `nobs_observed`,
@@ -4715,7 +4735,8 @@ def tvp_regression(
     (zeroing it costs < 1e-4 log-likelihood) is flagged in `pile_up` (and
     `at_boundary`) and gets a NaN standard error, so a coefficient the data
     cannot show moving is not reported as moving by a tiny amount. `se` are
-    observed-information (numerical Hessian); `aic`/`bic` use statsmodels'
+    observed-information (numerical Hessian) conditional on the flagged
+    variances being exactly zero; `aic`/`bic` use statsmodels'
     `k_params + k_diffuse` degrees of freedom; `std_resid` is NaN inside the
     diffuse period (the first k informative observations) and at missing
     periods.

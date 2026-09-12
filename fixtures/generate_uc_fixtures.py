@@ -13,12 +13,27 @@ Reference implementations (this venv):
   k_diffuse_states`` convention), and the component paths (level, trend,
   seasonal, frequency-domain seasonal, cycle) for every component
   combination the Rust estimator supports, plus NaN-inserted series.
+* The smoothed state variances additionally carry ``smoother_spread``: the
+  largest relative disagreement between statsmodels' OWN univariate and
+  conventional smoothers on the same model at the same parameters. It is
+  zero (bit-identical) on most specifications and rises to ~5e-3 inside the
+  diffuse period of the eight-diffuse-state combination, which is where the
+  exact-diffuse smoother recursion is ill-conditioned. The Rust and Python
+  tests use it as the tolerance there -- tsecon must be at least as close to
+  the univariate reference as statsmodels' own second path is -- instead of
+  a guessed number.
 * The MLE, one criterion, two optimizers: statsmodels' own ``fit`` (L-BFGS
   in its square-root / logistic working space) and a SciPy Nelder-Mead +
   L-BFGS-B polish of the identical ``loglike`` in the identical working
   space. The Rust optimum is pinned to the BETTER of the two at optimizer
-  tolerance -- never to one optimizer's stopping point -- and the
-  ``cov_type="approx"`` standard errors are recorded.
+  tolerance -- never to one optimizer's stopping point. Standard errors are
+  recorded twice: ``se_approx`` is statsmodels' own ``cov_type="approx"``
+  (the full Hessian inverted), and ``se_conditional`` is the same Hessian
+  inverted over the NON-boundary parameters only, which is what tsecon
+  reports and what the tests pin. The pile-up flags themselves
+  (``at_boundary``) are recomputed here from the documented rule, so the
+  tests compare tsecon's flags with an independent implementation of the
+  same criterion rather than with itself.
 * TVP regression: the custom ``statsmodels.tsa.statespace.MLEModel``
   transcribed below (the documented state-space form: per-period design
   row ``x_t'``, identity transition and selection, diagonal state
@@ -79,6 +94,12 @@ def lst(a):
     return np.asarray(a, dtype=float).tolist()
 
 
+# statsmodels' own default upper period bound is infinity when the series
+# carries no frequency information; tsecon's is the sample length (see the
+# cycle note in crates/tsecon-ssm/src/uc.rs). The band only matters for
+# ESTIMATION -- a fixed-parameter evaluation does not consult it -- but the
+# fixed cycle cases below declare it explicitly anyway so the two sides are
+# provably comparing the same model.
 def fixed_params_for(mod):
     out = []
     for name in mod.param_names:
@@ -121,6 +142,30 @@ COMPONENT_CASES = {
 }
 
 
+def smoother_spread(mod, params):
+    """statsmodels' own two smoother paths on the same model and parameters.
+
+    The exact-diffuse *smoother* is the ill-conditioned part of this family:
+    on a model with many diffuse states statsmodels' univariate
+    (Koopman-Durbin sequential) and conventional (matrix) smoothers disagree
+    with EACH OTHER by orders of magnitude more than their filters do, and
+    only inside the diffuse period. Recording that internal spread turns
+    "how close must tsecon be?" into a measured quantity instead of a
+    guessed tolerance: the Rust test requires tsecon to be at least as close
+    to the univariate path as the conventional path is. Returns the largest
+    relative disagreement of the smoothed state variances over the whole
+    sample (0.0 when the two paths agree bit for bit).
+    """
+    def diag_var(univariate):
+        mod.ssm.filter_univariate = univariate
+        r = mod.smooth(params)
+        return np.array([np.diag(r.smoothed_state_cov[:, :, t]) for t in range(mod.nobs)])
+
+    a, b = diag_var(True), diag_var(False)
+    mod.ssm.filter_univariate = True          # restore the reference path
+    return float(np.max(np.abs(a - b) / np.maximum(np.abs(b), 1e-12)))
+
+
 def fixed_block(mod, params, h=8, forecast_exog=None, name=None):
     res = mod.smooth(params)
     fc = res.get_forecast(h, exog=forecast_exog) if h > 0 else None
@@ -140,6 +185,7 @@ def fixed_block(mod, params, h=8, forecast_exog=None, name=None):
         fitted=lst(res.forecasts[0]),
         resid=lst(res.forecasts_error[0]),
         std_resid=lst(res.standardized_forecasts_error[0]),
+        smoother_spread=smoother_spread(mod, params),
     )
     if name in COMPONENT_CASES:
         block["components"] = components(res)
@@ -147,6 +193,77 @@ def fixed_block(mod, params, h=8, forecast_exog=None, name=None):
         block["forecast"] = lst(fc.predicted_mean)
         block["forecast_var"] = lst(fc.var_pred_mean)
     return block
+
+
+BOUNDARY_LL_TOL = 1e-4          # the crate's pile-up criterion, transcribed
+BOUNDED_EDGE_FRACTION = 1e-6
+
+
+def boundary_flags(mod, params):
+    """The documented pile-up rule, implemented here independently.
+
+    A variance is AT THE BOUNDARY when setting it to exactly zero -- every
+    other parameter held at its estimate -- costs less than
+    ``BOUNDARY_LL_TOL`` of log-likelihood: the likelihood cannot tell the
+    estimate from zero (Shephard & Harvey 1990). A bounded parameter (the
+    cycle frequency and damping) is flagged when it sits within
+    ``BOUNDED_EDGE_FRACTION`` of its interval width from either end.
+    """
+    params = np.asarray(params, float)
+    ll = mod.loglike(params)
+    flags = []
+    for i, name in enumerate(mod.param_names):
+        if name.startswith("sigma2"):
+            p0 = params.copy()
+            p0[i] = 0.0
+            try:
+                ll0 = mod.loglike(p0)
+            except Exception:
+                ll0 = -np.inf
+            flags.append(bool(np.isfinite(ll0) and (ll - ll0) < BOUNDARY_LL_TOL))
+        elif name == "frequency.cycle":
+            lo, hi = mod.cycle_frequency_bound
+            edge = BOUNDED_EDGE_FRACTION * (hi - lo)
+            flags.append(bool(params[i] - lo < edge or hi - params[i] < edge))
+        elif name == "damping.cycle":
+            edge = BOUNDED_EDGE_FRACTION
+            flags.append(bool(params[i] < edge or 1.0 - params[i] < edge))
+        else:
+            flags.append(False)
+    return flags
+
+
+def conditional_se(mod, params, flags):
+    """Standard errors CONDITIONAL on the flagged parameters being exactly
+    at their boundary: the inverse of the observed-information block over
+    the free parameters only.
+
+    This is the quantity tsecon reports, and it is not statsmodels'
+    ``cov_type="approx"``: statsmodels inverts the FULL Hessian, including
+    the boundary directions, where it is indefinite (on the Seatbelts BSM
+    its own ``bse`` for ``sigma2.trend`` comes back NaN from a negative
+    variance, and the numbers it reports for the other parameters are read
+    off that same indefinite inverse). Inverting a submatrix is not the
+    submatrix of an inverse, so the two disagree by a factor of 26 on
+    ``sigma2.level`` there -- a difference of definition, not of accuracy.
+    Both are recorded; the tests pin tsecon against this one and the
+    fixture keeps ``se_approx`` so the difference stays visible. With no
+    parameter flagged the two are identical.
+    """
+    params = np.asarray(params, float)
+    hess = np.asarray(mod.hessian(params, transformed=True, approx_complex_step=True)) * mod.nobs
+    free = [i for i, b in enumerate(flags) if not b]
+    se = np.full(len(params), np.nan)
+    if not free:
+        return se
+    try:
+        cov = np.linalg.inv(-hess[np.ix_(free, free)])
+    except np.linalg.LinAlgError:
+        return se
+    d = np.diag(cov)
+    for k, i in enumerate(free):
+        se[i] = np.sqrt(d[k]) if np.isfinite(d[k]) and d[k] > 0 else np.nan
+    return se
 
 
 def two_optimizer_mle(mod, extra_starts=()):
@@ -179,11 +296,19 @@ def two_optimizer_mle(mod, extra_starts=()):
     else:
         best_params, best_llf = sm_params, float(sm_res.llf)
     bse = np.asarray(mod.smooth(best_params, cov_type="approx").bse)
+    flags = boundary_flags(mod, best_params)
+    se_cond = conditional_se(mod, best_params, flags)
     return dict(
         param_names=list(mod.param_names),
         statsmodels=dict(params=lst(sm_params), llf=float(sm_res.llf)),
         scipy=dict(params=lst(scipy_params), llf=float(scipy_llf)),
-        best=dict(params=lst(best_params), llf=float(best_llf), se_approx=lst(bse)),
+        best=dict(
+            params=lst(best_params),
+            llf=float(best_llf),
+            se_approx=lst(bse),
+            se_conditional=lst(se_cond),
+            at_boundary=flags,
+        ),
     )
 
 
@@ -240,6 +365,7 @@ def tvp_fixed_block(mod, params):
         fitted=lst(res.forecasts[0]),
         resid=lst(res.forecasts_error[0]),
         std_resid=lst(res.standardized_forecasts_error[0]),
+        smoother_spread=smoother_spread(mod, params),
     )
 
 
@@ -281,11 +407,14 @@ def main():
     X = np.column_stack([rng.normal(size=T), rng.uniform(-2, 2, size=T)])
     y = level + season + cyc + X @ np.array([0.5, -0.3]) + rng.normal(0.0, 0.9, T)
     Xf = np.column_stack([rng.normal(size=8), rng.uniform(-2, 2, size=8)])
+    # Missing pattern: an interior run, two isolated holes, and a missing
+    # TAIL (so the forecast origin itself is unobserved) -- 12 of 120.
     y_missing = y.copy()
     y_missing[10:15] = np.nan
     y_missing[40] = np.nan
     y_missing[77] = np.nan
-    y_missing[120:125] = np.nan
+    y_missing[115:120] = np.nan
+    assert np.isnan(y_missing).sum() == 12
     fx["sim"] = dict(y=lst(y), y_missing=lst(y_missing), x=lst(X), x_forecast=lst(Xf))
 
     specs = [
@@ -347,12 +476,25 @@ def main():
     for name, spec in [
         ("llevel", dict(level="llevel")),
         ("lltrend_seasonal4", dict(level="lltrend", seasonal=4)),
-        ("llevel_cycle_damped_stoch", dict(level="llevel", cycle=True, damped_cycle=True, stochastic_cycle=True)),
+        # The cycle MLE case carries EXPLICIT period bounds, and so must
+        # any honest comparison of optimizers on this criterion. With the
+        # period unbounded above, the exact-diffuse log-likelihood of a
+        # stochastic cycle is unbounded above too (as lambda -> 0+ the
+        # second cycle state becomes weakly observable and its diffuse
+        # resolution contributes -(ln 2 pi + ln F_inf)/2 -> +inf), so
+        # "which optimizer got higher" measures who walked further into a
+        # singularity. statsmodels does not meet it because its diffuse
+        # tolerance is an absolute 1e-10 on F_inf; tsecon's is relative and
+        # does. Bounds of 6-20 are the business-cycle range the simulated
+        # series was built with (period 10).
+        ("llevel_cycle_damped_stoch", dict(level="llevel", cycle=True, damped_cycle=True,
+                                           stochastic_cycle=True, cycle_period_bounds=(6.0, 20.0))),
         ("llevel_exog", dict(level="llevel", exog=X)),
         ("strend", dict(level="strend")),
     ]:
         mod = UnobservedComponents(y, use_exact_diffuse=True, **spec)
-        spec_out = {k: (v if k != "exog" else "sim.x") for k, v in spec.items()}
+        spec_out = {k: (list(v) if k == "cycle_period_bounds" else v if k != "exog" else "sim.x")
+                    for k, v in spec.items()}
         mle_cases.append(dict(name=name, spec=spec_out, **two_optimizer_mle(mod)))
     fx["mle_cases"] = mle_cases
 

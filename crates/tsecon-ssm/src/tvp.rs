@@ -177,7 +177,9 @@ fn loglik_value(cols: &[Vec<f64>], y: &[f64], params: &[f64]) -> f64 {
 pub fn tvp_regression(y: &[f64], x: &[Vec<f64>], opts: &TvpOptions) -> Result<TvpFit, SsmError> {
     let n = y.len();
     if n == 0 {
-        return Err(invalid("y is empty; pass at least one observation".to_string()));
+        return Err(invalid(
+            "y is empty; pass at least one observation".to_string(),
+        ));
     }
     if y.iter().any(|v| v.is_infinite()) {
         return Err(invalid(
@@ -248,7 +250,11 @@ pub fn tvp_regression(y: &[f64], x: &[Vec<f64>], opts: &TvpOptions) -> Result<Tv
                  [sigma2_eps, sigma2_beta_1, ..., sigma2_beta_k] (constant {})",
                 fixed.len(),
                 k + 1,
-                if opts.constant { "included" } else { "excluded" }
+                if opts.constant {
+                    "included"
+                } else {
+                    "excluded"
+                }
             )));
         }
         if !(fixed[0] > 0.0) || !fixed[0].is_finite() {

@@ -30,6 +30,8 @@ def _spec_kwargs(spec):
     for k, v in spec.items():
         if k == "exog":
             kw["exog"] = np.asarray(UC["sim"]["x"], float)
+        elif k == "cycle_period_bounds":
+            kw["cycle_period_bounds"] = list(v)
         elif k == "freq_seasonal":
             kw["freq_seasonal"] = [d["period"] for d in v]
             if any("harmonics" in d for d in v):
@@ -47,6 +49,27 @@ def _nan_close(a, e, tol=TOL):
     np.testing.assert_allclose(a[~m], e[~m], rtol=tol, atol=tol)
 
 
+# Rows past the end of the diffuse period on which the exact-diffuse
+# smoother's conditioning is still visible.
+DIFFUSE_SMOOTH_ROWS = 2
+
+
+def _smoothed_var_close(a, e, block, d, what=""):
+    """Smoothed variances: 1e-8 everywhere except inside the diffuse period,
+    where the tolerance is the fixture's ``smoother_spread`` — the distance
+    between statsmodels' OWN univariate and conventional smoothers on this
+    model at these parameters (zero on all but two of the 32 blocks; 4.5e-3
+    on the eight-diffuse-state combination, whose *filters* still agree to
+    2.9e-11). tsecon must be at least as close to the reference as the
+    reference is to itself."""
+    a, e = np.asarray(a, float), np.asarray(e, float)
+    assert a.shape == e.shape, what
+    relaxed = max(float(block.get("smoother_spread", 0.0)), TOL)
+    cut = min(d + DIFFUSE_SMOOTH_ROWS + 1, len(a))
+    _nan_close(a[:cut], e[:cut], tol=relaxed)
+    _nan_close(a[cut:], e[cut:], tol=TOL)
+
+
 def _check_fixed(r, block):
     assert r["k_states"] == block["k_states"]
     assert r["nobs_diffuse"] == block["nobs_diffuse"]
@@ -54,14 +77,25 @@ def _check_fixed(r, block):
     assert r["loglik"] == pytest.approx(block["loglike"], rel=TOL, abs=TOL)
     assert r["aic"] == pytest.approx(block["aic"], rel=TOL)
     assert r["bic"] == pytest.approx(block["bic"], rel=TOL)
-    for key in ("filtered_state", "filtered_state_var", "smoothed_state", "smoothed_state_var"):
+    for key in ("filtered_state", "filtered_state_var", "smoothed_state"):
         _nan_close(r[key], block[key])
+    _smoothed_var_close(r["smoothed_state_var"], block["smoothed_state_var"], block,
+                        r["nobs_diffuse"], "smoothed_state_var")
     _nan_close(r["fitted"], block["fitted"])
     _nan_close(r["resid"], block["resid"])
+    # statsmodels writes 0.0 for the standardized residual inside the
+    # diffuse period and at a missing period; tsecon writes NaN at both
+    # (no finite prediction variance / no prediction error exists). The
+    # missing periods are those whose reference prediction error is NaN.
     sr = np.asarray(block["std_resid"], float)
+    got_sr = np.asarray(r["std_resid"], float)
     d = r["nobs_diffuse"]
-    assert np.all(np.isnan(np.asarray(r["std_resid"])[:d]))
-    _nan_close(np.asarray(r["std_resid"])[d:], sr[d:])
+    missing = np.isnan(np.asarray(block["resid"], float))
+    assert np.all(np.isnan(got_sr[:d])), "std_resid must be NaN inside the diffuse period"
+    assert np.all(np.isnan(got_sr[missing])), "std_resid must be NaN at missing periods"
+    obs = ~missing
+    obs[:d] = False
+    _nan_close(got_sr[obs], sr[obs])
     if "forecast" in block:
         _nan_close(r["forecast"], block["forecast"])
         _nan_close(r["forecast_var"], block["forecast_var"])
@@ -69,7 +103,10 @@ def _check_fixed(r, block):
     for sm_name, key in (("level", "level"), ("trend", "slope"), ("seasonal", "seasonal"), ("cycle", "cycle")):
         if sm_name in comp:
             _nan_close(r[key], comp[sm_name]["smoothed"])
-            _nan_close(r[key + "_var"], comp[sm_name]["smoothed_var"])
+            # A component variance is a sum of state variances: same
+            # diffuse-period treatment.
+            _smoothed_var_close(r[key + "_var"], comp[sm_name]["smoothed_var"], block,
+                                r["nobs_diffuse"], key + "_var")
             _nan_close(r["filtered_" + key], comp[sm_name]["filtered"])
             _nan_close(r["filtered_" + key + "_var"], comp[sm_name]["filtered_var"])
     if "freq_seasonal" in comp:
@@ -100,7 +137,11 @@ def test_nile_mle_reproduces_durbin_koopman_and_both_optimizers():
     assert r["loglik"] >= best["llf"] - 1e-5
     assert max(mle["statsmodels"]["llf"], mle["scipy"]["llf"]) == best["llf"]
     np.testing.assert_allclose(r["params"], best["params"], rtol=2e-3)
-    np.testing.assert_allclose(r["se"], best["se_approx"], rtol=2e-2)
+    # se_conditional, not se_approx: tsecon inverts the observed information
+    # over the non-boundary parameters only. Nothing is at a boundary here,
+    # so the two reference numbers coincide.
+    np.testing.assert_allclose(r["se"], best["se_conditional"], rtol=2e-2)
+    np.testing.assert_allclose(best["se_conditional"], best["se_approx"], rtol=1e-10)
     dk = UC["nile"]["dk_params"]                    # 15099, 1469.1 as printed
     assert abs(r["params"][0] - dk[0]) < 1.0 and abs(r["params"][1] - dk[1]) < 0.2
     assert r["at_boundary"] == [False, False]
@@ -136,7 +177,10 @@ def test_fixed_parameter_component_combinations(case):
 @pytest.mark.parametrize("case", UC["missing"], ids=lambda c: c["name"])
 def test_missing_observations(case):
     y = np.asarray(UC["sim"]["y_missing"], float)
+    # An interior run, two isolated holes, and a missing tail (so the
+    # forecast origin itself is unobserved): 12 of 120.
     assert np.isnan(y).sum() == 12
+    assert np.isnan(y[10:15]).all() and np.isnan(y[115:120]).all()
     kw = _spec_kwargs(case["spec"])
     if "exog" in kw:
         kw["forecast_exog"] = np.asarray(UC["sim"]["x_forecast"], float)
@@ -159,6 +203,10 @@ def test_mle_reaches_the_better_of_two_optimizers(case):
     if r["loglik"] - best["llf"] < 1e-3:
         scale = np.max(np.abs(best["params"]))
         np.testing.assert_allclose(r["params"], best["params"], rtol=2e-3, atol=2e-6 * scale)
+        assert r["at_boundary"] == best["at_boundary"]
+        for i, e in enumerate(best["se_conditional"]):
+            if not np.isnan(e) and not r["at_boundary"][i]:
+                assert r["se"][i] == pytest.approx(e, rel=2e-2)
     for i, b in enumerate(r["at_boundary"]):
         assert np.isnan(r["se"][i]) == b or (not b and np.isfinite(r["se"][i]))
 
@@ -190,11 +238,18 @@ def test_seatbelts_bsm_pile_up_and_law_effect():
     assert best["params"][names_p.index("sigma2.seasonal")] < 1e-12
     assert est["at_boundary"][names_p.index("sigma2.trend")] and est["at_boundary"][names_p.index("sigma2.seasonal")]
     assert np.isnan(est["se"][names_p.index("sigma2.trend")])
+    assert est["at_boundary"] == best["at_boundary"]
     for nm in ("sigma2.irregular", "sigma2.level", "beta.x1", "beta.x2", "beta.x3"):
         i = names_p.index(nm)
         assert not est["at_boundary"][i]
         assert est["params"][i] == pytest.approx(best["params"][i], rel=2e-3, abs=1e-6)
-        assert est["se"][i] == pytest.approx(best["se_approx"][i], rel=2e-2)
+        # Conditional on the two piled-up variances being exactly zero —
+        # which is what a pile-up means. statsmodels' own se_approx inverts
+        # the full Hessian instead, and that Hessian is indefinite here (its
+        # bse for sigma2.trend is NaN), so the two differ by a factor of 26
+        # on sigma2.level: a difference of definition, recorded in the
+        # fixture as both numbers.
+        assert est["se"][i] == pytest.approx(best["se_conditional"][i], rel=2e-2)
     law = est["params"][names_p.index("beta.x3")]
     assert -0.35 < law < -0.15                      # a sizable reduction; no published value asserted
     assert len(est["forecast"]) == 12
@@ -217,13 +272,18 @@ def test_tvp_fixed_and_missing_match_the_statsmodels_transcription():
         assert r["k"] == 3 and list(r["coef_names"]) == ["const", "x1", "x2"]
         assert r["loglik"] == pytest.approx(block["loglike"], rel=TOL)
         assert r["aic"] == pytest.approx(block["aic"], rel=TOL) and r["bic"] == pytest.approx(block["bic"], rel=TOL)
-        for key in ("beta_filtered", "beta_filtered_var", "beta_smoothed", "beta_smoothed_var"):
+        for key in ("beta_filtered", "beta_filtered_var", "beta_smoothed"):
             _nan_close(r[key], block[key])
+        _smoothed_var_close(r["beta_smoothed_var"], block["beta_smoothed_var"], block,
+                            r["nobs_diffuse"], "beta_smoothed_var")
         _nan_close(r["fitted"], block["fitted"])
         _nan_close(r["resid"], block["resid"])
         d = r["nobs_diffuse"]
         assert d == block["nobs_diffuse"]
-        _nan_close(np.asarray(r["std_resid"])[d:], np.asarray(block["std_resid"], float)[d:])
+        obs = ~np.isnan(np.asarray(block["resid"], float))
+        obs[:d] = False
+        _nan_close(np.asarray(r["std_resid"], float)[obs],
+                   np.asarray(block["std_resid"], float)[obs])
 
 
 def test_tvp_zero_state_variance_is_recursive_least_squares():
@@ -254,7 +314,8 @@ def test_tvp_mle_two_optimizers_and_pile_up_flag():
     assert r["pile_up"] == [False, False, True] and r["at_boundary"] == [False, False, False, True]
     assert np.isnan(r["se"][3]) and np.all(np.isfinite(r["se"][:3]))
     np.testing.assert_allclose(r["params"][:3], best["params"][:3], rtol=2e-3)
-    np.testing.assert_allclose(r["se"][:3], best["se_approx"][:3], rtol=2e-2)
+    np.testing.assert_allclose(r["se"][:3], best["se_conditional"][:3], rtol=2e-2)
+    assert r["at_boundary"] == best["at_boundary"]
     assert list(r["param_names"]) == ["sigma2.irregular", "sigma2.const", "sigma2.x1", "sigma2.x2"]
     assert r["sigma2_eps"] == r["params"][0] and list(r["sigma2_beta"]) == list(r["params"][1:])
     # Truth: sigma2_eps = 1, sigma2_beta = [0.01, 0.0025, 0] — recovered in
@@ -344,8 +405,19 @@ def test_determinism_and_scale_invariance():
     np.testing.assert_array_equal(a["params"], b["params"])
     np.testing.assert_array_equal(a["level"], b["level"])
     c = tsecon.unobserved_components(1000.0 * y, level="lltrend", seasonal=4, forecast_steps=4)
-    np.testing.assert_allclose(c["params"], np.asarray(a["params"]) * 1e6, rtol=1e-9)
-    assert c["loglik"] == pytest.approx(a["loglik"] - len(y) * np.log(1000.0), rel=1e-9)
+    want = np.asarray(a["params"]) * 1e6
+    # atol floors the comparison for a variance that piles up at zero: the
+    # relative difference of two numerical zeros says nothing.
+    # rtol 1e-7: the two runs standardize by scales that differ in the last
+    # ulp (`var(1000 y)` is not exactly `1e6 var(y)`), measured deviation
+    # 1.6e-9 here.
+    np.testing.assert_allclose(c["params"], want, rtol=1e-7, atol=1e-10 * np.max(np.abs(want)))
+    # Exact-diffuse likelihood: the shift is -(n - nobs_diffuse) ln c, not
+    # -n ln c — the diffuse contributions -(ln 2pi + ln F_inf)/2 never touch
+    # the units of y.
+    assert c["nobs_diffuse"] == a["nobs_diffuse"]
+    shift = (len(y) - a["nobs_diffuse"]) * np.log(1000.0)
+    assert c["loglik"] == pytest.approx(a["loglik"] - shift, rel=1e-9)
     np.testing.assert_allclose(c["forecast"], np.asarray(a["forecast"]) * 1000.0, rtol=1e-9)
     assert a["at_boundary"] == c["at_boundary"]
     t1 = tsecon.tvp_regression(y, np.asarray(UC["sim"]["x"], float))
