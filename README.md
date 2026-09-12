@@ -170,10 +170,10 @@ Two independent kinds of evidence, both reproducible:
   reference *before* anything is timed. All 65 parity metrics across 25
   operations pass. On a release build in the Linux CI-style container
   (Intel(R) Xeon(R) Processor @ 2.10GHz, 4 cores) tsecon is faster on 22 of 25 operations —
-  ADF 17.6×, VAR(2) 7.0×, Jarque-Bera 142.8× and the Christiano-Fitzgerald
-  filter 17.6× the speed of statsmodels — and slower on 3, which we publish
-  too: GARCH(1,1) QMLE at 0.38× the speed of `arch` (about 3× *slower*), EGARCH at
-  0.11×.
+  ADF 17.1×, VAR(2) 6.6×, Jarque-Bera 133.0× and the Christiano-Fitzgerald
+  filter 15.6× the speed of statsmodels — and slower on 3, which we publish
+  too: GARCH(1,1) QMLE at 0.34× the speed of `arch` (about 3× *slower*), EGARCH at
+  0.12×.
   The parity matrix and every timing live on the
   [speed dashboard](docs/reference/speed.md), rendered from the
   committed [`benchmarks/results/latest.json`](benchmarks/results/latest.json).
