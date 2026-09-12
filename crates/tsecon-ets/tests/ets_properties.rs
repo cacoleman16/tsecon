@@ -545,7 +545,7 @@ fn auto_ets_refit_of_the_winner_reproduces_its_numbers_exactly() {
         phi: Some(0.9),
     };
     let init = EtsStates {
-        level: 50.0,
+        level: 500.0,
         trend: Some(0.3),
         seasonal: Some(vec![3.0, -1.0, -4.0, 2.0]),
     };
@@ -563,7 +563,7 @@ fn auto_ets_refit_of_the_winner_reproduces_its_numbers_exactly() {
     assert_eq!(r.n_candidates, 15);
     assert_eq!(r.ic, Ic::Aicc);
     // Restricting to additive-only data drops the multiplicative candidates.
-    let y_neg: Vec<f64> = y.iter().map(|v| v - 60.0).collect();
+    let y_neg: Vec<f64> = y.iter().map(|v| v - 600.0).collect();
     let r2 = auto_ets(&y_neg, &opts).expect("auto");
     assert_eq!(r2.n_candidates, 6);
     assert!(r2.candidates.iter().all(|c| c.spec.error == A));

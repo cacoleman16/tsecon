@@ -279,6 +279,8 @@ Theta halves the seasonal naive's error here, and the Diebold-Mariano test (cove
 
 > **⚠ Common mistake.** Multiplicative-error or multiplicative-seasonal ETS models are undefined for zero or negative data — a series of net flows or growth rates cannot go through ETS(M,·,·). And the admissible parameter region of the ETS taxonomy is *larger* than the intuitive $[0,1]$ box (it is defined by eigenvalue stability conditions), so a fitted $\alpha = 1.3$ from a correct implementation is not necessarily an error — but a package that silently clips to the box is one.
 
+The full taxonomy ships as `tsecon.ets_fit(y, error="add"|"mul", trend=None|"add"|"mul", damped=..., seasonal=None|"add"|"mul", seasonal_periods=m)` — all 30 members, the smoothing parameters and (by default) the initial states estimated by maximum likelihood, `horizon=h` giving point forecasts with prediction intervals that are *exact* for the six linear additive-error models (the Hyndman et al. 2008 Table 6.1 variances) and *simulated* from seeded innovation paths for every multiplicative one — and `tsecon.auto_ets(y, seasonal_periods=m)` runs the AICc search over the admissible candidates exactly as R's `forecast::ets` enumerates them, returning the winner fitted together with the ranked candidate table, so the selection is auditable rather than a black box. Two conventions worth knowing: the parameters are Hyndman's $\alpha, \beta, \gamma, \phi$ (not the classical $\beta^* = \beta/\alpha$), and the multiplicative-seasonal recursions are the published innovations form — statsmodels' smoother uses the classical Holt-Winters seasonal update there, which agrees only to first order, so the two disagree by design on ETS(·,·,M) at fixed parameters (the [model card](../reference/model-cards/ets.md) records the measured gap). The innovations form has no missing-value mechanism, so NaN is refused: interpolate first, or use the Kalman-filter models of the next section, which handle gaps exactly.
+
 ## The state-space form and the Kalman filter
 
 This is the chapter's load-bearing section. The state-space form is simultaneously (a) a model family in its own right, (b) the estimation engine behind exact-MLE ARIMA and all of ETS, and (c) the cleanest solution to missing data in existence.
@@ -483,7 +485,7 @@ Read the ACF column top to bottom: the memory series is still correlated at $+0.
 
 **Elsewhere on the research edge.** Score-driven (GAS/DCS) models (Creal, Koopman and Lucas, 2013) make parameters time-varying through the score of the likelihood, giving robust filters that automatically discount outliers — the corner of this list that has since crossed into the library, as `dcs_local_level` (a robust cousin of this chapter's local level, listed below) and `gas_volatility` (score-driven volatility, chapter 6). Bayesian TVP models with global-local shrinkage priors (Bitto and Frühwirth-Schnatter, 2019) let the data decide *which* coefficients drift — the current standard in empirical macro. Testing for the *number* of Markov regimes is finally practical via Carrasco, Hu and Ploberger (2014). Mixed causal-noncausal AR models (Lanne and Saikkonen, 2011; Gouriéroux and Zakoïan, 2017) use roots *inside* the unit circle, identified through non-Gaussianity, to capture bubble episodes that explode and collapse. And an ecosystem-wide embarrassment remains open: default prediction intervals nearly everywhere ignore parameter and selection uncertainty and are systematically too narrow — dramatically so near unit roots and for $T < 100$; bootstrap and conformal methods are the frontier fixes, and the distribution-free half of that repair ships here as `conformal_forecast`/`conformal_backtest` (split, EnbPI, and adaptive conformal inference).
 
-The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tiers, and the first two of them have largely landed: the ARMA/SARIMA stack and auto-ARIMA from the core tier, and SETAR/STAR, Markov-switching, Bai-Perron breaks, the GPH and local-Whittle long-memory entry points, and the score-driven filters from the standard and advanced ones, all ship today. What the tiers still hold is what the roadmap list below names — regARIMA and the ETS taxonomy, fitted unobserved components, Sowell ARFIMA and the exact local Whittle, shrinkage TVP — each gated on reproducing published numbers (Hamilton's GNP estimates, the airline model, the Nile variances) rather than matching another package's defaults, which is the bar the shipped half was held to.
+The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tiers, and the first two of them have largely landed: the ARMA/SARIMA stack and auto-ARIMA from the core tier, and SETAR/STAR, Markov-switching, Bai-Perron breaks, the GPH and local-Whittle long-memory entry points, and the score-driven filters from the standard and advanced ones, all ship today. What the tiers still hold is what the roadmap list below names — regARIMA, fitted unobserved components, Sowell ARFIMA and the exact local Whittle, shrinkage TVP — each gated on reproducing published numbers (Hamilton's GNP estimates, the airline model, the Nile variances) rather than matching another package's defaults, which is the bar the shipped half was held to.
 
 ## Which method when
 
@@ -493,8 +495,8 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 | ACF cuts off sharply; shocks visibly transient | MA(q) or ARMA(1,1) | Finite shock memory is what MA terms are for |
 | Trending level series (GDP, prices) | ARIMA with d chosen by `check_stationarity` | Difference first; unit-root tests, not AIC, pick d |
 | Monthly/quarterly data with stable seasonality | SARIMA — start at the airline model (0,1,1)(0,1,1)ₛ | Four parameters cover a remarkable share of seasonal economic series |
-| Many series to forecast automatically | `auto_arima` (AutoETS is roadmap), then residual checks | Disciplined search beats hand-tuning at scale — but never skip diagnostics |
-| Trend + seasonal forecasting, fast and robust | Theta (`theta_forecast`); the ETS taxonomy is roadmap | M3-competition-grade accuracy at trivial cost |
+| Many series to forecast automatically | `auto_arima` or `auto_ets`, then residual checks | Disciplined search beats hand-tuning at scale — but never skip diagnostics |
+| Trend + seasonal forecasting, fast and robust | Theta (`theta_forecast`) or the ETS taxonomy (`ets_fit`, `auto_ets`) | M3-competition-grade accuracy at trivial cost |
 | Noisy measurements of an underlying level; gaps in the data | Local level/trend via `local_level_smooth` | Kalman filter handles missing data exactly, with honest uncertainty |
 | Small sample, persistence near a unit root | Exact MLE, never CSS or Yule-Walker | Initial conditions carry real information; moment methods bias toward stationarity |
 | Asymmetric dynamics with a latent phase (recessions) | `markov_switching_ar` | Infers regime probabilities from the data; the probabilities are the deliverable |
@@ -519,7 +521,7 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 - `dcs_local_level(y, density="t"|"laplace"|"gaussian")` — the score-driven robust local level (Harvey 2013; Harvey-Luati 2014): an outlier-resistant cousin of the Kalman local level above, with the Gaussian case exactly the steady-state Kalman filter, so the nested control is checkable
 - Identification and diagnostics used throughout the chapter: `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`
 - Differencing decisions: `adf`, `kpss`, `check_stationarity`, plus the order advisors `ndiffs` (the KPSS sequence auto-ARIMA uses for $d$) and `nsdiffs` (seasonal strength for $D$)
-- The exponential-smoothing family's benchmark: `theta_forecast`, with `accuracy` and `dm_test` for honest evaluation
+- The exponential-smoothing family: `ets_fit` (all 30 ETS models, exact or simulated prediction intervals) and `auto_ets` (the AICc candidate search), plus its benchmark `theta_forecast`, with `accuracy` and `dm_test` for honest evaluation
 
 **Built in Rust, partly awaiting Python bindings** (`tsecon-arima` crate):
 
@@ -528,7 +530,6 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 **Roadmap** ([docs/roadmap/02-univariate.md](../roadmap/02-univariate.md)):
 
 - Regression with ARMA errors (regARIMA); Hannan-Rissanen starts and the Monahan reparameterization as public API
-- The full ETS taxonomy with AutoETS selection
 - Fitted unobserved-components models (local level/trend with estimated variances, cycles, stochastic seasonals), validated on the Nile and UK-seatbelt canon
 - ARFIMA (Sowell exact MLE); the exact local Whittle estimator (Shimotsu-Phillips 2005), which stays valid across the $d \ge 0.5$ boundary where GPH and ordinary local Whittle break
 - Hansen (1997, 2000) confidence sets for the SETAR threshold, and a test for the *number* of Markov regimes (Carrasco-Hu-Ploberger 2014) — the two inference gaps left open by the regime models that now ship above

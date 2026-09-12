@@ -551,6 +551,13 @@ fn mle_fit_options(case: &Value, optimizer: Optimizer) -> FitOptions {
 fn maximum_likelihood_matches_or_beats_statsmodels_with_two_optimizers() {
     let fx = load();
     let mut worst_alpha = 0.0_f64;
+    // The same gap over only the (case, optimizer) pairs where the two
+    // optima coincide -- the subset the parameter gate applies to, and the
+    // number quoted on the model card.
+    let mut worst_alpha_gated = 0.0_f64;
+    let mut n_gated = 0usize;
+    let mut best_gain = 0.0_f64;
+    let mut best_gain_case = String::new();
     let mut worst_ll_rel = f64::NEG_INFINITY;
     let mut n = 0;
     for case in fx["mle"].as_array().expect("mle") {
@@ -589,7 +596,13 @@ fn maximum_likelihood_matches_or_beats_statsmodels_with_two_optimizers() {
             // Parameters agree at the cross-optimizer tolerance only when
             // the crate's optimum is not materially better (a better
             // optimum is a legitimately different point).
+            if fit.loglik - ll_sm > 1e-3 * ll_sm.abs().max(1.0) && fit.loglik - ll_sm > best_gain {
+                best_gain = fit.loglik - ll_sm;
+                best_gain_case = format!("{what} [{}]", optimizer.name());
+            }
             if fit.loglik - ll_sm <= 1e-3 * ll_sm.abs().max(1.0) {
+                n_gated += 1;
+                worst_alpha_gated = worst_alpha_gated.max(d_alpha);
                 assert!(
                     d_alpha <= MLE_PARAM_TOL,
                     "{what} [{}]: alpha {} vs {}",
@@ -665,7 +678,12 @@ fn maximum_likelihood_matches_or_beats_statsmodels_with_two_optimizers() {
         assert_eq!(a, b, "{what}: refit is not deterministic");
     }
     assert!(n >= 15);
-    eprintln!("mle: {n} cases; worst |alpha gap| {worst_alpha:.2e}; worst loglik shortfall (rel) {worst_ll_rel:.2e}");
+    eprintln!(
+        "mle: {n} cases x 2 optimizers; worst loglik shortfall (rel) {worst_ll_rel:.2e}; \
+         worst |alpha gap| {worst_alpha:.2e} over all pairs, {worst_alpha_gated:.2e} over the \
+         {n_gated} pairs whose optima coincide; largest gain over statsmodels {best_gain:.4} \
+         on {best_gain_case}"
+    );
 }
 
 // ------------------------------------------------------------ candidates

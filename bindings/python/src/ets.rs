@@ -55,8 +55,9 @@ fn optimizer(s: Option<&str>) -> PyResult<Optimizer> {
         Some("bfgs") => Ok(Optimizer::Bfgs),
         Some("lbfgs") => Ok(Optimizer::Lbfgs),
         Some(other) => Err(PyValueError::new_err(format!(
-            "optimizer = {other:?} is invalid: pass \"auto\" (Nelder-Mead then a BFGS polish, \
-             the better kept), \"nelder_mead\", \"bfgs\" or \"lbfgs\""
+            "optimizer = {other:?} is invalid: pass \"auto\" (L-BFGS and Nelder-Mead from a \
+             staged start, then a BFGS polish of the better), \"nelder_mead\", \"bfgs\" or \
+             \"lbfgs\""
         ))),
     }
 }
@@ -265,9 +266,11 @@ fn fit_to_dict<'py>(
 /// statsmodels' `smooth(params)` — and needs initialization "heuristic"
 /// or "known" (with "estimated" nothing would be estimated: refused);
 /// `optimizer` and `max_iter` are then inert and refused if passed.
-/// `optimizer` is "auto" (Nelder-Mead then a BFGS polish, the better
-/// kept; the effective default), "nelder_mead", "bfgs" or "lbfgs";
-/// `max_iter` caps each stage's iterations.
+/// `optimizer` is "auto" (the effective default: L-BFGS and Nelder-Mead
+/// from a staged start — the smoothing parameters alone at the heuristic
+/// states first — then a BFGS polish of whichever did better; the
+/// returned `optimizer` key reads "nelder_mead+bfgs"), "nelder_mead",
+/// "bfgs" or "lbfgs"; `max_iter` caps each stage's iterations.
 ///
 /// `horizon=h` adds h-step forecasts with `level` (0.95 when omitted)
 /// prediction intervals: for the class-1 models — additive error with
@@ -492,6 +495,21 @@ fn optimizer_of(s: Option<&str>) -> PyResult<Optimizer> {
 /// `damped` (None: both), `initialization` ("estimated"), `horizon` (0),
 /// `level` (None: 0.95), `n_sim` (None: 5000), `seed` (None: 0),
 /// `optimizer` (None: "auto").
+///
+/// Returned keys: `aic`, `aicc`, `alpha`, `beta`, `bic`, `candidates`,
+/// `class1`, `converged`, `damped`, `error`, `final_level`,
+/// `final_seasonal`, `final_states`, `final_trend`, `fitted`,
+/// `forecast`, `forecast_lower`, `forecast_upper`, `forecast_variance`,
+/// `gamma`, `horizon`, `ic`, `ic_value`, `initial_level`,
+/// `initial_seasonal`, `initial_state_names`, `initial_states`,
+/// `initial_trend`, `initialization`, `interval_level`,
+/// `interval_method`, `k_params`, `level_path`, `loglik`,
+/// `n_candidates`, `n_fevals`, `n_fitted`, `n_iterations`, `n_sim`,
+/// `nobs`, `optimizer`, `param_names`, `params`, `phi`, `resid`,
+/// `seasonal`, `seasonal_path`, `seasonal_periods`, `seed`,
+/// `short_name`, `sigma2`, `spec`, `trend`, `trend_path` — every
+/// `ets_fit` key for the selected model, read there, plus the five
+/// selection extras above.
 #[pyfunction]
 #[pyo3(signature = (y, seasonal_periods = None, ic = "aicc", allow_multiplicative_trend = false, restrict = true, damped = None, initialization = "estimated", horizon = 0, level = None, n_sim = None, seed = None, optimizer = None))]
 #[allow(clippy::too_many_arguments)]
