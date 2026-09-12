@@ -223,7 +223,7 @@ def test_refusals_name_the_parameter():
         tsecon.spa_test(bb, models)
     with pytest.raises(ValueError, match=r"model_losses must be a 1-D loss series"):
         tsecon.spa_test(bench, np.zeros((4, 3, 2)))
-    with pytest.raises(ValueError, match=r"loss column 0.*constant"):
+    with pytest.raises(ValueError, match=r"model_losses column 0.*constant"):
         tsecon.spa_test(bench, np.column_stack([bench, models[:, 0]]))
     with pytest.raises(ValueError, match=r"benchmark_losses = 2 periods"):
         tsecon.spa_test(bench[:2], models[:2])
@@ -246,6 +246,27 @@ def test_refusals_name_the_parameter():
     with pytest.raises(ValueError, match=r"reps = 0"):
         tsecon.model_confidence_set(L, reps=0)
 
+
+
+@pytest.mark.parametrize("reps", [2 ** 44, 2 ** 47, 10 ** 12])
+def test_an_impossible_replication_count_is_refused_not_allocated(reps):
+    """The reps x m bootstrap buffer is the one allocation whose size is a
+    product of user counts; it is budgeted with try_reserve in Rust, so a
+    count no machine can serve must raise a ValueError naming `reps` rather
+    than abort the interpreter. These counts are below the wrapper's own
+    2**48 guard, so it is the Rust budget being exercised."""
+    L = _panel(seed=9)
+    for call in (lambda: tsecon.spa_test(L[:, 0], L[:, 1:], reps=reps, block_size=4),
+                 lambda: tsecon.stepm_test(L[:, 0], L[:, 1:], reps=reps, block_size=4),
+                 lambda: tsecon.model_confidence_set(L, reps=reps, block_size=4)):
+        with pytest.raises(ValueError, match=r"refusing to allocate .* reduce reps"):
+            call()
+
+
+def test_the_wrapper_refuses_counts_at_or_beyond_2_48():
+    L = _panel(seed=9)
+    with pytest.raises(ValueError, match=r"reps=\d+ is at or beyond 2\*\*48"):
+        tsecon.spa_test(L[:, 0], L[:, 1:], reps=2 ** 48)
 
 # --------------------------------------------------------- docstring tripwire
 

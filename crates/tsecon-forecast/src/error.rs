@@ -660,12 +660,12 @@ impl fmt::Display for ForecastError {
             ),
             ForecastError::ConstantLossColumn { what, index } => write!(
                 f,
-                "{what}: loss column {index} is constant over the evaluation \
-                 sample (for a benchmark comparison: its loss differential \
-                 against the benchmark never varies), so its bootstrap \
-                 variance is exactly zero and the studentized statistic is \
-                 0/0. A model whose losses equal the benchmark's in every \
-                 period is the benchmark; drop it from the comparison"
+                "{what}: model_losses column {index} has a loss \
+                 differential against benchmark_losses that is constant over \
+                 the evaluation sample, so its bootstrap variance is exactly \
+                 zero and the studentized statistic is 0/0. A model whose \
+                 losses equal the benchmark's in every period is the \
+                 benchmark; drop that column from model_losses"
             ),
             ForecastError::ZeroBootstrapVariance { what, model, other } => match other {
                 Some(j) => write!(

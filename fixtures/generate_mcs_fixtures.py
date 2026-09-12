@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
 import sys
 import warnings
 from pathlib import Path
@@ -378,8 +379,83 @@ def arch_coverage_study():
     return out
 
 
+# --------------------------------------------------------------------------
+# What the reference does with two identical loss columns
+# --------------------------------------------------------------------------
+
+DUP_PROBE_BUDGET_S = 45
+DUP_PROBE_MEM_BYTES = 2 << 30
+
+
+def _duplicate_panel():
+    """A loss panel whose second and third columns are identical, so their
+    difference has zero bootstrap variance and every standardized quantity
+    built on it is 0/0."""
+    rng = np.random.default_rng(0)
+    base = rng.standard_normal((40, 3)) ** 2
+    return np.column_stack([base[:, 0], base[:, 1], base[:, 1]])
+
+
+def _probe_duplicate_max():  # pragma: no cover - runs as a subprocess
+    """`method="max"` on the duplicate panel, under a memory cap, so the
+    parent can time it out without taking the machine with it."""
+    import resource
+
+    resource.setrlimit(resource.RLIMIT_AS, (DUP_PROBE_MEM_BYTES, DUP_PROBE_MEM_BYTES))
+    m = MCS(_duplicate_panel(), size=0.1, reps=20, block_size=4, method="max", seed=1)
+    m.compute()
+    print("COMPLETED", list(m.included))
+
+
+def probe_duplicate_columns():
+    """MEASURE what arch 8.0.0 does when two loss columns are identical —
+    tsecon refuses such a panel by name, and the docs say arch does not
+    handle it, so that claim needs a number behind it.
+
+    `method="R"` is run inline and must warn about the division and then
+    raise; `method="max"` is run in a subprocess under a memory cap and a
+    wall-clock budget, and must NOT return inside it. Both findings are
+    stored, budgets included.
+    """
+    out = {"n": 40, "m": 3, "duplicate_columns": [1, 2], "reps": 20, "block_size": 4}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            MCS(_duplicate_panel(), size=0.1, reps=20, block_size=4, method="R", seed=1).compute()
+            raise AssertionError("arch's MCS(method='R') no longer fails on identical columns — "
+                                 "re-check the claim in mcs.rs and the model card")
+        except AssertionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - the finding IS the exception
+            out["R"] = {"raises": type(exc).__name__, "message": str(exc)[:120]}
+        out["R"]["warnings"] = sorted({w.category.__name__ for w in caught})
+    assert out["R"]["warnings"], "arch used to warn about the 0/0 divide before failing"
+
+    try:
+        proc = subprocess.run(  # noqa: S603 - this file, this interpreter
+            [sys.executable, str(Path(__file__).resolve()), "--probe-duplicate-max"],
+            capture_output=True, text=True, timeout=DUP_PROBE_BUDGET_S, check=False,
+        )
+        text = (proc.stdout or proc.stderr).strip()
+        out["max"] = {"completed": proc.stdout.startswith("COMPLETED"),
+                      "detail": text.splitlines()[-1][:120] if text else "",
+                      "budget_seconds": DUP_PROBE_BUDGET_S,
+                      "memory_cap_bytes": DUP_PROBE_MEM_BYTES}
+    except subprocess.TimeoutExpired:
+        out["max"] = {"completed": False, "detail": f"no result within {DUP_PROBE_BUDGET_S}s",
+                      "budget_seconds": DUP_PROBE_BUDGET_S,
+                      "memory_cap_bytes": DUP_PROBE_MEM_BYTES}
+    assert not out["max"]["completed"], \
+        "arch's MCS(method='max') now handles identical columns — re-check the claim"
+    print(f"duplicate columns: arch method='R' raises {out['R']['raises']} after "
+          f"{out['R']['warnings']}; method='max' returns nothing within "
+          f"{DUP_PROBE_BUDGET_S}s under a {DUP_PROBE_MEM_BYTES >> 30} GiB cap")
+    return out
+
+
 def main():
     cases = [run_case(*c) for c in CASES]
+    duplicates = probe_duplicate_columns()
     coverage = arch_coverage_study()
     out = {
         "_meta": {
@@ -391,10 +467,11 @@ def main():
                 "resamples[b] = MCS._bootstrap_indices[b], the indices arch's default_rng(arch_seed) bootstrap drew for replication b.",
                 "mcs_p_values[k] is arch's `pvalues` (running maximum of the step p-values along the elimination path); step_p_values are the raw step p-values in elimination order (survivors 1.0); statistics are the observed T_R / T_max per step.",
                 "The transcription's variances, elimination order and running-max p-values were asserted bit-identical to arch for every case; min_gap / min_margin > 1e-9 certify the decisions cannot flip under sub-1e-9 arithmetic differences.",
-                "arch warns and continues on a zero T_max standard deviation; tsecon refuses (no such case is stored).",
+                "Identical loss columns: tsecon refuses them by name. arch 8.0.0 does not handle them, MEASURED in `duplicate_columns` — method=\"R\" warns about the 0/0 divide and then raises IndexError, method=\"max\" returns nothing within the stated wall-clock and memory budget.",
                 "The `coverage_study` block is arch's OWN frequency of keeping the whole set of best models under the crate property test's design (two exactly-equally-best models), so that a finite-sample gap tsecon shares with its reference is reported as the method's and one it does not share is a bug.",
             ],
             "mc_tolerance": 0.05,
+            "duplicate_columns": duplicates,
             "coverage_study": coverage,
         },
         "cases": cases,
@@ -405,4 +482,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if "--probe-duplicate-max" in sys.argv:
+        _probe_duplicate_max()
+    else:
+        main()

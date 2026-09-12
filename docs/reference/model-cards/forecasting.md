@@ -599,9 +599,19 @@ worse member of the most *standardized* pair, so a model with an enormous
 loss **variance** can survive longer than one with a larger mean loss. The
 ranking is `mean_losses`; the evidence is `mcs_p_values`.
 
-**Failure modes.** A loss column identical to the benchmark's (or to another
-model's, for the MCS) has zero bootstrap variance and is refused by name,
-rather than returning a NaN as `arch` does. The MCS set is never empty, but a
+**Failure modes.** A model whose losses equal the benchmark's in every period
+has a loss differential of exactly zero — it *is* the benchmark — and
+`spa_test` refuses it by name. For the MCS, a duplicated loss column is
+degenerate under `method="R"` only: the pairwise bootstrap variance of two
+identical columns is exactly zero, so $T_R$ between them is 0/0 and the panel
+is refused. Under `method="max"` nothing is 0/0 — the duplicates share a
+statistic and leave the set together in one step — so the panel is accepted,
+and the refusal fires only when a remaining model's bootstrap standard
+deviation really does collapse. Both behaviours beat the reference's, which
+the fixture generator measures rather than assumes: on a panel with two
+identical loss columns `arch 8.0.0`'s `MCS` warns about the 0/0 division and
+then raises `IndexError` under `method="R"`, and under `method="max"` returns
+nothing within a 45-second, 2 GiB budget. The MCS set is never empty, but a
 set containing everything means the evaluation sample is too short to
 separate anything — look at `n` before writing it up. A p-value of exactly
 0.000 means no replicate exceeded the observed statistic, i.e. $p < 1/\text{reps}$;

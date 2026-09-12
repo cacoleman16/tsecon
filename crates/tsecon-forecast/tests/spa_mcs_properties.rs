@@ -2,20 +2,32 @@
 //! tests: `spa_test` / `stepm_test` (Reality Check / SPA / StepM) and
 //! `model_confidence_set` (MCS).
 //!
-//! What the goldens cannot prove is measured here with a stated seed:
+//! What the goldens cannot prove is measured here with a stated seed. Two of
+//! the three Monte Carlo studies are CROSS-CHECKED against the reference's
+//! own rates on the same design — `fixtures/spa.json` and `fixtures/mcs.json`
+//! carry them — so that behaviour tsecon shares with `arch` is reported as
+//! the METHOD's while behaviour it does not share fails a test here:
 //!
 //! * the SIZE of the SPA test under equal predictive ability (every model
-//!   as good as the benchmark, the least favourable configuration), on iid
-//!   and AR(1) loss differentials, with the automatic block length;
+//!   exactly as good as the benchmark — the least favourable configuration),
+//!   on iid and AR(1) loss differentials at four block lengths. The
+//!   un-studentized rates are compared with arch's; the studentized ones
+//!   (the crate default, which no package computes) are MEASURED and are
+//!   over-sized at n = 200, which the test states and shows shrinking by
+//!   n = 800 rather than papering over;
 //! * its POWER against a dominated benchmark;
-//! * the COVERAGE of the MCS — the set of best models is contained in the
-//!   90% set at least 90% of the time (Hansen-Lunde-Nason 2011, Theorem 1),
-//!   for both statistics;
+//! * the COVERAGE of the MCS. Hansen-Lunde-Nason's Theorem 1 is asymptotic
+//!   and about the WHOLE best set; on a design with two exactly-equally-best
+//!   models that set is contained about 0.87 of the time at a nominal 0.90,
+//!   here and in `arch` alike, and the test pins the agreement rather than
+//!   the theorem.
 //!
-//! plus the reproducibility contract (bit-identical at any rayon thread
+//! Plus the reproducibility contract (bit-identical at any rayon thread
 //! count; the seeded path equals an explicit replay of its substreams), the
-//! structural identities (p-value bracketing, nested sets, StepM subsets),
-//! and the teaching refusals, each naming its parameter.
+//! resampling conventions shared with the reference, the structural
+//! identities (p-value bracketing, nested sets, StepM subsets), the memory
+//! budget on the one buffer sized by a product of user counts, and the
+//! teaching refusals, each naming its parameter.
 //!
 //! Every measured rate is printed (`cargo test -- --nocapture`) and quoted
 //! in the forecasting model card.
@@ -826,6 +838,50 @@ fn err_msg<T: std::fmt::Debug>(r: Result<T, ForecastError>) -> String {
     }
 }
 
+/// The only buffers whose size is a PRODUCT of user counts are the
+/// `reps x m` resampled-mean matrices (and, for StepM, the `reps x m`
+/// per-model replicate matrix). They are budgeted with `try_reserve`, so a
+/// replication count no machine can serve must come back as a teaching
+/// refusal naming `reps` — never a `capacity overflow` panic or an
+/// allocator abort. The counts below are below the Python layer's own
+/// `2**48` guard, so this is the Rust budget being exercised, not that one.
+#[test]
+fn an_impossible_replication_count_is_refused_not_allocated() {
+    let mut g = Gauss::new(11);
+    let cols = loss_panel(&mut g, 40, &[1.0, 0.9, 1.1, 1.0], &[0.0; 4], 0.0);
+    let (bench, models) = (cols[0].clone(), cols[1..].to_vec());
+    for reps in [1usize << 44, 1usize << 47, 1_000_000_000_000] {
+        let o = spa_opts(Some(4), reps, ResampleScheme::Stationary, 0);
+        for m in [
+            err_msg(spa_test(&bench, &models, &o)),
+            err_msg(stepm_test(
+                &bench,
+                &models,
+                &StepmOptions {
+                    size: 0.05,
+                    spa: o.clone(),
+                },
+            )),
+            err_msg(model_confidence_set(
+                &cols,
+                &McsOptions {
+                    size: 0.10,
+                    method: McsMethod::Range,
+                    block_size: Some(4),
+                    reps,
+                    scheme: ResampleScheme::Stationary,
+                    seed: 0,
+                },
+            )),
+        ] {
+            assert!(
+                m.contains("refusing to allocate") && m.contains("reduce reps"),
+                "reps = {reps}: {m}"
+            );
+        }
+    }
+}
+
 #[test]
 fn spa_refusals_name_the_parameter() {
     let mut g = Gauss::new(6);
@@ -895,7 +951,10 @@ fn spa_refusals_name_the_parameter() {
     // A model identical to the benchmark: constant (zero) loss differential.
     let same = vec![bench.clone(), models[0].clone()];
     let m = err_msg(spa_test(&bench, &same, &o));
-    assert!(m.contains("loss column 0") && m.contains("constant"), "{m}");
+    assert!(
+        m.contains("model_losses column 0") && m.contains("constant"),
+        "{m}"
+    );
 
     // Automatic block length needs enough data.
     let m = err_msg(spa_test(

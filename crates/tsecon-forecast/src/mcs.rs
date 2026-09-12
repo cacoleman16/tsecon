@@ -55,9 +55,23 @@
 //! p-values, elimination order and included set exactly (the fixture
 //! generator asserts the summation orders bit-for-bit before storing a
 //! case), and the seeded [`model_confidence_set`] is pinned at Monte Carlo
-//! tolerance; coverage of the true best model is measured by seeded Monte
-//! Carlo in the crate's property tests. `arch` warns and continues with a
-//! zero standard deviation (identical loss columns); this crate refuses.
+//! tolerance; coverage of the best set is measured by seeded Monte Carlo in
+//! the crate's property tests and cross-checked against `arch`'s own rates
+//! on the same design.
+//!
+//! Duplicated loss columns are degenerate for one statistic and not the
+//! other, and the two are handled differently on purpose. Under
+//! [`McsMethod::Range`] the pairwise bootstrap variance of two identical
+//! columns is exactly zero, so `T_R` between them is 0/0 and the panel is
+//! refused by name. Under [`McsMethod::Max`] nothing is 0/0 — each model is
+//! standardized against the cross-sectional mean, the duplicates share a
+//! statistic and leave the set together in one step with one step p-value —
+//! so the panel is accepted, and the refusal fires only when a remaining
+//! model's bootstrap standard deviation really does collapse to zero. What
+//! `arch 8.0.0` does with the same input is MEASURED by the fixture
+//! generator rather than assumed: `method="R"` warns about the 0/0 division
+//! and then raises `IndexError`, and `method="max"` returns nothing inside a
+//! stated wall-clock and memory budget.
 //!
 //! # References
 //!

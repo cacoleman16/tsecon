@@ -5412,8 +5412,16 @@ White's (2000) Reality Check and Hansen's (2005) test for Superior
     with Hansen's re-centrings; the studentized path is pinned at 1e-12
     against a NumPy transcription of Hansen's formulas on the same
     resamples. The public seeded path lands within 0.05 of arch at 4000
-    replications; size and power are measured by seeded Monte Carlo (see
-    the forecasting model card).
+    replications. Size and power are measured by seeded Monte Carlo: the
+    un-studentized rejection rates under the least favourable null match
+    arch's own on the same design, and power against a dominated benchmark
+    is 0.985 at 5%. `studentize=True` (the default, Hansen's statistic)
+    divides the observed statistic and every bootstrap replicate by the
+    SAME estimated omega_k, which over-rejects in short samples — measured
+    0.123 at a nominal 0.05 with n=200 and AR(0.5) losses, shrinking to
+    0.093 at n=800. No package computes that statistic, so it is measured,
+    not validated; prefer `studentize=False` in a short evaluation sample
+    (see the forecasting model card for the full tables).
 
     Further arguments, with defaults: `block_size` (None: Politis-White),
     `reps` (1000), `bootstrap` ("stationary"; or "circular",
@@ -5460,21 +5468,30 @@ The Hansen-Lunde-Nason (2011) Model Confidence Set: which of `m` models
     A model's MCS p-value is the running maximum of the step p-values along
     the elimination path, so the set at any `size` is `{k : p_MCS(k) >
     size}` (`included`) and the sets are nested in `size`; the p-values do
-    not depend on `size`. The set contains the best model(s) with
-    probability at least `1 - size` asymptotically; a strictly best model is
-    eliminated with vanishing probability.
+    not depend on `size`. Hansen-Lunde-Nason's guarantee — the set contains
+    the best model(s) with probability at least `1 - size` — is ASYMPTOTIC
+    and about the whole best set. Measured on a design with two
+    exactly-equally-best models it holds at about 0.87 against a nominal 0.90
+    and does not improve from n=150 to n=600, matching `arch`'s own rates on
+    the same design; the easier event "a best model is in the set" does hold
+    at the nominal level. The model card has the table.
 
     `block_size=None` uses the Politis-White optimal length of each loss
     column, averaged and rounded (`block_size`, `block_size_auto`). Identical
-    loss columns are refused (their difference has zero bootstrap variance;
-    arch warns and returns NaN there).
+    loss columns are degenerate under `method="R"` only — their pairwise
+    bootstrap variance is exactly zero, so the panel is refused by name —
+    while `method="max"` standardizes against the cross-sectional mean, gives
+    the duplicates one statistic and eliminates them together in one step.
+    `arch` 8.0.0 handles neither: measured, its `method="R"` raises after
+    warning about the 0/0 division and its `method="max"` does not return.
 
     Validation: `arch.bootstrap.MCS` reproduced EXACTLY (mean losses,
     elimination order, included/excluded sets, MCS p-values, the pairwise
     variance matrix) when fed arch's own resample indices; the public seeded
     path reproduces arch's set and lands within 0.05 of its p-values at 4000
-    replications; coverage of the best models is measured by seeded Monte
-    Carlo (see the forecasting model card).
+    replications; coverage of the best set is measured by seeded Monte
+    Carlo and cross-checked against arch's own frequencies on the same
+    design (see the forecasting model card).
 
     Further arguments, with defaults: `size` (0.10), `method` ("R"; or
     "max"), `block_size` (None: Politis-White), `reps` (1000), `bootstrap`

@@ -136,6 +136,75 @@ fn fixture_certifies_its_gaps() {
     assert!(cs.iter().any(|c| c.method == McsMethod::Max));
 }
 
+/// A duplicated loss column is degenerate for `T_R` and NOT for `T_max`, and
+/// the docs say so; this test pins both halves, plus the measurement that
+/// justifies preferring either to the reference. The generator MEASURES what
+/// `arch 8.0.0` does with the same input (`_meta.duplicate_columns`) rather
+/// than asserting it in prose: `method="R"` warns about the 0/0 division and
+/// then raises `IndexError`, `method="max"` returns nothing inside a stated
+/// wall-clock and memory budget.
+#[test]
+fn duplicate_loss_columns_are_refused_under_t_r_and_tied_under_t_max() {
+    let fx = fixture();
+    let dup = &fx["_meta"]["duplicate_columns"];
+    assert_eq!(dup["R"]["raises"].as_str(), Some("IndexError"));
+    assert!(
+        dup["R"]["warnings"]
+            .as_array()
+            .is_some_and(|w| w.iter().any(|x| x.as_str() == Some("RuntimeWarning"))),
+        "the generator must record arch's 0/0 divide warning"
+    );
+    assert_eq!(dup["max"]["completed"].as_bool(), Some(false));
+    assert!(dup["max"]["budget_seconds"].as_u64().unwrap() >= 30);
+
+    // Four columns, two of them identical, so T_max's per-model standard
+    // deviations stay positive and only T_R is 0/0.
+    let mut s = tsecon_rng::Stream::new(4242);
+    let mut col = || -> Vec<f64> { (0..120).map(|_| s.uniform_f64() + 0.25).collect() };
+    let (a, b, c) = (col(), col(), col());
+    let losses = vec![a, b.clone(), b, c];
+    let opts = |method| McsOptions {
+        size: 0.10,
+        method,
+        block_size: Some(4),
+        reps: 200,
+        scheme: ResampleScheme::Stationary,
+        seed: 1,
+    };
+
+    let msg = model_confidence_set(&losses, &opts(McsMethod::Range))
+        .expect_err("T_R between identical columns is 0/0 and must be refused")
+        .to_string();
+    assert!(
+        msg.contains("model_confidence_set(method=\"R\")")
+            && msg.contains("models 1 and 2")
+            && msg.contains("identical"),
+        "{msg}"
+    );
+
+    // T_max: well defined, and the duplicates must leave together, sharing
+    // one step p-value and therefore one MCS p-value.
+    let r = model_confidence_set(&losses, &opts(McsMethod::Max))
+        .expect("T_max standardizes against the cross-sectional mean, so duplicates are fine");
+    assert_eq!(
+        r.mcs_p_values[1], r.mcs_p_values[2],
+        "identical columns must get identical MCS p-values"
+    );
+    let (p1, p2) = (
+        r.elimination_order.iter().position(|&k| k == 1).unwrap(),
+        r.elimination_order.iter().position(|&k| k == 2).unwrap(),
+    );
+    assert_eq!(
+        p1.abs_diff(p2),
+        1,
+        "identical columns must be eliminated in the same step: {:?}",
+        r.elimination_order
+    );
+    assert_eq!(r.step_p_values[p1], r.step_p_values[p2]);
+    assert_eq!(r.n_steps, r.statistics.len());
+    assert!(r.n_steps < r.m - 1, "a tied pair must cost only one step");
+}
+
 #[test]
 fn mcs_reproduces_arch_exactly_on_its_resamples() {
     for c in cases() {
