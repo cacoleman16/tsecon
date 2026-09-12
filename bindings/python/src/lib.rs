@@ -19,6 +19,7 @@ mod ml_trees;
 mod panel_dl;
 mod regime_ci;
 mod termstructure_jsz;
+mod var_cf;
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -13029,5 +13030,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ml_neural::register(m)?;
     girf::register(m)?;
     coint_fmols::register(m)?;
+    var_cf::register(m)?;
     Ok(())
 }

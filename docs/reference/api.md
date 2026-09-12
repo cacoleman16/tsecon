@@ -5554,4 +5554,104 @@ Stock-Watson (1993) / Saikkonen (1991) dynamic OLS (DOLS) of one
     `max_lead` (None), `cov_type` ("unadjusted"), `kernel` ("bartlett"),
     `bandwidth` (None), `bandwidth_rule` (None: "newey-west"), `force_int`
     (False), `df_adjust` (False).
+## Conditional VAR forecasts, residual diagnostics, lag-order selection
+
+### `var_conditional_forecast`
+
+```python
+def var_conditional_forecast(
+    data: _ArrayLike,
+    conditions: Sequence[Sequence[float | None]] | _ArrayLike,
+    lags: int = ...,
+    trend: str = ...,
+    steps: int | None = ...,
+    alpha: float = ...,
+) -> dict[str, Any]:
+```
+
+Conditional (hard-path) VAR forecast: the forecast of every series when
+    some cells of the future path are pinned to given values.
+
+    `conditions` is a nested list with one row per horizon and one entry per
+    series: a number pins that (horizon, series) cell, None (or NaN) leaves
+    it free — a NumPy array with NaN for the free cells or a pandas DataFrame
+    with missing entries works too. Rows beyond `len(conditions)` up to
+    `steps` are free; `steps` defaults to `len(conditions)`. At least one
+    cell must be pinned (the all-free case is `var_forecast`).
+
+    Method: Doan-Litterman-Sims (1984) / Waggoner-Zha (1999) — Gaussian
+    conditioning of the joint forecast-error distribution on the pinned
+    cells, equivalently the unconditional path plus the response to the
+    minimum-norm future shocks that deliver the conditions; identical to a
+    Kalman smoother with the free future cells set missing
+    (Bańbura-Giannone-Lenza 2015), the second golden leg.
+
+    Keys (each path `steps x k`, row h = horizon h + 1): `point` (pinned
+    cells hold their condition exactly), `unconditional` (bitwise
+    `var_forecast(...)["point"]`), `cov` ([h][i][j] conditional covariance
+    per horizon; pinned cells have a zero row/column), `se` (exactly 0 at
+    pinned cells), `unconditional_se`, `lower`/`upper` (innovation
+    uncertainty only, coefficients treated as known), `shocks` (implied
+    reduced-form innovations), `orth_shocks` (Cholesky-orthogonalised in the
+    column order — the only ordering-dependent key), `constrained`,
+    `n_constrained`, `mahalanobis` (squared Sigma-norm of the implied
+    shocks), `mahalanobis_pvalue` (chi2(n_constrained) tail: small means the
+    model is pushed hard), `steps`, `alpha`.
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c"), `steps`
+    (None: `len(conditions)`), `alpha` (0.05).
+
+### `var_diagnostics`
+
+```python
+def var_diagnostics(
+    data: _ArrayLike,
+    lags: int = ...,
+    trend: str = ...,
+    nlags: int = ...,
+) -> dict[str, Any]:
+```
+
+Residual diagnostics of a fitted VAR(p): multivariate Portmanteau
+    (unadjusted and small-sample adjusted, chi2(k^2 (nlags - lags));
+    `nlags` must exceed `lags`), multivariate Jarque-Bera with its skewness
+    and kurtosis components (Cholesky orthogonalisation in the column order,
+    the statsmodels `test_normality` convention; Doornik-Hansen is not
+    provided), and the stability roots.
+
+    Keys: `portmanteau`, `portmanteau_adjusted`, `portmanteau_df`,
+    `portmanteau_pvalue`, `portmanteau_adjusted_pvalue`, `nlags`,
+    `jarque_bera`, `jarque_bera_pvalue`, `jarque_bera_df`, `skewness`,
+    `skewness_pvalue`, `kurtosis`, `kurtosis_pvalue`, `skewness_components`,
+    `kurtosis_components`, `roots` (reciprocal-root moduli, descending;
+    stable iff the last exceeds 1), `eigenvalue_moduli` (companion
+    eigenvalue moduli, descending; stable iff the first is below 1),
+    `is_stable`, `nobs`, `k`, `lags`.
+
+    Matches statsmodels `test_whiteness(adjusted=False/True)`,
+    `test_normality`, `roots`, `is_stable` at 1e-10.
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c"), `nlags` (10).
+
+### `var_select_order`
+
+```python
+def var_select_order(
+    data: _ArrayLike,
+    max_lags: int = ...,
+    trend: str = ...,
+) -> dict[str, Any]:
+```
+
+VAR lag-order selection by AIC/BIC/HQIC/FPE on a common sample
+    (statsmodels `VAR.select_order`): every candidate p is fitted after
+    dropping the first `max_lags - p` rows so the criteria are comparable.
+    Candidates start at p = 0 with `trend="c"` (intercept-only baseline) and
+    at p = 1 with `trend="n"`; ties go to the smaller order.
+
+    Keys: `aic`, `bic`, `hqic`, `fpe` (selected orders), `candidates`,
+    `aic_values`, `bic_values`, `hqic_values`, `fpe_values`, `max_lags`,
+    `trend`.
+
+    Further arguments, with defaults: `max_lags` (8), `trend` ("c").
 

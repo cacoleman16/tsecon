@@ -85,3 +85,4 @@ method fits your problem and how to trust its output.
 | [Structural breaks](model-cards/structural-breaks.md) | `bai_perron`, `sup_f_test` |
 | [Static copulas](model-cards/copulas.md) | `pseudo_obs`, `copula_fit`, `copula_select` |
 | [Cointegrating regressions (FM-OLS / DOLS / CCR)](model-cards/cointegration-regime.md#fmols--dols--ccr--single-equation-cointegrating-regressions) | `fmols`, `dols`, `ccr` |
+| [VAR conditional forecasts & residual diagnostics](model-cards/var-svar.md#conditional-hard-path-forecasts-var_conditional_forecast) | `var_conditional_forecast`, `var_diagnostics`, `var_select_order` |
