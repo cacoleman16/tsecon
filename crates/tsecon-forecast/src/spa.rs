@@ -335,6 +335,31 @@ impl IndexSource<'_> {
     }
 }
 
+/// The largest working set the bootstrap routines will size from user counts,
+/// in `f64` values: 2^28 values is 2 GiB, the same budget the GIRF engine and
+/// the ETS simulated intervals use.
+///
+/// The budget is checked *before* any allocation is attempted, because
+/// `try_reserve` alone is not a portable guard: a request that Linux refuses
+/// outright (its overcommit heuristic rejects it) is handed out lazily by
+/// macOS, and the process is then killed by the kernel when the buffer is
+/// written rather than returning a teaching error. That is exactly how
+/// `reps = 10^12` behaved — refused on Linux, fatal on macOS.
+pub(crate) const MAX_BOOTSTRAP_VALUES: usize = 1 << 28;
+
+/// Reserve `elements` `f64`s for `what`, refusing anything past the budget
+/// before the allocator is asked. `try_reserve` stays as the second line of
+/// defence for a request inside the budget that the machine cannot serve.
+pub(crate) fn budgeted_f64(what: &'static str, elements: usize) -> Result<Vec<f64>, ForecastError> {
+    if elements > MAX_BOOTSTRAP_VALUES {
+        return Err(ForecastError::AllocationRefused { what, elements });
+    }
+    let mut v: Vec<f64> = Vec::new();
+    v.try_reserve_exact(elements)
+        .map_err(|_| ForecastError::AllocationRefused { what, elements })?;
+    Ok(v)
+}
+
 /// Fill a `reps x width` row-major buffer with `fill(indices_b, row_b)`,
 /// budgeting the buffer with `try_reserve` and drawing the indices as the
 /// source dictates. Rows are written by replication index, so the buffer
@@ -356,12 +381,7 @@ where
             what,
             elements: usize::MAX,
         })?;
-    let mut data: Vec<f64> = Vec::new();
-    data.try_reserve_exact(total)
-        .map_err(|_| ForecastError::AllocationRefused {
-            what,
-            elements: total,
-        })?;
+    let mut data = budgeted_f64(what, total)?;
     data.resize(total, 0.0);
     match source {
         IndexSource::Explicit(resamples) => {
@@ -818,21 +838,20 @@ fn spa_core(
     let g = [&g_lower, &g_consistent, &g_upper];
 
     // Replicate maxima under the three re-centrings, in replication order.
-    let mut boot: [Vec<f64>; 3] = [Vec::new(), Vec::new(), Vec::new()];
-    for v in boot.iter_mut() {
-        v.try_reserve_exact(reps)
-            .map_err(|_| ForecastError::AllocationRefused {
-                what: test,
-                elements: reps,
-            })?;
-    }
+    let mut boot: [Vec<f64>; 3] = [
+        budgeted_f64(test, reps)?,
+        budgeted_f64(test, reps)?,
+        budgeted_f64(test, reps)?,
+    ];
     let mut zc: Vec<f64> = Vec::new();
     if keep_zc {
-        zc.try_reserve_exact(reps * m)
-            .map_err(|_| ForecastError::AllocationRefused {
+        let want = reps
+            .checked_mul(m)
+            .ok_or(ForecastError::AllocationRefused {
                 what: test,
-                elements: reps * m,
+                elements: usize::MAX,
             })?;
+        zc = budgeted_f64(test, want)?;
     }
     let studentize = opts.studentize;
     for b in 0..reps {

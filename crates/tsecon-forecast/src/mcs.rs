@@ -244,12 +244,7 @@ fn eliminate_range(
         what: TEST,
         elements: usize::MAX,
     })?;
-    let mut var: Vec<f64> = Vec::new();
-    var.try_reserve_exact(mm)
-        .map_err(|_| ForecastError::AllocationRefused {
-            what: TEST,
-            elements: mm,
-        })?;
+    let mut var = crate::spa::budgeted_f64(TEST, mm)?;
     var.resize(mm, 0.0);
     for b in 0..reps {
         let ms = &rows[b * m..(b + 1) * m];

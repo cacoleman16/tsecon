@@ -83,10 +83,7 @@ jobs:
           python -c "import tsecon, pathlib; assert 'site-packages' in tsecon.__file__, tsecon.__file__; print('testing wheel at', tsecon.__file__)"
           # Run the tests in place so their repo-relative fixture paths
           # (Path(__file__).parents[3] / 'fixtures') resolve correctly.
-          # -v names each test as it starts: the macOS runner SIGKILLs this
-          # step partway through and -q's batched dots cannot say where.
-          # Drop back to -q once the cause is found and fixed.
-          python -m pytest bindings/python/tests -v
+          python -m pytest bindings/python/tests -q
 
   typecheck:
     name: Type-stub check (mypy accepts the stubs)

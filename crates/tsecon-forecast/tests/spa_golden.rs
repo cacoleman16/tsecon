@@ -542,3 +542,45 @@ fn seeded_spa_matches_arch_at_monte_carlo_tolerance() {
         }
     }
 }
+
+/// The bootstrap working set is refused against an explicit budget *before*
+/// the allocator is asked.
+///
+/// `try_reserve` alone is not a portable guard: Linux's overcommit heuristic
+/// refuses a multi-terabyte request outright, while macOS hands the
+/// reservation out lazily and the kernel kills the process when the buffer is
+/// written. That is how `reps = 10^12` behaved — a teaching error on Linux,
+/// SIGKILL on macOS CI. The budget makes the refusal identical everywhere.
+#[test]
+fn the_bootstrap_budget_refuses_before_it_allocates() {
+    let benchmark = [1.0, 0.9, 1.1, 1.05, 0.95, 1.2, 0.85, 1.15];
+    let models: Vec<Vec<f64>> = vec![
+        vec![1.1, 1.0, 0.9, 1.10, 1.00, 0.9, 1.05, 1.00],
+        vec![0.9, 1.1, 1.0, 0.95, 1.05, 1.1, 0.95, 1.05],
+    ];
+    let m = models.len();
+
+    // One value past the 2 GiB budget: must refuse, and must do it quickly,
+    // which is only possible if nothing was allocated or resampled first.
+    let reps = (1usize << 28) / m + 1;
+    let started = std::time::Instant::now();
+    let err = spa_test(
+        &benchmark,
+        &models,
+        &SpaOptions {
+            reps,
+            block_size: Some(3),
+            ..Default::default()
+        },
+    )
+    .expect_err("a count past the budget must be refused");
+    assert!(
+        started.elapsed().as_secs() < 5,
+        "the refusal must precede the work, not follow it"
+    );
+    let text = err.to_string();
+    assert!(
+        text.contains("2 GiB working-set budget") && text.contains("reduce reps"),
+        "the refusal must name the budget and what to change: {text}"
+    );
+}

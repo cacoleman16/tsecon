@@ -692,8 +692,8 @@ impl fmt::Display for ForecastError {
                 f,
                 "{what}: refusing to allocate {elements} f64 values for the \
                  bootstrap buffer (reps x models); the product of the counts \
-                 passed is beyond available memory — reduce reps or the \
-                 number of models"
+                 passed is past the 2 GiB working-set budget — reduce reps or \
+                 the number of models"
             ),
             ForecastError::InvalidResample { rep, detail } => write!(
                 f,

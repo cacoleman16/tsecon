@@ -26,6 +26,7 @@ the generator headers for the honest grading) through the Python surface:
 import json
 import math
 import re
+import time
 from pathlib import Path
 
 import numpy as np
@@ -261,6 +262,30 @@ def test_an_impossible_replication_count_is_refused_not_allocated(reps):
                  lambda: tsecon.model_confidence_set(L, reps=reps, block_size=4)):
         with pytest.raises(ValueError, match=r"refusing to allocate .* reduce reps"):
             call()
+
+
+def test_a_count_just_past_the_budget_is_refused_before_it_is_allocated():
+    """The regression for the macOS CI kill (exit 137).
+
+    The buffer was guarded by `try_reserve` alone, which is not portable:
+    Linux's overcommit heuristic refuses an 8 TB request outright, so
+    `reps=10**12` raised there, while macOS hands the reservation out lazily
+    and the kernel kills the process when `resize` writes to it. Two larger
+    counts in the test above happened to be refused on both.
+
+    So the guard is now an explicit 2^28-value (2 GiB) budget checked before
+    the allocator is asked, and this pins the boundary rather than a count
+    that only some allocators reject: `reps * m` one value past the budget
+    must refuse, promptly, naming the budget. Before the fix this allocated
+    2 GiB on this machine and started 67 million replications.
+    """
+    L = _panel(seed=9)
+    m = L.shape[1] - 1
+    reps = (2 ** 28) // m + 1
+    started = time.monotonic()
+    with pytest.raises(ValueError, match=r"past the 2 GiB working-set budget"):
+        tsecon.spa_test(L[:, 0], L[:, 1:], reps=reps, block_size=4)
+    assert time.monotonic() - started < 5.0, "the refusal must precede the work"
 
 
 def test_the_wrapper_refuses_counts_at_or_beyond_2_48():
