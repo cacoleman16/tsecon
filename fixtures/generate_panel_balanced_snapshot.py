@@ -23,6 +23,8 @@ common shock with a known dynamic response, a weather-like regressor for
 the distributed-lag calls, and a staggered absorbing treatment for LP-DiD.
 """
 import json
+import platform
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -56,11 +58,19 @@ def hexes(seq):
 
 
 out = {
+    "_platform": f"{platform.machine()}-{sys.platform}",
     "_note": (
         "Self-snapshot of the balanced-panel surfaces, captured from the 0.9.0 "
         "build (dde820d) before the observation mask landed. Floats are hex "
         "(float.hex()) so the comparison is bitwise; inputs are stored at full "
-        "precision as plain lists."
+        "precision as plain lists. Bitwise equality holds on the architecture "
+        "that captured it (recorded in `_platform`): another instruction set "
+        "reassociates the same sums differently — arm64 contracts a multiply "
+        "and an add into one FMA where x86-64 rounds twice — so elsewhere the "
+        "test asserts agreement to a few ULP instead. The mask refactor itself "
+        "is pinned bitwise on EVERY platform by "
+        "test_all_ones_mask_is_bit_identical_to_no_mask, which compares two "
+        "calls in the same process."
     ),
     "inputs": {
         "y": y.tolist(),

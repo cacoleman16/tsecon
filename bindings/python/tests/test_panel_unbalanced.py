@@ -14,6 +14,9 @@
   `entities` (an internal gap in the mean-group VAR).
 """
 import json
+import sys
+import platform
+import math
 from pathlib import Path
 
 import numpy as np
@@ -37,6 +40,39 @@ def _dataset(name):
 
 def _hexes(seq):
     return [float(v).hex() for v in np.asarray(seq, dtype=float).ravel()]
+
+
+# The snapshot is bitwise only on the architecture that captured it. arm64
+# contracts a multiply and an add into one FMA where x86-64 rounds twice, so
+# the same within projection differs in the last bit on an Apple-silicon
+# runner. That is a property of the instruction set, not of the mask
+# refactor, which is pinned bitwise on EVERY platform by
+# test_all_ones_mask_is_bit_identical_to_no_mask below (two calls, one
+# process). Elsewhere this test asserts the values still agree to a few ULP,
+# which a real regression in the balanced paths would break.
+_SNAP_ARCH = SNAP.get("_platform", "x86_64-linux")
+_THIS_ARCH = f"{platform.machine()}-{sys.platform}"
+_SNAP_IS_BITWISE = _THIS_ARCH == _SNAP_ARCH
+_ULP_BUDGET = 8
+
+
+def _same(seq, want, what):
+    """Bitwise where the snapshot's architecture is ours, else within `_ULP_BUDGET`."""
+    got = _hexes(seq)
+    if _SNAP_IS_BITWISE:
+        assert got == want, what
+        return
+    assert len(got) == len(want), f"{what}: {len(got)} values against {len(want)}"
+    for i, (g, w) in enumerate(zip(got, want)):
+        gv, wv = float.fromhex(g), float.fromhex(w)
+        if gv == wv:
+            continue
+        ulp = math.ulp(max(abs(gv), abs(wv)))
+        assert abs(gv - wv) <= _ULP_BUDGET * ulp, (
+            f"{what}[{i}]: {gv!r} against the snapshot's {wv!r} — "
+            f"{abs(gv - wv) / ulp:.1f} ULP apart on {_THIS_ARCH}, past the "
+            f"{_ULP_BUDGET} ULP the snapshot's {_SNAP_ARCH} capture allows"
+        )
 
 
 # --------------------------------------------------------------- parity
@@ -140,41 +176,41 @@ def test_balanced_calls_are_bit_identical_to_the_0_9_0_snapshot():
     for key, rec in SNAP["panel_fe"].items():
         r = tsecon.panel_fe(y, np.array([temp, x2]), **rec["kwargs"])
         for k in ("params", "bse", "tvalues"):
-            assert _hexes(r[k]) == rec[k], f"panel_fe/{key}/{k}"
+            _same(r[k], rec[k], f"panel_fe/{key}/{k}")
     for key, rec in SNAP["panel_distributed_lag"].items():
         kw = dict(rec["kwargs"])
         if "eval_points" in kw:
             kw["eval_points"] = np.array(kw["eval_points"])
         r = tsecon.panel_distributed_lag(y, np.array([temp]), **kw)
-        assert _hexes(r["params"]) == rec["params"], key
-        assert _hexes(r["bse"]) == rec["bse"], key
-        assert _hexes(np.asarray(r["cov"])) == rec["cov"], key
-        assert _hexes(r["cumulative_effect"]) == rec["cumulative_effect"], key
-        assert _hexes(r["cumulative_se"]) == rec["cumulative_se"], key
+        _same(r["params"], rec["params"], f"panel_distributed_lag/{key}/params")
+        _same(r["bse"], rec["bse"], f"panel_distributed_lag/{key}/bse")
+        _same(np.asarray(r["cov"]), rec["cov"], f"panel_distributed_lag/{key}/cov")
+        _same(r["cumulative_effect"], rec["cumulative_effect"], f"panel_distributed_lag/{key}/cumulative_effect")
+        _same(r["cumulative_se"], rec["cumulative_se"], f"panel_distributed_lag/{key}/cumulative_se")
         assert (r["nobs"], r["df_resid"]) == (rec["nobs"], rec["df_resid"]), key
         if "marginal_effect" in rec:
             for k in ("marginal_effect", "marginal_se", "turning_point", "turning_point_se"):
-                assert _hexes(r[k]) == rec[k], f"{key}/{k}"
+                _same(r[k], rec[k], f"panel_distributed_lag/{key}/{k}")
     for key, rec in SNAP["panel_lp"].items():
         r = tsecon.panel_lp(y, shock, **rec["kwargs"])
-        assert _hexes(r["irf"]) == rec["irf"], key
-        assert _hexes(r["se"]) == rec["se"], key
+        _same(r["irf"], rec["irf"], f"panel_lp/{key}/irf")
+        _same(r["se"], rec["se"], f"panel_lp/{key}/se")
         assert [int(v) for v in r["nobs"]] == rec["nobs"], key
     for key, rec in SNAP["lp_did"].items():
         r = tsecon.lp_did(y, treat, **rec["kwargs"])
-        assert _hexes(r["coef"]) == rec["coef"], key
-        assert _hexes(r["se"]) == rec["se"], key
+        _same(r["coef"], rec["coef"], f"lp_did/{key}/coef")
+        _same(r["se"], rec["se"], f"lp_did/{key}/se")
         assert [int(v) for v in r["nobs"]] == rec["nobs"], key
         assert [int(v) for v in r["n_switchers"]] == rec["n_switchers"], key
         if "pooled_post" in rec:
-            assert _hexes([r["pooled_post_att"], r["pooled_post_se"]]) == rec["pooled_post"], key
-            assert _hexes([r["pooled_pre_att"], r["pooled_pre_se"]]) == rec["pooled_pre"], key
+            _same([r["pooled_post_att"], r["pooled_post_se"]], rec["pooled_post"], f"lp_did/{key}/pooled_post")
+            _same([r["pooled_pre_att"], r["pooled_pre_se"]], rec["pooled_pre"], f"lp_did/{key}/pooled_pre")
     rec = SNAP["mean_group_var"]["lag1"]
     r = tsecon.mean_group_var(entities, **rec["kwargs"])
-    assert _hexes(r["intercept"]) == rec["intercept"]
-    assert _hexes(np.asarray(r["coefs"])) == rec["coefs"]
-    assert _hexes(np.asarray(r["orth_irfs"])) == rec["orth_irfs"]
-    assert _hexes(r["irf_path_se"]) == rec["irf_path_se"]
+    _same(r["intercept"], rec["intercept"], "mean_group_var/intercept")
+    _same(np.asarray(r["coefs"]), rec["coefs"], "mean_group_var/coefs")
+    _same(np.asarray(r["orth_irfs"]), rec["orth_irfs"], "mean_group_var/orth_irfs")
+    _same(r["irf_path_se"], rec["irf_path_se"], "mean_group_var/irf_path_se")
 
 
 def test_all_ones_mask_is_bit_identical_to_no_mask():
