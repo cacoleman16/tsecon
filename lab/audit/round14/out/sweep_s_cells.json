@@ -1038,7 +1038,7 @@
 "id": "data:short_cols",
 "outcome": "ok",
 "nonfinite": 14,
-"seconds": 0.002,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
@@ -1075,7 +1075,7 @@
 "id": "data:dup_row",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.003,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -1114,14 +1114,14 @@
 "id": "p:1",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.003,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
 "id": "p:2",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.003,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -1336,7 +1336,7 @@
 "id": "size:1e-300",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.002,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
@@ -1350,7 +1350,7 @@
 "id": "size:True",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.002,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
@@ -1636,14 +1636,14 @@
 "id": "seed:2^47",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.011,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
 "id": "seed:2^63",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.007,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -1658,7 +1658,7 @@
 "id": "seed:True",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.01,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -1776,8 +1776,8 @@
 "id": "histories:2",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.009,
-"rss_mb": 0.1
+"seconds": 0.0,
+"rss_mb": 0.0
 },
 {
 "id": "histories:neg1",
@@ -1791,7 +1791,7 @@
 "id": "histories:2^31",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.008,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -1917,7 +1917,7 @@
 "id": "data:short_rows",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.009,
+"seconds": 0.007,
 "rss_mb": 0.0
 },
 {
@@ -1940,7 +1940,7 @@
 "id": "data:int_array",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.016,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -1963,7 +1963,7 @@
 "id": "data:dup_row",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.013,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2002,14 +2002,14 @@
 "id": "p:1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.01,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
 "id": "p:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.006,
 "rss_mb": 0.0
 },
 {
@@ -2087,7 +2087,7 @@
 "id": "threshold_index:0",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2149,7 +2149,7 @@
 "id": "threshold_index:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.006,
 "rss_mb": 0.0
 },
 {
@@ -2188,7 +2188,7 @@
 "id": "delay:1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2242,7 +2242,7 @@
 "id": "delay:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2321,7 +2321,7 @@
 "id": "trim:1e-300",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2424,7 +2424,7 @@
 "id": "delays:[True]",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
@@ -2439,7 +2439,7 @@
 "id": "delays:int_array",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
@@ -2517,14 +2517,14 @@
 "id": "shock_var:0",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.007,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
 "id": "shock_var:1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
@@ -2634,7 +2634,7 @@
 "id": "size:neg1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2655,7 +2655,7 @@
 "id": "size:1e-300",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.004,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
@@ -2669,7 +2669,7 @@
 "id": "size:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
@@ -2732,21 +2732,21 @@
 "id": "horizon:0",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.001,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
 "id": "horizon:1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.001,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
 "id": "horizon:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.002,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
@@ -2793,7 +2793,7 @@
 "id": "horizon:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.001,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -2919,21 +2919,21 @@
 "id": "seed:0",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
 "id": "seed:1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.007,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
 "id": "seed:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.007,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2948,7 +2948,7 @@
 "id": "seed:2^31",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2962,7 +2962,7 @@
 "id": "seed:2^63",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -3055,7 +3055,7 @@
 "id": "histories:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.001,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -3070,7 +3070,7 @@
 "id": "histories:2^31",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -3115,7 +3115,7 @@
 "id": "histories:none",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -3236,7 +3236,7 @@
 "id": "yields:short_rows",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.131,
+"seconds": 0.076,
 "rss_mb": 0.0
 },
 {
@@ -3283,7 +3283,7 @@
 "id": "yields:dup_row",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.176,
+"seconds": 0.077,
 "rss_mb": 0.0
 },
 {
@@ -3396,7 +3396,7 @@
 "exc": "TypeError",
 "msg": "jsz_fit: maturities=array([1., 2.]) is of type numpy.float64, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'numpy.float64' object cannot be interpreted as an integer",
 "seconds": 0.0,
-"rss_mb": 0.1
+"rss_mb": 0.0
 },
 {
 "id": "maturities:nested",
@@ -3457,7 +3457,7 @@
 "id": "n_factors:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.042,
+"seconds": 0.029,
 "rss_mb": 0.0
 },
 {
@@ -3591,14 +3591,14 @@
 "id": "periods_per_year:int",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.104,
+"seconds": 0.076,
 "rss_mb": 0.0
 },
 {
 "id": "periods_per_year:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.18,
+"seconds": 0.072,
 "rss_mb": 0.0
 },
 {
@@ -3701,14 +3701,14 @@
 "id": "w:int_array",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.094,
+"seconds": 0.069,
 "rss_mb": 0.0
 },
 {
 "id": "w:valid",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.091,
+"seconds": 0.07,
 "rss_mb": 0.0
 },
 {
@@ -3731,7 +3731,7 @@
 "id": "n_starts:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.23,
+"seconds": 0.078,
 "rss_mb": 0.0
 },
 {
@@ -3810,7 +3810,7 @@
 "id": "seed:0",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.091,
+"seconds": 0.077,
 "rss_mb": 0.0
 },
 {
@@ -3824,7 +3824,7 @@
 "id": "seed:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.076,
+"seconds": 0.074,
 "rss_mb": 0.0
 },
 {
@@ -3839,7 +3839,7 @@
 "id": "seed:2^31",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.104,
+"seconds": 0.08,
 "rss_mb": 0.0
 },
 {
@@ -3853,7 +3853,7 @@
 "id": "seed:2^63",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.078,
+"seconds": 0.076,
 "rss_mb": 0.0
 },
 {
@@ -3868,7 +3868,7 @@
 "id": "seed:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.082,
+"seconds": 0.079,
 "rss_mb": 0.0
 },
 {
@@ -3883,7 +3883,7 @@
 "id": "seed:none",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.079,
+"seconds": 0.076,
 "rss_mb": 0.0
 },
 {
@@ -4708,7 +4708,7 @@
 "id": "regressors:bool_array",
 "outcome": "refusal",
 "exc": "ValueError",
-"msg": "within (fixed-effects) OLS: the requested effects absorb one of the regressors entirely (constant within every entity, common to every entity in each period under time effects, or an exact linear trend per entity under entity trends), so no within variation remains to identify its coefficient: the w",
+"msg": "within (fixed-effects) OLS: the requested effects absorb a regressor entirely \u2014 one column of regressors is constant within every entity, common to every entity in each period under time effects, or an exact linear trend per entity under entity trends \u2014 so no within variation remains to identify its",
 "seconds": 0.0,
 "rss_mb": 0.0
 },
@@ -4769,7 +4769,7 @@
 "id": "lags:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.0,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
