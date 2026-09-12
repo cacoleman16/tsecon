@@ -543,13 +543,17 @@ fn malformed_input_raises_teaching_errors() {
         girf(&ToyTvar, &hist, &o),
         Err(VarError::InvalidParameter { name: "bands", .. })
     ));
-    // Absurd draw counts are refused before any allocation.
+    // Absurd draw counts are refused before any allocation (the memory
+    // budget, 0.10.0: the refusal now carries the counts and the budget
+    // instead of a bare InvalidArgument).
     let mut o = ok.clone();
     o.n_draws = 1 << 40;
-    assert!(matches!(
-        girf(&ToyTvar, &hist, &o),
-        Err(VarError::InvalidArgument { .. })
-    ));
+    let err = girf(&ToyTvar, &hist, &o).unwrap_err();
+    assert!(matches!(err, VarError::MemoryBudget { .. }), "{err}");
+    let text = err.to_string();
+    for name in ["n_draws", "horizon", "histories", "budget"] {
+        assert!(text.contains(name), "{text}");
+    }
 
     // An explosive model overflows: refused, never a NaN response.
     let mut o = ok.clone();

@@ -64,7 +64,7 @@ pub use fevd::Fevd;
 pub use forecast::ForecastInterval;
 pub use girf::{
     girf, sample_histories, subsample_indices, var_girf, Girf, GirfModel, GirfOptions, GirfShock,
-    LinearVarModel,
+    LinearVarModel, MEMORY_BUDGET_BYTES,
 };
 pub use irf::{ma_rep, Irf};
 pub use irf_asymptotic::irf_asymptotic_se;

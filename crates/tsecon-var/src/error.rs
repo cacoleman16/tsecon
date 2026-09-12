@@ -35,6 +35,18 @@ pub enum VarError {
         /// Description of the domain violation.
         what: &'static str,
     },
+    /// The working set a simulation would allocate exceeds the engine's
+    /// memory budget, or the allocator refused it (a refusal is an error,
+    /// never a process abort). Carries the counts that multiplied into
+    /// the request so the message can name them.
+    MemoryBudget {
+        /// Which engine and which parameters size the working set.
+        what: &'static str,
+        /// Bytes the request would need.
+        bytes: u128,
+        /// The engine's budget in bytes.
+        budget: usize,
+    },
     /// A numeric argument was outside its admissible domain. Carries the
     /// offending value so the message can name it.
     InvalidParameter {
@@ -88,6 +100,19 @@ impl fmt::Display for VarError {
                 got,
             } => write!(f, "{what} (expected {expected}, got {got})"),
             Self::InvalidArgument { what } => write!(f, "{what}"),
+            Self::MemoryBudget {
+                what,
+                bytes,
+                budget,
+            } => write!(
+                f,
+                "{what}: the working set would need {bytes} bytes ({:.2} GiB), beyond the \
+                 engine's memory budget of {budget} bytes ({:.2} GiB) — or the allocator \
+                 refused it; reduce n_draws, the horizon, or the number of histories \
+                 (the budget is a fixed constant of the engine, not a machine probe)",
+                *bytes as f64 / f64::from(1u32 << 30),
+                *budget as f64 / f64::from(1u32 << 30)
+            ),
             Self::InvalidParameter {
                 name,
                 value,
@@ -125,10 +150,10 @@ impl fmt::Display for VarError {
                 let per_eq = n_trend + neqs * lags;
                 write!(
                     f,
-                    "VAR({lags}) on k={neqs} series needs at least {needed} rows but got \
-                     {got}: lagging consumes {lags} rows and each equation then has \
-                     n_trend + k*lags = {per_eq} regressors, which leaves no residual \
-                     degrees of freedom. {}",
+                    "data has {got} rows but a VAR with lags = p = {lags} on its k={neqs} \
+                     series needs at least {needed}: lagging consumes {lags} rows and each \
+                     equation then has n_trend + k*lags = {per_eq} regressors, which leaves \
+                     no residual degrees of freedom. {}",
                     lag_hint(*needed, *got, *lags, *neqs, *n_trend)
                 )
             }

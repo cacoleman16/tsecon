@@ -70,6 +70,7 @@ pub(crate) fn ols_qr(cols: &[Vec<f64>], y: &[f64], what: &'static str) -> Result
     debug_assert!(cols.iter().all(|c| c.len() == n));
     if k == 0 || n < k + 1 {
         return Err(RegimeError::InsufficientData {
+            what,
             needed: k + 1,
             got: n,
         });
@@ -272,8 +273,8 @@ impl Scan {
             }
         }
         let chol_total = cholesky(&xtx_total, k).ok_or(RegimeError::Singular {
-            what: "the linear AR design X'X (is the series constant, or p too \
-                   large for the sample?)",
+            what: "the linear AR design X'X of y (is y constant, or p too large \
+                   for the sample?)",
         })?;
 
         let mut order: Vec<usize> = (0..n).collect();
@@ -319,13 +320,13 @@ impl Scan {
                 }
                 let cl = cholesky(&lo, k).ok_or(RegimeError::Singular {
                     what: "a low-regime design X'X at a threshold candidate \
-                           (a near-constant segment of the series makes the \
-                           regime regression collinear)",
+                           (a near-constant segment of y makes the regime \
+                           regression collinear)",
                 })?;
                 let ch = cholesky(&hi, k).ok_or(RegimeError::Singular {
                     what: "a high-regime design X'X at a threshold candidate \
-                           (a near-constant segment of the series makes the \
-                           regime regression collinear)",
+                           (a near-constant segment of y makes the regime \
+                           regression collinear)",
                 })?;
                 cand_nlow.push(nlow);
                 cand_gamma.push(design.z[row]);
@@ -336,6 +337,9 @@ impl Scan {
 
         if cand_gamma.is_empty() {
             return Err(RegimeError::InsufficientData {
+                what: "the threshold search over y (no candidate threshold leaves both \
+                       regimes at least max(p + 2, ceil(trim n)) observations — reduce \
+                       p, delay / delays or trim, or supply a longer series)",
                 needed: 2 * min_regime,
                 got: n,
             });
@@ -449,7 +453,7 @@ fn validate_common(y: &[f64], p: usize, trim: f64) -> Result<(), RegimeError> {
     }
     if !y.is_empty() && y.iter().all(|&v| v == y[0]) {
         return Err(RegimeError::InvalidSpec {
-            what: "the series is constant: a threshold autoregression needs \
+            what: "y is constant: a threshold autoregression needs \
                    variation in the threshold variable y_{t-d}",
         });
     }
@@ -462,7 +466,8 @@ fn validate_delay(delay: usize) -> Result<(), RegimeError> {
             name: "delay",
             value: 0.0,
             requirement: "delay >= 1 (the threshold variable is the lagged \
-                          value y_{t-delay})",
+                          value y_{t-delay}; every entry of delays is a \
+                          candidate delay)",
         });
     }
     Ok(())
@@ -475,6 +480,9 @@ fn check_length(t: usize, start: usize, k: usize, trim: f64) -> Result<(), Regim
     let min_regime = (k + 1).max((trim * n as f64).ceil() as usize);
     if n < 2 * min_regime {
         return Err(RegimeError::InsufficientData {
+            what: "y under the requested p, delay / delays and trim (after the \
+                   max(p, delay) start-up rows the sample must hold two regimes of \
+                   max(p + 2, ceil(trim n)) observations each; counts are rows of y)",
             needed: start + 2 * min_regime,
             got: t,
         });
