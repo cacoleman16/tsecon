@@ -283,6 +283,66 @@ pub enum ForecastError {
         /// The base forecaster's own error message.
         message: String,
     },
+    /// An argument of a multiple-comparison procedure (`spa_test`,
+    /// `model_confidence_set`, `stepm_test`) violates its constraint.
+    InvalidMultipleComparisonParam {
+        /// Which procedure rejected the argument.
+        test: &'static str,
+        /// The offending parameter name.
+        what: &'static str,
+        /// The offending value, rendered.
+        value: String,
+        /// Human-readable statement of the violated constraint.
+        requirement: String,
+    },
+    /// A loss panel is ragged: column `index` does not have the common
+    /// length `expected`.
+    RaggedLosses {
+        /// Which input holds the ragged column.
+        what: &'static str,
+        /// The offending column index.
+        index: usize,
+        /// The length every column must have.
+        expected: usize,
+        /// The length of the offending column.
+        actual: usize,
+    },
+    /// A loss column (or loss differential) is constant over the sample, so
+    /// its bootstrap variance is zero and every studentized quantity built
+    /// on it is 0/0.
+    ConstantLossColumn {
+        /// Which procedure hit the constant column.
+        what: &'static str,
+        /// The offending column index.
+        index: usize,
+    },
+    /// The bootstrap variance that standardizes a loss difference is zero:
+    /// two models have identical losses (`other = Some(j)`), or a model's
+    /// centred bootstrap mean is identically zero (`other = None`).
+    ZeroBootstrapVariance {
+        /// Which procedure hit the zero variance.
+        what: &'static str,
+        /// The model index involved.
+        model: usize,
+        /// The second model when the variance is of a pairwise difference.
+        other: Option<usize>,
+    },
+    /// A bootstrap buffer whose size is a product of user counts could not
+    /// be reserved (`try_reserve` refused, or the element count overflowed).
+    AllocationRefused {
+        /// Which buffer was refused.
+        what: &'static str,
+        /// The number of `f64` elements requested.
+        elements: usize,
+    },
+    /// An explicit resample index array (the `*_with_indices` entry points)
+    /// is malformed: wrong length, or an index at or beyond the sample size.
+    InvalidResample {
+        /// Which replication's index array is malformed.
+        rep: usize,
+        /// What was wrong with it.
+        detail: String,
+    },
     /// An error propagated from the `tsecon-bootstrap` resampling engine
     /// (used for EnbPI's bootstrap index draws).
     Bootstrap(BootstrapError),
@@ -575,6 +635,70 @@ impl fmt::Display for ForecastError {
             ForecastError::BaseForecaster { message } => {
                 write!(f, "conformal base forecaster failed: {message}")
             }
+            ForecastError::InvalidMultipleComparisonParam {
+                test,
+                what,
+                value,
+                requirement,
+            } => write!(
+                f,
+                "{test}: {what} = {value} is invalid: requires {requirement}"
+            ),
+            ForecastError::RaggedLosses {
+                what,
+                index,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "{what}: column {index} has {actual} observations but every \
+                 loss column must be index-aligned over the same {expected} \
+                 evaluation periods; losses are compared period by period, so \
+                 a ragged panel has no common evaluation sample — evaluate \
+                 every model at the same forecast origins (a rectangular \
+                 `backtest` grid) before comparing"
+            ),
+            ForecastError::ConstantLossColumn { what, index } => write!(
+                f,
+                "{what}: model_losses column {index} has a loss \
+                 differential against benchmark_losses that is constant over \
+                 the evaluation sample, so its bootstrap variance is exactly \
+                 zero and the studentized statistic is 0/0. A model whose \
+                 losses equal the benchmark's in every period is the \
+                 benchmark; drop that column from model_losses"
+            ),
+            ForecastError::ZeroBootstrapVariance { what, model, other } => match other {
+                Some(j) => write!(
+                    f,
+                    "{what}: the bootstrap variance of the mean loss \
+                     difference between models {model} and {j} is exactly \
+                     zero — their losses are identical in every period, so \
+                     the range statistic between them is 0/0 (arch raises \
+                     here too). Remove the duplicate column from `losses`"
+                ),
+                None => write!(
+                    f,
+                    "{what}: the bootstrap standard deviation of model \
+                     {model}'s centred mean loss is exactly zero, so its \
+                     T_max statistic is 0/0. This happens when the remaining \
+                     models' losses are identical in every period (a \
+                     duplicated column in `losses`), or when the evaluation \
+                     sample is too short to resample; remove the duplicate \
+                     or supply more periods"
+                ),
+            },
+            ForecastError::AllocationRefused { what, elements } => write!(
+                f,
+                "{what}: refusing to allocate {elements} f64 values for the \
+                 bootstrap buffer (reps x models); the product of the counts \
+                 passed is beyond available memory — reduce reps or the \
+                 number of models"
+            ),
+            ForecastError::InvalidResample { rep, detail } => write!(
+                f,
+                "resamples[{rep}] is invalid: {detail}; every explicit \
+                 resample must hold exactly n indices, each in 0..n"
+            ),
             ForecastError::Bootstrap(e) => write!(f, "bootstrap error: {e}"),
             ForecastError::Stats(e) => write!(f, "distribution error: {e}"),
             ForecastError::Hac(e) => write!(f, "long-run-variance error: {e}"),

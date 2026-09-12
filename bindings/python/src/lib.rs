@@ -11,6 +11,7 @@ use pyo3::types::{PyDict, PyList};
 mod ml_neural;
 
 mod coint_fmols;
+mod forecast_mcs;
 mod girf;
 mod ml_convex;
 mod ml_kernel;
@@ -13031,5 +13032,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     girf::register(m)?;
     coint_fmols::register(m)?;
     var_cf::register(m)?;
+    forecast_mcs::register(m)?;
     Ok(())
 }
