@@ -930,6 +930,7 @@ dependencies = [
  "serde_json",
  "tsecon-bootstrap",
  "tsecon-diag",
+ "tsecon-hac",
  "tsecon-linalg",
  "tsecon-rng",
  "tsecon-stats",

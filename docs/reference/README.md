@@ -84,3 +84,4 @@ method fits your problem and how to trust its output.
 | [Functional shocks (FVAR/FLP)](model-cards/functional-shocks.md) | `functional_pca`, `flp`, `flp_scenario`, `fvar_scenario` |
 | [Structural breaks](model-cards/structural-breaks.md) | `bai_perron`, `sup_f_test` |
 | [Static copulas](model-cards/copulas.md) | `pseudo_obs`, `copula_fit`, `copula_select` |
+| [Cointegrating regressions (FM-OLS / DOLS / CCR)](model-cards/cointegration-regime.md#fmols--dols--ccr--single-equation-cointegrating-regressions) | `fmols`, `dols`, `ccr` |

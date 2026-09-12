@@ -40,6 +40,14 @@
 //!   workflow scores entries with.
 //! * [`engle_granger`] — the Engle-Granger (1987) two-step residual-based
 //!   test, delegating the residual unit-root step to `tsecon-diag`'s ADF.
+//! * [`fmols`] / [`dols`] / [`ccr`] — single-equation estimators of one
+//!   cointegrating vector with asymptotically valid (mixed-normal)
+//!   inference: Phillips-Hansen (1990) fully modified OLS, Stock-Watson
+//!   (1993) dynamic OLS with lead/lag selection by information criterion,
+//!   and Park (1992) canonical cointegrating regression, all in the
+//!   conventions of `arch.unitroot.cointegration` (golden fixture
+//!   `fixtures/fmols.json`) with the kernel weights and Andrews plug-in
+//!   constants of `tsecon-hac`.
 //! * [`threshold_vecm`] / [`hansen_seo_test`] — the Hansen-Seo (2002)
 //!   two-regime **threshold VECM** (threshold cointegration): concentrated
 //!   MLE by grid search over the cointegrating vector and the threshold on
@@ -57,8 +65,10 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod critvals;
+pub mod dols;
 pub mod engle_granger;
 pub mod error;
+pub mod fmols;
 pub mod johansen;
 mod linalg;
 pub mod ou;
@@ -66,13 +76,20 @@ pub mod tvecm;
 pub mod vecm;
 
 pub use critvals::{critical_values, DetOrder};
+pub use dols::{dols, DolsCovType, DolsIc, DolsOptions, DolsResult};
 pub use engle_granger::{engle_granger, EngleGrangerResult, EngleGrangerTrend};
 pub use error::CointError;
+pub use fmols::{
+    automatic_bandwidth, ccr, fmols, kernel_code, long_run_covariance, parse_kernel, BandwidthRule,
+    CointRegEstimator, CointRegOptions, CointRegResult, CointTrend, LongRunCovariance,
+};
 pub use johansen::{johansen, JohansenResult, SignificanceLevel};
 pub use ou::{ou_fit, spread_zscore, OuFit};
 pub use tvecm::{hansen_seo_test, threshold_vecm, HansenSeoTest, TvecmResult};
 pub use vecm::{fit_vecm, fit_vecm_det, fit_vecm_seasonal, VecmDeterministic, VecmResult};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
-// backend) so downstream crates see one faer version.
+// backend) so downstream crates see one faer version, and the HAC layer
+// whose `Kernel` the cointegrating regressions take.
+pub use tsecon_hac;
 pub use tsecon_linalg;
