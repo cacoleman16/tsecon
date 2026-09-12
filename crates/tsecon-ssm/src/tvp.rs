@@ -257,14 +257,14 @@ pub fn tvp_regression(y: &[f64], x: &[Vec<f64>], opts: &TvpOptions) -> Result<Tv
                 }
             )));
         }
-        if !(fixed[0] > 0.0) || !fixed[0].is_finite() {
+        if !(fixed[0].is_finite() && fixed[0] > 0.0) {
             return Err(invalid(format!(
                 "fixed_params[0] = {} (sigma2_eps) must be a positive finite number",
                 fixed[0]
             )));
         }
         for (i, &v) in fixed.iter().enumerate().skip(1) {
-            if !(v >= 0.0) || !v.is_finite() {
+            if !(v.is_finite() && v >= 0.0) {
                 return Err(invalid(format!(
                     "fixed_params[{i}] = {v} ({}) must be a finite variance >= 0",
                     param_names[i]
@@ -294,7 +294,7 @@ pub fn tvp_regression(y: &[f64], x: &[Vec<f64>], opts: &TvpOptions) -> Result<Tv
 
     let observed: Vec<f64> = y.iter().copied().filter(|v| v.is_finite()).collect();
     let s = variance(&observed).sqrt();
-    if !(s > 0.0) || !s.is_finite() {
+    if !(s.is_finite() && s > 0.0) {
         return Err(invalid(
             "y is constant (standard deviation 0): the observation variance would be \
              estimated at zero and the likelihood is unbounded"
@@ -320,7 +320,7 @@ pub fn tvp_regression(y: &[f64], x: &[Vec<f64>], opts: &TvpOptions) -> Result<Tv
         .map(|&t| y_s[t] - cols_s.iter().zip(&beta).map(|(c, b)| c[t] * b).sum::<f64>())
         .collect();
     let mut v_r = variance(&resid);
-    if !(v_r > 0.0) || !v_r.is_finite() {
+    if !(v_r.is_finite() && v_r > 0.0) {
         v_r = 1.0;
     }
     let ladder = [1.0, 0.01, 100.0, 1e-4, 1e4];

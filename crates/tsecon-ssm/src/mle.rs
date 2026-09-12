@@ -276,7 +276,7 @@ where
             }
         })
         .collect();
-    if h.iter().any(|&v| !(v > 0.0) || !v.is_finite()) {
+    if h.iter().any(|&v| !(v.is_finite() && v > 0.0)) {
         return se;
     }
     let m = free.len();
@@ -339,7 +339,7 @@ pub(crate) fn invert_symmetric(a: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
                 piv = r;
             }
         }
-        if !(best > 0.0) || !best.is_finite() {
+        if !(best.is_finite() && best > 0.0) {
             return None;
         }
         m.swap(col, piv);

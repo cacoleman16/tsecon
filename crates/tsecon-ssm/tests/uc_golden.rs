@@ -775,8 +775,8 @@ fn tvp_mle_reaches_both_optimizers_and_flags_the_true_zero_variance() {
     assert!(!fit.pile_up[0] && !fit.pile_up[1]);
     assert_params_close(&fit.params[..3], &p_ref[..3], 1.0, "tvp params");
     let se_ref = as_f64_vec(&best["se_conditional"]);
-    for i in 0..3 {
-        assert_rel_close(fit.se[i], se_ref[i], TOL_SE, &format!("tvp se[{i}]"));
+    for (i, e) in se_ref.iter().enumerate().take(3) {
+        assert_rel_close(fit.se[i], *e, TOL_SE, &format!("tvp se[{i}]"));
     }
     let want: Vec<bool> = best["at_boundary"]
         .as_array()

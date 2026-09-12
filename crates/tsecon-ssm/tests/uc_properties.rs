@@ -162,13 +162,19 @@ fn simulate_tvp(rng: &mut Lcg, n: usize, q: &[f64], s2_eps: f64) -> (Vec<f64>, V
 
 /// Pile-up: with constant true coefficients the TVP variance MLE lands on
 /// zero in a large share of samples (Stock & Watson 1998) and is flagged;
-/// with clearly moving coefficients it (almost) never is.
+/// with clearly moving coefficients it (almost) never is. The recovery
+/// claim is about the MEDIAN estimate across seeds: the MLE of a
+/// random-walk variance is severely attenuated in individual samples of
+/// this length — at `T = 200` with a true `0.05` the draws here run from
+/// well under a hundredth of the truth to about twice it — which is the
+/// estimator's documented weakness, not a defect.
 #[test]
 fn tvp_pile_up_flags_constant_coefficients_and_not_moving_ones() {
     let (n, seeds) = (200usize, 24u64);
     let mut flagged_const = 0usize;
     let mut flagged_moving = 0usize;
     let mut total = 0usize;
+    let mut moving_est: Vec<f64> = Vec::new();
     for seed in 0..seeds {
         let mut rng = Lcg::new(9000 + seed);
         let (y, x) = simulate_tvp(&mut rng, n, &[0.0, 0.0], 1.0);
@@ -179,19 +185,32 @@ fn tvp_pile_up_flags_constant_coefficients_and_not_moving_ones() {
         let fit2 = tvp_regression(&y2, &x2, &TvpOptions::default()).unwrap();
         flagged_moving += fit2.pile_up.iter().filter(|b| **b).count();
         total += 2;
-        // The estimated variances are in the right order of magnitude
-        // when the coefficients move.
+        // Every estimate is a positive, finite number; the MLE of a
+        // random-walk variance is badly attenuated in samples of this
+        // length (Stock & Watson 1998), so the recovery claim below is
+        // about the MEDIAN across seeds, not about each draw.
         assert!(
-            fit2.sigma2_beta.iter().all(|&v| v > 0.005 && v < 0.3),
+            fit2.sigma2_beta.iter().all(|&v| v > 0.0 && v.is_finite()),
             "seed {seed}: {:?}",
             fit2.sigma2_beta
         );
+        moving_est.extend(fit2.sigma2_beta.iter().copied());
     }
     let (fc, fm) = (
         flagged_const as f64 / total as f64,
         flagged_moving as f64 / total as f64,
     );
-    eprintln!("tvp pile-up share: constant coefficients {fc:.3}, moving (q=0.05) {fm:.3} over {total} coefficients");
+    let med = median(&mut moving_est.clone());
+    let lo = moving_est.iter().copied().fold(f64::INFINITY, f64::min);
+    let hi = moving_est.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    eprintln!(
+        "tvp pile-up share: constant coefficients {fc:.3}, moving (q=0.05) {fm:.3} over {total} coefficients; \
+         moving estimates min {lo:.4} median {med:.4} max {hi:.4} (truth 0.05)"
+    );
+    assert!(
+        med > 0.02 && med < 0.12,
+        "median estimate of a true 0.05 random-walk variance: {med}"
+    );
     assert!(
         fc >= 0.5,
         "constant coefficients should pile up at zero often: {fc}"
@@ -253,17 +272,17 @@ fn tvp_zero_state_variance_is_expanding_window_ols() {
                 *v /= d;
             }
             let pr = a[c].clone();
-            for r in 0..k {
+            for (r, row) in a.iter_mut().enumerate() {
                 if r != c {
-                    let f = a[r][c];
-                    for (v, pv) in a[r].iter_mut().zip(&pr) {
+                    let f = row[c];
+                    for (v, pv) in row.iter_mut().zip(&pr) {
                         *v -= f * pv;
                     }
                 }
             }
         }
-        for i in 0..k {
-            let ols = a[i][k];
+        for (i, row) in a.iter().enumerate() {
+            let ols = row[k];
             assert!(
                 (fit.beta_filtered[t][i] - ols).abs() <= 1e-8 * ols.abs().max(1.0),
                 "t={t} coef {i}: {} vs OLS {ols}",
@@ -414,12 +433,9 @@ fn deterministic_dummy_seasonal_sums_to_zero_over_a_period() {
     );
     // The estimated pattern recovers the truth (zero-mean version).
     let mean: f64 = pattern.iter().sum::<f64>() / 4.0;
-    for j in 0..4 {
+    for (j, p) in pattern.iter().enumerate() {
         let est = s.smoothed[n - 4 + j];
-        assert!(
-            (est - (pattern[j] - mean)).abs() < 0.5,
-            "pattern {j}: {est}"
-        );
+        assert!((est - (p - mean)).abs() < 0.5, "pattern {j}: {est}");
     }
 }
 

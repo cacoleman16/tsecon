@@ -455,7 +455,7 @@ impl Layout {
             }
         }
         for (i, f) in spec.freq_seasonal.iter().enumerate() {
-            if !(f.period >= 2.0) || !f.period.is_finite() {
+            if !(f.period.is_finite() && f.period >= 2.0) {
                 return Err(invalid(format!(
                     "freq_seasonal[{i}].period = {}: a trigonometric seasonal period must be \
                      a finite number >= 2",
@@ -472,7 +472,7 @@ impl Layout {
             }
         }
         let (pmin, pmax) = spec.cycle_period_bounds;
-        if spec.cycle && (!(pmin >= 2.0) || !pmin.is_finite() || !(pmax > pmin)) {
+        if spec.cycle && !(pmin.is_finite() && pmin >= 2.0 && pmax > pmin) {
             return Err(invalid(format!(
                 "cycle_period_bounds = ({pmin}, {pmax}): need 2 <= min < max (max may be \
                  infinite, meaning the sample length); the cycle frequency is confined \
@@ -499,7 +499,7 @@ impl Layout {
         // is an absolute `1e-10` on `F_inf`, which quietly clips it;
         // `uc_properties.rs` pins the divergence with numbers.
         let pmax = if pmax.is_finite() { pmax } else { n as f64 };
-        if spec.cycle && !(pmax > pmin) {
+        if spec.cycle && pmax <= pmin {
             return Err(invalid(format!(
                 "cycle_period_bounds = ({pmin}, inf) with {n} observations: an infinite \
                  upper period bound means the sample length, so the admissible band is \
@@ -841,7 +841,7 @@ impl Layout {
             resid.clone()
         };
         let mut base = variance(&detrended);
-        if !(base > 0.0) || !base.is_finite() {
+        if !(base.is_finite() && base > 0.0) {
             base = 1.0;
         }
         // Cycle frequency start: the periodogram peak of the (differenced)
@@ -857,7 +857,12 @@ impl Layout {
         // band alone lands on a local optimum), then the band's middle
         // and quarter points.
         let freq_pos = [f64::NAN, 0.5, 0.25, 0.75, f64::NAN];
-        let damp = [0.9, 0.5, 0.95, 0.7, 0.9];
+        // Damping starts spread over the interval rather than clustered
+        // near one: a cycle whose damping wants to be near zero (the
+        // cycle degenerating towards white noise, which happens whenever
+        // the series has no cycle in the admissible band) is a corner the
+        // search has to be able to walk to.
+        let damp = [0.9, 0.5, 0.1, 0.95, 0.7];
         let mut starts = Vec::with_capacity(n_starts);
         for k in 0..n_starts {
             let idx = k % ladder.len();
@@ -1046,7 +1051,7 @@ pub fn unobserved_components(
     // map back exactly, then evaluate on the original data.
     let observed: Vec<f64> = y.iter().copied().filter(|v| v.is_finite()).collect();
     let s = variance(&observed).sqrt();
-    if !(s > 0.0) || !s.is_finite() {
+    if !(s.is_finite() && s > 0.0) {
         return Err(invalid(
             "y is constant (standard deviation 0): every variance would be estimated at \
              zero and the likelihood is unbounded; a constant series has no structural \

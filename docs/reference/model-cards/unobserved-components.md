@@ -215,14 +215,30 @@ coefficient is −0.240 (se 0.047) — a 21% reduction in drivers killed or
 seriously injured — with the fixed-parameter evaluation at that optimum
 matching a live statsmodels run at 1e-8; no published number is asserted,
 only what the committed generator reproduces. Seeded Monte Carlo
-(`crates/tsecon-ssm/tests/uc_properties.rs`): local-level variance recovery
-at T = 1200 over 12 seeds — {{MC:recovery}}; 95% forecast-interval coverage
-on a local-linear-trend DGP (T = 150, 12 steps ahead, 80 seeds) —
-{{MC:coverage}}; exact scale invariance of the whole fit (variances × c²,
-log-likelihood − n ln c, identical standardized residuals at 1e-9); the
-deterministic dummy seasonal sums to zero over every period (1e-8); the
-cycle frequency lands inside its bounds and recovers a period-8 cycle
-within 1.5 periods. Base-R `StructTS` was *not* used as a second reference:
+(`crates/tsecon-ssm/tests/uc_properties.rs`, ten tests, every number below
+reproducible at the seeds in that file): local-level variance recovery at
+T = 1200 over 12 seeds — median |relative error| **0.036** on
+`sigma2.irregular` and **0.096** on `sigma2.level`, mean relative bias
+−0.018 and +0.015, and no spurious boundary flag in any of the 12;
+95% forecast-interval coverage on a local-linear-trend DGP (T = 150, 12
+steps ahead, 80 seeds) — **[0.925, 0.963, 0.975, 0.975, 0.938, 0.950,
+0.963, 0.963, 0.950, 0.938, 0.925, 0.938]** at horizons 1…12, pooled
+**0.950** against a nominal 0.95 (a Monte-Carlo standard error of 0.024 per
+horizon at 80 replications, so these are all within one standard error);
+scale equivariance of the whole fit under `y -> 1000 y` — estimates
+2.9e-10, log-likelihood 2.2e-15 (against the *exact-diffuse* shift
+`-(n - d) ln c`, not `-n ln c`), level and forecast paths 3.1e-11,
+standardized residuals 3.3e-10, and 2.3e-8 on the observed-information
+standard errors, which are a numerical Hessian and amplify the last ulp of
+the standardization scale; the deterministic dummy seasonal is exactly
+4-periodic and sums to zero over every period (8.9e-16 and 5.6e-16 against
+an amplitude of 1.4); a frequency-π (Nyquist) harmonic state cannot move
+the log-likelihood (difference exactly 0.0 against a hand-built model with
+the state removed); the cycle log-likelihood's divergence as the frequency
+goes to zero is measured rather than asserted (−188.15, −183.55, −162.53 at
+λ = 1e-2, 1e-4, 1e-6) and the default period bound is shown to keep the fit
+out of it; the cycle frequency lands inside its bounds and recovers a
+period-8 cycle within 1.5 periods. Base-R `StructTS` was *not* used as a second reference:
 it fits by a different (non-diffuse, `optim`) likelihood and would only
 have added a lower-graded number.
 
@@ -325,11 +341,13 @@ equal to full-sample OLS; the MLE pinned to the better of statsmodels'
 interior parameters, 2e-2 in their standard errors) with the true-zero
 third variance flagged (statsmodels' optimum has it at 3e-17). Seeded Monte
 Carlo (`uc_properties.rs`): with constant true coefficients (T = 200, 24
-seeds) the share of coefficient variances flagged at zero is
-{{MC:pileup_const}}; with clearly moving coefficients (`sigma2_beta =
-0.05`) it is {{MC:pileup_moving}} and every estimate lands within an order
-of magnitude of the truth; the zero-variance filter equals expanding-window
-OLS at every checked date (closed form, 1e-8).
+seeds, 48 coefficient variances) the share flagged at zero is **0.604**;
+with clearly moving coefficients (`sigma2_beta = 0.05`) it is **0.000**,
+and those 48 estimates run from 0.0029 through a **median of 0.0417** to
+0.109 against a truth of 0.05 — the median is close, the individual draws
+are not, which is the attenuation the pile-up section warns about and the
+reason the *path* is the deliverable. The zero-variance filter equals
+expanding-window OLS at every checked date (closed form, 1e-8).
 
 **References.** Harvey (1989, §8.3); Durbin & Koopman (2012, §3.6); Stock,
 J. H. and M. W. Watson (1998), "Median Unbiased Estimation of Coefficient
@@ -342,12 +360,24 @@ import numpy as np, tsecon
 rng = np.random.default_rng(0)
 T = 300
 x = rng.normal(size=(T, 1))
-beta = 0.5 + np.cumsum(rng.normal(0, 0.05, T))     # a drifting slope
-y = 1.0 + beta * x[:, 0] + rng.normal(size=T)
+beta = 0.5 + np.cumsum(rng.normal(0, 0.05, T))     # a drifting slope, true var 0.0025
+y = 1.0 + beta * x[:, 0] + rng.normal(0, 0.3, T)
 r = tsecon.tvp_regression(y, x)
 print(np.round(r["sigma2_beta"], 4), r["pile_up"])
-# [0.     0.0024] [True, False]   -> the intercept cannot be shown to move; the slope can
+# [0.     0.0012] [True, False]   -> the intercept cannot be shown to move; the slope can
 path = np.asarray(r["beta_smoothed"])[:, 1]         # smoothed slope, with r["beta_smoothed_var"]
+np.corrcoef(path, beta)[0, 1]                       # 0.882
 ```
+
+Read that output the way the failure-mode section says to. The intercept
+really is constant and its variance is flagged, which is the right answer.
+The slope variance really is 0.0025 and the MLE says 0.0012: the
+random-walk-variance MLE is severely attenuated at this sample size, and
+the smoothed path still tracks the truth at a correlation of 0.88. With the
+same slope drift against a *unit* noise standard deviation instead of 0.3,
+the same call returns `3.3e-5` — a seventy-fold understatement, verified
+against statsmodels to be the true maximum of the likelihood, not an
+optimizer failure. The path is the deliverable; the variance is a nuisance
+parameter with a badly behaved estimator (Stock & Watson 1998).
 
 ---
