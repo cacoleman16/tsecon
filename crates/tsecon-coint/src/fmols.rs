@@ -55,8 +55,10 @@
 //!   tighter — pass an explicit `bandwidth` to pick either reading.
 //!   `force_int` ceils the bandwidth (automatic **or** explicit, as `arch`
 //!   applies it) and the automatic one is capped at `T - 1`.
-//! * `df_adjust` multiplies the parameter covariance by `T/(T - k)` with
-//!   `T` the regression sample and `k` its regressors — for CCR this is
+//! * `df_adjust` multiplies the parameter covariance by `m/(m - nvar)` with
+//!   `m = T - 1` the rows of the residual system and `nvar = k_x +
+//!   trend.n_det()` the ESTIMATED COEFFICIENTS (regressors **and**
+//!   deterministics) — for CCR this is
 //!   the documented scaling of the *conditional* long-run variance
 //!   `omega_{1.2}`; `arch` 8.0's `CanonicalCointegratingReg.fit` scales
 //!   only `omega_11` by an operator-precedence slip, and the fixture

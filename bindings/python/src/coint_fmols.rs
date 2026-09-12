@@ -190,11 +190,16 @@ fn coint_reg_options(
 /// RAISES (the rule would be inert). `force_int` (default True, as arch)
 /// ceils the bandwidth — automatic or explicit; the automatic one is also
 /// capped at T - 1. `df_adjust` (default False) scales the covariance by
-/// (T-1)/(T-1-k). `x_trend` (default None = `trend`; must carry at least
-/// the terms of `trend`) sets the deterministics the regressors are
-/// detrended with before differencing; `diff` (default False) removes the
-/// trend from the differences instead of the levels and RAISES when the
-/// effective x_trend has no trend term (it would be inert).
+/// (T-1)/(T-1-p), with T-1 the rows of the residual system and p the number
+/// of ESTIMATED COEFFICIENTS — the k regressors AND the deterministics of
+/// `trend`, i.e. `len(params)` (at the default `trend="c"` and k = 2 that is
+/// 199/196, not 199/197). `x_trend` (default None = `trend`; must carry at
+/// least the terms of `trend`) sets the deterministics the regressors are
+/// detrended with before differencing; `diff` (default None, which behaves
+/// as False) removes the trend from the differences instead of the levels
+/// and RAISES when the effective x_trend has no trend term (it would be
+/// inert) — and note that `diff=False` passed EXPLICITLY raises there too,
+/// for the same reason: the default is the `None` sentinel, not `False`.
 ///
 /// Keys: `estimator`, `params` (x columns first, then the deterministics —
 /// see `param_names`), `se`, `tvalues`, `pvalues` (two-sided normal),
@@ -260,7 +265,8 @@ fn fmols<'py>(
 /// over t = 2..T, with covariance `omega_1.2 (Z*'Z*)^-1`. Asymptotically
 /// equivalent to FM-OLS; the two differ in finite samples.
 ///
-/// `df_adjust` scales the covariance by (T-1)/(T-1-k) as documented —
+/// `df_adjust` scales the covariance by (T-1)/(T-1-p) with p the estimated
+/// coefficients (regressors and deterministics), as documented —
 /// arch 8.0's `CanonicalCointegratingReg.fit` scales only `omega_11`
 /// (an operator-precedence slip); everything else is arch-exact.
 ///

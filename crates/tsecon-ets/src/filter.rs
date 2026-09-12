@@ -251,6 +251,20 @@ pub(crate) fn check_data(spec: &EtsSpec, y: &[f64]) -> Result<(), EtsError> {
             value: v,
         });
     }
+    // A seasonal period the sample never completes is not identified, and it
+    // costs m - 1 free initial states: refuse it BY NAME rather than let the
+    // parameter count blow up and report the spec instead (audit round 14).
+    if spec.seasonal.is_present() && spec.seasonal_periods > y.len() {
+        return Err(EtsError::TooFewObservations {
+            needed: spec.seasonal_periods,
+            got: y.len(),
+            what: format!(
+                "seasonal_periods = {} (a seasonal period the sample never completes is \
+                 not identified, and it costs m - 1 free initial states)",
+                spec.seasonal_periods
+            ),
+        });
+    }
     if spec.needs_positive_data() {
         if let Some((i, &v)) = y.iter().enumerate().find(|(_, v)| **v <= 0.0) {
             return Err(EtsError::NonPositiveData {

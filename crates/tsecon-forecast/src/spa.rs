@@ -581,9 +581,10 @@ pub(crate) fn resolve_block_size(
                         "block_size",
                         "None",
                         format!(
-                            "the automatic Politis-White block length could not \
-                             be computed on loss column {k} ({e}); pass \
-                             block_size explicitly (e.g. block_size=5)"
+                            "a block length the Politis-White rule can compute: \
+                             it failed on losses column {k} ({e}) — pass \
+                             block_size explicitly (e.g. block_size=5), or drop \
+                             the degenerate loss column"
                         ),
                     )
                 })?;

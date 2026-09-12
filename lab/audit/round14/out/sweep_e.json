@@ -1,0 +1,3200 @@
+{
+ "per_call": {
+  "unobserved_components": {
+   "keys": [
+    "aic",
+    "at_boundary",
+    "bic",
+    "converged",
+    "cycle",
+    "cycle_var",
+    "estimated",
+    "filtered_cycle",
+    "filtered_cycle_var",
+    "filtered_freq_seasonal",
+    "filtered_freq_seasonal_var",
+    "filtered_level",
+    "filtered_level_var",
+    "filtered_seasonal",
+    "filtered_seasonal_var",
+    "filtered_slope",
+    "filtered_slope_var",
+    "filtered_state",
+    "filtered_state_var",
+    "fitted",
+    "forecast",
+    "forecast_var",
+    "freq_seasonal",
+    "freq_seasonal_var",
+    "k_diffuse",
+    "k_params",
+    "k_states",
+    "level",
+    "level_var",
+    "loglik",
+    "n_fevals",
+    "n_iter",
+    "nobs",
+    "nobs_diffuse",
+    "nobs_observed",
+    "param_names",
+    "params",
+    "resid",
+    "se",
+    "seasonal",
+    "seasonal_var",
+    "slope",
+    "slope_var",
+    "smoothed_state",
+    "smoothed_state_var",
+    "state_names",
+    "std_resid",
+    "trend_specification"
+   ],
+   "summarize_lines": 97,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [
+    [
+     "$.se",
+     "array(4,) nan=3 inf=0"
+    ],
+    [
+     "$.std_resid",
+     "array(200,) nan=5 inf=0"
+    ]
+   ],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "aic",
+     "bic",
+     "cycle_var",
+     "estimated",
+     "filtered_cycle",
+     "filtered_cycle_var",
+     "filtered_freq_seasonal",
+     "filtered_freq_seasonal_var",
+     "filtered_level",
+     "filtered_level_var",
+     "filtered_seasonal",
+     "filtered_seasonal_var",
+     "filtered_slope",
+     "filtered_slope_var",
+     "filtered_state_var",
+     "freq_seasonal_var",
+     "loglik",
+     "n_fevals",
+     "n_iter",
+     "nobs",
+     "nobs_observed",
+     "seasonal_var",
+     "slope_var",
+     "smoothed_state_var",
+     "trend_specification"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [],
+    "stub": [],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 26,
+   "containers": {
+    "trend_specification": [
+     "str",
+     0,
+     ""
+    ],
+    "param_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "se": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "at_boundary": [
+     "list",
+     1,
+     "b"
+    ],
+    "loglik": [
+     "float",
+     0,
+     ""
+    ],
+    "aic": [
+     "float",
+     0,
+     ""
+    ],
+    "bic": [
+     "float",
+     0,
+     ""
+    ],
+    "nobs": [
+     "int",
+     0,
+     ""
+    ],
+    "nobs_observed": [
+     "int",
+     0,
+     ""
+    ],
+    "nobs_diffuse": [
+     "int",
+     0,
+     ""
+    ],
+    "k_states": [
+     "int",
+     0,
+     ""
+    ],
+    "k_diffuse": [
+     "int",
+     0,
+     ""
+    ],
+    "k_params": [
+     "int",
+     0,
+     ""
+    ],
+    "estimated": [
+     "bool",
+     0,
+     ""
+    ],
+    "converged": [
+     "bool",
+     0,
+     ""
+    ],
+    "n_iter": [
+     "int",
+     0,
+     ""
+    ],
+    "n_fevals": [
+     "int",
+     0,
+     ""
+    ],
+    "state_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "filtered_state": [
+     "list",
+     2,
+     "f"
+    ],
+    "filtered_state_var": [
+     "list",
+     2,
+     "f"
+    ],
+    "smoothed_state": [
+     "list",
+     2,
+     "f"
+    ],
+    "smoothed_state_var": [
+     "list",
+     2,
+     "f"
+    ],
+    "level": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "level_var": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "filtered_level": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "filtered_level_var": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "slope": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "slope_var": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "filtered_slope": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "filtered_slope_var": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "seasonal": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "seasonal_var": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "filtered_seasonal": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "filtered_seasonal_var": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "cycle": [
+     "NoneType",
+     0,
+     ""
+    ],
+    "cycle_var": [
+     "NoneType",
+     0,
+     ""
+    ],
+    "filtered_cycle": [
+     "NoneType",
+     0,
+     ""
+    ],
+    "filtered_cycle_var": [
+     "NoneType",
+     0,
+     ""
+    ],
+    "freq_seasonal": [
+     "list",
+     1,
+     "O"
+    ],
+    "freq_seasonal_var": [
+     "list",
+     1,
+     "O"
+    ],
+    "filtered_freq_seasonal": [
+     "list",
+     1,
+     "O"
+    ],
+    "filtered_freq_seasonal_var": [
+     "list",
+     1,
+     "O"
+    ],
+    "fitted": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "resid": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "std_resid": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "forecast": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "forecast_var": [
+     "ndarray",
+     1,
+     "f"
+    ]
+   }
+  },
+  "tvp_regression": {
+   "keys": [
+    "aic",
+    "at_boundary",
+    "beta_filtered",
+    "beta_filtered_var",
+    "beta_smoothed",
+    "beta_smoothed_var",
+    "bic",
+    "coef_names",
+    "converged",
+    "estimated",
+    "fitted",
+    "k",
+    "k_params",
+    "loglik",
+    "n_fevals",
+    "n_iter",
+    "nobs",
+    "nobs_diffuse",
+    "nobs_observed",
+    "param_names",
+    "params",
+    "pile_up",
+    "resid",
+    "se",
+    "sigma2_beta",
+    "sigma2_eps",
+    "std_resid"
+   ],
+   "summarize_lines": 48,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [
+    [
+     "$.std_resid",
+     "array(200,) nan=3 inf=0"
+    ]
+   ],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "beta_filtered_var",
+     "coef_names",
+     "converged",
+     "estimated",
+     "loglik",
+     "n_fevals",
+     "n_iter",
+     "nobs",
+     "nobs_observed"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [],
+    "stub": [],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 14,
+   "containers": {
+    "coef_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "k": [
+     "int",
+     0,
+     ""
+    ],
+    "param_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "se": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "at_boundary": [
+     "list",
+     1,
+     "b"
+    ],
+    "sigma2_eps": [
+     "float",
+     0,
+     ""
+    ],
+    "sigma2_beta": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "pile_up": [
+     "list",
+     1,
+     "b"
+    ],
+    "loglik": [
+     "float",
+     0,
+     ""
+    ],
+    "aic": [
+     "float",
+     0,
+     ""
+    ],
+    "bic": [
+     "float",
+     0,
+     ""
+    ],
+    "nobs": [
+     "int",
+     0,
+     ""
+    ],
+    "nobs_observed": [
+     "int",
+     0,
+     ""
+    ],
+    "nobs_diffuse": [
+     "int",
+     0,
+     ""
+    ],
+    "k_params": [
+     "int",
+     0,
+     ""
+    ],
+    "estimated": [
+     "bool",
+     0,
+     ""
+    ],
+    "converged": [
+     "bool",
+     0,
+     ""
+    ],
+    "n_iter": [
+     "int",
+     0,
+     ""
+    ],
+    "n_fevals": [
+     "int",
+     0,
+     ""
+    ],
+    "beta_filtered": [
+     "list",
+     2,
+     "f"
+    ],
+    "beta_filtered_var": [
+     "list",
+     2,
+     "f"
+    ],
+    "beta_smoothed": [
+     "list",
+     2,
+     "f"
+    ],
+    "beta_smoothed_var": [
+     "list",
+     2,
+     "f"
+    ],
+    "fitted": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "resid": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "std_resid": [
+     "ndarray",
+     1,
+     "f"
+    ]
+   }
+  },
+  "ets_fit": {
+   "keys": [
+    "aic",
+    "aicc",
+    "alpha",
+    "beta",
+    "bic",
+    "class1",
+    "converged",
+    "damped",
+    "error",
+    "final_level",
+    "final_seasonal",
+    "final_states",
+    "final_trend",
+    "fitted",
+    "forecast",
+    "forecast_lower",
+    "forecast_upper",
+    "forecast_variance",
+    "gamma",
+    "horizon",
+    "initial_level",
+    "initial_seasonal",
+    "initial_state_names",
+    "initial_states",
+    "initial_trend",
+    "initialization",
+    "interval_level",
+    "interval_method",
+    "k_params",
+    "level_path",
+    "loglik",
+    "n_fevals",
+    "n_iterations",
+    "n_sim",
+    "nobs",
+    "optimizer",
+    "param_names",
+    "params",
+    "phi",
+    "resid",
+    "seasonal",
+    "seasonal_path",
+    "seasonal_periods",
+    "seed",
+    "short_name",
+    "sigma2",
+    "spec",
+    "trend",
+    "trend_path"
+   ],
+   "summarize_lines": 74,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": []
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "ets"
+    ],
+    "stub": [
+     "ets"
+    ],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 16,
+   "containers": {
+    "spec": [
+     "str",
+     0,
+     ""
+    ],
+    "short_name": [
+     "str",
+     0,
+     ""
+    ],
+    "error": [
+     "str",
+     0,
+     ""
+    ],
+    "trend": [
+     "str",
+     0,
+     ""
+    ],
+    "damped": [
+     "bool",
+     0,
+     ""
+    ],
+    "seasonal": [
+     "str",
+     0,
+     ""
+    ],
+    "seasonal_periods": [
+     "int",
+     0,
+     ""
+    ],
+    "alpha": [
+     "float",
+     0,
+     ""
+    ],
+    "beta": [
+     "float",
+     0,
+     ""
+    ],
+    "gamma": [
+     "float",
+     0,
+     ""
+    ],
+    "phi": [
+     "NoneType",
+     0,
+     ""
+    ],
+    "params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "param_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "initial_level": [
+     "float",
+     0,
+     ""
+    ],
+    "initial_trend": [
+     "float",
+     0,
+     ""
+    ],
+    "initial_seasonal": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "initial_states": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "initial_state_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "initialization": [
+     "str",
+     0,
+     ""
+    ],
+    "fitted": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "resid": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "level_path": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "trend_path": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "seasonal_path": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "final_level": [
+     "float",
+     0,
+     ""
+    ],
+    "final_trend": [
+     "float",
+     0,
+     ""
+    ],
+    "final_seasonal": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "final_states": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "loglik": [
+     "float",
+     0,
+     ""
+    ],
+    "sigma2": [
+     "float",
+     0,
+     ""
+    ],
+    "nobs": [
+     "int",
+     0,
+     ""
+    ],
+    "k_params": [
+     "int",
+     0,
+     ""
+    ],
+    "aic": [
+     "float",
+     0,
+     ""
+    ],
+    "aicc": [
+     "float",
+     0,
+     ""
+    ],
+    "bic": [
+     "float",
+     0,
+     ""
+    ],
+    "converged": [
+     "bool",
+     0,
+     ""
+    ],
+    "n_iterations": [
+     "int",
+     0,
+     ""
+    ],
+    "n_fevals": [
+     "int",
+     0,
+     ""
+    ],
+    "optimizer": [
+     "str",
+     0,
+     ""
+    ],
+    "class1": [
+     "bool",
+     0,
+     ""
+    ],
+    "horizon": [
+     "int",
+     0,
+     ""
+    ],
+    "forecast": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "forecast_variance": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "forecast_lower": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "forecast_upper": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "interval_level": [
+     "float",
+     0,
+     ""
+    ],
+    "interval_method": [
+     "str",
+     0,
+     ""
+    ],
+    "n_sim": [
+     "int",
+     0,
+     ""
+    ],
+    "seed": [
+     "int",
+     0,
+     ""
+    ]
+   }
+  },
+  "auto_ets": {
+   "keys": [
+    "aic",
+    "aicc",
+    "alpha",
+    "beta",
+    "bic",
+    "candidates",
+    "class1",
+    "converged",
+    "damped",
+    "error",
+    "final_level",
+    "final_seasonal",
+    "final_states",
+    "final_trend",
+    "fitted",
+    "forecast",
+    "forecast_lower",
+    "forecast_upper",
+    "forecast_variance",
+    "gamma",
+    "horizon",
+    "ic",
+    "ic_value",
+    "initial_level",
+    "initial_seasonal",
+    "initial_state_names",
+    "initial_states",
+    "initial_trend",
+    "initialization",
+    "interval_level",
+    "interval_method",
+    "k_params",
+    "level_path",
+    "loglik",
+    "n_candidates",
+    "n_fevals",
+    "n_fitted",
+    "n_iterations",
+    "n_sim",
+    "nobs",
+    "optimizer",
+    "param_names",
+    "params",
+    "phi",
+    "resid",
+    "seasonal",
+    "seasonal_path",
+    "seasonal_periods",
+    "seed",
+    "short_name",
+    "sigma2",
+    "spec",
+    "trend",
+    "trend_path"
+   ],
+   "summarize_lines": 80,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": []
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "ets_fit",
+     "status"
+    ],
+    "stub": [
+     "ets_fit",
+     "status"
+    ],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 17,
+   "containers": {
+    "spec": [
+     "str",
+     0,
+     ""
+    ],
+    "short_name": [
+     "str",
+     0,
+     ""
+    ],
+    "error": [
+     "str",
+     0,
+     ""
+    ],
+    "trend": [
+     "str",
+     0,
+     ""
+    ],
+    "damped": [
+     "bool",
+     0,
+     ""
+    ],
+    "seasonal": [
+     "str",
+     0,
+     ""
+    ],
+    "seasonal_periods": [
+     "int",
+     0,
+     ""
+    ],
+    "alpha": [
+     "float",
+     0,
+     ""
+    ],
+    "beta": [
+     "float",
+     0,
+     ""
+    ],
+    "gamma": [
+     "float",
+     0,
+     ""
+    ],
+    "phi": [
+     "NoneType",
+     0,
+     ""
+    ],
+    "params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "param_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "initial_level": [
+     "float",
+     0,
+     ""
+    ],
+    "initial_trend": [
+     "float",
+     0,
+     ""
+    ],
+    "initial_seasonal": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "initial_states": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "initial_state_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "initialization": [
+     "str",
+     0,
+     ""
+    ],
+    "fitted": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "resid": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "level_path": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "trend_path": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "seasonal_path": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "final_level": [
+     "float",
+     0,
+     ""
+    ],
+    "final_trend": [
+     "float",
+     0,
+     ""
+    ],
+    "final_seasonal": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "final_states": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "loglik": [
+     "float",
+     0,
+     ""
+    ],
+    "sigma2": [
+     "float",
+     0,
+     ""
+    ],
+    "nobs": [
+     "int",
+     0,
+     ""
+    ],
+    "k_params": [
+     "int",
+     0,
+     ""
+    ],
+    "aic": [
+     "float",
+     0,
+     ""
+    ],
+    "aicc": [
+     "float",
+     0,
+     ""
+    ],
+    "bic": [
+     "float",
+     0,
+     ""
+    ],
+    "converged": [
+     "bool",
+     0,
+     ""
+    ],
+    "n_iterations": [
+     "int",
+     0,
+     ""
+    ],
+    "n_fevals": [
+     "int",
+     0,
+     ""
+    ],
+    "optimizer": [
+     "str",
+     0,
+     ""
+    ],
+    "class1": [
+     "bool",
+     0,
+     ""
+    ],
+    "horizon": [
+     "int",
+     0,
+     ""
+    ],
+    "forecast": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "forecast_variance": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "forecast_lower": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "forecast_upper": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "interval_level": [
+     "float",
+     0,
+     ""
+    ],
+    "interval_method": [
+     "str",
+     0,
+     ""
+    ],
+    "n_sim": [
+     "int",
+     0,
+     ""
+    ],
+    "seed": [
+     "int",
+     0,
+     ""
+    ],
+    "ic": [
+     "str",
+     0,
+     ""
+    ],
+    "ic_value": [
+     "float",
+     0,
+     ""
+    ],
+    "candidates": [
+     "list",
+     1,
+     "O"
+    ],
+    "n_candidates": [
+     "int",
+     0,
+     ""
+    ],
+    "n_fitted": [
+     "int",
+     0,
+     ""
+    ]
+   }
+  },
+  "var_conditional_forecast": {
+   "keys": [
+    "alpha",
+    "constrained",
+    "cov",
+    "lower",
+    "mahalanobis",
+    "mahalanobis_pvalue",
+    "n_constrained",
+    "orth_shocks",
+    "point",
+    "se",
+    "shocks",
+    "steps",
+    "unconditional",
+    "unconditional_se",
+    "upper"
+   ],
+   "summarize_lines": 74,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "constrained"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [],
+    "stub": [],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 10,
+   "containers": {
+    "point": [
+     "list",
+     2,
+     "f"
+    ],
+    "unconditional": [
+     "list",
+     2,
+     "f"
+    ],
+    "cov": [
+     "list",
+     3,
+     "f"
+    ],
+    "se": [
+     "list",
+     2,
+     "f"
+    ],
+    "unconditional_se": [
+     "list",
+     2,
+     "f"
+    ],
+    "lower": [
+     "list",
+     2,
+     "f"
+    ],
+    "upper": [
+     "list",
+     2,
+     "f"
+    ],
+    "shocks": [
+     "list",
+     2,
+     "f"
+    ],
+    "orth_shocks": [
+     "list",
+     2,
+     "f"
+    ],
+    "constrained": [
+     "list",
+     2,
+     "b"
+    ],
+    "n_constrained": [
+     "int",
+     0,
+     ""
+    ],
+    "mahalanobis": [
+     "float",
+     0,
+     ""
+    ],
+    "mahalanobis_pvalue": [
+     "float",
+     0,
+     ""
+    ],
+    "steps": [
+     "int",
+     0,
+     ""
+    ],
+    "alpha": [
+     "float",
+     0,
+     ""
+    ]
+   }
+  },
+  "var_diagnostics": {
+   "keys": [
+    "eigenvalue_moduli",
+    "is_stable",
+    "jarque_bera",
+    "jarque_bera_df",
+    "jarque_bera_pvalue",
+    "k",
+    "kurtosis",
+    "kurtosis_components",
+    "kurtosis_pvalue",
+    "lags",
+    "nlags",
+    "nobs",
+    "portmanteau",
+    "portmanteau_adjusted",
+    "portmanteau_adjusted_pvalue",
+    "portmanteau_df",
+    "portmanteau_pvalue",
+    "roots",
+    "skewness",
+    "skewness_components",
+    "skewness_pvalue"
+   ],
+   "summarize_lines": 29,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "jarque_bera_pvalue",
+     "kurtosis_pvalue",
+     "nobs",
+     "portmanteau_adjusted_pvalue",
+     "portmanteau_pvalue",
+     "skewness_pvalue"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "T",
+     "b1",
+     "b2"
+    ],
+    "stub": [],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 4,
+   "containers": {
+    "portmanteau": [
+     "float",
+     0,
+     ""
+    ],
+    "portmanteau_adjusted": [
+     "float",
+     0,
+     ""
+    ],
+    "portmanteau_df": [
+     "int",
+     0,
+     ""
+    ],
+    "portmanteau_pvalue": [
+     "float",
+     0,
+     ""
+    ],
+    "portmanteau_adjusted_pvalue": [
+     "float",
+     0,
+     ""
+    ],
+    "nlags": [
+     "int",
+     0,
+     ""
+    ],
+    "jarque_bera": [
+     "float",
+     0,
+     ""
+    ],
+    "jarque_bera_pvalue": [
+     "float",
+     0,
+     ""
+    ],
+    "jarque_bera_df": [
+     "int",
+     0,
+     ""
+    ],
+    "skewness": [
+     "float",
+     0,
+     ""
+    ],
+    "skewness_pvalue": [
+     "float",
+     0,
+     ""
+    ],
+    "kurtosis": [
+     "float",
+     0,
+     ""
+    ],
+    "kurtosis_pvalue": [
+     "float",
+     0,
+     ""
+    ],
+    "skewness_components": [
+     "list",
+     1,
+     "f"
+    ],
+    "kurtosis_components": [
+     "list",
+     1,
+     "f"
+    ],
+    "roots": [
+     "list",
+     1,
+     "f"
+    ],
+    "eigenvalue_moduli": [
+     "list",
+     1,
+     "f"
+    ],
+    "is_stable": [
+     "bool",
+     0,
+     ""
+    ],
+    "nobs": [
+     "int",
+     0,
+     ""
+    ],
+    "k": [
+     "int",
+     0,
+     ""
+    ],
+    "lags": [
+     "int",
+     0,
+     ""
+    ]
+   }
+  },
+  "var_select_order": {
+   "keys": [
+    "aic",
+    "aic_values",
+    "bic",
+    "bic_values",
+    "candidates",
+    "fpe",
+    "fpe_values",
+    "hqic",
+    "hqic_values",
+    "max_lags",
+    "trend"
+   ],
+   "summarize_lines": 20,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "aic_values",
+     "bic_values",
+     "fpe_values",
+     "hqic_values"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [],
+    "stub": [],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 5,
+   "containers": {
+    "aic": [
+     "int",
+     0,
+     ""
+    ],
+    "bic": [
+     "int",
+     0,
+     ""
+    ],
+    "hqic": [
+     "int",
+     0,
+     ""
+    ],
+    "fpe": [
+     "int",
+     0,
+     ""
+    ],
+    "candidates": [
+     "list",
+     1,
+     "i"
+    ],
+    "aic_values": [
+     "list",
+     1,
+     "f"
+    ],
+    "bic_values": [
+     "list",
+     1,
+     "f"
+    ],
+    "hqic_values": [
+     "list",
+     1,
+     "f"
+    ],
+    "fpe_values": [
+     "list",
+     1,
+     "f"
+    ],
+    "max_lags": [
+     "int",
+     0,
+     ""
+    ],
+    "trend": [
+     "str",
+     0,
+     ""
+    ]
+   }
+  },
+  "spa_test": {
+   "keys": [
+    "best_model",
+    "block_size",
+    "block_size_auto",
+    "boot_consistent",
+    "boot_lower",
+    "boot_upper",
+    "bootstrap",
+    "crit_consistent",
+    "crit_levels",
+    "crit_lower",
+    "crit_upper",
+    "loss_diff_var",
+    "m",
+    "mean_loss_diff",
+    "n",
+    "nested",
+    "p_value",
+    "p_value_consistent",
+    "p_value_lower",
+    "p_value_upper",
+    "recentered",
+    "reps",
+    "statistic",
+    "studentize"
+   ],
+   "summarize_lines": 41,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "boot_consistent",
+     "boot_lower",
+     "boot_upper",
+     "m"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "dbar_k"
+    ],
+    "stub": [
+     "dbar_k"
+    ],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 10,
+   "containers": {
+    "statistic": [
+     "float",
+     0,
+     ""
+    ],
+    "best_model": [
+     "int",
+     0,
+     ""
+    ],
+    "p_value": [
+     "float",
+     0,
+     ""
+    ],
+    "p_value_lower": [
+     "float",
+     0,
+     ""
+    ],
+    "p_value_consistent": [
+     "float",
+     0,
+     ""
+    ],
+    "p_value_upper": [
+     "float",
+     0,
+     ""
+    ],
+    "crit_levels": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "crit_lower": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "crit_consistent": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "crit_upper": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "mean_loss_diff": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "loss_diff_var": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "recentered": [
+     "ndarray",
+     1,
+     "b"
+    ],
+    "boot_lower": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "boot_consistent": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "boot_upper": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "n": [
+     "int",
+     0,
+     ""
+    ],
+    "m": [
+     "int",
+     0,
+     ""
+    ],
+    "block_size": [
+     "int",
+     0,
+     ""
+    ],
+    "block_size_auto": [
+     "bool",
+     0,
+     ""
+    ],
+    "reps": [
+     "int",
+     0,
+     ""
+    ],
+    "bootstrap": [
+     "str",
+     0,
+     ""
+    ],
+    "studentize": [
+     "bool",
+     0,
+     ""
+    ],
+    "nested": [
+     "bool",
+     0,
+     ""
+    ]
+   }
+  },
+  "model_confidence_set": {
+   "keys": [
+    "block_size",
+    "block_size_auto",
+    "bootstrap",
+    "elimination_order",
+    "excluded",
+    "included",
+    "m",
+    "mcs_p_values",
+    "mean_losses",
+    "method",
+    "n",
+    "n_steps",
+    "reps",
+    "size",
+    "statistics",
+    "step_p_values"
+   ],
+   "summarize_lines": 27,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "m",
+     "n_steps",
+     "statistics"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "T_R",
+     "T_max"
+    ],
+    "stub": [
+     "T_R",
+     "T_max"
+    ],
+    "card": [
+     "p_value_upper"
+    ]
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 5,
+   "containers": {
+    "included": [
+     "list",
+     1,
+     "i"
+    ],
+    "excluded": [
+     "list",
+     1,
+     "i"
+    ],
+    "mcs_p_values": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "elimination_order": [
+     "list",
+     1,
+     "i"
+    ],
+    "step_p_values": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "statistics": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "n_steps": [
+     "int",
+     0,
+     ""
+    ],
+    "mean_losses": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "n": [
+     "int",
+     0,
+     ""
+    ],
+    "m": [
+     "int",
+     0,
+     ""
+    ],
+    "size": [
+     "float",
+     0,
+     ""
+    ],
+    "method": [
+     "str",
+     0,
+     ""
+    ],
+    "block_size": [
+     "int",
+     0,
+     ""
+    ],
+    "block_size_auto": [
+     "bool",
+     0,
+     ""
+    ],
+    "reps": [
+     "int",
+     0,
+     ""
+    ],
+    "bootstrap": [
+     "str",
+     0,
+     ""
+    ]
+   }
+  },
+  "stepm_test": {
+   "keys": [
+    "best_model",
+    "block_size",
+    "block_size_auto",
+    "boot_consistent",
+    "boot_lower",
+    "boot_upper",
+    "bootstrap",
+    "crit_consistent",
+    "crit_levels",
+    "crit_lower",
+    "crit_upper",
+    "loss_diff_var",
+    "m",
+    "mean_loss_diff",
+    "n",
+    "n_steps",
+    "n_superior",
+    "nested",
+    "p_value",
+    "p_value_consistent",
+    "p_value_lower",
+    "p_value_upper",
+    "recentered",
+    "reps",
+    "size",
+    "statistic",
+    "step_crit_values",
+    "steps",
+    "studentize",
+    "superior_models"
+   ],
+   "summarize_lines": 50,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "boot_consistent",
+     "boot_lower",
+     "boot_upper",
+     "m",
+     "n_steps",
+     "n_superior",
+     "step_crit_values",
+     "steps"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "spa_test"
+    ],
+    "stub": [
+     "spa_test"
+    ],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 13,
+   "containers": {
+    "statistic": [
+     "float",
+     0,
+     ""
+    ],
+    "best_model": [
+     "int",
+     0,
+     ""
+    ],
+    "p_value": [
+     "float",
+     0,
+     ""
+    ],
+    "p_value_lower": [
+     "float",
+     0,
+     ""
+    ],
+    "p_value_consistent": [
+     "float",
+     0,
+     ""
+    ],
+    "p_value_upper": [
+     "float",
+     0,
+     ""
+    ],
+    "crit_levels": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "crit_lower": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "crit_consistent": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "crit_upper": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "mean_loss_diff": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "loss_diff_var": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "recentered": [
+     "ndarray",
+     1,
+     "b"
+    ],
+    "boot_lower": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "boot_consistent": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "boot_upper": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "n": [
+     "int",
+     0,
+     ""
+    ],
+    "m": [
+     "int",
+     0,
+     ""
+    ],
+    "block_size": [
+     "int",
+     0,
+     ""
+    ],
+    "block_size_auto": [
+     "bool",
+     0,
+     ""
+    ],
+    "reps": [
+     "int",
+     0,
+     ""
+    ],
+    "bootstrap": [
+     "str",
+     0,
+     ""
+    ],
+    "studentize": [
+     "bool",
+     0,
+     ""
+    ],
+    "nested": [
+     "bool",
+     0,
+     ""
+    ],
+    "superior_models": [
+     "list",
+     1,
+     "O"
+    ],
+    "n_superior": [
+     "int",
+     0,
+     ""
+    ],
+    "steps": [
+     "list",
+     2,
+     "O"
+    ],
+    "n_steps": [
+     "int",
+     0,
+     ""
+    ],
+    "step_crit_values": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "size": [
+     "float",
+     0,
+     ""
+    ]
+   }
+  },
+  "fmols": {
+   "keys": [
+    "bandwidth",
+    "bandwidth_rule",
+    "cov",
+    "df_adjust",
+    "diff",
+    "estimator",
+    "force_int",
+    "kernel",
+    "lambda",
+    "long_run_variance",
+    "n_det",
+    "n_lags",
+    "n_x",
+    "nobs",
+    "ols_params",
+    "ols_se",
+    "omega",
+    "param_names",
+    "params",
+    "pvalues",
+    "resid",
+    "rsquared",
+    "rsquared_adj",
+    "se",
+    "sigma",
+    "trend",
+    "tvalues",
+    "x_trend"
+   ],
+   "summarize_lines": 61,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "estimator",
+     "n_det",
+     "n_lags",
+     "n_x"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [],
+    "stub": [],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 12,
+   "containers": {
+    "estimator": [
+     "str",
+     0,
+     ""
+    ],
+    "params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "se": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "tvalues": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "pvalues": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "cov": [
+     "list",
+     2,
+     "f"
+    ],
+    "param_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "resid": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "nobs": [
+     "int",
+     0,
+     ""
+    ],
+    "n_x": [
+     "int",
+     0,
+     ""
+    ],
+    "n_det": [
+     "int",
+     0,
+     ""
+    ],
+    "trend": [
+     "str",
+     0,
+     ""
+    ],
+    "x_trend": [
+     "str",
+     0,
+     ""
+    ],
+    "kernel": [
+     "str",
+     0,
+     ""
+    ],
+    "bandwidth": [
+     "float",
+     0,
+     ""
+    ],
+    "bandwidth_rule": [
+     "str",
+     0,
+     ""
+    ],
+    "force_int": [
+     "bool",
+     0,
+     ""
+    ],
+    "diff": [
+     "bool",
+     0,
+     ""
+    ],
+    "df_adjust": [
+     "bool",
+     0,
+     ""
+    ],
+    "long_run_variance": [
+     "float",
+     0,
+     ""
+    ],
+    "omega": [
+     "list",
+     2,
+     "f"
+    ],
+    "lambda": [
+     "list",
+     2,
+     "f"
+    ],
+    "sigma": [
+     "list",
+     2,
+     "f"
+    ],
+    "n_lags": [
+     "int",
+     0,
+     ""
+    ],
+    "rsquared": [
+     "float",
+     0,
+     ""
+    ],
+    "rsquared_adj": [
+     "float",
+     0,
+     ""
+    ],
+    "ols_params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "ols_se": [
+     "ndarray",
+     1,
+     "f"
+    ]
+   }
+  },
+  "dols": {
+   "keys": [
+    "bandwidth",
+    "bandwidth_rule",
+    "common",
+    "cov",
+    "cov_type",
+    "df_adjust",
+    "force_int",
+    "full_cov",
+    "full_param_names",
+    "full_params",
+    "full_se",
+    "ic",
+    "ic_value",
+    "kernel",
+    "lags",
+    "leads",
+    "long_run_variance",
+    "max_lag",
+    "max_lead",
+    "n_det",
+    "n_params",
+    "n_total",
+    "n_x",
+    "nobs",
+    "ols_params",
+    "ols_se",
+    "param_names",
+    "params",
+    "pvalues",
+    "resid",
+    "rsquared",
+    "rsquared_adj",
+    "se",
+    "selected",
+    "trend",
+    "tvalues"
+   ],
+   "summarize_lines": 60,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [
+    [
+     "$.ic_value",
+     "nan"
+    ]
+   ],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "full_param_names",
+     "full_se",
+     "n_det",
+     "n_total",
+     "n_x"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "sigma2_HAC"
+    ],
+    "stub": [
+     "sigma2_HAC"
+    ],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 13,
+   "containers": {
+    "params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "se": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "tvalues": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "pvalues": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "cov": [
+     "list",
+     2,
+     "f"
+    ],
+    "param_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "full_params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "full_se": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "full_cov": [
+     "list",
+     2,
+     "f"
+    ],
+    "full_param_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "resid": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "nobs": [
+     "int",
+     0,
+     ""
+    ],
+    "n_total": [
+     "int",
+     0,
+     ""
+    ],
+    "n_x": [
+     "int",
+     0,
+     ""
+    ],
+    "n_det": [
+     "int",
+     0,
+     ""
+    ],
+    "n_params": [
+     "int",
+     0,
+     ""
+    ],
+    "trend": [
+     "str",
+     0,
+     ""
+    ],
+    "lags": [
+     "int",
+     0,
+     ""
+    ],
+    "leads": [
+     "int",
+     0,
+     ""
+    ],
+    "selected": [
+     "bool",
+     0,
+     ""
+    ],
+    "ic": [
+     "str",
+     0,
+     ""
+    ],
+    "ic_value": [
+     "float",
+     0,
+     ""
+    ],
+    "max_lag": [
+     "int",
+     0,
+     ""
+    ],
+    "max_lead": [
+     "int",
+     0,
+     ""
+    ],
+    "common": [
+     "bool",
+     0,
+     ""
+    ],
+    "cov_type": [
+     "str",
+     0,
+     ""
+    ],
+    "kernel": [
+     "str",
+     0,
+     ""
+    ],
+    "bandwidth": [
+     "float",
+     0,
+     ""
+    ],
+    "bandwidth_rule": [
+     "str",
+     0,
+     ""
+    ],
+    "force_int": [
+     "bool",
+     0,
+     ""
+    ],
+    "df_adjust": [
+     "bool",
+     0,
+     ""
+    ],
+    "long_run_variance": [
+     "float",
+     0,
+     ""
+    ],
+    "rsquared": [
+     "float",
+     0,
+     ""
+    ],
+    "rsquared_adj": [
+     "float",
+     0,
+     ""
+    ],
+    "ols_params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "ols_se": [
+     "ndarray",
+     1,
+     "f"
+    ]
+   }
+  },
+  "ccr": {
+   "keys": [
+    "bandwidth",
+    "bandwidth_rule",
+    "cov",
+    "df_adjust",
+    "diff",
+    "estimator",
+    "force_int",
+    "kernel",
+    "lambda",
+    "long_run_variance",
+    "n_det",
+    "n_lags",
+    "n_x",
+    "nobs",
+    "ols_params",
+    "ols_se",
+    "omega",
+    "param_names",
+    "params",
+    "pvalues",
+    "resid",
+    "rsquared",
+    "rsquared_adj",
+    "se",
+    "sigma",
+    "trend",
+    "tvalues",
+    "x_trend"
+   ],
+   "summarize_lines": 61,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "estimator",
+     "n_det",
+     "n_lags",
+     "n_x"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [],
+    "stub": [],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 12,
+   "containers": {
+    "estimator": [
+     "str",
+     0,
+     ""
+    ],
+    "params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "se": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "tvalues": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "pvalues": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "cov": [
+     "list",
+     2,
+     "f"
+    ],
+    "param_names": [
+     "list",
+     1,
+     "U"
+    ],
+    "resid": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "nobs": [
+     "int",
+     0,
+     ""
+    ],
+    "n_x": [
+     "int",
+     0,
+     ""
+    ],
+    "n_det": [
+     "int",
+     0,
+     ""
+    ],
+    "trend": [
+     "str",
+     0,
+     ""
+    ],
+    "x_trend": [
+     "str",
+     0,
+     ""
+    ],
+    "kernel": [
+     "str",
+     0,
+     ""
+    ],
+    "bandwidth": [
+     "float",
+     0,
+     ""
+    ],
+    "bandwidth_rule": [
+     "str",
+     0,
+     ""
+    ],
+    "force_int": [
+     "bool",
+     0,
+     ""
+    ],
+    "diff": [
+     "bool",
+     0,
+     ""
+    ],
+    "df_adjust": [
+     "bool",
+     0,
+     ""
+    ],
+    "long_run_variance": [
+     "float",
+     0,
+     ""
+    ],
+    "omega": [
+     "list",
+     2,
+     "f"
+    ],
+    "lambda": [
+     "list",
+     2,
+     "f"
+    ],
+    "sigma": [
+     "list",
+     2,
+     "f"
+    ],
+    "n_lags": [
+     "int",
+     0,
+     ""
+    ],
+    "rsquared": [
+     "float",
+     0,
+     ""
+    ],
+    "rsquared_adj": [
+     "float",
+     0,
+     ""
+    ],
+    "ols_params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "ols_se": [
+     "ndarray",
+     1,
+     "f"
+    ]
+   }
+  },
+  "panel_fe@mask": {
+   "keys": [
+    "bse",
+    "params",
+    "se_type",
+    "tvalues"
+   ],
+   "summarize_lines": 11,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "bse",
+     "params",
+     "se_type",
+     "tvalues"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [],
+    "stub": [],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 3,
+   "containers": {
+    "params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "bse": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "tvalues": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "se_type": [
+     "str",
+     0,
+     ""
+    ]
+   }
+  },
+  "panel_distributed_lag@mask": {
+   "keys": [
+    "bse",
+    "cov",
+    "cumulative_ci_high",
+    "cumulative_ci_low",
+    "cumulative_effect",
+    "cumulative_se",
+    "df_resid",
+    "entity_effects",
+    "entity_trends",
+    "eval_points",
+    "lag_effects",
+    "lag_se",
+    "lags",
+    "marginal_effect",
+    "marginal_se",
+    "n_entities",
+    "n_periods_used",
+    "names",
+    "nobs",
+    "params",
+    "powers",
+    "se_type",
+    "time_effects",
+    "turning_point",
+    "turning_point_se",
+    "tvalues"
+   ],
+   "summarize_lines": 65,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "entity_effects",
+     "entity_trends"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "B_2"
+    ],
+    "stub": [
+     "B_2"
+    ],
+    "card": [
+     "None",
+     "x0_L0",
+     "x0_L1"
+    ]
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 15,
+   "containers": {
+    "params": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "names": [
+     "list",
+     1,
+     "U"
+    ],
+    "bse": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "tvalues": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "cov": [
+     "list",
+     2,
+     "f"
+    ],
+    "lag_effects": [
+     "list",
+     3,
+     "f"
+    ],
+    "lag_se": [
+     "list",
+     3,
+     "f"
+    ],
+    "cumulative_effect": [
+     "list",
+     2,
+     "f"
+    ],
+    "cumulative_se": [
+     "list",
+     2,
+     "f"
+    ],
+    "cumulative_ci_low": [
+     "list",
+     2,
+     "f"
+    ],
+    "cumulative_ci_high": [
+     "list",
+     2,
+     "f"
+    ],
+    "eval_points": [
+     "list",
+     2,
+     "f"
+    ],
+    "marginal_effect": [
+     "list",
+     2,
+     "f"
+    ],
+    "marginal_se": [
+     "list",
+     2,
+     "f"
+    ],
+    "turning_point": [
+     "list",
+     1,
+     "f"
+    ],
+    "turning_point_se": [
+     "list",
+     1,
+     "f"
+    ],
+    "nobs": [
+     "int",
+     0,
+     ""
+    ],
+    "n_entities": [
+     "int",
+     0,
+     ""
+    ],
+    "n_periods_used": [
+     "int",
+     0,
+     ""
+    ],
+    "lags": [
+     "int",
+     0,
+     ""
+    ],
+    "powers": [
+     "int",
+     0,
+     ""
+    ],
+    "df_resid": [
+     "int",
+     0,
+     ""
+    ],
+    "se_type": [
+     "str",
+     0,
+     ""
+    ],
+    "entity_effects": [
+     "bool",
+     0,
+     ""
+    ],
+    "time_effects": [
+     "bool",
+     0,
+     ""
+    ],
+    "entity_trends": [
+     "bool",
+     0,
+     ""
+    ]
+   }
+  },
+  "panel_lp@mask": {
+   "keys": [
+    "bias_correction",
+    "cumulative",
+    "irf",
+    "jackknife",
+    "nobs",
+    "se",
+    "se_type"
+   ],
+   "summarize_lines": 14,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "cumulative",
+     "irf",
+     "se",
+     "se_type"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "band"
+    ],
+    "stub": [
+     "band_alpha",
+     "band_n_sim",
+     "band_seed",
+     "cov_se_max_rel_diff",
+     "critical_value",
+     "lower",
+     "n_cells",
+     "n_cells_used",
+     "pointwise_critical_value",
+     "upper"
+    ],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 3,
+   "containers": {
+    "irf": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "se": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "nobs": [
+     "ndarray",
+     1,
+     "u"
+    ],
+    "se_type": [
+     "str",
+     0,
+     ""
+    ],
+    "cumulative": [
+     "bool",
+     0,
+     ""
+    ],
+    "jackknife": [
+     "bool",
+     0,
+     ""
+    ],
+    "bias_correction": [
+     "str",
+     0,
+     ""
+    ]
+   }
+  },
+  "lp_did@mask": {
+   "keys": [
+    "absorbing",
+    "coef",
+    "horizons",
+    "n_switchers",
+    "never_treated_only",
+    "nobs",
+    "nonabsorbing_lag",
+    "pooled",
+    "reweight",
+    "se",
+    "se_type"
+   ],
+   "summarize_lines": 20,
+   "json": true,
+   "pickle": true,
+   "nonfinite": [],
+   "keys_unnamed": {
+    "__doc__": [],
+    "stub": [],
+    "card": [
+     "se_type"
+    ]
+   },
+   "phantom_candidates": {
+    "__doc__": [
+     "pooled_post_att",
+     "pooled_post_n_switchers",
+     "pooled_post_nobs",
+     "pooled_post_se",
+     "pooled_pre_att",
+     "pooled_pre_n_switchers",
+     "pooled_pre_nobs",
+     "pooled_pre_se"
+    ],
+    "stub": [
+     "pooled_post_att",
+     "pooled_post_n_switchers",
+     "pooled_post_nobs",
+     "pooled_post_se"
+    ],
+    "card": []
+   },
+   "shape_mismatch": {},
+   "shapes_checked": 5,
+   "containers": {
+    "horizons": [
+     "ndarray",
+     1,
+     "i"
+    ],
+    "coef": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "se": [
+     "ndarray",
+     1,
+     "f"
+    ],
+    "nobs": [
+     "ndarray",
+     1,
+     "u"
+    ],
+    "n_switchers": [
+     "ndarray",
+     1,
+     "u"
+    ],
+    "absorbing": [
+     "bool",
+     0,
+     ""
+    ],
+    "nonabsorbing_lag": [
+     "int",
+     0,
+     ""
+    ],
+    "reweight": [
+     "bool",
+     0,
+     ""
+    ],
+    "pooled": [
+     "bool",
+     0,
+     ""
+    ],
+    "never_treated_only": [
+     "bool",
+     0,
+     ""
+    ],
+    "se_type": [
+     "str",
+     0,
+     ""
+    ]
+   }
+  }
+ },
+ "census": {
+  "float|0|": 484,
+  "ndarray|1|f": 416,
+  "list|1|i": 28,
+  "int|0|": 343,
+  "list|2|f": 191,
+  "dict|0|": 38,
+  "list|1|U": 22,
+  "bool|0|": 99,
+  "ndarray|2|f": 7,
+  "ndarray|1|b": 9,
+  "NoneType|0|": 26,
+  "tuple|0|": 5,
+  "str|0|": 114,
+  "list|1|O": 27,
+  "ndarray|1|u": 27,
+  "list|2|i": 2,
+  "ndarray|1|i": 6,
+  "list|1|f": 32,
+  "list|4|f": 6,
+  "list|3|f": 41,
+  "list|1|b": 5,
+  "list|2|O": 3,
+  "list|2|b": 2
+ }
+}

@@ -228,6 +228,22 @@ What the estimators do with it, and what they refuse:
   each half carries the full panel's incidental-parameter bias, which
   entry, exit and gaps break, and the split-panel reference implementation
   (`pLP`) is written for balanced panels.
+**What it costs.** The per-entity projection and the one-way menus stay
+linear in the panel. The **unbalanced two-way** case does not: the time
+effects are partialled out through the projected time dummies, one per
+observed period, by a rank-revealing least-squares step, so the work grows
+with the cube of the number of periods. Measured on `panel_distributed_lag`
+at $N = 6$, `lags=1`, `powers=2` (audit round 14,
+`lab/audit/round14/out/sweep_g.txt`): **0.11 s at $T = 400$, 0.69 s at
+$T = 800$, 5.2 s at $T = 1600$, 38 s at $T = 3200$** — a factor of 8 per
+doubling — against **3 ms** at $T = 3200$ for the same panel with no mask, or
+with a mask and `time_effects=False`, both of which are linear. A mask of all
+ones takes the balanced path and is bit-identical to no mask at any size. So:
+a long unbalanced panel is practical without time effects, or after trimming
+$T$; with two-way effects, keep $T$ in the hundreds. (The alternative —
+alternating projections — is an approximation; the exact route is what the
+`PanelOLS` goldens pin, and it is not being traded for speed here.)
+
 - **`lp_did`** accepts `mask=` for symmetry but **raises** on an unbalanced
   one: the clean-control windows and the long differences are defined on
   contiguous outcome paths, and the fixest reference run that validates the

@@ -282,8 +282,9 @@ pub fn panel_lp(
     let lag_max = config.shock_lags.max(config.outcome_lags);
     if t_len.saturating_sub(hmax) <= lag_max {
         return Err(PanelError::InsufficientObservations {
-            what: "panel local projection: the largest horizon plus the lag order \
-                   leaves no regression window inside the panel's periods",
+            what: "panel local projection: horizon plus the lag order \
+                   (n_lag_controls, or shock_lags/outcome_lags) leaves no \
+                   regression window inside the panel's periods",
             needed: hmax + lag_max + 1,
             got: t_len,
         });

@@ -79,6 +79,10 @@ def array_variant(a, variant):
 
 def apply(args, kwargs, mut):
     args, kwargs = list(args), dict(kwargs)
+    # `also` puts the call in the mode the mutated slot needs to be live
+    # (round 13 recorded the key but never applied it)
+    for k, v in (mut.get("also") or {}).items():
+        kwargs[k] = decode(v)
     kind, key = mut["slot"]
     var = mut["variant"]
     if isinstance(var, list) and var[0] == "value":
@@ -100,7 +104,7 @@ def main():
     import tsecon
     from registry import build
 
-    fn = getattr(tsecon, name)
+    fn = getattr(tsecon, name.split("@")[0])
     for line in sys.stdin:
         line = line.strip()
         if not line:

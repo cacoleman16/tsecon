@@ -407,8 +407,11 @@ an explicit `bandwidth` raises, because it would be inert. `force_int` ceils the
 bandwidth (`True` for `fmols`/`ccr`, `False` for `dols` — `arch`'s defaults);
 note the `arch` convention that Bartlett/Parzen windows stop at `floor(bandwidth)`
 lags, so with a non-integer bandwidth the last positive weight is dropped —
-integer bandwidths coincide with `tsecon-hac`'s `lrv`. `df_adjust=False`
-multiplies the covariance by `T/(T−k)`. `x_trend`/`diff` control how the
+integer bandwidths coincide with `tsecon-hac`'s `lrv`. `df_adjust=True`
+multiplies the covariance by `(T−1)/(T−1−p)` for `fmols`/`ccr` — `T−1` the
+rows of the residual system and `p` the *estimated coefficients*, regressors
+**and** deterministics (`len(params)`) — and by `nobs/(nobs − n_params)` for
+`dols`; `df_adjust=False` (the default) scales nothing. `x_trend`/`diff` control how the
 regressor innovations are detrended (`diff` raises when the effective
 `x_trend` has no trend term). For `dols`: `lags`/`leads=None` searches them,
 `ic="bic"`, caps `max_lag`/`max_lead` default to `ceil(12(T/100)^(1/4))`,
@@ -495,7 +498,7 @@ blocks are documented-formula rather than third-party goldens and the fixture
 says so: the `"andrews"` bandwidth rule (`arch` has none; the value is the
 Andrews 1991 closed form, the estimates are `arch`'s at that bandwidth) and
 `ccr` under `df_adjust` (`arch` 8.0 scales only `ω₁₁` by an
-operator-precedence slip; the documented `T/(T−k)` scaling of `ω₁.₂` is what
+operator-precedence slip; the documented `(T−1)/(T−1−p)` scaling of `ω₁.₂` is what
 ships, and `arch`'s raw value is stored and asserted to differ). The Python
 suite additionally calls `arch` directly on fresh data and re-downloads the two
 Rdatasets above (skipping offline). The statistical properties are **measured**

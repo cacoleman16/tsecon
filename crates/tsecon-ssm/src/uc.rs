@@ -502,8 +502,9 @@ impl Layout {
             let max_h = (f.period / 2.0).floor() as usize;
             if f.harmonics == 0 || f.harmonics > max_h {
                 return Err(invalid(format!(
-                    "freq_seasonal[{i}].harmonics = {}: for period {} the harmonics must be \
-                     between 1 and floor(period / 2) = {max_h}",
+                    "freq_seasonal[{i}].harmonics = {} (the Python keyword is \
+                     freq_seasonal_harmonics[{i}]): for period {} the harmonics \
+                     must be between 1 and floor(period / 2) = {max_h}",
                     f.harmonics, f.period
                 )));
             }

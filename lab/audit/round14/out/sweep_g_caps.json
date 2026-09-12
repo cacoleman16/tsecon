@@ -1,0 +1,1097 @@
+{
+ "timing": {},
+ "caps": {
+  "unobserved_components": [
+   {
+    "id": "seasonal=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: seasonal = 140737488355328 with 200 observations: the dummy-seasonal period must not exceed the sample length (it costs s - 1 states, and a period the sample never completes is not identified)",
+    "seconds": 0.0,
+    "rss_mb": 0.4
+   },
+   {
+    "id": "seasonal=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: seasonal = 2147483648 with 200 observations: the dummy-seasonal period must not exceed the sample length (it costs s - 1 states, and a period the sample never completes is not identified)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "seasonal=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: seasonal = 1000000 with 200 observations: the dummy-seasonal period must not exceed the sample length (it costs s - 1 states, and a period the sample never completes is not identified)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "seasonal=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: seasonal = 201 with 200 observations: the dummy-seasonal period must not exceed the sample length (it costs s - 1 states, and a period the sample never completes is not identified)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "seasonal=cap",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: y has 200 observed (non-NaN) values but the specification has 201 states; at least k_states + 2 = 203 observations are needed",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "freq_seasonal=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: freq_seasonal[0].period = 140737488355328 with 200 observations: a trigonometric seasonal period must not exceed the sample length (it costs up to 2 floor(period / 2) states, and a period the sample never completes is not identified)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "freq_seasonal=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: freq_seasonal[0].period = 2147483648 with 200 observations: a trigonometric seasonal period must not exceed the sample length (it costs up to 2 floor(period / 2) states, and a period the sample never completes is not identified)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "freq_seasonal=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: freq_seasonal[0].period = 1000000 with 200 observations: a trigonometric seasonal period must not exceed the sample length (it costs up to 2 floor(period / 2) states, and a period the sample never completes is not identified)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "freq_seasonal=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: freq_seasonal[0].period = 201 with 200 observations: a trigonometric seasonal period must not exceed the sample length (it costs up to 2 floor(period / 2) states, and a period the sample never completes is not identified)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "freq_seasonal=cap",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: y has 200 observed (non-NaN) values but the specification has 205 states; at least k_states + 2 = 207 observations are needed",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "freq_seasonal_harmonics=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "freq_seasonal_harmonics was given but freq_seasonal is None: it only sets the harmonics of the trigonometric seasonal blocks, so without freq_seasonal it is inert; pass freq_seasonal=[period, ...] or drop it",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "freq_seasonal_harmonics=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "freq_seasonal_harmonics was given but freq_seasonal is None: it only sets the harmonics of the trigonometric seasonal blocks, so without freq_seasonal it is inert; pass freq_seasonal=[period, ...] or drop it",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "freq_seasonal_harmonics=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "freq_seasonal_harmonics was given but freq_seasonal is None: it only sets the harmonics of the trigonometric seasonal blocks, so without freq_seasonal it is inert; pass freq_seasonal=[period, ...] or drop it",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "forecast_steps=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: forecast_steps = 140737488355328: at most 100000 forecast periods are accepted (the horizon costs O(forecast_steps * k_states^2) work and two buffers of that length, and a forecast this far out carries no information about y)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "forecast_steps=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: forecast_steps = 2147483648: at most 100000 forecast periods are accepted (the horizon costs O(forecast_steps * k_states^2) work and two buffers of that length, and a forecast this far out carries no information about y)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "forecast_steps=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: forecast_steps = 1000000: at most 100000 forecast periods are accepted (the horizon costs O(forecast_steps * k_states^2) work and two buffers of that length, and a forecast this far out carries no information about y)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "forecast_steps=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: forecast_steps = 100001: at most 100000 forecast periods are accepted (the horizon costs O(forecast_steps * k_states^2) work and two buffers of that length, and a forecast this far out carries no information about y)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "forecast_steps=cap",
+    "outcome": "ok",
+    "nonfinite": 12,
+    "seconds": 0.426,
+    "rss_mb": 3.2
+   },
+   {
+    "id": "forecast_steps=1e4",
+    "outcome": "ok",
+    "nonfinite": 12,
+    "seconds": 0.39,
+    "rss_mb": 0.2
+   },
+   {
+    "id": "n_starts=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: n_starts = 140737488355328: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so more starts cost time without covering new ground)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: n_starts = 2147483648: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so more starts cost time without covering new ground)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: n_starts = 1000000: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so more starts cost time without covering new ground)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: n_starts = 65: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so more starts cost time without covering new ground)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=cap",
+    "outcome": "ok",
+    "nonfinite": 12,
+    "seconds": 24.17,
+    "rss_mb": 0.0
+   }
+  ],
+  "tvp_regression": [
+   {
+    "id": "n_starts=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: n_starts = 140737488355328: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so more starts cost time without covering new ground)",
+    "seconds": 0.0,
+    "rss_mb": 0.3
+   },
+   {
+    "id": "n_starts=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: n_starts = 2147483648: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so more starts cost time without covering new ground)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: n_starts = 1000000: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so more starts cost time without covering new ground)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid specification: n_starts = 65: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so more starts cost time without covering new ground)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_starts=cap",
+    "outcome": "ok",
+    "nonfinite": 3,
+    "seconds": 21.879,
+    "rss_mb": 1.6
+   }
+  ],
+  "ets_fit": [
+   {
+    "id": "seasonal_periods=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "y has 200 observations but fitting ETS(A,A,A) with 140737488355333 parameters (the AICc needs n - k - 1 > 0) needs at least 140737488355335; supply a longer series or a smaller model",
+    "seconds": 0.0,
+    "rss_mb": 0.2
+   },
+   {
+    "id": "seasonal_periods=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "y has 200 observations but fitting ETS(A,A,A) with 2147483653 parameters (the AICc needs n - k - 1 > 0) needs at least 2147483655; supply a longer series or a smaller model",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "seasonal_periods=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "y has 200 observations but fitting ETS(A,A,A) with 1000005 parameters (the AICc needs n - k - 1 > 0) needs at least 1000007; supply a longer series or a smaller model",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "seasonal_periods=2e5",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "y has 200 observations but fitting ETS(A,A,A) with 200005 parameters (the AICc needs n - k - 1 > 0) needs at least 200007; supply a longer series or a smaller model",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "horizon = 140737488355328 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an allocation request, not a model",
+    "seconds": 0.009,
+    "rss_mb": 0.4
+   },
+   {
+    "id": "horizon=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "horizon = 2147483648 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an allocation request, not a model",
+    "seconds": 0.009,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=1e6",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.088,
+    "rss_mb": 60.9
+   },
+   {
+    "id": "horizon=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "horizon = 1000001 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an allocation request, not a model",
+    "seconds": 0.009,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=cap",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.08,
+    "rss_mb": 46.5
+   },
+   {
+    "id": "horizon=2e5",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.021,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_sim=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms of Hyndman et al. (2008, Table 6.1) \u2014 no simulation runs, so n_sim is inert; drop it, or use a multiplicative component for simulated intervals",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_sim=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms of Hyndman et al. (2008, Table 6.1) \u2014 no simulation runs, so n_sim is inert; drop it, or use a multiplicative component for simulated intervals",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_sim=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms of Hyndman et al. (2008, Table 6.1) \u2014 no simulation runs, so n_sim is inert; drop it, or use a multiplicative component for simulated intervals",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_sim=2^28",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms of Hyndman et al. (2008, Table 6.1) \u2014 no simulation runs, so n_sim is inert; drop it, or use a multiplicative component for simulated intervals",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_sim=2^26",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms of Hyndman et al. (2008, Table 6.1) \u2014 no simulation runs, so n_sim is inert; drop it, or use a multiplicative component for simulated intervals",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_iter=2^47",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.009,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_iter=2^31",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.01,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_iter=1e6",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.009,
+    "rss_mb": 0.0
+   }
+  ],
+  "auto_ets": [
+   {
+    "id": "seasonal_periods=2^47",
+    "outcome": "ok",
+    "nonfinite": 7,
+    "seconds": 0.016,
+    "rss_mb": 0.8
+   },
+   {
+    "id": "seasonal_periods=2^31",
+    "outcome": "ok",
+    "nonfinite": 7,
+    "seconds": 0.016,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "seasonal_periods=1e6",
+    "outcome": "ok",
+    "nonfinite": 7,
+    "seconds": 0.016,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "horizon = 140737488355328 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an allocation request, not a model",
+    "seconds": 0.121,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "horizon = 2147483648 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an allocation request, not a model",
+    "seconds": 0.12,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=1e6",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.202,
+    "rss_mb": 61.1
+   },
+   {
+    "id": "horizon=cap+1",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "horizon = 1000001 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an allocation request, not a model",
+    "seconds": 0.125,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=2e5",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.134,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_sim=2^47",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.125,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_sim=2^31",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.125,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_sim=1e6",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.124,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "n_sim=2^26",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.125,
+    "rss_mb": 0.0
+   }
+  ],
+  "var_conditional_forecast": [
+   {
+    "id": "lags=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "data has 200 rows but a VAR with lags = p = 140737488355328 on its k=3 series needs at least 562949953421314: lagging consumes 140737488355328 rows and each equation then has n_trend + k*lags = 422212465065985 regressors, which leaves no residual degrees of freedom. Try lags <= 49, drop a series, or",
+    "seconds": 0.0,
+    "rss_mb": 0.2
+   },
+   {
+    "id": "lags=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "data has 200 rows but a VAR with lags = p = 2147483648 on its k=3 series needs at least 8589934594: lagging consumes 2147483648 rows and each equation then has n_trend + k*lags = 6442450945 regressors, which leaves no residual degrees of freedom. Try lags <= 49, drop a series, or supply a longer sam",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "lags=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "data has 200 rows but a VAR with lags = p = 1000000 on its k=3 series needs at least 4000002: lagging consumes 1000000 rows and each equation then has n_trend + k*lags = 3000001 regressors, which leaves no residual degrees of freedom. Try lags <= 49, drop a series, or supply a longer sample.",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "steps=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid steps = 140737488355328: requires a horizon whose forecast path fits the conditional-forecast memory budget of 2^24 doubles: steps times the number of series must not exceed it; reduce steps",
+    "seconds": 0.0,
+    "rss_mb": 1.4
+   },
+   {
+    "id": "steps=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid steps = 2147483648: requires a horizon whose forecast path fits the conditional-forecast memory budget of 2^24 doubles: steps times the number of series must not exceed it; reduce steps",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "steps=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "the conditional-forecast working set (steps * k cells times the number of constrained cells in conditions) exceeds the memory budget of 2^24 doubles; reduce steps or constrain fewer cells",
+    "seconds": 0.066,
+    "rss_mb": 53.5
+   },
+   {
+    "id": "steps=2e5",
+    "outcome": "HANG",
+    "deadline": 60.0
+   },
+   {
+    "id": "steps=1e4",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 3.034,
+    "rss_mb": 40.0
+   }
+  ],
+  "var_diagnostics": [
+   {
+    "id": "lags=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "data has 200 rows but a VAR with lags = p = 140737488355328 on its k=3 series needs at least 562949953421314: lagging consumes 140737488355328 rows and each equation then has n_trend + k*lags = 422212465065985 regressors, which leaves no residual degrees of freedom. Try lags <= 49, drop a series, or",
+    "seconds": 0.0,
+    "rss_mb": 0.3
+   },
+   {
+    "id": "lags=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "data has 200 rows but a VAR with lags = p = 2147483648 on its k=3 series needs at least 8589934594: lagging consumes 2147483648 rows and each equation then has n_trend + k*lags = 6442450945 regressors, which leaves no residual degrees of freedom. Try lags <= 49, drop a series, or supply a longer sam",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "lags=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "data has 200 rows but a VAR with lags = p = 1000000 on its k=3 series needs at least 4000002: lagging consumes 1000000 rows and each equation then has n_trend + k*lags = 3000001 regressors, which leaves no residual degrees of freedom. Try lags <= 49, drop a series, or supply a longer sample.",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "nlags=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid nlags = 140737488355328: requires fewer lags than the effective sample size T = nobs: the lag-h residual autocovariance needs T - h > 0 overlapping pairs, and the adjusted statistic divides by T - h",
+    "seconds": 0.0,
+    "rss_mb": 1.4
+   },
+   {
+    "id": "nlags=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid nlags = 2147483648: requires fewer lags than the effective sample size T = nobs: the lag-h residual autocovariance needs T - h > 0 overlapping pairs, and the adjusted statistic divides by T - h",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "nlags=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid nlags = 1000000: requires fewer lags than the effective sample size T = nobs: the lag-h residual autocovariance needs T - h > 0 overlapping pairs, and the adjusted statistic divides by T - h",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "nlags=2e5",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "invalid nlags = 200000: requires fewer lags than the effective sample size T = nobs: the lag-h residual autocovariance needs T - h > 0 overlapping pairs, and the adjusted statistic divides by T - h",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "var_select_order": [
+   {
+    "id": "max_lags=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lags = 140737488355328 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -140737488355128 observations, so max_lags must be smaller than the number of rows (and in practice far smaller \u2014 it also has to leave more observations than k * max_lags + 1",
+    "seconds": 0.0,
+    "rss_mb": 0.1
+   },
+   {
+    "id": "max_lags=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lags = 2147483648 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -2147483448 observations, so max_lags must be smaller than the number of rows (and in practice far smaller \u2014 it also has to leave more observations than k * max_lags + 1 coefficie",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lags=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lags = 1000000 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -999800 observations, so max_lags must be smaller than the number of rows (and in practice far smaller \u2014 it also has to leave more observations than k * max_lags + 1 coefficients per",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lags=2e5",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lags = 200000 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -199800 observations, so max_lags must be smaller than the number of rows (and in practice far smaller \u2014 it also has to leave more observations than k * max_lags + 1 coefficients per ",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lags=1e4",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lags = 10000 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -9800 observations, so max_lags must be smaller than the number of rows (and in practice far smaller \u2014 it also has to leave more observations than k * max_lags + 1 coefficients per equ",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "spa_test": [
+   {
+    "id": "reps=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "spa_test: refusing to allocate 562949953421312 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond available memory \u2014 reduce reps or the number of models",
+    "seconds": 0.0,
+    "rss_mb": 0.7
+   },
+   {
+    "id": "reps=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "spa_test: refusing to allocate 8589934592 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond available memory \u2014 reduce reps or the number of models",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "reps=1e6",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 2.519,
+    "rss_mb": 92.0
+   },
+   {
+    "id": "reps=2^24",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 42.829,
+    "rss_mb": 1405.0
+   },
+   {
+    "id": "reps=1e5",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 0.257,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "block_size=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "spa_test: block_size = 140737488355328 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the original data (zero bootstrap variance); the usual rule of thumb is the Politis-White length (block_size=None) or about n^(1/3)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "block_size=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "spa_test: block_size = 2147483648 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the original data (zero bootstrap variance); the usual rule of thumb is the Politis-White length (block_size=None) or about n^(1/3)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "block_size=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "spa_test: block_size = 1000000 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the original data (zero bootstrap variance); the usual rule of thumb is the Politis-White length (block_size=None) or about n^(1/3)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "model_confidence_set": [
+   {
+    "id": "reps=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "model_confidence_set: refusing to allocate 703687441776640 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond available memory \u2014 reduce reps or the number of models",
+    "seconds": 0.0,
+    "rss_mb": 0.6
+   },
+   {
+    "id": "reps=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "model_confidence_set: refusing to allocate 10737418240 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond available memory \u2014 reduce reps or the number of models",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "reps=1e6",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 2.892,
+    "rss_mb": 38.4
+   },
+   {
+    "id": "reps=2^24",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 48.393,
+    "rss_mb": 602.0
+   },
+   {
+    "id": "block_size=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "model_confidence_set: block_size = 140737488355328 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the original data (zero bootstrap variance); the usual rule of thumb is the Politis-White length (block_size=None) or about n^(1/3)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "block_size=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "model_confidence_set: block_size = 2147483648 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the original data (zero bootstrap variance); the usual rule of thumb is the Politis-White length (block_size=None) or about n^(1/3)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "block_size=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "model_confidence_set: block_size = 1000000 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the original data (zero bootstrap variance); the usual rule of thumb is the Politis-White length (block_size=None) or about n^(1/3)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "stepm_test": [
+   {
+    "id": "reps=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "stepm_test: refusing to allocate 562949953421312 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond available memory \u2014 reduce reps or the number of models",
+    "seconds": 0.0,
+    "rss_mb": 0.6
+   },
+   {
+    "id": "reps=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "stepm_test: refusing to allocate 8589934592 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond available memory \u2014 reduce reps or the number of models",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "reps=1e6",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 2.513,
+    "rss_mb": 122.7
+   },
+   {
+    "id": "reps=2^24",
+    "outcome": "ok",
+    "nonfinite": 0,
+    "seconds": 46.273,
+    "rss_mb": 1886.6
+   },
+   {
+    "id": "block_size=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "stepm_test: block_size = 140737488355328 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the original data (zero bootstrap variance); the usual rule of thumb is the Politis-White length (block_size=None) or about n^(1/3)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "block_size=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "stepm_test: block_size = 2147483648 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the original data (zero bootstrap variance); the usual rule of thumb is the Politis-White length (block_size=None) or about n^(1/3)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "block_size=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "stepm_test: block_size = 1000000 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the original data (zero bootstrap variance); the usual rule of thumb is the Politis-White length (block_size=None) or about n^(1/3)",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "fmols": [
+   {
+    "id": "bandwidth=2^47",
+    "outcome": "ok",
+    "nonfinite": 4,
+    "seconds": 0.001,
+    "rss_mb": 1.9
+   },
+   {
+    "id": "bandwidth=2^31",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "bandwidth=1e6",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "ccr": [
+   {
+    "id": "bandwidth=2^47",
+    "outcome": "ok",
+    "nonfinite": 4,
+    "seconds": 0.001,
+    "rss_mb": 1.9
+   },
+   {
+    "id": "bandwidth=2^31",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "bandwidth=1e6",
+    "outcome": "ok",
+    "nonfinite": 1,
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "dols": [
+   {
+    "id": "lags=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "the dynamic OLS design is too large for T = 200 observations: with lags = 140737488355328 and leads = 1 the largest regression keeps T - 1 - 140737488355328 - 1 = 0 row(s) for k_x + n_det + k_x (lags + leads + 1) = 2 + 1 + 2 x 140737488355330 = 281474976710663 regressors, which leaves no residual de",
+    "seconds": 0.0,
+    "rss_mb": 0.6
+   },
+   {
+    "id": "lags=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "the dynamic OLS design is too large for T = 200 observations: with lags = 2147483648 and leads = 1 the largest regression keeps T - 1 - 2147483648 - 1 = 0 row(s) for k_x + n_det + k_x (lags + leads + 1) = 2 + 1 + 2 x 2147483650 = 4294967303 regressors, which leaves no residual degrees of freedom; fi",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "lags=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "the dynamic OLS design is too large for T = 200 observations: with lags = 1000000 and leads = 1 the largest regression keeps T - 1 - 1000000 - 1 = 0 row(s) for k_x + n_det + k_x (lags + leads + 1) = 2 + 1 + 2 x 1000002 = 2000007 regressors, which leaves no residual degrees of freedom; fix or cap the",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "leads=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "the dynamic OLS design is too large for T = 200 observations: with lags = 1 and leads = 140737488355328 the largest regression keeps T - 1 - 1 - 140737488355328 = 0 row(s) for k_x + n_det + k_x (lags + leads + 1) = 2 + 1 + 2 x 140737488355330 = 281474976710663 regressors, which leaves no residual de",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "leads=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "the dynamic OLS design is too large for T = 200 observations: with lags = 1 and leads = 2147483648 the largest regression keeps T - 1 - 1 - 2147483648 = 0 row(s) for k_x + n_det + k_x (lags + leads + 1) = 2 + 1 + 2 x 2147483650 = 4294967303 regressors, which leaves no residual degrees of freedom; fi",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "leads=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "the dynamic OLS design is too large for T = 200 observations: with lags = 1 and leads = 1000000 the largest regression keeps T - 1 - 1 - 1000000 = 0 row(s) for k_x + n_det + k_x (lags + leads + 1) = 2 + 1 + 2 x 1000002 = 2000007 regressors, which leaves no residual degrees of freedom; fix or cap the",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lag=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lag = 140737488355328 was given but lags = 1 is fixed: the cap only bounds a searched lag count, so it would be inert; drop max_lag or pass lags = None",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lag=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lag = 2147483648 was given but lags = 1 is fixed: the cap only bounds a searched lag count, so it would be inert; drop max_lag or pass lags = None",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lag=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lag = 1000000 was given but lags = 1 is fixed: the cap only bounds a searched lag count, so it would be inert; drop max_lag or pass lags = None",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lag=1e4",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lag = 10000 was given but lags = 1 is fixed: the cap only bounds a searched lag count, so it would be inert; drop max_lag or pass lags = None",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lead=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lead = 140737488355328 was given but leads = 1 is fixed: the cap only bounds a searched lead count, so it would be inert; drop max_lead or pass leads = None",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lead=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lead = 2147483648 was given but leads = 1 is fixed: the cap only bounds a searched lead count, so it would be inert; drop max_lead or pass leads = None",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lead=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lead = 1000000 was given but leads = 1 is fixed: the cap only bounds a searched lead count, so it would be inert; drop max_lead or pass leads = None",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "max_lead=1e4",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "max_lead = 10000 was given but leads = 1 is fixed: the cap only bounds a searched lead count, so it would be inert; drop max_lead or pass leads = None",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "panel_lp@mask": [
+   {
+    "id": "horizon=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "panel local projection: the largest horizon plus the lag order leaves no regression window inside the panel's periods: needs at least 140737488355331 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.6
+   },
+   {
+    "id": "horizon=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "panel local projection: the largest horizon plus the lag order leaves no regression window inside the panel's periods: needs at least 2147483651 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "panel local projection: the largest horizon plus the lag order leaves no regression window inside the panel's periods: needs at least 1000003 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "horizon=1e4",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "panel local projection: the largest horizon plus the lag order leaves no regression window inside the panel's periods: needs at least 10003 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "panel_distributed_lag@mask": [
+   {
+    "id": "lags=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "distributed-lag design (lags): dropping the first `lags` periods of every entity must leave at least two periods: needs at least 140737488355330 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.6
+   },
+   {
+    "id": "lags=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "distributed-lag design (lags): dropping the first `lags` periods of every entity must leave at least two periods: needs at least 2147483650 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "lags=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "distributed-lag design (lags): dropping the first `lags` periods of every entity must leave at least two periods: needs at least 1000002 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "powers=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 140737488355328",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "powers=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 2147483648",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "powers=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 1000000",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ],
+  "lp_did@mask": [
+   {
+    "id": "pre_window=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "LP-DiD pre window: horizon -Q needs some period t >= Q with the lag y_{t-Q} inside the panel: needs at least 140737488355329 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.7
+   },
+   {
+    "id": "pre_window=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "LP-DiD pre window: horizon -Q needs some period t >= Q with the lag y_{t-Q} inside the panel: needs at least 2147483649 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "pre_window=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "LP-DiD pre window: horizon -Q needs some period t >= Q with the lag y_{t-Q} inside the panel: needs at least 1000001 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "post_window=2^47",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "LP-DiD post window: horizon H needs some period t with both a lagged baseline (t >= 1) and the horizon-H lead inside the panel (t + H <= T - 1): needs at least 140737488355330 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "post_window=2^31",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "LP-DiD post window: horizon H needs some period t with both a lagged baseline (t >= 1) and the horizon-H lead inside the panel (t + H <= T - 1): needs at least 2147483650 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   },
+   {
+    "id": "post_window=1e6",
+    "outcome": "refusal",
+    "exc": "ValueError",
+    "msg": "LP-DiD post window: horizon H needs some period t with both a lagged baseline (t >= 1) and the horizon-H lead inside the panel (t + H <= T - 1): needs at least 1000002 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+    "seconds": 0.0,
+    "rss_mb": 0.0
+   }
+  ]
+ }
+}

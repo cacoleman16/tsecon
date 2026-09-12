@@ -349,7 +349,7 @@ pub fn lp_did(
     // t >= 1 and t + H <= T - 1; pre horizon -Q needs t >= Q <= T - 1.
     if t_len < hmax + 2 {
         return Err(PanelError::InsufficientObservations {
-            what: "LP-DiD post window: horizon H needs some period t with both \
+            what: "LP-DiD post_window: horizon H needs some period t with both \
                    a lagged baseline (t >= 1) and the horizon-H lead inside the \
                    panel (t + H <= T - 1)",
             needed: hmax + 2,
@@ -358,7 +358,7 @@ pub fn lp_did(
     }
     if q >= 2 && t_len < q + 1 {
         return Err(PanelError::InsufficientObservations {
-            what: "LP-DiD pre window: horizon -Q needs some period t >= Q with \
+            what: "LP-DiD pre_window: horizon -Q needs some period t >= Q with \
                    the lag y_{t-Q} inside the panel",
             needed: q + 1,
             got: t_len,

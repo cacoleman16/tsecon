@@ -653,8 +653,9 @@ impl fmt::Display for ForecastError {
                 f,
                 "{what}: column {index} has {actual} observations but every \
                  loss column must be index-aligned over the same {expected} \
-                 evaluation periods; losses are compared period by period, so \
-                 a ragged panel has no common evaluation sample — evaluate \
+                 evaluation periods (the length the first column or \
+                 benchmark_losses sets); losses are compared period by period, \
+                 so a ragged panel has no common evaluation sample — evaluate \
                  every model at the same forecast origins (a rectangular \
                  `backtest` grid) before comparing"
             ),

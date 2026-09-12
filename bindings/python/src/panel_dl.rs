@@ -48,6 +48,14 @@ use crate::{panel_data, panel_se, to_py};
 /// default `eval_points` (the pooled regressor mean) runs over the
 /// observed cells. Validated against PanelOLS on the Arellano-Bond EmplUK
 /// panel and a seeded ragged panel (fixtures/panel_unbalanced.json).
+/// COST: on an UNBALANCED panel with `time_effects=True` the time effects
+/// are partialled out through the projected time dummies (one per observed
+/// period) by a rank-revealing least-squares step, which is CUBIC in the
+/// number of periods — measured at N = 6: 0.11 s at T = 400, 0.69 s at
+/// T = 800, 5.2 s at T = 1600, 38 s at T = 3200, against 3 ms for the same
+/// panel with no mask or with `time_effects=False` (both linear, and a mask
+/// of all ones takes the balanced path bit-identically). Long unbalanced
+/// panels are practical only without time effects, or by trimming T.
 ///
 /// Design columns are ordered regressor-major, then power, then lag
 /// (`names` lists them, e.g. `x0_L0`, `x0_L1`, `x0^2_L0`, ...). Returned

@@ -236,7 +236,7 @@
 "outcome": "refusal",
 "exc": "ValueError",
 "msg": "setar_threshold_ci: delay=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
-"seconds": 0.0,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
@@ -1038,7 +1038,7 @@
 "id": "data:short_cols",
 "outcome": "ok",
 "nonfinite": 14,
-"seconds": 0.001,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -1114,7 +1114,7 @@
 "id": "p:1",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.002,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
@@ -1322,7 +1322,7 @@
 "id": "size:zero",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.002,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
@@ -1343,14 +1343,14 @@
 "id": "size:int",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.002,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
 "id": "size:True",
 "outcome": "ok",
 "nonfinite": 21,
-"seconds": 0.001,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -1917,7 +1917,7 @@
 "id": "data:short_rows",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.007,
+"seconds": 0.008,
 "rss_mb": 0.0
 },
 {
@@ -1940,7 +1940,7 @@
 "id": "data:int_array",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.007,
 "rss_mb": 0.0
 },
 {
@@ -1963,7 +1963,7 @@
 "id": "data:dup_row",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.008,
 "rss_mb": 0.0
 },
 {
@@ -2002,7 +2002,7 @@
 "id": "p:1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.009,
 "rss_mb": 0.0
 },
 {
@@ -2149,7 +2149,7 @@
 "id": "threshold_index:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.006,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2424,7 +2424,7 @@
 "id": "delays:[True]",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.004,
+"seconds": 0.005,
 "rss_mb": 0.0
 },
 {
@@ -2517,7 +2517,7 @@
 "id": "shock_var:0",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
@@ -2634,14 +2634,14 @@
 "id": "size:neg1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
 "id": "size:zero",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.004,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
@@ -2662,14 +2662,14 @@
 "id": "size:int",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
 "id": "size:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
@@ -2746,7 +2746,7 @@
 "id": "horizon:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.003,
+"seconds": 0.002,
 "rss_mb": 0.0
 },
 {
@@ -2848,7 +2848,7 @@
 "outcome": "refusal",
 "exc": "ValueError",
 "msg": "threshold_var_girf: n_draws=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
-"seconds": 0.0,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
@@ -2919,21 +2919,21 @@
 "id": "seed:0",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
 "id": "seed:1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
 "id": "seed:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
@@ -2941,28 +2941,28 @@
 "outcome": "refusal",
 "exc": "ValueError",
 "msg": "threshold_var_girf: seed=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
-"seconds": 0.0,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
 "id": "seed:2^31",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
 "id": "seed:2^47",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
 "id": "seed:2^63",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
@@ -2977,7 +2977,7 @@
 "id": "seed:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
@@ -3055,7 +3055,7 @@
 "id": "histories:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.002,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
@@ -3070,14 +3070,14 @@
 "id": "histories:2^31",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.004,
 "rss_mb": 0.0
 },
 {
 "id": "histories:2^47",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
@@ -3115,7 +3115,7 @@
 "id": "histories:none",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.005,
+"seconds": 0.003,
 "rss_mb": 0.0
 },
 {
@@ -3283,7 +3283,7 @@
 "id": "yields:dup_row",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.077,
+"seconds": 0.08,
 "rss_mb": 0.0
 },
 {
@@ -3450,14 +3450,14 @@
 "id": "n_factors:1",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.006,
+"seconds": 0.005,
 "rss_mb": 0.1
 },
 {
 "id": "n_factors:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.029,
+"seconds": 0.03,
 "rss_mb": 0.0
 },
 {
@@ -3591,14 +3591,14 @@
 "id": "periods_per_year:int",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.076,
+"seconds": 0.077,
 "rss_mb": 0.0
 },
 {
 "id": "periods_per_year:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.072,
+"seconds": 0.1,
 "rss_mb": 0.0
 },
 {
@@ -3701,14 +3701,14 @@
 "id": "w:int_array",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.069,
+"seconds": 0.07,
 "rss_mb": 0.0
 },
 {
 "id": "w:valid",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.07,
+"seconds": 0.071,
 "rss_mb": 0.0
 },
 {
@@ -3731,7 +3731,7 @@
 "id": "n_starts:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.078,
+"seconds": 0.076,
 "rss_mb": 0.0
 },
 {
@@ -3810,7 +3810,7 @@
 "id": "seed:0",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.077,
+"seconds": 0.074,
 "rss_mb": 0.0
 },
 {
@@ -3824,7 +3824,7 @@
 "id": "seed:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.074,
+"seconds": 0.075,
 "rss_mb": 0.0
 },
 {
@@ -3839,21 +3839,21 @@
 "id": "seed:2^31",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.08,
+"seconds": 0.081,
 "rss_mb": 0.0
 },
 {
 "id": "seed:2^47",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.081,
+"seconds": 0.083,
 "rss_mb": 0.0
 },
 {
 "id": "seed:2^63",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.076,
+"seconds": 0.074,
 "rss_mb": 0.0
 },
 {
@@ -3868,7 +3868,7 @@
 "id": "seed:True",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.079,
+"seconds": 0.08,
 "rss_mb": 0.0
 },
 {
@@ -3883,7 +3883,7 @@
 "id": "seed:none",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.076,
+"seconds": 0.08,
 "rss_mb": 0.0
 },
 {
@@ -4769,7 +4769,7 @@
 "id": "lags:2",
 "outcome": "ok",
 "nonfinite": 0,
-"seconds": 0.001,
+"seconds": 0.0,
 "rss_mb": 0.0
 },
 {
@@ -5094,7 +5094,7 @@
 "id": "bandwidth:nan@dk",
 "outcome": "refusal",
 "exc": "ValueError",
-"msg": "panel_distributed_lag: bandwidth=NaN has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the band",
+"msg": "Driscoll-Kraay bandwidth = NaN is invalid: requires a finite value >= 0 (the Bartlett lag-truncation parameter, linearmodels' `bandwidth` / statsmodels' `maxlags`)",
 "seconds": 0.0,
 "rss_mb": 0.0
 },
@@ -5102,7 +5102,7 @@
 "id": "bandwidth:inf@dk",
 "outcome": "refusal",
 "exc": "ValueError",
-"msg": "panel_distributed_lag: bandwidth=inf has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the band",
+"msg": "Driscoll-Kraay bandwidth = inf is invalid: requires a finite value >= 0 (the Bartlett lag-truncation parameter, linearmodels' `bandwidth` / statsmodels' `maxlags`)",
 "seconds": 0.0,
 "rss_mb": 0.0
 },
@@ -5110,7 +5110,7 @@
 "id": "bandwidth:-inf@dk",
 "outcome": "refusal",
 "exc": "ValueError",
-"msg": "panel_distributed_lag: bandwidth=-inf has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the ban",
+"msg": "Driscoll-Kraay bandwidth = -inf is invalid: requires a finite value >= 0 (the Bartlett lag-truncation parameter, linearmodels' `bandwidth` / statsmodels' `maxlags`)",
 "seconds": 0.0,
 "rss_mb": 0.0
 },
@@ -5118,47 +5118,42 @@
 "id": "bandwidth:neg1@dk",
 "outcome": "refusal",
 "exc": "ValueError",
-"msg": "panel_distributed_lag: bandwidth=-1 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the bandw",
+"msg": "Driscoll-Kraay bandwidth = -1 is invalid: requires a finite value >= 0 (the Bartlett lag-truncation parameter, linearmodels' `bandwidth` / statsmodels' `maxlags`)",
 "seconds": 0.0,
 "rss_mb": 0.0
 },
 {
 "id": "bandwidth:zero@dk",
-"outcome": "refusal",
-"exc": "ValueError",
-"msg": "panel_distributed_lag: bandwidth=0 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the bandwi",
+"outcome": "ok",
+"nonfinite": 0,
 "seconds": 0.0,
 "rss_mb": 0.0
 },
 {
 "id": "bandwidth:1e300@dk",
-"outcome": "refusal",
-"exc": "ValueError",
-"msg": "panel_distributed_lag: bandwidth=100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-"seconds": 0.0,
+"outcome": "ok",
+"nonfinite": 4,
+"seconds": 0.001,
 "rss_mb": 0.0
 },
 {
 "id": "bandwidth:1e-300@dk",
-"outcome": "refusal",
-"exc": "ValueError",
-"msg": "panel_distributed_lag: bandwidth=0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"outcome": "ok",
+"nonfinite": 0,
 "seconds": 0.0,
 "rss_mb": 0.0
 },
 {
 "id": "bandwidth:int@dk",
-"outcome": "refusal",
-"exc": "ValueError",
-"msg": "panel_distributed_lag: bandwidth=3 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the bandwi",
+"outcome": "ok",
+"nonfinite": 0,
 "seconds": 0.0,
 "rss_mb": 0.0
 },
 {
 "id": "bandwidth:True@dk",
-"outcome": "refusal",
-"exc": "ValueError",
-"msg": "panel_distributed_lag: bandwidth=1 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the bandwi",
+"outcome": "ok",
+"nonfinite": 0,
 "seconds": 0.0,
 "rss_mb": 0.0
 },
@@ -5166,7 +5161,7 @@
 "id": "bandwidth:str@dk",
 "outcome": "refusal",
 "exc": "TypeError",
-"msg": "panel_distributed_lag: bandwidth='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"msg": "panel_distributed_lag: se_type='driscoll_kraay' and bandwidth='abc' are of type str, but this parameter takes a real number. Original error: must be real number, not str",
 "seconds": 0.0,
 "rss_mb": 0.0
 },

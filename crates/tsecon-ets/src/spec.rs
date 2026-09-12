@@ -295,7 +295,7 @@ impl EtsParams {
         let names = spec.smoothing_names();
         if v.len() != names.len() {
             return Err(EtsError::DimensionMismatch {
-                what: "smoothing parameters [alpha, beta?, gamma?, phi?] for this spec",
+                what: "smoothing_params (the smoothing parameters [alpha, beta?, gamma?, phi?] this spec takes)",
                 expected: names.len(),
                 got: v.len(),
             });
@@ -428,7 +428,7 @@ impl EtsStates {
         let n = spec.n_initial_states();
         if v.len() != n {
             return Err(EtsError::DimensionMismatch {
-                what: "initial states [level, trend?, seasonal[0..m)?] for this spec",
+                what: "initial_states (the initial states [level, trend?, seasonal[0..m)?] this spec takes)",
                 expected: n,
                 got: v.len(),
             });

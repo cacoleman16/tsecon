@@ -224,7 +224,12 @@ that horizon's covariance exactly zero and leaves only the dynamics to
 propagate; an explosive VAR conditioned at a long horizon can make
 $B\Sigma B'$ numerically singular, which is refused with a pointer to
 `is_stable`; and a `steps` typo is refused by a memory budget rather than
-aborting.
+aborting. That budget is on **memory**, not time: the work is *quadratic* in
+the horizon — 0.03 s at 1 000 steps, 0.46 s at 4 000, 7.6 s at 16 000, 31 s
+at 32 000 on a $k = 3$ VAR(2), a factor of 4 per doubling (audit round 14,
+`lab/audit/round14/out/sweep_g.txt`) — so a `steps` the budget admits (it
+allows roughly $2^{24}/(k \cdot m)$) can still run for hours. Forecast
+horizons are tens of periods in practice; treat five figures as a typo.
 
 **Validated against.** Two exact legs in `fixtures/var_cf.json`
 ([generator](../../../fixtures/generate_var_cf_fixtures.py), which never

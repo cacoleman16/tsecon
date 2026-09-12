@@ -5073,6 +5073,15 @@ Distributed-lag panel regression — the climate-impact specification of
     default `eval_points` (the pooled regressor mean) runs over the observed
     cells (validated against linearmodels PanelOLS on the Arellano-Bond
     EmplUK panel and a seeded ragged panel, fixtures/panel_unbalanced.json).
+    COST: on an UNBALANCED panel with `time_effects=True` the time effects
+    are partialled out through the projected time dummies (one per observed
+    period) by a rank-revealing least-squares step, which is CUBIC in the
+    number of periods — measured at N = 6: 0.11 s at T = 400, 0.69 s at
+    T = 800, 5.2 s at T = 1600, 38 s at T = 3200, against 3 ms for the same
+    panel with no mask or with `time_effects=False` (both linear, and a
+    mask of all ones takes the balanced path bit-identically). Long
+    unbalanced panels are practical only without time effects, or by
+    trimming T.
 
         y_it = sum_{l=0..L} beta_l x_{i,t-l} [+ sum_l gamma_l x^2_{i,t-l}]
                + alpha_i + delta_t [+ g_i t] + e_it
@@ -5449,11 +5458,17 @@ Phillips-Hansen (1990) fully modified OLS (FM-OLS) of one cointegrating
     RAISES (the rule would be inert). `force_int` (default True, as arch)
     ceils the bandwidth — automatic or explicit; the automatic one is also
     capped at T - 1. `df_adjust` (default False) scales the covariance by
-    (T-1)/(T-1-k). `x_trend` (default None = `trend`; must carry at least
-    the terms of `trend`) sets the deterministics the regressors are
-    detrended with before differencing; `diff` (default False) removes the
-    trend from the differences instead of the levels and RAISES when the
-    effective x_trend has no trend term (it would be inert).
+    (T-1)/(T-1-p), with T-1 the rows of the residual system and p the
+    number of ESTIMATED COEFFICIENTS — the k regressors AND the
+    deterministics of `trend`, i.e. `len(params)` (at the default
+    `trend="c"` and k = 2 that is 199/196, not 199/197). `x_trend`
+    (default None = `trend`; must carry at least the terms of `trend`)
+    sets the deterministics the regressors are detrended with before
+    differencing; `diff` (default None, which behaves as False) removes
+    the trend from the differences instead of the levels and RAISES when
+    the effective x_trend has no trend term (it would be inert) — and note
+    that `diff=False` passed EXPLICITLY raises there too, for the same
+    reason: the default is the `None` sentinel, not `False`.
 
     Keys: `estimator`, `params` (x columns first, then the deterministics —
     see `param_names`), `se`, `tvalues`, `pvalues` (two-sided normal),
@@ -5506,7 +5521,8 @@ Park (1992) canonical cointegrating regression (CCR) of one
     over t = 2..T, with covariance `omega_1.2 (Z*'Z*)^-1`. Asymptotically
     equivalent to FM-OLS; the two differ in finite samples.
 
-    `df_adjust` scales the covariance by (T-1)/(T-1-k) as documented —
+    `df_adjust` scales the covariance by (T-1)/(T-1-p) with p the
+    estimated coefficients (regressors and deterministics), as documented —
     arch 8.0's `CanonicalCointegratingReg.fit` scales only `omega_11`
     (an operator-precedence slip); everything else is arch-exact.
 
@@ -5627,6 +5643,13 @@ Conditional (hard-path) VAR forecast: the forecast of every series when
     with missing entries works too. Rows beyond `len(conditions)` up to
     `steps` are free; `steps` defaults to `len(conditions)`. At least one
     cell must be pinned (the all-free case is `var_forecast`).
+    COST: the guard on `steps` is a MEMORY budget (`steps * k` cells times
+    the constrained cells must stay inside 2^24 doubles), but the work is
+    QUADRATIC in `steps` — measured on a k = 3 VAR(2): 0.03 s at 1 000
+    steps, 0.46 s at 4 000, 7.6 s at 16 000, 31 s at 32 000 (x4 per
+    doubling), so a `steps` the budget admits can still run for hours.
+    Forecast horizons are tens of periods in practice; treat five figures
+    as a typo.
 
     Method: Doan-Litterman-Sims (1984) / Waggoner-Zha (1999) — Gaussian
     conditioning of the joint forecast-error distribution on the pinned

@@ -260,7 +260,8 @@ import numpy as np, statsmodels.api as sm, tsecon
 
 nile = sm.datasets.nile.load_pandas().data["volume"].values.astype(float)
 fit = tsecon.unobserved_components(nile, forecast_steps=5)
-print(dict(zip(fit["param_names"], np.round(fit["params"], 1))), fit["at_boundary"])
+print({k: round(float(v), 1) for k, v in zip(fit["param_names"], fit["params"])},
+      fit["at_boundary"])
 # {'sigma2.irregular': 15098.5, 'sigma2.level': 1469.2} [False, False]
 band = 1.96 * np.sqrt(fit["level_var"])          # smoothed level ± band
 print(np.round(fit["forecast"], 1), np.round(np.sqrt(fit["forecast_var"]), 1))

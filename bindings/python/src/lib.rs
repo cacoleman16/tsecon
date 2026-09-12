@@ -1367,14 +1367,25 @@ fn set_irf_band_items(
     Ok(())
 }
 
-/// Build an LP [`BandSpec`](tsecon_lp::BandSpec), validating `band_alpha` at
-/// the Python boundary so the error names the Python keyword.
-fn lp_band_spec(band: &str, alpha: f64, n_sim: usize, seed: u64) -> PyResult<tsecon_lp::BandSpec> {
+/// Validate `band_alpha` at the Python boundary so the error names the Python
+/// keyword. Called UNCONDITIONALLY by every LP surface that takes it, not only
+/// when a band is requested: `band_alpha` has a concrete default (0.1), so a
+/// nonsense value cannot be refused as an inert keyword the way a `None`
+/// sentinel can, and before audit round 14 `band_alpha=nan` with `band=None`
+/// was accepted in silence.
+fn check_band_alpha(alpha: f64) -> PyResult<()> {
     if !(alpha > 0.0 && alpha < 1.0) {
         return Err(PyValueError::new_err(format!(
             "band_alpha must lie strictly in (0, 1), got {alpha}"
         )));
     }
+    Ok(())
+}
+
+/// Build an LP [`BandSpec`](tsecon_lp::BandSpec), validating `band_alpha` at
+/// the Python boundary so the error names the Python keyword.
+fn lp_band_spec(band: &str, alpha: f64, n_sim: usize, seed: u64) -> PyResult<tsecon_lp::BandSpec> {
+    check_band_alpha(alpha)?;
     Ok(tsecon_lp::BandSpec::new(lp_band_method(band)?, alpha)
         .with_n_sim(n_sim)
         .with_seed(seed))
@@ -3766,6 +3777,7 @@ fn lp<'py>(
     band_seed: u64,
     band_n_sim: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let cumulation = parse_cumulation(cumulative)?;
     let se_method = resolve_lp_se(se, cumulation)?;
     let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).with_cumulation(cumulation);
@@ -3859,6 +3871,7 @@ fn lp_iv<'py>(
     band: Option<&str>,
     band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
         .with_cumulation(parse_cumulation(cumulative)?);
     let r =
@@ -3954,6 +3967,7 @@ fn lp_multiplier<'py>(
     band: Option<&str>,
     band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls);
     if maxlags.is_some() {
         spec = spec.with_hac(maxlags);
@@ -5737,6 +5751,7 @@ fn panel_lp<'py>(
     band_alpha: f64,
     mask: Option<numpy::PyReadonlyArray2<'py, f64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     use tsecon_var::tsecon_linalg::faer::Mat;
     let o = outcome.as_array();
     let outcome_m = Mat::from_fn(o.nrows(), o.ncols(), |i, j| o[(i, j)]);
@@ -9649,6 +9664,7 @@ fn lp_state<'py>(
     band: Option<&str>,
     band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let cumulation = parse_cumulation(cumulative)?;
     let se_method = resolve_lp_se(se, cumulation)?;
     let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).with_cumulation(cumulation);
@@ -11886,6 +11902,7 @@ fn smooth_lp<'py>(
     band_seed: u64,
     band_n_sim: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let mut spec = tsecon_lp::SmoothLpSpec::new(horizons, n_lag_controls)
         .with_degree(degree)
         .with_penalty_order(penalty_order);

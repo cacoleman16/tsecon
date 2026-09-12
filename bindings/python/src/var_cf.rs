@@ -23,6 +23,12 @@ use crate::{mat_to_vec2, parse_trend, to_py, var_results};
 /// beyond `len(conditions)` up to `steps` are free, so a short list
 /// conditions the near horizons only; `steps` defaults to `len(conditions)`.
 /// At least one cell must be pinned (the all-free case is `var_forecast`).
+/// COST: the guard on `steps` is a MEMORY budget (`steps * k` cells times the
+/// constrained cells must stay inside 2^24 doubles), but the work is
+/// QUADRATIC in `steps` — measured on a k = 3 VAR(2): 0.03 s at 1 000 steps,
+/// 0.46 s at 4 000, 7.6 s at 16 000, 31 s at 32 000 (x4 per doubling), so a
+/// `steps` the budget admits can still run for hours. Forecast horizons are
+/// tens of periods in practice; treat five figures as a typo.
 ///
 /// Method (Doan-Litterman-Sims 1984; Waggoner-Zha 1999): with the coefficients
 /// treated as known and Gaussian innovations, the conditional path is the
