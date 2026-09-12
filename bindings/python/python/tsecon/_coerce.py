@@ -96,6 +96,8 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # recursions are tabulated at every integer period up to the longest.
     "jsz_fit": frozenset({"maturities"}),
     "jsz_loadings": frozenset({"maturities"}),
+    # Harmonics per trigonometric seasonal block: integer counts, not data.
+    "unobserved_components": frozenset({"freq_seasonal_harmonics"}),
 }
 
 _POSITIONAL = (

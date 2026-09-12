@@ -1337,6 +1337,7 @@ version = "0.9.0"
 dependencies = [
  "serde_json",
  "tsecon-linalg",
+ "tsecon-optim",
 ]
 
 [[package]]

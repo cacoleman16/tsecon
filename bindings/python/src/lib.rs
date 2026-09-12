@@ -20,6 +20,7 @@ mod ml_structured;
 mod ml_trees;
 mod panel_dl;
 mod regime_ci;
+mod ssm_uc;
 mod termstructure_jsz;
 mod var_cf;
 
@@ -13105,6 +13106,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ml_trees::register(m)?;
     ml_convex::register(m)?;
     regime_ci::register(m)?;
+    ssm_uc::register(m)?;
     panel_dl::register(m)?;
     termstructure_jsz::register(m)?;
     ml_neural::register(m)?;

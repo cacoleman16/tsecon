@@ -88,3 +88,4 @@ method fits your problem and how to trust its output.
 | [VAR conditional forecasts & residual diagnostics](model-cards/var-svar.md#conditional-hard-path-forecasts-var_conditional_forecast) | `var_conditional_forecast`, `var_diagnostics`, `var_select_order` |
 | [Multiple forecast comparisons](model-cards/forecasting.md#many-models-at-once-spa_test-stepm_test-model_confidence_set) | `spa_test`, `stepm_test`, `model_confidence_set` |
 | [Exponential smoothing (ETS)](model-cards/ets.md) | `ets_fit`, `auto_ets` |
+| [Structural time-series models (unobserved components) & TVP regression](model-cards/unobserved-components.md) | `unobserved_components`, `tvp_regression` |
