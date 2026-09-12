@@ -16,7 +16,7 @@ mod common;
 use common::Lcg;
 use tsecon_var::tsecon_linalg::faer::linalg::solvers::Solve;
 use tsecon_var::tsecon_linalg::faer::{Mat, Side};
-use tsecon_var::{Trend, VarResults, VarSpec};
+use tsecon_var::{Trend, VarSpec};
 
 /// VAR(p) simulator with intercept `c`, lag matrices `a`, innovation
 /// `chol z` (or Student-t(4) scaled to unit variance when `t4`).
@@ -113,6 +113,7 @@ fn conditional_forecast_coverage_under_the_dgp() {
     let mut covered_unc = vec![0usize; h];
     let mut sq_err = vec![0.0f64; h];
     let mut width_ratio = 0.0;
+    let mut width_ratio_single = 0.0;
     let mut mean_maha = 0.0;
     for _ in 0..reps {
         let fut = simulate(&mut rng, h, &c, &a, &chol, false, Some(&start));
@@ -132,13 +133,20 @@ fn conditional_forecast_coverage_under_the_dgp() {
             assert!(cf.se[(s, 1)] < cf.unconditional_se[(s, 1)]);
         }
         width_ratio += cf.se[(0, 1)] / cf.unconditional_se[(0, 1)];
+        // Single-cell conditioning at h = 1 only, for the exact identity below.
+        let cf1 = res
+            .conditional_forecast(1, &[vec![Some(fut[(0, 0)]), None]], 0.05)
+            .unwrap();
+        width_ratio_single += cf1.se[(0, 1)] / cf1.unconditional_se[(0, 1)];
         mean_maha += cf.mahalanobis;
     }
     width_ratio /= reps as f64;
+    width_ratio_single /= reps as f64;
     mean_maha /= reps as f64;
     let se_mc = (0.95f64 * 0.05 / reps as f64).sqrt(); // 0.0049
     println!(
-        "conditional coverage: h=1 se ratio {width_ratio:.4}, mean Mahalanobis {mean_maha:.3} \
+        "conditional coverage: h=1 se ratio {width_ratio:.4} (four-cell path) / \
+         {width_ratio_single:.4} (single cell), mean Mahalanobis {mean_maha:.3} \
          (reps {reps}, T 4000)"
     );
     for s in 0..h {
@@ -166,19 +174,26 @@ fn conditional_forecast_coverage_under_the_dgp() {
             s + 1
         );
     }
-    // At h = 1, conditioning on y_1 leaves y_2 with variance
-    // sigma_22 (1 - rho^2), so the se ratio is exactly sqrt(1 - rho_hat^2)
-    // at the fitted covariance, and near the DGP's sqrt(1 - 0.530^2) = 0.848.
+    // Conditioning on y_1 at h = 1 ALONE leaves y_2 with variance
+    // sigma_22 (1 - rho^2): the se ratio is exactly sqrt(1 - rho_hat^2) at
+    // the fitted covariance (near the DGP's sqrt(1 - 0.530^2) = 0.848).
+    // Conditioning on the whole four-horizon path of y_1 tightens h = 1
+    // further, because the later conditions inform the h = 1 innovation
+    // through the dynamics (the smoother runs backwards).
     let s = &res.sigma_u;
     let rho_hat = s[(0, 1)] / (s[(0, 0)] * s[(1, 1)]).sqrt();
     let exact = (1.0 - rho_hat * rho_hat).sqrt();
     assert!(
-        (width_ratio - exact).abs() < 1e-10,
-        "h=1 se ratio {width_ratio} vs {exact}"
+        (width_ratio_single - exact).abs() < 1e-10,
+        "single-cell h=1 se ratio {width_ratio_single} vs {exact}"
     );
     assert!(
-        (width_ratio - 0.848).abs() < 0.03,
-        "h=1 se ratio {width_ratio} far from the DGP"
+        (exact - 0.848).abs() < 0.03,
+        "fitted correlation far from the DGP: ratio {exact}"
+    );
+    assert!(
+        width_ratio < width_ratio_single,
+        "path conditioning {width_ratio} should tighten h=1 beyond {width_ratio_single}"
     );
     // The plausibility statistic of a path the model itself generated is a
     // chi2(4) draw: mean 4.

@@ -118,8 +118,9 @@ fn golden_closed_form_every_case() {
             &format!("{name}: mahalanobis_pvalue"),
         );
         let grid = case["constrained"].as_array().unwrap();
-        for h in 0..steps {
-            let row = grid[h].as_array().unwrap();
+        assert_eq!(grid.len(), steps, "{name}: constrained rows");
+        for (h, grow) in grid.iter().enumerate() {
+            let row = grow.as_array().unwrap();
             for (j, c) in row.iter().enumerate() {
                 assert_eq!(
                     cf.constrained[h][j],

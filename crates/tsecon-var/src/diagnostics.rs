@@ -116,11 +116,11 @@ impl VarResults {
     fn centred_resid(&self) -> Mat<f64> {
         let (t, k) = (self.resid.nrows(), self.resid.ncols());
         let mut mean = vec![0.0; k];
-        for j in 0..k {
+        for (j, m) in mean.iter_mut().enumerate() {
             for i in 0..t {
-                mean[j] += self.resid[(i, j)];
+                *m += self.resid[(i, j)];
             }
-            mean[j] /= t as f64;
+            *m /= t as f64;
         }
         Mat::from_fn(t, k, |i, j| self.resid[(i, j)] - mean[j])
     }

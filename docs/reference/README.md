@@ -84,3 +84,4 @@ method fits your problem and how to trust its output.
 | [Functional shocks (FVAR/FLP)](model-cards/functional-shocks.md) | `functional_pca`, `flp`, `flp_scenario`, `fvar_scenario` |
 | [Structural breaks](model-cards/structural-breaks.md) | `bai_perron`, `sup_f_test` |
 | [Static copulas](model-cards/copulas.md) | `pseudo_obs`, `copula_fit`, `copula_select` |
+| [VAR conditional forecasts & residual diagnostics](model-cards/var-svar.md#conditional-hard-path-forecasts-var_conditional_forecast) | `var_conditional_forecast`, `var_diagnostics`, `var_select_order` |

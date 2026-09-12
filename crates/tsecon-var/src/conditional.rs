@@ -208,7 +208,7 @@ impl VarResults {
                        unconditional forecast (var_forecast) instead",
             });
         }
-        let n = steps.checked_mul(k).unwrap_or(usize::MAX);
+        let n = steps.saturating_mul(k);
         let working = n
             .checked_mul(3 * m + k + 1)
             .and_then(|a| m.checked_mul(m).map(|b| a.saturating_add(b)))
