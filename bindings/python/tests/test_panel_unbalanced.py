@@ -44,20 +44,42 @@ def _hexes(seq):
 
 # The snapshot is bitwise only on the architecture that captured it. arm64
 # contracts a multiply and an add into one FMA where x86-64 rounds twice, so
-# the same within projection differs in the last bit on an Apple-silicon
-# runner. That is a property of the instruction set, not of the mask
+# the same least-squares chain lands a few bits away on an Apple-silicon
+# runner — measured at 1 ULP on the plain within estimator and 11 ULP on the
+# two-way quadratic distributed lag, which projects out time dummies before
+# it fits. That is a property of the instruction set, not of the mask
 # refactor, which is pinned bitwise on EVERY platform by
 # test_all_ones_mask_is_bit_identical_to_no_mask below (two calls, one
-# process). Elsewhere this test asserts the values still agree to a few ULP,
-# which a real regression in the balanced paths would break.
+# process).
+#
+# So off the capturing architecture this asserts a relative tolerance rather
+# than a ULP count: a ULP budget is the wrong shape here, because the derived
+# quantities (marginal effects, a turning point that divides by a quadratic
+# coefficient) amplify a last-bit difference by however ill-conditioned the
+# ratio is, while the tolerance that matters is the same for all of them.
+# 1e-12 sits three orders above the 1e-15 reassociation noise and six below
+# the 1e-6 a real change in the balanced path would move — skipping a cell,
+# a different degrees-of-freedom count or a changed projection all move the
+# answer far more than this. The `_probe` tests below pin both ends of that.
 _SNAP_ARCH = SNAP.get("_platform", "x86_64-linux")
 _THIS_ARCH = f"{platform.machine()}-{sys.platform}"
 _SNAP_IS_BITWISE = _THIS_ARCH == _SNAP_ARCH
-_ULP_BUDGET = 8
+_CROSS_ARCH_RTOL = 1e-12
+
+
+def _same_cross_arch(seq, want, what):
+    """`_same`'s cross-architecture branch, exercised on every platform."""
+    global _SNAP_IS_BITWISE
+    was = _SNAP_IS_BITWISE
+    _SNAP_IS_BITWISE = False
+    try:
+        _same(seq, want, what)
+    finally:
+        _SNAP_IS_BITWISE = was
 
 
 def _same(seq, want, what):
-    """Bitwise where the snapshot's architecture is ours, else within `_ULP_BUDGET`."""
+    """Bitwise on the snapshot's architecture, else within `_CROSS_ARCH_RTOL`."""
     got = _hexes(seq)
     if _SNAP_IS_BITWISE:
         assert got == want, what
@@ -67,11 +89,12 @@ def _same(seq, want, what):
         gv, wv = float.fromhex(g), float.fromhex(w)
         if gv == wv:
             continue
-        ulp = math.ulp(max(abs(gv), abs(wv)))
-        assert abs(gv - wv) <= _ULP_BUDGET * ulp, (
+        scale = max(abs(gv), abs(wv))
+        rel = abs(gv - wv) / scale if scale else abs(gv - wv)
+        assert rel <= _CROSS_ARCH_RTOL, (
             f"{what}[{i}]: {gv!r} against the snapshot's {wv!r} — "
-            f"{abs(gv - wv) / ulp:.1f} ULP apart on {_THIS_ARCH}, past the "
-            f"{_ULP_BUDGET} ULP the snapshot's {_SNAP_ARCH} capture allows"
+            f"{rel:.2e} relative on {_THIS_ARCH}, past the "
+            f"{_CROSS_ARCH_RTOL:.0e} the snapshot's {_SNAP_ARCH} capture allows"
         )
 
 
@@ -211,6 +234,31 @@ def test_balanced_calls_are_bit_identical_to_the_0_9_0_snapshot():
     _same(np.asarray(r["coefs"]), rec["coefs"], "mean_group_var/coefs")
     _same(np.asarray(r["orth_irfs"]), rec["orth_irfs"], "mean_group_var/orth_irfs")
     _same(r["irf_path_se"], rec["irf_path_se"], "mean_group_var/irf_path_se")
+
+
+def test_probe_the_cross_architecture_tolerance_accepts_reassociation_noise():
+    """The tolerance must pass what an instruction-set difference produces.
+
+    The worst measured on arm64 is 11 ULP on the two-way quadratic
+    distributed lag (1.3e-15 relative); this probes an order beyond it.
+    """
+    want = SNAP["panel_fe"]["nonrobust"]["params"]
+    vals = [float.fromhex(h) for h in want]
+    drifted = [v + 16 * math.copysign(math.ulp(v), v) for v in vals]
+    _same_cross_arch(drifted, want, "probe/reassociation")
+
+
+def test_probe_the_cross_architecture_tolerance_rejects_a_real_change():
+    """And it must fail anything a real change in the balanced path moves.
+
+    The smallest such change — one observation entering or leaving a
+    projection — moves a coefficient by parts per million, six orders past
+    this tolerance. A 1e-9 nudge already has to fail.
+    """
+    want = SNAP["panel_fe"]["nonrobust"]["params"]
+    nudged = [float.fromhex(h) * (1 + 1e-9) for h in want]
+    with pytest.raises(AssertionError, match=r"relative on .*past the 1e-12"):
+        _same_cross_arch(nudged, want, "probe/regression")
 
 
 def test_all_ones_mask_is_bit_identical_to_no_mask():
