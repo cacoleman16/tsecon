@@ -620,9 +620,9 @@ ETS example) simply have to run, and do.
 
 ## Verification record
 
-- `f2e9a31`(pending) — the Rust refusal messages (L1, L2, and the four
-  named alongside), the `check_band_alpha` guard (L7), the `_coerce` nested
-  offender and fallback (L3), the four documentation fixes (M1, M2, L4, L5,
+- `9223f26` — the Rust refusal messages (L1, L2, and the four named
+  alongside), the `check_band_alpha` guard (L7), the `_coerce` nested
+  offender and fallback (L3), the six documentation fixes (M1, M2, L4, L5,
   L6, L8), the regenerated `api.md`, and
   `bindings/python/tests/test_audit_round14.py`: **34 pins, all passing**.
   One existing assertion was re-pinned rather than weakened:
@@ -639,12 +639,14 @@ ETS example) simply have to run, and do.
   aborts, 0 hangs**, with the five `bandwidth@dk` cells moved to normal
   returns by the harness `also` fix described above.
 - `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
-  -D warnings` clean; `cargo test -p` for each touched crate
+  -D warnings` clean (0 warnings); `cargo test -p` for the six touched crates
   (`tsecon-ets`, `tsecon-forecast`, `tsecon-panel`, `tsecon-ssm`,
-  `tsecon-coint`, `tsecon-python`) green.
+  `tsecon-coint`, `tsecon-python`, release profile): **257 passed, 0
+  failed**.
 - `docs/gen_api_reference.py` leaves `api.md` byte-identical after the
   regeneration; `mkdocs build --strict` clean.
-- Full Python suite, once, after every change: **2378 passed, 1 skipped**.
+- Full Python suite, once, after every change: **2378 passed, 1 skipped in
+  7:14** (2344 before the round, plus the 34 pins).
 
 ## Lessons
 
