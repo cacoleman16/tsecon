@@ -69,6 +69,20 @@ parameters, Federal Reserve Board public data, monthly 1961-2014;
 decomposition, quarterly, a level/shape validation target). Each carries its
 source in its header comments.
 
+One further fixture reaches the network at generation time and vendors
+nothing: `uc.json` (`generate_uc_fixtures.py`) fits the Harvey-Durbin (1986)
+basic structural model to the UK `Seatbelts` monthly series, which it pulls
+through `sm.datasets.get_rdataset("Seatbelts", "datasets")`. R's `datasets`
+package is GPL-2 — **not** the public-domain footing the `*.csv` files below
+sit on — so the series is **not stored, and nothing that reconstructs it is
+stored**: the fixture keeps only the derived optimum (parameters, both
+flavours of standard error, the log-likelihood, the pile-up flags, `nobs`,
+`k_states`, `nobs_diffuse`). The Python test re-fetches it to run tsecon on
+the same data and **skips** with a message when Rdatasets is unreachable, so
+that leg is not gated in an offline environment; the validation-matrix row
+says so. Everything else in `uc.json` is the bundled public-domain Nile
+series and seeded simulations.
+
 Each fixture records the exact reference-library versions used, so the values
 are reproducible. Regenerate any of them with, e.g.:
 
