@@ -180,10 +180,10 @@ fn fe_cases_match_linearmodels_panelols() {
                     1e-12,
                     &format!("{name}/{key} t[{j}]"),
                 );
-                for b in 0..k {
+                for (b, &want_cov) in wc[j].iter().enumerate().take(k) {
                     assert_close(
                         inf.cov[(j, b)],
-                        wc[j][b],
+                        want_cov,
                         RTOL,
                         1e-14,
                         &format!("{name}/{key} cov[{j},{b}]"),
@@ -265,10 +265,10 @@ fn dl_cases_match_linearmodels_and_the_delta_method() {
                     1e-12,
                     &format!("{name}/{key} t[{j}]"),
                 );
-                for b in 0..kk {
+                for (b, &want_cov) in wc[j].iter().enumerate().take(kk) {
                     assert_close(
                         r.cov[(j, b)],
-                        wc[j][b],
+                        want_cov,
                         RTOL,
                         1e-14,
                         &format!("{name}/{key} cov[{j},{b}]"),
@@ -419,15 +419,20 @@ fn lp_cases_match_linearmodels_per_horizon() {
     }
 }
 
-/// The balanced inputs of the 0.9.0 bitwise snapshot.
-fn snapshot_inputs() -> (
+/// The balanced snapshot's inputs: the outcome, the weather-like regressor,
+/// a second regressor, the common shock, the staggered treatment, and the
+/// per-entity matrices of the mean-group VAR.
+type SnapshotInputs = (
     Mat<f64>,
     Mat<f64>,
     Mat<f64>,
     Vec<f64>,
     Mat<f64>,
     Vec<Mat<f64>>,
-) {
+);
+
+/// The balanced inputs of the 0.9.0 bitwise snapshot.
+fn snapshot_inputs() -> SnapshotInputs {
     let fx = load("panel_balanced_snapshot.json");
     let inp = &fx["inputs"];
     let y = to_mat(&matrix(&inp["y"]));
