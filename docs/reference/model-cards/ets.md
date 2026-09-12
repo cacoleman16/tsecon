@@ -111,7 +111,7 @@ $10 + 2\lfloor m/2 \rfloor$ observations.
 | `error`, `trend`, `damped`, `seasonal`, `seasonal_periods` | `"add"`, `None`, `False`, `None`, `None` | The taxonomy letters. `damped` without a trend and `seasonal_periods` without a seasonal are **refused** (they would be inert); a seasonal without `seasonal_periods` is refused too |
 | `initialization` | `"estimated"` | R's and statsmodels' default; `"heuristic"` is faster and adds only the smoothing parameters to $k$; `"known"` needs `initial_states` |
 | `smoothing_params` | `None` (estimate) | Evaluate at fixed parameters instead — statsmodels' `smooth(params)`; needs `"heuristic"` or `"known"` (with `"estimated"` nothing would be estimated), and `optimizer`/`max_iter` are then refused |
-| `optimizer` | `None` = `"auto"` | L-BFGS and Nelder-Mead from a staged start (the smoothing parameters first, at the heuristic states), then a BFGS polish of the better — two searches because the surface can hold a boundary optimum at $\alpha \to 0$ or a ridge at $\alpha \to 1$ that traps one of them. `"nelder_mead"` (R's choice), `"bfgs"`, `"lbfgs"` run one search; the quasi-Newton ones can stall where a parameter runs into a bound (the logistic transform flattens the working-space gradient there) — diagnostic options, not the default |
+| `optimizer` | `None` = `"auto"` | L-BFGS and Nelder-Mead from a staged start (the smoothing parameters first, at the heuristic states — without that stage the joint search can climb the $\alpha \to 1$ ridge, seen on ETS(M,N,A) for the airline series), then a BFGS polish of the better. Two searches because neither alone is reliable: over the 21 MLE fixture cases `auto` attains the best log-likelihood of the four settings on every one, while `"lbfgs"` alone falls 0.23 short on log-UKgas ETS(A,N,A) and `"nelder_mead"` alone (R's choice) 0.060 short on co2 ETS(A,Ad,A) — measured, and asserted in `test_ets.py`. `"nelder_mead"`, `"bfgs"`, `"lbfgs"` run one search each: diagnostic options, not the default |
 | `horizon`, `level` | `0`, `None` = 0.95 | Forecast steps and interval coverage; `level` (and `n_sim`, `seed`) with `horizon=0` are refused |
 | `n_sim`, `seed` | `None` = 5000, `None` = 0 | Simulated intervals for the non-class-1 models; refused for a class-1 model, where the interval is exact and nothing is simulated. Allocation guards (not modelling limits): `horizon` at most $10^6$, `n_sim` $\times$ `horizon` at most $2^{28}$ simulated values held at once, both refused by name, and the buffer is reserved fallibly so a machine that cannot supply a permitted one also gets an error rather than an abort |
 | `auto_ets(seasonal_periods, ic, allow_multiplicative_trend, restrict, damped)` | `None`, `"aicc"`, `False`, `True`, `None` | R's defaults: no multiplicative trend, the infinite-variance / mis-scaled combinations dropped, damped and undamped both tried |
@@ -128,9 +128,12 @@ values and `resid` (relative under a multiplicative error), the state
 paths `level_path` / `trend_path` / `seasonal_path` (the states *after*
 each update; statsmodels' `level` / `slope` / `season`), the forecast
 anchor `final_level` / `final_trend` / `final_seasonal` (`[j]` for
-forecast step `j`), `loglik`, `sigma2`, `nobs`, `k_params`, `aic`,
+forecast step `j`) and `final_states`, the `initialization` actually
+used, `loglik`, `sigma2`, `nobs`, `k_params`, `aic`,
 `aicc`, `bic`, the search record (`converged`, `n_iterations`,
-`n_fevals`, `optimizer`), `class1`, and with `horizon=h` the `forecast`,
+`n_fevals`, `optimizer` -- `"nelder_mead+bfgs"` under the default,
+`"none"` at fixed parameters), `class1`, `horizon`, and with
+`horizon=h` the `forecast`,
 `forecast_variance`, `forecast_lower`, `forecast_upper`, `interval_level`,
 `interval_method` (`"exact"` or `"simulated"`), `n_sim`, `seed`.
 
@@ -150,7 +153,8 @@ scored, so refitting the reported specification reproduces every number
 bit for bit — plus `ic`, `ic_value`, and `candidates`: every candidate
 with its `spec`, `loglik`, `aic`/`aicc`/`bic`, `ic_value`, `k_params`,
 `converged`, `status` and `error`, ranked by the criterion with failures
-last (a failing candidate is recorded, never fatal). Candidates within
+last (a failing candidate is recorded, never fatal) -- and the counts
+`n_candidates` / `n_fitted`. Candidates within
 about 2 of the best criterion are near-ties the data do not distinguish;
 the winner's standard errors (not offered here) would not know a search
 happened.
@@ -159,14 +163,16 @@ happened.
 
 - **Boundary optima.** $\beta \to 0$, $\gamma \to 0$ or $\alpha \to 1$
   are common and legitimate (a deterministic trend, a fixed seasonal, a
-  random walk); the search reports them at the box edge with
-  `converged=False` when it ended on the edge. Where statsmodels'
+  random walk), and the search reports them as they are. `converged` is
+  the optimizer's own stopping flag, not a verdict on the fit: it is
+  False whenever no stage met its tolerance, which happens both at a
+  box-edge optimum (the logistic transform flattens the working-space
+  gradient there) and when a simplex exhausts its budget on a flat
+  interior one — read it beside the parameter values. Where statsmodels'
   L-BFGS-B stalls on an edge with a lower likelihood — log-UKgas
   ETS(A,A,A) with estimated initial states, where it returns $\alpha =
   10^{-4}$ and a log-likelihood 0.89 below the interior optimum — the
-  staged two-search default finds the interior one; a single quasi-Newton
-  search from the same start can stall the same way, which is why one
-  alone is not the default.
+  staged start finds the interior one with any of the four settings.
 - **Multiplicative components on data near zero** make the recursion
   divide by tiny states; the crate refuses non-positive data up front and
   reports a degenerate recursion (naming the observation) if it happens
@@ -185,7 +191,10 @@ happened.
 
 The fixture is `fixtures/ets.json`, from
 `fixtures/generate_ets_fixtures.py` (statsmodels 0.15; the generator never
-imports tsecon). Graded leg by leg:
+imports tsecon). It holds 36 fixed-parameter cases covering all 30 models
+(23 of them statsmodels-exact), 36 initialisation cases, 21 maximum-
+likelihood targets and 48 candidate sets, and re-running the generator
+reproduces the committed file **byte for byte**. Graded leg by leg:
 
 1. **Independent package — fixed parameters** (`ets_golden.rs`,
    `test_ets.py`). For the **twenty models without a multiplicative

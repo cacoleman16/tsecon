@@ -5513,8 +5513,9 @@ Automatic ETS model selection — the candidate-set search of Hyndman
     combinations with infinite forecast variance or a mis-scaled error —
     additive error with any multiplicative component, and (M,M,A) — so a
     positive seasonal series has 15 candidates (6 additive-error, 9
-    multiplicative-error), a non-positive one 6, a non-seasonal positive
-    series 5. `initialization` is "estimated" or "heuristic" for every
+    multiplicative-error), a non-positive seasonal one 6, a non-seasonal
+    positive series 6, and a non-seasonal non-positive series 3.
+    `initialization` is "estimated" or "heuristic" for every
     candidate; `optimizer` and the forecast options (`horizon`, `level`,
     `n_sim`, `seed`) are those of `ets_fit` — `n_sim` and `seed` act only
     if the selected model is not class 1 (the winner is not known in

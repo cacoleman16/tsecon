@@ -200,6 +200,31 @@ def test_maximum_likelihood_matches_or_beats_statsmodels(case):
     assert r2["loglik"] == r["loglik"] and np.array_equal(r2["params"], r["params"])
 
 
+def test_auto_optimizer_is_never_worse_than_a_single_search():
+    """Why `optimizer="auto"` runs two searches and a polish rather than
+    one: measured over the 21 MLE fixture cases, `auto` attains the best
+    log-likelihood of the four settings on every one, while a single
+    search falls short by up to 0.23 (`lbfgs` on log-UKgas ETS(A,N,A) with
+    the heuristic initialisation) and 0.060 (`nelder_mead` on co2
+    ETS(A,Ad,A)). The model card quotes these numbers."""
+    singles = ("lbfgs", "bfgs", "nelder_mead")
+    worst = dict.fromkeys(singles, 0.0)
+    for case in FX["mle"]:
+        y = SERIES[case["series"]]
+        kw = dict(_kw(case), initialization=case["initialization"])
+        lls = {opt: tsecon.ets_fit(y, **kw, optimizer=opt)["loglik"]
+               for opt in ("auto",) + singles}
+        best = max(lls.values())
+        assert best - lls["auto"] <= 1e-9, (case["series"], case["short_name"], lls)
+        for opt in singles:
+            worst[opt] = max(worst[opt], best - lls[opt])
+    # The single searches really do fall short somewhere, or the staged
+    # two-search default would be paying for nothing.
+    assert worst["lbfgs"] > 0.2 and worst["nelder_mead"] > 0.05, worst
+    assert worst["lbfgs"] == pytest.approx(0.2333, abs=5e-3)
+    assert worst["nelder_mead"] == pytest.approx(0.0602, abs=5e-3)
+
+
 def test_fit_forecast_and_live_statsmodels_cross_check():
     sm_ets = pytest.importorskip("statsmodels.tsa.exponential_smoothing.ets")
     y = SERIES["log_ukgas"]
@@ -254,6 +279,11 @@ def test_auto_ets_candidate_set_and_selection_consistency():
     assert r2["ic"] == "bic" and r2["ic_value"] == r2["bic"]
     r3 = tsecon.auto_ets(y, allow_multiplicative_trend=True, restrict=False)
     assert r3["n_candidates"] == 10
+    # The four counts the docstring quotes for R's default restrictions.
+    counts = {(seasonal, positive): tsecon.auto_ets(y if positive else y - 10.0,
+                                                    **({"seasonal_periods": 4} if seasonal else {}))["n_candidates"]
+              for seasonal in (True, False) for positive in (True, False)}
+    assert counts == {(True, True): 15, (True, False): 6, (False, True): 6, (False, False): 3}
 
 
 def test_simulated_intervals_are_seeded_and_the_forecast_is_the_zero_error_path():
