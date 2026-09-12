@@ -39,7 +39,18 @@ venv) in one of two ways:
   100× dlog growth rates, and fitted model outputs) are stored — no raw
   licensed dataset is redistributed.
 
-One fixture is deliberately **not** a third-party golden:
+- **Transformations of an Rdatasets series fetched at generation time**
+  (`statsmodels.datasets.get_rdataset(<item>, <package>)`): the only one so
+  far is `panel_unbalanced.json`, which stores the **logs** of three columns
+  (`emp`, `wage`, `capital`) of the Arellano-Bond (1991) UK firm panel
+  `plm::EmplUK` laid out as `N x T` calendar arrays with `null` outside the
+  observation mask, because the unbalanced-panel goldens have to be pinned on
+  the same 1031 firm-years linearmodels saw. Like `100·log(realgdp)` above
+  these are transformations rather than the source file, and the generator
+  records the source in the fixture's `source` field; nothing else of the
+  dataset (industry, year-of-entry, the remaining columns) is stored.
+
+Two fixtures are deliberately **not** third-party goldens.
 `backtest_string_snapshot.json` (generator
 `generate_backtest_string_snapshot.py`) is a *self-snapshot* of the
 string-forecaster paths of `backtest`/`conformal_forecast`/
@@ -49,6 +60,12 @@ forecaster plumbing landed in 0.6.0-dev. Its job is regression, not
 validation: `test_backtest_callable.py` asserts the pre-existing string
 surfaces stayed bit-identical. Regenerate it only to re-baseline after an
 *intentional* behavioral change to those paths.
+`panel_balanced_snapshot.json` (generator
+`generate_panel_balanced_snapshot.py`) is the same idea for the panel crate:
+a float-hex snapshot of every balanced-panel call of `panel_fe`,
+`panel_distributed_lag`, `panel_lp`, `lp_did` and `mean_group_var`, captured
+from the 0.9.0 build immediately before the observation mask for unbalanced
+panels landed, and asserted bit-identical by `test_panel_unbalanced.py`.
 
 The `*.csv` files are the exception, and are data rather than derived values:
 public datasets vendored **with attribution** for the replication pages

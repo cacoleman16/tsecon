@@ -279,7 +279,19 @@ allowed; a linear response just scales); `shock="orthogonal"|"generalized"`;
 `horizon=10`; `n_draws=2` with `antithetic=True` (immaterial for a linear
 model, kept for signature parity with the TVAR call); `seed=0`; `trend="c"`;
 `histories=None` (every window; an int at or above the number of windows
-uses all of them, reported in `n_histories`); `bands=(0.16, 0.84)`.
+uses all of them, reported in `n_histories`); `bands=None` (= `(0.16, 0.84)`).
+**Memory (0.10.0):** the engine sizes its working set up front — with
+`cells = (horizon + 1) × k`, the draw buffers of one history (`n_draws +
+n_streams + 2` arrays of `cells`, `n_streams = n_draws / 2` under
+antithetic sampling) times the number of histories running at once
+(`min(rayon threads, histories)`), plus five `cells` arrays per history
+held for the reduction and the reduction's own seven — and refuses a
+request beyond its fixed 2 GiB budget as a `ValueError` naming `n_draws`,
+`horizon` and the number of histories; below the budget every large buffer
+is allocated fallibly (`try_reserve_exact`), so an allocator refusal on a
+small machine is the same error, never a process abort (audit round 13's
+S3 class: the previous guard admitted 2^31 doubles — 16 GiB — per buffer
+and then handed the request to the allocator).
 
 **How to read the output.** `girf[h][variable]`, `lower`/`upper`,
 `per_history`, `mc_se`, `draw_sd`, `draw_lower`/`draw_upper`, `n_histories`,

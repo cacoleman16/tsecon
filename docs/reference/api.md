@@ -271,12 +271,15 @@ How many SEASONAL differences a series needs (Hyndman-Khandakar rule).
 def box_cox_lambda(
     y: _ArrayLike,
     method: str = ...,
-    bounds: tuple[float, float] = ...,
+    bounds: tuple[float, float] | None = ...,
     period: int | None = ...,
 ) -> dict[str, Any]:
 ```
 
 Variance-stabilising Box-Cox lambda (MLE or Guerrero) with its objective.
+
+    `bounds` (None = (-2.0, 2.0)) are hard bounds on lambda; an optimum on a
+    bound is reported via `at_bound`.
 
     Returned keys: `at_bound`, `interpretation`, `lambda`, `loglik_at_one`,
     `loglik_at_zero`, `lower`, `lr_vs_one`, `lr_vs_zero`, `method`, `n`,
@@ -1500,7 +1503,7 @@ Structural FEVD for an arbitrary structural impact matrix A0 (the gap
 ```python
 def historical_decomposition(
     data: _ArrayLike,
-    restrictions: Sequence[tuple[int, int, int, str]] = ...,
+    restrictions: Sequence[tuple[int, int, int, str]] | None = ...,
     lags: int = ...,
     horizon: int | None = ...,
     identification: str = ...,
@@ -1541,16 +1544,16 @@ Historical decomposition: per-(time, variable, shock) structural-shock contribut
     Further arguments, with defaults: `horizon` (None), `n_draws` (500),
     `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
 
-    `restrictions` (default: none; used under identification="sign") is the
-    `sign_restricted_svar` list of `(variable, shock, horizon, sign)` tuples
-    with `sign` in {"+", "-"}.
+    `restrictions` (None = no restrictions; used under identification="sign")
+    is the `sign_restricted_svar` list of `(variable, shock, horizon, sign)`
+    tuples with `sign` in {"+", "-"}.
 
 ### `narrative_svar`
 
 ```python
 def narrative_svar(
     data: _ArrayLike,
-    sign_restrictions: Sequence[tuple[int, int, int, str]] = ...,
+    sign_restrictions: Sequence[tuple[int, int, int, str]] | None = ...,
     narrative_restrictions: list[dict] | None = ...,
     lags: int = ...,
     horizon: int = ...,
@@ -1577,8 +1580,9 @@ Narrative sign-restricted Bayesian SVAR (Antolín-Díaz & Rubio-Ramírez 2018).
     Further arguments, with defaults: `lags` (2), `n_draws` (500),
     `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
 
-    `sign_restrictions` (default: none) is the `sign_restricted_svar` list
-    of `(variable, shock, horizon, sign)` tuples with `sign` in {"+", "-"}.
+    `sign_restrictions` (None = no restrictions) is the `sign_restricted_svar`
+    list of `(variable, shock, horizon, sign)` tuples with `sign` in
+    {"+", "-"}.
 
     Returned keys: `diagnostics`, `probs`, `quantiles`, `set_max`,
     `set_min`, `weights`.
@@ -1995,6 +1999,7 @@ def panel_fe(
     regressors: _ArrayLike,
     se_type: str = ...,
     bandwidth: float | None = ...,
+    mask: _ArrayLike | None = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -2004,7 +2009,13 @@ Fixed-effects panel OLS; `outcome` is N x T, `regressors` is k x N x T.
     `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
     `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
     explicitly with any other `se_type` raises instead of being silently
-    absorbed — those estimators use no kernel.
+    absorbed — those estimators use no kernel. `mask` (default None = a
+    balanced panel) is an N x T array of 0/1 (False/True) flags, 1 where
+    the entity is observed in that period, for an UNBALANCED panel: cells
+    outside the mask are ignored and may hold NaN; without a mask a NaN
+    anywhere is refused. Validated against linearmodels PanelOLS on the
+    Arellano-Bond EmplUK panel (fixtures/panel_unbalanced.json); a mask
+    that is 1 everywhere is bit-identical to no mask.
 
     Returned keys: `bse`, `params`, `se_type`, `tvalues`.
 
@@ -2023,10 +2034,20 @@ def panel_lp(
     bias_correction: str = ...,
     band: str | None = ...,
     band_alpha: float = ...,
+    mask: _ArrayLike | None = ...,
 ) -> dict[str, Any]:
 ```
 
 Panel local projection of a common shock with fixed effects.
+
+    `mask` (default None = a balanced panel) is an N x T array of 0/1
+    flags, 1 where the entity is observed in that period, for an UNBALANCED
+    panel: the horizon-h regression keeps the rows whose target (or
+    cumulated window) and lagged-outcome controls are observed, so `nobs`
+    shrinks with the gaps as well as the horizon (validated per horizon
+    against linearmodels PanelOLS, fixtures/panel_unbalanced.json). The
+    half-panel jackknives (`jackknife=True`, `bias_correction="dj"`/"spj")
+    raise on an unbalanced panel.
 
     `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
     `se_type="driscoll_kraay"` (the default se_type; 4.0 when omitted);
@@ -2083,10 +2104,16 @@ def lp_did(
     reweight: bool = ...,
     pooled: bool = ...,
     never_treated_only: bool = ...,
+    mask: _ArrayLike | None = ...,
 ) -> dict[str, Any]:
 ```
 
 LP-DiD event-study difference-in-differences (Dube-Girardi-Jordà-Taylor).
+
+    `mask` (default None) is accepted for symmetry with the other panel
+    callables, but LP-DiD needs a BALANCED panel: an unbalanced mask raises
+    with the reason (contiguous outcome paths; the reference fixest run was
+    made on balanced panels) — trim to a common window first.
 
     `outcome` and `treatment` are N x T (treatment binary 0/1). Per horizon,
     regresses `y[i, t+h] - y[i, t-1]` on the treatment switch with period
@@ -3595,7 +3622,7 @@ News/update decomposition of a DFM nowcast revision (Banbura-Modugno 2014).
 
 ```python
 def predictive_regression(
-    r: _ArrayLike, x: _ArrayLike, cz: float = ..., alpha: float = ...
+    r: _ArrayLike, x: _ArrayLike, cz: float | None = ..., alpha: float = ...
 ) -> dict[str, Any]:
 ```
 
@@ -3606,7 +3633,7 @@ Predictive regression with a persistent regressor.
 
     Returned keys: `ivx`, `nobs`, `ols`, `stambaugh`.
 
-    Further arguments, with defaults: `alpha` (0.95).
+    Further arguments, with defaults: `cz` (None = -1.0), `alpha` (0.95).
 
 ### `ivx_test`
 
@@ -3614,7 +3641,7 @@ Predictive regression with a persistent regressor.
 def ivx_test(
     r: _ArrayLike,
     xs: _ArrayLike,
-    cz: float = ...,
+    cz: float | None = ...,
     alpha: float = ...,
     joint: str = ...,
 ) -> dict[str, Any]:
@@ -3636,7 +3663,7 @@ Joint IVX predictability test for several persistent predictors (xs is T x k).
     available for small k or rho safely below 1 — see the
     predictive-regressions model card.
 
-    `cz` (-1.0) and `alpha` (0.95) tune the IVX instrument's persistence
+    `cz` (None = -1.0) and `alpha` (0.95) tune the IVX instrument's persistence
     `rho_z = 1 + cz / n^alpha` (Kostakis-Magdalinos-Stamatogiannis 2015),
     exactly as in `predictive_regression`; `alpha` here is not a
     significance level (no level is passed; `pvalue` is returned).
@@ -4583,7 +4610,7 @@ def random_forest(
     x: _ArrayLike,
     y: _ArrayLike,
     n_trees: int = ...,
-    max_features: str | int = ...,
+    max_features: str | int | None = ...,
     max_depth: int | None = ...,
     min_samples_leaf: int = ...,
     bootstrap: str = ...,
@@ -4618,8 +4645,8 @@ Random forest for regression (Breiman 2001) with time-series-aware
     block resampling, out-of-bag optimism, quantile-band coverage,
     importance recovery).
 
-    `n_trees` (default 500); `max_features` in {"sqrt", "third" (default;
-    max(1, p // 3)), "all", or an int in 1..=p}; `max_depth` (None =
+    `n_trees` (default 500); `max_features` (None = "third") in {"sqrt",
+    "third" (max(1, p // 3)), "all", or an int in 1..=p}; `max_depth` (None =
     unbounded); `min_samples_leaf` (default 5); `bootstrap` in {"iid"
     (default, Efron), "block" (Künsch moving block), "stationary"
     (Politis-Romano, geometric blocks of mean `block_length`), "none"
@@ -5032,11 +5059,20 @@ def panel_distributed_lag(
     se_type: str = ...,
     bandwidth: float | None = ...,
     eval_points: _ArrayLike | None = ...,
+    mask: _ArrayLike | None = ...,
 ) -> dict[str, Any]:
 ```
 
 Distributed-lag panel regression — the climate-impact specification of
     Dell-Jones-Olken (2012) and Burke-Hsiang-Miguel (2015):
+
+    `mask` (default None = a balanced panel) is an N x T array of 0/1 flags,
+    1 where the entity is observed in that period, for an UNBALANCED panel:
+    cells outside the mask are ignored and may hold NaN; a lagged row enters
+    only when the entity is observed in every period t - L ..= t, and the
+    default `eval_points` (the pooled regressor mean) runs over the observed
+    cells (validated against linearmodels PanelOLS on the Arellano-Bond
+    EmplUK panel and a seeded ragged panel, fixtures/panel_unbalanced.json).
 
         y_it = sum_{l=0..L} beta_l x_{i,t-l} [+ sum_l gamma_l x^2_{i,t-l}]
                + alpha_i + delta_t [+ g_i t] + e_it
@@ -5046,8 +5082,8 @@ Distributed-lag panel regression — the climate-impact specification of
     would put Nickell bias back into the within estimator; use `panel_lp`
     with a bias correction for dynamic panels). `lags` is L: lags 0..L of
     every regressor enter and the first L periods of each entity are
-    dropped so the panel stays balanced (unbalanced panels and NaN are
-    refused). `powers=1` is the linear response, `powers=2` adds the lags
+    dropped (on an unbalanced panel, see `mask` above, a lagged row needs
+    every one of its lags observed). `powers=1` is the linear response, `powers=2` adds the lags
     of the square (the BHM quadratic response). `entity_effects` (True),
     `time_effects` (True) and `entity_trends` (False; requires entity
     effects) choose the fixed effects; at least one effect is required.
@@ -5211,7 +5247,7 @@ def var_girf(
     trend: str = ...,
     antithetic: bool = ...,
     histories: int | None = ...,
-    bands: tuple[float, float] = ...,
+    bands: tuple[float, float] | None = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -5262,7 +5298,13 @@ Generalized impulse responses (Koop-Pesaran-Potter 1996) of a linear
     `trend` ("c"), `antithetic` (True), `histories` (None = every lag
     window; an int draws a seeded subsample of that many — a count at or
     above the number of available windows uses all of them, reported in
-    `n_histories`), `bands` ((0.16, 0.84)).
+    `n_histories`), `bands` (None = (0.16, 0.84)).
+
+    Memory: the engine refuses up front, as a `ValueError` naming `n_draws`,
+    `horizon` and the number of histories, any call whose draw buffers and
+    per-history results would exceed its fixed 2 GiB budget; below the budget
+    the buffers are allocated fallibly, so an allocator refusal is the same
+    error, never an abort.
 
 ### `threshold_var_girf`
 
@@ -5283,7 +5325,7 @@ def threshold_var_girf(
     seed: int = ...,
     regime: str = ...,
     histories: int | None = ...,
-    bands: tuple[float, float] = ...,
+    bands: tuple[float, float] | None = ...,
     antithetic: bool = ...,
 ) -> dict[str, Any]:
 ```
@@ -5352,5 +5394,11 @@ Regime-dependent generalized impulse responses (Koop-Pesaran-Potter
     ("all"), `histories` (None = every selected window; an int draws a
     seeded subsample of that many — a count at or above the number of
     selected windows uses all of them, reported in `n_histories`), `bands`
-    ((0.16, 0.84)), `antithetic` (True).
+    (None = (0.16, 0.84)), `antithetic` (True).
+
+    Memory: the engine refuses up front, as a `ValueError` naming `n_draws`,
+    `horizon` and the number of histories, any call whose draw buffers and
+    per-history results would exceed its fixed 2 GiB budget; below the budget
+    the buffers are allocated fallibly, so an allocator refusal is the same
+    error, never an abort.
 
