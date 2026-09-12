@@ -80,8 +80,10 @@ fixed and re-run, not counted), 77 refuted, 2 recorded as known-open with no
 promise violated, and 47 confirmed items → 10 findings (0 severe, 2
 moderate, 8 low) — all 10 fixed in-branch with 34 regression pins.** The clean bills are
 the headline: **no panic, abort, hang or non-standard exception over 1563
-memory-capped malformed-input cells**; every count that sizes an allocation
-refused before allocation in 136 of 137 cap cells; **0 of 435 returned keys
+memory-capped malformed-input cells**; 103 of the cap sweep's 137 cells
+refused before allocating (in ≤ 1 ms, with the count in the message), 33
+returned because the count is legitimately inside its cap, and exactly one
+neither refused nor finished; **0 of 435 returned keys
 unnamed by `__doc__` or the stub**, and 183/183 documented array shapes;
 192/192 signatures matching the stub and **0 `Ellipsis` defaults anywhere**;
 35/35 inert keywords refusing; the mask identity bitwise on all four panel
@@ -121,8 +123,10 @@ found no panic, abort or hang in 1563 memory-capped cells (the wave's five
 allocator aborts stayed fixed, and no new one appeared); sweep H found no
 seed that failed to reproduce in-process or across a restart, no
 non-determinism in seventeen cells, and bit-identity at 1 vs 4 threads
-everywhere; sweep G's cap pass refused every one of the 136 counts that size
-an allocation before allocating, in ≤ 1 ms, with the count in the message.
+everywhere; and sweep G's cap pass refused every count driven outside its
+cap before anything was allocated (103 of its 137 cells, in ≤ 1 ms, with the
+count in the message), the other 34 being counts legitimately inside their
+caps — one of which is M2.
 
 ## Moderate
 
@@ -460,9 +464,9 @@ documented information-criterion search over `max_lag × max_lead`
 candidates, which grows with T by design.
 
 **Caps** (`out/sweep_g_caps.txt`, each cell a child under 4 GB `RLIMIT_AS`
-and a 60 s deadline). **137 cells; 136 refusal-or-ok, and every count that
-sizes an allocation refused before allocating**, in ≤ 1 ms, with the count
-in the message: `seasonal`, each `freq_seasonal` period,
+and a 60 s deadline). **137 cells: 103 refusals, 33 normal returns, 1
+hang.** Every count driven outside its cap was refused before anything was
+allocated, in ≤ 1 ms, with the count in the message: `seasonal`, each `freq_seasonal` period,
 `freq_seasonal_harmonics`, `forecast_steps` (cap 100 000),
 `n_starts` (cap 64, on both state-space models), `seasonal_periods`,
 `horizon` (cap 1 000 000 on both ETS entry points), `n_sim` (`n_sim ×
