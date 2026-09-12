@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "generated_at": "2026-09-10T10:10:28+0000",
+  "generated_at": "2026-09-12T12:47:25+0000",
   "machine": {
     "platform": "Linux-6.18.44-fc-v24-x86_64-with-glibc2.39",
     "machine": "x86_64",
-    "cpu_model": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cpu_model": "Intel(R) Xeon(R) Processor @ 2.10GHz",
     "cpu_count": 4,
     "python": "3.11.15",
     "python_implementation": "CPython"
@@ -19,7 +19,7 @@
   },
   "build": {
     "mode": "release",
-    "detail": "<repo>/bindings/python/python/tsecon/_core.abi3.so (18.3 MB) == <target>/release/lib_core.so"
+    "detail": "<repo>/bindings/python/python/tsecon/_core.abi3.so (19.4 MB) == <target>/release/lib_core.so"
   },
   "repeats": 20,
   "sklearn_available": true,
@@ -28,9 +28,9 @@
   "all_parity_passed": true,
   "call_overhead": {
     "op": "KPSS test (regression='c', auto lags)",
-    "wrapped_s": 1.3721999494009651e-05,
-    "raw_core_s": 1.0871999620576389e-05,
-    "overhead_s": 2.849999873433262e-06
+    "wrapped_s": 8.166000043274835e-06,
+    "raw_core_s": 5.959000191069208e-06,
+    "overhead_s": 2.2069998522056267e-06
   },
   "cases": [
     {
@@ -58,9 +58,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 3.6454999644774944e-05,
-        "reference_s": 0.0005228859999988344,
-        "ratio_ref_over_tsecon": 14.34332752966517,
+        "tsecon_s": 2.5064999135793187e-05,
+        "reference_s": 0.0004403530001582112,
+        "ratio_ref_over_tsecon": 17.5684426627161,
         "repeats": 20
       }
     },
@@ -83,9 +83,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 0.0002529880002839491,
-        "reference_s": 0.0017102410001825774,
-        "ratio_ref_over_tsecon": 6.760166483244401,
+        "tsecon_s": 0.00023127200074668508,
+        "reference_s": 0.0016155049997905735,
+        "ratio_ref_over_tsecon": 6.985302996362517,
         "repeats": 20
       }
     },
@@ -108,9 +108,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 4.083200019522337e-05,
-        "reference_s": 0.00026146100026380736,
-        "ratio_ref_over_tsecon": 6.403335594967834,
+        "tsecon_s": 3.550200017343741e-05,
+        "reference_s": 0.00022047799939173274,
+        "ratio_ref_over_tsecon": 6.210297963907237,
         "repeats": 20
       }
     },
@@ -133,9 +133,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 0.05250337200050126,
-        "reference_s": 0.0241913879999629,
-        "ratio_ref_over_tsecon": 0.46075874897581703,
+        "tsecon_s": 0.04942079600004945,
+        "reference_s": 0.018566778000604245,
+        "ratio_ref_over_tsecon": 0.37568755470036674,
         "repeats": 3
       }
     },
@@ -158,9 +158,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 0.049408340999434586,
-        "reference_s": 0.029731951000030676,
-        "ratio_ref_over_tsecon": 0.6017597514632381,
+        "tsecon_s": 0.04536469600134296,
+        "reference_s": 0.024061042999164783,
+        "ratio_ref_over_tsecon": 0.5303913642108941,
         "repeats": 3
       }
     },
@@ -183,9 +183,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 0.10115898799995193,
-        "reference_s": 0.015678370000387076,
-        "ratio_ref_over_tsecon": 0.15498741446874229,
+        "tsecon_s": 0.10059899400039285,
+        "reference_s": 0.011414175998652354,
+        "ratio_ref_over_tsecon": 0.11346212864323256,
         "repeats": 3
       }
     },
@@ -214,9 +214,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 1.3579000551544596e-05,
-        "reference_s": 6.641599975409918e-05,
-        "ratio_ref_over_tsecon": 4.891081600740081,
+        "tsecon_s": 8.865999916451983e-06,
+        "reference_s": 5.631599924527109e-05,
+        "ratio_ref_over_tsecon": 6.35190613308823,
         "repeats": 20
       }
     },
@@ -245,9 +245,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 3.4095000046363566e-05,
-        "reference_s": 6.951000068511348e-05,
-        "ratio_ref_over_tsecon": 2.038715371479436,
+        "tsecon_s": 3.138700049021281e-05,
+        "reference_s": 5.913199856877327e-05,
+        "ratio_ref_over_tsecon": 1.883964623736887,
         "repeats": 20
       }
     },
@@ -270,9 +270,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 3.159399966534693e-05,
-        "reference_s": 0.0010712120001699077,
-        "ratio_ref_over_tsecon": 33.90555205154475,
+        "tsecon_s": 2.3935999706736766e-05,
+        "reference_s": 0.0008341049997397931,
+        "ratio_ref_over_tsecon": 34.8473015524409,
         "repeats": 20
       }
     },
@@ -307,9 +307,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 1.4293999811343383e-05,
-        "reference_s": 0.00032159799957298674,
-        "ratio_ref_over_tsecon": 22.498810956872553,
+        "tsecon_s": 1.3308001143741421e-05,
+        "reference_s": 0.00027684700035024434,
+        "ratio_ref_over_tsecon": 20.80304903493654,
         "repeats": 20
       }
     },
@@ -344,9 +344,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 6.518999725813046e-06,
-        "reference_s": 0.0007991769998625387,
-        "ratio_ref_over_tsecon": 122.59196709244618,
+        "tsecon_s": 5.0390008254908025e-06,
+        "reference_s": 0.0007193679994088598,
+        "ratio_ref_over_tsecon": 142.7600479384309,
         "repeats": 20
       }
     },
@@ -369,9 +369,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 3.99309992644703e-05,
-        "reference_s": 0.000732149999748799,
-        "ratio_ref_over_tsecon": 18.335378859407847,
+        "tsecon_s": 2.07779994525481e-05,
+        "reference_s": 0.0004466050013434142,
+        "ratio_ref_over_tsecon": 21.494129036019633,
         "repeats": 20
       }
     },
@@ -406,9 +406,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 3.772799936996307e-05,
-        "reference_s": 0.0007559189998573856,
-        "ratio_ref_over_tsecon": 20.03602132317692,
+        "tsecon_s": 2.827299977070652e-05,
+        "reference_s": 0.0005837560001964448,
+        "ratio_ref_over_tsecon": 20.647119334018132,
         "repeats": 20
       }
     },
@@ -443,9 +443,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 3.106300027866382e-05,
-        "reference_s": 0.0006625189998885617,
-        "ratio_ref_over_tsecon": 21.328235970291146,
+        "tsecon_s": 1.8669001292437315e-05,
+        "reference_s": 0.00046998200014058966,
+        "ratio_ref_over_tsecon": 25.17445860004178,
         "repeats": 20
       }
     },
@@ -474,9 +474,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 3.560599998309044e-05,
-        "reference_s": 0.0008808579996184562,
-        "ratio_ref_over_tsecon": 24.73903274832282,
+        "tsecon_s": 2.763799966487568e-05,
+        "reference_s": 0.0006340899999486282,
+        "ratio_ref_over_tsecon": 22.942687880356065,
         "repeats": 20
       }
     },
@@ -517,9 +517,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 7.009699947957415e-05,
-        "reference_s": 0.0011168150003868504,
-        "ratio_ref_over_tsecon": 15.932422338737675,
+        "tsecon_s": 5.7953000577981584e-05,
+        "reference_s": 0.0008233270000346238,
+        "ratio_ref_over_tsecon": 14.206805373722705,
         "repeats": 20
       }
     },
@@ -542,9 +542,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 7.097700017766329e-05,
-        "reference_s": 0.002137436000339221,
-        "ratio_ref_over_tsecon": 30.1144877212193,
+        "tsecon_s": 6.38089986750856e-05,
+        "reference_s": 0.0018077350014209514,
+        "ratio_ref_over_tsecon": 28.330408546699015,
         "repeats": 20
       }
     },
@@ -573,9 +573,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 5.778600007033674e-05,
-        "reference_s": 0.0023906750002424815,
-        "ratio_ref_over_tsecon": 41.37117982439635,
+        "tsecon_s": 5.6627999583724886e-05,
+        "reference_s": 0.0021331410007405793,
+        "ratio_ref_over_tsecon": 37.66936880026489,
         "repeats": 20
       }
     },
@@ -598,9 +598,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 3.4904000131064095e-05,
-        "reference_s": 0.0010833080004886142,
-        "ratio_ref_over_tsecon": 31.036786512170693,
+        "tsecon_s": 3.35000004270114e-05,
+        "reference_s": 0.0009876270014501642,
+        "ratio_ref_over_tsecon": 29.481402652575202,
         "repeats": 20
       }
     },
@@ -623,9 +623,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 1.808299930416979e-05,
-        "reference_s": 0.00011030200039385818,
-        "ratio_ref_over_tsecon": 6.09976246409651,
+        "tsecon_s": 1.774300108081661e-05,
+        "reference_s": 9.167999996861909e-05,
+        "ratio_ref_over_tsecon": 5.167107838805337,
         "repeats": 20
       }
     },
@@ -648,9 +648,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 0.000418779000028735,
-        "reference_s": 0.009537490999719012,
-        "ratio_ref_over_tsecon": 22.77452068767676,
+        "tsecon_s": 0.0004251970003679162,
+        "reference_s": 0.0074726679995364975,
+        "ratio_ref_over_tsecon": 17.57460187412074,
         "repeats": 20
       }
     },
@@ -673,9 +673,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 9.958999999071239e-05,
-        "reference_s": 0.0004955360000167275,
-        "ratio_ref_over_tsecon": 4.9757606191679935,
+        "tsecon_s": 8.46880011522444e-05,
+        "reference_s": 0.0004613490000338061,
+        "ratio_ref_over_tsecon": 5.447631231777861,
         "repeats": 20
       }
     },
@@ -698,9 +698,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 5.088699981570244e-05,
-        "reference_s": 0.0009635299993533408,
-        "ratio_ref_over_tsecon": 18.93469850537386,
+        "tsecon_s": 4.4812999476562254e-05,
+        "reference_s": 0.0007285680003406014,
+        "ratio_ref_over_tsecon": 16.257961057073437,
         "repeats": 20
       }
     },
@@ -717,9 +717,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 7.114499931049068e-05,
-        "reference_s": 0.0005991660000290722,
-        "ratio_ref_over_tsecon": 8.421758462800662,
+        "tsecon_s": 6.427600055758376e-05,
+        "reference_s": 0.0005202060001465725,
+        "ratio_ref_over_tsecon": 8.0933162554277,
         "repeats": 20
       }
     },
@@ -742,9 +742,9 @@
         }
       ],
       "timing": {
-        "tsecon_s": 6.974700045248028e-05,
-        "reference_s": 0.00044518200047605205,
-        "ratio_ref_over_tsecon": 6.38281212938127,
+        "tsecon_s": 5.0554001063574106e-05,
+        "reference_s": 0.000380841000151122,
+        "ratio_ref_over_tsecon": 7.53335032121782,
         "repeats": 20
       }
     }
