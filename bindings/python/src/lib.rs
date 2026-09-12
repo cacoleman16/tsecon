@@ -11,8 +11,8 @@ use pyo3::types::{PyDict, PyList};
 mod ml_neural;
 
 mod coint_fmols;
-mod forecast_mcs;
 mod ets;
+mod forecast_mcs;
 mod girf;
 mod ml_convex;
 mod ml_kernel;
