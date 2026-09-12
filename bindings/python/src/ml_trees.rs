@@ -265,9 +265,10 @@ fn parse_importance(
 /// lag-1 autocorrelation of the resampled rows, out-of-bag optimism under
 /// AR errors, quantile-band coverage, and importance recovery.
 ///
-/// Arguments: `x` (n, p), `y` (n); `n_trees`; `max_features` in {"sqrt",
-/// "third" (max(1, p // 3), Breiman's regression default), "all", or an
-/// integer in 1..=p}; `max_depth` (None = unbounded); `min_samples_leaf`;
+/// Arguments: `x` (n, p), `y` (n); `n_trees`; `max_features` (None =
+/// "third") in {"sqrt", "third" (max(1, p // 3), Breiman's regression
+/// default), "all", or an integer in 1..=p}; `max_depth` (None =
+/// unbounded); `min_samples_leaf`;
 /// `bootstrap` in {"iid" (Efron), "block" (Künsch moving block),
 /// "stationary" (Politis-Romano, geometric blocks of mean `block_length`),
 /// "none" (every tree sees every row; no out-of-bag rows)} — `block_length`
@@ -323,14 +324,14 @@ fn parse_importance(
 /// `importance_groups` of the wrong length (naming both lengths), a block
 /// length outside 1..=n, and every inert-kwarg combination above.
 #[pyfunction]
-#[pyo3(signature = (x, y, n_trees = 500, max_features = MaxFeaturesArg::Name("third".to_string()), max_depth = None, min_samples_leaf = 5, bootstrap = "iid", block_length = None, seed = 0, x_test = None, quantiles = None, importance = "none", importance_groups = None, permutation_block = None, n_permutations = None))]
+#[pyo3(signature = (x, y, n_trees = 500, max_features = None, max_depth = None, min_samples_leaf = 5, bootstrap = "iid", block_length = None, seed = 0, x_test = None, quantiles = None, importance = "none", importance_groups = None, permutation_block = None, n_permutations = None))]
 #[allow(clippy::too_many_arguments)]
 fn random_forest<'py>(
     py: Python<'py>,
     x: PyReadonlyArray2<'py, f64>,
     y: PyReadonlyArray1<'py, f64>,
     n_trees: usize,
-    max_features: MaxFeaturesArg,
+    max_features: Option<MaxFeaturesArg>,
     max_depth: Option<usize>,
     min_samples_leaf: usize,
     bootstrap: &str,
@@ -346,7 +347,10 @@ fn random_forest<'py>(
     let m = to_faer(&x);
     let p = m.ncols();
     let mt = x_test.as_ref().map(to_faer);
-    let max_features = parse_max_features(max_features, p)?;
+    let max_features = parse_max_features(
+        max_features.unwrap_or_else(|| MaxFeaturesArg::Name("third".to_string())),
+        p,
+    )?;
     let resampling = parse_bootstrap(bootstrap, block_length)?;
     let importance = parse_importance(
         importance,

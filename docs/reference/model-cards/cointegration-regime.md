@@ -1388,7 +1388,11 @@ ratio 4.02 between 32 and 512 draws against a 8192-draw reference, theory 4);
 `seed=0`; `regime="all"` (the per-regime averages come back anyway);
 `histories=None` (all windows — the engine is fast enough that subsampling is
 a choice, not a necessity; an int at or above the number of selected windows
-uses all of them, reported in `n_histories`); `bands=(0.16, 0.84)`.
+uses all of them, reported in `n_histories`); `bands=None` (= `(0.16, 0.84)`).
+The engine's 2 GiB memory budget applies (see the `var_girf` card): a
+request whose draw buffers or per-history results would exceed it is refused
+up front as a `ValueError` naming `n_draws`, `horizon` and the number of
+histories, and the buffers below it are allocated fallibly — never an abort.
 
 **How to read the output.** `girf[h][variable]` is the average over the used
 histories; `lower`/`upper` are the `bands` quantiles **across histories** —

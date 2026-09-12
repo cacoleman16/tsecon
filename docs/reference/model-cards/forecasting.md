@@ -504,8 +504,39 @@ leg — a runnable third-party cross-check: on identical residuals our
 finite-sample-corrected quantile reproduces `mapie`'s
 `SplitConformalRegressor` interval half-width to 1e-12 relative
 (`test_mapie_split_quantile_cross_check`, skipped automatically where
-`mapie` is absent). EnbPI and ACI have no runnable Python reference —
-they are graded property-MC against their papers' own claims, stated.
+`mapie` is absent). **EnbPI and ACI are cross-checked against `mapie`
+1.5.0's `TimeSeriesRegressor`** (0.10.0; `fixtures/conformal_mapie.json`,
+`generate_conformal_mapie_fixtures.py`, pinned by `test_conformal_mapie.py`),
+graded per leg. **ACI is an exact cross-check** — with the same prefit
+linear point forecaster (handed to `conformal_backtest` as a Python
+callable), the same 75-residual sliding window, the same step size and
+mapie's `AbsoluteConformityScore(sym=True)`, tsecon reproduces mapie's
+per-origin bounds at 1e-12 relative and its miss indicators and `α_t`
+trajectory exactly, on both γ = 0.05 (realized coverage 0.8933, final
+α_t 0.0750) and γ = 0.005 (0.9067, 0.1025). The `sym=True` is essential
+and is the finding worth recording: `TimeSeriesRegressor` **defaults to
+`sym=False`**, which builds the interval from a pair of signed-residual
+quantiles (β = α_t/2 below, 1 − α_t + β above) and is asymmetric about
+the point forecast — not the absolute-score construction the ACI paper
+specifies and this library implements. Three differences remain and none
+fires on these runs: mapie clips `α_t` to [0, 1] (the recursion here is
+unclipped), mapie counts a target exactly on a bound as a miss (here it is
+covered), and when `ceil((m+1)(1−α_t))` runs past the window mapie returns
+an infinite bound while `conformal_backtest` refuses the call naming the
+level and the residuals it would need (on both stored runs the worst order
+index is 74 of 75). **EnbPI is a statistical cross-check only**: same
+algorithm, different bootstrap generators (mapie's
+`BlockBootstrap(length=1)` on a NumPy `RandomState` vs Philox), the `+1`
+finite-sample correction in mapie versus the paper's empirical quantile
+here, and different β grids — so on the same AR(1) series and design the
+two online runs are compared in distribution: realized coverage within
+0.06, mean width within 10%, mean absolute centre gap below 0.05. Measured
+(printed by the test): with the β line search off, coverage 0.9067 both
+sides, mean width 3.4024 here vs 3.4830 in mapie (ratio 0.977), mean
+absolute centre gap 0.0106; with it on, coverage 0.9067 vs 0.9333, width
+3.3117 vs 3.6106 (ratio 0.917), same centre gap. No exact EnbPI pin is
+possible without one side adopting the other's random stream and quantile
+convention, and the test says so.
 
 **References.** Vovk, Gammerman & Shafer (2005); Xu & Xie (2021, 2023);
 Gibbs & Candès (2021).

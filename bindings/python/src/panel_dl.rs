@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tsecon_panel::{DistributedLagConfig, FixedEffects};
 
-use crate::{panel_se, to_py};
+use crate::{panel_data, panel_se, to_py};
 
 /// Distributed-lag panel regression — the climate-impact specification
 /// of Dell-Jones-Olken (2012, AEJ:Macro) and Burke-Hsiang-Miguel (2015,
@@ -23,8 +23,8 @@ use crate::{panel_se, to_py};
 /// would put Nickell bias back into the within estimator; use
 /// `panel_lp` with a bias correction for dynamic panels). `lags` is `L`;
 /// lags `0..L` of every regressor enter and the first `L` periods of
-/// each entity are dropped so the panel stays balanced (unbalanced
-/// panels and NaN are refused). `powers=1` is the linear response,
+/// each entity are dropped (on an unbalanced panel, see `mask` below, a
+/// lagged row needs every one of its lags observed). `powers=1` is the linear response,
 /// `powers=2` adds the lags of the square (the BHM quadratic response).
 /// `entity_effects` (True), `time_effects` (True) and `entity_trends`
 /// (False; requires entity effects) choose the fixed effects; at least
@@ -39,7 +39,15 @@ use crate::{panel_se, to_py};
 /// it acts ONLY under `powers=2` (None there means each regressor's
 /// pooled sample mean) and passing it under `powers=1` **raises** —
 /// the linear cumulative response has one constant marginal effect,
-/// `cumulative_effect` itself.
+/// `cumulative_effect` itself. `mask` (default None = a balanced panel)
+/// is an `N x T` array of 0/1 (False/True) flags, 1 where the entity is
+/// observed in that period, for an UNBALANCED panel: cells outside the
+/// mask are ignored and may hold NaN (without a mask a NaN anywhere is
+/// refused); a lagged row enters only when the entity is observed in
+/// every period `t - L ..= t`, so `nobs` counts those rows and the
+/// default `eval_points` (the pooled regressor mean) runs over the
+/// observed cells. Validated against PanelOLS on the Arellano-Bond EmplUK
+/// panel and a seeded ragged panel (fixtures/panel_unbalanced.json).
 ///
 /// Design columns are ordered regressor-major, then power, then lag
 /// (`names` lists them, e.g. `x0_L0`, `x0_L1`, `x0^2_L0`, ...). Returned
@@ -65,7 +73,7 @@ use crate::{panel_se, to_py};
 /// the panel model card. The `lags=0`, `time_effects=False` call is
 /// bit-identical to `panel_fe`.
 #[pyfunction]
-#[pyo3(signature = (outcome, regressors, lags, powers = 1, entity_effects = true, time_effects = true, entity_trends = false, se_type = "cluster", bandwidth = None, eval_points = None))]
+#[pyo3(signature = (outcome, regressors, lags, powers = 1, entity_effects = true, time_effects = true, entity_trends = false, se_type = "cluster", bandwidth = None, eval_points = None, mask = None))]
 #[allow(clippy::too_many_arguments)]
 fn panel_distributed_lag<'py>(
     py: Python<'py>,
@@ -79,6 +87,7 @@ fn panel_distributed_lag<'py>(
     se_type: &str,
     bandwidth: Option<f64>,
     eval_points: Option<PyReadonlyArray1<'py, f64>>,
+    mask: Option<PyReadonlyArray2<'py, f64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_var::tsecon_linalg::faer::Mat;
     if lags < 0 {
@@ -123,7 +132,7 @@ fn panel_distributed_lag<'py>(
     let regs: Vec<(String, Mat<f64>)> = (0..k)
         .map(|c| (format!("x{c}"), Mat::from_fn(n, t, |i, j| r[[c, i, j]])))
         .collect();
-    let data = tsecon_panel::PanelData::balanced(outcome_m, regs).map_err(to_py)?;
+    let data = panel_data("panel_distributed_lag", outcome_m, regs, mask.as_ref())?;
     let cfg = DistributedLagConfig {
         lags: lags as usize,
         powers: powers as usize,

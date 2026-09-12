@@ -1,0 +1,5244 @@
+{
+"setar_threshold_ci": [
+{
+"id": "y:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the input series y (SETAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the input series y (SETAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the input series y (SETAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for y under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(p + 2, ceil(trim n)) observations each; counts are rows of y): 0 observations, at least 7 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: y is constant: a threshold autoregression needs variation in the threshold variable y_{t-d}",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: y=0.0 is of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: ",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "y:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: an array argument is the wrong shape or type (got y: array(1, 200)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1-D \u2014 use `df[['x']]` (",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:short_rows",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "y:nested_list",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "y:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:bool_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "singular linear system: a low-regime design X'X at a threshold candidate (a near-constant segment of y makes the regime regression collinear)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "y:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: y='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: y=None is None, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'None' i",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "y:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: y=1.0 is of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: SETAR requires p >= 1 (the model is an autoregression; with p = 0 there is no lag to regress on)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: p=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for y under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(p + 2, ceil(trim n)) observations each; counts are rows of y): 200 observations, at least 6442450948 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for y under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(p + 2, ceil(trim n)) observations each; counts are rows of y): 200 observations, at least 422212465065988 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: p=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap,",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: p=1.5 and slope_level=0.95 and null_threshold=0.0 are of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "p:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: p='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: p=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: p=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{t-delay}; every entry of delays is a candidate delay)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delay:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: delay=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for y under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(p + 2, ceil(trim n)) observations each; counts are rows of y): 200 observations, at least 2147483654 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for y under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(p + 2, ceil(trim n)) observations each; counts are rows of y): 200 observations, at least 140737488355334 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: delay=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: delay=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delay:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: delay='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: delay=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: delay=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = NaN: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics excluded at each end)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = inf: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics excluded at each end)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = -inf: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics excluded at each end)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = -1: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics excluded at each end)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 0: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics excluded at each end)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "trim:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 3: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics excluded at each end)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 1: requires 0 < trim < 0.5 (the fraction of threshold-variable order statistics excluded at each end)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: trim='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: trim=None is of type NoneType, but this parameter takes a real number. Original error: must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: trim=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[0]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{t-delay}; every entry of delays is a candidate delay)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[-1]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: delays=[-1] is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^31]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for y under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(p + 2, ceil(trim n)) observations each; counts are rows of y): 200 observations, at least 2147483654 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^47]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for y under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(p + 2, ceil(trim n)) observations each; counts are rows of y): 200 observations, at least 140737488355334 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^63]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "setar_threshold_ci: delays=[9223372036854775808] is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iterati",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: delays must contain at least one candidate delay",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[1.5]",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: delays=[1.5] is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[True]",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delays:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: delays='abc' is a str, but this parameter takes a list of integers (labels, lags or indices \u2014 e.g. [1, 2]; an int array is accepted, a string is not). Original error: Can't extract `str` to `Vec`",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delays:float_array",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: delays=array([1., 2.]) is of type numpy.float64, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'numpy.float64' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:nested",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: delays=[[1]] is of type list, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'list' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "delays:5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: delays=5 is of type int, but this parameter takes a Sequence. Original error: 'int' object is not an instance of 'Sequence'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: constant=2 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: constant=0 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: constant='yes' is of type str, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'str' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: constant=None is of type None, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'None' is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: constant=1.5 is of type float, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'float' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = NaN: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = -inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = -1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = 0: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "level:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = 3: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter level = 1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: level='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: level=None is of type NoneType, but this parameter takes a real number. Original error: must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "level:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: level=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: het_robust=2 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: het_robust=0 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: het_robust='yes' is of type str, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'str' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: het_robust=None is of type None, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'None' is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "het_robust:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: het_robust=1.5 is of type float, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'float' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = NaN: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = -inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = -1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = 0: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = 3: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_level = 1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: slope_level='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:none",
+"outcome": "ok",
+"nonfinite": 7,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_level:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: slope_level=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = NaN: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = -inf: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = -1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = 0: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = 100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = 3: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter slope_region_level = 1: requires 0 < level < 1 (a confidence level such as 0.95; NaN and infinities are refused)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: slope_region_level='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "slope_region_level:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: slope_region_level=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in null_threshold (the null value gamma_0 must be a finite number inside the candidate grid)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in null_threshold (the null value gamma_0 must be a finite number inside the candidate grid)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in null_threshold (the null value gamma_0 must be a finite number inside the candidate grid)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:neg1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:zero",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter null_threshold = 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter null_threshold = 3: requires a value inside the trimmed candidate grid [thresholds[0], thresholds[last]] (outside it the implied sample split violates the trimming, so the LR statistic is not defined)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter null_threshold = 1: requires a value inside the trimmed candidate grid [thresholds[0], thresholds[last]] (outside it the implied sample split violates the trimming, so the LR statistic is not defined)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: null_threshold='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:none",
+"outcome": "ok",
+"nonfinite": 3,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "null_threshold:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "setar_threshold_ci: null_threshold=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"var_girf": [
+{
+"id": "data:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or inf) in the data matrix at row 0, column 0: the VAR estimator has no missing-value handling, so a single gap would corrupt every coefficient \u2014 drop or impute those rows first (pandas: df.dropna())",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or inf) in the data matrix at row 100, column 0: the VAR estimator has no missing-value handling, so a single gap would corrupt every coefficient \u2014 drop or impute those rows first (pandas: df.dropna())",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or inf) in the data matrix at row 100, column 0: the VAR estimator has no missing-value handling, so a single gap would corrupt every coefficient \u2014 drop or impute those rows first (pandas: df.dropna())",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "data has 0 rows but a VAR with lags = p = 2 on its k=3 series needs at least 10: lagging consumes 2 rows and each equation then has n_trend + k*lags = 7 regressors, which leaves no residual degrees of freedom. Even lags=1 would need 6 rows on k=3 series, so supply a longer sample or fit fewer series",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "data has 1 rows but a VAR with lags = p = 2 on its k=3 series needs at least 10: lagging consumes 2 rows and each equation then has n_trend + k*lags = 7 regressors, which leaves no residual degrees of freedom. Even lags=1 would need 6 rows on k=3 series, so supply a longer sample or fit fewer series",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "the data matrix has no columns; pass a 2-D array shaped (n_obs, n_series) with observations in rows, oldest first (expected 1, got 0)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got data: array(200,)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1-D \u2014 use `df[['x']]` (or `x.res",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got data: array(1, 200, 3)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1-D \u2014 use `df[['x']]` (or `",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:short_rows",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "data:short_cols",
+"outcome": "ok",
+"nonfinite": 14,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "data:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: an array argument is the wrong shape or type (got data: list of 200). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1-D \u2014 use `df[['x']]` (or `x.res",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:int_array",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "data:bool_array",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "data:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "data has 3 rows but a VAR with lags = p = 2 on its k=200 series needs at least 404: lagging consumes 2 rows and each equation then has n_trend + k*lags = 401 regressors, which leaves no residual degrees of freedom. Even lags=1 would need 203 rows on k=200 series, so supply a longer sample or fit few",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:dup_row",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "data:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: data='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'str' o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: data=None is None, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'None' is not a",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: data=1.0 is of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'float'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "a VAR(0) has no dynamics to simulate, so its generalized impulse response is the impact shock alone; refit with p >= 1",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "p:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "p:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: p=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "data has 200 rows but a VAR with lags = p = 2147483648 on its k=3 series needs at least 8589934594: lagging consumes 2147483648 rows and each equation then has n_trend + k*lags = 6442450945 regressors, which leaves no residual degrees of freedom. Try lags <= 49, drop a series, or supply a longer sam",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "data has 200 rows but a VAR with lags = p = 140737488355328 on its k=3 series needs at least 562949953421314: lagging consumes 140737488355328 rows and each equation then has n_trend + k*lags = 422212465065985 regressors, which leaves no residual degrees of freedom. Try lags <= 49, drop a series, or",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: p=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap, or draw c",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: p=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "p:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: p='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: p=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: p=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:0",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: shock_var=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid shock_var = 2147483648: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid shock_var = 140737488355328: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: shock_var=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap, o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: shock_var=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: shock_var='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: shock_var=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: shock_var=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid size = NaN: requires a finite shock size in standard deviations of the innovation (negative for an adverse shock)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid size = inf: requires a finite shock size in standard deviations of the innovation (negative for an adverse shock)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid size = -inf: requires a finite shock size in standard deviations of the innovation (negative for an adverse shock)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:neg1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:zero",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:1e300",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:1e-300",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "size:int",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "size:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "size:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: size='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: size=None is of type NoneType, but this parameter takes a real number. Original error: must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: size=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown shock \"abc\"; expected \"orthogonal\" (size standard deviations of the shock_var-th Cholesky-orthogonalized innovation in the variable ordering \u2014 var_irf(orth=True)'s shock) or \"generalized\" (Pesaran-Shin 1998: innovation shock_var moved by size standard deviations, the others by their conditio",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown shock \"\"; expected \"orthogonal\" (size standard deviations of the shock_var-th Cholesky-orthogonalized innovation in the variable ordering \u2014 var_irf(orth=True)'s shock) or \"generalized\" (Pesaran-Shin 1998: innovation shock_var moved by size standard deviations, the others by their conditional",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: shock=3 is of type int, but this parameter takes a string option. Original error: 'int' object is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: shock=None is of type None, but this parameter takes a string option. Original error: 'None' is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:0",
+"outcome": "ok",
+"nonfinite": 3,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:1",
+"outcome": "ok",
+"nonfinite": 6,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2",
+"outcome": "ok",
+"nonfinite": 9,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: horizon=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid horizon = 2147483648: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid horizon = 140737488355328: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: horizon=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap, or ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: horizon=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:True",
+"outcome": "ok",
+"nonfinite": 6,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: horizon='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: horizon=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: horizon=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid n_draws = 0: requires n_draws >= 1 (future-innovation draws per history; a linear model needs 1, a nonlinear model a few hundred)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid n_draws = 1: requires an even n_draws when antithetic = true (draws come in (+z, -z) pairs); pass an even count or antithetic = false",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: n_draws=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "GIRF engine (per concurrent history, n_draws x (horizon + 1) x k doubles of draw buffers; per history, five (horizon + 1) x k result arrays held for the reduction): the working set would need 1082331928344 bytes (1008.00 GiB), beyond the engine's memory budget of 2147483648 bytes (2.00 GiB) \u2014 or the",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "GIRF engine (per concurrent history, n_draws x (horizon + 1) x k doubles of draw buffers; per history, five (horizon + 1) x k result arrays held for the reduction): the working set would need 70931694131255064 bytes (66060288.00 GiB), beyond the engine's memory budget of 2147483648 bytes (2.00 GiB) ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: n_draws=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap, or ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: n_draws=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid n_draws = 1: requires an even n_draws when antithetic = true (draws come in (+z, -z) pairs); pass an even count or antithetic = false",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: n_draws='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: n_draws=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: n_draws=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:0",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "seed:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: seed=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^31",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^47",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^63",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: seed=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "seed:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: seed='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: seed=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: seed=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trend:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown trend \"abc\"; expected \"c\" or \"n\"",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trend:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown trend \"\"; expected \"c\" or \"n\"",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trend:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: trend=3 is of type int, but this parameter takes a string option. Original error: 'int' object is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trend:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: trend=None is of type None, but this parameter takes a string option. Original error: 'None' is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: antithetic=2 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: antithetic=0 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: antithetic='yes' is of type str, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'str' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: antithetic=None is of type None, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'None' is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: antithetic=1.5 is of type float, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'float' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "histories must be >= 1 (the number of lag windows to condition on) or None for every window in the sample",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:1",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: histories=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^31",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^47",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "var_girf: histories=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap, o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: histories=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:True",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: histories='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:none",
+"outcome": "ok",
+"nonfinite": 21,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "histories:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "var_girf: histories=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"threshold_var_girf": [
+{
+"id": "data:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the data matrix (the TVAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the data matrix (the TVAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "non-finite value (NaN or infinity) in the data matrix (the TVAR requires finite observations)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for data (the threshold VAR needs a non-empty (n_obs, n_series) array): 0 observations, at least 1 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: the threshold series data[:, threshold_index] is constant: a threshold VAR needs variation in the threshold variable z_t",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for data (the threshold VAR needs a non-empty (n_obs, n_series) array): 0 observations, at least 1 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got data: array(200,)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1-D \u2014 use `df[['x']]` ",
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "data:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got data: array(1, 200, 2)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1-D \u2014 use `df[['x",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:short_rows",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.007,
+"rss_mb": 0.0
+},
+{
+"id": "data:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: a threshold VAR needs at least two series in data (pass a 2-D array shaped (n_obs, n_series), observations in rows, oldest first; a single series is a threshold AR \u2014 use setar)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: an array argument is the wrong shape or type (got data: list of 200). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1-D \u2014 use `df[['x']]` ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "data:bool_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "singular linear system: a low-regime VAR design X'X at a threshold candidate (a collinear regime segment of data \u2014 raise trim)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for data under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(m + 1, ceil(trim n)) rows each, m the regressors per equation; counts are rows of data): 2 observations, at least 405 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "data:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: data='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original erro",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: data=None is None, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'None",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "data:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: data=1.0 is of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original erro",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: the TVAR requires p >= 1 (the model is a vector autoregression; with p = 0 there is no lag to regress on)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "p:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.006,
+"rss_mb": 0.0
+},
+{
+"id": "p:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: p=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for data under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(m + 1, ceil(trim n)) rows each, m the regressors per equation; counts are rows of data): 200 observations, at least 10737418244 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for data under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(m + 1, ceil(trim n)) rows each, m the regressors per equation; counts are rows of data): 200 observations, at least 703687441776644 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: p=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap,",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: p=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "p:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: p='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: p=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "p:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: p=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:2",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter threshold_index = 2: requires threshold_index < n_series (it selects which series' lag drives the regime split)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: threshold_index=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter threshold_index = 2147483648: requires threshold_index < n_series (it selects which series' lag drives the regime split)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter threshold_index = 140737488355328: requires threshold_index < n_series (it selects which series' lag drives the regime split)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: threshold_index=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: threshold_index=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.006,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: threshold_index='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: threshold_index=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "threshold_index:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: threshold_index=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar in",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{threshold_index, t-delay}; every entry of delays is a candidate delay)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "delay:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: delay=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for data under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(m + 1, ceil(trim n)) rows each, m the regressors per equation; counts are rows of data): 200 observations, at least 2147483656 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for data under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(m + 1, ceil(trim n)) rows each, m the regressors per equation; counts are rows of data): 200 observations, at least 140737488355336 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: delay=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: delay=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "delay:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: delay='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: delay=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delay:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: delay=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = NaN: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = inf: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = -inf: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = -1: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 0: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "trim:int",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 3: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter trim = 1: requires 0 < trim < 0.5 (the minimum sample fraction each regime must keep)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: trim='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: trim=None is of type NoneType, but this parameter takes a real number. Original error: must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "trim:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: trim=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[0]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter delay = 0: requires delay >= 1 (the threshold variable is the lagged value y_{threshold_index, t-delay}; every entry of delays is a candidate delay)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[-1]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: delays=[-1] is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^31]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for data under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(m + 1, ceil(trim n)) rows each, m the regressors per equation; counts are rows of data): 200 observations, at least 2147483656 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^47]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "insufficient data for data under the requested p, delay / delays and trim (after the max(p, delay) start-up rows the sample must hold two regimes of max(m + 1, ceil(trim n)) rows each, m the regressors per equation; counts are rows of data): 200 observations, at least 140737488355336 required",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[2^63]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: delays=[9223372036854775808] is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iterati",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid model specification: delays must contain at least one candidate delay",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[1.5]",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: delays=[1.5] is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:[True]",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "delays:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: delays='abc' is a str, but this parameter takes a list of integers (labels, lags or indices \u2014 e.g. [1, 2]; an int array is accepted, a string is not). Original error: Can't extract `str` to `Vec`",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "delays:float_array",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: delays=array([1., 2.]) is of type numpy.float64, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'numpy.float64' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:nested",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: delays=[[1]] is of type list, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'list' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "delays:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "delays:5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: delays=5 is of type int, but this parameter takes a Sequence. Original error: 'int' object is not an instance of 'Sequence'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: constant=2 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: constant=0 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: constant='yes' is of type str, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'str' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: constant=None is of type None, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'None' is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "constant:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: constant=1.5 is of type float, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'float' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter shock_var = 2: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: shock_var=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter shock_var = 2147483648: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter shock_var = 140737488355328: requires shock_var < n_series (the 0-based index of the variable whose innovation is shocked)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: shock_var=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iterat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: shock_var=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: shock_var='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: shock_var=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock_var:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: shock_var=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter size = NaN: requires a finite shock size in standard deviations of the innovation (negative for an adverse shock)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter size = inf: requires a finite shock size in standard deviations of the innovation (negative for an adverse shock)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter size = -inf: requires a finite shock size in standard deviations of the innovation (negative for an adverse shock)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:neg1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "size:zero",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.004,
+"rss_mb": 0.0
+},
+{
+"id": "size:1e300",
+"outcome": "ok",
+"nonfinite": 27,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "size:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "size:int",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "size:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "size:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: size='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: size=None is of type NoneType, but this parameter takes a real number. Original error: must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "size:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: size=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown shock \"abc\"; expected \"orthogonal\" (size standard deviations of the shock_var-th Cholesky-orthogonalized innovation in the variable ordering \u2014 var_irf(orth=True)'s shock) or \"generalized\" (Pesaran-Shin 1998: innovation shock_var moved by size standard deviations, the others by their conditio",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown shock \"\"; expected \"orthogonal\" (size standard deviations of the shock_var-th Cholesky-orthogonalized innovation in the variable ordering \u2014 var_irf(orth=True)'s shock) or \"generalized\" (Pesaran-Shin 1998: innovation shock_var moved by size standard deviations, the others by their conditional",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: shock=3 is of type int, but this parameter takes a string option. Original error: 'int' object is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "shock:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: shock=None is of type None, but this parameter takes a string option. Original error: 'None' is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.003,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: horizon=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter horizon = 2147483648: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter horizon = 140737488355328: requires horizon <= 1_000_000 (responses are simulated period by period; 20-40 is the usual range)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: horizon=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteratio",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: horizon=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: horizon='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: horizon=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "horizon:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: horizon=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter n_draws = 0: requires n_draws >= 1 (future-innovation draws per history; a linear model needs 1, a nonlinear model a few hundred)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter n_draws = 1: requires an even n_draws when antithetic = true (draws come in (+z, -z) pairs); pass an even count or antithetic = false",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2",
+"outcome": "ok",
+"nonfinite": 14,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: n_draws=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "GIRF engine (per concurrent history, n_draws x (horizon + 1) x k doubles of draw buffers; per history, five (horizon + 1) x k result arrays held for the reduction): the working set would need 721554619992 bytes (672.00 GiB), beyond the engine's memory budget of 2147483648 bytes (2.00 GiB) \u2014 or the a",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "GIRF engine (per concurrent history, n_draws x (horizon + 1) x k doubles of draw buffers; per history, five (horizon + 1) x k result arrays held for the reduction): the working set would need 47287796087504472 bytes (44040192.00 GiB), beyond the engine's memory budget of 2147483648 bytes (2.00 GiB) ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: n_draws=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteratio",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: n_draws=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter n_draws = 1: requires an even n_draws when antithetic = true (draws come in (+z, -z) pairs); pass an even count or antithetic = false",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: n_draws='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: n_draws=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_draws:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: n_draws=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "seed:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: seed=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^31",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^47",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^63",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: seed=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "seed:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: seed='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: seed=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: seed=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regime:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown regime \"abc\"; expected \"all\" (every lag window; the per-regime averages come back as girf_low_regime/girf_high_regime), \"low\" (windows whose shock date has z_t <= threshold) or \"high\" (z_t > threshold)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regime:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown regime \"\"; expected \"all\" (every lag window; the per-regime averages come back as girf_low_regime/girf_high_regime), \"low\" (windows whose shock date has z_t <= threshold) or \"high\" (z_t > threshold)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regime:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: regime=3 is of type int, but this parameter takes a string option. Original error: 'int' object is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regime:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: regime=None is of type None, but this parameter takes a string option. Original error: 'None' is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid parameter histories = 0: requires histories >= 1 (the number of lag windows to condition on) or None for every window of the chosen regime",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:1",
+"outcome": "ok",
+"nonfinite": 1,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.002,
+"rss_mb": 0.0
+},
+{
+"id": "histories:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: histories=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^31",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^47",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "histories:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "threshold_var_girf: histories=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iterat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: histories=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:True",
+"outcome": "ok",
+"nonfinite": 1,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "histories:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: histories='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "histories:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "histories:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: histories=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: antithetic=2 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: antithetic=0 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: antithetic='yes' is of type str, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'str' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: antithetic=None is of type None, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'None' is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "antithetic:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "threshold_var_girf: antithetic=1.5 is of type float, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'float' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"jsz_fit": [
+{
+"id": "yields:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields (the JSZ yield panel): contains a non-finite value (NaN) at index 0; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields (the JSZ yield panel): contains a non-finite value (NaN) at index 1200; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields (the JSZ yield panel): contains a non-finite value (inf) at index 1200; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields (the JSZ yield panel: the portfolio VAR(1) needs residual degrees of freedom): the panel has 0 dates but needs at least 9; supply a longer factor history",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields (the JSZ yield panel: the portfolio VAR(1) needs residual degrees of freedom): the panel has 1 dates but needs at least 9; supply a longer factor history",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields: every row of the JSZ yield panel must hold one yield per entry of maturities: expected length 12 but got 0; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got yields: array(200,); maturities: list of 12). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1-D \u2014 u",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got yields: array(1, 200, 12); maturities: list of 12). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:short_rows",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.076,
+"rss_mb": 0.0
+},
+{
+"id": "yields:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields: every row of the JSZ yield panel must hold one yield per entry of maturities: expected length 12 but got 11; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got yields: list of 200; maturities: list of 12). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df['x']` is 1-D \u2014 u",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:int_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields (the JSZ portfolio VAR(1) on the yield panel): the loading columns are numerically collinear, so the cross-sectional least-squares problem has no stable solution; check the maturity grid and lambda",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:bool_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields (the JSZ portfolio VAR(1) on the yield panel): the loading columns are numerically collinear, so the cross-sectional least-squares problem has no stable solution; check the maturity grid and lambda",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields: every row of the JSZ yield panel must hold one yield per entry of maturities: expected length 12 but got 200; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.077,
+"rss_mb": 0.0
+},
+{
+"id": "yields:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: yields='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'str' ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: yields=None is None, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'None' is not ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "yields:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: yields=1.0 is of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'float",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[0]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 0 is invalid: Nelson-Siegel loadings require strictly positive, finite maturities",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[-1]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: maturities=[-1] is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^31]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 2147483648 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longest maturity, so express maturities in periods of the data's frequency (months for monthly data: 120 for ten years)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^47]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 140737488355328 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longest maturity, so express maturities in periods of the data's frequency (months for monthly data: 120 for ten years)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^63]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: maturities=[9223372036854775808] is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap,",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "the maturity grid is empty; supply the maturities (in the same time units as lambda, e.g. months for the Diebold-Li 0.0609) at which the yields are observed",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[1.5]",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: maturities=[1.5] is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[True]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 3 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 0 (strictly fewer factors than maturities) is required; ACM's baseline uses five",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: maturities='abc' is a str, but this parameter takes a list of integers (labels, lags or indices \u2014 e.g. [1, 2]; an int array is accepted, a string is not). Original error: Can't extract `str` to `Vec`",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:int_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 3 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 1 (strictly fewer factors than maturities) is required; ACM's baseline uses five",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:float_array",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: maturities=array([1., 2.]) is of type numpy.float64, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'numpy.float64' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:nested",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: maturities=[[1]] is of type list, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'list' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: maturities=None is of type None, but this parameter takes a Sequence. Original error: 'None' is not an instance of 'Sequence'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: maturities=5 is of type int, but this parameter takes a Sequence. Original error: 'int' object is not an instance of 'Sequence'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:one_short",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields: every row of the JSZ yield panel must hold one yield per entry of maturities: expected length 11 but got 12; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:one_long",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "yields: every row of the JSZ yield panel must hold one yield per entry of maturities: expected length 13 but got 12; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 0 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 11 (strictly fewer factors than maturities) is required; ACM's baseline uses five",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.006,
+"rss_mb": 0.1
+},
+{
+"id": "n_factors:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.029,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: n_factors=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 2147483648 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 11 (strictly fewer factors than maturities) is required; ACM's baseline uses five",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_factors = 140737488355328 is invalid: the pricing factors are principal components of the yield panel, so 1 <= n_factors <= 11 (strictly fewer factors than maturities) is required; ACM's baseline uses five",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: n_factors=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap, or",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: n_factors=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.005,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: n_factors='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: n_factors=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_factors:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: n_factors=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = NaN is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = inf is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = -inf is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = -1 is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = 0 is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:1e300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda estimation failed (the JSZ likelihood could not be evaluated at the starting values (OLS eigenvalues and residual covariance) \u2014 check the scale of yields (decimals per period) and periods_per_year (12 monthly, 4 quarterly)); try a different starting value (the Diebold-Li 0.0609 is a robust de",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:1e-300",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda estimation failed (the JSZ likelihood could not be evaluated at the starting values (OLS eigenvalues and residual covariance) \u2014 check the scale of yields (decimals per period) and periods_per_year (12 monthly, 4 quarterly)); try a different starting value (the Diebold-Li 0.0609 is a robust de",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:int",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.076,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.072,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: periods_per_year='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: periods_per_year=None is of type NoneType, but this parameter takes a real number. Original error: must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: periods_per_year=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (a non-finite entry; rows = 3, cols = 12): w must be an n_factors x n_maturities matrix of finite entries whose rows are linearly independent, so that P_t = w y_t spans n_factors yield portfolios; pass None for the default principal-component loadings",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:rows_short",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (wrong number of rows (expected n_factors); rows = 2, cols = 12): w must be an n_factors x n_maturities matrix of finite entries whose rows are linearly independent, so that P_t = w y_t spans n_factors yield portfolios; pass None for the default principal-component l",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:cols_short",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (wrong number of columns (expected n_maturities); rows = 3, cols = 11): w must be an n_factors x n_maturities matrix of finite entries whose rows are linearly independent, so that P_t = w y_t spans n_factors yield portfolios; pass None for the default principal-compo",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (wrong number of rows (expected n_factors); rows = 12, cols = 12): w must be an n_factors x n_maturities matrix of finite entries whose rows are linearly independent, so that P_t = w y_t spans n_factors yield portfolios; pass None for the default principal-component ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:rank_deficient",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (the rows of w are linearly dependent (rank-deficient); rows = 3, cols = 12): w must be an n_factors x n_maturities matrix of finite entries whose rows are linearly independent, so that P_t = w y_t spans n_factors yield portfolios; pass None for the default principal",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got yields: array(200, 12); maturities: list of 12; w: array(12,)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `d",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:zeros",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "portfolio weights w are unusable (the rows of w are linearly dependent (rank-deficient); rows = 3, cols = 12): w must be an n_factors x n_maturities matrix of finite entries whose rows are linearly independent, so that P_t = w y_t spans n_factors yield portfolios; pass None for the default principal",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: an array argument is the wrong shape or type (got yields: array(200, 12); maturities: list of 12; w: list of 3). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFrame, `df",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: w='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'str' objec",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "w:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.069,
+"rss_mb": 0.0
+},
+{
+"id": "w:valid",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.07,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_starts = 0 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues of the OLS feedback matrix; starts 1.. are seeded perturbations of it that guard against local optima \u2014 the default is 5)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "seed was given but n_starts=1 ignores it: with a single start the search runs only from JSZ's recommended starting values (the OLS eigenvalues), so the seed of the perturbed starts cannot act; pass n_starts >= 2 or drop seed",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.078,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: n_starts=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_starts = 2147483648 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues of the OLS feedback matrix; starts 1.. are seeded perturbations of it that guard against local optima \u2014 the default is 5)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "n_starts = 140737488355328 is invalid: the JSZ likelihood search needs between 1 and 1000 starting points (start 0 is JSZ's recommendation, the eigenvalues of the OLS feedback matrix; starts 1.. are seeded perturbations of it that guard against local optima \u2014 the default is 5)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: n_starts=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration cap, or ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: n_starts=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "seed was given but n_starts=1 ignores it: with a single start the search runs only from JSZ's recommended starting values (the OLS eigenvalues), so the seed of the perturbed starts cannot act; pass n_starts >= 2 or drop seed",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: n_starts='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: n_starts=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "n_starts:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: n_starts=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.077,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.081,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.074,
+"rss_mb": 0.0
+},
+{
+"id": "seed:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_fit: seed=-1 is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^31",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.08,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^47",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.081,
+"rss_mb": 0.0
+},
+{
+"id": "seed:2^63",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.076,
+"rss_mb": 0.0
+},
+{
+"id": "seed:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: seed=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.079,
+"rss_mb": 0.0
+},
+{
+"id": "seed:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: seed='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "seed:none",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.076,
+"rss_mb": 0.0
+},
+{
+"id": "seed:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_fit: seed=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"jsz_loadings": [
+{
+"id": "lambda_q:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q[0] = NaN is invalid: the JSZ canonical form needs finite real risk-neutral eigenvalues (per period; monthly estimates typically lie in (0.5, 1], the first near 1)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q[1] = NaN is invalid: the JSZ canonical form needs finite real risk-neutral eigenvalues (per period; monthly estimates typically lie in (0.5, 1], the first near 1)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q[1] = inf is invalid: the JSZ canonical form needs finite real risk-neutral eigenvalues (per period; monthly estimates typically lie in (0.5, 1], the first near 1)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q[0] = NaN is invalid: the JSZ canonical form needs finite real risk-neutral eigenvalues (per period; monthly estimates typically lie in (0.5, 1], the first near 1)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): expected length 1 but got 3; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: lambda_q=0.998 and k_inf_q=0.0001 are of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatic",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got lambda_q: array(1, 3); sigma_x: array(3, 3); maturities: list of 7). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a Dat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:short_rows",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): expected length 2 but got 3; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:nested_list",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:bool_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:dup_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lambda_q must be ordered lambda_1 >= lambda_2 >= ... (the JSZ canonical form attaches k_inf_q to the first, most persistent eigenvalue and turns equal neighbours into a Jordan block), but lambda_q[2] exceeds lambda_q[1]; sort them in descending order",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: lambda_q='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error:",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: lambda_q=None is None, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'None' ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lambda_q:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: lambda_q=1.0 and k_inf_q=0.0001 are of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatical",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "k_inf_q: contains a non-finite value (NaN) at index 0; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "k_inf_q: contains a non-finite value (inf) at index 0; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "k_inf_q: contains a non-finite value (-inf) at index 0; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:neg1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:zero",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:1e300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:int",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: k_inf_q='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: k_inf_q=None is of type NoneType, but this parameter takes a real number. Original error: must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "k_inf_q:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: k_inf_q=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): contains a non-finite value (NaN) at index 0; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): contains a non-finite value (NaN) at index 4; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): contains a non-finite value (inf) at index 4; clean or impute NaN/inf observations before fitting",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): expected length 3 but got 0; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): expected length 3 but got 1; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): expected length 3 but got 0; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got lambda_q: array(3,); sigma_x: array(3,); maturities: list of 7). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFra",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got lambda_q: array(3,); sigma_x: array(1, 3, 3); maturities: list of 7). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a Da",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:short_rows",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): expected length 3 but got 2; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q)): expected length 3 but got 2; the yields must be index-aligned with the maturity grid",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: an array argument is the wrong shape or type (got lambda_q: array(3,); sigma_x: list of 3; maturities: list of 7). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column out of a DataFra",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:bool_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:transposed",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: sigma_x='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: sigma_x=None is None, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error: 'None' i",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "sigma_x:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: k_inf_q=0.0001 and sigma_x=1.0 are of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automaticall",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[0]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 0 is invalid: Nelson-Siegel loadings require strictly positive, finite maturities",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[-1]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_loadings: maturities=[-1] is negative, but this parameter counts something \u2014 a lag length, order, horizon, window, iteration cap, draw count, or seed \u2014 and must be a nonnegative integer. Original error: can't convert negative int to unsigned",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^31]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 2147483648 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longest maturity, so express maturities in periods of the data's frequency (months for monthly data: 120 for ten years)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^47]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "maturity[0] = 140737488355328 periods exceeds the supported maximum of 120000: the affine recursions are tabulated at every integer period up to the longest maturity, so express maturities in periods of the data's frequency (months for monthly data: 120 for ten years)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[2^63]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "jsz_loadings: maturities=[9223372036854775808] is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteration",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[]",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "the maturity grid is empty; supply the maturities (in the same time units as lambda, e.g. months for the Diebold-Li 0.0609) at which the yields are observed",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[1.5]",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: maturities=[1.5] is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:[True]",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: maturities='abc' is a str, but this parameter takes a list of integers (labels, lags or indices \u2014 e.g. [1, 2]; an int array is accepted, a string is not). Original error: Can't extract `str` to `Vec`",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:float_array",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: maturities=array([1., 2.]) is of type numpy.float64, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'numpy.float64' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:nested",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: maturities=[[1]] is of type list, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'list' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: maturities=None is of type None, but this parameter takes a Sequence. Original error: 'None' is not an instance of 'Sequence'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: maturities=5 is of type int, but this parameter takes a Sequence. Original error: 'int' object is not an instance of 'Sequence'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:one_short",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "maturities:one_long",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:nan",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = NaN is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = inf is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:-inf",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = -inf is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = -1 is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:zero",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "periods_per_year = 0 is invalid: it must be a strictly positive, finite number of compounding periods per year (12 for monthly maturities, 4 for quarterly) so annualized yields convert to the per-period log yields the recursions price",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:1e300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:1e-300",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:int",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: periods_per_year='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: periods_per_year=None is of type NoneType, but this parameter takes a real number. Original error: must be real number, not NoneType",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "periods_per_year:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "jsz_loadings: periods_per_year=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+],
+"panel_distributed_lag": [
+{
+"id": "outcome:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "outcome: contains a non-finite value (NaN or infinity) in an observed cell; panel estimators do not skip missing values silently \u2014 drop or impute them first, or declare the missing cells through the observation mask (mask=..., an N x T array of 0/1 flags with 1 where the entity is observed in that p",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "outcome: contains a non-finite value (NaN or infinity) in an observed cell; panel estimators do not skip missing values silently \u2014 drop or impute them first, or declare the missing cells through the observation mask (mask=..., an N x T array of 0/1 flags with 1 where the entity is observed in that p",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "outcome: contains a non-finite value (NaN or infinity) in an observed cell; panel estimators do not skip missing values silently \u2014 drop or impute them first, or declare the missing cells through the observation mask (mask=..., an N x T array of 0/1 flags with 1 where the entity is observed in that p",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: outcome: the outcome panel must have at least one entity and one period",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:one_row",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressors: a regressor's entity dimension must match the outcome's (expected 1, got 6)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: outcome: the outcome panel must have at least one entity and one period",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got outcome: array(6,); regressors: array(1, 6, 200); eval_points: array(3,)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one colu",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got outcome: array(1, 6, 200); regressors: array(1, 6, 200); eval_points: array(3,)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:short_rows",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressors: a regressor's entity dimension must match the outcome's (expected 5, got 6)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressors: a regressor's period dimension must match the outcome's (expected 199, got 200)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got outcome: list of 6; regressors: array(1, 6, 200); eval_points: array(3,)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one colu",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:bool_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressors: a regressor's entity dimension must match the outcome's (expected 200, got 6)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: outcome='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Origina",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: outcome=None is None, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original error:",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "outcome:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: outcome=1.0 is of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Origina",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "regressors: contains a non-finite value (NaN or infinity) in an observed cell; panel estimators do not skip missing values silently \u2014 drop or impute them first, or declare the missing cells through the observation mask (mask=..., an N x T array of 0/1 flags with 1 where the entity is observed in tha",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:nan_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "regressors: contains a non-finite value (NaN or infinity) in an observed cell; panel estimators do not skip missing values silently \u2014 drop or impute them first, or declare the missing cells through the observation mask (mask=..., an N x T array of 0/1 flags with 1 where the entity is observed in tha",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:inf_one",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "regressors: contains a non-finite value (NaN or infinity) in an observed cell; panel estimators do not skip missing values silently \u2014 drop or impute them first, or declare the missing cells through the observation mask (mask=..., an N x T array of 0/1 flags with 1 where the entity is observed in tha",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: the panel has no regressors; a distributed-lag regression needs at least one regressor to lag",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:one_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:zero_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressors: a regressor's period dimension must match the outcome's (expected 200, got 0)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:rank_down",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got outcome: array(6, 200); regressors: array(1, 6); eval_points: array(3,)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one colum",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got outcome: array(6, 200); regressors: array(1, 1, 6, 200); eval_points: array(3,)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced o",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:short_rows",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: the panel has no regressors; a distributed-lag regression needs at least one regressor to lag",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:short_cols",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressors: a regressor's period dimension must match the outcome's (expected 200, got 199)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:short_mid",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressors: a regressor's entity dimension must match the outcome's (expected 6, got 5)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:nested_list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got outcome: array(6, 200); regressors: list of 1; eval_points: array(3,)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one column ",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:int_array",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:bool_array",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "within (fixed-effects) OLS: the requested effects absorb a regressor entirely \u2014 one column of regressors is constant within every entity, common to every entity in each period under time effects, or an exact linear trend per entity under entity trends \u2014 so no within variation remains to identify its",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:transposed",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "dimension mismatch: regressors: a regressor's period dimension must match the outcome's (expected 200, got 1)",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:dup_row",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: regressors='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Orig",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: regressors=None is None, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Original err",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "regressors:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: regressors=1.0 is of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Orig",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:0",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:1",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.001,
+"rss_mb": 0.0
+},
+{
+"id": "lags:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "lags must be a non-negative integer (the number of lags L of each regressor; 0 is the contemporaneous regression); got -1",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "distributed-lag design (lags): dropping the first `lags` periods of every entity must leave at least two periods: needs at least 2147483650 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "distributed-lag design (lags): dropping the first `lags` periods of every entity must leave at least two periods: needs at least 140737488355330 usable observations, got 200; reduce the horizon/lag order or supply more periods",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: lags=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iteratio",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: lags=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:True",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: lags='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: lags=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "lags:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: lags=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:0",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 0",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "eval_points was given but powers=1 ignores it: the marginal effect of a linear cumulative response is the constant cumulative_effect itself, so there is nothing to evaluate at a point; pass powers=2 for the quadratic response or drop eval_points",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:2",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:neg1",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got -1",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:2^31",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 2147483648",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:2^47",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 140737488355328",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:2^63",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: powers=9223372036854775808 is at or beyond 2**48 \u2014 a count that large cannot be allocated on any machine (2**48 double-precision values is 2 PiB), so the call cannot mean what it says. Every integer parameter here counts something \u2014 a lag length, order, horizon, window, iterat",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: powers=1.5 is of type float, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'float' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:True",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "eval_points was given but powers=1 ignores it: the marginal effect of a linear cumulative response is the constant cumulative_effect itself, so there is nothing to evaluate at a point; pass powers=2 for the quadratic response or drop eval_points",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: powers='3' is of type str, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'str' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: powers=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: 'NoneType' object cannot be interpreted as an integer",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "powers:list",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: powers=array([1.]) is an array (a one-element list passed here is converted to an array), but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original error: only integer scalar arrays can be converted to a scalar index",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_effects=2 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_effects=0 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_effects='yes' is of type str, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'str' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_effects=None is of type None, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'None' is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_effects:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_effects=1.5 is of type float, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'float' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: time_effects=2 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: time_effects=0 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: time_effects='yes' is of type str, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'str' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: time_effects=None is of type None, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'None' is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "time_effects:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: time_effects=1.5 is of type float, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'float' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:2",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_trends=2 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:0",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_trends=0 is of type int, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'int' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_trends='yes' is of type str, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'str' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_trends=None is of type None, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'None' is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "entity_trends:1.5",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: entity_trends=1.5 is of type float, but this parameter takes a Python bool (True or False \u2014 0/1 are not accepted as flags). Original error: 'float' object is not an instance of 'bool'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "se_type:abc",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown se_type \"abc\"; expected nonrobust/cluster/driscoll_kraay",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "se_type:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "unknown se_type \"\"; expected nonrobust/cluster/driscoll_kraay",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "se_type:int",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: se_type=3 is of type int, but this parameter takes a string option. Original error: 'int' object is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "se_type:none",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: se_type=None is of type None, but this parameter takes a string option. Original error: 'None' is not an instance of 'str'",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:nan@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=NaN has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the band",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:inf@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=inf has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the band",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:-inf@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=-inf has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the ban",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:neg1@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=-1 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the bandw",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:zero@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=0 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the bandwi",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:1e300@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:1e-300@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:int@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=3 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the bandwi",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:True@dk",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "panel_distributed_lag: bandwidth=1 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard errors use no kernel, so there is nothing for it to truncate and the argument would be silently absorbed. Pass se_type=\"driscoll_kraay\" for the bandwi",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:str@dk",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: bandwidth='abc' is of type str, but this parameter takes a real number. Original error: must be real number, not str",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:none@dk",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "bandwidth:list@dk",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: bandwidth=array([0.5]) is an array (a one-element list passed here is converted to an array), but this parameter takes a real number. Original error: only 0-dimensional arrays can be converted to Python scalars",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:nan_all",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "eval_points: contains a non-finite value (NaN or infinity) in an observed cell; panel estimators do not skip missing values silently \u2014 drop or impute them first, or declare the missing cells through the observation mask (mask=..., an N x T array of 0/1 flags with 1 where the entity is observed in th",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:empty",
+"outcome": "refusal",
+"exc": "ValueError",
+"msg": "invalid argument: eval_points is empty; pass at least one point at which to evaluate the marginal effect, or omit it to use each regressor's sample mean",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:rank_up",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got outcome: array(6, 200); regressors: array(1, 6, 200); eval_points: array(1, 3)). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced on",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:str",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: eval_points='abc' is of type str, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Ori",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:int_list",
+"outcome": "ok",
+"nonfinite": 0,
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:scalar",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: eval_points=20.0 is of type float, but this parameter takes a NumPy array (estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array; a pandas Series/DataFrame or a flat list is converted automatically). Or",
+"seconds": 0.0,
+"rss_mb": 0.0
+},
+{
+"id": "eval_points:2d",
+"outcome": "refusal",
+"exc": "TypeError",
+"msg": "panel_distributed_lag: an array argument is the wrong shape or type (got outcome: array(6, 200); regressors: array(1, 6, 200); eval_points: list of 1). Estimators that model a system want a 2-D array shaped (observations, series); estimators that model one series want a 1-D array. If you sliced one ",
+"seconds": 0.0,
+"rss_mb": 0.0
+}
+]
+}

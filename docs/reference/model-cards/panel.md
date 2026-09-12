@@ -28,7 +28,9 @@ cluster covariances.
 - **`panel_fe(outcome, regressors)`** — the within (fixed-effects) estimator:
   entity means are swept out and a common slope vector is estimated by OLS,
   with clustered or Driscoll-Kraay standard errors. `outcome` is N×T;
-  `regressors` is k×N×T.
+  `regressors` is k×N×T. An unbalanced panel is passed with `mask=` (an
+  N×T array of 0/1 flags, 1 where the entity is observed) — see
+  [the mask section](#unbalanced-panels-the-observation-mask-mask).
 - **`panel_distributed_lag(outcome, regressors, lags)`** — the distributed-lag
   panel regression of the climate-impact literature: `L` lags of each
   regressor (and of its square under `powers=2`) with entity and time effects
@@ -107,14 +109,16 @@ cluster covariances.
 | Call | Argument | Default | Notes |
 |------|----------|---------|-------|
 | `panel_fe` | `se_type` | `"cluster"` | `"nonrobust"`, `"cluster"` (by entity), `"driscoll_kraay"` |
+| | `mask` | `None` | N×T 0/1 (or bool) flags, 1 where the entity is observed in that period — an **unbalanced** panel; cells outside the mask are ignored and may hold NaN; without a mask a NaN anywhere is refused (0.10.0; see [the mask section](#unbalanced-panels-the-observation-mask-mask)) |
 | | `bandwidth` | `None` | Driscoll-Kraay kernel truncation, `4.0` when omitted under `se_type="driscoll_kraay"` — the only `se_type` it acts on. Passing it explicitly with any other `se_type` **raises** (0.6.0; it used to be silently absorbed, so `panel_fe(..., bandwidth=8)` under the default `"cluster"` was a complete no-op) |
-| `panel_distributed_lag` | `lags` | required | `L`; lags `0..L` of every regressor enter and the first `L` periods of each entity are dropped (the panel stays balanced) |
+| `panel_distributed_lag` | `lags` | required | `L`; lags `0..L` of every regressor enter and the first `L` periods of each entity are dropped (under a mask, a lagged row enters only when the entity is observed in every period `t−L..t`) |
 | | `powers` | `1` | `2` adds the lags of `x²` — the Burke-Hsiang-Miguel quadratic response |
 | | `entity_effects` / `time_effects` | `True` / `True` | the DJO/BHM two-way design; at least one effect is required |
 | | `entity_trends` | `False` | entity-specific linear trends (BHM's robustness spec); requires `entity_effects=True` |
 | | `se_type` | `"cluster"` | by entity — the DJO default; `"driscoll_kraay"` for cross-sectionally dependent weather (needs a long `T`); `"nonrobust"` |
 | | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`; explicit under any other `se_type` **raises** |
-| | `eval_points` | `None` | points at which the marginal effect of the cumulative quadratic response is evaluated; acts only under `powers=2` (`None` there = each regressor's pooled mean) and **raises** under `powers=1` |
+| | `eval_points` | `None` | points at which the marginal effect of the cumulative quadratic response is evaluated; acts only under `powers=2` (`None` there = each regressor's pooled mean over the observed cells) and **raises** under `powers=1` |
+| | `mask` | `None` | same contract as `panel_fe`; `nobs` counts the lagged rows whose every lag is observed |
 | `panel_lp` | `horizon` | `8` | IRF horizons |
 | | `n_lag_controls` | `2` | lags of outcome/shock included as controls |
 | | `se_type` | `"driscoll_kraay"` | robust to cross-sectional dependence |
@@ -124,10 +128,12 @@ cluster covariances.
 | | `bias_correction` | `"none"` | `"spj"` = Mei-Sheng-Shi split-panel jackknife: corrected points **and** the reference adjusted-score SEs; `"dj"` = alias for `jackknife=True`. Setting `jackknife=True` together with `"spj"` raises |
 | | `band` | `None` | `"pointwise"`, `"sidak"` or `"bonferroni"` adds a band over the horizons; `"sup-t"` is refused — see [the band section](#simultaneous-bands-over-the-horizons-panel_lp) |
 | | `band_alpha` | `0.1` | the band's own level (a 90% band); a band is not the same object as an `se` |
+| | `mask` | `None` | same contract as `panel_fe`: the horizon-h regression keeps the rows whose target (or cumulated window) and lagged-outcome controls are observed, so `nobs` shrinks with the gaps too; `jackknife=True` and `bias_correction="dj"`/`"spj"` **raise** on an unbalanced panel |
 | `lp_did` | `pre_window` / `post_window` | `4` / `8` | event window: horizons −pre..−2 (pre-trends) and 0..post; −1 is the omitted baseline |
 | | `absorbing` | `True` | treatment never reverses (raises on a reversal); `False` requires `nonabsorbing_lag` |
 | | `nonabsorbing_lag` | `0` | stabilization window L for non-absorbing treatments (units re-enter the control pool L quiet periods after a status change) |
 | | `reweight` | `False` | `True` = equally-weighted ATT; default OLS = variance-weighted ATT |
+| | `mask` | `None` | accepted for symmetry; an unbalanced mask **raises** — LP-DiD needs a balanced panel (see the mask section) |
 | | `pooled` | `False` | also report single-number pooled post/pre estimates |
 | | `never_treated_only` | `False` | restrict controls to never-treated units |
 | `mean_group_var` | `lags` | `1` | per-entity VAR order |
@@ -175,6 +181,77 @@ cluster covariances.
   "loglik", "iterations", "n_units", "k"}`. `theta` is the pooled long-run
   coefficient; `phi_bar` is the average error-correction speed (negative and
   bounded by −1 for stable adjustment); `phi` is the per-unit speed vector.
+
+## Unbalanced panels — the observation mask (`mask=`)
+
+Until 0.9.0 every panel callable refused a NaN anywhere and required a
+balanced N×T layout. Since 0.10.0 an **unbalanced** panel — entities entering
+late, leaving early, or with internal gaps — is declared through `mask=`, an
+N×T array of 0/1 (or bool) flags with 1 where the entity is observed in that
+period. Nothing is skipped silently: without a mask a NaN anywhere is still
+refused (the message now points at `mask=`), a NaN in an *observed* cell is
+refused naming the input, and a mask that is 1 everywhere takes exactly the
+balanced code path (asserted bit-identical). Cells outside the mask are
+never read and may hold anything.
+
+What the estimators do with it, and what they refuse:
+
+- **`panel_fe`** (and every effects menu reachable through
+  `panel_distributed_lag`): the per-entity projection — demeaning, or
+  residualising on `[1, t]` under `entity_trends` — runs over each entity's
+  observed cells; time effects are then partialled out **exactly**, the way
+  linearmodels' `PanelOLS` does it on unbalanced data (the Frisch-Waugh
+  route: the time dummies of the observed periods, projected the same way,
+  are residualised out by a rank-revealing least-squares step), and
+  time-only effects demean per period over the entities observed in it.
+  Effect counts use the entities and periods that carry an observation
+  ($N_\text{obs} + T_\text{obs} - 1$ under two-way effects, trend slopes
+  $N_\text{obs}$ or $N_\text{obs} - 1$ alongside time effects), the
+  cluster score sums run over each entity's observed cells, and the
+  Driscoll-Kraay per-period sums over the entities observed in each period
+  with lags measured in **calendar** periods of the layout (a period nobody
+  observes contributes a zero score and still counts as elapsed time —
+  linearmodels, which only knows the periods present in its frame, would
+  skip it; the fixtures observe every period, so the two agree).
+- **`panel_distributed_lag`**: a lagged row $(i, t)$ enters only when entity
+  $i$ is observed in every period $t-L, \dots, t$ — exactly what a
+  within-entity `shift` followed by dropping incomplete rows does — so
+  `nobs` counts those rows, the default `eval_points` (the pooled regressor
+  mean) runs over the observed cells, and a mask with no run of $L+1$
+  observed periods is refused with the longest run in the message.
+- **`panel_lp`**: the horizon-$h$ regression keeps the rows whose target
+  ($y_{i,t+h}$, or the whole cumulated window) and lagged-outcome controls
+  are observed; `nobs[h]` therefore shrinks with the gaps as well as the
+  horizon, and the entity composition can change across horizons — read it.
+  The two half-panel jackknives (`jackknife=True`, `bias_correction="dj"` /
+  `"spj"`) **raise** on an unbalanced panel: their bias reduction assumes
+  each half carries the full panel's incidental-parameter bias, which
+  entry, exit and gaps break, and the split-panel reference implementation
+  (`pLP`) is written for balanced panels.
+- **`lp_did`** accepts `mask=` for symmetry but **raises** on an unbalanced
+  one: the clean-control windows and the long differences are defined on
+  contiguous outcome paths, and the fixest reference run that validates the
+  estimator was made on balanced panels (R is not runnable in the build
+  container, so a masked LP-DiD would ship without its reference).
+- **`mean_group_var`** takes a *list* of per-entity matrices, so entry and
+  exit are simply shorter matrices; an internal NaN is refused naming
+  `entities[i]` (a VAR's lags must be contiguous — trim each entity to a
+  contiguous span).
+
+**Validation (honest grade).** `fixtures/panel_unbalanced.json`
+(`generate_panel_unbalanced_fixtures.py`) pins linearmodels 7.0 `PanelOLS`
+on the Arellano-Bond **`EmplUK`** panel (`plm`; 140 firms, 1976–1984, 1031
+firm-years — 103 firms observed 7 years, 23 for 8, 14 for 9) and on a seeded
+N = 20 × T = 30 panel with random entry, exit and 8% internal gaps: the
+within estimator under every effects menu × three covariances (10 cases),
+the lagged design (12 cases, incl. the delta-method leg) and the panel LP
+per horizon on exactly the rows the crate keeps (3 cases × 3 covariances),
+all at **1e-10 relative** with `nobs`/`df_resid` exact
+(`unbalanced_golden.rs`, `test_panel_unbalanced.py`). Every balanced call is
+pinned **bitwise** against the 0.9.0 build through
+`fixtures/panel_balanced_snapshot.json` (a float-hex self-snapshot in the
+`backtest_string_snapshot.json` mould), so the mask changed no balanced
+number.
 
 ## Nickell bias and the two half-panel corrections (`panel_lp`)
 
@@ -344,13 +421,17 @@ $-1/(2B_2)$ in every power-1 lag and $B_1/(2B_2^2)$ in every power-2 lag).
   explains the mechanism); use `panel_lp` with a bias correction for dynamic
   panels. Distributed lags of a strictly exogenous regressor carry no such
   bias.
-- **A balanced panel.** The lag design drops the first $L$ periods of every
-  entity and requires every remaining cell; unbalanced panels are refused at
-  the data boundary, as everywhere in the panel crate (the observation-mask
-  design is a documented `TODO(phase0)`). Trim to a common window or drop
-  entities with gaps first — and say so, because the balanced subsample is a
-  different population than the full panel (the DJO example below loses
-  half of the country-years that way).
+- **Missing cells are declared, never guessed.** A NaN in an observed cell
+  is refused; an unbalanced panel says which cells are missing through
+  `mask=` (0.10.0; [the mask section](#unbalanced-panels-the-observation-mask-mask)),
+  and a lagged row enters only when every one of its $L+1$ cells is
+  observed, so entities entering late or leaving early cost nothing but
+  rows while an internal gap costs the $L$ rows after it. Trimming to a
+  balanced window remains a *choice* — say so when you make it, because the
+  balanced subsample is a different population than the full panel (the
+  DJO example below keeps its balanced subsample so its printed numbers stay
+  comparable across releases; with `mask=` the full country-year file can
+  now be used directly).
 - **A common lag polynomial.** The within estimator pools $\beta_l$ across
   entities; DJO's rich-poor split is a hand-built interaction (pass
   `temperature × poor` as a second regressor).
@@ -421,6 +502,10 @@ and `nobs` ($N(T-L)$), `n_entities`, `n_periods_used` ($T-L$), `lags`,
   6 points short at $T = 50$ — the short-$T$ kernel caveat — recovering to
   0.92 at $T = 200$. Same seed, bit-identical output; entity relabelling and
   (at $L = 0$) period relabelling leave the fit unchanged to 1e-10.
+- **Unbalanced panels** (`fixtures/panel_unbalanced.json`): 12 lagged-design
+  cases on the Arellano-Bond `EmplUK` panel and a seeded ragged panel, pinned
+  at 1e-10 against `PanelOLS` with `nobs`/`df_resid` exact — see
+  [the mask section](#unbalanced-panels-the-observation-mask-mask).
 - **Real data** — see the DJO example below.
 
 ### Worked example — the Dell-Jones-Olken panel
@@ -702,7 +787,12 @@ returned because it is not a verified fixed point.
 ## Validated against
 
 `panel_fe` matches `linearmodels` `PanelOLS` for the within estimator under
-nonrobust, cluster-by-entity, and Driscoll-Kraay (Bartlett kernel) covariances.
+nonrobust, cluster-by-entity, and Driscoll-Kraay (Bartlett kernel) covariances —
+on balanced panels (`fixtures/panel.json`) and, since 0.10.0, on unbalanced
+ones through `mask=` (`fixtures/panel_unbalanced.json`: the Arellano-Bond
+`EmplUK` panel and a seeded ragged panel, every effects menu, 1e-10; the
+balanced paths pinned bitwise against the 0.9.0 build by
+`fixtures/panel_balanced_snapshot.json`).
 `panel_distributed_lag` (and the two-way / entity-trend menu it added to the
 within estimator) is pinned at 1e-10 against `PanelOLS` on the explicitly
 lagged design for nine cases × three covariances, its delta-method objects
@@ -742,6 +832,8 @@ known common long run, PMG recovers it and pools far more tightly than a free
 mean-group of per-unit long runs. Fixtures:
 [`fixtures/panel.json`](../../../fixtures/panel.json),
 [`fixtures/panel_dl.json`](../../../fixtures/panel_dl.json),
+[`fixtures/panel_unbalanced.json`](../../../fixtures/panel_unbalanced.json),
+[`fixtures/panel_balanced_snapshot.json`](../../../fixtures/panel_balanced_snapshot.json),
 [`fixtures/panel_spj.json`](../../../fixtures/panel_spj.json),
 [`fixtures/lpdid.json`](../../../fixtures/lpdid.json),
 [`fixtures/tsecon-panelts.json`](../../../fixtures/tsecon-panelts.json),
