@@ -882,12 +882,12 @@ fn solve_within(
         if within <= ABSORPTION_TOL * raw {
             return Err(PanelError::SingularDesign {
                 what: if effects == FixedEffects::ENTITY {
-                    "within (fixed-effects) OLS: one of the regressors is constant \
-                     within every entity, so the fixed effects absorb it and no within \
+                    "within (fixed-effects) OLS: a regressor is constant within \
+                     every entity, so the fixed effects absorb it and no within \
                      variation remains to identify its coefficient"
                 } else {
-                    "within (fixed-effects) OLS: the requested effects absorb one of \
-                     the regressors entirely (constant within every entity, common to \
+                    "within (fixed-effects) OLS: the requested effects absorb a \
+                     regressor entirely (constant within every entity, common to \
                      every entity in each period under time effects, or an exact \
                      linear trend per entity under entity trends), so no within \
                      variation remains to identify its coefficient"
