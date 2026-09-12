@@ -477,12 +477,21 @@ fn refusals_name_the_parameter() {
         .unwrap_err()
         .to_string();
     assert!(e.contains("conditions contains an infinite value"), "{e}");
-    // The memory budget refuses a steps typo instead of aborting.
-    let e = res
-        .conditional_forecast(20_000_000, &ok, 0.05)
-        .unwrap_err()
-        .to_string();
-    assert!(e.contains("memory budget") && e.contains("steps"), "{e}");
+    // The memory budget refuses a steps typo instead of aborting. The check
+    // runs BEFORE the steps x k grid of constrained flags is allocated, so a
+    // horizon that would need terabytes is a teaching error, not an
+    // allocator abort (the regression: `vec![vec![false; k]; steps]` used to
+    // run first and `steps = 1 << 40` aborted the process).
+    for bad in [20_000_000usize, 1usize << 40, usize::MAX] {
+        let e = res
+            .conditional_forecast(bad, &ok, 0.05)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("memory budget") && e.contains("steps"),
+            "steps = {bad}: {e}"
+        );
+    }
     let e = res.portmanteau_test(1).unwrap_err().to_string();
     assert!(e.contains("nlags"), "{e}");
 }

@@ -354,16 +354,38 @@ def test_refusals_name_the_parameter():
         tsecon.var_conditional_forecast(y, ok, lags=2, alpha=1.0)
     with pytest.raises(ValueError, match="trend"):
         tsecon.var_conditional_forecast(y, ok, lags=2, trend="ct")
-    with pytest.raises(ValueError, match="memory budget"):
-        tsecon.var_conditional_forecast(y, ok, lags=2, steps=10_000_000)
+    # A `steps` typo is refused by the memory budget BEFORE anything is
+    # allocated: 2**40 used to abort the allocator (SIGABRT), which no
+    # Python-level `except` can catch.
+    for bad in (10_000_000, 2**40, 2**47):
+        with pytest.raises(ValueError, match="steps"):
+            tsecon.var_conditional_forecast(y, ok, lags=2, steps=bad)
+        with pytest.raises(ValueError, match="memory budget"):
+            tsecon.var_conditional_forecast(y, ok, lags=2, steps=bad)
     with pytest.raises(ValueError, match="nlags"):
         tsecon.var_diagnostics(y, lags=2, nlags=2)
     with pytest.raises(ValueError, match="nlags"):
         tsecon.var_diagnostics(y, lags=2, nlags=0)
-    with pytest.raises(ValueError, match="nlags"):
-        tsecon.var_diagnostics(y, lags=2, nlags=10_000)
+    for bad in (10_000, 2**40, 2**47):
+        with pytest.raises(ValueError, match="nlags"):
+            tsecon.var_diagnostics(y, lags=2, nlags=bad)
+    # `lags` is shared with every other VAR entry point: the refusal comes
+    # from the crate's sufficiency check, which states the row arithmetic but
+    # (as of this wave) not the parameter name — that sweep belongs to the
+    # hygiene slice. All this test claims here is that a huge `lags` is a
+    # catchable ValueError and not an allocator abort.
+    for bad in (10_000, 2**40, 2**47):
+        with pytest.raises(ValueError):
+            tsecon.var_diagnostics(y, lags=bad)
+        with pytest.raises(ValueError):
+            tsecon.var_conditional_forecast(y, ok, lags=bad)
     with pytest.raises(ValueError, match="max_lags = 0"):
         tsecon.var_select_order(y, max_lags=0)
+    # `select_order` reserves one candidate per order, so a max_lags typo used
+    # to abort the allocator before the per-candidate fit could refuse it.
+    for bad in (len(y), len(y) + 1, 2**40, 2**47):
+        with pytest.raises(ValueError, match="max_lags"):
+            tsecon.var_select_order(y, max_lags=bad)
     with pytest.raises(ValueError, match="trend"):
         tsecon.var_select_order(y, max_lags=3, trend="x")
     with pytest.raises(ValueError, match="rows"):

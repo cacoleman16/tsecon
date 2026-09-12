@@ -240,6 +240,23 @@ fn var_select_order<'py>(
     }
     let tr = parse_trend(trend)?;
     let a = data.as_array();
+    // `select_order` reserves one candidate per order up front, so a
+    // `max_lags` typo would ask the allocator for terabytes before the
+    // per-candidate estimation could refuse it. A candidate order at or
+    // beyond the sample length can never be estimated anyway (it leaves
+    // `n - max_lags <= 0` common observations), so refuse it here, naming
+    // the parameter and the row count.
+    if max_lags >= a.nrows() {
+        return Err(PyValueError::new_err(format!(
+            "max_lags = {max_lags} with only {} rows of data: every candidate order is \
+             fitted on the common sample of n - max_lags = {} observations, so max_lags \
+             must be smaller than the number of rows (and in practice far smaller — it \
+             also has to leave more observations than k * max_lags + 1 coefficients per \
+             equation); pass a smaller max_lags",
+            a.nrows(),
+            a.nrows() as i128 - max_lags as i128,
+        )));
+    }
     let m = Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
     let sel = tsecon_var::select_order(m.as_ref(), max_lags, tr).map_err(to_py)?;
     let d = PyDict::new(py);

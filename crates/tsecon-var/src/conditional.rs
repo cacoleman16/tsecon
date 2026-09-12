@@ -128,7 +128,10 @@ impl VarResults {
     /// * [`VarError::InvalidArgument`] if `steps == 0`, `conditions` is
     ///   empty, constrains no cell, or holds an infinite value, or if the
     ///   working set would exceed the memory budget;
-    /// * [`VarError::InvalidParameter`] if `alpha` is not inside `(0, 1)`;
+    /// * [`VarError::InvalidParameter`] if `alpha` is not inside `(0, 1)`, or
+    ///   if `steps` alone puts the forecast path past the memory budget
+    ///   (checked before anything is allocated, so a typo cannot abort the
+    ///   allocator);
     /// * [`VarError::Dimension`] if `conditions` has more rows than `steps`
     ///   or a row does not have exactly `k` entries;
     /// * [`VarError::NotPositiveDefinite`] if the covariance of the
@@ -172,6 +175,23 @@ impl VarResults {
                 got: conditions.len(),
             });
         }
+        // The `steps × k` grid of constrained flags below — and every later
+        // buffer, all of which are at least that big — scales with `steps`,
+        // a user count. Refuse an impossible horizon BEFORE allocating any of
+        // them, so a `steps` typo is a teaching error and not an allocator
+        // abort. (`n <= MAX_WORKING_DOUBLES` is implied by the full
+        // working-set budget checked once `m` is known, so this only moves
+        // the same refusal earlier.)
+        let n = steps.saturating_mul(k);
+        if n > MAX_WORKING_DOUBLES {
+            return Err(VarError::InvalidParameter {
+                name: "steps",
+                value: steps as f64,
+                requirement: "a horizon whose forecast path fits the conditional-forecast \
+                              memory budget of 2^24 doubles: steps times the number of \
+                              series must not exceed it; reduce steps",
+            });
+        }
         let mut cells: Vec<(usize, usize, f64)> = Vec::new();
         let mut constrained = vec![vec![false; k]; steps];
         for (h, row) in conditions.iter().enumerate() {
@@ -208,7 +228,6 @@ impl VarResults {
                        unconditional forecast (var_forecast) instead",
             });
         }
-        let n = steps.saturating_mul(k);
         let working = n
             .checked_mul(3 * m + k + 1)
             .and_then(|a| m.checked_mul(m).map(|b| a.saturating_add(b)))

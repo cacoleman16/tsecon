@@ -327,7 +327,10 @@ statsmodels `VAR.select_order`).
 **Assumptions.** The residuals come from a correctly specified, stable VAR
 with enough observations for the $\chi^2$ asymptotics; `nlags` must exceed
 `lags` (the degrees of freedom $k^2(h - p)$ must be positive — statsmodels
-refuses the same) and be below $T$.
+refuses the same) and be below $T$. Every one of these bounds, and the
+conditional forecast's `steps` budget, is checked *before* anything is
+allocated, so a mistyped count is a `ValueError` naming the parameter rather
+than an allocator abort.
 
 **When to use (and when not).** Run `var_diagnostics` before any IRF, FEVD,
 forecast or Granger test is reported: residual autocorrelation invalidates
@@ -342,7 +345,10 @@ environment — JMulTi reports it, statsmodels does not.
 thumb for quarterly data; larger than `lags`), `lags=2`, `trend="c"`;
 `max_lags=8` for the selection (a quarterly convention). `var_select_order`'s
 candidates start at $p = 0$ (intercept-only baseline) with `trend="c"` and at
-$p = 1$ with `trend="n"`; ties go to the smaller order.
+$p = 1$ with `trend="n"`; ties go to the smaller order. `max_lags` must be
+smaller than the number of rows, and small enough that the common sample of
+`n - max_lags` observations still exceeds the `k * max_lags + 1` coefficients
+per equation; both bounds are refused by name rather than attempted.
 
 **How to read the output.** `portmanteau` / `portmanteau_adjusted` with
 `portmanteau_df` and their p-values; `jarque_bera` with `jarque_bera_df`
