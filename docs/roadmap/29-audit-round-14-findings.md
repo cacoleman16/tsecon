@@ -71,14 +71,14 @@ second seed or size, the promise re-read on the surface that binds — runtime
   the generators and the benchmarks); and every runnable card example
   executed and diffed against the output its comments claim.
 
-**Totals: 112 candidates raised across the six sweeps (plus 6 harness bugs —
+**Totals: 126 candidates raised across the six sweeps (plus 6 harness bugs —
 the `@mask` name resolution, the `also` key round 13 recorded but never
 applied, the ragged-`steps` shape expectation, the value-window that let
 `optimizer`'s values bleed into `initialization`'s, a wrong `trend="ct"`
 entry in the hand-transcribed table and the rounding blind spot in sweep C —
-fixed and re-run, not counted), 99 refused, 3 recorded as known-open classes
-with no promise violated, and 10 confirmed findings (0 severe, 2 moderate, 8
-low) — all 10 fixed in-branch with 34 regression pins.** The clean bills are
+fixed and re-run, not counted), 77 refuted, 2 recorded as known-open with no
+promise violated, and 47 confirmed items → 10 findings (0 severe, 2
+moderate, 8 low) — all 10 fixed in-branch with 34 regression pins.** The clean bills are
 the headline: **no panic, abort, hang or non-standard exception over 1563
 memory-capped malformed-input cells**; every count that sizes an allocation
 refused before allocation in 136 of 137 cap cells; **0 of 435 returned keys
@@ -89,15 +89,28 @@ callables; no seed that failed to reproduce in-process or across a restart
 and **17/17 cells bit-identical at 1 vs 4 rayon threads**; and 1166 of 1173
 quoted numbers reproduced by a committed artifact.
 
-| sweep | raised | refuted | known-open | confirmed → findings | fixed |
+| sweep | raised | refuted | known-open | confirmed items → findings | fixed |
 |---|---|---|---|---|---|
 | E — result contract | 15 | 15 | 0 | 0 | — |
-| F — signature/doc drift (+ value table, + mask identity) | 33 | 30 | 0 | 3 → 3 (L4, L5, L6) | 3 |
-| G — cliffs and caps | 3 | 1 | 0 | 2 → 2 (M1, M2) | 2 |
+| F — signature/doc drift (+ value table, + mask identity) | 39 | 33 | 0 | 6 → 3 (L4, L5, L6) | 3 |
+| G — cliffs and caps | 4 | 2 | 0 | 2 → 2 (M1, M2) | 2 |
 | H — seed contract | 1 | 1 | 0 | 0 | — |
-| S — malformed input | 34 | 30 | 2 cells | 4 classes → 4 (L1, L2, L3, L7) | 4 |
-| C — claims vs reality | 27 | 26 | 1 (a 0.8.0 sentence) | 1 → 1 (L8) | 1 |
-| **total** | **112** | **99** | **3** | **10 → 10** | **10** |
+| S — malformed input | 40 | 1 | 1 cell | 38 → 4 (L1, L2, L3, L7) | 4 |
+| C — claims vs reality | 27 | 25 | 1 (a 0.8.0 sentence) | 1 → 1 (L8) | 1 |
+| **total** | **126** | **77** | **2** | **47 → 10** | **10** |
+
+How the columns count. A *candidate* is one line the finder printed: a
+prose-default hit, an unnamed refusal, a flagged slope, a number no artifact
+carried. Sweep F's 39 are the 38 its counter reached after the harness fixes
+plus one raised by hand when the `df_adjust` sentence on the card was read
+against the code (L4 — the finder compares a stated default with the runtime
+default, and this claim is a formula, not a default). Sweep S's 40 are the
+34 refusals that did not name the mutated parameter plus the six
+`band_alpha` cells that returned in silence; 38 of them were fixed, one is
+refuted as a cascade and one is known-open. Sweep C's 27 are the 26 numbers
+the first pass could not find plus the one card-example line that was not
+printed; nineteen of the 26 were then matched to a committed number by
+rounding.
 
 ---
 
@@ -600,6 +613,10 @@ ETS example) simply have to run, and do.
 
 ## OPEN — recorded, not fixed
 
+The first two are the round's two known-open *candidates* (one sweep-S cell,
+one sweep-C number, counted in the table); the third is an observation from
+sweep E's census and the fourth an engineering note behind M1.
+
 1. **`alpha` at 1e-300 refuses through an internal symbol.** `1 − alpha/2`
    rounds to exactly 1 in double precision, and the normal quantile refuses
    with *"argument `p` = 1 outside domain: requires 0 < p < 1"* — naming its
@@ -607,12 +624,19 @@ ETS example) simply have to run, and do.
    `var_forecast(alpha=1e-300)` gives the identical message. Round 13's
    OPEN-3 class; a fix belongs with the quantile wrapper, not with a single
    callable.
-2. **The library has no single container rule for 1-D float and boolean
+2. **A 0.8.0 sentence in ROADMAP §0 quotes an agreement no committed
+   artifact prints.** "`kernel_regression` … pinned to statsmodels `KernelReg`
+   at 6.7e-15 with the leave-one-out criterion at 3.0e-15": the first figure
+   rounds a fixture value, the second matches nothing, and the citing test
+   asserts an absolute 1e-10 tolerance without printing what it achieved.
+   Out of this round's surface (round 11 audited 0.8.0); flagged for the
+   next round rather than touched here.
+3. **The library has no single container rule for 1-D float and boolean
    payloads.** 402 returned keys are `ndarray` 1-D float against 32 Python
    lists, and boolean flags come both ways; 0.10.0 adds eleven to the
    minority buckets with precedent on both sides. Measured in sweep E's
    census; nothing promised, nothing changed.
-3. **`panel_distributed_lag`'s unbalanced two-way projection could be
+4. **`panel_distributed_lag`'s unbalanced two-way projection could be
    linearised** by alternating projections instead of explicit time dummies.
    That is an approximation where the current route is exact, and the
    `PanelOLS` goldens pin the exact one; M1 documents the cost rather than
