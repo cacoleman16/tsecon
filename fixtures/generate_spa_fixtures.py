@@ -70,14 +70,30 @@ at Monte Carlo tolerance (the `mc` block, 4000 replications).
   independent bootstraps of 4000 draws differ by at most ~0.011 in
   standard deviation at p = 0.5, so 0.05 is ~4.5 sd).
 
-Resampling conventions (checked against arch's source, base.py): the
-stationary bootstrap starts each new block at a uniform index with
-probability p = 1/block_size per step and otherwise continues to the next
-observation wrapping at T; the circular block bootstrap draws ceil(T/b)
-uniform starts in 0..T and takes b consecutive indices modulo T; the moving
-block draws starts in 0..T-b+1 without wrap; all truncate to T. These are
-exactly tsecon-bootstrap's `Stationary`/`CircularBlock`/`MovingBlock`
-schemes, so the libraries differ only in the random-number generator.
+Resampling conventions — MEASURED, not assumed (`_meta.conventions`,
+`check_scheme_conventions`). For each of the three schemes and three
+(T, block_size) settings, arch's own raw draws are replayed through the rule
+`tsecon_bootstrap::indices` documents and must reproduce arch's index array
+element for element: the stationary chain (uniform start, restart at a fresh
+uniform index on the coin, otherwise +1 wrapping at T), the circular block
+layout (ceil(T/b) uniform starts in 0..T, b consecutive indices modulo T) and
+the moving block (starts in 0..T-b+1, no wrap), all truncated to T. THE ONE
+DIFFERENCE, read off both sources and recorded in the block: arch continues
+a stationary block when `u > p` (restarts on `u <= p`), tsecon restarts on
+`u < p` — they disagree only on the null event `u == p` (2^-53 per step; the
+exact ties are counted, and were 0 in every draw taken). So the two libraries
+differ only in the random-number generator. The realized restart frequency,
+mean run length and wrap counts are stored alongside.
+
+Size under the null (`_meta.size_study`, `arch_size_study`): arch's OWN
+rejection frequencies of the consistent p-value on the crate property test's
+least-favourable design (six exchangeable squared-error loss columns,
+T = 200, m = 5, B = 300, 400 Monte Carlo replications), at four block
+lengths. The crate test `spa_size_unstudentized_is_near_nominal` compares
+tsecon's own seeded draws against these, so a size distortion the two share
+is reported as the METHOD's and one they do not share is a bug. These are
+un-studentized rates (arch computes nothing else); the studentized path has
+no third-party rate and is measured, not validated, in the crate test.
 
 This generator NEVER imports tsecon. Doubles are written with json's
 shortest round-trip repr, which the Rust golden test parses to identical
@@ -220,6 +236,138 @@ def arch_indices(kind, block_size, data, seed, reps):
     `bootstrap(reps)` consumes)."""
     bs = arch_bootstrap(kind, block_size, data, seed)
     return [np.asarray(bs.update_indices(), dtype=int).copy() for _ in range(reps)]
+
+
+# --------------------------------------------------------------------------
+# Do arch's resampling conventions agree with tsecon-bootstrap's?
+# --------------------------------------------------------------------------
+
+
+def tsecon_stationary(first, restart_targets, u, n, p):
+    """`tsecon_bootstrap::indices(BlockScheme::Stationary { p }, n, ..)`, as
+    crates/tsecon-bootstrap/src/schemes.rs documents it: start at a uniform
+    index; at each later step RESTART at a fresh uniform index when the
+    step's uniform is `< p`, otherwise CONTINUE to the next observation,
+    wrapping at `n`. Fed another library's raw draws, it must reproduce that
+    library's index array — which is what makes this a convention check and
+    not a restatement."""
+    out = [int(first)]
+    for i in range(1, n):
+        out.append(int(restart_targets[i]) if u[i] < p else (out[-1] + 1) % n)
+    return out
+
+
+def tsecon_blocks(kind, starts, n, b):
+    """`BlockScheme::CircularBlock` / `MovingBlock`: blocks of `b` consecutive
+    rows from the given starts — taken modulo `n` (circular) or plain
+    (moving block) — concatenated, the last block truncated so the resample
+    has length `n`."""
+    out = []
+    for start in starts:
+        take = min(b, n - len(out))
+        if take <= 0:
+            break
+        if kind == "circular":
+            out.extend((int(start) + t) % n for t in range(take))
+        else:
+            out.extend(int(start) + t for t in range(take))
+    return out
+
+
+def check_scheme_conventions(draws=200):
+    """Measure, rather than assume, that `arch`'s stationary / circular /
+    moving-block resamplers lay out the SAME blocks as `tsecon-bootstrap`'s.
+
+    The check replays arch's OWN raw random draws through tsecon's documented
+    rule and asserts the resulting index array is arch's, element for element:
+
+    * stationary — arch draws `n` candidate restart indices and `n` uniforms
+      from `default_rng(seed)` and then walks the chain; feeding those same
+      two arrays to `tsecon_stationary` must return arch's array. This pins
+      the restart coin, the fresh-uniform restart target, the +1 continuation
+      and the wrap at `n` all at once;
+    * circular / moving block — arch draws `ceil(n/b)` block starts; feeding
+      those to `tsecon_blocks` must return arch's array. This pins the block
+      length, the consecutive layout, the modulo-`n` wrap (circular) or its
+      absence (moving block), the start range, and the truncation to `n`.
+
+    THE ONE DIFFERENCE, read off the two sources: arch CONTINUES the block
+    when `u > p` (`arch/bootstrap/_samplers_python.py`), i.e. restarts on
+    `u <= p`; tsecon restarts on `u < p` (`schemes.rs`). The two disagree only
+    on the null event `u == p` exactly (probability 2^-53 per step, counted
+    below and 0 in every draw taken here), so the schemes are identical as
+    distributions. The measured restart frequency and the realized block
+    statistics are reported alongside.
+    """
+    out = {"difference": (
+        "arch restarts a stationary block when u <= p, tsecon-bootstrap when "
+        "u < p; the two differ only on the null event u == p (exact ties "
+        "counted below). Every other convention — restart target, +1 "
+        "continuation, wrap at n, block length, start range, truncation to n "
+        "— is identical, verified by replaying arch's own draws through "
+        "tsecon's rule."
+    )}
+    data_rng = np.random.default_rng(4242)
+    for kind in ("stationary", "circular", "moving_block"):
+        rows = []
+        for n, b in ((80, 6), (100, 5), (150, 12)):
+            data = data_rng.standard_normal((n, 2))
+            arrs = arch_indices(kind, b, data, 99, draws)
+            # arch's own generator, replayed in its documented draw order.
+            gen = np.random.default_rng(99)
+            ties = restarts = steps = wraps = 0
+            run_lengths = []
+            for arr in arrs:
+                assert arr.shape == (n,), f"{kind}: arch returned {arr.shape}, expected ({n},)"
+                assert 0 <= int(arr.min()) and int(arr.max()) < n, f"{kind}: index outside 0..{n}"
+                if kind == "stationary":
+                    p = 1.0 / b
+                    cand = gen.integers(n, size=n, dtype=np.int64)
+                    u = gen.random(n)
+                    mine = tsecon_stationary(cand[0], cand, u, n, p)
+                    assert mine == arr.tolist(), \
+                        f"stationary (n={n}, b={b}): tsecon's rule on arch's draws is not arch's array"
+                    ties += int(np.sum(u[1:] == p))
+                    run = 1
+                    for i in range(1, n):
+                        steps += 1
+                        if u[i] > p:  # arch's continuation test; restart otherwise
+                            run += 1
+                            if int(arr[i - 1]) == n - 1:
+                                wraps += 1
+                        else:
+                            restarts += 1
+                            run_lengths.append(run)
+                            run = 1
+                    run_lengths.append(run)
+                else:
+                    n_blocks = -(-n // b)
+                    hi = n if kind == "circular" else n - b + 1
+                    starts = gen.integers(hi, size=n_blocks, dtype=np.int64)
+                    mine = tsecon_blocks(kind, starts, n, b)
+                    assert mine == arr.tolist(), \
+                        f"{kind} (n={n}, b={b}): tsecon's block layout on arch's starts is not arch's array"
+                    if kind == "circular":
+                        wraps += sum(1 for j in range(n_blocks)
+                                     for t in range(max(0, min(b, n - j * b)))
+                                     if int(starts[j]) + t >= n)
+            row = {"n": n, "block_size": b, "draws": draws, "replayed_exactly": True}
+            if kind == "stationary":
+                row["restart_freq"] = restarts / steps
+                row["restart_freq_nominal"] = 1.0 / b
+                row["mean_run_length"] = float(np.mean(run_lengths))
+                row["wrap_transitions"] = wraps
+                row["u_equals_p_ties"] = ties
+                assert abs(row["restart_freq"] - 1.0 / b) < 0.02, \
+                    f"stationary: measured restart frequency {row['restart_freq']} far from 1/b"
+                assert wraps > 0, "stationary: the wrap at n never happened — check the convention"
+            else:
+                row["wrapped_indices"] = wraps
+                if kind == "circular":
+                    assert wraps > 0, "circular: no block ever wrapped — check the convention"
+            rows.append(row)
+        out[kind] = rows
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -388,6 +536,62 @@ def assert_bits(a, b, what):
 
 
 # --------------------------------------------------------------------------
+# arch's OWN size under the null, so the crate's size study has a reference
+# --------------------------------------------------------------------------
+
+SIZE_LEVELS = [0.05, 0.10, 0.25, 0.50]
+SIZE_MC = 400
+SIZE_N = 200
+SIZE_M = 6  # a benchmark plus five models, all exchangeable
+SIZE_REPS = 300
+# (label, rho of the AR(1) forecast errors, block_size)
+SIZE_CONFIGS = [
+    ("iid_b2", 0.0, 2),
+    ("ar05_b3", 0.5, 3),
+    ("ar05_b8", 0.5, 8),
+    ("ar05_b14", 0.5, 14),
+]
+
+
+def arch_size_study():
+    """How often does `arch.bootstrap.SPA`'s consistent p-value fall below
+    alpha when EVERY model is exactly as good as the benchmark?
+
+    The design is the crate property test's (`spa_mcs_properties.rs`): six
+    exchangeable squared-error loss columns whose forecast errors share an
+    AR(1) common component (`loss_panel` with equal scales and no bias), the
+    least favourable configuration `mu = 0`. The rates are a property of the
+    METHOD, not of this library, and they are what
+    `spa_size_unstudentized_is_near_nominal` compares tsecon's own seeded
+    draws against — so that an over-size the test shares with its reference
+    is reported as the method's, while one it does not share is a bug.
+
+    arch's `studentize` flag is inert, so these are the UN-studentized
+    (White Reality Check) rates; no package computes the studentized ones.
+    """
+    out = {"n": SIZE_N, "m": SIZE_M - 1, "reps": SIZE_REPS, "mc": SIZE_MC,
+           "levels": SIZE_LEVELS, "studentize": False, "rates": {}}
+    levels = np.asarray(SIZE_LEVELS)
+    for label, rho, block in SIZE_CONFIGS:
+        hits = np.zeros(len(SIZE_LEVELS))
+        for r in range(SIZE_MC):
+            rng = np.random.default_rng(770000 + r)
+            cols = loss_panel(rng, SIZE_N, [1.0] * SIZE_M, rho=rho)
+            bench = np.asarray(cols[0])
+            models = np.column_stack([np.asarray(c) for c in cols[1:]])
+            s = SPA(bench, models, block_size=block, reps=SIZE_REPS,
+                    bootstrap="stationary", studentize=False, seed=9000 + r)
+            s.compute()
+            hits += float(s.pvalues["consistent"]) <= levels
+        rates = (hits / SIZE_MC).tolist()
+        out["rates"][label] = {"rho": rho, "block_size": block, "rates": rates}
+        print(f"arch size study {label:10s} rho={rho} b={block:2d}: "
+              f"P(p_consistent <= alpha) at {SIZE_LEVELS} -> "
+              f"{[round(v, 4) for v in rates]}", flush=True)
+    return out
+
+
+# --------------------------------------------------------------------------
 # Cases
 # --------------------------------------------------------------------------
 
@@ -398,9 +602,10 @@ CASES = [
     ("moving_block_m5", 80, "moving_block", 6, False, 3, [1.0, 0.9, 0.95, 1.05, 1.1, 1.4], None),
     ("stationary_m4_nested", 100, "stationary", 5, True, 21, [1.0, 0.8, 0.9, 1.1, 1.3], None),
     ("single_model", 90, "stationary", 3, False, 5, [1.0, 0.75], None),
-    # A clearly dominated benchmark (its errors carry a 0.6 shift): every
-    # model better, p-values at zero, every model superior under StepM.
-    ("dominated_benchmark", 100, "stationary", 5, False, 13, [1.0, 0.7, 0.8, 0.9], [0.6, 0.0, 0.0, 0.0]),
+    # A clearly dominated benchmark (its errors carry a 1.5 shift): every
+    # model better, p-values at zero, every model superior under StepM at
+    # 200 and at 4000 replications alike (probed before it was chosen).
+    ("dominated_benchmark", 100, "stationary", 5, False, 13, [1.0, 0.7, 0.8, 0.9], [1.5, 0.0, 0.0, 0.0]),
     # Every model worse than the benchmark (some significantly): the
     # consistent re-centring leaves the bad ones un-centred.
     ("no_model_better", 100, "circular", 5, False, 17, [1.0, 1.4, 1.6, 2.0], [0.0, 0.3, 0.6, 1.0]),
@@ -579,7 +784,11 @@ def run_case(name, n, kind, block_size, nested, seed, scales, bias):
 
 
 def main():
+    conventions = check_scheme_conventions()
+    print("resampling conventions: arch's index arrays replayed exactly by "
+          "tsecon-bootstrap's rule for all three schemes")
     cases = [run_case(*c) for c in CASES]
+    size_study = arch_size_study()
     out = {
         "_meta": {
             "generator": "fixtures/generate_spa_fixtures.py",
@@ -590,12 +799,15 @@ def main():
             "notes": [
                 "arch 8.0.0: SPA.studentize is inert (asserted: identical p-values and critical values on/off); RealityCheck is `class RealityCheck(SPA): pass`.",
                 "arch statistics are on the mean scale; tsecon reports sqrt(n) x (statistic, replicates, critical values). The p-values are invariant.",
-                "resamples[b] are the indices arch's default_rng(arch_seed) bootstrap drew for replication b (stationary / circular / moving-block conventions identical to tsecon-bootstrap).",
+                "resamples[b] are the indices arch's default_rng(arch_seed) bootstrap drew for replication b. The `conventions` block MEASURES that arch's stationary / circular / moving-block layouts are tsecon-bootstrap's: arch's own raw draws replayed through tsecon's documented rule reproduce arch's index arrays element for element at three (n, block_size) settings. The single difference is the tie convention of the stationary restart coin (arch restarts on u <= p, tsecon on u < p), which differs only on the null event u == p.",
+                "The `size_study` block is arch's OWN rejection frequency under the least favourable null on the crate property test's design, so that an over-size tsecon shares with its reference is reported as the method's and one it does not share is a bug.",
                 "nested=True: arch clones the bootstrap with a deepcopy of the integer seed, so the nested variance uses the same resamples as the test; the fixture's `loss_diff_var` is asserted bit-identical to that construction.",
                 "Every stored 'arch' number was recomputed from the stored indices with explicit sequential sums and asserted bit-identical; min_gap > 1e-9 certifies the p-values cannot flip under sub-1e-9 arithmetic differences.",
             ],
             "crit_levels": [1 - a for a in CRIT_ALPHAS],
             "mc_tolerance": 0.05,
+            "conventions": conventions,
+            "size_study": size_study,
         },
         "cases": cases,
     }
