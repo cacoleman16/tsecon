@@ -315,8 +315,72 @@ def run_case(name, n, method, kind, block_size, size, seed, scales, bias):
     return case
 
 
+# --------------------------------------------------------------------------
+# arch's OWN coverage of the best set, so the crate's study has a reference
+# --------------------------------------------------------------------------
+
+COVERAGE_MC = 1000
+COVERAGE_REPS = 300
+COVERAGE_SIZE = 0.10
+# The crate property test's design: models 0 and 1 are EXACTLY equally best,
+# 2 is slightly worse, 3 is clearly worst.
+COVERAGE_SCALES = [0.8, 0.8, 1.0, 1.2]
+COVERAGE_BIAS = [0.0, 0.0, 0.3, 1.0]
+COVERAGE_CONFIGS = [(150, 5), (600, 8)]  # (n, block_size ~ n^(1/3))
+
+
+def arch_coverage_study():
+    """How often does `arch.bootstrap.MCS` keep the WHOLE set of best models?
+
+    Hansen-Lunde-Nason's Theorem 1 is asymptotic and about the whole set
+    `M*`; the design has two models with exactly equal expected loss, so
+    `M*` has two elements and containing it is the demanding event. These
+    rates are a property of the METHOD, and the crate test
+    `mcs_covers_the_set_of_best_models_at_least_1_minus_size_of_the_time`
+    compares tsecon's own seeded draws against them, so a finite-sample gap
+    the two libraries share is reported as the method's while one they do
+    not share is a bug here.
+    """
+    out = {"mc": COVERAGE_MC, "reps": COVERAGE_REPS, "size": COVERAGE_SIZE,
+           "scales": COVERAGE_SCALES, "bias": COVERAGE_BIAS, "rho": 0.3,
+           "rates": {}}
+    for n, block in COVERAGE_CONFIGS:
+        for method in ("R", "max"):
+            both = one = worst_out = 0
+            sizes = 0
+            for r in range(COVERAGE_MC):
+                rng = np.random.default_rng(880000 + r)
+                cols = loss_panel(rng, n, COVERAGE_SCALES, rho=0.3, bias=COVERAGE_BIAS)
+                losses = np.column_stack([np.asarray(c) for c in cols])
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    m = MCS(losses, size=COVERAGE_SIZE, reps=COVERAGE_REPS,
+                            block_size=block, bootstrap="stationary",
+                            method=method, seed=5000 + r)
+                    m.compute()
+                inc = {int(i) for i in m.included}
+                both += 0 in inc and 1 in inc
+                one += 0 in inc
+                worst_out += 3 not in inc
+                sizes += len(inc)
+            key = f"n{n}_{method}"
+            out["rates"][key] = {
+                "n": n, "block_size": block, "method": method,
+                "both_best_in_set": both / COVERAGE_MC,
+                "best_model_in_set": one / COVERAGE_MC,
+                "worst_excluded": worst_out / COVERAGE_MC,
+                "mean_set_size": sizes / COVERAGE_MC,
+            }
+            print(f"arch MCS coverage {key:9s} b={block}: P(M* in set)="
+                  f"{both / COVERAGE_MC}, P(best model in set)={one / COVERAGE_MC}, "
+                  f"P(worst excluded)={worst_out / COVERAGE_MC}, "
+                  f"mean set size {sizes / COVERAGE_MC:.2f}", flush=True)
+    return out
+
+
 def main():
     cases = [run_case(*c) for c in CASES]
+    coverage = arch_coverage_study()
     out = {
         "_meta": {
             "generator": "fixtures/generate_mcs_fixtures.py",
@@ -328,8 +392,10 @@ def main():
                 "mcs_p_values[k] is arch's `pvalues` (running maximum of the step p-values along the elimination path); step_p_values are the raw step p-values in elimination order (survivors 1.0); statistics are the observed T_R / T_max per step.",
                 "The transcription's variances, elimination order and running-max p-values were asserted bit-identical to arch for every case; min_gap / min_margin > 1e-9 certify the decisions cannot flip under sub-1e-9 arithmetic differences.",
                 "arch warns and continues on a zero T_max standard deviation; tsecon refuses (no such case is stored).",
+                "The `coverage_study` block is arch's OWN frequency of keeping the whole set of best models under the crate property test's design (two exactly-equally-best models), so that a finite-sample gap tsecon shares with its reference is reported as the method's and one it does not share is a bug.",
             ],
             "mc_tolerance": 0.05,
+            "coverage_study": coverage,
         },
         "cases": cases,
     }

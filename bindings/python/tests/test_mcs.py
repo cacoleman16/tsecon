@@ -211,7 +211,7 @@ def test_refusals_name_the_parameter():
         tsecon.spa_test(bench, models, block_size=0)
     with pytest.raises(ValueError, match=r"block_size = 120"):
         tsecon.spa_test(bench, models, block_size=120)
-    with pytest.raises(ValueError, match=r"bootstrap = 'block'"):
+    with pytest.raises(ValueError, match=r'bootstrap = "block"'):
         tsecon.spa_test(bench, models, bootstrap="block")
     with pytest.raises(ValueError, match=r"model_losses.*period 4 of column 1"):
         bad = models.copy()
@@ -235,7 +235,7 @@ def test_refusals_name_the_parameter():
         tsecon.model_confidence_set(bench)
     with pytest.raises(ValueError, match=r"size = 0.*0 < size < 1"):
         tsecon.model_confidence_set(L, size=0.0)
-    with pytest.raises(ValueError, match=r"method = 'range'"):
+    with pytest.raises(ValueError, match=r'method = "range"'):
         tsecon.model_confidence_set(L, method="range")
     with pytest.raises(ValueError, match=r"models 1 and 2.*identical"):
         tsecon.model_confidence_set(np.column_stack([L[:, 0], L[:, 1], L[:, 1]]))

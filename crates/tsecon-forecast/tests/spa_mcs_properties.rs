@@ -697,29 +697,58 @@ fn spa_has_power_against_a_dominated_benchmark() {
     assert!(best_is_model0 as f64 / mc as f64 >= 0.95);
 }
 
+/// Hansen-Lunde-Nason's Theorem 1 is ASYMPTOTIC and about the WHOLE set of
+/// best models: `lim inf P(M* subset of M*_{1-alpha}) >= 1 - alpha`. The
+/// design here gives two models EXACTLY equal expected loss, so `M*` has two
+/// elements and containing it is the demanding event; `P(best model in set)`
+/// is the easier one-model version.
+///
+/// On this design the two-element `M*` is contained about 0.86-0.87 of the
+/// time at a nominal 0.90, at n = 150 and at n = 600 alike. That gap is NOT
+/// this implementation's: `fixtures/mcs.json`'s `_meta.coverage_study` holds
+/// `arch.bootstrap.MCS`'s own frequencies on the same design and the rates
+/// below are asserted to agree with them. Two effects make the finite-sample
+/// containment short of nominal — a step can eliminate one of the two best
+/// models while the inferior ones are still in the set, and the final test
+/// between two identical models rejects at its own size — and neither is a
+/// defect of the code. The card states it plainly.
 #[test]
 fn mcs_covers_the_set_of_best_models_at_least_1_minus_size_of_the_time() {
-    let mc = 300;
-    for method in [McsMethod::Range, McsMethod::Max] {
+    let fx = {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/mcs.json");
+        let text = std::fs::read_to_string(path).expect("fixture file readable");
+        serde_json::from_str::<Value>(&text).expect("fixture is valid JSON")
+    };
+    let study = &fx["_meta"]["coverage_study"];
+    let mc = 1000usize;
+    let arch_mc = study["mc"].as_u64().expect("mc") as usize;
+    let size = study["size"].as_f64().expect("size");
+    let reps = study["reps"].as_u64().expect("reps") as usize;
+    let scales = f64s4(&study["scales"]);
+    let bias = f64s4(&study["bias"]);
+    let rho = study["rho"].as_f64().expect("rho");
+    for (key, row) in study["rates"].as_object().expect("rates") {
+        let n = row["n"].as_u64().expect("n") as usize;
+        let block = row["block_size"].as_u64().expect("block_size") as usize;
+        let method = match row["method"].as_str().expect("method") {
+            "R" => McsMethod::Range,
+            other => {
+                assert_eq!(other, "max");
+                McsMethod::Max
+            }
+        };
         let mut both_best_in = 0;
         let mut model0_in = 0;
         let mut worst_out = 0;
         let mut set_sizes = 0usize;
         for r in 0..mc {
             let mut g = Gauss::new(9000 + r as u64);
-            // Models 0 and 1 are equally best; 2 is slightly worse; 3 is bad.
-            let losses = loss_panel(
-                &mut g,
-                150,
-                &[0.8, 0.8, 1.0, 1.2],
-                &[0.0, 0.0, 0.3, 1.0],
-                0.3,
-            );
+            let losses = loss_panel(&mut g, n, &scales, &bias, rho);
             let o = McsOptions {
-                size: 0.10,
+                size,
                 method,
-                block_size: None,
-                reps: 300,
+                block_size: Some(block),
+                reps,
                 scheme: ResampleScheme::Stationary,
                 seed: 100 + r as u64,
             };
@@ -738,18 +767,54 @@ fn mcs_covers_the_set_of_best_models_at_least_1_minus_size_of_the_time() {
         let cov = both_best_in as f64 / mc as f64;
         let cov0 = model0_in as f64 / mc as f64;
         let power = worst_out as f64 / mc as f64;
-        println!(
-            "MCS coverage study ({method:?}, n=150, m=4, two equally-best models, size=0.10, B=300, {mc} MC reps): P(both best in set) = {cov}, P(model 0 in set) = {cov0}, P(dominated model excluded) = {power}, mean set size {:.2}",
-            set_sizes as f64 / mc as f64
+        let mean_set = set_sizes as f64 / mc as f64;
+        let theirs = (
+            row["both_best_in_set"].as_f64().expect("both"),
+            row["best_model_in_set"].as_f64().expect("one"),
+            row["worst_excluded"].as_f64().expect("worst"),
+            row["mean_set_size"].as_f64().expect("size"),
         );
-        let se = (0.1 * 0.9 / mc as f64).sqrt();
-        assert!(cov >= 0.90 - 3.0 * se, "{method:?}: coverage {cov}");
-        assert!(cov0 >= 0.90 - 3.0 * se);
+        println!(
+            "MCS coverage study ({key}: {method:?}, n={n}, block_size={block}, m=4, two equally-best models, size={size}, B={reps}, {mc} MC reps): P(M* in set) = {cov}, P(best model in set) = {cov0}, P(dominated model excluded) = {power}, mean set size {mean_set:.2}  [arch on the same design, {arch_mc} reps: {:?}, {:?}, {:?}, {:.2}]",
+            theirs.0, theirs.1, theirs.2, theirs.3
+        );
+        // Two independent Monte Carlo runs, of mc and arch_mc replications.
+        let se = |p: f64| (p * (1.0 - p) * (1.0 / mc as f64 + 1.0 / arch_mc as f64)).sqrt();
+        for (what, mine, ref_rate) in [
+            ("P(M* in set)", cov, theirs.0),
+            ("P(best model in set)", cov0, theirs.1),
+            ("P(dominated excluded)", power, theirs.2),
+        ] {
+            assert!(
+                (mine - ref_rate).abs() <= 4.0 * se(ref_rate).max(0.005),
+                "{key}: {what} is {mine} here and {ref_rate} in arch — more than 4 MC se apart"
+            );
+        }
+        assert!(
+            (mean_set - theirs.3).abs() <= 0.15,
+            "{key}: mean set size {mean_set} vs arch's {}",
+            theirs.3
+        );
         assert!(
             power >= 0.90,
-            "{method:?}: the dominated model survives too often ({power})"
+            "{key}: the dominated model survives too often ({power})"
+        );
+        // The easy, one-model event does hold at the nominal level.
+        assert!(
+            cov0 >= 1.0 - size - 3.0 * (size * (1.0 - size) / mc as f64).sqrt(),
+            "{key}: P(best model in set) = {cov0} is below the nominal {}",
+            1.0 - size
         );
     }
+}
+
+/// The first four numbers of a JSON array.
+fn f64s4(v: &Value) -> Vec<f64> {
+    v.as_array()
+        .expect("array")
+        .iter()
+        .map(|x| x.as_f64().expect("number"))
+        .collect()
 }
 
 // ------------------------------------------------------------------ refusals
