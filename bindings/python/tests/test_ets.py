@@ -344,6 +344,28 @@ def test_teaching_errors_name_the_argument():
         tsecon.ets_fit(y[:8], initialization="heuristic")
 
 
+def test_allocation_guards_refuse_by_name_instead_of_aborting():
+    """The simulated interval materialises `n_sim` paths of `horizon`
+    steps, a buffer whose size is a product of two user counts. Before the
+    guards these three calls killed the interpreter with
+    `memory allocation of N bytes failed` from the Rust allocator; the
+    coercion layer only stops integer counts at 2**48, so everything below
+    that is the crate's job."""
+    y = SERIES["sim_aadn"]
+    with pytest.raises(ValueError, match=r"n_sim = 140737488355328"):
+        tsecon.ets_fit(y, error="mul", horizon=2, n_sim=2 ** 47)
+    with pytest.raises(ValueError, match=r"n_sim = 1000000 .*2\^28|n_sim = 1000000"):
+        tsecon.ets_fit(y, error="mul", horizon=1000, n_sim=1000000)
+    for kw in ({"horizon": 10 ** 8}, {"horizon": 10 ** 8, "error": "mul"}):
+        with pytest.raises(ValueError, match=r"horizon = 100000000"):
+            tsecon.ets_fit(y, **kw)
+    with pytest.raises(ValueError, match=r"horizon = 100000000"):
+        tsecon.auto_ets(y, horizon=10 ** 8)
+    # The guards bind only absurd requests: the documented defaults run.
+    r = tsecon.ets_fit(y, error="mul", horizon=200)
+    assert r["n_sim"] == 5000 and len(r["forecast"]) == 200
+
+
 def test_accepts_lists_and_integer_arrays_through_the_coercion_layer():
     y = SERIES["sim_aadn"]
     r = tsecon.ets_fit(list(y), trend="add", horizon=2)

@@ -438,17 +438,17 @@ fn fixed_parameter_recursion_matches_statsmodels_where_its_smoother_is_the_innov
             assert_close(&format!("{name} forecast() mean"), &f.mean, &fc, 0.0);
             assert_close(&format!("{name} forecast() variance"), &f.variance, &v, 0.0);
             let z = 1.959963984540054_f64;
-            for j in 0..h {
+            for (j, vj) in v.iter().enumerate().take(h) {
                 assert_scalar(
                     &format!("{name} lower[{j}]"),
                     f.lower[j],
-                    f.mean[j] - z * v[j].sqrt(),
+                    f.mean[j] - z * vj.sqrt(),
                     1e-12,
                 );
                 assert_scalar(
                     &format!("{name} upper[{j}]"),
                     f.upper[j],
-                    f.mean[j] + z * v[j].sqrt(),
+                    f.mean[j] + z * vj.sqrt(),
                     1e-12,
                 );
             }

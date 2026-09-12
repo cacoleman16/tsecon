@@ -5431,7 +5431,9 @@ Innovations state-space exponential smoothing — one member of the
     omitted). `level`, `n_sim` and `seed` are refused with `horizon=0`,
     and `n_sim` / `seed` are refused for a class-1 model, where nothing is
     simulated. The point forecast is always the zero-innovation path (R's
-    and statsmodels' convention).
+    and statsmodels' convention). Allocation guards, not modelling limits:
+    `horizon` may not exceed 1000000, and `n_sim * horizon` (the simulated
+    values held at once) may not exceed 2^28; both are refused by name.
 
     Returned keys: `spec` (e.g. "ETS(A,Ad,N)"), `short_name` ("AAdN"),
     `error`, `trend`, `damped`, `seasonal`, `seasonal_periods` (None
@@ -5517,7 +5519,8 @@ Automatic ETS model selection — the candidate-set search of Hyndman
     `n_sim`, `seed`) are those of `ets_fit` — `n_sim` and `seed` act only
     if the selected model is not class 1 (the winner is not known in
     advance, so they are accepted regardless; with `horizon=0` they are
-    refused as inert). NaN is refused.
+    refused as inert), including their allocation guards (`horizon`
+    at most 1000000, `n_sim * horizon` at most 2^28). NaN is refused.
 
     Returned keys: every key of `ets_fit` for the selected model (its very
     fit from the search, not a refit — refitting reproduces it exactly),

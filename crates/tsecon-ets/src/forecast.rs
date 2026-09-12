@@ -36,6 +36,25 @@ use crate::filter::{extend, one_step, update, STATE_TOL};
 use crate::fit::EtsFit;
 use crate::spec::{Component, ErrorType, EtsParams, EtsSpec, EtsStates};
 
+/// Largest accepted forecast `horizon` — a guard against absurd
+/// allocations, not a modelling limit (no ETS forecast is meaningful a
+/// million steps out).
+const MAX_HORIZON: usize = 1_000_000;
+/// Largest `n_sim x horizon` simulated-value buffer (2^28 doubles, about
+/// 2 GB). Beyond it the caller is refused by name rather than the
+/// allocator aborting the process; inside it, the buffers are still
+/// reserved fallibly, so a machine that cannot supply the memory gets a
+/// teaching error too.
+const MAX_SIM_VALUES: usize = 1 << 28;
+
+fn too_large(name: &'static str, value: usize, requirement: &'static str) -> EtsError {
+    EtsError::InvalidOption {
+        name,
+        value: value as f64,
+        requirement,
+    }
+}
+
 /// How the interval was computed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntervalMethod {
@@ -144,6 +163,14 @@ fn check_h(h: usize) -> Result<(), EtsError> {
             value: 0.0,
             requirement: "at least one forecast step is needed",
         });
+    }
+    if h > MAX_HORIZON {
+        return Err(too_large(
+            "horizon",
+            h,
+            "the forecast horizon must not exceed 1000000 steps; every forecast path is \
+             materialised, so a larger horizon is an allocation request, not a model",
+        ));
     }
     Ok(())
 }
@@ -354,22 +381,53 @@ pub fn forecast(
                           (5000 is the default)",
         });
     }
+    // `n_sim` paths of `h` steps are materialised to take per-step
+    // quantiles, so the buffer is a product of two user counts: refuse an
+    // absurd one by name, and reserve fallibly so a machine that cannot
+    // supply a permitted one still gets an error instead of an abort.
+    let n_values = n_sim
+        .checked_mul(h)
+        .filter(|&v| v <= MAX_SIM_VALUES)
+        .ok_or_else(|| {
+            too_large(
+                "n_sim",
+                n_sim,
+                "n_sim x horizon simulated values are held at once and must not exceed \
+                 268435456 (2^28, about 2 GB); lower n_sim or the horizon",
+            )
+        })?;
     let sigma = fit.sigma2.sqrt();
     let mut stream = Stream::new(seed);
-    let mut errors = vec![vec![0.0; h]; n_sim];
-    for row in errors.iter_mut() {
-        for e in row.iter_mut() {
+    let mut draws: Vec<f64> = Vec::new();
+    let mut col: Vec<f64> = Vec::new();
+    draws
+        .try_reserve_exact(n_values)
+        .and_then(|()| col.try_reserve_exact(n_sim))
+        .map_err(|_| {
+            too_large(
+                "n_sim",
+                n_sim,
+                "the n_sim x horizon buffer of simulated values could not be allocated on \
+                 this machine; lower n_sim or the horizon",
+            )
+        })?;
+    // Drawn path by path, in the same order as the errors were drawn when
+    // the whole matrix was materialised, so the seeded output is unchanged.
+    let mut errors = vec![0.0; h];
+    for _ in 0..n_sim {
+        for e in errors.iter_mut() {
             *e = sigma * standard_normal(&mut stream);
         }
+        let p = path(spec, &fit.params, &fit.final_state, &errors, h)?;
+        draws.extend_from_slice(&p);
     }
-    let paths = simulate_paths(spec, &fit.params, &fit.final_state, &errors)?;
     let mut variance = Vec::with_capacity(h);
     let mut lower = Vec::with_capacity(h);
     let mut upper = Vec::with_capacity(h);
-    let mut col = vec![0.0; n_sim];
+    col.resize(n_sim, 0.0);
     for j in 0..h {
-        for (i, p) in paths.iter().enumerate() {
-            col[i] = p[j];
+        for (i, c) in col.iter_mut().enumerate() {
+            *c = draws[i * h + j];
         }
         let mu = col.iter().sum::<f64>() / n_sim as f64;
         let var = col.iter().map(|v| (v - mu) * (v - mu)).sum::<f64>() / (n_sim - 1) as f64;

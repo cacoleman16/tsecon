@@ -63,6 +63,24 @@ fn spec(e: ErrorType, t: Component, d: bool, s: Component, m: Option<usize>) -> 
     EtsSpec::new(e, t, d, s, m).expect("spec")
 }
 
+/// One `auto_ets` recovery design: a label, the DGP (spec, parameters,
+/// initial states, innovation scale), the `seasonal_periods` the search is
+/// given, and the component forms counted as a recovery of the generating
+/// one (the error type and the damped/undamped distinction are not graded).
+type AutoCase = (
+    &'static str,
+    EtsSpec,
+    EtsParams,
+    EtsStates,
+    f64,
+    Option<usize>,
+    Vec<&'static str>,
+);
+
+/// `crates/tsecon-ets/src/forecast.rs`'s `MAX_HORIZON` (private there):
+/// the allocation guard the refusal tests below pin.
+const MAX_H: usize = 1_000_000;
+
 const A: ErrorType = ErrorType::Additive;
 const M: ErrorType = ErrorType::Multiplicative;
 const N: Component = Component::None;
@@ -419,15 +437,7 @@ fn auto_ets_recovers_the_generating_form_at_large_t() {
     let trend = spec(A, AD, false, N, None);
     let seas = spec(A, N, false, AD, Some(4));
     let mam = spec(M, AD, true, MU, Some(4));
-    let cases: Vec<(
-        &str,
-        EtsSpec,
-        EtsParams,
-        EtsStates,
-        f64,
-        Option<usize>,
-        Vec<&str>,
-    )> = vec![
+    let cases: Vec<AutoCase> = vec![
         (
             "level (ANN)",
             level,
@@ -767,6 +777,25 @@ fn degenerate_input_raises_teaching_errors_naming_the_argument() {
     let fit_m = ets_fit(&spec(M, N, false, N, None), &y, &FitOptions::default()).expect("fit");
     let e = forecast(&fit_m, 3, 0.95, 1, 0).unwrap_err();
     assert!(e.to_string().starts_with("n_sim = 1"));
+    // Allocation budgets: a horizon or an n_sim x horizon buffer that would
+    // abort the allocator is refused by name instead. (The Python layer
+    // stops integer counts at 2^48; everything below that is this crate's
+    // job.) 2^47 paths of one step, and a million and one steps, are both
+    // inside what the binding forwards.
+    let e = forecast(&fit_m, 1, 0.95, 1 << 47, 0).unwrap_err();
+    assert!(e.to_string().starts_with("n_sim = 140737488355328"), "{e}");
+    let e = forecast(&fit_m, 4, 0.95, 1 << 40, 0).unwrap_err();
+    assert!(e.to_string().starts_with("n_sim = "), "{e}");
+    for f in [&fit, &fit_m] {
+        let e = forecast(f, MAX_H + 1, 0.95, 10, 0).unwrap_err();
+        assert!(e.to_string().starts_with("horizon = 1000001"), "{e}");
+    }
+    let e = forecast_from_state(&fit.spec, &fit.params, &fit.final_state, MAX_H + 1).unwrap_err();
+    assert!(e.to_string().starts_with("horizon = 1000001"), "{e}");
+    // The budget binds only absurd requests: the documented default
+    // n_sim = 5000 at a long-but-sane horizon still runs.
+    let ok = forecast(&fit_m, 200, 0.95, 5000, 1).expect("5000 x 200 paths");
+    assert_eq!(ok.mean.len(), 200);
     // auto_ets refusals.
     let e = auto_ets(
         &y,
