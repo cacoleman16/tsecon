@@ -56,5 +56,6 @@ tsecon-breaks = { path = "../../crates/tsecon-breaks" }
 tsecon-panelroot = { path = "../../crates/tsecon-panelroot" }
 tsecon-evt = { path = "../../crates/tsecon-evt" }
 tsecon-copula = { path = "../../crates/tsecon-copula" }
+tsecon-ets = { path = "../../crates/tsecon-ets" }
 pyo3 = { version = "0.29.0", features = ["abi3-py39"] }
 numpy = "0.29.0"

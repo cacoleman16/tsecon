@@ -44,6 +44,7 @@ members = [
     "crates/tsecon-panelroot",
     "crates/tsecon-evt",
     "crates/tsecon-copula",
+    "crates/tsecon-ets",
     "bindings/python",
 ]
 

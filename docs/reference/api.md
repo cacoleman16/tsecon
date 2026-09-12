@@ -3,6 +3,7 @@
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, multivariate-GARCH, panel and term-structure families (and the top-level results of `var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` converts them; the docstring says which. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
 **182 functions.**
+**181 functions.**
 
 ## diagnostics
 
@@ -5850,4 +5851,211 @@ The Romano-Wolf (2005) StepM procedure: WHICH models beat the benchmark,
     `loss_diff_var`, `recentered`, `boot_lower`, `boot_consistent`,
     `boot_upper`, `n`, `m`, `block_size`, `block_size_auto`, `reps`,
     `bootstrap`, `studentize`, `nested`.
+## Exponential smoothing (ETS)
+
+### `ets_fit`
+
+```python
+def ets_fit(
+    y: _ArrayLike,
+    error: str = ...,
+    trend: str | None = ...,
+    damped: bool = ...,
+    seasonal: str | None = ...,
+    seasonal_periods: int | None = ...,
+    initialization: str = ...,
+    horizon: int = ...,
+    level: float | None = ...,
+    n_sim: int | None = ...,
+    seed: int | None = ...,
+    optimizer: str | None = ...,
+    smoothing_params: Sequence[float] | None = ...,
+    initial_states: Sequence[float] | None = ...,
+    max_iter: int | None = ...,
+) -> dict[str, Any]:
+```
+
+Innovations state-space exponential smoothing — one member of the
+    ETS(Error, Trend, Seasonal) taxonomy of Hyndman, Koehler, Snyder &
+    Grose (2002) / Hyndman et al. (2008), fitted by maximum likelihood.
+
+    `error` is "add" or "mul"; `trend` and `seasonal` are None, "add" or
+    "mul"; `damped=True` damps the trend (estimates `phi`; refused without
+    a trend, where it would be inert); `seasonal_periods` is the period m
+    (12 monthly, 4 quarterly), required with a seasonal component and
+    refused without one. ETS(A,N,N) is simple exponential smoothing,
+    (A,A,N) Holt, (A,Ad,N) the damped trend, (A,A,A) / (M,A,M) the
+    additive / multiplicative Holt-Winters. Any multiplicative component
+    needs strictly positive `y` (refused otherwise, naming the offending
+    observation). NaN is refused: the innovations form conditions every
+    state on the observed error and has no missing-value mechanism
+    (R's ets refuses NaN too) — interpolate first, or use a Kalman-filter
+    model.
+
+    The smoothing parameters are Hyndman's `alpha`, `beta`, `gamma`, `phi`
+    (not beta* = beta/alpha or gamma* = gamma/(1 - alpha)), searched in the
+    traditional box 0 < alpha < 1, 0 < beta < alpha, 0 < gamma < 1 - alpha,
+    0.8 <= phi <= 0.98 (R's and statsmodels' default bounds).
+    `initialization`: "estimated" (default: the initial states are free
+    parameters, started from the heuristic; the seasonal indices are
+    normalised to sum to zero / average one, R's convention, and count
+    m - 1 free parameters), "heuristic" (the Hyndman 2008 section 2.6.1
+    heuristic — a centred moving average over the first cycles and a
+    linear regression of its first ten values — held fixed; needs at
+    least 10 observations and, with a seasonal, 2m and 10 + 2 floor(m/2)),
+    or "known" (fixed at `initial_states`). `initial_states` is
+    `[level, trend?, seasonal[0], ..., seasonal[m-1]]` where
+    `seasonal[j]` is the index in force for observation j; it is required
+    with "known" and refused with the other two. `smoothing_params`
+    (`[alpha, beta?, gamma?, phi?]`, the components present, in that
+    order) evaluates the model at FIXED parameters with no optimisation —
+    statsmodels' `smooth(params)` — and needs initialization "heuristic"
+    or "known" (with "estimated" nothing would be estimated: refused);
+    `optimizer` and `max_iter` are then inert and refused if passed.
+    `optimizer` is "auto" (the effective default: L-BFGS and Nelder-Mead
+    from a staged start — the smoothing parameters alone at the heuristic
+    states first — then a BFGS polish of whichever did better; the
+    returned `optimizer` key reads "nelder_mead+bfgs"), "nelder_mead",
+    "bfgs" or "lbfgs"; `max_iter` caps each stage's iterations.
+
+    `horizon=h` adds h-step forecasts with `level` (0.95 when omitted)
+    prediction intervals: for the class-1 models — additive error with
+    additive or no trend and seasonal — the exact Gaussian intervals from
+    the closed-form variances of Hyndman et al. (2008, Table 6.1)
+    (`interval_method="exact"`); for every other model `n_sim` (5000 when
+    omitted) seeded innovation paths through the fitted recursion, the
+    bounds being empirical quantiles (`"simulated"`; `seed` 0 when
+    omitted). `level`, `n_sim` and `seed` are refused with `horizon=0`,
+    and `n_sim` / `seed` are refused for a class-1 model, where nothing is
+    simulated. The point forecast is always the zero-innovation path (R's
+    and statsmodels' convention). Allocation guards, not modelling limits:
+    `horizon` may not exceed 1000000, and `n_sim * horizon` (the simulated
+    values held at once) may not exceed 2^28; both are refused by name.
+
+    Returned keys: `spec` (e.g. "ETS(A,Ad,N)"), `short_name` ("AAdN"),
+    `error`, `trend`, `damped`, `seasonal`, `seasonal_periods` (None
+    without a seasonal), `alpha`, `beta`, `gamma`, `phi` (None when the
+    component is absent), `params` and `param_names` (the packed
+    smoothing vector), `initial_level`, `initial_trend`,
+    `initial_seasonal` (None when absent), `initial_states` and
+    `initial_state_names` (packed), `initialization`, `fitted`
+    (one-step-ahead), `resid` (`y - fitted`, or `(y - fitted) / fitted`
+    under multiplicative errors), `level_path`, `trend_path`,
+    `seasonal_path` (the states after each update; None when absent),
+    `final_level`, `final_trend`, `final_seasonal` (the forecast anchor;
+    `final_seasonal[j]` is the index for forecast step j), `final_states`,
+    `loglik` (the concentrated Gaussian log-likelihood, statsmodels'
+    convention; R's `ets` omits the constant -(n/2)(ln(2 pi / n) + 1)),
+    `sigma2` (`mean(resid^2)`), `nobs`, `k_params` (smoothing parameters +
+    free initial states under "estimated" + sigma2), `aic`, `aicc`, `bic`,
+    `converged`, `n_iterations`, `n_fevals`, `optimizer` ("none" at fixed
+    parameters), `class1`, `horizon`, and — None when `horizon=0` —
+    `forecast`, `forecast_variance`, `forecast_lower`, `forecast_upper`,
+    `interval_level`, `interval_method`, `n_sim`, `seed`.
+
+    Validation (fixtures/ets.json): the twenty models without a
+    multiplicative seasonal are pinned at fixed parameters to statsmodels
+    `ETSModel` (log-likelihood, fitted values, states, forecasts,
+    simulations) at 1e-10, the six class-1 forecast variances to
+    statsmodels' exact `get_prediction` and to the Table 6.1 closed forms
+    at 1e-10 / 1e-12, the heuristic initialisation to
+    `holtwinters.ExponentialSmoothing` at 1e-10, and the maximum likelihood
+    to statsmodels' L-BFGS-B fit (match-or-beat, two optimizers); the ten
+    multiplicative-seasonal models are pinned at 1e-12 to an independent
+    transcription of the published recursion and their simulator to
+    statsmodels `simulate` at 1e-10 — statsmodels' own smoother uses the
+    classical Holt-Winters seasonal update there (a stated, measured
+    convention gap). Interval coverage and parameter recovery are measured
+    by seeded Monte Carlo and quoted on the model card.
+
+    Further arguments, with defaults: `error` ("add"), `trend` (None),
+    `damped` (False), `seasonal` (None), `seasonal_periods` (None),
+    `initialization` ("estimated"), `horizon` (0), `level` (None: 0.95
+    when forecasting), `n_sim` (None: 5000 when simulating), `seed` (None:
+    0 when simulating), `optimizer` (None: "auto"), `smoothing_params`
+    (None: estimated), `initial_states` (None), `max_iter` (None).
+
+### `auto_ets`
+
+```python
+def auto_ets(
+    y: _ArrayLike,
+    seasonal_periods: int | None = ...,
+    ic: str = ...,
+    allow_multiplicative_trend: bool = ...,
+    restrict: bool = ...,
+    damped: bool | None = ...,
+    initialization: str = ...,
+    horizon: int = ...,
+    level: float | None = ...,
+    n_sim: int | None = ...,
+    seed: int | None = ...,
+    optimizer: str | None = ...,
+) -> dict[str, Any]:
+```
+
+Automatic ETS model selection — the candidate-set search of Hyndman
+    et al. (2008, section 7.2) as R's `forecast::ets` runs it: every
+    admissible member of the taxonomy is fitted by maximum likelihood
+    (`ets_fit`) and the one with the smallest information criterion
+    (`ic`: "aicc" default, "aic", "bic") is returned, fitted, with the
+    ranked candidate table.
+
+    Candidates: error "add"/"mul", trend None/"add" (plus "mul" with
+    `allow_multiplicative_trend=True`; R's default excludes it), damped
+    and undamped trends (`damped=None`; `True`/`False` restricts to one),
+    seasonal None/"add"/"mul" when `seasonal_periods` >= 2 (None: non-
+    seasonal candidates only). Multiplicative errors and seasonals are
+    tried only when every `y` > 0. `restrict=True` (R's default) drops the
+    combinations with infinite forecast variance or a mis-scaled error —
+    additive error with any multiplicative component, and (M,M,A) — so a
+    positive seasonal series has 15 candidates (6 additive-error, 9
+    multiplicative-error), a non-positive seasonal one 6, a non-seasonal
+    positive series 6, and a non-seasonal non-positive series 3.
+    `initialization` is "estimated" or "heuristic" for every
+    candidate; `optimizer` and the forecast options (`horizon`, `level`,
+    `n_sim`, `seed`) are those of `ets_fit` — `n_sim` and `seed` act only
+    if the selected model is not class 1 (the winner is not known in
+    advance, so they are accepted regardless; with `horizon=0` they are
+    refused as inert), including their allocation guards (`horizon`
+    at most 1000000, `n_sim * horizon` at most 2^28). NaN is refused.
+
+    Returned keys: every key of `ets_fit` for the selected model (its very
+    fit from the search, not a refit — refitting reproduces it exactly),
+    plus `ic`, `ic_value`, `candidates` — a list of dicts with `spec`,
+    `short_name`, `loglik`, `aic`, `aicc`, `bic`, `ic_value`, `k_params`,
+    `converged`, `status` ("ok" or "error") and `error` (the message when
+    a candidate failed; failures never abort the search) ranked by the
+    criterion, failures last — `n_candidates` and `n_fitted`. Read the
+    table: candidates within ~2 of the best criterion are near-ties the
+    data do not distinguish.
+
+    Validation (honest grade, as for `auto_arima`): every candidate's
+    likelihood is the golden-pinned `ets_fit` likelihood; the candidate
+    set reproduces R's `forecast::ets` enumeration exactly
+    (fixtures/ets.json); the selection loop itself has no runnable
+    third-party reference (the M3 forecast-competition parity of the
+    method is R-only), so it is graded by seeded Monte-Carlo recovery of
+    the generating component form, quoted on the model card.
+
+    Further arguments, with defaults: `seasonal_periods` (None), `ic`
+    ("aicc"), `allow_multiplicative_trend` (False), `restrict` (True),
+    `damped` (None: both), `initialization` ("estimated"), `horizon` (0),
+    `level` (None: 0.95), `n_sim` (None: 5000), `seed` (None: 0),
+    `optimizer` (None: "auto").
+
+    Returned keys: `aic`, `aicc`, `alpha`, `beta`, `bic`, `candidates`,
+    `class1`, `converged`, `damped`, `error`, `final_level`,
+    `final_seasonal`, `final_states`, `final_trend`, `fitted`,
+    `forecast`, `forecast_lower`, `forecast_upper`, `forecast_variance`,
+    `gamma`, `horizon`, `ic`, `ic_value`, `initial_level`,
+    `initial_seasonal`, `initial_state_names`, `initial_states`,
+    `initial_trend`, `initialization`, `interval_level`,
+    `interval_method`, `k_params`, `level_path`, `loglik`,
+    `n_candidates`, `n_fevals`, `n_fitted`, `n_iterations`, `n_sim`,
+    `nobs`, `optimizer`, `param_names`, `params`, `phi`, `resid`,
+    `seasonal`, `seasonal_path`, `seasonal_periods`, `seed`,
+    `short_name`, `sigma2`, `spec`, `trend`, `trend_path` — every
+    `ets_fit` key for the selected model, read there, plus the five
+    selection extras above.
 

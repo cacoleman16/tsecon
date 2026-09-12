@@ -87,3 +87,4 @@ method fits your problem and how to trust its output.
 | [Cointegrating regressions (FM-OLS / DOLS / CCR)](model-cards/cointegration-regime.md#fmols--dols--ccr--single-equation-cointegrating-regressions) | `fmols`, `dols`, `ccr` |
 | [VAR conditional forecasts & residual diagnostics](model-cards/var-svar.md#conditional-hard-path-forecasts-var_conditional_forecast) | `var_conditional_forecast`, `var_diagnostics`, `var_select_order` |
 | [Multiple forecast comparisons](model-cards/forecasting.md#many-models-at-once-spa_test-stepm_test-model_confidence_set) | `spa_test`, `stepm_test`, `model_confidence_set` |
+| [Exponential smoothing (ETS)](model-cards/ets.md) | `ets_fit`, `auto_ets` |
