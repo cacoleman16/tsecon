@@ -118,6 +118,8 @@ impl<'a> MarkovSwitchingAr<'a> {
         let m = spec.expanded_states()?;
         if y.len() <= spec.order {
             return Err(RegimeError::InsufficientData {
+                what: "y under the requested order (the Markov-switching AR needs more \
+                       observations than autoregressive lags)",
                 needed: spec.order + 1,
                 got: y.len(),
             });

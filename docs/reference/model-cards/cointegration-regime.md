@@ -1,14 +1,19 @@
 # Model card — Cointegration and regime switching
 
-`johansen` · `vecm` · `threshold_vecm` · `hansen_seo_test` · `ou_fit` ·
-`spread_zscore` · `markov_switching_ar` · `setar` · `setar_test` ·
-`star` · `star_eval` · `star_test` · `threshold_var` · `threshold_var_test`
+`johansen` · `vecm` · `threshold_vecm` · `hansen_seo_test` · `fmols` · `dols` ·
+`ccr` · `ou_fit` · `spread_zscore` · `markov_switching_ar` · `setar` ·
+`setar_test` · `star` · `star_eval` · `star_test` · `threshold_var` ·
+`threshold_var_test`
 
 Two ways the tidy linear-stationary world breaks. First, series can be
 individually nonstationary yet move together — share a long-run equilibrium
 (cointegration); differencing away the trends throws that equilibrium away, and
-the vector error-correction model keeps it. Once a cointegrating spread is in
-hand, `ou_fit` / `spread_zscore` quantify what a trading workflow does with it
+the vector error-correction model keeps it. When there is one equilibrium and
+one regressand, `fmols` / `dols` / `ccr` estimate its coefficients with
+t-statistics that are actually valid — the static OLS of `engle_granger`'s
+step one is super-consistent but its standard errors are not. Once a
+cointegrating spread is in hand, `ou_fit` / `spread_zscore` quantify what a
+trading workflow does with it
 — how fast it mean-reverts (half-life) and how far it sits from equilibrium
 (z-score); they live in this card, not the forecasting one, because the spread
 *is* the cointegrating residual and the estimator is the continuous-time twin
@@ -332,6 +337,205 @@ print(f"mean-reverting: {fit['mean_reverting']}")
 
 z = tsecon.spread_zscore(spread, dt=1/252)      # fit-then-score
 print("today's z:", round(z["zscore"][-1], 2))  # |z| > 2: stretched
+```
+
+---
+
+## `fmols` / `dols` / `ccr` — single-equation cointegrating regressions
+
+**What they estimate.** One cointegrating vector, `y_t = x_t'β + d_t'δ + e_t`
+with `x_t` a vector of I(1) regressors and `d_t` the deterministics of
+`trend`, **with asymptotically valid inference**. Static OLS on the levels is
+super-consistent (`T(β̂ − β)` is bounded), but its limit is neither centred
+nor Gaussian: serial correlation in `e_t` and correlation between `e_t` and the
+regressor innovations `Δx_t` leave a second-order bias and a nuisance-parameter
+limit, so OLS t-statistics are wrong. Three corrections remove the nuisance
+terms and deliver a mixed-normal estimator whose t-statistics are standard
+normal under the null:
+
+- **`fmols`** — Phillips-Hansen (1990) fully modified OLS. From the kernel
+  long-run covariance `Ω` and one-sided long-run covariance `Λ` of the residual
+  system `η_t = (ê_t, Δx_t^{detrended})'`, correct the regressand for
+  endogeneity, `y⁺_t = y_t − ω₁₂Ω₂₂⁻¹η₂ₜ`, and subtract the serial-correlation
+  bias `λ⁺₁₂ = λ₁₂ − ω₁₂Ω₂₂⁻¹Λ₂₂` from the moment equations:
+  `θ̂ = (Z'Z)⁻¹(Z'y⁺ − T[λ⁺₁₂', 0]')`, `Cov(θ̂) = ω₁.₂(Z'Z)⁻¹` with
+  `ω₁.₂ = ω₁₁ − ω₁₂Ω₂₂⁻¹ω₂₁`.
+- **`dols`** — Stock-Watson (1993) / Saikkonen (1991) dynamic OLS. Augment the
+  regression with `lags` lags and `leads` leads of `Δx_t` (the contemporaneous
+  difference always included), which makes the augmented error orthogonal to
+  the regressor innovations; OLS on the augmented design is then mixed normal,
+  with the residual long-run variance in the covariance (`cov_type="unadjusted"`)
+  or a kernel-HAC sandwich on the scores (`"robust"`). Leads and lags are
+  chosen by AIC/BIC/HQIC on the common sample of the largest candidate.
+- **`ccr`** — Park (1992) canonical cointegrating regression. Transform the
+  *data* instead: `x*_t = x_t − (Σ⁻¹Λ₂)'η_t`, `y*_t = y_t − (Σ⁻¹Λ₂β̂_OLS + κ)'η_t`
+  with `κ = (0, Ω₂₂⁻¹ω₂₁)`, then plain OLS of `y*` on `[x*, d]` with covariance
+  `ω₁.₂(Z*'Z*)⁻¹`. Asymptotically equivalent to FM-OLS; the two differ in
+  finite samples.
+
+**Assumptions.** Exactly one cointegrating relation among `(y, x)`, with `x`
+not cointegrated among itself (Ω₂₂ must be positive definite — a duplicated or
+linearly dependent regressor is refused by name); `x` is I(1) and `e_t` is
+I(0) with a positive long-run variance; the long-run covariances are estimated
+consistently, which is where the kernel bandwidth matters. The estimators
+*condition* on cointegration — test it first (`engle_granger`,
+`phillips_ouliaris`, `johansen`); on a non-cointegrated pair the corrections
+cannot rescue a spurious regression.
+
+**When to use (and when not).** Use when theory pins down one equilibrium
+relation with one natural regressand (money demand, interest-rate parity,
+consumption-income, the term structure) and you need standard errors on the
+coefficients, not just the point estimate `engle_granger` already gives. Prefer
+`johansen` + `vecm` when the number of relations is unknown or several series
+adjust, and when you want the adjustment speeds. Between the three: FM-OLS is
+the applied default (EViews' too), DOLS is the choice when the sample is long
+enough to spend degrees of freedom on lead/lag terms and you prefer a plain
+regression, CCR is the one to reach for when you want a data transformation you
+can inspect. None of the three is a *test* of cointegration.
+
+**Key arguments and defaults (and why).** `trend="c"` — the deterministics of
+the regression: `"n"`, `"c"`, `"ct"`, `"ctt"` (constant, linear and quadratic
+trend), the trend running `1..T` over the regression sample; the regressors come
+first in `params`, the deterministics after (`param_names` says which is
+which, as `arch` orders them). `kernel="bartlett"` (or `"parzen"`,
+`"quadratic-spectral"`) weights the residual-system autocovariances;
+`bandwidth=None` selects it automatically by `bandwidth_rule` — `"newey-west"`
+(the default; `arch`'s own Newey-West 1994 plug-in on the unit-weighted sum of
+the residual system, `ceil(4(T/100)^rate)` pilot lags) or `"andrews"` (the
+Andrews 1991 AR(1) parametric plug-in from `tsecon-hac`); passing the rule with
+an explicit `bandwidth` raises, because it would be inert. `force_int` ceils the
+bandwidth (`True` for `fmols`/`ccr`, `False` for `dols` — `arch`'s defaults);
+note the `arch` convention that Bartlett/Parzen windows stop at `floor(bandwidth)`
+lags, so with a non-integer bandwidth the last positive weight is dropped —
+integer bandwidths coincide with `tsecon-hac`'s `lrv`. `df_adjust=True`
+multiplies the covariance by `(T−1)/(T−1−p)` for `fmols`/`ccr` — `T−1` the
+rows of the residual system and `p` the *estimated coefficients*, regressors
+**and** deterministics (`len(params)`) — and by `nobs/(nobs − n_params)` for
+`dols`; `df_adjust=False` (the default) scales nothing. `x_trend`/`diff` control how the
+regressor innovations are detrended (`diff` raises when the effective
+`x_trend` has no trend term). For `dols`: `lags`/`leads=None` searches them,
+`ic="bic"`, caps `max_lag`/`max_lead` default to `ceil(12(T/100)^(1/4))`,
+`common=True` forces `lags == leads`; every one of `ic`, `max_lag`, `max_lead`,
+`common` raises when the count it would govern is fixed. A search whose largest
+candidate has no residual degrees of freedom is refused — `arch` runs it
+underdetermined (see below).
+
+**How to read the output.** `params`, `se`, `tvalues`, `pvalues` (two-sided
+normal), `cov`, `param_names`; `resid` (full sample for `fmols`/`ccr`, the
+augmented sample for `dols`); `bandwidth` actually used and `bandwidth_rule`
+(`None` when explicit); `long_run_variance` (`ω₁.₂` for `fmols`/`ccr`, the
+residual `σ²_HAC` for `dols`); `omega` / `lambda` / `sigma`, the long-run,
+one-sided and short-run covariances of the residual system (`fmols`/`ccr`);
+`lags`, `leads`, `selected`, `ic_value`, `full_params` / `full_cov` (`dols`);
+`rsquared`, `rsquared_adj`; and `ols_params` / `ols_se`, the plain static OLS
+for comparison — its standard errors are reported so you can *see* how wrong
+they are, not for inference.
+
+**A real illustration (arch-exact, derived numbers only).** Wooldridge's
+`intdef` data (`sm.datasets.get_rdataset("intdef", "wooldridge")`: the annual
+US 3-month T-bill rate `i3` on inflation `inf`, 1948–2003, `T = 56`) and the
+`Ecdat` `Tbrate` panel (`get_rdataset("Tbrate", "Ecdat")`: the quarterly US
+T-bill rate `r` on inflation `pi`, 1950Q1–1996Q4, `T = 188`), `trend="c"`,
+Bartlett kernel, automatic bandwidth (every number below is produced by
+`fixtures/generate_fmols_fixtures.py` and re-pinned at 1e-10 by
+`test_fmols.py` against a fresh download):
+
+| data | estimator | slope on inflation (se) | t | constant (se) | bandwidth / window |
+|---|---|---|---|---|---|
+| `intdef`, T = 56 | plain OLS | 0.6406 | — | 2.4203 | — |
+| | `fmols` | 0.7416 (0.156) | 4.74 | 2.096 (0.757) | 5 |
+| | `ccr` | 0.7500 (0.163) | 4.59 | 2.054 (0.789) | 5 |
+| | `dols`, `lags=leads=1` | 0.8470 (0.173) | 4.89 | 1.798 (0.807) | 5.70 |
+| | `dols`, automatic | 1.7682 (0.124) | 14.26 | −2.045 (0.591) | (9, 11) — see note |
+| `Tbrate`, T = 188 | plain OLS | 0.6148 | — | 3.8578 | — |
+| | `fmols` | 0.8222 (0.206) | 3.99 | 3.053 (1.085) | 12 |
+| | `ccr` | 0.8140 (0.202) | 4.03 | 3.086 (1.073) | 12 |
+| | `dols`, automatic (lags 4, leads 0) | 0.8750 (0.212) | 4.12 | 2.968 (1.056) | 11.8 |
+| | `dols`, `lags=leads=1` | 0.7444 (0.224) | 3.32 | 3.394 (1.141) | 11.8 |
+
+The corrections move the Fisher-relation slope from OLS's 0.61–0.64 toward
+0.74–0.88 on both samples, in the direction the positive correlation between
+the interest-rate error and inflation innovations predicts, and the three
+agree with each other to well within one standard error. The `intdef`
+automatic-DOLS row is the cautionary tale: at `T = 56` the default search cap
+is 11, the common search sample keeps 31 rows for up to 27 parameters, BIC
+picks `(9, 11)`, and the "estimate" of 1.77 with a t of 14 is an overfit — read
+the `lags`/`leads` it returns before believing a searched DOLS on a short
+sample, and fix them (`lags=leads=1` here) when the ratio of rows to
+parameters is small. (On a `T = 60`, two-regressor sample the default search is
+underdetermined outright; `arch` runs it anyway, `dols` refuses with the caps
+named.)
+
+**Failure modes.** A huge automatic bandwidth (tens of lags at `T = 100`) means
+the residual system is very persistent — usually a sign the pair is *not*
+cointegrated (the OLS residual is near a random walk), so test first. A
+non-positive-definite `Ω₂₂` or `Σ` is a duplicated/dependent regressor.
+FM-OLS/CCR condition on the *first* observation's innovations being dropped
+(the residual system has `T − 1` rows), so `resid` has `T` entries while the
+covariance is built on `T − 1`. All three are asymptotic, and the Monte Carlo
+below is the honest size statement: with a persistent equilibrium error the
+kernel long-run variance is under-estimated at a data-driven bandwidth, and the
+corrected t-statistics reject about twice the nominal rate at `T = 400` (the
+Andrews rule buys almost nothing — 0.103 vs 0.107 at 5%); they are still four
+times better than plain OLS, and the remedy is a longer sample or a larger
+explicit `bandwidth`, checked for sensitivity. Likewise the corrections remove
+most but not all of the OLS bias at `T = 200` (about two thirds for FM-OLS and
+CCR, nine tenths for DOLS). `ols_se` is *never* a valid standard error here.
+
+**Validated against.** Grade: **third-party golden (arch 8.0.0) at 1e-10 for
+every estimator and option, plus seeded Monte Carlo for the statistical
+claims.** `fixtures/fmols.json` pins 56 `fmols`, 56 `ccr` and 39 `dols` cases
+— three seeded systems (`k_x` = 1, `k_x` = 3 with drift, and a `T = 60` small
+sample), all four trends, the three kernels, explicit / automatic /
+forced-integer bandwidths, `df_adjust`, `diff`, `x_trend`, both DOLS
+covariance types, the three criteria, `common` and capped searches — on
+`params`, `cov` (hence `se`, `tvalues`), `resid`, `R²`, the bandwidth and the
+selected leads/lags, every one at 1e-10 relative (`fmols_golden.rs`); the
+residual-system long-run covariances and `arch`'s automatic bandwidth are
+pinned separately against `arch.covariance.kernel`, and the univariate case is
+asserted to agree with `tsecon-hac`'s `lrv` at 1e-12 (one HAC owner). Two
+blocks are documented-formula rather than third-party goldens and the fixture
+says so: the `"andrews"` bandwidth rule (`arch` has none; the value is the
+Andrews 1991 closed form, the estimates are `arch`'s at that bandwidth) and
+`ccr` under `df_adjust` (`arch` 8.0 scales only `ω₁₁` by an
+operator-precedence slip; the documented `(T−1)/(T−1−p)` scaling of `ω₁.₂` is what
+ships, and `arch`'s raw value is stored and asserted to differ). The Python
+suite additionally calls `arch` directly on fresh data and re-downloads the two
+Rdatasets above (skipping offline). The statistical properties are **measured**
+by `fmols_properties.rs` on the Phillips-Hansen DGP (`x` a random walk with
+AR(0.3) innovations, `e_t = 0.5e_{t−1} + ε_t + 0.6u_t`, `β = 1`):
+
+| property | measured (seeded) |
+|---|---|
+| super-consistency: mean `T·|β̂ − β|` at `T = 100 / 400 / 1600`, 100 draws each | fmols 3.86 / 3.46 / 3.97; ccr 3.88 / 3.49 / 3.98; dols(2,2) 3.84 / 3.36 / 3.99; OLS 5.38 / 5.01 / 6.69 — flat in `T` (a `√T` rate would quadruple it) |
+| second-order OLS bias: mean `T(β̂ − β)`, `T = 200`, 300 draws | OLS +4.13 (MC se 0.34); fmols +1.29; ccr +1.32; dols(2,2) +0.50 — two thirds of the bias removed by the kernel corrections, nine tenths by the lead/lag augmentation; none exactly centred at this `T` |
+| size of the corrected t-statistics under the null, `T = 400`, 300 draws (reject @5% / @10%; binomial MC se ≈ 0.013 / 0.017) | fmols 0.107 / 0.170 (0.103 / 0.160 with `bandwidth_rule="andrews"`); ccr 0.113 / 0.167; dols(2,2) 0.107 / 0.147; plain OLS with classical SEs 0.420 / 0.487 — the corrections are liberal by about a factor of two at 5%, OLS by eight |
+
+**References.** Phillips & Hansen (1990), *Review of Economic Studies* 57;
+Hansen & Phillips (1990), *Advances in Econometrics* 8; Saikkonen (1991),
+*Econometric Theory* 7; Stock & Watson (1993), *Econometrica* 61; Park (1992),
+*Econometrica* 60; Andrews (1991), *Econometrica* 59; Newey & West (1994),
+*Review of Economic Studies* 61.
+
+```python
+import numpy as np, tsecon
+rng = np.random.default_rng(3)
+T = 300
+u = rng.standard_normal(T)                    # regressor innovations
+x = np.cumsum(u)                              # an I(1) regressor
+e = np.zeros(T)
+for t in range(1, T):                         # AR(1) error, correlated with u
+    e[t] = 0.5 * e[t-1] + rng.standard_normal() + 0.6 * u[t]
+y = 0.5 + 1.0 * x + e
+
+fm = tsecon.fmols(y, x[:, None], trend="c")
+print(fm["param_names"], np.round(fm["params"], 3), np.round(fm["se"], 3))
+print("plain OLS:", np.round(fm["ols_params"], 3), "(its SEs are not valid)")
+print("bandwidth", fm["bandwidth"], "rule", fm["bandwidth_rule"])
+d = tsecon.dols(y, x[:, None], trend="c")     # BIC-selected leads/lags
+print("DOLS", d["lags"], "lags,", d["leads"], "leads:", np.round(d["params"], 3))
+c = tsecon.ccr(y, x[:, None], trend="c", kernel="quadratic-spectral")
+print("CCR ", np.round(c["params"], 3), "t =", np.round(c["tvalues"], 2))
 ```
 
 ---
@@ -1187,7 +1391,11 @@ ratio 4.02 between 32 and 512 draws against a 8192-draw reference, theory 4);
 `seed=0`; `regime="all"` (the per-regime averages come back anyway);
 `histories=None` (all windows — the engine is fast enough that subsampling is
 a choice, not a necessity; an int at or above the number of selected windows
-uses all of them, reported in `n_histories`); `bands=(0.16, 0.84)`.
+uses all of them, reported in `n_histories`); `bands=None` (= `(0.16, 0.84)`).
+The engine's 2 GiB memory budget applies (see the `var_girf` card): a
+request whose draw buffers or per-history results would exceed it is refused
+up front as a `ValueError` naming `n_draws`, `horizon` and the number of
+histories, and the buffers below it are allocated fallibly — never an abort.
 
 **How to read the output.** `girf[h][variable]` is the average over the used
 histories; `lower`/`upper` are the `bands` quantiles **across histories** —

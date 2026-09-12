@@ -117,9 +117,13 @@
 //! // §4.1.1), the composition-effects correction (DGJT §2.10, the
 //! // do-file's variants 4a/5a), pre-mean-differenced baselines
 //! // (`pmd`), outcome-difference lag controls (`dylags`), an IV
-//! // variant, and unbalanced panels. Doubly-robust (AIPW) LP-DiD has
-//! // no reference implementation anywhere and is explicitly out of
-//! // scope until one exists to validate against.
+//! // variant, and unbalanced panels (the reference fixest run that pins
+//! // `fixtures/lpdid.json` was made on balanced panels and R is not
+//! // runnable in the build container, so a masked LP-DiD would ship
+//! // without its reference; an unbalanced [`PanelData`] is refused with a
+//! // message naming `mask`). Doubly-robust (AIPW) LP-DiD has no
+//! // reference implementation anywhere and is explicitly out of scope
+//! // until one exists to validate against.
 
 use tsecon_linalg::faer::MatRef;
 
@@ -251,6 +255,8 @@ enum Spec {
 ///
 /// # Errors
 ///
+/// * [`PanelError::Unbalanced`] if `data` carries an observation mask
+///   with unobserved cells (see the module docs);
 /// * [`PanelError::Dimension`] if `treatment` is not `N x T`;
 /// * [`PanelError::InvalidArgument`] if `treatment` has entries other
 ///   than 0/1, if a treatment reversal occurs under `absorbing = true`,
@@ -274,6 +280,16 @@ pub fn lp_did(
 ) -> Result<LpDidResult, PanelError> {
     let n_ent = data.n_entities();
     let t_len = data.n_periods();
+    if !data.is_balanced() {
+        return Err(PanelError::Unbalanced {
+            what: "lp_did needs a balanced panel (mask=None): the clean-control \
+                   windows and the long differences y[t+h] - y[t-1] are defined on \
+                   contiguous outcome paths, and the reference run that validates \
+                   this estimator (the authors' fixest code, fixtures/lpdid.json) was \
+                   made on balanced panels — trim the panel to a common window, or \
+                   drop entities with gaps, and say so when reporting",
+        });
+    }
     if treatment.nrows() != n_ent {
         return Err(PanelError::Dimension {
             what: "treatment entity dimension must match the outcome's",
@@ -333,7 +349,7 @@ pub fn lp_did(
     // t >= 1 and t + H <= T - 1; pre horizon -Q needs t >= Q <= T - 1.
     if t_len < hmax + 2 {
         return Err(PanelError::InsufficientObservations {
-            what: "LP-DiD post window: horizon H needs some period t with both \
+            what: "LP-DiD post_window: horizon H needs some period t with both \
                    a lagged baseline (t >= 1) and the horizon-H lead inside the \
                    panel (t + H <= T - 1)",
             needed: hmax + 2,
@@ -342,7 +358,7 @@ pub fn lp_did(
     }
     if q >= 2 && t_len < q + 1 {
         return Err(PanelError::InsufficientObservations {
-            what: "LP-DiD pre window: horizon -Q needs some period t >= Q with \
+            what: "LP-DiD pre_window: horizon -Q needs some period t >= Q with \
                    the lag y_{t-Q} inside the panel",
             needed: q + 1,
             got: t_len,

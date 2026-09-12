@@ -1,0 +1,371 @@
+===== cargo test -p tsecon-coint --release --test fmols_golden -- --nocapture =====
+   Compiling num-traits v0.2.19
+   Compiling once_cell v1.21.4
+   Compiling syn v2.0.119
+   Compiling num-complex v0.4.6
+   Compiling pulp v0.22.3
+   Compiling nano-gemm-c64 v0.2.1
+   Compiling nano-gemm-c32 v0.2.1
+   Compiling equator-macro v0.2.1
+   Compiling equator v0.2.2
+   Compiling gemm-common v0.19.0
+   Compiling qd v0.8.0
+   Compiling gemm-f64 v0.19.0
+   Compiling gemm-c32 v0.19.0
+   Compiling gemm-c64 v0.19.0
+   Compiling gemm-f32 v0.19.0
+   Compiling gemm v0.19.0
+   Compiling nano-gemm v0.2.2
+   Compiling faer-traits v0.24.0
+   Compiling faer v0.24.4
+   Compiling tsecon-linalg v0.10.0 (/home/user/tsecon/crates/tsecon-linalg)
+   Compiling tsecon-coint v0.10.0 (/home/user/tsecon/crates/tsecon-coint)
+    Finished `release` profile [optimized] target(s) in 52.48s
+     Running tests/fmols_golden.rs (target-int/release/deps/fmols_golden-6f41e4e93cbf89a3)
+
+running 8 tests
+test every_refusal_names_its_parameter ... ok
+test golden_ccr_matches_arch ... ok
+test corrected_estimators_track_the_true_cointegrating_vector ... ok
+test golden_fmols_matches_arch ... ok
+test golden_long_run_covariance_matches_arch_kernels ... ok
+test underdetermined_dols_search_is_refused_with_the_caps_named ... ok
+test univariate_long_run_variance_agrees_with_tsecon_hac ... ok
+test golden_dols_matches_arch ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.28s
+
+===== cargo test -p tsecon-coint --release --test fmols_properties -- --nocapture =====
+   Compiling tsecon-coint v0.10.0 (/home/user/tsecon/crates/tsecon-coint)
+    Finished `release` profile [optimized] target(s) in 6.30s
+     Running tests/fmols_properties.rs (target-int/release/deps/fmols_properties-f8ff77ae2237dcf5)
+
+running 4 tests
+bias MC (T = 200, 300 reps): mean T(b - beta) ols 4.125 (mc se 0.343) fmols 1.292 ccr 1.316 dols 0.499
+test corrections_remove_the_second_order_ols_bias ... ok
+size MC (T = 400, 300 reps): fmols[andrews] reject@5% = 0.103 reject@10% = 0.160
+size MC (T = 400, 300 reps): fmols reject@5% = 0.107 reject@10% = 0.170
+size MC (T = 400, 300 reps): ccr reject@5% = 0.113 reject@10% = 0.167
+size MC (T = 400, 300 reps): dols reject@5% = 0.107 reject@10% = 0.147
+size MC (T = 400, 300 reps): ols reject@5% = 0.420 reject@10% = 0.487
+test corrected_t_statistics_have_near_nominal_size_and_ols_does_not ... ok
+test deterministic_and_permutation_equivariant ... ok
+T = 100: mean T|b - beta| ols 5.375 fmols 3.861 ccr 3.876 dols 3.839
+T = 400: mean T|b - beta| ols 5.012 fmols 3.464 ccr 3.493 dols 3.361
+T = 1600: mean T|b - beta| ols 6.685 fmols 3.974 ccr 3.984 dols 3.991
+test t_scaled_error_is_bounded_in_t ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+===== cargo test -p tsecon-ets --release --test ets_golden -- --nocapture =====
+   Compiling tsecon-ets v0.10.0 (/home/user/tsecon/crates/tsecon-ets)
+    Finished `release` profile [optimized] target(s) in 4.76s
+     Running tests/ets_golden.rs (target-int/release/deps/ets_golden-ae27f60b51aba826)
+
+running 5 tests
+test candidate_set_reproduces_r_forecast_ets_loop ... ok
+test fixed_parameter_recursion_matches_statsmodels_where_its_smoother_is_the_innovations_form ... ok
+test heuristic_and_simple_initial_states_match_statsmodels ... ok
+test fixed_parameter_recursion_matches_transcription_for_all_thirty_models ... ok
+mle "sim_aadn" ANN ("estimated") [nelder_mead+bfgs]: loglik -432.934421 (statsmodels -432.934421, shortfall rel -3.79e-12) alpha 0.67224 vs 0.67223 converged true iters 59 fevals 176
+mle "sim_aadn" ANN ("estimated") [bfgs]: loglik -432.934421 (statsmodels -432.934421, shortfall rel -3.79e-12) alpha 0.67224 vs 0.67223 converged true iters 5 fevals 60
+mle "sim_aadn" AAN ("estimated") [nelder_mead+bfgs]: loglik -423.126948 (statsmodels -423.126948, shortfall rel -9.80e-11) alpha 0.44232 vs 0.44231 converged true iters 172 fevals 522
+mle "sim_aadn" AAN ("estimated") [bfgs]: loglik -423.126948 (statsmodels -423.126948, shortfall rel -9.78e-11) alpha 0.44232 vs 0.44231 converged true iters 11 fevals 279
+mle "sim_aadn" AAdN ("estimated") [nelder_mead+bfgs]: loglik -419.615786 (statsmodels -419.615787, shortfall rel -1.77e-9) alpha 0.38515 vs 0.38511 converged true iters 266 fevals 924
+mle "sim_aadn" AAdN ("estimated") [bfgs]: loglik -419.615786 (statsmodels -419.615787, shortfall rel -1.77e-9) alpha 0.38515 vs 0.38511 converged true iters 29 fevals 451
+mle "sim_aadn" MNN ("estimated") [nelder_mead+bfgs]: loglik -434.135575 (statsmodels -434.135575, shortfall rel -7.49e-13) alpha 0.66808 vs 0.66808 converged true iters 62 fevals 179
+mle "sim_aadn" MNN ("estimated") [bfgs]: loglik -434.135575 (statsmodels -434.135575, shortfall rel -3.82e-13) alpha 0.66808 vs 0.66808 converged true iters 10 fevals 65
+mle "sim_aadn" MAN ("estimated") [nelder_mead+bfgs]: loglik -423.817379 (statsmodels -423.817379, shortfall rel -8.84e-12) alpha 0.43116 vs 0.43116 converged true iters 192 fevals 612
+mle "sim_aadn" MAN ("estimated") [bfgs]: loglik -423.817379 (statsmodels -423.817379, shortfall rel -8.82e-12) alpha 0.43116 vs 0.43116 converged true iters 26 fevals 288
+mle "sim_aadn" MAdN ("estimated") [nelder_mead+bfgs]: loglik -420.106408 (statsmodels -420.106408, shortfall rel -1.04e-11) alpha 0.36455 vs 0.36455 converged true iters 322 fevals 1136
+mle "sim_aadn" MAdN ("estimated") [bfgs]: loglik -420.106408 (statsmodels -420.106408, shortfall rel -1.02e-11) alpha 0.36455 vs 0.36455 converged true iters 34 fevals 451
+mle "sim_aadn" AMN ("estimated") [nelder_mead+bfgs]: loglik -423.164898 (statsmodels -423.165656, shortfall rel -1.79e-6) alpha 0.44159 vs 0.44163 converged true iters 186 fevals 634
+mle "sim_aadn" AMN ("estimated") [bfgs]: loglik -423.164898 (statsmodels -423.165656, shortfall rel -1.79e-6) alpha 0.44159 vs 0.44163 converged true iters 23 fevals 279
+mle "sim_aadn" MMN ("estimated") [nelder_mead+bfgs]: loglik -423.711815 (statsmodels -423.711815, shortfall rel -1.86e-11) alpha 0.43115 vs 0.43115 converged true iters 196 fevals 608
+mle "sim_aadn" MMN ("estimated") [bfgs]: loglik -423.711815 (statsmodels -423.711815, shortfall rel -1.85e-11) alpha 0.43115 vs 0.43115 converged true iters 25 fevals 279
+mle "sim_aadn" MMdN ("estimated") [nelder_mead+bfgs]: loglik -419.934058 (statsmodels -419.934058, shortfall rel -2.58e-11) alpha 0.36551 vs 0.36550 converged true iters 302 fevals 991
+mle "sim_aadn" MMdN ("estimated") [bfgs]: loglik -419.934058 (statsmodels -419.934058, shortfall rel 8.78e-11) alpha 0.36549 vs 0.36550 converged true iters 21 fevals 275
+mle "log_ukgas" ANA ("estimated") [nelder_mead+bfgs]: loglik 80.059970 (statsmodels 80.059970, shortfall rel -1.44e-11) alpha 0.17335 vs 0.17335 converged true iters 494 fevals 1406
+mle "log_ukgas" ANA ("estimated") [bfgs]: loglik 80.059970 (statsmodels 80.059970, shortfall rel -1.43e-11) alpha 0.17335 vs 0.17335 converged true iters 32 fevals 481
+mle "log_ukgas" AAA ("estimated") [nelder_mead+bfgs]: loglik 94.279844 (statsmodels 93.392466, shortfall rel -9.50e-3) alpha 0.02535 vs 0.00010 converged true iters 1036 fevals 2688
+mle "log_ukgas" AAA ("estimated") [bfgs]: loglik 94.279844 (statsmodels 93.392466, shortfall rel -9.50e-3) alpha 0.02535 vs 0.00010 converged true iters 57 fevals 1088
+mle "log_ukgas" AAdA ("estimated") [nelder_mead+bfgs]: loglik 93.868181 (statsmodels 93.868181, shortfall rel -2.14e-9) alpha 0.02978 vs 0.02978 converged true iters 1224 fevals 3207
+mle "log_ukgas" AAdA ("estimated") [bfgs]: loglik 93.868142 (statsmodels 93.868181, shortfall rel 4.20e-7) alpha 0.02978 vs 0.02978 converged true iters 51 fevals 1159
+mle "log_ukgas" AAA ("heuristic") [nelder_mead+bfgs]: loglik 94.156309 (statsmodels 94.156309, shortfall rel -1.86e-13) alpha 0.02532 vs 0.02532 converged true iters 324 fevals 888
+mle "log_ukgas" AAA ("heuristic") [bfgs]: loglik 94.156304 (statsmodels 94.156309, shortfall rel 4.61e-8) alpha 0.02532 vs 0.02532 converged true iters 24 fevals 231
+mle "log_ukgas" ANA ("heuristic") [nelder_mead+bfgs]: loglik 79.794711 (statsmodels 79.794711, shortfall rel -7.27e-14) alpha 0.17433 vs 0.17433 converged true iters 93 fevals 308
+mle "log_ukgas" ANA ("heuristic") [bfgs]: loglik 79.794711 (statsmodels 79.794711, shortfall rel 1.30e-10) alpha 0.17433 vs 0.17433 converged true iters 17 fevals 105
+mle "co2_monthly" AAA ("estimated") [nelder_mead+bfgs]: loglik -124.339196 (statsmodels -124.339200, shortfall rel -3.07e-8) alpha 0.57220 vs 0.57223 converged false iters 2561 fevals 11714
+mle "co2_monthly" AAA ("estimated") [bfgs]: loglik -124.339196 (statsmodels -124.339200, shortfall rel -3.07e-8) alpha 0.57220 vs 0.57223 converged true iters 121 fevals 4224
+mle "co2_monthly" AAdA ("estimated") [nelder_mead+bfgs]: loglik -136.737672 (statsmodels -136.737307, shortfall rel 2.67e-6) alpha 0.58586 vs 0.58585 converged true iters 2813 fevals 8510
+mle "co2_monthly" AAdA ("estimated") [bfgs]: loglik -136.737672 (statsmodels -136.737307, shortfall rel 2.67e-6) alpha 0.58586 vs 0.58585 converged true iters 110 fevals 4025
+mle "airline" MNA ("estimated") [nelder_mead+bfgs]: loglik -561.897106 (statsmodels -561.897215, shortfall rel -1.93e-7) alpha 0.39574 vs 0.39577 converged true iters 1839 fevals 3707
+mle "airline" MNA ("estimated") [bfgs]: loglik -561.897132 (statsmodels -561.897215, shortfall rel -1.47e-7) alpha 0.39574 vs 0.39577 converged true iters 44 fevals 1421
+mle "airline" MAA ("estimated") [nelder_mead+bfgs]: loglik -547.654240 (statsmodels -547.654896, shortfall rel -1.20e-6) alpha 0.29790 vs 0.29784 converged true iters 2386 fevals 9041
+mle "airline" MAA ("estimated") [bfgs]: loglik -547.654240 (statsmodels -547.654896, shortfall rel -1.20e-6) alpha 0.29790 vs 0.29784 converged true iters 125 fevals 4257
+mle "airline" MAdA ("estimated") [nelder_mead+bfgs]: loglik -550.608186 (statsmodels -550.608337, shortfall rel -2.75e-7) alpha 0.29775 vs 0.29775 converged true iters 2345 fevals 5920
+mle "airline" MAdA ("estimated") [bfgs]: loglik -550.608272 (statsmodels -550.608337, shortfall rel -1.19e-7) alpha 0.29775 vs 0.29775 converged true iters 94 fevals 3430
+mle "sim_aadn" AAdN ("heuristic") [nelder_mead+bfgs]: loglik -419.619032 (statsmodels -419.619032, shortfall rel -3.81e-12) alpha 0.38540 vs 0.38540 converged true iters 232 fevals 631
+mle "sim_aadn" AAdN ("heuristic") [bfgs]: loglik -419.619032 (statsmodels -419.619032, shortfall rel -3.72e-12) alpha 0.38540 vs 0.38540 converged true iters 24 fevals 217
+mle "sim_aadn" MAN ("heuristic") [nelder_mead+bfgs]: loglik -423.824437 (statsmodels -423.824437, shortfall rel -1.26e-11) alpha 0.43172 vs 0.43172 converged true iters 82 fevals 208
+mle "sim_aadn" MAN ("heuristic") [bfgs]: loglik -423.824437 (statsmodels -423.824437, shortfall rel -1.26e-11) alpha 0.43172 vs 0.43172 converged true iters 9 fevals 50
+mle: 21 cases x 2 optimizers; worst loglik shortfall (rel) 2.67e-6; worst |alpha gap| 2.53e-2 over all pairs, 6.11e-5 over the 40 pairs whose optima coincide; largest gain over statsmodels 0.8874 on "log_ukgas" AAA ("estimated") [nelder_mead+bfgs]
+test maximum_likelihood_matches_or_beats_statsmodels_with_two_optimizers ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
+
+===== cargo test -p tsecon-ets --release --test ets_properties -- --nocapture =====
+   Compiling tsecon-ets v0.10.0 (/home/user/tsecon/crates/tsecon-ets)
+    Finished `release` profile [optimized] target(s) in 4.78s
+     Running tests/ets_properties.rs (target-int/release/deps/ets_properties-78244417a7746d50)
+
+running 10 tests
+test additive_models_are_scale_and_location_equivariant ... ok
+test auto_ets_refit_of_the_winner_reproduces_its_numbers_exactly ... ok
+coverage ANN (T = 300, h = 1..8, 300 reps): 80% -> 0.812 (h1 0.807, h8 0.793); 95% -> 0.956 (h1 0.953, h8 0.940)
+coverage AAN (T = 300, h = 1..8, 300 reps): 80% -> 0.804 (h1 0.800, h8 0.807); 95% -> 0.955 (h1 0.957, h8 0.957)
+coverage AAdN (T = 300, h = 1..8, 300 reps): 80% -> 0.794 (h1 0.807, h8 0.787); 95% -> 0.952 (h1 0.950, h8 0.947)
+coverage ANA (T = 300, h = 1..8, 300 reps): 80% -> 0.812 (h1 0.820, h8 0.800); 95% -> 0.952 (h1 0.947, h8 0.940)
+test class1_interval_coverage_is_near_nominal ... ok
+test degenerate_input_raises_teaching_errors_naming_the_argument ... ok
+test heuristic_and_known_initialisations_estimate_only_the_smoothing_parameters ... ok
+test multiplicative_seasonal_states_average_one_and_forecast_is_the_zero_error_path ... ok
+ANN alpha at T = 100: mean 0.4762 sd 0.0948
+ANN alpha at T = 800: mean 0.4887 sd 0.0300
+test recovery_spread_shrinks_with_t ... ok
+h = 1: simulated width 37.731 exact width 38.019 (mean 968.065 vs 968.080)
+h = 2: simulated width 40.721 exact width 40.893 (mean 968.065 vs 968.080)
+h = 3: simulated width 42.877 exact width 43.578 (mean 968.065 vs 968.080)
+h = 4: simulated width 45.601 exact width 46.107 (mean 968.065 vs 968.080)
+h = 5: simulated width 48.327 exact width 48.504 (mean 968.065 vs 968.080)
+h = 6: simulated width 51.111 exact width 50.789 (mean 968.065 vs 968.080)
+test simulated_intervals_of_a_multiplicative_model_track_the_exact_ones_at_small_noise ... ok
+recovery ANN alpha: truth 0.500 mean 0.4964 sd 0.0328 (T = 800, 40 reps)
+recovery ANN beta: truth 0.000 mean 0.0000 sd 0.0000 (T = 800, 40 reps)
+recovery ANN gamma: truth 0.000 mean 0.0000 sd 0.0000 (T = 800, 40 reps)
+recovery AAN alpha: truth 0.400 mean 0.3958 sd 0.0306 (T = 800, 40 reps)
+recovery AAN beta: truth 0.100 mean 0.0973 sd 0.0103 (T = 800, 40 reps)
+recovery AAN gamma: truth 0.000 mean 0.0000 sd 0.0000 (T = 800, 40 reps)
+recovery ANA alpha: truth 0.300 mean 0.2969 sd 0.0254 (T = 800, 40 reps)
+recovery ANA beta: truth 0.000 mean 0.0000 sd 0.0000 (T = 800, 40 reps)
+recovery ANA gamma: truth 0.200 mean 0.1950 sd 0.0227 (T = 800, 40 reps)
+recovery MNN alpha: truth 0.500 mean 0.4961 sd 0.0326 (T = 800, 40 reps)
+recovery MNN beta: truth 0.000 mean 0.0000 sd 0.0000 (T = 800, 40 reps)
+recovery MNN gamma: truth 0.000 mean 0.0000 sd 0.0000 (T = 800, 40 reps)
+recovery MAdM alpha: truth 0.300 mean 0.2939 sd 0.0389 (T = 800, 40 reps)
+recovery MAdM beta: truth 0.030 mean 0.0303 sd 0.0205 (T = 800, 40 reps)
+recovery MAdM gamma: truth 0.150 mean 0.1457 sd 0.0213 (T = 800, 40 reps)
+test smoothing_parameters_are_recovered_at_large_t ... ok
+auto_ets recovery level (ANN) (T = 600, 30 reps): 0.93; picks {"AAN": 1, "AAdN": 1, "ANN": 28}
+auto_ets recovery trend (AAN) (T = 600, 30 reps): 1.00; picks {"AAN": 29, "AAdN": 1}
+auto_ets recovery seasonal (ANA) (T = 600, 30 reps): 0.93; picks {"AAA": 1, "AAdA": 1, "ANA": 28}
+auto_ets recovery multiplicative seasonal (MAdM) (T = 600, 30 reps): 0.90; picks {"MAM": 2, "MAdM": 25, "MNM": 3}
+test auto_ets_recovers_the_generating_form_at_large_t ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.85s
+
+===== cargo test -p tsecon-forecast --release --test mcs_golden -- --nocapture =====
+   Compiling tsecon-forecast v0.10.0 (/home/user/tsecon/crates/tsecon-forecast)
+    Finished `release` profile [optimized] target(s) in 4.72s
+     Running tests/mcs_golden.rs (target-int/release/deps/mcs_golden-ff96b25bd24cf54a)
+
+running 4 tests
+test duplicate_loss_columns_are_refused_under_t_r_and_tied_under_t_max ... ok
+test fixture_certifies_its_gaps ... ok
+test mcs_reproduces_arch_exactly_on_its_resamples ... ok
+test seeded_mcs_matches_arch_at_monte_carlo_tolerance ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+===== cargo test -p tsecon-forecast --release --test spa_golden -- --nocapture =====
+   Compiling tsecon-forecast v0.10.0 (/home/user/tsecon/crates/tsecon-forecast)
+    Finished `release` profile [optimized] target(s) in 4.67s
+     Running tests/spa_golden.rs (target-int/release/deps/spa_golden-b66bf54e5c88cdcd)
+
+running 5 tests
+test fixture_records_the_arch_findings_and_certifies_its_gaps ... ok
+test stepm_reproduces_arch_superior_sets_and_the_transcription ... ok
+test studentized_spa_reproduces_the_hansen_transcription ... ok
+test seeded_spa_matches_arch_at_monte_carlo_tolerance ... ok
+test unstudentized_spa_reproduces_arch_bit_for_bit_on_its_resamples ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+===== cargo test -p tsecon-forecast --release --test spa_mcs_properties -- --nocapture =====
+   Compiling tsecon-forecast v0.10.0 (/home/user/tsecon/crates/tsecon-forecast)
+    Finished `release` profile [optimized] target(s) in 5.33s
+     Running tests/spa_mcs_properties.rs (target-int/release/deps/spa_mcs_properties-f46085bb0b953fec)
+
+running 13 tests
+test an_impossible_replication_count_is_refused_not_allocated ... ok
+test arch_resamples_and_tsecon_draws_share_the_block_conventions ... ok
+test mcs_is_bit_identical_at_any_thread_count ... ok
+test mcs_refusals_name_the_parameter ... ok
+test mcs_sets_are_nested_in_size_and_partition_the_models ... ok
+test seeded_path_equals_an_explicit_replay_of_its_substreams ... ok
+SPA power study (n=200, one model with 0.6x error scale, 200 MC reps): reject at 5%: consistent 0.985, upper 0.985; best_model identified 0.995
+test spa_has_power_against_a_dominated_benchmark ... ok
+test spa_is_bit_identical_at_any_thread_count_and_seed_sensitive ... ok
+test spa_pvalues_bracket_and_stepm_is_a_subset_of_the_winners ... ok
+test spa_refusals_name_the_parameter ... ok
+SPA size study, studentize=true (iid losses, block_size=None (Politis-White); n=200, m=5, B=300, 400 MC reps, mean block length 1.52): P(p_consistent <= alpha) at alpha = [0.05, 0.1, 0.25, 0.5] -> [0.0675, 0.115, 0.29, 0.52]
+MCS coverage study (n150_R: Range, n=150, block_size=5, m=4, two equally-best models, size=0.1, B=300, 1000 MC reps): P(M* in set) = 0.87, P(best model in set) = 0.93, P(dominated model excluded) = 1, mean set size 2.18  [arch on the same design, 1000 reps: 0.881, 0.947, 1.0, 2.23]
+SPA size study, studentize=true (AR(0.5) losses, block_size=None (Politis-White); n=200, m=5, B=300, 400 MC reps, mean block length 3.26): P(p_consistent <= alpha) at alpha = [0.05, 0.1, 0.25, 0.5] -> [0.1225, 0.1775, 0.3475, 0.5875]
+SPA size study, studentize=true (AR(0.5) losses, block_size=8; n=200, m=5, B=300, 400 MC reps, mean block length 8.00): P(p_consistent <= alpha) at alpha = [0.05, 0.1, 0.25, 0.5] -> [0.135, 0.19, 0.3475, 0.5825]
+MCS coverage study (n150_max: Max, n=150, block_size=5, m=4, two equally-best models, size=0.1, B=300, 1000 MC reps): P(M* in set) = 0.895, P(best model in set) = 0.944, P(dominated model excluded) = 1, mean set size 2.21  [arch on the same design, 1000 reps: 0.909, 0.96, 1.0, 2.27]
+SPA size study, studentize=true (AR(0.5) losses, block_size=None (Politis-White); n=800, m=5, B=300, 400 MC reps, mean block length 5.56): P(p_consistent <= alpha) at alpha = [0.05, 0.1, 0.25, 0.5] -> [0.0925, 0.1625, 0.335, 0.5625]
+MCS coverage study (n600_R: Range, n=600, block_size=8, m=4, two equally-best models, size=0.1, B=300, 1000 MC reps): P(M* in set) = 0.872, P(best model in set) = 0.944, P(dominated model excluded) = 1, mean set size 1.88  [arch on the same design, 1000 reps: 0.879, 0.944, 1.0, 1.89]
+SPA size study, studentize=true (AR(0.5) losses, block_size=8; n=800, m=5, B=300, 400 MC reps, mean block length 8.00): P(p_consistent <= alpha) at alpha = [0.05, 0.1, 0.25, 0.5] -> [0.0875, 0.155, 0.3275, 0.56]
+  AR(0.5) losses, block_size=None (Politis-White): 5% rejection 0.1225 at n=200 -> 0.0925 at n=800
+  AR(0.5) losses, block_size=8: 5% rejection 0.135 at n=200 -> 0.0875 at n=800
+test spa_size_studentized_is_measured_and_shrinks_with_the_sample ... ok
+SPA size study, studentize=false (ar05_b14: rho=0.5, block_size=14; n=200, m=5, B=300, 400 MC reps, mean block length 14.00): P(p_consistent <= alpha) at alpha = [0.05, 0.1, 0.25, 0.5] -> [0.08, 0.1425, 0.3075, 0.5475]  [arch on the same design: [0.07, 0.115, 0.32, 0.5575]]
+SPA size study, studentize=false (ar05_b3: rho=0.5, block_size=3; n=200, m=5, B=300, 400 MC reps, mean block length 3.00): P(p_consistent <= alpha) at alpha = [0.05, 0.1, 0.25, 0.5] -> [0.08, 0.1325, 0.325, 0.5375]  [arch on the same design: [0.0575, 0.1225, 0.29, 0.5625]]
+MCS coverage study (n600_max: Max, n=600, block_size=8, m=4, two equally-best models, size=0.1, B=300, 1000 MC reps): P(M* in set) = 0.873, P(best model in set) = 0.945, P(dominated model excluded) = 1, mean set size 1.88  [arch on the same design, 1000 reps: 0.879, 0.944, 1.0, 1.89]
+test mcs_covers_the_set_of_best_models_at_least_1_minus_size_of_the_time ... ok
+SPA size study, studentize=false (ar05_b8: rho=0.5, block_size=8; n=200, m=5, B=300, 400 MC reps, mean block length 8.00): P(p_consistent <= alpha) at alpha = [0.05, 0.1, 0.25, 0.5] -> [0.0675, 0.135, 0.3025, 0.535]  [arch on the same design: [0.05, 0.1125, 0.295, 0.56]]
+SPA size study, studentize=false (iid_b2: rho=0, block_size=2; n=200, m=5, B=300, 400 MC reps, mean block length 2.00): P(p_consistent <= alpha) at alpha = [0.05, 0.1, 0.25, 0.5] -> [0.0375, 0.09, 0.245, 0.495]  [arch on the same design: [0.0375, 0.0775, 0.27, 0.555]]
+test spa_size_unstudentized_matches_arch_rejection_rates ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.34s
+
+===== cargo test -p tsecon-panel --release --test unbalanced_golden -- --nocapture =====
+   Compiling tsecon-ssm v0.10.0 (/home/user/tsecon/crates/tsecon-ssm)
+   Compiling tsecon-bayes v0.10.0 (/home/user/tsecon/crates/tsecon-bayes)
+   Compiling tsecon-ident v0.10.0 (/home/user/tsecon/crates/tsecon-ident)
+   Compiling tsecon-var v0.10.0 (/home/user/tsecon/crates/tsecon-var)
+   Compiling tsecon-panel v0.10.0 (/home/user/tsecon/crates/tsecon-panel)
+    Finished `release` profile [optimized] target(s) in 16.00s
+     Running tests/unbalanced_golden.rs (target-int/release/deps/unbalanced_golden-9daac3ea696cd804)
+
+running 8 tests
+test empluk_panel_is_the_arellano_bond_one ... ok
+test fe_cases_match_linearmodels_panelols ... ok
+test fully_observed_mask_is_bit_identical_to_the_balanced_path ... ok
+test lp_cases_match_linearmodels_per_horizon ... ok
+test masked_lp_at_horizon_zero_is_the_masked_within_regression ... ok
+test dl_cases_match_linearmodels_and_the_delta_method ... ok
+test refusals_name_the_mask_parameter ... ok
+test masked_out_cells_are_never_read ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+===== cargo test -p tsecon-ssm --release --test uc_golden -- --nocapture =====
+   Compiling tsecon-ssm v0.10.0 (/home/user/tsecon/crates/tsecon-ssm)
+    Finished `release` profile [optimized] target(s) in 7.62s
+     Running tests/uc_golden.rs (target-int/release/deps/uc_golden-aef08bf6faadd06d)
+
+running 8 tests
+test missing_observations_fixed_parameters_match_statsmodels ... ok
+test fixed_parameter_component_combinations_match_statsmodels ... ok
+test nile_local_level_fixed_at_durbin_koopman_values ... ok
+llevel: rust -242.0746636354308 vs best -242.07466363546806 (statsmodels -242.07466363670247, scipy -242.07466363546806); converged true, iters 56
+nile mle: rust -633.4645636362454 vs best -633.4645636362458 (statsmodels -633.464563636246, scipy -633.4645636362458); converged true, iters 172
+test nile_local_level_mle_reproduces_durbin_koopman_and_both_optimizers ... ok
+test tvp_fixed_parameters_match_the_statsmodels_transcription ... ok
+lltrend_seasonal4: rust -233.99403033694736 vs best -233.99403033694736 (statsmodels -233.99403035195905, scipy -233.99403033694736); converged true, iters 216
+tvp mle: rust -313.40796367527395 vs best -313.4079636752739 (statsmodels -313.40796372611794, scipy -313.4079636752739); params [1.1717844996546323, 0.007763757411889759, 0.0010709170462662846, 9.808504304788457e-23]; pile_up [false, false, true]
+test tvp_mle_reaches_both_optimizers_and_flags_the_true_zero_variance ... ok
+test tvp_zero_state_variance_is_recursive_least_squares ... ok
+llevel_cycle_damped_stoch: rust -232.21612096054946 vs best -232.24462399392974 (statsmodels -232.24769478052863, scipy -232.24462399392974); converged false, iters 607
+llevel_exog: rust -230.6577701192015 vs best -230.6577701192016 (statsmodels -230.65777012250368, scipy -230.6577701192016); converged true, iters 249
+strend: rust -245.06846518531984 vs best -245.0684651820563 (statsmodels -245.0684652458043, scipy -245.0684651820563); converged true, iters 173
+test mle_cases_reach_the_better_of_two_reference_optimizers ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.01s
+
+===== cargo test -p tsecon-ssm --release --test uc_properties -- --nocapture =====
+   Compiling tsecon-ssm v0.10.0 (/home/user/tsecon/crates/tsecon-ssm)
+    Finished `release` profile [optimized] target(s) in 7.68s
+     Running tests/uc_properties.rs (target-int/release/deps/uc_properties-f425657b80f6a0f3)
+
+running 11 tests
+Nyquist harmonic: 5-state -134.70261806226216 vs 4-state -134.70261806226216 (diff 0e0)
+test a_nyquist_harmonic_state_cannot_change_the_likelihood ... ok
+deterministic seasonal: worst |4-period sum| 5.551115123125783e-16, worst |gamma_t - gamma_{t+4}| 8.881784197001252e-16 (amplitude 1.423)
+test deterministic_dummy_seasonal_sums_to_zero_over_a_period ... ok
+scale equivariance (c = 1000): worst relative deviation — params 2.883945678444174e-10, se 2.2720593577342363e-8
+scale equivariance (c = 1000): loglik 2.2006891838282406e-15, level/forecast paths 3.061857164009187e-11, standardized residuals 3.323665787036134e-10
+test fit_is_invariant_to_the_scale_of_y ... ok
+test cycle_period_bounds_confine_the_estimated_frequency ... ok
+local level recovery T=1200, 12 seeds: median |rel err| eps 0.0361 eta 0.0958; mean rel bias eps -0.0178 eta 0.0153
+test local_level_mle_recovers_the_variances_at_large_t ... ok
+test missing_gap_widens_the_smoothed_variance ... ok
+test refusals_name_the_offending_argument ... ok
+cycle frequency -> 0 divergence: [(0.01, -188.15310963072542), (0.0001, -183.5461589092494), (1e-6, -162.52700876914622)]
+cycle frequency 1e-8 (past the cancellation guard): -192.88999191570647
+default bounds: fitted cycle period 2.000 (nobs 120)
+test the_cycle_log_likelihood_diverges_as_the_frequency_goes_to_zero ... ok
+forecast coverage (nominal 0.95), 80 seeds, h=1..12: [0.925, 0.9625, 0.975, 0.975, 0.9375, 0.95, 0.9625, 0.9625, 0.95, 0.9375, 0.925, 0.9375]
+test forecast_intervals_cover_at_the_nominal_rate ... ok
+test tvp_zero_state_variance_is_expanding_window_ols ... ok
+tvp pile-up share: constant coefficients 0.604, moving (q=0.05) 0.000 over 48 coefficients; moving estimates min 0.0029 median 0.0417 max 0.1085 (truth 0.05)
+test tvp_pile_up_flags_constant_coefficients_and_not_moving_ones ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 41.35s
+
+===== cargo test -p tsecon-var --release --test var_cf_golden -- --nocapture =====
+   Compiling tsecon-var v0.10.0 (/home/user/tsecon/crates/tsecon-var)
+    Finished `release` profile [optimized] target(s) in 6.87s
+     Running tests/var_cf_golden.rs (target-int/release/deps/var_cf_golden-d17cb65f660eb5db)
+
+running 7 tests
+test conditioning_at_the_unconditional_value_moves_nothing_but_the_variance ... ok
+test constrained_cells_are_pinned_exactly ... ok
+test golden_closed_form_every_case ... ok
+test macro_scenario_reads_right ... ok
+test golden_kalman_conditioning_every_case ... ok
+test short_condition_lists_are_padded_with_free_rows ... ok
+test unconditional_path_is_the_plain_forecast ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+===== cargo test -p tsecon-var --release --test var_cf_properties -- --nocapture =====
+   Compiling tsecon-var v0.10.0 (/home/user/tsecon/crates/tsecon-var)
+    Finished `release` profile [optimized] target(s) in 8.39s
+     Running tests/var_cf_properties.rs (target-int/release/deps/var_cf_properties-84e19496cb254b2e)
+
+running 6 tests
+test implied_shocks_are_minimum_norm_and_feasible ... ok
+conditional coverage: h=1 se ratio 0.8384 (four-cell path) / 0.8527 (single cell), mean Mahalanobis 3.977 (reps 2000, T 4000)
+  h=1: conditional 0.9470 unconditional 0.9465 standardised-error variance 0.9862
+  h=2: conditional 0.9540 unconditional 0.9575 standardised-error variance 0.9891
+  h=3: conditional 0.9540 unconditional 0.9515 standardised-error variance 0.9715
+  h=4: conditional 0.9605 unconditional 0.9605 standardised-error variance 0.9578
+test conditional_forecast_coverage_under_the_dgp ... ok
+power (T = 300, 300 reps): omitted lag Q 1.0000, adjusted Q 1.0000
+size at 5% (T = 200, k = 2, nlags = 8, 1000 reps): Q 0.0460, adjusted Q 0.0540, Jarque-Bera 0.0420; mean adjusted p 0.4923
+test portmanteau_and_jarque_bera_size_under_white_noise_residuals ... ok
+test refusals_name_the_parameter ... ok
+test stability_flag_is_consistent ... ok
+power (T = 300, 300 reps): Jarque-Bera against t(4) 1.0000
+test portmanteau_and_jarque_bera_power ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+===== cargo test -p tsecon-var --release --test var_diag_golden -- --nocapture =====
+   Compiling tsecon-var v0.10.0 (/home/user/tsecon/crates/tsecon-var)
+    Finished `release` profile [optimized] target(s) in 7.46s
+     Running tests/var_diag_golden.rs (target-int/release/deps/var_diag_golden-fdeaaae786615a3e)
+
+running 5 tests
+test golden_portmanteau ... ok
+test golden_normality ... ok
+test golden_roots_and_bundle ... ok
+test portmanteau_refusals_name_nlags ... ok
+test golden_select_order_table ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+===== cargo test -p tsecon-var --release --test girf_budget -- --nocapture =====
+   Compiling tsecon-var v0.10.0 (/home/user/tsecon/crates/tsecon-var)
+    Finished `release` profile [optimized] target(s) in 6.67s
+     Running tests/girf_budget.rs (target-int/release/deps/girf_budget-cb9ebb2677b523b2)
+
+running 2 tests
+test a_request_under_the_budget_runs_and_the_budget_is_two_gib ... ok
+test a_request_beyond_the_budget_is_refused_quickly_naming_the_counts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+DONE

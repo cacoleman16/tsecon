@@ -1,0 +1,27 @@
+[package]
+name = "tsecon-ets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Innovations state-space exponential smoothing (ETS) for the tsecon time-series library (roadmap Module 02, Tier 1): the Hyndman-Koehler-Snyder-Grose (2002) / Hyndman et al. (2008) taxonomy of 30 error/trend/seasonal models with additive or multiplicative components and damped trends, maximum-likelihood estimation of the smoothing parameters and initial states, the Hyndman (2008) heuristic initialisation, class-1 closed-form forecast variances, seeded simulation-based prediction intervals for the nonlinear classes, and the information-criterion model search behind R's forecast::ets (auto ETS)"
+
+[dependencies]
+# The one optimizer API every model crate consumes: Nelder-Mead simplex and
+# BFGS/L-BFGS with central-difference gradients for the concentrated
+# Gaussian likelihood, plus the `Bounded` logistic transform that keeps the
+# smoothing parameters inside the traditional box during the search.
+tsecon-optim = { path = "../tsecon-optim" }
+# Seeded, platform-independent Philox streams for the simulation-based
+# prediction intervals of the multiplicative classes (Box-Muller normals
+# drawn from `Stream::new(seed)`, bit-reproducible on every platform).
+tsecon-rng = { path = "../tsecon-rng" }
+# The inverse normal CDF for the class-1 (linear, additive-error) prediction
+# intervals and the empirical-quantile intervals' nominal levels.
+tsecon-stats = { path = "../tsecon-stats" }
+
+[dev-dependencies]
+# float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
+# printed, not serde_json's default 1-ulp fast path.
+serde_json = { version = "1", features = ["float_roundtrip"] }

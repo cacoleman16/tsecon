@@ -1,0 +1,58 @@
+[unobserved_components] non-finite (documented): [('$.se', 'array(4,) nan=3 inf=0'), ('$.std_resid', 'array(200,) nan=5 inf=0')]
+[unobserved_components] returned keys NOT named in card: ['aic', 'bic', 'cycle_var', 'estimated', 'filtered_cycle', 'filtered_cycle_var', 'filtered_freq_seasonal', 'filtered_freq_seasonal_var', 'filtered_level', 'filtered_level_var', 'filtered_seasonal', 'filtered_seasonal_var', 'filtered_slope', 'filtered_slope_var', 'filtered_state_var', 'freq_seasonal_var', 'loglik', 'n_fevals', 'n_iter', 'nobs', 'nobs_observed', 'seasonal_var', 'slope_var', 'smoothed_state_var', 'trend_specification']
+[unobserved_components] 48 keys; summarize=97 lines; json=True pickle=True nonfinite=2 shapes_checked=26
+[tvp_regression] non-finite (documented): [('$.std_resid', 'array(200,) nan=3 inf=0')]
+[tvp_regression] returned keys NOT named in card: ['beta_filtered_var', 'coef_names', 'converged', 'estimated', 'loglik', 'n_fevals', 'n_iter', 'nobs', 'nobs_observed']
+[tvp_regression] 27 keys; summarize=48 lines; json=True pickle=True nonfinite=1 shapes_checked=14
+[ets_fit] phantom candidates in __doc__: ['ets']
+[ets_fit] phantom candidates in stub: ['ets']
+[ets_fit] 49 keys; summarize=74 lines; json=True pickle=True nonfinite=0 shapes_checked=16
+[auto_ets] phantom candidates in __doc__: ['ets_fit', 'status']
+[auto_ets] phantom candidates in stub: ['ets_fit', 'status']
+[auto_ets] 54 keys; summarize=80 lines; json=True pickle=True nonfinite=0 shapes_checked=17
+[var_conditional_forecast] returned keys NOT named in card: ['constrained']
+[var_conditional_forecast] 15 keys; summarize=74 lines; json=True pickle=True nonfinite=0 shapes_checked=10
+[var_diagnostics] returned keys NOT named in card: ['jarque_bera_pvalue', 'kurtosis_pvalue', 'nobs', 'portmanteau_adjusted_pvalue', 'portmanteau_pvalue', 'skewness_pvalue']
+[var_diagnostics] phantom candidates in __doc__: ['T', 'b1', 'b2']
+[var_diagnostics] 21 keys; summarize=29 lines; json=True pickle=True nonfinite=0 shapes_checked=4
+[var_select_order] returned keys NOT named in card: ['aic_values', 'bic_values', 'fpe_values', 'hqic_values']
+[var_select_order] 11 keys; summarize=20 lines; json=True pickle=True nonfinite=0 shapes_checked=5
+[spa_test] returned keys NOT named in card: ['boot_consistent', 'boot_lower', 'boot_upper', 'm']
+[spa_test] phantom candidates in __doc__: ['dbar_k']
+[spa_test] phantom candidates in stub: ['dbar_k']
+[spa_test] 24 keys; summarize=41 lines; json=True pickle=True nonfinite=0 shapes_checked=10
+[model_confidence_set] returned keys NOT named in card: ['m', 'n_steps', 'statistics']
+[model_confidence_set] phantom candidates in __doc__: ['T_R', 'T_max']
+[model_confidence_set] phantom candidates in stub: ['T_R', 'T_max']
+[model_confidence_set] phantom candidates in card: ['p_value_upper']
+[model_confidence_set] 16 keys; summarize=27 lines; json=True pickle=True nonfinite=0 shapes_checked=5
+[stepm_test] returned keys NOT named in card: ['boot_consistent', 'boot_lower', 'boot_upper', 'm', 'n_steps', 'n_superior', 'step_crit_values', 'steps']
+[stepm_test] phantom candidates in __doc__: ['spa_test']
+[stepm_test] phantom candidates in stub: ['spa_test']
+[stepm_test] 30 keys; summarize=50 lines; json=True pickle=True nonfinite=0 shapes_checked=13
+[fmols] returned keys NOT named in card: ['estimator', 'n_det', 'n_lags', 'n_x']
+[fmols] 28 keys; summarize=61 lines; json=True pickle=True nonfinite=0 shapes_checked=12
+[dols] non-finite (documented): [('$.ic_value', 'nan')]
+[dols] returned keys NOT named in card: ['full_param_names', 'full_se', 'n_det', 'n_total', 'n_x']
+[dols] phantom candidates in __doc__: ['sigma2_HAC']
+[dols] phantom candidates in stub: ['sigma2_HAC']
+[dols] 36 keys; summarize=60 lines; json=True pickle=True nonfinite=1 shapes_checked=13
+[ccr] returned keys NOT named in card: ['estimator', 'n_det', 'n_lags', 'n_x']
+[ccr] 28 keys; summarize=61 lines; json=True pickle=True nonfinite=0 shapes_checked=12
+[panel_fe@mask] returned keys NOT named in card: ['bse', 'params', 'se_type', 'tvalues']
+[panel_fe@mask] 4 keys; summarize=11 lines; json=True pickle=True nonfinite=0 shapes_checked=3
+[panel_distributed_lag@mask] returned keys NOT named in card: ['entity_effects', 'entity_trends']
+[panel_distributed_lag@mask] phantom candidates in __doc__: ['B_2']
+[panel_distributed_lag@mask] phantom candidates in stub: ['B_2']
+[panel_distributed_lag@mask] phantom candidates in card: ['None', 'x0_L0', 'x0_L1']
+[panel_distributed_lag@mask] 26 keys; summarize=65 lines; json=True pickle=True nonfinite=0 shapes_checked=15
+[panel_lp@mask] returned keys NOT named in card: ['cumulative', 'irf', 'se', 'se_type']
+[panel_lp@mask] phantom candidates in __doc__: ['band']
+[panel_lp@mask] phantom candidates in stub: ['band_alpha', 'band_n_sim', 'band_seed', 'cov_se_max_rel_diff', 'critical_value', 'lower', 'n_cells', 'n_cells_used', 'pointwise_critical_value', 'upper']
+[panel_lp@mask] 7 keys; summarize=14 lines; json=True pickle=True nonfinite=0 shapes_checked=3
+[lp_did@mask] returned keys NOT named in card: ['se_type']
+[lp_did@mask] phantom candidates in __doc__: ['pooled_post_att', 'pooled_post_n_switchers', 'pooled_post_nobs', 'pooled_post_se', 'pooled_pre_att', 'pooled_pre_n_switchers', 'pooled_pre_nobs', 'pooled_pre_se']
+[lp_did@mask] phantom candidates in stub: ['pooled_post_att', 'pooled_post_n_switchers', 'pooled_post_nobs', 'pooled_post_se']
+[lp_did@mask] 11 keys; summarize=20 lines; json=True pickle=True nonfinite=0 shapes_checked=5
+
+REACHED 17/17; candidates raised: 15

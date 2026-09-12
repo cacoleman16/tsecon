@@ -39,7 +39,18 @@ venv) in one of two ways:
   100× dlog growth rates, and fitted model outputs) are stored — no raw
   licensed dataset is redistributed.
 
-One fixture is deliberately **not** a third-party golden:
+- **Transformations of an Rdatasets series fetched at generation time**
+  (`statsmodels.datasets.get_rdataset(<item>, <package>)`): the only one so
+  far is `panel_unbalanced.json`, which stores the **logs** of three columns
+  (`emp`, `wage`, `capital`) of the Arellano-Bond (1991) UK firm panel
+  `plm::EmplUK` laid out as `N x T` calendar arrays with `null` outside the
+  observation mask, because the unbalanced-panel goldens have to be pinned on
+  the same 1031 firm-years linearmodels saw. Like `100·log(realgdp)` above
+  these are transformations rather than the source file, and the generator
+  records the source in the fixture's `source` field; nothing else of the
+  dataset (industry, year-of-entry, the remaining columns) is stored.
+
+Two fixtures are deliberately **not** third-party goldens.
 `backtest_string_snapshot.json` (generator
 `generate_backtest_string_snapshot.py`) is a *self-snapshot* of the
 string-forecaster paths of `backtest`/`conformal_forecast`/
@@ -49,6 +60,12 @@ forecaster plumbing landed in 0.6.0-dev. Its job is regression, not
 validation: `test_backtest_callable.py` asserts the pre-existing string
 surfaces stayed bit-identical. Regenerate it only to re-baseline after an
 *intentional* behavioral change to those paths.
+`panel_balanced_snapshot.json` (generator
+`generate_panel_balanced_snapshot.py`) is the same idea for the panel crate:
+a float-hex snapshot of every balanced-panel call of `panel_fe`,
+`panel_distributed_lag`, `panel_lp`, `lp_did` and `mean_group_var`, captured
+from the 0.9.0 build immediately before the observation mask for unbalanced
+panels landed, and asserted bit-identical by `test_panel_unbalanced.py`.
 
 The `*.csv` files are the exception, and are data rather than derived values:
 public datasets vendored **with attribution** for the replication pages
@@ -59,6 +76,9 @@ VAR-Toolbox mirror;
 `yield_curve_recession.csv` — FRED series GS10/TB3MS/USREC;
 `sunspots_tong.csv` — the public-domain annual Wolf sunspot numbers
 1700–1988, via `statsmodels.datasets.sunspots`;
+`macrodata_bq.csv` — US real GDP and the unemployment rate 1959Q1–2009Q3
+(US-government statistics, public domain) extracted verbatim from the bundled
+`statsmodels.datasets.macrodata` for the Blanchard-Quah page;
 `glp_sw_panel.csv` — the Stock-Watson (2008) US quarterly panel exactly as
 Giannone-Lenza-Primiceri (2015)'s own replication code consumes it, vendored
 from the public FRBNY-DSGE/BrookingsPC2020 GitHub mirror of their web
@@ -68,6 +88,20 @@ parameters, Federal Reserve Board public data, monthly 1961-2014;
 `acm_published_10y.csv` — the NY Fed's published ACM 10-year term-premium
 decomposition, quarterly, a level/shape validation target). Each carries its
 source in its header comments.
+
+One further fixture reaches the network at generation time and vendors
+nothing: `uc.json` (`generate_uc_fixtures.py`) fits the Harvey-Durbin (1986)
+basic structural model to the UK `Seatbelts` monthly series, which it pulls
+through `sm.datasets.get_rdataset("Seatbelts", "datasets")`. R's `datasets`
+package is GPL-2 — **not** the public-domain footing the `*.csv` files below
+sit on — so the series is **not stored, and nothing that reconstructs it is
+stored**: the fixture keeps only the derived optimum (parameters, both
+flavours of standard error, the log-likelihood, the pile-up flags, `nobs`,
+`k_states`, `nobs_diffuse`). The Python test re-fetches it to run tsecon on
+the same data and **skips** with a message when Rdatasets is unreachable, so
+that leg is not gated in an offline environment; the validation-matrix row
+says so. Everything else in `uc.json` is the bundled public-domain Nile
+series and seeded simulations.
 
 Each fixture records the exact reference-library versions used, so the values
 are reproducible. Regenerate any of them with, e.g.:

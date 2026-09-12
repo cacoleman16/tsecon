@@ -48,6 +48,18 @@
 //!   `alpha_{t+1} = alpha_t + gamma (alpha - err_t)`), plus the
 //!   [`conformal_quantile`] primitive, the [`ar_forecast`] base learner,
 //!   and online evaluators ([`split_conformal_online`], [`enbpi_online`]).
+//! * [`spa`] — the multiple-comparison tests for "does any of these models
+//!   beat the benchmark": White's (2000) Reality Check and Hansen's (2005)
+//!   Superior Predictive Ability test [`spa_test`] with the three
+//!   re-centrings (lower / consistent / upper p-values), the stationary,
+//!   circular-block and moving-block bootstraps of the loss-differential
+//!   panel, Politis-White automatic block length, and the Romano-Wolf
+//!   (2005) StepM procedure [`stepm_test`] that names WHICH models win.
+//! * [`mcs`] — the Hansen-Lunde-Nason (2011) Model Confidence Set
+//!   [`model_confidence_set`]: sequential elimination with the range
+//!   (`T_R`) or max (`T_max`) statistic, returning the set of models
+//!   statistically indistinguishable from the best at a chosen size,
+//!   with per-model MCS p-values.
 //! * [`var_backtest`] — the VaR backtest battery ([`var_backtest`] on
 //!   returns + VaR forecasts with a documented sign convention,
 //!   [`var_backtest_hits`] on a pre-computed 0/1 violation sequence):
@@ -78,6 +90,8 @@ pub mod dm;
 mod error;
 pub mod gw;
 mod hac;
+pub mod mcs;
+pub mod spa;
 pub mod theta;
 mod validate;
 pub mod var_backtest;
@@ -95,5 +109,12 @@ pub use cw::{cw_test, CwResult};
 pub use dm::{dm_test, dm_test_with_loss, DmLoss, DmResult};
 pub use error::ForecastError;
 pub use gw::{gw_test, gw_test_conditional, GwResult};
+pub use mcs::{
+    model_confidence_set, model_confidence_set_with_indices, McsMethod, McsOptions, McsResult,
+};
+pub use spa::{
+    spa_test, spa_test_with_indices, stepm_test, stepm_test_with_indices, ResampleScheme,
+    SpaOptions, SpaResult, StepmOptions, StepmResult,
+};
 pub use theta::{theta_forecast, theta_forecast_with, ThetaForecast};
 pub use var_backtest::{var_backtest, var_backtest_hits, VarBacktestResult};

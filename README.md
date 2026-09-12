@@ -60,8 +60,8 @@ Verify what you got:
 
 ```python
 import tsecon
-print(tsecon.__version__)                                       # 0.9.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 179
+print(tsecon.__version__)                                       # 0.10.0
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 192
           if not n.startswith("_")))
 ```
 
@@ -106,7 +106,7 @@ The **[Quickstart](docs/quickstart.md)** and the symptom-driven
   get routed to the right function.
 - **[Model cards & API reference](docs/reference/README.md)** — the
   assumptions, defaults, failure modes, and validation target of every
-  estimator, plus the full 179-function reference.
+  estimator, plus the full 192-function reference.
 - **[Migration guides](docs/migration/from-statsmodels.md)** — from
   statsmodels, R, and Stata, with a Rosetta glossary.
 - **[Gallery](docs/examples/README.md)** — worked figures in a professional
@@ -117,7 +117,7 @@ mkdocs serve`.
 
 ## What's inside
 
-179 functions callable from Python today: diagnostics, unit-root and
+192 functions callable from Python today: diagnostics, unit-root and
 specification tests (White/Breusch-Pagan, RESET, Chow, CUSUM); STL/MSTL
 seasonal decomposition and automatic ARIMA order selection; ARIMA, GARCH, and
 GAS score-driven volatility; VAR/SVAR with sign-restricted identification,
@@ -169,11 +169,11 @@ Two independent kinds of evidence, both reproducible:
 - **[Benchmarks](benchmarks/)** — a parity-first harness: estimates must match a
   reference *before* anything is timed. All 65 parity metrics across 25
   operations pass. On a release build in the Linux CI-style container
-  (Intel(R) Xeon(R) Processor @ 2.80GHz, 4 cores) tsecon is faster on 22 of 25 operations —
-  ADF 14.3×, VAR(2) 6.8×, Jarque-Bera 122.6× and the Christiano-Fitzgerald
-  filter 22.8× the speed of statsmodels — and slower on 3, which we publish
-  too: GARCH(1,1) QMLE at 0.46× the speed of `arch` (about 2× *slower*), EGARCH at
-  0.15×.
+  (Intel(R) Xeon(R) Processor @ 2.10GHz, 4 cores) tsecon is faster on 22 of 25 operations —
+  ADF 17.1×, VAR(2) 6.6×, Jarque-Bera 133.0× and the Christiano-Fitzgerald
+  filter 15.6× the speed of statsmodels — and slower on 3, which we publish
+  too: GARCH(1,1) QMLE at 0.34× the speed of `arch` (about 3× *slower*), EGARCH at
+  0.12×.
   The parity matrix and every timing live on the
   [speed dashboard](docs/reference/speed.md), rendered from the
   committed [`benchmarks/results/latest.json`](benchmarks/results/latest.json).

@@ -537,7 +537,11 @@ pub fn jsz_loadings(
         });
     }
     let n = lambda_q.len();
-    check_square(sigma_x, n, "JSZ sigma_x (must be n_factors x n_factors)")?;
+    check_square(
+        sigma_x,
+        n,
+        "sigma_x (must be n_factors x n_factors with n_factors = len(lambda_q))",
+    )?;
     check_ppy(periods_per_year)?;
 
     let n_max = maturities[maturities.len() - 1];
@@ -685,7 +689,8 @@ fn p_var(p: &[Vec<f64>]) -> Result<PVar, TermStructureError> {
     let mut resid = zeros(t_v, n);
     for eq in 0..n {
         let y: Vec<f64> = (1..t).map(|i| p[i][eq]).collect();
-        let fit = ols(&y, &cols).map_err(|e| map_ols_err(e, "JSZ portfolio VAR(1)"))?;
+        let fit = ols(&y, &cols)
+            .map_err(|e| map_ols_err(e, "yields (the JSZ portfolio VAR(1) on the yield panel)"))?;
         mu[eq] = fit.params[0];
         phi[eq].copy_from_slice(&fit.params[1..]);
         for (i, &r) in fit.residuals.iter().enumerate() {
@@ -1037,8 +1042,8 @@ fn check_panel(
     let needed = 2 * n_factors + 3;
     if t < needed {
         return Err(TermStructureError::PanelTooShort {
-            what: "JSZ yield panel (the portfolio VAR(1) needs residual degrees \
-                   of freedom)",
+            what: "yields (the JSZ yield panel: the portfolio VAR(1) needs residual \
+                   degrees of freedom)",
             dates: t,
             needed,
         });
@@ -1046,7 +1051,8 @@ fn check_panel(
     for (i, row) in yields.iter().enumerate() {
         if row.len() != m {
             return Err(TermStructureError::DimensionMismatch {
-                what: "JSZ yield panel row vs maturities",
+                what: "yields: every row of the JSZ yield panel must hold one yield per \
+                       entry of maturities",
                 expected: m,
                 got: row.len(),
             });
@@ -1054,7 +1060,7 @@ fn check_panel(
         for (j, &y) in row.iter().enumerate() {
             if !y.is_finite() {
                 return Err(TermStructureError::NonFinite {
-                    what: "JSZ yield panel",
+                    what: "yields (the JSZ yield panel)",
                     index: i * m + j,
                     value: y,
                 });
@@ -1355,7 +1361,9 @@ pub fn fit_jsz(
         .map(|e| e.llf)
         .ok_or(TermStructureError::OptimizationFailed {
             reason: "the JSZ likelihood could not be evaluated at the starting values \
-                     (OLS eigenvalues and residual covariance)",
+                     (OLS eigenvalues and residual covariance) — check the scale of \
+                     yields (decimals per period) and periods_per_year (12 monthly, 4 \
+                     quarterly)",
         })?;
 
     // --- the concentrated objective, centered at the start ---------------------

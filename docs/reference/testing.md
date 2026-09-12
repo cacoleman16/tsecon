@@ -24,14 +24,14 @@ command needs the `--exclude tsecon-python` caveat described
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1839 passed, 0 failed, 10 ignored** | `cargo test --workspace`, result lines summed |
+| Rust tests (total) | **1939 passed, 0 failed, 10 ignored** | `cargo test --workspace`, result lines summed |
 | — integration tests in `crates/*/tests/` | 1538 | |
 | — unit tests in `src/` (`#[cfg(test)]`) | 245 | |
 | — documentation tests | 56 | |
-| Python binding tests | **1727 passed, 0 failed, 1 skipped** in 366 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **2379 passed, 0 failed, 1 skipped** in 362 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
 | Golden fixtures | 100 JSON files, produced by 81 Python generator scripts (plus two R scripts) | `fixtures/` |
-| Public Python functions | 179, **all 179** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
+| Public Python functions | 192, **all 192** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
 
 Of the 10 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
 fingerprints that are platform-specific, two release-only Monte Carlo runs, one
@@ -257,7 +257,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-1727 tests in 106 files. 67 of the 100 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
+2379 tests in 115 files. 67 of the 100 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -278,7 +278,7 @@ cannot cover:
   direction too: a Python moment function that raises must propagate its
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
-- **Surface completeness.** The module exports 179 public callables. This is
+- **Surface completeness.** The module exports 192 public callables. This is
   checked by running the check, not by asserting the answer:
 
   ```sh
@@ -288,7 +288,7 @@ cannot cover:
   txt = ''.join(p.read_text() for p in pathlib.Path('bindings/python/tests').glob('*.py'))
   print(len(fns), sorted(f for f in fns if not re.search(rf'tsecon\.{f}\s*\(', txt)))
   "
-  # 179 []
+  # 192 []
   ```
 
   The honest output of this check was not always empty, and the history is
@@ -525,11 +525,11 @@ Hamilton (1989) Markov-switching GNP on the author's own series
 `test_replication_hamilton_markov.py`); and Hansen (1999) SETAR on the Wolf
 sunspot numbers ([page](../examples/replication-setar-sunspots.md),
 `sunspots_tong.csv`, `test_replication_setar_sunspots.py`). Each page carries
-its own measured-vs-published table; across the eight replications the nine
-guard-test files (`bindings/python/tests/test_replication_*.py`) collect **51
+its own measured-vs-published table; across the nine replications the nine
+guard-test files (`bindings/python/tests/test_replication_*.py`) collect **68
 tests, all passing** on this tree.
 
-All eight pages state their scope explicitly: they reproduce the economic
+All nine pages state their scope explicitly: they reproduce the economic
 result — the sign, significance and magnitude of the published finding — not a
 line-by-line port of the authors' code or their exact inference conventions.
 
@@ -711,7 +711,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 1839 passed, 0 failed
+# 1939 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
@@ -825,7 +825,7 @@ discover.
   `glp_sw_panel.csv`, `hamilton_gnp.csv`, `sunspots_tong.csv`, all under
   `fixtures/`), so every one of them is reproduced offline and cannot break on
   a provider's URL change.
-- **Benchmarks compare 25 of 179 functions.** The parity gate covers the unit-root
+- **Benchmarks compare 25 of 192 functions.** The parity gate covers the unit-root
   tests, the diagnostics, VAR and its IRF/FEVD/Granger, Johansen, the filters,
   the spectra, ridge/elastic-net, and the GARCH family — a broad spot check, not a
   library-wide cross-library audit — that job belongs to the fixtures.

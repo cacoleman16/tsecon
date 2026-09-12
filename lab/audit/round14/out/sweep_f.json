@@ -1,0 +1,688 @@
+{
+ "a": {
+  "unobserved_components": {
+   "level": "'llevel'",
+   "seasonal": "None",
+   "stochastic_seasonal": "None",
+   "freq_seasonal": "None",
+   "freq_seasonal_harmonics": "None",
+   "stochastic_freq_seasonal": "None",
+   "cycle": "False",
+   "damped_cycle": "None",
+   "stochastic_cycle": "None",
+   "cycle_period_bounds": "None",
+   "exog": "None",
+   "forecast_steps": "0",
+   "forecast_exog": "None",
+   "fixed_params": "None",
+   "n_starts": "3"
+  },
+  "tvp_regression": {
+   "constant": "True",
+   "fixed_params": "None",
+   "n_starts": "3"
+  },
+  "ets_fit": {
+   "error": "'add'",
+   "trend": "None",
+   "damped": "False",
+   "seasonal": "None",
+   "seasonal_periods": "None",
+   "initialization": "'estimated'",
+   "horizon": "0",
+   "level": "None",
+   "n_sim": "None",
+   "seed": "None",
+   "optimizer": "None",
+   "smoothing_params": "None",
+   "initial_states": "None",
+   "max_iter": "None"
+  },
+  "auto_ets": {
+   "seasonal_periods": "None",
+   "ic": "'aicc'",
+   "allow_multiplicative_trend": "False",
+   "restrict": "True",
+   "damped": "None",
+   "initialization": "'estimated'",
+   "horizon": "0",
+   "level": "None",
+   "n_sim": "None",
+   "seed": "None",
+   "optimizer": "None"
+  },
+  "var_conditional_forecast": {
+   "lags": "2",
+   "trend": "'c'",
+   "steps": "None",
+   "alpha": "0.05"
+  },
+  "var_diagnostics": {
+   "lags": "2",
+   "trend": "'c'",
+   "nlags": "10"
+  },
+  "var_select_order": {
+   "max_lags": "8",
+   "trend": "'c'"
+  },
+  "spa_test": {
+   "block_size": "None",
+   "reps": "1000",
+   "bootstrap": "'stationary'",
+   "studentize": "True",
+   "nested": "False",
+   "seed": "0"
+  },
+  "model_confidence_set": {
+   "size": "0.1",
+   "method": "'R'",
+   "block_size": "None",
+   "reps": "1000",
+   "bootstrap": "'stationary'",
+   "seed": "0"
+  },
+  "stepm_test": {
+   "size": "0.05",
+   "block_size": "None",
+   "reps": "1000",
+   "bootstrap": "'stationary'",
+   "studentize": "True",
+   "nested": "False",
+   "seed": "0"
+  },
+  "fmols": {
+   "trend": "'c'",
+   "kernel": "'bartlett'",
+   "bandwidth": "None",
+   "bandwidth_rule": "None",
+   "force_int": "True",
+   "df_adjust": "False",
+   "diff": "None",
+   "x_trend": "None"
+  },
+  "dols": {
+   "trend": "'c'",
+   "lags": "None",
+   "leads": "None",
+   "ic": "None",
+   "common": "None",
+   "max_lag": "None",
+   "max_lead": "None",
+   "cov_type": "'unadjusted'",
+   "kernel": "'bartlett'",
+   "bandwidth": "None",
+   "bandwidth_rule": "None",
+   "force_int": "False",
+   "df_adjust": "False"
+  },
+  "ccr": {
+   "trend": "'c'",
+   "kernel": "'bartlett'",
+   "bandwidth": "None",
+   "bandwidth_rule": "None",
+   "force_int": "True",
+   "df_adjust": "False",
+   "diff": "None",
+   "x_trend": "None"
+  },
+  "panel_fe": {
+   "se_type": "'cluster'",
+   "bandwidth": "None",
+   "mask": "None"
+  },
+  "panel_distributed_lag": {
+   "powers": "1",
+   "entity_effects": "True",
+   "time_effects": "True",
+   "entity_trends": "False",
+   "se_type": "'cluster'",
+   "bandwidth": "None",
+   "eval_points": "None",
+   "mask": "None"
+  },
+  "panel_lp": {
+   "horizon": "8",
+   "n_lag_controls": "2",
+   "se_type": "'driscoll_kraay'",
+   "bandwidth": "None",
+   "cumulative": "False",
+   "jackknife": "False",
+   "bias_correction": "'none'",
+   "band": "None",
+   "band_alpha": "0.1",
+   "mask": "None"
+  },
+  "lp_did": {
+   "pre_window": "4",
+   "post_window": "8",
+   "absorbing": "True",
+   "nonabsorbing_lag": "0",
+   "reweight": "False",
+   "pooled": "False",
+   "never_treated_only": "False",
+   "mask": "None"
+  }
+ },
+ "b": {
+  "unobserved_components": [
+   [
+    "__doc__",
+    "stochastic_seasonal",
+    true,
+    "None"
+   ],
+   [
+    "__doc__",
+    "stochastic_freq_seasonal",
+    true,
+    "None"
+   ],
+   [
+    "__doc__",
+    "damped_cycle",
+    false,
+    "None"
+   ],
+   [
+    "__doc__",
+    "stochastic_cycle",
+    false,
+    "None"
+   ],
+   [
+    "__doc__",
+    "stochastic_freq_seasonal",
+    true,
+    "None"
+   ],
+   [
+    "__doc__",
+    "damped_cycle",
+    false,
+    "None"
+   ],
+   [
+    "__doc__",
+    "stochastic_cycle",
+    false,
+    "None"
+   ],
+   [
+    "stub",
+    "stochastic_seasonal",
+    true,
+    "None"
+   ],
+   [
+    "stub",
+    "stochastic_freq_seasonal",
+    true,
+    "None"
+   ],
+   [
+    "stub",
+    "damped_cycle",
+    false,
+    "None"
+   ],
+   [
+    "stub",
+    "stochastic_cycle",
+    false,
+    "None"
+   ],
+   [
+    "stub",
+    "stochastic_freq_seasonal",
+    true,
+    "None"
+   ],
+   [
+    "stub",
+    "damped_cycle",
+    false,
+    "None"
+   ],
+   [
+    "stub",
+    "stochastic_cycle",
+    false,
+    "None"
+   ]
+  ],
+  "tvp_regression": [],
+  "ets_fit": [
+   [
+    "__doc__",
+    "level",
+    0.95,
+    "None"
+   ],
+   [
+    "__doc__",
+    "n_sim",
+    5000,
+    "None"
+   ],
+   [
+    "__doc__",
+    "optimizer",
+    "none",
+    "None"
+   ],
+   [
+    "stub",
+    "level",
+    0.95,
+    "None"
+   ],
+   [
+    "stub",
+    "n_sim",
+    5000,
+    "None"
+   ],
+   [
+    "stub",
+    "optimizer",
+    "none",
+    "None"
+   ],
+   [
+    "guide",
+    "horizon",
+    40,
+    "0"
+   ]
+  ],
+  "auto_ets": [
+   [
+    "__doc__",
+    "allow_multiplicative_trend",
+    true,
+    "False"
+   ],
+   [
+    "stub",
+    "allow_multiplicative_trend",
+    true,
+    "False"
+   ],
+   [
+    "guide",
+    "horizon",
+    40,
+    "0"
+   ]
+  ],
+  "var_conditional_forecast": [],
+  "var_diagnostics": [],
+  "var_select_order": [],
+  "spa_test": [],
+  "model_confidence_set": [],
+  "stepm_test": [],
+  "fmols": [],
+  "dols": [
+   [
+    "guide-bullet",
+    "ic",
+    "\"bic\"",
+    "None"
+   ]
+  ],
+  "ccr": [],
+  "panel_fe": [],
+  "panel_distributed_lag": [],
+  "panel_lp": [
+   [
+    "guide",
+    "horizon",
+    40,
+    "8"
+   ],
+   [
+    "guide-bullet",
+    "bandwidth",
+    "4.0",
+    "None"
+   ]
+  ],
+  "lp_did": []
+ },
+ "c": {
+  "unobserved_components": {
+   "snippets": 6,
+   "unknown": {}
+  },
+  "tvp_regression": {
+   "snippets": 4,
+   "unknown": {}
+  },
+  "ets_fit": {
+   "snippets": 4,
+   "unknown": {}
+  },
+  "auto_ets": {
+   "snippets": 4,
+   "unknown": {}
+  },
+  "var_conditional_forecast": {
+   "snippets": 4,
+   "unknown": {}
+  },
+  "var_diagnostics": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "var_select_order": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "spa_test": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "model_confidence_set": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "stepm_test": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "fmols": {
+   "snippets": 4,
+   "unknown": {}
+  },
+  "dols": {
+   "snippets": 7,
+   "unknown": {}
+  },
+  "ccr": {
+   "snippets": 4,
+   "unknown": {}
+  },
+  "panel_fe": {
+   "snippets": 3,
+   "unknown": {}
+  },
+  "panel_distributed_lag": {
+   "snippets": 4,
+   "unknown": {}
+  },
+  "panel_lp": {
+   "snippets": 5,
+   "unknown": {}
+  },
+  "lp_did": {
+   "snippets": 3,
+   "unknown": {}
+  }
+ },
+ "d": {
+  "unobserved_components": {
+   "level=dconstant": "ok",
+   "level=deterministic constant": "ok",
+   "level=deterministic trend": "ok",
+   "level=dtrend": "ok",
+   "level=fixed intercept": "ok",
+   "level=fixed slope": "ok",
+   "level=irregular": "ok",
+   "level=lldtrend": "ok",
+   "level=llevel": "ok",
+   "level=local level": "ok",
+   "level=local linear deterministic trend": "ok",
+   "level=ntrend": "ok",
+   "level=random walk": "ok",
+   "level=rwalk": "ok"
+  },
+  "tvp_regression": {},
+  "ets_fit": {
+   "error=add": "ok",
+   "error=mul": "ok",
+   "initialization=estimated": "ok",
+   "initialization=heuristic": "ok"
+  },
+  "auto_ets": {
+   "ic=add": "ValueError: ic = \"add\" is invalid: pass \"aicc\" (the default, Hyndman-Khandakar 2008), \"aic\" or \"bic\"",
+   "ic=aic": "ok",
+   "ic=aicc": "ok",
+   "ic=bic": "ok",
+   "ic=error": "ValueError: ic = \"error\" is invalid: pass \"aicc\" (the default, Hyndman-Khandakar 2008), \"aic\" or \"bic\"",
+   "ic=mul": "ValueError: ic = \"mul\" is invalid: pass \"aicc\" (the default, Hyndman-Khandakar 2008), \"aic\" or \"bic\"",
+   "ic=ok": "ValueError: ic = \"ok\" is invalid: pass \"aicc\" (the default, Hyndman-Khandakar 2008), \"aic\" or \"bic\"",
+   "initialization=estimated": "ok",
+   "initialization=heuristic": "ok"
+  },
+  "var_conditional_forecast": {
+   "trend=c": "ok"
+  },
+  "var_diagnostics": {
+   "trend=c": "ok"
+  },
+  "var_select_order": {
+   "trend=c": "ok"
+  },
+  "spa_test": {
+   "bootstrap=circular": "ok",
+   "bootstrap=moving_block": "ok",
+   "bootstrap=stationary": "ok"
+  },
+  "model_confidence_set": {
+   "method=max": "ok",
+   "bootstrap=circular": "ok",
+   "bootstrap=moving_block": "ok",
+   "bootstrap=stationary": "ok"
+  },
+  "stepm_test": {
+   "bootstrap=stationary": "ok"
+  },
+  "fmols": {
+   "kernel=bartlett": "ok",
+   "kernel=parzen": "ok",
+   "kernel=quadratic-spectral": "ok",
+   "trend=c": "ok",
+   "trend=ct": "ok",
+   "trend=ctt": "ok",
+   "trend=n": "ok"
+  },
+  "dols": {
+   "kernel=bartlett": "ok",
+   "trend=c": "ok",
+   "cov_type=robust": "ok",
+   "cov_type=unadjusted": "ok"
+  },
+  "ccr": {
+   "kernel=bartlett": "ok",
+   "trend=c": "ok"
+  },
+  "panel_fe": {
+   "se_type=cluster": "ok",
+   "se_type=driscoll_kraay": "ok",
+   "se_type=nonrobust": "ok"
+  },
+  "panel_distributed_lag": {
+   "se_type=cluster": "ok",
+   "se_type=driscoll_kraay": "ok",
+   "se_type=nonrobust": "ok"
+  },
+  "panel_lp": {
+   "se_type=dj": "ValueError: unknown se_type \"dj\"; expected nonrobust/cluster/driscoll_kraay",
+   "se_type=spj": "ValueError: unknown se_type \"spj\"; expected nonrobust/cluster/driscoll_kraay"
+  },
+  "lp_did": {},
+  "unobserved_components:table": {
+   "level=irregular": "ok",
+   "level=ntrend": "ok",
+   "level=fixed intercept": "ok",
+   "level=deterministic constant": "ok",
+   "level=dconstant": "ok",
+   "level=local level": "ok",
+   "level=llevel": "ok",
+   "level=random walk": "ok",
+   "level=rwalk": "ok",
+   "level=fixed slope": "ok",
+   "level=deterministic trend": "ok",
+   "level=dtrend": "ok",
+   "level=local linear deterministic trend": "ok",
+   "level=lldtrend": "ok",
+   "level=random walk with drift": "ok",
+   "level=rwdrift": "ok",
+   "level=local linear trend": "ok",
+   "level=lltrend": "ok",
+   "level=smooth trend": "ok",
+   "level=strend": "ok",
+   "level=random trend": "ok",
+   "level=rtrend": "ok"
+  },
+  "ets_fit:table": {
+   "error=add": "ok",
+   "error=mul": "ok",
+   "trend=None": "ok",
+   "trend=add": "ok",
+   "trend=mul": "ok",
+   "initialization=estimated": "ok",
+   "initialization=heuristic": "ok",
+   "optimizer=auto": "ok",
+   "optimizer=nelder_mead": "ok",
+   "optimizer=bfgs": "ok",
+   "optimizer=lbfgs": "ok"
+  },
+  "auto_ets:table": {
+   "ic=aicc": "ok",
+   "ic=aic": "ok",
+   "ic=bic": "ok",
+   "initialization=estimated": "ok",
+   "initialization=heuristic": "ok",
+   "optimizer=auto": "ok",
+   "optimizer=nelder_mead": "ok",
+   "optimizer=bfgs": "ok",
+   "optimizer=lbfgs": "ok"
+  },
+  "var_conditional_forecast:table": {
+   "trend=c": "ok",
+   "trend=n": "ok"
+  },
+  "var_diagnostics:table": {
+   "trend=c": "ok",
+   "trend=n": "ok"
+  },
+  "var_select_order:table": {
+   "trend=c": "ok",
+   "trend=n": "ok"
+  },
+  "spa_test:table": {
+   "bootstrap=stationary": "ok",
+   "bootstrap=circular": "ok",
+   "bootstrap=moving_block": "ok"
+  },
+  "stepm_test:table": {
+   "bootstrap=stationary": "ok",
+   "bootstrap=circular": "ok",
+   "bootstrap=moving_block": "ok"
+  },
+  "model_confidence_set:table": {
+   "bootstrap=stationary": "ok",
+   "bootstrap=circular": "ok",
+   "bootstrap=moving_block": "ok",
+   "method=R": "ok",
+   "method=max": "ok"
+  },
+  "fmols:table": {
+   "trend=n": "ok",
+   "trend=c": "ok",
+   "trend=ct": "ok",
+   "trend=ctt": "ok",
+   "kernel=bartlett": "ok",
+   "kernel=parzen": "ok",
+   "kernel=quadratic-spectral": "ok",
+   "bandwidth_rule=newey-west": "ok",
+   "bandwidth_rule=andrews": "ok"
+  },
+  "ccr:table": {
+   "trend=n": "ok",
+   "trend=c": "ok",
+   "trend=ct": "ok",
+   "trend=ctt": "ok",
+   "kernel=bartlett": "ok",
+   "kernel=parzen": "ok",
+   "kernel=quadratic-spectral": "ok",
+   "bandwidth_rule=newey-west": "ok",
+   "bandwidth_rule=andrews": "ok"
+  },
+  "dols:table": {
+   "trend=n": "ok",
+   "trend=c": "ok",
+   "trend=ct": "ok",
+   "trend=ctt": "ok",
+   "kernel=bartlett": "ok",
+   "kernel=parzen": "ok",
+   "kernel=quadratic-spectral": "ok",
+   "cov_type=unadjusted": "ok",
+   "cov_type=robust": "ok"
+  },
+  "panel_fe:table": {
+   "se_type=nonrobust": "ok",
+   "se_type=cluster": "ok",
+   "se_type=driscoll_kraay": "ok"
+  },
+  "panel_distributed_lag:table": {
+   "se_type=nonrobust": "ok",
+   "se_type=cluster": "ok",
+   "se_type=driscoll_kraay": "ok"
+  },
+  "panel_lp:table": {
+   "se_type=nonrobust": "ok",
+   "se_type=cluster": "ok",
+   "se_type=driscoll_kraay": "ok",
+   "bias_correction=none": "ok",
+   "bias_correction=dj": "ok",
+   "bias_correction=spj": "ok",
+   "band=None": "ok",
+   "band=sidak": "ok",
+   "band=bonferroni": "ok"
+  }
+ },
+ "e": {
+  "unobserved_components:stochastic_seasonal without seasonal": "ValueError: stochastic_seasonal was given but seasonal is None: it only switches the dummy seasonal's variance on or off, so without seasonal it is iner",
+  "unobserved_components:freq_seasonal_harmonics without freq_seasonal": "ValueError: freq_seasonal_harmonics was given but freq_seasonal is None: it only sets the harmonics of the trigonometric seasonal blocks, so without fre",
+  "unobserved_components:stochastic_freq_seasonal without freq_seasonal": "ValueError: stochastic_freq_seasonal was given but freq_seasonal is None: it only switches the trigonometric seasonal variances, so without freq_seasona",
+  "unobserved_components:damped_cycle without cycle": "ValueError: damped_cycle was given but cycle=False: it only adds a damping factor to the cycle, so without cycle=True it is inert; pass cycle=True or dr",
+  "unobserved_components:stochastic_cycle without cycle": "ValueError: stochastic_cycle was given but cycle=False: it only switches the cycle variance on, so without cycle=True it is inert; pass cycle=True or dr",
+  "unobserved_components:cycle_period_bounds without cycle": "ValueError: cycle_period_bounds was given but cycle=False: it only bounds the cycle frequency, so without cycle=True it is inert; pass cycle=True or dro",
+  "unobserved_components:forecast_exog without exog": "ValueError: invalid specification: forecast_exog was given but forecast_steps = 0; it is inert without a forecast horizon \u2014 pass forecast_steps or drop ",
+  "ets_fit:damped without trend": "ValueError: damped=True was given but trend=None: only a trend component can be damped (phi multiplies the trend), so the option is inert without one; p",
+  "ets_fit:seasonal_periods without seasonal": "ValueError: seasonal_periods was given but seasonal=None: the period only sizes a seasonal component, so it is inert without one; pass seasonal=\"add\" or",
+  "ets_fit:initial_states under initialization=estimated": "ValueError: initial_states was given but initialization=\"estimated\" computes the initial states itself, so the values would be inert; pass initializatio",
+  "ets_fit:smoothing_params under initialization=estimated": "ValueError: smoothing_params fixes the smoothing parameters, but initialization=\"estimated\" asks to estimate the initial states jointly with them \u2014 that",
+  "ets_fit:optimizer with smoothing_params": "ValueError: optimizer was given but smoothing_params fixes the smoothing parameters, so no optimisation runs and the choice is inert; drop optimizer or ",
+  "ets_fit:max_iter with smoothing_params": "ValueError: max_iter was given but smoothing_params fixes the smoothing parameters, so no optimisation runs and the budget is inert; drop max_iter or dr",
+  "ets_fit:level with horizon=0": "ValueError: level was given but horizon=0 requests no forecast, so the interval level is inert; pass horizon=h (e.g. 12) or drop level",
+  "ets_fit:n_sim with horizon=0": "ValueError: n_sim was given but horizon=0 requests no forecast, so the simulation size is inert; pass horizon=h or drop n_sim",
+  "ets_fit:seed with horizon=0": "ValueError: seed was given but horizon=0 requests no forecast, so it is inert; pass horizon=h or drop seed",
+  "ets_fit:n_sim on a class-1 model": "ValueError: n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact cl",
+  "ets_fit:seed on a class-1 model": "ValueError: seed was given but this is a class-1 model whose prediction intervals are exact closed forms \u2014 nothing is simulated, so seed is inert; drop ",
+  "auto_ets:n_sim with horizon=0": "ValueError: n_sim was given but horizon=0 requests no forecast, so the simulation size is inert; pass horizon=h or drop n_sim",
+  "auto_ets:seed with horizon=0": "ValueError: seed was given but horizon=0 requests no forecast, so it is inert; pass horizon=h or drop seed",
+  "auto_ets:level with horizon=0": "ValueError: level was given but horizon=0 requests no forecast, so the interval level is inert; pass horizon=h (e.g. 12) or drop level",
+  "fmols:bandwidth_rule with an explicit bandwidth": "ValueError: bandwidth_rule = \"andrews\" was given together with an explicit bandwidth = 4: the rule only chooses the bandwidth when bandwidth is None, so",
+  "fmols:diff with a trend-free x_trend": "ValueError: diff = True was given but the regressors are detrended with trend = \"c\", which has no trend term: diff only decides whether the trend is rem",
+  "ccr:bandwidth_rule with an explicit bandwidth": "ValueError: bandwidth_rule = \"andrews\" was given together with an explicit bandwidth = 4: the rule only chooses the bandwidth when bandwidth is None, so",
+  "ccr:diff with a trend-free x_trend": "ValueError: diff = True was given but the regressors are detrended with trend = \"c\", which has no trend term: diff only decides whether the trend is rem",
+  "dols:ic with lags and leads fixed": "ValueError: ic = \"aic\" was given but both lags = 1 and leads = 1 are fixed: the criterion only acts when a lead or lag count is searched, so it would be",
+  "dols:max_lag with lags fixed": "ValueError: max_lag = 4 was given but lags = 1 is fixed: the cap only bounds a searched lag count, so it would be inert; drop max_lag or pass lags = Non",
+  "dols:max_lead with leads fixed": "ValueError: max_lead = 4 was given but leads = 1 is fixed: the cap only bounds a searched lead count, so it would be inert; drop max_lead or pass leads ",
+  "dols:common with lags and leads fixed": "ValueError: common = True was given but both lags = 1 and leads = 1 are fixed: common only restricts the search to lags == leads, so it would be inert; ",
+  "dols:bandwidth_rule with an explicit bandwidth": "ValueError: bandwidth_rule = \"andrews\" was given together with an explicit bandwidth = 4: the rule only chooses the bandwidth when bandwidth is None, so",
+  "panel_fe:bandwidth under se_type=cluster": "ValueError: panel_fe: bandwidth=4 has no effect under se_type=\"cluster\": bandwidth is the Driscoll-Kraay kernel truncation lag, and cluster standard err",
+  "panel_lp:jackknife on an unbalanced panel": "ValueError: unbalanced panel (mask with unobserved cells): jackknife=true / bias_correction=\"dj\" / bias_correction=\"spj\" need a balanced panel: the half",
+  "panel_lp:bias_correction=dj on an unbalanced panel": "ValueError: unbalanced panel (mask with unobserved cells): jackknife=true / bias_correction=\"dj\" / bias_correction=\"spj\" need a balanced panel: the half",
+  "panel_lp:bias_correction=spj on an unbalanced panel": "ValueError: unbalanced panel (mask with unobserved cells): jackknife=true / bias_correction=\"dj\" / bias_correction=\"spj\" need a balanced panel: the half",
+  "lp_did:an unbalanced mask": "ValueError: unbalanced panel (mask with unobserved cells): lp_did needs a balanced panel (mask=None): the clean-control windows and the long differences",
+  "panel_fe:mask=ones": "max|d|=0 at ",
+  "panel_distributed_lag:mask=ones": "max|d|=0 at ",
+  "panel_lp:mask=ones": "max|d|=0 at ",
+  "lp_did:mask=ones": "max|d|=0 at "
+ }
+}

@@ -504,8 +504,321 @@ leg — a runnable third-party cross-check: on identical residuals our
 finite-sample-corrected quantile reproduces `mapie`'s
 `SplitConformalRegressor` interval half-width to 1e-12 relative
 (`test_mapie_split_quantile_cross_check`, skipped automatically where
-`mapie` is absent). EnbPI and ACI have no runnable Python reference —
-they are graded property-MC against their papers' own claims, stated.
+`mapie` is absent). **EnbPI and ACI are cross-checked against `mapie`
+1.5.0's `TimeSeriesRegressor`** (0.10.0; `fixtures/conformal_mapie.json`,
+`generate_conformal_mapie_fixtures.py`, pinned by `test_conformal_mapie.py`),
+graded per leg. **ACI is an exact cross-check** — with the same prefit
+linear point forecaster (handed to `conformal_backtest` as a Python
+callable), the same 75-residual sliding window, the same step size and
+mapie's `AbsoluteConformityScore(sym=True)`, tsecon reproduces mapie's
+per-origin bounds at 1e-12 relative and its miss indicators and `α_t`
+trajectory exactly, on both γ = 0.05 (realized coverage 0.8933, final
+α_t 0.0750) and γ = 0.005 (0.9067, 0.1025). The `sym=True` is essential
+and is the finding worth recording: `TimeSeriesRegressor` **defaults to
+`sym=False`**, which builds the interval from a pair of signed-residual
+quantiles (β = α_t/2 below, 1 − α_t + β above) and is asymmetric about
+the point forecast — not the absolute-score construction the ACI paper
+specifies and this library implements. Three differences remain and none
+fires on these runs: mapie clips `α_t` to [0, 1] (the recursion here is
+unclipped), mapie counts a target exactly on a bound as a miss (here it is
+covered), and when `ceil((m+1)(1−α_t))` runs past the window mapie returns
+an infinite bound while `conformal_backtest` refuses the call naming the
+level and the residuals it would need (on both stored runs the worst order
+index is 74 of 75). **EnbPI is a statistical cross-check only**: same
+algorithm, different bootstrap generators (mapie's
+`BlockBootstrap(length=1)` on a NumPy `RandomState` vs Philox), the `+1`
+finite-sample correction in mapie versus the paper's empirical quantile
+here, and different β grids — so on the same AR(1) series and design the
+two online runs are compared in distribution: realized coverage within
+0.06, mean width within 10%, mean absolute centre gap below 0.05. Measured
+(printed by the test): with the β line search off, coverage 0.9067 both
+sides, mean width 3.4024 here vs 3.4830 in mapie (ratio 0.977), mean
+absolute centre gap 0.0106; with it on, coverage 0.9067 vs 0.9333, width
+3.3117 vs 3.6106 (ratio 0.917), same centre gap. No exact EnbPI pin is
+possible without one side adopting the other's random stream and quantile
+convention, and the test says so.
 
 **References.** Vovk, Gammerman & Shafer (2005); Xu & Xie (2021, 2023);
 Gibbs & Candès (2021).
+
+## Many models at once — `spa_test` / `stepm_test` / `model_confidence_set`
+
+**What they do.** Every test above this section compares **two** forecasters.
+These three compare **many**, and correct for the search that a column of
+pairwise p-values silently invites.
+
+| Function | Question it answers |
+|----------|---------------------|
+| `spa_test` | Does the **best** of $m$ models beat the benchmark, once the search over all $m$ is accounted for? (White's 2000 Reality Check; Hansen's 2005 SPA) |
+| `stepm_test` | **Which** models beat the benchmark, at a controlled family-wise error rate? (Romano-Wolf 2005) |
+| `model_confidence_set` | **Which models are indistinguishable from the best?** — no benchmark needed (Hansen-Lunde-Nason 2011) |
+
+All three consume the same object: a $T \times m$ table of per-origin losses,
+which is what a `backtest` loop already produces (see the runnable example
+below, and guide 5 §"Many models at once").
+
+**`spa_test`.** With $d_{t,k} = L_t(\text{benchmark}) - L_t(\text{model } k)$
+(positive favours the model), the null is $H_0: \max_k \mathbb{E}[d_k] \le 0$
+and the statistic is $\sqrt{n}\max_k \bar d_k/\omega_k$ (`studentize=True`,
+Hansen's SPA) or $\sqrt{n}\max_k \bar d_k$ (`studentize=False`, White's
+Reality Check). The null distribution is a block bootstrap of the **whole**
+loss-differential panel with rows resampled together, so the cross-model
+dependence that shapes a maximum survives. Hansen's contribution is the
+re-centring: `p_value_upper` re-centres every model (White's original —
+conservative, because junk models inflate the simulated maximum),
+`p_value_consistent` leaves models worse than the benchmark by more than
+$\sqrt{2\omega_k^2\log\log n / n}$ un-centred (the recommended p-value, also
+returned as `p_value`), and `p_value_lower` re-centres none with a negative
+sample mean (the liberal bound). Always
+$p_\text{lower} \le p_\text{consistent} \le p_\text{upper}$, and the crate
+asserts it.
+
+**`model_confidence_set`.** Sequential elimination: test equal predictive
+ability across the models still in the set with $T_R$ (`method="R"`, the
+maximum standardized pairwise mean difference — HLN's recommended default) or
+$T_{\max}$ (`method="max"`, each model against the cross-sectional mean); if
+the test rejects at `size`, eliminate the worst and repeat. Each model's
+**MCS p-value** is the running maximum of the step p-values along the
+elimination path, so one call describes every size at once — the set at any
+$\alpha$ is $\{k : p_\text{MCS}(k) > \alpha\}$ and the sets are nested in
+$\alpha$ (asserted).
+
+**Assumptions.** Stationary, index-aligned loss series over a common
+evaluation sample (the same origins, the same horizon, the same scheme —
+`backtest` gives you this for free, and the example below asserts it). The
+block bootstrap needs the dependence to be short-memory relative to the block
+length. Nothing here knows where the losses came from: nested models are as
+invisible to these tests as they are to `dm_test`, so the `cw_test` warning
+still applies column by column. Non-finite losses are refused, never skipped.
+
+**When to use, and when not.** Use `spa_test` the moment you have compared
+more than two or three specifications against a benchmark; use
+`model_confidence_set` when there is no natural benchmark and the honest
+answer is a set rather than a winner; use `stepm_test` when you must name
+the winners and defend each claim. Do **not** use them to rescue a single
+DM comparison (that is `dm_test`'s job and its p-value is the right one), and
+do not use them on $m$ models that are $m$ tunings of one model — every
+column should be a forecast you would have been willing to ship.
+
+**Key arguments and defaults, and why.** `block_size=None` takes the
+Politis-White (2004) / Patton-Politis-White (2009) optimal length of each
+column and averages, reporting it in `block_size` with `block_size_auto`
+True; it is a reasonable default but the block length is the single setting
+that moves these p-values, so report it and check a hand-set value near
+$n^{1/3}$. `reps=1000` is the conventional count — raise it when a p-value
+sits near your decision boundary, because its own Monte Carlo standard error
+is $\sqrt{p(1-p)/\text{reps}}$. `bootstrap="stationary"` (geometric block
+lengths) with `"circular"` and `"moving_block"` available; `studentize=True`
+is Hansen's statistic (see the size numbers below before relying on it in a
+short sample); `nested=False` uses Hansen's eq. 9 kernel for $\omega_k^2$
+rather than a bootstrap-of-the-bootstrap; `size=0.10` for the MCS is HLN's
+own illustration level; `seed=0` — every path is seeded, and bit-identical at
+any thread count (asserted at 1–4 threads).
+
+**How to read the output.** `spa_test` returns `statistic` (on the
+$\sqrt{n}$ scale), `best_model`, the three p-values, `crit_lower` /
+`crit_consistent` / `crit_upper` at `crit_levels` $=[0.90, 0.95, 0.99]$,
+`mean_loss_diff`, `loss_diff_var`, `recentered` (which models the consistent
+p-value left un-centred) and the full replicate vectors. A large gap between
+`p_value_consistent` and `p_value_upper` is informative, not noise: it says
+your search contained models far worse than the benchmark, which is exactly
+what the Reality Check over-penalizes. `model_confidence_set` returns
+`included` / `excluded`, `mcs_p_values` (per model), `elimination_order` with
+the `step_p_values` that removed each model, and `mean_losses`. Read
+`elimination_order` as a diagnostic, not a ranking — $T_R$ eliminates the
+worse member of the most *standardized* pair, so a model with an enormous
+loss **variance** can survive longer than one with a larger mean loss. The
+ranking is `mean_losses`; the evidence is `mcs_p_values`.
+
+**Failure modes.** A model whose losses equal the benchmark's in every period
+has a loss differential of exactly zero — it *is* the benchmark — and
+`spa_test` refuses it by name. For the MCS, a duplicated loss column is
+degenerate under `method="R"` only: the pairwise bootstrap variance of two
+identical columns is exactly zero, so $T_R$ between them is 0/0 and the panel
+is refused. Under `method="max"` nothing is 0/0 — the duplicates share a
+statistic and leave the set together in one step — so the panel is accepted,
+and the refusal fires only when a remaining model's bootstrap standard
+deviation really does collapse. Both behaviours beat the reference's, which
+the fixture generator measures rather than assumes: on a panel with two
+identical loss columns `arch 8.0.0`'s `MCS` warns about the 0/0 division and
+then raises `IndexError` under `method="R"`, and under `method="max"` returns
+nothing within a 45-second, 2 GiB budget. The MCS set is never empty, but a
+set containing everything means the evaluation sample is too short to
+separate anything — look at `n` before writing it up. A p-value of exactly
+0.000 means no replicate exceeded the observed statistic, i.e. $p < 1/\text{reps}$;
+it is not evidence stronger than your replication count.
+
+**Validated against, and the honest grade.** `arch 8.0.0`
+(`arch.bootstrap.{SPA, RealityCheck, StepM, MCS}`) — an independent package —
+at four graded legs, plus seeded Monte Carlo for what no package can pin.
+
+1. **Exact, on the reference's own draws.** `arch` draws from NumPy's
+   generator, which the Rust core cannot reproduce, so `fixtures/spa.json` and
+   `fixtures/mcs.json` store arch's resample **index arrays** and the crate
+   goldens replay them through internal `*_with_indices` entry points. On
+   those resamples tsecon reproduces arch **bit for bit** (every case with
+   $m \ge 2$): the mean loss differentials, all 200 replicate statistics under
+   each of the three re-centrings, the observed statistic, the critical values
+   and the three p-values for SPA/RC; the mean losses, the pairwise variance
+   matrix, the elimination order, the included/excluded sets and the MCS
+   p-values for the MCS; the superior sets for StepM at sizes 0.05 and 0.10.
+   Hansen's kernel variances are pinned at 1e-13 (one `pow` in the kernel
+   weights may differ by an ulp across platforms) and the single-model case at
+   1e-13 (NumPy coalesces a $T \times 1$ panel into a pairwise 1-D reduction;
+   measured and asserted in the generator). The generator certifies a
+   `min_gap` $> 10^{-9}$ between every replicate and the observed statistic, so
+   the p-values are exact by construction rather than by luck.
+2. **Documented-formula, for the studentized path.** No package studentizes —
+   **arch 8.0's `studentize` flag is inert**, which the generator asserts by
+   comparing its output with the flag on and off (`RealityCheck` is literally
+   `class RealityCheck(SPA): pass`) — so `studentize=True` is pinned at 1e-12
+   relative against a NumPy transcription of Hansen's (2005) formulas on the
+   same resamples, with p-values exact. A second recorded finding: arch's
+   `StepM` raises `ValueError` whenever every model is declared superior over
+   two or more steps; tsecon stops the loop with all $m$ models in the set,
+   and the fixture stores which cases hit it.
+3. **Resampling conventions, measured not assumed.** The generator replays
+   arch's own raw draws through the rule `tsecon-bootstrap` documents and gets
+   arch's index arrays back element for element, for all three schemes at
+   three $(n, \text{block\_size})$ settings. **One difference, documented:**
+   arch restarts a stationary block on $u \le p$, tsecon on $u < p$ — they
+   disagree only on the null event $u = p$ (probability $2^{-53}$ per step;
+   the exact ties are counted and were zero). Block length, consecutive
+   layout, the modulo-$n$ wrap for circular, its absence for moving-block, the
+   start ranges and the truncation to $n$ are identical.
+4. **Monte Carlo, for the seeded public path.** `spa_test` and
+   `model_confidence_set` at 4000 replications land within 0.05 of arch's
+   4000-replication p-values (two independent bootstraps differ by ~0.011
+   standard deviations at $p = 0.5$, so 0.05 is ~4.5 sd), and reproduce arch's
+   MCS set exactly on designs the generator certified are separated from
+   `size`.
+
+**Measured size, power and coverage (seeded, asserted in CI).** Design:
+six exchangeable squared-error loss columns whose forecast errors share an
+AR(1) common component — the least favourable null, every model *exactly* as
+good as the benchmark. $n = 200$, $m = 5$, $B = 300$, 400 Monte Carlo
+replications.
+
+| Rejection of `p_value_consistent` at 5% | tsecon | arch, same design |
+|---|---|---|
+| iid losses, `block_size=2` | 0.038 | 0.038 |
+| AR(0.5) losses, `block_size=3` | 0.080 | 0.058 |
+| AR(0.5) losses, `block_size=8` | 0.068 | 0.050 |
+| AR(0.5) losses, `block_size=14` | 0.080 | 0.070 |
+
+These are the **un-studentized** rates, because that is all arch computes;
+they agree with the reference at every level and the test asserts it within
+4 Monte Carlo standard errors. The method is mildly over-sized under
+dependence at $n = 200$ — in both libraries.
+
+**The studentized default costs more size, and we say so.** With
+`studentize=True` the same design rejects at **0.123** (AR(0.5), Politis-White
+block) and **0.135** (block 8) against a nominal 0.05. The mechanism is
+Hansen's own construction, not a defect here: eqs. 5–8 divide the observed
+statistic *and* every bootstrap replicate by the **same** $\omega_k$, so the
+bootstrap maximum carries none of $\omega_k$'s sampling error while the data
+maximum does. It is a finite-sample effect and shrinks with the sample —
+0.123 → **0.093** and 0.135 → **0.088** at $n = 800$ (asserted) — but in a
+short evaluation sample prefer `studentize=False`, or read
+`p_value_upper` alongside. No package computes the studentized statistic, so
+this leg is **measured, not validated**: the numbers above are the claim.
+
+**Power.** Against a benchmark one of whose competitors has a 0.6× error
+scale ($n = 200$, 200 replications): the consistent p-value rejects at 5% in
+**0.985** of samples, White's upper p-value in **0.985**, and `best_model`
+identifies the right column in **0.995**.
+
+**MCS coverage.** Design: four models, two with *exactly* equal expected
+loss (so the best set $M^*$ has two elements), one slightly worse, one
+clearly worst; `size=0.10`, $B = 300$, 1000 replications.
+
+| | $P(M^* \subseteq$ set$)$ | $P$(a best model in set) | $P$(worst excluded) | mean set size |
+|---|---|---|---|---|
+| $T_R$, $n=150$ | 0.870 *(arch 0.881)* | 0.930 *(0.947)* | 1.000 *(1.000)* | 2.18 *(2.23)* |
+| $T_{\max}$, $n=150$ | 0.895 *(0.909)* | 0.944 *(0.960)* | 1.000 *(1.000)* | 2.21 *(2.27)* |
+| $T_R$, $n=600$ | 0.872 *(0.879)* | 0.944 *(0.944)* | 1.000 *(1.000)* | 1.88 *(1.89)* |
+| $T_{\max}$, $n=600$ | 0.873 *(0.879)* | 0.945 *(0.944)* | 1.000 *(1.000)* | 1.88 *(1.89)* |
+
+Read that table honestly. HLN's Theorem 1 is asymptotic and about the whole
+set $M^*$; containing a **two-element** $M^*$ runs at ~0.87 against a nominal
+0.90 and does **not** improve from $n = 150$ to $n = 600$. Two finite-sample
+effects cause it — an early step can drop one of the two best models while
+the inferior ones are still in the set, and the final test between two
+identical models rejects at its own size — and `arch` shows the same
+frequencies to within Monte Carlo error, which is what the crate test
+asserts. The easier event, "*a* best model is in the set", does hold at the
+nominal level (0.93–0.945). In practice: an MCS containing two models does
+not promise 90% that both belong there.
+
+**References.** White, H. (2000), "A Reality Check for Data Snooping,"
+*Econometrica* 68(5), 1097–1126. Hansen, P. R. (2005), "A Test for Superior
+Predictive Ability," *JBES* 23(4), 365–380. Romano, J. P. and M. Wolf (2005),
+"Stepwise Multiple Testing as Formalized Data Snooping," *Econometrica*
+73(4), 1237–1282. Hansen, P. R., A. Lunde and J. M. Nason (2011), "The Model
+Confidence Set," *Econometrica* 79(2), 453–497. Politis, D. N. and J. P.
+Romano (1994), "The Stationary Bootstrap," *JASA* 89, 1303–1313. Politis and
+White (2004) and Patton, Politis and White (2009) for the block length.
+
+### Runnable example — a `backtest` loss table into the model confidence set
+
+```python
+import numpy as np
+import tsecon
+
+rng = np.random.default_rng(7)                    # quarterly: trend + season + AR noise
+n = 160
+t_idx = np.arange(n)
+season = 4.0 * np.array([1.0, -0.4, 0.6, -1.2])[t_idx % 4]
+noise = np.zeros(n)
+e = rng.standard_normal(n)
+for i in range(1, n):
+    noise[i] = 0.6 * noise[i - 1] + 1.5 * e[i]
+y = 50 + 0.3 * t_idx + season + noise
+
+# 1. One backtest per forecaster, under ONE scheme, so the origins align.
+names = ["naive", "drift", "mean", "seasonal_naive", "theta"]
+losses, origins = [], None
+for fc in names:
+    seasonal = {"period": 4} if fc in ("seasonal_naive", "theta") else {}
+    bt = tsecon.backtest(y, window="expanding", train=80, horizon=1,
+                         forecaster=fc, insample_period=4, **seasonal)
+    assert origins is None or bt["origins"] == origins
+    origins = bt["origins"]
+    err = np.array(bt["targets"][0]) - np.array(bt["forecasts"][0])
+    losses.append(err ** 2)
+L = np.column_stack(losses)                       # 80 origins x 5 models
+
+# 2. Which models are indistinguishable from the best?
+mcs = tsecon.model_confidence_set(L, size=0.10, reps=2000, seed=0)
+print(f"{'forecaster':16s} mean loss   MCS p   in the 90% set?")
+for k, nm in enumerate(names):
+    print(f"{nm:16s} {mcs['mean_losses'][k]:8.2f}   {mcs['mcs_p_values'][k]:5.3f}   "
+          f"{'yes' if k in mcs['included'] else 'no'}")
+print("eliminated, worst first:", [names[k] for k in mcs["elimination_order"]])
+print("block length used:", mcs["block_size"], "(automatic:", mcs["block_size_auto"], ")")
+# forecaster       mean loss   MCS p   in the 90% set?
+# naive               45.73   0.000   no
+# drift               46.06   0.000   no
+# mean               351.11   0.000   no
+# seasonal_naive       5.93   0.024   no
+# theta                4.03   1.000   yes
+# eliminated, worst first: ['drift', 'naive', 'mean', 'seasonal_naive', 'theta']
+# block length used: 8 (automatic: True )
+
+# 3. Against a named benchmark: does anything beat the seasonal naive?
+spa = tsecon.spa_test(L[:, 3], L[:, [0, 1, 2, 4]], reps=2000, seed=0)
+print(f"SPA statistic {spa['statistic']:.3f}; p = {spa['p_value']:.3f} consistent, "
+      f"{spa['p_value_upper']:.3f} upper (White); best column {spa['best_model']}")
+print("StepM superior at FWER 5%:",
+      tsecon.stepm_test(L[:, 3], L[:, [0, 1, 2, 4]], size=0.05, reps=2000,
+                        seed=0)["superior_models"])
+# SPA statistic 2.151; p = 0.019 consistent, 0.046 upper (White); best column 3
+# StepM superior at FWER 5%: [3]
+```
+
+The 90% model confidence set is a single model — the strongest verdict an MCS
+can give — and `seasonal_naive` leaves on a p-value rather than on eyeballing
+a 5.93-against-4.03 gap. The gap between the consistent p-value (0.019) and
+White's (0.046) is Hansen's re-centring earning its keep: three of the four
+candidates are far worse than the benchmark, and the Reality Check pays for
+including them.

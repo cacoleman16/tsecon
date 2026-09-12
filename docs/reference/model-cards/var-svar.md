@@ -148,6 +148,251 @@ replications, both arms read off the **same** call: joint coverage
 which asserts it). A 48-point repair that still misses nominal by 4.5 points,
 all of it inherited from the marginal band.
 
+### Conditional (hard-path) forecasts — `var_conditional_forecast`
+
+**What it estimates.** The forecast of every series when some cells of the
+future path are *pinned* to given values — "inflation follows this path for
+four quarters and the policy rate is on hold for two; what happens to output?"
+Stack the future innovations $u = (u_{T+1}', \dots, u_{T+H}')'$. Every future
+cell is the unconditional forecast plus a known linear combination of $u$
+through the MA coefficients $\Phi_h$, so pinning $m$ cells is $m$ linear
+constraints $Bu = r$ (with $r$ the gap between each condition and its
+unconditional forecast). With $\Sigma = I_H \otimes \Sigma_u$ the closed form
+(Doan, Litterman, and Sims 1984; Waggoner and Zha 1999) is
+
+$$
+u^* = \Sigma B'(B\Sigma B')^{-1} r, \qquad
+\tilde y = \hat y + R u^*, \qquad
+V = R\big(\Sigma - \Sigma B'(B\Sigma B')^{-1}B\Sigma\big)R',
+$$
+
+where $R$ is the block-lower-triangular MA matrix. $u^*$ is at once the
+**minimum-norm** shock sequence (in the $\Sigma$ metric) that delivers the
+conditions and the conditional expectation $E[u \mid Bu = r]$ under Gaussian
+innovations, so $\tilde y$ and $V$ are exactly what a Kalman smoother returns
+when the free future cells are set missing (Bańbura, Giannone, and Lenza 2015).
+The Waggoner-Zha *structural* version $\varepsilon^* = (I \otimes P^{-1})u^*$
+is reported for the Cholesky factor $P$ in the data's column order.
+
+**Assumptions.** Everything `var_forecast` assumes, plus: the conditions are
+*hard* (known with certainty) and the coefficients are treated as known. The
+scenario is imposed on the reduced form; no identification is needed for the
+path or its covariance, and nothing about the ordering enters them — only the
+reported `orth_shocks` depend on it.
+
+**When to use (and when not).** Use it for policy scenarios and for
+incorporating external information about the near future (a nowcast of this
+quarter, an announced rate path, a fiscal package with a known profile). Do
+not read it as a causal experiment: a pinned inflation path is delivered by
+*whatever* mix of reduced-form innovations is smallest, not by an identified
+shock — for "what does a monetary policy shock do?" you want an identified
+IRF. Do not use it for *soft* conditions (ranges, distributions) or with
+parameter uncertainty; those are the Bayesian per-draw extensions this
+function deliberately does not attempt.
+
+**Key arguments and defaults (and why).** `conditions` — a nested list, one
+row per horizon, one entry per series, `None`/`NaN` for a free cell; a NumPy
+array with NaN or a pandas DataFrame with missing entries works too. Rows
+beyond `len(conditions)` up to `steps` are free, so a short list pins the near
+horizons only; `steps=None` means `len(conditions)`. At least one cell must be
+pinned (the all-free case *is* `var_forecast`, and is refused with that
+pointer). `lags=2`, `trend="c"`, `alpha=0.05` as in `var_forecast`.
+
+**How to read the output.** `point` is the conditional path — pinned cells
+hold their conditions *exactly*, set bitwise rather than left to rounding.
+`unconditional` is `var_forecast(...)["point"]` bitwise (same recursion).
+`cov` (`[h][i][j]`) is the conditional forecast-error covariance at each
+horizon; `se` its root diagonal, exactly 0 at pinned cells; `unconditional_se`
+alongside it shows what the conditions bought. Conditioning tightens *every*
+free cell that shares innovations with a pinned one — including horizons
+*before* the pinned one, because the smoother runs backwards. `lower`/`upper`
+are `point ± z se`: innovation uncertainty only, coefficients treated as known,
+the `var_forecast` convention. `shocks` are the implied reduced-form
+innovations $u^*$ (row $s$ is period $T+s+1$), `orth_shocks` their
+Cholesky-orthogonalised version. **Read `mahalanobis_pvalue` before you read
+the path**: `mahalanobis` is $r'(B\Sigma B')^{-1}r = \varepsilon^{*\prime}\varepsilon^*$,
+the squared norm of the implied shocks in the model's own metric — a $\chi^2(m)$
+draw when the scenario is one the model would generate on its own — and its
+tail probability says how hard the model is being pushed. A scenario at
+$p < 0.05$ describes a world the model finds implausible, and the conditional
+path is then a statement about that world.
+
+**Failure modes.** Pinning a cell far from its unconditional forecast produces
+a path the model can only reach with a string of large same-signed innovations
+(a small `mahalanobis_pvalue`); pinning *every* series at one horizon makes
+that horizon's covariance exactly zero and leaves only the dynamics to
+propagate; an explosive VAR conditioned at a long horizon can make
+$B\Sigma B'$ numerically singular, which is refused with a pointer to
+`is_stable`; and a `steps` typo is refused by a memory budget rather than
+aborting. That budget is on **memory**, not time: the work is *quadratic* in
+the horizon — 0.03 s at 1 000 steps, 0.46 s at 4 000, 7.6 s at 16 000, 31 s
+at 32 000 on a $k = 3$ VAR(2), a factor of 4 per doubling (audit round 14,
+`lab/audit/round14/out/sweep_g.txt`) — so a `steps` the budget admits (it
+allows roughly $2^{24}/(k \cdot m)$) can still run for hours. Forecast
+horizons are tens of periods in practice; treat five figures as a typo.
+
+**Validated against.** Two exact legs in `fixtures/var_cf.json`
+([generator](../../../fixtures/generate_var_cf_fixtures.py), which never
+imports tsecon): (a) the closed form above transcribed in NumPy — every
+returned quantity pinned at 1e-10; (b) statsmodels
+`VARMAX(endog_with_NaN_future).smooth(params)` at the OLS parameters set by
+name — the Kalman-conditioning route — whose `smoothed_state`,
+`smoothed_state_cov` and `smoothed_state_disturbance` agree with (a) at
+≤ 1.8e-15 at generation and are pinned at 1e-8 in the crate and the binding
+tests, on a seeded VAR(2) (five cases, `trend` c/n, orders 1–3, short
+condition lists, a fully pinned horizon) and on a three-variable US macro
+system built from statsmodels' `macrodata` by transformation only (100·dlog
+real GDP, 400·dlog CPI, Δ T-bill; the scenario "inflation held, rates on
+hold"). The Python suite additionally runs the VARMAX leg live on
+`macrodata` in levels and on a fresh VAR(3) without constant. Seeded Monte
+Carlo ([`var_cf_properties.rs`](../../../crates/tsecon-var/tests/var_cf_properties.rs)):
+with the true VAR(1) fitted on $T = 4000$, conditioning on the realised path
+of series 0 over four horizons, the 95% conditional interval for series 1
+covered **0.9470 / 0.9540 / 0.9540 / 0.9605** at $h = 1..4$ (2000
+replications, MC se 0.005; the unconditional interval 0.9465 / 0.9575 /
+0.9515 / 0.9605), the standardised errors had variance 0.986 / 0.989 /
+0.972 / 0.958, and the mean Mahalanobis statistic was 3.977 against the
+$\chi^2(4)$ mean of 4. Pinning
+series 0 at $h = 1$ *alone* leaves series 1 with the se ratio
+$\sqrt{1-\hat\rho^2}$ exactly (0.8527 at the fitted correlation; 0.8480 at
+the DGP's), while pinning its whole four-horizon path tightens $h = 1$
+further, to 0.8384 — later conditions inform the $h = 1$ innovation through
+the dynamics. The minimum-norm characterisation is
+proved by projection: 20 random feasible alternatives all reproduce the
+pinned cells and all have a strictly larger norm. Grade: **exact** — two
+independent references, both hit at roundoff.
+
+**References.** Doan, Litterman, and Sims (1984), *Econometric Reviews*;
+Waggoner and Zha (1999), *Review of Economics and Statistics*; Bańbura,
+Giannone, and Lenza (2015), *International Journal of Forecasting*;
+Lütkepohl (2005), section 2.2.
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+k, n = 3, 400
+A = np.array([[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.5]])
+Y = np.zeros((n, k))
+for t in range(1, n):
+    Y[t] = A @ Y[t - 1] + 0.3 * rng.standard_normal(k)
+
+# Scenario: series 1 held at 0.5 for four periods, series 2 pinned at 0 in period 2.
+cond = np.full((8, k), np.nan)          # NaN = free cell
+cond[:4, 1] = 0.5
+cond[1, 2] = 0.0
+cf = tsecon.var_conditional_forecast(Y, cond, lags=2, steps=8)
+print("pinned cells:", cf["n_constrained"], " plausibility p =", round(cf["mahalanobis_pvalue"], 3))
+print("series 0, h=1..4  conditional:", np.round(np.array(cf["point"])[:4, 0], 3))
+print("                unconditional:", np.round(np.array(cf["unconditional"])[:4, 0], 3))
+print("se ratio cond/uncond, series 0:", np.round(np.array(cf["se"])[:4, 0] / np.array(cf["unconditional_se"])[:4, 0], 3))
+d = tsecon.var_diagnostics(Y, lags=2, nlags=10)
+print("Portmanteau (adj) p =", round(d["portmanteau_adjusted_pvalue"], 3),
+      " Jarque-Bera p =", round(d["jarque_bera_pvalue"], 3), " stable:", d["is_stable"])
+sel = tsecon.var_select_order(Y, max_lags=6)
+print("lag order by AIC/BIC/HQIC/FPE:", sel["aic"], sel["bic"], sel["hqic"], sel["fpe"])
+```
+
+```text
+pinned cells: 5  plausibility p = 0.294
+series 0, h=1..4  conditional: [-0.129 -0.015  0.012  0.006]
+                unconditional: [-0.218 -0.146 -0.113 -0.099]
+se ratio cond/uncond, series 0: [0.989 0.985 0.988 0.991]
+Portmanteau (adj) p = 0.468  Jarque-Bera p = 0.216  stable: True
+lag order by AIC/BIC/HQIC/FPE: 1 1 1 1
+```
+
+Series 0 is never pinned, yet holding series 1 at 0.5 — well above its
+unconditional path — pulls series 0 up through $A_{01} = 0.1$, and its
+standard error barely moves: the DGP's innovations are uncorrelated, so the
+conditions carry information about series 0 only through the dynamics, not
+through the covariance. (The lag order is 1 by every criterion because that is
+the DGP; `var_fit`'s default `lags=2` is a convention, not a verdict.)
+
+### Residual diagnostics and lag order — `var_diagnostics`, `var_select_order`
+
+**What they compute.** `var_diagnostics` bundles the three residual checks a
+VAR write-up reports. **Portmanteau** (Hosking 1980; Lütkepohl 2005, section
+4.4.3): with $C_i$ the lag-$i$ autocovariances of the column-centred residuals,
+$Q_h = T\sum_{i=1}^{h}\operatorname{tr}(C_i' C_0^{-1} C_i C_0^{-1})$ and the
+small-sample adjusted $\bar Q_h = T^2 \sum_{i=1}^{h} \operatorname{tr}(\cdot)/(T-i)$,
+both $\chi^2(k^2(h-p))$ under white residuals. **Normality** (multivariate
+Jarque-Bera; Lütkepohl 2005, section 4.5): the centred residuals are
+orthogonalised by the *lower Cholesky factor* of their ML covariance — the
+statsmodels `test_normality` convention — and $\lambda_s = T\,b_1'b_1/6$,
+$\lambda_k = T\,b_2'b_2/24$ (each $\chi^2(k)$) add up to the omnibus statistic
+($\chi^2(2k)$). **Stability**: the reciprocal-root moduli (statsmodels
+`roots`, descending), the companion eigenvalue moduli (descending, the first
+being the spectral radius) and the `is_stable` verdict. `var_select_order`
+binds the crate's common-sample lag-order selection: every candidate $p$ is
+fitted after dropping the first `max_lags − p` rows, so the AIC/BIC/HQIC/FPE
+columns compare fits on the *same* observations (Lütkepohl 2005, section 4.3;
+statsmodels `VAR.select_order`).
+
+**Assumptions.** The residuals come from a correctly specified, stable VAR
+with enough observations for the $\chi^2$ asymptotics; `nlags` must exceed
+`lags` (the degrees of freedom $k^2(h - p)$ must be positive — statsmodels
+refuses the same) and be below $T$. Every one of these bounds, and the
+conditional forecast's `steps` budget, is checked *before* anything is
+allocated, so a mistyped count is a `ValueError` naming the parameter rather
+than an allocator abort.
+
+**When to use (and when not).** Run `var_diagnostics` before any IRF, FEVD,
+forecast or Granger test is reported: residual autocorrelation invalidates
+all of them. Report the *adjusted* Portmanteau at macro sample sizes. The
+Cholesky orthogonalisation makes the skewness and kurtosis *components* depend
+on the column order (the omnibus statistic does too, as in statsmodels); the
+Doornik-Hansen variant, whose symmetric orthogonalisation is order-invariant,
+is **not** provided because no runnable reference exists in the fixture
+environment — JMulTi reports it, statsmodels does not.
+
+**Key arguments and defaults (and why).** `nlags=10` (Lütkepohl's rule of
+thumb for quarterly data; larger than `lags`), `lags=2`, `trend="c"`;
+`max_lags=8` for the selection (a quarterly convention). `var_select_order`'s
+candidates start at $p = 0$ (intercept-only baseline) with `trend="c"` and at
+$p = 1$ with `trend="n"`; ties go to the smaller order. `max_lags` must be
+smaller than the number of rows, and small enough that the common sample of
+`n - max_lags` observations still exceeds the `k * max_lags + 1` coefficients
+per equation; both bounds are refused by name rather than attempted.
+
+**How to read the output.** `portmanteau` / `portmanteau_adjusted` with
+`portmanteau_df` and their p-values; `jarque_bera` with `jarque_bera_df`
+$= 2k$, and the `skewness` / `kurtosis` components with their $\chi^2(k)$
+p-values and the per-series moments `skewness_components` (`b1`) and
+`kurtosis_components` (`b2`) — a rejection driven by `kurtosis` alone is fat
+tails, the usual macro finding, and argues for bootstrap rather than Gaussian
+bands; `roots` (stable iff the *last* exceeds 1), `eigenvalue_moduli`
+(stable iff the *first* is below 1), `is_stable`. `var_select_order` returns
+the selected order under each criterion (`aic`, `bic`, `hqic`, `fpe`), the
+`candidates`, and one `*_values` column per criterion; BIC/HQIC are consistent
+and pick shorter lags, AIC/FPE over-fit in small samples by design.
+
+**Validated against.** statsmodels `VARResults.test_whiteness(nlags,
+adjusted=False/True)`, `test_normality()`, `roots`, `is_stable()` and
+`VAR.select_order` — an independent package — in `fixtures/var_diag.json`
+([generator](../../../fixtures/generate_var_diag_fixtures.py)): eleven
+(case, `nlags`) Portmanteau blocks and six normality blocks over a seeded
+VAR(2) fitted at orders 1–3 with and without constant, a Student-t(4)-driven
+VAR(2), and the transformed macro system at orders 2 and 4; statistics at
+1e-10, p-values at 1e-10 absolute *and* 1e-6 on the log scale so tail
+probabilities of 1e-30 are pinned too; the skewness/kurtosis components
+against a transcription of statsmodels' own code with the sum asserted equal
+to the omnibus statistic; three `select_order` tables (picks and every
+criterion value at 1e-8). The Python suite reruns all of it live on
+`macrodata` in levels. Seeded Monte Carlo
+([`var_cf_properties.rs`](../../../crates/tsecon-var/tests/var_cf_properties.rs)):
+on a correctly specified Gaussian VAR(1) ($k = 2$, $T = 200$, `nlags=8`,
+1000 replications) the rejection rates at a nominal 5% were **4.60%** for $Q_h$,
+**5.40%** for $\bar Q_h$ and **4.20%** for Jarque-Bera (MC se 0.7 points), with
+the adjusted p-value averaging 0.4923; fitting a VAR(1) to a VAR(2) DGP the
+Portmanteau rejected 100% of 300 replications, and Jarque-Bera rejected
+Student-t(4) innovations 100% of 300. Grade: **exact** against statsmodels;
+size and power measured.
+
+**References.** Hosking (1980), *JASA*; Lütkepohl (2005), sections 4.3–4.5;
+Kilian and Demiroglu (2000), *JBES*; Doornik and Hansen (2008), *Oxford
+Bulletin* (not implemented).
+
 ### Confidence bands on the IRF — `var_irf_bands`
 
 `var_irf` returns the point path only. **`var_irf_bands`** is its banded
@@ -279,7 +524,19 @@ allowed; a linear response just scales); `shock="orthogonal"|"generalized"`;
 `horizon=10`; `n_draws=2` with `antithetic=True` (immaterial for a linear
 model, kept for signature parity with the TVAR call); `seed=0`; `trend="c"`;
 `histories=None` (every window; an int at or above the number of windows
-uses all of them, reported in `n_histories`); `bands=(0.16, 0.84)`.
+uses all of them, reported in `n_histories`); `bands=None` (= `(0.16, 0.84)`).
+**Memory (0.10.0):** the engine sizes its working set up front — with
+`cells = (horizon + 1) × k`, the draw buffers of one history (`n_draws +
+n_streams + 2` arrays of `cells`, `n_streams = n_draws / 2` under
+antithetic sampling) times the number of histories running at once
+(`min(rayon threads, histories)`), plus five `cells` arrays per history
+held for the reduction and the reduction's own seven — and refuses a
+request beyond its fixed 2 GiB budget as a `ValueError` naming `n_draws`,
+`horizon` and the number of histories; below the budget every large buffer
+is allocated fallibly (`try_reserve_exact`), so an allocator refusal on a
+small machine is the same error, never a process abort (audit round 13's
+S3 class: the previous guard admitted 2^31 doubles — 16 GiB — per buffer
+and then handed the request to the allocator).
 
 **How to read the output.** `girf[h][variable]`, `lower`/`upper`,
 `per_history`, `mc_se`, `draw_sd`, `draw_lower`/`draw_upper`, `n_histories`,
