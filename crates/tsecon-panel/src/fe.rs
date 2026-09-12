@@ -884,13 +884,16 @@ fn solve_within(
                 what: if effects == FixedEffects::ENTITY {
                     "within (fixed-effects) OLS: a regressor is constant within \
                      every entity, so the fixed effects absorb it and no within \
-                     variation remains to identify its coefficient"
+                     variation remains to identify its coefficient (the column \
+                     of regressors is the offender; drop it, or use a \
+                     random-effects / between estimator)"
                 } else {
                     "within (fixed-effects) OLS: the requested effects absorb a \
-                     regressor entirely (constant within every entity, common to \
-                     every entity in each period under time effects, or an exact \
-                     linear trend per entity under entity trends), so no within \
-                     variation remains to identify its coefficient"
+                     regressor entirely — one column of regressors is constant \
+                     within every entity, common to every entity in each period \
+                     under time effects, or an exact linear trend per entity \
+                     under entity trends — so no within variation remains to \
+                     identify its coefficient"
                 },
             });
         }
