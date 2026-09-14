@@ -11,6 +11,9 @@ publish.workspace = true
 # workspace shares one pinned version (0.24, default-features = false,
 # features = ["std"]).
 tsecon-linalg = { path = "../tsecon-linalg" }
+# Quasi-Newton / simplex minimizers for the structural-model and
+# TVP-regression maximum-likelihood layers.
+tsecon-optim = { path = "../tsecon-optim" }
 
 [dev-dependencies]
 # float_roundtrip: without it serde_json's fast float parser can be 1 ulp

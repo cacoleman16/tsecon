@@ -82,6 +82,14 @@ pub enum SsmError {
     ///   the model is deterministic along `Z_i` to within roundoff of the
     ///   magnitudes it was assembled from.
     NoInformation,
+    /// A model specification or estimator argument was inconsistent or
+    /// outside its domain (the structural-model and TVP-regression
+    /// layers). The message names the offending argument, its value, and
+    /// what to pass instead.
+    InvalidSpec {
+        /// The teaching message.
+        message: String,
+    },
 }
 
 impl fmt::Display for SsmError {
@@ -118,6 +126,7 @@ impl fmt::Display for SsmError {
                 "{what} does not support exact-diffuse initialization; \
                  use the univariate filtering path"
             ),
+            Self::InvalidSpec { message } => write!(f, "invalid specification: {message}"),
             Self::NoInformation => write!(
                 f,
                 "every observed element of y was numerically uninformative: \

@@ -98,11 +98,17 @@ fn set_common<'py>(d: &Bound<'py, PyDict>, g: &tsecon_var::Girf) -> PyResult<()>
 /// `trend` ("c"), `antithetic` (True), `histories` (None = every lag
 /// window; an int draws a seeded subsample of that many — a count at or
 /// above the number of available windows uses all of them, reported in
-/// `n_histories`), `bands` ((0.16, 0.84)).
+/// `n_histories`), `bands` (None = (0.16, 0.84)).
+///
+/// Memory: the engine refuses up front, as a `ValueError` naming `n_draws`,
+/// `horizon` and the number of histories, any call whose draw buffers and
+/// per-history results would exceed its fixed 2 GiB budget; below the budget
+/// the buffers are allocated fallibly, so an allocator refusal is the same
+/// error, never an abort.
 #[pyfunction]
 #[pyo3(signature = (data, p, shock_var = 0, size = 1.0, shock = "orthogonal", horizon = 10,
                     n_draws = 2, seed = 0, trend = "c", antithetic = true, histories = None,
-                    bands = (0.16, 0.84)))]
+                    bands = None))]
 #[allow(clippy::too_many_arguments)]
 fn var_girf<'py>(
     py: Python<'py>,
@@ -117,7 +123,7 @@ fn var_girf<'py>(
     trend: &str,
     antithetic: bool,
     histories: Option<usize>,
-    bands: (f64, f64),
+    bands: Option<(f64, f64)>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let res = var_results(&data, p, trend)?;
     let opts = tsecon_var::GirfOptions {
@@ -126,7 +132,7 @@ fn var_girf<'py>(
         n_draws,
         seed,
         antithetic,
-        bands,
+        bands: bands.unwrap_or((0.16, 0.84)),
     };
     let g = tsecon_var::var_girf(&res, &opts, histories).map_err(to_py)?;
     let d = PyDict::new(py);
@@ -203,12 +209,18 @@ fn var_girf<'py>(
 /// ("all"), `histories` (None = every selected window; an int draws a seeded
 /// subsample of that many — a count at or above the number of selected
 /// windows uses all of them, reported in `n_histories`), `bands`
-/// ((0.16, 0.84)), `antithetic` (True).
+/// (None = (0.16, 0.84)), `antithetic` (True).
+///
+/// Memory: the engine refuses up front, as a `ValueError` naming `n_draws`,
+/// `horizon` and the number of histories, any call whose draw buffers and
+/// per-history results would exceed its fixed 2 GiB budget; below the budget
+/// the buffers are allocated fallibly, so an allocator refusal is the same
+/// error, never an abort.
 #[pyfunction]
 #[pyo3(signature = (data, p, threshold_index = 0, delay = 1, trim = 0.10, delays = None,
                     constant = true, shock_var = 0, size = 1.0, shock = "orthogonal",
                     horizon = 20, n_draws = 500, seed = 0, regime = "all", histories = None,
-                    bands = (0.16, 0.84), antithetic = true))]
+                    bands = None, antithetic = true))]
 #[allow(clippy::too_many_arguments)]
 fn threshold_var_girf<'py>(
     py: Python<'py>,
@@ -227,7 +239,7 @@ fn threshold_var_girf<'py>(
     seed: u64,
     regime: &str,
     histories: Option<usize>,
-    bands: (f64, f64),
+    bands: Option<(f64, f64)>,
     antithetic: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let regime_sel = match regime {
@@ -250,7 +262,7 @@ fn threshold_var_girf<'py>(
         n_draws,
         seed,
         antithetic,
-        bands,
+        bands: bands.unwrap_or((0.16, 0.84)),
         regime: regime_sel,
         histories,
     };

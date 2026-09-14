@@ -666,7 +666,7 @@ fn star_test_refuses_out_of_sample_delays_as_insufficiency() {
     for d in [t - 1, t, t + 1, t + 50] {
         let err = star_test(&y, p, &[d]).unwrap_err();
         match err {
-            RegimeError::InsufficientData { needed, got } => {
+            RegimeError::InsufficientData { needed, got, .. } => {
                 // q = p + 1 (d > p), k0 = 1 + q, rows = k0 + 3q + 1 = 14,
                 // measured from start = d.
                 assert_eq!(got, t, "delay {d}: got must be the supplied length");

@@ -165,3 +165,71 @@ def test_api_reference_preamble_does_not_promise_plain_arrays_everywhere():
     text = gen.read_text(encoding="utf-8")
     assert "Every function returns plain NumPy arrays" not in text
     assert "nested Python lists" in text
+
+
+# --------------------------------------------------------------------------- #
+# audit round 13 OPEN-1 / round 11 O1: no parameter default renders as `...`
+# --------------------------------------------------------------------------- #
+def _public_callables():
+    import inspect
+
+    out = []
+    for name in sorted(dir(tsecon)):
+        if name.startswith("_"):
+            continue
+        fn = getattr(tsecon, name)
+        if not callable(fn):
+            continue
+        try:
+            sig = inspect.signature(fn)
+        except (TypeError, ValueError):
+            continue
+        out.append((name, sig))
+    return out
+
+
+def test_no_parameter_default_is_ellipsis_anywhere_in_the_api():
+    """PyO3 renders a non-literal default (`Some("aic")`, a tuple, `vec![]`,
+    an enum, a negative literal) as `...` in `__text_signature__`, so
+    `inspect.signature` showed `Ellipsis` for eleven parameters (round 11
+    OPEN-1, round 13 OPEN-1: `adf`/`zivot_andrews`/`engle_granger.autolag`,
+    `box_cox_lambda.bounds`, `historical_decomposition.restrictions`,
+    `narrative_svar.sign_restrictions`, `predictive_regression`/`ivx_test.cz`,
+    `random_forest.max_features`, `var_girf`/`threshold_var_girf.bands`).
+    They are now `None` sentinels (the effective default documented in the
+    docstring and the stub) or an explicit `text_signature`; nothing may
+    drift back."""
+    sigs = _public_callables()
+    assert len(sigs) >= 179
+    offenders = [f"{name}.{p.name}" for name, sig in sigs for p in sig.parameters.values() if p.default is Ellipsis]
+    assert not offenders, offenders
+
+
+def test_the_former_ellipsis_defaults_render_their_effective_value_or_none():
+    import inspect
+
+    def default(fn, param):
+        return inspect.signature(getattr(tsecon, fn)).parameters[param].default
+
+    for fn in ("adf", "zivot_andrews", "engle_granger"):
+        assert default(fn, "autolag") == "aic"
+    assert default("box_cox_lambda", "bounds") is None
+    assert default("historical_decomposition", "restrictions") is None
+    assert default("narrative_svar", "sign_restrictions") is None
+    assert default("predictive_regression", "cz") is None
+    assert default("ivx_test", "cz") is None
+    assert default("random_forest", "max_features") is None
+    assert default("var_girf", "bands") is None
+    assert default("threshold_var_girf", "bands") is None
+    # The sentinels mean exactly the documented defaults (behaviour unchanged).
+    y = _ar1(T)
+    a = tsecon.box_cox_lambda(np.exp(0.1 * y) + 1.0)
+    b = tsecon.box_cox_lambda(np.exp(0.1 * y) + 1.0, bounds=(-2.0, 2.0))
+    assert a["lambda"] == b["lambda"] and (a["lower"], a["upper"]) == (-2.0, 2.0)
+    r, x = _ar1(T, 1), _ar1(T, 2, 0.9)
+    assert tsecon.predictive_regression(r, x)["ivx"] == tsecon.predictive_regression(r, x, cz=-1.0)["ivx"]
+    v = _var(T)
+    g0 = tsecon.var_girf(v, 1, horizon=3)
+    g1 = tsecon.var_girf(v, 1, horizon=3, bands=(0.16, 0.84))
+    assert g0["lower"] == g1["lower"] and g0["upper"] == g1["upper"]
+    assert tsecon.adf(y)["used_lag"] == tsecon.adf(y, autolag="aic")["used_lag"]

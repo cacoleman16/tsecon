@@ -3,6 +3,7 @@
 use core::fmt;
 
 use tsecon_diag::DiagError;
+use tsecon_hac::HacError;
 use tsecon_linalg::LinalgError;
 use tsecon_stats::StatsError;
 
@@ -20,6 +21,18 @@ pub enum CointError {
     /// An error bubbled up from the diagnostics layer (the augmented
     /// Dickey-Fuller step of Engle-Granger).
     Diag(DiagError),
+    /// An error bubbled up from the shared HAC / long-run-variance layer
+    /// (the Andrews (1991) plug-in bandwidth of the cointegrating
+    /// regressions).
+    Hac(HacError),
+    /// A specification argument of the single-equation cointegrating
+    /// regressions (`fmols` / `dols` / `ccr`) was outside its domain. The
+    /// message names the offending parameter and its value, the
+    /// constraint it violated, and what to pass instead.
+    InvalidSpec {
+        /// The full teaching message.
+        what: String,
+    },
     /// Two inputs (or an input and a model dimension) have incompatible
     /// sizes.
     Dimension {
@@ -129,6 +142,8 @@ impl fmt::Display for CointError {
             Self::Linalg(e) => write!(f, "linear algebra failure: {e}"),
             Self::Stats(e) => write!(f, "special-function failure: {e}"),
             Self::Diag(e) => write!(f, "diagnostics failure: {e}"),
+            Self::Hac(e) => write!(f, "long-run covariance failure: {e}"),
+            Self::InvalidSpec { what } => write!(f, "{what}"),
             Self::Dimension {
                 what,
                 expected,
@@ -284,6 +299,7 @@ impl std::error::Error for CointError {
             Self::Linalg(e) => Some(e),
             Self::Stats(e) => Some(e),
             Self::Diag(e) => Some(e),
+            Self::Hac(e) => Some(e),
             _ => None,
         }
     }
@@ -304,5 +320,11 @@ impl From<StatsError> for CointError {
 impl From<DiagError> for CointError {
     fn from(e: DiagError) -> Self {
         Self::Diag(e)
+    }
+}
+
+impl From<HacError> for CointError {
+    fn from(e: HacError) -> Self {
+        Self::Hac(e)
     }
 }

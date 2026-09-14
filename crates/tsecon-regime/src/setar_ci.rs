@@ -803,6 +803,8 @@ pub fn threshold_regression_ci(
     let min_regime = (k + 1).max((trim * n as f64).ceil() as usize);
     if n < 2 * min_regime {
         return Err(RegimeError::InsufficientData {
+            what: "y and q under the requested trim (the sample must hold two regimes \
+                   of max(k + 1, ceil(trim n)) observations each)",
             needed: 2 * min_regime,
             got: n,
         });

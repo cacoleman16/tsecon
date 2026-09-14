@@ -65,6 +65,30 @@ pub(crate) fn outer_sub(p: &mut Mat<f64>, a: &[f64], b: &[f64]) {
     }
 }
 
+/// Accumulates the *magnitudes* of a rank-one update: `P <- P + |a| |b|'`.
+///
+/// Used to carry a cancellation-free upper bound on `|P_inf|` alongside the
+/// exact-diffuse recursion, so "is this quantity zero?" can be asked against
+/// the magnitude the recursion would have had with no cancellation rather
+/// than against the cancelled result itself (see `filter::TOLERANCE_CANCEL`).
+pub(crate) fn outer_add_abs(p: &mut Mat<f64>, a: &[f64], b: &[f64]) {
+    debug_assert_eq!(p.nrows(), a.len());
+    debug_assert_eq!(p.ncols(), b.len());
+    for (j, bj) in b.iter().enumerate() {
+        if *bj != 0.0 {
+            let bj = bj.abs();
+            for (i, ai) in a.iter().enumerate() {
+                p[(i, j)] += ai.abs() * bj;
+            }
+        }
+    }
+}
+
+/// Elementwise absolute value of a matrix.
+pub(crate) fn abs_mat(m: MatRef<'_, f64>) -> Mat<f64> {
+    Mat::from_fn(m.nrows(), m.ncols(), |i, j| m[(i, j)].abs())
+}
+
 /// Scaled outer product `s * a b'` as a new matrix.
 pub(crate) fn outer_scaled(a: &[f64], b: &[f64], s: f64) -> Mat<f64> {
     Mat::from_fn(a.len(), b.len(), |i, j| s * a[i] * b[j])

@@ -10,6 +10,9 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 mod ml_neural;
 
+mod coint_fmols;
+mod ets;
+mod forecast_mcs;
 mod girf;
 mod ml_convex;
 mod ml_kernel;
@@ -17,7 +20,9 @@ mod ml_structured;
 mod ml_trees;
 mod panel_dl;
 mod regime_ci;
+mod ssm_uc;
 mod termstructure_jsz;
+mod var_cf;
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -320,7 +325,8 @@ fn adf_regression(s: &str) -> PyResult<tsecon_diag::AdfRegression> {
 ///
 /// Returned keys: `crit`, `nobs`, `p_value`, `statistic`, `used_lag`.
 #[pyfunction]
-#[pyo3(signature = (y, regression = "c", autolag = Some("aic"), maxlag = None))]
+#[pyo3(signature = (y, regression = "c", autolag = Some("aic"), maxlag = None),
+       text_signature = "(y, regression='c', autolag='aic', maxlag=None)")]
 fn adf<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
@@ -731,7 +737,8 @@ fn phillips_ouliaris<'py>(
 /// `break_index`, `lags` (the shared augmentation lag), `nobs`, `trim`,
 /// `regression`.
 #[pyfunction]
-#[pyo3(signature = (y, regression = "c", trim = 0.15, max_lags = None, autolag = Some("aic"), lags = None))]
+#[pyo3(signature = (y, regression = "c", trim = 0.15, max_lags = None, autolag = Some("aic"), lags = None),
+       text_signature = "(y, regression='c', trim=0.15, max_lags=None, autolag='aic', lags=None)")]
 fn zivot_andrews<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
@@ -938,7 +945,7 @@ fn nsdiffs<'py>(
 /// or "guerrero" (Guerrero's 1993 grouped coefficient-of-variation
 /// criterion, the R `forecast` default). The likelihood is very flat in
 /// lambda, so report a round value rather than a seventh decimal.
-/// `bounds` are HARD bounds on lambda, unlike
+/// `bounds` (None = `(-2.0, 2.0)`) are HARD bounds on lambda, unlike
 /// SciPy's `brack`, which is only a starting bracket for an unbounded
 /// search; an optimum sitting on a bound is reported via `at_bound`.
 /// `period` is the Guerrero grouping length — set it to the seasonal
@@ -951,15 +958,16 @@ fn nsdiffs<'py>(
 /// `loglik_at_one`, `lr_vs_zero`, `lr_vs_one` (the last four None for
 /// Guerrero, which has no likelihood), `interpretation`.
 #[pyfunction]
-#[pyo3(signature = (y, method = "mle", bounds = (-2.0, 2.0), period = None))]
+#[pyo3(signature = (y, method = "mle", bounds = None, period = None))]
 fn box_cox_lambda<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
     method: &str,
-    bounds: (f64, f64),
+    bounds: Option<(f64, f64)>,
     period: Option<usize>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_diag::BoxCoxMethod;
+    let bounds = bounds.unwrap_or((-2.0, 2.0));
     let m = match method {
         "mle" => {
             if period.is_some() {
@@ -1359,14 +1367,25 @@ fn set_irf_band_items(
     Ok(())
 }
 
-/// Build an LP [`BandSpec`](tsecon_lp::BandSpec), validating `band_alpha` at
-/// the Python boundary so the error names the Python keyword.
-fn lp_band_spec(band: &str, alpha: f64, n_sim: usize, seed: u64) -> PyResult<tsecon_lp::BandSpec> {
+/// Validate `band_alpha` at the Python boundary so the error names the Python
+/// keyword. Called UNCONDITIONALLY by every LP surface that takes it, not only
+/// when a band is requested: `band_alpha` has a concrete default (0.1), so a
+/// nonsense value cannot be refused as an inert keyword the way a `None`
+/// sentinel can, and before audit round 14 `band_alpha=nan` with `band=None`
+/// was accepted in silence.
+fn check_band_alpha(alpha: f64) -> PyResult<()> {
     if !(alpha > 0.0 && alpha < 1.0) {
         return Err(PyValueError::new_err(format!(
             "band_alpha must lie strictly in (0, 1), got {alpha}"
         )));
     }
+    Ok(())
+}
+
+/// Build an LP [`BandSpec`](tsecon_lp::BandSpec), validating `band_alpha` at
+/// the Python boundary so the error names the Python keyword.
+fn lp_band_spec(band: &str, alpha: f64, n_sim: usize, seed: u64) -> PyResult<tsecon_lp::BandSpec> {
+    check_band_alpha(alpha)?;
     Ok(tsecon_lp::BandSpec::new(lp_band_method(band)?, alpha)
         .with_n_sim(n_sim)
         .with_seed(seed))
@@ -3758,6 +3777,7 @@ fn lp<'py>(
     band_seed: u64,
     band_n_sim: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let cumulation = parse_cumulation(cumulative)?;
     let se_method = resolve_lp_se(se, cumulation)?;
     let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).with_cumulation(cumulation);
@@ -3851,6 +3871,7 @@ fn lp_iv<'py>(
     band: Option<&str>,
     band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls)
         .with_cumulation(parse_cumulation(cumulative)?);
     let r =
@@ -3946,6 +3967,7 @@ fn lp_multiplier<'py>(
     band: Option<&str>,
     band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls);
     if maxlags.is_some() {
         spec = spec.with_hac(maxlags);
@@ -5554,6 +5576,42 @@ fn panel_se(
     }
 }
 
+/// The panel container from an `N x T` outcome, named `N x T` regressors
+/// and the optional observation `mask` (an `N x T` array of 0/1 flags, 1
+/// where the entity is observed in that period; a `None` mask is a
+/// balanced panel). Shared by every panel binding.
+pub(crate) fn panel_data(
+    fn_name: &str,
+    outcome: tsecon_var::tsecon_linalg::faer::Mat<f64>,
+    regs: Vec<(String, tsecon_var::tsecon_linalg::faer::Mat<f64>)>,
+    mask: Option<&numpy::PyReadonlyArray2<'_, f64>>,
+) -> PyResult<tsecon_panel::PanelData> {
+    match mask {
+        None => tsecon_panel::PanelData::balanced(outcome, regs).map_err(to_py),
+        Some(m) => {
+            let a = m.as_array();
+            let (n, t) = (a.nrows(), a.ncols());
+            let mut flags: Vec<Vec<bool>> = Vec::with_capacity(n);
+            for i in 0..n {
+                let mut row = Vec::with_capacity(t);
+                for j in 0..t {
+                    let v = a[(i, j)];
+                    if v != 0.0 && v != 1.0 {
+                        return Err(PyValueError::new_err(format!(
+                            "{fn_name}: mask must hold only 0/1 (False/True) flags — 1 where \
+                             the entity is observed in that period, 0 where the cell is \
+                             missing; found {v} at (entity {i}, period {j})"
+                        )));
+                    }
+                    row.push(v == 1.0);
+                }
+                flags.push(row);
+            }
+            tsecon_panel::PanelData::unbalanced(outcome, regs, &flags).map_err(to_py)
+        }
+    }
+}
+
 /// Fixed-effects (within) panel OLS with panel-robust standard errors.
 ///
 /// `outcome` is `N x T`; `regressors` is `k x N x T`. `se_type`:
@@ -5562,16 +5620,27 @@ fn panel_se(
 /// `se_type="driscoll_kraay"` (default when omitted there: 4.0); passing
 /// it explicitly with any other `se_type` **raises** instead of being
 /// silently absorbed. Matches linearmodels PanelOLS conventions.
+/// `mask` (default None = a balanced panel) is an `N x T` array of 0/1
+/// (False/True) flags, 1 where the entity is observed in that period, for an
+/// UNBALANCED panel: cells outside the mask are ignored and may hold NaN;
+/// without a mask a NaN anywhere is refused (nothing is skipped silently).
+/// On an unbalanced panel the entity means run over each entity's observed
+/// cells, the cluster and Driscoll-Kraay score sums over the observed
+/// cells, and the degrees of freedom count the entities with an
+/// observation (validated against PanelOLS on the Arellano-Bond EmplUK
+/// panel, fixtures/panel_unbalanced.json); a mask that is 1 everywhere is
+/// bit-identical to no mask.
 ///
 /// Returned keys: `bse`, `params`, `se_type`, `tvalues`.
 #[pyfunction]
-#[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = None))]
+#[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = None, mask = None))]
 fn panel_fe<'py>(
     py: Python<'py>,
     outcome: numpy::PyReadonlyArray2<'py, f64>,
     regressors: numpy::PyReadonlyArray3<'py, f64>,
     se_type: &str,
     bandwidth: Option<f64>,
+    mask: Option<numpy::PyReadonlyArray2<'py, f64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_var::tsecon_linalg::faer::Mat;
     let o = outcome.as_array();
@@ -5581,7 +5650,7 @@ fn panel_fe<'py>(
     let regs: Vec<(String, Mat<f64>)> = (0..k)
         .map(|c| (format!("x{c}"), Mat::from_fn(n, t, |i, j| r[[c, i, j]])))
         .collect();
-    let data = tsecon_panel::PanelData::balanced(outcome_m, regs).map_err(to_py)?;
+    let data = panel_data("panel_fe", outcome_m, regs, mask.as_ref())?;
     let fit = tsecon_panel::panel_ols_fe(&data).map_err(to_py)?;
     let inf = fit
         .inference(panel_se("panel_fe", se_type, bandwidth)?)
@@ -5651,8 +5720,21 @@ fn panel_fe<'py>(
 /// is set.
 ///
 /// Further arguments, with defaults: `n_lag_controls` (2).
+/// `mask` (default None = a balanced panel) is an `N x T` array of 0/1
+/// (False/True) flags, 1 where the entity is observed in that period, for an
+/// UNBALANCED panel: cells outside the mask are ignored and may hold NaN;
+/// without a mask a NaN anywhere is refused (nothing is skipped silently).
+/// On an unbalanced panel the horizon-h regression keeps the rows whose
+/// target (or cumulated window) and lagged-outcome controls are observed,
+/// so `nobs` shrinks with the gaps as well as the horizon; the plain
+/// estimator and every `se_type` are validated per horizon against
+/// PanelOLS on that design (fixtures/panel_unbalanced.json). The two
+/// half-panel jackknives (`jackknife=True`, `bias_correction="dj"`/`"spj"`)
+/// **raise** on an unbalanced panel: their bias reduction assumes each half
+/// carries the full panel's incidental-parameter bias, which entry, exit
+/// and gaps break.
 #[pyfunction]
-#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = None, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1))]
+#[pyo3(signature = (outcome, shock, horizon = 8, n_lag_controls = 2, se_type = "driscoll_kraay", bandwidth = None, cumulative = false, jackknife = false, bias_correction = "none", band = None, band_alpha = 0.1, mask = None))]
 #[allow(clippy::too_many_arguments)]
 fn panel_lp<'py>(
     py: Python<'py>,
@@ -5667,11 +5749,13 @@ fn panel_lp<'py>(
     bias_correction: &str,
     band: Option<&str>,
     band_alpha: f64,
+    mask: Option<numpy::PyReadonlyArray2<'py, f64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     use tsecon_var::tsecon_linalg::faer::Mat;
     let o = outcome.as_array();
     let outcome_m = Mat::from_fn(o.nrows(), o.ncols(), |i, j| o[(i, j)]);
-    let data = tsecon_panel::PanelData::balanced(outcome_m, vec![]).map_err(to_py)?;
+    let data = panel_data("panel_lp", outcome_m, vec![], mask.as_ref())?;
     let mut cfg = tsecon_panel::PanelLpConfig::new(
         horizon,
         n_lag_controls,
@@ -5747,6 +5831,13 @@ fn panel_lp<'py>(
 /// convention; validated against a run of their reference code
 /// (fixtures/lpdid.json).
 ///
+/// `mask` (default None) is accepted for API symmetry with the other panel
+/// callables but LP-DiD needs a BALANCED panel: an unbalanced mask (any 0
+/// flag) **raises** with the reason — the clean-control windows and the
+/// long differences are defined on contiguous outcome paths, and the
+/// reference run that validates the estimator was made on balanced panels;
+/// trim to a common window or drop entities with gaps first.
+///
 /// `outcome` and `treatment` are `N x T`; treatment entries must be 0/1,
 /// and must never revert under `absorbing=True` (raises — set
 /// `absorbing=False` with a `nonabsorbing_lag` for reversible
@@ -5762,7 +5853,7 @@ fn panel_lp<'py>(
 /// `nonabsorbing_lag`, `reweight`, `pooled`, `never_treated_only`,
 /// `se_type`.
 #[pyfunction]
-#[pyo3(signature = (outcome, treatment, pre_window = 4, post_window = 8, absorbing = true, nonabsorbing_lag = 0, reweight = false, pooled = false, never_treated_only = false))]
+#[pyo3(signature = (outcome, treatment, pre_window = 4, post_window = 8, absorbing = true, nonabsorbing_lag = 0, reweight = false, pooled = false, never_treated_only = false, mask = None))]
 #[allow(clippy::too_many_arguments)]
 fn lp_did<'py>(
     py: Python<'py>,
@@ -5775,13 +5866,14 @@ fn lp_did<'py>(
     reweight: bool,
     pooled: bool,
     never_treated_only: bool,
+    mask: Option<numpy::PyReadonlyArray2<'py, f64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_var::tsecon_linalg::faer::Mat;
     let o = outcome.as_array();
     let outcome_m = Mat::from_fn(o.nrows(), o.ncols(), |i, j| o[(i, j)]);
     let tr = treatment.as_array();
     let treatment_m = Mat::from_fn(tr.nrows(), tr.ncols(), |i, j| tr[(i, j)]);
-    let data = tsecon_panel::PanelData::balanced(outcome_m, vec![]).map_err(to_py)?;
+    let data = panel_data("lp_did", outcome_m, vec![], mask.as_ref())?;
     let cfg = tsecon_panel::LpDidConfig {
         pre_window,
         post_window,
@@ -6472,7 +6564,8 @@ fn hansen_seo_test<'py>(
 /// (length `nobs`), `used_lag` and `adf_nobs` (the residual ADF's lag and
 /// sample), `n_vars`, `nobs`.
 #[pyfunction]
-#[pyo3(signature = (data, trend = "c", autolag = Some("aic"), maxlag = None))]
+#[pyo3(signature = (data, trend = "c", autolag = Some("aic"), maxlag = None),
+       text_signature = "(data, trend='c', autolag='aic', maxlag=None)")]
 fn engle_granger<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
@@ -9571,6 +9664,7 @@ fn lp_state<'py>(
     band: Option<&str>,
     band_alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let cumulation = parse_cumulation(cumulative)?;
     let se_method = resolve_lp_se(se, cumulation)?;
     let mut spec = tsecon_lp::LpSpec::new(horizons, n_lag_controls).with_cumulation(cumulation);
@@ -10494,16 +10588,17 @@ fn dfm_news<'py>(
 /// `beta_ivx` with its Wald test `wald`/`pvalue`, asymptotically chi-square
 /// uniformly over the persistence of `x`, and the realized instrument
 /// persistence `rz`), plus the top-level aligned sample size `nobs`.
-/// `cz`/`alpha` tune the IVX instrument (defaults -1, 0.95).
+/// `cz`/`alpha` tune the IVX instrument (`cz` None = -1.0; `alpha` 0.95).
 #[pyfunction]
-#[pyo3(signature = (r, x, cz = -1.0, alpha = 0.95))]
+#[pyo3(signature = (r, x, cz = None, alpha = 0.95))]
 fn predictive_regression<'py>(
     py: Python<'py>,
     r: PyReadonlyArray1<'py, f64>,
     x: PyReadonlyArray1<'py, f64>,
-    cz: f64,
+    cz: Option<f64>,
     alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let cz = cz.unwrap_or(-1.0);
     let (rs, xs) = (vec1(&r), vec1(&x));
     let rs = rs.as_slice();
     let xs = xs.as_slice();
@@ -10576,20 +10671,21 @@ fn predictive_regression<'py>(
 /// Keys: `beta_ivx`, `wald`, `pvalue`, `rz`, `nregressors`, `nobs`, and — under
 /// the default `joint="bonferroni"` — `wald_scalar`, `pvalue_scalar`, `joint`.
 ///
-/// `cz` (-1.0) and `alpha` (0.95) tune the IVX instrument's persistence
+/// `cz` (None = -1.0) and `alpha` (0.95) tune the IVX instrument's persistence
 /// `rho_z = 1 + cz / n^alpha` (Kostakis-Magdalinos-Stamatogiannis 2015),
 /// exactly as in `predictive_regression`; `alpha` here is not a significance
 /// level (no level is passed; `pvalue` is returned).
 #[pyfunction]
-#[pyo3(signature = (r, xs, cz = -1.0, alpha = 0.95, joint = "bonferroni"))]
+#[pyo3(signature = (r, xs, cz = None, alpha = 0.95, joint = "bonferroni"))]
 fn ivx_test<'py>(
     py: Python<'py>,
     r: PyReadonlyArray1<'py, f64>,
     xs: numpy::PyReadonlyArray2<'py, f64>,
-    cz: f64,
+    cz: Option<f64>,
     alpha: f64,
     joint: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let cz = cz.unwrap_or(-1.0);
     let a = xs.as_array();
     let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
     let cfg = tsecon_predreg::IvxConfig { cz, alpha };
@@ -11806,6 +11902,7 @@ fn smooth_lp<'py>(
     band_seed: u64,
     band_n_sim: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
+    check_band_alpha(band_alpha)?;
     let mut spec = tsecon_lp::SmoothLpSpec::new(horizons, n_lag_controls)
         .with_degree(degree)
         .with_penalty_order(penalty_order);
@@ -12060,18 +12157,18 @@ fn parse_narrative_restrictions(
 /// Further arguments, with defaults: `horizon` (None), `n_draws` (500),
 /// `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
 ///
-/// `restrictions` (default: none; used under identification="sign") is the
-/// `sign_restricted_svar` list of `(variable, shock, horizon, sign)` tuples
-/// with `sign` in {"+", "-"}.
+/// `restrictions` (None = no restrictions; used under identification="sign")
+/// is the `sign_restricted_svar` list of `(variable, shock, horizon, sign)`
+/// tuples with `sign` in {"+", "-"}.
 #[pyfunction]
-#[pyo3(signature = (data, restrictions = vec![], lags = 2, horizon = None, identification = "cholesky",
+#[pyo3(signature = (data, restrictions = None, lags = 2, horizon = None, identification = "cholesky",
                     n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2,
                     narrative_restrictions = None, n_weight_draws = 200))]
 #[allow(clippy::too_many_arguments)]
 fn historical_decomposition<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
-    restrictions: Vec<(usize, usize, usize, String)>,
+    restrictions: Option<Vec<(usize, usize, usize, String)>>,
     lags: usize,
     horizon: Option<usize>,
     identification: &str,
@@ -12161,6 +12258,7 @@ fn historical_decomposition<'py>(
                     .map_err(to_py)?;
             let posterior = prior.posterior(m.as_ref()).map_err(to_py)?;
             let sign_h = horizon.unwrap_or(12);
+            let restrictions = restrictions.unwrap_or_default();
             let signs = if restrictions.is_empty() {
                 None
             } else {
@@ -12250,16 +12348,17 @@ fn historical_decomposition<'py>(
 /// Further arguments, with defaults: `lags` (2), `n_draws` (500), `max_tries`
 /// (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
 ///
-/// `sign_restrictions` (default: none) is the `sign_restricted_svar` list of
-/// `(variable, shock, horizon, sign)` tuples with `sign` in {"+", "-"}.
+/// `sign_restrictions` (None = no restrictions) is the `sign_restricted_svar`
+/// list of `(variable, shock, horizon, sign)` tuples with `sign` in
+/// {"+", "-"}.
 #[pyfunction]
-#[pyo3(signature = (data, sign_restrictions = vec![], narrative_restrictions = None, lags = 2,
+#[pyo3(signature = (data, sign_restrictions = None, narrative_restrictions = None, lags = 2,
                     horizon = 12, n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2, n_weight_draws = 200))]
 #[allow(clippy::too_many_arguments)]
 fn narrative_svar<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
-    sign_restrictions: Vec<(usize, usize, usize, String)>,
+    sign_restrictions: Option<Vec<(usize, usize, usize, String)>>,
     narrative_restrictions: Option<Vec<Bound<'py, PyDict>>>,
     lags: usize,
     horizon: usize,
@@ -12281,6 +12380,7 @@ fn narrative_svar<'py>(
         .map_err(to_py)?;
     let posterior = prior.posterior(m.as_ref()).map_err(to_py)?;
 
+    let sign_restrictions = sign_restrictions.unwrap_or_default();
     let signs = if sign_restrictions.is_empty() {
         None
     } else {
@@ -13023,9 +13123,14 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ml_trees::register(m)?;
     ml_convex::register(m)?;
     regime_ci::register(m)?;
+    ssm_uc::register(m)?;
     panel_dl::register(m)?;
     termstructure_jsz::register(m)?;
     ml_neural::register(m)?;
     girf::register(m)?;
+    coint_fmols::register(m)?;
+    var_cf::register(m)?;
+    forecast_mcs::register(m)?;
+    ets::register(m)?;
     Ok(())
 }

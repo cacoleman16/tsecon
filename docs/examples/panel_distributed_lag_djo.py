@@ -16,8 +16,10 @@ What is estimated, and how it differs from DJO's published tables:
 
   * growth g_it = 100 * (log gdpLCU_it - log gdpLCU_{i,t-1});
   * countries observed in EVERY year of the window 1971-2003 (growth needs
-    1970) are kept -- a BALANCED SUBSAMPLE, because the panel crate refuses
-    unbalanced panels. DJO use the full unbalanced panel;
+    1970) are kept -- a BALANCED SUBSAMPLE. DJO use the full unbalanced
+    panel; since 0.10.0 `panel_distributed_lag(..., mask=...)` takes one
+    directly, but this script keeps the balanced subsample so its printed
+    numbers stay comparable with the releases that produced them;
   * country and year effects, standard errors clustered by country. DJO
     use region x year and poor x year effects and interact temperature
     with an initial-poverty dummy; none of that is reproduced here, so the

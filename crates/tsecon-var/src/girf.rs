@@ -116,8 +116,71 @@ use crate::results::{chol_lower, VarResults};
 /// Largest accepted `horizon` (a guard against absurd allocations, not a
 /// modelling limit).
 const MAX_HORIZON: usize = 1_000_000;
-/// Largest `n_draws × cells` buffer one history may allocate (2^31 doubles).
-const MAX_BUFFER: usize = 1 << 31;
+/// Memory budget of one simulation call, in bytes (2 GiB). With
+/// `cells = (horizon + 1) * k`, the working set counted against it is
+///
+/// * the transient draw buffers of one history — `vals` (`n_draws *
+///   cells`), `eff` (`n_streams * cells`, `n_streams = n_draws / 2` under
+///   antithetic sampling), `eps` and `diff` (`cells` each) — times the
+///   number of histories running at once, `min(rayon threads, histories)`;
+/// * the per-history results held until the reduction: five arrays of
+///   `cells` for each of the `histories`;
+/// * the reduction's own output: seven arrays of `cells` plus one of
+///   `histories`.
+///
+/// The small per-history window buffers (`2 * history_len * k + 3 * k`
+/// doubles per thread) are not counted. A request beyond the budget is
+/// refused up front as [`VarError::MemoryBudget`] naming the counts;
+/// below it, every large buffer is still sized with `try_reserve_exact`,
+/// so an allocator refusal on a small machine is the same error rather
+/// than a process abort (audit round 13, the S3 class: the previous guard
+/// admitted 2^31 doubles — 16 GiB — per buffer and then handed the
+/// request to the allocator).
+pub const MEMORY_BUDGET_BYTES: usize = 2 << 30;
+/// What the budget message names.
+const BUDGET_WHAT: &str = "GIRF engine (per concurrent history, n_draws x (horizon + 1) x k \
+                           doubles of draw buffers; per history, five (horizon + 1) x k \
+                           result arrays held for the reduction)";
+
+/// The bytes a call with these counts would allocate (`u128`, so the
+/// product of absurd counts cannot overflow), and the refusal when it
+/// exceeds [`MEMORY_BUDGET_BYTES`]. Monotone in every count, so a call
+/// that fits stays fitting when any count shrinks.
+fn check_budget(
+    n_hist: usize,
+    n_draws: usize,
+    n_streams: usize,
+    cells: usize,
+) -> Result<(), VarError> {
+    let concurrent = rayon::current_num_threads().clamp(1, n_hist.max(1)) as u128;
+    let cells = cells as u128;
+    let per_history_buffers = cells * (n_draws as u128 + n_streams as u128 + 2);
+    let results = n_hist as u128 * cells * 5;
+    let reduction = cells * 7 + n_hist as u128;
+    let bytes = 8 * (concurrent * per_history_buffers + results + reduction);
+    if bytes > MEMORY_BUDGET_BYTES as u128 {
+        return Err(VarError::MemoryBudget {
+            what: BUDGET_WHAT,
+            bytes,
+            budget: MEMORY_BUDGET_BYTES,
+        });
+    }
+    Ok(())
+}
+
+/// A zero-filled `Vec` whose allocation is fallible: an allocator refusal
+/// becomes [`VarError::MemoryBudget`] instead of an abort.
+fn try_zeros(len: usize) -> Result<Vec<f64>, VarError> {
+    let mut v = Vec::new();
+    v.try_reserve_exact(len)
+        .map_err(|_| VarError::MemoryBudget {
+            what: BUDGET_WHAT,
+            bytes: 8 * len as u128,
+            budget: MEMORY_BUDGET_BYTES,
+        })?;
+    v.resize(len, 0.0);
+    Ok(v)
+}
 /// Offset added to `seed` to key the history subsample, so it never shares
 /// a substream with the simulation (an odd 64-bit constant, like the
 /// bias-bootstrap offset in `irf_bootstrap.rs`).
@@ -251,7 +314,10 @@ struct States {
 /// * [`VarError::InvalidArgument`] for an empty history set, a model with
 ///   zero variables / history length / states, `n_draws = 0`, an odd
 ///   `n_draws` under `antithetic`, a state index outside `0..n_states()`,
-///   or a buffer beyond the engine's allocation guard;
+///   or the SeedSequence spawn limit;
+/// * [`VarError::MemoryBudget`] when the working set implied by `n_draws`,
+///   `horizon`, `k` and the number of histories exceeds
+///   [`MEMORY_BUDGET_BYTES`] (or the allocator refuses it);
 /// * [`VarError::InvalidParameter`] for a shocked variable outside `0..k`,
 ///   a non-finite `size`, `horizon` above the guard, or `bands` outside
 ///   `0 <= lower < upper <= 1`;
@@ -283,15 +349,7 @@ pub fn girf<M: GirfModel>(
         n_draws
     };
     let cells = (opts.horizon + 1) * k;
-    if n_draws.checked_mul(cells).is_none_or(|b| b > MAX_BUFFER)
-        || n_hist.checked_mul(cells).is_none_or(|b| b > MAX_BUFFER)
-    {
-        return Err(VarError::InvalidArgument {
-            what: "n_draws x (horizon + 1) x k (and n_histories x (horizon + 1) x k) must \
-                   stay below 2^31 values; reduce n_draws, the horizon, or the number of \
-                   histories",
-        });
-    }
+    check_budget(n_hist, n_draws, n_streams, cells)?;
 
     let mut root = SeedSequence::new(u128::from(opts.seed));
     let hist_seqs = root.spawn(n_hist).map_err(|_| spawn_error("histories"))?;
@@ -741,11 +799,13 @@ fn simulate_history<M: GirfModel>(
     let mut seq = seq.clone();
     let draw_seqs = seq.spawn(n_streams).map_err(|_| spawn_error("draws"))?;
 
-    // Draw values, cell-major: vals[cell * n_draws + r].
-    let mut vals = vec![0.0f64; cells * n_draws];
+    // Draw values, cell-major: vals[cell * n_draws + r]. Fallible
+    // allocations: below the budget an allocator refusal is still an
+    // error, never an abort.
+    let mut vals = try_zeros(cells * n_draws)?;
     // Effective (independent) draw values for the MC standard error: the
     // pair means under antithetic sampling, else the draws themselves.
-    let mut eff = vec![0.0f64; cells * n_streams];
+    let mut eff = try_zeros(cells * n_streams)?;
     let mut eps = vec![0.0f64; cells];
     let mut win_a = vec![0.0f64; len * k];
     let mut win_b = vec![0.0f64; len * k];

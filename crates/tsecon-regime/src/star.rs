@@ -188,7 +188,8 @@ fn validate_delay(delay: usize) -> Result<(), RegimeError> {
             name: "delay",
             value: 0.0,
             requirement: "delay >= 1 (the transition variable is the lagged \
-                          value y_{t-delay})",
+                          value y_{t-delay}; every entry of delays is a \
+                          candidate delay)",
         });
     }
     Ok(())
@@ -476,6 +477,8 @@ fn check_star_length(t: usize, start: usize, k: usize) -> Result<(), RegimeError
     let n = t.saturating_sub(start);
     if n < needed {
         return Err(RegimeError::InsufficientData {
+            what: "y under the requested p and delay / delays (the STAR needs 2k + 3 \
+                   usable observations after the max(p, delay) start-up rows)",
             needed: start + needed,
             got: t,
         });
@@ -631,6 +634,8 @@ fn build_grid(
     let i_hi = ((1.0 - trim) * (n - 1) as f64).floor() as usize;
     if i_hi <= i_lo {
         return Err(RegimeError::InsufficientData {
+            what: "y under the requested trim (the trimmed transition-variable \
+                   quantile range holds no candidate location c)",
             needed: design.n + 2,
             got: design.n,
         });
@@ -904,7 +909,12 @@ fn f_sf(x: f64, d1: f64, d2: f64) -> Result<f64, RegimeError> {
 /// `((ssr_r - ssr_f)/r) / (ssr_f/df2)`.
 fn nested_f(ssr_r: f64, ssr_f: f64, r: usize, df2: usize) -> Result<(f64, f64), RegimeError> {
     if df2 == 0 || ssr_f <= 0.0 || ssr_f.is_nan() {
-        return Err(RegimeError::InsufficientData { needed: 1, got: 0 });
+        return Err(RegimeError::InsufficientData {
+            what: "the nested-F test of y (no residual degrees of freedom or a zero \
+                   residual sum of squares)",
+            needed: 1,
+            got: 0,
+        });
     }
     let f = ((ssr_r - ssr_f).max(0.0) / r as f64) / (ssr_f / df2 as f64);
     let p = f_sf(f, r as f64, df2 as f64)?;
@@ -926,6 +936,9 @@ fn battery(y: &[f64], p: usize, delay: usize, start: usize) -> Result<StarTest, 
     let n = y.len().saturating_sub(start);
     if n < k0 + 3 * q + 1 {
         return Err(RegimeError::InsufficientData {
+            what: "y under the requested p and delay / delays (the linearity-test \
+                   auxiliary regression has k0 + 3q columns and needs a residual \
+                   degree of freedom after the max(p, delay) start-up rows)",
             needed: start + k0 + 3 * q + 1,
             got: y.len(),
         });

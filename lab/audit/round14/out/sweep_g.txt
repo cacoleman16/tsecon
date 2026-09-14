@@ -1,0 +1,22 @@
+function                          T=200    T=800   T=3200  slope  dflt@3200  flags
+unobserved_components             0.428    1.288    5.030   0.89     4.824  5.0s at T=3200
+tvp_regression                    0.354    0.898    5.679    1.0    17.345  5.7s at T=3200; 17.3s at T=3200 with DEFAULT arguments
+ets_fit                           0.010    0.046    0.119   0.88     0.004  
+auto_ets                          0.125    0.493    1.977    1.0     0.274  
+var_conditional_forecast          0.001    0.001    0.001   0.27     0.001  
+var_diagnostics                   0.001    0.001    0.002   0.38     0.001  
+var_select_order                  0.001    0.001    0.003    0.6     0.009  
+spa_test                          0.001    0.003    0.023   1.04     0.041  
+model_confidence_set              0.002    0.004    0.015   0.81     0.060  
+stepm_test                        0.002    0.004    0.024   0.99     0.084  
+fmols                             0.000    0.001    0.002   0.46     0.002  
+dols                              0.001    0.001    0.002   0.48     5.549  5.5s at T=3200 with DEFAULT arguments
+ccr                               0.000    0.001    0.002   0.51     0.002  
+panel_fe@mask                     0.001    0.001    0.004   0.59     0.014  
+panel_distributed_lag@mask        0.023    0.780   39.000   2.68    37.714  superlinear slope 2.68; 39.0s at T=3200; 37.7s at T=3200 with DEFAULT arguments (retime slope 2.64)
+panel_lp@mask                     0.002    0.008    0.039   1.02     0.046  
+lp_did@mask                       0.001    0.002    0.009   0.96     0.016  
+
+== caps: counts just under the seal, in the allocation band, and at the documented cap (child: 4 GB RLIMIT_AS, 60 s)
+
+cap cells: 0; not refusal/ok: 0

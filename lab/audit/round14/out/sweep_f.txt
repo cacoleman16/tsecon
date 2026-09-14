@@ -1,0 +1,76 @@
+(a) signature vs stub: 192/192 agree on names, order and has-default
+(a) library-wide Ellipsis defaults: 0 []
+[unobserved_components] (b) __doc__ says `stochastic_seasonal` default True; runtime None <- '`stochastic_seasonal`, default True'
+[unobserved_components] (b) __doc__ says `stochastic_freq_seasonal` default True; runtime None <- '`stochastic_freq_seasonal` flags (default True'
+[unobserved_components] (b) __doc__ says `damped_cycle` default False; runtime None <- '`damped_cycle` (default False'
+[unobserved_components] (b) __doc__ says `stochastic_cycle` default False; runtime None <- '`stochastic_cycle` (default False'
+[unobserved_components] (b) __doc__ says `stochastic_freq_seasonal` default True; runtime None <- '`stochastic_freq_seasonal` flags (default True'
+[unobserved_components] (b) __doc__ says `damped_cycle` default False; runtime None <- '`damped_cycle` (default False'
+[unobserved_components] (b) __doc__ says `stochastic_cycle` default False; runtime None <- '`stochastic_cycle` (default False'
+[unobserved_components] (b) stub says `stochastic_seasonal` default True; runtime None <- '`stochastic_seasonal`, default True'
+[unobserved_components] (b) stub says `stochastic_freq_seasonal` default True; runtime None <- '`stochastic_freq_seasonal` flags (default True'
+[unobserved_components] (b) stub says `damped_cycle` default False; runtime None <- '`damped_cycle` (default False'
+[unobserved_components] (b) stub says `stochastic_cycle` default False; runtime None <- '`stochastic_cycle` (default False'
+[unobserved_components] (b) stub says `stochastic_freq_seasonal` default True; runtime None <- '`stochastic_freq_seasonal` flags (default True'
+[unobserved_components] (b) stub says `damped_cycle` default False; runtime None <- '`damped_cycle` (default False'
+[unobserved_components] (b) stub says `stochastic_cycle` default False; runtime None <- '`stochastic_cycle` (default False'
+[ets_fit] (b) __doc__ says `level` default 0.95; runtime None <- '`level` (0.95 '
+[ets_fit] (b) __doc__ says `n_sim` default 5000; runtime None <- '`n_sim` (5000 '
+[ets_fit] (b) __doc__ says `optimizer` default 'none'; runtime None <- '`optimizer` ("none" '
+[ets_fit] (b) stub says `level` default 0.95; runtime None <- '`level` (0.95 '
+[ets_fit] (b) stub says `n_sim` default 5000; runtime None <- '`n_sim` (5000 '
+[ets_fit] (b) stub says `optimizer` default 'none'; runtime None <- '`optimizer` ("none" '
+[ets_fit] (b) guide says `horizon` default 40; runtime 0 <- 'horizon=40) # trend="c" by default'
+[auto_ets] (b) __doc__ says `allow_multiplicative_trend` default True; runtime False <- "allow_multiplicative_trend=True`; R's default"
+[auto_ets] (b) stub says `allow_multiplicative_trend` default True; runtime False <- "allow_multiplicative_trend=True`; R's default"
+[auto_ets] (b) guide says `horizon` default 40; runtime 0 <- 'horizon=40) # trend="c" by default'
+[dols] (b) guide bullet says ic="bic"; runtime default None
+[panel_lp] (b) guide says `horizon` default 40; runtime 8 <- 'horizon=40) # trend="c" by default'
+[panel_lp] (b) guide bullet says bandwidth=4.0; runtime default None
+[unobserved_components] (c) 6 call snippets scanned
+[tvp_regression] (c) 4 call snippets scanned
+[ets_fit] (c) 4 call snippets scanned
+[auto_ets] (c) 4 call snippets scanned
+[var_conditional_forecast] (c) 4 call snippets scanned
+[var_diagnostics] (c) 3 call snippets scanned
+[var_select_order] (c) 3 call snippets scanned
+[spa_test] (c) 3 call snippets scanned
+[model_confidence_set] (c) 3 call snippets scanned
+[stepm_test] (c) 3 call snippets scanned
+[fmols] (c) 4 call snippets scanned
+[dols] (c) 7 call snippets scanned
+[ccr] (c) 4 call snippets scanned
+[panel_fe] (c) 3 call snippets scanned
+[panel_distributed_lag] (c) 4 call snippets scanned
+[panel_lp] (c) 5 call snippets scanned
+[lp_did] (c) 3 call snippets scanned
+[unobserved_components] (d) 14 listed values probed: {'level=dconstant': 'ok', 'level=deterministic constant': 'ok', 'level=deterministic trend': 'ok', 'level=dtrend': 'ok', 'level=fixed intercept': 'ok', 'level=fixed slope': 'ok', 'level=irregular': 'ok', 'level=lldtrend': 'ok', 'level=llevel': 'ok', 'level=local level': 'ok', 'level=local linear deterministic trend': 'ok', 'level=ntrend': 'ok', 'level=random walk': 'ok', 'level=rwalk': 'ok'}
+[tvp_regression] (d) 0 listed values probed: {}
+[ets_fit] (d) 4 listed values probed: {'error=add': 'ok', 'error=mul': 'ok', 'initialization=estimated': 'ok', 'initialization=heuristic': 'ok'}
+[auto_ets] (d) LISTED VALUE REFUSED ic='add': ic = "add" is invalid: pass "aicc" (the default, Hyndman-Khandakar 2008), "aic" or "bic"
+[auto_ets] (d) LISTED VALUE REFUSED ic='error': ic = "error" is invalid: pass "aicc" (the default, Hyndman-Khandakar 2008), "aic" or "bic"
+[auto_ets] (d) LISTED VALUE REFUSED ic='mul': ic = "mul" is invalid: pass "aicc" (the default, Hyndman-Khandakar 2008), "aic" or "bic"
+[auto_ets] (d) LISTED VALUE REFUSED ic='ok': ic = "ok" is invalid: pass "aicc" (the default, Hyndman-Khandakar 2008), "aic" or "bic"
+[auto_ets] (d) 9 listed values probed: {'ic=add': 'ValueError: ic = "add" is invalid: pass "aicc" (the default, Hyndman-Khandakar 2008), "aic" or "bic"', 'ic=aic': 'ok', 'ic=aicc': 'ok', 'ic=bic': 'ok', 'ic=error': 'ValueError: ic = "error" is invalid: pass "aicc" (the default, Hyndman-Khandakar 2008), "aic" or "bic"', 'ic=mul': 'ValueError: ic = "mul" is invalid: pass "aicc" (the default, Hyndman-Khandakar 2008), "aic" or "bic"', 'ic=ok': 'ValueError: ic = "ok" is invalid: pass "aicc" (the default, Hyndman-Khandakar 2008), "aic" or "bic"', 'initialization=estimated': 'ok', 'initialization=heuristic': 'ok'}
+[var_conditional_forecast] (d) 1 listed values probed: {'trend=c': 'ok'}
+[var_diagnostics] (d) 1 listed values probed: {'trend=c': 'ok'}
+[var_select_order] (d) 1 listed values probed: {'trend=c': 'ok'}
+[spa_test] (d) 3 listed values probed: {'bootstrap=circular': 'ok', 'bootstrap=moving_block': 'ok', 'bootstrap=stationary': 'ok'}
+[model_confidence_set] (d) 4 listed values probed: {'method=max': 'ok', 'bootstrap=circular': 'ok', 'bootstrap=moving_block': 'ok', 'bootstrap=stationary': 'ok'}
+[stepm_test] (d) 1 listed values probed: {'bootstrap=stationary': 'ok'}
+[fmols] (d) 7 listed values probed: {'kernel=bartlett': 'ok', 'kernel=parzen': 'ok', 'kernel=quadratic-spectral': 'ok', 'trend=c': 'ok', 'trend=ct': 'ok', 'trend=ctt': 'ok', 'trend=n': 'ok'}
+[dols] (d) 4 listed values probed: {'kernel=bartlett': 'ok', 'trend=c': 'ok', 'cov_type=robust': 'ok', 'cov_type=unadjusted': 'ok'}
+[ccr] (d) 2 listed values probed: {'kernel=bartlett': 'ok', 'trend=c': 'ok'}
+[panel_fe] (d) 3 listed values probed: {'se_type=cluster': 'ok', 'se_type=driscoll_kraay': 'ok', 'se_type=nonrobust': 'ok'}
+[panel_distributed_lag] (d) 3 listed values probed: {'se_type=cluster': 'ok', 'se_type=driscoll_kraay': 'ok', 'se_type=nonrobust': 'ok'}
+[panel_lp] (d) LISTED VALUE REFUSED se_type='dj': unknown se_type "dj"; expected nonrobust/cluster/driscoll_kraay
+[panel_lp] (d) LISTED VALUE REFUSED se_type='spj': unknown se_type "spj"; expected nonrobust/cluster/driscoll_kraay
+[panel_lp] (d) 2 listed values probed: {'se_type=dj': 'ValueError: unknown se_type "dj"; expected nonrobust/cluster/driscoll_kraay', 'se_type=spj': 'ValueError: unknown se_type "spj"; expected nonrobust/cluster/driscoll_kraay'}
+[lp_did] (d) 0 listed values probed: {}
+(d2) hand-transcribed value lists: 101/101 accepted
+[panel_fe] (f) mask of all ones vs no mask: BITWISE IDENTICAL (max|d|=0 at -)
+[panel_distributed_lag] (f) mask of all ones vs no mask: BITWISE IDENTICAL (max|d|=0 at -)
+[panel_lp] (f) mask of all ones vs no mask: BITWISE IDENTICAL (max|d|=0 at -)
+[lp_did] (f) mask of all ones vs no mask: BITWISE IDENTICAL (max|d|=0 at -)
+
+candidates raised: 33

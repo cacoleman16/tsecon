@@ -1,0 +1,157 @@
+
+== caps: counts just under the seal, in the allocation band, and at the documented cap (child: 4 GB RLIMIT_AS, 60 s)
+  unobserved_components      seasonal=2^47              refusal      t=    0.0 rss+=     0.4MB  invalid specification: seasonal = 140737488355328 with 200 observations: the dummy-seasonal period must not exceed the sample length (it costs s - 1 s
+  unobserved_components      seasonal=2^31              refusal      t=    0.0 rss+=     0.0MB  invalid specification: seasonal = 2147483648 with 200 observations: the dummy-seasonal period must not exceed the sample length (it costs s - 1 states
+  unobserved_components      seasonal=1e6               refusal      t=    0.0 rss+=     0.0MB  invalid specification: seasonal = 1000000 with 200 observations: the dummy-seasonal period must not exceed the sample length (it costs s - 1 states, a
+  unobserved_components      seasonal=cap+1             refusal      t=    0.0 rss+=     0.0MB  invalid specification: seasonal = 201 with 200 observations: the dummy-seasonal period must not exceed the sample length (it costs s - 1 states, and a
+  unobserved_components      seasonal=cap               refusal      t=    0.0 rss+=     0.0MB  invalid specification: y has 200 observed (non-NaN) values but the specification has 201 states; at least k_states + 2 = 203 observations are needed
+  unobserved_components      freq_seasonal=2^47         refusal      t=    0.0 rss+=     0.0MB  invalid specification: freq_seasonal[0].period = 140737488355328 with 200 observations: a trigonometric seasonal period must not exceed the sample len
+  unobserved_components      freq_seasonal=2^31         refusal      t=    0.0 rss+=     0.0MB  invalid specification: freq_seasonal[0].period = 2147483648 with 200 observations: a trigonometric seasonal period must not exceed the sample length (
+  unobserved_components      freq_seasonal=1e6          refusal      t=    0.0 rss+=     0.0MB  invalid specification: freq_seasonal[0].period = 1000000 with 200 observations: a trigonometric seasonal period must not exceed the sample length (it 
+  unobserved_components      freq_seasonal=cap+1        refusal      t=    0.0 rss+=     0.0MB  invalid specification: freq_seasonal[0].period = 201 with 200 observations: a trigonometric seasonal period must not exceed the sample length (it cost
+  unobserved_components      freq_seasonal=cap          refusal      t=    0.0 rss+=     0.0MB  invalid specification: y has 200 observed (non-NaN) values but the specification has 205 states; at least k_states + 2 = 207 observations are needed
+  unobserved_components      freq_seasonal_harmonics=2^47 refusal      t=    0.0 rss+=     0.0MB  freq_seasonal_harmonics was given but freq_seasonal is None: it only sets the harmonics of the trigonometric seasonal blocks, so without freq_seasonal
+  unobserved_components      freq_seasonal_harmonics=2^31 refusal      t=    0.0 rss+=     0.0MB  freq_seasonal_harmonics was given but freq_seasonal is None: it only sets the harmonics of the trigonometric seasonal blocks, so without freq_seasonal
+  unobserved_components      freq_seasonal_harmonics=1e6 refusal      t=    0.0 rss+=     0.0MB  freq_seasonal_harmonics was given but freq_seasonal is None: it only sets the harmonics of the trigonometric seasonal blocks, so without freq_seasonal
+  unobserved_components      forecast_steps=2^47        refusal      t=    0.0 rss+=     0.0MB  invalid specification: forecast_steps = 140737488355328: at most 100000 forecast periods are accepted (the horizon costs O(forecast_steps * k_states^2
+  unobserved_components      forecast_steps=2^31        refusal      t=    0.0 rss+=     0.0MB  invalid specification: forecast_steps = 2147483648: at most 100000 forecast periods are accepted (the horizon costs O(forecast_steps * k_states^2) wor
+  unobserved_components      forecast_steps=1e6         refusal      t=    0.0 rss+=     0.0MB  invalid specification: forecast_steps = 1000000: at most 100000 forecast periods are accepted (the horizon costs O(forecast_steps * k_states^2) work a
+  unobserved_components      forecast_steps=cap+1       refusal      t=    0.0 rss+=     0.0MB  invalid specification: forecast_steps = 100001: at most 100000 forecast periods are accepted (the horizon costs O(forecast_steps * k_states^2) work an
+  unobserved_components      forecast_steps=cap         ok           t=  0.426 rss+=     3.2MB  
+  unobserved_components      forecast_steps=1e4         ok           t=   0.39 rss+=     0.2MB  
+  unobserved_components      n_starts=2^47              refusal      t=    0.0 rss+=     0.0MB  invalid specification: n_starts = 140737488355328: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then 
+  unobserved_components      n_starts=2^31              refusal      t=    0.0 rss+=     0.0MB  invalid specification: n_starts = 2147483648: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repea
+  unobserved_components      n_starts=1e6               refusal      t=    0.0 rss+=     0.0MB  invalid specification: n_starts = 1000000: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats,
+  unobserved_components      n_starts=cap+1             refusal      t=    0.0 rss+=     0.0MB  invalid specification: n_starts = 65: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so m
+  unobserved_components      n_starts=cap               ok           t=  24.17 rss+=     0.0MB  
+  (unobserved_components: 24 cells in 25 s)
+  tvp_regression             n_starts=2^47              refusal      t=    0.0 rss+=     0.3MB  invalid specification: n_starts = 140737488355328: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then 
+  tvp_regression             n_starts=2^31              refusal      t=    0.0 rss+=     0.0MB  invalid specification: n_starts = 2147483648: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repea
+  tvp_regression             n_starts=1e6               refusal      t=    0.0 rss+=     0.0MB  invalid specification: n_starts = 1000000: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats,
+  tvp_regression             n_starts=cap+1             refusal      t=    0.0 rss+=     0.0MB  invalid specification: n_starts = 65: at most 64 starting values are accepted (the deterministic ladder has five distinct rungs and then repeats, so m
+  tvp_regression             n_starts=cap               ok           t= 21.879 rss+=     1.6MB  
+  (tvp_regression: 5 cells in 22 s)
+  ets_fit                    seasonal_periods=2^47      refusal      t=    0.0 rss+=     0.2MB  y has 200 observations but fitting ETS(A,A,A) with 140737488355333 parameters (the AICc needs n - k - 1 > 0) needs at least 140737488355335; supply a 
+  ets_fit                    seasonal_periods=2^31      refusal      t=    0.0 rss+=     0.0MB  y has 200 observations but fitting ETS(A,A,A) with 2147483653 parameters (the AICc needs n - k - 1 > 0) needs at least 2147483655; supply a longer ser
+  ets_fit                    seasonal_periods=1e6       refusal      t=    0.0 rss+=     0.0MB  y has 200 observations but fitting ETS(A,A,A) with 1000005 parameters (the AICc needs n - k - 1 > 0) needs at least 1000007; supply a longer series or
+  ets_fit                    seasonal_periods=2e5       refusal      t=    0.0 rss+=     0.0MB  y has 200 observations but fitting ETS(A,A,A) with 200005 parameters (the AICc needs n - k - 1 > 0) needs at least 200007; supply a longer series or a
+  ets_fit                    horizon=2^47               refusal      t=  0.009 rss+=     0.4MB  horizon = 140737488355328 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is 
+  ets_fit                    horizon=2^31               refusal      t=  0.009 rss+=     0.0MB  horizon = 2147483648 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an al
+  ets_fit                    horizon=1e6                ok           t=  0.088 rss+=    60.9MB  
+  ets_fit                    horizon=cap+1              refusal      t=  0.009 rss+=     0.0MB  horizon = 1000001 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an alloc
+  ets_fit                    horizon=cap                ok           t=   0.08 rss+=    46.5MB  
+  ets_fit                    horizon=2e5                ok           t=  0.021 rss+=     0.0MB  
+  ets_fit                    n_sim=2^47                 refusal      t=    0.0 rss+=     0.0MB  n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms
+  ets_fit                    n_sim=2^31                 refusal      t=    0.0 rss+=     0.0MB  n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms
+  ets_fit                    n_sim=1e6                  refusal      t=    0.0 rss+=     0.0MB  n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms
+  ets_fit                    n_sim=2^28                 refusal      t=    0.0 rss+=     0.0MB  n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms
+  ets_fit                    n_sim=2^26                 refusal      t=    0.0 rss+=     0.0MB  n_sim was given but this is a class-1 model (additive error, additive or no trend and seasonal), whose prediction intervals are the exact closed forms
+  ets_fit                    max_iter=2^47              ok           t=  0.009 rss+=     0.0MB  
+  ets_fit                    max_iter=2^31              ok           t=   0.01 rss+=     0.0MB  
+  ets_fit                    max_iter=1e6               ok           t=  0.009 rss+=     0.0MB  
+  (ets_fit: 18 cells in 0 s)
+  auto_ets                   seasonal_periods=2^47      ok           t=  0.016 rss+=     0.8MB  
+  auto_ets                   seasonal_periods=2^31      ok           t=  0.016 rss+=     0.0MB  
+  auto_ets                   seasonal_periods=1e6       ok           t=  0.016 rss+=     0.0MB  
+  auto_ets                   horizon=2^47               refusal      t=  0.121 rss+=     0.0MB  horizon = 140737488355328 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is 
+  auto_ets                   horizon=2^31               refusal      t=   0.12 rss+=     0.0MB  horizon = 2147483648 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an al
+  auto_ets                   horizon=1e6                ok           t=  0.202 rss+=    61.1MB  
+  auto_ets                   horizon=cap+1              refusal      t=  0.125 rss+=     0.0MB  horizon = 1000001 is invalid: the forecast horizon must not exceed 1000000 steps; every forecast path is materialised, so a larger horizon is an alloc
+  auto_ets                   horizon=2e5                ok           t=  0.134 rss+=     0.0MB  
+  auto_ets                   n_sim=2^47                 ok           t=  0.125 rss+=     0.0MB  
+  auto_ets                   n_sim=2^31                 ok           t=  0.125 rss+=     0.0MB  
+  auto_ets                   n_sim=1e6                  ok           t=  0.124 rss+=     0.0MB  
+  auto_ets                   n_sim=2^26                 ok           t=  0.125 rss+=     0.0MB  
+  (auto_ets: 12 cells in 1 s)
+  var_conditional_forecast   lags=2^47                  refusal      t=    0.0 rss+=     0.2MB  data has 200 rows but a VAR with lags = p = 140737488355328 on its k=3 series needs at least 562949953421314: lagging consumes 140737488355328 rows an
+  var_conditional_forecast   lags=2^31                  refusal      t=    0.0 rss+=     0.0MB  data has 200 rows but a VAR with lags = p = 2147483648 on its k=3 series needs at least 8589934594: lagging consumes 2147483648 rows and each equation
+  var_conditional_forecast   lags=1e6                   refusal      t=    0.0 rss+=     0.0MB  data has 200 rows but a VAR with lags = p = 1000000 on its k=3 series needs at least 4000002: lagging consumes 1000000 rows and each equation then has
+  var_conditional_forecast   steps=2^47                 refusal      t=    0.0 rss+=     1.4MB  invalid steps = 140737488355328: requires a horizon whose forecast path fits the conditional-forecast memory budget of 2^24 doubles: steps times the n
+  var_conditional_forecast   steps=2^31                 refusal      t=    0.0 rss+=     0.0MB  invalid steps = 2147483648: requires a horizon whose forecast path fits the conditional-forecast memory budget of 2^24 doubles: steps times the number
+  var_conditional_forecast   steps=1e6                  refusal      t=  0.066 rss+=    53.5MB  the conditional-forecast working set (steps * k cells times the number of constrained cells in conditions) exceeds the memory budget of 2^24 doubles; 
+  var_conditional_forecast   steps=2e5                  HANG         t=      - rss+=       -MB  
+  var_conditional_forecast   steps=1e4                  ok           t=  3.034 rss+=    40.0MB  
+  (var_conditional_forecast: 8 cells in 63 s)
+  var_diagnostics            lags=2^47                  refusal      t=    0.0 rss+=     0.3MB  data has 200 rows but a VAR with lags = p = 140737488355328 on its k=3 series needs at least 562949953421314: lagging consumes 140737488355328 rows an
+  var_diagnostics            lags=2^31                  refusal      t=    0.0 rss+=     0.0MB  data has 200 rows but a VAR with lags = p = 2147483648 on its k=3 series needs at least 8589934594: lagging consumes 2147483648 rows and each equation
+  var_diagnostics            lags=1e6                   refusal      t=    0.0 rss+=     0.0MB  data has 200 rows but a VAR with lags = p = 1000000 on its k=3 series needs at least 4000002: lagging consumes 1000000 rows and each equation then has
+  var_diagnostics            nlags=2^47                 refusal      t=    0.0 rss+=     1.4MB  invalid nlags = 140737488355328: requires fewer lags than the effective sample size T = nobs: the lag-h residual autocovariance needs T - h > 0 overla
+  var_diagnostics            nlags=2^31                 refusal      t=    0.0 rss+=     0.0MB  invalid nlags = 2147483648: requires fewer lags than the effective sample size T = nobs: the lag-h residual autocovariance needs T - h > 0 overlapping
+  var_diagnostics            nlags=1e6                  refusal      t=    0.0 rss+=     0.0MB  invalid nlags = 1000000: requires fewer lags than the effective sample size T = nobs: the lag-h residual autocovariance needs T - h > 0 overlapping pa
+  var_diagnostics            nlags=2e5                  refusal      t=    0.0 rss+=     0.0MB  invalid nlags = 200000: requires fewer lags than the effective sample size T = nobs: the lag-h residual autocovariance needs T - h > 0 overlapping pai
+  (var_diagnostics: 7 cells in 0 s)
+  var_select_order           max_lags=2^47              refusal      t=    0.0 rss+=     0.1MB  max_lags = 140737488355328 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -140737488355128 observa
+  var_select_order           max_lags=2^31              refusal      t=    0.0 rss+=     0.0MB  max_lags = 2147483648 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -2147483448 observations, so 
+  var_select_order           max_lags=1e6               refusal      t=    0.0 rss+=     0.0MB  max_lags = 1000000 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -999800 observations, so max_lag
+  var_select_order           max_lags=2e5               refusal      t=    0.0 rss+=     0.0MB  max_lags = 200000 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -199800 observations, so max_lags
+  var_select_order           max_lags=1e4               refusal      t=    0.0 rss+=     0.0MB  max_lags = 10000 with only 200 rows of data: every candidate order is fitted on the common sample of n - max_lags = -9800 observations, so max_lags mu
+  (var_select_order: 5 cells in 0 s)
+  spa_test                   reps=2^47                  refusal      t=    0.0 rss+=     0.7MB  spa_test: refusing to allocate 562949953421312 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond availab
+  spa_test                   reps=2^31                  refusal      t=    0.0 rss+=     0.0MB  spa_test: refusing to allocate 8589934592 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond available me
+  spa_test                   reps=1e6                   ok           t=  2.519 rss+=    92.0MB  
+  spa_test                   reps=2^24                  ok           t= 42.829 rss+=  1405.0MB  
+  spa_test                   reps=1e5                   ok           t=  0.257 rss+=     0.0MB  
+  spa_test                   block_size=2^47            refusal      t=    0.0 rss+=     0.0MB  spa_test: block_size = 140737488355328 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample
+  spa_test                   block_size=2^31            refusal      t=    0.0 rss+=     0.0MB  spa_test: block_size = 2147483648 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the 
+  spa_test                   block_size=1e6             refusal      t=    0.0 rss+=     0.0MB  spa_test: block_size = 1000000 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the ori
+  (spa_test: 8 cells in 46 s)
+  model_confidence_set       reps=2^47                  refusal      t=    0.0 rss+=     0.6MB  model_confidence_set: refusing to allocate 703687441776640 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is be
+  model_confidence_set       reps=2^31                  refusal      t=    0.0 rss+=     0.0MB  model_confidence_set: refusing to allocate 10737418240 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond
+  model_confidence_set       reps=1e6                   ok           t=  2.892 rss+=    38.4MB  
+  model_confidence_set       reps=2^24                  ok           t= 48.393 rss+=   602.0MB  
+  model_confidence_set       block_size=2^47            refusal      t=    0.0 rss+=     0.0MB  model_confidence_set: block_size = 140737488355328 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-bl
+  model_confidence_set       block_size=2^31            refusal      t=    0.0 rss+=     0.0MB  model_confidence_set: block_size = 2147483648 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block r
+  model_confidence_set       block_size=1e6             refusal      t=    0.0 rss+=     0.0MB  model_confidence_set: block_size = 1000000 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resa
+  (model_confidence_set: 7 cells in 51 s)
+  stepm_test                 reps=2^47                  refusal      t=    0.0 rss+=     0.6MB  stepm_test: refusing to allocate 562949953421312 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond avail
+  stepm_test                 reps=2^31                  refusal      t=    0.0 rss+=     0.0MB  stepm_test: refusing to allocate 8589934592 f64 values for the bootstrap buffer (reps x models); the product of the counts passed is beyond available 
+  stepm_test                 reps=1e6                   ok           t=  2.513 rss+=   122.7MB  
+  stepm_test                 reps=2^24                  ok           t= 46.273 rss+=  1886.6MB  
+  stepm_test                 block_size=2^47            refusal      t=    0.0 rss+=     0.0MB  stepm_test: block_size = 140737488355328 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resamp
+  stepm_test                 block_size=2^31            refusal      t=    0.0 rss+=     0.0MB  stepm_test: block_size = 2147483648 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample th
+  stepm_test                 block_size=1e6             refusal      t=    0.0 rss+=     0.0MB  stepm_test: block_size = 1000000 is invalid: requires 1 <= block_size < n = 200: a block as long as the sample makes every moving-block resample the o
+  (stepm_test: 7 cells in 49 s)
+  fmols                      bandwidth=2^47             ok           t=  0.001 rss+=     1.9MB  
+  fmols                      bandwidth=2^31             ok           t=    0.0 rss+=     0.0MB  
+  fmols                      bandwidth=1e6              ok           t=    0.0 rss+=     0.0MB  
+  (fmols: 3 cells in 0 s)
+  ccr                        bandwidth=2^47             ok           t=  0.001 rss+=     1.9MB  
+  ccr                        bandwidth=2^31             ok           t=    0.0 rss+=     0.0MB  
+  ccr                        bandwidth=1e6              ok           t=    0.0 rss+=     0.0MB  
+  (ccr: 3 cells in 0 s)
+  dols                       lags=2^47                  refusal      t=    0.0 rss+=     0.6MB  the dynamic OLS design is too large for T = 200 observations: with lags = 140737488355328 and leads = 1 the largest regression keeps T - 1 - 140737488
+  dols                       lags=2^31                  refusal      t=    0.0 rss+=     0.0MB  the dynamic OLS design is too large for T = 200 observations: with lags = 2147483648 and leads = 1 the largest regression keeps T - 1 - 2147483648 - 1
+  dols                       lags=1e6                   refusal      t=    0.0 rss+=     0.0MB  the dynamic OLS design is too large for T = 200 observations: with lags = 1000000 and leads = 1 the largest regression keeps T - 1 - 1000000 - 1 = 0 r
+  dols                       leads=2^47                 refusal      t=    0.0 rss+=     0.0MB  the dynamic OLS design is too large for T = 200 observations: with lags = 1 and leads = 140737488355328 the largest regression keeps T - 1 - 1 - 14073
+  dols                       leads=2^31                 refusal      t=    0.0 rss+=     0.0MB  the dynamic OLS design is too large for T = 200 observations: with lags = 1 and leads = 2147483648 the largest regression keeps T - 1 - 1 - 2147483648
+  dols                       leads=1e6                  refusal      t=    0.0 rss+=     0.0MB  the dynamic OLS design is too large for T = 200 observations: with lags = 1 and leads = 1000000 the largest regression keeps T - 1 - 1 - 1000000 = 0 r
+  dols                       max_lag=2^47               refusal      t=    0.0 rss+=     0.0MB  max_lag = 140737488355328 was given but lags = 1 is fixed: the cap only bounds a searched lag count, so it would be inert; drop max_lag or pass lags =
+  dols                       max_lag=2^31               refusal      t=    0.0 rss+=     0.0MB  max_lag = 2147483648 was given but lags = 1 is fixed: the cap only bounds a searched lag count, so it would be inert; drop max_lag or pass lags = None
+  dols                       max_lag=1e6                refusal      t=    0.0 rss+=     0.0MB  max_lag = 1000000 was given but lags = 1 is fixed: the cap only bounds a searched lag count, so it would be inert; drop max_lag or pass lags = None
+  dols                       max_lag=1e4                refusal      t=    0.0 rss+=     0.0MB  max_lag = 10000 was given but lags = 1 is fixed: the cap only bounds a searched lag count, so it would be inert; drop max_lag or pass lags = None
+  dols                       max_lead=2^47              refusal      t=    0.0 rss+=     0.0MB  max_lead = 140737488355328 was given but leads = 1 is fixed: the cap only bounds a searched lead count, so it would be inert; drop max_lead or pass le
+  dols                       max_lead=2^31              refusal      t=    0.0 rss+=     0.0MB  max_lead = 2147483648 was given but leads = 1 is fixed: the cap only bounds a searched lead count, so it would be inert; drop max_lead or pass leads =
+  dols                       max_lead=1e6               refusal      t=    0.0 rss+=     0.0MB  max_lead = 1000000 was given but leads = 1 is fixed: the cap only bounds a searched lead count, so it would be inert; drop max_lead or pass leads = No
+  dols                       max_lead=1e4               refusal      t=    0.0 rss+=     0.0MB  max_lead = 10000 was given but leads = 1 is fixed: the cap only bounds a searched lead count, so it would be inert; drop max_lead or pass leads = None
+  (dols: 14 cells in 0 s)
+  panel_lp@mask              horizon=2^47               refusal      t=    0.0 rss+=     0.6MB  panel local projection: the largest horizon plus the lag order leaves no regression window inside the panel's periods: needs at least 140737488355331 
+  panel_lp@mask              horizon=2^31               refusal      t=    0.0 rss+=     0.0MB  panel local projection: the largest horizon plus the lag order leaves no regression window inside the panel's periods: needs at least 2147483651 usabl
+  panel_lp@mask              horizon=1e6                refusal      t=    0.0 rss+=     0.0MB  panel local projection: the largest horizon plus the lag order leaves no regression window inside the panel's periods: needs at least 1000003 usable o
+  panel_lp@mask              horizon=1e4                refusal      t=    0.0 rss+=     0.0MB  panel local projection: the largest horizon plus the lag order leaves no regression window inside the panel's periods: needs at least 10003 usable obs
+  (panel_lp@mask: 4 cells in 0 s)
+  panel_distributed_lag@mask lags=2^47                  refusal      t=    0.0 rss+=     0.6MB  distributed-lag design (lags): dropping the first `lags` periods of every entity must leave at least two periods: needs at least 140737488355330 usabl
+  panel_distributed_lag@mask lags=2^31                  refusal      t=    0.0 rss+=     0.0MB  distributed-lag design (lags): dropping the first `lags` periods of every entity must leave at least two periods: needs at least 2147483650 usable obs
+  panel_distributed_lag@mask lags=1e6                   refusal      t=    0.0 rss+=     0.0MB  distributed-lag design (lags): dropping the first `lags` periods of every entity must leave at least two periods: needs at least 1000002 usable observ
+  panel_distributed_lag@mask powers=2^47                refusal      t=    0.0 rss+=     0.0MB  powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 140737488355328
+  panel_distributed_lag@mask powers=2^31                refusal      t=    0.0 rss+=     0.0MB  powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 2147483648
+  panel_distributed_lag@mask powers=1e6                 refusal      t=    0.0 rss+=     0.0MB  powers must be 1 (linear response: lags of x) or 2 (quadratic response: lags of x and of x^2, the Burke-Hsiang-Miguel form); got 1000000
+  (panel_distributed_lag@mask: 6 cells in 0 s)
+  lp_did@mask                pre_window=2^47            refusal      t=    0.0 rss+=     0.7MB  LP-DiD pre window: horizon -Q needs some period t >= Q with the lag y_{t-Q} inside the panel: needs at least 140737488355329 usable observations, got 
+  lp_did@mask                pre_window=2^31            refusal      t=    0.0 rss+=     0.0MB  LP-DiD pre window: horizon -Q needs some period t >= Q with the lag y_{t-Q} inside the panel: needs at least 2147483649 usable observations, got 200; 
+  lp_did@mask                pre_window=1e6             refusal      t=    0.0 rss+=     0.0MB  LP-DiD pre window: horizon -Q needs some period t >= Q with the lag y_{t-Q} inside the panel: needs at least 1000001 usable observations, got 200; red
+  lp_did@mask                post_window=2^47           refusal      t=    0.0 rss+=     0.0MB  LP-DiD post window: horizon H needs some period t with both a lagged baseline (t >= 1) and the horizon-H lead inside the panel (t + H <= T - 1): needs
+  lp_did@mask                post_window=2^31           refusal      t=    0.0 rss+=     0.0MB  LP-DiD post window: horizon H needs some period t with both a lagged baseline (t >= 1) and the horizon-H lead inside the panel (t + H <= T - 1): needs
+  lp_did@mask                post_window=1e6            refusal      t=    0.0 rss+=     0.0MB  LP-DiD post window: horizon H needs some period t with both a lagged baseline (t >= 1) and the horizon-H lead inside the panel (t + H <= T - 1): needs
+  (lp_did@mask: 6 cells in 0 s)
+
+cap cells: 137; not refusal/ok: 1

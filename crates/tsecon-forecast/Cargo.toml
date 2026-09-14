@@ -18,6 +18,11 @@ tsecon-bootstrap = { path = "../tsecon-bootstrap" }
 # Giacomini-White tests take their Bartlett long-run variances from here so
 # identical settings never produce different p-values across modules.
 tsecon-hac = { path = "../tsecon-hac" }
+# SPA / MCS (0.10.0): the loss-panel bootstrap fills a pre-budgeted flat
+# buffer in parallel (rayon is already a workspace dependency through
+# tsecon-bootstrap); replication order is fixed, so results are bit-identical
+# at any thread count.
+rayon = "1"
 
 [dev-dependencies]
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy

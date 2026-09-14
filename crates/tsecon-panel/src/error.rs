@@ -27,9 +27,10 @@ pub enum PanelError {
         /// Description of the domain violation.
         what: &'static str,
     },
-    /// An input contained a NaN or infinity. Panel estimators never skip
-    /// missing values silently; drop or impute them first (unbalanced
-    /// panels with an explicit observation mask are `// TODO(phase0)`).
+    /// An observed input cell contained a NaN or infinity. Panel
+    /// estimators never skip missing values silently: drop or impute
+    /// them, or declare the missing cells through an observation mask
+    /// ([`crate::PanelData::unbalanced`]).
     NonFinite {
         /// Name of the offending input.
         what: &'static str,
@@ -45,11 +46,13 @@ pub enum PanelError {
     /// absorbs one mean per entity in addition to the `k` slope
     /// parameters.
     DegreesOfFreedom {
-        /// Total stacked observations `nobs = N * T`.
+        /// Stacked observations `nobs` (`N * T` on a balanced panel, the
+        /// observed cells otherwise).
         n: usize,
         /// Number of slope regressors `k`.
         k: usize,
-        /// Number of entities `N` (absorbed fixed effects).
+        /// Number of entities `N` with an observation (absorbed fixed
+        /// effects).
         n_entities: usize,
     },
     /// The within estimator with a general [`crate::FixedEffects`] menu
@@ -57,12 +60,14 @@ pub enum PanelError {
     /// it needs `nobs > k + n_absorbed`, where `n_absorbed` counts every
     /// absorbed effect and trend slope.
     DegreesOfFreedomAbsorbed {
-        /// Total stacked observations `nobs = N * T`.
+        /// Stacked observations `nobs` (`N * T` on a balanced panel, the
+        /// observed cells otherwise).
         n: usize,
         /// Number of slope regressors `k`.
         k: usize,
         /// Number of absorbed parameters (entity effects, time effects,
-        /// entity-trend slopes).
+        /// entity-trend slopes; on an unbalanced panel only entities and
+        /// periods with an observation count).
         n_absorbed: usize,
     },
     /// The sample (or a sub-sample such as a jackknife half-panel) is too
@@ -82,6 +87,20 @@ pub enum PanelError {
     SingularDesign {
         /// Which computation hit the singular design.
         what: &'static str,
+    },
+    /// An estimator (or one of its modes) is defined for balanced panels
+    /// only and was handed an unbalanced one (a mask with unobserved
+    /// cells). The message names the parameter and says what to pass.
+    Unbalanced {
+        /// Which estimator or mode refused, and why.
+        what: &'static str,
+    },
+    /// A per-entity matrix of the mean-group panel VAR holds a NaN or
+    /// infinity: a VAR needs contiguous observations within each entity,
+    /// so an internal gap cannot be masked.
+    NonFiniteEntity {
+        /// Zero-based index of the offending entity.
+        entity: usize,
     },
     /// A per-entity VAR fit inside the mean-group estimator failed.
     EntityVar {
@@ -106,9 +125,22 @@ impl fmt::Display for PanelError {
             PanelError::InvalidArgument { what } => write!(f, "invalid argument: {what}"),
             PanelError::NonFinite { what } => write!(
                 f,
-                "{what}: contains a non-finite value (NaN or infinity); panel \
-                 estimators do not skip missing values silently — drop or \
-                 impute them first (unbalanced panels are TODO(phase0))"
+                "{what}: contains a non-finite value (NaN or infinity) in an observed \
+                 cell; panel estimators do not skip missing values silently — drop or \
+                 impute them first, or declare the missing cells through the \
+                 observation mask (mask=..., an N x T array of 0/1 flags with 1 where \
+                 the entity is observed in that period; masked-out cells may hold NaN)"
+            ),
+            PanelError::Unbalanced { what } => {
+                write!(f, "unbalanced panel (mask with unobserved cells): {what}")
+            }
+            PanelError::NonFiniteEntity { entity } => write!(
+                f,
+                "entities[{entity}]: contains a non-finite value (NaN or infinity); a \
+                 VAR needs contiguous observations within each entity, so an internal \
+                 gap cannot be masked out — pass each entity's contiguous span as its \
+                 own T_i x k matrix (the time dimensions may differ across entities; \
+                 trim leading and trailing missing rows before the call)"
             ),
             PanelError::InvalidBandwidth { value } => write!(
                 f,

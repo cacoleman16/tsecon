@@ -1,0 +1,38 @@
+corpus: 30,843,244 characters (rust_props + pytest -s + every crate src/tests + python tests + examples + fixtures + scripts + benchmarks)
+[card:unobserved_components] reproduced by rounding a committed number: 8.8e-4 <- 0.0008838554163159363, 1469.18 <- 1469.1763573975115, 8.9e-16 <- 8.881784197001252e-16, 5.6e-16 <- 5.551115123125783e-16, 1469.2 <- 1469.1763573975115
+[card:unobserved_components] 43 informative numbers, 1 NOT found in the corpus: ['232.2477']
+[card:tvp_regression] reproduced by rounding a committed number: 3.3e-5 <- 3.341791275510173e-05
+[card:tvp_regression] 15 informative numbers, all reproduced
+[card:ets_fit] 92 informative numbers, all reproduced
+[card:auto_ets] 92 informative numbers, all reproduced
+[card:var_conditional_forecast] 32 informative numbers, all reproduced
+[card:var_diagnostics] 11 informative numbers, all reproduced
+[card:var_select_order] 11 informative numbers, all reproduced
+[card:spa_test] 72 informative numbers, 1 NOT found in the corpus: ['351.11']
+[card:model_confidence_set] 72 informative numbers, 1 NOT found in the corpus: ['351.11']
+[card:stepm_test] 72 informative numbers, 1 NOT found in the corpus: ['351.11']
+[card:fmols] 86 informative numbers, all reproduced
+[card:dols] 86 informative numbers, all reproduced
+[card:ccr] 86 informative numbers, all reproduced
+[card:panel-mask] 5 informative numbers, all reproduced
+[matrix] 12 informative numbers, all reproduced
+[matrix] 7 informative numbers, all reproduced
+[matrix] 13 informative numbers, all reproduced
+[matrix] 3 informative numbers, all reproduced
+[matrix] 24 informative numbers, all reproduced
+[matrix] 7 informative numbers, all reproduced
+[matrix] 3 informative numbers, all reproduced
+[matrix] reproduced by rounding a committed number: 8.8e-4 <- 0.0008838554163159363
+[matrix] 4 informative numbers, all reproduced
+[matrix] reproduced by rounding a committed number: 6.1e-13 <- 6.123805974729926e-13
+[matrix] 1 informative numbers, all reproduced
+[guide+bq(added lines)] 202 informative numbers, 1 NOT found in the corpus: ['351.11']
+[CHANGELOG 0.10.0] reproduced by rounding a committed number: 1469.18 <- 1469.1763573975115
+[CHANGELOG 0.10.0] 39 informative numbers, 1 NOT found in the corpus: ['198.83']
+[ROADMAP section 0] reproduced by rounding a committed number: 8.7e-5 <- 8.743232415794238e-05, 2.2e-12 <- 2.1718732723518338e-12, 6.7e-15 <- 6.671534228466297e-15, 2.3e-13 <- 2.275957200481571e-13, 1.5e-12 <- 1.5374597944280349e-12, 9.8e-15 <- 9.769962616701378e-15, 1.1e-14 <- 1.085140865514789e-14, 1.4e-12 <- 1.3507743240005037e-12, 1.4e-11 <- 1.409181761228137e-11, 2.9e-15 <- 2.858824288409778e-15
+[ROADMAP section 0] 83 informative numbers, 1 NOT found in the corpus: ['3.0e-15']
+
+TOTAL: 1173 informative numbers across 18 spans; 1166 found in a committed artifact, 7 candidates
+[card:unobserved_components block 0] EXPECTED LINE NOT PRINTED: "{'sigma2.irregular': 15098.5, 'sigma2.level': 1469.2} [False, False]"
+
+card examples: 11 runnable blocks executed, 22 claimed output lines reproduced verbatim, 1 not

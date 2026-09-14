@@ -1,0 +1,129 @@
+{
+ "card:unobserved_components": {
+  "numbers": 43,
+  "missing": [
+   "232.2477"
+  ],
+  "rounded": {
+   "8.8e-4": "0.0008838554163159363",
+   "1469.18": "1469.1763573975115",
+   "8.9e-16": "8.881784197001252e-16",
+   "5.6e-16": "5.551115123125783e-16",
+   "1469.2": "1469.1763573975115"
+  }
+ },
+ "card:tvp_regression": {
+  "numbers": 15,
+  "missing": [],
+  "rounded": {
+   "3.3e-5": "3.341791275510173e-05"
+  }
+ },
+ "card:ets_fit": {
+  "numbers": 92,
+  "missing": [],
+  "rounded": {}
+ },
+ "card:auto_ets": {
+  "numbers": 92,
+  "missing": [],
+  "rounded": {}
+ },
+ "card:var_conditional_forecast": {
+  "numbers": 32,
+  "missing": [],
+  "rounded": {}
+ },
+ "card:var_diagnostics": {
+  "numbers": 11,
+  "missing": [],
+  "rounded": {}
+ },
+ "card:var_select_order": {
+  "numbers": 11,
+  "missing": [],
+  "rounded": {}
+ },
+ "card:spa_test": {
+  "numbers": 72,
+  "missing": [
+   "351.11"
+  ],
+  "rounded": {}
+ },
+ "card:model_confidence_set": {
+  "numbers": 72,
+  "missing": [
+   "351.11"
+  ],
+  "rounded": {}
+ },
+ "card:stepm_test": {
+  "numbers": 72,
+  "missing": [
+   "351.11"
+  ],
+  "rounded": {}
+ },
+ "card:fmols": {
+  "numbers": 86,
+  "missing": [],
+  "rounded": {}
+ },
+ "card:dols": {
+  "numbers": 86,
+  "missing": [],
+  "rounded": {}
+ },
+ "card:ccr": {
+  "numbers": 86,
+  "missing": [],
+  "rounded": {}
+ },
+ "card:panel-mask": {
+  "numbers": 5,
+  "missing": [],
+  "rounded": {}
+ },
+ "matrix": {
+  "numbers": 1,
+  "missing": [],
+  "rounded": {
+   "6.1e-13": "6.123805974729926e-13"
+  }
+ },
+ "guide+bq(added lines)": {
+  "numbers": 202,
+  "missing": [
+   "351.11"
+  ],
+  "rounded": {}
+ },
+ "CHANGELOG 0.10.0": {
+  "numbers": 39,
+  "missing": [
+   "198.83"
+  ],
+  "rounded": {
+   "1469.18": "1469.1763573975115"
+  }
+ },
+ "ROADMAP section 0": {
+  "numbers": 83,
+  "missing": [
+   "3.0e-15"
+  ],
+  "rounded": {
+   "8.7e-5": "8.743232415794238e-05",
+   "2.2e-12": "2.1718732723518338e-12",
+   "6.7e-15": "6.671534228466297e-15",
+   "2.3e-13": "2.275957200481571e-13",
+   "1.5e-12": "1.5374597944280349e-12",
+   "9.8e-15": "9.769962616701378e-15",
+   "1.1e-14": "1.085140865514789e-14",
+   "1.4e-12": "1.3507743240005037e-12",
+   "1.4e-11": "1.409181761228137e-11",
+   "2.9e-15": "2.858824288409778e-15"
+  }
+ }
+}

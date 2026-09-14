@@ -18,7 +18,7 @@ affiliations:
     index: 1
 date: 17 July 2026
 # Draft — before JOSS submission, confirm author metadata (ORCID, affiliation)
-# and reset `date` to the submission date: the paper describes 0.9.0, whose
+# and reset `date` to the submission date: the paper describes 0.10.0, whose
 # measured test and count figures were taken on 30 August 2026, so the current
 # placeholder predates the artifact it documents.
 bibliography: paper.bib
@@ -37,7 +37,7 @@ Python and NumPy; the estimation kernels (state-space filtering, bootstrap and
 posterior resampling, sign-restriction rotation sampling, spectral transforms,
 optimization) are implemented in Rust and exposed through `PyO3` and built into
 portable wheels with `maturin` [@pyo3; @maturin]. The release described here,
-**0.9.0**, exposes **179 functions** organized as a task-oriented facade over
+**0.10.0**, exposes **192 functions** organized as a task-oriented facade over
 **43 Rust crates**, and NumPy is the only required runtime dependency.
 
 The design goal is not another forecasting toolkit but a maintained, fast, and
@@ -114,7 +114,7 @@ comfortable default rather than an overnight job.
 
 # Functionality
 
-The 179 functions span the applied workflow end to end:
+The 192 functions span the applied workflow end to end:
 
 - **Diagnostics and exploration**: `acf`, `pacf`, `ljung_box`, `jarque_bera`,
   `arch_lm`; the unit-root battery (`adf`, `kpss`, `dfgls`, `phillips_perron`,

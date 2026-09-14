@@ -101,6 +101,23 @@
 //! even where the points coincide. Requesting both at once is refused as
 //! ambiguous.
 //!
+//! ## Unbalanced panels
+//!
+//! On an unbalanced panel ([`PanelData::unbalanced`]) the horizon-`h`
+//! regression uses the rows `(i, t)` whose target (`y_{i,t+h}`, or the
+//! whole cumulated window `y_{i,t..t+h}`) and lagged-outcome controls
+//! are observed — a within-entity `shift` followed by dropping
+//! incomplete rows — so `nobs[h]` shrinks with both the horizon and the
+//! gaps, and the sample's entity composition can change across horizons
+//! (read `nobs`). The plain estimator and every covariance are defined
+//! there and pinned against linearmodels `PanelOLS` on exactly that
+//! design (`fixtures/panel_unbalanced.json`). The two half-panel
+//! jackknives are **refused** on unbalanced panels: their bias
+//! reduction rests on the two halves carrying the same incidental-
+//! parameter bias as the full panel, which entry, exit and gaps break
+//! (the halves then differ in entity composition), and the split-panel
+//! reference implementation (`pLP`) is written for balanced panels.
+//!
 //! // TODO(phase0): entity-varying shocks (an `N x T` impulse panel),
 //! // user-supplied extra controls from `PanelData::regressor`, panel
 //! // LP-IV, and the analytical (non-jackknife) Nickell corrections of
@@ -111,7 +128,7 @@ use tsecon_linalg::faer::{Mat, MatRef};
 
 use crate::data::PanelData;
 use crate::error::PanelError;
-use crate::fe::{fit_within, PanelSeType, WithinFit};
+use crate::fe::{fit_within, fit_within_masked, FixedEffects, PanelSeType, WithinFit};
 
 /// Nickell-bias correction applied to the per-horizon point estimates
 /// (see the module docs for the two half-panel corrections, how they
@@ -233,6 +250,8 @@ pub struct PanelLpResult {
 ///   exactly one), or if `Spj` is combined with
 ///   [`PanelSeType::NonRobust`] (the reference implementation provides
 ///   no homoskedastic SPJ variance) or with fewer than two entities;
+/// * [`PanelError::Unbalanced`] if a half-panel jackknife is requested
+///   on an unbalanced panel (see the module docs);
 /// * [`PanelError::InsufficientObservations`] /
 ///   [`PanelError::DegreesOfFreedom`] when a horizon (or a jackknife /
 ///   split-panel half) leaves too small a sample;
@@ -263,8 +282,9 @@ pub fn panel_lp(
     let lag_max = config.shock_lags.max(config.outcome_lags);
     if t_len.saturating_sub(hmax) <= lag_max {
         return Err(PanelError::InsufficientObservations {
-            what: "panel local projection: the largest horizon plus the lag order \
-                   leaves no regression window inside the panel's periods",
+            what: "panel local projection: horizon plus the lag order \
+                   (n_lag_controls, or shock_lags/outcome_lags) leaves no \
+                   regression window inside the panel's periods",
             needed: hmax + lag_max + 1,
             got: t_len,
         });
@@ -285,6 +305,18 @@ pub fn panel_lp(
             });
         }
     };
+    if bc != LpBiasCorrection::None && !data.is_balanced() {
+        return Err(PanelError::Unbalanced {
+            what: "jackknife=true / bias_correction=\"dj\" / bias_correction=\"spj\" \
+                   need a balanced panel: the half-panel jackknives remove the \
+                   Nickell bias by assuming each half-panel carries the same \
+                   incidental-parameter bias as the full panel, which entry, exit \
+                   and gaps break (the halves then differ in entity composition), \
+                   and the split-panel reference implementation is written for \
+                   balanced panels — pass bias_correction=\"none\" (jackknife=false) \
+                   with the mask, or trim the panel to a balanced window",
+        });
+    }
     if bc == LpBiasCorrection::Spj {
         if matches!(config.cov, PanelSeType::NonRobust) {
             return Err(PanelError::InvalidArgument {
@@ -567,6 +599,9 @@ fn lp_fit_rows(
     debug_assert!(t_start >= config.shock_lags.max(config.outcome_lags));
     debug_assert!(t_end + h <= data.n_periods());
     let n_per = t_end - t_start;
+    if !data.is_balanced() {
+        return lp_fit_rows_masked(data, shock, config, h, t_start, t_end);
+    }
     let n = n_ent * n_per;
     if n <= k + n_ent {
         return Err(PanelError::DegreesOfFreedom {
@@ -597,4 +632,73 @@ fn lp_fit_rows(
         }
     }
     fit_within(&y, &x_cols, n_ent, n_per)
+}
+
+/// The masked counterpart of [`lp_fit_rows`]: the rows `(i, t)`,
+/// `t in [t_start, t_end)`, whose target cells (`y_{i,t+h}`, or
+/// `y_{i,t..t+h}` when cumulative) and lagged-outcome cells are observed,
+/// stacked entity-major with the window-relative period `t - t_start`
+/// as the row's period label (so Driscoll-Kraay lags are calendar
+/// distances inside the window, as on a balanced panel).
+fn lp_fit_rows_masked(
+    data: &PanelData,
+    shock: &[f64],
+    config: &PanelLpConfig,
+    h: usize,
+    t_start: usize,
+    t_end: usize,
+) -> Result<WithinFit, PanelError> {
+    let n_ent = data.n_entities();
+    let k = 1 + config.shock_lags + config.outcome_lags;
+    let n_per = t_end - t_start;
+    let outcome: MatRef<'_, f64> = data.outcome();
+    let mut cells: Vec<(usize, usize)> = Vec::new();
+    let mut y = Vec::new();
+    let mut x_cols = vec![Vec::new(); k];
+    for i in 0..n_ent {
+        for t in t_start..t_end {
+            let target_ok = if config.cumulative {
+                (0..=h).all(|j| data.observed(i, t + j))
+            } else {
+                data.observed(i, t + h)
+            };
+            let lags_ok = (1..=config.outcome_lags).all(|l| data.observed(i, t - l));
+            if !(target_ok && lags_ok) {
+                continue;
+            }
+            cells.push((i, t - t_start));
+            y.push(if config.cumulative {
+                (0..=h).map(|j| outcome[(i, t + j)]).sum()
+            } else {
+                outcome[(i, t + h)]
+            });
+            x_cols[0].push(shock[t]);
+            for l in 1..=config.shock_lags {
+                x_cols[l].push(shock[t - l]);
+            }
+            for l in 1..=config.outcome_lags {
+                x_cols[config.shock_lags + l].push(outcome[(i, t - l)]);
+            }
+        }
+    }
+    let n = cells.len();
+    let n_ent_obs = {
+        let mut seen = vec![false; n_ent];
+        for &(i, _) in &cells {
+            seen[i] = true;
+        }
+        seen.iter().filter(|&&b| b).count()
+    };
+    if n <= k + n_ent_obs {
+        return Err(PanelError::InsufficientObservations {
+            what: "panel local projection on the unbalanced panel (mask): after \
+                   requiring the horizon's target and every lagged outcome to be \
+                   observed, the rows left do not exceed the slopes plus the absorbed \
+                   entity effects — reduce max_horizon or the lag order, or fill the \
+                   gaps (counts are usable rows)",
+            needed: k + n_ent_obs + 1,
+            got: n,
+        });
+    }
+    fit_within_masked(&y, &x_cols, &cells, n_ent, n_per, FixedEffects::ENTITY)
 }

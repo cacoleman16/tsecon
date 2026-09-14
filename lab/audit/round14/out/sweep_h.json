@@ -1,0 +1,83 @@
+{
+ "nondeterministic": [],
+ "ets_fit.seed": {
+  "config": {
+   "error": "mul",
+   "trend": "add",
+   "seasonal": "mul",
+   "seasonal_periods": 4,
+   "horizon": 4,
+   "n_sim": 200
+  },
+  "same_seed_identical": true,
+  "different_seed_differs": true,
+  "subprocess_identical": true,
+  "none_accepted": true,
+  "none_documented": true,
+  "none_equals_seed0": true,
+  "none_deterministic": true,
+  "none_echo": 0
+ },
+ "auto_ets@mul.seed": {
+  "config": {
+   "seasonal_periods": 4,
+   "horizon": 4,
+   "n_sim": 200
+  },
+  "same_seed_identical": true,
+  "different_seed_differs": true,
+  "subprocess_identical": true,
+  "none_accepted": true,
+  "none_documented": true,
+  "none_equals_seed0": true,
+  "none_deterministic": true,
+  "none_echo": 0
+ },
+ "spa_test.seed": {
+  "config": {
+   "reps": 200
+  },
+  "same_seed_identical": true,
+  "different_seed_differs": true,
+  "subprocess_identical": true,
+  "none_accepted": false,
+  "none_error": "TypeError: spa_test: seed=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original err"
+ },
+ "model_confidence_set.seed": {
+  "config": {
+   "reps": 200
+  },
+  "same_seed_identical": true,
+  "different_seed_differs": true,
+  "subprocess_identical": true,
+  "none_accepted": false,
+  "none_error": "TypeError: model_confidence_set: seed=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. "
+ },
+ "stepm_test.seed": {
+  "config": {
+   "reps": 200
+  },
+  "same_seed_identical": true,
+  "different_seed_differs": true,
+  "subprocess_identical": true,
+  "none_accepted": false,
+  "none_error": "TypeError: stepm_test: seed=None is of type NoneType, but this parameter takes an integer \u2014 a count such as a lag length, order, horizon, window, or draw count. Original e"
+ },
+ "auto_ets@mul.threads": true,
+ "ets_fit.threads": true,
+ "model_confidence_set.threads": true,
+ "spa_test.threads": true,
+ "stepm_test.threads": true,
+ "unobserved_components.threads": true,
+ "tvp_regression.threads": true,
+ "var_conditional_forecast.threads": true,
+ "var_diagnostics.threads": true,
+ "var_select_order.threads": true,
+ "fmols.threads": true,
+ "dols.threads": true,
+ "ccr.threads": true,
+ "panel_fe@mask.threads": true,
+ "panel_distributed_lag@mask.threads": true,
+ "panel_lp@mask.threads": true,
+ "lp_did@mask.threads": true
+}

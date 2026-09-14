@@ -166,7 +166,7 @@ impl Scan {
             }
         }
         let chol_total = cholesky(&m_total, m).ok_or(RegimeError::Singular {
-            what: "the full-sample VAR design X'X (a constant or collinear \
+            what: "the full-sample VAR design X'X of data (a constant or collinear \
                    series, or p too large for the sample?)",
         })?;
 
@@ -196,6 +196,9 @@ impl Scan {
         }
         if feas_gamma.is_empty() {
             return Err(RegimeError::InsufficientData {
+                what: "the threshold search over data (no candidate threshold leaves \
+                       both regimes at least max(m + 1, ceil(trim n)) rows — reduce p, \
+                       delay / delays or trim, or supply a longer sample)",
                 needed: 2 * min_regime,
                 got: n,
             });
@@ -232,11 +235,11 @@ impl Scan {
                 let hi: Vec<f64> = m_total.iter().zip(&lo).map(|(&t, &l)| t - l).collect();
                 let cl = cholesky(&lo, m).ok_or(RegimeError::Singular {
                     what: "a low-regime VAR design X'X at a threshold candidate \
-                           (a collinear regime segment — raise trim)",
+                           (a collinear regime segment of data — raise trim)",
                 })?;
                 let ch = cholesky(&hi, m).ok_or(RegimeError::Singular {
                     what: "a high-regime VAR design X'X at a threshold candidate \
-                           (a collinear regime segment — raise trim)",
+                           (a collinear regime segment of data — raise trim)",
                 })?;
                 chol_low.push(cl);
                 chol_high.push(ch);
@@ -515,7 +518,11 @@ fn validate_common(
     trim: f64,
 ) -> Result<usize, RegimeError> {
     if endog.is_empty() || endog[0].is_empty() {
-        return Err(RegimeError::InsufficientData { needed: 1, got: 0 });
+        return Err(RegimeError::InsufficientData {
+            what: "data (the threshold VAR needs a non-empty (n_obs, n_series) array)",
+            needed: 1,
+            got: 0,
+        });
     }
     let k = endog[0].len();
     for row in endog {
@@ -538,8 +545,8 @@ fn validate_common(
     }
     if k < 2 {
         return Err(RegimeError::InvalidSpec {
-            what: "a threshold VAR needs at least two series (pass a 2-D array \
-                   shaped (n_obs, n_series), observations in rows, oldest \
+            what: "a threshold VAR needs at least two series in data (pass a 2-D \
+                   array shaped (n_obs, n_series), observations in rows, oldest \
                    first; a single series is a threshold AR — use setar)",
         });
     }
@@ -569,7 +576,8 @@ fn validate_common(
     let first = endog[0][threshold_index];
     if col.clone().all(|v| v == first) {
         return Err(RegimeError::InvalidSpec {
-            what: "the threshold series is constant: a threshold VAR needs \
+            what:
+                "the threshold series data[:, threshold_index] is constant: a threshold VAR needs \
                    variation in the threshold variable z_t",
         });
     }
@@ -582,7 +590,8 @@ fn validate_delay(delay: usize) -> Result<(), RegimeError> {
             name: "delay",
             value: 0.0,
             requirement: "delay >= 1 (the threshold variable is the lagged \
-                          value y_{threshold_index, t-delay})",
+                          value y_{threshold_index, t-delay}; every entry of \
+                          delays is a candidate delay)",
         });
     }
     Ok(())
@@ -593,6 +602,10 @@ fn check_length(t: usize, start: usize, m: usize, trim: f64) -> Result<(), Regim
     let min_regime = (m + 1).max((trim * n as f64).ceil() as usize);
     if n < 2 * min_regime {
         return Err(RegimeError::InsufficientData {
+            what: "data under the requested p, delay / delays and trim (after the \
+                   max(p, delay) start-up rows the sample must hold two regimes of \
+                   max(m + 1, ceil(trim n)) rows each, m the regressors per equation; \
+                   counts are rows of data)",
             needed: start + 2 * min_regime,
             got: t,
         });
@@ -850,6 +863,8 @@ fn regime_ols(design: &Design, rows: &[usize]) -> Result<RegimeOlsParts, RegimeE
     let k = design.k;
     if rows.len() < m + 1 {
         return Err(RegimeError::InsufficientData {
+            what: "a regime of data in the TVAR refit (fewer rows than regressors per \
+                   equation — raise trim or reduce p)",
             needed: m + 1,
             got: rows.len(),
         });

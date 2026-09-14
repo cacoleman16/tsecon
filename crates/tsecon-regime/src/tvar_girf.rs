@@ -177,7 +177,8 @@ impl TvarModel {
             return Err(RegimeError::InvalidParameter {
                 name: "delay",
                 value: 0.0,
-                requirement: "delay >= 1 in the fit",
+                requirement: "delay >= 1 in the fit (every entry of delays is a \
+                              candidate delay)",
             });
         }
         if fit.threshold_index >= k {
@@ -352,6 +353,8 @@ pub fn tvar_girf(
     }
     if endog.len() < len + 1 {
         return Err(RegimeError::InsufficientData {
+            what: "data under the requested p and delay (a GIRF history is a window \
+                   of max(p, delay) rows followed by the shock date)",
             needed: len + 1,
             got: endog.len(),
         });
@@ -500,6 +503,15 @@ fn map_engine_error(e: VarError) -> RegimeError {
         VarError::NonFinite { what, .. } => RegimeError::NonFinite { what },
         VarError::NotPositiveDefinite { what } => RegimeError::Singular { what },
         VarError::InvalidArgument { what } => RegimeError::InvalidSpec { what },
+        VarError::MemoryBudget {
+            what,
+            bytes,
+            budget,
+        } => RegimeError::MemoryBudget {
+            what,
+            bytes,
+            budget,
+        },
         VarError::Dimension {
             what,
             expected,

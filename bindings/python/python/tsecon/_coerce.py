@@ -96,6 +96,8 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # recursions are tabulated at every integer period up to the longest.
     "jsz_fit": frozenset({"maturities"}),
     "jsz_loadings": frozenset({"maturities"}),
+    # Harmonics per trigonometric seasonal block: integer counts, not data.
+    "unobserved_components": frozenset({"freq_seasonal_harmonics"}),
 }
 
 _POSITIONAL = (
@@ -252,6 +254,12 @@ _REAL_RE = re.compile(r"^must be real number, not (?P<got>\w+)$")
 # scalar index" / "only 0-dimensional arrays can be converted to Python
 # scalars". The offender is the array-valued argument whose default is a
 # scalar.
+# A string (or another non-sequence) handed to a `Vec<usize>` parameter —
+# `delays="abc"`, `maturities="abc"` — fails PyO3's sequence extraction as
+# "Can't extract `str` to `Vec`", again without the argument's name; the
+# integer-list parameters are the `_EXEMPT` entries, so the offender is the
+# exempt argument of that type.
+_VEC_RE = re.compile(r"^Can't extract `(?P<got>[^`]+)` to `Vec`$")
 _NUMPY_SCALAR_RE = re.compile(
     r"^only (?:integer scalar arrays can be converted to a scalar index"
     r"|0-dimensional arrays can be converted to Python scalars)"
@@ -593,6 +601,30 @@ def _type_name(v: object) -> set[str]:
     return names
 
 
+def _nested_path(v: object, got: str, depth: int = 3) -> str | None:
+    """``"[0][2]"`` for the first element of a list/tuple argument whose type is
+    the complained-about one, at any nesting depth up to ``depth``; ``None``
+    when the argument contains no such value.
+
+    Round 13's rebuild scanned one level, which is enough for ``delays=[1.5]``
+    but not for a nested-list parameter such as
+    ``var_conditional_forecast(conditions=[["x", None, None]])`` — audit round
+    14's sweep S found that cell falling through to the unnamed fallback."""
+    if depth <= 0 or not isinstance(v, (list, tuple)):
+        return None
+    for i, e in enumerate(v):
+        if got in _type_name(e):
+            return f"[{i}]"
+        deeper = _nested_path(e, got, depth - 1)
+        if deeper is not None:
+            return f"[{i}]{deeper}"
+    return None
+
+
+def _nested_hit(v: object, got: str, depth: int = 3) -> bool:
+    return _nested_path(v, got, depth) is not None
+
+
 def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
     """``name=value`` for the arguments whose type PyO3 complained about.
 
@@ -613,16 +645,114 @@ def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
         return [f"{label}={_short_repr(v)}" for label, v in chosen]
     matches: list[tuple[str, object, bool]] = []
     for label, v in labeled:
-        hit = got in _type_name(v) or (
-            isinstance(v, (list, tuple)) and any(got in _type_name(e) for e in v)
+        hit = got in _type_name(v) or _nested_hit(v, got) or (
+            # A float64 array in an integer-list slot: PyO3 complains about
+            # the ELEMENT type ("'numpy.float64' object cannot be interpreted
+            # as an integer"), so the array's dtype is what matches.
+            isinstance(v, np.ndarray) and v.size > 0 and got in _type_name(v.flat[0])
         )
         if not hit:
             continue
         d = defaults.get(label, inspect.Parameter.empty)
         strong = d is not inspect.Parameter.empty and d is not None and type(d) is not type(v)
         matches.append((label, v, strong))
-    chosen = [m for m in matches if m[2]] or matches
-    return [f"{label}={_short_repr(v)}" for label, v, _ in chosen]
+    # An integer-list parameter (the `_EXEMPT` entries) handed the wrong
+    # element type is the offender ahead of any data array whose dtype
+    # happens to match.
+    exempt = _EXEMPT.get(fn.__name__, frozenset())
+    listed = [m for m in matches if m[0] in exempt]
+    chosen = listed or [m for m in matches if m[2]] or matches
+    out = []
+    for label, v, _ in chosen:
+        # a value nested TWO OR MORE levels down (a cell of a nested list such
+        # as `conditions`) is named by its position, so the message points at
+        # the cell and not at the whole table; a shallow list keeps round 13's
+        # `delays=[1.5]` shape, which its regression pin asserts
+        path = _nested_path(v, got) if got not in _type_name(v) else None
+        if path is not None and path.count("[") < 2:
+            path = None
+        if path is not None:
+            cell = v
+            for idx in re.findall(r"\[(\d+)\]", path):
+                cell = cell[int(idx)]
+            out.append(f"{label}{path}={_short_repr(cell)}")
+        else:
+            out.append(f"{label}={_short_repr(v)}")
+    return out
+
+
+def _array_slot_offenders(fn, args, kwargs, got: str) -> list[str]:
+    """``name=value`` for the arguments that can be the scalar / string /
+    ``None`` PyO3 refused to downcast to an array.
+
+    The boundary message names the type but not the argument (audit round
+    13, the "got no array arguments" class). The candidates are the passed
+    arguments of that type; among them the REQUIRED parameters (no default:
+    the data arrays) are preferred, then the ``None``-default ones (the
+    optional arrays such as ``w`` or ``eval_points``); a parameter whose
+    default is itself a scalar of that type (``size=1.0``, ``trim=0.1``) is
+    never the array slot."""
+    defaults = _param_defaults(fn)
+    required: list[str] = []
+    optional: list[str] = []
+    for label, v in _labeled_ints(fn, args, kwargs):
+        if got not in _type_name(v):
+            continue
+        d = defaults.get(label, inspect.Parameter.empty)
+        if d is inspect.Parameter.empty:
+            required.append(f"{label}={_short_repr(v)}")
+        elif d is None:
+            optional.append(f"{label}={_short_repr(v)}")
+    return required or optional
+
+
+def _array_slot_error(fn, args, kwargs, got: str, original: TypeError) -> TypeError:
+    offenders = _array_slot_offenders(fn, args, kwargs, got)
+    if offenders:
+        what = " and ".join(offenders)
+        verb = "are" if len(offenders) > 1 else "is"
+        got_phrase = "None" if got in ("None", "NoneType") else f"of type {got}"
+        return TypeError(
+            f"{fn.__name__}: {what} {verb} {got_phrase}, but this parameter takes a "
+            f"NumPy array (estimators that model a system want a 2-D array shaped "
+            f"(observations, series); estimators that model one series want a 1-D "
+            f"array; a pandas Series/DataFrame or a flat list is converted "
+            f"automatically). Original error: {original}"
+        )
+    return _rank_error(fn, args, kwargs, original)
+
+
+def _int_list_offenders(fn, args, kwargs, got: str) -> list[str]:
+    """``name=value`` for the arguments handed to an integer-list parameter
+    with the wrong container (a string where ``delays=[1, 2]`` goes). The
+    integer-list parameters are exactly the ``_EXEMPT`` entries; among the
+    passed arguments of the offending type those are preferred."""
+    exempt = _EXEMPT.get(fn.__name__, frozenset())
+    defaults = _param_defaults(fn)
+    listed: list[str] = []
+    others: list[str] = []
+    for label, v in _labeled_ints(fn, args, kwargs):
+        if got not in _type_name(v):
+            continue
+        d = defaults.get(label, inspect.Parameter.empty)
+        if label in exempt:
+            listed.append(f"{label}={_short_repr(v)}")
+        elif d is inspect.Parameter.empty or d is None:
+            others.append(f"{label}={_short_repr(v)}")
+    return listed or others
+
+
+def _int_list_error(fn, args, kwargs, got: str, original: TypeError) -> TypeError:
+    offenders = _int_list_offenders(fn, args, kwargs, got)
+    # no identified offender: name the type ONCE (round 14 — the fallback used
+    # to read "an argument of type str is a str")
+    what = " and ".join(offenders) if offenders else "an argument"
+    verb = "are" if len(offenders) > 1 else "is"
+    return TypeError(
+        f"{fn.__name__}: {what} {verb} a {got}, but this parameter takes a list of "
+        f"integers (labels, lags or indices — e.g. [1, 2]; an int array is accepted, "
+        f"a string is not). Original error: {original}"
+    )
 
 
 def _short_repr(v: object) -> str:
@@ -636,7 +766,10 @@ def _short_repr(v: object) -> str:
 def _wrong_type_error(fn, args, kwargs, got: str, want: str, original: TypeError) -> TypeError:
     """Rebuild a PyO3 extraction failure into a TypeError naming the argument."""
     offenders = _wrong_type_offenders(fn, args, kwargs, got)
-    what = " and ".join(offenders) if offenders else f"an argument of type {got}"
+    # no identified offender: name the type ONCE, in the `got_phrase` below
+    # (round 14 — the fallback used to read "an argument of type str is of
+    # type str")
+    what = " and ".join(offenders) if offenders else "an argument"
     verb = "are" if len(offenders) > 1 else "is"
     phrase = _WANT_PHRASE.get(want, f"a {want}")
     got_phrase = _GOT_PHRASE.get(got, f"of type {got}")
@@ -653,8 +786,20 @@ def _rebuild_type_error(fn, args, kwargs, exc: TypeError) -> TypeError | None:
     m = _INSTANCE_RE.match(text)
     if m is not None:
         if m.group("want") == "ndarray":
-            return _rank_error(fn, args, kwargs, exc)
+            # A real array of the wrong rank, or a CONTAINER (a nested or
+            # ragged list, a tuple) that the coercion layer deliberately
+            # leaves alone: both are the rank / conversion story, and the
+            # rank message already names the argument and its shape. Only
+            # a scalar, a string or None in an array slot is the round-13
+            # "got no array arguments" class the rank message could not
+            # describe.
+            if m.group("got") in ("ndarray", "list", "tuple", "dict", "set", "frozenset"):
+                return _rank_error(fn, args, kwargs, exc)
+            return _array_slot_error(fn, args, kwargs, m.group("got"), exc)
         return _wrong_type_error(fn, args, kwargs, m.group("got"), m.group("want"), exc)
+    m = _VEC_RE.match(text)
+    if m is not None:
+        return _int_list_error(fn, args, kwargs, m.group("got"), exc)
     m = _INTEGER_RE.match(text)
     if m is not None:
         return _wrong_type_error(fn, args, kwargs, m.group("got"), "integer", exc)

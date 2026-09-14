@@ -87,8 +87,8 @@ use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
 
 use crate::dense::{
-    abs_quad_form, axpy, chol_solve, dot, frob_sq, mat_vec, outer_sub, row_to_vec, sandwich,
-    symmetrize_in_place,
+    abs_mat, abs_quad_form, axpy, chol_solve, dot, frob_sq, mat_vec, outer_add_abs, outer_sub,
+    row_to_vec, sandwich, symmetrize_in_place,
 };
 use crate::error::SsmError;
 use crate::model::LinearGaussianSSM;
@@ -139,6 +139,42 @@ use crate::model::LinearGaussianSSM;
 /// own scale is below `1e-10` — small-variance data — or far above it,
 /// where the absolute floor is too permissive about cancellation.
 pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
+
+/// Roundoff floor for the diffuse-element test, as a fraction of the
+/// *cancellation-free magnitude* `P_inf` would have had (see below).
+///
+/// The relative `F_inf` test above asks "did at least `TOLERANCE_RANK` of
+/// the available magnitude survive the sum `Z_i P_inf Z_i'`?", with the
+/// available magnitude read off the *current* `P_inf`. That catches
+/// cancellation inside the quadratic form, but not cancellation that has
+/// already happened inside `P_inf` itself: once every diffuse direction
+/// `Z_i` can see has been annihilated, `Z_i P_inf Z_i'` and its
+/// cancellation-free reference are *both* roundoff, their ratio is `O(1)`,
+/// and the test votes "still diffuse" on pure dust. That is not a corner
+/// case: a state the observation never loads on and the transition never
+/// feeds into an observed state stays diffuse for the whole sample — the
+/// Nyquist sine partner of a trigonometric seasonal with `harmonics =
+/// period / 2`, which is statsmodels' default for an even period, is
+/// exactly that — so `||P_inf||_F^2` never washes out and the element test
+/// stays live long after it has anything real to decide. Taking the diffuse
+/// branch there adds a spurious `-(ln 2*pi + ln F_inf)/2` with
+/// `F_inf ~ 1e-32`, i.e. tens of log-likelihood points of pure noise.
+///
+/// The second test therefore measures `F_inf` against
+/// `|Z_i|' P_mag |Z_i|`, where `P_mag` is a companion recursion carrying an
+/// upper bound on `|P_inf|` with no cancellation at all: it starts at
+/// `|P_inf,1|`, *adds* `|M_inf| |K0|'` where the exact recursion subtracts
+/// it, and is transported by `|T| P_mag |T|'`. `P_mag >= |P_inf|`
+/// elementwise by construction, so the extra test can only ever make the
+/// diffuse branch harder to enter, never easier.
+///
+/// The value `1e-14` is a few dozen multiples of the double-precision
+/// epsilon: it separates genuine diffuse mass that is small only because
+/// `Z_i` sees it weakly (the `1e-10` live `F_inf` at `s = 1e-5` in
+/// `tests/scale.rs`, which must still take the diffuse branch) from
+/// annihilated mass reappearing as roundoff (`1e-32` against an `O(1)`
+/// magnitude), which must not.
+pub(crate) const TOLERANCE_CANCEL: f64 = 1e-14;
 
 /// `ln(2 pi)`, the per-element likelihood constant.
 #[inline]
@@ -298,6 +334,9 @@ pub fn filter_univariate(
     let mut a = init.a1;
     let mut p_star = init.p_star;
     let mut p_inf = init.p_inf;
+    // Cancellation-free magnitude bound on `P_inf`, carried alongside it
+    // through the diffuse period (see TOLERANCE_CANCEL).
+    let mut p_inf_mag = abs_mat(p_inf.as_ref());
 
     let mut out = FilterOutput {
         loglik: 0.0,
@@ -329,8 +368,18 @@ pub fn filter_univariate(
         let diffuse = in_diffuse && frob_sq(p_inf.as_ref()) > TOLERANCE_RANK;
         if diffuse {
             out.d_diffuse += 1;
-        } else {
+        } else if in_diffuse {
             in_diffuse = false;
+            // The diffuse period is over. What is left in `P_inf` is
+            // roundoff of a quantity the recursion has annihilated, and
+            // `T P_inf T'` would keep amplifying it for the rest of the
+            // sample (a `[[1, 1], [0, 1]]` trend block grows it
+            // polynomially in `t`), turning `1e-6` of dust at the end of
+            // the diffuse period into an `O(1)` "diffuse" forecast
+            // variance a hundred periods later. Zero it: that is the
+            // documented contract of `predicted_diffuse_state_cov`, and it
+            // is what the algebra says.
+            p_inf = Mat::zeros(p_inf.nrows(), p_inf.ncols());
         }
 
         out.predicted_state.push(a.clone());
@@ -358,12 +407,13 @@ pub fn filter_univariate(
             // a real (if tiny) variance. Direction-aware — a state Z_i does
             // not load on contributes nothing, however large its variance.
             let f_star_scale = abs_quad_form(&zi, p_star.as_ref()) + h[(i, i)];
-            let (f_inf, m_inf, f_inf_scale) = if diffuse {
+            let (f_inf, m_inf, f_inf_scale, f_inf_mag) = if diffuse {
                 let mi = mat_vec(p_inf.as_ref(), &zi);
                 let scale = abs_quad_form(&zi, p_inf.as_ref());
-                (dot(&zi, &mi).max(0.0), mi, scale)
+                let mag = abs_quad_form(&zi, p_inf_mag.as_ref());
+                (dot(&zi, &mi).max(0.0), mi, scale, mag)
             } else {
-                (0.0, Vec::new(), 0.0)
+                (0.0, Vec::new(), 0.0, 0.0)
             };
 
             // Each reference scale is a sum of nonnegative terms that
@@ -375,7 +425,7 @@ pub fn filter_univariate(
             // below therefore never divide by a zero variance.
             debug_assert!(f_star_scale >= 0.0 && f_inf_scale >= 0.0);
 
-            if f_inf > TOLERANCE_RANK * f_inf_scale {
+            if f_inf > TOLERANCE_RANK * f_inf_scale && f_inf > TOLERANCE_CANCEL * f_inf_mag {
                 // Exact-diffuse element update (Koopman & Durbin 2003).
                 let k0: Vec<f64> = m_inf.iter().map(|x| x / f_inf).collect();
                 let f12 = -f_star / f_inf;
@@ -390,6 +440,9 @@ pub fn filter_univariate(
                 outer_sub(&mut p_star, &m_inf, &k1);
                 // P_inf <- P_inf L0' = P_inf - M_inf K0'.
                 outer_sub(&mut p_inf, &m_inf, &k0);
+                // The same downdate with every sign made favourable: an
+                // upper bound on |P_inf| that never cancels.
+                outer_add_abs(&mut p_inf_mag, &m_inf, &k0);
                 out.loglik -= 0.5 * (ln2pi + f_inf.ln());
                 n_informative += 1;
                 out.steps.push(ObsStep {
@@ -441,6 +494,9 @@ pub fn filter_univariate(
         ps_next += &rqr;
         p_star = ps_next;
         p_inf = sandwich(tr, p_inf.as_ref());
+        if in_diffuse {
+            p_inf_mag = sandwich(abs_mat(tr).as_ref(), p_inf_mag.as_ref());
+        }
         symmetrize_in_place(&mut p_star);
         symmetrize_in_place(&mut p_inf);
     }

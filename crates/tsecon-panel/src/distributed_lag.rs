@@ -25,12 +25,18 @@
 //!   covariance block: the gradient of `x*` is `-1/(2 B_2)` in every
 //!   power-1 lag and `B_1 / (2 B_2^2)` in every power-2 lag.
 //!
-//! The lag design drops the first `L` periods of every entity so the
-//! panel stays balanced (`n_periods_used = T - L`), then delegates to
-//! [`panel_ols_fe_with`] — the within transformation, OLS, and the
-//! nonrobust / entity-clustered / Driscoll-Kraay covariances are the
-//! ones `fixtures/panel.json` and `fixtures/panel_dl.json` pin against
-//! linearmodels `PanelOLS`; nothing here re-implements them.
+//! The lag design drops the first `L` periods of every entity
+//! (`n_periods_used = T - L`), then delegates to [`panel_ols_fe_with`] —
+//! the within transformation, OLS, and the nonrobust / entity-clustered /
+//! Driscoll-Kraay covariances are the ones `fixtures/panel.json` and
+//! `fixtures/panel_dl.json` pin against linearmodels `PanelOLS`; nothing
+//! here re-implements them. On an unbalanced panel
+//! ([`PanelData::unbalanced`]) a lagged row `(i, t)` is used only when
+//! entity `i` is observed in every period `t - L ..= t`, exactly as a
+//! within-entity `shift` followed by dropping incomplete rows does; the
+//! observed lagged cells become the mask of the lagged panel
+//! (`fixtures/panel_unbalanced.json` pins this against `PanelOLS` on the
+//! Arellano-Bond `EmplUK` panel and on a seeded ragged panel).
 //!
 //! ## What the specification assumes (read before use)
 //!
@@ -39,9 +45,12 @@
 //!   through `regressors` would put Nickell (1981) bias back into a
 //!   short-`T` within estimator — use `panel_lp` with a bias correction
 //!   for dynamic panels.
-//! * **A balanced panel.** Unbalanced panels are refused at the
-//!   [`PanelData`] boundary; drop entities with gaps or trim the window
-//!   first (the mask design is `// TODO(phase0)` in `data.rs`).
+//! * **Missing cells are declared, never guessed.** A NaN in an observed
+//!   cell is refused; an unbalanced panel says which cells are missing
+//!   through the observation mask, and every lag of a row must be
+//!   observed for the row to enter. Entities entering late or leaving
+//!   early cost nothing but rows; internal gaps cost the `L` rows after
+//!   each gap.
 //! * **Inference.** Entity clustering (the DJO default) needs many
 //!   entities and ignores cross-sectional dependence; Driscoll-Kraay
 //!   (the BHM robustness choice) is robust to it but needs a long `T`.
@@ -139,8 +148,9 @@ pub struct DistributedLagResult {
     pub turning_point: Option<Vec<f64>>,
     /// Delta-method standard errors of `turning_point`.
     pub turning_point_se: Option<Vec<f64>>,
-    /// Stacked observations after dropping the lag window,
-    /// `N * (T - L)`.
+    /// Stacked observations after dropping the lag window: `N * (T - L)`
+    /// on a balanced panel, the lagged rows whose every lag is observed on
+    /// an unbalanced one.
     pub nobs: usize,
     /// Number of entities `N`.
     pub n_entities: usize,
@@ -168,7 +178,8 @@ pub struct DistributedLagResult {
 ///   `powers = 1`, or an empty `eval_points` is passed;
 /// * [`PanelError::NonFinite`] for a non-finite evaluation point;
 /// * [`PanelError::InsufficientObservations`] if fewer than two periods
-///   remain after dropping the `L` lag periods;
+///   remain after dropping the `L` lag periods, or (unbalanced panel) no
+///   entity has `L + 1` consecutive observed periods;
 /// * every error of [`panel_ols_fe_with`] on the lagged design
 ///   (degrees of freedom, absorbed or collinear columns, bandwidth).
 pub fn panel_distributed_lag(
@@ -217,8 +228,8 @@ pub fn panel_distributed_lag(
     // Saturating: `lags` near `usize::MAX` must refuse, not overflow.
     if lags > t_len.saturating_sub(2) {
         return Err(PanelError::InsufficientObservations {
-            what: "distributed-lag design: dropping the first L lag periods of every \
-                   entity must leave at least two periods",
+            what: "distributed-lag design (lags): dropping the first `lags` periods of \
+                   every entity must leave at least two periods",
             needed: lags.saturating_add(2),
             got: t_len,
         });
@@ -258,7 +269,42 @@ pub fn panel_distributed_lag(
             }
         }
     }
-    let lagged = PanelData::balanced(y, regs)?;
+    let lagged = if data.is_balanced() {
+        PanelData::balanced(y, regs)?
+    } else {
+        // A lagged row needs every cell t - L ..= t of its entity; the
+        // observed lagged cells are the mask of the lagged panel.
+        let lag_mask: Vec<Vec<bool>> = (0..n_ent)
+            .map(|i| {
+                (0..t_used)
+                    .map(|t| (0..=lags).all(|l| data.observed(i, t + lags - l)))
+                    .collect()
+            })
+            .collect();
+        if !lag_mask.iter().flatten().any(|&m| m) {
+            let longest_run = (0..n_ent)
+                .map(|i| {
+                    let mut best = 0;
+                    let mut run = 0;
+                    for t in 0..t_len {
+                        run = if data.observed(i, t) { run + 1 } else { 0 };
+                        best = best.max(run);
+                    }
+                    best
+                })
+                .max()
+                .unwrap_or(0);
+            return Err(PanelError::InsufficientObservations {
+                what: "distributed-lag design on the unbalanced panel (mask): no entity \
+                       is observed in lags + 1 consecutive periods, so no lagged row \
+                       can be formed — reduce lags or fill the gaps (counts are \
+                       consecutive observed periods, the longest run in the mask)",
+                needed: lags + 1,
+                got: longest_run,
+            });
+        }
+        PanelData::unbalanced(y, regs, &lag_mask)?
+    };
     let fit = panel_ols_fe_with(&lagged, cfg.effects)?;
     let inf = fit.inference(cfg.se_type)?;
     let cov = inf.cov;
@@ -305,15 +351,21 @@ pub fn panel_distributed_lag(
             Some(pts) => vec![pts.clone(); k],
             None => (0..k)
                 .map(|j| {
-                    // Pooled sample mean of the raw (unlagged) regressor.
+                    // Pooled sample mean of the raw (unlagged) regressor
+                    // over the observed cells (every cell when balanced —
+                    // the same loop, in the same order).
                     let x = data.regressor(j).map_or(0.0, |m| {
                         let mut s = 0.0;
+                        let mut count = 0usize;
                         for t in 0..t_len {
                             for i in 0..n_ent {
-                                s += m[(i, t)];
+                                if data.observed(i, t) {
+                                    s += m[(i, t)];
+                                    count += 1;
+                                }
                             }
                         }
-                        s / (n_ent * t_len) as f64
+                        s / count as f64
                     });
                     vec![x]
                 })

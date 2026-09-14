@@ -122,10 +122,12 @@ def test_never_treated_only_without_never_treated_units_raises():
 
 
 def test_window_exceeding_the_panel_raises():
+    # audit round 14: the message now spells the Python keyword
+    # (`post_window` / `pre_window`), so the refusal names the argument
     y, d = _panel("A_vw")
-    with pytest.raises(ValueError, match="post window"):
+    with pytest.raises(ValueError, match="post_window"):
         tsecon.lp_did(y, d, pre_window=2, post_window=y.shape[1])
-    with pytest.raises(ValueError, match="pre window"):
+    with pytest.raises(ValueError, match="pre_window"):
         tsecon.lp_did(y, d, pre_window=y.shape[1], post_window=2)
 
 

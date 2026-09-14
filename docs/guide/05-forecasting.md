@@ -241,7 +241,7 @@ $$
 \widehat{d}_t^{\,CW} = e_{1t}^2 - e_{2t}^2 + \left(\hat{y}_{1t} - \hat{y}_{2t}\right)^2,
 $$
 
-which adds back the estimation-noise term. Clark-West ships as `tsecon.cw_test(e_small, e_large, yhat_small, yhat_large)` — it needs the two *forecasts* as well as the two error streams, because the correction term is built from their difference — and the next section runs it. Never run plain DM on a nested comparison; run `cw_test`. Second, **multiple comparisons**: run DM against a benchmark for 50 candidate models and at the 5% level roughly two or three "significant" winners appear under the null by construction. The honest tools — White's (2000) Reality Check, Hansen's (2005) SPA test, and the Model Confidence Set of Hansen, Lunde and Nason (2011), which reports the *set* of models statistically indistinguishable from the best — are roadmap items, but the discipline costs nothing today: count every specification you tried, not just the survivors, and treat a lone marginal DM rejection from a large search as noise. Diebold's own retrospective (Diebold 2015) is blunt that the test compares *forecasts*, not models — it takes the error streams as given, which is exactly why it is so widely applicable and so widely misapplied.
+which adds back the estimation-noise term. Clark-West ships as `tsecon.cw_test(e_small, e_large, yhat_small, yhat_large)` — it needs the two *forecasts* as well as the two error streams, because the correction term is built from their difference — and the next section runs it. Never run plain DM on a nested comparison; run `cw_test`. Second, **multiple comparisons**: run DM against a benchmark for 50 candidate models and at the 5% level roughly two or three "significant" winners appear under the null by construction. The honest tools ship: `spa_test` (White's 2000 Reality Check and Hansen's 2005 test for Superior Predictive Ability, which ask whether the BEST of $m$ models beats the benchmark once the search over all $m$ is accounted for), `stepm_test` (Romano-Wolf 2005: *which* models beat it, at a controlled family-wise error rate) and `model_confidence_set` (Hansen, Lunde and Nason 2011, which reports the *set* of models statistically indistinguishable from the best) — see [the section below](#many-models-at-once-spa-stepm-and-the-model-confidence-set). The discipline they formalize costs nothing even before you run them: count every specification you tried, not just the survivors, and treat a lone marginal DM rejection from a large search as noise. Diebold's own retrospective (Diebold 2015) is blunt that the test compares *forecasts*, not models — it takes the error streams as given, which is exactly why it is so widely applicable and so widely misapplied.
 
 > ⚠ **Common mistake.** Running a plain DM test on nested models (an AR(2) against the same AR(2) plus an unemployment gap, say). The comparison feels natural — it is the most common question in applied work — but it is precisely the degenerate case. Nothing stops you: `dm_test` takes error streams and cannot know where they came from, so it will return a p-value that looks perfectly ordinary. Recognizing nestedness and reaching for `cw_test` is your job today; having the backtest object route the comparison automatically is the roadmap item.
 
@@ -489,6 +489,110 @@ This is the rigorous version of the pooled DM snippet from the Diebold-Mariano s
 > ⚠ **Common mistake.** Comparing two backtests run under *different* schemes or training windows and then subtracting their error streams. Change `window` or `train` and the surviving origins change, the two `origins` lists no longer match, and the differenced series is nonsense even though the arithmetic runs. Assert equal `origins` before differencing — as above — every single time.
 
 A few caveats to carry. `backtest` scores point accuracy only — the built-in forecasters are point forecasters, and a callable returns points — so density scoring (PITs, CRPS, the interval score) is still roadmap; distribution-free *intervals* around any of these forecasters are not, and are the next section. The MASE and RMSSE denominators are computed once, from the first training window at `insample_period`, never from the test sample — the correct, leakage-free convention, but it means the scaling reflects the earliest window's seasonality. The engine refuses degenerate designs loudly rather than returning a short or empty track record: ask for a horizon so long that no origin has all its targets in sample and it raises a `ValueError` that names the exact index arithmetic and tells you to lengthen the series, shrink the window, or shorten the horizon. And the leakage guarantee is structural for the callable hook too, precisely because the closure only ever receives its own training slice: every transformation, scaling, and hyperparameter choice must live *inside* it — the same discipline the manual-loop warning demanded, now the engine's contract (Tashman 2000). A callable that raises aborts the backtest and is re-raised naming the failing origin and window, so a bad model does not quietly produce a short track record.
+
+## Many models at once: SPA, StepM and the Model Confidence Set
+
+Every table above compares **two** forecasters. Real work compares ten or fifty, and
+the moment you scan a column of DM p-values for the smallest one, the p-values stop
+meaning what they say: search over $m$ candidates and the best of them beats the
+benchmark at 5% by luck alone with probability far above 5%. Three tests fix this,
+and all three take exactly the object the backtest loop already produces — a
+$T \times m$ table of per-origin losses.
+
+**`spa_test`** asks the joint question. With $d_{t,k} = L_t(\text{benchmark}) -
+L_t(\text{model }k)$ (positive favours the model), the null is
+$H_0: \max_k \mathbb{E}[d_k] \le 0$ — *no* model beats the benchmark — and the
+statistic is the maximum of the standardized mean loss differentials. Its null
+distribution comes from a block bootstrap of the whole loss panel with rows resampled
+together, so the cross-model correlation that shapes a maximum is preserved. White's
+(2000) Reality Check re-centres every model to zero; Hansen's (2005) SPA adds the
+insight that models *significantly worse* than the benchmark should not be re-centred
+at all, because padding the comparison with junk should not make a real winner harder
+to detect. That gives the three p-values the call returns — `p_value_upper` (White,
+conservative), `p_value_consistent` (Hansen, the recommended one, also returned as
+`p_value`) and `p_value_lower` (the liberal bound) — which always satisfy
+$p_\text{lower} \le p_\text{consistent} \le p_\text{upper}$.
+
+**`stepm_test`** answers the follow-up. A rejection says *someone* beat the benchmark;
+Romano and Wolf's (2005) stepwise procedure says *who*, controlling the family-wise
+error rate across the whole set of claims.
+
+**`model_confidence_set`** drops the benchmark entirely. Given the same loss table it
+returns the set of models that cannot be distinguished from the best at level `size`,
+by repeatedly testing equal predictive ability across the survivors and eliminating
+the worst when the test rejects. Each model gets an **MCS p-value** — the running
+maximum of the step p-values along the elimination path — so one call describes every
+size at once: the set at any $\alpha$ is $\{k : p_{\text{MCS}}(k) > \alpha\}$, and the
+sets are nested in $\alpha$. This is the honest answer to "which model should I use?"
+when the data cannot single one out.
+
+Wiring the benchmark zoo into all three is the same rectangular-grid trick the DM
+section used — one `backtest` per forecaster under one scheme, then `np.column_stack`:
+
+```python
+names = ["naive", "drift", "mean", "seasonal_naive", "theta"]
+losses, origins = [], None
+for fc in names:
+    seasonal = {"period": 4} if fc in ("seasonal_naive", "theta") else {}
+    bt = tsecon.backtest(y, window="expanding", train=80, horizon=1,
+                         forecaster=fc, insample_period=4, **seasonal)
+    assert origins is None or bt["origins"] == origins       # same scheme => aligned
+    origins = bt["origins"]
+    err = np.array(bt["targets"][0]) - np.array(bt["forecasts"][0])
+    losses.append(err ** 2)                                  # squared-error loss column
+L = np.column_stack(losses)                                  # the 80 x 5 loss table
+
+mcs = tsecon.model_confidence_set(L, size=0.10, reps=2000, seed=0)
+print(f"{'forecaster':16s} mean loss   MCS p   in the 90% set?")
+for k, nm in enumerate(names):
+    print(f"{nm:16s} {mcs['mean_losses'][k]:8.2f}   {mcs['mcs_p_values'][k]:5.3f}   "
+          f"{'yes' if k in mcs['included'] else 'no'}")
+print("eliminated, worst first:", [names[k] for k in mcs["elimination_order"]])
+# forecaster       mean loss   MCS p   in the 90% set?
+# naive               45.73   0.000   no
+# drift               46.06   0.000   no
+# mean               351.11   0.000   no
+# seasonal_naive       5.93   0.024   no
+# theta                4.03   1.000   yes
+# eliminated, worst first: ['drift', 'naive', 'mean', 'seasonal_naive', 'theta']
+```
+
+The 90% model confidence set on this series is a single model. That is the strongest
+verdict an MCS can deliver, and it is the *same* conclusion the benchmark table
+reached — but now with the search accounted for, and with `seasonal_naive` excluded on
+a p-value (0.024) rather than on eyeballing a 5.93-against-4.03 gap. Read the
+elimination order as a diagnostic, not a ranking: `drift` goes first even though
+`mean` has eight times its loss, because the range statistic eliminates the worst
+member of the *most standardized* pair, and `mean`'s enormous loss variance keeps its
+standardized differences down. The ranking you want is `mean_losses`; the *evidence*
+is in `mcs_p_values`.
+
+Against a named benchmark the same table feeds `spa_test` and `stepm_test`:
+
+```python
+spa = tsecon.spa_test(L[:, 3], L[:, [0, 1, 2, 4]], reps=2000, seed=0)   # vs seasonal_naive
+print(spa["statistic"], spa["p_value"], spa["p_value_upper"], spa["best_model"])
+# 2.151  0.019  0.046  3        (best_model 3 = theta, the 4th column passed)
+tsecon.stepm_test(L[:, 3], L[:, [0, 1, 2, 4]], size=0.05, reps=2000, seed=0)["superior_models"]
+# [3]                           theta, and only theta, beats the seasonal naive at FWER 5%
+```
+
+Note the gap between the consistent p-value (0.019) and White's (0.046): three of the
+four candidates are far worse than the benchmark, and re-centring them — as the
+Reality Check does — inflates the simulated maximum and costs power. That gap is
+Hansen's whole point, and it grows with the number of junk models in your search.
+
+Three practical warnings. First, `block_size=None` picks the Politis-White optimal
+length per column and averages; it is a good default but the bootstrap's block length
+is the one setting that moves these p-values, so report it (it comes back in
+`block_size`) and check that a hand-set length near $n^{1/3}$ tells the same story.
+Second, the tests take the loss table as given — they cannot know the forecasts came
+from nested models, so the `cw_test` warning from earlier still applies to each
+column. Third, `studentize=True` (the default, Hansen's own statistic) divides both
+the observed statistic and every bootstrap replicate by the *same* estimated long-run
+standard deviation, which over-rejects in small samples; the model card measures how
+much, and `studentize=False` gives White's un-studentized statistic, which is what
+`arch` computes and what our goldens pin exactly.
 
 ## Distribution-free intervals: conformal prediction
 
@@ -762,7 +866,7 @@ The honest open problems: evaluation under structural instability is unsolved in
 | Deciding if a two-model accuracy gap is real (non-nested) | `dm_test` (HLN correction is the default) | A t-test on the loss differential; HAC handles the overlap autocorrelation |
 | Nested models (baseline vs baseline + extras) | `cw_test(e_small, e_large, yhat_small, yhat_large)` | Plain DM is degenerate under the null; CW adds back the estimation-noise term. One-sided |
 | Comparing forecasting *methods*, estimation error included | `gw_test(loss1, loss2)` on a **fixed rolling-window** backtest | GW's null is about the procedure, so nestedness is not a problem — but the rolling scheme is a requirement |
-| Many candidate models against one benchmark | SPA / Model Confidence Set (roadmap) | Pairwise DM tests ignore the search; MCS reports the statistically-best set |
+| Many candidate models against one benchmark | `spa_test` / `stepm_test`; `model_confidence_set` for the set | Pairwise DM tests ignore the search; SPA tests the maximum, StepM names the winners, MCS reports the statistically-best set |
 | Multi-step forecast evaluation regressions | `ols(..., se_type="hac", maxlags=h-1)` | Direct h-step errors are MA(h−1) by construction |
 | Forecasting a small system of related variables | `var_forecast` | Iterated multi-step point + interval forecasts from joint dynamics |
 | Forecasting a binary business-cycle event (recession) | `recession_probit` | Turns leading indicators (the term spread) into a calibrated P(recession); `dynamic=True` for persistence |
@@ -799,7 +903,7 @@ The honest open problems: evaluation under structural instability is unsolved in
 - `mse` and `mdae` as standalone measures — they appear in `backtest`'s accuracy table but not in `accuracy()`.
 - `ForecastComparison` — a one-call report combining the full accuracy table, all pairwise HLN-corrected DM tests, and a plain-language interpretation naming the winner and the next methodological step.
 
-**Roadmap** ([Module 09 — Forecasting and Evaluation](../roadmap/09-forecasting-evaluation.md)): scheme-aware test routing on top of the shipped backtest engine; typed forecast objects (point/interval/density/path); CRPS, log score, and the interval score; the *conditional* Giacomini-White test and automatic routing of nested comparisons to `cw_test`; SPA and the Model Confidence Set; PIT histograms and the Berkowitz and Knüppel calibration tests; the full combination stack from Bates-Granger to online expert aggregation; conformalized quantile regression; fan charts and conditional forecasting; hierarchical reconciliation; and the M4 reproduction harness that pins the whole stack to published competition numbers.
+**Roadmap** ([Module 09 — Forecasting and Evaluation](../roadmap/09-forecasting-evaluation.md)): scheme-aware test routing on top of the shipped backtest engine; typed forecast objects (point/interval/density/path); CRPS, log score, and the interval score; the *conditional* Giacomini-White test and automatic routing of nested comparisons to `cw_test`; PIT histograms and the Berkowitz and Knüppel calibration tests; the full combination stack from Bates-Granger to online expert aggregation; conformalized quantile regression; fan charts and conditional forecasting; hierarchical reconciliation; and the M4 reproduction harness that pins the whole stack to published competition numbers.
 
 ## Further reading
 

@@ -30,14 +30,20 @@ use crate::error::SsmError;
 pub enum SystemMatrix {
     /// The same matrix at every time period.
     Constant(Mat<f64>),
+    /// One matrix per time period, `t = 0, 1, ...`; a read past the last
+    /// stored period returns the last matrix, so a per-period design
+    /// matrix extends naturally through a post-sample prediction step.
+    /// Every matrix has the same shape (validated by the builder).
+    Varying(Vec<Mat<f64>>),
 }
 
 impl SystemMatrix {
     /// The matrix in effect at time period `t` (0-indexed).
     #[inline]
-    pub fn at(&self, _t: usize) -> MatRef<'_, f64> {
+    pub fn at(&self, t: usize) -> MatRef<'_, f64> {
         match self {
             Self::Constant(m) => m.as_ref(),
+            Self::Varying(v) => v[t.min(v.len() - 1)].as_ref(),
         }
     }
 
@@ -46,6 +52,7 @@ impl SystemMatrix {
     pub fn nrows(&self) -> usize {
         match self {
             Self::Constant(m) => m.nrows(),
+            Self::Varying(v) => v[0].nrows(),
         }
     }
 
@@ -54,6 +61,7 @@ impl SystemMatrix {
     pub fn ncols(&self) -> usize {
         match self {
             Self::Constant(m) => m.ncols(),
+            Self::Varying(v) => v[0].ncols(),
         }
     }
 }
@@ -237,6 +245,7 @@ impl LinearGaussianSSM {
             m,
             r_dim: r,
             z: None,
+            z_varying: None,
             h: None,
             t: None,
             r: None,
@@ -496,6 +505,7 @@ pub struct SsmBuilder {
     m: usize,
     r_dim: usize,
     z: Option<Mat<f64>>,
+    z_varying: Option<Vec<Mat<f64>>>,
     h: Option<Mat<f64>>,
     t: Option<Mat<f64>>,
     r: Option<Mat<f64>>,
@@ -509,6 +519,14 @@ impl SsmBuilder {
     /// Sets the design matrix `Z` (`p x m`).
     pub fn z(mut self, z: Mat<f64>) -> Self {
         self.z = Some(z);
+        self
+    }
+
+    /// Sets a per-period design matrix `Z_t` (each `p x m`; one entry per
+    /// time period, the last one reused for any later period). Mutually
+    /// exclusive with [`SsmBuilder::z`].
+    pub fn z_varying(mut self, z: Vec<Mat<f64>>) -> Self {
+        self.z_varying = Some(z);
         self
     }
 
@@ -578,18 +596,41 @@ impl SsmBuilder {
                 what: "model dimensions p, m, r must all be at least 1",
             });
         }
-        let z = self.z.ok_or(SsmError::MissingMatrix { what: "Z" })?;
+        let z = match (self.z, self.z_varying) {
+            (Some(_), Some(_)) => {
+                return Err(SsmError::InvalidArgument {
+                    what: "supply either z (one constant design matrix) or \
+                           z_varying (one per period), not both",
+                })
+            }
+            (None, None) => return Err(SsmError::MissingMatrix { what: "Z" }),
+            (Some(z), None) => {
+                check_shape(&z, p, m, "Z must be p x m")?;
+                check_finite(&z, "Z")?;
+                SystemMatrix::Constant(z)
+            }
+            (None, Some(zs)) => {
+                if zs.is_empty() {
+                    return Err(SsmError::InvalidArgument {
+                        what: "z_varying must contain at least one design matrix",
+                    });
+                }
+                for zt in &zs {
+                    check_shape(zt, p, m, "every Z_t in z_varying must be p x m")?;
+                    check_finite(zt, "Z_t (z_varying)")?;
+                }
+                SystemMatrix::Varying(zs)
+            }
+        };
         let h = self.h.ok_or(SsmError::MissingMatrix { what: "H" })?;
         let t = self.t.ok_or(SsmError::MissingMatrix { what: "T" })?;
         let r = self.r.ok_or(SsmError::MissingMatrix { what: "R" })?;
         let q = self.q.ok_or(SsmError::MissingMatrix { what: "Q" })?;
 
-        check_shape(&z, p, m, "Z must be p x m")?;
         check_shape(&h, p, p, "H must be p x p")?;
         check_shape(&t, m, m, "T must be m x m")?;
         check_shape(&r, m, r_dim, "R must be m x r")?;
         check_shape(&q, r_dim, r_dim, "Q must be r x r")?;
-        check_finite(&z, "Z")?;
         check_finite(&h, "H")?;
         check_finite(&t, "T")?;
         check_finite(&r, "R")?;
@@ -683,7 +724,7 @@ impl SsmBuilder {
             p,
             m,
             r_dim,
-            z: SystemMatrix::Constant(z),
+            z,
             h: SystemMatrix::Constant(h),
             t: SystemMatrix::Constant(t),
             r: SystemMatrix::Constant(r),

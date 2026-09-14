@@ -25,6 +25,12 @@
 //! * [`VarResults::forecast`] / [`VarResults::forecast_interval`] —
 //!   iterated point forecasts with asymptotic (innovation-uncertainty
 //!   only) intervals;
+//! * [`VarResults::conditional_forecast`] — hard-conditioned forecasts
+//!   (Doan-Litterman-Sims / Waggoner-Zha closed form: conditional path,
+//!   covariance and the implied minimum-norm shocks);
+//! * [`VarResults::diagnostics`] — multivariate Portmanteau (adjusted and
+//!   unadjusted), multivariate Jarque-Bera with its components, and the
+//!   stability roots in one bundle;
 //! * [`girf`] / [`GirfModel`] — the Koop-Pesaran-Potter (1996) generalized
 //!   impulse-response simulation engine shared by every nonlinear model
 //!   (common random numbers, antithetic pairs, Philox substreams per
@@ -45,6 +51,8 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod causality;
+pub mod conditional;
+pub mod diagnostics;
 pub mod error;
 mod estimate;
 pub mod fevd;
@@ -59,12 +67,14 @@ pub mod select;
 pub mod spec;
 
 pub use causality::CausalityTest;
+pub use conditional::ConditionalForecast;
+pub use diagnostics::{NormalityTest, PortmanteauTest, VarDiagnostics};
 pub use error::VarError;
 pub use fevd::Fevd;
 pub use forecast::ForecastInterval;
 pub use girf::{
     girf, sample_histories, subsample_indices, var_girf, Girf, GirfModel, GirfOptions, GirfShock,
-    LinearVarModel,
+    LinearVarModel, MEMORY_BUDGET_BYTES,
 };
 pub use irf::{ma_rep, Irf};
 pub use irf_asymptotic::irf_asymptotic_se;

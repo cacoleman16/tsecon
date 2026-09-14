@@ -234,3 +234,169 @@ def test_import_and_use_open_no_socket_and_read_no_environment():
     n_calls, reads = out.stdout.strip().split(" ", 1)
     assert n_calls == "0"
     assert reads == "[]", reads
+
+
+# --------------------------------------------------------------------------- #
+# audit round 13 OPEN-3 / the sweep-S refusal catalogue: every refusal names
+# the offending parameter (in-process replay of the 83 unnamed cells of
+# lab/audit/round13/out/sweep_s.txt, now fixed in Rust messages, in the
+# bindings, and in the _coerce rebuilds)
+# --------------------------------------------------------------------------- #
+import inspect
+import re as _re
+
+
+def _names_param(msg, pname):
+    return bool(_re.search(rf"(?<![\w.]){_re.escape(pname)}(?![\w])", msg or ""))
+
+
+def _setar_series(T=200, seed=0):
+    rng = np.random.default_rng(seed)
+    y = np.zeros(T)
+    for t in range(1, T):
+        y[t] = (0.6 if y[t - 1] <= 0 else -0.4) * y[t - 1] + rng.standard_normal()
+    return y
+
+
+def _tvar_series(T=200, seed=0):
+    rng = np.random.default_rng(seed)
+    a_low = np.array([[0.8, 0.1], [0.1, 0.7]])
+    a_high = np.array([[0.2, 0.0], [0.0, 0.3]])
+    y = np.zeros((T + 100, 2))
+    for t in range(1, T + 100):
+        a = a_low if y[t - 1, 0] <= 0.0 else a_high
+        y[t] = a @ y[t - 1] + 0.6 * rng.standard_normal(2)
+    return y[100:]
+
+
+def _yields(T=200, seed=9):
+    rng = np.random.default_rng(seed)
+    mats = np.arange(1, 13, dtype=float)
+    lam = 0.0609 * 12
+    g = (1 - np.exp(-lam * mats)) / (lam * mats)
+    h = g - np.exp(-lam * mats)
+    L = np.column_stack([np.ones_like(mats), g, h])
+    f = np.zeros((T, 3))
+    mu = np.array([0.05, -0.02, 0.01])
+    f[0] = mu
+    for t in range(1, T):
+        f[t] = mu + 0.9 * (f[t - 1] - mu) + rng.standard_normal(3) * np.array([0.003, 0.003, 0.004])
+    return f @ L.T + 0.0005 * rng.standard_normal((T, len(mats)))
+
+
+def _dl_panel(N=6, T=200, seed=0):
+    rng = np.random.default_rng(seed)
+    mu = rng.normal(20.0, 5.0, N)
+    temp = mu[:, None] + rng.standard_normal((N, T))
+    growth = (rng.normal(0, 1, N)[:, None] + rng.normal(0, 0.5, T)[None, :] + 0.30 * temp - 0.0075 * temp**2
+              + rng.standard_normal((N, T)))
+    return growth, temp[None]
+
+
+BIG = [2**31, 2**47]
+_Y = _setar_series()
+_V = _var3()
+_TV = _tvar_series()
+_YL = _yields()
+_G, _TEMP = _dl_panel()
+_LQ, _KQ, _SX, _MATS = np.array([0.998, 0.96, 0.90]), 1e-4, 1e-6 * np.eye(3), list(range(1, 8))
+
+# (callable, positional args, kwargs, parameter, bad values) — the sweep's
+# 83 unnamed cells, one entry per (callable, parameter, value class).
+REFUSAL_CATALOGUE = [
+    ("setar_threshold_ci", (_Y, 1), {"slope_level": 0.95, "null_threshold": 0.0}, "y",
+     [np.empty(0), _Y[:1], float(_Y[0]), _Y > 0, "abc", None, 1.0]),
+    ("setar_threshold_ci", (_Y, 1), {}, "p", BIG),
+    ("setar_threshold_ci", (_Y, 1), {}, "delay", BIG),
+    ("setar_threshold_ci", (_Y, 1), {}, "delays", [[0], [2**31], [2**47], "abc", np.array([1.0, 2.0])]),
+    ("var_girf", (_V, 2), {"horizon": 6}, "data", [np.empty((0, 3)), _V[:1], np.ascontiguousarray(_V.T), "abc", None, 1.0]),
+    ("var_girf", (_V, 2), {"horizon": 6}, "p", BIG),
+    ("threshold_var_girf", (_TV, 1), {"horizon": 6, "n_draws": 20}, "data",
+     [_TV[:1], _TV[:, :-1], _TV > 0, "abc", None, 1.0]),
+    ("threshold_var_girf", (_TV, 1), {"horizon": 6, "n_draws": 20}, "p", BIG),
+    ("threshold_var_girf", (_TV, 1), {"horizon": 6, "n_draws": 20}, "delay", BIG),
+    ("threshold_var_girf", (_TV, 1), {"horizon": 6, "n_draws": 20}, "delays",
+     [[0], [2**31], [2**47], "abc", np.array([1.0, 2.0])]),
+    ("jsz_fit", (_YL, list(range(1, 13))), {"n_starts": 2, "seed": 0}, "yields",
+     [np.full_like(_YL, np.nan), np.where(np.arange(_YL.size).reshape(_YL.shape) == 1200, np.nan, _YL),
+      np.where(np.arange(_YL.size).reshape(_YL.shape) == 1200, np.inf, _YL), np.empty((0, 12)), _YL[:1],
+      np.rint(_YL).astype(np.int64), _YL > 0, "abc", None, 1.0]),
+    ("jsz_fit", (_YL, list(range(1, 13))), {"n_starts": 2, "seed": 0}, "maturities", ["abc", np.array([1.0, 2.0])]),
+    ("jsz_fit", (_YL, list(range(1, 13))), {"n_starts": 2, "seed": 0}, "periods_per_year", [1e300, 1e-300]),
+    ("jsz_fit", (_YL, list(range(1, 13))), {"n_starts": 2, "seed": 0}, "w", ["abc"]),
+    ("jsz_loadings", (_LQ, _KQ, _SX, _MATS), {"periods_per_year": 12.0}, "lambda_q",
+     [_LQ[:1], _LQ[:2], float(_LQ[0]), "abc", None, 1.0]),
+    ("jsz_loadings", (_LQ, _KQ, _SX, _MATS), {"periods_per_year": 12.0}, "sigma_x", ["abc", None, 1.0]),
+    ("jsz_loadings", (_LQ, _KQ, _SX, _MATS), {"periods_per_year": 12.0}, "maturities", ["abc", np.array([1.0, 2.0])]),
+    ("panel_distributed_lag", (_G, _TEMP), {"lags": 1, "powers": 2, "eval_points": [10.0, 20.0, 30.0]}, "outcome",
+     ["abc", None, 1.0]),
+    ("panel_distributed_lag", (_G, _TEMP), {"lags": 1, "powers": 2, "eval_points": [10.0, 20.0, 30.0]}, "regressors",
+     [np.full_like(_TEMP, np.nan), np.where(np.arange(_TEMP.size).reshape(_TEMP.shape) == 600, np.nan, _TEMP),
+      np.where(np.arange(_TEMP.size).reshape(_TEMP.shape) == 600, np.inf, _TEMP), np.empty((1, 6, 0)),
+      _TEMP[..., :-1], _TEMP[:, :-1], _TEMP > 0, np.ascontiguousarray(_TEMP.T), "abc", None, 1.0]),
+    ("panel_distributed_lag", (_G, _TEMP), {"powers": 2, "eval_points": [10.0, 20.0, 30.0]}, "lags", BIG),
+    ("panel_distributed_lag", (_G, _TEMP), {"lags": 1, "powers": 2}, "eval_points", ["abc", 20.0]),
+]
+
+
+def _cells():
+    for fn, args, kwargs, pname, values in REFUSAL_CATALOGUE:
+        for v in values:
+            yield fn, args, kwargs, pname, v
+
+
+def _cell_id(cell):
+    fn, _, _, pname, v = cell
+    if isinstance(v, np.ndarray):
+        tag = f"array{v.shape}{v.dtype.kind}"
+    else:
+        tag = repr(v)[:20]
+    return f"{fn}.{pname}={tag}"
+
+
+@pytest.mark.parametrize("cell", list(_cells()), ids=_cell_id)
+def test_every_sweep_s_refusal_names_the_offending_parameter(cell):
+    """Each cell of the round-13 catalogue was a refusal that did not name
+    the mutated argument; every one must now be a ValueError/TypeError whose
+    message contains the parameter's name as a word."""
+    fn, args, kwargs, pname, v = cell
+    call = getattr(tsecon, fn)
+    sig_params = list(inspect.signature(call).parameters)
+    args = list(args)
+    kw = dict(kwargs)
+    if pname in sig_params[: len(args)]:
+        args[sig_params.index(pname)] = v
+    else:
+        kw[pname] = v
+    with pytest.raises((ValueError, TypeError)) as info:
+        call(*args, **kw)
+    msg = str(info.value)
+    assert _names_param(msg, pname), f"{fn}: refusal does not name {pname!r}: {msg[:300]}"
+
+
+def test_the_catalogue_covers_the_sweep_count():
+    assert sum(len(values) for *_, values in REFUSAL_CATALOGUE) == 83
+
+
+# --------------------------------------------------------------------------- #
+# S3: the GIRF engine's memory budget — a refusal, not an abort
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: tsecon.var_girf(_V, 2, n_draws=2**31, antithetic=False),
+        lambda: tsecon.var_girf(_V, 2, horizon=10**6, n_draws=10**4, antithetic=False),
+        lambda: tsecon.threshold_var_girf(_TV, 1, n_draws=2**30, horizon=20),
+        lambda: tsecon.threshold_var_girf(_TV, 1, n_draws=100, horizon=10**6),
+    ],
+)
+def test_girf_beyond_the_memory_budget_is_a_fast_value_error(call):
+    import time
+
+    t0 = time.perf_counter()
+    with pytest.raises(ValueError) as info:
+        call()
+    assert time.perf_counter() - t0 < 5.0
+    msg = str(info.value)
+    for word in ("n_draws", "horizon", "histories", "budget", "GiB"):
+        assert word in msg, msg
