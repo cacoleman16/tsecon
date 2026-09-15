@@ -936,6 +936,11 @@ surface).
   other smooth draws can legitimately pin γ at the bottom wall with the
   flag True, which is the flag doing its job.
 
+### Documentation
+
+- Add a cookbook recipe for comparing VAR lag orders on a common effective
+  sample and resolving AIC/BIC/HQIC disagreement by analysis goal.
+
 ## [0.6.0] - 2026-08-26
 
 ### Changed — **BREAKING (behavioral)**: `cv_splits(scheme="purged_kfold")` embargo now ADDS to the purge

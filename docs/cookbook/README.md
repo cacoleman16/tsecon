@@ -37,6 +37,7 @@ and failure modes of a specific estimator? That is a
 
 | Recipe | What it does |
 |---|---|
+| [Choose a VAR lag length when AIC, BIC, and HQIC disagree](var-lag-selection.md) | Compare lag orders on one effective sample, then use the analysis goal to break a disagreement |
 | [Put confidence bands on a VAR impulse response](var-irf-bands.md) | `var_irf_bands` with bootstrap or asymptotic bands, sliced like `var_irf` |
 | [Forecast a VAR with prediction intervals](var-forecast-intervals.md) | `var_forecast` with a stability check and a coverage knob |
 | [Identify a monetary policy shock with sign restrictions](sign-restricted-svar.md) | A set-identified SVAR in a dozen lines, and how to read the acceptance rate |
