@@ -312,6 +312,32 @@ def test_bad_lags_are_refused_by_name(lags):
         tsecon.variance_ratio(_rw(), lags)
 
 
+@pytest.mark.parametrize(
+    "lags, shown",
+    [(4.0, "4.0 of type float"), (np.bool_(True), "True of type bool"),
+     ([1e300], "horizon 1e300"), ([2, 2**64], "horizon 1.8446744073709552e19")],
+    ids=["float", "np.bool_", "1e300", "2**64-in-list"],
+)
+def test_refusals_quote_the_value_and_type_that_were_passed(lags, shown):
+    """An integral float is not called a non-integer, and a huge horizon in
+    a sequence is quoted as given, not as a saturated usize::MAX."""
+    with pytest.raises(ValueError, match=r"\blags\b") as info:
+        tsecon.variance_ratio(_rw(), lags)
+    msg = str(info.value)
+    assert shown in msg and "18446744073709551615" not in msg, msg
+
+
+@pytest.mark.parametrize("flag, value", [("debiased", 1), ("robust", 0)])
+def test_int_flag_names_only_the_flag_not_the_int_lags(flag, value):
+    """`lags=4` (an int slot whose default is the int 2) cannot be the
+    argument that refused an int; only the None-sentinel flag is blamed."""
+    with pytest.raises(TypeError) as info:
+        tsecon.variance_ratio(_rw(), 4, **{flag: value})
+    msg = str(info.value)
+    assert f"{flag}={value}" in msg and "Python bool" in msg, msg
+    assert "lags=4" not in msg, msg
+
+
 @pytest.mark.parametrize("lags", [299, 2**40, [2, 299], 2**63])
 def test_horizons_too_long_for_the_sample_are_refused_by_name(lags):
     with pytest.raises(ValueError, match=r"\blags\b"):
@@ -370,3 +396,23 @@ def test_the_robust_variance_cost_is_documented_and_bounded():
     elapsed = time.perf_counter() - t0
     assert math.isfinite(r["stat"])
     assert elapsed < 10.0, elapsed  # measured 0.18 s; ~50x headroom
+    # A whole profile shares the lag products: about the cost of its longest
+    # horizon (measured 0.05 s for q = 2..1000), where recomputing them per
+    # horizon took ~12 s.
+    t0 = time.perf_counter()
+    p = tsecon.variance_ratio(y, list(range(2, 1_001)))
+    elapsed = time.perf_counter() - t0
+    assert p["stat"].shape == (999,) and np.all(np.isfinite(p["stat"]))
+    assert elapsed < 5.0, elapsed
+
+
+def test_a_bad_late_horizon_is_refused_before_the_work_of_the_earlier_ones():
+    """Every horizon passes the length rule before any O(n q) work: a valid
+    long horizon followed by an impossible one is refused at once."""
+    import time
+
+    y = np.cumsum(np.random.default_rng(1).standard_normal(40_001))
+    t0 = time.perf_counter()
+    with pytest.raises(ValueError, match=r"\blags = 50000\b.*length 40001"):
+        tsecon.variance_ratio(y, [39_000, 50_000])
+    assert time.perf_counter() - t0 < 0.5

@@ -31,12 +31,15 @@ fn horizon_from_f64(v: f64) -> PyResult<usize> {
     if v < 2.0 {
         return Err(below_two(v));
     }
-    // Saturating: a horizon beyond usize is refused by the length rule.
-    Ok(if v >= usize::MAX as f64 {
-        usize::MAX
-    } else {
-        v as usize
-    })
+    // From 2**53 on a float no longer pins one integer, and no sample is that
+    // long: refuse with the value as given rather than a saturated cast.
+    if v >= 9_007_199_254_740_992.0 {
+        return Err(PyValueError::new_err(format!(
+            "variance_ratio: lags contains the horizon {v:e}, longer than any sample (a \
+             horizon q needs at least q + 2 observations) — {LAGS_HINT}"
+        )));
+    }
+    Ok(v as usize)
 }
 
 fn below_two(v: impl std::fmt::Display) -> PyErr {
@@ -113,8 +116,10 @@ fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>) -> PyResult<(Vec<usize>, bool)
             .collect::<PyResult<Vec<_>>>()?;
         return Ok((out, false));
     }
+    // A float (even an integral one such as 4.0), a NumPy bool or a Fraction
+    // converts to f64 but is not an int horizon: name the value and its type.
     let what = if h.extract::<f64>().is_ok() {
-        format!("a non-integer number ({h})")
+        format!("{h} of type {}", type_name(h))
     } else {
         type_name(h)
     };
@@ -240,14 +245,19 @@ fn vr_err(e: DiagError) -> PyErr {
 ///
 /// COST: the robust variance is O(n q) per horizon (every lag 1..q-1 of
 /// the squared increments); the homoskedastic and non-overlapping variances
-/// are O(n). Measured on n = 20,001 levels (scripts/variance_ratio_cost.py):
-/// 0.02 s at q = 1,000 and 0.18 s at q = 10,000 (robust), under 1 ms with
-/// `robust=False`.
+/// are O(n). With several horizons and `overlap=True` the lag products are
+/// computed once, up to the longest horizon, so a whole profile costs about
+/// as much as its longest horizon alone. Every horizon is checked before
+/// any of that work starts. Measured on n = 20,001 levels
+/// (scripts/variance_ratio_cost.py): 0.02 s at q = 1,000 and 0.18 s at
+/// q = 10,000 (robust), under 1 ms with `robust=False`, and 0.05 s for all
+/// 999 horizons q = 2..1,000 in one call.
 ///
 /// Validation (fixtures/variance_ratio.json): 250 single-horizon cases
 /// against arch.unitroot.VarianceRatio (vr 1e-12, stat 1e-12 + 1e-10|stat|,
 /// pvalue against scipy's 2*norm.sf at 1e-9 relative with no absolute
-/// floor, |z| up to 29), 45 Chow-Denning cases against the closed form.
+/// floor, |z| up to 34.6 and p down to 2.1e-262), 45 Chow-Denning cases
+/// against the closed form.
 #[pyfunction]
 #[pyo3(
     signature = (y, lags = None, trend = "c", debiased = None, robust = None, overlap = true),
