@@ -9,7 +9,11 @@
 //! variance is optimized as the square of an unconstrained working value
 //! (`sigma2 = theta^2`), a bounded parameter (cycle frequency, damping)
 //! through a logistic map onto its interval, and a regression coefficient
-//! as itself. The square map keeps a variance that wants to be zero at a
+//! as itself. An autoregressive block is mapped jointly onto the
+//! stationarity region through its partial autocorrelations (`tanh` and
+//! the Levinson-Durbin recursion, `tsecon_optim::StationaryAr`); statsmodels
+//! uses `x / sqrt(1 + x^2)` for the same partial autocorrelations, which
+//! changes the search path but not the optimum. The square map keeps a variance that wants to be zero at a
 //! *regular* interior point of the working space (`theta = 0`, zero
 //! gradient) instead of at `-infinity` of a log map, which is what makes a
 //! boundary optimum reachable by a quasi-Newton search at all.
@@ -44,6 +48,12 @@
 //! boundary. A singular or non-finite Hessian gives NaN for every standard
 //! error rather than a number computed from a failed inverse.
 //!
+//! An autoregressive coefficient's probe step is halved until every probe
+//! point `theta +/- h_i +/- h_j` is stationary (the likelihood is undefined
+//! outside the region, and one NaN probe would blank every standard
+//! error), so an estimate close to the unit root still gets finite
+//! standard errors for the other parameters.
+//!
 //! One identification rule removes more than the flagged parameters (see
 //! [`maximize_tied`]): when the disturbance variance of a *stationary*
 //! block (an AR component, a stationary-initialized cycle) is flagged at
@@ -52,7 +62,10 @@
 //! reported with a NaN standard error instead of making every standard
 //! error NaN through a singular Hessian.
 
-use tsecon_optim::{minimize, BfgsOptions, FnObjective, Method, NelderMeadOptions, ObjectiveFn};
+use tsecon_optim::{
+    minimize, BfgsOptions, FnObjective, Method, NelderMeadOptions, ObjectiveFn, StationaryAr,
+    Transform,
+};
 
 use crate::error::SsmError;
 
@@ -78,6 +91,47 @@ pub(crate) enum ParamKind {
     },
     /// Unconstrained.
     Free,
+    /// One coefficient of a stationary autoregressive block. The block is
+    /// mapped *jointly* (Monahan 1984: `tanh` partial autocorrelations
+    /// through the Levinson-Durbin recursion, [`StationaryAr`]), so every
+    /// working vector is a stationary AR polynomial. `block_start` marks
+    /// the block's first coefficient: a run of `StationaryAr` entries ends
+    /// at the next `block_start` or at any other kind, so two adjacent
+    /// blocks cannot merge into one polynomial.
+    StationaryAr {
+        /// True on the first coefficient of the block.
+        block_start: bool,
+    },
+}
+
+/// The `[start, end)` index ranges of the stationary AR blocks.
+pub(crate) fn ar_blocks(specs: &[ParamSpec]) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < specs.len() {
+        if matches!(specs[i].kind, ParamKind::StationaryAr { .. }) {
+            let mut j = i + 1;
+            while j < specs.len()
+                && specs[j].kind == (ParamKind::StationaryAr { block_start: false })
+            {
+                j += 1;
+            }
+            out.push((i, j));
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// True when every stationary AR block of `params` is a stationary
+/// polynomial (all partial autocorrelations strictly inside `(-1, 1)`).
+pub(crate) fn ar_stationary(blocks: &[(usize, usize)], params: &[f64]) -> bool {
+    blocks.iter().all(|&(a, b)| {
+        let mut z = vec![0.0; b - a];
+        StationaryAr.inverse(&params[a..b], &mut z).is_ok()
+    })
 }
 
 /// One estimated parameter: its reporting name and its kind.
@@ -97,23 +151,34 @@ fn logistic(w: f64) -> f64 {
     }
 }
 
-/// Working-space values to constrained parameters.
+/// Working-space values to constrained parameters. Variance, bounded and
+/// free parameters map elementwise; each stationary AR block jointly.
 pub(crate) fn to_constrained(specs: &[ParamSpec], working: &[f64]) -> Vec<f64> {
-    specs
+    let mut out: Vec<f64> = specs
         .iter()
         .zip(working)
         .map(|(s, &w)| match s.kind {
             ParamKind::Variance => w * w,
             ParamKind::Bounded { low, high } => low + (high - low) * logistic(w),
             ParamKind::Free => w,
+            // Filled in jointly below.
+            ParamKind::StationaryAr { .. } => f64::NAN,
         })
-        .collect()
+        .collect();
+    for (a, b) in ar_blocks(specs) {
+        // A non-finite working value has no image: leave NaN, which the
+        // likelihood reports as undefined.
+        let _ = StationaryAr.forward(&working[a..b], &mut out[a..b]);
+    }
+    out
 }
 
 /// Constrained parameters to working-space values (the inverse map;
-/// bounded values are clamped strictly inside their interval first).
+/// bounded values are clamped strictly inside their interval first, and a
+/// non-stationary AR block starts from the origin of its working space,
+/// the white-noise polynomial).
 pub(crate) fn to_working(specs: &[ParamSpec], constrained: &[f64]) -> Vec<f64> {
-    specs
+    let mut out: Vec<f64> = specs
         .iter()
         .zip(constrained)
         .map(|(s, &c)| match s.kind {
@@ -123,8 +188,16 @@ pub(crate) fn to_working(specs: &[ParamSpec], constrained: &[f64]) -> Vec<f64> {
                 (x / (1.0 - x)).ln()
             }
             ParamKind::Free => c,
+            ParamKind::StationaryAr { .. } => 0.0,
         })
-        .collect()
+        .collect();
+    for (a, b) in ar_blocks(specs) {
+        let mut z = vec![0.0; b - a];
+        if StationaryAr.inverse(&constrained[a..b], &mut z).is_ok() {
+            out[a..b].copy_from_slice(&z);
+        }
+    }
+    out
 }
 
 /// The outcome of [`maximize`].
@@ -261,7 +334,11 @@ where
                 let edge = BOUNDED_EDGE_FRACTION * (high - low);
                 params[i] - low < edge || high - params[i] < edge
             }
-            ParamKind::Free => false,
+            // The stationarity region is open: its edge has no stationary
+            // initialization (the likelihood is undefined there), so the
+            // search never reports it and an AR coefficient is never "at a
+            // bound".
+            ParamKind::Free | ParamKind::StationaryAr { .. } => false,
         };
     }
     let mut excluded = at_boundary.clone();
@@ -313,6 +390,7 @@ where
                     hh.min(0.5 * (x - low)).min(0.5 * (high - x))
                 }
                 ParamKind::Free => eps4 * x.abs().max(1.0),
+                ParamKind::StationaryAr { .. } => eps4 * x.abs().max(1e-2),
             }
         })
         .collect();
@@ -320,6 +398,10 @@ where
         return se;
     }
     let m = free.len();
+    let mut h = h;
+    if !shrink_ar_steps(specs, params, &free, &mut h) {
+        return se;
+    }
     let mut probe = params.to_vec();
     let mut eval = |di: (usize, f64), dj: (usize, f64)| -> f64 {
         probe.copy_from_slice(params);
@@ -355,6 +437,56 @@ where
         };
     }
     se
+}
+
+/// The probe guard for AR coefficients. The Hessian is a four-point
+/// central difference in the constrained space, so it evaluates the
+/// likelihood at `theta +/- h_i +/- h_j`; next to the stationarity
+/// boundary a probe can step outside it, where the likelihood is undefined
+/// (NaN), and a single NaN probe would blank every standard error. Halves
+/// each AR coefficient's step until every probe of every pair stays
+/// stationary. Returns false when no admissible step was found (an
+/// estimate within roundoff of the boundary). Without AR coefficients in
+/// `free` this does nothing.
+fn shrink_ar_steps(specs: &[ParamSpec], params: &[f64], free: &[usize], h: &mut [f64]) -> bool {
+    let is_ar: Vec<bool> = free
+        .iter()
+        .map(|&i| matches!(specs[i].kind, ParamKind::StationaryAr { .. }))
+        .collect();
+    if !is_ar.iter().any(|&b| b) {
+        return true;
+    }
+    let blocks = ar_blocks(specs);
+    let m = free.len();
+    let mut probe = params.to_vec();
+    for _ in 0..64 {
+        let mut bad = vec![false; m];
+        for a in 0..m {
+            for b in a..m {
+                if !(is_ar[a] || is_ar[b]) {
+                    continue;
+                }
+                for (sa, sb) in [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
+                    probe.copy_from_slice(params);
+                    probe[free[a]] += sa * h[a];
+                    probe[free[b]] += sb * h[b];
+                    if !ar_stationary(&blocks, &probe) {
+                        bad[a] |= is_ar[a];
+                        bad[b] |= is_ar[b];
+                    }
+                }
+            }
+        }
+        if !bad.iter().any(|&b| b) {
+            return true;
+        }
+        for (hv, &b) in h.iter_mut().zip(&bad) {
+            if b {
+                *hv *= 0.5;
+            }
+        }
+    }
+    false
 }
 
 /// Gauss-Jordan inverse with partial pivoting of a small square matrix;
@@ -442,4 +574,111 @@ pub(crate) fn ols(x_cols: &[Vec<f64>], y: &[f64], rows: &[usize]) -> Option<Vec<
             .map(|row| row.iter().zip(&xty).map(|(a, b)| a * b).sum())
             .collect(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec(name: &str, kind: ParamKind) -> ParamSpec {
+        ParamSpec {
+            name: name.to_string(),
+            kind,
+        }
+    }
+
+    fn ar(block_start: bool) -> ParamKind {
+        ParamKind::StationaryAr { block_start }
+    }
+
+    /// `block_start` delimits adjacent AR blocks, and the joint map is a
+    /// bijection onto the stationarity region: an AR(2) start survives the
+    /// round trip, a non-stationary one starts from white noise.
+    #[test]
+    fn ar_blocks_are_delimited_and_mapped_jointly() {
+        let specs = vec![
+            spec("s", ParamKind::Variance),
+            spec("a1", ar(true)),
+            spec("a2", ar(false)),
+            spec("b1", ar(true)),
+            spec("x", ParamKind::Free),
+        ];
+        assert_eq!(ar_blocks(&specs), vec![(1, 3), (3, 4)]);
+        let c = vec![2.0, 1.3, -0.4, 0.5, -1.5];
+        let w = to_working(&specs, &c);
+        let back = to_constrained(&specs, &w);
+        for (a, b) in back.iter().zip(&c) {
+            assert!((a - b).abs() < 1e-12, "{back:?} vs {c:?}");
+        }
+        // (1.3, -0.4) is stationary as one AR(2); as two AR(1)s the first
+        // would not be: the blocks really are joint.
+        assert!(ar_stationary(&ar_blocks(&specs), &c));
+        let w = to_working(&specs, &[2.0, 1.2, 0.0, 0.5, 1.0]);
+        assert_eq!(&w[1..3], &[0.0, 0.0]);
+        // Working vectors map to stationary polynomials...
+        let c = to_constrained(&specs, &[1.0, 3.0, -3.0, 3.0, 0.0]);
+        assert!(ar_stationary(&ar_blocks(&specs), &c), "{c:?}");
+        // ...until `tanh` saturates to exactly 1 in floating point (|z| >
+        // ~19): the image is then the unit-root boundary, which the
+        // stationary initialization refuses (NaN likelihood), so the
+        // search never reports it.
+        let c = to_constrained(&specs, &[1.0, 40.0, -40.0, 3.0, 0.0]);
+        assert_eq!(&c[1..3], &[2.0, -1.0]);
+        assert!(!ar_stationary(&ar_blocks(&specs), &c));
+    }
+
+    /// The probe guard: at an AR estimate 5e-5 from the unit root the
+    /// unguarded step (`eps^(1/4) |phi|` ~ 1.2e-4) would probe outside the
+    /// stationarity region, where the likelihood is NaN, and blank every
+    /// standard error. The guard halves the AR step until every probe is
+    /// stationary, and the standard errors are the closed-form ones.
+    #[test]
+    fn ar_probe_steps_shrink_inside_the_stationarity_region() {
+        let specs = vec![spec("w", ParamKind::Free), spec("phi", ar(true))];
+        let c = 0.99995;
+        let mut f = |p: &[f64]| -> f64 {
+            if p[1].abs() >= 1.0 {
+                return f64::NAN;
+            }
+            -(p[0] - 1.0).powi(2) - 1e3 * (p[1] - c).powi(2)
+        };
+        let se = standard_errors(&specs, &[1.0, c], &[false, false], &mut f);
+        assert!((se[0] - 0.5f64.sqrt()).abs() < 1e-6, "{se:?}");
+        assert!((se[1] - (1.0 / 2e3f64).sqrt()).abs() < 1e-6, "{se:?}");
+    }
+
+    /// The identification tie: a stationary block whose variance piles up
+    /// at zero is identically zero, so its transition parameter carries no
+    /// information. Untied, the near-singular Hessian reports a garbage
+    /// standard error for it (here ~3e18, read off a pivot of order the
+    /// leftover variance; exactly at zero it would blank every standard
+    /// error); tied, the transition parameter alone gets NaN and the rest
+    /// keep their curvature.
+    #[test]
+    fn a_flagged_block_variance_drops_its_transition_parameters() {
+        let specs = vec![
+            spec("s", ParamKind::Variance),
+            spec("phi", ar(true)),
+            spec("w", ParamKind::Free),
+        ];
+        let ll = |p: &[f64]| -> f64 {
+            -10.0 * (p[2] - 1.0).powi(2) - p[0] * (1.0 + (p[1] - 0.3).powi(2))
+        };
+        let starts = vec![vec![0.5, 0.2, 0.0]];
+        let untied = maximize(&specs, &starts, ll).unwrap();
+        assert!(untied.at_boundary[0] && !untied.at_boundary[1]);
+        assert!(
+            untied.se[1].is_nan() || untied.se[1] > 1e6,
+            "{:?}",
+            untied.se
+        );
+        let tied = maximize_tied(&specs, &starts, &[(0, vec![1])], ll).unwrap();
+        assert_eq!(tied.at_boundary, untied.at_boundary);
+        assert!(tied.se[0].is_nan() && tied.se[1].is_nan());
+        assert!(
+            (tied.se[2] - (1.0 / 20.0f64).sqrt()).abs() < 1e-5,
+            "{:?}",
+            tied.se
+        );
+    }
 }

@@ -3,6 +3,10 @@
 //! (generator: `fixtures/generate_uc_extensions_fixtures.py`, which
 //! states the references and the honest grade):
 //!
+//! * **`autoregressive = p`** — statsmodels' own AR(p) component
+//!   (row-companion form, always stationary-initialized), at fixed
+//!   parameters on Nile, inflation, GDP, GDP growth (every state
+//!   stationary) and simulated specifications, and three MLE cases;
 //! * **`cycle_init = "stationary"`** — the damped stochastic cycle from
 //!   its unconditional (Lyapunov) distribution. statsmodels has no such
 //!   keyword; the reference is statsmodels' own block `Initialization`
@@ -101,6 +105,9 @@ fn spec_from_json(fx: &Value, spec: &Value) -> UcSpec {
     if let Some(b) = spec.get("cycle_period_bounds") {
         let v = as_f64_vec(b);
         s.cycle_period_bounds = (v[0], v[1]);
+    }
+    if let Some(p) = spec.get("autoregressive") {
+        s.autoregressive = Some(p.as_u64().expect("order") as usize);
     }
     if let Some(c) = spec.get("cycle_init") {
         s.cycle_init = CycleInit::parse(c.as_str().expect("cycle_init")).expect("valid");
@@ -309,11 +316,12 @@ fn check_fixed_block(fit: &UcFit, block: &Value, what: &str) {
     }
     if let Some(comp) = block.get("components") {
         let d = fit.nobs_diffuse;
-        let pairs: [(&str, Option<&UcComponent>); 4] = [
+        let pairs: [(&str, Option<&UcComponent>); 5] = [
             ("level", fit.level.as_ref()),
             ("trend", fit.slope.as_ref()),
             ("seasonal", fit.seasonal.as_ref()),
             ("cycle", fit.cycle.as_ref()),
+            ("autoregressive", fit.autoregressive.as_ref()),
         ];
         for (key, c) in pairs {
             if let Some(b) = comp.get(key) {
@@ -419,6 +427,57 @@ fn check_mle(fit: &UcFit, mle: &Value, what: &str) {
     );
 }
 
+// ------------------------------------------------------ (a) AR component
+
+#[test]
+fn ar_component_fixed_parameters_match_statsmodels() {
+    let fx = load_fixture("uc_extensions.json");
+    let cases = fx["autoregressive"].as_array().unwrap();
+    assert!(cases.len() >= 9);
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let fit = fixed_fit(&fx, case);
+        let p = case["spec"]["autoregressive"].as_u64().unwrap() as usize;
+        // The AR states are the stationary block; everything else diffuse.
+        let pinf = as_f64_vec(&case["initial_diffuse_state_cov_diag"]);
+        assert_eq!(
+            fit.k_diffuse,
+            pinf.iter().filter(|&&v| v == 1.0).count(),
+            "{name}: k_diffuse"
+        );
+        assert_eq!(fit.k_diffuse + p, fit.k_states, "{name}: AR stationary");
+        let names: Vec<String> = (1..=p).map(|j| format!("ar.L{j}")).collect();
+        assert_eq!(
+            &fit.state_names[fit.k_states - p..],
+            &names[..],
+            "{name}: state names"
+        );
+        assert!(fit.autoregressive.is_some(), "{name}");
+        check_fixed_block(&fit, case, &format!("autoregressive/{name}"));
+    }
+    // The all-stationary specification: nothing diffuse at all.
+    let all = cases
+        .iter()
+        .find(|c| c["name"] == "dlgdp_ntrend_ar3")
+        .unwrap();
+    let fit = fixed_fit(&fx, all);
+    assert_eq!((fit.k_diffuse, fit.nobs_diffuse), (0, 0));
+    assert!(fit.std_resid.iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn ar_component_mle_reaches_the_better_reference_optimum() {
+    let fx = load_fixture("uc_extensions.json");
+    for case in fx["autoregressive_mle"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let y = series(&fx, case);
+        let spec = spec_from_json(&fx, &case["spec"]);
+        let fit = unobserved_components(&y, &spec, &UcOptions::default())
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        check_mle(&fit, case, name);
+    }
+}
+
 // ------------------------------------------------- (b) stationary cycle
 
 #[test]
@@ -437,7 +496,14 @@ fn stationary_cycle_fixed_parameters_match_statsmodels_block_initialization() {
             pinf.iter().filter(|&&v| v == 1.0).count(),
             "{name}: k_diffuse = #(P_inf diag == 1)"
         );
-        assert_eq!(fit.k_diffuse + 2, fit.k_states, "{name}: cycle stationary");
+        let p = case["spec"]
+            .get("autoregressive")
+            .map_or(0, |v| v.as_u64().unwrap() as usize);
+        assert_eq!(
+            fit.k_diffuse + 2 + p,
+            fit.k_states,
+            "{name}: cycle (and AR) stationary"
+        );
         check_fixed_block(&fit, case, &format!("stationary_cycle/{name}"));
     }
 }

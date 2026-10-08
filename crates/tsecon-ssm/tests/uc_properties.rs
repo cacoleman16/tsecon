@@ -985,6 +985,176 @@ fn stationary_cycle_mle_recovers_damping_and_period() {
     assert!(md < 0.06, "median damping error {md}");
 }
 
+fn ar_spec(trend: TrendSpec, p: usize) -> UcSpec {
+    UcSpec {
+        trend,
+        autoregressive: Some(p),
+        ..UcSpec::default()
+    }
+}
+
+/// The AR pile-up and its identification tie, on real data. From the
+/// first rung alone the US-GDP local linear trend + AR(2) search lands on
+/// the local optimum where the AR variance piles up at zero (the level
+/// variance absorbs everything): `sigma2.ar` is flagged, and because a
+/// zero-variance stationary block is identically zero, `ar.L1`/`ar.L2`
+/// carry no information and get NaN standard errors — while the level and
+/// trend variances keep finite ones instead of all of them going NaN with
+/// a singular Hessian. The default three rungs reach the genuine optimum
+/// (-250.18, `uc_extensions_golden.rs`); at a zero AR variance the
+/// likelihood is finite.
+#[test]
+fn a_piled_up_ar_variance_drops_the_ar_coefficients_from_the_se() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["lgdp"]);
+    let spec = ar_spec(TrendSpec::LocalLinearTrend, 2);
+    let fit = unobserved_components(
+        &y,
+        &spec,
+        &UcOptions {
+            n_starts: 1,
+            ..UcOptions::default()
+        },
+    )
+    .unwrap();
+    eprintln!(
+        "lgdp lltrend+AR(2), one rung: loglik {}, params {:?}, se {:?}, at_boundary {:?}",
+        fit.loglik, fit.params, fit.se, fit.at_boundary
+    );
+    let i = |n: &str| fit.param_names.iter().position(|p| p == n).unwrap();
+    assert!(fit.loglik < -255.0, "the local optimum: {}", fit.loglik);
+    assert!(fit.at_boundary[i("sigma2.ar")]);
+    assert!(fit.se[i("ar.L1")].is_nan() && fit.se[i("ar.L2")].is_nan());
+    assert!(!fit.at_boundary[i("ar.L1")] && !fit.at_boundary[i("ar.L2")]);
+    assert!(fit.se[i("sigma2.level")].is_finite() && fit.se[i("sigma2.trend")].is_finite());
+    let mut p = fit.params.clone();
+    p[i("sigma2.ar")] = 0.0;
+    let zero = unobserved_components(
+        &y,
+        &spec,
+        &UcOptions {
+            fixed_params: Some(p),
+            ..UcOptions::default()
+        },
+    )
+    .unwrap();
+    assert!(zero.loglik.is_finite() && (zero.loglik - fit.loglik).abs() < 1e-4);
+}
+
+/// The degenerate "likelihood" of a stationary block at the edge of the
+/// stationarity region in floating point. A search on inflation (local
+/// level + AR(2), five rungs) once reached a partial autocorrelation of
+/// exactly 1 from a saturated `tanh`: the Lyapunov solve still passes
+/// (spectral radius 1 - 1e-16), the unconditional variance is 1e16 times
+/// the one-step variance, the filter skips every later observation as
+/// numerically singular, and the "log-likelihood" read -0.92 — one
+/// `-ln(2 pi)/2` term — against a genuine optimum of -453.74. Such a
+/// likelihood is now undefined in the search and refused at fixed
+/// parameters, so the five-rung fit reaches the genuine optimum.
+#[test]
+fn a_root_within_roundoff_of_the_unit_circle_cannot_fake_a_likelihood() {
+    let fx = load_fixture("uc_extensions.json");
+    let infl = as_f64_vec(&fx["data"]["infl"]);
+    let fit = unobserved_components(
+        &infl,
+        &ar_spec(TrendSpec::LocalLevel, 2),
+        &UcOptions {
+            n_starts: 5,
+            ..UcOptions::default()
+        },
+    )
+    .unwrap();
+    eprintln!(
+        "infl llevel+AR(2), five rungs: {} {:?}",
+        fit.loglik, fit.params
+    );
+    assert!(
+        (fit.loglik - (-453.737_368_766_867_86)).abs() < 1e-5,
+        "{}",
+        fit.loglik
+    );
+    let nile = as_f64_vec(&fx["data"]["nile"]);
+    let err = unobserved_components(
+        &nile,
+        &ar_spec(TrendSpec::LocalLevel, 1),
+        &UcOptions {
+            fixed_params: Some(vec![8000.0, 1400.0, 6000.0, 1.0 - 1e-15]),
+            ..UcOptions::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        err.contains("cannot resolve observation") && err.contains("fixed_params"),
+        "{err}"
+    );
+}
+
+/// Scale equivariance with an AR component: `y -> c y` maps every
+/// variance by `c^2`, leaves the AR coefficients unchanged, and shifts the
+/// log-likelihood by exactly `-(nobs_observed - nobs_diffuse) ln c`.
+#[test]
+fn ar_fit_is_invariant_to_the_scale_of_y() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["nile"]);
+    let c = 1e-3;
+    let yc: Vec<f64> = y.iter().map(|v| v * c).collect();
+    let spec = ar_spec(TrendSpec::LocalLevel, 1);
+    let a = unobserved_components(&y, &spec, &UcOptions::default()).unwrap();
+    let b = unobserved_components(&yc, &spec, &UcOptions::default()).unwrap();
+    let mut worst: f64 = 0.0;
+    for (i, name) in a.param_names.iter().enumerate() {
+        let want = if name.starts_with("sigma2") {
+            a.params[i] * c * c
+        } else {
+            a.params[i]
+        };
+        worst = worst.max((b.params[i] - want).abs() / want.abs());
+    }
+    let shift = (a.nobs_observed - a.nobs_diffuse) as f64 * c.ln();
+    let ll = (b.loglik - (a.loglik - shift)).abs() / a.loglik.abs();
+    eprintln!("AR scale equivariance (c = {c}): params {worst:e}, loglik {ll:e}");
+    // Measured: 7.3e-8 on the estimates (the two searches standardize by
+    // scales that differ in the last ulp, and four parameters give the
+    // Nelder-Mead polish room to stop a hair apart) and 2.5e-16 on the
+    // log-likelihood.
+    assert!(worst < 1e-6, "params {worst:e}");
+    assert!(ll < 1e-12, "loglik {ll:e}");
+    assert_eq!(a.at_boundary, b.at_boundary);
+}
+
+/// Seeded Monte Carlo: local level + AR(1) (sigma2_eps = 0.25,
+/// sigma2_level = 0.05, sigma2_ar = 1, phi = 0.8), T = 200, simulated from
+/// the AR's stationary distribution. The MLE recovers phi: the median
+/// absolute error is small, no estimate escapes the sampling band, and the
+/// AR coefficient never comes back flagged.
+#[test]
+fn ar_mle_recovers_the_coefficient() {
+    let (s2e, s2l, s2a, phi) = (0.25f64, 0.05f64, 1.0f64, 0.8f64);
+    let (n, reps) = (200usize, 10u64);
+    let spec = ar_spec(TrendSpec::LocalLevel, 1);
+    let mut err = Vec::new();
+    for seed in 0..reps {
+        let mut rng = Lcg::new(41_000 + seed);
+        let mut a = (s2a / (1.0 - phi * phi)).sqrt() * normal(&mut rng);
+        let mut level = 0.0;
+        let mut y = Vec::with_capacity(n);
+        for _ in 0..n {
+            y.push(level + a + s2e.sqrt() * normal(&mut rng));
+            a = phi * a + s2a.sqrt() * normal(&mut rng);
+            level += s2l.sqrt() * normal(&mut rng);
+        }
+        let fit = unobserved_components(&y, &spec, &UcOptions::default()).unwrap();
+        let est = fit.params[3];
+        assert!((est - phi).abs() < 0.25, "seed {seed}: phi {est}");
+        assert!(!fit.at_boundary[3]);
+        err.push((est - phi).abs());
+    }
+    let m = median(&mut err);
+    eprintln!("llevel + AR(1) MC ({reps} seeds, T = {n}): median |phi - 0.8| = {m:.4}");
+    assert!(m < 0.12, "median error {m}");
+}
+
 /// Every refusal names the offending argument.
 #[test]
 fn refusals_name_the_offending_argument() {
@@ -1206,6 +1376,68 @@ fn refusals_name_the_offending_argument() {
                 },
             )),
             "at most 64 starting values",
+        ),
+        // The AR component: order 0, an order past the sample length,
+        // an order past the observation count, and a non-stationary fixed
+        // polynomial (refused by the partial autocorrelation that leaves
+        // (-1, 1)).
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(0)),
+                &UcOptions::default(),
+            )),
+            "autoregressive = 0",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(1 << 40)),
+                &UcOptions::default(),
+            )),
+            "autoregressive = 1099511627776 with 40 observations",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(39)),
+                &UcOptions::default(),
+            )),
+            "at least k_states + 2 = 42 observations",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(1)),
+                &UcOptions {
+                    fixed_params: Some(vec![1.0, 1.0, 1.0, 1.2]),
+                    ..UcOptions::default()
+                },
+            )),
+            "fixed_params[3] (ar.L1) .. fixed_params[3] (ar.L1) = [1.2] is not a stationary \
+             autoregression: its partial autocorrelation at lag 1 is 1.2",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(1)),
+                &UcOptions {
+                    fixed_params: Some(vec![1.0, 1.0, 1.0, 1.0]),
+                    ..UcOptions::default()
+                },
+            )),
+            "partial autocorrelation at lag 1 is 1,",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(2)),
+                &UcOptions {
+                    fixed_params: Some(vec![1.0, 1.0, 1.0, 0.5, 0.6]),
+                    ..UcOptions::default()
+                },
+            )),
+            "fixed_params[3] (ar.L1) .. fixed_params[4] (ar.L2) = [0.5, 0.6]",
         ),
         // The stationary cycle: refused without a damped, stochastic
         // cycle, and at a fixed damping of 1.

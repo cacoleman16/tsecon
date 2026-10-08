@@ -5337,20 +5337,24 @@ def unobserved_components(
     forecast_exog: np.ndarray | None = None,
     fixed_params: list[float] | None = None,
     n_starts: int = 3,
+    autoregressive: int | None = None,
     cycle_init: str | None = None,
 ) -> dict[str, Any]:
     """Harvey's structural time-series ("unobserved components") models by
     exact-diffuse maximum likelihood — level/trend, dummy and trigonometric
-    seasonals, a (damped) stochastic cycle, and regressors:
+    seasonals, a (damped) stochastic cycle, an autoregressive component, and
+    regressors:
 
-        y_t = mu_t + gamma_t + c_t + beta' x_t + eps_t
+        y_t = mu_t + gamma_t + c_t + a_t + beta' x_t + eps_t
 
     with NaN in `y` treated as missing and the components assembled exactly
     as statsmodels' `UnobservedComponents(..., use_exact_diffuse=True)`
     enumerates them. Under the defaults every state is initialized exactly
     diffuse (Koopman 1997), as statsmodels does, so the log-likelihoods are
-    directly comparable with statsmodels'. `cycle_init="stationary"` changes
-    the likelihood's definition (see below).
+    directly comparable with statsmodels'; an AR block is initialized from
+    its stationary distribution exactly as statsmodels has it, so that stays
+    comparable too. `cycle_init="stationary"` changes the likelihood's
+    definition (see below).
 
     `level` picks the level/trend block by its statsmodels name (long or
     short form): "irregular"/"ntrend", "fixed intercept", "deterministic
@@ -5385,18 +5389,33 @@ def unobserved_components(
     DEFINITION of the likelihood, so `loglik`, `nobs_diffuse`, `k_diffuse`,
     `aic` and `bic` are NOT comparable with the diffuse-cycle ones, even at
     the same parameters.
+    `autoregressive=p` (1 <= p <= len(y); 0 is refused, pass None) adds an
+    AR(p) component `a_t = ar.L1 a_{t-1} + ... + ar.Lp a_{t-p} + eta_t` after
+    the cycle in statsmodels' row-companion form, initialized from its
+    stationary distribution, with `sigma2.ar` and coefficients estimated
+    inside the stationarity region (a fixed non-stationary polynomial is
+    refused, naming the partial autocorrelation that leaves (-1, 1); so is
+    one within roundoff of the unit circle, whose likelihood would silently
+    skip observations). Its cost is O(len(y) p^2) per likelihood
+    evaluation, so a very long AR order is slow rather than refused.
     `exog` (T x k) enters with
     time-invariant coefficients estimated jointly (statsmodels
     `mle_regression=True`); `forecast_steps=h` returns h-step forecasts
     and needs `forecast_exog` (h x k) when `exog` is given.
     `fixed_params` (statsmodels order: `sigma2.irregular`, the state
-    variances in component order, `frequency.cycle`, `damping.cycle`,
-    `beta.x1`...) evaluates the model there instead of estimating.
-    `n_starts` (default 3) is the deterministic start ladder. Counts that
-    size an allocation are bounded and refuse rather than abort: `seasonal`
-    and each `freq_seasonal` period at most `len(y)` (they cost states, and
-    a period the sample never completes is not identified), `forecast_steps`
-    at most 100000, `n_starts` at most 64.
+    variances in component order — level, trend, seasonal, each
+    freq_seasonal block, cycle, then `sigma2.ar` — then `frequency.cycle`,
+    `damping.cycle`, `ar.L1`...`ar.Lp`, `beta.x1`...) evaluates the model
+    there instead of estimating. `state_names` end with `cycle`,
+    `cycle.auxiliary`, `ar.L1`...`ar.Lp`. `n_starts` (default 3) is the
+    deterministic start ladder (for an AR component the first partial
+    autocorrelation walks 0.5, 0.9, 0, -0.5, 0.5, and the second rung of an
+    AR(p >= 2) starts hump-shaped at (1.35, -0.5); the AR-UC likelihood is
+    multimodal). Counts that size an allocation are bounded and refuse
+    rather than abort: `seasonal`, each `freq_seasonal` period and
+    `autoregressive` at most `len(y)` (they cost states, and a period the
+    sample never completes is not identified), `forecast_steps` at most
+    100000, `n_starts` at most 64.
 
     Options that act only under a component RAISE when passed without it:
     `stochastic_seasonal` without `seasonal`; `freq_seasonal_harmonics` /
@@ -5417,10 +5436,13 @@ def unobserved_components(
     matrix instead, including the boundary directions where it is
     indefinite, so the two agree exactly when nothing is flagged and
     differ by definition when something is. When the variance of a
-    STATIONARY block is flagged (`sigma2.cycle` under
+    STATIONARY block is flagged (`sigma2.ar`, or `sigma2.cycle` under
     `cycle_init="stationary"`), the block is identically zero, so its
-    transition parameters (`frequency.cycle`, `damping.cycle`) carry no
-    information: they are dropped from the matrix too and get a NaN `se`.
+    transition parameters (`ar.L1`..., or `frequency.cycle` and
+    `damping.cycle`) carry no information: they are dropped from the matrix
+    too and get a NaN `se`. An AR coefficient's Hessian step is shrunk
+    until every probe stays stationary, so an estimate next to the unit root
+    still leaves the other standard errors finite.
     `aic`/`bic` use statsmodels' `k_params + k_diffuse` degrees of freedom,
     `k_diffuse` counting the exactly diffuse states only.
     The component keys without a prefix are the SMOOTHED (two-sided)
@@ -5453,7 +5475,15 @@ def unobserved_components(
     specifications, plus the closed form `sigma2.cycle / (1 - damping^2)`
     for the initial covariance; its GDP MLE is pinned to the better of two
     optimizers, with the pile-up and the dropped transition parameters
-    mirrored in the reference standard errors.
+    mirrored in the reference standard errors. The AR component is pinned at
+    1e-8 against statsmodels' own `autoregressive=` on Nile, inflation, GDP,
+    GDP growth (every state stationary) and simulated combinations with
+    seasonals, a cycle and regressors, plus the closed forms
+    `sigma2.ar / (1 - phi^2)` and the AR(2) autocovariances for the initial
+    covariance; its MLE on Nile, inflation and GDP reaches the better of two
+    optimizers at the default `n_starts` (on inflation statsmodels' own fit
+    stops 1.89 log-likelihood points short of the optimum this one
+    reaches).
 
     Returned keys: `trend_specification`, `param_names`, `params`, `se`,
     `at_boundary`, `loglik`, `aic`, `bic`, `nobs`, `nobs_observed`,
@@ -5464,7 +5494,9 @@ def unobserved_components(
     `filtered_level_var`, `slope`, `slope_var`, `filtered_slope`,
     `filtered_slope_var`, `seasonal`, `seasonal_var`, `filtered_seasonal`,
     `filtered_seasonal_var`, `cycle`, `cycle_var`, `filtered_cycle`,
-    `filtered_cycle_var` (None when the component is absent),
+    `filtered_cycle_var`, `autoregressive`, `autoregressive_var`,
+    `filtered_autoregressive`, `filtered_autoregressive_var` (the first AR
+    state; None when the component is absent),
     `freq_seasonal`, `freq_seasonal_var`, `filtered_freq_seasonal`,
     `filtered_freq_seasonal_var` (lists with one array per block), `fitted`,
     `resid`, `std_resid`, `forecast`, `forecast_var`.

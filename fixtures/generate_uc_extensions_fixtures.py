@@ -3,7 +3,10 @@
 (``tsecon-ssm``) -> ``fixtures/uc_extensions.json``:
 
 * ``cycle_init="stationary"`` -- the damped stochastic cycle initialized
-  from its unconditional (Lyapunov) distribution instead of exactly diffuse.
+  from its unconditional (Lyapunov) distribution instead of exactly diffuse;
+* ``autoregressive=p`` -- an AR(p) component (statsmodels' own
+  ``autoregressive=`` keyword, row-companion form, always initialized from
+  its stationary distribution).
 
 Reference implementation (this venv; versions pinned in ``_meta``):
 
@@ -41,15 +44,22 @@ Reference implementation (this venv; versions pinned in ``_meta``):
   Lyapunov solve) inverted over the free parameters, where the free set
   mirrors tsecon's identification rule: when the variance of a STATIONARY
   block is flagged at zero, that block's transition parameters (the
-  stationary cycle's frequency and damping) are dropped from it too -- the
-  block is identically zero at variance 0, so they carry no information.
+  stationary cycle's frequency and damping, an AR block's ``ar.L*``) are
+  dropped from it too -- the block is identically zero at variance 0, so
+  they carry no information. AR coefficients are never flagged themselves
+  (the stationarity region is open), which the base ``boundary_flags``
+  already implements (only ``sigma2.*``, ``frequency.cycle`` and
+  ``damping.cycle`` are ever flagged). The complex-step Hessian never
+  leaves the stationarity region, so the reference needs no counterpart of
+  tsecon's AR probe-step guard.
 * The ``lambda -> 0`` sweep: statsmodels' log-likelihood at the GDP
   stationary-cycle optimum with only the frequency moved, under both
   initializations. The stationary one is flat; the diffuse one keeps rising
   toward the singularity documented in ``uc.json``'s generator.
 
 Data: the bundled public-domain Nile series and US macrodata transforms
-(``100 log realgdp``), and the seeded simulated series of ``uc.json``
+(``infl``, ``100 log realgdp`` and its first difference), and the seeded
+simulated series of ``uc.json``
 (reconstructed here from its seed and asserted equal). Only these
 public-domain or seeded series and derived numbers are stored.
 
@@ -110,7 +120,15 @@ class StationaryCycleUC(UnobservedComponents):
 
 
 def components_ext(res):
+    """The uc.json component record plus the AR component (statsmodels'
+    ``results.autoregressive``: the first AR state)."""
     comp = base.components(res)
+    ar = res.autoregressive
+    if ar is not None:
+        comp["autoregressive"] = dict(
+            filtered=lst(ar.filtered), filtered_var=lst(ar.filtered_cov),
+            smoothed=lst(ar.smoothed), smoothed_var=lst(ar.smoothed_cov),
+        )
     return comp
 
 
@@ -121,7 +139,8 @@ def fixed_block(mod, params, h=8, forecast_exog=None, components=False):
     block["k_diffuse"] = int(res.k_diffuse_states)
     block["df_model"] = int(res.df_model)
     block["initial_state_cov_diag"] = lst(np.diag(res.filter_results.initial_state_cov))
-    block["initial_diffuse_state_cov_diag"] = lst(np.diag(res.filter_results.initial_diffuse_state_cov))
+    pinf = res.filter_results.initial_diffuse_state_cov     # None when nothing is diffuse
+    block["initial_diffuse_state_cov_diag"] = lst(np.zeros(mod.k_states) if pinf is None else np.diag(pinf))
     if components:
         block["components"] = components_ext(res)
     return block
@@ -132,6 +151,10 @@ def tied_free_set(mod, flags, stationary_cycle):
     transition parameter of a stationary block whose variance is flagged."""
     names = list(mod.param_names)
     out = [not f for f in flags]
+    if "sigma2.ar" in names and flags[names.index("sigma2.ar")]:
+        for i, n in enumerate(names):
+            if n.startswith("ar.L"):
+                out[i] = False
     if stationary_cycle and "sigma2.cycle" in names and flags[names.index("sigma2.cycle")]:
         for n in ("frequency.cycle", "damping.cycle"):
             if n in names:
@@ -202,8 +225,59 @@ def main():
     nile = sm.datasets.nile.load_pandas().data["volume"].values.astype(float)
     md = sm.datasets.macrodata.load_pandas().data
     lgdp = 100.0 * np.log(md["realgdp"].values.astype(float))
+    dlgdp = np.diff(lgdp)
+    infl = md["infl"].values.astype(float)
     y, X, Xf = sim_series()
-    fx["data"] = dict(nile=lst(nile), lgdp=lst(lgdp), sim_y=lst(y), sim_x=lst(X), sim_x_forecast=lst(Xf))
+    fx["data"] = dict(nile=lst(nile), lgdp=lst(lgdp), dlgdp=lst(dlgdp), infl=lst(infl),
+                      sim_y=lst(y), sim_x=lst(X), sim_x_forecast=lst(Xf))
+    series = dict(nile=nile, lgdp=lgdp, dlgdp=dlgdp, infl=infl, sim=y)
+
+    # ---------------------------------------------------- (a) AR component
+    ar_cases = []
+    for name, data, spec, p, h in [
+        ("nile_llevel_ar1", "nile", dict(level="llevel", autoregressive=1), [8000.0, 1400.0, 6000.0, 0.5], 5),
+        ("nile_llevel_ar2", "nile", dict(level="llevel", autoregressive=2), [8000.0, 1400.0, 6000.0, 0.5, -0.2], 5),
+        ("nile_rwalk_ar1", "nile", dict(level="rwalk", autoregressive=1), [1400.0, 9000.0, 0.3], 5),
+        ("infl_llevel_ar2", "infl", dict(level="llevel", autoregressive=2), [1.0, 0.1, 3.0, 0.4, 0.2], 5),
+        ("lgdp_lltrend_ar2", "lgdp", dict(level="lltrend", autoregressive=2),
+         [0.01, 0.3, 0.001, 0.6, 1.3, -0.4], 5),
+        # Every state stationary: k_diffuse 0, nobs_diffuse 0.
+        ("dlgdp_ntrend_ar3", "dlgdp", dict(level="ntrend", autoregressive=3), [0.2, 0.5, 0.3, 0.15, -0.05], 3),
+        # The AR block as the only stochastic component.
+        ("sim_fixed_intercept_ar1", "sim", dict(level="fixed intercept", autoregressive=1), [0.8, 0.5], 4),
+        ("sim_llevel_seasonal4_cycle_ar1", "sim",
+         dict(level="llevel", seasonal=4, cycle=True, damped_cycle=True, stochastic_cycle=True, autoregressive=1),
+         [0.8, 0.3, 0.1, 0.2, 0.3, 0.6, 0.85, 0.5], 4),
+        ("sim_lltrend_seasonal4_ar2_exog", "sim",
+         dict(level="lltrend", seasonal=4, autoregressive=2, exog="sim_x"),
+         [0.8, 0.3, 0.02, 0.1, 0.3, 0.5, -0.2, 0.5, -0.3], 4),
+    ]:
+        kw = {k: (X if k == "exog" else v) for k, v in spec.items()}
+        mod = UnobservedComponents(series[data], use_exact_diffuse=True, **kw)
+        fexog = Xf[:h] if "exog" in spec else None
+        ar_cases.append(dict(name=name, data=data, spec=spec,
+                             **fixed_block(mod, p, h=h, forecast_exog=fexog, components=True)))
+    fx["autoregressive"] = ar_cases
+
+    ar_mle = []
+    for name, data, spec in [
+        ("nile_llevel_ar1", "nile", dict(level="llevel", autoregressive=1)),
+        ("infl_llevel_ar2", "infl", dict(level="llevel", autoregressive=2)),
+        ("lgdp_lltrend_ar2", "lgdp", dict(level="lltrend", autoregressive=2)),
+    ]:
+        mod = UnobservedComponents(series[data], use_exact_diffuse=True, **spec)
+        ar_mle.append(dict(name=name, data=data, spec=spec, **mle_case(mod)))
+    fx["autoregressive_mle"] = ar_mle
+
+    # Refusal evidence, NOT a golden: statsmodels has no stationarity check
+    # and returns finite numbers where tsecon refuses (a unit or explosive
+    # AR root has no stationary initial distribution). Recorded so the
+    # documentation can quote them; the tests pin tsecon's refusal only.
+    m = UnobservedComponents(nile, "llevel", autoregressive=1, use_exact_diffuse=True)
+    fx["autoregressive_nonstationary_statsmodels"] = [
+        dict(params=[8000.0, 1400.0, 6000.0, phi], statsmodels_loglike=float(m.loglike(np.array([8000.0, 1400.0, 6000.0, phi]))))
+        for phi in (1.2, 1.0, 0.9999)
+    ]
 
     # ------------------------------------------------- (b) stationary cycle
     stat = []
@@ -229,6 +303,14 @@ def main():
     stat.append(dict(name="sim_lltrend_seasonal4_exog", data="sim",
                      spec=dict(spec, exog="sim_x", cycle_init="stationary"),
                      **fixed_block(mod, base.fixed_params_for(mod), h=8, forecast_exog=Xf)))
+
+    # Stationary cycle and AR(1) side by side: one block-diagonal Lyapunov
+    # system, P_* = sigma2/(1-rho^2) on the cycle and sigma2_ar/(1-phi^2).
+    spec = dict(level="strend", autoregressive=1, **damped)
+    mod = StationaryCycleUC(lgdp, use_exact_diffuse=True, **spec)
+    block = fixed_block(mod, [0.01, 0.002, 0.5, 0.2, 2 * np.pi / 24, 0.9, 0.5], h=6, components=True)
+    block["closed_form_p_star"] = dict(cycle=0.5 / (1 - 0.81), ar=0.2 / (1 - 0.25))
+    stat.append(dict(name="lgdp_strend_ar1", data="lgdp", spec=dict(spec, cycle_init="stationary"), **block))
     fx["stationary_cycle"] = stat
 
     # MLE: GDP smooth trend + stationary cycle, periods 6..32 quarters.
@@ -252,10 +334,15 @@ def main():
 
     OUT.write_text(json.dumps(fx, separators=(",", ":")))
     print("wrote", OUT, OUT.stat().st_size, "bytes")
-    for b in stat:
+    for b in ar_cases + stat:
         print(b["name"], "llf %.12f nobs_diffuse %d k_diffuse %d spread %.2e"
               % (b["loglike"], b["nobs_diffuse"], b["k_diffuse"], b["smoother_spread"]))
     print("gdp mle", gdp["statsmodels"]["llf"], gdp["scipy"]["llf"], gdp["best"])
+    for c in fx["autoregressive_nonstationary_statsmodels"]:
+        print("statsmodels at a non-stationary AR", c["params"][-1], c["statsmodels_loglike"])
+    for c in ar_mle:
+        print("ar mle", c["name"], c["statsmodels"]["llf"], c["scipy"]["llf"], c["best"]["params"],
+              c["best"]["at_boundary"], c["best"]["se_conditional"])
     for s in sweep:
         print("sweep", s["frequency"], s["stationary"], s["diffuse"])
 
