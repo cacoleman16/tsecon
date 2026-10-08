@@ -12,6 +12,7 @@ mod ml_neural;
 
 mod coint_fmols;
 mod ets;
+mod ewc;
 mod forecast_mcs;
 mod girf;
 mod ml_convex;
@@ -1081,9 +1082,36 @@ fn long_run_variance(
 /// stays clear of machine noise; a point with leverage numerically equal to
 /// 1 is refused rather than returned as a near-infinite standard error.
 ///
-/// Returned keys: `bse`, `params`, `se_type`, `tvalues`.
+/// **EWC (`se_type="ewc"`)** is the Lazarus-Lewis-Stock-Watson (2018) HAR
+/// recommendation: the sandwich `(X'X)^-1 [n Omega_hat] (X'X)^-1` with
+/// `Omega_hat` the equal-weighted cosine long-run covariance of the scores
+/// `x_t u_t` over `ewc_b` frequencies (no `n/(n - k)` factor, no
+/// prewhitening). Its t-statistics are Student t with `ewc_b` degrees of
+/// freedom, NOT normal, so this route adds `pvalues` (two-sided, `t_ewc_b`)
+/// and `ewc_b` (the resolved B — also those degrees of freedom); build
+/// intervals as `params +/- t_{ewc_b, 0.975} * bse`. `ewc_b=None` uses
+/// `ewc_default_b(n)` = round(0.4 n^(2/3)); an explicit value must lie in
+/// `[1, n - 1]`. On a T=100 regression with AR(0.7) regressor and errors,
+/// nominal 95% slope intervals covered 0.908 with EWC (B = 9, t_9 critical
+/// value) against 0.850 with the Newey-West `hac` default and normal critical
+/// values, and 0.947 against 0.909 at T=400 (3000 seeded replications each;
+/// the robust-inference model card cites the script). `hac` stays the
+/// default for statsmodels compatibility.
+///
+/// Inert combinations are refused, naming the keyword: `ewc_b` under any
+/// other `se_type`, an explicit `maxlags` under `"ewc"`, and
+/// `use_correction=False` under `"ewc"` (EWC takes no `n/(n - k)` factor;
+/// an explicit `True` cannot be told from the default and is a documented
+/// no-op). Under `nonrobust`/`hc*` an explicit `maxlags`/`use_correction` is
+/// still silently ignored, as before 0.11.
+///
+/// Returned keys: `bse`, `params`, `se_type`, `tvalues`; under `"ewc"` also
+/// `ewc_b` and `pvalues`.
+///
+/// Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None),
+/// `use_correction` (True), `ewc_b` (None: `ewc_default_b(n)`).
 #[pyfunction]
-#[pyo3(signature = (y, x, se_type = "hac", maxlags = None, use_correction = true))]
+#[pyo3(signature = (y, x, se_type = "hac", maxlags = None, use_correction = true, ewc_b = None))]
 fn ols<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
@@ -1091,12 +1119,35 @@ fn ols<'py>(
     se_type: &str,
     maxlags: Option<usize>,
     use_correction: bool,
+    ewc_b: Option<usize>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let ys = vec1(&y);
     let ys = ys.as_slice();
+    if se_type == "ewc" {
+        if let Some(l) = maxlags {
+            return Err(PyValueError::new_err(format!(
+                "ols: maxlags = {l} has no effect under se_type=\"ewc\" — EWC averages \
+                 ewc_b cosine frequencies and has no lag truncation; set ewc_b to change \
+                 its smoothing, or use se_type=\"hac\" for a Newey-West bandwidth"
+            )));
+        }
+        if !use_correction {
+            return Err(PyValueError::new_err(
+                "ols: use_correction=False has no effect under se_type=\"ewc\" — the EWC \
+                 covariance never takes the n/(n - k) factor (LLSW's t_B size results are \
+                 for the plain estimator); drop the argument",
+            ));
+        }
+    } else if let Some(b) = ewc_b {
+        return Err(PyValueError::new_err(format!(
+            "ols: ewc_b = {b} only applies to se_type=\"ewc\" (got se_type={se_type:?}); \
+             drop it, or pass se_type=\"ewc\" for the equal-weighted cosine covariance"
+        )));
+    }
     let xa = x.as_array();
     let cols: Vec<Vec<f64>> = (0..xa.ncols()).map(|j| xa.column(j).to_vec()).collect();
     let fit = tsecon_hac::ols(ys, &cols).map_err(to_py)?;
+    let resolved_b = ewc_b.unwrap_or_else(|| tsecon_hac::ewc_default_b(fit.nobs));
     let se = match se_type {
         "nonrobust" => tsecon_hac::SeType::NonRobust,
         "hc0" => tsecon_hac::SeType::Hc0,
@@ -1108,19 +1159,39 @@ fn ols<'py>(
             bandwidth: maxlags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(ys.len())) as f64,
             use_correction,
         },
+        "ewc" => {
+            check_ewc_b_for_ols(resolved_b, fit.nobs)?;
+            tsecon_hac::SeType::Ewc { b: resolved_b }
+        }
         other => {
             return Err(PyValueError::new_err(format!(
-                "unknown se_type {other:?}; expected nonrobust/hc0/hc1/hc2/hc3/hac"
+                "unknown se_type {other:?}; expected nonrobust/hc0/hc1/hc2/hc3/hac/ewc"
             )))
         }
     };
     let inf = fit.inference(se).map_err(to_py)?;
     let d = PyDict::new(py);
+    if matches!(se, tsecon_hac::SeType::Ewc { .. }) {
+        use tsecon_stats::ContinuousDist;
+        let t_b = tsecon_stats::StudentT::new(resolved_b as f64).map_err(to_py)?;
+        let pvalues: Vec<f64> = inf
+            .tvalues
+            .iter()
+            .map(|t| (2.0 * t_b.sf(t.abs())).min(1.0))
+            .collect();
+        d.set_item("pvalues", pvalues.into_pyarray(py))?;
+        d.set_item("ewc_b", resolved_b)?;
+    }
     d.set_item("params", fit.params.clone().into_pyarray(py))?;
     d.set_item("bse", inf.bse.into_pyarray(py))?;
     d.set_item("tvalues", inf.tvalues.into_pyarray(py))?;
     d.set_item("se_type", se_type)?;
     Ok(d)
+}
+
+/// `ewc_b` range check for `ols`, naming the keyword.
+fn check_ewc_b_for_ols(b: usize, n: usize) -> PyResult<()> {
+    ewc::check_ewc_b("ols", "ewc_b", b, n)
 }
 
 fn var_results(
@@ -1798,7 +1869,41 @@ fn var_fevd<'py>(
 /// that band is a pure function of `band_seed`; Šidák and Bonferroni are closed
 /// forms in K and use neither. Method: Montiel Olea and Plagborg-Møller.
 ///
-/// Further arguments, with defaults: `lags` (2), `trend` ("c").
+/// PARAMETER UNCERTAINTY (`param_uncertainty=True`). `cov` (always returned,
+/// `[h][i][j]`, `steps x k x k`, the layout of `var_conditional_forecast`) is
+/// the forecast-error covariance the bands are built from: by default the
+/// plug-in MSE(h) = sum_{i<h} Psi_i Sigma_u Psi_i' (statsmodels `mse`), so
+/// `sqrt(diag cov)` reproduces `lower`/`upper` exactly. With the flag it is
+/// MSE(h) + Omega(h)/T, Lütkepohl's (2005, pp. 96-97) first-order term for
+/// estimating the coefficients (statsmodels `forecast_cov(method="auto")`; T =
+/// effective nobs), and `lower`/`upper` = point -/+ z sqrt(diag cov). At h = 1
+/// it is exactly (1 + m/T) Sigma_u with m = n_trend + k*lags. It is a PARTIAL
+/// repair: on the interval-coverage audit's VAR(1) at T=100 (experiment 3,
+/// its 6000 replications) pooled marginal coverage went from 0.931 to 0.937
+/// and the worst horizon from 0.925 to 0.932 (nominal 0.95; 0.931 to 0.941
+/// when fitted with 4 lags); the rest is small-sample coefficient bias,
+/// which no variance term fixes. It is
+/// derived for a STATIONARY VAR — on near-unit-root levels data it inflates
+/// long-horizon variances by 15-18% through an ill-conditioned Z'Z and is not
+/// a unit-root correction. Unlike statsmodels, whose public "auto" silently
+/// drops the term without a constant, it applies to `trend="n"` too. Only the
+/// pointwise band takes it: `band` other than "pointwise" with the flag is
+/// refused (the joint cross-horizon blocks are a follow-up). COST: CUBIC in
+/// `steps` (about steps^3 (k^2 + 8) / 3 operations; measured on the k = 3
+/// VAR(2) of the VAR card: 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at 500,
+/// 0.28 s at 1000), with a work budget of 2^34 past which `steps` is refused
+/// by name (1443 steps on that VAR, 0.9 s; 0.9-2.2 s at the cap for k = 1,
+/// 2, 3); without the flag nothing changes.
+///
+/// Returned keys: `point`, `lower`, `upper`, `band`, `cov`,
+/// `param_uncertainty`; with a simultaneous `band` also `se`, `sim_lower`,
+/// `sim_upper`, `critical_value`, `pointwise_critical_value`, `band_scope`,
+/// `n_cells`, `n_cells_used`.
+///
+/// Further arguments, with defaults: `lags` (2), `steps` (8), `alpha`
+/// (0.05), `trend` ("c"), `band` ("pointwise"), `band_scope` ("all"),
+/// `band_seed` (20260807), `band_n_sim` (100000), `param_uncertainty`
+/// (False).
 #[pyfunction]
 #[pyo3(signature = (
     data,
@@ -1810,6 +1915,7 @@ fn var_fevd<'py>(
     band_scope = "all",
     band_seed = 20260807,
     band_n_sim = 100000,
+    param_uncertainty = false,
 ))]
 #[allow(clippy::too_many_arguments)]
 fn var_forecast<'py>(
@@ -1823,14 +1929,29 @@ fn var_forecast<'py>(
     band_scope: &str,
     band_seed: u64,
     band_n_sim: usize,
+    param_uncertainty: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = var_results(&data, lags, trend)?;
     let band_method = var_band_method(band)?;
     // Parsed even at `band="pointwise"`, so a typo is caught, not ignored.
     let scope = tsecon_var::forecast::ForecastBandScope::parse(band_scope).map_err(to_py)?;
+    if param_uncertainty && band_method.is_simultaneous() {
+        return Err(PyValueError::new_err(format!(
+            "var_forecast: param_uncertainty=True is only available with band=\"pointwise\" \
+             (got band={band:?}); the simultaneous bands need the cross-horizon blocks of the \
+             parameter-uncertainty term, which are not implemented. Drop one of the two"
+        )));
+    }
     let fc = if band_method.is_simultaneous() {
         r.forecast_interval_simultaneous(steps, alpha, band_method, scope, band_seed, band_n_sim)
             .map_err(to_py)?
+    } else if param_uncertainty {
+        r.forecast_interval_with(
+            steps,
+            alpha,
+            tsecon_var::ForecastOptions::new().with_param_uncertainty(true),
+        )
+        .map_err(to_py)?
     } else {
         r.forecast_interval(steps, alpha).map_err(to_py)?
     };
@@ -1839,6 +1960,9 @@ fn var_forecast<'py>(
     d.set_item("lower", mat_to_vec2(&fc.lower))?;
     d.set_item("upper", mat_to_vec2(&fc.upper))?;
     d.set_item("band", band_method.label())?;
+    let cov: Vec<Vec<Vec<f64>>> = fc.cov.iter().map(mat_to_vec2).collect();
+    d.set_item("cov", cov)?;
+    d.set_item("param_uncertainty", param_uncertainty)?;
     if let Some(s) = fc.simultaneous.as_ref() {
         d.set_item("se", mat_to_vec2(&fc.se))?;
         d.set_item("sim_lower", mat_to_vec2(&s.lower))?;
@@ -13132,5 +13256,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     var_cf::register(m)?;
     forecast_mcs::register(m)?;
     ets::register(m)?;
+    ewc::register(m)?;
     Ok(())
 }

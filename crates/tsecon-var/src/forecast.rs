@@ -87,25 +87,30 @@ impl ForecastOptions {
     }
 }
 
-/// Work budget of [`VarResults::forecast_param_uncertainty`], in
-/// multiply-adds.
+/// Work budget of [`VarResults::forecast_param_uncertainty`], in units of
+/// one multiply-add or one memory read of the trace table.
 ///
-/// The term costs about `steps^3 k^2 / 3 + steps^2 k^3 / 2` for the double sum
-/// over horizons plus `steps (2 m^3 + m^2 steps)` for the powers of the
-/// companion-with-deterministics matrix `B` and the trace table — cubic in
-/// `steps`. `2^34` multiply-adds is a few seconds of one core; a request past
-/// it is refused, naming `steps`, rather than left to run for minutes.
-/// Forecast horizons are tens of periods in practice.
+/// The term's dominant cost is the double sum over horizons: for every
+/// horizon `h` an `h x h` block of the `steps x steps` trace table times an
+/// `h x k^2` block of MA coefficients — `steps^3 k^2 / 3` multiply-adds over
+/// `steps^3 / 3` reads of a table that outgrows the cache, so for small `k`
+/// the reads, not the arithmetic, set the pace (measured: `k = 1` and `k = 3`
+/// cost about the same per horizon cubed). The count is
+/// `steps^3 (k^2 + 8) / 3` for it, plus `steps^2 k^3 / 2`, `2 steps m^3` (the
+/// powers of `B`) and `steps^2 m^2` (the trace table). Cubic in `steps`:
+/// `2^34` is one to two seconds of one core (measured 0.9-2.2 s at the cap
+/// for `k = 1, 2, 3`); a request past it is refused, naming `steps`, rather
+/// than left to run for minutes. Forecast horizons are tens of periods in
+/// practice.
 pub const PARAM_UNCERTAINTY_WORK_BUDGET: u128 = 1 << 34;
 
-/// The multiply-add count the budget is checked against (see
-/// [`PARAM_UNCERTAINTY_WORK_BUDGET`]).
-/// Saturating, so an absurd `steps` (up to `usize::MAX`) cannot overflow the
-/// check that is meant to refuse it.
+/// The work count the budget is checked against (see
+/// [`PARAM_UNCERTAINTY_WORK_BUDGET`]). Saturating, so an absurd `steps` (up
+/// to `usize::MAX`) cannot overflow the check that is meant to refuse it.
 fn param_uncertainty_work(steps: usize, k: usize, m: usize) -> u128 {
     let (s, k, m) = (steps as u128, k as u128, m as u128);
     let prod = |xs: &[u128]| xs.iter().fold(1_u128, |acc, &x| acc.saturating_mul(x));
-    (prod(&[s, s, s, k, k]) / 3)
+    (prod(&[s, s, s, k.saturating_mul(k).saturating_add(8)]) / 3)
         .saturating_add(prod(&[s, s, k, k, k]) / 2)
         .saturating_add(prod(&[2, s, m, m, m]))
         .saturating_add(prod(&[s, s, m, m]))
@@ -322,6 +327,10 @@ impl VarResults {
                               95% forecast interval",
             });
         }
+        if options.param_uncertainty {
+            // Before the point path allocates anything.
+            self.check_param_uncertainty_budget(steps)?;
+        }
         let point = self.forecast(steps)?;
         let covs = self.forecast_cov_with(steps, options)?;
         let z = inv_norm_cdf(1.0 - alpha / 2.0)?;
@@ -415,8 +424,8 @@ impl VarResults {
                 name: "steps",
                 value: steps as f64,
                 requirement: "a horizon whose parameter-uncertainty term fits the work \
-                              budget of 2^34 multiply-adds (about steps^3 k^2 / 3: CUBIC in \
-                              steps — measured a few seconds at the budget). Forecast \
+                              budget of 2^34 (about steps^3 (k^2 + 8) / 3 operations: CUBIC \
+                              in steps — measured 0.9-2.2 s at the budget). Forecast \
                               horizons are tens of periods; drop param_uncertainty for a \
                               long innovation-only path",
             });
@@ -443,12 +452,14 @@ impl VarResults {
     /// * `Psi_i` are the MA coefficients and `Sigma_u` the df-adjusted
     ///   residual covariance.
     ///
-    /// Computed as `tau_ab = <B^a, G^{-1} B^b G>_F` (Frobenius) with the
+    /// Computed as `tau_ab = <B^a, G^{-1} B^b G>_F` (Frobenius; one matrix
+    /// product of the stacked `vec(B^a)` and `vec(G^{-1} B^b G)`) with the
     /// `b = 0` factor set to the identity **exactly** (not formed as
     /// `G^{-1} I G`, which would carry roundoff), so `Omega(1) = m Sigma_u`
     /// holds exactly, then `Omega(h) = sum_i Psi_i Sigma_u (sum_j
-    /// tau_{h-1-i, h-1-j} Psi_j)'`. Each `Omega(h)` is symmetrized. Cost
-    /// `O(steps^3 k^2 + steps^2 m^2 + steps m^3)`, budgeted by
+    /// tau_{h-1-i, h-1-j} Psi_j)'` with the inner sums for all `i` as one
+    /// `h x h` by `h x k^2` product. Each `Omega(h)` is symmetrized. Cost
+    /// `O(steps^3 (k^2 + 8) + steps^2 m^2 + steps m^3)`, budgeted by
     /// [`PARAM_UNCERTAINTY_WORK_BUDGET`].
     ///
     /// # Errors
@@ -508,73 +519,67 @@ impl VarResults {
             }
         }
 
-        // P_a = B^a and Q_a = G^{-1} B^a G for a = 0..steps-1, with
-        // P_0 = Q_0 = I exactly; tau_ab = <P_a, Q_b>_F.
-        let mut powers: Vec<Mat<f64>> = Vec::with_capacity(steps);
-        let mut q: Vec<Mat<f64>> = Vec::with_capacity(steps);
-        let identity = Mat::<f64>::identity(m, m);
-        powers.push(identity.clone());
-        q.push(identity);
-        for a in 1..steps {
-            let next = &powers[a - 1] * &b;
-            let rhs = &next * &g;
-            q.push(g_llt.solve(&rhs));
-            powers.push(next);
-        }
-        let mut tau = vec![0.0_f64; steps * steps];
+        // Row a of `p_flat` / `q_flat` is vec(P_a) / vec(Q_a) with
+        // P_a = B^a and Q_a = G^{-1} B^a G, a = 0..steps-1, and
+        // P_0 = Q_0 = I exactly; then tau = p_flat q_flat', i.e.
+        // tau_ab = <P_a, Q_b>_F = tr[(B')^a G^{-1} B^b G].
+        let mm = m * m;
+        let mut p_flat = Mat::<f64>::zeros(steps, mm);
+        let mut q_flat = Mat::<f64>::zeros(steps, mm);
+        let mut pa = Mat::<f64>::identity(m, m);
         for a in 0..steps {
-            for bb in 0..steps {
-                let (pa, qb) = (&powers[a], &q[bb]);
-                let mut acc = 0.0;
-                for c in 0..m {
-                    for r in 0..m {
-                        acc += pa[(r, c)] * qb[(r, c)];
-                    }
+            let qa = if a == 0 {
+                Mat::<f64>::identity(m, m)
+            } else {
+                pa = &pa * &b;
+                g_llt.solve(&(&pa * &g))
+            };
+            for c in 0..m {
+                for r in 0..m {
+                    p_flat[(a, c * m + r)] = pa[(r, c)];
+                    q_flat[(a, c * m + r)] = qa[(r, c)];
                 }
-                tau[a * steps + bb] = acc;
             }
         }
-        drop(powers);
-        drop(q);
+        let tau = &p_flat * q_flat.transpose();
+        drop(p_flat);
+        drop(q_flat);
 
-        // Psi_i (flattened row-major) and D_i = Psi_i Sigma_u.
+        // psi_rev row s is Psi_{steps-1-s} flattened row-major (entry
+        // e = r k + c), so for horizon h the h x k^2 block of rows
+        // steps-h..steps holds Psi_{h-1}, ..., Psi_0 and
+        // W = tau[0..h, 0..h] psi_rev[steps-h.., :] has row a equal to
+        // sum_{b<h} tau_{a,b} Psi_{h-1-b} — the inner sum for i = h-1-a — as
+        // one matrix product. D_i = Psi_i Sigma_u stays row-major.
         let psi = self.ma_rep(steps - 1)?;
         let kk = k * k;
-        let mut psi_flat = vec![0.0_f64; steps * kk];
+        let mut psi_rev = Mat::<f64>::zeros(steps, kk);
         let mut d_flat = vec![0.0_f64; steps * kk];
         for (i, ps) in psi.iter().enumerate() {
             let d = ps * &self.sigma_u;
             for r in 0..k {
                 for c in 0..k {
-                    psi_flat[i * kk + r * k + c] = ps[(r, c)];
+                    psi_rev[(steps - 1 - i, r * k + c)] = ps[(r, c)];
                     d_flat[i * kk + r * k + c] = d[(r, c)];
                 }
             }
         }
 
+        // Omega(h) = sum_{i<h} D_i W_{h-1-i}'.
         let mut out = Vec::with_capacity(steps);
-        let mut w = vec![0.0_f64; kk];
         let mut om = vec![0.0_f64; kk];
         for h in 1..=steps {
+            let w = tau.as_ref().submatrix(0, 0, h, h)
+                * psi_rev.as_ref().submatrix(steps - h, 0, h, kk);
             om.fill(0.0);
             for i in 0..h {
-                // w = sum_j tau_{h-1-i, h-1-j} Psi_j
-                w.fill(0.0);
-                let row = &tau[(h - 1 - i) * steps..(h - i) * steps];
-                for j in 0..h {
-                    let t = row[h - 1 - j];
-                    let pj = &psi_flat[j * kk..(j + 1) * kk];
-                    for (wv, &pv) in w.iter_mut().zip(pj) {
-                        *wv += t * pv;
-                    }
-                }
-                // om += D_i w'
+                let a = h - 1 - i;
                 let d = &d_flat[i * kk..(i + 1) * kk];
                 for r in 0..k {
                     for c in 0..k {
                         let mut acc = 0.0;
                         for l in 0..k {
-                            acc += d[r * k + l] * w[c * k + l];
+                            acc += d[r * k + l] * w[(a, c * k + l)];
                         }
                         om[r * k + c] += acc;
                     }

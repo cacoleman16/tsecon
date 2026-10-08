@@ -1,0 +1,22 @@
+== 1. EWC (t_B) vs Newey-West (normal) slope coverage, nominal 0.95 ==
+T=100 rho=0.7 reps=3000 ewc_b=9 nw_maxlags=4: HAC 0.850 (width 0.519)  EWC 0.908 (width 0.656)  MC se 0.004
+T=400 rho=0.7 reps=3000 ewc_b=22 nw_maxlags=5: HAC 0.909 (width 0.289)  EWC 0.947 (width 0.338)  MC se 0.004
+
+== 2. var_forecast marginal coverage, plug-in vs param_uncertainty=True (same draws) ==
+lags=1 T=100 reps=6000: pooled 0.9312 -> 0.9373 (paired diff +0.0062 se 0.0002); worst horizon 0.9251 (h=11) -> 0.9320 (h=11); h1 0.9437 -> 0.9470; h12 0.9312 -> 0.9384; pooled MC se 0.0012
+lags=4 T=100 reps=6000: pooled 0.9307 -> 0.9408 (paired diff +0.0101 se 0.0003); worst horizon 0.9247 (h=5) -> 0.9368 (h=5); h1 0.9331 -> 0.9453; h12 0.9374 -> 0.9439; pooled MC se 0.0012
+
+== 3. cov/mse at h = 12: growth rates (var.json) vs log levels ==
+growth-rate VAR(2): cov/mse diag h12 = [1.0143 1.0148 1.01  ]
+levels VAR(2): largest companion modulus 0.9977, cond(Z'Z) 5.09e+10, cov/mse diag h12 = [1.1715 1.1811 1.1484]
+
+== 4. cost of param_uncertainty=True (k = 3 VAR(2), best of 3) ==
+steps=12: 0.0001 s
+steps=200: 0.0039 s
+steps=500: 0.0375 s
+steps=1000: 0.2845 s
+cap_k3_lags2: largest admitted steps 1443 (0.94 s); refused at +1 naming steps: True
+cap_k2_lags1: largest admitted steps 1624 (2.16 s); refused at +1 naming steps: True
+cap_k1_lags1: largest admitted steps 1788 (1.44 s); refused at +1 naming steps: True
+
+wrote lab/audit/wave11/out/ewc_varcov_measurements.json
