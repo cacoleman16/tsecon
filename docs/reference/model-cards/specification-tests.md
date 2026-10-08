@@ -529,7 +529,7 @@ worst deviation `2.4e-13`) and again through Python in
 on six fresh seeded regressions.
 
 Size and power by seeded Monte Carlo
-([`lab/serial_corr/size_power.py`](../../../lab/serial_corr/size_power.py),
+(`lab/serial_corr/size_power.py`,
 output in `lab/serial_corr/out/size_power.txt`). The DGP is
 `y = 1 + 0.5 x1 - 0.5 x2 + u`, with `x1` AR(1)(0.5) and `x2` iid, both fixed
 across 2000 replications per cell. The table gives rejection rates at 5%; the
@@ -656,7 +656,7 @@ must satisfy `T >= k + 2` (with `T = k + 1`, `d` is a constant).
 with a pointer to `breusch_godfrey_test`, whose cost is linear in `T` and whose
 chi-square approximation is accurate at that length. Measured on the release
 wheel (median of three calls, a 4-core machine shared with another job,
-[`lab/serial_corr/dw_cost.py`](../../../lab/serial_corr/dw_cost.py)):
+`lab/serial_corr/dw_cost.py`):
 
 | T | 100 | 250 | 500 | 1000 | 2000 | 3000 | 4000 |
 |---|---|---|---|---|---|---|---|
@@ -691,7 +691,7 @@ crate uses its own Gauss-Kronrod rule. All three alternatives match at
 exact Durbin-Watson p-value, so the *formula* is graded separately:
 
 * **The null CDF against simulation**
-  ([`lab/serial_corr/dw_exact_mc.py`](../../../lab/serial_corr/dw_exact_mc.py)).
+  (`lab/serial_corr/dw_exact_mc.py`).
   On three fixed designs (`T` = 20, 40, 80; constant-only to four
   regressors), the exact `P(d <= c)` was compared with 200 000 simulated null
   draws at the 1, 5, 10, 50, 90, 95 and 99% points. The largest deviation is
@@ -766,7 +766,7 @@ AR(1) errors `d = 1.30`. For `T = 60` and two regressors besides the constant
 the 5% bounds are `d_L = 1.514` and `d_U = 1.652` (the 5% quantiles of the
 `d_L` and `d_U` distributions, which is what the Savin-White tables
 tabulate, computed from their definition in
-[`lab/serial_corr/dw_bounds.py`](../../../lab/serial_corr/dw_bounds.py)), so
+`lab/serial_corr/dw_bounds.py`), so
 the bounds test would also reject here. The exact p-value says by how much
 (`p = 0.0015`), and it still gives a verdict when `d` falls between `d_L` and
 `d_U`, where the tables cannot.
