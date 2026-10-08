@@ -837,7 +837,7 @@ discover.
   built and installed on Ubuntu/macOS/Windows; a `mypy --strict` stub check; an
   **evidence** job that runs both Monte Carlo suites and the cross-library
   parity gate against a release wheel; and an **abi3** job that builds one wheel
-  on 3.12 and then installs and tests that same wheel on 3.9 and 3.13.
+  on 3.12 and then installs and tests that same wheel on 3.9 and 3.14.
   `docs.yml` adds `mkdocs build --strict`.
   Because the Monte Carlo scripts are seeded and assert their own expectations,
   a *statistical* regression — a test losing its size, an interval losing
@@ -845,12 +845,12 @@ discover.
   benchmark harness gates on cross-library **agreement** only; timings are
   reported but never fail CI, since a shared runner cannot measure them
   reliably.
-- **CI exercises CPython 3.9, 3.12 and 3.13 — not every version in between.**
+- **CI exercises CPython 3.9, 3.12 and 3.14 — not every version in between.**
   The wheel is `abi3-py39` and the package declares
   `requires-python = ">=3.9"`; the `abi3` job builds one wheel and runs the
   suite against it on the oldest and newest supported interpreters, which is
-  exactly what the ABI contract claims. 3.10 and 3.11 are supported by that
-  contract, not by a test run.
+  exactly what the ABI contract claims. 3.10, 3.11 and 3.13 are supported by
+  that contract, not by a test run.
 
 ---
 

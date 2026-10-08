@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 pre-1.0 policy in [ROADMAP.md](ROADMAP.md) (minor = breaking allowed, patch =
 fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Dependencies: `pyo3` 0.29.0 → 0.29.3 and `serde_json` 1.0.150 → 1.0.151 (the bumps Dependabot proposed in #27, taken to the newest patch), plus the 23 other semver-compatible lockfile changes then available (22 updates and one new transitive crate, `syn` 3.0.6), among them faer's matrix-multiply kernel `private-gemm-x86` 0.1.20 → 0.1.22. The shipped licence notices are regenerated to match.
+- CI actions moved to their Node 24 majors, still pinned to commit SHAs: `checkout` v7.0.1, `setup-python` v7.0.0, `upload-artifact` v7.0.1, `download-artifact` v8.0.1 (`merge-multiple` is unchanged; a digest mismatch now fails the publish job instead of warning), `upload-pages-artifact` v5.0.0 and `deploy-pages` v5.0.1 (moved together, since the former now uploads with `upload-artifact` v7). The docs build floor is `mkdocs-material` ≥ 9.7.7, which fixes a DOM-based XSS bug in search suggestions.
+- Dev and test builds now compile the third-party dependencies (faer's kernels, rand, rayon) with optimization (`[profile.dev.package."*"] opt-level = 3`), while the workspace crates keep the plain dev profile with debug assertions and overflow checks. CI's `cargo test --workspace` step took 64 minutes on 0.10.0. On this change the full run took 39 minutes on a contended 4-core local machine, and all 1940 Rust tests passed with no pinned number moved: neither the optimization level nor the faer kernel update changed a bit-identical pin.
+- The abi3 job now installs and tests the wheel on Python 3.14, the newest release, instead of 3.13, and the package declares 3.14 in its classifiers.
+- `docs.yml` now runs when the workflow itself changes, and uploads the Pages artifact on pull requests as well as on `main`, so a bump to either Pages action runs before it merges. Only the deploy job stays restricted to `main`.
+- The crate table in `THIRD-PARTY-LICENSES.md` is now generated from `cargo metadata` (`scripts/gen_license_inventory.py`, reproducing the 0.10.0 table byte for byte) and checked by the same CI step as the notices. Before this, nothing regenerated it, so it would have drifted on the first lockfile change. `CONTRIBUTING.md` now describes every CI gate, including the notices step that every Dependabot `cargo` pull request fails until the regenerated files are committed.
+
 ## [0.10.0] - 2026-09-12
 
 The Tier-1 gaps that a forecasting library is judged on, closed in one wave:

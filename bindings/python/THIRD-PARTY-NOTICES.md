@@ -317,7 +317,7 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License (MIT)
 
 Used by:
-- cfg-if 1.0.4 — https://github.com/rust-lang/cfg-if
+- cfg-if 1.0.5 — https://github.com/rust-lang/cfg-if
 
 ```
 Copyright (c) 2014 Alex Crichton
@@ -384,9 +384,9 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License (MIT)
 
 Used by:
-- bitflags 2.13.1 — https://github.com/bitflags/bitflags
+- bitflags 2.13.2 — https://github.com/bitflags/bitflags
 - num-complex 0.4.6 — https://github.com/rust-num/num-complex
-- num-integer 0.1.46 — https://github.com/rust-num/num-integer
+- num-integer 0.1.47 — https://github.com/rust-num/num-integer
 - num-traits 0.2.19 — https://github.com/rust-num/num-traits
 
 ```
@@ -421,7 +421,7 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License (MIT)
 
 Used by:
-- either 1.16.0 — https://github.com/rayon-rs/either
+- either 1.19.0 — https://github.com/rayon-rs/either
 - rawpointer 0.2.1 — https://github.com/bluss/rawpointer/
 
 ```
@@ -717,12 +717,12 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License (MIT)
 
 Used by:
-- pyo3-build-config 0.29.0 — https://github.com/pyo3/pyo3
-- pyo3-ffi 0.29.0 — https://github.com/pyo3/pyo3
-- pyo3-macros-backend 0.29.0 — https://github.com/pyo3/pyo3
-- pyo3-macros 0.29.0 — https://github.com/pyo3/pyo3
-- pyo3 0.29.0 — https://github.com/pyo3/pyo3
-- pyo3 0.29.0 — https://github.com/pyo3/pyo3
+- pyo3-build-config 0.29.3 — https://github.com/pyo3/pyo3
+- pyo3-ffi 0.29.3 — https://github.com/pyo3/pyo3
+- pyo3-macros-backend 0.29.3 — https://github.com/pyo3/pyo3
+- pyo3-macros 0.29.3 — https://github.com/pyo3/pyo3
+- pyo3 0.29.3 — https://github.com/pyo3/pyo3
+- pyo3 0.29.3 — https://github.com/pyo3/pyo3
 
 ```
 Copyright (c) 2023-present PyO3 Project and Contributors.  https://github.com/PyO3
@@ -756,7 +756,7 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License (MIT)
 
 Used by:
-- libc 0.2.186 — https://github.com/rust-lang/libc
+- libc 0.2.190 — https://github.com/rust-lang/libc
 
 ```
 Copyright (c) The Rust Project Developers
@@ -790,7 +790,7 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License (MIT)
 
 Used by:
-- bytemuck 1.25.1 — https://github.com/Lokathor/bytemuck
+- bytemuck 1.25.2 — https://github.com/Lokathor/bytemuck
 
 ```
 MIT License
@@ -967,7 +967,7 @@ SOFTWARE.
 
 Used by:
 - dyn-stack-macros 0.1.3 — https://github.com/kitegi/dynstack/
-- private-gemm-x86 0.1.20 — https://github.com/sarah-quinones/gemm-x64-v2/
+- private-gemm-x86 0.1.22 — https://github.com/sarah-quinones/gemm-x64-v2/
 - qd 0.8.0 — https://github.com/sarah-quinones/qd/
 
 ```
@@ -1100,19 +1100,19 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License (MIT)
 
 Used by:
-- hermit-abi 0.5.2 — https://github.com/hermit-os/hermit-rs
+- hermit-abi 0.5.3 — https://github.com/hermit-os/hermit-rs
 - once_cell 1.21.4 — https://github.com/matklad/once_cell
 - paste 1.0.15 — https://github.com/dtolnay/paste
-- portable-atomic-util 0.2.7 — https://github.com/taiki-e/portable-atomic-util
-- portable-atomic 1.13.1 — https://github.com/taiki-e/portable-atomic
-- proc-macro2 1.0.106 — https://github.com/dtolnay/proc-macro2
-- quote 1.0.46 — https://github.com/dtolnay/quote
+- portable-atomic-util 0.2.8 — https://github.com/taiki-e/portable-atomic-util
+- portable-atomic 1.15.0 — https://github.com/taiki-e/portable-atomic
+- proc-macro2 1.0.107 — https://github.com/dtolnay/proc-macro2
+- quote 1.0.47 — https://github.com/dtolnay/quote
 - seq-macro 0.3.6 — https://github.com/dtolnay/seq-macro
 - syn 1.0.109 — https://github.com/dtolnay/syn
 - syn 2.0.119 — https://github.com/dtolnay/syn
 - thiserror-impl 1.0.69 — https://github.com/dtolnay/thiserror
 - thiserror 1.0.69 — https://github.com/dtolnay/thiserror
-- unicode-ident 1.0.24 — https://github.com/dtolnay/unicode-ident
+- unicode-ident 1.0.26 — https://github.com/dtolnay/unicode-ident
 
 ```
 Permission is hereby granted, free of charge, to any
@@ -1264,9 +1264,9 @@ THE SOFTWARE.
 ### MIT License (MIT)
 
 Used by:
-- crossbeam-deque 0.8.7 — https://github.com/crossbeam-rs/crossbeam
-- crossbeam-epoch 0.9.20 — https://github.com/crossbeam-rs/crossbeam
-- crossbeam-utils 0.8.22 — https://github.com/crossbeam-rs/crossbeam
+- crossbeam-deque 0.8.8 — https://github.com/crossbeam-rs/crossbeam
+- crossbeam-epoch 0.9.21 — https://github.com/crossbeam-rs/crossbeam
+- crossbeam-utils 0.8.23 — https://github.com/crossbeam-rs/crossbeam
 
 ```
 The MIT License (MIT)
@@ -1330,7 +1330,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ### Unicode License v3 (Unicode-3.0)
 
 Used by:
-- unicode-ident 1.0.24 — https://github.com/dtolnay/unicode-ident
+- unicode-ident 1.0.26 — https://github.com/dtolnay/unicode-ident
 
 ```
 UNICODE LICENSE V3
