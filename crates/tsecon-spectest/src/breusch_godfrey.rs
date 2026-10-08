@@ -1,0 +1,211 @@
+//! Breusch-Godfrey Lagrange-multiplier test for serial correlation of order
+//! up to `p` in the errors of `y = X b + u` (Breusch 1978; Godfrey 1978).
+//!
+//! Fit the regression by OLS, then run the auxiliary regression of the
+//! residuals on the design and `p` of their own lags,
+//!
+//! ```text
+//! u_t = x_t' g + a_1 u_{t-1} + ... + a_p u_{t-p} + v_t,     t = 1..T,
+//! ```
+//!
+//! and test `a_1 = ... = a_p = 0`. Two forms of the same test are returned:
+//!
+//! ```text
+//! LM = T * R^2_aux                                        ~ chi2(p)
+//! F  = [(SSR_r - SSR_aux) / p] / [SSR_aux / (T - k_aux)]  ~ F(p, T - k_aux)
+//! ```
+//!
+//! with `R^2_aux` the centered coefficient of determination of the auxiliary
+//! regression, `SSR_r` the residual sum of squares of the same regression
+//! without the lag columns, and `k_aux` the number of auxiliary regressors.
+//!
+//! **Convention (pinned to statsmodels `acorr_breusch_godfrey`).** The lagged
+//! residuals are padded with zeros: `u_{t-j}` is taken as `0` when
+//! `t - j < 1`, so the auxiliary regression keeps all `T` observations.
+//! (The other common convention drops the first `p` observations instead;
+//! it is asymptotically equivalent but gives different numbers in a finite
+//! sample, so the two must not be mixed.) The default order is
+//! `p = min(10, T / 5)` (integer division). When the design does not span a
+//! constant — no constant column and no implicit one such as a set of
+//! complementary dummies — a column of ones is added to the auxiliary design
+//! (`constant_added`), so `R^2_aux` is always centered on an intercept and
+//! `k_aux = k + p + 1`; otherwise `k_aux = k + p`. The LM statistic is
+//! valid with lagged dependent variables among the regressors, which is the
+//! test's advantage over Durbin-Watson.
+
+use tsecon_hac::ols;
+use tsecon_stats::chi2_sf;
+
+use crate::common::{f_sf, has_constant, ssr, validate};
+use crate::error::SpecTestError;
+
+/// The statsmodels default order of the Breusch-Godfrey test,
+/// `min(10, nobs / 5)` (integer division).
+pub fn breusch_godfrey_default_nlags(nobs: usize) -> usize {
+    (nobs / 5).min(10)
+}
+
+/// Outcome of the Breusch-Godfrey serial-correlation test.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BreuschGodfreyTest {
+    /// The LM statistic `T * R^2_aux`.
+    pub statistic: f64,
+    /// Chi-square degrees of freedom of [`Self::statistic`] (`= nlags`).
+    pub df: usize,
+    /// Upper-tail p-value `P(chi2(df) > statistic)`.
+    pub pvalue: f64,
+    /// The F-form: the lag coefficients jointly zero in the auxiliary
+    /// regression (statsmodels' `fval`).
+    pub fstat: f64,
+    /// Numerator degrees of freedom of [`Self::fstat`] (`= nlags`).
+    pub f_df_num: usize,
+    /// Denominator degrees of freedom of [`Self::fstat`], `T - k_aux`.
+    pub f_df_den: usize,
+    /// Upper-tail p-value of [`Self::fstat`] under `F(f_df_num, f_df_den)`.
+    pub f_pvalue: f64,
+    /// The order `p` used (the caller's, or the default `min(10, T / 5)`).
+    pub nlags: usize,
+    /// Number of observations `T` (all of them: the lags are zero-padded).
+    pub nobs: usize,
+    /// `true` when the design did not span a constant and a column of ones
+    /// was added to the auxiliary regression.
+    pub constant_added: bool,
+}
+
+/// `true` when the columns span the constant vector: an explicit constant
+/// column, or an implicit one (the regression of a column of ones on the
+/// design leaves a residual of relative size below `1e-10` — e.g. a set of
+/// complementary dummies). Also returns the residual sum of squares of that
+/// regression (`0` for an explicit constant column), `1' M_X 1`.
+fn spans_constant(x_cols: &[Vec<f64>], n: usize) -> Result<(bool, f64), SpecTestError> {
+    if has_constant(x_cols) {
+        return Ok((true, 0.0));
+    }
+    let ones = vec![1.0; n];
+    let fit = ols(&ones, x_cols)?;
+    let rss = ssr(&fit);
+    Ok((rss <= 1e-20 * n as f64, rss))
+}
+
+/// Breusch-Godfrey LM test for serial correlation up to order `nlags` in the
+/// errors of the OLS regression of `y` on `x_cols` (statsmodels exog
+/// convention: include the constant column yourself; a design without one
+/// gets a constant in the auxiliary regression, see the module docs).
+/// `nlags = None` uses [`breusch_godfrey_default_nlags`].
+///
+/// # Errors
+///
+/// [`SpecTestError::InvalidLags`] if the order is zero (including a default
+/// of zero for `T < 5`); [`SpecTestError::DegreesOfFreedom`] if `T <= k`
+/// (the original regression) or `T <= k_aux` (the auxiliary regression — the
+/// order is too long for the sample); [`SpecTestError::DegenerateResponse`]
+/// if the residuals are (numerically) all zero — `y` is an exact linear
+/// combination of the design — or, for a design without a constant, all
+/// equal; the usual empty/dimension/finite validation errors; and
+/// [`SpecTestError::SingularDesign`] if the design or the auxiliary design
+/// is collinear.
+pub fn breusch_godfrey_test(
+    y: &[f64],
+    x_cols: &[Vec<f64>],
+    nlags: Option<usize>,
+) -> Result<BreuschGodfreyTest, SpecTestError> {
+    let (n, k) = validate(y, x_cols)?;
+    let p = nlags.unwrap_or_else(|| breusch_godfrey_default_nlags(n));
+    if p == 0 {
+        return Err(SpecTestError::InvalidLags {
+            nlags: 0,
+            n,
+            defaulted: nlags.is_none(),
+        });
+    }
+    if n <= k {
+        return Err(SpecTestError::DegreesOfFreedom {
+            what: "Breusch-Godfrey original regression",
+            n,
+            k,
+        });
+    }
+    let (spans, ones_rss) = spans_constant(x_cols, n)?;
+    let added = usize::from(!spans);
+    // k_aux = k + p (+ 1); checked so an absurd order cannot overflow, and
+    // compared with n BEFORE any lag column is allocated.
+    let k_aux = k
+        .checked_add(p)
+        .and_then(|v| v.checked_add(added))
+        .unwrap_or(usize::MAX);
+    if n <= k_aux {
+        return Err(SpecTestError::DegreesOfFreedom {
+            what: "Breusch-Godfrey auxiliary regression (design plus nlags lagged residuals)",
+            n,
+            k: k_aux,
+        });
+    }
+
+    let fit = ols(y, x_cols)?;
+    let u = fit.residuals;
+    let u_sq: f64 = u.iter().map(|v| v * v).sum();
+    let y_sq: f64 = y.iter().map(|v| v * v).sum();
+    if u_sq == 0.0 || u_sq <= 1e-26 * y_sq {
+        return Err(SpecTestError::DegenerateResponse {
+            what: "Breusch-Godfrey test (the OLS residuals are zero: y is an exact linear \
+                   combination of the design columns)",
+        });
+    }
+    let mean = u.iter().sum::<f64>() / n as f64;
+    let tss: f64 = u.iter().map(|v| (v - mean) * (v - mean)).sum();
+    if tss <= 1e-24 * u_sq {
+        return Err(SpecTestError::DegenerateResponse {
+            what: "Breusch-Godfrey test (the OLS residuals are constant, so the centered \
+                   R^2 of the auxiliary regression is undefined)",
+        });
+    }
+
+    // Auxiliary design: [X, (1), u_{-1}, ..., u_{-p}], zero-padded lags.
+    let mut aux: Vec<Vec<f64>> = Vec::with_capacity(k_aux);
+    aux.extend(x_cols.iter().cloned());
+    if !spans {
+        aux.push(vec![1.0; n]);
+    }
+    for j in 1..=p {
+        let mut col = vec![0.0; n];
+        col[j..].copy_from_slice(&u[..n - j]);
+        aux.push(col);
+    }
+    let aux_fit = ols(&u, &aux).map_err(|e| match SpecTestError::from(e) {
+        SpecTestError::SingularDesign { .. } => SpecTestError::SingularDesign {
+            what: "Breusch-Godfrey auxiliary regression (design plus nlags lagged residuals)",
+        },
+        other => other,
+    })?;
+    let ssr_u = ssr(&aux_fit);
+
+    let r2 = 1.0 - ssr_u / tss;
+    let statistic = n as f64 * r2;
+    let pvalue = chi2_sf(statistic, p as f64)?;
+
+    // Restricted SSR: u on [X, (1)]. u is orthogonal to X, so with a constant
+    // in the design it is sum u^2; with an added constant it is
+    // sum u^2 - (sum u)^2 / (1' M_X 1).
+    let ssr_r = if spans {
+        u_sq
+    } else {
+        let s: f64 = u.iter().sum();
+        u_sq - s * s / ones_rss
+    };
+    let f_df_den = n - k_aux;
+    let fstat = ((ssr_r - ssr_u) / p as f64) / (ssr_u / f_df_den as f64);
+    let f_pvalue = f_sf(fstat, p as f64, f_df_den as f64)?;
+
+    Ok(BreuschGodfreyTest {
+        statistic,
+        df: p,
+        pvalue,
+        fstat,
+        f_df_num: p,
+        f_df_den,
+        f_pvalue,
+        nlags: p,
+        nobs: n,
+        constant_added: !spans,
+    })
+}
