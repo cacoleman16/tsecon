@@ -819,3 +819,78 @@ fn an_overflowing_scale_is_refused_not_clamped_to_a_zero_standard_error() {
         fama_macbeth(&huge, true).and_then(|f| f.inference(FamaMacBethSe::Standard).map(|i| i.bse)),
     );
 }
+
+#[test]
+fn a_regressor_or_residual_outside_the_double_range_is_refused_by_name() {
+    // Overflow on the regressor side: the up-front scale check names
+    // `regressors` instead of letting the overflow surface as a spurious
+    // rank, SVD or time-invariance refusal.
+    // So does underflow (magnitude 1e-200): its squares flush to zero.
+    let raw = seeded(10, 6, 19, false);
+    let names_regressors = |e: PanelError| {
+        let m = msg(e);
+        assert!(m.starts_with("regressors: column 0"), "{m}");
+        assert!(m.contains("magnitude"), "{m}");
+    };
+    for scale in [1e200, 1e-200] {
+        let mut regs = raw.regs.clone();
+        regs[0].1 = Mat::from_fn(raw.n(), raw.t(), |i, t| raw.regs[0].1[(i, t)] * scale);
+        let x = PanelData::balanced(raw.y.clone(), regs).unwrap();
+        names_regressors(panel_random_effects(&x, RandomEffectsConfig::default()).unwrap_err());
+        names_regressors(panel_between(&x, BetweenConfig::default()).unwrap_err());
+        names_regressors(panel_first_difference(&x, false).unwrap_err());
+        names_regressors(fama_macbeth(&x, true).unwrap_err());
+    }
+    // Underflow: an outcome of magnitude 1e-170 squares to zero, so every
+    // variance estimate would be an exact 0 (and around 1e-160 a subnormal
+    // number with lost digits) beside non-zero coefficients.
+    let tiny = PanelData::balanced(
+        Mat::from_fn(raw.n(), raw.t(), |i, t| raw.y[(i, t)] * 1e-170),
+        raw.regs.clone(),
+    )
+    .unwrap();
+    let names_outcome = |e: PanelError| {
+        let m = msg(e);
+        assert!(m.starts_with("outcome") && m.contains("underflow"), "{m}");
+    };
+    names_outcome(panel_random_effects(&tiny, RandomEffectsConfig::default()).unwrap_err());
+    names_outcome(panel_between(&tiny, BetweenConfig::default()).unwrap_err());
+    names_outcome(panel_first_difference(&tiny, false).unwrap_err());
+    names_outcome(
+        fama_macbeth(&tiny, true)
+            .and_then(|f| f.inference(FamaMacBethSe::Standard))
+            .unwrap_err(),
+    );
+}
+
+#[test]
+fn a_single_cluster_or_a_single_score_period_is_refused_not_reported_as_zero() {
+    // One entity: its score sum is X'e = 0 by the normal equations, so the
+    // clustered covariance would be identically zero.
+    let raw = seeded(1, 8, 20, false);
+    let one = raw.panel();
+    let fd = panel_first_difference(&one, false).unwrap();
+    let m = msg(fd.inference(StaticSeType::ClusterEntity).unwrap_err());
+    assert!(m.starts_with("se_type") && m.contains("one entity"), "{m}");
+    // The kernel and White sandwiches are still well defined there.
+    for se in [
+        StaticSeType::Hc1,
+        StaticSeType::DriscollKraay { bandwidth: 2.0 },
+    ] {
+        assert!(fd.inference(se).unwrap().bse.iter().all(|&s| s > 1e-3));
+    }
+    // Two periods: every difference falls in period 1, so the
+    // Driscoll-Kraay meat is the single period's X'e = 0.
+    let raw = seeded(12, 2, 21, false);
+    let fd = panel_first_difference(&raw.panel(), false).unwrap();
+    let m = msg(fd
+        .inference(StaticSeType::DriscollKraay { bandwidth: 4.0 })
+        .unwrap_err());
+    assert!(m.starts_with("se_type") && m.contains("one period"), "{m}");
+    assert!(fd
+        .inference(StaticSeType::ClusterEntity)
+        .unwrap()
+        .bse
+        .iter()
+        .all(|&s| s > 1e-3));
+}

@@ -26,8 +26,8 @@ use crate::data::PanelData;
 use crate::error::PanelError;
 use crate::fe::WithinFit;
 use crate::pooled::{
-    design_names, n_params, pooled_inference, pooled_ols, refuse_duplicate_constant, StackedRows,
-    StaticInference, StaticSeType,
+    check_data_scale, design_names, n_params, pooled_inference, pooled_ols,
+    refuse_duplicate_constant, StackedRows, StaticInference, StaticSeType,
 };
 use crate::re::EntityMeans;
 
@@ -75,7 +75,8 @@ pub struct BetweenFit {
 /// # Errors
 ///
 /// * [`PanelError::InsufficientData`] for an empty design or `N <= K`
-///   (naming `regressors`);
+///   (naming `regressors`), and for data whose sums of squares leave the
+///   range of double precision (naming `outcome` or `regressors`);
 /// * [`PanelError::RankDeficient`] for a collinear between design or a
 ///   regressor duplicating the constant (naming `regressors`).
 pub fn panel_between(data: &PanelData, config: BetweenConfig) -> Result<BetweenFit, PanelError> {
@@ -83,6 +84,7 @@ pub fn panel_between(data: &PanelData, config: BetweenConfig) -> Result<BetweenF
     let k = data.n_regressors();
     let kk = n_params(k, constant, "panel_between")?;
     let cells = data.observed_cells();
+    check_data_scale(data, &cells)?;
     refuse_duplicate_constant(data, &cells, constant)?;
     let means = EntityMeans::new(data, &cells, constant, kk);
     let n_ent = means.present.len();

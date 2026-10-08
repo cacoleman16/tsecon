@@ -307,7 +307,10 @@ period nobody observes contributing a zero score and counting as elapsed
 time; linearmodels lags over the periods present. They agree whenever every
 period carries an observation (every fixture), and differ otherwise — on
 EmplUK without 1980 the RE intercept's DK standard error is 0.2862
-(calendar) against linearmodels' 0.3162.
+(calendar) against linearmodels' 0.3162. A bandwidth at or beyond the
+number of periods keeps `panel_fe`'s contract (every available lag is
+weighted), where linearmodels raises once `bandwidth + 1` exceeds the
+periods present.
 
 **Fama-MacBeth.** A period is skipped when fewer than `K` entities are
 observed in it or its cross-section is rank-deficient. tsecon decides the
@@ -424,12 +427,16 @@ Mundlak slopes [-0.367774  0.640367]
 robust Hausman (cluster Wald on the means, 2 df): 14.40
 ```
 
-The random-effects slopes (−0.3425, 0.6962) are a matrix-weighted average
-of the within (−0.3678, 0.6404) and between (−0.4076, 0.8183) estimates —
-with `theta` ≈ 0.9 the within part dominates, and a matrix weighting need
-not put each coefficient between the two. The Mundlak test rejects the
-random-effects assumption on this panel, so `panel_fe`'s slopes are the
-ones to report.
+The random-effects slopes (−0.3425, 0.6962) stay close to the within
+estimates (−0.3678, 0.6404) because `theta` ≈ 0.9; the between estimates
+are (−0.4076, 0.8183). The wage slope lies outside the within–between
+interval: on a balanced panel random effects is a matrix-weighted average
+of the within and between estimators, and a matrix weighting need not put
+each coefficient between the two — on this unbalanced panel the between
+part is, moreover, weighted by the entity-specific `theta_i`, so the
+unweighted `panel_between` slopes are only an approximate comparison. The
+Mundlak test rejects the random-effects assumption on this panel, so
+`panel_fe`'s slopes are the ones to report.
 
 ## Unbalanced panels — the observation mask (`mask=`)
 
@@ -1053,6 +1060,17 @@ returned because it is not a verified fixed point.
   `small_sample=False` is the supported route.
 - **`panel_fd` with a time-invariant regressor** raises — differencing
   removes it; estimate it with `panel_re` or `panel_between`.
+- **`panel_fd` on a single entity or a two-period panel** raises under
+  `se_type="cluster"` (one entity) or `"driscoll_kraay"` (every difference
+  in one period): that group's score sum is `X'e = 0` by the normal
+  equations, so the covariance would be rounding noise and the
+  t-statistics of order 1e15 (what linearmodels returns there). Use
+  `se_type="hc1"`.
+- **Data far outside unit scale.** An outcome or regressor of magnitude
+  ~1e154 or more, or ~1e-154 or less, is refused by name across the static
+  menu: its squares overflow or underflow, and an underflowing variance
+  would otherwise come back as a standard error of exactly 0 (or one with
+  lost digits) beside non-zero coefficients. Rescale the data.
 - **Fama-MacBeth under a firm effect.** Its standard error is far too small
   and the HAC does not fix it (the table above); cluster by entity instead.
 - **Reading `panel_mean_group(method="mg")` as a long run.** It is a static
@@ -1078,7 +1096,8 @@ dummies, the Mundlak design, no constant, intercept only), 7 between cases
 × 3 covariances, 5 first-difference cases × 4 covariances and 3
 Fama-MacBeth cases × 2 — coefficients, SEs, t-statistics, the full
 covariance, the variance components, `theta`, the per-period coefficients;
-counts exact; largest measured gap 1.7e-12. The generator also asserts
+counts exact; largest measured gap 7.8e-12 (the Mundlak design's
+covariance). The generator also asserts
 second legs — statsmodels OLS/HC1 on the means, the closed-form
 Fama-MacBeth SE, `PooledOLS` at a truncated effect variance — and the
 documented divergences above are pinned against a NumPy transcription of

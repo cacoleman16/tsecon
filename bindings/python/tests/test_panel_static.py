@@ -402,6 +402,91 @@ def test_an_overflowing_scale_is_refused_rather_than_reported_with_zero_standard
             call()
 
 
+def test_magnitudes_outside_the_double_range_are_refused_by_name():
+    """A regressor of magnitude ~1e200 (~1e-200) overflows (underflows) its
+    sum of squares — refused naming `regressors`, not as a spurious rank or
+    time-invariance failure; an outcome of magnitude 1e-170 would underflow
+    every variance estimate to an exact 0 beside non-zero coefficients —
+    refused naming `outcome`."""
+    y, x, mask = _ragged()
+    tiny_y = y * 1e-170
+    for fn in STATIC_FNS:
+        for scale in (1e200, 1e-200):
+            bad_x = x.copy()
+            bad_x[0] *= scale
+            with pytest.raises(ValueError, match=r"^regressors: column 0 \(x0\) is of magnitude"):
+                getattr(tsecon, fn)(y, bad_x, mask=mask)
+        with pytest.raises(ValueError, match=r"^outcome: .*underflow"):
+            getattr(tsecon, fn)(tiny_y, x, mask=mask)
+
+
+def test_a_single_cluster_or_a_single_score_period_is_refused_by_name():
+    """One entity's (or one period's) score sum is X'e = 0 by the normal
+    equations, so the clustered (Driscoll-Kraay) covariance would be
+    identically zero and the t-statistics ~1e15."""
+    y, xs, mask = _dataset("balanced")
+    assert mask.all()
+    x = np.stack(xs)
+    one = (y[:1, :], x[:, :1, :])
+    with pytest.raises(ValueError, match=r"^se_type: the entity-clustered covariance"):
+        tsecon.panel_fd(*one)
+    assert np.all(tsecon.panel_fd(*one, se_type="hc1")["bse"] > 1e-3)
+    two = (y[:, :2], x[:, :, :2])
+    with pytest.raises(ValueError, match=r"^se_type: the Driscoll-Kraay covariance"):
+        tsecon.panel_fd(*two, se_type="driscoll_kraay")
+    assert np.all(tsecon.panel_fd(*two)["bse"] > 1e-3)
+
+
+def _largest_parity_gap():
+    """The largest relative gap of any parity entry above (params, bse,
+    tvalues, the covariance on the correlation scale), measured as
+    `_check` measures it."""
+    def rel(got, want):
+        got, want = np.asarray(got, dtype=float), np.asarray(want, dtype=float)
+        return float(np.max(np.abs(got - want) / np.abs(want)))
+
+    def gap(r, want):
+        cov, wc = np.asarray(r["cov"]), np.asarray(want["cov"])
+        scale = np.sqrt(np.outer(np.abs(np.diag(wc)), np.abs(np.diag(wc))))
+        cov_gap = float(np.max(np.abs(cov - wc) / np.maximum(np.abs(wc), scale)))
+        return max(cov_gap, *(rel(r[k], want[k]) for k in ("params", "bse", "tvalues")))
+
+    worst = 0.0
+    for case in STATIC["re_cases"]:
+        y, x, mask = _inputs(case)
+        for key, kw in SE_RE.items():
+            r = tsecon.panel_re(y, x, se_type=key, constant=case["constant"],
+                                small_sample=case["small_sample"], mask=mask, **kw)
+            worst = max(worst, gap(r, case["se"][key]))
+    for case in STATIC["be_cases"]:
+        y, x, mask = _inputs(case)
+        for key in ("nonrobust", "hc1", "cluster"):
+            r = tsecon.panel_between(y, x, se_type=key, constant=case["constant"],
+                                     reweight=case["reweight"], mask=mask)
+            worst = max(worst, gap(r, case["se"][key]))
+    for case in STATIC["fd_cases"]:
+        y, x, mask = _inputs(case)
+        for key, kw in SE_RE.items():
+            r = tsecon.panel_fd(y, x, se_type=key, constant=case["constant"], mask=mask, **kw)
+            worst = max(worst, gap(r, case["se"][key]))
+    for case in STATIC["fm_cases"]:
+        y, x, mask = _inputs(case)
+        for key in ("fama_macbeth", "hac"):
+            kw = {"bandwidth": 4.0} if key == "hac" else {}
+            r = tsecon.panel_fama_macbeth(y, x, se_type=key, constant=case["constant"], mask=mask, **kw)
+            worst = max(worst, gap(r, case["se"][key]))
+    return worst
+
+
+def test_the_largest_parity_gap_is_the_one_the_card_quotes():
+    """The panel card, the validation matrix and the CHANGELOG quote the
+    largest gap this measures: 7.8e-12, on the Mundlak design's
+    Driscoll-Kraay covariance (the Rust golden, which sums the entity means
+    sequentially where NumPy sums them pairwise, stays below 2e-12). The
+    bound leaves room for other platforms' roundoff."""
+    assert _largest_parity_gap() < 2e-11
+
+
 def test_the_house_words_stay_out_of_the_panel_fe_family():
     y, x, mask = _ragged()
     for se in ("hc1", "robust", "hac", "newey_west"):

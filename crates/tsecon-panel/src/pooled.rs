@@ -30,7 +30,7 @@
 //! `panel_fe`) reduces exactly to the formulas above.
 
 use tsecon_linalg::faer::linalg::solvers::{DenseSolveCore, SolveLstsq};
-use tsecon_linalg::faer::{Mat, Side};
+use tsecon_linalg::faer::{Mat, MatRef, Side};
 
 use crate::error::PanelError;
 use crate::fe::{PanelSeType, WithinFit};
@@ -127,15 +127,17 @@ pub(crate) fn pooled_ols(rows: StackedRows, rank_msg: &str) -> Result<WithinFit,
         return Err(rank_err());
     }
     let xtx = x.transpose() * &x;
+    check_finite_matrix(&xtx)?;
     let xtx_inv = xtx.llt(Side::Lower).map_err(|_| rank_err())?.inverse();
     let ymat = Mat::from_fn(n, 1, |r, _| y[r]);
     let params_mat = x.qr().solve_lstsq(&ymat);
     let params: Vec<f64> = (0..k).map(|j| params_mat[(j, 0)]).collect();
     let fitted = &x * &params_mat;
     let resid: Vec<f64> = (0..n).map(|r| y[r] - fitted[(r, 0)]).collect();
-    if params.iter().chain(&resid).any(|v| !v.is_finite()) {
-        return Err(overflow_error());
+    if params.iter().any(|v| !v.is_finite()) {
+        return Err(scale_error());
     }
+    check_sum_of_squares(&resid)?;
     Ok(WithinFit {
         params,
         resid,
@@ -160,11 +162,15 @@ pub(crate) fn pooled_ols(rows: StackedRows, rank_msg: &str) -> Result<WithinFit,
 /// # Errors
 ///
 /// [`PanelError::InvalidBandwidth`] for a negative or non-finite
-/// Driscoll-Kraay bandwidth.
+/// Driscoll-Kraay bandwidth; [`PanelError::InsufficientData`] (naming
+/// `se_type`) for an entity-clustered covariance whose rows all belong to
+/// one entity, or a Driscoll-Kraay covariance whose rows all fall in one
+/// period.
 pub(crate) fn pooled_inference(
     fit: &WithinFit,
     se_type: StaticSeType,
 ) -> Result<StaticInference, PanelError> {
+    refuse_single_score_group(fit, se_type)?;
     let panel = match se_type {
         StaticSeType::NonRobust => Some(PanelSeType::NonRobust),
         StaticSeType::ClusterEntity => Some(PanelSeType::ClusterEntity),
@@ -173,7 +179,7 @@ pub(crate) fn pooled_inference(
     };
     if let Some(p) = panel {
         let inf = fit.inference(p)?;
-        check_finite_cov(&inf.cov)?;
+        check_finite_matrix(&inf.cov)?;
         return Ok(StaticInference {
             se_type,
             cov: inf.cov,
@@ -195,27 +201,107 @@ pub(crate) fn pooled_inference(
     let scale = n as f64 / (n - k) as f64;
     let sw = &fit.xtx_inv * &meat * &fit.xtx_inv;
     let cov = Mat::from_fn(k, k, |i, j| scale * sw[(i, j)]);
-    check_finite_cov(&cov)?;
+    check_finite_matrix(&cov)?;
     Ok(finish(se_type, cov, &fit.params))
 }
 
-/// The refusal for arithmetic that overflowed double precision (data of
-/// magnitude ~1e154 and above square past `f64::MAX`): returning a clamped
-/// or NaN-laundered number would be silently wrong.
-pub(crate) fn overflow_error() -> PanelError {
+/// Refuses an entity-clustered covariance whose rows all belong to one
+/// entity, and a Driscoll-Kraay covariance whose rows all fall in one
+/// period: the single group's score sum is then `X'e`, which the normal
+/// equations make zero, so the covariance is rounding noise and every
+/// t-statistic astronomically large (linearmodels returns those numbers;
+/// `lp_did` refuses a single cluster the same way).
+fn refuse_single_score_group(fit: &WithinFit, se_type: StaticSeType) -> Result<(), PanelError> {
+    let one_group = |ids: &[usize]| ids.iter().all(|&g| Some(g) == ids.first().copied());
+    let what = match se_type {
+        StaticSeType::ClusterEntity if one_group(&fit.row_entity) => {
+            "se_type: the entity-clustered covariance needs rows from at least two \
+             entities, but every row of this fit belongs to one entity — the single \
+             cluster's score sum is X'e = 0 by the normal equations, so the covariance \
+             would be identically zero; use se_type=\"hc1\" or \"nonrobust\""
+        }
+        StaticSeType::DriscollKraay { .. } if one_group(&fit.row_period) => {
+            "se_type: the Driscoll-Kraay covariance needs scores in at least two \
+             periods, but every row of this fit falls in one period (first differences \
+             of a two-period panel, say) — that period's score sum is X'e = 0 by the \
+             normal equations, so the covariance would be identically zero; use \
+             se_type=\"cluster\", \"hc1\" or \"nonrobust\""
+        }
+        _ => return Ok(()),
+    };
+    Err(PanelError::InsufficientData {
+        what: what.to_string(),
+    })
+}
+
+/// The refusal for sums of squares that leave the range of double
+/// precision: data of magnitude ~1e154 and above square past `f64::MAX`,
+/// and residuals of magnitude ~1e-154 and below square into the subnormal
+/// range, where the variance estimates lose their digits or flush to zero.
+/// Returning a clamped, NaN-laundered or zero standard error would be
+/// silently wrong.
+pub(crate) fn scale_error() -> PanelError {
     PanelError::InsufficientData {
-        what: "outcome: the estimator's sums of squares overflowed double precision \
-               (non-finite intermediate values — the outcome or regressors are of \
-               magnitude ~1e154 or more); rescale the outcome and regressors"
+        what: "outcome: the estimator's sums of squares left the range of double \
+               precision (the outcome or regressors are of magnitude ~1e154 or more, so \
+               their squares overflow, or the residuals are of magnitude ~1e-154 or \
+               less, so their squares underflow); rescale the outcome and regressors"
             .to_string(),
     }
 }
 
-/// Refuses a covariance with a non-finite entry (see [`overflow_error`]).
-pub(crate) fn check_finite_cov(cov: &Mat<f64>) -> Result<(), PanelError> {
-    let k = cov.nrows();
-    if (0..k).any(|a| (0..k).any(|b| !cov[(a, b)].is_finite())) {
-        return Err(overflow_error());
+/// Refuses a square matrix with a non-finite entry (see [`scale_error`]).
+pub(crate) fn check_finite_matrix(m: &Mat<f64>) -> Result<(), PanelError> {
+    let k = m.nrows();
+    if (0..k).any(|a| (0..k).any(|b| !m[(a, b)].is_finite())) {
+        return Err(scale_error());
+    }
+    Ok(())
+}
+
+/// Refuses residuals whose sum of squares is non-finite, or underflows
+/// below `f64::MIN_POSITIVE` while the residuals are not all zero (see
+/// [`scale_error`]).
+pub(crate) fn check_sum_of_squares(resid: &[f64]) -> Result<(), PanelError> {
+    let ss: f64 = resid.iter().map(|e| e * e).sum();
+    if !ss.is_finite() || (ss < f64::MIN_POSITIVE && resid.iter().any(|&e| e != 0.0)) {
+        return Err(scale_error());
+    }
+    Ok(())
+}
+
+/// Refuses an outcome or a regressor whose sum of squares over the
+/// observed cells leaves the normal range of double precision: it
+/// overflows (magnitude ~1e154 or more) or, for a column that is not all
+/// zero, underflows below `f64::MIN_POSITIVE` (magnitude ~1e-154 or less).
+/// Every cross-product the static estimators form is bounded by these
+/// sums, so checking them first keeps the problem from surfacing later as
+/// a spurious rank, SVD or time-invariance refusal, or as a digit-less
+/// standard error.
+pub(crate) fn check_data_scale(
+    data: &crate::data::PanelData,
+    cells: &[(usize, usize)],
+) -> Result<(), PanelError> {
+    let out_of_range = |m: MatRef<'_, f64>| {
+        let ss: f64 = cells.iter().map(|&c| m[c] * m[c]).sum();
+        !ss.is_finite() || (ss < f64::MIN_POSITIVE && cells.iter().any(|&c| m[c] != 0.0))
+    };
+    if out_of_range(data.outcome()) {
+        return Err(scale_error());
+    }
+    for j in 0..data.n_regressors() {
+        if let Some(m) = data.regressor(j) {
+            if out_of_range(m) {
+                return Err(PanelError::InsufficientData {
+                    what: format!(
+                        "regressors: column {j} ({}) is of magnitude ~1e154 or more (or \
+                         ~1e-154 or less) over the observed cells, so its sum of squares \
+                         overflows (or underflows) double precision; rescale it",
+                        data.names()[j]
+                    ),
+                });
+            }
+        }
     }
     Ok(())
 }

@@ -64,8 +64,9 @@ use crate::data::PanelData;
 use crate::error::PanelError;
 use crate::fe::WithinFit;
 use crate::pooled::{
-    design_names, n_params, numerical_rank, overflow_error, pooled_inference, pooled_ols,
-    refuse_duplicate_constant, residual_projection, StackedRows, StaticInference, StaticSeType,
+    check_data_scale, check_sum_of_squares, design_names, n_params, numerical_rank,
+    pooled_inference, pooled_ols, refuse_duplicate_constant, residual_projection, scale_error,
+    StackedRows, StaticInference, StaticSeType,
 };
 
 /// Relative size `|e_w| / |y - ybar_i|` of the within residuals at or below
@@ -129,7 +130,9 @@ pub struct RandomEffectsFit {
 ///
 /// * [`PanelError::InsufficientData`] for an empty design (`k = 0` without
 ///   the constant, naming `regressors`), `N <= K` (naming `regressors`),
-///   `n - K - N + 1 <= 0` or `sigma2_eps = 0` (naming `outcome`);
+///   `n - K - N + 1 <= 0` or `sigma2_eps = 0` (naming `outcome`), and for
+///   data whose sums of squares leave the range of double precision
+///   (naming `outcome` or `regressors`);
 /// * [`PanelError::RankDeficient`] for a collinear final design or a
 ///   regressor duplicating the constant (naming `regressors`), and for a
 ///   singular small-sample moment matrix (naming `small_sample`).
@@ -144,6 +147,7 @@ pub fn panel_random_effects(
     let k = data.n_regressors();
     let kk = n_params(k, constant, "panel_re")?;
     let cells = data.observed_cells();
+    check_data_scale(data, &cells)?;
     refuse_duplicate_constant(data, &cells, constant)?;
     let n = cells.len();
     let means = EntityMeans::new(data, &cells, constant, kk);
@@ -180,6 +184,7 @@ pub fn panel_random_effects(
         }
     }
     let ew = residual_projection(&yd, &xd, "regressors")?;
+    check_sum_of_squares(&ew)?;
     let ssr_w = ew.iter().map(|e| e * e).sum::<f64>();
     let sigma2_eps = ssr_w / (n + 1 - kk - n_ent) as f64;
     // A within fit that is exact up to rounding (the outcome an exact
@@ -187,9 +192,6 @@ pub fn panel_random_effects(
     // within every entity) leaves sigma2_eps at rounding noise and
     // theta_i = 1 - O(1e-8): the GLS weights are then meaningless.
     let tss_w = yd.iter().map(|v| v * v).sum::<f64>();
-    if !ssr_w.is_finite() || !tss_w.is_finite() {
-        return Err(overflow_error());
-    }
     if sigma2_eps.is_nan()
         || sigma2_eps <= 0.0
         || ssr_w <= WITHIN_EXACT_FIT * WITHIN_EXACT_FIT * tss_w
@@ -269,7 +271,7 @@ pub fn panel_random_effects(
         (ssr / (nf - kk as f64) - sigma2_eps / tbar).max(0.0)
     };
     if !sigma2_effects.is_finite() {
-        return Err(overflow_error());
+        return Err(scale_error());
     }
     let rho = sigma2_effects / (sigma2_effects + sigma2_eps);
     let theta_p: Vec<f64> = counts
@@ -327,7 +329,8 @@ impl RandomEffectsFit {
     /// # Errors
     ///
     /// [`PanelError::InvalidBandwidth`] for a negative or non-finite
-    /// Driscoll-Kraay bandwidth.
+    /// Driscoll-Kraay bandwidth; [`PanelError::InsufficientData`] (naming
+    /// `outcome`) for a non-finite covariance.
     pub fn inference(&self, se_type: StaticSeType) -> Result<StaticInference, PanelError> {
         pooled_inference(&self.fit, se_type)
     }

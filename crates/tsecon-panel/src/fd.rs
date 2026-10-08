@@ -36,7 +36,8 @@ use crate::data::PanelData;
 use crate::error::PanelError;
 use crate::fe::WithinFit;
 use crate::pooled::{
-    design_names, pooled_inference, pooled_ols, StackedRows, StaticInference, StaticSeType,
+    check_data_scale, design_names, pooled_inference, pooled_ols, scale_error, StackedRows,
+    StaticInference, StaticSeType,
 };
 
 /// Relative tolerance below which a differenced regressor counts as
@@ -68,7 +69,9 @@ pub struct FirstDifferenceFit {
 /// # Errors
 ///
 /// * [`PanelError::InsufficientData`] for no regressors (naming
-///   `regressors`), `T < 2` or `m <= K` (naming `outcome`);
+///   `regressors`), `T < 2` or `m <= K` (naming `outcome`), and for data
+///   whose sums of squares leave the range of double precision (naming
+///   `outcome` or `regressors`);
 /// * [`PanelError::RankDeficient`] for a regressor that never changes
 ///   between consecutive observed periods (time-invariant: first
 ///   differencing removes it) or a collinear differenced design (naming
@@ -95,6 +98,7 @@ pub fn panel_first_difference(
             ),
         });
     }
+    check_data_scale(data, &data.observed_cells())?;
     let kk = k + usize::from(constant);
     let off = usize::from(constant);
     let mut rows: Vec<(usize, usize)> = Vec::new();
@@ -135,6 +139,9 @@ pub fn panel_first_difference(
                 dx[(r, j + off)] = d;
                 raw += xm[(i, t)] * xm[(i, t)];
                 diff += d * d;
+            }
+            if !diff.is_finite() {
+                return Err(scale_error());
             }
             if diff.sqrt() <= DIFFERENCE_TOL * raw.sqrt() {
                 return Err(PanelError::RankDeficient {
@@ -190,7 +197,13 @@ impl FirstDifferenceFit {
     /// # Errors
     ///
     /// [`PanelError::InvalidBandwidth`] for a negative or non-finite
-    /// Driscoll-Kraay bandwidth.
+    /// Driscoll-Kraay bandwidth; [`PanelError::InsufficientData`] (naming
+    /// `se_type`) for [`StaticSeType::ClusterEntity`] when every difference
+    /// belongs to one entity, or [`StaticSeType::DriscollKraay`] when every
+    /// difference falls in one period (a two-period panel): that group's
+    /// score sum is `X'e = 0` by the normal equations, so the covariance
+    /// would be identically zero; and (naming `outcome`) for a non-finite
+    /// covariance.
     pub fn inference(&self, se_type: StaticSeType) -> Result<StaticInference, PanelError> {
         pooled_inference(&self.fit, se_type)
     }

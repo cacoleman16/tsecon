@@ -1825,7 +1825,10 @@ def panel_fd(
     "cluster_entity") or "driscoll_kraay" (alias "dk"; the later period
     `t`, calendar lags). `bandwidth` is the Driscoll-Kraay lag truncation
     and acts ONLY under `se_type="driscoll_kraay"` (4.0 when omitted
-    there); passing it with any other `se_type` raises.
+    there); passing it with any other `se_type` raises. "cluster" needs
+    differences from two entities and "driscoll_kraay" in two periods (one
+    group's score sum is zero), so a single entity or a two-period panel is
+    refused under them (use "hc1").
 
     Returned keys: `params`, `bse`, `tvalues`, `cov` (K x K nested lists),
     `names`, `nobs` (difference rows), `n_entities` (entities contributing

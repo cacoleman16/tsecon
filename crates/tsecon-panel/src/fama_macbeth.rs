@@ -46,7 +46,8 @@ use tsecon_linalg::faer::Mat;
 use crate::data::PanelData;
 use crate::error::PanelError;
 use crate::pooled::{
-    check_finite_cov, design_names, n_params, numerical_rank, refuse_duplicate_constant,
+    check_data_scale, check_finite_matrix, design_names, n_params, numerical_rank,
+    refuse_duplicate_constant, scale_error,
 };
 
 /// Covariance choice for [`FamaMacBethFit::inference`].
@@ -103,14 +104,17 @@ pub struct FamaMacBethFit {
 /// # Errors
 ///
 /// * [`PanelError::InsufficientData`] for an empty design (naming
-///   `regressors`) or fewer than two periods whose cross-section
-///   identifies every parameter (naming `regressors`);
+///   `regressors`), fewer than two periods whose cross-section identifies
+///   every parameter (naming `regressors`), and data whose sums of squares
+///   leave the range of double precision (naming `outcome` or
+///   `regressors`);
 /// * [`PanelError::RankDeficient`] for a regressor duplicating the
 ///   constant (naming `regressors`).
 pub fn fama_macbeth(data: &PanelData, constant: bool) -> Result<FamaMacBethFit, PanelError> {
     let k = data.n_regressors();
     let kk = n_params(k, constant, "panel_fama_macbeth")?;
     let cells = data.observed_cells();
+    check_data_scale(data, &cells)?;
     refuse_duplicate_constant(data, &cells, constant)?;
     let off = usize::from(constant);
     let (n_ent, t_len) = (data.n_entities(), data.n_periods());
@@ -167,7 +171,7 @@ pub fn fama_macbeth(data: &PanelData, constant: bool) -> Result<FamaMacBethFit, 
         .map(|j| valid.iter().map(|b| b[j]).sum::<f64>() / tvf)
         .collect();
     if params.iter().any(|v| !v.is_finite()) {
-        return Err(crate::pooled::overflow_error());
+        return Err(scale_error());
     }
     let deviations: Vec<Vec<f64>> = valid
         .iter()
@@ -193,7 +197,9 @@ impl FamaMacBethFit {
     ///
     /// [`PanelError::KernelBandwidth`] for a negative or non-finite HAC
     /// bandwidth, [`PanelError::InsufficientData`] (naming `bandwidth`)
-    /// when `bandwidth + 1` exceeds the number of periods used.
+    /// when `bandwidth + 1` exceeds the number of periods used, and (naming
+    /// `outcome`) when the deviations' sums of squares leave the range of
+    /// double precision.
     pub fn inference(&self, se_type: FamaMacBethSe) -> Result<FamaMacBethInference, PanelError> {
         let kk = self.params.len();
         let tv = self.n_periods_used;
@@ -240,9 +246,15 @@ impl FamaMacBethFit {
                 }
             }
         }
+        // Deviations of magnitude ~1e-154 or less square into the
+        // subnormal range (or to zero): refuse rather than report a
+        // digit-less or zero standard error.
+        if (0..kk).any(|a| s[(a, a)] < f64::MIN_POSITIVE && e.iter().any(|row| row[a] != 0.0)) {
+            return Err(scale_error());
+        }
         let denom = (tv * (tv - 1)) as f64;
         let cov = Mat::from_fn(kk, kk, |a, b| s[(a, b)] / denom);
-        check_finite_cov(&cov)?;
+        check_finite_matrix(&cov)?;
         let bse: Vec<f64> = (0..kk).map(|i| cov[(i, i)].max(0.0).sqrt()).collect();
         let tvalues = self.params.iter().zip(&bse).map(|(p, s)| p / s).collect();
         Ok(FamaMacBethInference {

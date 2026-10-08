@@ -58,9 +58,10 @@
 //!   `re.rs`); [`panel_between`] — OLS on the entity means, optionally
 //!   reweighted by `T_i`; [`panel_first_difference`] — OLS on the
 //!   first-differenced data by calendar adjacency, with an optional
-//!   intercept (the plm/Stata default); and [`fama_macbeth`] — per-period
-//!   cross-sectional regressions averaged over time with the Fama-MacBeth
-//!   or Newey-West standard error. The first three share the
+//!   intercept (the plm/Stata default); and
+//!   [`fama_macbeth`](fn@fama_macbeth) — per-period cross-sectional
+//!   regressions averaged over time with the Fama-MacBeth or Newey-West
+//!   standard error. The first three share the
 //!   [`StaticSeType`] covariance menu (nonrobust, HC1, entity-clustered,
 //!   Driscoll-Kraay), whose sandwiches are the fixed-effects code itself
 //!   (see `pooled.rs`).
