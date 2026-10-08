@@ -7,11 +7,11 @@
 //! * `vr` — `1e-12` relative.
 //! * `stat` — `|a - e| <= 1e-12 + 1e-10 |e|`: the statistic is
 //!   `sqrt(nq) (vr - 1) / sqrt(V)`, and the cancellation in `vr - 1` near 1
-//!   amplifies summation-order differences (tsecon sums sequentially, NumPy
-//!   pairwise).
+//!   amplifies summation-order differences (both sum the variances
+//!   sequentially, but arch's robust `theta` uses NumPy's pairwise dot).
 //! * `p_value` — against the accurate `2 * norm.sf(|arch stat|)` at `1e-9`
 //!   relative with NO absolute floor, so the deep-tail cases
-//!   (`|z| ~ 21..29`, `p ~ 1e-98..1e-184`) really test the `erfc` route;
+//!   (`|z|` up to 34.6, `p` down to 2.1e-262) really test the `erfc` route;
 //!   against arch's own `2 - 2 Phi(|z|)` only at `1e-12` absolute (arch
 //!   underflows to 0.0 beyond |z| = 8.3).
 //! * `stat_variance` — `1e-10` relative (closed forms; the robust `theta`

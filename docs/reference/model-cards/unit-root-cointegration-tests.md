@@ -609,7 +609,11 @@ below 1) says momentum or mean reversion.
   measured on 20,001 levels at 0.02 s for $q = 1{,}000$ and 0.18 s for
   $q = 10{,}000$, against under 1 ms with `robust=False`
   (`scripts/variance_ratio_cost.py`) — and $VR(q)$ at large
-  $q/n$ is noisy and biased in finite samples even debiased.
+  $q/n$ is noisy and biased in finite samples even debiased. With several
+  horizons (and `overlap=True`) the lag products are shared up to the longest
+  horizon, so a whole profile costs about as much as that horizon alone: all
+  999 horizons $q = 2, \dots, 1{,}000$ in one call take 0.05 s on the same
+  series.
 
 **Validated against.** `arch.unitroot.VarianceRatio` (arch 8.0.0, an
 independent package) on 250 cases — five series (a Gaussian walk, a GARCH walk,

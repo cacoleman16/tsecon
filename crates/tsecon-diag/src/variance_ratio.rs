@@ -254,7 +254,8 @@ pub fn variance_ratio_crit() -> Result<VrCriticalValues, DiagError> {
 ///
 /// The computation runs on `y` rescaled by an exact power of two (chosen
 /// from `max |y|`), so the result is bit-identical to the unscaled
-/// arithmetic while extreme magnitudes cannot overflow the squared sums.
+/// arithmetic wherever that arithmetic neither overflows nor underflows,
+/// while extreme magnitudes cannot overflow the squared sums.
 ///
 /// Cost: `O(n)` plus `O(n q)` for the robust variance.
 ///
@@ -277,7 +278,19 @@ pub fn variance_ratio(
     spec: VarianceRatioSpec,
 ) -> Result<VarianceRatioResult, DiagError> {
     let n = check_series(y, 2, WHAT)?;
-    let q = lags;
+    check_horizon(n, lags, spec)?;
+    let n_dropped = if spec.overlap { 0 } else { (n - 1) % lags };
+    let inc = Increments::new(&y[..n - n_dropped], spec.trend)?;
+    let deltas = if spec.overlap && spec.robust {
+        inc.robust_deltas(lags - 1)
+    } else {
+        Vec::new()
+    };
+    inc.test(lags, spec, n_dropped, &deltas)
+}
+
+/// The `O(1)` argument checks of one horizon, run before any data work.
+fn check_horizon(n: usize, q: usize, spec: VarianceRatioSpec) -> Result<(), DiagError> {
     if q < 2 {
         return Err(DiagError::InvalidLags {
             what: WHAT,
@@ -303,8 +316,7 @@ pub fn variance_ratio(
                    heteroskedasticity-robust statistic, or drop robust",
         });
     }
-    // At least two q-period sums, uniformly for both trends. Checked before
-    // any O(n q) work so an absurd q is refused in O(1).
+    // At least two q-period sums, uniformly for both trends.
     if spec.overlap {
         if q > n - 2 {
             return Err(DiagError::InvalidLags {
@@ -326,118 +338,164 @@ pub fn variance_ratio(
                           information about the ratio)",
         });
     }
+    Ok(())
+}
 
-    let n_dropped = if spec.overlap { 0 } else { (n - 1) % q };
-    let raw = &y[..n - n_dropped];
-    let nq = raw.len() - 1;
+/// The drift-centred increments of the sample a test uses, on the levels
+/// rescaled by an exact power of two. Every horizon of an overlapping joint
+/// test shares one of these (same sample, same drift).
+struct Increments {
+    /// The rescaled levels.
+    ys: Vec<f64>,
+    /// Number of increments, `ys.len() - 1`.
+    nq: usize,
+    /// The (rescaled) drift removed from each increment.
+    mu: f64,
+    /// Squared drift-centred increments: `sigma2_1`'s numerator and the
+    /// robust variance's building block (non-debiased, as in CLM 2.4.43).
+    z2: Vec<f64>,
+    /// `sum z2`.
+    ss1: f64,
+}
 
-    // Exact power-of-two rescaling: every operation below commutes with it
-    // bit-for-bit, and the squared sums can no longer overflow.
-    let ymax = raw.iter().fold(0.0_f64, |m, &v| m.max(v.abs()));
-    if ymax == 0.0 {
-        return Err(zero_variance());
-    }
-    let exponent = (ymax.log2().ceil() as i32).clamp(-1000, 1000);
-    let scale = 2.0_f64.powi(-exponent);
-    let ys: Vec<f64> = raw.iter().map(|&v| v * scale).collect();
-    let ymax = ymax * scale;
-
-    let nqf = nq as f64;
-    let qf = q as f64;
-    let mu = match spec.trend {
-        VrTrend::None => 0.0,
-        VrTrend::Drift => (ys[nq] - ys[0]) / nqf,
-    };
-    // Squared drift-centred increments: sigma2_1's numerator and the robust
-    // variance's building block (non-debiased, as in CLM 2.4.43).
-    let z2: Vec<f64> = ys
-        .windows(2)
-        .map(|w| {
-            let v = (w[1] - w[0]) - mu;
-            v * v
+impl Increments {
+    fn new(raw: &[f64], trend: VrTrend) -> Result<Self, DiagError> {
+        let nq = raw.len() - 1;
+        // Exact power-of-two rescaling: every operation below commutes with
+        // it bit-for-bit, and the squared sums can no longer overflow.
+        let ymax = raw.iter().fold(0.0_f64, |m, &v| m.max(v.abs()));
+        if ymax == 0.0 {
+            return Err(zero_variance());
+        }
+        let exponent = (ymax.log2().ceil() as i32).clamp(-1000, 1000);
+        let scale = 2.0_f64.powi(-exponent);
+        let ys: Vec<f64> = raw.iter().map(|&v| v * scale).collect();
+        let ymax = ymax * scale;
+        let mu = match trend {
+            VrTrend::None => 0.0,
+            VrTrend::Drift => (ys[nq] - ys[0]) / nq as f64,
+        };
+        let z2: Vec<f64> = ys
+            .windows(2)
+            .map(|w| {
+                let v = (w[1] - w[0]) - mu;
+                v * v
+            })
+            .collect();
+        let ss1: f64 = z2.iter().sum();
+        // Increments that are zero up to the rounding of the levels
+        // themselves (|Δy| below a few ulps of max|y|) make the ratio 0/0 or
+        // rounding noise.
+        let sigma2_1 = ss1 / nq as f64;
+        if sigma2_1.is_nan() || sigma2_1.sqrt() <= 16.0 * f64::EPSILON * ymax {
+            return Err(zero_variance());
+        }
+        Ok(Increments {
+            ys,
+            nq,
+            mu,
+            z2,
+            ss1,
         })
-        .collect();
-    let ss1: f64 = z2.iter().sum();
-    let mut sigma2_1 = ss1 / nqf;
-    // Increments that are zero up to the rounding of the levels themselves
-    // (|Δy| below a few ulps of max|y|) make the ratio 0/0 or rounding noise.
-    if sigma2_1.is_nan() || sigma2_1.sqrt() <= 16.0 * f64::EPSILON * ymax {
-        return Err(zero_variance());
     }
 
-    let qmu = qf * mu;
-    let mut sigma2_q = if spec.overlap {
-        let sq: f64 = (q..=nq)
-            .map(|t| {
-                let v = (ys[t] - ys[t - q]) - qmu;
-                v * v
+    /// `delta_k = nq sum_t z2_t z2_{t-k} / (sum z2)^2` for `k = 1..=kmax`
+    /// (element `k - 1`): `O(nq kmax)`, the robust variance's whole cost.
+    fn robust_deltas(&self, kmax: usize) -> Vec<f64> {
+        let nqf = self.nq as f64;
+        let scale_d = self.ss1 * self.ss1;
+        (1..=kmax)
+            .map(|k| {
+                let dot: f64 = self.z2[k..]
+                    .iter()
+                    .zip(&self.z2[..self.nq - k])
+                    .map(|(&a, &b)| a * b)
+                    .sum();
+                nqf * dot / scale_d
             })
-            .sum();
-        sq / (nqf * qf)
-    } else {
-        let sq: f64 = (1..=nq / q)
-            .map(|j| {
-                let v = (ys[j * q] - ys[(j - 1) * q]) - qmu;
-                v * v
-            })
-            .sum();
-        sq / nqf
-    };
-    let debiased = spec.overlap && spec.debiased;
-    if debiased {
-        sigma2_1 *= nqf / (nqf - 1.0);
-        let m = qf * (nqf - qf + 1.0) * (1.0 - qf / nqf);
-        sigma2_q *= (nqf * qf) / m;
+            .collect()
     }
 
-    let (stat_variance, se_type) = if !spec.overlap {
-        (2.0 * (qf - 1.0), VrSeType::NonOverlapping)
-    } else if !spec.robust {
-        // Integer numerator/denominator as in arch, exact in u128.
-        let q128 = q as u128;
-        let num = 2 * (2 * q128 - 1) * (q128 - 1);
-        (num as f64 / (3 * q128) as f64, VrSeType::Homoskedastic)
-    } else {
-        let scale_d = ss1 * ss1;
-        let mut theta = 0.0;
-        for k in 1..q {
-            let dot: f64 = z2[k..]
-                .iter()
-                .zip(&z2[..nq - k])
-                .map(|(&a, &b)| a * b)
+    /// The test at horizon `q` (already checked by [`check_horizon`]);
+    /// `deltas` holds at least `q - 1` robust `delta_k` when the spec is
+    /// overlapping and robust, and is unused otherwise.
+    fn test(
+        &self,
+        q: usize,
+        spec: VarianceRatioSpec,
+        n_dropped: usize,
+        deltas: &[f64],
+    ) -> Result<VarianceRatioResult, DiagError> {
+        let (ys, nq) = (&self.ys, self.nq);
+        let nqf = nq as f64;
+        let qf = q as f64;
+        let mut sigma2_1 = self.ss1 / nqf;
+        let qmu = qf * self.mu;
+        let mut sigma2_q = if spec.overlap {
+            let sq: f64 = (q..=nq)
+                .map(|t| {
+                    let v = (ys[t] - ys[t - q]) - qmu;
+                    v * v
+                })
                 .sum();
-            let delta = nqf * dot / scale_d;
-            let w = 1.0 - k as f64 / qf;
-            theta += 4.0 * (w * w) * delta;
+            sq / (nqf * qf)
+        } else {
+            let sq: f64 = (1..=nq / q)
+                .map(|j| {
+                    let v = (ys[j * q] - ys[(j - 1) * q]) - qmu;
+                    v * v
+                })
+                .sum();
+            sq / nqf
+        };
+        let debiased = spec.overlap && spec.debiased;
+        if debiased {
+            sigma2_1 *= nqf / (nqf - 1.0);
+            let m = qf * (nqf - qf + 1.0) * (1.0 - qf / nqf);
+            sigma2_q *= (nqf * qf) / m;
         }
-        if !(theta > 0.0 && theta.is_finite()) {
-            return Err(DiagError::NumericalBreakdown {
-                what: "variance_ratio (robust variance theta is not positive: no two \
-                       nonzero squared increments lie within q - 1 periods of each \
-                       other; use robust=False or a different horizon)",
-            });
-        }
-        (theta, VrSeType::Robust)
-    };
 
-    let vr = sigma2_q / sigma2_1;
-    let stat = nqf.sqrt() * (vr - 1.0) / stat_variance.sqrt();
-    if !(vr.is_finite() && stat.is_finite()) {
-        return Err(DiagError::NumericalBreakdown { what: WHAT });
+        let (stat_variance, se_type) = if !spec.overlap {
+            (2.0 * (qf - 1.0), VrSeType::NonOverlapping)
+        } else if !spec.robust {
+            // Integer numerator/denominator as in arch, exact in u128.
+            let q128 = q as u128;
+            let num = 2 * (2 * q128 - 1) * (q128 - 1);
+            (num as f64 / (3 * q128) as f64, VrSeType::Homoskedastic)
+        } else {
+            debug_assert!(deltas.len() >= q - 1, "robust deltas computed up to q - 1");
+            let mut theta = 0.0;
+            for (k, &delta) in (1..q).zip(deltas) {
+                let w = 1.0 - k as f64 / qf;
+                theta += 4.0 * (w * w) * delta;
+            }
+            if !(theta > 0.0 && theta.is_finite()) {
+                return Err(DiagError::NumericalBreakdown {
+                    what: "variance_ratio (robust variance theta is not positive: no two \
+                           nonzero squared increments lie within q - 1 periods of each \
+                           other; use robust=False or a different horizon)",
+                });
+            }
+            (theta, VrSeType::Robust)
+        };
+
+        let vr = sigma2_q / sigma2_1;
+        let stat = nqf.sqrt() * (vr - 1.0) / stat_variance.sqrt();
+        if !(vr.is_finite() && stat.is_finite()) {
+            return Err(DiagError::NumericalBreakdown { what: WHAT });
+        }
+        Ok(VarianceRatioResult {
+            lags: q,
+            vr,
+            stat,
+            p_value: two_sided_p(stat),
+            stat_variance,
+            nobs: nq,
+            n_dropped,
+            se_type,
+            debiased,
+        })
     }
-    let p_value = two_sided_p(stat);
-
-    Ok(VarianceRatioResult {
-        lags: q,
-        vr,
-        stat,
-        p_value,
-        stat_variance,
-        nobs: nq,
-        n_dropped,
-        se_type,
-        debiased,
-    })
 }
 
 /// Chow-Denning (1993) joint variance-ratio test over the horizons `lags`
@@ -458,11 +516,20 @@ pub fn variance_ratio(
 /// homoskedastic `CD1` and robust `CD2`) and reports no p-value; here the
 /// per-horizon statistics follow `spec`.
 ///
+/// Cost: with `overlap`, the horizons share one set of increments and the
+/// robust variance's lag products, so the call is `O(n max q)` however many
+/// horizons are given; without it, each block length truncates the sample
+/// on its own, `O(n)` per horizon. Each per-horizon result is bit-identical
+/// to the corresponding [`variance_ratio`] call.
+///
 /// # Errors
 ///
 /// [`DiagError::InvalidArgument`] for an empty or duplicated horizon set;
-/// otherwise every error of [`variance_ratio`] (for the first failing
-/// horizon).
+/// otherwise every error of [`variance_ratio`]. The argument checks of all
+/// horizons (`lags < 2`, the two-sums rule, inert flags) run before any
+/// data work, so they take precedence over a data error such as zero
+/// variance; among them, the first failing horizon in the given order is
+/// reported.
 pub fn chow_denning(
     y: &[f64],
     lags: &[usize],
@@ -482,10 +549,34 @@ pub fn chow_denning(
                    joint test's multiplicity correction)",
         });
     }
-    let individual = lags
-        .iter()
-        .map(|&q| variance_ratio(y, q, spec))
-        .collect::<Result<Vec<_>, _>>()?;
+    // Every horizon's argument checks run before any data work, so a bad
+    // horizon late in the list is refused in O(m), not after the O(n q) work
+    // of the ones before it.
+    let n = check_series(y, 2, WHAT)?;
+    for &q in lags {
+        check_horizon(n, q, spec)?;
+    }
+    let individual = if spec.overlap {
+        // One sample and one drift for every horizon: the increments, and
+        // the robust variance's delta_k up to the longest horizon, are
+        // computed once and shared — O(n max q) rather than O(n sum q), with
+        // results bit-identical to the single-horizon calls.
+        let inc = Increments::new(y, spec.trend)?;
+        let deltas = if spec.robust {
+            inc.robust_deltas(sorted[sorted.len() - 1] - 1)
+        } else {
+            Vec::new()
+        };
+        lags.iter()
+            .map(|&q| inc.test(q, spec, 0, &deltas))
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        // Each block length truncates the sample (and re-estimates the
+        // drift) on its own.
+        lags.iter()
+            .map(|&q| variance_ratio(y, q, spec))
+            .collect::<Result<Vec<_>, _>>()?
+    };
 
     let mut stat = individual[0].stat.abs();
     let mut lag = individual[0].lags;

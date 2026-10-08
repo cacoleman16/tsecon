@@ -316,6 +316,45 @@ fn chow_denning_with_one_horizon_is_the_single_test() {
 }
 
 #[test]
+fn chow_denning_horizons_are_bit_identical_to_the_single_calls() {
+    // With overlap the joint test shares one set of increments (and the
+    // robust lag products up to the longest horizon) across horizons; each
+    // per-horizon result must still be exactly the single-horizon call.
+    let mut rng = Lcg(20);
+    let y = garch_walk(&mut rng, 600, 0.12, 0.8);
+    let lags = [16usize, 2, 7, 3, 40, 5];
+    for spec in all_specs() {
+        let cd = chow_denning(&y, &lags, spec).unwrap();
+        for (r, &q) in cd.individual.iter().zip(&lags) {
+            assert_eq!(*r, variance_ratio(&y, q, spec).unwrap(), "{spec:?} q={q}");
+        }
+    }
+}
+
+#[test]
+fn chow_denning_checks_every_horizon_before_any_data_work() {
+    let mut rng = Lcg(21);
+    let y = walk(&mut rng, 4001);
+    // A valid long horizon followed by one the sample cannot hold: refused
+    // by the length rule, naming the bad horizon, without first paying the
+    // O(n q) robust variance of the valid one.
+    match chow_denning(&y, &[3999, 2, 4000], VarianceRatioSpec::default()).unwrap_err() {
+        DiagError::InvalidLags { nlags, n, .. } => assert_eq!((nlags, n), (4000, 4001)),
+        other => panic!("{other:?}"),
+    }
+    // Argument errors of any horizon come before a data error.
+    let constant = vec![1.5; 50];
+    assert!(matches!(
+        chow_denning(&constant, &[2, 1], VarianceRatioSpec::default()).unwrap_err(),
+        DiagError::InvalidLags { nlags: 1, .. }
+    ));
+    assert!(matches!(
+        chow_denning(&constant, &[2, 3], VarianceRatioSpec::default()).unwrap_err(),
+        DiagError::InvalidArgument { .. }
+    ));
+}
+
+#[test]
 fn chow_denning_is_permutation_invariant_and_bounded() {
     let mut rng = Lcg(18);
     for rep in 0..20 {
