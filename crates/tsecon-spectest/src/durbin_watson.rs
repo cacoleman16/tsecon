@@ -218,8 +218,9 @@ pub fn durbin_watson_test(
     let (n, k) = validate(y, x_cols)?;
     if n < k.saturating_add(2) {
         return Err(SpecTestError::DegreesOfFreedom {
-            what: "Durbin-Watson test (needs n >= k + 2: with n = k + 1 the statistic is \
-                   a constant)",
+            what: "Durbin-Watson test, which needs one observation more than the \
+                   regression (n >= k + 2: with n = k + 1 the statistic is a constant; the \
+                   count below is the number of design columns plus that one)",
             n,
             k: k + 1,
         });
