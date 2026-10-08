@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, multivariate-GARCH, panel and term-structure families (and the top-level results of `var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` converts them; the docstring says which. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**192 functions.**
+**194 functions.**
 
 ## diagnostics
 
@@ -361,22 +361,71 @@ def ols(
     se_type: str = ...,
     maxlags: int | None = ...,
     use_correction: bool = ...,
+    ewc_b: int | None = ...,
 ) -> dict[str, Any]:
 ```
 
-OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC standard errors.
+OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC / EWC standard errors.
 
     The leverage-corrected hc2/hc3 are what matter in small samples with
     influential points; hc1's n/(n-k) factor barely moves. HC is
-    heteroskedasticity-robust only -- under serial correlation use "hac".
+    heteroskedasticity-robust only -- under serial correlation use "hac" or
+    "ewc".
 
     HAC matches statsmodels cov_type="HAC" when use_correction is matched;
     the DEFAULTS differ deliberately (tsecon True, statsmodels False), so
     pass use_correction=False to reproduce a default statsmodels call.
 
-    Returned keys: `bse`, `params`, `se_type`, `tvalues`.
+    `se_type="ewc"` is the Lazarus-Lewis-Stock-Watson (2018) equal-weighted
+    cosine HAR covariance `(X'X)^-1 [n Omega_hat(x u)] (X'X)^-1` over `ewc_b`
+    cosine frequencies (no n/(n-k) factor, no prewhitening). Its t-statistics
+    are Student t with `ewc_b` degrees of freedom, not normal, so it adds
+    `pvalues` (two-sided t_ewc_b) and `ewc_b` (the resolved B). `ewc_b=None`
+    is `ewc_default_b(n)`; an explicit value must lie in [1, n - 1]. On a
+    T=100 regression with AR(0.7) regressor and errors, nominal 95% slope
+    intervals covered 0.908 (EWC, t_9) against 0.850 (the Newey-West "hac"
+    default, normal), and 0.947 against 0.909 at T=400 (3000 seeded
+    replications each). "hac" stays the default for statsmodels
+    compatibility. Refused by name: `ewc_b` under any other
+    se_type, an explicit `maxlags` under "ewc", `use_correction=False`
+    under "ewc" (an explicit True is the default and a no-op). Under
+    nonrobust/hc* an explicit maxlags/use_correction is still ignored.
 
-    Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
+    Returned keys: `bse`, `params`, `se_type`, `tvalues`; under "ewc" also
+    `ewc_b` and `pvalues`.
+
+    Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None),
+    `use_correction` (True), `ewc_b` (None: `ewc_default_b(n)`).
+
+### `ewc_lrv`
+
+```python
+def ewc_lrv(x: _ArrayLike, b: int | None = ...) -> float:
+```
+
+Equal-weighted cosine (EWC) long-run variance of a series
+    (Lazarus-Lewis-Stock-Watson 2018; demeaned internally).
+
+    `Omega_hat = (1/b) sum_{j=1..b} Lambda_j^2`, `Lambda_j = sqrt(2/n) sum_t
+    cos(pi j (t - 1/2)/n) x_t`. The mean frequency is excluded (mean-invariant
+    in exact arithmetic); at b = n - 1 it is the plain sample variance. Pair
+    it with Student-t critical values with `b` degrees of freedom, not the
+    normal: `(mean - mu0) / sqrt(Omega_hat / n)` is t_b under the null.
+
+    Validated against the documented closed form evaluated with
+    scipy.fft.dct (no package implements EWC) at 1e-12.
+
+    Further arguments, with defaults: `b` (None: `ewc_default_b(len(x))`).
+
+### `ewc_default_b`
+
+```python
+def ewc_default_b(n: int) -> int:
+```
+
+LLSW (2018) EWC degrees of freedom round(0.4 n^(2/3)), clamped to
+    [1, n - 1]; the default `b` of `ewc_lrv` and `ewc_b` of
+    `ols(se_type="ewc")`, and the t degrees of freedom. n < 2 is refused.
 
 ## bootstrap
 
@@ -761,6 +810,7 @@ def var_forecast(
     band_scope: str = ...,
     band_seed: int = ...,
     band_n_sim: int = ...,
+    param_uncertainty: bool = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -792,7 +842,31 @@ Iterated VAR point forecasts with (1-alpha) intervals.
     that band is a pure function of `band_seed`; the closed forms use neither.
     Method: Montiel Olea and Plagborg-Møller.
 
-    Further arguments, with defaults: `lags` (2), `trend` ("c").
+    **Parameter uncertainty.** `cov` (always returned, `[h][i][j]`, steps x k x
+    k) is the forecast-error covariance the bands come from: MSE(h) by default
+    (statsmodels `mse`; `sqrt(diag cov)` reproduces `lower`/`upper`). With
+    `param_uncertainty=True` it is MSE(h) + Omega(h)/T, Lütkepohl's (2005)
+    first-order coefficient-estimation term (statsmodels
+    `forecast_cov(method="auto")`), and `lower`/`upper` widen to match; at
+    h = 1 it is exactly (1 + m/T) Sigma_u. A PARTIAL repair: on the audit's
+    VAR(1) at T=100 pooled marginal coverage went 0.931 -> 0.937, worst
+    horizon 0.925 -> 0.932 (nominal 0.95); the rest is small-sample
+    coefficient bias. Derived for a
+    STATIONARY VAR (on near-unit-root levels data it inflates long-horizon
+    variances by 15-18%). Unlike statsmodels' public "auto" it applies to
+    trend="n" too. Refused with a non-pointwise `band` (names both). COST:
+    CUBIC in `steps` (0.28 s at 1000 steps on a k = 3 VAR(2)), with a work
+    budget of 2^34 past which `steps` is refused by name.
+
+    Returned keys: `point`, `lower`, `upper`, `band`, `cov`,
+    `param_uncertainty`; with a simultaneous `band` also `se`, `sim_lower`,
+    `sim_upper`, `critical_value`, `pointwise_critical_value`, `band_scope`,
+    `n_cells`, `n_cells_used`.
+
+    Further arguments, with defaults: `lags` (2), `steps` (8), `alpha`
+    (0.05), `trend` ("c"), `band` ("pointwise"), `band_scope` ("all"),
+    `band_seed` (20260807), `band_n_sim` (100000), `param_uncertainty`
+    (False).
 
 ### `var_granger`
 

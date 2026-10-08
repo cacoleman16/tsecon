@@ -521,7 +521,7 @@ The battery, run in good faith, swallows the Perron trap whole — the quadrant 
 - `long_run_variance(x, kernel="bartlett"|"parzen"|"qs", bandwidth=None)` — the HAC machinery under KPSS
 - `periodogram(x, fs, window, detrend)`, `welch(x, nperseg, fs, noverlap, window, detrend)`, `coherence(x, y, ...)` → `{"freqs", "psd"}` (coherence: `{"freqs", "coherence"}`) — spectral estimation matching `scipy.signal` to ~1e-15
 
-**Built in Rust, awaiting Python bindings:** the EWC/fixed-b long-run variance estimator (`ewc_lrv`, the Lazarus-Lewis-Stock-Watson recommendation), Andrews (1991) automatic bandwidth and AR(1)-prewhitened LRV variants, and typed pass/fail `DiagnosticReport` objects attached to each test.
+**Built in Rust, awaiting Python bindings:** Andrews (1991) automatic bandwidth and AR(1)-prewhitened LRV variants, and typed pass/fail `DiagnosticReport` objects attached to each test. (The EWC/fixed-b long-run variance, the Lazarus-Lewis-Stock-Watson recommendation, is bound as of 0.11 — `ewc_lrv`, `ewc_default_b` and `ols(se_type="ewc")`; see the [robust-inference model card](../reference/model-cards/robust-inference.md).)
 
 **Roadmap** ([docs/roadmap/01-diagnostics-exploration.md](../roadmap/01-diagnostics-exploration.md)): Breusch-Godfrey, HEGY and Canova-Hansen seasonal unit roots, QS/Friedman seasonality tests, the heterogeneity-robust Bai-Perron break-date intervals and variance breaks, Lee-Strazicich two-break unit roots, the union-of-rejections unit-root strategies, multitaper and cross-spectral phase spectral estimation, exact local Whittle and Qu's memory-versus-breaks test, BDS, GSADF bubble tests, a fitted-model-aware residual battery, and X-13 seasonal adjustment.
 

@@ -261,14 +261,29 @@ $$
 
 Each $\Lambda_j$ is approximately an independent mean-zero normal with variance $\Omega$, so $\hat\Omega_{\text{EWC}}$ behaves like a $\chi^2_B/B$ estimate of a variance — which means the resulting t-statistic follows, almost exactly, a **Student-t distribution with $B$ degrees of freedom**. No simulated critical-value tables, no kernel arcana: pick $B$, use $t_B$ critical values. LLSW's size-power analysis recommends $B = \lfloor 0.4\, n^{2/3}\rceil$ (about 22 at $n=400$ — note how much *wider* this is than the rule-of-thumb's 5 lags, and how the small $B$ tells you honestly that you have only ~22 effective degrees of freedom for estimating $\Omega$).
 
-The EWC estimator and the LLSW default are already implemented and tested in tsecon's Rust core (`ewc_lrv`, `ewc_default_b` in the `tsecon-hac` crate) and land in Python with the Module 00 bindings.
-
-*Roadmap preview — this API lands with Module 00:*
+In tsecon this is `ols(y, X, se_type="ewc")` — the EWC sandwich $(X'X)^{-1}[n\hat\Omega_{\text{EWC}}](X'X)^{-1}$ on the regression scores, with `pvalues` from $t_B$ and the resolved `ewc_b` in the output — and, for a single series, `ewc_lrv` and `ewc_default_b`. Run it on the same 1,000 worlds as the coverage experiment above, where Newey–West reached 0.876:
 
 ```python
-b  = tsecon.ewc_default_b(n)                 # LLSW 2018: round(0.4 * n^(2/3))
-om = tsecon.ewc_lrv(scores, b=b)             # pair with t critical values, df = b
+from scipy import stats
+
+b = tsecon.ewc_default_b(200)                     # LLSW 2018: round(0.4 * n^(2/3)) = 14
+crit = stats.t.ppf(0.975, b)                      # t_14 critical value: 2.145, not 1.96
+hits = 0
+for rep in range(n_mc):
+    y, x = simulate(seed=10_000 + rep)            # the same 1000 worlds as above
+    X = np.column_stack([np.ones(len(x)), x])
+    r = tsecon.ols(y, X, se_type="ewc")           # ewc_b defaults to ewc_default_b(n)
+    est, s = r["params"][1], r["bse"][1]
+    hits += (est - crit * s <= beta_true <= est + crit * s)
+print(b, round(crit, 3), hits / n_mc)
+# 14 2.145 0.93
+
+scores = x * (y - X @ r["params"])                # the last world's slope scores
+print(round(tsecon.ewc_lrv(scores, b=b), 3))      # the scalar estimator behind it; pair with t_b
+# 7.822
 ```
+
+Most of the gap closes — 0.930 against 0.876 — and the price is a wider interval; the [robust-inference model card](../reference/model-cards/robust-inference.md) has the 3,000-replication version at $T = 100$ and $T = 400$. `hac` stays `ols`'s default for statsmodels compatibility, so EWC is a choice you make explicitly.
 
 > **⚠ Common mistake** — Using a wide bandwidth (or an EWC/fixed-b estimator) and then comparing the t-statistic to ±1.96. The entire point of fixed-b inference is that the critical values change with the smoothing choice: EWC with $B = 22$ pairs with $t_{22}$ critical values (±2.07 at 5%), not the normal's. Wide smoothing with normal critical values recreates the very overconfidence you were trying to fix.
 
@@ -570,7 +585,7 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 | Time series regression, routine inference | `ols(y, X, se_type="hac")` | Coefficients stay OLS; the variance accounts for autocorrelation and heteroskedasticity |
 | Cross-section or independent errors, unequal variances, $n$ in the hundreds or more | `ols(y, X, se_type="hc1")` | White's fix is enough when there is no serial correlation; HAC would waste power, and the HC rungs have converged by then |
 | The same, but $n$ is small or a few observations dominate the design | `ols(y, X, se_type="hc3")` | Only HC2/HC3 correct for leverage $h_t$; at $n=25$ that is worth 18 coverage points over `hc1`, which buys 1 |
-| Persistent errors, sample not huge, size matters | EWC with $t_B$ critical values (bindings landing; Rust core today) | Kernel HAC with normal critical values undercovers; fixed-b/EWC prices in the noise of $\hat\Omega$ |
+| Persistent errors, sample not huge, size matters | `ols(y, X, se_type="ewc")` — read `pvalues` (Student $t_B$, $B$ = `ewc_b`); `ewc_lrv` for a single series | Kernel HAC with normal critical values undercovers; fixed-b/EWC prices in the noise of $\hat\Omega$ |
 | Nonstandard statistic (median, ratio, custom estimator) on dependent data | `optimal_block_length` + `bootstrap_indices(scheme="stationary")` | No formula needed; blocks preserve the dependence that drives the true sampling variance |
 | Regression, independent but heteroskedastic errors, small sample | Wild bootstrap (Rademacher weights via `philox_uniforms`) | Keeps each residual's variance attached to its observation; refines on HC asymptotics |
 | Serially correlated *and* heteroskedastic regression errors, asymptotics dubious | Block bootstrap of the regression, or HAC/EWC | Wild bootstrap alone breaks the serial correlation; blocks or kernels respect it |
@@ -585,6 +600,8 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 **Available now in Python** (`import tsecon`):
 
 - `tsecon.ols(y, X, se_type=..., maxlags=..., use_correction=...)` — OLS with the full ladder: `"nonrobust"`, `"hc0"`, `"hc1"`, `"hc2"`, `"hc3"`, `"hac"` (Bartlett kernel; `maxlags=None` applies the Newey–West rule of thumb). Matches statsmodels `cov_type="HAC"` at 1e-10 *when `use_correction` is matched* — the defaults differ deliberately (tsecon `use_correction=True`, the finite-sample $n/(n-k)$ scaling; statsmodels defaults it off), so at each library's own defaults the HAC `bse` differ by exactly $\sqrt{n/(n-k)}$; pass `use_correction=False` to reproduce a default statsmodels call — and `HC2`/`HC3` at 3e-15. An observation whose leverage is numerically 1 makes HC2/HC3 undefined — tsecon raises rather than returning a near-infinite standard error. `X` is used as-is — add your own constant column.
+- `tsecon.ols(y, X, se_type="ewc", ewc_b=None)` — the Lazarus–Lewis–Stock–Watson (2018) EWC sandwich, with `pvalues` from Student $t_B$ and the resolved `ewc_b` ($B$ = `ewc_default_b(n)` by default); `maxlags`/`use_correction=False` with it, or `ewc_b` with another `se_type`, are refused by name. See the [robust-inference model card](../reference/model-cards/robust-inference.md).
+- `tsecon.ewc_lrv(x, b=None)` and `tsecon.ewc_default_b(n)` — the EWC long-run variance of a series (demeaned internally; pair with $t_b$ critical values) and the LLSW default $B = \operatorname{round}(0.4\,n^{2/3})$.
 - `tsecon.long_run_variance(x, kernel=..., bandwidth=...)` — kernel LRV of a series (demeaned internally); kernels `"bartlett"`/`"newey-west"`, `"parzen"`, `"qs"`, `"truncated"`.
 - `tsecon.bootstrap_indices(n, scheme=..., seed=..., block_length=..., p=...)` — resampling indices for `"iid"`, `"moving"`, `"circular"` (pass `block_length`), and `"stationary"` (pass `p`; expected block length $1/p$). Same seed, same indices, always.
 - `tsecon.optimal_block_length(y)` — Politis–White (2004) automatic block lengths with the Patton–Politis–White (2009) correction, for the stationary and circular schemes.
@@ -595,7 +612,6 @@ On tsecon's roadmap ([Module 00](../roadmap/00-architecture.md)), this chapter's
 
 **Built in Rust, awaiting Python bindings** (in `tsecon-hac` and `tsecon-bootstrap`):
 
-- EWC long-run variance and the LLSW default degrees of freedom (`ewc_lrv`, `ewc_default_b`).
 - Andrews (1991) AR(1) plug-in and Newey–West (1994) automatic bandwidths (`andrews_bandwidth_ar1`, `newey_west_bandwidth`).
 - AR(1)-prewhitened LRV, Andrews–Monahan style (`lrv_prewhitened_ar1`).
 - Wild-bootstrap weight generators — Rademacher, Mammen, normal — with fixed per-draw stream costs (`WildWeights`).
