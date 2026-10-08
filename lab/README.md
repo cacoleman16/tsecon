@@ -40,6 +40,9 @@ lab/
 │   ├── exp05_lad_arima.py             # LAD vs Gaussian ARMA one-step forecasts
 │   ├── run_all.py       #   runs exp01..exp05 in sequence (~10-13 min)
 │   └── results/         #   generated: expNN.md tables + expNN.json payloads
+├── ardl/                # support scripts for the shipped ardl_bounds_test
+│   ├── transcribe_pss.py #  writes crates/tsecon-coint/src/pss.rs from statsmodels
+│   └── card_numbers.py  #   every number its model card / CHANGELOG quotes
 ├── audit/               # probe scripts + summaries behind the audit rounds
 │   ├── round11/         #   audit round 11 sweeps (docs/roadmap/26-)
 │   └── repo/            #   the whole-repository audit (docs/roadmap/27-)

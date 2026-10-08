@@ -549,6 +549,13 @@ fn refusals_name_the_parameter() {
     assert!(m.contains("too large for T = 0"), "{m}");
     let m = err(&[1.0], &Mat::<f64>::zeros(1, 1), &fixed(1, vec![1], 3));
     assert!(m.contains("too large for T = 1"), "{m}");
+    // a constant y leaves no residual variance (case 1 has no constant to be
+    // collinear with, so it reaches the fit)
+    let m = err(&[2.0; 120], &x, &fixed(1, vec![1, 1], 1));
+    assert!(
+        m.contains("fits D.y exactly") && m.contains("check y"),
+        "{m}"
+    );
     // a duplicated regressor and a constant regressor are collinear
     let dup = Mat::from_fn(120, 2, |i, _| x[(i, 0)]);
     assert!(matches!(

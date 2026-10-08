@@ -228,6 +228,7 @@ def test_order_accepts_int_list_tuple_numpy_and_pandas():
     ([1, -1, 2], r"order\[1\] = -1 is negative"),
     (-2, r"order = -2 is negative"),
     ("2", r"order = '2' is a string"),
+    ({0: 1, 1: 3, 2: 2}, r"order = \{0: 1, 1: 3, 2: 2\} is a mapping or set"),
     ([1, 0, 2], r"order\[1\] = 0 is not supported.*follow-up"),
     ([1, 2], r"order has 2 entries but x has 3 column"),
     ([[1, 2, 3]], r"order\[0\] = \[1, 2, 3\] is not an integer"),
@@ -318,6 +319,10 @@ def test_malformed_inputs_are_refused_not_panics():
         tsecon.ardl_bounds_test(y, x[:, 0])
     with pytest.raises(ValueError, match=r"numerically singular"):
         tsecon.ardl_bounds_test(y, np.column_stack([x[:, 0], x[:, 0]]), lags=1, order=1)
+    with pytest.raises(ValueError, match=r"fits D\.y exactly.*check y"):
+        tsecon.ardl_bounds_test(np.full(160, 2.0), x, lags=1, order=1, case=1)
+    with pytest.raises(ValueError, match=r"numerically singular"):
+        tsecon.ardl_bounds_test(np.full(160, 2.0), x)
     with pytest.raises(ValueError, match=r"numerically singular.*constant column of x"):
         tsecon.ardl_bounds_test(y, np.full((160, 1), 3.0))
 

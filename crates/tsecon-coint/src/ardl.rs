@@ -794,8 +794,9 @@ fn search(
 /// `lags = 0`, an `order` of the wrong length or with a zero, `max_lag` /
 /// `max_order` with the value they cap fixed (or zero), a search grid
 /// above [`MAX_GRID`], a design with no residual degrees of freedom or
-/// above [`MAX_DESIGN_CELLS`] entries, or `alpha` outside `(0, 1)`;
-/// [`CointError::Singular`] for a collinear design.
+/// above [`MAX_DESIGN_CELLS`] entries, an exact fit (`ssr = 0`, e.g. a
+/// constant `y`), or `alpha` outside `(0, 1)`; [`CointError::Singular`]
+/// for a collinear design.
 pub fn ardl_bounds_test(
     y: &[f64],
     x: MatRef<'_, f64>,
@@ -826,6 +827,14 @@ pub fn ardl_bounds_test(
          exact linear combination of the others — a duplicated or constant column of x, or x \
          collinear with the case's deterministics); drop the redundant column",
     )?;
+    if fit.ssr <= 0.0 || fit.ssr.is_nan() {
+        return Err(CointError::InvalidSpec {
+            what: "the ARDL regression fits D.y exactly (residual sum of squares 0): y is \
+                   constant, or an exact function of its own lags and x, so there is no \
+                   residual variance to test against; check y"
+                .to_string(),
+        });
+    }
     let df_resid = nobs - m;
     let s2 = fit.ssr / df_resid as f64;
     let xtx_inv = fit.xtx_inv.unwrap_or_else(|| Mat::zeros(m, m));

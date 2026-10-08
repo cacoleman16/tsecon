@@ -5,7 +5,7 @@
 use numpy::{IntoPyArray, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString};
+use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PySet, PyString};
 use tsecon_coint::{ArdlOptions, DolsIc, PssCase};
 
 use crate::{to_py, vec1};
@@ -96,6 +96,13 @@ fn order_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<usize>>> {
     if scalar {
         let q = one_order(obj, "order")?;
         return Ok(Some(vec![BROADCAST, q]));
+    }
+    if obj.is_instance_of::<PyDict>() || obj.is_instance_of::<PySet>() {
+        return Err(PyValueError::new_err(format!(
+            "order = {} is a mapping or set (statsmodels' UECM takes a dict keyed by \
+             column): pass a list of ints in the column order of x, or one int for all",
+            obj.repr()?
+        )));
     }
     if obj.is_instance_of::<PyString>() {
         return Err(PyValueError::new_err(format!(
