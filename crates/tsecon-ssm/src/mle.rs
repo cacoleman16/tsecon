@@ -13,10 +13,11 @@
 //! stationarity region through its partial autocorrelations (`tanh` and
 //! the Levinson-Durbin recursion, `tsecon_optim::StationaryAr`); statsmodels
 //! uses `x / sqrt(1 + x^2)` for the same partial autocorrelations, which
-//! changes the search path but not the optimum. The square map keeps a variance that wants to be zero at a
-//! *regular* interior point of the working space (`theta = 0`, zero
-//! gradient) instead of at `-infinity` of a log map, which is what makes a
-//! boundary optimum reachable by a quasi-Newton search at all.
+//! changes the search path but not the optimum. The square map keeps a
+//! variance that wants to be zero at a *regular* interior point of the
+//! working space (`theta = 0`, zero gradient) instead of at `-infinity` of
+//! a log map, which is what makes a boundary optimum reachable by a
+//! quasi-Newton search at all.
 //!
 //! # Schedule
 //!

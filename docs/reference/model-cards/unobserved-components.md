@@ -165,8 +165,11 @@ unit root, or die out into a piled-up zero variance — so the start ladder
 walks the first partial autocorrelation over 0.5, 0.9, 0, −0.5, 0.5, and
 the second rung of an AR(p ≥ 2) starts hump-shaped at φ = (1.35, −0.5),
 the autocorrelation of a business cycle around a trend (see failure modes).
-The cost is `O(len(y) p^2)` per likelihood evaluation, so a very long AR is
-slow rather than refused.
+A likelihood evaluation costs `O(len(y) k_states^3)`, and an estimated
+AR(p) needs `O(p)` evaluations per search step and `O(p^2)` for its
+standard errors, so the cost of a fit climbs steeply with `p`: a few lags
+is the intended use, and a long order is slow rather than refused (only the
+working-set bound below refuses it).
 
 *`cycle_init="stationary"`* (`"diffuse"` when None, statsmodels'
 convention; parsed trimmed and case-insensitive) starts the two cycle

@@ -5398,8 +5398,11 @@ def unobserved_components(
     inside the stationarity region (a fixed non-stationary polynomial is
     refused, naming the partial autocorrelation that leaves (-1, 1); so is
     one within roundoff of the unit circle, whose likelihood would silently
-    skip observations). Its cost is O(len(y) p^2) per likelihood
-    evaluation, so a very long AR order is slow rather than refused.
+    skip observations). A likelihood evaluation costs O(len(y) k_states^3),
+    and an estimated AR(p) needs O(p) evaluations per search step and
+    O(p^2) for its standard errors, so a fit slows down steeply with p:
+    keep the order to a few lags (a long one is slow, refused only by the
+    working-set bound below).
     `exog` (T x k) enters with time-invariant coefficients estimated
     jointly by MLE (`mle_regression`, True when None, statsmodels' default).
     `mle_regression=False` puts them in the state vector instead (statsmodels

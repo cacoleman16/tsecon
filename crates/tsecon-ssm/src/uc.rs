@@ -1205,7 +1205,10 @@ impl Layout {
     /// inflation, a local level + AR(2) search reached `-0.92` (one
     /// `-ln(2 pi)/2` term) against a genuine optimum of `-453.74`. A
     /// likelihood that silently drops observations is not a likelihood,
-    /// so it is reported as undefined.
+    /// so it is reported as undefined. The same skip happens, with no
+    /// unit root involved, when every variance reaching the observation
+    /// is zero (a deterministic model whose states the data have pinned
+    /// down exactly); that is refused the same way.
     fn skipped_observation(&self, y: &[f64], fo: &crate::filter::FilterOutput) -> Option<usize> {
         if !self.has_stationary_block() {
             return None;
@@ -1687,12 +1690,19 @@ fn evaluate(
         check_regressor_scales(twin, scales, params, ym.as_ref(), fo.d_diffuse)?;
     }
     if let Some(t) = layout.skipped_observation(y, fo) {
+        let what = if estimated {
+            "the estimated parameters"
+        } else {
+            "fixed_params"
+        };
         return Err(invalid(format!(
-            "fixed_params = {params:?}: the stationary block's unconditional variance is so \
-             far above the one-step variance (a root within roundoff of the unit circle) \
-             that the filter cannot resolve observation {t}; the log-likelihood would \
-             silently drop observations. Move the AR coefficients or the cycle damping \
-             away from the stationarity boundary"
+            "{what} = {params:?}: the filter cannot resolve observation {t} — its one-step \
+             prediction variance is numerically zero next to the state uncertainty — so the \
+             log-likelihood would silently drop observations. With a stationary block this \
+             is a root within roundoff of the unit circle (an AR coefficient or the cycle \
+             damping at the stationarity boundary, whose unconditional variance dwarfs the \
+             one-step variance) or a degenerate model in which every variance that reaches \
+             the observation is zero; move those parameters off the boundary"
         )));
     }
 

@@ -179,6 +179,12 @@ def test_ar_refusals_name_the_parameter():
     _raises(r"fixed_params\[3\] \(ar.L1\).*partial autocorrelation at lag 1 is 1",
             autoregressive=1, fixed_params=[8000.0, 1400.0, 6000.0, 1.0])
     _raises(r"cannot resolve observation", autoregressive=1, fixed_params=[8000.0, 1400.0, 6000.0, 1.0 - 1e-15])
+    # The same skip with no unit root: every variance is zero, so after the
+    # first observation the model is deterministic. The refusal says so
+    # rather than blaming the (stationary) AR coefficient.
+    _raises(r"fixed_params = \[0\.0, 0\.0, 0\.0, 0\.5\]: the filter cannot resolve observation 1.*"
+            r"every variance that reaches the observation is zero",
+            autoregressive=1, fixed_params=[0.0, 0.0, 0.0, 0.5])
     y = np.asarray(UX["data"]["nile"], float)
     with pytest.raises(TypeError):
         tsecon.unobserved_components(y, autoregressive=1.5)
