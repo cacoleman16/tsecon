@@ -10,8 +10,9 @@ Re-pins ``fixtures/uc_extensions.json`` (generator
 cycle, at fixed parameters at 1e-8, and the two-optimizer MLE) through the
 Python surface, cross-checks
 statsmodels live where it is installed (the cycle located through the
-public ``state_names``, never private attributes), and exercises the
-refusals: every one names the offending parameter.
+public ``state_names``, never private attributes), exercises the
+refusals (every one names the offending parameter), and runs the model
+card's new example blocks, checking that they print what they claim.
 """
 import json
 from pathlib import Path
@@ -482,3 +483,30 @@ def test_defaults_render_and_keys_are_documented():
     assert "cycle_init: str | None = None" in body
     stub_tokens = set(re.findall(r"`([A-Za-z_][A-Za-z_0-9]*)`", body))
     assert not set(r.keys()) - stub_tokens
+
+
+# ------------------------------------------------------------ model card
+def test_model_card_examples_print_what_they_claim():
+    """Every 0.11.0 example block in the card runs and prints its ``# {...}``
+    lines verbatim. The round-14 test runs only the FIRST block containing
+    ``unobserved_components(nile``; these sit after it and are run here."""
+    pytest.importorskip("statsmodels.api")
+    import re
+    import subprocess
+    import sys
+
+    card = (Path(__file__).parents[3] / "docs" / "reference" / "model-cards"
+            / "unobserved-components.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"```python\n(.*?)```", card, re.S)
+    first = next(i for i, b in enumerate(blocks) if "unobserved_components(nile" in b)
+    new = [b for b in blocks[first + 1:]
+           if any(k in b for k in ("autoregressive=", "cycle_init=", "mle_regression="))]
+    assert len(new) == 3, [b[:60] for b in new]
+    for block in new:
+        claimed = [line[2:] for line in block.splitlines() if line.startswith("# {")]
+        assert claimed, block
+        out = subprocess.run([sys.executable, "-c", block], capture_output=True, text=True)
+        assert out.returncode == 0, out.stderr[-600:]
+        printed = out.stdout.splitlines()
+        for line in claimed:
+            assert line in printed, (line, printed)
