@@ -389,6 +389,19 @@ def test_malformed_outcomes_are_refused_by_name(bad):
             getattr(tsecon, fn)(bad, np.ones((1, 3, 4)))
 
 
+def test_an_overflowing_scale_is_refused_rather_than_reported_with_zero_standard_errors():
+    y, x, mask = _ragged()
+    big = np.where(mask == 1, y * 1e300, np.nan)
+    for call in (
+        lambda: tsecon.panel_re(big, x, mask=mask),
+        lambda: tsecon.panel_between(big, x, mask=mask),
+        lambda: tsecon.panel_fd(big, x, se_type="hc1", mask=mask),
+        lambda: tsecon.panel_fama_macbeth(big, x, mask=mask),
+    ):
+        with pytest.raises(ValueError, match="outcome"):
+            call()
+
+
 def test_the_house_words_stay_out_of_the_panel_fe_family():
     y, x, mask = _ragged()
     for se in ("hc1", "robust", "hac", "newey_west"):

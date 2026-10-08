@@ -64,7 +64,7 @@ use crate::data::PanelData;
 use crate::error::PanelError;
 use crate::fe::WithinFit;
 use crate::pooled::{
-    design_names, n_params, numerical_rank, pooled_inference, pooled_ols,
+    design_names, n_params, numerical_rank, overflow_error, pooled_inference, pooled_ols,
     refuse_duplicate_constant, residual_projection, StackedRows, StaticInference, StaticSeType,
 };
 
@@ -187,6 +187,9 @@ pub fn panel_random_effects(
     // within every entity) leaves sigma2_eps at rounding noise and
     // theta_i = 1 - O(1e-8): the GLS weights are then meaningless.
     let tss_w = yd.iter().map(|v| v * v).sum::<f64>();
+    if !ssr_w.is_finite() || !tss_w.is_finite() {
+        return Err(overflow_error());
+    }
     if sigma2_eps.is_nan()
         || sigma2_eps <= 0.0
         || ssr_w <= WITHIN_EXACT_FIT * WITHIN_EXACT_FIT * tss_w
@@ -265,6 +268,9 @@ pub fn panel_random_effects(
         let ssr: f64 = ub.iter().map(|u| u * u).sum();
         (ssr / (nf - kk as f64) - sigma2_eps / tbar).max(0.0)
     };
+    if !sigma2_effects.is_finite() {
+        return Err(overflow_error());
+    }
     let rho = sigma2_effects / (sigma2_effects + sigma2_eps);
     let theta_p: Vec<f64> = counts
         .iter()

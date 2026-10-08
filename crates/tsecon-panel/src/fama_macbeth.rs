@@ -45,7 +45,9 @@ use tsecon_linalg::faer::Mat;
 
 use crate::data::PanelData;
 use crate::error::PanelError;
-use crate::pooled::{design_names, n_params, numerical_rank, refuse_duplicate_constant};
+use crate::pooled::{
+    check_finite_cov, design_names, n_params, numerical_rank, refuse_duplicate_constant,
+};
 
 /// Covariance choice for [`FamaMacBethFit::inference`].
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -164,6 +166,9 @@ pub fn fama_macbeth(data: &PanelData, constant: bool) -> Result<FamaMacBethFit, 
     let params: Vec<f64> = (0..kk)
         .map(|j| valid.iter().map(|b| b[j]).sum::<f64>() / tvf)
         .collect();
+    if params.iter().any(|v| !v.is_finite()) {
+        return Err(crate::pooled::overflow_error());
+    }
     let deviations: Vec<Vec<f64>> = valid
         .iter()
         .map(|b| b.iter().zip(&params).map(|(v, m)| v - m).collect())
@@ -237,6 +242,7 @@ impl FamaMacBethFit {
         }
         let denom = (tv * (tv - 1)) as f64;
         let cov = Mat::from_fn(kk, kk, |a, b| s[(a, b)] / denom);
+        check_finite_cov(&cov)?;
         let bse: Vec<f64> = (0..kk).map(|i| cov[(i, i)].max(0.0).sqrt()).collect();
         let tvalues = self.params.iter().zip(&bse).map(|(p, s)| p / s).collect();
         Ok(FamaMacBethInference {

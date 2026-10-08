@@ -786,3 +786,36 @@ fn first_differences_use_the_calendar_not_linearmodels_first_appearance_axis() {
     let lm = f64s(&dv["linearmodels_params"]);
     assert!((fd.params[0] - lm[0]).abs() > 0.05);
 }
+
+#[test]
+fn an_overflowing_scale_is_refused_not_clamped_to_a_zero_standard_error() {
+    // Data of magnitude 1e300 square past f64::MAX: the covariance would be
+    // non-finite, and clamping it would print a zero standard error.
+    let raw = seeded(10, 6, 18, false);
+    let huge = PanelData::balanced(
+        Mat::from_fn(raw.n(), raw.t(), |i, t| raw.y[(i, t)] * 1e300),
+        raw.regs.clone(),
+    )
+    .unwrap();
+    let starts = |r: Result<Vec<f64>, PanelError>| match r {
+        Ok(bse) => panic!("expected a refusal, got bse {bse:?}"),
+        Err(e) => assert!(e.to_string().starts_with("outcome"), "{e}"),
+    };
+    starts(
+        panel_random_effects(&huge, RandomEffectsConfig::default())
+            .and_then(|f| f.inference(StaticSeType::ClusterEntity).map(|i| i.bse)),
+    );
+    for se in [
+        StaticSeType::Hc1,
+        StaticSeType::DriscollKraay { bandwidth: 2.0 },
+    ] {
+        starts(panel_first_difference(&huge, true).and_then(|f| f.inference(se).map(|i| i.bse)));
+        starts(
+            panel_between(&huge, BetweenConfig::default())
+                .and_then(|f| f.inference(StaticSeType::Hc1).map(|i| i.bse)),
+        );
+    }
+    starts(
+        fama_macbeth(&huge, true).and_then(|f| f.inference(FamaMacBethSe::Standard).map(|i| i.bse)),
+    );
+}

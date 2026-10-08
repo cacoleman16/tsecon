@@ -133,6 +133,9 @@ pub(crate) fn pooled_ols(rows: StackedRows, rank_msg: &str) -> Result<WithinFit,
     let params: Vec<f64> = (0..k).map(|j| params_mat[(j, 0)]).collect();
     let fitted = &x * &params_mat;
     let resid: Vec<f64> = (0..n).map(|r| y[r] - fitted[(r, 0)]).collect();
+    if params.iter().chain(&resid).any(|v| !v.is_finite()) {
+        return Err(overflow_error());
+    }
     Ok(WithinFit {
         params,
         resid,
@@ -170,6 +173,7 @@ pub(crate) fn pooled_inference(
     };
     if let Some(p) = panel {
         let inf = fit.inference(p)?;
+        check_finite_cov(&inf.cov)?;
         return Ok(StaticInference {
             se_type,
             cov: inf.cov,
@@ -191,7 +195,29 @@ pub(crate) fn pooled_inference(
     let scale = n as f64 / (n - k) as f64;
     let sw = &fit.xtx_inv * &meat * &fit.xtx_inv;
     let cov = Mat::from_fn(k, k, |i, j| scale * sw[(i, j)]);
+    check_finite_cov(&cov)?;
     Ok(finish(se_type, cov, &fit.params))
+}
+
+/// The refusal for arithmetic that overflowed double precision (data of
+/// magnitude ~1e154 and above square past `f64::MAX`): returning a clamped
+/// or NaN-laundered number would be silently wrong.
+pub(crate) fn overflow_error() -> PanelError {
+    PanelError::InsufficientData {
+        what: "outcome: the estimator's sums of squares overflowed double precision \
+               (non-finite intermediate values — the outcome or regressors are of \
+               magnitude ~1e154 or more); rescale the outcome and regressors"
+            .to_string(),
+    }
+}
+
+/// Refuses a covariance with a non-finite entry (see [`overflow_error`]).
+pub(crate) fn check_finite_cov(cov: &Mat<f64>) -> Result<(), PanelError> {
+    let k = cov.nrows();
+    if (0..k).any(|a| (0..k).any(|b| !cov[(a, b)].is_finite())) {
+        return Err(overflow_error());
+    }
+    Ok(())
 }
 
 /// `bse = sqrt(max(diag, 0))` and `tvalues = params / bse`.
