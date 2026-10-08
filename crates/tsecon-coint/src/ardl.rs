@@ -63,7 +63,11 @@
 //! statsmodels' `ardl_select_order` restricted to the subgrid a UECM can
 //! represent (`p >= 1`, `q_j >= 1`); statsmodels' unrestricted grid also
 //! admits `q_j = 0` and excluded regressors, which its own
-//! `UECM.from_ardl` then refuses.
+//! `UECM.from_ardl` then refuses. Every candidate is scored from one QR
+//! factorisation of the largest design with `Δy` appended (each candidate's
+//! residual sum of squares is that of a least-squares problem on the
+//! `(M + 1)`-row triangular factor), so the search costs one `O(T M^2)`
+//! factorisation plus a `T`-free solve per candidate.
 //!
 //! References: Pesaran, Shin & Smith (2001), *Journal of Applied
 //! Econometrics* 16(3); Pesaran & Shin (1999), in *Econometrics and
@@ -83,8 +87,8 @@ use crate::pss;
 pub const MAX_GRID: u64 = 100_000;
 
 /// Largest UECM design (`rows x regressors` doubles) the search may build:
-/// 2^26 cells, 512 MiB per copy (the search holds the design, its
-/// equilibrated copy and one candidate copy at a time).
+/// 2^26 cells, 512 MiB per copy (the search holds at most two copies at a
+/// time: the equilibrated design with `Δy` appended and its QR factor).
 pub const MAX_DESIGN_CELLS: usize = 1 << 26;
 
 /// Default cap of the searched lag order `p` and of every searched `q_j`.
@@ -403,6 +407,36 @@ fn qr_fit(
     })
 }
 
+/// The triangular factor `R` (`(m + 1) x (m + 1)`) of `[Z S | dy]`, `S` the
+/// power-of-two column equilibration of the `n x m` design `Z`
+/// (`n > m`). The thin `Q` is orthonormal and spans every column of `Z`
+/// and `dy`, so the residual sum of squares of `dy` on ANY column subset of
+/// `Z` equals that of the last column of `R` on the same columns of `R`:
+/// the order search costs one `O(n m^2)` factorisation plus an
+/// `(m + 1)`-row least-squares problem per candidate, whatever `n`.
+fn reduced_factor(z: Mat<f64>, dy: &[f64], what: &'static str) -> Result<Mat<f64>, CointError> {
+    let (n, m) = (z.nrows(), z.ncols());
+    let s = column_scales(z.as_ref());
+    let aug = Mat::from_fn(
+        n,
+        m + 1,
+        |i, j| if j < m { z[(i, j)] * s[j] } else { dy[i] },
+    );
+    drop(z);
+    let qr = aug.qr();
+    drop(aug);
+    let r = qr.thin_R();
+    // Householder QR is column-sequential, so the first m columns of R are
+    // the factor of the equilibrated design alone: the rank check of
+    // `qr_fit`. The last diagonal entry is the full model's residual norm
+    // and may be zero.
+    let dmax = (0..m).map(|j| r[(j, j)].abs()).fold(0.0_f64, f64::max);
+    if !(dmax > 0.0 && dmax.is_finite()) || (0..m).any(|j| r[(j, j)].abs() <= RANK_TOL * dmax) {
+        return Err(CointError::Singular { what });
+    }
+    Ok(r.to_owned())
+}
+
 /// The UECM design on rows `t = h .. T-1` (`h >= max(p, max q)`):
 /// `(Δy, Z)` with the column layout of the module docs.
 fn design(
@@ -709,15 +743,16 @@ fn search(
     let (dy, z) = design(y, x, n_det, spec.p_cap, &spec.q_cap, spec.h_star);
     let nobs = dy.len();
     // the largest design must be of full rank (every candidate is a column
-    // subset of it on the same rows)
-    qr_fit(
-        z.as_ref(),
+    // subset of it on the same rows), and its factor carries every
+    // candidate's residual sum of squares
+    let r = reduced_factor(
+        z,
         &dy,
-        false,
-        "the largest ARDL design of the order search (a regressor, its lagged level or a \
+        "the largest ARDL design of the order search (y's or a regressor's lagged level or a \
          lagged difference is an exact linear combination of the others — a duplicated or \
-         constant column of x, or x collinear with the case's deterministics)",
+         constant column of x, x equal to y, or x collinear with the case's deterministics)",
     )?;
+    let ry: Vec<f64> = (0..r.nrows()).map(|i| r[(i, r.ncols() - 1)]).collect();
     let p_range: Vec<usize> = match opts.lags {
         Some(p) => vec![p],
         None => (1..=spec.p_cap).collect(),
@@ -735,10 +770,10 @@ fn search(
         }
         loop {
             let cols = candidate_columns(n_det, kx, spec.p_cap, &spec.q_cap, p, &q);
-            let sub = Mat::from_fn(nobs, cols.len(), |i, c| z[(i, cols[c])]);
+            let sub = Mat::from_fn(r.nrows(), cols.len(), |i, c| r[(i, cols[c])]);
             let fit = qr_fit(
                 sub.as_ref(),
-                &dy,
+                &ry,
                 false,
                 "a candidate ARDL design of the order search is collinear",
             )?;
@@ -794,9 +829,9 @@ fn search(
 /// `lags = 0`, an `order` of the wrong length or with a zero, `max_lag` /
 /// `max_order` with the value they cap fixed (or zero), a search grid
 /// above [`MAX_GRID`], a design with no residual degrees of freedom or
-/// above [`MAX_DESIGN_CELLS`] entries, an exact fit (`ssr = 0`, e.g. a
-/// constant `y`), or `alpha` outside `(0, 1)`; [`CointError::Singular`]
-/// for a collinear design.
+/// above [`MAX_DESIGN_CELLS`] entries, a constant `y`, an exact fit
+/// (`ssr = 0`), or `alpha` outside `(0, 1)`; [`CointError::Singular`] for a
+/// collinear design.
 pub fn ardl_bounds_test(
     y: &[f64],
     x: MatRef<'_, f64>,
@@ -804,6 +839,14 @@ pub fn ardl_bounds_test(
 ) -> Result<ArdlResult, CointError> {
     let (n, kx) = check_yx(y, x)?;
     let spec = validate(n, kx, opts)?;
+    if y.first().is_some_and(|&y0| y.iter().all(|&v| v == y0)) {
+        return Err(CointError::InvalidSpec {
+            what: "y is constant: its differences are all zero and its lagged level is \
+                   collinear with any constant, so there is no level relationship to test; \
+                   check y (it is the regressand, x the regressors)"
+                .to_string(),
+        });
+    }
     let case = opts.case;
     let n_det = case.n_det();
 
@@ -823,9 +866,9 @@ pub fn ardl_bounds_test(
         z.as_ref(),
         &dy,
         true,
-        "the ARDL / UECM design (a regressor, its lagged level or a lagged difference is an \
-         exact linear combination of the others — a duplicated or constant column of x, or x \
-         collinear with the case's deterministics); drop the redundant column",
+        "the ARDL / UECM design (y's or a regressor's lagged level or a lagged difference is \
+         an exact linear combination of the others — a duplicated or constant column of x, x \
+         equal to y, or x collinear with the case's deterministics); drop the redundant column",
     )?;
     if fit.ssr <= 0.0 || fit.ssr.is_nan() {
         return Err(CointError::InvalidSpec {

@@ -604,11 +604,14 @@ must not be compared. As in `dols`, every option that would be inert raises:
 `lags=1` design instead), `q_j = 0` raises with a pointer to the follow-up, and
 a grid of more than 100 000 candidates (`P × Q^k`, 262 144 at the defaults with
 eight regressors) raises naming the caps — fix `order` and the search covers
-the lags only. Measured at the guard's edge, the default search with seven
-regressors (65 536 models, `T = 300`) takes about 17 s single-threaded on a
-shared 4-core machine (4 096 models at five regressors: 0.8 s); a design of
-more than 2^26 entries (512 MiB) is refused the same way. `alpha=0.05` only
-sets the `verdict`.
+the lags only. Every candidate is scored from one QR factorisation of the
+largest design with `Δy` appended (a candidate's residual sum of squares is a
+least-squares problem on the small triangular factor), so the search cost does
+not grow with `T`: measured at the guard's edge, the default search with seven
+regressors (65 536 models) takes about 2.5 s single-threaded on a shared 4-core
+machine at `T = 300` and the same at `T = 30 000` (4 096 models at five
+regressors: 0.1 s); a design of more than 2^26 entries (512 MiB) is refused the
+same way. `alpha=0.05` only sets the `verdict`.
 
 **How to read the output.** Read `p_value_upper` first: below `alpha` the
 `verdict` is `"level_relationship"`; `p_value_lower ≥ alpha` gives

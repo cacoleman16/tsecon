@@ -4902,8 +4902,10 @@ def ardl_bounds_test(
     would be inert); `lags` = 0 RAISES (statsmodels silently builds the
     lags = 1 design); a grid of more than 100 000 candidate models
     (P x Q^k) RAISES naming `max_lag`/`max_order` — fix `order` to search
-    only the lags (measured: 65 536 models at seven regressors, T = 300,
-    about 17 s); so does a design of more than 2^26 entries (512 MiB).
+    only the lags (measured: 65 536 models at seven regressors in about
+    2.5 s, the same at T = 300 and T = 30 000 — every candidate is scored
+    from one QR factorisation of the largest design); so does a design of
+    more than 2^26 entries (512 MiB).
 
     Fit statistics use the regression's own row count `nobs` = T - h;
     statsmodels' ARDL/UECM report T - p whenever max q_j > p, which shifts
@@ -4931,8 +4933,10 @@ def ardl_bounds_test(
     `crit_note` (None, or why the bounds are NaN).
 
     Validation: statsmodels 0.15 `UECM` / `ARDL` / `ardl_select_order` at
-    1e-10 on estimates, F (two routes, plus an exact-rational referee), t,
-    long run and selection; the critical values and p-values are
+    1e-10 on estimates, t and long run, the selected orders exactly
+    (`ic_value` at 1e-8); the F at 1e-10 against an exact-rational referee
+    and at 5e-10 / 1e-8 against statsmodels' UECM Wald / levels-ARDL
+    f_test (their own rounding); the critical values and p-values are
     statsmodels' tabulated surface at the corrected key (p-values atol
     1e-14 / rtol 1e-9); seeded Monte Carlo null size 0.048 / 0.047 at 5%
     (fixtures/ardl.json, model card).

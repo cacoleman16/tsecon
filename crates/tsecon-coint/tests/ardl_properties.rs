@@ -16,6 +16,10 @@
 //!   walks, `T = 200`, one regressor, case 3, ARDL(1, 1)), the upper-bound
 //!   p-value rejects at close to 5%; with a white-noise regressor, so does
 //!   the lower-bound one.
+//! * **Search**: the order search, which scores every candidate from one
+//!   factorisation of the largest design, picks the same winner with the
+//!   same criterion as a brute-force direct fit of each candidate on the
+//!   common sample.
 //! * **Determinism**, and **refusals** that name the parameter.
 //!
 //! Measured numbers are printed (`--nocapture`) and quoted in the model
@@ -549,13 +553,13 @@ fn refusals_name_the_parameter() {
     assert!(m.contains("too large for T = 0"), "{m}");
     let m = err(&[1.0], &Mat::<f64>::zeros(1, 1), &fixed(1, vec![1], 3));
     assert!(m.contains("too large for T = 1"), "{m}");
-    // a constant y leaves no residual variance (case 1 has no constant to be
-    // collinear with, so it reaches the fit)
-    let m = err(&[2.0; 120], &x, &fixed(1, vec![1, 1], 1));
-    assert!(
-        m.contains("fits D.y exactly") && m.contains("check y"),
-        "{m}"
-    );
+    // a constant y is refused by name in every case (with a constant it
+    // would otherwise read as a singular design blaming x; without one, as
+    // an exact fit), fixed or searched
+    for opts in [fixed(1, vec![1, 1], 1), fixed(1, vec![1, 1], 3), base()] {
+        let m = err(&[2.0; 120], &x, &opts);
+        assert!(m.contains("y is constant") && m.contains("check y"), "{m}");
+    }
     // a duplicated regressor and a constant regressor are collinear
     let dup = Mat::from_fn(120, 2, |i, _| x[(i, 0)]);
     assert!(matches!(
@@ -606,5 +610,58 @@ fn ic_value_is_on_the_statsmodels_scale_not_the_dols_scale() {
         assert_eq!(r.max_lag, 4);
         assert_eq!(r.max_order, 4);
         assert_eq!(r.n_models, 16);
+    }
+}
+
+#[test]
+fn the_search_minimises_the_criterion_of_a_direct_fit_on_the_common_sample() {
+    // brute force with the test's own design and QR: the search scores each
+    // candidate from one factorisation of the largest design, so this pins
+    // that shortcut to a direct fit of every candidate on the h* rows
+    let (y, x) = coint_system(23, 140, 2);
+    let (cap, h_star) = (3usize, 3usize);
+    for (ic, case) in [(DolsIc::Aic, 3), (DolsIc::Bic, 5), (DolsIc::Hqic, 1)] {
+        let n_det = PssCase::from_index(case).expect("case").n_det();
+        let mut best: Option<(f64, usize, Vec<usize>)> = None;
+        for p in 1..=cap {
+            for q1 in 1..=cap {
+                for q2 in 1..=cap {
+                    let q = vec![q1, q2];
+                    let h = p.max(q1).max(q2);
+                    let (z, dy) = uecm_design(&y, &x, n_det, p, &q, 0.0);
+                    let skip = h_star - h;
+                    let zc = Mat::from_fn(z.nrows() - skip, z.ncols(), |i, j| z[(i + skip, j)]);
+                    let n = dy.len() - skip;
+                    let s = ssr(&zc, &dy[skip..]);
+                    let llf = -(n as f64) / 2.0
+                        * ((2.0 * std::f64::consts::PI * s / n as f64).ln() + 1.0);
+                    let pen = match ic {
+                        DolsIc::Aic => 2.0,
+                        DolsIc::Bic => (n as f64).ln(),
+                        DolsIc::Hqic => 2.0 * (n as f64).ln().ln(),
+                    };
+                    let v = -2.0 * llf + pen * (zc.ncols() + 1) as f64;
+                    if best.as_ref().is_none_or(|b| v < b.0) {
+                        best = Some((v, p, q));
+                    }
+                }
+            }
+        }
+        let (v, p, q) = best.expect("candidates");
+        let r = ardl_bounds_test(
+            &y,
+            x.as_ref(),
+            &ArdlOptions {
+                case: PssCase::from_index(case).expect("case"),
+                ic,
+                max_lag: Some(cap),
+                max_order: Some(cap),
+                ..ArdlOptions::default()
+            },
+        )
+        .expect("fit");
+        assert_eq!((r.lags, r.order.clone()), (p, q), "{ic:?} case {case}");
+        assert_eq!(r.n_models, 27);
+        assert!(rel(r.ic_value, v) < 1e-12, "{ic:?}: {} vs {v}", r.ic_value);
     }
 }

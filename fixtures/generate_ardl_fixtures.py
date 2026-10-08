@@ -128,7 +128,8 @@ TREND = {1: "n", 2: "c", 3: "c", 4: "ct", 5: "ct"}
 N_DET = {"n": 0, "c": 1, "ct": 2}
 LEVELS = [0.90, 0.95, 0.99, 0.999]
 
-assert statsmodels.__version__ >= "0.15", statsmodels.__version__
+# a numeric compare: the string "0.9" >= "0.15" would pass
+assert tuple(int(v) for v in statsmodels.__version__.split(".")[:2]) >= (0, 15), statsmodels.__version__
 
 
 # --------------------------------------------------------------------- data

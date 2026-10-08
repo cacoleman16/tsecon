@@ -319,10 +319,10 @@ def test_malformed_inputs_are_refused_not_panics():
         tsecon.ardl_bounds_test(y, x[:, 0])
     with pytest.raises(ValueError, match=r"numerically singular"):
         tsecon.ardl_bounds_test(y, np.column_stack([x[:, 0], x[:, 0]]), lags=1, order=1)
-    with pytest.raises(ValueError, match=r"fits D\.y exactly.*check y"):
-        tsecon.ardl_bounds_test(np.full(160, 2.0), x, lags=1, order=1, case=1)
-    with pytest.raises(ValueError, match=r"numerically singular"):
-        tsecon.ardl_bounds_test(np.full(160, 2.0), x)
+    # a constant y is named, not read as a singular design blaming x
+    for kw in (dict(lags=1, order=1, case=1), dict(lags=1, order=1, case=4), {}):
+        with pytest.raises(ValueError, match=r"y is constant.*check y"):
+            tsecon.ardl_bounds_test(np.full(160, 2.0), x, **kw)
     with pytest.raises(ValueError, match=r"numerically singular.*constant column of x"):
         tsecon.ardl_bounds_test(y, np.full((160, 1), 3.0))
 

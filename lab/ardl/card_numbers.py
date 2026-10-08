@@ -61,9 +61,11 @@ try:
 except ImportError:  # pragma: no cover
     raise SystemExit("tsecon not importable: the runtime and example numbers need the wheel")
 
-# the selection runtime at the guard: 4 x 4^7 = 65 536 candidate fits
+# the selection runtime at the guard: 4 x 4^7 = 65 536 candidate fits, and
+# its (absent) growth in T: one factorisation of the largest design, then a
+# T-free solve per candidate
 rng = np.random.default_rng(7)
-for k, T in ((5, 300), (6, 300), (7, 300)):
+for k, T in ((5, 300), (6, 300), (7, 300), (7, 30000)):
     x = np.cumsum(rng.standard_normal((T, k)), axis=0)
     y = np.cumsum(rng.standard_normal(T))
     t0 = time.perf_counter()
