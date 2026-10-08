@@ -112,6 +112,7 @@ and docstrings live in
 | `dfgls` | DF-GLS: the GLS-detrended Elliott-Rothenberg-Stock unit-root test |
 | `ng_perron` | Ng-Perron M unit-root tests (MZa, MZt, MSB, MPT) with MAIC lag choice |
 | `zivot_andrews` | Unit-root test against one endogenous structural break |
+| `variance_ratio` | Lo-MacKinlay variance-ratio random-walk test, with the Chow-Denning joint test over horizons |
 | `ndiffs` | How many differences a series needs, with the evidence at every order |
 | `nsdiffs` | How many *seasonal* differences a series needs (Hyndman-Khandakar) |
 | `box_cox_lambda` | Variance-stabilizing Box-Cox lambda (MLE or Guerrero) |

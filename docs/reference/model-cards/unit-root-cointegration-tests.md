@@ -1,8 +1,9 @@
-# Model card — DF-GLS, Ng-Perron, Phillips-Perron, Phillips-Ouliaris, and Zivot-Andrews tests
+# Model card — DF-GLS, Ng-Perron, Phillips-Perron, Phillips-Ouliaris, Zivot-Andrews, and variance-ratio tests
 
-`dfgls` · `ng_perron` · `phillips_perron` · `phillips_ouliaris` · `zivot_andrews`
+`dfgls` · `ng_perron` · `phillips_perron` · `phillips_ouliaris` · `zivot_andrews` · `variance_ratio`
 
-Five unit-root-family tests beyond the core ADF/KPSS pair. `dfgls` attacks the
+Five unit-root-family tests beyond the core ADF/KPSS pair, and one test that
+starts where they stop. `dfgls` attacks the
 ADF's power problem: estimating a constant or trend by OLS costs the plain ADF
 real power near the unit-root boundary, and GLS-detrending at the ERS local
 alternative recovers most of it — it is the recommended default over plain ADF
@@ -19,9 +20,18 @@ the residual's long-run variance with a nonparametric (Bartlett) kernel.
 [`adf`](diagnostics.md); `phillips_ouliaris` is its cointegration analog — a
 residual-based alternative to [`johansen`](cointegration-regime.md) for a single
 cointegrating relationship. `zivot_andrews` guards the workflow against a
-one-time structural break masquerading as a unit root. All four are companions
+one-time structural break masquerading as a unit root. All five are companions
 to the confirmatory stationarity workflow, not replacements for reading ADF and
 KPSS together.
+
+`variance_ratio` is **not** a unit-root or stationarity test, and it sits on
+this card because it is so often mistaken for one. It takes the unit root as
+given — `y` is the level of a price or index — and asks the next question: are
+the *increments* serially uncorrelated (a random walk, a martingale), or do
+they trend (momentum) or revert? A series with autocorrelated increments has a
+unit root too; the variance-ratio test tells the two apart, and its default
+statistic stays valid under the volatility clustering that makes Ljung-Box on
+returns over-reject.
 
 | Function | Null hypothesis | The analog it complements |
 |----------|-----------------|---------------------------|
@@ -30,6 +40,7 @@ KPSS together.
 | `phillips_perron` | the series has a unit root | `adf` (semiparametric, no lag augmentation) |
 | `phillips_ouliaris` | the regressors are **not** cointegrated with `y` | Engle-Granger; `johansen` (single-equation route) |
 | `zivot_andrews` | a unit root with **no** break | `adf` when a one-time structural break may masquerade as a root |
+| `variance_ratio` | the **increments** are serially uncorrelated (a random walk) | `ljung_box` on the differences (robust to ARCH; one joint test across horizons) |
 
 ---
 
@@ -496,3 +507,214 @@ root"), while Zivot-Andrews rejects overwhelmingly *and* recovers the break date
 exactly (shift begins at observation 100). The genuine random walk is correctly
 not rejected. That contrast — same data, opposite verdicts — is exactly the
 Perron (1989) point the test exists to make.
+
+---
+
+## `variance_ratio` — Lo-MacKinlay variance-ratio test (and the Chow-Denning joint test)
+
+**What it estimates.** Whether the **increments** of a level series $y$ (a log
+price, an index) are serially uncorrelated — the random-walk, or
+martingale-difference, hypothesis of Lo & MacKinlay (1988). With $n_q = n - 1$
+increments, the drift $\hat\mu = (y_{n-1} - y_0)/n_q$ and
+$d_t = \Delta y_t - \hat\mu$, it compares the variance of $q$-period changes with
+$q$ times the one-period variance:
+
+$$\hat\sigma^2_1 = \frac{1}{n_q}\sum_t d_t^2,\qquad
+\hat\sigma^2_q = \frac{1}{n_q\,q}\sum_{t=q}^{n-1}\left(y_t - y_{t-q} - q\hat\mu\right)^2,\qquad
+\widehat{VR}(q) = \frac{\hat\sigma^2_q}{\hat\sigma^2_1}.$$
+
+Under the null $VR(q) = 1$; in population $VR(q) = 1 + 2\sum_{k=1}^{q-1}(1 - k/q)\rho_k$,
+so positive autocorrelation of the increments (momentum) pushes it above one and
+negative autocorrelation (mean reversion) below. The statistic is
+$z = \sqrt{n_q}\,(\widehat{VR} - 1)/\sqrt{V}$, asymptotically $N(0, 1)$, with
+$V = 2(2q-1)(q-1)/(3q)$ under iid increments (Campbell, Lo & MacKinlay 1997, eq.
+2.4.39) or the heteroskedasticity-consistent
+$\hat\theta = \sum_{k=1}^{q-1} 4(1-k/q)^2 \hat\delta_k$,
+$\hat\delta_k = n_q \sum_t d_t^2 d_{t-k}^2 / (\sum_t d_t^2)^2$ (eq. 2.4.43, Lo and
+MacKinlay's $z^*$). With several horizons $q_1, \dots, q_m$ the Chow & Denning
+(1993) joint test takes $CD = \max_i |z(q_i)|$ and refers it to the studentized
+maximum modulus with infinite degrees of freedom — the Šidák bound: reject at
+level $\alpha$ when $CD > \Phi^{-1}\!\left(1 - [1 - (1-\alpha)^{1/m}]/2\right)$, with
+p-value $1 - (1 - 2\Phi(-CD))^m$.
+
+**Assumptions.** $y$ is the **level** and has a unit root; the test is about its
+increments, not about whether it has a root. The robust $z^*$ (the default)
+needs only martingale-difference increments with finite fourth moments —
+conditional heteroskedasticity such as GARCH is allowed — while the homoskedastic
+$z$ needs iid increments. The Chow-Denning bound treats the $m$ statistics as
+independent; they are strongly positively correlated (every horizon reuses the
+same increments), so the joint test is **conservative**.
+
+**When to use (and when not).** Use it for the market-efficiency question — is
+this log price a random walk, or do its returns trend or revert? — and as the
+ARCH-robust alternative to Ljung-Box on returns: Ljung-Box's null is *iid*
+noise, so volatility clustering alone makes it reject uncorrelated returns,
+which is exactly why [`check_series`](check-series.md) cites `variance_ratio`
+when both Ljung-Box and ARCH-LM fire on the differences. Pass several horizons
+and read the Chow-Denning verdict rather than the smallest of the per-horizon
+p-values. Do **not** use it as a unit-root or stationarity test (a stationary
+level has $VR(q)$ falling toward 0 as $q$ grows, and a trend-stationary one is
+outside the null; run the ADF/KPSS quadrant first), and do not pass returns — see the failure modes.
+
+**Key arguments and defaults (and why).** `lags` (2): one horizon $q \ge 2$, or
+a list/tuple/array/Series of distinct horizons — then every per-horizon key is
+an array in the given order and the Chow-Denning keys span them all. `trend`:
+`"c"` (default; a random walk with drift, increments centred at the sample
+drift) or `"n"` (no drift). `overlap` (True): all $n - q$ overlapping
+$q$-period sums — more efficient — versus non-overlapping blocks, which drop the
+trailing $(n-1) \bmod q$ observations (`n_dropped`, as arch does).
+`debiased` and `robust` are sentinels that resolve to True under
+`overlap=True` (Lo-MacKinlay's unbiased variances; the robust $z^*$); the
+non-overlapping estimator has neither, so passing either as True with
+`overlap=False` **raises** rather than being silently ignored. The conventions
+— levels in, the $n_q q$ divisor, the debiasing factor (applied under `"n"`
+too) — are arch's, so a call ports one-to-one from `arch.unitroot.VarianceRatio`.
+
+**How to read the output.** `vr`, `stat`, `pvalue` (two-sided), `stat_variance`
+(the $V$ used), `nobs` (increments used, $n - 1 -$ `n_dropped`) and `n_dropped`
+per horizon — Python scalars for a scalar `lags`, arrays for a sequence; `crit`
+(arch's one-sided $N(0,1)$ quantiles at 1/5/10/90/95/99%); `cd_stat`, `cd_lag`
+(the horizon attaining it), `cd_pvalue` and `cd_crit` (1/5/10%) for the joint
+test — with one horizon, exactly the single test; and the echoes `trend`,
+`se_type` (`"robust"`, `"homoskedastic"`, `"nonoverlapping"`) and `debiased`.
+**Small `pvalue` ⇒ reject the random walk**; the sign of `stat` (or `vr` above or
+below 1) says momentum or mean reversion.
+
+**Failure modes.**
+
+- **Returns passed as the level.** `y` is the level series. Passing returns
+  tests the *differences of returns* — an MA(1) with a unit negative root — so
+  `vr` lands near 0.5 at $q = 2$ and the test rejects loudly: in the example
+  below, iid returns passed as `y` give `vr` 0.536 and `stat` −12.4. No reliable
+  automatic detection exists; take `np.cumsum` of returns, or pass log prices.
+- **The homoskedastic $z$ over-rejects under ARCH.** In the Monte Carlo below its
+  per-horizon size under GARCH(1,1) increments is 0.085–0.113 at a nominal 5%;
+  the robust $z^*$ holds 0.037–0.052. Keep the default.
+- **The Chow-Denning bound is conservative.** Measured size 0.023–0.040 at a
+  nominal 5% (below); a p-value just above 0.05 is weaker evidence for the null
+  than it looks.
+- **Short samples are refused, not answered.** Every horizon needs at least two
+  $q$-period sums ($n \ge q + 2$ with overlap, $n \ge 2q + 1$ without). arch
+  accepts one sum and returns a ratio of exactly 0 under trend `"c"` and a
+  finite single-squared-sum ratio under `"n"` (0.943 overlapping and 1.886
+  non-overlapping at $q = 2$ on the fixture's corner series) — neither carries information. Constant increments (a
+  constant series, or an exact linear trend under `"c"`) are refused as 0/0.
+- **P-values differ from arch's in the tail, deliberately.** tsecon computes
+  $2\Phi(-|z|)$ through `erfc`; arch computes $2 - 2\Phi(|z|)$, which loses
+  relative accuracy as $|z|$ grows (up to 2.56% relative where its p is still
+  positive in the fixture grid) and underflows to exactly 0 beyond
+  $|z| \approx 8.3$ (72 of the 250 fixture cases). Compare with arch at an
+  absolute tolerance, not a relative one.
+- **Horizons near $n$.** The robust variance costs $O(nq)$; a horizon of
+  thousands on a long series is slow before it is wrong — and $VR(q)$ at large
+  $q/n$ is noisy and biased in finite samples even debiased.
+
+**Validated against.** `arch.unitroot.VarianceRatio` (arch 8.0.0, an
+independent package) on 250 cases — five series (a Gaussian walk, a GARCH walk,
+AR(0.3) and AR(0.6) momentum walks, log US real GDP) × $q \in \{2, 4, 5, 8, 16\}$ ×
+both trends × five option sets — for `vr`, `stat` and the critical values;
+the p-value against the accurate `2 * scipy.stats.norm.sf(|z|)` at 1e-9
+relative with **no absolute floor** (the grid reaches $|z| = 34.6$ and
+$p = 2.1\times10^{-262}$); `stat_variance` against the closed forms; 45
+Chow-Denning cases against the documented closed form over arch's per-horizon
+statistics ([`variance_ratio.json`](../../../fixtures/variance_ratio.json),
+[`variance_ratio_golden.rs`](../../../crates/tsecon-diag/tests/variance_ratio_golden.rs),
+[`variance_ratio_properties.rs`](../../../crates/tsecon-diag/tests/variance_ratio_properties.rs),
+[`test_variance_ratio.py`](../../../bindings/python/tests/test_variance_ratio.py)).
+The achieved deviations, from
+`scripts/variance_ratio_golden_deviations.py`:
+
+```
+tsecon 0.10.0: 250 single-horizon cases vs arch 8.0.0, 45 Chow-Denning cases
+  max relative deviation  vr 0.00e+00  stat 8.49e-16 (1e-12-guarded)  stat_variance 4.11e-15
+  max relative deviation  pvalue vs 2*norm.sf 4.07e-13  cd_pvalue 3.02e-13
+  largest |stat| 34.60, smallest p-value 2.135e-262; arch's own p is 0.0 in 72 single-horizon cases
+```
+
+`vr` is bit-identical to arch in every case (both sum sequentially). The
+Chow-Denning leg has no independently *run* reference (R is unavailable to the
+generator): CRAN vrtest 1.2's `LM_stat.R` and `Chow.Denning.R` were transcribed
+from source and agree with arch's `debiased=False` statistics to 3.7e-13 and
+with the closed-form critical values to 1.6e-14 (recorded in the fixture's
+`_meta`). vrtest applies the same Šidák bound but reports no p-value and fixes
+the overlapping, non-debiased, drift-centred statistics; tsecon uses the
+caller's per-horizon options and inverts the bound for the p-value. The size
+and power claims are carried by
+`scripts/mc_variance_ratio_size.py`,
+run on the shipped function:
+
+```
+tsecon 0.10.0; n = 500, q = (2, 4, 8, 16), 600 reps per DGP, seed 12345, nominal level 5%
+iid N(0,1) increments (null)
+  robust z*      per-horizon q=2/4/8/16: 0.042 / 0.043 / 0.042 / 0.063   Chow-Denning: 0.028
+  homoskedastic  per-horizon q=2/4/8/16: 0.045 / 0.038 / 0.043 / 0.062   Chow-Denning: 0.023
+GARCH(1,1) a=0.15 b=0.80 increments (null)
+  robust z*      per-horizon q=2/4/8/16: 0.042 / 0.052 / 0.037 / 0.038   Chow-Denning: 0.040
+  homoskedastic  per-horizon q=2/4/8/16: 0.113 / 0.113 / 0.093 / 0.085   Chow-Denning: 0.093
+AR(1) phi=0.1 increments (alternative)
+  robust z*      per-horizon q=2/4/8/16: 0.582 / 0.465 / 0.317 / 0.208   Chow-Denning: 0.438
+  homoskedastic  per-horizon q=2/4/8/16: 0.583 / 0.462 / 0.322 / 0.207   Chow-Denning: 0.445
+```
+
+(The Monte Carlo standard error of a rate near 5% is about 0.009 at 600
+replications.) See the [validation matrix](../validation-matrix.md).
+
+**References.** Lo & MacKinlay (1988), "Stock market prices do not follow random
+walks", *Review of Financial Studies* 1(1); Chow & Denning (1993), "A simple
+multiple variance ratio test", *Journal of Econometrics* 58(3); Campbell, Lo &
+MacKinlay (1997), *The Econometrics of Financial Markets*, §2.4; Hochberg &
+Tamhane (1987), *Multiple Comparison Procedures* (the studentized maximum
+modulus); Kim (2006) and Choi (1999) for the wild-bootstrap and
+automatic-horizon refinements, not shipped; vrtest 1.2 (Kim, CRAN).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(2026)
+n = 1000
+
+# A log price whose increments are GARCH(1,1) martingale differences:
+# a random walk with volatility clustering.
+e, h = np.zeros(n), np.ones(n)
+for t in range(1, n):
+    h[t] = 0.05 + 0.15 * e[t - 1] ** 2 + 0.80 * h[t - 1]
+    e[t] = np.sqrt(h[t]) * rng.standard_normal()
+walk = np.cumsum(e)
+
+rob = tsecon.variance_ratio(walk, lags=[2, 4, 8, 16])               # robust z* (default)
+hom = tsecon.variance_ratio(walk, lags=[2, 4, 8, 16], robust=False)
+print("GARCH walk  vr:", np.round(rob["vr"], 3))
+print("  robust p:", np.round(rob["pvalue"], 3), " Chow-Denning p:", round(rob["cd_pvalue"], 3))
+print("  homosk p:", np.round(hom["pvalue"], 3), " Chow-Denning p:", round(hom["cd_pvalue"], 3))
+
+# Momentum: increments u_t = 0.2 u_{t-1} + noise.
+u = np.zeros(n)
+for t in range(1, n):
+    u[t] = 0.2 * u[t - 1] + rng.standard_normal()
+mom = tsecon.variance_ratio(np.cumsum(u), lags=[2, 4, 8, 16])
+print("momentum    vr:", np.round(mom["vr"], 3), " cd_stat:", round(mom["cd_stat"], 2),
+      "at q =", mom["cd_lag"], " Chow-Denning p:", f"{mom['cd_pvalue']:.1e}")
+print("  5% critical value for 4 horizons:", round(mom["cd_crit"]["5%"], 3))
+
+# The classic misuse: passing RETURNS where the levels belong.
+returns = rng.standard_normal(n)
+bad = tsecon.variance_ratio(returns, lags=2)
+print("returns as y vr:", round(bad["vr"], 3), " stat:", round(bad["stat"], 1))
+```
+
+```
+GARCH walk  vr: [1.041 1.091 1.065 1.094]
+  robust p: [0.312 0.219 0.575 0.582]  Chow-Denning p: 0.628
+  homosk p: [0.2   0.124 0.486 0.501]  Chow-Denning p: 0.412
+momentum    vr: [1.19  1.307 1.404 1.329]  cd_stat: 5.86 at q = 2  Chow-Denning p: 1.9e-08
+  5% critical value for 4 horizons: 2.491
+returns as y vr: 0.536  stat: -12.4
+```
+
+The GARCH walk is a random walk, and neither statistic rejects it on this draw —
+but the homoskedastic p-values are uniformly smaller, because under volatility
+clustering its variance $V$ is too small; across draws that is the
+8.5–11.3% per-horizon false-rejection rate in the table above. The momentum
+walk is rejected jointly ($CD = 5.86$ at $q = 2$ against a 5% critical value of
+2.49 for four horizons). Returns passed as the level produce a confident, meaningless
+rejection.

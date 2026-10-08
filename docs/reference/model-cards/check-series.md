@@ -69,6 +69,18 @@ this), and a `caveat` stating the assumption that could overturn the routing.
 An entry with no caveat would be a verdict; these are deliberately not
 verdicts.
 
+**One conditional citation in `arma_orders`.** When Ljung-Box rejects on the
+first differences *and* ARCH-LM fires there too, the `arma_orders` entry adds
+`variance_ratio` to its `functions` and says why in its `suggestion`: Ljung-Box's
+null is iid increments, so volatility clustering alone can drive the
+rejection, while the variance-ratio test's robust z* asks whether the
+increments are uncorrelated without that assumption (pass it the level series;
+see the [variance-ratio card](unit-root-cointegration-tests.md#variance_ratio-lo-mackinlay-variance-ratio-test-and-the-chow-denning-joint-test)).
+It is cited, not run: the battery's test families and the `n_tests`
+arithmetic are unchanged. The runnable example below does not trigger it — its
+ARCH-LM does not reject — so its `arma_orders` entry lists only `arima_fit`,
+`acf`, `pacf`.
+
 **The multiple-testing footer is a design stance.** Every hypothesis test the
 battery ran lands in `tests_run`, and the report closes with the arithmetic:
 `n_tests × alpha` expected false rejections on a series with nothing wrong

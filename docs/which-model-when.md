@@ -44,6 +44,7 @@ A compact index. Find your row, jump to the section.
 |---|---|---|
 | Series may be nonstationary; need to decide whether to difference | `check_stationarity` (`adf` + `kpss`) | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Unit-root test without picking an augmentation lag (ADF alternative / cross-check) | `phillips_perron` | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
+| Is a price (log level) a random walk — are its increments serially uncorrelated, robust to volatility clustering? | `variance_ratio` (Lo-MacKinlay; a list of horizons adds the Chow-Denning joint test) | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Impulse response, and you trust a recursive ordering | `var_irf` (`var_fit`, `var_fevd`) | [2](#2-i-want-an-impulse-response) |
 | Impulse response, but you only trust the *signs* of a few responses | `sign_restricted_svar` | [2](#2-i-want-an-impulse-response) |
 | Impulse response combining exact *zeros* with *sign* restrictions | `zero_sign_svar` (RWZ 2010 + ARW 2018) | [2](#2-i-want-an-impulse-response) |
@@ -135,6 +136,21 @@ boundary, so it does *not* replace the ADF+KPSS quadrant.
 ```python
 pp = tsecon.phillips_perron(y, regression="c")   # test_type="tau" (Z-tau) or "rho" (Z-alpha)
 pp["stat"], pp["pvalue"], pp["lags"]             # small p ⇒ reject the unit root
+```
+
+**A unit root is not yet a random walk.** Once the level is I(1), the next
+question — the market-efficiency one for a log price — is whether its
+*increments* are serially uncorrelated. `variance_ratio` (Lo-MacKinlay) compares
+the variance of q-period changes with q times the one-period variance: 1 under a
+random walk, above 1 under momentum, below 1 under mean reversion. Its default
+statistic is robust to volatility clustering, which Ljung-Box on the returns is
+not. Pass the LEVEL series, not returns; a list of horizons adds the Chow-Denning
+joint test:
+
+```python
+vr = tsecon.variance_ratio(y, lags=[2, 4, 8, 16])   # y = log prices (levels)
+vr["vr"], vr["pvalue"]                             # per horizon
+vr["cd_stat"], vr["cd_pvalue"]                     # one joint verdict across horizons
 ```
 
 **Escape hatch — did the relationship *break*?** A conflict that survives

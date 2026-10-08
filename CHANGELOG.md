@@ -7,6 +7,10 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `variance_ratio`: the Lo-MacKinlay (1988) variance-ratio test of the random-walk hypothesis, with the Chow-Denning (1993) joint test over several horizons (closes #4). It takes the LEVEL series, as `arch.unitroot.VarianceRatio` does, and asks whether the increments are serially uncorrelated; the default statistic is the heteroskedasticity-robust z*, so it stays valid under volatility clustering. `lags` is one horizon (scalar outputs) or a sequence (per-horizon arrays plus one joint verdict: `cd_stat`, `cd_lag`, `cd_pvalue`, and the SMM(∞)/Šidák `cd_crit`). Validated against arch 8.0.0 on 250 cases: `vr` bit-identical, `stat` within 8.5e-16, and 45 Chow-Denning cases against the closed form. Deliberate departures from arch, each pinned by a test: p-values are `2Φ(-|z|)` through `erfc` (arch's `2 - 2Φ(|z|)` is 0.0 in 72 of the 250 fixture cases, and up to 2.6% off relative where it is still positive), `debiased=True`/`robust=True` under `overlap=False` raise instead of being ignored, and samples with fewer than two q-period sums are refused under both trends. In the seeded Monte Carlo the robust z* holds 3.7–5.2% size under GARCH increments, against 8.5–11.3% for the homoskedastic z; the Chow-Denning bound is conservative (2.3–4.0% wherever its per-horizon statistics are valid). `check_series` now cites `variance_ratio` in its `arma_orders` entry when Ljung-Box and ARCH-LM both fire on the differences; the citation runs no new test.
+
 ### Changed
 
 - Dependencies: `pyo3` 0.29.0 → 0.29.3 and `serde_json` 1.0.150 → 1.0.151 (the bumps Dependabot proposed in #27, taken to the newest patch), plus the 23 other semver-compatible lockfile changes then available (22 updates and one new transitive crate, `syn` 3.0.6), among them faer's matrix-multiply kernel `private-gemm-x86` 0.1.20 → 0.1.22. The shipped licence notices are regenerated to match.

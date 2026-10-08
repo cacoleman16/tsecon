@@ -117,7 +117,7 @@ nav:
       - Speed dashboard: reference/speed.md
       - Model cards:
           - Diagnostics: reference/model-cards/diagnostics.md
-          - Unit-root tests (DF-GLS, Ng-Perron, PP/PO, ZA): reference/model-cards/unit-root-cointegration-tests.md
+          - Unit-root & variance-ratio tests (DF-GLS, Ng-Perron, PP/PO, ZA, VR): reference/model-cards/unit-root-cointegration-tests.md
           - Check series (one-call battery): reference/model-cards/check-series.md
           - ARIMA: reference/model-cards/arima.md
           - Spectral analysis: reference/model-cards/spectral.md
