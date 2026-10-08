@@ -17,10 +17,12 @@
 //! - [`lrv_prewhitened_ar1`]: AR(1) prewhitened-and-recolored LRV
 //!   (Andrews-Monahan 1992).
 //! - [`ewc_lrv`] / [`ewc_default_b`]: the equal-weighted cosine estimator
-//!   of Lazarus-Lewis-Stock-Watson (2018).
+//!   of Lazarus-Lewis-Stock-Watson (2018); [`ewc_lrv_matrix`] is its
+//!   multivariate (`k x k`) form, bit-identical to [`ewc_lrv`] at `k = 1`.
 //! - [`ols`] + [`OlsFit::inference`]: OLS with nonrobust, HC0-HC3, and HAC
 //!   sandwich standard errors matching statsmodels `cov_type="HAC"`
-//!   (`maxlags`, `use_correction`) to golden-fixture precision. HC2/HC3
+//!   (`maxlags`, `use_correction`) to golden-fixture precision, plus the
+//!   EWC sandwich [`SeType::Ewc`] (t-statistics referred to `t_B`). HC2/HC3
 //!   carry the leverage correction `1/(1 - h_t)^{1,2}` that HC0/HC1 lack;
 //!   prefer HC3 in small samples (Long & Ervin 2000).
 //!
@@ -62,7 +64,7 @@ mod ols;
 mod validate;
 
 pub use error::HacError;
-pub use ewc::{ewc_default_b, ewc_lrv};
+pub use ewc::{ewc_default_b, ewc_lrv, ewc_lrv_matrix};
 pub use kernel::Kernel;
 pub use lrv::{
     andrews_bandwidth_ar1, lrv, lrv_prewhitened_ar1, newey_west_bandwidth, newey_west_maxlags,

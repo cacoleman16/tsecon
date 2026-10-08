@@ -2,8 +2,8 @@
 //! error-path coverage.
 
 use tsecon_hac::{
-    andrews_bandwidth_ar1, ewc_default_b, ewc_lrv, lrv, lrv_prewhitened_ar1, newey_west_bandwidth,
-    newey_west_maxlags, ols, HacError, Kernel, SeType,
+    andrews_bandwidth_ar1, ewc_default_b, ewc_lrv, ewc_lrv_matrix, lrv, lrv_prewhitened_ar1,
+    newey_west_bandwidth, newey_west_maxlags, ols, HacError, Kernel, SeType,
 };
 
 const KERNELS: [Kernel; 4] = [
@@ -188,6 +188,141 @@ fn ewc_of_white_noise_is_close_to_its_variance() {
         (omega / gamma0 - 1.0).abs() < 0.25,
         "EWC white-noise LRV {omega} should be near the variance {gamma0}"
     );
+}
+
+/// The matrix form shares the scalar form's cosine evaluation and its
+/// accumulation order, so at `k = 1` the two are the same bits.
+#[test]
+fn ewc_matrix_at_k1_is_bitwise_the_scalar_estimator() {
+    for (n, seed) in [(37_usize, 1_u64), (100, 2), (250, 3), (1001, 4)] {
+        let z = demean(&ar1_series(n, 0.5, seed));
+        for b in [1, 2, ewc_default_b(n), n / 2, n - 1] {
+            let scalar = ewc_lrv(&z, b).unwrap();
+            let matrix = ewc_lrv_matrix(std::slice::from_ref(&z), b).unwrap();
+            assert_eq!(matrix.len(), 1);
+            assert_eq!(
+                matrix[0].to_bits(),
+                scalar.to_bits(),
+                "n={n} b={b}: matrix {} vs scalar {scalar}",
+                matrix[0]
+            );
+        }
+    }
+}
+
+/// No `j = 0` (mean) term: adding a constant to a column changes nothing in
+/// exact arithmetic; in floating point the shift is roundoff.
+#[test]
+fn ewc_is_mean_invariant() {
+    let z = demean(&ar1_series(300, 0.7, 21));
+    let b = ewc_default_b(z.len());
+    let base = ewc_lrv(&z, b).unwrap();
+    for shift in [1.0, -3.5, 250.0] {
+        let shifted: Vec<f64> = z.iter().map(|v| v + shift).collect();
+        let got = ewc_lrv(&shifted, b).unwrap();
+        assert!(
+            ((got - base) / base).abs() < 1e-11,
+            "shift {shift}: {got} vs {base}"
+        );
+    }
+    let w = demean(&lcg_series(300, 22));
+    let base_m = ewc_lrv_matrix(&[z.clone(), w.clone()], b).unwrap();
+    let moved: Vec<Vec<f64>> = vec![
+        z.iter().map(|v| v + 7.0).collect(),
+        w.iter().map(|v| v - 2.0).collect(),
+    ];
+    let got_m = ewc_lrv_matrix(&moved, b).unwrap();
+    for (g, e) in got_m.iter().zip(&base_m) {
+        assert!((g - e).abs() <= 1e-11 * base_m[0].abs().max(base_m[3].abs()));
+    }
+}
+
+/// `Omega_hat(c z) = c^2 Omega_hat(z)`; with `c` a power of two the scaling is
+/// exact in floating point, so the identity holds bitwise.
+#[test]
+fn ewc_scales_quadratically() {
+    let z = demean(&ar1_series(180, 0.4, 5));
+    let b = 9;
+    let base = ewc_lrv(&z, b).unwrap();
+    for c in [2.0_f64, 0.25, -8.0] {
+        let scaled: Vec<f64> = z.iter().map(|v| c * v).collect();
+        assert_eq!(ewc_lrv(&scaled, b).unwrap(), c * c * base, "c = {c}");
+    }
+    let c = 3.7_f64;
+    let scaled: Vec<f64> = z.iter().map(|v| c * v).collect();
+    let got = ewc_lrv(&scaled, b).unwrap();
+    assert!(((got - c * c * base) / base).abs() < 1e-13);
+}
+
+/// The k x k estimate is symmetric and positive semi-definite (a sum of
+/// outer products), and its diagonal is the scalar estimator per column.
+#[test]
+fn ewc_matrix_is_symmetric_psd_with_scalar_diagonal() {
+    let n = 160;
+    let cols = vec![
+        demean(&ar1_series(n, 0.6, 31)),
+        demean(&ar1_series(n, 0.2, 32)),
+        demean(&lcg_series(n, 33)),
+    ];
+    for b in [1, 3, ewc_default_b(n), n - 1] {
+        let m = ewc_lrv_matrix(&cols, b).unwrap();
+        for i in 0..3 {
+            assert_eq!(
+                m[i * 3 + i].to_bits(),
+                ewc_lrv(&cols[i], b).unwrap().to_bits()
+            );
+            for j in 0..3 {
+                assert_eq!(m[i * 3 + j].to_bits(), m[j * 3 + i].to_bits());
+            }
+        }
+        // PSD: every 2x2 principal minor and the determinant are >= 0, and a
+        // few fixed directions give non-negative quadratic forms.
+        for v in [[1.0, -1.0, 0.5], [0.3, 2.0, -1.0], [1.0, 1.0, 1.0]] {
+            let mut q = 0.0;
+            for i in 0..3 {
+                for j in 0..3 {
+                    q += v[i] * m[i * 3 + j] * v[j];
+                }
+            }
+            assert!(q >= -1e-12 * m[0].abs(), "b={b}: v'Mv = {q}");
+        }
+        if b == 1 {
+            // Rank one: every 2x2 minor vanishes to roundoff.
+            let minor = m[0] * m[4] - m[1] * m[3];
+            assert!(minor.abs() <= 1e-12 * m[0] * m[4]);
+        }
+    }
+}
+
+#[test]
+fn ewc_matrix_error_paths_name_the_problem() {
+    let a = demean(&ar1_series(40, 0.5, 1));
+    assert!(matches!(ewc_lrv_matrix(&[], 3), Err(HacError::EmptyDesign)));
+    assert!(matches!(
+        ewc_lrv_matrix(&[a.clone(), vec![0.0; 39]], 3),
+        Err(HacError::DimensionMismatch {
+            column: 1,
+            expected: 40,
+            got: 39,
+            ..
+        })
+    ));
+    assert!(matches!(
+        ewc_lrv_matrix(&[vec![1.0]], 1),
+        Err(HacError::SeriesTooShort { n: 1, .. })
+    ));
+    let mut bad = a.clone();
+    bad[5] = f64::INFINITY;
+    assert!(matches!(
+        ewc_lrv_matrix(&[a.clone(), bad], 3),
+        Err(HacError::NonFinite { index: 5, .. })
+    ));
+    for b in [0, 40, 41] {
+        assert!(matches!(
+            ewc_lrv_matrix(std::slice::from_ref(&a), b),
+            Err(HacError::InvalidDof { .. })
+        ));
+    }
 }
 
 // ------------------------------------------------------ automatic bandwidth
@@ -502,6 +637,86 @@ fn full_leverage_observation_is_named_not_silently_infinite() {
     for se_type in [SeType::Hc0, SeType::Hc1] {
         let inf = fit.inference(se_type).unwrap();
         assert!(inf.bse.iter().all(|s| s.is_finite()));
+    }
+}
+
+/// OLS scores sum to zero column by column (`X'u = 0`), so with the cosine
+/// basis complete (`b = n - 1`) the EWC meat is `n/(n - 1) sum_t s_t s_t'` —
+/// the HC0 meat times `n/(n - 1)` — and the EWC covariance is exactly HC0's
+/// scaled by `n/(n - 1)`.
+#[test]
+fn ewc_at_full_b_is_hc0_scaled_by_n_over_n_minus_one() {
+    let (y, x) = regression_data(140, 9);
+    let n = 140.0_f64;
+    let fit = ols(&y, &x).unwrap();
+    let hc0 = fit.inference(SeType::Hc0).unwrap();
+    let ewc = fit.inference(SeType::Ewc { b: 139 }).unwrap();
+    for i in 0..9 {
+        let want = hc0.cov[i] * n / (n - 1.0);
+        assert!(
+            (ewc.cov[i] - want).abs() <= 1e-10 * hc0.cov[0].abs(),
+            "cov[{i}]: {} vs {want}",
+            ewc.cov[i]
+        );
+    }
+}
+
+/// Every standard-error flavor, EWC included, yields finite positive bse and
+/// t = params / bse on a well-posed persistent design.
+#[test]
+fn every_se_type_gives_finite_bse_and_consistent_tvalues() {
+    let (y, x) = regression_data(260, 12);
+    let fit = ols(&y, &x).unwrap();
+    let b0 = ewc_default_b(260);
+    for se_type in [
+        SeType::NonRobust,
+        SeType::Hc0,
+        SeType::Hc1,
+        SeType::Hc2,
+        SeType::Hc3,
+        SeType::Hac {
+            kernel: Kernel::Bartlett,
+            bandwidth: 5.0,
+            use_correction: true,
+        },
+        SeType::Ewc { b: b0 },
+        SeType::Ewc { b: 1 },
+        SeType::Ewc { b: 259 },
+    ] {
+        let inf = fit.inference(se_type).unwrap();
+        for i in 0..3 {
+            assert!(inf.bse[i].is_finite() && inf.bse[i] > 0.0, "{se_type:?}");
+            assert_eq!(
+                inf.tvalues[i].to_bits(),
+                (fit.params[i] / inf.bse[i]).to_bits(),
+                "{se_type:?}"
+            );
+            assert_eq!(inf.cov[i * 3 + i].sqrt().to_bits(), inf.bse[i].to_bits());
+        }
+    }
+}
+
+/// Fewer frequencies, noisier variance: the EWC variance estimate is
+/// `Omega chi^2_B / B`, so on a long white-noise regression the bse at the
+/// default B land close to the HC0 bse, and the spread across B shrinks as B
+/// grows.
+#[test]
+fn ewc_bse_track_hc0_on_white_noise_at_large_n() {
+    let n = 4000;
+    let x1 = lcg_series(n, 71);
+    let u = lcg_series(n, 72);
+    let y: Vec<f64> = (0..n).map(|t| 0.5 + 0.8 * x1[t] + u[t]).collect();
+    let fit = ols(&y, &[vec![1.0; n], x1]).unwrap();
+    let hc0 = fit.inference(SeType::Hc0).unwrap();
+    let ewc = fit
+        .inference(SeType::Ewc {
+            b: ewc_default_b(n),
+        })
+        .unwrap();
+    for i in 0..2 {
+        let ratio = ewc.bse[i] / hc0.bse[i];
+        // sd of sqrt(chi2_B / B) at B = 101 is about 0.07.
+        assert!((ratio - 1.0).abs() < 0.25, "param {i}: ratio {ratio}");
     }
 }
 
