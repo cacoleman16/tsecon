@@ -1,0 +1,32 @@
+tsecon 0.10.0, numpy 2.5.3, python 3.13.16
+
+1. Exact p-value vs simulated null CDF (N = 200000 draws per design)
+  T=20, constant only: largest |z| = 1.58
+    d=1.0418  exact P(d<=c)=0.01009  simulated=0.01000  z=-0.38
+    d=1.2999  exact P(d<=c)=0.05008  simulated=0.05000  z=-0.17
+    d=1.4491  exact P(d<=c)=0.10078  simulated=0.10000  z=-1.16
+    d=2.0019  exact P(d<=c)=0.50177  simulated=0.50000  z=-1.58
+    d=2.5535  exact P(d<=c)=0.90033  simulated=0.90000  z=-0.50
+    d=2.7023  exact P(d<=c)=0.95048  simulated=0.95000  z=-0.99
+    d=2.9619  exact P(d<=c)=0.99018  simulated=0.99000  z=-0.82
+  T=40, const+regressor+trend: largest |z| = 1.41
+    d=1.3457  exact P(d<=c)=0.01023  simulated=0.01000  z=-1.03
+    d=1.5441  exact P(d<=c)=0.05069  simulated=0.05000  z=-1.41
+    d=1.6520  exact P(d<=c)=0.10032  simulated=0.10000  z=-0.48
+    d=2.0475  exact P(d<=c)=0.50031  simulated=0.50000  z=-0.28
+    d=2.4431  exact P(d<=c)=0.90073  simulated=0.90000  z=-1.10
+    d=2.5520  exact P(d<=c)=0.95061  simulated=0.95000  z=-1.26
+    d=2.7472  exact P(d<=c)=0.99006  simulated=0.99000  z=-0.25
+  T=80, const+random walk+iid+sine: largest |z| = 0.98
+    d=1.5400  exact P(d<=c)=0.00981  simulated=0.01000  z=+0.88
+    d=1.6886  exact P(d<=c)=0.04965  simulated=0.05000  z=+0.73
+    d=1.7691  exact P(d<=c)=0.09992  simulated=0.10000  z=+0.11
+    d=2.0548  exact P(d<=c)=0.50110  simulated=0.50000  z=-0.98
+    d=2.3371  exact P(d<=c)=0.89977  simulated=0.90000  z=+0.34
+    d=2.4162  exact P(d<=c)=0.95003  simulated=0.95000  z=-0.06
+    d=2.5614  exact P(d<=c)=0.99004  simulated=0.99000  z=-0.17
+
+2. Size at 5% of the exact test (rho > 0) under non-normal errors, R = 4000
+  T = 30: normal=0.0527  t(5)=0.0488  t(3)=0.0423  chi2(1) centered=0.0515
+  T = 100: normal=0.0470  t(5)=0.0493  t(3)=0.0490  chi2(1) centered=0.0585
+  (MC se 0.0034 at a true 0.05)

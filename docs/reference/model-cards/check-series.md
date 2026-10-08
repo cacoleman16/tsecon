@@ -110,6 +110,13 @@ and a clean series gets an explicit `no_red_flags` entry restating it, so a
   recommendation string has **not** caught up — it still describes seasonal
   ARIMA as roadmap and routes you to differencing upstream by hand. Read that
   sentence as stale and call `arima_fit(..., seasonal=…)` directly.
+- **Series diagnostics, not regression diagnostics.** The serial-correlation
+  family tests the analysis object itself (Ljung-Box, ACF/PACF). Serial
+  correlation in the *errors of a regression* you fit afterwards is a
+  different question, with its own tests on `(y, x)`: `breusch_godfrey_test`
+  (any order up to `nlags`, valid with a lagged dependent variable) and
+  `durbin_watson_test` (first order, exact p-value). The battery runs neither,
+  because it has no regressors to condition on.
 - **One dataset, no question.** The battery cannot know whether the series is
   an outcome or a future regressor, what the loss function is, or which
   regimes matter. It screens; it does not decide.
