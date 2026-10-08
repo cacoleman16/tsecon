@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, multivariate-GARCH, panel and term-structure families (and the top-level results of `var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` converts them; the docstring says which. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**192 functions.**
+**194 functions.**
 
 ## diagnostics
 
@@ -3828,6 +3828,81 @@ def cusum_test(y: _ArrayLike, x: _ArrayLike) -> dict[str, Any]:
 CUSUM parameter-stability test (Brown-Durbin-Evans); returns the path and 5% bounds.
 
     Returned keys: `bound_lower`, `bound_upper`, `path`, `sigma`.
+
+### `breusch_godfrey_test`
+
+```python
+def breusch_godfrey_test(
+    y: _ArrayLike, x: _ArrayLike, nlags: int | None = ...
+) -> dict[str, Any]:
+```
+
+Breusch-Godfrey LM test for serial correlation of order up to `nlags`
+    in the errors of the OLS regression of `y` on `x` (T x k, INCLUDING the
+    constant column, as for the other specification tests).
+
+    The residuals `u` are regressed on `x` and their own lags
+    `u_{t-1}..u_{t-nlags}`; `statistic` is `LM = T * R^2` of that auxiliary
+    regression, `chi2(nlags)` under no serial correlation, and `fstat` the
+    F-form of the same null (the lag coefficients jointly zero),
+    `F(nlags, T - k_aux)`. Unlike Durbin-Watson it allows lagged dependent
+    variables among the regressors and tests every order up to `nlags`.
+
+    Convention (statsmodels `acorr_breusch_godfrey`, pinned at 1e-10): the
+    lagged residuals are padded with zeros, so all T observations stay in
+    the auxiliary regression; `nlags=None` uses `min(10, T // 5)`; when `x`
+    spans no constant (no constant column and no implicit one such as
+    complementary dummies) a column of ones is added to the auxiliary
+    regression (`constant_added`), so `k_aux = k + nlags + 1`, otherwise
+    `k + nlags`.
+
+    Returned keys: `constant_added`, `df`, `f_df_den`, `f_df_num`, `f_pvalue`,
+    `fstat`, `nlags`, `nobs`, `pvalue`, `statistic`.
+    `statistic`/`df`/`pvalue` are the LM form (`df = nlags`), `fstat` with
+    `f_df_num` (= nlags) and `f_df_den` (= T - k_aux) and `f_pvalue` the
+    F-form, `nlags` the order used (the default resolved), `nobs` = T.
+
+    Further arguments, with defaults: `nlags` (None: `min(10, T // 5)`).
+
+### `durbin_watson_test`
+
+```python
+def durbin_watson_test(
+    y: _ArrayLike, x: _ArrayLike, alternative: str = ...
+) -> dict[str, Any]:
+```
+
+Durbin-Watson test for first-order serial correlation in the errors of
+    the OLS regression of `y` on `x` (T x k, INCLUDING the constant column),
+    with the EXACT p-value under normal errors.
+
+    `statistic` is `d = sum (e_t - e_{t-1})^2 / sum e_t^2` on the OLS
+    residuals (statsmodels `durbin_watson`, pinned at 1e-10): about
+    `2 (1 - r_1)`, below 2 for positive and above 2 for negative
+    autocorrelation. `pvalue` is exact, not a bounds-table verdict: under
+    normal iid errors and fixed regressors `P(d <= c) = P(sum_i (nu_i - c)
+    z_i^2 <= 0)` with `nu_i` the eigenvalues of `M A M` (Durbin-Watson 1950),
+    evaluated by Imhof's (1961) inversion formula to about 1e-13 absolute
+    (so a p-value printed as ~1e-14 means "below 1e-13"). `alternative` is
+    "positive" (rho > 0, the classical test: `P(d <= d_obs)`), "negative"
+    (`P(d >= d_obs)`) or "two_sided" (`min(1, 2 min(...))`).
+
+    Validity: exact for Gaussian errors with strictly exogenous `x`; with
+    non-normal errors it is approximate (seeded Monte Carlo in the model
+    card); with a lagged dependent variable in `x` it is INVALID — use
+    `breusch_godfrey_test`. COST: the eigendecomposition is cubic in T, so
+    T is capped at 4000 (measured timings in the model card); a longer
+    sample is refused with a pointer to `breusch_godfrey_test`.
+
+    Returned keys: `alternative`, `df_resid`, `nobs`, `pvalue`, `statistic`.
+    `df_resid` is T - k, `nobs` is T, `alternative` echoes the option.
+
+    Validation: the exact p-value is a documented-formula golden (LAPACK
+    eigenvalues + QUADPACK, fixtures/serial_corr.json, 1e-10), the null
+    distribution is checked by seeded Monte Carlo, and the `nu_i` obey the
+    Durbin-Watson bounds (interlacing) theorem.
+
+    Further arguments, with defaults: `alternative` ("positive").
 
 ## arbitrage-free NS
 

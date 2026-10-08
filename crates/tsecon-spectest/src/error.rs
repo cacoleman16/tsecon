@@ -190,9 +190,10 @@ impl fmt::Display for SpecTestError {
                 if *defaulted {
                     write!(
                         f,
-                        "invalid Breusch-Godfrey order: the default nlags = min(10, n // 5) is \
-                         {nlags} for n = {n} observations; the test needs at least one lagged \
-                         residual, so pass nlags >= 1 explicitly (and keep n > k + nlags)"
+                        "invalid Breusch-Godfrey order: with n = {n} observations of y the \
+                         default nlags = min(10, n // 5) is {nlags}; the test needs at least \
+                         one lagged residual, so pass nlags >= 1 explicitly (keeping \
+                         n > k + nlags) or supply a longer y"
                     )
                 } else {
                     write!(

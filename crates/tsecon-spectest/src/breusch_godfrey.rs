@@ -95,10 +95,10 @@ fn spans_constant(x_cols: &[Vec<f64>], n: usize) -> Result<(bool, f64), SpecTest
 ///
 /// # Errors
 ///
-/// [`SpecTestError::InvalidLags`] if the order is zero (including a default
-/// of zero for `T < 5`); [`SpecTestError::DegreesOfFreedom`] if `T <= k`
-/// (the original regression) or `T <= k_aux` (the auxiliary regression — the
-/// order is too long for the sample); [`SpecTestError::DegenerateResponse`]
+/// [`SpecTestError::DegreesOfFreedom`] if `T <= k` (the original
+/// regression) or `T <= k_aux` (the auxiliary regression — the order is too
+/// long for the sample); [`SpecTestError::InvalidLags`] if the order is zero
+/// (including a default of zero for `T < 5`); [`SpecTestError::DegenerateResponse`]
 /// if the residuals are (numerically) all zero — `y` is an exact linear
 /// combination of the design — or, for a design without a constant, all
 /// equal; the usual empty/dimension/finite validation errors; and
@@ -110,19 +110,19 @@ pub fn breusch_godfrey_test(
     nlags: Option<usize>,
 ) -> Result<BreuschGodfreyTest, SpecTestError> {
     let (n, k) = validate(y, x_cols)?;
+    if n <= k {
+        return Err(SpecTestError::DegreesOfFreedom {
+            what: "Breusch-Godfrey original regression",
+            n,
+            k,
+        });
+    }
     let p = nlags.unwrap_or_else(|| breusch_godfrey_default_nlags(n));
     if p == 0 {
         return Err(SpecTestError::InvalidLags {
             nlags: 0,
             n,
             defaulted: nlags.is_none(),
-        });
-    }
-    if n <= k {
-        return Err(SpecTestError::DegreesOfFreedom {
-            what: "Breusch-Godfrey original regression",
-            n,
-            k,
         });
     }
     let (spans, ones_rss) = spans_constant(x_cols, n)?;
