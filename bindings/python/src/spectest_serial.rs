@@ -10,7 +10,7 @@ use numpy::{PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use tsecon_spectest::{DwAlternative, SpecTestError, DW_EXACT_MAX_NOBS};
+use tsecon_spectest::{DwAlternative, SpecTestError};
 
 use crate::{to_py, vec1};
 
@@ -111,6 +111,10 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
              breusch_godfrey_test, whose cost is linear in T and whose chi-square p-value \
              is accurate at that length"
         )),
+        SpecTestError::NumericalBreakdown { what } => PyValueError::new_err(format!(
+            "the exact Durbin-Watson p-value could not be computed for this y and x \
+             (numerical breakdown in the {what}); check x for nearly collinear columns"
+        )),
         other => to_py(other),
     }
 }
@@ -132,7 +136,9 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
 /// spans no constant (no constant column and no implicit one such as
 /// complementary dummies) a column of ones is added to the auxiliary
 /// regression (`constant_added`), so `k_aux = k + nlags + 1`, otherwise
-/// `k + nlags`.
+/// `k + nlags`. With `constant_added` the LM form also counts what that
+/// constant explains and over-rejects (measured in the model card): read the
+/// F-form (`f_pvalue`) there.
 ///
 /// Returned keys: `constant_added`, `df`, `f_df_den`, `f_df_num`, `f_pvalue`,
 /// `fstat`, `nlags`, `nobs`, `pvalue`, `statistic`.
@@ -230,16 +236,6 @@ fn durbin_watson_test<'py>(
         }
     };
     let (ys, cols) = regression_inputs(&y, &x)?;
-    if ys.len() > DW_EXACT_MAX_NOBS {
-        return Err(named_error(
-            SpecTestError::SampleTooLong {
-                what: "Durbin-Watson exact p-value",
-                n: ys.len(),
-                max: DW_EXACT_MAX_NOBS,
-            },
-            cols.len(),
-        ));
-    }
     let r = tsecon_spectest::durbin_watson_test(&ys, &cols, alt)
         .map_err(|e| named_error(e, cols.len()))?;
     let d = PyDict::new(py);

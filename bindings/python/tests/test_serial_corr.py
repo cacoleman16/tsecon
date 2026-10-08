@@ -234,6 +234,39 @@ def test_long_sample_refused_fast_with_pointer_to_breusch_godfrey():
     assert tsecon.breusch_godfrey_test(y, x)["nobs"] == n
 
 
+@pytest.mark.parametrize("scale", [1e-200, 1e-155, 1e154, 1e200])
+def test_extreme_scales_change_nothing(scale):
+    # Both tests are invariant to rescaling y or a column of x; squaring
+    # data at 1e+-155 and beyond would overflow or underflow without the
+    # exact power-of-two normalization (a false "zero residuals" or
+    # "collinear" refusal, or a silently imprecise p-value).
+    y, x = _regression(31, 70, 0.3)
+    ref_bg = tsecon.breusch_godfrey_test(y, x, nlags=3)
+    ref_dw = tsecon.durbin_watson_test(y, x)
+    xs = x.copy()
+    xs[:, 1] *= scale
+    for yy, xx in ((y * scale, x), (y, xs)):
+        bg = tsecon.breusch_godfrey_test(yy, xx, nlags=3)
+        dw = tsecon.durbin_watson_test(yy, xx)
+        for key in ("statistic", "fstat", "pvalue", "f_pvalue"):
+            _close(bg[key], ref_bg[key], f"bg {key} at {scale:g}", tol=1e-12)
+        for key in ("statistic", "pvalue"):
+            _close(dw[key], ref_dw[key], f"dw {key} at {scale:g}", tol=1e-12)
+
+
+def test_no_constant_design_reports_the_constant_and_its_lm_caveat():
+    # Through the origin, y an exact linear combination of x and a constant:
+    # the added auxiliary constant explains the residuals exactly (statsmodels
+    # returns LM = T and a meaningless F here), so the test refuses.
+    rng = np.random.default_rng(41)
+    w = 2.0 + rng.standard_normal(50)
+    with pytest.raises(ValueError, match=r"^y leaves degenerate residuals on x.*constant"):
+        tsecon.breusch_godfrey_test(5.0 + 0.3 * w, w[:, None], nlags=2)
+    # With noise the test runs and flags the added constant.
+    r = tsecon.breusch_godfrey_test(5.0 + 0.3 * w + rng.standard_normal(50), w[:, None], nlags=2)
+    assert r["constant_added"] is True and r["f_df_den"] == 50 - 1 - 1 - 2
+
+
 # --------------------------------------------------------------------------- #
 # refusals name the offending parameter
 # --------------------------------------------------------------------------- #

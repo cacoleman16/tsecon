@@ -59,8 +59,8 @@ transcribed below in NumPy/SciPy. This generator NEVER imports tsecon.
    `lab/serial_corr/dw_exact_mc.py` (not stored here).
 
 Data: seeded simulated regressions (`numpy.random.default_rng`), AR(1) and
-iid errors, with and without extra regressors, a design without a constant,
-an implicit-constant (complementary dummies) design, a short and a long
+iid errors, with and without extra regressors, two designs without a
+constant (one with a large omitted intercept), an implicit-constant (complementary dummies) design, a short and a long
 sample, and three US macro regressions built from statsmodels' bundled
 `macrodata` by transformation only (quarterly log-differences x 100/400,
 first differences), so the fixture stores derived series, not the dataset.
@@ -285,6 +285,18 @@ def main():
     y = X @ np.array([1.0, 2.0, 0.5]) + ar1_errors(rng, T, 0.4)
     cases.append(build_case("implicit_constant_dummies", y, X, [None, 3],
                             "two complementary regime dummies (implicit constant) + regressor, rho=0.4"))
+
+    # 7b. No constant and a large omitted intercept: the added auxiliary
+    # constant explains almost all of the residuals, the stress case for the
+    # restricted sum of squares of the F-form (statsmodels is accurate here to
+    # about 1e-11, checked against a 50-digit evaluation during review).
+    rng = np.random.default_rng(20261013)
+    T = 80
+    X = (3.0 + ar1_regressor(rng, T, 0.3))[:, None]
+    y = 5.0 + 0.5 * X[:, 0] + 0.01 * ar1_errors(rng, T, 0.3)
+    cases.append(build_case("no_constant_omitted_intercept", y, X, [1, 2],
+                            "through the origin on a regressor with mean 3, true intercept 5, "
+                            "errors 0.01 x AR(1) rho=0.3: the added constant explains nearly all of u"))
 
     # 8. Short sample.
     rng = np.random.default_rng(20261008)

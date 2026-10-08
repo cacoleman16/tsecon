@@ -161,6 +161,34 @@ fn statistics_are_invariant_to_scale_and_to_the_fitted_part() {
 }
 
 #[test]
+fn statistics_survive_extreme_scales() {
+    // Both tests are invariant to rescaling y or a design column. At 1e+-200
+    // the raw sums of squares would overflow or underflow; the exact
+    // power-of-two normalization keeps every number, and a power-of-two
+    // rescaling is reproduced exactly.
+    let mut s = Stream::new(2718);
+    let n = 50;
+    let x = design(&mut s, n);
+    let y = regress(&x, &[1.0, -0.4, 0.8], &ar1(&mut s, n, 0.3));
+    let bg = breusch_godfrey_test(&y, &x, Some(3)).expect("bg");
+    let dw = durbin_watson_test(&y, &x, DwAlternative::Positive).expect("dw");
+    let close = |a: f64, b: f64| (a - b).abs() <= 1e-12 * b.abs().max(1e-3);
+    for scale in [1e-200, 1e200, 2f64.powi(-600), 2f64.powi(600)] {
+        let ys: Vec<f64> = y.iter().map(|v| v * scale).collect();
+        let mut xs = x.clone();
+        xs[1] = xs[1].iter().map(|v| v * scale).collect();
+        for (yy, xx) in [(&ys, &x), (&y, &xs)] {
+            let b = breusch_godfrey_test(yy, xx, Some(3)).expect("bg scaled");
+            assert!(close(b.statistic, bg.statistic), "{scale:e}: {b:?}");
+            assert!(close(b.fstat, bg.fstat), "{scale:e}: {b:?}");
+            let d = durbin_watson_test(yy, xx, DwAlternative::Positive).expect("dw scaled");
+            assert!(close(d.statistic, dw.statistic), "{scale:e}: {d:?}");
+            assert!(close(d.pvalue, dw.pvalue), "{scale:e}: {d:?}");
+        }
+    }
+}
+
+#[test]
 fn breusch_godfrey_constant_handling() {
     let mut s = Stream::new(99);
     let n = 80;

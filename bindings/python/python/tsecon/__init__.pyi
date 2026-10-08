@@ -3232,7 +3232,9 @@ def breusch_godfrey_test(
     spans no constant (no constant column and no implicit one such as
     complementary dummies) a column of ones is added to the auxiliary
     regression (`constant_added`), so `k_aux = k + nlags + 1`, otherwise
-    `k + nlags`.
+    `k + nlags`. With `constant_added` the LM form also counts what that
+    constant explains and over-rejects (measured in the model card): read the
+    F-form (`f_pvalue`) there.
 
     Returned keys: `constant_added`, `df`, `f_df_den`, `f_df_num`, `f_pvalue`,
     `fstat`, `nlags`, `nobs`, `pvalue`, `statistic`.

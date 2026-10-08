@@ -26,7 +26,8 @@ regressions form a *centered* `R^2`, which is only the LM statistic when the
 auxiliary design carries an intercept); the serial-correlation tests accept a
 regression through the origin and say what they do with it (Breusch-Godfrey
 adds the intercept to its *auxiliary* regression only, the statsmodels
-convention). A collinear design raises `SingularDesign` everywhere. So every
+convention, and its LM form then over-rejects, so read its F-form there). A
+collinear design raises `SingularDesign` everywhere. So every
 example below builds `x = np.column_stack([np.ones(n), x1, x2, ...])`. Read a
 rejection as a warning about the maintained model, not as a repair: a
 heteroskedasticity flag points you to robust standard errors, a
@@ -489,6 +490,19 @@ If `x` spans no constant (no constant column and no implicit one, such as a
 set of complementary dummies), a column of ones is added to the **auxiliary**
 regression only, so the centered `R^2` is defined. The result says so
 (`constant_added`), and then `k_aux = k + nlags + 1` instead of `k + nlags`.
+**When `constant_added` is `True`, read the F-form.** statsmodels' LM is `T`
+times the *centered* `R^2` of the auxiliary regression, and the added constant
+explains more of the residuals than their mean (their projection on `M_X 1`),
+so the LM form then counts the constant along with the lags. The F-form
+compares the auxiliary regression with the one on `[x, 1]` and tests the lags
+alone. In a seeded Monte Carlo with iid errors and a regressor of mean 2
+(`lab/serial_corr/no_constant_size.py`, output in
+`lab/serial_corr/out/no_constant_size.txt`, 2000 replications per cell), the
+LM form at `nlags = 1` rejected 12.7% (`T = 50`) and 12.0% (`T = 200`) of the
+time at a nominal 5% when the through-origin model was correct, and 37.6% and
+80.5% with an omitted intercept of 0.5. The F-form stayed between 3.7% and
+5.6% in every cell, and with a regressor of mean zero (`M_X 1` close to the
+constant) both forms held their size (3.7% to 6.1%).
 `nlags` must be at least 1 and leave `T > k_aux`. A sample shorter than five
 observations has a default order of 0, and the refusal says to pass `nlags`
 or a longer `y`.
@@ -498,9 +512,9 @@ its chi-square degrees of freedom (`= nlags`), and `pvalue` the upper-tail
 probability. `fstat` is the F-form on `f_df_num = nlags` and
 `f_df_den = T - k_aux` degrees of freedom, with `f_pvalue`. A small p-value
 rejects "no serial correlation up to order `nlags`". The two forms agree
-closely beyond a few hundred observations. At `p = 1` and `p = 4` the F-form
-rejects 0.1 to 0.6 points less often than the LM form in the table below, so
-it is the more conservative of the two in small samples.
+closely beyond a few hundred observations. Under iid errors at `p = 1` and
+`p = 4` the F-form rejects 0 to 0.6 points less often than the LM form in the
+table below, so it is the more conservative of the two in small samples.
 `nlags` echoes the order used, with the default resolved; `nobs` is `T`; and
 `constant_added` is `True` when the auxiliary regression gained an intercept.
 
@@ -508,23 +522,26 @@ it is the more conservative of the two in small samples.
 and the `min(10, T // 5)` default is too long at moderate `T`. A missing
 dynamic term shows up here as serial correlation: it is a specification
 signal, not only an inference one. Strong heteroskedasticity distorts both
-forms. A design that is collinear (`x` rank deficient), an order that leaves
-no residual degrees of freedom (`nlags` too long), or a `y` that `x` fits
-exactly (zero residuals) are refused with the parameter named.
+forms. With `constant_added` the LM form over-rejects (above). A design that
+is collinear (`x` rank deficient), an order that leaves no residual degrees of
+freedom (`nlags` too long), a `y` that `x` fits exactly (zero residuals), or,
+when `x` spans no constant, a `y` that `x` and a constant fit exactly are
+refused with the parameter named.
 
 **Validated against.** statsmodels `acorr_breusch_godfrey` on an OLS fit:
 `fixtures/serial_corr.json` (generator
-`fixtures/generate_serial_corr_fixtures.py`) holds 34 cells (LM statistic,
-p-value, F, F p-value, the degrees of freedom and `constant_added`) over 12
+`fixtures/generate_serial_corr_fixtures.py`) holds 36 cells (LM statistic,
+p-value, F, F p-value, the degrees of freedom and `constant_added`) over 13
 cases. The cases are seeded regressions with AR(1) errors (`rho` = 0.5, 0.8,
 0.4, 0.3, 0.2, -0.6) and iid errors, constant-only designs and designs with
-up to three regressors, a design without a constant, an implicit-constant
-design, `T = 15` and `T = 500`, and three US macro regressions built from
+up to three regressors, two designs without a constant (one with a large
+omitted intercept, the stress case for the F-form's restricted sum of
+squares), an implicit-constant design, `T = 15` and `T = 500`, and three US macro regressions built from
 statsmodels' macrodata by transformation (consumption growth on income growth,
 inflation on unemployment, investment growth on GDP growth and the change in
 the real rate). Every `nlags` is pinned, including the default. The match
 holds at `1e-10` in `crates/tsecon-spectest/tests/serial_golden.rs` (measured
-worst deviation `2.4e-13`) and again through Python in
+worst deviation `2.5e-12`) and again through Python in
 `bindings/python/tests/test_serial_corr.py`, which also runs statsmodels live
 on six fresh seeded regressions.
 
@@ -680,13 +697,13 @@ named.
 
 **Validated against.** The statistic is checked against statsmodels
 `durbin_watson`, and the exact p-value against a documented-formula golden on
-the same 12 cases as Breusch-Godfrey (`fixtures/serial_corr.json`). The
+the same 13 cases as Breusch-Godfrey (`fixtures/serial_corr.json`). The
 generator transcribes Imhof's formula itself, independently of the crate. Its
 eigenvalues come from NumPy's complete QR and LAPACK `eigvalsh` on the
 complement block, where the crate uses a shifted `faer` eigendecomposition,
 and its integral from QUADPACK by two routes that agree to `1e-12`, where the
 crate uses its own Gauss-Kronrod rule. All three alternatives match at
-`1e-10`; the measured worst deviations are `7.9e-16` on the statistic and
+`1e-10`; the measured worst deviations are `2.4e-15` on the statistic and
 `3.1e-15` on the p-values. No package in the fixture environment computes the
 exact Durbin-Watson p-value, so the *formula* is graded separately:
 
@@ -728,7 +745,7 @@ standard error 0.0034), t(5) errors gave 0.0488 at `T = 30` and 0.0493 at
 power at `rho = 0.2` is about twice that of BG at `p = 1` when `T = 50`
 (0.368 against 0.192). With a lagged dependent variable its size collapses to
 about 2%. In that DGP it still detected
-`rho = 0.4` about as often as BG did (0.478 against 0.387 at `T = 50`), but
+`rho = 0.4` more often than BG did (0.478 against 0.387 at `T = 50`), but
 its p-value no longer means what it says.
 
 **References.** Durbin & Watson (1950, *Biometrika* 37:409-428; 1951,

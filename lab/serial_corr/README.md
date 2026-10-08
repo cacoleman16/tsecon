@@ -8,6 +8,7 @@ and writes its output to `out/`; run them with the built wheel on the path.
 | Script | What it measures | Output |
 |---|---|---|
 | `size_power.py` | Size (iid normal, t(5)) and power (AR(1) 0.2, 0.4) of both tests at T = 50, 100, 200, with and without a lagged dependent variable; 2000 replications per cell | `out/size_power.txt` |
+| `no_constant_size.py` | Size of both Breusch-Godfrey forms on a regression through the origin (`constant_added`), with and without an omitted intercept; 2000 replications per cell | `out/no_constant_size.txt` |
 | `dw_exact_mc.py` | The exact Durbin-Watson null CDF against 200 000 simulated draws on three designs, and the exact test's size under non-normal errors | `out/dw_exact_mc.txt` |
 | `dw_bounds.py` | The 5% bounds `d_L`, `d_U` computed from their definition (NumPy/SciPy only) | `out/dw_bounds.txt` |
 | `dw_cost.py` | Wall-clock cost of both tests from T = 100 to the 4000 cap | `out/dw_cost.txt` |

@@ -112,6 +112,15 @@ fn degenerate_and_singular_inputs_are_refused() {
         breusch_godfrey_test(&yc, std::slice::from_ref(&z), Some(1)).unwrap_err(),
         SpecTestError::DegenerateResponse { .. }
     ));
+    // A design without a constant and y an exact linear combination of the
+    // design and a constant: the added constant explains the residuals
+    // exactly, so both forms would be 0/0 (statsmodels returns LM = T).
+    let w: Vec<f64> = x1.iter().map(|v| 2.0 + v).collect();
+    let yw: Vec<f64> = w.iter().map(|v| 5.0 + 0.3 * v).collect();
+    assert!(matches!(
+        breusch_godfrey_test(&yw, std::slice::from_ref(&w), Some(2)).unwrap_err(),
+        SpecTestError::DegenerateResponse { .. }
+    ));
     // Collinear design.
     let xs = vec![vec![1.0; n], x1.clone(), x1];
     let (y2, _) = design(n);

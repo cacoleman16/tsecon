@@ -29,14 +29,18 @@
 //! constant — no constant column and no implicit one such as a set of
 //! complementary dummies — a column of ones is added to the auxiliary design
 //! (`constant_added`), so `R^2_aux` is always centered on an intercept and
-//! `k_aux = k + p + 1`; otherwise `k_aux = k + p`. The LM statistic is
+//! `k_aux = k + p + 1`; otherwise `k_aux = k + p`. In that case the LM
+//! form also counts what the added constant explains (`R^2_aux` is measured
+//! against the mean of `u`, and the constant explains its projection on
+//! `M_X 1`), so it over-rejects; the F-form, whose restricted regression is
+//! `u` on `[X, 1]`, tests the lags alone. The LM statistic is
 //! valid with lagged dependent variables among the regressors, which is the
 //! test's advantage over Durbin-Watson.
 
 use tsecon_hac::ols;
 use tsecon_stats::chi2_sf;
 
-use crate::common::{f_sf, has_constant, ssr, validate};
+use crate::common::{f_sf, has_constant, pow2_normalized, ssr, validate};
 use crate::error::SpecTestError;
 
 /// The statsmodels default order of the Breusch-Godfrey test,
@@ -72,19 +76,20 @@ pub struct BreuschGodfreyTest {
     pub constant_added: bool,
 }
 
-/// `true` when the columns span the constant vector: an explicit constant
+/// The part of the constant vector the design does not span, `m = M_X 1`,
+/// or `None` when the columns span the constant: an explicit constant
 /// column, or an implicit one (the regression of a column of ones on the
 /// design leaves a residual of relative size below `1e-10` — e.g. a set of
-/// complementary dummies). Also returns the residual sum of squares of that
-/// regression (`0` for an explicit constant column), `1' M_X 1`.
-fn spans_constant(x_cols: &[Vec<f64>], n: usize) -> Result<(bool, f64), SpecTestError> {
+/// complementary dummies).
+fn constant_complement(x_cols: &[Vec<f64>], n: usize) -> Result<Option<Vec<f64>>, SpecTestError> {
     if has_constant(x_cols) {
-        return Ok((true, 0.0));
+        return Ok(None);
     }
-    let ones = vec![1.0; n];
-    let fit = ols(&ones, x_cols)?;
-    let rss = ssr(&fit);
-    Ok((rss <= 1e-20 * n as f64, rss))
+    let fit = ols(&vec![1.0; n], x_cols)?;
+    if ssr(&fit) <= 1e-20 * n as f64 {
+        return Ok(None);
+    }
+    Ok(Some(fit.residuals))
 }
 
 /// Breusch-Godfrey LM test for serial correlation up to order `nlags` in the
@@ -100,10 +105,11 @@ fn spans_constant(x_cols: &[Vec<f64>], n: usize) -> Result<(bool, f64), SpecTest
 /// long for the sample); [`SpecTestError::InvalidLags`] if the order is zero
 /// (including a default of zero for `T < 5`); [`SpecTestError::DegenerateResponse`]
 /// if the residuals are (numerically) all zero — `y` is an exact linear
-/// combination of the design — or, for a design without a constant, all
-/// equal; the usual empty/dimension/finite validation errors; and
-/// [`SpecTestError::SingularDesign`] if the design or the auxiliary design
-/// is collinear.
+/// combination of the design — or, for a design without a constant, fully
+/// explained by the added constant (`y` is an exact linear combination of
+/// the design and a constant); the usual empty/dimension/finite validation
+/// errors; and [`SpecTestError::SingularDesign`] if the design or the
+/// auxiliary design is collinear.
 pub fn breusch_godfrey_test(
     y: &[f64],
     x_cols: &[Vec<f64>],
@@ -125,7 +131,13 @@ pub fn breusch_godfrey_test(
             defaulted: nlags.is_none(),
         });
     }
-    let (spans, ones_rss) = spans_constant(x_cols, n)?;
+    // Both forms are invariant to rescaling y or a design column; the exact
+    // power-of-two normalization keeps the sums of squares of extreme-scale
+    // data from overflowing or underflowing.
+    let y = pow2_normalized(y);
+    let x_cols: Vec<Vec<f64>> = x_cols.iter().map(|c| pow2_normalized(c)).collect();
+    let m1 = constant_complement(&x_cols, n)?;
+    let spans = m1.is_none();
     let added = usize::from(!spans);
     // k_aux = k + p (+ 1); checked so an absurd order cannot overflow, and
     // compared with n BEFORE any lag column is allocated.
@@ -141,7 +153,7 @@ pub fn breusch_godfrey_test(
         });
     }
 
-    let fit = ols(y, x_cols)?;
+    let fit = ols(&y, &x_cols)?;
     let u = fit.residuals;
     let u_sq: f64 = u.iter().map(|v| v * v).sum();
     let y_sq: f64 = y.iter().map(|v| v * v).sum();
@@ -153,16 +165,35 @@ pub fn breusch_godfrey_test(
     }
     let mean = u.iter().sum::<f64>() / n as f64;
     let tss: f64 = u.iter().map(|v| (v - mean) * (v - mean)).sum();
-    if tss <= 1e-24 * u_sq {
+
+    // Restricted SSR: u on [X, (1)]. u is orthogonal to X, so with a constant
+    // in the design it is sum u^2; with an added constant it is the squared
+    // norm of r = u - (m'u / m'm) m, m = M_X 1. r is formed elementwise:
+    // the closed form u'u - (m'u)^2 / m'm cancels catastrophically when the
+    // added constant explains nearly all of u (a large omitted intercept).
+    let ssr_r = match &m1 {
+        None => u_sq,
+        Some(m) => {
+            let mu: f64 = m.iter().zip(&u).map(|(a, b)| a * b).sum();
+            let mm: f64 = m.iter().map(|a| a * a).sum();
+            let c = mu / mm;
+            u.iter()
+                .zip(m)
+                .map(|(a, b)| (a - c * b) * (a - c * b))
+                .sum()
+        }
+    };
+    if tss <= 1e-24 * u_sq || ssr_r <= 1e-24 * u_sq {
         return Err(SpecTestError::DegenerateResponse {
-            what: "Breusch-Godfrey test (the OLS residuals are constant, so the centered \
-                   R^2 of the auxiliary regression is undefined)",
+            what: "Breusch-Godfrey test (x spans no constant and the constant added to the \
+                   auxiliary regression explains the OLS residuals exactly: y is an exact \
+                   linear combination of the design columns and a constant)",
         });
     }
 
     // Auxiliary design: [X, (1), u_{-1}, ..., u_{-p}], zero-padded lags.
-    let mut aux: Vec<Vec<f64>> = Vec::with_capacity(k_aux);
-    aux.extend(x_cols.iter().cloned());
+    let mut aux: Vec<Vec<f64>> = x_cols;
+    aux.reserve_exact(k_aux - k);
     if !spans {
         aux.push(vec![1.0; n]);
     }
@@ -183,15 +214,6 @@ pub fn breusch_godfrey_test(
     let statistic = n as f64 * r2;
     let pvalue = chi2_sf(statistic, p as f64)?;
 
-    // Restricted SSR: u on [X, (1)]. u is orthogonal to X, so with a constant
-    // in the design it is sum u^2; with an added constant it is
-    // sum u^2 - (sum u)^2 / (1' M_X 1).
-    let ssr_r = if spans {
-        u_sq
-    } else {
-        let s: f64 = u.iter().sum();
-        u_sq - s * s / ones_rss
-    };
     let f_df_den = n - k_aux;
     let fstat = ((ssr_r - ssr_u) / p as f64) / (ssr_u / f_df_den as f64);
     let f_pvalue = f_sf(fstat, p as f64, f_df_den as f64)?;

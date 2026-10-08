@@ -34,7 +34,7 @@ use tsecon_hac::ols;
 use tsecon_linalg::faer::linalg::matmul::matmul;
 use tsecon_linalg::faer::{Accum, Mat, Par, Side};
 
-use crate::common::validate;
+use crate::common::{pow2_normalized, validate};
 use crate::error::SpecTestError;
 use crate::imhof::prob_le_zero;
 
@@ -232,7 +232,12 @@ pub fn durbin_watson_test(
             max: DW_EXACT_MAX_NOBS,
         });
     }
-    let fit = ols(y, x_cols)?;
+    // d and its null distribution are invariant to rescaling y or a design
+    // column; the exact power-of-two normalization keeps the sums of squares
+    // of extreme-scale data from overflowing or underflowing.
+    let y = pow2_normalized(y);
+    let x_cols: Vec<Vec<f64>> = x_cols.iter().map(|c| pow2_normalized(c)).collect();
+    let fit = ols(&y, &x_cols)?;
     let u = fit.residuals;
     let u_sq: f64 = u.iter().map(|v| v * v).sum();
     let y_sq: f64 = y.iter().map(|v| v * v).sum();
@@ -243,7 +248,7 @@ pub fn durbin_watson_test(
         });
     }
     let statistic = durbin_watson_statistic(&u)?;
-    let nu = dw_null_eigenvalues(x_cols, n)?;
+    let nu = dw_null_eigenvalues(&x_cols, n)?;
 
     let spread = nu[nu.len() - 1] - nu[0];
     let (p_le, p_ge) = if spread <= 1e-12 {
