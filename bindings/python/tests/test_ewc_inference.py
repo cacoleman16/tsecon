@@ -12,6 +12,7 @@ negative and absurd counts, pandas inputs, and the docstring/stub contracts.
 import ast
 import json
 import re
+import time
 from pathlib import Path
 
 import numpy as np
@@ -246,6 +247,55 @@ def test_ols_refuses_inert_combinations_by_name():
             tsecon.ols(y, X, se_type="ewc", ewc_b=b)
     with pytest.raises(ValueError, match=r"nonrobust/hc0/hc1/hc2/hc3/hac/ewc"):
         tsecon.ols(y, X, se_type="EWC")
+
+
+def test_a_nan_t_statistic_keeps_a_nan_p_value():
+    """Zero residual variation gives bse 0 and t = 0/0 on every route; the
+    EWC p-value must stay NaN (not be clamped to 1 by `min`), and its key
+    order must leave the pre-0.11 keys first."""
+    _, X = _design(EWC["ols"]["k2_t250"])
+    out = tsecon.ols(np.zeros(len(X)), X, se_type="ewc")
+    assert np.all(np.isnan(out["tvalues"]))
+    assert np.all(np.isnan(out["pvalues"]))
+    assert list(out) == ["params", "bse", "tvalues", "se_type", "pvalues", "ewc_b"]
+    hac = tsecon.ols(np.zeros(len(X)), X, se_type="hac")
+    assert np.all(np.isnan(hac["tvalues"]))
+    # an exact t of 0 is p = 1 exactly, not above it
+    y, X = _design(EWC["ols"]["k3_t180"])
+    assert np.all(tsecon.ols(y, X, se_type="ewc")["pvalues"] <= 1.0)
+
+
+@pytest.mark.parametrize("x", [[1e308, -1e308, 1e308], [1.7e308, 1.7e308, 1.0, 2.0]])
+def test_finite_input_that_overflows_is_refused_naming_x(x):
+    with pytest.raises(ValueError, match=r"ewc_lrv: x overflows double precision"):
+        tsecon.ewc_lrv(np.asarray(x))
+
+
+def test_the_superlinear_cost_is_documented_and_bounded():
+    """The cosines are evaluated directly: n * b of them, n^(5/3) at the
+    default b. A request past the 2^35 work budget is refused before any work,
+    naming the keyword and the largest b it admits."""
+    for text in (tsecon.ewc_lrv.__doc__, _stub_doc("ewc_lrv"), tsecon.ols.__doc__, _stub_doc("ols")):
+        flat = re.sub(r"\s+", " ", text)
+        assert "SUPERLINEAR in `n`" in flat and "2^35" in flat, flat[:300]
+    card = re.sub(r"\s+", " ", (REPO / "docs" / "reference" / "model-cards" / "robust-inference.md")
+                  .read_text(encoding="utf-8"))
+    assert "SUPERLINEAR in `n`" in card
+    n = 10 ** 5
+    x = np.random.default_rng(4).standard_normal(n)
+    t0 = time.perf_counter()
+    with pytest.raises(ValueError, match=r"ewc_lrv: b = 99999 cosine frequencies .* Pass b <= 38177"):
+        tsecon.ewc_lrv(x, b=n - 1)
+    X = np.column_stack([np.ones(n), x])
+    with pytest.raises(ValueError, match=r"ols: ewc_b = 99999 cosine frequencies .* Pass ewc_b <= 34359"):
+        tsecon.ols(x, X, se_type="ewc", ewc_b=n - 1)
+    # n = 10^6 at its default b (4000) is just past the budget
+    with pytest.raises(ValueError, match=r"ewc_lrv: b = 4000 .* Pass b <= 3817"):
+        tsecon.ewc_lrv(np.zeros(10 ** 6))
+    assert time.perf_counter() - t0 < 5.0  # refused before the work
+    # inside the budget the full basis runs (and is the sample variance)
+    z = x[:5000] - x[:5000].mean()
+    assert _rel(tsecon.ewc_lrv(x[:5000], b=4999), z @ z / 4999) <= 1e-12
 
 
 def test_ols_ewc_still_refuses_malformed_data():

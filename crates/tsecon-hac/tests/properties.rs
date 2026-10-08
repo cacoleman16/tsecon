@@ -696,10 +696,9 @@ fn every_se_type_gives_finite_bse_and_consistent_tvalues() {
     }
 }
 
-/// Fewer frequencies, noisier variance: the EWC variance estimate is
-/// `Omega chi^2_B / B`, so on a long white-noise regression the bse at the
-/// default B land close to the HC0 bse, and the spread across B shrinks as B
-/// grows.
+/// The EWC variance estimate is `Omega chi^2_B / B`, so on a long
+/// white-noise regression (where HC0 is consistent too) the bse at the
+/// default B land within a few `chi^2_B` standard deviations of the HC0 bse.
 #[test]
 fn ewc_bse_track_hc0_on_white_noise_at_large_n() {
     let n = 4000;

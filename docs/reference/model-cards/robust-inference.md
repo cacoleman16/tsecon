@@ -36,7 +36,7 @@ estimators chosen by `se_type`:
 
 | `se_type` | Covariance | Robust to | Reference distribution |
 |---|---|---|---|
-| `"nonrobust"` | `s^2 (X'X)^-1`, `s^2 = RSS/(n-k)` | nothing | normal |
+| `"nonrobust"` | `s^2 (X'X)^-1`, `s^2 = RSS/(n-k)` | nothing | Student t with `n-k` df (exact under Gaussian errors; normal asymptotically) |
 | `"hc0"` | White (1980) sandwich | heteroskedasticity | normal |
 | `"hc1"` | HC0 × `n/(n-k)` | heteroskedasticity | normal |
 | `"hc2"` | `u_t^2 / (1-h_t)` weights | heteroskedasticity, leverage | normal |
@@ -94,7 +94,7 @@ which is also the t degrees of freedom) and `pvalues` (two-sided, from
 Student `t_{ewc_b}`). Build EWC intervals as
 `params ± t_{ewc_b, 0.975} · bse` — at `B = 9` that critical value is 2.26,
 not 1.96. The other routes return no p-values: refer their `tvalues` to the
-normal.
+normal (to Student t with `n-k` df for `nonrobust`, as statsmodels does).
 
 **Failure modes.**
 
@@ -109,6 +109,16 @@ normal.
   `1e-5`; an observation with leverage numerically equal to one is refused
   rather than returned as a near-infinite standard error.
 - Strong persistence (roots near one) defeats every HAR estimator here.
+- **EWC is SUPERLINEAR in `n`.** The cosines are evaluated directly —
+  `n · B` of them, about `n · B · (k + 8)` operations — so at the default `B`
+  the cost grows like `n^(5/3)`: for one series 0.03 s at `n = 10^4`, 1.3 s at
+  `10^5` (1.4 s for `ols` with `k = 2`) and 57 s at `n = 972427`, the largest
+  series whose default `B` fits a work budget of 2^35 (about a minute). Past
+  it `ewc_lrv`/`ols` refuse before any work, naming `b`/`ewc_b` and the
+  largest value the budget admits: a series of 10^6 at its default `B = 4000`
+  is just past it (`b <= 3817` runs). EWC stays valid at a smaller `B`,
+  paired with `t_B` (`lab/audit/wave11/ewc_varcov_measurements.py --ewc-cost`,
+  output committed next to it).
 
 **Measured coverage.** Nominal 95% intervals for a slope whose true value is
 zero, `y = 1 + 0·x + u` with `x` and `u` independent AR(1)s (ρ = 0.7), 10000
@@ -220,9 +230,11 @@ under the null. Comparing it with ±1.96 throws away the reason to use it.
 
 **Failure modes.** Refused with a `ValueError` naming the argument: `b`
 outside `[1, n - 1]` (named `b`, with the default it would have used), fewer
-than two observations or NaN/inf in `x` (named `x`), `n < 2` in
+than two observations, NaN/inf in `x`, or values so large the computation
+overflows double precision (all named `x`), `n < 2` in
 `ewc_default_b` (named `n`); a negative or absurd (≥ 2^48) count is named by
-the coercion layer (`b=-1`). Small `B` is noisy by design — that is what the
+the coercion layer (`b=-1`); a request past the work budget is refused naming
+`b` (the cost is above, under `ols`). Small `B` is noisy by design — that is what the
 `t_B` critical value pays for.
 
 **Validated against.** The same documented-closed-form golden as `ols`'s EWC

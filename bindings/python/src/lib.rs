@@ -1096,7 +1096,11 @@ fn long_run_variance(
 /// value) against 0.855 with the Newey-West `hac` default and normal critical
 /// values, and 0.940 against 0.905 at T=400 (10000 seeded replications each;
 /// the robust-inference model card cites the script). `hac` stays the
-/// default for statsmodels compatibility.
+/// default for statsmodels compatibility. COST: the cosines are evaluated
+/// directly, `n * ewc_b` of them, so the work is SUPERLINEAR in `n` — about
+/// `n * ewc_b * (k + 8)` operations, like `n^(5/3)` at the default (measured
+/// 1.4 s at n = 10^5 with k = 2); past a work budget of 2^35 (about a minute)
+/// `ewc_b` is refused by name, with the largest value it admits.
 ///
 /// Inert combinations are refused, naming the keyword: `ewc_b` under any
 /// other `se_type`, an explicit `maxlags` under `"ewc"`, and
@@ -1147,7 +1151,6 @@ fn ols<'py>(
     let xa = x.as_array();
     let cols: Vec<Vec<f64>> = (0..xa.ncols()).map(|j| xa.column(j).to_vec()).collect();
     let fit = tsecon_hac::ols(ys, &cols).map_err(to_py)?;
-    let resolved_b = ewc_b.unwrap_or_else(|| tsecon_hac::ewc_default_b(fit.nobs));
     let se = match se_type {
         "nonrobust" => tsecon_hac::SeType::NonRobust,
         "hc0" => tsecon_hac::SeType::Hc0,
@@ -1160,8 +1163,10 @@ fn ols<'py>(
             use_correction,
         },
         "ewc" => {
-            check_ewc_b_for_ols(resolved_b, fit.nobs)?;
-            tsecon_hac::SeType::Ewc { b: resolved_b }
+            let b = ewc_b.unwrap_or_else(|| tsecon_hac::ewc_default_b(fit.nobs));
+            ewc::check_ewc_b("ols", "ewc_b", b, fit.nobs)?;
+            ewc::check_ewc_work("ols", "ewc_b", b, fit.nobs, fit.nparams)?;
+            tsecon_hac::SeType::Ewc { b }
         }
         other => {
             return Err(PyValueError::new_err(format!(
@@ -1170,28 +1175,20 @@ fn ols<'py>(
         }
     };
     let inf = fit.inference(se).map_err(to_py)?;
+    let ewc = match se {
+        tsecon_hac::SeType::Ewc { b } => Some((b, ewc::t_b_pvalues(b, &inf.tvalues)?)),
+        _ => None,
+    };
     let d = PyDict::new(py);
-    if matches!(se, tsecon_hac::SeType::Ewc { .. }) {
-        use tsecon_stats::ContinuousDist;
-        let t_b = tsecon_stats::StudentT::new(resolved_b as f64).map_err(to_py)?;
-        let pvalues: Vec<f64> = inf
-            .tvalues
-            .iter()
-            .map(|t| (2.0 * t_b.sf(t.abs())).min(1.0))
-            .collect();
-        d.set_item("pvalues", pvalues.into_pyarray(py))?;
-        d.set_item("ewc_b", resolved_b)?;
-    }
     d.set_item("params", fit.params.clone().into_pyarray(py))?;
     d.set_item("bse", inf.bse.into_pyarray(py))?;
     d.set_item("tvalues", inf.tvalues.into_pyarray(py))?;
     d.set_item("se_type", se_type)?;
+    if let Some((b, pvalues)) = ewc {
+        d.set_item("pvalues", pvalues.into_pyarray(py))?;
+        d.set_item("ewc_b", b)?;
+    }
     Ok(d)
-}
-
-/// `ewc_b` range check for `ols`, naming the keyword.
-fn check_ewc_b_for_ols(b: usize, n: usize) -> PyResult<()> {
-    ewc::check_ewc_b("ols", "ewc_b", b, n)
 }
 
 fn var_results(

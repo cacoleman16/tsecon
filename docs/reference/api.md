@@ -386,7 +386,10 @@ OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC / EWC standard errors.
     intervals covered 0.915 (EWC, t_9) against 0.855 (the Newey-West "hac"
     default, normal), and 0.940 against 0.905 at T=400 (10000 seeded
     replications each). "hac" stays the default for statsmodels
-    compatibility. Refused by name: `ewc_b` under any other
+    compatibility. COST: SUPERLINEAR in `n` -- n * ewc_b * (k + 8)
+    operations, like n^(5/3) at the default (1.4 s at n = 10^5, k = 2);
+    past a work budget of 2^35 (about a minute) `ewc_b` is refused by name,
+    with the largest value it admits. Refused by name: `ewc_b` under any other
     se_type, an explicit `maxlags` under "ewc", `use_correction=False`
     under "ewc" (an explicit True is the default and a no-op). Under
     nonrobust/hc* an explicit maxlags/use_correction is still ignored.
@@ -411,6 +414,12 @@ Equal-weighted cosine (EWC) long-run variance of a series
     in exact arithmetic); at b = n - 1 it is the plain sample variance. Pair
     it with Student-t critical values with `b` degrees of freedom, not the
     normal: `(mean - mu0) / sqrt(Omega_hat / n)` is t_b under the null.
+
+    COST: the n * b cosines are evaluated directly, so the work is
+    SUPERLINEAR in `n` -- like n^(5/3) at the default b (0.03 s at n = 10^4,
+    1.3 s at 10^5, 57 s at n = 972427, the largest series whose default b
+    fits). Past a work budget of 2^35 (n * b * 9 operations, about a
+    minute) `b` is refused by name, with the largest b it admits.
 
     Validated against the documented closed form evaluated with
     scipy.fft.dct (no package implements EWC) at 1e-12.

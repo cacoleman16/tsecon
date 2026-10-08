@@ -25,11 +25,21 @@ Sections (seeded; the output is committed next to this file):
 4. Cost of the term: wall time of `var_forecast(..., param_uncertainty=True)`
    on the var.json VAR(2) (k = 3) at steps 12, 200, 500, 1000, and the
    largest `steps` the work budget admits there.
+5. Cost of EWC: wall time of `ewc_lrv` at the default `b` for n = 10^4, 10^5
+   and 10^6 (one series) and of `ols(se_type="ewc")` with k = 2 at n = 10^5;
+   the largest n whose default `b` the binding's work budget
+   (`n * b * (k + 8) <= 2^35`, bindings/python/src/ewc.rs) admits, timed
+   there, and the refusals that name `b` / `ewc_b` one step past it. Added
+   by the review of the 0.11 branch with the budget; it runs on its own
+   (`--ewc-cost`) and writes `out/ewc_cost_measurements.{json,txt}`, so the
+   committed timings of sections 1-4 are not re-rolled.
 
 Run from the repository root with the release extension importable:
 
     python lab/audit/wave11/ewc_varcov_measurements.py [--quick] \
         | tee lab/audit/wave11/out/ewc_varcov_measurements.txt
+    python lab/audit/wave11/ewc_varcov_measurements.py --ewc-cost \
+        | tee lab/audit/wave11/out/ewc_cost_measurements.txt
 """
 from __future__ import annotations
 
@@ -201,10 +211,79 @@ def cost() -> dict:
     return out
 
 
+# -------------------------------------------------------------- 5. EWC cost
+EWC_BUDGET = 2 ** 35
+
+
+def ewc_cost() -> dict:
+    rng = np.random.default_rng(55)
+    out: dict = {}
+
+    def timed(f) -> float:
+        t0 = time.perf_counter()
+        f()
+        return time.perf_counter() - t0
+
+    for n in (10 ** 4, 10 ** 5, 10 ** 6):
+        x = rng.standard_normal(n)
+        b = tsecon.ewc_default_b(n)
+        if n * b * 9 <= EWC_BUDGET:
+            out[f"ewc_lrv_n{n}"] = {"b": b, "seconds": timed(lambda: tsecon.ewc_lrv(x))}
+        else:
+            try:
+                tsecon.ewc_lrv(x)
+                refused = False
+            except ValueError as exc:
+                refused = str(exc).startswith("ewc_lrv: b = ")
+            out[f"ewc_lrv_n{n}"] = {"b": b, "refused_naming_b": refused}
+    n = 10 ** 5
+    X = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    y = rng.standard_normal(n)
+    out["ols_ewc_k2_n100000"] = {"b": tsecon.ewc_default_b(n),
+                                 "seconds": timed(lambda: tsecon.ols(y, X, se_type="ewc"))}
+    # Largest n admitted at the default b for one series (k = 1).
+    lo, hi = 10 ** 5, 10 ** 7
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if mid * tsecon.ewc_default_b(mid) * 9 <= EWC_BUDGET:
+            lo = mid
+        else:
+            hi = mid
+    x = rng.standard_normal(lo + 1)
+    try:
+        tsecon.ewc_lrv(x)
+        refused = False
+    except ValueError as exc:
+        refused = str(exc).startswith("ewc_lrv: b = ")
+    out["cap_ewc_lrv"] = {
+        "largest_admitted_n_at_default_b": lo,
+        "b": tsecon.ewc_default_b(lo),
+        "seconds_at_cap": timed(lambda: tsecon.ewc_lrv(x[:lo])),
+        "refused_at_n_plus_one_naming_b": refused,
+    }
+    try:
+        tsecon.ols(y, X, se_type="ewc", ewc_b=n - 1)
+        refused = False
+    except ValueError as exc:
+        refused = str(exc).startswith("ols: ewc_b = ")
+    out["ols_ewc_b_n_minus_1_n100000_refused_naming_ewc_b"] = refused
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument("--ewc-cost", action="store_true", help="section 5 only")
     args = ap.parse_args()
+    if args.ewc_cost:
+        print("== 5. cost of EWC (default b; budget n * b * (k + 8) <= 2^35) ==")
+        cost5 = {"tsecon": tsecon.__version__, "ewc_cost": ewc_cost()}
+        for key, v in cost5["ewc_cost"].items():
+            print(f"{key}: {v}")
+        out5 = Path(__file__).resolve().parent / "out" / "ewc_cost_measurements.json"
+        out5.write_text(json.dumps(cost5, indent=1) + "\n", encoding="utf-8")
+        print(f"\nwrote {out5.relative_to(REPO)}")
+        return
     ewc_reps = 300 if args.quick else 10000
     var_reps = 300 if args.quick else 6000
     res: dict = {"tsecon": tsecon.__version__}
