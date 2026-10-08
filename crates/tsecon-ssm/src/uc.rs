@@ -62,7 +62,10 @@
 //!   Because the coefficient states enter through `x_t`, that likelihood
 //!   also depends on the *units* of the regressors — rescaling a column by
 //!   `c` shifts it by exactly `-ln |c|` (the estimates do not move); the
-//!   MLE form is invariant to them.
+//!   MLE form is invariant to them. The units also reach the numerics:
+//!   columns many orders of magnitude apart are refused when the
+//!   exact-diffuse filter cannot resolve them (see
+//!   `check_regressor_scales`).
 //!
 //! The observation `y` may contain NaN for a missing period; regressors
 //! may not.
@@ -102,7 +105,7 @@
 //! `v_t / sqrt(F_t)` after the diffuse period and NaN inside it (where no
 //! finite prediction variance exists) and at missing periods.
 
-use tsecon_linalg::faer::Mat;
+use tsecon_linalg::faer::{Mat, MatRef};
 
 use crate::dense::{dot, mat_vec, sandwich};
 use crate::error::SsmError;
@@ -1506,6 +1509,26 @@ pub fn unobserved_components(
         }
     }
 
+    // The regressors divided by their largest absolute values: what the
+    // search runs on, and — under `mle_regression = false` — the
+    // well-conditioned twin of the reported model that `evaluate` checks
+    // the exact-diffuse filter against (see `check_regressor_scales`).
+    let col_scale: Vec<f64> = spec
+        .exog
+        .iter()
+        .map(|col| col.iter().fold(0.0f64, |m, v| m.max(v.abs())))
+        .collect();
+    let mut spec_s = spec.clone();
+    for (col, &c) in spec_s.exog.iter_mut().zip(&col_scale) {
+        for v in col.iter_mut() {
+            *v /= c;
+        }
+    }
+    let layout_s = Layout::new(&spec_s, n)?;
+    let scaled_twin = layout
+        .exog_state_off
+        .map(|_| (&layout_s, col_scale.as_slice()));
+
     if let Some(fixed) = &opts.fixed_params {
         layout.validate_fixed(fixed)?;
         let at_boundary: Vec<bool> = layout
@@ -1525,6 +1548,7 @@ pub fn unobserved_components(
             (0, 0),
             se,
             at_boundary,
+            scaled_twin,
         );
     }
 
@@ -1554,18 +1578,6 @@ pub fn unobserved_components(
         ));
     }
     let y_s: Vec<f64> = y.iter().map(|v| v / s).collect();
-    let col_scale: Vec<f64> = spec
-        .exog
-        .iter()
-        .map(|col| col.iter().fold(0.0f64, |m, v| m.max(v.abs())))
-        .collect();
-    let mut spec_s = spec.clone();
-    for (col, &c) in spec_s.exog.iter_mut().zip(&col_scale) {
-        for v in col.iter_mut() {
-            *v /= c;
-        }
-    }
-    let layout_s = Layout::new(&spec_s, n)?;
     let starts = layout_s.starting_values(&y_s, opts.n_starts);
     let outcome = maximize_tied(&layout_s.specs, &starts, &layout_s.ties, |p| {
         layout_s.loglik_value(&y_s, p)
@@ -1600,7 +1612,54 @@ pub fn unobserved_components(
         (outcome.n_iter, outcome.n_fevals),
         se,
         outcome.at_boundary,
+        scaled_twin,
     )
+}
+
+/// The floating-point guard of the state regression.
+///
+/// Under `mle_regression = false` the coefficient states are exactly
+/// diffuse and loaded by `x_t`, so the exact-diffuse recursions carry the
+/// regressor units: `P_inf` and `F_inf` mix the coefficient directions
+/// with the unit loading of the level, trend and seasonal states. When
+/// the columns' scales sit many orders of magnitude from each other or
+/// from 1, the filter's relative rank test can no longer tell a resolved
+/// diffuse direction from an unresolved one in floating point: measured on
+/// a local level with two regressors, one column multiplied by `1e-8` or
+/// `1e8` leaves the diffuse period running to the end of the sample, with
+/// a log-likelihood off by 1.2 to 28 against the exact units identity and
+/// a coefficient wrong in every digit (statsmodels, which filters the raw
+/// columns as well, breaks the same way). The diffuse period itself does
+/// not depend on the units — it is the number of observations the diffuse
+/// directions need — so the same model on the columns divided by their
+/// largest absolute values (`twin`, the well-conditioned version the
+/// search runs on) must end it at the same period. When it does not, the
+/// reported numbers are roundoff, and the call is refused, naming `exog`;
+/// the reported model is kept in the raw units (statsmodels' convention,
+/// a unit diffuse prior on each coefficient) because that is what the
+/// filtered paths inside the diffuse period, and the log-likelihood,
+/// are defined against.
+fn check_regressor_scales(
+    twin: &Layout,
+    scales: &[f64],
+    params: &[f64],
+    y: MatRef<'_, f64>,
+    d_diffuse: usize,
+) -> Result<(), SsmError> {
+    let d_twin = twin.build_ssm(params)?.filter(y)?.d_diffuse;
+    if d_twin == d_diffuse {
+        return Ok(());
+    }
+    Err(invalid(format!(
+        "exog: under mle_regression = false the regression coefficients are exactly diffuse \
+         states loaded by x_t, and the columns' scales (largest absolute values {scales:?}, \
+         against the unit loading of the level, trend and seasonal states) are too far apart \
+         for the exact-diffuse filter to resolve them in floating point: the diffuse period \
+         would end at observation {d_diffuse} instead of {d_twin}, and the coefficients and \
+         the log-likelihood would be roundoff. Rescale the columns to comparable units near \
+         1 (the state-regression log-likelihood depends on the regressor units anyway; \
+         under mle_regression = true it does not)"
+    )))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1614,6 +1673,7 @@ fn evaluate(
     (n_iter, n_fevals): (usize, usize),
     se: Vec<f64>,
     at_boundary: Vec<bool>,
+    scaled_twin: Option<(&Layout, &[f64])>,
 ) -> Result<UcFit, SsmError> {
     let n = y.len();
     let model = layout.build_ssm(params)?;
@@ -1623,6 +1683,9 @@ fn evaluate(
     let so = smooth_univariate(&model, ym.as_ref())?;
     let fo = &so.filter;
     let m = layout.k_states;
+    if let Some((twin, scales)) = scaled_twin {
+        check_regressor_scales(twin, scales, params, ym.as_ref(), fo.d_diffuse)?;
+    }
     if let Some(t) = layout.skipped_observation(y, fo) {
         return Err(invalid(format!(
             "fixed_params = {params:?}: the stationary block's unconditional variance is so \

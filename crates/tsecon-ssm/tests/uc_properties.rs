@@ -1334,6 +1334,66 @@ fn state_regression_fit_is_invariant_to_the_scale_of_y() {
     assert!(ll < 1e-12, "loglik {ll:e}");
 }
 
+/// The floating-point limit of the state regression. The coefficient
+/// states are diffuse and loaded by `x_t`, so regressor columns whose
+/// scales sit many orders of magnitude from each other (and from the unit
+/// loading of the level) leave diffuse directions the filter cannot
+/// resolve in floating point. Measured before the guard, on the fixture's
+/// local level with two regressors at the same variances: one column times
+/// 1e-8 ran the diffuse period to the end of the sample with the
+/// log-likelihood 27.7 off the exact units identity and that coefficient
+/// wrong in every digit; times 1e8, off by 1.2. Those are refused, naming
+/// `exog`; inside the resolvable range the units identity holds (shift
+/// exactly `-ln c`, coefficient by `1 / c`), and the MLE path, which
+/// searches on the scaled columns, is refused the same way rather than
+/// reporting the raw-units roundoff.
+#[test]
+fn state_regression_refuses_regressor_scales_the_filter_cannot_resolve() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["sim2_y"]);
+    let x = fixture_columns(&fx["data"]["sim2_x"]);
+    let fit = |c: f64, fixed: bool| {
+        let mut xc = x.clone();
+        for v in xc[0].iter_mut() {
+            *v *= c;
+        }
+        unobserved_components(
+            &y,
+            &UcSpec {
+                exog: xc,
+                mle_regression: false,
+                ..UcSpec::default()
+            },
+            &UcOptions {
+                fixed_params: fixed.then(|| vec![0.8, 0.3]),
+                n_starts: 1,
+                ..UcOptions::default()
+            },
+        )
+    };
+    let base = fit(1.0, true).unwrap();
+    for c in [1e-4, 1e4] {
+        let f = fit(c, true).unwrap();
+        assert_eq!(f.nobs_diffuse, base.nobs_diffuse, "c = {c}");
+        let gap = f.loglik - (base.loglik - c.ln());
+        let beta = f.regression_coefficients[0].smoothed[0] * c
+            / base.regression_coefficients[0].smoothed[0]
+            - 1.0;
+        eprintln!("state regression, column times {c:e}: loglik gap {gap:e}, beta {beta:e}");
+        assert!(gap.abs() < 1e-7 && beta.abs() < 1e-8, "c = {c}");
+    }
+    for c in [1e-8, 1e8] {
+        for fixed in [true, false] {
+            let e = fit(c, fixed).unwrap_err().to_string();
+            assert!(
+                e.starts_with("invalid specification: exog: under mle_regression = false")
+                    && e.contains("would end at observation 120 instead of 3"),
+                "c = {c}, fixed = {fixed}: {e}"
+            );
+        }
+    }
+}
+
 /// The working-set bound. Bounding each count that costs states by the
 /// sample length does not bound `nobs * k_states^2`, the size of each of
 /// the four stored covariance sequences: an AR order or a dummy-seasonal

@@ -341,6 +341,31 @@ def test_state_regression_refusals_name_the_parameter():
         tsecon.unobserved_components(y, exog=X, mle_regression=False, fixed_params=[0.8, 0.3, 0.5, -0.3])
 
 
+def test_state_regression_refuses_regressor_scales_the_filter_cannot_resolve():
+    """The coefficient states are diffuse and loaded by x_t: with one column
+    eight orders of magnitude from the other (and from the level's unit
+    loading) the exact-diffuse filter cannot resolve them in floating
+    point, and the diffuse period would run to the end of the sample with
+    roundoff coefficients. Refused by name, fixed and estimated alike;
+    inside the resolvable range the units identity holds."""
+    y = np.asarray(UX["data"]["sim2_y"], float)
+    X = np.asarray(UX["data"]["sim2_x"], float)
+    base = tsecon.unobserved_components(y, exog=X, mle_regression=False, fixed_params=[0.8, 0.3])
+    for c in (1e-4, 1e4):
+        Xc = X.copy()
+        Xc[:, 0] *= c
+        r = tsecon.unobserved_components(y, exog=Xc, mle_regression=False, fixed_params=[0.8, 0.3])
+        assert r["nobs_diffuse"] == base["nobs_diffuse"] == 3
+        assert r["loglik"] == pytest.approx(base["loglik"] - np.log(c), abs=1e-7)
+    for c in (1e-8, 1e8):
+        Xc = X.copy()
+        Xc[:, 0] *= c
+        for kw in (dict(fixed_params=[0.8, 0.3]), dict(n_starts=1)):
+            with pytest.raises(ValueError, match=r"exog: under mle_regression = false.*would end at observation "
+                                                 r"120 instead of 3.*Rescale the columns"):
+                tsecon.unobserved_components(y, exog=Xc, mle_regression=False, **kw)
+
+
 # ------------------------------------------------------ stationary cycle
 @pytest.mark.parametrize("case", UX["stationary_cycle"], ids=lambda c: c["name"])
 def test_stationary_cycle_fixed_parameters(case):

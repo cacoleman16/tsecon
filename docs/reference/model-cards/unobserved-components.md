@@ -285,7 +285,18 @@ never resolve. Nothing is refused — the likelihood and every forecast that
 does not load on that direction stay defined, exactly as for the Nyquist
 harmonic above — but the diffuse period never ends: `nobs_diffuse` equals
 the sample length and `std_resid` is NaN throughout. Drop the redundant
-column.
+column. *Badly scaled regressors* are the floating-point version of the
+same problem: the coefficient states are loaded by `x_t`, so a column many
+orders of magnitude from the others, or from the unit loading of the level,
+trend and seasonal states, leaves diffuse directions the exact-diffuse
+filter cannot resolve in roundoff — the diffuse period then runs on to the
+end of the sample and the coefficients and log-likelihood are wrong
+(statsmodels, filtering the raw columns, breaks the same way). The diffuse
+period does not depend on the units, so every state-regression fit is
+checked against the same model on columns divided by their largest
+absolute values, and when the two disagree the call is refused, naming
+`exog`. Accuracy fades before that point, so keep the regressors in
+comparable units near 1.
 
 **Validated against.** statsmodels `UnobservedComponents(...,
 use_exact_diffuse=True)` — an independent package — at *fixed parameters*:

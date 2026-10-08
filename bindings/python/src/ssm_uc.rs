@@ -172,6 +172,11 @@ fn set_regression<'py>(
 /// GLS estimate given them, and, unlike under MLE regression, `loglik`,
 /// `aic` and `bic` depend on the UNITS of the regressors (rescaling a column
 /// by c shifts `loglik` by exactly `-ln|c|`; the estimates do not move).
+/// Keep the columns in comparable units near 1: the diffuse coefficient
+/// states are loaded by x_t, and columns many orders of magnitude from each
+/// other or from 1 cannot be resolved by the exact-diffuse filter in
+/// floating point; that case (the diffuse period would not end where the
+/// same model on unit-scaled columns ends it) is refused, naming `exog`.
 /// `forecast_steps=h` returns h-step forecasts and needs `forecast_exog`
 /// (h x k) when `exog` is given, either way.
 /// `fixed_params` (statsmodels order: `sigma2.irregular`, the state
