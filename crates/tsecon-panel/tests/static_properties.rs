@@ -213,8 +213,8 @@ fn an_entity_permutation_leaves_every_estimate_unchanged() {
     // theta follows the entities
     let ta = panel_random_effects(&raw.panel(), RandomEffectsConfig::default()).unwrap();
     let tb = panel_random_effects(&permuted.panel(), RandomEffectsConfig::default()).unwrap();
-    for i in 0..raw.n() {
-        assert!((tb.theta[i] - ta.theta[perm[i]]).abs() < 1e-12);
+    for (i, &p) in perm.iter().enumerate() {
+        assert!((tb.theta[i] - ta.theta[p]).abs() < 1e-12);
     }
 }
 
