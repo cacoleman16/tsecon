@@ -33,9 +33,16 @@
 //! * **regressors** with time-invariant coefficients `beta`, estimated
 //!   jointly by MLE (statsmodels `mle_regression=True`).
 //!
-//! Every state is initialized exactly diffuse (Koopman 1997), which is
-//! what statsmodels does under `use_exact_diffuse=True` — including the
-//! cycle states, so the log-likelihoods are directly comparable. The
+//! Under the defaults every state is initialized exactly diffuse (Koopman
+//! 1997), which is what statsmodels does under `use_exact_diffuse=True` —
+//! including the cycle states — so the log-likelihoods are directly
+//! comparable with statsmodels'. One opt-in switch changes the
+//! *definition* of the likelihood: [`CycleInit::Stationary`] gives a
+//! damped stochastic cycle its unconditional (Lyapunov) distribution
+//! instead of a diffuse prior, which removes the cycle's diffuse elements
+//! (and the `lambda -> 0` singularity that comes with them), so its
+//! log-likelihood, `nobs_diffuse`, `k_diffuse`, AIC and BIC are not
+//! comparable with the diffuse-cycle ones at the same parameters. The
 //! observation `y` may contain NaN for a missing period; regressors may
 //! not.
 //!
@@ -74,7 +81,7 @@ use tsecon_linalg::faer::Mat;
 use crate::dense::{dot, mat_vec, sandwich};
 use crate::error::SsmError;
 use crate::filter::TOLERANCE_RANK;
-use crate::mle::{maximize, ols, variance, ParamKind, ParamSpec};
+use crate::mle::{maximize_tied, ols, variance, ParamKind, ParamSpec};
 use crate::model::{Initialization, LinearGaussianSSM};
 use crate::smoother::smooth_univariate;
 
@@ -211,6 +218,60 @@ impl FreqSeasonalSpec {
     }
 }
 
+/// How the two states of the stochastic cycle are initialized.
+///
+/// statsmodels initializes the cycle exactly diffuse, like every other
+/// structural component, and that is the default here. A *damped*
+/// stochastic cycle is a stationary process, though, and
+/// [`CycleInit::Stationary`] gives its two states their unconditional
+/// distribution instead: `a_1 = 0`, `P_1 = sigma2_cycle / (1 - rho^2) I_2`
+/// (the discrete Lyapunov solution for the rotation block). That changes
+/// the *definition* of the likelihood — the cycle no longer costs a
+/// diffuse element, so `nobs_diffuse`, `k_diffuse` and therefore AIC and
+/// BIC move, and the log-likelihood is not comparable with the diffuse
+/// one at the same parameters — and it removes the `lambda -> 0`
+/// singularity of the diffuse cycle (see [`UcSpec::cycle_period_bounds`]):
+/// with nothing diffuse in the cycle there is no `-ln F_inf` term to run
+/// away with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CycleInit {
+    /// `"diffuse"`: both cycle states exactly diffuse (statsmodels).
+    #[default]
+    Diffuse,
+    /// `"stationary"`: the damped cycle's unconditional (Lyapunov)
+    /// distribution. Requires a damped, stochastic cycle.
+    Stationary,
+}
+
+impl CycleInit {
+    /// Parses `"diffuse"` / `"stationary"` (trimmed, case-insensitive).
+    ///
+    /// # Errors
+    ///
+    /// [`SsmError::InvalidSpec`] naming the accepted values.
+    pub fn parse(name: &str) -> Result<Self, SsmError> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "diffuse" => Ok(Self::Diffuse),
+            "stationary" => Ok(Self::Stationary),
+            _ => Err(SsmError::InvalidSpec {
+                message: format!(
+                    "cycle_init = {name:?} is not a cycle initialization; pass \"diffuse\" \
+                     (both cycle states exactly diffuse, the statsmodels convention) or \
+                     \"stationary\" (the damped cycle's unconditional distribution)"
+                ),
+            }),
+        }
+    }
+
+    /// The canonical (lower-case) name.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Diffuse => "diffuse",
+            Self::Stationary => "stationary",
+        }
+    }
+}
+
 /// The model specification.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UcSpec {
@@ -240,6 +301,10 @@ pub struct UcSpec {
     /// `(0, pi)` walks into that singularity; a cycle longer than the
     /// sample is not identified anyway.
     pub cycle_period_bounds: (f64, f64),
+    /// How the cycle states are initialized (default
+    /// [`CycleInit::Diffuse`], statsmodels' convention). A non-default
+    /// value requires `cycle`, `damped_cycle` and `stochastic_cycle`.
+    pub cycle_init: CycleInit,
     /// Regressor columns, each of length `n`.
     pub exog: Vec<Vec<f64>>,
 }
@@ -255,6 +320,7 @@ impl Default for UcSpec {
             damped_cycle: false,
             stochastic_cycle: false,
             cycle_period_bounds: (2.0, f64::INFINITY),
+            cycle_init: CycleInit::Diffuse,
             exog: Vec::new(),
         }
     }
@@ -408,6 +474,15 @@ struct Layout {
     idx_damping: Option<usize>,
     idx_beta: usize,
     state_names: Vec<String>,
+    cycle_init: CycleInit,
+    /// Per-state exact-diffuse flag (`false` = stationary block).
+    diffuse: Vec<bool>,
+    /// Identification ties for the standard errors: when the variance
+    /// parameter `.0` is flagged at the boundary, the transition
+    /// parameters `.1` of its stationary block are unidentified (the block
+    /// is identically zero at variance 0) and are dropped from the
+    /// information matrix with a NaN standard error.
+    ties: Vec<(usize, Vec<usize>)>,
 }
 
 /// Largest accepted `forecast_steps`.
@@ -570,6 +645,34 @@ impl Layout {
                 )));
             }
         }
+        if spec.cycle_init == CycleInit::Stationary {
+            if !spec.cycle {
+                return Err(invalid(
+                    "cycle_init = \"stationary\" was given but cycle = false: it only \
+                     initializes the two cycle states, so without a cycle it is inert; set \
+                     cycle = true or keep the default \"diffuse\""
+                        .to_string(),
+                ));
+            }
+            if !spec.damped_cycle {
+                return Err(invalid(
+                    "cycle_init = \"stationary\" requires damped_cycle = true: an undamped \
+                     cycle (damping 1) is a pure rotation with no stationary distribution \
+                     (its Lyapunov equation has no solution); estimate a damping with \
+                     damped_cycle = true or keep cycle_init = \"diffuse\""
+                        .to_string(),
+                ));
+            }
+            if !spec.stochastic_cycle {
+                return Err(invalid(
+                    "cycle_init = \"stationary\" requires stochastic_cycle = true: a \
+                     deterministic damped cycle has stationary variance 0, so its initial \
+                     state would be known to be zero and the cycle identically zero; set \
+                     stochastic_cycle = true or keep cycle_init = \"diffuse\""
+                        .to_string(),
+                ));
+            }
+        }
         let has_stochastic = irregular
             || (level && stochastic_level)
             || (trend && stochastic_trend)
@@ -719,6 +822,18 @@ impl Layout {
             });
         }
 
+        // Every state is exactly diffuse except the stationary blocks.
+        let mut diffuse = vec![true; k_states];
+        let mut ties = Vec::new();
+        if let (Some(off), CycleInit::Stationary) = (cycle_off, spec.cycle_init) {
+            diffuse[off] = false;
+            diffuse[off + 1] = false;
+            let var = specs.iter().position(|s| s.name == "sigma2.cycle");
+            if let Some(v) = var {
+                ties.push((v, idx_cycle_freq.into_iter().chain(idx_damping).collect()));
+            }
+        }
+
         Ok(Layout {
             trend_spec: spec.trend,
             level,
@@ -741,6 +856,9 @@ impl Layout {
             idx_damping,
             idx_beta,
             state_names,
+            cycle_init: spec.cycle_init,
+            diffuse,
+            ties,
         })
     }
 
@@ -752,11 +870,13 @@ impl Layout {
         self.exog.len()
     }
 
+    /// Number of exactly diffuse states (statsmodels' `k_diffuse_states`:
+    /// the unit diagonal entries of `P_inf`).
     fn k_diffuse(&self) -> usize {
         if self.unused_state {
             0
         } else {
-            self.k_states
+            self.diffuse.iter().filter(|&&d| d).count()
         }
     }
 
@@ -819,13 +939,19 @@ impl Layout {
                 q[(sv.col + k, sv.col + k)] = v;
             }
         }
+        // Exactly `Diffuse` when nothing is stationary, so the default
+        // specifications run the very same initialization as before.
         let init = if self.unused_state {
             Initialization::Known {
                 a1: vec![0.0],
                 p1: Mat::zeros(1, 1),
             }
-        } else {
+        } else if self.diffuse.iter().all(|&d| d) {
             Initialization::Diffuse
+        } else {
+            Initialization::Mixed {
+                diffuse: self.diffuse.clone(),
+            }
         };
         LinearGaussianSSM::builder(1, m, r)
             .z(z)
@@ -973,6 +1099,16 @@ impl Layout {
                     )));
                 }
                 _ => {}
+            }
+        }
+        if let (CycleInit::Stationary, Some(i)) = (self.cycle_init, self.idx_damping) {
+            if fixed[i] >= 1.0 {
+                return Err(invalid(format!(
+                    "fixed_params[{i}] (damping.cycle) = {}: cycle_init = \"stationary\" \
+                     needs a damping strictly below 1 (an undamped cycle has no stationary \
+                     distribution to initialize from)",
+                    fixed[i]
+                )));
             }
         }
         Ok(())
@@ -1127,7 +1263,9 @@ pub fn unobserved_components(
     }
     let layout_s = Layout::new(&spec_s, n)?;
     let starts = layout_s.starting_values(&y_s, opts.n_starts);
-    let outcome = maximize(&layout_s.specs, &starts, |p| layout_s.loglik_value(&y_s, p))?;
+    let outcome = maximize_tied(&layout_s.specs, &starts, &layout_s.ties, |p| {
+        layout_s.loglik_value(&y_s, p)
+    })?;
     let back = |i: usize, v: f64| -> f64 {
         match layout_s.specs[i].kind {
             ParamKind::Variance => v * s * s,
@@ -1315,4 +1453,81 @@ fn evaluate(
         forecast,
         forecast_var,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The closed form of the stationary cycle's initial covariance:
+    /// for the damped rotation `rho R(lambda)` driven by two independent
+    /// disturbances of variance `s2`, the Lyapunov solution is
+    /// `P = s2 / (1 - rho^2) I_2` (`R R' = I`). `UcFit` exposes no `P_1`,
+    /// so this leg is pinned on the system itself.
+    #[test]
+    fn stationary_cycle_initial_covariance_is_the_closed_form() {
+        let spec = UcSpec {
+            trend: TrendSpec::LocalLevel,
+            cycle: true,
+            damped_cycle: true,
+            stochastic_cycle: true,
+            cycle_init: CycleInit::Stationary,
+            ..UcSpec::default()
+        };
+        let layout = Layout::new(&spec, 60).unwrap();
+        assert_eq!(layout.diffuse, vec![true, false, false]);
+        assert_eq!(layout.k_diffuse(), 1);
+        let (s2c, freq, rho) = (2.0, 2.0 * std::f64::consts::PI / 30.0, 0.9);
+        let model = layout.build_ssm(&[0.3, 0.5, s2c, freq, rho]).unwrap();
+        let init = model.initial_state().unwrap();
+        let want = s2c / (1.0 - rho * rho);
+        assert!((want - 10.526_315_789_473_685).abs() < 1e-12);
+        for i in 0..3 {
+            for j in 0..3 {
+                let p_star = init.p_star[(i, j)];
+                let p_inf = init.p_inf[(i, j)];
+                let (ws, wi) = match (i, j) {
+                    (0, 0) => (0.0, 1.0),
+                    (1, 1) | (2, 2) => (want, 0.0),
+                    _ => (0.0, 0.0),
+                };
+                assert!(
+                    (p_star - ws).abs() <= 1e-12 * want,
+                    "P_*[{i},{j}] = {p_star}, want {ws}"
+                );
+                assert_eq!(p_inf, wi, "P_inf[{i},{j}]");
+            }
+        }
+        assert!(init.a1.iter().all(|&a| a == 0.0));
+        // The diffuse default keeps the exact `Diffuse` initialization.
+        let diffuse = Layout::new(
+            &UcSpec {
+                cycle_init: CycleInit::Diffuse,
+                ..spec.clone()
+            },
+            60,
+        )
+        .unwrap();
+        assert!(matches!(
+            diffuse
+                .build_ssm(&[0.3, 0.5, s2c, freq, rho])
+                .unwrap()
+                .initialization(),
+            Initialization::Diffuse
+        ));
+        assert_eq!(diffuse.k_diffuse(), 3);
+    }
+
+    #[test]
+    fn cycle_init_parses_trimmed_and_case_insensitive() {
+        assert_eq!(
+            CycleInit::parse(" Stationary ").unwrap(),
+            CycleInit::Stationary
+        );
+        assert_eq!(CycleInit::parse("DIFFUSE").unwrap(), CycleInit::Diffuse);
+        let e = CycleInit::parse("bogus").unwrap_err().to_string();
+        assert!(e.contains("cycle_init = \"bogus\"") && e.contains("\"stationary\""));
+        assert_eq!(CycleInit::default(), CycleInit::Diffuse);
+        assert_eq!(CycleInit::Stationary.name(), "stationary");
+    }
 }

@@ -8,7 +8,9 @@ use numpy::{IntoPyArray, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use tsecon_ssm::{FreqSeasonalSpec, TrendSpec, TvpOptions, UcComponent, UcOptions, UcSpec};
+use tsecon_ssm::{
+    CycleInit, FreqSeasonalSpec, TrendSpec, TvpOptions, UcComponent, UcOptions, UcSpec,
+};
 
 use crate::{to_py, vec1};
 
@@ -64,10 +66,12 @@ fn set_component<'py>(
 ///
 ///     y_t = mu_t + gamma_t + c_t + beta' x_t + eps_t
 ///
-/// with every state initialized exactly diffuse (Koopman 1997), NaN in
-/// `y` treated as missing, and the components assembled exactly as
-/// statsmodels' `UnobservedComponents(..., use_exact_diffuse=True)`
-/// enumerates them (the log-likelihoods are directly comparable).
+/// with NaN in `y` treated as missing and the components assembled exactly
+/// as statsmodels' `UnobservedComponents(..., use_exact_diffuse=True)`
+/// enumerates them. Under the defaults every state is initialized exactly
+/// diffuse (Koopman 1997), as statsmodels does, so the log-likelihoods are
+/// directly comparable with statsmodels'. `cycle_init="stationary"` changes
+/// the likelihood's definition (see below).
 ///
 /// `level` picks the level/trend block by its statsmodels name (long or
 /// short form): "irregular"/"ntrend", "fixed intercept", "deterministic
@@ -91,6 +95,17 @@ fn set_component<'py>(
 /// resolution contributes `-ln(lambda)`), so an unbounded period is not a
 /// safe search region — and a cycle longer than the sample is not
 /// identified in any case. statsmodels leaves that bound at infinity.
+/// `cycle_init` ("diffuse" when None, statsmodels' convention; parsed
+/// trimmed and case-insensitive) set to "stationary" initializes the two
+/// cycle states from the damped cycle's unconditional distribution,
+/// `sigma2.cycle / (1 - damping^2)` on each, instead of exactly diffuse. It
+/// needs `damped_cycle=True` and `stochastic_cycle=True` (an undamped or
+/// deterministic cycle has no proper stationary distribution) and refuses a
+/// fixed damping of 1. The cycle then costs no diffuse element, which
+/// removes the low-frequency singularity above; it also changes the
+/// DEFINITION of the likelihood, so `loglik`, `nobs_diffuse`, `k_diffuse`,
+/// `aic` and `bic` are NOT comparable with the diffuse-cycle ones, even at
+/// the same parameters.
 /// `exog` (T x k) enters with
 /// time-invariant coefficients estimated jointly (statsmodels
 /// `mle_regression=True`); `forecast_steps=h` returns h-step forecasts
@@ -107,8 +122,9 @@ fn set_component<'py>(
 /// Options that act only under a component RAISE when passed without it:
 /// `stochastic_seasonal` without `seasonal`; `freq_seasonal_harmonics` /
 /// `stochastic_freq_seasonal` without `freq_seasonal`; `damped_cycle` /
-/// `stochastic_cycle` / `cycle_period_bounds` without `cycle=True`;
-/// `forecast_exog` without `exog` or without `forecast_steps`.
+/// `stochastic_cycle` / `cycle_period_bounds` / `cycle_init` without
+/// `cycle=True`; `forecast_exog` without `exog` or without
+/// `forecast_steps`.
 ///
 /// Estimation: BFGS + Nelder-Mead on the exact prediction-error
 /// log-likelihood in statsmodels' square-root/logistic working space,
@@ -121,8 +137,13 @@ fn set_component<'py>(
 /// parameters only. statsmodels' `cov_type="approx"` inverts the full
 /// matrix instead, including the boundary directions where it is
 /// indefinite, so the two agree exactly when nothing is flagged and
-/// differ by definition when something is.
-/// `aic`/`bic` use statsmodels' `k_params + k_diffuse` degrees of freedom.
+/// differ by definition when something is. When the variance of a
+/// STATIONARY block is flagged (`sigma2.cycle` under
+/// `cycle_init="stationary"`), the block is identically zero, so its
+/// transition parameters (`frequency.cycle`, `damping.cycle`) carry no
+/// information: they are dropped from the matrix too and get a NaN `se`.
+/// `aic`/`bic` use statsmodels' `k_params + k_diffuse` degrees of freedom,
+/// `k_diffuse` counting the exactly diffuse states only.
 /// The component keys without a prefix are the SMOOTHED (two-sided)
 /// paths; `filtered_*` are the one-sided ones. Variances inside the
 /// diffuse period are the finite part; `std_resid` is NaN there and at
@@ -145,7 +166,15 @@ fn set_component<'py>(
 /// flagged (the series is fetched from Rdatasets when the fixture is
 /// generated and never redistributed, so only its derived optimum is
 /// stored); parameter recovery, forecast-interval coverage and scale
-/// invariance measured by seeded Monte Carlo (see the model card).
+/// invariance measured by seeded Monte Carlo (see the model card). The
+/// stationary cycle (fixtures/uc_extensions.json) is pinned at the same
+/// 1e-8 against statsmodels' own block initialization ("stationary" on the
+/// cycle pair, its Lyapunov solve, its exact-diffuse filter and smoother —
+/// statsmodels has no keyword for it) on GDP, Nile and simulated
+/// specifications, plus the closed form `sigma2.cycle / (1 - damping^2)`
+/// for the initial covariance; its GDP MLE is pinned to the better of two
+/// optimizers, with the pile-up and the dropped transition parameters
+/// mirrored in the reference standard errors.
 ///
 /// Returned keys: `trend_specification`, `param_names`, `params`, `se`,
 /// `at_boundary`, `loglik`, `aic`, `bic`, `nobs`, `nobs_observed`,
@@ -161,7 +190,7 @@ fn set_component<'py>(
 /// `filtered_freq_seasonal_var` (lists with one array per block), `fitted`,
 /// `resid`, `std_resid`, `forecast`, `forecast_var`.
 #[pyfunction]
-#[pyo3(signature = (y, level = "llevel", seasonal = None, stochastic_seasonal = None, freq_seasonal = None, freq_seasonal_harmonics = None, stochastic_freq_seasonal = None, cycle = false, damped_cycle = None, stochastic_cycle = None, cycle_period_bounds = None, exog = None, forecast_steps = 0, forecast_exog = None, fixed_params = None, n_starts = 3))]
+#[pyo3(signature = (y, level = "llevel", seasonal = None, stochastic_seasonal = None, freq_seasonal = None, freq_seasonal_harmonics = None, stochastic_freq_seasonal = None, cycle = false, damped_cycle = None, stochastic_cycle = None, cycle_period_bounds = None, exog = None, forecast_steps = 0, forecast_exog = None, fixed_params = None, n_starts = 3, cycle_init = None))]
 #[allow(clippy::too_many_arguments)]
 fn unobserved_components<'py>(
     py: Python<'py>,
@@ -181,6 +210,7 @@ fn unobserved_components<'py>(
     forecast_exog: Option<PyReadonlyArray2<'py, f64>>,
     fixed_params: Option<Vec<f64>>,
     n_starts: usize,
+    cycle_init: Option<&str>,
 ) -> PyResult<Bound<'py, PyDict>> {
     if seasonal.is_none() && stochastic_seasonal.is_some() {
         return Err(PyValueError::new_err(
@@ -224,7 +254,17 @@ fn unobserved_components<'py>(
                  frequency, so without cycle=True it is inert; pass cycle=True or drop it",
             ));
         }
+        if cycle_init.is_some() {
+            return Err(PyValueError::new_err(
+                "cycle_init was given but cycle=False: it only initializes the two cycle \
+                 states, so without cycle=True it is inert; pass cycle=True or drop it",
+            ));
+        }
     }
+    let cycle_init = match cycle_init {
+        None => CycleInit::Diffuse,
+        Some(name) => CycleInit::parse(name).map_err(to_py)?,
+    };
     let trend = TrendSpec::parse(level).map_err(to_py)?;
     let mut freq_specs = Vec::new();
     if let Some(periods) = &freq_seasonal {
@@ -278,6 +318,7 @@ fn unobserved_components<'py>(
         damped_cycle: damped_cycle.unwrap_or(false),
         stochastic_cycle: stochastic_cycle.unwrap_or(false),
         cycle_period_bounds: bounds,
+        cycle_init,
         exog: exog.as_ref().map(columns).unwrap_or_default(),
     };
     let opts = UcOptions {

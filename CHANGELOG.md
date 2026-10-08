@@ -7,6 +7,10 @@ fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `unobserved_components(..., cycle_init="stationary")`: the damped stochastic cycle can now start from its unconditional (Lyapunov) distribution, `sigma2.cycle / (1 - damping^2)` on each cycle state, instead of the exactly diffuse prior statsmodels uses. The default (`"diffuse"`) is unchanged. It needs `damped_cycle=True` and `stochastic_cycle=True`, refuses a fixed damping of 1, and removes the low-frequency singularity of the diffuse cycle: at the US-GDP optimum with only the frequency moved to 1e-2, 1e-4 and 1e-6 the log-likelihood reads −266.559, −266.657 and −266.657, where the diffuse cycle keeps climbing (−258.509, −253.642, −253.059). It also changes what the likelihood is: on 100 log US GDP the same parameters score −454.98 stationary against −444.16 diffuse, so `loglik`, `nobs_diffuse`, `k_diffuse`, AIC and BIC are not comparable across the switch. Pinned at 1e-8 against statsmodels' own block `Initialization` (new `fixtures/uc_extensions.json`), the GDP MLE (smooth trend, periods 6–32) reaching the better of two optimizers at −252.1147178886. `k_diffuse` now counts the exactly diffuse states only, and when a stationary cycle's variance piles up at zero its frequency and damping get NaN standard errors instead of making every standard error NaN.
+
 ### Changed
 
 - Dependencies: `pyo3` 0.29.0 → 0.29.3 and `serde_json` 1.0.150 → 1.0.151 (the bumps Dependabot proposed in #27, taken to the newest patch), plus the 23 other semver-compatible lockfile changes then available (22 updates and one new transitive crate, `syn` 3.0.6), among them faer's matrix-multiply kernel `private-gemm-x86` 0.1.20 → 0.1.22. The shipped licence notices are regenerated to match.

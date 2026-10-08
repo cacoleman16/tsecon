@@ -43,6 +43,14 @@
 //! uses for `cov_type="approx"`), restricted to the parameters not at a
 //! boundary. A singular or non-finite Hessian gives NaN for every standard
 //! error rather than a number computed from a failed inverse.
+//!
+//! One identification rule removes more than the flagged parameters (see
+//! [`maximize_tied`]): when the disturbance variance of a *stationary*
+//! block (an AR component, a stationary-initialized cycle) is flagged at
+//! zero, the block is identically zero, so its transition parameters carry
+//! exactly zero information; they are dropped from the matrix as well and
+//! reported with a NaN standard error instead of making every standard
+//! error NaN through a singular Hessian.
 
 use tsecon_optim::{minimize, BfgsOptions, FnObjective, Method, NelderMeadOptions, ObjectiveFn};
 
@@ -144,6 +152,29 @@ pub(crate) struct MleOutcome {
 pub(crate) fn maximize<F>(
     specs: &[ParamSpec],
     starts: &[Vec<f64>],
+    loglik: F,
+) -> Result<MleOutcome, SsmError>
+where
+    F: FnMut(&[f64]) -> f64,
+{
+    maximize_tied(specs, starts, &[], loglik)
+}
+
+/// [`maximize`] with identification ties for the standard errors: for
+/// every `(variance, transition)` entry of `ties`, when the variance
+/// parameter is flagged at the boundary, the transition parameters of its
+/// block are removed from the information matrix and reported with a NaN
+/// standard error. This is the stationary-block case: a stationary
+/// component whose disturbance variance is zero is identically zero (its
+/// unconditional variance is zero too), so its transition parameters —
+/// AR coefficients, a stationary cycle's frequency and damping — carry
+/// exactly zero information there, and leaving them in would make the
+/// whole Hessian singular. With `ties` empty this is exactly
+/// [`maximize`].
+pub(crate) fn maximize_tied<F>(
+    specs: &[ParamSpec],
+    starts: &[Vec<f64>],
+    ties: &[(usize, Vec<usize>)],
     mut loglik: F,
 ) -> Result<MleOutcome, SsmError>
 where
@@ -233,7 +264,15 @@ where
             ParamKind::Free => false,
         };
     }
-    let se = standard_errors(specs, &params, &at_boundary, &mut loglik);
+    let mut excluded = at_boundary.clone();
+    for (var, deps) in ties {
+        if at_boundary[*var] {
+            for &d in deps {
+                excluded[d] = true;
+            }
+        }
+    }
+    let se = standard_errors(specs, &params, &excluded, &mut loglik);
     Ok(MleOutcome {
         params,
         converged,
@@ -245,11 +284,12 @@ where
 }
 
 /// Observed-information standard errors restricted to the parameters not
-/// at a boundary (see the module docs).
+/// excluded (at a boundary, or tied to a flagged variance; see the module
+/// docs).
 fn standard_errors<F>(
     specs: &[ParamSpec],
     params: &[f64],
-    at_boundary: &[bool],
+    excluded: &[bool],
     loglik: &mut F,
 ) -> Vec<f64>
 where
@@ -257,7 +297,7 @@ where
 {
     let k = specs.len();
     let mut se = vec![f64::NAN; k];
-    let free: Vec<usize> = (0..k).filter(|&i| !at_boundary[i]).collect();
+    let free: Vec<usize> = (0..k).filter(|&i| !excluded[i]).collect();
     if free.is_empty() {
         return se;
     }

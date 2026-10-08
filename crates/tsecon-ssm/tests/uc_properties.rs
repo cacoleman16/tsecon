@@ -10,11 +10,11 @@
 
 mod common;
 
-use common::Lcg;
+use common::{as_f64_vec, load_fixture, Lcg};
 use tsecon_linalg::faer::Mat;
 use tsecon_ssm::{
-    tvp_regression, unobserved_components, FreqSeasonalSpec, Initialization, LinearGaussianSSM,
-    SsmError, TrendSpec, TvpOptions, UcOptions, UcSpec,
+    tvp_regression, unobserved_components, CycleInit, FreqSeasonalSpec, Initialization,
+    LinearGaussianSSM, SsmError, TrendSpec, TvpOptions, UcOptions, UcSpec,
 };
 
 fn normal(rng: &mut Lcg) -> f64 {
@@ -732,6 +732,259 @@ fn the_cycle_log_likelihood_diverges_as_the_frequency_goes_to_zero() {
     }
 }
 
+fn fixture_columns(v: &serde_json::Value) -> Vec<Vec<f64>> {
+    let r: Vec<Vec<f64>> = v.as_array().unwrap().iter().map(as_f64_vec).collect();
+    (0..r[0].len())
+        .map(|j| r.iter().map(|row| row[j]).collect())
+        .collect()
+}
+
+fn assert_bits(tag: &str, what: &str, got: &[f64], want: &[u64]) {
+    assert_eq!(got.len(), want.len(), "{tag} {what}: length");
+    for (i, (g, w)) in got.iter().zip(want).enumerate() {
+        assert_eq!(
+            g.to_bits(),
+            *w,
+            "{tag} {what}[{i}]: {g} is not bit-identical to the 0.10.0 value {}",
+            f64::from_bits(*w)
+        );
+    }
+}
+
+/// Default preservation, bit for bit. The 0.11.0 follow-ups (stationary
+/// cycle, AR component, state-vector regression) touch the shared MLE
+/// layer (`mle.rs`: the joint AR transform, the probe guard and the
+/// identification ties of the standard errors) and the structural model's
+/// initialization and forecast paths. None of that may move a single bit
+/// of a specification that uses none of them. These are the exact
+/// IEEE-754 patterns the 0.10.0 code (`e38965e`) produced, recorded
+/// before any of those files was edited, for three `uc.json` MLE cases
+/// (variance-only, bounded cycle parameters, free regression
+/// coefficients) and the `tvp_regression` MLE — the second user of
+/// `mle.rs`, whose path must stay bit-identical. A golden test at 1e-8
+/// would not notice a reassociated sum; this does.
+#[test]
+fn defaults_are_bit_identical_to_0_10_0() {
+    let fx = load_fixture("uc.json");
+    let nile = as_f64_vec(&fx["nile"]["y"]);
+    let f = unobserved_components(&nile, &UcSpec::default(), &UcOptions::default()).unwrap();
+    assert_bits("nile", "loglik", &[f.loglik], &[0xc083cbb76d23c4ae]);
+    assert_bits(
+        "nile",
+        "params",
+        &f.params,
+        &[0x40cd7d4268b7760b, 0x4096f4b488cc7680],
+    );
+    assert_bits(
+        "nile",
+        "se",
+        &f.se,
+        &[0x40a89317df560f2d, 0x4094017efef6eec5],
+    );
+
+    let y = as_f64_vec(&fx["sim"]["y"]);
+    let x = fixture_columns(&fx["sim"]["x"]);
+    let cycle = UcSpec {
+        cycle: true,
+        damped_cycle: true,
+        stochastic_cycle: true,
+        cycle_period_bounds: (6.0, 20.0),
+        ..UcSpec::default()
+    };
+    let f = unobserved_components(&y, &cycle, &UcOptions::default()).unwrap();
+    assert_bits("cycle", "loglik", &[f.loglik], &[0xc06d06ea76813148]);
+    assert_bits(
+        "cycle",
+        "params",
+        &f.params,
+        &[
+            0x3f76f5544d950667,
+            0x3fc98e28a3e74585,
+            0x40037d3eb1de1443,
+            0x3fd6fc7ec7a74dc9,
+            0x3f8244190a46e63f,
+        ],
+    );
+    assert_bits(
+        "cycle",
+        "se",
+        &f.se,
+        &[
+            0x7ff8000000000000,
+            0x3fbac27dcbe759c6,
+            0x3fd8103af7865c33,
+            0x3f01df92c99cd68c,
+            0x3eafd953229b4795,
+        ],
+    );
+
+    let exog = UcSpec {
+        exog: x,
+        ..UcSpec::default()
+    };
+    let f = unobserved_components(&y, &exog, &UcOptions::default()).unwrap();
+    assert_bits("exog", "loglik", &[f.loglik], &[0xc06cd50c73ebc835]);
+    assert_bits(
+        "exog",
+        "params",
+        &f.params,
+        &[
+            0x4000e96147c3a468,
+            0x3fc3733af84d50e5,
+            0x3fe573489ff70168,
+            0xbfc14b40629504df,
+        ],
+    );
+    assert_bits(
+        "exog",
+        "se",
+        &f.se,
+        &[
+            0x3fd463496d7f4faf,
+            0x3fb4ad24cd708cc0,
+            0x3fc1ddc4e0e28ede,
+            0x3fbe77e67c5d1fe5,
+        ],
+    );
+
+    let tv = &fx["tvp"];
+    let f = tvp_regression(
+        &as_f64_vec(&tv["y"]),
+        &fixture_columns(&tv["x"]),
+        &TvpOptions::default(),
+    )
+    .unwrap();
+    assert_bits("tvp", "loglik", &[f.loglik], &[0xc073968704eb341f]);
+    assert_bits(
+        "tvp",
+        "params",
+        &f.params,
+        &[
+            0x3ff2bfa11a7f9f35,
+            0x3f7fcce3c2d9ada5,
+            0x3f518bc06c303635,
+            0x3b5da4f66ec5b233,
+        ],
+    );
+    assert_bits(
+        "tvp",
+        "se",
+        &f.se,
+        &[
+            0x3fc03479e103b2d1,
+            0x3f7c400ee97e1c14,
+            0x3f53cbd582eee868,
+            0x7ff8000000000000,
+        ],
+    );
+}
+
+/// The stationary cycle initialization removes the `lambda -> 0`
+/// singularity of the diffuse cycle pinned above: on the same series, at
+/// the same parameters and with the same opened-up bounds, the
+/// log-likelihood is flat in the frequency as it goes to zero, because
+/// no cycle state is diffuse and nothing contributes `-ln F_inf`.
+#[test]
+fn the_stationary_cycle_has_no_low_frequency_singularity() {
+    let mut rng = Lcg::new(808);
+    let n = 120;
+    let mut y = Vec::with_capacity(n);
+    let mut level = 0.0;
+    for _ in 0..n {
+        y.push(level + normal(&mut rng));
+        level += 0.3 * normal(&mut rng);
+    }
+    let spec = UcSpec {
+        trend: TrendSpec::LocalLevel,
+        cycle: true,
+        damped_cycle: true,
+        stochastic_cycle: true,
+        cycle_period_bounds: (2.0, 1e9),
+        cycle_init: CycleInit::Stationary,
+        ..UcSpec::default()
+    };
+    let mut lls = Vec::new();
+    for &freq in &[1e-2f64, 1e-4, 1e-6, 1e-8] {
+        let fit = unobserved_components(
+            &y,
+            &spec,
+            &UcOptions {
+                fixed_params: Some(vec![0.8, 0.3, 0.2, freq, 0.9]),
+                ..UcOptions::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(fit.nobs_diffuse, 1, "only the level is diffuse");
+        lls.push(fit.loglik);
+    }
+    let spread = lls.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+        - lls.iter().cloned().fold(f64::INFINITY, f64::min);
+    eprintln!("stationary cycle, frequency 1e-2 .. 1e-8: {lls:?} (spread {spread:e})");
+    // Measured: the four values agree to 0.01; the diffuse cycle moves 25
+    // points over the same sweep.
+    assert!(spread < 0.2, "spread {spread}");
+}
+
+/// Seeded Monte Carlo under the stationary cycle initialization: a local
+/// level plus a damped stochastic cycle (period 12, damping 0.9), T = 200,
+/// simulated from the cycle's stationary distribution. The MLE recovers
+/// the period and the damping: the median absolute error is small and no
+/// fit escapes the sampling band.
+#[test]
+fn stationary_cycle_mle_recovers_damping_and_period() {
+    let (period, rho, s2c, s2l, s2e) = (12.0f64, 0.9f64, 0.5f64, 0.01f64, 0.2f64);
+    let lam = 2.0 * std::f64::consts::PI / period;
+    let (n, reps) = (200usize, 8u64);
+    let sd0 = (s2c / (1.0 - rho * rho)).sqrt();
+    let spec = UcSpec {
+        cycle: true,
+        damped_cycle: true,
+        stochastic_cycle: true,
+        cycle_period_bounds: (4.0, 40.0),
+        cycle_init: CycleInit::Stationary,
+        ..UcSpec::default()
+    };
+    let (mut ep, mut ed) = (Vec::new(), Vec::new());
+    for seed in 0..reps {
+        let mut rng = Lcg::new(31_000 + seed);
+        let (mut c, mut cs) = (sd0 * normal(&mut rng), sd0 * normal(&mut rng));
+        let mut level = 0.0;
+        let mut y = Vec::with_capacity(n);
+        for _ in 0..n {
+            y.push(level + c + s2e.sqrt() * normal(&mut rng));
+            let (nc, ncs) = (
+                rho * (lam.cos() * c + lam.sin() * cs) + s2c.sqrt() * normal(&mut rng),
+                rho * (-lam.sin() * c + lam.cos() * cs) + s2c.sqrt() * normal(&mut rng),
+            );
+            c = nc;
+            cs = ncs;
+            level += s2l.sqrt() * normal(&mut rng);
+        }
+        let fit = unobserved_components(&y, &spec, &UcOptions::default()).unwrap();
+        assert!(fit.converged, "seed {seed}");
+        assert_eq!(fit.k_diffuse, 1, "only the level is diffuse");
+        let p_hat = 2.0 * std::f64::consts::PI / fit.params[3];
+        let d_hat = fit.params[4];
+        assert!(
+            (p_hat - period).abs() < 3.0 && (d_hat - rho).abs() < 0.15,
+            "seed {seed}: period {p_hat}, damping {d_hat}"
+        );
+        assert!(
+            fit.se[3].is_finite() && fit.se[4].is_finite(),
+            "seed {seed}"
+        );
+        ep.push((p_hat - period).abs());
+        ed.push((d_hat - rho).abs());
+    }
+    let (mp, md) = (median(&mut ep), median(&mut ed));
+    eprintln!(
+        "stationary cycle MC ({reps} seeds, T = {n}): median |period - 12| = {mp:.3}, \
+         median |damping - 0.9| = {md:.4}"
+    );
+    assert!(mp < 1.0, "median period error {mp}");
+    assert!(md < 0.06, "median damping error {md}");
+}
+
 /// Every refusal names the offending argument.
 #[test]
 fn refusals_name_the_offending_argument() {
@@ -954,10 +1207,64 @@ fn refusals_name_the_offending_argument() {
             )),
             "at most 64 starting values",
         ),
+        // The stationary cycle: refused without a damped, stochastic
+        // cycle, and at a fixed damping of 1.
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.cycle_init = CycleInit::Stationary),
+                &UcOptions::default(),
+            )),
+            "cycle_init = \"stationary\" was given but cycle = false",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| {
+                    s.cycle = true;
+                    s.stochastic_cycle = true;
+                    s.cycle_init = CycleInit::Stationary;
+                }),
+                &UcOptions::default(),
+            )),
+            "requires damped_cycle = true",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| {
+                    s.cycle = true;
+                    s.damped_cycle = true;
+                    s.cycle_init = CycleInit::Stationary;
+                }),
+                &UcOptions::default(),
+            )),
+            "requires stochastic_cycle = true",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| {
+                    s.cycle = true;
+                    s.damped_cycle = true;
+                    s.stochastic_cycle = true;
+                    s.cycle_init = CycleInit::Stationary;
+                }),
+                &UcOptions {
+                    fixed_params: Some(vec![1.0, 1.0, 1.0, 0.5, 1.0]),
+                    ..UcOptions::default()
+                },
+            )),
+            "fixed_params[4] (damping.cycle) = 1",
+        ),
     ];
     for (m, needle) in &cases {
         assert!(m.contains(needle), "message {m:?} does not name {needle:?}");
     }
+    assert!(CycleInit::parse("Bogus")
+        .unwrap_err()
+        .to_string()
+        .contains("cycle_init = \"Bogus\""));
     assert!(TrendSpec::parse("bogus")
         .unwrap_err()
         .to_string()
