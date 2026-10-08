@@ -1,7 +1,8 @@
 """Golden and behavioral tests for the 0.11.0 follow-ups of
 ``unobserved_components``: the stationary (Lyapunov) cycle initialization
-``cycle_init="stationary"`` and the autoregressive component
-``autoregressive=p``.
+``cycle_init="stationary"``, the autoregressive component
+``autoregressive=p``, and the regressors in the state vector
+``mle_regression=False``.
 
 Re-pins ``fixtures/uc_extensions.json`` (generator
 ``fixtures/generate_uc_extensions_fixtures.py``: statsmodels' own
@@ -27,8 +28,11 @@ TOL = 1e-8
 DIFFUSE_SMOOTH_ROWS = 2
 
 
+_SERIES = {"sim": "sim_y", "sim2": "sim2_y", "sim2_missing": "sim2_y_missing"}
+
+
 def _y(case):
-    return np.asarray(UX["data"]["sim_y" if case["data"] == "sim" else case["data"]], float)
+    return np.asarray(UX["data"][_SERIES.get(case["data"], case["data"])], float)
 
 
 def _kwargs(spec):
@@ -66,7 +70,7 @@ def _fixed(case):
     kw = _kwargs(case["spec"])
     h = len(case.get("forecast", []))
     if "exog" in kw and h:
-        kw["forecast_exog"] = np.asarray(UX["data"]["sim_x_forecast"], float)[:h]
+        kw["forecast_exog"] = np.asarray(UX["data"][case["spec"]["exog"] + "_forecast"], float)[:h]
     return tsecon.unobserved_components(_y(case), fixed_params=case["params"], forecast_steps=h, **kw)
 
 
@@ -196,6 +200,134 @@ def test_ar_refuses_where_statsmodels_returns_numbers():
             assert r["loglik"] == pytest.approx(c["statsmodels_loglike"], rel=1e-10)
 
 
+# --------------------------------------------- regressors in the state
+def _regression_close(r, rc, block):
+    d = r["nobs_diffuse"]
+    for key, ref in (("regression_coefficients", "smoothed"),
+                     ("filtered_regression_coefficients", "filtered"),
+                     ("filtered_regression_coefficients_var", "filtered_var")):
+        _nan_close(r[key], rc[ref])
+    _smoothed_var_close(r["regression_coefficients_var"], rc["smoothed_var"], block, d)
+    _nan_close(r["regression_coefficients_cov"], rc["smoothed_cov_last"])
+
+
+@pytest.mark.parametrize("case", UX["state_regression"], ids=lambda c: c["name"])
+def test_state_regression_fixed_parameters(case):
+    r = _fixed(case)
+    _check_fixed(r, case)
+    _regression_close(r, case["components"]["regression_coefficients"], case)
+    assert not any(n.startswith("beta") for n in r["param_names"])
+    assert list(r["state_names"])[-2:] == ["beta.x1", "beta.x2"]
+    beta = np.asarray(r["regression_coefficients"])
+    assert beta.shape == (r["nobs"], 2)
+    np.testing.assert_allclose(beta, np.tile(beta[-1], (r["nobs"], 1)), rtol=1e-9, atol=1e-12)
+
+
+def test_white_noise_plus_state_regression_is_ols():
+    cf = UX["state_regression_closed_form"]
+    y = np.asarray(UX["data"]["sim2_y"], float)
+    X = np.asarray(UX["data"]["sim2_x"], float)
+    Xf = np.asarray(UX["data"]["sim2_x_forecast"], float)
+    r = tsecon.unobserved_components(y, level="ntrend", exog=X, mle_regression=False,
+                                     fixed_params=[cf["sigma2"]], forecast_steps=6, forecast_exog=Xf)
+    assert r["loglik"] == pytest.approx(cf["loglike"], rel=1e-10)
+    np.testing.assert_allclose(np.asarray(r["regression_coefficients"])[[0, -1]], [cf["beta_ols"]] * 2, rtol=1e-10)
+    np.testing.assert_allclose(r["regression_coefficients_cov"], cf["cov"], rtol=1e-10)
+    np.testing.assert_allclose(r["forecast"], cf["forecast"], rtol=1e-10)
+    np.testing.assert_allclose(r["forecast_var"], cf["forecast_var"], rtol=1e-10)
+    # Independently, with numpy only.
+    np.testing.assert_allclose(cf["beta_ols"], np.linalg.lstsq(X, y, rcond=None)[0], rtol=1e-12)
+
+
+@pytest.mark.parametrize("c", UX["state_regression_identity"], ids=lambda c: f'{c["level"]}-ar{c["autoregressive"]}')
+def test_state_and_mle_regression_identity(c):
+    y = np.asarray(UX["data"]["sim2_y"], float)
+    X = np.asarray(UX["data"]["sim2_x"], float)
+    kw = dict(level=c["level"], exog=X)
+    if c["autoregressive"]:
+        kw["autoregressive"] = c["autoregressive"]
+    st = tsecon.unobserved_components(y, mle_regression=False, fixed_params=c["params"], **kw)
+    beta = list(np.asarray(st["regression_coefficients"])[-1])
+    ml = tsecon.unobserved_components(y, fixed_params=c["params"] + beta, **kw)
+    half = 0.5 * np.linalg.slogdet(np.asarray(st["regression_coefficients_cov"]))[1]
+    assert st["loglik"] == pytest.approx(c["loglike_state"], rel=TOL)
+    assert ml["loglik"] == pytest.approx(c["loglike_mle_at_gls"], rel=TOL)
+    assert abs(st["loglik"] - ml["loglik"] - half) < 1e-10
+
+
+def test_state_regression_loglik_depends_on_regressor_units():
+    u = UX["state_regression_units"]
+    y = np.asarray(UX["data"]["sim2_y"], float)
+    X = np.asarray(UX["data"]["sim2_x"], float)
+    Xc = X.copy()
+    Xc[:, 0] *= u["scale"]
+    a = tsecon.unobserved_components(y, exog=X, mle_regression=False, fixed_params=u["params"])
+    b = tsecon.unobserved_components(y, exog=Xc, mle_regression=False, fixed_params=u["params"])
+    assert a["loglik"] == pytest.approx(u["loglike_state"], rel=TOL)
+    assert b["loglik"] == pytest.approx(u["loglike_state_scaled"], rel=TOL)
+    assert a["loglik"] - b["loglik"] == pytest.approx(np.log(u["scale"]), abs=1e-10)
+    m = tsecon.unobserved_components(y, exog=X, fixed_params=[0.8, 0.3, 0.5, -0.3])
+    mc = tsecon.unobserved_components(y, exog=Xc, fixed_params=[0.8, 0.3, 0.5 / u["scale"], -0.3])
+    assert m["loglik"] == pytest.approx(mc["loglik"], abs=1e-10)
+
+
+@pytest.mark.parametrize("case", UX["state_regression_mle"], ids=lambda c: c["name"])
+def test_state_regression_mle(case):
+    r = tsecon.unobserved_components(_y(case), **_kwargs(case["spec"]))
+    _check_mle(r, case)
+    np.testing.assert_allclose(np.asarray(r["regression_coefficients"])[-1],
+                               case["best"]["regression_coefficients"], rtol=2e-3)
+
+
+def test_state_regression_matches_statsmodels_live():
+    pytest.importorskip("statsmodels")
+    from statsmodels.tsa.statespace.structural import UnobservedComponents
+
+    y = np.asarray(UX["data"]["sim2_y_missing"], float)
+    X = np.asarray(UX["data"]["sim2_x"], float)
+    Xf = np.asarray(UX["data"]["sim2_x_forecast"], float)
+    p = np.array([0.6, 0.2])
+    ref = UnobservedComponents(y, "llevel", exog=X, mle_regression=False, use_exact_diffuse=True).smooth(p)
+    r = tsecon.unobserved_components(y, exog=X, mle_regression=False, fixed_params=list(p),
+                                     forecast_steps=3, forecast_exog=Xf[:3])
+    assert r["loglik"] == pytest.approx(ref.llf, rel=1e-10)
+    assert r["aic"] == pytest.approx(ref.aic, rel=1e-10)
+    np.testing.assert_allclose(np.asarray(r["regression_coefficients"]), ref.regression_coefficients.smoothed.T,
+                               rtol=1e-8, atol=1e-10)
+    fc = ref.get_forecast(3, exog=Xf[:3])
+    np.testing.assert_allclose(r["forecast"], fc.predicted_mean, rtol=1e-10)
+    np.testing.assert_allclose(r["forecast_var"], fc.var_pred_mean, rtol=1e-10)
+
+
+def test_state_regression_accepts_pandas():
+    pd = pytest.importorskip("pandas")
+    case = UX["state_regression"][0]
+    idx = pd.RangeIndex(len(_y(case)))
+    y = pd.Series(_y(case), index=idx)
+    X = pd.DataFrame(np.asarray(UX["data"]["sim2_x"], float), index=idx, columns=["a", "b"])
+    Xf = pd.DataFrame(np.asarray(UX["data"]["sim2_x_forecast"], float)[:4], columns=["a", "b"])
+    r = tsecon.unobserved_components(y, exog=X, mle_regression=False, fixed_params=case["params"],
+                                     forecast_steps=4, forecast_exog=Xf)
+    assert r["loglik"] == pytest.approx(case["loglike"], rel=TOL)
+    _nan_close(r["forecast"], case["forecast"])
+
+
+def test_state_regression_refusals_name_the_parameter():
+    y = np.asarray(UX["data"]["sim2_y"], float)
+    X = np.asarray(UX["data"]["sim2_x"], float)
+    for flag in (False, True):
+        with pytest.raises(ValueError, match="mle_regression was given but exog is None"):
+            tsecon.unobserved_components(y, mle_regression=flag)
+    with pytest.raises(ValueError, match="forecast_steps = 3 with 2 regressors requires forecast_exog"):
+        tsecon.unobserved_components(y, exog=X, mle_regression=False, forecast_steps=3)
+    Xn = X.copy()
+    Xn[7, 1] = np.nan
+    with pytest.raises(ValueError, match="exog column 1 contains a NaN"):
+        tsecon.unobserved_components(y, exog=Xn, mle_regression=False)
+    with pytest.raises(ValueError, match=r"fixed_params has length 4 but the specification has 2"):
+        tsecon.unobserved_components(y, exog=X, mle_regression=False, fixed_params=[0.8, 0.3, 0.5, -0.3])
+
+
 # ------------------------------------------------------ stationary cycle
 @pytest.mark.parametrize("case", UX["stationary_cycle"], ids=lambda c: c["name"])
 def test_stationary_cycle_fixed_parameters(case):
@@ -322,6 +454,7 @@ def test_defaults_render_and_keys_are_documented():
     sig = inspect.signature(tsecon.unobserved_components)
     assert sig.parameters["cycle_init"].default is None
     assert sig.parameters["autoregressive"].default is None
+    assert sig.parameters["mle_regression"].default is None
     names = list(sig.parameters)
     assert names.index("autoregressive") == names.index("n_starts") + 1
     assert all(p.default is not Ellipsis for p in sig.parameters.values())
@@ -331,9 +464,18 @@ def test_defaults_render_and_keys_are_documented():
     # Every component key is present whether or not the component is.
     for k in ("autoregressive", "autoregressive_var", "filtered_autoregressive", "filtered_autoregressive_var"):
         assert k in r and r[k] is None
+    for k in ("regression_coefficients", "regression_coefficients_var", "filtered_regression_coefficients",
+              "filtered_regression_coefficients_var", "regression_coefficients_cov"):
+        assert k in r and r[k] is None
     ra = _fixed(UX["autoregressive"][0])
     assert set(ra.keys()) == set(r.keys())
     assert ra["autoregressive"] is not None and ra["cycle"] is None
+    rs = _fixed(UX["state_regression"][0])
+    assert set(rs.keys()) == set(r.keys())
+    assert rs["regression_coefficients_cov"] is not None
+    # Under MLE regression the coefficients are parameters, not states.
+    rm = _fixed(UX["autoregressive"][-1])
+    assert "exog" in UX["autoregressive"][-1]["spec"] and rm["regression_coefficients"] is None
     stub = (Path(tsecon.__file__).parent / "__init__.pyi").read_text(encoding="utf-8")
     i = stub.index("def unobserved_components(")
     body = stub[i:stub.index("\ndef ", i + 10)]

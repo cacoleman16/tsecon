@@ -6156,6 +6156,7 @@ def unobserved_components(
     n_starts: int = 3,
     autoregressive: int | None = None,
     cycle_init: str | None = None,
+    mle_regression: bool | None = None,
 ) -> dict[str, Any]:
 ```
 
@@ -6172,8 +6173,9 @@ Harvey's structural time-series ("unobserved components") models by
     diffuse (Koopman 1997), as statsmodels does, so the log-likelihoods are
     directly comparable with statsmodels'; an AR block is initialized from
     its stationary distribution exactly as statsmodels has it, so that stays
-    comparable too. `cycle_init="stationary"` changes the likelihood's
-    definition (see below).
+    comparable too. Two opt-in switches change the likelihood's DEFINITION
+    (see below), so neither `loglik` nor `aic`/`bic` may be compared across
+    them: `cycle_init="stationary"` and `mle_regression=False`.
 
     `level` picks the level/trend block by its statsmodels name (long or
     short form): "irregular"/"ntrend", "fixed intercept", "deterministic
@@ -6217,16 +6219,26 @@ Harvey's structural time-series ("unobserved components") models by
     one within roundoff of the unit circle, whose likelihood would silently
     skip observations). Its cost is O(len(y) p^2) per likelihood
     evaluation, so a very long AR order is slow rather than refused.
-    `exog` (T x k) enters with
-    time-invariant coefficients estimated jointly (statsmodels
-    `mle_regression=True`); `forecast_steps=h` returns h-step forecasts
-    and needs `forecast_exog` (h x k) when `exog` is given.
+    `exog` (T x k) enters with time-invariant coefficients estimated
+    jointly by MLE (`mle_regression`, True when None, statsmodels' default).
+    `mle_regression=False` puts them in the state vector instead (statsmodels
+    `mle_regression=False`): k exactly diffuse constant states after the AR
+    block, design row `x_t'`, no `beta.x*` parameters. The likelihood is then
+    the MARGINAL (diffuse) likelihood of the variance parameters — the
+    profile one minus `ln det(regression_coefficients_cov) / 2` at the GLS
+    coefficients, so REML-like variances — the smoothed coefficients are the
+    GLS estimate given them, and, unlike under MLE regression, `loglik`,
+    `aic` and `bic` depend on the UNITS of the regressors (rescaling a column
+    by c shifts `loglik` by exactly `-ln|c|`; the estimates do not move).
+    `forecast_steps=h` returns h-step forecasts and needs `forecast_exog`
+    (h x k) when `exog` is given, either way.
     `fixed_params` (statsmodels order: `sigma2.irregular`, the state
     variances in component order — level, trend, seasonal, each
     freq_seasonal block, cycle, then `sigma2.ar` — then `frequency.cycle`,
-    `damping.cycle`, `ar.L1`...`ar.Lp`, `beta.x1`...) evaluates the model
-    there instead of estimating. `state_names` end with `cycle`,
-    `cycle.auxiliary`, `ar.L1`...`ar.Lp`. `n_starts` (default 3) is the
+    `damping.cycle`, `ar.L1`...`ar.Lp`, `beta.x1`... — the betas only under
+    MLE regression) evaluates the model there instead of estimating.
+    `state_names` end with `cycle`, `cycle.auxiliary`, `ar.L1`...`ar.Lp`,
+    `beta.x1`...`beta.xk` (the betas only under `mle_regression=False`). `n_starts` (default 3) is the
     deterministic start ladder (for an AR component the first partial
     autocorrelation walks 0.5, 0.9, 0, -0.5, 0.5, and the second rung of an
     AR(p >= 2) starts hump-shaped at (1.35, -0.5); the AR-UC likelihood is
@@ -6240,8 +6252,8 @@ Harvey's structural time-series ("unobserved components") models by
     `stochastic_seasonal` without `seasonal`; `freq_seasonal_harmonics` /
     `stochastic_freq_seasonal` without `freq_seasonal`; `damped_cycle` /
     `stochastic_cycle` / `cycle_period_bounds` / `cycle_init` without
-    `cycle=True`; `forecast_exog` without `exog` or without
-    `forecast_steps`.
+    `cycle=True`; `mle_regression` (even True) without `exog`;
+    `forecast_exog` without `exog` or without `forecast_steps`.
 
     Estimation: BFGS + Nelder-Mead on the exact prediction-error
     log-likelihood in statsmodels' square-root/logistic working space,
@@ -6302,7 +6314,14 @@ Harvey's structural time-series ("unobserved components") models by
     covariance; its MLE on Nile, inflation and GDP reaches the better of two
     optimizers at the default `n_starts` (on inflation statsmodels' own fit
     stops 1.89 log-likelihood points short of the optimum this one
-    reaches).
+    reaches). The state regression is pinned at 1e-8 against statsmodels'
+    `mle_regression=False` (with the regression-coefficient paths and
+    covariance) on four specifications, one NaN-inserted and one combining
+    every new option; against the closed form of white noise plus
+    regressors (OLS coefficients, `sigma2 (X'X)^-1`, the diffuse
+    log-likelihood, forecasts and their variances) at 1e-10; through the
+    marginal/profile identity on six specifications and the regressor-units
+    identity at 1e-10; and in one MLE to the better of two optimizers.
 
     Returned keys: `trend_specification`, `param_names`, `params`, `se`,
     `at_boundary`, `loglik`, `aic`, `bic`, `nobs`, `nobs_observed`,
@@ -6316,6 +6335,12 @@ Harvey's structural time-series ("unobserved components") models by
     `filtered_cycle_var`, `autoregressive`, `autoregressive_var`,
     `filtered_autoregressive`, `filtered_autoregressive_var` (the first AR
     state; None when the component is absent),
+    `regression_coefficients`, `regression_coefficients_var`,
+    `filtered_regression_coefficients`,
+    `filtered_regression_coefficients_var` (nested lists, nobs x k, under
+    `mle_regression=False`; the smoothed path is constant in t and is the
+    GLS estimate), `regression_coefficients_cov` (k x k nested list, its
+    smoothed covariance; all five None otherwise),
     `freq_seasonal`, `freq_seasonal_var`, `filtered_freq_seasonal`,
     `filtered_freq_seasonal_var` (lists with one array per block), `fitted`,
     `resid`, `std_resid`, `forecast`, `forecast_var`.

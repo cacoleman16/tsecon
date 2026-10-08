@@ -7,6 +7,12 @@
 //!   (row-companion form, always stationary-initialized), at fixed
 //!   parameters on Nile, inflation, GDP, GDP growth (every state
 //!   stationary) and simulated specifications, and three MLE cases;
+//! * **`mle_regression = false`** — statsmodels' regressors in the state
+//!   vector (exactly diffuse constant states, design row `x_t'`), at fixed
+//!   parameters, plus the closed forms (white noise + regressors is OLS:
+//!   coefficients, covariance, log-likelihood, forecast and its variance),
+//!   the marginal/profile identity `l_state - l_mle(beta_gls) = ln det
+//!   P_beta / 2` and the regressor-units identity, and one MLE case;
 //! * **`cycle_init = "stationary"`** — the damped stochastic cycle from
 //!   its unconditional (Lyapunov) distribution. statsmodels has no such
 //!   keyword; the reference is statsmodels' own block `Initialization`
@@ -73,6 +79,8 @@ fn series(fx: &Value, case: &Value) -> Vec<f64> {
     let data = case["data"].as_str().expect("data");
     let key = match data {
         "sim" => "sim_y",
+        "sim2" => "sim2_y",
+        "sim2_missing" => "sim2_y_missing",
         other => other,
     };
     as_f64_vec(&fx["data"][key])
@@ -115,14 +123,17 @@ fn spec_from_json(fx: &Value, spec: &Value) -> UcSpec {
     if let Some(x) = spec.get("exog") {
         s.exog = columns(&fx["data"][x.as_str().expect("exog key")]);
     }
+    if let Some(b) = spec.get("mle_regression") {
+        s.mle_regression = b.as_bool().expect("bool");
+    }
     s
 }
 
 fn forecast_exog(fx: &Value, case: &Value) -> Vec<Vec<f64>> {
     match case["spec"].get("exog").and_then(|v| v.as_str()) {
-        Some(_) => {
+        Some(x) => {
             let h = case["forecast"].as_array().map_or(0, |a| a.len());
-            columns(&fx["data"]["sim_x_forecast"])
+            columns(&fx["data"][format!("{x}_forecast").as_str()])
                 .into_iter()
                 .map(|c| c[..h].to_vec())
                 .collect()
@@ -150,19 +161,12 @@ fn assert_paths(actual: &[Vec<f64>], expected: &Value, tol: f64, what: &str) {
     }
 }
 
-/// Smoothed variances: [`TOL_FIXED`] except inside the diffuse period,
-/// where the tolerance is the reference's own smoother spread.
-fn assert_smoothed_var(
-    actual: &[f64],
-    expected: &[f64],
-    spread: f64,
-    d: usize,
-    t0: usize,
-    what: &str,
-) {
+/// A smoothed-variance *path* (index = period): [`TOL_FIXED`] except
+/// inside the diffuse period and the rows just after it, where the
+/// tolerance is the reference's own smoother spread.
+fn assert_smoothed_var(actual: &[f64], expected: &[f64], spread: f64, d: usize, what: &str) {
     let relaxed = spread.max(TOL_FIXED);
-    for (k, (a, e)) in actual.iter().zip(expected).enumerate() {
-        let t = t0 + k;
+    for (t, (a, e)) in actual.iter().zip(expected).enumerate() {
         let tol = if t <= d + DIFFUSE_SMOOTH_ROWS {
             relaxed
         } else {
@@ -202,7 +206,6 @@ fn assert_component(c: &UcComponent, block: &Value, spread: f64, d: usize, what:
         &exp,
         spread,
         d,
-        0,
         &format!("{what}.smoothed_var"),
     );
 }
@@ -266,15 +269,15 @@ fn check_fixed_block(fit: &UcFit, block: &Value, what: &str) {
         );
         let exp = rows(&block["smoothed_state_var"]);
         assert_eq!(fit.smoothed_state_var.len(), exp.len());
+        let relaxed = spread.max(TOL_FIXED);
         for (t, (a, e)) in fit.smoothed_state_var.iter().zip(&exp).enumerate() {
-            assert_smoothed_var(
-                a,
-                e,
-                spread,
-                fit.nobs_diffuse,
-                t,
-                &format!("{what}: smoothed_state_var[{t}]"),
-            );
+            // Every state of row t is at period t.
+            let tol = if t <= fit.nobs_diffuse + DIFFUSE_SMOOTH_ROWS {
+                relaxed
+            } else {
+                TOL_FIXED
+            };
+            assert_series(a, e, tol, &format!("{what}: smoothed_state_var[{t}]"));
         }
     }
     assert_series(
@@ -336,6 +339,32 @@ fn check_fixed_block(fit: &UcFit, block: &Value, what: &str) {
                 assert_component(c, b, spread, d, &format!("{what}: freq_seasonal[{i}]"));
             }
         }
+        if let Some(rc) = comp.get("regression_coefficients") {
+            check_regression_coefficients(fit, rc, spread, &format!("{what}: regression"));
+        }
+    }
+}
+
+/// The regression-coefficient states (`mle_regression = false`) against
+/// statsmodels' `results.regression_coefficients`: per-regressor paths as
+/// `nobs x k` rows, and the `k x k` smoothed covariance at the last period.
+fn check_regression_coefficients(fit: &UcFit, rc: &Value, spread: f64, what: &str) {
+    let k = fit.regression_coefficients.len();
+    assert!(k > 0, "{what}: components missing");
+    let col = |key: &str, j: usize| -> Vec<f64> { rows(&rc[key]).iter().map(|r| r[j]).collect() };
+    for (j, c) in fit.regression_coefficients.iter().enumerate() {
+        let block = serde_json::json!({
+            "filtered": col("filtered", j),
+            "filtered_var": col("filtered_var", j),
+            "smoothed": col("smoothed", j),
+            "smoothed_var": col("smoothed_var", j),
+        });
+        assert_component(c, &block, spread, fit.nobs_diffuse, &format!("{what}[{j}]"));
+    }
+    let cov = fit.regression_coefficients_cov.as_ref().expect("cov");
+    let want = rows(&rc["smoothed_cov_last"]);
+    for i in 0..k {
+        assert_series(&cov[i], &want[i], TOL_FIXED, &format!("{what}: cov[{i}]"));
     }
 }
 
@@ -478,6 +507,295 @@ fn ar_component_mle_reaches_the_better_reference_optimum() {
     }
 }
 
+// --------------------------------------------- (c) state-vector regression
+
+/// `ln det` of a small symmetric positive-definite matrix (Cholesky).
+fn logdet(a: &[Vec<f64>]) -> f64 {
+    let n = a.len();
+    let mut l = vec![vec![0.0; n]; n];
+    let mut out = 0.0;
+    for i in 0..n {
+        for j in 0..=i {
+            let s: f64 = (0..j).map(|k| l[i][k] * l[j][k]).sum();
+            if i == j {
+                l[i][i] = (a[i][i] - s).sqrt();
+                out += 2.0 * l[i][i].ln();
+            } else {
+                l[i][j] = (a[i][j] - s) / l[j][j];
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn state_regression_fixed_parameters_match_statsmodels() {
+    let fx = load_fixture("uc_extensions.json");
+    let cases = fx["state_regression"].as_array().unwrap();
+    assert!(cases.len() >= 4);
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let fit = fixed_fit(&fx, case);
+        let k = fit.regression_coefficients.len();
+        assert_eq!(k, 2, "{name}");
+        // No beta parameters; the coefficient states close the state
+        // vector and are exactly diffuse.
+        assert!(fit.param_names.iter().all(|p| !p.starts_with("beta")));
+        assert_eq!(
+            &fit.state_names[fit.k_states - 2..],
+            &["beta.x1", "beta.x2"]
+        );
+        assert!(case["components"].get("regression_coefficients").is_some());
+        check_fixed_block(&fit, case, &format!("state_regression/{name}"));
+        // The smoothed coefficient path is constant in t (a constant state
+        // conditioned on the whole sample).
+        for c in &fit.regression_coefficients {
+            let last = *c.smoothed.last().unwrap();
+            assert!(c
+                .smoothed
+                .iter()
+                .all(|v| (v - last).abs() <= 1e-9 * last.abs().max(1.0)));
+        }
+    }
+}
+
+#[test]
+fn white_noise_plus_state_regression_is_ols() {
+    let fx = load_fixture("uc_extensions.json");
+    let cf = &fx["state_regression_closed_form"];
+    let y = as_f64_vec(&fx["data"]["sim2_y"]);
+    let x = columns(&fx["data"]["sim2_x"]);
+    let xf = columns(&fx["data"]["sim2_x_forecast"]);
+    let s2 = cf["sigma2"].as_f64().unwrap();
+    let fit = unobserved_components(
+        &y,
+        &UcSpec {
+            trend: TrendSpec::Irregular,
+            exog: x,
+            mle_regression: false,
+            ..UcSpec::default()
+        },
+        &UcOptions {
+            forecast_steps: xf[0].len(),
+            forecast_exog: xf,
+            fixed_params: Some(vec![s2]),
+            ..UcOptions::default()
+        },
+    )
+    .unwrap();
+    let tol = 1e-10;
+    assert_rel_close(
+        fit.loglik,
+        cf["loglike"].as_f64().unwrap(),
+        tol,
+        "loglik = closed form",
+    );
+    let beta = as_f64_vec(&cf["beta_ols"]);
+    let cov = rows(&cf["cov"]);
+    for (j, c) in fit.regression_coefficients.iter().enumerate() {
+        for t in [0, y.len() - 1] {
+            assert_rel_close(
+                c.smoothed[t],
+                beta[j],
+                tol,
+                &format!("beta[{j}] at t={t} = OLS"),
+            );
+            assert_rel_close(
+                c.smoothed_var[t],
+                cov[j][j],
+                tol,
+                &format!("var beta[{j}] at t={t} = s2 (X'X)^-1"),
+            );
+        }
+    }
+    let got = fit.regression_coefficients_cov.as_ref().unwrap();
+    for i in 0..2 {
+        for j in 0..2 {
+            assert_rel_close(got[i][j], cov[i][j], tol, &format!("cov[{i}][{j}]"));
+        }
+    }
+    assert_series(
+        &fit.forecast,
+        &as_f64_vec(&cf["forecast"]),
+        tol,
+        "forecast = x' beta",
+    );
+    assert_series(
+        &fit.forecast_var,
+        &as_f64_vec(&cf["forecast_var"]),
+        tol,
+        "forecast var = s2 (1 + x'(X'X)^-1 x)",
+    );
+    assert_eq!(fit.nobs_diffuse, 2);
+    assert_eq!(fit.k_params + fit.k_diffuse, 3, "statsmodels df_model");
+}
+
+#[test]
+fn state_and_mle_regression_differ_by_half_logdet_of_the_coefficient_covariance() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["sim2_y"]);
+    let x = columns(&fx["data"]["sim2_x"]);
+    for c in fx["state_regression_identity"].as_array().unwrap() {
+        let trend = TrendSpec::parse(c["level"].as_str().unwrap()).unwrap();
+        let ar = c["autoregressive"].as_u64().map(|p| p as usize);
+        let what = format!("{trend:?} AR {ar:?}");
+        let params = as_f64_vec(&c["params"]);
+        let base = UcSpec {
+            trend,
+            autoregressive: ar,
+            exog: x.clone(),
+            ..UcSpec::default()
+        };
+        let state = unobserved_components(
+            &y,
+            &UcSpec {
+                mle_regression: false,
+                ..base.clone()
+            },
+            &UcOptions {
+                fixed_params: Some(params.clone()),
+                ..UcOptions::default()
+            },
+        )
+        .unwrap();
+        assert_rel_close(
+            state.loglik,
+            c["loglike_state"].as_f64().unwrap(),
+            TOL_FIXED,
+            &format!("{what}: l_state"),
+        );
+        // The GLS beta fed back as MLE-regression parameters.
+        let beta: Vec<f64> = state
+            .regression_coefficients
+            .iter()
+            .map(|r| *r.smoothed.last().unwrap())
+            .collect();
+        assert_series(
+            &beta,
+            &as_f64_vec(&c["beta_gls"]),
+            TOL_FIXED,
+            &format!("{what}: beta_gls"),
+        );
+        let mut p = params.clone();
+        p.extend(&beta);
+        let mle = unobserved_components(
+            &y,
+            &base,
+            &UcOptions {
+                fixed_params: Some(p),
+                ..UcOptions::default()
+            },
+        )
+        .unwrap();
+        assert_rel_close(
+            mle.loglik,
+            c["loglike_mle_at_gls"].as_f64().unwrap(),
+            TOL_FIXED,
+            &format!("{what}: l_mle"),
+        );
+        let half = 0.5 * logdet(state.regression_coefficients_cov.as_ref().unwrap());
+        assert_rel_close(
+            half,
+            c["half_logdet_p_beta"].as_f64().unwrap(),
+            TOL_FIXED,
+            &format!("{what}: half ln det"),
+        );
+        let gap = state.loglik - mle.loglik - half;
+        assert!(gap.abs() < 1e-10, "{what}: identity gap {gap:e}");
+    }
+}
+
+#[test]
+fn state_regression_likelihood_moves_with_the_units_of_the_regressors() {
+    let fx = load_fixture("uc_extensions.json");
+    let u = &fx["state_regression_units"];
+    let y = as_f64_vec(&fx["data"]["sim2_y"]);
+    let x = columns(&fx["data"]["sim2_x"]);
+    let c = u["scale"].as_f64().unwrap();
+    let mut xc = x.clone();
+    for v in xc[0].iter_mut() {
+        *v *= c;
+    }
+    let fit = |cols: &[Vec<f64>], mle_regression: bool, params: Vec<f64>| {
+        unobserved_components(
+            &y,
+            &UcSpec {
+                exog: cols.to_vec(),
+                mle_regression,
+                ..UcSpec::default()
+            },
+            &UcOptions {
+                fixed_params: Some(params),
+                ..UcOptions::default()
+            },
+        )
+        .unwrap()
+    };
+    let a = fit(&x, false, vec![0.8, 0.3]);
+    let b = fit(&xc, false, vec![0.8, 0.3]);
+    assert_rel_close(
+        a.loglik,
+        u["loglike_state"].as_f64().unwrap(),
+        TOL_FIXED,
+        "state",
+    );
+    assert_rel_close(
+        b.loglik,
+        u["loglike_state_scaled"].as_f64().unwrap(),
+        TOL_FIXED,
+        "scaled",
+    );
+    // Exactly -ln|c| per rescaled column, and the coefficient by 1/c.
+    assert!(
+        (a.loglik - b.loglik - c.ln()).abs() < 1e-10,
+        "{}",
+        a.loglik - b.loglik
+    );
+    let (ba, bb) = (
+        a.regression_coefficients[0].smoothed[0],
+        b.regression_coefficients[0].smoothed[0],
+    );
+    assert_rel_close(bb * c, ba, 1e-10, "beta scales by 1/c");
+    // The MLE form does not move.
+    let m = fit(&x, true, vec![0.8, 0.3, 0.5, -0.3]);
+    let mc = fit(&xc, true, vec![0.8, 0.3, 0.5 / c, -0.3]);
+    assert_rel_close(
+        m.loglik,
+        u["loglike_mle"].as_f64().unwrap(),
+        TOL_FIXED,
+        "mle",
+    );
+    assert!((m.loglik - mc.loglik).abs() < 1e-10);
+}
+
+#[test]
+fn state_regression_mle_reaches_the_better_reference_optimum() {
+    let fx = load_fixture("uc_extensions.json");
+    for case in fx["state_regression_mle"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let y = series(&fx, case);
+        let spec = spec_from_json(&fx, &case["spec"]);
+        let fit = unobserved_components(&y, &spec, &UcOptions::default())
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        check_mle(&fit, case, name);
+        let best = &case["best"];
+        let beta: Vec<f64> = fit
+            .regression_coefficients
+            .iter()
+            .map(|c| *c.smoothed.last().unwrap())
+            .collect();
+        for (a, e) in beta
+            .iter()
+            .zip(as_f64_vec(&best["regression_coefficients"]))
+        {
+            assert!(
+                (a - e).abs() < 2e-3 * e.abs().max(0.1),
+                "{name}: beta {a} vs {e}"
+            );
+        }
+    }
+}
+
 // ------------------------------------------------- (b) stationary cycle
 
 #[test]
@@ -576,21 +894,32 @@ fn stationary_cycle_removes_the_low_frequency_singularity() {
         cycle_init: CycleInit::Stationary,
         ..UcSpec::default()
     };
+    let diffuse_spec = UcSpec {
+        cycle_init: CycleInit::Diffuse,
+        ..spec.clone()
+    };
+    let mut sweep = Vec::new();
     for s in fx["stationary_cycle_lambda_sweep"].as_array().unwrap() {
-        let fit = unobserved_components(
-            &y,
-            &spec,
-            &UcOptions {
-                fixed_params: Some(as_f64_vec(&s["params"])),
-                ..UcOptions::default()
-            },
-        )
-        .unwrap();
+        let opts = UcOptions {
+            fixed_params: Some(as_f64_vec(&s["params"])),
+            ..UcOptions::default()
+        };
+        let fit = unobserved_components(&y, &spec, &opts).unwrap();
         assert_rel_close(
             fit.loglik,
             s["stationary"].as_f64().unwrap(),
             TOL_FIXED,
             &format!("lambda {}", s["frequency"]),
         );
+        let diffuse = unobserved_components(&y, &diffuse_spec, &opts).unwrap();
+        sweep.push((s["frequency"].as_f64().unwrap(), fit.loglik, diffuse.loglik));
     }
+    // The same sweep under the diffuse cycle keeps climbing toward the
+    // singularity (measured: -258.509, -240.094, -238.025 here; statsmodels'
+    // absolute 1e-10 tolerance on F_inf clips its own diffuse numbers at
+    // -258.509, -253.642, -253.059), while the stationary one is flat.
+    eprintln!("GDP lambda sweep (frequency, stationary, diffuse): {sweep:?}");
+    assert!(sweep.windows(2).all(|w| w[1].2 > w[0].2));
+    assert!(sweep[2].2 - sweep[0].2 > 15.0);
+    assert!((sweep[2].1 - sweep[0].1).abs() < 0.2);
 }

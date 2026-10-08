@@ -35,7 +35,10 @@
 //!   `a_{t+1} = phi_1 a_t + ... + phi_p a_{t-p+1} + eta_t`, its
 //!   coefficients estimated inside the stationarity region;
 //! * **regressors** with time-invariant coefficients `beta`, estimated
-//!   jointly by MLE (statsmodels `mle_regression=True`).
+//!   jointly by MLE (statsmodels `mle_regression=True`), or — with
+//!   [`UcSpec::mle_regression`] `= false` — carried as `k` exactly diffuse
+//!   constant states after the AR block with the per-period design row
+//!   `x_t'` (statsmodels `mle_regression=False`).
 //!
 //! Under the defaults every state is initialized exactly diffuse (Koopman
 //! 1997), which is what statsmodels does under `use_exact_diffuse=True` —
@@ -43,15 +46,26 @@
 //! comparable with statsmodels'. An AR block is always initialized from
 //! its stationary distribution (the Lyapunov solution of its companion
 //! block), exactly as statsmodels has it, so that is comparable too; its
-//! states are not counted as diffuse. One opt-in switch changes the
-//! *definition* of the likelihood: [`CycleInit::Stationary`] gives a
-//! damped stochastic cycle its unconditional (Lyapunov) distribution
-//! instead of a diffuse prior, which removes the cycle's diffuse elements
-//! (and the `lambda -> 0` singularity that comes with them), so its
-//! log-likelihood, `nobs_diffuse`, `k_diffuse`, AIC and BIC are not
-//! comparable with the diffuse-cycle ones at the same parameters. The
-//! observation `y` may contain NaN for a missing period; regressors may
-//! not.
+//! states are not counted as diffuse. Two opt-in switches change the
+//! *definition* of the likelihood, and log-likelihoods, AIC and BIC must
+//! not be compared across either:
+//!
+//! * [`CycleInit::Stationary`] gives a damped stochastic cycle its
+//!   unconditional (Lyapunov) distribution instead of a diffuse prior,
+//!   which removes the cycle's diffuse elements (and the `lambda -> 0`
+//!   singularity that comes with them), so `nobs_diffuse` and `k_diffuse`
+//!   move too;
+//! * `mle_regression = false` makes the likelihood the *marginal*
+//!   (diffuse) likelihood of the variance parameters instead of the
+//!   profile one: at the GLS coefficients the two differ by exactly
+//!   `ln det(P_beta) / 2`, `P_beta` the coefficients' smoothed covariance.
+//!   Because the coefficient states enter through `x_t`, that likelihood
+//!   also depends on the *units* of the regressors — rescaling a column by
+//!   `c` shifts it by exactly `-ln |c|` (the estimates do not move); the
+//!   MLE form is invariant to them.
+//!
+//! The observation `y` may contain NaN for a missing period; regressors
+//! may not.
 //!
 //! # Estimation
 //!
@@ -326,6 +340,14 @@ pub struct UcSpec {
     pub autoregressive: Option<usize>,
     /// Regressor columns, each of length `n`.
     pub exog: Vec<Vec<f64>>,
+    /// `true` (default, statsmodels' default): the coefficients of `exog`
+    /// are parameters estimated jointly by MLE. `false`: they are states —
+    /// `k` exactly diffuse constant states after the AR block, with design
+    /// row `x_t'` — so the likelihood is the *marginal* (diffuse)
+    /// likelihood of the variance parameters, the smoothed coefficients
+    /// are the GLS estimate given them, and no `beta.x*` parameter exists.
+    /// Requires `exog`.
+    pub mle_regression: bool,
 }
 
 impl Default for UcSpec {
@@ -342,6 +364,7 @@ impl Default for UcSpec {
             cycle_init: CycleInit::Diffuse,
             autoregressive: None,
             exog: Vec::new(),
+            mle_regression: true,
         }
     }
 }
@@ -452,6 +475,15 @@ pub struct UcFit {
     /// Autoregressive component: the first state of the AR block
     /// (statsmodels' `results.autoregressive`; the others are its lags).
     pub autoregressive: Option<UcComponent>,
+    /// Under `mle_regression = false`: one component per regressor, the
+    /// filtered (recursive GLS) and smoothed coefficient paths with their
+    /// variances; the smoothed path is constant in `t` and equals the GLS
+    /// estimate given the variance parameters. Empty otherwise.
+    pub regression_coefficients: Vec<UcComponent>,
+    /// Under `mle_regression = false`: the `k x k` smoothed covariance of
+    /// the coefficient states (constant in `t`; reported at the last
+    /// period), i.e. `Var(beta_gls | theta)`. `None` otherwise.
+    pub regression_coefficients_cov: Option<Vec<Vec<f64>>>,
     /// One-step-ahead predictions `E[y_t | y_1..y_{t-1}]`.
     pub fitted: Vec<f64>,
     /// One-step prediction errors `v_t` (NaN at missing periods).
@@ -493,6 +525,10 @@ struct Layout {
     ar_off: Option<usize>,
     ar_order: usize,
     idx_ar: Option<usize>,
+    /// First state of the regression-coefficient block (`mle_regression =
+    /// false`).
+    exog_state_off: Option<usize>,
+    mle_regression: bool,
     specs: Vec<ParamSpec>,
     idx_irregular: Option<usize>,
     state_vars: Vec<StateVar>,
@@ -716,6 +752,14 @@ impl Layout {
                 ));
             }
         }
+        if !spec.mle_regression && spec.exog.is_empty() {
+            return Err(invalid(
+                "mle_regression = false was given but exog is empty: it only moves the \
+                 regression coefficients into the state vector, so without regressors it \
+                 is inert; pass exog or keep the default mle_regression = true"
+                    .to_string(),
+            ));
+        }
         let has_stochastic = irregular
             || (level && stochastic_level)
             || (trend && stochastic_trend)
@@ -737,7 +781,8 @@ impl Layout {
             && spec.seasonal.is_none()
             && spec.freq_seasonal.is_empty()
             && !spec.cycle
-            && spec.autoregressive.is_none();
+            && spec.autoregressive.is_none()
+            && (spec.mle_regression || spec.exog.is_empty());
 
         // State offsets in statsmodels' order.
         let mut i = 0usize;
@@ -794,6 +839,15 @@ impl Layout {
             i += p;
             off
         });
+        let exog_state_off = if spec.mle_regression || spec.exog.is_empty() {
+            None
+        } else {
+            for j in 1..=spec.exog.len() {
+                state_names.push(format!("beta.x{j}"));
+            }
+            i += spec.exog.len();
+            Some(i - spec.exog.len())
+        };
         let k_states = if unused_state {
             state_names.push("unused".to_string());
             1
@@ -886,11 +940,13 @@ impl Layout {
             first
         });
         let idx_beta = specs.len();
-        for j in 0..spec.exog.len() {
-            specs.push(ParamSpec {
-                name: format!("beta.x{}", j + 1),
-                kind: ParamKind::Free,
-            });
+        if spec.mle_regression {
+            for j in 0..spec.exog.len() {
+                specs.push(ParamSpec {
+                    name: format!("beta.x{}", j + 1),
+                    kind: ParamKind::Free,
+                });
+            }
         }
 
         // Every state is exactly diffuse except the stationary blocks.
@@ -932,6 +988,8 @@ impl Layout {
             ar_off,
             ar_order,
             idx_ar,
+            exog_state_off,
+            mle_regression: spec.mle_regression,
             specs,
             idx_irregular,
             state_vars,
@@ -1027,6 +1085,12 @@ impl Layout {
                 t[(off + j, off + j - 1)] = 1.0;
             }
         }
+        if let Some(off) = self.exog_state_off {
+            // Constant coefficients: identity transition, no disturbance.
+            for j in 0..self.k_exog() {
+                t[(off + j, off + j)] = 1.0;
+            }
+        }
         for sv in &self.state_vars {
             let v = params[sv.param];
             for (k, &row) in sv.rows.iter().enumerate() {
@@ -1048,19 +1112,35 @@ impl Layout {
                 diffuse: self.diffuse.clone(),
             }
         };
-        LinearGaussianSSM::builder(1, m, r)
-            .z(z)
-            .h(h)
-            .t(t)
-            .r(sel)
-            .q(q)
-            .initialization(init)
-            .build()
+        let builder = LinearGaussianSSM::builder(1, m, r);
+        let builder = match self.exog_state_off {
+            None => builder.z(z),
+            // The regressors in the state: the design row carries x_t in
+            // the coefficient columns (the `tvp_regression` pattern).
+            Some(off) => {
+                let n = self.exog[0].len();
+                let zs = (0..n)
+                    .map(|tt| {
+                        let mut zt = z.clone();
+                        for (j, col) in self.exog.iter().enumerate() {
+                            zt[(0, off + j)] = col[tt];
+                        }
+                        zt
+                    })
+                    .collect();
+                builder.z_varying(zs)
+            }
+        };
+        builder.h(h).t(t).r(sel).q(q).initialization(init).build()
     }
 
-    /// `beta' x_t` for every period (zero without regressors).
+    /// `beta' x_t` for every period (zero without regressors, and zero
+    /// when the coefficients are states rather than parameters).
     fn regression_effect(&self, params: &[f64], n: usize) -> Vec<f64> {
         let mut eff = vec![0.0; n];
+        if !self.mle_regression {
+            return eff;
+        }
         for (j, col) in self.exog.iter().enumerate() {
             let b = params[self.idx_beta + j];
             for (e, x) in eff.iter_mut().zip(col) {
@@ -1208,8 +1288,12 @@ impl Layout {
                     p[i] = r1;
                 }
             }
-            for (j, b) in beta.iter().enumerate() {
-                p[self.idx_beta + j] = *b;
+            // Under state regression there are no coefficient parameters
+            // (the OLS beta only shaped the residual scale above).
+            if self.mle_regression {
+                for (j, b) in beta.iter().enumerate() {
+                    p[self.idx_beta + j] = *b;
+                }
             }
             starts.push(p);
         }
@@ -1532,6 +1616,24 @@ fn evaluate(
         .collect();
     let cycle = layout.cycle_off.map(|i| component(&[i]));
     let autoregressive = layout.ar_off.map(|i| component(&[i]));
+    let regression_coefficients: Vec<UcComponent> = layout
+        .exog_state_off
+        .map(|off| {
+            (0..layout.k_exog())
+                .map(|j| component(&[off + j]))
+                .collect()
+        })
+        .unwrap_or_default();
+    let regression_coefficients_cov = layout.exog_state_off.map(|off| {
+        let last = &so.smoothed_state_cov[n - 1];
+        (0..layout.k_exog())
+            .map(|i| {
+                (0..layout.k_exog())
+                    .map(|j| last[(off + i, off + j)])
+                    .collect()
+            })
+            .collect()
+    });
 
     let mut fitted = vec![f64::NAN; n];
     let mut resid = vec![f64::NAN; n];
@@ -1568,7 +1670,17 @@ fn evaluate(
         // horizon — the same washout tolerance the filter uses, P_inf
         // being a rank indicator that ends at roundoff, not at exact zero.
         let mut p_inf = fo.predicted_diffuse_state_cov[n].clone();
+        let mut zrow = zrow;
         for step in 0..h {
+            // Regressors in the state: the design row at the forecast date
+            // carries that date's x (`model.z().at(n)` would repeat the last
+            // in-sample row), for the mean, the variance and the diffuse
+            // check alike.
+            if let Some(off) = layout.exog_state_off {
+                for (j, col) in opts.forecast_exog.iter().enumerate() {
+                    zrow[off + j] = col[step];
+                }
+            }
             if dot(&zrow, &mat_vec(p_inf.as_ref(), &zrow)) > TOLERANCE_RANK {
                 return Err(invalid(format!(
                     "forecast_steps = {h}: at horizon {} the forecast still carries a \
@@ -1581,8 +1693,10 @@ fn evaluate(
                 )));
             }
             let mut xb = 0.0;
-            for (j, col) in opts.forecast_exog.iter().enumerate() {
-                xb += params[layout.idx_beta + j] * col[step];
+            if layout.mle_regression {
+                for (j, col) in opts.forecast_exog.iter().enumerate() {
+                    xb += params[layout.idx_beta + j] * col[step];
+                }
             }
             forecast.push(xb + dot(&zrow, &a));
             forecast_var.push(dot(&zrow, &mat_vec(p.as_ref(), &zrow)) + hvar);
@@ -1628,6 +1742,8 @@ fn evaluate(
         freq_seasonal,
         cycle,
         autoregressive,
+        regression_coefficients,
+        regression_coefficients_cov,
         fitted,
         resid,
         std_resid,
@@ -1768,6 +1884,69 @@ mod tests {
         assert_eq!(layout.k_diffuse(), 2);
         // The ties: sigma2.cycle -> frequency/damping, sigma2.ar -> ar.L*.
         assert_eq!(layout.ties, vec![(2, vec![4, 5]), (3, vec![6, 7])]);
+    }
+
+    /// Regressors in the state: `k` exactly diffuse constant states after
+    /// the AR block, an identity transition with no disturbance, and the
+    /// design row carrying `x_t` in their columns at every period.
+    #[test]
+    fn state_regression_layout() {
+        let x = vec![vec![1.0, 2.0, 3.0, 4.0], vec![-1.0, 0.5, 0.25, 2.0]];
+        let spec = UcSpec {
+            trend: TrendSpec::LocalLevel,
+            autoregressive: Some(1),
+            exog: x.clone(),
+            mle_regression: false,
+            ..UcSpec::default()
+        };
+        let layout = Layout::new(&spec, 4).unwrap();
+        assert_eq!(
+            layout.state_names,
+            vec!["level", "ar.L1", "beta.x1", "beta.x2"]
+        );
+        assert_eq!(layout.diffuse, vec![true, false, true, true]);
+        assert_eq!(layout.k_diffuse(), 3);
+        let names: Vec<&str> = layout.specs.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["sigma2.irregular", "sigma2.level", "sigma2.ar", "ar.L1"]
+        );
+        let model = layout.build_ssm(&[1.0, 0.5, 0.3, 0.6]).unwrap();
+        for (t, (x1, x2)) in x[0].iter().zip(&x[1]).enumerate() {
+            let z = model.z().at(t);
+            assert_eq!(
+                (z[(0, 0)], z[(0, 1)], z[(0, 2)], z[(0, 3)]),
+                (1.0, 1.0, *x1, *x2)
+            );
+        }
+        let tr = model.t().at(0);
+        assert_eq!((tr[(2, 2)], tr[(3, 3)], tr[(2, 3)]), (1.0, 1.0, 0.0));
+        let rqr = model.rqr(0).unwrap();
+        assert_eq!((rqr[(2, 2)], rqr[(3, 3)]), (0.0, 0.0));
+        assert!(layout
+            .regression_effect(&[1.0, 0.5, 0.3, 0.6], 4)
+            .iter()
+            .all(|&e| e == 0.0));
+        // White noise plus state regression is not the "unused state" case.
+        let wn = Layout::new(
+            &UcSpec {
+                trend: TrendSpec::Irregular,
+                exog: x.clone(),
+                mle_regression: false,
+                ..UcSpec::default()
+            },
+            4,
+        )
+        .unwrap();
+        assert!(!wn.unused_state);
+        assert_eq!(wn.state_names, vec!["beta.x1", "beta.x2"]);
+        assert!(matches!(
+            wn.build_ssm(&[1.0]).unwrap().initialization(),
+            Initialization::Diffuse
+        ));
+        // The starting ladder has no coefficient parameters to fill.
+        let starts = layout.starting_values(&[1.0, 2.0, 1.5, 3.0], 3);
+        assert!(starts.iter().all(|p| p.len() == 4));
     }
 
     #[test]

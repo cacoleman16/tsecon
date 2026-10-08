@@ -6,7 +6,10 @@
   from its unconditional (Lyapunov) distribution instead of exactly diffuse;
 * ``autoregressive=p`` -- an AR(p) component (statsmodels' own
   ``autoregressive=`` keyword, row-companion form, always initialized from
-  its stationary distribution).
+  its stationary distribution);
+* ``mle_regression=False`` -- the regression coefficients as exactly diffuse
+  constant states with design row ``x_t'`` (statsmodels' own
+  ``mle_regression=False``), the regression-coefficient component included.
 
 Reference implementation (this venv; versions pinned in ``_meta``):
 
@@ -52,16 +55,27 @@ Reference implementation (this venv; versions pinned in ``_meta``):
   ``damping.cycle`` are ever flagged). The complex-step Hessian never
   leaves the stationarity region, so the reference needs no counterpart of
   tsecon's AR probe-step guard.
+* CLOSED FORMS for the state regression (de Jong 1991; Durbin & Koopman
+  2012, secs. 5.7 and 7.2): with white noise only, the diffuse-prior
+  coefficient states are GLS = OLS, ``beta_hat = (X'X)^-1 X'y``,
+  ``Var = sigma2 (X'X)^-1``, ``l = -[n ln 2 pi + n ln sigma2 + RSS/sigma2 +
+  ln det(X'X / sigma2)] / 2``, forecast ``x' beta_hat`` with variance
+  ``sigma2 (1 + x'(X'X)^-1 x)``; the cross-mode identity ``l_state(theta) =
+  l_mle(theta, beta_gls) + ln det(P_beta) / 2`` (marginal against profile
+  likelihood) on six specifications; and the regressor-units identity:
+  rescaling a column by ``c`` shifts the state-form likelihood by exactly
+  ``-ln |c|`` and leaves the MLE form unchanged.
 * The ``lambda -> 0`` sweep: statsmodels' log-likelihood at the GDP
   stationary-cycle optimum with only the frequency moved, under both
   initializations. The stationary one is flat; the diffuse one keeps rising
   toward the singularity documented in ``uc.json``'s generator.
 
 Data: the bundled public-domain Nile series and US macrodata transforms
-(``infl``, ``100 log realgdp`` and its first difference), and the seeded
-simulated series of ``uc.json``
-(reconstructed here from its seed and asserted equal). Only these
-public-domain or seeded series and derived numbers are stored.
+(``infl``, ``100 log realgdp`` and its first difference), the seeded
+simulated series of ``uc.json`` (reconstructed here from its seed and
+asserted equal), and a second seeded series (``default_rng(20261008)``: a
+local level plus two regressors, a NaN-inserted copy, six forecast rows).
+Only these public-domain or seeded series and derived numbers are stored.
 
 This generator NEVER imports tsecon.
 
@@ -132,9 +146,14 @@ def components_ext(res):
     return comp
 
 
-def fixed_block(mod, params, h=8, forecast_exog=None, components=False):
-    """The uc.json fixed block plus the initialization record."""
+def fixed_block(mod, params, h=8, forecast_exog=None, components=False, full_states=True):
+    """The uc.json fixed block plus the initialization record. With
+    ``full_states=False`` the state matrices are dropped (size budget) --
+    only where the component paths already pin every state."""
     block = base.fixed_block(mod, np.asarray(params, float), h=h, forecast_exog=forecast_exog)
+    if not full_states:
+        for k in ("filtered_state", "filtered_state_var", "smoothed_state", "smoothed_state_var"):
+            del block[k]
     res = mod.smooth(np.asarray(params, float))
     block["k_diffuse"] = int(res.k_diffuse_states)
     block["df_model"] = int(res.df_model)
@@ -255,8 +274,10 @@ def main():
         kw = {k: (X if k == "exog" else v) for k, v in spec.items()}
         mod = UnobservedComponents(series[data], use_exact_diffuse=True, **kw)
         fexog = Xf[:h] if "exog" in spec else None
+        # Two states, both pinned by the level and AR components.
+        full = name not in ("nile_llevel_ar1", "nile_rwalk_ar1")
         ar_cases.append(dict(name=name, data=data, spec=spec,
-                             **fixed_block(mod, p, h=h, forecast_exog=fexog, components=True)))
+                             **fixed_block(mod, p, h=h, forecast_exog=fexog, components=True, full_states=full)))
     fx["autoregressive"] = ar_cases
 
     ar_mle = []
@@ -278,6 +299,110 @@ def main():
         dict(params=[8000.0, 1400.0, 6000.0, phi], statsmodels_loglike=float(m.loglike(np.array([8000.0, 1400.0, 6000.0, phi]))))
         for phi in (1.2, 1.0, 0.9999)
     ]
+
+    # ------------------------------------- (c) regressors in the state vector
+    # rng 20261008: a local level plus two regressors, six forecast rows, and
+    # a NaN-inserted copy (t = 5, 6, 50, 119: the forecast origin missing).
+    rng = np.random.default_rng(20261008)
+    T2 = 120
+    X2 = np.column_stack([rng.normal(size=T2), rng.uniform(-2, 2, size=T2)])
+    y2 = np.cumsum(rng.normal(0, 0.4, T2)) + X2 @ [0.5, -0.3] + rng.normal(0, 0.9, T2)
+    Xf2 = np.column_stack([rng.normal(size=6), rng.uniform(-2, 2, size=6)])
+    y2m = y2.copy()
+    y2m[[5, 6, 50, 119]] = np.nan
+    fx["data"].update(sim2_y=lst(y2), sim2_y_missing=lst(y2m), sim2_x=lst(X2), sim2_x_forecast=lst(Xf2))
+    series.update(sim2=y2, sim2_missing=y2m)
+
+    def regression_components(res):
+        rc = res.regression_coefficients
+        k = rc.filtered.shape[0]
+        return dict(
+            filtered=lst(rc.filtered.T), smoothed=lst(rc.smoothed.T),
+            filtered_var=lst(np.array([np.diag(rc.filtered_cov[:, :, t]) for t in range(res.nobs)])),
+            smoothed_var=lst(np.array([np.diag(rc.smoothed_cov[:, :, t]) for t in range(res.nobs)])),
+            smoothed_cov_last=lst(rc.smoothed_cov[:, :, -1].reshape(k, k)),
+        )
+
+    state_reg = []
+    for name, data, spec, p, h, cls in [
+        ("sim2_llevel", "sim2", dict(level="llevel"), [0.8, 0.3], 4, UnobservedComponents),
+        ("sim2_ntrend", "sim2", dict(level="ntrend"), [0.8], 6, UnobservedComponents),
+        ("sim2_lltrend_ar2_missing", "sim2_missing", dict(level="lltrend", autoregressive=2),
+         [0.5, 0.2, 0.01, 0.4, 0.5, -0.2], 3, UnobservedComponents),
+        # Everything at once: smooth trend, a 12-period trigonometric
+        # seasonal with two harmonics (not the period-4 Nyquist pair), a
+        # stationary damped cycle, an AR(1), and the regressors in the state.
+        ("sim_strend_freq12h2_statcycle_ar1", "sim",
+         dict(level="strend", freq_seasonal=[dict(period=12, harmonics=2)], cycle=True, damped_cycle=True,
+              stochastic_cycle=True, autoregressive=1),
+         [0.8, 0.02, 0.05, 0.2, 0.3, 0.6, 0.85, 0.5], 4, StationaryCycleUC),
+    ]:
+        Xd = X if data == "sim" else X2
+        Xfd = Xf if data == "sim" else Xf2
+        mod = cls(series[data], exog=Xd, mle_regression=False, use_exact_diffuse=True, **spec)
+        block = fixed_block(mod, p, h=h, forecast_exog=Xfd[:h], components=True)
+        block["components"]["regression_coefficients"] = regression_components(mod.smooth(np.asarray(p, float)))
+        out_spec = dict(spec, exog="sim_x" if data == "sim" else "sim2_x", mle_regression=False)
+        if cls is StationaryCycleUC:
+            out_spec["cycle_init"] = "stationary"
+        state_reg.append(dict(name=name, data=data, spec=out_spec, **block))
+    fx["state_regression"] = state_reg
+
+    # Closed form (de Jong 1991; Durbin & Koopman 2012, secs. 5.7 and 7.2):
+    # white noise plus regressors in the state is diffuse-prior GLS = OLS.
+    s2 = 0.8
+    beta = np.linalg.solve(X2.T @ X2, X2.T @ y2)
+    rss = float(np.sum((y2 - X2 @ beta) ** 2))
+    xtx_inv = np.linalg.inv(X2.T @ X2)
+    fx["state_regression_closed_form"] = dict(
+        sigma2=s2, beta_ols=lst(beta), cov=lst(s2 * xtx_inv),
+        loglike=float(-0.5 * (T2 * np.log(2 * np.pi) + T2 * np.log(s2) + rss / s2
+                              + np.linalg.slogdet(X2.T @ X2 / s2)[1])),
+        forecast=lst(Xf2 @ beta), forecast_var=lst(s2 * (1.0 + np.einsum("ij,jk,ik->i", Xf2, xtx_inv, Xf2))),
+    )
+
+    # The cross-mode identity: the state form is the marginal (diffuse)
+    # likelihood, the MLE form the profile one, and at the GLS beta
+    # l_state(theta) = l_mle(theta, beta_gls) + 1/2 ln det P_beta.
+    identity = []
+    for lvl, p in (("llevel", [0.8, 0.3]), ("lltrend", [0.8, 0.3, 0.01]), ("ntrend", [0.8])):
+        for ar in (None, 2):
+            pp = p + ([0.5, 0.4, -0.2] if ar else [])
+            ms = UnobservedComponents(y2, lvl, exog=X2, autoregressive=ar, mle_regression=False,
+                                      use_exact_diffuse=True)
+            rs = ms.smooth(np.array(pp))
+            bhat = rs.smoothed_state[-2:, -1]
+            pb = rs.smoothed_state_cov[-2:, -2:, -1]
+            mm = UnobservedComponents(y2, lvl, exog=X2, autoregressive=ar, use_exact_diffuse=True)
+            rm = mm.smooth(np.r_[pp, bhat])
+            identity.append(dict(level=lvl, autoregressive=ar, params=lst(pp), loglike_state=float(rs.llf),
+                                 beta_gls=lst(bhat), loglike_mle_at_gls=float(rm.llf),
+                                 half_logdet_p_beta=float(0.5 * np.linalg.slogdet(pb)[1])))
+    fx["state_regression_identity"] = identity
+
+    # The regressor-units identity: rescaling column 1 by 100 shifts the
+    # state-form likelihood by exactly -ln 100 and leaves the MLE form alone.
+    X2c = X2.copy()
+    X2c[:, 0] *= 100.0
+    fx["state_regression_units"] = dict(
+        scale=100.0, params=[0.8, 0.3],
+        loglike_state=float(UnobservedComponents(y2, "llevel", exog=X2, mle_regression=False,
+                                                 use_exact_diffuse=True).loglike(np.array([0.8, 0.3]))),
+        loglike_state_scaled=float(UnobservedComponents(y2, "llevel", exog=X2c, mle_regression=False,
+                                                        use_exact_diffuse=True).loglike(np.array([0.8, 0.3]))),
+        loglike_mle=float(UnobservedComponents(y2, "llevel", exog=X2, use_exact_diffuse=True)
+                          .loglike(np.array([0.8, 0.3, 0.5, -0.3]))),
+        loglike_mle_scaled=float(UnobservedComponents(y2, "llevel", exog=X2c, use_exact_diffuse=True)
+                                 .loglike(np.array([0.8, 0.3, 0.005, -0.3]))),
+    )
+
+    mod = UnobservedComponents(y2, "llevel", exog=X2, mle_regression=False, use_exact_diffuse=True)
+    sr_mle = mle_case(mod)
+    res = mod.smooth(np.asarray(sr_mle["best"]["params"]))
+    sr_mle["best"]["regression_coefficients"] = lst(res.smoothed_state[-2:, -1])
+    sr_mle["best"]["regression_coefficients_cov"] = lst(res.smoothed_state_cov[-2:, -2:, -1])
+    fx["state_regression_mle"] = [dict(name="sim2_llevel", data="sim2",
+                                       spec=dict(level="llevel", exog="sim2_x", mle_regression=False), **sr_mle)]
 
     # ------------------------------------------------- (b) stationary cycle
     stat = []
@@ -334,10 +459,21 @@ def main():
 
     OUT.write_text(json.dumps(fx, separators=(",", ":")))
     print("wrote", OUT, OUT.stat().st_size, "bytes")
-    for b in ar_cases + stat:
+    for b in ar_cases + state_reg + stat:
         print(b["name"], "llf %.12f nobs_diffuse %d k_diffuse %d spread %.2e"
               % (b["loglike"], b["nobs_diffuse"], b["k_diffuse"], b["smoother_spread"]))
     print("gdp mle", gdp["statsmodels"]["llf"], gdp["scipy"]["llf"], gdp["best"])
+    cf = fx["state_regression_closed_form"]
+    print("state regression closed form llf %.12f beta %s" % (cf["loglike"], cf["beta_ols"]))
+    for c in fx["state_regression_identity"]:
+        print("identity", c["level"], c["autoregressive"], "%.12f %.12f" % (
+            c["loglike_state"] - c["loglike_mle_at_gls"], c["half_logdet_p_beta"]))
+    u = fx["state_regression_units"]
+    print("units: state %.10f -> %.10f (shift %.10f), mle %.10f -> %.10f" % (
+        u["loglike_state"], u["loglike_state_scaled"], u["loglike_state"] - u["loglike_state_scaled"],
+        u["loglike_mle"], u["loglike_mle_scaled"]))
+    print("state regression mle", sr_mle["statsmodels"]["llf"], sr_mle["scipy"]["llf"], sr_mle["best"]["params"],
+          sr_mle["best"]["at_boundary"])
     for c in fx["autoregressive_nonstationary_statsmodels"]:
         print("statsmodels at a non-stationary AR", c["params"][-1], c["statsmodels_loglike"])
     for c in ar_mle:

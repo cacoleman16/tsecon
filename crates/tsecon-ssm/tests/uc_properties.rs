@@ -1074,6 +1074,39 @@ fn a_root_within_roundoff_of_the_unit_circle_cannot_fake_a_likelihood() {
         fit.loglik
     );
     let nile = as_f64_vec(&fx["data"]["nile"]);
+    // What the raw filter makes of a near-unit AR(1) beside a diffuse level
+    // (the specification below, built by hand): every observation after the
+    // first skipped as singular, and a "log-likelihood" of exactly one
+    // diffuse term, -ln(2 pi)/2 = -0.919 (measured), against -632.24 at
+    // phi = 0.5 and statsmodels' own -637.04 at phi = 0.9999.
+    let phi = 1.0 - 1e-15;
+    let raw = LinearGaussianSSM::builder(1, 2, 2)
+        .z(Mat::from_fn(1, 2, |_, _| 1.0))
+        .h(Mat::from_fn(1, 1, |_, _| 8000.0))
+        .t(Mat::from_fn(2, 2, |i, j| match (i, j) {
+            (0, 0) => 1.0,
+            (1, 1) => phi,
+            _ => 0.0,
+        }))
+        .r(Mat::from_fn(2, 2, |i, j| if i == j { 1.0 } else { 0.0 }))
+        .q(Mat::from_fn(2, 2, |i, j| match (i, j) {
+            (0, 0) => 1400.0,
+            (1, 1) => 6000.0,
+            _ => 0.0,
+        }))
+        .initialization(Initialization::Mixed {
+            diffuse: vec![true, false],
+        })
+        .build()
+        .unwrap();
+    let raw_ll = raw
+        .loglike(Mat::from_fn(nile.len(), 1, |i, _| nile[i]).as_ref())
+        .unwrap();
+    eprintln!("raw filter at phi = 1 - 1e-15: loglik {raw_ll}");
+    assert!(
+        (raw_ll + 0.5 * (2.0 * std::f64::consts::PI).ln()).abs() < 1e-9,
+        "{raw_ll}"
+    );
     let err = unobserved_components(
         &nile,
         &ar_spec(TrendSpec::LocalLevel, 1),
@@ -1153,6 +1186,152 @@ fn ar_mle_recovers_the_coefficient() {
     let m = median(&mut err);
     eprintln!("llevel + AR(1) MC ({reps} seeds, T = {n}): median |phi - 0.8| = {m:.4}");
     assert!(m < 0.12, "median error {m}");
+}
+
+/// Cross-API identity: white noise plus regressors in the state *is*
+/// recursive least squares, which `tvp_regression` is at zero coefficient
+/// variances. Filtered coefficients, one-step predictions and the
+/// log-likelihood agree to 1e-12.
+#[test]
+fn white_noise_plus_state_regression_is_tvp_regression_at_zero_variance() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["sim2_y_missing"]);
+    let x = fixture_columns(&fx["data"]["sim2_x"]);
+    let s2 = 0.8;
+    let uc = unobserved_components(
+        &y,
+        &UcSpec {
+            trend: TrendSpec::Irregular,
+            exog: x.clone(),
+            mle_regression: false,
+            ..UcSpec::default()
+        },
+        &UcOptions {
+            fixed_params: Some(vec![s2]),
+            ..UcOptions::default()
+        },
+    )
+    .unwrap();
+    let tv = tvp_regression(
+        &y,
+        &x,
+        &TvpOptions {
+            constant: false,
+            fixed_params: Some(vec![s2, 0.0, 0.0]),
+            ..TvpOptions::default()
+        },
+    )
+    .unwrap();
+    let close = |a: f64, b: f64, what: &str| {
+        if a.is_nan() || b.is_nan() {
+            assert!(a.is_nan() && b.is_nan(), "{what}: {a} vs {b}");
+        } else {
+            assert!(
+                (a - b).abs() <= 1e-12 * b.abs().max(1.0),
+                "{what}: {a} vs {b}"
+            );
+        }
+    };
+    close(uc.loglik, tv.loglik, "loglik");
+    assert_eq!(uc.nobs_diffuse, tv.nobs_diffuse);
+    for t in 0..y.len() {
+        close(uc.fitted[t], tv.fitted[t], &format!("fitted[{t}]"));
+        for j in 0..2 {
+            close(
+                uc.regression_coefficients[j].filtered[t],
+                tv.beta_filtered[t][j],
+                &format!("beta[{t}][{j}]"),
+            );
+        }
+    }
+}
+
+/// Seeded Monte Carlo: at the true variance parameters the smoothed
+/// coefficient states are the GLS estimate with its exact covariance, so
+/// `beta_hat +/- 1.96 sqrt(regression_coefficients_var)` covers the true
+/// coefficient at the nominal 95% (local level + two regressors, T = 120,
+/// 2000 seeds, two coefficients each).
+#[test]
+fn state_regression_coefficient_intervals_cover_at_the_nominal_rate() {
+    let (s2e, s2l, beta) = (0.8f64, 0.3f64, [0.5f64, -0.3f64]);
+    let (n, reps) = (120usize, 2000u64);
+    let mut hits = [0usize; 2];
+    for seed in 0..reps {
+        let mut rng = Lcg::new(51_000 + seed);
+        let x: Vec<Vec<f64>> = (0..2)
+            .map(|_| (0..n).map(|_| normal(&mut rng)).collect())
+            .collect();
+        let mut level = 0.0;
+        let mut y = Vec::with_capacity(n);
+        for (x1, x2) in x[0].iter().zip(&x[1]) {
+            y.push(level + beta[0] * x1 + beta[1] * x2 + s2e.sqrt() * normal(&mut rng));
+            level += s2l.sqrt() * normal(&mut rng);
+        }
+        let fit = unobserved_components(
+            &y,
+            &UcSpec {
+                exog: x,
+                mle_regression: false,
+                ..UcSpec::default()
+            },
+            &UcOptions {
+                fixed_params: Some(vec![s2e, s2l]),
+                ..UcOptions::default()
+            },
+        )
+        .unwrap();
+        for j in 0..2 {
+            let c = &fit.regression_coefficients[j];
+            let half = 1.959964 * c.smoothed_var[n - 1].sqrt();
+            if (c.smoothed[n - 1] - beta[j]).abs() <= half {
+                hits[j] += 1;
+            }
+        }
+    }
+    let cov: Vec<f64> = hits.iter().map(|&h| h as f64 / reps as f64).collect();
+    eprintln!("state-regression 95% coefficient coverage ({reps} seeds): {cov:?}");
+    // Monte-Carlo standard error 0.0049 at 2000 replications; the band is
+    // three of them.
+    for c in &cov {
+        assert!((c - 0.95).abs() < 0.015, "coverage {c}");
+    }
+}
+
+/// Scale equivariance under state regression: `y -> c y` maps the
+/// variances by `c^2`, the smoothed coefficients by `c`, and shifts the
+/// log-likelihood by `-(nobs_observed - nobs_diffuse) ln c`.
+#[test]
+fn state_regression_fit_is_invariant_to_the_scale_of_y() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["sim2_y"]);
+    let x = fixture_columns(&fx["data"]["sim2_x"]);
+    let c = 50.0;
+    let yc: Vec<f64> = y.iter().map(|v| v * c).collect();
+    let spec = UcSpec {
+        exog: x,
+        mle_regression: false,
+        ..UcSpec::default()
+    };
+    let a = unobserved_components(&y, &spec, &UcOptions::default()).unwrap();
+    let b = unobserved_components(&yc, &spec, &UcOptions::default()).unwrap();
+    let mut worst: f64 = 0.0;
+    for i in 0..a.params.len() {
+        worst = worst.max((b.params[i] - a.params[i] * c * c).abs() / (a.params[i] * c * c));
+    }
+    for j in 0..2 {
+        let (ba, bb) = (
+            a.regression_coefficients[j].smoothed[0],
+            b.regression_coefficients[j].smoothed[0],
+        );
+        worst = worst.max((bb - ba * c).abs() / (ba * c).abs());
+    }
+    let shift = (a.nobs_observed - a.nobs_diffuse) as f64 * c.ln();
+    let ll = (b.loglik - (a.loglik - shift)).abs() / a.loglik.abs();
+    eprintln!(
+        "state-regression scale equivariance (c = {c}): params/beta {worst:e}, loglik {ll:e}"
+    );
+    assert!(worst < 1e-6, "params {worst:e}");
+    assert!(ll < 1e-12, "loglik {ll:e}");
 }
 
 /// Every refusal names the offending argument.
@@ -1438,6 +1617,30 @@ fn refusals_name_the_offending_argument() {
                 },
             )),
             "fixed_params[3] (ar.L1) .. fixed_params[4] (ar.L2) = [0.5, 0.6]",
+        ),
+        // State regression without regressors is inert, and a forecast
+        // still needs the future regressors.
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.mle_regression = false),
+                &UcOptions::default(),
+            )),
+            "mle_regression = false was given but exog is empty",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| {
+                    s.exog = vec![(0..40).map(|t| (t as f64).cos()).collect()];
+                    s.mle_regression = false;
+                }),
+                &UcOptions {
+                    forecast_steps: 2,
+                    ..UcOptions::default()
+                },
+            )),
+            "forecast_steps = 2 with 1 regressors requires forecast_exog",
         ),
         // The stationary cycle: refused without a damped, stochastic
         // cycle, and at a fixed damping of 1.
