@@ -80,7 +80,7 @@ impl DolsIc {
         }
     }
 
-    fn penalty(self, nobs: f64) -> f64 {
+    pub(crate) fn penalty(self, nobs: f64) -> f64 {
         match self {
             Self::Aic => 2.0,
             Self::Hqic => 2.0 * nobs.ln().ln(),

@@ -48,6 +48,15 @@
 //!   conventions of `arch.unitroot.cointegration` (golden fixture
 //!   `fixtures/fmols.json`) with the kernel weights and Andrews plug-in
 //!   constants of `tsecon-hac`.
+//! * [`ardl_bounds_test`] — the ARDL model in its unrestricted
+//!   error-correction form and the Pesaran-Shin-Smith (2001) **bounds test
+//!   for a level relationship**: the PSS F and t statistics, the long-run
+//!   coefficients, lag/order selection by information criterion, and the
+//!   asymptotic I(0)/I(1) critical values and p-values of the PSS response
+//!   surface ([`pss`], transcribed from statsmodels), looked up at the
+//!   number of regressors (statsmodels' `bounds_test` uses one more — a
+//!   defect documented in the module docs and the model card; golden
+//!   fixture `fixtures/ardl.json`).
 //! * [`threshold_vecm`] / [`hansen_seo_test`] — the Hansen-Seo (2002)
 //!   two-regime **threshold VECM** (threshold cointegration): concentrated
 //!   MLE by grid search over the cointegrating vector and the threshold on
@@ -64,6 +73,7 @@
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod ardl;
 pub mod critvals;
 pub mod dols;
 pub mod engle_granger;
@@ -72,9 +82,11 @@ pub mod fmols;
 pub mod johansen;
 mod linalg;
 pub mod ou;
+pub mod pss;
 pub mod tvecm;
 pub mod vecm;
 
+pub use ardl::{ardl_bounds_test, ArdlOptions, ArdlResult, ArdlVerdict, PssCase};
 pub use critvals::{critical_values, DetOrder};
 pub use dols::{dols, DolsCovType, DolsIc, DolsOptions, DolsResult};
 pub use engle_granger::{engle_granger, EngleGrangerResult, EngleGrangerTrend};
