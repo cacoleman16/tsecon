@@ -353,3 +353,20 @@ def test_degenerate_data_is_refused_not_garbage(y, match):
 def test_wrong_rank_y_is_refused():
     with pytest.raises((TypeError, ValueError), match=r"\by\b"):
         tsecon.variance_ratio(np.ones((50, 2)), 2)
+
+
+def test_the_robust_variance_cost_is_documented_and_bounded():
+    """The robust theta is O(n q); the docstring says so with a measurement
+    (scripts/variance_ratio_cost.py: 0.18 s at n = 20,001, q = 10,000), and
+    a ceiling far above it catches a regression without being flaky."""
+    import re
+    import time
+
+    flat = re.sub(r"\s+", " ", tsecon.variance_ratio.__doc__ or "")
+    assert "COST: the robust variance is O(n q)" in flat
+    y = np.cumsum(np.random.default_rng(0).standard_normal(20_001))
+    t0 = time.perf_counter()
+    r = tsecon.variance_ratio(y, 10_000)
+    elapsed = time.perf_counter() - t0
+    assert math.isfinite(r["stat"])
+    assert elapsed < 10.0, elapsed  # measured 0.18 s; ~50x headroom

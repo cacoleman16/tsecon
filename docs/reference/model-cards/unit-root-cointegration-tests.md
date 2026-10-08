@@ -605,8 +605,10 @@ below 1) says momentum or mean reversion.
   positive in the fixture grid) and underflows to exactly 0 beyond
   $|z| \approx 8.3$ (72 of the 250 fixture cases). Compare with arch at an
   absolute tolerance, not a relative one.
-- **Horizons near $n$.** The robust variance costs $O(nq)$; a horizon of
-  thousands on a long series is slow before it is wrong — and $VR(q)$ at large
+- **Horizons near $n$.** The robust variance costs $O(nq)$ per horizon —
+  measured on 20,001 levels at 0.02 s for $q = 1{,}000$ and 0.18 s for
+  $q = 10{,}000$, against under 1 ms with `robust=False`
+  (`scripts/variance_ratio_cost.py`) — and $VR(q)$ at large
   $q/n$ is noisy and biased in finite samples even debiased.
 
 **Validated against.** `arch.unitroot.VarianceRatio` (arch 8.0.0, an

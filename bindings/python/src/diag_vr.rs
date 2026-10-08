@@ -238,6 +238,12 @@ fn vr_err(e: DiagError) -> PyErr {
 /// "10%"}; `se_type` is "robust", "homoskedastic" or "nonoverlapping";
 /// `debiased` is whether the correction was applied.
 ///
+/// COST: the robust variance is O(n q) per horizon (every lag 1..q-1 of
+/// the squared increments); the homoskedastic and non-overlapping variances
+/// are O(n). Measured on n = 20,001 levels (scripts/variance_ratio_cost.py):
+/// 0.02 s at q = 1,000 and 0.18 s at q = 10,000 (robust), under 1 ms with
+/// `robust=False`.
+///
 /// Validation (fixtures/variance_ratio.json): 250 single-horizon cases
 /// against arch.unitroot.VarianceRatio (vr 1e-12, stat 1e-12 + 1e-10|stat|,
 /// pvalue against scipy's 2*norm.sf at 1e-9 relative with no absolute
