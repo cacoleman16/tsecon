@@ -657,6 +657,25 @@ def _univariate_recommendations(
                 f"— the ACF/PACF cutoff heuristics are starting points, not a "
                 f"verdict."
             )
+        arma_functions = ["arima_fit", "acf", "pacf"]
+        if (
+            report["arch_effects"]["rejected"]
+            and report["analysis_scale"]["scale"] == "first_difference"
+        ):
+            # Ljung-Box's null is iid increments, so volatility clustering
+            # alone can drive this rejection. The variance-ratio test's
+            # robust z* asks the random-walk question of the level series
+            # without assuming homoskedastic increments. Cited only, not run:
+            # the battery's test families (and n_tests) are unchanged.
+            arma_suggestion += (
+                " ARCH-LM also rejects on the differences, and Ljung-Box "
+                "assumes homoskedastic increments under its null, so part of "
+                "this rejection may be volatility clustering rather than "
+                "serial correlation: variance_ratio(y) (heteroskedasticity-"
+                "robust by default; pass the level series) tests whether the "
+                "increments are uncorrelated without that assumption."
+            )
+            arma_functions.append("variance_ratio")
         recs.append(
             _rec(
                 "arma_orders",
@@ -670,7 +689,7 @@ def _univariate_recommendations(
                     "significant_pacf_lags": sc["significant_pacf_lags"],
                 },
                 arma_suggestion,
-                ["arima_fit", "acf", "pacf"],
+                arma_functions,
                 "Order heuristics assume a clean cutoff pattern; mixed ARMA "
                 "signatures need the IC comparison to disambiguate.",
             )
