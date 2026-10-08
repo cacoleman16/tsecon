@@ -76,6 +76,7 @@ A compact index. Find your row, jump to the section.
 | Many candidate predictors, most of them noise | `adaptive_lasso`, `lasso_path`, `cv_splits` | [7](#7-i-have-many-candidate-predictors) |
 | Spillovers / who-shocks-whom across many markets | `connectedness` | [8](#8-i-need-spillovers-across-markets) |
 | Single-equation cointegration test (is this pair tied in the long run?) | `phillips_ouliaris`; rank via `johansen` | [8](#8-i-need-spillovers-across-markets) |
+| Is there a level relationship, when the regressors may be I(0) *or* I(1)? | `ardl_bounds_test` (Pesaran-Shin-Smith bounds) | [8](#8-i-need-spillovers-across-markets) |
 | Fit or forecast a yield curve | `nelson_siegel`, `svensson`, `dynamic_ns` | [9](#9-i-want-to-fit-a-yield-curve) |
 | Endogenous regressor with instruments | `iv_gmm`; nonlinear moments `gmm_nonlinear` | [10](#10-endogenous-regressor-instruments) |
 
@@ -967,6 +968,12 @@ candidate relationship — one dependent series regressed on the others — the
 lighter `phillips_ouliaris` residual test asks the yes/no question directly
 (null: no cointegration), the semiparametric Engle-Granger route; reach for
 `johansen` when you need the *number* of cointegrating vectors in a larger system.
+When you cannot say whether the regressors are I(0) or I(1) — the case unit-root
+pre-tests handle worst — `ardl_bounds_test(y, x)` runs the Pesaran-Shin-Smith
+bounds test: a level relationship when `p_value_upper` is small whatever the
+regressors are, none when `p_value_lower` is large, inconclusive in between; read
+its `t_statistic` on the lagged level too, since a rejecting F with a near-zero t
+is the degenerate case the F alone hides.
 
 ```python
 po = tsecon.phillips_ouliaris(data[:, 0], data[:, 1:], trend="c")   # y on the other columns; no constant column

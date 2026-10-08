@@ -514,6 +514,13 @@ fn refusals_name_the_parameter() {
         m.contains("too large for T = 120") && m.contains("lags = 1099511627776"),
         "{m}"
     );
+    // a design past the memory budget is refused before it is built
+    // (T = 2^20 rows, a fixed order of 100 on one regressor: 2^20 x 103)
+    let big_t = 1 << 20;
+    let yb: Vec<f64> = (0..big_t).map(|i| (i as f64 * 0.37).sin()).collect();
+    let xb = Mat::from_fn(big_t, 1, |i, _| (i as f64 * 0.11).cos());
+    let m = err(&yb, &xb, &fixed(1, vec![100], 3));
+    assert!(m.contains("512 MiB") && m.contains("max_order"), "{m}");
     // too few rows for the largest candidate names the caps
     // (T = 20 still fits: 16 rows for 15 regressors at the default caps)
     let m = err(&y[..15], &Mat::from_fn(15, 2, |i, j| x[(i, j)]), &base());

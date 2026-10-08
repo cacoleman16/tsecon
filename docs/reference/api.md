@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, multivariate-GARCH, panel and term-structure families (and the top-level results of `var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` converts them; the docstring says which. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**192 functions.**
+**193 functions.**
 
 ## diagnostics
 
@@ -5411,7 +5411,7 @@ Regime-dependent generalized impulse responses (Koop-Pesaran-Potter
     the buffers are allocated fallibly, so an allocator refusal is the same
     error, never an abort.
 
-## Cointegrating regressions (FM-OLS / DOLS / CCR)
+## Cointegrating regressions and level-relationship tests (FM-OLS / DOLS / CCR / ARDL)
 
 ### `fmols`
 
@@ -5618,6 +5618,113 @@ Stock-Watson (1993) / Saikkonen (1991) dynamic OLS (DOLS) of one
     `max_lead` (None), `cov_type` ("unadjusted"), `kernel` ("bartlett"),
     `bandwidth` (None), `bandwidth_rule` (None: "newey-west"), `force_int`
     (False), `df_adjust` (False).
+
+### `ardl_bounds_test`
+
+```python
+def ardl_bounds_test(
+    y: _ArrayLike,
+    x: _ArrayLike,
+    lags: int | None = ...,
+    order: int | Sequence[int] | npt.NDArray[np.integer] | None = ...,
+    case: int = ...,
+    ic: str | None = ...,
+    max_lag: int | None = ...,
+    max_order: int | None = ...,
+    alpha: float = ...,
+) -> dict[str, Any]:
+```
+
+ARDL model and Pesaran-Shin-Smith (2001) bounds test for a level
+    relationship between `y` and the regressors `x`, valid whether the
+    regressors are I(0), I(1) or mutually cointegrated.
+
+    `y` (length T) is the regressand and `x` the (T, k) regressors, k >= 1
+    (do NOT add a constant: the deterministics come from `case`). The
+    model is the ARDL(p, q_1..q_k) in its unrestricted error-correction
+    form (statsmodels `UECM`): `D.y_t = d_t'delta + pi y_{t-1} + sum_j
+    theta_j x_{j,t-1} + sum_{i<p} phi_i D.y_{t-i} + sum_j sum_{l<q_j}
+    beta_{j,l} D.x_{j,t-l} + e_t`, OLS over rows t = h..T-1 with h =
+    max(p, max q_j), p >= 1 and every q_j >= 1. `case` (default 3) picks the
+    deterministics and what the test restricts: 1 none; 2 a constant,
+    tested with the levels; 3 an unrestricted constant; 4 a constant and a
+    trend, the trend tested; 5 an unrestricted constant and trend. The
+    trend is t + 1 over the FULL sample (statsmodels' convention).
+
+    The bounds test is the Wald F on the level block (`y.L1`, `x.L1`, plus
+    the constant in case 2 or the trend in case 4) divided by the number
+    of restrictions. Its critical values and p-values are the asymptotic
+    PSS response surface (statsmodels' 32-million-draw tables) for k
+    regressors, I(0) (lower) and I(1) (upper) bounds — looked up at k =
+    `n_x`; statsmodels 0.15's `bounds_test` uses k = n_x + 1 (its own
+    simulator, run at the key it passes, reproduces the n_x row), so its
+    critical values and p-values are wrong and tsecon does not inherit
+    them. `verdict` reads the p-values at `alpha` (default 0.05):
+    "level_relationship" if `p_value_upper` < alpha,
+    "no_level_relationship" if `p_value_lower` >= alpha, else
+    "inconclusive" ("unavailable" when n_x > 10, where no table exists and
+    `crit_note` says so). Because the surface p at a tabulated critical
+    value is off its nominal level by up to 0.001, the verdict can differ
+    from comparing `statistic` with `crit_lower`/`crit_upper` in that
+    sliver; the p-values are the definition. The t statistic on y.L1 is
+    returned without critical values: a rejecting F with a t near zero is
+    PSS's degenerate case (the x levels matter but y does not
+    error-correct) — check it. Asymptotic bounds only: with T below about
+    80 they can mislead (no Narayan / Kripfganz-Schneider finite-sample
+    surfaces, no t bounds, no HAC version yet).
+
+    Orders: `lags` (p >= 1) and `order` (an int for every regressor, or
+    one q_j >= 1 per column; q_j = 0 is a planned follow-up) fix them; a
+    None is searched by minimising `ic` — "bic" (default), "aic" or "hqic"
+    on statsmodels' scale -2 llf + c (m + 1) (NOT `dols`'s ln(RSS/n)
+    scale) — over p in 1..`max_lag` and every q_j in 1..`max_order`
+    (defaults 4) on the common sample h* = max(P, Q), the winner refit on
+    its own sample. This is statsmodels' `ardl_select_order` restricted to
+    the orders a UECM can represent (its unrestricted pick can have q_j = 0
+    or drop a regressor, which its own `UECM.from_ardl` then refuses).
+    Sentinels: `ic` with both `lags` and `order` fixed RAISES, `max_lag`
+    with `lags` fixed RAISES, `max_order` with `order` fixed RAISES (each
+    would be inert); `lags` = 0 RAISES (statsmodels silently builds the
+    lags = 1 design); a grid of more than 100 000 candidate models
+    (P x Q^k) RAISES naming `max_lag`/`max_order` — fix `order` to search
+    only the lags (measured: 65 536 models at seven regressors, T = 300,
+    about 17 s); so does a design of more than 2^26 entries (512 MiB).
+
+    Fit statistics use the regression's own row count `nobs` = T - h;
+    statsmodels' ARDL/UECM report T - p whenever max q_j > p, which shifts
+    their llf, information criteria, df_resid and t-test p-values (their
+    standard errors are right).
+
+    Returned keys: `statistic` (the PSS F), `t_statistic` (t on y.L1, no
+    critical values), `case`, `trend` ("n"/"c"/"ct"), `n_x` (the table
+    key k), `n_restrictions`, `crit_levels` ([0.90, 0.95, 0.99, 0.999]),
+    `crit_lower` (I(0) bounds), `crit_upper` (I(1) bounds),
+    `p_value_lower`, `p_value_upper`, `verdict`, `alpha`; the UECM:
+    `params`, `se`, `tvalues`, `pvalues` (Student t on `df_resid`), `cov`,
+    `param_names` ([const, trend, y.L1, x1.L1..xk.L1, D.y.L1..D.y.L{p-1},
+    D.x1.L0..D.x1.L{q1-1}, ...]), `adjustment` (the coefficient on y.L1),
+    `n_det`, `n_params`; the long run (statsmodels `ci_params` times -1,
+    without y): `long_run`, `long_run_se` (delta method),
+    `long_run_tvalues`, `long_run_pvalues` (normal), `long_run_names`
+    (const, trend, x1..xk); the fit: `resid` (length `nobs`, D.y - Z b),
+    `nobs`, `n_total` (T), `hold_back` (h), `df_resid`, `ssr`, `llf`,
+    `aic`, `bic`, `hqic` (-2 llf + c (m + 1) on the model's own sample);
+    the orders: `lags`, `order` (list of q_j), `selected` (False when both
+    were fixed), `ic`, `ic_value` (the minimised criterion on the common
+    sample; NaN when both were fixed), `max_lag`, `max_order` (the caps
+    used; the fixed values when fixed), `n_models` (candidates compared);
+    `crit_note` (None, or why the bounds are NaN).
+
+    Validation: statsmodels 0.15 `UECM` / `ARDL` / `ardl_select_order` at
+    1e-10 on estimates, F (two routes, plus an exact-rational referee), t,
+    long run and selection; the critical values and p-values are
+    statsmodels' tabulated surface at the corrected key (p-values atol
+    1e-14 / rtol 1e-9); seeded Monte Carlo null size 0.048 / 0.047 at 5%
+    (fixtures/ardl.json, model card).
+
+    Further arguments, with defaults: `lags` (None), `order` (None), `case`
+    (3), `ic` (None: "bic"), `max_lag` (None: 4), `max_order` (None: 4),
+    `alpha` (0.05).
 
 ## Conditional VAR forecasts, residual diagnostics, lag-order selection
 

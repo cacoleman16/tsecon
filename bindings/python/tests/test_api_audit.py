@@ -87,6 +87,8 @@ CASES = {
     "acf": lambda: tsecon.acf(_ar1(T)),
     "adf": lambda: tsecon.adf(_ar1(T)),
     "arch_lm": lambda: tsecon.arch_lm(_garch(T)),
+    # 0.11.0: the ARDL bounds test returns 46 keys; every one is backticked.
+    "ardl_bounds_test": lambda: tsecon.ardl_bounds_test(_coint(T)[:, 0], _coint(T)[:, 1:2]),
     "backtest": lambda: tsecon.backtest(_ar1(T) + 5.0, train=100, horizon=2),
     "bai_perron": lambda: tsecon.bai_perron(*_break(T), max_breaks=2),
     "bvar_hierarchical": lambda: tsecon.bvar_hierarchical(_var(T)),

@@ -82,6 +82,11 @@ use crate::pss;
 /// (`P * Q^k`); a larger grid is refused by name.
 pub const MAX_GRID: u64 = 100_000;
 
+/// Largest UECM design (`rows x regressors` doubles) the search may build:
+/// 2^26 cells, 512 MiB per copy (the search holds the design, its
+/// equilibrated copy and one candidate copy at a time).
+pub const MAX_DESIGN_CELLS: usize = 1 << 26;
+
 /// Default cap of the searched lag order `p` and of every searched `q_j`.
 pub const DEFAULT_MAX: usize = 4;
 
@@ -646,6 +651,15 @@ fn validate(n: usize, kx: usize, opts: &ArdlOptions) -> Result<Spec, CointError>
             opts.case.index()
         )));
     }
+    let cells = rows.saturating_mul(m_max);
+    if cells > MAX_DESIGN_CELLS {
+        return Err(spec(format!(
+            "the ARDL design would hold {rows} x {m_max} = {cells} entries, above the \
+             {MAX_DESIGN_CELLS}-entry (512 MiB) budget the order search may allocate; \
+             lower the orders or their caps (lags / order / max_lag / max_order), or \
+             estimate on a shorter sample"
+        )));
+    }
     Ok(Spec {
         p_cap,
         q_cap,
@@ -779,9 +793,9 @@ fn search(
 /// infinity; [`CointError::InvalidSpec`] (naming the parameter) for
 /// `lags = 0`, an `order` of the wrong length or with a zero, `max_lag` /
 /// `max_order` with the value they cap fixed (or zero), a search grid
-/// above [`MAX_GRID`], a design with no residual degrees of freedom, or
-/// `alpha` outside `(0, 1)`; [`CointError::Singular`] for a collinear
-/// design.
+/// above [`MAX_GRID`], a design with no residual degrees of freedom or
+/// above [`MAX_DESIGN_CELLS`] entries, or `alpha` outside `(0, 1)`;
+/// [`CointError::Singular`] for a collinear design.
 pub fn ardl_bounds_test(
     y: &[f64],
     x: MatRef<'_, f64>,

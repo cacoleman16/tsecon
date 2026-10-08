@@ -10,6 +10,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 mod ml_neural;
 
+mod coint_ardl;
 mod coint_fmols;
 mod ets;
 mod forecast_mcs;
@@ -13129,6 +13130,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ml_neural::register(m)?;
     girf::register(m)?;
     coint_fmols::register(m)?;
+    coint_ardl::register(m)?;
     var_cf::register(m)?;
     forecast_mcs::register(m)?;
     ets::register(m)?;

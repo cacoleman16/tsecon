@@ -199,8 +199,11 @@ def test_exempt_set_covers_every_integer_rust_parameter():
         src.extend(rs.read_text(encoding="utf-8").splitlines())
 
     fn_re = re.compile(r"^\s*(?:pub\s+)?fn\s+([a-z_0-9]+)\s*[<(]")
+    # An optional inline parameter attribute is allowed in front of the name:
+    # rustfmt keeps `#[pyo3(from_py_with = ...)] order: Option<Vec<usize>>`
+    # on one line (ardl_bounds_test's int-or-list `order`).
     int_param_re = re.compile(
-        r"^\s+([a-z_0-9]+)\s*:\s*(?:Option<)?Vec<\s*"
+        r"^\s+(?:#\[[^\]]*\]\s*)?([a-z_0-9]+)\s*:\s*(?:Option<)?Vec<\s*"
         r"(?:usize|isize|i8|i16|i32|i64|u8|u16|u32|u64)\s*>"
     )
     found: dict[str, set[str]] = {}

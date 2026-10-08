@@ -109,6 +109,7 @@ and docstrings live in
 | `phillips_perron` | Phillips-Perron semiparametric unit-root test (ADF alternative) |
 | `phillips_ouliaris` | Phillips-Ouliaris residual cointegration test |
 | `engle_granger` | Engle-Granger two-step cointegration test (matches statsmodels `coint`) |
+| `ardl_bounds_test` | ARDL / error-correction fit and the Pesaran-Shin-Smith bounds test for a level relationship (I(0) or I(1) regressors) |
 | `dfgls` | DF-GLS: the GLS-detrended Elliott-Rothenberg-Stock unit-root test |
 | `ng_perron` | Ng-Perron M unit-root tests (MZa, MZt, MSB, MPT) with MAIC lag choice |
 | `zivot_andrews` | Unit-root test against one endogenous structural break |
