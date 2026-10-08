@@ -72,6 +72,9 @@ A compact index. Find your row, jump to the section.
 | The whole IRF at a tail quantile (downside *dynamics*, not the mean path) | `quantile_lp`; static coefficients `quantile_regression` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Did the coefficients break, and how many times? | `bai_perron` (unknown, multiple), `sup_f_test` (unknown, single); known date `chow_test` | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Panel IRF to a common shock; per-entity dynamics | `panel_lp`, `mean_group_var` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| Panel with a time-invariant regressor of interest (FE cannot estimate it) | `panel_re` — after the Mundlak check | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| FE or RE? | the Mundlak check: entity means as extra `panel_re` regressors, Wald on their `cov` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| Cross-sectional (asset-pricing) regressions, period by period | `panel_fama_macbeth` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
 | Regressor is highly persistent (predictive regression) | `predictive_regression` (OLS + Stambaugh + IVX), `ivx_test` | [6](#6-my-regressor-is-highly-persistent) |
 | Many candidate predictors, most of them noise | `adaptive_lasso`, `lasso_path`, `cv_splits` | [7](#7-i-have-many-candidate-predictors) |
 | Spillovers / who-shocks-whom across many markets | `connectedness` | [8](#8-i-need-spillovers-across-markets) |
@@ -744,6 +747,10 @@ contaminates the regressors.
 | Your situation | Reach for |
 |---|---|
 | One common slope; confounders are unit-fixed; want robust SEs | `panel_fe` (`se_type="cluster"` or `"driscoll_kraay"`) |
+| One common slope, but a regressor of interest is time-invariant | `panel_re` (random effects) — valid only if the unit effect is uncorrelated with the regressors |
+| FE or RE? | the Mundlak check: add the unit means of the time-varying regressors to `panel_re`; its slopes then equal `panel_fe`'s, and a cluster Wald on the means (from the returned `cov`) is the robust Hausman test — reject → `panel_fe` |
+| FE or FD? | `panel_fd` when the errors look more like a random walk than white noise (FE when serially uncorrelated); both remove the unit effect; at T = 2 they coincide. `constant=True` matches plm / Stata `D.y D.x` |
+| Cross-sectional pricing: one regression per period, averaged | `panel_fama_macbeth` — right for a time effect, **wrong** for a persistent firm effect (its SE then covers far below nominal; cluster by entity instead) |
 | Slopes differ across units; no common factor | `panel_mean_group(method="mg")` |
 | Slopes differ *and* an unobserved common factor drives `y` and `x` | `panel_mean_group(method="cce")` |
 | A long-run relationship you want to *pool*, with unit-specific short-run dynamics | `panel_pmg` |

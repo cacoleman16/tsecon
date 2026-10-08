@@ -81,7 +81,7 @@ T = 200
 _RNG = np.random.default_rng(1)
 
 # The 33 functions of the audit's "keys named on neither surface" class,
-# each with the audit's canonical call.
+# each with the audit's canonical call (plus the 0.11.0 static-panel menu).
 CASES = {
     "accuracy": lambda: tsecon.accuracy(_ar1(T)[100:], _ar1(T, 1)[100:], _ar1(T)[:100]),
     "acf": lambda: tsecon.acf(_ar1(T)),
@@ -109,6 +109,23 @@ CASES = {
     "panel_fe": lambda: tsecon.panel_fe(
         np.array([_ar1(T, i) for i in range(6)]),
         np.array([np.array([_ar1(T, 10 + i) for i in range(6)]), np.array([_ar1(T, 20 + i) for i in range(6)])]),
+    ),
+    "panel_re": lambda: tsecon.panel_re(
+        np.array([_ar1(T, i) for i in range(6)]) + np.arange(6)[:, None],
+        np.array([np.array([_ar1(T, 10 + i) for i in range(6)])]),
+    ),
+    "panel_between": lambda: tsecon.panel_between(
+        np.array([_ar1(T, i) for i in range(6)]) + np.arange(6)[:, None],
+        np.array([np.array([_ar1(T, 10 + i) for i in range(6)])]),
+    ),
+    "panel_fd": lambda: tsecon.panel_fd(
+        np.array([_ar1(T, i) for i in range(6)]),
+        np.array([np.array([_ar1(T, 10 + i) for i in range(6)])]),
+    ),
+    "panel_fama_macbeth": lambda: tsecon.panel_fama_macbeth(
+        np.array([_ar1(T, i) for i in range(6)]),
+        np.array([np.array([_ar1(T, 10 + i) for i in range(6)])]),
+        se_type="hac",
     ),
     "phillips_ouliaris": lambda: tsecon.phillips_ouliaris(_coint(T)[:, 0], _coint(T)[:, 1:2]),
     "phillips_perron": lambda: tsecon.phillips_perron(_ar1(T)),

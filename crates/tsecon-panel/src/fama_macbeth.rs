@@ -32,10 +32,12 @@
 //!   linearmodels refuses it.
 //!
 //! **Caveats.** The standard error treats the `beta_s` as independent
-//! draws: persistent firm effects make them serially correlated and the
-//! Fama-MacBeth SE too small (Petersen 2009), which the HAC variant only
-//! partly repairs; with generated regressors (estimated betas in asset
-//! pricing) there is no Shanken (1992) errors-in-variables correction.
+//! draws: persistent firm effects make them correlated across periods and
+//! the Fama-MacBeth SE too small (Petersen 2009), and the HAC variant does
+//! not repair that — the correlation is the same at every lag, so a
+//! truncated kernel cannot capture it (measured on the panel model card);
+//! with generated regressors (estimated betas in asset pricing) there is no
+//! Shanken (1992) errors-in-variables correction.
 
 use tsecon_hac::Kernel;
 use tsecon_linalg::faer::linalg::solvers::SolveLstsq;

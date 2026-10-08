@@ -103,6 +103,10 @@ print(rep["quadrant"], "->", rep["recommendation"])   # UnitRoot -> Difference
 | Realized variance / bipower | `realized_measures` | — | `highfrequency::rCov`, `rBPCov` | — |
 | HAR-RV | `har_rv` | — | `HARModel::HARestimate` | — |
 | Panel fixed effects | `panel_fe` | — (`linearmodels.PanelOLS`) | `plm(model="within")` | `xtreg, fe` |
+| Panel random effects | `panel_re` | — (`linearmodels.RandomEffects`) | `plm(model="random")` (no parity pinned; unbalanced `swar` differs by construction) | `xtreg, re` (no parity pinned; `sa` differs by construction) |
+| Between estimator | `panel_between` | — (`linearmodels.BetweenOLS`) | `plm(model="between")` | `xtreg, be` (`be wls` = `reweight=True`) |
+| First differences | `panel_fd` | — (`linearmodels.FirstDifferenceOLS`) | `plm(model="fd")` (has an intercept: `constant=True`) | `regress D.y D.x` (has an intercept: `constant=True`) |
+| Fama-MacBeth | `panel_fama_macbeth` | — (`linearmodels.FamaMacBeth`) | `plm::pmg` with the index reversed (approx.) | `xtfmb` (user; parity not claimed) |
 | Driscoll-Kraay standard errors | `panel_fe(se_type="driscoll_kraay")` | — (`PanelOLS(cov_type="driscoll-kraay")`) | `plm` + `vcovSCC` | `xtscc` |
 | Mean-group / CCE-MG estimator | `panel_mean_group` | — | `plm::pmg(model="mg")`, `xtmg` | `xtpmg mg`, `xtmg cce` |
 | Pooled mean group (PMG) | `panel_pmg` | — | `plm::pmg(model="pmg")` | `xtpmg pmg` |

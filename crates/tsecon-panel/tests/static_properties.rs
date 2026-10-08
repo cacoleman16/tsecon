@@ -742,3 +742,47 @@ fn a_masked_panel_runs_every_estimator_without_panicking_on_degenerate_inputs() 
     let be = panel_between(&data, BetweenConfig::default()).unwrap();
     assert_eq!(be.nobs, n);
 }
+
+#[test]
+fn the_fama_macbeth_rank_boundary_is_the_numpy_criterion() {
+    // Documented divergence: period 0's cross-section [1, x1, x1 + 1e-14 z]
+    // is rank 3 for LAPACK gelsy (linearmodels keeps the period) and rank 2
+    // under the numpy singular-value criterion (tsecon skips it); every
+    // other period agrees.
+    let fx = load("panel_static.json");
+    let dv = &fx["divergences"]["fm_rank_boundary"];
+    assert_eq!(dv["period0_gelsy_rank"], 3);
+    assert_eq!(dv["period0_numpy_rank"], 2);
+    let lm_used: Vec<bool> = dv["linearmodels_periods_used"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_bool().unwrap())
+        .collect();
+    let raw = dataset(&fx, "fm_rank_boundary");
+    let fm = fama_macbeth(&raw.panel(), true).unwrap();
+    assert!(lm_used[0] && !fm.periods_used[0]);
+    assert_eq!(fm.periods_used[1..], lm_used[1..]);
+}
+
+#[test]
+fn first_differences_use_the_calendar_not_linearmodels_first_appearance_axis() {
+    // Documented: linearmodels 7.0 orders its time axis by first appearance,
+    // so EmplUK in plm's entity-major order (whose first firm lacks 1976)
+    // is differenced across non-adjacent years; tsecon reads the calendar
+    // layout and is independent of any row order.
+    let fx = load("panel_static.json");
+    let dv = &fx["divergences"]["fd_first_appearance_time_axis"];
+    let fd = panel_first_difference(&empluk().panel(), false).unwrap();
+    assert_eq!(fd.nobs, dv["calendar_nobs"].as_u64().unwrap() as usize);
+    assert_eq!(fd.nobs, 891);
+    assert_eq!(dv["linearmodels_nobs"], 808);
+    close(
+        &fd.params,
+        &f64s(&dv["calendar_params"]),
+        1e-10,
+        "calendar FD",
+    );
+    let lm = f64s(&dv["linearmodels_params"]);
+    assert!((fd.params[0] - lm[0]).abs() > 0.05);
+}

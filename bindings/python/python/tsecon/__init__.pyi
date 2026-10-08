@@ -1720,7 +1720,152 @@ def panel_fe(
     Arellano-Bond EmplUK panel (fixtures/panel_unbalanced.json); a mask
     that is 1 everywhere is bit-identical to no mask.
 
-    Returned keys: `bse`, `params`, `se_type`, `tvalues`.
+    Returned keys: `bse`, `params`, `se_type`, `tvalues`, plus (since 0.11.0)
+    `cov` (k x k nested lists — with `panel_re`'s, the FE-vs-RE contrast),
+    `names` (`x0`..), `nobs` (observed cells), `n_entities` (entities with an
+    observation) and `df_resid` (`nobs - k - n_entities`).
+    """
+
+def panel_re(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    se_type: str = ...,
+    bandwidth: float | None = ...,
+    constant: bool = ...,
+    small_sample: bool = ...,
+    mask: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Random-effects panel regression (Swamy-Arora-type GLS, per-entity
+    `theta_i`), matching linearmodels `RandomEffects` (version 7.0).
+
+    `outcome` is N x T; `regressors` is k x N x T (`np.stack` a list of
+    N x T arrays; `np.empty((0, N, T))` with `constant=True` is the
+    intercept-only variance-components model, whose `rho` is the intraclass
+    correlation). `constant` (True) adds the intercept `const`, first.
+    `mask` (default None = a balanced panel) is an N x T array of 0/1 flags,
+    1 where the entity is observed; masked-out cells are ignored and may hold
+    NaN. Assumes the entity effect is uncorrelated with every regressor;
+    time-invariant regressors are estimable. `sigma2_eps = e'e/(n - K - N +
+    1)` from the within residuals, `sigma2_effects = max(0, u'u/(N - K) -
+    sigma2_eps/Tbar)` from the between residuals with the HARMONIC mean
+    `Tbar`, `theta_i = 1 - sqrt(sigma2_eps/(T_i sigma2_effects +
+    sigma2_eps))`, then OLS on the quasi-demeaned data. `small_sample=True`
+    is linearmodels' small-sample formula when the entities' counts differ
+    (a no-op otherwise) — not Stata `sa` or plm `swar` — and is refused when
+    the between design is rank-deficient (time dummies on an unbalanced
+    panel). `se_type`: "nonrobust", "hc1" (alias "robust"), "cluster" (by
+    entity; alias "cluster_entity") or "driscoll_kraay" (alias "dk";
+    calendar periods). `bandwidth` is the Driscoll-Kraay lag truncation and
+    acts ONLY under `se_type="driscoll_kraay"` (4.0 when omitted there);
+    passing it with any other `se_type` raises. Mundlak check: add each
+    time-varying regressor's entity mean as a regressor and the slopes equal
+    `panel_fe`'s; a Wald test of the mean coefficients on `cov` (cluster) is
+    the robust Hausman test.
+
+    Returned keys: `params`, `bse`, `tvalues` (length K), `cov` (K x K
+    nested lists), `names`, `nobs` (observed cells), `n_entities` (entities
+    with an observation), `df_resid` (`nobs - K`), `sigma2_eps`,
+    `sigma2_effects` (clamped at 0), `rho`, `theta` (length N in layout
+    order, NaN for an entity with no observed cell), and the stamped
+    `se_type`, `constant`, `small_sample`. Validated against linearmodels
+    at 1e-10 on EmplUK and seeded panels (fixtures/panel_static.json).
+    """
+
+def panel_between(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    se_type: str = ...,
+    constant: bool = ...,
+    reweight: bool = ...,
+    mask: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """The between estimator — OLS of the entity means of the outcome on the
+    entity means of the regressors, matching linearmodels `BetweenOLS`
+    (version 7.0).
+
+    `outcome` is N x T; `regressors` is k x N x T (`np.empty((0, N, T))`
+    with `constant=True` is the intercept-only model). The means run over
+    each entity's observed cells (`mask`, default None = balanced; an N x T
+    0/1 array). `constant` (True) adds `const`, first. `reweight=True`
+    weights each entity's row by `sqrt(T_i / mean T_i)` (Stata
+    `xtreg, be wls`; a no-op when every entity has the same count).
+    `se_type`: "nonrobust", "hc1" (the default; alias "robust") or
+    "cluster" (alias "cluster_entity") — with one row per entity the
+    clustered sandwich IS HC1, so "cluster" returns the HC1 numbers;
+    "driscoll_kraay" is refused (no time dimension). No `bandwidth`.
+
+    Returned keys: `params`, `bse`, `tvalues`, `cov` (K x K nested lists),
+    `names`, `nobs` (entities with an observation — the rows),
+    `n_entities`, `df_resid` (`nobs - K`), and the stamped `se_type`,
+    `constant`, `reweight`. Validated against linearmodels BetweenOLS at
+    1e-10 (fixtures/panel_static.json).
+    """
+
+def panel_fd(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    se_type: str = ...,
+    bandwidth: float | None = ...,
+    constant: bool = ...,
+    mask: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """First-difference OLS of `y_it - y_i,t-1` on `x_it - x_i,t-1`,
+    matching linearmodels `FirstDifferenceOLS` (version 7.0) at
+    `constant=False` (the default).
+
+    `outcome` is N x T; `regressors` is k x N x T (k >= 1). A row `(i, t)`
+    needs entity i observed in t AND t - 1 (CALENDAR adjacency: a gap is
+    never bridged, nor is a period nobody observes — linearmodels
+    differences across such a hole). `mask` (default None = balanced) is an
+    N x T 0/1 array; masked-out cells may hold NaN. `constant=True` adds the
+    intercept `const` that plm `model="fd"` and Stata `regress D.y D.x`
+    include by default (a linear trend in levels). A time-invariant
+    regressor is refused (use `panel_re` / `panel_between`). `se_type`:
+    "nonrobust", "hc1" (alias "robust"), "cluster" (the default; alias
+    "cluster_entity") or "driscoll_kraay" (alias "dk"; the later period
+    `t`, calendar lags). `bandwidth` is the Driscoll-Kraay lag truncation
+    and acts ONLY under `se_type="driscoll_kraay"` (4.0 when omitted
+    there); passing it with any other `se_type` raises.
+
+    Returned keys: `params`, `bse`, `tvalues`, `cov` (K x K nested lists),
+    `names`, `nobs` (difference rows), `n_entities` (entities contributing
+    a difference), `df_resid` (`nobs - K`), and the stamped `se_type`,
+    `constant`. Validated against linearmodels at 1e-10
+    (fixtures/panel_static.json).
+    """
+
+def panel_fama_macbeth(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    se_type: str = ...,
+    bandwidth: float | None = ...,
+    constant: bool = ...,
+    mask: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Fama-MacBeth (1973) two-pass regression — one cross-sectional OLS
+    per period, then the mean of the per-period coefficients, matching
+    linearmodels `FamaMacBeth` (version 7.0).
+
+    `outcome` is N x T; `regressors` is k x N x T. `constant` (True) adds
+    `const`, first. `mask` (default None = balanced) is an N x T 0/1 array;
+    masked-out cells may hold NaN. A period with fewer than K observed
+    entities or a rank-deficient cross-section is skipped (a NaN row of
+    `params_per_period`); at least 2 usable periods are required.
+    `se_type`: "fama_macbeth" (the default: `sd(beta_t, ddof=1)/sqrt(T_v)`)
+    or "hac" (alias "newey_west": Bartlett HAC of the `beta_t` series over
+    the compressed sequence of periods used). `bandwidth` is that HAC's lag
+    truncation and acts ONLY under `se_type="hac"` (4.0 when omitted there);
+    passing it under "fama_macbeth" raises, and `bandwidth + 1 > T_v` is
+    refused. Persistent firm effects make the SE far too small (Petersen
+    2009; the HAC does not repair it — use entity clustering there); no
+    Shanken correction.
+
+    Returned keys: `params`, `bse`, `tvalues`, `cov` (K x K nested lists),
+    `names`, `nobs` (every observed cell), `params_per_period` (T x K, NaN
+    rows for skipped periods), `periods_used` (length-T bools),
+    `n_periods_used`, `bandwidth` (the effective float under "hac", None
+    otherwise), and the stamped `se_type`, `constant`. Validated against
+    linearmodels at 1e-10 (fixtures/panel_static.json).
     """
 
 def panel_lp(

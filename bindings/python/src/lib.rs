@@ -19,6 +19,7 @@ mod ml_kernel;
 mod ml_structured;
 mod ml_trees;
 mod panel_dl;
+mod panel_static;
 mod regime_ci;
 mod ssm_uc;
 mod termstructure_jsz;
@@ -5631,7 +5632,10 @@ pub(crate) fn panel_data(
 /// panel, fixtures/panel_unbalanced.json); a mask that is 1 everywhere is
 /// bit-identical to no mask.
 ///
-/// Returned keys: `bse`, `params`, `se_type`, `tvalues`.
+/// Returned keys: `bse`, `params`, `se_type`, `tvalues`, plus (since 0.11.0)
+/// `cov` (k x k nested lists — with `panel_re`'s, the FE-vs-RE contrast),
+/// `names` (`x0`..), `nobs` (observed cells), `n_entities` (entities with an
+/// observation) and `df_resid` (`nobs - k - n_entities`).
 #[pyfunction]
 #[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = None, mask = None))]
 fn panel_fe<'py>(
@@ -5655,11 +5659,21 @@ fn panel_fe<'py>(
     let inf = fit
         .inference(panel_se("panel_fe", se_type, bandwidth)?)
         .map_err(to_py)?;
+    let kk = fit.params.len();
+    let cov: Vec<Vec<f64>> = (0..kk)
+        .map(|a| (0..kk).map(|b| inf.cov[(a, b)]).collect())
+        .collect();
+    let n_entities = data.entity_counts().iter().filter(|&&c| c > 0).count();
     let d = PyDict::new(py);
     d.set_item("params", fit.params.clone().into_pyarray(py))?;
     d.set_item("bse", inf.bse.into_pyarray(py))?;
     d.set_item("tvalues", inf.tvalues.into_pyarray(py))?;
     d.set_item("se_type", se_type)?;
+    d.set_item("cov", cov)?;
+    d.set_item("names", fit.names.clone())?;
+    d.set_item("nobs", fit.nobs)?;
+    d.set_item("n_entities", n_entities)?;
+    d.set_item("df_resid", fit.df_resid)?;
     Ok(d)
 }
 
@@ -13125,6 +13139,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     regime_ci::register(m)?;
     ssm_uc::register(m)?;
     panel_dl::register(m)?;
+    panel_static::register(m)?;
     termstructure_jsz::register(m)?;
     ml_neural::register(m)?;
     girf::register(m)?;

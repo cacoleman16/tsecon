@@ -80,6 +80,11 @@ Data:
   * `re_common_trend` — seed 11, N = 20, T = 8, balanced, with a common
     linear trend among the regressors (the between design is collinear
     with the constant; the within and GLS steps identify the trend).
+  * `fm_rank_boundary` — seed 0, N = 20, T = 6, period 0's cross-section
+    [1, x1, x1 + 1e-14 z] sits on the numerical rank boundary: LAPACK gelsy
+    (linearmodels) calls it rank 3 and keeps the period, the numpy
+    singular-value criterion (tsecon) calls it rank 2 and skips it — a
+    documented divergence, stored under `divergences`, not a golden case.
   * `fm_long` — seed 2026, N = 60, T = 48, persistent (AR(1)) period
     coefficients, 5% internal gaps, and period 20 observing only 2
     entities (< K = 3), so Fama-MacBeth skips it.
@@ -103,7 +108,9 @@ from linearmodels.panel import (
     PooledOLS,
     RandomEffects,
 )
+from linearmodels.panel.covariance import FamaMacBethCovariance
 from linearmodels.panel.data import PanelData as LmPanelData
+from scipy.linalg import lstsq as sp_lstsq
 
 warnings.simplefilter("ignore")
 
@@ -246,6 +253,21 @@ def re_common_trend():
     x = rng.normal(0, 1, (n, t_len))
     y = 1.0 + 0.3 * x + 0.1 * trend + rng.normal(0, 1, n)[:, None] + rng.normal(0, 1, (n, t_len))
     return y, [("x", x), ("trend", trend)], np.ones((n, t_len), dtype=bool)
+
+
+def fm_rank_boundary():
+    """N = 20, T = 6; period 0's cross-section is [1, x1, x1 + 1e-14 z]:
+    rank 3 for LAPACK gelsy at cond = max(n, K) eps (linearmodels), rank 2
+    for the numpy singular-value criterion (tsecon)."""
+    rng = np.random.default_rng(0)
+    n, t_len = 20, 6
+    x1_0, z, _ = rng.normal(size=n), rng.normal(size=n), rng.normal(size=n)
+    x1 = rng.normal(size=(n, t_len))
+    x2 = rng.normal(size=(n, t_len))
+    x1[:, 0] = x1_0
+    x2[:, 0] = x1_0 + 1e-14 * z
+    y = 1.0 + 0.5 * x1 - 0.5 * x2 + rng.normal(size=(n, t_len))
+    return y, [("x1", x1), ("x2", x2)], np.ones((n, t_len), dtype=bool)
 
 
 def fm_long():
@@ -463,6 +485,7 @@ def main():
         "fm_long": fm_long(),
     }
     ey, eregs, emask = data["empluk"]
+    data["fm_rank_boundary"] = fm_rank_boundary()
     data["empluk_yeardummies"] = (ey, eregs + year_dummies(emask), emask)
     data["empluk_mundlak"] = (
         ey,
@@ -484,7 +507,8 @@ def main():
                   "years, regressors in the order log_wage, log_capital, mean_log_wage, "
                   "mean_log_capital",
     }
-    for name in ("ragged", "ragged_z", "balanced", "re_truncated", "re_common_trend", "fm_long"):
+    for name in ("ragged", "ragged_z", "balanced", "re_truncated", "re_common_trend", "fm_long",
+                 "fm_rank_boundary"):
         y, regs, mask = data[name]
         fx["datasets"][name] = {
             "n_entities": int(mask.shape[0]),
@@ -615,6 +639,56 @@ def main():
         "re_dk_calendar_cov": cov_cal.tolist(),
     }
 
+    # linearmodels' first-appearance time axis: plm's natural (firm, year)
+    # order puts 1976 after 1983 because the first firm lacks 1976, and
+    # FirstDifferenceOLS then differences non-adjacent years
+    y, regs, mask = data["empluk"]
+    ent, tim = np.nonzero(mask)
+    df_em = pd.DataFrame({"entity": ent, "time": tim, "y": y[mask]})
+    for nm, x in regs:
+        df_em[nm] = x[mask]
+    df_em = df_em.set_index(["entity", "time"])  # entity-major, as plm stores it
+    axis = [int(v) for v in LmPanelData(df_em[["y"]]).panel.major_axis]
+    assert axis != sorted(axis)
+    bug = FirstDifferenceOLS(df_em["y"], df_em[["log_wage", "log_capital"]]).fit()
+    fx["divergences"]["fd_first_appearance_time_axis"] = {
+        "dataset": "empluk as an entity-major long frame (plm's natural order)",
+        "linearmodels_time_axis": axis,
+        "linearmodels_nobs": int(bug.nobs),
+        "linearmodels_params": [float(v_) for v_ in bug.params.values],
+        "calendar_nobs": fx["fd_cases"][0]["nobs"],
+        "calendar_params": fx["fd_cases"][0]["se"]["nonrobust"]["params"],
+    }
+
+    # the Fama-MacBeth rank boundary: gelsy keeps period 0, numpy drops it
+    y, regs, mask = data["fm_rank_boundary"]
+    df = frame(y, regs, mask, True)
+    lm_fm = FamaMacBeth(df["y"], df[["const", "x1", "x2"]]).fit()
+    lm_used = np.isfinite(lm_fm.all_params.reindex(range(mask.shape[1])).to_numpy()).all(1)
+    x0 = np.column_stack([np.ones(mask.shape[0]), regs[0][1][:, 0], regs[1][1][:, 0]])
+    sv = np.linalg.svd(x0, compute_uv=False)
+    numpy_rank = int((sv > sv[0] * max(x0.shape) * np.finfo(float).eps).sum())
+    gelsy_rank = int(sp_lstsq(x0, y[:, 0], cond=max(x0.shape) * np.finfo(float).eps,
+                              lapack_driver="gelsy")[2])
+    assert (gelsy_rank, numpy_rank) == (3, 2) and lm_used[0] and lm_used[1:].all()
+    fx["divergences"]["fm_rank_boundary"] = {
+        "dataset": "fm_rank_boundary",
+        "period0_gelsy_rank": gelsy_rank,
+        "period0_numpy_rank": numpy_rank,
+        "linearmodels_periods_used": [bool(v) for v in lm_used],
+    }
+
+    # linearmodels' automatic Fama-MacBeth bandwidth on EmplUK (tsecon's
+    # bandwidth=None means 4.0 instead)
+    y, regs, mask = data["empluk"]
+    df = frame(y, regs, mask, True)
+    names = ["const", "log_wage", "log_capital"]
+    r = FamaMacBeth(df["y"], df[names]).fit()
+    ap = r.all_params[names]
+    auto = FamaMacBethCovariance(np.zeros((1, 1)), np.zeros((1, 3)), r.params.to_numpy()[:, None], ap,
+                                 debiased=True, bandwidth=None).bandwidth
+    fx["divergences"]["fm_automatic_bandwidth_empluk"] = float(auto)
+
     path = OUT / "panel_static.json"
     path.write_text(json.dumps(fx, separators=(",", ":")))
     print(f"wrote {path} ({path.stat().st_size} bytes)")
@@ -629,6 +703,9 @@ def main():
               np.round(c["se"]["hac"]["bse"], 8))
     print("Mundlak", fx["mundlak"])
     print("divergences", {k: v for k, v in fx["divergences"]["empluk_without_1980"].items() if "cov" not in k})
+    print("first-appearance axis", fx["divergences"]["fd_first_appearance_time_axis"])
+    print("rank boundary", fx["divergences"]["fm_rank_boundary"])
+    print("automatic FM bandwidth on EmplUK", fx["divergences"]["fm_automatic_bandwidth_empluk"])
 
 
 if __name__ == "__main__":
