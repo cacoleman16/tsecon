@@ -116,7 +116,7 @@ def macro():
         "gdp_growth": dl("realgdp"),
         "inv_growth": dl("realinv"),
         "inflation": 4.0 * dl("cpi"),
-        "unemp": md["unemp"].to_numpy(dtype=float)[1:],
+        "log_unemp": 100.0 * np.log(md["unemp"].to_numpy(dtype=float))[1:],
         "d_realint": np.diff(md["realint"].to_numpy(dtype=float)),
     }
 
@@ -309,9 +309,9 @@ def main():
     X = np.column_stack([np.ones(T), m["income_growth"]])
     cases.append(build_case("macro_consumption_on_income", m["cons_growth"], X, [None, 1, 4, 8],
                             "100 dlog realcons on const + 100 dlog realdpi (statsmodels macrodata)"))
-    X = np.column_stack([np.ones(T), m["unemp"]])
+    X = np.column_stack([np.ones(T), m["log_unemp"]])
     cases.append(build_case("macro_inflation_on_unemployment", m["inflation"], X, [None, 1, 4],
-                            "400 dlog cpi on const + unemp (a static Phillips curve; statsmodels macrodata)"))
+                            "400 dlog cpi on const + 100 log unemp (a static Phillips curve; statsmodels macrodata)"))
     X = np.column_stack([np.ones(T), m["gdp_growth"], m["d_realint"]])
     cases.append(build_case("macro_investment_accelerator", m["inv_growth"], X, [None, 4],
                             "100 dlog realinv on const + 100 dlog realgdp + diff realint (statsmodels macrodata)"))

@@ -687,7 +687,7 @@ complement block, where the crate uses a shifted `faer` eigendecomposition,
 and its integral from QUADPACK by two routes that agree to `1e-12`, where the
 crate uses its own Gauss-Kronrod rule. All three alternatives match at
 `1e-10`; the measured worst deviations are `7.9e-16` on the statistic and
-`4.0e-15` on the p-values. No package in the fixture environment computes the
+`3.1e-15` on the p-values. No package in the fixture environment computes the
 exact Durbin-Watson p-value, so the *formula* is graded separately:
 
 * **The null CDF against simulation**
