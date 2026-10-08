@@ -184,6 +184,18 @@ def test_ar_refusals_name_the_parameter():
         tsecon.unobserved_components(y, autoregressive=1.5)
 
 
+def test_a_state_dimension_too_large_to_store_is_refused_by_name():
+    """`autoregressive` (like `seasonal`) at most len(y) does not bound the
+    len(y) * k_states^2 cells of each of the four stored covariance
+    sequences: an order near the length of a long series used to end in an
+    allocator abort. It is refused by name before anything is built."""
+    y = np.random.default_rng(3).normal(size=20_000)
+    for kw, needle in ((dict(autoregressive=10_000), "autoregressive = 10000 costs 10000 states"),
+                       (dict(seasonal=10_000), "seasonal = 10000 costs 9999 states")):
+        with pytest.raises(ValueError, match=needle + r".*beyond the 67108864 accepted"):
+            tsecon.unobserved_components(y, **kw)
+
+
 def test_ar_refuses_where_statsmodels_returns_numbers():
     """statsmodels has no stationarity check: at a unit or explosive root it
     returns a finite number (recorded in the fixture as evidence, not as a

@@ -187,8 +187,11 @@ fn set_regression<'py>(
 /// multimodal). Counts that size an allocation are bounded and refuse
 /// rather than abort: `seasonal`, each `freq_seasonal` period and
 /// `autoregressive` at most `len(y)` (they cost states, and a period the
-/// sample never completes is not identified), `forecast_steps` at most
-/// 100000, `n_starts` at most 64.
+/// sample never completes is not identified), the working set
+/// `len(y) * k_states^2` at most 2^26 (the filter and smoother store four
+/// sequences of that many covariance cells; the refusal names the counts
+/// that cost the states), `forecast_steps` at most 100000, `n_starts` at
+/// most 64.
 ///
 /// Options that act only under a component RAISE when passed without it:
 /// `stochastic_seasonal` without `seasonal`; `freq_seasonal_harmonics` /

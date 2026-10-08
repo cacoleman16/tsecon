@@ -243,7 +243,11 @@ non-converged flag or NaN standard errors. A constant series is refused
 specification with no stochastic component at all, and a sample with fewer
 than `k_states + 2` observed values. Counts that size an allocation are
 bounded so that a mistyped integer is a teaching error and not an allocator
-abort: `seasonal` and each `freq_seasonal` period at most `len(y)`,
+abort: `seasonal`, each `freq_seasonal` period and `autoregressive` at
+most `len(y)`, the working set `len(y) * k_states^2` at most 2^26 (the
+filter and smoother keep four sequences of that many covariance cells, so a
+seasonal period or an AR order near the length of a long series would ask
+for terabytes; the refusal names the counts that cost the states),
 `forecast_steps` at most 100000, `n_starts` at most 64. A forecast whose variance is still
 diffuse — infinite — at the forecast origin is refused rather than
 returned; the sample-size check makes that hard to reach, and it is a

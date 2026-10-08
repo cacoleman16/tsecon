@@ -1334,6 +1334,72 @@ fn state_regression_fit_is_invariant_to_the_scale_of_y() {
     assert!(ll < 1e-12, "loglik {ll:e}");
 }
 
+/// The working-set bound. Bounding each count that costs states by the
+/// sample length does not bound `nobs * k_states^2`, the size of each of
+/// the four stored covariance sequences: an AR order or a dummy-seasonal
+/// period near the length of a long series used to ask for terabytes and
+/// end in an allocator abort. Both are refused by name before anything
+/// of that size is built; a specification under the bound is untouched.
+#[test]
+fn a_state_dimension_too_large_to_store_is_refused_by_name() {
+    let n = 20_000;
+    let mut rng = Lcg::new(77);
+    let y: Vec<f64> = (0..n).map(|_| normal(&mut rng)).collect();
+    for (spec, needle) in [
+        (
+            UcSpec {
+                autoregressive: Some(10_000),
+                ..UcSpec::default()
+            },
+            "autoregressive = 10000 costs 10000 states",
+        ),
+        (
+            UcSpec {
+                seasonal: Some(10_000),
+                ..UcSpec::default()
+            },
+            "seasonal = 10000 costs 9999 states",
+        ),
+        (
+            UcSpec {
+                trend: TrendSpec::Irregular,
+                exog: (0..60)
+                    .map(|_| (0..n).map(|_| normal(&mut rng)).collect())
+                    .collect(),
+                mle_regression: false,
+                ..UcSpec::default()
+            },
+            "exog under mle_regression = false costs 60 states",
+        ),
+    ] {
+        let e = unobserved_components(&y, &spec, &UcOptions::default())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains(needle) && e.contains("beyond the 67108864 accepted"),
+            "{e}"
+        );
+    }
+    // 20000 * 57^2 = 64980000 cells is under the bound: that
+    // specification goes past the guard to the next check (a deliberately
+    // short fixed_params, so nothing of that size is built here).
+    let e = unobserved_components(
+        &y,
+        &UcSpec {
+            trend: TrendSpec::Irregular,
+            seasonal: Some(58),
+            ..UcSpec::default()
+        },
+        &UcOptions {
+            fixed_params: Some(vec![1.0]),
+            ..UcOptions::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(e.contains("fixed_params has length 1"), "{e}");
+}
+
 /// Every refusal names the offending argument.
 #[test]
 fn refusals_name_the_offending_argument() {

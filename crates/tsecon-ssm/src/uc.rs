@@ -558,6 +558,20 @@ struct Layout {
 /// and the refusal says so.
 pub const MAX_FORECAST_STEPS: usize = 100_000;
 
+/// Largest accepted `nobs * k_states^2`.
+///
+/// The filter and smoother keep four sequences of `k_states x k_states`
+/// covariance matrices, one per period (predicted, predicted diffuse,
+/// filtered, smoothed), so the state dimension is an allocation of
+/// `nobs * k_states^2` cells per sequence. Bounding each count that costs
+/// states (`seasonal`, the `freq_seasonal` periods, `autoregressive`, the
+/// regressors under `mle_regression = false`) by the sample length does
+/// not bound that product: an AR order or a seasonal period near the
+/// length of a long series asks for terabytes and ends in an allocator
+/// abort. `2^26` cells is half a GiB per sequence, and a model that size
+/// already costs `O(nobs * k_states^3)` per likelihood evaluation.
+pub const MAX_STATE_CELLS: usize = 1 << 26;
+
 /// Largest accepted `n_starts`.
 ///
 /// The deterministic start ladder has five distinct rungs and repeats, so
@@ -1403,6 +1417,43 @@ pub fn unobserved_components(
             "y has {nobs_observed} observed (non-NaN) values but the specification has \
              {} states; at least k_states + 2 = {need} observations are needed",
             layout.k_states
+        )));
+    }
+    // The working set (see `MAX_STATE_CELLS`), refused before anything of
+    // that size is allocated; the counts that cost states are named.
+    let cells = n as u128 * (layout.k_states as u128).pow(2);
+    if cells > MAX_STATE_CELLS as u128 {
+        let mut sources = Vec::new();
+        if let Some(s) = spec.seasonal {
+            sources.push(format!("seasonal = {s} costs {} states", s - 1));
+        }
+        for (i, f) in spec.freq_seasonal.iter().enumerate() {
+            sources.push(format!(
+                "freq_seasonal[{i}] costs {} states",
+                2 * f.harmonics
+            ));
+        }
+        if let Some(p) = spec.autoregressive {
+            sources.push(format!("autoregressive = {p} costs {p} states"));
+        }
+        if layout.exog_state_off.is_some() {
+            sources.push(format!(
+                "exog under mle_regression = false costs {} states",
+                layout.k_exog()
+            ));
+        }
+        if sources.is_empty() {
+            sources.push(format!("y has {n} periods"));
+        }
+        return Err(invalid(format!(
+            "the specification has {} states over {n} periods ({}): the filter and smoother \
+             store four sequences of n * k_states^2 = {cells} covariance cells (about {:.1} \
+             GiB each), beyond the {MAX_STATE_CELLS} accepted; shorten the autoregressive \
+             order or the seasonal period (a long seasonal period is better modelled by a \
+             few freq_seasonal harmonics), or the sample",
+            layout.k_states,
+            sources.join(", "),
+            cells as f64 * 8.0 / (1u64 << 30) as f64
         )));
     }
     let h = opts.forecast_steps;
