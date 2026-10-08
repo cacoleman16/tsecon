@@ -9,7 +9,7 @@ Sections (seeded; the output is committed next to this file):
    critical values against `ols(se_type="hac")` (the tsecon default:
    Bartlett, Newey-West rule-of-thumb `maxlags`, `use_correction=True`) with
    normal critical values, on y = 1 + 0 x + u with x and u independent
-   AR(1)s (rho = 0.7, 200-period burn-in), T = 100 and T = 400, 3000
+   AR(1)s (rho = 0.7, 200-period burn-in), T = 100 and T = 400, 10000
    replications each — the design of the design review's NumPy study, now
    measured on the library.
 2. `var_forecast(param_uncertainty=True)` marginal coverage, paired with the
@@ -205,7 +205,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true")
     args = ap.parse_args()
-    ewc_reps = 300 if args.quick else 3000
+    ewc_reps = 300 if args.quick else 10000
     var_reps = 300 if args.quick else 6000
     res: dict = {"tsecon": tsecon.__version__}
 

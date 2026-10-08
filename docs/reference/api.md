@@ -383,8 +383,8 @@ OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC / EWC standard errors.
     `pvalues` (two-sided t_ewc_b) and `ewc_b` (the resolved B). `ewc_b=None`
     is `ewc_default_b(n)`; an explicit value must lie in [1, n - 1]. On a
     T=100 regression with AR(0.7) regressor and errors, nominal 95% slope
-    intervals covered 0.908 (EWC, t_9) against 0.850 (the Newey-West "hac"
-    default, normal), and 0.947 against 0.909 at T=400 (3000 seeded
+    intervals covered 0.915 (EWC, t_9) against 0.855 (the Newey-West "hac"
+    default, normal), and 0.940 against 0.905 at T=400 (10000 seeded
     replications each). "hac" stays the default for statsmodels
     compatibility. Refused by name: `ewc_b` under any other
     se_type, an explicit `maxlags` under "ewc", `use_correction=False`
@@ -848,14 +848,14 @@ Iterated VAR point forecasts with (1-alpha) intervals.
     `param_uncertainty=True` it is MSE(h) + Omega(h)/T, Lütkepohl's (2005)
     first-order coefficient-estimation term (statsmodels
     `forecast_cov(method="auto")`), and `lower`/`upper` widen to match; at
-    h = 1 it is exactly (1 + m/T) Sigma_u. A PARTIAL repair: on the audit's
+    h = 1 it is (1 + m/T) Sigma_u to rounding. A PARTIAL repair: on the audit's
     VAR(1) at T=100 pooled marginal coverage went 0.931 -> 0.937, worst
     horizon 0.925 -> 0.932 (nominal 0.95); the rest is small-sample
     coefficient bias. Derived for a
     STATIONARY VAR (on near-unit-root levels data it inflates long-horizon
     variances by 15-18%). Unlike statsmodels' public "auto" it applies to
     trend="n" too. Refused with a non-pointwise `band` (names both). COST:
-    CUBIC in `steps` (0.28 s at 1000 steps on a k = 3 VAR(2)), with a work
+    CUBIC in `steps` (0.27 s at 1000 steps on a k = 3 VAR(2)), with a work
     budget of 2^34 past which `steps` is refused by name.
 
     Returned keys: `point`, `lower`, `upper`, `band`, `cov`,

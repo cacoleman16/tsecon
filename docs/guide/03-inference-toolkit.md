@@ -283,7 +283,7 @@ print(round(tsecon.ewc_lrv(scores, b=b), 3))      # the scalar estimator behind 
 # 7.822
 ```
 
-Most of the gap closes — 0.930 against 0.876 — and the price is a wider interval; the [robust-inference model card](../reference/model-cards/robust-inference.md) has the 3,000-replication version at $T = 100$ and $T = 400$. `hac` stays `ols`'s default for statsmodels compatibility, so EWC is a choice you make explicitly.
+Most of the gap closes — 0.930 against 0.876 — and the price is a wider interval; the [robust-inference model card](../reference/model-cards/robust-inference.md) has the 10,000-replication version at $T = 100$ and $T = 400$. `hac` stays `ols`'s default for statsmodels compatibility, so EWC is a choice you make explicitly.
 
 > **⚠ Common mistake** — Using a wide bandwidth (or an EWC/fixed-b estimator) and then comparing the t-statistic to ±1.96. The entire point of fixed-b inference is that the critical values change with the smoothing choice: EWC with $B = 22$ pairs with $t_{22}$ critical values (±2.07 at 5%), not the normal's. Wide smoothing with normal critical values recreates the very overconfidence you were trying to fix.
 

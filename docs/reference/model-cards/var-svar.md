@@ -171,7 +171,7 @@ $$
 Lütkepohl's (2005, pp. 96-97) first-order term for having *estimated* the
 coefficients ($G = Z'Z$, $B$ the companion matrix extended by the deterministic
 term, $T$ the effective sample), and `lower`/`upper` widen to
-`point ± z sqrt(diag cov)`. At $h = 1$ the term is exactly $m\Sigma_u$ with
+`point ± z sqrt(diag cov)`. At $h = 1$ the term is $m\Sigma_u$ (to rounding) with
 $m = n_\text{trend} + k\,p$, so $\mathrm{cov}(1) = (1 + m/T)\Sigma_u$.
 
 **Why it exists.** The plug-in band treats the coefficients as known, and the
@@ -227,8 +227,8 @@ half of it over-fitted; the rest is the small-sample **bias** of the OLS
 coefficients, which no variance term can fix. **The cost is CUBIC in
 `steps`** — about $\text{steps}^3 (k^2 + 8)/3$ operations: on the $k = 3$
 VAR(2) of `var.json` 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at 500 and
-0.28 s at 1000. A work budget of $2^{34}$ refuses `steps` by name past it
-(1443 steps on that VAR, measured 0.9 s; 0.9-2.2 s at the cap for $k = 1, 2,
+0.27 s at 1000. A work budget of $2^{34}$ refuses `steps` by name past it
+(1443 steps on that VAR, measured 0.9 s; 0.9-2.0 s at the cap for $k = 1, 2,
 3$). Without the flag nothing is budgeted beyond what `var_forecast` always
 did.
 

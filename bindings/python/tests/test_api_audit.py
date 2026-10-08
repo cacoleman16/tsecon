@@ -122,6 +122,8 @@ CASES = {
     ),
     "umidas": lambda: tsecon.umidas(_ar1(T), np.random.default_rng(0).standard_normal((T, 6))),
     "var_granger": lambda: tsecon.var_granger(_var(T), [0], [1]),
+    # 0.11: `cov` / `param_uncertainty` are always returned.
+    "var_forecast": lambda: tsecon.var_forecast(_var(T), param_uncertainty=True),
 }
 
 

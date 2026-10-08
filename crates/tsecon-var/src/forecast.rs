@@ -98,7 +98,7 @@ impl ForecastOptions {
 /// cost about the same per horizon cubed). The count is
 /// `steps^3 (k^2 + 8) / 3` for it, plus `steps^2 k^3 / 2`, `2 steps m^3` (the
 /// powers of `B`) and `steps^2 m^2` (the trace table). Cubic in `steps`:
-/// `2^34` is one to two seconds of one core (measured 0.9-2.2 s at the cap
+/// `2^34` is one to two seconds of one core (measured 0.9-2.0 s at the cap
 /// for `k = 1, 2, 3`); a request past it is refused, naming `steps`, rather
 /// than left to run for minutes. Forecast horizons are tens of periods in
 /// practice.
@@ -370,8 +370,8 @@ impl VarResults {
     /// with `T` = [`VarResults::nobs`] (not `T - m`) and `Omega(h)` from
     /// [`VarResults::forecast_param_uncertainty`] — statsmodels
     /// `VARResults.forecast_cov(steps, method="auto")` for a constant-only
-    /// VAR. At `h = 1` the term is `m Sigma_u` exactly, so
-    /// `cov(1) = (1 + m/T) Sigma_u`.
+    /// VAR. At `h = 1` the term is `m Sigma_u` (to rounding — the trace
+    /// factor is the integer `m`), so `cov(1) = (1 + m/T) Sigma_u`.
     ///
     /// **A partial repair, by construction.** `Omega(h)/T` is the first-order
     /// `O(1/T)` effect of estimating the coefficients, derived for a
@@ -425,7 +425,7 @@ impl VarResults {
                 value: steps as f64,
                 requirement: "a horizon whose parameter-uncertainty term fits the work \
                               budget of 2^34 (about steps^3 (k^2 + 8) / 3 operations: CUBIC \
-                              in steps — measured 0.9-2.2 s at the budget). Forecast \
+                              in steps — measured 0.9-2.0 s at the budget). Forecast \
                               horizons are tens of periods; drop param_uncertainty for a \
                               long innovation-only path",
             });
@@ -455,8 +455,9 @@ impl VarResults {
     /// Computed as `tau_ab = <B^a, G^{-1} B^b G>_F` (Frobenius; one matrix
     /// product of the stacked `vec(B^a)` and `vec(G^{-1} B^b G)`) with the
     /// `b = 0` factor set to the identity **exactly** (not formed as
-    /// `G^{-1} I G`, which would carry roundoff), so `Omega(1) = m Sigma_u`
-    /// holds exactly, then `Omega(h) = sum_i Psi_i Sigma_u (sum_j
+    /// `G^{-1} I G`, which would carry roundoff), so the `h = 1` trace factor
+    /// is the integer `m` and `Omega(1) = m Sigma_u` to rounding (asserted at
+    /// 1e-14), then `Omega(h) = sum_i Psi_i Sigma_u (sum_j
     /// tau_{h-1-i, h-1-j} Psi_j)'` with the inner sums for all `i` as one
     /// `h x h` by `h x k^2` product. Each `Omega(h)` is symmetrized. Cost
     /// `O(steps^3 (k^2 + 8) + steps^2 m^2 + steps m^3)`, budgeted by

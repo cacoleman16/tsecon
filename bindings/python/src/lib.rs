@@ -1092,9 +1092,9 @@ fn long_run_variance(
 /// intervals as `params +/- t_{ewc_b, 0.975} * bse`. `ewc_b=None` uses
 /// `ewc_default_b(n)` = round(0.4 n^(2/3)); an explicit value must lie in
 /// `[1, n - 1]`. On a T=100 regression with AR(0.7) regressor and errors,
-/// nominal 95% slope intervals covered 0.908 with EWC (B = 9, t_9 critical
-/// value) against 0.850 with the Newey-West `hac` default and normal critical
-/// values, and 0.947 against 0.909 at T=400 (3000 seeded replications each;
+/// nominal 95% slope intervals covered 0.915 with EWC (B = 9, t_9 critical
+/// value) against 0.855 with the Newey-West `hac` default and normal critical
+/// values, and 0.940 against 0.905 at T=400 (10000 seeded replications each;
 /// the robust-inference model card cites the script). `hac` stays the
 /// default for statsmodels compatibility.
 ///
@@ -1877,7 +1877,7 @@ fn var_fevd<'py>(
 /// MSE(h) + Omega(h)/T, Lütkepohl's (2005, pp. 96-97) first-order term for
 /// estimating the coefficients (statsmodels `forecast_cov(method="auto")`; T =
 /// effective nobs), and `lower`/`upper` = point -/+ z sqrt(diag cov). At h = 1
-/// it is exactly (1 + m/T) Sigma_u with m = n_trend + k*lags. It is a PARTIAL
+/// it is (1 + m/T) Sigma_u, to rounding, with m = n_trend + k*lags. It is a PARTIAL
 /// repair: on the interval-coverage audit's VAR(1) at T=100 (experiment 3,
 /// its 6000 replications) pooled marginal coverage went from 0.931 to 0.937
 /// and the worst horizon from 0.925 to 0.932 (nominal 0.95; 0.931 to 0.941
@@ -1891,8 +1891,8 @@ fn var_fevd<'py>(
 /// refused (the joint cross-horizon blocks are a follow-up). COST: CUBIC in
 /// `steps` (about steps^3 (k^2 + 8) / 3 operations; measured on the k = 3
 /// VAR(2) of the VAR card: 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at 500,
-/// 0.28 s at 1000), with a work budget of 2^34 past which `steps` is refused
-/// by name (1443 steps on that VAR, 0.9 s; 0.9-2.2 s at the cap for k = 1,
+/// 0.27 s at 1000), with a work budget of 2^34 past which `steps` is refused
+/// by name (1443 steps on that VAR, 0.9 s; 0.9-2.0 s at the cap for k = 1,
 /// 2, 3); without the flag nothing changes.
 ///
 /// Returned keys: `point`, `lower`, `upper`, `band`, `cov`,

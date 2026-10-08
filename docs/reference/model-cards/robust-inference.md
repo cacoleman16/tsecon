@@ -111,7 +111,7 @@ normal.
 - Strong persistence (roots near one) defeats every HAR estimator here.
 
 **Measured coverage.** Nominal 95% intervals for a slope whose true value is
-zero, `y = 1 + 0·x + u` with `x` and `u` independent AR(1)s (ρ = 0.7), 3000
+zero, `y = 1 + 0·x + u` with `x` and `u` independent AR(1)s (ρ = 0.7), 10000
 seeded replications per row, `hac` at its defaults with normal critical
 values, `ewc` at its defaults with `t_B` critical values — both through
 `tsecon.ols` (`lab/audit/wave11/ewc_varcov_measurements.py`,
@@ -119,11 +119,13 @@ output committed next to it):
 
 | T | `hac` (Newey-West, `maxlags`) | `ewc` (`B`) | mean width `hac` → `ewc` | MC se |
 |---|---|---|---|---|
-| 100 | **0.850** (4) | **0.908** (9) | 0.519 → 0.656 | 0.004 |
-| 400 | **0.909** (5) | **0.947** (22) | 0.289 → 0.338 | 0.004 |
+| 100 | **0.855** (4) | **0.915** (9) | 0.520 → 0.656 | 0.002 |
+| 400 | **0.905** (5) | **0.940** (22) | 0.288 → 0.336 | 0.002 |
 
-EWC closes most of the gap at `T = 100` and all of it at `T = 400`; Newey-West
-is still 4 points short at `T = 400`.
+EWC cuts the shortfall from 9.5 points to 3.5 at `T = 100` and from 4.5 to 1.0
+at `T = 400`. Neither reaches nominal: with ρ = 0.7 in both the regressor and
+the error the scores are strongly persistent, and EWC is a size improvement,
+not a guarantee.
 
 **Validated against.**
 
