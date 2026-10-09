@@ -78,7 +78,6 @@ method fits your problem and how to trust its output.
 | [Survey expectations](model-cards/expectations.md) | `cg_regression`, `forecast_efficiency`, `forecast_disagreement` |
 | [Long memory](model-cards/long-memory.md) | `frac_diff`, `frac_integrate`, `long_memory_d` |
 | [Specification & diagnostic tests](model-cards/specification-tests.md) | `heteroskedasticity_test`, `reset_test`, `chow_test`, `cusum_test`, `breusch_godfrey_test`, `durbin_watson_test` |
-| [Specification & diagnostic tests](model-cards/specification-tests.md) | `heteroskedasticity_test`, `reset_test`, `chow_test`, `cusum_test` |
 | [Robust inference: HC, HAC and EWC](model-cards/robust-inference.md) | `ols` (nonrobust / HC0-HC3 / HAC / EWC), `ewc_lrv`, `ewc_default_b`, `long_run_variance` |
 | [Arbitrage-free Nelson-Siegel](model-cards/afns.md) | `afns_adjustment` |
 | [DSGE (linear RE solver)](model-cards/dsge.md) | `dsge_solve` |
