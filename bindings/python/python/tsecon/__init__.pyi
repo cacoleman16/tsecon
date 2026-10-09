@@ -469,8 +469,10 @@ def arima_fit(
     forecast_steps: int = ...,
     conf_alpha: float | None = ...,
     drift_uncertainty: bool = ...,
+    method: str = ...,
 ) -> dict[str, Any]:
-    """Exact-MLE ARIMA(p,d,q) fit, with optional forecast + conf_alpha bands.
+    """ARIMA(p,d,q) fit by exact MLE (default) or conditional sum of squares
+    (method="css"), with optional forecast + conf_alpha bands.
 
     seasonal=(P, D, Q, s) fits the multiplicative SARIMA(p,d,q)(P,D,Q)_s —
     the airline model is seasonal=(0, 1, 1, 12) on the logged series with
@@ -497,12 +499,29 @@ def arima_fit(
     the full-vector observed information, which a boundary degrades — treat
     as approximate; reduced-Hessian interior SEs are a stated follow-up.
 
+    method="css" minimizes the sum of squared recursive residuals on the
+    differenced series, conditioning on the first p + s*P values with zero
+    pre-sample innovations, sigma2 = SSR / nobs concentrated out. Then
+    `loglik` is the CONDITIONAL log-likelihood -nobs/2 (ln 2pi + 1 + ln
+    sigma2) and `aic`/`bic` (BIC with ln(nobs)) are built from it -- not
+    comparable with an exact-MLE fit's; `bse`/`param_cov` come from the
+    Hessian of that conditional likelihood (so drift_uncertainty uses the CSS
+    Var(c_hat), param_cov[0][0]); `residuals` stay the Kalman standardized
+    innovations at the CSS estimates. The constant is an intercept (R and
+    statsforecast report the mean mu = c / (1 - sum phi*)), and R counts its
+    CSS loglik over n - d - D*s observations, so R's figure is lower (-650.97
+    vs -649.34 on the model card's example) and its CSS AIC is NA. The
+    recursion is pinned against statsforecast 2.1.1's port of R's ARIMA_CSS
+    at 1e-12. `method` echoes the choice; `nobs` is n - d - D*s ("mle") or
+    n - d - D*s - (p + s*P) ("css"), the count behind `loglik`.
+
     Returned keys: `aic`, `bic`, `boundary`, `boundary_note`, `bse`,
     `conf_alpha`, `converged`, `cov_ok`, `drift_uncertainty`,
     `forecast_lower`, `forecast_mean`, `forecast_se`, `forecast_upper`,
-    `loglik`, `param_cov`, `param_names`, `params`, `residuals`, `se_valid`.
+    `loglik`, `method`, `nobs`, `param_cov`, `param_names`, `params`,
+    `residuals`, `se_valid`.
 
-    Further arguments, with defaults: `forecast_steps` (0).
+    Further arguments, with defaults: `forecast_steps` (0), `method` ("mle").
     """
 
 def auto_arima(
@@ -2591,6 +2610,36 @@ def umidas(
     Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
     """
 
+def adl_midas(
+    y: _ArrayLike,
+    hf_lags: _ArrayLike,
+    ar_lags: int = ...,
+    se_type: str = ...,
+    maxlags: int | None = ...,
+) -> dict[str, Any]:
+    """ADL-MIDAS: U-MIDAS plus ar_lags lags of the low-frequency target, by OLS.
+
+    y_t = const + sum_p rho_p y_{t-p} + sum_k b_k hf_lags[t, k-1] + u_t over
+    the rows t = P..n-1 (P = ar_lags). y and hf_lags (n x K, row t aligned
+    with y_t) are the pair umidas takes; the lagged-y columns are built from
+    y. hf_lags column 1 is high-frequency LAG 0 (the last high-frequency
+    observation of period t, most recent first), hence the names hf1..hfK.
+    se_type "hac" (default): Bartlett/Newey-West with the n/(n - k) factor at
+    maxlags, default floor(4 (nobs/100)^(2/9)) on the EFFECTIVE rows
+    nobs = n - P; "nonrobust" refuses an explicit maxlags. ar_lags=0 is
+    refused (that model is umidas). Validated against statsmodels OLS on a
+    pandas.shift design at 1e-10.
+
+    Returned keys: `bse`, `first_index` (= P, index into y of the first
+    fitted row), `maxlags` (resolved; None under "nonrobust"), `nobs`
+    (n - P), `param_names` (["const", "y.L1".."y.LP", "hf1".."hfK"]),
+    `params`, `residuals` (aligned with y[P:]), `rsquared`, `se_type`,
+    `tvalues`.
+
+    Further arguments, with defaults: `ar_lags` (1), `se_type` ("hac"),
+    `maxlags` (None).
+    """
+
 # ---------------------------------------------------- multivariate GARCH
 def ccc_garch(
     returns: _ArrayLike,
@@ -3305,11 +3354,54 @@ def dfm_nowcast(
     moments; scale is all ones for "mle"). Mapping factors to series
     levels is exact: nowcast == center + scale * (loadings @ edge_factor),
     and center + scale * (F @ L.T) is the common-component fit of the
-    balanced panel. Also,
+    balanced panel. To re-smooth a new data vintage with the fitted model,
+    pass the six model keys to dfm_smooth, which reproduces this call's
+    loglik, edge_factor and nowcast bit for bit on the same panel.
 
     Returned keys: `center`, `edge_factor`, `factor_ar`, `factor_cov`,
     `factor_order`, `fit_loglik`, `idiosyncratic`, `loadings`, `loglik`,
     `n_factors`, `nowcast`, `scale`, `smoothed_factors`.
+    """
+
+def dfm_smooth(
+    data: _ArrayLike,
+    loadings: _ArrayLike | Sequence[Sequence[float]],
+    factor_ar: _ArrayLike | Sequence[Sequence[float]],
+    idiosyncratic: _ArrayLike,
+    factor_cov: _ArrayLike | Sequence[Sequence[float]] | None = ...,
+    center: _ArrayLike | None = ...,
+    scale: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+    """Fixed-parameter DFM Kalman smoother over a (ragged) T x N panel.
+
+    No estimation: the Kalman filter/smoother of the dynamic factor model
+    z_t = loadings @ f_t + e_t (e_t ~ N(0, diag(idiosyncratic))),
+    f_t = A_1 f_{t-1} + ... + A_p f_{t-p} + eta_t (eta_t ~ N(0, factor_cov))
+    on z = (data - center) / scale, stationary initialization -- exactly
+    statsmodels' DynamicFactor(error_order=0), which fixes factor_cov = I.
+    NaN in data is missing (skipped). loadings is N x r, factor_ar the
+    r x (r p) stacked [A_1 | ... | A_p]; arrays or nested lists (the forms
+    dfm_nowcast returns). The vintage re-smoothing workflow:
+    dfm_smooth(new_data, **{k: fit[k] for k in ("loadings", "factor_ar",
+    "factor_cov", "idiosyncratic", "center", "scale")}) reproduces
+    dfm_nowcast's loglik, edge_factor and nowcast bit for bit on the same
+    panel. Refusals name the argument (shapes, non-finite parameters, inf in
+    data, negative idiosyncratic, scale <= 0, a non-stationary factor_ar, a
+    non-PSD factor_cov, and sizes past the caps: T (r p)^2 and N^2 at most
+    2^26 cells, T (m^3 + N m^2 + N^2 + 250 N + 1000) at most 2^33 work units,
+    m = r p -- measured 3.4 s at T = 4000, N = 1000, m = 2). Validated against statsmodels DynamicFactor.smooth and
+    KalmanSmoother at 1e-8.
+
+    Returned keys: `edge_factor` (length r, the last smoothed factor),
+    `factor_order` (p), `loglik` (of the STANDARDIZED panel z; no Jacobian
+    term), `n_factors` (r), `nowcast` (length N, center + scale *
+    (loadings @ edge_factor)), `smoothed_factors` ((T, r) ndarray over the
+    FULL panel -- dfm_nowcast's key of the same name is a (T_b, r) nested
+    list from the balanced training block), `smoothed_state` ((T, r p)),
+    `smoothed_state_cov` ((T, r p, r p)).
+
+    Further arguments, with defaults: `factor_cov` (None: identity),
+    `center` (None: zeros), `scale` (None: ones).
     """
 
 def dfm_news(

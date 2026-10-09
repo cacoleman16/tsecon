@@ -85,6 +85,10 @@ _RNG = np.random.default_rng(1)
 CASES = {
     "accuracy": lambda: tsecon.accuracy(_ar1(T)[100:], _ar1(T, 1)[100:], _ar1(T)[:100]),
     "acf": lambda: tsecon.acf(_ar1(T)),
+    # 0.11: ADL-MIDAS, bound from Rust.
+    "adl_midas": lambda: tsecon.adl_midas(_ar1(T), np.random.default_rng(0).standard_normal((T, 6)), ar_lags=2),
+    # 0.11: method="css" adds `method` / `nobs` (returned on both methods).
+    "arima_fit": lambda: tsecon.arima_fit(_ar1(T), p=1, q=1, method="css", forecast_steps=3, conf_alpha=0.1),
     "adf": lambda: tsecon.adf(_ar1(T)),
     "arch_lm": lambda: tsecon.arch_lm(_garch(T)),
     # 0.11.0: the ARDL bounds test returns 46 keys; every one is backticked.
@@ -96,6 +100,11 @@ CASES = {
     "chow_test": lambda: tsecon.chow_test(*_yx(T), 100),
     "cusum_test": lambda: tsecon.cusum_test(*_yx(T)),
     "cw_test": lambda: tsecon.cw_test(_ar1(T), _ar1(T, 1), _ar1(T, 2), _ar1(T, 3)),
+    # 0.11: the fixed-parameter DFM smoother.
+    "dfm_smooth": lambda: tsecon.dfm_smooth(
+        np.column_stack([_ar1(T, i) for i in range(4)]), loadings=np.ones((4, 1)),
+        factor_ar=[[0.5]], idiosyncratic=np.ones(4),
+    ),
     "dcs_local_level": lambda: tsecon.dcs_local_level(_rw(T) + np.random.default_rng(0).standard_normal(T)),
     "dm_test": lambda: tsecon.dm_test(_ar1(T), _ar1(T, 1)),
     "growth_at_risk": lambda: tsecon.growth_at_risk(_ar1(T), _ar1(T, 1).reshape(-1, 1), horizon=2, taus=[0.1, 0.5, 0.9]),
