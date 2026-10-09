@@ -691,10 +691,10 @@ fn soft_density_coverage_by_exact_conditional_simulation() {
     let mut mse_true = Mat::<f64>::zeros(k, k);
     let mut psi_h = Mat::<f64>::identity(k, k);
     let mut true_se = vec![[0.0f64; 2]; h];
-    for s in 0..h {
+    for (s, se_s) in true_se.iter_mut().enumerate() {
         mse_true = &mse_true + &psi_h * &sigma_true * psi_h.transpose();
         psi_h = &a[0] * &psi_h;
-        for (j, slot) in true_se[s].iter_mut().enumerate() {
+        for (j, slot) in se_s.iter_mut().enumerate() {
             let row = s * k + j;
             let shrink: f64 = (0..h).map(|i| g_true[(row, i)] * k_gain[(row, i)]).sum();
             let spread: f64 = (0..h).map(|i| (k_gain[(row, i)] * sds[i]).powi(2)).sum();
