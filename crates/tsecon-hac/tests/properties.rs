@@ -179,6 +179,44 @@ fn ewc_default_b_follows_the_llsw_rule() {
     assert_eq!(ewc_default_b(3), 1);
 }
 
+/// `B = round(0.4 n^(2/3))` exactly: `r` is the rounding iff
+/// `125 (2r - 1)^3 <= 64 n^2 < 125 (2r + 1)^3`. Checked in `u128` for every
+/// `n` up to 2e5 and on a geometric sweep to 2^48 (the largest count the
+/// Python layer passes), and the extreme `usize` values return without a
+/// panic or an overflow.
+#[test]
+fn ewc_default_b_brackets_exactly_and_never_overflows() {
+    let bracket = |n: usize| {
+        let r = ewc_default_b(n) as u128;
+        let m = 64 * (n as u128) * (n as u128);
+        let cube = |t: u128| 125 * t * t * t;
+        (cube(2 * r - 1) <= m, m < cube(2 * r + 1))
+    };
+    let mut n = 4_usize;
+    let mut sweep: Vec<usize> = (4..200_000).collect();
+    while n < (1 << 48) {
+        sweep.extend([n, n + 1, n + 7]);
+        n = n + n / 3 + 1;
+    }
+    for n in sweep {
+        assert_eq!(
+            bracket(n),
+            (true, true),
+            "n = {n}: B = {}",
+            ewc_default_b(n)
+        );
+    }
+    for n in [0, 1, 2, usize::MAX - 1, usize::MAX] {
+        let b = ewc_default_b(n);
+        assert!(b >= 1 && b < n.max(2), "n = {n}: B = {b}");
+    }
+    // 0.4 (2^64 - 1)^(2/3) = 2792585463332.62... (60-digit Decimal), on a
+    // 64-bit target.
+    if usize::BITS == 64 {
+        assert_eq!(ewc_default_b(usize::MAX) as u64, 2_792_585_463_333);
+    }
+}
+
 #[test]
 fn ewc_of_white_noise_is_close_to_its_variance() {
     let z = demean(&lcg_series(4000, 5));

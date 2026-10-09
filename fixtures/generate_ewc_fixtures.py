@@ -36,7 +36,25 @@ OLS-EWC (the `ols(se_type="ewc")` golden). With statsmodels 0.15.0
 whose 0.4 n^(2/3) lands CLOSEST to a half-integer, where a powf/rounding
 difference between two implementations would show first. (Exact .5 ties are
 impossible: n^(2/3) is rational only for n = m^3, and 0.4 m^2 never has
-fractional part 1/2.)
+fractional part 1/2.) The reference B is computed EXACTLY, in integer
+arithmetic, not with a float power (audit round 15: a double-precision
+`0.4 * n**(2/3)` carries ~1e-15 relative error, enough to round the wrong way
+when the true value sits within ~1e-6 of a half-integer, first at
+n = 1,755,027,219):
+
+    round(0.4 n^(2/3)) = r  <=>  125 (2r - 1)^3 <= 64 n^2 < 125 (2r + 1)^3
+
+(cube 0.4 n^(2/3) >= r - 1/2 and 0.4 n^(2/3) < r + 1/2). `default_b_large_n`
+adds, for n in 10^6..3e10, the ten n whose 0.4 n^(2/3) lands closest ABOVE a
+half-integer and the ten closest BELOW one (found by an exact search over every
+tie in that range), plus the round-15 auditor's two cases, with the signed
+exact distance to the nearest half-integer in `default_b_large_n_gap`
+(60-digit Decimal; positive = just above, so B rounds up). The two sides test
+different things. A double-precision power runs LOW here (2/3 rounded to a
+double is 3.7e-17 below 2/3, so the computed n^(2/3) is short by about
+3.7e-17 ln n relative), so every above-tie case is one the float formula
+rounds DOWN by one (asserted below); the below-tie cases are ones it gets
+right, and they catch an exact correction that steps up too eagerly.
 
 Data: the Nile series (`sm.datasets.nile`, public domain — the tests load the
 copy already stored in `diagnostics.json`, asserted identical here, so no new
@@ -56,6 +74,7 @@ import json
 import math
 import platform
 import re
+from decimal import ROUND_FLOOR, Decimal, localcontext
 from pathlib import Path
 
 import numpy as np
@@ -87,8 +106,16 @@ def ewc_direct(z: np.ndarray, b: int) -> np.ndarray:
 
 
 def default_b(n: int) -> int:
-    b = int(math.floor(0.4 * n ** (2.0 / 3.0) + 0.5))
-    return max(1, min(b, n - 1))
+    """round(0.4 n^(2/3)) clamped to [1, n - 1], EXACT: the largest r with
+    125 (2r - 1)^3 <= 64 n^2 (Python integers; the float value is only the
+    starting guess)."""
+    m = 64 * n * n
+    r = max(1, int(math.floor(0.4 * n ** (2.0 / 3.0) + 0.5)))
+    while r > 1 and 125 * (2 * r - 1) ** 3 > m:
+        r -= 1
+    while 125 * (2 * r + 1) ** 3 <= m:
+        r += 1
+    return max(1, min(r, n - 1))
 
 
 def check_close(a: np.ndarray, b: np.ndarray, rtol: float, what: str) -> float:
@@ -223,6 +250,42 @@ def near_half_n(limit: int = 1_000_000, count: int = 10) -> list[int]:
     return sorted(int(n[i]) for i in idx)
 
 
+def tie_gap(n: int) -> Decimal:
+    """0.4 n^(2/3) minus the half-integer nearest to it, to 60 digits:
+    positive when the value sits just above a tie (B rounds up), negative
+    just below (B rounds down)."""
+    with localcontext() as ctx:
+        ctx.prec = 60
+        v = Decimal(4) / Decimal(10) * ((Decimal(n) ** 2).ln() / 3).exp()
+        return v - (v.to_integral_value(rounding=ROUND_FLOOR) + Decimal("0.5"))
+
+
+def near_half_n_large(lo: int = 1_000_000, hi: int = 30_000_000_000, count: int = 10) -> list[int]:
+    """The `count` n in [lo, hi] closest above a rounding tie of 0.4 n^(2/3)
+    and the `count` closest below one.
+
+    The tie r - 1/2 sits at n* = (2.5 r - 1.25)^(3/2); every integer n has its
+    0.4 n^(2/3) nearest some tie, and the integers either side of n* are the
+    best candidates for that tie. A float pass ranks every tie in range (the
+    float gap is accurate to ~1e-8 here, while the 400th-best gap is ~1e-4),
+    the 400 best are re-measured exactly (`tie_gap`), and the `count`
+    smallest positive and the `count` smallest negative gaps are kept."""
+    r_lo = int(0.4 * lo ** (2.0 / 3.0))
+    r_hi = int(0.4 * hi ** (2.0 / 3.0)) + 1
+    r = np.arange(max(r_lo, 2), r_hi + 1, dtype=np.float64)
+    n_star = (2.5 * r - 1.25) ** 1.5
+    cand = np.concatenate([np.floor(n_star), np.ceil(n_star)])
+    cand = cand[(cand >= lo) & (cand <= hi)]
+    v = 0.4 * cand ** (2.0 / 3.0)
+    gap = np.abs(v - np.floor(v) - 0.5)
+    best = np.unique(cand[np.argsort(gap, kind="stable")[:400]].astype(np.int64))
+    exact = [(tie_gap(int(n)), int(n)) for n in best]
+    above = sorted((g, n) for g, n in exact if g > 0)[:count]
+    below = sorted((-g, n) for g, n in exact if g < 0)[:count]
+    assert len(above) == len(below) == count
+    return sorted(n for _, n in above + below)
+
+
 def main() -> None:
     canary = absence_canary()
 
@@ -239,6 +302,16 @@ def main() -> None:
     tricky = near_half_n()
     default_b_cases = {str(n): default_b(n) for n in sorted(set(spec_n + tricky))}
     gaps = {str(n): float(abs(0.4 * n ** (2 / 3) - math.floor(0.4 * n ** (2 / 3)) - 0.5)) for n in tricky}
+    # Beyond 10^6 the float rule starts to misround; the exact rule is the golden.
+    large = sorted(set(near_half_n_large() + [1_755_027_219, 100_292_764_931_117]))
+    default_b_large = {str(n): default_b(n) for n in large}
+    gaps_large = {str(n): float(tie_gap(n)) for n in large}
+    assert default_b_large["1755027219"] == 581991, "auditor case 1"
+    assert default_b_large["100292764931117"] == 863455038, "auditor case 2"
+    for n in large:  # the float formula misrounds exactly the above-tie cases
+        float_b = int(math.floor(0.4 * n ** (2.0 / 3.0) + 0.5))
+        assert (float_b == default_b(n) - 1) == (gaps_large[str(n)] > 0), n
+        assert float_b in (default_b(n), default_b(n) - 1), n
 
     # OLS-EWC, k = 2: the spec's T = 250 design (x AR(1) 0.6, u AR(1) 0.5).
     rng2 = np.random.default_rng(20261008)
@@ -290,6 +363,8 @@ def main() -> None:
         "lrv": lrv,
         "default_b": default_b_cases,
         "default_b_near_half_gap": gaps,
+        "default_b_large_n": default_b_large,
+        "default_b_large_n_gap": gaps_large,
         "ols": ols_blocks,
     }
     OUT.write_text(json.dumps(fixture, indent=1) + "\n", encoding="utf-8")
@@ -298,6 +373,8 @@ def main() -> None:
         print(f"  lrv {name}: n={blk['n']} default_b={blk['default_b']} "
               f"demeaned={blk['ewc_demeaned']}")
     print("  default_b:", default_b_cases)
+    print("  default_b_large_n:", default_b_large)
+    print("  default_b_large_n_gap:", gaps_large)
     print("  near-half gaps:", gaps)
     for name, blk in ols_blocks.items():
         for c in blk["cases"]:

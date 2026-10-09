@@ -20,8 +20,10 @@ Chow-Denning joint test.
 from __future__ import annotations
 
 import inspect
+import itertools
 import json
 import math
+import re
 from pathlib import Path
 
 import numpy as np
@@ -218,14 +220,17 @@ def test_scalar_lags_give_python_scalars(lags):
 
 @pytest.mark.parametrize(
     "lags",
-    [[8, 2, 4], (8, 2, 4), np.array([8, 2, 4]), np.array([8.0, 2.0, 4.0])],
-    ids=["list", "tuple", "int-array", "float-array"],
+    [[8, 2, 4], (8, 2, 4), np.array([8, 2, 4]), np.array([8, 2, 4], dtype=np.int32),
+     [np.int64(8), 2, np.uint8(4)], (q for q in (8, 2, 4))],
+    ids=["list", "tuple", "int-array", "int32-array", "numpy-ints", "generator"],
 )
 def test_sequence_lags_give_arrays_in_the_given_order(lags):
     y = _rw()
     r = tsecon.variance_ratio(y, lags)
     assert set(r) == KEYS
     assert r["lags"] == [8, 2, 4]
+    # the documented echo: a list of Python ints (stub and runtime docstrings)
+    assert type(r["lags"]) is list and all(type(q) is int for q in r["lags"])
     for k in PER_HORIZON:
         assert isinstance(r[k], np.ndarray) and r[k].shape == (3,), k
     for i, q in enumerate((8, 2, 4)):
@@ -327,8 +332,9 @@ def test_bytes_like_lags_are_refused_as_strings(lags):
 @pytest.mark.parametrize(
     "lags, shown",
     [(4.0, "4.0 of type float"), (np.bool_(True), "True of type bool"),
-     ([1e300], "horizon 1e300"), ([2, 2**64], "horizon 1.8446744073709552e19")],
-    ids=["float", "np.bool_", "1e300", "2**64-in-list"],
+     ([1e300], "lags[0] = 1e+300 is a float"), ([2, 2**64], "lags=[2, 18446744073709551616]"),
+     (np.array([2, 2**62]), "lags = 4611686018427387904 is invalid")],
+    ids=["float", "np.bool_", "1e300", "2**64-in-list", "2**62-in-int-array"],
 )
 def test_refusals_quote_the_value_and_type_that_were_passed(lags, shown):
     """An integral float is not called a non-integer, and a huge horizon in
@@ -337,6 +343,82 @@ def test_refusals_quote_the_value_and_type_that_were_passed(lags, shown):
         tsecon.variance_ratio(_rw(), lags)
     msg = str(info.value)
     assert shown in msg and "18446744073709551615" not in msg, msg
+
+
+# Audit round 15: one rule for both forms. The scalar 4.0 was refused while
+# [4.0], (4.0,), [2, 4.0] and a float array were accepted silently (the
+# coercion layer float64-ified every list, so the parser had to accept
+# integral floats). `lags` is now exempt from that coercion and a float is
+# refused wherever it appears, exactly as ardl_bounds_test's `order` is.
+@pytest.mark.parametrize(
+    "lags, where",
+    [([4.0], "lags[0] = 4.0"), ((4.0,), "lags[0] = 4.0"), ([2, 4.0], "lags[1] = 4.0"),
+     ((2, 4.0), "lags[1] = 4.0"), (np.array([2.0, 4.0]), "lags[0] = "),
+     (np.array([8.0, 2.0, 4.0], dtype=np.float32), "lags[0] = "),
+     ([np.float64(2.0)], "lags[0] = "), ([np.float32(2.0)], "lags[0] = ")],
+    ids=["[4.0]", "(4.0,)", "[2, 4.0]", "(2, 4.0)", "float64-array", "float32-array",
+         "[np.float64]", "[np.float32]"],
+)
+def test_a_float_horizon_is_refused_inside_a_sequence_like_the_scalar(lags, where):
+    with pytest.raises(ValueError, match=r"of type float") as scalar:
+        tsecon.variance_ratio(_rw(), 4.0)
+    assert "lags" in str(scalar.value)
+    with pytest.raises(ValueError) as info:
+        tsecon.variance_ratio(_rw(), lags)
+    msg = str(info.value)
+    assert msg.startswith("variance_ratio: ") and where in msg and "is a float" in msg, msg
+    assert "lags=4.0" in msg  # the message points at the scalar rule it follows
+
+
+def test_float_pandas_lags_are_refused_and_int_pandas_lags_accepted():
+    pd = pytest.importorskip("pandas")
+    y = _rw()
+    with pytest.raises(ValueError, match=r"lags\[0\] = .* is a float"):
+        tsecon.variance_ratio(y, pd.Series([2.0, 4.0]))
+    assert tsecon.variance_ratio(y, pd.Series([2, 4], dtype="int32"))["lags"] == [2, 4]
+    # a DataFrame iterates over its column labels: refused, not read as [2, 4]
+    with pytest.raises(ValueError, match=r"lags is a 2-D DataFrame"):
+        tsecon.variance_ratio(y, pd.DataFrame(np.zeros((5, 2)), columns=[2, 4]))
+
+
+@pytest.mark.parametrize(
+    "make, match",
+    [(lambda: {2: "a", 4: "b"}, "mapping or set"), (lambda: frozenset({2, 4}), "mapping or set"),
+     (lambda: [2, True], r"lags\[1\] = True is a bool"),
+     (lambda: [2, "4"], r"lags\[1\] = '4' is a string"),
+     (lambda: [2, None], r"lags\[1\] = None \(of type NoneType\) is not an integer"),
+     (lambda: range(2, 10**12), "more than 300 horizons"),
+     (lambda: itertools.count(2), "more than 300 horizons"),
+     # these iterate as small ints or as rows, so they must be refused whole
+     (lambda: bytearray(b"\x02\x04"), "not a binary buffer"),
+     (lambda: memoryview(b"\x02\x04"), "not a binary buffer"),
+     (lambda: np.array([[2, 4]]), "2-D ndarray, but horizons are a 1-D sequence")],
+    ids=["dict", "frozenset", "bool-element", "str-element", "None-element", "huge-range",
+         "endless-iterator", "bytearray", "memoryview", "2-D-array"],
+)
+def test_sequence_refusals_name_the_element_and_stay_bounded(make, match):
+    """Every element is named by its position, and an enormous or endless
+    iterable is refused once it holds more horizons than a series of length
+    300 admits (n - 3 at most) instead of being collected."""
+    with pytest.raises(ValueError, match=r"\blags\b") as info:
+        tsecon.variance_ratio(_rw(), make())
+    assert re.search(match, str(info.value)), str(info.value)
+
+
+def test_stub_types_lags_as_int_or_integer_sequence_or_integer_array():
+    """mypy --strict accepted only `int | Sequence[int] | None`, so the documented
+    integer-array form failed to type-check (audit round 15); the stub now
+    matches ardl_bounds_test's `order`."""
+    import ast
+
+    stub = Path(tsecon.__file__).with_name("__init__.pyi").read_text(encoding="utf-8")
+    fn = next(n for n in ast.parse(stub).body
+              if isinstance(n, ast.FunctionDef) and n.name == "variance_ratio")
+    ann = {a.arg: ast.unparse(a.annotation) for a in fn.args.args if a.annotation}
+    assert ann["lags"] == "int | Sequence[int] | npt.NDArray[np.integer] | None"
+    doc = " ".join((ast.get_docstring(fn) or "").split())
+    assert "`lags` then echoes a list" in doc
+    assert "`lags` then echoes a list" in " ".join((tsecon.variance_ratio.__doc__ or "").split())
 
 
 @pytest.mark.parametrize("flag, value", [("debiased", 1), ("robust", 0)])

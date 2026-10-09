@@ -225,11 +225,20 @@ its plug-in arm reproduces the audit's worst-horizon 0.925 on the identical
 draws.) The term recovers about a third of the shortfall at the true order and
 half of it over-fitted; the rest is the small-sample **bias** of the OLS
 coefficients, which no variance term can fix. **The cost is CUBIC in
-`steps`** — about $\text{steps}^3 (k^2 + 8)/3$ operations: on the $k = 3$
-VAR(2) of `var.json` 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at 500 and
-0.27 s at 1000. A work budget of $2^{34}$ refuses `steps` by name past it
-(1443 steps on that VAR, measured 0.9 s; 0.9-2.0 s at the cap for $k = 1, 2,
-3$). Without the flag nothing is budgeted beyond what `var_forecast` always
+`steps`** on a small VAR — about $\text{steps}^3 (k^2 + 8)/3$ operations: on
+the $k = 3$ VAR(2) of `var.json` 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at
+500 and 0.27 s at 1000. The full count adds $\text{steps}^2 k^3/2 +
+2\,\text{steps}\,m^3 + \text{steps}^2 m^2$, with $m = n_\text{trend} +
+k \cdot \text{lags}$ regressors per equation, and on a wide VAR the
+$2\,\text{steps}\,m^3$ term dominates — linear in `steps` but cubic in
+$k \cdot \text{lags}$: 30 series at `lags = 10` ($m = 301$) admit 197 steps,
+60 series at `lags = 20` ($m = 1201$) only 4, and 64 series at `lags = 32`
+($m = 2049$) not one. A work budget of $2^{34}$ refuses past it (1443 steps on
+the $k = 3$ VAR, measured 0.9 s; 0.9-2.0 s at the cap for $k = 1, 2, 3$). The
+refusal names `steps`, with the remedy for whichever terms dominate (a shorter
+horizon, or fewer lags or series), or names `lags` when not even one step fits
+(`lab/audit/wave11/var_param_uncertainty_wide.py`, output committed next to
+it). Without the flag nothing is budgeted beyond what `var_forecast` always
 did.
 
 **Validated against.** statsmodels 0.15.0 on the `var.json` system — `mse` for

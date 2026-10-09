@@ -1060,8 +1060,11 @@ fn long_run_variance(
 /// OLS with robust standard-error options.
 ///
 /// `x` is a 2-D design matrix used as-is (add your own constant column).
-/// `se_type`: "nonrobust", "hc0", "hc1", "hc2", "hc3", or "hac" (Bartlett
-/// kernel; `maxlags=None` uses the Newey-West rule of thumb). HAC results
+/// `se_type`: "nonrobust", "hc0", "hc1", "hc2", "hc3", "hac" (Bartlett
+/// kernel; `maxlags=None` uses the Newey-West rule of thumb), or "ewc" (the
+/// equal-weighted cosine HAR covariance with Student-t p-values; see
+/// **EWC** below). An unknown `se_type` is refused first, before any check
+/// of the keywords that depend on it. HAC results
 /// match statsmodels `cov_type="HAC"` at 1e-10 **when `use_correction` is
 /// matched**. The defaults deliberately differ: tsecon defaults
 /// `use_correction=True` (the finite-sample `n/(n - k)` scaling — the
@@ -1131,6 +1134,11 @@ fn ols<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let ys = vec1(&y);
     let ys = ys.as_slice();
+    // The covariance choice first: a typo such as "ewx" or "EWC" beside
+    // `ewc_b` is an unknown se_type, not an inert ewc_b.
+    if !OLS_SE_TYPES.contains(&se_type) {
+        return Err(unknown_ols_se_type(se_type));
+    }
     if se_type == "ewc" {
         if let Some(l) = maxlags {
             return Err(PyValueError::new_err(format!(
@@ -1172,11 +1180,7 @@ fn ols<'py>(
             ewc::check_ewc_work("ols", "ewc_b", b, fit.nobs, fit.nparams)?;
             tsecon_hac::SeType::Ewc { b }
         }
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown se_type {other:?}; expected nonrobust/hc0/hc1/hc2/hc3/hac/ewc"
-            )))
-        }
+        other => return Err(unknown_ols_se_type(other)),
     };
     let inf = fit.inference(se).map_err(to_py)?;
     let ewc = match se {
@@ -1193,6 +1197,15 @@ fn ols<'py>(
         d.set_item("ewc_b", b)?;
     }
     Ok(d)
+}
+
+/// The covariance choices `ols` accepts.
+const OLS_SE_TYPES: [&str; 7] = ["nonrobust", "hc0", "hc1", "hc2", "hc3", "hac", "ewc"];
+
+fn unknown_ols_se_type(se_type: &str) -> PyErr {
+    PyValueError::new_err(format!(
+        "unknown se_type {se_type:?}; expected nonrobust/hc0/hc1/hc2/hc3/hac/ewc"
+    ))
 }
 
 fn var_results(
@@ -1829,14 +1842,16 @@ fn var_fevd<'py>(
     pyo3::types::PyList::new(py, out.iter().cloned())
 }
 
-/// Iterated VAR point forecasts with (innovation-uncertainty) intervals.
+/// Iterated VAR point forecasts with (1-alpha) intervals.
 ///
 /// `alpha` sets the interval coverage: the bands are the symmetric
 /// `1 - alpha` asymptotic intervals `point +/- z_{1-alpha/2} * se`
 /// (normal quantile; e.g. the default `alpha=0.05` is a 95% interval
 /// with z = 1.96, `alpha=0.32` a 68% interval with z ~= 0.994).
-/// Intervals reflect innovation uncertainty only (coefficients treated
-/// as known), matching statsmodels `forecast_interval`.
+/// By default the intervals reflect innovation uncertainty only
+/// (coefficients treated as known), matching statsmodels
+/// `forecast_interval`; `param_uncertainty=True` adds Lütkepohl's
+/// `Omega(h)/T` coefficient-estimation term (PARAMETER UNCERTAINTY below).
 ///
 /// SIMULTANEOUS BANDS (`band=`). `lower`/`upper` are MARGINAL whatever you
 /// pass: each covers one (horizon, series) cell. Read as a statement about a
@@ -1889,12 +1904,17 @@ fn var_fevd<'py>(
 /// a unit-root correction. Unlike statsmodels, whose public "auto" silently
 /// drops the term without a constant, it applies to `trend="n"` too. Only the
 /// pointwise band takes it: `band` other than "pointwise" with the flag is
-/// refused (the joint cross-horizon blocks are a follow-up). COST: CUBIC in
-/// `steps` (about steps^3 (k^2 + 8) / 3 operations; measured on the k = 3
-/// VAR(2) of the VAR card: 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at 500,
-/// 0.27 s at 1000), with a work budget of 2^34 past which `steps` is refused
-/// by name (1443 steps on that VAR, 0.9 s; 0.9-2.0 s at the cap for k = 1,
-/// 2, 3); without the flag nothing changes.
+/// refused (the joint cross-horizon blocks are a follow-up). COST: about
+/// steps^3 (k^2 + 8) / 3 + steps^2 k^3 / 2 + 2 steps m^3 + steps^2 m^2
+/// operations, with m = n_trend + k*lags regressors per equation. On a small
+/// VAR it is CUBIC in `steps` (measured on the k = 3 VAR(2) of the VAR card:
+/// 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at 500, 0.27 s at 1000); on a
+/// wide one the 2 steps m^3 term dominates, CUBIC in k*lags (k = 60 series
+/// at lags = 20 have m = 1201 and admit at most 4 steps). A work budget of
+/// 2^34 refuses past it (1443 steps on that k = 3 VAR, 0.9 s; 0.9-2.0 s at
+/// the cap for k = 1, 2, 3): naming `steps`, with the remedy for whichever
+/// terms dominate (a shorter horizon, or fewer lags or series), or naming
+/// `lags` when not even one step fits. Without the flag nothing changes.
 ///
 /// Returned keys: `point`, `lower`, `upper`, `band`, `cov`,
 /// `param_uncertainty`; with a simultaneous `band` also `se`, `sim_lower`,

@@ -83,6 +83,37 @@ def test_ewc_default_b_is_the_llsw_rule_exactly():
         assert tsecon.ewc_default_b(n) == want, n
 
 
+def _exact_default_b(n):
+    """round(0.4 n^(2/3)) in Python integers: the largest r with
+    125 (2r - 1)^3 <= 64 n^2 (no float power anywhere)."""
+    m, lo, hi = 64 * n * n, 1, 1
+    while 125 * (2 * hi - 1) ** 3 <= m:
+        hi *= 2
+    while lo < hi:  # largest r in [1, hi] with 125 (2r - 1)^3 <= m
+        mid = (lo + hi + 1) // 2
+        lo, hi = (mid, hi) if 125 * (2 * mid - 1) ** 3 <= m else (lo, mid - 1)
+    return max(1, min(lo, n - 1))
+
+
+def test_ewc_default_b_is_exact_where_a_float_power_misrounds():
+    """Audit round 15: a double-precision 0.4 n^(2/3) misrounds near a
+    half-integer for large n (n = 1755027219 gave 581990, not 581991). The
+    fixture's large-n block is integer-exact; every case is within 2e-7 of
+    a tie, on both sides of one (just above: the float rule rounds down by
+    one; just below: an over-eager correction would round up), and the
+    Python integer rule agrees with it."""
+    cases = EWC["default_b_large_n"]
+    gaps = EWC["default_b_large_n_gap"]
+    assert {"1755027219", "100292764931117"} <= set(cases)
+    assert sum(g > 0 for g in gaps.values()) >= 11 and sum(g < 0 for g in gaps.values()) >= 10
+    for n, b in cases.items():
+        assert abs(gaps[n]) < 2e-7, n
+        assert _exact_default_b(int(n)) == b, n
+        got = tsecon.ewc_default_b(int(n))
+        assert isinstance(got, int) and got == b, (n, got, b)
+    assert tsecon.ewc_default_b(2 ** 48 - 1) == _exact_default_b(2 ** 48 - 1)
+
+
 @pytest.mark.parametrize("name", ["k2_t250", "k3_t180"])
 def test_ols_ewc_matches_the_closed_form(name):
     block = EWC["ols"][name]
@@ -247,6 +278,19 @@ def test_ols_refuses_inert_combinations_by_name():
             tsecon.ols(y, X, se_type="ewc", ewc_b=b)
     with pytest.raises(ValueError, match=r"nonrobust/hc0/hc1/hc2/hc3/hac/ewc"):
         tsecon.ols(y, X, se_type="EWC")
+
+
+@pytest.mark.parametrize("se", ["ewx", "EWC", "HAC", ""])
+@pytest.mark.parametrize("extra", [{"ewc_b": 8}, {"maxlags": 4}, {"use_correction": False}])
+def test_ols_refuses_an_unknown_se_type_before_any_dependent_keyword(se, extra):
+    """Audit round 15: a typo'd se_type beside ewc_b was reported as an inert
+    ewc_b ('drop it'), and the user then hit a second error about se_type.
+    The covariance choice is validated first, as panel_fe/panel_re do."""
+    y, X = _design(EWC["ols"]["k2_t250"])
+    with pytest.raises(ValueError, match=r"^unknown se_type .*expected nonrobust/hc0/hc1/hc2/hc3/hac/ewc$") as e:
+        tsecon.ols(y, X, se_type=se, **extra)
+    assert repr(se) in str(e.value) or f'"{se}"' in str(e.value)
+    assert "ewc_b =" not in str(e.value) and "no effect" not in str(e.value)
 
 
 def test_a_nan_t_statistic_keeps_a_nan_p_value():

@@ -86,7 +86,10 @@ approach one, every HAR procedure, EWC included, loses size control (Müller
   `n/(n-k)` factor — an explicit `True` cannot be told from the default and is
   a documented no-op). The older silent absorption is unchanged and documented:
   under `nonrobust`/`hc*` an explicit `maxlags`/`use_correction` is still
-  ignored, as before 0.11. Changing that is a separate behaviour change.
+  ignored, as before 0.11. Changing that is a separate behaviour change. An
+  unknown `se_type` is checked before any of these, so `se_type="ewx"` (or
+  `"EWC"`) beside `ewc_b` is refused as an unknown `se_type`, not as an inert
+  `ewc_b`.
 
 **How to read the output.** A dict with `params`, `bse`, `tvalues` and the
 echoed `se_type`. Under `"ewc"` two keys are added: `ewc_b` (the resolved `B`,
@@ -127,10 +130,13 @@ values, `ewc` at its defaults with `t_B` critical values — both through
 `tsecon.ols` (`lab/audit/wave11/ewc_varcov_measurements.py`,
 output committed next to it):
 
-| T | `hac` (Newey-West, `maxlags`) | `ewc` (`B`) | mean width `hac` → `ewc` | MC se |
+| T | `hac` (Newey-West, `maxlags`) | `ewc` (`B`) | mean width `hac` → `ewc` | MC se `hac` / `ewc` |
 |---|---|---|---|---|
-| 100 | **0.855** (4) | **0.915** (9) | 0.520 → 0.656 | 0.002 |
-| 400 | **0.905** (5) | **0.940** (22) | 0.288 → 0.336 | 0.002 |
+| 100 | **0.855** (4) | **0.915** (9) | 0.520 → 0.656 | 0.0035 / 0.0028 |
+| 400 | **0.905** (5) | **0.940** (22) | 0.288 → 0.336 | 0.0029 / 0.0024 |
+
+The MC standard error is the binomial `sqrt(p (1 − p) / 10000)` at each arm's
+measured coverage `p`, not at the nominal 0.95.
 
 EWC cuts the shortfall from 9.5 points to 3.5 at `T = 100` and from 4.5 to 1.0
 at `T = 400`. Neither reaches nominal: with ρ = 0.7 in both the regressor and
@@ -204,7 +210,11 @@ Omega_hat = (1/B) * sum_{j=1..B} Lambda_j^2
 ```
 
 `ewc_default_b(n)` returns the LLSW recommendation `round(0.4 n^(2/3))`,
-clamped to `[1, n - 1]`.
+clamped to `[1, n - 1]`. The rounding is exact for every `n`: it is decided in
+integer arithmetic (`r` is the rounding iff `125 (2r - 1)^3 <= 64 n^2 <
+125 (2r + 1)^3`), because a double-precision `n^(2/3)` rounds the wrong way
+near a half-integer from `n = 1,755,027,219` on (`fixtures/ewc.json` pins
+eleven such `n`, and ten just below a half-integer that it rounds correctly).
 
 **Assumptions.** Stationarity and weak dependence. The `Lambda_j` at low
 frequencies are then approximately independent `N(0, Omega)`, which is what
@@ -240,8 +250,12 @@ the coercion layer (`b=-1`); a request past the work budget is refused naming
 **Validated against.** The same documented-closed-form golden as `ols`'s EWC
 route: `ewc_lrv` on the Nile series and a seeded AR(1), `b` ∈ {1, 4, 9, 16,
 n − 1}, raw and demeaned, against `scipy.fft.dct(type=2, norm="ortho")` at
-1e-12; `ewc_default_b` exactly, on the spec's `n` and the ten `n` below 10^6
-whose `0.4 n^(2/3)` lies closest to a half-integer.
+1e-12; `ewc_default_b` exactly, on the spec's `n`, the ten `n` below 10^6
+whose `0.4 n^(2/3)` lies closest to a half-integer, the ten `n` in
+10^6–3·10^10 closest above a half-integer (`n = 1,755,027,219` among them; a
+float power rounds each one down) and the ten closest below one, and
+`n = 100,292,764,931,117` — all within 2e-7 of a tie — against the integer
+rule.
 
 ```python
 import numpy as np, tsecon
@@ -272,7 +286,9 @@ print("size at 5%  EWC + t_B:", np.mean(np.abs(t_ewc) > crit), " Bartlett + norm
 The Bartlett estimate is biased down (the kernel truncates the
 autocovariances it cannot see) and the normal critical value then ignores its
 noise; EWC is nearly unbiased, noisier, and the `t_B` critical value accounts
-for exactly that noise — 1000 replications, one seed.
+for exactly that noise — 1000 replications, one seed, so each printed size
+carries a binomial Monte Carlo standard error of about 0.008 (0.010 for the
+Bartlett rate).
 
 ---
 

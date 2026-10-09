@@ -163,9 +163,12 @@ fn ewc_lrv(x: PyReadonlyArray1<'_, f64>, b: Option<usize>) -> PyResult<f64> {
 ///
 /// It is the default `b` of `ewc_lrv` and the default `ewc_b` of
 /// `ols(se_type="ewc")`, and it is also the Student-t degrees of freedom to
-/// refer the resulting t-statistics to. (Exact .5 ties cannot occur:
-/// `n^(2/3)` is rational only for perfect cubes `n = m^3`, where `0.4 m^2`
-/// never ends in .5.) `n < 2` is refused: no long-run variance exists.
+/// refer the resulting t-statistics to. The rounding is exact for every `n`
+/// (decided in integer arithmetic, not by a float power, which misrounds
+/// near a half-integer from n = 1,755,027,219 on), and exact .5 ties cannot
+/// occur: `n^(2/3)` is rational only for perfect cubes `n = m^3`, where
+/// `0.4 m^2` never ends in .5. `n < 2` is refused: no long-run variance
+/// exists.
 #[pyfunction]
 fn ewc_default_b(n: usize) -> PyResult<usize> {
     if n < 2 {

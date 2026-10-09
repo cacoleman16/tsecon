@@ -43,10 +43,12 @@ raw ``_core`` primitives, so they bypass this layer.
 """
 from __future__ import annotations
 
+import ast
 import functools
 import inspect
 import re
 import types
+from pathlib import Path
 
 import numpy as np
 
@@ -101,6 +103,10 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # ARDL orders q_j per regressor (an int or a list of ints): lag counts,
     # not data; float64-ifying [1, 3, 2] would make the converter refuse it.
     "ardl_bounds_test": frozenset({"order"}),
+    # Variance-ratio horizons (an int or a list of ints), parsed by hand in
+    # diag_vr.rs: float64-ifying [2, 4] would make it indistinguishable from
+    # [2.0, 4.0], which is refused like the scalar 4.0 (audit round 15).
+    "variance_ratio": frozenset({"lags"}),
 }
 
 _POSITIONAL = (
@@ -497,6 +503,97 @@ def _param_defaults(fn) -> dict[str, object]:
     return d
 
 
+# The hand-written stub ships in the wheel beside this module (CI asserts the
+# installed package is under test, stub included). Its annotations are the
+# declared types: they say that `lags: int | None` takes an int even where the
+# signature default is a `None` sentinel that says nothing about the type.
+_STUB = Path(__file__).with_name("__init__.pyi")
+_SCALAR_NAMES = frozenset({"int", "float", "bool", "str"})
+# The stub's float-array annotations (`_ArrayLike` is NDArray[np.float64]):
+# such a data slot takes a float64 array, so it never refuses a float64.
+_FLOAT_ARRAY_ANNOTATIONS = frozenset({"_ArrayLike", "np.ndarray", "npt.ArrayLike"})
+# For each kind of value PyO3 can complain about, the declared scalar types
+# that would have ACCEPTED it — so a slot declared that way cannot be the one
+# refusing it. An int converts to a float slot (PyO3's f64 extraction takes
+# ints). A bool counts as admitted by a bool slot only (conservatively:
+# several int slots refuse bools by name).
+_ADMITTED_BY = {
+    "bool": frozenset({"bool"}),
+    "int": frozenset({"int", "float"}),
+    "float": frozenset({"float"}),
+    "str": frozenset({"str"}),
+    "None": frozenset({"None"}),
+}
+# PyO3 names a NumPy scalar by its own type (`'int64' object is not an
+# instance of 'str'`); it converts like the Python type of its kind (an
+# integer through `__index__`, a floating one through `__float__`).
+_NUMPY_KIND = (
+    (re.compile(r"(?:numpy\.)?(?:u?int(?:8|16|32|64)?|u?intp|u?intc|u?longlong|u?short|u?byte|u?long)"), "int"),
+    (re.compile(r"(?:numpy\.)?(?:float(?:16|32|64|96|128)?|half|single|double|longdouble)"), "float"),
+)
+
+
+def _value_kind(got: str) -> str | None:
+    """The Python scalar kind of PyO3's complained-about type name: `int`,
+    `float`, `bool`, `str` or `None` (a NumPy scalar maps to its kind)."""
+    if got == "NoneType":
+        return "None"
+    if got in _ADMITTED_BY:
+        return got
+    return next((kind for pat, kind in _NUMPY_KIND if pat.fullmatch(got)), None)
+
+
+def _scalar_members(ann: ast.expr) -> frozenset[str]:
+    """The scalar types a stub annotation admits: the bare names `int`,
+    `float`, `bool`, `str` and `None` in a `|` union, plus the marker
+    `float-array` for a float data array. A container (`Sequence[int]`, an
+    integer array, a tuple) admits no scalar and adds nothing."""
+    if isinstance(ann, ast.BinOp) and isinstance(ann.op, ast.BitOr):
+        return _scalar_members(ann.left) | _scalar_members(ann.right)
+    if isinstance(ann, ast.Constant) and ann.value is None:
+        return frozenset({"None"})
+    if isinstance(ann, ast.Name) and ann.id in _SCALAR_NAMES:
+        return frozenset({ann.id})
+    if ast.unparse(ann) in _FLOAT_ARRAY_ANNOTATIONS:
+        return frozenset({"float-array"})
+    return frozenset()
+
+
+@functools.lru_cache(maxsize=1)
+def _stub_scalar_types() -> dict[str, dict[str, frozenset[str]]]:
+    """``{function: {parameter: scalar types its annotation admits}}`` from
+    the shipped stub, parsed once on the error path only; empty when the stub
+    cannot be read, which restores the default-type rule alone."""
+    try:
+        tree = ast.parse(_STUB.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return {}
+    out: dict[str, dict[str, frozenset[str]]] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        params = out.setdefault(node.name, {})
+        a = node.args
+        for arg in (*a.posonlyargs, *a.args, *a.kwonlyargs):
+            if arg.annotation is not None:
+                params[arg.arg] = params.get(arg.arg, frozenset()) | _scalar_members(arg.annotation)
+    return out
+
+
+def _declared_to_accept(fn, label: str, value: object, got: str) -> bool:
+    """Whether the stub declares parameter ``label`` of ``fn`` with a type
+    that accepts ``value``, whose type (or element type) is PyO3's
+    complained-about ``got``: a scalar slot of an admitting type, or a float
+    data-array slot holding a float array (it matched by its element type)."""
+    kind = _value_kind(got)
+    if kind is None:
+        return False
+    declared = _stub_scalar_types().get(fn.__name__, {}).get(label, frozenset())
+    if isinstance(value, np.ndarray):
+        return kind == "float" and value.dtype.kind == "f" and "float-array" in declared
+    return bool(declared & _ADMITTED_BY[kind])
+
+
 def _labeled_ints(fn, args, kwargs):
     """``(label, value)`` for every argument, positional ones named through
     the compiled signature when it resolves (else by position)."""
@@ -632,12 +729,19 @@ def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
     """``name=value`` for the arguments whose type PyO3 complained about.
 
     Several arguments may share the complained-about type (`p=1` and
-    `constant=1` are both ints), so the ones whose signature DEFAULT has a
-    different type (a bool default handed an int, a str default handed None)
-    are preferred. Failing that, a scalar whose default has exactly its type
-    is dropped — that slot takes the type, so it cannot be the one refusing
-    it (`lags=4` beside `debiased=1`, whose None-sentinel default says
-    nothing). Only when none stands out are all matches named."""
+    `constant=1` are both ints). First, every argument whose DECLARED type
+    (the shipped stub's annotation) accepts that type is dropped: such a slot
+    cannot be the one refusing it — `max_lag: int | None` beside `ic=1`, or
+    UC's `autoregressive: int | None` beside `mle_regression=1`, whose
+    None-sentinel defaults say nothing (audit round 15). A NumPy scalar counts
+    as its Python kind (`np.int64` as an int), and a float data array, which
+    matches a float64 complaint only through its elements, is cleared by its
+    float-array slot. Then the ones whose
+    signature DEFAULT has a different type (a bool default handed an int, a
+    str default handed None) are preferred. Failing that, a scalar whose
+    default has exactly its type is dropped — that slot takes the type, so it
+    cannot be the one refusing it (`lags=4` beside `debiased=1`). Only when
+    none stands out are all matches named."""
     defaults = _param_defaults(fn)
     labeled = _labeled_ints(fn, args, kwargs)
     if got == "ndarray":
@@ -664,11 +768,16 @@ def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
         strong = declared and type(d) is not type(v)
         same = declared and type(d) is type(v) and not isinstance(v, (list, tuple, np.ndarray))
         matches.append((label, v, strong, same))
+    # A slot declared to take the refused type is never the refuser; if the
+    # stub would clear every candidate (an annotation out of step with the
+    # binding), keep them all rather than name nothing.
+    matches = [m for m in matches if not _declared_to_accept(fn, m[0], m[1], got)] or matches
     # An integer-list parameter (the `_EXEMPT` entries) handed the wrong
     # element type is the offender ahead of any data array whose dtype
-    # happens to match.
+    # happens to match. Only a CONTAINER value is that case: a scalar handed
+    # to an int-or-list slot (`variance_ratio(lags=4)`) is an int it takes.
     exempt = _EXEMPT.get(fn.__name__, frozenset())
-    listed = [m for m in matches if m[0] in exempt]
+    listed = [m for m in matches if m[0] in exempt and isinstance(m[1], (list, tuple, np.ndarray))]
     chosen = (
         listed
         or [m for m in matches if m[2]]

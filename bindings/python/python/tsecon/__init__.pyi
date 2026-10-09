@@ -197,7 +197,7 @@ def zivot_andrews(
 
 def variance_ratio(
     y: _ArrayLike,
-    lags: int | Sequence[int] | None = ...,
+    lags: int | Sequence[int] | npt.NDArray[np.integer] | None = ...,
     trend: str = ...,
     debiased: bool | None = ...,
     robust: bool | None = ...,
@@ -215,7 +215,9 @@ def variance_ratio(
     Matches `arch.unitroot.VarianceRatio` (arch 8.0.0) in its conventions.
 
     `lags` is one horizon q >= 2 or a sequence of distinct horizons (list,
-    tuple, integer array, pandas Series). `trend`: "c" (drift, default) or
+    tuple, integer array, pandas Series). Horizons are integers: a float is
+    refused alike as the scalar 4.0 and inside a sequence ([4.0], (2, 4.0),
+    a float array). `trend`: "c" (drift, default) or
     "n". `overlap=False` uses non-overlapping blocks and drops the trailing
     `(n - 1) % q` observations. `debiased`/`robust` are sentinels: None means
     True under `overlap=True`; under `overlap=False` neither exists, so an
@@ -236,7 +238,8 @@ def variance_ratio(
     `trend`, `se_type`, `debiased`. The per-horizon keys (`lags`, `vr`,
     `stat`, `pvalue`, `stat_variance`, `nobs` = increments used, and
     `n_dropped`) are Python scalars when `lags` is an int or None and 1-D
-    arrays aligned with the given order when it is a sequence. `crit` is the
+    arrays aligned with the given order when it is a sequence (`lags` then
+    echoes a list of ints; the others are NumPy arrays). `crit` is the
     one-sided N(0, 1) quantile dict {"1%", "5%", "10%", "90%", "95%", "99%"};
     `cd_crit` is {"1%", "5%", "10%"}; `se_type` is "robust",
     "homoskedastic" or "nonoverlapping".
@@ -371,10 +374,12 @@ def ols(
     compatibility. COST: SUPERLINEAR in `n` -- n * ewc_b * (k + 8)
     operations, like n^(5/3) at the default (1.4 s at n = 10^5, k = 2);
     past a work budget of 2^35 (about a minute) `ewc_b` is refused by name,
-    with the largest value it admits. Refused by name: `ewc_b` under any other
-    se_type, an explicit `maxlags` under "ewc", `use_correction=False`
-    under "ewc" (an explicit True is the default and a no-op). Under
-    nonrobust/hc* an explicit maxlags/use_correction is still ignored.
+    with the largest value it admits. An unknown se_type is refused first
+    (so "ewx" beside `ewc_b` reads as an unknown se_type). Refused by name:
+    `ewc_b` under any other se_type, an explicit `maxlags` under "ewc",
+    `use_correction=False` under "ewc" (an explicit True is the default and
+    a no-op). Under nonrobust/hc* an explicit maxlags/use_correction is
+    still ignored.
 
     Returned keys: `bse`, `params`, `se_type`, `tvalues`; under "ewc" also
     `ewc_b` and `pvalues`.
@@ -408,7 +413,9 @@ def ewc_lrv(x: _ArrayLike, b: int | None = ...) -> float:
 def ewc_default_b(n: int) -> int:
     """LLSW (2018) EWC degrees of freedom round(0.4 n^(2/3)), clamped to
     [1, n - 1]; the default `b` of `ewc_lrv` and `ewc_b` of
-    `ols(se_type="ewc")`, and the t degrees of freedom. n < 2 is refused.
+    `ols(se_type="ewc")`, and the t degrees of freedom. The rounding is
+    exact for every n (integer arithmetic, not a float power). n < 2 is
+    refused.
     """
 
 # -------------------------------------------------------------- bootstrap
@@ -780,8 +787,13 @@ def var_forecast(
     STATIONARY VAR (on near-unit-root levels data it inflates long-horizon
     variances by 15-18%). Unlike statsmodels' public "auto" it applies to
     trend="n" too. Refused with a non-pointwise `band` (names both). COST:
-    CUBIC in `steps` (0.27 s at 1000 steps on a k = 3 VAR(2)), with a work
-    budget of 2^34 past which `steps` is refused by name.
+    about steps^3 (k^2 + 8) / 3 + steps^2 k^3 / 2 + 2 steps m^3 +
+    steps^2 m^2 operations, m = n_trend + k*lags: CUBIC in `steps` on a
+    small VAR (0.27 s at 1000 steps on a k = 3 VAR(2)), and on a wide one
+    the 2 steps m^3 term dominates, CUBIC in k*lags (k = 60, lags = 20:
+    m = 1201, at most 4 steps). A work budget of 2^34 refuses past it,
+    naming `steps` with the remedy for whichever terms dominate, or `lags`
+    when not even one step fits.
 
     Returned keys: `point`, `lower`, `upper`, `band`, `cov`,
     `param_uncertainty`; with a simultaneous `band` also `se`, `sim_lower`,

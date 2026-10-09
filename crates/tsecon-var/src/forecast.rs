@@ -97,23 +97,82 @@ impl ForecastOptions {
 /// the reads, not the arithmetic, set the pace (measured: `k = 1` and `k = 3`
 /// cost about the same per horizon cubed). The count is
 /// `steps^3 (k^2 + 8) / 3` for it, plus `steps^2 k^3 / 2`, `2 steps m^3` (the
-/// powers of `B`) and `steps^2 m^2` (the trace table). Cubic in `steps`:
-/// `2^34` is one to two seconds of one core (measured 0.9-2.0 s at the cap
-/// for `k = 1, 2, 3`); a request past it is refused, naming `steps`, rather
-/// than left to run for minutes. Forecast horizons are tens of periods in
-/// practice.
+/// powers of `B`) and `steps^2 m^2` (the trace table), with `m = n_trend + k
+/// lags` regressors per equation. On a small VAR the first term dominates and
+/// the cost is cubic in `steps`: `2^34` is one to two seconds of one core
+/// (measured 0.9-2.0 s at the cap for `k = 1, 2, 3`). On a wide one the
+/// `2 steps m^3` term dominates — linear in `steps` but cubic in `k lags` —
+/// and even a short horizon can exceed the budget. A request past it is
+/// refused rather than left to run for minutes: naming `steps`, with the
+/// remedy for whichever terms dominate, or naming `lags` when not even
+/// `steps = 1` fits.
 pub const PARAM_UNCERTAINTY_WORK_BUDGET: u128 = 1 << 34;
 
 /// The work count the budget is checked against (see
-/// [`PARAM_UNCERTAINTY_WORK_BUDGET`]). Saturating, so an absurd `steps` (up
-/// to `usize::MAX`) cannot overflow the check that is meant to refuse it.
-fn param_uncertainty_work(steps: usize, k: usize, m: usize) -> u128 {
+/// [`PARAM_UNCERTAINTY_WORK_BUDGET`]), split into the terms driven by
+/// `steps` and `k` (`steps^3 (k^2 + 8) / 3 + steps^2 k^3 / 2`) and the
+/// terms driven by `m` (`2 steps m^3 + steps^2 m^2`). Saturating, so an
+/// absurd `steps` (up to `usize::MAX`) cannot overflow the check that is
+/// meant to refuse it.
+fn param_uncertainty_terms(steps: usize, k: usize, m: usize) -> (u128, u128) {
     let (s, k, m) = (steps as u128, k as u128, m as u128);
     let prod = |xs: &[u128]| xs.iter().fold(1_u128, |acc, &x| acc.saturating_mul(x));
-    (prod(&[s, s, s, k.saturating_mul(k).saturating_add(8)]) / 3)
-        .saturating_add(prod(&[s, s, k, k, k]) / 2)
-        .saturating_add(prod(&[2, s, m, m, m]))
-        .saturating_add(prod(&[s, s, m, m]))
+    let horizon = (prod(&[s, s, s, k.saturating_mul(k).saturating_add(8)]) / 3)
+        .saturating_add(prod(&[s, s, k, k, k]) / 2);
+    let regressors = prod(&[2, s, m, m, m]).saturating_add(prod(&[s, s, m, m]));
+    (horizon, regressors)
+}
+
+fn param_uncertainty_work(steps: usize, k: usize, m: usize) -> u128 {
+    let (horizon, regressors) = param_uncertainty_terms(steps, k, m);
+    horizon.saturating_add(regressors)
+}
+
+/// The refusal when the parameter-uncertainty term for `steps` on a VAR with
+/// `k` series, `lags` lags and `m` regressors per equation would exceed
+/// [`PARAM_UNCERTAINTY_WORK_BUDGET`], or `None` when it fits. The message
+/// quotes the whole count and names the driver: `lags` when not even one
+/// step fits, otherwise `steps` with the remedy for whichever terms
+/// dominate (a shorter horizon when the cubic-in-`steps` terms do, fewer
+/// lags or series when the `m` terms do).
+fn param_uncertainty_refusal(steps: usize, k: usize, lags: usize, m: usize) -> Option<VarError> {
+    if param_uncertainty_work(steps, k, m) <= PARAM_UNCERTAINTY_WORK_BUDGET {
+        return None;
+    }
+    if param_uncertainty_work(1, k, m) > PARAM_UNCERTAINTY_WORK_BUDGET {
+        return Some(VarError::InvalidParameter {
+            name: "lags",
+            value: lags as f64,
+            requirement: "a lag order whose parameter-uncertainty term fits the work budget \
+                          of 2^34 operations at some horizon. The count is steps^3 (k^2 + 8) \
+                          / 3 + steps^2 k^3 / 2 + 2 steps m^3 + steps^2 m^2, with k series and \
+                          m = n_trend + k*lags regressors per equation, and on this VAR the \
+                          2 steps m^3 term (CUBIC in k*lags) exceeds the budget even at \
+                          steps = 1 — reduce lags or the number of series, or drop \
+                          param_uncertainty",
+        });
+    }
+    let (horizon, regressors) = param_uncertainty_terms(steps, k, m);
+    let requirement = if regressors > horizon {
+        "a horizon whose parameter-uncertainty term fits the work budget of 2^34 \
+         operations. The count is steps^3 (k^2 + 8) / 3 + steps^2 k^3 / 2 + 2 steps m^3 + \
+         steps^2 m^2, with k series and m = n_trend + k*lags regressors per equation, and \
+         on this VAR the m terms dominate: 2 steps m^3 is linear in steps but CUBIC in \
+         k*lags, so reduce lags or the number of series (a shorter horizon helps only in \
+         proportion), or drop param_uncertainty"
+    } else {
+        "a horizon whose parameter-uncertainty term fits the work budget of 2^34 \
+         operations. The count is steps^3 (k^2 + 8) / 3 + steps^2 k^3 / 2 + 2 steps m^3 + \
+         steps^2 m^2, with k series and m = n_trend + k*lags regressors per equation, and \
+         here the first term dominates: CUBIC in steps (measured 0.9-2.0 s at the budget \
+         for k = 1, 2, 3). Forecast horizons are tens of periods; drop param_uncertainty \
+         for a long innovation-only path"
+    };
+    Some(VarError::InvalidParameter {
+        name: "steps",
+        value: steps as f64,
+        requirement,
+    })
 }
 
 /// Which `(horizon, series)` cells a simultaneous forecast band covers jointly.
@@ -416,21 +475,14 @@ impl VarResults {
         Ok(covs)
     }
 
-    /// Refuse, naming `steps`, a parameter-uncertainty request whose work
-    /// would exceed [`PARAM_UNCERTAINTY_WORK_BUDGET`].
+    /// Refuse, naming `steps` (or `lags`, when no horizon fits), a
+    /// parameter-uncertainty request whose work would exceed
+    /// [`PARAM_UNCERTAINTY_WORK_BUDGET`].
     fn check_param_uncertainty_budget(&self, steps: usize) -> Result<(), VarError> {
-        if param_uncertainty_work(steps, self.neqs, self.df_model) > PARAM_UNCERTAINTY_WORK_BUDGET {
-            return Err(VarError::InvalidParameter {
-                name: "steps",
-                value: steps as f64,
-                requirement: "a horizon whose parameter-uncertainty term fits the work \
-                              budget of 2^34 (about steps^3 (k^2 + 8) / 3 operations: CUBIC \
-                              in steps — measured 0.9-2.0 s at the budget). Forecast \
-                              horizons are tens of periods; drop param_uncertainty for a \
-                              long innovation-only path",
-            });
+        match param_uncertainty_refusal(steps, self.neqs, self.spec.lags, self.df_model) {
+            Some(err) => Err(err),
+            None => Ok(()),
         }
-        Ok(())
     }
 
     /// Lütkepohl's (2005, pp. 96-97) parameter-uncertainty matrices
@@ -467,7 +519,8 @@ impl VarResults {
     ///
     /// * [`VarError::InvalidArgument`] if `steps == 0`;
     /// * [`VarError::InvalidParameter`] naming `steps` when the work would
-    ///   exceed [`PARAM_UNCERTAINTY_WORK_BUDGET`];
+    ///   exceed [`PARAM_UNCERTAINTY_WORK_BUDGET`], or naming `lags` when it
+    ///   would at every horizon (a wide VAR, where `2 steps m^3` dominates);
     /// * [`VarError::NotPositiveDefinite`] if `Z'Z` is numerically singular
     ///   (impossible after a successful fit, which already factored it).
     pub fn forecast_param_uncertainty(&self, steps: usize) -> Result<Vec<Mat<f64>>, VarError> {
@@ -810,5 +863,71 @@ impl VarResults {
             scope,
         });
         Ok(fc)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    fn refusal(steps: usize, k: usize, lags: usize) -> Option<(&'static str, String)> {
+        let m = 1 + k * lags;
+        param_uncertainty_refusal(steps, k, lags, m).map(|e| match e {
+            VarError::InvalidParameter { name, .. } => (name, e.to_string()),
+            other => panic!("expected InvalidParameter, got {other:?}"),
+        })
+    }
+
+    /// Audit round 15: the refusal quoted only `steps^3 (k^2 + 8) / 3` and
+    /// named `steps`, while on a wide VAR the `2 steps m^3` term is what
+    /// trips the budget (k = 60, lags = 20: m = 1201, so a 10-step horizon
+    /// is 2.0x the budget although the quoted term is 0.00007x).
+    #[test]
+    fn the_refusal_names_the_terms_that_trip_the_budget() {
+        // A small VAR past its horizon cap: CUBIC in steps, name steps.
+        let (name, msg) = refusal(5000, 3, 2).expect("refused");
+        assert_eq!(name, "steps");
+        assert!(
+            msg.contains("CUBIC in steps") && msg.contains("tens of periods"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("2 steps m^3") && msg.contains("m = n_trend + k*lags"),
+            "{msg}"
+        );
+        // k = 60, lags = 20 (m = 1201): steps <= 4 fits, 5 and 10 do not, and
+        // the m terms dominate, so the remedy is lags or series, not steps.
+        assert!(refusal(4, 60, 20).is_none());
+        for steps in [5, 10] {
+            let (name, msg) = refusal(steps, 60, 20).expect("refused");
+            assert_eq!(name, "steps");
+            assert!(
+                msg.contains("the m terms dominate") && msg.contains("reduce lags"),
+                "{msg}"
+            );
+            assert!(!msg.contains("tens of periods"), "{msg}");
+        }
+        // k = 30, lags = 10 (m = 301) at steps = 200: the auditor's second case.
+        let (name, msg) = refusal(200, 30, 10).expect("refused");
+        assert_eq!(name, "steps");
+        assert!(msg.contains("the m terms dominate"), "{msg}");
+        // m = 2049: 2 m^3 alone exceeds 2^34, so no horizon fits — name lags.
+        let (name, msg) = refusal(1, 64, 32).expect("refused");
+        assert_eq!(name, "lags");
+        assert!(msg.starts_with("invalid lags = 32: requires"), "{msg}");
+        assert!(
+            msg.contains("even at steps = 1") && msg.contains("reduce lags"),
+            "{msg}"
+        );
+        // The boundary: 2 * 2048^3 is 2^34 exactly, so with the small terms
+        // m = 2048 is over the budget at one step and m = 2047 is under.
+        assert!(param_uncertainty_refusal(1, 1, 2046, 2047).is_none());
+        assert_eq!(
+            param_uncertainty_refusal(1, 1, 2047, 2048).map(|e| e.to_string()[..14].to_string()),
+            Some("invalid lags =".to_string())
+        );
+        // Saturating at absurd steps, never overflowing.
+        assert!(refusal(usize::MAX, 3, 2).is_some());
     }
 }
