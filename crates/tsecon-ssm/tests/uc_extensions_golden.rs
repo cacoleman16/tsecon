@@ -50,6 +50,32 @@ const TOL_MLE_LL: f64 = 1e-5;
 const TOL_MLE_PARAM: f64 = 2e-3;
 /// Conditional standard errors vs the fixture's `se_conditional`.
 const TOL_SE: f64 = 2e-2;
+/// A block's `rounding_spread` — how far statsmodels' own paths move under
+/// a one-ulp change of an input, measured by the generator — times this is
+/// the path tolerance where it exceeds [`TOL_FIXED`] (as in the Python
+/// leg's `SPREAD_FACTOR`). Only weakly resolved diffuse directions get
+/// there (`long_diffuse`, the two N(0, 1)-regressor designs).
+const ROUNDING_FACTOR: f64 = 10.0;
+
+/// The tolerances of one fixed block: `path` for every path, and
+/// `smoothed_diffuse` for the smoothed variances inside the diffuse period
+/// and the rows just after it (the reference's own smoother spread).
+#[derive(Clone, Copy)]
+struct Tol {
+    path: f64,
+    smoothed_diffuse: f64,
+}
+
+impl Tol {
+    fn of(block: &Value) -> Self {
+        let get = |k: &str| block.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let path = TOL_FIXED.max(ROUNDING_FACTOR * get("rounding_spread"));
+        Tol {
+            path,
+            smoothed_diffuse: get("smoother_spread").max(path),
+        }
+    }
+}
 
 fn rows(v: &Value) -> Vec<Vec<f64>> {
     v.as_array()
@@ -161,38 +187,37 @@ fn assert_paths(actual: &[Vec<f64>], expected: &Value, tol: f64, what: &str) {
     }
 }
 
-/// A smoothed-variance *path* (index = period): [`TOL_FIXED`] except
+/// A smoothed-variance *path* (index = period): the path tolerance except
 /// inside the diffuse period and the rows just after it, where the
 /// tolerance is the reference's own smoother spread.
-fn assert_smoothed_var(actual: &[f64], expected: &[f64], spread: f64, d: usize, what: &str) {
-    let relaxed = spread.max(TOL_FIXED);
+fn assert_smoothed_var(actual: &[f64], expected: &[f64], tol: Tol, d: usize, what: &str) {
     for (t, (a, e)) in actual.iter().zip(expected).enumerate() {
         let tol = if t <= d + DIFFUSE_SMOOTH_ROWS {
-            relaxed
+            tol.smoothed_diffuse
         } else {
-            TOL_FIXED
+            tol.path
         };
         assert_series(&[*a], &[*e], tol, &format!("{what}[{t}]"));
     }
 }
 
-fn assert_component(c: &UcComponent, block: &Value, spread: f64, d: usize, what: &str) {
+fn assert_component(c: &UcComponent, block: &Value, tol: Tol, d: usize, what: &str) {
     assert_series(
         &c.filtered,
         &as_f64_vec(&block["filtered"]),
-        TOL_FIXED,
+        tol.path,
         &format!("{what}.filtered"),
     );
     assert_series(
         &c.filtered_var,
         &as_f64_vec(&block["filtered_var"]),
-        TOL_FIXED,
+        tol.path,
         &format!("{what}.filtered_var"),
     );
     assert_series(
         &c.smoothed,
         &as_f64_vec(&block["smoothed"]),
-        TOL_FIXED,
+        tol.path,
         &format!("{what}.smoothed"),
     );
     let exp = as_f64_vec(&block["smoothed_var"]);
@@ -204,7 +229,7 @@ fn assert_component(c: &UcComponent, block: &Value, spread: f64, d: usize, what:
     assert_smoothed_var(
         &c.smoothed_var,
         &exp,
-        spread,
+        tol,
         d,
         &format!("{what}.smoothed_var"),
     );
@@ -244,38 +269,34 @@ fn check_fixed_block(fit: &UcFit, block: &Value, what: &str) {
             &format!("{what}: {key}"),
         );
     }
-    let spread = block
-        .get("smoother_spread")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
+    let tol = Tol::of(block);
     if let Some(v) = block.get("filtered_state") {
         assert_paths(
             &fit.filtered_state,
             v,
-            TOL_FIXED,
+            tol.path,
             &format!("{what}: filtered_state"),
         );
         assert_paths(
             &fit.filtered_state_var,
             &block["filtered_state_var"],
-            TOL_FIXED,
+            tol.path,
             &format!("{what}: filtered_state_var"),
         );
         assert_paths(
             &fit.smoothed_state,
             &block["smoothed_state"],
-            TOL_FIXED,
+            tol.path,
             &format!("{what}: smoothed_state"),
         );
         let exp = rows(&block["smoothed_state_var"]);
         assert_eq!(fit.smoothed_state_var.len(), exp.len());
-        let relaxed = spread.max(TOL_FIXED);
         for (t, (a, e)) in fit.smoothed_state_var.iter().zip(&exp).enumerate() {
             // Every state of row t is at period t.
             let tol = if t <= fit.nobs_diffuse + DIFFUSE_SMOOTH_ROWS {
-                relaxed
+                tol.smoothed_diffuse
             } else {
-                TOL_FIXED
+                tol.path
             };
             assert_series(a, e, tol, &format!("{what}: smoothed_state_var[{t}]"));
         }
@@ -283,13 +304,13 @@ fn check_fixed_block(fit: &UcFit, block: &Value, what: &str) {
     assert_series(
         &fit.fitted,
         &as_f64_vec(&block["fitted"]),
-        TOL_FIXED,
+        tol.path,
         &format!("{what}: fitted"),
     );
     assert_series(
         &fit.resid,
         &as_f64_vec(&block["resid"]),
-        TOL_FIXED,
+        tol.path,
         &format!("{what}: resid"),
     );
     // statsmodels writes 0.0 inside the diffuse period and at missing
@@ -300,20 +321,20 @@ fn check_fixed_block(fit: &UcFit, block: &Value, what: &str) {
         if t < fit.nobs_diffuse || e.is_nan() || ref_resid[t].is_nan() {
             assert!(a.is_nan(), "{what}: std_resid[{t}] must be NaN");
         } else {
-            assert_rel_close(*a, *e, TOL_FIXED, &format!("{what}: std_resid[{t}]"));
+            assert_rel_close(*a, *e, tol.path, &format!("{what}: std_resid[{t}]"));
         }
     }
     if let Some(fc) = block.get("forecast") {
         assert_series(
             &fit.forecast,
             &as_f64_vec(fc),
-            TOL_FIXED,
+            tol.path,
             &format!("{what}: forecast"),
         );
         assert_series(
             &fit.forecast_var,
             &as_f64_vec(&block["forecast_var"]),
-            TOL_FIXED,
+            tol.path,
             &format!("{what}: forecast_var"),
         );
     }
@@ -329,18 +350,18 @@ fn check_fixed_block(fit: &UcFit, block: &Value, what: &str) {
         for (key, c) in pairs {
             if let Some(b) = comp.get(key) {
                 let c = c.unwrap_or_else(|| panic!("{what}: {key} missing"));
-                assert_component(c, b, spread, d, &format!("{what}: {key}"));
+                assert_component(c, b, tol, d, &format!("{what}: {key}"));
             }
         }
         if let Some(bs) = comp.get("freq_seasonal") {
             let bs = bs.as_array().unwrap();
             assert_eq!(fit.freq_seasonal.len(), bs.len(), "{what}: freq blocks");
             for (i, (c, b)) in fit.freq_seasonal.iter().zip(bs).enumerate() {
-                assert_component(c, b, spread, d, &format!("{what}: freq_seasonal[{i}]"));
+                assert_component(c, b, tol, d, &format!("{what}: freq_seasonal[{i}]"));
             }
         }
         if let Some(rc) = comp.get("regression_coefficients") {
-            check_regression_coefficients(fit, rc, spread, &format!("{what}: regression"));
+            check_regression_coefficients(fit, rc, tol, &format!("{what}: regression"));
         }
     }
 }
@@ -348,7 +369,7 @@ fn check_fixed_block(fit: &UcFit, block: &Value, what: &str) {
 /// The regression-coefficient states (`mle_regression = false`) against
 /// statsmodels' `results.regression_coefficients`: per-regressor paths as
 /// `nobs x k` rows, and the `k x k` smoothed covariance at the last period.
-fn check_regression_coefficients(fit: &UcFit, rc: &Value, spread: f64, what: &str) {
+fn check_regression_coefficients(fit: &UcFit, rc: &Value, tol: Tol, what: &str) {
     let k = fit.regression_coefficients.len();
     assert!(k > 0, "{what}: components missing");
     let col = |key: &str, j: usize| -> Vec<f64> { rows(&rc[key]).iter().map(|r| r[j]).collect() };
@@ -359,12 +380,12 @@ fn check_regression_coefficients(fit: &UcFit, rc: &Value, spread: f64, what: &st
             "smoothed": col("smoothed", j),
             "smoothed_var": col("smoothed_var", j),
         });
-        assert_component(c, &block, spread, fit.nobs_diffuse, &format!("{what}[{j}]"));
+        assert_component(c, &block, tol, fit.nobs_diffuse, &format!("{what}[{j}]"));
     }
     let cov = fit.regression_coefficients_cov.as_ref().expect("cov");
     let want = rows(&rc["smoothed_cov_last"]);
     for i in 0..k {
-        assert_series(&cov[i], &want[i], TOL_FIXED, &format!("{what}: cov[{i}]"));
+        assert_series(&cov[i], &want[i], tol.path, &format!("{what}: cov[{i}]"));
     }
 }
 
@@ -915,11 +936,106 @@ fn stationary_cycle_removes_the_low_frequency_singularity() {
         sweep.push((s["frequency"].as_f64().unwrap(), fit.loglik, diffuse.loglik));
     }
     // The same sweep under the diffuse cycle keeps climbing toward the
-    // singularity (measured: -258.509, -240.094, -238.025 here; statsmodels'
+    // singularity (measured: -258.509, -253.968, -251.545 here; statsmodels'
     // absolute 1e-10 tolerance on F_inf clips its own diffuse numbers at
-    // -258.509, -253.642, -253.059), while the stationary one is flat.
+    // -258.509, -253.642, -253.059), while the stationary one is flat. The
+    // climb is at most the `ln 100` per two decades of the one diffuse
+    // element that resolves the weakly observed cycle state (less here,
+    // where that direction is also nearly collinear with the smooth trend
+    // and double precision loses part of it: the exact log-likelihood, in
+    // 90-digit arithmetic, is -258.509, -253.972, -249.367, the smallest
+    // `F_inf` 1.1e-13 at 1e-4 and 1.1e-17 at 1e-6,
+    // `scripts/uc_exact_diffuse_reference.py`); more would be annihilated
+    // diffuse mass taken for a diffuse element, which is what the filter's
+    // pre-0.11.0 diffuse-element test did at 1e-4 (-240.094, 18.4 points
+    // up in one window).
     eprintln!("GDP lambda sweep (frequency, stationary, diffuse): {sweep:?}");
-    assert!(sweep.windows(2).all(|w| w[1].2 > w[0].2));
-    assert!(sweep[2].2 - sweep[0].2 > 15.0);
+    for w in sweep.windows(2) {
+        let climb = w[1].2 - w[0].2;
+        assert!(
+            climb > 0.0 && climb < 100f64.ln() + 1.0,
+            "diffuse climb {climb}: {sweep:?}"
+        );
+    }
+    assert!(sweep[2].2 - sweep[0].2 > 5.0);
     assert!((sweep[2].1 - sweep[0].1).abs() < 0.2);
+}
+
+// ------------------------------------------ (d) long exact-diffuse periods
+
+/// The shared exact-diffuse filter on diffuse periods where a *genuine*
+/// diffuse element arrives late, against statsmodels at fixed parameters:
+/// the same calendar month missing in consecutive years keeps a seasonal-12
+/// model diffuse for 27 (`t = 2, 14` missing) or 39 (`t = 2, 14, 26`)
+/// observations — fixed and stochastic seasonal, with an AR(1), with a
+/// regressor in the state — two N(0, 1)-regressor designs with no
+/// missing value at all (`default_rng(207)`: 15; `default_rng(69)`: 13),
+/// and the same monthly series with a year or more missing at the start
+/// (the first 12 under a local level + fixed seasonal: 24; the first 16
+/// under a local linear trend + seasonal: 29).
+///
+/// Before 0.11.0 the diffuse-element test measured `F_inf` against a
+/// magnitude bound carried as `|T| P_mag |T|'`, which the dummy-seasonal
+/// transition (`rho(|T|) = 1.9995`) inflates about fourfold per period:
+/// the genuine `F_inf = 1.091` at `t = 26` met a threshold of `203.8`
+/// (`1e-14` times a bound of `2.0e16`) and was refused, so `P_inf` never
+/// washed out. The seven cases with missing months reported
+/// `nobs_diffuse = 120` with log-likelihoods 0.64 to 2.87 too low, the
+/// seed-207 case 16 diffuse observations instead of 15 (`2.0e-4` low),
+/// the seed-69 case was refused by the units re-check, and the two
+/// leading-gap cases also came back with `nobs_diffuse = 120`, the bound
+/// having compounded through the whole gap (log-likelihood 0.99 too high
+/// and 1.76 too low).
+#[test]
+fn long_diffuse_periods_match_statsmodels() {
+    let fx = load_fixture("uc_extensions.json");
+    let cases = fx["long_diffuse"].as_array().unwrap();
+    assert_eq!(cases.len(), 11);
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let fit = fixed_fit(&fx, case);
+        check_fixed_block(&fit, case, &format!("long_diffuse/{name}"));
+        // The diffuse period ends inside the sample, so the standardized
+        // residuals after it are finite (they were NaN everywhere).
+        assert!(
+            fit.nobs_diffuse < fit.nobs,
+            "{name}: the diffuse period ran to the end"
+        );
+        assert!(fit.std_resid[fit.nobs_diffuse..]
+            .iter()
+            .zip(&fit.resid[fit.nobs_diffuse..])
+            .all(|(s, r)| s.is_finite() || r.is_nan()));
+    }
+    let nd = |n: &str| {
+        cases
+            .iter()
+            .find(|c| c["name"] == n)
+            .map(|c| c["nobs_diffuse"].as_u64().unwrap())
+            .unwrap()
+    };
+    assert_eq!(nd("llevel_seasonal12_fixed_nan2_14"), 27);
+    assert_eq!(nd("llevel_seasonal12_nan2_14_26"), 39);
+    assert_eq!(nd("seed207_lltrend_seasonal12_state_regression"), 15);
+    assert_eq!(nd("seed69_llevel_seasonal12_state_regression"), 13);
+    assert_eq!(nd("llevel_seasonal12_fixed_lead12"), 24);
+    assert_eq!(nd("lltrend_seasonal12_lead16"), 29);
+}
+
+/// The MLE of the stochastic-seasonal `[2, 14]` case reaches the better of
+/// statsmodels' L-BFGS and the SciPy re-optimization (the seasonal
+/// variance at its zero boundary). Before the fix the optimizer climbed a
+/// different surface — the wrong exact-diffuse likelihood — and reported
+/// `-180.97` with `nobs_diffuse = 120` against the reference `-178.84`.
+#[test]
+fn long_diffuse_mle_reaches_the_better_reference_optimum() {
+    let fx = load_fixture("uc_extensions.json");
+    for case in fx["long_diffuse_mle"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let y = series(&fx, case);
+        let spec = spec_from_json(&fx, &case["spec"]);
+        let fit = unobserved_components(&y, &spec, &UcOptions::default())
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert!(fit.estimated);
+        check_mle(&fit, case, &format!("long_diffuse_mle/{name}"));
+    }
 }

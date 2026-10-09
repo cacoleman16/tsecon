@@ -60,6 +60,15 @@ def _nan_close(a, e, tol=TOL):
     np.testing.assert_allclose(a[~m], e[~m], rtol=tol, atol=tol)
 
 
+def _path_tol(block):
+    """``TOL``, or ``SPREAD_FACTOR`` times the block's ``rounding_spread``
+    where that is larger: how far statsmodels' own paths move under a
+    one-ulp change of an input (measured by the generator). Only weakly
+    resolved diffuse directions get there -- the two N(0, 1)-regressor
+    designs of ``long_diffuse``, at 2.5e-8 and 1.0e-7."""
+    return max(TOL, SPREAD_FACTOR * float(block.get("rounding_spread", 0.0)))
+
+
 def _smoothed_var_close(a, e, block, d):
     """Smoothed variances: inside the diffuse period the tolerance is the
     fixture's ``smoother_spread`` (how far statsmodels' OWN univariate and
@@ -72,10 +81,11 @@ def _smoothed_var_close(a, e, block, d):
     statsmodels, while the x86_64 wheels stay within one spread. Every case
     with a negligible spread keeps ``TOL``."""
     a, e = np.asarray(a, float), np.asarray(e, float)
-    relaxed = max(SPREAD_FACTOR * float(block.get("smoother_spread", 0.0)), TOL)
+    tol = _path_tol(block)
+    relaxed = max(SPREAD_FACTOR * float(block.get("smoother_spread", 0.0)), tol)
     cut = min(d + DIFFUSE_SMOOTH_ROWS + 1, len(a))
     _nan_close(a[:cut], e[:cut], tol=relaxed)
-    _nan_close(a[cut:], e[cut:], tol=TOL)
+    _nan_close(a[cut:], e[cut:], tol=tol)
 
 
 def _fixed(case):
@@ -95,12 +105,13 @@ def _check_fixed(r, block):
     assert r["loglik"] == pytest.approx(block["loglike"], rel=TOL, abs=TOL)
     assert r["aic"] == pytest.approx(block["aic"], rel=TOL)
     assert r["bic"] == pytest.approx(block["bic"], rel=TOL)
+    tol = _path_tol(block)
     if "filtered_state" in block:
         for key in ("filtered_state", "filtered_state_var", "smoothed_state"):
-            _nan_close(r[key], block[key])
+            _nan_close(r[key], block[key], tol)
         _smoothed_var_close(r["smoothed_state_var"], block["smoothed_state_var"], block, r["nobs_diffuse"])
-    _nan_close(r["fitted"], block["fitted"])
-    _nan_close(r["resid"], block["resid"])
+    _nan_close(r["fitted"], block["fitted"], tol)
+    _nan_close(r["resid"], block["resid"], tol)
     d = r["nobs_diffuse"]
     sr = np.asarray(block["std_resid"], float)
     got = np.asarray(r["std_resid"], float)
@@ -108,18 +119,18 @@ def _check_fixed(r, block):
     assert np.all(np.isnan(got[:d])) and np.all(np.isnan(got[missing]))
     obs = ~missing
     obs[:d] = False
-    _nan_close(got[obs], sr[obs])
+    _nan_close(got[obs], sr[obs], tol)
     if "forecast" in block:
-        _nan_close(r["forecast"], block["forecast"])
-        _nan_close(r["forecast_var"], block["forecast_var"])
+        _nan_close(r["forecast"], block["forecast"], tol)
+        _nan_close(r["forecast_var"], block["forecast_var"], tol)
     comp = block.get("components", {})
     for sm_name, key in (("level", "level"), ("trend", "slope"), ("seasonal", "seasonal"), ("cycle", "cycle"),
                          ("autoregressive", "autoregressive")):
         if sm_name in comp:
-            _nan_close(r[key], comp[sm_name]["smoothed"])
+            _nan_close(r[key], comp[sm_name]["smoothed"], tol)
             _smoothed_var_close(r[key + "_var"], comp[sm_name]["smoothed_var"], block, d)
-            _nan_close(r["filtered_" + key], comp[sm_name]["filtered"])
-            _nan_close(r["filtered_" + key + "_var"], comp[sm_name]["filtered_var"])
+            _nan_close(r["filtered_" + key], comp[sm_name]["filtered"], tol)
+            _nan_close(r["filtered_" + key + "_var"], comp[sm_name]["filtered_var"], tol)
 
 
 def _check_mle(r, case):
@@ -233,12 +244,13 @@ def test_ar_refuses_where_statsmodels_returns_numbers():
 # --------------------------------------------- regressors in the state
 def _regression_close(r, rc, block):
     d = r["nobs_diffuse"]
+    tol = _path_tol(block)
     for key, ref in (("regression_coefficients", "smoothed"),
                      ("filtered_regression_coefficients", "filtered"),
                      ("filtered_regression_coefficients_var", "filtered_var")):
-        _nan_close(r[key], rc[ref])
+        _nan_close(r[key], rc[ref], tol)
     _smoothed_var_close(r["regression_coefficients_var"], rc["smoothed_var"], block, d)
-    _nan_close(r["regression_coefficients_cov"], rc["smoothed_cov_last"])
+    _nan_close(r["regression_coefficients_cov"], rc["smoothed_cov_last"], tol)
 
 
 @pytest.mark.parametrize("case", UX["state_regression"], ids=lambda c: c["name"])
@@ -381,6 +393,55 @@ def test_state_regression_refuses_regressor_scales_the_filter_cannot_resolve():
             with pytest.raises(ValueError, match=r"exog: under mle_regression = false.*would end at observation "
                                                  r"120 instead of 3.*Rescale the columns"):
                 tsecon.unobserved_components(y, exog=Xc, mle_regression=False, **kw)
+
+
+# ------------------------------------------- long exact-diffuse periods
+@pytest.mark.parametrize("case", UX["long_diffuse"], ids=lambda c: c["name"])
+def test_long_diffuse_periods_match_statsmodels(case):
+    """The shared exact-diffuse filter takes a genuine diffuse element that
+    arrives late in a long diffuse period -- the same calendar month missing
+    in consecutive years keeps a seasonal-12 model diffuse for 27 or 39
+    observations, a year or more missing at the start for 24 or 29 -- and in
+    N(0, 1)-regressor designs with no missing value, so ``nobs_diffuse``, the
+    log-likelihood and every path match statsmodels. Before the fix the
+    missing-month and leading-gap cases came back with ``nobs_diffuse = 120``
+    (``std_resid`` NaN throughout, log-likelihood 0.64 to 2.87 off), the
+    seed-207 case with 16 instead of 15, and the seed-69 case was refused as
+    badly scaled."""
+    r = _fixed(case)
+    _check_fixed(r, case)
+    if "regression_coefficients" in case["components"]:
+        _regression_close(r, case["components"]["regression_coefficients"], case)
+    d = r["nobs_diffuse"]
+    assert d < r["nobs"]
+    after = np.asarray(r["std_resid"], float)[d:]
+    assert np.all(np.isfinite(after) | np.isnan(np.asarray(r["resid"], float)[d:]))
+
+
+@pytest.mark.parametrize("case", UX["long_diffuse_mle"], ids=lambda c: c["name"])
+def test_long_diffuse_mle(case):
+    # Before the fix the search climbed the wrong surface: -180.97 with
+    # nobs_diffuse = 120 against the reference -178.84.
+    r = tsecon.unobserved_components(_y(case), **_kwargs(case["spec"]))
+    _check_mle(r, case)
+
+
+def test_unit_scale_regressors_are_not_refused_as_badly_scaled():
+    """The state-regression units re-check compares the fit with the same
+    model on the columns divided by their largest absolute values; with the
+    filter's diffuse-element test fixed, an N(0, 1) column (largest
+    absolute value about 2.8) ends the diffuse period where the twin does.
+    Seeds 69 and 175 of this design used to be refused as "too far apart in
+    scale"; over 200 seeds none is, and the diffuse period is the 13
+    observations of the 13 diffuse states, as in statsmodels."""
+    pat = np.array([1.0, 0.5, -0.5, -1.0, 0.2, 0.0, 0.3, -0.2, 0.8, -0.6, 0.1, -0.6])
+    for seed in range(200):
+        rng = np.random.default_rng(seed)
+        x = rng.normal(size=(96, 1))
+        y = np.cumsum(rng.normal(0, 0.3, 96)) + np.tile(pat, 8) + 0.7 * x[:, 0] + rng.normal(0, 1, 96)
+        r = tsecon.unobserved_components(y, level="llevel", seasonal=12, exog=x, mle_regression=False,
+                                         fixed_params=[1.0, 0.1, 0.05])
+        assert r["nobs_diffuse"] == r["k_diffuse"] == 13, seed
 
 
 # ------------------------------------------------------ stationary cycle

@@ -698,15 +698,16 @@ impl Layout {
         // diffuse direction does resolve, and it resolves with
         // `F_inf ~ (rho sin lambda)^2 -> 0`, contributing
         // `-(ln 2 pi + ln F_inf) / 2 -> +infinity`. An optimizer let loose
-        // on `(0, pi)` walks into that singularity and reports a "cycle"
-        // of period 10^6 with a log-likelihood a dozen points above any
-        // genuine optimum. A cycle longer than the sample is not
-        // identified by the sample in any case. statsmodels leaves the
-        // bound at infinity when the series carries no frequency
-        // information (`structural.py`, `cycle_period_bounds=(2, inf)`)
-        // and does not meet the singularity because its diffuse tolerance
-        // is an absolute `1e-10` on `F_inf`, which quietly clips it;
-        // `uc_properties.rs` pins the divergence with numbers.
+        // on `(0, pi)` walks into that singularity: on the series of
+        // `uc_properties.rs` it stops at a "cycle" of period 2.7e7, 1.4
+        // log-likelihood points above the fit inside the default bounds
+        // (`scripts/uc_long_diffuse_evidence.py`). A cycle longer than the
+        // sample is not identified by the sample in any case. statsmodels
+        // leaves the bound at infinity when the series carries no
+        // frequency information (`structural.py`, `cycle_period_bounds=(2,
+        // inf)`) and does not meet the singularity because its diffuse
+        // tolerance is an absolute `1e-10` on `F_inf`, which quietly clips
+        // it; `uc_properties.rs` pins the divergence with numbers.
         let pmax = if pmax.is_finite() { pmax } else { n as f64 };
         if spec.cycle && pmax <= pmin {
             return Err(invalid(format!(
@@ -1619,6 +1620,13 @@ pub fn unobserved_components(
     )
 }
 
+/// How far apart (largest over smallest, the unit loading of the level,
+/// trend and seasonal states included) the regressor columns' largest
+/// absolute values must be before a disagreement with the unit-scaled twin
+/// is put down to the units. Inside it the twin is essentially the same
+/// problem, so the units cannot be what the filter fails to resolve.
+const SCALE_SPREAD_UNITS: f64 = 1e2;
+
 /// The floating-point guard of the state regression.
 ///
 /// Under `mle_regression = false` the coefficient states are exactly
@@ -1642,6 +1650,23 @@ pub fn unobserved_components(
 /// a unit diffuse prior on each coefficient) because that is what the
 /// filtered paths inside the diffuse period, and the log-likelihood,
 /// are defined against.
+///
+/// The refusal says *why* only when it can know. Columns whose scales are
+/// within [`SCALE_SPREAD_UNITS`] of each other and of 1 are already in
+/// comparable units, and the twin is essentially the same problem: a
+/// disagreement there means a diffuse direction the observations of the
+/// diffuse period see only weakly (a regressor nearly collinear with the
+/// others or with the level, trend and seasonal states over those
+/// observations), so close to the filter's rank tolerance that either run
+/// can land on either side of it. The message says that instead of
+/// blaming the units, and points to the remedies that remove the weak
+/// direction: dropping the column, or `mle_regression = true`, which has
+/// no diffuse coefficient states. It does not promise that rescaling
+/// cannot help: one of the two runs *is* a rescaled fit, and either may be
+/// the one that resolved the direction. (Before 0.11.0's filter fix that
+/// branch was also reached by well-scaled N(0, 1) columns, through a
+/// diffuse-element test that refused genuine elements late in a long
+/// diffuse period; it was reported as a units problem.)
 fn check_regressor_scales(
     twin: &Layout,
     scales: &[f64],
@@ -1653,16 +1678,41 @@ fn check_regressor_scales(
     if d_twin == d_diffuse {
         return Ok(());
     }
-    Err(invalid(format!(
+    Err(regressor_scale_refusal(scales, d_diffuse, d_twin))
+}
+
+/// The refusal of [`check_regressor_scales`], worded by whether the columns'
+/// scales can be the cause.
+fn regressor_scale_refusal(scales: &[f64], d_diffuse: usize, d_twin: usize) -> SsmError {
+    let (lo, hi) = scales
+        .iter()
+        .fold((1.0f64, 1.0f64), |(lo, hi), &c| (lo.min(c), hi.max(c)));
+    if hi / lo > SCALE_SPREAD_UNITS {
+        return invalid(format!(
+            "exog: under mle_regression = false the regression coefficients are exactly diffuse \
+             states loaded by x_t, and the columns' scales (largest absolute values {scales:?}, \
+             against the unit loading of the level, trend and seasonal states) are too far apart \
+             for the exact-diffuse filter to resolve them in floating point: the diffuse period \
+             would end at observation {d_diffuse} instead of {d_twin}, and the coefficients and \
+             the log-likelihood would be roundoff. Rescale the columns to comparable units near \
+             1 (the state-regression log-likelihood depends on the regressor units anyway; \
+             under mle_regression = true it does not)"
+        ));
+    }
+    invalid(format!(
         "exog: under mle_regression = false the regression coefficients are exactly diffuse \
-         states loaded by x_t, and the columns' scales (largest absolute values {scales:?}, \
-         against the unit loading of the level, trend and seasonal states) are too far apart \
-         for the exact-diffuse filter to resolve them in floating point: the diffuse period \
-         would end at observation {d_diffuse} instead of {d_twin}, and the coefficients and \
-         the log-likelihood would be roundoff. Rescale the columns to comparable units near \
-         1 (the state-regression log-likelihood depends on the regressor units anyway; \
-         under mle_regression = true it does not)"
-    )))
+         states loaded by x_t, and the exact-diffuse filter cannot resolve their diffuse \
+         directions reliably in floating point: the diffuse period ends at observation \
+         {d_diffuse} on the columns as given and at {d_twin} on the same columns divided by \
+         their largest absolute values ({scales:?}). Those scales are already comparable with \
+         each other and with the unit loading of the level, trend and seasonal states, so the \
+         units are not the cause: the observations of the diffuse period see some combination \
+         of the coefficients and the level, trend and seasonal states only weakly — a column \
+         nearly collinear with the others or with those states there — and the coefficients \
+         and the log-likelihood would be dominated by rounding error. Drop or replace the \
+         nearly redundant column, or estimate the coefficients as parameters with \
+         mle_regression = true, which has no diffuse coefficient states"
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2071,6 +2121,40 @@ mod tests {
         // The starting ladder has no coefficient parameters to fill.
         let starts = layout.starting_values(&[1.0, 2.0, 1.5, 3.0], 3);
         assert!(starts.iter().all(|p| p.len() == 4));
+    }
+
+    /// The state-regression guard names the cause it can know: a units
+    /// problem only when the columns' scales are far apart (from each other
+    /// or from the unit loading of the level), never for columns already in
+    /// units near 1 such as an N(0, 1) draw with max |x| = 2.8. There the
+    /// message must not advise rescaling; it names the weakly resolved
+    /// direction and the remedies that remove it (drop the column, or
+    /// `mle_regression = true`).
+    #[test]
+    fn regressor_scale_refusal_names_units_only_when_they_can_be_the_cause() {
+        for scales in [vec![1e-8, 1.3], vec![1e8], vec![2.0e2]] {
+            let m = regressor_scale_refusal(&scales, 120, 3).to_string();
+            assert!(
+                m.starts_with("invalid specification: exog: under mle_regression = false")
+                    && m.contains("too far apart")
+                    && m.contains("would end at observation 120 instead of 3")
+                    && m.contains("Rescale the columns"),
+                "{scales:?}: {m}"
+            );
+        }
+        for scales in [vec![2.7976489384849996], vec![0.05, 3.0], vec![99.0]] {
+            let m = regressor_scale_refusal(&scales, 14, 13).to_string();
+            assert!(
+                m.starts_with("invalid specification: exog: under mle_regression = false")
+                    && m.contains("ends at observation 14 on the columns as given and at 13")
+                    && m.contains("the units are not the cause")
+                    && m.contains("nearly collinear")
+                    && m.contains("with mle_regression = true")
+                    && !m.contains("Rescale the columns")
+                    && !m.contains("too far apart"),
+                "{scales:?}: {m}"
+            );
+        }
     }
 
     #[test]

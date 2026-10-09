@@ -126,8 +126,10 @@ through `rho sin lambda`, so its diffuse direction resolves with
 which grows without bound. Measured in
 `crates/tsecon-ssm/tests/uc_properties.rs`: on a seeded local-level series
 the same model at `lambda = 1e-2, 1e-4, 1e-6` scores −188.15, −183.55,
-−162.53 — 25 log-likelihood points of pure singularity, and a free
-optimizer walks straight into it and reports a "cycle" of period `10^6`.
+−178.95 — `ln 100 = 4.6` log-likelihood points of pure singularity for every
+two decades of frequency, and a free optimizer walks straight into it: given
+`(2, 1e9)` it stops at a "cycle" of period `2.7e7`, 1.4 points above the fit
+inside the default bounds (`scripts/uc_long_diffuse_evidence.py`).
 statsmodels does not meet the singularity because its diffuse tolerance is
 an absolute `1e-10` on `F_inf`, which clips it. A cycle longer than the
 sample is not identified by the sample in any case, so the sample length is
@@ -298,8 +300,27 @@ end of the sample and the coefficients and log-likelihood are wrong
 period does not depend on the units, so every state-regression fit is
 checked against the same model on columns divided by their largest
 absolute values, and when the two disagree the call is refused, naming
-`exog`. Accuracy fades before that point, so keep the regressors in
-comparable units near 1.
+`exog`. The refusal blames the units only when the columns' largest
+absolute values are more than a factor 100 from each other or from 1;
+inside that band the units are not the cause, and it says instead that the
+observations of the diffuse period see some combination of the
+coefficients and the level, trend and seasonal states only weakly (a
+column nearly collinear with the others or with those states there), and
+points to dropping that column or to `mle_regression=True`, which has no
+diffuse coefficient states. Accuracy fades before that point, so keep the
+regressors in comparable units near 1. *Nearly* collinear columns are the
+same problem short of exact collinearity: the last diffuse direction
+resolves with an `F_inf` close to the filter's rank tolerance, the
+exact-diffuse log-likelihood is then ill-conditioned in double precision
+(statsmodels' as much as this crate's), and the twin check catches some of
+these fits but not all. With columns close to collinear prefer
+`mle_regression=True`: its log-likelihood has no diffuse coefficient
+direction to resolve and stays well conditioned, while the coefficients
+themselves are as poorly determined as the collinearity makes them. (Up
+to the 0.11.0 filter fix described under *Validated against*, about 1% of
+well-scaled N(0, 1) designs were refused here as badly scaled: 2 of 400
+seeds of a local level + seasonal 12 + one regressor. None is now, and all
+400 end the diffuse period where statsmodels does.)
 
 **Validated against.** statsmodels `UnobservedComponents(...,
 use_exact_diffuse=True)` — an independent package — at *fixed parameters*:
@@ -376,9 +397,10 @@ the standardization scale; the deterministic dummy seasonal is exactly
 an amplitude of 1.4); a frequency-π (Nyquist) harmonic state cannot move
 the log-likelihood (difference exactly 0.0 against a hand-built model with
 the state removed); the cycle log-likelihood's divergence as the frequency
-goes to zero is measured rather than asserted (−188.15, −183.55, −162.53 at
-λ = 1e-2, 1e-4, 1e-6) and the default period bound is shown to keep the fit
-out of it; the cycle frequency lands inside its bounds and recovers a
+goes to zero is measured rather than asserted (−188.15, −183.55, −178.95 at
+λ = 1e-2, 1e-4, 1e-6: `ln 100` per two decades, the `−ln(ρ sin λ)` of the
+one weakly resolved diffuse element) and the default period bound is shown
+to keep the fit out of it; the cycle frequency lands inside its bounds and recovers a
 period-8 cycle within 1.5 periods. Base-R `StructTS` was *not* used as a second reference:
 it fits by a different (non-diffuse, `optim`) likelihood and would only
 have added a lower-graded number.
@@ -438,16 +460,48 @@ while the Linux x86_64 build stays within one spread.
   specifications and the regressor-units identity (shift exactly −ln 100)
   at 1e-10; the MLE reaching the better of two optimizers
   (−185.1819788397).
+- *Long exact-diffuse periods* — the exact-diffuse filter every model here
+  shares, against statsmodels at fixed parameters (`long_diffuse`): a
+  monthly local level + dummy seasonal 12 with the same calendar month
+  missing at t = 2 and 14 (diffuse for 27 observations) or at 2, 14 and 26
+  (39), with the seasonal fixed and stochastic, with an AR(1) and with a
+  regressor in the state; a local linear trend + seasonal 12 + two N(0, 1)
+  regressors in the state with nothing missing (15); a local level +
+  seasonal 12 + one N(0, 1) regressor in the state (13); and the first
+  series with a year or more missing at the start (the first 12 under a
+  local level + fixed seasonal 12, 24; the first 16 under a local linear
+  trend + seasonal 12, 29). Every
+  `nobs_diffuse` and log-likelihood matches (−184.180678 and −186.501844 for
+  the fixed and stochastic [2, 14] cases, −193.974529 with the AR(1),
+  −206.983808 and −157.071129 for the two regressor designs), and the paths
+  hold 1e-8 except on those two regressor designs, which resolve a diffuse
+  direction only weakly: there statsmodels' own paths move by 2.5e-8 and
+  1.0e-7 when an input moves by one ulp (`rounding_spread`, measured by the
+  generator), and ten times that is the tolerance. The MLE of the
+  stochastic [2, 14] case reaches the better reference optimum
+  (−178.844311, the seasonal variance piled up at zero). Before the 0.11.0
+  fix the filter's roundoff test refused the genuine diffuse element that
+  ends each of these periods (`TOLERANCE_CANCEL` in `filter.rs`; the replay
+  is `scripts/uc_long_diffuse_evidence.py`): `nobs_diffuse` came back as
+  120 on the seven missing-month cases with log-likelihoods 0.64 to 2.87
+  too low and on the two leading-gap cases (0.99 too high, 1.76 too low),
+  as 16 instead of 15 on the first regressor design, the second was
+  refused as badly scaled, and the MLE reported −180.97.
 - *Seeded Monte Carlo and identities* (`uc_properties.rs`): the stationary
-  cycle recovers a period-12, damping-0.9 cycle (8 seeds, T = 200: median
-  |period error| 0.637, median |damping error| 0.0117); local level +
+  cycle recovers a period-12, damping-0.9 cycle — over 400 seeds at T = 200
+  (`scripts/mc_uc_stationary_cycle_recovery.py`, the test's own series)
+  the median |period error| is 0.45 (bootstrap se 0.03) and the median
+  |damping error| 0.022 (se 0.001), and 2 of the 400 fits miss: one does
+  not converge, its damping driven to the bound 1 and its period to 6.85,
+  and one lands at period 15.1; the test itself is an 8-seed smoke check
+  (seeds 0–7, all inside its band); local level +
   AR(1) recovers φ = 0.8 (10 seeds, T = 200: median |error| 0.0556); at the
   true variances the state-regression intervals cover the coefficients at
   0.9475 and 0.9515 (2000 seeds, nominal 0.95); scale equivariance holds
   with an AR component (estimates 7.3e-8, log-likelihood 2.5e-16) and
   under state regression (4.5e-8, 6.1e-16); the stationary cycle's
   log-likelihood moves by 3.6e-3 over frequencies 1e-2 to 1e-8, where the
-  diffuse cycle on the same series climbs 25 points between 1e-2 and 1e-6;
+  diffuse cycle on the same series climbs 9.2 points between 1e-2 and 1e-6;
   and the default specifications reproduce
   0.10.0 **bit for bit** — the exact IEEE-754 patterns of three `uc.json`
   MLE fits and the `tvp_regression` MLE, recorded before the shared
