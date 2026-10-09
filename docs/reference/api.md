@@ -6102,7 +6102,8 @@ ARDL model and Pesaran-Shin-Smith (2001) bounds test for a level
     Validation: statsmodels 0.15 `UECM` / `ARDL` / `ardl_select_order` at
     1e-10 on estimates, t and long run, the selected orders exactly
     (`ic_value` at 1e-8); the F at 1e-10 against an exact-rational referee
-    and at 5e-10 / 1e-8 against statsmodels' UECM Wald / levels-ARDL
+    (also with y and x shifted by levels up to 1e6 over increments of sd
+    0.015) and at 5e-10 / 1e-8 against statsmodels' UECM Wald / levels-ARDL
     f_test (their own rounding); the critical values and p-values are
     statsmodels' tabulated surface at the corrected key (p-values atol
     1e-14 / rtol 1e-9); seeded Monte Carlo null size 0.048 / 0.047 at 5%

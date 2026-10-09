@@ -53,7 +53,13 @@ evaluated on it, and the generator asserts the two routes agree:
   * critical values / p-values: ``pss_critical_values.crit_vals`` and
     the response surface at the CORRECTED key k = n_x (DEVIATION 1),
     p = ``norm.sf(sum a_i (ln F)^i)``, small_p iff F > stat_star, asserted
-    against statsmodels' ``_pss_pvalue`` (1 - cdf) at atol 1e-15.
+    against statsmodels' ``_pss_pvalue`` (1 - cdf) at atol 1e-15;
+  * ``offsets``: the F and the t on y.L1 in EXACT rationals on a seeded
+    system shifted by a level L up to 1e6 (y alone, or y and x), all five
+    cases (``offset_block``). With a constant the F is invariant to the
+    shift; a floating-point Wald route through an explicit inverse of the
+    restriction block's covariance loses it like (L / variation)^2 in case
+    2, so statsmodels' F there is stored as data only.
 
 DEVIATION 1 (statsmodels table-key defect, documented, not inherited).
 ``UECMResults.bounds_test`` looks the PSS table up at
@@ -451,6 +457,66 @@ def fit_case(y, X, p, q, case, alpha):
     return rec
 
 
+# ------------------------------------------------------- level offsets
+
+OFFSET_LEVELS = [0.0, 1e3, 1e4, 1e5, 1e6]
+
+
+def offset_block():
+    """The bounds F on level-offset designs (audit round 15, finding F1).
+
+    A seeded T = 100 system with two random-walk regressors and
+    y0 = 0.01 (0.5 (x1 + x2) + e) (increments' sd about 0.015), fitted at
+    ARDL(3; 2, 2) in all five cases with y = y0 + L (``shift_x`` False) or
+    y = y0 + L and x = x + L (``shift_x`` True), L in ``OFFSET_LEVELS``;
+    y0 + L and x + L are the float64 sums, which the tests rebuild bit for
+    bit. With a constant (cases 2-5) the F is invariant to the shift in
+    exact arithmetic, so up to the rounding of the shifted inputs every
+    case-2..5 row repeats its L = 0 value; the golden is the exact-rational
+    SSR-difference F (``exact_f_and_t``) of the float design statsmodels'
+    UECM builds from the shifted data, and the t on y.L1 likewise.
+    statsmodels' own ``bounds_test`` F (``sm_statistic``) is stored as data
+    only, to document how far a floating-point Wald route drifts there.
+    """
+    rng = np.random.default_rng(20261013)
+    T, k, p, q = 100, 2, 3, [2, 2]
+    x0 = np.cumsum(rng.standard_normal((T, k)), axis=0)
+    y0 = 0.01 * (0.5 * x0.sum(axis=1) + rng.standard_normal(T))
+    rows = []
+    for shift_x in (False, True):
+        for L in OFFSET_LEVELS:
+            y = y0 + L
+            X = x0 + L if shift_x else x0
+            for case in (1, 2, 3, 4, 5):
+                trend = TREND[case]
+                n_det = N_DET[trend]
+                mod = UECM(y, p, X, {j: q[j] for j in range(k)}, trend=trend)
+                Z = np.asarray(mod._x)
+                dy = np.asarray(mod._y)
+                m = Z.shape[1]
+                rr = restriction_rows(case, n_det, k)
+                F_x, s2_x, A_x, b_x = exact_f_and_t(Z, dy, rr)
+                e_pi = [Fraction(int(j == n_det)) for j in range(m)]
+                inv_pp = _solve_exact(A_x, e_pi)[n_det]
+                t2 = b_x[n_det] ** 2 / (s2_x * inv_pp)
+                t_x = float(np.sign(float(b_x[n_det]))) * float(np.sqrt(float(t2)))
+                F_sm = float(mod.fit().bounds_test(case=case).statistic)
+                rows.append(dict(level=L, shift_x=shift_x, case=case, statistic_exact=float(F_x),
+                                 t_statistic_exact=t_x, sm_statistic=F_sm))
+    # with a constant the exact F of the shifted float data stays within the
+    # rounding of the inputs of its L = 0 value (no constant: case 1 moves)
+    for r in rows:
+        if r["case"] >= 2:
+            base = next(b for b in rows if b["level"] == 0.0 and b["case"] == r["case"]
+                        and b["shift_x"] == r["shift_x"])
+            assert abs(r["statistic_exact"] - base["statistic_exact"]) <= 1e-6 * base["statistic_exact"], (r, base)
+    return dict(
+        y0=y0.tolist(), x=x0.tolist(), lags=p, order=q, levels=OFFSET_LEVELS,
+        source="seeded: two random-walk regressors, y0 = 0.01 (0.5 (x1 + x2) + e) (rng 20261013)",
+        rows=rows,
+    )
+
+
 # ------------------------------------------------------------ selection
 
 def select_case(y, X, case, ic, lags=None, order=None, max_lag=None, max_order=None, alpha=0.05):
@@ -680,6 +746,8 @@ def main():
         up = pss.crit_vals[(r["k"], r["case"], True)][1]
         assert abs(lo - r["lower"]) < 0.05 and abs(up - r["upper"]) < 0.05, (r, lo, up)
 
+    offsets = offset_block()
+
     fixture = {
         "_meta": {
             "reference": "statsmodels.tsa.ardl.{UECM, ARDL, ardl_select_order, pss_critical_values} "
@@ -702,6 +770,7 @@ def main():
         "pss_pvalue_grid": grid,
         "canary_sim": sim,
         "published": published,
+        "offsets": offsets,
     }
     OUT.write_text(json.dumps(clean(fixture), indent=1, allow_nan=False) + "\n")
     print(f"wrote {OUT} ({len(cases)} cases)")
@@ -714,6 +783,11 @@ def main():
     print("danish story:", stories["danish_bic_case3"])
     for s in sim:
         print("canary_sim:", s)
+    for r in offsets["rows"]:
+        if r["case"] == 2 or r["level"] == OFFSET_LEVELS[-1]:
+            print("offset: L = %.0e shift_x = %-5s case %d  exact F %.10f  statsmodels F %.10f (rel %.1e)"
+                  % (r["level"], r["shift_x"], r["case"], r["statistic_exact"], r["sm_statistic"],
+                     abs(r["sm_statistic"] - r["statistic_exact"]) / r["statistic_exact"]))
 
 
 if __name__ == "__main__":

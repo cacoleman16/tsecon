@@ -129,6 +129,40 @@ def test_fixture_covers_the_option_grid():
     assert all(c["ic_margin"] > 1e-6 for c in CASES if c["selected"])
 
 
+OFFSETS = FX["offsets"]
+
+
+@pytest.mark.parametrize("row", OFFSETS["rows"],
+                         ids=[f"L{r['level']:.0e}-x{int(r['shift_x'])}-case{r['case']}" for r in OFFSETS["rows"]])
+def test_level_offsets_keep_the_f_at_the_exact_referee(row):
+    """Audit round 15 (F1): y (and x) shifted by a level L up to 1e6 over
+    increments with sd about 0.015. With a constant (cases 2-5) the F is
+    invariant to the shift and holds the exact-rational referee at 1e-10;
+    the old case-2 Wald route returned F = -35.8 (exact 9.548) at L = 1e6
+    and refused the design with x shifted too. Case 1 (no constant) and the
+    t carry the raw design's conditioning, about eps * L / variation."""
+    L = row["level"]
+    y = np.asarray(OFFSETS["y0"], float) + L
+    x = np.asarray(OFFSETS["x"], float) + (L if row["shift_x"] else 0.0)
+    r = tsecon.ardl_bounds_test(y, x, lags=OFFSETS["lags"], order=OFFSETS["order"], case=row["case"])
+    loose = 1e-10 * max(1.0, L / 1e4)
+    assert r["statistic"] == pytest.approx(row["statistic_exact"], rel=loose if row["case"] == 1 else 1e-10)
+    assert r["t_statistic"] == pytest.approx(row["t_statistic_exact"], rel=loose)
+    if L == 0.0:
+        assert r["statistic"] == pytest.approx(row["sm_statistic"], rel=5e-10)
+
+
+def test_a_level_offset_beyond_double_precision_is_refused_as_that():
+    """Beyond the reach of double precision (1e12 over increments near
+    0.01) the lagged level is a copy of the constant; the refusal says so
+    and gives the fix instead of blaming exact linear combinations."""
+    y, x = SYSTEMS["sim_k2"]
+    for kw in (dict(lags=2, order=1, case=2), {}):
+        with pytest.raises(ValueError, match=r"numerically singular.*level offset.*subtract the offset") as info:
+            tsecon.ardl_bounds_test(0.01 * y + 1e12, x, **kw)
+        assert "not positive definite" not in str(info.value)
+
+
 def test_the_documented_stories():
     # macrodata: BIC picks ARDL(1, 1, 1); F rejects at 5% while t(y.L1) is
     # -1.61 — degenerate case #1, the model card's headline.

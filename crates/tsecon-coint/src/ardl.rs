@@ -35,7 +35,16 @@
 //!
 //! The PSS F statistic is the Wald test that the level block is zero —
 //! `[y.L1, x.L1]`, plus the constant in case 2 or the trend in case 4 —
-//! divided by the number of restrictions: `F = (Rb)'(R Cov R')^{-1}(Rb)/q`.
+//! divided by the number of restrictions: `F = (Rb)'(R Cov R')^{-1}(Rb)/q`,
+//! which equals the residual-sum-of-squares F `((SSR_r - SSR_u)/q) /
+//! (SSR_u/(nobs - m))` and is computed that way: from one QR of the design
+//! with the restricted columns last, after centring them at their means
+//! when a constant is in the model (cases 2-5; a change of basis that
+//! leaves both fits unchanged). No inverse is formed, so a level far from
+//! zero beside its variation — which in case 2 makes the restriction
+//! block's covariance as ill-conditioned as `(level / variation)^2` — does
+//! not cost the F its digits; with a constant the F is invariant to adding
+//! constants to `y` and `x`.
 //! Its null distribution is non-standard and depends on whether the
 //! regressors are I(0) or I(1); PSS bound it between the all-I(0) (lower)
 //! and all-I(1) (upper) limits. The critical values and p-values come
@@ -79,7 +88,7 @@ use tsecon_stats::{ContinuousDist, StdNormal, StudentT};
 
 use crate::dols::DolsIc;
 use crate::error::CointError;
-use crate::fmols::{check_yx, inv_spd_scaled};
+use crate::fmols::check_yx;
 use crate::pss;
 
 /// Largest number of candidate models the order search may fit
@@ -437,6 +446,67 @@ fn reduced_factor(z: Mat<f64>, dy: &[f64], what: &'static str) -> Result<Mat<f64
     Ok(r.to_owned())
 }
 
+/// The PSS F of the restrictions `rest` (column indices of the `n x m`
+/// design `z`, already fitted and rank-checked by [`qr_fit`]) as the
+/// residual-sum-of-squares gap `((SSR_r - SSR_u) / q) / (SSR_u /
+/// df_resid)` — algebraically the Wald `(Rb)'(R Cov R')^{-1}(Rb) / q` on
+/// the reported covariance.
+///
+/// With the constant in the model (`has_const`: column 0, cases 2-5) every
+/// restricted column but the constant is first centred at its mean. That
+/// subtracts a multiple of the constant, which is a change of basis inside
+/// both fits — the constant is itself restricted in case 2 and kept by the
+/// restricted fit in cases 3-5 — so both SSRs, hence F, are unchanged in
+/// exact arithmetic, while a lagged level far from zero loses its offset
+/// (the subtraction is exact when every entry lies within a factor 2 of
+/// the mean). Then one Householder QR of `[Z_other S, Z_rest S, dy c]`
+/// (`S` the power-of-two column equilibration, `c` a power of two)
+/// with the restricted columns LAST: the last diagonal entry of `R` is the
+/// unrestricted residual norm and the `q` entries of the last column above
+/// it carry `dy`'s component in the restricted columns beyond the others,
+/// so the gap is their squared norm and no inverse is formed. The Wald
+/// form through an explicit `(R Cov R')^{-1}` loses digits like
+/// `(level / variation)^2` in case 2, where the constant sits beside
+/// lagged levels far from zero, and the raw design's QR like `level /
+/// variation`; this route keeps F at the rounding of the centred data.
+fn bounds_f(mut z: Mat<f64>, dy: &[f64], rest: &[usize], has_const: bool, df_resid: usize) -> f64 {
+    let (n, m) = (z.nrows(), z.ncols());
+    let nr = rest.len();
+    if has_const {
+        for &j in rest.iter().filter(|&&j| j != 0) {
+            let mean = (0..n).map(|i| z[(i, j)]).sum::<f64>() / n as f64;
+            for i in 0..n {
+                z[(i, j)] -= mean;
+            }
+        }
+    }
+    let cols: Vec<usize> = (0..m)
+        .filter(|j| !rest.contains(j))
+        .chain(rest.iter().copied())
+        .collect();
+    let s = column_scales(z.as_ref());
+    let dy_norm = dy.iter().map(|v| v * v).sum::<f64>().sqrt();
+    let sy = if dy_norm > 0.0 && dy_norm.is_finite() {
+        2f64.powi(-(dy_norm.log2().round() as i32))
+    } else {
+        1.0
+    };
+    let aug = Mat::from_fn(n, m + 1, |i, c| {
+        if c < m {
+            z[(i, cols[c])] * s[cols[c]]
+        } else {
+            dy[i] * sy
+        }
+    });
+    drop(z);
+    let qr = aug.qr();
+    drop(aug);
+    let r = qr.thin_R();
+    let gap: f64 = (m - nr..m).map(|i| r[(i, m)] * r[(i, m)]).sum();
+    let ssr_u = r[(m, m)] * r[(m, m)];
+    (gap / nr as f64) / (ssr_u / df_resid as f64)
+}
+
 /// The UECM design on rows `t = h .. T-1` (`h >= max(p, max q)`):
 /// `(Δy, Z)` with the column layout of the module docs.
 fn design(
@@ -749,8 +819,12 @@ fn search(
         z,
         &dy,
         "the largest ARDL design of the order search (y's or a regressor's lagged level or a \
-         lagged difference is an exact linear combination of the others — a duplicated or \
-         constant column of x, x equal to y, or x collinear with the case's deterministics)",
+         lagged difference is an exact linear combination of the others, or indistinguishable \
+         from one in double precision — a duplicated or constant column of x, x equal to y, x \
+         collinear with the case's deterministics, or a level offset so large beside the \
+         series' variation that a lagged level is a near copy of the constant or of another \
+         level); drop the redundant column, or subtract the offset (with a constant, cases \
+         2-5, that leaves the F, the t and every coefficient but the constant unchanged)",
     )?;
     let ry: Vec<f64> = (0..r.nrows()).map(|i| r[(i, r.ncols() - 1)]).collect();
     let p_range: Vec<usize> = match opts.lags {
@@ -867,8 +941,12 @@ pub fn ardl_bounds_test(
         &dy,
         true,
         "the ARDL / UECM design (y's or a regressor's lagged level or a lagged difference is \
-         an exact linear combination of the others — a duplicated or constant column of x, x \
-         equal to y, or x collinear with the case's deterministics); drop the redundant column",
+         an exact linear combination of the others, or indistinguishable from one in double \
+         precision — a duplicated or constant column of x, x equal to y, x collinear with the \
+         case's deterministics, or a level offset so large beside the series' variation that a \
+         lagged level is a near copy of the constant or of another level); drop the redundant \
+         column, or subtract the offset (with a constant, cases 2-5, that leaves the F, the t \
+         and every coefficient but the constant unchanged)",
     )?;
     if fit.ssr <= 0.0 || fit.ssr.is_nan() {
         return Err(CointError::InvalidSpec {
@@ -903,26 +981,15 @@ pub fn ardl_bounds_test(
     let bic = criterion(DolsIc::Bic, llf, nobs, m);
     let hqic = criterion(DolsIc::Hqic, llf, nobs, m);
 
-    // the PSS F statistic: Wald on the level block (+ restricted det) / q
+    // the PSS F statistic: the level block (+ restricted det) tested by the
+    // SSR gap of one QR with the restricted columns last
     let mut rest: Vec<usize> = Vec::with_capacity(kx + 2);
     if let Some(d) = case.restricted_det() {
         rest.push(d);
     }
     rest.extend(n_det..n_det + 1 + kx);
     let nr = rest.len();
-    let v_rr = Mat::from_fn(nr, nr, |i, j| cov[rest[i]][rest[j]]);
-    let v_inv = inv_spd_scaled(
-        v_rr.as_ref(),
-        "the covariance block of the bounds-test restrictions (collinear level regressors)",
-    )?;
-    let rb: Vec<f64> = rest.iter().map(|&i| b[i]).collect();
-    let mut wald = 0.0;
-    for i in 0..nr {
-        for j in 0..nr {
-            wald += rb[i] * v_inv[(i, j)] * rb[j];
-        }
-    }
-    let statistic = wald / nr as f64;
+    let statistic = bounds_f(z, &dy, &rest, n_det > 0, df_resid);
     let t_statistic = tvalues[n_det];
     let adjustment = b[n_det];
 

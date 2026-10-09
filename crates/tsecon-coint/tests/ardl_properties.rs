@@ -3,7 +3,8 @@
 //!
 //! * **Algebra**: the UECM is a reparameterisation of the levels ARDL (same
 //!   SSR); the Wald F equals the restricted-vs-unrestricted SSR F; F, t and
-//!   the p-values are invariant to rescaling `y` and `x`; every case's F is
+//!   the p-values are invariant to rescaling `y` and `x` and, with a
+//!   constant (cases 2-5), to adding constants to them; every case's F is
 //!   invariant to the origin of the trend, which only moves the constant
 //!   and the long-run intercept (and in exactly the predicted way — the
 //!   check that the trend runs `t + 1` over the full sample).
@@ -213,6 +214,35 @@ fn statistics_are_invariant_to_rescaling_the_data() {
         assert!(rel(r.long_run[k0], base.long_run[k0] * 37.3 / 0.013) < 1e-8);
         assert!(rel(r.long_run[k0 + 1], base.long_run[k0 + 1] * 37.3 / -250.0) < 1e-8);
     }
+}
+
+#[test]
+fn with_a_constant_f_and_t_are_invariant_to_level_offsets() {
+    // Audit round 15 (F1): increments with sd about 0.01 under a level of
+    // 1e4 (level / range near 1e4). The constant absorbs the shift, so F
+    // and t must not move beyond the rounding of the shifted inputs; the
+    // old case-2 Wald route through an explicit inverse moved by 1.5e-4 here.
+    let (y, x) = coint_system(15, 150, 2);
+    let ys: Vec<f64> = y.iter().map(|v| 0.01 * v).collect();
+    let xs = Mat::from_fn(x.nrows(), 2, |i, j| 0.01 * x[(i, j)]);
+    let mut worst = 0.0_f64;
+    for case in 2..=5 {
+        let base = ardl_bounds_test(&ys, xs.as_ref(), &fixed(3, vec![2, 2], case)).expect("fit");
+        for (dy, dx) in [(1e4, 0.0), (1e4, 1e4), (-3e4, 2e4)] {
+            let yl: Vec<f64> = ys.iter().map(|v| v + dy).collect();
+            let xl = Mat::from_fn(xs.nrows(), 2, |i, j| xs[(i, j)] + dx);
+            let r = ardl_bounds_test(&yl, xl.as_ref(), &fixed(3, vec![2, 2], case)).expect("fit");
+            let ef = rel(r.statistic, base.statistic);
+            worst = worst.max(ef);
+            assert!(ef < 1e-8, "case {case} shift ({dy}, {dx}): F {ef:e}");
+            assert!(
+                rel(r.t_statistic, base.t_statistic) < 1e-8,
+                "case {case} shift ({dy}, {dx}): t"
+            );
+            assert!(rel(r.adjustment, base.adjustment) < 1e-8, "case {case} pi");
+        }
+    }
+    println!("level offsets 1e4: worst relative F change {worst:e}");
 }
 
 #[test]
@@ -574,6 +604,22 @@ fn refusals_name_the_parameter() {
     );
     let m = err(&y, &cst, &base());
     assert!(m.contains("numerically singular"), "{m}");
+    // a level offset far beyond the series' variation (1e12 over
+    // increments near 0.01) makes y.L1 a copy of the constant at double
+    // precision: refused as that, with the fix — not as a non-positive-
+    // definite covariance blaming "exact linear combinations"
+    let yl: Vec<f64> = y.iter().map(|v| 0.01 * v + 1e12).collect();
+    for opts in [fixed(2, vec![1, 1], 2), base()] {
+        let m = err(&yl, &x, &opts);
+        assert!(
+            m.contains("numerically singular")
+                && m.contains("indistinguishable from one in double precision")
+                && m.contains("level offset")
+                && m.contains("subtract the offset"),
+            "{m}"
+        );
+        assert!(!m.contains("not positive definite"), "{m}");
+    }
 }
 
 #[test]

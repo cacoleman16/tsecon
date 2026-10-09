@@ -588,3 +588,86 @@ fn the_documented_stories_reproduce() {
     close(r.ic_value, f(&d["ic_value"]), 1e-8, 1.0, "danish bic");
     assert_eq!(usizes(&d["unrestricted"]), vec![3, 1, 0]);
 }
+
+#[test]
+fn level_offsets_keep_the_f_at_the_exact_referee() {
+    // Audit round 15 (F1): a level L far from zero beside the series'
+    // variation (increments' sd about 0.015, L up to 1e6, y alone or y and
+    // x shifted). With a constant (cases 2-5) the F is invariant to the
+    // shift; the old Wald route through an explicit inverse of the
+    // restriction block's covariance returned F = -35.8 (exact 9.548) in
+    // case 2 at L = 1e6 and refused the design with x shifted too as
+    // "exact linear combinations".
+    // Golden: the exact-rational SSR-difference F of the shifted float
+    // design. Cases 2-5 hold 1e-10 at every L (measured worst 1e-15: the
+    // restricted columns are centred before the QR); case 1 (no constant,
+    // nothing to centre: the F genuinely moves with L) and the t on y.L1
+    // (from the raw design's QR, like every estimate) carry its
+    // conditioning, about eps * L / variation: 1e-10 * max(1, L / 1e4)
+    // (measured worst 2.4e-9 at L = 1e6, the t).
+    let fx = fx();
+    let o = &fx["offsets"];
+    let y0 = as_vec(&o["y0"]);
+    let x0 = as_mat(&o["x"]);
+    let lags = o["lags"].as_u64().expect("lags") as usize;
+    let order = usizes(&o["order"]);
+    let rows = o["rows"].as_array().expect("rows");
+    assert_eq!(rows.len(), 50);
+    let (mut worst_f, mut worst_f1, mut worst_t) = (0.0_f64, 0.0_f64, 0.0_f64);
+    for row in rows {
+        let level = f(&row["level"]);
+        let shift_x = row["shift_x"].as_bool().expect("shift_x");
+        let case = row["case"].as_u64().expect("case") as usize;
+        let ctx = format!("offset L = {level:e}, shift_x = {shift_x}, case {case}");
+        let y: Vec<f64> = y0.iter().map(|v| v + level).collect();
+        let x = Mat::from_fn(x0.nrows(), x0.ncols(), |i, j| {
+            x0[(i, j)] + if shift_x { level } else { 0.0 }
+        });
+        let opts = ArdlOptions {
+            lags: Some(lags),
+            order: Some(order.clone()),
+            case: PssCase::from_index(case).expect("case"),
+            ..ArdlOptions::default()
+        };
+        let r = ardl_bounds_test(&y, x.as_ref(), &opts).unwrap_or_else(|e| panic!("{ctx}: {e}"));
+        let loose = TOL * (level / 1e4).max(1.0);
+        let e_f = f(&row["statistic_exact"]);
+        let e_t = f(&row["t_statistic_exact"]);
+        let tol_f = if case == 1 { loose } else { TOL };
+        close(
+            r.statistic,
+            e_f,
+            tol_f,
+            1e-300,
+            &format!("{ctx}: F (exact)"),
+        );
+        close(
+            r.t_statistic,
+            e_t,
+            loose,
+            1e-300,
+            &format!("{ctx}: t (exact)"),
+        );
+        let err_f = (r.statistic - e_f).abs() / e_f.abs();
+        if case >= 2 {
+            worst_f = worst_f.max(err_f);
+        } else {
+            worst_f1 = worst_f1.max(err_f);
+        }
+        worst_t = worst_t.max((r.t_statistic - e_t).abs() / e_t.abs());
+        if level == 0.0 {
+            // the referee's design is statsmodels' own UECM design
+            close(
+                r.statistic,
+                f(&row["sm_statistic"]),
+                5e-10,
+                1e-300,
+                &format!("{ctx}: F (statsmodels)"),
+            );
+        }
+    }
+    println!(
+        "offsets: worst relative error of F in cases 2-5 {worst_f:e}, of F in case 1 \
+         {worst_f1:e}, of t {worst_t:e}"
+    );
+}
