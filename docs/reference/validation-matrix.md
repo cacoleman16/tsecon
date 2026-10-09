@@ -247,14 +247,17 @@ files by `scripts/fixture_provenance.py`:
 `variance_ratio.json`, `serial_corr.json`, `panel_static.json`,
 `uc_extensions.json`, `ewc.json`, `var_forecast_cov.json`, `ardl.json`,
 `long_run_svar_bands.json`, `historical_decomposition_impact.json`,
-`var_cf_soft.json`, `dfm_smooth.json`, `adl_midas.json` and `arima_css.json`
-record NumPy 2.5.3, SciPy 1.18.1, statsmodels 0.15.0 and Python 3.13.16 (with
-arch 8.0.0, linearmodels 7.0 or pandas 3.0.6 where those are the reference), a
-combination no earlier fixture names (the repository has no pinned `.venv`; the
-generators ran in a fresh reference venv). What is new is the NumPy/SciPy/Python
-triple, not statsmodels 0.15.0: fixtures committed before the wave already
-record it — `ets`, `fmols`, `girf`, `jsz`, `kernel`, `panel_unbalanced`,
-`structured`, `uc`, `var_cf` and `var_diag`, beside NumPy 2.4.6. `arima_css.json`
+`var_cf_soft.json`, `dfm_smooth.json`, `adl_midas.json` and `arima_css.json`,
+plus the regenerated `var_diag.json`, record NumPy 2.5.3, SciPy 1.18.1,
+statsmodels 0.15.0 and Python 3.13.16 (with arch 8.0.0, linearmodels 7.0 or
+pandas 3.0.6 where those are the reference), a combination no earlier fixture
+names (the repository has no pinned `.venv`; the generators ran in a fresh
+reference venv). The regenerated `spa.json` records only arch 8.0.0 and
+NumPy 2.5.3. Those fifteen are the table's NumPy 2.5.3 count. What is new is
+the NumPy/SciPy/Python triple, not statsmodels 0.15.0: fixtures committed
+before the wave already record it beside NumPy 2.4.6 — `ets`, `fmols`, `girf`,
+`jsz`, `kernel`, `panel_unbalanced` and `var_cf` in `_meta`, and `uc` in its
+own `meta` block, which the table does not count. `arima_css.json`
 adds a new reference package, statsforecast 2.1.1 (Nixtla, Apache-2.0), used at
 generation time only; its wheel pins `pandas<3.0.0`, so it was installed without
 dependency resolution beside pandas 3.0.6 — the install line is in the
