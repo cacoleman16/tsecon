@@ -46,9 +46,12 @@ transcribed below in NumPy/SciPy. This generator NEVER imports tsecon.
    (`statsmodels_statistic`, `statsmodels_fstat`,
    `statsmodels_k_constant`) to document the departure, never as the
    target. `ulp_sensitivity` is the largest relative change of the exact
-   LM and F when every entry of x is moved by one rounding unit (2^-53,
-   five seeded sign patterns): the precision any floating-point method
-   can be held to on these designs.
+   LM and F when every entry of x is moved to its floating-point neighbour
+   (`np.nextafter`, one unit in the last place, in a seeded random
+   direction; five sign patterns): the precision any floating-point method
+   can be held to on these designs. (Scaling x by 1 +/- 2^-53 instead
+   would leave every entry with the + sign unchanged: 1 + 2^-53 rounds to
+   1.)
 
 2. Durbin-Watson statistic (Durbin & Watson 1950, 1951).  REFERENCE:
    statsmodels `durbin_watson(resid)` =
@@ -257,7 +260,8 @@ def build_conditioning_case(name, y, X, nlags_list, note):
         lm, fstat, k_aux = bg_exact(y, X, p)
         sens, prng = 0.0, np.random.default_rng(7)
         for _ in range(5):
-            xp = X * (1.0 + prng.choice([-1.0, 1.0], size=X.shape) * 2.0**-53)
+            xp = np.nextafter(X, prng.choice([-np.inf, np.inf], size=X.shape))
+            assert np.all(xp != X)
             lm_p, f_p, _ = bg_exact(y, xp, p)
             sens = max(sens, abs(lm_p / lm - 1.0), abs(f_p / fstat - 1.0))
         sm_r = acorr_breusch_godfrey(res, nlags=p, result_object=False)

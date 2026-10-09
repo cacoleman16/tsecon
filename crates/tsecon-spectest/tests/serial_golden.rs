@@ -118,11 +118,12 @@ fn breusch_godfrey_matches_statsmodels() {
 /// statsmodels convention evaluated in exact rational arithmetic. Before
 /// the crate added the constant as `M_X 1` (orthogonal to x) instead of a
 /// column of ones, every order was refused here as collinear. The problems
-/// themselves are ill-conditioned: moving every entry of x by one rounding
-/// unit moves the exact LM and F by 4e-10 to 2.8e-9 relative (the
-/// fixture's `ulp_sensitivity`), so no floating-point method can be held
-/// to the house 1e-10 here (statsmodels' F-form is 8e-8 off on the first
-/// case). Hence `COND_TOL`, a few times that sensitivity.
+/// themselves are ill-conditioned: moving every entry of x to its
+/// floating-point neighbour moves the exact LM and F by 8e-10 to 7.1e-9
+/// relative (the fixture's `ulp_sensitivity`), so no floating-point method
+/// can be held to the house 1e-10 here (statsmodels' F-form is 8e-8 off on
+/// the first case). Hence `COND_TOL`, just above that sensitivity (the
+/// crate's measured worst deviation is 1.0e-9).
 const COND_TOL: f64 = 1e-8;
 
 #[test]

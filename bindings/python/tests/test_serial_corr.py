@@ -119,11 +119,12 @@ def test_near_constant_designs_are_tested_against_exact_arithmetic(case):
     # x comes close to spanning a constant without spanning one (a column
     # 1 + 1e-8 noise; [z, 1e9 + t] with no constant column). Every order used
     # to be refused, blaming the lagged residuals. The reference is the
-    # statsmodels convention in exact rational arithmetic; one-ulp changes of
-    # x move it by up to `ulp_sensitivity` (<= 2.8e-9), hence 1e-8.
+    # statsmodels convention in exact rational arithmetic; moving every entry
+    # of x by one ulp moves it by up to `ulp_sensitivity` (7.1e-9), so the
+    # tolerance is 1e-8, just above it.
     y, x = _xy(case)
     for ref in case["breusch_godfrey"]:
-        assert ref["ulp_sensitivity"] < 1e-8 / 3
+        assert ref["ulp_sensitivity"] < 1e-8
         r = tsecon.breusch_godfrey_test(y, x, nlags=ref["nlags_arg"])
         assert r["constant_added"] is True
         assert r["f_df_den"] == ref["f_df_den"]

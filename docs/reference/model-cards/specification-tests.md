@@ -579,10 +579,10 @@ constant without spanning one: a column `1 + 1e-8 * noise`, and
 `[z, 1e9 + t]` with no constant column. Their auxiliary designs `[x, 1, lags]`
 have condition numbers of about `2e8` and `6e16`. These are pinned
 (`conditioning_cases`) against the same convention evaluated in exact rational
-arithmetic. Moving every entry of `x` by one rounding unit moves those exact
-values by up to `2.8e-9`, so the tolerance is `1e-8`, and the measured worst
-deviation is `1.0e-9`. statsmodels' F-form is `8.1e-8` off on the first
-design.
+arithmetic. Moving every entry of `x` to its floating-point neighbour moves
+those exact values by up to `7.1e-9`, so no floating-point method can be held
+to `1e-10` there: the tolerance is `1e-8`, and the measured worst deviation is
+`1.0e-9`. statsmodels' F-form is `8.1e-8` off on the first design.
 
 Size and power by seeded Monte Carlo
 (`lab/serial_corr/size_power.py`,
