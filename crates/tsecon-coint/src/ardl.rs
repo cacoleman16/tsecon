@@ -905,7 +905,9 @@ fn search(
 /// above [`MAX_GRID`], a design with no residual degrees of freedom or
 /// above [`MAX_DESIGN_CELLS`] entries, a constant `y`, an exact fit
 /// (`ssr = 0`), or `alpha` outside `(0, 1)`; [`CointError::Singular`] for a
-/// collinear design.
+/// collinear design, or one collinear at double precision (a level offset
+/// so large beside the series' variation that a lagged level is a copy of
+/// the constant: the message says so and to subtract the offset).
 pub fn ardl_bounds_test(
     y: &[f64],
     x: MatRef<'_, f64>,
