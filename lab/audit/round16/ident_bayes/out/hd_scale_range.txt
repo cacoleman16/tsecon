@@ -1,0 +1,13 @@
+1e-160: refused: the structural shocks' covariance E'E/T_eff is outside the d
+1e-156: refused: the structural shocks' covariance E'E/T_eff is outside the d
+1e-155: refused: the structural shocks' covariance E'E/T_eff is outside the d
+1e-154: works, max|hd - hd(scale 1)| = 8.9e-16
+1e-153: works, max|hd - hd(scale 1)| = 4.4e-16
+1e-150: works, max|hd - hd(scale 1)| = 4.4e-16
+1e+150: works, max|hd - hd(scale 1)| = 8.9e-16
+1e+155: works, max|hd - hd(scale 1)| = 4.4e-16
+1e+160: works, max|hd - hd(scale 1)| = 6.7e-16
+1e+161: works, max|hd - hd(scale 1)| = 6.7e-16
+1e+162: refused: the structural shocks' covariance E'E/T_eff is outside the d
+1e+163: refused: the structural shocks' covariance E'E/T_eff is outside the d
+1e+165: refused: the structural shocks' covariance E'E/T_eff is outside the d

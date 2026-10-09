@@ -1,0 +1,6 @@
+n=3 T=200 D=20 K=5000: 0.00s units=1.980e+08 ns/unit=0.011
+n=3 T=200 D=20 K=20000: 0.00s units=7.920e+08 ns/unit=0.002
+n=3 T=200 D=100 K=10000: 0.13s units=1.980e+09 ns/unit=0.066
+n=4 T=400 D=20 K=5000: 0.82s units=6.832e+08 ns/unit=1.194
+n=4 T=400 D=20 K=20000: 3.33s units=2.733e+09 ns/unit=1.220
+n=4 T=400 D=100 K=10000: 8.68s units=6.832e+09 ns/unit=1.270

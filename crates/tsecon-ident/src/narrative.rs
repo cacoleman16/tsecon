@@ -673,10 +673,11 @@ impl NarrativeSampleResult {
 /// Refused beyond it, naming `n_weight_draws` (or `n_draws`) with the
 /// largest value that fits: the loop holds the interpreter and cannot be
 /// interrupted, and every count is a fixed loop length, not a convergence
-/// cap that stops early. Measured at 1.1 to 1.35 ns per unit (a 4-variable
-/// VAR(1), `T = 400`; `n_draws = 100, n_weight_draws = 10000` takes 7.5 s),
-/// so the cap is about a minute and a half; the default 500 x 200 on a
-/// 3-variable VAR with `T = 200` is 2e8 units.
+/// cap that stops early. Measured at 1.2 to 1.3 ns per unit (a 4-variable
+/// VAR(1), `T = 400`; `n_draws = 100, n_weight_draws = 10000` takes 8.7 s;
+/// `lab/audit/round16/ident_bayes/cost_narrative.py`), so the cap is about
+/// a minute and a half; the default 500 x 200 on a 3-variable VAR with
+/// `T = 200` is 2e8 units.
 pub const NARRATIVE_WEIGHT_WORK: u128 = 1 << 36;
 
 /// How [`NARRATIVE_WEIGHT_WORK`] is quoted in a refusal.

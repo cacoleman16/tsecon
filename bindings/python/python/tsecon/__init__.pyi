@@ -1966,7 +1966,7 @@ def proxy_ar_sets(
     2^28 values (2 GiB), and a `horizon` past it is refused by name with the
     largest value that fits. The delta-method Jacobians cost
     horizon*(horizon+1)/2 * n*lags * n*(n+1) multiply-adds, quadratic in
-    horizon, capped at 2^32 (about 10 to 25 s; refused naming horizon), and the
+    horizon, capped at 2^32 (under half a minute; refused naming horizon), and the
     second-order simulation's rf_draws rows of (horizon+1)*n responses share
     the memory budget (refused naming horizon or rf_draws).
 

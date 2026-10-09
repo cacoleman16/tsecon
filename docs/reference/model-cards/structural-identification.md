@@ -1563,7 +1563,10 @@ Cholesky of $\Sigma_u$ (so the result reproduces `var_fevd`); pass an
 $(n\times n)$ `impact` for any other scheme. `sigma="dfadj"` (default) or
 `"mle"` sets the default Cholesky's df scaling — the **shares are invariant to
 it** (numerator and denominator scale together); it only rescales the reported
-`impact`.
+`impact`. It is validated on every path, and refused (naming it) when passed
+with `impact`, where there is no default Cholesky for it to scale. `lags=0` is
+refused, unlike `var_fevd`, which returns the static Cholesky shares of a
+VAR(0).
 
 **How to read the output.** `fevd` `[horizon+1][variable][shock]` (each
 `fevd[h][i]` sums to 1), and `impact` `[n][n]` (the $A_0$ used — the Cholesky
@@ -1574,7 +1577,12 @@ factor when `impact=None`).
 reading a recursive FEVD for a non-recursive shock; off-by-one horizon counts —
 `structural_fevd`'s `fevd` has `horizon + 1` outer entries (steps 0..horizon)
 where `var_fevd` has `horizon`; the axis order itself is no trap since 0.6.0:
-both are `[h][i][j]` (`var_fevd` was variable-major before then).
+both are `[h][i][j]` (`var_fevd` was variable-major before then). The shares
+are formed on row-scaled responses, so an `impact` of any finite scale gives
+the same shares (before 0.11.0 they were NaN beyond about 1e154 and wrong below
+about 1e-154). A `horizon` whose $(\text{horizon}+1)$ matrices and their
+Python lists exceed $2^{28}$ values (2 GiB) is refused by name, quoting the
+largest that fits.
 
 **Validated against.** statsmodels `VARResults.fevd` and the independent
 `tsecon-var` `var_fevd`, an exact cross-implementation golden for the Cholesky
@@ -1675,7 +1683,13 @@ residuals: the identity still holds, but the shocks are not the ones that
 model identified. Estimate $A_0$ at the same `lags` with `trend="c"`. `impact`
 is refused, naming it, when it is missing, of the wrong shape, non-finite, or
 singular by the `numpy.linalg.matrix_rank` convention (smallest singular value
-≤ largest × $n$ × machine epsilon). Only $\Theta_0..\Theta_{T_{\mathrm{eff}}-1}$
+≤ largest × $n$ × machine epsilon), a test applied to a unit-scaled copy so an
+invertible matrix is never called singular for its scale alone. An `impact`
+so far below or above the residuals' scale that its shocks or
+`shock_covariance` leave the double range is refused naming it with a rescale
+hint; on a unit-variance VAR the decomposition is exact (to 1e-15) from
+`1e-154` to `1e161` times its Blanchard-Quah impact and refused outside
+(`lab/audit/round16/ident_bayes/hd_scale_range.py`). Only $\Theta_0..\Theta_{T_{\mathrm{eff}}-1}$
 are built, so a `horizon` above $T_{\mathrm{eff}}-1$ is inert, while one below it
 is refused.
 
@@ -1696,7 +1710,9 @@ $T_{\mathrm{eff}}-1$ by default). `identification="cholesky"` (point, $Q=I$) or
 point modes these sampling controls are refused rather than ignored when they
 differ from their defaults, and so are non-empty `restrictions` and
 `narrative_restrictions`. Empty lists are accepted. Before 0.11.0, cholesky mode
-dropped restrictions silently.
+dropped restrictions silently. In sign mode `n_weight_draws` is refused when
+passed without `narrative_restrictions` (every weight is then 1). An unknown
+`identification` is refused as such before any of these checks.
 
 **How to read the output.** `times` (0-based effective-sample indices, $=$
 `data_row - lags`), `baseline` `[T_eff][n]`. In cholesky and impact modes: `hd`
@@ -1988,7 +2004,12 @@ the traditional posterior); do not ignore the weights when reading the bands.
 **Key arguments and defaults (and why).** `sign_restrictions` (the traditional
 tuples; may be empty if narrative restrictions are given), `narrative_restrictions`
 (a list of dicts, schema below), `lags`, `horizon`, `n_draws`, `max_tries`,
-`seed`, `lambda1`, and `n_weight_draws=200` (the $K_w$ for $\hat{P}$). The dict
+`seed`, `lambda1`, and `n_weight_draws=200` (the $K_w$ for $\hat{P}$; refused
+when passed without `narrative_restrictions`, where every weight is 1). The
+weight loop costs `n_draws * n_weight_draws * (T_eff n^2 + (h + 3) n^3)`
+multiply-adds and is capped at $2^{36}$ (about a minute and a half), refused
+naming `n_weight_draws`; the kept draws share the $2^{28}$-value working-set
+budget of the sign samplers (refusing `horizon` or `n_draws`). The dict
 schemas use 0-based **effective-sample** indices ($=$ `data_row - lags`):
 
 ```python

@@ -1339,10 +1339,11 @@ pub fn psi_reduced_form_cov(
 /// ([`psi_reduced_form_cov`]), in multiply-adds:
 /// `H (H + 1) / 2 * n p * n (n + 1) + H (n d^2 + n^2 d + (n p)^3)` with
 /// `d = n^2 p` (the Jacobians `Gamma_h` re-sum `h` moving-average terms,
-/// so the work is QUADRATIC in the horizon `H`). Measured at 2 to 6 ns per
-/// unit on a 3-variable VAR(2)/VAR(4) (`horizon = 2000` takes 0.8 s and
-/// 1.8 s), so the cap is about 10 to 25 s; a longer horizon is refused,
-/// naming `horizon`, instead of running for hours.
+/// so the work is QUADRATIC in the horizon `H`). Measured at 1.6 to 5.6 ns
+/// per unit on a 3-variable VAR(2)/VAR(4) (`horizon = 2000` takes 0.76 s
+/// and 1.67 s; `lab/audit/round16/ident_bayes/cost_proxy_ar_delta.py`), so
+/// the cap is under half a minute; a longer horizon is refused, naming
+/// `horizon`, instead of running for hours.
 pub const PROXY_AR_DELTA_WORK: u128 = 1 << 32;
 
 /// The memory and work budgets of [`psi_reduced_form_cov`] at `horizon`:
@@ -1372,7 +1373,7 @@ fn check_delta_horizon(n: usize, p: usize, horizon: usize) -> Result<(), IdentEr
         "the delta-method Jacobians Gamma_1..Gamma_horizon (their work is quadratic \
          in horizon)",
         PROXY_AR_DELTA_WORK,
-        "the 2^32 multiply-add work budget (about 10 to 25 s)",
+        "the 2^32 multiply-add work budget (under half a minute)",
         &[SizeArg::new("horizon", horizon, 0)],
         |v| {
             let h = v[0] as u128;
