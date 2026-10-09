@@ -22,7 +22,7 @@ optimizers, and the statistical claims are measured by seeded Monte Carlo.
 **What it estimates.** The decomposition
 
 ```
-y_t = mu_t + gamma_t + c_t + beta' x_t + eps_t,   eps_t ~ N(0, sigma2.irregular)
+y_t = mu_t + gamma_t + c_t + a_t + beta' x_t + eps_t,   eps_t ~ N(0, sigma2.irregular)
 ```
 
 with the blocks assembled exactly as statsmodels' `UnobservedComponents`
@@ -47,16 +47,45 @@ enumerates them (Harvey 1989, ch. 2; Durbin & Koopman 2012, ch. 3):
   by `cycle_period_bounds=[min, max]`, default `[2, len(y)]` — scaled by a
   damping `rho in (0, 1)` when `damped_cycle=True`, with a common
   disturbance variance when `stochastic_cycle=True`;
+- **autoregressive component** `a_t` (`autoregressive=p`): an AR(p) block
+  after the cycle, `a_t = ar.L1 a_{t-1} + ... + ar.Lp a_{t-p} + eta_t`, in
+  statsmodels' row-companion form, with the disturbance variance
+  `sigma2.ar`; it is the stationary, serially correlated deviation that a
+  random-walk level and white noise cannot express;
 - **regressors** `exog` (T x k) with time-invariant coefficients `beta.x1,
-  ...` estimated jointly by MLE (statsmodels `mle_regression=True`).
+  ...` estimated jointly by MLE (statsmodels `mle_regression=True`, the
+  default), or — with `mle_regression=False` — carried in the state vector
+  as `k` exactly diffuse constant states with the design row `x_t'`.
 
-Every state is initialized *exactly* diffuse (Koopman 1997), the cycle
-included, which is statsmodels' own convention under
+Under the defaults every state is initialized *exactly* diffuse (Koopman
+1997), the cycle included, which is statsmodels' own convention under
 `use_exact_diffuse=True` — so the log-likelihoods, AIC/BIC (its
-`k_params + k_diffuse` degrees of freedom) and every state moment agree with
-it to the digit. NaN in `y` is a missing period (the filter skips the
-update, the smoother bridges the gap and the variance widens there);
-regressors must be finite.
+`k_params + k_diffuse` degrees of freedom, `k_diffuse` counting the diffuse
+states only) and every state moment agree with it to the digit. An AR block
+is the one exception statsmodels makes too: it starts from its stationary
+distribution (the Lyapunov solution of its companion block), and so does it
+here, so AR specifications are directly comparable with statsmodels as
+well. NaN in `y` is a missing period (the filter skips the update, the
+smoother bridges the gap and the variance widens there); regressors must be
+finite.
+
+!!! warning "Two switches change what the log-likelihood *is*"
+
+    `cycle_init="stationary"` and `mle_regression=False` are not tuning
+    knobs: each changes the definition of the likelihood, so `loglik`,
+    `aic` and `bic` are **not comparable across either switch**, not even at
+    the same parameters. On 100 log US GDP the local level + damped cycle at
+    the same five parameters scores −454.98 with the stationary cycle and
+    −444.16 with the diffuse one (one diffuse element instead of three). The
+    state-regression likelihood is the *marginal* likelihood, the MLE form
+    the *profile* one, and at the GLS coefficients they differ by exactly
+    `ln det(regression_coefficients_cov) / 2` (−4.34 to −5.09 on the six
+    specifications in the fixture). And under `mle_regression=False` the
+    likelihood also depends on the **units of the regressors**: multiplying
+    one column by 100 moves it by exactly −ln 100 (−186.5505 → −191.1557)
+    while no estimate moves; the MLE form does not care. Compare models
+    within one setting of both switches, with the regressors in fixed
+    units.
 
 **Assumptions.** Gaussian disturbances, time-invariant variances, a
 linear-Gaussian state space — no regime switching, no stochastic
@@ -115,8 +144,66 @@ fixed-parameter goldens, and the way to run a Durbin-Koopman example at the
 book's values. Options that act only under a component **raise** when
 passed without it (`stochastic_seasonal` without `seasonal`, the
 `freq_seasonal_*` companions without `freq_seasonal`, `damped_cycle` /
-`stochastic_cycle` / `cycle_period_bounds` without `cycle=True`,
+`stochastic_cycle` / `cycle_period_bounds` / `cycle_init` without
+`cycle=True`, `mle_regression` — even `True` — without `exog`,
 `forecast_exog` without `exog` or `forecast_steps`).
+
+*`autoregressive=p`* (`None` by default; `0` is refused with "pass None",
+and `p` may not exceed `len(y)`) adds the AR(p) component. Its parameters
+follow statsmodels' order — `sigma2.ar` after the other state variances,
+`ar.L1`…`ar.Lp` after `damping.cycle` — and the coefficients are searched
+inside the stationarity region (the partial autocorrelations through `tanh`
+and the Levinson-Durbin recursion; statsmodels uses `x/sqrt(1+x^2)` for the
+same partial autocorrelations, which changes the path, not the optimum). A
+fixed non-stationary polynomial is refused, naming the partial
+autocorrelation that leaves (−1, 1); statsmodels has no such check and
+returns a number there (on Nile, local level + AR(1) at `[8000, 1400, 6000,
+phi]`: −88.02 at φ = 1.2 and −1403.49 at φ = 1.0), whereas at φ = 0.9999,
+still stationary, both agree to 1.6e-15. The AR-UC likelihood is multimodal
+— the AR block can trade places with the irregular, absorb a trend near the
+unit root, or die out into a piled-up zero variance — so the start ladder
+walks the first partial autocorrelation over 0.5, 0.9, 0, −0.5, 0.5, and
+the second rung of an AR(p ≥ 2) starts hump-shaped at φ = (1.35, −0.5),
+the autocorrelation of a business cycle around a trend (see failure modes).
+A likelihood evaluation costs `O(len(y) k_states^3)`, and an estimated
+AR(p) needs `O(p)` evaluations per search step and `O(p^2)` for its
+standard errors, so the cost of a fit climbs steeply with `p`: a few lags
+is the intended use, and a long order is slow rather than refused (only the
+working-set bound below refuses it).
+
+*`cycle_init="stationary"`* (`"diffuse"` when None, statsmodels'
+convention; parsed trimmed and case-insensitive) starts the two cycle
+states from the damped cycle's unconditional distribution,
+`sigma2.cycle / (1 - damping^2)` on each, instead of a diffuse prior. A
+damped stochastic cycle *is* a stationary process, so this is the prior
+the model itself implies, and it removes the low-frequency singularity
+above at the root: no cycle state is diffuse, so there is no
+`-ln F_inf` term to run away with. At the US-GDP optimum (smooth trend plus
+a stationary cycle of 6–32 quarters) moving only the frequency to 1e-2,
+1e-4 and 1e-6 gives −266.559, −266.657, −266.657 — flat — where the diffuse
+cycle at the same parameters climbs −258.509, −240.094, −238.025 in tsecon
+(and −258.509, −253.642, −253.059 in statsmodels, whose absolute 1e-10
+tolerance on `F_inf` clips it). It needs `damped_cycle=True` (an undamped
+rotation has no stationary distribution) and `stochastic_cycle=True` (a
+deterministic damped cycle has stationary variance zero, so it would be
+identically zero), and a fixed damping of exactly 1 is refused. statsmodels
+has no keyword for it; the reference is statsmodels' own block
+`Initialization` (graded below).
+
+*`mle_regression=False`* puts the regression coefficients in the state
+vector — statsmodels' `mle_regression=False` — as `k` exactly diffuse
+constant states after the AR block (`state_names` end with `beta.x1`…),
+with design row `x_t'` and no `beta.x*` parameters. The variance parameters
+are then estimated from the *marginal* (diffuse, REML-like) likelihood,
+which accounts for the degrees of freedom spent on the coefficients, and
+the coefficients come back as states: `regression_coefficients` (smoothed,
+`nobs x k`, constant in `t` and equal to the GLS estimate given the
+variances), `filtered_regression_coefficients` (the recursive GLS path),
+their `_var`s, and `regression_coefficients_cov`, the `k x k` covariance
+`Var(beta_gls | theta)`. With white noise only this is exactly OLS:
+coefficients, `sigma2 (X'X)^-1`, forecasts `x' beta_hat` with variance
+`sigma2 (1 + x'(X'X)^-1 x)`, pinned in closed form. `forecast_exog` is
+still required for a forecast.
 
 **How to read the output.** `params`/`se`/`param_names` are the MLE with
 observed-information standard errors — *conditional* on the flagged
@@ -131,8 +218,10 @@ than the conditional one). `at_boundary[i]` is the pile-up flag
 lowers the log-likelihood by less than 1e-4, so the data cannot tell the
 estimate from zero, and its `se` is NaN because a boundary has no
 curvature (Shephard & Harvey 1990). The component keys without a prefix
-(`level`, `slope`, `seasonal`, `freq_seasonal[i]`, `cycle`, each with
-`_var`) are the **smoothed** two-sided estimates — what you want for
+(`level`, `slope`, `seasonal`, `freq_seasonal[i]`, `cycle`,
+`autoregressive` — the first AR state — each with `_var`; the regression
+keys above under `mle_regression=False`; every key present, None when its
+component is absent) are the **smoothed** two-sided estimates — what you want for
 historical decomposition; `filtered_*` are the real-time one-sided ones.
 `smoothed_state`/`filtered_state` hold the full state (`state_names`).
 `fitted` is the one-step-ahead prediction of `y_t`, `resid` the prediction
@@ -157,11 +246,60 @@ non-converged flag or NaN standard errors. A constant series is refused
 specification with no stochastic component at all, and a sample with fewer
 than `k_states + 2` observed values. Counts that size an allocation are
 bounded so that a mistyped integer is a teaching error and not an allocator
-abort: `seasonal` and each `freq_seasonal` period at most `len(y)`,
+abort: `seasonal`, each `freq_seasonal` period and `autoregressive` at
+most `len(y)`, the working set `len(y) * k_states^2` at most 2^26 (the
+filter and smoother keep four sequences of that many covariance cells, so a
+seasonal period or an AR order near the length of a long series would ask
+for terabytes; the refusal names the counts that cost the states),
 `forecast_steps` at most 100000, `n_starts` at most 64. A forecast whose variance is still
 diffuse — infinite — at the forecast origin is refused rather than
 returned; the sample-size check makes that hard to reach, and it is a
 guard, not a routine outcome.
+
+The AR component brings failure modes of its own. *Multimodality*: on US
+inflation (local level + AR(2)) statsmodels' own L-BFGS stops at −455.6236,
+1.89 log-likelihood points short of the optimum (−453.7374, a
+near-unit-circle AR(2) at φ = (1.858, −0.939)) that SciPy's re-optimization
+and this fit both reach at the default `n_starts=3`. *The AR block can die
+out*: on 100 log US GDP (local linear trend + AR(2)) every start of the
+first-PACF ladder alone lands on a local optimum at −259.87 where
+`sigma2.ar` piles up at zero and the level variance absorbs everything; the
+hump-shaped second rung reaches the genuine −250.18. When `sigma2.ar` is
+flagged like that, a zero-variance stationary block is identically zero, so
+`ar.L1`… carry no information and get NaN standard errors (the same rule
+drops `frequency.cycle` and `damping.cycle` when `sigma2.cycle` piles up
+under the stationary cycle) instead of every standard error going NaN — or
+coming back as a huge number read off a near-singular pivot. *Near the unit
+root*: the Hessian probe of an AR coefficient is halved until every probe
+point is stationary, so an estimate within 1e-4 of the boundary still
+leaves the other standard errors finite; and a stationary block whose root
+sits within roundoff of the unit circle — where `tanh` or the logistic map
+saturate — passes the Lyapunov solve but has an unconditional variance some
+1e15 times its one-step variance, at which point the filter can only skip
+the later observations as numerically singular and the "log-likelihood"
+collapses to its diffuse terms (on Nile, local level + AR(1) at φ = 1 −
+1e-15, the raw filter returns exactly one diffuse term, −ln(2π)/2 = −0.919,
+against statsmodels' own −637.04 at φ = 0.9999). Such a likelihood is
+undefined in the search and refused at fixed parameters.
+
+Under `mle_regression=False`, *collinear regressors* leave one diffuse
+direction (the difference of the collinear coefficients) that the data can
+never resolve. Nothing is refused — the likelihood and every forecast that
+does not load on that direction stay defined, exactly as for the Nyquist
+harmonic above — but the diffuse period never ends: `nobs_diffuse` equals
+the sample length and `std_resid` is NaN throughout. Drop the redundant
+column. *Badly scaled regressors* are the floating-point version of the
+same problem: the coefficient states are loaded by `x_t`, so a column many
+orders of magnitude from the others, or from the unit loading of the level,
+trend and seasonal states, leaves diffuse directions the exact-diffuse
+filter cannot resolve in roundoff — the diffuse period then runs on to the
+end of the sample and the coefficients and log-likelihood are wrong
+(statsmodels, filtering the raw columns, breaks the same way). The diffuse
+period does not depend on the units, so every state-regression fit is
+checked against the same model on columns divided by their largest
+absolute values, and when the two disagree the call is refused, naming
+`exog`. Accuracy fades before that point, so keep the regressors in
+comparable units near 1.
 
 **Validated against.** statsmodels `UnobservedComponents(...,
 use_exact_diffuse=True)` — an independent package — at *fixed parameters*:
@@ -245,15 +383,84 @@ period-8 cycle within 1.5 periods. Base-R `StructTS` was *not* used as a second 
 it fits by a different (non-diffuse, `optim`) likelihood and would only
 have added a lower-graded number.
 
+**Validated against — the 0.11.0 options** (`fixtures/uc_extensions.json`,
+generator `fixtures/generate_uc_extensions_fixtures.py`;
+`crates/tsecon-ssm/tests/uc_extensions_golden.rs`, the in-module unit tests
+of `uc.rs` and `mle.rs`, `uc_properties.rs`,
+`bindings/python/tests/test_uc_extensions.py`). The fixed-parameter
+tolerance is the same 1e-8 with the same recorded `smoother_spread`
+relaxation inside the diffuse period — and it engages once: on the
+combined specification below statsmodels' two smoothers disagree by 6.3e-8
+there.
+
+- *Autoregressive component* — an independent-package golden: statsmodels'
+  own `autoregressive=` at fixed parameters on nine specifications (Nile
+  local level + AR(1) and AR(2), random walk + AR(1), inflation local level
+  + AR(2), GDP local linear trend + AR(2), GDP growth white noise + AR(3)
+  with every state stationary and `nobs_diffuse = 0`, and simulated fixed
+  intercept + AR(1), local level + seasonal + diffuse cycle + AR(1), local
+  linear trend + seasonal + AR(2) + regressors), with the AR component path;
+  the initial covariance against the closed forms `sigma2.ar / (1 - phi^2)`
+  and the AR(2) autocovariances; the MLE on Nile (−631.3802544693),
+  inflation (−453.7373687669) and GDP (−250.1813180960) reaching the better
+  of two optimizers at the default `n_starts=3`, parameters 2e-3, pile-up
+  flags exact, standard errors 2e-2 against statsmodels' complex-step
+  Hessian over the free set (which mirrors the dropped-coefficient rule).
+- *Stationary cycle* — graded as statsmodels machinery under a documented
+  initialization, since statsmodels has no keyword for it: a subclass whose
+  `initialize_default` builds statsmodels' own block `Initialization`
+  ("stationary" on the cycle pair and any AR block, "diffuse" elsewhere;
+  the cycle located through the public `state_names`), so the Lyapunov
+  solve, the exact-diffuse filter and the smoother are statsmodels'. Fixed
+  parameters on GDP (−454.978475273841), Nile (−631.619075075044), a
+  simulated local linear trend + seasonal + regressors, and GDP smooth trend
+  + stationary cycle + AR(1) as one block-diagonal Lyapunov system
+  (−265.424367261473), at 1e-8; the closed form `P_* = sigma2.cycle /
+  (1 - damping^2)` (10.526315789474 at 2 and 0.9) in the crate's unit test;
+  the GDP MLE (smooth trend, 6–32 quarters) reaching SciPy's −252.1147178886
+  (statsmodels −252.1147179444) with the irregular variance piled up; the
+  flat `lambda -> 0` sweep at 1e-8.
+- *Regressors in the state* — statsmodels' `mle_regression=False` at fixed
+  parameters on four specifications, with the coefficient paths and their
+  covariance: a local level, white noise (the closed-form case), a local
+  linear trend + AR(2) with NaN at t = 5, 6, 50 and 119 (the forecast
+  origin missing), and one specification with every new option at once
+  (smooth trend, a 12-period two-harmonic trigonometric seasonal, the
+  stationary cycle, an AR(1) and the regressors). Closed forms at 1e-10:
+  white noise plus regressors is OLS — coefficients, `sigma2 (X'X)^-1`,
+  the diffuse log-likelihood (−479.125183355077), forecasts and their
+  variances — and it equals `tvp_regression(constant=False)` at zero
+  coefficient variances to 1e-12; the marginal/profile identity on six
+  specifications and the regressor-units identity (shift exactly −ln 100)
+  at 1e-10; the MLE reaching the better of two optimizers
+  (−185.1819788397).
+- *Seeded Monte Carlo and identities* (`uc_properties.rs`): the stationary
+  cycle recovers a period-12, damping-0.9 cycle (8 seeds, T = 200: median
+  |period error| 0.637, median |damping error| 0.0117); local level +
+  AR(1) recovers φ = 0.8 (10 seeds, T = 200: median |error| 0.0556); at the
+  true variances the state-regression intervals cover the coefficients at
+  0.9475 and 0.9515 (2000 seeds, nominal 0.95); scale equivariance holds
+  with an AR component (estimates 7.3e-8, log-likelihood 2.5e-16) and
+  under state regression (4.5e-8, 6.1e-16); the stationary cycle's
+  log-likelihood moves by 3.6e-3 over frequencies 1e-2 to 1e-8, where the
+  diffuse cycle on the same series climbs 25 points between 1e-2 and 1e-6;
+  and the default specifications reproduce
+  0.10.0 **bit for bit** — the exact IEEE-754 patterns of three `uc.json`
+  MLE fits and the `tvp_regression` MLE, recorded before the shared
+  likelihood layer was touched.
+
 **References.** Harvey, A. C. (1989), *Forecasting, Structural Time Series
 Models and the Kalman Filter*, CUP; Harvey & Durbin (1986), "The Effects of
 Seat Belt Legislation on British Road Casualties", *JRSS A* 149; Durbin &
 Koopman (2012), *Time Series Analysis by State Space Methods*, 2nd ed., OUP
-(ch. 2–3 and the exact-diffuse initialization of ch. 5); Koopman (1997),
+(ch. 2–3 and the exact-diffuse initialization of ch. 5; secs. 5.7 and 7.2
+for regression coefficients in the state); Koopman (1997),
 "Exact Initial Kalman Filtering and Smoothing for Nonstationary Time Series
 Models", *JASA* 92; Shephard & Harvey (1990), "On the Probability of
 Estimating a Deterministic Component in the Local Level Model", *J. Time
-Series Analysis* 11.
+Series Analysis* 11; de Jong, P. (1991), "The Diffuse Kalman Filter",
+*Annals of Statistics* 19; Monahan, J. F. (1984), "A Note on Enforcing
+Stationarity in Autoregressive-Moving Average Models", *Biometrika* 71.
 
 ```python
 import numpy as np, statsmodels.api as sm, tsecon
@@ -265,6 +472,63 @@ print({k: round(float(v), 1) for k, v in zip(fit["param_names"], fit["params"])}
 # {'sigma2.irregular': 15098.5, 'sigma2.level': 1469.2} [False, False]
 band = 1.96 * np.sqrt(fit["level_var"])          # smoothed level ± band
 print(np.round(fit["forecast"], 1), np.round(np.sqrt(fit["forecast_var"]), 1))
+```
+
+The 0.11.0 options. An AR(1) beside the Nile level — the optimum both
+reference optimizers reach (−631.3802544693), every variance interior:
+
+```python
+import numpy as np, statsmodels.api as sm, tsecon
+
+nile = sm.datasets.nile.load_pandas().data["volume"].values.astype(float)
+ar = tsecon.unobserved_components(nile, autoregressive=1)
+print({k: round(float(v), 4 if k == "ar.L1" else 1) for k, v in zip(ar["param_names"], ar["params"])})
+# {'sigma2.irregular': 7873.5, 'sigma2.level': 521.4, 'sigma2.ar': 8519.3, 'ar.L1': 0.4733}
+print({"loglik": round(ar["loglik"], 4), "k_diffuse": ar["k_diffuse"], "at_boundary": ar["at_boundary"]})
+# {'loglik': -631.3803, 'k_diffuse': 1, 'at_boundary': [False, False, False, False]}
+```
+
+A smooth trend plus a stationary business cycle on 100 log US real GDP,
+periods confined to 6–32 quarters. The irregular variance piles up at zero
+(flagged, NaN standard error), the cycle runs about seven years with
+damping 0.94, and only the two trend states are diffuse:
+
+```python
+import numpy as np, statsmodels.api as sm, tsecon
+
+md = sm.datasets.macrodata.load_pandas().data
+lgdp = 100 * np.log(md["realgdp"].values.astype(float))
+gdp = tsecon.unobserved_components(lgdp, level="strend", cycle=True, damped_cycle=True,
+                                   stochastic_cycle=True, cycle_period_bounds=[6, 32],
+                                   cycle_init="stationary")
+p = dict(zip(gdp["param_names"], gdp["params"]))
+print({"period": round(float(2 * np.pi / p["frequency.cycle"]), 2), "damping": round(float(p["damping.cycle"]), 4),
+       "loglik": round(gdp["loglik"], 4), "k_diffuse": gdp["k_diffuse"]})
+# {'period': 28.86, 'damping': 0.9401, 'loglik': -252.1147, 'k_diffuse': 2}
+print({k: b for k, b in zip(gdp["param_names"], gdp["at_boundary"]) if b})
+# {'sigma2.irregular': True}
+```
+
+Regressors in the state: the coefficients come back as smoothed states with
+their covariance, and the log-likelihood is the marginal one — 6.3 points
+below the MLE form's profile likelihood here, which is a difference of
+definition, not of fit:
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(7)
+T = 200
+X = rng.normal(size=(T, 2))
+y = np.cumsum(rng.normal(0, 0.3, T)) + X @ [1.0, -0.5] + rng.normal(0, 0.5, T)
+st = tsecon.unobserved_components(y, exog=X, mle_regression=False)
+beta = np.asarray(st["regression_coefficients"])[-1]            # GLS, constant over t
+se = np.sqrt(np.diag(np.asarray(st["regression_coefficients_cov"])))
+print({"beta": np.round(beta, 3).tolist(), "se": np.round(se, 3).tolist()})
+# {'beta': [0.963, -0.525], 'se': [0.044, 0.042]}
+ml = tsecon.unobserved_components(y, exog=X)                      # the MLE form, for contrast
+print({"beta_mle": np.round(ml["params"][2:], 3).tolist(), "loglik_gap": round(st["loglik"] - ml["loglik"], 3)})
+# {'beta_mle': [0.963, -0.525], 'loglik_gap': -6.309}
 ```
 
 ---

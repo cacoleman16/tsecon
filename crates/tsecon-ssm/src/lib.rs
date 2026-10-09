@@ -67,8 +67,8 @@ pub use model::{InitialState, Initialization, LinearGaussianSSM, SsmBuilder, Sys
 pub use smoother::{smooth_univariate, SmootherOutput};
 pub use tvp::{tvp_regression, TvpFit, TvpOptions};
 pub use uc::{
-    unobserved_components, FreqSeasonalSpec, TrendSpec, UcComponent, UcFit, UcOptions, UcSpec,
-    MAX_FORECAST_STEPS, MAX_STARTS,
+    unobserved_components, CycleInit, FreqSeasonalSpec, TrendSpec, UcComponent, UcFit, UcOptions,
+    UcSpec, MAX_FORECAST_STEPS, MAX_STARTS, MAX_STATE_CELLS,
 };
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
