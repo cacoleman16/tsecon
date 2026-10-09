@@ -894,8 +894,8 @@ fn power_of_two_rescaling_is_exact_at_every_scale() {
             .map(|(c, b)| c.iter().map(|v| v * 2f64.powi(b)).collect())
             .collect();
         let fit = ols(&ys, &xs).unwrap_or_else(|e| panic!("a = {a}, b = {bs:?}: {e}"));
-        for j in 0..3 {
-            let f = 2f64.powi(a - bs[j]);
+        for (j, b) in bs.iter().enumerate() {
+            let f = 2f64.powi(a - b);
             assert_eq!(
                 fit.params[j],
                 base.params[j] * f,
@@ -908,8 +908,8 @@ fn power_of_two_rescaling_is_exact_at_every_scale() {
         for se in all_se_types() {
             let got = fit.inference(se).unwrap();
             let want = base.inference(se).unwrap();
-            for j in 0..3 {
-                let f = 2f64.powi(a - bs[j]);
+            for (j, b) in bs.iter().enumerate() {
+                let f = 2f64.powi(a - b);
                 assert_eq!(got.bse[j], want.bse[j] * f, "a = {a}, {se:?}: bse[{j}]");
                 assert_eq!(got.tvalues[j], want.tvalues[j], "a = {a}, {se:?}: t[{j}]");
             }
