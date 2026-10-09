@@ -668,7 +668,8 @@ Automatic ARIMA order selection (Hyndman-Khandakar 2008 stepwise).
     Every candidate is fit by the exact-MLE engine behind arima_fit, so
     the search is deterministic. No exogenous regressors in this slice.
 
-    Returns the arima_fit result dict for the selected model plus:
+    Returns the arima_fit result dict for the selected model (less
+    arima_fit's own drift_uncertainty, method and nobs echoes) plus:
     `order`, `seasonal_order`, `constant`, `converged`, `ic`,
     `ic_value`, `aicc`, `stepwise`, `n_models`, `budget_exhausted`,
     `trace` (every candidate tried, with its criterion and status),
