@@ -28,7 +28,7 @@ install and see how much is on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.8.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 202
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 206
           if not n.startswith("_")))
 ```
 
@@ -89,7 +89,7 @@ indices.
 
 ## The API at a glance
 
-The 202 functions, grouped by the task they serve. Every one is a plain
+The 206 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
