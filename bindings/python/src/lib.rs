@@ -8375,6 +8375,15 @@ fn factor_model<'py>(
     let (n, big_n) = (a.nrows(), a.ncols());
     let m = Mat::from_fn(n, big_n, |i, j| a[(i, j)]);
     let model = tsecon_favar::FactorModel::fit(m.as_ref()).map_err(to_py)?;
+    // The engine's count check speaks of `r`; say n_factors.
+    let max_r = model.max_factors();
+    if n_factors == 0 || n_factors > max_r {
+        return Err(PyValueError::new_err(format!(
+            "factor_model: n_factors = {n_factors} is out of range: a T x N = {n} x {big_n} \
+             panel has at most min(T, N) = {max_r} principal components, so pass \
+             1 <= n_factors <= {max_r}"
+        )));
+    }
     let factors = model.factors(n_factors).map_err(to_py)?;
     let loadings = model.loadings(n_factors).map_err(to_py)?;
     let eigenvalues = model.eigenvalues().to_vec();
@@ -10490,6 +10499,59 @@ fn panel_mean_group<'py>(
     Ok(d)
 }
 
+/// `dfm_nowcast` / `dfm_news` two-step fit errors in the caller's
+/// vocabulary: the factor VAR's lag order `p` is `factor_order` and its
+/// series are the `n_factors` factors of the balanced training block, and a
+/// non-stationary fitted factor VAR is named as such rather than as "the
+/// transition matrix".
+fn dfm_fit_error(
+    fname: &str,
+    e: tsecon_nowcast::NowcastError,
+    n_factors: usize,
+    factor_order: usize,
+) -> PyErr {
+    use tsecon_ssm::tsecon_linalg::LinalgError;
+    use tsecon_ssm::SsmError;
+    match e {
+        // The fitted factor VAR has no stationary distribution, so the
+        // smoother cannot be initialized: an order too high for the block
+        // (or factors that trend) — the engine's message speaks of "the
+        // transition matrix".
+        tsecon_nowcast::NowcastError::Ssm(SsmError::Linalg(LinalgError::Unstable {
+            spectral_radius,
+        })) => PyValueError::new_err(format!(
+            "{fname}: the VAR({factor_order}) fitted to the n_factors = {n_factors} factor(s) \
+             is not stationary (its companion matrix has spectral radius {spectral_radius} \
+             >= 1), so the Kalman smoother has no stationary distribution to start from. \
+             Lower factor_order, or transform trending series to stationarity first"
+        )),
+        tsecon_nowcast::NowcastError::Var(tsecon_var::VarError::InsufficientObservations {
+            needed,
+            got,
+            lags,
+            neqs,
+            n_trend,
+        }) => {
+            let p_max = got.saturating_sub(n_trend + 1) / (neqs + 1);
+            let hint = if p_max >= 1 {
+                format!("pass factor_order <= {p_max}")
+            } else {
+                "no factor order fits this many factors".to_owned()
+            };
+            PyValueError::new_err(format!(
+                "{fname}: factor_order = {lags} is too large for the {got}-row balanced \
+                 training block (the rows before the first missing value): the VAR of the \
+                 n_factors = {neqs} factor(s) needs at least {needed} rows (factor_order \
+                 rows go to the lags, then each equation has n_factors * factor_order = {} \
+                 coefficients and needs a residual degree of freedom); {hint}, lower \
+                 n_factors, or supply a longer balanced block",
+                neqs.saturating_mul(lags)
+            ))
+        }
+        e => to_py(e),
+    }
+}
+
 /// Dynamic-factor-model nowcast (Doz-Giannone-Reichlin 2011 two-step).
 ///
 /// Fits `n_factors` common factors with an order-`factor_order` factor VAR
@@ -10575,7 +10637,7 @@ fn dfm_nowcast<'py>(
     let nc = match method {
         "two_step" => {
             tsecon_nowcast::Nowcaster::fit_two_step(train.as_ref(), n_factors, factor_order)
-                .map_err(to_py)?
+                .map_err(|e| dfm_fit_error("dfm_nowcast", e, n_factors, factor_order))?
         }
         "mle" => {
             if n_factors != 1 {
@@ -10583,7 +10645,8 @@ fn dfm_nowcast<'py>(
                     "method=\"mle\" supports a single factor only (n_factors=1)",
                 ));
             }
-            tsecon_nowcast::Nowcaster::fit_mle(train.as_ref(), factor_order).map_err(to_py)?
+            tsecon_nowcast::Nowcaster::fit_mle(train.as_ref(), factor_order)
+                .map_err(|e| dfm_fit_error("dfm_nowcast", e, n_factors, factor_order))?
         }
         other => {
             return Err(PyValueError::new_err(format!(
@@ -10876,11 +10939,18 @@ fn dfm_news<'py>(
             break;
         }
     }
+    if n > 0 && target_series >= n {
+        return Err(PyValueError::new_err(format!(
+            "dfm_news: target_series = {target_series} is out of range: the vintages have \
+             N = {n} series (columns), so target_series must be in 0..={}",
+            n - 1
+        )));
+    }
     let train = Mat::from_fn(first_ragged, n, |r, j| old_arr[(r, j)]);
     let old_m = to_faer(&old_vintage);
     let new_m = to_faer(&new_vintage);
     let nc = tsecon_nowcast::Nowcaster::fit_two_step(train.as_ref(), n_factors, factor_order)
-        .map_err(to_py)?;
+        .map_err(|e| dfm_fit_error("dfm_news", e, n_factors, factor_order))?;
     let period = target_period.unwrap_or(t.saturating_sub(1));
     let nd = nc
         .news_decomposition(old_m.as_ref(), new_m.as_ref(), target_series, period)
