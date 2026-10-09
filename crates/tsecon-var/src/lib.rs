@@ -32,8 +32,12 @@
 //!   (Doan-Litterman-Sims / Waggoner-Zha closed form: conditional path,
 //!   covariance and the implied minimum-norm shocks);
 //! * [`VarResults::diagnostics`] — multivariate Portmanteau (adjusted and
-//!   unadjusted), multivariate Jarque-Bera with its components, and the
-//!   stability roots in one bundle;
+//!   unadjusted), multivariate Jarque-Bera with its components (Cholesky
+//!   and symmetric-root orthogonalisations), the Doornik-Hansen (2008)
+//!   omnibus normality test, and the stability roots in one bundle; the
+//!   three normality tests are also free functions of a residual matrix
+//!   ([`normality_test_cholesky`], [`normality_test_symmetric`],
+//!   [`doornik_hansen_test`]);
 //! * [`girf`] / [`GirfModel`] — the Koop-Pesaran-Potter (1996) generalized
 //!   impulse-response simulation engine shared by every nonlinear model
 //!   (common random numbers, antithetic pairs, Philox substreams per
@@ -71,7 +75,10 @@ pub mod spec;
 
 pub use causality::CausalityTest;
 pub use conditional::ConditionalForecast;
-pub use diagnostics::{NormalityTest, PortmanteauTest, VarDiagnostics};
+pub use diagnostics::{
+    doornik_hansen_test, normality_test_cholesky, normality_test_symmetric, DoornikHansenTest,
+    NormalityTest, PortmanteauTest, VarDiagnostics, DOORNIK_HANSEN_MIN_NOBS,
+};
 pub use error::VarError;
 pub use fevd::Fevd;
 pub use forecast::{ForecastInterval, ForecastOptions, PARAM_UNCERTAINTY_WORK_BUDGET};
