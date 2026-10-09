@@ -451,6 +451,19 @@ def test_wrong_rank_raises_a_teaching_error():
     assert "df[['x']]" in msg       # tells the user what to do
 
 
+def test_an_int_flag_with_a_none_default_is_blamed_alone():
+    """A None-sentinel bool handed an int sits beside an int count: the
+    count's default is itself an int, so that slot takes ints and is not the
+    one refusing this one (both used to be named; variance_ratio's
+    `debiased`/`robust` beside `lags` are pinned in test_variance_ratio)."""
+    y = np.abs(np.random.default_rng(0).standard_normal(120)) + 10
+    with pytest.raises(TypeError) as excinfo:
+        tsecon.auto_ets(y, damped=1, horizon=5)
+    msg = str(excinfo.value)
+    assert "damped=1" in msg and "Python bool" in msg, msg
+    assert "horizon=5" not in msg, msg
+
+
 # --------------------------------------------------------------------------- #
 # negative integer arguments (audit round 6 residue, fixed round 7)
 # --------------------------------------------------------------------------- #

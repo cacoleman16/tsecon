@@ -631,7 +631,10 @@ def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
     Several arguments may share the complained-about type (`p=1` and
     `constant=1` are both ints), so the ones whose signature DEFAULT has a
     different type (a bool default handed an int, a str default handed None)
-    are preferred; only when none stands out are all matches named."""
+    are preferred. Failing that, a scalar whose default has exactly its type
+    is dropped — that slot takes the type, so it cannot be the one refusing
+    it (`lags=4` beside `debiased=1`, whose None-sentinel default says
+    nothing). Only when none stands out are all matches named."""
     defaults = _param_defaults(fn)
     labeled = _labeled_ints(fn, args, kwargs)
     if got == "ndarray":
@@ -643,7 +646,7 @@ def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
         pool = [(label, v) for label, v in arrays if v.size <= 8] or arrays
         chosen = [(label, v) for label, v in pool if v.size == 1] or pool
         return [f"{label}={_short_repr(v)}" for label, v in chosen]
-    matches: list[tuple[str, object, bool]] = []
+    matches: list[tuple[str, object, bool, bool]] = []
     for label, v in labeled:
         hit = got in _type_name(v) or _nested_hit(v, got) or (
             # A float64 array in an integer-list slot: PyO3 complains about
@@ -654,16 +657,23 @@ def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
         if not hit:
             continue
         d = defaults.get(label, inspect.Parameter.empty)
-        strong = d is not inspect.Parameter.empty and d is not None and type(d) is not type(v)
-        matches.append((label, v, strong))
+        declared = d is not inspect.Parameter.empty and d is not None
+        strong = declared and type(d) is not type(v)
+        same = declared and type(d) is type(v) and not isinstance(v, (list, tuple, np.ndarray))
+        matches.append((label, v, strong, same))
     # An integer-list parameter (the `_EXEMPT` entries) handed the wrong
     # element type is the offender ahead of any data array whose dtype
     # happens to match.
     exempt = _EXEMPT.get(fn.__name__, frozenset())
     listed = [m for m in matches if m[0] in exempt]
-    chosen = listed or [m for m in matches if m[2]] or matches
+    chosen = (
+        listed
+        or [m for m in matches if m[2]]
+        or [m for m in matches if not m[3]]
+        or matches
+    )
     out = []
-    for label, v, _ in chosen:
+    for label, v, _, _ in chosen:
         # a value nested TWO OR MORE levels down (a cell of a nested list such
         # as `conditions`) is named by its position, so the message points at
         # the cell and not at the whole table; a shallow list keeps round 13's

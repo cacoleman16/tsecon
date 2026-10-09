@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, multivariate-GARCH, panel and term-structure families (and the top-level results of `var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` converts them; the docstring says which. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**192 functions.**
+**193 functions.**
 
 ## diagnostics
 
@@ -233,6 +233,61 @@ Zivot-Andrews unit-root test with one endogenous break.
     interpolate the statsmodels-simulated null table. Returns dict keys:
     `stat`, `pvalue`, `crit` {"1%","5%","10%"}, `break_index`, `lags`,
     `nobs`, `trim`, `regression`. Matches statsmodels `zivot_andrews`.
+
+### `variance_ratio`
+
+```python
+def variance_ratio(
+    y: _ArrayLike,
+    lags: int | Sequence[int] | None = ...,
+    trend: str = ...,
+    debiased: bool | None = ...,
+    robust: bool | None = ...,
+    overlap: bool = ...,
+) -> dict[str, Any]:
+```
+
+Lo-MacKinlay (1988) variance-ratio test of the random-walk hypothesis,
+    with the Chow-Denning (1993) joint test over several horizons.
+
+    Tests whether the INCREMENTS of `y` are serially uncorrelated (a
+    martingale difference sequence): `vr = sigma2_q / sigma2_1` compares the
+    variance of q-period changes with q times the one-period variance — 1
+    under the null, above 1 under momentum, below 1 under mean reversion. It
+    is NOT a unit-root or stationarity test. Pass the LEVEL series (log
+    prices), not returns (iid returns passed as `y` give vr ~ 0.5 at q = 2).
+    Matches `arch.unitroot.VarianceRatio` (arch 8.0.0) in its conventions.
+
+    `lags` is one horizon q >= 2 or a sequence of distinct horizons (list,
+    tuple, integer array, pandas Series). `trend`: "c" (drift, default) or
+    "n". `overlap=False` uses non-overlapping blocks and drops the trailing
+    `(n - 1) % q` observations. `debiased`/`robust` are sentinels: None means
+    True under `overlap=True`; under `overlap=False` neither exists, so an
+    explicit True **raises** (arch silently ignores it). Every horizon needs
+    at least two q-period sums (`n >= q + 2` with overlap, `n >= 2q + 1`
+    without); constant increments are refused.
+
+    `stat = sqrt(nobs) (vr - 1) / sqrt(stat_variance)` is N(0, 1) under the
+    null; `pvalue` is the two-sided `2 Phi(-|stat|)` via erfc (not arch's
+    `2 - 2 Phi`, so it differs by up to ~1e-9 relative at moderate |stat| and
+    stays nonzero in the deep tail). Chow-Denning: `cd_stat = max |stat_i|`,
+    `cd_pvalue = 1 - (1 - 2 Phi(-cd_stat))^m`, `cd_crit` the SMM(alpha; m,
+    inf) = Šidák critical values (conservative across correlated horizons);
+    with one horizon it is the single test.
+
+    Returned keys: `lags`, `vr`, `stat`, `pvalue`, `stat_variance`, `nobs`,
+    `n_dropped`, `crit`, `cd_stat`, `cd_lag`, `cd_pvalue`, `cd_crit`,
+    `trend`, `se_type`, `debiased`. The per-horizon keys (`lags`, `vr`,
+    `stat`, `pvalue`, `stat_variance`, `nobs` = increments used, and
+    `n_dropped`) are Python scalars when `lags` is an int or None and 1-D
+    arrays aligned with the given order when it is a sequence. `crit` is the
+    one-sided N(0, 1) quantile dict {"1%", "5%", "10%", "90%", "95%", "99%"};
+    `cd_crit` is {"1%", "5%", "10%"}; `se_type` is "robust",
+    "homoskedastic" or "nonoverlapping".
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c"), `debiased`
+    and `robust` (None -> True with overlap=True; refused if True with
+    overlap=False), `overlap` (True).
 
 ### `ndiffs`
 

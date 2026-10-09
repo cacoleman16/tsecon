@@ -34,6 +34,11 @@
 //!   endogenous break (intercept, trend, or both), minimum-t over trimmed
 //!   candidate break dates, with the simulated-table p-values of
 //!   statsmodels ([`za_p`], [`za_crit`]).
+//! * [`variance_ratio`] — the Lo-MacKinlay (1988) variance-ratio test of
+//!   the random-walk (martingale-difference increments) hypothesis, in
+//!   arch's conventions (levels in; overlapping/debiased/robust options),
+//!   and [`chow_denning`] — the Chow-Denning (1993) joint test over several
+//!   horizons via the studentized-maximum-modulus (Šidák) bound.
 //! * [`check_stationarity`] — the joint ADF + KPSS confirmatory decision
 //!   workflow, classifying the evidence into a quadrant with a concrete
 //!   recommendation (proceed / difference / detrend).
@@ -66,6 +71,7 @@ mod portmanteau;
 mod report;
 mod unitroot;
 mod validate;
+mod variance_ratio;
 mod zivot_andrews;
 
 pub use acf::{acf, pacf_ols, pacf_yw, AcfResult};
@@ -92,6 +98,10 @@ pub use unitroot::{
     adf, check_stationarity, check_stationarity_at, kpss, AdfLagSelection, AdfRegression,
     AdfResult, KpssCriticalValues, KpssLags, KpssRegression, KpssResult, Recommendation,
     StationarityQuadrant, StationarityReport,
+};
+pub use variance_ratio::{
+    chow_denning, variance_ratio, variance_ratio_crit, ChowDenningCrit, ChowDenningResult,
+    VarianceRatioResult, VarianceRatioSpec, VrCriticalValues, VrSeType, VrTrend,
 };
 pub use zivot_andrews::{
     za_crit, za_p, zivot_andrews, ZaCriticalValues, ZaLagSelection, ZaRegression, ZaResult,

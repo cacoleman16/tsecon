@@ -122,6 +122,8 @@ CASES = {
     ),
     "umidas": lambda: tsecon.umidas(_ar1(T), np.random.default_rng(0).standard_normal((T, 6))),
     "var_granger": lambda: tsecon.var_granger(_var(T), [0], [1]),
+    # 0.11.0: scalar and sequence `lags` return the same key set.
+    "variance_ratio": lambda: tsecon.variance_ratio(_rw(T), [2, 4]),
 }
 
 
@@ -221,11 +223,15 @@ def test_the_former_ellipsis_defaults_render_their_effective_value_or_none():
     assert default("random_forest", "max_features") is None
     assert default("var_girf", "bands") is None
     assert default("threshold_var_girf", "bands") is None
+    # 0.11.0: `lags` is a polymorphic None sentinel (int or sequence) with
+    # an explicit text_signature, so it renders its effective value.
+    assert default("variance_ratio", "lags") == 2
     # The sentinels mean exactly the documented defaults (behaviour unchanged).
     y = _ar1(T)
     a = tsecon.box_cox_lambda(np.exp(0.1 * y) + 1.0)
     b = tsecon.box_cox_lambda(np.exp(0.1 * y) + 1.0, bounds=(-2.0, 2.0))
     assert a["lambda"] == b["lambda"] and (a["lower"], a["upper"]) == (-2.0, 2.0)
+    assert tsecon.variance_ratio(y) == tsecon.variance_ratio(y, lags=2)
     r, x = _ar1(T, 1), _ar1(T, 2, 0.9)
     assert tsecon.predictive_regression(r, x)["ivx"] == tsecon.predictive_regression(r, x, cz=-1.0)["ivx"]
     v = _var(T)

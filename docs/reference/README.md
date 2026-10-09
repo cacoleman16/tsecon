@@ -50,7 +50,7 @@ method fits your problem and how to trust its output.
 | Family | Functions |
 |---|---|
 | [Diagnostics](model-cards/diagnostics.md) | `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`, `adf`, `kpss`, `check_stationarity` |
-| [Phillips-Perron & Ouliaris tests](model-cards/unit-root-cointegration-tests.md) | `phillips_perron`, `phillips_ouliaris` |
+| [Unit-root, cointegration & variance-ratio tests](model-cards/unit-root-cointegration-tests.md) | `dfgls`, `ng_perron`, `phillips_perron`, `phillips_ouliaris`, `zivot_andrews`, `variance_ratio` |
 | [Check series (one-call battery)](model-cards/check-series.md) | `check_series` (plus the `tsecon.results.check_series` facade with `.summary()` / `.plot_diagnostics()`) |
 | [ARIMA](model-cards/arima.md) | `arima_fit`, `ar_loglik` |
 | [Spectral analysis](model-cards/spectral.md) | `periodogram`, `welch`, `coherence` |

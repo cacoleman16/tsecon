@@ -70,6 +70,14 @@ pub enum DiagError {
         /// The offending value.
         value: f64,
     },
+    /// An argument combination or input that the statistic cannot use, with
+    /// a self-contained teaching message (e.g. a repeated horizon, an option
+    /// that has no effect under the chosen estimator, or increments with
+    /// zero variance about the drift).
+    InvalidArgument {
+        /// The full message: what was wrong and what to do instead.
+        what: &'static str,
+    },
     /// An error propagated from the `tsecon-stats` special functions (e.g.
     /// the chi-squared survival function used for p-values).
     Stats(StatsError),
@@ -130,6 +138,7 @@ impl fmt::Display for DiagError {
                  either end cannot be told apart from the sample boundary \
                  (the conventional choice is 0.15)"
             ),
+            DiagError::InvalidArgument { what } => write!(f, "{what}"),
             DiagError::Stats(e) => write!(f, "special-function error: {e}"),
         }
     }

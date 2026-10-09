@@ -650,6 +650,54 @@ def test_arch_suggestion_names_the_differenced_object_on_i1_series():
     assert "garch_fit(y)" not in rec["suggestion"]
 
 
+def _garch_walk(seed, n=600):
+    rng = np.random.default_rng(seed)
+    e, h = np.zeros(n), np.ones(n)
+    z = rng.standard_normal(n)
+    for t in range(1, n):
+        h[t] = 0.1 + 0.15 * e[t - 1] ** 2 + 0.80 * h[t - 1]
+        e[t] = np.sqrt(h[t]) * z[t]
+    return np.cumsum(e)
+
+
+def test_arma_orders_cites_variance_ratio_when_arch_fires_on_the_differences():
+    # A random walk whose increments are GARCH martingale differences:
+    # uncorrelated, but Ljung-Box (iid null) rejects on this seed and ARCH-LM
+    # fires on the differences, so the arma_orders entry also routes to the
+    # ARCH-robust random-walk test.
+    y = _garch_walk(6)
+    rep = tsecon.check_series(y)
+    assert rep["analysis_scale"]["scale"] == "first_difference"
+    assert rep["arch_effects"]["rejected"]
+    rec = rec_by_topic(rep, "arma_orders")
+    assert "variance_ratio" in rec["functions"] and hasattr(tsecon, "variance_ratio")
+    assert "variance_ratio(y)" in rec["suggestion"]
+    assert "pass the level series" in rec["suggestion"]
+    # Cited, not run: the battery's families and the n_tests arithmetic are
+    # unchanged.
+    assert rep["multiple_testing"]["n_tests"] == rw_report()["multiple_testing"]["n_tests"]
+    assert not any("variance" in t["name"] for t in rep["tests_run"])
+    # ... and the citation is apt here: the robust Chow-Denning test does not
+    # reject the random walk that Ljung-Box rejected.
+    assert tsecon.variance_ratio(y, [2, 4, 8, 16])["cd_pvalue"] > 0.05
+
+
+def test_arma_orders_does_not_cite_variance_ratio_without_arch_on_the_differences():
+    # Momentum increments with iid innovations: Ljung-Box fires on the
+    # differences, ARCH-LM does not on this seed, so no citation.
+    rng = np.random.default_rng(3)
+    z = rng.standard_normal(600)
+    u = np.zeros(600)
+    for t in range(1, 600):
+        u[t] = 0.3 * u[t - 1] + z[t]
+    rep = tsecon.check_series(np.cumsum(u))
+    assert rep["analysis_scale"]["scale"] == "first_difference"
+    assert not rep["arch_effects"]["rejected"]
+    assert "variance_ratio" not in rec_by_topic(rep, "arma_orders")["functions"]
+    # A stationary AR(1) analyzed on the level never gets it either.
+    assert "variance_ratio" not in rec_by_topic(ar1_report(), "arma_orders")["functions"]
+
+
 def test_vecm_k_ar_diff_matches_the_stated_rule():
     # the scale_note states k_ar_diff = selected_lag - 1; the rec must agree
     # (floored at 0 — vecm accepts k_ar_diff=0)
