@@ -65,7 +65,10 @@ to leak the internal variable-major layout; statsmodels'
 `var_granger`: `statistic`, `p_value`, `df_num/df_den`. `var_forecast`:
 `point`, `lower`, `upper` (each steps×k) — **marginal** intervals, one cell at a
 time, which is not what a fan chart is read as; see
-[simultaneous forecast bands](#simultaneous-forecast-bands-var_forecast).
+[simultaneous forecast bands](#simultaneous-forecast-bands-var_forecast) — plus
+`cov` (`[h][i][j]`, the forecast-error covariance the bands come from) and the
+`param_uncertainty` echo; see
+[parameter uncertainty](#forecast-covariance-and-parameter-uncertainty-var_forecastparam_uncertaintytrue).
 
 **Failure modes.** A pointwise IRF median is not itself a model at long
 horizons; Cholesky ordering silently drives every "structural" reading;
@@ -74,7 +77,9 @@ roots make long-horizon responses and bands unreliable.
 
 **Validated against.** statsmodels `VAR` — coefficients, `sigma_u`, IRF/FEVD,
 `test_causality`, and forecasts; Lütkepohl (2005) textbook conventions
-(`fixtures/var.json`).
+(`fixtures/var.json`); the forecast covariance with and without the
+parameter-uncertainty term against `mse` / `forecast_cov(method="auto")`
+(`fixtures/var_forecast_cov.json`).
 
 **References.** Sims (1980); Lütkepohl, *New Introduction to Multiple Time
 Series Analysis* (2005).
@@ -147,6 +152,123 @@ replications, both arms read off the **same** call: joint coverage
 **42.0% ± 1.1 → 90.5% ± 0.7** ([`forecast_intervals.py`](../../examples/coverage/forecast_intervals.py),
 which asserts it). A 48-point repair that still misses nominal by 4.5 points,
 all of it inherited from the marginal band.
+
+### Forecast covariance and parameter uncertainty — `var_forecast(param_uncertainty=True)`
+
+**What it estimates.** Every `var_forecast` call returns `cov` (`[h][i][j]`,
+`steps × k × k`, the layout of `var_conditional_forecast`): the forecast-error
+covariance the bands are built from. By default it is the plug-in
+$\mathrm{MSE}(h) = \sum_{i<h} \Psi_i \Sigma_u \Psi_i'$ (statsmodels
+`VARResults.mse`), so `sqrt(diag cov)` reproduces `lower`/`upper` exactly. With
+`param_uncertainty=True` it is
+
+$$
+\mathrm{cov}(h) = \mathrm{MSE}(h) + \frac{\Omega(h)}{T},\qquad
+\Omega(h) = \sum_{i,j<h} \operatorname{tr}\bigl[(B')^{h-1-i} G^{-1} B^{h-1-j} G\bigr]\,
+\Psi_i \Sigma_u \Psi_j',
+$$
+
+Lütkepohl's (2005, pp. 96-97) first-order term for having *estimated* the
+coefficients ($G = Z'Z$, $B$ the companion matrix extended by the deterministic
+term, $T$ the effective sample), and `lower`/`upper` widen to
+`point ± z sqrt(diag cov)`. At $h = 1$ the term is $m\Sigma_u$ (to rounding) with
+$m = n_\text{trend} + k\,p$, so $\mathrm{cov}(1) = (1 + m/T)\Sigma_u$.
+
+**Why it exists.** The plug-in band treats the coefficients as known, and the
+audit measured what that costs: pooled marginal coverage below nominal at
+$T = 100$ on a well-specified VAR. This is the textbook correction for that
+specific omission, and it is the one statsmodels ships as
+`forecast_cov(method="auto")`.
+
+**Assumptions.** A **stationary** VAR, correctly specified, estimated by OLS:
+the term is the delta-method variance of the forecast in the coefficient
+estimates under stationary asymptotics.
+
+**When to use (and when not).** For marginal forecast intervals from a VAR on
+stationary data in short samples, where the coefficient uncertainty is not
+negligible — it matters most with many regressors per observation (high `lags`,
+small `T`). Not on near-unit-root levels data: there the derivation does not
+apply and the term works through an ill-conditioned $Z'Z$. On a VAR(2) in
+100 × log levels of real GDP, consumption and investment (largest companion
+modulus 0.998, cond($Z'Z$) = 5.1e10) it inflates the 12-step variances by
+15-18%, against 1.0-1.5% on the growth-rate system of `var.json` (cond 476).
+That is not a unit-root correction; difference the data or use `vecm`.
+
+**Key arguments and defaults (and why).** `param_uncertainty=False` (the
+default) keeps `var_forecast` bit-for-bit what it was — statsmodels'
+`forecast_interval` — so no existing number moves. `True` applies the same
+formula under `trend="c"` **and** `trend="n"`; statsmodels' public
+`method="auto"` silently returns the plain MSE without a constant (a
+`k_exog == 1` gate), so for `trend="n"` the two libraries differ by exactly the
+term (the golden there is statsmodels' `mse + _omega_forc_cov / nobs`). The
+flag is refused with `band="sup-t"`/`"sidak"`/`"bonferroni"`, naming both
+keywords: a simultaneous band needs the cross-horizon blocks of the term, which
+are a follow-up.
+
+**How to read the output.** `cov` and the echo `param_uncertainty` are always
+present; `point` never changes; `lower`/`upper` widen at every cell. The
+difference `cov(h) − MSE(h) = Ω(h)/T` is symmetric positive semi-definite at
+every horizon and shrinks like $1/T$.
+
+**Failure modes.** **A partial repair, by construction.** On the
+interval-coverage audit's experiment-3 draws (VAR(1) with
+$A = [[.7,.15],[.1,.6]]$, $T = 100$, 12 horizons × 2 series, 6000
+replications, nominal 95%), the same draws scored both ways:
+
+| fitted lags | pooled marginal coverage | worst horizon | paired gain (se) |
+|---|---|---|---|
+| 1 (true order) | 0.931 → **0.937** | 0.925 → **0.932** (h = 11) | +0.62 pp (0.02) |
+| 4 (over-fitted) | 0.931 → **0.941** | 0.925 → **0.937** (h = 5) | +1.01 pp (0.03) |
+
+(`lab/audit/wave11/ewc_varcov_measurements.py`;
+its plug-in arm reproduces the audit's worst-horizon 0.925 on the identical
+draws.) The term recovers about a third of the shortfall at the true order and
+half of it over-fitted; the rest is the small-sample **bias** of the OLS
+coefficients, which no variance term can fix. **The cost is CUBIC in
+`steps`** — about $\text{steps}^3 (k^2 + 8)/3$ operations: on the $k = 3$
+VAR(2) of `var.json` 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at 500 and
+0.27 s at 1000. A work budget of $2^{34}$ refuses `steps` by name past it
+(1443 steps on that VAR, measured 0.9 s; 0.9-2.0 s at the cap for $k = 1, 2,
+3$). Without the flag nothing is budgeted beyond what `var_forecast` always
+did.
+
+**Validated against.** statsmodels 0.15.0 on the `var.json` system — `mse` for
+the default and `forecast_cov(method="auto")` for the flag under `trend="c"`,
+`mse + _omega_forc_cov/nobs` under `trend="n"` (a canary in the generator fails
+if statsmodels ever stops dropping the term) — on VAR(2)c, VAR(2)n, VAR(1)c and
+VAR(4)c at steps 1, 8 and 12: covariances, Ω(h) and both bands at 1e-10
+(achieved 1.2e-14), with every Ω(h) re-derived by an independent NumPy
+transcription of the formula at generation; the $h = 1$ identity at 1e-14
+([`var_forecast_cov.json`](../../../fixtures/var_forecast_cov.json),
+[`forecast_cov_golden.rs`](../../../crates/tsecon-var/tests/forecast_cov_golden.rs),
+[`forecast_cov_properties.rs`](../../../crates/tsecon-var/tests/forecast_cov_properties.rs),
+[`test_var_forecast_cov.py`](../../../bindings/python/tests/test_var_forecast_cov.py),
+which also runs statsmodels live on a fresh VAR).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(3)
+A = np.array([[0.70, 0.15], [0.10, 0.60]])     # the interval-coverage audit's VAR(1)
+L = np.linalg.cholesky(np.array([[1.0, 0.4], [0.4, 1.0]]))
+y = np.zeros((100, 2))
+for t in range(1, 100):
+    y[t] = A @ y[t - 1] + L @ rng.standard_normal(2)
+
+plain = tsecon.var_forecast(y, lags=1, steps=8)
+wide = tsecon.var_forecast(y, lags=1, steps=8, param_uncertainty=True)
+fit = tsecon.var_fit(y, lags=1)
+m, T = 1 + 2 * 1, fit["nobs"]                  # regressors per equation, effective sample
+ratio1 = np.asarray(wide["cov"])[0] / np.asarray(fit["sigma_u"])
+print("h=1: cov / sigma_u =", np.round(ratio1, 4).tolist(), " 1 + m/T =", round(1 + m / T, 4))
+ratio8 = np.diag(np.asarray(wide["cov"])[7]) / np.diag(np.asarray(plain["cov"])[7])
+print("h=8: variance inflation =", np.round(ratio8, 4).tolist())
+print("h=8, series 0: plug-in", np.round([plain["lower"][7][0], plain["upper"][7][0]], 3).tolist(),
+      " with Omega/T", np.round([wide["lower"][7][0], wide["upper"][7][0]], 3).tolist())
+# h=1: cov / sigma_u = [[1.0303, 1.0303], [1.0303, 1.0303]]  1 + m/T = 1.0303
+# h=8: variance inflation = [1.0598, 1.0475]
+# h=8, series 0: plug-in [-2.864, 3.133]  with Omega/T [-2.952, 3.221]
+```
 
 ### Conditional (hard-path) forecasts — `var_conditional_forecast`
 

@@ -1,0 +1,117 @@
+{
+ "tsecon": "0.10.0",
+ "ewc": [
+  {
+   "T": 100,
+   "rho": 0.7,
+   "reps": 10000,
+   "ewc_b": 9,
+   "nw_maxlags": 4,
+   "cover_hac": 0.8552,
+   "cover_ewc": 0.9155,
+   "width_hac": 0.5203525627049437,
+   "width_ewc": 0.6564669681787775,
+   "mc_se": 0.0021794494717703367
+  },
+  {
+   "T": 400,
+   "rho": 0.7,
+   "reps": 10000,
+   "ewc_b": 22,
+   "nw_maxlags": 5,
+   "cover_hac": 0.9051,
+   "cover_ewc": 0.9395,
+   "width_hac": 0.2878900143267912,
+   "width_ewc": 0.3362610960565322,
+   "mc_se": 0.0021794494717703367
+  }
+ ],
+ "var": [
+  {
+   "fit_lags": 1,
+   "reps": 6000,
+   "t_obs": 100,
+   "h_max": 12,
+   "plugin": {
+    "pooled": 0.9311527777777778,
+    "pooled_se": 0.0012300882582858812,
+    "worst_h": 0.9250833333333334,
+    "worst_h_index": 11,
+    "h1": 0.94375,
+    "h12": 0.9311666666666667
+   },
+   "param": {
+    "pooled": 0.9373472222222222,
+    "pooled_se": 0.0011708476898239666,
+    "worst_h": 0.932,
+    "worst_h_index": 11,
+    "h1": 0.947,
+    "h12": 0.9384166666666667
+   },
+   "paired_diff": 0.006194444444444445,
+   "paired_diff_se": 0.0002110406563275072
+  },
+  {
+   "fit_lags": 4,
+   "reps": 6000,
+   "t_obs": 100,
+   "h_max": 12,
+   "plugin": {
+    "pooled": 0.9306805555555555,
+    "pooled_se": 0.001245451603436647,
+    "worst_h": 0.92475,
+    "worst_h_index": 5,
+    "h1": 0.9330833333333334,
+    "h12": 0.9374166666666667
+   },
+   "param": {
+    "pooled": 0.9407777777777778,
+    "pooled_se": 0.001149540221078489,
+    "worst_h": 0.9368333333333333,
+    "worst_h_index": 5,
+    "h1": 0.9453333333333334,
+    "h12": 0.9439166666666666
+   },
+   "paired_diff": 0.010097222222222221,
+   "paired_diff_se": 0.0002795013644151621
+  }
+ ],
+ "growth": {
+  "cov_over_mse_h12": [
+   1.014278044847752,
+   1.0148154262602265,
+   1.009969136726548
+  ]
+ },
+ "levels": {
+  "min_root": 1.002329814715494,
+  "largest_companion_modulus": 0.99767560070419,
+  "cond_zz": 50922874796.46341,
+  "cov_over_mse_h12": [
+   1.1714522709375341,
+   1.1811077313770306,
+   1.1483813601669886
+  ]
+ },
+ "cost": {
+  "12": 9.18139994610101e-05,
+  "200": 0.003645016000518808,
+  "500": 0.03644821999841952,
+  "1000": 0.26733736999995017,
+  "cap_k3_lags2": {
+   "largest_admitted_steps": 1443,
+   "seconds_at_cap": 0.8713576049995027,
+   "refused_at_cap_plus_one_naming_steps": true
+  },
+  "cap_k2_lags1": {
+   "largest_admitted_steps": 1624,
+   "seconds_at_cap": 2.043914722999034,
+   "refused_at_cap_plus_one_naming_steps": true
+  },
+  "cap_k1_lags1": {
+   "largest_admitted_steps": 1788,
+   "seconds_at_cap": 1.2829044149984838,
+   "refused_at_cap_plus_one_naming_steps": true
+  }
+ }
+}

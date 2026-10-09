@@ -24,7 +24,12 @@
 //! * HAC (Newey & West 1987): `S = Gamma_0 + sum_{j>=1} w_j (Gamma_j +
 //!   Gamma_j')` with `Gamma_j = sum_{t>j} s_t s_{t-j}'` and kernel weights
 //!   `w_j` from [`Kernel::weight`]; optionally scaled by `n/(n - k)`
-//!   (statsmodels `use_correction=True`).
+//!   (statsmodels `use_correction=True`);
+//! * EWC (Lazarus, Lewis, Stock & Watson 2018): `S = n * Omega_hat(s)`, the
+//!   equal-weighted cosine long-run covariance of the scores
+//!   ([`crate::ewc_lrv_matrix`]) with `B` degrees of freedom — no `n/(n - k)`
+//!   factor, no prewhitening. Its t-statistics are referred to **Student t
+//!   with `B` degrees of freedom**, not the normal; see [`SeType::Ewc`].
 //!
 //! ## Why the leverage-corrected members exist
 //!
@@ -72,6 +77,7 @@
 //! interpolated, check `1 - h_t` before trusting the tail of the number.
 
 use crate::error::HacError;
+use crate::ewc::ewc_matrix_impl;
 use crate::kernel::Kernel;
 use crate::validate::{check_bandwidth, check_finite};
 
@@ -122,6 +128,27 @@ pub enum SeType {
         /// statistically recommended finite-sample choice), so matching a
         /// default statsmodels `cov_type="HAC"` call requires `false` here.
         use_correction: bool,
+    },
+    /// Equal-weighted cosine (EWC) HAR covariance of Lazarus, Lewis, Stock &
+    /// Watson (2018): the sandwich `(X'X)^{-1} [n Omega_hat(s)] (X'X)^{-1}`
+    /// with `Omega_hat` the EWC long-run covariance of the scores
+    /// `s_t = x_t u_t` over the first `b` type-II cosine frequencies
+    /// ([`crate::ewc_lrv_matrix`]).
+    ///
+    /// **Inference contract.** `Omega_hat` is (asymptotically)
+    /// `Omega * chi^2_B / B`, so a t-statistic built from these standard
+    /// errors is Student t with `b` degrees of freedom under the null
+    /// (fixed-b asymptotics) — refer `tvalues` to `t_B`, never to the
+    /// normal. A Wald test of `q` restrictions scales as
+    /// `F* = (B - q + 1)/(B q) W ~ F(q, B - q + 1)`.
+    ///
+    /// No `n/(n - k)` factor and no prewhitening: LLSW's size results are for
+    /// the plain estimator. [`crate::ewc_default_b`] gives the recommended
+    /// `b = round(0.4 n^(2/3))`. Requires `1 <= b <= n - 1`.
+    Ewc {
+        /// Degrees of freedom `B`: the number of cosine frequencies averaged,
+        /// which is also the Student-t degrees of freedom of the t-statistic.
+        b: usize,
     },
 }
 
@@ -319,7 +346,8 @@ impl OlsFit {
     /// crate's leverage floor of `1e-12` (its weight would be noise);
     /// [`HacError::NumericalBreakdown`] if a covariance diagonal comes out
     /// negative, which can only happen with a non-positive-semi-definite
-    /// kernel ([`Kernel::Truncated`]).
+    /// kernel ([`Kernel::Truncated`]); [`HacError::InvalidDof`] if
+    /// [`SeType::Ewc`] asks for `b = 0` or `b > n - 1`.
     pub fn inference(&self, se_type: SeType) -> Result<OlsInference, HacError> {
         let n = self.nobs;
         let k = self.nparams;
@@ -356,6 +384,7 @@ impl OlsFit {
                 }
                 cov
             }
+            SeType::Ewc { b } => self.sandwich(&self.ewc_meat(b)?),
         };
 
         let mut bse = Vec::with_capacity(k);
@@ -502,6 +531,29 @@ impl OlsFit {
             }
         }
         s
+    }
+
+    /// EWC meat `S = n * Omega_hat(s)` from scores `s_t = x_t u_t`, with
+    /// `Omega_hat` the equal-weighted cosine long-run covariance over `b`
+    /// frequencies — the scaling under which `S` estimates the same object as
+    /// the un-normalized HAC meat (statsmodels' "sum" convention).
+    fn ewc_meat(&self, b: usize) -> Result<Vec<f64>, HacError> {
+        let scores: Vec<Vec<f64>> = self
+            .x_cols
+            .iter()
+            .map(|col| {
+                col.iter()
+                    .zip(self.residuals.iter())
+                    .map(|(&x, &u)| x * u)
+                    .collect()
+            })
+            .collect();
+        let mut s = ewc_matrix_impl(&scores, b, "OLS EWC covariance")?;
+        let nf = self.nobs as f64;
+        for v in &mut s {
+            *v *= nf;
+        }
+        Ok(s)
     }
 
     /// Sandwich `(X'X)^{-1} S (X'X)^{-1}` for a symmetric `S`.

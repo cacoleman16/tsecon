@@ -13,3 +13,7 @@ description = "HAC / long-run variance / robust standard errors for the tsecon t
 # float_roundtrip: fixture doubles must parse to the exact bit pattern NumPy
 # printed, not serde_json's default 1-ulp fast path.
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# Test-only: the EWC golden checks that the Student t_B p-values the Python
+# binding builds from these standard errors (tsecon-stats `StudentT::sf`)
+# reproduce scipy.stats.t.sf. The library itself stays dependency-free.
+tsecon-stats = { path = "../tsecon-stats" }

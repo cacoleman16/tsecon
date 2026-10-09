@@ -24,7 +24,10 @@
 //! * [`VarResults::fevd`] — forecast-error variance decomposition;
 //! * [`VarResults::forecast`] / [`VarResults::forecast_interval`] —
 //!   iterated point forecasts with asymptotic (innovation-uncertainty
-//!   only) intervals;
+//!   only) intervals; [`VarResults::forecast_cov_with`] /
+//!   [`VarResults::forecast_interval_with`] add Lütkepohl's
+//!   parameter-uncertainty term `Omega(h)/T` on request
+//!   ([`ForecastOptions`]);
 //! * [`VarResults::conditional_forecast`] — hard-conditioned forecasts
 //!   (Doan-Litterman-Sims / Waggoner-Zha closed form: conditional path,
 //!   covariance and the implied minimum-norm shocks);
@@ -71,7 +74,7 @@ pub use conditional::ConditionalForecast;
 pub use diagnostics::{NormalityTest, PortmanteauTest, VarDiagnostics};
 pub use error::VarError;
 pub use fevd::Fevd;
-pub use forecast::ForecastInterval;
+pub use forecast::{ForecastInterval, ForecastOptions, PARAM_UNCERTAINTY_WORK_BUDGET};
 pub use girf::{
     girf, sample_histories, subsample_indices, var_girf, Girf, GirfModel, GirfOptions, GirfShock,
     LinearVarModel, MEMORY_BUDGET_BYTES,

@@ -141,6 +141,8 @@ CASES = {
     "var_granger": lambda: tsecon.var_granger(_var(T), [0], [1]),
     # 0.11.0: scalar and sequence `lags` return the same key set.
     "variance_ratio": lambda: tsecon.variance_ratio(_rw(T), [2, 4]),
+    # 0.11: `cov` / `param_uncertainty` are always returned.
+    "var_forecast": lambda: tsecon.var_forecast(_var(T), param_uncertainty=True),
 }
 
 

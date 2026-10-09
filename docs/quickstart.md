@@ -118,8 +118,10 @@ and docstrings live in
 | `box_cox_lambda` | Variance-stabilizing Box-Cox lambda (MLE or Guerrero) |
 | `check_stationarity` | The ADF + KPSS confirmatory workflow, with a recommendation |
 | `check_series` | One-call diagnostic battery: runs the test families, suggests models with evidence |
-| `ols` | Linear regression with nonrobust / HC / HAC standard errors |
+| `ols` | Linear regression with nonrobust / HC / HAC / EWC standard errors (EWC adds Student-t_B `pvalues`) |
 | `long_run_variance` | Kernel long-run variance of a series |
+| `ewc_lrv` | Equal-weighted cosine (EWC) long-run variance of a series (pair with t_B critical values) |
+| `ewc_default_b` | LLSW default EWC degrees of freedom, round(0.4 n^(2/3)) |
 | `periodogram` | Raw spectral density (matches SciPy) |
 | `welch` | Welch averaged-periodogram spectral density |
 | `coherence` | Magnitude-squared coherence between two series |
@@ -184,7 +186,7 @@ and docstrings live in
 | `var_irf` | Orthogonalized or raw impulse responses |
 | `var_irf_bands` | Frequentist IRF confidence bands (delta-method or bootstrap) |
 | `var_fevd` | Forecast-error variance decomposition |
-| `var_forecast` | Iterated VAR forecasts with intervals |
+| `var_forecast` | Iterated VAR forecasts with intervals and the forecast-error covariance (`param_uncertainty=True` adds Lütkepohl's estimation term) |
 | `var_granger` | Granger-causality F test |
 | `sign_restricted_svar` | Sign-restricted Bayesian SVAR identified-set bands |
 | `zero_sign_svar` | Zero + sign restricted Bayesian SVAR (RWZ 2010 / ARW 2018) |

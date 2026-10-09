@@ -1081,6 +1081,7 @@ name = "tsecon-hac"
 version = "0.10.0"
 dependencies = [
  "serde_json",
+ "tsecon-stats",
 ]
 
 [[package]]

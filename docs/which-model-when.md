@@ -84,7 +84,8 @@ A compact index. Find your row, jump to the section.
 | Endogenous regressor with instruments | `iv_gmm`; nonlinear moments `gmm_nonlinear` | [10](#10-endogenous-regressor-instruments) |
 
 Two cross-cutting escape hatches used throughout: robust standard errors
-(`se_type="hac"` on any regression estimator; see
+(`se_type="hac"` on any regression estimator, and `ols(se_type="ewc")` —
+Student-t_B p-values — when size matters with persistent errors; see
 [chapter 3](guide/03-inference-toolkit.md)) and honest out-of-sample
 evaluation (`backtest`, `dm_test`; see [chapter 5](guide/05-forecasting.md)).
 Never report an estimate without the first or a forecast without the second.
