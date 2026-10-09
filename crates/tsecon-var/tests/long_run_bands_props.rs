@@ -612,9 +612,22 @@ fn a_single_cell_delta_family_collapses_to_the_pointwise_band() {
 #[test]
 fn bootstrap_budget_is_checked_at_its_boundary_before_allocating() {
     let data = bq_data();
+    // The budget is affine in n_boot: a fixed reporting term plus a per-draw
+    // term (the padded k x k draw matrices).
+    let at = |n_boot: usize| {
+        let s = LongRunBandSpec {
+            n_boot,
+            ..bq_spec(40, 2)
+        };
+        bootstrap_budget_values(&s, 2).unwrap()
+    };
+    let per = at(2) - at(1);
+    let fixed = at(1) - per;
+    // A 2 x 2 matrix occupies 8 * 2 + 8 doubles (64-byte column padding plus
+    // the header), not 4: the budget counts storage, not cells.
+    assert!(per >= 41 * 24, "{per}");
+    let n_max = (LONG_RUN_BANDS_BUDGET_VALUES - fixed) / per;
     let mut spec = bq_spec(40, 2);
-    let per = bootstrap_budget_values(&spec, 2).unwrap() / 2;
-    let n_max = LONG_RUN_BANDS_BUDGET_VALUES / per;
     spec.n_boot = n_max;
     assert!(bootstrap_budget_values(&spec, 2).unwrap() <= LONG_RUN_BANDS_BUDGET_VALUES);
     spec.n_boot = n_max + 1;

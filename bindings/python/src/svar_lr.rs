@@ -103,9 +103,11 @@ fn cube(c: &[Mat<f64>]) -> Vec<Vec<Vec<f64>>> {
 /// `seed` and `return_draws` on the asymptotic arm; `band_seed` and
 /// `band_n_sim` anywhere but the asymptotic sup-t band (`var_irf_bands`
 /// accepts both silently on its bootstrap arm); a non-default `band_scope`
-/// with band="pointwise". The working set is budgeted at 2^28 values (2 GiB)
-/// BEFORE anything is allocated: n_boot·(horizon+1)·k² draws on the
-/// bootstrap arm (refused naming `n_boot` and `horizon`), and the joint
+/// with band="pointwise". The working set, counted as real storage (padded
+/// matrices and the Python lists included), is budgeted at 2^28 values
+/// (2 GiB) BEFORE anything is allocated: the n_boot·(horizon+1) k x k draw
+/// matrices on the bootstrap arm (refused naming `n_boot` and `horizon`), and
+/// the joint
 /// covariance of a simultaneous band's family — ((horizon+1)·k²)² under
 /// band_scope="all" — on the asymptotic arm (refused naming `horizon` and
 /// `band_scope`). A replication whose re-estimated VAR cannot be identified

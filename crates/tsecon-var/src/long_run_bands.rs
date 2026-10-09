@@ -66,23 +66,29 @@
 //!
 //! Every allocation that scales with a user count is sized before it is made
 //! and refused beyond [`LONG_RUN_BANDS_BUDGET_VALUES`] (`2^28` doubles,
-//! 2 GiB), with checked multiplies so absurd counts cannot overflow. With
-//! `cells = (horizon + 1) k^2` and `K` the band family size (`horizon + 1`,
-//! `k (horizon + 1)` or `cells` for `band_scope` `"horizon"`, `"shock"`,
-//! `"all"`):
+//! 2 GiB), with checked multiplies so absurd counts cannot overflow. The
+//! count is of real storage, not of cells. One `k x k` matrix occupies
+//! `mf = 8 ceil(k / 8) k + 8` doubles, because faer pads each column to 64
+//! bytes and the matrix header takes about a cache line. The reported cubes
+//! are also converted to Python nested lists, at about `4 k^2 + 8 k` doubles
+//! per horizon. With `H1 = horizon + 1`, `cells = H1 k^2` and `K` the band
+//! family size (`H1`, `k H1` or `cells` for `band_scope` `"horizon"`,
+//! `"shock"`, `"all"`):
 //!
-//! * bootstrap: `n_boot * (cells + k^2 + 16)` (the draws, the long-run draws
-//!   and one RNG substream per replication), plus `n_boot * lags * k^2` with
-//!   `bias_correct` (the inner estimates), `n_boot * K` with a simultaneous
-//!   band (the flattened family draws), and `n_boot * (cells + k^2)` again
-//!   when the draws are kept (the caller's copy);
-//! * delta method: `cells * (3 dim + 2 k(k+1)/2 + 4) + dim^2` (`dim = lags
-//!   k^2`: the `G_h` Jacobians, the per-cell loading rows, the reported cubes
-//!   and the coefficient covariance), plus `3 K^2` for a simultaneous band
-//!   (the family's joint covariance and its factorization — `((horizon + 1)
-//!   k^2)^2` under `band_scope="all"`) and `K * band_n_sim` uniforms for
-//!   sup-t, whose simulation work `n_families * band_n_sim * K^2` is capped
-//!   at [`LONG_RUN_BANDS_SUPT_WORK`] (`2^36`).
+//! * bootstrap: `n_boot * (H1 mf + mf + 16)` (the draw cubes, the long-run
+//!   draws and one RNG substream per replication), plus `n_boot * lags * mf`
+//!   with `bias_correct` (the inner estimates), `n_boot * K` with a
+//!   simultaneous band (the flattened family draws), and `n_boot * (cells +
+//!   k^2)` when the draws are kept (the caller's flat copy);
+//! * delta method: `cells * (3 dim + 2 k(k+1)/2 + 8) + H1 * 8 ceil(k^2 / 8)
+//!   dim + dim^2` (`dim = lags k^2`: the per-cell loading rows, the `G_h`
+//!   Jacobians and the coefficient covariance), plus `3 K^2` for a
+//!   simultaneous band (the family's joint covariance and its factorization,
+//!   `((horizon + 1) k^2)^2` under `band_scope="all"`) and `K * band_n_sim`
+//!   uniforms for sup-t. The sup-t simulation work `n_families * band_n_sim *
+//!   K^2` is capped at [`LONG_RUN_BANDS_SUPT_WORK`] (`2^36`);
+//! * both arms: `6 H1 (mf + 4 k^2 + 8 k)` for the reported cubes (`point`,
+//!   `se`, `lower`, `upper` and the simultaneous pair) and their Python lists.
 //!
 //! # References
 //!
@@ -413,24 +419,41 @@ fn family_size(k: usize, cells_per_path: usize, scope: IrfBandScope) -> Option<u
     }
 }
 
+/// Storage of one `k x k` faer matrix in `f64` units: columns padded to 64
+/// bytes, plus the header.
+fn mat_footprint(k: usize) -> Option<usize> {
+    k.div_ceil(8).checked_mul(8)?.checked_mul(k)?.checked_add(8)
+}
+
+/// The reported cubes (`point`, `se`, `lower`, `upper` and a simultaneous
+/// pair) and their Python nested lists, in `f64` units.
+fn report_footprint(k: usize, hp1: usize) -> Option<usize> {
+    let per_h = mat_footprint(k)?
+        .checked_add(k.checked_mul(k)?.checked_mul(4)?)?
+        .checked_add(k.checked_mul(8)?)?;
+    hp1.checked_mul(per_h)?.checked_mul(6)
+}
+
 /// The bootstrap working set in `f64` values (see the module docs), or
 /// `None` when the count itself overflows.
 pub fn bootstrap_budget_values(spec: &LongRunBandSpec, k: usize) -> Option<usize> {
     let k2 = k.checked_mul(k)?;
+    let mf = mat_footprint(k)?;
     let hp1 = spec.horizon.checked_add(1)?;
     let cells = hp1.checked_mul(k2)?;
-    let kept = cells.checked_add(k2)?;
-    let mut per_draw = kept.checked_add(16)?;
+    let mut per_draw = hp1.checked_mul(mf)?.checked_add(mf)?.checked_add(16)?;
     if spec.bias_correct {
-        per_draw = per_draw.checked_add(spec.lags.checked_mul(k2)?)?;
+        per_draw = per_draw.checked_add(spec.lags.checked_mul(mf)?)?;
     }
     if let Some((_, scope)) = spec.band {
         per_draw = per_draw.checked_add(family_size(k, hp1, scope)?)?;
     }
     if spec.keep_draws {
-        per_draw = per_draw.checked_add(kept)?;
+        per_draw = per_draw.checked_add(cells.checked_add(k2)?)?;
     }
-    spec.n_boot.checked_mul(per_draw)
+    spec.n_boot
+        .checked_mul(per_draw)?
+        .checked_add(report_footprint(k, hp1)?)
 }
 
 /// The delta-method working set in `f64` values and the sup-t simulation
@@ -444,10 +467,15 @@ pub fn asymptotic_budget(spec: &LongRunBandSpec, k: usize) -> Option<(usize, u12
     let per_cell = dim
         .checked_mul(3)?
         .checked_add(half.checked_mul(2)?)?
-        .checked_add(4)?;
+        .checked_add(8)?;
+    let jacobians = hp1
+        .checked_mul(k2.div_ceil(8).checked_mul(8)?)?
+        .checked_mul(dim)?;
     let mut values = cells
         .checked_mul(per_cell)?
-        .checked_add(dim.checked_mul(dim)?)?;
+        .checked_add(jacobians)?
+        .checked_add(dim.checked_mul(dim)?)?
+        .checked_add(report_footprint(k, hp1)?)?;
     let mut work: u128 = 0;
     if let Some((method, scope)) = spec.band {
         let kf = family_size(k, hp1, scope)?;
@@ -520,11 +548,12 @@ pub fn long_run_bootstrap_bands(
         Some(v) if v <= LONG_RUN_BANDS_BUDGET_VALUES => {}
         _ => {
             return Err(VarError::InvalidArgument {
-                what: "n_boot and horizon: the bootstrap working set n_boot * ((horizon + 1) \
-                       * k^2 + k^2 + 16) doubles (plus n_boot * lags * k^2 with bias_correct, \
-                       n_boot times the band family size with a simultaneous band, and the \
-                       draws once more with return_draws) exceeds the 2^28-value (2 GiB) \
-                       budget, checked before anything is allocated; reduce n_boot or horizon",
+                what: "n_boot and horizon: the bootstrap working set, dominated by the n_boot \
+                       * (horizon + 1) draw matrices of k x k (plus n_boot * lags matrices with \
+                       bias_correct, n_boot times the band family size with a simultaneous band, \
+                       and the draws once more with return_draws), exceeds the 2^28-value \
+                       (2 GiB) budget, checked before anything is allocated; reduce n_boot or \
+                       horizon",
             });
         }
     }

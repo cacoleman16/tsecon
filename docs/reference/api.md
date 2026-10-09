@@ -1965,9 +1965,11 @@ Confidence bands for Blanchard-Quah long-run SVAR impulse responses, re-identifi
     I - A_1 - ... - A_p at the full sample (data / lags). Inert keywords are
     refused: n_boot, seed and return_draws on the asymptotic arm; band_seed and
     band_n_sim anywhere but the asymptotic sup-t band; a non-default
-    band_scope with band="pointwise". The working set is budgeted at 2^28
-    values (2 GiB) before anything is allocated: n_boot*(horizon+1)*k^2 draws
-    (refused naming n_boot and horizon) and, on the asymptotic arm, the joint
+    band_scope with band="pointwise". The working set, counted as real storage
+    (padded matrices and the Python lists included), is budgeted at 2^28
+    values (2 GiB) before anything is allocated: the n_boot*(horizon+1) k x k
+    draw matrices (refused naming n_boot and horizon) and, on the asymptotic
+    arm, the joint
     covariance of a simultaneous band's family, ((horizon+1)*k^2)^2 under
     band_scope="all" (refused naming horizon and band_scope). A replication
     whose re-estimated VAR cannot be identified is never dropped: the first is
