@@ -51,7 +51,7 @@ use crate::results::{chol_lower, VarResults};
 
 /// Kronecker product `a ⊗ b` (numpy `np.kron` convention):
 /// `(a ⊗ b)[i·b_r + p, j·b_c + q] = a[i, j] · b[p, q]`.
-fn kron(a: MatRef<'_, f64>, b: MatRef<'_, f64>) -> Mat<f64> {
+pub(crate) fn kron(a: MatRef<'_, f64>, b: MatRef<'_, f64>) -> Mat<f64> {
     let (br, bc) = (b.nrows(), b.ncols());
     Mat::from_fn(a.nrows() * br, a.ncols() * bc, |r, c| {
         a[(r / br, c / bc)] * b[(r % br, c % bc)]
@@ -59,7 +59,7 @@ fn kron(a: MatRef<'_, f64>, b: MatRef<'_, f64>) -> Mat<f64> {
 }
 
 /// `g · mid · g'`, the delta-method sandwich.
-fn sandwich(g: &Mat<f64>, mid: &Mat<f64>) -> Mat<f64> {
+pub(crate) fn sandwich(g: &Mat<f64>, mid: &Mat<f64>) -> Mat<f64> {
     let gt = g.transpose().to_owned();
     let left = g * mid;
     &left * &gt
@@ -97,7 +97,7 @@ fn commutation_matrix(k: usize) -> Mat<f64> {
 /// Duplication matrix `D_k` (`k² × k(k+1)/2`) with `vec(S) = D_k vech(S)`
 /// for symmetric `S`; the `vech` order is the upper-triangle row-major
 /// enumeration used by statsmodels `tsatools.duplication_matrix`.
-fn duplication_matrix(k: usize) -> Mat<f64> {
+pub(crate) fn duplication_matrix(k: usize) -> Mat<f64> {
     let half = k * (k + 1) / 2;
     let mut d = Mat::<f64>::zeros(k * k, half);
     let mut c = 0;
@@ -131,7 +131,7 @@ fn inv_general(m: &Mat<f64>, what: &'static str) -> Result<Mat<f64>, VarError> {
 /// Moore–Penrose pseudoinverse of a full-column-rank matrix,
 /// `A^+ = (A'A)^{-1} A'` (exact for the duplication matrix, which has
 /// full column rank).
-fn pinv_full_col_rank(a: &Mat<f64>, what: &'static str) -> Result<Mat<f64>, VarError> {
+pub(crate) fn pinv_full_col_rank(a: &Mat<f64>, what: &'static str) -> Result<Mat<f64>, VarError> {
     let at = a.transpose().to_owned();
     let ata = &at * a; // (A'A), square full rank
     let ata_inv = inv_general(&ata, what)?;
@@ -298,28 +298,31 @@ fn cumulate(m: &[Mat<f64>]) -> Vec<Mat<f64>> {
 /// covariance). Extracting them moves no arithmetic: every expression below is
 /// the one `irf_asymptotic_se` used before the simultaneous-band work, which is
 /// what `tests/pointwise_bitwise_baseline.rs` pins.
-struct DeltaWorkspace {
+pub(crate) struct DeltaWorkspace {
     /// Number of series.
-    k: usize,
+    pub(crate) k: usize,
     /// `k * k`, the length of `vec(Phi_h)`.
-    k2: usize,
+    pub(crate) k2: usize,
     /// `p * k^2`, the length of `vec(alpha)`.
-    dim: usize,
+    pub(crate) dim: usize,
     /// Effective sample size `T`, the divisor on the `vech(Sigma_u)` term.
-    t: f64,
+    pub(crate) t: f64,
     /// Non-orthogonalized MA coefficients `Phi_0, ..., Phi_horizon`.
-    phi: Vec<Mat<f64>>,
+    pub(crate) phi: Vec<Mat<f64>>,
     /// `Sigma_alpha = (Z'Z)^{-1} ⊗ Sigma_u`, lag block only.
-    cov_a: Mat<f64>,
+    pub(crate) cov_a: Mat<f64>,
     /// Jacobians `G_1, ..., G_horizon` (`g[i - 1]` is `G_i`; `G_0 = 0`).
-    g: Vec<Mat<f64>>,
+    pub(crate) g: Vec<Mat<f64>>,
     /// Lower Cholesky factor `P` of `Sigma_u`.
-    p_chol: Mat<f64>,
+    pub(crate) p_chol: Mat<f64>,
     /// `I_k`.
-    ik: Mat<f64>,
+    pub(crate) ik: Mat<f64>,
 }
 
-fn delta_workspace(res: &VarResults, horizon: usize) -> Result<DeltaWorkspace, VarError> {
+pub(crate) fn delta_workspace(
+    res: &VarResults,
+    horizon: usize,
+) -> Result<DeltaWorkspace, VarError> {
     let k = res.neqs;
     let p = res.spec.lags;
     if p == 0 {
@@ -830,18 +833,58 @@ pub fn irf_asymptotic_critical_values(
                    (this is a quantile in the tail of a maximum)",
         });
     }
+    // Every route needs the per-cell standard errors (to count degenerate
+    // cells); only sup-t needs the full covariance and the RNG.
+    let w = delta_workspace(res, horizon)?;
+    let l = loadings(res, &w, horizon, orth, cumulative)?;
+    critical_values_from_family_covs(
+        res.neqs,
+        horizon,
+        alpha,
+        method,
+        scope,
+        seed,
+        n_sim,
+        |cells| Ok(joint_cov(&l, cells)),
+    )
+}
+
+/// The per-family critical-value loop shared by every **asymptotic** IRF band:
+/// for each family of [`irf_families`]`(k, horizon, scope)`, `family_cov`
+/// returns the row-major `K x K` joint covariance of that family's cells (in
+/// the family's cell order, symmetrized, diagonal clamped at zero), and this
+/// turns it into one multiplier.
+///
+/// Sup-t draws its uniforms from substream `f` of
+/// `SeedSequence(seed).spawn(n_families)` — one stream per family, filled
+/// afresh for each — so the band is a pure function of `seed`. Šidák and
+/// Bonferroni use only the count of cells with a strictly positive standard
+/// error. Cells whose standard error is zero are pinned by construction and
+/// take no part. Extracted verbatim from [`irf_asymptotic_critical_values`]
+/// (whose output is bit-identical to before the extraction) so the
+/// Blanchard-Quah delta-method arm in [`crate::long_run_bands`] can supply its
+/// own `J V J'` blocks.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn critical_values_from_family_covs<F>(
+    k: usize,
+    horizon: usize,
+    alpha: f64,
+    method: BandMethod,
+    scope: IrfBandScope,
+    seed: u64,
+    n_sim: usize,
+    family_cov: F,
+) -> Result<IrfCriticalValues, VarError>
+where
+    F: Fn(&[(usize, usize, usize)]) -> Result<Vec<f64>, VarError>,
+{
     let z = simultaneous::pointwise_critical_value(alpha).map_err(VarError::Stats)?;
-    let k = res.neqs;
     let families = irf_families(k, horizon, scope);
 
     let mut values = vec![vec![z; k]; k];
     let mut used = vec![vec![0usize; k]; k];
     let n_cells = families[0].0.len();
 
-    // Every route needs the per-cell standard errors (to count degenerate
-    // cells); only sup-t needs the full covariance and the RNG.
-    let w = delta_workspace(res, horizon)?;
-    let l = loadings(res, &w, horizon, orth, cumulative)?;
     let mut streams = if method == BandMethod::SupT {
         Stream::substreams(seed, families.len()).map_err(|_| VarError::InvalidArgument {
             what: "cannot spawn one reproducible RNG substream per band family; \
@@ -857,7 +900,7 @@ pub fn irf_asymptotic_critical_values(
     };
 
     for (f, (cells, grid)) in families.iter().enumerate() {
-        let sigma = joint_cov(&l, cells);
+        let sigma = family_cov(cells)?;
         let se = simultaneous::std_errors_from_cov(&sigma, n_cells).map_err(VarError::Stats)?;
         let n_used = se.iter().filter(|s| **s > 0.0).count();
 

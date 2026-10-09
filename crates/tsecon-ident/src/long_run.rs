@@ -82,7 +82,7 @@ const NOT_PD: &str =
 /// Message emitted when the supplied long-run zeros are not a column
 /// permutation of the recursive lower-triangular pattern. It names the Python
 /// keyword (`restrictions`) because this text is what a caller sees.
-const NOT_TRIANGULARIZABLE: &str = "restrictions (the long-run zero pattern) is not a column permutation of the recursive (lower-triangular) scheme: each shock's zeros must be the first m variables for a distinct m in 0..k-1. A general zero pattern is not solvable by a single Cholesky — use zero_sign_svar (Rubio-Ramirez-Waggoner-Zha QR) for general zero restrictions";
+const NOT_TRIANGULARIZABLE: &str = "restrictions (the long-run zero pattern) is not a column permutation of the recursive (lower-triangular) scheme: each shock's zeros must be the first m variables for a distinct m in 0..k-1. A general long-run zero pattern is not solvable by a single Cholesky and is not supported (zero_sign_svar imposes zeros at finite horizons only, not at frequency zero)";
 /// Message emitted when `impact_signs` anchors one shock twice.
 const DUPLICATE_ANCHOR: &str = "impact_signs lists the same shock twice: each shock's sign is anchored by exactly one (variable, shock) pair, so a second pair for that shock would either repeat or contradict the first";
 

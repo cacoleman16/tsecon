@@ -1,0 +1,254 @@
+
+running 1 test
+# long_run_svar_bands coverage Monte Carlo (crates/tsecon-var/tests/long_run_bands_props.rs)
+Blanchard-Quah scheme, impact_signs [(0, 1)], trend "c", lags = the DGP's order, 1000 replications x 299 bootstrap draws, horizon 40.
+
+## moderate VAR(2), T = 200 (companion radius 0.65)
+valid replications 1000, n_boot 299, alpha 0.10 (nominal 0.90), MC s.e. at 0.90 = 0.009
+replications with any explosive raw refit: Efron 0, Kilian 0; with any anchor mismatch: Efron 205, Kilian 284
+
+### Level objects (output LEVEL = cumulative growth row; unemployment = plain row)
+
+| arm | cell | h=0 | h=1 | h=2 | h=4 | h=8 | h=12 | h=20 | h=40 |
+|---|---|---|---|---|---|---|---|---|---|
+| Efron | output LEVEL <- supply | 0.875 | 0.856 | 0.856 | 0.849 | 0.871 | 0.881 | 0.886 | 0.885 |
+| Efron | output LEVEL <- demand | 0.880 | 0.867 | 0.843 | 0.809 | 0.808 | 0.906 | 0.696 | 0.964 |
+| Efron | unemployment <- supply | 0.875 | 0.883 | 0.895 | 0.903 | 0.892 | 0.943 | 0.908 | 0.942 |
+| Efron | unemployment <- demand | 0.788 | 0.842 | 0.816 | 0.831 | 0.917 | 0.864 | 0.711 | 0.990 |
+| Hall | output LEVEL <- supply | 0.776 | 0.809 | 0.836 | 0.836 | 0.869 | 0.875 | 0.878 | 0.879 |
+| Hall | output LEVEL <- demand | 0.801 | 0.794 | 0.788 | 0.767 | 0.760 | 0.886 | 0.940 | 0.854 |
+| Hall | unemployment <- supply | 0.802 | 0.817 | 0.827 | 0.858 | 0.934 | 0.987 | 0.939 | 0.940 |
+| Hall | unemployment <- demand | 0.902 | 0.875 | 0.864 | 0.840 | 0.845 | 0.984 | 0.974 | 0.929 |
+| Efron+Kilian | output LEVEL <- supply | 0.863 | 0.861 | 0.867 | 0.874 | 0.880 | 0.893 | 0.896 | 0.897 |
+| Efron+Kilian | output LEVEL <- demand | 0.878 | 0.870 | 0.881 | 0.882 | 0.910 | 0.959 | 0.836 | 0.985 |
+| Efron+Kilian | unemployment <- supply | 0.873 | 0.872 | 0.879 | 0.899 | 0.934 | 0.976 | 0.960 | 0.980 |
+| Efron+Kilian | unemployment <- demand | 0.794 | 0.876 | 0.890 | 0.910 | 0.927 | 0.909 | 0.841 | 0.995 |
+| Delta | output LEVEL <- supply | 0.858 | 0.882 | 0.885 | 0.866 | 0.885 | 0.888 | 0.891 | 0.891 |
+| Delta | output LEVEL <- demand | 0.869 | 0.867 | 0.868 | 0.840 | 0.801 | 0.922 | 0.838 | 0.780 |
+| Delta | unemployment <- supply | 0.855 | 0.878 | 0.878 | 0.908 | 0.895 | 0.957 | 0.859 | 0.786 |
+| Delta | unemployment <- demand | 0.907 | 0.885 | 0.861 | 0.878 | 0.907 | 0.972 | 0.868 | 0.874 |
+
+### Plain IRF (growth row = output growth)
+
+| arm | cell | h=0 | h=1 | h=2 | h=4 | h=8 | h=12 | h=20 | h=40 |
+|---|---|---|---|---|---|---|---|---|---|
+| Efron | growth <- supply | 0.875 | 0.893 | 0.896 | 0.912 | 0.877 | 0.782 | 0.943 | 0.931 |
+| Efron | growth <- demand | 0.880 | 0.888 | 0.913 | 0.874 | 0.785 | 0.821 | 0.803 | 0.963 |
+| Efron | unemployment <- supply | 0.875 | 0.883 | 0.895 | 0.903 | 0.892 | 0.943 | 0.908 | 0.942 |
+| Efron | unemployment <- demand | 0.788 | 0.842 | 0.816 | 0.831 | 0.917 | 0.864 | 0.711 | 0.990 |
+| Hall | growth <- supply | 0.776 | 0.892 | 0.869 | 0.823 | 0.971 | 0.903 | 0.978 | 0.976 |
+| Hall | growth <- demand | 0.801 | 0.843 | 0.901 | 0.837 | 0.765 | 0.829 | 0.968 | 0.860 |
+| Hall | unemployment <- supply | 0.802 | 0.817 | 0.827 | 0.858 | 0.934 | 0.987 | 0.939 | 0.940 |
+| Hall | unemployment <- demand | 0.902 | 0.875 | 0.864 | 0.840 | 0.845 | 0.984 | 0.974 | 0.929 |
+| Efron+Kilian | growth <- supply | 0.863 | 0.904 | 0.893 | 0.875 | 0.849 | 0.868 | 0.978 | 0.976 |
+| Efron+Kilian | growth <- demand | 0.878 | 0.891 | 0.887 | 0.860 | 0.881 | 0.914 | 0.876 | 0.983 |
+| Efron+Kilian | unemployment <- supply | 0.873 | 0.872 | 0.879 | 0.899 | 0.934 | 0.976 | 0.960 | 0.980 |
+| Efron+Kilian | unemployment <- demand | 0.794 | 0.876 | 0.890 | 0.910 | 0.927 | 0.909 | 0.841 | 0.995 |
+| Delta | growth <- supply | 0.858 | 0.914 | 0.899 | 0.882 | 0.960 | 0.838 | 0.932 | 0.836 |
+| Delta | growth <- demand | 0.869 | 0.884 | 0.914 | 0.885 | 0.815 | 0.835 | 0.906 | 0.785 |
+| Delta | unemployment <- supply | 0.855 | 0.878 | 0.878 | 0.908 | 0.895 | 0.957 | 0.859 | 0.786 |
+| Delta | unemployment <- demand | 0.907 | 0.885 | 0.861 | 0.878 | 0.907 | 0.972 | 0.868 | 0.874 |
+
+### Cumulative IRF
+
+| arm | cell | h=0 | h=1 | h=2 | h=4 | h=8 | h=12 | h=20 | h=40 |
+|---|---|---|---|---|---|---|---|---|---|
+| Efron | cum growth <- supply | 0.875 | 0.856 | 0.856 | 0.849 | 0.871 | 0.881 | 0.886 | 0.885 |
+| Efron | cum growth <- demand | 0.880 | 0.867 | 0.843 | 0.809 | 0.808 | 0.906 | 0.696 | 0.964 |
+| Efron | cum unemployment <- supply | 0.875 | 0.875 | 0.878 | 0.891 | 0.897 | 0.893 | 0.893 | 0.893 |
+| Efron | cum unemployment <- demand | 0.788 | 0.786 | 0.775 | 0.761 | 0.759 | 0.764 | 0.772 | 0.772 |
+| Efron | 4-cell average | 0.855 | 0.846 | 0.838 | 0.828 | 0.834 | 0.861 | 0.812 | 0.878 |
+| Hall | cum growth <- supply | 0.776 | 0.809 | 0.836 | 0.836 | 0.869 | 0.875 | 0.878 | 0.879 |
+| Hall | cum growth <- demand | 0.801 | 0.794 | 0.788 | 0.767 | 0.760 | 0.886 | 0.940 | 0.854 |
+| Hall | cum unemployment <- supply | 0.802 | 0.813 | 0.815 | 0.817 | 0.854 | 0.869 | 0.876 | 0.882 |
+| Hall | cum unemployment <- demand | 0.902 | 0.877 | 0.875 | 0.852 | 0.809 | 0.803 | 0.830 | 0.836 |
+| Hall | 4-cell average | 0.820 | 0.823 | 0.829 | 0.818 | 0.823 | 0.858 | 0.881 | 0.863 |
+| Efron+Kilian | cum growth <- supply | 0.863 | 0.861 | 0.867 | 0.874 | 0.880 | 0.893 | 0.896 | 0.897 |
+| Efron+Kilian | cum growth <- demand | 0.878 | 0.870 | 0.881 | 0.882 | 0.910 | 0.959 | 0.836 | 0.985 |
+| Efron+Kilian | cum unemployment <- supply | 0.873 | 0.875 | 0.874 | 0.881 | 0.880 | 0.885 | 0.881 | 0.882 |
+| Efron+Kilian | cum unemployment <- demand | 0.794 | 0.826 | 0.842 | 0.861 | 0.887 | 0.890 | 0.891 | 0.892 |
+| Efron+Kilian | 4-cell average | 0.852 | 0.858 | 0.866 | 0.875 | 0.889 | 0.907 | 0.876 | 0.914 |
+| Delta | cum growth <- supply | 0.858 | 0.882 | 0.885 | 0.866 | 0.885 | 0.888 | 0.891 | 0.891 |
+| Delta | cum growth <- demand | 0.869 | 0.867 | 0.868 | 0.840 | 0.801 | 0.922 | 0.838 | 0.780 |
+| Delta | cum unemployment <- supply | 0.855 | 0.871 | 0.865 | 0.888 | 0.898 | 0.901 | 0.905 | 0.905 |
+| Delta | cum unemployment <- demand | 0.907 | 0.885 | 0.856 | 0.844 | 0.842 | 0.838 | 0.838 | 0.839 |
+| Delta | 4-cell average | 0.872 | 0.876 | 0.869 | 0.860 | 0.857 | 0.887 | 0.868 | 0.854 |
+
+### Long-run matrix LR = C(1) B ([0][1] is the imposed zero)
+
+| arm | [0][0] | [0][1] | [1][0] | [1][1] |
+|---|---|---|---|---|
+| Efron | 0.885 | 1.000 | 0.893 | 0.772 |
+| Hall | 0.879 | 1.000 | 0.882 | 0.836 |
+| Efron+Kilian | 0.897 | 1.000 | 0.882 | 0.892 |
+| Delta | 0.891 | 1.000 | 0.905 | 0.839 |
+
+(wall time 44.8 s)
+
+## persistent VAR(2), T = 200 (companion radius 0.95)
+valid replications 1000, n_boot 299, alpha 0.10 (nominal 0.90), MC s.e. at 0.90 = 0.009
+replications with any explosive raw refit: Efron 7, Kilian 25; with any anchor mismatch: Efron 9, Kilian 50
+
+### Level objects (output LEVEL = cumulative growth row; unemployment = plain row)
+
+| arm | cell | h=0 | h=1 | h=2 | h=4 | h=8 | h=12 | h=20 | h=40 |
+|---|---|---|---|---|---|---|---|---|---|
+| Efron | output LEVEL <- supply | 0.905 | 0.905 | 0.902 | 0.906 | 0.892 | 0.858 | 0.887 | 0.943 |
+| Efron | output LEVEL <- demand | 0.877 | 0.849 | 0.831 | 0.801 | 0.746 | 0.731 | 0.896 | 0.880 |
+| Efron | unemployment <- supply | 0.915 | 0.908 | 0.909 | 0.908 | 0.909 | 0.869 | 0.919 | 0.830 |
+| Efron | unemployment <- demand | 0.810 | 0.730 | 0.736 | 0.718 | 0.717 | 0.735 | 0.934 | 0.967 |
+| Hall | output LEVEL <- supply | 0.793 | 0.786 | 0.781 | 0.778 | 0.801 | 0.825 | 0.878 | 0.928 |
+| Hall | output LEVEL <- demand | 0.827 | 0.826 | 0.838 | 0.842 | 0.818 | 0.794 | 0.799 | 0.902 |
+| Hall | unemployment <- supply | 0.804 | 0.791 | 0.792 | 0.795 | 0.809 | 0.850 | 0.897 | 0.884 |
+| Hall | unemployment <- demand | 0.885 | 0.905 | 0.887 | 0.877 | 0.820 | 0.819 | 0.787 | 0.810 |
+| Efron+Kilian | output LEVEL <- supply | 0.886 | 0.887 | 0.889 | 0.890 | 0.885 | 0.905 | 0.936 | 0.938 |
+| Efron+Kilian | output LEVEL <- demand | 0.872 | 0.877 | 0.885 | 0.893 | 0.908 | 0.903 | 0.873 | 0.948 |
+| Efron+Kilian | unemployment <- supply | 0.899 | 0.893 | 0.888 | 0.885 | 0.888 | 0.900 | 0.957 | 0.958 |
+| Efron+Kilian | unemployment <- demand | 0.809 | 0.820 | 0.847 | 0.867 | 0.890 | 0.909 | 0.853 | 0.958 |
+| Delta | output LEVEL <- supply | 0.876 | 0.869 | 0.871 | 0.884 | 0.896 | 0.900 | 0.896 | 0.939 |
+| Delta | output LEVEL <- demand | 0.912 | 0.914 | 0.910 | 0.897 | 0.869 | 0.830 | 0.896 | 0.971 |
+| Delta | unemployment <- supply | 0.877 | 0.877 | 0.878 | 0.877 | 0.896 | 0.908 | 0.926 | 0.875 |
+| Delta | unemployment <- demand | 0.927 | 0.889 | 0.869 | 0.863 | 0.835 | 0.835 | 0.914 | 0.941 |
+
+### Plain IRF (growth row = output growth)
+
+| arm | cell | h=0 | h=1 | h=2 | h=4 | h=8 | h=12 | h=20 | h=40 |
+|---|---|---|---|---|---|---|---|---|---|
+| Efron | growth <- supply | 0.905 | 0.911 | 0.899 | 0.881 | 0.897 | 0.911 | 0.892 | 0.874 |
+| Efron | growth <- demand | 0.877 | 0.835 | 0.812 | 0.774 | 0.794 | 0.925 | 0.766 | 0.758 |
+| Efron | unemployment <- supply | 0.915 | 0.908 | 0.909 | 0.908 | 0.909 | 0.869 | 0.919 | 0.830 |
+| Efron | unemployment <- demand | 0.810 | 0.730 | 0.736 | 0.718 | 0.717 | 0.735 | 0.934 | 0.967 |
+| Hall | growth <- supply | 0.793 | 0.784 | 0.787 | 0.807 | 0.893 | 0.839 | 0.846 | 0.783 |
+| Hall | growth <- demand | 0.827 | 0.841 | 0.851 | 0.846 | 0.843 | 0.816 | 0.806 | 0.729 |
+| Hall | unemployment <- supply | 0.804 | 0.791 | 0.792 | 0.795 | 0.809 | 0.850 | 0.897 | 0.884 |
+| Hall | unemployment <- demand | 0.885 | 0.905 | 0.887 | 0.877 | 0.820 | 0.819 | 0.787 | 0.810 |
+| Efron+Kilian | growth <- supply | 0.886 | 0.886 | 0.889 | 0.887 | 0.930 | 0.916 | 0.883 | 0.849 |
+| Efron+Kilian | growth <- demand | 0.872 | 0.878 | 0.890 | 0.902 | 0.922 | 0.841 | 0.904 | 0.867 |
+| Efron+Kilian | unemployment <- supply | 0.899 | 0.893 | 0.888 | 0.885 | 0.888 | 0.900 | 0.957 | 0.958 |
+| Efron+Kilian | unemployment <- demand | 0.809 | 0.820 | 0.847 | 0.867 | 0.890 | 0.909 | 0.853 | 0.958 |
+| Delta | growth <- supply | 0.876 | 0.874 | 0.879 | 0.891 | 0.914 | 0.889 | 0.919 | 0.856 |
+| Delta | growth <- demand | 0.912 | 0.913 | 0.892 | 0.874 | 0.878 | 0.899 | 0.851 | 0.780 |
+| Delta | unemployment <- supply | 0.877 | 0.877 | 0.878 | 0.877 | 0.896 | 0.908 | 0.926 | 0.875 |
+| Delta | unemployment <- demand | 0.927 | 0.889 | 0.869 | 0.863 | 0.835 | 0.835 | 0.914 | 0.941 |
+
+### Cumulative IRF
+
+| arm | cell | h=0 | h=1 | h=2 | h=4 | h=8 | h=12 | h=20 | h=40 |
+|---|---|---|---|---|---|---|---|---|---|
+| Efron | cum growth <- supply | 0.905 | 0.905 | 0.902 | 0.906 | 0.892 | 0.858 | 0.887 | 0.943 |
+| Efron | cum growth <- demand | 0.877 | 0.849 | 0.831 | 0.801 | 0.746 | 0.731 | 0.896 | 0.880 |
+| Efron | cum unemployment <- supply | 0.915 | 0.912 | 0.909 | 0.909 | 0.914 | 0.914 | 0.887 | 0.890 |
+| Efron | cum unemployment <- demand | 0.810 | 0.743 | 0.726 | 0.711 | 0.695 | 0.696 | 0.701 | 0.803 |
+| Efron | 4-cell average | 0.877 | 0.852 | 0.842 | 0.832 | 0.812 | 0.800 | 0.843 | 0.879 |
+| Hall | cum growth <- supply | 0.793 | 0.786 | 0.781 | 0.778 | 0.801 | 0.825 | 0.878 | 0.928 |
+| Hall | cum growth <- demand | 0.827 | 0.826 | 0.838 | 0.842 | 0.818 | 0.794 | 0.799 | 0.902 |
+| Hall | cum unemployment <- supply | 0.804 | 0.800 | 0.792 | 0.791 | 0.793 | 0.806 | 0.834 | 0.878 |
+| Hall | cum unemployment <- demand | 0.885 | 0.902 | 0.907 | 0.890 | 0.871 | 0.834 | 0.806 | 0.772 |
+| Hall | 4-cell average | 0.827 | 0.829 | 0.830 | 0.825 | 0.821 | 0.815 | 0.829 | 0.870 |
+| Efron+Kilian | cum growth <- supply | 0.886 | 0.887 | 0.889 | 0.890 | 0.885 | 0.905 | 0.936 | 0.938 |
+| Efron+Kilian | cum growth <- demand | 0.872 | 0.877 | 0.885 | 0.893 | 0.908 | 0.903 | 0.873 | 0.948 |
+| Efron+Kilian | cum unemployment <- supply | 0.899 | 0.894 | 0.892 | 0.889 | 0.890 | 0.895 | 0.892 | 0.894 |
+| Efron+Kilian | cum unemployment <- demand | 0.809 | 0.803 | 0.822 | 0.849 | 0.870 | 0.882 | 0.898 | 0.888 |
+| Efron+Kilian | 4-cell average | 0.867 | 0.865 | 0.872 | 0.880 | 0.888 | 0.896 | 0.900 | 0.917 |
+| Delta | cum growth <- supply | 0.876 | 0.869 | 0.871 | 0.884 | 0.896 | 0.900 | 0.896 | 0.939 |
+| Delta | cum growth <- demand | 0.912 | 0.914 | 0.910 | 0.897 | 0.869 | 0.830 | 0.896 | 0.971 |
+| Delta | cum unemployment <- supply | 0.877 | 0.877 | 0.875 | 0.880 | 0.881 | 0.894 | 0.917 | 0.896 |
+| Delta | cum unemployment <- demand | 0.927 | 0.901 | 0.885 | 0.866 | 0.841 | 0.824 | 0.822 | 0.822 |
+| Delta | 4-cell average | 0.898 | 0.890 | 0.885 | 0.882 | 0.872 | 0.862 | 0.883 | 0.907 |
+
+### Long-run matrix LR = C(1) B ([0][1] is the imposed zero)
+
+| arm | [0][0] | [0][1] | [1][0] | [1][1] |
+|---|---|---|---|---|
+| Efron | 0.896 | 1.000 | 0.886 | 0.758 |
+| Hall | 0.899 | 1.000 | 0.881 | 0.813 |
+| Efron+Kilian | 0.896 | 1.000 | 0.895 | 0.900 |
+| Delta | 0.903 | 1.000 | 0.912 | 0.808 |
+
+(wall time 46.5 s)
+
+## the replication page's VAR(8) as truth, T = 202 (the page's sample)
+valid replications 1000, n_boot 299, alpha 0.10 (nominal 0.90), MC s.e. at 0.90 = 0.009
+replications with any explosive raw refit: Efron 9, Kilian 52; with any anchor mismatch: Efron 174, Kilian 353
+
+### Level objects (output LEVEL = cumulative growth row; unemployment = plain row)
+
+| arm | cell | h=0 | h=1 | h=2 | h=4 | h=8 | h=12 | h=20 | h=40 |
+|---|---|---|---|---|---|---|---|---|---|
+| Efron | output LEVEL <- supply | 0.899 | 0.888 | 0.896 | 0.886 | 0.889 | 0.882 | 0.962 | 0.825 |
+| Efron | output LEVEL <- demand | 0.680 | 0.559 | 0.599 | 0.603 | 0.684 | 0.706 | 0.870 | 0.990 |
+| Efron | unemployment <- supply | 0.873 | 0.873 | 0.878 | 0.876 | 0.871 | 0.810 | 0.870 | 0.984 |
+| Efron | unemployment <- demand | 0.936 | 0.867 | 0.745 | 0.616 | 0.719 | 0.733 | 0.851 | 0.986 |
+| Hall | output LEVEL <- supply | 0.710 | 0.719 | 0.711 | 0.694 | 0.733 | 0.780 | 0.891 | 0.827 |
+| Hall | output LEVEL <- demand | 0.754 | 0.863 | 0.863 | 0.843 | 0.795 | 0.776 | 0.732 | 0.977 |
+| Hall | unemployment <- supply | 0.735 | 0.733 | 0.734 | 0.713 | 0.744 | 0.763 | 0.828 | 0.990 |
+| Hall | unemployment <- demand | 0.629 | 0.666 | 0.760 | 0.821 | 0.791 | 0.783 | 0.756 | 0.958 |
+| Efron+Kilian | output LEVEL <- supply | 0.913 | 0.903 | 0.903 | 0.893 | 0.886 | 0.894 | 0.948 | 0.949 |
+| Efron+Kilian | output LEVEL <- demand | 0.721 | 0.629 | 0.717 | 0.797 | 0.846 | 0.885 | 0.901 | 0.939 |
+| Efron+Kilian | unemployment <- supply | 0.908 | 0.911 | 0.909 | 0.894 | 0.899 | 0.897 | 0.952 | 0.941 |
+| Efron+Kilian | unemployment <- demand | 0.915 | 0.840 | 0.771 | 0.737 | 0.846 | 0.874 | 0.932 | 0.957 |
+| Delta | output LEVEL <- supply | 0.850 | 0.848 | 0.859 | 0.846 | 0.875 | 0.898 | 0.952 | 0.867 |
+| Delta | output LEVEL <- demand | 0.914 | 0.884 | 0.858 | 0.850 | 0.813 | 0.826 | 0.906 | 0.997 |
+| Delta | unemployment <- supply | 0.865 | 0.865 | 0.865 | 0.860 | 0.870 | 0.852 | 0.848 | 0.981 |
+| Delta | unemployment <- demand | 0.831 | 0.899 | 0.916 | 0.854 | 0.844 | 0.823 | 0.894 | 0.995 |
+
+### Plain IRF (growth row = output growth)
+
+| arm | cell | h=0 | h=1 | h=2 | h=4 | h=8 | h=12 | h=20 | h=40 |
+|---|---|---|---|---|---|---|---|---|---|
+| Efron | growth <- supply | 0.899 | 0.885 | 0.923 | 0.895 | 0.921 | 0.934 | 0.951 | 0.999 |
+| Efron | growth <- demand | 0.680 | 0.864 | 0.855 | 0.887 | 0.926 | 0.947 | 0.888 | 0.994 |
+| Efron | unemployment <- supply | 0.873 | 0.873 | 0.878 | 0.876 | 0.871 | 0.810 | 0.870 | 0.984 |
+| Efron | unemployment <- demand | 0.936 | 0.867 | 0.745 | 0.616 | 0.719 | 0.733 | 0.851 | 0.986 |
+| Hall | growth <- supply | 0.710 | 0.774 | 0.829 | 0.850 | 0.838 | 0.856 | 0.886 | 0.972 |
+| Hall | growth <- demand | 0.754 | 0.787 | 0.848 | 0.810 | 0.846 | 0.873 | 0.931 | 0.909 |
+| Hall | unemployment <- supply | 0.735 | 0.733 | 0.734 | 0.713 | 0.744 | 0.763 | 0.828 | 0.990 |
+| Hall | unemployment <- demand | 0.629 | 0.666 | 0.760 | 0.821 | 0.791 | 0.783 | 0.756 | 0.958 |
+| Efron+Kilian | growth <- supply | 0.913 | 0.903 | 0.921 | 0.920 | 0.927 | 0.945 | 0.959 | 0.944 |
+| Efron+Kilian | growth <- demand | 0.721 | 0.872 | 0.923 | 0.911 | 0.879 | 0.895 | 0.929 | 0.983 |
+| Efron+Kilian | unemployment <- supply | 0.908 | 0.911 | 0.909 | 0.894 | 0.899 | 0.897 | 0.952 | 0.941 |
+| Efron+Kilian | unemployment <- demand | 0.915 | 0.840 | 0.771 | 0.737 | 0.846 | 0.874 | 0.932 | 0.957 |
+| Delta | growth <- supply | 0.850 | 0.875 | 0.909 | 0.914 | 0.908 | 0.919 | 0.914 | 0.994 |
+| Delta | growth <- demand | 0.914 | 0.884 | 0.899 | 0.880 | 0.928 | 0.944 | 0.942 | 0.963 |
+| Delta | unemployment <- supply | 0.865 | 0.865 | 0.865 | 0.860 | 0.870 | 0.852 | 0.848 | 0.981 |
+| Delta | unemployment <- demand | 0.831 | 0.899 | 0.916 | 0.854 | 0.844 | 0.823 | 0.894 | 0.995 |
+
+### Cumulative IRF
+
+| arm | cell | h=0 | h=1 | h=2 | h=4 | h=8 | h=12 | h=20 | h=40 |
+|---|---|---|---|---|---|---|---|---|---|
+| Efron | cum growth <- supply | 0.899 | 0.888 | 0.896 | 0.886 | 0.889 | 0.882 | 0.962 | 0.825 |
+| Efron | cum growth <- demand | 0.680 | 0.559 | 0.599 | 0.603 | 0.684 | 0.706 | 0.870 | 0.990 |
+| Efron | cum unemployment <- supply | 0.873 | 0.872 | 0.875 | 0.879 | 0.869 | 0.859 | 0.824 | 0.784 |
+| Efron | cum unemployment <- demand | 0.936 | 0.908 | 0.837 | 0.697 | 0.634 | 0.641 | 0.623 | 0.589 |
+| Efron | 4-cell average | 0.847 | 0.807 | 0.802 | 0.766 | 0.769 | 0.772 | 0.820 | 0.797 |
+| Hall | cum growth <- supply | 0.710 | 0.719 | 0.711 | 0.694 | 0.733 | 0.780 | 0.891 | 0.827 |
+| Hall | cum growth <- demand | 0.754 | 0.863 | 0.863 | 0.843 | 0.795 | 0.776 | 0.732 | 0.977 |
+| Hall | cum unemployment <- supply | 0.735 | 0.737 | 0.734 | 0.719 | 0.708 | 0.719 | 0.728 | 0.737 |
+| Hall | cum unemployment <- demand | 0.629 | 0.634 | 0.679 | 0.778 | 0.792 | 0.771 | 0.746 | 0.639 |
+| Hall | 4-cell average | 0.707 | 0.738 | 0.747 | 0.758 | 0.757 | 0.761 | 0.774 | 0.795 |
+| Efron+Kilian | cum growth <- supply | 0.913 | 0.903 | 0.903 | 0.893 | 0.886 | 0.894 | 0.948 | 0.949 |
+| Efron+Kilian | cum growth <- demand | 0.721 | 0.629 | 0.717 | 0.797 | 0.846 | 0.885 | 0.901 | 0.939 |
+| Efron+Kilian | cum unemployment <- supply | 0.908 | 0.909 | 0.910 | 0.903 | 0.899 | 0.893 | 0.899 | 0.887 |
+| Efron+Kilian | cum unemployment <- demand | 0.915 | 0.887 | 0.819 | 0.753 | 0.778 | 0.801 | 0.822 | 0.823 |
+| Efron+Kilian | 4-cell average | 0.864 | 0.832 | 0.837 | 0.837 | 0.852 | 0.868 | 0.892 | 0.899 |
+| Delta | cum growth <- supply | 0.850 | 0.848 | 0.859 | 0.846 | 0.875 | 0.898 | 0.952 | 0.867 |
+| Delta | cum growth <- demand | 0.914 | 0.884 | 0.858 | 0.850 | 0.813 | 0.826 | 0.906 | 0.997 |
+| Delta | cum unemployment <- supply | 0.865 | 0.864 | 0.866 | 0.863 | 0.859 | 0.858 | 0.862 | 0.828 |
+| Delta | cum unemployment <- demand | 0.831 | 0.868 | 0.914 | 0.906 | 0.858 | 0.832 | 0.780 | 0.709 |
+| Delta | 4-cell average | 0.865 | 0.866 | 0.874 | 0.866 | 0.851 | 0.854 | 0.875 | 0.850 |
+
+### Long-run matrix LR = C(1) B ([0][1] is the imposed zero)
+
+| arm | [0][0] | [0][1] | [1][0] | [1][1] |
+|---|---|---|---|---|
+| Efron | 0.834 | 1.000 | 0.798 | 0.612 |
+| Hall | 0.849 | 1.000 | 0.786 | 0.702 |
+| Efron+Kilian | 0.925 | 1.000 | 0.887 | 0.850 |
+| Delta | 0.866 | 1.000 | 0.840 | 0.719 |
+
+(wall time 160.2 s)
+test mc_long_run_band_coverage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 251.53s
+

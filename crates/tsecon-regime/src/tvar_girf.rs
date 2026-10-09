@@ -521,10 +521,11 @@ fn map_engine_error(e: VarError) -> RegimeError {
             expected,
             actual: got,
         },
-        VarError::Linalg(_) | VarError::Stats(_) | VarError::InsufficientObservations { .. } => {
-            RegimeError::InvalidSpec {
-                what: "the GIRF engine rejected the fitted threshold VAR",
-            }
-        }
+        VarError::Linalg(_)
+        | VarError::Stats(_)
+        | VarError::InsufficientObservations { .. }
+        | VarError::Replication { .. } => RegimeError::InvalidSpec {
+            what: "the GIRF engine rejected the fitted threshold VAR",
+        },
     }
 }

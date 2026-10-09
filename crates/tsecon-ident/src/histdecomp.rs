@@ -378,7 +378,7 @@ pub fn decompose(
     }
     let (y, x) = build_regressors(data, p)?;
     let t_eff = y.nrows();
-    if horizon + 1 < t_eff {
+    if horizon.saturating_add(1) < t_eff {
         return Err(IdentError::InvalidArgument {
             what: "horizon must be at least T_eff - 1 for a complete decomposition",
         });
@@ -500,7 +500,7 @@ pub fn decompose_with_impact(
     }
     let (y, x) = build_regressors(data, p)?;
     let t_eff = y.nrows();
-    if horizon + 1 < t_eff {
+    if horizon.saturating_add(1) < t_eff {
         return Err(IdentError::InvalidArgument {
             what: "horizon must be at least T_eff - 1 for a complete decomposition",
         });

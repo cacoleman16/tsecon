@@ -53,7 +53,7 @@ use tsecon_stats::simultaneous;
 use crate::error::VarError;
 use crate::irf::ma_rep;
 use crate::irf_asymptotic::{apply_critical_values, irf_families, IrfCriticalValues};
-use crate::results::chol_lower;
+use crate::results::{chol_lower, VarResults};
 use crate::spec::{Trend, VarSpec};
 
 pub use crate::irf_asymptotic::{BandMethod, IrfBandScope};
@@ -107,13 +107,13 @@ pub struct IrfBands {
 
 /// One horizon-indexed impulse-response cube (`horizon + 1` `k x k`
 /// matrices).
-type Cube = Vec<Mat<f64>>;
+pub(crate) type Cube = Vec<Mat<f64>>;
 
 /// The offset added to `seed` to key the inner bias-estimation bootstrap,
 /// so the bias draws and the outer band draws are independent given the
 /// user's seed (a fixed transform keeps the whole procedure reproducible).
 /// The constant is the 64-bit golden-ratio odd integer (Knuth's multiplier).
-const BIAS_SEED_OFFSET: u64 = 0x9E37_79B9_7F4A_7C15;
+pub(crate) const BIAS_SEED_OFFSET: u64 = 0x9E37_79B9_7F4A_7C15;
 
 /// Residual (nonparametric iid) recursive-design bootstrap confidence bands
 /// for the impulse responses of a reduced-form VAR(`lags`) fitted on
@@ -279,60 +279,27 @@ fn run_bootstrap(
         });
     }
 
-    // Full-sample fit: the reduced form we bootstrap around.
-    let fit = VarSpec { lags, trend }.fit(endog)?;
+    // The shared residual-bootstrap engine: full-sample fit, centred
+    // residuals, observed initial rows, the optional Kilian bias term and the
+    // coefficients that generate the pseudo-samples.
+    let engine = ResidualBootstrap::new(endog, lags, trend, n_boot, seed, bias_correct)?;
+    let fit = &engine.fit;
     let k = fit.neqs;
-    let te = fit.nobs; // effective residual rows T_eff = n - lags
-    let p = lags;
-
-    // Mean-center the residuals (Kilian 1998): with an intercept the column
-    // means are already ~0, but centering makes the reduced-form (trend="n")
-    // case correct too.
-    let uc = center_columns(fit.resid.as_ref());
-
-    // Observed first `p` rows seed every recursive pseudo-sample.
-    let init = Mat::from_fn(p, k, |t, j| endog[(t, j)]);
-    let intercept = fit.intercept.clone();
-
-    // Optional Kilian bias term, shrunk to preserve stationarity.
-    let bias = if bias_correct {
-        Some(estimate_bias(
-            &fit.coefs, &intercept, &init, &uc, te, seed, n_boot,
-        )?)
-    } else {
-        None
-    };
-
-    // The coefficients that (a) generate the outer pseudo-samples and
-    // (b) define the point estimate: bias-corrected when requested.
-    let dgp_coefs = match &bias {
-        Some(b) => correct_coefs(&fit.coefs, b)?,
-        None => fit.coefs.clone(),
-    };
 
     // Point estimate (matches `var_irf` when bias_correct == false).
-    let point = irf_cube(&dgp_coefs, fit.sigma_u.as_ref(), horizon, orth, cumulative)?;
+    let point = irf_cube(
+        &engine.dgp_coefs,
+        fit.sigma_u.as_ref(),
+        horizon,
+        orth,
+        cumulative,
+    )?;
 
-    // Outer bootstrap: one reproducible substream per replication.
-    let raw = par_replicate(
-        seed,
-        n_boot,
-        |_rep, stream| -> Result<Vec<Mat<f64>>, VarError> {
-            let idx = indices(BlockScheme::Iid, te, stream).map_err(map_boot_err)?;
-            let ustar = gather_rows(&uc, &idx);
-            let ysim = simulate_recursive(&dgp_coefs, &intercept, &init, &ustar);
-            let res_b = VarSpec { lags, trend }.fit(ysim.as_ref())?;
-            let coefs_b = match &bias {
-                Some(b) => correct_coefs(&res_b.coefs, b)?,
-                None => res_b.coefs.clone(),
-            };
-            irf_cube(&coefs_b, res_b.sigma_u.as_ref(), horizon, orth, cumulative)
-        },
-    )
-    .map_err(map_boot_err)?;
-
-    // Propagate the first failed replication, if any.
-    let draws: Vec<Vec<Mat<f64>>> = raw.into_iter().collect::<Result<_, _>>()?;
+    // Outer bootstrap: one reproducible substream per replication; the first
+    // failed replication, if any, is propagated.
+    let draws: Vec<Vec<Mat<f64>>> = engine.replicate(seed, n_boot, |res_b, coefs_b| {
+        irf_cube(coefs_b, res_b.sigma_u.as_ref(), horizon, orth, cumulative)
+    })?;
 
     let (se, lower, upper) = summarize(&draws, horizon, k, alpha);
 
@@ -361,6 +328,129 @@ fn run_bootstrap(
     })
 }
 
+/// The residual (iid) recursive-design bootstrap engine shared by every VAR
+/// band that re-estimates the reduced form per draw: [`bootstrap_irf_bands`]
+/// (Cholesky / reduced-form responses) and
+/// [`crate::long_run_bands::long_run_bootstrap_bands`] (Blanchard-Quah,
+/// re-identified inside every draw).
+///
+/// It owns the full-sample fit, the column-centred residuals, the observed
+/// initial rows, the optional Kilian (1998) bias term (inner bootstrap keyed
+/// by `seed + BIAS_SEED_OFFSET`, stationarity shrinkage by repeated
+/// `delta -= 0.01`), and the pseudo-sample loop. Callers supply only the
+/// per-draw statistic, so the resampling stream, the recursion and the
+/// correction are one code path: the same `(seed, n_boot)` gives every caller
+/// the same pseudo-samples.
+pub(crate) struct ResidualBootstrap {
+    /// The full-sample OLS fit the bootstrap is centred on.
+    pub(crate) fit: VarResults,
+    /// The coefficients that generate the outer pseudo-samples and define a
+    /// bias-corrected point estimate: `correct_coefs(A_hat, bias)` under
+    /// `bias_correct`, `A_hat` otherwise.
+    pub(crate) dgp_coefs: Vec<Mat<f64>>,
+    /// The (shrunk) Kilian bias term, when requested.
+    bias: Option<Vec<Mat<f64>>>,
+    lags: usize,
+    trend: Trend,
+    /// Column-centred full-sample residuals.
+    uc: Mat<f64>,
+    /// The observed first `lags` rows that seed every pseudo-sample.
+    init: Mat<f64>,
+    /// The full-sample intercept (unchanged by the bias correction).
+    intercept: Vec<f64>,
+}
+
+impl ResidualBootstrap {
+    /// Fit the full sample and prepare the bootstrap DGP. With
+    /// `bias_correct`, this runs the inner `n_boot`-replication bias
+    /// bootstrap. The caller has validated `lags >= 1` and `n_boot >= 2`.
+    pub(crate) fn new(
+        endog: MatRef<'_, f64>,
+        lags: usize,
+        trend: Trend,
+        n_boot: usize,
+        seed: u64,
+        bias_correct: bool,
+    ) -> Result<Self, VarError> {
+        // Full-sample fit: the reduced form we bootstrap around.
+        let fit = VarSpec { lags, trend }.fit(endog)?;
+        let k = fit.neqs;
+        let te = fit.nobs; // effective residual rows T_eff = n - lags
+        let p = lags;
+
+        // Mean-center the residuals (Kilian 1998): with an intercept the column
+        // means are already ~0, but centering makes the reduced-form (trend="n")
+        // case correct too.
+        let uc = center_columns(fit.resid.as_ref());
+
+        // Observed first `p` rows seed every recursive pseudo-sample.
+        let init = Mat::from_fn(p, k, |t, j| endog[(t, j)]);
+        let intercept = fit.intercept.clone();
+
+        // Optional Kilian bias term, shrunk to preserve stationarity.
+        let bias = if bias_correct {
+            Some(estimate_bias(
+                &fit.coefs, &intercept, &init, &uc, te, seed, n_boot,
+            )?)
+        } else {
+            None
+        };
+
+        // The coefficients that (a) generate the outer pseudo-samples and
+        // (b) define the point estimate: bias-corrected when requested.
+        let dgp_coefs = match &bias {
+            Some(b) => correct_coefs(&fit.coefs, b)?,
+            None => fit.coefs.clone(),
+        };
+        Ok(ResidualBootstrap {
+            fit,
+            dgp_coefs,
+            bias,
+            lags,
+            trend,
+            uc,
+            init,
+            intercept,
+        })
+    }
+
+    /// Run the outer bootstrap: replication `b` draws `T_eff` iid row indices
+    /// from substream `b` of `SeedSequence(seed).spawn(n_boot)`, rebuilds the
+    /// pseudo-sample recursively from [`Self::dgp_coefs`], refits the VAR, and
+    /// hands `per_draw` the RAW refit plus the coefficients to use (the
+    /// Kilian-corrected refit coefficients under `bias_correct`, the raw ones
+    /// otherwise). Results come back in replication order; the first failed
+    /// replication is propagated.
+    pub(crate) fn replicate<T, F>(
+        &self,
+        seed: u64,
+        n_boot: usize,
+        per_draw: F,
+    ) -> Result<Vec<T>, VarError>
+    where
+        T: Send,
+        F: Fn(&VarResults, &[Mat<f64>]) -> Result<T, VarError> + Send + Sync,
+    {
+        let te = self.uc.nrows();
+        let (lags, trend) = (self.lags, self.trend);
+        let raw = par_replicate(seed, n_boot, |_rep, stream| -> Result<T, VarError> {
+            let idx = indices(BlockScheme::Iid, te, stream).map_err(map_boot_err)?;
+            let ustar = gather_rows(&self.uc, &idx);
+            let ysim = simulate_recursive(&self.dgp_coefs, &self.intercept, &self.init, &ustar);
+            let res_b = VarSpec { lags, trend }.fit(ysim.as_ref())?;
+            match &self.bias {
+                Some(b) => {
+                    let coefs_b = correct_coefs(&res_b.coefs, b)?;
+                    per_draw(&res_b, &coefs_b)
+                }
+                None => per_draw(&res_b, &res_b.coefs),
+            }
+        })
+        .map_err(map_boot_err)?;
+        raw.into_iter().collect()
+    }
+}
+
 /// Simultaneous critical values from the bootstrap replications themselves.
 ///
 /// Cells with `se == 0` are pinned by construction (the Cholesky zeros of the
@@ -368,7 +458,7 @@ fn run_bootstrap(
 /// in the maximum and no part in the Šidák/Bonferroni cell count, and keep their
 /// zero-width band.
 #[allow(clippy::too_many_arguments)]
-fn draw_critical_values(
+pub(crate) fn draw_critical_values(
     draws: &[Cube],
     point: &[Mat<f64>],
     se: &[Mat<f64>],
@@ -523,7 +613,12 @@ fn irf_cube(
 
 /// Per-cell bootstrap standard error (sample SD, divisor `n_boot - 1`) and
 /// the `alpha/2` / `1 - alpha/2` percentile bands.
-fn summarize(draws: &[Cube], horizon: usize, k: usize, alpha: f64) -> (Cube, Cube, Cube) {
+pub(crate) fn summarize(
+    draws: &[Cube],
+    horizon: usize,
+    k: usize,
+    alpha: f64,
+) -> (Cube, Cube, Cube) {
     let hh = horizon + 1;
     let nb = draws.len();
     let nbf = nb as f64;
@@ -672,7 +767,7 @@ fn scale(bias: &[Mat<f64>], delta: f64) -> Vec<Mat<f64>> {
 }
 
 /// Spectral radius of the companion matrix of a VAR lag polynomial.
-fn spectral_radius_of(coefs: &[Mat<f64>]) -> Result<f64, VarError> {
+pub(crate) fn spectral_radius_of(coefs: &[Mat<f64>]) -> Result<f64, VarError> {
     let refs: Vec<MatRef<'_, f64>> = coefs.iter().map(Mat::as_ref).collect();
     let comp = companion_from_var(&refs)?;
     Ok(spectral_radius(comp.as_ref())?)
