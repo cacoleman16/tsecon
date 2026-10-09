@@ -550,8 +550,8 @@ Hansen (1994)" is *not* the transformed test of the published Doornik-Hansen
 on the symmetric root of the residual **covariance**, with plain moments and
 no skewness or kurtosis transform. tsecon reproduces all 16 JMulTi outputs
 statsmodels 0.15.0 bundles (six VAR(4) specifications on `macrodata` in levels
-and ten VECM specifications on the e6 data, every deterministic and seasonal
-case) to JMulTi's printed four decimals — the joint, skewness and kurtosis
+and ten VECM specifications on the e6 data, across the bundled deterministic
+and seasonal variants) to JMulTi's printed four decimals — the joint, skewness and kurtosis
 statistics and their three p-values, worst gap 4.807e-5 — while the
 transformed statistic misses every one of the 16 joint statistics by at least
 0.946 (on the `macrodata` VAR(4) with no deterministic term JMulTi prints

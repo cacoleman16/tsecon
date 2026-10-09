@@ -750,8 +750,10 @@ def arch_stepm_fwer_study(size_study):
         out["designs"][label] = design
     nulls = [d["rates"][str(a)]["arch_raises"] for lab, d in out["designs"].items()
              for a in FWER_SIZES if lab in ("lfc", "partial_null")]
-    raises_any = [d["rates"][str(a)]["arch_raises"] for d in out["designs"].values() for a in FWER_SIZES]
-    assert sum(raises_any) > 0, "arch never raised: the 'all superior' convention is not exercised"
+    # arch's raise is not a corner case of the alternatives: it happens on
+    # valid samples under a null design too (every model added over two or
+    # more steps), which the "all superior" convention must then cover.
+    assert sum(nulls) > 0, "arch never raised under a null design: the 'all superior' convention is not exercised"
     out["arch_raises_under_null"] = int(sum(nulls))
     return out
 
