@@ -27,6 +27,7 @@ UX = json.loads((FIX / "uc_extensions.json").read_text())
 
 TOL = 1e-8
 DIFFUSE_SMOOTH_ROWS = 2
+SPREAD_FACTOR = 10.0
 
 
 _SERIES = {"sim": "sim_y", "sim2": "sim2_y", "sim2_missing": "sim2_y_missing"}
@@ -60,8 +61,18 @@ def _nan_close(a, e, tol=TOL):
 
 
 def _smoothed_var_close(a, e, block, d):
+    """Smoothed variances: inside the diffuse period the tolerance is the
+    fixture's ``smoother_spread`` (how far statsmodels' OWN univariate and
+    conventional smoothers disagree there) times ``SPREAD_FACTOR``.
+
+    The spread measures how strongly those rows amplify rounding, and a
+    different platform's rounding passes through the same amplification:
+    on ``state_regression[3]`` (spread 6.3e-8, every other case about 1e-14)
+    the macOS arm64 wheel lands 1.6e-7 absolute / 4.9e-7 relative from
+    statsmodels, while the x86_64 wheels stay within one spread. Every case
+    with a negligible spread keeps ``TOL``."""
     a, e = np.asarray(a, float), np.asarray(e, float)
-    relaxed = max(float(block.get("smoother_spread", 0.0)), TOL)
+    relaxed = max(SPREAD_FACTOR * float(block.get("smoother_spread", 0.0)), TOL)
     cut = min(d + DIFFUSE_SMOOTH_ROWS + 1, len(a))
     _nan_close(a[:cut], e[:cut], tol=relaxed)
     _nan_close(a[cut:], e[cut:], tol=TOL)

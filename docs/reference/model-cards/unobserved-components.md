@@ -391,7 +391,11 @@ of `uc.rs` and `mle.rs`, `uc_properties.rs`,
 tolerance is the same 1e-8 with the same recorded `smoother_spread`
 relaxation inside the diffuse period — and it engages once: on the
 combined specification below statsmodels' two smoothers disagree by 6.3e-8
-there.
+there. The Python leg, which runs on every CI platform, scales that
+relaxation by 10, because the spread measures how strongly those rows
+amplify rounding and another platform's rounding is amplified the same
+way: there the macOS arm64 wheel lands 4.9e-7 relative from statsmodels,
+while the Linux x86_64 build stays within one spread.
 
 - *Autoregressive component* — an independent-package golden: statsmodels'
   own `autoregressive=` at fixed parameters on nine specifications (Nile
