@@ -87,6 +87,7 @@ method fits your problem and how to trust its output.
 | [Structural breaks](model-cards/structural-breaks.md) | `bai_perron`, `sup_f_test` |
 | [Static copulas](model-cards/copulas.md) | `pseudo_obs`, `copula_fit`, `copula_select` |
 | [Cointegrating regressions (FM-OLS / DOLS / CCR)](model-cards/cointegration-regime.md#fmols-dols-ccr-single-equation-cointegrating-regressions) | `fmols`, `dols`, `ccr` |
+| [ARDL bounds test (Pesaran-Shin-Smith)](model-cards/cointegration-regime.md#ardl_bounds_test-ardl-and-the-pesaran-shin-smith-bounds-test) | `ardl_bounds_test` |
 | [VAR conditional forecasts & residual diagnostics](model-cards/var-svar.md#conditional-hard-path-forecasts-var_conditional_forecast) | `var_conditional_forecast`, `var_diagnostics`, `var_select_order` |
 | [Multiple forecast comparisons](model-cards/forecasting.md#many-models-at-once-spa_test-stepm_test-model_confidence_set) | `spa_test`, `stepm_test`, `model_confidence_set` |
 | [Exponential smoothing (ETS)](model-cards/ets.md) | `ets_fit`, `auto_ets` |

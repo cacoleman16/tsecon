@@ -39,6 +39,15 @@ venv) in one of two ways:
   100× dlog growth rates, and fitted model outputs) are stored — no raw
   licensed dataset is redistributed.
 
+  One public-domain statsmodels dataset is stored **verbatim**, because the
+  Rust golden needs its input series: `ardl.json` (generator
+  `generate_ardl_fixtures.py`) carries the four columns `lrm`, `lry`, `ibo`,
+  `ide` (`T = 55`) of the Johansen-Juselius (1990) Danish money-demand data,
+  `sm.datasets.danish_data`, which statsmodels' `COPYRIGHT` marks as public
+  domain. The fixture's `systems.danish.source` field records it. The same
+  fixture stores `100·log realcons`, `100·log realgdp` and `realint` from
+  macrodata, as above.
+
 - **Transformations of an Rdatasets series fetched at generation time**
   (`statsmodels.datasets.get_rdataset(<item>, <package>)`): the only one so
   far is `panel_unbalanced.json`, which stores the **logs** of three columns

@@ -1,8 +1,8 @@
 # Model card — Cointegration and regime switching
 
 `johansen` · `vecm` · `threshold_vecm` · `hansen_seo_test` · `fmols` · `dols` ·
-`ccr` · `ou_fit` · `spread_zscore` · `markov_switching_ar` · `setar` ·
-`setar_test` · `star` · `star_eval` · `star_test` · `threshold_var` ·
+`ccr` · `ardl_bounds_test` · `ou_fit` · `spread_zscore` · `markov_switching_ar` ·
+`setar` · `setar_test` · `star` · `star_eval` · `star_test` · `threshold_var` ·
 `threshold_var_test`
 
 Two ways the tidy linear-stationary world breaks. First, series can be
@@ -11,7 +11,10 @@ individually nonstationary yet move together — share a long-run equilibrium
 the vector error-correction model keeps it. When there is one equilibrium and
 one regressand, `fmols` / `dols` / `ccr` estimate its coefficients with
 t-statistics that are actually valid — the static OLS of `engle_granger`'s
-step one is super-consistent but its standard errors are not. Once a
+step one is super-consistent but its standard errors are not. When it is not
+even clear whether the regressors are I(0) or I(1), `ardl_bounds_test` asks the
+level question anyway — the Pesaran-Shin-Smith bounds test brackets the answer
+between the all-I(0) and all-I(1) cases. Once a
 cointegrating spread is in hand, `ou_fit` / `spread_zscore` quantify what a
 trading workflow does with it
 — how fast it mean-reverts (half-life) and how far it sits from equilibrium
@@ -536,6 +539,236 @@ d = tsecon.dols(y, x[:, None], trend="c")     # BIC-selected leads/lags
 print("DOLS", d["lags"], "lags,", d["leads"], "leads:", np.round(d["params"], 3))
 c = tsecon.ccr(y, x[:, None], trend="c", kernel="quadratic-spectral")
 print("CCR ", np.round(c["params"], 3), "t =", np.round(c["tvalues"], 2))
+```
+
+---
+
+## `ardl_bounds_test` — ARDL and the Pesaran-Shin-Smith bounds test
+
+**What it estimates.** Whether a *level relationship* ties `y` to a set of
+regressors `x` — and if so its long-run coefficients — without first deciding
+whether each regressor is I(0) or I(1). The model is the autoregressive
+distributed lag ARDL(`p`, `q_1`, …, `q_k`) in its unrestricted error-correction
+form (statsmodels' `UECM`):
+
+```text
+Δy_t = d_t'δ + π y_{t-1} + Σ_j θ_j x_{j,t-1} + Σ_{i<p} φ_i Δy_{t-i} + Σ_j Σ_{l<q_j} β_{j,l} Δx_{j,t-l} + e_t
+```
+
+by OLS over the rows `t = h … T−1`, `h = max(p, max q_j)`. Pesaran, Shin &
+Smith (2001) test the level block — `π = θ_1 = … = θ_k = 0`, plus the constant
+(case 2) or the trend (case 4) — with a Wald F divided by the number of
+restrictions. Its null distribution depends on the integration order of the
+regressors, so they bound it: the all-I(0) distribution gives the *lower*
+critical values, the all-I(1) one the *upper*. Above the upper bound there is a
+level relationship whatever the regressors are; below the lower bound there is
+none; in between the answer depends on the regressors. `ardl_bounds_test`
+returns the F (`statistic`), the t on `y.L1` (`t_statistic`), the critical
+values and response-surface p-values of both bounds, a `verdict`, the UECM
+estimates, the long-run coefficients `θ_j/(−π)` with delta-method standard
+errors, and — when an order is `None` — the AIC/BIC/HQIC order search.
+
+**Assumptions.** One equation, with `y` the regressand and no feedback from `y`
+to the levels of `x` (PSS's weak-exogeneity condition: at most one level
+relationship, the one involving `y`); the regressors may be I(0), I(1) or
+cointegrated among themselves, but not I(2); homoskedastic, serially
+uncorrelated errors — the lags must be long enough to whiten them, which is
+what the order search is for. The critical values are **asymptotic**.
+
+**When to use (and when not).** Use it when the integration order of the
+regressors is unclear or mixed — the case pre-testing for unit roots handles
+worst — and theory gives one natural regressand: money demand, consumption on
+income and a real rate, import demand, a price on its costs. Prefer `johansen`
++ `vecm` when several relations may exist or several series adjust, and
+`engle_granger` when everything is known to be I(1) and you only want the
+residual-based test. With a short sample (`T` below about 80) the asymptotic
+bounds can mislead — the finite-sample surfaces of Narayan (2005) and
+Kripfganz & Schneider (2020) are not shipped — so read an F near the bounds as
+inconclusive there.
+
+**Key arguments and defaults (and why).** `case=3` (an unrestricted constant —
+statsmodels' and Stata `ardl`'s default too); `1` has no deterministics, `2` a
+constant restricted to the level relation, `4` a constant and a restricted
+trend, `5` both unrestricted. The trend is `t + 1` over the **full** sample
+(statsmodels' convention, not the `1..nobs` of `dols`), so only the constant
+and the long-run intercept depend on where the sample starts; every case's F
+is invariant to it (`ardl_properties.rs`). `lags` (`p ≥ 1`) and `order` (one
+`q_j ≥ 1` per regressor, or one int for all) fix the orders; a `None` is
+searched over `1..max_lag` / `1..max_order` (default 4 each) by `ic` (`"bic"`
+default, `"aic"`, `"hqic"`) on the common sample `max(P, Q)`, the winner refit
+on its own sample. The criterion is statsmodels' `−2 llf + c (m + 1)`, not the
+`ln(RSS/n) + m c/n` of `dols` — the two `ic_value`s are on different scales and
+must not be compared. As in `dols`, every option that would be inert raises:
+`ic` with both orders fixed, `max_lag` with `lags` fixed, `max_order` with
+`order` fixed. `lags=0` raises (statsmodels' `UECM` silently builds the
+`lags=1` design instead), `q_j = 0` raises with a pointer to the follow-up, and
+a grid of more than 100 000 candidates (`P × Q^k`, 262 144 at the defaults with
+eight regressors) raises naming the caps — fix `order` and the search covers
+the lags only. Every candidate is scored from one QR factorisation of the
+largest design with `Δy` appended (a candidate's residual sum of squares is a
+least-squares problem on the small triangular factor), so the search cost does
+not grow with `T`: measured at the guard's edge, the default search with seven
+regressors (65 536 models) takes about 2.5 s single-threaded on a shared 4-core
+machine at `T = 300` and the same at `T = 30 000` (4 096 models at five
+regressors: 0.1 s); a design of more than 2^26 entries (512 MiB) is refused the
+same way. `alpha=0.05` only sets the `verdict`.
+
+**How to read the output.** Read `p_value_upper` first: below `alpha` the
+`verdict` is `"level_relationship"`; `p_value_lower ≥ alpha` gives
+`"no_level_relationship"`; in between `"inconclusive"`. `crit_lower` /
+`crit_upper` are the bounds at `crit_levels` (90 / 95 / 99 / 99.9%); the
+verdict is defined from the p-values, and because the response surface at a
+tabulated critical value is off its nominal level by up to 0.0013 (90%),
+0.0010 (95%), 0.0003 (99%) and 0.0001 (99.9%), a statistic within a hair of a
+tabulated bound can read differently against `crit_*` — the p-value is the
+definition. Then **check `t_statistic`**: PSS's second test is the t on `π`
+(`adjustment`); a rejecting F with a t near zero is their *degenerate case #1*
+— the levels of `x` matter, but `y` does not error-correct — and no critical
+values for the t ship yet. `long_run` / `long_run_se` / `long_run_pvalues`
+(normal) are the long-run intercept, trend and slopes (`long_run_names`) —
+on the macrodata example below a long-run income elasticity of 1.051 (se
+0.024) with an adjustment speed `π = −0.042`;
+`params` / `se` / `pvalues` (Student t on `df_resid`) / `cov` / `param_names`
+are the UECM in statsmodels' order and spelling (`D.x1.L0`, 1-based); `lags`,
+`order`, `selected`, `ic_value`, `n_models` report the search; `crit_note` says
+why the bounds are NaN (more than 10 regressors, where no table exists and
+`verdict` is `"unavailable"`).
+
+**A real illustration (derived numbers only).** US consumption on income and
+the real rate — `y = 100·log realcons`, `x = [100·log realgdp, realint]`
+(statsmodels' bundled macrodata, 1959Q1–2009Q3, `T = 203`), case 3, BIC:
+
+| quantity | value |
+|---|---|
+| selected orders | ARDL(1, 1, 1) — BIC margin 4.48 over the runner-up |
+| `statistic` (F, 3 restrictions) | 4.891 |
+| 95% bounds `crit_lower` / `crit_upper` (`k = 2`) | 3.802 / 4.812 |
+| `p_value_lower` / `p_value_upper` | 0.0138 / 0.0457 |
+| `verdict` at 5% / 2% / 1% | `level_relationship` / `inconclusive` / `no_level_relationship` |
+| `t_statistic` (t on `y.L1`) | −1.61 |
+| statsmodels' `bounds_test` (wrong key `k = 3`): 95% bounds, `p_upper` | 3.229 / 4.322, 0.0240 |
+
+The F clears the upper bound at 5% — and the t on the error-correction term is
+−1.61, which does not even reach the one-sided standard-normal 5% value −1.645
+(the PSS t bounds, Dickey-Fuller-type, lie further out still). That is
+degenerate case #1 in the wild: consumption's lagged level adds almost nothing,
+so the "level relationship" the F finds is carried by the regressors' levels,
+not by consumption correcting toward an equilibrium. Read the F and the t
+together. (statsmodels' own `bounds_test` reports `p_upper = 0.024` from the
+wrong table row — a rejection twice as confident as it should be.)
+
+The Danish money-demand data (Johansen & Juselius 1990, `T = 55`: `lrm` on
+`lry`, `ibo`, `ide`) show the selection side. statsmodels' `ardl_select_order`
+picks the unrestricted ARDL(3, 1, 0) by BIC — `ide` dropped and `ibo` at order
+0 — and its own documented next step, `UECM.from_ardl(sel.model)`, raises
+`ValueError: All included exog variables must have a lag length >= 1`.
+`ardl_bounds_test` searches the subgrid a UECM can represent and picks ARDL(3;
+1, 1, 1) (BIC −218.847, margin 0.820). At the textbook UECM(3, 3, 3, 3), case 3,
+F = 5.993 and t = −4.348: `p_value_upper` 0.0053 against statsmodels'
+wrongly-keyed 0.0021.
+
+**Two statsmodels defects, documented and not inherited.**
+
+1. *The table key.* statsmodels' `UECMResults.bounds_test` looks the PSS
+   surface up at `k = len(ardl_order) = 1 + n_x`, but the table was generated
+   with `k` the number of **regressors** (`_pss_critical_values/pss.py` draws
+   `k + 1` series: `y` and `k` regressors). The evidence, strongest first:
+   statsmodels' *own* simulator `_pss_simulate`, run at the key `bounds_test`
+   passes (`1 + n_x`; it counts `y`), reproduces the `n_x` row — 95% bounds
+   5.008 / 5.744 at `n_x = 1` against the table's `k = 1` row 4.923 / 5.722 and
+   its `k = 2` row 3.802 / 4.812, and 3.236 / 4.317 at `n_x = 3` against 3.229 /
+   4.322 (`k = 3`) and 2.877 / 4.010 (`k = 4`) (40 000 draws, `nobs = 1000`);
+   PSS's own Table CI(iii)/CI(v) 5% bounds (`k = 1 … 4`, cases III and V) sit
+   within 0.05 of the `k = n_x` rows; the seeded null size of the corrected key
+   is 0.048 (below). `ardl_bounds_test` keys the table at `n_x`. The fixture
+   stores statsmodels' raw critical values and p-values for every case with
+   `n_x ≤ 9` and asserts they equal the `n_x + 1` row, so a fix upstream fails
+   the generator loudly. (The PSS transcription in the fixture was made by
+   hand and not machine-checked against the PDF; the 0.05 tolerance catches a
+   gross slip, not a 0.01 one.)
+2. *The sample size.* `ARDL.__init__` rebuilds the regressors on the hold-back
+   `h = max(p, max q_j)` but keeps the `nobs` that `AutoReg.__init__` computed
+   with hold-back `p`. Whenever an order exceeds `p`, statsmodels reports
+   `nobs = T − p` for a regression on `T − h` rows, and its `llf`, AIC/BIC/HQIC,
+   `df_resid` and t-test p-values shift while its standard errors (OLS's `s²`)
+   do not: at Danish ARDL(2; 1, 3, 2) it reports `nobs` 53, `llf` 138.372,
+   `df_resid` 41 for a 52-row regression whose `llf` is 135.266 and `df_resid`
+   40. tsecon uses the actual rows; 23 of the 121 fixture cases exercise it.
+   (Order *selection* is unaffected: `ardl_select_order` computes its table
+   with the right `nobs`.)
+
+**Failure modes.** A rejecting F with a near-zero t (degenerate case #1, above).
+Short samples: the bounds are asymptotic. Over-parameterised searches: the
+order search spends degrees of freedom fast — with `k` regressors and caps 4
+the largest candidate has `1 + 4 + 5k` regressors on `T − 4` rows, refused when
+it leaves none. I(2) regressors void the bounds. A regressor that is constant
+or duplicated is refused as a singular design, by name. Heteroskedastic or
+autocorrelated errors: the F uses the classical covariance (the only one the
+PSS theory covers); no HAC version is shipped.
+
+**Validated against.** Grade: **third-party golden (statsmodels 0.15.0) on the
+estimates, F and t, long run, fit statistics and order selection; the critical
+values and p-values are statsmodels' tabulated asymptotic surface at the
+corrected key** (a transcription of a simulated surface, not an exact
+distribution). `fixtures/ardl.json` pins 121 cases — macrodata, the Danish
+data, a cointegrated `k_x = 2` system with an I(0) regressor, independent
+random walks, a `T = 40` small sample and systems with 10 and 11 regressors;
+all five cases; fixed, lags-only, order-only and full searches under the three
+criteria and two caps — on `params`, `cov` (hence `se`, `tvalues`), `resid`,
+`pvalues`, `ssr`, `llf`, the criteria, the long run and the selected orders at
+1e-10, `ic_value` at 1e-8 (winner margins all at least 0.0188), p-values at atol
+1e-14 / rtol 1e-9 (statsmodels evaluates `1 − Φ`; the fixture stores `Φ`'s
+survival function). The F is pinned three ways: against an exact-rational
+referee (the SSR-difference F solved in `fractions.Fraction`) at 1e-10, against
+statsmodels' UECM Wald at 5e-10 (its own rounding reaches 1.5e-10 where the
+constant sits beside levels near 800 in case 2) and against statsmodels'
+levels-ARDL affine `f_test` (Σφ = 1, Σβ_j = 0) at 1e-8 (that design's condition
+number reaches 6e5). The fit statistics come from statsmodels `OLS` on the
+UECM's own design (defect 2). Every one of the ~1 200 surface constants is
+asserted bit for bit, and the surface on a grid around every switch point.
+Seeded Monte Carlo in `ardl_properties.rs`:
+
+| property | measured (seeded) |
+|---|---|
+| null size at 5%, `T = 200`, one regressor, case 3, ARDL(1, 1), 1 000 draws each | upper bound with an I(1) regressor 0.048; lower bound with an I(0) regressor 0.047 (binomial MC se 0.007) |
+| power at `π = −0.1`, same design, 200 draws | 0.970 |
+| surface p at the tabulated critical values | within 0.0013 / 0.0011 / 0.0003 / 0.0001 of nominal at 90 / 95 / 99 / 99.9% |
+| surface jump at the polynomial switch point | at most 0.0165 (key `k = 1`, case 1, I(1), `F ≈ 0.91`) — not smoothed; the surface is also non-monotone below `F ≈ 0.17`, where `p > 0.9996` |
+
+Algebraic properties: the UECM SSR equals the levels-ARDL SSR, the Wald F
+equals the restricted-vs-unrestricted SSR F, F / t / p are invariant to
+rescaling the data, and every case's F is invariant to the trend origin.
+
+**Not implemented (yet).** Critical values for the PSS t test; the Narayan
+(2005) and Kripfganz-Schneider (2020) finite-sample surfaces; order-0
+regressors (`q_j = 0` — Stata `ardl` searches from 0 with `x_t` levels in its
+`ec` parameterisation, so its automatic picks can differ; the levels-ARDL
+`f_test` route already reproduces the PSS F for such models in the generator,
+so this is a goldenable follow-up); HAC-robust bounds.
+
+**References.** Pesaran, Shin & Smith (2001), *Journal of Applied
+Econometrics* 16(3), 289–326; Pesaran & Shin (1999), in Strøm (ed.),
+*Econometrics and Economic Theory in the 20th Century*; Narayan (2005),
+*Applied Economics* 37; Kripfganz & Schneider (2020), *Oxford Bulletin of
+Economics and Statistics* 82(6); Johansen & Juselius (1990), *Oxford Bulletin
+of Economics and Statistics* 52(2).
+
+```python
+import numpy as np, statsmodels.api as sm, tsecon
+md = sm.datasets.macrodata.load_pandas().data
+y = 100 * np.log(md["realcons"])                        # pandas inputs are fine
+x = np.column_stack([100 * np.log(md["realgdp"]), md["realint"]])
+
+r = tsecon.ardl_bounds_test(y, x)                       # case 3, BIC orders
+print(r["lags"], r["order"], round(r["statistic"], 3), r["verdict"])
+print("bounds 95%:", r["crit_lower"][1], r["crit_upper"][1],
+      "p:", round(r["p_value_lower"], 4), round(r["p_value_upper"], 4))
+print("t on y.L1:", round(r["t_statistic"], 2), "<- check it: degenerate case #1")
+print({k: round(float(v), 3) for k, v in zip(r["long_run_names"], r["long_run"])})
+# 1 [1, 1] 4.891 level_relationship
+# bounds 95%: 3.8022629 4.8116858 p: 0.0138 0.0457
+# t on y.L1: -1.61 <- check it: degenerate case #1
+# {'const': -78.116, 'x1': 1.051, 'x2': 1.014}
 ```
 
 ---

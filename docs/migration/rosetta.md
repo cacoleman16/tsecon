@@ -69,6 +69,7 @@ print(rep["quadrant"], "->", rep["recommendation"])   # UnitRoot -> Difference
 | Cointegration rank (Johansen) | `johansen` | `coint_johansen` | `urca::ca.jo` | `vecrank` |
 | Vector error-correction model | `vecm` | `VECM` | `urca::cajorls`, `vars::vec2var` | `vec` |
 | Residual cointegration test (Engle-Granger / Phillips-Ouliaris) | `engle_granger`, `phillips_ouliaris` | `coint` | `tseries::po.test`, `urca::ca.po` | `egranger` (user) |
+| ARDL bounds test for a level relationship (Pesaran-Shin-Smith) | `ardl_bounds_test` | `UECM(...).fit().bounds_test(case)` | `ARDL::bounds_f_test` | `ardl ..., ec` + `estat ectest` |
 | Bayesian VAR (Minnesota) | `bvar_fit`, `bvar_irf_draws` | — | `BVAR::bvar` | `bayes: var` |
 | Sign-restricted SVAR | `sign_restricted_svar` | — | `VARsignR`, `svars` | — |
 | SVAR long-run (Blanchard-Quah) restrictions | `long_run_svar` | — (`SVAR` is A/B only) | `vars::BQ` | `svar ..., lreq()` |

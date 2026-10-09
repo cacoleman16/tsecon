@@ -98,6 +98,9 @@ _EXEMPT: dict[str, frozenset[str]] = {
     "jsz_loadings": frozenset({"maturities"}),
     # Harmonics per trigonometric seasonal block: integer counts, not data.
     "unobserved_components": frozenset({"freq_seasonal_harmonics"}),
+    # ARDL orders q_j per regressor (an int or a list of ints): lag counts,
+    # not data; float64-ifying [1, 3, 2] would make the converter refuse it.
+    "ardl_bounds_test": frozenset({"order"}),
 }
 
 _POSITIONAL = (
