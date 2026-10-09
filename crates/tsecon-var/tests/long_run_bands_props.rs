@@ -1122,7 +1122,7 @@ fn run_design(
         out.reps += 1;
         for (bc, b) in runs.iter() {
             let a = usize::from(*bc);
-            let summed: Vec<Vec<Mat<f64>>> = draw_cubes(&b).iter().map(|c| cumsum(c)).collect();
+            let summed: Vec<Vec<Mat<f64>>> = draw_cubes(b).iter().map(|c| cumsum(c)).collect();
             let (clo, cup) = percentiles(&summed, spec.alpha);
             let hits = if a == 0 {
                 &mut out.efron

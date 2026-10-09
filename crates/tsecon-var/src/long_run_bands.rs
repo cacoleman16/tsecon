@@ -91,11 +91,11 @@
 //!   its factorization, `((horizon + 1) k^2)^2` under `band_scope="all"`)
 //!   and `(K + 1) band_n_sim` uniforms and maxima for sup-t. The sup-t
 //!   simulation work `n_families * band_n_sim * K^2` is capped at
-//!   [`LONG_RUN_BANDS_SUPT_WORK`] (`2^36`), and the Jacobians `G_h =
-//!   sum_{m<h} (A')^{h-1-m} ⊗ Phi_m`, whose work `horizon (horizon + 1) / 2
-//!   * k^2 * dim` is QUADRATIC in `horizon`, at [`LONG_RUN_BANDS_DELTA_WORK`]
-//!   (`2^28`) — a horizon the storage count admits could otherwise run for
-//!   hours;
+//!   [`LONG_RUN_BANDS_SUPT_WORK`] (`2^36`), and the Jacobians
+//!   `G_h = sum_{m<h} (A')^{h-1-m} ⊗ Phi_m`, whose work
+//!   `horizon (horizon + 1) / 2 * k^2 * dim` is QUADRATIC in `horizon`, at
+//!   [`LONG_RUN_BANDS_DELTA_WORK`] (`2^28`) — a horizon the storage count
+//!   admits could otherwise run for hours;
 //! * both arms: [`crate::budget::CUBE_COPIES`] copies of the reported cubes
 //!   (`point`, `se`, `lower`, `upper`, the simultaneous pair) as matrices and
 //!   Python lists.
