@@ -49,6 +49,7 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod boosting;
+pub mod budget;
 pub mod coordinate_descent;
 pub mod cv;
 pub mod error;
@@ -69,6 +70,7 @@ pub mod trend_filter;
 mod util;
 
 pub use boosting::{boosting, BoostStop, BoostingFit, BoostingOptions};
+pub use budget::ML_MAX_VALUES;
 pub use coordinate_descent::{
     adaptive_lasso, elastic_net, lasso, CoordDescentOptions, PenalizedFit,
 };

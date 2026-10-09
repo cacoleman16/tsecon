@@ -35,7 +35,8 @@
 
 use tsecon_linalg::faer::MatRef;
 
-use crate::coordinate_descent::{cd_engine, CoordDescentOptions};
+use crate::budget::check_count;
+use crate::coordinate_descent::{cd_engine, check_cd_options, CoordDescentOptions};
 use crate::error::MlError;
 use crate::util::{check_xy, columns};
 
@@ -76,7 +77,10 @@ pub struct Split {
 ///
 /// [`MlError::InvalidArgument`] if `initial_train == 0`, `horizon == 0`,
 /// `step == 0`, `initial_train + horizon > n` (no split fits), or
-/// `purge >= initial_train` (the first training window would be empty).
+/// `purge >= initial_train` (the first training window would be empty);
+/// [`MlError::InvalidValue`] naming `n` when the splits would materialize
+/// more indices than the crate's [`ML_MAX_VALUES`](crate::ML_MAX_VALUES)
+/// budget (checked before any fold is built).
 pub fn expanding_origin_splits(
     n: usize,
     initial_train: usize,
@@ -85,6 +89,7 @@ pub fn expanding_origin_splits(
     purge: usize,
 ) -> Result<Vec<Split>, MlError> {
     validate_origin(n, initial_train, horizon, step, purge)?;
+    check_origin_budget(n, initial_train, horizon, step, purge, true)?;
     let mut splits = Vec::new();
     let mut origin = initial_train;
     while origin + horizon <= n {
@@ -111,7 +116,10 @@ pub fn expanding_origin_splits(
 /// # Errors
 ///
 /// [`MlError::InvalidArgument`] if `window == 0`, `horizon == 0`,
-/// `step == 0`, `window + horizon > n`, or `purge >= window`.
+/// `step == 0`, `window + horizon > n`, or `purge >= window`;
+/// [`MlError::InvalidValue`] naming `n` beyond the
+/// [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget, as for
+/// [`expanding_origin_splits`].
 pub fn rolling_origin_splits(
     n: usize,
     window: usize,
@@ -120,6 +128,7 @@ pub fn rolling_origin_splits(
     purge: usize,
 ) -> Result<Vec<Split>, MlError> {
     validate_origin(n, window, horizon, step, purge)?;
+    check_origin_budget(n, window, horizon, step, purge, false)?;
     let mut splits = Vec::new();
     let mut origin = window;
     while origin + horizon <= n {
@@ -129,6 +138,58 @@ pub fn rolling_origin_splits(
         origin += step;
     }
     Ok(splits)
+}
+
+/// The values the walk-forward splits of `n` rows materialize: per fold its
+/// test block, its training window and two 3-word `Vec` headers. With
+/// `F = (n - train_size - horizon) / step + 1` folds whose origins are
+/// `train_size + i step`, an expanding window holds `origin - purge` training
+/// indices and a rolling one `train_size - purge`. Counted in `u128`, so the
+/// quadratic expanding total cannot overflow; `None` when it does not fit a
+/// `usize` (or `n` admits no fold).
+fn origin_split_values(
+    n: usize,
+    train_size: usize,
+    horizon: usize,
+    step: usize,
+    purge: usize,
+    expanding: bool,
+) -> Option<usize> {
+    let first = train_size.checked_add(horizon)?;
+    let folds = (n.checked_sub(first)? / step.max(1)) as u128 + 1;
+    let base = (train_size - purge.min(train_size)) as u128;
+    let per_fold = base + horizon as u128 + 6;
+    let mut total = folds.checked_mul(per_fold)?;
+    if expanding {
+        // sum_{i < F} i * step on top of the base window.
+        let growth = (folds * (folds - 1) / 2).checked_mul(step as u128)?;
+        total = total.checked_add(growth)?;
+    }
+    usize::try_from(total).ok()
+}
+
+/// Refuses walk-forward splits whose materialized indices exceed the crate's
+/// [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget, naming `n`, before any fold
+/// is built (a `2^31`-row request used to grow for many seconds and abort).
+fn check_origin_budget(
+    n: usize,
+    train_size: usize,
+    horizon: usize,
+    step: usize,
+    purge: usize,
+    expanding: bool,
+) -> Result<(), MlError> {
+    let scheme = if expanding { "expanding" } else { "rolling" };
+    check_count(
+        "n",
+        n,
+        train_size.saturating_add(horizon),
+        &format!(
+            "the {scheme}-window splits (every training and test index of every fold, \
+             with train = {train_size}, horizon = {horizon}, step = {step}, purge = {purge})"
+        ),
+        |n| origin_split_values(n, train_size, horizon, step, purge, expanding),
+    )
 }
 
 fn validate_origin(
@@ -199,7 +260,11 @@ fn validate_origin(
 ///
 /// # Errors
 ///
-/// [`MlError::InvalidArgument`] if `k < 2` or `k > n`.
+/// [`MlError::InvalidArgument`] if `k < 2` or `k > n`;
+/// [`MlError::InvalidValue`] naming `n` when the `k` folds would
+/// materialize more than the [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget
+/// of indices (counted as `k (n + 6) + k + 1`, checked before any fold is
+/// built).
 pub fn purged_kfold_splits(
     n: usize,
     k: usize,
@@ -216,6 +281,18 @@ pub fn purged_kfold_splits(
             what: "k must not exceed the sample size",
         });
     }
+    // Each fold materializes at most n indices plus two Vec headers, and
+    // the block bounds take k + 1 more: refuse before any fold is built.
+    check_count(
+        "n",
+        n,
+        k,
+        &format!("the k = {k} purged folds (up to n training and test indices per fold)"),
+        |n| {
+            k.checked_mul(n.checked_add(6)?)?
+                .checked_add(k.checked_add(1)?)
+        },
+    )?;
 
     // Contiguous block boundaries; the first `n % k` blocks are one longer.
     let base = n / k;
@@ -363,6 +440,7 @@ where
             });
         }
     }
+    check_cd_options(cd)?;
     for s in splits {
         if s.train.iter().chain(&s.test).any(|&i| i >= n) {
             return Err(MlError::InvalidArgument {

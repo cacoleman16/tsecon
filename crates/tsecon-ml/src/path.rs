@@ -34,7 +34,8 @@
 
 use tsecon_linalg::faer::MatRef;
 
-use crate::coordinate_descent::{cd_engine, CoordDescentOptions};
+use crate::budget::check_count;
+use crate::coordinate_descent::{cd_engine, check_cd_options, CoordDescentOptions};
 use crate::error::MlError;
 use crate::util::{check_xy, columns, dot};
 
@@ -129,7 +130,11 @@ fn lambda_max(cols: &[Vec<f64>], y: &[f64], n: usize, l1_ratio: f64) -> f64 {
 ///   [`MlError::NonFinite`] on malformed inputs;
 /// * [`MlError::InvalidArgument`] if `l1_ratio` is not in `(0, 1]`,
 ///   `n_lambdas == 0`, `eps` is not in `(0, 1]`, or the CD options are
-///   invalid;
+///   invalid (`max_iter == 0`, or `tol` not finite and positive);
+/// * [`MlError::InvalidValue`] naming `n_lambdas` when the path it sizes,
+///   `n_lambdas x (p + 8)` values, exceeds the crate's
+///   [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget (checked before
+///   anything is allocated);
 /// * [`MlError::NoConvergence`] propagated from the inner solver.
 pub fn regularization_path(
     x: MatRef<'_, f64>,
@@ -153,6 +158,22 @@ pub fn regularization_path(
             what: "eps must lie in (0, 1]",
         });
     }
+    check_cd_options(opts.cd)?;
+    // Each grid point keeps its lambda, its coefficient vector (p values and
+    // a 3-word Vec header) and four criteria; the design copy is fixed.
+    let per_lambda = p.checked_add(8);
+    check_count(
+        "n_lambdas",
+        opts.n_lambdas,
+        1,
+        "the path (n_lambdas x (p + 8): a coefficient vector and the criteria per \
+         grid point)",
+        |m| {
+            m.checked_mul(per_lambda?)?
+                .checked_add(n.checked_mul(p)?)?
+                .checked_add(n.checked_mul(2)?)
+        },
+    )?;
 
     let cols = columns(x);
     let lam_max = lambda_max(&cols, y, n, l1_ratio);
