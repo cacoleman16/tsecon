@@ -942,7 +942,10 @@ fn stationary_cycle_removes_the_low_frequency_singularity() {
     // climb is at most the `ln 100` per two decades of the one diffuse
     // element that resolves the weakly observed cycle state (less here,
     // where that direction is also nearly collinear with the smooth trend
-    // and double precision loses part of it); more would be annihilated
+    // and double precision loses part of it: the exact log-likelihood, in
+    // 90-digit arithmetic, is -258.509, -253.972, -249.367, the smallest
+    // `F_inf` 1.1e-13 at 1e-4 and 1.1e-17 at 1e-6,
+    // `scripts/uc_exact_diffuse_reference.py`); more would be annihilated
     // diffuse mass taken for a diffuse element, which is what the filter's
     // pre-0.11.0 diffuse-element test did at 1e-4 (-240.094, 18.4 points
     // up in one window).
@@ -965,8 +968,11 @@ fn stationary_cycle_removes_the_low_frequency_singularity() {
 /// the same calendar month missing in consecutive years keeps a seasonal-12
 /// model diffuse for 27 (`t = 2, 14` missing) or 39 (`t = 2, 14, 26`)
 /// observations — fixed and stochastic seasonal, with an AR(1), with a
-/// regressor in the state — and two N(0, 1)-regressor designs with no
-/// missing value at all (`default_rng(207)`: 15; `default_rng(69)`: 13).
+/// regressor in the state — two N(0, 1)-regressor designs with no
+/// missing value at all (`default_rng(207)`: 15; `default_rng(69)`: 13),
+/// and the same monthly series with a year or more missing at the start
+/// (the first 12 under a local level + fixed seasonal: 24; the first 16
+/// under a local linear trend + seasonal: 29).
 ///
 /// Before 0.11.0 the diffuse-element test measured `F_inf` against a
 /// magnitude bound carried as `|T| P_mag |T|'`, which the dummy-seasonal
@@ -976,12 +982,15 @@ fn stationary_cycle_removes_the_low_frequency_singularity() {
 /// washed out. The seven cases with missing months reported
 /// `nobs_diffuse = 120` with log-likelihoods 0.64 to 2.87 too low, the
 /// seed-207 case 16 diffuse observations instead of 15 (`2.0e-4` low),
-/// and the seed-69 case was refused by the units re-check.
+/// the seed-69 case was refused by the units re-check, and the two
+/// leading-gap cases also came back with `nobs_diffuse = 120`, the bound
+/// having compounded through the whole gap (log-likelihood 0.99 too high
+/// and 1.76 too low).
 #[test]
 fn long_diffuse_periods_match_statsmodels() {
     let fx = load_fixture("uc_extensions.json");
     let cases = fx["long_diffuse"].as_array().unwrap();
-    assert_eq!(cases.len(), 9);
+    assert_eq!(cases.len(), 11);
     for case in cases {
         let name = case["name"].as_str().unwrap();
         let fit = fixed_fit(&fx, case);
@@ -1008,6 +1017,8 @@ fn long_diffuse_periods_match_statsmodels() {
     assert_eq!(nd("llevel_seasonal12_nan2_14_26"), 39);
     assert_eq!(nd("seed207_lltrend_seasonal12_state_regression"), 15);
     assert_eq!(nd("seed69_llevel_seasonal12_state_regression"), 13);
+    assert_eq!(nd("llevel_seasonal12_fixed_lead12"), 24);
+    assert_eq!(nd("lltrend_seasonal12_lead16"), 29);
 }
 
 /// The MLE of the stochastic-seasonal `[2, 14]` case reaches the better of

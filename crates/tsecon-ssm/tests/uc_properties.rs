@@ -657,8 +657,11 @@ fn the_cycle_log_likelihood_diverges_as_the_frequency_goes_to_zero() {
     eprintln!("cycle frequency -> 0 divergence: {lls:?}");
     // Measured at this seed: -188.153 at 1e-2, -183.546 at 1e-4, -178.951
     // at 1e-6 — each two decades of frequency buy `ln 100 = 4.605` (4.607
-    // and 4.595), exactly the `-ln(rho sin lambda)` of the one diffuse
-    // element that resolves the weakly observed state. Assert that slope,
+    // and 4.595), the `-ln(rho sin lambda)` of the one diffuse element that
+    // resolves the weakly observed state. (The exact log-likelihood, in
+    // 90-digit arithmetic, is -188.153, -183.546, -178.941; at 1e-6 the
+    // filter refuses the first sighting of that state and takes the next,
+    // 0.010 short: `scripts/uc_exact_diffuse_reference.py`.) Assert that slope,
     // from both sides: too little is the divergence gone, too much is
     // annihilated diffuse mass taken for a diffuse element. (Before the
     // diffuse-element test was rebuilt on a square-root factor it took
@@ -671,10 +674,10 @@ fn the_cycle_log_likelihood_diverges_as_the_frequency_goes_to_zero() {
             "two decades of frequency bought {slope}, not ln 100: {lls:?}"
         );
     }
-    // Below roughly 1e-7 the filter's diffuse-element test declares the
-    // direction resolved (`F_inf ~ (rho sin lambda)^2` falls under
-    // `TOLERANCE_CANCEL` times the diffuse variance the observation could
-    // see with nothing resolved, where the covariance-form update could
+    // Below roughly 1e-7 the filter's diffuse-element test refuses every
+    // sighting of the direction (`F_root ~ (rho sin lambda)^2` of the
+    // diffuse variance the observation could see with nothing resolved
+    // falls under `TOLERANCE_CANCEL`, where the covariance-form update could
     // not apply it faithfully anyway), the second cycle state simply stays
     // diffuse as it does at `lambda = 0` exactly, and the divergence
     // stops. That is a floor on the damage, not a fix: 1e-6 is already

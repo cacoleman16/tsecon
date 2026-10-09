@@ -78,9 +78,14 @@ Reference implementation (this venv; versions pinned in ``_meta``):
   observations, under a fixed and a stochastic seasonal, with an AR(1) and
   with a regressor in the state; a local linear trend + seasonal 12 + two
   N(0, 1) regressors in the state with no missing value (``default_rng(207)``,
-  15 diffuse observations); and a local level + seasonal 12 + one N(0, 1)
+  15 diffuse observations); a local level + seasonal 12 + one N(0, 1)
   regressor in the state (``default_rng(69)``, max |x| = 2.80, 13 diffuse
-  observations) that a units re-check must not refuse. Plus the
+  observations) that a units re-check must not refuse; and the same
+  monthly series with a year or more missing at the START (the first 12
+  under a local level + fixed seasonal 12, 24 diffuse observations; the
+  first 16 under a local linear trend + seasonal 12, 29), where the
+  diffuse period cannot begin to resolve until the first observation and
+  a bound carried through the gap compounds over all of it. Plus the
   two-optimizer MLE of the stochastic-seasonal [2, 14] case. statsmodels'
   absolute ``tolerance_diffuse = 1e-10`` on ``F_inf`` decides these cases
   correctly (every genuine ``F_inf`` here is far above it), which is what
@@ -98,7 +103,8 @@ local level plus two regressors, a NaN-inserted copy, six forecast rows),
 and the three seeded monthly series of ``long_diffuse`` (``default_rng(1)``
 with regressor ``default_rng(5)``, ``default_rng(207)``, ``default_rng(69)``:
 a random-walk level, a fixed 12-month pattern, N(0, 1) regressors and
-noise, six forecast rows each).
+noise, six forecast rows each; the first also with months 2 and 14, 2, 14
+and 26, the first 12 or the first 16 values set missing).
 Only these public-domain or seeded series and derived numbers are stored.
 
 This generator NEVER imports tsecon.
@@ -540,6 +546,13 @@ def main():
     y3a[[2, 14]] = np.nan
     y3b = y3.copy()
     y3b[[2, 14, 26]] = np.nan
+    # A year or more missing at the start: nothing resolves until t = 12
+    # (t = 16), and the genuine diffuse elements then arrive after a gap
+    # that a bound carried through the transition compounds over.
+    y3c = y3.copy()
+    y3c[:12] = np.nan
+    y3d = y3.copy()
+    y3d[:16] = np.nan
     rng = np.random.default_rng(5)
     x3 = rng.normal(size=(T3, 1))
     x3f = rng.normal(size=(6, 1))
@@ -556,8 +569,10 @@ def main():
     x5f = rng.normal(size=(6, 1))
     fx["data"].update(ld_y_nan2_14=lst(y3a), ld_y_nan2_14_26=lst(y3b), ld_x=lst(x3), ld_x_forecast=lst(x3f),
                       s207_y=lst(y4), s207_x=lst(x4), s207_x_forecast=lst(x4f),
-                      s69_y=lst(y5), s69_x=lst(x5), s69_x_forecast=lst(x5f))
-    ld_series = dict(ld_y_nan2_14=y3a, ld_y_nan2_14_26=y3b, s207_y=y4, s69_y=y5)
+                      s69_y=lst(y5), s69_x=lst(x5), s69_x_forecast=lst(x5f),
+                      ld_y_lead12=lst(y3c), ld_y_lead16=lst(y3d))
+    ld_series = dict(ld_y_nan2_14=y3a, ld_y_nan2_14_26=y3b, s207_y=y4, s69_y=y5, ld_y_lead12=y3c,
+                     ld_y_lead16=y3d)
     ld_exog = dict(ld_x=(x3, x3f), s207_x=(x4, x4f), s69_x=(x5, x5f))
 
     seas = dict(level="llevel", seasonal=12)
@@ -578,6 +593,9 @@ def main():
          dict(level="lltrend", seasonal=12, exog="s207_x", mle_regression=False), [1.0, 0.1, 0.01, 0.05], False),
         ("seed69_llevel_seasonal12_state_regression", "s69_y",
          dict(seas, exog="s69_x", mle_regression=False), [1.0, 0.1, 0.05], False),
+        ("llevel_seasonal12_fixed_lead12", "ld_y_lead12", fixed_seas, [1.0, 0.1], False),
+        ("lltrend_seasonal12_lead16", "ld_y_lead16", dict(level="lltrend", seasonal=12),
+         [1.0, 0.1, 0.01, 0.05], False),
     ]:
         kw = dict(spec)
         exog_key = kw.pop("exog", None)

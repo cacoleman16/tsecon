@@ -201,8 +201,10 @@ pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 /// `t = 26` met a threshold of `203.8` and was refused, where the
 /// reference above is `|Z_i|' |U| |Z_i| = 2`; `P_inf` never washed out,
 /// `nobs_diffuse` came back as the sample length and the log-likelihood
-/// 0.64 to 2.87 too low (`tests/uc_extensions_golden.rs`, `long_diffuse`;
-/// the replay is `scripts/uc_long_diffuse_evidence.py`).
+/// 0.64 to 2.87 too low. A year or more missing at the start did the same,
+/// the bound compounding through the whole gap
+/// (`tests/uc_extensions_golden.rs`, `long_diffuse`; the replay is
+/// `scripts/uc_long_diffuse_evidence.py`).
 ///
 /// The value `1e-14` is a few dozen multiples of the double-precision
 /// epsilon, and it is a floor on what the *update* can resolve rather than
@@ -211,11 +213,16 @@ pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 /// `Z_i` sees with `F_inf` below `1e-14 Z_i U Z_i'` cannot be applied
 /// faithfully even when `F_root` says it is there. It keeps genuine diffuse
 /// mass that is small only because `Z_i` sees it weakly (the `1e-10` live
-/// `F_inf` at `s = 1e-5` in `tests/scale.rs`; a damped cycle at frequency
-/// `1e-6` in `tests/uc_properties.rs`, whose weakly observed state
-/// resolves with `F_inf` of order `(rho sin lambda)^2 ~ 1e-12`), and it
-/// caps the `lambda -> 0` divergence of a diffuse cycle (order `1e-16` at
-/// frequency `1e-8`, refused).
+/// `F_inf` at `s = 1e-5` in `tests/scale.rs`), and it caps the
+/// `lambda -> 0` divergence of a diffuse cycle, whose weakly observed state
+/// shows itself at `F_root` of order `(rho sin lambda)^2` of the reference.
+/// On the series of `tests/uc_properties.rs`
+/// (`scripts/uc_exact_diffuse_reference.py`): at frequency `1e-4` it is
+/// taken at once (`4.9e-11`) and the log-likelihood is the exact one; at
+/// `1e-6` the first sighting (`4.9e-15`) is refused and the next
+/// (`4.1e-14`) taken, `0.010` below the exact log-likelihood; at `1e-8`
+/// every sighting (at most `7.7e-15`) is refused and the state stays
+/// diffuse, as it does at `lambda = 0`.
 pub(crate) const TOLERANCE_CANCEL: f64 = 1e-14;
 
 /// `ln(2 pi)`, the per-element likelihood constant.

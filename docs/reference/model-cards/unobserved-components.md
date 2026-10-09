@@ -302,14 +302,25 @@ checked against the same model on columns divided by their largest
 absolute values, and when the two disagree the call is refused, naming
 `exog`. The refusal blames the units only when the columns' largest
 absolute values are more than a factor 100 from each other or from 1;
-inside that band rescaling cannot help, and it says instead that a column
-is nearly collinear with the others or with the level, trend and seasonal
-states. Accuracy fades before that point, so keep the regressors in
-comparable units near 1. (Up to the 0.11.0 filter fix described under
-*Validated against*, about 1% of well-scaled N(0, 1) designs were refused
-here as badly scaled: 2 of 400 seeds of a local level + seasonal 12 + one
-regressor. None is now, and all 400 end the diffuse period where
-statsmodels does.)
+inside that band the units are not the cause, and it says instead that the
+observations of the diffuse period see some combination of the
+coefficients and the level, trend and seasonal states only weakly (a
+column nearly collinear with the others or with those states there), and
+points to dropping that column or to `mle_regression=True`, which has no
+diffuse coefficient states. Accuracy fades before that point, so keep the
+regressors in comparable units near 1. *Nearly* collinear columns are the
+same problem short of exact collinearity: the last diffuse direction
+resolves with an `F_inf` close to the filter's rank tolerance, the
+exact-diffuse log-likelihood is then ill-conditioned in double precision
+(statsmodels' as much as this crate's), and the twin check catches some of
+these fits but not all. With columns close to collinear prefer
+`mle_regression=True`: its log-likelihood has no diffuse coefficient
+direction to resolve and stays well conditioned, while the coefficients
+themselves are as poorly determined as the collinearity makes them. (Up
+to the 0.11.0 filter fix described under *Validated against*, about 1% of
+well-scaled N(0, 1) designs were refused here as badly scaled: 2 of 400
+seeds of a local level + seasonal 12 + one regressor. None is now, and all
+400 end the diffuse period where statsmodels does.)
 
 **Validated against.** statsmodels `UnobservedComponents(...,
 use_exact_diffuse=True)` — an independent package — at *fixed parameters*:
@@ -455,8 +466,11 @@ while the Linux x86_64 build stays within one spread.
   missing at t = 2 and 14 (diffuse for 27 observations) or at 2, 14 and 26
   (39), with the seasonal fixed and stochastic, with an AR(1) and with a
   regressor in the state; a local linear trend + seasonal 12 + two N(0, 1)
-  regressors in the state with nothing missing (15); and a local level +
-  seasonal 12 + one N(0, 1) regressor in the state (13). Every
+  regressors in the state with nothing missing (15); a local level +
+  seasonal 12 + one N(0, 1) regressor in the state (13); and the first
+  series with a year or more missing at the start (the first 12 under a
+  local level + fixed seasonal 12, 24; the first 16 under a local linear
+  trend + seasonal 12, 29). Every
   `nobs_diffuse` and log-likelihood matches (−184.180678 and −186.501844 for
   the fixed and stochastic [2, 14] cases, −193.974529 with the AR(1),
   −206.983808 and −157.071129 for the two regressor designs), and the paths
@@ -470,8 +484,9 @@ while the Linux x86_64 build stays within one spread.
   ends each of these periods (`TOLERANCE_CANCEL` in `filter.rs`; the replay
   is `scripts/uc_long_diffuse_evidence.py`): `nobs_diffuse` came back as
   120 on the seven missing-month cases with log-likelihoods 0.64 to 2.87
-  too low, as 16 instead of 15 on the first regressor design, the second
-  was refused as badly scaled, and the MLE reported −180.97.
+  too low and on the two leading-gap cases (0.99 too high, 1.76 too low),
+  as 16 instead of 15 on the first regressor design, the second was
+  refused as badly scaled, and the MLE reported −180.97.
 - *Seeded Monte Carlo and identities* (`uc_properties.rs`): the stationary
   cycle recovers a period-12, damping-0.9 cycle — over 400 seeds at T = 200
   (`scripts/mc_uc_stationary_cycle_recovery.py`, the test's own series)

@@ -401,12 +401,13 @@ def test_long_diffuse_periods_match_statsmodels(case):
     """The shared exact-diffuse filter takes a genuine diffuse element that
     arrives late in a long diffuse period -- the same calendar month missing
     in consecutive years keeps a seasonal-12 model diffuse for 27 or 39
-    observations -- and in N(0, 1)-regressor designs with no missing value,
-    so ``nobs_diffuse``, the log-likelihood and every path match statsmodels.
-    Before the fix the missing-month cases came back with
-    ``nobs_diffuse = 120`` (``std_resid`` NaN throughout, log-likelihood 0.64
-    to 2.87 low), the seed-207 case with 16 instead of 15, and the seed-69
-    case was refused as badly scaled."""
+    observations, a year or more missing at the start for 24 or 29 -- and in
+    N(0, 1)-regressor designs with no missing value, so ``nobs_diffuse``, the
+    log-likelihood and every path match statsmodels. Before the fix the
+    missing-month and leading-gap cases came back with ``nobs_diffuse = 120``
+    (``std_resid`` NaN throughout, log-likelihood 0.64 to 2.87 off), the
+    seed-207 case with 16 instead of 15, and the seed-69 case was refused as
+    badly scaled."""
     r = _fixed(case)
     _check_fixed(r, case)
     if "regression_coefficients" in case["components"]:

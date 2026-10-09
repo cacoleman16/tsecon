@@ -1653,14 +1653,20 @@ const SCALE_SPREAD_UNITS: f64 = 1e2;
 ///
 /// The refusal says *why* only when it can know. Columns whose scales are
 /// within [`SCALE_SPREAD_UNITS`] of each other and of 1 are already in
-/// comparable units, and the twin is the same problem: a disagreement there
-/// means a diffuse direction the data see only at the roundoff level (a
-/// regressor nearly collinear with the others or with the level, trend and
-/// seasonal states), and rescaling cannot help, so the message says that
-/// instead. (Before 0.11.0's filter fix that branch was also reached by
-/// well-scaled N(0, 1) columns, through a diffuse-element test that refused
-/// genuine elements late in a long diffuse period; it was reported as a
-/// units problem.)
+/// comparable units, and the twin is essentially the same problem: a
+/// disagreement there means a diffuse direction the observations of the
+/// diffuse period see only weakly (a regressor nearly collinear with the
+/// others or with the level, trend and seasonal states over those
+/// observations), so close to the filter's rank tolerance that either run
+/// can land on either side of it. The message says that instead of
+/// blaming the units, and points to the remedies that remove the weak
+/// direction: dropping the column, or `mle_regression = true`, which has
+/// no diffuse coefficient states. It does not promise that rescaling
+/// cannot help: one of the two runs *is* a rescaled fit, and either may be
+/// the one that resolved the direction. (Before 0.11.0's filter fix that
+/// branch was also reached by well-scaled N(0, 1) columns, through a
+/// diffuse-element test that refused genuine elements late in a long
+/// diffuse period; it was reported as a units problem.)
 fn check_regressor_scales(
     twin: &Layout,
     scales: &[f64],
@@ -1696,14 +1702,16 @@ fn regressor_scale_refusal(scales: &[f64], d_diffuse: usize, d_twin: usize) -> S
     invalid(format!(
         "exog: under mle_regression = false the regression coefficients are exactly diffuse \
          states loaded by x_t, and the exact-diffuse filter cannot resolve their diffuse \
-         directions in floating point: the diffuse period ends at observation {d_diffuse} on \
-         the columns as given and at {d_twin} on the same columns divided by their largest \
-         absolute values ({scales:?}). Those scales are already comparable with each other \
-         and with the unit loading of the level, trend and seasonal states, so rescaling \
-         cannot help: the data see some combination of the coefficients only at the roundoff \
-         level — a column nearly collinear with the others or with the level, trend and \
-         seasonal states — and the coefficients and the log-likelihood would be roundoff. \
-         Drop or replace the nearly redundant column"
+         directions reliably in floating point: the diffuse period ends at observation \
+         {d_diffuse} on the columns as given and at {d_twin} on the same columns divided by \
+         their largest absolute values ({scales:?}). Those scales are already comparable with \
+         each other and with the unit loading of the level, trend and seasonal states, so the \
+         units are not the cause: the observations of the diffuse period see some combination \
+         of the coefficients and the level, trend and seasonal states only weakly — a column \
+         nearly collinear with the others or with those states there — and the coefficients \
+         and the log-likelihood would be dominated by rounding error. Drop or replace the \
+         nearly redundant column, or estimate the coefficients as parameters with \
+         mle_regression = true, which has no diffuse coefficient states"
     ))
 }
 
@@ -2118,8 +2126,10 @@ mod tests {
     /// The state-regression guard names the cause it can know: a units
     /// problem only when the columns' scales are far apart (from each other
     /// or from the unit loading of the level), never for columns already in
-    /// units near 1 such as an N(0, 1) draw with max |x| = 2.8 — rescaling
-    /// cannot help there, and the message must not say it would.
+    /// units near 1 such as an N(0, 1) draw with max |x| = 2.8. There the
+    /// message must not advise rescaling; it names the weakly resolved
+    /// direction and the remedies that remove it (drop the column, or
+    /// `mle_regression = true`).
     #[test]
     fn regressor_scale_refusal_names_units_only_when_they_can_be_the_cause() {
         for scales in [vec![1e-8, 1.3], vec![1e8], vec![2.0e2]] {
@@ -2137,8 +2147,9 @@ mod tests {
             assert!(
                 m.starts_with("invalid specification: exog: under mle_regression = false")
                     && m.contains("ends at observation 14 on the columns as given and at 13")
-                    && m.contains("rescaling cannot help")
+                    && m.contains("the units are not the cause")
                     && m.contains("nearly collinear")
+                    && m.contains("with mle_regression = true")
                     && !m.contains("Rescale the columns")
                     && !m.contains("too far apart"),
                 "{scales:?}: {m}"
