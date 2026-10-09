@@ -119,6 +119,23 @@ fn order_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<usize>>> {
             obj.repr()?
         )));
     }
+    // a 2-D container (a DataFrame, a 2-D array) iterates over its column
+    // labels or rows, not over orders: refused rather than misread
+    if obj
+        .getattr("ndim")
+        .and_then(|d| d.extract::<i64>())
+        .is_ok_and(|d| d > 1)
+    {
+        return Err(PyValueError::new_err(format!(
+            "order is a two-dimensional {} (shape {}): pass a 1-D list of ints, one per \
+             column of x, or one int for every regressor",
+            obj.get_type().name()?,
+            obj.getattr("shape")
+                .and_then(|v| v.repr())
+                .map(|r| r.to_string())
+                .unwrap_or_else(|_| "unknown".into())
+        )));
+    }
     let iter = obj.try_iter().map_err(|_| {
         PyValueError::new_err(format!(
             "order = {} is neither an int nor a sequence of ints: pass e.g. order = 2 or \

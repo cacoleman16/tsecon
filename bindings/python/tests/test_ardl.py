@@ -314,6 +314,20 @@ def test_bytes_like_orders_are_refused_like_strings(order, shown):
         tsecon.ardl_bounds_test(y, x[:, :1], lags=1, order=order)
 
 
+def test_two_dimensional_orders_are_refused_not_misread():
+    """A DataFrame iterates over its column labels, so order=DataFrame(...,
+    columns=[1, 2]) used to be fitted silently as order [1, 2]."""
+    y, x = SYSTEMS["sim_k2"]
+    with pytest.raises(ValueError, match=r"order is a two-dimensional \w+ \(shape \(.*\)\)"):
+        tsecon.ardl_bounds_test(y, x, lags=1, order=np.array([[1, 2]]))
+    pd = pytest.importorskip("pandas")
+    with pytest.raises(ValueError, match=r"order is a two-dimensional DataFrame \(shape \(2, 2\)\)"):
+        tsecon.ardl_bounds_test(y, x, lags=1, order=pd.DataFrame(np.zeros((2, 2)), columns=[1, 2]))
+    # a Series is a 1-D sequence of orders, read by value
+    r = tsecon.ardl_bounds_test(y, x, lags=1, order=pd.Series([1, 2]))
+    assert list(r["order"]) == [1, 2]
+
+
 def test_absurd_orders_are_refused_by_name():
     y, x = SYSTEMS["danish"]
     with pytest.raises(ValueError, match=r"order.*2\*\*48"):
