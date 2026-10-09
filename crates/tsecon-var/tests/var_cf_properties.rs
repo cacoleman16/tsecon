@@ -31,8 +31,8 @@ use common::Lcg;
 use tsecon_var::tsecon_linalg::faer::linalg::solvers::Solve;
 use tsecon_var::tsecon_linalg::faer::{Mat, Side};
 use tsecon_var::{
-    doornik_hansen_test, normality_test_cholesky, normality_test_symmetric, ConditionMode, SoftMode,
-    Trend, VarSpec,
+    doornik_hansen_test, normality_test_cholesky, normality_test_symmetric, ConditionMode,
+    SoftMode, Trend, VarSpec,
 };
 
 /// Innovation law of the simulator.
