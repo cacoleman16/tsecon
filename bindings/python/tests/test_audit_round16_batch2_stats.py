@@ -202,6 +202,16 @@ def test_dfm_smooth_widest_panel_fits_in_a_few_gib():
     assert p.stdout.split() == ["ok", "True"]
 
 
+def test_allocation_refusal_sizes_below_one_gib_read_in_mib():
+    # The input layer rebuilt N = 8192's 512 MiB allocation failure as
+    # "a single array of 0 GiB was requested".
+    from tsecon._coerce import _byte_size
+
+    assert _byte_size(536870912) == "512 MiB"
+    assert _byte_size(73728 * 2**30) == "73,728 GiB"
+    assert _byte_size(2**30) == "1 GiB"
+
+
 # --------------------------------------------------------------------------
 # H16-06: complex input is refused, not truncated
 # --------------------------------------------------------------------------

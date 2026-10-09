@@ -648,6 +648,14 @@ def _is_alloc_panic(exc: BaseException) -> bool:
     return any(h in text for h in _ALLOC_PANIC_HINTS)
 
 
+def _byte_size(n: int) -> str:
+    """A byte count for a refusal: whole GiB from 1 GiB up (as before), MiB
+    below it — a 512 MiB request used to read "0 GiB"."""
+    if n >= 2**30:
+        return f"{n / 2**30:,.0f} GiB"
+    return f"{n / 2**20:,.0f} MiB"
+
+
 def _capacity_overflow_error(fn, args, kwargs, original: BaseException) -> ValueError:
     """Rebuild a Rust allocation-sizing panic into a teaching ValueError.
 
@@ -672,7 +680,7 @@ def _capacity_overflow_error(fn, args, kwargs, original: BaseException) -> Value
     else:
         subject = "the working set implied by the arguments"
     size = re.search(r"size: (\d+)", str(original))
-    how_big = f" — a single array of {int(size.group(1)) / 2**30:,.0f} GiB was requested" if size else ""
+    how_big = f" — a single array of {_byte_size(int(size.group(1)))} was requested" if size else ""
     return ValueError(
         f"{fn.__name__}: {subject} could not be sized or allocated{how_big}. "
         f"Every integer parameter here counts something — a lag length, "
