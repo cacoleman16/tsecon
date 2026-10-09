@@ -69,12 +69,36 @@ Reference implementation (this venv; versions pinned in ``_meta``):
   stationary-cycle optimum with only the frequency moved, under both
   initializations. The stationary one is flat; the diffuse one keeps rising
   toward the singularity documented in ``uc.json``'s generator.
+* LONG EXACT-DIFFUSE PERIODS (``long_diffuse``, ``long_diffuse_mle``): the
+  regression goldens for the shared exact-diffuse filter's diffuse-element
+  decision. statsmodels ``use_exact_diffuse=True`` at fixed parameters on
+  seeded monthly series where a GENUINE diffuse element arrives late: the
+  same calendar month missing in consecutive years (t = 2, 14 and
+  t = 2, 14, 26) keeps a seasonal-12 model diffuse for 27 / 39
+  observations, under a fixed and a stochastic seasonal, with an AR(1) and
+  with a regressor in the state; a local linear trend + seasonal 12 + two
+  N(0, 1) regressors in the state with no missing value (``default_rng(207)``,
+  15 diffuse observations); and a local level + seasonal 12 + one N(0, 1)
+  regressor in the state (``default_rng(69)``, max |x| = 2.80, 13 diffuse
+  observations) that a units re-check must not refuse. Plus the
+  two-optimizer MLE of the stochastic-seasonal [2, 14] case. statsmodels'
+  absolute ``tolerance_diffuse = 1e-10`` on ``F_inf`` decides these cases
+  correctly (every genuine ``F_inf`` here is far above it), which is what
+  makes them goldens for the relative test. Each block also records
+  ``rounding_spread`` (see ``rounding_spread`` below): how far statsmodels'
+  own paths move under a one-ulp change of an input. Two of the regressor
+  designs resolve a diffuse direction weakly and sit above the 1e-8 tier
+  there; the tests use it as the path tolerance where it does.
 
 Data: the bundled public-domain Nile series and US macrodata transforms
 (``infl``, ``100 log realgdp`` and its first difference), the seeded
 simulated series of ``uc.json`` (reconstructed here from its seed and
-asserted equal), and a second seeded series (``default_rng(20261008)``: a
-local level plus two regressors, a NaN-inserted copy, six forecast rows).
+asserted equal), a second seeded series (``default_rng(20261008)``: a
+local level plus two regressors, a NaN-inserted copy, six forecast rows),
+and the three seeded monthly series of ``long_diffuse`` (``default_rng(1)``
+with regressor ``default_rng(5)``, ``default_rng(207)``, ``default_rng(69)``:
+a random-walk level, a fixed 12-month pattern, N(0, 1) regressors and
+noise, six forecast rows each).
 Only these public-domain or seeded series and derived numbers are stored.
 
 This generator NEVER imports tsecon.
@@ -163,6 +187,52 @@ def fixed_block(mod, params, h=8, forecast_exog=None, components=False, full_sta
     if components:
         block["components"] = components_ext(res)
     return block
+
+
+def rounding_spread(y, exog, spec, params):
+    """How far statsmodels' OWN fixed-parameter paths move when an input
+    moves by one unit in the last place (``y`` and each regressor column
+    times ``1 + 2**-52``, separately): the largest relative disagreement,
+    floored at 1, of the one-step predictions and errors, the standardized
+    errors, the filtered and smoothed states, the filtered state variances
+    and the forecasts, over the whole sample.
+
+    Like ``smoother_spread`` this turns "how close must tsecon be?" into a
+    measured quantity. A diffuse direction that the data resolve only
+    weakly (``F_inf`` a small fraction of the diffuse variance the
+    observation could see) amplifies rounding by the inverse of that
+    fraction, and no implementation can be closer to the reference than the
+    reference is to itself under a one-ulp change of its input: on the
+    seed-69 and seed-207 cases below that is 1.0e-7 and 2.5e-8, above the
+    1e-8 parity tier (every other case: 2e-12 or less). The tests
+    take ``10 * rounding_spread`` (when it exceeds 1e-8) as the tolerance of
+    those paths; the log-likelihood and AIC/BIC stay at 1e-8.
+    """
+    params = np.asarray(params, float)
+    eps = 2.0 ** -52
+
+    def paths(yy, xx):
+        r = UnobservedComponents(yy, exog=xx, use_exact_diffuse=True, **spec).smooth(params)
+        fc = r.get_forecast(6, exog=None if xx is None else xx[:6])
+        return [r.forecasts[0], r.forecasts_error[0], r.standardized_forecasts_error[0], r.filtered_state,
+                r.smoothed_state, np.array([np.diag(r.filtered_state_cov[:, :, t]) for t in range(r.nobs)]),
+                fc.predicted_mean, fc.var_pred_mean]
+
+    base = paths(y, exog)
+    perturbed = [paths(y * (1 + eps), exog)]
+    if exog is not None:
+        for j in range(exog.shape[1]):
+            xj = exog.copy()
+            xj[:, j] *= 1 + eps
+            perturbed.append(paths(y, xj))
+    worst = 0.0
+    for other in perturbed:
+        for a, b in zip(other, base):
+            a, b = np.asarray(a, float), np.asarray(b, float)
+            d = np.abs(a - b) / np.maximum(np.abs(b), 1.0)
+            if np.any(np.isfinite(d)):
+                worst = max(worst, float(np.nanmax(d)))
+    return worst
 
 
 def tied_free_set(mod, flags, stationary_cycle):
@@ -457,6 +527,74 @@ def main():
         sweep.append(dict(frequency=lam, params=lst(pp), stationary=float(s_ll), diffuse=float(d_ll)))
     fx["stationary_cycle_lambda_sweep"] = sweep
 
+    # ------------------------------------- (d) long exact-diffuse periods
+    # A seasonal-12 model whose diffuse period runs long because the same
+    # calendar month is missing in consecutive years: the genuine diffuse
+    # element for that month's seasonal direction arrives only at t = 26
+    # (t = 38 with three missing years).
+    pat = np.array([1.0, 0.5, -0.5, -1.0, 0.2, 0.0, 0.3, -0.2, 0.8, -0.6, 0.1, -0.6])
+    rng = np.random.default_rng(1)
+    T3 = 120
+    y3 = np.cumsum(rng.normal(0, 0.3, T3)) + np.tile(pat, 10) + rng.normal(0, 1, T3)
+    y3a = y3.copy()
+    y3a[[2, 14]] = np.nan
+    y3b = y3.copy()
+    y3b[[2, 14, 26]] = np.nan
+    rng = np.random.default_rng(5)
+    x3 = rng.normal(size=(T3, 1))
+    x3f = rng.normal(size=(6, 1))
+    # Regressors in the state with no missing value at all.
+    rng = np.random.default_rng(207)
+    x4 = rng.normal(size=(T3, 2))
+    y4 = (np.cumsum(rng.normal(0, 0.3, T3)) + np.tile(rng.normal(0, 1, 12), 10) + x4 @ [0.7, -0.4]
+          + rng.normal(0, 1, T3))
+    x4f = rng.normal(size=(6, 2))
+    rng = np.random.default_rng(69)
+    T5 = 96
+    x5 = rng.normal(size=(T5, 1))
+    y5 = np.cumsum(rng.normal(0, 0.3, T5)) + np.tile(pat, 8) + 0.7 * x5[:, 0] + rng.normal(0, 1, T5)
+    x5f = rng.normal(size=(6, 1))
+    fx["data"].update(ld_y_nan2_14=lst(y3a), ld_y_nan2_14_26=lst(y3b), ld_x=lst(x3), ld_x_forecast=lst(x3f),
+                      s207_y=lst(y4), s207_x=lst(x4), s207_x_forecast=lst(x4f),
+                      s69_y=lst(y5), s69_x=lst(x5), s69_x_forecast=lst(x5f))
+    ld_series = dict(ld_y_nan2_14=y3a, ld_y_nan2_14_26=y3b, s207_y=y4, s69_y=y5)
+    ld_exog = dict(ld_x=(x3, x3f), s207_x=(x4, x4f), s69_x=(x5, x5f))
+
+    seas = dict(level="llevel", seasonal=12)
+    fixed_seas = dict(seas, stochastic_seasonal=False)
+    long_diffuse = []
+    for name, data, spec, p, full in [
+        ("llevel_seasonal12_fixed_nan2_14", "ld_y_nan2_14", fixed_seas, [1.0, 0.1], True),
+        ("llevel_seasonal12_fixed_nan2_14_26", "ld_y_nan2_14_26", fixed_seas, [1.0, 0.1], False),
+        ("llevel_seasonal12_nan2_14", "ld_y_nan2_14", seas, [1.0, 0.1, 0.05], False),
+        ("llevel_seasonal12_nan2_14_26", "ld_y_nan2_14_26", seas, [1.0, 0.1, 0.05], False),
+        ("llevel_seasonal12_ar1_nan2_14", "ld_y_nan2_14", dict(seas, autoregressive=1),
+         [1.0, 0.1, 0.05, 0.5, 0.5], False),
+        ("llevel_seasonal12_ar1_nan2_14_26", "ld_y_nan2_14_26", dict(seas, autoregressive=1),
+         [1.0, 0.1, 0.05, 0.5, 0.5], False),
+        ("llevel_seasonal12_state_regression_nan2_14", "ld_y_nan2_14",
+         dict(seas, exog="ld_x", mle_regression=False), [1.0, 0.1, 0.05], False),
+        ("seed207_lltrend_seasonal12_state_regression", "s207_y",
+         dict(level="lltrend", seasonal=12, exog="s207_x", mle_regression=False), [1.0, 0.1, 0.01, 0.05], False),
+        ("seed69_llevel_seasonal12_state_regression", "s69_y",
+         dict(seas, exog="s69_x", mle_regression=False), [1.0, 0.1, 0.05], False),
+    ]:
+        kw = dict(spec)
+        exog_key = kw.pop("exog", None)
+        xd, xf = ld_exog[exog_key] if exog_key else (None, None)
+        mod = UnobservedComponents(ld_series[data], exog=xd, use_exact_diffuse=True, **kw)
+        block = fixed_block(mod, p, h=6, forecast_exog=xf, components=True, full_states=full)
+        block["rounding_spread"] = rounding_spread(ld_series[data], xd, kw, p)
+        if exog_key:
+            block["components"]["regression_coefficients"] = regression_components(
+                mod.smooth(np.asarray(p, float)))
+        long_diffuse.append(dict(name=name, data=data, spec=spec, **block))
+    fx["long_diffuse"] = long_diffuse
+
+    mod = UnobservedComponents(y3a, use_exact_diffuse=True, **seas)
+    fx["long_diffuse_mle"] = [dict(name="llevel_seasonal12_nan2_14", data="ld_y_nan2_14", spec=seas,
+                                   **mle_case(mod))]
+
     OUT.write_text(json.dumps(fx, separators=(",", ":")))
     print("wrote", OUT, OUT.stat().st_size, "bytes")
     for b in ar_cases + state_reg + stat:
@@ -481,6 +619,12 @@ def main():
               c["best"]["at_boundary"], c["best"]["se_conditional"])
     for s in sweep:
         print("sweep", s["frequency"], s["stationary"], s["diffuse"])
+    for b in fx["long_diffuse"]:
+        print("long diffuse", b["name"], "llf %.9f nobs_diffuse %d k_diffuse %d spread %.2e rounding %.2e"
+              % (b["loglike"], b["nobs_diffuse"], b["k_diffuse"], b["smoother_spread"], b["rounding_spread"]))
+    for c in fx["long_diffuse_mle"]:
+        print("long diffuse mle", c["name"], c["statsmodels"]["llf"], c["scipy"]["llf"], c["best"]["params"],
+              c["best"]["at_boundary"], c["best"]["se_conditional"], c["best"]["nobs_diffuse"])
 
 
 if __name__ == "__main__":

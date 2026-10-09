@@ -87,8 +87,8 @@ use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
 
 use crate::dense::{
-    abs_mat, abs_quad_form, axpy, chol_solve, dot, frob_sq, mat_vec, outer_add_abs, outer_sub,
-    row_to_vec, sandwich, symmetrize_in_place,
+    abs_quad_form, axpy, chol_solve, dot, frob_sq, mat_t_vec, mat_vec, outer_sub, row_to_vec,
+    sandwich, symmetrize_in_place,
 };
 use crate::error::SsmError;
 use crate::model::LinearGaussianSSM;
@@ -109,7 +109,8 @@ use crate::model::LinearGaussianSSM;
 ///   sum?".
 /// * **diffuse element.** An element takes the diffuse update while
 ///   `F_inf > TOLERANCE_RANK * |Z_i|' |P_inf| |Z_i|`, the same test applied
-///   to the diffuse part.
+///   to the diffuse part — and while it passes the second, roundoff test
+///   of [`TOLERANCE_CANCEL`].
 /// * **diffuse period.** A step is diffuse while `||P_inf,t||_F^2 >
 ///   TOLERANCE_RANK`, an **absolute** threshold.
 ///
@@ -140,8 +141,8 @@ use crate::model::LinearGaussianSSM;
 /// where the absolute floor is too permissive about cancellation.
 pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 
-/// Roundoff floor for the diffuse-element test, as a fraction of the
-/// *cancellation-free magnitude* `P_inf` would have had (see below).
+/// Floor for the diffuse-element test: the fraction of the diffuse
+/// variance `Z_i` could see that `F_inf` must keep (see below).
 ///
 /// The relative `F_inf` test above asks "did at least `TOLERANCE_RANK` of
 /// the available magnitude survive the sum `Z_i P_inf Z_i'`?", with the
@@ -160,20 +161,61 @@ pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 /// branch there adds a spurious `-(ln 2*pi + ln F_inf)/2` with
 /// `F_inf ~ 1e-32`, i.e. tens of log-likelihood points of pure noise.
 ///
-/// The second test therefore measures `F_inf` against
-/// `|Z_i|' P_mag |Z_i|`, where `P_mag` is a companion recursion carrying an
-/// upper bound on `|P_inf|` with no cancellation at all: it starts at
-/// `|P_inf,1|`, *adds* `|M_inf| |K0|'` where the exact recursion subtracts
-/// it, and is transported by `|T| P_mag |T|'`. `P_mag >= |P_inf|`
-/// elementwise by construction, so the extra test can only ever make the
-/// diffuse branch harder to enter, never easier.
+/// The second test answers two questions the covariance recursion cannot
+/// answer about itself, with two companions carried through the diffuse
+/// period. Neither feeds the arithmetic of the update, only the branch.
+///
+/// * **What is `F_inf`, without the dust?** A square-root factor `B` of
+///   `P_inf` (`P_inf = B B'`, one column per diffuse state of `P_inf,1`),
+///   moved as `B <- T B`; each diffuse update removes the resolved
+///   direction by the orthogonal projection `B <- B (I - u u' / u'u)`,
+///   `u = B' Z_i'`, and `F_root = u'u`. The covariance downdate
+///   `P_inf - M_inf M_inf' / F_inf` leaves dust of order `eps` relative to
+///   the cancelled terms — and up to `eps / r` after a direction resolved
+///   with `F_inf` only a fraction `r` of them, because it divides by
+///   `F_inf`. The projection divides by nothing, and `F_root` is a sum of
+///   squares of entries that are themselves roundoff once the direction
+///   is gone, so its dust is of order `eps^2` where the covariance form's
+///   is of order `eps / r`.
+/// * **Against what?** `U = Phi P_inf,1 Phi'`, the diffuse covariance with
+///   nothing resolved, carried by the *actual* transition (`U <- T U T'`)
+///   and read as `|Z_i|' |U| |Z_i|`. In exact arithmetic `P_inf = U -
+///   (positive semidefinite downdates)`, so `0 <= F_inf <= Z_i U Z_i'`:
+///   `U` is the most diffuse variance `Z_i` could ever see, a resolved
+///   direction keeps it at full size (which is what refuses the Nyquist
+///   dust), and it grows exactly as fast as `T^t` does — not faster.
+///
+/// An element takes the diffuse branch only when, in addition to the
+/// relative test above, `F_root > TOLERANCE_CANCEL * |Z_i|' |U| |Z_i|`, so
+/// this test can only ever make the diffuse branch harder to enter.
+///
+/// **Why not an elementwise bound.** Until 0.11.0 the reference was an
+/// upper bound on `|P_inf|` with every sign made favourable: `|P_inf,1|`
+/// plus `|M_inf| |K0|'` at each downdate, carried as `|T| P_mag |T|'`. An
+/// elementwise-absolute transport grows like `rho(|T|)^(2t)` even when `T`
+/// preserves norms: the dummy seasonal of period 12 has `T^12 = I` but
+/// `rho(|T|) = 1.9995`, so the bound grew about fourfold per period, and a
+/// rotation (a trigonometric seasonal, a cycle) by up to
+/// `(|cos| + |sin|)^2 = 2`. With the same calendar month missing in two
+/// consecutive years, the genuine `F_inf = 1.091` that resolves it at
+/// `t = 26` met a threshold of `203.8` and was refused, where the
+/// reference above is `|Z_i|' |U| |Z_i| = 2`; `P_inf` never washed out,
+/// `nobs_diffuse` came back as the sample length and the log-likelihood
+/// 0.64 to 2.87 too low (`tests/uc_extensions_golden.rs`, `long_diffuse`;
+/// the replay is `scripts/uc_long_diffuse_evidence.py`).
 ///
 /// The value `1e-14` is a few dozen multiples of the double-precision
-/// epsilon: it separates genuine diffuse mass that is small only because
-/// `Z_i` sees it weakly (the `1e-10` live `F_inf` at `s = 1e-5` in
-/// `tests/scale.rs`, which must still take the diffuse branch) from
-/// annihilated mass reappearing as roundoff (`1e-32` against an `O(1)`
-/// magnitude), which must not.
+/// epsilon, and it is a floor on what the *update* can resolve rather than
+/// on what `F_root` can see: the update itself still runs on the covariance
+/// form, whose own roundoff is `eps` of the same magnitude, so a direction
+/// `Z_i` sees with `F_inf` below `1e-14 Z_i U Z_i'` cannot be applied
+/// faithfully even when `F_root` says it is there. It keeps genuine diffuse
+/// mass that is small only because `Z_i` sees it weakly (the `1e-10` live
+/// `F_inf` at `s = 1e-5` in `tests/scale.rs`; a damped cycle at frequency
+/// `1e-6` in `tests/uc_properties.rs`, whose weakly observed state
+/// resolves with `F_inf` of order `(rho sin lambda)^2 ~ 1e-12`), and it
+/// caps the `lambda -> 0` divergence of a diffuse cycle (order `1e-16` at
+/// frequency `1e-8`, refused).
 pub(crate) const TOLERANCE_CANCEL: f64 = 1e-14;
 
 /// `ln(2 pi)`, the per-element likelihood constant.
@@ -304,6 +346,27 @@ fn validate_observations(model: &LinearGaussianSSM, y: MatRef<'_, f64>) -> Resul
     Ok(())
 }
 
+/// Square-root factor `B` (`m x r`) of the initial diffuse covariance,
+/// `P_inf,1 = B B'`, one column per diffuse state.
+///
+/// Every initialization builds `P_inf,1` as a nonnegative diagonal (`I`
+/// under [`Initialization::Diffuse`](crate::Initialization::Diffuse), the
+/// flagged unit entries under `Mixed`, zero otherwise), so `B` is the
+/// matching columns of `diag(P_inf,1)^(1/2)`; off-diagonal entries never
+/// occur and are not read.
+fn diffuse_root(p_inf: MatRef<'_, f64>) -> Mat<f64> {
+    let idx: Vec<usize> = (0..p_inf.nrows())
+        .filter(|&i| p_inf[(i, i)] > 0.0)
+        .collect();
+    Mat::from_fn(p_inf.nrows(), idx.len(), |i, j| {
+        if i == idx[j] {
+            p_inf[(i, i)].sqrt()
+        } else {
+            0.0
+        }
+    })
+}
+
 /// Runs the univariate (sequential) Kalman filter with exact diffuse
 /// initialization — the primary filtering path (see the module docs for
 /// the recursions and references).
@@ -334,9 +397,14 @@ pub fn filter_univariate(
     let mut a = init.a1;
     let mut p_star = init.p_star;
     let mut p_inf = init.p_inf;
-    // Cancellation-free magnitude bound on `P_inf`, carried alongside it
-    // through the diffuse period (see TOLERANCE_CANCEL).
-    let mut p_inf_mag = abs_mat(p_inf.as_ref());
+    // Two companions of `P_inf`, carried through the diffuse period for the
+    // diffuse-element decision only (see TOLERANCE_CANCEL): a square-root
+    // factor `B` (`P_inf = B B'`), which reads `F_inf` without the
+    // cancellation dust of the covariance form, and `U = Phi P_inf,1 Phi'`,
+    // the diffuse covariance with nothing resolved, which is the
+    // reference it is read against.
+    let mut p_inf_root = diffuse_root(p_inf.as_ref());
+    let mut p_inf_unres = p_inf.clone();
 
     let mut out = FilterOutput {
         loglik: 0.0,
@@ -407,13 +475,15 @@ pub fn filter_univariate(
             // a real (if tiny) variance. Direction-aware — a state Z_i does
             // not load on contributes nothing, however large its variance.
             let f_star_scale = abs_quad_form(&zi, p_star.as_ref()) + h[(i, i)];
-            let (f_inf, m_inf, f_inf_scale, f_inf_mag) = if diffuse {
+            let (f_inf, m_inf, f_inf_scale, u_root, f_root, f_inf_unres) = if diffuse {
                 let mi = mat_vec(p_inf.as_ref(), &zi);
                 let scale = abs_quad_form(&zi, p_inf.as_ref());
-                let mag = abs_quad_form(&zi, p_inf_mag.as_ref());
-                (dot(&zi, &mi).max(0.0), mi, scale, mag)
+                let u = mat_t_vec(p_inf_root.as_ref(), &zi);
+                let f_root = dot(&u, &u);
+                let unres = abs_quad_form(&zi, p_inf_unres.as_ref());
+                (dot(&zi, &mi).max(0.0), mi, scale, u, f_root, unres)
             } else {
-                (0.0, Vec::new(), 0.0, 0.0)
+                (0.0, Vec::new(), 0.0, Vec::new(), 0.0, 0.0)
             };
 
             // Each reference scale is a sum of nonnegative terms that
@@ -423,9 +493,12 @@ pub fn filter_univariate(
             // implies `f > 0` — including when the scale is itself zero,
             // where the test degenerates to exactly `f > 0`. The branches
             // below therefore never divide by a zero variance.
-            debug_assert!(f_star_scale >= 0.0 && f_inf_scale >= 0.0);
+            // The same holds for `f_root`, a sum of squares, against
+            // `f_inf_unres`, so the root downdate below divides by a
+            // positive `f_root` too.
+            debug_assert!(f_star_scale >= 0.0 && f_inf_scale >= 0.0 && f_inf_unres >= 0.0);
 
-            if f_inf > TOLERANCE_RANK * f_inf_scale && f_inf > TOLERANCE_CANCEL * f_inf_mag {
+            if f_inf > TOLERANCE_RANK * f_inf_scale && f_root > TOLERANCE_CANCEL * f_inf_unres {
                 // Exact-diffuse element update (Koopman & Durbin 2003).
                 let k0: Vec<f64> = m_inf.iter().map(|x| x / f_inf).collect();
                 let f12 = -f_star / f_inf;
@@ -440,9 +513,14 @@ pub fn filter_univariate(
                 outer_sub(&mut p_star, &m_inf, &k1);
                 // P_inf <- P_inf L0' = P_inf - M_inf K0'.
                 outer_sub(&mut p_inf, &m_inf, &k0);
-                // The same downdate with every sign made favourable: an
-                // upper bound on |P_inf| that never cancels.
-                outer_add_abs(&mut p_inf_mag, &m_inf, &k0);
+                // The same downdate on the root: B <- B (I - u u' / u'u),
+                // an orthogonal projection of B's columns that removes the
+                // resolved direction (B' z = 0) without dividing by a
+                // small number, so what is left of it is roundoff of B
+                // itself, not roundoff amplified by 1 / F_inf.
+                let bu = mat_vec(p_inf_root.as_ref(), &u_root);
+                let u_k: Vec<f64> = u_root.iter().map(|x| x / f_root).collect();
+                outer_sub(&mut p_inf_root, &bu, &u_k);
                 out.loglik -= 0.5 * (ln2pi + f_inf.ln());
                 n_informative += 1;
                 out.steps.push(ObsStep {
@@ -495,7 +573,11 @@ pub fn filter_univariate(
         p_star = ps_next;
         p_inf = sandwich(tr, p_inf.as_ref());
         if in_diffuse {
-            p_inf_mag = sandwich(abs_mat(tr).as_ref(), p_inf_mag.as_ref());
+            // Both companions move with the *actual* transition: B <- T B,
+            // U <- T U T'. (Never |T|: an elementwise-absolute transport
+            // compounds like rho(|T|)^(2t) even when T preserves norms.)
+            p_inf_root = tr * p_inf_root.as_ref();
+            p_inf_unres = sandwich(tr, p_inf_unres.as_ref());
         }
         symmetrize_in_place(&mut p_star);
         symmetrize_in_place(&mut p_inf);

@@ -654,24 +654,30 @@ fn the_cycle_log_likelihood_diverges_as_the_frequency_goes_to_zero() {
         prev = fit.loglik;
     }
     eprintln!("cycle frequency -> 0 divergence: {lls:?}");
-    // Measured at this seed: -188.15 at 1e-2, -183.55 at 1e-4, -162.53 at
-    // 1e-6 — 25 log-likelihood points of pure singularity over four
-    // decades. Assert at least 3 per two decades so the test fails on a
-    // regression, not on noise.
+    // Measured at this seed: -188.153 at 1e-2, -183.546 at 1e-4, -178.951
+    // at 1e-6 — each two decades of frequency buy `ln 100 = 4.605` (4.607
+    // and 4.595), exactly the `-ln(rho sin lambda)` of the one diffuse
+    // element that resolves the weakly observed state. Assert that slope,
+    // from both sides: too little is the divergence gone, too much is
+    // annihilated diffuse mass taken for a diffuse element. (Before the
+    // diffuse-element test was rebuilt on a square-root factor it took
+    // such dust at 1e-6 — `nobs_diffuse` 18, not 3 — and reported -162.53,
+    // 16.4 points above where the `ln 100` slope from 1e-4 puts it.)
     for w in lls.windows(2) {
+        let slope = w[1].1 - w[0].1;
         assert!(
-            w[1].1 - w[0].1 > 3.0,
-            "two decades of frequency bought only {}",
-            w[1].1 - w[0].1
+            (slope - 100f64.ln()).abs() < 0.05,
+            "two decades of frequency bought {slope}, not ln 100: {lls:?}"
         );
     }
-    // Below roughly 1e-7 the filter's cancellation guard declares the
+    // Below roughly 1e-7 the filter's diffuse-element test declares the
     // direction resolved (`F_inf ~ (rho sin lambda)^2` falls under
-    // `TOLERANCE_CANCEL` times the magnitude `P_inf` would have had
-    // without cancellation), the second cycle state simply stays diffuse
-    // as it does at `lambda = 0` exactly, and the divergence stops. That
-    // is a floor on the damage, not a fix: 1e-6 is already 25 points of
-    // nonsense, which is why the period bound is the answer.
+    // `TOLERANCE_CANCEL` times the diffuse variance the observation could
+    // see with nothing resolved, where the covariance-form update could
+    // not apply it faithfully anyway), the second cycle state simply stays
+    // diffuse as it does at `lambda = 0` exactly, and the divergence
+    // stops. That is a floor on the damage, not a fix: 1e-6 is already
+    // 9.2 points of nonsense, which is why the period bound is the answer.
     let deep = unobserved_components(
         &y,
         &spec,
@@ -920,8 +926,8 @@ fn the_stationary_cycle_has_no_low_frequency_singularity() {
     let spread = lls.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
         - lls.iter().cloned().fold(f64::INFINITY, f64::min);
     eprintln!("stationary cycle, frequency 1e-2 .. 1e-8: {lls:?} (spread {spread:e})");
-    // Measured: the four values agree to 0.01; the diffuse cycle moves 25
-    // points over the same sweep.
+    // Measured: the four values agree to 0.01; the diffuse cycle climbs
+    // 9.2 points from 1e-2 to 1e-6 on the same series.
     assert!(spread < 0.2, "spread {spread}");
 }
 
