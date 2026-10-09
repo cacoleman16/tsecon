@@ -30,7 +30,11 @@
 //!   ([`ForecastOptions`]);
 //! * [`VarResults::conditional_forecast`] — hard-conditioned forecasts
 //!   (Doan-Litterman-Sims / Waggoner-Zha closed form: conditional path,
-//!   covariance and the implied minimum-norm shocks);
+//!   covariance and the implied minimum-norm shocks), and
+//!   [`VarResults::conditional_forecast_soft`] — Gaussian soft conditions
+//!   with stated standard deviations, read as the cell's forecast density
+//!   (Andersson-Palmqvist-Waggoner 2010) or as a noisy reading of the cell
+//!   (Monti 2010) ([`SoftMode`]);
 //! * [`VarResults::diagnostics`] — multivariate Portmanteau (adjusted and
 //!   unadjusted), multivariate Jarque-Bera with its components (Cholesky
 //!   and symmetric-root orthogonalisations), the Doornik-Hansen (2008)
@@ -79,7 +83,7 @@ pub mod select;
 pub mod spec;
 
 pub use causality::CausalityTest;
-pub use conditional::ConditionalForecast;
+pub use conditional::{ConditionMode, ConditionalForecast, SoftMode};
 pub use diagnostics::{
     doornik_hansen_test, normality_test_cholesky, normality_test_symmetric, DoornikHansenTest,
     NormalityTest, PortmanteauTest, VarDiagnostics, DOORNIK_HANSEN_MIN_NOBS,

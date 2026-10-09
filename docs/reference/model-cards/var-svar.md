@@ -306,7 +306,9 @@ The Waggoner-Zha *structural* version $\varepsilon^* = (I \otimes P^{-1})u^*$
 is reported for the Cholesky factor $P$ in the data's column order.
 
 **Assumptions.** Everything `var_forecast` assumes, plus: the conditions are
-*hard* (known with certainty) and the coefficients are treated as known. The
+*hard* (known with certainty) — or, with `condition_sd`, Gaussian with a
+stated standard deviation ([below](#soft-conditions-condition_sd-soft)) —
+and the coefficients are treated as known. The
 scenario is imposed on the reduced form; no identification is needed for the
 path or its covariance, and nothing about the ordering enters them — only the
 reported `orth_shocks` depend on it.
@@ -317,9 +319,11 @@ quarter, an announced rate path, a fiscal package with a known profile). Do
 not read it as a causal experiment: a pinned inflation path is delivered by
 *whatever* mix of reduced-form innovations is smallest, not by an identified
 shock — for "what does a monetary policy shock do?" you want an identified
-IRF. Do not use it for *soft* conditions (ranges, distributions) or with
-parameter uncertainty; those are the Bayesian per-draw extensions this
-function deliberately does not attempt.
+IRF. A condition known only up to a Gaussian spread — a scenario band, a
+noisy nowcast — is a *soft* condition:
+[`condition_sd` with `soft`](#soft-conditions-condition_sd-soft) below,
+which also lists what this function still does not do (interval conditions,
+parameter uncertainty).
 
 **Key arguments and defaults (and why).** `conditions` — a nested list, one
 row per horizon, one entry per series, `None`/`NaN` for a free cell; a NumPy
@@ -328,6 +332,8 @@ beyond `len(conditions)` up to `steps` are free, so a short list pins the near
 horizons only; `steps=None` means `len(conditions)`. At least one cell must be
 pinned (the all-free case *is* `var_forecast`, and is refused with that
 pointer). `lags=2`, `trend="c"`, `alpha=0.05` as in `var_forecast`.
+`condition_sd=None` and `soft=None` keep every condition hard; the soft
+conditions are below.
 
 **How to read the output.** `point` is the conditional path — pinned cells
 hold their conditions *exactly*, set bitwise rather than left to rounding.
@@ -396,7 +402,11 @@ independent references, both hit at roundoff.
 **References.** Doan, Litterman, and Sims (1984), *Econometric Reviews*;
 Waggoner and Zha (1999), *Review of Economics and Statistics*; Bańbura,
 Giannone, and Lenza (2015), *International Journal of Forecasting*;
-Lütkepohl (2005), section 2.2.
+Lütkepohl (2005), section 2.2; for the soft conditions below, Andersson,
+Palmqvist, and Waggoner (2010), "Density-conditional forecasts in dynamic
+multivariate models", Sveriges Riksbank Working Paper 247, and Monti
+(2010), "Combining judgment and models", *Journal of Money, Credit and
+Banking* 42(8).
 
 ```python
 import numpy as np, tsecon
@@ -439,6 +449,197 @@ standard error barely moves: the DGP's innovations are uncorrelated, so the
 conditions carry information about series 0 only through the dynamics, not
 through the covariance. (The lag order is 1 by every criterion because that is
 the DGP; `var_fit`'s default `lags=2` is a convention, not a verdict.)
+
+#### Soft conditions — `condition_sd`, `soft`
+
+**What it estimates.** A *soft* condition gives a conditioned cell a stated
+standard deviation instead of pinning it. `condition_sd` has the shape of
+`conditions` — exactly `len(conditions)` rows, as a nested list, a NaN array
+or a DataFrame — and at a conditioned cell holds a standard deviation (not a
+variance) `> 0`; `0`, `None` or `NaN` keeps the cell hard, and a free cell
+takes only `None`, `NaN` or `0`. "Inflation at 2%, give or take 0.5" has two
+readings that give different answers, so the caller names one:
+
+| `soft=` | The typed value is … | Say it as | Reference |
+|---|---|---|---|
+| `"density"` | the centre of the cell's forecast distribution: the cell's forecast **is** $N(\text{value}, sd^2)$ | "the scenario says inflation $\sim N(2, 0.5^2)$" | Andersson, Palmqvist, and Waggoner (2010) |
+| `"signal"` | a noisy reading of the cell: $\text{value} = y + e$, $e \sim N(0, sd^2)$, independent of the innovations | "a nowcast with known noise" | Monti (2010) |
+
+With $\Omega = \mathrm{diag}(sd_i^2)$ over the $m$ conditioned cells
+($sd_i = 0$ at a hard one), $O = B\Sigma B'$ and $G = R\Sigma B'$:
+
+$$
+\text{density:}\quad \tilde y = \hat y + G O^{-1} r, \qquad
+V = R\Sigma R' - G O^{-1} G' + G O^{-1}\,\Omega\,O^{-1} G',
+$$
+
+the mixture, over $c \sim N(\text{value}, \Omega)$, of the hard conditional
+forecast at $c$ (equivalently the APW structural form
+$\varepsilon \sim N(\tilde R^+ r,\ \tilde R^+\Omega\tilde R^{+\prime} + I - \tilde R^+\tilde R)$,
+$\tilde R = B(I \otimes P)$, which does not depend on $P$);
+
+$$
+\text{signal:}\quad M = O + \Omega, \qquad
+u^* = \Sigma B' M^{-1} r = E[u \mid \text{readings}], \qquad
+V = R\Sigma R' - G M^{-1} G',
+$$
+
+which is what a Kalman smoother returns with measurement-noise variance
+$sd_i^2$ on the read cells. Both are the hard closed form at $sd = 0$, and
+when no cell's sd is above 0 the function *is* the hard path (`mode="hard"`,
+the same numbers bit for bit).
+
+**Why `soft` is required.** There is no default reading. Under `"density"` a
+soft cell's `point` is its typed value; under `"signal"` it is not — the
+posterior shrinks the reading toward what the model expects. A silent default
+would hide that choice, so a `condition_sd` above 0 without `soft` is refused,
+naming both readings, and `soft` without any `condition_sd` above 0 is
+refused as inert.
+
+**How to read the output, per reading.**
+
+| Key | `soft="density"` | `soft="signal"` |
+|---|---|---|
+| `point` | the hard path at the central values; every conditioned cell holds its value exactly | the posterior mean given the readings; a soft cell is **not** pinned (hard cells are) |
+| `se` | exactly `sd` at a soft cell; at least the hard se everywhere | below both `sd` and the unconditional se at a soft cell; at least the hard se everywhere |
+| `cov` | the hard covariance plus the stated spread through the gain; the conditioned × conditioned block of a horizon is $\Omega$ exactly ($sd^2$ on the diagonal, 0 between distinct conditioned cells, as stated) | the posterior covariance; hard cells keep their zero row and column |
+| `shocks`, `orth_shocks` | the hard implied shocks at the central values | $E[u \mid \text{readings}]$ |
+| `constrained`, `n_constrained` | every conditioned cell, hard or soft | every conditioned cell — a soft one is constrained but not pinned: read it with `mode` and `condition_sd` |
+| `mahalanobis`, `mahalanobis_pvalue` | the hard statistic: it measures the **central path only** and ignores `sd` | $r'(O + \Omega)^{-1} r \sim \chi^2(m)$, the plausibility of the readings |
+
+`mode` echoes `"hard"`, `"density"` or `"signal"`; `condition_sd`
+(`steps × k`) is the standard deviation applied at each soft cell, 0.0 at
+hard and free cells; `n_soft` counts the soft cells. Density mode is a
+plug-in, coefficients-known conditioning. It coincides with two-moment
+exponential tilting of the plug-in Gaussian, but it is not the entropic
+tilting of posterior-predictive simulations that the Bayesian roadmap
+(`docs/roadmap/05-bayesian.md`) calls for — that roadmap row ("never tilt
+plug-in predictive densities") stays open.
+
+**Failure modes.** A soft cell whose sd is far below its forecast se is
+effectively hard; under `"signal"` its block is computed from the
+cancellation-free identity $\mathrm{Cov}(By \mid z) = \Omega M^{-1} O$, so
+its se stays right: the fixture's sd = 1e-9 cell has se 1.0e-9, where the
+subtraction $R\Sigma R' - GM^{-1}G'$ leaves the variance at roundoff —
+statsmodels' own smoother returns −9.6e-19 for it (`bgl_cov`), whose square
+root would not exist. Under `"density"` the covariance grows like $sd^2$, so an sd whose
+square overflows a double is refused by name, cell and value, as is a
+negative or infinite sd and an sd above 0 at a free cell. Large sds make the
+signal reading the unconditional forecast and the density reading
+correspondingly wide — both by construction.
+
+**Validated against.** Three legs in `fixtures/var_cf_soft.json`
+([generator](../../../fixtures/generate_var_cf_soft_fixtures.py), which never
+imports tsecon), ten cases over both readings: the seeded VAR(2) of
+`var_cf.json` (`trend` c/n, orders 1–3, hard and soft cells at the same
+horizon, every series soft at $h = 1$, two soft cells at one horizon, sd
+1e-9 and 1e6 beside a hard cell, a one-cell identity whose density forecast
+*is* the unconditional one) and the macro system with inflation held in a
+widening band (sd 0.5 → 1.25) and the T-bill hard. (a) Both closed forms in
+NumPy, every returned key at 1e-10. (b) statsmodels 0.15 `VARMAX` at the
+OLS parameters set by name: for `"signal"` a time-varying `obs_cov` (zero
+in-sample, $sd^2$ on the read cells — asserted on the *results* object,
+since `VARMAX.update` rewrites it only with `measurement_error=True`),
+agreeing with (a) at ≤ 8.9e-16 (path), 3.6e-15 (covariance) and 1.7e-16
+(shocks), its future log-likelihood equal to
+$-\tfrac12(m\ln 2\pi + \ln\det M + \text{mahalanobis})$ to ≤ 1.8e-15 — a
+statsmodels check on the returned statistic; for `"density"` the hard
+smoother plus the law of total variance, with the gain read off by unit
+perturbations of the conditioning values (exact, the smoother being affine),
+at ≤ 4.4e-16 / 1.8e-15 / 5.3e-16 — semi-independent, since NumPy assembles
+the total variance, and valid only for sd of order 1 (the differenced gain's
+roundoff is multiplied by $sd^2$), so the extreme-sd case is signal-only.
+(c) For `"density"` the APW structural form with the Moore-Penrose inverse,
+≤ 9.6e-16 / 6.6e-15. All are pinned at 1e-10 (closed form) and 1e-8
+(statsmodels, APW) in the crate and the binding tests, which also run the
+statsmodels legs live on `macrodata` in levels and on a fresh VAR(3) without
+constant. The hard path is unchanged: an all-`None`, all-zero or all-`NaN`
+`condition_sd` reproduces it bit for bit in the same run on every
+`var_cf.json` case, and the 0.10.0 pins above still hold at 1e-10. Seeded
+Monte Carlo
+([`var_cf_properties.rs`](../../../crates/tsecon-var/tests/var_cf_properties.rs)),
+on the VAR(1) above at $T = 4000$, 2000 replications (MC se 0.005), sd 0.3 /
+0.4 / 0.5 / 0.6 on series 0 at $h = 1..4$. *Signal*, with readings = the
+realised path plus $N(0, sd^2)$ noise: the 95% intervals covered the true
+value at the read cells **0.9500 / 0.9480 / 0.9500 / 0.9465** and at the free
+cells 0.9500 / 0.9515 / 0.9530 / 0.9410, with standardised-error variances
+0.974–1.045 and a mean Mahalanobis statistic of 3.983 (the $\chi^2(4)$ mean
+is 4). *Density*, by exact conditional simulation under the true DGP
+(Matheron's rule: $c \sim N(\text{value}, sd^2)$, an unconditional future
+$\tilde y$, then $y = \tilde y + G O^{-1}(c - B\tilde y)$ with the DGP's own
+$G$ and $O$, so the check is not circular): **0.9525 / 0.9550 / 0.9580 /
+0.9445** at the soft cells and 0.9565 / 0.9525 / 0.9520 / 0.9550 at the free
+ones; the free cells' standardised-error variances run 0.905–0.975 because
+the fitted $\Sigma_u$ makes their se 1.019–1.024 times the DGP's (the test
+prints both). Deterministic properties: a noisier reading never tightens any
+cell, a density spread never tightens one below the hard forecast,
+$sd \to 0$ is the hard forecast in both readings (1e-12), a signal reading
+with sd 1e8 is the unconditional forecast (1e-10), and scaling every sd by
+$c$ scales the density term by exactly $c^2$. Grade: **exact** — the closed
+form and an independent package in both readings (the density leg
+semi-independent), plus a third, structural transcription for density.
+
+**What it still does not do.**
+
+- *Interval (range) conditions* — Waggoner-Zha truncated conditions such as
+  "inflation between 1.5 and 2.5". Their conditional moments are exact only
+  for one or two cells; beyond that they need randomized quasi-Monte-Carlo
+  multivariate-normal box probabilities, and no reference sampler runs in
+  the fixture environment, so there is no golden to hit.
+- *Parameter uncertainty* — the per-draw version that integrates over the
+  coefficients. There is no cross-horizon reference for its covariance; it
+  belongs in `tsecon-bayes` and would be graded by Monte Carlo.
+- *A `log_density` key.* The predictive log density of the conditions is
+  not returned: it is a deterministic function of `mahalanobis`, $m$ and
+  $\ln\det M$; under `"density"` it equals the hard value whatever the sd;
+  and densities over different sets of conditioned cells are not
+  comparable, so "compare scenarios by it" would mislead.
+- *Correlated stated uncertainty.* $\Omega$ is diagonal. A full
+  `condition_cov` is exactly goldenable for `"density"`, but `"signal"` noise
+  correlated across horizons has no measurement-noise reference leg.
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+k, n = 3, 400
+A = np.array([[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.5]])
+Y = np.zeros((n, k))
+for t in range(1, n):
+    Y[t] = A @ Y[t - 1] + 0.3 * rng.standard_normal(k)
+
+cond = np.full((8, k), np.nan)
+cond[:4, 1] = 0.5
+cond[1, 2] = 0.0
+sd = np.zeros((8, k))
+sd[:4, 1] = 0.2      # series 1 "at 0.5, give or take 0.2"; series 2 stays hard
+for soft in ("density", "signal"):
+    cf = tsecon.var_conditional_forecast(Y, cond, lags=2, steps=8, condition_sd=sd, soft=soft)
+    p, s = np.array(cf["point"]), np.array(cf["se"])
+    print("mode:", cf["mode"], " soft cells:", cf["n_soft"],
+          " plausibility p =", round(cf["mahalanobis_pvalue"], 3))
+    print("series 1, h=1..4  point:", np.round(p[:4, 1], 3), " se:", np.round(s[:4, 1], 3))
+    print("series 0, h=1..4  point:", np.round(p[:4, 0], 3), " se:", np.round(s[:4, 0], 3))
+```
+
+```text
+mode: density  soft cells: 4  plausibility p = 0.294
+series 1, h=1..4  point: [0.5 0.5 0.5 0.5]  se: [0.2 0.2 0.2 0.2]
+series 0, h=1..4  point: [-0.129 -0.015  0.012  0.006]  se: [0.294 0.333 0.342 0.344]
+mode: signal  soft cells: 4  plausibility p = 0.438
+series 1, h=1..4  point: [0.39  0.414 0.41  0.387]  se: [0.162 0.164 0.164 0.167]
+series 0, h=1..4  point: [-0.149 -0.044 -0.014 -0.016]  se: [0.294 0.332 0.341 0.344]
+```
+
+The scenario is the hard example's, with series 1 now held at 0.5 "give or
+take 0.2". Read as a **density**, series 1 sits at 0.5 with se 0.2 exactly —
+the scenario's own statement — while series 0 keeps the hard path
+(−0.129 … 0.006, as above) and the plausibility p is the hard one (0.294),
+because the central path is unchanged. Read as a **signal**, the four 0.5s
+are noisy readings: the posterior pulls series 1 back toward the model's own,
+lower forecast (0.39–0.41, se 0.162–0.167 — below the readings' 0.2),
+series 0 is pulled up less, and p rises to 0.438, because noisy readings are
+easier for the model to have produced than an exact path.
 
 ### Residual diagnostics and lag order — `var_diagnostics`, `var_select_order`
 

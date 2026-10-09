@@ -18,7 +18,12 @@
 //!   T = 200 and T = 40, power against t(4) and skewed chi-squared(3)
 //!   innovations, and the `None`-below-8-observations semantics of the
 //!   bundle;
-//! * refusals that name the offending parameter.
+//! * refusals that name the offending parameter;
+//! * soft (Gaussian, stated-variance) conditions: signal-mode coverage of
+//!   the true path under noisy readings, density-mode coverage under exact
+//!   conditional draws from the true DGP (Matheron's rule), monotonicity in
+//!   the stated sd, the sd -> 0 / sd -> infinity limits, the density
+//!   scaling identity, and the `condition_sd` refusals.
 
 mod common;
 
@@ -26,7 +31,8 @@ use common::Lcg;
 use tsecon_var::tsecon_linalg::faer::linalg::solvers::Solve;
 use tsecon_var::tsecon_linalg::faer::{Mat, Side};
 use tsecon_var::{
-    doornik_hansen_test, normality_test_cholesky, normality_test_symmetric, Trend, VarSpec,
+    doornik_hansen_test, normality_test_cholesky, normality_test_symmetric, ConditionMode, SoftMode,
+    Trend, VarSpec,
 };
 
 /// Innovation law of the simulator.
@@ -840,4 +846,473 @@ fn refusals_name_the_parameter() {
     }
     let e = res.portmanteau_test(1).unwrap_err().to_string();
     assert!(e.contains("nlags"), "{e}");
+}
+
+// ------------------------------------------------------- soft conditions
+
+/// The true `G = R Σ B'` (`n x m`) and `Occ = B Σ B'` (`m x m`) of the
+/// VAR(1) DGP for conditioned cells `(h, j)`: `Ψ_h = A^h`, `Σ = chol chol'`.
+/// Used to draw from the exact density-conditional distribution without
+/// touching the fitted model (which would make the coverage check circular).
+fn true_gain_pieces(
+    a: &Mat<f64>,
+    chol: &Mat<f64>,
+    steps: usize,
+    cells: &[(usize, usize)],
+) -> (Mat<f64>, Mat<f64>) {
+    let k = a.nrows();
+    let n = steps * k;
+    let m = cells.len();
+    let sigma = chol * chol.transpose();
+    let mut psi = vec![Mat::<f64>::identity(k, k)];
+    for h in 1..steps {
+        psi.push(a * &psi[h - 1]);
+    }
+    // R (n x n): block (h, s) = Psi_{h-s}.
+    let mut r = Mat::<f64>::zeros(n, n);
+    for h in 0..steps {
+        for s in 0..=h {
+            for i in 0..k {
+                for l in 0..k {
+                    r[(h * k + i, s * k + l)] = psi[h - s][(i, l)];
+                }
+            }
+        }
+    }
+    let big_s = Mat::from_fn(n, n, |i, j| {
+        if i / k == j / k {
+            sigma[(i % k, j % k)]
+        } else {
+            0.0
+        }
+    });
+    let b = Mat::from_fn(m, n, |i, c| r[(cells[i].0 * k + cells[i].1, c)]);
+    let w = &big_s * b.transpose();
+    (&r * &w, &b * &w)
+}
+
+/// SIGNAL coverage under the DGP: the readings are the realised path of
+/// series 0 over four horizons PLUS independent N(0, sd^2) noise (sd 0.3,
+/// 0.4, 0.5, 0.6). The signal-mode 95% interval must cover the TRUE value
+/// at every cell — the four read cells and the four free ones — at the
+/// nominal rate, the standardised errors must have unit variance, and the
+/// Mahalanobis statistic of the readings is a chi2(4) draw (mean 4).
+#[test]
+fn soft_signal_coverage_under_the_dgp() {
+    let (c, a, chol) = dgp_var1();
+    let mut rng = Lcg::new(20261009);
+    let y = simulate(&mut rng, 4000, &c, &a, &chol, false, None);
+    let res = VarSpec::new(1, Trend::Constant)
+        .unwrap()
+        .fit(y.as_ref())
+        .unwrap();
+    let (h, reps) = (4usize, 2000usize);
+    let sds = [0.3, 0.4, 0.5, 0.6];
+    let start = y.submatrix(y.nrows() - 1, 0, 1, 2).to_owned();
+    let mut covered = vec![[0usize; 2]; h];
+    let mut sq_err = vec![[0.0f64; 2]; h];
+    let mut mean_maha = 0.0;
+    let sd_grid: Vec<Vec<Option<f64>>> = sds.iter().map(|&s| vec![Some(s), None]).collect();
+    for _ in 0..reps {
+        let fut = simulate(&mut rng, h, &c, &a, &chol, false, Some(&start));
+        let conds: Vec<Vec<Option<f64>>> = (0..h)
+            .map(|s| vec![Some(fut[(s, 0)] + sds[s] * rng.gaussian()), None])
+            .collect();
+        let cf = res
+            .conditional_forecast_soft(h, &conds, &sd_grid, SoftMode::Signal, 0.05)
+            .unwrap();
+        assert_eq!(cf.mode, ConditionMode::Signal);
+        for s in 0..h {
+            for j in 0..2 {
+                let v = fut[(s, j)];
+                if cf.lower[(s, j)] <= v && v <= cf.upper[(s, j)] {
+                    covered[s][j] += 1;
+                }
+                let e = (v - cf.point[(s, j)]) / cf.se[(s, j)];
+                sq_err[s][j] += e * e;
+            }
+        }
+        mean_maha += cf.mahalanobis;
+    }
+    mean_maha /= reps as f64;
+    let se_mc = (0.95f64 * 0.05 / reps as f64).sqrt();
+    println!("soft signal coverage (reps {reps}, T 4000, sd {sds:?} on series 0), mean Mahalanobis {mean_maha:.3}");
+    for s in 0..h {
+        let cov = [
+            covered[s][0] as f64 / reps as f64,
+            covered[s][1] as f64 / reps as f64,
+        ];
+        let calib = [sq_err[s][0] / reps as f64, sq_err[s][1] / reps as f64];
+        println!(
+            "  h={}: read cell {:.4} free cell {:.4}; standardised-error variance {:.4} / {:.4}",
+            s + 1,
+            cov[0],
+            cov[1],
+            calib[0],
+            calib[1]
+        );
+        for j in 0..2 {
+            assert!(
+                (cov[j] - 0.95).abs() < 4.0 * se_mc + 0.005,
+                "h={} series {j}: signal coverage {}",
+                s + 1,
+                cov[j]
+            );
+            assert!(
+                (calib[j] - 1.0).abs() < 0.12,
+                "h={} series {j}: {}",
+                s + 1,
+                calib[j]
+            );
+        }
+    }
+    assert!(
+        (mean_maha - 4.0).abs() < 0.3,
+        "mean Mahalanobis {mean_maha}"
+    );
+}
+
+/// DENSITY coverage by exact conditional simulation (Matheron's rule) with
+/// the TRUE DGP's MA matrices: draw the scenario's cells `c ~ N(v, sd^2)`,
+/// draw an unconditional future `ỹ` from the DGP, and set
+/// `y = ỹ + G Occ^{-1} (c - B ỹ)` — a draw from the
+/// Andersson-Palmqvist-Waggoner distribution under the true model. The
+/// fitted model's density-mode 95% intervals must cover it at the nominal
+/// rate at every cell (the soft cells: `c` itself; the free ones: the
+/// conditional response).
+#[test]
+fn soft_density_coverage_by_exact_conditional_simulation() {
+    let (c, a, chol) = dgp_var1();
+    let mut rng = Lcg::new(20261010);
+    let y = simulate(&mut rng, 4000, &c, &a, &chol, false, None);
+    let res = VarSpec::new(1, Trend::Constant)
+        .unwrap()
+        .fit(y.as_ref())
+        .unwrap();
+    let (h, reps, k) = (4usize, 2000usize, 2usize);
+    let sds = [0.3, 0.4, 0.5, 0.6];
+    let offsets = [0.8, 0.5, 0.3, 0.1];
+    let unc = res.forecast(h).unwrap();
+    let v: Vec<f64> = (0..h).map(|s| unc[(s, 0)] + offsets[s]).collect();
+    let conds: Vec<Vec<Option<f64>>> = v.iter().map(|&x| vec![Some(x), None]).collect();
+    let sd_grid: Vec<Vec<Option<f64>>> = sds.iter().map(|&s| vec![Some(s), None]).collect();
+    let cf = res
+        .conditional_forecast_soft(h, &conds, &sd_grid, SoftMode::Density, 0.05)
+        .unwrap();
+    assert_eq!(cf.mode, ConditionMode::Density);
+    let cells: Vec<(usize, usize)> = (0..h).map(|s| (s, 0)).collect();
+    let (g_true, occ_true) = true_gain_pieces(&a[0], &chol, h, &cells);
+    // K = G Occ^{-1} (n x m), through the transpose solve Occ K' = G'.
+    let k_gain = occ_true
+        .llt(Side::Lower)
+        .unwrap()
+        .solve(g_true.transpose())
+        .transpose()
+        .to_owned();
+    let start = y.submatrix(y.nrows() - 1, 0, 1, 2).to_owned();
+    let mut covered = vec![[0usize; 2]; h];
+    let mut sq_err = vec![[0.0f64; 2]; h];
+    for _ in 0..reps {
+        let draw_c: Vec<f64> = (0..h).map(|s| v[s] + sds[s] * rng.gaussian()).collect();
+        let fut = simulate(&mut rng, h, &c, &a, &chol, false, Some(&start));
+        let gap: Vec<f64> = (0..h)
+            .map(|i| draw_c[i] - fut[(cells[i].0, cells[i].1)])
+            .collect();
+        for s in 0..h {
+            for j in 0..k {
+                let mut yv = fut[(s, j)];
+                for (i, g) in gap.iter().enumerate() {
+                    yv += k_gain[(s * k + j, i)] * g;
+                }
+                if cf.lower[(s, j)] <= yv && yv <= cf.upper[(s, j)] {
+                    covered[s][j] += 1;
+                }
+                let e = (yv - cf.point[(s, j)]) / cf.se[(s, j)];
+                sq_err[s][j] += e * e;
+            }
+        }
+    }
+    // The DGP's own density-conditional se at each cell, from the same
+    // pieces: MSE - G Occ^{-1} G' + K Om K' on the diagonal.
+    let sigma_true = &chol * chol.transpose();
+    let mut mse_true = Mat::<f64>::zeros(k, k);
+    let mut psi_h = Mat::<f64>::identity(k, k);
+    let mut true_se = vec![[0.0f64; 2]; h];
+    for (s, se_s) in true_se.iter_mut().enumerate() {
+        mse_true = &mse_true + &psi_h * &sigma_true * psi_h.transpose();
+        psi_h = &a[0] * &psi_h;
+        for (j, slot) in se_s.iter_mut().enumerate() {
+            let row = s * k + j;
+            let shrink: f64 = (0..h).map(|i| g_true[(row, i)] * k_gain[(row, i)]).sum();
+            let spread: f64 = (0..h).map(|i| (k_gain[(row, i)] * sds[i]).powi(2)).sum();
+            *slot = (mse_true[(j, j)] - shrink + spread).max(0.0).sqrt();
+        }
+    }
+    let se_mc = (0.95f64 * 0.05 / reps as f64).sqrt();
+    println!("soft density coverage (reps {reps}, T 4000, sd {sds:?} on series 0, exact conditional draws under the DGP)");
+    for s in 0..h {
+        let cov = [
+            covered[s][0] as f64 / reps as f64,
+            covered[s][1] as f64 / reps as f64,
+        ];
+        let calib = [sq_err[s][0] / reps as f64, sq_err[s][1] / reps as f64];
+        println!(
+            "  h={}: soft cell {:.4} free cell {:.4}; standardised-error variance {:.4} / {:.4}; \
+             fitted/true se {:.4} / {:.4}",
+            s + 1,
+            cov[0],
+            cov[1],
+            calib[0],
+            calib[1],
+            cf.se[(s, 0)] / true_se[s][0],
+            cf.se[(s, 1)] / true_se[s][1]
+        );
+        // The soft cell's se is the stated sd under both the DGP and the fit.
+        assert!((cf.se[(s, 0)] / true_se[s][0] - 1.0).abs() < 1e-12);
+        for j in 0..k {
+            assert!(
+                (cov[j] - 0.95).abs() < 4.0 * se_mc + 0.005,
+                "h={} series {j}: density coverage {}",
+                s + 1,
+                cov[j]
+            );
+            assert!(
+                (calib[j] - 1.0).abs() < 0.12,
+                "h={} series {j}: {}",
+                s + 1,
+                calib[j]
+            );
+        }
+    }
+}
+
+fn soft_fixture_model() -> tsecon_var::VarResults {
+    let (c, a, chol) = dgp_var2_k3();
+    let mut rng = Lcg::new(11);
+    let y = simulate(&mut rng, 300, &c, &a, &chol, false, None);
+    VarSpec::new(2, Trend::Constant)
+        .unwrap()
+        .fit(y.as_ref())
+        .unwrap()
+}
+
+/// Two soft cells (series 1 at h = 1 and h = 3) and a hard one (series 2 at
+/// h = 2), with the soft standard deviations given.
+type Grid = Vec<Vec<Option<f64>>>;
+
+fn soft_scenario(sd1: f64, sd3: f64) -> (Grid, Grid) {
+    let conds = vec![
+        vec![None, Some(0.4), None],
+        vec![None, None, Some(-0.3)],
+        vec![None, Some(0.2), None],
+    ];
+    let sd = vec![
+        vec![None, Some(sd1), None],
+        vec![None, None, Some(0.0)],
+        vec![None, Some(sd3), None],
+    ];
+    (conds, sd)
+}
+
+/// Monotonicity: a signal-mode reading is informative but not exact (its
+/// cell's se is below both its sd and its unconditional se), a noisier
+/// reading never tightens any cell (Blackwell: the signal is garbled), and
+/// stating a density spread never tightens any cell below the hard forecast.
+#[test]
+fn soft_condition_monotonicity() {
+    let res = soft_fixture_model();
+    let (h, k) = (6usize, 3usize);
+    let (conds, _) = soft_scenario(0.0, 0.0);
+    let hard = res.conditional_forecast(h, &conds, 0.05).unwrap();
+    let grid = [0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 20.0];
+    let mut prev_sig: Option<tsecon_var::ConditionalForecast> = None;
+    for &s1 in &grid {
+        let (conds, sd) = soft_scenario(s1, 0.25);
+        let sig = res
+            .conditional_forecast_soft(h, &conds, &sd, SoftMode::Signal, 0.05)
+            .unwrap();
+        let den = res
+            .conditional_forecast_soft(h, &conds, &sd, SoftMode::Density, 0.05)
+            .unwrap();
+        assert_eq!((sig.n_soft, den.n_soft, sig.n_constrained), (2, 2, 3));
+        for (cell, sdv) in [((0usize, 1usize), s1), ((2, 1), 0.25)] {
+            let se = sig.se[cell];
+            assert!(
+                se < sdv && se < sig.unconditional_se[cell],
+                "sd {s1}: se {se}"
+            );
+            assert_eq!(den.se[cell].to_bits(), sdv.to_bits());
+        }
+        for hh in 0..h {
+            for j in 0..k {
+                assert!(
+                    den.se[(hh, j)] >= hard.se[(hh, j)] * (1.0 - 1e-12),
+                    "sd {s1}: density se ({hh},{j}) below the hard se"
+                );
+                if let Some(p) = &prev_sig {
+                    assert!(
+                        sig.se[(hh, j)] >= p.se[(hh, j)] * (1.0 - 1e-12),
+                        "sd {s1}: signal se ({hh},{j}) fell when the reading got noisier"
+                    );
+                }
+            }
+        }
+        prev_sig = Some(sig);
+    }
+}
+
+/// Limits. sd -> 0 is the hard forecast in both modes (every quantity
+/// within 1e-12); a signal reading with sd = 1e8 carries no information (the
+/// unconditional forecast, to 1e-10); and scaling every stated sd by c in
+/// density mode scales exactly the added variance term by c^2.
+#[test]
+fn soft_condition_limits_and_scaling() {
+    let res = soft_fixture_model();
+    let h = 6usize;
+    let (conds, _) = soft_scenario(0.0, 0.0);
+    let hard = res.conditional_forecast(h, &conds, 0.05).unwrap();
+    let close = |a: &Mat<f64>, b: &Mat<f64>, tol: f64, what: &str| {
+        for i in 0..a.nrows() {
+            for j in 0..a.ncols() {
+                let d = (a[(i, j)] - b[(i, j)]).abs();
+                assert!(
+                    d <= tol * b[(i, j)].abs().max(1.0),
+                    "{what}[({i},{j})]: {d:e}"
+                );
+            }
+        }
+    };
+    let (_, tiny) = soft_scenario(1e-13, 1e-13);
+    for mode in [SoftMode::Signal, SoftMode::Density] {
+        let s = res
+            .conditional_forecast_soft(h, &conds, &tiny, mode, 0.05)
+            .unwrap();
+        let what = format!("sd 1e-13 {mode:?}");
+        for (key, a, b) in [
+            ("point", &s.point, &hard.point),
+            ("se", &s.se, &hard.se),
+            ("shocks", &s.shocks, &hard.shocks),
+            ("lower", &s.lower, &hard.lower),
+        ] {
+            close(a, b, 1e-12, &format!("{what} {key}"));
+        }
+        for hh in 0..h {
+            close(
+                &s.cov[hh],
+                &hard.cov[hh],
+                1e-12,
+                &format!("{what} cov[{hh}]"),
+            );
+        }
+        assert!((s.mahalanobis - hard.mahalanobis).abs() < 1e-12);
+    }
+    // Every cell soft with sd = 1e8: the readings say nothing.
+    let conds_all = vec![
+        vec![None, Some(0.4), None],
+        vec![Some(9.0), None, Some(-0.3)],
+    ];
+    let huge = vec![
+        vec![None, Some(1e8), None],
+        vec![Some(1e8), None, Some(1e8)],
+    ];
+    let s = res
+        .conditional_forecast_soft(h, &conds_all, &huge, SoftMode::Signal, 0.05)
+        .unwrap();
+    close(&s.point, &s.unconditional, 1e-10, "sd 1e8 point");
+    close(&s.se, &s.unconditional_se, 1e-10, "sd 1e8 se");
+    assert!(s.mahalanobis < 1e-12, "{}", s.mahalanobis);
+    // Density scaling: cov(c sd) - cov_hard = c^2 (cov(sd) - cov_hard).
+    let (_, sd1) = soft_scenario(0.3, 0.2);
+    let (_, sd3) = soft_scenario(0.9, 0.6000000000000001);
+    let d1 = res
+        .conditional_forecast_soft(h, &conds, &sd1, SoftMode::Density, 0.05)
+        .unwrap();
+    let d3 = res
+        .conditional_forecast_soft(h, &conds, &sd3, SoftMode::Density, 0.05)
+        .unwrap();
+    for hh in 0..h {
+        let add1 = &d1.cov[hh] - &hard.cov[hh];
+        let add3 = &d3.cov[hh] - &hard.cov[hh];
+        let nine = Mat::from_fn(3, 3, |i, j| 9.0 * add1[(i, j)]);
+        close(&add3, &nine, 1e-10, &format!("density scaling cov[{hh}]"));
+    }
+    // The path, shocks and Mahalanobis statistic do not depend on sd.
+    assert_eq!(d1.point, hard.point);
+    assert_eq!(d3.shocks, hard.shocks);
+    assert_eq!(d3.mahalanobis.to_bits(), hard.mahalanobis.to_bits());
+}
+
+/// Rust-level refusals of `condition_sd`, each naming it (the binding adds
+/// the cell indices), and the all-zero grid that is NOT a refusal.
+#[test]
+fn soft_refusals_name_condition_sd() {
+    let res = soft_fixture_model();
+    let conds = vec![vec![None, Some(0.4), None], vec![None, None, Some(-0.3)]];
+    let ok = vec![vec![None, Some(0.2), None], vec![None, None, None]];
+    assert!(res
+        .conditional_forecast_soft(4, &conds, &ok, SoftMode::Signal, 0.05)
+        .is_ok());
+    let bad = |sd: Vec<Vec<Option<f64>>>| {
+        res.conditional_forecast_soft(4, &conds, &sd, SoftMode::Density, 0.05)
+            .unwrap_err()
+            .to_string()
+    };
+    let e = bad(vec![vec![None, Some(-0.1), None], vec![None, None, None]]);
+    assert!(
+        e.contains("condition_sd = -0.1") && e.contains("finite standard deviation >= 0"),
+        "{e}"
+    );
+    let e = bad(vec![
+        vec![None, Some(f64::INFINITY), None],
+        vec![None, None, None],
+    ]);
+    assert!(e.contains("condition_sd = inf"), "{e}");
+    let e = bad(vec![vec![None, Some(1e200), None], vec![None, None, None]]);
+    assert!(e.contains("condition_sd") && e.contains("square"), "{e}");
+    let e = bad(vec![
+        vec![Some(0.5), Some(0.2), None],
+        vec![None, None, None],
+    ]);
+    assert!(
+        e.contains("condition_sd = 0.5") && e.contains("free cell"),
+        "{e}"
+    );
+    let e = bad(vec![vec![None, Some(0.2), None]]);
+    assert!(
+        e.contains("condition_sd must have exactly one row per row of conditions")
+            && e.contains("expected 2, got 1"),
+        "{e}"
+    );
+    let e = bad(vec![vec![None, Some(0.2)], vec![None, None, None]]);
+    assert!(
+        e.contains("every row of condition_sd") && e.contains("expected 3, got 2"),
+        "{e}"
+    );
+    // conditions are checked first, with their own messages.
+    let e = res
+        .conditional_forecast_soft(
+            4,
+            &[vec![None, Some(f64::INFINITY), None]],
+            &[vec![None, Some(-1.0), None]],
+            SoftMode::Signal,
+            0.05,
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("conditions contains an infinite value"), "{e}");
+    let e = res
+        .conditional_forecast_soft(1usize << 40, &conds, &ok, SoftMode::Signal, 0.05)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("memory budget") && e.contains("steps"), "{e}");
+    // 0, -0, None and NaN all mean hard: the hard path, mode Hard.
+    let zero = vec![
+        vec![None, Some(-0.0), Some(f64::NAN)],
+        vec![Some(0.0), None, Some(0.0)],
+    ];
+    let r = res
+        .conditional_forecast_soft(4, &conds, &zero, SoftMode::Signal, 0.05)
+        .unwrap();
+    assert_eq!((r.mode, r.n_soft), (ConditionMode::Hard, 0));
+    assert_eq!(r.mode.as_str(), "hard");
 }
