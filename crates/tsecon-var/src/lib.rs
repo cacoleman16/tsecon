@@ -88,7 +88,7 @@ pub use diagnostics::{
     doornik_hansen_test, normality_test_cholesky, normality_test_symmetric, DoornikHansenTest,
     NormalityTest, PortmanteauTest, VarDiagnostics, DOORNIK_HANSEN_MIN_NOBS,
 };
-pub use error::VarError;
+pub use error::{NonFiniteCell, VarError};
 pub use fevd::Fevd;
 pub use forecast::{ForecastInterval, ForecastOptions, PARAM_UNCERTAINTY_WORK_BUDGET};
 pub use girf::{

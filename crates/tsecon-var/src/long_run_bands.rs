@@ -555,10 +555,14 @@ struct Draw {
 ///   before anything is allocated;
 /// * [`VarError::InvalidArgument`] when the full-sample VAR cannot be
 ///   identified (a singular `I - sum A_i`, naming `data` and `lags`);
-/// * [`VarError::Replication`] naming the first replication whose re-estimated
-///   VAR cannot be identified (singular `I - sum A_i` or a non-PD long-run
-///   covariance — a measure-zero event that is propagated, never dropped);
-/// * any [`crate::VarSpec::fit`] error on the full sample or a pseudo-sample.
+/// * [`VarError::Replication`] naming the first replication whose
+///   pseudo-sample cannot be refitted (a singular residual covariance, which
+///   very small samples hit with positive probability because the iid
+///   resample can draw too few distinct residual rows; a singular `Z'Z`; an
+///   overflow) or whose re-estimated VAR cannot be identified (singular
+///   `I - sum A_i` or a non-PD long-run covariance) — propagated, never
+///   dropped;
+/// * any [`crate::VarSpec::fit`] error on the full sample.
 pub fn long_run_bootstrap_bands(
     endog: MatRef<'_, f64>,
     spec: &LongRunBandSpec,

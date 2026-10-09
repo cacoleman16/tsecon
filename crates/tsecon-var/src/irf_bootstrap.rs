@@ -50,7 +50,8 @@ use tsecon_linalg::{companion_from_var, spectral_radius};
 use tsecon_bootstrap::{indices, par_replicate, BlockScheme, BootstrapError};
 use tsecon_stats::simultaneous;
 
-use crate::error::VarError;
+use crate::error::{NonFiniteCell, VarError};
+use crate::estimate::{lag_coefs, SIGMA_U_WHAT};
 use crate::irf::ma_rep;
 use crate::irf_asymptotic::{apply_critical_values, irf_families, IrfCriticalValues};
 use crate::results::{chol_lower, VarResults};
@@ -138,8 +139,11 @@ pub(crate) const BIAS_SEED_OFFSET: u64 = 0x9E37_79B9_7F4A_7C15;
 ///
 /// * [`VarError::InvalidArgument`] if `lags == 0`, `horizon`'s implied
 ///   arrays would be empty, `n_boot < 2`, or `alpha` is not in `(0, 1)`;
-/// * any error from [`VarSpec::fit`] on the full sample or on a bootstrap
-///   pseudo-sample (e.g. a singular regressor cross-product);
+/// * any error from [`VarSpec::fit`] on the full sample;
+/// * [`VarError::Replication`] naming the first bootstrap replication (of
+///   the outer bootstrap, or of the inner bias bootstrap under
+///   `bias_correct`) whose pseudo-sample refit fails — a singular residual
+///   covariance or regressor cross-product, or an overflow;
 /// * [`VarError::NotPositiveDefinite`] if an orthogonalization Cholesky
 ///   fails.
 #[allow(clippy::too_many_arguments)]
@@ -420,7 +424,10 @@ impl ResidualBootstrap {
     /// hands `per_draw` the RAW refit plus the coefficients to use (the
     /// Kilian-corrected refit coefficients under `bias_correct`, the raw ones
     /// otherwise). Results come back in replication order; the first failed
-    /// replication is propagated.
+    /// replication is propagated. A refit failure is reported as
+    /// [`VarError::Replication`] with its index: the full sample passed every
+    /// check, so the full-sample messages (which tell the caller to drop a
+    /// duplicated column) would be false here.
     pub(crate) fn replicate<T, F>(
         &self,
         seed: u64,
@@ -433,11 +440,13 @@ impl ResidualBootstrap {
     {
         let te = self.uc.nrows();
         let (lags, trend) = (self.lags, self.trend);
-        let raw = par_replicate(seed, n_boot, |_rep, stream| -> Result<T, VarError> {
+        let raw = par_replicate(seed, n_boot, |rep, stream| -> Result<T, VarError> {
             let idx = indices(BlockScheme::Iid, te, stream).map_err(map_boot_err)?;
             let ustar = gather_rows(&self.uc, &idx);
             let ysim = simulate_recursive(&self.dgp_coefs, &self.intercept, &self.init, &ustar);
-            let res_b = VarSpec { lags, trend }.fit(ysim.as_ref())?;
+            let res_b = VarSpec { lags, trend }
+                .fit(ysim.as_ref())
+                .map_err(|e| pseudo_sample_error(&e, rep, false))?;
             match &self.bias {
                 Some(b) => {
                     let coefs_b = correct_coefs(&res_b.coefs, b)?;
@@ -498,9 +507,17 @@ pub(crate) fn draw_critical_values(
                             let v = d[h][(i, j)];
                             if !v.is_finite() {
                                 return Err(VarError::NonFinite {
-                                    what: "a bootstrap impulse-response replication; drop \
-                                           the failed replications before banding",
-                                    at: Some((b, c_idx)),
+                                    what: "the bootstrap impulse-response draws (row = \
+                                           replication, column = cell of the band family)",
+                                    at: Some(NonFiniteCell {
+                                        row: b,
+                                        col: c_idx,
+                                        why: "an explosive pseudo-sample overflowed its \
+                                              responses, and the sup-t maximum is undefined \
+                                              with a non-finite draw (dropping the draw would \
+                                              narrow the band); change seed or n_boot, or use \
+                                              method=\"asymptotic\"",
+                                    }),
                                 });
                             }
                             flat[b * n_cells + c_idx] = v;
@@ -667,7 +684,9 @@ pub(crate) fn percentile_sorted(sorted: &[f64], q: f64) -> f64 {
 /// Estimate the mean bias `E*[A*] - A_hat` of the LS slope estimator by an
 /// inner bootstrap around the fitted coefficients, then shrink it (Kilian's
 /// stationarity-preserving adjustment) so that `A_hat - bias` stays inside
-/// the unit circle.
+/// the unit circle. Each inner refit computes the slopes alone
+/// ([`lag_coefs`], bit-identical to the full fit's), so a pseudo-sample
+/// whose residual covariance happens to be singular does not stop it.
 fn estimate_bias(
     coefs_hat: &[Mat<f64>],
     intercept: &[f64],
@@ -690,12 +709,11 @@ fn estimate_bias(
     let raw = par_replicate(
         bias_seed,
         n_inner,
-        |_rep, stream| -> Result<Vec<Mat<f64>>, VarError> {
+        |rep, stream| -> Result<Vec<Mat<f64>>, VarError> {
             let idx = indices(BlockScheme::Iid, te, stream).map_err(map_boot_err)?;
             let ustar = gather_rows(uc, &idx);
             let ysim = simulate_recursive(coefs_hat, intercept, init, &ustar);
-            let res_b = VarSpec { lags, trend }.fit(ysim.as_ref())?;
-            Ok(res_b.coefs.clone())
+            lag_coefs(ysim.as_ref(), lags, trend).map_err(|e| pseudo_sample_error(&e, rep, true))
         },
     )
     .map_err(map_boot_err)?;
@@ -766,11 +784,52 @@ fn scale(bias: &[Mat<f64>], delta: f64) -> Vec<Mat<f64>> {
         .collect()
 }
 
-/// Spectral radius of the companion matrix of a VAR lag polynomial.
+/// Spectral radius of the companion matrix of a VAR lag polynomial, from
+/// the balanced eigenvalue solve ([`tsecon_linalg::balanced_eigenvalues`]),
+/// so the Kilian shrink and `n_unstable_draws` do not depend on the units of
+/// the series.
 pub(crate) fn spectral_radius_of(coefs: &[Mat<f64>]) -> Result<f64, VarError> {
     let refs: Vec<MatRef<'_, f64>> = coefs.iter().map(Mat::as_ref).collect();
     let comp = companion_from_var(&refs)?;
     Ok(spectral_radius(comp.as_ref())?)
+}
+
+/// A refit failure on bootstrap pseudo-sample `rep`, as
+/// [`VarError::Replication`]. `inner` marks the inner bias bootstrap of
+/// `bias_correct` (whose refits compute only the slopes, so its
+/// `NotPositiveDefinite` can only be `Z'Z`).
+fn pseudo_sample_error(e: &VarError, rep: usize, inner: bool) -> VarError {
+    let what = match (e, inner) {
+        (VarError::NotPositiveDefinite { what }, false) if *what == SIGMA_U_WHAT => {
+            "its refit's residual covariance Sigma_u is singular — the iid resample drew too \
+             few distinct residual rows to span the k series, which has positive probability \
+             when the residual degrees of freedom T_eff - m are close to k (the full sample \
+             is fine); more observations or fewer lags make it vanishingly rare"
+        }
+        (VarError::NotPositiveDefinite { .. }, false) => {
+            "its refit's regressor cross-product Z'Z is singular (the pseudo-sample's lagged \
+             values are collinear)"
+        }
+        (VarError::NotPositiveDefinite { .. }, true) => {
+            "it is a replication of the inner bias-estimation bootstrap of bias_correct=True, \
+             and its refit's regressor cross-product Z'Z is singular (the pseudo-sample's \
+             lagged values are collinear)"
+        }
+        (VarError::NonFinite { .. }, false) => {
+            "its pseudo-sample overflowed to infinity (the VAR it is simulated from is \
+             explosive)"
+        }
+        (VarError::NonFinite { .. }, true) => {
+            "it is a replication of the inner bias-estimation bootstrap of bias_correct=True, \
+             and its pseudo-sample overflowed to infinity (the fitted VAR is explosive)"
+        }
+        (_, false) => "its pseudo-sample's VAR refit failed",
+        (_, true) => {
+            "it is a replication of the inner bias-estimation bootstrap of bias_correct=True, \
+             and its pseudo-sample's VAR refit failed"
+        }
+    };
+    VarError::Replication { index: rep, what }
 }
 
 /// Map the resampling engine's error into the VAR error type. Only the
@@ -831,6 +890,49 @@ mod tests {
                 assert!((resid - u[(t - 1, r)]).abs() < 1e-12);
             }
         }
+    }
+
+    /// Residual rows taking only two distinct values make EVERY pseudo-sample's
+    /// refit residual covariance singular (rank <= 1 with an intercept and
+    /// k = 2). The Kilian inner bootstrap needs only the slopes, so it must
+    /// still succeed (it used to die on the refit's log-determinant); a full
+    /// refit of the same pseudo-sample is refused as replication 0, naming
+    /// the singular Sigma_u and not a duplicated column.
+    #[test]
+    fn inner_bias_bootstrap_survives_a_singular_pseudo_sample_covariance() {
+        let k = 2usize;
+        let a = Mat::from_fn(k, k, |i, j| [[0.5, 0.1], [-0.2, 0.3]][i][j]);
+        let intercept = [0.4, -0.2];
+        let init = Mat::from_fn(1, k, |_, j| 1.0 + j as f64);
+        let te = 6usize;
+        let uc = Mat::from_fn(te, k, |t, j| {
+            let sign = if t % 2 == 0 { 1.0 } else { -1.0 };
+            sign * [0.7, -0.3][j]
+        });
+        let bias = estimate_bias(std::slice::from_ref(&a), &intercept, &init, &uc, te, 1, 20)
+            .expect("the inner bootstrap needs only the slopes");
+        assert!(bias
+            .iter()
+            .all(|m| (0..k).all(|i| (0..k).all(|j| m[(i, j)].is_finite()))));
+
+        // The same pseudo-sample, fully refitted, is a replication failure.
+        let idx = vec![0usize, 1, 0, 1, 1, 0];
+        let ustar = gather_rows(&uc, &idx);
+        let ysim = simulate_recursive(std::slice::from_ref(&a), &intercept, &init, &ustar);
+        let e = VarSpec {
+            lags: 1,
+            trend: Trend::Constant,
+        }
+        .fit(ysim.as_ref())
+        .map_err(|e| pseudo_sample_error(&e, 7, false))
+        .unwrap_err();
+        assert!(matches!(e, VarError::Replication { index: 7, .. }), "{e:?}");
+        let text = e.to_string();
+        assert!(
+            text.contains("replication 7") && text.contains("Sigma_u is singular"),
+            "{text}"
+        );
+        assert!(!text.contains("redundant column"), "{text}");
     }
 
     #[test]

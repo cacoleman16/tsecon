@@ -1,30 +1,41 @@
 //! Equation-by-equation OLS estimation of the reduced-form VAR.
 
-use tsecon_linalg::faer::linalg::solvers::{DenseSolveCore, SolveLstsq};
+use tsecon_linalg::faer::linalg::solvers::{DenseSolveCore, Llt, SolveLstsq};
 use tsecon_linalg::faer::{Mat, MatRef, Side};
 
-use crate::error::VarError;
+use crate::error::{NonFiniteCell, VarError};
 use crate::results::{ln_det_spd, VarResults};
 use crate::spec::{Trend, VarSpec};
 
-/// Core estimator shared by [`VarSpec::fit`] and
-/// [`crate::select_order`].
-///
-/// `offset` drops that many leading rows of `endog` before anything else
-/// (statsmodels' `select_order` uses `offset = maxlags - p` so every
-/// candidate order is fitted on the same effective sample).
-///
-/// Multivariate LS (Lütkepohl 2005, section 3.2): with `Y` the
-/// `T x k` matrix of current values and `Z` the `T x m` design
-/// (`m = n_trend + k p` — deterministic terms first, then lag 1 of every
-/// variable, then lag 2, ...), the estimator is `B = (Z'Z)^{-1} Z'Y`,
-/// computed here by Householder QR least squares.
-pub(crate) fn estimate(
+/// What [`VarSpec::fit`]'s `NotPositiveDefinite` names when the residual
+/// covariance fails its Cholesky factorization.
+pub(crate) const SIGMA_U_WHAT: &str = "Sigma_u, the residual covariance";
+
+/// What [`VarSpec::fit`]'s `NotPositiveDefinite` names when the regressor
+/// cross-product fails its Cholesky factorization.
+pub(crate) const ZZ_WHAT: &str = "Z'Z, the VAR regressor cross-product";
+
+/// The validated OLS problem of a VAR(lags) on `endog`: the estimation
+/// sample, the current values `Y` and the design `Z`.
+struct Design<'a> {
+    y_all: MatRef<'a, f64>,
+    y: Mat<f64>,
+    z: Mat<f64>,
+    k: usize,
+    n_trend: usize,
+    t_eff: usize,
+    m: usize,
+}
+
+/// Validates the inputs and builds `Y` and `Z` — the part of [`estimate`]
+/// the coefficients-only refit [`lag_coefs`] shares, so both see the same
+/// design bit for bit.
+fn design(
     endog: MatRef<'_, f64>,
     lags: usize,
     trend: Trend,
     offset: usize,
-) -> Result<VarResults, VarError> {
+) -> Result<Design<'_>, VarError> {
     let k = endog.ncols();
     if k == 0 {
         return Err(VarError::Dimension {
@@ -45,7 +56,13 @@ pub(crate) fn estimate(
             if !endog[(i, j)].is_finite() {
                 return Err(VarError::NonFinite {
                     what: "the data matrix",
-                    at: Some((i, j)),
+                    at: Some(NonFiniteCell {
+                        row: i,
+                        col: j,
+                        why: "the VAR estimator has no missing-value handling, so a single \
+                              gap would corrupt every coefficient — drop or impute those \
+                              rows first (pandas: df.dropna())",
+                    }),
                 });
             }
         }
@@ -89,6 +106,88 @@ pub(crate) fn estimate(
             }
         }
     }
+    Ok(Design {
+        y_all,
+        y,
+        z,
+        k,
+        n_trend,
+        t_eff,
+        m,
+    })
+}
+
+/// The lag matrices `[A_1, ..., A_p]` of a stacked `params` matrix.
+fn lag_matrices(params: &Mat<f64>, n_trend: usize, k: usize, lags: usize) -> Vec<Mat<f64>> {
+    (0..lags)
+        .map(|lag| Mat::from_fn(k, k, |r, c| params[(n_trend + lag * k + c, r)]))
+        .collect()
+}
+
+/// Refuses a singular regressor cross-product `Z'Z`.
+fn zz_cholesky(z: &Mat<f64>) -> Result<Llt<f64>, VarError> {
+    let zz = z.transpose() * z;
+    zz.llt(Side::Lower)
+        .map_err(|_| VarError::NotPositiveDefinite { what: ZZ_WHAT })
+}
+
+/// The OLS lag matrices alone — bit-identical to [`VarSpec::fit`]'s
+/// `coefs` (same design, same Householder QR), and refusing a singular
+/// `Z'Z` the same way, but without the residual covariance, its
+/// determinant or the information criteria. The Kilian (1998) inner bias
+/// bootstrap needs only the slopes, so a pseudo-sample whose resampled
+/// residuals happen to make `Sigma_u` singular does not stop it.
+pub(crate) fn lag_coefs(
+    endog: MatRef<'_, f64>,
+    lags: usize,
+    trend: Trend,
+) -> Result<Vec<Mat<f64>>, VarError> {
+    let d = design(endog, lags, trend, 0)?;
+    let params = d.z.qr().solve_lstsq(&d.y);
+    zz_cholesky(&d.z)?;
+    Ok(lag_matrices(&params, d.n_trend, d.k, lags))
+}
+
+/// Core estimator shared by [`VarSpec::fit`] and
+/// [`crate::select_order`].
+///
+/// `offset` drops that many leading rows of `endog` before anything else
+/// (statsmodels' `select_order` uses `offset = maxlags - p` so every
+/// candidate order is fitted on the same effective sample).
+///
+/// Multivariate LS (Lütkepohl 2005, section 3.2): with `Y` the
+/// `T x k` matrix of current values and `Z` the `T x m` design
+/// (`m = n_trend + k p` — deterministic terms first, then lag 1 of every
+/// variable, then lag 2, ...), the estimator is `B = (Z'Z)^{-1} Z'Y`,
+/// computed here by Householder QR least squares.
+pub(crate) fn estimate(
+    endog: MatRef<'_, f64>,
+    lags: usize,
+    trend: Trend,
+    offset: usize,
+) -> Result<VarResults, VarError> {
+    let Design {
+        y_all,
+        y,
+        z,
+        k,
+        n_trend,
+        t_eff,
+        m,
+    } = design(endog, lags, trend, offset)?;
+    // With df_resid = T - m < k the T x k residual matrix has rank at most
+    // df_resid, so Sigma_u is singular whatever the data: say so by sample
+    // size before the fit, instead of letting its Cholesky blame a column.
+    if t_eff - m < k {
+        return Err(VarError::SingularResidualCovariance {
+            needed: offset + lags + m + k,
+            got: endog.nrows(),
+            lags,
+            neqs: k,
+            n_trend,
+            df_resid: t_eff - m,
+        });
+    }
 
     // B = argmin ||Y - Z B||_F via Householder QR (numerically matches
     // statsmodels' lstsq on these well-conditioned macro designs).
@@ -102,18 +201,12 @@ pub(crate) fn estimate(
     let sigma_u = Mat::from_fn(k, k, |i, j| rtr[(i, j)] / df_resid as f64);
     let sigma_u_mle = Mat::from_fn(k, k, |i, j| rtr[(i, j)] / t_eff as f64);
 
-    let zz = z.transpose() * &z;
-    let zz_inv = zz
-        .llt(Side::Lower)
-        .map_err(|_| VarError::NotPositiveDefinite {
-            what: "Z'Z, the VAR regressor cross-product",
-        })?
-        .inverse();
+    let zz_inv = zz_cholesky(&z)?.inverse();
 
     // Gaussian log-likelihood at the ML covariance (Lütkepohl 2005,
     // eq. 3.4.5; the quadratic form collapses to T k at the optimum):
     // llf = -(T k / 2) ln(2 pi) - (T / 2) ln det(Sigma_mle) - T k / 2.
-    let ld = ln_det_spd(sigma_u_mle.as_ref(), "Sigma_u, the residual covariance")?;
+    let ld = ln_det_spd(sigma_u_mle.as_ref(), SIGMA_U_WHAT)?;
     let (tf, kf) = (t_eff as f64, k as f64);
     let llf = -0.5 * tf * kf * (1.0 + core::f64::consts::TAU.ln()) - 0.5 * tf * ld;
 
@@ -130,9 +223,7 @@ pub(crate) fn estimate(
     } else {
         vec![0.0; k]
     };
-    let coefs: Vec<Mat<f64>> = (0..lags)
-        .map(|lag| Mat::from_fn(k, k, |r, c| params[(n_trend + lag * k + c, r)]))
-        .collect();
+    let coefs = lag_matrices(&params, n_trend, k, lags);
 
     Ok(VarResults {
         spec: VarSpec { lags, trend },

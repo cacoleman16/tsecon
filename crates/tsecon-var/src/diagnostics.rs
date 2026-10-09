@@ -94,7 +94,7 @@ use tsecon_linalg::faer::linalg::solvers::DenseSolveCore;
 use tsecon_linalg::faer::{Mat, MatRef, Side};
 use tsecon_stats::chi2_sf;
 
-use crate::error::VarError;
+use crate::error::{NonFiniteCell, VarError};
 use crate::results::{chol_lower, VarResults};
 
 /// Multivariate Portmanteau test of residual autocorrelation up to `nlags`.
@@ -501,7 +501,14 @@ fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Mat<f64>, V
             if !resid[(i, j)].is_finite() {
                 return Err(VarError::NonFinite {
                     what: "resid (the residual matrix of the normality test)",
-                    at: Some((i, j)),
+                    at: Some(NonFiniteCell {
+                        row: i,
+                        col: j,
+                        why: "every normality statistic is a moment of all the residual \
+                              rows, so one missing or infinite entry makes all of them \
+                              undefined — drop or impute those rows first (pandas: \
+                              df.dropna())",
+                    }),
                 });
             }
         }

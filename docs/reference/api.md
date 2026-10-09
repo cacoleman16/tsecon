@@ -771,7 +771,14 @@ Fit a VAR(p) by OLS; params, sigma_u, ICs, residuals, and stability.
 
     Read `is_stable` for the stability verdict. `min_root`/`max_root` are the
     smallest/largest moduli of the reciprocal characteristic roots — stable iff
-    `min_root > 1`, so `max_root` alone is not a verdict.
+    `min_root > 1`, so `max_root` alone is not a verdict. The roots are solved
+    on an exactly balanced companion matrix, so they do not depend on the
+    units of the series.
+
+    The sample must leave at least k residual degrees of freedom,
+    len(data) >= lags + n_trend + k*lags + k: with fewer, the k x k residual
+    covariance is singular whatever the data, and the call is refused naming
+    the sample size and the largest lag order that fits.
 
     Keys: params, sigma_u, llf, aic, bic, hqic, resid ((T, k) nested list —
     the OLS residuals over the effective sample, row t = observation lags+t),
@@ -2016,8 +2023,11 @@ Confidence bands for Blanchard-Quah long-run SVAR impulse responses, re-identifi
     band_scope="all" (refused naming horizon and band_scope). The asymptotic
     arm's Jacobians cost horizon*(horizon+1)/2 * k^2 * lags*k^2 multiply-adds,
     quadratic in horizon, capped at 2^28 (refused naming horizon). A
-    replication whose re-estimated VAR cannot be identified is never dropped:
-    the first is reported by index as an error.
+    replication whose pseudo-sample cannot be refitted (a singular residual
+    covariance, which very small samples hit with positive probability
+    because the iid resample can draw too few distinct residual rows) or
+    whose re-estimated VAR cannot be identified is never dropped: the first
+    is reported by index as an error.
 
     Further arguments, with defaults: `lags` (2), `horizon` (12), `trend` ("c"),
     `restrictions` (None), `normalize` ("long_run"), `impact_signs` (None),

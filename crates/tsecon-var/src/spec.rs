@@ -82,8 +82,13 @@ impl VarSpec {
     /// * [`VarError::InsufficientObservations`] if fewer than
     ///   `lags + (k * lags + n_trend) + 1` rows are available (OLS needs
     ///   `T > k p + n_trend` usable observations);
+    /// * [`VarError::SingularResidualCovariance`] if fewer than
+    ///   `lags + (k * lags + n_trend) + k` rows are available: the residual
+    ///   degrees of freedom `T - m` are then below `k`, so the `k x k`
+    ///   residual covariance is singular whatever the data;
     /// * [`VarError::NotPositiveDefinite`] if the regressor cross-product
-    ///   or the residual covariance is numerically singular.
+    ///   or the residual covariance is numerically singular (collinear
+    ///   series).
     pub fn fit(&self, endog: MatRef<'_, f64>) -> Result<VarResults, VarError> {
         estimate(endog, self.lags, self.trend, 0)
     }
