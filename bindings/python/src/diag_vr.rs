@@ -155,15 +155,6 @@ fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>, n: usize) -> PyResult<(Vec<usi
             h.repr().map(|r| r.to_string()).unwrap_or_default()
         )));
     }
-    // A bytearray or memoryview iterates as small ints, so without this it
-    // would pass as horizons where `bytes` is refused.
-    if h.is_instance_of::<PyByteArray>() || h.is_instance_of::<PyMemoryView>() {
-        return Err(PyValueError::new_err(format!(
-            "variance_ratio: lags must be an integer horizon or a sequence of them, not a \
-             binary buffer (got a {}) — {LAGS_HINT}",
-            type_name(h)
-        )));
-    }
     if let Ok(v) = h.extract::<i64>() {
         return Ok((vec![horizon_from_i64(v)?], true));
     }

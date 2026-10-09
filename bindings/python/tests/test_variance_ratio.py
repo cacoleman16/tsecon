@@ -390,8 +390,8 @@ def test_float_pandas_lags_are_refused_and_int_pandas_lags_accepted():
      (lambda: range(2, 10**12), "more than 300 horizons"),
      (lambda: itertools.count(2), "more than 300 horizons"),
      # these iterate as small ints or as rows, so they must be refused whole
-     (lambda: bytearray(b"\x02\x04"), "not a binary buffer"),
-     (lambda: memoryview(b"\x02\x04"), "not a binary buffer"),
+     (lambda: bytearray(b"\x02\x04"), "not a string or bytes-like object"),
+     (lambda: memoryview(b"\x02\x04"), "not a string or bytes-like object"),
      (lambda: np.array([[2, 4]]), "2-D ndarray, but horizons are a 1-D sequence")],
     ids=["dict", "frozenset", "bool-element", "str-element", "None-element", "huge-range",
          "endless-iterator", "bytearray", "memoryview", "2-D-array"],
