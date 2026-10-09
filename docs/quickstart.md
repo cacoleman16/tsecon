@@ -269,6 +269,10 @@ and docstrings live in
 | Function | What it does |
 |---|---|
 | `panel_fe` | Fixed-effects panel OLS (cluster or Driscoll-Kraay SEs) |
+| `panel_re` | Random-effects panel GLS (Swamy-Arora; the Mundlak FE-or-RE check) |
+| `panel_between` | Between estimator: OLS on the entity means |
+| `panel_fd` | First-difference panel OLS (calendar adjacency, optional intercept) |
+| `panel_fama_macbeth` | Fama-MacBeth two-pass regression (Fama-MacBeth or Newey-West SEs) |
 | `panel_lp` | Panel local projection of a common shock |
 | `panel_mean_group` | Mean-group / CCE-MG heterogeneous-panel estimator (Pesaran) |
 | `panel_pmg` | Pooled Mean Group ARDL estimator (Pesaran-Shin-Smith) |

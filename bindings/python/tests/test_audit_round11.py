@@ -384,6 +384,17 @@ def test_panel_card_lists_the_stamped_keys():
     did_line = next(l for l in card.splitlines() if l.startswith("- **`lp_did`** →"))
     for k in ("absorbing", "nonabsorbing_lag", "reweight", "pooled", "never_treated_only", "se_type"):
         assert f'"{k}"' in did_line
+    # 0.11.0: the static menu stamps its options too
+    for name, stamped in (
+        ("panel_re", ("se_type", "constant", "small_sample")),
+        ("panel_between", ("se_type", "constant", "reweight")),
+        ("panel_fd", ("se_type", "constant")),
+        ("panel_fama_macbeth", ("se_type", "constant", "bandwidth")),
+        ("panel_fe", ("se_type",)),
+    ):
+        line = next(l for l in card.splitlines() if l.startswith(f"- **`{name}`** →"))
+        for k in stamped:
+            assert f'"{k}"' in line, (name, k)
 
 
 def test_volatility_card_states_the_egarch_forecast_limit():

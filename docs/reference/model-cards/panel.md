@@ -1,11 +1,14 @@
 # Model card — Panel time series
 
-**Family:** `panel_fe`, `panel_distributed_lag`, `panel_lp`, `lp_did`,
+**Family:** `panel_fe`, `panel_re`, `panel_between`, `panel_fd`,
+`panel_fama_macbeth`, `panel_distributed_lag`, `panel_lp`, `lp_did`,
 `mean_group_var`, `panel_mean_group`, `panel_pmg`
 
 Many entities, each observed over time. The methods here span the two ends of
 the panel spectrum: **pooled** estimators that assume a common slope and
-difference out fixed effects (`panel_fe`, `panel_lp`), a **causal event-study**
+difference out fixed effects (`panel_fe`, `panel_lp`) or model them as random
+(`panel_re`, with the rest of the static menu: `panel_between`, `panel_fd`,
+`panel_fama_macbeth`), a **causal event-study**
 estimator built on the local-projection idea (`lp_did`), and **heterogeneous**
 estimators that let every unit have its own dynamics and then average or pool
 carefully across them (`mean_group_var`, `panel_mean_group`, `panel_pmg`). The
@@ -16,6 +19,10 @@ cluster covariances.
 | Function | Slope assumption | Delivers |
 |----------|------------------|----------|
 | `panel_fe` | common | Fixed-effects OLS with robust SEs |
+| `panel_re` | common | Random-effects GLS (time-invariant regressors estimable; the Mundlak FE-or-RE check) |
+| `panel_between` | common | OLS on the entity means |
+| `panel_fd` | common | First-difference OLS (calendar adjacency; optional intercept) |
+| `panel_fama_macbeth` | per-period, averaged | Fama-MacBeth two-pass regression |
 | `panel_distributed_lag` | common | Distributed-lag (climate-impact) regression: cumulative effect, turning point |
 | `panel_lp` | common | Panel local-projection IRF of a common shock |
 | `lp_did` | ATT (VW or EW) | LP-DiD event-study DiD with clean controls |
@@ -31,6 +38,15 @@ cluster covariances.
   `regressors` is k×N×T. An unbalanced panel is passed with `mask=` (an
   N×T array of 0/1 flags, 1 where the entity is observed) — see
   [the mask section](#unbalanced-panels-the-observation-mask-mask).
+- **`panel_re(outcome, regressors)`** — random effects: feasible GLS that
+  quasi-demeans every variable by a per-entity weight
+  $\theta_i = 1 - \sqrt{\sigma^2_\varepsilon / (T_i \sigma^2_u + \sigma^2_\varepsilon)}$,
+  between pooled OLS ($\theta_i = 0$) and the within estimator
+  ($\theta_i \to 1$). Returns the variance components and `theta`.
+  **`panel_between`** is OLS on the entity means, **`panel_fd`** OLS on the
+  first differences, and **`panel_fama_macbeth`** the time-series mean of
+  per-period cross-sectional slopes — see
+  [the static menu](#the-static-menu-random-effects-between-first-differences-fama-macbeth).
 - **`panel_distributed_lag(outcome, regressors, lags)`** — the distributed-lag
   panel regression of the climate-impact literature: `L` lags of each
   regressor (and of its square under `powers=2`) with entity and time effects
@@ -70,6 +86,20 @@ cluster covariances.
   address this. `se_type="driscoll_kraay"` is the default for `panel_lp`
   precisely because it is robust to both serial and cross-sectional
   correlation.
+- **`panel_re` / `panel_between` assume the entity effect is uncorrelated
+  with every regressor** ($E[u_i \mid X] = 0$) — the assumption fixed effects
+  do not need. When it fails both are inconsistent; the
+  [Mundlak check](#fe-or-re-the-mundlak-correlated-random-effects-check)
+  tests it from `panel_re`'s own output.
+- **`panel_fd` assumes strict exogeneity** ($E[\Delta\varepsilon_{it} \mid
+  \Delta x] = 0$). Differencing i.i.d. errors induces an MA(1) error with
+  correlation −0.5, which is why the default is entity clustering.
+- **`panel_fama_macbeth` treats the per-period slopes as independent.** With
+  a persistent firm effect they are correlated across periods and the
+  standard error is far too small (Petersen 2009 — measured
+  [below](#measured-the-fama-macbeth-standard-error-under-a-firm-effect));
+  with generated regressors (estimated betas) there is also no Shanken (1992)
+  errors-in-variables correction.
 - **`panel_pmg` requires a genuine ARDL / error-correction structure**: the
   long-run regressors must be non-degenerate and not collinear across the panel
   once short-run dynamics are partialled out, or θ is not identified (the
@@ -87,6 +117,16 @@ cluster covariances.
 - **`panel_fe`** — the workhorse when you believe in a common slope and want
   clustered or Driscoll-Kraay inference (e.g. the effect of a policy variable
   across countries).
+- **`panel_re`** — when a regressor of interest is time-invariant (FE cannot
+  estimate it) and the Mundlak check does not reject; also the
+  variance-components / intraclass-correlation model (no regressors,
+  `constant=True`: `rho` is the ICC). **`panel_fd`** — the FE alternative
+  when the errors are closer to a random walk than to white noise, or to
+  match plm `model="fd"` / Stata `regress D.y D.x` (pass `constant=True`).
+  **`panel_fama_macbeth`** — cross-sectional asset-pricing regressions with
+  a time effect in the errors but no persistent firm effect.
+  **`panel_between`** — the long-run (cross-entity) relation, or as the
+  between half of the RE decomposition.
 - **`panel_lp`** — dynamic causal responses to a *common* shock (a global oil
   or monetary shock hitting many countries), fixed effects for level
   differences, Driscoll-Kraay bands.
@@ -111,6 +151,17 @@ cluster covariances.
 | `panel_fe` | `se_type` | `"cluster"` | `"nonrobust"`, `"cluster"` (by entity), `"driscoll_kraay"` |
 | | `mask` | `None` | N×T 0/1 (or bool) flags, 1 where the entity is observed in that period — an **unbalanced** panel; cells outside the mask are ignored and may hold NaN; without a mask a NaN anywhere is refused (0.10.0; see [the mask section](#unbalanced-panels-the-observation-mask-mask)) |
 | | `bandwidth` | `None` | Driscoll-Kraay kernel truncation, `4.0` when omitted under `se_type="driscoll_kraay"` — the only `se_type` it acts on. Passing it explicitly with any other `se_type` **raises** (0.6.0; it used to be silently absorbed, so `panel_fe(..., bandwidth=8)` under the default `"cluster"` was a complete no-op) |
+| `panel_re` | `se_type` | `"cluster"` | `"nonrobust"`, `"hc1"` (alias `"robust"`: the `n/(n−K)` White sandwich), `"cluster"` (by entity), `"driscoll_kraay"` (calendar periods) |
+| | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`; explicit under any other `se_type` **raises** |
+| | `constant` | `True` | the intercept `const`, first; `False` keeps linearmodels' `n − K − N + 1` within denominator |
+| | `small_sample` | `False` | linearmodels' small-sample variance components when the entities' counts differ (a no-op otherwise); **refused** on a rank-deficient between design — see [the static menu](#the-static-menu-random-effects-between-first-differences-fama-macbeth) |
+| | `mask` | `None` | same contract as `panel_fe` (all four static callables) |
+| `panel_between` | `se_type` | `"hc1"` | `"nonrobust"`, `"hc1"` (alias `"robust"`), `"cluster"` (one row per entity, so numerically HC1); `"driscoll_kraay"` **raises** (no time dimension); no `bandwidth` |
+| | `reweight` | `False` | rows weighted by `sqrt(T_i / mean T_i)` (Stata `xtreg, be wls`) |
+| `panel_fd` | `se_type` | `"cluster"` | as `panel_re`; Driscoll-Kraay indexed by the later period `t` |
+| | `constant` | `False` | linearmodels' convention; `True` is the plm `model="fd"` / Stata `regress D.y D.x` default (a linear trend in levels) |
+| `panel_fama_macbeth` | `se_type` | `"fama_macbeth"` | `sd(beta_t, ddof=1)/sqrt(T_v)`; `"hac"` (alias `"newey_west"`) = Bartlett HAC of the `beta_t` series |
+| | `bandwidth` | `None` | acts only under `"hac"` (`4.0` when omitted — linearmodels' own default is an automatic rule); explicit under `"fama_macbeth"` **raises**; `bandwidth + 1 > T_v` **raises** |
 | `panel_distributed_lag` | `lags` | required | `L`; lags `0..L` of every regressor enter and the first `L` periods of each entity are dropped (under a mask, a lagged row enters only when the entity is observed in every period `t−L..t`) |
 | | `powers` | `1` | `2` adds the lags of `x²` — the Burke-Hsiang-Miguel quadratic response |
 | | `entity_effects` / `time_effects` | `True` / `True` | the DJO/BHM two-way design; at least one effect is required |
@@ -145,8 +196,22 @@ cluster covariances.
 
 ## How to read the output
 
-- **`panel_fe`** → `{"params", "bse", "tvalues", "se_type"}`, one entry per
-  regressor. The stamped `se_type` tells you which covariance produced `bse`.
+- **`panel_fe`** → `{"params", "bse", "tvalues", "se_type", "cov", "names", "nobs", "n_entities", "df_resid"}`, one
+  entry per regressor (the last five since 0.11.0: `cov` is the k×k
+  covariance, which with `panel_re`'s forms the FE-vs-RE contrast). The
+  stamped `se_type` tells you which covariance produced `bse`.
+- **`panel_re`** → `{"params", "bse", "tvalues", "cov", "names", "nobs", "n_entities", "df_resid", "sigma2_eps", "sigma2_effects", "rho", "theta", "se_type", "constant", "small_sample"}` —
+  `const` first when `constant=True`; `theta` has one entry per entity in
+  layout order (NaN for an entity with no observed cell); `rho` is the share
+  of the composite error variance due to the entity effect.
+- **`panel_between`** → `{"params", "bse", "tvalues", "cov", "names", "nobs", "n_entities", "df_resid", "se_type", "constant", "reweight"}` —
+  `nobs` counts the entities (the rows of the between regression).
+- **`panel_fd`** → `{"params", "bse", "tvalues", "cov", "names", "nobs", "n_entities", "df_resid", "se_type", "constant"}` —
+  `nobs` counts the difference rows (both `t` and `t−1` observed);
+  `n_entities` the entities that contribute one.
+- **`panel_fama_macbeth`** → `{"params", "bse", "tvalues", "cov", "names", "nobs", "params_per_period", "periods_used", "n_periods_used", "bandwidth", "se_type", "constant"}` —
+  `params_per_period` is T×K with NaN rows for skipped periods; `bandwidth`
+  is the effective float under `"hac"` and `None` otherwise.
 - **`panel_lp`** → `{"irf", "se", "nobs", "se_type", "cumulative", "jackknife", "bias_correction"}` — the first three each length `horizon+1`, the last four the resolved settings stamped on the result (`band=` adds the band keys); plot `irf`
   ±1.96·`se` for the usual per-horizon read, and note that band is
   **pointwise** — for a statement about the whole path, ask for a
@@ -181,6 +246,197 @@ cluster covariances.
   "loglik", "iterations", "n_units", "k"}`. `theta` is the pooled long-run
   coefficient; `phi_bar` is the average error-correction speed (negative and
   bounded by −1 for stable adjustment); `phi` is the per-unit speed vector.
+
+## The static menu — random effects, between, first differences, Fama-MacBeth
+
+`panel_re`, `panel_between`, `panel_fd` and `panel_fama_macbeth` take the
+same N×T `outcome`, k×N×T `regressors` and optional N×T `mask` as
+`panel_fe`, and every convention is linearmodels 7.0's (`RandomEffects`,
+`BetweenOLS`, `FirstDifferenceOLS`, `FamaMacBeth`, all with
+`debiased=True`): every covariance carries `n/(n−K)` with `K` counting the
+constant, `s²` uses `n−K`, and the entity-cluster sandwich has no
+`G/(G−1)` factor. The covariance words are the house ones — `"hc1"` for the
+`n/(n−K)` White sandwich (as in `ols`), `"hac"` for Newey-West — with
+linearmodels' `"robust"` and `"newey_west"` accepted as aliases; the
+panel-FE family (`panel_fe`, `panel_lp`, `panel_distributed_lag`) still
+refuses both.
+
+**Random effects.** The within residuals give
+$\sigma^2_\varepsilon = e_w'e_w / (n - K - N + 1)$, with `K` counting the
+constant and any column the within step annihilates (a time-invariant
+regressor) — linearmodels' denominator, kept without a constant too. The
+between residuals of the **unweighted** regression of the entity means give
+$\sigma^2_u = \max\{0,\; u_b'u_b/(N-K) - \sigma^2_\varepsilon/\bar T\}$ with
+the **harmonic** mean $\bar T = N / \sum_i T_i^{-1}$, and the per-entity
+$\theta_i$ follows. On EmplUK (`T_i` ∈ {7, 8, 9}) that is
+`theta` = 0.9018 / 0.9080 / 0.9133. The two auxiliary regressions are
+rank-revealing: the demeaned constant, a time-invariant regressor and an
+exactly collinear between design (time dummies on an unbalanced panel:
+rank 7 of 11 on EmplUK) are legal there, and the final GLS design must be of
+full rank. `small_sample=True` switches, **only when the entities' cell
+counts differ** (linearmodels' `np.ptp(count) != 0` — a mask that drops a
+whole period for everyone leaves every `T_i` equal, and it stays a no-op), to
+linearmodels' small-sample formula
+$\sigma^2_u = \max\{0, (\sum_i T_i u_{b,i}^2 - (N-K)\sigma^2_\varepsilon) / (n - \mathrm{tr}(M^{-1}S))\}$,
+$M = \sum_i T_i \bar x_i \bar x_i'$, $S = \sum_i (T_i \bar x_i)(T_i \bar x_i)'$.
+That formula is linearmodels', **not** Stata's Baltagi-Chang `sa` and not
+plm's unbalanced `swar`, so no parity with either is claimed (none is
+pinned on balanced panels either). When $M$ is singular — the
+common "RE with time dummies" case — linearmodels raises `LinAlgError`;
+`panel_re` refuses `small_sample` by name, and the default
+`small_sample=False` path works on that design (pinned: σ²_u = 0.26353 on
+EmplUK plus year dummies).
+
+**First differences.** A row needs the entity observed in `t` **and** `t−1`
+of the calendar layout. An internal gap drops the differences that would
+bridge it, and so does a period nobody observes: with 1980 removed for every
+EmplUK firm, `panel_fd` keeps 611 calendar-adjacent rows (slopes
+−0.4375, 0.4127) while linearmodels differences across the hole (751 rows,
+−0.4427, 0.5248) — a divergence by design, pinned in
+`tests/static_properties.rs`. linearmodels also builds its time axis in
+first-appearance order, so a long frame whose first entity misses the first
+period (EmplUK in plm's natural order) is differenced across non-adjacent
+years: 808 rows and slopes −0.5208, 0.5015 instead of 891 rows and −0.4174,
+0.4691. Build such frames time-major before comparing. `constant=True` adds
+the intercept that plm `model="fd"` and Stata `regress D.y D.x` include by
+default (EmplUK: `const` −0.0259, slopes −0.4070, 0.4359), pinned against
+linearmodels `PooledOLS` on the hand-differenced data.
+
+**Driscoll-Kraay** (RE and FD) sums the scores per **calendar** period, a
+period nobody observes contributing a zero score and counting as elapsed
+time; linearmodels lags over the periods present. They agree whenever every
+period carries an observation (every fixture), and differ otherwise — on
+EmplUK without 1980 the RE intercept's DK standard error is 0.2862
+(calendar) against linearmodels' 0.3162. A bandwidth at or beyond the
+number of periods keeps `panel_fe`'s contract (every available lag is
+weighted), where linearmodels raises once `bandwidth + 1` exceeds the
+periods present.
+
+**Fama-MacBeth.** A period is skipped when fewer than `K` entities are
+observed in it or its cross-section is rank-deficient. tsecon decides the
+rank by the numpy singular-value criterion; linearmodels uses LAPACK
+`gelsy` with `cond = max(n_t, K)·eps`. The two agree away from the numerical
+boundary (a design perturbed at 1e-14 is rank 3 for `gelsy`, rank 2 for
+numpy — the fixture's `fm_rank_boundary` panel, on which linearmodels keeps
+a period that `panel_fama_macbeth` skips), and the golden cases stay clear
+of it. The HAC runs over the
+**compressed** sequence of periods used (linearmodels' convention: a skipped
+period does not count as elapsed time). The Bartlett weight is
+`1 − j/(bandwidth + 1)` where linearmodels truncates `int(bandwidth)`, so
+the two agree at integer bandwidths; tsecon's `bandwidth=None` means 4.0,
+linearmodels' is an automatic rule (it picks 2 on EmplUK).
+
+### FE or RE? The Mundlak / correlated-random-effects check
+
+Add each time-varying regressor's entity mean — over the entity's observed
+cells — as an extra regressor of `panel_re`. The slopes on the time-varying
+regressors then equal `panel_fe`'s **exactly**, unbalanced panels included
+(Mundlak 1978; Wooldridge 2010, §10.7.3, and 2019 for the unbalanced case),
+and a Wald test that the coefficients on the means are zero — computed from
+the returned cluster `cov` — is the heteroskedasticity- and
+serial-correlation-robust Hausman test. On EmplUK it is 14.40 on 2 degrees
+of freedom (p ≈ 0.0007): the random-effects assumption is rejected, and
+`panel_fe` is the estimator to report. The identity holds at 1e-12 in
+`tests/static_properties.rs` (on EmplUK and a seeded ragged panel), and the
+fixture records 1.1e-15 between linearmodels' RE and PanelOLS slopes. The
+example below runs the check. Because `panel_fe` now returns `cov`, the
+classic contrast $(\hat\beta_{FE} - \hat\beta_{RE})'[V_{FE} - V_{RE}]^{-1}(\cdot)$
+can be formed too, but under nonrobust covariances only, and the matrix
+difference need not be positive definite — prefer the Mundlak form.
+
+### Measured: the Fama-MacBeth standard error under a firm effect
+
+Petersen's (2009) design: `x` and the error each carry a persistent firm
+effect (half of their variance), true slope 1, N = 100 firms, 1000 seeded
+replications per cell (pinned by
+`test_fama_macbeth_understates_under_persistent_firm_effects` in
+`bindings/python/tests/test_panel_static.py`). Coverage of the nominal 95%
+interval:
+
+| Design | `panel_fama_macbeth` | `se_type="hac"`, bandwidth 4 | `panel_re`, cluster |
+|---|---|---|---|
+| firm effect, T = 10 | 0.627 | 0.499 | 0.956 |
+| firm effect, T = 40 | 0.398 | 0.378 | 0.946 |
+| no firm effect, T = 10 | 0.930 | 0.805 | 0.949 |
+
+The Fama-MacBeth interval gets **worse** as T grows (its width shrinks while
+the cross-period correlation does not), and the Newey-West version does not
+repair it: the correlation that a firm effect induces is the same at every
+lag, which a truncated kernel cannot capture — and at T = 10 the HAC is
+itself badly biased down. Fama-MacBeth is the right tool for a time effect
+(cross-sectional correlation within a period), not for a firm effect; for
+the latter cluster by entity.
+
+### Worked example — EmplUK
+
+```python
+import json
+
+import numpy as np
+import tsecon
+
+# The Arellano-Bond EmplUK panel as the repository's fixtures store it:
+# 140 firms x 9 years (1976-1984), 1031 observed firm-years, NaN elsewhere.
+ds = json.load(open("fixtures/panel_unbalanced.json"))["datasets"]["empluk"]
+arr = lambda rows: np.array([[np.nan if v is None else v for v in r] for r in rows])
+y = arr(ds["log_emp"])                                        # N x T
+x = np.stack([arr(ds["log_wage"]), arr(ds["log_capital"])])   # k x N x T
+mask = np.array(ds["mask"], dtype=float)                      # N x T, 1 = observed
+
+re_ = tsecon.panel_re(y, x, mask=mask)                        # entity-clustered SEs
+print("RE  ", re_["names"], np.round(re_["params"], 4), np.round(re_["bse"], 4))
+print("    sigma2_eps", round(re_["sigma2_eps"], 5), " sigma2_effects", round(re_["sigma2_effects"], 5),
+      " rho", round(re_["rho"], 4))
+print("    theta by T_i:", {int(t): round(float(th), 4) for t, th in zip(mask.sum(1), re_["theta"])})
+be = tsecon.panel_between(y, x, mask=mask)                    # HC1 SEs
+print("BE  ", np.round(be["params"], 4), np.round(be["bse"], 4), " nobs", be["nobs"])
+fd = tsecon.panel_fd(y, x, mask=mask)                         # no intercept, clustered
+print("FD  ", np.round(fd["params"], 4), np.round(fd["bse"], 4), " nobs", fd["nobs"])
+fdc = tsecon.panel_fd(y, x, constant=True, mask=mask)         # the plm / Stata default
+print("FD+c", np.round(fdc["params"], 4))
+fm = tsecon.panel_fama_macbeth(y, x, mask=mask)
+print("FM  ", np.round(fm["params"], 4), np.round(fm["bse"], 4), " periods", fm["n_periods_used"])
+
+# FE or RE? The Mundlak / correlated-random-effects check: add each
+# regressor's entity mean (over the observed years) as a regressor.
+fe = tsecon.panel_fe(y, x, mask=mask)
+means = np.where(mask == 1, x, 0.0).sum(axis=2) / mask.sum(axis=1)       # k x N
+xbar = np.repeat(means[:, :, None], y.shape[1], axis=2)                  # k x N x T
+cre = tsecon.panel_re(y, np.concatenate([x, xbar]), mask=mask)
+print("FE slopes     ", np.round(fe["params"], 6))
+print("Mundlak slopes", np.round(cre["params"][1:3], 6))
+b = np.asarray(cre["params"])[3:]
+V = np.asarray(cre["cov"])[3:, 3:]
+print(f"robust Hausman (cluster Wald on the means, 2 df): {b @ np.linalg.solve(V, b):.2f}")
+```
+
+Expected output (run from the repository root; pinned by
+`test_the_card_example_prints_what_it_says` in
+`bindings/python/tests/test_panel_static.py`):
+
+```
+RE   ['const', 'x0', 'x1'] [ 2.4537 -0.3425  0.6962] [0.3357 0.1082 0.0329]
+    sigma2_eps 0.01885  sigma2_effects 0.27627  rho 0.9361
+    theta by T_i: {7: 0.9018, 8: 0.908, 9: 0.9133}
+BE   [ 2.7097 -0.4076  0.8183] [0.7505 0.2396 0.0303]  nobs 140
+FD   [-0.4174  0.4691] [0.1341 0.0459]  nobs 891
+FD+c [-0.0259 -0.407   0.4359]
+FM   [ 2.5367 -0.3726  0.7869] [0.1056 0.0347 0.0266]  periods 9
+FE slopes      [-0.367774  0.640367]
+Mundlak slopes [-0.367774  0.640367]
+robust Hausman (cluster Wald on the means, 2 df): 14.40
+```
+
+The random-effects slopes (−0.3425, 0.6962) stay close to the within
+estimates (−0.3678, 0.6404) because `theta` ≈ 0.9; the between estimates
+are (−0.4076, 0.8183). The wage slope lies outside the within–between
+interval: on a balanced panel random effects is a matrix-weighted average
+of the within and between estimators, and a matrix weighting need not put
+each coefficient between the two — on this unbalanced panel the between
+part is, moreover, weighted by the entity-specific `theta_i`, so the
+unweighted `panel_between` slopes are only an approximate comparison. The
+Mundlak test rejects the random-effects assumption on this panel, so
+`panel_fe`'s slopes are the ones to report.
 
 ## Unbalanced panels — the observation mask (`mask=`)
 
@@ -797,6 +1053,26 @@ returned because it is not a verified fixed point.
   the same switcher count as h = 0 but a shrinking control window; a
   "significant" pre-trend at −Q built on a few dozen switchers is fragile —
   check `n_switchers` before reading the pre-trend test.
+- **Random effects on correlated effects.** If the Mundlak Wald rejects,
+  `panel_re` and `panel_between` are inconsistent; report `panel_fe`.
+- **`panel_re(small_sample=True)` with time dummies on an unbalanced
+  panel** raises (the between moment matrix is singular); the default
+  `small_sample=False` is the supported route.
+- **`panel_fd` with a time-invariant regressor** raises — differencing
+  removes it; estimate it with `panel_re` or `panel_between`.
+- **`panel_fd` on a single entity or a two-period panel** raises under
+  `se_type="cluster"` (one entity) or `"driscoll_kraay"` (every difference
+  in one period): that group's score sum is `X'e = 0` by the normal
+  equations, so the covariance would be rounding noise and the
+  t-statistics of order 1e15 (what linearmodels returns there). Use
+  `se_type="hc1"`.
+- **Data far outside unit scale.** An outcome or regressor of magnitude
+  ~1e154 or more, or ~1e-154 or less, is refused by name across the static
+  menu: its squares overflow or underflow, and an underflowing variance
+  would otherwise come back as a standard error of exactly 0 (or one with
+  lost digits) beside non-zero coefficients. Rescale the data.
+- **Fama-MacBeth under a firm effect.** Its standard error is far too small
+  and the HAC does not fix it (the table above); cluster by entity instead.
 - **Reading `panel_mean_group(method="mg")` as a long run.** It is a static
   average slope; the ARDL long run comes from `panel_pmg`.
 
@@ -809,6 +1085,23 @@ ones through `mask=` (`fixtures/panel_unbalanced.json`: the Arellano-Bond
 `EmplUK` panel and a seeded ragged panel, every effects menu, 1e-10; the
 balanced paths pinned bitwise against the 0.9.0 build by
 `fixtures/panel_balanced_snapshot.json`).
+The static menu (`panel_re`, `panel_between`, `panel_fd`,
+`panel_fama_macbeth`, 0.11.0) is pinned at 1e-10 against `linearmodels`
+`RandomEffects` / `BetweenOLS` / `FirstDifferenceOLS` / `FamaMacBeth`
+(and `PooledOLS` on the hand-differenced data for `panel_fd(constant=True)`)
+in `fixtures/panel_static.json`: 14 random-effects cases × 4 covariances
+(EmplUK, seeded ragged and balanced panels, `small_sample` on and off, a
+time-invariant regressor, a truncated effect variance, a common trend, year
+dummies, the Mundlak design, no constant, intercept only), 7 between cases
+× 3 covariances, 5 first-difference cases × 4 covariances and 3
+Fama-MacBeth cases × 2 — coefficients, SEs, t-statistics, the full
+covariance, the variance components, `theta`, the per-period coefficients;
+counts exact; largest measured gap 7.8e-12 (the Mundlak design's
+covariance). The generator also asserts
+second legs — statsmodels OLS/HC1 on the means, the closed-form
+Fama-MacBeth SE, `PooledOLS` at a truncated effect variance — and the
+documented divergences above are pinned against a NumPy transcription of
+the calendar convention.
 `panel_distributed_lag` (and the two-way / entity-trend menu it added to the
 within estimator) is pinned at 1e-10 against `PanelOLS` on the explicitly
 lagged design for nine cases × three covariances, its delta-method objects
@@ -849,6 +1142,7 @@ mean-group of per-unit long runs. Fixtures:
 [`fixtures/panel.json`](../../../fixtures/panel.json),
 [`fixtures/panel_dl.json`](../../../fixtures/panel_dl.json),
 [`fixtures/panel_unbalanced.json`](../../../fixtures/panel_unbalanced.json),
+[`fixtures/panel_static.json`](../../../fixtures/panel_static.json),
 [`fixtures/panel_balanced_snapshot.json`](../../../fixtures/panel_balanced_snapshot.json),
 [`fixtures/panel_spj.json`](../../../fixtures/panel_spj.json),
 [`fixtures/lpdid.json`](../../../fixtures/lpdid.json),
@@ -863,6 +1157,27 @@ mean-group of per-unit long runs. Fixtures:
   Dynamic Heterogeneous Panels." *JASA* 94.
 - Pesaran, M. H. (2006). "Estimation and Inference in Large Heterogeneous
   Panels with a Multifactor Error Structure." *Econometrica* 74.
+- Swamy, P. A. V. B. & Arora, S. S. (1972). "The Exact Finite Sample
+  Properties of the Estimators of Coefficients in the Error Components
+  Regression Models." *Econometrica* 40.
+- Baltagi, B. H. & Chang, Y.-J. (1994). "Incomplete panels: A comparative
+  study of alternative estimators for the unbalanced one-way error component
+  regression model." *J. Econometrics* 62.
+- Mundlak, Y. (1978). "On the Pooling of Time Series and Cross Section
+  Data." *Econometrica* 46.
+- Wooldridge, J. M. (2010). *Econometric Analysis of Cross Section and Panel
+  Data*, 2nd ed., ch. 10. MIT Press.
+- Wooldridge, J. M. (2019). "Correlated random effects models with
+  unbalanced panels." *J. Econometrics* 211.
+- Fama, E. F. & MacBeth, J. D. (1973). "Risk, Return, and Equilibrium:
+  Empirical Tests." *J. Political Economy* 81.
+- Newey, W. K. & West, K. D. (1987). "A Simple, Positive Semi-Definite,
+  Heteroskedasticity and Autocorrelation Consistent Covariance Matrix."
+  *Econometrica* 55.
+- Petersen, M. A. (2009). "Estimating Standard Errors in Finance Panel Data
+  Sets: Comparing Approaches." *Rev. Financial Studies* 22.
+- Shanken, J. (1992). "On the Estimation of Beta-Pricing Models." *Rev.
+  Financial Studies* 5.
 - Driscoll, J. & Kraay, A. (1998). "Consistent Covariance Matrix Estimation
   with Spatially Dependent Panel Data." *Rev. Econ. Stat.* 80.
 - Jordà, Ò. (2005). "Estimation and Inference of Impulse Responses by Local

@@ -152,6 +152,10 @@ outcome, as noted above.
 | `xtreg y x, fe` | `panel_fe(outcome, regressors, se_type="nonrobust")` | `outcome` is `N x T`, `regressors` is `k x N x T`. |
 | `xtreg y x, fe vce(cluster id)` | `panel_fe(..., se_type="cluster")` | Clustered by entity. |
 | `xtscc y x, fe` (Driscoll-Kraay) | `panel_fe(..., se_type="driscoll_kraay")` | Same SE, one argument. |
+| `xtreg y x, re` | `panel_re(outcome, regressors, se_type="nonrobust")` | Swamy-Arora components with a per-entity `theta_i`, pinned to linearmodels `RandomEffects` — no Stata parity is pinned. On an unbalanced panel `small_sample=True` is linearmodels' formula, **not** `xtreg, re sa` (Baltagi-Chang), so the two differ by construction there. `vce(cluster id)` → `se_type="cluster"` (no `G/(G-1)` factor — linearmodels' convention). |
+| `xtreg y x, be` / `xtreg y x, be wls` | `panel_between(outcome, regressors, se_type="nonrobust")` / `..., reweight=True` | OLS on the entity means; `wls` weights by `T_i`. |
+| `regress D.y D.x` (FD) | `panel_fd(outcome, regressors, constant=True)` | Stata's regression **includes a constant** (a linear trend in levels); `panel_fd`'s default `constant=False` is linearmodels'. Differences need `t` and `t−1` both observed — gaps are never bridged. |
+| `xtfmb y x` (user-written) | `panel_fama_macbeth(outcome, regressors)` | Pinned to linearmodels `FamaMacBeth`; `xtfmb` parity is **not** claimed. `se_type="hac"` is the Newey-West variant (`lag(#)` → `bandwidth`). |
 | `xtpmg d.y ..., pmg` | `panel_pmg(ys, xs)` | Pooled Mean Group ARDL(1,1) (Pesaran-Shin-Smith 1999). |
 | `xtpmg d.y ..., mg` | `panel_mean_group(ys, xs, method="mg")` | Mean group (Pesaran-Smith 1995). |
 | `xtmg y x, cce` (Eberhardt CCEMG) | `panel_mean_group(ys, xs, method="cce")` | Common-correlated-effects mean group. |

@@ -885,8 +885,8 @@ fn solve_within(
                     "within (fixed-effects) OLS: a regressor is constant within \
                      every entity, so the fixed effects absorb it and no within \
                      variation remains to identify its coefficient (the column \
-                     of regressors is the offender; drop it, or use a \
-                     random-effects / between estimator)"
+                     of regressors is the offender; drop it, or estimate it \
+                     with panel_re (random effects) or panel_between)"
                 } else {
                     "within (fixed-effects) OLS: the requested effects absorb a \
                      regressor entirely — one column of regressors is constant \
