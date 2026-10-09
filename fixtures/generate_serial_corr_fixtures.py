@@ -28,6 +28,31 @@ transcribed below in NumPy/SciPy. This generator NEVER imports tsecon.
      auxiliary regression, F(p, T - k_aux), k_aux = k + p (+ 1 when the
      constant was added) — asserted equal to statsmodels' `df_resid`.
 
+1b. Breusch-Godfrey on designs that NEARLY span a constant
+   (`conditioning_cases`).  REFERENCE: the same statsmodels convention
+   evaluated in EXACT rational arithmetic (Python `fractions.Fraction`,
+   Gauss-Jordan elimination of the normal equations): every stored double
+   of `y` and `x` is a dyadic rational, so the OLS residuals, the
+   auxiliary regression of u on [x, 1, u_{-1}, ..., u_{-p}], the
+   restricted regression of u on [x, 1], LM = T (1 - SSR_aux / TSS) and
+   F = [(SSR_r - SSR_aux)/p] / [SSR_aux/(T - k_aux)] are exact, rounded
+   once to a double at the end. Floating-point solvers lose digits here
+   (the auxiliary design [x, 1, lags] has a condition number of about 1e8
+   and 1e17). statsmodels agrees with the exact values to within 1e-7 (relative) on
+   the first case; on the second its implicit-constant rule (numpy
+   `matrix_rank` of [1, x], NOT scale-invariant) decides that x = [z, 1e9 +
+   t] spans a constant, so it adds none and reports a different LM. Its
+   numbers and that decision are stored beside the exact ones
+   (`statsmodels_statistic`, `statsmodels_fstat`,
+   `statsmodels_k_constant`) to document the departure, never as the
+   target. `ulp_sensitivity` is the largest relative change of the exact
+   LM and F when every entry of x is moved to its floating-point neighbour
+   (`np.nextafter`, one unit in the last place, in a seeded random
+   direction; five sign patterns): the precision any floating-point method
+   can be held to on these designs. (Scaling x by 1 +/- 2^-53 instead
+   would leave every entry with the + sign unchanged: 1 + 2^-53 rounds to
+   1.)
+
 2. Durbin-Watson statistic (Durbin & Watson 1950, 1951).  REFERENCE:
    statsmodels `durbin_watson(resid)` =
    sum_{t=2}^T (u_t - u_{t-1})^2 / sum_{t=1}^T u_t^2.
@@ -73,13 +98,14 @@ from __future__ import annotations
 import json
 import platform
 import warnings
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
 import scipy
 import statsmodels
 import statsmodels.api as sm
-from scipy import integrate
+from scipy import integrate, stats
 from statsmodels.stats.diagnostic import acorr_breusch_godfrey
 from statsmodels.stats.stattools import durbin_watson
 
@@ -179,6 +205,93 @@ def dw_exact(X, d_obs):
         "pvalue_positive": p_le,
         "pvalue_negative": p_ge,
         "pvalue_two_sided": min(1.0, 2.0 * min(p_le, p_ge)),
+    }
+
+
+# ------------------------------------- Breusch-Godfrey in exact arithmetic
+
+def _solve_exact(a, b):
+    """Gauss-Jordan elimination over the rationals (a nonsingular)."""
+    n = len(a)
+    m = [row[:] + [bb] for row, bb in zip(a, b)]
+    for c in range(n):
+        piv = next(r for r in range(c, n) if m[r][c] != 0)
+        m[c], m[piv] = m[piv], m[c]
+        for r in range(n):
+            if r != c and m[r][c] != 0:
+                f = m[r][c] / m[c][c]
+                m[r] = [v - f * w for v, w in zip(m[r], m[c])]
+    return [m[i][n] / m[i][i] for i in range(n)]
+
+
+def _resid_exact(y, cols):
+    """Exact residual of the least-squares regression of y on cols."""
+    k = len(cols)
+    gram = [[sum(a * b for a, b in zip(cols[i], cols[j])) for j in range(k)] for i in range(k)]
+    rhs = [sum(a * b for a, b in zip(cols[i], y)) for i in range(k)]
+    beta = _solve_exact(gram, rhs)
+    return [yt - sum(beta[j] * cols[j][t] for j in range(k)) for t, yt in enumerate(y)]
+
+
+def bg_exact(y, X, p):
+    """Breusch-Godfrey (statsmodels convention, constant ADDED: these designs
+    span no constant in exact arithmetic) evaluated over the rationals."""
+    T, k = X.shape
+    yq = [Fraction(float(v)) for v in y]
+    cols = [[Fraction(float(v)) for v in X[:, j]] for j in range(k)]
+    u = _resid_exact(yq, cols)
+    one = [Fraction(1)] * T
+    lags = [[Fraction(0)] * j + u[:T - j] for j in range(1, p + 1)]
+    ssr_u = sum(v * v for v in _resid_exact(u, cols + [one] + lags))
+    ssr_r = sum(v * v for v in _resid_exact(u, cols + [one]))
+    mean = sum(u) / T
+    tss = sum((v - mean) ** 2 for v in u)
+    k_aux = k + p + 1
+    lm = T * (1 - ssr_u / tss)
+    fstat = ((ssr_r - ssr_u) / p) / (ssr_u / (T - k_aux))
+    return float(lm), float(fstat), k_aux
+
+
+def build_conditioning_case(name, y, X, nlags_list, note):
+    T, k = X.shape
+    res = sm.OLS(y, X).fit()
+    bg = []
+    for p in nlags_list:
+        lm, fstat, k_aux = bg_exact(y, X, p)
+        sens, prng = 0.0, np.random.default_rng(7)
+        for _ in range(5):
+            xp = np.nextafter(X, prng.choice([-np.inf, np.inf], size=X.shape))
+            assert np.all(xp != X)
+            lm_p, f_p, _ = bg_exact(y, xp, p)
+            sens = max(sens, abs(lm_p / lm - 1.0), abs(f_p / fstat - 1.0))
+        sm_r = acorr_breusch_godfrey(res, nlags=p, result_object=False)
+        aux = np.column_stack([X, np.ones(T)] + [np.r_[np.zeros(j), res.resid[:T - j]]
+                                                 for j in range(1, p + 1)])
+        bg.append({
+            "nlags_arg": p,
+            "nlags": int(p),
+            "statistic": lm,
+            "df": int(p),
+            "pvalue": float(stats.chi2.sf(lm, p)),
+            "fstat": fstat,
+            "f_df_num": int(p),
+            "f_df_den": int(T - k_aux),
+            "f_pvalue": float(stats.f.sf(fstat, p, T - k_aux)),
+            "constant_added": True,
+            "statsmodels_statistic": float(sm_r[0]),
+            "statsmodels_fstat": float(sm_r[2]),
+            "statsmodels_k_constant": int(res.k_constant),
+            "cond_aux_with_ones": float(np.linalg.cond(aux)),
+            "ulp_sensitivity": sens,
+        })
+    return {
+        "name": name,
+        "note": note,
+        "nobs": int(T),
+        "k": int(k),
+        "y": y.tolist(),
+        "columns": [X[:, j].tolist() for j in range(k)],
+        "breusch_godfrey": bg,
     }
 
 
@@ -328,6 +441,30 @@ def main():
     cases.append(build_case("macro_investment_accelerator", m["inv_growth"], X, [None, 4],
                             "100 dlog realinv on const + 100 dlog realgdp + diff realint (statsmodels macrodata)"))
 
+    # Designs that span no constant but come close (exact-arithmetic
+    # reference, see 1b above): a column constant to within 1e-8 relative,
+    # and a level-shifted trend without a constant column.
+    conditioning = []
+    rng = np.random.default_rng(20261014)
+    T = 60
+    noise, z = rng.standard_normal(T), rng.standard_normal(T)
+    X = np.column_stack([1.0 + 1e-8 * noise, z])
+    y = X @ np.array([1.0, 0.5]) + ar1_errors(rng, T, 0.3)
+    conditioning.append(build_conditioning_case(
+        "near_constant_column", y, X, [1, 3],
+        "x = [1 + 1e-8 noise, z], no exact constant: the added auxiliary constant is "
+        "nearly collinear with the first column (cond([x, 1, lags]) about 1e8)"))
+    rng = np.random.default_rng(20261015)
+    T = 60
+    z = rng.standard_normal(T)
+    X = np.column_stack([z, 1e9 + np.arange(T, dtype=float)])
+    y = 0.5 * z + 1e-8 * X[:, 1] + ar1_errors(rng, T, 0.3)
+    conditioning.append(build_conditioning_case(
+        "level_shifted_trend_no_constant", y, X, [1, 3],
+        "x = [z, 1e9 + t] through the origin: [x, 1] spans [z, t, 1] but is "
+        "ill-conditioned (cond about 1e17); statsmodels' matrix_rank rule calls the "
+        "constant implicit here and adds none"))
+
     fixture = {
         "_meta": {
             "numpy": np.__version__,
@@ -338,6 +475,9 @@ def main():
                 "breusch_godfrey": "statsmodels.stats.diagnostic.acorr_breusch_godfrey(OLS fit, nlags) "
                                    "— zero-padded lagged residuals, default nlags=min(10, T//5), "
                                    "a constant added to the auxiliary design when the model has none",
+                "breusch_godfrey_conditioning_cases": "the statsmodels convention (constant added) "
+                                                      "in exact rational arithmetic (fractions.Fraction); "
+                                                      "statsmodels' own LM/F stored beside it for comparison",
                 "durbin_watson": "statsmodels.stats.stattools.durbin_watson(resid)",
                 "durbin_watson_exact_pvalue": "documented Imhof (1961) formula on the eigenvalues of "
                                               "Z'AZ (numpy complete QR + LAPACK eigvalsh), "
@@ -347,10 +487,16 @@ def main():
                     "seeded numpy default_rng draws. Generated without importing tsecon.",
         },
         "cases": cases,
+        "conditioning_cases": conditioning,
     }
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(fixture, fh, indent=1)
     print(f"wrote {OUT} ({OUT.stat().st_size} bytes); {len(cases)} cases")
+    for c in conditioning:
+        bgs = "  ".join(f"p={b['nlags']}:LM={b['statistic']:.6f}(statsmodels {b['statsmodels_statistic']:.6f}, "
+                        f"cond {b['cond_aux_with_ones']:.1e}, ulp sensitivity {b['ulp_sensitivity']:.1e})"
+                        for b in c["breusch_godfrey"])
+        print(f"  {c['name']:34s} T={c['nobs']:3d} k={c['k']} {bgs}")
     for c in cases:
         dw = c["durbin_watson"]
         bgs = "  ".join(f"p={b['nlags']}:LM={b['statistic']:.3f}(p={b['pvalue']:.3g})" for b in c["breusch_godfrey"])

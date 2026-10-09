@@ -2,8 +2,9 @@
 //! input is a typed [`SpecTestError`], never a panic.
 
 use tsecon_spectest::{
-    breusch_godfrey_test, durbin_watson_regression_statistic, durbin_watson_statistic,
-    durbin_watson_test, DwAlternative, SpecTestError, DW_EXACT_MAX_NOBS,
+    breusch_godfrey_max_nlags, breusch_godfrey_test, breusch_godfrey_work,
+    durbin_watson_regression_statistic, durbin_watson_statistic, durbin_watson_test, DwAlternative,
+    SpecTestError, BG_MAX_AUX_CELLS, BG_WORK_BUDGET, DW_EXACT_MAX_NOBS,
 };
 
 /// const + one regressor, `n` observations, non-degenerate residuals.
@@ -201,4 +202,143 @@ fn error_messages_teach() {
     let (yl, xl) = design(DW_EXACT_MAX_NOBS + 1);
     let msg = durbin_watson_test(&yl, &xl, POS).unwrap_err().to_string();
     assert!(msg.contains("Breusch-Godfrey"), "{msg}");
+}
+
+/// Whether an `n x k_aux` auxiliary design fits both documented budgets,
+/// written out from the constants rather than through the crate's helper.
+fn fits(n: usize, k_aux: usize) -> bool {
+    (n as u128) * (k_aux as u128) <= BG_MAX_AUX_CELLS as u128
+        && (n as u128) * (k_aux as u128).pow(2) / 2 + 6 * (k_aux as u128).pow(3) <= BG_WORK_BUDGET
+}
+
+#[test]
+fn breusch_godfrey_refuses_an_auxiliary_design_past_its_budgets() {
+    // T = 1e5 and nlags = 20000 is a valid order (T > k_aux), but its
+    // auxiliary design is 2e9 doubles (16 GB): it used to abort the process
+    // in the allocator. It is refused before any lag column is built.
+    let n = 100_000;
+    let y: Vec<f64> = (0..n)
+        .map(|t| ((t * t) % 7) as f64 + (0.3 * t as f64).sin())
+        .collect();
+    let x = vec![vec![1.0; n]];
+    let err = breusch_godfrey_test(&y, &x, Some(20_000)).unwrap_err();
+    let SpecTestError::AuxiliaryTooLarge {
+        n: en,
+        k_aux,
+        nlags,
+        max_nlags,
+        defaulted,
+    } = err.clone()
+    else {
+        panic!("expected AuxiliaryTooLarge, got {err:?}");
+    };
+    assert_eq!((en, k_aux, nlags, defaulted), (n, 20_001, 20_000, false));
+    // The largest admissible order: the work budget binds at T = 1e5.
+    assert!(
+        fits(n, 1 + max_nlags) && !fits(n, 2 + max_nlags),
+        "{max_nlags}"
+    );
+    assert_eq!(max_nlags, breusch_godfrey_max_nlags(n, 1));
+    let msg = err.to_string();
+    assert!(msg.contains("nlags = 20000"), "{msg}");
+    assert!(msg.contains(&format!("nlags <= {max_nlags}")), "{msg}");
+    // A 2e9-entry design is past both budgets, and the message says which.
+    assert!(msg.contains("past both the memory budget"), "{msg}");
+    // A short sample with a long order fits in memory but not in time: the
+    // message names the work budget alone.
+    let (ys, xs) = (&y[..3000], vec![vec![1.0; 3000]]);
+    let msg = breusch_godfrey_test(ys, &xs, Some(2000))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("past the work budget") && !msg.contains("memory budget"),
+        "{msg}"
+    );
+    // One past the largest admissible order is refused the same way, and an
+    // absurd order still fails the degrees-of-freedom check first.
+    assert!(matches!(
+        breusch_godfrey_test(&y, &x, Some(max_nlags + 1)).unwrap_err(),
+        SpecTestError::AuxiliaryTooLarge { .. }
+    ));
+    assert!(matches!(
+        breusch_godfrey_test(&y, &x, Some(usize::MAX)).unwrap_err(),
+        SpecTestError::DegreesOfFreedom { .. }
+    ));
+}
+
+#[test]
+fn breusch_godfrey_largest_order_obeys_both_budgets_and_the_sample() {
+    // Memory binds for a long sample, work for a short one, the degrees of
+    // freedom for a tiny one; the work count saturates instead of
+    // overflowing.
+    for (n, k_base) in [
+        (10_000_000, 3),
+        (1_000_000, 2),
+        (100_000, 1),
+        (20_000, 4),
+        (3_000, 2),
+        (500, 3),
+        (25, 3),
+        (5, 4),
+        (2, 1),
+    ] {
+        let m = breusch_godfrey_max_nlags(n, k_base);
+        if m > 0 {
+            assert!(n > k_base + m && fits(n, k_base + m), "n = {n}: {m}");
+        }
+        assert!(
+            n <= k_base + m + 1 || !fits(n, k_base + m + 1),
+            "n = {n}: {m} is not the largest"
+        );
+    }
+    assert_eq!(breusch_godfrey_max_nlags(25, 3), 21);
+    assert_eq!(breusch_godfrey_max_nlags(1 << 26, 1), 0);
+    assert_eq!(breusch_godfrey_work(usize::MAX, usize::MAX), u128::MAX);
+    // A sample so long that even one lag is over the memory budget: the
+    // message says so instead of suggesting nlags <= 0.
+    let err = SpecTestError::AuxiliaryTooLarge {
+        n: 1 << 26,
+        k_aux: 3,
+        nlags: 1,
+        max_nlags: 0,
+        defaulted: false,
+    };
+    assert!(
+        err.to_string()
+            .contains("even one lag does not fit with this design, so use a shorter sample"),
+        "{err}"
+    );
+    // A design so wide that its 6 k^3 term alone is past the work budget:
+    // no sample length helps, and the message does not suggest one.
+    let wide = SpecTestError::AuxiliaryTooLarge {
+        n: 3000,
+        k_aux: 1502,
+        nlags: 1,
+        max_nlags: 0,
+        defaulted: false,
+    }
+    .to_string();
+    assert!(
+        wide.contains("at any sample length") && !wide.contains("shorter sample"),
+        "{wide}"
+    );
+    // A default order past the budget (a sample of millions) says so.
+    let err = SpecTestError::AuxiliaryTooLarge {
+        n: 6_000_000,
+        k_aux: 13,
+        nlags: 10,
+        max_nlags: breusch_godfrey_max_nlags(6_000_000, 3),
+        defaulted: true,
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("the default order nlags = min(10, n // 5) = 10"),
+        "{msg}"
+    );
+    assert!(msg.contains("pass nlags <= 8"), "{msg}");
+    // 7.8e7 entries but only 5e8 multiply-adds: the memory budget alone.
+    assert!(
+        msg.contains("past the memory budget") && !msg.contains("work budget"),
+        "{msg}"
+    );
 }

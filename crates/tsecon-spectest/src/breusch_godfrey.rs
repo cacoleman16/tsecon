@@ -36,6 +36,19 @@
 //! `u` on `[X, 1]`, tests the lags alone. The LM statistic is
 //! valid with lagged dependent variables among the regressors, which is the
 //! test's advantage over Durbin-Watson.
+//!
+//! **The implicit-constant rule.** The design spans a constant when the
+//! regression of a column of ones on it (each column rescaled by a power of
+//! two) leaves a residual `m = M_X 1` of relative size `|m| / |1|` at most
+//! `1e-10`. The rule is invariant to rescaling a column. statsmodels instead
+//! compares numpy's `matrix_rank` of `[1, X]` with that of `X`, a rule that
+//! is not: for `X = [z, 1e9 + t]` it finds an implicit constant (and adds
+//! none) where the rule here does not (`fixtures/serial_corr.json`,
+//! `conditioning_cases`). The added constant enters the auxiliary design
+//! as `m` itself, rescaled — the same column space as `[X, 1]`, but
+//! orthogonal to `X` — so a design that comes close to spanning a constant
+//! without passing the threshold (a column constant to within `1e-8`, say)
+//! is tested, not refused as collinear.
 
 use tsecon_hac::ols;
 use tsecon_stats::chi2_sf;
@@ -47,6 +60,79 @@ use crate::error::SpecTestError;
 /// `min(10, nobs / 5)` (integer division).
 pub fn breusch_godfrey_default_nlags(nobs: usize) -> usize {
     (nobs / 5).min(10)
+}
+
+/// Largest auxiliary design, `T x k_aux` doubles, the test may build:
+/// 2^26 entries, 512 MiB per copy (the OLS engine keeps a second one) —
+/// the design budget of `ardl_bounds_test`. A larger one is refused before
+/// any lag column is allocated, rather than left to abort the process when
+/// an allocation fails.
+pub const BG_MAX_AUX_CELLS: usize = 1 << 26;
+
+/// Work budget of the auxiliary regression, in multiply-adds: forming its
+/// normal equations costs `T k_aux^2 / 2` and factoring and inverting them
+/// about `6 k_aux^3` (see [`breusch_godfrey_work`]). Measured at 1.0 to 2.2
+/// ns per unit for `k_aux` of 100 and more (`lab/serial_corr/bg_cost.py`),
+/// so `2^34` is about half a minute (26.5 s at `T = 3000` and 29.6 s at
+/// `T = 1e5` at the cap); a longer order is refused, naming `nlags`.
+pub const BG_WORK_BUDGET: u128 = 1 << 34;
+
+/// The work count [`BG_WORK_BUDGET`] is checked against for `n`
+/// observations and `k_aux` auxiliary regressors:
+/// `n k_aux^2 / 2 + 6 k_aux^3`. Saturating, so an absurd order cannot
+/// overflow the check meant to refuse it.
+pub fn breusch_godfrey_work(n: usize, k_aux: usize) -> u128 {
+    let (n, k) = (n as u128, k_aux as u128);
+    let k2 = k.saturating_mul(k);
+    (n.saturating_mul(k2) / 2).saturating_add(k2.saturating_mul(k).saturating_mul(6))
+}
+
+/// Which budget an `n x k_aux` auxiliary design exceeds — the memory
+/// budget ([`BG_MAX_AUX_CELLS`]), the work budget ([`BG_WORK_BUDGET`]) or
+/// both — as the phrase its refusal quotes; `None` when it fits both.
+pub fn breusch_godfrey_exceeded_budget(n: usize, k_aux: usize) -> Option<&'static str> {
+    let memory = n.checked_mul(k_aux).is_none_or(|c| c > BG_MAX_AUX_CELLS);
+    let work = breusch_godfrey_work(n, k_aux) > BG_WORK_BUDGET;
+    match (memory, work) {
+        (true, true) => Some(
+            "both the memory budget of 2^26 = 67108864 entries (512 MiB) and the work \
+             budget of 2^34 multiply-adds (about half a minute)",
+        ),
+        (true, false) => Some("the memory budget of 2^26 = 67108864 entries (512 MiB)"),
+        (false, true) => Some("the work budget of 2^34 multiply-adds (about half a minute)"),
+        (false, false) => None,
+    }
+}
+
+/// `true` when an `n x k_aux` auxiliary design fits both budgets.
+fn within_budget(n: usize, k_aux: usize) -> bool {
+    breusch_godfrey_exceeded_budget(n, k_aux).is_none()
+}
+
+/// The largest order the test admits for `n` observations and `k_base`
+/// auxiliary regressors besides the lags (the `k` columns of the design,
+/// plus one when a constant is added): it keeps `n > k_base + nlags` and
+/// the auxiliary design within both budgets. `0` when even one lag does not
+/// fit.
+pub fn breusch_godfrey_max_nlags(n: usize, k_base: usize) -> usize {
+    // Both budgets grow with k_aux, so the admissible orders are 0..=max;
+    // bisect on the largest k_aux below n that fits.
+    let Some(mut hi) = n.checked_sub(1) else {
+        return 0;
+    };
+    if hi <= k_base || !within_budget(n, k_base + 1) {
+        return 0;
+    }
+    let mut lo = k_base + 1; // fits
+    while lo < hi {
+        let mid = lo + (hi - lo).div_ceil(2);
+        if within_budget(n, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo - k_base
 }
 
 /// Outcome of the Breusch-Godfrey serial-correlation test.
@@ -102,7 +188,10 @@ fn constant_complement(x_cols: &[Vec<f64>], n: usize) -> Result<Option<Vec<f64>>
 ///
 /// [`SpecTestError::DegreesOfFreedom`] if `T <= k` (the original
 /// regression) or `T <= k_aux` (the auxiliary regression — the order is too
-/// long for the sample); [`SpecTestError::InvalidLags`] if the order is zero
+/// long for the sample); [`SpecTestError::AuxiliaryTooLarge`] if the
+/// auxiliary design would exceed [`BG_MAX_AUX_CELLS`] entries or its
+/// regression [`BG_WORK_BUDGET`] (checked before any lag column is built);
+/// [`SpecTestError::InvalidLags`] if the order is zero
 /// (including a default of zero for `T < 5`); [`SpecTestError::DegenerateResponse`]
 /// if the residuals are (numerically) all zero — `y` is an exact linear
 /// combination of the design — or, for a design without a constant, fully
@@ -140,7 +229,8 @@ pub fn breusch_godfrey_test(
     let spans = m1.is_none();
     let added = usize::from(!spans);
     // k_aux = k + p (+ 1); checked so an absurd order cannot overflow, and
-    // compared with n BEFORE any lag column is allocated.
+    // compared with n and with the memory and work budgets BEFORE any lag
+    // column is allocated.
     let k_aux = k
         .checked_add(p)
         .and_then(|v| v.checked_add(added))
@@ -150,6 +240,15 @@ pub fn breusch_godfrey_test(
             what: "Breusch-Godfrey auxiliary regression (design plus nlags lagged residuals)",
             n,
             k: k_aux,
+        });
+    }
+    if !within_budget(n, k_aux) {
+        return Err(SpecTestError::AuxiliaryTooLarge {
+            n,
+            k_aux,
+            nlags: p,
+            max_nlags: breusch_godfrey_max_nlags(n, k + added),
+            defaulted: nlags.is_none(),
         });
     }
 
@@ -192,10 +291,18 @@ pub fn breusch_godfrey_test(
     }
 
     // Auxiliary design: [X, (1), u_{-1}, ..., u_{-p}], zero-padded lags.
+    // The added constant enters as m = M_X 1 (rescaled by a power of two),
+    // which spans the same columns as [X, 1] — m = 1 - X b — but is
+    // orthogonal to X. A literal column of ones would make the normal
+    // equations as ill-conditioned as x is close to spanning a constant:
+    // with a column that is constant to within 1e-8 relative (m'm / n of
+    // order 1e-16) the solver's pivot test refuses [X, 1] as collinear,
+    // although the regression is well determined and the 1e-10 rule of
+    // `constant_complement` has just said that x spans no constant.
     let mut aux: Vec<Vec<f64>> = x_cols;
     aux.reserve_exact(k_aux - k);
-    if !spans {
-        aux.push(vec![1.0; n]);
+    if let Some(m) = &m1 {
+        aux.push(pow2_normalized(m));
     }
     for j in 1..=p {
         let mut col = vec![0.0; n];

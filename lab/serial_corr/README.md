@@ -12,6 +12,7 @@ and writes its output to `out/`; run them with the built wheel on the path.
 | `dw_exact_mc.py` | The exact Durbin-Watson null CDF against 200 000 simulated draws on three designs, and the exact test's size under non-normal errors | `out/dw_exact_mc.txt` |
 | `dw_bounds.py` | The 5% bounds `d_L`, `d_U` computed from their definition (NumPy/SciPy only) | `out/dw_bounds.txt` |
 | `dw_cost.py` | Wall-clock cost of both tests from T = 100 to the 4000 cap | `out/dw_cost.txt` |
+| `bg_cost.py` | Wall-clock cost of `breusch_godfrey_test` across `(T, nlags)`, at the largest orders its memory and work budgets admit, and of the refusal past them | `out/bg_cost.txt` |
 | `card_examples.py` | The two runnable card examples, verbatim, and their printed output | `out/card_examples.txt` |
 
 The golden fixture itself (statsmodels and the documented Imhof formula) is

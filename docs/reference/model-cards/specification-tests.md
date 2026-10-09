@@ -490,6 +490,17 @@ If `x` spans no constant (no constant column and no implicit one, such as a
 set of complementary dummies), a column of ones is added to the **auxiliary**
 regression only, so the centered `R^2` is defined. The result says so
 (`constant_added`), and then `k_aux = k + nlags + 1` instead of `k + nlags`.
+`x` counts as spanning a constant when regressing a column of ones on it
+leaves a residual below `1e-10` of the constant's norm. The rule is invariant
+to rescaling a column; statsmodels' (numpy `matrix_rank` of `[1, x]`) is not.
+On `x = [z, 1e9 + t]` with no constant column, statsmodels calls the constant
+implicit and adds none (LM 2.1739 at `nlags = 1` on the fixture's case),
+while tsecon adds it (LM 2.2739, the exact value of that convention). The
+added constant enters as the part of it that `x` does not span, `M_X 1`
+(rescaled). That is the same column space as `[x, 1]`, but it stays well
+conditioned, so a design that comes close to a constant without passing the
+threshold, such as a column `1 + 1e-8 * noise`, is tested rather than
+refused as collinear.
 **When `constant_added` is `True`, read the F-form.** statsmodels' LM is `T`
 times the *centered* `R^2` of the auxiliary regression, and the added constant
 explains more of the residuals than their mean (their projection on `M_X 1`),
@@ -506,6 +517,26 @@ constant) both forms held their size (3.7% to 6.1%).
 `nlags` must be at least 1 and leave `T > k_aux`. A sample shorter than five
 observations has a default order of 0, and the refusal says to pass `nlags`
 or a longer `y`.
+
+**COST, and the budgets on `nlags`.** The auxiliary regression costs about
+`T k_aux^2 / 2 + 6 k_aux^3` multiply-adds, building its normal equations
+and then factoring and inverting them. That is linear in `T` at a fixed
+order but quadratic to cubic in `nlags`. Measured on the release wheel
+(`lab/serial_corr/bg_cost.py`, output in `lab/serial_corr/out/bg_cost.txt`,
+one call per cell on a shared 4-core machine, `x` a constant and two
+regressors): 0.05 s at `T = 10^5` and 0.56 s at `T = 10^6` with
+`nlags = 10`, 1.2 s at `T = 20000` with `nlags = 250`, and 9.4 s at
+`T = 5000` with `nlags = 1000`.
+An order whose auxiliary design would hold more than 2^26 entries (512 MiB;
+the OLS engine keeps a second copy) or cost more than 2^34 multiply-adds
+(about half a minute: 29.6 s at `T = 10^5` with `nlags = 564` and 26.5 s at
+`T = 3000` with `nlags = 1338`, the largest orders the budget admits there)
+is refused before anything is built. The refusal names `nlags` and the
+largest order that fits, and takes 3 ms. At `T = 10^5`, `nlags = 20000`
+would need a 16 GB design; before the budget it aborted the interpreter in
+the allocator instead of raising. At the default order of 10, the memory
+budget caps `T` at 5,162,220 when `x` is a constant and two regressors
+(4,793,490 when `x` spans no constant and one is added).
 
 **How to read the output.** A dict. `statistic` is `LM = T * R^2_aux`, `df`
 its chi-square degrees of freedom (`= nlags`), and `pvalue` the upper-tail
@@ -524,9 +555,11 @@ dynamic term shows up here as serial correlation: it is a specification
 signal, not only an inference one. Strong heteroskedasticity distorts both
 forms. With `constant_added` the LM form over-rejects (above). A design that
 is collinear (`x` rank deficient), an order that leaves no residual degrees of
-freedom (`nlags` too long), a `y` that `x` fits exactly (zero residuals), or,
-when `x` spans no constant, a `y` that `x` and a constant fit exactly are
-refused with the parameter named.
+freedom (`nlags` too long), an order whose auxiliary design would pass the
+memory or work budget (`nlags`, with the largest order that fits), a `y`
+that `x` fits exactly (zero residuals), or, when `x` spans no constant, a
+`y` that `x` and a constant fit exactly are refused with the parameter
+named.
 
 **Validated against.** statsmodels `acorr_breusch_godfrey` on an OLS fit:
 `fixtures/serial_corr.json` (generator
@@ -541,9 +574,17 @@ statsmodels' macrodata by transformation (consumption growth on income growth,
 inflation on unemployment, investment growth on GDP growth and the change in
 the real rate). Every `nlags` is pinned, including the default. The match
 holds at `1e-10` in `crates/tsecon-spectest/tests/serial_golden.rs` (measured
-worst deviation `2.5e-12`) and again through Python in
+worst deviation `2.6e-12`) and again through Python in
 `bindings/python/tests/test_serial_corr.py`, which also runs statsmodels live
-on six fresh seeded regressions.
+on six fresh seeded regressions. Two more designs come close to spanning a
+constant without spanning one: a column `1 + 1e-8 * noise`, and
+`[z, 1e9 + t]` with no constant column. Their auxiliary designs `[x, 1, lags]`
+have condition numbers of about `2e8` and `6e16`. These are pinned
+(`conditioning_cases`) against the same convention evaluated in exact rational
+arithmetic. Moving every entry of `x` to its floating-point neighbour moves
+those exact values by up to `7.1e-9`, so no floating-point method can be held
+to `1e-10` there: the tolerance is `1e-8`, and the measured worst deviation is
+`1.0e-9`. statsmodels' F-form is `8.1e-8` off on the first design.
 
 Size and power by seeded Monte Carlo
 (`lab/serial_corr/size_power.py`,
@@ -672,8 +713,8 @@ must satisfy `T >= k + 2` (with `T = k + 1`, `d` is a constant).
 `T x T` matrix, so the p-value is computed for `T` up to 4000 (128 MB). For a
 longer `y` the statistic, which costs time linear in `T`, is still returned,
 with `pvalue` set to `None`. For a test at that length use
-`breusch_godfrey_test`, whose cost is linear in `T` and whose chi-square
-approximation is accurate there. Measured on the release
+`breusch_godfrey_test`, whose cost is linear in `T` at a fixed `nlags` and
+whose chi-square approximation is accurate there. Measured on the release
 wheel (median of three calls, a 4-core machine shared with another job,
 `lab/serial_corr/dw_cost.py`):
 
@@ -693,10 +734,12 @@ is unnecessary: `P(d >= d_obs) = 1 - P(d <= d_obs)`.
 **Failure modes.** Using it with a lagged dependent variable: under the null
 the test then rejects only about 2% of the time at a nominal 5% (measured
 below), and its p-value is no longer exact. Reading a non-rejection as "no
-serial correlation" when the dependence is not first order. A long sample is
-refused by the cap rather than taking minutes, and a collinear `x`, a `y` that
-`x` fits exactly, or a sample with `T < k + 2` are refused with the parameter
-named.
+serial correlation" when the dependence is not first order. Treating a long
+sample's `pvalue` as a number: above `T = 4000` the exact p-value is not
+computed (it would take minutes), so `pvalue` is `None` and only the statistic
+is returned. Test `pvalue is None` before comparing it, or use
+`breusch_godfrey_test` at that length. A collinear `x`, a `y` that `x` fits
+exactly, or a sample with `T < k + 2` are refused with the parameter named.
 
 **Validated against.** The statistic is checked against statsmodels
 `durbin_watson`, and the exact p-value against a documented-formula golden on

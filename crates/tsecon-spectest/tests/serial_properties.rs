@@ -215,6 +215,47 @@ fn breusch_godfrey_constant_handling() {
 }
 
 #[test]
+fn breusch_godfrey_near_constant_column_is_tested_not_refused() {
+    // x = [1 + eps * noise, z] spans no constant for any eps > 0, but comes
+    // within eps of it. Up to the documented implicit-constant threshold
+    // (a relative residual of 1e-10 when the constant is regressed on x) a
+    // constant is added and the test runs, its LM moving only with the
+    // residuals' own dependence on eps; below it x counts as spanning a
+    // constant. Before the added constant entered as M_X 1, every eps from
+    // about 2.5e-7 down to 1.6e-10 was refused as a collinear auxiliary
+    // design, blaming the lagged residuals.
+    let mut s = Stream::new(2026_1009);
+    let n = 60;
+    let noise = normals(&mut s, n);
+    let z = normals(&mut s, n);
+    let y = normals(&mut s, n);
+    let x_at = |eps: f64| vec![noise.iter().map(|v| 1.0 + eps * v).collect(), z.clone()];
+    for p in [1, 3] {
+        let base = breusch_godfrey_test(&y, &x_at(1e-6), Some(p)).expect("bg at 1e-6");
+        assert!(base.constant_added);
+        for eps in [1e-5, 3e-7, 1e-7, 3e-8, 1e-8, 3e-9, 1e-9] {
+            let r = breusch_godfrey_test(&y, &x_at(eps), Some(p))
+                .unwrap_or_else(|e| panic!("eps = {eps:e}, nlags = {p}: {e}"));
+            assert!(r.constant_added, "eps = {eps:e}");
+            assert_eq!(r.f_df_den, n - 2 - 1 - p);
+            let rel = (r.statistic / base.statistic - 1.0).abs();
+            assert!(
+                rel < 1e-5,
+                "eps = {eps:e}, nlags = {p}: LM {} vs {}",
+                r.statistic,
+                base.statistic
+            );
+        }
+        for eps in [1e-11, 1e-12] {
+            let r = breusch_godfrey_test(&y, &x_at(eps), Some(p))
+                .unwrap_or_else(|e| panic!("eps = {eps:e}, nlags = {p}: {e}"));
+            assert!(!r.constant_added, "eps = {eps:e}");
+            assert_eq!(r.f_df_den, n - 2 - p);
+        }
+    }
+}
+
+#[test]
 fn breusch_godfrey_order_runs_to_the_degrees_of_freedom_limit() {
     let mut s = Stream::new(5);
     let n = 25;

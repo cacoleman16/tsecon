@@ -41,6 +41,7 @@ needs_sm = pytest.mark.skipif(not HAVE_SM, reason="statsmodels not installed")
 ROOT = Path(__file__).parents[3]
 FX = json.loads((ROOT / "fixtures" / "serial_corr.json").read_text(encoding="utf-8"))
 CASES = FX["cases"]
+CONDITIONING = FX["conditioning_cases"]
 
 BG_KEYS = {
     "statistic", "df", "pvalue", "fstat", "f_df_num", "f_df_den", "f_pvalue",
@@ -111,6 +112,43 @@ def test_durbin_watson_matches_the_golden(case):
         _close(r["pvalue"], ref[key], f"{case['name']} {key}")
         assert r["alternative"] == alt
         assert r["nobs"] == ref["nobs"] and r["df_resid"] == ref["df_resid"]
+
+
+@pytest.mark.parametrize("case", CONDITIONING, ids=lambda c: c["name"])
+def test_near_constant_designs_are_tested_against_exact_arithmetic(case):
+    # x comes close to spanning a constant without spanning one (a column
+    # 1 + 1e-8 noise; [z, 1e9 + t] with no constant column). Every order used
+    # to be refused, blaming the lagged residuals. The reference is the
+    # statsmodels convention in exact rational arithmetic; moving every entry
+    # of x by one ulp moves it by up to `ulp_sensitivity` (7.1e-9), so the
+    # tolerance is 1e-8, just above it.
+    y, x = _xy(case)
+    for ref in case["breusch_godfrey"]:
+        assert ref["ulp_sensitivity"] < 1e-8
+        r = tsecon.breusch_godfrey_test(y, x, nlags=ref["nlags_arg"])
+        assert r["constant_added"] is True
+        assert r["f_df_den"] == ref["f_df_den"]
+        for key in ("statistic", "pvalue", "fstat", "f_pvalue"):
+            _close(r[key], ref[key], f"{case['name']} nlags={ref['nlags_arg']} {key}", tol=1e-8)
+
+
+def test_near_constant_column_band_is_tested_up_to_the_documented_threshold():
+    # The auditor's design: x = [1 + eps * noise, z]. From eps = 2.5e-7 down
+    # to 1.6e-10 every order was refused; now the constant is added down to
+    # the 1e-10 implicit-constant threshold, and x counts as spanning one
+    # below it.
+    rng = np.random.default_rng(5)
+    n = 60
+    z, y, noise = rng.standard_normal(n), rng.standard_normal(n), rng.standard_normal(n)
+    for nlags in (1, 3):
+        base = tsecon.breusch_godfrey_test(y, np.column_stack([1 + 1e-5 * noise, z]), nlags=nlags)
+        for eps in (3e-7, 1e-7, 1e-8, 1e-9, 3e-10):
+            r = tsecon.breusch_godfrey_test(y, np.column_stack([1 + eps * noise, z]), nlags=nlags)
+            assert r["constant_added"] is True, eps
+            assert abs(r["statistic"] / base["statistic"] - 1) < 1e-5, (eps, r, base)
+        for eps in (1e-11, 1e-12):
+            r = tsecon.breusch_godfrey_test(y, np.column_stack([1 + eps * noise, z]), nlags=nlags)
+            assert r["constant_added"] is False, eps
 
 
 def test_golden_covers_the_promised_cases():
@@ -320,6 +358,48 @@ def test_every_refusal_names_the_offending_parameter(cell):
         getattr(tsecon, fn)(**kwargs)
     msg = str(info.value)
     assert _names(msg, pname), f"{fn}: refusal does not name {pname!r}: {msg[:300]}"
+
+
+def _largest_order(n, k_base, cells=1 << 26, work=1 << 34):
+    """The documented budgets: T * k_aux <= 2^26 entries and
+    T k_aux^2 / 2 + 6 k_aux^3 <= 2^34 multiply-adds, with T > k_aux."""
+    best = 0
+    for p in range(1, n - k_base):
+        k = k_base + p
+        if n * k > cells or n * k * k // 2 + 6 * k ** 3 > work:
+            break
+        best = p
+    return best
+
+
+def test_an_order_past_the_budgets_is_refused_by_name_before_anything_is_built():
+    # T = 1e5 and nlags = 20000 is a valid order (T > k_aux) whose auxiliary
+    # design is 2e9 doubles (16 GB): it used to abort the interpreter in the
+    # allocator. Now it is refused at once, naming nlags and the largest order
+    # the budgets admit; that order itself is what the lab script times.
+    n = 100_000
+    y = np.random.default_rng(8).standard_normal(n)
+    x = np.ones((n, 1))
+    t0 = time.perf_counter()
+    with pytest.raises(ValueError) as info:
+        tsecon.breusch_godfrey_test(y, x, nlags=20_000)
+    assert time.perf_counter() - t0 < 2.0
+    msg = str(info.value)
+    assert msg.startswith("nlags = 20000 makes the Breusch-Godfrey auxiliary regression too large")
+    assert f"pass nlags <= {_largest_order(n, 1)}," in msg, msg
+    assert "the 1 column of x" in msg and "past both the memory budget" in msg, msg
+    with pytest.raises(ValueError, match=r"^nlags = "):
+        tsecon.breusch_godfrey_test(y, x, nlags=_largest_order(n, 1) + 1)
+    # A short sample with a long order fits in memory but not in time: the
+    # refusal names the work budget alone.
+    with pytest.raises(ValueError, match=r"^nlags = 2000 .*past the work budget") as info:
+        tsecon.breusch_godfrey_test(y[:3000], x[:3000], nlags=2000)
+    assert "memory budget" not in str(info.value)
+    # So wide an x that even one lag is past the work budget at any length:
+    # the remedy is fewer columns, not a shorter sample.
+    wide = np.column_stack([np.ones(3000), np.random.default_rng(9).standard_normal((3000, 1500))])
+    with pytest.raises(ValueError, match=r"^nlags = 1 .*at any sample length.*fewer columns of x$"):
+        tsecon.breusch_godfrey_test(y[:3000], wide, nlags=1)
 
 
 def test_degenerate_residuals_and_short_samples_are_named():

@@ -58,10 +58,15 @@ fn u(v: &Value) -> usize {
 
 /// Absolute-or-relative agreement at `TOL`; returns the deviation used.
 fn close(actual: f64, expected: f64, what: &str) -> f64 {
+    close_at(actual, expected, what, TOL)
+}
+
+/// Absolute-or-relative agreement at `tol`; returns the deviation used.
+fn close_at(actual: f64, expected: f64, what: &str, tol: f64) -> f64 {
     let err = (actual - expected).abs();
     let rel = err / expected.abs().max(1.0);
     assert!(
-        err < TOL || rel < TOL,
+        err < tol || rel < tol,
         "{what}: actual={actual:.15e} expected={expected:.15e} abs_err={err:.3e} rel={rel:.3e}"
     );
     rel.min(err)
@@ -105,6 +110,53 @@ fn breusch_godfrey_matches_statsmodels() {
     }
     assert!(n_checked >= 25, "only {n_checked} BG cells checked");
     eprintln!("breusch_godfrey: {n_checked} cells, worst deviation {worst:.2e}");
+}
+
+/// Designs that span no constant but come close to it
+/// (`conditioning_cases`: a column constant to within 1e-8 relative, and a
+/// level-shifted trend `1e9 + t` without a constant column), against the
+/// statsmodels convention evaluated in exact rational arithmetic. Before
+/// the crate added the constant as `M_X 1` (orthogonal to x) instead of a
+/// column of ones, every order was refused here as collinear. The problems
+/// themselves are ill-conditioned: moving every entry of x to its
+/// floating-point neighbour moves the exact LM and F by 8e-10 to 7.1e-9
+/// relative (the fixture's `ulp_sensitivity`), so no floating-point method
+/// can be held to the house 1e-10 here (statsmodels' F-form is 8e-8 off on
+/// the first case). Hence `COND_TOL`, just above that sensitivity (the
+/// crate's measured worst deviation is 1.0e-9).
+const COND_TOL: f64 = 1e-8;
+
+#[test]
+fn breusch_godfrey_near_constant_designs_match_exact_arithmetic() {
+    let fx = load();
+    let cases = fx["conditioning_cases"]
+        .as_array()
+        .expect("conditioning cases");
+    assert_eq!(cases.len(), 2);
+    let mut worst: f64 = 0.0;
+    for case in cases {
+        let name = case["name"].as_str().unwrap_or("?");
+        let y = f64s(&case["y"]);
+        let x = columns(&case["columns"]);
+        for block in case["breusch_godfrey"].as_array().expect("bg") {
+            let arg = block["nlags_arg"].as_u64().map(|v| v as usize);
+            let label = format!("bg[{name}, nlags={arg:?}]");
+            let got = breusch_godfrey_test(&y, &x, arg).unwrap_or_else(|e| panic!("{label}: {e}"));
+            assert!(got.constant_added, "{label} constant_added");
+            assert_eq!(got.f_df_den, u(&block["f_df_den"]), "{label} f_df_den");
+            for (a, key) in [
+                (got.statistic, "statistic"),
+                (got.pvalue, "pvalue"),
+                (got.fstat, "fstat"),
+                (got.f_pvalue, "f_pvalue"),
+            ] {
+                let dev = close_at(a, g(&block[key]), &format!("{label} {key}"), COND_TOL);
+                eprintln!("{label} {key}: deviation {dev:.2e}");
+                worst = worst.max(dev);
+            }
+        }
+    }
+    eprintln!("breusch_godfrey near-constant designs: worst deviation {worst:.2e}");
 }
 
 #[test]

@@ -165,7 +165,8 @@ pub(crate) fn pooled_ols(rows: StackedRows, rank_msg: &str) -> Result<WithinFit,
 /// Driscoll-Kraay bandwidth; [`PanelError::InsufficientData`] (naming
 /// `se_type`) for an entity-clustered covariance whose rows all belong to
 /// one entity, or a Driscoll-Kraay covariance whose rows all fall in one
-/// period.
+/// period, and (naming `bandwidth`) for a Driscoll-Kraay bandwidth with
+/// `bandwidth + 1` above the number of periods that carry scores.
 pub(crate) fn pooled_inference(
     fit: &WithinFit,
     se_type: StaticSeType,

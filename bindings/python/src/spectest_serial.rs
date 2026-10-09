@@ -91,8 +91,8 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
             PyValueError::new_err(
                 "the Breusch-Godfrey auxiliary design [x, lagged residuals] is singular \
                  (collinear columns): a lagged-residual column is a linear combination of \
-                 the columns of x — pass a smaller nlags, or check x for regressors that \
-                 replicate the residual lags",
+                 the columns of x (and of the constant added when x spans none) — pass a \
+                 smaller nlags, or check x for regressors that replicate the residual lags",
             )
         }
         SpecTestError::SingularDesign { .. } => PyValueError::new_err(
@@ -104,12 +104,55 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
             "y leaves degenerate residuals on x, so there is no serial correlation to test \
              ({what})"
         )),
+        SpecTestError::AuxiliaryTooLarge {
+            n,
+            k_aux,
+            nlags,
+            max_nlags,
+            defaulted,
+        } => {
+            let order = if defaulted {
+                format!("the default nlags = min(10, T // 5) = {nlags}")
+            } else {
+                format!("nlags = {nlags}")
+            };
+            // With one lag the design has k_aux - nlags + 1 columns; when its
+            // 6 k^3 term alone is past the work budget, no sample length fits.
+            let one_lag = k_aux.saturating_sub(nlags).saturating_add(1);
+            let remedy = if max_nlags == 0
+                && tsecon_spectest::breusch_godfrey_work(0, one_lag)
+                    > tsecon_spectest::BG_WORK_BUDGET
+            {
+                "even nlags = 1 does not fit with this x at any sample length (the \
+                 6 k_aux^3 term alone is past the work budget) — pass fewer columns of x"
+                    .to_string()
+            } else if max_nlags == 0 {
+                "even nlags = 1 does not fit with this x — pass a shorter y and x (fewer \
+                 observations) or fewer columns of x"
+                    .to_string()
+            } else if defaulted {
+                format!("pass nlags <= {max_nlags} explicitly, or a shorter y and x")
+            } else {
+                format!("pass nlags <= {max_nlags}, or a shorter y and x")
+            };
+            let columns = if k_x == 1 { "column" } else { "columns" };
+            PyValueError::new_err(format!(
+                "{order} makes the Breusch-Godfrey auxiliary regression too large: T = {n} \
+                 observations by k_aux = {k_aux} regressors (the {k_x} {columns} of x, the \
+                 nlags lagged residuals and an added constant when x spans none) is {} \
+                 entries and about {:.2e} multiply-adds, past {}, and the cost grows like \
+                 T * k_aux^2 / 2 + 6 k_aux^3; {remedy}",
+                n.saturating_mul(k_aux),
+                tsecon_spectest::breusch_godfrey_work(n, k_aux) as f64,
+                tsecon_spectest::breusch_godfrey_exceeded_budget(n, k_aux).unwrap_or("the budget"),
+            ))
+        }
         SpecTestError::SampleTooLong { n, max, .. } => PyValueError::new_err(format!(
             "y has {n} observations, beyond the {max} the exact Durbin-Watson p-value \
              supports: the exact null distribution eigen-decomposes a T x T matrix, which \
              is cubic in T (measured in the model card); for a long sample use \
-             breusch_godfrey_test, whose cost is linear in T and whose chi-square p-value \
-             is accurate at that length"
+             breusch_godfrey_test, whose cost is linear in T at a fixed nlags and whose \
+             chi-square p-value is accurate at that length"
         )),
         SpecTestError::NumericalBreakdown { what } => PyValueError::new_err(format!(
             "the exact Durbin-Watson p-value could not be computed for this y and x \
@@ -136,9 +179,25 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
 /// spans no constant (no constant column and no implicit one such as
 /// complementary dummies) a column of ones is added to the auxiliary
 /// regression (`constant_added`), so `k_aux = k + nlags + 1`, otherwise
-/// `k + nlags`. With `constant_added` the LM form also counts what that
-/// constant explains and over-rejects (measured in the model card): read the
-/// F-form (`f_pvalue`) there.
+/// `k + nlags`. `x` counts as spanning a constant when regressing a column
+/// of ones on it leaves a residual below 1e-10 of the constant's norm, a
+/// rule invariant to rescaling a column; statsmodels' `matrix_rank` rule is
+/// not, and can call the constant implicit where this one adds it (a level
+/// such as `1e9 + t` beside other columns; model card). A design that
+/// comes close to a constant without passing that threshold is tested with
+/// the constant added, not refused. With `constant_added` the LM form also
+/// counts what that constant explains and over-rejects (measured in the
+/// model card): read the F-form (`f_pvalue`) there.
+///
+/// COST: about `T k_aux^2 / 2 + 6 k_aux^3` multiply-adds for the auxiliary
+/// regression — linear in `T` at a fixed `nlags`, quadratic to cubic in
+/// `nlags` (measured: 0.05 s at T = 10^5 with nlags = 10, 30 s with
+/// nlags = 564; model card). An order whose auxiliary design would pass
+/// 2^26 entries (512 MiB) or 2^34 multiply-adds (about half a minute) is
+/// refused before anything is built, naming `nlags` and the largest order
+/// that fits; at the default order that caps `T` at 5162220 when `x` is a
+/// constant and two regressors (4793490 when `x` spans no constant and one
+/// is added).
 ///
 /// Returned keys: `constant_added`, `df`, `f_df_den`, `f_df_num`, `f_pvalue`,
 /// `fstat`, `nlags`, `nobs`, `pvalue`, `statistic`.

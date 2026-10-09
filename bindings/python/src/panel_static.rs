@@ -19,7 +19,7 @@ use tsecon_panel::{
 };
 use tsecon_var::tsecon_linalg::faer::Mat;
 
-use crate::{panel_data, to_py};
+use crate::{dk_to_py, panel_data, to_py};
 
 /// The kernel truncation used when the caller passes `bandwidth=None`
 /// under a kernel `se_type` (Driscoll-Kraay, or the Newey-West HAC of the
@@ -198,7 +198,10 @@ fn common<'py>(
 /// nobody observes contributes a zero score). `bandwidth` is the
 /// Driscoll-Kraay lag truncation and acts ONLY under
 /// `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
-/// explicitly with any other `se_type` raises. The Mundlak check: pass each
+/// explicitly with any other `se_type` raises, and so does `bandwidth + 1`
+/// above the number of periods that carry scores (T on a balanced panel;
+/// past it every standard error only shrinks, like
+/// `sqrt(T / (bandwidth + 1))`). The Mundlak check: pass each
 /// time-varying regressor's entity mean as an extra regressor and the slopes
 /// on the time-varying regressors equal `panel_fe`'s exactly; a Wald test of
 /// the mean coefficients on the returned `cov` (cluster) is the robust
@@ -235,7 +238,9 @@ fn panel_re<'py>(
         },
     )
     .map_err(to_py)?;
-    let inf = fit.inference(se).map_err(to_py)?;
+    let inf = fit
+        .inference(se)
+        .map_err(dk_to_py(bandwidth, STATIC_DEFAULT_BANDWIDTH))?;
     let d = common(py, fit.params.clone(), inf, fit.names.clone(), se_type)?;
     d.set_item("nobs", fit.nobs)?;
     d.set_item("n_entities", fit.n_entities)?;
@@ -319,8 +324,10 @@ fn panel_between<'py>(
 /// "cluster_entity") or "driscoll_kraay" (alias "dk"; scores indexed by
 /// the later period `t`, calendar lags). `bandwidth` is the Driscoll-Kraay
 /// lag truncation and acts ONLY under `se_type="driscoll_kraay"` (4.0 when
-/// omitted there); passing it explicitly with any other `se_type` raises.
-/// "cluster" needs differences from at least two entities and
+/// omitted there); passing it explicitly with any other `se_type` raises,
+/// and so does `bandwidth + 1` above the number of periods that carry
+/// differences (T - 1 on a balanced panel; past it every standard error
+/// only shrinks). "cluster" needs differences from at least two entities and
 /// "driscoll_kraay" differences in at least two periods — one group's score
 /// sum is zero by the normal equations — so a single entity or a two-period
 /// panel is refused under them (use "hc1").
@@ -345,7 +352,9 @@ fn panel_fd<'py>(
     let se = static_se("panel_fd", se_type, bandwidth, Menu::Pooled)?;
     let data = build("panel_fd", &outcome, &regressors, mask.as_ref())?;
     let fit = tsecon_panel::panel_first_difference(&data, constant).map_err(to_py)?;
-    let inf = fit.inference(se).map_err(to_py)?;
+    let inf = fit
+        .inference(se)
+        .map_err(dk_to_py(bandwidth, STATIC_DEFAULT_BANDWIDTH))?;
     let d = common(py, fit.params.clone(), inf, fit.names.clone(), se_type)?;
     d.set_item("nobs", fit.nobs)?;
     d.set_item("n_entities", fit.n_entities)?;

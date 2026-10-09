@@ -98,6 +98,24 @@ pub enum SpecTestError {
         /// `true` when the zero came from the default rule, not the caller.
         defaulted: bool,
     },
+    /// The Breusch-Godfrey auxiliary design (`n x k_aux`: the design, the
+    /// `nlags` lagged residuals and any added constant) would exceed the
+    /// test's memory budget (`BG_MAX_AUX_CELLS` entries) or the work budget
+    /// of its regression (`BG_WORK_BUDGET` multiply-adds); refused before
+    /// any lag column is allocated.
+    AuxiliaryTooLarge {
+        /// The sample size `n`.
+        n: usize,
+        /// The number of auxiliary regressors the order asked for.
+        k_aux: usize,
+        /// The order that was asked for (or defaulted).
+        nlags: usize,
+        /// The largest order both budgets and `n > k_aux` admit (`0` when
+        /// even one lag does not fit).
+        max_nlags: usize,
+        /// `true` when the order came from the default rule.
+        defaulted: bool,
+    },
     /// The sample is longer than an exact computation supports: the exact
     /// Durbin-Watson p-value eigen-decomposes an `n x n` matrix, which is
     /// cubic in `n`.
@@ -203,12 +221,55 @@ impl fmt::Display for SpecTestError {
                     )
                 }
             }
+            Self::AuxiliaryTooLarge {
+                n,
+                k_aux,
+                nlags,
+                max_nlags,
+                defaulted,
+            } => {
+                let order = if *defaulted {
+                    format!("the default order nlags = min(10, n // 5) = {nlags}")
+                } else {
+                    format!("nlags = {nlags}")
+                };
+                write!(
+                    f,
+                    "Breusch-Godfrey auxiliary regression too large: with {order} it has \
+                     n = {n} observations by k_aux = {k_aux} regressors ({} entries, about \
+                     {:.2e} multiply-adds), past {}; ",
+                    n.saturating_mul(*k_aux),
+                    crate::breusch_godfrey::breusch_godfrey_work(*n, *k_aux) as f64,
+                    crate::breusch_godfrey::breusch_godfrey_exceeded_budget(*n, *k_aux)
+                        .unwrap_or("the budget"),
+                )?;
+                let one_lag = k_aux.saturating_sub(*nlags).saturating_add(1);
+                if *max_nlags == 0
+                    && crate::breusch_godfrey::breusch_godfrey_work(0, one_lag)
+                        > crate::breusch_godfrey::BG_WORK_BUDGET
+                {
+                    write!(
+                        f,
+                        "even one lag does not fit with this design at any sample length \
+                         (the 6 k_aux^3 term alone is past the work budget), so use fewer \
+                         design columns"
+                    )
+                } else if *max_nlags == 0 {
+                    write!(
+                        f,
+                        "even one lag does not fit with this design, so use a shorter sample \
+                         or fewer design columns"
+                    )
+                } else {
+                    write!(f, "pass nlags <= {max_nlags} or use a shorter sample")
+                }
+            }
             Self::SampleTooLong { what, n, max } => write!(
                 f,
                 "sample too long for the {what}: n = {n} exceeds the supported maximum of \
                  {max} (the exact null distribution eigen-decomposes an n x n matrix, which \
                  is cubic in n); for a long sample use the Breusch-Godfrey test, whose cost \
-                 is linear in n"
+                 is linear in n at a fixed order"
             ),
             Self::NumericalBreakdown { what } => write!(
                 f,
