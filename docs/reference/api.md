@@ -6046,9 +6046,10 @@ ARDL model and Pesaran-Shin-Smith (2001) bounds test for a level
     "no_level_relationship" if `p_value_lower` >= alpha, else
     "inconclusive" ("unavailable" when n_x > 10, where no table exists and
     `crit_note` says so). Because the surface p at a tabulated critical
-    value is off its nominal level by up to 0.001, the verdict can differ
-    from comparing `statistic` with `crit_lower`/`crit_upper` in that
-    sliver; the p-values are the definition. The t statistic on y.L1 is
+    value is off its nominal level by up to 0.0013 (90%), 0.0010 (95%),
+    0.0003 (99%) and 0.0001 (99.9%), the verdict can differ from comparing
+    `statistic` with `crit_lower`/`crit_upper` in that sliver; the
+    p-values are the definition. The t statistic on y.L1 is
     returned without critical values: a rejecting F with a t near zero is
     PSS's degenerate case (the x levels matter but y does not
     error-correct) — check it. Asymptotic bounds only: with T below about

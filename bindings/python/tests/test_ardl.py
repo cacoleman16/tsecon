@@ -450,6 +450,25 @@ def test_stub_docstring_is_the_runtime_docstring():
     assert params == list(inspect.signature(tsecon._core.ardl_bounds_test).parameters)
 
 
+def test_docstring_states_the_measured_surface_offset_at_the_critical_values():
+    """Audit round 15: the docstring said the surface p at a tabulated
+    critical value is off nominal "by up to 0.001"; on the transcribed
+    surface (pinned bit for bit to the fixture's table) it is 0.0013 at 90%."""
+    from scipy.stats import norm
+
+    worst = [0.0] * 4
+    for e in FX["pss_table"]:
+        for i, (c, nominal) in enumerate(zip(e["crit"], (0.10, 0.05, 0.01, 0.001))):
+            a = e["small_p"] if c > e["stat_star"] else e["large_p"]
+            p = norm.sf(sum(ai * math.log(c) ** j for j, ai in enumerate(a)))
+            worst[i] = max(worst[i], abs(p - nominal))
+    doc = " ".join(tsecon.ardl_bounds_test.__doc__.split())
+    m = re.search(r"off its nominal level by up to ([0-9.]+) \(90%\), ([0-9.]+) \(95%\), "
+                  r"([0-9.]+) \(99%\) and ([0-9.]+) \(99\.9%\)", doc)
+    assert m, doc
+    assert list(m.groups()) == [f"{w:.4f}" for w in worst], (m.groups(), worst)
+
+
 def test_no_ellipsis_defaults_and_documented_values():
     sig = inspect.signature(tsecon._core.ardl_bounds_test)
     for p in sig.parameters.values():
