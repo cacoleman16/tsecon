@@ -620,6 +620,45 @@ fn refusals_name_the_parameter() {
         );
         assert!(!m.contains("not positive definite"), "{m}");
     }
+    // data whose squares leave double precision passes the rank check but
+    // would return an infinite (1e160) or subnormal (1e-160) ssr, zero or
+    // infinite standard errors and a NaN F: refused by name, with the fix
+    // (the removed Wald route refused it only by accident, as a covariance
+    // "not positive definite")
+    for (s, opts) in [
+        (1e160, fixed(2, vec![1, 1], 1)),
+        (1e-160, fixed(2, vec![1, 1], 2)),
+        (1e-160, fixed(2, vec![1, 1], 5)),
+        (1e-160, base()),
+    ] {
+        let ys: Vec<f64> = y.iter().map(|v| v * s).collect();
+        let xs = Mat::from_fn(120, 2, |i, j| x[(i, j)] * s);
+        let m = err(&ys, &xs, &opts);
+        assert!(
+            m.contains("y and x are on a scale double precision cannot square")
+                && m.contains("largest |y| = ")
+                && m.contains("rescale y and x"),
+            "{m}"
+        );
+    }
+    // searched in case 1 at 1e160, every candidate's criterion is infinite
+    // first: the search names the same cause
+    let ys: Vec<f64> = y.iter().map(|v| v * 1e160).collect();
+    let xs = Mat::from_fn(120, 2, |i, j| x[(i, j)] * 1e160);
+    let searched = ArdlOptions {
+        case: PssCase::NoDeterministics,
+        ..base()
+    };
+    let m = err(&ys, &xs, &searched);
+    assert!(
+        m.contains("scale whose squares overflow") && m.contains("rescale"),
+        "{m}"
+    );
+    // x alone that small: the F and t survive, but x's standard errors
+    // overflow, so the call is refused rather than returning them infinite
+    let xs = Mat::from_fn(120, 2, |i, j| x[(i, j)] * 1e-158);
+    let m = err(&y, &xs, &fixed(2, vec![1, 1], 3));
+    assert!(m.contains("largest |x| = "), "{m}");
 }
 
 #[test]

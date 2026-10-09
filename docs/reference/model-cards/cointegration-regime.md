@@ -713,7 +713,14 @@ estimates carry the raw design's conditioning, about `eps × level / variation`
 a copy of the constant at double precision (1e12 over increments near 0.01)
 the design is refused as numerically singular, with the fix: subtract the
 offset, which in cases 2–5 leaves the F, the t and every coefficient but the
-constant unchanged. Heteroskedastic or
+constant unchanged. Data whose squares leave double precision is refused by
+name, with the largest `|y|` and `|x|` and the fix — rescale, which leaves the
+F, the t and the p-values unchanged (at 1e150 and 1e-150 they repeat the
+unscaled ones to 1e-12): `y` and `x` near 1e-160, where the residual sum of
+squares goes subnormal and the standard errors overflow, and, in case 1, near
+1e160, where it overflows (an order search, which runs first, names the same
+cause; with a constant, magnitudes that large already fail the design's rank
+check as numerically singular). Heteroskedastic or
 autocorrelated errors: the F uses the classical covariance (the only one the
 PSS theory covers); no HAC version is shipped.
 

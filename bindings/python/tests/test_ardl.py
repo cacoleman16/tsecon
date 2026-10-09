@@ -163,6 +163,36 @@ def test_a_level_offset_beyond_double_precision_is_refused_as_that():
         assert "not positive definite" not in str(info.value)
 
 
+@pytest.mark.parametrize("scale, kw", [
+    (1e160, dict(lags=2, order=1, case=1)), (1e-160, dict(lags=2, order=1, case=2)),
+    (1e-160, dict(lags=2, order=1, case=5)), (1e-160, {}),
+], ids=["1e160-case1", "1e-160-case2", "1e-160-case5", "1e-160-searched"])
+def test_a_scale_beyond_double_precision_squares_is_refused_by_name(scale, kw):
+    """Audit round 15 review: with the F no longer routed through an inverse
+    of the restriction block's covariance (which refused such data only by
+    accident, as "not positive definite"), data whose squares leave double
+    precision would come back with an infinite or subnormal ssr, standard
+    errors of 0 or inf and a NaN F. It is refused naming y and x and the fix."""
+    y, x = SYSTEMS["sim_k2"]
+    with pytest.raises(ValueError, match=r"y and x are on a scale double precision cannot square "
+                                         r"\(largest \|y\| = .*rescale y and x") as info:
+        tsecon.ardl_bounds_test(y * scale, x * scale, **kw)
+    assert "not positive definite" not in str(info.value)
+
+
+@pytest.mark.parametrize("case", [1, 2, 3, 4, 5])
+def test_scales_within_double_precision_squares_keep_the_f(case):
+    """The scale refusal does not reach data double precision can square:
+    at 1e150 and 1e-150 the F and the t repeat the unscaled ones."""
+    y, x = SYSTEMS["sim_k2"]
+    base = tsecon.ardl_bounds_test(y, x, lags=2, order=1, case=case)
+    for scale in (1e150, 1e-150):
+        r = tsecon.ardl_bounds_test(y * scale, x * scale, lags=2, order=1, case=case)
+        assert r["statistic"] == pytest.approx(base["statistic"], rel=1e-12)
+        assert r["t_statistic"] == pytest.approx(base["t_statistic"], rel=1e-12)
+        assert np.all(np.isfinite(r["se"])) and np.all(np.asarray(r["se"]) > 0)
+
+
 def test_the_documented_stories():
     # macrodata: BIC picks ARDL(1, 1, 1); F rejects at 5% while t(y.L1) is
     # -1.61 — degenerate case #1, the model card's headline.

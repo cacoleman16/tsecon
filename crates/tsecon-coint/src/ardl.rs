@@ -880,7 +880,9 @@ fn search(
         Some((p, q, ic)) if ic.is_finite() => Ok((p, q, ic, n_models)),
         _ => Err(CointError::Singular {
             what: "every candidate of the ARDL order search has a non-finite criterion \
-                   (a perfect fit: the residual sum of squares is zero)",
+                   (a perfect fit, where the residual sum of squares is zero, or y and x on a \
+                   scale whose squares overflow double precision, where it is infinite: \
+                   rescale them toward unit size)",
         }),
     }
 }
@@ -904,7 +906,10 @@ fn search(
 /// `max_order` with the value they cap fixed (or zero), a search grid
 /// above [`MAX_GRID`], a design with no residual degrees of freedom or
 /// above [`MAX_DESIGN_CELLS`] entries, a constant `y`, an exact fit
-/// (`ssr = 0`), or `alpha` outside `(0, 1)`; [`CointError::Singular`] for a
+/// (`ssr = 0`), `y` and `x` on a scale whose squares leave double precision
+/// (a non-finite or subnormal `ssr`, standard error or F: the message gives
+/// the largest `|y|` and `|x|` and says to rescale), or `alpha` outside
+/// `(0, 1)`; [`CointError::Singular`] for a
 /// collinear design, or one collinear at double precision (a level offset
 /// so large beside the series' variation that a lagged level is a copy of
 /// the constant: the message says so and to subtract the offset).
@@ -992,6 +997,27 @@ pub fn ardl_bounds_test(
     rest.extend(n_det..n_det + 1 + kx);
     let nr = rest.len();
     let statistic = bounds_f(z, &dy, &rest, n_det > 0, df_resid);
+    // Data whose squares leave double precision (|y| or |x| near 1e155 and
+    // up, where the ssr overflows, or near 1e-155 and down, where it goes
+    // subnormal and (Z'Z)^{-1} overflows) passes the rank check but yields
+    // an infinite or subnormal ssr, zero or infinite standard errors and a
+    // NaN F. Every statistic is invariant to rescaling, so refuse by name.
+    if !(fit.ssr.is_normal() && statistic.is_finite() && se.iter().all(|s| s.is_normal())) {
+        let y_max = y.iter().fold(0.0_f64, |a, v| a.max(v.abs()));
+        let x_max = (0..kx)
+            .flat_map(|j| (0..n).map(move |i| (i, j)))
+            .fold(0.0_f64, |a, (i, j)| a.max(x[(i, j)].abs()));
+        return Err(CointError::InvalidSpec {
+            what: format!(
+                "y and x are on a scale double precision cannot square (largest |y| = \
+                 {y_max:.3e}, largest |x| = {x_max:.3e}): the ARDL regression's residual sum \
+                 of squares, standard errors or F are not finite and positive (squares overflow \
+                 above about 1e154 and lose precision below about 1e-154); rescale y and x \
+                 toward unit size — the F, the t, the p-values and the verdict are invariant to \
+                 rescaling either"
+            ),
+        });
+    }
     let t_statistic = tvalues[n_det];
     let adjustment = b[n_det];
 
