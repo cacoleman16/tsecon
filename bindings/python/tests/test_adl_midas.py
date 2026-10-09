@@ -215,9 +215,15 @@ def test_one_dimensional_hf_lags_is_refused_naming_it():
 
 def test_a_collinear_design_is_refused():
     y, hf = _good()
-    hf = np.column_stack([hf, hf[:, 0]])
-    with pytest.raises(ValueError):
-        tsecon.adl_midas(y, hf)
+    dup = np.column_stack([hf, hf[:, 0]])
+    # Named as this function's design (the crate's shared OLS error used to
+    # read "U-MIDAS OLS fit failed"), with the inputs that cause it.
+    for yy, hh in ((y, dup), (np.ones_like(y), hf)):
+        with pytest.raises(ValueError) as exc:
+            tsecon.adl_midas(yy, hh)
+        msg = str(exc.value)
+        assert msg.startswith("adl_midas: the OLS fit of y[ar_lags:] on [const, y.L1, hf1..hf"), msg
+        assert "U-MIDAS" not in msg and "hf_lags" in msg and "constant y" in msg
 
 
 # --------------------------------------------------------------- contracts

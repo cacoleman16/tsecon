@@ -262,24 +262,49 @@ def test_size_caps_refuse_before_allocating():
     with pytest.raises(ValueError, match="8192 series"):
         tsecon.dfm_smooth(np.zeros((2, n)), loadings=np.ones((n, 1)), factor_ar=[[0.5]],
                           idiosyncratic=np.ones(n))
-    # Work: T * (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 8 m^3 past 2^34
+    # Work: T * (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 16 m^3 past 2^34
     # (both size caps pass): 3.01e7 units per period at N = 5000, m = 1, so
     # 600 periods are refused.
     n = 5000
     with pytest.raises(ValueError, match=r"T \* \(2 m\^3 \+ 20 N m\^2 \+ N\^2 \+ 1000 N \+ 12000\)"):
         tsecon.dfm_smooth(np.zeros((600, n)), loadings=np.ones((n, 1)), factor_ar=[[0.5]],
                           idiosyncratic=np.ones(n))
-    # The stationary initialization is paid once per call whatever T is: a
-    # single period with m = 8 * 150 = 1200 states costs 10 m^3 + ... =
-    # 1.73e10 units (the companion eigenvalue check and the Lyapunov
-    # doubling), refused.
-    with pytest.raises(ValueError, match=r"\+ 8 m\^3 = 1\.73e10 work units"):
+    # The stationary initialization is paid once per call whatever T is, and
+    # is priced at its edge-of-stationarity cost (the Lyapunov doubling runs
+    # ~58 steps when the factor VAR's spectral radius is the largest double
+    # below one): a single period with m = 8 * 125 = 1000 states costs
+    # 18 m^3 + ... = 1.80e10 units, refused.
+    with pytest.raises(ValueError, match=r"\+ 16 m\^3 = 1\.80e10 work units"):
         tsecon.dfm_smooth(np.zeros((1, 2)), loadings=np.ones((2, 8)),
-                          factor_ar=np.zeros((8, 1200)), idiosyncratic=np.ones(2))
+                          factor_ar=np.zeros((8, 1000)), idiosyncratic=np.ones(2))
     # Inside every cap the call runs (300 periods: 9.0e9 units).
     out = tsecon.dfm_smooth(np.zeros((300, n)), loadings=np.ones((n, 1)), factor_ar=[[0.5]],
                             idiosyncratic=np.ones(n))
     assert out["smoothed_factors"].shape == (300, 1)
+
+
+def test_overflow_is_refused_in_the_callers_terms():
+    # Finite inputs whose standardization, prediction variances or Gaussian
+    # density overflow double precision used to come back as a -inf loglik,
+    # as "every observed series has a zero row of loadings" (for HUGE
+    # loadings), or as the engine's "non-finite value in m: nothing here
+    # skips missing values silently". Each now names what to rescale.
+    y, kw = _good()
+    with pytest.raises(ValueError, match=r"data\[0, 0\] = .* standardizes to .* center\[0\] = .* scale\[0\]"):
+        tsecon.dfm_smooth(y, **{**kw, "center": np.full(5, -1e308), "scale": np.full(5, 1e-10)})
+    with pytest.raises(ValueError, match=r"log-likelihood overflowed to -inf.*\|z\|.*center and scale"):
+        tsecon.dfm_smooth(y * 1e300, **{k: v for k, v in kw.items() if k not in ("center", "scale")})
+    with pytest.raises(ValueError, match=r"log-likelihood overflowed"):
+        tsecon.dfm_smooth(y, **{**kw, "scale": np.full(5, 1e-300)})
+    with pytest.raises(ValueError, match=r"not finite \(loadings, factor_cov or idiosyncratic so large"):
+        tsecon.dfm_smooth(y, **{**kw, "loadings": np.full((5, 1), 1e200)})
+    for over in ({"idiosyncratic": np.full(5, 1e308)}, {"factor_cov": np.array([[1e308]])}):
+        with pytest.raises(ValueError, match=r"Kalman recursion overflowed") as exc:
+            tsecon.dfm_smooth(y, **{**kw, **over})
+        assert "missing" not in str(exc.value)
+    # An all-NaN panel is a request with nothing to condition on, not an error.
+    out = tsecon.dfm_smooth(np.full_like(y, np.nan), **kw)
+    assert out["loglik"] == 0.0 and np.all(np.isfinite(out["smoothed_state"]))
 
 
 def test_a_constant_in_place_of_the_model_is_named():
@@ -311,7 +336,7 @@ def test_docs_state_the_round_trip_and_the_smoothed_factors_difference():
 def test_the_cost_caps_are_documented_with_their_measurement():
     for doc in (tsecon.dfm_smooth.__doc__, _stub_doc("dfm_smooth")):
         flat = re.sub(r"\s+", " ", doc)
-        assert "2^26" in flat and "2^34" in flat and "8 m^3" in flat
+        assert "2^26" in flat and "2^34" in flat and "16 m^3" in flat
     card = (REPO / "docs" / "reference" / "model-cards" / "nowcasting-midas.md").read_text(encoding="utf-8")
     assert "**What it costs.**" in card
     assert "lab/audit/wave11/dfm_smooth_cost.py" in card and "lab/audit/wave11/adl_midas_cost.py" in card

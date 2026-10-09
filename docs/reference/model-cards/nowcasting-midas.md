@@ -237,11 +237,15 @@ data release that caused it.
 
 **What it costs.** `dfm_smooth` keeps sequences of `T × (rp)²` covariance
 cells and the dense `N × N` observation covariance, each capped at 2^26
-cells, and its work is about `T (2m³ + 20Nm² + N² + 1000N + 12000) + 8m³`
-units (`m = rp`; the one-off term is the stationary initialization), capped
-at 2^34. A unit measured 0.38–1.19 ns across fourteen shapes, so a call at the
-cap takes about 20 s at most: 12.1 s at `T = 8000`, `N = 1000`, `m = 2` (0.97
-of the cap), 6.3 s at `T = 4000`. `adl_midas` caps its `nobs × (1 + P + K)`
+cells, and its work is about `T (2m³ + 20Nm² + N² + 1000N + 12000) + 16m³`
+units (`m = rp`), capped at 2^34. The one-off term is the stationary
+initialization, priced at its worst case: the Lyapunov doubling runs until
+`ρ^(2^k)` is below machine precision, about 6 steps at a spectral radius of
+0.5 but about 58 at the largest double below one, where one period at
+`m = 960` takes 12.4 s (2.8 s at 0.5). A unit measured 0.17–1.03 ns across
+fourteen shapes, so a call at the cap takes about 18 s at most: 9.3 s at
+`T = 8000`, `N = 1000`, `m = 2` (0.97 of the cap), 4.5 s at `T = 4000`.
+`adl_midas` caps its `nobs × (1 + P + K)`
 design at 2^26 cells and its work, about `nobs k² (min(maxlags, nobs − 1) + 2)`
 units with `k = 1 + P + K`, at 2^33; a unit measured 0.65–2.16 ns, 13.2 s at
 the cap itself (`n = 100000`, `K = 6`, `maxlags = 1340`). Past a cap either

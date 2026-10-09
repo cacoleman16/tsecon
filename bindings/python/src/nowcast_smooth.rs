@@ -28,19 +28,24 @@ use crate::{to_faer, to_py, vec1};
 const MAX_CELLS: u128 = 1 << 26;
 
 /// Work budget of one smoothing pass, in units of about a nanosecond:
-/// `2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000` per period plus `8 m^3` once.
+/// `2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000` per period plus `16 m^3` once.
 /// Per period the filter and smoother form a few `m x m` triple products,
 /// each observed series costs an `O(m^2)` update on the way forward and
 /// back, the engine touches the dense `N x N` observation covariance, and
 /// the last two terms are the per-series and per-period overhead (about 1
 /// and 12 microseconds); the one-off term is the stationary initialization
-/// (the companion eigenvalue check and the Lyapunov doubling, whose
-/// iteration count grows with the factors' persistence). The coefficients
-/// were chosen from a non-negative least-squares fit to the timings that
-/// `lab/audit/wave11/dfm_smooth_cost.py` records; across its fourteen shapes
-/// (`m` from 1 to 1160, `N` from 1 to 2000) a unit measured 0.38-1.19 ns, so
-/// a call at the cap takes about 20 s at most. Past the budget the call is
-/// refused before any work, naming the arguments that size it.
+/// (the companion eigenvalue check and the Lyapunov doubling). The doubling
+/// runs until `rho^(2^k)` drops below machine precision, so its iteration
+/// count grows with the factors' persistence: about 6 doublings at a
+/// spectral radius of 0.5, 22 at 0.99999 and 58 just below one, where a
+/// one-period call costs about 14 ns per `m^3` (12.4 s at `m = 960`) — the
+/// `16 m^3` term prices that worst case. The per-period coefficients were
+/// chosen from a non-negative least-squares fit to the timings that
+/// `lab/audit/wave11/dfm_smooth_cost.py` records, which also times the
+/// one-off term at the edge of stationarity; the measured range per unit
+/// and the resulting time at the cap are quoted in the docstring. Past the
+/// budget the call is refused before any work, naming the arguments that
+/// size it.
 const WORK_BUDGET: u128 = 1 << 34;
 
 fn err(msg: String) -> PyErr {
@@ -117,9 +122,27 @@ fn rewrite(e: NowcastError) -> PyErr {
             ))
         }
         NowcastError::Ssm(SsmError::NoInformation) => err(
-            "no observed element of data carries information about the factors: every \
-             observed series has a zero row of loadings and a zero idiosyncratic variance \
-             (or data is entirely NaN), so the log-likelihood is an empty sum"
+            "no observed element of data carries usable information about the factors: \
+             for every observed series the prediction variance loadings_i P loadings_i' + \
+             idiosyncratic_i is either zero to roundoff (a zero row of loadings with a \
+             zero idiosyncratic variance) or not finite (loadings, factor_cov or \
+             idiosyncratic so large that it overflows double precision), so the \
+             log-likelihood is an empty sum. An all-NaN data panel is not refused: it \
+             returns loglik 0.0 and the unconditional moments"
+                .to_owned(),
+        ),
+        // Overflow inside the recursions: the stationary factor covariance,
+        // the state covariances and the prediction variances are products of
+        // the parameters, so an extreme magnitude surfaces here as the
+        // engine's "non-finite value in m" — which reads like missing data.
+        NowcastError::Ssm(
+            SsmError::NonFinite { .. } | SsmError::Linalg(LinalgError::NonFinite { .. }),
+        ) => err(
+            "the Kalman recursion overflowed to a non-finite value: loadings, factor_cov \
+             or idiosyncratic hold magnitudes too large for double precision (the \
+             stationary factor covariance and every prediction variance are products of \
+             them). Rescale the model; on the standardized scale dfm_nowcast estimates it \
+             on, these are of order one"
                 .to_owned(),
         ),
         _ => to_py(e),
@@ -176,15 +199,22 @@ fn rewrite(e: NowcastError) -> PyErr {
 /// `r x r`, lengths of `idiosyncratic`/`center`/`scale`); non-finite
 /// parameters; `inf` in `data` (NaN is missing, not an error); zero rows;
 /// negative `idiosyncratic`; `scale <= 0`; a non-stationary `factor_ar`; a
-/// non-PSD `factor_cov`. COST: the smoother stores `T * (r p)^2` covariance
+/// non-PSD `factor_cov`; and finite inputs that overflow double precision —
+/// a standardized entry `(data - center) / scale` that is not finite (named
+/// by cell), a log-likelihood that overflows to `-inf` (the standardized
+/// data far off the model's scale), or parameters so large that the Kalman
+/// recursion overflows. COST: the smoother stores `T * (r p)^2` covariance
 /// cells per sequence and the state space an `N x N` observation
 /// covariance, each capped at 2^26; the work is about
-/// `T (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 8 m^3` units with
+/// `T (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 16 m^3` units with
 /// `m = r p` (per period the triple products, the per-series updates, the
 /// dense observation covariance and the per-series / per-period overhead;
-/// once, the stationary initialization), capped at 2^34 — measured at
-/// 0.38-1.19 ns per unit, so a call at the cap takes about 20 s at most
-/// (12.1 s at T = 8000, N = 1000, m = 2, 0.97 of the cap;
+/// once, the stationary initialization, priced at its worst case: a factor
+/// VAR at the edge of stationarity, where the Lyapunov doubling runs about
+/// 58 steps), capped at 2^34 — measured at 0.17-1.03 ns per unit, so a call
+/// at the cap takes about 18 s at most (9.3 s at T = 8000, N = 1000, m = 2,
+/// 0.97 of the cap; 12.4 s for one period at m = 960 with the spectral
+/// radius the largest double below one, 0.93 of the cap;
 /// `lab/audit/wave11/dfm_smooth_cost.py` records the timings, the
 /// nowcasting model card quotes them). Past either cap the call is refused
 /// before any work.
@@ -323,12 +353,34 @@ fn dfm_smooth<'py>(
              one column per series, in the order of the loadings' rows"
         )));
     }
+    // The smoother sees z = (data - center) / scale: refuse an infinite
+    // entry, and one whose standardization overflows (the engine would
+    // report that as "non-finite value in panel data", which the caller's
+    // finite data does not hold), naming the cell and the moments that
+    // produce it. The largest |z| is kept for the log-likelihood check below.
+    let mut z_max = (0.0f64, 0usize, 0usize);
     for ((i, j), v) in arr.indexed_iter() {
         if v.is_infinite() {
             return Err(err(format!(
                 "data contains an infinite value ({v}) at [{i}, {j}]; NaN marks a missing \
                  observation, infinity is not admissible"
             )));
+        }
+        if v.is_nan() {
+            continue;
+        }
+        let z = (v - center[j]) / scale[j];
+        if !z.is_finite() {
+            return Err(err(format!(
+                "data[{i}, {j}] = {v:e} standardizes to (data - center) / scale = {z} with \
+                 center[{j}] = {c:e} and scale[{j}] = {s:e}, which overflows double \
+                 precision; pass a scale on the order of the series' spread",
+                c = center[j],
+                s = scale[j]
+            )));
+        }
+        if z.abs() > z_max.0 {
+            z_max = (z.abs(), i, j);
         }
     }
 
@@ -353,12 +405,12 @@ fn dfm_smooth<'py>(
     }
     let n128 = n as u128;
     let per_period = 2 * m * m * m + 20 * n128 * m * m + n128 * n128 + 1000 * n128 + 12_000;
-    let work = (t_len as u128) * per_period + 8 * m * m * m;
+    let work = (t_len as u128) * per_period + 16 * m * m * m;
     if work > WORK_BUDGET {
         return Err(err(format!(
             "T = {t_len} periods, N = {n} series (the rows of loadings) and m = r * p = {m} \
              states (factor_ar's width) cost about T * (2 m^3 + 20 N m^2 + N^2 + 1000 N + \
-             12000) + 8 m^3 = {work:.2e} work units (about a nanosecond each), beyond the \
+             12000) + 16 m^3 = {work:.2e} work units (about a nanosecond each), beyond the \
              budget of 2^34 (under half a minute). Lower the factor order or the number of \
              factors, or smooth fewer periods or series",
             work = work as f64
@@ -374,6 +426,22 @@ fn dfm_smooth<'py>(
     };
     let res = smooth_standardized(&params, full.as_ref(), &center, &scale).map_err(rewrite)?;
     let sm = res.smoothing;
+    // v^2 / F overflows when the standardized data are extreme next to the
+    // model's prediction variances; the engine then sums a -inf rather than
+    // refusing. A log-likelihood that is not a number is not a result.
+    if !sm.loglik.is_finite() {
+        return Err(err(format!(
+            "the log-likelihood overflowed to {ll}: the standardized panel (data - center) \
+             / scale reaches |z| = {z:e} (at data[{i}, {j}]), too large next to the model's \
+             prediction variances for v^2 / F to stay finite in double precision. Pass \
+             center and scale on the data's own location and spread (as dfm_nowcast's are), \
+             or rescale loadings and idiosyncratic to the data",
+            ll = sm.loglik,
+            z = z_max.0,
+            i = z_max.1,
+            j = z_max.2
+        )));
+    }
     let m = r * p;
     let flat_factors: Vec<f64> = sm.smoothed_factors.iter().flatten().copied().collect();
     let flat_state: Vec<f64> = sm.smoothed_state.iter().flatten().copied().collect();

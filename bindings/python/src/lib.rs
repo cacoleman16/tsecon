@@ -3411,11 +3411,18 @@ fn mcmc_diagnostics<'py>(
 /// optimizer involved), the AR(2) optimum against statsmodels `AutoReg`
 /// (OLS), and the ARMA/SARIMA/MA/ARIMA optimum against a SciPy
 /// Levenberg-Marquardt reference (1e-6; achieved 5.5e-9) —
-/// `fixtures/arima_css.json`.
+/// `fixtures/arima_css.json`. Because the CSS objective is defined past
+/// the unit circle, a trending or unit-root-like series can drive the CSS
+/// AR estimate onto the circle itself (a root of modulus 1 to double
+/// precision), where the Kalman residuals and forecasts have no stationary
+/// model to run on; that fit is refused, naming the remedy (difference the
+/// series, or `method="mle"`), instead of failing inside the state-space
+/// engine.
 ///
 /// `nobs` is the number of observations behind `loglik`: `n - d - D*s`
 /// under `"mle"` (simple differencing) and `n - d - D*s - (p + s*P)` under
-/// `"css"`.
+/// `"css"`. `forecast_steps` is capped at 1,000,000 (as `ets_fit`'s
+/// horizon is) and refused past that before anything is fitted.
 ///
 /// **Convergence and boundary flags.** `converged` reports whether the
 /// optimizer terminated by its convergence test (the best point found is
@@ -3458,6 +3465,7 @@ fn arima_fit<'py>(
              likelihood, the default) or \"css\" (conditional sum of squares)"
         )));
     }
+    check_arima_forecast_steps(forecast_steps)?;
     if conf_alpha.is_some() && forecast_steps == 0 {
         return Err(PyValueError::new_err(
             "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
@@ -3497,8 +3505,31 @@ fn arima_fit<'py>(
             .map_err(to_py)?;
     }
     let r = if method == "css" {
-        spec.fit_css(&vec1(&y))
-            .map_err(|e| PyValueError::new_err(format!("arima_fit(method=\"css\"): {e}")))?
+        let r = spec
+            .fit_css(&vec1(&y))
+            .map_err(|e| PyValueError::new_err(format!("arima_fit(method=\"css\"): {e}")))?;
+        // The CSS objective is defined on and past the unit circle, so on a
+        // trending or unit-root-like series its optimum can saturate the
+        // Monahan map until an AR root sits on the circle to double
+        // precision (exact MLE never gets there: its likelihood needs the
+        // stationary distribution). The CSS estimates are then fine, but the
+        // Kalman residuals and forecasts below have no stationary model to
+        // run on; say so in the caller's terms, not the engine's.
+        if r.boundary().iter().any(|&b| b) {
+            if let Err(e) = r.residuals() {
+                return Err(PyValueError::new_err(format!(
+                    "arima_fit(method=\"css\"): the conditional-sum-of-squares estimate \
+                     puts a root of the AR polynomial on the unit circle to double \
+                     precision, so the standardized residuals and forecasts this \
+                     function returns, which run the exact state-space recursion at the \
+                     estimates, have no stationary model to run on ({e}). The series \
+                     behaves like a unit-root or trending process at these orders: \
+                     difference it (raise d, or D, by one), or fit with method=\"mle\", \
+                     whose exact likelihood keeps the estimate inside the stationary region"
+                )));
+            }
+        }
+        r
     } else {
         spec.fit(&vec1(&y)).map_err(to_py)?
     };
@@ -3511,6 +3542,25 @@ fn arima_fit<'py>(
     dct.set_item("method", method)?;
     dct.set_item("nobs", r.nobs)?;
     Ok(dct)
+}
+
+/// Largest `forecast_steps` `arima_fit` and `auto_arima` accept — the cap
+/// `ets_fit` puts on its horizon. Every step is materialised (mean,
+/// standard error and, with `conf_alpha`, both bands), so a typo such as
+/// `2**33` used to request tens of GiB and abort the process on the failed
+/// allocation; refused before any fitting instead.
+const ARIMA_MAX_FORECAST_STEPS: usize = 1_000_000;
+
+fn check_arima_forecast_steps(forecast_steps: usize) -> PyResult<()> {
+    if forecast_steps > ARIMA_MAX_FORECAST_STEPS {
+        return Err(PyValueError::new_err(format!(
+            "forecast_steps = {forecast_steps} is beyond the {ARIMA_MAX_FORECAST_STEPS} \
+             steps accepted: every forecast step is materialised (mean, standard error \
+             and bands), so a request this long cannot mean what it says and would \
+             exhaust memory; forecast fewer steps"
+        )));
+    }
+    Ok(())
 }
 
 /// A fitted `ArimaResults` as the `arima_fit` result dict (shared by
@@ -3651,7 +3701,8 @@ fn arima_results_dict<'py>(
 /// `interpretation`. For drift-uncertainty forecast bands, refit the
 /// selected order with `arima_fit(..., drift_uncertainty=True)` — the
 /// option needs the constant to be a modeling choice, not a search
-/// outcome.
+/// outcome. `forecast_steps` is capped at 1,000,000, as in `arima_fit`,
+/// and refused past that before the search starts.
 ///
 /// Further arguments, with defaults: `seasonal_period` (0), `max_p` (5),
 /// `max_q` (5), `max_P` (2), `max_Q` (2), `max_d` (2), `max_D` (1), `alpha`
@@ -3699,6 +3750,7 @@ fn auto_arima<'py>(
             )))
         }
     };
+    check_arima_forecast_steps(forecast_steps)?;
     if conf_alpha.is_some() && forecast_steps == 0 {
         return Err(PyValueError::new_err(
             "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",

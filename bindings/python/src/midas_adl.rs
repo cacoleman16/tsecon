@@ -10,7 +10,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::{to_py, vec1};
+use crate::vec1;
 
 /// Largest accepted design, `nobs x (1 + P + K)` cells: `2^26` doubles is
 /// 512 MiB per copy, the cap `ardl_bounds_test` puts on its design. The
@@ -221,7 +221,27 @@ fn adl_midas<'py>(
     let hf: Vec<Vec<f64>> = (0..k)
         .map(|j| a.column(j).iter().skip(p).copied().collect())
         .collect();
-    let r = tsecon_midas::adl_midas(&y_eff, &y_lags, &hf, se).map_err(to_py)?;
+    let span = |stem: &str, last: usize| {
+        if last == 1 {
+            format!("{stem}1")
+        } else {
+            format!("{stem}1..{stem}{last}")
+        }
+    };
+    let r = tsecon_midas::adl_midas(&y_eff, &y_lags, &hf, se).map_err(|e| match e {
+        // The crate's OLS error reads "U-MIDAS OLS fit failed" (the variant
+        // is shared with umidas) and names no argument; say which design
+        // failed and which inputs make it collinear.
+        tsecon_midas::MidasError::Ols(e) => err(format!(
+            "the OLS fit of y[ar_lags:] on [const, {}, {}] failed: {e}. \
+             A constant y makes its own lags collinear with the constant, and a constant \
+             or duplicated hf_lags column does the same; drop the redundant hf_lags \
+             column(s), or lower ar_lags",
+            span("y.L", p),
+            span("hf", k)
+        )),
+        e => err(e.to_string()),
+    })?;
 
     let mut names = Vec::with_capacity(1 + p + k);
     names.push("const".to_owned());

@@ -152,6 +152,42 @@ def test_existing_refusals_still_apply_under_css():
         tsecon.arima_fit(y, p=1, method="css", forecast_steps=3, constant=False, drift_uncertainty=True)
 
 
+def test_a_css_estimate_on_the_unit_circle_is_refused_with_the_remedy():
+    # The CSS objective is defined past the unit circle, so on a trending or
+    # I(2) series the AR estimate saturates the Monahan map onto the circle
+    # itself; the Kalman residuals then have no stationary model. That used
+    # to surface as the engine's bare "transition matrix is not stable".
+    rng = np.random.default_rng(1)
+    for y, kw in ((np.arange(200.0), {}),
+                  (np.cumsum(np.cumsum(rng.standard_normal(300))), dict(q=1)),
+                  (np.cumsum(np.cumsum(rng.standard_normal(300))), dict(forecast_steps=4))):
+        with pytest.raises(ValueError) as exc:
+            tsecon.arima_fit(y, p=1, method="css", **kw)
+        msg = str(exc.value)
+        assert msg.startswith('arima_fit(method="css"): the conditional-sum-of-squares estimate'), msg
+        assert "unit circle" in msg and "raise d" in msg and 'method="mle"' in msg
+        # The exact fit of the same series is unchanged (inside the region).
+        mle = tsecon.arima_fit(y, p=1, **kw)
+        assert abs(mle["params"][1]) < 1.0
+    # The remedy the message names works.
+    ok = tsecon.arima_fit(np.cumsum(np.cumsum(rng.standard_normal(300))), p=1, d=1, method="css")
+    assert ok["method"] == "css" and np.all(np.isfinite(ok["residuals"]))
+
+
+@pytest.mark.parametrize("fn", ["arima_fit", "auto_arima"])
+def test_an_absurd_forecast_horizon_is_refused_before_fitting(fn):
+    # forecast_steps = 2**33 used to request 64 GiB per forecast vector and
+    # abort the process on the failed allocation (both methods, and
+    # auto_arima, which shares the dict builder). Capped at 1e6, like ets_fit.
+    y = np.asarray(FIX["cases"][0]["y"])
+    f = getattr(tsecon, fn)
+    for steps in (1_000_001, 2**33, 2**47):
+        with pytest.raises(ValueError, match=rf"forecast_steps = {steps} is beyond the 1000000 steps"):
+            f(y, forecast_steps=steps)
+    out = f(y[:120], forecast_steps=1_000)
+    assert len(out["forecast_mean"]) == 1_000
+
+
 # --------------------------------------------------------------- facade
 def test_facade_nobs_label_and_dict_contract_under_css():
     case = next(c for c in FIX["cases"] if c["name"] == "arima111")

@@ -77,7 +77,9 @@ losing `d + D*s` observations. `constant = True` — the level term for `d = 0`
 deterministic **drift**, so the default fits a drift — pass `constant = False`
 deliberately when a drifting forecast is not what you mean.
 `forecast_steps = 0` — set it to the horizon `h` to return
-`h`-step forecasts. `conf_alpha = None` — leave it `None` for point forecasts and
+`h`-step forecasts (at most 1,000,000; every step is materialised, so a longer
+request is refused before anything is fitted, as `ets_fit` refuses its
+horizon — `auto_arima` shares the cap). `conf_alpha = None` — leave it `None` for point forecasts and
 standard errors only; set it (e.g. `0.05` for 95%) to also return symmetric
 Gaussian prediction bands. `conf_alpha` requires `forecast_steps > 0` and must
 lie in `(0, 1)`; both are validated (a `ValueError`, not a silent default).
@@ -473,10 +475,17 @@ exact fit (`seasonal`, `constant`, `forecast_steps`, `conf_alpha`,
   and their CSS AIC is `NA`. The example below shows both numbers.
 
 **Failure modes.** Comparing a CSS `loglik`/AIC with an exact-MLE one, or
-with R's CSS figure, compares different quantities. A fit that stops on the
+with R's CSS figure, compares different quantities. A fit that stops near the
 stationarity/invertibility boundary carries the same `boundary` flags as the
-exact fit. A series too short for `p + s*P` conditioning values plus the free
-parameters is refused, naming the CSS estimation.
+exact fit. On a trending or `I(2)`-like series the CSS objective, which is
+defined past the unit circle, keeps pushing the AR estimate outward until the
+Monahan map saturates and a root sits on the circle to double precision; the
+exact likelihood never gets there, but the Kalman residuals and forecasts the
+dict carries have no stationary model to run on, so that fit is refused with
+the remedy — difference the series (raise `d` or `D`), or use the default
+`method="mle"` (`arima_fit(np.arange(200.0), p=1, method="css")` is the
+minimal case). A series too short for `p + s*P` conditioning values plus the
+free parameters is refused, naming the CSS estimation.
 
 **Validated against.** Three legs, in `fixtures/arima_css.json` and
 `crates/tsecon-arima/tests/css_golden.rs`:

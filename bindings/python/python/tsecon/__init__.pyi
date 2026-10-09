@@ -512,8 +512,14 @@ def arima_fit(
     CSS loglik over n - d - D*s observations, so R's figure is lower (-650.97
     vs -649.34 on the model card's example) and its CSS AIC is NA. The
     recursion is pinned against statsforecast 2.1.1's port of R's ARIMA_CSS
-    at 1e-12. `method` echoes the choice; `nobs` is n - d - D*s ("mle") or
-    n - d - D*s - (p + s*P) ("css"), the count behind `loglik`.
+    at 1e-12. A trending or unit-root-like series can drive the CSS AR
+    estimate onto the unit circle itself (the CSS objective is defined past
+    it), where the Kalman residuals and forecasts have no stationary model:
+    that fit is refused, naming the remedy (difference the series, or
+    method="mle"). `method` echoes the choice; `nobs` is n - d - D*s
+    ("mle") or n - d - D*s - (p + s*P) ("css"), the count behind `loglik`.
+    forecast_steps is capped at 1,000,000 (as ets_fit's horizon is) and
+    refused past that before anything is fitted.
 
     Returned keys: `aic`, `bic`, `boundary`, `boundary_note`, `bse`,
     `conf_alpha`, `converged`, `cov_ok`, `drift_uncertainty`,
@@ -554,6 +560,8 @@ def auto_arima(
     selected; failed fits steer the search rather than aborting it.
     Every candidate is fit by the exact-MLE engine behind arima_fit, so
     the search is deterministic. No exogenous regressors in this slice.
+    forecast_steps is capped at 1,000,000 (as in arima_fit), refused past
+    that before the search starts.
 
     Returns the arima_fit result dict for the selected model (less
     arima_fit's own drift_uncertainty, method and nobs echoes) plus:
@@ -3393,11 +3401,16 @@ def dfm_smooth(
     dfm_nowcast's loglik, edge_factor and nowcast bit for bit on the same
     panel. Refusals name the argument (shapes, non-finite parameters, inf in
     data, negative idiosyncratic, scale <= 0, a non-stationary factor_ar, a
-    non-PSD factor_cov, and sizes past the caps: T (r p)^2 and N^2 at most
-    2^26 cells, T (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 8 m^3 at most
-    2^34 work units, m = r p -- measured 0.38-1.19 ns per unit, 12.1 s at
-    T = 8000, N = 1000, m = 2). Validated against statsmodels
-    DynamicFactor.smooth and KalmanSmoother at 1e-8.
+    non-PSD factor_cov, finite inputs that overflow double precision -- a
+    non-finite (data - center) / scale cell, a -inf log-likelihood, a Kalman
+    recursion that overflows -- and sizes past the caps: T (r p)^2 and N^2
+    at most 2^26 cells, T (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) +
+    16 m^3 at most 2^34 work units, m = r p, the one-off term pricing the
+    stationary initialization at the edge of stationarity -- measured
+    0.17-1.03 ns per unit, 9.3 s at T = 8000, N = 1000, m = 2, and 12.4 s
+    for one period at m = 960 with the spectral radius just below one).
+    Validated against statsmodels DynamicFactor.smooth and KalmanSmoother
+    at 1e-8.
 
     Returned keys: `edge_factor` (length r, the last smoothed factor),
     `factor_order` (p), `loglik` (of the STANDARDIZED panel z; no Jacobian

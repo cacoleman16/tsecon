@@ -2,21 +2,22 @@
 bindings/python/src/nowcast_smooth.rs and the timings quoted in its docstring,
 the stub and the nowcasting model card.
 
-The budget counts T * (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 8 m^3 work
+The budget counts T * (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 16 m^3 work
 units (m = r p states, N series, T periods), about a nanosecond each: a few
 m x m triple products per period, an O(m^2) update per observed series on the
 way forward and back, the engine's per-period pass over the dense N x N
 observation covariance, the per-series / per-period overhead, and once per
 call the stationary initialization (the companion eigenvalue check and the
 Lyapunov doubling, whose iteration count grows with the factor persistence:
-the T = 1 cases below, at AR coefficient 0.5 and 0.99999). The coefficients
-were chosen from a non-negative least-squares fit to the timings of the first
-ten cases (--fit prints this run's fit; it moves with the machine's load, so
-the ns-per-unit column is the number that matters). Each case is timed as the
-best of three on a
-stationary model with unit idiosyncratic variances; the ns-per-unit column is
-what the 2^34 cap is calibrated against. The last block shows refusals past
-the caps.
+the T = 1 cases below, at AR coefficient 0.5, 0.99999 and the largest double
+below one, where the doubling runs its ~58 steps). The per-period
+coefficients were chosen from a non-negative least-squares fit to the timings
+of the first ten cases (--fit prints this run's fit; it moves with the
+machine's load, so the ns-per-unit column is the number that matters); the
+one-off coefficient prices the edge-of-stationarity case. Each case is timed
+as the best of three on a stationary model with unit idiosyncratic
+variances; the ns-per-unit column is what the 2^34 cap is calibrated against.
+The last block shows refusals past the caps.
 
 Run:  python lab/audit/wave11/dfm_smooth_cost.py --fit > lab/audit/wave11/out/dfm_smooth_cost.txt
 """
@@ -29,6 +30,7 @@ import numpy as np
 import tsecon
 
 CAP = 2**34
+EDGE = float(np.nextafter(1.0, 0.0))  # the largest stationary AR coefficient
 CASES = [  # (T, N, r, p, AR coefficient on the first lag)
     (500, 50, 2, 4, 0.5),
     (2000, 200, 3, 4, 0.5),
@@ -43,18 +45,18 @@ CASES = [  # (T, N, r, p, AR coefficient on the first lag)
     (8000, 1000, 1, 2, 0.5),
     (1, 2, 8, 120, 0.5),
     (1, 2, 8, 120, 0.99999),
-    (1, 2, 8, 145, 0.99999),
+    (1, 2, 1, 960, EDGE),  # one factor: its root is exact, so it stays < 1
 ]
 N_FIT = 10
 REFUSED = [  # (T, N, r, p): past a cap, refused before anything is built
-    (1, 2, 8, 150),  # 10 m^3 + ... > 2^34 at m = 1200
+    (1, 2, 8, 125),  # 18 m^3 + ... > 2^34 at m = 1000
     (100, 9000, 1, 1),  # N^2 > 2^26
     (9000, 1000, 1, 2),  # T (N^2 + 1000 N + ...) > 2^34
 ]
 
 
 def units_of(t_len, n, m):
-    return t_len * (2 * m**3 + 20 * n * m * m + n * n + 1000 * n + 12000) + 8 * m**3
+    return t_len * (2 * m**3 + 20 * n * m * m + n * n + 1000 * n + 12000) + 16 * m**3
 
 
 def fit(rows):
@@ -71,7 +73,7 @@ def fit(rows):
 def main() -> None:
     rng = np.random.default_rng(0)
     print(f"# tsecon {tsecon.__version__}, Python {platform.python_version()}, {platform.machine()}")
-    print("#      T      N    m      phi      units  x cap   seconds  ns/unit")
+    print("#      T      N    m    1-phi      units  x cap   seconds  ns/unit")
     timed = []
     for t_len, n, r, p, phi in CASES:
         lam = rng.uniform(0.5, 1.0, (n, r))
@@ -87,7 +89,7 @@ def main() -> None:
         units = units_of(t_len, n, m)
         timed.append((t_len, n, m, best))
         print(
-            f"{t_len:8d} {n:6d} {m:4d} {phi:8.5f} {units:10.2e} {units / CAP:6.2f} "
+            f"{t_len:8d} {n:6d} {m:4d} {1 - phi:8.1e} {units:10.2e} {units / CAP:6.2f} "
             f"{best:9.3f} {best / units * 1e9:8.3f}"
         )
     if "--fit" in sys.argv:
