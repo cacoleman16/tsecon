@@ -1,7 +1,8 @@
 //! Python bindings for the 0.10.0 additions to `tsecon-var`:
 //! `var_conditional_forecast` (hard-path conditional forecasts, the
 //! Doan-Litterman-Sims / Waggoner-Zha closed form), `var_diagnostics`
-//! (multivariate Portmanteau, multivariate Jarque-Bera, stability roots)
+//! (multivariate Portmanteau, multivariate Jarque-Bera — Cholesky and, since
+//! 0.11.0, symmetric-root — the Doornik-Hansen 2008 test, stability roots)
 //! and `var_select_order` (the lag-order selection that was validated in
 //! Rust since 0.1 but never bound). Registered into `_core` through
 //! [`register`].
@@ -133,15 +134,32 @@ fn var_conditional_forecast<'py>(
 /// T). Matches statsmodels `VARResults.test_whiteness(nlags,
 /// adjusted=False/True)`.
 ///
-/// NORMALITY (multivariate Jarque-Bera; Lütkepohl 2005, section 4.5): the
-/// centred residuals are orthogonalised by the LOWER CHOLESKY factor of their
-/// ML covariance — the statsmodels `test_normality` convention, so the
-/// skewness/kurtosis components depend on the column order, as
-/// orthogonalised impulse responses do — and `skewness = T b1'b1 / 6`,
-/// `kurtosis = T b2'b2 / 24` (each `chi2(k)`) add up to the omnibus
-/// `jarque_bera` (`chi2(2k)`). The Doornik-Hansen variant (symmetric square
-/// root, transformed moments) is NOT provided: no runnable reference exists
-/// in the fixture environment.
+/// NORMALITY — three statistics on the same column-centred residuals and ML
+/// covariance (the same three `multivariate_normality` computes on any
+/// residual matrix):
+///
+/// * multivariate Jarque-Bera (Lütkepohl 2005, section 4.5) with the LOWER
+///   CHOLESKY factor — the statsmodels `test_normality` convention and
+///   JMulTi's "Lütkepohl (1993)" block, so the components depend on the
+///   column order, as orthogonalised impulse responses do: `skewness = T
+///   b1'b1 / 6`, `kurtosis = T b2'b2 / 24` (each `chi2(k)`) add up to the
+///   omnibus `jarque_bera` (`chi2(2k)`);
+/// * the same statistic with the SYMMETRIC inverse root of the covariance and
+///   no further transforms — what JMulTi prints under "Doornik & Hansen
+///   (1994)" (all 16 bundled JMulTi outputs reproduced to their printed
+///   precision): `jarque_bera_symmetric` and its parts; it does not depend on
+///   the column order but DOES depend on the units of the series;
+/// * the Doornik-Hansen (2008) omnibus test — the correlation-matrix
+///   symmetric root plus D'Agostino's skewness and the Shenton-Bowman /
+///   Wilson-Hilferty kurtosis transforms, so the z-scores are close to N(0, 1)
+///   in small samples: `doornik_hansen` (`chi2(2k)`) and its parts. It is
+///   invariant to the column order and to the units, and is the one to
+///   report. Every `doornik_hansen*` key is None when `nobs < 8` (the
+///   skewness transform degenerates at T = 7; this bundle never refuses on
+///   its account), and also when the residual correlation matrix is
+///   numerically singular; the `*_symmetric` keys are None when the residual
+///   covariance's smallest eigenvalue is `<= 1e-12 x` its trace (series on
+///   wildly different scales — rescale them to see it).
 ///
 /// STABILITY: `roots` are the moduli of the reciprocal characteristic roots
 /// in DESCENDING order (statsmodels `VARResults.roots`; stable iff the LAST
@@ -154,15 +172,29 @@ fn var_conditional_forecast<'py>(
 /// `jarque_bera`, `jarque_bera_pvalue`, `jarque_bera_df`, `skewness`,
 /// `skewness_pvalue`, `kurtosis`, `kurtosis_pvalue`, `skewness_components`
 /// (the per-series third moments `b1`), `kurtosis_components` (the
-/// per-series excess fourth moments `b2`), `roots`, `eigenvalue_moduli`,
-/// `is_stable`, `nobs` (the effective sample size `T` the residual tests
-/// use), `k`, `lags`.
+/// per-series excess fourth moments `b2`), `jarque_bera_symmetric`,
+/// `jarque_bera_symmetric_pvalue` (df `jarque_bera_df`),
+/// `skewness_symmetric`, `skewness_symmetric_pvalue`, `kurtosis_symmetric`,
+/// `kurtosis_symmetric_pvalue`, `skewness_symmetric_components`,
+/// `kurtosis_symmetric_components`, `doornik_hansen`,
+/// `doornik_hansen_pvalue`, `doornik_hansen_df` (`2k`),
+/// `doornik_hansen_skewness` (`z1'z1`, `chi2(k)`),
+/// `doornik_hansen_skewness_pvalue`, `doornik_hansen_kurtosis` (`z2'z2`,
+/// `chi2(k)`), `doornik_hansen_kurtosis_pvalue`,
+/// `doornik_hansen_z_skewness`, `doornik_hansen_z_kurtosis` (the
+/// per-component z-scores), `roots`, `eigenvalue_moduli`, `is_stable`,
+/// `nobs` (the effective sample size `T` the residual tests use), `k`,
+/// `lags`.
 ///
 /// Validation: statsmodels `test_whiteness` / `test_normality` / `roots` /
 /// `is_stable` pinned at 1e-10 (p-values also on the log scale) in
 /// fixtures/var_diag.json on seeded VAR(2)/VAR(3)/underfit VAR(1) systems,
-/// a Student-t-driven VAR(2) and a transformed US macro system; size and
-/// power measured by seeded Monte Carlo (see the model card).
+/// a Student-t-driven VAR(2) and a transformed US macro system; the
+/// symmetric-root block against JMulTi's printed output (16 residual
+/// matrices, 5e-5) and the generator's transcription (1e-10); the
+/// Doornik-Hansen (2008) formulas transcribed at 1e-10 (z1 matched to
+/// `scipy.stats.skewtest`); size and power measured by seeded Monte Carlo
+/// (see the model card).
 ///
 /// Further arguments, with defaults: `lags` (2), `trend` ("c"), `nlags`
 /// (10).
@@ -202,6 +234,8 @@ fn var_diagnostics<'py>(
         "kurtosis_components",
         dg.normality.kurtosis_components.clone(),
     )?;
+    crate::var_normality::set_symmetric_keys(&d, dg.normality_symmetric.as_ref())?;
+    crate::var_normality::set_doornik_hansen_keys(&d, dg.doornik_hansen.as_ref())?;
     d.set_item("roots", dg.roots.clone())?;
     d.set_item("eigenvalue_moduli", dg.eigenvalue_moduli.clone())?;
     d.set_item("is_stable", dg.is_stable)?;

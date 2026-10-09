@@ -21,8 +21,15 @@ the generator headers for the honest grading) through the Python surface:
 * determinism, the p-value bracketing, nested MCS sets, the StepM subset
   identity, the refusal messages naming their parameter, the docstring key
   tripwire, and the `backtest` -> loss table -> `model_confidence_set`
-  workflow the guide shows.
+  workflow the guide shows;
+* StepM's family-wise error rate and power PAIRED with arch's own StepM
+  (0.11.0): the generator stored arch's per-replication superior sets on
+  four seeded designs (`_meta.stepm_fwer_study`), the panels are rebuilt
+  here from the same NumPy seeds (checked by a stored SHA-256), and tsecon's
+  sets on the same panels must agree with arch's as often as arch agrees
+  with itself under a second seed.
 """
+import hashlib
 import json
 import math
 import re
@@ -123,6 +130,120 @@ def test_stepm_reproduces_the_clear_cut_superior_sets(name):
     np.testing.assert_array_equal(r["boot_consistent"], s["boot_consistent"])
     for k in r["superior_models"]:
         assert r["mean_loss_diff"][k] > 0
+
+
+# ------------------------------------------- StepM family-wise error vs arch
+
+def _ar1(rng, n, rho):
+    """fixtures/generate_spa_fixtures.py's ar1, copied (tests never import
+    the generators)."""
+    e = rng.standard_normal(n)
+    x = np.empty(n)
+    prev = 0.0
+    for t in range(n):
+        prev = rho * prev + math.sqrt(1 - rho * rho) * e[t]
+        x[t] = prev
+    return x
+
+
+def _loss_panel(rng, n, scales, rho=0.5, common=0.7):
+    """The generator's loss_panel (no bias), copied."""
+    u = _ar1(rng, n, rho)
+    cols = []
+    for s in scales:
+        v = _ar1(rng, n, rho)
+        cols.append(((common * u + s * v) ** 2).tolist())
+    return cols
+
+
+def test_stepm_fwer_study_recorded():
+    st = SPA["_meta"]["stepm_fwer_study"]
+    assert SPA["_meta"]["arch"] == "8.0.0"
+    assert (st["n"], st["m"], st["reps"], st["block_size"], st["mc"]) == (200, 5, 300, 8, 1000)
+    assert st["sizes"] == [0.05, 0.10] and st["studentize"] is False and st["rho"] == 0.5
+    assert set(st["designs"]) == {"lfc", "partial_null", "mixed", "stepdown"}
+    # arch raised ("zero-size array") on valid samples, under the null too.
+    assert st["arch_raises_under_null"] > 0
+    lfc_ref = SPA["_meta"]["size_study"]["rates"]["ar05_b8"]["rates"]
+    for label, d in st["designs"].items():
+        assert len(d["panel_sha256"]) == 64
+        for key, a in (("0.05", 0.05), ("0.1", 0.10)):
+            r = d["rates"][key]
+            assert len(r["superior_sets"]) == st["mc"]
+            assert 0.0 <= r["fwer"] <= 1.0 and 0.8 <= r["arch_agreement"] <= 1.0
+            if label == "lfc":
+                # The LFC design IS the SPA size study's ar05_b8 design.
+                assert r["size_study_ar05_b8_rate"] == lfc_ref[[0.05, 0.10].index(a)]
+            if d["true_nulls"] == list(range(st["m"])):
+                assert r["any_power"] is None
+            else:
+                assert 0.0 <= r["all_power"] <= r["avg_power"] <= r["any_power"] <= 1.0
+        for s05, s10 in zip(d["rates"]["0.05"]["superior_sets"], d["rates"]["0.1"]["superior_sets"]):
+            assert set(s05) <= set(s10)
+
+
+@pytest.mark.parametrize("label", ["lfc", "partial_null", "mixed", "stepdown"])
+def test_stepm_fwer_paired_with_arch(label):
+    """tsecon's un-studentized StepM against arch's on the SAME seeded panels
+    (default_rng(880000 + r)), bootstraps independent (tsecon seed 9000 + r):
+    exactly the arch-vs-arch situation the generator measured with a second
+    arch seed. Unpaired (always): FWER and all-power within 4 Monte Carlo se
+    of arch's. Paired (when this NumPy reproduces the stream, checked by the
+    stored SHA-256): set agreement at least max(0.83, arch's own agreement
+    minus 4 se), and McNemar on the FWER and all-power events."""
+    st = SPA["_meta"]["stepm_fwer_study"]
+    d = st["designs"][label]
+    mc, n, m = st["mc"], st["n"], st["m"]
+    true_null = np.zeros(m, dtype=bool)
+    true_null[d["true_nulls"]] = True
+    false_null = ~true_null
+    h = hashlib.sha256()
+    mine = {"0.05": [], "0.1": []}
+    for r in range(mc):
+        cols = _loss_panel(np.random.default_rng(880000 + r), n, d["scales"])
+        panel = np.column_stack([np.asarray(c) for c in cols])
+        h.update(np.ascontiguousarray(panel, dtype=np.float64).tobytes())
+        for key, size in (("0.05", 0.05), ("0.1", 0.10)):
+            out = tsecon.stepm_test(panel[:, 0], panel[:, 1:], size=size, block_size=8, reps=300,
+                                    bootstrap="stationary", studentize=False, seed=9000 + r)
+            mine[key].append(sorted(out["superior_models"]))
+        # The deterministic identity: same seed, so the same resamples.
+        assert set(mine["0.05"][-1]) <= set(mine["0.1"][-1]), r
+
+    def events(sets):
+        ind = np.zeros((len(sets), m), dtype=bool)
+        for i, s in enumerate(sets):
+            ind[i, s] = True
+        fw = np.any(ind & true_null, axis=1)
+        allp = np.all(ind[:, false_null], axis=1) if false_null.any() else np.zeros(len(sets), bool)
+        return fw, allp
+
+    paired = h.hexdigest() == d["panel_sha256"]
+    for key in ("0.05", "0.1"):
+        a = d["rates"][key]
+        fw_t, all_t = events(mine[key])
+        fw_a, all_a = events(a["superior_sets"])
+        # Unpaired: two independent Monte Carlo estimates of the same rate.
+        for name, t_ev, a_rate in (("FWER", fw_t, a["fwer"]), ("all-power", all_t, a["all_power"])):
+            if a_rate is None:
+                continue
+            p = min(max(0.5 * (t_ev.mean() + a_rate), 1.0 / mc), 1 - 1.0 / mc)
+            se = math.sqrt(p * (1 - p) * 2.0 / mc)
+            assert abs(t_ev.mean() - a_rate) <= 4 * se, (label, key, name, t_ev.mean(), a_rate)
+        if not paired:
+            continue
+        agree = float(np.mean([s_t == s_a for s_t, s_a in zip(mine[key], a["superior_sets"])]))
+        base = a["arch_agreement"]
+        floor = max(0.83, base - 4 * math.sqrt(base * (1 - base) / mc))
+        assert agree >= floor, (label, key, agree, base)
+        for name, t_ev, a_ev in (("FWER", fw_t, fw_a), ("all-power", all_t, all_a)):
+            b = int(np.sum(t_ev & ~a_ev))
+            c = int(np.sum(a_ev & ~t_ev))
+            assert abs(b - c) <= 4 * math.sqrt(max(b + c, 1)), (label, key, name, b, c)
+    if not paired:
+        pytest.skip("this NumPy does not reproduce the fixture's PCG64 normal stream "
+                    "(panel checksum differs): the paired leg was skipped, the unpaired "
+                    "4-se comparison ran")
 
 
 # --------------------------------------------------------------- MCS golden

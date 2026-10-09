@@ -28,6 +28,7 @@ mod spectest_serial;
 mod ssm_uc;
 mod termstructure_jsz;
 mod var_cf;
+mod var_normality;
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -13275,5 +13276,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     diag_vr::register(m)?;
     spectest_serial::register(m)?;
     ewc::register(m)?;
+    var_normality::register(m)?;
     Ok(())
 }

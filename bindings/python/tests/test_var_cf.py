@@ -2,7 +2,12 @@
 `tsecon.var_conditional_forecast` (Doan-Litterman-Sims / Waggoner-Zha
 hard-path conditional forecasts), `tsecon.var_diagnostics` (multivariate
 Portmanteau, multivariate Jarque-Bera, stability roots) and
-`tsecon.var_select_order` (lag-order selection on a common sample).
+`tsecon.var_select_order` (lag-order selection on a common sample) — plus
+the 0.11.0 residual-normality family: the symmetric-root Jarque-Bera
+(JMulTi's "Doornik & Hansen (1994)" block, pinned against JMulTi's own
+printed output on the 16 residual matrices stored in
+fixtures/var_diag.json) and the Doornik-Hansen (2008) omnibus test, both in
+`var_diagnostics` and in the residual-level `tsecon.multivariate_normality`.
 
 Re-pins fixtures/var_cf.json and fixtures/var_diag.json through the Python
 surface (the NumPy closed form at 1e-10 and the statsmodels VARMAX
@@ -300,6 +305,230 @@ def test_diagnostics_live_statsmodels_parity():
     assert fit["max_root"] == pytest.approx(r["roots"][0], rel=1e-12)
 
 
+# ------------------------------------------------- residual normality family
+
+PRINTED = 5e-5 + 1e-12  # JMulTi prints four decimals
+
+SYM_KEYS = ("jarque_bera_symmetric", "jarque_bera_symmetric_pvalue", "skewness_symmetric",
+            "skewness_symmetric_pvalue", "kurtosis_symmetric", "kurtosis_symmetric_pvalue",
+            "skewness_symmetric_components", "kurtosis_symmetric_components")
+DH_KEYS = ("doornik_hansen", "doornik_hansen_pvalue", "doornik_hansen_df",
+           "doornik_hansen_skewness", "doornik_hansen_skewness_pvalue", "doornik_hansen_kurtosis",
+           "doornik_hansen_kurtosis_pvalue", "doornik_hansen_z_skewness",
+           "doornik_hansen_z_kurtosis")
+CHOL_KEYS = ("jarque_bera", "jarque_bera_pvalue", "jarque_bera_df", "skewness", "skewness_pvalue",
+             "kurtosis", "kurtosis_pvalue", "skewness_components", "kurtosis_components")
+
+
+def _pclose(a, b):
+    """p-values: 1e-10 absolute, 1e-6 relative on the log scale."""
+    assert a == pytest.approx(b, rel=1e-6, abs=1e-10)
+
+
+def _assert_symmetric(r, ref):
+    assert r["jarque_bera_symmetric"] == pytest.approx(ref["statistic"], rel=1e-10)
+    assert r["skewness_symmetric"] == pytest.approx(ref["skewness"], rel=1e-10, abs=1e-12)
+    assert r["kurtosis_symmetric"] == pytest.approx(ref["kurtosis"], rel=1e-10, abs=1e-12)
+    _pclose(r["jarque_bera_symmetric_pvalue"], ref["pvalue"])
+    _pclose(r["skewness_symmetric_pvalue"], ref["skewness_pvalue"])
+    _pclose(r["kurtosis_symmetric_pvalue"], ref["kurtosis_pvalue"])
+    _close(r["skewness_symmetric_components"], ref["skewness_components"], 1e-10)
+    _close(r["kurtosis_symmetric_components"], ref["kurtosis_components"], 1e-10)
+    assert r["jarque_bera_df"] == ref["df"]
+
+
+def _assert_dh(r, ref):
+    assert r["doornik_hansen_df"] == ref["df"]
+    for key, rk in (("doornik_hansen", "statistic"), ("doornik_hansen_skewness", "skewness"),
+                    ("doornik_hansen_kurtosis", "kurtosis")):
+        assert r[key] == pytest.approx(ref[rk], rel=1e-10, abs=1e-12), key
+    for key, rk in (("doornik_hansen_pvalue", "pvalue"),
+                    ("doornik_hansen_skewness_pvalue", "skewness_pvalue"),
+                    ("doornik_hansen_kurtosis_pvalue", "kurtosis_pvalue")):
+        _pclose(r[key], ref[rk])
+    _close(r["doornik_hansen_z_skewness"], ref["z_skewness"], 1e-10)
+    _close(r["doornik_hansen_z_kurtosis"], ref["z_kurtosis"], 1e-10)
+
+
+@pytest.mark.parametrize("case", DG["cases"], ids=[c["name"] for c in DG["cases"]])
+def test_diagnostics_repin_the_symmetric_and_doornik_hansen_blocks(case):
+    r = tsecon.var_diagnostics(_series(DG, case["series"]), lags=case["p"], trend=case["trend"],
+                               nlags=case["portmanteau"][0]["nlags"])
+    _assert_symmetric(r, case["normality_symmetric"])
+    _assert_dh(r, case["doornik_hansen"])
+    assert r["doornik_hansen"] == pytest.approx(
+        r["doornik_hansen_skewness"] + r["doornik_hansen_kurtosis"], rel=1e-12)
+    assert r["doornik_hansen_skewness"] == pytest.approx(
+        sum(z * z for z in r["doornik_hansen_z_skewness"]), rel=1e-12)
+
+
+@pytest.mark.parametrize("case", DG["jmulti"], ids=[c["name"] for c in DG["jmulti"]])
+def test_multivariate_normality_reproduces_jmulti(case):
+    """JMulTi's printed "Doornik & Hansen (1994)" block (= the symmetric-root
+    Jarque-Bera), its "Lütkepohl (1993)" block (= the Cholesky form) and its
+    per-variable Jarque-Bera rows (= the k = 1 form) at the printed
+    precision, plus the generator's transcriptions at 1e-10."""
+    u = np.array(case["resid"])
+    r = tsecon.multivariate_normality(u)
+    assert r["nobs"] == case["nobs"] and r["k"] == case["k"]
+    p = case["printed_symmetric"]
+    assert r["jarque_bera_df"] == p["df"] == 2 * case["k"]
+    for key, pk in (("jarque_bera_symmetric", "joint"), ("skewness_symmetric", "skew"),
+                    ("kurtosis_symmetric", "kurt"), ("jarque_bera_symmetric_pvalue", "p_joint"),
+                    ("skewness_symmetric_pvalue", "p_skew"), ("kurtosis_symmetric_pvalue", "p_kurt")):
+        assert abs(r[key] - p[pk]) <= PRINTED, (key, r[key], p[pk])
+    lp = case["printed_lutkepohl"]
+    for key, pk in (("jarque_bera", "joint"), ("skewness", "skew"), ("kurtosis", "kurt"),
+                    ("jarque_bera_pvalue", "p_joint"), ("skewness_pvalue", "p_skew"),
+                    ("kurtosis_pvalue", "p_kurt")):
+        assert abs(r[key] - lp[pk]) <= PRINTED, (key, r[key], lp[pk])
+    _assert_symmetric(r, case["symmetric"])
+    _assert_dh(r, case["doornik_hansen"])
+    assert r["jarque_bera"] == pytest.approx(case["cholesky"]["statistic"], rel=1e-10)
+    assert r["jarque_bera"] == pytest.approx(case["statsmodels_test_normality"]["statistic"], rel=1e-10)
+    # k = 1: each residual column is JMulTi's per-variable row, and the
+    # three Jarque-Bera forms coincide with tsecon.jarque_bera.
+    for j, row in enumerate(case["printed_jarque_bera"]):
+        x = u[:, j]
+        one = tsecon.multivariate_normality(x)
+        assert one["k"] == 1 and one["jarque_bera_df"] == 2
+        assert abs(one["jarque_bera"] - row["statistic"]) <= PRINTED
+        assert abs(one["jarque_bera_pvalue"] - row["pvalue"]) <= PRINTED
+        assert abs(one["skewness_components"][0] - row["skewness"]) <= PRINTED
+        assert abs(one["kurtosis_components"][0] + 3.0 - row["kurtosis"]) <= PRINTED
+        assert one["jarque_bera"] == pytest.approx(case["jarque_bera_rows"][j]["statistic"], rel=1e-10)
+
+
+def test_one_series_is_the_univariate_jarque_bera_and_dagostino_skewtest():
+    """Runs live wherever scipy is installed (it is in the main CI job): at
+    k = 1 every Jarque-Bera form equals `tsecon.jarque_bera`, and the
+    Doornik-Hansen z1 is D'Agostino's `scipy.stats.skewtest`."""
+    st = pytest.importorskip("scipy.stats")
+    rng = np.random.default_rng(20261009)
+    for n in (8, 9, 25, 120, 1000):
+        for x in (rng.standard_normal(n), rng.chisquare(3, n), rng.standard_t(5, n)):
+            r = tsecon.multivariate_normality(x)
+            assert (r["nobs"], r["k"], r["doornik_hansen_df"]) == (n, 1, 2)
+            jb = tsecon.jarque_bera(x)["statistic"]
+            assert r["jarque_bera"] == pytest.approx(jb, rel=1e-12)
+            assert r["jarque_bera_symmetric"] == pytest.approx(jb, rel=1e-12)
+            z = float(st.skewtest(x).statistic)
+            assert r["doornik_hansen_z_skewness"][0] == pytest.approx(z, rel=1e-12, abs=1e-13)
+            # A column vector is the same call.
+            assert tsecon.multivariate_normality(x[:, None]) == r
+
+
+def test_multivariate_normality_on_var_residuals_is_var_diagnostics_bitwise():
+    y = _series(DG, "macro_growth_infl_dtbill")
+    for lags, trend in ((2, "c"), (1, "n")):
+        d = tsecon.var_diagnostics(y, lags=lags, trend=trend, nlags=8)
+        u = np.array(tsecon.var_fit(y, lags=lags, trend=trend)["resid"])
+        r = tsecon.multivariate_normality(u)
+        assert r["nobs"] == d["nobs"] and r["k"] == d["k"]
+        for key in CHOL_KEYS + SYM_KEYS + DH_KEYS:
+            assert r[key] == d[key], key
+
+
+def test_var_diagnostics_keeps_working_below_eight_observations():
+    """VAR(1), k = 2, T = 7 effective observations worked in 0.10.0 and
+    still does: the Doornik-Hansen keys are None (its skewness transform
+    degenerates at T = 7), everything else is computed; at T = 8 they are
+    numbers."""
+    y = _series(CF, "sim_var2_k3")[:, :2]
+    d7 = tsecon.var_diagnostics(y[:8], lags=1, nlags=2)
+    assert d7["nobs"] == 7
+    assert all(d7[k] is None for k in DH_KEYS)
+    assert d7["jarque_bera"] is not None and d7["jarque_bera_symmetric"] is not None
+    d8 = tsecon.var_diagnostics(y[:9], lags=1, nlags=2)
+    assert d8["nobs"] == 8
+    assert all(d8[k] is not None for k in DH_KEYS)
+    assert d8["doornik_hansen_df"] == 4
+
+
+def test_symmetric_root_is_unit_dependent_and_dh_is_not():
+    """Rescaling one series moves the JMulTi symmetric-root statistic but not
+    the Doornik-Hansen (2008) or the Cholesky one."""
+    u = np.array(DG["jmulti"][0]["resid"])
+    a = tsecon.multivariate_normality(u)
+    b = tsecon.multivariate_normality(u * np.array([100.0, 0.01, 3.0]))
+    assert b["doornik_hansen"] == pytest.approx(a["doornik_hansen"], rel=1e-10)
+    assert b["jarque_bera"] == pytest.approx(a["jarque_bera"], rel=1e-10)
+    assert abs(b["jarque_bera_symmetric"] - a["jarque_bera_symmetric"]) > 1.0
+
+
+@needs_sm
+def test_jmulti_parity_live_on_macrodata_levels():
+    """var_diagnostics on the bundled macrodata VAR(4) in levels — the system
+    JMulTi tested — against JMulTi's printed blocks stored in the fixture
+    (trend "n" = JMulTi's nc, "c" = c) and statsmodels' test_normality."""
+    md = sm.datasets.macrodata.load_pandas().data
+    y = md[["realcons", "realgdp", "realinv"]].to_numpy(dtype=float)
+    by_name = {c["name"]: c for c in DG["jmulti"]}
+    for trend, tag in (("n", "nc"), ("c", "c")):
+        case = by_name[f"macrodata_jmulti_{tag}"]
+        d = tsecon.var_diagnostics(y, lags=4, trend=trend, nlags=10)
+        assert d["nobs"] == case["nobs"]
+        p, lp = case["printed_symmetric"], case["printed_lutkepohl"]
+        for key, pk in (("jarque_bera_symmetric", "joint"), ("skewness_symmetric", "skew"),
+                        ("kurtosis_symmetric", "kurt"), ("jarque_bera_symmetric_pvalue", "p_joint")):
+            assert abs(d[key] - p[pk]) <= PRINTED, (tag, key)
+        for key, pk in (("jarque_bera", "joint"), ("skewness", "skew"), ("kurtosis", "kurt")):
+            assert abs(d[key] - lp[pk]) <= PRINTED, (tag, key)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = VAR(y).fit(4, trend=trend)
+        assert d["jarque_bera"] == pytest.approx(float(res.test_normality().test_statistic), rel=1e-10)
+        _assert_dh(d, case["doornik_hansen"])
+
+
+def test_multivariate_normality_refusals_name_resid():
+    u = np.array(DG["jmulti"][6]["resid"])  # a k = 2 VECM residual matrix
+    assert tsecon.multivariate_normality(u)["k"] == 2
+    with pytest.raises(ValueError, match=r"resid.*8 rows"):
+        tsecon.multivariate_normality(u[:7])
+    bad = u.copy()
+    bad[3, 1] = np.nan
+    with pytest.raises(ValueError, match=r"resid.*row 3, column 1"):
+        tsecon.multivariate_normality(bad)
+    bad = u.copy()
+    bad[5, 0] = np.inf
+    with pytest.raises(ValueError, match="resid"):
+        tsecon.multivariate_normality(bad)
+    const = np.column_stack([u[:, 0], np.full(len(u), 0.1)])
+    with pytest.raises(ValueError, match="resid has a constant column"):
+        tsecon.multivariate_normality(const)
+    with pytest.raises(ValueError, match="resid must be a 2-D"):
+        tsecon.multivariate_normality(np.zeros((20, 2, 2)))
+    with pytest.raises(ValueError, match="resid must be a 2-D"):
+        tsecon.multivariate_normality(np.array(1.0))
+    dup = np.column_stack([u[:, 0], u[:, 0]])
+    with pytest.raises(ValueError, match=r"correlation matrix of resid"):
+        tsecon.multivariate_normality(dup)
+    with pytest.raises(ValueError, match=r"resid.*column"):
+        tsecon.multivariate_normality(np.zeros((20, 0)))
+    with pytest.raises(ValueError, match=r"resid.*more rows than columns"):
+        tsecon.multivariate_normality(np.random.default_rng(0).standard_normal((9, 9)))
+    with pytest.raises(ValueError, match=r"resid.*rescale"):
+        tsecon.multivariate_normality(u * np.array([1e9, 1e-9]))
+    with pytest.raises(ValueError, match=r"resid.*overflow"):
+        tsecon.multivariate_normality(u * 1e200)
+    with pytest.raises(ValueError, match="resid"):
+        tsecon.multivariate_normality(np.array([]))
+
+
+def test_multivariate_normality_accepts_pandas_and_array_likes():
+    pd = pytest.importorskip("pandas")
+    u = np.array(DG["jmulti"][0]["resid"])
+    ref = tsecon.multivariate_normality(u)
+    assert tsecon.multivariate_normality(pd.DataFrame(u, columns=["a", "b", "c"])) == ref
+    assert tsecon.multivariate_normality(np.asfortranarray(u)) == ref
+    assert tsecon.multivariate_normality(u.astype(np.float32).astype(np.float64)) is not None
+    one = tsecon.multivariate_normality(u[:, 0])
+    assert tsecon.multivariate_normality(pd.Series(u[:, 0])) == one
+    assert tsecon.multivariate_normality(u[:, 0].tolist()) == one  # a flat list is data
+    assert tsecon.multivariate_normality(u[::-1][::-1, 0]) == one   # a strided view
+
+
 # ------------------------------------------------------------- select_order
 
 @pytest.mark.parametrize("block", DG["select_order"],
@@ -404,6 +633,7 @@ def test_docstrings_name_every_returned_key_and_signatures_carry_real_defaults()
         tsecon.var_conditional_forecast: tsecon.var_conditional_forecast(y, [[None, 0.1, None]]),
         tsecon.var_diagnostics: tsecon.var_diagnostics(y),
         tsecon.var_select_order: tsecon.var_select_order(y),
+        tsecon.multivariate_normality: tsecon.multivariate_normality(y),
     }
     for fn, out in outs.items():
         missing = set(out) - _doc_tokens(fn)
@@ -415,6 +645,18 @@ def test_docstrings_name_every_returned_key_and_signatures_carry_real_defaults()
     assert sig.parameters["steps"].default is None
     assert list(inspect.signature(tsecon.var_diagnostics).parameters) == ["data", "lags", "trend", "nlags"]
     assert list(inspect.signature(tsecon.var_select_order).parameters) == ["data", "max_lags", "trend"]
+    assert list(inspect.signature(tsecon.multivariate_normality).parameters) == ["resid"]
+    # The stub names every returned key too (it is what api.md renders).
+    stub = (Path(tsecon.__file__).parent / "__init__.pyi").read_text(encoding="utf-8")
+    for fn in (tsecon.var_diagnostics, tsecon.multivariate_normality):
+        start = stub.index(f"def {fn.__name__}(")
+        entry = stub[start:stub.index('"""', stub.index('"""', start) + 3)]
+        missing = set(outs[fn]) - set(re.findall(r"`([A-Za-z_][A-Za-z_0-9]*)`", entry))
+        assert not missing, f"stub entry of {fn.__name__} does not name {sorted(missing)}"
+    # The corrected JMulTi description: nowhere does a surface say the
+    # Doornik-Hansen variant is "not provided" or uses "different transforms".
+    for text in (tsecon.var_diagnostics.__doc__, stub[stub.index("def var_diagnostics("):]):
+        assert "not provided" not in text[:4000] and "different transforms" not in text[:4000]
 
 
 # ---------------------------------------------------------- docs examples
