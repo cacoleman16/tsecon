@@ -209,6 +209,18 @@ REFUSALS = [
     ({"n_boot": 100, "horizon": 10**8}, "horizon"),
     ({"method": "asymptotic", "band": "sidak", "band_scope": "all", "horizon": 10**5}, "band_scope"),
     ({"method": "asymptotic", "band": "sidak", "band_scope": "all", "horizon": 10**5}, "horizon"),
+    # the delta Jacobians are quadratic in horizon: a pointwise horizon the
+    # storage count admits would otherwise run for minutes to hours
+    ({"method": "asymptotic", "horizon": 30_000}, "horizon"),
+    ({"method": "asymptotic", "horizon": 2_100}, "horizon"),
+    # malformed (variable, shock) pairs PyO3 would refuse without a name
+    ({"impact_signs": [(0,)]}, "impact_signs"),
+    ({"impact_signs": [(0, 1, 1)]}, "impact_signs"),
+    ({"impact_signs": [(0, -1)]}, "impact_signs"),
+    ({"impact_signs": [(0, 2**64)]}, "impact_signs"),
+    ({"restrictions": [(0,)]}, "restrictions"),
+    ({"restrictions": [(-1, 0)]}, "restrictions"),
+    ({"restrictions": [(2**64, 0)]}, "restrictions"),
 ]
 
 
@@ -277,7 +289,9 @@ def test_impact_signs_flips_exactly_the_anchored_column():
     np.testing.assert_allclose(b1 @ b1.T, sigma, atol=1e-12)
 
 
-@pytest.mark.parametrize("anchors", [[(2, 0)], [(0, 2)], [(0, 1), (1, 1)]])
+@pytest.mark.parametrize(
+    "anchors", [[(2, 0)], [(0, 2)], [(0, 1), (1, 1)], [(0,)], [(0, -1)], [(0, 2**64)]]
+)
 def test_impact_signs_refusals_name_the_parameter(anchors):
     with pytest.raises(ValueError, match=r"\bimpact_signs\b"):
         tsecon.long_run_svar(BQ, lags=8, impact_signs=anchors)

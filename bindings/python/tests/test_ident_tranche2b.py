@@ -207,6 +207,36 @@ def test_historical_decomposition_bad_impact_is_refused_naming_impact(impact):
     assert re.search(r"\bimpact\b", str(info.value)), str(info.value)
 
 
+@pytest.mark.parametrize(
+    "impact",
+    [
+        np.eye(3) + 1j,                                   # complex: never truncated to its real part
+        np.eye(3).astype(complex),                        # even with a zero imaginary part
+        np.array([["1", "0", "0"], ["0", "1", "0"], ["0", "0", "1"]]),   # numeric strings
+        np.eye(3).astype("datetime64[D]"),
+        [[None, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],            # object dtype
+        np.ones(3),                                       # 1-D
+        np.ones((1, 3, 3)),                               # 3-D
+        "eye",
+    ],
+)
+@pytest.mark.parametrize("fn", ["historical_decomposition", "structural_fevd"])
+def test_non_real_or_wrong_rank_impact_is_refused_naming_impact(fn, impact):
+    """`numpy.asarray(x, dtype=float64)` would drop a complex matrix's imaginary
+    part with only a warning and read strings or datetimes as numbers, so the
+    element kind is checked before the cast, on both callables."""
+    kw = {"identification": "impact"} if fn == "historical_decomposition" else {"horizon": 4}
+    with pytest.raises(ValueError) as info:
+        getattr(tsecon, fn)(DATA, lags=2, impact=impact, **kw)
+    assert re.search(r"\bimpact\b", str(info.value)), str(info.value)
+
+
+def test_lags_zero_is_refused_naming_lags():
+    for kw in ({}, {"identification": "impact", "impact": np.eye(3)}):
+        with pytest.raises(ValueError, match=r"\blags\b"):
+            tsecon.historical_decomposition(DATA, lags=0, **kw)
+
+
 def test_historical_decomposition_singularity_follows_numpy_matrix_rank():
     # just inside numpy's tolerance: refused; just outside: accepted
     eps = np.finfo(float).eps

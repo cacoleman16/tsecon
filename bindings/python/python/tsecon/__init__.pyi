@@ -1595,7 +1595,9 @@ def long_run_svar(
     Returned keys: `cumulative_irf`, `fevd`, `impact`, `irf`, `long_run`,
     `long_run_multiplier`.
 
-    Further arguments, with defaults: `lags` (2), `trend` ("c").
+    Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
+    ("c"), `restrictions` (None), `normalize` ("long_run"), `impact_signs`
+    (None).
     """
 
 def long_run_svar_bands(
@@ -1691,9 +1693,11 @@ def long_run_svar_bands(
     draw matrices (refused naming n_boot and horizon) and, on the asymptotic
     arm, the joint
     covariance of a simultaneous band's family, ((horizon+1)*k^2)^2 under
-    band_scope="all" (refused naming horizon and band_scope). A replication
-    whose re-estimated VAR cannot be identified is never dropped: the first is
-    reported by index as an error.
+    band_scope="all" (refused naming horizon and band_scope). The asymptotic
+    arm's Jacobians cost horizon*(horizon+1)/2 * k^2 * lags*k^2 multiply-adds,
+    quadratic in horizon, capped at 2^28 (refused naming horizon). A
+    replication whose re-estimated VAR cannot be identified is never dropped:
+    the first is reported by index as an error.
 
     Further arguments, with defaults: `lags` (2), `horizon` (12), `trend` ("c"),
     `restrictions` (None), `normalize` ("long_run"), `impact_signs` (None),

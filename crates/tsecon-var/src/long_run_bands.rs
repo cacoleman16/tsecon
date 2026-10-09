@@ -86,7 +86,11 @@
 //!   simultaneous band (the family's joint covariance and its factorization,
 //!   `((horizon + 1) k^2)^2` under `band_scope="all"`) and `K * band_n_sim`
 //!   uniforms for sup-t. The sup-t simulation work `n_families * band_n_sim *
-//!   K^2` is capped at [`LONG_RUN_BANDS_SUPT_WORK`] (`2^36`);
+//!   K^2` is capped at [`LONG_RUN_BANDS_SUPT_WORK`] (`2^36`), and the
+//!   Jacobians `G_h = sum_{m<h} (A')^{h-1-m} ⊗ Phi_m`, whose work
+//!   `horizon (horizon + 1) / 2 * k^2 * dim` is QUADRATIC in `horizon`, at
+//!   [`LONG_RUN_BANDS_DELTA_WORK`] (`2^28`) — a horizon the storage count
+//!   admits could otherwise run for hours;
 //! * both arms: `6 H1 (mf + 4 k^2 + 8 k)` for the reported cubes (`point`,
 //!   `se`, `lower`, `upper` and the simultaneous pair) and their Python lists.
 //!
@@ -117,6 +121,16 @@ pub const LONG_RUN_BANDS_BUDGET_VALUES: usize = 1 << 28;
 /// The simulation-work cap of the delta-method sup-t band:
 /// `n_families * band_n_sim * K^2` multiply-adds (`2^36`).
 pub const LONG_RUN_BANDS_SUPT_WORK: u128 = 1 << 36;
+
+/// The work cap of the delta-method Jacobians `G_1..G_horizon`:
+/// `horizon (horizon + 1) / 2 * k^2 * lags k^2` multiply-adds (`2^28`).
+///
+/// The `G_h` sums are quadratic in `horizon`, so the storage budget alone
+/// admits horizons that run for hours. Measured on the Blanchard-Quah VAR(8)
+/// (`k = 2`): `horizon = 2000` (just under the cap) takes about 3.5 s,
+/// `horizon = 8000` about 90 s, and `horizon = 30000` over two minutes.
+/// Blanchard-Quah horizons are tens of periods.
+pub const LONG_RUN_BANDS_DELTA_WORK: u128 = 1 << 28;
 
 /// What to estimate and how to band it. Field defaults mirror the Python
 /// `long_run_svar_bands` signature.
@@ -490,6 +504,19 @@ pub fn asymptotic_budget(spec: &LongRunBandSpec, k: usize) -> Option<(usize, u12
         }
     }
     Some((values, work))
+}
+
+/// The delta-method Jacobian work `horizon (horizon + 1) / 2 * k^2 * lags k^2`
+/// checked against [`LONG_RUN_BANDS_DELTA_WORK`]. Saturating, so an absurd
+/// `horizon` cannot overflow the count meant to refuse it.
+pub fn asymptotic_jacobian_work(spec: &LongRunBandSpec, k: usize) -> u128 {
+    let h = spec.horizon as u128;
+    let k2 = (k as u128).saturating_mul(k as u128);
+    let dim = (spec.lags as u128).saturating_mul(k2);
+    h.saturating_mul(h.saturating_add(1))
+        .saturating_div(2)
+        .saturating_mul(k2)
+        .saturating_mul(dim)
 }
 
 fn min_root_of(res: &VarResults) -> Result<f64, VarError> {
@@ -876,8 +903,9 @@ fn collect_draws(raw: Vec<Result<Draw, &'static str>>) -> Result<Vec<Draw>, VarE
 ///
 /// * the validation errors of [`long_run_bootstrap_bands`] (bar `n_boot`);
 /// * [`VarError::InvalidArgument`] for `bias_correct` (the delta method draws
-///   nothing to re-centre), `band_n_sim < 2` under sup-t, or a working set /
-///   sup-t work beyond the budget (naming `horizon` and `band_scope`);
+///   nothing to re-centre), `band_n_sim < 2` under sup-t, a working set /
+///   sup-t work beyond the budget (naming `horizon` and `band_scope`), or a
+///   Jacobian work beyond [`LONG_RUN_BANDS_DELTA_WORK`] (naming `horizon`);
 /// * [`VarError::InvalidArgument`] when the fit cannot be identified;
 /// * [`VarError::NotPositiveDefinite`] from the delta-method building blocks.
 pub fn long_run_asymptotic_bands(
@@ -919,6 +947,15 @@ pub fn long_run_asymptotic_bands(
                        horizon, narrow band_scope, or lower band_n_sim",
             });
         }
+    }
+    if asymptotic_jacobian_work(spec, k) > LONG_RUN_BANDS_DELTA_WORK {
+        return Err(VarError::InvalidArgument {
+            what: "horizon: the delta-method Jacobians of the moving-average weights cost \
+                   horizon * (horizon + 1) / 2 * k^2 * lags * k^2 multiply-adds, quadratic in \
+                   horizon, which exceeds the 2^28 work cap (a few seconds; Blanchard-Quah \
+                   horizons are tens of periods); reduce horizon or lags, or use \
+                   method=\"bootstrap\", whose cost is linear in horizon",
+        });
     }
     let h = spec.horizon;
     let cumulative = spec.cumulative;

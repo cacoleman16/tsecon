@@ -371,7 +371,9 @@ and `cumulative`. Three diagnostics:
 * An absurd `n_boot`, `horizon` or family size. The working set is checked
   against a 2^28-value (2 GiB) budget before anything is allocated, and the
   refusal names `n_boot` and `horizon` (bootstrap) or `horizon` and
-  `band_scope` (asymptotic).
+  `band_scope` (asymptotic). The delta arm's Jacobians are quadratic in
+  `horizon`, so their work is capped as well (2^28 multiply-adds, refused
+  naming `horizon`); the bootstrap arm's cost is linear in `horizon`.
 
 **Validated against.**
 [`long_run_svar_bands.json`](../../../fixtures/long_run_svar_bands.json),

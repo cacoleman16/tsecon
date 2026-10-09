@@ -117,7 +117,10 @@ def test_long_run_svar_impact_signs_anchor():
     keep = [(j, j) for j in range(3) if b[j, j] > 0.0]
     same = tsecon.long_run_svar(DATA, lags=2, horizon=6, impact_signs=keep)
     assert np.array_equal(np.asarray(same["impact"]), b)
-    for bad in ([(3, 0)], [(0, 3)], [(0, 1), (2, 1)]):
+    # out of range, a shock anchored twice, and the malformed pairs PyO3 alone
+    # would refuse without naming the argument (wrong arity, a negative or a
+    # beyond-64-bit index nested in a pair)
+    for bad in ([(3, 0)], [(0, 3)], [(0, 1), (2, 1)], [(0,)], [(0, 1, 2)], [(0, -1)], [(0, 2**64)]):
         with pytest.raises(ValueError, match=r"\bimpact_signs\b"):
             tsecon.long_run_svar(DATA, lags=2, impact_signs=bad)
 

@@ -4431,7 +4431,8 @@ fn zero_sign_svar<'py>(
 /// `impact_signs`: an index outside `0..k`, or the same shock listed twice.
 ///
 /// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
-/// ("c"), `restrictions` (None), `normalize` ("long_run").
+/// ("c"), `restrictions` (None), `normalize` ("long_run"), `impact_signs`
+/// (None).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", restrictions = None, normalize = "long_run", impact_signs = None))]
 #[allow(clippy::too_many_arguments)]
@@ -4443,7 +4444,7 @@ fn long_run_svar<'py>(
     trend: &str,
     restrictions: Option<Vec<(usize, usize)>>,
     normalize: &str,
-    impact_signs: Option<Vec<(usize, usize)>>,
+    #[pyo3(from_py_with = svar_lr::impact_signs_arg)] impact_signs: Option<Vec<(usize, usize)>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let normalize_impact = match normalize {
         "long_run" => false,
@@ -12146,17 +12147,46 @@ type ImpactArg<'py> = numpy::PyArrayLike2<'py, f64, numpy::AllowTypeChange>;
 /// conversion failure (a ragged nested list, a string, a 1-D or 3-D array) is
 /// refused naming `impact`: NumPy's own ragged-list `ValueError` does not
 /// name it, and PyO3 prefixes only `TypeError`s with the argument name.
+///
+/// The element kind is checked BEFORE the float64 cast, because
+/// `numpy.asarray(x, dtype=float64)` would silently drop a complex matrix's
+/// imaginary part (a mere `ComplexWarning`) and read datetimes or numeric
+/// strings as numbers. Only boolean, integer and real floating matrices pass,
+/// which is what an ndarray-only `impact` accepted before.
 fn impact_matrix_arg<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Option<ImpactArg<'py>>> {
     if obj.is_none() {
         return Ok(None);
     }
-    obj.extract::<ImpactArg<'py>>().map(Some).map_err(|e| {
+    let named = |e: PyErr| {
         PyValueError::new_err(format!(
             "impact must be an (n, n) numeric matrix (an ndarray, a pandas object or a \
              rectangular nested list such as long_run_svar(...)[\"impact\"]); converting \
              it failed: {e}"
         ))
-    })
+    };
+    let arr = obj
+        .py()
+        .import("numpy")?
+        .call_method1("asarray", (obj,))
+        .map_err(named)?;
+    let dtype = arr.getattr("dtype")?;
+    let kind: String = dtype.getattr("kind")?.extract()?;
+    if !matches!(kind.as_str(), "b" | "i" | "u" | "f") {
+        return Err(PyValueError::new_err(format!(
+            "impact must be a real numeric (n, n) matrix, got dtype {}: a complex matrix \
+             is not truncated to its real part, and strings, datetimes or None entries \
+             are not read as numbers",
+            dtype.str()?
+        )));
+    }
+    let ndim: usize = arr.getattr("ndim")?.extract()?;
+    if ndim != 2 {
+        return Err(PyValueError::new_err(format!(
+            "impact must be a 2-D (n, n) matrix, got a {ndim}-D array of shape {}",
+            arr.getattr("shape")?.str()?
+        )));
+    }
+    arr.extract::<ImpactArg<'py>>().map(Some).map_err(named)
 }
 
 /// Structural forecast-error variance decomposition for an arbitrary structural
@@ -12454,6 +12484,11 @@ fn historical_decomposition<'py>(
     let a = data.as_array();
     let m = Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
     let n = a.ncols();
+    if lags == 0 {
+        return Err(PyValueError::new_err(
+            "lags = 0: the decomposition needs a VAR with at least one lag; pass lags >= 1",
+        ));
+    }
     if a.nrows() <= lags {
         return Err(PyValueError::new_err("need more than `lags` observations"));
     }

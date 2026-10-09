@@ -42,7 +42,8 @@ use tsecon_linalg::faer::linalg::solvers::DenseSolveCore;
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_var::irf_asymptotic::{BandMethod, IrfBandScope};
 use tsecon_var::long_run_bands::{
-    asymptotic_budget, bootstrap_budget_values, LONG_RUN_BANDS_BUDGET_VALUES,
+    asymptotic_budget, asymptotic_jacobian_work, bootstrap_budget_values,
+    LONG_RUN_BANDS_BUDGET_VALUES, LONG_RUN_BANDS_DELTA_WORK,
 };
 use tsecon_var::{
     bootstrap_irf_bands, long_run_asymptotic_bands, long_run_bootstrap_bands, LongRunBandSpec,
@@ -702,6 +703,29 @@ fn asymptotic_budget_is_checked_at_its_boundary_before_allocating() {
             "{msg}"
         );
     }
+}
+
+/// The delta-method Jacobians are quadratic in `horizon`, so a horizon the
+/// storage budget admits (pointwise, `k = 2`: thousands of periods) is still
+/// refused, naming `horizon`, once their work passes the cap. Returning at
+/// all proves the `G_h` sums were never started.
+#[test]
+fn asymptotic_jacobian_work_is_capped_quadratically_in_horizon() {
+    let res = fit(&bq_data(), 8);
+    let at = |horizon: usize| asymptotic_jacobian_work(&bq_spec(horizon, 2), 2);
+    // horizon (horizon + 1) / 2 * k^2 * lags k^2, with k = 2 and lags = 8.
+    assert_eq!(at(40), 40 * 41 / 2 * 4 * 32);
+    let mut h = 1usize;
+    while at(h + 1) <= LONG_RUN_BANDS_DELTA_WORK {
+        h += 1;
+    }
+    let mut spec = bq_spec(h, 2);
+    assert!(asymptotic_budget(&spec, 2).unwrap().0 <= LONG_RUN_BANDS_BUDGET_VALUES);
+    spec.horizon = h + 1;
+    assert!(asymptotic_budget(&spec, 2).unwrap().0 <= LONG_RUN_BANDS_BUDGET_VALUES);
+    let msg = err_text(long_run_asymptotic_bands(&res, &spec));
+    assert!(msg.contains("horizon") && msg.contains("2^28"), "{msg}");
+    assert_eq!(at(usize::MAX), u128::MAX);
 }
 
 // ------------------------------------------------------------ refusals

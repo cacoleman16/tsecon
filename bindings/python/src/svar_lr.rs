@@ -5,7 +5,7 @@
 //! Blanchard-Quah Jacobian. Registered into `_core` through [`register`].
 
 use numpy::{IntoPyArray, PyArrayMethods};
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tsecon_var::long_run_bands::{
@@ -22,6 +22,39 @@ const DEFAULT_BAND_N_SIM: usize = 100_000;
 
 fn cube(c: &[Mat<f64>]) -> Vec<Vec<Vec<f64>>> {
     c.iter().map(mat_to_vec2).collect()
+}
+
+/// Extracts an optional list of `(variable, shock)` index pairs, naming
+/// `name` in every refusal. A `TypeError` (a string, a list where a tuple
+/// goes, a float index) passes through for PyO3 to prefix with the argument
+/// name; the failures PyO3 leaves unnamed — a pair of the wrong length, and
+/// a negative or beyond-64-bit index nested inside a pair — become a
+/// `ValueError` that names it.
+fn index_pairs_arg(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<Option<Vec<(usize, usize)>>> {
+    if obj.is_none() {
+        return Ok(None);
+    }
+    obj.extract::<Vec<(usize, usize)>>().map(Some).map_err(|e| {
+        if e.is_instance_of::<PyTypeError>(obj.py()) {
+            e
+        } else {
+            PyValueError::new_err(format!(
+                "{name} must be a list of (variable, shock) pairs of nonnegative integer \
+                 indices below the number of variables, e.g. [(0, 1)]; converting it \
+                 failed: {e}"
+            ))
+        }
+    })
+}
+
+/// `from_py_with` extractor for `impact_signs=` (shared with `long_run_svar`).
+pub(crate) fn impact_signs_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<(usize, usize)>>> {
+    index_pairs_arg(obj, "impact_signs")
+}
+
+/// `from_py_with` extractor for the long-run zero `restrictions=`.
+fn restrictions_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<(usize, usize)>>> {
+    index_pairs_arg(obj, "restrictions")
 }
 
 /// Confidence bands for Blanchard-Quah long-run SVAR impulse responses — the
@@ -110,8 +143,11 @@ fn cube(c: &[Mat<f64>]) -> Vec<Vec<Vec<f64>>> {
 /// the joint
 /// covariance of a simultaneous band's family — ((horizon+1)·k²)² under
 /// band_scope="all" — on the asymptotic arm (refused naming `horizon` and
-/// `band_scope`). A replication whose re-estimated VAR cannot be identified
-/// is never dropped: the first one is reported, by index, as an error.
+/// `band_scope`). The asymptotic arm's Jacobians cost horizon·(horizon+1)/2 ·
+/// k² · lags·k² multiply-adds, QUADRATIC in horizon, and are capped at 2^28
+/// (a few seconds; refused naming `horizon`). A replication whose
+/// re-estimated VAR cannot be identified is never dropped: the first one is
+/// reported, by index, as an error.
 ///
 /// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
 /// ("c"), `restrictions` (None), `normalize` ("long_run"), `impact_signs`
@@ -147,9 +183,9 @@ fn long_run_svar_bands<'py>(
     lags: usize,
     horizon: usize,
     trend: &str,
-    restrictions: Option<Vec<(usize, usize)>>,
+    #[pyo3(from_py_with = restrictions_arg)] restrictions: Option<Vec<(usize, usize)>>,
     normalize: &str,
-    impact_signs: Option<Vec<(usize, usize)>>,
+    #[pyo3(from_py_with = impact_signs_arg)] impact_signs: Option<Vec<(usize, usize)>>,
     method: &str,
     alpha: f64,
     cumulative: bool,
