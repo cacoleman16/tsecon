@@ -408,7 +408,9 @@ def ewc_lrv(x: _ArrayLike, b: int | None = ...) -> float:
 def ewc_default_b(n: int) -> int:
     """LLSW (2018) EWC degrees of freedom round(0.4 n^(2/3)), clamped to
     [1, n - 1]; the default `b` of `ewc_lrv` and `ewc_b` of
-    `ols(se_type="ewc")`, and the t degrees of freedom. n < 2 is refused.
+    `ols(se_type="ewc")`, and the t degrees of freedom. The rounding is
+    exact for every n (integer arithmetic, not a float power). n < 2 is
+    refused.
     """
 
 # -------------------------------------------------------------- bootstrap

@@ -204,7 +204,11 @@ Omega_hat = (1/B) * sum_{j=1..B} Lambda_j^2
 ```
 
 `ewc_default_b(n)` returns the LLSW recommendation `round(0.4 n^(2/3))`,
-clamped to `[1, n - 1]`.
+clamped to `[1, n - 1]`. The rounding is exact for every `n`: it is decided in
+integer arithmetic (`r` is the rounding iff `125 (2r - 1)^3 <= 64 n^2 <
+125 (2r + 1)^3`), because a double-precision `n^(2/3)` rounds the wrong way
+near a half-integer from `n = 1,755,027,219` on (`fixtures/ewc.json` pins
+eleven such `n`).
 
 **Assumptions.** Stationarity and weak dependence. The `Lambda_j` at low
 frequencies are then approximately independent `N(0, Omega)`, which is what
@@ -240,8 +244,10 @@ the coercion layer (`b=-1`); a request past the work budget is refused naming
 **Validated against.** The same documented-closed-form golden as `ols`'s EWC
 route: `ewc_lrv` on the Nile series and a seeded AR(1), `b` ∈ {1, 4, 9, 16,
 n − 1}, raw and demeaned, against `scipy.fft.dct(type=2, norm="ortho")` at
-1e-12; `ewc_default_b` exactly, on the spec's `n` and the ten `n` below 10^6
-whose `0.4 n^(2/3)` lies closest to a half-integer.
+1e-12; `ewc_default_b` exactly, on the spec's `n`, the ten `n` below 10^6
+whose `0.4 n^(2/3)` lies closest to a half-integer, and the ten such `n` in
+10^6–3·10^10 plus `n = 1,755,027,219` and `100,292,764,931,117` — each within
+2e-7 of a tie and each one a float power misrounds — against the integer rule.
 
 ```python
 import numpy as np, tsecon

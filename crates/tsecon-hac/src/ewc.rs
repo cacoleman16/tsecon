@@ -173,8 +173,41 @@ pub(crate) fn ewc_matrix_impl(
 /// Their size/power analysis selects this rate as the practical
 /// recommendation for HAR inference; pair the resulting estimate with
 /// Student-t critical values with `B` degrees of freedom.
+///
+/// The rounding is exact for every `n`: the float value is only a first
+/// guess, corrected in integer arithmetic with `round(0.4 n^(2/3)) = r` iff
+/// `125 (2r - 1)^3 <= 64 n^2 < 125 (2r + 1)^3`. (A double-precision
+/// `n^(2/3)` carries about `1e-15` relative error, enough to round the wrong
+/// way where `0.4 n^(2/3)` sits within ~`1e-6` of a half-integer — first at
+/// `n = 1_755_027_219`. Exact `.5` ties cannot occur.)
 #[must_use]
 pub fn ewc_default_b(n: usize) -> usize {
-    let b = (0.4 * (n as f64).powf(2.0 / 3.0)).round() as usize;
+    let guess = (0.4 * (n as f64).powf(2.0 / 3.0)).round();
+    // `as` saturates a float cast, and the guess is finite and >= 0.
+    let mut r = (guess as u128).max(1);
+    while r > 1 && !reaches_half_below(n, r) {
+        r -= 1;
+    }
+    while reaches_half_below(n, r + 1) {
+        r += 1;
+    }
+    let b = usize::try_from(r).unwrap_or(usize::MAX);
     b.clamp(1, n.saturating_sub(1).max(1))
+}
+
+/// `0.4 n^(2/3) >= r - 1/2`, decided exactly as `125 (2r - 1)^3 <= 64 n^2`
+/// for `r >= 1`, without overflow for any `usize` `n`: `n^2` and `(2r - 1)^3`
+/// each fit a `u128` here, and `125 b <= 64 a` (`b = (2r - 1)^3`, `a = n^2`)
+/// is compared as `b / 64 <= a / 125` through the quotients and remainders.
+fn reaches_half_below(n: usize, r: u128) -> bool {
+    let a = (n as u128) * (n as u128);
+    let t = 2 * r - 1;
+    let Some(b) = t.checked_mul(t).and_then(|t2| t2.checked_mul(t)) else {
+        // (2r - 1)^3 >= 2^128 > n^2, so 125 (2r - 1)^3 > 64 n^2.
+        return false;
+    };
+    let (qa, ra) = (a / 125, a % 125);
+    let (qb, rb) = (b / 64, b % 64);
+    // b/64 = qb + rb/64 against a/125 = qa + ra/125.
+    qb < qa || (qb == qa && 125 * rb <= 64 * ra)
 }

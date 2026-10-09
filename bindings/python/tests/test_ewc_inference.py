@@ -83,6 +83,33 @@ def test_ewc_default_b_is_the_llsw_rule_exactly():
         assert tsecon.ewc_default_b(n) == want, n
 
 
+def _exact_default_b(n):
+    """round(0.4 n^(2/3)) in Python integers: the largest r with
+    125 (2r - 1)^3 <= 64 n^2 (no float power anywhere)."""
+    m, lo, hi = 64 * n * n, 1, 1
+    while 125 * (2 * hi - 1) ** 3 <= m:
+        hi *= 2
+    while lo < hi:  # largest r in [1, hi] with 125 (2r - 1)^3 <= m
+        mid = (lo + hi + 1) // 2
+        lo, hi = (mid, hi) if 125 * (2 * mid - 1) ** 3 <= m else (lo, mid - 1)
+    return max(1, min(lo, n - 1))
+
+
+def test_ewc_default_b_is_exact_where_a_float_power_misrounds():
+    """Audit round 15: a double-precision 0.4 n^(2/3) misrounds near a
+    half-integer for large n (n = 1755027219 gave 581990, not 581991). The
+    fixture's large-n block is integer-exact; every case is within 2e-7 of
+    a tie, and the Python integer rule agrees with it."""
+    cases = EWC["default_b_large_n"]
+    assert {"1755027219", "100292764931117"} <= set(cases) and len(cases) >= 11
+    for n, b in cases.items():
+        assert abs(EWC["default_b_large_n_gap"][n]) < 2e-7, n
+        assert _exact_default_b(int(n)) == b, n
+        got = tsecon.ewc_default_b(int(n))
+        assert isinstance(got, int) and got == b, (n, got, b)
+    assert tsecon.ewc_default_b(2 ** 48 - 1) == _exact_default_b(2 ** 48 - 1)
+
+
 @pytest.mark.parametrize("name", ["k2_t250", "k3_t180"])
 def test_ols_ewc_matches_the_closed_form(name):
     block = EWC["ols"][name]

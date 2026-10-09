@@ -14,7 +14,9 @@
 //! * `ewc_lrv` on the Nile series (read from `diagnostics.json`) and on a
 //!   seeded AR(1), `b` in {1, 4, 9, 16, n - 1}, demeaned and raw — 1e-12;
 //! * `ewc_default_b` — exact, on the spec's `n` and on the ten `n` below
-//!   10^6 whose `0.4 n^(2/3)` lies closest to a half-integer;
+//!   10^6 whose `0.4 n^(2/3)` lies closest to a half-integer, and on the ten
+//!   such `n` in 10^6..3e10 plus the audit-round-15 cases, where a float
+//!   `n^(2/3)` rounds the wrong way (the reference B is integer-exact);
 //! * `ols` + [`SeType::Ewc`] on a `k = 2` and a `k = 3` design at the default
 //!   `B` and at `B = 8`: params / bse / tvalues / covariance at 1e-10 and the
 //!   `ewc_lrv_matrix` meat at 1e-10; the Student-t_B p-values built with
@@ -116,6 +118,27 @@ fn ewc_default_b_matches_the_llsw_rule_exactly() {
     let cases = fx["default_b"].as_object().expect("object");
     assert!(cases.len() >= 18, "spec n plus ten near-half n");
     for (n, b) in cases {
+        let n: usize = n.parse().expect("integer key");
+        let b = b.as_u64().expect("integer") as usize;
+        assert_eq!(ewc_default_b(n), b, "ewc_default_b({n})");
+    }
+}
+
+/// Beyond 10^6 a double-precision `0.4 n^(2/3)` misrounds near a
+/// half-integer (audit round 15: `n = 1_755_027_219` gave 581990, not
+/// 581991). The fixture's B is the integer rule `125 (2r - 1)^3 <= 64 n^2 <
+/// 125 (2r + 1)^3`, so every case below sits within 5e-10 of a tie (one
+/// within 1.2e-7) and each is a case the float formula gets wrong.
+#[test]
+fn ewc_default_b_is_exact_where_a_float_power_misrounds() {
+    let fx = load("ewc.json");
+    let cases = fx["default_b_large_n"].as_object().expect("object");
+    let gaps = fx["default_b_large_n_gap"].as_object().expect("object");
+    assert!(cases.len() >= 11, "ten near-tie n plus the auditor's two");
+    assert!(cases.contains_key("1755027219") && cases.contains_key("100292764931117"));
+    for (n, b) in cases {
+        let gap = gaps[n].as_f64().expect("gap");
+        assert!(gap.abs() < 2e-7, "{n} is not a near-tie case (gap {gap:e})");
         let n: usize = n.parse().expect("integer key");
         let b = b.as_u64().expect("integer") as usize;
         assert_eq!(ewc_default_b(n), b, "ewc_default_b({n})");
