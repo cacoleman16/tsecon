@@ -208,7 +208,7 @@ fn ewc_default_b_brackets_exactly_and_never_overflows() {
     }
     for n in [0, 1, 2, usize::MAX - 1, usize::MAX] {
         let b = ewc_default_b(n);
-        assert!(b >= 1 && b <= n.max(2) - 1, "n = {n}: B = {b}");
+        assert!(b >= 1 && b < n.max(2), "n = {n}: B = {b}");
     }
     // 0.4 (2^64 - 1)^(2/3) = 2792585463332.62... (60-digit Decimal), on a
     // 64-bit target.
