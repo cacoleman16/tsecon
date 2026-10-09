@@ -36,6 +36,19 @@
 //! `u` on `[X, 1]`, tests the lags alone. The LM statistic is
 //! valid with lagged dependent variables among the regressors, which is the
 //! test's advantage over Durbin-Watson.
+//!
+//! **The implicit-constant rule.** The design spans a constant when the
+//! regression of a column of ones on it (each column rescaled by a power of
+//! two) leaves a residual `m = M_X 1` of relative size `|m| / |1|` at most
+//! `1e-10`. The rule is invariant to rescaling a column. statsmodels instead
+//! compares numpy's `matrix_rank` of `[1, X]` with that of `X`, a rule that
+//! is not: for `X = [z, 1e9 + t]` it finds an implicit constant (and adds
+//! none) where the rule here does not (`fixtures/serial_corr.json`,
+//! `conditioning_cases`). The added constant enters the auxiliary design
+//! as `m` itself, rescaled — the same column space as `[X, 1]`, but
+//! orthogonal to `X` — so a design that comes close to spanning a constant
+//! without passing the threshold (a column constant to within `1e-8`, say)
+//! is tested, not refused as collinear.
 
 use tsecon_hac::ols;
 use tsecon_stats::chi2_sf;
@@ -192,10 +205,18 @@ pub fn breusch_godfrey_test(
     }
 
     // Auxiliary design: [X, (1), u_{-1}, ..., u_{-p}], zero-padded lags.
+    // The added constant enters as m = M_X 1 (rescaled by a power of two),
+    // which spans the same columns as [X, 1] — m = 1 - X b — but is
+    // orthogonal to X. A literal column of ones would make the normal
+    // equations as ill-conditioned as x is close to spanning a constant:
+    // with a column that is constant to within 1e-8 relative (m'm / n of
+    // order 1e-16) the solver's pivot test refuses [X, 1] as collinear,
+    // although the regression is well determined and the 1e-10 rule of
+    // `constant_complement` has just said that x spans no constant.
     let mut aux: Vec<Vec<f64>> = x_cols;
     aux.reserve_exact(k_aux - k);
-    if !spans {
-        aux.push(vec![1.0; n]);
+    if let Some(m) = &m1 {
+        aux.push(pow2_normalized(m));
     }
     for j in 1..=p {
         let mut col = vec![0.0; n];

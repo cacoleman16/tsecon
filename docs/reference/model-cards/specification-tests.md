@@ -490,6 +490,17 @@ If `x` spans no constant (no constant column and no implicit one, such as a
 set of complementary dummies), a column of ones is added to the **auxiliary**
 regression only, so the centered `R^2` is defined. The result says so
 (`constant_added`), and then `k_aux = k + nlags + 1` instead of `k + nlags`.
+`x` counts as spanning a constant when regressing a column of ones on it
+leaves a residual below `1e-10` of the constant's norm. The rule is invariant
+to rescaling a column; statsmodels' (numpy `matrix_rank` of `[1, x]`) is not.
+On `x = [z, 1e9 + t]` with no constant column, statsmodels calls the constant
+implicit and adds none (LM 2.1739 at `nlags = 1` on the fixture's case),
+while tsecon adds it (LM 2.2739, the exact value of that convention). The
+added constant enters as the part of it that `x` does not span, `M_X 1`
+(rescaled). That is the same column space as `[x, 1]`, but it stays well
+conditioned, so a design that comes close to a constant without passing the
+threshold, such as a column `1 + 1e-8 * noise`, is tested rather than
+refused as collinear.
 **When `constant_added` is `True`, read the F-form.** statsmodels' LM is `T`
 times the *centered* `R^2` of the auxiliary regression, and the added constant
 explains more of the residuals than their mean (their projection on `M_X 1`),
@@ -541,9 +552,17 @@ statsmodels' macrodata by transformation (consumption growth on income growth,
 inflation on unemployment, investment growth on GDP growth and the change in
 the real rate). Every `nlags` is pinned, including the default. The match
 holds at `1e-10` in `crates/tsecon-spectest/tests/serial_golden.rs` (measured
-worst deviation `2.5e-12`) and again through Python in
+worst deviation `2.6e-12`) and again through Python in
 `bindings/python/tests/test_serial_corr.py`, which also runs statsmodels live
-on six fresh seeded regressions.
+on six fresh seeded regressions. Two more designs come close to spanning a
+constant without spanning one: a column `1 + 1e-8 * noise`, and
+`[z, 1e9 + t]` with no constant column. Their auxiliary designs `[x, 1, lags]`
+have condition numbers of about `2e8` and `6e16`. These are pinned
+(`conditioning_cases`) against the same convention evaluated in exact rational
+arithmetic. Moving every entry of `x` by one rounding unit moves those exact
+values by up to `2.8e-9`, so the tolerance is `1e-8`, and the measured worst
+deviation is `1.0e-9`. statsmodels' F-form is `8.1e-8` off on the first
+design.
 
 Size and power by seeded Monte Carlo
 (`lab/serial_corr/size_power.py`,

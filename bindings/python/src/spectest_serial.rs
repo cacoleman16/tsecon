@@ -91,8 +91,8 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
             PyValueError::new_err(
                 "the Breusch-Godfrey auxiliary design [x, lagged residuals] is singular \
                  (collinear columns): a lagged-residual column is a linear combination of \
-                 the columns of x — pass a smaller nlags, or check x for regressors that \
-                 replicate the residual lags",
+                 the columns of x (and of the constant added when x spans none) — pass a \
+                 smaller nlags, or check x for regressors that replicate the residual lags",
             )
         }
         SpecTestError::SingularDesign { .. } => PyValueError::new_err(
@@ -136,9 +136,15 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
 /// spans no constant (no constant column and no implicit one such as
 /// complementary dummies) a column of ones is added to the auxiliary
 /// regression (`constant_added`), so `k_aux = k + nlags + 1`, otherwise
-/// `k + nlags`. With `constant_added` the LM form also counts what that
-/// constant explains and over-rejects (measured in the model card): read the
-/// F-form (`f_pvalue`) there.
+/// `k + nlags`. `x` counts as spanning a constant when regressing a column
+/// of ones on it leaves a residual below 1e-10 of the constant's norm, a
+/// rule invariant to rescaling a column; statsmodels' `matrix_rank` rule is
+/// not, and can call the constant implicit where this one adds it (a level
+/// such as `1e9 + t` beside other columns; model card). A design that
+/// comes close to a constant without passing that threshold is tested with
+/// the constant added, not refused. With `constant_added` the LM form also
+/// counts what that constant explains and over-rejects (measured in the
+/// model card): read the F-form (`f_pvalue`) there.
 ///
 /// Returned keys: `constant_added`, `df`, `f_df_den`, `f_df_num`, `f_pvalue`,
 /// `fstat`, `nlags`, `nobs`, `pvalue`, `statistic`.
