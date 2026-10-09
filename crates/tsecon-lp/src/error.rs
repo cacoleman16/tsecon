@@ -115,6 +115,20 @@ pub enum LpError {
         /// What went wrong and what to do about it.
         what: &'static str,
     },
+    /// The sup-t simulation of a simultaneous band would exceed the shared
+    /// sup-t budgets (`K * band_n_sim` uniforms within 2^28 values,
+    /// `band_n_sim * K^2` work within 2^36; see
+    /// `tsecon_stats::simultaneous::sup_t_n_sim_fits`). Refused before the
+    /// uniforms are allocated.
+    BandSimulationBudget {
+        /// The requested number of simulations (`band_n_sim`).
+        n_sim: usize,
+        /// The number of cells in the band's family (`K`).
+        n_cells: usize,
+        /// The largest admissible `band_n_sim` at this `K`; `None` when not
+        /// even two simulations fit.
+        max_n_sim: Option<usize>,
+    },
     /// An error propagated from the shared HAC / OLS engine (singular
     /// design, degrees-of-freedom exhaustion, invalid bandwidth, ...).
     Hac(HacError),
@@ -221,6 +235,30 @@ impl fmt::Display for LpError {
                  this mode; for an identified multiplier use lp_multiplier"
             ),
             LpError::Band { what } => write!(f, "simultaneous band: {what}"),
+            LpError::BandSimulationBudget {
+                n_sim,
+                n_cells,
+                max_n_sim,
+            } => {
+                write!(
+                    f,
+                    "simultaneous band: band_n_sim = {n_sim} is too large: the sup-t simulation \
+                     draws band_n_sim Gaussian vectors over the K = {n_cells} cells of the band \
+                     (K * band_n_sim uniforms and band_n_sim * K^2 multiply-adds), which exceeds \
+                     the 2^28-value (2 GiB) memory budget or the 2^36 work budget, checked \
+                     before anything is allocated; "
+                )?;
+                match max_n_sim {
+                    Some(m) => write!(
+                        f,
+                        "the largest band_n_sim that fits is {m} (100000 is the default)"
+                    ),
+                    None => write!(
+                        f,
+                        "not even band_n_sim = 2 fits at K = {n_cells}, so reduce horizons"
+                    ),
+                }
+            }
             LpError::Hac(e) => write!(f, "{e}"),
         }
     }
