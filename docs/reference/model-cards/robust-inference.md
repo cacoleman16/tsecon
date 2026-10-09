@@ -130,10 +130,13 @@ values, `ewc` at its defaults with `t_B` critical values — both through
 `tsecon.ols` (`lab/audit/wave11/ewc_varcov_measurements.py`,
 output committed next to it):
 
-| T | `hac` (Newey-West, `maxlags`) | `ewc` (`B`) | mean width `hac` → `ewc` | MC se |
+| T | `hac` (Newey-West, `maxlags`) | `ewc` (`B`) | mean width `hac` → `ewc` | MC se `hac` / `ewc` |
 |---|---|---|---|---|
-| 100 | **0.855** (4) | **0.915** (9) | 0.520 → 0.656 | 0.002 |
-| 400 | **0.905** (5) | **0.940** (22) | 0.288 → 0.336 | 0.002 |
+| 100 | **0.855** (4) | **0.915** (9) | 0.520 → 0.656 | 0.0035 / 0.0028 |
+| 400 | **0.905** (5) | **0.940** (22) | 0.288 → 0.336 | 0.0029 / 0.0024 |
+
+The MC standard error is the binomial `sqrt(p (1 − p) / 10000)` at each arm's
+measured coverage `p`, not at the nominal 0.95.
 
 EWC cuts the shortfall from 9.5 points to 3.5 at `T = 100` and from 4.5 to 1.0
 at `T = 400`. Neither reaches nominal: with ρ = 0.7 in both the regressor and
@@ -281,7 +284,9 @@ print("size at 5%  EWC + t_B:", np.mean(np.abs(t_ewc) > crit), " Bartlett + norm
 The Bartlett estimate is biased down (the kernel truncates the
 autocovariances it cannot see) and the normal critical value then ignores its
 noise; EWC is nearly unbiased, noisier, and the `t_B` critical value accounts
-for exactly that noise — 1000 replications, one seed.
+for exactly that noise — 1000 replications, one seed, so each printed size
+carries a binomial Monte Carlo standard error of about 0.008 (0.010 for the
+Bartlett rate).
 
 ---
 

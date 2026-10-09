@@ -234,11 +234,18 @@ the shipped files:
 | R | 4.3.3 (prose strings; `lpdid` names `fixest 0.14.2` alongside) | 2 |
 | Python | 3.12.7 (28), 3.11.15 (13) | 40 |
 
-`variance_ratio.json` (0.11.0) opens a fourth generation: its `_meta` records
-NumPy 2.5.3, SciPy 1.18.1, statsmodels 0.15.0, arch 8.0.0 and Python 3.13.16, a
-combination no earlier fixture names (the repository has no pinned `.venv`; the
-generator ran in a fresh reference venv). The counts in this section predate
-0.11.0 and are not yet recounted for it.
+**The 0.11 generation.** The 0.11.0 fixtures open a fourth generation:
+`variance_ratio.json`, `serial_corr.json`, `panel_static.json`,
+`uc_extensions.json`, `ewc.json`, `var_forecast_cov.json` and `ardl.json` record
+NumPy 2.5.3, SciPy 1.18.1, statsmodels 0.15.0 and Python 3.13.16 (with arch
+8.0.0 and linearmodels 7.0 where those are the reference), a combination no
+earlier fixture names (the repository has no pinned `.venv`; the generators ran
+in a fresh reference venv). What is new is the NumPy/SciPy/Python triple, not
+statsmodels 0.15.0: fixtures committed before the wave already record it — `ets`,
+`fmols`, `girf`, `jsz`, `kernel`, `panel_unbalanced`, `structured`, `uc`,
+`var_cf` and `var_diag`, beside NumPy 2.4.6 — so the table's statsmodels row is
+stale too. The counts in this section predate 0.11.0 and are refreshed with the
+release.
 
 `bvar_hierarchical` was regenerated case by case and carries two `_meta` blocks
 from different generations, so it counts once in the right-hand column but
@@ -288,12 +295,6 @@ reloading the golden numbers (`linalg` and `distributions` are internal
 primitives with no public Python function at all). For these 33, read the
 end-to-end claim as stopping at the crate boundary: the golden is enforced in
 Rust, and the binding is covered by its own tests.
-
-**The 0.11 generation.** `ewc.json` and `var_forecast_cov.json` come from a
-fourth venv generation — Python 3.13.16, NumPy 2.5.3, SciPy 1.18.1,
-statsmodels 0.15.0 — and are the first fixtures to record statsmodels 0.15.0.
-The counts above describe the suite before the 0.11 wave and are refreshed with
-the release.
 
 The fixtures themselves store only derived numeric values and transformations of
 two public-domain reference series (the Nile river-flow series and US

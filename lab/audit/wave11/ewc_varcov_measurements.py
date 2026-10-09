@@ -34,12 +34,21 @@ Sections (seeded; the output is committed next to this file):
    (`--ewc-cost`) and writes `out/ewc_cost_measurements.{json,txt}`, so the
    committed timings of sections 1-4 are not re-rolled.
 
+Section 1's Monte Carlo standard error is the binomial sqrt(p (1 - p) / R)
+at each arm's MEASURED coverage p (`mc_se_hac`, `mc_se_ewc`). It used to be
+one `mc_se` at the nominal 0.95, which understated the error of the
+undercovering arms by up to ~40% (audit round 15). `--ewc-coverage` reruns
+section 1 alone — seeded, so the coverages reproduce exactly — and splices
+it into the committed `out/ewc_varcov_measurements.{json,txt}`, leaving the
+timings of sections 2-4 as they were measured.
+
 Run from the repository root with the release extension importable:
 
     python lab/audit/wave11/ewc_varcov_measurements.py [--quick] \
         | tee lab/audit/wave11/out/ewc_varcov_measurements.txt
     python lab/audit/wave11/ewc_varcov_measurements.py --ewc-cost \
         | tee lab/audit/wave11/out/ewc_cost_measurements.txt
+    python lab/audit/wave11/ewc_varcov_measurements.py --ewc-coverage
 """
 from __future__ import annotations
 
@@ -89,18 +98,54 @@ def ewc_vs_hac(T: int, reps: int, rho: float = 0.7, seed: int = 7) -> dict:
         assert (e["pvalues"][1] >= 0.05) == (abs(e["tvalues"][1]) <= tb)
         w_hac += 2 * z * h["bse"][1]
         w_ewc += 2 * tb * e["bse"][1]
+    cover_hac, cover_ewc = hit_hac / reps, hit_ewc / reps
     return {
         "T": T,
         "rho": rho,
         "reps": reps,
         "ewc_b": b_used,
         "nw_maxlags": int(math.floor(4 * (T / 100) ** (2 / 9))),
-        "cover_hac": hit_hac / reps,
-        "cover_ewc": hit_ewc / reps,
+        "cover_hac": cover_hac,
+        "cover_ewc": cover_ewc,
         "width_hac": w_hac / reps,
         "width_ewc": w_ewc / reps,
-        "mc_se": math.sqrt(0.95 * 0.05 / reps),
+        # binomial standard error at each arm's measured coverage
+        "mc_se_hac": math.sqrt(cover_hac * (1.0 - cover_hac) / reps),
+        "mc_se_ewc": math.sqrt(cover_ewc * (1.0 - cover_ewc) / reps),
     }
+
+
+def ewc_lines(rows: list[dict]) -> list[str]:
+    head = "== 1. EWC (t_B) vs Newey-West (normal) slope coverage, nominal 0.95 =="
+    return [head] + [
+        f"T={r['T']} rho={r['rho']} reps={r['reps']} ewc_b={r['ewc_b']} "
+        f"nw_maxlags={r['nw_maxlags']}: HAC {r['cover_hac']:.3f} (width {r['width_hac']:.3f}, "
+        f"MC se {r['mc_se_hac']:.4f})  EWC {r['cover_ewc']:.3f} (width {r['width_ewc']:.3f}, "
+        f"MC se {r['mc_se_ewc']:.4f})"
+        for r in rows
+    ]
+
+
+def splice_ewc_coverage(reps: int) -> None:
+    """Rerun section 1 and replace it in the committed outputs, keeping the
+    measured timings of the other sections."""
+    rows = [ewc_vs_hac(T, reps) for T in (100, 400)]
+    lines = ewc_lines(rows)
+    print("\n".join(lines))
+    out = Path(__file__).resolve().parent / "out"
+    js = out / "ewc_varcov_measurements.json"
+    res = json.loads(js.read_text(encoding="utf-8"))
+    for old, new in zip(res["ewc"], rows):
+        for key in ("cover_hac", "cover_ewc", "width_hac", "width_ewc", "ewc_b"):
+            assert old[key] == new[key], (key, old[key], new[key])  # seeded: identical
+    res["ewc"] = rows
+    js.write_text(json.dumps(res, indent=1) + "\n", encoding="utf-8")
+    txt = out / "ewc_varcov_measurements.txt"
+    old_lines = txt.read_text(encoding="utf-8").splitlines()
+    start = old_lines.index(lines[0])
+    end = old_lines.index("", start)
+    txt.write_text("\n".join(old_lines[:start] + lines + old_lines[end:]) + "\n", encoding="utf-8")
+    print(f"\nspliced section 1 into {js.relative_to(REPO)} and {txt.relative_to(REPO)}")
 
 
 # --------------------------------------------- 2. VAR param-uncertainty arm
@@ -274,7 +319,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--ewc-cost", action="store_true", help="section 5 only")
+    ap.add_argument("--ewc-coverage", action="store_true",
+                    help="rerun section 1 and splice it into the committed outputs")
     args = ap.parse_args()
+    if args.ewc_coverage:
+        splice_ewc_coverage(10000)
+        return
     if args.ewc_cost:
         print("== 5. cost of EWC (default b; budget n * b * (k + 8) <= 2^35) ==")
         cost5 = {"tsecon": tsecon.__version__, "ewc_cost": ewc_cost()}
@@ -288,12 +338,8 @@ def main() -> None:
     var_reps = 300 if args.quick else 6000
     res: dict = {"tsecon": tsecon.__version__}
 
-    print("== 1. EWC (t_B) vs Newey-West (normal) slope coverage, nominal 0.95 ==")
     res["ewc"] = [ewc_vs_hac(T, ewc_reps) for T in (100, 400)]
-    for r in res["ewc"]:
-        print(f"T={r['T']} rho={r['rho']} reps={r['reps']} ewc_b={r['ewc_b']} "
-              f"nw_maxlags={r['nw_maxlags']}: HAC {r['cover_hac']:.3f} (width {r['width_hac']:.3f})  "
-              f"EWC {r['cover_ewc']:.3f} (width {r['width_ewc']:.3f})  MC se {r['mc_se']:.3f}")
+    print("\n".join(ewc_lines(res["ewc"])))
 
     print("\n== 2. var_forecast marginal coverage, plug-in vs param_uncertainty=True (same draws) ==")
     fi = load_forecast_intervals()

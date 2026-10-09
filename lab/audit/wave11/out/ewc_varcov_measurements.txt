@@ -1,6 +1,6 @@
 == 1. EWC (t_B) vs Newey-West (normal) slope coverage, nominal 0.95 ==
-T=100 rho=0.7 reps=10000 ewc_b=9 nw_maxlags=4: HAC 0.855 (width 0.520)  EWC 0.915 (width 0.656)  MC se 0.002
-T=400 rho=0.7 reps=10000 ewc_b=22 nw_maxlags=5: HAC 0.905 (width 0.288)  EWC 0.940 (width 0.336)  MC se 0.002
+T=100 rho=0.7 reps=10000 ewc_b=9 nw_maxlags=4: HAC 0.855 (width 0.520, MC se 0.0035)  EWC 0.915 (width 0.656, MC se 0.0028)
+T=400 rho=0.7 reps=10000 ewc_b=22 nw_maxlags=5: HAC 0.905 (width 0.288, MC se 0.0029)  EWC 0.940 (width 0.336, MC se 0.0024)
 
 == 2. var_forecast marginal coverage, plug-in vs param_uncertainty=True (same draws) ==
 lags=1 T=100 reps=6000: pooled 0.9312 -> 0.9373 (paired diff +0.0062 se 0.0002); worst horizon 0.9251 (h=11) -> 0.9320 (h=11); h1 0.9437 -> 0.9470; h12 0.9312 -> 0.9384; pooled MC se 0.0012
