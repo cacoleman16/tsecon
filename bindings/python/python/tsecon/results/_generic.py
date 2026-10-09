@@ -29,6 +29,24 @@ __all__ = ["Result", "summarize"]
 
 _WIDTH = 68
 
+# Which 1-D vectors each name list labels. A vector is labelled only when its
+# OWN key is paired here with a name list present in the same result and the
+# lengths agree. Matching on length alone put coefficient names on whatever
+# vector happened to share the length (audit round 15): ardl_bounds_test's
+# four bound levels beside a four-parameter UECM, panel_fama_macbeth's
+# per-period flags when T == K, unobserved_components' forecasts. Everything
+# not listed renders unlabelled, which is the honest default.
+_LABELLED_BY: dict[str, frozenset[str]] = {
+    "param_names": frozenset({
+        "params", "se", "bse", "tvalues", "pvalues", "se_mle", "se_robust",
+        "at_boundary", "ols_params", "ols_se",
+    }),
+    "names": frozenset({"params", "se", "bse", "tvalues", "pvalues"}),
+    "long_run_names": frozenset({"long_run", "long_run_se", "long_run_tvalues", "long_run_pvalues"}),
+    "full_param_names": frozenset({"full_params", "full_se", "full_tvalues", "full_pvalues"}),
+    "initial_state_names": frozenset({"initial_states"}),
+}
+
 
 def _fmt_scalar(x: object) -> str:
     if isinstance(x, bool):
@@ -58,6 +76,15 @@ def _as_float_array(x: object):
 
 def _is_strlist(x: object) -> bool:
     return isinstance(x, (list, tuple)) and len(x) > 0 and all(isinstance(e, str) for e in x)
+
+
+def _labels_for(key: str, size: int, result: Mapping) -> list[str] | None:
+    """The name list that labels vector ``key`` of length ``size``, or None."""
+    for names_key, keys in _LABELLED_BY.items():
+        names = result.get(names_key)
+        if key in keys and _is_strlist(names) and len(names) == size:
+            return list(names)
+    return None
 
 
 def _vec_line(key: str, arr, labels=None) -> list[str]:
@@ -108,8 +135,6 @@ class Result(Results):
     def summary(self) -> str:
         title = self._title or "result"
         scalars, strlists, vecs, mats, dicts, others = [], [], [], [], [], []
-        # a strlist sibling (e.g. param_names) can label an equal-length vector
-        name_pool = [v for v in self.values() if _is_strlist(v)]
         for key, val in self.items():
             if isinstance(val, (bool, int, float, np.integer, np.floating, str)) or val is None:
                 scalars.append((key, val))
@@ -136,7 +161,9 @@ class Result(Results):
         for key, val in strlists:
             out += [rule(_WIDTH, "-"), f"{key}  [{', '.join(val)}]"]
         for key, arr in vecs:
-            labels = next((n for n in name_pool if len(n) == arr.size), None)
+            # only a coefficient vector paired with its own name list (see
+            # _LABELLED_BY) is labelled
+            labels = _labels_for(key, arr.size, self)
             out += [rule(_WIDTH, "-"), *_vec_line(key, arr, labels)]
         for key, arr in mats:
             out += [rule(_WIDTH, "-"), *_mat_lines(key, arr)]
