@@ -38,7 +38,11 @@
 //!   impulse-response simulation engine shared by every nonlinear model
 //!   (common random numbers, antithetic pairs, Philox substreams per
 //!   history and draw), with [`LinearVarModel`] / [`var_girf`] as its
-//!   exact linear reduction.
+//!   exact linear reduction;
+//! * [`long_run_bootstrap_bands`] / [`long_run_asymptotic_bands`] —
+//!   confidence bands for Blanchard-Quah long-run SVARs, re-identified inside
+//!   every bootstrap draw (optional Kilian bias correction and sup-t bands) or
+//!   by an analytic delta-method Jacobian of the Blanchard-Quah map.
 //!
 //! The results object deliberately exposes `sigma_u`, `coefs`, `resid`,
 //! `params`, and `zz_inv` as public fields so the structural
@@ -64,6 +68,7 @@ pub mod girf;
 pub mod irf;
 pub mod irf_asymptotic;
 pub mod irf_bootstrap;
+pub mod long_run_bands;
 pub mod proxy_bands;
 pub mod results;
 pub mod select;
@@ -82,6 +87,9 @@ pub use girf::{
 pub use irf::{ma_rep, Irf};
 pub use irf_asymptotic::irf_asymptotic_se;
 pub use irf_bootstrap::{bootstrap_irf_bands, IrfBands};
+pub use long_run_bands::{
+    long_run_asymptotic_bands, long_run_bootstrap_bands, LongRunBandSpec, LongRunBands,
+};
 pub use results::VarResults;
 pub use select::{select_order, LagOrderCandidate, LagOrderSelection};
 pub use spec::{Trend, VarSpec};

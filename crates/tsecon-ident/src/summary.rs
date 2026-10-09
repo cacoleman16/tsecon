@@ -62,10 +62,8 @@ pub(crate) fn normalize(mut irf: Vec<Mat<f64>>, orient: &[f64]) -> Vec<Mat<f64>>
 ///   `(1 + n p) x n`;
 /// * [`IdentError::NonFinite`] on any NaN/infinite entry in `b` or `impact`;
 /// * [`IdentError::Linalg`] if the companion construction fails.
-// Shared prerequisite for the forthcoming structural_fevd / historical_-
-// decomposition / robust_svar_bounds modules, which supply the first live
-// callers; wired ahead of them per the recommended build order.
-#[allow(dead_code)]
+// Live caller: `histdecomp::decompose_with_impact` (the arbitrary-impact
+// historical decomposition).
 pub(crate) fn structural_ma(
     b: MatRef<'_, f64>,
     impact: MatRef<'_, f64>,

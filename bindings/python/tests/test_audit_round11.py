@@ -182,6 +182,21 @@ CALLS = {
         {"horizon": 6},
     ),
     "historical_decomposition": ((_var3(),), {}),
+    # 0.11.0: the arbitrary-impact mode adds `impact` and `shock_covariance`.
+    "historical_decomposition[impact]": (
+        (_var3(),),
+        {"identification": "impact", "impact": np.eye(3) + 0.2 * np.tri(3, k=-1)},
+    ),
+    # 0.11.0: every key, conditional ones included, on both arms.
+    "long_run_svar_bands": ((_var3(),), {"horizon": 6, "n_boot": 30, "impact_signs": [(0, 1)]}),
+    "long_run_svar_bands[draws+sup-t]": (
+        (_var3(),),
+        {"horizon": 6, "n_boot": 30, "return_draws": True, "band": "sup-t", "bias_correct": True},
+    ),
+    "long_run_svar_bands[asymptotic]": (
+        (_var3(),),
+        {"horizon": 6, "method": "asymptotic", "band": "sup-t", "band_n_sim": 2000, "cumulative": True},
+    ),
     "historical_decomposition[sign]": (
         (_var3(),),
         {"identification": "sign", "restrictions": POS, "n_draws": 40, "n_weight_draws": 20, "seed": 0},

@@ -192,6 +192,7 @@ and docstrings live in
 | `sign_restricted_svar` | Sign-restricted Bayesian SVAR identified-set bands |
 | `zero_sign_svar` | Zero + sign restricted Bayesian SVAR (RWZ 2010 / ARW 2018) |
 | `long_run_svar` | Blanchard-Quah long-run SVAR (supply/demand decomposition) |
+| `long_run_svar_bands` | Bootstrap (re-identified per draw, optional Kilian correction) and delta-method bands for the Blanchard-Quah SVAR |
 | `max_share_svar` | Max-share / maximum-FEV shock (main business cycle, news) |
 | `proxy_svar` | Proxy SVAR / external-instrument identification (SVAR-IV) |
 | `proxy_svar_bands` | Proxy-SVAR IRF bands (Jentsch-Lunsford moving-block bootstrap) |

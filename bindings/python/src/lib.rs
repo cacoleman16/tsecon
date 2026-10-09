@@ -26,6 +26,7 @@ mod panel_static;
 mod regime_ci;
 mod spectest_serial;
 mod ssm_uc;
+mod svar_lr;
 mod termstructure_jsz;
 mod var_cf;
 
@@ -4436,12 +4437,25 @@ fn zero_sign_svar<'py>(
 /// recursive frequency-zero restriction (the analog of R `vars::BQ`).
 ///
 /// Returns `impact` (B), `long_run` (LR), `irf`, `cumulative_irf`, `fevd`,
-/// and `long_run_multiplier` (C(1)). Point estimates, no RNG.
+/// and `long_run_multiplier` (C(1)). Point estimates, no RNG. For confidence
+/// bands use `long_run_svar_bands`.
+///
+/// `impact_signs` (None) is a list of `(variable, shock)` pairs that anchor
+/// each listed shock's sign on its impact response, applied AFTER
+/// `normalize`: when `impact[variable][shock] < 0` (strictly; an exact zero
+/// is left alone) that shock's column is negated in `impact`, `long_run` and
+/// `irf`, and `cumulative_irf` is recomputed from the flipped `irf` (`fevd`
+/// is sign-invariant). Unlisted shocks keep the `normalize` rule. Blanchard
+/// and Quah sign the demand disturbance so output rises on impact, which is
+/// `impact_signs=[(0, 1)]` with output growth ordered first. Refused, naming
+/// `impact_signs`: an index outside `0..k`, or the same shock listed twice.
 ///
 /// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
-/// ("c"), `restrictions` (None), `normalize` ("long_run").
+/// ("c"), `restrictions` (None), `normalize` ("long_run"), `impact_signs`
+/// (None).
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", restrictions = None, normalize = "long_run"))]
+#[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", restrictions = None, normalize = "long_run", impact_signs = None))]
+#[allow(clippy::too_many_arguments)]
 fn long_run_svar<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
@@ -4450,6 +4464,7 @@ fn long_run_svar<'py>(
     trend: &str,
     restrictions: Option<Vec<(usize, usize)>>,
     normalize: &str,
+    #[pyo3(from_py_with = svar_lr::impact_signs_arg)] impact_signs: Option<Vec<(usize, usize)>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let normalize_impact = match normalize {
         "long_run" => false,
@@ -4464,7 +4479,12 @@ fn long_run_svar<'py>(
     // tsecon-var here; r.coefs is already the split [A_1..A_p] form).
     let r = var_results(&data, lags, trend)?;
     let coefs: Vec<_> = r.coefs.iter().map(|m| m.as_ref()).collect();
-    let res = tsecon_ident::long_run::long_run_svar(
+    // Anchors are validated before the identification so a bad index is
+    // refused by name even when the fit itself would fail later.
+    if let Some(anchors) = impact_signs.as_deref() {
+        tsecon_ident::validate_impact_signs(anchors, r.neqs).map_err(to_py)?;
+    }
+    let mut res = tsecon_ident::long_run::long_run_svar(
         &coefs,
         r.sigma_u.as_ref(),
         horizon,
@@ -4472,6 +4492,9 @@ fn long_run_svar<'py>(
         normalize_impact,
     )
     .map_err(to_py)?;
+    if let Some(anchors) = impact_signs.as_deref() {
+        tsecon_ident::apply_impact_signs(&mut res, anchors).map_err(to_py)?;
+    }
 
     // irf[h][i][j] and its running-sum cumulative (level response in differences).
     let irf: Vec<Vec<Vec<f64>>> = res.irf.iter().map(mat_to_vec2).collect();
@@ -12167,12 +12190,66 @@ fn smooth_lp<'py>(
     Ok(d)
 }
 
+/// A structural impact matrix argument: an ndarray, a pandas object or a
+/// rectangular nested list (rust-numpy's `PyArrayLike2` runs `numpy.asarray`
+/// on anything that is not already a float64 array).
+type ImpactArg<'py> = numpy::PyArrayLike2<'py, f64, numpy::AllowTypeChange>;
+
+/// `from_py_with` extractor for `impact=`: `None` stays `None`, and any
+/// conversion failure (a ragged nested list, a string, a 1-D or 3-D array) is
+/// refused naming `impact`: NumPy's own ragged-list `ValueError` does not
+/// name it, and PyO3 prefixes only `TypeError`s with the argument name.
+///
+/// The element kind is checked BEFORE the float64 cast, because
+/// `numpy.asarray(x, dtype=float64)` would silently drop a complex matrix's
+/// imaginary part (a mere `ComplexWarning`) and read datetimes or numeric
+/// strings as numbers. Only boolean, integer and real floating matrices pass,
+/// which is what an ndarray-only `impact` accepted before.
+fn impact_matrix_arg<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Option<ImpactArg<'py>>> {
+    if obj.is_none() {
+        return Ok(None);
+    }
+    let named = |e: PyErr| {
+        PyValueError::new_err(format!(
+            "impact must be an (n, n) numeric matrix (an ndarray, a pandas object or a \
+             rectangular nested list such as long_run_svar(...)[\"impact\"]); converting \
+             it failed: {e}"
+        ))
+    };
+    let arr = obj
+        .py()
+        .import("numpy")?
+        .call_method1("asarray", (obj,))
+        .map_err(named)?;
+    let dtype = arr.getattr("dtype")?;
+    let kind: String = dtype.getattr("kind")?.extract()?;
+    if !matches!(kind.as_str(), "b" | "i" | "u" | "f") {
+        return Err(PyValueError::new_err(format!(
+            "impact must be a real numeric (n, n) matrix, got dtype {}: a complex matrix \
+             is not truncated to its real part, and strings, datetimes or None entries \
+             are not read as numbers",
+            dtype.str()?
+        )));
+    }
+    let ndim: usize = arr.getattr("ndim")?.extract()?;
+    if ndim != 2 {
+        return Err(PyValueError::new_err(format!(
+            "impact must be a 2-D (n, n) matrix, got a {ndim}-D array of shape {}",
+            arr.getattr("shape")?.str()?
+        )));
+    }
+    arr.extract::<ImpactArg<'py>>().map(Some).map_err(named)
+}
+
 /// Structural forecast-error variance decomposition for an arbitrary structural
 /// impact matrix `A0` — the gap `var_fevd` (recursive-Cholesky only) leaves.
 ///
 /// `impact` is an optional (n x n) structural impact matrix A0 (columns =
 /// one-standard-deviation structural shocks, A0 A0' = Sigma; from any
-/// identification — sign, zero, proxy, max-share, long-run). If None, A0 is the
+/// identification — sign, zero, proxy, max-share, long-run). An ndarray, a
+/// pandas object or a rectangular nested list is accepted, so another
+/// callable's `impact` (e.g. `long_run_svar(...)["impact"]`) passes straight
+/// in. If None, A0 is the
 /// lower Cholesky of the innovation covariance and the result equals `var_fevd`
 /// exactly. `sigma` ('dfadj'|'mle') selects the default Cholesky's df scaling;
 /// the FEVD shares are INVARIANT to it (numerator and denominator scale
@@ -12190,7 +12267,7 @@ fn structural_fevd<'py>(
     lags: usize,
     horizon: usize,
     trend: &str,
-    impact: Option<numpy::PyReadonlyArray2<'py, f64>>,
+    #[pyo3(from_py_with = impact_matrix_arg)] impact: Option<ImpactArg<'py>>,
     sigma: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_bayes::cholesky_irf;
@@ -12330,6 +12407,27 @@ fn parse_narrative_restrictions(
 /// identification="cholesky" (default): a point decomposition at the OLS VAR with
 /// Q=I; returns `times`, `baseline` [T_eff][n], `hd` [T_eff][n][n] indexed
 /// [time][variable][shock], and the structural `shocks` [T_eff][n].
+/// identification="impact": a point decomposition under an ARBITRARY invertible
+/// structural impact matrix passed as `impact` (n x n; columns are
+/// one-standard-deviation structural shocks, u_t = impact @ eps_t; any
+/// invertible matrix — `impact @ impact.T == Sigma` is NOT required). The
+/// drop-in for any point-identified scheme, e.g.
+/// `historical_decomposition(X, lags=8, identification="impact",
+/// impact=long_run_svar(X, lags=8, impact_signs=[(0, 1)])["impact"])`.
+/// Returns the cholesky keys `times`, `baseline`, `hd`, `shocks` (so it is a
+/// drop-in replacement) plus `impact` [n][n] (the matrix used, echoed) and
+/// `shock_covariance` [n][n] = E'E/T_eff of the structural shocks — a
+/// diagnostic: the identity for chol(Sigma_mle), (T_eff-m)/T_eff times the
+/// identity for a `long_run_svar` impact (built from the df-adjusted Sigma,
+/// m = 1 + n*lags). The reduced form is ALWAYS a VAR with a constant at
+/// `lags`: an impact estimated with trend="n" or other lags is silently
+/// inconsistent with these residuals (the adding-up identity still holds; the
+/// shocks are not the ones that model identified), so estimate it at the same
+/// `lags` with trend="c". `impact` is refused, naming it, when missing, of the
+/// wrong shape, non-finite, or singular by the numpy.linalg.matrix_rank
+/// convention (smallest singular value <= largest * n * machine epsilon).
+/// `horizon` (None = T_eff-1) below T_eff-1 is refused; above it is inert
+/// (only Theta_0..Theta_{T_eff-1} are ever built).
 /// identification="sign": the importance-weighted SET decomposition over sign- (and
 /// optionally narrative-) restricted rotations; returns `times`, `baseline`
 /// (posterior-mean), `probs`, `hd_quantiles` [T_eff][n][n][len(probs)] (weighted
@@ -12345,15 +12443,21 @@ fn parse_narrative_restrictions(
 ///    "sign":"+"|"-"}
 ///
 /// Further arguments, with defaults: `horizon` (None), `n_draws` (500),
-/// `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
+/// `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200),
+/// `impact` (None).
 ///
 /// `restrictions` (None = no restrictions; used under identification="sign")
 /// is the `sign_restricted_svar` list of `(variable, shock, horizon, sign)`
 /// tuples with `sign` in {"+", "-"}.
+///
+/// Inert keywords are refused, not ignored: the sampling controls (`n_draws`,
+/// `max_tries`, `seed`, `lambda1`, `n_weight_draws`, compared to their
+/// defaults) and non-empty `restrictions` / `narrative_restrictions` under
+/// "cholesky" and "impact"; `impact` under any identification but "impact".
 #[pyfunction]
 #[pyo3(signature = (data, restrictions = None, lags = 2, horizon = None, identification = "cholesky",
                     n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2,
-                    narrative_restrictions = None, n_weight_draws = 200))]
+                    narrative_restrictions = None, n_weight_draws = 200, impact = None))]
 #[allow(clippy::too_many_arguments)]
 fn historical_decomposition<'py>(
     py: Python<'py>,
@@ -12368,18 +12472,48 @@ fn historical_decomposition<'py>(
     lambda1: f64,
     narrative_restrictions: Option<Vec<Bound<'py, PyDict>>>,
     n_weight_draws: usize,
+    #[pyo3(from_py_with = impact_matrix_arg)] impact: Option<ImpactArg<'py>>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    // The cholesky path is a single point decomposition: it draws nothing, so
-    // none of these are read. Accepting them silently lets a caller believe a
-    // seeded posterior draw was taken when it was not -- the same class as an
-    // ignored seed anywhere else.
-    if identification == "cholesky" {
-        let inert: [(&str, bool); 5] = [
+    // `impact` is read only by identification="impact", and that mode cannot
+    // run without it.
+    if identification != "impact" && impact.is_some() {
+        return Err(PyValueError::new_err(format!(
+            "impact is only read by identification=\"impact\" (an arbitrary structural \
+             impact matrix); identification={identification:?} identifies its own \
+             shocks and would ignore it. Pass identification=\"impact\" to decompose \
+             under that matrix, or drop impact."
+        )));
+    }
+    if identification == "impact" && impact.is_none() {
+        return Err(PyValueError::new_err(
+            "identification=\"impact\" needs impact: pass the (n, n) structural impact \
+             matrix whose columns are the one-standard-deviation shocks (for example \
+             long_run_svar(data, lags=lags)[\"impact\"])",
+        ));
+    }
+    // The point paths ("cholesky", "impact") draw nothing and impose no
+    // restrictions, so none of these are read. Accepting them silently lets a
+    // caller believe a seeded posterior draw was taken, or a restriction
+    // imposed, when it was not -- the same class as an ignored seed anywhere
+    // else. Empty restriction lists are accepted: a programmatic caller that
+    // always passes [] has asked for nothing.
+    if identification == "cholesky" || identification == "impact" {
+        let inert: [(&str, bool); 7] = [
             ("n_draws", n_draws != 500),
             ("max_tries", max_tries != 400),
             ("seed", seed != 0),
             ("lambda1", (lambda1 - 0.2).abs() > f64::EPSILON),
             ("n_weight_draws", n_weight_draws != 200),
+            (
+                "restrictions",
+                restrictions.as_ref().is_some_and(|r| !r.is_empty()),
+            ),
+            (
+                "narrative_restrictions",
+                narrative_restrictions
+                    .as_ref()
+                    .is_some_and(|r| !r.is_empty()),
+            ),
         ];
         let named: Vec<&str> = inert
             .iter()
@@ -12388,10 +12522,12 @@ fn historical_decomposition<'py>(
             .collect();
         if !named.is_empty() {
             return Err(PyValueError::new_err(format!(
-                "identification=\"cholesky\" ignores {named:?}: it is a single point \
-                 decomposition with no sampling step, so there is nothing for a seed or \
-                 a draw count to control. Use identification=\"sign\" (or \"narrative\") \
-                 if you want a set-identified posterior, or drop these arguments."
+                "identification={identification:?} ignores {named:?}: it is a single point \
+                 decomposition with no sampling step and no restrictions to impose, so \
+                 there is nothing for a seed, a draw count or a restriction to control. \
+                 Use identification=\"sign\" (sign restrictions, optionally with \
+                 narrative_restrictions) if you want a set-identified posterior, or drop \
+                 these arguments."
             )));
         }
     }
@@ -12400,6 +12536,11 @@ fn historical_decomposition<'py>(
     let a = data.as_array();
     let m = Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
     let n = a.ncols();
+    if lags == 0 {
+        return Err(PyValueError::new_err(
+            "lags = 0: the decomposition needs a VAR with at least one lag; pass lags >= 1",
+        ));
+    }
     if a.nrows() <= lags {
         return Err(PyValueError::new_err("need more than `lags` observations"));
     }
@@ -12412,7 +12553,11 @@ fn historical_decomposition<'py>(
             let vr = var_results(&data, lags, "c")?;
             let sigma = vr.sigma_u_mle.clone();
             let eye = Mat::<f64>::identity(n, n);
-            let h = horizon.unwrap_or(t_eff - 1);
+            // The decomposition never reads Theta past T_eff - 1, so a larger
+            // horizon is inert; capping it keeps a mistyped horizon=10**10
+            // from reaching the allocator (the output is unchanged). A
+            // horizon below T_eff - 1 is still refused by `decompose`.
+            let h = horizon.unwrap_or(t_eff - 1).min(t_eff - 1);
             let hd = tsecon_ident::decompose(
                 m.as_ref(),
                 vr.params.as_ref(),
@@ -12440,6 +12585,51 @@ fn historical_decomposition<'py>(
             d.set_item("baseline", ref_to_vec2(hd.baseline()))?;
             d.set_item("hd", hd_tensor)?;
             d.set_item("shocks", ref_to_vec2(hd.shocks()))?;
+        }
+        "impact" => {
+            let vr = var_results(&data, lags, "c")?;
+            let arr = impact
+                .as_ref()
+                .ok_or_else(|| PyValueError::new_err("identification=\"impact\" needs impact"))?
+                .as_array();
+            if arr.nrows() != n || arr.ncols() != n {
+                return Err(PyValueError::new_err(format!(
+                    "impact must be {n}x{n} (one row per variable, one column per \
+                     structural shock), got {}x{}",
+                    arr.nrows(),
+                    arr.ncols()
+                )));
+            }
+            let a0 = Mat::from_fn(n, n, |i, j| arr[(i, j)]);
+            if (0..n).any(|j| (0..n).any(|i| !a0[(i, j)].is_finite())) {
+                return Err(PyValueError::new_err(
+                    "impact contains a NaN or infinite entry; the structural impact matrix \
+                     must be finite",
+                ));
+            }
+            // horizon < T_eff - 1 is refused by the core; anything above it is
+            // inert there (Theta is built only to T_eff - 1).
+            let h = horizon.unwrap_or(t_eff - 1);
+            let hd = tsecon_ident::decompose_with_impact(
+                m.as_ref(),
+                vr.params.as_ref(),
+                a0.as_ref(),
+                lags,
+                h,
+            )
+            .map_err(to_py)?;
+            let ref_to_vec2 =
+                |r: tsecon_var::tsecon_linalg::faer::MatRef<'_, f64>| -> Vec<Vec<f64>> {
+                    (0..r.nrows())
+                        .map(|i| (0..r.ncols()).map(|j| r[(i, j)]).collect())
+                        .collect()
+                };
+            let hd_tensor: Vec<Vec<Vec<f64>>> = hd.hd().iter().map(mat_to_vec2).collect();
+            d.set_item("baseline", ref_to_vec2(hd.baseline()))?;
+            d.set_item("hd", hd_tensor)?;
+            d.set_item("shocks", ref_to_vec2(hd.shocks()))?;
+            d.set_item("impact", mat_to_vec2(&a0))?;
+            d.set_item("shock_covariance", mat_to_vec2(&hd.shock_covariance()))?;
         }
         "sign" => {
             use tsecon_ident::{NarrativeSampler, Sign, SignRestriction, SignRestrictionSet};
@@ -12516,7 +12706,7 @@ fn historical_decomposition<'py>(
         }
         o => {
             return Err(PyValueError::new_err(format!(
-                "unknown identification {o:?}; expected \"cholesky\"|\"sign\""
+                "unknown identification {o:?}; expected \"cholesky\"|\"impact\"|\"sign\""
             )))
         }
     }
@@ -13327,5 +13517,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     diag_vr::register(m)?;
     spectest_serial::register(m)?;
     ewc::register(m)?;
+    svar_lr::register(m)?;
     Ok(())
 }

@@ -40,25 +40,29 @@ decompositions, historical decompositions) - and pins the *qualitative*
 findings above with stated numerical bands. It does not claim parity with the
 1989 tables, and every threshold in the CI guard is a shape claim, not a digit.
 
-Two constructions are the script's own, built from shipped primitives:
+Every object comes from a native callable (since 0.11.0):
 
-* `tsecon.long_run_svar` returns point estimates only, so the confidence
-  bands are a residual (iid) bootstrap of the reduced-form VAR that re-runs
-  `long_run_svar` on every pseudo-sample (`tsecon.var_fit` residuals,
-  `tsecon.bootstrap_indices(scheme="iid")` draws, committed seed). BQ report
-  one-standard-deviation bands from a comparable Monte Carlo; the 68%
-  percentile band below is the analogue.
-* `tsecon.historical_decomposition` takes Cholesky or sign identification,
-  not an arbitrary impact matrix, so the Blanchard-Quah historical
-  decomposition is computed here from the structural shocks and the
-  structural moving-average coefficients, and cross-checked against the
-  library's identification-invariant `baseline` (agreement ~1e-14).
+* the confidence bands are `tsecon.long_run_svar_bands`: a residual (iid)
+  bootstrap of the reduced-form VAR that re-identifies inside every draw
+  (Efron percentiles; optionally Kilian's bias correction), plus the
+  delta-method arm. BQ report one-standard-deviation bands from a comparable
+  Monte Carlo; the 68% percentile band below is the analogue.
+* the Blanchard-Quah historical decomposition is
+  `tsecon.historical_decomposition(identification="impact",
+  impact=long_run_svar(...)["impact"])`.
+
+Both were built in this script from shipped primitives before 0.11.0; those
+constructions are kept as cross-checks (`bootstrap_draws_by_hand`,
+`historical_decomposition_by_hand`) and agree with the native callables to
+~1e-14 - not bit for bit, because the hand-built recursion sums in a different
+order.
 
 Sign convention: tsecon normalizes the long-run matrix to a positive diagonal,
 which labels the demand disturbance by its *cumulative* effect on
 unemployment. Blanchard-Quah sign it as expansionary - output rises on impact,
-unemployment falls - so the script flips that column when needed. A sign
-convention, not a different model; the FEVD shares are invariant to it.
+unemployment falls - which is `impact_signs=[(0, 1)]` (anchor the demand
+column on output's impact response). A sign convention, not a different
+model; the FEVD shares are invariant to it.
 """
 import csv
 import sys
@@ -78,6 +82,7 @@ N_BOOT = 1000
 SEED = 20260911
 PROBS = (0.05, 0.16, 0.84, 0.95)   # 90% and 68% percentile bands
 SHOCKS = ("supply", "demand")
+ANCHOR = [(0, 1)]     # BQ's sign: a demand disturbance raises output on impact
 VARIABLES = ("output", "unemployment")
 
 # NBER business-cycle reference dates (peak quarter, trough quarter) inside
@@ -174,17 +179,14 @@ def transform(d, mean_break=MEAN_BREAK, detrend_unemployment=True):
 
 
 # ----------------------------------------------------------------- estimation
-def level_responses(bq):
-    """The objects BQ plot: output's *cumulated* response (the level), the
-    unemployment rate's plain response - `[h][variable][shock]` - signed so a
-    demand disturbance raises output on impact (BQ's convention)."""
-    irf = np.asarray(bq["irf"])
-    cum = np.asarray(bq["cumulative_irf"])
-    resp = np.empty_like(irf)
-    resp[:, 0, :] = cum[:, 0, :]
-    resp[:, 1, :] = irf[:, 1, :]
-    flip = np.array([1.0, 1.0 if resp[0, 0, 1] >= 0.0 else -1.0])
-    return resp * flip[None, None, :], flip
+def level_objects(irf):
+    """The objects BQ plot from plain structural responses `irf[..., h, i, j]`
+    (any leading axes, e.g. bootstrap draws): output's *cumulated* response
+    (the level) in row 0, the unemployment rate's plain response in row 1."""
+    irf = np.asarray(irf)
+    resp = irf.copy()
+    resp[..., 0, :] = np.cumsum(irf[..., 0, :], axis=-2)
+    return resp
 
 
 def level_fevd(cum):
@@ -197,15 +199,14 @@ def level_fevd(cum):
 
 def fit_bq(data, lags=LAGS, horizon=HORIZON):
     """One `long_run_svar` call plus the derived objects the page reports."""
-    raw = tsecon.long_run_svar(data, lags=lags, horizon=horizon)
-    resp, flip = level_responses(raw)
-    cum = np.asarray(raw["cumulative_irf"]) * flip[None, None, :]
+    raw = tsecon.long_run_svar(data, lags=lags, horizon=horizon, impact_signs=ANCHOR)
+    resp = level_objects(raw["irf"])
+    cum = np.asarray(raw["cumulative_irf"])
     var = tsecon.var_fit(data, lags=lags)
     return {
         "raw": raw,
-        "flip": flip,
-        "impact": np.asarray(raw["impact"]) * flip[None, :],
-        "long_run": np.asarray(raw["long_run"]) * flip[None, :],
+        "impact": np.asarray(raw["impact"]),
+        "long_run": np.asarray(raw["long_run"]),
         "long_run_multiplier": np.asarray(raw["long_run_multiplier"]),
         "responses": resp,                       # [h][variable][shock]
         "fevd_growth": np.asarray(raw["fevd"]),  # output GROWTH and unemployment
@@ -217,71 +218,108 @@ def fit_bq(data, lags=LAGS, horizon=HORIZON):
 
 
 def bootstrap_bands(data, lags=LAGS, horizon=HORIZON, n_boot=N_BOOT, seed=SEED,
-                    probs=PROBS):
-    """Residual (iid) bootstrap bands for the level responses.
+                    probs=PROBS, bias_correct=False):
+    """Native residual-bootstrap bands for the level responses.
 
-    Re-estimates the reduced-form VAR, resamples its centered residuals with
-    `tsecon.bootstrap_indices(scheme="iid", seed=s_b)` - one seed per
-    replication spawned from `numpy.random.SeedSequence(seed)`, so different
-    `seed`s share no draws - rebuilds a pseudo-sample from the first `lags`
-    observations, and re-runs `long_run_svar` with the same sign convention.
-    Percentile bands; the same seed always yields bit-identical output.
-    Returns `quantiles` `[h][variable][shock][prob]` plus the replication array.
+    `tsecon.long_run_svar_bands` refits the reduced-form VAR on every
+    pseudo-sample (iid resampling of the centred residuals from substream b of
+    `SeedSequence(seed).spawn(n_boot)`, recursive from the first `lags`
+    observations) and re-runs the Blanchard-Quah map with the same anchor.
+    The level objects are formed per draw from `irf_draws`, then percentiles;
+    the same seed always yields bit-identical output. Returns `quantiles`
+    `[h][variable][shock][prob]`, the level draws and the native result.
     """
+    nat = tsecon.long_run_svar_bands(
+        data, lags=lags, horizon=horizon, impact_signs=ANCHOR, n_boot=n_boot, seed=seed,
+        bias_correct=bias_correct, return_draws=True,
+    )
+    draws = level_objects(nat["irf_draws"])          # (n_boot, H+1, k, k)
+    q = np.quantile(draws, probs, axis=0)            # (len(probs), H+1, k, k)
+    return {
+        "quantiles": np.moveaxis(q, 0, -1), "probs": tuple(probs),
+        "n_boot": n_boot, "seed": seed, "draws": draws, "native": nat,
+        "point": level_objects(nat["point"]),
+    }
+
+
+def delta_bands(data, lags=LAGS, horizon=HORIZON, probs=PROBS):
+    """Native delta-method bands for the level objects: the asymptotic arm of
+    `long_run_svar_bands`, cumulated for output and plain for unemployment.
+    Symmetric `point +/- z se`; `quantiles` in the bootstrap layout."""
+    out = np.empty((horizon + 1, 2, 2, len(probs)))
+    for cumulative, row in ((True, 0), (False, 1)):
+        for a, (lo, hi) in enumerate(zip(probs[:2], probs[::-1][:2])):
+            r = tsecon.long_run_svar_bands(data, lags=lags, horizon=horizon, impact_signs=ANCHOR,
+                                           method="asymptotic", cumulative=cumulative,
+                                           alpha=2.0 * lo)
+            out[:, row, :, a] = np.asarray(r["lower"])[:, row, :]
+            out[:, row, :, len(probs) - 1 - a] = np.asarray(r["upper"])[:, row, :]
+    return {"quantiles": out, "probs": tuple(probs)}
+
+
+def spawn_indices(seed, n_boot, n):
+    """NumPy replay of the native resampling stream: replication b is
+    Philox(SeedSequence(seed).spawn(n_boot)[b]), each index drawn by bitmask
+    rejection on one raw 64-bit output per attempt (tsecon_rng /
+    tsecon_bootstrap; fixtures/philox.json pins the equivalence)."""
+    mask = (1 << (n - 1).bit_length()) - 1
+    out = []
+    for child in np.random.SeedSequence(seed).spawn(n_boot):
+        bg = np.random.Philox(child)
+        idx = []
+        while len(idx) < n:
+            v = int(bg.random_raw()) & mask
+            if v < n:
+                idx.append(v)
+        out.append(np.array(idx))
+    return out
+
+
+def bootstrap_draws_by_hand(data, lags=LAGS, horizon=HORIZON, n_boot=40, seed=SEED):
+    """The pre-0.11.0 page construction, kept as a cross-check of the native
+    bands: refit with `var_fit`, resample its centred residuals with the
+    replayed native indices, rebuild each pseudo-sample as `z @ params + e`,
+    and re-run `long_run_svar` with the same anchor. Returns plain `irf`
+    draws (n_boot, H+1, k, k), comparable with `irf_draws`."""
     fit = tsecon.var_fit(data, lags=lags)
     params = np.asarray(fit["params"])        # rows: const, lag-1 block, lag-2 block, ...
     resid = np.asarray(fit["resid"])
     resid = resid - resid.mean(axis=0)
     T, k = resid.shape
     draws = np.empty((n_boot, horizon + 1, k, k))
-    rep_seeds = np.random.SeedSequence(seed).generate_state(n_boot)
-    for b in range(n_boot):
-        idx = np.asarray(tsecon.bootstrap_indices(T, scheme="iid", seed=int(rep_seeds[b])))
+    for b, idx in enumerate(spawn_indices(seed, n_boot, T)):
         e = resid[idx]
         y = np.empty((T + lags, k))
         y[:lags] = data[:lags]
         for t in range(lags, T + lags):
             z = np.concatenate([[1.0]] + [y[t - i] for i in range(1, lags + 1)])
             y[t] = z @ params + e[t - lags]
-        draws[b], _ = level_responses(tsecon.long_run_svar(y, lags=lags, horizon=horizon))
-    q = np.quantile(draws, probs, axis=0)      # (len(probs), H+1, k, k)
-    return {
-        "quantiles": np.moveaxis(q, 0, -1), "probs": tuple(probs),
-        "n_boot": n_boot, "seed": seed, "draws": draws,
-    }
+        draws[b] = tsecon.long_run_svar(y, lags=lags, horizon=horizon, impact_signs=ANCHOR)["irf"]
+    return draws
 
 
 def historical_decomposition_bq(data, lags=LAGS, fit=None):
-    """Blanchard-Quah historical decomposition from shipped primitives.
-
-    Structural shocks eps_t = B^-1 u_t from the VAR residuals; the
-    contribution of shock j to variable i at effective time t is
-    sum_{s<=t} Theta_s[i, j] eps_{t-s, j} with Theta_s the structural
-    moving-average coefficients `long_run_svar` returns as `irf`. The
-    `baseline` (deterministic + initial-condition path) is
-    identification-invariant, so it is checked against
-    `tsecon.historical_decomposition(identification="cholesky")`.
-    Contributions and baseline are unaffected by the sign convention.
-    """
+    """The Blanchard-Quah historical decomposition, natively:
+    `historical_decomposition(identification="impact")` with the anchored
+    `long_run_svar` impact matrix (same lags, trend "c"). The `baseline`
+    (deterministic + initial-condition path) is identification-invariant, so it
+    is checked against the Cholesky decomposition's, and the pre-0.11.0
+    hand-built decomposition is kept as a cross-check (`hand_check`)."""
     fit = fit or fit_bq(data, lags=lags, horizon=1)
-    var = fit["var"]
-    resid = np.asarray(var["resid"])
-    T, k = resid.shape
-    long = tsecon.long_run_svar(data, lags=lags, horizon=T - 1)
-    irf = np.asarray(long["irf"]) * fit["flip"][None, None, :]
-    B = np.asarray(long["impact"]) * fit["flip"][None, :]
-    shocks = np.linalg.solve(B, resid.T).T
-    hd = np.zeros((T, k, k))
-    for t in range(T):
-        hd[t] = np.einsum("sij,sj->ij", irf[:t + 1], shocks[t::-1])
-    baseline = data[lags:] - hd.sum(axis=2)
-    lib = tsecon.historical_decomposition(data, lags=lags, identification="cholesky")
-    baseline_check = float(np.abs(baseline - np.asarray(lib["baseline"])).max())
-    total_check = float(np.abs(hd.sum(axis=2) - np.asarray(lib["hd"]).sum(axis=2)).max())
+    lib = tsecon.historical_decomposition(data, lags=lags, identification="impact",
+                                          impact=fit["raw"]["impact"])
+    baseline, hd = np.asarray(lib["baseline"]), np.asarray(lib["hd"])
+    T = hd.shape[0]
+    chol = tsecon.historical_decomposition(data, lags=lags, identification="cholesky")
+    baseline_check = float(np.abs(baseline - np.asarray(chol["baseline"])).max())
+    total_check = float(np.abs(hd.sum(axis=2) - np.asarray(chol["hd"]).sum(axis=2)).max())
+    hand = historical_decomposition_by_hand(data, lags=lags, fit=fit)
     return {
         "times": np.arange(T) + lags,   # rows of `data`
-        "baseline": baseline, "hd": hd, "shocks": shocks,
+        "baseline": baseline, "hd": hd, "shocks": np.asarray(lib["shocks"]),
+        "shock_covariance": np.asarray(lib["shock_covariance"]),
         "baseline_check": baseline_check, "total_check": total_check,
+        "hand_check": float(np.abs(hand["hd"] - hd).max()),
         # the level objects BQ plot: cumulated output contributions, plain
         # unemployment contributions - both net of the baseline
         "output_level": {
@@ -293,6 +331,23 @@ def historical_decomposition_bq(data, lags=LAGS, fit=None):
             "supply": hd[:, 1, 0], "demand": hd[:, 1, 1],
         },
     }
+
+
+def historical_decomposition_by_hand(data, lags=LAGS, fit=None):
+    """The pre-0.11.0 construction from shipped primitives, kept as a
+    cross-check: structural shocks eps_t = B^-1 u_t from the VAR residuals and
+    contributions sum_{s<=t} Theta_s[i, j] eps_{t-s, j}, with Theta_s the
+    structural moving-average coefficients `long_run_svar` returns as `irf`."""
+    fit = fit or fit_bq(data, lags=lags, horizon=1)
+    resid = np.asarray(fit["var"]["resid"])
+    T, k = resid.shape
+    long = tsecon.long_run_svar(data, lags=lags, horizon=T - 1, impact_signs=ANCHOR)
+    irf = np.asarray(long["irf"])
+    shocks = np.linalg.solve(np.asarray(long["impact"]), resid.T).T
+    hd = np.zeros((T, k, k))
+    for t in range(T):
+        hd[t] = np.einsum("sij,sj->ij", irf[:t + 1], shocks[t::-1])
+    return {"hd": hd, "shocks": shocks}
 
 
 def recession_table(tr, hd, episodes=NBER_RECESSIONS):
@@ -319,8 +374,10 @@ def recession_table(tr, hd, episodes=NBER_RECESSIONS):
 def bq_by_hand(data, lags=LAGS):
     """Independent NumPy transcription of the Blanchard-Quah closed form on a
     statsmodels VAR fit: C(1) = (I - sum A_i)^-1, LR = chol(C(1) Sigma C(1)'),
-    B = C(1)^-1 LR (Sigma df-adjusted, statsmodels `sigma_u`). None when
-    statsmodels is not installed."""
+    B = C(1)^-1 LR (Sigma df-adjusted, statsmodels `sigma_u`), with BQ's sign
+    (the demand column negated when output's impact response is negative,
+    which is what `impact_signs=[(0, 1)]` does). None when statsmodels is not
+    installed."""
     try:
         from statsmodels.tsa.api import VAR
     except ImportError:
@@ -329,7 +386,10 @@ def bq_by_hand(data, lags=LAGS):
     k = data.shape[1]
     C1 = np.linalg.inv(np.eye(k) - np.asarray(res.coefs).sum(axis=0))
     LR = np.linalg.cholesky(C1 @ np.asarray(res.sigma_u) @ C1.T)
-    return {"impact": np.linalg.solve(C1, LR), "long_run": LR, "long_run_multiplier": C1}
+    B = np.linalg.solve(C1, LR)
+    if B[0, 1] < 0.0:
+        B[:, 1], LR[:, 1] = -B[:, 1], -LR[:, 1]
+    return {"impact": B, "long_run": LR, "long_run_multiplier": C1}
 
 
 def lag_ladder(data, max_lags=8):
@@ -424,10 +484,10 @@ def make_figures(tr, fit, boot, hd):
                      x=0.005, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
         fig.tight_layout(rect=(0, 0.07, 1, 0.94))
         ts.stamp(fig, f"{stamp_data} · tsecon.long_run_svar, VAR({fit['lags']}), long-run "
-                      "restriction: demand has no permanent effect on output · bands: residual "
-                      f"bootstrap re-running long_run_svar, {boot['n_boot']} replications, "
-                      f"seed {boot['seed']}, percentile · output = cumulated response, "
-                      "unemployment = level response")
+                      "restriction: demand has no permanent effect on output · bands: "
+                      "tsecon.long_run_svar_bands, residual bootstrap re-identified in every "
+                      f"draw, {boot['n_boot']} replications, seed {boot['seed']}, Efron "
+                      "percentile · output = cumulated response, unemployment = level response")
         fig.savefig(img / "repl-bq-irf.png")
         plt.close(fig)
         print("wrote", img / "repl-bq-irf.png")
@@ -491,10 +551,10 @@ def make_figures(tr, fit, boot, hd):
         fig.suptitle("Recessions are demand: the Blanchard-Quah historical decomposition",
                      x=0.005, ha="left", fontsize=11.5, fontweight="semibold", color=ts.INK)
         fig.tight_layout(rect=(0, 0.07, 1, 0.94))
-        ts.stamp(fig, f"{stamp_data} · structural shocks B^-1 u_t and moving-average "
-                      "coefficients from tsecon.long_run_svar; baseline cross-checked against "
-                      f"tsecon.historical_decomposition at {hd['baseline_check']:.0e} · "
-                      "effective sample 1961Q2-2009Q3")
+        ts.stamp(fig, f"{stamp_data} · tsecon.historical_decomposition("
+                      "identification=\"impact\") with the tsecon.long_run_svar impact matrix; "
+                      "baseline identical to the Cholesky decomposition's (identification-"
+                      "invariant) · effective sample 1961Q2-2009Q3")
         fig.savefig(img / "repl-bq-hd.png")
         plt.close(fig)
         print("wrote", img / "repl-bq-hd.png")
@@ -544,8 +604,8 @@ def main(n_boot=N_BOOT, seed=SEED, figures=True):
     print("Impact matrix B (one-standard-deviation disturbances):")
     print(f"  [[{B[0, 0]:+.4f}  {B[0, 1]:+.4f}]")
     print(f"   [{B[1, 0]:+.4f}  {B[1, 1]:+.4f}]]")
-    print(f"  sign convention: demand column x {fit['flip'][1]:+.0f} so a demand disturbance "
-          "raises output on impact (BQ)")
+    print("  sign convention: impact_signs=[(0, 1)] anchors the demand column so a demand "
+          "disturbance raises output on impact (BQ)")
 
     # --- the responses ------------------------------------------------------
     rule(78, "=")
@@ -577,7 +637,12 @@ def main(n_boot=N_BOOT, seed=SEED, figures=True):
     # --- bootstrap bands -----------------------------------------------------
     boot = bootstrap_bands(X, n_boot=n_boot, seed=seed)
     q = boot["quantiles"]
-    print(f"\nResidual-bootstrap percentile bands ({n_boot} replications, seed {seed}):")
+    nat = boot["native"]
+    print(f"\nNative residual-bootstrap percentile bands, tsecon.long_run_svar_bands "
+          f"({n_boot} replications, seed {seed}):")
+    print(f"  re-identified in every draw; anchor mismatches {nat['sign_anchor_mismatches']}, "
+          f"explosive raw refits {nat['n_unstable_draws']}, full-sample min |root| "
+          f"{nat['min_root']:.3f}")
     print("  response                  |  h  |   point |   68% band        |   90% band")
     rule()
     for i, vn in enumerate(VARIABLES):
@@ -586,6 +651,31 @@ def main(n_boot=N_BOOT, seed=SEED, figures=True):
                 print(f"  {vn:<12} <- {sn:<8} | {h:>3} | {r[h, i, j]:+.3f}  | "
                       f"[{q[h, i, j, 1]:+.3f}, {q[h, i, j, 2]:+.3f}] | "
                       f"[{q[h, i, j, 0]:+.3f}, {q[h, i, j, 3]:+.3f}]")
+
+    kil = bootstrap_bands(X, n_boot=n_boot, seed=seed, bias_correct=True)
+    dlt = delta_bands(X)
+    qk, qd = kil["quantiles"], dlt["quantiles"]
+    print(f"\nThe three arms side by side, 90% bands ({n_boot} replications, seed {seed}; "
+          "Kilian = bias_correct=True, whose point moves to the corrected coefficients):")
+    print("  response                  |  h  | Efron             | Efron+Kilian (point)       "
+          "| delta")
+    rule()
+    for i, vn in enumerate(VARIABLES):
+        for j, sn in enumerate(SHOCKS):
+            for h in (0, 4, 12, 40):
+                print(f"  {vn:<12} <- {sn:<8} | {h:>3} | [{q[h, i, j, 0]:+.3f}, {q[h, i, j, 3]:+.3f}] | "
+                      f"[{qk[h, i, j, 0]:+.3f}, {qk[h, i, j, 3]:+.3f}] ({kil['point'][h, i, j]:+.3f}) | "
+                      f"[{qd[h, i, j, 0]:+.3f}, {qd[h, i, j, 3]:+.3f}]")
+    lr_e, lr_k = nat, kil["native"]
+    print(f"  long-run matrix [1][0] 90% band: Efron [{lr_e['long_run_lower'][1][0]:+.3f}, "
+          f"{lr_e['long_run_upper'][1][0]:+.3f}], Kilian [{lr_k['long_run_lower'][1][0]:+.3f}, "
+          f"{lr_k['long_run_upper'][1][0]:+.3f}]")
+
+    hand = bootstrap_draws_by_hand(X, n_boot=40, seed=seed)
+    native40 = tsecon.long_run_svar_bands(X, lags=LAGS, horizon=HORIZON, impact_signs=ANCHOR,
+                                          n_boot=40, seed=seed, return_draws=True)["irf_draws"]
+    print(f"  cross-check: the pre-0.11.0 hand-built bootstrap on the replayed native stream "
+          f"(40 draws) agrees with irf_draws to {np.abs(hand - native40).max():.1e}")
 
     # --- variance decompositions --------------------------------------------
     rule(78, "=")
@@ -602,10 +692,15 @@ def main(n_boot=N_BOOT, seed=SEED, figures=True):
     # --- historical decomposition -------------------------------------------
     rule(78, "=")
     hd = historical_decomposition_bq(X, fit=fit)
-    print("Historical decomposition (script-built from B^-1 u_t and the structural MA):")
-    print(f"  baseline vs tsecon.historical_decomposition (identification-invariant): "
+    print("Historical decomposition (tsecon.historical_decomposition(identification=\"impact\")"
+          " with the anchored long_run_svar impact):")
+    print(f"  baseline vs the Cholesky decomposition's (identification-invariant): "
           f"max |diff| = {hd['baseline_check']:.1e}; total shock contribution: "
-          f"{hd['total_check']:.1e}")
+          f"{hd['total_check']:.1e}; vs the pre-0.11.0 hand-built decomposition: "
+          f"{hd['hand_check']:.1e}")
+    sc = hd["shock_covariance"]
+    print(f"  shock_covariance diag = [{sc[0, 0]:.6f}, {sc[1, 1]:.6f}] = (T-m)/T, off-diagonal "
+          f"{sc[0, 1]:+.1e} (the df-adjusted Sigma behind long_run_svar's impact)")
     u = hd["unemployment"]
     print(f"  corr(actual detrended unemployment, demand component) = "
           f"{np.corrcoef(u['actual'], u['demand'])[0, 1]:.3f}; with the supply component "

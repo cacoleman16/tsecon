@@ -72,6 +72,18 @@ pub enum VarError {
         /// Name of the offending matrix.
         what: &'static str,
     },
+    /// One bootstrap replication failed in a way the full sample did not,
+    /// and the band cannot be formed without it. Carries the 0-based index
+    /// of the FIRST failing replication (in replication order, so the same
+    /// seed always names the same one) and what went wrong. Failed draws are
+    /// never silently dropped: dropping exactly the draws that hit a boundary
+    /// would narrow the band.
+    Replication {
+        /// 0-based index of the first failing replication.
+        index: usize,
+        /// What failed in that replication.
+        what: &'static str,
+    },
     /// The sample is too short for the requested specification: OLS
     /// needs strictly more usable observations than regressors per
     /// equation.
@@ -132,6 +144,14 @@ impl fmt::Display for VarError {
                 f,
                 "non-finite value (NaN or inf) in {what}: check the inputs for missing \
                  values or magnitudes large enough to overflow"
+            ),
+            Self::Replication { index, what } => write!(
+                f,
+                "bootstrap replication {index} (0-based, the first to fail; the same seed \
+                 always fails at the same replication) could not be completed: {what}. \
+                 Failed replications are not dropped, because dropping exactly the draws \
+                 that hit a boundary would narrow the band; change seed or n_boot to see \
+                 whether it is isolated, or report the bands with method=\"asymptotic\""
             ),
             Self::NotPositiveDefinite { what } => write!(
                 f,
