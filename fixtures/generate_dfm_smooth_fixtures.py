@@ -38,6 +38,40 @@ statsmodels' filter is the multivariate (or its own univariate) Kalman filter
 and tsecon's is the univariate sequential filter; for diagonal H they agree to
 roundoff, not bitwise (the agreement achieved is recorded by the Rust test).
 
+SINGULAR OBSERVATION DENSITIES (`singular_cases`)
+-------------------------------------------------
+`idiosyncratic >= 0` admits exact zeros. When more than r series with zero
+idiosyncratic variance are observed in the same period, one of them pins the
+factor direction the others see and the others are deterministic functions of
+it: the joint density of y_t is singular. The value pinned is the Gaussian
+density on its support — the log-likelihood with the redundant cell set to NaN
+(the element is skipped like a missing value; the Kalman filter's own rule for
+a numerically singular element). Which series pins depends on the column
+order, so two orders differ by the Jacobian n ln|lam_j / lam_i|. Each case
+stores the full panel (what the smoother is called on), the redundant column
+of each order, and two independent references for the reduced panel:
+
+  * statsmodels' generic `KalmanSmoother` (initialize_stationary) on the panel
+    with the redundant column set to NaN: llf, smoothed_state and
+    smoothed_state_cov; with a canary that `DynamicFactor` (Q normalized to I,
+    loadings scaled by sqrt(Q)) gives the same llf;
+  * an exact reference: the same reduced-panel Kalman filter run in exact
+    rational arithmetic (`fractions.Fraction`, every float64 input converted
+    exactly, the stationary covariance from the exact Lyapunov solve) where it
+    stays small (the two-period case), and in 80-digit `decimal` arithmetic
+    over the T = 100 panel, with ln F evaluated at that precision.
+
+statsmodels itself cannot serve as the oracle on the FULL panel (its filter
+takes the dust update too: 1366.07 against -293.15 on the T = 100 panel), which
+is why the full-panel values are not stored.
+
+  * `zero_idio_two_periods` — the audit's repro: three series, the second and
+    third with zero idiosyncratic variance, one observed period (the second
+    all NaN), r = 1, p = 2, Q = 0.133.
+  * `zero_idio_pair_t100` — T = 100, one VAR(2) factor, four series, series 1
+    and 2 with zero idiosyncratic variance and observed every period, under
+    the column orders listed in `orders`.
+
 Data: seeded NumPy `default_rng` draws through the DGPs below (no dataset).
 NaN (missing) cells are written as JSON null.
 
@@ -50,8 +84,11 @@ Run:  .venv/bin/python fixtures/generate_dfm_smooth_fixtures.py
 
 from __future__ import annotations
 
+import decimal
+import itertools
 import json
 import platform
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
@@ -235,11 +272,218 @@ def case_standardized(rng):
     }
 
 
+# ---------------------------------------------------------------------------
+# Singular observation densities: an exact reduced-panel Kalman filter.
+# ---------------------------------------------------------------------------
+
+
+def exact_stationary_cov(t_mat, rqr, num):
+    """Solve P = T P T' + RQR' exactly in the number type `num` (Fraction or
+    Decimal), by Gauss-Jordan elimination on the vec'd m^2 x m^2 system."""
+    m = len(t_mat)
+    t_q = [[num(v) for v in row] for row in t_mat]
+    k = m * m
+    # vec(P) row-major: index i*m + j. (I - T (x) T) vec(P) = vec(RQR').
+    a = [[num(0)] * k for _ in range(k)]
+    b = [num(rqr[i][j]) for i in range(m) for j in range(m)]
+    for i in range(m):
+        for j in range(m):
+            r = i * m + j
+            a[r][r] += num(1)
+            for kk in range(m):
+                for ll in range(m):
+                    a[r][kk * m + ll] -= t_q[i][kk] * t_q[j][ll]
+    for col in range(k):
+        piv = max(range(col, k), key=lambda r: abs(a[r][col]))
+        a[col], a[piv] = a[piv], a[col]
+        b[col], b[piv] = b[piv], b[col]
+        for r in range(k):
+            if r != col and a[r][col] != 0:
+                f = a[r][col] / a[col][col]
+                for c in range(col, k):
+                    a[r][c] -= f * a[col][c]
+                b[r] -= f * b[col]
+    vec = [b[r] / a[r][r] for r in range(k)]
+    return [[vec[i * m + j] for j in range(m)] for i in range(m)]
+
+
+def exact_loglik(y, lam, ar, q, idio, num):
+    """Univariate Kalman filter of the DFM in the number type `num` (Fraction:
+    exact; Decimal: the context precision), NaN cells skipped. The rational
+    part sum v^2 / F is accumulated in `num`; ln 2pi and ln F are evaluated in
+    80-digit decimal arithmetic. Every element left in `y` must have F > 0
+    (the redundant cells are NaN). Returns a Decimal."""
+    n, r = lam.shape
+    m = ar.shape[1]
+    z_mat, t_mat, r_mat, q_mat, _ = system(lam, ar, q, idio)
+    rqr = r_mat @ q_mat @ r_mat.T  # exact: R is a 0/1 selector
+    t_q = [[num(v) for v in row] for row in t_mat]
+    z_q = [[num(v) for v in row] for row in z_mat]
+    h_q = [num(v) for v in idio]
+    p = exact_stationary_cov(t_mat, rqr.tolist(), num)
+    a = [num(0)] * m
+    quad = num(0)
+    log_f = []
+    for t in range(y.shape[0]):
+        for i in range(n):
+            if np.isnan(y[t, i]):
+                continue
+            zi = z_q[i]
+            v = num(y[t, i]) - sum(zi[j] * a[j] for j in range(m))
+            mvec = [sum(p[j][k] * zi[k] for k in range(m)) for j in range(m)]
+            f = sum(zi[j] * mvec[j] for j in range(m)) + h_q[i]
+            assert f > 0, (t, i, f)
+            quad += v * v / f
+            log_f.append(f)
+            a = [a[j] + mvec[j] * v / f for j in range(m)]
+            p = [[p[j][k] - mvec[j] * mvec[k] / f for k in range(m)] for j in range(m)]
+        a = [sum(t_q[j][k] * a[k] for k in range(m)) for j in range(m)]
+        tp = [[sum(t_q[j][k] * p[k][l] for k in range(m)) for l in range(m)] for j in range(m)]
+        p = [
+            [sum(tp[j][k] * t_q[l][k] for k in range(m)) + num(rqr[j][l]) for l in range(m)]
+            for j in range(m)
+        ]
+    with decimal.localcontext() as ctx:
+        ctx.prec = 80
+        two_pi = 2 * decimal.Decimal(PI_80)
+        total = len(log_f) * two_pi.ln() + sum(to_dec(f).ln() for f in log_f) + to_dec(quad)
+        return -total / 2
+
+
+PI_80 = (
+    "3.14159265358979323846264338327950288419716939937510582097494459230781640628620899"
+)
+
+
+def to_dec(x):
+    """A Fraction or Decimal as a Decimal at the current context precision."""
+    if isinstance(x, Fraction):
+        return decimal.Decimal(x.numerator) / decimal.Decimal(x.denominator)
+    return +x
+
+
+def singular_reference(y_full, redundant, lam, ar, q, idio):
+    """statsmodels on the panel with column `redundant` set to NaN, plus the
+    DynamicFactor canary."""
+    yr = y_full.copy()
+    yr[:, redundant] = np.nan
+    llf, state, cov = generic_smooth(yr, lam, ar, q, idio)
+    r = lam.shape[1]
+    assert r == 1, "the DynamicFactor canary below is written for one factor"
+    sq = np.sqrt(q[0, 0])
+    dfm = DynamicFactor(yr, k_factors=1, factor_order=ar.shape[1], error_order=0)
+    params = np.r_[(lam * sq).ravel(), idio, ar.ravel()]
+    llf_dfm = float(dfm.smooth(params, transformed=True).llf)
+    assert abs(llf_dfm - llf) < 1e-9 * max(1.0, abs(llf)), (llf_dfm, llf)
+    return yr, llf, state, cov, abs(llf_dfm - llf)
+
+
+def case_zero_idio_two_periods():
+    z = np.array([
+        [0.03666137558761732, 0.5527422219007221, -0.04042486581736605],
+        [np.nan, np.nan, np.nan],
+    ])
+    lam = np.array([[-0.43272912833939525], [0.7196862105052038], [-0.05263433357820673]])
+    ar = np.array([[-0.8642299294783886, -0.8484056219079968]])
+    q = np.array([[0.13302995088165312]])
+    idio = np.array([0.8355556816599208, 0.0, 0.0])
+    redundant = 2  # series 1 is filtered first and pins the factor
+    yr, llf, state, cov, canary = singular_reference(z, redundant, lam, ar, q, idio)
+    exact_fraction = exact_loglik(yr, lam, ar, q, idio, Fraction)
+    with decimal.localcontext() as ctx:
+        ctx.prec = 80
+        exact_decimal = exact_loglik(yr, lam, ar, q, idio, decimal.Decimal)
+        gap = abs(exact_fraction - exact_decimal)
+    assert gap < decimal.Decimal("1e-60"), gap
+    return {
+        "name": "zero_idio_two_periods",
+        "source": "statsmodels KalmanSmoother (generic) on the panel with the redundant "
+                  "column NaN; exact reference: the same Kalman filter in rational "
+                  "arithmetic (ln F at 80 digits)",
+        "n_factors": 1,
+        "factor_order": 2,
+        "panel": nan_to_none(z),
+        "loadings": lam.tolist(),
+        "factor_ar": ar.tolist(),
+        "factor_cov": q.tolist(),
+        "idiosyncratic": idio.tolist(),
+        "orders": [
+            {
+                "order": [0, 1, 2],
+                "redundant": redundant,
+                "loglik": llf,
+                "loglik_exact": float(exact_fraction),
+                "loglik_exact_str": str(exact_fraction),
+                "smoothed_state": state.tolist(),
+                "smoothed_state_cov": cov.tolist(),
+                "dynamic_factor_llf_abs_diff": canary,
+            }
+        ],
+    }
+
+
+def case_zero_idio_pair_t100():
+    # The audit's design (refute_DF16-1/perm.py), regenerated from its seed.
+    rng = np.random.default_rng(0)
+    t_len = 100
+    fac = np.zeros(t_len)
+    a1, a2 = 0.5, 0.2
+    for t in range(2, t_len):
+        fac[t] = a1 * fac[t - 1] + a2 * fac[t - 2] + rng.standard_normal()
+    lam = np.array([1.0, 0.7, -1.3, 0.4])
+    idio = np.array([0.5, 0.0, 0.0, 0.3])
+    y = np.outer(fac, lam) + rng.standard_normal((t_len, 4)) * np.sqrt(idio)
+    ar = np.array([[a1, a2]])
+    q = np.eye(1)
+    orders = []
+    # The four orders the unfixed filter got wrong, two it got right, and the
+    # two in which the other zero-variance series pins the factor.
+    for order in ([0, 1, 2, 3], [0, 1, 3, 2], [0, 3, 1, 2], [0, 3, 2, 1],
+                  [1, 0, 2, 3], [2, 0, 1, 3], [3, 2, 1, 0], [1, 2, 3, 0]):
+        assert list(order) in [list(o) for o in itertools.permutations(range(4))]
+        yo = y[:, order]
+        lam_o = lam[order][:, None]
+        idio_o = idio[order]
+        pos = [order.index(1), order.index(2)]
+        redundant = max(pos)  # the zero-variance series filtered second
+        yr, llf, state, cov, canary = singular_reference(yo, redundant, lam_o, ar, q, idio_o)
+        with decimal.localcontext() as ctx:
+            ctx.prec = 80
+            exact = exact_loglik(yr, lam_o, ar, q, idio_o, decimal.Decimal)
+        orders.append({
+            "order": list(order),
+            "redundant": redundant,
+            "loglik": llf,
+            "loglik_exact": float(exact),
+            "loglik_exact_str": str(exact),
+            "smoothed_state": state.tolist(),
+            "smoothed_state_cov": cov.tolist(),
+            "dynamic_factor_llf_abs_diff": canary,
+        })
+    return {
+        "name": "zero_idio_pair_t100",
+        "source": "statsmodels KalmanSmoother (generic) on the column-permuted panel with "
+                  "the redundant column NaN; exact reference: the same Kalman filter in "
+                  "80-digit decimal arithmetic",
+        "n_factors": 1,
+        "factor_order": 2,
+        "panel": y.tolist(),
+        "loadings": lam[:, None].tolist(),
+        "factor_ar": ar.tolist(),
+        "factor_cov": q.tolist(),
+        "idiosyncratic": idio.tolist(),
+        "jacobian_note": "pinned by series 1 minus pinned by series 2 = "
+                         "n ln|lam_2 / lam_1| = 100 ln(1.3 / 0.7)",
+        "orders": orders,
+    }
+
+
 def main() -> None:
     rng = np.random.default_rng(SEED)
     a, y, lam, ar, idio = case_dynamic_factor(rng)
     b = case_generic_q(y, lam, ar, idio)
     c = case_standardized(rng)
+    singular = [case_zero_idio_two_periods(), case_zero_idio_pair_t100()]
     fixture = {
         "_meta": {
             "python": platform.python_version(),
@@ -254,10 +498,14 @@ def main() -> None:
                 "given parameters, stationary initialization. smoothed_state is T x m and "
                 "smoothed_state_cov T x m x m (statsmodels' arrays moved to time-first). "
                 "NaN cells of the panels are null. loglik is that of the panel the "
-                "smoother saw (the standardized z for the standardized case)."
+                "smoother saw (the standardized z for the standardized case). "
+                "singular_cases: zero idiosyncratic variances observed together; the "
+                "references are the density on the support (redundant column NaN), from "
+                "statsmodels and from an exact (rational / 80-digit decimal) filter."
             ),
         },
         "cases": [a, b, c],
+        "singular_cases": singular,
     }
     OUT.write_text(json.dumps(fixture, indent=1) + "\n", encoding="utf-8")
     print(f"wrote {OUT} ({OUT.stat().st_size} bytes)")
@@ -265,6 +513,13 @@ def main() -> None:
         print(f"  {case['name']}: loglik = {case['loglik']!r}")
     print("  generic vs DynamicFactor canary:", a["generic_vs_dynamic_factor"])
     print("  standardized nowcast:", c["nowcast"])
+    for case in singular:
+        for o in case["orders"]:
+            print(
+                f"  {case['name']} order {o['order']} (redundant {o['redundant']}): "
+                f"loglik {o['loglik']!r}, exact {o['loglik_exact_str'][:24]}, "
+                f"|sm - exact| = {abs(o['loglik'] - o['loglik_exact']):.1e}"
+            )
 
 
 if __name__ == "__main__":

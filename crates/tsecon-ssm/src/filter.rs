@@ -61,7 +61,8 @@
 //! `F` tests are asked *relative to the scale of the quantity being
 //! tested*; the `P_inf` washout test is absolute, and deliberately so —
 //! see [`TOLERANCE_RANK`], which sets out why the three are not treated
-//! alike.
+//! alike. Each `F` test also has a roundoff companion, read against a
+//! reference the updates cannot collapse ([`TOLERANCE_CANCEL`]).
 //!
 //! An absolute floor on `F_*` is a units bug: `F_*` is a variance in the
 //! units of `y` squared, so a floor of `1e-10` silently declares every
@@ -106,7 +107,8 @@ use crate::model::LinearGaussianSSM;
 ///   skipped exactly like a missing value. The reference is the magnitude
 ///   `Z_i P_* Z_i' + H_ii` would have had with no cancellation, so the test
 ///   reads "did at least `1e-10` of the available magnitude survive the
-///   sum?".
+///   sum?" — and while it passes the second, roundoff test of
+///   [`TOLERANCE_CANCEL`], read against the period's predicted `P_*`.
 /// * **diffuse element.** An element takes the diffuse update while
 ///   `F_inf > TOLERANCE_RANK * |Z_i|' |P_inf| |Z_i|`, the same test applied
 ///   to the diffuse part — and while it passes the second, roundoff test
@@ -141,8 +143,9 @@ use crate::model::LinearGaussianSSM;
 /// where the absolute floor is too permissive about cancellation.
 pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 
-/// Floor for the diffuse-element test: the fraction of the diffuse
-/// variance `Z_i` could see that `F_inf` must keep (see below).
+/// Floor for the two roundoff tests: the fraction of the variance `Z_i`
+/// could see before the updates that `F_inf` — and `F_*` — must keep (see
+/// below; the `F_*` use is the last section).
 ///
 /// The relative `F_inf` test above asks "did at least `TOLERANCE_RANK` of
 /// the available magnitude survive the sum `Z_i P_inf Z_i'`?", with the
@@ -223,6 +226,40 @@ pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 /// (`4.1e-14`) taken, `0.010` below the exact log-likelihood; at `1e-8`
 /// every sighting (at most `7.7e-15`) is refused and the state stays
 /// diffuse, as it does at `lambda = 0`.
+///
+/// ## The same dust on `F_*`
+///
+/// The informative-element test has the same blind spot within a period.
+/// When an element with `H_ii = 0` pins the direction a later element of
+/// the same `y_t` sees — two series with zero idiosyncratic variance
+/// loading on one factor, observed together — `P_*` along that direction
+/// is roundoff of the pinning update, so `F_*` and its cancellation-free
+/// reference `|Z_i|' |P_*| |Z_i| + H_ii` are both dust and their ratio is
+/// `O(1)`. Taking the update then adds `-(ln 2*pi + ln F_* + v^2 / F_*)/2`
+/// with `F_*` of order `1e-19`, about `+20` log-likelihood points whose
+/// sign and size follow the roundoff, not the data (a redundant element's
+/// innovation is zero in exact arithmetic: the joint density of `y_t` is
+/// singular, and the value the filter reports is the density on its
+/// support, with the redundant element skipped like a missing value).
+///
+/// The reference that does not collapse is the period's *predicted* `P_*`
+/// (the one stored in `predicted_state_cov`, before any of the period's
+/// sequential updates): in exact arithmetic the updates only remove
+/// variance, so `0 <= F_* <= |Z_i|' |P_{t|t-1}| |Z_i| + H_ii`, and the
+/// covariance downdates leave roundoff of order `eps` of that magnitude.
+/// A standard update is therefore taken only when, in addition to the
+/// relative test of [`TOLERANCE_RANK`], `F_* > TOLERANCE_CANCEL *
+/// (|Z_i|' |P_{t|t-1}| |Z_i| + H_ii)`. For the first element updated in a
+/// period the two references coincide and this test is implied by the
+/// first, so a single observed series per period — every univariate model
+/// — is untouched; it can only ever make the update harder to enter. The
+/// element it refuses is skipped exactly like a missing value, which is
+/// the density on the support: setting the redundant cell to NaN gives the
+/// same log-likelihood and smoothed states (`tests/scale.rs`,
+/// `redundant_zero_variance_element_is_skipped_like_a_missing_value`; the
+/// `dfm_smooth` goldens of `tsecon-nowcast`). An idiosyncratic variance
+/// below `1e-14` of the variance the element could see is, at this
+/// precision, a zero one.
 pub(crate) const TOLERANCE_CANCEL: f64 = 1e-14;
 
 /// `ln(2 pi)`, the per-element likelihood constant.
@@ -460,6 +497,16 @@ pub fn filter_univariate(
         out.predicted_state.push(a.clone());
         out.predicted_state_cov.push(p_star.clone());
         out.predicted_diffuse_state_cov.push(p_inf.clone());
+        // The predicted P_* just stored: the reference the informative-
+        // element test reads once an update has moved `p_star` off it.
+        let p_star_pre = out.predicted_state_cov[t].as_ref();
+        // Its standard deviations, for the O(m) Cauchy-Schwarz bound
+        // `|Z_i|' |P| |Z_i| <= (sum_j |Z_ij| sd_j)^2` that settles the test
+        // without the O(m^2) form whenever F_* is not dust.
+        let p_star_pre_sd: Vec<f64> = (0..p_star_pre.nrows())
+            .map(|j| p_star_pre[(j, j)].max(0.0).sqrt())
+            .collect();
+        let mut updated = false;
 
         // Sequential scalar updates: (a, p_star, p_inf) morph in place
         // from predicted to filtered moments.
@@ -482,6 +529,27 @@ pub fn filter_univariate(
             // a real (if tiny) variance. Direction-aware — a state Z_i does
             // not load on contributes nothing, however large its variance.
             let f_star_scale = abs_quad_form(&zi, p_star.as_ref()) + h[(i, i)];
+            // ... and the same magnitude read off the period's PREDICTED
+            // P_* (before any of this period's sequential updates), which
+            // the updates cannot collapse: once an earlier element of y_t
+            // has pinned the direction Z_i sees, both F_* and the scale
+            // above are roundoff of that update (see TOLERANCE_CANCEL).
+            // Until the period's first update the two coincide and the
+            // first test implies this one; after it, the O(m) bound
+            // settles every F_* that is not dust and the exact form is
+            // read only for the rest.
+            let above_dust = |f: f64| {
+                if !updated {
+                    return true;
+                }
+                let bound: f64 = zi
+                    .iter()
+                    .zip(&p_star_pre_sd)
+                    .map(|(zj, sd)| zj.abs() * sd)
+                    .sum();
+                f > TOLERANCE_CANCEL * (bound * bound + h[(i, i)])
+                    || f > TOLERANCE_CANCEL * (abs_quad_form(&zi, p_star_pre) + h[(i, i)])
+            };
             let (f_inf, m_inf, f_inf_scale, u_root, f_root, f_inf_unres) = if diffuse {
                 let mi = mat_vec(p_inf.as_ref(), &zi);
                 let scale = abs_quad_form(&zi, p_inf.as_ref());
@@ -503,6 +571,9 @@ pub fn filter_univariate(
             // The same holds for `f_root`, a sum of squares, against
             // `f_inf_unres`, so the root downdate below divides by a
             // positive `f_root` too.
+            // The predicted-P_* reference dominates `F_*` the same way in
+            // exact arithmetic (the period's updates only remove variance
+            // along `Z_i`).
             debug_assert!(f_star_scale >= 0.0 && f_inf_scale >= 0.0 && f_inf_unres >= 0.0);
 
             if f_inf > TOLERANCE_RANK * f_inf_scale && f_root > TOLERANCE_CANCEL * f_inf_unres {
@@ -530,6 +601,7 @@ pub fn filter_univariate(
                 outer_sub(&mut p_inf_root, &bu, &u_k);
                 out.loglik -= 0.5 * (ln2pi + f_inf.ln());
                 n_informative += 1;
+                updated = true;
                 out.steps.push(ObsStep {
                     observed: true,
                     diffuse: true,
@@ -539,13 +611,14 @@ pub fn filter_univariate(
                     m_star,
                     m_inf,
                 });
-            } else if f_star > TOLERANCE_RANK * f_star_scale {
+            } else if f_star > TOLERANCE_RANK * f_star_scale && above_dust(f_star) {
                 // Standard scalar update (Koopman & Durbin 2000).
                 let k0: Vec<f64> = m_star.iter().map(|x| x / f_star).collect();
                 axpy(&mut a, v, &k0);
                 outer_sub(&mut p_star, &m_star, &k0);
                 out.loglik -= 0.5 * (ln2pi + f_star.ln() + v * v / f_star);
                 n_informative += 1;
+                updated = true;
                 out.steps.push(ObsStep {
                     observed: true,
                     diffuse: false,
@@ -556,7 +629,10 @@ pub fn filter_univariate(
                     m_inf: Vec::new(),
                 });
             } else {
-                // Numerically singular element: carries no information.
+                // Numerically singular element: carries no information —
+                // a zero (or roundoff) variance, or one an earlier element
+                // of y_t has already pinned (a series with zero
+                // idiosyncratic variance that is redundant given another).
                 out.steps.push(ObsStep::skipped());
             }
         }
