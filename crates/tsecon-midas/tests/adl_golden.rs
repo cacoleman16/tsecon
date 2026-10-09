@@ -124,7 +124,7 @@ fn adl_midas_matches_statsmodels_ols_and_hac() {
         }
     }
     eprintln!("adl_midas worst relative deviation {worst:e}");
-    // Measured: 7.9e-15 worst relative deviation on the committed fixture
+    // Measured: 6.9e-15 worst relative deviation on the committed fixture
     // (3.2e-14 before the engine moved from Cholesky normal equations to QR).
     assert!(worst < 1e-11, "worst deviation {worst:e}");
 }
@@ -186,11 +186,13 @@ fn rel_dev(actual: &[f64], expected: &[f64]) -> f64 {
 /// squares the condition number, and multiplied the HAC sandwich out: on
 /// these two cases the params came out 2.2e-8 / 4.9e-10 and the HAC bse
 /// 2.4e-9 / 3.3e-9 relative from the exact answer, where statsmodels' params
-/// are within 9.7e-13 / 7.8e-13. Measured now: params 1.2e-12 / 7.0e-13,
-/// nonrobust bse 3.7e-14 / 7.2e-15, HAC bse 2.3e-13 / 2.0e-13 — the HAC
-/// standard errors closer to the exact answer than statsmodels' own
-/// (1.7e-10 / 7.8e-10, its sandwich multiplied out), so against statsmodels
-/// they are gated at statsmodels' distance from the exact answer.
+/// are within 9.7e-13 / 7.8e-13. Measured now: params 2.9e-13 / 2.3e-13
+/// (the exact solution itself moves by about 2e-12 when every input moves
+/// by one ulp), nonrobust bse 2.5e-14 / 2.7e-14, HAC bse 1.3e-13 / 5.9e-14
+/// — the HAC standard errors closer to the exact answer than statsmodels'
+/// own (1.7e-10 / 7.8e-10, its sandwich multiplied out), so against
+/// statsmodels they are gated at statsmodels' distance from the exact
+/// answer.
 #[test]
 fn level_targets_match_the_exact_solution_and_statsmodels() {
     let fx = load();

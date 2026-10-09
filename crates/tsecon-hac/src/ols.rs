@@ -20,9 +20,10 @@
 //! against the already-rounded `X'X` and cannot recover what forming it
 //! lost); on a log-GDP-level target `adl_midas` lost digits down to `7e-8`
 //! relative in its coefficients, and on `1000 + 0.01 AR(2)` to `3e-5`,
-//! where statsmodels' pinv solve and an exact rational solve agree to
-//! `1e-11`. QR works on `X` and loses digits only in proportion to
-//! `cond(X)`.
+//! where statsmodels' pinv solve stays within `2e-12` and `3e-10` of an
+//! exact rational solve. QR works on `X` and loses digits only in
+//! proportion to `cond(X)`: it is now as close to the exact solve as
+//! statsmodels is (`fixtures/adl_midas.json`, `level_cases`).
 //!
 //! Before factoring, `y` and every column are divided by a power of two
 //! near their largest magnitude (and the results multiplied back). Scaling
@@ -325,23 +326,15 @@ pub fn ols(y: &[f64], x_cols: &[Vec<f64>]) -> Result<OlsFit, HacError> {
     let y_scale = pow2_scale(y);
     let col_scale: Vec<f64> = x_cols.iter().map(|c| pow2_scale(c)).collect();
     let y_eq: Vec<f64> = y.iter().map(|v| v / y_scale).collect();
-    let mut work: Vec<Vec<f64>> = x_cols
+    let work: Vec<Vec<f64>> = x_cols
         .iter()
         .zip(&col_scale)
         .map(|(c, s)| c.iter().map(|v| v / s).collect())
         .collect();
 
-    let (r, qty) = householder_qr(&mut work, y_eq.clone())
-        .ok_or(HacError::SingularDesign { what: "OLS design" })?;
+    let (r, qty) =
+        householder_qr(&work, &y_eq).ok_or(HacError::SingularDesign { what: "OLS design" })?;
     let params_eq = back_substitute(&r, k, &qty);
-
-    // The QR overwrote `work`; rebuild the equilibrated columns in place
-    // (the same exact division), so the fit holds one copy of the design.
-    for ((w, c), s) in work.iter_mut().zip(x_cols).zip(&col_scale) {
-        for (wt, v) in w.iter_mut().zip(c) {
-            *wt = v / s;
-        }
-    }
     let resid_eq: Vec<f64> = (0..n)
         .map(|t| {
             let mut fit = 0.0;
@@ -416,49 +409,105 @@ fn rescale(v: f64, num: f64, den: f64) -> f64 {
     }
 }
 
+/// Rows per block of the row-streaming QR below.
+const QR_BLOCK_ROWS: usize = 128;
+
 /// Householder QR without pivoting (Golub & Van Loan 2013, algorithm
-/// 5.2.1) of the `n x k` matrix held as the columns `cols`, applied to `b`.
-/// Returns `R` (`k x k` upper triangular, row-major) and the first `k`
-/// entries of `Q'b`; `cols` is overwritten. `None` when a column's
-/// component orthogonal to the columns before it is at most `sqrt(1e-13)`
-/// of its norm (collinear columns; see the module docs).
-fn householder_qr(cols: &mut [Vec<f64>], mut b: Vec<f64>) -> Option<(Vec<f64>, Vec<f64>)> {
+/// 5.2.1) of the `n x k` matrix held as the columns `cols`, with the
+/// response `b` carried along as a `(k+1)`-th column. Returns `R` (`k x k`
+/// upper triangular, row-major) and the first `k` entries of `Q'b`; the
+/// inputs are not modified. `None` when a column's component orthogonal to
+/// the columns before it is at most `sqrt(1e-13)` of its norm (collinear
+/// columns; see the module docs).
+///
+/// The rows are streamed in blocks of [`QR_BLOCK_ROWS`]: each block is
+/// stacked under the triangle so far, `[R; X_block]`, and reduced to a new
+/// triangle by the same Householder reflections, which only touch row `j`
+/// of `R` and the block (the rows of `R` below the diagonal are zero). It
+/// is the same orthogonal reduction, so it is backward stable like the
+/// textbook one-pass form, but its working set is one block instead of the
+/// whole design: on a tall `n x k` design the one-pass form streams every
+/// trailing column through memory once per reflection, which made
+/// `breusch_godfrey_test`'s `100000 x 567` auxiliary regression at its work
+/// cap take 39 s against 29 s for the normal equations it replaces; this
+/// form takes 15 s (on a loaded 4-core machine).
+fn householder_qr(cols: &[Vec<f64>], b: &[f64]) -> Option<(Vec<f64>, Vec<f64>)> {
     let k = cols.len();
     let n = b.len();
-    let norm_sq: Vec<f64> = cols.iter().map(|c| c.iter().map(|v| v * v).sum()).collect();
-    let mut r = vec![0.0_f64; k * k];
-    let mut v = vec![0.0_f64; n];
-    for j in 0..k {
-        let tail_sq: f64 = cols[j][j..].iter().map(|x| x * x).sum();
-        // Relative pivot tolerance: guards against collinear columns.
-        if tail_sq <= (1e-13 * norm_sq[j]).max(f64::MIN_POSITIVE) {
+    let w = k + 1;
+    // The triangle so far, row-major k x (k+1); column k is (Q'b)[..k].
+    let mut r = vec![0.0_f64; k * w];
+    // One block, column-major: column c holds rows r0..r1 of column c.
+    let mut block = vec![0.0_f64; w * QR_BLOCK_ROWS];
+    let mut r0 = 0;
+    while r0 < n {
+        let r1 = (r0 + QR_BLOCK_ROWS).min(n);
+        let m = r1 - r0;
+        for (c, col) in cols.iter().map(|c| c.as_slice()).chain([b]).enumerate() {
+            block[c * m..(c + 1) * m].copy_from_slice(&col[r0..r1]);
+        }
+        for j in 0..k {
+            let x0 = r[j * w + j];
+            let (head, rest) = block.split_at_mut((j + 1) * m);
+            let tail = &head[j * m..(j + 1) * m];
+            let tail_sq = dot(tail, tail);
+            if tail_sq == 0.0 {
+                // Nothing below the diagonal to annihilate in this block.
+                continue;
+            }
+            let norm = (x0 * x0 + tail_sq).sqrt();
+            let alpha = if x0 >= 0.0 { -norm } else { norm };
+            let v0 = x0 - alpha;
+            let vtv = v0 * v0 + tail_sq;
+            r[j * w + j] = alpha;
+            // Reflect the remaining columns (and b): c <- c - 2 v (v'c)/(v'v),
+            // with v = [v0; tail] acting on [R_jc; block column c].
+            for (cc, col) in rest[..(w - j - 1) * m].chunks_exact_mut(m).enumerate() {
+                let c = j + 1 + cc;
+                let fac = 2.0 * (v0 * r[j * w + c] + dot(tail, col)) / vtv;
+                r[j * w + c] -= fac * v0;
+                for (ci, vi) in col.iter_mut().zip(tail) {
+                    *ci -= fac * vi;
+                }
+            }
+        }
+        r0 = r1;
+    }
+    // Relative pivot tolerance: guards against collinear columns.
+    for (j, col) in cols.iter().enumerate() {
+        let rjj = r[j * w + j];
+        if rjj * rjj <= (1e-13 * dot(col, col)).max(f64::MIN_POSITIVE) {
             return None;
         }
-        let norm = tail_sq.sqrt();
-        let alpha = if cols[j][j] >= 0.0 { -norm } else { norm };
-        v[j] = cols[j][j] - alpha;
-        v[(j + 1)..n].copy_from_slice(&cols[j][(j + 1)..n]);
-        let vtv: f64 = v[j..].iter().map(|x| x * x).sum();
-        r[j * k + j] = alpha;
-        // Reflect the remaining columns and the right-hand side:
-        // c <- c - 2 v (v'c) / (v'v).
-        let (_, rest) = cols.split_at_mut(j + 1);
-        for (jj, col) in rest.iter_mut().enumerate() {
-            let dot: f64 = v[j..].iter().zip(&col[j..]).map(|(a, c)| a * c).sum();
-            let fac = 2.0 * dot / vtv;
-            for (ci, vi) in col[j..].iter_mut().zip(&v[j..]) {
-                *ci -= fac * vi;
-            }
-            r[j * k + j + 1 + jj] = col[j];
-        }
-        let dot: f64 = v[j..].iter().zip(&b[j..]).map(|(a, c)| a * c).sum();
-        let fac = 2.0 * dot / vtv;
-        for (bi, vi) in b[j..].iter_mut().zip(&v[j..]) {
-            *bi -= fac * vi;
-        }
     }
-    b.truncate(k);
-    Some((r, b))
+    let qtb = (0..k).map(|j| r[j * w + k]).collect();
+    let r = (0..k * k).map(|ij| r[(ij / k) * w + ij % k]).collect();
+    Some((r, qtb))
+}
+
+/// `a . b` with four interleaved partial sums: the reflections' dot
+/// products are the QR's inner loop, and one running sum would leave it
+/// bound by the latency of a dependent add chain. (Power-of-two scaling
+/// still commutes with it exactly.)
+fn dot(a: &[f64], b: &[f64]) -> f64 {
+    let n = a.len().min(b.len());
+    let (a, b) = (&a[..n], &b[..n]);
+    let mut acc = [0.0_f64; 4];
+    let mut ca = a.chunks_exact(4);
+    let mut cb = b.chunks_exact(4);
+    for (x, y) in (&mut ca).zip(&mut cb) {
+        acc[0] += x[0] * y[0];
+        acc[1] += x[1] * y[1];
+        acc[2] += x[2] * y[2];
+        acc[3] += x[3] * y[3];
+    }
+    let tail: f64 = ca
+        .remainder()
+        .iter()
+        .zip(cb.remainder())
+        .map(|(x, y)| x * y)
+        .sum();
+    (acc[0] + acc[1]) + (acc[2] + acc[3]) + tail
 }
 
 /// Solve `R x = c` for upper-triangular `R` (`k x k`, row-major).
@@ -572,80 +621,82 @@ impl OlsFit {
         Ok(OlsInference { cov, bse, tvalues })
     }
 
-    /// The rows `q_t = R^{-T} x~_t` of `Q_1 = X~ R^{-1}` (`n x k`,
-    /// row-major), by forward substitution: the design in the orthonormal
-    /// basis the QR found.
-    fn q_rows(&self) -> Vec<f64> {
-        let (n, k) = (self.nobs, self.nparams);
+    /// Row `t` of `Q_1 = X~ R^{-1}`, `q_t = R^{-T} x~_t`, by forward
+    /// substitution into `q` (length `k`): observation `t` in the
+    /// orthonormal basis the QR found. Its squared norm is the leverage.
+    fn q_row(&self, t: usize, q: &mut [f64]) {
+        let k = self.nparams;
         let r = &self.r;
-        let mut q = vec![0.0_f64; n * k];
-        for t in 0..n {
-            let row = &mut q[t * k..(t + 1) * k];
-            for i in 0..k {
-                let mut acc = self.x_cols[i][t];
-                for l in 0..i {
-                    acc -= r[l * k + i] * row[l];
-                }
-                row[i] = acc / r[i * k + i];
+        for i in 0..k {
+            let mut acc = self.x_cols[i][t];
+            for l in 0..i {
+                acc -= r[l * k + i] * q[l];
             }
+            q[i] = acc / r[i * k + i];
         }
-        q
     }
 
-    /// Influence vectors `d_t = (X~'X~)^{-1} x~_t u~_t c_t = R^{-1} q_t u~_t
-    /// c_t` (`n x k`, row-major), one per observation, with `c_t` the
-    /// per-observation factor `c` returns.
+    /// Influence vector `d_t = (X~'X~)^{-1} x~_t f = R^{-1} q_t f` of the
+    /// row `q` from [`OlsFit::q_row`], by back substitution into `d`.
     ///
-    /// Every covariance below is a weighted sum of their outer products,
-    /// `sum_{t,s} W_ts d_t d_s'`, which is the textbook sandwich
+    /// Every robust covariance below is a weighted sum of their outer
+    /// products, `sum_{t,s} W_ts d_t d_s'` with `f = u~_t` (times a
+    /// leverage factor for HC2/HC3), which is the textbook sandwich
     /// `(X'X)^{-1} [sum W_ts s_t s_s'] (X'X)^{-1}` of the scores
-    /// `s_t = x_t u_t` with the bread moved inside. Moving it inside is what
-    /// keeps the digits: the outer `(X'X)^{-1} S (X'X)^{-1}` products cancel
-    /// entries of order `cond(X)^2`, and on a level target (an index near
-    /// 100 regressed on its own lags, `cond(X) ~ 1e5`) the HAC standard
-    /// errors came out `4e-9` from the exact rational answer that way, and
-    /// `6e-14` this way. statsmodels, which multiplies the sandwich out,
-    /// sits at `8e-10` on the same design.
-    fn influence(&self, q: &[f64], c: impl Fn(usize) -> f64) -> Vec<f64> {
-        let (n, k) = (self.nobs, self.nparams);
+    /// `s_t = x_t u_t` with the bread moved inside. Moving it inside is
+    /// what keeps the digits: the outer `(X'X)^{-1} S (X'X)^{-1}` products
+    /// cancel entries of order `cond(X)^2`, and on a level target (an index
+    /// near 100 regressed on its own lags, `cond(X) ~ 1e5`) the HAC
+    /// standard errors came out `4e-9` from the exact rational answer that
+    /// way, and `6e-14` this way. statsmodels, which multiplies the
+    /// sandwich out, sits at `8e-10` on the same design.
+    fn d_row(&self, q: &[f64], f: f64, d: &mut [f64]) {
+        let k = self.nparams;
         let r = &self.r;
+        for i in (0..k).rev() {
+            let mut acc = q[i] * f;
+            for l in (i + 1)..k {
+                acc -= r[i * k + l] * d[l];
+            }
+            d[i] = acc / r[i * k + i];
+        }
+    }
+
+    /// The influence vectors `d_t` (`n x k`, row-major) with `f = u~_t`.
+    fn influence(&self) -> Vec<f64> {
+        let (n, k) = (self.nobs, self.nparams);
+        let mut q = vec![0.0_f64; k];
         let mut d = vec![0.0_f64; n * k];
         for t in 0..n {
-            let f = self.resid_eq[t] * c(t);
-            let qt = &q[t * k..(t + 1) * k];
-            let row = &mut d[t * k..(t + 1) * k];
-            for i in (0..k).rev() {
-                let mut acc = qt[i] * f;
-                for l in (i + 1)..k {
-                    acc -= r[i * k + l] * row[l];
-                }
-                row[i] = acc / r[i * k + i];
-            }
+            self.q_row(t, &mut q);
+            self.d_row(&q, self.resid_eq[t], &mut d[t * k..(t + 1) * k]);
         }
         d
     }
 
-    /// Heteroskedasticity-robust covariance `sum_t d_t d_t'` from the
-    /// influence vectors (see [`OlsFit::influence`]) with `c_t = w_t^{1/2}`
-    /// the square root of the leverage weight of the requested
-    /// [`HcFlavor`] — the White sandwich of the meat `sum_t w_t u_t^2 x_t
-    /// x_t'` (statsmodels' un-normalized convention). HC0, HC2 and HC3
-    /// differ only in `w_t`, so they share this accumulation.
+    /// Heteroskedasticity-robust covariance `sum_t d_t d_t'` of the
+    /// influence vectors (see [`OlsFit::d_row`]) with `f = u~_t w_t^{1/2}`,
+    /// `w_t` the leverage weight of the requested [`HcFlavor`] — the White
+    /// sandwich of the meat `sum_t w_t u_t^2 x_t x_t'` (statsmodels'
+    /// un-normalized convention). HC0, HC2 and HC3 differ only in `w_t`, so
+    /// they share this accumulation, one observation at a time.
     ///
     /// # Errors
     ///
     /// [`HacError::FullLeverage`] when a leverage-corrected flavor meets
-    /// `h_t` numerically equal to one; see [`OlsFit::leverage_weights`].
+    /// `h_t` numerically equal to one; see [`OlsFit::leverage_weight`].
     fn hc_cov(&self, flavor: HcFlavor) -> Result<Vec<f64>, HacError> {
         let k = self.nparams;
-        let q = self.q_rows();
-        let weights = self.leverage_weights(flavor, &q)?;
-        let d = self.influence(&q, |t| weights[t].sqrt());
+        let mut q = vec![0.0_f64; k];
+        let mut d = vec![0.0_f64; k];
         let mut s = vec![0.0_f64; k * k];
-        for row in d.chunks_exact(k) {
+        for t in 0..self.nobs {
+            self.q_row(t, &mut q);
+            let w = Self::leverage_weight(flavor, t, &q)?;
+            self.d_row(&q, self.resid_eq[t] * w.sqrt(), &mut d);
             for i in 0..k {
                 for j in 0..=i {
-                    s[i * k + j] += row[i] * row[j];
+                    s[i * k + j] += d[i] * d[j];
                 }
             }
         }
@@ -657,11 +708,11 @@ impl OlsFit {
         Ok(s)
     }
 
-    /// The per-observation weights `w_t` the HC family applies to `u_t^2`:
-    /// `1` for HC0, `1/(1 - h_t)` for HC2, `1/(1 - h_t)^2` for HC3, with
-    /// the leverage `h_t = x_t' (X'X)^{-1} x_t = ||q_t||^2` (the hat-matrix
-    /// diagonal, statsmodels `get_influence().hat_matrix_diag`), read off
-    /// the rows `q` of [`OlsFit::q_rows`] as a sum of squares.
+    /// The weight `w_t` the HC family applies to `u_t^2`: `1` for HC0,
+    /// `1/(1 - h_t)` for HC2, `1/(1 - h_t)^2` for HC3, with the leverage
+    /// `h_t = x_t' (X'X)^{-1} x_t = ||q_t||^2` (the hat-matrix diagonal,
+    /// statsmodels `get_influence().hat_matrix_diag`) read off the row `q`
+    /// of [`OlsFit::q_row`] as a sum of squares.
     ///
     /// # Errors
     ///
@@ -673,27 +724,22 @@ impl OlsFit {
     /// every other observation. Erroring out beats returning an inf/NaN
     /// standard error that looks like a number — statsmodels, which has no
     /// such guard, returns `inf` on the same design.
-    fn leverage_weights(&self, flavor: HcFlavor, q: &[f64]) -> Result<Vec<f64>, HacError> {
+    fn leverage_weight(flavor: HcFlavor, t: usize, q: &[f64]) -> Result<f64, HacError> {
         let power = flavor.leverage_power();
         if power == 0 {
-            return Ok(vec![1.0; self.nobs]);
+            return Ok(1.0);
         }
-        let k = self.nparams;
-        let mut weights = Vec::with_capacity(self.nobs);
-        for (t, qt) in q.chunks_exact(k).enumerate() {
-            let h: f64 = qt.iter().map(|v| v * v).sum();
-            let rest = 1.0 - h;
-            if !rest.is_finite() || rest <= LEVERAGE_FLOOR {
-                return Err(HacError::FullLeverage {
-                    what: flavor.name(),
-                    index: t,
-                    leverage: h,
-                });
-            }
-            let inv = 1.0 / rest;
-            weights.push(if power == 1 { inv } else { inv * inv });
+        let h: f64 = q.iter().map(|v| v * v).sum();
+        let rest = 1.0 - h;
+        if !rest.is_finite() || rest <= LEVERAGE_FLOOR {
+            return Err(HacError::FullLeverage {
+                what: flavor.name(),
+                index: t,
+                leverage: h,
+            });
         }
-        Ok(weights)
+        let inv = 1.0 / rest;
+        Ok(if power == 1 { inv } else { inv * inv })
     }
 
     /// HAC covariance `sum_j w_j (Gamma_j + Gamma_j')` (`Gamma_0` once) of
@@ -702,8 +748,7 @@ impl OlsFit {
     fn hac_cov(&self, kernel: Kernel, bandwidth: f64) -> Vec<f64> {
         let n = self.nobs;
         let k = self.nparams;
-        let q = self.q_rows();
-        let d = self.influence(&q, |_| 1.0);
+        let d = self.influence();
 
         let mut s = vec![0.0_f64; k * k];
         for lag in 0..n {
@@ -741,8 +786,7 @@ impl OlsFit {
     /// in exact arithmetic.
     fn ewc_cov(&self, b: usize) -> Result<Vec<f64>, HacError> {
         let (n, k) = (self.nobs, self.nparams);
-        let q = self.q_rows();
-        let d = self.influence(&q, |_| 1.0);
+        let d = self.influence();
         let cols: Vec<Vec<f64>> = (0..k)
             .map(|i| (0..n).map(|t| d[t * k + i]).collect())
             .collect();
