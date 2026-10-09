@@ -1,6 +1,6 @@
 # Model card — ARIMA
 
-`arima_fit` · `auto_arima` · `ar_loglik`
+`arima_fit` (exact MLE, or CSS with `method="css"`) · `auto_arima` · `ar_loglik`
 
 ARIMA is the flagship classical univariate model: the endpoint of the
 AR → MA → ARMA → ARIMA ladder that turns two simple ideas — *the past predicts
@@ -15,7 +15,8 @@ phi(L) (1 - L)^d y_t = c + theta(L) eps_t,        eps_t ~ iid N(0, sigma^2)
 where `phi(L) = 1 - phi_1 L - ... - phi_p L^p` is the autoregressive polynomial,
 `theta(L) = 1 + theta_1 L + ... + theta_q L^q` the moving-average polynomial, and
 `(1 - L) y_t = y_t - y_{t-1}` the first difference. This card covers the full
-exact-MLE estimator (`arima_fit`) and the fixed-parameter AR log-likelihood
+exact-MLE estimator (`arima_fit`), its conditional-sum-of-squares alternative
+(`arima_fit(method="css")`), and the fixed-parameter AR log-likelihood
 helper (`ar_loglik`) that exposes the same likelihood kernel as a scoring
 function. Both run on one state-space engine: the Harvey canonical form of the
 ARMA process evaluated by the Kalman filter's prediction-error decomposition —
@@ -411,6 +412,132 @@ print("p=1,q=0:", ok["cov_ok"], np.round(ok["bse"], 4))
 Always check `cov_ok` before reading `bse` — it is `None`, not `nan`, so
 arithmetic on it fails loudly. And read a `False` as a message about your
 specification, not about the estimator.
+
+---
+
+## `arima_fit(method="css")` — conditional sum of squares
+
+**What it estimates.** The same ARIMA(p,d,q)(P,D,Q)_s parameters by
+**conditional sum of squares** (Box & Jenkins 1976, ch. 7; R's
+`arima(method = "CSS")`): on the fully differenced series `x`, with the AR
+and MA polynomials multiplied out (`phi*`, `theta*`), it minimizes the sum of
+squared recursive residuals
+
+```text
+e_t = x_t - c - sum_i phi*_i x_{t-i} - sum_j theta*_j e_{t-j},   t = p + s*P, ..., n_x - 1
+```
+
+conditioning on the first `p + s*P` values and setting the pre-sample
+innovations to zero, with `sigma2 = SSR / nobs` concentrated out. The search
+runs in the same Monahan-transformed (stationary, invertible) space as the
+exact fit.
+
+**Assumptions.** Those of the exact fit, minus one: CSS ignores the
+stationary distribution of the first `p + s*P` observations and the
+pre-sample innovations. That is the information that separates the two
+estimators — they agree asymptotically and differ by `O(1/n)` in a sample.
+
+**When to use (and when not).** For long series, as a fast check or a
+starting point, and to reproduce numbers from software that reports CSS
+(R's `arima(method = "CSS")`, statsforecast). Not for short samples or
+persistence near the unit circle — that is where the discarded initial
+conditions carry real information (see `arima_fit` above, and Chapter 4 of
+the guide).
+
+**Key arguments.** `method="css"`; every other argument works as for the
+exact fit (`seasonal`, `constant`, `forecast_steps`, `conf_alpha`,
+`drift_uncertainty`). An unknown `method` is refused by name.
+
+**How to read the output.** The `arima_fit` dict, with these differences:
+
+- `loglik` is the **conditional** Gaussian log-likelihood
+  `-nobs/2 (ln 2 pi + 1 + ln sigma2)`, and `aic` / `bic` are built from it
+  (BIC with `ln(nobs)`). It is not comparable with an exact-MLE `loglik`.
+- `nobs` is the residual count `n - d - D*s - (p + s*P)`; under the default
+  `method="mle"` it is `n - d - D*s`. Both methods now return `nobs` and the
+  `method` echo, and `ARIMAResults.nobs` reads that key.
+- `bse` / `param_cov` come from the numerical Hessian of the conditional
+  likelihood with `sigma2` free — the objective CSS actually optimized, not
+  the exact one. `drift_uncertainty=True` therefore uses the CSS `Var(c_hat)`
+  (`param_cov[0][0]` of the same dict).
+- `residuals` keep the Kalman standardized-innovation definition, evaluated
+  at the CSS estimates (length `n - d - D*s`), not R's recursive CSS
+  residuals; forecasts run the exact state-space recursion at those estimates.
+- `const` is an **intercept**, as for the exact fit. R and statsforecast
+  report the **mean** `mu = c / (1 - sum phi*)` (`intercept` in their output)
+  and difference out the mean before the recursion; for `d >= 1` with a
+  constant (a drift) R has no counterpart at all.
+- R and statsforecast also count their CSS log-likelihood differently: they
+  divide the SSR by `n - d - D*s - ncond` but multiply by `n.used =
+  n - d - D*s`, so their `loglik` is lower than tsecon's at the same optimum,
+  and their CSS AIC is `NA`. The example below shows both numbers.
+
+**Failure modes.** Comparing a CSS `loglik`/AIC with an exact-MLE one, or
+with R's CSS figure, compares different quantities. A fit that stops on the
+stationarity/invertibility boundary carries the same `boundary` flags as the
+exact fit. A series too short for `p + s*P` conditioning values plus the free
+parameters is refused, naming the CSS estimation.
+
+**Validated against.** Three legs, in `fixtures/arima_css.json` and
+`crates/tsecon-arima/tests/css_golden.rs`:
+
+- **The recursion, optimizer-free, against an independent implementation:**
+  statsforecast 2.1.1's `arima_css` — its C++ port of R's
+  `stats:::ARIMA_CSS` — evaluated at fixed parameters (the optimum and a
+  perturbed point) on ARMA(1,1)+c, SARIMA(1,0,0)(1,0,0)_4+c, MA(1) and
+  ARIMA(1,1,1), mapping the intercept to R's mean. Residuals, SSR and
+  `sigma2` at 1e-12 (achieved 1.6e-15), through
+  `ArimaSpec::css_residuals`, the objective's own code path.
+- **AR(2)+c against statsmodels `AutoReg`** (OLS is the CSS optimum):
+  params 1e-6 (achieved 1.4e-11), `sigma2` / `loglik` / AIC / BIC 1e-9.
+- **The optimum, which is optimizer-defined** (no closed form): against SciPy
+  Levenberg-Marquardt at 1e-15 tolerances (BFGS agrees to 1.2e-8 or better):
+  params 1e-6 (achieved 5.5e-9), `loglik` / AIC / BIC 1e-9 (achieved 5e-16),
+  `bse` 1e-4 against `approx_hess3` of the conditional likelihood (achieved
+  2.3e-7).
+
+The grade is therefore: objective pinned to an independent port of R's
+reference implementation; optimum pinned to an optimizer-defined reference.
+
+```python
+import json
+import numpy as np, tsecon
+
+case = next(c for c in json.load(open("fixtures/arima_css.json"))["cases"]
+            if c["name"] == "arma11_c")
+y = np.asarray(case["y"])          # 400 draws of ARMA(1,1): c = 0.5, phi = 0.7, theta = 0.4
+
+css = tsecon.arima_fit(y, p=1, q=1, method="css")
+mle = tsecon.arima_fit(y, p=1, q=1)
+for fit in (css, mle):
+    print(f"{fit['method']}: params {np.round(fit['params'], 4)}  "
+          f"loglik {fit['loglik']:.2f}  nobs {fit['nobs']}")
+print("css bse:", np.round(css["bse"], 4))
+
+# R and statsforecast report the mean, and count the CSS loglik over n - d - D*s.
+c, phi, sigma2 = css["params"][0], css["params"][1], css["params"][-1]
+print(f"mean mu = c / (1 - phi)     = {c / (1 - phi):.4f}")
+n_used = len(y)
+print(f"R-convention CSS loglik     = {-0.5 * n_used * (np.log(2 * np.pi) + 1 + np.log(sigma2)):.2f}")
+sf = case["statsforecast_end_to_end"]       # statsforecast 2.1.1's own CSS fit, stored
+print(f"statsforecast: intercept    = {sf['coef']['intercept']:.4f}  loglik {sf['loglik_r_convention']:.2f}")
+```
+
+```text
+css: params [0.3883 0.707  0.348  1.5174]  loglik -649.34  nobs 399
+mle: params [0.3868 0.7053 0.3477 1.5142]  loglik -651.17  nobs 400
+css bse: [0.0986 0.0414 0.0518 0.1074]
+mean mu = c / (1 - phi)     = 1.3252
+R-convention CSS loglik     = -650.97
+statsforecast: intercept    = 1.3252  loglik -650.97
+```
+
+The two fits differ in the third decimal, as `O(1/n)` predicts at `n = 400`;
+the CSS `loglik` (−649.34, over 399 residuals) is not comparable with the
+exact one (−651.17, over 400 observations). tsecon's mean `c / (1 − phi)`
+reproduces statsforecast's `intercept` to four decimals, and R's CSS
+log-likelihood is lower than tsecon's at the same optimum (−650.97 against
+−649.34) only because it multiplies by 400 rather than 399.
 
 ---
 

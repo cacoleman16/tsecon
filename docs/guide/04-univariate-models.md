@@ -538,9 +538,9 @@ The [Module 02 roadmap](../roadmap/02-univariate.md) covers this terrain in tier
 - Differencing decisions: `adf`, `kpss`, `check_stationarity`, plus the order advisors `ndiffs` (the KPSS sequence auto-ARIMA uses for $d$) and `nsdiffs` (seasonal strength for $D$)
 - The exponential-smoothing family: `ets_fit` (all 30 ETS models, exact or simulated prediction intervals) and `auto_ets` (the AICc candidate search), plus its benchmark `theta_forecast`, with `accuracy` and `dm_test` for honest evaluation
 
-**Built in Rust, partly awaiting Python bindings** (`tsecon-arima` crate):
+**Built in Rust** (`tsecon-arima` crate), all of it bound:
 
-- The ARIMA(p,d,q) engine — seasonal `(P, D, Q, s)` orders included — ships in Python as `arima_fit` above (exact MLE, log-likelihood, residuals, integrated-back forecast intervals). Still Rust-only and on the roadmap for Python: the CSS estimator (`fit_css`)
+- The ARIMA(p,d,q) engine — seasonal `(P, D, Q, s)` orders included — ships in Python as `arima_fit` above (exact MLE, log-likelihood, residuals, integrated-back forecast intervals), and since 0.11 so does the CSS estimator, as `arima_fit(..., method="css")` — its conditional log-likelihood, conditional-Hessian standard errors and conventions are on the [ARIMA card](../reference/model-cards/arima.md#arima_fitmethodcss-conditional-sum-of-squares)
 
 **Roadmap** ([docs/roadmap/02-univariate.md](../roadmap/02-univariate.md)):
 

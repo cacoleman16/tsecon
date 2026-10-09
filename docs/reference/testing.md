@@ -895,7 +895,7 @@ nothing asserting on them:
 | Where | Why an untested guard mattered |
 |---|---|
 | `realized::parkinson` / `garman_klass` | An inverted bar (`high < low`) would sail through `(ln(H/L))²` — the square destroys the sign — returning a finite, positive, wrong variance. The guard rejects it; nothing proved that. |
-| `midas::adl_midas` | Parameter ordering `[c, ρ₁..ρ_P, b₁..b_K]` unpinned: a transposed AR/high-frequency block returns a full set of plausible numbers. |
+| `midas::adl_midas` | Parameter ordering `[c, ρ₁..ρ_P, b₁..b_K]` unpinned: a transposed AR/high-frequency block returns a full set of plausible numbers. (Pinned in 0.11 by `tests/adl_golden.rs` against statsmodels OLS on a `pandas.shift` design, when the function was bound as `adl_midas`.) |
 | `panel_lp` jackknife | Silently *replaces* the reported estimates with the Dhaene-Jochmans correction; a sign error yields a complete, wrong impulse response and no error. |
 | `VarResults::ma_rep` (`lags == 0`) | Returning zeros instead of `Ψ₀ = I` would silently zero the impact response of every IRF and FEVD built on it. |
 

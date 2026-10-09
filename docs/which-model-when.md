@@ -61,7 +61,7 @@ A compact index. Find your row, jump to the section.
 | A Bayesian VAR that selects which coefficients are non-zero | `bvar_ssvs` (spike-and-slab SSVS) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from one equation, no full VAR to commit to | `lp`; instrumented `lp_iv`; state-dependent `lp_state` — LP or VAR? [chapter 16](guide/16-lp-vs-var-head-to-head.md) measures it | [2](#2-i-want-an-impulse-response) |
 | Quarterly target, monthly indicators, a ragged data edge | `dfm_nowcast` | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
-| A handful of high-frequency lags to compress into a target | `weighted_midas` (large ratio) / `umidas` (small ratio) | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
+| A handful of high-frequency lags to compress into a target | `weighted_midas` (large ratio) / `umidas` (small ratio) / `adl_midas` (persistent target: adds its own lags) | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
 | Volatility with fat tails or occasional jumps | `gas_volatility(density="student_t")` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Intraday returns / a realized-variance series | `realized_measures`, `har_rv` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Panel whose units have genuinely different slopes | `panel_mean_group` (`mg`/`cce`), `panel_pmg` | [5](#5-i-have-a-panel-with-heterogeneous-units) |

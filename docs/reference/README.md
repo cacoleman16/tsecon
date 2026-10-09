@@ -52,7 +52,7 @@ method fits your problem and how to trust its output.
 | [Diagnostics](model-cards/diagnostics.md) | `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`, `adf`, `kpss`, `check_stationarity` |
 | [Unit-root, cointegration & variance-ratio tests](model-cards/unit-root-cointegration-tests.md) | `dfgls`, `ng_perron`, `phillips_perron`, `phillips_ouliaris`, `zivot_andrews`, `variance_ratio` |
 | [Check series (one-call battery)](model-cards/check-series.md) | `check_series` (plus the `tsecon.results.check_series` facade with `.summary()` / `.plot_diagnostics()`) |
-| [ARIMA](model-cards/arima.md) | `arima_fit`, `ar_loglik` |
+| [ARIMA](model-cards/arima.md) | `arima_fit` (exact MLE, or CSS with `method="css"`), `ar_loglik` |
 | [Spectral analysis](model-cards/spectral.md) | `periodogram`, `welch`, `coherence` |
 | [Volatility](model-cards/volatility.md) | `garch_fit`, `gas_volatility`, `dcs_local_level`, `ccc_garch`, `dcc_garch` |
 | [VAR / SVAR](model-cards/var-svar.md) | `var_fit`, `var_irf`, `var_irf_bands`, `var_fevd`, `var_granger`, `var_forecast`, `sign_restricted_svar`, `zero_sign_svar`, `favar`, `connectedness`, `var_girf` |
@@ -70,7 +70,7 @@ method fits your problem and how to trust its output.
 | [Neural regressors](model-cards/ml-neural.md) | `mlp_regression`, `echo_state_network` |
 | [Panel](model-cards/panel.md) | `panel_fe`, `panel_re`, `panel_between`, `panel_fd`, `panel_fama_macbeth`, `panel_distributed_lag`, `panel_lp`, `mean_group_var`, `panel_mean_group`, `panel_pmg` |
 | [Panel unit-root tests](model-cards/panel-unit-root.md) | `panel_unit_root` (LLC, IPS, Fisher/Maddala-Wu-Choi) |
-| [Nowcasting & MIDAS](model-cards/nowcasting-midas.md) | `dfm_nowcast`, `dfm_news`, `midas_weights`, `umidas`, `weighted_midas` |
+| [Nowcasting & MIDAS](model-cards/nowcasting-midas.md) | `dfm_nowcast`, `dfm_smooth`, `dfm_news`, `midas_weights`, `umidas`, `adl_midas`, `weighted_midas` |
 | [Term structure](model-cards/term-structure.md) | `nelson_siegel`, `svensson`, `dynamic_ns`, `acm_term_premium`, `jsz_fit`, `jsz_loadings` |
 | [Realized volatility](model-cards/realized-vol.md) | `realized_measures`, `har_rv`, `realized_quarticity`, `tripower_quarticity`, `bns_jump_test`, `realized_range` |
 | [Predictive regressions & IVX](model-cards/predictive-regressions.md) | `predictive_regression`, `ivx_test` |

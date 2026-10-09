@@ -27,7 +27,14 @@ venv) in one of two ways:
   its DESCRIPTION carries no license grant); its generator reference-runs the
   authors' own `BN_Filter`/`select_delta`/`BN_Filter_stderr` and cross-checks
   an independent NumPy reimplementation against the R output at 1e-9 before
-  anything is stored.
+  anything is stored. `arima_css.json` (generator
+  `generate_arima_css_fixtures.py`) requires statsforecast 2.1.1 (Nixtla,
+  Apache-2.0) at generation time: its `arima_css`, a C++ port of R's
+  `stats:::ARIMA_CSS`, pins the conditional-sum-of-squares recursion at fixed
+  parameters. statsforecast's wheel pins `pandas<3.0.0`, so the generator's
+  docstring gives the install line that adds it (and its import-time
+  dependencies) without dependency resolution, keeping the reference venv's
+  pandas; the generator asserts the version it ran against.
 - **Transformations of two public-domain reference series** loaded from
   statsmodels' bundled datasets:
   - the **Nile** annual river-flow series (`sm.datasets.nile`), a classic
