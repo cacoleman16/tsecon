@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tsecon_panel::{DistributedLagConfig, FixedEffects};
 
-use crate::{panel_data, panel_se, to_py};
+use crate::{dk_to_py, panel_data, panel_se, PANEL_DK_DEFAULT_BANDWIDTH};
 
 /// Distributed-lag panel regression — the climate-impact specification
 /// of Dell-Jones-Olken (2012, AEJ:Macro) and Burke-Hsiang-Miguel (2015,
@@ -155,7 +155,8 @@ fn panel_distributed_lag<'py>(
         se_type: panel_se("panel_distributed_lag", se_type, bandwidth)?,
         eval_points: eval_points.map(|p| p.as_array().to_vec()),
     };
-    let res = tsecon_panel::panel_distributed_lag(&data, &cfg).map_err(to_py)?;
+    let res = tsecon_panel::panel_distributed_lag(&data, &cfg)
+        .map_err(dk_to_py(bandwidth, PANEL_DK_DEFAULT_BANDWIDTH))?;
     let kk = res.params.len();
     let cov: Vec<Vec<f64>> = (0..kk)
         .map(|a| (0..kk).map(|b| res.cov[(a, b)]).collect())

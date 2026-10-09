@@ -387,8 +387,19 @@ def test_an_order_past_the_budgets_is_refused_by_name_before_anything_is_built()
     msg = str(info.value)
     assert msg.startswith("nlags = 20000 makes the Breusch-Godfrey auxiliary regression too large")
     assert f"pass nlags <= {_largest_order(n, 1)}," in msg, msg
+    assert "the 1 column of x" in msg and "past both the memory budget" in msg, msg
     with pytest.raises(ValueError, match=r"^nlags = "):
         tsecon.breusch_godfrey_test(y, x, nlags=_largest_order(n, 1) + 1)
+    # A short sample with a long order fits in memory but not in time: the
+    # refusal names the work budget alone.
+    with pytest.raises(ValueError, match=r"^nlags = 2000 .*past the work budget") as info:
+        tsecon.breusch_godfrey_test(y[:3000], x[:3000], nlags=2000)
+    assert "memory budget" not in str(info.value)
+    # So wide an x that even one lag is past the work budget at any length:
+    # the remedy is fewer columns, not a shorter sample.
+    wide = np.column_stack([np.ones(3000), np.random.default_rng(9).standard_normal((3000, 1500))])
+    with pytest.raises(ValueError, match=r"^nlags = 1 .*at any sample length.*fewer columns of x$"):
+        tsecon.breusch_godfrey_test(y[:3000], wide, nlags=1)
 
 
 def test_degenerate_residuals_and_short_samples_are_named():

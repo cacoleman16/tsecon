@@ -242,6 +242,18 @@ fn breusch_godfrey_refuses_an_auxiliary_design_past_its_budgets() {
     let msg = err.to_string();
     assert!(msg.contains("nlags = 20000"), "{msg}");
     assert!(msg.contains(&format!("nlags <= {max_nlags}")), "{msg}");
+    // A 2e9-entry design is past both budgets, and the message says which.
+    assert!(msg.contains("past both the memory budget"), "{msg}");
+    // A short sample with a long order fits in memory but not in time: the
+    // message names the work budget alone.
+    let (ys, xs) = (&y[..3000], vec![vec![1.0; 3000]]);
+    let msg = breusch_godfrey_test(ys, &xs, Some(2000))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("past the work budget") && !msg.contains("memory budget"),
+        "{msg}"
+    );
     // One past the largest admissible order is refused the same way, and an
     // absurd order still fails the degrees-of-freedom check first.
     assert!(matches!(
@@ -292,8 +304,23 @@ fn breusch_godfrey_largest_order_obeys_both_budgets_and_the_sample() {
         defaulted: false,
     };
     assert!(
-        err.to_string().contains("even one lag does not fit"),
+        err.to_string()
+            .contains("even one lag does not fit with this design, so use a shorter sample"),
         "{err}"
+    );
+    // A design so wide that its 6 k^3 term alone is past the work budget:
+    // no sample length helps, and the message does not suggest one.
+    let wide = SpecTestError::AuxiliaryTooLarge {
+        n: 3000,
+        k_aux: 1502,
+        nlags: 1,
+        max_nlags: 0,
+        defaulted: false,
+    }
+    .to_string();
+    assert!(
+        wide.contains("at any sample length") && !wide.contains("shorter sample"),
+        "{wide}"
     );
     // A default order past the budget (a sample of millions) says so.
     let err = SpecTestError::AuxiliaryTooLarge {
@@ -309,4 +336,9 @@ fn breusch_godfrey_largest_order_obeys_both_budgets_and_the_sample() {
         "{msg}"
     );
     assert!(msg.contains("pass nlags <= 8"), "{msg}");
+    // 7.8e7 entries but only 5e8 multiply-adds: the memory budget alone.
+    assert!(
+        msg.contains("past the memory budget") && !msg.contains("work budget"),
+        "{msg}"
+    );
 }

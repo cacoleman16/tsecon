@@ -120,8 +120,9 @@ mod results;
 mod white;
 
 pub use breusch_godfrey::{
-    breusch_godfrey_default_nlags, breusch_godfrey_max_nlags, breusch_godfrey_test,
-    breusch_godfrey_work, BreuschGodfreyTest, BG_MAX_AUX_CELLS, BG_WORK_BUDGET,
+    breusch_godfrey_default_nlags, breusch_godfrey_exceeded_budget, breusch_godfrey_max_nlags,
+    breusch_godfrey_test, breusch_godfrey_work, BreuschGodfreyTest, BG_MAX_AUX_CELLS,
+    BG_WORK_BUDGET,
 };
 pub use breusch_pagan::breusch_pagan_test;
 pub use chow::{chow_test, ChowTest};

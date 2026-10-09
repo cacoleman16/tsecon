@@ -494,6 +494,36 @@ def test_the_driscoll_kraay_bandwidth_guard_is_the_house_one():
                         bandwidth=5.0)
 
 
+def test_a_defaulted_driscoll_kraay_bandwidth_is_named_as_the_default():
+    """panel_lp runs Driscoll-Kraay by default with bandwidth 4.0, so a short
+    panel's long horizon (T - h - n_lag_controls < 5) is refused without the
+    caller having passed a bandwidth; the refusal says the 4.0 is the default.
+    An explicit bandwidth is quoted as given, with no such note."""
+    rng = np.random.default_rng(11)
+    y, shock = rng.standard_normal((12, 14)), rng.standard_normal(14)
+    note = "bandwidth was not passed: 4.0 is its default"
+    with pytest.raises(ValueError, match=r"^bandwidth: .*\(S = 4 here\).*horizon h = 8") as info:
+        tsecon.panel_lp(y, shock)
+    assert note in str(info.value)
+    with pytest.raises(ValueError, match=r"^bandwidth: ") as info:
+        tsecon.panel_lp(y, shock, bandwidth=4.0)
+    assert note not in str(info.value)
+    assert tsecon.panel_lp(y, shock, bandwidth=3.0)["se"].shape == (9,)
+    # The static menu and panel_fe: a four-period panel under se_type="dk".
+    x = rng.standard_normal((1, 12, 4))
+    y4 = 0.5 * x[0] + rng.standard_normal((12, 4))
+    for fn in ("panel_re", "panel_fe"):
+        with pytest.raises(ValueError, match=r"^bandwidth: .*\(S = 4 here\)") as info:
+            getattr(tsecon, fn)(y4, x, se_type="driscoll_kraay")
+        assert note in str(info.value), fn
+    with pytest.raises(ValueError, match=r"^bandwidth: .*\(S = 3 here\)") as info:
+        tsecon.panel_fd(y4, x, se_type="driscoll_kraay")
+    assert note in str(info.value)
+    with pytest.raises(ValueError, match=r"^bandwidth: .*\(S = 3 here\)") as info:
+        tsecon.panel_distributed_lag(y4, x, lags=1, se_type="driscoll_kraay")
+    assert note in str(info.value)
+
+
 @pytest.mark.parametrize("constant", [True, False])
 def test_an_outcome_constant_within_every_entity_is_refused_naming_outcome(constant):
     """A level per entity has no within variation (sigma2_eps = 0). With

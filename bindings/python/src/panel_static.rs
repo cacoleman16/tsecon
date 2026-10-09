@@ -19,7 +19,7 @@ use tsecon_panel::{
 };
 use tsecon_var::tsecon_linalg::faer::Mat;
 
-use crate::{panel_data, to_py};
+use crate::{dk_to_py, panel_data, to_py};
 
 /// The kernel truncation used when the caller passes `bandwidth=None`
 /// under a kernel `se_type` (Driscoll-Kraay, or the Newey-West HAC of the
@@ -238,7 +238,9 @@ fn panel_re<'py>(
         },
     )
     .map_err(to_py)?;
-    let inf = fit.inference(se).map_err(to_py)?;
+    let inf = fit
+        .inference(se)
+        .map_err(dk_to_py(bandwidth, STATIC_DEFAULT_BANDWIDTH))?;
     let d = common(py, fit.params.clone(), inf, fit.names.clone(), se_type)?;
     d.set_item("nobs", fit.nobs)?;
     d.set_item("n_entities", fit.n_entities)?;
@@ -350,7 +352,9 @@ fn panel_fd<'py>(
     let se = static_se("panel_fd", se_type, bandwidth, Menu::Pooled)?;
     let data = build("panel_fd", &outcome, &regressors, mask.as_ref())?;
     let fit = tsecon_panel::panel_first_difference(&data, constant).map_err(to_py)?;
-    let inf = fit.inference(se).map_err(to_py)?;
+    let inf = fit
+        .inference(se)
+        .map_err(dk_to_py(bandwidth, STATIC_DEFAULT_BANDWIDTH))?;
     let d = common(py, fit.params.clone(), inf, fit.names.clone(), se_type)?;
     d.set_item("nobs", fit.nobs)?;
     d.set_item("n_entities", fit.n_entities)?;

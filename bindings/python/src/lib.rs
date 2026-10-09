@@ -5659,7 +5659,29 @@ fn hetero_svar<'py>(
 /// The Driscoll-Kraay lag-truncation bandwidth used when the caller does
 /// not pass one (`bandwidth=None`): Bartlett weights over lags 1..=4, the
 /// same value the pre-0.6.0 signature carried as its literal default.
-const PANEL_DK_DEFAULT_BANDWIDTH: f64 = 4.0;
+pub(crate) const PANEL_DK_DEFAULT_BANDWIDTH: f64 = 4.0;
+
+/// [`to_py`] for a panel call that may compute a Driscoll-Kraay covariance.
+/// The core refuses `bandwidth + 1` past the periods that carry scores with
+/// a message starting `bandwidth:` and quoting the value; when the caller
+/// left `bandwidth` out, it adds that the value is the default (`default`),
+/// so the refusal does not seem to quote an argument nobody passed.
+pub(crate) fn dk_to_py<E: std::fmt::Display>(
+    bandwidth: Option<f64>,
+    default: f64,
+) -> impl Fn(E) -> PyErr {
+    move |e| {
+        let msg = e.to_string();
+        if bandwidth.is_none() && msg.starts_with("bandwidth:") {
+            PyValueError::new_err(format!(
+                "{msg} (bandwidth was not passed: {default:?} is its default under \
+                 se_type=\"driscoll_kraay\")"
+            ))
+        } else {
+            PyValueError::new_err(msg)
+        }
+    }
+}
 
 fn panel_se(
     caller: &str,
@@ -5785,7 +5807,7 @@ fn panel_fe<'py>(
     let fit = tsecon_panel::panel_ols_fe(&data).map_err(to_py)?;
     let inf = fit
         .inference(panel_se("panel_fe", se_type, bandwidth)?)
-        .map_err(to_py)?;
+        .map_err(dk_to_py(bandwidth, PANEL_DK_DEFAULT_BANDWIDTH))?;
     let kk = fit.params.len();
     let cov: Vec<Vec<f64>> = (0..kk)
         .map(|a| (0..kk).map(|b| inf.cov[(a, b)]).collect())
@@ -5819,7 +5841,10 @@ fn panel_fe<'py>(
 /// absorbed — those estimators use no kernel. `bandwidth + 1` above the
 /// number of periods that carry scores at some horizon `h` (`T - h -
 /// n_lag_controls` on a balanced panel) raises too, naming `bandwidth` and
-/// `h`: past it no lag is added and the standard errors only shrink.
+/// `h`: past it no lag is added and the standard errors only shrink. At the
+/// default bandwidth that is any horizon with `T - h - n_lag_controls < 5`
+/// (every `T <= 14` at the default `horizon` and `n_lag_controls`), and the
+/// message then says the 4.0 is the default.
 ///
 /// JACKKNIFE CAVEAT (measured): the DJ correction removes the O(1/T) bias
 /// but inflates the estimator's finite-sample variance while `se` is kept
@@ -5919,7 +5944,8 @@ fn panel_lp<'py>(
             )))
         }
     };
-    let r = tsecon_panel::panel_lp(&data, &vec1(&shock), &cfg).map_err(to_py)?;
+    let r = tsecon_panel::panel_lp(&data, &vec1(&shock), &cfg)
+        .map_err(dk_to_py(bandwidth, PANEL_DK_DEFAULT_BANDWIDTH))?;
     // Closed-form band over the horizons of this one response. Same machinery
     // and same refusal (`sup-t` needs a cross-horizon covariance nobody
     // estimates here) as lp_iv / lp_multiplier / lp_state.

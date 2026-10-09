@@ -237,13 +237,24 @@ impl fmt::Display for SpecTestError {
                     f,
                     "Breusch-Godfrey auxiliary regression too large: with {order} it has \
                      n = {n} observations by k_aux = {k_aux} regressors ({} entries, about \
-                     {:.2e} multiply-adds), past the budget of {} entries (512 MiB) and \
-                     2^34 multiply-adds (about half a minute); ",
+                     {:.2e} multiply-adds), past {}; ",
                     n.saturating_mul(*k_aux),
                     crate::breusch_godfrey::breusch_godfrey_work(*n, *k_aux) as f64,
-                    crate::breusch_godfrey::BG_MAX_AUX_CELLS,
+                    crate::breusch_godfrey::breusch_godfrey_exceeded_budget(*n, *k_aux)
+                        .unwrap_or("the budget"),
                 )?;
-                if *max_nlags == 0 {
+                let one_lag = k_aux.saturating_sub(*nlags).saturating_add(1);
+                if *max_nlags == 0
+                    && crate::breusch_godfrey::breusch_godfrey_work(0, one_lag)
+                        > crate::breusch_godfrey::BG_WORK_BUDGET
+                {
+                    write!(
+                        f,
+                        "even one lag does not fit with this design at any sample length \
+                         (the 6 k_aux^3 term alone is past the work budget), so use fewer \
+                         design columns"
+                    )
+                } else if *max_nlags == 0 {
                     write!(
                         f,
                         "even one lag does not fit with this design, so use a shorter sample \

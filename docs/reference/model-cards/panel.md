@@ -320,9 +320,15 @@ error is the one at `S − 1` times `sqrt(S / (bandwidth + 1))`. On the
 fixture's balanced 25 × 8 panel, bandwidth 24 gives `sqrt(8/25) = 0.566`
 times the edge value. A large enough bandwidth drives the standard errors
 to 0 and the t-statistics to infinity. Before 0.11.0, `panel_fe`,
-`panel_distributed_lag` and `panel_lp` returned those numbers. The edge values for random effects (bandwidth 7)
-and first differences (6) are pinned against linearmodels
-(`dk_bandwidth_edge` in `fixtures/panel_static.json`).
+`panel_distributed_lag` and `panel_lp` returned those numbers. The edge
+values for random effects (bandwidth 7) and first differences (6) are
+pinned against linearmodels (`dk_bandwidth_edge` in
+`fixtures/panel_static.json`). `panel_lp` runs Driscoll-Kraay by default
+with bandwidth 4, so on a short panel its default call is refused at the
+first horizon that leaves fewer than five periods
+(`T − h − n_lag_controls < 5`; with the default `horizon = 8` and
+`n_lag_controls = 2`, any `T ≤ 14`), and the message says the 4 was the
+default: pass a smaller `bandwidth` or `horizon`.
 
 **Fama-MacBeth.** A period is skipped when fewer than `K` entities are
 observed in it or its cross-section is rank-deficient. tsecon decides the

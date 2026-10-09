@@ -2366,7 +2366,10 @@ Panel local projection of a common shock with fixed effects.
     instead of being silently absorbed. `bandwidth + 1` above the number of
     periods that carry scores at some horizon `h` (`T - h - n_lag_controls`
     on a balanced panel) raises too, naming `bandwidth` and `h`: past it no
-    lag is added and the standard errors only shrink.
+    lag is added and the standard errors only shrink. At the default
+    bandwidth that is any horizon with `T - h - n_lag_controls < 5` (every
+    `T <= 14` at the default `horizon` and `n_lag_controls`), and the message
+    then says the 4.0 is the default.
 
     `outcome` is N x T; `shock` is length T. Fixed effects + lagged outcomes
     + short T carry Nickell bias (horizon-amplified); two half-panel
@@ -4184,8 +4187,9 @@ Breusch-Godfrey LM test for serial correlation of order up to `nlags`
     nlags = 564; model card). An order whose auxiliary design would pass
     2^26 entries (512 MiB) or 2^34 multiply-adds (about half a minute) is
     refused before anything is built, naming `nlags` and the largest order
-    that fits; at the default order that caps `T` at 5162220 when `x` has
-    three columns.
+    that fits; at the default order that caps `T` at 5162220 when `x` is a
+    constant and two regressors (4793490 when `x` spans no constant and one
+    is added).
 
     Returned keys: `constant_added`, `df`, `f_df_den`, `f_df_num`, `f_pvalue`,
     `fstat`, `nlags`, `nobs`, `pvalue`, `statistic`.

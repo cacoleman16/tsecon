@@ -116,7 +116,17 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
             } else {
                 format!("nlags = {nlags}")
             };
-            let remedy = if max_nlags == 0 {
+            // With one lag the design has k_aux - nlags + 1 columns; when its
+            // 6 k^3 term alone is past the work budget, no sample length fits.
+            let one_lag = k_aux.saturating_sub(nlags).saturating_add(1);
+            let remedy = if max_nlags == 0
+                && tsecon_spectest::breusch_godfrey_work(0, one_lag)
+                    > tsecon_spectest::BG_WORK_BUDGET
+            {
+                "even nlags = 1 does not fit with this x at any sample length (the \
+                 6 k_aux^3 term alone is past the work budget) — pass fewer columns of x"
+                    .to_string()
+            } else if max_nlags == 0 {
                 "even nlags = 1 does not fit with this x — pass a shorter y and x (fewer \
                  observations) or fewer columns of x"
                     .to_string()
@@ -125,16 +135,16 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
             } else {
                 format!("pass nlags <= {max_nlags}, or a shorter y and x")
             };
+            let columns = if k_x == 1 { "column" } else { "columns" };
             PyValueError::new_err(format!(
                 "{order} makes the Breusch-Godfrey auxiliary regression too large: T = {n} \
-                 observations by k_aux = {k_aux} regressors (the {k_x} columns of x, the \
+                 observations by k_aux = {k_aux} regressors (the {k_x} {columns} of x, the \
                  nlags lagged residuals and an added constant when x spans none) is {} \
-                 entries and about {:.2e} multiply-adds, past the budget of {} entries \
-                 (512 MiB) and 2^34 multiply-adds (about half a minute; the cost grows like \
-                 T * k_aux^2 + k_aux^3); {remedy}",
+                 entries and about {:.2e} multiply-adds, past {}, and the cost grows like \
+                 T * k_aux^2 / 2 + 6 k_aux^3; {remedy}",
                 n.saturating_mul(k_aux),
                 tsecon_spectest::breusch_godfrey_work(n, k_aux) as f64,
-                tsecon_spectest::BG_MAX_AUX_CELLS,
+                tsecon_spectest::breusch_godfrey_exceeded_budget(n, k_aux).unwrap_or("the budget"),
             ))
         }
         SpecTestError::SampleTooLong { n, max, .. } => PyValueError::new_err(format!(
@@ -185,8 +195,9 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
 /// nlags = 564; model card). An order whose auxiliary design would pass
 /// 2^26 entries (512 MiB) or 2^34 multiply-adds (about half a minute) is
 /// refused before anything is built, naming `nlags` and the largest order
-/// that fits; at the default order that caps `T` at 5162220 when `x` has
-/// three columns.
+/// that fits; at the default order that caps `T` at 5162220 when `x` is a
+/// constant and two regressors (4793490 when `x` spans no constant and one
+/// is added).
 ///
 /// Returned keys: `constant_added`, `df`, `f_df_den`, `f_df_num`, `f_pvalue`,
 /// `fstat`, `nlags`, `nobs`, `pvalue`, `statistic`.

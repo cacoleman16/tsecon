@@ -87,12 +87,26 @@ pub fn breusch_godfrey_work(n: usize, k_aux: usize) -> u128 {
     (n.saturating_mul(k2) / 2).saturating_add(k2.saturating_mul(k).saturating_mul(6))
 }
 
-/// `true` when an `n x k_aux` auxiliary design fits both budgets
-/// ([`BG_MAX_AUX_CELLS`] and [`BG_WORK_BUDGET`]).
+/// Which budget an `n x k_aux` auxiliary design exceeds — the memory
+/// budget ([`BG_MAX_AUX_CELLS`]), the work budget ([`BG_WORK_BUDGET`]) or
+/// both — as the phrase its refusal quotes; `None` when it fits both.
+pub fn breusch_godfrey_exceeded_budget(n: usize, k_aux: usize) -> Option<&'static str> {
+    let memory = n.checked_mul(k_aux).is_none_or(|c| c > BG_MAX_AUX_CELLS);
+    let work = breusch_godfrey_work(n, k_aux) > BG_WORK_BUDGET;
+    match (memory, work) {
+        (true, true) => Some(
+            "both the memory budget of 2^26 = 67108864 entries (512 MiB) and the work \
+             budget of 2^34 multiply-adds (about half a minute)",
+        ),
+        (true, false) => Some("the memory budget of 2^26 = 67108864 entries (512 MiB)"),
+        (false, true) => Some("the work budget of 2^34 multiply-adds (about half a minute)"),
+        (false, false) => None,
+    }
+}
+
+/// `true` when an `n x k_aux` auxiliary design fits both budgets.
 fn within_budget(n: usize, k_aux: usize) -> bool {
-    n.checked_mul(k_aux)
-        .is_some_and(|cells| cells <= BG_MAX_AUX_CELLS)
-        && breusch_godfrey_work(n, k_aux) <= BG_WORK_BUDGET
+    breusch_godfrey_exceeded_budget(n, k_aux).is_none()
 }
 
 /// The largest order the test admits for `n` observations and `k_base`

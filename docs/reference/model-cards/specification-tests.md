@@ -523,9 +523,10 @@ or a longer `y`.
 and then factoring and inverting them. That is linear in `T` at a fixed
 order but quadratic to cubic in `nlags`. Measured on the release wheel
 (`lab/serial_corr/bg_cost.py`, output in `lab/serial_corr/out/bg_cost.txt`,
-one call per cell on a shared 4-core machine, `x` with three columns): 0.05 s
-at `T = 10^5` and 0.56 s at `T = 10^6` with `nlags = 10`, 1.2 s at
-`T = 20000` with `nlags = 250`, and 9.4 s at `T = 5000` with `nlags = 1000`.
+one call per cell on a shared 4-core machine, `x` a constant and two
+regressors): 0.05 s at `T = 10^5` and 0.56 s at `T = 10^6` with
+`nlags = 10`, 1.2 s at `T = 20000` with `nlags = 250`, and 9.4 s at
+`T = 5000` with `nlags = 1000`.
 An order whose auxiliary design would hold more than 2^26 entries (512 MiB;
 the OLS engine keeps a second copy) or cost more than 2^34 multiply-adds
 (about half a minute: 29.6 s at `T = 10^5` with `nlags = 564` and 26.5 s at
@@ -534,7 +535,8 @@ is refused before anything is built. The refusal names `nlags` and the
 largest order that fits, and takes 3 ms. At `T = 10^5`, `nlags = 20000`
 would need a 16 GB design; before the budget it aborted the interpreter in
 the allocator instead of raising. At the default order of 10, the memory
-budget caps `T` at 5,162,220 when `x` has three columns.
+budget caps `T` at 5,162,220 when `x` is a constant and two regressors
+(4,793,490 when `x` spans no constant and one is added).
 
 **How to read the output.** A dict. `statistic` is `LM = T * R^2_aux`, `df`
 its chi-square degrees of freedom (`= nlags`), and `pvalue` the upper-tail
