@@ -921,8 +921,13 @@ Iterated VAR point forecasts with (1-alpha) intervals.
     STATIONARY VAR (on near-unit-root levels data it inflates long-horizon
     variances by 15-18%). Unlike statsmodels' public "auto" it applies to
     trend="n" too. Refused with a non-pointwise `band` (names both). COST:
-    CUBIC in `steps` (0.27 s at 1000 steps on a k = 3 VAR(2)), with a work
-    budget of 2^34 past which `steps` is refused by name.
+    about steps^3 (k^2 + 8) / 3 + steps^2 k^3 / 2 + 2 steps m^3 +
+    steps^2 m^2 operations, m = n_trend + k*lags: CUBIC in `steps` on a
+    small VAR (0.27 s at 1000 steps on a k = 3 VAR(2)), and on a wide one
+    the 2 steps m^3 term dominates, CUBIC in k*lags (k = 60, lags = 20:
+    m = 1201, at most 4 steps). A work budget of 2^34 refuses past it,
+    naming `steps` with the remedy for whichever terms dominate, or `lags`
+    when not even one step fits.
 
     Returned keys: `point`, `lower`, `upper`, `band`, `cov`,
     `param_uncertainty`; with a simultaneous `band` also `se`, `sim_lower`,

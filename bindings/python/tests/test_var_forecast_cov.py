@@ -212,6 +212,32 @@ def test_the_cubic_cost_is_documented_budgeted_and_bounded():
     assert len(tsecon.var_forecast(DATA, lags=2, steps=5000)["cov"]) == 5000
 
 
+def test_a_wide_var_refusal_names_the_lag_driven_cost():
+    """Audit round 15 (SWEEP-8): the refusal quoted only steps^3 (k^2 + 8) / 3
+    and advised that "horizons are tens of periods" while the 2 steps m^3
+    term (m = n_trend + k*lags) was what tripped the budget. It now quotes
+    the whole count, says which terms dominate, and names `lags` when not
+    even one step fits."""
+    rng = np.random.default_rng(0)
+    wide = rng.standard_normal((400, 30))  # m = 301: 197 steps fit (the lab script)
+    with pytest.raises(ValueError, match=r"^invalid steps = 198: .*the m terms dominate") as e:
+        tsecon.var_forecast(wide, lags=10, steps=198, param_uncertainty=True)
+    msg = str(e.value)
+    for frag in ("steps^2 k^3 / 2", "2 steps m^3", "m = n_trend + k*lags", "reduce lags"):
+        assert frag in msg, msg
+    assert "tens of periods" not in msg
+    # a small VAR past its cap keeps the cubic-in-steps advice
+    with pytest.raises(ValueError, match=r"^invalid steps = 5000: .*first term dominates: CUBIC in steps"):
+        tsecon.var_forecast(DATA, lags=2, steps=5000, param_uncertainty=True)
+    # m = 1 + 64 * 32 = 2049: 2 m^3 alone is over 2^34, so no horizon fits
+    widest = rng.standard_normal((2200, 64))  # T - lags - m >= k keeps Sigma_u definite
+    with pytest.raises(ValueError, match=r"^invalid lags = 32: .*even at steps = 1"):
+        tsecon.var_forecast(widest, lags=32, steps=1, param_uncertainty=True)
+    for text in (tsecon.var_forecast.__doc__, _stub_doc("var_forecast")):
+        flat = re.sub(r"\s+", " ", text)
+        assert "2 steps m^3" in flat and "m = n_trend + k*lags" in flat, flat[:200]
+
+
 # ------------------------------------------------------ docs contracts
 def test_every_returned_key_is_named_in_both_docstrings():
     keys = set(tsecon.var_forecast(DATA, lags=2, steps=3, param_uncertainty=True))
