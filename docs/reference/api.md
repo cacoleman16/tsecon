@@ -3063,8 +3063,13 @@ ADL-MIDAS: U-MIDAS plus ar_lags lags of the low-frequency target, by OLS.
     se_type "hac" (default): Bartlett/Newey-West with the n/(n - k) factor at
     maxlags, default floor(4 (nobs/100)^(2/9)) on the EFFECTIVE rows
     nobs = n - P; "nonrobust" refuses an explicit maxlags. ar_lags=0 is
-    refused (that model is umidas). Validated against statsmodels OLS on a
-    pandas.shift design at 1e-10.
+    refused (that model is umidas). Cost caps, checked before any column is
+    built: the nobs x (1 + P + K) design at most 2^26 cells, and about
+    nobs k^2 (min(maxlags, nobs - 1) + 2) work units (k = 1 + P + K; no lag
+    term under "nonrobust") at most 2^33 (measured 0.65-2.16 ns per unit) --
+    refused naming maxlags when the bandwidth alone exceeds it, ar_lags
+    otherwise. Validated against statsmodels OLS on a pandas.shift design at
+    1e-10.
 
     Returned keys: `bse`, `first_index` (= P, index into y of the first
     fitted row), `maxlags` (resolved; None under "nonrobust"), `nobs`
@@ -3978,9 +3983,10 @@ Fixed-parameter DFM Kalman smoother over a (ragged) T x N panel.
     panel. Refusals name the argument (shapes, non-finite parameters, inf in
     data, negative idiosyncratic, scale <= 0, a non-stationary factor_ar, a
     non-PSD factor_cov, and sizes past the caps: T (r p)^2 and N^2 at most
-    2^26 cells, T (m^3 + N m^2 + N^2 + 250 N + 1000) at most 2^33 work units,
-    m = r p -- measured 3.4 s at T = 4000, N = 1000, m = 2). Validated against statsmodels DynamicFactor.smooth and
-    KalmanSmoother at 1e-8.
+    2^26 cells, T (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 8 m^3 at most
+    2^34 work units, m = r p -- measured 0.38-1.19 ns per unit, 12.1 s at
+    T = 8000, N = 1000, m = 2). Validated against statsmodels
+    DynamicFactor.smooth and KalmanSmoother at 1e-8.
 
     Returned keys: `edge_factor` (length r, the last smoothed factor),
     `factor_order` (p), `loglik` (of the STANDARDIZED panel z; no Jacobian

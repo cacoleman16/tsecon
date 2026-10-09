@@ -27,16 +27,21 @@ use crate::{to_faer, to_py, vec1};
 /// — the bound `unobserved_components` uses for the same engine.
 const MAX_CELLS: u128 = 1 << 26;
 
-/// Work budget of one smoothing pass, in units of
-/// `m^3 + N m^2 + N^2 + 250 N + 1000` per period: the prediction step is an
-/// `m x m` triple product, each observed series an `O(m^2)` update, the
-/// engine touches the dense `N x N` observation covariance every period, and
-/// the last two terms are the measured per-series and per-period overhead
-/// (about 1 and 4 microseconds). Measured with
-/// `lab/audit/wave11/dfm_smooth_cost.py` at 0.4-5 ns per unit, so a call at
-/// the cap takes well under a minute; past it the call is refused before
-/// any work, naming the arguments that size it.
-const WORK_BUDGET: u128 = 1 << 33;
+/// Work budget of one smoothing pass, in units of about a nanosecond:
+/// `2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000` per period plus `8 m^3` once.
+/// Per period the filter and smoother form a few `m x m` triple products,
+/// each observed series costs an `O(m^2)` update on the way forward and
+/// back, the engine touches the dense `N x N` observation covariance, and
+/// the last two terms are the per-series and per-period overhead (about 1
+/// and 12 microseconds); the one-off term is the stationary initialization
+/// (the companion eigenvalue check and the Lyapunov doubling, whose
+/// iteration count grows with the factors' persistence). The coefficients
+/// were chosen from a non-negative least-squares fit to the timings that
+/// `lab/audit/wave11/dfm_smooth_cost.py` records; across its fourteen shapes
+/// (`m` from 1 to 1160, `N` from 1 to 2000) a unit measured 0.38-1.19 ns, so
+/// a call at the cap takes about 20 s at most. Past the budget the call is
+/// refused before any work, naming the arguments that size it.
+const WORK_BUDGET: u128 = 1 << 34;
 
 fn err(msg: String) -> PyErr {
     PyValueError::new_err(format!("dfm_smooth: {msg}"))
@@ -174,10 +179,13 @@ fn rewrite(e: NowcastError) -> PyErr {
 /// non-PSD `factor_cov`. COST: the smoother stores `T * (r p)^2` covariance
 /// cells per sequence and the state space an `N x N` observation
 /// covariance, each capped at 2^26; the work is about
-/// `T (m^3 + N m^2 + N^2 + 250 N + 1000)` units with `m = r p` (the last two
-/// terms are the per-series and per-period overhead), capped at 2^33 —
-/// measured at 0.4-5 ns per unit, so a call at the cap stays under a minute
-/// (`lab/audit/wave11/dfm_smooth_cost.py` records the timings; the
+/// `T (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 8 m^3` units with
+/// `m = r p` (per period the triple products, the per-series updates, the
+/// dense observation covariance and the per-series / per-period overhead;
+/// once, the stationary initialization), capped at 2^34 — measured at
+/// 0.38-1.19 ns per unit, so a call at the cap takes about 20 s at most
+/// (12.1 s at T = 8000, N = 1000, m = 2, 0.97 of the cap;
+/// `lab/audit/wave11/dfm_smooth_cost.py` records the timings, the
 /// nowcasting model card quotes them). Past either cap the call is refused
 /// before any work.
 ///
@@ -344,13 +352,15 @@ fn dfm_smooth<'py>(
         )));
     }
     let n128 = n as u128;
-    let work = (t_len as u128) * (m * m * m + n128 * m * m + n128 * n128 + 250 * n128 + 1000);
+    let per_period = 2 * m * m * m + 20 * n128 * m * m + n128 * n128 + 1000 * n128 + 12_000;
+    let work = (t_len as u128) * per_period + 8 * m * m * m;
     if work > WORK_BUDGET {
         return Err(err(format!(
             "T = {t_len} periods, N = {n} series (the rows of loadings) and m = r * p = {m} \
-             states (factor_ar's width) cost about T * (m^3 + N m^2 + N^2 + 250 N + 1000) = \
-             {work:.2e} work units, beyond the budget of 2^33 (well under a minute). Lower \
-             the factor order or the number of factors, or smooth fewer periods or series",
+             states (factor_ar's width) cost about T * (2 m^3 + 20 N m^2 + N^2 + 1000 N + \
+             12000) + 8 m^3 = {work:.2e} work units (about a nanosecond each), beyond the \
+             budget of 2^34 (under half a minute). Lower the factor order or the number of \
+             factors, or smooth fewer periods or series",
             work = work as f64
         )));
     }

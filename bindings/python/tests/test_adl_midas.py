@@ -179,6 +179,34 @@ def test_negative_and_absurd_counts_are_refused_by_name():
         tsecon.adl_midas(y, hf, maxlags=-2)
 
 
+def test_absurd_sizes_are_refused_before_any_column_is_built():
+    rng = np.random.default_rng(0)
+    n = 100_000
+    y = rng.standard_normal(n)
+    # ar_lags = 49 000 on 100 000 rows passes the row count but would build a
+    # 51 000 x 49 002 design (20 GB): refused by the 2^26-cell cap.
+    with pytest.raises(ValueError, match=r"ar_lags = 49000 .*beyond the 2\^26"):
+        tsecon.adl_midas(y, rng.standard_normal((n, 1)), ar_lags=49_000, se_type="nonrobust")
+    hf = rng.standard_normal((n, 6))
+    # A bandwidth past the sample: 99 998 HAC lags of 64 cross-products over
+    # 99 999 rows. The budget names maxlags and the largest value it admits.
+    with pytest.raises(ValueError, match=r"maxlags = 1000000000 .*Pass maxlags <= 1340 "):
+        tsecon.adl_midas(y, hf, maxlags=10**9)
+    # Inside the design cap, past the work budget: k = 2007 coefficients.
+    with pytest.raises(ValueError, match=r"ar_lags = 2000 .*budget of 2\^33"):
+        tsecon.adl_midas(y[:20_000], hf[:20_000], ar_lags=2000, se_type="nonrobust")
+    # On a short series the same request is cheap and runs: the Bartlett sum
+    # stops at nobs - 1 lags, which is what the budget counts.
+    out = tsecon.adl_midas(y[:2000], hf[:2000], maxlags=1999)
+    assert out["maxlags"] == 1999 and np.all(np.isfinite(out["params"]))
+
+
+def test_docs_state_the_cost_caps():
+    for doc in (tsecon.adl_midas.__doc__, _stub_doc("adl_midas")):
+        flat = re.sub(r"\s+", " ", doc)
+        assert "2^26" in flat and "2^33" in flat
+
+
 def test_one_dimensional_hf_lags_is_refused_naming_it():
     y, hf = _good()
     with pytest.raises((TypeError, ValueError), match="hf_lags"):

@@ -12,6 +12,22 @@ use pyo3::types::PyDict;
 
 use crate::{to_py, vec1};
 
+/// Largest accepted design, `nobs x (1 + P + K)` cells: `2^26` doubles is
+/// 512 MiB per copy, the cap `ardl_bounds_test` puts on its design. The
+/// lagged-`y` block is built here from a scalar `ar_lags`, so without the
+/// cap an absurd `ar_lags` on a long series would allocate `P (n - P)`
+/// cells before any check could fail.
+const MAX_DESIGN_CELLS: u128 = 1 << 26;
+
+/// Work budget, in units of `nobs * k^2` per HAC lag plus two for the OLS
+/// fit and the sandwich (`k = 1 + P + K` coefficients, the HAC meat summing
+/// `min(maxlags, nobs - 1)` lagged score cross-products of `k^2` terms each).
+/// Measured at 0.65-2.16 ns per unit (`lab/audit/wave11/adl_midas_cost.py`),
+/// so a call at the cap takes under 20 s; past it the call is refused
+/// before any column is built, naming `maxlags` when the bandwidth is what
+/// exceeds it and `ar_lags` otherwise.
+const WORK_BUDGET: u128 = 1 << 33;
+
 fn err(msg: String) -> PyErr {
     PyValueError::new_err(format!("adl_midas: {msg}"))
 }
@@ -52,7 +68,15 @@ fn err(msg: String) -> PyErr {
 /// row count of `hf_lags` different from `len(y)`, or zero columns; NaN or
 /// infinity in `y` or `hf_lags`; too few rows for the `1 + P + K`
 /// coefficients (`ar_lags`); `maxlags` under `"nonrobust"`; an unknown
-/// `se_type`. A collinear design is refused by the OLS engine.
+/// `se_type`. A collinear design is refused by the OLS engine. COST: the
+/// design `nobs x (1 + P + K)` is capped at 2^26 cells and the work,
+/// about `nobs k^2 (min(maxlags, nobs - 1) + 2)` units with
+/// `k = 1 + P + K` (no lag term under `"nonrobust"`), at 2^33 — measured at
+/// 0.65-2.16 ns per unit, so a call at the cap takes under 20 s (13.2 s at
+/// n = 100000, K = 6, maxlags = 1340, the cap itself;
+/// `lab/audit/wave11/adl_midas_cost.py`). Past either cap the call is
+/// refused before any column is built, naming `maxlags` when the bandwidth
+/// alone exceeds the budget and `ar_lags` otherwise.
 ///
 /// Validated against statsmodels 0.15.0 `OLS` on the same design built
 /// independently with `pandas.shift` — params, residuals, R², and bse /
@@ -125,6 +149,15 @@ fn adl_midas<'py>(
         )));
     }
     let nobs = n - ar_lags;
+    let cells = nobs as u128 * n_coef;
+    if cells > MAX_DESIGN_CELLS {
+        return Err(err(format!(
+            "ar_lags = {ar_lags} with K = {k} high-frequency column(s) builds an nobs x \
+             (1 + ar_lags + K) = {nobs} x {n_coef} design of {cells} cells, beyond the 2^26 \
+             (512 MiB) accepted. Lower ar_lags (or use fewer hf_lags columns), or fit a \
+             shorter sample"
+        )));
+    }
     let (se, resolved) = match se_type {
         "nonrobust" => {
             if let Some(l) = maxlags {
@@ -152,6 +185,35 @@ fn adl_midas<'py>(
             )))
         }
     };
+
+    // Cost guard: the OLS fit and sandwich plus, under HAC, one pass over
+    // the scores per lag up to min(maxlags, nobs - 1) (the Bartlett weight
+    // is zero past the bandwidth and the crate stops there).
+    let per_lag = nobs as u128 * n_coef * n_coef;
+    let lags_eff = resolved.map_or(0, |l| (l as u128).min(nobs as u128 - 1));
+    let work = per_lag * (lags_eff + 2);
+    if work > WORK_BUDGET {
+        if maxlags.is_some() && per_lag * 2 <= WORK_BUDGET {
+            return Err(err(format!(
+                "maxlags = {} over nobs = {nobs} fitted rows and k = {n_coef} coefficients \
+                 costs about nobs * k^2 * (min(maxlags, nobs - 1) + 2) = {work:.2e} work \
+                 units, beyond the budget of 2^33 (about 20 s). Pass maxlags <= {} (the \
+                 default Newey-West rule gives {})",
+                maxlags.unwrap_or(0),
+                WORK_BUDGET / per_lag - 2,
+                tsecon_hac::newey_west_maxlags(nobs),
+                work = work as f64
+            )));
+        }
+        return Err(err(format!(
+            "ar_lags = {ar_lags} with K = {k} high-frequency column(s) gives k = 1 + ar_lags + \
+             K = {n_coef} coefficients over nobs = {nobs} fitted rows: the OLS fit and its \
+             {se_type} covariance cost about nobs * k^2 * (lags + 2) = {work:.2e} work units, \
+             beyond the budget of 2^33 (about 20 s). Lower ar_lags (or use fewer hf_lags \
+             columns), or fit a shorter sample",
+            work = work as f64
+        )));
+    }
 
     let p = ar_lags;
     let y_eff = yv[p..].to_vec();

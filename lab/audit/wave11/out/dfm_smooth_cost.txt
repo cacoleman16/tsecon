@@ -1,0 +1,21 @@
+# tsecon 0.10.0, Python 3.13.16, x86_64
+#      T      N    m      phi      units  x cap   seconds  ns/unit
+     500     50    8  0.50000   6.48e+07   0.00     0.048    0.736
+    2000    200   12  0.50000   1.66e+09   0.10     1.646    0.990
+    1000     10   40  0.50000   4.71e+08   0.03     0.406    0.863
+   60000     30   10  0.50000   6.29e+09   0.37     7.498    1.191
+   30000     60   16  0.50000   1.17e+10   0.68    10.091    0.860
+    4000   1000    2  0.50000   8.37e+09   0.49     6.297    0.752
+     200      5  250  0.50000   7.63e+09   0.44     7.186    0.942
+    1000   2000    1  0.50000   6.05e+09   0.35     3.221    0.532
+  200000      1    1  0.50000   2.60e+09   0.15     1.343    0.515
+  100000     30    2  0.50000   4.53e+09   0.26     5.076    1.120
+    8000   1000    2  0.50000   1.67e+10   0.97    12.118    0.724
+       1      2  960  0.50000   8.88e+09   0.52     3.413    0.384
+       1      2  960  0.99999   8.88e+09   0.52     6.234    0.702
+       1      2 1160  0.99999   1.57e+10   0.91    12.086    0.772
+# NNLS fit, ns per period (first 10 cases): 1.95 m^3 + 17.64 N m^2 + 0.09 N^2 + 1422 N + 0
+# refused past the caps (time to the refusal):
+       1      2 1200   0.000s  dfm_smooth: T = 1 periods, N = 2 series (the rows of loadings) and m = r * p = 1200 states (factor_ar's width)
+     100   9000    1   0.003s  dfm_smooth: loadings has N = 9000 series: the state-space form stores the N x N observation covariance densely
+    9000   1000    2   0.047s  dfm_smooth: T = 9000 periods, N = 1000 series (the rows of loadings) and m = r * p = 2 states (factor_ar's wid

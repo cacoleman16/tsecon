@@ -262,13 +262,21 @@ def test_size_caps_refuse_before_allocating():
     with pytest.raises(ValueError, match="8192 series"):
         tsecon.dfm_smooth(np.zeros((2, n)), loadings=np.ones((n, 1)), factor_ar=[[0.5]],
                           idiosyncratic=np.ones(n))
-    # Work: T * (m^3 + N m^2 + N^2 + 250 N + 1000) past 2^33 (both size caps
-    # pass): 2.63e7 units per period at N = 5000, so 400 periods are refused.
+    # Work: T * (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 8 m^3 past 2^34
+    # (both size caps pass): 3.01e7 units per period at N = 5000, m = 1, so
+    # 600 periods are refused.
     n = 5000
-    with pytest.raises(ValueError, match=r"T \* \(m\^3 \+ N m\^2 \+ N\^2 \+ 250 N \+ 1000\)"):
-        tsecon.dfm_smooth(np.zeros((400, n)), loadings=np.ones((n, 1)), factor_ar=[[0.5]],
+    with pytest.raises(ValueError, match=r"T \* \(2 m\^3 \+ 20 N m\^2 \+ N\^2 \+ 1000 N \+ 12000\)"):
+        tsecon.dfm_smooth(np.zeros((600, n)), loadings=np.ones((n, 1)), factor_ar=[[0.5]],
                           idiosyncratic=np.ones(n))
-    # Just inside every cap the call runs (300 periods: 7.9e9 units).
+    # The stationary initialization is paid once per call whatever T is: a
+    # single period with m = 8 * 150 = 1200 states costs 10 m^3 + ... =
+    # 1.73e10 units (the companion eigenvalue check and the Lyapunov
+    # doubling), refused.
+    with pytest.raises(ValueError, match=r"\+ 8 m\^3 = 1\.73e10 work units"):
+        tsecon.dfm_smooth(np.zeros((1, 2)), loadings=np.ones((2, 8)),
+                          factor_ar=np.zeros((8, 1200)), idiosyncratic=np.ones(2))
+    # Inside every cap the call runs (300 periods: 9.0e9 units).
     out = tsecon.dfm_smooth(np.zeros((300, n)), loadings=np.ones((n, 1)), factor_ar=[[0.5]],
                             idiosyncratic=np.ones(n))
     assert out["smoothed_factors"].shape == (300, 1)
@@ -298,3 +306,13 @@ def test_docs_state_the_round_trip_and_the_smoothed_factors_difference():
         assert "STANDARDIZED" in flat
     flat = re.sub(r"\s+", " ", tsecon.dfm_nowcast.__doc__)
     assert "dfm_smooth" in flat
+
+
+def test_the_cost_caps_are_documented_with_their_measurement():
+    for doc in (tsecon.dfm_smooth.__doc__, _stub_doc("dfm_smooth")):
+        flat = re.sub(r"\s+", " ", doc)
+        assert "2^26" in flat and "2^34" in flat and "8 m^3" in flat
+    card = (REPO / "docs" / "reference" / "model-cards" / "nowcasting-midas.md").read_text(encoding="utf-8")
+    assert "**What it costs.**" in card
+    assert "lab/audit/wave11/dfm_smooth_cost.py" in card and "lab/audit/wave11/adl_midas_cost.py" in card
+    assert (REPO / "lab" / "audit" / "wave11" / "out" / "dfm_smooth_cost.txt").exists()
