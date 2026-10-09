@@ -3516,6 +3516,15 @@ def breusch_godfrey_test(
     counts what that constant explains and over-rejects (measured in the
     model card): read the F-form (`f_pvalue`) there.
 
+    COST: about `T k_aux^2 / 2 + 6 k_aux^3` multiply-adds for the auxiliary
+    regression — linear in `T` at a fixed `nlags`, quadratic to cubic in
+    `nlags` (measured: 0.05 s at T = 10^5 with nlags = 10, 30 s with
+    nlags = 564; model card). An order whose auxiliary design would pass
+    2^26 entries (512 MiB) or 2^34 multiply-adds (about half a minute) is
+    refused before anything is built, naming `nlags` and the largest order
+    that fits; at the default order that caps `T` at 5162220 when `x` has
+    three columns.
+
     Returned keys: `constant_added`, `df`, `f_df_den`, `f_df_num`, `f_pvalue`,
     `fstat`, `nlags`, `nobs`, `pvalue`, `statistic`.
     `statistic`/`df`/`pvalue` are the LM form (`df = nlags`), `fstat` with

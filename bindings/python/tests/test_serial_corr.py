@@ -359,6 +359,37 @@ def test_every_refusal_names_the_offending_parameter(cell):
     assert _names(msg, pname), f"{fn}: refusal does not name {pname!r}: {msg[:300]}"
 
 
+def _largest_order(n, k_base, cells=1 << 26, work=1 << 34):
+    """The documented budgets: T * k_aux <= 2^26 entries and
+    T k_aux^2 / 2 + 6 k_aux^3 <= 2^34 multiply-adds, with T > k_aux."""
+    best = 0
+    for p in range(1, n - k_base):
+        k = k_base + p
+        if n * k > cells or n * k * k // 2 + 6 * k ** 3 > work:
+            break
+        best = p
+    return best
+
+
+def test_an_order_past_the_budgets_is_refused_by_name_before_anything_is_built():
+    # T = 1e5 and nlags = 20000 is a valid order (T > k_aux) whose auxiliary
+    # design is 2e9 doubles (16 GB): it used to abort the interpreter in the
+    # allocator. Now it is refused at once, naming nlags and the largest order
+    # the budgets admit; that order itself is what the lab script times.
+    n = 100_000
+    y = np.random.default_rng(8).standard_normal(n)
+    x = np.ones((n, 1))
+    t0 = time.perf_counter()
+    with pytest.raises(ValueError) as info:
+        tsecon.breusch_godfrey_test(y, x, nlags=20_000)
+    assert time.perf_counter() - t0 < 2.0
+    msg = str(info.value)
+    assert msg.startswith("nlags = 20000 makes the Breusch-Godfrey auxiliary regression too large")
+    assert f"pass nlags <= {_largest_order(n, 1)}," in msg, msg
+    with pytest.raises(ValueError, match=r"^nlags = "):
+        tsecon.breusch_godfrey_test(y, x, nlags=_largest_order(n, 1) + 1)
+
+
 def test_degenerate_residuals_and_short_samples_are_named():
     x = _X
     y_exact = x @ np.array([1.0, 2.0, -1.0])

@@ -518,6 +518,24 @@ constant) both forms held their size (3.7% to 6.1%).
 observations has a default order of 0, and the refusal says to pass `nlags`
 or a longer `y`.
 
+**COST, and the budgets on `nlags`.** The auxiliary regression costs about
+`T k_aux^2 / 2 + 6 k_aux^3` multiply-adds, building its normal equations
+and then factoring and inverting them. That is linear in `T` at a fixed
+order but quadratic to cubic in `nlags`. Measured on the release wheel
+(`lab/serial_corr/bg_cost.py`, output in `lab/serial_corr/out/bg_cost.txt`,
+one call per cell on a shared 4-core machine, `x` with three columns): 0.05 s
+at `T = 10^5` and 0.56 s at `T = 10^6` with `nlags = 10`, 1.2 s at
+`T = 20000` with `nlags = 250`, and 9.4 s at `T = 5000` with `nlags = 1000`.
+An order whose auxiliary design would hold more than 2^26 entries (512 MiB;
+the OLS engine keeps a second copy) or cost more than 2^34 multiply-adds
+(about half a minute: 29.6 s at `T = 10^5` with `nlags = 564` and 26.5 s at
+`T = 3000` with `nlags = 1338`, the largest orders the budget admits there)
+is refused before anything is built. The refusal names `nlags` and the
+largest order that fits, and takes 3 ms. At `T = 10^5`, `nlags = 20000`
+would need a 16 GB design; before the budget it aborted the interpreter in
+the allocator instead of raising. At the default order of 10, the memory
+budget caps `T` at 5,162,220 when `x` has three columns.
+
 **How to read the output.** A dict. `statistic` is `LM = T * R^2_aux`, `df`
 its chi-square degrees of freedom (`= nlags`), and `pvalue` the upper-tail
 probability. `fstat` is the F-form on `f_df_num = nlags` and
@@ -535,9 +553,11 @@ dynamic term shows up here as serial correlation: it is a specification
 signal, not only an inference one. Strong heteroskedasticity distorts both
 forms. With `constant_added` the LM form over-rejects (above). A design that
 is collinear (`x` rank deficient), an order that leaves no residual degrees of
-freedom (`nlags` too long), a `y` that `x` fits exactly (zero residuals), or,
-when `x` spans no constant, a `y` that `x` and a constant fit exactly are
-refused with the parameter named.
+freedom (`nlags` too long), an order whose auxiliary design would pass the
+memory or work budget (`nlags`, with the largest order that fits), a `y`
+that `x` fits exactly (zero residuals), or, when `x` spans no constant, a
+`y` that `x` and a constant fit exactly are refused with the parameter
+named.
 
 **Validated against.** statsmodels `acorr_breusch_godfrey` on an OLS fit:
 `fixtures/serial_corr.json` (generator
@@ -691,8 +711,8 @@ must satisfy `T >= k + 2` (with `T = k + 1`, `d` is a constant).
 `T x T` matrix, so the p-value is computed for `T` up to 4000 (128 MB). For a
 longer `y` the statistic, which costs time linear in `T`, is still returned,
 with `pvalue` set to `None`. For a test at that length use
-`breusch_godfrey_test`, whose cost is linear in `T` and whose chi-square
-approximation is accurate there. Measured on the release
+`breusch_godfrey_test`, whose cost is linear in `T` at a fixed `nlags` and
+whose chi-square approximation is accurate there. Measured on the release
 wheel (median of three calls, a 4-core machine shared with another job,
 `lab/serial_corr/dw_cost.py`):
 
