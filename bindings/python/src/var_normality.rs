@@ -124,9 +124,11 @@ fn set_cholesky_keys(d: &Bound<'_, PyDict>, n: &NormalityTest) -> PyResult<()> {
 ///
 /// Refusals (ValueError naming `resid`): fewer than 8 rows (the
 /// Doornik-Hansen skewness transform degenerates at T = 7), `T <= k`, a 0-D
-/// or 3-D (or higher) array, zero columns, a NaN or infinity, a constant
-/// column, collinear columns (a correlation-matrix eigenvalue `<= 1e-12 x`
-/// its trace), and columns on scales so different that the unit-dependent
+/// or 3-D (or higher) array, zero columns, a NaN or infinity, entries so
+/// large or so small that their squares overflow or underflow (rescale:
+/// every statistic is invariant to a common factor), a constant column,
+/// collinear columns (a correlation-matrix eigenvalue `<= 1e-12 x` its
+/// trace), and columns on scales so different that the unit-dependent
 /// symmetric root cannot be computed reliably.
 ///
 /// Validation: JMulTi (independent program) — the symmetric block against

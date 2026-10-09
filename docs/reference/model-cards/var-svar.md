@@ -615,7 +615,9 @@ asymptotic `jarque_bera` in short samples (the $n = 50$ row above), with
 and all three Jarque-Bera forms equal to `jarque_bera(x)["statistic"]` (both
 asserted live in CI). Unlike the bundle it refuses, each `ValueError` naming
 `resid`: fewer than 8 rows, $T \le k$, an input that is not 1-D or 2-D, zero
-columns, a NaN or infinity, a constant column, collinear columns (a
+columns, a NaN or infinity, entries so large or so small that their squares
+overflow or underflow (every statistic is invariant to a common rescaling, so
+rescale), a constant column, collinear columns (a
 correlation-matrix eigenvalue at or below $10^{-12}$ times its trace — a
 duplicated series), and columns on scales too different for the symmetric
 root.

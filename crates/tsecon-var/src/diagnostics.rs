@@ -242,7 +242,8 @@ fn ml_cov(u: &Mat<f64>) -> Mat<f64> {
 fn sym_eigen(m: &Mat<f64>) -> Result<(Vec<f64>, Mat<f64>), VarError> {
     let eigen = m.self_adjoint_eigen(Side::Lower).map_err(|_| {
         VarError::Linalg(tsecon_linalg::LinalgError::EigenFailed {
-            what: "symmetric eigendecomposition in the residual normality test",
+            what: "the symmetric eigendecomposition of the covariance or correlation \
+                   matrix of resid (the residual matrix of the normality test)",
         })
     })?;
     let lambda: Vec<f64> = eigen.S().column_vector().iter().copied().collect();
@@ -457,9 +458,10 @@ pub const DOORNIK_HANSEN_MIN_NOBS: usize = 8;
 /// function; returns the centred matrix.
 ///
 /// Refuses (each naming `resid`): no columns; fewer than `min_rows` rows or
-/// no more rows than columns; a non-finite entry; a constant column; and a
-/// correlation matrix whose smallest eigenvalue is `<= 1e-12 x` its trace
-/// (collinear columns, e.g. a duplicate).
+/// no more rows than columns; a non-finite entry; entries whose squares
+/// overflow or underflow; a constant column; and a correlation matrix whose
+/// smallest eigenvalue is `<= 1e-12 x` its trace (collinear columns, e.g. a
+/// duplicate).
 fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Mat<f64>, VarError> {
     let (t, k) = (resid.nrows(), resid.ncols());
     if k == 0 {
@@ -522,17 +524,33 @@ fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Mat<f64>, V
                 at: None,
             });
         }
-        // Exactly constant, or varying only at the rounding level of its
-        // own magnitude (standard deviation below 1e-12 x its RMS); the sums
-        // are finite here, so the comparison is total.
-        if lo == hi || cen2 <= 1e-24 * raw2 {
+        let constant = VarError::InvalidArgument {
+            what: "resid has a constant column (zero sample variance after centring, \
+                   or variation only at the rounding level of its magnitude): every \
+                   normality statistic standardises each column, so a constant column \
+                   has no skewness or kurtosis to test — drop that column from resid",
+        };
+        if lo == hi {
+            return Err(constant);
+        }
+        // A variance below the smallest normal double: the squares and
+        // cross-products are subnormal, and the factorisations of the
+        // covariance lose their scaling (entries of order 1e-155 make the
+        // eigensolver fail to converge). Every statistic here is invariant to
+        // a common rescaling, so the remedy the message names is exact.
+        if cen2 / (t as f64) < f64::MIN_POSITIVE {
             return Err(VarError::InvalidArgument {
-                what: "resid has a constant column (zero sample variance after \
-                       centring — or entries so small that their squares underflow): \
-                       every normality statistic standardises each column, so a \
-                       constant column has no skewness or kurtosis to test — drop that \
-                       column from resid (or rescale it)",
+                what: "resid has a column whose variance is below the smallest normal \
+                       double (about 2.2e-308): entries that small make the squares \
+                       underflow — multiply resid by a common factor such as 1e150 \
+                       (every normality statistic here is invariant to a common \
+                       rescaling)",
             });
+        }
+        // Varying only at the rounding level of its own magnitude (standard
+        // deviation below 1e-12 x its RMS): constant in all but rounding.
+        if cen2 <= 1e-24 * raw2 {
+            return Err(constant);
         }
     }
     // Collinear columns: the scale-free check on the correlation matrix.
@@ -557,10 +575,12 @@ fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Mat<f64>, V
 /// # Errors
 ///
 /// [`VarError::InvalidParameter`] naming `resid` (no columns, fewer than 2
-/// rows, or `T <= k`), [`VarError::NonFinite`] (a NaN or infinity),
-/// [`VarError::InvalidArgument`] (a constant column) and
-/// [`VarError::NotPositiveDefinite`] (collinear columns: the correlation
-/// matrix's smallest eigenvalue `<= 1e-12 x` its trace).
+/// rows, or `T <= k`), [`VarError::NonFinite`] (a NaN or infinity, or
+/// entries whose squares overflow), [`VarError::InvalidArgument`] (a
+/// constant column, or a column whose variance underflows below the
+/// smallest normal double) and [`VarError::NotPositiveDefinite`] (collinear
+/// columns: the correlation matrix's smallest eigenvalue `<= 1e-12 x` its
+/// trace).
 pub fn normality_test_cholesky(resid: MatRef<'_, f64>) -> Result<NormalityTest, VarError> {
     let u = validate_resid(resid, 2)?;
     jb_cholesky(

@@ -512,6 +512,14 @@ def test_multivariate_normality_refusals_name_resid():
         tsecon.multivariate_normality(u * np.array([1e9, 1e-9]))
     with pytest.raises(ValueError, match=r"resid.*overflow"):
         tsecon.multivariate_normality(u * 1e200)
+    # Subnormal squares: refused by name (left to the eigensolver, the
+    # subnormal covariance fails to converge in an error that does not name
+    # resid); at 1e-150 the statistics equal the unit-scale ones.
+    for scale in (1e-155, 1e-160, 1e-300):
+        with pytest.raises(ValueError, match=r"resid.*underflow"):
+            tsecon.multivariate_normality(u * scale)
+    tiny = tsecon.multivariate_normality(u * 1e-150)
+    assert tiny["doornik_hansen"] == pytest.approx(tsecon.multivariate_normality(u)["doornik_hansen"], rel=1e-10)
     with pytest.raises(ValueError, match="resid"):
         tsecon.multivariate_normality(np.array([]))
 
@@ -522,7 +530,12 @@ def test_multivariate_normality_accepts_pandas_and_array_likes():
     ref = tsecon.multivariate_normality(u)
     assert tsecon.multivariate_normality(pd.DataFrame(u, columns=["a", "b", "c"])) == ref
     assert tsecon.multivariate_normality(np.asfortranarray(u)) == ref
-    assert tsecon.multivariate_normality(u.astype(np.float32).astype(np.float64)) is not None
+    # float32 and integer arrays are widened by the coercion layer exactly as
+    # astype(float64) widens them.
+    u32 = u.astype(np.float32)
+    assert tsecon.multivariate_normality(u32) == tsecon.multivariate_normality(u32.astype(np.float64))
+    ui = np.round(u * 100).astype(np.int64)
+    assert tsecon.multivariate_normality(ui) == tsecon.multivariate_normality(ui.astype(np.float64))
     one = tsecon.multivariate_normality(u[:, 0])
     assert tsecon.multivariate_normality(pd.Series(u[:, 0])) == one
     assert tsecon.multivariate_normality(u[:, 0].tolist()) == one  # a flat list is data

@@ -628,6 +628,38 @@ fn normality_refusals_name_resid() {
     for e in all(&m) {
         assert!(e.contains("resid") && e.contains("constant column"), "{e}");
     }
+    // Entries so small that their squares are subnormal: refused by name
+    // (left to the eigensolver, the subnormal covariance makes it fail to
+    // converge, in an error that does not name resid). At 1e-150 the squares
+    // are normal again and every statistic equals the unit-scale one, being
+    // invariant to a common rescaling.
+    let unit = two(20);
+    for scale in [1e-155, 1e-160, 1e-200, 1e-300] {
+        let m = Mat::from_fn(20, 2, |i, j| scale * unit[(i, j)]);
+        for e in all(&m) {
+            assert!(
+                e.contains("resid") && e.contains("underflow"),
+                "{scale}: {e}"
+            );
+        }
+    }
+    let small = Mat::from_fn(20, 2, |i, j| 1e-150 * unit[(i, j)]);
+    for (a, b) in [
+        (
+            doornik_hansen_test(small.as_ref()).unwrap().statistic,
+            doornik_hansen_test(unit.as_ref()).unwrap().statistic,
+        ),
+        (
+            normality_test_symmetric(small.as_ref()).unwrap().statistic,
+            normality_test_symmetric(unit.as_ref()).unwrap().statistic,
+        ),
+        (
+            normality_test_cholesky(small.as_ref()).unwrap().statistic,
+            normality_test_cholesky(unit.as_ref()).unwrap().statistic,
+        ),
+    ] {
+        assert!((a - b).abs() <= 1e-10 * b, "{a} vs {b}");
+    }
     // A duplicated column: collinear.
     let m = Mat::from_fn(20, 2, |i, _| base[i]);
     for e in all(&m) {

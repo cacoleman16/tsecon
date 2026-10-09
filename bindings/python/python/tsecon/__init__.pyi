@@ -5444,8 +5444,9 @@ def multivariate_normality(resid: _ArrayLike) -> dict[str, Any]:
     `doornik_hansen_z_kurtosis`, `nobs`, `k`.
 
     Refusals (ValueError naming `resid`): fewer than 8 rows, T <= k, not
-    1-D or 2-D, zero columns, NaN/inf, a constant column, collinear columns,
-    or columns on scales too different for the symmetric root.
+    1-D or 2-D, zero columns, NaN/inf, entries whose squares overflow or
+    underflow, a constant column, collinear columns, or columns on scales
+    too different for the symmetric root.
 
     Validation: JMulTi's printed output (independent program) on 16
     residual matrices at 5e-5 — symmetric, Cholesky and per-variable blocks;
