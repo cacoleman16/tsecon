@@ -618,12 +618,12 @@ fn bootstrap_budget_is_checked_at_its_boundary_before_allocating() {
     };
     let per = at(2) - at(1);
     let fixed = at(1) - per;
-    // Each replication keeps its 41 response matrices and its long-run
-    // matrix as ONE flat array (42 * 4 values, not 42 padded faer matrices),
-    // plus a fixed overhead (RNG substream, result slots, heap header), one
-    // value of the percentile buffer, and its one impact_signs cell with a
-    // heap header (4 values).
-    assert_eq!(per, 42 * 4 + 48 + 1 + (1 + 4));
+    // Each replication keeps its 41 response matrices, its long-run matrix,
+    // its one impact_signs cell and its companion radius in ONE store slot
+    // (42 * 4 + 2 values, not 42 padded faer matrices), plus a fixed overhead
+    // (RNG substream, result slots, slot lock) and one value of the
+    // percentile buffer.
+    assert_eq!(per, 42 * 4 + 2 + 48 + 1);
     let n_max = (LONG_RUN_BANDS_BUDGET_VALUES - fixed) / per;
     let mut spec = bq_spec(40, 2);
     spec.n_boot = n_max;

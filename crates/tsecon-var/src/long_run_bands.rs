@@ -74,11 +74,13 @@
 //! `K` the band family size (`H1`, `k H1` or `cells` for `band_scope`
 //! `"horizon"`, `"shock"`, `"all"`):
 //!
-//! * bootstrap: each replication keeps its responses and its long-run matrix
-//!   as ONE flat array of `cells + k^2` values (not `H1 + 1` padded
-//!   matrices), plus a fixed per-replication overhead for its RNG substream,
-//!   its result slots and its heap header (`DRAW_OVERHEAD_VALUES`, 48), one
-//!   value of the percentile buffer and its `impact_signs` cells; plus its
+//! * bootstrap: each replication keeps its responses, its long-run matrix,
+//!   its `impact_signs` cells and its companion radius in its slot of ONE
+//!   store of `n_boot * (cells + k^2 + n_anchors + 1)` values (not `H1 + 1`
+//!   padded matrices, and no allocation of its own), plus a fixed
+//!   per-replication overhead for its RNG substream, its result slots and
+//!   its slot lock (`DRAW_OVERHEAD_VALUES`, 48) and one value of the
+//!   percentile buffer; plus its
 //!   inner estimate (`lags` matrices) with `bias_correct`, its copy of the
 //!   band family (`K + 1`) with a simultaneous band, and `cells + k^2` when
 //!   the draws are kept (the returned flat arrays);
@@ -122,8 +124,8 @@ use crate::irf_asymptotic::{
     IrfBandScope, IrfCriticalValues,
 };
 use crate::irf_bootstrap::{
-    bootstrap_refusal, draw_critical_values, push_flat, spectral_radius_of, summarize, Cube,
-    FlatDraw, ResidualBootstrap, DRAW_OVERHEAD_VALUES,
+    bootstrap_refusal, draw_critical_values, fill_slot, spectral_radius_of, summarize, write_block,
+    Cube, DrawStore, ResidualBootstrap, DRAW_OVERHEAD_VALUES,
 };
 use crate::results::VarResults;
 use crate::spec::Trend;
@@ -313,38 +315,32 @@ fn identify(
     })
 }
 
-/// [`theta_cube`] written straight into a [`FlatDraw`] (row-major blocks of
-/// `k^2`), bit for bit: the same recursion and products, with each
-/// `Theta_h` copied out as it is formed instead of kept as a matrix, so a
-/// bootstrap replication never holds a horizon-long cube of matrices.
-fn theta_into(
-    coefs: &[Mat<f64>],
-    b: &Mat<f64>,
-    horizon: usize,
-    cumulative: bool,
-    out: &mut FlatDraw,
-) {
+/// [`theta_cube`] written straight into blocks `0..=horizon` of `out`
+/// (row-major `k x k` blocks, the [`DrawStore`] layout), bit for bit: the
+/// same recursion and products, with each `Theta_h` copied out as it is
+/// formed instead of kept as a matrix, so a bootstrap replication never holds
+/// a horizon-long cube of matrices.
+fn theta_into(coefs: &[Mat<f64>], b: &Mat<f64>, horizon: usize, cumulative: bool, out: &mut [f64]) {
     let k = b.nrows();
     let k2 = k * k;
     let p = coefs.len();
-    let start = out.len();
     let mut window: VecDeque<Mat<f64>> = VecDeque::with_capacity(p + 1);
     let psi0 = Mat::<f64>::identity(k, k);
-    push_flat(out, (psi0.as_ref() * b.as_ref()).as_ref());
+    write_block(out, 0, (psi0.as_ref() * b.as_ref()).as_ref());
     window.push_back(psi0);
     for h in 1..=horizon {
         let mut acc = Mat::<f64>::zeros(k, k);
         for i in 1..=h.min(p) {
             acc += window[window.len() - i].as_ref() * coefs[i - 1].as_ref();
         }
-        push_flat(out, (acc.as_ref() * b.as_ref()).as_ref());
+        write_block(out, h, (acc.as_ref() * b.as_ref()).as_ref());
         window.push_back(acc);
         if window.len() > p {
             window.pop_front();
         }
     }
     if cumulative {
-        for c in start + k2..out.len() {
+        for c in k2..(horizon + 1) * k2 {
             out[c] += out[c - k2];
         }
     }
@@ -487,13 +483,9 @@ pub fn bootstrap_budget_values(spec: &LongRunBandSpec, k: usize) -> Option<usize
     let k2 = k.checked_mul(k)?;
     let hp1 = spec.horizon.checked_add(1)?;
     let cells = hp1.checked_mul(k2)?;
-    // The flat draw (responses and long-run matrix), the per-replication
-    // overhead, one percentile-buffer value and the impact_signs cells.
-    let anchors = spec.impact_signs.as_ref().map_or(0, |a| a.len() + 4);
-    let mut per_draw = cells
-        .checked_add(k2)?
-        .checked_add(DRAW_OVERHEAD_VALUES + 1)?
-        .checked_add(anchors)?;
+    // The replication's store slot (responses, long-run matrix, impact_signs
+    // cells, radius), its overhead and one percentile-buffer value.
+    let mut per_draw = draw_width(spec, k)?.checked_add(DRAW_OVERHEAD_VALUES + 1)?;
     if spec.bias_correct {
         per_draw = per_draw
             .checked_add(spec.lags.checked_mul(mat_values(k)?)?)?
@@ -509,6 +501,18 @@ pub fn bootstrap_budget_values(spec: &LongRunBandSpec, k: usize) -> Option<usize
     spec.n_boot
         .checked_mul(per_draw)?
         .checked_add(cube_values(k, hp1, CUBE_COPIES)?)
+}
+
+/// Values of one replication's [`DrawStore`] slot: the responses (blocks
+/// `0..=horizon`), the long-run matrix (block `horizon + 1`), the
+/// pre-anchor `impact_signs` cells and the companion spectral radius.
+fn draw_width(spec: &LongRunBandSpec, k: usize) -> Option<usize> {
+    let anchors = spec.impact_signs.as_ref().map_or(0, Vec::len);
+    spec.horizon
+        .checked_add(2)?
+        .checked_mul(k.checked_mul(k)?)?
+        .checked_add(anchors)?
+        .checked_add(1)
 }
 
 /// The delta-method size terms (see the module docs).
@@ -639,15 +643,6 @@ fn min_root_of(res: &VarResults) -> Result<f64, VarError> {
 // Bootstrap arm
 // ---------------------------------------------------------------------------
 
-/// One replication's identified, reported objects: the responses and the
-/// long-run matrix in one [`FlatDraw`] (blocks `0..=horizon`, then the
-/// long-run matrix as block `horizon + 1`).
-struct Draw {
-    flat: FlatDraw,
-    pre_anchor: Vec<f64>,
-    radius: f64,
-}
-
 /// Residual-bootstrap bands for the Blanchard-Quah SVAR fitted to `endog`
 /// (`n x k`, observations in rows, oldest first), re-identifying inside every
 /// draw. See the module docs for the algorithm, the Kilian branch and the
@@ -697,47 +692,56 @@ pub fn long_run_bootstrap_bands(
     let point = theta_cube(&engine.dgp_coefs, &point_id.impact, h, cumulative);
     let min_root = min_root_of(fit)?;
 
-    let raw: Vec<Result<Draw, &'static str>> =
-        engine.replicate(spec.seed, spec.n_boot, |res_b, coefs_b| {
+    // Each replication fills its slot of one store: the responses (blocks
+    // 0..=h), the long-run matrix (block h + 1), the pre-anchor cells, then
+    // the raw refit's companion radius.
+    let cells = (h + 1) * k * k;
+    let n_anchor = spec.impact_signs.as_ref().map_or(0, Vec::len);
+    let mut draws = DrawStore::new(spec.n_boot, cells + k * k + n_anchor + 1);
+    let raw: Vec<Result<(), &'static str>> = {
+        let slots = draws.slots();
+        engine.replicate(spec.seed, spec.n_boot, |rep, res_b, coefs_b| {
             let radius = spectral_radius_of(&res_b.coefs)?;
             Ok(match identify(coefs_b, res_b.sigma_u.as_ref(), spec) {
                 Ok(id) => {
-                    let mut flat: FlatDraw = Vec::with_capacity((h + 2) * k * k);
-                    theta_into(coefs_b, &id.impact, h, cumulative, &mut flat);
-                    push_flat(&mut flat, id.long_run.as_ref());
-                    Ok(Draw {
-                        flat,
-                        pre_anchor: id.pre_anchor,
-                        radius,
-                    })
+                    fill_slot(&slots, rep, |out| {
+                        theta_into(coefs_b, &id.impact, h, cumulative, out);
+                        write_block(out, h + 1, id.long_run.as_ref());
+                        let tail = &mut out[cells + k * k..];
+                        tail[..n_anchor].copy_from_slice(&id.pre_anchor);
+                        tail[n_anchor] = radius;
+                    })?;
+                    Ok(())
                 }
                 Err(e) => Err(ident_draw_message(&e)),
             })
-        })?;
-    let draws = collect_draws(raw)?;
+        })?
+    };
+    collect_draws(raw)?;
+    let tail = |b: usize| &draws.draw(b)[cells + k * k..];
 
-    let n_unstable = draws.iter().filter(|d| d.radius >= 1.0).count();
+    let n_unstable = (0..spec.n_boot)
+        .filter(|&b| tail(b)[n_anchor] >= 1.0)
+        .count();
     let mismatches = spec.impact_signs.as_ref().map(|anchors| {
         (0..anchors.len())
             .map(|a| {
                 let point_neg = point_id.pre_anchor[a] < 0.0;
-                draws
-                    .iter()
-                    .filter(|d| (d.pre_anchor[a] < 0.0) != point_neg)
+                (0..spec.n_boot)
+                    .filter(|&b| (tail(b)[a] < 0.0) != point_neg)
                     .count()
             })
             .collect::<Vec<usize>>()
     });
 
-    let flats: Vec<FlatDraw> = draws.into_iter().map(|d| d.flat).collect();
-    let (se, lower, upper) = summarize(&flats, 0, h + 1, k, spec.alpha);
-    let (lse, llo, lup) = summarize(&flats, h + 1, 1, k, spec.alpha);
+    let (se, lower, upper) = summarize(&draws, 0, h + 1, k, spec.alpha);
+    let (lse, llo, lup) = summarize(&draws, h + 1, 1, k, spec.alpha);
 
     let (simultaneous, sim_lower, sim_upper) = match spec.band {
         None => (None, None, None),
         Some((method, scope)) => {
             let cv = draw_critical_values(
-                &flats,
+                &draws,
                 &point,
                 &se,
                 k,
@@ -752,18 +756,18 @@ pub fn long_run_bootstrap_bands(
         }
     };
     let (irf_keep, lr_keep) = if spec.keep_draws {
-        let cells = (h + 1) * k * k;
-        let mut irf_flat = Vec::with_capacity(flats.len() * cells);
-        let mut lr_flat = Vec::with_capacity(flats.len() * k * k);
-        for d in &flats {
+        let mut irf_flat = Vec::with_capacity(spec.n_boot * cells);
+        let mut lr_flat = Vec::with_capacity(spec.n_boot * k * k);
+        for b in 0..spec.n_boot {
+            let d = draws.draw(b);
             irf_flat.extend_from_slice(&d[..cells]);
-            lr_flat.extend_from_slice(&d[cells..]);
+            lr_flat.extend_from_slice(&d[cells..cells + k * k]);
         }
         (Some(irf_flat), Some(lr_flat))
     } else {
         (None, None)
     };
-    drop(flats);
+    drop(draws);
     Ok(LongRunBands {
         point,
         se,
@@ -982,15 +986,17 @@ impl CellRows {
     }
 }
 
-/// Unwraps the per-replication results in replication order, turning the
+/// Checks the per-replication results in replication order, turning the
 /// FIRST identification failure into [`VarError::Replication`] naming its
 /// index. Nothing is dropped: a draw that fails at a boundary is exactly the
 /// kind whose removal would narrow the band.
-fn collect_draws(raw: Vec<Result<Draw, &'static str>>) -> Result<Vec<Draw>, VarError> {
-    raw.into_iter()
-        .enumerate()
-        .map(|(index, d)| d.map_err(|what| VarError::Replication { index, what }))
-        .collect()
+fn collect_draws(raw: Vec<Result<(), &'static str>>) -> Result<(), VarError> {
+    for (index, d) in raw.into_iter().enumerate() {
+        if let Err(what) = d {
+            return Err(VarError::Replication { index, what });
+        }
+    }
+    Ok(())
 }
 
 /// Delta-method bands for the Blanchard-Quah SVAR of a fitted VAR `res`
@@ -1191,23 +1197,9 @@ pub fn long_run_asymptotic_bands(
 mod tests {
     use super::*;
 
-    fn toy_draw(radius: f64) -> Draw {
-        Draw {
-            flat: vec![1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0],
-            pre_anchor: vec![],
-            radius,
-        }
-    }
-
     #[test]
     fn the_first_failing_replication_is_named_and_nothing_is_dropped() {
-        let raw = vec![
-            Ok(toy_draw(0.5)),
-            Ok(toy_draw(0.5)),
-            Err("singular"),
-            Ok(toy_draw(0.5)),
-            Err("later"),
-        ];
+        let raw = vec![Ok(()), Ok(()), Err("singular"), Ok(()), Err("later")];
         match collect_draws(raw) {
             Err(VarError::Replication { index, what }) => {
                 assert_eq!(index, 2);
@@ -1215,13 +1207,9 @@ mod tests {
                 let msg = VarError::Replication { index, what }.to_string();
                 assert!(msg.contains("replication 2"), "{msg}");
             }
-            other => panic!(
-                "expected a Replication error, got {:?}",
-                other.map(|v| v.len())
-            ),
+            other => panic!("expected a Replication error, got {other:?}"),
         }
-        let ok = collect_draws(vec![Ok(toy_draw(0.9)), Ok(toy_draw(1.1))]).unwrap();
-        assert_eq!(ok.len(), 2);
+        assert!(collect_draws(vec![Ok(()), Ok(())]).is_ok());
     }
 
     #[test]
@@ -1298,14 +1286,14 @@ mod tests {
         for cumulative in [false, true] {
             for horizon in [0usize, 1, 2, 7] {
                 let cube = theta_cube(&coefs, &b, horizon, cumulative);
-                let mut flat = vec![42.0];
+                let mut flat = vec![42.0; (horizon + 2) * 4];
                 theta_into(&coefs, &b, horizon, cumulative, &mut flat);
-                assert_eq!(flat.len(), 1 + (horizon + 1) * 4);
-                assert_eq!(flat[0], 42.0);
+                // The trailing block is the caller's (the long-run matrix).
+                assert!(flat[(horizon + 1) * 4..].iter().all(|&v| v == 42.0));
                 for (h, m) in cube.iter().enumerate() {
                     for i in 0..2 {
                         for j in 0..2 {
-                            assert_eq!(flat[1 + h * 4 + i * 2 + j].to_bits(), m[(i, j)].to_bits());
+                            assert_eq!(flat[h * 4 + i * 2 + j].to_bits(), m[(i, j)].to_bits());
                         }
                     }
                 }
@@ -1323,12 +1311,11 @@ mod tests {
             size_of::<tsecon_rng::SeedSequence>() + 2 * 32 + size_of::<tsecon_rng::Stream>();
         assert!(spawn <= budget, "{spawn}");
         // While the results are collected: the stream, up to three result
-        // slots and the flat array's heap header.
-        let slot = size_of::<Result<Result<Draw, &'static str>, VarError>>();
-        let collect = size_of::<tsecon_rng::Stream>() + 3 * slot + 32;
+        // slots and the replication's slot lock.
+        let lock = size_of::<std::sync::Mutex<&mut [f64]>>();
+        let slot = size_of::<Result<Result<(), &'static str>, VarError>>();
+        let collect = size_of::<tsecon_rng::Stream>() + 3 * slot + lock;
         assert!(collect <= budget, "{collect}");
-        let slot = size_of::<Result<FlatDraw, VarError>>();
-        assert!(size_of::<tsecon_rng::Stream>() + 3 * slot + 32 <= budget);
     }
 
     #[test]

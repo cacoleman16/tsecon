@@ -759,7 +759,7 @@ impl VarResults {
     ///
     /// The joint covariance is `(steps k)^2` values and its cross-horizon
     /// blocks cost about `steps^3 / 6` products of `k x k` matrices (CUBIC in
-    /// `steps`: 2 s at `steps = 400` on a bivariate VAR). Both are checked
+    /// `steps`: 2.3 s at `steps = 400` on a bivariate VAR). Both are checked
     /// before anything is allocated, against [`crate::budget::BUDGET_VALUES`]
     /// and [`JOINT_COV_WORK_BUDGET`], and refused naming `steps`. The sup-t
     /// simulation is checked against the shared sup-t budgets
@@ -892,8 +892,9 @@ impl VarResults {
 /// builds: its cross-horizon blocks are `steps (steps^2 - 1) / 6` products
 /// of `k x k` matrices, counted at `k^3 + 32` each (the 32 stands for the
 /// fixed cost of a small product), against `2^31`: about ten seconds
-/// (measured 2.0 s at `steps = 400`, `k = 2`, where the count is about
-/// `2^28.7`; `lab/audit/round16/var_budgets/joint_cov_cost.py`).
+/// (measured on a bivariate VAR(1) at 2.3 s for `steps = 400`, where the
+/// count is about `2^28.7`, and 11 s for `steps = 685`, the largest that fits;
+/// `lab/audit/round16/var_budgets/joint_cov_cost.py`).
 pub const JOINT_COV_WORK_BUDGET: u128 = 1 << 31;
 
 const JOINT_STEPS_WHAT: &str = "steps: a simultaneous forecast band builds the joint \

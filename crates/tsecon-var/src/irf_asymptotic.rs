@@ -402,8 +402,9 @@ pub(crate) fn delta_workspace(
 /// (`2^28`). The sums are QUADRATIC in `horizon`, so the storage budget
 /// alone admits horizons that run for hours. Shared by `var_irf_bands` and
 /// `long_run_svar_bands`; measured (`lab/audit/round16/var_budgets/
-/// vib_asym_cost.py`) at 0.74 s for `k = 2`, `lags = 8`, `horizon = 1000`
-/// (`2^25.9`) and 5.6 s for `k = 20`, `lags = 4`, `horizon = 28` (`2^28.0`).
+/// vib_asym_cost.py`) at 0.77 s for `k = 2`, `lags = 8`, `horizon = 1000`
+/// (`2^25.9`), 3.4 s at `horizon = 2047`, the largest that fits (`2^28.0`),
+/// and 5.4 s for `k = 20`, `lags = 4`, `horizon = 28` (`2^28.0`).
 pub const DELTA_JACOBIAN_WORK: u128 = 1 << 28;
 
 /// The Jacobian work `horizon (horizon + 1) / 2 * k^2 * lags k^2` checked
