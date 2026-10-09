@@ -1,0 +1,14 @@
+    T     k   time (s)   5 T k^2 + 20 k^3
+  200   100      0.033   3.00e+07
+ 1000   100      0.079   7.00e+07
+  400   200      0.196   2.40e+08
+ 3000   200      0.764   7.60e+08
+  800   400      1.399   1.92e+09
+ 2000   400      2.331   2.88e+09
+ 5000   300      2.513   2.79e+09
+20000   100      0.893   1.02e+09
+ 1500   600      5.391   7.02e+09
+ 1000   800     11.225   1.34e+10
+fit: 4.8 ns per T k^2, 15.2 ns per k^3
+the budget 2^34 units = 17.2 s at 1 ns per unit
+1500 x 1000 refused in 0.0015 s: resid is T = 1500 rows by k = 1000 columns: the three normality statistics would cost about 5 T k^2 + 20 k^3 = 2.75e10 work units (about a nanosecond each) and hold 3 T k + 6 k^2 = 1.05e7 values, beyond the budgets of 2^34 work units (about 17 s) and 2^28 values (2 GiB), checked before any work; at T = 1500 rows pass at most k = 840 columns, or at k = 1000 columns no row count fits

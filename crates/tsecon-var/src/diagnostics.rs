@@ -225,17 +225,33 @@ fn centred(m: MatRef<'_, f64>) -> Mat<f64> {
 }
 
 /// ML covariance `u'u / T` of a centred `T x k` matrix (sequential sums; the
-/// result is exactly symmetric).
+/// result is exactly symmetric). Each sum reads two contiguous columns, and
+/// the upper triangle is the mirror of the lower one: `u_sa u_sb` and
+/// `u_sb u_sa` are the same product, so this is the full computation's
+/// result bit for bit at half the work.
 fn ml_cov(u: &Mat<f64>) -> Mat<f64> {
     let (t, k) = (u.nrows(), u.ncols());
     let tf = t as f64;
-    Mat::from_fn(k, k, |a, b| {
-        let mut acc = 0.0;
-        for s in 0..t {
-            acc += u[(s, a)] * u[(s, b)];
+    let mut out = Mat::<f64>::zeros(k, k);
+    for b in 0..k {
+        let cb = u.col_as_slice(b);
+        for a in b..k {
+            let ca = u.col_as_slice(a);
+            let mut acc = 0.0;
+            for (x, y) in ca.iter().zip(cb) {
+                acc += x * y;
+            }
+            out[(a, b)] = acc / tf;
+            out[(b, a)] = acc / tf;
         }
-        acc / tf
-    })
+    }
+    out
+}
+
+/// The transpose `u'` (`k x T`) of a `T x k` matrix: row `s` of `u` becomes
+/// the contiguous column `s`, which the per-row orthogonalisation loops read.
+fn transposed(u: &Mat<f64>) -> Mat<f64> {
+    u.transpose().to_owned()
 }
 
 /// Eigenvalues (ascending) and eigenvectors of a symmetric matrix.
@@ -260,24 +276,167 @@ fn eigen_floor_ok(m: &Mat<f64>, lambda: &[f64]) -> bool {
 }
 
 /// The symmetric inverse square root `M^{-1/2} = H diag(λ^{-1/2}) H'` of a
-/// symmetric positive-definite matrix (unique, so the eigenvector sign and
-/// order do not matter) — the crates/tsecon-mgarch `estest.rs` pattern.
-/// Refuses an eigenvalue at or below `1e-12 x trace`, or a non-finite one,
-/// with [`VarError::NotPositiveDefinite`] naming `what`.
-fn sym_inv_sqrt(m: &Mat<f64>, what: &'static str) -> Result<Mat<f64>, VarError> {
-    let (lambda, h) = sym_eigen(m)?;
-    if !eigen_floor_ok(m, &lambda) {
+/// symmetric positive-definite matrix from its eigendecomposition (unique,
+/// so the eigenvector sign and order do not matter) — the
+/// crates/tsecon-mgarch `estest.rs` pattern, used for the Doornik-Hansen
+/// correlation root (well scaled by construction; the caller has checked
+/// [`eigen_floor_ok`]). Entry `(i, j)` is the sum over `l` (ascending, from
+/// zero) of `(h_il λ_l^{-1/2}) h_jl`, accumulated as rank-one updates so
+/// every loop reads a contiguous column.
+fn inv_sqrt_from_eigen(lambda: &[f64], h: &Mat<f64>) -> Mat<f64> {
+    let k = h.nrows();
+    let mut out = Mat::<f64>::zeros(k, k);
+    let mut g = vec![0.0; k];
+    for (l, lam) in lambda.iter().enumerate() {
+        let inv = 1.0 / lam.sqrt();
+        let hl = h.col_as_slice(l);
+        for (gi, &hi) in g.iter_mut().zip(hl) {
+            *gi = hi * inv;
+        }
+        for (j, &hj) in hl.iter().enumerate() {
+            for (o, &gi) in out.col_as_slice_mut(j).iter_mut().zip(&g) {
+                *o += gi * hj;
+            }
+        }
+    }
+    out
+}
+
+/// `(a·a, b·b, a·b)` in one pass over two equal-length columns, each sum
+/// split over four independent partial sums so the reduction vectorises.
+fn dots3(a: &[f64], b: &[f64]) -> (f64, f64, f64) {
+    let (mut aa, mut bb, mut ab) = ([0.0f64; 4], [0.0f64; 4], [0.0f64; 4]);
+    let (ca, cb) = (a.chunks_exact(4), b.chunks_exact(4));
+    let (ra, rb) = (ca.remainder(), cb.remainder());
+    for (x, y) in ca.zip(cb) {
+        for i in 0..4 {
+            aa[i] += x[i] * x[i];
+            bb[i] += y[i] * y[i];
+            ab[i] += x[i] * y[i];
+        }
+    }
+    for (x, y) in ra.iter().zip(rb) {
+        aa[0] += x * x;
+        bb[0] += y * y;
+        ab[0] += x * y;
+    }
+    let total = |v: [f64; 4]| (v[0] + v[1]) + (v[2] + v[3]);
+    (total(aa), total(bb), total(ab))
+}
+
+/// Sweep cap of the one-sided Jacobi iteration in [`cov_inv_sqrt`]. The
+/// iteration converges quadratically, in a handful of sweeps on a Cholesky
+/// factor; the cap only bounds a pathological input, which is refused.
+const JACOBI_MAX_SWEEPS: usize = 60;
+
+/// The symmetric inverse square root `S^{-1/2}` of a covariance matrix, to
+/// RELATIVE accuracy even when `S = D C D` is graded (columns on very
+/// different scales, `D` spanning orders of magnitude, `C` a well
+/// conditioned correlation matrix).
+///
+/// A symmetric eigensolver run on `S` is accurate only relative to its
+/// largest eigenvalue, so the small eigenvalues of a graded `S` — and the
+/// statistic built on them — lose digits in proportion to
+/// `trace / lambda_min` (2.0e-10 relative at a column-scale ratio of 1e3,
+/// 7.0e-5 at 3e5, against a 60-digit reference). Instead: the Cholesky
+/// factor `S = L L'` (its rounding errors are invariant to the diagonal
+/// scaling), then the one-sided Jacobi SVD of `G = L'` (Hestenes 1958):
+/// plane rotations `G V = W` until every pair of columns of `W` is
+/// orthogonal to `k eps` relative to their norms. `G = L_C' D` has columns
+/// graded by `D`, on which one-sided Jacobi computes the singular values and
+/// vectors with relative error `O(eps kappa(C))` independent of `D` (Demmel
+/// and Veselić 1992). With `σ_j = ||w_j||`, `S = V Σ² V'`, so `S^{-1/2} = V
+/// Σ^{-1} V'`. Against the 60-digit reference
+/// (`fixtures/var_normality_graded.json`) the statistic is accurate to about
+/// 5e-15 at every scale ratio up to the floor.
+///
+/// Refuses (with [`VarError::NotPositiveDefinite`] naming `what`) a matrix
+/// whose Cholesky factorization fails or whose smallest eigenvalue `σ_j²`
+/// is at or below `SYM_ROOT_FLOOR x trace` (the floor [`eigen_floor_ok`]
+/// applies to the correlation matrix).
+fn cov_inv_sqrt(m: &Mat<f64>, what: &'static str) -> Result<Mat<f64>, VarError> {
+    let k = m.nrows();
+    let l = chol_lower(m.as_ref(), what)?;
+    // G = L', stored column-major in one buffer: column j is row j of L.
+    let mut g = vec![0.0f64; k * k];
+    for j in 0..k {
+        for i in 0..=j {
+            g[j * k + i] = l[(j, i)];
+        }
+    }
+    let mut v = vec![0.0f64; k * k];
+    for j in 0..k {
+        v[j * k + j] = 1.0;
+    }
+    let rotate = |buf: &mut [f64], p: usize, q: usize, c: f64, sn: f64| {
+        let (lo, hi) = buf.split_at_mut(q * k);
+        let (cp, cq) = (&mut lo[p * k..(p + 1) * k], &mut hi[..k]);
+        for (a, b) in cp.iter_mut().zip(cq.iter_mut()) {
+            let (x, y) = (*a, *b);
+            *a = c * x - sn * y;
+            *b = sn * x + c * y;
+        }
+    };
+    let tol = k as f64 * f64::EPSILON;
+    let mut converged = k < 2;
+    for _ in 0..JACOBI_MAX_SWEEPS {
+        if converged {
+            break;
+        }
+        let mut rotated = false;
+        for p in 0..k - 1 {
+            for q in p + 1..k {
+                let (alpha, beta, gamma) = dots3(&g[p * k..(p + 1) * k], &g[q * k..(q + 1) * k]);
+                if gamma == 0.0 || gamma.abs() <= tol * alpha.sqrt() * beta.sqrt() {
+                    continue;
+                }
+                rotated = true;
+                // The rotation that zeroes the pair's inner product, with the
+                // smaller angle (Rutishauser's stable form).
+                let zeta = (beta - alpha) / (2.0 * gamma);
+                let t = zeta.signum() / (zeta.abs() + zeta.hypot(1.0));
+                let c = 1.0 / t.hypot(1.0);
+                let sn = c * t;
+                rotate(&mut g, p, q, c, sn);
+                rotate(&mut v, p, q, c, sn);
+            }
+        }
+        converged = !rotated;
+    }
+    if !converged {
+        return Err(VarError::Linalg(tsecon_linalg::LinalgError::EigenFailed {
+            what: "the one-sided Jacobi iteration for the symmetric root of the covariance \
+                   of resid (the residual matrix of the normality test)",
+        }));
+    }
+    let trace: f64 = (0..k).map(|i| m[(i, i)]).sum();
+    let sigma: Vec<f64> = (0..k)
+        .map(|j| {
+            let col = &g[j * k..(j + 1) * k];
+            dots3(col, col).0.sqrt()
+        })
+        .collect();
+    if !(trace.is_finite()
+        && sigma
+            .iter()
+            .all(|&sj| sj.is_finite() && sj * sj > SYM_ROOT_FLOOR * trace))
+    {
         return Err(VarError::NotPositiveDefinite { what });
     }
-    let k = m.nrows();
-    let inv_sqrt: Vec<f64> = lambda.iter().map(|l| 1.0 / l.sqrt()).collect();
-    Ok(Mat::from_fn(k, k, |i, j| {
-        let mut acc = 0.0;
-        for l in 0..k {
-            acc += h[(i, l)] * inv_sqrt[l] * h[(j, l)];
+    let mut out = Mat::<f64>::zeros(k, k);
+    let mut w = vec![0.0; k];
+    for (l, sl) in sigma.iter().enumerate() {
+        let vl = &v[l * k..(l + 1) * k];
+        for (wi, &vi) in w.iter_mut().zip(vl) {
+            *wi = vi / sl;
         }
-        acc
-    }))
+        for (j, &vj) in vl.iter().enumerate() {
+            for (i, &wi) in w.iter().enumerate() {
+                out[(i, j)] += wi * vj;
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// The multivariate Jarque-Bera statistics from orthogonalised rows:
@@ -319,34 +478,49 @@ fn jb_from_rows(
     })
 }
 
-/// Cholesky-orthogonalised multivariate Jarque-Bera of CENTRED residuals —
-/// the body `VarResults::normality_test` has always had (same loops, same
-/// summation order).
-fn jb_cholesky(u: &Mat<f64>, what: &'static str) -> Result<NormalityTest, VarError> {
-    let (t, k) = (u.nrows(), u.ncols());
-    let sig = ml_cov(u);
-    let p_chol = chol_lower(sig.as_ref(), what)?;
+/// Cholesky-orthogonalised multivariate Jarque-Bera of CENTRED residuals,
+/// given TRANSPOSED (`ut`, `k x T`) with their ML covariance `sig` — the body
+/// `VarResults::normality_test` has always had (same loops, same summation
+/// order; the transposed copies only make each loop read contiguous memory).
+fn jb_cholesky(
+    ut: &Mat<f64>,
+    sig: &Mat<f64>,
+    what: &'static str,
+) -> Result<NormalityTest, VarError> {
+    let (k, t) = (ut.nrows(), ut.ncols());
+    // Column i of `pt` is row i of the lower Cholesky factor P.
+    let pt = transposed(&chol_lower(sig.as_ref(), what)?);
     jb_from_rows(t, k, |s, w| {
         // Forward substitution: P w = u_s.
+        let us = ut.col_as_slice(s);
         for i in 0..k {
-            let mut acc = u[(s, i)];
-            for l in 0..i {
-                acc -= p_chol[(i, l)] * w[l];
+            let pi = pt.col_as_slice(i);
+            let mut acc = us[i];
+            for (p, wl) in pi[..i].iter().zip(&w[..i]) {
+                acc -= p * wl;
             }
-            w[i] = acc / p_chol[(i, i)];
+            w[i] = acc / pi[i];
         }
     })
 }
 
-/// Symmetric-root multivariate Jarque-Bera of CENTRED residuals.
-fn jb_symmetric(u: &Mat<f64>, what: &'static str) -> Result<NormalityTest, VarError> {
-    let (t, k) = (u.nrows(), u.ncols());
-    let root = sym_inv_sqrt(&ml_cov(u), what)?;
+/// Symmetric-root multivariate Jarque-Bera of CENTRED residuals, given
+/// transposed with their ML covariance (see [`jb_cholesky`]); the root comes
+/// from [`cov_inv_sqrt`].
+fn jb_symmetric(
+    ut: &Mat<f64>,
+    sig: &Mat<f64>,
+    what: &'static str,
+) -> Result<NormalityTest, VarError> {
+    let (k, t) = (ut.nrows(), ut.ncols());
+    // Column i of `rt` is row i of S^{-1/2} (symmetric, so it is column i).
+    let rt = transposed(&cov_inv_sqrt(sig, what)?);
     jb_from_rows(t, k, |s, w| {
+        let us = ut.col_as_slice(s);
         for (i, wi) in w.iter_mut().enumerate() {
             let mut acc = 0.0;
-            for l in 0..k {
-                acc += root[(i, l)] * u[(s, l)];
+            for (r, x) in rt.col_as_slice(i).iter().zip(us) {
+                acc += r * x;
             }
             *wi = acc;
         }
@@ -378,29 +552,26 @@ fn dh_kurt_coeffs(n: f64) -> (f64, f64, f64) {
     (a, c, kappa)
 }
 
-/// Doornik-Hansen (2008) of CENTRED residuals with `n >= 8` rows.
-fn dh_centred(u: &Mat<f64>) -> Result<DoornikHansenTest, VarError> {
-    let (t, k) = (u.nrows(), u.ncols());
-    let s = ml_cov(u);
-    let dinv: Vec<f64> = (0..k).map(|j| 1.0 / s[(j, j)].sqrt()).collect();
-    let corr = Mat::from_fn(k, k, |a, b| s[(a, b)] * dinv[a] * dinv[b]);
-    let root = sym_inv_sqrt(
-        &corr,
-        "the correlation matrix of resid, the residual matrix of the Doornik-Hansen test \
-         (its smallest eigenvalue is <= 1e-12 x its trace)",
-    )?;
+/// Doornik-Hansen (2008) of a validated residual matrix with `n >= 8` rows.
+fn dh_prepared(p: &Prepared) -> Result<DoornikHansenTest, VarError> {
+    let (k, t) = (p.ut.nrows(), p.ut.ncols());
+    let (ut, dinv) = (&p.ut, &p.dinv);
+    // The correlation matrix's root from the eigendecomposition the
+    // validation already computed and floor-checked; column i of `rt` is
+    // row i of the (symmetric) root.
+    let rt = transposed(&inv_sqrt_from_eigen(&p.corr_lambda, &p.corr_h));
     let mut m2 = vec![0.0; k];
     let mut m3 = vec![0.0; k];
     let mut m4 = vec![0.0; k];
     let mut y = vec![0.0; k];
     for row in 0..t {
-        for (l, yl) in y.iter_mut().enumerate() {
-            *yl = u[(row, l)] * dinv[l];
+        for ((yl, x), d) in y.iter_mut().zip(ut.col_as_slice(row)).zip(dinv) {
+            *yl = x * d;
         }
         for i in 0..k {
             let mut r = 0.0;
-            for (l, &yl) in y.iter().enumerate() {
-                r += root[(i, l)] * yl;
+            for (q, &yl) in rt.col_as_slice(i).iter().zip(&y) {
+                r += q * yl;
             }
             let r2 = r * r;
             m2[i] += r2;
@@ -454,15 +625,116 @@ fn dh_centred(u: &Mat<f64>) -> Result<DoornikHansenTest, VarError> {
 /// Minimum number of rows of the Doornik-Hansen (2008) test.
 pub const DOORNIK_HANSEN_MIN_NOBS: usize = 8;
 
+/// Work budget of [`normality_tests`], in units of about a nanosecond:
+/// [`normality_work`] `= 5 T k^2 + 20 k^3`. The `T k^2` term is the
+/// covariance, the three orthogonalisation passes over the rows and the
+/// centring; the `k^3` term is dominated by the one-sided Jacobi iteration
+/// of the symmetric root (plus the correlation eigendecomposition, the
+/// Cholesky factors and the roots). The coefficients round up a
+/// non-negative least-squares fit to the release wheel's timings on a T x k
+/// grid from 200 x 100 to 1000 x 800 (4.8 and 15.2 ns per unit;
+/// `lab/audit/round16/var_numerics/normality_cost.py`), so `2^34` is about
+/// 17 seconds there. Past the budget `multivariate_normality` refuses before
+/// any work, naming `resid` and the largest admissible column count. Before
+/// the shared validation and the budget, T = 1500, k = 1000 ran for 98 s.
+pub const NORMALITY_WORK_BUDGET: u128 = 1 << 34;
+
+/// Memory budget of [`normality_tests`], in `f64` values (`2^28`, 2 GiB):
+/// [`normality_values`] `= 3 T k + 6 k^2` (the binding's copy of the input,
+/// the centred residuals and their transpose, and the `k x k` covariance,
+/// correlation, eigenvector, Cholesky, Jacobi and root matrices).
+pub const NORMALITY_MAX_VALUES: u128 = 1 << 28;
+
+/// The work count [`NORMALITY_WORK_BUDGET`] is checked against for a
+/// `nobs x k` residual matrix: `5 T k^2 + 20 k^3`. Saturating, so an absurd
+/// shape cannot overflow the check meant to refuse it.
+pub fn normality_work(nobs: usize, k: usize) -> u128 {
+    let (t, k) = (nobs as u128, k as u128);
+    let k2 = k.saturating_mul(k);
+    t.saturating_mul(k2)
+        .saturating_mul(5)
+        .saturating_add(k2.saturating_mul(k).saturating_mul(20))
+}
+
+/// The working set [`NORMALITY_MAX_VALUES`] is checked against for a
+/// `nobs x k` residual matrix: `3 T k + 6 k^2` values. Saturating.
+pub fn normality_values(nobs: usize, k: usize) -> u128 {
+    let (t, k) = (nobs as u128, k as u128);
+    t.saturating_mul(k)
+        .saturating_mul(3)
+        .saturating_add(k.saturating_mul(k).saturating_mul(6))
+}
+
+/// `true` when a `nobs x k` residual matrix fits both budgets of
+/// [`normality_tests`].
+pub fn normality_within_budget(nobs: usize, k: usize) -> bool {
+    normality_work(nobs, k) <= NORMALITY_WORK_BUDGET
+        && normality_values(nobs, k) <= NORMALITY_MAX_VALUES
+}
+
+/// The largest column count `k` that fits both budgets at `nobs` rows (`0`
+/// when not even one column does). Both counts grow with `k`, so the
+/// admissible counts are `1..=max`: bisection.
+pub fn normality_max_columns(nobs: usize) -> usize {
+    if !normality_within_budget(nobs, 1) {
+        return 0;
+    }
+    let (mut lo, mut hi) = (1usize, 1usize << 20);
+    while lo < hi {
+        let mid = lo + (hi - lo).div_ceil(2);
+        if normality_within_budget(nobs, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+/// The largest row count `T` that fits both budgets with `k` columns (`0`
+/// when no row count does).
+pub fn normality_max_rows(k: usize) -> usize {
+    if !normality_within_budget(0, k) {
+        return 0;
+    }
+    let (mut lo, mut hi) = (0usize, usize::MAX);
+    while lo < hi {
+        let mid = lo + (hi - lo).div_ceil(2);
+        if normality_within_budget(mid, k) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+/// A validated residual matrix and what every normality statistic shares,
+/// computed once.
+struct Prepared {
+    /// The centred residuals TRANSPOSED (`k x T`): row `s` of the residual
+    /// matrix is the contiguous column `s` here.
+    ut: Mat<f64>,
+    /// The ML covariance `S = u'u / T`.
+    s: Mat<f64>,
+    /// `1 / sqrt(S_jj)`.
+    dinv: Vec<f64>,
+    /// Eigenvalues (ascending) of the correlation matrix, floor-checked.
+    corr_lambda: Vec<f64>,
+    /// Eigenvectors of the correlation matrix.
+    corr_h: Mat<f64>,
+}
+
 /// Shared validation of a residual matrix handed to a free normality
-/// function; returns the centred matrix.
+/// function; returns the centred matrix (transposed), its covariance and
+/// the eigendecomposition of its correlation matrix.
 ///
 /// Refuses (each naming `resid`): no columns; fewer than `min_rows` rows or
 /// no more rows than columns; a non-finite entry; entries whose squares
 /// overflow or underflow; a constant column; and a correlation matrix whose
 /// smallest eigenvalue is `<= 1e-12 x` its trace (collinear columns, e.g. a
 /// duplicate).
-fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Mat<f64>, VarError> {
+fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Prepared, VarError> {
     let (t, k) = (resid.nrows(), resid.ncols());
     if k == 0 {
         return Err(VarError::InvalidParameter {
@@ -564,14 +836,20 @@ fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Mat<f64>, V
     let s = ml_cov(&u);
     let dinv: Vec<f64> = (0..k).map(|j| 1.0 / s[(j, j)].sqrt()).collect();
     let corr = Mat::from_fn(k, k, |a, b| s[(a, b)] * dinv[a] * dinv[b]);
-    let (lambda, _) = sym_eigen(&corr)?;
-    if !eigen_floor_ok(&corr, &lambda) {
+    let (corr_lambda, corr_h) = sym_eigen(&corr)?;
+    if !eigen_floor_ok(&corr, &corr_lambda) {
         return Err(VarError::NotPositiveDefinite {
             what: "the correlation matrix of resid, the residual matrix of the normality \
                    test (its smallest eigenvalue is <= 1e-12 x its trace)",
         });
     }
-    Ok(u)
+    Ok(Prepared {
+        ut: transposed(&u),
+        s,
+        dinv,
+        corr_lambda,
+        corr_h,
+    })
 }
 
 /// The Cholesky-orthogonalised multivariate Jarque-Bera test of a residual
@@ -589,11 +867,27 @@ fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Mat<f64>, V
 /// columns: the correlation matrix's smallest eigenvalue `<= 1e-12 x` its
 /// trace).
 pub fn normality_test_cholesky(resid: MatRef<'_, f64>) -> Result<NormalityTest, VarError> {
-    let u = validate_resid(resid, 2)?;
-    jb_cholesky(
-        &u,
-        "the covariance of resid, the residual matrix of the normality test",
-    )
+    let p = validate_resid(resid, 2)?;
+    jb_cholesky(&p.ut, &p.s, CHOL_WHAT)
+}
+
+/// What a failed Cholesky of the residual covariance names.
+const CHOL_WHAT: &str = "the covariance of resid, the residual matrix of the normality test";
+
+/// The symmetric-root refusal: the covariance's smallest eigenvalue at or
+/// below the floor while the correlation matrix is fine.
+fn symmetric_root_refusal(e: VarError) -> VarError {
+    match e {
+        VarError::NotPositiveDefinite { .. } => VarError::InvalidArgument {
+            what: "resid: the columns are on wildly different scales (the smallest \
+                   eigenvalue of their covariance is <= 1e-12 x its trace while the \
+                   correlation matrix is well conditioned), past the floor of the \
+                   unit-dependent symmetric-root (JMulTi) statistics — rescale the \
+                   columns (e.g. divide each by its standard deviation); the Cholesky \
+                   and Doornik-Hansen (2008) statistics are scale-invariant",
+        },
+        other => other,
+    }
 }
 
 /// The symmetric-root multivariate Jarque-Bera test of a residual matrix
@@ -605,22 +899,15 @@ pub fn normality_test_cholesky(resid: MatRef<'_, f64>) -> Result<NormalityTest, 
 ///
 /// As [`normality_test_cholesky`], plus [`VarError::InvalidArgument`] when
 /// the covariance's smallest eigenvalue is `<= 1e-12 x` its trace although
-/// the correlation matrix is fine — columns on wildly different scales,
-/// for which the unit-dependent symmetric root cannot be computed reliably.
+/// the correlation matrix is fine — columns on wildly different scales, past
+/// the floor of the unit-dependent symmetric root. Above the floor the root
+/// is computed to relative accuracy however graded the covariance is
+/// (a Cholesky factor and a one-sided Jacobi SVD; `fixtures/
+/// var_normality_graded.json` pins the statistic against a 60-digit
+/// reference at 1e-10 up to scale ratios of 10^5.75).
 pub fn normality_test_symmetric(resid: MatRef<'_, f64>) -> Result<NormalityTest, VarError> {
-    let u = validate_resid(resid, 2)?;
-    jb_symmetric(&u, "").map_err(|e| match e {
-        VarError::NotPositiveDefinite { .. } => VarError::InvalidArgument {
-            what: "resid: the columns are on wildly different scales (the smallest \
-                   eigenvalue of their covariance is <= 1e-12 x its trace while the \
-                   correlation matrix is well conditioned), so the symmetric-root \
-                   (JMulTi) statistics, which depend on units, cannot be computed \
-                   reliably — rescale the columns (e.g. divide each by its standard \
-                   deviation); the Cholesky and Doornik-Hansen (2008) statistics are \
-                   scale-invariant",
-        },
-        other => other,
-    })
+    let p = validate_resid(resid, 2)?;
+    jb_symmetric(&p.ut, &p.s, "").map_err(symmetric_root_refusal)
 }
 
 /// The Doornik-Hansen (2008) omnibus normality test of a residual matrix
@@ -632,8 +919,45 @@ pub fn normality_test_symmetric(resid: MatRef<'_, f64>) -> Result<NormalityTest,
 /// As [`normality_test_cholesky`], with `T >= 8` rows required
 /// ([`VarError::InvalidParameter`] naming `resid`).
 pub fn doornik_hansen_test(resid: MatRef<'_, f64>) -> Result<DoornikHansenTest, VarError> {
-    let u = validate_resid(resid, DOORNIK_HANSEN_MIN_NOBS)?;
-    dh_centred(&u)
+    let p = validate_resid(resid, DOORNIK_HANSEN_MIN_NOBS)?;
+    dh_prepared(&p)
+}
+
+/// The three normality statistics of one residual matrix — what
+/// `multivariate_normality` reports.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NormalityTests {
+    /// [`doornik_hansen_test`].
+    pub doornik_hansen: DoornikHansenTest,
+    /// [`normality_test_cholesky`].
+    pub cholesky: NormalityTest,
+    /// [`normality_test_symmetric`].
+    pub symmetric: NormalityTest,
+}
+
+/// [`doornik_hansen_test`], [`normality_test_cholesky`] and
+/// [`normality_test_symmetric`] of one residual matrix, sharing ONE
+/// validation, centring, covariance and correlation eigendecomposition
+/// (each free function repeats them). Every statistic is bit-identical to
+/// its free function's; the refusals are the Doornik-Hansen ones (`T >= 8`)
+/// followed by the symmetric root's floor.
+///
+/// Its cost is about [`normality_work`]`(T, k)`; see
+/// [`NORMALITY_WORK_BUDGET`], which the Python binding enforces.
+///
+/// # Errors
+///
+/// As [`doornik_hansen_test`] and [`normality_test_symmetric`].
+pub fn normality_tests(resid: MatRef<'_, f64>) -> Result<NormalityTests, VarError> {
+    let p = validate_resid(resid, DOORNIK_HANSEN_MIN_NOBS)?;
+    let doornik_hansen = dh_prepared(&p)?;
+    let cholesky = jb_cholesky(&p.ut, &p.s, CHOL_WHAT)?;
+    let symmetric = jb_symmetric(&p.ut, &p.s, "").map_err(symmetric_root_refusal)?;
+    Ok(NormalityTests {
+        doornik_hansen,
+        cholesky,
+        symmetric,
+    })
 }
 
 impl VarResults {
@@ -734,8 +1058,10 @@ impl VarResults {
     /// [`VarError::NotPositiveDefinite`] if the residual covariance is
     /// singular (impossible for a successful fit).
     pub fn normality_test(&self) -> Result<NormalityTest, VarError> {
+        let u = self.centred_resid();
         jb_cholesky(
-            &self.centred_resid(),
+            &transposed(&u),
+            &ml_cov(&u),
             "the centred residual covariance of the normality test",
         )
     }
@@ -847,6 +1173,41 @@ mod tests {
         assert!(delta.is_finite() && scale.is_finite() && scale > 0.0);
         let (a, c, kappa) = dh_kurt_coeffs(8.0);
         assert!(a > 0.0 && c > 0.0 && kappa > 0.0);
+    }
+
+    /// The shared entry point gives each free function's result bit for bit.
+    #[test]
+    fn normality_tests_matches_the_free_functions_bit_for_bit() {
+        let mut st = 7u64;
+        let x = Mat::from_fn(60, 4, |_, j| {
+            st = st
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let u = (st >> 11) as f64 / (1u64 << 53) as f64;
+            (u - 0.3).powi(3) * 10f64.powi(j as i32)
+        });
+        let all = normality_tests(x.as_ref()).unwrap();
+        assert_eq!(all.doornik_hansen, doornik_hansen_test(x.as_ref()).unwrap());
+        assert_eq!(all.cholesky, normality_test_cholesky(x.as_ref()).unwrap());
+        assert_eq!(all.symmetric, normality_test_symmetric(x.as_ref()).unwrap());
+    }
+
+    /// Both budgets, both sides of their boundaries, in closed form.
+    #[test]
+    fn the_normality_budgets_and_their_largest_admissible_shapes() {
+        // Memory: 3 T + 6 <= 2^28 at k = 1.
+        assert_eq!(normality_max_rows(1), (((1u64 << 28) - 6) / 3) as usize);
+        assert!(normality_within_budget(normality_max_rows(1), 1));
+        assert!(!normality_within_budget(normality_max_rows(1) + 1, 1));
+        // Work: 5 T k^2 + 20 k^3 <= 2^34 at T = 1500.
+        let k = normality_max_columns(1500);
+        assert_eq!(k, 840);
+        assert!(normality_work(1500, k) <= NORMALITY_WORK_BUDGET);
+        assert!(normality_work(1500, k + 1) > NORMALITY_WORK_BUDGET);
+        // 20 k^3 alone past the budget: no row count fits.
+        assert_eq!(normality_max_rows(1000), 0);
+        // Saturating: an absurd shape cannot overflow the check.
+        assert!(!normality_within_budget(usize::MAX, usize::MAX));
     }
 
     #[test]

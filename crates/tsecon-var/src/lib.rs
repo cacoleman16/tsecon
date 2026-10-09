@@ -85,8 +85,10 @@ pub mod spec;
 pub use causality::CausalityTest;
 pub use conditional::{ConditionMode, ConditionalForecast, SoftMode};
 pub use diagnostics::{
-    doornik_hansen_test, normality_test_cholesky, normality_test_symmetric, DoornikHansenTest,
-    NormalityTest, PortmanteauTest, VarDiagnostics, DOORNIK_HANSEN_MIN_NOBS,
+    doornik_hansen_test, normality_max_columns, normality_max_rows, normality_test_cholesky,
+    normality_test_symmetric, normality_tests, normality_values, normality_within_budget,
+    normality_work, DoornikHansenTest, NormalityTest, NormalityTests, PortmanteauTest,
+    VarDiagnostics, DOORNIK_HANSEN_MIN_NOBS, NORMALITY_MAX_VALUES, NORMALITY_WORK_BUDGET,
 };
 pub use error::{NonFiniteCell, VarError};
 pub use fevd::Fevd;

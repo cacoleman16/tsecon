@@ -5800,7 +5800,17 @@ def multivariate_normality(resid: _ArrayLike) -> dict[str, Any]:
     Refusals (ValueError naming `resid`): fewer than 8 rows, T <= k, not
     1-D or 2-D, zero columns, NaN/inf, entries whose squares overflow or
     underflow, a constant column, collinear columns, or columns on scales
-    too different for the symmetric root.
+    too different for the symmetric root (a covariance eigenvalue
+    <= 1e-12 x its trace; above that floor the root is computed to relative
+    accuracy).
+
+    Cost: the three statistics share one validation, and cost about
+    5 T k^2 + 20 k^3 nanoseconds (the k^3 term is the symmetric root's
+    one-sided Jacobi iteration): 0.08 s at T = 1000, k = 100, 2.3 s at
+    2000 x 400, 11 s at 1000 x 800. Past a budget of 2^34 such units (about
+    17 s) or a working set of 3 T k + 6 k^2 values above 2^28 (2 GiB) the
+    call is refused before any work, naming `resid`, the largest column count
+    at that T and the largest row count at that k.
 
     Validation: JMulTi's printed output (independent program) on 16
     residual matrices at 5e-5 — symmetric, Cholesky and per-variable blocks;

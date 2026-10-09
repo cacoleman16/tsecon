@@ -20,6 +20,13 @@
 //!   bands (row `i` divided by `s_i`) in either unit system. Before the
 //!   balancing the bands moved by up to 1.25e-2 and `n_unstable_draws` went
 //!   from 368 to 496.
+//! * `golden_symmetric_root_jarque_bera_on_graded_covariances` — the
+//!   symmetric-root Jarque-Bera DEPENDS on units (by design), but on any
+//!   given units it must be computed to the documented 1e-10: 44 skewed
+//!   panels with column scales up to `10^5.75` apart, every column order,
+//!   against a 60-digit mpmath transcription
+//!   (`fixtures/var_normality_graded.json`). The eigensolver it replaced
+//!   was off by 2.0e-10 at a ratio of 1e3 and 7.0e-5 at 3e5.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -27,7 +34,10 @@ mod common;
 
 use common::{as_mat, load_fixture};
 use tsecon_linalg::faer::Mat;
-use tsecon_var::{bootstrap_irf_bands, long_run_bootstrap_bands, LongRunBandSpec, Trend, VarSpec};
+use tsecon_var::{
+    bootstrap_irf_bands, long_run_bootstrap_bands, normality_test_symmetric, LongRunBandSpec,
+    Trend, VarSpec,
+};
 
 fn scaled_data() -> (Mat<f64>, Vec<f64>) {
     let fx = load_fixture("companion_roots.json");
@@ -153,4 +163,61 @@ fn kilian_bands_and_unstable_draws_do_not_depend_on_units() {
             "bootstrap_irf_bands {what}: rel change {rel:.2e}"
         );
     }
+}
+
+#[test]
+fn golden_symmetric_root_jarque_bera_on_graded_covariances() {
+    let fx = load_fixture("var_normality_graded.json");
+    let cases = fx["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 44);
+    let num = |v: &serde_json::Value| v.as_f64().unwrap();
+    let nums =
+        |v: &serde_json::Value| -> Vec<f64> { v.as_array().unwrap().iter().map(num).collect() };
+    let mut worst = 0.0f64;
+    for (c_idx, case) in cases.iter().enumerate() {
+        let k = case["k"].as_u64().unwrap() as usize;
+        let panel = as_mat(&fx["panels"][k.to_string()]);
+        let scales = nums(&case["scales"]);
+        // One multiplication per entry: the generator's inputs, bit for bit.
+        let x = Mat::from_fn(panel.nrows(), k, |t, j| panel[(t, j)] * scales[j]);
+        let r = normality_test_symmetric(x.as_ref()).unwrap();
+        for (what, got, key) in [
+            ("statistic", r.statistic, "jarque_bera_symmetric"),
+            ("skewness", r.skewness, "skewness_symmetric"),
+            ("kurtosis", r.kurtosis, "kurtosis_symmetric"),
+            ("pvalue", r.pvalue, "jarque_bera_symmetric_pvalue"),
+            (
+                "skewness_pvalue",
+                r.skewness_pvalue,
+                "skewness_symmetric_pvalue",
+            ),
+            (
+                "kurtosis_pvalue",
+                r.kurtosis_pvalue,
+                "kurtosis_symmetric_pvalue",
+            ),
+        ] {
+            let e = num(&case[key]);
+            let rel = (got - e).abs() / e.abs().max(1e-300);
+            worst = worst.max(rel);
+            assert!(
+                rel <= 1e-10,
+                "case {c_idx} (k={k}) {what}: {got:e} vs {e:e} (rel {rel:.1e})"
+            );
+        }
+        for (got, key) in [
+            (&r.skewness_components, "skewness_symmetric_components"),
+            (&r.kurtosis_components, "kurtosis_symmetric_components"),
+        ] {
+            let e = nums(&case[key]);
+            let scale = e.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+            for (g, ev) in got.iter().zip(&e) {
+                assert!(
+                    (g - ev).abs() <= 1e-10 * scale,
+                    "case {c_idx} {key}: {g:e} vs {ev:e}"
+                );
+            }
+        }
+    }
+    eprintln!("worst relative error over the graded cases: {worst:.2e}");
 }

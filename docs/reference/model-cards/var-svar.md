@@ -811,9 +811,16 @@ undefined below (scipy's `skewtest` refuses below 8 too). The DH keys are also
 `None` if the residual correlation matrix is numerically singular, and the
 `*_symmetric` keys are `None` if the residual covariance's smallest eigenvalue
 is at or below $10^{-12}$ times its trace while the correlation matrix is fine
-— series on wildly different scales, for which the unit-dependent root cannot
-be computed reliably (the Cholesky and DH statistics are scale-invariant and
-still reported).
+— series on wildly different scales, past the floor of the unit-dependent
+root (the Cholesky and DH statistics are scale-invariant and still
+reported). Above the floor the root is computed to relative accuracy however
+graded the covariance: from its Cholesky factor by a one-sided Jacobi SVD,
+not by an eigensolver that is accurate only relative to the largest
+eigenvalue. Against a 60-digit reference on 44 skewed panels at column-scale
+ratios up to $10^{5.75}$ (`fixtures/var_normality_graded.json`) the
+statistic is pinned at $10^{-10}$; the eigensolver it replaced was off by
+$2.0 \times 10^{-10}$ at a ratio of $10^3$ and $7.0 \times 10^{-5}$ at
+$3 \times 10^5$.
 
 **`multivariate_normality(resid)`** computes the same three blocks (the same
 key names, bitwise equal to `var_diagnostics` on a VAR's residuals) on **any**
@@ -829,8 +836,15 @@ columns, a NaN or infinity, entries so large or so small that their squares
 overflow or underflow (every statistic is invariant to a common rescaling, so
 rescale), a constant column, collinear columns (a
 correlation-matrix eigenvalue at or below $10^{-12}$ times its trace — a
-duplicated series), and columns on scales too different for the symmetric
-root.
+duplicated series), columns on scales too different for the symmetric
+root, and a matrix past its budget. The three statistics share one
+validation and cost about $5 T k^2 + 20 k^3$ nanoseconds — 0.08 s at
+$T = 1000, k = 100$, 2.3 s at $2000 \times 400$, 11 s at $1000 \times 800$
+(`lab/audit/round16/var_numerics/normality_cost.py`); past $2^{34}$ such
+units (about 17 s) or a working set of $3 T k + 6 k^2$ values above $2^{28}$
+(2 GiB) the call is refused before any work, with the largest admissible
+column count at that $T$ and row count at that $k$. $T = 1500, k = 1000$,
+which ran for 98 s before, is refused at once.
 
 **Validated against, and the honest grade.**
 

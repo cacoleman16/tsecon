@@ -1,0 +1,10 @@
+keys that changed: ['diag:eigenvalue_moduli', 'diag:jarque_bera_symmetric', 'diag:jarque_bera_symmetric_pvalue', 'diag:kurtosis_symmetric', 'diag:kurtosis_symmetric_components', 'diag:kurtosis_symmetric_pvalue', 'diag:roots', 'diag:skewness_symmetric', 'diag:skewness_symmetric_components', 'diag:skewness_symmetric_pvalue', 'mvn:jarque_bera_symmetric', 'mvn:jarque_bera_symmetric_pvalue', 'mvn:kurtosis_symmetric', 'mvn:kurtosis_symmetric_components', 'mvn:kurtosis_symmetric_pvalue', 'mvn:skewness_symmetric', 'mvn:skewness_symmetric_components', 'mvn:skewness_symmetric_pvalue']
+var_fit params identical: True
+symmetric JB vs mpmath, 21 matrices: before max 3.6e-14 mean 8.0e-15; after max 2.1e-14 mean 7.8e-15
+var2c_sim              min/max_root vs mpmath: before 1.3e-15 after 4.0e-15
+var3n_sim              min/max_root vs mpmath: before 3.6e-15 after 2.2e-15
+var1c_sim_underfit     min/max_root vs mpmath: before 3.0e-16 after 3.0e-16
+var2c_sim_t4           min/max_root vs mpmath: before 1.1e-14 after 6.5e-15
+macro_var2c            min/max_root vs mpmath: before 5.3e-14 after 5.7e-15
+macro_var4c            min/max_root vs mpmath: before 6.3e-15 after 1.3e-15
+worst: before 5.3e-14 after 6.5e-15
