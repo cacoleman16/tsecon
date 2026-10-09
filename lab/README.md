@@ -43,6 +43,9 @@ lab/
 ├── ardl/                # support scripts for the shipped ardl_bounds_test
 │   ├── transcribe_pss.py #  writes crates/tsecon-coint/src/pss.rs from statsmodels
 │   └── card_numbers.py  #   every number its model card / CHANGELOG quotes
+├── bq_bands/            # evidence behind the shipped long_run_svar_bands:
+│   │                    #   the committed coverage Monte Carlo output, the
+│   │                    #   replication-guard numbers and the card examples
 ├── audit/               # probe scripts + summaries behind the audit rounds
 │   ├── round11/         #   audit round 11 sweeps (docs/roadmap/26-)
 │   └── repo/            #   the whole-repository audit (docs/roadmap/27-)

@@ -452,6 +452,9 @@ All five take the reduced-form `data` matrix and are deterministic (no RNG). Bel
   ```
 
   Check the VAR's roots first — the scheme is fragile near a unit root (Faust-Leeper).
+  For confidence bands use `long_run_svar_bands` (a bootstrap that re-identifies in
+  every draw, or the delta method). Read its card's per-cell coverage table first:
+  no arm covers every cell.
 
 - **A variance objective** — you want the single shock that explains the most of a
   target's forecast-error variance over a business-cycle window (the "main
