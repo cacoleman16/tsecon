@@ -1364,14 +1364,17 @@ def structural_fevd(
     lags: int = ...,
     horizon: int = ...,
     trend: str = ...,
-    impact: _ArrayLike | None = ...,
+    impact: _ArrayLike | Sequence[Sequence[float]] | None = ...,
     sigma: str = ...,
 ) -> dict[str, Any]:
     """Structural FEVD for an arbitrary structural impact matrix A0 (the gap
     var_fevd, recursive-Cholesky only, leaves).
 
     `impact` is an optional (n, n) structural impact A0 (columns = one-SD
-    structural shocks, A0 A0' = Sigma; from any identification scheme). If None,
+    structural shocks, A0 A0' = Sigma; from any identification scheme) -- an
+    ndarray, a pandas object or a rectangular nested list, so another
+    callable's `impact` (e.g. `long_run_svar(...)["impact"]`) passes straight
+    in. If None,
     A0 is the lower Cholesky of the innovation covariance and the result equals
     `var_fevd` exactly. `sigma` ("dfadj"|"mle") sets the default Cholesky's df
     scaling; the FEVD shares are invariant to it (it only rescales the reported
@@ -1393,6 +1396,7 @@ def historical_decomposition(
     lambda1: float = ...,
     narrative_restrictions: list[dict] | None = ...,
     n_weight_draws: int = ...,
+    impact: _ArrayLike | Sequence[Sequence[float]] | None = ...,
 ) -> dict[str, Any]:
     """Historical decomposition: per-(time, variable, shock) structural-shock contributions.
 
@@ -1405,6 +1409,25 @@ def historical_decomposition(
     identification="cholesky" (default): a point decomposition at the OLS VAR with
     Q=I; returns `times`, `baseline` [T_eff][n], `hd` [T_eff][n][n] indexed
     [time][variable][shock], and the structural `shocks` [T_eff][n].
+    identification="impact": a point decomposition under an ARBITRARY invertible
+    structural impact matrix `impact` (n x n; columns are one-standard-deviation
+    structural shocks, u_t = impact @ eps_t; `impact @ impact.T == Sigma` is NOT
+    required; an ndarray, a pandas object or a nested list such as
+    `long_run_svar(...)["impact"]`). For example
+    `historical_decomposition(X, lags=8, identification="impact",
+    impact=long_run_svar(X, lags=8, impact_signs=[(0, 1)])["impact"])`.
+    Returns the cholesky keys `times`, `baseline`, `hd`, `shocks` (a drop-in
+    replacement) plus `impact` [n][n] (echoed) and `shock_covariance` [n][n] =
+    E'E/T_eff of the structural shocks -- a diagnostic: the identity for
+    chol(Sigma_mle), (T_eff-m)/T_eff times the identity for a `long_run_svar`
+    impact (df-adjusted Sigma, m = 1 + n*lags). The reduced form is ALWAYS a
+    VAR with a constant at `lags`; an impact estimated with trend="n" or other
+    lags is silently inconsistent with these residuals (the adding-up identity
+    still holds), so estimate it at the same `lags` with trend="c". `impact`
+    is refused, naming it, when missing, of the wrong shape, non-finite, or
+    singular by the numpy.linalg.matrix_rank convention (smallest singular
+    value <= largest * n * machine epsilon). `horizon` below T_eff-1 is
+    refused; above it is inert.
     identification="sign": the importance-weighted SET decomposition over sign- (and
     optionally narrative-) restricted rotations; returns `times`, `baseline`
     (posterior-mean), `probs`, `hd_quantiles` [T_eff][n][n][len(probs)] (weighted
@@ -1420,11 +1443,21 @@ def historical_decomposition(
        "sign":"+"|"-"}
 
     Further arguments, with defaults: `horizon` (None), `n_draws` (500),
-    `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
+    `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200),
+    `impact` (None).
 
     `restrictions` (None = no restrictions; used under identification="sign")
     is the `sign_restricted_svar` list of `(variable, shock, horizon, sign)`
     tuples with `sign` in {"+", "-"}.
+
+    Inert keywords are refused, not ignored: the sampling controls (`n_draws`,
+    `max_tries`, `seed`, `lambda1`, `n_weight_draws`, compared to their
+    defaults) and non-empty `restrictions` / `narrative_restrictions` under
+    "cholesky" and "impact"; `impact` under any identification but "impact".
+
+    Returned keys: `baseline`, `diagnostics`, `hd`, `hd_quantiles`,
+    `hd_set_max`, `hd_set_min`, `impact`, `probs`, `shock_covariance`,
+    `shocks`, `times`, `weights`.
     """
 
 def narrative_svar(
@@ -1538,6 +1571,7 @@ def long_run_svar(
     trend: str = ...,
     restrictions: Sequence[tuple[int, int]] | None = ...,
     normalize: str = ...,
+    impact_signs: Sequence[tuple[int, int]] | None = ...,
 ) -> dict[str, Any]:
     """Blanchard-Quah long-run SVAR: closed-form structural IRFs under frequency-zero restrictions.
 
@@ -1545,9 +1579,126 @@ def long_run_svar(
     classic recursive BQ); `normalize` is "long_run" (positive LR diagonal;
     default) or "impact" (positive B diagonal). Returns `impact` (B),
     `long_run` (LR = C(1) B), `long_run_multiplier` (C(1)), `irf`
-    [horizon+1][i][j], `cumulative_irf`, and `fevd`. Point estimate, no RNG.
+    [horizon+1][i][j], `cumulative_irf`, and `fevd`. Point estimate, no RNG;
+    for confidence bands use `long_run_svar_bands`.
+
+    `impact_signs` (None) is a list of (variable, shock) pairs that anchor each
+    listed shock's sign on its impact response, applied AFTER `normalize`: when
+    impact[variable][shock] < 0 (strictly; an exact zero is left alone) that
+    shock's column is negated in `impact`, `long_run` and `irf`, and
+    `cumulative_irf` is recomputed from the flipped `irf` (`fevd` is
+    sign-invariant). Unlisted shocks keep the `normalize` rule. Blanchard-Quah
+    sign the demand disturbance so output rises on impact:
+    `impact_signs=[(0, 1)]` with output growth ordered first. Refused, naming
+    `impact_signs`: an index outside 0..k-1, or the same shock listed twice.
+
+    Returned keys: `cumulative_irf`, `fevd`, `impact`, `irf`, `long_run`,
+    `long_run_multiplier`.
 
     Further arguments, with defaults: `lags` (2), `trend` ("c").
+    """
+
+def long_run_svar_bands(
+    data: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    trend: str = ...,
+    restrictions: Sequence[tuple[int, int]] | None = ...,
+    normalize: str = ...,
+    impact_signs: Sequence[tuple[int, int]] | None = ...,
+    method: str = ...,
+    alpha: float = ...,
+    cumulative: bool = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    bias_correct: bool = ...,
+    band: str = ...,
+    band_scope: str = ...,
+    band_seed: int = ...,
+    band_n_sim: int = ...,
+    return_draws: bool = ...,
+) -> dict[str, Any]:
+    """Confidence bands for Blanchard-Quah long-run SVAR impulse responses, re-identified in every draw.
+
+    The banded companion to `long_run_svar`: the same model, `restrictions`,
+    `normalize` and `impact_signs` (`impact_signs=[(0, 1)]` signs the
+    Blanchard-Quah demand shock so output rises on impact).
+
+    method="bootstrap" (the DEFAULT -- unlike `var_irf_bands`, whose default is
+    "asymptotic") is the Runkle (1987) / Kilian (1998) residual recursive design
+    on the same engine and stream as `var_irf_bands`: replication b draws iid
+    residual rows from substream b of SeedSequence(seed).spawn(n_boot), rebuilds
+    the pseudo-sample from the observed first `lags` rows (no burn-in), refits
+    the VAR and RE-RUNS the Blanchard-Quah map with the same restrictions /
+    normalize / impact_signs (holding the impact matrix fixed would drop the
+    C(1) uncertainty that dominates long-run schemes). `lower`/`upper` are
+    Efron percentiles at alpha/2, 1-alpha/2 (NumPy "linear"), `se` the
+    across-draw SD (ddof=1); `cumulative=True` cumulates each draw before the
+    percentiles. `bias_correct=True` applies Kilian's correction (inner n_boot
+    bootstrap, seed + 0x9E3779B97F4A7C15, shrunk to stay stationary): the
+    pseudo-samples come from the corrected slopes (the intercept is not
+    corrected, so the DGP's implied mean moves) and `point` becomes the map at
+    the corrected coefficients and the full-sample df-adjusted Sigma_u -- it
+    then no longer equals `long_run_svar` and shows more persistence. Without
+    it `point` is bit-identical to `long_run_svar(...)["irf"]` (or
+    `["cumulative_irf"]`).
+
+    method="asymptotic" is the Lutkepohl (2005) delta method with
+    `var_irf_bands`' statsmodels conventions and an analytic Jacobian of the
+    Blanchard-Quah map (column signs held at the point estimate's); bands are
+    point +/- z_{1-alpha/2} se.
+
+    COVERAGE IS NOT UNIFORM and no arm covers every cell: read the per-cell
+    Monte Carlo table in the structural-identification model card. In short,
+    the Kilian bootstrap is better on the long-run matrix and on average, the
+    delta arm on the output-level hump, and plain Efron (the default) is the
+    weakest.
+
+    Returned keys, responses indexed [h][i][j] = response of variable i to
+    structural shock j: `point` (cumulated when `cumulative`), `se`, `lower`,
+    `upper`; the long-run matrix LR = C(1) B as [i][j]: `long_run_point`,
+    `long_run_se`, `long_run_lower`, `long_run_upper` (the imposed zeros are
+    exactly +/-0 with zero width and `long_run_se` == 0); echoes `method`,
+    `alpha`, `n_boot` (None on the asymptotic arm), `bias_correct`, `band`,
+    `cumulative`; `min_root` (full-sample smallest reverse-characteristic root
+    modulus, the `var_fit` convention, stable iff > 1 -- the INVERSE of the
+    companion radius that `n_unstable_draws` thresholds); `n_unstable_draws`
+    (raw bootstrap refits, before any Kilian correction, with companion
+    spectral radius >= 1; None on the asymptotic arm);
+    `sign_anchor_mismatches` (per `impact_signs` entry, the draws whose
+    pre-anchor sign of impact[v][s] differs from the point's -- large means
+    bimodal bands; None without impact_signs or on the asymptotic arm). With
+    `return_draws=True` (bootstrap only): `irf_draws` ndarray (n_boot,
+    horizon+1, k, k) of the REPORTED object (cumulated iff cumulative,
+    bias-corrected iff bias_correct) and `long_run_draws` (n_boot, k, k). With
+    band "sup-t" / "sidak" / "bonferroni": `sim_lower`, `sim_upper`,
+    `critical_value`, `pointwise_critical_value`, `band_scope`, `n_cells`,
+    `n_cells_used`, as in `var_irf_bands` (long-run cells take no part;
+    bootstrap sup-t reads its quantile off the draws, asymptotic sup-t
+    simulates from band_seed / band_n_sim).
+
+    Refused, naming the parameter: alpha outside (0, 1); unknown method,
+    normalize, trend, band or band_scope; n_boot < 2; lags == 0; band_n_sim < 2
+    under asymptotic sup-t; impact_signs out of range or anchoring a shock
+    twice; restrictions that are not a column permutation of the recursive
+    pattern; bias_correct=True with method="asymptotic"; a singular
+    I - A_1 - ... - A_p at the full sample (data / lags). Inert keywords are
+    refused: n_boot, seed and return_draws on the asymptotic arm; band_seed and
+    band_n_sim anywhere but the asymptotic sup-t band; a non-default
+    band_scope with band="pointwise". The working set is budgeted at 2^28
+    values (2 GiB) before anything is allocated: n_boot*(horizon+1)*k^2 draws
+    (refused naming n_boot and horizon) and, on the asymptotic arm, the joint
+    covariance of a simultaneous band's family, ((horizon+1)*k^2)^2 under
+    band_scope="all" (refused naming horizon and band_scope). A replication
+    whose re-estimated VAR cannot be identified is never dropped: the first is
+    reported by index as an error.
+
+    Further arguments, with defaults: `lags` (2), `horizon` (12), `trend` ("c"),
+    `restrictions` (None), `normalize` ("long_run"), `impact_signs` (None),
+    `method` ("bootstrap"), `alpha` (0.1), `cumulative` (False), `n_boot`
+    (1000), `seed` (0), `bias_correct` (False), `band` ("pointwise"),
+    `band_scope` ("horizon"), `band_seed` (20260807), `band_n_sim` (100000),
+    `return_draws` (False).
     """
 
 def max_share_svar(
