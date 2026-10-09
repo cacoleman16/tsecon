@@ -559,6 +559,7 @@ fn doornik_hansen_null_z_moments() {
     let mut rng = Lcg::new(6060);
     let (n, reps) = (50usize, 20_000usize);
     let (mut s1, mut s2, mut q1, mut q2) = (0.0, 0.0, 0.0, 0.0);
+    let (mut rej_dh, mut rej_jb) = (0usize, 0usize);
     for _ in 0..reps {
         let x = Mat::from_fn(n, 1, |_, _| rng.gaussian());
         let d = doornik_hansen_test(x.as_ref()).unwrap();
@@ -567,17 +568,30 @@ fn doornik_hansen_null_z_moments() {
         s2 += z2;
         q1 += z1 * z1;
         q2 += z2 * z2;
+        if d.pvalue < 0.05 {
+            rej_dh += 1;
+        }
+        // At k = 1 the Cholesky form is the univariate Jarque-Bera.
+        if normality_test_cholesky(x.as_ref()).unwrap().pvalue < 0.05 {
+            rej_jb += 1;
+        }
     }
     let r = reps as f64;
     let (m1, m2) = (s1 / r, s2 / r);
     let (v1, v2) = (q1 / r - m1 * m1, q2 / r - m2 * m2);
+    let (size_dh, size_jb) = (rej_dh as f64 / r, rej_jb as f64 / r);
     println!(
         "Doornik-Hansen null z-moments (n = 50, {reps} reps): mean z1 {m1:.4}, var z1 {v1:.4}, \
-         mean z2 {m2:.4}, var z2 {v2:.4}"
+         mean z2 {m2:.4}, var z2 {v2:.4}; univariate size at 5%: Doornik-Hansen {size_dh:.4}, \
+         asymptotic Jarque-Bera {size_jb:.4}"
     );
     assert!(m1.abs() < 0.03 && m2.abs() < 0.03, "means {m1} / {m2}");
     assert!((0.96..=1.04).contains(&v1), "var z1 {v1}");
     assert!((0.86..=1.02).contains(&v2), "var z2 {v2}");
+    assert!(
+        (0.04..=0.06).contains(&size_dh),
+        "univariate DH size {size_dh}"
+    );
 }
 
 /// Invariances on a seeded skewed panel: Doornik-Hansen (2008) is invariant

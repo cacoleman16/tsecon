@@ -515,15 +515,23 @@ fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Mat<f64>, V
             raw2 += x * x;
             cen2 += u[(i, j)] * u[(i, j)];
         }
+        if !(raw2.is_finite() && cen2.is_finite()) {
+            return Err(VarError::NonFinite {
+                what: "the second moments of resid (entries so large that their squares \
+                       overflow; rescale resid)",
+                at: None,
+            });
+        }
         // Exactly constant, or varying only at the rounding level of its
-        // own magnitude (standard deviation below 1e-12 x its RMS); every
-        // entry is finite here, so the comparison is total.
+        // own magnitude (standard deviation below 1e-12 x its RMS); the sums
+        // are finite here, so the comparison is total.
         if lo == hi || cen2 <= 1e-24 * raw2 {
             return Err(VarError::InvalidArgument {
                 what: "resid has a constant column (zero sample variance after \
-                       centring): every normality statistic standardises each column, \
-                       so a constant column has no skewness or kurtosis to test — drop \
-                       that column from resid",
+                       centring — or entries so small that their squares underflow): \
+                       every normality statistic standardises each column, so a \
+                       constant column has no skewness or kurtosis to test — drop that \
+                       column from resid (or rescale it)",
             });
         }
     }
