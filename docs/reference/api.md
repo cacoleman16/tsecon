@@ -6080,9 +6080,10 @@ ARDL model and Pesaran-Shin-Smith (2001) bounds test for a level
     "no_level_relationship" if `p_value_lower` >= alpha, else
     "inconclusive" ("unavailable" when n_x > 10, where no table exists and
     `crit_note` says so). Because the surface p at a tabulated critical
-    value is off its nominal level by up to 0.001, the verdict can differ
-    from comparing `statistic` with `crit_lower`/`crit_upper` in that
-    sliver; the p-values are the definition. The t statistic on y.L1 is
+    value is off its nominal level by up to 0.0013 (90%), 0.0010 (95%),
+    0.0003 (99%) and 0.0001 (99.9%), the verdict can differ from comparing
+    `statistic` with `crit_lower`/`crit_upper` in that sliver; the
+    p-values are the definition. The t statistic on y.L1 is
     returned without critical values: a rejecting F with a t near zero is
     PSS's degenerate case (the x levels matter but y does not
     error-correct) — check it. Asymptotic bounds only: with T below about
@@ -6136,7 +6137,8 @@ ARDL model and Pesaran-Shin-Smith (2001) bounds test for a level
     Validation: statsmodels 0.15 `UECM` / `ARDL` / `ardl_select_order` at
     1e-10 on estimates, t and long run, the selected orders exactly
     (`ic_value` at 1e-8); the F at 1e-10 against an exact-rational referee
-    and at 5e-10 / 1e-8 against statsmodels' UECM Wald / levels-ARDL
+    (also with y and x shifted by levels up to 1e6 over increments of sd
+    0.015) and at 5e-10 / 1e-8 against statsmodels' UECM Wald / levels-ARDL
     f_test (their own rounding); the critical values and p-values are
     statsmodels' tabulated surface at the corrected key (p-values atol
     1e-14 / rtol 1e-9); seeded Monte Carlo null size 0.048 / 0.047 at 5%

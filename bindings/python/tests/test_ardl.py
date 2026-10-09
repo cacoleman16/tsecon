@@ -129,6 +129,70 @@ def test_fixture_covers_the_option_grid():
     assert all(c["ic_margin"] > 1e-6 for c in CASES if c["selected"])
 
 
+OFFSETS = FX["offsets"]
+
+
+@pytest.mark.parametrize("row", OFFSETS["rows"],
+                         ids=[f"L{r['level']:.0e}-x{int(r['shift_x'])}-case{r['case']}" for r in OFFSETS["rows"]])
+def test_level_offsets_keep_the_f_at_the_exact_referee(row):
+    """Audit round 15 (F1): y (and x) shifted by a level L up to 1e6 over
+    increments with sd about 0.015. With a constant (cases 2-5) the F is
+    invariant to the shift and holds the exact-rational referee at 1e-10;
+    the old case-2 Wald route returned F = -35.8 (exact 9.548) at L = 1e6
+    and refused the design with x shifted too. Case 1 (no constant) and the
+    t carry the raw design's conditioning, about eps * L / variation."""
+    L = row["level"]
+    y = np.asarray(OFFSETS["y0"], float) + L
+    x = np.asarray(OFFSETS["x"], float) + (L if row["shift_x"] else 0.0)
+    r = tsecon.ardl_bounds_test(y, x, lags=OFFSETS["lags"], order=OFFSETS["order"], case=row["case"])
+    loose = 1e-10 * max(1.0, L / 1e4)
+    assert r["statistic"] == pytest.approx(row["statistic_exact"], rel=loose if row["case"] == 1 else 1e-10)
+    assert r["t_statistic"] == pytest.approx(row["t_statistic_exact"], rel=loose)
+    if L == 0.0:
+        assert r["statistic"] == pytest.approx(row["sm_statistic"], rel=5e-10)
+
+
+def test_a_level_offset_beyond_double_precision_is_refused_as_that():
+    """Beyond the reach of double precision (1e12 over increments near
+    0.01) the lagged level is a copy of the constant; the refusal says so
+    and gives the fix instead of blaming exact linear combinations."""
+    y, x = SYSTEMS["sim_k2"]
+    for kw in (dict(lags=2, order=1, case=2), {}):
+        with pytest.raises(ValueError, match=r"numerically singular.*level offset.*subtract the offset") as info:
+            tsecon.ardl_bounds_test(0.01 * y + 1e12, x, **kw)
+        assert "not positive definite" not in str(info.value)
+
+
+@pytest.mark.parametrize("scale, kw", [
+    (1e160, dict(lags=2, order=1, case=1)), (1e-160, dict(lags=2, order=1, case=2)),
+    (1e-160, dict(lags=2, order=1, case=5)), (1e-160, {}),
+], ids=["1e160-case1", "1e-160-case2", "1e-160-case5", "1e-160-searched"])
+def test_a_scale_beyond_double_precision_squares_is_refused_by_name(scale, kw):
+    """Audit round 15 review: with the F no longer routed through an inverse
+    of the restriction block's covariance (which refused such data only by
+    accident, as "not positive definite"), data whose squares leave double
+    precision would come back with an infinite or subnormal ssr, standard
+    errors of 0 or inf and a NaN F. It is refused naming y and x and the fix."""
+    y, x = SYSTEMS["sim_k2"]
+    with pytest.raises(ValueError, match=r"y and x are on a scale double precision cannot square "
+                                         r"\(largest \|y\| = .*rescale y and x") as info:
+        tsecon.ardl_bounds_test(y * scale, x * scale, **kw)
+    assert "not positive definite" not in str(info.value)
+
+
+@pytest.mark.parametrize("case", [1, 2, 3, 4, 5])
+def test_scales_within_double_precision_squares_keep_the_f(case):
+    """The scale refusal does not reach data double precision can square:
+    at 1e150 and 1e-150 the F and the t repeat the unscaled ones."""
+    y, x = SYSTEMS["sim_k2"]
+    base = tsecon.ardl_bounds_test(y, x, lags=2, order=1, case=case)
+    for scale in (1e150, 1e-150):
+        r = tsecon.ardl_bounds_test(y * scale, x * scale, lags=2, order=1, case=case)
+        assert r["statistic"] == pytest.approx(base["statistic"], rel=1e-12)
+        assert r["t_statistic"] == pytest.approx(base["t_statistic"], rel=1e-12)
+        assert np.all(np.isfinite(r["se"])) and np.all(np.asarray(r["se"]) > 0)
+
+
 def test_the_documented_stories():
     # macrodata: BIC picks ARDL(1, 1, 1); F rejects at 5% while t(y.L1) is
     # -1.61 — degenerate case #1, the model card's headline.
@@ -237,6 +301,17 @@ def test_bad_orders_are_refused_by_name(order, match):
     y, x = SYSTEMS["danish"]
     with pytest.raises(ValueError, match=match):
         tsecon.ardl_bounds_test(y, x, lags=2, order=order)
+
+
+@pytest.mark.parametrize("order, shown", [
+    (b"3", r"b'3'"), (bytearray(b"3"), r"bytearray\(b'3'\)"), (memoryview(b"3"), r"<memory at .*>"),
+], ids=["bytes", "bytearray", "memoryview"])
+def test_bytes_like_orders_are_refused_like_strings(order, shown):
+    """bytes-like objects iterate as ints: with one regressor order=b'3' was
+    silently fitted as order [51]."""
+    y, x = SYSTEMS["sim_k2"]
+    with pytest.raises(ValueError, match=rf"order = {shown} is a string or bytes-like object"):
+        tsecon.ardl_bounds_test(y, x[:, :1], lags=1, order=order)
 
 
 def test_absurd_orders_are_refused_by_name():
@@ -403,6 +478,25 @@ def test_stub_docstring_is_the_runtime_docstring():
     assert ast.get_docstring(stub) == inspect.cleandoc(tsecon._core.ardl_bounds_test.__doc__)
     params = [a.arg for a in stub.args.args]
     assert params == list(inspect.signature(tsecon._core.ardl_bounds_test).parameters)
+
+
+def test_docstring_states_the_measured_surface_offset_at_the_critical_values():
+    """Audit round 15: the docstring said the surface p at a tabulated
+    critical value is off nominal "by up to 0.001"; on the transcribed
+    surface (pinned bit for bit to the fixture's table) it is 0.0013 at 90%."""
+    from scipy.stats import norm
+
+    worst = [0.0] * 4
+    for e in FX["pss_table"]:
+        for i, (c, nominal) in enumerate(zip(e["crit"], (0.10, 0.05, 0.01, 0.001))):
+            a = e["small_p"] if c > e["stat_star"] else e["large_p"]
+            p = norm.sf(sum(ai * math.log(c) ** j for j, ai in enumerate(a)))
+            worst[i] = max(worst[i], abs(p - nominal))
+    doc = " ".join(tsecon.ardl_bounds_test.__doc__.split())
+    m = re.search(r"off its nominal level by up to ([0-9.]+) \(90%\), ([0-9.]+) \(95%\), "
+                  r"([0-9.]+) \(99%\) and ([0-9.]+) \(99\.9%\)", doc)
+    assert m, doc
+    assert list(m.groups()) == [f"{w:.4f}" for w in worst], (m.groups(), worst)
 
 
 def test_no_ellipsis_defaults_and_documented_values():

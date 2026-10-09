@@ -558,8 +558,10 @@ form (statsmodels' `UECM`):
 by OLS over the rows `t = h … T−1`, `h = max(p, max q_j)`. Pesaran, Shin &
 Smith (2001) test the level block — `π = θ_1 = … = θ_k = 0`, plus the constant
 (case 2) or the trend (case 4) — with a Wald F divided by the number of
-restrictions. Its null distribution depends on the integration order of the
-regressors, so they bound it: the all-I(0) distribution gives the *lower*
+restrictions (computed as the equal restricted-versus-unrestricted SSR F, from
+one QR with the restricted columns last, so no inverse is formed). Its null
+distribution depends on the integration order of the regressors, so they
+bound it: the all-I(0) distribution gives the *lower*
 critical values, the all-I(1) one the *upper*. Above the upper bound there is a
 level relationship whatever the regressors are; below the lower bound there is
 none; in between the answer depends on the regressors. `ardl_bounds_test`
@@ -702,7 +704,23 @@ Short samples: the bounds are asymptotic. Over-parameterised searches: the
 order search spends degrees of freedom fast — with `k` regressors and caps 4
 the largest candidate has `1 + 4 + 5k` regressors on `T − 4` rows, refused when
 it leaves none. I(2) regressors void the bounds. A regressor that is constant
-or duplicated is refused as a singular design, by name. Heteroskedastic or
+or duplicated is refused as a singular design, by name. A level far from zero
+beside its variation (a price index near 1e4 moving by 0.01) costs the F
+nothing with a constant in the model (cases 2–5): the restricted columns are
+centred before the QR, which leaves both fits unchanged. The t and the
+estimates carry the raw design's conditioning, about `eps × level / variation`
+(2.4e-9 on the offset fixture at a level of 1e6), and once the lagged level is
+a copy of the constant at double precision (1e12 over increments near 0.01)
+the design is refused as numerically singular, with the fix: subtract the
+offset, which in cases 2–5 leaves the F, the t and every coefficient but the
+constant unchanged. Data whose squares leave double precision is refused by
+name, with the largest `|y|` and `|x|` and the fix — rescale, which leaves the
+F, the t and the p-values unchanged (at 1e150 and 1e-150 they repeat the
+unscaled ones to 1e-12): `y` and `x` near 1e-160, where the residual sum of
+squares goes subnormal and the standard errors overflow, and, in case 1, near
+1e160, where it overflows (an order search, which runs first, names the same
+cause; with a constant, magnitudes that large already fail the design's rank
+check as numerically singular). Heteroskedastic or
 autocorrelated errors: the F uses the classical covariance (the only one the
 PSS theory covers); no HAC version is shipped.
 
@@ -723,7 +741,13 @@ referee (the SSR-difference F solved in `fractions.Fraction`) at 1e-10, against
 statsmodels' UECM Wald at 5e-10 (its own rounding reaches 1.5e-10 where the
 constant sits beside levels near 800 in case 2) and against statsmodels'
 levels-ARDL affine `f_test` (Σφ = 1, Σβ_j = 0) at 1e-8 (that design's condition
-number reaches 6e5). The fit statistics come from statsmodels `OLS` on the
+number reaches 6e5). On a seeded system shifted by a level `L` up to 1e6
+(increments' sd about 0.015; `y` alone, or `y` and `x`; all five cases,
+`fixtures/ardl.json` `offsets`) the F holds the exact referee at 1e-10 in cases
+2–5 (measured worst 2.1e-15), where statsmodels' UECM Wald F is off by up to
+8.4e-4 in case 2 at `L` = 1e4 and by 0.41 at 1e6; case 1, with no constant to
+absorb the shift, and the t are asserted at `1e-10 × max(1, L / 1e4)` (measured
+worst 3.2e-11 and 2.4e-9). The fit statistics come from statsmodels `OLS` on the
 UECM's own design (defect 2). Every one of the ~1 200 surface constants is
 asserted bit for bit, and the surface on a grid around every switch point.
 Seeded Monte Carlo in `ardl_properties.rs`:
@@ -737,7 +761,9 @@ Seeded Monte Carlo in `ardl_properties.rs`:
 
 Algebraic properties: the UECM SSR equals the levels-ARDL SSR, the Wald F
 equals the restricted-vs-unrestricted SSR F, F / t / p are invariant to
-rescaling the data, and every case's F is invariant to the trend origin.
+rescaling the data and, with a constant (cases 2–5), to adding constants to
+`y` and `x` (measured: F moves by at most 2.4e-11 under offsets of 1e4 on
+increments near 0.01), and every case's F is invariant to the trend origin.
 
 **Not implemented (yet).** Critical values for the PSS t test; the Narayan
 (2005) and Kripfganz-Schneider (2020) finite-sample surfaces; order-0
