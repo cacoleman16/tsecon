@@ -685,6 +685,22 @@ fn soft_density_coverage_by_exact_conditional_simulation() {
             }
         }
     }
+    // The DGP's own density-conditional se at each cell, from the same
+    // pieces: MSE - G Occ^{-1} G' + K Om K' on the diagonal.
+    let sigma_true = &chol * chol.transpose();
+    let mut mse_true = Mat::<f64>::zeros(k, k);
+    let mut psi_h = Mat::<f64>::identity(k, k);
+    let mut true_se = vec![[0.0f64; 2]; h];
+    for s in 0..h {
+        mse_true = &mse_true + &psi_h * &sigma_true * psi_h.transpose();
+        psi_h = &a[0] * &psi_h;
+        for (j, slot) in true_se[s].iter_mut().enumerate() {
+            let row = s * k + j;
+            let shrink: f64 = (0..h).map(|i| g_true[(row, i)] * k_gain[(row, i)]).sum();
+            let spread: f64 = (0..h).map(|i| (k_gain[(row, i)] * sds[i]).powi(2)).sum();
+            *slot = (mse_true[(j, j)] - shrink + spread).max(0.0).sqrt();
+        }
+    }
     let se_mc = (0.95f64 * 0.05 / reps as f64).sqrt();
     println!("soft density coverage (reps {reps}, T 4000, sd {sds:?} on series 0, exact conditional draws under the DGP)");
     for s in 0..h {
@@ -694,13 +710,18 @@ fn soft_density_coverage_by_exact_conditional_simulation() {
         ];
         let calib = [sq_err[s][0] / reps as f64, sq_err[s][1] / reps as f64];
         println!(
-            "  h={}: soft cell {:.4} free cell {:.4}; standardised-error variance {:.4} / {:.4}",
+            "  h={}: soft cell {:.4} free cell {:.4}; standardised-error variance {:.4} / {:.4}; \
+             fitted/true se {:.4} / {:.4}",
             s + 1,
             cov[0],
             cov[1],
             calib[0],
-            calib[1]
+            calib[1],
+            cf.se[(s, 0)] / true_se[s][0],
+            cf.se[(s, 1)] / true_se[s][1]
         );
+        // The soft cell's se is the stated sd under both the DGP and the fit.
+        assert!((cf.se[(s, 0)] / true_se[s][0] - 1.0).abs() < 1e-12);
         for j in 0..k {
             assert!(
                 (cov[j] - 0.95).abs() < 4.0 * se_mc + 0.005,

@@ -359,7 +359,8 @@ def build_case(name, series_name, y, p, trend, steps, cond_rows, sd_rows, mode, 
     # mahalanobis statistic (and ln det M) of the closed form.
     m = aux["m"]
     ll_closed = -0.5 * (m * math.log(2.0 * math.pi) + aux["ln_det_m"] + aux["maha"])
-    assert abs(llf_future - ll_closed) < 1e-10 * max(1.0, abs(ll_closed)), (llf_future, ll_closed)
+    dev_llf = abs(llf_future - ll_closed)
+    assert dev_llf < 1e-10 * max(1.0, abs(ll_closed)), (llf_future, ll_closed)
     case = {
         "name": name,
         "series": series_name,
@@ -372,6 +373,7 @@ def build_case(name, series_name, y, p, trend, steps, cond_rows, sd_rows, mode, 
         "bgl_shocks": shocks.tolist(),
         "bgl_max_abs_dev": {"point": dev_path, "cov": dev_cov, "shocks": dev_shocks},
         "bgl_llf_future": llf_future,
+        "bgl_llf_abs_dev": dev_llf,
     }
     if mode == "density":
         apath, acov = apw_leg(aux, steps, k)
@@ -480,7 +482,8 @@ def main():
             extra = f" apw dev path={a['point']:.1e} cov={a['cov']:.1e}"
         print(f"  {c['name']:24s} {c['mode']:7s} p={c['p']} {c['trend']} H={c['steps']} "
               f"m={c['n_constrained']} soft={c['n_soft']} maha={c['mahalanobis']:.4f} "
-              f"bgl dev path={d['point']:.1e} cov={d['cov']:.1e} shocks={d['shocks']:.1e}{extra}")
+              f"bgl dev path={d['point']:.1e} cov={d['cov']:.1e} shocks={d['shocks']:.1e} "
+              f"llf={c['bgl_llf_abs_dev']:.1e}{extra}")
 
 
 if __name__ == "__main__":
