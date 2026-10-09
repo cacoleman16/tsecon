@@ -7771,6 +7771,11 @@ fn midas_weights<'py>(
 /// constant plus the `hf_lags` columns). `hf_lags` is `nobs x K` (each
 /// column a high-frequency lag). Returns params, HAC standard errors, and R².
 ///
+/// `se_type`: `"hac"` (default) — Bartlett/Newey-West with the `n/(n - k)`
+/// small-sample factor at `maxlags` (None: the Newey-West rule
+/// `floor(4 (nobs/100)^(2/9))`); or `"nonrobust"`, where an explicit
+/// `maxlags` is refused — it is the HAC bandwidth and would be ignored.
+///
 /// Returned keys: `bse`, `params`, `rsquared`.
 ///
 /// Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
@@ -7786,7 +7791,15 @@ fn umidas<'py>(
     let a = hf_lags.as_array();
     let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
     let se = match se_type {
-        "nonrobust" => tsecon_midas::SeType::NonRobust,
+        "nonrobust" => {
+            if let Some(l) = maxlags {
+                return Err(PyValueError::new_err(format!(
+                    "umidas: maxlags = {l} has no effect under se_type=\"nonrobust\" (it is \
+                     the HAC bandwidth); drop it, or pass se_type=\"hac\""
+                )));
+            }
+            tsecon_midas::SeType::NonRobust
+        }
         "hac" => tsecon_midas::SeType::Hac {
             kernel: tsecon_hac::Kernel::Bartlett,
             bandwidth: maxlags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(a.nrows())) as f64,

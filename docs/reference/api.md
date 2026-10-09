@@ -3234,6 +3234,10 @@ def umidas(
 
 U-MIDAS: unrestricted mixed-frequency regression (hf_lags is nobs x K).
 
+    se_type "hac" (default): Bartlett/Newey-West with the n/(n - k) factor at
+    maxlags (None: floor(4 (nobs/100)^(2/9))); "nonrobust" refuses an
+    explicit maxlags (it is the HAC bandwidth and would be ignored).
+
     Returned keys: `bse`, `params`, `rsquared`.
 
     Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).

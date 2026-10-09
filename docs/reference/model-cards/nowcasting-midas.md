@@ -120,8 +120,8 @@ data release that caused it.
 | Call | Argument | Default | Notes |
 |------|----------|---------|-------|
 | `midas_weights` | `scheme`, `θ₁`, `θ₂`, `k` | — | `"exp_almon"` or `"beta"`; k lags |
-| `umidas` | `se_type` | `"hac"` | robust SEs on the OLS coefficients |
-| | `maxlags` | `None` | HAC bandwidth (auto if `None`) |
+| `umidas` | `se_type` | `"hac"` | Bartlett/Newey-West with the `n/(n−k)` factor, or `"nonrobust"` |
+| | `maxlags` | `None` | HAC bandwidth (auto if `None`); refused under `"nonrobust"` |
 | `adl_midas` | `ar_lags` | `1` | lags of the target; `0` is refused (that model is `umidas`) |
 | | `se_type` | `"hac"` | Bartlett/Newey-West with the `n/(n−k)` factor, or `"nonrobust"` |
 | | `maxlags` | `None` | `floor(4 (nobs/100)^(2/9))` on the **fitted** rows `nobs = n − P`; refused under `"nonrobust"` |
