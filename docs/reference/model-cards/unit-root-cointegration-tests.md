@@ -557,8 +557,10 @@ level has $VR(q)$ falling toward 0 as $q$ grows, and a trend-stationary one is
 outside the null; run the ADF/KPSS quadrant first), and do not pass returns — see the failure modes.
 
 **Key arguments and defaults (and why).** `lags` (2): one horizon $q \ge 2$, or
-a list/tuple/array/Series of distinct horizons — then every per-horizon key is
-an array in the given order and the Chow-Denning keys span them all. `trend`:
+a list/tuple/integer array/Series of distinct horizons — then every per-horizon
+key except the `lags` echo (a list of ints) is a NumPy array in the given order,
+and the Chow-Denning keys span them all. Horizons are integers: a float is
+refused alike as the scalar `4.0` and inside a sequence (`[4.0]`, a float array). `trend`:
 `"c"` (default; a random walk with drift, increments centred at the sample
 drift) or `"n"` (no drift). `overlap` (True): all $n - q$ overlapping
 $q$-period sums — more efficient — versus non-overlapping blocks, which drop the

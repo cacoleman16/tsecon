@@ -5,7 +5,7 @@
 use numpy::{IntoPyArray, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyInt, PyString};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyFrozenSet, PyInt, PySet, PyString};
 use tsecon_diag::{DiagError, VarianceRatioSpec, VrTrend};
 
 use crate::{to_py, vec1};
@@ -42,26 +42,58 @@ fn not_a_horizon(h: &Bound<'_, PyAny>) -> PyErr {
     ))
 }
 
-/// One horizon value from a sequence: an integral number >= 2.
-fn horizon_from_f64(v: f64) -> PyResult<usize> {
-    if !v.is_finite() || v.fract() != 0.0 {
+/// A NumPy floating scalar or array (`dtype.kind == "f"`).
+fn is_numpy_float(v: &Bound<'_, PyAny>) -> bool {
+    v.getattr("dtype")
+        .and_then(|d| d.getattr("kind"))
+        .and_then(|k| k.extract::<String>())
+        .is_ok_and(|k| k == "f")
+}
+
+/// One horizon from a sequence (`lags[j]`): an integer >= 2 — a Python or
+/// NumPy integer. A float is refused even when integral, exactly as the
+/// scalar `lags=4.0` is, so `[4.0]`, `(4.0,)` and a float array follow the
+/// same rule as `4.0` (and as `ardl_bounds_test`'s `order`).
+fn one_horizon(item: &Bound<'_, PyAny>, j: usize) -> PyResult<usize> {
+    let shown = item
+        .repr()
+        .map(|r| r.to_string())
+        .unwrap_or_else(|_| "?".to_string());
+    if item.is_instance_of::<PyBool>() || is_numpy_bool(item) {
         return Err(PyValueError::new_err(format!(
-            "variance_ratio: lags must contain integer horizons q >= 2; got the value {v}, \
-             which is not an integer — {LAGS_HINT}"
+            "variance_ratio: lags[{j}] = {shown} is a bool, not a horizon — {LAGS_HINT}"
         )));
     }
-    if v < 2.0 {
-        return Err(below_two(v));
-    }
-    // From 2**53 on a float no longer pins one integer, and no sample is that
-    // long: refuse with the value as given rather than a saturated cast.
-    if v >= 9_007_199_254_740_992.0 {
+    if item.is_instance_of::<pyo3::types::PyFloat>() || is_numpy_float(item) {
         return Err(PyValueError::new_err(format!(
-            "variance_ratio: lags contains the horizon {v:e}, longer than any sample (a \
-             horizon q needs at least q + 2 observations) — {LAGS_HINT}"
+            "variance_ratio: lags[{j}] = {shown} is a float, not an integer horizon: a \
+             float is refused inside a sequence exactly as the scalar lags=4.0 is (a float \
+             array too) — {LAGS_HINT}"
         )));
     }
-    Ok(v as usize)
+    if item.is_instance_of::<PyString>() || item.is_instance_of::<PyBytes>() {
+        return Err(PyValueError::new_err(format!(
+            "variance_ratio: lags[{j}] = {shown} is a string, not a horizon — {LAGS_HINT}"
+        )));
+    }
+    if let Ok(v) = item.extract::<i64>() {
+        return horizon_from_i64(v);
+    }
+    if let Ok(v) = item.extract::<u64>() {
+        // Above i64::MAX: refused downstream by the length rule.
+        return Ok(usize::try_from(v).unwrap_or(usize::MAX));
+    }
+    if item.is_instance_of::<PyInt>() {
+        return Err(PyValueError::new_err(format!(
+            "variance_ratio: lags[{j}] = {shown} is out of range; a horizon must be an \
+             integer between 2 and n - 2 — {LAGS_HINT}"
+        )));
+    }
+    Err(PyValueError::new_err(format!(
+        "variance_ratio: lags[{j}] = {shown} (of type {}) is not an integer horizon — \
+         {LAGS_HINT}",
+        type_name(item)
+    )))
 }
 
 fn below_two(v: impl std::fmt::Display) -> PyErr {
@@ -81,13 +113,17 @@ fn horizon_from_i64(v: i64) -> PyResult<usize> {
 }
 
 /// `lags` accepts `None` (-> 2), an int (Python int, NumPy integer, or a 0-d
-/// integer array, via `__index__`), or a sequence of ints. The package's
-/// coercion layer turns a list, an integer ndarray, and a pandas Series into
-/// a float64 array before the call, so an integral float64 array is a
-/// sequence of ints too (the `mlp_regression.hidden` precedent). Returns the
-/// horizons and whether a scalar was given (scalar in -> scalars out).
-/// Anything else is a teaching error that names `lags`.
-fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>) -> PyResult<(Vec<usize>, bool)> {
+/// integer array, via `__index__`), or a sequence of ints (a list, a tuple,
+/// an integer array, a pandas Series — `lags` is in the coercion layer's
+/// `_EXEMPT` table, so each reaches this parser as given). One rule for
+/// both forms: a float is refused whether it is the scalar `4.0` or an
+/// element of `[4.0]`, `(4.0,)` or a float array. Returns the horizons and
+/// whether a scalar was given (scalar in -> scalars out). Anything else is a
+/// teaching error that names `lags` (or `lags[j]`). A series of length `n`
+/// admits at most `n - 3` distinct horizons, so reading stops past
+/// `max(n, 16)` elements: an endless or enormous iterable is refused
+/// instead of being collected.
+fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>, n: usize) -> PyResult<(Vec<usize>, bool)> {
     let Some(h) = lags else {
         return Ok((vec![2], true));
     };
@@ -123,30 +159,34 @@ fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>) -> PyResult<(Vec<usize>, bool)
              between 2 and n - 2 — {LAGS_HINT}"
         )));
     }
-    if let Ok(v) = h.extract::<Vec<i64>>() {
-        let out = v
-            .into_iter()
-            .map(horizon_from_i64)
-            .collect::<PyResult<Vec<_>>>()?;
-        return Ok((out, false));
+    if h.is_instance_of::<PyDict>()
+        || h.is_instance_of::<PySet>()
+        || h.is_instance_of::<PyFrozenSet>()
+    {
+        return Err(PyValueError::new_err(format!(
+            "variance_ratio: lags = {} is a mapping or set, which has no order for the \
+             per-horizon outputs to follow — {LAGS_HINT}",
+            h.repr().map(|r| r.to_string()).unwrap_or_default()
+        )));
     }
-    if let Ok(arr) = h.extract::<PyReadonlyArray1<'_, f64>>() {
-        let out = vec1(&arr)
-            .into_iter()
-            .map(horizon_from_f64)
-            .collect::<PyResult<Vec<_>>>()?;
-        return Ok((out, false));
+    // A float (even an integral one such as 4.0), a 0-d float array or a
+    // Fraction is not iterable and not an int horizon: name the value and
+    // its type.
+    let Ok(items) = h.try_iter() else {
+        return Err(not_a_horizon(h));
+    };
+    let cap = n.max(16);
+    let mut out = Vec::new();
+    for (j, item) in items.enumerate() {
+        if j == cap {
+            return Err(PyValueError::new_err(format!(
+                "variance_ratio: lags has more than {cap} horizons, but a series of length \
+                 {n} admits at most n - 3 distinct horizons (2..n-2) — {LAGS_HINT}"
+            )));
+        }
+        out.push(one_horizon(&item?, j)?);
     }
-    if let Ok(v) = h.extract::<Vec<f64>>() {
-        let out = v
-            .into_iter()
-            .map(horizon_from_f64)
-            .collect::<PyResult<Vec<_>>>()?;
-        return Ok((out, false));
-    }
-    // A float (even an integral one such as 4.0) or a Fraction converts to
-    // f64 but is not an int horizon: name the value and its type.
-    Err(not_a_horizon(h))
+    Ok((out, false))
 }
 
 /// Resolve the `debiased` / `robust` sentinels. Both default to True under
@@ -225,6 +265,8 @@ fn vr_err(e: DiagError) -> PyErr {
 ///
 /// Arguments: `lags` (2) is one horizon q >= 2, or a sequence of distinct
 /// horizons (a list, tuple, integer array or pandas Series); `None` means 2.
+/// Horizons are integers: a float is refused alike as the scalar `4.0` and
+/// inside a sequence (`[4.0]`, `(2, 4.0)`, a float array).
 /// `trend`: "c" (random walk with drift, default; the increments are
 /// centred at the sample drift) or "n" (no drift). `overlap` (True) uses
 /// all overlapping q-period sums; `overlap=False` uses non-overlapping
@@ -292,7 +334,7 @@ fn variance_ratio<'py>(
     robust: Option<bool>,
     overlap: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let (horizons, scalar) = parse_vr_lags(lags)?;
+    let (horizons, scalar) = parse_vr_lags(lags, y.as_array().len())?;
     if horizons.is_empty() {
         return Err(PyValueError::new_err(format!(
             "variance_ratio: lags is empty — {LAGS_HINT}"

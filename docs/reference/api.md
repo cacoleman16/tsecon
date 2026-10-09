@@ -239,7 +239,7 @@ Zivot-Andrews unit-root test with one endogenous break.
 ```python
 def variance_ratio(
     y: _ArrayLike,
-    lags: int | Sequence[int] | None = ...,
+    lags: int | Sequence[int] | npt.NDArray[np.integer] | None = ...,
     trend: str = ...,
     debiased: bool | None = ...,
     robust: bool | None = ...,
@@ -259,7 +259,9 @@ Lo-MacKinlay (1988) variance-ratio test of the random-walk hypothesis,
     Matches `arch.unitroot.VarianceRatio` (arch 8.0.0) in its conventions.
 
     `lags` is one horizon q >= 2 or a sequence of distinct horizons (list,
-    tuple, integer array, pandas Series). `trend`: "c" (drift, default) or
+    tuple, integer array, pandas Series). Horizons are integers: a float is
+    refused alike as the scalar 4.0 and inside a sequence ([4.0], (2, 4.0),
+    a float array). `trend`: "c" (drift, default) or
     "n". `overlap=False` uses non-overlapping blocks and drops the trailing
     `(n - 1) % q` observations. `debiased`/`robust` are sentinels: None means
     True under `overlap=True`; under `overlap=False` neither exists, so an
@@ -280,7 +282,8 @@ Lo-MacKinlay (1988) variance-ratio test of the random-walk hypothesis,
     `trend`, `se_type`, `debiased`. The per-horizon keys (`lags`, `vr`,
     `stat`, `pvalue`, `stat_variance`, `nobs` = increments used, and
     `n_dropped`) are Python scalars when `lags` is an int or None and 1-D
-    arrays aligned with the given order when it is a sequence. `crit` is the
+    arrays aligned with the given order when it is a sequence (`lags` then
+    echoes a list of ints; the others are NumPy arrays). `crit` is the
     one-sided N(0, 1) quantile dict {"1%", "5%", "10%", "90%", "95%", "99%"};
     `cd_crit` is {"1%", "5%", "10%"}; `se_type` is "robust",
     "homoskedastic" or "nonoverlapping".
