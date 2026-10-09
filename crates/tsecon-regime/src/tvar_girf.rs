@@ -503,6 +503,9 @@ fn map_engine_error(e: VarError) -> RegimeError {
         VarError::NonFinite { what, .. } => RegimeError::NonFinite { what },
         VarError::NotPositiveDefinite { what } => RegimeError::Singular { what },
         VarError::InvalidArgument { what } => RegimeError::InvalidSpec { what },
+        // The GIRF engine budgets with `MemoryBudget`; the size budgets of the
+        // moving-average and band engines are not on this path.
+        VarError::SizeBudget { what, .. } => RegimeError::InvalidSpec { what },
         VarError::MemoryBudget {
             what,
             bytes,

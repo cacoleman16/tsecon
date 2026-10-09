@@ -495,6 +495,9 @@ impl VarResults {
             }
         }
 
+        // The moving-average expansion below is budgeted in the caller's own
+        // keyword, `steps`, before the point path allocates anything.
+        crate::budget::check_steps(k, steps)?;
         let yhat = self.forecast(steps)?;
         let psi = self.ma_rep(steps - 1)?;
         let mse = self.forecast_cov(steps)?;

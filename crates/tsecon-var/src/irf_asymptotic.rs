@@ -209,6 +209,9 @@ fn orth_delta_pieces(
 ///
 /// * [`VarError::InvalidArgument`] if the fit has no lags (a VAR(0) has
 ///   no coefficient covariance to propagate);
+/// * [`VarError::SizeBudget`] when the delta-method working set or the
+///   Jacobian work exceeds its budget ([`check_irf_asymptotic_budget`]),
+///   checked before anything is allocated;
 /// * [`VarError::NotPositiveDefinite`] if `sigma_u` has no Cholesky
 ///   factor or an intermediate matrix is singular;
 /// * propagates [`crate::irf::ma_rep`] / companion-form failures.
@@ -218,6 +221,9 @@ pub fn irf_asymptotic_se(
     orth: bool,
     cumulative: bool,
 ) -> Result<Vec<Mat<f64>>, VarError> {
+    if res.spec.lags > 0 {
+        check_irf_asymptotic_budget(res.neqs, res.spec.lags, horizon, None, 0)?;
+    }
     let w = delta_workspace(res, horizon)?;
     let (k, k2, dim, t) = (w.k, w.k2, w.dim, w.t);
     let (phi, cov_a, g, p_chol, ik) = (&w.phi, &w.cov_a, &w.g, &w.p_chol, &w.ik);
@@ -385,6 +391,267 @@ pub(crate) fn delta_workspace(
         p_chol,
         ik,
     })
+}
+
+// ===========================================================================
+// The delta-method size budget (shared with the Blanchard-Quah delta arm)
+// ===========================================================================
+
+/// The work cap of the delta-method Jacobians `G_h = sum_{m<h} (A')^{h-1-m}
+/// ⊗ Phi_m`, `h = 1..=horizon`: [`delta_jacobian_work`] multiply-adds
+/// (`2^28`). The sums are QUADRATIC in `horizon`, so the storage budget
+/// alone admits horizons that run for hours. Shared by `var_irf_bands` and
+/// `long_run_svar_bands`; measured (`lab/audit/round16/var_budgets/
+/// vib_asym_cost.py`) at 0.74 s for `k = 2`, `lags = 8`, `horizon = 1000`
+/// (`2^25.9`) and 5.6 s for `k = 20`, `lags = 4`, `horizon = 28` (`2^28.0`).
+pub const DELTA_JACOBIAN_WORK: u128 = 1 << 28;
+
+/// The Jacobian work `horizon (horizon + 1) / 2 * k^2 * lags k^2` checked
+/// against [`DELTA_JACOBIAN_WORK`]. Saturating, so an absurd `horizon`
+/// cannot overflow the count meant to refuse it.
+pub fn delta_jacobian_work(k: usize, lags: usize, horizon: usize) -> u128 {
+    let h = horizon as u128;
+    let k2 = (k as u128).saturating_mul(k as u128);
+    let dim = (lags as u128).saturating_mul(k2);
+    h.saturating_mul(h.saturating_add(1))
+        .saturating_div(2)
+        .saturating_mul(k2)
+        .saturating_mul(dim)
+}
+
+/// The size terms of one delta-method band, in `f64` values (`None` when a
+/// count overflows), so that a refusal can name the term that is over.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct DeltaTerms {
+    /// Everything a pointwise band holds: the per-horizon Jacobians and
+    /// loadings, the coefficient covariance, the reported cubes.
+    pub(crate) base: Option<usize>,
+    /// The joint covariance of the largest band family and the family cell
+    /// lists (`Some(0)` without a simultaneous band).
+    pub(crate) family: Option<usize>,
+    /// The sup-t uniforms and maxima (`Some(0)` unless sup-t).
+    pub(crate) sim: Option<usize>,
+    /// The sup-t simulation work `n_families * band_n_sim * K^2`.
+    pub(crate) sim_work: Option<u128>,
+    /// [`delta_jacobian_work`].
+    pub(crate) jacobian_work: u128,
+}
+
+impl DeltaTerms {
+    fn values(&self) -> Option<usize> {
+        self.base?.checked_add(self.family?)?.checked_add(self.sim?)
+    }
+
+    pub(crate) fn fits(&self) -> bool {
+        matches!(self.values(), Some(v) if v <= crate::budget::BUDGET_VALUES)
+            && matches!(self.sim_work, Some(w) if w <= simultaneous::SUP_T_MAX_WORK)
+            && self.jacobian_work <= DELTA_JACOBIAN_WORK
+    }
+}
+
+/// The band family of `scope`: `(n_families, K)` for `horizon + 1` horizons
+/// of a `k`-variable system, or `None` on overflow.
+pub(crate) fn family_dims(k: usize, horizon: usize, scope: IrfBandScope) -> Option<(usize, usize)> {
+    let hp1 = horizon.checked_add(1)?;
+    match scope {
+        IrfBandScope::Horizon => Some((k.checked_mul(k)?, hp1)),
+        IrfBandScope::Shock => Some((k, hp1.checked_mul(k)?)),
+        IrfBandScope::All => Some((1, hp1.checked_mul(k)?.checked_mul(k)?)),
+    }
+}
+
+/// The sup-t terms shared by both delta arms: `K band_n_sim` uniforms plus
+/// `band_n_sim` maxima, and `n_families band_n_sim K^2` work.
+pub(crate) fn sup_t_terms(n_fam: usize, kf: usize, n_sim: usize) -> (Option<usize>, Option<u128>) {
+    let values = kf.checked_add(1).and_then(|v| v.checked_mul(n_sim));
+    let work = (n_fam as u128)
+        .checked_mul(n_sim as u128)
+        .and_then(|w| w.checked_mul(kf as u128))
+        .and_then(|w| w.checked_mul(kf as u128));
+    (values, work)
+}
+
+const DELTA_STORAGE_WHAT: &str = "horizon and lags: the delta-method working set (the \
+    (horizon + 1) k^2 response cells with their Jacobians in lags * k^2 coefficients, the \
+    (lags * k^2)^2 coefficient covariance and the reported bands, counted as real storage) \
+    exceeds the 2^28-value (2 GiB) budget, checked before anything is allocated; reduce \
+    horizon or lags, or use method=\"bootstrap\"";
+
+const DELTA_FAMILY_WHAT: &str = "horizon and band_scope: a simultaneous band over a family of K \
+    cells needs the K x K joint covariance of the family (K = horizon + 1 under \
+    band_scope=\"horizon\", k (horizon + 1) under \"shock\", k^2 (horizon + 1) under \"all\"), \
+    and with the rest of the delta-method working set that exceeds the 2^28-value (2 GiB) \
+    budget, checked before anything is allocated; reduce horizon or narrow band_scope";
+
+pub(crate) const SIM_WHAT: &str = "band_n_sim: the sup-t simulation draws band_n_sim Gaussian \
+    vectors per family of K cells (K * band_n_sim uniforms, and n_families * band_n_sim * K^2 \
+    multiply-adds to colour them), which exceeds the 2^28-value (2 GiB) memory budget or the \
+    2^36 work budget, checked before anything is allocated; lower band_n_sim (100000 is the \
+    default) or narrow band_scope";
+
+const DELTA_JACOBIAN_WHAT: &str = "horizon: the delta-method Jacobians of the moving-average \
+    weights cost horizon * (horizon + 1) / 2 * k^2 * lags * k^2 multiply-adds, QUADRATIC in \
+    horizon, which exceeds the 2^28 work cap (a few seconds), checked before any of them is \
+    built; reduce horizon or lags, or use method=\"bootstrap\", whose cost is linear in \
+    horizon";
+
+/// The refusal, if any, of a delta-method band whose terms at `(horizon,
+/// n_sim)` are `terms(horizon, n_sim)`. It names the term that is over, in
+/// this order: the pointwise working set (`horizon and lags`), a
+/// simultaneous band's family covariance (`horizon and band_scope`), the
+/// sup-t simulation (`band_n_sim`, unless not even 2 draws fit), and the
+/// Jacobian work (`horizon`); each with the largest value of the named
+/// keyword that passes every check at the other arguments. A pointwise band
+/// never hears about `band_scope` or `band_n_sim`, which it does not read.
+pub(crate) fn delta_refusal(
+    terms: impl Fn(usize, usize) -> DeltaTerms,
+    horizon: usize,
+    n_sim: usize,
+    supt: bool,
+) -> Option<VarError> {
+    use crate::budget::{largest_fitting, BUDGET_VALUES};
+    let t = terms(horizon, n_sim);
+    if t.fits() {
+        return None;
+    }
+    let max_horizon = || largest_fitting(0, horizon, |h| terms(h, n_sim).fits());
+    let over = |v: Option<usize>| !matches!(v, Some(v) if v <= BUDGET_VALUES);
+    let refuse = |what: &'static str| VarError::SizeBudget {
+        what,
+        name: "horizon",
+        value: horizon,
+        max: max_horizon(),
+    };
+    if over(t.base) {
+        return Some(refuse(DELTA_STORAGE_WHAT));
+    }
+    let with_family = t.base.zip(t.family).and_then(|(b, f)| b.checked_add(f));
+    if over(with_family) {
+        return Some(refuse(DELTA_FAMILY_WHAT));
+    }
+    let sim_over =
+        over(t.values()) || !matches!(t.sim_work, Some(w) if w <= simultaneous::SUP_T_MAX_WORK);
+    if supt && sim_over {
+        return Some(
+            match largest_fitting(2, n_sim, |n| terms(horizon, n).fits()) {
+                Some(max) => VarError::SizeBudget {
+                    what: SIM_WHAT,
+                    name: "band_n_sim",
+                    value: n_sim,
+                    max: Some(max),
+                },
+                None => refuse(DELTA_FAMILY_WHAT),
+            },
+        );
+    }
+    Some(refuse(DELTA_JACOBIAN_WHAT))
+}
+
+/// The delta-method terms of [`irf_asymptotic_se`] (`band = None`) and
+/// [`irf_asymptotic_critical_values`] (`band = Some`), counted as real
+/// storage: the `G_h` Jacobians (`k^2 x lags k^2` each) and the companion
+/// powers, the per-horizon covariances, the coefficient covariance, and the
+/// reported cubes ([`crate::budget::CUBE_COPIES`] copies); with a band, the
+/// second workspace and the per-horizon loadings it builds, and per family
+/// the `K x K` joint covariance, its factor and the `K x lags k^2` loading
+/// block.
+pub(crate) fn irf_delta_terms(
+    k: usize,
+    lags: usize,
+    horizon: usize,
+    band: Option<(BandMethod, IrfBandScope)>,
+    n_sim: usize,
+) -> DeltaTerms {
+    let (mut family, mut sim, mut sim_work) = (Some(0usize), Some(0usize), Some(0u128));
+    if let Some((method, scope)) = band {
+        family = irf_family_values(k, lags, horizon, scope);
+        if method == BandMethod::SupT {
+            (sim, sim_work) = match family_dims(k, horizon, scope) {
+                Some((n_fam, kf)) => sup_t_terms(n_fam, kf, n_sim),
+                None => (None, None),
+            };
+        }
+    }
+    DeltaTerms {
+        base: irf_base_values(k, lags, horizon),
+        family,
+        sim,
+        sim_work,
+        jacobian_work: delta_jacobian_work(k, lags, horizon),
+    }
+}
+
+/// The pointwise term of [`irf_delta_terms`].
+fn irf_base_values(k: usize, lags: usize, horizon: usize) -> Option<usize> {
+    use crate::budget::{cube_values, dense_values, CUBE_COPIES};
+    let k2 = k.checked_mul(k)?;
+    let dim = k2.checked_mul(lags)?;
+    let kp = k.checked_mul(lags)?;
+    let hp1 = horizon.checked_add(1)?;
+    // Per horizon: G_h, the companion power (A')^h[:k], the covariance.
+    let per_horizon = dense_values(k2, dim)?
+        .checked_add(dense_values(k, kp)?)?
+        .checked_add(dense_values(k2, k2)?)?;
+    hp1.checked_mul(per_horizon)?
+        .checked_add(dense_values(dim, dim)?)?
+        .checked_add(dense_values(kp, kp)?.checked_mul(2)?)?
+        .checked_add(dense_values(k2, dim)?.checked_mul(2)?)?
+        .checked_add(dense_values(k2, k2)?.checked_mul(8)?)?
+        .checked_add(cube_values(k, hp1, CUBE_COPIES)?)
+}
+
+/// The simultaneous-band term of [`irf_delta_terms`]: the second workspace's
+/// per-horizon loadings, the largest family's joint covariance with its
+/// factor and loading blocks, and the family cell lists.
+fn irf_family_values(k: usize, lags: usize, horizon: usize, scope: IrfBandScope) -> Option<usize> {
+    use crate::budget::dense_values;
+    let k2 = k.checked_mul(k)?;
+    let dim = k2.checked_mul(lags)?;
+    let half = k.checked_mul(k.checked_add(1)?)? / 2;
+    let hp1 = horizon.checked_add(1)?;
+    let (_, kf) = family_dims(k, horizon, scope)?;
+    let loadings = hp1
+        .checked_mul(
+            dense_values(k2, dim)?
+                .checked_mul(3)?
+                .checked_add(dense_values(k2, half)?)?,
+        )?
+        .checked_add(dense_values(dim, dim)?.checked_mul(2)?)?;
+    let joint = kf
+        .checked_mul(kf)?
+        .checked_mul(6)?
+        .checked_add(kf.checked_mul(dim.checked_add(half)?)?.checked_mul(4)?)?;
+    let cells = hp1.checked_mul(k2)?.checked_mul(3)?;
+    loadings.checked_add(joint)?.checked_add(cells)
+}
+
+/// Refuses a `var_irf_bands` delta-method request on a `k`-variable VAR with
+/// `lags` lags whose working set, Jacobian work or sup-t simulation exceeds
+/// its budget ([`crate::budget::BUDGET_VALUES`], [`DELTA_JACOBIAN_WORK`],
+/// [`simultaneous::SUP_T_MAX_WORK`]), naming the keyword whose term is over
+/// and the largest value that fits. `band` is `None` for the pointwise band
+/// alone; `n_sim` is read only under [`BandMethod::SupT`].
+///
+/// # Errors
+///
+/// [`VarError::SizeBudget`] naming `horizon` or `band_n_sim`.
+pub fn check_irf_asymptotic_budget(
+    k: usize,
+    lags: usize,
+    horizon: usize,
+    band: Option<(BandMethod, IrfBandScope)>,
+    n_sim: usize,
+) -> Result<(), VarError> {
+    let supt = matches!(band, Some((BandMethod::SupT, _)));
+    match delta_refusal(
+        |h, n| irf_delta_terms(k, lags, h, band, n),
+        horizon,
+        n_sim,
+        supt,
+    ) {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
 }
 
 // ===========================================================================
@@ -804,6 +1071,10 @@ pub const DEFAULT_N_SIM: usize = 100_000;
 ///
 /// * [`VarError::InvalidParameter`] if `alpha` is outside `(0, 1)`;
 /// * [`VarError::InvalidArgument`] if `n_sim < 2` under [`BandMethod::SupT`];
+/// * [`VarError::SizeBudget`] naming `horizon` or `band_n_sim` when the
+///   working set, the Jacobian work or the sup-t simulation exceeds its
+///   budget ([`check_irf_asymptotic_budget`]), checked before anything is
+///   allocated;
 /// * anything [`irf_asymptotic_se`] can return (a VAR(0) fit, a non-PSD
 ///   `Sigma_u`, a singular intermediate matrix);
 /// * [`VarError::Stats`] from the simultaneous-band layer.
@@ -828,10 +1099,19 @@ pub fn irf_asymptotic_critical_values(
     }
     if method == BandMethod::SupT && n_sim < 2 {
         return Err(VarError::InvalidArgument {
-            what: "n_sim must be at least 2 to simulate a sup-t critical value; \
+            what: "band_n_sim must be at least 2 to simulate a sup-t critical value; \
                    100000 is the recommended default and 50000 the practical floor \
                    (this is a quantile in the tail of a maximum)",
         });
+    }
+    if res.spec.lags > 0 {
+        check_irf_asymptotic_budget(
+            res.neqs,
+            res.spec.lags,
+            horizon,
+            Some((method, scope)),
+            n_sim,
+        )?;
     }
     // Every route needs the per-cell standard errors (to count degenerate
     // cells); only sup-t needs the full covariance and the RNG.
@@ -884,6 +1164,19 @@ where
     let mut values = vec![vec![z; k]; k];
     let mut used = vec![vec![0usize; k]; k];
     let n_cells = families[0].0.len();
+
+    // Every caller budgets its whole working set first; this backstop keeps
+    // the uniforms below from ever reaching the allocator unbudgeted.
+    if method == BandMethod::SupT && !simultaneous::sup_t_n_sim_fits(families.len(), n_cells, n_sim)
+    {
+        let max = simultaneous::sup_t_max_n_sim(families.len(), n_cells);
+        return Err(VarError::SizeBudget {
+            what: SIM_WHAT,
+            name: "band_n_sim",
+            value: n_sim,
+            max: (max >= 2).then_some(max),
+        });
+    }
 
     let mut streams = if method == BandMethod::SupT {
         Stream::substreams(seed, families.len()).map_err(|_| VarError::InvalidArgument {

@@ -44,6 +44,8 @@
 //! Runkle (1987); Kilian (1998, *Review of Economics and Statistics*);
 //! Lütkepohl (2005, appendix D).
 
+use std::collections::VecDeque;
+
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::{companion_from_var, spectral_radius};
 
@@ -109,6 +111,108 @@ pub struct IrfBands {
 /// matrices).
 pub(crate) type Cube = Vec<Mat<f64>>;
 
+/// One bootstrap replication's matrices, flattened into a single
+/// allocation: block `b` (horizon `b`, then any trailing matrix such as the
+/// Blanchard-Quah long-run matrix) holds cell `(i, j)` at `b k^2 + i k + j`.
+/// A faer matrix is a separate 64-byte-aligned allocation with padded
+/// columns, so a 2 x 2 one costs 32 doubles for 4 values; one flat array per
+/// replication keeps the draws at their real size, which is what the
+/// bootstrap budget counts. The values are copied, not recomputed, so every
+/// summary of them is bit-identical to one read off the matrices.
+pub(crate) type FlatDraw = Vec<f64>;
+
+/// Appends the `k x k` matrix `m` to `out`, row-major (the [`FlatDraw`]
+/// layout).
+pub(crate) fn push_flat(out: &mut Vec<f64>, m: MatRef<'_, f64>) {
+    for i in 0..m.nrows() {
+        for j in 0..m.ncols() {
+            out.push(m[(i, j)]);
+        }
+    }
+}
+
+/// Values one bootstrap replication holds besides its [`FlatDraw`] payload:
+/// its RNG substream (and, while the substreams are spawned, its
+/// `SeedSequence` child with two small heap buffers), its slot in the
+/// per-replication result vector (held up to three times while the results
+/// are collected), and the heap header of its flat array. 384 bytes; the
+/// type sizes it covers are asserted in the unit tests.
+pub(crate) const DRAW_OVERHEAD_VALUES: usize = 48;
+
+/// The subject of a bootstrap working-set refusal, shared by every residual
+/// bootstrap band.
+pub(crate) const BOOTSTRAP_WHAT: &str = "n_boot and horizon: the bootstrap working set (each \
+    of the n_boot replications holds its (horizon + 1) k x k responses as one flat array plus a \
+    fixed overhead for its RNG substream and result slots; with bias_correct also its inner \
+    Kilian estimate, with a simultaneous band its copy of the band family, with return_draws \
+    the kept draws; plus the reported bands, counted as real storage) exceeds the 2^28-value \
+    (2 GiB) budget, checked before anything is allocated; reduce n_boot or horizon";
+
+/// The refusal, if any, of a bootstrap whose working set at `(n_boot,
+/// horizon)` is `values(n_boot, horizon)` `f64` values: naming `n_boot` with
+/// the largest replication count that fits at this horizon, or, when not
+/// even 2 replications fit, `horizon` with the largest horizon that fits at
+/// this `n_boot`.
+pub(crate) fn bootstrap_refusal(
+    values: impl Fn(usize, usize) -> Option<usize>,
+    n_boot: usize,
+    horizon: usize,
+) -> Option<VarError> {
+    use crate::budget::{largest_fitting, BUDGET_VALUES};
+    let fits = |n: usize, h: usize| values(n, h).is_some_and(|v| v <= BUDGET_VALUES);
+    if fits(n_boot, horizon) {
+        return None;
+    }
+    Some(match largest_fitting(2, n_boot, |n| fits(n, horizon)) {
+        Some(max) => VarError::SizeBudget {
+            what: BOOTSTRAP_WHAT,
+            name: "n_boot",
+            value: n_boot,
+            max: Some(max),
+        },
+        None => VarError::SizeBudget {
+            what: BOOTSTRAP_WHAT,
+            name: "horizon",
+            value: horizon,
+            max: largest_fitting(0, horizon, |h| fits(n_boot, h)),
+        },
+    })
+}
+
+/// The working set of [`bootstrap_irf_bands`] /
+/// [`bootstrap_irf_bands_simultaneous`] in `f64` values, or `None` when the
+/// count overflows: per replication its flat cube, [`DRAW_OVERHEAD_VALUES`]
+/// and its slot in the percentile buffer, plus its inner Kilian estimate
+/// (`lags` matrices) with `bias_correct` and its copy of the band family
+/// (`K` values and a maximum) with a band; and the reported cubes
+/// ([`crate::budget::CUBE_COPIES`] copies).
+pub fn bootstrap_irf_budget_values(
+    k: usize,
+    lags: usize,
+    horizon: usize,
+    n_boot: usize,
+    bias_correct: bool,
+    band: Option<IrfBandScope>,
+) -> Option<usize> {
+    use crate::budget::{cube_values, mat_values, CUBE_COPIES};
+    let hp1 = horizon.checked_add(1)?;
+    let mut per_draw = hp1
+        .checked_mul(k.checked_mul(k)?)?
+        .checked_add(DRAW_OVERHEAD_VALUES + 1)?;
+    if bias_correct {
+        per_draw = per_draw
+            .checked_add(lags.checked_mul(mat_values(k)?)?)?
+            .checked_add(DRAW_OVERHEAD_VALUES)?;
+    }
+    if let Some(scope) = band {
+        let (_, kf) = crate::irf_asymptotic::family_dims(k, horizon, scope)?;
+        per_draw = per_draw.checked_add(kf.checked_add(1)?)?;
+    }
+    n_boot
+        .checked_mul(per_draw)?
+        .checked_add(cube_values(k, hp1, CUBE_COPIES)?)
+}
+
 /// The offset added to `seed` to key the inner bias-estimation bootstrap,
 /// so the bias draws and the outer band draws are independent given the
 /// user's seed (a fixed transform keeps the whole procedure reproducible).
@@ -138,6 +242,10 @@ pub(crate) const BIAS_SEED_OFFSET: u64 = 0x9E37_79B9_7F4A_7C15;
 ///
 /// * [`VarError::InvalidArgument`] if `lags == 0`, `horizon`'s implied
 ///   arrays would be empty, `n_boot < 2`, or `alpha` is not in `(0, 1)`;
+/// * [`VarError::SizeBudget`] naming `n_boot` (or `horizon`, when no
+///   replication count fits) when the working set
+///   ([`bootstrap_irf_budget_values`]) exceeds the shared 2^28-value budget,
+///   checked before anything is allocated;
 /// * any error from [`VarSpec::fit`] on the full sample or on a bootstrap
 ///   pseudo-sample (e.g. a singular regressor cross-product);
 /// * [`VarError::NotPositiveDefinite`] if an orthogonalization Cholesky
@@ -278,6 +386,16 @@ fn run_bootstrap(
             requirement: "a value strictly inside (0, 1) — alpha = 0.1 gives 90% bands",
         });
     }
+    // The working set, sized before the fit or any draw is made.
+    let n_series = endog.ncols();
+    let scope = band.map(|(_, scope)| scope);
+    if let Some(refusal) = bootstrap_refusal(
+        |n, h| bootstrap_irf_budget_values(n_series, lags, h, n, bias_correct, scope),
+        n_boot,
+        horizon,
+    ) {
+        return Err(refusal);
+    }
 
     // The shared residual-bootstrap engine: full-sample fit, centred
     // residuals, observed initial rows, the optional Kilian bias term and the
@@ -296,12 +414,13 @@ fn run_bootstrap(
     )?;
 
     // Outer bootstrap: one reproducible substream per replication; the first
-    // failed replication, if any, is propagated.
-    let draws: Vec<Vec<Mat<f64>>> = engine.replicate(seed, n_boot, |res_b, coefs_b| {
-        irf_cube(coefs_b, res_b.sigma_u.as_ref(), horizon, orth, cumulative)
+    // failed replication, if any, is propagated. Each draw is kept as one
+    // flat array (bit-identical values, a fraction of the storage).
+    let draws: Vec<FlatDraw> = engine.replicate(seed, n_boot, |res_b, coefs_b| {
+        irf_draw(coefs_b, res_b.sigma_u.as_ref(), horizon, orth, cumulative)
     })?;
 
-    let (se, lower, upper) = summarize(&draws, horizon, k, alpha);
+    let (se, lower, upper) = summarize(&draws, 0, horizon + 1, k, alpha);
 
     let (simultaneous, sim_lower, sim_upper) = match band {
         None => (None, None, None),
@@ -459,7 +578,7 @@ impl ResidualBootstrap {
 /// zero-width band.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_critical_values(
-    draws: &[Cube],
+    draws: &[FlatDraw],
     point: &[Mat<f64>],
     se: &[Mat<f64>],
     k: usize,
@@ -472,6 +591,7 @@ pub(crate) fn draw_critical_values(
     let z = simultaneous::pointwise_critical_value(alpha).map_err(VarError::Stats)?;
     let families = irf_families(k, horizon, scope);
     let n_cells = families[0].0.len();
+    let k2 = k * k;
     let mut values = vec![vec![z; k]; k];
     let mut used = vec![vec![0usize; k]; k];
 
@@ -495,7 +615,7 @@ pub(crate) fn draw_critical_values(
                 BandMethod::SupT => {
                     for (b, d) in draws.iter().enumerate() {
                         for (c_idx, &(h, i, j)) in cells.iter().enumerate() {
-                            let v = d[h][(i, j)];
+                            let v = d[h * k2 + i * k + j];
                             if !v.is_finite() {
                                 return Err(VarError::NonFinite {
                                     what: "a bootstrap impulse-response replication; drop \
@@ -583,6 +703,56 @@ fn simulate_recursive(
     y
 }
 
+/// One replication's impulse responses as a [`FlatDraw`]: bit for bit the
+/// matrices [`irf_cube`] returns, computed by the same recursion
+/// (`acc += Psi_{h-i} A_i`, then `Psi_h P` when `orth`, then the running
+/// sum when `cumulative`) but keeping only the last `p` moving-average
+/// matrices, so neither a replication nor a worker thread ever holds a
+/// horizon-long cube of matrices.
+fn irf_draw(
+    coefs: &[Mat<f64>],
+    sigma_u: MatRef<'_, f64>,
+    horizon: usize,
+    orth: bool,
+    cumulative: bool,
+) -> Result<FlatDraw, VarError> {
+    // `ma_rep` at horizon 0 runs its coefficient checks (non-empty, square,
+    // finite) and returns `Psi_0 = I` exactly as the full expansion does.
+    let mut window: VecDeque<Mat<f64>> = ma_rep(coefs, 0)?.into();
+    let pchol = if orth {
+        Some(chol_lower(sigma_u, "Sigma_u, the residual covariance")?)
+    } else {
+        None
+    };
+    let k = coefs[0].nrows();
+    let k2 = k * k;
+    let p = coefs.len();
+    // The caller budgeted n_boot of these before any draw was made.
+    let mut out: FlatDraw = Vec::with_capacity((horizon + 1) * k2);
+    let emit = |out: &mut FlatDraw, psi: &Mat<f64>| match &pchol {
+        Some(pc) => push_flat(out, (psi * pc).as_ref()),
+        None => push_flat(out, psi.as_ref()),
+    };
+    emit(&mut out, &window[0]);
+    for h in 1..=horizon {
+        let mut acc = Mat::<f64>::zeros(k, k);
+        for i in 1..=h.min(p) {
+            acc += &window[window.len() - i] * &coefs[i - 1];
+        }
+        emit(&mut out, &acc);
+        window.push_back(acc);
+        if window.len() > p {
+            window.pop_front();
+        }
+    }
+    if cumulative {
+        for c in k2..out.len() {
+            out[c] += out[c - k2];
+        }
+    }
+    Ok(out)
+}
+
 /// Impulse-response cube for coefficient matrices `coefs` and residual
 /// covariance `sigma_u`: `horizon + 1` matrices, orthogonalized through the
 /// lower Cholesky factor when `orth`, cumulated over the horizon when
@@ -612,14 +782,16 @@ fn irf_cube(
 }
 
 /// Per-cell bootstrap standard error (sample SD, divisor `n_boot - 1`) and
-/// the `alpha/2` / `1 - alpha/2` percentile bands.
+/// the `alpha/2` / `1 - alpha/2` percentile bands of blocks `first..first +
+/// hh` of the flat draws (one output matrix per block).
 pub(crate) fn summarize(
-    draws: &[Cube],
-    horizon: usize,
+    draws: &[FlatDraw],
+    first: usize,
+    hh: usize,
     k: usize,
     alpha: f64,
 ) -> (Cube, Cube, Cube) {
-    let hh = horizon + 1;
+    let k2 = k * k;
     let nb = draws.len();
     let nbf = nb as f64;
     let ql = alpha / 2.0;
@@ -634,7 +806,7 @@ pub(crate) fn summarize(
         for i in 0..k {
             for j in 0..k {
                 for (b, d) in draws.iter().enumerate() {
-                    vals[b] = d[h][(i, j)];
+                    vals[b] = d[(first + h) * k2 + i * k + j];
                 }
                 let mean = vals.iter().sum::<f64>() / nbf;
                 let ss = vals.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>();
@@ -831,6 +1003,40 @@ mod tests {
                 assert!((resid - u[(t - 1, r)]).abs() < 1e-12);
             }
         }
+    }
+
+    /// The flat per-replication responses are the matrices of the full
+    /// `ma_rep` expansion, bit for bit, in every orth/cumulative mode and at
+    /// horizons on both sides of the lag order.
+    #[test]
+    fn irf_draw_is_irf_cube_flattened_bit_for_bit() {
+        let k = 3usize;
+        let a1 = Mat::from_fn(k, k, |i, j| 0.3 * ((i * 7 + j * 3) % 5) as f64 / 5.0 - 0.05);
+        let a2 = Mat::from_fn(k, k, |i, j| 0.1 * ((i + 2 * j) % 4) as f64 / 4.0 - 0.02);
+        let coefs = vec![a1, a2];
+        let sigma = Mat::from_fn(k, k, |i, j| if i == j { 1.0 + 0.2 * i as f64 } else { 0.3 });
+        for orth in [false, true] {
+            for cumulative in [false, true] {
+                for horizon in [0usize, 1, 2, 3, 11] {
+                    let cube = irf_cube(&coefs, sigma.as_ref(), horizon, orth, cumulative).unwrap();
+                    let flat = irf_draw(&coefs, sigma.as_ref(), horizon, orth, cumulative).unwrap();
+                    assert_eq!(flat.len(), (horizon + 1) * k * k);
+                    for (h, m) in cube.iter().enumerate() {
+                        for i in 0..k {
+                            for j in 0..k {
+                                assert_eq!(
+                                    flat[h * k * k + i * k + j].to_bits(),
+                                    m[(i, j)].to_bits(),
+                                    "orth={orth} cum={cumulative} h={h} ({i},{j})"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // The same coefficient checks as ma_rep: an empty lag list is refused.
+        assert!(irf_draw(&[], sigma.as_ref(), 4, true, false).is_err());
     }
 
     #[test]
