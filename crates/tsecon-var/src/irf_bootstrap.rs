@@ -447,13 +447,22 @@ impl ResidualBootstrap {
             let res_b = VarSpec { lags, trend }
                 .fit(ysim.as_ref())
                 .map_err(|e| pseudo_sample_error(&e, rep, false))?;
-            match &self.bias {
+            let out = match &self.bias {
                 Some(b) => {
                     let coefs_b = correct_coefs(&res_b.coefs, b)?;
                     per_draw(&res_b, &coefs_b)
                 }
                 None => per_draw(&res_b, &res_b.coefs),
-            }
+            };
+            // A refit covariance whose ML scaling passed its Cholesky by
+            // rounding can fail it at the df-adjusted scaling the statistic
+            // uses (an orthogonalisation): the same pseudo-sample failure.
+            out.map_err(|e| match e {
+                VarError::NotPositiveDefinite { what } if what == SIGMA_U_WHAT => {
+                    pseudo_sample_error(&e, rep, false)
+                }
+                other => other,
+            })
         })
         .map_err(map_boot_err)?;
         raw.into_iter().collect()
@@ -613,7 +622,7 @@ fn irf_cube(
 ) -> Result<Vec<Mat<f64>>, VarError> {
     let psi = ma_rep(coefs, horizon)?;
     let mut cube: Vec<Mat<f64>> = if orth {
-        let pchol = chol_lower(sigma_u, "Sigma_u, the residual covariance")?;
+        let pchol = chol_lower(sigma_u, SIGMA_U_WHAT)?;
         psi.iter().map(|m| m * &pchol).collect()
     } else {
         psi
