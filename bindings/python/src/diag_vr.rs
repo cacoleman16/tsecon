@@ -5,7 +5,7 @@
 use numpy::{IntoPyArray, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyFrozenSet, PyInt, PySet, PyString};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyFrozenSet, PyInt, PySet, PyString};
 use tsecon_diag::{DiagError, VarianceRatioSpec, VrTrend};
 
 use crate::{to_py, vec1};
@@ -64,7 +64,7 @@ fn one_horizon(item: &Bound<'_, PyAny>, j: usize) -> PyResult<usize> {
             "variance_ratio: lags[{j}] = {shown} is a bool, not a horizon — {LAGS_HINT}"
         )));
     }
-    if item.is_instance_of::<pyo3::types::PyFloat>() || is_numpy_float(item) {
+    if item.is_instance_of::<PyFloat>() || is_numpy_float(item) {
         return Err(PyValueError::new_err(format!(
             "variance_ratio: lags[{j}] = {shown} is a float, not an integer horizon: a \
              float is refused inside a sequence exactly as the scalar lags=4.0 is (a float \
