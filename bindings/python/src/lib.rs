@@ -1060,8 +1060,11 @@ fn long_run_variance(
 /// OLS with robust standard-error options.
 ///
 /// `x` is a 2-D design matrix used as-is (add your own constant column).
-/// `se_type`: "nonrobust", "hc0", "hc1", "hc2", "hc3", or "hac" (Bartlett
-/// kernel; `maxlags=None` uses the Newey-West rule of thumb). HAC results
+/// `se_type`: "nonrobust", "hc0", "hc1", "hc2", "hc3", "hac" (Bartlett
+/// kernel; `maxlags=None` uses the Newey-West rule of thumb), or "ewc" (the
+/// equal-weighted cosine HAR covariance with Student-t p-values; see
+/// **EWC** below). An unknown `se_type` is refused first, before any check
+/// of the keywords that depend on it. HAC results
 /// match statsmodels `cov_type="HAC"` at 1e-10 **when `use_correction` is
 /// matched**. The defaults deliberately differ: tsecon defaults
 /// `use_correction=True` (the finite-sample `n/(n - k)` scaling — the
@@ -1131,6 +1134,11 @@ fn ols<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let ys = vec1(&y);
     let ys = ys.as_slice();
+    // The covariance choice first: a typo such as "ewx" or "EWC" beside
+    // `ewc_b` is an unknown se_type, not an inert ewc_b.
+    if !OLS_SE_TYPES.contains(&se_type) {
+        return Err(unknown_ols_se_type(se_type));
+    }
     if se_type == "ewc" {
         if let Some(l) = maxlags {
             return Err(PyValueError::new_err(format!(
@@ -1172,11 +1180,7 @@ fn ols<'py>(
             ewc::check_ewc_work("ols", "ewc_b", b, fit.nobs, fit.nparams)?;
             tsecon_hac::SeType::Ewc { b }
         }
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown se_type {other:?}; expected nonrobust/hc0/hc1/hc2/hc3/hac/ewc"
-            )))
-        }
+        other => return Err(unknown_ols_se_type(other)),
     };
     let inf = fit.inference(se).map_err(to_py)?;
     let ewc = match se {
@@ -1193,6 +1197,15 @@ fn ols<'py>(
         d.set_item("ewc_b", b)?;
     }
     Ok(d)
+}
+
+/// The covariance choices `ols` accepts.
+const OLS_SE_TYPES: [&str; 7] = ["nonrobust", "hc0", "hc1", "hc2", "hc3", "hac", "ewc"];
+
+fn unknown_ols_se_type(se_type: &str) -> PyErr {
+    PyValueError::new_err(format!(
+        "unknown se_type {se_type:?}; expected nonrobust/hc0/hc1/hc2/hc3/hac/ewc"
+    ))
 }
 
 fn var_results(

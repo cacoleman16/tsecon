@@ -444,10 +444,12 @@ OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC / EWC standard errors.
     compatibility. COST: SUPERLINEAR in `n` -- n * ewc_b * (k + 8)
     operations, like n^(5/3) at the default (1.4 s at n = 10^5, k = 2);
     past a work budget of 2^35 (about a minute) `ewc_b` is refused by name,
-    with the largest value it admits. Refused by name: `ewc_b` under any other
-    se_type, an explicit `maxlags` under "ewc", `use_correction=False`
-    under "ewc" (an explicit True is the default and a no-op). Under
-    nonrobust/hc* an explicit maxlags/use_correction is still ignored.
+    with the largest value it admits. An unknown se_type is refused first
+    (so "ewx" beside `ewc_b` reads as an unknown se_type). Refused by name:
+    `ewc_b` under any other se_type, an explicit `maxlags` under "ewc",
+    `use_correction=False` under "ewc" (an explicit True is the default and
+    a no-op). Under nonrobust/hc* an explicit maxlags/use_correction is
+    still ignored.
 
     Returned keys: `bse`, `params`, `se_type`, `tvalues`; under "ewc" also
     `ewc_b` and `pvalues`.

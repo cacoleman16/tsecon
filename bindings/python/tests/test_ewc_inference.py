@@ -276,6 +276,19 @@ def test_ols_refuses_inert_combinations_by_name():
         tsecon.ols(y, X, se_type="EWC")
 
 
+@pytest.mark.parametrize("se", ["ewx", "EWC", "HAC", ""])
+@pytest.mark.parametrize("extra", [{"ewc_b": 8}, {"maxlags": 4}, {"use_correction": False}])
+def test_ols_refuses_an_unknown_se_type_before_any_dependent_keyword(se, extra):
+    """Audit round 15: a typo'd se_type beside ewc_b was reported as an inert
+    ewc_b ('drop it'), and the user then hit a second error about se_type.
+    The covariance choice is validated first, as panel_fe/panel_re do."""
+    y, X = _design(EWC["ols"]["k2_t250"])
+    with pytest.raises(ValueError, match=r"^unknown se_type .*expected nonrobust/hc0/hc1/hc2/hc3/hac/ewc$") as e:
+        tsecon.ols(y, X, se_type=se, **extra)
+    assert repr(se) in str(e.value) or f'"{se}"' in str(e.value)
+    assert "ewc_b =" not in str(e.value) and "no effect" not in str(e.value)
+
+
 def test_a_nan_t_statistic_keeps_a_nan_p_value():
     """Zero residual variation gives bse 0 and t = 0/0 on every route; the
     EWC p-value must stay NaN (not be clamped to 1 by `min`), and its key

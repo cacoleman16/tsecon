@@ -86,7 +86,10 @@ approach one, every HAR procedure, EWC included, loses size control (Müller
   `n/(n-k)` factor — an explicit `True` cannot be told from the default and is
   a documented no-op). The older silent absorption is unchanged and documented:
   under `nonrobust`/`hc*` an explicit `maxlags`/`use_correction` is still
-  ignored, as before 0.11. Changing that is a separate behaviour change.
+  ignored, as before 0.11. Changing that is a separate behaviour change. An
+  unknown `se_type` is checked before any of these, so `se_type="ewx"` (or
+  `"EWC"`) beside `ewc_b` is refused as an unknown `se_type`, not as an inert
+  `ewc_b`.
 
 **How to read the output.** A dict with `params`, `bse`, `tvalues` and the
 echoed `se_type`. Under `"ewc"` two keys are added: `ewc_b` (the resolved `B`,
