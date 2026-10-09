@@ -3540,12 +3540,15 @@ def durbin_watson_test(
     Validity: exact for Gaussian errors with strictly exogenous `x`; with
     non-normal errors it is approximate (seeded Monte Carlo in the model
     card); with a lagged dependent variable in `x` it is INVALID — use
-    `breusch_godfrey_test`. COST: the eigendecomposition is cubic in T, so
-    T is capped at 4000 (measured timings in the model card); a longer
-    sample is refused with a pointer to `breusch_godfrey_test`.
+    `breusch_godfrey_test`. COST: the eigendecomposition behind the p-value is
+    cubic in T, so the p-value is computed for T <= 4000 (measured timings
+    in the model card); for a longer sample `pvalue` is None and the
+    statistic, which is linear in T, is still returned. Use
+    `breusch_godfrey_test` for a test at that length.
 
     Returned keys: `alternative`, `df_resid`, `nobs`, `pvalue`, `statistic`.
-    `df_resid` is T - k, `nobs` is T, `alternative` echoes the option.
+    `df_resid` is T - k, `nobs` is T, `alternative` echoes the option,
+    `pvalue` is None when T > 4000.
 
     Validation: the exact p-value is a documented-formula golden (LAPACK
     eigenvalues + QUADPACK, fixtures/serial_corr.json, 1e-10), the null

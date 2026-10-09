@@ -24,7 +24,9 @@
 //! orthonormal basis of `col(X)` (Householder QR, `faer`) the matrix
 //! `B = M A M + 8 Q Q'` has the `nu_i` as its `T - k` smallest eigenvalues
 //! and `8` (above every `nu_i`, which are at most `4`) `k` times. The cost
-//! is CUBIC in `T`, which is why [`DW_EXACT_MAX_NOBS`] caps the sample.
+//! is CUBIC in `T`, which is why [`DW_EXACT_MAX_NOBS`] caps the sample for
+//! the p-value; [`durbin_watson_regression_statistic`] computes `d` alone in
+//! time linear in `T`, with no cap.
 //!
 //! The exact p-value is exact for normal errors and strictly exogenous
 //! regressors; it is invalid with a lagged dependent variable in `X` (use
@@ -38,7 +40,8 @@ use crate::common::{pow2_normalized, validate};
 use crate::error::SpecTestError;
 use crate::imhof::prob_le_zero;
 
-/// Largest sample for which the exact p-value is computed: the dense
+/// Largest sample for which the exact p-value is computed (the statistic
+/// itself has no cap; see [`durbin_watson_regression_statistic`]): the dense
 /// `T x T` eigendecomposition is cubic in `T` (and holds a `T x T` matrix
 /// in memory, 128 MB at this cap).
 pub const DW_EXACT_MAX_NOBS: usize = 4000;
@@ -196,6 +199,61 @@ pub(crate) fn dw_null_eigenvalues(
     Ok(ev[..m].iter().map(|v| v.clamp(0.0, 4.0)).collect())
 }
 
+/// Validate the regression inputs and the Durbin-Watson degrees of freedom,
+/// returning `(T, k)`.
+fn checked_dims(y: &[f64], x_cols: &[Vec<f64>]) -> Result<(usize, usize), SpecTestError> {
+    let (n, k) = validate(y, x_cols)?;
+    if n < k.saturating_add(2) {
+        return Err(SpecTestError::DegreesOfFreedom {
+            what: "Durbin-Watson test, which needs one observation more than the \
+                   regression (n >= k + 2: with n = k + 1 the statistic is a constant; the \
+                   count below is the number of design columns plus that one)",
+            n,
+            k: k + 1,
+        });
+    }
+    Ok((n, k))
+}
+
+/// The statistic on the OLS fit, and the normalized design the null
+/// eigenvalues are computed from.
+fn statistic_on_fit(y: &[f64], x_cols: &[Vec<f64>]) -> Result<(f64, Vec<Vec<f64>>), SpecTestError> {
+    // d and its null distribution are invariant to rescaling y or a design
+    // column; the exact power-of-two normalization keeps the sums of squares
+    // of extreme-scale data from overflowing or underflowing.
+    let y = pow2_normalized(y);
+    let x_cols: Vec<Vec<f64>> = x_cols.iter().map(|c| pow2_normalized(c)).collect();
+    let fit = ols(&y, &x_cols)?;
+    let u = fit.residuals;
+    let u_sq: f64 = u.iter().map(|v| v * v).sum();
+    let y_sq: f64 = y.iter().map(|v| v * v).sum();
+    if u_sq == 0.0 || u_sq <= 1e-26 * y_sq {
+        return Err(SpecTestError::DegenerateResponse {
+            what: "Durbin-Watson test (the OLS residuals are zero: y is an exact linear \
+                   combination of the design columns)",
+        });
+    }
+    Ok((durbin_watson_statistic(&u)?, x_cols))
+}
+
+/// The Durbin-Watson statistic of the OLS regression of `y` on `x_cols`
+/// (statsmodels exog convention), without its null distribution: linear in
+/// `T`, so unlike [`durbin_watson_test`] it has no sample cap. Returns
+/// `(d, T, T - k)`; `d` is bit-identical to [`DurbinWatsonTest::statistic`].
+///
+/// # Errors
+///
+/// As [`durbin_watson_test`], except that there is no
+/// [`SpecTestError::SampleTooLong`] and no eigendecomposition to fail.
+pub fn durbin_watson_regression_statistic(
+    y: &[f64],
+    x_cols: &[Vec<f64>],
+) -> Result<(f64, usize, usize), SpecTestError> {
+    let (n, k) = checked_dims(y, x_cols)?;
+    let (statistic, _) = statistic_on_fit(y, x_cols)?;
+    Ok((statistic, n, n - k))
+}
+
 /// Durbin-Watson test on the OLS regression of `y` on `x_cols` (statsmodels
 /// exog convention: include the constant column yourself), with the exact
 /// p-value for `alternative` under normal errors and fixed regressors.
@@ -215,16 +273,7 @@ pub fn durbin_watson_test(
     x_cols: &[Vec<f64>],
     alternative: DwAlternative,
 ) -> Result<DurbinWatsonTest, SpecTestError> {
-    let (n, k) = validate(y, x_cols)?;
-    if n < k.saturating_add(2) {
-        return Err(SpecTestError::DegreesOfFreedom {
-            what: "Durbin-Watson test, which needs one observation more than the \
-                   regression (n >= k + 2: with n = k + 1 the statistic is a constant; the \
-                   count below is the number of design columns plus that one)",
-            n,
-            k: k + 1,
-        });
-    }
+    let (n, k) = checked_dims(y, x_cols)?;
     if n > DW_EXACT_MAX_NOBS {
         return Err(SpecTestError::SampleTooLong {
             what: "Durbin-Watson exact p-value",
@@ -232,22 +281,7 @@ pub fn durbin_watson_test(
             max: DW_EXACT_MAX_NOBS,
         });
     }
-    // d and its null distribution are invariant to rescaling y or a design
-    // column; the exact power-of-two normalization keeps the sums of squares
-    // of extreme-scale data from overflowing or underflowing.
-    let y = pow2_normalized(y);
-    let x_cols: Vec<Vec<f64>> = x_cols.iter().map(|c| pow2_normalized(c)).collect();
-    let fit = ols(&y, &x_cols)?;
-    let u = fit.residuals;
-    let u_sq: f64 = u.iter().map(|v| v * v).sum();
-    let y_sq: f64 = y.iter().map(|v| v * v).sum();
-    if u_sq == 0.0 || u_sq <= 1e-26 * y_sq {
-        return Err(SpecTestError::DegenerateResponse {
-            what: "Durbin-Watson test (the OLS residuals are zero: y is an exact linear \
-                   combination of the design columns)",
-        });
-    }
-    let statistic = durbin_watson_statistic(&u)?;
+    let (statistic, x_cols) = statistic_on_fit(y, x_cols)?;
     let nu = dw_null_eigenvalues(&x_cols, n)?;
 
     let spread = nu[nu.len() - 1] - nu[0];

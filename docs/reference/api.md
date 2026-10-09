@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, multivariate-GARCH, panel and term-structure families (and the top-level results of `var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` converts them; the docstring says which. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**193 functions.**
+**202 functions.**
 
 ## diagnostics
 
@@ -4194,12 +4194,15 @@ Durbin-Watson test for first-order serial correlation in the errors of
     Validity: exact for Gaussian errors with strictly exogenous `x`; with
     non-normal errors it is approximate (seeded Monte Carlo in the model
     card); with a lagged dependent variable in `x` it is INVALID — use
-    `breusch_godfrey_test`. COST: the eigendecomposition is cubic in T, so
-    T is capped at 4000 (measured timings in the model card); a longer
-    sample is refused with a pointer to `breusch_godfrey_test`.
+    `breusch_godfrey_test`. COST: the eigendecomposition behind the p-value is
+    cubic in T, so the p-value is computed for T <= 4000 (measured timings
+    in the model card); for a longer sample `pvalue` is None and the
+    statistic, which is linear in T, is still returned. Use
+    `breusch_godfrey_test` for a test at that length.
 
     Returned keys: `alternative`, `df_resid`, `nobs`, `pvalue`, `statistic`.
-    `df_resid` is T - k, `nobs` is T, `alternative` echoes the option.
+    `df_resid` is T - k, `nobs` is T, `alternative` echoes the option,
+    `pvalue` is None when T > 4000.
 
     Validation: the exact p-value is a documented-formula golden (LAPACK
     eigenvalues + QUADPACK, fixtures/serial_corr.json, 1e-10), the null

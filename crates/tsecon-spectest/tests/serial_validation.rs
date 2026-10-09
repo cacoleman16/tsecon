@@ -2,8 +2,8 @@
 //! input is a typed [`SpecTestError`], never a panic.
 
 use tsecon_spectest::{
-    breusch_godfrey_test, durbin_watson_statistic, durbin_watson_test, DwAlternative,
-    SpecTestError, DW_EXACT_MAX_NOBS,
+    breusch_godfrey_test, durbin_watson_regression_statistic, durbin_watson_statistic,
+    durbin_watson_test, DwAlternative, SpecTestError, DW_EXACT_MAX_NOBS,
 };
 
 /// const + one regressor, `n` observations, non-degenerate residuals.
@@ -157,6 +157,33 @@ fn durbin_watson_sample_size_limits() {
     let (y, x) = design(4);
     let r = durbin_watson_test(&y, &x, POS).expect("n = k + 2");
     assert!((0.0..=1.0).contains(&r.pvalue));
+}
+
+#[test]
+fn durbin_watson_statistic_alone_has_no_sample_cap() {
+    // Below the cap it is the test's statistic, bit for bit.
+    for n in [4, 50, 400] {
+        let (y, x) = design(n);
+        let full = durbin_watson_test(&y, &x, POS).expect("full test");
+        let (d, nobs, df_resid) =
+            durbin_watson_regression_statistic(&y, &x).expect("statistic alone");
+        assert_eq!(d.to_bits(), full.statistic.to_bits(), "n = {n}");
+        assert_eq!((nobs, df_resid), (full.nobs, full.df_resid));
+    }
+    // Above it, where the test refuses, the statistic is still computed.
+    let (y, x) = design(DW_EXACT_MAX_NOBS + 1);
+    let (d, nobs, df_resid) = durbin_watson_regression_statistic(&y, &x).expect("uncapped");
+    assert!((0.0..=4.0).contains(&d), "d = {d}");
+    assert_eq!(
+        (nobs, df_resid),
+        (DW_EXACT_MAX_NOBS + 1, DW_EXACT_MAX_NOBS + 1 - x.len())
+    );
+    // The same degrees-of-freedom refusal as the test.
+    let (y, x) = design(3);
+    assert!(matches!(
+        durbin_watson_regression_statistic(&y, &x).unwrap_err(),
+        SpecTestError::DegreesOfFreedom { .. }
+    ));
 }
 
 #[test]

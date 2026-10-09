@@ -669,9 +669,11 @@ need one, which is one more reason the tables are not used here. The sample
 must satisfy `T >= k + 2` (with `T = k + 1`, `d` is a constant).
 
 **COST and the sample cap.** The eigendecomposition is cubic in `T` and holds a
-`T x T` matrix, so `T` is capped at 4000 (128 MB). A longer `y` is refused
-with a pointer to `breusch_godfrey_test`, whose cost is linear in `T` and whose
-chi-square approximation is accurate at that length. Measured on the release
+`T x T` matrix, so the p-value is computed for `T` up to 4000 (128 MB). For a
+longer `y` the statistic, which costs time linear in `T`, is still returned,
+with `pvalue` set to `None`. For a test at that length use
+`breusch_godfrey_test`, whose cost is linear in `T` and whose chi-square
+approximation is accurate there. Measured on the release
 wheel (median of three calls, a 4-core machine shared with another job,
 `lab/serial_corr/dw_cost.py`):
 
@@ -681,7 +683,8 @@ wheel (median of three calls, a 4-core machine shared with another job,
 | `breusch_godfrey_test` | 0.1 ms | 0.1 ms | 0.1 ms | 0.3 ms | 0.5 ms | 0.7 ms | 0.9 ms |
 
 **How to read the output.** A dict. `statistic` is `d`. `pvalue` is the exact
-probability for the chosen `alternative`, which is echoed. `nobs` is `T` and
+probability for the chosen `alternative`, which is echoed, or `None` when
+`T > 4000`. `nobs` is `T` and
 `df_resid` is `T - k`, the number of `nu_i`. The p-value is computed to about
 `1e-13` absolute, so a printed `1e-14` or `0.0` means "below `1e-13`". The
 one-sided p-values are complementary, so a second call to read the other tail

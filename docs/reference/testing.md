@@ -31,7 +31,7 @@ command needs the `--exclude tsecon-python` caveat described
 | Python binding tests | **2379 passed, 0 failed, 1 skipped** in 362 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 43, **every one** with a `tests/` directory | |
 | Golden fixtures | 100 JSON files, produced by 81 Python generator scripts (plus two R scripts) | `fixtures/` |
-| Public Python functions | 192, **all 192** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
+| Public Python functions | 202, **all 202** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
 
 Of the 10 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
 fingerprints that are platform-specific, two release-only Monte Carlo runs, one
@@ -278,7 +278,7 @@ cannot cover:
   direction too: a Python moment function that raises must propagate its
   message back out through the Rust Nelder-Mead driver
   (`match="boom from the Python moment function"`).
-- **Surface completeness.** The module exports 192 public callables. This is
+- **Surface completeness.** The module exports 202 public callables. This is
   checked by running the check, not by asserting the answer:
 
   ```sh
@@ -288,7 +288,7 @@ cannot cover:
   txt = ''.join(p.read_text() for p in pathlib.Path('bindings/python/tests').glob('*.py'))
   print(len(fns), sorted(f for f in fns if not re.search(rf'tsecon\.{f}\s*\(', txt)))
   "
-  # 192 []
+  # 202 []
   ```
 
   The honest output of this check was not always empty, and the history is
@@ -825,7 +825,7 @@ discover.
   `glp_sw_panel.csv`, `hamilton_gnp.csv`, `sunspots_tong.csv`, all under
   `fixtures/`), so every one of them is reproduced offline and cannot break on
   a provider's URL change.
-- **Benchmarks compare 25 of 192 functions.** The parity gate covers the unit-root
+- **Benchmarks compare 25 of 202 functions.** The parity gate covers the unit-root
   tests, the diagnostics, VAR and its IRF/FEVD/Granger, Johansen, the filters,
   the spectra, ridge/elastic-net, and the GARCH family — a broad spot check, not a
   library-wide cross-library audit — that job belongs to the fixtures.

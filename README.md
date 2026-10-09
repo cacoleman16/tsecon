@@ -61,7 +61,7 @@ Verify what you got:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.10.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 192
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 202
           if not n.startswith("_")))
 ```
 
@@ -106,7 +106,7 @@ The **[Quickstart](docs/quickstart.md)** and the symptom-driven
   get routed to the right function.
 - **[Model cards & API reference](docs/reference/README.md)** — the
   assumptions, defaults, failure modes, and validation target of every
-  estimator, plus the full 192-function reference.
+  estimator, plus the full 202-function reference.
 - **[Migration guides](docs/migration/from-statsmodels.md)** — from
   statsmodels, R, and Stata, with a Rosetta glossary.
 - **[Gallery](docs/examples/README.md)** — worked figures in a professional
@@ -117,7 +117,7 @@ mkdocs serve`.
 
 ## What's inside
 
-192 functions callable from Python today: diagnostics, unit-root and
+202 functions callable from Python today: diagnostics, unit-root and
 specification tests (White/Breusch-Pagan, RESET, Chow, CUSUM); STL/MSTL
 seasonal decomposition and automatic ARIMA order selection; ARIMA, GARCH, and
 GAS score-driven volatility; VAR/SVAR with sign-restricted identification,

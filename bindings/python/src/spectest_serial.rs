@@ -203,12 +203,15 @@ fn breusch_godfrey_test<'py>(
 /// Validity: exact for Gaussian errors with strictly exogenous `x`; with
 /// non-normal errors it is approximate (seeded Monte Carlo in the model
 /// card); with a lagged dependent variable in `x` it is INVALID — use
-/// `breusch_godfrey_test`. COST: the eigendecomposition is cubic in `T`, so
-/// `T` is capped at 4000 (measured timings in the model card); a longer
-/// sample is refused with a pointer to `breusch_godfrey_test`.
+/// `breusch_godfrey_test`. COST: the eigendecomposition behind the p-value is
+/// cubic in `T`, so the p-value is computed for `T <= 4000` (measured
+/// timings in the model card); for a longer sample `pvalue` is `None` and the
+/// statistic, which is linear in `T`, is still returned. Use
+/// `breusch_godfrey_test` for a test at that length.
 ///
 /// Returned keys: `alternative`, `df_resid`, `nobs`, `pvalue`, `statistic`.
-/// `df_resid` is `T - k`, `nobs` is `T`, `alternative` echoes the option.
+/// `df_resid` is `T - k`, `nobs` is `T`, `alternative` echoes the option,
+/// `pvalue` is `None` when `T > 4000`.
 ///
 /// Validation: the exact p-value is a documented-formula golden (LAPACK
 /// eigenvalues + QUADPACK, fixtures/serial_corr.json, 1e-10), the null
@@ -236,9 +239,21 @@ fn durbin_watson_test<'py>(
         }
     };
     let (ys, cols) = regression_inputs(&y, &x)?;
+    let d = PyDict::new(py);
+    if ys.len() > tsecon_spectest::DW_EXACT_MAX_NOBS {
+        // The exact p-value is cubic in T; the statistic is not.
+        let (statistic, nobs, df_resid) =
+            tsecon_spectest::durbin_watson_regression_statistic(&ys, &cols)
+                .map_err(|e| named_error(e, cols.len()))?;
+        d.set_item("statistic", statistic)?;
+        d.set_item("pvalue", py.None())?;
+        d.set_item("alternative", alt.name())?;
+        d.set_item("nobs", nobs)?;
+        d.set_item("df_resid", df_resid)?;
+        return Ok(d);
+    }
     let r = tsecon_spectest::durbin_watson_test(&ys, &cols, alt)
         .map_err(|e| named_error(e, cols.len()))?;
-    let d = PyDict::new(py);
     d.set_item("statistic", r.statistic)?;
     d.set_item("pvalue", r.pvalue)?;
     d.set_item("alternative", r.alternative.name())?;

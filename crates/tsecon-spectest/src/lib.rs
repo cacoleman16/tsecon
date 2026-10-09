@@ -42,7 +42,8 @@
 //! normal errors from Imhof's (1961) inversion of the null distribution
 //! `P(d <= c) = P(sum_i (nu_i - c) z_i^2 <= 0)`, `nu_i` the eigenvalues of
 //! `M A M`. See [`durbin_watson_test`] / [`DurbinWatsonTest`] /
-//! [`DwAlternative`] / [`durbin_watson_statistic`].
+//! [`DwAlternative`] / [`durbin_watson_statistic`] /
+//! [`durbin_watson_regression_statistic`].
 //!
 //! ## Module map
 //!
@@ -56,8 +57,9 @@
 //! - [`breusch_godfrey_test`] / [`BreuschGodfreyTest`] /
 //!   [`breusch_godfrey_default_nlags`] — the Breusch-Godfrey LM test.
 //! - [`durbin_watson_test`] / [`DurbinWatsonTest`] / [`DwAlternative`] /
-//!   [`durbin_watson_statistic`] / [`DW_EXACT_MAX_NOBS`] — the Durbin-Watson
-//!   test with its exact (Imhof) p-value.
+//!   [`durbin_watson_statistic`] / [`durbin_watson_regression_statistic`] /
+//!   [`DW_EXACT_MAX_NOBS`] — the Durbin-Watson test with its exact (Imhof)
+//!   p-value, and the uncapped statistic alone.
 //! - [`SpecTestError`] — the crate's error type ("errors that teach").
 //!
 //! ## Validation
@@ -124,7 +126,8 @@ pub use breusch_pagan::breusch_pagan_test;
 pub use chow::{chow_test, ChowTest};
 pub use cusum::{cusum_test, CusumTest, CUSUM_A_5PCT};
 pub use durbin_watson::{
-    durbin_watson_statistic, durbin_watson_test, DurbinWatsonTest, DwAlternative, DW_EXACT_MAX_NOBS,
+    durbin_watson_regression_statistic, durbin_watson_statistic, durbin_watson_test,
+    DurbinWatsonTest, DwAlternative, DW_EXACT_MAX_NOBS,
 };
 pub use error::SpecTestError;
 pub use reset::reset_test;

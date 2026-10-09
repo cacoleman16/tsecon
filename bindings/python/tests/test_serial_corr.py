@@ -220,17 +220,28 @@ def test_pandas_and_array_like_inputs_are_coerced():
     assert tsecon.durbin_watson_test(list(y), x)["statistic"] == ref_dw["statistic"]
 
 
-def test_long_sample_refused_fast_with_pointer_to_breusch_godfrey():
+def test_long_sample_returns_the_statistic_without_the_exact_pvalue():
+    # The exact p-value is cubic in T and is computed up to T = 4000; above
+    # that the statistic (linear in T) is still returned, fast, with pvalue
+    # None, and the Breusch-Godfrey test is the test at that length.
     rng = np.random.default_rng(0)
     n = 4001
     x = np.column_stack([np.ones(n), rng.standard_normal(n)])
     y = rng.standard_normal(n)
     t0 = time.perf_counter()
-    with pytest.raises(ValueError, match=r"\by\b.*4001.*breusch_godfrey_test") as info:
-        tsecon.durbin_watson_test(y, x)
+    r = tsecon.durbin_watson_test(y, x, alternative="two_sided")
     assert time.perf_counter() - t0 < 2.0
-    assert "4000" in str(info.value)
-    # the Breusch-Godfrey test has no such cap
+    assert r["pvalue"] is None
+    assert (r["nobs"], r["df_resid"], r["alternative"]) == (n, n - 2, "two_sided")
+    e = y - x @ np.linalg.lstsq(x, y, rcond=None)[0]
+    assert r["statistic"] == pytest.approx(np.sum(np.diff(e) ** 2) / np.sum(e**2), rel=1e-12)
+    # one observation fewer is the exact path, with the same key set
+    r_cap = tsecon.durbin_watson_test(y[:4000], x[:4000])
+    assert set(r_cap) == set(r) and 0.0 <= r_cap["pvalue"] <= 1.0
+    # the statistic path still refuses malformed data by name
+    with pytest.raises(ValueError, match=r"\by\b"):
+        tsecon.durbin_watson_test(np.full(n, np.nan), x)
+    # the Breusch-Godfrey test has no cap
     assert tsecon.breusch_godfrey_test(y, x)["nobs"] == n
 
 
