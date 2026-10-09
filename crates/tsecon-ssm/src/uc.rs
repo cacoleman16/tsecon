@@ -698,15 +698,16 @@ impl Layout {
         // diffuse direction does resolve, and it resolves with
         // `F_inf ~ (rho sin lambda)^2 -> 0`, contributing
         // `-(ln 2 pi + ln F_inf) / 2 -> +infinity`. An optimizer let loose
-        // on `(0, pi)` walks into that singularity and reports a "cycle"
-        // of period 10^6 with a log-likelihood a dozen points above any
-        // genuine optimum. A cycle longer than the sample is not
-        // identified by the sample in any case. statsmodels leaves the
-        // bound at infinity when the series carries no frequency
-        // information (`structural.py`, `cycle_period_bounds=(2, inf)`)
-        // and does not meet the singularity because its diffuse tolerance
-        // is an absolute `1e-10` on `F_inf`, which quietly clips it;
-        // `uc_properties.rs` pins the divergence with numbers.
+        // on `(0, pi)` walks into that singularity: on the series of
+        // `uc_properties.rs` it stops at a "cycle" of period 2.7e7, 1.4
+        // log-likelihood points above the fit inside the default bounds
+        // (`scripts/uc_long_diffuse_evidence.py`). A cycle longer than the
+        // sample is not identified by the sample in any case. statsmodels
+        // leaves the bound at infinity when the series carries no
+        // frequency information (`structural.py`, `cycle_period_bounds=(2,
+        // inf)`) and does not meet the singularity because its diffuse
+        // tolerance is an absolute `1e-10` on `F_inf`, which quietly clips
+        // it; `uc_properties.rs` pins the divergence with numbers.
         let pmax = if pmax.is_finite() { pmax } else { n as f64 };
         if spec.cycle && pmax <= pmin {
             return Err(invalid(format!(

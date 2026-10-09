@@ -26,6 +26,11 @@ Three parts:
    installed tsecon and statsmodels: how many fits are refused, how many
    end the diffuse period somewhere else than statsmodels, and the largest
    log-likelihood gap.
+4. The ``lambda -> 0`` divergence of a diffuse cycle on the series of
+   ``the_cycle_log_likelihood_diverges_as_the_frequency_goes_to_zero`` in
+   crates/tsecon-ssm/tests/uc_properties.rs (its LCG(808) and Box-Muller
+   draws, transcribed): the fixed-parameter sweep, and the MLE with the
+   period bounds opened to (2, 1e9) against the default (2, nobs).
 """
 import json
 import sys
@@ -135,7 +140,41 @@ def regressor_design(n_seeds=400):
           f"largest relative loglik gap among the rest {gap:.1e}")
 
 
+def cycle_divergence():
+    mask = (1 << 64) - 1
+    state = [(808 * 0x9E3779B97F4A7C15 + 1) & mask]
+
+    def uniform():
+        state[0] = (state[0] * 6364136223846793005 + 1442695040888963407) & mask
+        return (state[0] >> 11) / float(1 << 53)
+
+    def normal():
+        u1 = max(uniform(), 1e-300)
+        u2 = uniform()
+        return np.sqrt(-2.0 * np.log(u1)) * np.cos(2.0 * np.pi * u2)
+
+    y, level = [], 0.0
+    for _ in range(120):
+        y.append(level + normal())
+        level += 0.3 * normal()
+    y = np.array(y)
+    spec = dict(level="llevel", cycle=True, damped_cycle=True, stochastic_cycle=True)
+    sweep = []
+    for f in (1e-2, 1e-4, 1e-6, 1e-8):
+        r = tsecon.unobserved_components(y, cycle_period_bounds=(2.0, 1e9), fixed_params=[0.8, 0.3, 0.2, f, 0.9],
+                                         **spec)
+        sweep.append(f"{f:g}: {r['loglik']:.3f} (nobs_diffuse {r['nobs_diffuse']})")
+    print("[4] diffuse cycle, frequency -> 0 at fixed parameters: " + ", ".join(sweep))
+    for bounds in ((2.0, 1e9), None):
+        kw = dict(spec) if bounds is None else dict(spec, cycle_period_bounds=bounds)
+        r = tsecon.unobserved_components(y, **kw)
+        names = list(r["param_names"])
+        print(f"    MLE, cycle_period_bounds {bounds or '(2, nobs) default'}: loglik {r['loglik']:.2f}, period "
+              f"{2 * np.pi / r['params'][names.index('frequency.cycle')]:.3g}, converged {r['converged']}")
+
+
 if __name__ == "__main__":
     replay()
     cases()
     regressor_design(int(sys.argv[1]) if len(sys.argv) > 1 else 400)
+    cycle_divergence()

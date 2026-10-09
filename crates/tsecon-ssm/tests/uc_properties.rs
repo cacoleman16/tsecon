@@ -610,8 +610,9 @@ fn a_nyquist_harmonic_state_cannot_change_the_likelihood() {
 /// with `F_inf ~ (rho sin lambda)^2`, contributing
 /// `-(ln 2 pi + ln F_inf)/2 ~ -ln lambda`. Halving `lambda` therefore buys
 /// `ln 2 ~ 0.69` of log-likelihood for nothing, forever. A free optimizer
-/// on `(0, pi)` reports a "cycle" of period `10^6` and a log-likelihood a
-/// dozen points above any genuine optimum; the default period bound
+/// on `(0, pi)` walks into it — on this series it stops at a "cycle" of
+/// period `2.7e7`, 1.4 points above the fit inside the default bounds
+/// (`scripts/uc_long_diffuse_evidence.py`); the default period bound
 /// `(2, nobs)` keeps it out of that region, and an explicit
 /// `cycle_period_bounds` puts the user back in charge.
 #[test]
@@ -661,8 +662,8 @@ fn the_cycle_log_likelihood_diverges_as_the_frequency_goes_to_zero() {
     // from both sides: too little is the divergence gone, too much is
     // annihilated diffuse mass taken for a diffuse element. (Before the
     // diffuse-element test was rebuilt on a square-root factor it took
-    // such dust at 1e-6 — `nobs_diffuse` 18, not 3 — and reported -162.53,
-    // 16.4 points above where the `ln 100` slope from 1e-4 puts it.)
+    // such dust at 1e-6 and reported -162.53, 16.4 points above where the
+    // `ln 100` slope from 1e-4 puts it.)
     for w in lls.windows(2) {
         let slope = w[1].1 - w[0].1;
         assert!(
@@ -936,6 +937,13 @@ fn the_stationary_cycle_has_no_low_frequency_singularity() {
 /// simulated from the cycle's stationary distribution. The MLE recovers
 /// the period and the damping: the median absolute error is small and no
 /// fit escapes the sampling band.
+///
+/// This is a smoke check at eight seeds, and its medians (0.637 and
+/// 0.0117 here) are not the estimator's recovery property: over 400 seeds
+/// of the same series (`scripts/mc_uc_stationary_cycle_recovery.py`) the
+/// medians are 0.45 and 0.022, and 2 of the 400 fits miss the band
+/// asserted per seed below (seed 47 does not converge, seed 76 lands at
+/// period 15.1).
 #[test]
 fn stationary_cycle_mle_recovers_damping_and_period() {
     let (period, rho, s2c, s2l, s2e) = (12.0f64, 0.9f64, 0.5f64, 0.01f64, 0.2f64);

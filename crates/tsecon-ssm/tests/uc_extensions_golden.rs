@@ -944,7 +944,7 @@ fn stationary_cycle_removes_the_low_frequency_singularity() {
     // where that direction is also nearly collinear with the smooth trend
     // and double precision loses part of it); more would be annihilated
     // diffuse mass taken for a diffuse element, which is what the filter's
-    // pre-0.11.0 diffuse-element test did at 1e-4 (-240.094, 13.4 points
+    // pre-0.11.0 diffuse-element test did at 1e-4 (-240.094, 18.4 points
     // up in one window).
     eprintln!("GDP lambda sweep (frequency, stationary, diffuse): {sweep:?}");
     for w in sweep.windows(2) {
