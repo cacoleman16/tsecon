@@ -517,10 +517,22 @@ def _wrong_type_cases():
          "mle_regression=1", ["seasonal=4"]),
         (lambda: tsecon.unobserved_components(y, exog=ex, n_starts=2, mle_regression=1),
          "mle_regression=1", ["n_starts=2"]),
+        # NumPy scalars: PyO3 names them by their own type ('int64' object),
+        # which converts like an int (or a float) all the same
+        (lambda: tsecon.ardl_bounds_test(ay, ax, max_lag=np.int64(3), max_order=np.int64(2),
+                                         ic=np.int64(1)),
+         "ic=np.int64(1)", ["max_lag=", "max_order="]),
+        (lambda: tsecon.unobserved_components(y, exog=ex, autoregressive=np.int64(1),
+                                              mle_regression=np.int64(1)),
+         "mle_regression=np.int64(1)", ["autoregressive="]),
+        # a float data array matched only by its element type is not the
+        # slot that refused a float64 either
+        (lambda: tsecon.ardl_bounds_test(ay, ax, alpha=np.float64(0.05), ic=np.float64(1.0)),
+         "ic=np.float64(1.0)", ["alpha=", "y=", "x="]),
     ]
 
 
-@pytest.mark.parametrize("case", range(8))
+@pytest.mark.parametrize("case", range(11))
 def test_a_count_declared_int_is_never_blamed_for_a_wrong_type(case):
     """Audit round 15 (SWEEP-7 / API15-1): a None-default count (`max_lag`,
     `lags`, UC's `autoregressive`, `seasonal`) used to be named beside the
@@ -531,7 +543,7 @@ def test_a_count_declared_int_is_never_blamed_for_a_wrong_type(case):
     with pytest.raises(TypeError) as excinfo:
         call()
     head = str(excinfo.value).split(" Original error")[0]
-    assert f"{offender} is of type int" in head, head
+    assert re.search(re.escape(offender) + r" is of type (int|int64|float64)\b", head), head
     for name in innocent:
         assert name not in head, head
 
