@@ -29,7 +29,9 @@
 //!   (1982) starting values with a safe fallback;
 //! * [`ArimaSpec::fit_css`] — conditional sum of squares, the fast
 //!   alternative (equals exact MLE only asymptotically; documented on the
-//!   method);
+//!   method), with [`ArimaSpec::css_residuals`] evaluating its recursion
+//!   at fixed parameters — pinned against statsforecast's port of R's
+//!   `ARIMA_CSS` with no optimizer in the loop (`fixtures/arima_css.json`);
 //! * [`ArimaSpec::loglike`] — the exact log-likelihood at fixed
 //!   parameters (the golden-fixture entry point);
 //! * [`ArimaResults`] — named parameters, log-likelihood, AIC/BIC with
@@ -92,6 +94,7 @@ pub use auto::{
 pub use bn::{bn_decomposition, bn_from_arma, BnDecomposition};
 pub use cov::ParamCov;
 pub use error::ArimaError;
+pub use estimate::CssEvaluation;
 pub use results::{ArimaForecast, ArimaResults, EstimationMethod, ForecastOptions};
 pub use spec::ArimaSpec;
 pub use ssm::arma_ssm;

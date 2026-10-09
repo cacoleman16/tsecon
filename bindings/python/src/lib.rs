@@ -17,10 +17,12 @@ mod ets;
 mod ewc;
 mod forecast_mcs;
 mod girf;
+mod midas_adl;
 mod ml_convex;
 mod ml_kernel;
 mod ml_structured;
 mod ml_trees;
+mod nowcast_smooth;
 mod panel_dl;
 mod panel_static;
 mod regime_ci;
@@ -3356,7 +3358,8 @@ fn mcmc_diagnostics<'py>(
 /// Fit an ARIMA(p,d,q) — optionally a seasonal SARIMA(p,d,q)(P,D,Q)_s
 /// via `seasonal=(P, D, Q, s)` — by exact Gaussian maximum likelihood on
 /// the state-space engine (Monahan-transformed L-BFGS with Nelder-Mead
-/// polish; Hannan-Rissanen starting values). `d > 0` (and `D > 0`) uses
+/// polish; Hannan-Rissanen starting values), or with `method="css"` by
+/// conditional sum of squares (see below). `d > 0` (and `D > 0`) uses
 /// simple differencing (the statsmodels simple_differencing=True
 /// convention, seasonal difference applied first), and forecasts are
 /// undifferenced with exact cumulative variance.
@@ -3400,9 +3403,48 @@ fn mcmc_diagnostics<'py>(
 /// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
 /// `converged`, `bse`, `param_cov`, `cov_ok` (plus `cov_error` on a
 /// refusal), `se_valid`, `boundary`, `boundary_note`, `residuals`,
-/// `drift_uncertainty`, and — when `forecast_steps > 0` —
-/// `forecast_mean` and `forecast_se`, plus `forecast_lower`,
-/// `forecast_upper`, and `conf_alpha` when a band level is passed.
+/// `drift_uncertainty`, `method` (echo), `nobs`, and — when
+/// `forecast_steps > 0` — `forecast_mean` and `forecast_se`, plus
+/// `forecast_lower`, `forecast_upper`, and `conf_alpha` when a band level
+/// is passed.
+///
+/// **`method="css"` — conditional sum of squares.** Minimizes the sum of
+/// squared recursive residuals `e_t = x_t - c - sum phi*_i x_{t-i} -
+/// sum theta*_j e_{t-j}` on the fully differenced series `x`, conditioning
+/// on the first `p + s*P` values and zero pre-sample innovations, with
+/// `sigma2 = SSR / nobs` concentrated out (Box-Jenkins 1976, ch. 7; R's
+/// `arima(method="CSS")`). It is the fast alternative to exact MLE and
+/// agrees with it only asymptotically. Under `"css"`: `loglik` is the
+/// CONDITIONAL Gaussian log-likelihood `-nobs/2 (ln 2 pi + 1 + ln sigma2)`
+/// and `aic`/`bic` are built from it (BIC with `ln(nobs)`) — not comparable
+/// with an exact-MLE fit's; `bse`/`param_cov` come from the numerical
+/// Hessian of that conditional likelihood with `sigma2` free;
+/// `drift_uncertainty=True` therefore uses the CSS `Var(c_hat)`
+/// (`param_cov[0][0]` of the same dict); `residuals` keep the Kalman
+/// standardized-innovation definition (evaluated at the CSS estimates),
+/// and forecasts run the exact state-space recursion at those estimates.
+/// The constant is an INTERCEPT, as for "mle": R and statsforecast report
+/// the MEAN `mu = c / (1 - sum phi*)`. R also counts its CSS log-likelihood
+/// over `n - d - D*s` observations while dividing the SSR by `n - d - D*s -
+/// (p + s*P)` (tsecon uses `nobs` in both places), so R's CSS `loglik` is
+/// lower (on the model card's ARMA(1,1) example, -650.97 vs -649.34) and
+/// its CSS AIC is NA. Validated: the recursion against statsforecast
+/// 2.1.1's port of R's `ARIMA_CSS` at fixed parameters (1e-12, no
+/// optimizer involved), the AR(2) optimum against statsmodels `AutoReg`
+/// (OLS), and the ARMA/SARIMA/MA/ARIMA optimum against a SciPy
+/// Levenberg-Marquardt reference (1e-6; achieved 5.5e-9) —
+/// `fixtures/arima_css.json`. Because the CSS objective is defined past
+/// the unit circle, a trending or unit-root-like series can drive the CSS
+/// AR estimate onto the circle itself (a root of modulus 1 to double
+/// precision), where the Kalman residuals and forecasts have no stationary
+/// model to run on; that fit is refused, naming the remedy (difference the
+/// series, or `method="mle"`), instead of failing inside the state-space
+/// engine.
+///
+/// `nobs` is the number of observations behind `loglik`: `n - d - D*s`
+/// under `"mle"` (simple differencing) and `n - d - D*s - (p + s*P)` under
+/// `"css"`. `forecast_steps` is capped at 1,000,000 (as `ets_fit`'s
+/// horizon is) and refused past that before anything is fitted.
 ///
 /// **Convergence and boundary flags.** `converged` reports whether the
 /// optimizer terminated by its convergence test (the best point found is
@@ -3423,7 +3465,8 @@ fn mcmc_diagnostics<'py>(
 /// False when `cov_ok` is False.
 #[pyfunction]
 #[pyo3(signature = (y, p = 1, d = 0, q = 0, seasonal = None, constant = true,
-                    forecast_steps = 0, conf_alpha = None, drift_uncertainty = false))]
+                    forecast_steps = 0, conf_alpha = None, drift_uncertainty = false,
+                    method = "mle"))]
 #[allow(clippy::too_many_arguments)]
 fn arima_fit<'py>(
     py: Python<'py>,
@@ -3436,7 +3479,15 @@ fn arima_fit<'py>(
     forecast_steps: usize,
     conf_alpha: Option<f64>,
     drift_uncertainty: bool,
+    method: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
+    if method != "mle" && method != "css" {
+        return Err(PyValueError::new_err(format!(
+            "unknown method {method:?}; expected \"mle\" (exact Gaussian maximum \
+             likelihood, the default) or \"css\" (conditional sum of squares)"
+        )));
+    }
+    check_arima_forecast_steps(forecast_steps)?;
     if conf_alpha.is_some() && forecast_steps == 0 {
         return Err(PyValueError::new_err(
             "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
@@ -3475,12 +3526,63 @@ fn arima_fit<'py>(
             .seasonal(v[0] as usize, v[1] as usize, v[2] as usize, v[3] as usize)
             .map_err(to_py)?;
     }
-    let r = spec.fit(&vec1(&y)).map_err(to_py)?;
+    let r = if method == "css" {
+        let r = spec
+            .fit_css(&vec1(&y))
+            .map_err(|e| PyValueError::new_err(format!("arima_fit(method=\"css\"): {e}")))?;
+        // The CSS objective is defined on and past the unit circle, so on a
+        // trending or unit-root-like series its optimum can saturate the
+        // Monahan map until an AR root sits on the circle to double
+        // precision (exact MLE never gets there: its likelihood needs the
+        // stationary distribution). The CSS estimates are then fine, but the
+        // Kalman residuals and forecasts below have no stationary model to
+        // run on; say so in the caller's terms, not the engine's.
+        if r.boundary().iter().any(|&b| b) {
+            if let Err(e) = r.residuals() {
+                return Err(PyValueError::new_err(format!(
+                    "arima_fit(method=\"css\"): the conditional-sum-of-squares estimate \
+                     puts a root of the AR polynomial on the unit circle to double \
+                     precision, so the standardized residuals and forecasts this \
+                     function returns, which run the exact state-space recursion at the \
+                     estimates, have no stationary model to run on ({e}). The series \
+                     behaves like a unit-root or trending process at these orders: \
+                     difference it (raise d, or D, by one), or fit with method=\"mle\", \
+                     whose exact likelihood keeps the estimate inside the stationary region"
+                )));
+            }
+        }
+        r
+    } else {
+        spec.fit(&vec1(&y)).map_err(to_py)?
+    };
     let dct = arima_results_dict(py, &r, forecast_steps, conf_alpha, drift_uncertainty)?;
     // Always present, like cov_ok, so a caller can branch on it without
     // knowing whether this particular call asked for a forecast.
     dct.set_item("drift_uncertainty", drift_uncertainty)?;
+    // Set here, not in the shared arima_results_dict, so auto_arima's
+    // documented key list is unchanged.
+    dct.set_item("method", method)?;
+    dct.set_item("nobs", r.nobs)?;
     Ok(dct)
+}
+
+/// Largest `forecast_steps` `arima_fit` and `auto_arima` accept — the cap
+/// `ets_fit` puts on its horizon. Every step is materialised (mean,
+/// standard error and, with `conf_alpha`, both bands), so a typo such as
+/// `2**33` used to request tens of GiB and abort the process on the failed
+/// allocation; refused before any fitting instead.
+const ARIMA_MAX_FORECAST_STEPS: usize = 1_000_000;
+
+fn check_arima_forecast_steps(forecast_steps: usize) -> PyResult<()> {
+    if forecast_steps > ARIMA_MAX_FORECAST_STEPS {
+        return Err(PyValueError::new_err(format!(
+            "forecast_steps = {forecast_steps} is beyond the {ARIMA_MAX_FORECAST_STEPS} \
+             steps accepted: every forecast step is materialised (mean, standard error \
+             and bands), so a request this long cannot mean what it says and would \
+             exhaust memory; forecast fewer steps"
+        )));
+    }
+    Ok(())
 }
 
 /// A fitted `ArimaResults` as the `arima_fit` result dict (shared by
@@ -3621,7 +3723,8 @@ fn arima_results_dict<'py>(
 /// `interpretation`. For drift-uncertainty forecast bands, refit the
 /// selected order with `arima_fit(..., drift_uncertainty=True)` — the
 /// option needs the constant to be a modeling choice, not a search
-/// outcome.
+/// outcome. `forecast_steps` is capped at 1,000,000, as in `arima_fit`,
+/// and refused past that before the search starts.
 ///
 /// Further arguments, with defaults: `seasonal_period` (0), `max_p` (5),
 /// `max_q` (5), `max_P` (2), `max_Q` (2), `max_d` (2), `max_D` (1), `alpha`
@@ -3669,6 +3772,7 @@ fn auto_arima<'py>(
             )))
         }
     };
+    check_arima_forecast_steps(forecast_steps)?;
     if conf_alpha.is_some() && forecast_steps == 0 {
         return Err(PyValueError::new_err(
             "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
@@ -10414,7 +10518,11 @@ fn panel_mean_group<'py>(
 /// estimates. State space: `z_t = Lambda f_t + e_t`, `e_t ~ N(0,
 /// diag(idiosyncratic))`; `f_t = A_1 f_{t-1} + ... + A_p f_{t-p} + eta_t`,
 /// `eta_t ~ N(0, factor_cov)` — with these six keys the fitted model is
-/// fully reproducible.
+/// fully reproducible: `dfm_smooth(data, loadings=..., factor_ar=...,
+/// idiosyncratic=..., factor_cov=..., center=..., scale=...)` re-smooths
+/// any data vintage at these parameters, and on this call's panel returns
+/// its `loglik`, `edge_factor` and `nowcast` bit for bit (the edge nowcast
+/// here is computed by that same routine).
 ///
 /// With `method="mle"` the dict additionally carries `converged` and
 /// `iterations`: `converged` is the certificate of the optimizer stage
@@ -13520,5 +13628,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ewc::register(m)?;
     svar_lr::register(m)?;
     var_normality::register(m)?;
+    nowcast_smooth::register(m)?;
+    midas_adl::register(m)?;
     Ok(())
 }

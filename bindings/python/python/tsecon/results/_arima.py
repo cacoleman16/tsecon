@@ -2,10 +2,10 @@
 
 :class:`ARIMAResults` wraps the dict returned by :func:`tsecon.arima_fit`
 without changing it: every documented key (``params``, ``param_names``,
-``loglik``, ``aic``, ``bic``, ``forecast_mean``, ``forecast_se``,
-``residuals``, and the optional ``forecast_lower``/``forecast_upper``/
-``conf_alpha``) is still present and still equal to what the compiled
-function produced. The subclass only *adds* a rendered
+``loglik``, ``aic``, ``bic``, ``method``, ``nobs``, ``forecast_mean``,
+``forecast_se``, ``residuals``, and the optional ``forecast_lower``/
+``forecast_upper``/``conf_alpha``) is still present and still equal to what
+the compiled function produced. The subclass only *adds* a rendered
 :meth:`~ARIMAResults.summary`, a tidy :meth:`~ARIMAResults.forecast_frame`,
 and the fan chart in :meth:`~ARIMAResults.plot_forecast`.
 """
@@ -83,10 +83,31 @@ class ARIMAResults(Results):
 
     @property
     def nobs(self) -> int:
-        """Number of observations used by the likelihood."""
+        """Number of observations behind ``loglik`` — the raw ``nobs`` key.
+
+        ``n - d - D*s`` for an exact-MLE fit (simple differencing loses
+        ``d + D*s`` observations) and ``n - d - D*s - (p + s*P)`` for a
+        ``method="css"`` fit (which also conditions on the first ``p + s*P``
+        differenced values). Through 0.10 this property returned ``len(y)``,
+        which is not the likelihood's count once ``d > 0``; it now reads the
+        key, so the property and ``res["nobs"]`` can never disagree. The
+        input length is ``len(res.y)``. A dict without the key (one built by
+        hand, or pickled before 0.11) falls back to the series length, else
+        to the residual count plus ``d``.
+        """
+        if "nobs" in self:
+            return int(self["nobs"])
         if self._y is not None:
             return int(np.asarray(self._y).shape[0])
         return int(np.asarray(self["residuals"]).shape[0]) + self._order[1]
+
+    @property
+    def method(self) -> str:
+        """``"mle"`` (exact Gaussian likelihood) or ``"css"`` (conditional sum
+        of squares, whose ``loglik``/``aic``/``bic`` are conditional and not
+        comparable with an exact-MLE fit's). ``"mle"`` for a dict without
+        the key."""
+        return str(self.get("method", "mle"))
 
     @property
     def has_forecast(self) -> bool:
@@ -171,10 +192,14 @@ class ARIMAResults(Results):
         values = np.asarray(self["params"], dtype=float)
         resid = np.asarray(self["residuals"], dtype=float)
 
+        # A CSS fit's likelihood is conditional on the first p + s*P values:
+        # label it, so it is not read against an exact-MLE fit's.
+        css = self.method == "css"
+        title = f"ARIMA({p},{d},{q})" + (" by CSS" if css else "")
+        loglik_label = "cond. log-likelihood" if css else "log-likelihood"
         lines = [
             rule(_WIDTH),
-            f"ARIMA({p},{d},{q})".ljust(28)
-            + f"log-likelihood {float(self['loglik']):>13.4f}",
+            title.ljust(28) + f"{loglik_label} {float(self['loglik']):>13.4f}",
             rule(_WIDTH),
             kv_line(
                 [

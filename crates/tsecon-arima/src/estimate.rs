@@ -219,6 +219,20 @@ impl ObjectiveFn for ExactNegLoglik {
 /// a CSS fit — that covariance must come from the objective the fit
 /// actually maximized, not from the exact likelihood.
 pub(crate) fn css_ssr(x: &[f64], constant: f64, ar: &[f64], ma: &[f64]) -> Option<(f64, usize)> {
+    css_recursion(x, constant, ar, ma).map(|(_, ssr, n_c)| (ssr, n_c))
+}
+
+/// The CSS recursion behind [`css_ssr`], also returning the residual
+/// vector `eps` (length `n`, zero at the `p` conditioning positions).
+/// One code path for the optimizer's objective and for
+/// [`ArimaSpec::css_residuals`], so the golden that pins the latter pins
+/// the former.
+fn css_recursion(
+    x: &[f64],
+    constant: f64,
+    ar: &[f64],
+    ma: &[f64],
+) -> Option<(Vec<f64>, f64, usize)> {
     let n = x.len();
     let p = ar.len();
     if n <= p {
@@ -245,7 +259,29 @@ pub(crate) fn css_ssr(x: &[f64], constant: f64, ar: &[f64], ma: &[f64]) -> Optio
     if !ssr.is_finite() {
         return None;
     }
-    Some((ssr, n - p))
+    Some((eps, ssr, n - p))
+}
+
+/// The conditional-sum-of-squares recursion evaluated at fixed mean
+/// parameters — see [`ArimaSpec::css_residuals`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct CssEvaluation {
+    /// The recursive residuals `e_t` for `t = n_cond..n_x - 1` on the fully
+    /// differenced series (length [`nobs`](CssEvaluation::nobs)); the
+    /// `n_cond` conditioning positions, where the recursion sets `e = 0`,
+    /// are not included.
+    pub residuals: Vec<f64>,
+    /// The sum of squared residuals `SSR`.
+    pub ssr: f64,
+    /// The concentrated innovation variance `SSR / nobs`.
+    pub sigma2: f64,
+    /// The conditional log-likelihood with `sigma2` profiled out,
+    /// `-nobs/2 (ln 2 pi + 1 + ln sigma2)`.
+    pub loglik: f64,
+    /// Residual count `n_c = n - d - D s - (p + s P)`.
+    pub nobs: usize,
+    /// Conditioning count `p + s P` (R's `ncond` less its `d + D s`).
+    pub n_cond: usize,
 }
 
 /// CSS objective: the `sigma2`-concentrated conditional negative
@@ -793,6 +829,91 @@ impl ArimaSpec {
             anchors,
             seasonal_anchors,
         ))
+    }
+
+    /// Evaluates the conditional-sum-of-squares recursion of
+    /// [`ArimaSpec::fit_css`] at fixed **mean** parameters
+    /// `[const?, ar.., ma.., sar.., sma..]` (no `sigma2`: CSS concentrates
+    /// it out) — no optimization.
+    ///
+    /// The series is differenced exactly as the fit does it (seasonal
+    /// difference first), the AR and MA polynomials are multiplied out,
+    /// and the residuals
+    ///
+    /// ```text
+    /// e_t = x_t - c - sum_i phi*_i x_{t-i} - sum_j theta*_j e_{t-j},
+    /// t = p*..n_x - 1,  e_s = 0 for s < p*,  p* = p + s P
+    /// ```
+    ///
+    /// are formed with `c` the **intercept** (R and statsforecast use the
+    /// mean form `x - mu`; the two agree under `c = mu (1 - sum phi*)`).
+    /// This is the objective's own code path: the optimizer minimizes the
+    /// SSR returned here. It exists so the recursion can be pinned against
+    /// an independent implementation without any optimizer in the loop
+    /// (statsforecast's port of R's `ARIMA_CSS`, `fixtures/arima_css.json`).
+    ///
+    /// # Errors
+    ///
+    /// * [`ArimaError::Dimension`] / [`ArimaError::NonFinite`] on a
+    ///   malformed parameter vector (length `k_params() - 1`);
+    /// * the differencing errors of [`ArimaSpec::fit`];
+    /// * [`ArimaError::InsufficientObservations`] when no residual remains
+    ///   after the `p + s P` conditioning values;
+    /// * [`ArimaError::EstimationFailed`] when the recursion overflows or
+    ///   the residuals are identically zero.
+    pub fn css_residuals(
+        &self,
+        y: &[f64],
+        mean_params: &[f64],
+    ) -> Result<CssEvaluation, ArimaError> {
+        let k_mean = self.k_params() - 1;
+        if mean_params.len() != k_mean {
+            return Err(ArimaError::Dimension {
+                what: "the CSS mean-parameter vector must be [const?, ar.., ma.., \
+                       seasonal ar.., seasonal ma..] (no sigma2: CSS concentrates it out)",
+                expected: k_mean,
+                got: mean_params.len(),
+            });
+        }
+        let diffed = difference(y, self.d(), self.seasonal_d(), self.period())?;
+        let x = diffed.series;
+        let n_cond = self.p() + self.period() * self.seasonal_p();
+        if x.len() <= n_cond {
+            return Err(ArimaError::InsufficientObservations {
+                needed: n_cond + 1,
+                got: x.len(),
+                nobs: y.len(),
+                what: "the conditional-sum-of-squares recursion (p + s*P conditioning \
+                       values plus at least one residual)",
+            });
+        }
+        let mut probe = mean_params.to_vec();
+        probe.push(1.0);
+        let blocks = self.unpack(&probe)?;
+        let (ar_full, ma_full) = blocks.expanded(self.period());
+        let (eps, ssr, n_c) = css_recursion(&x, blocks.constant, &ar_full, &ma_full).ok_or(
+            ArimaError::EstimationFailed {
+                what: "the conditional-sum-of-squares recursion overflowed at these \
+                       parameters; rescale the series or move the AR/MA coefficients \
+                       inside the stationary/invertible region",
+            },
+        )?;
+        let sigma2 = ssr / n_c as f64;
+        if !(sigma2.is_finite() && sigma2 > 0.0) {
+            return Err(ArimaError::EstimationFailed {
+                what: "the conditional-sum-of-squares residuals are identically zero at \
+                       these parameters, so sigma2 = SSR / n_c is not positive",
+            });
+        }
+        let loglik = -0.5 * n_c as f64 * ((2.0 * std::f64::consts::PI).ln() + 1.0 + sigma2.ln());
+        Ok(CssEvaluation {
+            residuals: eps[n_cond..].to_vec(),
+            ssr,
+            sigma2,
+            loglik,
+            nobs: n_c,
+            n_cond,
+        })
     }
 
     /// Fits the model by conditional sum of squares (CSS): minimizes the

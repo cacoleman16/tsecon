@@ -135,7 +135,7 @@ and docstrings live in
 
 | Function | What it does |
 |---|---|
-| `arima_fit` | Exact-MLE ARIMA(p,d,q) with optional forecast bands |
+| `arima_fit` | Exact-MLE (or `method="css"` conditional-sum-of-squares) ARIMA(p,d,q) with optional forecast bands |
 | `auto_arima` | Automatic ARIMA order selection (Hyndman-Khandakar stepwise) |
 | `ar_loglik` | Exact Gaussian AR(p) log-likelihood at fixed parameters |
 | `local_level_smooth` | Local-level Kalman filter + smoother (handles missing data) |
@@ -289,9 +289,11 @@ and docstrings live in
 | Function | What it does |
 |---|---|
 | `dfm_nowcast` | Dynamic-factor-model nowcast over a ragged data edge |
+| `dfm_smooth` | Fixed-parameter DFM Kalman smoother: re-smooth a new data vintage with a fitted model |
 | `dfm_news` | News / update decomposition of a nowcast revision |
 | `midas_weights` | MIDAS weighting kernels (exp-Almon or beta) |
 | `umidas` | Unrestricted mixed-frequency (U-MIDAS) regression |
+| `adl_midas` | ADL-MIDAS: U-MIDAS plus autoregressive lags of the low-frequency target |
 | `weighted_midas` | Weighted MIDAS estimated by nonlinear least squares |
 
 ### Regression, machine learning, and GMM

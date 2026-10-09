@@ -310,17 +310,6 @@ impl Nowcaster {
         &self.scale
     }
 
-    /// De-standardizes a factor movement into series `series`'s level:
-    /// `center + scale * (loadings_i . f)`.
-    fn destandardized_fit(&self, series: usize, factor: &[f64]) -> f64 {
-        let loadings = &self.params.loadings;
-        let mut acc = 0.0;
-        for k in 0..self.n_factors {
-            acc += loadings[(series, k)] * factor[k];
-        }
-        self.center[series] + self.scale[series] * acc
-    }
-
     /// Nowcasts every series at the sample edge from the given panel `data`
     /// (`T x N`, oldest first), which may be **ragged**: the last rows of
     /// some series may be NaN (missing). The Kalman filter uses only the
@@ -350,25 +339,11 @@ impl Nowcaster {
                 what: "nowcast panel has no observations",
             });
         }
-        // Standardize with the training moments; NaN passes through as NaN.
-        let z = standardize_panel(data, &self.center, &self.scale);
-        let smoothing = smooth_fixed(&self.params, z.as_ref())?;
-        let edge_factor = smoothing
-            .smoothed_factors
-            .last()
-            .ok_or(NowcastError::EmptyInput {
-                what: "smoother produced no periods",
-            })?
-            .clone();
-        let mut values = Vec::with_capacity(self.n_series);
-        for series in 0..self.n_series {
-            values.push(self.destandardized_fit(series, &edge_factor));
-        }
-        Ok(NowcastResult {
-            values,
-            edge_factor,
-            smoothing,
-        })
+        // Standardize with the training moments (NaN passes through as
+        // NaN), smooth, and de-standardize the edge factor: exactly the
+        // public fixed-parameter path, so re-smoothing a vintage with the
+        // fitted parameters and moments reproduces this to the bit.
+        smooth_standardized(&self.params, data, &self.center, &self.scale)
     }
 
     /// Nowcasts a single target `series` at the edge of `data`. Convenience
@@ -403,6 +378,116 @@ pub struct NowcastResult {
     pub edge_factor: Vec<f64>,
     /// The full smoothing output over the nowcast panel.
     pub smoothing: DfmSmoothing,
+}
+
+/// Kalman-smooths a panel at **fixed** dynamic-factor parameters that live on
+/// a standardized scale, and reads the edge nowcast off the last period.
+///
+/// The panel `data` (`T x N`, oldest first; NaN marks a missing element — the
+/// ragged edge) is first standardized column by column,
+/// `z[(t, i)] = (data[(t, i)] - center[i]) / scale[i]` (NaN stays NaN), then
+/// [`smooth_fixed`] runs the Kalman filter/smoother over `z`, and the
+/// smoothed factor at the final period is mapped back onto every series'
+/// level: `values[i] = center[i] + scale[i] * (loadings_i . edge_factor)`.
+///
+/// This is the vintage re-smoothing entry point: [`Nowcaster::nowcast_panel`]
+/// is implemented as this function at the fitted parameters and training
+/// moments, so calling it with a fitted model's [`Nowcaster::params`],
+/// [`Nowcaster::center`] and [`Nowcaster::scale`] reproduces that nowcast,
+/// its edge factor and its log-likelihood to the bit. With
+/// `center = 0` and `scale = 1` it is [`smooth_fixed`] on the raw panel
+/// (subtracting zero and dividing by one are exact).
+///
+/// The log-likelihood in the returned [`DfmSmoothing`] is that of the
+/// **standardized** panel `z`; it carries no Jacobian term for the
+/// standardization (`- T_obs,i * ln scale[i]` summed over the observed
+/// elements would convert it to the raw scale).
+///
+/// # Errors
+///
+/// * [`NowcastError::DimensionMismatch`] if `data` does not have `N` columns,
+///   or `center` / `scale` do not have `N` entries;
+/// * [`NowcastError::EmptyInput`] if `data` has no rows;
+/// * [`NowcastError::NonFinite`] if `center` holds a NaN or infinity;
+/// * [`NowcastError::InvalidArgument`] if a `scale` entry is not finite and
+///   strictly positive;
+/// * whatever [`smooth_fixed`] returns (an infinite panel entry, malformed
+///   parameters, a non-stationary factor VAR, a non-PSD `factor_cov`).
+pub fn smooth_standardized(
+    params: &DfmParams,
+    data: MatRef<'_, f64>,
+    center: &[f64],
+    scale: &[f64],
+) -> Result<NowcastResult, NowcastError> {
+    let n = params.n_series();
+    if data.ncols() != n {
+        return Err(NowcastError::DimensionMismatch {
+            what: "panel data must have N columns (one per row of loadings)",
+            expected: n,
+            got: data.ncols(),
+        });
+    }
+    if data.nrows() == 0 {
+        return Err(NowcastError::EmptyInput {
+            what: "panel data has no observations",
+        });
+    }
+    if center.len() != n {
+        return Err(NowcastError::DimensionMismatch {
+            what: "center must have one entry per series (length N)",
+            expected: n,
+            got: center.len(),
+        });
+    }
+    if scale.len() != n {
+        return Err(NowcastError::DimensionMismatch {
+            what: "scale must have one entry per series (length N)",
+            expected: n,
+            got: scale.len(),
+        });
+    }
+    if center.iter().any(|c| !c.is_finite()) {
+        return Err(NowcastError::NonFinite { what: "center" });
+    }
+    if scale.iter().any(|s| !(s.is_finite() && *s > 0.0)) {
+        return Err(NowcastError::InvalidArgument {
+            what: "scale entries must be finite and strictly positive",
+        });
+    }
+    let z = standardize_panel(data, center, scale);
+    let smoothing = smooth_fixed(params, z.as_ref())?;
+    let edge_factor = smoothing
+        .smoothed_factors
+        .last()
+        .ok_or(NowcastError::EmptyInput {
+            what: "smoother produced no periods",
+        })?
+        .clone();
+    let values = (0..n)
+        .map(|series| destandardized_fit(params, center, scale, series, &edge_factor))
+        .collect();
+    Ok(NowcastResult {
+        values,
+        edge_factor,
+        smoothing,
+    })
+}
+
+/// De-standardizes a factor movement into series `series`'s level:
+/// `center + scale * (loadings_i . f)`.
+fn destandardized_fit(
+    params: &DfmParams,
+    center: &[f64],
+    scale: &[f64],
+    series: usize,
+    factor: &[f64],
+) -> f64 {
+    let loadings = &params.loadings;
+    let mut acc = 0.0;
+    for (k, f) in factor.iter().enumerate().take(params.n_factors()) {
+        acc += loadings[(series, k)] * f;
+    }
+    center[series] + scale[series] * acc
 }
 
 /// Standardizes a panel column-by-column with the supplied moments,
