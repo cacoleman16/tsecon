@@ -70,7 +70,9 @@ use crate::pooled::{
 };
 
 /// Relative size `|e_w| / |y - ybar_i|` of the within residuals at or below
-/// which the within fit counts as exact (sigma2_eps is rounding noise).
+/// which the within fit counts as exact (sigma2_eps is rounding noise), and
+/// relative size `|y - ybar_i| / |y|` of the outcome's within variation at or
+/// below which the outcome counts as constant within every entity.
 const WITHIN_EXACT_FIT: f64 = 1e-12;
 
 /// Options of [`panel_random_effects`].
@@ -130,7 +132,9 @@ pub struct RandomEffectsFit {
 ///
 /// * [`PanelError::InsufficientData`] for an empty design (`k = 0` without
 ///   the constant, naming `regressors`), `N <= K` (naming `regressors`),
-///   `n - K - N + 1 <= 0` or `sigma2_eps = 0` (naming `outcome`), and for
+///   `n - K - N + 1 <= 0`, an outcome constant within every entity (its
+///   within variation at most `1e-12` of its own scale, rounding noise
+///   included) or `sigma2_eps = 0` (naming `outcome`), and for
 ///   data whose sums of squares leave the range of double precision
 ///   (naming `outcome` or `regressors`);
 /// * [`PanelError::RankDeficient`] for a collinear final design or a
@@ -183,15 +187,36 @@ pub fn panel_random_effects(
             xd[(r, j)] = means.x[(r, j)] - means.xbar[(p, j)];
         }
     }
+    // An outcome constant within every entity has no within variation. Its
+    // demeaned values are rounding noise unless the entity means happen to
+    // be exact, so the test below would compare noise with noise and pass;
+    // measure the within variation against the outcome's own scale instead.
+    let tss_w = yd.iter().map(|v| v * v).sum::<f64>();
+    let ss_y = means.y.iter().map(|v| v * v).sum::<f64>();
+    if tss_w <= WITHIN_EXACT_FIT * WITHIN_EXACT_FIT * ss_y {
+        return Err(PanelError::InsufficientData {
+            what: format!(
+                "outcome: the outcome is constant within every entity, up to rounding \
+                 (|y - ybar_i| / |y| = {:e}, at most {WITHIN_EXACT_FIT:e}), so it has no \
+                 within variation: sigma2_eps = 0 and the random-effects weights theta_i \
+                 are undefined; an outcome that varies only across entities is a \
+                 between-entity model — use panel_between",
+                if ss_y > 0.0 {
+                    (tss_w / ss_y).sqrt()
+                } else {
+                    0.0
+                }
+            ),
+        });
+    }
     let ew = residual_projection(&yd, &xd, "regressors")?;
     check_sum_of_squares(&ew)?;
     let ssr_w = ew.iter().map(|e| e * e).sum::<f64>();
     let sigma2_eps = ssr_w / (n + 1 - kk - n_ent) as f64;
     // A within fit that is exact up to rounding (the outcome an exact
-    // linear function of the regressors within every entity, or constant
-    // within every entity) leaves sigma2_eps at rounding noise and
-    // theta_i = 1 - O(1e-8): the GLS weights are then meaningless.
-    let tss_w = yd.iter().map(|v| v * v).sum::<f64>();
+    // linear function of the regressors within every entity) leaves
+    // sigma2_eps at rounding noise and theta_i = 1 - O(1e-8): the GLS
+    // weights are then meaningless.
     if sigma2_eps.is_nan()
         || sigma2_eps <= 0.0
         || ssr_w <= WITHIN_EXACT_FIT * WITHIN_EXACT_FIT * tss_w
@@ -200,8 +225,8 @@ pub fn panel_random_effects(
             what: format!(
                 "outcome: the within residuals vanish (|e_w| / |y - ybar_i| = {:e}): the \
                  outcome is an exact linear function of the regressors within every \
-                 entity (or constant within every entity), so sigma2_eps = 0 and the \
-                 random-effects weights theta_i are undefined",
+                 entity, so sigma2_eps = 0 and the random-effects weights theta_i are \
+                 undefined",
                 if tss_w > 0.0 {
                     (ssr_w / tss_w).sqrt()
                 } else {
@@ -330,6 +355,8 @@ impl RandomEffectsFit {
     ///
     /// [`PanelError::InvalidBandwidth`] for a negative or non-finite
     /// Driscoll-Kraay bandwidth; [`PanelError::InsufficientData`] (naming
+    /// `bandwidth`) for a Driscoll-Kraay bandwidth with `bandwidth + 1`
+    /// above the number of periods that carry scores, and (naming
     /// `outcome`) for a non-finite covariance.
     pub fn inference(&self, se_type: StaticSeType) -> Result<StaticInference, PanelError> {
         pooled_inference(&self.fit, se_type)

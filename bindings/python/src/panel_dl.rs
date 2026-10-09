@@ -33,7 +33,10 @@ use crate::{panel_data, panel_se, to_py};
 /// choice; needs a long T). `bandwidth` is the Driscoll-Kraay lag
 /// truncation and acts ONLY under `se_type="driscoll_kraay"` (4.0 when
 /// omitted there); passing it explicitly with any other `se_type`
-/// **raises** instead of being silently absorbed. `eval_points`
+/// **raises** instead of being silently absorbed, and so does
+/// `bandwidth + 1` above the number of periods that carry scores
+/// (`T - lags` on a balanced panel; past it the standard errors only
+/// shrink). `eval_points`
 /// (1-D, default None) are the points at which the marginal effect of
 /// the cumulative quadratic response is evaluated for every regressor;
 /// it acts ONLY under `powers=2` (None there means each regressor's

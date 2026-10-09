@@ -5744,7 +5744,10 @@ pub(crate) fn panel_data(
 /// `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
 /// `se_type="driscoll_kraay"` (default when omitted there: 4.0); passing
 /// it explicitly with any other `se_type` **raises** instead of being
-/// silently absorbed. Matches linearmodels PanelOLS conventions.
+/// silently absorbed. `bandwidth + 1` above the number of periods that
+/// carry scores (T on a balanced panel) raises too, naming `bandwidth`:
+/// past it no lag is added and every standard error only shrinks, like
+/// `sqrt(T / (bandwidth + 1))`. Matches linearmodels PanelOLS conventions.
 /// `mask` (default None = a balanced panel) is an `N x T` array of 0/1
 /// (False/True) flags, 1 where the entity is observed in that period, for an
 /// UNBALANCED panel: cells outside the mask are ignored and may hold NaN;
@@ -5813,7 +5816,10 @@ fn panel_fe<'py>(
 /// `se_type="driscoll_kraay"` (the default se_type; bandwidth defaults to
 /// 4.0 when omitted there). Passing bandwidth explicitly with
 /// `se_type="cluster"`/`"nonrobust"` **raises** instead of being silently
-/// absorbed — those estimators use no kernel.
+/// absorbed — those estimators use no kernel. `bandwidth + 1` above the
+/// number of periods that carry scores at some horizon `h` (`T - h -
+/// n_lag_controls` on a balanced panel) raises too, naming `bandwidth` and
+/// `h`: past it no lag is added and the standard errors only shrink.
 ///
 /// JACKKNIFE CAVEAT (measured): the DJ correction removes the O(1/T) bias
 /// but inflates the estimator's finite-sample variance while `se` is kept

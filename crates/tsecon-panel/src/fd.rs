@@ -202,8 +202,9 @@ impl FirstDifferenceFit {
     /// belongs to one entity, or [`StaticSeType::DriscollKraay`] when every
     /// difference falls in one period (a two-period panel): that group's
     /// score sum is `X'e = 0` by the normal equations, so the covariance
-    /// would be identically zero; and (naming `outcome`) for a non-finite
-    /// covariance.
+    /// would be identically zero; (naming `bandwidth`) for a Driscoll-Kraay
+    /// bandwidth with `bandwidth + 1` above the number of periods that carry
+    /// differences; and (naming `outcome`) for a non-finite covariance.
     pub fn inference(&self, se_type: StaticSeType) -> Result<StaticInference, PanelError> {
         pooled_inference(&self.fit, se_type)
     }

@@ -1838,7 +1838,10 @@ def panel_fe(
     `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
     `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
     explicitly with any other `se_type` raises instead of being silently
-    absorbed — those estimators use no kernel. `mask` (default None = a
+    absorbed — those estimators use no kernel. `bandwidth + 1` above the
+    number of periods that carry scores (T on a balanced panel) raises too,
+    naming `bandwidth`: past it no lag is added and every standard error
+    only shrinks, like `sqrt(T / (bandwidth + 1))`. `mask` (default None = a
     balanced panel) is an N x T array of 0/1 (False/True) flags, 1 where
     the entity is observed in that period, for an UNBALANCED panel: cells
     outside the mask are ignored and may hold NaN; without a mask a NaN
@@ -1883,7 +1886,10 @@ def panel_re(
     entity; alias "cluster_entity") or "driscoll_kraay" (alias "dk";
     calendar periods). `bandwidth` is the Driscoll-Kraay lag truncation and
     acts ONLY under `se_type="driscoll_kraay"` (4.0 when omitted there);
-    passing it with any other `se_type` raises. Mundlak check: add each
+    passing it with any other `se_type` raises, and so does `bandwidth + 1`
+    above the number of periods that carry scores (T on a balanced panel;
+    past it every standard error only shrinks, like
+    `sqrt(T / (bandwidth + 1))`). Mundlak check: add each
     time-varying regressor's entity mean as a regressor and the slopes equal
     `panel_fe`'s; a Wald test of the mean coefficients on `cov` (cluster) is
     the robust Hausman test.
@@ -1951,8 +1957,11 @@ def panel_fd(
     "cluster_entity") or "driscoll_kraay" (alias "dk"; the later period
     `t`, calendar lags). `bandwidth` is the Driscoll-Kraay lag truncation
     and acts ONLY under `se_type="driscoll_kraay"` (4.0 when omitted
-    there); passing it with any other `se_type` raises. "cluster" needs
-    differences from two entities and "driscoll_kraay" in two periods (one
+    there); passing it with any other `se_type` raises, and so does
+    `bandwidth + 1` above the number of periods that carry differences
+    (T - 1 on a balanced panel; past it every standard error only shrinks).
+    "cluster" needs differences from two entities and "driscoll_kraay" in
+    two periods (one
     group's score sum is zero), so a single entity or a two-period panel is
     refused under them (use "hc1").
 
@@ -2025,7 +2034,10 @@ def panel_lp(
     `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
     `se_type="driscoll_kraay"` (the default se_type; 4.0 when omitted);
     passing it explicitly with `se_type="cluster"`/`"nonrobust"` raises
-    instead of being silently absorbed.
+    instead of being silently absorbed. `bandwidth + 1` above the number of
+    periods that carry scores at some horizon `h` (`T - h - n_lag_controls`
+    on a balanced panel) raises too, naming `bandwidth` and `h`: past it no
+    lag is added and the standard errors only shrink.
 
     `outcome` is N x T; `shock` is length T. Fixed effects + lagged outcomes
     + short T carry Nickell bias (horizon-amplified); two half-panel
@@ -4710,7 +4722,10 @@ def panel_distributed_lag(
     `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
     `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
     explicitly with any other `se_type` raises instead of being silently
-    absorbed. `eval_points` (1-D, default None) are the points at which the
+    absorbed, and so does `bandwidth + 1` above the number of periods that
+    carry scores (`T - lags` on a balanced panel; past it the standard
+    errors only shrink). `eval_points` (1-D, default None) are the points at
+    which the
     marginal effect of the cumulative quadratic response is evaluated for
     every regressor; it acts ONLY under `powers=2` (None there means each
     regressor's pooled sample mean) and passing it under `powers=1` raises

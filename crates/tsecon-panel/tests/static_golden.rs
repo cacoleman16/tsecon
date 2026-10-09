@@ -328,3 +328,59 @@ fn the_headline_numbers_are_the_specs() {
     let m = &fx["mundlak"];
     assert!((m["cluster_wald_mean_coefficients"].as_f64().unwrap() - 14.400176).abs() < 1e-5);
 }
+
+/// Driscoll-Kraay at the largest admissible bandwidth — `bandwidth + 1`
+/// equal to the periods that carry scores (8 for random effects, 7 for
+/// first differences on the balanced 25 x 8 panel), every lag weighted —
+/// against linearmodels, which raises one step beyond. tsecon refuses
+/// there too, naming `bandwidth`: past the edge the score sums' telescoping
+/// (`sum_t a_t = X'e = 0`) makes every standard error shrink like
+/// `sqrt(S / (bandwidth + 1))` (the fixture's `beyond` block, at
+/// bandwidth 24), to 0 in the limit.
+#[test]
+fn driscoll_kraay_at_the_largest_admissible_bandwidth_matches_linearmodels() {
+    let fx = load("panel_static.json");
+    let edge = &fx["dk_bandwidth_edge"];
+    let raw = static_common::dataset(&fx, edge["dataset"].as_str().unwrap());
+    let data = raw.panel();
+    let re = panel_random_effects(&data, RandomEffectsConfig::default()).unwrap();
+    let fd = panel_first_difference(&data, false).unwrap();
+    type Infer<'a> =
+        Box<dyn Fn(StaticSeType) -> Result<StaticInference, tsecon_panel::PanelError> + 'a>;
+    let cases: [(&str, &[f64], Infer<'_>); 2] = [
+        ("re", &re.params, Box::new(|se| re.inference(se))),
+        ("fd", &fd.params, Box::new(|se| fd.inference(se))),
+    ];
+    for (key, params, infer) in cases {
+        let want = &edge[key];
+        let s = usize_of(&want["score_periods"]);
+        let bw = want["bandwidth"].as_f64().unwrap();
+        assert_eq!(bw, (s - 1) as f64);
+        let inf = infer(StaticSeType::DriscollKraay { bandwidth: bw }).unwrap();
+        check_inference(
+            params,
+            &cov_rows(&inf),
+            &inf.bse,
+            &inf.tvalues,
+            want,
+            &format!("dk edge {key}"),
+        );
+        // One step beyond — where linearmodels raises — and far beyond.
+        for beyond in [s as f64, bw + 0.5, 1e6, 1e300] {
+            let msg = infer(StaticSeType::DriscollKraay { bandwidth: beyond })
+                .unwrap_err()
+                .to_string();
+            assert!(
+                msg.starts_with("bandwidth:") && msg.contains(&format!("S = {s} here")),
+                "{key} at {beyond}: {msg}"
+            );
+            assert!(msg.contains(&format!("bandwidth <= {}", s - 1)), "{msg}");
+        }
+    }
+    // The documented-formula leg of the degeneracy past the edge.
+    let beyond = &edge["beyond"];
+    let r = beyond["sqrt_T_over_bandwidth_plus_one"].as_f64().unwrap();
+    for v in f64s(&beyond["bse_ratio_to_edge"]) {
+        assert!((v / r - 1.0).abs() < 1e-10, "{v} vs {r}");
+    }
+}

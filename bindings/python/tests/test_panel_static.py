@@ -446,6 +446,68 @@ def test_a_single_cluster_or_a_single_score_period_is_refused_by_name():
     assert np.all(tsecon.panel_fd(*two)["bse"] > 1e-3)
 
 
+EDGE = STATIC["dk_bandwidth_edge"]
+
+
+@pytest.mark.parametrize("fn, key", [("panel_re", "re"), ("panel_fd", "fd")])
+def test_driscoll_kraay_at_the_largest_admissible_bandwidth_and_past_it(fn, key):
+    """`bandwidth + 1` equal to the periods that carry scores (8 for RE, 7 for
+    FD on the balanced 25 x 8 panel) is the untruncated Bartlett estimator,
+    pinned against linearmodels; one step beyond, linearmodels raises and so
+    does tsecon, naming `bandwidth`. Past the edge the score sums telescope
+    (they add to X'e = 0) and every SE only shrinks like sqrt(S/(bw + 1)) -
+    the fixture's documented-formula `beyond` block - down to 0 (t = inf at
+    1e300), which both callables used to return."""
+    y, xs, mask = _dataset(EDGE["dataset"])
+    want = EDGE[key]
+    s = want["score_periods"]
+    r = getattr(tsecon, fn)(y, np.stack(xs), se_type="driscoll_kraay", bandwidth=want["bandwidth"])
+    _check(r, want, f"{fn} at bandwidth {want['bandwidth']}")
+    assert "Length of w" in want["linearmodels_error_at_bandwidth_plus_one"]
+    for bw in (float(s), s - 0.5, 20.0, 1e6, 1e300):
+        with pytest.raises(ValueError, match=rf"^bandwidth: .*\(S = {s} here\).*bandwidth <= {s - 1}"):
+            getattr(tsecon, fn)(y, np.stack(xs), se_type="driscoll_kraay", bandwidth=bw)
+    beyond = EDGE["beyond"]
+    np.testing.assert_allclose(beyond["bse_ratio_to_edge"], beyond["sqrt_T_over_bandwidth_plus_one"],
+                               rtol=1e-10)
+
+
+def test_the_driscoll_kraay_bandwidth_guard_is_the_house_one():
+    """panel_fe, panel_distributed_lag and panel_lp refuse the same way, so
+    the five Driscoll-Kraay callables agree; panel_lp names the horizon."""
+    y, xs, mask = _dataset("balanced")
+    n, t = mask.shape
+    x = np.stack(xs)
+    ok = tsecon.panel_fe(y, x, se_type="driscoll_kraay", bandwidth=float(t - 1))
+    assert np.all(np.asarray(ok["bse"]) > 1e-3)
+    with pytest.raises(ValueError, match=rf"^bandwidth: .*\(S = {t} here\)"):
+        tsecon.panel_fe(y, x, se_type="driscoll_kraay", bandwidth=float(t))
+    # one lag: scores in periods 1..T-1
+    tsecon.panel_distributed_lag(y, x, lags=1, se_type="driscoll_kraay", bandwidth=float(t - 2))
+    with pytest.raises(ValueError, match=rf"^bandwidth: .*\(S = {t - 1} here\)"):
+        tsecon.panel_distributed_lag(y, x, lags=1, se_type="driscoll_kraay", bandwidth=float(t - 1))
+    # panel_lp: horizon h regresses on periods [n_lag_controls, T - h)
+    shock = x[1, 0, :]
+    tsecon.panel_lp(y, shock, horizon=2, n_lag_controls=1, se_type="driscoll_kraay", bandwidth=4.0)
+    with pytest.raises(ValueError, match=r"^bandwidth: .*\(S = 5 here\).*horizon h = 2"):
+        tsecon.panel_lp(y, shock, horizon=2, n_lag_controls=1, se_type="driscoll_kraay",
+                        bandwidth=5.0)
+
+
+@pytest.mark.parametrize("constant", [True, False])
+def test_an_outcome_constant_within_every_entity_is_refused_naming_outcome(constant):
+    """A level per entity has no within variation (sigma2_eps = 0). With
+    entity means that are inexact in floating point the demeaned outcome is
+    rounding noise, and the refusal used to blame `regressors` (constant=True)
+    or the call returned theta = 1 and bse ~ 1e-33 (constant=False)."""
+    rng = np.random.default_rng(3)
+    n, t = 50, 30
+    x = rng.standard_normal((2, n, t))
+    for y in (np.ones((n, t)), np.repeat(rng.standard_normal(n)[:, None], t, 1)):
+        with pytest.raises(ValueError, match=r"^outcome: the outcome is constant within every entity"):
+            tsecon.panel_re(y, x, constant=constant)
+
+
 def _largest_parity_gap():
     """The largest relative gap of any parity entry above (params, bse,
     tvalues, the covariance on the correlation scale), measured as

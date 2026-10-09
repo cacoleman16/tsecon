@@ -894,3 +894,53 @@ fn a_single_cluster_or_a_single_score_period_is_refused_not_reported_as_zero() {
         .iter()
         .all(|&s| s > 1e-3));
 }
+
+/// An outcome constant within every entity has no within variation, so
+/// sigma2_eps = 0 and random effects is undefined. With entity means that
+/// are not exact in floating point the demeaned outcome is rounding noise,
+/// and the old guard (within residual against within variation) compared
+/// noise with noise: the call was refused naming `regressors`, or, without
+/// the constant, accepted with sigma2_eps ~ 1e-31 and theta = 1. Both are
+/// now refused naming `outcome`, like an exactly constant outcome.
+#[test]
+fn an_outcome_constant_within_every_entity_is_refused_naming_outcome() {
+    let raw = seeded(50, 30, 31, false);
+    let mut rng = Lcg(77);
+    let levels: Vec<f64> = (0..50).map(|_| rng.gaussian()).collect();
+    for (label, y) in [
+        ("exact ones", Mat::from_fn(50, 30, |_, _| 1.0)),
+        (
+            "integer levels",
+            Mat::from_fn(50, 30, |i, _| (i % 7) as f64),
+        ),
+        ("random levels", Mat::from_fn(50, 30, |i, _| levels[i])),
+        (
+            "random levels x 1e6",
+            Mat::from_fn(50, 30, |i, _| 1e6 * levels[i]),
+        ),
+    ] {
+        let data = PanelData::unbalanced(y, raw.regs.clone(), &raw.mask).unwrap();
+        for constant in [true, false] {
+            let cfg = RandomEffectsConfig {
+                constant,
+                small_sample: false,
+            };
+            let m = msg(panel_random_effects(&data, cfg).unwrap_err());
+            assert!(
+                m.starts_with("outcome:") && m.contains("constant within every entity"),
+                "{label}, constant = {constant}: {m}"
+            );
+        }
+    }
+    // An outcome that varies within entities, even by little against its
+    // level, still fits; the exact-within-fit refusal keeps its wording.
+    let tiny = Mat::from_fn(50, 30, |i, t| {
+        1e3 * levels[i] + 1e-6 * raw.regs[0].1[(i, t)] + 1e-6 * ((i * 31 + t * 17) % 13) as f64
+    });
+    let data = PanelData::unbalanced(tiny, raw.regs.clone(), &raw.mask).unwrap();
+    assert!(panel_random_effects(&data, RandomEffectsConfig::default()).is_ok());
+    let exact = Mat::from_fn(50, 30, |i, t| levels[i] + 0.5 * raw.regs[0].1[(i, t)]);
+    let data = PanelData::unbalanced(exact, raw.regs.clone(), &raw.mask).unwrap();
+    let m = msg(panel_random_effects(&data, RandomEffectsConfig::default()).unwrap_err());
+    assert!(m.starts_with("outcome: the within residuals vanish"), "{m}");
+}

@@ -48,6 +48,16 @@ Reference and grade (honest):
     the Mundlak / correlated-random-effects identity — random effects on
     [const, x, mean_i(x)] reproduces `PanelOLS(entity_effects=True)`
     slopes (stored with the cluster-robust Wald on the mean coefficients).
+  * Driscoll-Kraay at the LARGEST ADMISSIBLE bandwidth (`dk_bandwidth_edge`):
+    `bandwidth + 1` equal to the number of periods that carry scores (T for
+    random effects, T - 1 for first differences), every lag weighted — the
+    untruncated Bartlett estimator. linearmodels accepts it (stored, the
+    independent-package leg) and raises one step beyond (asserted; its
+    message stored); tsecon refuses there too. Why: the per-period score
+    sums add to X'e = 0, so past T - 1 the meat is T / (bandwidth + 1)
+    times the meat at T - 1 and every standard error shrinks like
+    sqrt(T / (bandwidth + 1)) (asserted here on the calendar transcription
+    below at bandwidth 3T, and stored as `beyond`).
   * DOCUMENTED divergences (stored under `divergences`, pinned by the Rust
     property tests): with an interior period missing for EVERYONE
     linearmodels differences across the hole and lags its Driscoll-Kraay
@@ -473,7 +483,7 @@ def np_re_calendar_dk(y, regs, mask, bw):
 
 def main():
     fx = {"_meta": META, "datasets": {}, "re_cases": [], "be_cases": [], "fd_cases": [],
-          "fm_cases": [], "mundlak": {}, "divergences": {}}
+          "fm_cases": [], "mundlak": {}, "dk_bandwidth_edge": {}, "divergences": {}}
 
     data = {
         "empluk": empluk(),
@@ -612,6 +622,39 @@ def main():
         fx["fm_cases"].append({"name": ds, "dataset": ds, "regressors": "all", "constant": True, **res})
     assert fx["fm_cases"][2]["periods_used"][20] is False
 
+    # ---------------- Driscoll-Kraay at the largest admissible bandwidth
+    y, regs, mask = data["balanced"]
+    t_len = mask.shape[1]
+    slopes = [nm for nm, _ in regs]
+    names = ["const"] + slopes
+    df = frame(y, regs, mask, True)
+    re_mod = RandomEffects(df["y"], df[names])
+    dfd = frame(y, regs, mask, False)
+    fd_mod = FirstDifferenceOLS(dfd["y"], dfd[slopes])
+    edge = {"dataset": "balanced", "n_periods": int(t_len)}
+    for key, mod, cols, s_periods in (("re", re_mod, names, t_len), ("fd", fd_mod, slopes, t_len - 1)):
+        kern = {"cov_type": "kernel", "kernel": "bartlett"}
+        r = mod.fit(bandwidth=s_periods - 1, **kern)
+        try:
+            # the covariance is a lazy property: force it
+            _ = mod.fit(bandwidth=s_periods, **kern).std_errors
+            raise AssertionError(f"linearmodels {key} accepted bandwidth = {s_periods}")
+        except ValueError as exc:
+            msg = str(exc)
+        edge[key] = {"score_periods": int(s_periods), "bandwidth": float(s_periods - 1),
+                     **pack(r, cols), "linearmodels_error_at_bandwidth_plus_one": msg}
+    b_edge, cov_edge = np_re_calendar_dk(y, regs, mask, t_len - 1)
+    assert rel(np.sqrt(np.diag(cov_edge)), edge["re"]["bse"]) < 1e-10
+    bw_far = 3 * t_len
+    _, cov_far = np_re_calendar_dk(y, regs, mask, bw_far)
+    ratio = np.sqrt(np.diag(cov_far) / np.diag(cov_edge))
+    assert np.max(np.abs(ratio / np.sqrt(t_len / (bw_far + 1)) - 1)) < 1e-10, ratio
+    edge["beyond"] = {"estimator": "re", "bandwidth": float(bw_far),
+                      "bse_formula": [float(v) for v in np.sqrt(np.diag(cov_far))],
+                      "bse_ratio_to_edge": [float(v) for v in ratio],
+                      "sqrt_T_over_bandwidth_plus_one": float(np.sqrt(t_len / (bw_far + 1)))}
+    fx["dk_bandwidth_edge"] = edge
+
     # ---------------- documented divergences: a period nobody observes
     y, regs, mask = data["empluk"]
     hole = mask.copy()
@@ -692,6 +735,11 @@ def main():
     path = OUT / "panel_static.json"
     path.write_text(json.dumps(fx, separators=(",", ":")))
     print(f"wrote {path} ({path.stat().st_size} bytes)")
+    for key in ("re", "fd"):
+        e = fx["dk_bandwidth_edge"][key]
+        print("DK edge", key, "bandwidth", e["bandwidth"], "bse", np.round(e["bse"], 8),
+              "| beyond:", e["linearmodels_error_at_bandwidth_plus_one"])
+    print("DK beyond (formula)", fx["dk_bandwidth_edge"]["beyond"])
     for c in fx["re_cases"]:
         print("RE", c["name"], np.round(c["se"]["cluster"]["params"][:4], 8), "s2u", c["sigma2_effects"])
     for c in fx["be_cases"]:

@@ -150,9 +150,9 @@ cluster covariances.
 |------|----------|---------|-------|
 | `panel_fe` | `se_type` | `"cluster"` | `"nonrobust"`, `"cluster"` (by entity), `"driscoll_kraay"` |
 | | `mask` | `None` | N×T 0/1 (or bool) flags, 1 where the entity is observed in that period — an **unbalanced** panel; cells outside the mask are ignored and may hold NaN; without a mask a NaN anywhere is refused (0.10.0; see [the mask section](#unbalanced-panels-the-observation-mask-mask)) |
-| | `bandwidth` | `None` | Driscoll-Kraay kernel truncation, `4.0` when omitted under `se_type="driscoll_kraay"` — the only `se_type` it acts on. Passing it explicitly with any other `se_type` **raises** (0.6.0; it used to be silently absorbed, so `panel_fe(..., bandwidth=8)` under the default `"cluster"` was a complete no-op) |
+| | `bandwidth` | `None` | Driscoll-Kraay kernel truncation, `4.0` when omitted under `se_type="driscoll_kraay"` — the only `se_type` it acts on. Passing it explicitly with any other `se_type` **raises** (0.6.0; it used to be silently absorbed, so `panel_fe(..., bandwidth=8)` under the default `"cluster"` was a complete no-op). `bandwidth + 1` above the number of periods that carry scores (`T` on a balanced panel) **raises** (0.11.0; see [the static menu](#the-static-menu-random-effects-between-first-differences-fama-macbeth)) |
 | `panel_re` | `se_type` | `"cluster"` | `"nonrobust"`, `"hc1"` (alias `"robust"`: the `n/(n−K)` White sandwich), `"cluster"` (by entity), `"driscoll_kraay"` (calendar periods) |
-| | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`; explicit under any other `se_type` **raises** |
+| | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`; explicit under any other `se_type` **raises**; `bandwidth + 1` above the periods that carry scores (`T` balanced; `T − 1` for `panel_fd`) **raises** |
 | | `constant` | `True` | the intercept `const`, first; `False` keeps linearmodels' `n − K − N + 1` within denominator |
 | | `small_sample` | `False` | linearmodels' small-sample variance components when the entities' counts differ (a no-op otherwise); **refused** on a rank-deficient between design — see [the static menu](#the-static-menu-random-effects-between-first-differences-fama-macbeth) |
 | | `mask` | `None` | same contract as `panel_fe` (all four static callables) |
@@ -167,13 +167,13 @@ cluster covariances.
 | | `entity_effects` / `time_effects` | `True` / `True` | the DJO/BHM two-way design; at least one effect is required |
 | | `entity_trends` | `False` | entity-specific linear trends (BHM's robustness spec); requires `entity_effects=True` |
 | | `se_type` | `"cluster"` | by entity — the DJO default; `"driscoll_kraay"` for cross-sectionally dependent weather (needs a long `T`); `"nonrobust"` |
-| | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`; explicit under any other `se_type` **raises** |
+| | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`; explicit under any other `se_type` **raises**; `bandwidth + 1` above the periods that carry scores (`T − L` balanced) **raises** |
 | | `eval_points` | `None` | points at which the marginal effect of the cumulative quadratic response is evaluated; acts only under `powers=2` (`None` there = each regressor's pooled mean over the observed cells) and **raises** under `powers=1` |
 | | `mask` | `None` | same contract as `panel_fe`; `nobs` counts the lagged rows whose every lag is observed |
 | `panel_lp` | `horizon` | `8` | IRF horizons |
 | | `n_lag_controls` | `2` | lags of outcome/shock included as controls |
 | | `se_type` | `"driscoll_kraay"` | robust to cross-sectional dependence |
-| | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`, and an explicit bandwidth with `"cluster"`/`"nonrobust"` **raises** instead of being silently absorbed |
+| | `bandwidth` | `None` | same contract as `panel_fe`: `4.0` when omitted under `"driscoll_kraay"`, and an explicit bandwidth with `"cluster"`/`"nonrobust"` **raises** instead of being silently absorbed; `bandwidth + 1` above the periods that carry scores at some horizon `h` (`T − h − n_lag_controls` balanced) **raises**, naming `h` |
 | | `cumulative` | `False` | `True` for cumulative IRFs |
 | | `jackknife` | `False` | Dhaene-Jochmans half-panel (time-split) jackknife; corrects the **points only**, SEs stay the full-sample plug-in (measured: 95% coverage 0.880 → 0.804 at T=60 — see the [panel-LP cookbook](../../cookbook/panel-lp-standard-errors.md#gotchas)) |
 | | `bias_correction` | `"none"` | `"spj"` = Mei-Sheng-Shi split-panel jackknife: corrected points **and** the reference adjusted-score SEs; `"dj"` = alias for `jackknife=True`. Setting `jackknife=True` together with `"spj"` raises |
@@ -307,10 +307,22 @@ period nobody observes contributing a zero score and counting as elapsed
 time; linearmodels lags over the periods present. They agree whenever every
 period carries an observation (every fixture), and differ otherwise — on
 EmplUK without 1980 the RE intercept's DK standard error is 0.2862
-(calendar) against linearmodels' 0.3162. A bandwidth at or beyond the
-number of periods keeps `panel_fe`'s contract (every available lag is
-weighted), where linearmodels raises once `bandwidth + 1` exceeds the
-periods present.
+(calendar) against linearmodels' 0.3162. The largest bandwidth accepted is
+one less than the number of periods that carry scores, `S` (`T` for a
+balanced random-effects fit, `T − 1` for first differences): every lag is
+then weighted, the untruncated Bartlett estimator. One step beyond,
+linearmodels raises and so does tsecon, naming `bandwidth`. This holds for
+every Driscoll-Kraay covariance in the house: `panel_fe`,
+`panel_distributed_lag` and `panel_lp`, whose message names the horizon
+that ran short. Beyond `S − 1` no lag is added. The score sums add up to
+`X'e = 0`, so the weighted autocovariances telescope, and each standard
+error is the one at `S − 1` times `sqrt(S / (bandwidth + 1))`. On the
+fixture's balanced 25 × 8 panel, bandwidth 24 gives `sqrt(8/25) = 0.566`
+times the edge value. A large enough bandwidth drives the standard errors
+to 0 and the t-statistics to infinity. Before 0.11.0, `panel_fe`,
+`panel_distributed_lag` and `panel_lp` returned those numbers. The edge values for random effects (bandwidth 7)
+and first differences (6) are pinned against linearmodels
+(`dk_bandwidth_edge` in `fixtures/panel_static.json`).
 
 **Fama-MacBeth.** A period is skipped when fewer than `K` entities are
 observed in it or its cross-section is rank-deficient. tsecon decides the
