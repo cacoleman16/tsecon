@@ -182,6 +182,31 @@ def test_stepm_fwer_study_recorded():
             assert set(s05) <= set(s10)
 
 
+def test_forecasting_card_stepm_table_quotes_the_fixture():
+    """The family-wise-error table in docs/reference/model-cards/forecasting.md
+    quotes arch's rates and arch-vs-arch agreement exactly as the generator
+    stored them (the tsecon columns are printed by the crate test and the
+    paired lab script)."""
+    card = (FIX.parent / "docs" / "reference" / "model-cards" / "forecasting.md").read_text(encoding="utf-8")
+    st = SPA["_meta"]["stepm_fwer_study"]
+    rows = 0
+    for line in card.splitlines():
+        m = re.match(r"\| `(lfc|partial_null|mixed|stepdown)` \| (0\.05|0\.10) \|(.*)\|\s*$", line)
+        if not m:
+            continue
+        rows += 1
+        cells = [c.strip() for c in m.group(3).split("|")]
+        a = st["designs"][m.group(1)]["rates"]["0.05" if m.group(2) == "0.05" else "0.1"]
+        assert float(cells[1]) == pytest.approx(a["fwer"], abs=5e-4), line
+        for col, key in ((3, "all_power"), (5, "avg_power")):
+            if a[key] is None:
+                assert cells[col] == "—", line
+            else:
+                assert float(cells[col]) == pytest.approx(a[key], abs=5e-5), line
+        assert float(cells[7]) == pytest.approx(a["arch_agreement"], abs=5e-4), line
+    assert rows == 8
+
+
 @pytest.mark.parametrize("label", ["lfc", "partial_null", "mixed", "stepdown"])
 def test_stepm_fwer_paired_with_arch(label):
     """tsecon's un-studentized StepM against arch's on the SAME seeded panels

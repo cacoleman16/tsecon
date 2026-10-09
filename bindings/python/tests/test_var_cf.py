@@ -700,6 +700,50 @@ def test_var_svar_card_example_prints_what_it_says(capsys):
         assert line in card, f"card does not show: {line!r}"
 
 
+def test_var_svar_normality_card_example_prints_what_it_says(capsys):
+    """The residual-normality example in docs/reference/model-cards/var-svar.md
+    (three statistics, the unit dependence of the symmetric root, the k = 1
+    entry point, None below eight observations) prints exactly the numbers
+    the card shows."""
+    rng = np.random.default_rng(0)
+    k, n = 3, 200
+    A = np.array([[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.5]])
+    L = np.array([[1.0, 0.0, 0.0], [0.8, 0.6, 0.0], [0.5, 0.3, 0.8]])
+    Y = np.zeros((n, k))
+    for t in range(1, n):
+        Y[t] = A @ Y[t - 1] + L @ rng.standard_t(6, k)
+    d = tsecon.var_diagnostics(Y, lags=1, nlags=10)
+    for key in ("jarque_bera", "jarque_bera_symmetric", "doornik_hansen"):
+        print(f"{key:22s} {d[key]:7.2f}   p = {d[key + '_pvalue']:.2g}")
+    print("DH z1 (skewness):", np.round(d["doornik_hansen_z_skewness"], 2),
+          " z2 (kurtosis):", np.round(d["doornik_hansen_z_kurtosis"], 2))
+    d2 = tsecon.var_diagnostics(Y * [1.0, 100.0, 0.01], lags=1, nlags=10)
+    print("rescaled units:", [round(d2[key], 2) for key in
+                              ("jarque_bera", "jarque_bera_symmetric", "doornik_hansen")])
+    u = np.array(tsecon.var_fit(Y, lags=1)["resid"])
+    assert tsecon.multivariate_normality(u)["doornik_hansen"] == d["doornik_hansen"]
+    one = tsecon.multivariate_normality(u[:, 0])
+    print(f"series 0 alone: DH {one['doornik_hansen']:.2f} (p = {one['doornik_hansen_pvalue']:.2g}),"
+          f" JB {one['jarque_bera']:.2f} = jarque_bera {tsecon.jarque_bera(u[:, 0])['statistic']:.2f}")
+    print("T = 7:", tsecon.var_diagnostics(Y[:8], lags=1, nlags=2)["doornik_hansen"])
+    out = capsys.readouterr().out
+    expected = (
+        "jarque_bera              37.12   p = 1.7e-06\n"
+        "jarque_bera_symmetric    32.50   p = 1.3e-05\n"
+        "doornik_hansen           27.25   p = 0.00013\n"
+        "DH z1 (skewness): [ 1.87 -0.17 -0.04]  z2 (kurtosis): [3.84 2.11 2.12]\n"
+        "rescaled units: [37.12, 15.12, 27.25]\n"
+        "series 0 alone: DH 13.98 (p = 0.00092), JB 23.15 = jarque_bera 23.15\n"
+        "T = 7: None\n"
+    )
+    assert out == expected
+    card = (Path(__file__).parents[3] / "docs" / "reference" / "model-cards" / "var-svar.md").read_text(encoding="utf-8")
+    for line in expected.splitlines():
+        assert line in card, f"card does not show: {line!r}"
+    # The prose under the example.
+    assert "moves the\nsymmetric-root one from 32.50 to 15.12" in card
+
+
 def _guide_chapter_7_data():
     """The three-column system docs/guide/07-multivariate.md builds at the top
     of the chapter: demand growth, output growth, policy rate."""
