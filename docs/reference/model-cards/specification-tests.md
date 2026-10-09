@@ -732,10 +732,12 @@ is unnecessary: `P(d >= d_obs) = 1 - P(d <= d_obs)`.
 **Failure modes.** Using it with a lagged dependent variable: under the null
 the test then rejects only about 2% of the time at a nominal 5% (measured
 below), and its p-value is no longer exact. Reading a non-rejection as "no
-serial correlation" when the dependence is not first order. A long sample is
-refused by the cap rather than taking minutes, and a collinear `x`, a `y` that
-`x` fits exactly, or a sample with `T < k + 2` are refused with the parameter
-named.
+serial correlation" when the dependence is not first order. Treating a long
+sample's `pvalue` as a number: above `T = 4000` the exact p-value is not
+computed (it would take minutes), so `pvalue` is `None` and only the statistic
+is returned. Test `pvalue is None` before comparing it, or use
+`breusch_godfrey_test` at that length. A collinear `x`, a `y` that `x` fits
+exactly, or a sample with `T < k + 2` are refused with the parameter named.
 
 **Validated against.** The statistic is checked against statsmodels
 `durbin_watson`, and the exact p-value against a documented-formula golden on
