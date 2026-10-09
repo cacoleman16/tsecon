@@ -5300,9 +5300,12 @@ def var_conditional_forecast(
     trend: str = ...,
     steps: int | None = ...,
     alpha: float = ...,
+    condition_sd: Sequence[Sequence[float | None]] | _ArrayLike | None = ...,
+    soft: str | None = ...,
 ) -> dict[str, Any]:
-    """Conditional (hard-path) VAR forecast: the forecast of every series when
-    some cells of the future path are pinned to given values.
+    """Conditional VAR forecast, hard or soft: the forecast of every series
+    when some cells of the future path are pinned to given values, or
+    conditioned with a stated standard deviation.
 
     `conditions` is a nested list with one row per horizon and one entry per
     series: a number pins that (horizon, series) cell, None (or NaN) leaves
@@ -5325,20 +5328,44 @@ def var_conditional_forecast(
     Kalman smoother with the free future cells set missing
     (Bańbura-Giannone-Lenza 2015), the second golden leg.
 
-    Keys (each path `steps x k`, row h = horizon h + 1): `point` (pinned
-    cells hold their condition exactly), `unconditional` (bitwise
+    Soft conditions: `condition_sd` (same shape as `conditions`, exactly
+    `len(conditions)` rows) gives a conditioned cell a STANDARD DEVIATION
+    > 0; 0, None or NaN keeps it hard, and a free cell takes only None, NaN
+    or 0. Any sd > 0 REQUIRES `soft`, because the two readings disagree on
+    whether the cell's point is its value. `soft="density"`
+    (Andersson-Palmqvist-Waggoner 2010; "the scenario says inflation
+    ~ N(2, 0.5^2)"): the cell's forecast distribution IS N(value, sd^2) —
+    point = value and se = sd exactly; path, shocks and `mahalanobis` are
+    the hard ones at the central values (`mahalanobis` ignores sd).
+    `soft="signal"` (Monti 2010; "a nowcast with known noise"): the value is
+    a noisy reading y + N(0, sd^2) — point, se and shocks are the posterior
+    given the readings (the cell is NOT pinned; its se is below sd) and
+    `mahalanobis` is r'(B Sigma B' + Omega)^{-1} r. Hard cells are pinned in
+    both. Interval (truncated) conditions and parameter uncertainty are not
+    provided.
+
+    Keys (each path `steps x k`, row h = horizon h + 1): `point` (hard
+    cells, and every conditioned cell under soft="density", hold their
+    condition exactly), `unconditional` (bitwise
     `var_forecast(...)["point"]`), `cov` ([h][i][j] conditional covariance
-    per horizon; pinned cells have a zero row/column), `se` (exactly 0 at
-    pinned cells), `unconditional_se`, `lower`/`upper` (innovation
-    uncertainty only, coefficients treated as known), `shocks` (implied
-    reduced-form innovations), `orth_shocks` (Cholesky-orthogonalised in the
-    column order — the only ordering-dependent key), `constrained`,
-    `n_constrained`, `mahalanobis` (squared Sigma-norm of the implied
-    shocks), `mahalanobis_pvalue` (chi2(n_constrained) tail: small means the
-    model is pushed hard), `steps`, `alpha`.
+    per horizon; hard cells have a zero row/column, a density soft cell sd^2
+    and 0 against the other conditioned cells of its horizon), `se` (exactly
+    0 at hard cells, exactly sd at density soft cells), `unconditional_se`,
+    `lower`/`upper` (innovation uncertainty only, coefficients treated as
+    known), `shocks` (implied reduced-form innovations), `orth_shocks`
+    (Cholesky-orthogonalised in the column order — the only
+    ordering-dependent key), `constrained` (every conditioned cell, hard or
+    soft; a signal soft cell is constrained but not pinned), `n_constrained`,
+    `mahalanobis` (squared Sigma-norm of the implied shocks), `mahalanobis_pvalue`
+    (chi2(n_constrained) tail: small means the model is pushed hard), `mode`
+    ("hard", "density" or "signal"), `condition_sd` (steps x k: the sd
+    applied at each soft cell, 0.0 elsewhere), `n_soft` (cells with sd > 0),
+    `steps`, `alpha`.
 
     Further arguments, with defaults: `lags` (2), `trend` ("c"), `steps`
-    (None: `len(conditions)`), `alpha` (0.05).
+    (None: `len(conditions)`), `alpha` (0.05), `condition_sd` (None: every
+    condition hard), `soft` (None; required — "density" or "signal" —
+    whenever any `condition_sd` is above 0, and refused otherwise).
     """
 
 def var_diagnostics(

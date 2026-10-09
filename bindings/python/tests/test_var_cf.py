@@ -411,8 +411,13 @@ def test_docstrings_name_every_returned_key_and_signatures_carry_real_defaults()
         for name, prm in inspect.signature(fn).parameters.items():
             assert prm.default is not Ellipsis, f"{fn.__name__}({name}) has an Ellipsis default"
     sig = inspect.signature(tsecon.var_conditional_forecast)
-    assert list(sig.parameters) == ["data", "conditions", "lags", "trend", "steps", "alpha"]
+    # 0.11.0 appended the soft-condition keywords at the END, so positional
+    # calls from 0.10.0 are unaffected.
+    assert list(sig.parameters) == ["data", "conditions", "lags", "trend", "steps", "alpha",
+                                    "condition_sd", "soft"]
     assert sig.parameters["steps"].default is None
+    assert sig.parameters["condition_sd"].default is None
+    assert sig.parameters["soft"].default is None
     assert list(inspect.signature(tsecon.var_diagnostics).parameters) == ["data", "lags", "trend", "nlags"]
     assert list(inspect.signature(tsecon.var_select_order).parameters) == ["data", "max_lags", "trend"]
 
