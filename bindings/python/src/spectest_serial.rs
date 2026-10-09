@@ -191,7 +191,7 @@ fn named_error(e: SpecTestError, k_x: usize) -> PyErr {
 ///
 /// COST: about `T k_aux^2 / 2 + 6 k_aux^3` multiply-adds for the auxiliary
 /// regression — linear in `T` at a fixed `nlags`, quadratic to cubic in
-/// `nlags` (measured: 0.05 s at T = 10^5 with nlags = 10, 30 s with
+/// `nlags` (measured: 0.05 s at T = 10^5 with nlags = 10, 14.5 s with
 /// nlags = 564; model card). An order whose auxiliary design would pass
 /// 2^26 entries (512 MiB) or 2^34 multiply-adds (about half a minute) is
 /// refused before anything is built, naming `nlags` and the largest order

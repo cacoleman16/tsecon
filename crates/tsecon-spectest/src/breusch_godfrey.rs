@@ -69,12 +69,14 @@ pub fn breusch_godfrey_default_nlags(nobs: usize) -> usize {
 /// an allocation fails.
 pub const BG_MAX_AUX_CELLS: usize = 1 << 26;
 
-/// Work budget of the auxiliary regression, in multiply-adds: forming its
-/// normal equations costs `T k_aux^2 / 2` and factoring and inverting them
-/// about `6 k_aux^3` (see [`breusch_godfrey_work`]). Measured at 1.0 to 2.2
-/// ns per unit for `k_aux` of 100 and more (`lab/serial_corr/bg_cost.py`),
-/// so `2^34` is about half a minute (26.5 s at `T = 3000` and 29.6 s at
-/// `T = 1e5` at the cap); a longer order is refused, naming `nlags`.
+/// Work budget of the auxiliary regression, in multiply-adds, priced as its
+/// normal equations: forming them costs `T k_aux^2 / 2` and factoring and
+/// inverting them about `6 k_aux^3` (see [`breusch_godfrey_work`]). Since
+/// 0.11 the OLS engine solves by a blocked Householder QR instead, which
+/// runs inside that price: measured at 0.26 to 1.47 ns per unit for `k_aux`
+/// of 100 and more (`lab/serial_corr/bg_cost.py`), so `2^34` is at most
+/// about half a minute (14.5 s at `T = 1e5` and 4.5 s at `T = 3000` at the
+/// cap); a longer order is refused, naming `nlags`.
 pub const BG_WORK_BUDGET: u128 = 1 << 34;
 
 /// The work count [`BG_WORK_BUDGET`] is checked against for `n`

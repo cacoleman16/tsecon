@@ -518,19 +518,21 @@ constant) both forms held their size (3.7% to 6.1%).
 observations has a default order of 0, and the refusal says to pass `nlags`
 or a longer `y`.
 
-**COST, and the budgets on `nlags`.** The auxiliary regression costs about
-`T k_aux^2 / 2 + 6 k_aux^3` multiply-adds, building its normal equations
-and then factoring and inverting them. That is linear in `T` at a fixed
-order but quadratic to cubic in `nlags`. Measured on the release wheel
-(`lab/serial_corr/bg_cost.py`, output in `lab/serial_corr/out/bg_cost.txt`,
-one call per cell on a shared 4-core machine, `x` a constant and two
-regressors): 0.05 s at `T = 10^5` and 0.56 s at `T = 10^6` with
-`nlags = 10`, 1.2 s at `T = 20000` with `nlags = 250`, and 9.4 s at
-`T = 5000` with `nlags = 1000`.
+**COST, and the budgets on `nlags`.** The budget prices the auxiliary
+regression at `T k_aux^2 / 2 + 6 k_aux^3` multiply-adds, building its normal
+equations and then factoring and inverting them; since 0.11 the OLS engine
+solves it by a blocked Householder QR, which runs inside that price. That is
+linear in `T` at a fixed order but quadratic to cubic in `nlags`. Measured
+on the release wheel (`lab/serial_corr/bg_cost.py`, output in
+`lab/serial_corr/out/bg_cost.txt`, one call per cell on a shared 4-core
+machine, `x` a constant and two regressors): 0.05 s at `T = 10^5` and
+0.62 s at `T = 10^6` with `nlags = 10`, 0.70 s at `T = 20000` with
+`nlags = 250`, and 3.0 s at `T = 5000` with `nlags = 1000`.
 An order whose auxiliary design would hold more than 2^26 entries (512 MiB;
 the OLS engine keeps a second copy) or cost more than 2^34 multiply-adds
-(about half a minute: 29.6 s at `T = 10^5` with `nlags = 564` and 26.5 s at
-`T = 3000` with `nlags = 1338`, the largest orders the budget admits there)
+(at most about half a minute: 14.5 s at `T = 10^5` with `nlags = 564` and
+4.5 s at `T = 3000` with `nlags = 1338`, the largest orders the budget admits
+there)
 is refused before anything is built. The refusal names `nlags` and the
 largest order that fits, and takes 3 ms. At `T = 10^5`, `nlags = 20000`
 would need a 16 GB design; before the budget it aborted the interpreter in

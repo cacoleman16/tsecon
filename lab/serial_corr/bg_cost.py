@@ -2,9 +2,11 @@
 auxiliary regression, the numbers behind its memory and work budgets.
 
 The auxiliary design is T x k_aux (k_aux = k + nlags, plus one when a
-constant is added). Forming its normal equations costs T k_aux^2 / 2
-multiply-adds and factoring and inverting them about 6 k_aux^3, so the
-work count is W = T k_aux^2 / 2 + 6 k_aux^3; the crate refuses an order
+constant is added). The budget prices it as its normal equations: forming
+them costs T k_aux^2 / 2 multiply-adds and factoring and inverting them
+about 6 k_aux^3, so the work count is W = T k_aux^2 / 2 + 6 k_aux^3 (since
+0.11 the OLS engine solves by a blocked Householder QR, which runs inside
+that price); the crate refuses an order
 with W above 2^34 or T k_aux above 2^26 entries (512 MiB), naming nlags
 and the largest order that fits. This script times the test across the
 (T, nlags) plane, reports seconds per unit of W, runs the largest

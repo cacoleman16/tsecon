@@ -27,6 +27,9 @@ use crate::{mat_to_vec2, parse_trend, py_type_name, to_py, var_results};
 /// beyond `len(conditions)` up to `steps` are free, so a short list
 /// conditions the near horizons only; `steps` defaults to `len(conditions)`.
 /// At least one cell must be pinned (the all-free case is `var_forecast`).
+/// Every cell of `conditions` and `condition_sd` is a real number, None or
+/// NaN: a complex array or cell is refused by name, not truncated to its
+/// real part.
 /// COST: the guard on `steps` is a MEMORY budget (`steps * k` cells times the
 /// constrained cells must stay inside 2^24 doubles), but the work is
 /// QUADRATIC in `steps` — measured on a k = 3 VAR(2): 0.03 s at 1 000 steps,

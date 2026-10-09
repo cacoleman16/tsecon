@@ -298,10 +298,20 @@ def test_overflow_is_refused_in_the_callers_terms():
         tsecon.dfm_smooth(y, **{**kw, "scale": np.full(5, 1e-300)})
     with pytest.raises(ValueError, match=r"not finite \(loadings, factor_cov or idiosyncratic so large"):
         tsecon.dfm_smooth(y, **{**kw, "loadings": np.full((5, 1), 1e200)})
-    for over in ({"idiosyncratic": np.full(5, 1e308)}, {"factor_cov": np.array([[1e308]])}):
-        with pytest.raises(ValueError, match=r"Kalman recursion overflowed") as exc:
-            tsecon.dfm_smooth(y, **{**kw, **over})
-        assert "missing" not in str(exc.value)
+    with pytest.raises(ValueError, match=r"Kalman recursion overflowed") as exc:
+        tsecon.dfm_smooth(y, **{**kw, "factor_cov": np.array([[1e308]])})
+    assert "missing" not in str(exc.value)
+    # idiosyncratic = 1e308 does not overflow anything: every prediction
+    # variance is 1e308 to the last bit (the factor part is far below its
+    # ulp) and v^2 / F vanishes, so loglik is the closed form below. It used
+    # to be refused as an overflow because the dense jittered Cholesky that
+    # confirmed the diagonal observation covariance overflowed (audit round
+    # 16, H16-05); a nonnegative diagonal is now accepted by inspection.
+    out = tsecon.dfm_smooth(y, **{**kw, "idiosyncratic": np.full(5, 1e308)})
+    n_obs = int(np.isfinite(y).sum())
+    want = -0.5 * n_obs * (np.log(2 * np.pi) + np.log(1e308))
+    assert abs(out["loglik"] - want) <= 1e-12 * abs(want)
+    assert np.all(np.isfinite(out["smoothed_state"]))
     # An all-NaN panel is a request with nothing to condition on, not an error.
     out = tsecon.dfm_smooth(np.full_like(y, np.nan), **kw)
     assert out["loglik"] == 0.0 and np.all(np.isfinite(out["smoothed_state"]))
