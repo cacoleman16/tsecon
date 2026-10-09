@@ -8,7 +8,7 @@
 //! and "the transition matrix", which are not arguments of this function.
 
 use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tsecon_nowcast::tsecon_ssm::tsecon_linalg::LinalgError;
@@ -54,8 +54,16 @@ fn err(msg: String) -> PyErr {
 
 /// A 2-D float argument: a NumPy array (pandas/array-likes are coerced to
 /// one by the Python layer) or a nested list of rows — the shape
-/// `dfm_nowcast` returns `loadings`/`factor_ar`/`factor_cov` in.
+/// `dfm_nowcast` returns `loadings`/`factor_ar`/`factor_cov` in. A complex
+/// array or cell is refused by name first (the shared real-numeric gate).
 fn matrix_arg(name: &str, obj: &Bound<'_, PyAny>) -> PyResult<Mat<f64>> {
+    // Before any float extraction: a complex array or cell would otherwise
+    // be read through its `__float__`, which drops the imaginary part.
+    if let Some(why) = crate::real_numeric::non_real_reason(obj, name, true)? {
+        return Err(PyTypeError::new_err(format!(
+            "dfm_smooth: {name} must hold real numbers, {why}"
+        )));
+    }
     if let Ok(a) = obj.extract::<PyReadonlyArray2<'_, f64>>() {
         return Ok(to_faer(&a));
     }

@@ -25,6 +25,7 @@ mod ml_trees;
 mod nowcast_smooth;
 mod panel_dl;
 mod panel_static;
+mod real_numeric;
 mod regime_ci;
 mod spectest_serial;
 mod ssm_uc;
@@ -12326,7 +12327,9 @@ type ImpactArg<'py> = numpy::PyArrayLike2<'py, f64, numpy::AllowTypeChange>;
 /// `numpy.asarray(x, dtype=float64)` would silently drop a complex matrix's
 /// imaginary part (a mere `ComplexWarning`) and read datetimes or numeric
 /// strings as numbers. Only boolean, integer and real floating matrices pass,
-/// which is what an ndarray-only `impact` accepted before.
+/// which is what an ndarray-only `impact` accepted before — the shared
+/// real-numeric gate ([`real_numeric::non_real_reason`]) without its
+/// object-array allowance.
 fn impact_matrix_arg<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Option<ImpactArg<'py>>> {
     if obj.is_none() {
         return Ok(None);
@@ -12343,14 +12346,9 @@ fn impact_matrix_arg<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Option<ImpactArg<
         .import("numpy")?
         .call_method1("asarray", (obj,))
         .map_err(named)?;
-    let dtype = arr.getattr("dtype")?;
-    let kind: String = dtype.getattr("kind")?.extract()?;
-    if !matches!(kind.as_str(), "b" | "i" | "u" | "f") {
+    if let Some(why) = real_numeric::non_real_reason(&arr, "impact", false)? {
         return Err(PyValueError::new_err(format!(
-            "impact must be a real numeric (n, n) matrix, got dtype {}: a complex matrix \
-             is not truncated to its real part, and strings, datetimes or None entries \
-             are not read as numbers",
-            dtype.str()?
+            "impact must be a real numeric (n, n) matrix, {why}"
         )));
     }
     let ndim: usize = arr.getattr("ndim")?.extract()?;
