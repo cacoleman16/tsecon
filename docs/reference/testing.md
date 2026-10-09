@@ -24,13 +24,13 @@ command needs the `--exclude tsecon-python` caveat described
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **1939 passed, 0 failed, 10 ignored** | `cargo test --workspace`, result lines summed |
-| — integration tests in `crates/*/tests/` | 1538 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 245 | |
-| — documentation tests | 56 | |
-| Python binding tests | **2379 passed, 0 failed, 1 skipped** in 362 s with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
-| Crates | 43, **every one** with a `tests/` directory | |
-| Golden fixtures | 100 JSON files, produced by 81 Python generator scripts (plus two R scripts) | `fixtures/` |
+| Rust tests (total) | **2097 passed, 0 failed, 10 ignored** | `cargo test --workspace`, result lines summed |
+| — integration tests in `crates/*/tests/` | 1775 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 265 | |
+| — documentation tests | 57 | |
+| Python binding tests | **3066 passed, 0 failed, 1 skipped** in 1053 s (a 4-core machine shared with other jobs) with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Crates | 44, **every one** with a `tests/` directory | |
+| Golden fixtures | 117 JSON files, produced by 98 Python generator scripts (plus two R scripts) | `fixtures/` |
 | Public Python functions | 202, **all 202** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
 
 Of the 10 ignored tests, 7 are in `tsecon-var` (three stored-bit-pattern
@@ -40,13 +40,13 @@ timing test, and one that emits a fixture snapshot), 2 are in `tsecon-panel`
 (the 600-replication post-double-selection coverage measurement); each
 `#[ignore]` states its reason.
 
-Of the 1548 integration tests — the 1538 that pass plus the 10 `#[ignore]`d —
-**334 are golden tests** and **688 are property tests**. The goldens live in
-77 `*golden*.rs` files across 39 crates (`golden.rs` in most, with additional
+Of the 1785 integration tests — the 1775 that pass plus the 10 `#[ignore]`d —
+**429 are golden tests** and **819 are property tests**. The goldens live in
+92 `*golden*.rs` files across 40 crates (`golden.rs` in most, with additional
 per-surface files such as `engle_granger_golden.rs`, `irf_bands_golden.rs`,
 `proxy_bands_golden.rs`, `ou_golden.rs`, and `star_golden.rs`); the property
-tests live in 67 `*propert*.rs` files across 38 crates. The remainder are
-validation (111 tests in 11 `*validation*.rs` files), cross-check, and
+tests live in 77 `*propert*.rs` files across 40 crates. The remainder are
+validation (120 tests in 12 `*validation*.rs` files), cross-check, and
 reproducibility suites described below.
 
 Those three splits are counted **statically**, and the reason is a trap worth
@@ -257,7 +257,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-2379 tests in 116 files. 68 of the 101 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
+3067 tests in 122 files. 84 of the 117 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -711,7 +711,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 1939 passed, 0 failed
+# 2097 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything
