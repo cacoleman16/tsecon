@@ -273,6 +273,17 @@ def test_bad_orders_are_refused_by_name(order, match):
         tsecon.ardl_bounds_test(y, x, lags=2, order=order)
 
 
+@pytest.mark.parametrize("order, shown", [
+    (b"3", r"b'3'"), (bytearray(b"3"), r"bytearray\(b'3'\)"), (memoryview(b"3"), r"<memory at .*>"),
+], ids=["bytes", "bytearray", "memoryview"])
+def test_bytes_like_orders_are_refused_like_strings(order, shown):
+    """bytes-like objects iterate as ints: with one regressor order=b'3' was
+    silently fitted as order [51]."""
+    y, x = SYSTEMS["sim_k2"]
+    with pytest.raises(ValueError, match=rf"order = {shown} is a string or bytes-like object"):
+        tsecon.ardl_bounds_test(y, x[:, :1], lags=1, order=order)
+
+
 def test_absurd_orders_are_refused_by_name():
     y, x = SYSTEMS["danish"]
     with pytest.raises(ValueError, match=r"order.*2\*\*48"):

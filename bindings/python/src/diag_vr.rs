@@ -5,7 +5,7 @@
 use numpy::{IntoPyArray, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyInt, PyString};
+use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyInt, PyMemoryView, PyString};
 use tsecon_diag::{DiagError, VarianceRatioSpec, VrTrend};
 
 use crate::{to_py, vec1};
@@ -103,10 +103,16 @@ fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>) -> PyResult<(Vec<usize>, bool)
     if is_numpy_bool(h) {
         return Err(not_a_horizon(h));
     }
-    if h.is_instance_of::<PyString>() || h.is_instance_of::<PyBytes>() {
+    // bytearray and memoryview iterate as ints like bytes (b'3' would read as
+    // the horizon 51): refused like it
+    if h.is_instance_of::<PyString>()
+        || h.is_instance_of::<PyBytes>()
+        || h.is_instance_of::<PyByteArray>()
+        || h.is_instance_of::<PyMemoryView>()
+    {
         return Err(PyValueError::new_err(format!(
             "variance_ratio: lags must be an integer horizon or a sequence of them, not a \
-             string (got {}) — {LAGS_HINT}",
+             string or bytes-like object (got {}) — {LAGS_HINT}",
             h.repr().map(|r| r.to_string()).unwrap_or_default()
         )));
     }

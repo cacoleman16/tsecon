@@ -312,6 +312,18 @@ def test_bad_lags_are_refused_by_name(lags):
         tsecon.variance_ratio(_rw(), lags)
 
 
+@pytest.mark.parametrize("lags", [b"3", bytearray(b"3"), memoryview(b"3")],
+                         ids=["bytes", "bytearray", "memoryview"])
+def test_bytes_like_lags_are_refused_as_strings(lags):
+    """bytes-like objects iterate as ints, so bytearray(b'3') and
+    memoryview(b'3') used to pass through as the horizon [51] (bytes alone
+    was refused)."""
+    for call in (lambda: tsecon.variance_ratio(_rw(300), lags),
+                 lambda: tsecon.variance_ratio(_rw(300), lags=lags)):
+        with pytest.raises(ValueError, match=r"\blags\b.*not a string or bytes-like object"):
+            call()
+
+
 @pytest.mark.parametrize(
     "lags, shown",
     [(4.0, "4.0 of type float"), (np.bool_(True), "True of type bool"),

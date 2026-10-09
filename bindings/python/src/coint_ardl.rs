@@ -5,7 +5,9 @@
 use numpy::{IntoPyArray, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PySet, PyString};
+use pyo3::types::{
+    PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PyList, PyMemoryView, PySet, PyString,
+};
 use tsecon_coint::{ArdlOptions, DolsIc, PssCase};
 
 use crate::{to_py, vec1};
@@ -104,10 +106,16 @@ fn order_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<usize>>> {
             obj.repr()?
         )));
     }
-    if obj.is_instance_of::<PyString>() {
+    // bytes, bytearray and memoryview iterate as ints (b'3' would read as
+    // order [51]): refused like a str
+    if obj.is_instance_of::<PyString>()
+        || obj.is_instance_of::<PyBytes>()
+        || obj.is_instance_of::<PyByteArray>()
+        || obj.is_instance_of::<PyMemoryView>()
+    {
         return Err(PyValueError::new_err(format!(
-            "order = {} is a string: pass an int (one order for every regressor) or a list of \
-             ints, one per column of x",
+            "order = {} is a string or bytes-like object: pass an int (one order for every \
+             regressor) or a list of ints, one per column of x",
             obj.repr()?
         )));
     }
