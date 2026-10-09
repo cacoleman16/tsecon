@@ -5,7 +5,10 @@
 use numpy::{IntoPyArray, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyFrozenSet, PyInt, PySet, PyString};
+use pyo3::types::{
+    PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyFrozenSet, PyInt, PyMemoryView, PySet,
+    PyString,
+};
 use tsecon_diag::{DiagError, VarianceRatioSpec, VrTrend};
 
 use crate::{to_py, vec1};
@@ -146,6 +149,15 @@ fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>, n: usize) -> PyResult<(Vec<usi
             h.repr().map(|r| r.to_string()).unwrap_or_default()
         )));
     }
+    // A bytearray or memoryview iterates as small ints, so without this it
+    // would pass as horizons where `bytes` is refused.
+    if h.is_instance_of::<PyByteArray>() || h.is_instance_of::<PyMemoryView>() {
+        return Err(PyValueError::new_err(format!(
+            "variance_ratio: lags must be an integer horizon or a sequence of them, not a \
+             binary buffer (got a {}) — {LAGS_HINT}",
+            type_name(h)
+        )));
+    }
     if let Ok(v) = h.extract::<i64>() {
         return Ok((vec![horizon_from_i64(v)?], true));
     }
@@ -168,6 +180,18 @@ fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>, n: usize) -> PyResult<(Vec<usi
              per-horizon outputs to follow — {LAGS_HINT}",
             h.repr().map(|r| r.to_string()).unwrap_or_default()
         )));
+    }
+    // A 2-D array or a DataFrame iterates over rows or column LABELS, which
+    // would pass silently as horizons when the labels are ints: only a 1-D
+    // sequence is read.
+    if let Ok(ndim) = h.getattr("ndim").and_then(|d| d.extract::<usize>()) {
+        if ndim > 1 {
+            return Err(PyValueError::new_err(format!(
+                "variance_ratio: lags is a {ndim}-D {}, but horizons are a 1-D sequence \
+                 (a DataFrame would be read by its column labels) — {LAGS_HINT}",
+                type_name(h)
+            )));
+        }
     }
     // A float (even an integral one such as 4.0), a 0-d float array or a
     // Fraction is not iterable and not an int horizon: name the value and

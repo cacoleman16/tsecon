@@ -133,3 +133,28 @@ def test_uc_forecasts_are_not_labelled_with_parameter_names():
     for key in ("forecast", "forecast_var"):
         assert "=" not in _line(text, key), _line(text, key)
     assert all(f"{n}=" in _line(text, "params") for n in out["param_names"])
+
+
+def test_per_coefficient_flags_and_states_keep_their_labels():
+    """The explicit pairing must not drop a label length-matching got right:
+    garch/arima's per-parameter `se_valid`/`boundary` flags, tvp_regression's
+    per-coefficient `sigma2_beta`/`pile_up` (named by `coef_names`), and the
+    ETS `final_states` (the `initial_states` layout)."""
+    rng = np.random.default_rng(0)
+    g = tsecon.garch_fit(rng.standard_normal(600) * 0.01)
+    a = tsecon.arima_fit(np.cumsum(rng.standard_normal(200)), p=1, d=1, q=1, forecast_steps=4)
+    for out in (g, a):
+        text = summarize(out).summary()
+        for key in ("se_valid", "boundary"):
+            assert all(f"{n}=" in _line(text, key) for n in out["param_names"]), _line(text, key)
+    # arima's four forecasts beside four parameters stay unlabelled
+    assert len(a["param_names"]) == len(a["forecast_mean"]) == 4
+    assert "=" not in _line(summarize(a).summary(), "forecast_mean")
+    t = tsecon.tvp_regression(rng.standard_normal(150), rng.standard_normal((150, 2)))
+    text = summarize(t).summary()
+    for key in ("sigma2_beta", "pile_up"):
+        assert all(f"{n}=" in _line(text, key) for n in t["coef_names"]), _line(text, key)
+    y = np.abs(rng.standard_normal(80)) + 10 + np.sin(np.arange(80) * 2 * np.pi / 4)
+    e = tsecon.ets_fit(y, trend="add", seasonal="add", seasonal_periods=4)
+    line = _line(summarize(e).summary(), "final_states")
+    assert line.startswith("final_states  (6,)  [level=") and "seasonal[3]=" in line, line

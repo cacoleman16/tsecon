@@ -35,16 +35,22 @@ _WIDTH = 68
 # vector happened to share the length (audit round 15): ardl_bounds_test's
 # four bound levels beside a four-parameter UECM, panel_fama_macbeth's
 # per-period flags when T == K, unobserved_components' forecasts. Everything
-# not listed renders unlabelled, which is the honest default.
+# not listed renders unlabelled, which is the honest default. The table holds
+# every per-coefficient vector a callable returns beside its name list
+# (garch/arima's per-parameter `se_valid`/`boundary` flags, tvp_regression's
+# per-coefficient `sigma2_beta`/`pile_up`, ETS's `final_states`, which has the
+# `initial_states` layout), so none of the labels length matching got right
+# is lost.
 _LABELLED_BY: dict[str, frozenset[str]] = {
     "param_names": frozenset({
         "params", "se", "bse", "tvalues", "pvalues", "se_mle", "se_robust",
-        "at_boundary", "ols_params", "ols_se",
+        "at_boundary", "ols_params", "ols_se", "se_valid", "boundary",
     }),
     "names": frozenset({"params", "se", "bse", "tvalues", "pvalues"}),
+    "coef_names": frozenset({"sigma2_beta", "pile_up"}),
     "long_run_names": frozenset({"long_run", "long_run_se", "long_run_tvalues", "long_run_pvalues"}),
     "full_param_names": frozenset({"full_params", "full_se", "full_tvalues", "full_pvalues"}),
-    "initial_state_names": frozenset({"initial_states"}),
+    "initial_state_names": frozenset({"initial_states", "final_states"}),
 }
 
 

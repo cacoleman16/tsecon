@@ -364,6 +364,9 @@ def test_float_pandas_lags_are_refused_and_int_pandas_lags_accepted():
     with pytest.raises(ValueError, match=r"lags\[0\] = .* is a float"):
         tsecon.variance_ratio(y, pd.Series([2.0, 4.0]))
     assert tsecon.variance_ratio(y, pd.Series([2, 4], dtype="int32"))["lags"] == [2, 4]
+    # a DataFrame iterates over its column labels: refused, not read as [2, 4]
+    with pytest.raises(ValueError, match=r"lags is a 2-D DataFrame"):
+        tsecon.variance_ratio(y, pd.DataFrame(np.zeros((5, 2)), columns=[2, 4]))
 
 
 @pytest.mark.parametrize(
@@ -373,9 +376,13 @@ def test_float_pandas_lags_are_refused_and_int_pandas_lags_accepted():
      (lambda: [2, "4"], r"lags\[1\] = '4' is a string"),
      (lambda: [2, None], r"lags\[1\] = None \(of type NoneType\) is not an integer"),
      (lambda: range(2, 10**12), "more than 300 horizons"),
-     (lambda: itertools.count(2), "more than 300 horizons")],
+     (lambda: itertools.count(2), "more than 300 horizons"),
+     # these iterate as small ints or as rows, so they must be refused whole
+     (lambda: bytearray(b"\x02\x04"), "not a binary buffer"),
+     (lambda: memoryview(b"\x02\x04"), "not a binary buffer"),
+     (lambda: np.array([[2, 4]]), "2-D ndarray, but horizons are a 1-D sequence")],
     ids=["dict", "frozenset", "bool-element", "str-element", "None-element", "huge-range",
-         "endless-iterator"],
+         "endless-iterator", "bytearray", "memoryview", "2-D-array"],
 )
 def test_sequence_refusals_name_the_element_and_stay_bounded(make, match):
     """Every element is named by its position, and an enormous or endless
