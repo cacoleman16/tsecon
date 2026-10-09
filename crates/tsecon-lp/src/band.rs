@@ -185,7 +185,9 @@ use tsecon_stats::simultaneous::{
     sidak_critical_value, sup_t_from_cov,
 };
 
-use crate::design::{check_finite, horizon_sample, outcome_column, single_impulse_design};
+use crate::design::{
+    check_finite, check_horizons, horizon_sample, outcome_column, single_impulse_design,
+};
 use crate::error::LpError;
 use crate::level::lp;
 use crate::smooth::{smooth_lp, SmoothLpResult, SmoothLpSpec};
@@ -604,6 +606,16 @@ pub fn lp_irf_cov(y: &[f64], shock: &[f64], spec: LpSpec) -> Result<LpIrfCov, Lp
             n_lag_controls: p,
         });
     }
+
+    // Refuse an unreachable maximum horizon before the (horizons + 1) x n
+    // influence matrix is sized by it (the same rows and regressors as lp).
+    check_horizons(spec.horizons, |h| {
+        let q = match spec.se {
+            SeSpec::LagAugmented => h,
+            SeSpec::Hac { .. } => 0,
+        };
+        (horizon_sample(n, h, p, q).1, 2 + p + q)
+    })?;
 
     let k_cells = spec.horizons + 1;
     // psi[h] lives on the *original* time index and is zero outside horizon

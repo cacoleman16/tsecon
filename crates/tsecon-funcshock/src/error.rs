@@ -142,6 +142,17 @@ impl fmt::Display for FuncShockError {
                  shares are undefined; functional PCA needs curves that move"
             ),
             Self::HorizonTooLong {
+                horizon: 0,
+                nobs,
+                nparams,
+            } => write!(
+                f,
+                "horizon 0 leaves only {nobs} usable observations for a regression \
+                 with {nparams} parameters (constant + K scores + lag controls), so \
+                 no horizon is estimable (not even horizons = 0); reduce \
+                 n_lag_controls or the number of scores, or supply a longer sample"
+            ),
+            Self::HorizonTooLong {
                 horizon,
                 nobs,
                 nparams,
@@ -149,8 +160,9 @@ impl fmt::Display for FuncShockError {
                 f,
                 "horizon {horizon} leaves only {nobs} usable observations for a \
                  regression with {nparams} parameters (constant + K scores + lag \
-                 controls); shorten the horizon, reduce n_lag_controls, or supply \
-                 a longer sample"
+                 controls); shorten the horizon (horizons can be at most {} for \
+                 this sample), reduce n_lag_controls, or supply a longer sample",
+                horizon - 1
             ),
             Self::SeriesTooShort { n, n_lag_controls } => write!(
                 f,
