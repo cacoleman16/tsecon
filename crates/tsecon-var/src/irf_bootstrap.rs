@@ -918,8 +918,8 @@ mod tests {
             let sign = if t % 2 == 0 { 1.0 } else { -1.0 };
             sign * [0.7, -0.3][j]
         });
-        let bias = estimate_bias(std::slice::from_ref(&a), &intercept, &init, &uc, te, 1, 20)
-            .expect("the inner bootstrap needs only the slopes");
+        let bias =
+            estimate_bias(std::slice::from_ref(&a), &intercept, &init, &uc, te, 1, 20).unwrap();
         assert!(bias
             .iter()
             .all(|m| (0..k).all(|i| (0..k).all(|j| m[(i, j)].is_finite()))));
