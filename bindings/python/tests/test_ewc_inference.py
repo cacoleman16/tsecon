@@ -99,11 +99,15 @@ def test_ewc_default_b_is_exact_where_a_float_power_misrounds():
     """Audit round 15: a double-precision 0.4 n^(2/3) misrounds near a
     half-integer for large n (n = 1755027219 gave 581990, not 581991). The
     fixture's large-n block is integer-exact; every case is within 2e-7 of
-    a tie, and the Python integer rule agrees with it."""
+    a tie, on both sides of one (just above: the float rule rounds down by
+    one; just below: an over-eager correction would round up), and the
+    Python integer rule agrees with it."""
     cases = EWC["default_b_large_n"]
-    assert {"1755027219", "100292764931117"} <= set(cases) and len(cases) >= 11
+    gaps = EWC["default_b_large_n_gap"]
+    assert {"1755027219", "100292764931117"} <= set(cases)
+    assert sum(g > 0 for g in gaps.values()) >= 11 and sum(g < 0 for g in gaps.values()) >= 10
     for n, b in cases.items():
-        assert abs(EWC["default_b_large_n_gap"][n]) < 2e-7, n
+        assert abs(gaps[n]) < 2e-7, n
         assert _exact_default_b(int(n)) == b, n
         got = tsecon.ewc_default_b(int(n))
         assert isinstance(got, int) and got == b, (n, got, b)

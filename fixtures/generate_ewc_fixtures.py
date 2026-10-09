@@ -45,10 +45,16 @@ n = 1,755,027,219):
     round(0.4 n^(2/3)) = r  <=>  125 (2r - 1)^3 <= 64 n^2 < 125 (2r + 1)^3
 
 (cube 0.4 n^(2/3) >= r - 1/2 and 0.4 n^(2/3) < r + 1/2). `default_b_large_n`
-adds the n in 10^6..3e10 whose 0.4 n^(2/3) lands closest to a half-integer
-(found by an exact search over every tie r - 1/2 in that range), plus the
-round-15 auditor's two cases, with the signed exact distance
-0.4 n^(2/3) - (r - 1/2) in `default_b_large_n_gap` (60-digit Decimal).
+adds, for n in 10^6..3e10, the ten n whose 0.4 n^(2/3) lands closest ABOVE a
+half-integer and the ten closest BELOW one (found by an exact search over every
+tie in that range), plus the round-15 auditor's two cases, with the signed
+exact distance to the nearest half-integer in `default_b_large_n_gap`
+(60-digit Decimal; positive = just above, so B rounds up). The two sides test
+different things. A double-precision power runs LOW here (2/3 rounded to a
+double is 3.7e-17 below 2/3, so the computed n^(2/3) is short by about
+3.7e-17 ln n relative), so every above-tie case is one the float formula
+rounds DOWN by one (asserted below); the below-tie cases are ones it gets
+right, and they catch an exact correction that steps up too eagerly.
 
 Data: the Nile series (`sm.datasets.nile`, public domain — the tests load the
 copy already stored in `diagnostics.json`, asserted identical here, so no new
@@ -68,7 +74,7 @@ import json
 import math
 import platform
 import re
-from decimal import Decimal, localcontext
+from decimal import ROUND_FLOOR, Decimal, localcontext
 from pathlib import Path
 
 import numpy as np
@@ -244,24 +250,26 @@ def near_half_n(limit: int = 1_000_000, count: int = 10) -> list[int]:
     return sorted(int(n[i]) for i in idx)
 
 
-def half_gap(n: int) -> Decimal:
-    """0.4 n^(2/3) - (r - 1/2) at r = default_b(n), to 60 digits (positive: the
-    value sits just above the half-integer, so it rounds up to r)."""
+def tie_gap(n: int) -> Decimal:
+    """0.4 n^(2/3) minus the half-integer nearest to it, to 60 digits:
+    positive when the value sits just above a tie (B rounds up), negative
+    just below (B rounds down)."""
     with localcontext() as ctx:
         ctx.prec = 60
         v = Decimal(4) / Decimal(10) * ((Decimal(n) ** 2).ln() / 3).exp()
-        return v - (Decimal(default_b(n)) - Decimal("0.5"))
+        return v - (v.to_integral_value(rounding=ROUND_FLOOR) + Decimal("0.5"))
 
 
 def near_half_n_large(lo: int = 1_000_000, hi: int = 30_000_000_000, count: int = 10) -> list[int]:
-    """The n in [lo, hi] closest to a rounding tie of 0.4 n^(2/3).
+    """The `count` n in [lo, hi] closest above a rounding tie of 0.4 n^(2/3)
+    and the `count` closest below one.
 
     The tie r - 1/2 sits at n* = (2.5 r - 1.25)^(3/2); every integer n has its
-    0.4 n^(2/3) nearest some tie, and the nearest integer to n* is the best
-    candidate for that tie. A float pass ranks every tie in range (the float
-    gap is accurate to ~1e-8 here, far below the ranking it feeds), the 400
-    best are re-measured exactly (`half_gap`), and the `count` smallest |gap|
-    are kept, each with its exact B from the integer rule."""
+    0.4 n^(2/3) nearest some tie, and the integers either side of n* are the
+    best candidates for that tie. A float pass ranks every tie in range (the
+    float gap is accurate to ~1e-8 here, while the 400th-best gap is ~1e-4),
+    the 400 best are re-measured exactly (`tie_gap`), and the `count`
+    smallest positive and the `count` smallest negative gaps are kept."""
     r_lo = int(0.4 * lo ** (2.0 / 3.0))
     r_hi = int(0.4 * hi ** (2.0 / 3.0)) + 1
     r = np.arange(max(r_lo, 2), r_hi + 1, dtype=np.float64)
@@ -271,8 +279,11 @@ def near_half_n_large(lo: int = 1_000_000, hi: int = 30_000_000_000, count: int 
     v = 0.4 * cand ** (2.0 / 3.0)
     gap = np.abs(v - np.floor(v) - 0.5)
     best = np.unique(cand[np.argsort(gap, kind="stable")[:400]].astype(np.int64))
-    exact = sorted((abs(half_gap(int(n))), int(n)) for n in best)
-    return sorted(n for _, n in exact[:count])
+    exact = [(tie_gap(int(n)), int(n)) for n in best]
+    above = sorted((g, n) for g, n in exact if g > 0)[:count]
+    below = sorted((-g, n) for g, n in exact if g < 0)[:count]
+    assert len(above) == len(below) == count
+    return sorted(n for _, n in above + below)
 
 
 def main() -> None:
@@ -294,9 +305,13 @@ def main() -> None:
     # Beyond 10^6 the float rule starts to misround; the exact rule is the golden.
     large = sorted(set(near_half_n_large() + [1_755_027_219, 100_292_764_931_117]))
     default_b_large = {str(n): default_b(n) for n in large}
-    gaps_large = {str(n): float(half_gap(n)) for n in large}
+    gaps_large = {str(n): float(tie_gap(n)) for n in large}
     assert default_b_large["1755027219"] == 581991, "auditor case 1"
     assert default_b_large["100292764931117"] == 863455038, "auditor case 2"
+    for n in large:  # the float formula misrounds exactly the above-tie cases
+        float_b = int(math.floor(0.4 * n ** (2.0 / 3.0) + 0.5))
+        assert (float_b == default_b(n) - 1) == (gaps_large[str(n)] > 0), n
+        assert float_b in (default_b(n), default_b(n) - 1), n
 
     # OLS-EWC, k = 2: the spec's T = 250 design (x AR(1) 0.6, u AR(1) 0.5).
     rng2 = np.random.default_rng(20261008)
