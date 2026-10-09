@@ -43,6 +43,7 @@
 //! on the shock's orientation.
 
 use tsecon_bayes::cholesky_irf;
+use tsecon_linalg::faer::linalg::solvers::Solve;
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
 
@@ -50,7 +51,7 @@ use crate::error::IdentError;
 use crate::shocks::{
     build_regressors, orthogonalized_residuals, reduced_form_residuals, structural_shocks,
 };
-use crate::summary::structural_irf;
+use crate::summary::{structural_irf, structural_ma};
 
 /// Extracts the lag matrices `A_1..A_p` and the intercept `c` from the
 /// `(1 + n p) x n` regressor-by-equation coefficient matrix `b`.
@@ -256,10 +257,33 @@ impl HistoricalDecomposition {
         self.shocks.as_ref()
     }
 
-    /// The structural IRF `Theta_s` used for the decomposition
-    /// (length `horizon + 1`).
+    /// The structural IRF `Theta_s` used for the decomposition: length
+    /// `horizon + 1` from [`decompose`], exactly `T_eff` from
+    /// [`decompose_with_impact`] (which never builds a horizon the
+    /// decomposition cannot use).
     pub fn theta(&self) -> &[Mat<f64>] {
         &self.theta
+    }
+
+    /// The sample second-moment matrix of the structural shocks,
+    /// `E'E / T_eff` (`n x n`).
+    ///
+    /// A diagnostic of the impact matrix, not an input: it is the identity
+    /// for `A0 = chol(Sigma_mle)` and any rotation of it, and
+    /// `(T_eff - m) / T_eff * I` for an impact matrix built from the
+    /// degrees-of-freedom-adjusted `Sigma_u` (as
+    /// [`crate::long_run_svar`]'s is), `m = 1 + n p`. Off-diagonal mass means
+    /// the impact matrix does not orthogonalize these residuals.
+    pub fn shock_covariance(&self) -> Mat<f64> {
+        let t = self.t_eff as f64;
+        let n = self.n_vars;
+        Mat::from_fn(n, n, |i, j| {
+            let mut acc = 0.0;
+            for r in 0..self.t_eff {
+                acc += self.shocks[(r, i)] * self.shocks[(r, j)];
+            }
+            acc / t
+        })
     }
 
     /// Episode contribution of shock `k` to variable `i` over `[t1, t2]` (see
@@ -366,6 +390,148 @@ pub fn decompose(
     // cholesky_irf validates the (b, sigma) shapes and finiteness.
     let base = cholesky_irf(b, sigma, p, horizon)?;
     let theta = structural_irf(&base, q);
+    let hd = hd_recursion(&theta, e.as_ref())?;
+    let (coefs, intercept) = coefs_and_intercept(b, n, p);
+    let baseline = baseline_path(&coefs, &intercept, data, p)?;
+    Ok(HistoricalDecomposition {
+        n_vars: n,
+        t_eff,
+        baseline,
+        hd,
+        shocks: e,
+        theta,
+    })
+}
+
+/// Message for an impact matrix that is singular by the
+/// `numpy.linalg.matrix_rank` convention.
+const SINGULAR_IMPACT: &str = "impact is singular (numerically rank-deficient by the \
+    numpy.linalg.matrix_rank convention: its smallest singular value is at most \
+    max singular value * n * machine epsilon), so u_t = impact @ eps_t cannot be \
+    solved for the structural shocks; pass an invertible n x n impact matrix";
+
+/// Whether the square matrix `m` is rank-deficient by the
+/// `numpy.linalg.matrix_rank` default tolerance: `sigma_min <= sigma_max * n *
+/// eps`. An all-zero matrix is singular. An SVD failure is treated as singular
+/// (it can only occur on input the finiteness check has already refused).
+fn is_singular_matrix_rank(m: MatRef<'_, f64>) -> bool {
+    let n = m.nrows();
+    let sv = match m.singular_values() {
+        Ok(v) => v,
+        Err(_) => return true,
+    };
+    let smax = sv.iter().copied().fold(0.0f64, f64::max);
+    let smin = sv.iter().copied().fold(f64::INFINITY, f64::min);
+    let tol = smax * (n as f64) * f64::EPSILON;
+    smin.is_nan() || smin <= tol
+}
+
+/// Historical decomposition under an **arbitrary invertible structural impact
+/// matrix** `A0 = impact` (columns are one-standard-deviation structural
+/// shocks: `u_t = A0 eps_t`).
+///
+/// This is the entry point for any point-identified scheme whose impact matrix
+/// is not a rotation of `chol(Sigma)` handed to [`decompose`] — a
+/// Blanchard-Quah [`crate::long_run_svar`] impact (built from the
+/// df-adjusted `Sigma_u`), a proxy or max-share column completed to a full
+/// matrix, or a published `B`. `A0 A0' = Sigma` is **not** required: the
+/// adding-up identity
+///
+/// ```text
+/// y_{p+t, i} = baseline[t, i] + sum_j HD[t][(i, j)]
+/// ```
+///
+/// holds for every invertible `A0`, because summing the contributions over
+/// `j` telescopes `Psi_s A0 A0^{-1} u` back to `Psi_s u`.
+///
+/// Algorithm, on the reduced form `b` (intercept row, then lag blocks; the
+/// [`decompose`] layout):
+///
+/// 1. `U = Y - X b`, the reduced-form residuals;
+/// 2. refuse `A0` if it is singular by the `numpy.linalg.matrix_rank`
+///    convention (`sigma_min <= sigma_max * n * eps`);
+/// 3. `E = U A0^{-T}` by an LU solve (rows `eps_t = A0^{-1} u_t`);
+/// 4. `Theta_s = Psi_s A0` for `s = 0..T_eff-1` **only** — whatever `horizon`
+///    says, since the decomposition never reads past `T_eff - 1`, so a
+///    mistyped `horizon = 10^10` costs nothing;
+/// 5. `HD[t][(i, j)] = sum_{s<=t} Theta_s[(i, j)] E[(t - s, j)]`;
+/// 6. the baseline iterates the VAR from the actual pre-sample with every
+///    shock zeroed (identification-invariant, identical to [`decompose`]'s).
+///
+/// The impact matrix must come from the same reduced form — a VAR with a
+/// constant at `p` lags. One estimated at other lags or without a constant is
+/// silently inconsistent with these residuals (the identity still holds; the
+/// shocks are simply not the ones that model identified), which
+/// [`HistoricalDecomposition::shock_covariance`] helps to spot.
+///
+/// # Errors
+///
+/// * [`IdentError::InvalidArgument`] if `horizon < T_eff - 1` (an incomplete
+///   decomposition), `p == 0`, or `impact` is singular;
+/// * [`IdentError::Dimension`] if `impact` is not `n x n` or `b` is not
+///   `(1 + n p) x n`;
+/// * [`IdentError::NonFinite`] on NaN/infinite entries in `data`, `b` or
+///   `impact`.
+pub fn decompose_with_impact(
+    data: MatRef<'_, f64>,
+    b: MatRef<'_, f64>,
+    impact: MatRef<'_, f64>,
+    p: usize,
+    horizon: usize,
+) -> Result<HistoricalDecomposition, IdentError> {
+    let n = data.ncols();
+    if impact.nrows() != n || impact.ncols() != n {
+        return Err(IdentError::Dimension {
+            what: "impact must be n x n with n the number of variables (columns of data)",
+            expected: n,
+            got: if impact.nrows() != n {
+                impact.nrows()
+            } else {
+                impact.ncols()
+            },
+        });
+    }
+    for j in 0..n {
+        for i in 0..n {
+            if !impact[(i, j)].is_finite() {
+                return Err(IdentError::NonFinite { what: "impact" });
+            }
+        }
+    }
+    let (y, x) = build_regressors(data, p)?;
+    let t_eff = y.nrows();
+    if horizon + 1 < t_eff {
+        return Err(IdentError::InvalidArgument {
+            what: "horizon must be at least T_eff - 1 for a complete decomposition",
+        });
+    }
+    if b.nrows() != 1 + n * p || b.ncols() != n {
+        return Err(IdentError::Dimension {
+            what: "b must be (1 + n p) x n (intercept row, then lag blocks)",
+            expected: 1 + n * p,
+            got: b.nrows(),
+        });
+    }
+    if is_singular_matrix_rank(impact) {
+        return Err(IdentError::InvalidArgument {
+            what: SINGULAR_IMPACT,
+        });
+    }
+    let u = reduced_form_residuals(y.as_ref(), x.as_ref(), b);
+    // eps_t = A0^{-1} u_t for every row: solve A0 E' = U', then transpose.
+    let et = impact.partial_piv_lu().solve(u.transpose());
+    let e = et.transpose().to_owned();
+    for j in 0..n {
+        for i in 0..t_eff {
+            if !e[(i, j)].is_finite() {
+                return Err(IdentError::InvalidArgument {
+                    what: SINGULAR_IMPACT,
+                });
+            }
+        }
+    }
+    // Theta_0..Theta_{T_eff-1} only: the decomposition never reads further.
+    let theta = structural_ma(b, impact, p, t_eff - 1)?;
     let hd = hd_recursion(&theta, e.as_ref())?;
     let (coefs, intercept) = coefs_and_intercept(b, n, p);
     let baseline = baseline_path(&coefs, &intercept, data, p)?;

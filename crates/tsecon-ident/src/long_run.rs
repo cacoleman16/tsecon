@@ -52,6 +52,14 @@
 //! `normalize_impact = true` instead forces a positive diagonal on the
 //! impact matrix `B` (flip column `j` when `B[j,j] < 0`).
 //!
+//! [`apply_impact_signs`] adds a per-shock **sign anchor** on top of either
+//! rule: for each `(variable, shock)` pair, column `shock` of `B` (and of
+//! `LR` and every `Theta_h`) is negated when `B[variable, shock] < 0`
+//! (strictly; an exact zero is left alone). This is how a paper's labelling
+//! convention — Blanchard-Quah sign the demand disturbance so output rises
+//! on impact — is imposed without hand-flipping the columns afterwards, and
+//! it is what the bootstrap bands re-apply inside every draw.
+//!
 //! # A caveat about the data (not the map)
 //!
 //! Long-run/BQ estimates are known to be sensitive in finite samples to the
@@ -72,8 +80,11 @@ const SINGULAR_LR: &str =
 const NOT_PD: &str =
     "long-run covariance C(1) Sigma_u C(1)' is not positive definite (Sigma_u must be PD)";
 /// Message emitted when the supplied long-run zeros are not a column
-/// permutation of the recursive lower-triangular pattern.
-const NOT_TRIANGULARIZABLE: &str = "long-run zero pattern is not a column permutation of the recursive (lower-triangular) scheme; a general zero restriction is not solvable by a single Cholesky — use the planned zero_svar (Rubio-Ramirez-Waggoner-Zha QR) method";
+/// permutation of the recursive lower-triangular pattern. It names the Python
+/// keyword (`restrictions`) because this text is what a caller sees.
+const NOT_TRIANGULARIZABLE: &str = "restrictions (the long-run zero pattern) is not a column permutation of the recursive (lower-triangular) scheme: each shock's zeros must be the first m variables for a distinct m in 0..k-1. A general zero pattern is not solvable by a single Cholesky — use zero_sign_svar (Rubio-Ramirez-Waggoner-Zha QR) for general zero restrictions";
+/// Message emitted when `impact_signs` anchors one shock twice.
+const DUPLICATE_ANCHOR: &str = "impact_signs lists the same shock twice: each shock's sign is anchored by exactly one (variable, shock) pair, so a second pair for that shock would either repeat or contradict the first";
 
 /// The point-identified Blanchard-Quah structural SVAR.
 ///
@@ -187,14 +198,14 @@ fn resolve_ordering(
     for &(var, shock) in pairs {
         if var >= k {
             return Err(IdentError::RestrictionOutOfRange {
-                what: "long-run-zero variable index",
+                what: "restrictions (long-run zero) variable index",
                 index: var,
                 bound: k,
             });
         }
         if shock >= k {
             return Err(IdentError::RestrictionOutOfRange {
-                what: "long-run-zero shock index",
+                what: "restrictions (long-run zero) shock index",
                 index: shock,
                 bound: k,
             });
@@ -235,6 +246,27 @@ fn resolve_ordering(
         }
     }
     Ok(col_of_pos)
+}
+
+/// The shock ordering a long-run zero pattern implies: `col_of_pos[c]` is the
+/// shock placed at triangular position `c` (the shock with exactly `c`
+/// long-run zeros), so `long_run[:, col_of_pos[c]]` is, up to the column's
+/// sign, column `c` of the lower Cholesky factor of `C(1) Sigma_u C(1)'`.
+/// `None` is the identity (classic recursive BQ).
+///
+/// Exposed so callers that differentiate the map (the delta-method bands) can
+/// undo the column relabelling exactly.
+///
+/// # Errors
+///
+/// * [`IdentError::RestrictionOutOfRange`] if a pair indexes outside `0..k`;
+/// * [`IdentError::InvalidArgument`] if the pattern is not a column
+///   permutation of the recursive lower-triangular scheme.
+pub fn long_run_ordering(
+    long_run_zeros: Option<&[(usize, usize)]>,
+    k: usize,
+) -> Result<Vec<usize>, IdentError> {
+    resolve_ordering(long_run_zeros, k)
 }
 
 /// Blanchard-Quah long-run SVAR: the closed-form structural impact matrix,
@@ -344,4 +376,91 @@ pub fn long_run_svar(
         long_run_multiplier: c1,
         irf,
     })
+}
+
+/// Validates `impact_signs` anchors against the model dimension `k`: every
+/// index in range and no shock anchored twice. Separate from
+/// [`apply_impact_signs`] so a caller can refuse bad anchors before doing any
+/// work (the bootstrap bands check once, up front, rather than per draw).
+///
+/// # Errors
+///
+/// * [`IdentError::RestrictionOutOfRange`] if a variable or shock index is not
+///   below `k`;
+/// * [`IdentError::InvalidArgument`] if the same shock appears twice.
+pub fn validate_impact_signs(anchors: &[(usize, usize)], k: usize) -> Result<(), IdentError> {
+    let mut seen = vec![false; k];
+    for &(var, shock) in anchors {
+        if var >= k {
+            return Err(IdentError::RestrictionOutOfRange {
+                what: "impact_signs variable",
+                index: var,
+                bound: k,
+            });
+        }
+        if shock >= k {
+            return Err(IdentError::RestrictionOutOfRange {
+                what: "impact_signs shock",
+                index: shock,
+                bound: k,
+            });
+        }
+        if seen[shock] {
+            return Err(IdentError::InvalidArgument {
+                what: DUPLICATE_ANCHOR,
+            });
+        }
+        seen[shock] = true;
+    }
+    Ok(())
+}
+
+/// Anchors the sign of chosen structural shocks on their impact responses.
+///
+/// For each `(variable, shock)` pair in `anchors`, column `shock` of
+/// [`LongRunSvar::impact`], of [`LongRunSvar::long_run`] and of every
+/// [`LongRunSvar::irf`] matrix is negated when
+/// `impact[(variable, shock)] < 0` — strictly, so an exact zero (or `-0.0`)
+/// is left alone. Columns of shocks that are not anchored keep whatever sign
+/// the `normalize_impact` rule of [`long_run_svar`] gave them. The flip is a
+/// relabelling of the shock, not a different model: `B B' = Sigma_u`, the
+/// long-run zero pattern and every variance share are unchanged.
+///
+/// Returns the **pre-anchor** value of each anchored cell, in `anchors`
+/// order. The bootstrap bands compare these signs across draws with the
+/// point estimate's to count draws whose anchor would have decided the other
+/// way (a near-zero anchored cell makes per-draw signs, and so the bands,
+/// bimodal).
+///
+/// The input is validated before anything is changed, so on error `res` is
+/// untouched.
+///
+/// # Errors
+///
+/// * [`IdentError::RestrictionOutOfRange`] if a variable or shock index is not
+///   below the number of variables;
+/// * [`IdentError::InvalidArgument`] if the same shock is anchored twice.
+pub fn apply_impact_signs(
+    res: &mut LongRunSvar,
+    anchors: &[(usize, usize)],
+) -> Result<Vec<f64>, IdentError> {
+    let k = res.impact.nrows();
+    validate_impact_signs(anchors, k)?;
+    let mut pre = Vec::with_capacity(anchors.len());
+    for &(var, shock) in anchors {
+        let v = res.impact[(var, shock)];
+        pre.push(v);
+        if v < 0.0 {
+            for i in 0..k {
+                res.impact[(i, shock)] = -res.impact[(i, shock)];
+                res.long_run[(i, shock)] = -res.long_run[(i, shock)];
+            }
+            for th in res.irf.iter_mut() {
+                for i in 0..k {
+                    th[(i, shock)] = -th[(i, shock)];
+                }
+            }
+        }
+    }
+    Ok(pre)
 }

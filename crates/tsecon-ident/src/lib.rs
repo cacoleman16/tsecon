@@ -92,8 +92,11 @@ pub use first_stage::{
 pub use fry_pagan::{median_target, MedianTargetResult};
 pub use haar::haar_rotation;
 pub use hetero::{box_m_test, hetero_decompose, BoxMResult, HeteroDecomp, SignConvention};
-pub use histdecomp::{decompose, HistoricalDecomposition};
-pub use long_run::{long_run_multiplier, long_run_svar, LongRunSvar};
+pub use histdecomp::{decompose, decompose_with_impact, HistoricalDecomposition};
+pub use long_run::{
+    apply_impact_signs, long_run_multiplier, long_run_ordering, long_run_svar,
+    validate_impact_signs, LongRunSvar,
+};
 pub use max_share::{max_share_shock, MaxShareResult, MaxShareSign, MaxShareWeighting};
 pub use narrative::{
     ContributionRule, HdSetSummary, NarrativeDiagnostics, NarrativeRestriction,
