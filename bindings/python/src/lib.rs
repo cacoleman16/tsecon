@@ -1331,6 +1331,11 @@ fn var_fit<'py>(
 /// This returns the point path only. For frequentist confidence bands
 /// (delta-method or bootstrap) use `var_irf_bands`.
 ///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists), before anything is
+/// allocated; past it the call is refused naming `horizon` and the largest
+/// horizon that fits (399456 on two variables).
+///
 /// Further arguments, with defaults: `lags` (2), `trend` ("c"), `cumulative`
 /// (False).
 #[pyfunction]
@@ -1595,6 +1600,27 @@ fn set_lp_band_items<'py>(
 /// alone reproduces it — use a large `n_boot` (999+, not 199), since this is a
 /// quantile in the tail of a maximum. Šidák and Bonferroni need neither.
 ///
+/// INERT KEYWORDS ARE REFUSED, compared to their defaults, as in
+/// `long_run_svar_bands`: `n_boot` and `seed` with `method="asymptotic"`
+/// (which draws nothing); `band_seed` and `band_n_sim` anywhere but the
+/// asymptotic sup-t band; a non-default `band_scope` with `band="pointwise"`;
+/// and `bias_correct=True` with `method="asymptotic"`.
+///
+/// SIZE BUDGET. The working set is counted as real storage (padded matrices
+/// and Python lists) and budgeted at 2^28 values (2 GiB) before anything is
+/// allocated; a refusal names the keyword whose term is over and states the
+/// largest value that fits at the other arguments. Bootstrap: each
+/// replication keeps its responses in its slot of one store plus a fixed
+/// 48-value overhead (refused naming `n_boot`, or `horizon` when no count
+/// fits: the largest `n_boot` on two variables at horizon 10 is 2886323).
+/// Asymptotic: the pointwise working set (`horizon and lags`), a
+/// simultaneous band's family covariance (`horizon and band_scope`), the
+/// sup-t simulation, (K+1)·band_n_sim values and n_families·band_n_sim·K² ≤
+/// 2^36 multiply-adds (`band_n_sim`), and the delta-method Jacobians,
+/// horizon·(horizon+1)/2 · k² · lags·k² multiply-adds, QUADRATIC in horizon
+/// and capped at 2^28 (`horizon`; a few seconds: 2047 periods on a bivariate
+/// VAR(8), 28 on a 20-variable VAR(4)).
+///
 /// Method: Montiel Olea and Plagborg-Møller, simultaneous confidence bands for
 /// SVARs.
 ///
@@ -1645,6 +1671,15 @@ fn var_irf_bands<'py>(
     // Parsed even at `band="pointwise"`, so a typo in `band_scope` is caught
     // rather than quietly ignored.
     let scope = tsecon_var::irf_asymptotic::IrfBandScope::parse(band_scope).map_err(to_py)?;
+    let asymptotic = match method {
+        "asymptotic" => true,
+        "bootstrap" => false,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"asymptotic\" or \"bootstrap\""
+            )))
+        }
+    };
     let d = PyDict::new(py);
     d.set_item("band", band_method.label())?;
     // Kilian bias correction is a property of the BOOTSTRAP resampling loop --
@@ -1661,9 +1696,36 @@ fn var_irf_bands<'py>(
              persistent VAR), or drop bias_correct to keep the asymptotic band.",
         ));
     }
+    // Keywords this arm and band do not read are refused, compared to their
+    // defaults (the table long_run_svar_bands applies to the same engines).
+    svar_lr::refuse_inert_band_keywords(
+        method,
+        band,
+        asymptotic,
+        band_method,
+        scope,
+        n_boot,
+        seed,
+        band_seed,
+        band_n_sim,
+        false,
+    )?;
     d.set_item("bias_correct", bias_correct)?;
     match method {
         "asymptotic" => {
+            // The whole delta-method request is sized before the fit: its
+            // working set, the quadratic Jacobian work and the sup-t
+            // simulation, each refused naming its keyword.
+            tsecon_var::irf_asymptotic::check_irf_asymptotic_budget(
+                data.as_array().ncols(),
+                lags,
+                horizon,
+                band_method
+                    .is_simultaneous()
+                    .then_some((band_method, scope)),
+                band_n_sim,
+            )
+            .map_err(to_py)?;
             let r = var_results(&data, lags, trend)?;
             // Point path: exactly what `var_irf` returns, cumulated when asked
             // so the bands are anchored on the same estimate the SE describes.
@@ -1815,6 +1877,11 @@ fn var_irf_bands<'py>(
 /// the SAME numbers variable-major (`[variable][horizon][shock]`), so
 /// `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))` equals this output.
 ///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists), before anything is
+/// allocated; past it the call is refused naming `horizon` and the largest
+/// horizon that fits (399457 on two variables).
+///
 /// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
@@ -1924,6 +1991,17 @@ fn var_fevd<'py>(
 /// `param_uncertainty`; with a simultaneous `band` also `se`, `sim_lower`,
 /// `sim_upper`, `critical_value`, `pointwise_critical_value`, `band_scope`,
 /// `n_cells`, `n_cells_used`.
+///
+/// SIZE BUDGET. `steps` is checked against a 2^28-value (2 GiB) memory budget,
+/// counted as real storage, before anything is allocated (refused naming
+/// `steps`, with the largest that fits: 399457 on two variables). A
+/// simultaneous band also builds the joint covariance of every cell,
+/// (steps·k)^2 values whose cross-horizon blocks cost about steps^3/6 products
+/// of k x k matrices (CUBIC in steps), budgeted at 2^28 values and 2^31 work
+/// (about ten seconds; refused naming `steps`: at most 685 on two variables at
+/// lags 2), and the sup-t simulation, (K+1)·band_n_sim values within 2^28 and
+/// n_families·band_n_sim·K^2 multiply-adds within 2^36 (refused naming
+/// `band_n_sim`: at most 15790320 at the default steps on two variables).
 ///
 /// Further arguments, with defaults: `lags` (2), `steps` (8), `alpha`
 /// (0.05), `trend` ("c"), `band` ("pointwise"), `band_scope` ("all"),
@@ -3999,6 +4077,12 @@ fn resolve_lp_se(se: Option<&str>, cumulation: tsecon_lp::Cumulation) -> PyResul
 /// Method: Montiel Olea and Plagborg-Møller.
 ///
 /// Returned keys: `horizons`, `irf`, `se`, `se_method`.
+///
+/// `band_n_sim` is checked, before anything is estimated, against the sup-t
+/// budget every band shares: (K+1)·band_n_sim values within 2^28 (2 GiB) and
+/// band_n_sim·K^2 multiply-adds within 2^36. Past it the call is refused
+/// naming `band_n_sim` and the largest count that fits (19173961 at the
+/// default 12 horizons).
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -4545,6 +4629,14 @@ fn zero_sign_svar<'py>(
 /// and `long_run_multiplier` (C(1)). Point estimates, no RNG. For confidence
 /// bands use `long_run_svar_bands`.
 ///
+/// `normalize="long_run"` (the default) makes each shock's long-run PIVOT
+/// positive: LR[m][s], with m the number of long-run zeros in shock s's
+/// column of `restrictions` (the first variable the shock may move
+/// permanently). Under the default recursive pattern the pivots are the
+/// long-run diagonal; under a permuted pattern the diagonal can be negative
+/// or an imposed zero. `normalize="impact"` makes the impact diagonal
+/// positive instead.
+///
 /// `impact_signs` (None) is a list of `(variable, shock)` pairs that anchor
 /// each listed shock's sign on its impact response, applied AFTER
 /// `normalize`: when `impact[variable][shock] < 0` (strictly; an exact zero
@@ -4553,7 +4645,15 @@ fn zero_sign_svar<'py>(
 /// is sign-invariant). Unlisted shocks keep the `normalize` rule. Blanchard
 /// and Quah sign the demand disturbance so output rises on impact, which is
 /// `impact_signs=[(0, 1)]` with output growth ordered first. Refused, naming
-/// `impact_signs`: an index outside `0..k`, or the same shock listed twice.
+/// `impact_signs`: an index outside 0..k-1, or the same shock listed twice.
+///
+/// Also refused, naming the parameter: `lags` = 0 (a VAR(0) has no long-run
+/// multiplier); a malformed `restrictions` pair (e.g. `[(0,)]`) or a pattern
+/// that is not a column permutation of the recursive one; and a `horizon`
+/// whose responses, cumulated responses and decomposition would exceed a
+/// 2^28-value (2 GiB) memory budget, counted as real storage and checked
+/// before anything is allocated (the refusal states the largest horizon that
+/// fits: 399456 on two variables).
 ///
 /// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
 /// ("c"), `restrictions` (None), `normalize` ("long_run"), `impact_signs`
@@ -4567,19 +4667,17 @@ fn long_run_svar<'py>(
     lags: usize,
     horizon: usize,
     trend: &str,
-    restrictions: Option<Vec<(usize, usize)>>,
+    #[pyo3(from_py_with = svar_lr::restrictions_arg)] restrictions: Option<Vec<(usize, usize)>>,
     normalize: &str,
     #[pyo3(from_py_with = svar_lr::impact_signs_arg)] impact_signs: Option<Vec<(usize, usize)>>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let normalize_impact = match normalize {
-        "long_run" => false,
-        "impact" => true,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown normalize {other:?}; expected \"long_run\" or \"impact\""
-            )))
-        }
-    };
+    let normalize_impact = svar_lr::parse_normalize(normalize)?;
+    // Named here, as long_run_svar_bands names it (the identification engine
+    // would name its own `coefs` argument).
+    svar_lr::require_var_lags(lags)?;
+    // The responses, their cumulation and the decomposition are sized before
+    // the fit (the identification engine allocates them unchecked).
+    tsecon_var::budget::check_horizon(data.as_array().ncols(), horizon).map_err(to_py)?;
     // Reduced form via the existing OLS VAR path (this is the only use of
     // tsecon-var here; r.coefs is already the split [A_1..A_p] form).
     let r = var_results(&data, lags, trend)?;
@@ -8318,6 +8416,11 @@ fn har_rv<'py>(
 /// Keys: `total`, `to_others`, `from_others`, `net`, `pairwise_net` (k x k), and
 /// `gfevd` (the k x k row-normalized generalized FEVD share matrix at `horizon`
 /// the indices are built from).
+///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists), before the VAR is fitted;
+/// past it the call is refused naming `horizon` and the largest horizon that
+/// fits (262143 on three variables).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
 fn connectedness<'py>(
@@ -8327,6 +8430,9 @@ fn connectedness<'py>(
     horizon: usize,
     trend: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // The moving-average weights are sized before the fit (the engine would
+    // refuse too, behind a "VAR layer failure" prefix).
+    tsecon_var::budget::check_horizon(data.as_array().ncols(), horizon).map_err(to_py)?;
     let res = var_results(&data, lags, trend)?;
     let table = tsecon_connect::ConnectednessTable::from_var(&res, horizon).map_err(to_py)?;
     let d = PyDict::new(py);
@@ -10024,6 +10130,13 @@ fn lp_state<'py>(
     Ok(d)
 }
 
+/// The subject of `mean_group_var`'s horizon refusal.
+const MEAN_GROUP_HORIZON_WHAT: &str = "horizon: every horizon adds one k x k matrix to each \
+    entity's response path (all kept until they are averaged) and to each copy of the reported \
+    paths (matrices and Python nested lists, counted as real storage), and at this horizon \
+    with this many entities that working set exceeds the 2^28-value (2 GiB) budget, checked \
+    before anything is allocated; reduce horizon";
+
 /// Pesaran-Smith (1995) mean-group panel VAR: fit a reduced-form VAR(p)
 /// to every entity (equation-by-equation OLS via `tsecon-var`) and average,
 /// with dispersion-based cross-entity standard errors `sd(theta_i)/sqrt(N)`.
@@ -10040,6 +10153,12 @@ fn lp_state<'py>(
 /// k x k matrices), `irf_path`/`irf_path_se` (the `mg_irf_path` response=
 /// `response`, impulse=`impulse` series over horizons), and the scalars
 /// `n_entities`, `neqs`, `lags`.
+///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists) with every entity's path
+/// kept until the average, before anything is fitted; past it the call is
+/// refused naming `horizon` and the largest horizon that fits (266304 for four
+/// bivariate entities).
 #[pyfunction]
 #[pyo3(signature = (entities, lags = 1, trend = "c", horizon = 10, response = 0, impulse = 0))]
 fn mean_group_var<'py>(
@@ -10060,6 +10179,20 @@ fn mean_group_var<'py>(
             )))
         }
     };
+    // Every entity's response path is kept until they are averaged, so the
+    // horizon budget counts one cube per entity on top of the reported ones.
+    if let Some(first) = entities.first() {
+        tsecon_var::budget::check_cube(
+            MEAN_GROUP_HORIZON_WHAT,
+            "horizon",
+            horizon,
+            0,
+            1,
+            first.as_array().ncols(),
+            tsecon_var::budget::CUBE_COPIES.saturating_add(entities.len()),
+        )
+        .map_err(to_py)?;
+    }
     let mats: Vec<_> = entities.iter().map(to_faer).collect();
     let mg = tsecon_panel::mean_group_var(&mats, lags, tr, horizon).map_err(to_py)?;
     let d = PyDict::new(py);
@@ -11914,6 +12047,11 @@ fn flp_scenario<'py>(
 /// `responses` ((H+1) x (K+1), scores first then outcome),
 /// `implied_outcome_innovation`.
 ///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists), before the VAR is fitted;
+/// past it the call is refused naming `horizon` and the largest horizon that
+/// fits (262143 with two factors).
+///
 /// Further arguments, with defaults: `n_factors` (3), `horizon` (10).
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, lags = 2, horizon = 10))]
@@ -11929,6 +12067,9 @@ fn fvar_scenario<'py>(
     let fpca = tsecon_funcshock::functional_pca(&rows2(&curves), n_factors).map_err(to_py)?;
     let w =
         tsecon_funcshock::scenario_weights(&fpca.eigenfunctions, &vec1(&delta)).map_err(to_py)?;
+    // The VAR on [scores, y] has K + 1 series; its responses are sized
+    // before it is fitted.
+    tsecon_var::budget::check_horizon(w.len() + 1, horizon).map_err(to_py)?;
     let r = tsecon_funcshock::fvar_scenario(&fpca.scores, &vec1(&y), &w, lags, horizon)
         .map_err(to_py)?;
     let d = PyDict::new(py);
@@ -12185,6 +12326,12 @@ fn sup_f_test<'py>(
 /// Keys: `horizons`, `irf`, `se`, `lambda_used`, `cv_grid`, `cv_scores` (both
 /// empty when `lam` is a fixed float), `theta`, `irf_raw`, `se_raw`, plus the
 /// band keys above when `band` is set.
+///
+/// `band_n_sim` is checked, before anything is estimated, against the sup-t
+/// budget every band shares: (K+1)·band_n_sim values within 2^28 (2 GiB) and
+/// band_n_sim·K^2 multiply-adds within 2^36. Past it the call is refused
+/// naming `band_n_sim` and the largest count that fits (19173961 at the
+/// default 12 horizons).
 ///
 /// Further arguments, with defaults: `degree` (3), `n_basis` (None).
 #[pyfunction]

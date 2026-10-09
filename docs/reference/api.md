@@ -799,6 +799,11 @@ Impulse responses [h][response][shock]; `cumulative` gives running sums.
 
     Point path only. For frequentist confidence bands use `var_irf_bands`.
 
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists), before anything is
+    allocated; past it the call is refused naming `horizon` and the largest
+    horizon that fits (399456 on two variables).
+
     Further arguments, with defaults: `lags` (2), `horizon` (10), `orth`
     (True), `trend` ("c").
 
@@ -873,6 +878,27 @@ Frequentist confidence bands on VAR impulse responses — the banded companion t
     Šidák and Bonferroni are closed forms in K and need neither. Method:
     Montiel Olea and Plagborg-Møller.
 
+    **Inert keywords are refused**, compared to their defaults, as in
+    `long_run_svar_bands`: `n_boot` and `seed` with `method="asymptotic"`
+    (which draws nothing); `band_seed` and `band_n_sim` anywhere but the
+    asymptotic sup-t band; a non-default `band_scope` with
+    `band="pointwise"`; and `bias_correct=True` with `method="asymptotic"`.
+
+    **Size budget.** The working set is counted as real storage (padded
+    matrices and Python lists) and budgeted at 2^28 values (2 GiB) before
+    anything is allocated; a refusal names the keyword whose term is over and
+    states the largest value that fits at the other arguments. Bootstrap:
+    each replication keeps its responses in its slot of one store plus a fixed
+    48-value overhead (refused naming `n_boot`, or `horizon` when no count
+    fits: the largest `n_boot` on two variables at horizon 10 is 2886323).
+    Asymptotic: the pointwise working set (`horizon and lags`), a
+    simultaneous band's family covariance (`horizon and band_scope`), the
+    sup-t simulation, (K+1)·band_n_sim values and n_families·band_n_sim·K²
+    ≤ 2^36 multiply-adds (`band_n_sim`), and the delta-method Jacobians,
+    horizon·(horizon+1)/2 · k² · lags·k² multiply-adds, QUADRATIC in horizon
+    and capped at 2^28 (`horizon`; a few seconds: 2047 periods on a
+    bivariate VAR(8), 28 on a 20-variable VAR(4)).
+
     Further arguments, with defaults: `lags` (2), `trend` ("c").
 
 ### `var_fevd`
@@ -893,6 +919,11 @@ Forecast-error variance decomposition [h][variable][shock].
     layouts silently alias.) statsmodels stores the same numbers
     variable-major: `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))`
     equals this output.
+
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists), before anything is
+    allocated; past it the call is refused naming `horizon` and the largest
+    horizon that fits (399457 on two variables).
 
     Further arguments, with defaults: `lags` (2), `trend` ("c").
 
@@ -966,6 +997,17 @@ Iterated VAR point forecasts with (1-alpha) intervals.
     `param_uncertainty`; with a simultaneous `band` also `se`, `sim_lower`,
     `sim_upper`, `critical_value`, `pointwise_critical_value`, `band_scope`,
     `n_cells`, `n_cells_used`.
+
+    SIZE BUDGET. `steps` is checked against a 2^28-value (2 GiB) memory budget,
+    counted as real storage, before anything is allocated (refused naming
+    `steps`, with the largest that fits: 399457 on two variables). A
+    simultaneous band also builds the joint covariance of every cell,
+    (steps·k)^2 values whose cross-horizon blocks cost about steps^3/6 products
+    of k x k matrices (CUBIC in steps), budgeted at 2^28 values and 2^31 work
+    (about ten seconds; refused naming `steps`: at most 685 on two variables at
+    lags 2), and the sup-t simulation, (K+1)·band_n_sim values within 2^28 and
+    n_families·band_n_sim·K^2 multiply-adds within 2^36 (refused naming
+    `band_n_sim`: at most 15790320 at the default steps on two variables).
 
     Further arguments, with defaults: `lags` (2), `steps` (8), `alpha`
     (0.05), `trend` ("c"), `band` ("pointwise"), `band_scope` ("all"),
@@ -1443,6 +1485,12 @@ Local projection IRFs; `se` is None (auto), "lag_augmented" or "hac".
 
     Returned keys: `horizons`, `irf`, `se`, `se_method`.
 
+    `band_n_sim` is checked, before anything is estimated, against the sup-t
+    budget every band shares: (K+1)·band_n_sim values within 2^28 (2 GiB) and
+    band_n_sim·K^2 multiply-adds within 2^36. Past it the call is refused
+    naming `band_n_sim` and the largest count that fits (19173961 at the
+    default 12 horizons).
+
     Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
     (None).
 
@@ -1892,8 +1940,11 @@ def long_run_svar(
 Blanchard-Quah long-run SVAR: closed-form structural IRFs under frequency-zero restrictions.
 
     `restrictions` is a list of (variable, shock) long-run zero pairs (None =>
-    classic recursive BQ); `normalize` is "long_run" (positive LR diagonal;
-    default) or "impact" (positive B diagonal). Returns `impact` (B),
+    classic recursive BQ); `normalize` is "long_run" (default: each shock's
+    long-run pivot LR[m][s] positive, m = the number of long-run zeros in
+    shock s's column; the long-run diagonal under the recursive pattern, while
+    under a permuted pattern the diagonal can be negative or an imposed zero)
+    or "impact" (positive B diagonal). Returns `impact` (B),
     `long_run` (LR = C(1) B), `long_run_multiplier` (C(1)), `irf`
     [horizon+1][i][j], `cumulative_irf`, and `fevd`. Point estimate, no RNG;
     for confidence bands use `long_run_svar_bands`.
@@ -1907,6 +1958,14 @@ Blanchard-Quah long-run SVAR: closed-form structural IRFs under frequency-zero r
     sign the demand disturbance so output rises on impact:
     `impact_signs=[(0, 1)]` with output growth ordered first. Refused, naming
     `impact_signs`: an index outside 0..k-1, or the same shock listed twice.
+
+    Also refused, naming the parameter: `lags` = 0 (a VAR(0) has no long-run
+    multiplier); a malformed `restrictions` pair (e.g. `[(0,)]`) or a pattern
+    that is not a column permutation of the recursive one; and a `horizon`
+    whose responses, cumulated responses and decomposition would exceed a
+    2^28-value (2 GiB) memory budget, counted as real storage and checked
+    before anything is allocated (the refusal states the largest horizon that
+    fits: 399456 on two variables).
 
     Returned keys: `cumulative_irf`, `fevd`, `impact`, `irf`, `long_run`,
     `long_run_multiplier`.
@@ -1944,7 +2003,10 @@ Confidence bands for Blanchard-Quah long-run SVAR impulse responses, re-identifi
 
     The banded companion to `long_run_svar`: the same model, `restrictions`,
     `normalize` and `impact_signs` (`impact_signs=[(0, 1)]` signs the
-    Blanchard-Quah demand shock so output rises on impact).
+    Blanchard-Quah demand shock so output rises on impact;
+    `normalize="long_run"` makes each shock's long-run pivot LR[m][s]
+    positive, m = the number of long-run zeros in shock s's column, which is
+    the long-run diagonal only under the recursive pattern).
 
     method="bootstrap" (the DEFAULT -- unlike `var_irf_bands`, whose default is
     "asymptotic") is the Runkle (1987) / Kilian (1998) residual recursive design
@@ -2005,19 +2067,30 @@ Confidence bands for Blanchard-Quah long-run SVAR impulse responses, re-identifi
     twice; restrictions that are not a column permutation of the recursive
     pattern; bias_correct=True with method="asymptotic"; a singular
     I - A_1 - ... - A_p at the full sample (data / lags). Inert keywords are
-    refused: n_boot, seed and return_draws on the asymptotic arm; band_seed and
-    band_n_sim anywhere but the asymptotic sup-t band; a non-default
-    band_scope with band="pointwise". The working set, counted as real storage
-    (padded matrices and the Python lists included), is budgeted at 2^28
-    values (2 GiB) before anything is allocated: the n_boot*(horizon+1) k x k
-    draw matrices (refused naming n_boot and horizon) and, on the asymptotic
-    arm, the joint
-    covariance of a simultaneous band's family, ((horizon+1)*k^2)^2 under
-    band_scope="all" (refused naming horizon and band_scope). The asymptotic
-    arm's Jacobians cost horizon*(horizon+1)/2 * k^2 * lags*k^2 multiply-adds,
-    quadratic in horizon, capped at 2^28 (refused naming horizon). A
-    replication whose re-estimated VAR cannot be identified is never dropped:
-    the first is reported by index as an error.
+    refused, as in `var_irf_bands`: n_boot, seed and return_draws on the
+    asymptotic arm; band_seed and band_n_sim anywhere but the asymptotic sup-t
+    band; a non-default band_scope with band="pointwise". A replication whose
+    re-estimated VAR cannot be identified is never dropped: the first is
+    reported by index as an error.
+
+    SIZE BUDGET. The working set is counted as real storage (padded matrices,
+    Python lists and per-replication overheads included) and budgeted at 2^28
+    values (2 GiB) before anything is allocated; a refusal names the keyword
+    whose term is over and states the largest value that fits at the other
+    arguments. Bootstrap: each replication keeps its responses, long-run
+    matrix, anchor cells and companion radius in its slot of one store, plus a
+    fixed 48-value overhead (refused naming n_boot, or horizon when no count
+    fits; on two variables at horizon 12 the largest n_boot is 2532327). The
+    measured peak stays under the count: 648 bytes per replication against
+    848 counted on two variables at horizon 12 (the per-matrix storage before
+    0.11 took 4087). Asymptotic: the pointwise working set (refused naming
+    horizon and lags); a simultaneous band's family covariance,
+    ((horizon+1)*k^2)^2 under band_scope="all" (horizon and band_scope); the
+    sup-t simulation, (K+1)*band_n_sim values and n_families*band_n_sim*K^2
+    <= 2^36 multiply-adds (band_n_sim); and the Jacobians,
+    horizon*(horizon+1)/2 * k^2 * lags*k^2 multiply-adds, QUADRATIC in horizon
+    and capped at 2^28 (horizon). A pointwise band is never told to change
+    band_scope or band_n_sim, which it does not read.
 
     Further arguments, with defaults: `lags` (2), `horizon` (12), `trend` ("c"),
     `restrictions` (None), `normalize` ("long_run"), `impact_signs` (None),
@@ -3450,6 +3523,11 @@ Diebold-Yilmaz connectedness (percent) from a VAR's GFEVD.
 
     total, to_others, from_others, net, gfevd, pairwise_net (data is T x k).
 
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists), before the VAR is fitted;
+    past it the call is refused naming `horizon` and the largest horizon that
+    fits (262143 on three variables).
+
     Further arguments, with defaults: `lags` (2), `horizon` (10), `trend`
     ("c").
 
@@ -3893,6 +3971,12 @@ Pesaran-Smith (1995) mean-group panel VAR over per-entity T_i x k matrices.
     Returned keys: `coefs`, `coefs_se`, `intercept`, `intercept_se`,
     `irf_path`, `irf_path_se`, `lags`, `n_entities`, `neqs`, `orth_irfs`,
     `orth_irfs_se`.
+
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists) with every entity's path
+    kept until the average, before anything is fitted; past it the call is
+    refused naming `horizon` and the largest horizon that fits (266304 for four
+    bivariate entities).
 
     Further arguments, with defaults: `lags` (1), `trend` ("c"), `horizon`
     (10), `response` (0), `impulse` (0).
@@ -4775,6 +4859,11 @@ FVAR scenario: VAR([scores, y], scores FIRST) with Cholesky
     Returns horizons, weights, response_outcome, responses ((H+1) x (K+1),
     scores first then outcome), implied_outcome_innovation.
 
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists), before the VAR is fitted;
+    past it the call is refused naming `horizon` and the largest horizon that
+    fits (262143 with two factors).
+
     Further arguments, with defaults: `n_factors` (3), `lags` (2), `horizon`
     (10).
 
@@ -4871,6 +4960,12 @@ Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
     still applies and is not a band problem: `se` conditions on `lam` and
     ignores the penalty's shrinkage bias, so any band here is centred on a
     shrunk estimator. Method: Montiel Olea and Plagborg-Møller.
+
+    `band_n_sim` is checked, before anything is estimated, against the sup-t
+    budget every band shares: (K+1)·band_n_sim values within 2^28 (2 GiB) and
+    band_n_sim·K^2 multiply-adds within 2^36. Past it the call is refused
+    naming `band_n_sim` and the largest count that fits (19173961 at the
+    default 12 horizons).
 
     Further arguments, with defaults: `n_lag_controls` (4), `degree` (3),
     `n_basis` (None), `n_folds` (5), `hac_maxlags` (None).

@@ -8,6 +8,7 @@ use numpy::{IntoPyArray, PyArrayMethods};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use tsecon_var::irf_asymptotic::{BandMethod, IrfBandScope};
 use tsecon_var::long_run_bands::{
     long_run_asymptotic_bands, long_run_bootstrap_bands, LongRunBandSpec,
 };
@@ -52,9 +53,107 @@ pub(crate) fn impact_signs_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<(u
     index_pairs_arg(obj, "impact_signs")
 }
 
-/// `from_py_with` extractor for the long-run zero `restrictions=`.
-fn restrictions_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<(usize, usize)>>> {
+/// `from_py_with` extractor for the long-run zero `restrictions=` (shared
+/// with `long_run_svar`, so a malformed pair such as `[(0,)]` is refused
+/// naming `restrictions` by both).
+pub(crate) fn restrictions_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<(usize, usize)>>> {
     index_pairs_arg(obj, "restrictions")
+}
+
+/// The `lags >= 1` guard shared by `long_run_svar` and `long_run_svar_bands`,
+/// so both name `lags` (the identification engine would name its own
+/// `coefs` argument).
+pub(crate) fn require_var_lags(lags: usize) -> PyResult<()> {
+    if lags == 0 {
+        return Err(PyValueError::new_err(
+            "lags must be at least 1: a VAR(0) has no dynamics, hence no long-run \
+             multiplier C(1) to identify from",
+        ));
+    }
+    Ok(())
+}
+
+/// The `normalize=` selector shared by `long_run_svar` and
+/// `long_run_svar_bands`: `true` for "impact". The long-run rule signs each
+/// shock's long-run PIVOT, `LR[m, s]` with `m` the number of long-run zeros
+/// in shock `s`'s column (the Cholesky diagonal of the identification), which
+/// is the long-run diagonal only under the default recursive pattern.
+pub(crate) fn parse_normalize(normalize: &str) -> PyResult<bool> {
+    match normalize {
+        "long_run" => Ok(false),
+        "impact" => Ok(true),
+        other => Err(PyValueError::new_err(format!(
+            "unknown normalize {other:?}; expected \"long_run\" (each shock's long-run pivot \
+             LR[m, s] positive, m = the number of long-run zeros in shock s's column: the \
+             long-run diagonal under the default recursive restrictions) or \"impact\" \
+             (positive impact diagonal)"
+        ))),
+    }
+}
+
+/// Refuses a keyword the chosen arm and band do not read, compared to its
+/// default, so a value that would be silently ignored is never accepted.
+/// Shared by `var_irf_bands` and `long_run_svar_bands` (the same engines and
+/// the same defaults): `n_boot`, `seed` and `return_draws` on the asymptotic
+/// arm; `band_seed` and `band_n_sim` anywhere but the asymptotic sup-t band; a
+/// non-default `band_scope` with a pointwise band. `return_draws` is
+/// `long_run_svar_bands`' alone (`false` for the other caller).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn refuse_inert_band_keywords(
+    method: &str,
+    band: &str,
+    asymptotic: bool,
+    band_method: BandMethod,
+    scope: IrfBandScope,
+    n_boot: usize,
+    seed: u64,
+    band_seed: u64,
+    band_n_sim: usize,
+    return_draws: bool,
+) -> PyResult<()> {
+    let supt_sim = asymptotic && band_method == BandMethod::SupT;
+    let inert: [(&str, bool, &str); 6] = [
+        (
+            "n_boot",
+            asymptotic && n_boot != DEFAULT_N_BOOT,
+            "method=\"asymptotic\" draws nothing",
+        ),
+        (
+            "seed",
+            asymptotic && seed != DEFAULT_SEED,
+            "method=\"asymptotic\" draws nothing (the sup-t simulation is keyed by band_seed)",
+        ),
+        (
+            "return_draws",
+            asymptotic && return_draws,
+            "method=\"asymptotic\" has no draws to return",
+        ),
+        (
+            "band_seed",
+            !supt_sim && band_seed != DEFAULT_BAND_SEED,
+            "only the asymptotic sup-t band simulates (bootstrap sup-t reads its quantile \
+             off the draws, keyed by seed)",
+        ),
+        (
+            "band_n_sim",
+            !supt_sim && band_n_sim != DEFAULT_BAND_N_SIM,
+            "only the asymptotic sup-t band simulates (bootstrap sup-t reads its quantile \
+             off the draws, so use a larger n_boot instead)",
+        ),
+        (
+            "band_scope",
+            band_method == BandMethod::Pointwise && scope != IrfBandScope::Horizon,
+            "band=\"pointwise\" has no family to be simultaneous over; pass band=\"sup-t\", \
+             \"sidak\" or \"bonferroni\"",
+        ),
+    ];
+    if let Some((name, _, why)) = inert.iter().find(|(_, hit, _)| *hit) {
+        return Err(PyValueError::new_err(format!(
+            "{name} is not read here and would be silently ignored: {why}. Drop {name} \
+             (method={method:?}, band={band:?})."
+        )));
+    }
+    Ok(())
 }
 
 /// Confidence bands for Blanchard-Quah long-run SVAR impulse responses — the
@@ -63,7 +162,10 @@ fn restrictions_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<(usize, usize
 ///
 /// The structural model, `restrictions`, `normalize` and `impact_signs` are
 /// exactly `long_run_svar`'s (`impact_signs=[(0, 1)]` signs the
-/// Blanchard-Quah demand shock so output rises on impact). Two arms:
+/// Blanchard-Quah demand shock so output rises on impact;
+/// `normalize="long_run"` makes each shock's long-run pivot LR[m][s]
+/// positive, m = the number of long-run zeros in shock s's column, which is
+/// the long-run diagonal only under the recursive pattern). Two arms:
 ///
 /// `method="bootstrap"` (the DEFAULT — unlike `var_irf_bands`, whose default
 /// is "asymptotic") is the Runkle (1987) / Kilian (1998) residual recursive
@@ -132,22 +234,31 @@ fn restrictions_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<(usize, usize
 /// range or anchoring a shock twice; `restrictions` that are not a column
 /// permutation of the recursive pattern; `bias_correct=True` with
 /// method="asymptotic"; a singular I - A_1 - ... - A_p at the full sample
-/// (`data` / `lags`). Inert keywords are refused rather than ignored: `n_boot`,
-/// `seed` and `return_draws` on the asymptotic arm; `band_seed` and
-/// `band_n_sim` anywhere but the asymptotic sup-t band (`var_irf_bands`
-/// accepts both silently on its bootstrap arm); a non-default `band_scope`
-/// with band="pointwise". The working set, counted as real storage (padded
-/// matrices and the Python lists included), is budgeted at 2^28 values
-/// (2 GiB) BEFORE anything is allocated: the n_boot·(horizon+1) k x k draw
-/// matrices on the bootstrap arm (refused naming `n_boot` and `horizon`), and
-/// the joint
-/// covariance of a simultaneous band's family — ((horizon+1)·k²)² under
-/// band_scope="all" — on the asymptotic arm (refused naming `horizon` and
-/// `band_scope`). The asymptotic arm's Jacobians cost horizon·(horizon+1)/2 ·
-/// k² · lags·k² multiply-adds, QUADRATIC in horizon, and are capped at 2^28
-/// (a few seconds; refused naming `horizon`). A replication whose
-/// re-estimated VAR cannot be identified is never dropped: the first one is
-/// reported, by index, as an error.
+/// (`data` / `lags`). Inert keywords are refused rather than ignored, exactly
+/// as `var_irf_bands` refuses them: `n_boot`, `seed` and `return_draws` on the
+/// asymptotic arm; `band_seed` and `band_n_sim` anywhere but the asymptotic
+/// sup-t band; a non-default `band_scope` with band="pointwise". A
+/// replication whose re-estimated VAR cannot be identified is never dropped:
+/// the first one is reported, by index, as an error.
+///
+/// SIZE BUDGET. The working set is counted as real storage (padded matrices,
+/// Python lists and per-replication overheads included) and budgeted at 2^28
+/// values (2 GiB) BEFORE anything is allocated; a refusal names the keyword
+/// whose term is over and states the largest value that fits at the other
+/// arguments. Bootstrap: each replication keeps its responses, long-run
+/// matrix, anchor cells and companion radius in its slot of one store, plus a
+/// fixed 48-value overhead (refused naming `n_boot`, or `horizon` when no
+/// count fits; on two variables at horizon 12 the largest n_boot is
+/// 2532327). The measured peak stays under the count: 648 bytes per
+/// replication against 848 counted on two variables at horizon 12 (the
+/// per-matrix storage before 0.11 took 4087). Asymptotic: the pointwise
+/// working set (refused naming `horizon and lags`); a simultaneous band's
+/// family covariance, ((horizon+1)·k²)² under band_scope="all" (`horizon and
+/// band_scope`); the sup-t simulation, (K+1)·band_n_sim values and
+/// n_families·band_n_sim·K² ≤ 2^36 multiply-adds (`band_n_sim`); and the
+/// Jacobians, horizon·(horizon+1)/2 · k² · lags·k² multiply-adds, QUADRATIC in
+/// horizon and capped at 2^28 (a few seconds; `horizon`). A pointwise band is
+/// never told to change `band_scope` or `band_n_sim`, which it does not read.
 ///
 /// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
 /// ("c"), `restrictions` (None), `normalize` ("long_run"), `impact_signs`
@@ -198,8 +309,6 @@ fn long_run_svar_bands<'py>(
     band_n_sim: usize,
     return_draws: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
-    use tsecon_var::irf_asymptotic::{BandMethod, IrfBandScope};
-
     if !(alpha > 0.0 && alpha < 1.0) {
         return Err(PyValueError::new_err(format!(
             "alpha must lie strictly in (0, 1), got {alpha} (alpha = 0.1 gives 90% bands)"
@@ -216,26 +325,12 @@ fn long_run_svar_bands<'py>(
             )))
         }
     };
-    let normalize_impact = match normalize {
-        "long_run" => false,
-        "impact" => true,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown normalize {other:?}; expected \"long_run\" (positive long-run \
-                 diagonal) or \"impact\" (positive impact diagonal)"
-            )))
-        }
-    };
+    let normalize_impact = parse_normalize(normalize)?;
     let tr = parse_trend(trend)?;
     let band_method = var_band_method(band)?;
     // Parsed even at band="pointwise", so a typo is caught.
     let scope = IrfBandScope::parse(band_scope).map_err(to_py)?;
-    if lags == 0 {
-        return Err(PyValueError::new_err(
-            "lags must be at least 1: a VAR(0) has no dynamics, hence no long-run \
-             multiplier C(1) to identify from",
-        ));
-    }
+    require_var_lags(lags)?;
 
     // Kilian's correction re-centres bootstrap draws; the delta method draws
     // none. Accepting the flag and discarding it would be a silent no-op.
@@ -248,48 +343,18 @@ fn long_run_svar_bands<'py>(
         ));
     }
     // Inert keywords, compared to their defaults.
-    let supt_sim = asymptotic && band_method == BandMethod::SupT;
-    let inert: [(&str, bool, &str); 6] = [
-        (
-            "n_boot",
-            asymptotic && n_boot != DEFAULT_N_BOOT,
-            "method=\"asymptotic\" draws nothing",
-        ),
-        (
-            "seed",
-            asymptotic && seed != DEFAULT_SEED,
-            "method=\"asymptotic\" draws nothing (the sup-t simulation is keyed by band_seed)",
-        ),
-        (
-            "return_draws",
-            asymptotic && return_draws,
-            "method=\"asymptotic\" has no draws to return",
-        ),
-        (
-            "band_seed",
-            !supt_sim && band_seed != DEFAULT_BAND_SEED,
-            "only the asymptotic sup-t band simulates (bootstrap sup-t reads its quantile \
-             off the draws, keyed by seed)",
-        ),
-        (
-            "band_n_sim",
-            !supt_sim && band_n_sim != DEFAULT_BAND_N_SIM,
-            "only the asymptotic sup-t band simulates (bootstrap sup-t reads its quantile \
-             off the draws, so use a larger n_boot instead)",
-        ),
-        (
-            "band_scope",
-            band_method == BandMethod::Pointwise && scope != IrfBandScope::Horizon,
-            "band=\"pointwise\" has no family to be simultaneous over; pass band=\"sup-t\", \
-             \"sidak\" or \"bonferroni\"",
-        ),
-    ];
-    if let Some((name, _, why)) = inert.iter().find(|(_, hit, _)| *hit) {
-        return Err(PyValueError::new_err(format!(
-            "{name} is not read here and would be silently ignored: {why}. Drop {name} \
-             (method={method:?}, band={band:?})."
-        )));
-    }
+    refuse_inert_band_keywords(
+        method,
+        band,
+        asymptotic,
+        band_method,
+        scope,
+        n_boot,
+        seed,
+        band_seed,
+        band_n_sim,
+        return_draws,
+    )?;
 
     let spec = LongRunBandSpec {
         lags,
@@ -342,33 +407,14 @@ fn long_run_svar_bands<'py>(
     if let (Some(cv), Some(lo), Some(hi)) = (&r.simultaneous, &r.sim_lower, &r.sim_upper) {
         set_irf_band_items(&d, cv, lo, hi)?;
     }
-    if let (Some(draws), Some(lr)) = (&r.irf_draws, &r.long_run_draws) {
-        let k = r.long_run_point.nrows();
-        let hh = r.point.len();
-        let nb = draws.len();
-        let mut flat = Vec::with_capacity(nb * hh * k * k);
-        for c in draws {
-            for m in c {
-                for i in 0..k {
-                    for j in 0..k {
-                        flat.push(m[(i, j)]);
-                    }
-                }
-            }
-        }
-        d.set_item("irf_draws", flat.into_pyarray(py).reshape([nb, hh, k, k])?)?;
-        let mut lflat = Vec::with_capacity(nb * k * k);
-        for m in lr {
-            for i in 0..k {
-                for j in 0..k {
-                    lflat.push(m[(i, j)]);
-                }
-            }
-        }
-        d.set_item(
-            "long_run_draws",
-            lflat.into_pyarray(py).reshape([nb, k, k])?,
-        )?;
+    let k = r.long_run_point.nrows();
+    let hh = r.point.len();
+    if let (Some(draws), Some(lr)) = (r.irf_draws, r.long_run_draws) {
+        // The engine keeps the draws as flat row-major arrays, moved into
+        // NumPy without a copy.
+        let nb = lr.len() / (k * k).max(1);
+        d.set_item("irf_draws", draws.into_pyarray(py).reshape([nb, hh, k, k])?)?;
+        d.set_item("long_run_draws", lr.into_pyarray(py).reshape([nb, k, k])?)?;
     }
     Ok(d)
 }
