@@ -16,6 +16,13 @@
 //!   over-sized at n = 200, which the test states and shows shrinking by
 //!   n = 800 rather than papering over;
 //! * its POWER against a dominated benchmark;
+//! * the FAMILY-WISE ERROR RATE and power of StepM on four designs, the
+//!   un-studentized rule against arch's own StepM rates on the same designs
+//!   (`_meta.stepm_fwer_study`), with the deterministic identities checked
+//!   replication by replication (the size-0.05 set inside the size-0.10
+//!   set, step 1 equal to the SPA's consistent critical value); the
+//!   studentized default is measured, over-rejecting family-wise at n = 200
+//!   like the SPA it starts from, and is shown not to worsen at n = 800;
 //! * the COVERAGE of the MCS. Hansen-Lunde-Nason's Theorem 1 is asymptotic
 //!   and about the WHOLE best set; on a design with two exactly-equally-best
 //!   models that set is contained about 0.87 of the time at a nominal 0.90,
@@ -32,6 +39,7 @@
 //! Every measured rate is printed (`cargo test -- --nocapture`) and quoted
 //! in the forecasting model card.
 
+use rayon::prelude::*;
 use serde_json::Value;
 use tsecon_bootstrap::{indices, BlockScheme};
 use tsecon_forecast::{
@@ -676,6 +684,299 @@ fn spa_size_studentized_is_measured_and_shrinks_with_the_sample() {
             "{ls}: the studentized distortion at 5% grew from {rs} (n={ns}) to {rl} (n={nl})"
         );
     }
+}
+
+/// One StepM design of `_meta.stepm_fwer_study`: scales (benchmark first)
+/// and arch's rates per size.
+struct FwerDesign {
+    label: String,
+    scales: Vec<f64>,
+    true_nulls: Vec<usize>,
+    arch: Vec<(f64, Value)>,
+}
+
+fn fixture_fwer_study() -> (usize, usize, Vec<FwerDesign>) {
+    let fx = fixture();
+    let s = &fx["_meta"]["stepm_fwer_study"];
+    assert_eq!(s["n"].as_u64(), Some(200));
+    assert_eq!(s["reps"].as_u64(), Some(300));
+    assert_eq!(s["block_size"].as_u64(), Some(8));
+    assert_eq!(s["rho"].as_f64(), Some(0.5));
+    assert_eq!(s["studentize"].as_bool(), Some(false));
+    let designs = ["lfc", "partial_null", "mixed", "stepdown"]
+        .iter()
+        .map(|&label| {
+            let d = &s["designs"][label];
+            FwerDesign {
+                label: label.to_string(),
+                scales: d["scales"]
+                    .as_array()
+                    .expect("scales")
+                    .iter()
+                    .map(|v| v.as_f64().expect("scale"))
+                    .collect(),
+                true_nulls: d["true_nulls"]
+                    .as_array()
+                    .expect("true_nulls")
+                    .iter()
+                    .map(|v| v.as_u64().expect("index") as usize)
+                    .collect(),
+                arch: [(0.05, "0.05"), (0.10, "0.1")]
+                    .iter()
+                    .map(|&(a, key)| (a, d["rates"][key].clone()))
+                    .collect(),
+            }
+        })
+        .collect();
+    (
+        s["mc"].as_u64().expect("mc") as usize,
+        s["n"].as_u64().expect("n") as usize,
+        designs,
+    )
+}
+
+/// Rates of a set of per-replication superior sets against the true nulls.
+struct SetRates {
+    fwer: f64,
+    any_power: f64,
+    all_power: f64,
+    avg_power: f64,
+    mean_size: f64,
+}
+
+fn set_rates(sets: &[Vec<usize>], m: usize, true_nulls: &[usize]) -> SetRates {
+    let false_nulls: Vec<usize> = (0..m).filter(|k| !true_nulls.contains(k)).collect();
+    let mc = sets.len() as f64;
+    let (mut fw, mut any, mut all, mut avg, mut size) = (0usize, 0usize, 0usize, 0.0, 0.0);
+    for s in sets {
+        if s.iter().any(|k| true_nulls.contains(k)) {
+            fw += 1;
+        }
+        let hits = false_nulls.iter().filter(|k| s.contains(k)).count();
+        if !false_nulls.is_empty() {
+            if hits > 0 {
+                any += 1;
+            }
+            if hits == false_nulls.len() {
+                all += 1;
+            }
+            avg += hits as f64 / false_nulls.len() as f64;
+        }
+        size += s.len() as f64;
+    }
+    SetRates {
+        fwer: fw as f64 / mc,
+        any_power: any as f64 / mc,
+        all_power: all as f64 / mc,
+        avg_power: avg / mc,
+        mean_size: size / mc,
+    }
+}
+
+/// StepM's per-replication superior sets on `mc` seeded panels of a design,
+/// at both sizes on the SAME resamples, with the deterministic identities
+/// asserted replication by replication:
+///
+/// * monotone in size: the size-0.05 set is inside the size-0.10 set (until
+///   the first model of the 0.10 set is added at 0.05, the remaining set
+///   contains the 0.10 one, so its 95% quantile is at least the 0.10 rule's
+///   90% quantile);
+/// * step 1 is the SPA: `step_crit_values[0]` is the consistent critical
+///   value at `1 - size` (`crit_consistent[1]` at 0.05, `[0]` at 0.10), and
+///   step 1 is non-empty exactly when the SPA statistic exceeds it.
+fn stepm_sets(
+    scales: &[f64],
+    n: usize,
+    mc: usize,
+    data_seed: u64,
+    studentize: bool,
+    sizes: &[f64],
+) -> Vec<Vec<Vec<usize>>> {
+    let per_rep: Vec<Vec<Vec<usize>>> = (0..mc)
+        .into_par_iter()
+        .map(|r| {
+            let mut g = Gauss::new(data_seed + r as u64);
+            let cols = loss_panel(&mut g, n, scales, &vec![0.0; scales.len()], 0.5);
+            let (bench, models) = (cols[0].clone(), cols[1..].to_vec());
+            let mut sets: Vec<Vec<usize>> = Vec::with_capacity(sizes.len());
+            for &size in sizes {
+                let mut spa = spa_opts(Some(8), 300, ResampleScheme::Stationary, 1000 + r as u64);
+                spa.studentize = studentize;
+                let res = stepm_test(&bench, &models, &StepmOptions { size, spa }).unwrap();
+                let level = if (size - 0.05).abs() < 1e-12 { 1 } else { 0 };
+                let want = res.spa.crit_consistent[level];
+                assert!(
+                    (res.step_crit_values[0] - want).abs() <= 1e-12 * want.abs().max(1.0),
+                    "r={r} size {size}: step 1 crit {} is not the SPA's {want}",
+                    res.step_crit_values[0]
+                );
+                if res.steps[0].is_empty() {
+                    assert!(res.spa.statistic <= res.step_crit_values[0]);
+                } else {
+                    assert!(res.spa.statistic > res.step_crit_values[0]);
+                }
+                sets.push(res.superior_models);
+            }
+            for w in sets.windows(2) {
+                assert!(
+                    w[0].iter().all(|k| w[1].contains(k)),
+                    "r={r}: the smaller-size set {:?} is not inside the larger-size set {:?}",
+                    w[0],
+                    w[1]
+                );
+            }
+            sets
+        })
+        .collect();
+    // Transpose to [size][replication].
+    (0..sizes.len())
+        .map(|i| per_rep.iter().map(|s| s[i].clone()).collect())
+        .collect()
+}
+
+/// StepM's family-wise error rate and power, UN-studentized — the rule
+/// `arch.bootstrap.StepM` computes (its `studentize` flag is inert) — on the
+/// four designs of `fixtures/spa.json`'s `_meta.stepm_fwer_study`, where the
+/// generator stored ARCH's own rates (1000 replications). tsecon's seeded
+/// draws on its own panels must land within 4 Monte Carlo se of arch's FWER,
+/// all-power and average power; a gap the two share is the method's.
+/// Guardrails: FWER at most size + 3 se on the designs with superior or
+/// worse models, at most 2 size + 3 se under the least favourable
+/// configuration (where StepM's FWER IS the SPA's size, measured over-sized
+/// by about the same amount in both libraries).
+#[test]
+fn stepm_fwer_unstudentized_matches_arch_rates() {
+    let (arch_mc, n, designs) = fixture_fwer_study();
+    let mc = 400usize;
+    let sizes = [0.05, 0.10];
+    for d in &designs {
+        let m = d.scales.len() - 1;
+        let sets = stepm_sets(&d.scales, n, mc, 8800, false, &sizes);
+        for ((size, arch), mine) in d.arch.iter().zip(&sets) {
+            let r = set_rates(mine, m, &d.true_nulls);
+            let a_fwer = arch["fwer"].as_f64().unwrap();
+            let power = if d.true_nulls.len() < m {
+                format!(
+                    ", any-power {:.4} [arch {}], all-power {:.4} [arch {}], avg power {:.4} [arch {}]",
+                    r.any_power,
+                    arch["any_power"],
+                    r.all_power,
+                    arch["all_power"],
+                    r.avg_power,
+                    arch["avg_power"]
+                )
+            } else {
+                String::new()
+            };
+            println!(
+                "StepM FWER study, studentize=false ({}, scales {:?}; n={n}, m={m}, B=300, block 8, {mc} MC reps) size {size}: FWER {:.4} [arch {a_fwer:.4}]{power}, mean set size {:.3} [arch {}]",
+                d.label,
+                d.scales,
+                r.fwer,
+                r.mean_size,
+                arch["mean_n_superior"]
+            );
+            let se = |p: f64| {
+                let p = p.clamp(1.0 / mc as f64, 1.0 - 1.0 / mc as f64);
+                (p * (1.0 - p) * (1.0 / mc as f64 + 1.0 / arch_mc as f64)).sqrt()
+            };
+            let pooled = |a: f64, b: f64| 0.5 * (a + b);
+            assert!(
+                (r.fwer - a_fwer).abs() <= 4.0 * se(pooled(r.fwer, a_fwer)),
+                "{} size {size}: FWER {} vs arch {a_fwer}",
+                d.label,
+                r.fwer
+            );
+            if let (Some(a_all), Some(a_avg)) =
+                (arch["all_power"].as_f64(), arch["avg_power"].as_f64())
+            {
+                assert!(
+                    (r.all_power - a_all).abs() <= 4.0 * se(pooled(r.all_power, a_all)),
+                    "{} size {size}: all-power {} vs arch {a_all}",
+                    d.label,
+                    r.all_power
+                );
+                assert!(
+                    (r.avg_power - a_avg).abs() <= 4.0 * se(pooled(r.avg_power, a_avg)),
+                    "{} size {size}: average power {} vs arch {a_avg}",
+                    d.label,
+                    r.avg_power
+                );
+            }
+            let g = (size * (1.0 - size) / mc as f64).sqrt();
+            let cap = if d.label == "lfc" {
+                2.0 * size + 3.0 * g
+            } else {
+                size + 3.0 * g
+            };
+            assert!(
+                r.fwer <= cap,
+                "{} size {size}: FWER {} beyond {cap}",
+                d.label,
+                r.fwer
+            );
+        }
+    }
+}
+
+/// The STUDENTIZED StepM (the crate default; no package computes it) is
+/// MEASURED: on the same four designs at n = 200 its family-wise error at a
+/// nominal 5% inherits the studentized SPA's finite-sample over-rejection
+/// (the step-1 identity makes the LFC FWER the SPA's size), and under the
+/// least favourable configuration the rate must not grow by n = 800.
+#[test]
+fn stepm_fwer_studentized_is_measured() {
+    let (_, n, designs) = fixture_fwer_study();
+    let mc = 400usize;
+    let size = 0.05;
+    let se = (size * (1.0 - size) / mc as f64).sqrt();
+    let mut lfc_200 = None;
+    for d in &designs {
+        let m = d.scales.len() - 1;
+        let sets = stepm_sets(&d.scales, n, mc, 8800, true, &[size]);
+        let r = set_rates(&sets[0], m, &d.true_nulls);
+        let power = if d.true_nulls.len() < m {
+            format!(
+                ", all-power {:.4}, avg power {:.4}",
+                r.all_power, r.avg_power
+            )
+        } else {
+            String::new()
+        };
+        println!(
+            "StepM FWER study, studentize=true ({}; n={n}, m={m}, B=300, block 8, {mc} MC reps) size {size}: FWER {:.4}{power}",
+            d.label, r.fwer
+        );
+        assert!(
+            r.fwer >= size - 4.0 * se - 0.01,
+            "{}: studentized FWER {} far below nominal",
+            d.label,
+            r.fwer
+        );
+        assert!(
+            r.fwer <= 3.0 * size + 3.0 * se,
+            "{}: studentized FWER {} worse than the measured distortion",
+            d.label,
+            r.fwer
+        );
+        if d.label == "lfc" {
+            lfc_200 = Some(r.fwer);
+        }
+    }
+    let lfc_200 = lfc_200.expect("lfc design");
+    let lfc = designs.iter().find(|d| d.label == "lfc").unwrap();
+    let mc_800 = 200usize;
+    let sets = stepm_sets(&lfc.scales, 800, mc_800, 18800, true, &[size]);
+    let r = set_rates(&sets[0], lfc.scales.len() - 1, &lfc.true_nulls);
+    println!(
+        "StepM FWER study, studentize=true (lfc; n=800, m=5, B=300, block 8, {mc_800} MC reps) size {size}: FWER {:.4} (n=200: {lfc_200:.4})",
+        r.fwer
+    );
+    assert!(
+        r.fwer <= lfc_200 + 0.02,
+        "the studentized LFC FWER grew from {lfc_200} (n=200) to {} (n=800)",
+        r.fwer
+    );
 }
 
 #[test]
