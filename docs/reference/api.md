@@ -1446,6 +1446,10 @@ Local projection IRFs; `se` is None (auto), "lag_augmented" or "hac".
     Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
     (None).
 
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
+
 ### `lp_iv`
 
 ```python
@@ -1487,6 +1491,10 @@ LP-IV: instrumented local projections with a first-stage F diagnostic.
     Further arguments, with defaults: `n_lag_controls` (4), `band_alpha`
     (0.1).
 
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
+
 ### `lp_multiplier`
 
 ```python
@@ -1525,6 +1533,10 @@ Ramey-Zubairy (2018) integral multiplier by one-step LP-IV.
 
     Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
     (None), `band_alpha` (0.1).
+
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
 
 ## penalized regression
 
@@ -3592,6 +3604,10 @@ Leakage-safe CV split indices for sequential data.
 
     Further arguments, with defaults: `k` (5).
 
+    An `n` whose splits would materialize more than 2**28 indices (2
+    GiB) is refused by name, with the largest `n` that fits, before any
+    fold is built.
+
 ## penalized ML (paths)
 
 ### `adaptive_lasso`
@@ -3640,6 +3656,11 @@ Elastic-net regularization path with AIC/BIC selection.
 
     Returned keys: `aic`, `aic_best`, `bic`, `bic_best`, `coefs`, `df`,
     `lambdas`, `rss`.
+
+    Raises ValueError naming `max_iter` when it is 0 and `tol` when it
+    is not finite and positive (as `lasso` does), and naming `n_lambdas`
+    when the path (`n_lambdas * (p + 8)` values) exceeds the 2**28-value
+    (2 GiB) memory budget, with the largest value that fits.
 
 ## forecast backtest
 
@@ -3872,6 +3893,10 @@ State-dependent (interacted) local projections (Ramey-Zubairy 2018); per-regime 
 
     Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
     (None), `band_alpha` (0.1).
+
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
 
 ## mean-group panel VAR
 
@@ -4657,6 +4682,11 @@ Quantile local projections: `irf[tau][h]` with Powell-sandwich `se[tau][h]`.
     Further arguments, with defaults: `taus` (None), `horizons` (12),
     `n_lag_controls` (4).
 
+    A `horizons` or `n_lag_controls` that leaves a horizon with no more
+    usable rows than parameters (`2 + 2 * n_lag_controls`) is refused by
+    name, before anything is sized by `horizons`, with its largest
+    admissible value.
+
 ### `growth_at_risk`
 
 ```python
@@ -4730,6 +4760,10 @@ Functional local projection: y_{t+h} on ALL K scores jointly + const +
 
     Returned keys: `betas`, `covs`, `horizons`, `n_factors`, `nobs`, `se`.
 
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
+
 ### `flp_scenario`
 
 ```python
@@ -4754,6 +4788,10 @@ IRF of y to a whole-curve scenario delta (length M): FPCA, joint FLP,
 
     Returned keys: `betas`, `explained`, `horizons`, `response`, `se`,
     `weights`.
+
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
 
 ### `fvar_scenario`
 
@@ -5078,6 +5116,14 @@ Kernel ridge regression: exact dual solve, or the Rahimi-Recht
     and is property-tested (seeded determinism; error against the exact
     fit falling with `D`), not golden-pinned.
 
+    An `rff_features` whose feature matrix and SVD exceed the
+    2**28-value (2 GiB) memory budget is refused by name, with the
+    largest value that fits; a training or test kernel matrix with a
+    non-finite entry (a polynomial `degree` that overflows, or a
+    negative base under a non-integer `degree`) is refused naming
+    `degree`, `gamma` and `coef0`, rather than reported as a rank-
+    deficient kernel or returned as a NaN prediction.
+
 ### `kernel_regression`
 
 ```python
@@ -5145,6 +5191,9 @@ Nadaraya-Watson or local-linear kernel regression of `y` on `x`
     (independent package); the leave-block-out criterion and
     `effective_df` are documented-formula transcriptions (no package
     computes them) pinned at 1e-10.
+
+    A `block` that alone leaves fewer rows than each local fit needs is
+    refused by name with its largest admissible value.
 
 ## structured penalties and post-selection
 
@@ -5262,6 +5311,9 @@ Post-double-selection LASSO (Belloni-Chernozhukov-Hansen 2014) for
 
     Further arguments, with defaults: `tol` (1e-08), `max_iter` (100000).
 
+    Raises ValueError naming `max_iter` when it is 0 and `tol` when it
+    is not finite and positive, before any selection LASSO runs.
+
 ## Trees and forests
 
 ### `regression_tree`
@@ -5307,7 +5359,13 @@ CART regression tree (Breiman et al. 1984) with scikit-learn's
     Raises ValueError for NaN/inf (naming the array), an `x_test` column
     mismatch, `min_samples_leaf < 1`, `min_samples_split < 2`, and
     `insufficient data: {got} observations, at least {needed} required`
-    when n < max(min_samples_split, 2 * min_samples_leaf).
+    when n < max(2, min_samples_split, 2 * min_samples_leaf) — inside a
+    refusal that names the keyword whenever one of the two asks for more
+    rows than x has.
+
+    A `min_samples_leaf` above n / 2 or a `min_samples_split` above n is
+    refused by name with its largest admissible value (the message keeps
+    the `insufficient data` wording).
 
 ### `random_forest`
 
@@ -5400,10 +5458,17 @@ Random forest for regression (Breiman 2001) with time-series-aware
 
     Raises ValueError for NaN/inf (naming the array), `insufficient data:
     {got} observations, at least {needed} required` when n < 2 *
-    min_samples_leaf, unknown string options (listing the accepted
+    min_samples_leaf (inside a refusal that names `min_samples_leaf`),
+    unknown string options (listing the accepted
     values), malformed `quantiles` (naming the fix), `importance_groups`
     of the wrong length (naming both lengths), a block length outside
     1..=n, and every inert-kwarg combination above.
+
+    An `n_trees` or `n_permutations` whose working set exceeds the
+    2**28-value (2 GiB) memory budget is refused by name, with the
+    largest value that fits, before any tree is grown; a
+    `min_samples_leaf` above n / 2 is refused by name with its largest
+    admissible value.
 
 ## Trend filtering and boosting
 
@@ -5502,6 +5567,10 @@ Componentwise L2 boosting with single-column least-squares base
     nonincreasing, the small-step limit is OLS on the selected support,
     AIC recovers a sparse truth's support.
 
+    An `n_steps` whose paths (`n_steps * (n + p + 10)` values) exceed
+    the 2**28-value (2 GiB) memory budget is refused by name, with the
+    largest value that fits, before anything is allocated.
+
 ## Neural (MLP, echo state network)
 
 ### `mlp_regression`
@@ -5591,6 +5660,14 @@ Feed-forward neural regressor (one or two hidden layers) with a seed
     list the accepted activation/solver names, name the two-layer limit,
     and report `insufficient data: {got} observations, at least {needed}
     required` with the validation split counted.
+
+    `hidden` may also be a 1-D array of widths. A layer width, an
+    `n_seeds`, or (under Adam with `validation_fraction=0`, when every
+    epoch runs and is recorded) a `max_epochs` whose working set exceeds
+    the 2**28-value (2 GiB) memory budget is refused by name
+    (`hidden[i]`, `n_seeds`, `max_epochs`), with the largest value that
+    fits, before anything is allocated; with a validation split a large
+    `max_epochs` simply runs until early stopping.
 
 ### `echo_state_network`
 

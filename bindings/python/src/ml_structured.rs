@@ -231,6 +231,9 @@ fn post_lasso<'py>(
 /// union, `coef`/`se`/`t_stat`/`conf_int` match statsmodels HAC and
 /// nonrobust OLS at 1e-8 relative (~1e-14 achieved), `p_value` at 1e-12.
 /// Fixture: `fixtures/structured.json`.
+///
+/// Raises ValueError naming `max_iter` when it is 0 and `tol` when it is
+/// not finite and positive, before any selection LASSO runs.
 #[pyfunction]
 #[pyo3(signature = (y, d, x, alpha = None, hac_lags = None, tol = 1e-8, max_iter = 100000))]
 #[allow(clippy::too_many_arguments)]

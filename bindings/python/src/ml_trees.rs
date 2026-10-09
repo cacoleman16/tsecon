@@ -51,8 +51,14 @@ use crate::{to_faer, to_py, vec1};
 /// Raises ValueError for NaN/inf in `x`/`y`/`x_test` (naming the array),
 /// `x_test` with a different column count, `min_samples_leaf < 1`,
 /// `min_samples_split < 2`, and `insufficient data: {got} observations,
-/// at least {needed} required` when n < max(min_samples_split,
-/// 2 * min_samples_leaf), i.e. when no split could ever be made.
+/// at least {needed} required` when n < max(2, min_samples_split,
+/// 2 * min_samples_leaf), i.e. when no split could ever be made — inside a
+/// refusal that names the keyword whenever one of the two asks for more
+/// rows than x has.
+///
+/// A `min_samples_leaf` above n / 2 or a `min_samples_split` above n is
+/// refused by name with its largest admissible value (the message keeps
+/// the `insufficient data` wording).
 #[pyfunction]
 #[pyo3(signature = (x, y, max_depth = None, min_samples_leaf = 1, min_samples_split = 2, x_test = None))]
 fn regression_tree<'py>(
@@ -319,10 +325,16 @@ fn parse_importance(
 ///
 /// Raises ValueError for NaN/inf (naming the array), `insufficient data:
 /// {got} observations, at least {needed} required` when n < 2 *
-/// min_samples_leaf, unknown string options (listing the accepted values),
+/// min_samples_leaf (inside a refusal that names `min_samples_leaf`),
+/// unknown string options (listing the accepted values),
 /// `quantiles` outside (0, 1) or unsorted (naming the fix),
 /// `importance_groups` of the wrong length (naming both lengths), a block
 /// length outside 1..=n, and every inert-kwarg combination above.
+///
+/// An `n_trees` or `n_permutations` whose working set exceeds the
+/// 2**28-value (2 GiB) memory budget is refused by name, with the largest
+/// value that fits, before any tree is grown; a `min_samples_leaf` above
+/// n / 2 is refused by name with its largest admissible value.
 #[pyfunction]
 #[pyo3(signature = (x, y, n_trees = 500, max_features = None, max_depth = None, min_samples_leaf = 5, bootstrap = "iid", block_length = None, seed = 0, x_test = None, quantiles = None, importance = "none", importance_groups = None, permutation_block = None, n_permutations = None))]
 #[allow(clippy::too_many_arguments)]

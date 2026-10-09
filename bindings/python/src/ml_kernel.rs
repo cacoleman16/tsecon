@@ -69,6 +69,14 @@ fn design<'py>(obj: &Bound<'py, PyAny>, name: &str) -> PyResult<Mat<f64>> {
 /// (independent package). The RFF approximation is a Monte-Carlo object
 /// and is property-tested (seeded determinism; error against the exact
 /// fit falling with `D`), not golden-pinned.
+///
+/// An `rff_features` whose feature matrix and SVD exceed the 2**28-value
+/// (2 GiB) memory budget is refused by name, with the largest value that
+/// fits; a training or test kernel matrix with a non-finite entry (a
+/// polynomial `degree` that overflows, or a negative base under a non-
+/// integer `degree`) is refused naming `degree`, `gamma` and `coef0`,
+/// rather than reported as a rank-deficient kernel or returned as a NaN
+/// prediction.
 #[pyfunction]
 #[pyo3(signature = (x, y, alpha = 1.0, kernel = "rbf", gamma = None, degree = 3.0, coef0 = 1.0, x_test = None, rff_features = None, seed = 0))]
 #[allow(clippy::too_many_arguments)]
@@ -194,6 +202,9 @@ fn parse_bandwidth<'py>(obj: &Bound<'py, PyAny>, k: usize) -> PyResult<Vec<f64>>
 /// (independent package); the leave-block-out criterion and
 /// `effective_df` are documented-formula transcriptions (no package
 /// computes them) pinned at 1e-10.
+///
+/// A `block` that alone leaves fewer rows than each local fit needs is
+/// refused by name with its largest admissible value.
 #[pyfunction]
 #[pyo3(signature = (x, y, bandwidth = None, kind = "local_linear", kernel = "gaussian", bandwidth_method = "fixed", block = None, x_test = None))]
 #[allow(clippy::too_many_arguments)]

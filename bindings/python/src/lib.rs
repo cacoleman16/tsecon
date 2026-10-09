@@ -3999,6 +3999,10 @@ fn resolve_lp_se(se: Option<&str>, cumulation: tsecon_lp::Cumulation) -> PyResul
 /// Method: Montiel Olea and Plagborg-Møller.
 ///
 /// Returned keys: `horizons`, `irf`, `se`, `se_method`.
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -4099,6 +4103,10 @@ fn lp<'py>(
 ///
 /// Further arguments, with defaults: `n_lag_controls` (4), `band_alpha`
 /// (0.1).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -4195,6 +4203,10 @@ fn lp_iv<'py>(
 /// `first_stage_f`, `horizons`, `multiplier`, `nobs_per_h`, `se`.
 ///
 /// Further arguments, with defaults: `maxlags` (None), `band_alpha` (0.1).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -8581,6 +8593,10 @@ fn iv_gmm<'py>(
 /// has meaning where training rows can follow a test block, which
 /// walk-forward training windows never do; a nonzero `embargo` therefore
 /// raises on `"expanding"`/`"rolling"` instead of being silently ignored.
+///
+/// An `n` whose splits would materialize more than 2**28 indices (2 GiB)
+/// is refused by name, with the largest `n` that fits, before any fold is
+/// built.
 #[pyfunction]
 #[pyo3(signature = (n, scheme = "expanding", train = 0, horizon = 1, step = 1,
                     k = 5, purge = 0, embargo = 0))]
@@ -8690,6 +8706,11 @@ fn adaptive_lasso<'py>(
 /// lambda.
 ///
 /// Further arguments, with defaults: `tol` (1e-07), `max_iter` (100000).
+///
+/// Raises ValueError naming `max_iter` when it is 0 and `tol` when it is
+/// not finite and positive (as `lasso` does), and naming `n_lambdas` when
+/// the path (`n_lambdas * (p + 8)` values) exceeds the 2**28-value (2
+/// GiB) memory budget, with the largest value that fits.
 #[pyfunction]
 #[pyo3(signature = (x, y, l1_ratio = 1.0, n_lambdas = 100, eps = 1e-3, tol = 1e-7, max_iter = 100000))]
 #[allow(clippy::too_many_arguments)]
@@ -9955,6 +9976,10 @@ fn weighted_midas<'py>(
 ///
 /// Further arguments, with defaults: `n_lag_controls` (4), `band_alpha`
 /// (0.1).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -11640,6 +11665,11 @@ fn quantile_regression<'py>(
 /// Returned keys: `converged`, `horizons`, `irf`, `se`, `taus`.
 ///
 /// Further arguments, with defaults: `horizons` (12).
+///
+/// A `horizons` or `n_lag_controls` that leaves a horizon with no more
+/// usable rows than parameters (`2 + 2 * n_lag_controls`) is refused by
+/// name, before anything is sized by `horizons`, with its largest
+/// admissible value.
 #[pyfunction]
 #[pyo3(signature = (y, shock, taus = None, horizons = 12, n_lag_controls = 4))]
 fn quantile_lp<'py>(
@@ -11802,6 +11832,10 @@ fn functional_pca<'py>(
 /// correction off; this function always applies it).
 /// Keys: `horizons`, `n_factors`, `betas` ((H+1) x K), `covs` ((H+1) x K x K
 /// joint HAC covariances), `se` ((H+1) x K), `nobs` (per horizon).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (y, scores, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 fn flp<'py>(
@@ -11858,6 +11892,10 @@ fn flp<'py>(
 ///
 /// Further arguments, with defaults: `n_factors` (3), `n_lag_controls` (2),
 /// `hac_maxlags` (None).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 #[allow(clippy::too_many_arguments)] // py + 7 user args; the composite scenario call genuinely needs them

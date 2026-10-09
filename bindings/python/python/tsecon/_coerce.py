@@ -107,6 +107,11 @@ _EXEMPT: dict[str, frozenset[str]] = {
     # diag_vr.rs: float64-ifying [2, 4] would make it indistinguishable from
     # [2.0, 4.0], which is refused like the scalar 4.0 (audit round 15).
     "variance_ratio": frozenset({"lags"}),
+    # Hidden-layer widths (an int or a list of ints), parsed by hand in
+    # ml_neural.rs. As a float64 array a list such as [2**62] slipped past
+    # the 2**48 pre-flight below, which scans lists and tuples only, and
+    # reached the core as a saturated cast (audit round 16).
+    "mlp_regression": frozenset({"hidden"}),
 }
 
 _POSITIONAL = (
