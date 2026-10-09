@@ -6156,8 +6156,8 @@ Conditional VAR forecast, hard or soft: the forecast of every series
 
     Soft conditions: `condition_sd` (same shape as `conditions`, exactly
     `len(conditions)` rows) gives a conditioned cell a STANDARD DEVIATION
-    > 0; 0, None or NaN keeps it hard, and a free cell takes only None, NaN
-    or 0. Any sd > 0 REQUIRES `soft`, because the two readings disagree on
+    above 0; 0, None or NaN keeps it hard, and a free cell takes only None,
+    NaN or 0. Any sd > 0 REQUIRES `soft`, because the two readings disagree on
     whether the cell's point is its value. `soft="density"`
     (Andersson-Palmqvist-Waggoner 2010; "the scenario says inflation
     ~ N(2, 0.5^2)"): the cell's forecast distribution IS N(value, sd^2) —
