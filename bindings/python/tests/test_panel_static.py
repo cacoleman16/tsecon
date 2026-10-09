@@ -5,8 +5,9 @@
   (linearmodels 7.0 RandomEffects / BetweenOLS / FirstDifferenceOLS /
   FamaMacBeth, and PooledOLS on the hand-differenced data for
   `panel_fd(constant=True)`; see the generator header) at 1e-10, with the
-  outcome and mask passed as pandas DataFrames and the regressors stacked
-  with `np.stack`;
+  outcome and mask passed as pandas DataFrames (plain arrays when pandas is
+  not installed, as in the CI wheel job) and the regressors stacked with
+  `np.stack`;
 * the Mundlak / correlated-random-effects recipe of the panel model card
   and the documented divergences from linearmodels (a period nobody
   observes);
@@ -23,8 +24,12 @@ import re
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import pytest
+
+try:
+    import pandas as pd
+except ImportError:  # pragma: no cover - extras absent (the CI wheel job)
+    pd = None
 
 import tsecon
 
@@ -67,10 +72,14 @@ def _dataset(name):
 
 
 def _inputs(case):
-    """pandas outcome and mask, np.stack'ed regressors (k x N x T)."""
+    """Outcome and mask as pandas DataFrames when pandas is installed (so the
+    golden replay also crosses the coercion layer), plain arrays otherwise;
+    regressors np.stack'ed (k x N x T)."""
     y, xs, mask = _dataset(case["dataset"])
     n, t = mask.shape
     x = np.stack(xs) if case["regressors"] == "all" else np.empty((0, n, t))
+    if pd is None:
+        return y, x, mask
     return pd.DataFrame(y), x, pd.DataFrame(mask)
 
 

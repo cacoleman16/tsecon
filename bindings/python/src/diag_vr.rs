@@ -20,6 +20,28 @@ fn type_name(v: &Bound<'_, PyAny>) -> String {
         .unwrap_or_default()
 }
 
+/// A NumPy bool scalar or bool array (`dtype.kind == "b"`).
+fn is_numpy_bool(v: &Bound<'_, PyAny>) -> bool {
+    v.getattr("dtype")
+        .and_then(|d| d.getattr("kind"))
+        .and_then(|k| k.extract::<String>())
+        .is_ok_and(|k| k == "b")
+}
+
+/// The refusal for a value that is not an integer horizon or a sequence of
+/// them, naming the value and its type.
+fn not_a_horizon(h: &Bound<'_, PyAny>) -> PyErr {
+    let what = if h.extract::<f64>().is_ok() {
+        format!("{h} of type {}", type_name(h))
+    } else {
+        type_name(h)
+    };
+    PyValueError::new_err(format!(
+        "variance_ratio: lags must be an integer horizon q >= 2 or a 1-D sequence of \
+         them; got {what} — {LAGS_HINT}"
+    ))
+}
+
 /// One horizon value from a sequence: an integral number >= 2.
 fn horizon_from_f64(v: f64) -> PyResult<usize> {
     if !v.is_finite() || v.fract() != 0.0 {
@@ -75,6 +97,12 @@ fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>) -> PyResult<(Vec<usize>, bool)
              {LAGS_HINT}"
         )));
     }
+    // A NumPy bool is not a horizon either. Older NumPy releases (2.0 among
+    // them) still convert it to an int through `__index__`, so catch it
+    // before the integer paths to refuse it the same way on every version.
+    if is_numpy_bool(h) {
+        return Err(not_a_horizon(h));
+    }
     if h.is_instance_of::<PyString>() || h.is_instance_of::<PyBytes>() {
         return Err(PyValueError::new_err(format!(
             "variance_ratio: lags must be an integer horizon or a sequence of them, not a \
@@ -116,17 +144,9 @@ fn parse_vr_lags(lags: Option<&Bound<'_, PyAny>>) -> PyResult<(Vec<usize>, bool)
             .collect::<PyResult<Vec<_>>>()?;
         return Ok((out, false));
     }
-    // A float (even an integral one such as 4.0), a NumPy bool or a Fraction
-    // converts to f64 but is not an int horizon: name the value and its type.
-    let what = if h.extract::<f64>().is_ok() {
-        format!("{h} of type {}", type_name(h))
-    } else {
-        type_name(h)
-    };
-    Err(PyValueError::new_err(format!(
-        "variance_ratio: lags must be an integer horizon q >= 2 or a 1-D sequence of \
-         them; got {what} — {LAGS_HINT}"
-    )))
+    // A float (even an integral one such as 4.0) or a Fraction converts to
+    // f64 but is not an int horizon: name the value and its type.
+    Err(not_a_horizon(h))
 }
 
 /// Resolve the `debiased` / `robust` sentinels. Both default to True under
