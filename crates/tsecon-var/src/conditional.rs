@@ -59,6 +59,9 @@
 //!   A soft cell is the posterior mean, not its typed value — exactly what a
 //!   Kalman smoother returns with measurement-noise variance `sd²` on that
 //!   cell, the statsmodels leg of `fixtures/generate_var_cf_soft_fixtures.py`.
+//!   The soft × soft block of a horizon is taken from the equal,
+//!   cancellation-free `Cov(B y | z) = Ω M^{-1} B Σ B'`, so a soft cell
+//!   whose sd is far below its forecast se keeps a correct se.
 //!
 //! Both reduce to the hard closed form at `sd = 0`, and an all-zero (or
 //! all-`None`) `condition_sd` *is* the hard path — the same code with no
