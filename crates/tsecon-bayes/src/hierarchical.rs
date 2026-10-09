@@ -111,6 +111,12 @@ impl Hyperprior {
     }
 }
 
+/// The largest pre-scan grid [`bvar_hierarchical`] accepts. Each point is one
+/// closed-form marginal-likelihood evaluation (a prior and a posterior); the
+/// grid only seeds the Nelder-Mead polish, and the default 25 points already
+/// bracket the mode.
+pub const MAX_N_GRID: usize = 10_000;
+
 /// Configuration for [`bvar_hierarchical`]. [`Default`] matches the Python
 /// `bvar_hierarchical` defaults.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -135,7 +141,8 @@ pub struct HierarchicalConfig {
     pub optimize_lambda3: bool,
     /// The hyperprior on `lambda1`.
     pub hyperprior: Hyperprior,
-    /// Number of log-spaced grid points in the pre-scan (`0` disables it).
+    /// Number of log-spaced grid points in the pre-scan (`0` disables it;
+    /// at most [`MAX_N_GRID`]).
     pub n_grid: usize,
     /// Nelder-Mead iteration budget.
     pub max_iter: usize,
@@ -215,9 +222,16 @@ pub struct HierarchicalFit {
 ///   `lambda1_lo`, `lambda1_lo >= lambda1_hi`, or a non-positive
 ///   `lambda1_init`;
 /// * [`BayesError::NonFinite`] for non-finite search bounds;
-/// * whatever [`MinnesotaNiwPrior::new`] / [`MinnesotaNiwPrior::posterior`]
-///   return when the *refit at the optimum* fails (insufficient
-///   observations, singular AR scale regressions, non-finite data);
+/// * [`BayesError::TooLarge`] for `n_grid` above [`MAX_N_GRID`];
+/// * whatever [`MinnesotaNiwPrior::with_scale_ar`] returns at
+///   `lambda1_init` (a sample too short for the AR(`scale_ar`) scale
+///   regressions, singular AR scale regressions, non-finite data), and a
+///   posterior at `lambda1_init` refused for too few observations: these
+///   do not depend on `lambda1`, so they are reported as such before the
+///   search instead of turning every evaluation into `-inf`;
+/// * whatever [`MinnesotaNiwPrior::with_scale_ar`] /
+///   [`MinnesotaNiwPrior::posterior`] return when the *refit at the
+///   optimum* fails;
 /// * [`BayesError::NoConvergence`] if the optimizer itself errors (as
 ///   opposed to merely not meeting a tolerance, which is reported through
 ///   [`HierarchicalFit::converged`]).
@@ -255,6 +269,37 @@ pub fn bvar_hierarchical(
                    (4 = the library default, 1 = the Giannone-Lenza-Primiceri \
                    2015 convention)",
         });
+    }
+
+    if cfg.n_grid > MAX_N_GRID {
+        return Err(BayesError::TooLarge {
+            arg: "n_grid",
+            value: cfg.n_grid,
+            max: Some(MAX_N_GRID),
+            what: "the lambda1 pre-scan grid (one marginal-likelihood evaluation per \
+                   point, only to seed the Nelder-Mead polish; the default 25 already \
+                   brackets the mode)",
+            budget: "the cap of 10000 grid points",
+        });
+    }
+    // Every failure of the prior, and a posterior refused for too few
+    // observations, is the same at every lambda1 (the scale regressions and
+    // the sample do not depend on it). Inside the search such a failure is
+    // read as an infeasible point (-inf), so the optimizer would report a
+    // "poorly conditioned" non-convergence; raise the real cause here.
+    let prior_init = MinnesotaNiwPrior::with_scale_ar(
+        data,
+        p,
+        cfg.lambda0,
+        cfg.lambda1_init,
+        cfg.lambda3,
+        cfg.delta,
+        cfg.scale_ar,
+    )?;
+    match prior_init.posterior(data) {
+        Err(e @ BayesError::InsufficientObservations { .. }) => return Err(e),
+        Err(e @ BayesError::Dimension { .. }) => return Err(e),
+        _ => {}
     }
 
     let lo = cfg.lambda1_lo;

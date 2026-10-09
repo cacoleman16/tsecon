@@ -47,7 +47,8 @@ pub(crate) fn build_regressors(
 ) -> Result<(Mat<f64>, Mat<f64>), IdentError> {
     if p == 0 {
         return Err(IdentError::InvalidArgument {
-            what: "lag length p must be at least 1",
+            what: "lags = 0: recovering the structural shocks needs a VAR with at least one \
+                   lag; pass lags >= 1",
         });
     }
     let n = data.ncols();

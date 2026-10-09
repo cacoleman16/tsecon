@@ -60,7 +60,7 @@ use tsecon_rng::Stream;
 use crate::error::IdentError;
 use crate::haar::haar_rotation;
 use crate::sign::SignRestrictionSet;
-use crate::summary::{normalize, structural_irf, summarize};
+use crate::summary::{check_draw_budget, normalize, structural_irf, summarize};
 
 /// Default pointwise credible-band probabilities: the 5/16/50/84/95
 /// percentiles (the 68% and 90% equal-tailed bands plus the median, the
@@ -236,12 +236,12 @@ impl SignSampler {
     ) -> Result<Self, IdentError> {
         if n_posterior_draws == 0 {
             return Err(IdentError::InvalidArgument {
-                what: "n_posterior_draws must be at least 1",
+                what: "n_draws must be at least 1",
             });
         }
         if max_tries_per_draw == 0 {
             return Err(IdentError::InvalidArgument {
-                what: "max_tries_per_draw must be at least 1",
+                what: "max_tries must be at least 1",
             });
         }
         Ok(Self {
@@ -284,6 +284,10 @@ impl SignSampler {
     ///   disagree on the number of variables;
     /// * [`IdentError::InvalidArgument`] if the restriction set's horizon
     ///   differs from the sampler's;
+    /// * [`IdentError::Bayes`] ([`tsecon_bayes::BayesError::TooLarge`]),
+    ///   naming `horizon` or `n_draws`, when the kept draws and their summary
+    ///   exceed [`tsecon_bayes::budget::MEMORY_BUDGET_VALUES`], checked
+    ///   before any substream is spawned;
     /// * [`IdentError::Rng`] if substream spawning fails;
     /// * [`IdentError::Bayes`] on a posterior-draw or Cholesky-IRF failure;
     /// * [`IdentError::Stats`]/[`IdentError::NoConvergence`] on a Haar draw
@@ -308,6 +312,7 @@ impl SignSampler {
             });
         }
         let p = posterior.lag_order();
+        check_draw_budget(n, self.horizon, self.n_posterior_draws, 0)?;
 
         // One independent substream per posterior draw: this is what makes
         // the accepted rotation of each draw a deterministic function of

@@ -63,6 +63,7 @@
 //! batching. With no narrative restrictions the weight loop is skipped and the
 //! sampler reproduces [`crate::SignSampler`] exactly.
 
+use tsecon_bayes::budget::{self, mat_values, rect_values, SizeArg};
 use tsecon_bayes::{cholesky_irf, NiwPosterior};
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
@@ -78,7 +79,7 @@ use crate::shocks::{
     build_regressors, orthogonalized_residuals, reduced_form_residuals, structural_shocks,
 };
 use crate::sign::{Sign, SignRestrictionSet};
-use crate::summary::{structural_irf, summarize_weighted};
+use crate::summary::{check_draw_budget, structural_irf, summarize_weighted};
 
 /// Default pointwise credible-band probabilities (5/16/50/84/95 percentiles).
 const DEFAULT_QUANTILE_PROBS: [f64; 5] = [0.05, 0.16, 0.50, 0.84, 0.95];
@@ -666,6 +667,40 @@ impl NarrativeSampleResult {
     }
 }
 
+/// The work budget of the narrative weight loop, in multiply-adds:
+/// `n_draws * n_weight_draws * (T_eff n^2 + (h + 3) n^3)` (see
+/// [`narrative_weight_draw_work`]), counted as if every draw were accepted.
+/// Refused beyond it, naming `n_weight_draws` (or `n_draws`) with the
+/// largest value that fits: the loop holds the interpreter and cannot be
+/// interrupted, and every count is a fixed loop length, not a convergence
+/// cap that stops early. Measured at 1.1 to 1.35 ns per unit (a 4-variable
+/// VAR(1), `T = 400`; `n_draws = 100, n_weight_draws = 10000` takes 7.5 s),
+/// so the cap is about a minute and a half; the default 500 x 200 on a
+/// 3-variable VAR with `T = 200` is 2e8 units.
+pub const NARRATIVE_WEIGHT_WORK: u128 = 1 << 36;
+
+/// How [`NARRATIVE_WEIGHT_WORK`] is quoted in a refusal.
+const NARRATIVE_WEIGHT_WORK_PHRASE: &str =
+    "the 2^36 multiply-add work budget (about a minute and a half)";
+
+/// The work of one narrative weight draw, in multiply-adds: recovering the
+/// `T_eff` structural shocks (`T_eff n^2`), the Haar rotation and the
+/// impulse-response cube to the check horizon `h` (`(h + 3) n^3`).
+/// Saturating, so an absurd size cannot overflow the count meant to refuse
+/// it.
+pub fn narrative_weight_draw_work(n: usize, t_eff: usize, check_horizon: usize) -> u128 {
+    let n = n as u128;
+    let n2 = n.saturating_mul(n);
+    (t_eff as u128)
+        .saturating_mul(n2)
+        .saturating_add(
+            (check_horizon as u128)
+                .saturating_add(3)
+                .saturating_mul(n2.saturating_mul(n)),
+        )
+        .max(1)
+}
+
 /// The narrative sign-restriction sampler configuration.
 #[derive(Debug, Clone)]
 pub struct NarrativeSampler {
@@ -696,12 +731,12 @@ impl NarrativeSampler {
     ) -> Result<Self, IdentError> {
         if n_posterior_draws == 0 {
             return Err(IdentError::InvalidArgument {
-                what: "n_posterior_draws must be at least 1",
+                what: "n_draws must be at least 1",
             });
         }
         if max_tries_per_draw == 0 {
             return Err(IdentError::InvalidArgument {
-                what: "max_tries_per_draw must be at least 1",
+                what: "max_tries must be at least 1",
             });
         }
         if n_weight_draws == 0 {
@@ -762,6 +797,11 @@ impl NarrativeSampler {
     /// * [`IdentError::Dimension`] if any restriction set or the data disagrees
     ///   with the posterior on the number of variables, or the narrative set's
     ///   effective sample length differs from the data's;
+    /// * [`IdentError::Bayes`] ([`tsecon_bayes::BayesError::TooLarge`]) when
+    ///   the kept draws exceed [`tsecon_bayes::budget::MEMORY_BUDGET_VALUES`]
+    ///   (naming `horizon` or `n_draws`), or the narrative weight loop
+    ///   exceeds [`NARRATIVE_WEIGHT_WORK`] (naming `n_weight_draws` or
+    ///   `n_draws`), checked before any substream is spawned;
     /// * [`IdentError::Rng`] on substream spawning;
     /// * [`IdentError::Bayes`]/[`IdentError::Linalg`]/[`IdentError::Stats`] on a
     ///   posterior draw, Cholesky, or Haar failure.
@@ -828,6 +868,40 @@ impl NarrativeSampler {
             .map(|s| s.horizon())
             .unwrap_or(0)
             .max(narrative.map(|nr| nr.contrib_check_horizon()).unwrap_or(0));
+
+        // Size the run before any substream is spawned: the kept draws (b,
+        // Sigma, Q and a weight each, then their IRF summary) against the
+        // memory budget, and the weight loop -- n_weight_draws S-rotations
+        // per accepted draw, each recovering T_eff structural shocks and an
+        // IRF cube to the check horizon -- against the work budget.
+        let k = n.saturating_mul(p).saturating_add(1);
+        check_draw_budget(
+            n,
+            self.horizon.max(check_horizon),
+            self.n_posterior_draws,
+            rect_values(k, n)
+                .saturating_add(mat_values(n).saturating_mul(2))
+                .saturating_add(1),
+        )?;
+        if narrative.is_some() {
+            let per_weight_draw = narrative_weight_draw_work(n, t_eff, check_horizon);
+            budget::check_sizes(
+                "the narrative importance weights (n_draws * n_weight_draws S-rotations, \
+                 each recovering the T_eff structural shocks and an impulse-response \
+                 cube to the restriction horizon)",
+                NARRATIVE_WEIGHT_WORK,
+                NARRATIVE_WEIGHT_WORK_PHRASE,
+                &[
+                    SizeArg::new("n_weight_draws", self.n_weight_draws, 1),
+                    SizeArg::new("n_draws", self.n_posterior_draws, 1),
+                ],
+                |v| {
+                    (v[0] as u128)
+                        .saturating_mul(v[1] as u128)
+                        .saturating_mul(per_weight_draw)
+                },
+            )?;
+        }
 
         // Regressors are fixed across draws; only needed when we must recover
         // structural shocks (narrative present).

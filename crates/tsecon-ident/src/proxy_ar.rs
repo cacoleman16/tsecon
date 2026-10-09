@@ -209,6 +209,7 @@
 //! mathematics as self-verifying (the grid test proves it) and the
 //! attribution as approximate.
 
+use tsecon_bayes::budget::{self, irf_path_values, mat_values, rect_values, SizeArg};
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
 use tsecon_rng::Stream;
@@ -914,7 +915,8 @@ pub fn proxy_ar_sets<'a>(
         ArVariance::HacBartlett { lags } => {
             if lags >= n_proxy {
                 return Err(IdentError::InvalidArgument {
-                    what: "HAC bandwidth must be smaller than the proxy overlap count",
+                    what:
+                        "hac_lags (the HAC bandwidth) must be smaller than the proxy overlap count",
                 });
             }
             omega_hac_bartlett(gtil.as_ref(), &overlap, t, lags, no)
@@ -1198,7 +1200,9 @@ fn check_reduced_form(rf: &ArReducedForm<'_>, horizons: usize, n: usize) -> Resu
 ///
 /// [`IdentError::Dimension`] if the shapes disagree, [`IdentError::NonFinite`]
 /// on a NaN or infinity, [`IdentError::InvalidArgument`] if `coefs` is empty
-/// or `n_proxy` is zero.
+/// or `n_proxy` is zero; [`IdentError::Bayes`]
+/// ([`tsecon_bayes::BayesError::TooLarge`]), naming `horizon`, past the
+/// memory budget or [`PROXY_AR_DELTA_WORK`].
 pub fn psi_reduced_form_cov(
     psi: &[Mat<f64>],
     coefs: &[Mat<f64>],
@@ -1253,6 +1257,7 @@ pub fn psi_reduced_form_cov(
             return Err(IdentError::NonFinite { what: "gamma" });
         }
     }
+    check_delta_horizon(n, p, psi.len() - 1)?;
 
     // Companion transpose A', and the first n rows of its powers.
     let mut at = Mat::<f64>::zeros(np, np);
@@ -1328,6 +1333,56 @@ pub fn psi_reduced_form_cov(
         out.push(cov);
     }
     Ok(out)
+}
+
+/// The work cap of the delta-method reduced-form variance
+/// ([`psi_reduced_form_cov`]), in multiply-adds:
+/// `H (H + 1) / 2 * n p * n (n + 1) + H (n d^2 + n^2 d + (n p)^3)` with
+/// `d = n^2 p` (the Jacobians `Gamma_h` re-sum `h` moving-average terms,
+/// so the work is QUADRATIC in the horizon `H`). Measured at 2 to 6 ns per
+/// unit on a 3-variable VAR(2)/VAR(4) (`horizon = 2000` takes 0.8 s and
+/// 1.8 s), so the cap is about 10 to 25 s; a longer horizon is refused,
+/// naming `horizon`, instead of running for hours.
+pub const PROXY_AR_DELTA_WORK: u128 = 1 << 32;
+
+/// The memory and work budgets of [`psi_reduced_form_cov`] at `horizon`:
+/// the `(A')^h` row blocks and the per-horizon variances against
+/// [`tsecon_bayes::budget::MEMORY_BUDGET_VALUES`], and the Jacobian work
+/// against [`PROXY_AR_DELTA_WORK`]; both name `horizon`.
+fn check_delta_horizon(n: usize, p: usize, horizon: usize) -> Result<(), IdentError> {
+    let np = n.saturating_mul(p);
+    let dim = np.saturating_mul(n) as u128;
+    let (n128, np128) = (n as u128, np as u128);
+    budget::check_memory(
+        "the delta-method reduced-form variances (per horizon an n x np block of \
+         the companion power and an n x n variance)",
+        &[SizeArg::new("horizon", horizon, 0)],
+        |v| {
+            (v[0] as u128)
+                .saturating_add(1)
+                .saturating_mul(rect_values(n, np).saturating_add(mat_values(n)))
+        },
+    )?;
+    let per_h = n128
+        .saturating_mul(dim.saturating_mul(dim))
+        .saturating_add(n128.saturating_mul(n128).saturating_mul(dim))
+        .saturating_add(np128.saturating_mul(np128).saturating_mul(np128));
+    let per_pair = np128.saturating_mul(n128.saturating_mul(n128.saturating_add(1)));
+    budget::check_sizes(
+        "the delta-method Jacobians Gamma_1..Gamma_horizon (their work is quadratic \
+         in horizon)",
+        PROXY_AR_DELTA_WORK,
+        "the 2^32 multiply-add work budget (about 10 to 25 s)",
+        &[SizeArg::new("horizon", horizon, 0)],
+        |v| {
+            let h = v[0] as u128;
+            h.saturating_mul(h.saturating_add(1))
+                .saturating_div(2)
+                .saturating_mul(per_pair)
+                .saturating_add(h.saturating_mul(per_h))
+        },
+    )?;
+    Ok(())
 }
 
 /// Pope (1990) closed-form first-order bias correction of least-squares VAR
@@ -1613,6 +1668,9 @@ pub fn pope_bias_corrected_coefs(
 /// [`IdentError::Dimension`] / [`IdentError::NonFinite`] as for
 /// [`psi_reduced_form_cov`]; [`IdentError::InvalidArgument`] if `draws` is
 /// odd or below 32, or `coefs` is empty, or `n_proxy` is zero;
+/// [`IdentError::Bayes`] ([`tsecon_bayes::BayesError::TooLarge`]), naming
+/// `horizon` or `rf_draws`, when the simulated responses exceed
+/// [`tsecon_bayes::budget::MEMORY_BUDGET_VALUES`];
 /// [`IdentError::Linalg`] if `cov_alpha` is too indefinite to factor even
 /// with the jitter ladder (a genuinely indefinite coefficient covariance).
 pub fn psi_reduced_form_cov_mc(
@@ -1638,8 +1696,8 @@ pub fn psi_reduced_form_cov_mc(
     }
     if draws < 32 || draws % 2 != 0 {
         return Err(IdentError::InvalidArgument {
-            what: "draws must be an even number of at least 32 (the sampler works in \
-                   antithetic pairs; 256 is a reasonable default)",
+            what: "rf_draws must be an even number of at least 32 (the second-order \
+                   simulation works in antithetic pairs; 256 is the default)",
         });
     }
     for m in coefs {
@@ -1678,6 +1736,23 @@ pub fn psi_reduced_form_cov_mc(
             return Err(IdentError::NonFinite { what: "gamma" });
         }
     }
+    // One row of (horizon + 1) n responses per draw, plus one draw's
+    // moving-average path and the per-horizon covariances.
+    budget::check_memory(
+        "the second-order simulation (rf_draws rows of (horizon + 1) n simulated \
+         responses, plus one draw's moving-average path)",
+        &[
+            SizeArg::new("horizon", horizon, 0),
+            SizeArg::new("rf_draws", draws, 32),
+        ],
+        |v| {
+            let cols = (v[0] as u128).saturating_add(1).saturating_mul(n as u128);
+            (v[1] as u128)
+                .saturating_add(8)
+                .saturating_mul(cols)
+                .saturating_add(irf_path_values(n, v[0], mat_values(n)))
+        },
+    )?;
 
     // alpha layout r = (l*n + j)*n + e  <->  A_l[(e, j)], matching cov_alpha.
     let mut alpha_hat = vec![0.0f64; dim];
@@ -1890,8 +1965,8 @@ pub fn ar_cell(n_proxy: usize, critical_value: f64, m: ArMoments) -> Result<ArCe
                    for some lam (v1^2 > v0*v2), so the AR statistic is not a quadratic-set \
                    problem. ArVariance::Hc0 is PSD by construction on any overlap; \
                    ArVariance::HacBartlett is PSD only when the overlap is contiguous, so a \
-                   proxy with interior gaps can reach this — shorten the HAC bandwidth, or \
-                   fall back to Hc0. A supplied Omega or ArReducedForm must be PSD",
+                   proxy with interior gaps can reach this — lower hac_lags (the HAC \
+                   bandwidth), or fall back to Hc0. A supplied Omega or ArReducedForm must be PSD",
         });
     }
 

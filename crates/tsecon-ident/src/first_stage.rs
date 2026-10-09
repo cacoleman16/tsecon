@@ -238,7 +238,7 @@ pub fn proxy_first_stage(
     if let FirstStageVariance::HacBartlett { lags } = variance {
         if lags >= n_proxy {
             return Err(IdentError::InvalidArgument {
-                what: "HAC bandwidth must be smaller than the proxy overlap count",
+                what: "hac_lags (the HAC bandwidth) must be smaller than the proxy overlap count",
             });
         }
     }

@@ -51,7 +51,7 @@ use crate::error::IdentError;
 use crate::shocks::{
     build_regressors, orthogonalized_residuals, reduced_form_residuals, structural_shocks,
 };
-use crate::summary::{structural_irf, structural_ma};
+use crate::summary::{mul_pow2, scale_exponent, structural_irf, structural_ma};
 
 /// Extracts the lag matrices `A_1..A_p` and the intercept `c` from the
 /// `(1 + n p) x n` regressor-by-equation coefficient matrix `b`.
@@ -89,7 +89,7 @@ pub(crate) fn baseline_path(
     }
     if p == 0 {
         return Err(IdentError::InvalidArgument {
-            what: "lag length p must be at least 1",
+            what: "lags = 0: the decomposition needs a VAR with at least one lag; pass lags >= 1",
         });
     }
     if data.nrows() < p + 1 {
@@ -274,15 +274,23 @@ impl HistoricalDecomposition {
     /// degrees-of-freedom-adjusted `Sigma_u` (as
     /// [`crate::long_run_svar`]'s is), `m = 1 + n p`. Off-diagonal mass means
     /// the impact matrix does not orthogonalize these residuals.
+    ///
+    /// The shocks are brought to unit scale by a power of two before the
+    /// cross products are formed and the result is scaled back (exact), so
+    /// an entry overflows to infinity only when its true value is beyond
+    /// `f64::MAX` — not merely because the shocks exceed about `1e154`.
     pub fn shock_covariance(&self) -> Mat<f64> {
         let t = self.t_eff as f64;
         let n = self.n_vars;
+        let e =
+            scale_exponent((0..n).flat_map(|j| (0..self.t_eff).map(move |r| self.shocks[(r, j)])))
+                .unwrap_or(0);
         Mat::from_fn(n, n, |i, j| {
             let mut acc = 0.0;
             for r in 0..self.t_eff {
-                acc += self.shocks[(r, i)] * self.shocks[(r, j)];
+                acc += mul_pow2(self.shocks[(r, i)], -e) * mul_pow2(self.shocks[(r, j)], -e);
             }
-            acc / t
+            mul_pow2(acc / t, 2 * e)
         })
     }
 
@@ -410,13 +418,31 @@ const SINGULAR_IMPACT: &str = "impact is singular (numerically rank-deficient by
     max singular value * n * machine epsilon), so u_t = impact @ eps_t cannot be \
     solved for the structural shocks; pass an invertible n x n impact matrix";
 
+/// Message for an invertible impact matrix whose structural shocks
+/// `impact^{-1} u_t` overflow: its scale, not its rank, is the problem.
+const IMPACT_SCALE: &str = "the structural shocks eps_t = impact^{-1} u_t overflow: impact \
+    is invertible, but its scale is extreme relative to the residuals (its entries are \
+    many orders of magnitude below them); rescale impact to the units of the residuals, \
+    e.g. long_run_svar(...)[\"impact\"]";
+
 /// Whether the square matrix `m` is rank-deficient by the
 /// `numpy.linalg.matrix_rank` default tolerance: `sigma_min <= sigma_max * n *
 /// eps`. An all-zero matrix is singular. An SVD failure is treated as singular
 /// (it can only occur on input the finiteness check has already refused).
+///
+/// The test is scale-invariant, so `m` is first brought to unit scale by a
+/// power of two (exact): the SVD of a matrix with entries near the overflow
+/// or underflow threshold (beyond about `1e154` or below `1e-154`) would
+/// otherwise produce non-finite or flushed singular values and call an
+/// invertible matrix singular, contradicting numpy.
 fn is_singular_matrix_rank(m: MatRef<'_, f64>) -> bool {
     let n = m.nrows();
-    let sv = match m.singular_values() {
+    let Some(e) = scale_exponent((0..m.ncols()).flat_map(|j| (0..n).map(move |i| m[(i, j)])))
+    else {
+        return true; // all zero
+    };
+    let scaled = Mat::from_fn(n, m.ncols(), |i, j| mul_pow2(m[(i, j)], -e));
+    let sv = match scaled.singular_values() {
         Ok(v) => v,
         Err(_) => return true,
     };
@@ -524,9 +550,8 @@ pub fn decompose_with_impact(
     for j in 0..n {
         for i in 0..t_eff {
             if !e[(i, j)].is_finite() {
-                return Err(IdentError::InvalidArgument {
-                    what: SINGULAR_IMPACT,
-                });
+                // The rank test above passed, so the overflow is one of scale.
+                return Err(IdentError::InvalidArgument { what: IMPACT_SCALE });
             }
         }
     }
