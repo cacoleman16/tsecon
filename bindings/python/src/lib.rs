@@ -21,6 +21,7 @@ mod ml_structured;
 mod ml_trees;
 mod panel_dl;
 mod regime_ci;
+mod spectest_serial;
 mod ssm_uc;
 mod termstructure_jsz;
 mod var_cf;
@@ -13134,5 +13135,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     forecast_mcs::register(m)?;
     ets::register(m)?;
     diag_vr::register(m)?;
+    spectest_serial::register(m)?;
     Ok(())
 }

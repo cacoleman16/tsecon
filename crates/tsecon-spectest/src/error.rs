@@ -10,7 +10,8 @@ use core::fmt;
 use tsecon_hac::HacError;
 use tsecon_stats::StatsError;
 
-/// Errors produced by the White, Breusch-Pagan, RESET, Chow, and CUSUM tests.
+/// Errors produced by the White, Breusch-Pagan, RESET, Chow, CUSUM,
+/// Breusch-Godfrey, and Durbin-Watson tests.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SpecTestError {
     /// A required series was empty.
@@ -86,6 +87,34 @@ pub enum SpecTestError {
         /// Which regression's design was singular.
         what: &'static str,
     },
+    /// The Breusch-Godfrey order was zero — explicitly, or as the default
+    /// `min(10, n / 5)` on a sample shorter than five observations — so the
+    /// auxiliary regression would add no lagged residual to test.
+    InvalidLags {
+        /// The offending order.
+        nlags: usize,
+        /// The sample size `n`.
+        n: usize,
+        /// `true` when the zero came from the default rule, not the caller.
+        defaulted: bool,
+    },
+    /// The sample is longer than an exact computation supports: the exact
+    /// Durbin-Watson p-value eigen-decomposes an `n x n` matrix, which is
+    /// cubic in `n`.
+    SampleTooLong {
+        /// The computation that is capped.
+        what: &'static str,
+        /// The sample size `n`.
+        n: usize,
+        /// The largest supported `n`.
+        max: usize,
+    },
+    /// A numerical routine (an eigendecomposition or a quadrature) failed to
+    /// reach its accuracy target.
+    NumericalBreakdown {
+        /// The routine that failed.
+        what: &'static str,
+    },
     /// An error propagated from the OLS engine ([`tsecon_hac`]).
     Hac(HacError),
     /// An error propagated from the statistics layer ([`tsecon_stats`]:
@@ -152,6 +181,39 @@ impl fmt::Display for SpecTestError {
                 "singular design in the {what}: the columns are collinear (rank \
                  deficient), so the normal equations have no unique solution — drop a \
                  redundant regressor"
+            ),
+            Self::InvalidLags {
+                nlags,
+                n,
+                defaulted,
+            } => {
+                if *defaulted {
+                    write!(
+                        f,
+                        "invalid Breusch-Godfrey order: with n = {n} observations of y the \
+                         default nlags = min(10, n // 5) is {nlags}; the test needs at least \
+                         one lagged residual, so pass nlags >= 1 explicitly (keeping \
+                         n > k + nlags) or supply a longer y"
+                    )
+                } else {
+                    write!(
+                        f,
+                        "invalid Breusch-Godfrey order nlags = {nlags}: the test regresses the \
+                         residuals on their own lags 1..nlags, so it needs nlags >= 1"
+                    )
+                }
+            }
+            Self::SampleTooLong { what, n, max } => write!(
+                f,
+                "sample too long for the {what}: n = {n} exceeds the supported maximum of \
+                 {max} (the exact null distribution eigen-decomposes an n x n matrix, which \
+                 is cubic in n); for a long sample use the Breusch-Godfrey test, whose cost \
+                 is linear in n"
+            ),
+            Self::NumericalBreakdown { what } => write!(
+                f,
+                "numerical breakdown in the {what}: the computation did not reach its \
+                 accuracy target"
             ),
             Self::Hac(e) => write!(f, "OLS-engine error: {e}"),
             Self::Stats(e) => write!(f, "statistics-layer error: {e}"),

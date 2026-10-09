@@ -1,0 +1,3 @@
+T=  60 k=3 (k'=2 regressors besides the constant): d_L(5%) = 1.5144  d_U(5%) = 1.6518
+T=  50 k=2 (k'=1 regressors besides the constant): d_L(5%) = 1.5035  d_U(5%) = 1.5849
+T= 100 k=4 (k'=3 regressors besides the constant): d_L(5%) = 1.6131  d_U(5%) = 1.7364

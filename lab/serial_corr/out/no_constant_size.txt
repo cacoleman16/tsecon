@@ -1,0 +1,13 @@
+Breusch-Godfrey on a regression through the origin, iid N(0,1) errors: rejection rates at 5%, R = 2000 (MC se 0.49 pp at 5%). tsecon 0.10.0, numpy 2.5.3, python 3.13.16.
+
+     T  regressor      intercept    LM p=1   F p=1    LM p=4   F p=4
+    50  x mean 2             0.0     0.127   0.046     0.070   0.044
+    50  x mean 2             0.5     0.376   0.045     0.177   0.046
+    50  x mean 0             0.0     0.053   0.046     0.044   0.043
+    50  x mean 0             0.5     0.061   0.049     0.049   0.037
+   200  x mean 2             0.0     0.120   0.051     0.072   0.042
+   200  x mean 2             0.5     0.805   0.046     0.578   0.043
+   200  x mean 0             0.0     0.056   0.056     0.049   0.049
+   200  x mean 0             0.5     0.051   0.047     0.051   0.050
+
+elapsed 1 s
