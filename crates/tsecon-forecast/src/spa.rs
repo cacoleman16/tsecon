@@ -125,6 +125,14 @@
 //! is eventually declared superior over two or more steps; here the loop
 //! stops with all `m` models in the superior set.
 //!
+//! The family-wise error rate and power are MEASURED against `arch`'s own
+//! StepM on four seeded designs (`fixtures/spa.json`, `_meta.stepm_fwer_study`;
+//! the crate test `stepm_fwer_unstudentized_matches_arch_rates`): the
+//! un-studentized rule lands within Monte Carlo error of `arch`'s rates, and
+//! the studentized default over-rejects family-wise at `n = 200` exactly as
+//! the studentized SPA over-rejects (step 1 IS the SPA: its critical value is
+//! the consistent `1 - size` critical value), shrinking by `n = 800`.
+//!
 //! # References
 //!
 //! White, H. (2000). "A Reality Check for Data Snooping." *Econometrica*

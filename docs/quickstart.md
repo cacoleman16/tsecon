@@ -103,6 +103,7 @@ and docstrings live in
 | `pacf` | Partial autocorrelations (Yule-Walker or OLS) |
 | `ljung_box` | Portmanteau white-noise test |
 | `jarque_bera` | Normality test from skewness and kurtosis |
+| `multivariate_normality` | Residual normality for a T x k matrix or one series: Doornik-Hansen (2008), plus the Cholesky and JMulTi symmetric-root Jarque-Bera forms |
 | `arch_lm` | Engle's test for conditional heteroskedasticity |
 | `adf` | Augmented Dickey-Fuller unit-root test (MacKinnon p-values) |
 | `kpss` | KPSS stationarity test — the ADF complement |

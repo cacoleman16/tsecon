@@ -447,12 +447,15 @@ VAR write-up reports. **Portmanteau** (Hosking 1980; Lütkepohl 2005, section
 4.4.3): with $C_i$ the lag-$i$ autocovariances of the column-centred residuals,
 $Q_h = T\sum_{i=1}^{h}\operatorname{tr}(C_i' C_0^{-1} C_i C_0^{-1})$ and the
 small-sample adjusted $\bar Q_h = T^2 \sum_{i=1}^{h} \operatorname{tr}(\cdot)/(T-i)$,
-both $\chi^2(k^2(h-p))$ under white residuals. **Normality** (multivariate
-Jarque-Bera; Lütkepohl 2005, section 4.5): the centred residuals are
-orthogonalised by the *lower Cholesky factor* of their ML covariance — the
-statsmodels `test_normality` convention — and $\lambda_s = T\,b_1'b_1/6$,
-$\lambda_k = T\,b_2'b_2/24$ (each $\chi^2(k)$) add up to the omnibus statistic
-($\chi^2(2k)$). **Stability**: the reciprocal-root moduli (statsmodels
+both $\chi^2(k^2(h-p))$ under white residuals. **Normality**: three
+statistics on the same centred residuals — the multivariate Jarque-Bera with
+the *lower Cholesky factor* of the ML covariance (Lütkepohl 2005, section 4.5;
+the statsmodels `test_normality` convention, the long-standing `jarque_bera`
+keys), the same statistic with the *symmetric* root (what JMulTi prints under
+"Doornik & Hansen (1994)", the `*_symmetric` keys) and the transformed
+Doornik-Hansen (2008) omnibus test (the `doornik_hansen*` keys, the one to
+report) — set out in the next subsection, which also covers the residual-level
+entry point `multivariate_normality`. **Stability**: the reciprocal-root moduli (statsmodels
 `roots`, descending), the companion eigenvalue moduli (descending, the first
 being the spectral radius) and the `is_stable` verdict. `var_select_order`
 binds the crate's common-sample lag-order selection: every candidate $p$ is
@@ -470,12 +473,12 @@ than an allocator abort.
 
 **When to use (and when not).** Run `var_diagnostics` before any IRF, FEVD,
 forecast or Granger test is reported: residual autocorrelation invalidates
-all of them. Report the *adjusted* Portmanteau at macro sample sizes. The
-Cholesky orthogonalisation makes the skewness and kurtosis *components* depend
-on the column order (the omnibus statistic does too, as in statsmodels); the
-Doornik-Hansen variant, whose symmetric orthogonalisation is order-invariant,
-is **not** provided because no runnable reference exists in the fixture
-environment — JMulTi reports it, statsmodels does not.
+all of them. Report the *adjusted* Portmanteau at macro sample sizes. For
+normality report `doornik_hansen`: the Cholesky orthogonalisation makes the
+`jarque_bera` statistic and its components depend on the column order (as in
+statsmodels), the symmetric root makes `jarque_bera_symmetric` depend on the
+units of the series, and the Doornik-Hansen (2008) test depends on neither
+and is the best sized of the three in short samples (next subsection).
 
 **Key arguments and defaults (and why).** `nlags=10` (Lütkepohl's rule of
 thumb for quarterly data; larger than `lags`), `lags=2`, `trend="c"`;
@@ -492,7 +495,17 @@ $= 2k$, and the `skewness` / `kurtosis` components with their $\chi^2(k)$
 p-values and the per-series moments `skewness_components` (`b1`) and
 `kurtosis_components` (`b2`) — a rejection driven by `kurtosis` alone is fat
 tails, the usual macro finding, and argues for bootstrap rather than Gaussian
-bands; `roots` (stable iff the *last* exceeds 1), `eigenvalue_moduli`
+bands; the same layout for the symmetric-root block (`jarque_bera_symmetric`,
+`skewness_symmetric`, `kurtosis_symmetric`, their p-values and
+`*_symmetric_components`, df `jarque_bera_df`) and for the Doornik-Hansen
+block (`doornik_hansen` with `doornik_hansen_df` $= 2k$, the parts
+`doornik_hansen_skewness` $= z_1'z_1$ and `doornik_hansen_kurtosis`
+$= z_2'z_2$, each $\chi^2(k)$, and the per-component z-scores
+`doornik_hansen_z_skewness` / `doornik_hansen_z_kurtosis`, approximately
+$N(0, 1)$ each under the null; component $j$ is the orthogonalised residual
+closest to standardised series $j$ — the symmetric root rotates as little as
+possible — so a large $|z|$ points at that series without proving it alone is
+to blame); `roots` (stable iff the *last* exceeds 1), `eigenvalue_moduli`
 (stable iff the *first* is below 1), `is_stable`. `var_select_order` returns
 the selected order under each criterion (`aic`, `bic`, `hqic`, `fpe`), the
 `candidates`, and one `*_values` column per criterion; BIC/HQIC are consistent
@@ -509,7 +522,9 @@ VAR(2), and the transformed macro system at orders 2 and 4; statistics at
 probabilities of 1e-30 are pinned too; the skewness/kurtosis components
 against a transcription of statsmodels' own code with the sum asserted equal
 to the omnibus statistic; three `select_order` tables (picks and every
-criterion value at 1e-8). The Python suite reruns all of it live on
+criterion value at 1e-8). The two added normality blocks are pinned on the
+same six cases and on 16 more residual matrices from JMulTi itself (next
+subsection). The Python suite reruns all of it live on
 `macrodata` in levels. Seeded Monte Carlo
 ([`var_cf_properties.rs`](../../../crates/tsecon-var/tests/var_cf_properties.rs)):
 on a correctly specified Gaussian VAR(1) ($k = 2$, $T = 200$, `nlags=8`,
@@ -522,7 +537,192 @@ size and power measured.
 
 **References.** Hosking (1980), *JASA*; Lütkepohl (2005), sections 4.3–4.5;
 Kilian and Demiroglu (2000), *JBES*; Doornik and Hansen (2008), *Oxford
-Bulletin* (not implemented).
+Bulletin* (next subsection).
+
+#### Residual normality — three statistics, and `multivariate_normality`
+
+**What they compute.** All three start from the same place: the residuals
+centred column by column, $\tilde u_t = u_t - \bar u$, and their ML covariance
+$S = T^{-1}\sum_t \tilde u_t \tilde u_t'$ (divisor $T$, no degrees-of-freedom
+correction). They differ in how the $k$ series are made uncorrelated before
+the per-component skewness and kurtosis are read off.
+
+| Statistic | Orthogonalisation | Moments | Keys | Pinned against |
+|---|---|---|---|---|
+| Multivariate Jarque-Bera, Cholesky (Lütkepohl 2005, §4.5) | $w_t = P^{-1}\tilde u_t$, $P$ the lower Cholesky factor of $S$ | plain $b_{1i} = \overline{w_i^3}$, excess $b_{2i} = \overline{w_i^4} - 3$; $\lambda_s = T b_1'b_1/6$, $\lambda_k = T b_2'b_2/24$, each $\chi^2(k)$, sum $\chi^2(2k)$ | `jarque_bera`, `skewness`, `kurtosis`, … | statsmodels `test_normality` (1e-10) and JMulTi's "Lütkepohl (1993)" block (printed precision) |
+| Multivariate Jarque-Bera, symmetric root | $w_t = S^{-1/2}\tilde u_t$, $S^{-1/2} = H\Lambda^{-1/2}H'$ from $S = H\Lambda H'$ | the same plain moments and $\chi^2$ forms — **no further transforms** | `jarque_bera_symmetric`, `skewness_symmetric`, `kurtosis_symmetric`, … | JMulTi's "Doornik & Hansen (1994)" block (printed precision) |
+| Doornik-Hansen (2008) omnibus | $r_t = C^{-1/2} V^{-1/2}\tilde u_t$ with $V = \operatorname{diag}(S)$ and $C$ the correlation matrix | $\sqrt{b_1}$ and $b_2$ of each $r_j$ mapped to $z_1$ (D'Agostino's skewness transform) and $z_2$ (the Wilson-Hilferty cube root of Shenton-Bowman's gamma approximation to the kurtosis given the skewness); $E = z_1'z_1 + z_2'z_2 \sim \chi^2(2k)$ | `doornik_hansen`, `doornik_hansen_skewness`, `doornik_hansen_kurtosis`, `doornik_hansen_z_*` | documented formula (below) |
+
+**A finding about JMulTi's label.** The block JMulTi prints as "Doornik &
+Hansen (1994)" is *not* the transformed test of the published Doornik-Hansen
+(2008) paper. It is the second row of the table: the multivariate Jarque-Bera
+on the symmetric root of the residual **covariance**, with plain moments and
+no skewness or kurtosis transform. tsecon reproduces all 16 JMulTi outputs
+statsmodels 0.15.0 bundles (six VAR(4) specifications on `macrodata` in levels
+and ten VECM specifications on the e6 data, across the bundled deterministic
+and seasonal variants) to JMulTi's printed four decimals — the joint, skewness and kurtosis
+statistics and their three p-values, worst gap 4.807e-5 — while the
+transformed statistic misses every one of the 16 joint statistics by at least
+0.946 (on the `macrodata` VAR(4) with no deterministic term JMulTi prints
+78.5845 and the symmetric-root Jarque-Bera gives 78.58452; the Doornik-Hansen
+(2008) statistic on the same residuals is 62.3045). JMulTi's centring
+convention is pinned too: without the column centring the gap reaches 4.798
+on the specifications whose residuals have nonzero means. Because the root is of the covariance and not of the
+correlation matrix, **this statistic depends on the units of the series**;
+tsecon keeps it under its own name, `jarque_bera_symmetric`, so that a JMulTi
+number can be reproduced, and never calls it Doornik-Hansen.
+
+**Invariances** (asserted in the crate's property tests on a seeded skewed,
+correlated panel; "yes" means equal to 1e-10 relative):
+
+| Transformation of the residual matrix | Cholesky JB | Symmetric-root JB | Doornik-Hansen (2008) |
+|---|---|---|---|
+| reorder the columns | **no** | yes | yes |
+| rescale columns by (100, 0.01, 3) | yes | **no** (229.05 → 163.90) | yes |
+| flip the sign of a column | yes (that $b_{1j}$ flips sign) | yes (that $b_{1j}$ flips) | yes ($z_{1j}$ flips exactly, $z_{2j}$ unchanged) |
+| add a constant to a column | yes | yes | yes |
+
+**Measured size and power** (seeded Monte Carlo,
+[`var_cf_properties.rs`](../../../crates/tsecon-var/tests/var_cf_properties.rs);
+rejection at a nominal 5%):
+
+| Design | Cholesky JB | Symmetric-root JB | Doornik-Hansen (2008) |
+|---|---|---|---|
+| Gaussian VAR(1) residuals, $k = 2$, $T = 200$, 1000 reps | 4.20% | 4.50% | 4.80% |
+| Gaussian VAR(1) residuals, $k = 3$, $T = 40$, 2000 reps | 4.65% | 4.25% | 5.30% |
+| one Gaussian series, $n = 50$, 20 000 reps | 3.73% | 3.73% | 4.89% |
+| VAR(2), Student-t(4) innovations, $T = 300$, 300 reps | 100% | 100% | 100% |
+| VAR(2), centred $\chi^2(3)$ innovations, $T = 300$, 300 reps | 100% | — | 100% (the skewness part alone: 100%) |
+
+The asymptotic Jarque-Bera forms under-reject in short samples (3.73% at
+$n = 50$; at $k = 1$ all three Jarque-Bera forms are the same univariate
+statistic); the Doornik-Hansen transforms are built to fix exactly that and
+hold the nominal level on the same draws. The null moments of the transformed
+components at $n = 50$ (20 000 draws): mean $z_1$ −0.0026, variance 0.9987;
+mean $z_2$ 0.0087, variance 0.9138 — the gamma approximation's known
+small-sample undershoot of $\operatorname{var}(z_2)$, which the test bands.
+
+**When the keys are None.** `var_diagnostics` never refuses on account of the
+added tests, so every fit that worked before still works. Every
+`doornik_hansen*` key is `None` when `nobs < 8`: D'Agostino's skewness
+transform degenerates at $n = 7$, where $\beta = 3$ and $\omega^2 = 1$, and is
+undefined below (scipy's `skewtest` refuses below 8 too). The DH keys are also
+`None` if the residual correlation matrix is numerically singular, and the
+`*_symmetric` keys are `None` if the residual covariance's smallest eigenvalue
+is at or below $10^{-12}$ times its trace while the correlation matrix is fine
+— series on wildly different scales, for which the unit-dependent root cannot
+be computed reliably (the Cholesky and DH statistics are scale-invariant and
+still reported).
+
+**`multivariate_normality(resid)`** computes the same three blocks (the same
+key names, bitwise equal to `var_diagnostics` on a VAR's residuals) on **any**
+residual matrix — a VECM's, a structural VAR's, a factor model's — plus `nobs`
+and `k`. It column-centres its input. A 1-D series is taken as $k = 1$, which
+gives the **univariate Doornik-Hansen omnibus test**: better sized than the
+asymptotic `jarque_bera` in short samples (the $n = 50$ row above), with
+`doornik_hansen_z_skewness[0]` equal to `scipy.stats.skewtest(x).statistic`
+and all three Jarque-Bera forms equal to `jarque_bera(x)["statistic"]` (both
+asserted live in CI). Unlike the bundle it refuses, each `ValueError` naming
+`resid`: fewer than 8 rows, $T \le k$, an input that is not 1-D or 2-D, zero
+columns, a NaN or infinity, entries so large or so small that their squares
+overflow or underflow (every statistic is invariant to a common rescaling, so
+rescale), a constant column, collinear columns (a
+correlation-matrix eigenvalue at or below $10^{-12}$ times its trace — a
+duplicated series), and columns on scales too different for the symmetric
+root.
+
+**Validated against, and the honest grade.**
+
+1. **Independent program, printed precision** — JMulTi, whose output for 16
+   specifications ships with statsmodels 0.15.0 (`tsa/vector_ar/tests/JMulTi_results`).
+   The generator ([`generate_var_diag_fixtures.py`](../../../fixtures/generate_var_diag_fixtures.py))
+   refits each specification in statsmodels, stores the residual matrix and
+   JMulTi's printed numbers in `fixtures/var_diag.json` (`jmulti`), and asserts
+   three blocks at $|\Delta| \le 5\times10^{-5}$: the symmetric-root
+   Jarque-Bera against "Doornik & Hansen (1994)" (worst gap 4.807e-5), the
+   Cholesky form against "Lütkepohl (1993)" (4.956e-5 — which also certifies
+   the stored residuals are the ones JMulTi tested) and the $k = 1$ form
+   against JMulTi's per-variable Jarque-Bera rows (4.929e-5). The VECM seasonal
+   files follow statsmodels' own tag rule (`coslo`, `cisli`). The Rust and
+   Python goldens replay all 16 matrices through `normality_test_symmetric` /
+   `normality_test_cholesky` and `multivariate_normality`. A transcription of
+   each statistic at full precision is pinned at 1e-10 on the 16 matrices and
+   on the six statsmodels VAR cases.
+2. **Documented formula, with three independent legs** — Doornik-Hansen
+   (2008). No installable package computes the transformed statistic
+   (statsmodels, SciPy, `arch`, `linearmodels` and scikit-learn were searched;
+   R, gretl and Stata are absent from the build environment), so the generator
+   transcribes the paper's formulas and the crate is pinned to it at 1e-10 on
+   all 22 residual matrices. The legs that make it more than a transcription:
+   (a) $z_1$ equals `scipy.stats.skewtest` on the transformed columns (asserted
+   at 1e-10 in the generator and live in the Python suite at $k = 1$);
+   (b) the kurtosis coefficients $(a, c, \kappa)$ satisfy the exact
+   mean-matching identity of the gamma approximation,
+   $2\kappa(\mathrm{E}\,b_2 - 1 - \mathrm{E}\,b_1) = 2(a + c\,\mathrm{E}\,b_1)$
+   with $\mathrm{E}\,b_1 = 6(n-2)/((n+1)(n+3))$ and
+   $\mathrm{E}\,b_2 = 3(n-1)/(n+1)$, checked in rational arithmetic for
+   $n \in \{8, 9, 10, 20, 50, 200, 1000\}$ by the generator and at 1e-13 in the
+   crate, which catches a typo in any of the three; (c) the common denominator
+   $d$ cancels from that identity, so it is guarded by the null Monte Carlo of
+   $z_2$ above. Grade: **documented formula**, plus the scipy leg, the exact
+   identity and Monte Carlo — not an independent-package golden.
+
+**References.** Doornik, J. A. and H. Hansen (2008), "An Omnibus Test for
+Univariate and Multivariate Normality," *Oxford Bulletin of Economics and
+Statistics* 70(s1), 927–939 (circulated as a 1994 Nuffield College working
+paper, the date JMulTi's label carries); D'Agostino, R. B. (1970),
+"Transformation to Normality of the Null Distribution of $g_1$," *Biometrika*
+57, 679–681; Shenton, L. R. and K. O. Bowman (1977), "A Bivariate Model for the
+Distribution of $\sqrt{b_1}$ and $b_2$," *JASA* 72, 206–211; Lütkepohl (2005),
+section 4.5; Lütkepohl and Krätzig (2004), *Applied Time Series Econometrics*
+(JMulTi).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+k, n = 3, 200
+A = np.array([[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.5]])
+L = np.array([[1.0, 0.0, 0.0], [0.8, 0.6, 0.0], [0.5, 0.3, 0.8]])
+Y = np.zeros((n, k))
+for t in range(1, n):
+    Y[t] = A @ Y[t - 1] + L @ rng.standard_t(6, k)   # correlated, fat-tailed shocks
+
+d = tsecon.var_diagnostics(Y, lags=1, nlags=10)
+for key in ("jarque_bera", "jarque_bera_symmetric", "doornik_hansen"):
+    print(f"{key:22s} {d[key]:7.2f}   p = {d[key + '_pvalue']:.2g}")
+print("DH z1 (skewness):", np.round(d["doornik_hansen_z_skewness"], 2),
+      " z2 (kurtosis):", np.round(d["doornik_hansen_z_kurtosis"], 2))
+
+# Change the units of two series: only the JMulTi symmetric root moves.
+d2 = tsecon.var_diagnostics(Y * [1.0, 100.0, 0.01], lags=1, nlags=10)
+print("rescaled units:", [round(d2[key], 2) for key in
+                          ("jarque_bera", "jarque_bera_symmetric", "doornik_hansen")])
+
+# The same tests on any residual matrix, or on one series (k = 1).
+u = np.array(tsecon.var_fit(Y, lags=1)["resid"])
+assert tsecon.multivariate_normality(u)["doornik_hansen"] == d["doornik_hansen"]
+one = tsecon.multivariate_normality(u[:, 0])
+print(f"series 0 alone: DH {one['doornik_hansen']:.2f} (p = {one['doornik_hansen_pvalue']:.2g}),"
+      f" JB {one['jarque_bera']:.2f} = jarque_bera {tsecon.jarque_bera(u[:, 0])['statistic']:.2f}")
+print("T = 7:", tsecon.var_diagnostics(Y[:8], lags=1, nlags=2)["doornik_hansen"])
+```
+
+```text
+jarque_bera              37.12   p = 1.7e-06
+jarque_bera_symmetric    32.50   p = 1.3e-05
+doornik_hansen           27.25   p = 0.00013
+DH z1 (skewness): [ 1.87 -0.17 -0.04]  z2 (kurtosis): [3.84 2.11 2.12]
+rescaled units: [37.12, 15.12, 27.25]
+series 0 alone: DH 13.98 (p = 0.00092), JB 23.15 = jarque_bera 23.15
+T = 7: None
+```
+
+All three reject the Student-t(6) shocks, and the kurtosis z-scores carry the
+rejection. Re-expressing two series in other units leaves the Cholesky and
+Doornik-Hansen statistics unchanged to every printed digit and moves the
+symmetric-root one from 32.50 to 15.12 — the reason to report `doornik_hansen`
+and keep `jarque_bera_symmetric` for reproducing JMulTi.
 
 ### Confidence bands on the IRF — `var_irf_bands`
 

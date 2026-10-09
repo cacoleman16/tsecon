@@ -515,7 +515,13 @@ $p_\text{lower} \le p_\text{consistent} \le p_\text{upper}$.
 
 **`stepm_test`** answers the follow-up. A rejection says *someone* beat the benchmark;
 Romano and Wolf's (2005) stepwise procedure says *who*, controlling the family-wise
-error rate across the whole set of claims.
+error rate across the whole set of claims. That control is asymptotic, and `tsecon`
+measures it rather than assuming it: with 200 observations, five models and
+autocorrelated losses, the un-studentized rule (`studentize=False`) named at least
+one model that was not really better in 6.25% of samples at `size=0.05` when every
+model tied the benchmark — `arch`'s own StepM: 5.7% — while the studentized default
+did so in 10.25%, falling to 6.5% at 800 observations (the forecasting model card has
+the four-design table).
 
 **`model_confidence_set`** drops the benchmark entirely. Given the same loss table it
 returns the set of models that cannot be distinguished from the best at level `size`,
