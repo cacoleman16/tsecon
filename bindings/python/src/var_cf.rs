@@ -9,7 +9,7 @@
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyString};
+use pyo3::types::{PyBytes, PyDict, PyIterator, PyString};
 use tsecon_var::SoftMode;
 
 use crate::{mat_to_vec2, parse_trend, py_type_name, to_py, var_results};
@@ -216,45 +216,62 @@ fn short_repr(obj: &Bound<'_, PyAny>) -> String {
     }
 }
 
+/// A double as Python's `repr` would show it: plain digits in
+/// `[1e-4, 1e16)`, scientific notation outside (Rust's `{}` never switches,
+/// so `-1e-300` would print 300 digits).
+fn fmt_value(v: f64) -> String {
+    let a = v.abs();
+    if a == 0.0 || !a.is_finite() || (1e-4..1e16).contains(&a) {
+        format!("{v}")
+    } else {
+        format!("{v:e}")
+    }
+}
+
 fn is_text(obj: &Bound<'_, PyAny>) -> bool {
     obj.is_instance_of::<PyString>() || obj.is_instance_of::<PyBytes>()
+}
+
+/// `obj`'s length and an iterator over it when it is a sized, non-text
+/// container. An unsized iterable (a generator, `itertools.repeat`) is
+/// `None`: walking it to find a bad entry could run forever.
+fn sized_iter<'py>(obj: &Bound<'py, PyAny>) -> Option<(usize, Bound<'py, PyIterator>)> {
+    if is_text(obj) {
+        return None;
+    }
+    let n = obj.len().ok()?;
+    obj.try_iter().ok().map(|it| (n, it))
 }
 
 /// A `rows x k` grid of optional numbers (`conditions`, `condition_sd`): a
 /// nested list, or the float64 array the coercion layer makes of a NumPy
 /// array or DataFrame. When it does not extract, the first row or cell that
-/// is not a sequence / a number-or-None is named by its position.
+/// is not a sequence / a number-or-None is named by its position; the scan
+/// walks sized containers only, at most their length.
 fn grid_arg(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<Vec<Vec<Option<f64>>>> {
     if let Ok(v) = obj.extract::<Vec<Vec<Option<f64>>>>() {
         return Ok(v);
     }
     let shape = "a nested list with one row per forecast horizon and one entry per series \
                  (None or NaN for an empty cell), a 2-D NumPy array or a pandas DataFrame";
-    let rows = match obj.try_iter() {
-        Ok(it) if !is_text(obj) => it,
-        _ => {
-            return Err(PyTypeError::new_err(format!(
-                "var_conditional_forecast: {name}={} is of type {}, but {name} takes {shape}",
-                short_repr(obj),
-                py_type_name(obj)
-            )));
-        }
+    let Some((n_rows, rows)) = sized_iter(obj) else {
+        return Err(PyTypeError::new_err(format!(
+            "var_conditional_forecast: {name}={} is of type {}, but {name} takes {shape}",
+            short_repr(obj),
+            py_type_name(obj)
+        )));
     };
-    for (h, row) in rows.enumerate() {
+    for (h, row) in rows.take(n_rows).enumerate() {
         let row = row?;
-        let cells = match row.try_iter() {
-            Ok(it) if !is_text(&row) => it,
-            _ => {
-                return Err(PyTypeError::new_err(format!(
-                    "var_conditional_forecast: {name}[{h}]={} is of type {}, but every row \
-                     of {name} must be a sequence with one entry per series ({name} takes \
-                     {shape})",
-                    short_repr(&row),
-                    py_type_name(&row)
-                )));
-            }
+        let Some((n_cells, cells)) = sized_iter(&row) else {
+            return Err(PyTypeError::new_err(format!(
+                "var_conditional_forecast: {name}[{h}]={} is of type {}, but every row of \
+                 {name} must be a sequence with one entry per series ({name} takes {shape})",
+                short_repr(&row),
+                py_type_name(&row)
+            )));
         };
-        for (j, cell) in cells.enumerate() {
+        for (j, cell) in cells.take(n_cells).enumerate() {
             let cell = cell?;
             if cell.extract::<Option<f64>>().is_err() {
                 return Err(PyTypeError::new_err(format!(
@@ -334,8 +351,9 @@ fn check_condition_sd(
             }
             if !(v.is_finite() && v >= 0.0) {
                 return Err(PyValueError::new_err(format!(
-                    "condition_sd[{h}][{j}] = {v}: a standard deviation must be finite and \
-                     >= 0 (0 or NaN means a hard condition)"
+                    "condition_sd[{h}][{j}] = {}: a standard deviation must be finite and \
+                     >= 0 (0 or NaN means a hard condition)",
+                    fmt_value(v)
                 )));
             }
             if v > 0.0 && !(v * v).is_finite() {
@@ -347,11 +365,15 @@ fn check_condition_sd(
             let free = conditions[h].len() == k && conditions[h][j].is_none_or(f64::is_nan);
             if v > 0.0 && free {
                 return Err(PyValueError::new_err(format!(
-                    "condition_sd[{h}][{j}] = {v} but conditions[{h}][{j}] is free: give the \
-                     cell a value or drop the sd"
+                    "condition_sd[{h}][{j}] = {} but conditions[{h}][{j}] is free: give the \
+                     cell a value or drop the sd",
+                    fmt_value(v)
                 )));
             }
-            if v > 0.0 && conditions[h].len() == k {
+            // Counted even beside a mis-sized conditions row, so the call
+            // reaches the crate's refusal of that row instead of calling
+            // `soft` inert.
+            if v > 0.0 {
                 n_soft += 1;
             }
         }

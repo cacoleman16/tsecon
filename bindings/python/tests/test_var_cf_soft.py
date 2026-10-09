@@ -390,6 +390,61 @@ def test_a_bad_cell_is_named_by_its_position_and_soft_is_not_blamed():
         tsecon.var_conditional_forecast(y, None)
 
 
+class _Endless:
+    """An unsized iterable that yields `item` forever — like
+    `itertools.repeat(item)` — except that it raises after 10 000 items, so
+    a scan that walks it fails here instead of hanging the suite."""
+
+    def __init__(self, item):
+        self.item, self.n = item, 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.n += 1
+        if self.n > 10_000:
+            raise RuntimeError("the grid scan walked an unsized iterable")
+        return self.item
+
+
+def test_unsized_iterables_are_refused_without_being_walked():
+    """An endless iterator for a grid or for one of its rows is refused at
+    once by name — the position scan walks sized containers only (reviewer
+    sweep: `itertools.repeat([...])` hung the call)."""
+    y = _y3()
+    cond = [[None, 0.3, None]]
+    grid, row = _Endless([None, 0.2, None]), _Endless(0.2)
+    cgrid, crow = _Endless([None, 0.3, None]), _Endless(0.3)
+    for endless, kw, prefix in (
+        (grid, dict(conditions=cond, condition_sd=grid), "condition_sd="),
+        (row, dict(conditions=cond, condition_sd=[row]), "condition_sd[0]="),
+        (cgrid, dict(conditions=cgrid), "conditions="),
+        (crow, dict(conditions=[crow]), "conditions[0]="),
+    ):
+        with pytest.raises(TypeError) as info:
+            tsecon.var_conditional_forecast(y, soft="signal", **kw)
+        msg = str(info.value)
+        assert f"var_conditional_forecast: {prefix}<" in msg and "is of type _Endless" in msg, msg
+        assert endless.n == 0, endless.n
+
+
+def test_a_mis_sized_conditions_row_is_named_not_soft():
+    """A conditions row of the wrong length beside a valid condition_sd gets
+    the conditions refusal, not a claim that soft has nothing to act on."""
+    with pytest.raises(ValueError, match="every row of conditions must have exactly one entry"):
+        tsecon.var_conditional_forecast(_y3(), [[0.3]], condition_sd=[[0.1, None, None]], soft="signal")
+
+
+def test_refused_values_print_like_python():
+    y = _y3()
+    cond = [[None, 0.3, None]]
+    with pytest.raises(ValueError, match=re.escape("condition_sd[0][1] = -1e-300: a standard deviation")):
+        tsecon.var_conditional_forecast(y, cond, condition_sd=[[None, -1e-300, None]], soft="signal")
+    with pytest.raises(ValueError, match=re.escape("condition_sd[0][0] = 1e100 but conditions[0][0] is free")):
+        tsecon.var_conditional_forecast(y, cond, condition_sd=[[1e100, 0.2, None]], soft="signal")
+
+
 # ------------------------------------------------------ contract tripwires
 
 def _doc_tokens(text):
@@ -507,3 +562,6 @@ def test_guide_chapter_7_soft_snippet_runs_as_written():
         assert line in guide, line
     assert "with a 25bp standard deviation" in guide
     assert "±25bp" not in guide
+    # The math survives as LaTeX (a `\t` once became a TAB, eating `\text`).
+    assert r"$N(\text{current level}, 0.25^2)$" in guide
+    assert "\t" not in guide
