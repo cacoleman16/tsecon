@@ -3481,11 +3481,13 @@ fn mcmc_diagnostics<'py>(
 /// A specification whose guaranteed work passes 2^37 multiply-adds (under
 /// `"css"`: its recursion plus one exact filter pass for the residuals) or
 /// whose filter would hold more than 2^28 values (2 GiB) raises a ValueError
-/// naming p, q and seasonal and the largest state dimension that fits — it
-/// used to run for hours or exhaust memory. Ordinary models are far inside:
+/// naming p, q and seasonal and the largest state dimension that fits —
+/// `seasonal=(1, 0, 0, 199)` on 200 observations used to run past 40 s
+/// without finishing, and `p=1000` on 2,000 observations would have held
+/// 48 GB per evaluation. Ordinary models stay inside the budget:
 /// an AR(30) on 200 observations took 123 s and a weekly
 /// SARMA(1,1)(1,1)_52 on 520 observations 227 s on a shared 4-core machine
-/// (`lab/arima_budget/out/arima_cost.txt`), both within the budget.
+/// (`lab/arima_budget/out/arima_cost.txt`).
 #[pyfunction]
 #[pyo3(signature = (y, p = 1, d = 0, q = 0, seasonal = None, constant = true,
                     forecast_steps = 0, conf_alpha = None, drift_uncertainty = false,
@@ -3750,9 +3752,11 @@ fn arima_results_dict<'py>(
 /// and refused past that before the search starts. `max_P` / `max_Q` above
 /// 6 are refused naming the keyword. A `seasonal_period` longer than half
 /// the series (when `D` comes from the seasonal-strength rule, whose STL fit
-/// needs two full cycles) and a fixed `D` whose `D * seasonal_period`
-/// differences consume the series are refused before the search, naming the
-/// option and its largest admissible value; a candidate past `arima_fit`'s
+/// needs two full cycles), a fixed `D` whose `D * seasonal_period`
+/// differences consume the series, and (with `D=0` fixed) a
+/// `seasonal_period` not shorter than the series are refused before the
+/// search, naming the option and its largest admissible value; a candidate
+/// past `arima_fit`'s
 /// estimation budget is recorded as `fit_failed` and steers the search like
 /// any failed fit.
 ///
@@ -8269,8 +8273,9 @@ fn dcc_garch<'py>(
 /// `lags`, `nobs`, and `n_stacked` (`(T - lags) * k(k-1)/2` pooled
 /// regression observations). The diagonal outer products are excluded on
 /// purpose, so univariate GARCH misfit does not masquerade as correlation
-/// dynamics. `lags` must leave `T >= lags + 2` observations and keep the
-/// pooled regression within 2^26 normal-equation entries and 2^34
+/// dynamics. `lags` must leave the `(T - lags) * k(k-1)/2` stacked rows
+/// one residual degree of freedom beyond the `lags + 1` coefficients and
+/// keep the pooled regression within 2^26 normal-equation entries and 2^34
 /// multiply-adds (`T * k(k-1)/2 * (lags + 1)^2`); a longer lag length is
 /// refused naming `lags` and the largest that fits.
 #[pyfunction]
@@ -9219,11 +9224,22 @@ fn conformal_base<'a>(
         "ar" => Box::new(move |train, h| ar_forecast(train, lags, h)),
         "arima" => {
             let (p, d, q) = order;
+            // The estimation-budget refusal speaks of arima_fit's p, q and
+            // seasonal; here the orders come from the `order` keyword.
+            let wrap_fit = move |e: tsecon_arima::ArimaError| match e {
+                e @ tsecon_arima::ArimaError::TooLarge { .. } => ForecastError::BaseForecaster {
+                    message: format!(
+                        "base=\"arima\": order = ({p}, {d}, {q}) is too large to estimate \
+                         on the training window ({e})"
+                    ),
+                },
+                e => wrap(e),
+            };
             Box::new(move |train, h| {
                 let spec = tsecon_arima::ArimaSpec::new(p, d, q)
                     .map_err(wrap)?
                     .with_constant(true);
-                let fit = spec.fit(train).map_err(wrap)?;
+                let fit = spec.fit(train).map_err(wrap_fit)?;
                 Ok(fit.forecast(h).map_err(wrap)?.mean)
             })
         }
@@ -9412,8 +9428,10 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// **Sizes are checked before anything runs.** `horizon` is capped at
 /// 1,000,000 steps. A calibration grid that does not fit the series
 /// (`horizon + calib + 1` observations, plus `n_eval` for ACI) is refused
-/// naming the largest of those keywords and the largest value it may take;
-/// `lags` likewise when the AR design's `2 * lags + 2` observations do not
+/// naming the largest of those keywords and the largest value it may take,
+/// and so is one whose first training window (`n - horizon - calib + 1`
+/// observations) is shorter than the base forecaster needs (4 for
+/// `"theta"`); `lags` likewise when the AR design's `2 * lags + 2` observations do not
 /// fit (for split/aci the first training window holds
 /// `n - horizon - calib + 1` of them). Under `method="enbpi"` the bootstrap
 /// ensemble is sized before any random stream is drawn: past a work budget
@@ -9640,7 +9658,8 @@ fn conformal_forecast<'py>(
 /// (`n_boot=None` likewise means 25).
 ///
 /// Sizes are checked before anything runs, as in `conformal_forecast`: the
-/// evaluation grid `horizon + calib + n_eval + 1` (refused naming the
+/// evaluation grid `horizon + calib + n_eval + 1` and its first training
+/// window against what the base forecaster needs (refused naming the
 /// largest of those keywords and its largest admissible value), the AR
 /// design's `2 * lags + 2` observations, and — under `method="enbpi"`, where
 /// the ensemble trains on the observations before the `n_eval` evaluation

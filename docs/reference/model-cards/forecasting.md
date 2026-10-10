@@ -504,7 +504,9 @@ shifts it degrades fastest of the three (measured above). Sizes are checked
 before anything runs: `horizon` is capped at 1,000,000 steps; a calibration
 grid that does not fit the series (`horizon + calib + 1` observations, plus
 `n_eval` for ACI and `conformal_backtest`) is refused naming the largest of
-those keywords and the largest value it may take, and `lags` likewise when
+those keywords and the largest value it may take — as is a grid whose first
+training window is shorter than the base forecaster needs (4 observations for
+`"theta"`) — and `lags` likewise when
 the AR design's `2 * lags + 2` observations do not fit. EnbPI's bootstrap
 ensemble is sized before any random stream is drawn — `n_boot` least-squares
 fits plus `horizon` (or `n_eval`) prediction steps that each average every

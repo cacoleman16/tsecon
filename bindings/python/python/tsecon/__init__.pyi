@@ -581,9 +581,10 @@ def auto_arima(
     forecast_steps is capped at 1,000,000 (as in arima_fit), refused past
     that before the search starts. max_P / max_Q above 6 are refused naming
     the keyword; a seasonal_period longer than half the series (when D comes
-    from the seasonal-strength rule) and a fixed D whose D * seasonal_period
-    differences consume the series are refused before the search, naming the
-    option and its largest admissible value. A candidate past arima_fit's
+    from the seasonal-strength rule), a fixed D whose D * seasonal_period
+    differences consume the series, and (D=0 fixed) a seasonal_period not
+    shorter than the series are refused before the search, naming the option
+    and its largest admissible value. A candidate past arima_fit's
     estimation budget is recorded as fit_failed.
 
     Returns the arima_fit result dict for the selected model (less
@@ -2968,10 +2969,12 @@ def dcc_test(
     standardization by the symmetric inverse square root of the constant
     correlation, pooled AR(lags) on the stacked off-diagonal outer
     products. Keys: stat, df (= lags + 1), p_value (small rejects constant
-    correlation), lags, nobs, n_stacked. lags must leave T >= lags + 2 and
-    keep the pooled regression within 2^26 normal-equation entries and 2^34
-    multiply-adds (T * k(k-1)/2 * (lags + 1)^2); a longer lag length is
-    refused naming lags and the largest that fits.
+    correlation), lags, nobs, n_stacked. lags must leave the
+    (T - lags) * k(k-1)/2 stacked rows one residual degree of freedom beyond
+    the lags + 1 coefficients and keep the pooled regression within 2^26
+    normal-equation entries and 2^34 multiply-adds
+    (T * k(k-1)/2 * (lags + 1)^2); a longer lag length is refused naming
+    lags and the largest that fits.
     """
 
 # ------------------------------------------------ realized volatility / HAR
@@ -3253,7 +3256,9 @@ def conformal_forecast(
     Sizes are checked before anything runs: horizon is capped at 1,000,000;
     a calibration grid that does not fit (horizon + calib + 1 observations,
     plus n_eval for aci) is refused naming the largest of those keywords and
-    its largest admissible value; lags likewise when the AR design's
+    its largest admissible value, as is one whose first training window
+    (n - horizon - calib + 1 observations) is shorter than the base
+    forecaster needs (4 for "theta"); lags likewise when the AR design's
     2 * lags + 2 observations do not fit. Under "enbpi" the ensemble is sized
     before any random stream is drawn: past 2^34 multiply-adds or 2^28
     values, n_boot is refused with the largest that fits (or horizon, when
@@ -3296,7 +3301,9 @@ def conformal_backtest(
     EnbPI's calib), plus batch, which is EnbPI-only; n_eval is live for
     every method here. Defaults stay bit-identical. Sizes are checked before
     anything runs, as in conformal_forecast: the grid horizon + calib +
-    n_eval + 1, the AR design's 2 * lags + 2 observations, and under "enbpi"
+    n_eval + 1 and its first training window against what the base
+    forecaster needs, the AR design's 2 * lags + 2 observations, and under
+    "enbpi"
     the ensemble budget, each refused naming the keyword (calib, n_eval,
     lags, n_boot) and its largest admissible value.
 

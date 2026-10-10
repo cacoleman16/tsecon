@@ -24,6 +24,8 @@
 Every refusal here comes before any allocation, so each is exercised in
 process. The repro scripts are under the audit's abort-sweep directory.
 """
+import re
+
 import numpy as np
 import pytest
 
@@ -179,8 +181,9 @@ def test_arima_fit_ordinary_orders_unaffected():
 
 
 def test_arima_conformal_base_reports_the_budget():
-    # The "arima" conformal base fits through the same engine.
-    with pytest.raises(ValueError, match=r"are too large to estimate"):
+    # The "arima" conformal base fits through the same engine; the refusal
+    # names the conformal keyword, order, ahead of the engine's own text.
+    with pytest.raises(ValueError, match=r"base=\"arima\": order = \(150, 0, 0\) is too large to estimate.*are too large to estimate"):
         tsecon.conformal_forecast(_pos(), base="arima", order=(150, 0, 0), calib=20)
 
 
@@ -217,8 +220,8 @@ def _enbpi_max_boot(n, lags, reserve, steps):
     rows = n - reserve - lags
     l = lags + 1
     work = rows * l * (l + 1) // 2 + l**3 + rows * l + steps * (rows + l)
-    values = -(-rows // 8) + l + 15
-    fixed = 2 * rows + l * l + 4 * steps
+    values = -(-rows // 8) + l + 18
+    fixed = 4 * rows + l * l + 4 * steps
     return min((1 << 34) // work, ((1 << 28) - fixed) // values)
 
 
@@ -305,11 +308,18 @@ def test_backtest_insample_period_named():
 
 
 def test_dcc_test_lags_named():
+    # Two series, one pair: (500 - lags) stacked rows must leave one residual
+    # degree of freedom for the lags + 1 coefficients, so lags <= 249.
     ret = _garch_returns(500, k=2)
-    with pytest.raises(ValueError, match=r"lags = 2147483648 is invalid for 500 observations: .*T >= lags \+ 2.*lags can be at most 498 here"):
+    with pytest.raises(ValueError, match=r"lags = 2147483648 is invalid for 500 observations: .*\(T - lags\) \* k\(k-1\)/2 >= lags \+ 2.*lags can be at most 249 here"):
         tsecon.dcc_test(ret, lags=2**31)
-    with pytest.raises(ValueError, match=r"lags = 499 is invalid.*at most 498"):
-        tsecon.dcc_test(ret, lags=499)
+    for lags in (250, 498):
+        # 498 used to pass the size check and fail as a singular X'X.
+        with pytest.raises(ValueError, match=rf"lags = {lags} is invalid.*at most 249 here"):
+            tsecon.dcc_test(ret, lags=lags)
+    r = tsecon.dcc_test(ret, lags=249)
+    assert (r["df"], r["n_stacked"]) == (250, 251)
+    assert np.isfinite(r["stat"]) and 0.0 <= r["p_value"] <= 1.0
 
 
 def test_auto_arima_seasonal_period_and_D_named():
@@ -326,3 +336,64 @@ def test_auto_arima_seasonal_caps_use_python_names(kw, name):
     with pytest.raises(ValueError, match=rf"^{name} = \d+ is beyond the cap of 6.*{name} can be at most 6$") as exc:
         tsecon.auto_arima(_seasonal(), seasonal_period=12, max_p=1, max_q=1, **kw)
     assert "max_seasonal" not in str(exc.value)
+
+
+# ------------------------------------------- review: residual keyword gaps
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda y: tsecon.conformal_forecast(y, horizon=0),
+        lambda y: tsecon.conformal_forecast(y, method="aci", horizon=0),
+        lambda y: tsecon.conformal_forecast(y, method="enbpi", base="ar", horizon=0),
+        lambda y: tsecon.conformal_backtest(y, horizon=0),
+    ],
+)
+def test_conformal_zero_horizon_names_horizon(call):
+    # The shared step check used to report the conformal horizon as "steps".
+    with pytest.raises(ValueError, match=r"^horizon = 0 is invalid"):
+        call(_pos())
+
+
+def test_theta_zero_steps_still_names_steps():
+    with pytest.raises(ValueError, match=r"^steps = 0 is invalid"):
+        tsecon.theta_forecast(_pos(), steps=0)
+
+
+@pytest.mark.parametrize("s", [96, 97, 1000])
+def test_auto_arima_fixed_D0_period_the_series_never_completes(s):
+    # D = 0 fixed and a period the 96 observations never complete: no
+    # seasonal lag is in sample. It used to run every seasonal candidate
+    # (state dimension >= s + 1) and was still searching after 290 s.
+    with pytest.raises(ValueError, match=rf"seasonal_period = {s} is not shorter than the series \(96 observations\).*seasonal_period can be at most 95 here"):
+        tsecon.auto_arima(_seasonal(), seasonal_period=s, D=0, max_p=1, max_q=1)
+
+
+@pytest.mark.parametrize(
+    "call,pattern,ok",
+    [
+        # The grid fits, but its first training window (200 - 2 - 197 + 1 =
+        # 2 observations) starves the default Theta base, which needs 4.
+        (lambda y, v: tsecon.conformal_forecast(y, horizon=2, calib=v),
+         r"split conformal: calib = 197 is too large: the grid's first training window holds n - horizon - calib \+ 1 = 2 observations, but the base forecaster \(Theta method\) needs at least 4, so calib can be at most 195 here",
+         195),
+        (lambda y, v: tsecon.conformal_backtest(y, horizon=1, calib=30, n_eval=v),
+         r"split conformal \(online\): n_eval = 168 is too large: .*holds n - horizon - calib - n_eval \+ 1 = 2 observations.*n_eval can be at most 166 here",
+         166),
+        (lambda y, v: tsecon.conformal_forecast(y, method="aci", n_eval=v, calib=30),
+         r"adaptive conformal inference: n_eval = 168 is too large.*n_eval can be at most 166 here",
+         166),
+        # The grid bound quoted for horizon=300 (149) starves the base next.
+        (lambda y, v: tsecon.conformal_forecast(y, horizon=v),
+         r"split conformal: horizon = 149 is too large.*horizon can be at most 147 here",
+         147),
+    ],
+)
+def test_conformal_starved_base_window_names_the_grid_keyword(call, pattern, ok):
+    m = re.search(r"= (\d+) is too large", pattern)
+    with pytest.raises(ValueError, match=pattern) as exc:
+        call(_pos(), int(m.group(1)))
+    assert "seasonal period" not in str(exc.value)
+    # The quoted maximum runs.
+    call(_pos(), ok)

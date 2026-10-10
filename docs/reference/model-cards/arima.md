@@ -685,9 +685,10 @@ correction helps but cannot rescue `n < 50` seasonal searches. And a
 `budget_exhausted=True` result is the best of 94 candidates, not a certified
 local optimum. A `seasonal_period` longer than half a non-constant series
 (when `D` comes from the seasonal-strength rule, whose STL fit needs two full
-cycles) and a fixed `D` whose `D * seasonal_period` differences consume the
-series are refused before the search, naming the option and its largest
-admissible value; `max_P` / `max_Q` past 6 are refused under those names. A
+cycles), a fixed `D` whose `D * seasonal_period` differences consume the
+series, and (with `D=0` fixed) a `seasonal_period` the series never completes
+are refused before the search, naming the option and its largest admissible
+value; `max_P` / `max_Q` past 6 are refused under those names. A
 candidate past `arima_fit`'s estimation budget is recorded as `fit_failed`.
 
 **References.** Hyndman & Khandakar (2008, *JSS* 27(3), the algorithm and the

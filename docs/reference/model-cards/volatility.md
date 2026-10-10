@@ -441,7 +441,9 @@ variance forecasts (`E[DRD] ≈ E[D]E[R]E[D]`, also standard).
 no ARCH effect (the error names the offending series); DCC on near-constant
 correlations collapses toward the CCC special case; `"adcc"` on symmetric
 data estimates `g ≈ 0` (correct, not a bug). `dcc_test` refuses a `lags` that
-leaves fewer than `lags + 2` observations, or that would push its pooled
+leaves its `(T - lags) * k(k-1)/2` stacked rows no residual degree of freedom
+beyond the `lags + 1` coefficients (at most 249 lags for two series of 500
+observations), or that would push its pooled
 regression past 2^26 normal-equation entries or 2^34 multiply-adds
 (`T * k(k-1)/2 * (lags + 1)^2`), naming `lags` and the largest that fits.
 `forecast_horizon` in `ccc_garch`/`dcc_garch` is capped at 1,000,000 steps and
