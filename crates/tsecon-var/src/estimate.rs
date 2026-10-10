@@ -28,8 +28,8 @@ struct Design<'a> {
 }
 
 /// Validates the inputs and builds `Y` and `Z` — the part of [`estimate`]
-/// the coefficients-only refit [`lag_coefs`] shares, so both see the same
-/// design bit for bit.
+/// the bootstrap refits [`lag_coefs`] and [`refit`] share, so all three see
+/// the same design bit for bit.
 fn design(
     endog: MatRef<'_, f64>,
     lags: usize,
@@ -148,6 +148,53 @@ pub(crate) fn lag_coefs(
     Ok(lag_matrices(&params, d.n_trend, d.k, lags))
 }
 
+/// What a residual-bootstrap draw reads from its refit: the OLS lag
+/// matrices and the df-adjusted residual covariance.
+pub(crate) struct Refit {
+    /// `[A_1, ..., A_p]`, bit-identical to [`VarSpec::fit`]'s `coefs`.
+    pub(crate) coefs: Vec<Mat<f64>>,
+    /// `U'U / (T - m)`, bit-identical to [`VarSpec::fit`]'s `sigma_u`.
+    pub(crate) sigma_u: Mat<f64>,
+}
+
+/// The pseudo-sample refit of the residual bootstrap: [`VarSpec::fit`]'s
+/// coefficients and `sigma_u` (same design, same QR, same products, so bit
+/// for bit), refusing a singular `Z'Z` the same way, but without the
+/// log-likelihood's log-determinant or the information criteria, which no
+/// draw reads. A draw whose statistic does not use `sigma_u` (reduced-form
+/// responses) therefore cannot fail on it; one that does checks it itself.
+pub(crate) fn refit(endog: MatRef<'_, f64>, lags: usize, trend: Trend) -> Result<Refit, VarError> {
+    let d = design(endog, lags, trend, 0)?;
+    check_resid_df(&d, endog.nrows(), lags, 0)?;
+    let params = d.z.qr().solve_lstsq(&d.y);
+    let resid = &d.y - &d.z * &params;
+    let df_resid = d.t_eff - d.m;
+    let rtr = resid.transpose() * &resid;
+    let sigma_u = Mat::from_fn(d.k, d.k, |i, j| rtr[(i, j)] / df_resid as f64);
+    zz_cholesky(&d.z)?;
+    Ok(Refit {
+        coefs: lag_matrices(&params, d.n_trend, d.k, lags),
+        sigma_u,
+    })
+}
+
+/// With `df_resid = T - m < k` the `T x k` residual matrix has rank at most
+/// `df_resid`, so `Sigma_u` is singular whatever the data: say so by sample
+/// size before the fit, instead of letting its Cholesky blame a column.
+fn check_resid_df(d: &Design<'_>, rows: usize, lags: usize, offset: usize) -> Result<(), VarError> {
+    if d.t_eff - d.m < d.k {
+        return Err(VarError::SingularResidualCovariance {
+            needed: offset + lags + d.m + d.k,
+            got: rows,
+            lags,
+            neqs: d.k,
+            n_trend: d.n_trend,
+            df_resid: d.t_eff - d.m,
+        });
+    }
+    Ok(())
+}
+
 /// Core estimator shared by [`VarSpec::fit`] and
 /// [`crate::select_order`].
 ///
@@ -166,6 +213,8 @@ pub(crate) fn estimate(
     trend: Trend,
     offset: usize,
 ) -> Result<VarResults, VarError> {
+    let d = design(endog, lags, trend, offset)?;
+    check_resid_df(&d, endog.nrows(), lags, offset)?;
     let Design {
         y_all,
         y,
@@ -174,20 +223,7 @@ pub(crate) fn estimate(
         n_trend,
         t_eff,
         m,
-    } = design(endog, lags, trend, offset)?;
-    // With df_resid = T - m < k the T x k residual matrix has rank at most
-    // df_resid, so Sigma_u is singular whatever the data: say so by sample
-    // size before the fit, instead of letting its Cholesky blame a column.
-    if t_eff - m < k {
-        return Err(VarError::SingularResidualCovariance {
-            needed: offset + lags + m + k,
-            got: endog.nrows(),
-            lags,
-            neqs: k,
-            n_trend,
-            df_resid: t_eff - m,
-        });
-    }
+    } = d;
 
     // B = argmin ||Y - Z B||_F via Householder QR (numerically matches
     // statsmodels' lstsq on these well-conditioned macro designs).

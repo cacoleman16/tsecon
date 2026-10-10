@@ -161,8 +161,8 @@ fn norm2(x: impl Iterator<Item = f64> + Clone) -> f64 {
 /// `1e-15 .. 1e14`, and an unbalanced solve then puts a stable root on the
 /// wrong side of the unit circle (`fixtures/companion_roots.json`).
 ///
-/// An index whose off-diagonal column or row is zero (an isolated
-/// eigenvalue, e.g. a zero column of `A_p`) is left unscaled, as in LAPACK.
+/// An index whose column or row is zero (e.g. a zero column of `A_p`, an
+/// isolated zero eigenvalue) is left unscaled, as in LAPACK.
 ///
 /// # Errors
 ///

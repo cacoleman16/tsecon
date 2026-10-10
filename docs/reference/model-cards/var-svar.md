@@ -838,7 +838,7 @@ rescale), a constant column, collinear columns (a
 correlation-matrix eigenvalue at or below $10^{-12}$ times its trace — a
 duplicated series), columns on scales too different for the symmetric
 root, and a matrix past its budget. The three statistics share one
-validation and cost about $5 T k^2 + 20 k^3$ nanoseconds — 0.08 s at
+validation and cost about $5 T k^2 + 20 k^3$ nanoseconds — 0.06 s at
 $T = 1000, k = 100$, 2.3 s at $2000 \times 400$, 11 s at $1000 \times 800$
 (`lab/audit/round16/var_numerics/normality_cost.py`); past $2^{34}$ such
 units (about 17 s) or a working set of $3 T k + 6 k^2$ values above $2^{28}$

@@ -5806,7 +5806,7 @@ def multivariate_normality(resid: _ArrayLike) -> dict[str, Any]:
 
     Cost: the three statistics share one validation, and cost about
     5 T k^2 + 20 k^3 nanoseconds (the k^3 term is the symmetric root's
-    one-sided Jacobi iteration): 0.08 s at T = 1000, k = 100, 2.3 s at
+    one-sided Jacobi iteration): 0.06 s at T = 1000, k = 100, 2.3 s at
     2000 x 400, 11 s at 1000 x 800. Past a budget of 2^34 such units (about
     17 s) or a working set of 3 T k + 6 k^2 values above 2^28 (2 GiB) the
     call is refused before any work, naming `resid`, the largest column count

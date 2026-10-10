@@ -7,7 +7,9 @@
 //! * A bootstrap pseudo-sample whose iid resample drew too few distinct
 //!   residual rows has a singular refit covariance, with positive probability
 //!   in very small samples, although the full sample is fine. The first such
-//!   replication is now reported by index (audit round 16, SVF-2).
+//!   replication is now refused by index, by counting the rows rather than by
+//!   whatever rounding does to a Cholesky factorization (audit round 16,
+//!   SVF-2).
 //! * The non-finite refusal of a residual matrix explained itself with the
 //!   VAR estimator's coefficients, which a normality test does not have
 //!   (audit round 16, DOC16-5).
@@ -17,6 +19,7 @@
 mod common;
 
 use common::Lcg;
+use tsecon_bootstrap::{indices, par_replicate, BlockScheme};
 use tsecon_linalg::faer::Mat;
 use tsecon_var::{
     bootstrap_irf_bands, long_run_bootstrap_bands, ma_rep, normality_test_cholesky, select_order,
@@ -76,27 +79,52 @@ fn too_few_residual_df_is_refused_by_sample_size_not_blamed_on_a_column() {
         "{e}"
     );
     // select_order's common subsample (here the lags = 2 candidate, one row
-    // offset under maxlags = 3) gets the generic advice.
+    // offset under max_lags = 3) gets the generic advice, naming the Python
+    // keyword of var_select_order.
     let e = select_order(gaussian(11, 3, 5).as_ref(), 3, Trend::Constant).unwrap_err();
     assert!(
         matches!(e, VarError::SingularResidualCovariance { .. }),
         "{e:?}"
     );
-    assert!(e.to_string().contains("Reduce maxlags"), "{e}");
+    assert!(
+        e.to_string()
+            .contains("every larger one more: reduce max_lags"),
+        "{e}"
+    );
+}
+
+/// The replications of `SeedSequence(seed).spawn(n_boot)` whose iid resample
+/// of `te` residual rows has at most `k` distinct rows (an intercept: the
+/// refit residuals then have rank <= k - 1, so `sigma_u` is singular).
+fn singular_replications(seed: u64, n_boot: usize, te: usize, k: usize) -> Vec<usize> {
+    let draws: Vec<Vec<usize>> = par_replicate(seed, n_boot, |_, stream| {
+        indices(BlockScheme::Iid, te, stream).unwrap()
+    })
+    .unwrap();
+    (0..n_boot)
+        .filter(|&b| {
+            let mut d = draws[b].clone();
+            d.sort_unstable();
+            d.dedup();
+            d.len() <= k
+        })
+        .collect()
 }
 
 #[test]
 fn a_singular_pseudo_sample_is_reported_by_replication_index() {
     // k = 2, lags = 1, T = 6: T_eff - m = 2 = k, so the full sample fits, but
     // a resample of the 5 residual rows with at most 2 distinct rows (about
-    // one draw in ten) has a singular refit covariance.
+    // one draw in ten) has a singular refit covariance. It is refused by
+    // count: exactly the first such replication, whatever the rounding.
     let data = gaussian(6, 2, 11);
     assert!(VarSpec::new(1, Trend::Constant)
         .unwrap()
         .fit(data.as_ref())
         .is_ok());
-    let mut failures = 0;
     for seed in 0..4u64 {
+        let singular = singular_replications(seed, 50, 5, 2);
+        let first = *singular.first().expect("no singular resample in 50 draws");
         let irf = bootstrap_irf_bands(
             data.as_ref(),
             1,
@@ -113,22 +141,36 @@ fn a_singular_pseudo_sample_is_reported_by_replication_index() {
         spec.n_boot = 50;
         spec.seed = seed;
         let lr = long_run_bootstrap_bands(data.as_ref(), &spec);
-        for e in [irf.err(), lr.err()].into_iter().flatten() {
-            failures += 1;
+        for e in [irf.unwrap_err(), lr.unwrap_err()] {
             let VarError::Replication { index, .. } = e else {
                 panic!("expected a replication error, got {e:?}");
             };
-            assert!(index < 50);
+            assert_eq!(index, first, "seed {seed}: {e}");
             let text = e.to_string();
             assert!(
-                text.contains(&format!("bootstrap replication {index}"))
+                text.contains(&format!("bootstrap replication {first}"))
+                    && text.contains("too few distinct residual rows")
                     && text.contains("Sigma_u is singular"),
                 "{text}"
             );
             assert!(!text.contains("redundant column"), "{text}");
         }
+        // Reduced-form responses never read sigma_u: the same draws all count.
+        let reduced = bootstrap_irf_bands(
+            data.as_ref(),
+            1,
+            Trend::Constant,
+            3,
+            false,
+            false,
+            0.1,
+            50,
+            seed,
+            false,
+        )
+        .unwrap();
+        assert_eq!(reduced.n_boot, 50);
     }
-    assert!(failures > 0, "no seed hit a singular pseudo-sample");
 }
 
 #[test]

@@ -117,38 +117,76 @@ def test_too_few_residual_df_is_refused_by_sample_size():
         assert "redundant column" not in text
 
 
+# The Kilian inner bias bootstrap's stream: seed + BIAS_SEED_OFFSET (mod 2^64).
+_BIAS_SEED_OFFSET = 0x9E3779B97F4A7C15
+
+
+def _singular_replications(seed, n_boot, te, k):
+    """Independent replay of the iid bootstrap index stream (replication b:
+    Philox seeded by child b of SeedSequence(seed).spawn(n_boot), masked
+    rejection on its raw 64-bit output) listing the replications whose
+    resample of te residual rows has at most k distinct rows — with an
+    intercept the refit residuals then have rank <= k - 1, so the refit's
+    Sigma_u is singular by construction."""
+    mask = (1 << (te - 1).bit_length()) - 1
+    out = []
+    for b, child in enumerate(np.random.SeedSequence(seed).spawn(n_boot)):
+        bg = np.random.Philox(child)
+        idx = set()
+        drawn = 0
+        while drawn < te:
+            v = int(bg.random_raw()) & mask
+            if v < te:
+                idx.add(v)
+                drawn += 1
+        if len(idx) <= k:
+            out.append(b)
+    return out
+
+
 def test_a_singular_pseudo_sample_is_reported_by_replication_index():
     # T = 6, k = 2, lags = 1: T_eff - m = 2 = k, so the full sample fits, but
-    # about one resample in ten draws at most 2 distinct residual rows.
+    # about one resample in ten draws at most 2 distinct residual rows. Such a
+    # draw is refused by counting the rows, so the replication named is the
+    # first one of the index stream, whatever rounding does to a Cholesky
+    # factorization (which lets most of these singular covariances through).
     y = np.random.default_rng(1).standard_normal((6, 2))
     tsecon.var_fit(y, lags=1)
     tsecon.long_run_svar(y, lags=1)
     tsecon.long_run_svar_bands(y, lags=1, method="asymptotic")
-    with pytest.raises(ValueError) as exc:
-        tsecon.long_run_svar_bands(y, lags=1, horizon=3, n_boot=50, seed=1)
-    text = str(exc.value)
-    assert re.search(r"bootstrap replication \d+ \(0-based", text), text
-    assert "Sigma_u is singular" in text and "redundant column" not in text
-
-    failures = 0
-    for seed in range(5):
-        try:
-            tsecon.var_irf_bands(y, lags=1, horizon=3, method="bootstrap", n_boot=50, seed=seed)
-        except ValueError as e:
-            failures += 1
-            assert re.search(r"bootstrap replication \d+", str(e)), str(e)
-            assert "redundant column" not in str(e)
-    assert failures > 0
+    for seed in range(3):
+        first = _singular_replications(seed, 50, 5, 2)[0]
+        for call in (
+            lambda: tsecon.long_run_svar_bands(y, lags=1, horizon=3, n_boot=50, seed=seed),
+            lambda: tsecon.var_irf_bands(
+                y, lags=1, horizon=3, method="bootstrap", n_boot=50, seed=seed
+            ),
+        ):
+            with pytest.raises(ValueError) as exc:
+                call()
+            text = str(exc.value)
+            assert f"bootstrap replication {first} (0-based" in text, (seed, text)
+            assert "too few distinct residual rows" in text, text
+            assert "Sigma_u is singular" in text and "redundant column" not in text
+        # Reduced-form responses never read Sigma_u: every draw counts.
+        r = tsecon.var_irf_bands(
+            y, lags=1, horizon=3, orth=False, method="bootstrap", n_boot=50, seed=seed
+        )
+        assert np.all(np.isfinite(r["se"]))
 
 
 def test_the_kilian_inner_bootstrap_no_longer_dies_on_a_singular_pseudo_sample():
-    # tinyT.py's k = 2, lags = 1, T_eff - m = k + 1 case: plain Efron passed
-    # and bias_correct=True died in its inner bootstrap, which only needs the
+    # T = 7, k = 2, lags = 1 at seed 14: no outer resample is singular, so
+    # plain Efron passes, but three inner bias-bootstrap resamples are — and
+    # bias_correct=True died there, though the inner bootstrap only needs the
     # slopes.
     rng = np.random.default_rng(1)
     rng.standard_normal((6, 2))
     y = rng.standard_normal((7, 2))
-    kw = dict(lags=1, horizon=3, n_boot=50, seed=1)
+    seed = 14
+    assert _singular_replications(seed, 50, 6, 2) == []
+    assert _singular_replications(seed + _BIAS_SEED_OFFSET, 50, 6, 2) == [34, 44, 45]
+    kw = dict(lags=1, horizon=3, n_boot=50, seed=seed)
     tsecon.long_run_svar_bands(y, **kw)
     r = tsecon.long_run_svar_bands(y, bias_correct=True, **kw)
     assert np.all(np.isfinite(r["se"]))
@@ -214,6 +252,20 @@ def test_multivariate_normality_refuses_past_its_memory_budget_before_copying():
     text = str(exc.value)
     assert "at k = 1 columns at most T = 89478483 rows" in text, text
     assert "2^28 values" in text
+
+
+def test_the_budget_refusal_names_only_admissible_shapes():
+    # Every admissible shape also needs T >= 8 and T > k: past the work budget
+    # at k = 900 the rows the budget alone would allow (641) are fewer than k.
+    core = tsecon._core.multivariate_normality
+    with pytest.raises(ValueError) as exc:
+        core(np.broadcast_to(np.float64(0.0), (901, 900)))
+    text = str(exc.value)
+    assert "at T = 901 rows pass at most k = 881 columns" in text, text
+    assert "at k = 900 columns no row count fits" in text, text
+    with pytest.raises(ValueError) as exc:
+        core(np.broadcast_to(np.float64(0.0), (7, 10**6)))
+    assert "T = 7 rows is below the 8 the test needs" in str(exc.value), str(exc.value)
 
 
 def test_the_normality_cost_and_budget_are_documented():

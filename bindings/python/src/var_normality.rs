@@ -135,7 +135,7 @@ fn set_cholesky_keys(d: &Bound<'_, PyDict>, n: &NormalityTest) -> PyResult<()> {
 ///
 /// Cost: the three statistics share one validation, and cost about
 /// `5 T k^2 + 20 k^3` nanoseconds (the `k^3` term is the symmetric root's
-/// one-sided Jacobi iteration): 0.08 s at T = 1000, k = 100, 2.3 s at
+/// one-sided Jacobi iteration): 0.06 s at T = 1000, k = 100, 2.3 s at
 /// 2000 x 400, 11 s at 1000 x 800. Past a budget of 2^34 such units (about
 /// 17 s) or a working set of `3 T k + 6 k^2` values above 2^28 (2 GiB) the
 /// call is refused before any work, naming `resid`, the largest column count
@@ -167,15 +167,19 @@ fn multivariate_normality<'py>(
     };
     // The size and work budgets, before anything is copied or computed.
     if !tsecon_var::normality_within_budget(t, k) {
+        // The admissible shapes also need T >= 8 rows and T > k.
+        let min_rows = tsecon_var::DOORNIK_HANSEN_MIN_NOBS;
         let max_k = tsecon_var::normality_max_columns(t).min(t.saturating_sub(1));
         let max_t = tsecon_var::normality_max_rows(k);
-        let by_columns = if max_k == 0 {
+        let by_columns = if t < min_rows {
+            format!("T = {t} rows is below the {min_rows} the test needs at any k")
+        } else if max_k == 0 {
             format!("at T = {t} rows not even one column fits")
         } else {
             format!("at T = {t} rows pass at most k = {max_k} columns")
         };
-        let by_rows = if max_t == 0 {
-            format!("at k = {k} columns no row count fits")
+        let by_rows = if max_t < min_rows.max(k.saturating_add(1)) {
+            format!("at k = {k} columns no row count fits (T must also exceed k)")
         } else {
             format!("at k = {k} columns at most T = {max_t} rows")
         };

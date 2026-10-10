@@ -604,7 +604,7 @@ pub fn long_run_bootstrap_bands(
     let min_root = min_root_of(fit)?;
 
     let raw: Vec<Result<Draw, &'static str>> =
-        engine.replicate(spec.seed, spec.n_boot, |res_b, coefs_b| {
+        engine.replicate(spec.seed, spec.n_boot, true, |res_b, coefs_b| {
             let radius = spectral_radius_of(&res_b.coefs)?;
             Ok(match identify(coefs_b, res_b.sigma_u.as_ref(), spec) {
                 Ok(id) => Ok(Draw {

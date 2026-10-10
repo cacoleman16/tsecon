@@ -207,7 +207,7 @@ impl fmt::Display for VarError {
                      {per_eq} regressors per equation, which leaves df_resid = {df_resid} \
                      residual degrees of freedom — fewer than the k={neqs} series, so the \
                      k x k residual covariance has rank at most {df_resid} whatever the data \
-                     (no column needs dropping). It needs at least {needed} rows. {}",
+                     (no column needs dropping). {}",
                     resid_df_hint(*needed, *got, *lags, *neqs, *n_trend)
                 )
             }
@@ -241,7 +241,7 @@ impl fmt::Display for VarError {
 /// that identity and only the generic advice is emitted.
 fn lag_hint(needed: usize, got: usize, lags: usize, neqs: usize, n_trend: usize) -> String {
     if needed != lags + n_trend + neqs * lags + 1 {
-        return "Reduce maxlags, drop a series, or supply a longer sample.".to_string();
+        return "Reduce max_lags, drop a series, or supply a longer sample.".to_string();
     }
     let p_max = got.saturating_sub(n_trend + 1) / (neqs + 1);
     if p_max >= 1 {
@@ -255,23 +255,30 @@ fn lag_hint(needed: usize, got: usize, lags: usize, neqs: usize, n_trend: usize)
     }
 }
 
-/// Concrete "what to try" clause for
-/// [`VarError::SingularResidualCovariance`]: the largest lag order whose
-/// residual degrees of freedom reach `k` on the direct fit path (`needed ==
-/// lags + n_trend + k lags + k`); `select_order`'s common subsample only
-/// gets the generic advice.
+/// The rows needed and a concrete "what to try" clause for
+/// [`VarError::SingularResidualCovariance`]: on the direct fit path
+/// (`needed == lags + n_trend + k lags + k`) the largest lag order whose
+/// residual degrees of freedom reach `k`; on `select_order`'s common
+/// subsample (where every candidate loses the same `max_lags` rows, so a
+/// larger candidate needs more) only the generic advice, naming `max_lags`.
 fn resid_df_hint(needed: usize, got: usize, lags: usize, neqs: usize, n_trend: usize) -> String {
     if needed != lags + n_trend + neqs * lags + neqs {
-        return "Reduce maxlags, drop a series, or supply a longer sample.".to_string();
+        return format!(
+            "This candidate alone needs at least {needed} rows on the common sample, and \
+             every larger one more: reduce max_lags, drop a series, or supply a longer sample."
+        );
     }
     let p_max = got.saturating_sub(n_trend + neqs) / (neqs + 1);
     if p_max >= 1 {
-        format!("Try lags <= {p_max}, drop a series, or supply a longer sample.")
+        format!(
+            "It needs at least {needed} rows. Try lags <= {p_max}, drop a series, or supply \
+             a longer sample."
+        )
     } else {
         let min_rows = n_trend + 2 * neqs + 1;
         format!(
-            "Even lags=1 would need {min_rows} rows on k={neqs} series, so supply a longer \
-             sample or fit fewer series."
+            "It needs at least {needed} rows. Even lags=1 would need {min_rows} rows on \
+             k={neqs} series, so supply a longer sample or fit fewer series."
         )
     }
 }

@@ -248,10 +248,39 @@ fn ml_cov(u: &Mat<f64>) -> Mat<f64> {
     out
 }
 
-/// The transpose `u'` (`k x T`) of a `T x k` matrix: row `s` of `u` becomes
-/// the contiguous column `s`, which the per-row orthogonalisation loops read.
+/// The transpose of a (small, `k x k`) matrix: row `i` becomes the
+/// contiguous column `i`, which the per-row loops read.
 fn transposed(u: &Mat<f64>) -> Mat<f64> {
     u.transpose().to_owned()
+}
+
+/// The rows of a `T x k` matrix stored contiguously one after another
+/// (row-major), which the per-row orthogonalisation loops read. A flat
+/// buffer, not a `k x T` matrix: faer pads every column of a matrix to its
+/// SIMD alignment, so a transposed copy with a handful of rows per column
+/// would take up to 8 times `T k` values (5.7 GB at `T = 89,478,483, k = 1`,
+/// inside the memory budget).
+struct Rows {
+    data: Vec<f64>,
+    t: usize,
+    k: usize,
+}
+
+impl Rows {
+    fn of(u: &Mat<f64>) -> Self {
+        let (t, k) = (u.nrows(), u.ncols());
+        let mut data = vec![0.0; t * k];
+        for j in 0..k {
+            for (s, &x) in u.col_as_slice(j).iter().enumerate() {
+                data[s * k + j] = x;
+            }
+        }
+        Rows { data, t, k }
+    }
+
+    fn row(&self, s: usize) -> &[f64] {
+        &self.data[s * self.k..(s + 1) * self.k]
+    }
 }
 
 /// Eigenvalues (ascending) and eigenvectors of a symmetric matrix.
@@ -479,20 +508,17 @@ fn jb_from_rows(
 }
 
 /// Cholesky-orthogonalised multivariate Jarque-Bera of CENTRED residuals,
-/// given TRANSPOSED (`ut`, `k x T`) with their ML covariance `sig` — the body
+/// given row by row (`ut`) with their ML covariance `sig` — the body
 /// `VarResults::normality_test` has always had (same loops, same summation
-/// order; the transposed copies only make each loop read contiguous memory).
-fn jb_cholesky(
-    ut: &Mat<f64>,
-    sig: &Mat<f64>,
-    what: &'static str,
-) -> Result<NormalityTest, VarError> {
-    let (k, t) = (ut.nrows(), ut.ncols());
+/// order; the row-major and transposed copies only make each loop read
+/// contiguous memory).
+fn jb_cholesky(ut: &Rows, sig: &Mat<f64>, what: &'static str) -> Result<NormalityTest, VarError> {
+    let (k, t) = (ut.k, ut.t);
     // Column i of `pt` is row i of the lower Cholesky factor P.
     let pt = transposed(&chol_lower(sig.as_ref(), what)?);
     jb_from_rows(t, k, |s, w| {
         // Forward substitution: P w = u_s.
-        let us = ut.col_as_slice(s);
+        let us = ut.row(s);
         for i in 0..k {
             let pi = pt.col_as_slice(i);
             let mut acc = us[i];
@@ -507,16 +533,12 @@ fn jb_cholesky(
 /// Symmetric-root multivariate Jarque-Bera of CENTRED residuals, given
 /// transposed with their ML covariance (see [`jb_cholesky`]); the root comes
 /// from [`cov_inv_sqrt`].
-fn jb_symmetric(
-    ut: &Mat<f64>,
-    sig: &Mat<f64>,
-    what: &'static str,
-) -> Result<NormalityTest, VarError> {
-    let (k, t) = (ut.nrows(), ut.ncols());
+fn jb_symmetric(ut: &Rows, sig: &Mat<f64>, what: &'static str) -> Result<NormalityTest, VarError> {
+    let (k, t) = (ut.k, ut.t);
     // Column i of `rt` is row i of S^{-1/2} (symmetric, so it is column i).
     let rt = transposed(&cov_inv_sqrt(sig, what)?);
     jb_from_rows(t, k, |s, w| {
-        let us = ut.col_as_slice(s);
+        let us = ut.row(s);
         for (i, wi) in w.iter_mut().enumerate() {
             let mut acc = 0.0;
             for (r, x) in rt.col_as_slice(i).iter().zip(us) {
@@ -554,7 +576,7 @@ fn dh_kurt_coeffs(n: f64) -> (f64, f64, f64) {
 
 /// Doornik-Hansen (2008) of a validated residual matrix with `n >= 8` rows.
 fn dh_prepared(p: &Prepared) -> Result<DoornikHansenTest, VarError> {
-    let (k, t) = (p.ut.nrows(), p.ut.ncols());
+    let (k, t) = (p.ut.k, p.ut.t);
     let (ut, dinv) = (&p.ut, &p.dinv);
     // The correlation matrix's root from the eigendecomposition the
     // validation already computed and floor-checked; column i of `rt` is
@@ -565,7 +587,7 @@ fn dh_prepared(p: &Prepared) -> Result<DoornikHansenTest, VarError> {
     let mut m4 = vec![0.0; k];
     let mut y = vec![0.0; k];
     for row in 0..t {
-        for ((yl, x), d) in y.iter_mut().zip(ut.col_as_slice(row)).zip(dinv) {
+        for ((yl, x), d) in y.iter_mut().zip(ut.row(row)).zip(dinv) {
             *yl = x * d;
         }
         for i in 0..k {
@@ -632,7 +654,7 @@ pub const DOORNIK_HANSEN_MIN_NOBS: usize = 8;
 /// of the symmetric root (plus the correlation eigendecomposition, the
 /// Cholesky factors and the roots). The coefficients round up a
 /// non-negative least-squares fit to the release wheel's timings on a T x k
-/// grid from 200 x 100 to 1000 x 800 (4.8 and 15.2 ns per unit;
+/// grid from 200 x 100 to 1000 x 800 (4.1 and 16.2 ns per unit;
 /// `lab/audit/round16/var_numerics/normality_cost.py`), so `2^34` is about
 /// 17 seconds there. Past the budget `multivariate_normality` refuses before
 /// any work, naming `resid` and the largest admissible column count. Before
@@ -641,8 +663,8 @@ pub const NORMALITY_WORK_BUDGET: u128 = 1 << 34;
 
 /// Memory budget of [`normality_tests`], in `f64` values (`2^28`, 2 GiB):
 /// [`normality_values`] `= 3 T k + 6 k^2` (the binding's copy of the input,
-/// the centred residuals and their transpose, and the `k x k` covariance,
-/// correlation, eigenvector, Cholesky, Jacobi and root matrices).
+/// the centred residuals and their unpadded row-major copy, and the `k x k`
+/// covariance, correlation, eigenvector, Cholesky, Jacobi and root matrices).
 pub const NORMALITY_MAX_VALUES: u128 = 1 << 28;
 
 /// The work count [`NORMALITY_WORK_BUDGET`] is checked against for a
@@ -712,9 +734,8 @@ pub fn normality_max_rows(k: usize) -> usize {
 /// A validated residual matrix and what every normality statistic shares,
 /// computed once.
 struct Prepared {
-    /// The centred residuals TRANSPOSED (`k x T`): row `s` of the residual
-    /// matrix is the contiguous column `s` here.
-    ut: Mat<f64>,
+    /// The centred residuals row by row (row-major).
+    ut: Rows,
     /// The ML covariance `S = u'u / T`.
     s: Mat<f64>,
     /// `1 / sqrt(S_jj)`.
@@ -726,7 +747,7 @@ struct Prepared {
 }
 
 /// Shared validation of a residual matrix handed to a free normality
-/// function; returns the centred matrix (transposed), its covariance and
+/// function; returns the centred matrix (row by row), its covariance and
 /// the eigendecomposition of its correlation matrix.
 ///
 /// Refuses (each naming `resid`): no columns; fewer than `min_rows` rows or
@@ -844,7 +865,7 @@ fn validate_resid(resid: MatRef<'_, f64>, min_rows: usize) -> Result<Prepared, V
         });
     }
     Ok(Prepared {
-        ut: transposed(&u),
+        ut: Rows::of(&u),
         s,
         dinv,
         corr_lambda,
@@ -1060,7 +1081,7 @@ impl VarResults {
     pub fn normality_test(&self) -> Result<NormalityTest, VarError> {
         let u = self.centred_resid();
         jb_cholesky(
-            &transposed(&u),
+            &Rows::of(&u),
             &ml_cov(&u),
             "the centred residual covariance of the normality test",
         )
