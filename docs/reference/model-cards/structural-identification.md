@@ -378,7 +378,7 @@ and `cumulative`. Three diagnostics:
   before anything is allocated, and the refusal names the keyword whose term
   is over, with the largest value that fits. Bootstrap: `n_boot` (or `horizon`
   when no count fits); each replication keeps its draws in its slot of one
-  store, measured at 648 bytes per replication against 848 counted on two
+  store, measured at 647 bytes per replication against 848 counted on two
   variables at horizon 12 (the per-matrix storage before 0.11 took 4087 and
   could exceed its count twofold). Delta method: `horizon and lags` (the
   pointwise working set), `horizon and band_scope` (a family's joint

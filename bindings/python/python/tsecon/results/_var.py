@@ -191,7 +191,9 @@ class VARResults(Results):
         ``point``/``se``/``lower``/``upper`` (each ``[h][response][shock]``,
         matching :meth:`irf`), plus ``method``/``alpha``/``n_boot``. ``method``
         is ``"asymptotic"`` (Lütkepohl delta-method) or ``"bootstrap"``
-        (residual bootstrap, with optional Kilian ``bias_correct``).
+        (residual bootstrap, with optional Kilian ``bias_correct``). Keywords
+        the chosen method and band do not read are refused at a non-default
+        value, exactly as :func:`tsecon.var_irf_bands` refuses them.
 
         ``band`` selects the multiplicity correction and defaults to
         ``"pointwise"``, which leaves the output exactly as before. The
@@ -246,7 +248,9 @@ class VARResults(Results):
         only — identical to ``self.irf(...).plot()``), ``"asymptotic"``
         (delta-method) or ``"bootstrap"``. ``alpha`` is the two-sided level
         (default ``0.1`` → a 90% band). ``n_boot``/``seed``/``bias_correct``
-        apply to the bootstrap band only. Returns the
+        apply to the bootstrap band only; a non-default value with
+        ``bands="asymptotic"`` is refused as inert, as
+        :func:`tsecon.var_irf_bands` refuses it. Returns the
         :class:`matplotlib.figure.Figure`; saves it to ``path`` first when
         given. A zero reference line is always drawn.
         """

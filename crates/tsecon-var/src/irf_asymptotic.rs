@@ -490,6 +490,12 @@ pub(crate) const SIM_WHAT: &str = "band_n_sim: the sup-t simulation draws band_n
     2^36 work budget, checked before anything is allocated; lower band_n_sim (100000 is the \
     default) or narrow band_scope";
 
+const SIM_HORIZON_WHAT: &str = "horizon and band_scope: at this horizon a sup-t family of K \
+    cells is too large to simulate even band_n_sim = 2 Gaussian vectors (K * band_n_sim \
+    uniforms within the 2^28-value (2 GiB) memory budget, n_families * band_n_sim * K^2 \
+    multiply-adds within the 2^36 work budget), checked before anything is allocated; reduce \
+    horizon or narrow band_scope";
+
 const DELTA_JACOBIAN_WHAT: &str = "horizon: the delta-method Jacobians of the moving-average \
     weights cost horizon * (horizon + 1) / 2 * k^2 * lags * k^2 multiply-adds, QUADRATIC in \
     horizon, which exceeds the 2^28 work cap (a few seconds), checked before any of them is \
@@ -500,10 +506,11 @@ const DELTA_JACOBIAN_WHAT: &str = "horizon: the delta-method Jacobians of the mo
 /// n_sim)` are `terms(horizon, n_sim)`. It names the term that is over, in
 /// this order: the pointwise working set (`horizon and lags`), a
 /// simultaneous band's family covariance (`horizon and band_scope`), the
-/// sup-t simulation (`band_n_sim`, unless not even 2 draws fit), and the
-/// Jacobian work (`horizon`); each with the largest value of the named
-/// keyword that passes every check at the other arguments. A pointwise band
-/// never hears about `band_scope` or `band_n_sim`, which it does not read.
+/// Jacobian work (`horizon`), and the sup-t simulation (`band_n_sim`, or
+/// `horizon and band_scope` when not even 2 draws fit); each with the
+/// largest value of the named keyword that passes every check at the other
+/// arguments. A pointwise band never hears about `band_scope` or
+/// `band_n_sim`, which it does not read.
 pub(crate) fn delta_refusal(
     terms: impl Fn(usize, usize) -> DeltaTerms,
     horizon: usize,
@@ -530,22 +537,24 @@ pub(crate) fn delta_refusal(
     if over(with_family) {
         return Some(refuse(DELTA_FAMILY_WHAT));
     }
-    let sim_over =
-        over(t.values()) || !matches!(t.sim_work, Some(w) if w <= simultaneous::SUP_T_MAX_WORK);
-    if supt && sim_over {
-        return Some(
-            match largest_fitting(2, n_sim, |n| terms(horizon, n).fits()) {
-                Some(max) => VarError::SizeBudget {
-                    what: SIM_WHAT,
-                    name: "band_n_sim",
-                    value: n_sim,
-                    max: Some(max),
-                },
-                None => refuse(DELTA_FAMILY_WHAT),
-            },
-        );
+    // Before the simulation: no band_n_sim can rescue a horizon whose
+    // Jacobians are over their cap, so that horizon is what to reduce.
+    if t.jacobian_work > DELTA_JACOBIAN_WORK {
+        return Some(refuse(DELTA_JACOBIAN_WHAT));
     }
-    Some(refuse(DELTA_JACOBIAN_WHAT))
+    // Only the sup-t simulation is left over (a pointwise or closed-form band
+    // simulates nothing, so it never gets here).
+    if supt {
+        if let Some(max) = largest_fitting(2, n_sim, |n| terms(horizon, n).fits()) {
+            return Some(VarError::SizeBudget {
+                what: SIM_WHAT,
+                name: "band_n_sim",
+                value: n_sim,
+                max: Some(max),
+            });
+        }
+    }
+    Some(refuse(SIM_HORIZON_WHAT))
 }
 
 /// The delta-method terms of [`irf_asymptotic_se`] (`band = None`) and

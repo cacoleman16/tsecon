@@ -244,8 +244,9 @@ pub(crate) fn bootstrap_refusal(
 /// [`bootstrap_irf_bands_simultaneous`] in `f64` values, or `None` when the
 /// count overflows: per replication its flat cube, [`DRAW_OVERHEAD_VALUES`]
 /// and its slot in the percentile buffer, plus its inner Kilian estimate
-/// (`lags` matrices) with `bias_correct` and its copy of the band family
-/// (`K` values and a maximum) with a band; and the reported cubes
+/// with `bias_correct` (`lags` k x k blocks of the inner store, counted at
+/// the padded-matrix size, and an inner overhead) and its copy of the band
+/// family (`K` values and a maximum) with a band; and the reported cubes
 /// ([`crate::budget::CUBE_COPIES`] copies).
 pub fn bootstrap_irf_budget_values(
     k: usize,
@@ -936,29 +937,45 @@ fn estimate_bias(
     };
     let bias_seed = seed.wrapping_add(BIAS_SEED_OFFSET);
 
-    let raw = par_replicate(
-        bias_seed,
-        n_inner,
-        |_rep, stream| -> Result<Vec<Mat<f64>>, VarError> {
+    // Each inner estimate is written into its slot of one store (block `i`
+    // is `A_{i+1}`), not cloned into matrices of its own: a small allocation
+    // kept per replication while its refit temporaries are alive fragments
+    // the heap, which measured 2.8x the budgeted count on three variables.
+    let k2 = k * k;
+    let mut estimates = DrawStore::new(n_inner, p * k2);
+    {
+        let slots = estimates.slots();
+        let raw = par_replicate(bias_seed, n_inner, |rep, stream| -> Result<(), VarError> {
             let idx = indices(BlockScheme::Iid, te, stream).map_err(map_boot_err)?;
             let ustar = gather_rows(uc, &idx);
             let ysim = simulate_recursive(coefs_hat, intercept, init, &ustar);
             let res_b = VarSpec { lags, trend }.fit(ysim.as_ref())?;
-            Ok(res_b.coefs.clone())
-        },
-    )
-    .map_err(map_boot_err)?;
-    let estimates: Vec<Vec<Mat<f64>>> = raw.into_iter().collect::<Result<_, _>>()?;
+            fill_slot(&slots, rep, |out| {
+                for (i, a) in res_b.coefs.iter().enumerate() {
+                    write_block(out, i, a.as_ref());
+                }
+            })
+        })
+        .map_err(map_boot_err)?;
+        // The first failed replication, in replication order.
+        raw.into_iter().collect::<Result<Vec<()>, _>>()?;
+    }
 
-    // Mean of the inner estimates.
+    // Mean of the inner estimates, summed in replication order one cell at a
+    // time: the same IEEE additions as summing the matrices.
     let mut mean = vec![Mat::<f64>::zeros(k, k); p];
-    for est in &estimates {
-        for i in 0..p {
-            let acc = &mean[i] + &est[i];
-            mean[i] = acc;
+    for b in 0..n_inner {
+        let est = estimates.draw(b);
+        for (i, m) in mean.iter_mut().enumerate() {
+            for r in 0..k {
+                for c in 0..k {
+                    m[(r, c)] += est[i * k2 + r * k + c];
+                }
+            }
         }
     }
-    let nf = estimates.len() as f64;
+    drop(estimates);
+    let nf = n_inner as f64;
     // Raw bias E*[A*] - A_hat.
     let bias_raw: Vec<Mat<f64>> = (0..p)
         .map(|i| Mat::from_fn(k, k, |r, c| mean[i][(r, c)] / nf - coefs_hat[i][(r, c)]))
@@ -1114,6 +1131,102 @@ mod tests {
         }
         // The same coefficient checks as ma_rep: an empty lag list is refused.
         assert!(irf_into(&[], sigma.as_ref(), 4, true, false, &mut [0.0; 9]).is_err());
+    }
+
+    /// The Kilian bias read off the inner store is the one the inner
+    /// estimates gave as cloned matrices summed as matrices (the computation
+    /// before the store), bit for bit.
+    #[test]
+    fn the_inner_bias_store_is_the_matrix_sum_bit_for_bit() {
+        let (k, p, n) = (3usize, 2usize, 160usize);
+        let a1 = Mat::from_fn(k, k, |i, j| {
+            if i == j {
+                0.6
+            } else {
+                0.04 * (i + 2 * j) as f64
+            }
+        });
+        let a2 = Mat::from_fn(k, k, |i, j| if i == j { 0.15 } else { -0.02 });
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let u = Mat::from_fn(n - p, k, |_, _| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 11) as f64 / (1u64 << 53) as f64 - 0.5
+        });
+        let init = Mat::from_fn(p, k, |t, j| 0.1 * (t + j) as f64);
+        let y = simulate_recursive(&[a1, a2], &[0.1, 0.0, -0.1], &init, &u);
+        let fit = VarSpec {
+            lags: p,
+            trend: Trend::Constant,
+        }
+        .fit(y.as_ref())
+        .unwrap();
+        let uc = center_columns(fit.resid.as_ref());
+        let init = Mat::from_fn(p, k, |t, j| y[(t, j)]);
+        let (seed, n_inner) = (5u64, 97usize);
+        let got = estimate_bias(
+            &fit.coefs,
+            &fit.intercept,
+            &init,
+            &uc,
+            fit.nobs,
+            seed,
+            n_inner,
+        )
+        .unwrap();
+
+        let te = fit.nobs;
+        let estimates: Vec<Vec<Mat<f64>>> = par_replicate(
+            seed.wrapping_add(BIAS_SEED_OFFSET),
+            n_inner,
+            |_rep, stream| {
+                let idx = indices(BlockScheme::Iid, te, stream).unwrap();
+                let ysim =
+                    simulate_recursive(&fit.coefs, &fit.intercept, &init, &gather_rows(&uc, &idx));
+                VarSpec {
+                    lags: p,
+                    trend: Trend::Constant,
+                }
+                .fit(ysim.as_ref())
+                .unwrap()
+                .coefs
+                .clone()
+            },
+        )
+        .unwrap();
+        let mut mean = vec![Mat::<f64>::zeros(k, k); p];
+        for est in &estimates {
+            for i in 0..p {
+                let acc = &mean[i] + &est[i];
+                mean[i] = acc;
+            }
+        }
+        let raw: Vec<Mat<f64>> = (0..p)
+            .map(|i| {
+                Mat::from_fn(k, k, |r, c| {
+                    mean[i][(r, c)] / n_inner as f64 - fit.coefs[i][(r, c)]
+                })
+            })
+            .collect();
+        let mut delta = 1.0_f64;
+        let want = loop {
+            if spectral_radius_of(&scale_subtract(&fit.coefs, &raw, delta)).unwrap() < 1.0 {
+                break scale(&raw, delta);
+            }
+            delta -= 0.01;
+            assert!(delta > 0.0, "the test VAR must admit a correction");
+        };
+        assert!(raw
+            .iter()
+            .any(|m| (0..k).any(|r| (0..k).any(|c| m[(r, c)] != 0.0))));
+        for (g, w) in got.iter().zip(&want) {
+            for r in 0..k {
+                for c in 0..k {
+                    assert_eq!(g[(r, c)].to_bits(), w[(r, c)].to_bits(), "({r},{c})");
+                }
+            }
+        }
     }
 
     #[test]

@@ -223,6 +223,26 @@ def test_var_irf_bands_caps_the_quadratic_jacobian_work():
     assert "band_scope" not in msg and "band_n_sim" not in msg, msg
 
 
+def test_a_sup_t_band_past_the_jacobian_cap_names_the_jacobians():
+    # horizon 3000 on a bivariate VAR(8) is past the Jacobian cap (2047) and
+    # its sup-t simulation is over too at the default band_n_sim. No
+    # band_n_sim can rescue that horizon, and the family covariance fits, so
+    # the refusal names the Jacobian work; the largest horizon it reports
+    # passes every check, the simulation's 4 (h + 1)^2 * 100000 <= 2^36: 413.
+    y8 = _var(300, 2, 3)
+    for lrsb in (False, True):
+        fn = tsecon.long_run_svar_bands if lrsb else tsecon.var_irf_bands
+        kw = {"method": "asymptotic"} if lrsb else {}
+        msg = ""
+        try:
+            fn(y8, lags=8, horizon=3000, band="sup-t", **kw)
+        except ValueError as e:
+            msg = str(e)
+        assert msg.startswith("horizon: the delta-method Jacobians"), msg
+        assert "horizon and band_scope" not in msg, msg
+        assert _refused(lambda: fn(y8, lags=8, horizon=3000, band="sup-t", **kw), "horizon") == 413
+
+
 # ------------------------------------------------- A5: band_n_sim budget
 BAND_N_SIM_CALLS = {
     "lp": lambda n: tsecon.lp(

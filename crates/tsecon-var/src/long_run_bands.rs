@@ -80,10 +80,11 @@
 //!   padded matrices, and no allocation of its own), plus a fixed
 //!   per-replication overhead for its RNG substream, its result slots and
 //!   its slot lock (`DRAW_OVERHEAD_VALUES`, 48) and one value of the
-//!   percentile buffer; plus its
-//!   inner estimate (`lags` matrices) with `bias_correct`, its copy of the
-//!   band family (`K + 1`) with a simultaneous band, and `cells + k^2` when
-//!   the draws are kept (the returned flat arrays);
+//!   percentile buffer; plus its inner estimate with `bias_correct` (`lags`
+//!   k x k blocks of the inner store, counted at the padded-matrix size, and
+//!   an inner overhead), its copy of the band family (`K + 1`) with a
+//!   simultaneous band, and `cells + k^2` when the draws are kept (the
+//!   returned flat arrays);
 //! * delta method: `cells * (3 dim + 2 k(k+1)/2 + 8) + H1 * 8 ceil(k^2 / 8)
 //!   dim + dim^2` (`dim = lags k^2`: the per-cell loading rows, the `G_h`
 //!   Jacobians and the coefficient covariance), plus `3 K^2` and the family

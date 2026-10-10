@@ -78,6 +78,24 @@ CASES = {
                               "tsecon.long_run_svar_bands(X, lags=1, horizon=40, n_boot=1000, band='sup-t')",
                               "tsecon.long_run_svar_bands(X, lags=1, horizon=40, n_boot=SIZE, band='sup-t')",
                               40_000),
+    # Kilian bias correction: the inner estimates, one per replication, are
+    # held while the outer replications run.
+    "vib_boot_h12_k2_bias": ("X = var_data(200, 2, 1)",
+                             "tsecon.var_irf_bands(X, lags=2, horizon=12, method='bootstrap', n_boot=1000, bias_correct=True)",
+                             "tsecon.var_irf_bands(X, lags=2, horizon=12, method='bootstrap', n_boot=SIZE, bias_correct=True)",
+                             200_000),
+    "vib_boot_h12_k3_bias_lags1": ("X = var_data(300, 3, 1)",
+                             "tsecon.var_irf_bands(X, lags=1, horizon=12, method='bootstrap', n_boot=1000, bias_correct=True)",
+                             "tsecon.var_irf_bands(X, lags=1, horizon=12, method='bootstrap', n_boot=SIZE, bias_correct=True)",
+                             100_000),
+    "vib_boot_h12_k5_bias_lags1": ("X = var_data(300, 5, 1)",
+                             "tsecon.var_irf_bands(X, lags=1, horizon=12, method='bootstrap', n_boot=1000, bias_correct=True)",
+                             "tsecon.var_irf_bands(X, lags=1, horizon=12, method='bootstrap', n_boot=SIZE, bias_correct=True)",
+                             60_000),
+    "lrsb_boot_h12_k5_bias": ("X = var_data(300, 5, 1)",
+                              "tsecon.long_run_svar_bands(X, lags=1, horizon=12, n_boot=1000, bias_correct=True)",
+                              "tsecon.long_run_svar_bands(X, lags=1, horizon=12, n_boot=SIZE, bias_correct=True)",
+                              60_000),
 }
 
 BODY = r"""

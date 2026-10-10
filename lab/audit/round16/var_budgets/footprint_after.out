@@ -1,19 +1,23 @@
 var_irf_k2                 size=400000   FAILED ValueError: horizon: every horizon adds one k x k matrix to each of the copies the call holds (the moving-average weights, the responses and their Python nested lists, counted as real storage: padded matrices and list objects), and at this horizon that working set exceeds the 2^28-value (2 GiB) budget, checked before anything is allocated; reduce horizon (got horizon = 400000; the largest horizon that fits at the other arguments is 399456)
 var_irf_k3                 size=300000   FAILED ValueError: horizon: every horizon adds one k x k matrix to each of the copies the call holds (the moving-average weights, the responses and their Python nested lists, counted as real storage: padded matrices and list objects), and at this horizon that working set exceeds the 2^28-value (2 GiB) budget, checked before anything is allocated; reduce horizon (got horizon = 300000; the largest horizon that fits at the other arguments is 262143)
-var_irf_k8                 size=40000    5351.0 bytes per unit   peak growth    204.1 MiB     0.54 s
-var_irf_k9                 size=30000    7554.1 bytes per unit   peak growth    216.1 MiB     0.69 s
-var_irf_k20                size=5000     29438.8 bytes per unit   peak growth    140.4 MiB     0.38 s
+var_irf_k8                 size=40000    5351.0 bytes per unit   peak growth    204.1 MiB     0.57 s
+var_irf_k9                 size=30000    7554.1 bytes per unit   peak growth    216.1 MiB     0.65 s
+var_irf_k20                size=5000     29465.0 bytes per unit   peak growth    140.5 MiB     0.42 s
 var_irf_cum_k2             size=400000   FAILED ValueError: horizon: every horizon adds one k x k matrix to each of the copies the call holds (the moving-average weights, the responses and their Python nested lists, counted as real storage: padded matrices and list objects), and at this horizon that working set exceeds the 2^28-value (2 GiB) budget, checked before anything is allocated; reduce horizon (got horizon = 400000; the largest horizon that fits at the other arguments is 399456)
 var_fevd_k2                size=400000   FAILED ValueError: horizon: every horizon adds one k x k matrix to each of the copies the call holds (the moving-average weights, the responses and their Python nested lists, counted as real storage: padded matrices and list objects), and at this horizon that working set exceeds the 2^28-value (2 GiB) budget, checked before anything is allocated; reduce horizon (got horizon = 400000; the largest horizon that fits at the other arguments is 399457)
-var_fevd_k8                size=40000    4597.6 bytes per unit   peak growth    175.4 MiB     0.52 s
-long_run_svar_k2           size=300000   1795.7 bytes per unit   peak growth    513.8 MiB     1.28 s
-long_run_svar_k8           size=30000    12870.6 bytes per unit   peak growth    368.2 MiB     0.79 s
+var_fevd_k8                size=40000    4597.2 bytes per unit   peak growth    175.4 MiB     0.53 s
+long_run_svar_k2           size=300000   1795.6 bytes per unit   peak growth    513.7 MiB     1.25 s
+long_run_svar_k8           size=30000    12870.2 bytes per unit   peak growth    368.2 MiB     0.80 s
 connectedness_k2           size=400000   FAILED ValueError: horizon: every horizon adds one k x k matrix to each of the copies the call holds (the moving-average weights, the responses and their Python nested lists, counted as real storage: padded matrices and list objects), and at this horizon that working set exceeds the 2^28-value (2 GiB) budget, checked before anything is allocated; reduce horizon (got horizon = 400000; the largest horizon that fits at the other arguments is 399456)
-mean_group_var_n4          size=200000   2170.3 bytes per unit   peak growth    414.0 MiB     1.67 s
+mean_group_var_n4          size=200000   2170.4 bytes per unit   peak growth    414.0 MiB     1.51 s
 fvar_scenario              size=300000   FAILED ValueError: horizon: every horizon adds one k x k matrix to each of the copies the call holds (the moving-average weights, the responses and their Python nested lists, counted as real storage: padded matrices and list objects), and at this horizon that working set exceeds the 2^28-value (2 GiB) budget, checked before anything is allocated; reduce horizon (got horizon = 300000; the largest horizon that fits at the other arguments is 262143)
-vib_boot_h12_k2            size=200000   606.8 bytes per unit   peak growth    115.7 MiB     5.89 s
-vib_boot_h0_k2             size=400000   266.1 bytes per unit   peak growth    101.5 MiB     8.44 s
-lrsb_boot_h12_k2           size=200000   646.4 bytes per unit   peak growth    123.3 MiB     6.87 s
-lrsb_boot_h0_k2            size=400000   266.1 bytes per unit   peak growth    101.5 MiB    12.48 s
-lrsb_boot_h12_k2_draws     size=200000   946.6 bytes per unit   peak growth    180.6 MiB     7.67 s
-lrsb_boot_h40_k3_supt      size=40000    3443.7 bytes per unit   peak growth    131.4 MiB     3.29 s
+vib_boot_h12_k2            size=200000   608.3 bytes per unit   peak growth    116.0 MiB     4.24 s
+vib_boot_h0_k2             size=400000   266.1 bytes per unit   peak growth    101.5 MiB     5.95 s
+lrsb_boot_h12_k2           size=200000   647.3 bytes per unit   peak growth    123.5 MiB     5.39 s
+lrsb_boot_h0_k2            size=400000   266.1 bytes per unit   peak growth    101.5 MiB     7.94 s
+lrsb_boot_h12_k2_draws     size=200000   947.4 bytes per unit   peak growth    180.7 MiB     5.10 s
+lrsb_boot_h40_k3_supt      size=40000    3448.2 bytes per unit   peak growth    131.5 MiB     2.30 s
+vib_boot_h12_k2_bias       size=200000   679.3 bytes per unit   peak growth    129.6 MiB     7.44 s
+vib_boot_h12_k3_bias_lags1 size=100000   1190.3 bytes per unit   peak growth    113.5 MiB     4.94 s
+vib_boot_h12_k5_bias_lags1 size=60000    2821.7 bytes per unit   peak growth    161.5 MiB     5.49 s
+lrsb_boot_h12_k5_bias      size=60000    3023.8 bytes per unit   peak growth    173.0 MiB     5.79 s

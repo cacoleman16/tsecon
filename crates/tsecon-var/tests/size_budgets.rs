@@ -254,6 +254,24 @@ fn the_delta_method_bands_name_the_term_that_is_over() {
     ));
     assert_eq!(name, "horizon", "{msg}");
     assert!(msg.starts_with("horizon and band_scope:"), "{msg}");
+    // Jacobians over their cap AND the sup-t simulation over at the default
+    // band_n_sim: no band_n_sim can rescue that horizon, so the refusal names
+    // the Jacobian work, not the family covariance (which fits). The largest
+    // horizon it reports passes every check at band_n_sim = 100000: the
+    // simulation's 4 (h + 1)^2 band_n_sim <= 2^36 gives 413.
+    let band = Some((BandMethod::SupT, IrfBandScope::Horizon));
+    let (name, max, msg) = named(check_irf_asymptotic_budget(2, 8, 3_000, band, 100_000));
+    assert_eq!(name, "horizon", "{msg}");
+    assert!(
+        msg.starts_with("horizon: the delta-method Jacobians") && msg.contains("QUADRATIC"),
+        "{msg}"
+    );
+    assert_eq!(max, Some(413), "{msg}");
+    assert!(check_irf_asymptotic_budget(2, 8, 413, band, 100_000).is_ok());
+    // Below the Jacobian cap (2047 at lags 8) only the simulation is over:
+    // band_n_sim is named.
+    let (name, _, msg) = named(check_irf_asymptotic_budget(2, 8, 2_000, band, 100_000));
+    assert_eq!(name, "band_n_sim", "{msg}");
     let msg = irf_asymptotic_critical_values(
         &r,
         6,

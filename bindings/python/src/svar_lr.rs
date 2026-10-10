@@ -249,7 +249,7 @@ pub(crate) fn refuse_inert_band_keywords(
 /// matrix, anchor cells and companion radius in its slot of one store, plus a
 /// fixed 48-value overhead (refused naming `n_boot`, or `horizon` when no
 /// count fits; on two variables at horizon 12 the largest n_boot is
-/// 2532327). The measured peak stays under the count: 648 bytes per
+/// 2532327). The measured peak stays under the count: 647 bytes per
 /// replication against 848 counted on two variables at horizon 12 (the
 /// per-matrix storage before 0.11 took 4087). Asymptotic: the pointwise
 /// working set (refused naming `horizon and lags`); a simultaneous band's
