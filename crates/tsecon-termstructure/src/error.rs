@@ -173,10 +173,10 @@ pub enum TermStructureError {
         /// The largest supported number of starts.
         max: usize,
     },
-    /// A maturity exceeds the largest supported number of periods. The
-    /// Riccati recursions are tabulated at every integer period up to the
-    /// longest maturity, so an absurd maturity would be an absurd allocation
-    /// rather than a curve.
+    /// A maturity exceeds the largest supported number of periods. The JSZ
+    /// Riccati recursions and the ACM price recursion are tabulated at every
+    /// integer period up to the longest maturity, so an absurd maturity
+    /// would be an absurd allocation rather than a curve.
     MaturityTooLarge {
         /// Zero-based index of the offending maturity.
         index: usize,
@@ -312,7 +312,7 @@ impl fmt::Display for TermStructureError {
             ),
             TermStructureError::MaturityTooLarge { index, value, max } => write!(
                 f,
-                "maturity[{index}] = {value} periods exceeds the supported maximum \
+                "maturities[{index}] = {value} periods exceeds the supported maximum \
                  of {max}: the affine recursions are tabulated at every integer \
                  period up to the longest maturity, so express maturities in \
                  periods of the data's frequency (months for monthly data: 120 \
